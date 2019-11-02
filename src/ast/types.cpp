@@ -40,13 +40,14 @@ static const struct {
     {"usize", CORETYPE_UINT},
 };
 
-enum eCoreType coretype_fromstring(const ::std::string& name)
+enum eCoreType coretype_fromstring(const char* name)
 {
     for(unsigned int i = 0; i < sizeof(CORETYPES)/sizeof(CORETYPES[0]); i ++)
     {
-        if( name < CORETYPES[i].name )
+        int cmp = strcmp(name, CORETYPES[i].name);
+        if( cmp < 0 )
             break;
-        if( name == CORETYPES[i].name )
+        if( cmp == 0 )
             return CORETYPES[i].type;
     }
     return CORETYPE_INVAL;
@@ -323,7 +324,7 @@ namespace AST {
             os << "'_";
         }
         else {
-            os << "'" << x.m_name;
+            os << "'" << x.m_name.name;
             if( x.m_binding != LifetimeRef::BINDING_UNBOUND ) {
                 os << "/*" << x.m_binding << "*/";
             }

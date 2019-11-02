@@ -19,6 +19,12 @@ void ::HIR::ExprVisitor::visit_node_ptr(::std::unique_ptr< ::HIR::ExprNode>& nod
 }
 void ::HIR::ExprVisitor::visit_node(::HIR::ExprNode& node) {
 }
+void ::HIR::ExprVisitorDef::visit_node_ptr(::std::unique_ptr< ::HIR::ExprNode>& node_ptr) {
+    assert(node_ptr);
+    TRACE_FUNCTION_F(&*node_ptr << " " << typeid(*node_ptr).name());
+    node_ptr->visit(*this);
+    visit_type(node_ptr->m_res_type);
+}
 DEF_VISIT(ExprNode_Block, node,
     for(auto& subnode : node.m_nodes) {
         visit_node_ptr(subnode);
@@ -83,6 +89,7 @@ DEF_VISIT(ExprNode_Borrow, node,
     visit_node_ptr(node.m_value);
 )
 DEF_VISIT(ExprNode_Cast, node,
+    TRACE_FUNCTION_F("_Cast " << node.m_res_type);
     visit_node_ptr(node.m_value);
 )
 DEF_VISIT(ExprNode_Unsize, node,
@@ -152,7 +159,7 @@ DEF_VISIT(ExprNode_PathValue, node,
 )
 DEF_VISIT(ExprNode_Variable, , )
 DEF_VISIT(ExprNode_StructLiteral, node,
-    visit_generic_path(::HIR::Visitor::PathContext::VALUE, node.m_path);
+    visit_path(::HIR::Visitor::PathContext::VALUE, node.m_path);
     if( node.m_base_value )
         visit_node_ptr(node.m_base_value);
     for(auto& val : node.m_values)

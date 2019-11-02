@@ -30,6 +30,7 @@
 /vsproject/*/*.opendb
 /vsproject/*/*.user
 /vsproject/output
+/vsproject/output-*
 /vsproject/output_mmir
 /vsproject/*.obj
 /vsproject/*.pdb

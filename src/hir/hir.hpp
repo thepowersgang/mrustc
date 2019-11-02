@@ -8,6 +8,7 @@
  * Contains the expanded and desugared AST
  */
 #pragma once
+#include <target_version.hpp>
 
 #include <cassert>
 #include <unordered_map>
@@ -37,13 +38,50 @@ class Static;
 
 class ValueItem;
 class TypeItem;
+class MacroItem;
 
 class ItemPath;
+
+class Publicity
+{
+    static ::std::shared_ptr<::HIR::SimplePath> none_path;
+    ::std::shared_ptr<::HIR::SimplePath>    vis_path;
+
+    Publicity(::std::shared_ptr<::HIR::SimplePath> p)
+        :vis_path(p)
+    {
+    }
+public:
+
+    static Publicity new_global() {
+        return Publicity({});
+    }
+    static Publicity new_none() {
+        return Publicity(none_path);
+    }
+    static Publicity new_priv(::HIR::SimplePath p) {
+        return Publicity(::std::make_shared<HIR::SimplePath>(::std::move(p)));
+    }
+
+    bool is_global() const {
+        return !vis_path;
+    }
+    bool is_visible(const ::HIR::SimplePath& p) const;
+
+    friend ::std::ostream& operator<<(::std::ostream& os, const Publicity& x);
+};
+
+enum class ConstEvalState
+{
+    None,
+    Active,
+    Complete,
+};
 
 template<typename Ent>
 struct VisEnt
 {
-    bool is_public;
+    Publicity   publicity;
     Ent ent;
 };
 
@@ -51,6 +89,7 @@ struct VisEnt
 /// NOTE: Intentionally minimal, just covers the values (not the types)
 TAGGED_UNION(Literal, Invalid,
     (Invalid, struct {}),
+    (Defer, struct {}),
     // List = Array, Tuple, struct literal
     (List, ::std::vector<Literal>), // TODO: Have a variant for repetition lists
     // Variant = Enum variant
@@ -111,6 +150,9 @@ public:
     TypeRef m_type;
     ExprPtr m_value;
     Literal   m_value_res;
+
+    // A cache of monomorphised versions when the `const` depends on generics for its value
+    mutable ::std::map< ::HIR::Path, Literal>   m_monomorph_cache;
 };
 class Function
 {
@@ -124,6 +166,7 @@ public:
         //PointerMut,
         //PointerConst,
         Box,
+        Custom,
     };
 
     typedef ::std::vector< ::std::pair< ::HIR::Pattern, ::HIR::TypeRef> >   args_t;
@@ -157,7 +200,7 @@ struct TypeAlias
 };
 
 typedef ::std::vector< VisEnt<::HIR::TypeRef> > t_tuple_fields;
-typedef ::std::vector< ::std::pair< ::std::string, VisEnt<::HIR::TypeRef> > >   t_struct_fields;
+typedef ::std::vector< ::std::pair< RcString, VisEnt<::HIR::TypeRef> > >   t_struct_fields;
 
 /// Cache of the state of various language traits on an enum/struct
 struct TraitMarkings
@@ -212,11 +255,18 @@ struct StructMarkings
     unsigned int coerce_param = ~0u;
 };
 
+class ExternType
+{
+public:
+    // TODO: do extern types need any associated data?
+    TraitMarkings   m_markings;
+};
+
 class Enum
 {
 public:
     struct DataVariant {
-        ::std::string   name;
+        RcString   name;
         bool is_struct; // Indicates that the variant does not show up in the value namespace
         ::HIR::TypeRef  type;
     };
@@ -227,7 +277,7 @@ public:
         Usize, U8, U16, U32, U64,
     };
     struct ValueVariant {
-        ::std::string   name;
+        RcString   name;
         ::HIR::ExprPtr  expr;
         // TODO: Signed.
         uint64_t val;
@@ -248,7 +298,7 @@ public:
     size_t num_variants() const {
         return (m_data.is_Data() ? m_data.as_Data().size() : m_data.as_Value().variants.size());
     }
-    size_t find_variant(const ::std::string& ) const;
+    size_t find_variant(const RcString& ) const;
 
     /// Returns true if this enum is a C-like enum (has values only)
     bool is_value() const;
@@ -264,6 +314,8 @@ public:
         C,
         Packed,
         Simd,
+        Aligned,    // Alignment stored elsewhere
+        Transparent,
     };
     TAGGED_UNION(Data, Unit,
         (Unit, struct {}),
@@ -271,13 +323,33 @@ public:
         (Named, t_struct_fields)
         );
 
+    Struct(GenericParams params, Repr repr, Data data)
+        :m_params(mv$(params))
+        ,m_repr(mv$(repr))
+        ,m_data(mv$(data))
+    {
+    }
+    Struct(GenericParams params, Repr repr, Data data, unsigned align, TraitMarkings tm, StructMarkings sm)
+        :m_params(mv$(params))
+        ,m_repr(mv$(repr))
+        ,m_data(mv$(data))
+        ,m_forced_alignment(align)
+        ,m_markings(mv$(tm))
+        ,m_struct_markings(mv$(sm))
+    {
+    }
+
     GenericParams   m_params;
     Repr    m_repr;
     Data    m_data;
+    unsigned    m_forced_alignment = 0;
 
     TraitMarkings   m_markings;
     StructMarkings  m_struct_markings;
+
+    ConstEvalState  const_eval_state = ConstEvalState::None;
 };
+extern ::std::ostream& operator<<(::std::ostream& os, const Struct::Repr& x);
 class Union
 {
 public:
@@ -297,7 +369,7 @@ public:
 struct AssociatedType
 {
     bool    is_sized;
-    ::std::string   m_lifetime_bound;
+    LifetimeRef m_lifetime_bound;
     ::std::vector< ::HIR::TraitPath>    m_trait_bounds;
     ::HIR::TypeRef  m_default;
 };
@@ -310,28 +382,41 @@ class Trait
 {
 public:
     GenericParams   m_params;
-    ::std::string   m_lifetime;
+    LifetimeRef m_lifetime;
     ::std::vector< ::HIR::TraitPath >  m_parent_traits;
 
     bool    m_is_marker;    // aka OIBIT
 
-    ::std::unordered_map< ::std::string, AssociatedType >   m_types;
-    ::std::unordered_map< ::std::string, TraitValueItem >   m_values;
+    ::std::unordered_map< RcString, AssociatedType >   m_types;
+    ::std::unordered_map< RcString, TraitValueItem >   m_values;
 
     // Indexes into the vtable for each present method and value
-    ::std::unordered_multimap< ::std::string, ::std::pair<unsigned int,::HIR::GenericPath> > m_value_indexes;
+    ::std::unordered_multimap< RcString, ::std::pair<unsigned int,::HIR::GenericPath> > m_value_indexes;
     // Indexes in the vtable parameter list for each associated type
-    ::std::unordered_map< ::std::string, unsigned int > m_type_indexes;
+    ::std::unordered_map< RcString, unsigned int > m_type_indexes;
 
     // Flattend set of parent traits (monomorphised and associated types fixed)
     ::std::vector< ::HIR::TraitPath >  m_all_parent_traits;
+    // VTable path
+    ::HIR::SimplePath   m_vtable_path;
 
-    Trait( GenericParams gps, ::std::string lifetime, ::std::vector< ::HIR::TraitPath> parents):
+    Trait( GenericParams gps, LifetimeRef lifetime, ::std::vector< ::HIR::TraitPath> parents):
         m_params( mv$(gps) ),
         m_lifetime( mv$(lifetime) ),
         m_parent_traits( mv$(parents) ),
         m_is_marker( false )
     {}
+};
+
+class ProcMacro
+{
+public:
+    // Name of the macro
+    RcString   name;
+    // Path to the handler
+    ::HIR::SimplePath   path;
+    // A list of attributes to hand to the handler
+    ::std::vector<::std::string>    attributes;
 };
 
 class Module
@@ -341,11 +426,13 @@ public:
     ::std::vector< ::HIR::SimplePath>   m_traits;
 
     // Contains all values and functions (including type constructors)
-    ::std::unordered_map< ::std::string, ::std::unique_ptr<VisEnt<ValueItem>> > m_value_items;
+    ::std::unordered_map< RcString, ::std::unique_ptr<VisEnt<ValueItem>> > m_value_items;
     // Contains types, traits, and modules
-    ::std::unordered_map< ::std::string, ::std::unique_ptr<VisEnt<TypeItem>> > m_mod_items;
+    ::std::unordered_map< RcString, ::std::unique_ptr<VisEnt<TypeItem>> > m_mod_items;
+    // Macros!
+    ::std::unordered_map< RcString, ::std::unique_ptr<VisEnt<MacroItem>> > m_macro_items;
 
-    ::std::vector< ::std::pair<::std::string, Static> >  m_inline_statics;
+    ::std::vector< ::std::pair<RcString, Static> >  m_inline_statics;
 
     Module() {}
     Module(const Module&) = delete;
@@ -360,6 +447,7 @@ TAGGED_UNION(TypeItem, Import,
     (Import, struct { ::HIR::SimplePath path; bool is_variant; unsigned int idx; }),
     (Module, Module),
     (TypeAlias, TypeAlias), // NOTE: These don't introduce new values
+    (ExternType, ExternType),
     (Enum,      Enum),
     (Struct,    Struct),
     (Union,     Union),
@@ -373,6 +461,11 @@ TAGGED_UNION(ValueItem, Import,
     (Function,  Function),
     (StructConstructor, struct { ::HIR::SimplePath ty; })
     );
+TAGGED_UNION(MacroItem, Import,
+    (Import, struct { ::HIR::SimplePath path; }),
+    (MacroRules, MacroRulesPtr),
+    (ProcMacro, ProcMacro)
+    );
 
 // --------------------------------------------------------------------
 
@@ -381,7 +474,7 @@ class TypeImpl
 public:
     template<typename T>
     struct VisImplEnt {
-        bool is_pub;
+        Publicity   publicity;
         bool is_specialisable;
         T   data;
     };
@@ -389,8 +482,8 @@ public:
     ::HIR::GenericParams    m_params;
     ::HIR::TypeRef  m_type;
 
-    ::std::map< ::std::string, VisImplEnt< ::HIR::Function> >   m_methods;
-    ::std::map< ::std::string, VisImplEnt< ::HIR::Constant> >   m_constants;
+    ::std::map< RcString, VisImplEnt< ::HIR::Function> >   m_methods;
+    ::std::map< RcString, VisImplEnt< ::HIR::Constant> >   m_constants;
 
     ::HIR::SimplePath   m_src_module;
 
@@ -413,11 +506,11 @@ public:
     ::HIR::PathParams   m_trait_args;
     ::HIR::TypeRef  m_type;
 
-    ::std::map< ::std::string, ImplEnt< ::HIR::Function> > m_methods;
-    ::std::map< ::std::string, ImplEnt< ::HIR::Constant> > m_constants;
-    ::std::map< ::std::string, ImplEnt< ::HIR::Static> > m_statics;
+    ::std::map< RcString, ImplEnt< ::HIR::Function> > m_methods;
+    ::std::map< RcString, ImplEnt< ::HIR::Constant> > m_constants;
+    ::std::map< RcString, ImplEnt< ::HIR::Static> > m_statics;
 
-    ::std::map< ::std::string, ImplEnt< ::HIR::TypeRef> > m_types;
+    ::std::map< RcString, ImplEnt< ::HIR::TypeRef> > m_types;
 
     ::HIR::SimplePath   m_src_module;
 
@@ -461,31 +554,63 @@ class ExternLibrary
 public:
     ::std::string   name;
 };
-class ProcMacro
-{
-public:
-    // Name of the macro
-    ::std::string   name;
-    // Path to the handler
-    ::HIR::SimplePath   path;
-    // A list of attributes to hand to the handler
-    ::std::vector<::std::string>    attributes;
-};
 class Crate
 {
 public:
-    ::std::string   m_crate_name;
+    RcString   m_crate_name;
 
     Module  m_root_module;
 
-    /// Impl blocks on just a type
-    ::std::vector< ::HIR::TypeImpl > m_type_impls;
+    template<typename T>
+    struct ImplGroup
+    {
+        typedef ::std::vector<::std::unique_ptr<T>> list_t;
+        ::std::map<::HIR::SimplePath, list_t>   named;
+        list_t  non_named; // TODO: use a map of HIR::TypeRef::Data::Tag
+        list_t  generic;
+
+        const list_t* get_list_for_type(const ::HIR::TypeRef& ty) const {
+            static list_t empty;
+            if( const auto* p = ty.get_sort_path() ) {
+                auto it = named.find(*p);
+                if( it != named.end() )
+                    return &it->second;
+                else
+                    return nullptr;
+            }
+            else {
+                // TODO: Sort these by type tag, use the `Primitive` group if `ty` is Infer
+                return &non_named;
+            }
+        }
+        list_t& get_list_for_type_mut(const ::HIR::TypeRef& ty) {
+            if( const auto* p = ty.get_sort_path() ) {
+                return named[*p];
+            }
+            else {
+                // TODO: Ivars match with core types
+                return non_named;
+            }
+        }
+    };
+    /// Impl blocks on just a type, split into three groups
+    // - Named type (sorted on the path)
+    // - Primitive types
+    // - Unsorted (generics, and everything before outer type resolution)
+    ImplGroup<::HIR::TypeImpl>  m_type_impls;
+
     /// Impl blocks
-    ::std::multimap< ::HIR::SimplePath, ::HIR::TraitImpl > m_trait_impls;
-    ::std::multimap< ::HIR::SimplePath, ::HIR::MarkerImpl > m_marker_impls;
+    ::std::map< ::HIR::SimplePath, ImplGroup<::HIR::TraitImpl> > m_trait_impls;
+    ::std::map< ::HIR::SimplePath, ImplGroup<::HIR::MarkerImpl> > m_marker_impls;
 
     /// Macros exported by this crate
-    ::std::unordered_map< ::std::string, ::MacroRulesPtr >  m_exported_macros;
+    ::std::unordered_map< RcString, ::MacroRulesPtr >  m_exported_macros;
+    /// Macros re-exported by this crate
+    struct MacroImport {
+        ::HIR::SimplePath   path;
+        //bool    is_proc_macro;
+    };
+    ::std::unordered_map< RcString, MacroImport >  m_proc_macro_reexports;
     /// Procedural macros presented
     ::std::vector< ::HIR::ProcMacro>    m_proc_macros;
 
@@ -493,7 +618,7 @@ public:
     ::std::unordered_map< ::std::string, ::HIR::SimplePath> m_lang_items;
 
     /// Referenced crates
-    ::std::unordered_map< ::std::string, ExternCrate>  m_ext_crates;
+    ::std::unordered_map< RcString, ExternCrate>  m_ext_crates;
     /// Referenced system libraries
     ::std::vector<ExternLibrary>    m_ext_libs;
     /// Extra paths for the linker
@@ -501,7 +626,7 @@ public:
 
     /// Method called to populate runtime state after deserialisation
     /// See hir/crate_post_load.cpp
-    void post_load_update(const ::std::string& loaded_name);
+    void post_load_update(const RcString& loaded_name);
 
     const ::HIR::SimplePath& get_lang_item_path(const Span& sp, const char* name) const;
     const ::HIR::SimplePath& get_lang_item_path_opt(const char* name) const;

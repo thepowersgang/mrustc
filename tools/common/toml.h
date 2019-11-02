@@ -58,7 +58,7 @@ public:
     // Obtain the next value in the file
     TomlKeyValue get_next_value();
 
-    const TomlLexer& lexer() const;
+    const TomlLexer& lexer() const { return m_lexer; }
 };
 
 struct TomlValue

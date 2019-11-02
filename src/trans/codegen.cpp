@@ -15,18 +15,22 @@
 #include "codegen.hpp"
 #include "monomorphise.hpp"
 
-void Trans_Codegen(const ::std::string& outfile, const TransOptions& opt, const ::HIR::Crate& crate, const TransList& list, bool is_executable)
+void Trans_Codegen(const ::std::string& outfile, CodegenOutput out_ty, const TransOptions& opt, const ::HIR::Crate& crate, const TransList& list, const ::std::string& hir_file)
 {
     static Span sp;
-    ::std::unique_ptr<CodeGenerator>    codegen;
 
+    ::std::unique_ptr<CodeGenerator>    codegen;
     if( opt.mode == "monomir" )
     {
         codegen = Trans_Codegen_GetGenerator_MonoMir(crate, outfile);
     }
-    else
+    else if( opt.mode == "c" )
     {
         codegen = Trans_Codegen_GetGeneratorC(crate, outfile);
+    }
+    else
+    {
+        BUG(sp, "Unknown codegen mode '" << opt.mode << "'");
     }
 
     // 1. Emit structure/type definitions.
@@ -43,6 +47,9 @@ void Trans_Codegen(const ::std::string& outfile, const TransOptions& opt, const 
                 TU_MATCHA( (te.binding), (tpb),
                 (Unbound,  throw ""; ),
                 (Opaque,  throw ""; ),
+                (ExternType,
+                    //codegen->emit_extern_type(sp, te.path.m_data.as_Generic(), *tpb);
+                    ),
                 (Struct,
                     codegen->emit_struct(sp, te.path.m_data.as_Generic(), *tpb);
                     ),
@@ -186,6 +193,6 @@ void Trans_Codegen(const ::std::string& outfile, const TransOptions& opt, const 
         }
     }
 
-    codegen->finalise(is_executable, opt);
+    codegen->finalise(opt, out_ty, hir_file);
 }
 

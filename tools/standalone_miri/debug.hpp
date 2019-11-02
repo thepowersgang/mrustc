@@ -21,17 +21,26 @@ enum class DebugLevel {
     Bug,
 };
 
-class DebugSink
+class DebugSink//:
+    //public ::std::ostream
 {
     static unsigned s_indent;
     static ::std::unique_ptr<std::ofstream> s_out_file;
     ::std::ostream& m_inner;
-    DebugSink(::std::ostream& inner);
+    bool m_stderr_too;
+    DebugSink(::std::ostream& inner, bool stderr_too);
 public:
     ~DebugSink();
 
     template<typename T>
-    ::std::ostream& operator<<(const T& v) { return m_inner << v; }
+    DebugSink& operator<<(const T& v) {
+        if( m_stderr_too )
+        {
+            ::std::cerr << v;
+        }
+        m_inner << v;
+        return *this;
+    }
 
     static void set_output_file(const ::std::string& s);
     static bool enabled(const char* fcn_name);
@@ -102,4 +111,6 @@ struct DebugExceptionError:
 #define LOG_FATAL(strm) do { DebugSink::get(__FUNCTION__,__FILE__,__LINE__,DebugLevel::Fatal) << strm; exit(1); } while(0)
 #define LOG_TODO(strm) do { DebugSink::get(__FUNCTION__,__FILE__,__LINE__,DebugLevel::Bug) << "TODO: " << strm; throw DebugExceptionTodo{}; } while(0)
 #define LOG_BUG(strm) do { DebugSink::get(__FUNCTION__,__FILE__,__LINE__,DebugLevel::Bug) << "BUG: " << strm; abort(); } while(0)
-#define LOG_ASSERT(cnd,strm) do { if( !(cnd) ) { LOG_BUG("Assertion failure: " #cnd " - " << strm); } } while(0)
+#define LOG_ASSERT(cnd,strm) do { if( !(cnd) ) { LOG_ERROR("Assertion failure: " #cnd " - " << strm); } } while(0)
+
+#define FMT_STRING(...) (dynamic_cast<::std::stringstream&>(::std::stringstream() << __VA_ARGS__).str())

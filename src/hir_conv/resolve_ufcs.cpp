@@ -5,6 +5,10 @@
  * hir_conv/resolve_ufcs.cpp
  * - Resolve unkown UFCS traits into inherent or trait
  * - HACK: Will likely be replaced with a proper typeck pass (no it won't)
+ *
+ * TODO: Remove this pass, except maybe for running EAT on outer types
+ * - Expression code can handle picking UFCS functions better than this code can
+ * - Outer EAT is nice, but StaticTraitResolve will need to handle non-EAT-ed types when doing lookups
  */
 #include "main_bindings.hpp"
 #include <hir/hir.hpp>
@@ -91,11 +95,37 @@ namespace {
             auto _g = m_resolve.set_impl_generics(impl.m_params);
             ::HIR::Visitor::visit_type_impl(impl);
         }
+        void visit_marker_impl(const ::HIR::SimplePath& trait_path, ::HIR::MarkerImpl& impl) override {
+            ::HIR::ItemPath    p( impl.m_type, trait_path, impl.m_trait_args );
+            TRACE_FUNCTION_F("impl" << impl.m_params.fmt_args() << " " << trait_path << impl.m_trait_args << " for " << impl.m_type << " (mod=" << impl.m_src_module << ")");
+            auto _t = this->push_mod_traits( this->m_crate.get_mod_by_path(Span(), impl.m_src_module) );
+            auto _g = m_resolve.set_impl_generics(impl.m_params);
+
+            // TODO: Push a bound that `Self: ThisTrait`
+            m_current_type = &impl.m_type;
+            m_current_trait = &m_crate.get_trait_by_path(Span(), trait_path);
+            m_current_trait_path = &p;
+
+            // The implemented trait is always in scope
+            m_traits.push_back( ::std::make_pair( &trait_path, m_current_trait) );
+            ::HIR::Visitor::visit_marker_impl(trait_path, impl);
+            m_traits.pop_back( );
+
+            m_current_trait = nullptr;
+            m_current_type = nullptr;
+        }
         void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override {
             ::HIR::ItemPath    p( impl.m_type, trait_path, impl.m_trait_args );
             TRACE_FUNCTION_F("impl" << impl.m_params.fmt_args() << " " << trait_path << impl.m_trait_args << " for " << impl.m_type << " (mod=" << impl.m_src_module << ")");
             auto _t = this->push_mod_traits( this->m_crate.get_mod_by_path(Span(), impl.m_src_module) );
             auto _g = m_resolve.set_impl_generics(impl.m_params);
+            // TODO: Handle resolution of all items in m_resolve.m_type_equalities
+            // - params might reference each other, so `set_item_generics` has to have been called
+            // - But `m_type_equalities` can end up with non-resolved UFCS paths
+            for(auto& e : m_resolve.m_type_equalities)
+            {
+                visit_type(e.second);
+            }
 
             // TODO: Push a bound that `Self: ThisTrait`
             m_current_type = &impl.m_type;
@@ -155,6 +185,11 @@ namespace {
                 void visit(::HIR::ExprNode_PathValue& node) override
                 {
                     upper_visitor.visit_path(node.m_path, ::HIR::Visitor::PathContext::VALUE);
+                    ::HIR::ExprVisitorDef::visit(node);
+                }
+                void visit(::HIR::ExprNode_StructLiteral& node) override
+                {
+                    upper_visitor.visit_path(node.m_path, ::HIR::Visitor::PathContext::TYPE);
                     ::HIR::ExprVisitorDef::visit(node);
                 }
 

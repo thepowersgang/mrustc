@@ -93,60 +93,43 @@ private:
     CapturedVal& get_cap(const ::std::vector<unsigned int>& iterations, unsigned int name_idx);
 };
 
-/// Simple pattern entry for macro_rules! arm patterns
-TAGGED_UNION( SimplePatEnt, End,
-    // End of the pattern stream
-    (End, struct{}),
-    // Expect a specific token
-    (ExpectTok, Token),
-    // Expect a pattern match
-    (ExpectPat, struct {
-        MacroPatEnt::Type   type;
-        unsigned int    idx;
-        }),
-    // Compare the head of the input stream and poke the pattern stream
-    (IfTok, struct {
-        bool is_equal;
-        Token   tok;
-        }),
-    // Compare the head of the input stream and poke the pattern stream
-    (IfPat, struct {
-        bool is_equal;
-        MacroPatEnt::Type   type;
-        })
-    );
 class MacroPatternStream
 {
-    const ::std::vector<MacroPatEnt>*   m_pattern;
-    // Position in each nested pattern
-    ::std::vector<unsigned int> m_pos;
+    const ::std::vector<SimplePatEnt>&  m_simple_ents;
+    size_t  m_cur_pos;
+
+    bool    m_last_was_cond;
+    bool    m_condition_met;
+    ::std::vector<bool> m_condition_history;
+
+    const ::std::vector<bool>* m_condition_replay;
+    size_t  m_condition_replay_pos;
+
     // Iteration index of each active loop level
     ::std::vector<unsigned int> m_loop_iterations;
 
-    ::std::vector<SimplePatEnt> m_stack;
-    unsigned int    m_skip_count;
-
-    SimplePatEnt    m_peek_cache;
     bool m_peek_cache_valid = false;
+    const SimplePatEnt* m_peek_cache;
 
-    bool m_break_if_not = false;
-    bool m_condition_fired = false;
 public:
-    MacroPatternStream(const ::std::vector<MacroPatEnt>& pattern):
-        m_pattern(&pattern),
-        m_pos({0})
+    MacroPatternStream(const ::std::vector<SimplePatEnt>& ents, const ::std::vector<bool>* condition_replay=nullptr):
+        m_simple_ents(ents),
+        m_cur_pos(0),
+        m_last_was_cond(false),
+        m_condition_replay(condition_replay),
+        m_condition_replay_pos(0)
     {
     }
 
     /// Get the next pattern entry
-    SimplePatEnt next();
+    const SimplePatEnt& next();
 
     const SimplePatEnt& peek() {
         if( !m_peek_cache_valid ) {
-            m_peek_cache = next();
+            m_peek_cache = &next();
             m_peek_cache_valid = true;
         }
-        return m_peek_cache;
+        return *m_peek_cache;
     }
 
     /// Inform the stream that the `if` rule that was just returned succeeded
@@ -156,16 +139,9 @@ public:
         return m_loop_iterations;
     }
 
-private:
-    SimplePatEnt emit_loop_start(const MacroPatEnt& pat);
-
-    SimplePatEnt emit_seq(SimplePatEnt v1, SimplePatEnt v2) {
-        assert( m_stack.empty() );
-        m_stack.push_back( mv$(v2) );
-        return v1;
+    ::std::vector<bool> take_history() {
+        return ::std::move(m_condition_history);
     }
-
-    void break_loop();
 };
 
 // === Prototypes ===
@@ -312,223 +288,76 @@ bool ParameterMappings::dec_count(const ::std::vector<unsigned int>& iterations,
 // MacroPatternStream
 // ------------------------------------
 
-SimplePatEnt MacroPatternStream::next()
+const SimplePatEnt& MacroPatternStream::next()
 {
-    TRACE_FUNCTION_F("m_pos=[" << m_pos << "], m_stack.size()=" << m_stack.size());
-    assert(m_pos.size() >= 1);
-
     if( m_peek_cache_valid ) {
         m_peek_cache_valid = false;
-        return mv$(m_peek_cache);
+        return *m_peek_cache;
     }
 
-    // Pop off the generation stack
-    if( ! m_stack.empty() ) {
-        auto rv = mv$(m_stack.back());
-        m_stack.pop_back();
-        return rv;
-    }
-
-    if( m_break_if_not && ! m_condition_fired ) {
-        // Break out of the current loop then continue downwards.
-        break_loop();
-    }
-
-    m_skip_count = 0;
-    m_break_if_not = false;
-    m_condition_fired = false;
-
-    const MacroPatEnt*  parent_pat = nullptr;
-    decltype(m_pattern) parent_ents = nullptr;
-    const auto* ents = m_pattern;
-    for(unsigned int i = 0; i < m_pos.size() - 1; i ++)
+    for(;;)
     {
-        auto idx = m_pos[i];
-        //DEBUG(i << " idx=" << idx << " ents->size()=" << ents->size());
-        assert( idx < ents->size() );
-        assert( (*ents)[idx].type == MacroPatEnt::PAT_LOOP );
-        parent_pat = &(*ents)[idx];
-        parent_ents = ents;
-        ents = &parent_pat->subpats;
-    }
-
-    DEBUG( (m_pos.size()-1) << " " << m_pos.back() << " / " << ents->size());
-    if( m_pos.back() < ents->size() )
-    {
-        const auto& pat = ents->at( m_pos.back() );
-
-        if( pat.type == MacroPatEnt::PAT_LOOP ) {
-            DEBUG("Enter " << pat);
-            // Increase level, return entry control
-            m_pos.push_back( 0 );
-            m_loop_iterations.push_back( 0 );
-
-            if( pat.name == "*" )
-            {
-                return emit_loop_start(pat);
-            }
-            else
-            {
-                // If the name is "+" then this is should always be entered, so just recurse
-                assert( pat.name == "+" );
-                return next();
-            }
-        }
-        else if( pat.type == MacroPatEnt::PAT_TOKEN ) {
-            m_pos.back() += 1;
-            return SimplePatEnt::make_ExpectTok( pat.tok.clone() );
-        }
-        else {
-            m_pos.back() += 1;
-            return SimplePatEnt::make_ExpectPat({ pat.type, pat.name_index });
-        }
-    }
-    else
-    {
-        if( parent_pat )
+        // If not replaying, and the previous entry was a conditional, record the result of that conditional
+        if( !m_condition_replay && m_last_was_cond )
         {
-            // Last entry in a loop - return the breakout control
-            // - Reset the loop back to the start
-            m_pos.back() = 0;
+            m_condition_history.push_back(m_condition_met);
+        }
+        m_last_was_cond = false;
+        // End of list? return End entry
+        if( m_cur_pos == m_simple_ents.size() ) {
+            static SimplePatEnt END = SimplePatEnt::make_End({});
+            return END;
+        }
+        const auto& cur_ent = m_simple_ents[m_cur_pos];
+        // If replaying, and this is a conditional
+        if( m_condition_replay && cur_ent.is_If() )
+        {
+            // Skip the conditional (following its target or just skipping over)
+            if( (*m_condition_replay)[m_condition_replay_pos++] )
+                m_cur_pos = cur_ent.as_If().jump_target;
+            else
+                m_cur_pos += 1;
+            continue ;
+        }
+        m_cur_pos += 1;
+        TU_MATCH_HDRA( (cur_ent), {)
+        default:
+            if( cur_ent.is_If() )
+            {
+                m_last_was_cond = true;
+                m_condition_met = false;
+            }
+            return cur_ent;
+        TU_ARMA(End, _e)
+            BUG(Span(), "Unexpected End");
+        TU_ARMA(Jump, e)
+            m_cur_pos = e.jump_target;
+        TU_ARMA(LoopStart, _e) {
+            m_loop_iterations.push_back(0);
+            }
+        TU_ARMA(LoopNext, _e) {
             m_loop_iterations.back() += 1;
-
-            // - Emit break conditions
-            if( parent_pat->tok == TOK_NULL ) {
-                // Loop separator is TOK_NULL - get the first token of the loop and use it.
-                // - This shares the code that controls if a loop is entered
-                DEBUG("No separator");
-                return emit_loop_start(*parent_pat);
             }
-            else {
-                // If the next token is the same as the separator emit: Expect(separator), ShouldEnter
-
-                auto i = m_pos[ m_pos.size() - 2 ] + 1;
-                if( i < parent_ents->size() )
-                {
-                    DEBUG("sep = " << parent_pat->tok << ", next = " << parent_ents->at(i) << ", start = " << ents->at(0));
-                    if( parent_ents->at(i).type == MacroPatEnt::PAT_TOKEN && parent_pat->tok == parent_ents->at(i).tok )
-                    {
-                        DEBUG("MAGIC: Reverse conditions for case where sep==next");
-                        //  > Mark to skip the next token after the end of the loop
-                        m_skip_count = 1;
-                        // - Yeild `EXPECT sep` then the entry condition of this loop
-                        auto pat = emit_loop_start(*parent_pat);
-                        m_stack.push_back( mv$(pat) );
-                        return SimplePatEnt::make_ExpectTok( parent_pat->tok.clone() );
-                    }
-                }
-                // - Yeild `IF NOT sep BREAK` and `EXPECT sep`
-                DEBUG("Separator = " << parent_pat->tok);
-                return emit_seq(
-                    SimplePatEnt::make_IfTok({ false, parent_pat->tok.clone() }),
-                    SimplePatEnt::make_ExpectTok( parent_pat->tok.clone() )
-                    );
+        TU_ARMA(LoopEnd, _e) {
+            m_loop_iterations.pop_back();
             }
         }
-        else
-        {
-            // End of the input sequence
-            return SimplePatEnt::make_End({});
-        }
-    }
-}
-
-namespace {
-    void get_loop_entry_pats(const MacroPatEnt& pat,  ::std::vector<const MacroPatEnt*>& entry_pats)
-    {
-        assert( pat.type == MacroPatEnt::PAT_LOOP );
-
-        // If this pattern is a loop, get the entry concrete patterns for it
-        // - Otherwise, just
-        unsigned int i = 0;
-        while( i < pat.subpats.size() && pat.subpats[i].type == MacroPatEnt::PAT_LOOP )
-        {
-            const auto& cur_pat = pat.subpats[i];
-            bool is_optional = (cur_pat.name == "*");
-
-            get_loop_entry_pats(cur_pat, entry_pats);
-
-            if( !is_optional )
-            {
-                // Non-optional loop, MUST be entered, so return after recursing
-                return ;
-            }
-            // Optional, so continue the loop.
-            i ++;
-        }
-
-        // First non-loop pattern
-        if( i < pat.subpats.size() )
-        {
-            entry_pats.push_back( &pat.subpats[i] );
-        }
-    }
-} // namespace
-
-/// Returns (and primes m_stack) the rules to control the start of a loop
-/// This code emits rules to break out of the loop if the entry conditions are not met
-SimplePatEnt MacroPatternStream::emit_loop_start(const MacroPatEnt& pat)
-{
-    // Find the next non-loop pattern to control if this loop should be entered
-    ::std::vector<const MacroPatEnt*> m_entry_pats;
-
-    get_loop_entry_pats(pat, m_entry_pats);
-    DEBUG("m_entry_pats = [" << FMT_CB(ss, for(const auto* p : m_entry_pats) { ss << *p << ","; }) << "]");
-
-    struct H {
-        static SimplePatEnt get_if(bool flag, const MacroPatEnt& mpe) {
-            if( mpe.type == MacroPatEnt::PAT_TOKEN )
-                return SimplePatEnt::make_IfTok({ flag, mpe.tok.clone() });
-            else
-                return SimplePatEnt::make_IfPat({ flag, mpe.type });
-        }
-    };
-
-    const auto* entry_pat = m_entry_pats.back();
-    m_entry_pats.pop_back();
-    if( m_entry_pats.size() > 0 )
-    {
-        DEBUG("Multiple entry possibilities, reversing condition");
-        m_break_if_not = true;
-        for(auto pat_ptr : m_entry_pats)
-        {
-            m_stack.push_back( H::get_if(true, *pat_ptr) );
-        }
-        return H::get_if(true, *entry_pat);
-    }
-    else
-    {
-        // Emit an if based on it
-        return H::get_if(false, *entry_pat);
     }
 }
 
 void MacroPatternStream::if_succeeded()
 {
-    if( m_break_if_not )
-    {
-        m_condition_fired = true;
+    assert(m_cur_pos > 0);
+    assert(m_last_was_cond);
+    TU_MATCH_HDRA( (m_simple_ents[m_cur_pos-1]), {)
+    default:
+        BUG(Span(), "Unexpected " << m_simple_ents[m_cur_pos-1]);
+    TU_ARMA(If, e) {
+        ASSERT_BUG(Span(), e.jump_target < m_simple_ents.size(), "Jump target " << e.jump_target << " out of range " << m_simple_ents.size());
+        m_cur_pos = e.jump_target;
+        }
     }
-    else
-    {
-        break_loop();
-    }
-}
-void MacroPatternStream::break_loop()
-{
-    DEBUG("- Break out of loop, m_skip_count = " << m_skip_count);
-    // Break out of an active loop (pop level and increment parent level)
-    assert( m_pos.size() >= 1 );
-    // - This should never be called when on the top level
-    assert( m_pos.size() != 1 );
-
-    // HACK: Clear the stack if an if succeeded
-    m_stack.clear();
-
-    m_pos.pop_back();
-    m_pos.back() += 1 + m_skip_count;
-
-    m_loop_iterations.pop_back();
+    m_condition_met = true;
 }
 
 // ----------------------------------------------------------------
@@ -576,7 +405,7 @@ class MacroExpander:
 {
     const RcString  m_macro_filename;
 
-    const ::std::string m_crate_name;
+    const RcString  m_crate_name;
     ::std::shared_ptr<Span> m_invocation_span;
 
     ParameterMappings m_mappings;
@@ -589,7 +418,7 @@ class MacroExpander:
 public:
     MacroExpander(const MacroExpander& x) = delete;
 
-    MacroExpander(const ::std::string& macro_name, const Span& sp, const Ident::Hygiene& parent_hygiene, const ::std::vector<MacroExpansionEnt>& contents, ParameterMappings mappings, ::std::string crate_name):
+    MacroExpander(const ::std::string& macro_name, const Span& sp, const Ident::Hygiene& parent_hygiene, const ::std::vector<MacroExpansionEnt>& contents, ParameterMappings mappings, RcString crate_name):
         m_macro_filename( FMT("Macro:" << macro_name) ),
         m_crate_name( mv$(crate_name) ),
         m_invocation_span( new Span(sp) ),
@@ -613,69 +442,6 @@ namespace {
     bool is_reserved_word(eTokenType tok)
     {
         return tok >= TOK_RWORD_PUB;
-    }
-}
-
-// TODO: This shouldn't exist, and can false-positives
-// - Ideally, this would use consume_from_frag (which takes a clone-able input)
-bool Macro_TryPatternCap(TokenStream& lex, MacroPatEnt::Type type)
-{
-    switch(type)
-    {
-    case MacroPatEnt::PAT_TOKEN:
-        BUG(lex.point_span(), "");
-    case MacroPatEnt::PAT_LOOP:
-        BUG(lex.point_span(), "");
-    case MacroPatEnt::PAT_BLOCK:
-        return LOOK_AHEAD(lex) == TOK_BRACE_OPEN || LOOK_AHEAD(lex) == TOK_INTERPOLATED_BLOCK;
-    case MacroPatEnt::PAT_IDENT:
-        return LOOK_AHEAD(lex) == TOK_IDENT || is_reserved_word(LOOK_AHEAD(lex));
-    case MacroPatEnt::PAT_TT:
-        switch(LOOK_AHEAD(lex))
-        {
-        case TOK_EOF:
-        case TOK_PAREN_CLOSE:
-        case TOK_BRACE_CLOSE:
-        case TOK_SQUARE_CLOSE:
-            return false;
-        default:
-            return true;
-        }
-    case MacroPatEnt::PAT_PATH:
-        return is_token_path( LOOK_AHEAD(lex) );
-    case MacroPatEnt::PAT_TYPE:
-        return is_token_type( LOOK_AHEAD(lex) );
-    case MacroPatEnt::PAT_EXPR:
-        return is_token_expr( LOOK_AHEAD(lex) );
-    case MacroPatEnt::PAT_STMT:
-        return is_token_stmt( LOOK_AHEAD(lex) );
-    case MacroPatEnt::PAT_PAT:
-        return is_token_pat( LOOK_AHEAD(lex) );
-    case MacroPatEnt::PAT_META:
-        return LOOK_AHEAD(lex) == TOK_IDENT || LOOK_AHEAD(lex) == TOK_INTERPOLATED_META;
-    case MacroPatEnt::PAT_ITEM:
-        return is_token_item( LOOK_AHEAD(lex) ) || LOOK_AHEAD(lex) == TOK_IDENT;
-    }
-    BUG(lex.point_span(), "Fell through");
-}
-bool Macro_TryPattern(TokenStream& lex, const MacroPatEnt& pat)
-{
-    DEBUG("pat = " << pat);
-    Token   tok;
-    switch(pat.type)
-    {
-    case MacroPatEnt::PAT_TOKEN: {
-        GET_TOK(tok, lex);
-        bool rv = (tok == pat.tok);
-        PUTBACK(tok, lex);
-        return rv;
-        }
-    case MacroPatEnt::PAT_LOOP:
-        if( pat.name == "*" )
-            return true;
-        return Macro_TryPattern(lex, pat.subpats[0]);
-    default:
-        return Macro_TryPatternCap(lex, pat.type);
     }
 }
 
@@ -723,6 +489,11 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
             CHECK_TOK(tok, TOK_IDENT);
         // TODO: TOK_INTERPOLATED_IDENT
         return InterpolatedFragment( TokenTree(lex.getHygiene(), tok) );
+    case MacroPatEnt::PAT_VIS:
+        return InterpolatedFragment( Parse_Publicity(lex, /*allow_restricted=*/true) );
+    case MacroPatEnt::PAT_LIFETIME:
+        GET_CHECK_TOK(tok, lex, TOK_LIFETIME);
+        return InterpolatedFragment( TokenTree(lex.getHygiene(), tok) );
     }
     throw "";
 }
@@ -731,6 +502,7 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
 ::std::unique_ptr<TokenStream> Macro_InvokeRules(const char *name, const MacroRules& rules, const Span& sp, TokenTree input, AST::Module& mod)
 {
     TRACE_FUNCTION_F("'" << name << "', " << input);
+    DEBUG("rules.m_hygiene = " << rules.m_hygiene);
 
     ParameterMappings   bound_tts;
     unsigned int    rule_index = Macro_InvokeRules_MatchPattern(sp, rules, mv$(input), mod,  bound_tts);
@@ -752,7 +524,6 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
     return ::std::unique_ptr<TokenStream>( ret_ptr );
 }
 
-#if 1
 // Collection of functions that consume a specific fragment type from a token stream
 // - Does very loose consuming
 namespace
@@ -1069,9 +840,11 @@ namespace
         case TOK_PAREN_OPEN:
         case TOK_SQUARE_OPEN:
             return consume_tt(lex);
+        case TOK_IDENT:
+            if( TARGETVER_1_29 && lex.next_tok().istr() == "dyn" )
+                lex.consume();
         case TOK_RWORD_SUPER:
         case TOK_RWORD_SELF:
-        case TOK_IDENT:
         case TOK_DOUBLE_COLON:
         case TOK_INTERPOLATED_IDENT:
         case TOK_INTERPOLATED_PATH:
@@ -1189,7 +962,8 @@ namespace
             }
             if(lex.consume_if(TOK_AT))
                 continue;
-            if( lex.consume_if(TOK_TRIPLE_DOT) )
+            // ... or ..=
+            if( lex.consume_if(TOK_TRIPLE_DOT) || lex.consume_if(TOK_DOUBLE_DOT_EQUAL) )
             {
                 switch(lex.next())
                 {
@@ -1335,6 +1109,11 @@ namespace
                 lex.consume();
                 break;
 
+            // Possibly a left-open (or full-open) range literal
+            case TOK_DOUBLE_DOT:
+            case TOK_DOUBLE_DOT_EQUAL:
+            case TOK_TRIPLE_DOT:
+                break;
 
             case TOK_RWORD_UNSAFE:
                 lex.consume();
@@ -1490,9 +1269,27 @@ namespace
             case TOK_EXCLAM_EQUAL:
             case TOK_DOUBLE_AMP:
             case TOK_DOUBLE_PIPE:
-            case TOK_DOUBLE_DOT:
+            case TOK_DOUBLE_DOT_EQUAL:
             case TOK_TRIPLE_DOT:
                 lex.consume();
+                break;
+            case TOK_DOUBLE_DOT:
+                lex.consume();
+                DEBUG("TOK_DOUBLE_DOT => " << lex.next());
+                switch(lex.next())
+                {
+                case TOK_EOF:
+                    return true;
+                case TOK_COMMA:
+                case TOK_SEMICOLON:
+                case TOK_BRACE_CLOSE:
+                case TOK_PAREN_CLOSE:
+                case TOK_SQUARE_CLOSE:
+                   cont = false;
+                   break;
+                default:
+                    break;
+                }
                 break;
             case TOK_EQUAL:
             case TOK_PLUS_EQUAL:
@@ -1570,7 +1367,7 @@ namespace
             return true;
         // Macro invocation
         // TODO: What about `union!` as a macro? Needs to be handled below
-        if( (lex.next() == TOK_IDENT && lex.next_tok().str() != "union")
+        if( (lex.next() == TOK_IDENT && lex.next_tok().istr() != "union")
          || lex.next() == TOK_RWORD_SELF
          || lex.next() == TOK_RWORD_SUPER
          || lex.next() == TOK_DOUBLE_COLON
@@ -1580,6 +1377,7 @@ namespace
                 return false;
             if( !lex.consume_if(TOK_EXCLAM) )
                 return false;
+            lex.consume_if(TOK_IDENT);
             bool need_semicolon = (lex.next() != TOK_BRACE_OPEN);
             consume_tt(lex);
             if( need_semicolon )
@@ -1705,29 +1503,46 @@ namespace
                 return false;
             return consume_tt(lex);
         case TOK_IDENT:
-            if( lex.next_tok().str() != "union" )
-                return false;
-            lex.consume();
-            if( lex.next() == TOK_EXCLAM )
+            if( lex.next_tok().istr() == "union" )
             {
-                bool need_semicolon = (lex.next() != TOK_BRACE_OPEN);
-                consume_tt(lex);
-                if( need_semicolon )
+                lex.consume();
+                if( lex.next() == TOK_EXCLAM )
                 {
-                    if( !lex.consume_if(TOK_SEMICOLON) )
-                        return false;
+                    bool need_semicolon = (lex.next() != TOK_BRACE_OPEN);
+                    consume_tt(lex);
+                    if( need_semicolon )
+                    {
+                        if( !lex.consume_if(TOK_SEMICOLON) )
+                            return false;
+                    }
+                    return true;
                 }
-                return true;
+                else
+                {
+                    if( !H::maybe_generics(lex) )
+                        return false;
+                    if( !H::maybe_where(lex) )
+                        return false;
+                    if( lex.next() != TOK_BRACE_OPEN )
+                        return false;
+                    return consume_tt(lex);
+                }
+            }
+            else if( lex.next_tok().istr() == "auto" )
+            {
+                lex.consume();
+                if( lex.consume_if(TOK_RWORD_TRAIT) )
+                {
+                    goto trait;
+                }
+                else
+                {
+                    return false;
+                }
             }
             else
             {
-                if( !H::maybe_generics(lex) )
-                    return false;
-                if( !H::maybe_where(lex) )
-                    return false;
-                if( lex.next() != TOK_BRACE_OPEN )
-                    return false;
-                return consume_tt(lex);
+                return false;
             }
             break;
         // const fn
@@ -1753,6 +1568,19 @@ namespace
                 if( !lex.consume_if(TOK_SEMICOLON) )
                     return false;
             }
+            break;
+        case TOK_RWORD_TRAIT:
+            lex.consume();
+        trait:
+            if( !lex.consume_if(TOK_IDENT) )
+                return false;
+
+            if( !H::maybe_generics(lex) )
+                return false;
+            if(lex.next() != TOK_BRACE_OPEN)
+                return false;
+            if( !consume_tt(lex) )
+                return false;
             break;
         case TOK_RWORD_EXTERN:
             lex.consume();
@@ -1815,6 +1643,26 @@ namespace
         }
         return true;
     }
+    bool consume_vis(TokenStreamRO& lex)
+    {
+        TRACE_FUNCTION;
+        if( lex.consume_if(TOK_INTERPOLATED_VIS) || lex.consume_if(TOK_RWORD_CRATE) )
+        {
+            return true;
+        }
+        else if( lex.consume_if(TOK_RWORD_PUB) )
+        {
+            if( lex.next() == TOK_PAREN_OPEN )
+            {
+                return consume_tt(lex);
+            }
+            return true;
+        }
+        else
+        {
+            return true;
+        }
+    }
 
     bool consume_from_frag(TokenStreamRO& lex, MacroPatEnt::Type type)
     {
@@ -1823,7 +1671,7 @@ namespace
         {
         case MacroPatEnt::PAT_TOKEN:
         case MacroPatEnt::PAT_LOOP:
-            throw "";
+            BUG(Span(), "Encountered " << type << " in consume_from_frag");;
         case MacroPatEnt::PAT_BLOCK:
             if( lex.next() == TOK_BRACE_OPEN ) {
                 return consume_tt(lex);
@@ -1889,6 +1737,10 @@ namespace
             break;
         case MacroPatEnt::PAT_ITEM:
             return consume_item(lex);
+        case MacroPatEnt::PAT_VIS:
+            return consume_vis(lex);
+        case MacroPatEnt::PAT_LIFETIME:
+            return lex.consume_if(TOK_LIFETIME);
         }
         return true;
     }
@@ -1897,14 +1749,9 @@ namespace
 unsigned int Macro_InvokeRules_MatchPattern(const Span& sp, const MacroRules& rules, TokenTree input, AST::Module& mod,  ParameterMappings& bound_tts)
 {
     TRACE_FUNCTION;
+    ASSERT_BUG(sp, rules.m_rules.size() > 0, "Empty macro_rules set");
 
-    struct ActiveArm {
-        unsigned int    index;
-        MacroPatternStream  pat_stream;
-        TokenStreamRO   in_stream;
-    };
-
-    ::std::vector<size_t>   matches;
+    ::std::vector< ::std::pair<size_t, ::std::vector<bool>> >    matches;
     for(size_t i = 0; i < rules.m_rules.size(); i ++)
     {
         auto lex = TokenStreamRO(input);
@@ -1913,29 +1760,38 @@ unsigned int Macro_InvokeRules_MatchPattern(const Span& sp, const MacroRules& ru
         bool fail = false;
         for(;;)
         {
-            auto pat = arm_stream.next();
+            const auto& pat = arm_stream.next();
+            DEBUG(i << " " << pat);
             if(pat.is_End())
             {
-                DEBUG(i << " End");
                 if( lex.next() != TOK_EOF )
                     fail = true;
                 break;
             }
-            else if( const auto* e = pat.opt_IfPat() )
+            else if( const auto* e = pat.opt_If() )
             {
-                DEBUG(i << " IfPat(" << (e->is_equal ? "==" : "!=") << " ?" << e->type << ")");
                 auto lc = lex.clone();
-                if( consume_from_frag(lc, e->type) == e->is_equal )
+                bool rv = true;
+                for(const auto& check : e->ents)
                 {
-                    DEBUG("- Succeeded");
-                    arm_stream.if_succeeded();
+                    if( check.ty != MacroPatEnt::PAT_TOKEN ) {
+                        if( !consume_from_frag(lc, check.ty)  )
+                        {
+                            rv = false;
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        if( lc.next_tok() != check.tok )
+                        {
+                            rv = false;
+                            break;
+                        }
+                        lc.consume();
+                    }
                 }
-            }
-            else if( const auto* e = pat.opt_IfTok() )
-            {
-                DEBUG(i << " IfTok(" << (e->is_equal ? "==" : "!=") << " ?" << e->tok << ")");
-                const auto& tok = lex.next_tok();
-                if( (tok == e->tok) == e->is_equal )
+                if( rv == e->is_equal )
                 {
                     DEBUG("- Succeeded");
                     arm_stream.if_succeeded();
@@ -1970,7 +1826,7 @@ unsigned int Macro_InvokeRules_MatchPattern(const Span& sp, const MacroRules& ru
 
         if( ! fail )
         {
-            matches.push_back(i);
+            matches.push_back( ::std::make_pair(i, arm_stream.take_history()) );
             DEBUG(i << " MATCHED");
         }
         else
@@ -1982,6 +1838,7 @@ unsigned int Macro_InvokeRules_MatchPattern(const Span& sp, const MacroRules& ru
     if( matches.size() == 0 )
     {
         // ERROR!
+	// TODO: Keep track of where each arm failed.
         TODO(sp, "No arm matched");
     }
     else
@@ -1989,12 +1846,13 @@ unsigned int Macro_InvokeRules_MatchPattern(const Span& sp, const MacroRules& ru
         // yay!
 
         // NOTE: There can be multiple arms active, take the first.
-        auto i = matches[0];
+        auto i = matches[0].first;
+        const auto& history = matches[0].second;
         DEBUG("Evalulating arm " << i);
 
         auto lex = TTStreamO(sp, mv$(input));
         SET_MODULE(lex, mod);
-        auto arm_stream = MacroPatternStream(rules.m_rules[i].m_pattern);
+        auto arm_stream = MacroPatternStream(rules.m_rules[i].m_pattern, &history);
 
         struct Capture {
             unsigned int    binding_idx;
@@ -2006,30 +1864,15 @@ unsigned int Macro_InvokeRules_MatchPattern(const Span& sp, const MacroRules& ru
 
         for(;;)
         {
-            auto pat = arm_stream.next();
+            const auto& pat = arm_stream.next();
+            DEBUG(i << " " << pat);
             if(pat.is_End())
             {
                 break;
             }
-            else if( const auto* e = pat.opt_IfPat() )
+            else if( pat.is_If() )
             {
-                DEBUG(i << " IfPat(" << (e->is_equal ? "==" : "!=") << " ?" << e->type << ")");
-                if( Macro_TryPatternCap(lex, e->type) == e->is_equal )
-                {
-                    DEBUG("- Succeeded");
-                    arm_stream.if_succeeded();
-                }
-            }
-            else if( const auto* e = pat.opt_IfTok() )
-            {
-                DEBUG(i << " IfTok(" << (e->is_equal ? "==" : "!=") << " ?" << e->tok << ")");
-                auto tok = lex.getToken();
-                if( (tok == e->tok) == e->is_equal )
-                {
-                    DEBUG("- Succeeded");
-                    arm_stream.if_succeeded();
-                }
-                lex.putback( mv$(tok) );
+                BUG(sp, "Unexpected If pattern during final matching - " << pat);
             }
             else if( const auto* e = pat.opt_ExpectTok() )
             {
@@ -2037,7 +1880,7 @@ unsigned int Macro_InvokeRules_MatchPattern(const Span& sp, const MacroRules& ru
                 DEBUG(i << " ExpectTok(" << *e << ") == " << tok);
                 if( tok != *e )
                 {
-                    ERROR(sp, E0000, "Expected token in match arm");
+                    ERROR(sp, E0000, "Expected token " << *e << " in match arm, got " << tok);
                     break;
                 }
             }
@@ -2064,305 +1907,6 @@ unsigned int Macro_InvokeRules_MatchPattern(const Span& sp, const MacroRules& ru
         return i;
     }
 }
-#else
-unsigned int Macro_InvokeRules_MatchPattern(const Span& sp, const MacroRules& rules, TokenTree input, AST::Module& mod,  ParameterMappings& bound_tts)
-{
-    TRACE_FUNCTION;
-    Span    sp;// = input.span();
-
-    struct Capture {
-        unsigned int    binding_idx;
-        ::std::vector<unsigned int> iterations;
-        unsigned int    cap_idx;
-    };
-    struct ActiveArm {
-        unsigned int    index;
-        ::std::vector<Capture>  captures;
-        MacroPatternStream  stream;
-    };
-    // - List of active rules (rules that haven't yet failed)
-    ::std::vector< ActiveArm > active_arms;
-    active_arms.reserve( rules.m_rules.size() );
-    for(unsigned int i = 0; i < rules.m_rules.size(); i ++)
-    {
-        active_arms.push_back( ActiveArm { i, {}, MacroPatternStream(rules.m_rules[i].m_pattern) } );
-    }
-
-    // - List of captured values
-    ::std::vector<InterpolatedFragment> captures;
-
-    TTStreamO   lex(sp, mv$(input) );
-    SET_MODULE(lex, mod);
-    while(true)
-    {
-        DEBUG("--- ---");
-        // 1. Get concrete patterns for all active rules (i.e. no If* patterns)
-        ::std::vector<SimplePatEnt> arm_pats;
-        for(auto& arm : active_arms)
-        {
-            auto idx = arm.index;
-            SimplePatEnt pat;
-            // Consume all If* rules
-            do
-            {
-                pat = arm.stream.next();
-                TU_IFLET( SimplePatEnt, pat, IfPat, e,
-                    DEBUG(idx << " IfPat(" << (e.is_equal ? "==" : "!=") << " ?" << e.type << ")");
-                    if( Macro_TryPatternCap(lex, e.type) == e.is_equal )
-                    {
-                        DEBUG("- Succeeded");
-                        arm.stream.if_succeeded();
-                    }
-                )
-                else TU_IFLET( SimplePatEnt, pat, IfTok, e,
-                    DEBUG(idx << " IfTok(" << (e.is_equal ? "==" : "!=") << " ?" << e.tok << ")");
-                    auto tok = lex.getToken();
-                    if( (tok == e.tok) == e.is_equal )
-                    {
-                        DEBUG("- Succeeded");
-                        arm.stream.if_succeeded();
-                    }
-                    lex.putback( mv$(tok) );
-                )
-                else {
-                    break;
-                }
-            } while( pat.is_IfPat() || pat.is_IfTok() );
-
-            TU_MATCH( SimplePatEnt, (pat), (e),
-            (IfPat, BUG(sp, "IfTok unexpected here");),
-            (IfTok, BUG(sp, "IfTok unexpected here");),
-            (ExpectTok,
-                DEBUG(idx << " ExpectTok(" << e << ")");
-                ),
-            (ExpectPat,
-                DEBUG(idx << " ExpectPat(" << e.type << " => $" << e.idx << ")");
-                ),
-            (End,
-                DEBUG(idx << " End");
-                )
-            )
-            arm_pats.push_back( mv$(pat) );
-        }
-        assert( arm_pats.size() == active_arms.size() );
-
-        // 2. Prune imposible arms
-        for(unsigned int i = 0, j = 0; i < arm_pats.size(); )
-        {
-            auto idx = active_arms[i].index;
-            const auto& pat = arm_pats[i];
-            bool fail = false;
-
-            TU_MATCH( SimplePatEnt, (pat), (e),
-            (IfPat, BUG(sp, "IfTok unexpected here");),
-            (IfTok, BUG(sp, "IfTok unexpected here");),
-            (ExpectTok,
-                auto tok = lex.getToken();
-                DEBUG(j<<"="<<idx << " ExpectTok(" << e << ") == " << tok);
-                fail = !(tok == e);
-                lex.putback( mv$(tok) );
-                ),
-            (ExpectPat,
-                DEBUG(j<<"="<<idx << " ExpectPat(" << e.type << " => $" << e.idx << ")");
-                fail = !Macro_TryPatternCap(lex, e.type);
-                ),
-            (End,
-                DEBUG(j<<"="<<idx << " End");
-                fail = !(lex.lookahead(0) == TOK_EOF);
-                )
-            )
-            if( fail ) {
-                DEBUG("- Failed arm " << active_arms[i].index);
-                arm_pats.erase( arm_pats.begin() + i );
-                active_arms.erase( active_arms.begin() + i );
-            }
-            else {
-                i ++;
-            }
-            j ++;
-        }
-
-        if( arm_pats.size() == 0 ) {
-            auto tok = lex.getToken();
-            ERROR(tok.get_pos(), E0000, "No rules expected " << tok);
-        }
-
-        // 3. If there is a token pattern in the list, take that arm (and any other token arms)
-        const SimplePatEnt* tok_pat = nullptr;
-        unsigned int ident_pat_idx = arm_pats.size();
-        bool has_non_ident_pat = false;
-        for( unsigned int i = 0; i < arm_pats.size(); i ++ )
-        {
-            const auto& pat = arm_pats[i];
-            TU_IFLET(SimplePatEnt, pat, ExpectTok, e,
-                if( tok_pat ) {
-                    if( e != tok_pat->as_ExpectTok() )
-                        ERROR(lex.getPosition(), E0000, "Incompatible macro arms - " << tok_pat->as_ExpectTok() << " vs " << e);
-                }
-                else {
-                    tok_pat = &pat;
-                }
-            )
-            else TU_IFLET(SimplePatEnt, pat, ExpectPat, e,
-                if( e.type == MacroPatEnt::PAT_IDENT ) {
-                    ident_pat_idx = i;
-                }
-                else {
-                    has_non_ident_pat = true;
-                }
-            )
-        }
-
-        if( tok_pat )
-        {
-            auto tok = lex.getToken();
-            const auto& e = tok_pat->as_ExpectTok();
-            // NOTE: This should never fail.
-            if( tok != e ) {
-                ERROR(lex.getPosition(), E0000, "Unexpected " << tok << ", expected " << e);
-            }
-        }
-        else
-        {
-            if( has_non_ident_pat && ident_pat_idx < arm_pats.size() )
-            {
-                // For all :ident patterns present, check the next rule.
-                // - If this rule would fail, remove the arm.
-                bool ident_rule_kept = false;
-                for( unsigned int i = 0; i < arm_pats.size(); )
-                {
-                    bool discard = false;
-                    const auto& pat = arm_pats[i];
-                    const auto& e = pat.as_ExpectPat();
-                    if( e.type == MacroPatEnt::PAT_IDENT )
-                    {
-                        const auto& next = active_arms[i].stream.peek();
-                        TU_MATCHA( (next), (ne),
-                        (IfPat, TODO(sp, "Handle IfPat following a conflicting :ident");),
-                        (IfTok, TODO(sp, "IfTok following a conflicting :ident");),
-                        (ExpectTok,
-                            if( ne.type() != lex.lookahead(1) ) {
-                                DEBUG("Discard active arm " << i << " due to next token mismatch");
-                                discard = true;
-                            }
-                            else {
-                                ident_rule_kept = true;
-                            }
-                            ),
-                        (ExpectPat,
-                            TODO(sp, "Handle ExpectPat following a conflicting :ident");
-                            ),
-                        (End, TODO(sp, "Handle End following a conflicting :ident"); )
-                        )
-                    }
-
-                    if( discard ) {
-                        arm_pats.erase( arm_pats.begin() + i );
-                        active_arms.erase( active_arms.begin() + i );
-                    }
-                    else {
-                        ++ i;
-                    }
-                }
-
-                // If there are any remaining ident rules, erase the non-ident rules.
-                if( ident_rule_kept ) {
-                    // If no rules were discarded, remove the non-ident rules
-                    for( unsigned int i = 0; i < arm_pats.size(); )
-                    {
-                        if( arm_pats[i].as_ExpectPat().type != MacroPatEnt::PAT_IDENT ) {
-                            arm_pats.erase( arm_pats.begin() + i );
-                            active_arms.erase( active_arms.begin() + i );
-                        }
-                        else {
-                            ++ i;
-                        }
-                    }
-                }
-                assert(arm_pats.size() > 0);
-                assert(arm_pats.size() == active_arms.size());
-            }
-
-            // 3. Check that all remaining arms are the same pattern.
-            const auto& active_pat = arm_pats[0];
-            for(unsigned int i = 1; i < arm_pats.size(); i ++)
-            {
-                if( active_pat.tag() != arm_pats[i].tag() ) {
-                    ERROR(lex.getPosition(), E0000, "Incompatible macro arms "
-                        << "- " << active_arms[0].index << " SimplePatEnt::" << active_pat.tag_str()
-                        << " vs " << active_arms[i].index<<  " SimplePatEnt::" << arm_pats[i].tag_str()
-                        );
-                }
-                TU_MATCH( SimplePatEnt, (active_pat, arm_pats[i]), (e1, e2),
-                (IfPat, BUG(sp, "IfPat unexpected here");),
-                (IfTok, BUG(sp, "IfTok unexpected here");),
-                (ExpectTok,
-                    BUG(sp, "ExpectTok unexpected here");
-                    ),
-                (ExpectPat,
-                    // Can fail, as :expr and :stmt overlap in their trigger set
-                    if( e1.type != e2.type ) {
-                        ERROR(lex.getPosition(), E0000, "Incompatible macro arms - mismatched patterns " << e1.type << " and " << e2.type);
-                    }
-                    ),
-                (End,
-                    )
-                )
-            }
-
-            // 4. Apply patterns.
-            TU_MATCH( SimplePatEnt, (arm_pats[0]), (e),
-            (End,
-                auto tok = lex.getToken();
-                if( tok.type() != TOK_EOF ) {
-                    ERROR(lex.getPosition(), E0000, "Unexpected " << tok << ", expected TOK_EOF");
-                }
-                // NOTE: There can be multiple arms active, take the first.
-                for(const auto& cap : active_arms[0].captures)
-                {
-                    bound_tts.insert( cap.binding_idx, cap.iterations, mv$(captures[cap.cap_idx]) );
-                }
-                return active_arms[0].index;
-                ),
-            (IfPat, BUG(sp, "IfPat unexpected here");),
-            (IfTok, BUG(sp, "IfTok unexpected here");),
-            (ExpectTok,
-                BUG(sp, "ExpectTok should have been handled already");
-                ),
-            (ExpectPat,
-                struct H {
-                    static bool is_prefix(const ::std::vector<unsigned>& needle, const ::std::vector<unsigned>& haystack) {
-                        if( needle.size() > haystack.size() ) {
-                            return false;
-                        }
-                        else {
-                            for(unsigned int i = 0; i < needle.size(); i ++) {
-                                if(needle[i] != haystack[i])
-                                    return false;
-                            }
-                            return true;
-                        }
-                    }
-                };
-
-                auto cap = Macro_HandlePatternCap(lex, e.type);
-
-                unsigned int cap_idx = captures.size();
-                captures.push_back( mv$(cap) );
-                for(unsigned int i = 0; i < active_arms.size(); i ++)
-                {
-                    auto& arm = active_arms[i];
-                    const auto& pat_e = arm_pats[i].as_ExpectPat();
-                    arm.captures.push_back( Capture { pat_e.idx, arm.stream.get_loop_iters(), cap_idx } );
-                }
-                )
-            )
-        }
-
-        // Keep looping - breakout is handled in 'End' above
-    }
-}
-#endif
 
 void Macro_InvokeRules_CountSubstUses(ParameterMappings& bound_tts, const ::std::vector<MacroExpansionEnt>& contents)
 {
@@ -2438,7 +1982,7 @@ Token MacroExpander::realGetToken()
                     DEBUG("Crate name hack");
                     if( m_crate_name != "" )
                     {
-                        m_next_token = Token(TOK_STRING, m_crate_name);
+                        m_next_token = Token(TOK_STRING, ::std::string(m_crate_name.c_str()));
                         return Token(TOK_DOUBLE_COLON);
                     }
                     break;

@@ -29,14 +29,33 @@ extern ::HIR::Path monomorphise_path_with(const Span& sp, const ::HIR::Path& tpl
 extern ::HIR::TypeRef monomorphise_type_with(const Span& sp, const ::HIR::TypeRef& tpl, t_cb_generic callback, bool allow_infer=true);
 extern ::HIR::TypeRef monomorphise_type(const Span& sp, const ::HIR::GenericParams& params_def, const ::HIR::PathParams& params,  const ::HIR::TypeRef& tpl);
 
+// Wrappers to only monomorphise if required
+static inline const ::HIR::TypeRef& monomorphise_type_with_opt(const Span& sp, ::HIR::TypeRef& tmp, const ::HIR::TypeRef& tpl, t_cb_generic callback, bool allow_infer=true) {
+    return (monomorphise_type_needed(tpl) ? tmp = monomorphise_type_with(sp, tpl, callback, allow_infer) : tpl);
+}
+static inline const ::HIR::Path& monomorphise_path_with_opt(const Span& sp, ::HIR::Path& tmp, const ::HIR::Path& tpl, t_cb_generic callback, bool allow_infer=true) {
+    return (monomorphise_path_needed(tpl) ? tmp = monomorphise_path_with(sp, tpl, callback, allow_infer) : tpl);
+}
+static inline const ::HIR::GenericPath& monomorphise_genericpath_with_opt(const Span& sp, ::HIR::GenericPath& tmp, const ::HIR::GenericPath& tpl, t_cb_generic callback, bool allow_infer=true) {
+    return (monomorphise_genericpath_needed(tpl) ? tmp = monomorphise_genericpath_with(sp, tpl, callback, allow_infer) : tpl);
+}
+static inline const ::HIR::TraitPath& monomorphise_traitpath_with_opt(const Span& sp, ::HIR::TraitPath& tmp, const ::HIR::TraitPath& tpl, t_cb_generic callback, bool allow_infer=true) {
+    return (monomorphise_traitpath_needed(tpl) ? tmp = monomorphise_traitpath_with(sp, tpl, callback, allow_infer) : tpl);
+}
+static inline const ::HIR::PathParams& monomorphise_pathparams_with_opt(const Span& sp, ::HIR::PathParams& tmp, const ::HIR::PathParams& tpl, t_cb_generic callback, bool allow_infer=true) {
+    return (monomorphise_pathparams_needed(tpl) ? tmp = monomorphise_path_params_with(sp, tpl, callback, allow_infer) : tpl);
+}
+
 typedef ::std::function<bool(const ::HIR::TypeRef&)> t_cb_visit_ty;
 /// Calls the provided callback on every type seen when recursing the type.
 /// If the callback returns `true`, no further types are visited and the function returns `true`.
 extern bool visit_ty_with(const ::HIR::TypeRef& ty, t_cb_visit_ty callback);
+extern bool visit_path_tys_with(const ::HIR::Path& ty, t_cb_visit_ty callback);
 
 typedef ::std::function<bool(const ::HIR::TypeRef&, ::HIR::TypeRef&)>   t_cb_clone_ty;
 /// Clones a type, calling the provided callback on every type (optionally providing a replacement)
 extern ::HIR::TypeRef clone_ty_with(const Span& sp, const ::HIR::TypeRef& tpl, t_cb_clone_ty callback);
+extern ::HIR::PathParams clone_path_params_with(const Span& sp, const ::HIR::PathParams& tpl, t_cb_clone_ty callback);
 
 // Helper for passing a group of params around
 struct MonomorphState
@@ -119,3 +138,6 @@ static inline t_cb_generic monomorphise_type_get_cb(const Span& sp, const ::HIR:
 }
 
 extern void check_type_class_primitive(const Span& sp, const ::HIR::TypeRef& type, ::HIR::InferClass ic, ::HIR::CoreType ct);
+
+class StaticTraitResolve;
+extern void Typecheck_Expressions_ValidateOne(const StaticTraitResolve& resolve, const ::std::vector<::std::pair< ::HIR::Pattern, ::HIR::TypeRef>>& args, const ::HIR::TypeRef& ret_ty, const ::HIR::ExprPtr& code);

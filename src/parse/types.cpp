@@ -15,6 +15,7 @@
 TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list);
 TypeRef Parse_Type_Fn(TokenStream& lex, AST::HigherRankedBounds hrbs = {});
 TypeRef Parse_Type_Path(TokenStream& lex, AST::HigherRankedBounds hrbs, bool allow_trait_list);
+TypeRef Parse_Type_TraitObject(TokenStream& lex, ::AST::HigherRankedBounds hrbs = {});
 TypeRef Parse_Type_ErasedType(TokenStream& lex, bool allow_trait_list);
 
 // === CODE ===
@@ -61,7 +62,7 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
     case TOK_DOUBLE_LT: {
         PUTBACK(tok, lex);
         auto path = Parse_Path(lex, PATH_GENERIC_TYPE);
-        return TypeRef(TypeRef::TagPath(), lex.end_span(mv$(ps)), mv$(path));
+        return TypeRef(TypeRef::TagPath(), lex.end_span(ps), mv$(path));
         }
     //
     case TOK_RWORD_FOR: {
@@ -82,7 +83,20 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
         {
             lex.getToken();
             // TODO: path macros
-            return TypeRef(TypeRef::TagMacro(), Parse_MacroInvocation(ps, mv$(tok.str()), lex));
+            return TypeRef(TypeRef::TagMacro(), Parse_MacroInvocation(ps, tok.istr(), lex));
+        }
+        if( TARGETVER_1_29 && tok.istr() == "dyn" )
+        {
+            if( lex.lookahead(0) == TOK_PAREN_OPEN ) {
+                GET_TOK(tok, lex);
+                auto rv = Parse_Type_TraitObject(lex, {});
+                GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
+                return rv;
+            }
+            else {
+                ::AST::HigherRankedBounds hrbs = Parse_HRB_Opt(lex);
+                return Parse_Type_TraitObject(lex, mv$(hrbs));
+            }
         }
         // or a primitive
         //if( auto ct = coretype_fromstring(tok.str()) )
@@ -122,7 +136,7 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
         else {
             PUTBACK(tok, lex);
         }
-        return TypeRef(TypeRef::TagReference(), lex.end_span(mv$(ps)), ::std::move(lifetime), is_mut, Parse_Type(lex, false));
+        return TypeRef(TypeRef::TagReference(), lex.end_span(ps), ::std::move(lifetime), is_mut, Parse_Type(lex, false));
         }
     // '*' - Raw pointer
     case TOK_STAR:
@@ -131,10 +145,10 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
         {
         case TOK_RWORD_MUT:
             // Mutable pointer
-            return TypeRef(TypeRef::TagPointer(), lex.end_span(mv$(ps)), true, Parse_Type(lex, false));
+            return TypeRef(TypeRef::TagPointer(), lex.end_span(ps), true, Parse_Type(lex, false));
         case TOK_RWORD_CONST:
             // Immutable pointer
-            return TypeRef(TypeRef::TagPointer(), lex.end_span(mv$(ps)), false, Parse_Type(lex, false));
+            return TypeRef(TypeRef::TagPointer(), lex.end_span(ps), false, Parse_Type(lex, false));
         default:
             throw ParseError::Unexpected(lex, tok, {TOK_RWORD_CONST, TOK_RWORD_MUT});
         }
@@ -147,11 +161,11 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
             // Sized array
             AST::Expr array_size = Parse_Expr(lex);
             GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
-            return TypeRef(TypeRef::TagSizedArray(), lex.end_span(mv$(ps)), mv$(inner), array_size.take_node());
+            return TypeRef(TypeRef::TagSizedArray(), lex.end_span(ps), mv$(inner), array_size.take_node());
         }
         else if( tok.type() == TOK_SQUARE_CLOSE )
         {
-            return TypeRef(TypeRef::TagUnsizedArray(), lex.end_span(mv$(ps)), mv$(inner));
+            return TypeRef(TypeRef::TagUnsizedArray(), lex.end_span(ps), mv$(inner));
         }
         else {
             throw ParseError::Unexpected(lex, tok/*, "; or ]"*/);
@@ -162,7 +176,7 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
     case TOK_PAREN_OPEN: {
         DEBUG("Tuple");
         if( GET_TOK(tok, lex) == TOK_PAREN_CLOSE )
-            return TypeRef(TypeRef::TagTuple(), lex.end_span(mv$(ps)), {});
+            return TypeRef(TypeRef::TagTuple(), lex.end_span(ps), {});
         PUTBACK(tok, lex);
 
         TypeRef inner = Parse_Type(lex, true);
@@ -185,7 +199,8 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
                 types.push_back( Parse_Type(lex) );
             }
             CHECK_TOK(tok, TOK_PAREN_CLOSE);
-            return TypeRef(TypeRef::TagTuple(), lex.end_span(mv$(ps)), mv$(types)); }
+            return TypeRef(TypeRef::TagTuple(), lex.end_span(ps), mv$(types));
+        }
         }
     default:
         throw ParseError::Unexpected(lex, tok);
@@ -259,7 +274,7 @@ TypeRef Parse_Type_Fn(TokenStream& lex, ::AST::HigherRankedBounds hrbs)
         PUTBACK(tok, lex);
     }
 
-    return TypeRef(TypeRef::TagFunction(), lex.end_span(mv$(ps)), mv$(hrbs), is_unsafe, mv$(abi), mv$(args), is_variadic, mv$(ret_type));
+    return TypeRef(TypeRef::TagFunction(), lex.end_span(ps), mv$(hrbs), is_unsafe, mv$(abi), mv$(args), is_variadic, mv$(ret_type));
 }
 
 TypeRef Parse_Type_Path(TokenStream& lex, ::AST::HigherRankedBounds hrbs, bool allow_trait_list)
@@ -268,16 +283,17 @@ TypeRef Parse_Type_Path(TokenStream& lex, ::AST::HigherRankedBounds hrbs, bool a
 
     auto ps = lex.start_span();
 
+    auto path = Parse_Path(lex, PATH_GENERIC_TYPE);
     if( hrbs.empty() && !allow_trait_list )
     {
-        return TypeRef(TypeRef::TagPath(), lex.end_span(mv$(ps)), Parse_Path(lex, PATH_GENERIC_TYPE));
+        return TypeRef(TypeRef::TagPath(), lex.end_span(ps), mv$(path));
     }
     else
     {
         ::std::vector<Type_TraitPath>   traits;
         ::std::vector<AST::LifetimeRef> lifetimes;
 
-        traits.push_back(Type_TraitPath { mv$(hrbs), Parse_Path(lex, PATH_GENERIC_TYPE) });
+        traits.push_back(Type_TraitPath { mv$(hrbs), mv$(path) });
 
         if( allow_trait_list )
         {
@@ -303,13 +319,44 @@ TypeRef Parse_Type_Path(TokenStream& lex, ::AST::HigherRankedBounds hrbs, bool a
         {
             if( lifetimes.empty())
                 lifetimes.push_back(AST::LifetimeRef());
-            return TypeRef(lex.end_span(mv$(ps)), mv$(traits), mv$(lifetimes));
+            return TypeRef(lex.end_span(ps), mv$(traits), mv$(lifetimes));
         }
         else
         {
-            return TypeRef(TypeRef::TagPath(), lex.end_span(mv$(ps)), mv$(traits.at(0).path));
+            return TypeRef(TypeRef::TagPath(), lex.end_span(ps), mv$(traits.at(0).path));
         }
     }
+}
+TypeRef Parse_Type_TraitObject(TokenStream& lex, ::AST::HigherRankedBounds hrbs)
+{
+    Token   tok;
+    auto ps = lex.start_span();
+
+    ::std::vector<Type_TraitPath>   traits;
+    ::std::vector<AST::LifetimeRef> lifetimes;
+
+    traits.push_back(Type_TraitPath { mv$(hrbs), Parse_Path(lex, PATH_GENERIC_TYPE) });
+
+    while( lex.lookahead(0) == TOK_PLUS )
+    {
+        GET_CHECK_TOK(tok, lex, TOK_PLUS);
+        if( LOOK_AHEAD(lex) == TOK_LIFETIME ) {
+            GET_TOK(tok, lex);
+            lifetimes.push_back(AST::LifetimeRef( /*lex.point_span(),*/ lex.get_ident(mv$(tok)) ));
+        }
+        else
+        {
+            if( lex.lookahead(0) == TOK_RWORD_FOR )
+            {
+                hrbs = Parse_HRB(lex);
+            }
+            traits.push_back({ mv$(hrbs), Parse_Path(lex, PATH_GENERIC_TYPE) });
+        }
+    }
+
+    if( lifetimes.empty())
+        lifetimes.push_back(AST::LifetimeRef());
+    return TypeRef(lex.end_span(ps), mv$(traits), mv$(lifetimes));
 }
 TypeRef Parse_Type_ErasedType(TokenStream& lex, bool allow_trait_list)
 {
@@ -325,16 +372,12 @@ TypeRef Parse_Type_ErasedType(TokenStream& lex, bool allow_trait_list)
         }
         else
         {
-            AST::HigherRankedBounds hrbs;
-            if( lex.lookahead(0) == TOK_RWORD_FOR )
-            {
-                hrbs = Parse_HRB(lex);
-            }
+            AST::HigherRankedBounds hrbs = Parse_HRB_Opt(lex);
             traits.push_back({ mv$(hrbs), Parse_Path(lex, PATH_GENERIC_TYPE) });
         }
     } while( GET_TOK(tok, lex) == TOK_PLUS );
     PUTBACK(tok, lex);
 
-    return TypeRef(lex.end_span(mv$(ps)), TypeData::make_ErasedType({ mv$(traits), mv$(lifetimes) }));
+    return TypeRef(lex.end_span(ps), TypeData::make_ErasedType({ mv$(traits), mv$(lifetimes) }));
 }
 

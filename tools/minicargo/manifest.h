@@ -26,6 +26,14 @@ struct PackageVersion
 
     static PackageVersion from_string(const ::std::string& s);
 
+    PackageVersion next_minor() const {
+        if(major == 0) {
+            return PackageVersion { 0, minor, patch+1 };
+        }
+        else {
+            return PackageVersion { major, minor+1, 0 };
+        }
+    }
     PackageVersion next_breaking() const {
         if(major == 0) {
             return PackageVersion { 0, minor + 1, 0 };
@@ -87,7 +95,8 @@ struct PackageVersionSpec
     {
         enum class Type
         {
-            Compatible,
+            Compatible, // "^" - Allows anything up to the next major version
+            MinorCompatible,   // "~X.Y" - Allows anything up to the next minor version
             Greater,
             GreaterEqual,
             Equal,
@@ -116,6 +125,7 @@ struct PackageVersionSpec
             switch(b.ty)
             {
             case Bound::Type::Compatible: os << "^";  break;
+            case Bound::Type::MinorCompatible: os << "~"; break;
             case Bound::Type::Greater:    os << ">";  break;
             case Bound::Type::GreaterEqual: os << ">=";  break;
             case Bound::Type::Equal:      os << "=";  break;
@@ -180,6 +190,14 @@ struct PackageTarget
         Bench,
         Example,
     };
+    enum class CrateType
+    {
+        dylib,
+        rlib,
+        staticlib,
+        cdylib,
+        proc_macro,
+    };
 
     Type    m_type;
     ::std::string   m_name;
@@ -192,6 +210,7 @@ struct PackageTarget
     bool    m_is_proc_macro = false;
     bool    m_is_own_harness = false;
 
+    ::std::vector<CrateType>    m_crate_types;
     ::std::vector<::std::string>    m_required_features;
 
     PackageTarget(Type ty):
@@ -245,6 +264,7 @@ class PackageManifest
 
     ::std::vector<PackageRef>   m_dependencies;
     ::std::vector<PackageRef>   m_build_dependencies;
+    ::std::vector<PackageRef>   m_dev_dependencies;
 
     ::std::vector<PackageTarget>    m_targets;
 
@@ -263,14 +283,17 @@ public:
     bool has_library() const;
     const PackageTarget& get_library() const;
 
-    bool foreach_binaries(::std::function<bool(const PackageTarget&)> cb) const {
+    bool foreach_ty(PackageTarget::Type ty, ::std::function<bool(const PackageTarget&)> cb) const {
         for(const auto& t : m_targets ) {
-            if( t.m_type == PackageTarget::Type::Bin ) {
+            if( t.m_type == ty ) {
                 if( !cb(t) )
                     return false;
             }
         }
         return true;
+    }
+    bool foreach_binaries(::std::function<bool(const PackageTarget&)> cb) const {
+        return foreach_ty(PackageTarget::Type::Bin, cb);
     }
 
     const ::helpers::path directory() const {
@@ -294,12 +317,15 @@ public:
     const ::std::vector<PackageRef>& build_dependencies() const {
         return m_build_dependencies;
     }
+    const ::std::vector<PackageRef>& dev_dependencies() const {
+        return m_dev_dependencies;
+    }
     const ::std::vector<::std::string>& active_features() const {
         return m_active_features;
     }
 
     void set_features(const ::std::vector<::std::string>& features, bool enable_default);
-    void load_dependencies(Repository& repo, bool include_build);
+    void load_dependencies(Repository& repo, bool include_build, bool include_dev=false);
 
     void load_build_script(const ::std::string& path);
 };

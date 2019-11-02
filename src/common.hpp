@@ -105,6 +105,10 @@ static inline Ordering ord(signed char l, signed char r)
 {
     return (l == r ? OrdEqual : (l > r ? OrdGreater : OrdLess));
 }
+static inline Ordering ord(int l, int r)
+{
+    return (l == r ? OrdEqual : (l > r ? OrdGreater : OrdLess));
+}
 static inline Ordering ord(short l, short r)
 {
     return (l == r ? OrdEqual : (l > r ? OrdGreater : OrdLess));
@@ -242,6 +246,11 @@ inline Join<T> join(const char *sep, const ::std::vector<T> v) {
 
 
 namespace std {
+
+template <typename T>
+inline auto operator<<(::std::ostream& os, const T& v) -> decltype(v.fmt(os)) {
+    return v.fmt(os);
+}
 
 template <typename T>
 inline ::std::ostream& operator<<(::std::ostream& os, const ::std::vector<T*>& v) {
@@ -402,6 +411,18 @@ template<typename T>
 RunIterable<T> runs(const ::std::vector<T>& x) {
     return RunIterable<T>(x);
 }
+
+template<typename T>
+class NullOnDrop {
+    T*& ptr;
+public:
+    NullOnDrop(T*& ptr):
+        ptr(ptr)
+    {}
+    ~NullOnDrop() {
+        ptr = nullptr;
+    }
+};
 
 
 #endif

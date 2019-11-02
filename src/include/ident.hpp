@@ -8,14 +8,21 @@
 #pragma once
 #include <vector>
 #include <string>
+#include <memory>
+#include <rc_string.hpp>
 
 struct Ident
 {
+    struct ModPath
+    {
+        ::std::vector<RcString> ents;
+    };
     class Hygiene
     {
         static unsigned g_next_scope;
 
         ::std::vector<unsigned int> contexts;
+        ::std::shared_ptr<ModPath> search_module;
 
         Hygiene(unsigned int index):
             contexts({index})
@@ -32,6 +39,7 @@ struct Ident
         static Hygiene new_scope_chained(const Hygiene& parent)
         {
             Hygiene rv;
+            rv.search_module = parent.search_module;
             rv.contexts.reserve( parent.contexts.size() + 1 );
             rv.contexts.insert( rv.contexts.begin(),  parent.contexts.begin(), parent.contexts.end() );
             rv.contexts.push_back( ++g_next_scope );
@@ -45,12 +53,22 @@ struct Ident
             return rv;
         }
 
+        bool has_mod_path() const {
+            return this->search_module != 0;
+        }
+        const ModPath& mod_path() const {
+            return *this->search_module;
+        }
+        void set_mod_path(ModPath p) {
+            this->search_module.reset( new ModPath(::std::move(p)) );
+        }
+
         Hygiene(Hygiene&& x) = default;
         Hygiene(const Hygiene& x) = default;
         Hygiene& operator=(Hygiene&& x) = default;
         Hygiene& operator=(const Hygiene& x) = default;
 
-        // Returns true if an ident with hygine `souce` can see an ident with this hygine
+        // Returns true if an ident with hygine `source` can see an ident with this hygine
         bool is_visible(const Hygiene& source) const;
         //bool operator==(const Hygiene& x) const { return scope_index == x.scope_index; }
         //bool operator!=(const Hygiene& x) const { return scope_index != x.scope_index; }
@@ -59,17 +77,17 @@ struct Ident
     };
 
     Hygiene hygiene;
-    ::std::string   name;
+    RcString   name;
 
     Ident(const char* name):
         hygiene(),
         name(name)
     { }
-    Ident(::std::string name):
+    Ident(RcString name):
         hygiene(),
         name(::std::move(name))
     { }
-    Ident(Hygiene hygiene, ::std::string name):
+    Ident(Hygiene hygiene, RcString name):
         hygiene(::std::move(hygiene)), name(::std::move(name))
     { }
 
@@ -78,7 +96,7 @@ struct Ident
     Ident& operator=(Ident&& x) = default;
     Ident& operator=(const Ident& x) = default;
 
-    ::std::string into_string() {
+    RcString into_string() {
         return ::std::move(name);
     }
 

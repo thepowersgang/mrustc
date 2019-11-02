@@ -8,6 +8,7 @@
 #ifndef _AST_ATTRS_HPP_
 #define _AST_ATTRS_HPP_
 
+#include <tagged_union.hpp>
 
 namespace AST {
 
@@ -74,23 +75,24 @@ TAGGED_UNION(AttributeData, None,
 class Attribute
 {
     Span    m_span;
-    ::std::string   m_name;
+    RcString   m_name;
     AttributeData   m_data;
     mutable bool    m_is_used;
+    // TODO: Parse as a TT then expand?
 public:
-    Attribute(Span sp, ::std::string name):
+    Attribute(Span sp, RcString name):
         m_span(::std::move(sp)),
         m_name(name),
         m_data( AttributeData::make_None({}) )
     {
     }
-    Attribute(Span sp, ::std::string name, ::std::string str_val):
+    Attribute(Span sp, RcString name, ::std::string str_val):
         m_span(::std::move(sp)),
         m_name(name),
         m_data( AttributeData::make_String({mv$(str_val)}) )
     {
     }
-    Attribute(Span sp, ::std::string name, ::std::vector<Attribute> items):
+    Attribute(Span sp, RcString name, ::std::vector<Attribute> items):
         m_span(::std::move(sp)),
         m_name(name),
         m_data( AttributeData::make_List({mv$(items)}) )
@@ -122,7 +124,7 @@ public:
     bool is_used() const { return m_is_used; }
 
     const Span& span() const { return m_span; }
-    const ::std::string& name() const { return m_name; }
+    const RcString& name() const { return m_name; }
     const AttributeData& data() const { return m_data; }
 
     // Legacy accessors/checkers

@@ -18,6 +18,7 @@ class Function;
 class Static;
 }
 
+// TODO: This is very similar to "hir_typeck/common.hpp" MonomorphState
 struct Trans_Params
 {
     Span    sp;
@@ -48,14 +49,25 @@ struct CachedFunction {
 };
 struct TransList_Function
 {
+    const ::HIR::Path*  path;   // Pointer into the list (std::map pointers are stable)
     const ::HIR::Function*  ptr;
     Trans_Params    pp;
     // If `pp.has_types` is true, the below is valid
     CachedFunction  monomorphised;
+
+    TransList_Function(const ::HIR::Path& path):
+        path(&path),
+        ptr(nullptr)
+    {}
 };
 struct TransList_Static
 {
     const ::HIR::Static*    ptr;
+    Trans_Params    pp;
+};
+struct TransList_Const
+{
+    const ::HIR::Constant*    ptr;
     Trans_Params    pp;
 };
 
@@ -70,17 +82,22 @@ public:
 
     ::std::map< ::HIR::Path, ::std::unique_ptr<TransList_Function> > m_functions;
     ::std::map< ::HIR::Path, ::std::unique_ptr<TransList_Static> > m_statics;
+    /// Constants that are still Defer
+    ::std::map< ::HIR::Path, ::std::unique_ptr<TransList_Const> > m_constants;
     ::std::map< ::HIR::Path, Trans_Params> m_vtables;
     /// Required type_id values
     ::std::set< ::HIR::TypeRef> m_typeids;
     /// Required struct/enum constructor impls
     ::std::set< ::HIR::GenericPath> m_constructors;
+    // Automatic Clone impls
+    ::std::set< ::HIR::TypeRef>  auto_clone_impls;
 
     // .second is `true` if this is a from a reference to the type
     ::std::vector< ::std::pair<::HIR::TypeRef, bool> >  m_types;
 
     TransList_Function* add_function(::HIR::Path p);
     TransList_Static* add_static(::HIR::Path p);
+    TransList_Const* add_const(::HIR::Path p);
     bool add_vtable(::HIR::Path p, Trans_Params pp) {
         return m_vtables.insert( ::std::make_pair( mv$(p), mv$(pp) ) ).second;
     }

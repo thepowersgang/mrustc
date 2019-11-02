@@ -15,19 +15,23 @@ namespace HIR {
 
 struct TypeParamDef
 {
-    ::std::string   m_name;
+    RcString    m_name;
     ::HIR::TypeRef  m_default;
     bool    m_is_sized;
+};
+struct LifetimeDef
+{
+    RcString    m_name;
 };
 
 TAGGED_UNION(GenericBound, Lifetime,
     (Lifetime, struct {
-        ::std::string   test;
-        ::std::string   valid_for;
+        LifetimeRef test;
+        LifetimeRef valid_for;
         }),
     (TypeLifetime, struct {
         ::HIR::TypeRef  type;
-        ::std::string   valid_for;
+        LifetimeRef valid_for;
         }),
     (TraitBound, struct {
         ::HIR::TypeRef  type;
@@ -47,8 +51,8 @@ extern ::std::ostream& operator<<(::std::ostream& os, const GenericBound& x);
 class GenericParams
 {
 public:
-    ::std::vector<TypeParamDef>   m_types;
-    ::std::vector< ::std::string>   m_lifetimes;
+    ::std::vector<TypeParamDef> m_types;
+    ::std::vector<LifetimeDef>  m_lifetimes;
 
     ::std::vector<GenericBound>    m_bounds;
 

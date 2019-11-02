@@ -11,6 +11,7 @@
 #include <map>
 #include <set>
 
+#include "../../src/include/rc_string.hpp"
 #include "../../src/mir/mir.hpp"
 #include "hir_sim.hpp"
 #include "value.hpp"
@@ -22,7 +23,7 @@ struct Function
     ::HIR::TypeRef   ret_ty;
 
     // If `link_name` is non-empty, then the function is an external
-    struct {
+    struct ExtInfo {
         ::std::string   link_name;
         ::std::string   link_abi;
     } external;
@@ -47,14 +48,20 @@ class ModuleTree
 
     // Hack: Tuples are stored as `::""::<A,B,C,...>`
     ::std::map<::HIR::GenericPath, ::std::unique_ptr<DataType>>  data_types;
+
+    ::std::set<FunctionType>    function_types; // note: insertion doesn't invaliate pointers.
+
+    ::std::map<::std::string, const Function*> ext_functions;
 public:
     ModuleTree();
 
     void load_file(const ::std::string& path);
+    void validate();
 
     ::HIR::SimplePath find_lang_item(const char* name) const;
     const Function& get_function(const ::HIR::Path& p) const;
     const Function* get_function_opt(const ::HIR::Path& p) const;
+    const Function* get_ext_function(const char* name) const;
     Static& get_static(const ::HIR::Path& p);
     Static* get_static_opt(const ::HIR::Path& p);
 
@@ -66,16 +73,15 @@ public:
 // struct/union/enum
 struct DataType
 {
+    bool   populated;
     ::HIR::GenericPath my_path;
-    // TODO: Store the name of this type for logging?
-
-    // TODO: Metadata type! (indicates an unsized wrapper)
-    // TODO: Drop glue
 
     size_t  alignment;
     size_t  size;
 
+    // Drop glue
     ::HIR::Path drop_glue;
+    // Metadata type! (indicates an unsized wrapper)
     ::HIR::TypeRef  dst_meta;
 
     // Offset and datatype
@@ -90,4 +96,22 @@ struct DataType
         ::std::string tag_data;
     };
     ::std::vector<VariantValue> variants;
+};
+
+struct FunctionType
+{
+    bool    unsafe;
+    ::std::string   abi;
+    ::std::vector<HIR::TypeRef> args;
+    HIR::TypeRef    ret;
+
+    bool operator<(const FunctionType& x) const {
+        #define _(f)    if(f != x.f) return f < x.f
+        _(unsafe);
+        _(abi);
+        _(args);
+        _(ret);
+        #undef _
+        return false;
+    }
 };

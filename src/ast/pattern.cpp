@@ -223,7 +223,7 @@ AST::Pattern AST::Pattern::clone() const
         rv.m_data = Data::make_StructTuple({ ::AST::Path(e.path), H::clone_tup(e.tup_pat) });
         ),
     (Struct,
-        ::std::vector< ::std::pair< ::std::string, Pattern> >   sps;
+        ::std::vector< ::std::pair< RcString, Pattern> >   sps;
         for(const auto& sp : e.sub_patterns)
             sps.push_back( ::std::make_pair(sp.first, sp.second.clone()) );
         rv.m_data = Data::make_Struct({ ::AST::Path(e.path), mv$(sps) });

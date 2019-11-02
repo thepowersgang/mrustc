@@ -37,6 +37,9 @@ struct Options
     const char* input_glob = nullptr;
     ::std::vector<::std::string>    test_list;
 
+    bool    debug_enabled;
+    ::std::vector<::std::string>    lib_dirs;
+
     int debug_level = 0;
 
     const char* exceptions_file = nullptr;
@@ -55,6 +58,12 @@ struct TestDesc
     ::std::vector<::std::string>    m_pre_build;
     ::std::vector<::std::string>    m_extra_flags;
     bool ignore;
+    bool no_run;
+    TestDesc()
+        :ignore(false)
+        ,no_run(false)
+    {
+    }
 };
 struct Timestamp
 {
@@ -94,20 +103,27 @@ struct Timestamp
     }
 };
 
-bool run_executable(const ::helpers::path& file, const ::std::vector<const char*>& args, const ::helpers::path& outfile);
+bool run_executable(const ::helpers::path& file, const ::std::vector<const char*>& args, const ::helpers::path& outfile, unsigned timeout_seconds);
 
-bool run_compiler(const ::helpers::path& source_file, const ::helpers::path& output, const ::std::vector<::std::string>& extra_flags, ::helpers::path libdir={}, bool is_dep=false)
+bool run_compiler(const Options& opts, const ::helpers::path& source_file, const ::helpers::path& output, const ::std::vector<::std::string>& extra_flags, ::helpers::path libdir={}, bool is_dep=false)
 {
     ::std::vector<const char*>  args;
     args.push_back("mrustc");
 
     // Force optimised and debuggable
     args.push_back("-O");
-    // TODO: Only turn debug on when requested by the caller
-    //args.push_back("-g");
 
-    args.push_back("-L");
-    args.push_back("output");
+    // Only turn debug on when requested by the caller
+    if( opts.debug_enabled )
+    {
+        args.push_back("-g");
+    }
+
+    for(const auto& d : opts.lib_dirs)
+    {
+        args.push_back("-L");
+        args.push_back(d.c_str());
+    }
     if(libdir.is_valid())
     {
         args.push_back("-L");
@@ -134,7 +150,16 @@ bool run_compiler(const ::helpers::path& source_file, const ::helpers::path& out
     for(const auto& s : extra_flags)
         args.push_back(s.c_str());
 
-    return run_executable(MRUSTC_PATH, args, logfile);
+    return run_executable(MRUSTC_PATH, args, logfile, 0);
+}
+
+static bool gTimeout = false;
+static bool gInterrupted = false;
+void sigalrm_handler(int) {
+    gTimeout = true;
+}
+void sigint_handler(int) {
+    gInterrupted = true;
 }
 
 int main(int argc, const char* argv[])
@@ -144,6 +169,16 @@ int main(int argc, const char* argv[])
     {
         return v;
     }
+
+#ifdef _WIN32
+#else
+    {
+        struct sigaction    sa = {0};
+        sa.sa_handler = sigalrm_handler;
+        sigaction(SIGALRM, &sa, NULL);
+        signal(SIGINT, sigint_handler);
+    }
+#endif
 
     ::std::vector<::std::string>    skip_list;
     //  > Filter out tests listed in an exceptions file (newline separated, supports comments)
@@ -247,6 +282,10 @@ int main(int argc, const char* argv[])
                 {
                     td.ignore = true;
                 }
+                else if( line.substr(start, 4+1+7) == "skip-codegen" )
+                {
+                    td.no_run = true;
+                }
                 else if( line.substr(start, 14) == "compile-flags:" )
                 {
                     auto end = line.find(' ', 3+14);
@@ -290,13 +329,19 @@ int main(int argc, const char* argv[])
         ::std::sort(tests.begin(), tests.end(), [](const auto& a, const auto& b){ return a.m_name < b.m_name; });
 
         // ---
-        auto compiler_ts = getenv("TESTRUNNER_NOCOMPILERDEP") ? Timestamp::infinite_past() : Timestamp::for_file(MRUSTC_PATH);
+        const bool SKIP_PASS = (getenv("TESTRUNNER_SKIPPASS") != nullptr);
+        const bool NO_COMPILER_DEP = (getenv("TESTRUNNER_NOCOMPILERDEP") != nullptr);
+        const auto compiler_ts = Timestamp::for_file(MRUSTC_PATH);
         unsigned n_skip = 0;
         unsigned n_cfail = 0;
         unsigned n_fail = 0;
         unsigned n_ok = 0;
         for(const auto& test : tests)
         {
+            if( gInterrupted ) {
+                DEBUG(">> Interrupted");
+                return 1;
+            }
             if( !opts.test_list.empty() && ::std::find(opts.test_list.begin(), opts.test_list.end(), test.m_name) == opts.test_list.end() )
             {
                 if( opts.debug_level > 0 )
@@ -319,10 +364,23 @@ int main(int argc, const char* argv[])
 
             //DEBUG(">> " << test.m_name);
             auto depdir = outdir / "deps-" + test.m_name.c_str();
-            auto outfile = outdir / test.m_name + ".exe";
+            auto test_exe = outdir / test.m_name + ".exe";
+            auto test_output = outdir / test.m_name + ".out";
 
-            auto test_output_ts = Timestamp::for_file(outfile);
-            if( test_output_ts == Timestamp::infinite_past() || test_output_ts < compiler_ts )
+            auto test_exe_ts = Timestamp::for_file(test_exe);
+            auto test_output_ts = Timestamp::for_file(test_output);
+            // (Optional) if the target file doesn't exist, force a re-compile IF the compiler is newer than the
+            // executable.
+            if( SKIP_PASS )
+            {
+                // If output is missing (the last run didn't succeed), and the compiler is newer than the executable
+                if( test_output_ts == Timestamp::infinite_past() && test_exe_ts < compiler_ts )
+                {
+                    // Force a recompile
+                    test_exe_ts = Timestamp::infinite_past();
+                }
+            }
+            if( test_exe_ts == Timestamp::infinite_past() || (!NO_COMPILER_DEP && !SKIP_PASS && test_exe_ts < compiler_ts) )
             {
                 bool pre_build_failed = false;
                 for(const auto& file : test.m_pre_build)
@@ -333,7 +391,7 @@ int main(int argc, const char* argv[])
                     mkdir(depdir.str().c_str(), 0755);
 #endif
                     auto infile = input_path / "auxiliary" / file;
-                    if( !run_compiler(infile, depdir, {}, depdir, true) )
+                    if( !run_compiler(opts, infile, depdir, {}, depdir, true) )
                     {
                         DEBUG("COMPILE FAIL " << infile << " (dep of " << test.m_name << ")");
                         n_cfail ++;
@@ -355,30 +413,36 @@ int main(int argc, const char* argv[])
                     depdir = ::helpers::path();
                 }
 
-                auto compile_logfile = outdir / test.m_name + "-build.log";
-                if( !run_compiler(test.m_path, outfile, test.m_extra_flags, depdir) )
+                auto compile_logfile = test_exe + "-build.log";
+                if( !run_compiler(opts, test.m_path, test_exe, test.m_extra_flags, depdir) )
                 {
-                    DEBUG("COMPILE FAIL " << test.m_name);
+                    DEBUG("COMPILE FAIL " << test.m_name << ", log in " << compile_logfile);
                     n_cfail ++;
                     if( opts.fail_fast )
                         return 1;
                     else
                         continue;
                 }
-                test_output_ts = Timestamp::for_file(outfile);
+                test_exe_ts = Timestamp::for_file(test_exe);
             }
             // - Run the test
-            auto run_out_file = outdir / test.m_name + ".out";
-            if( Timestamp::for_file(run_out_file) < test_output_ts )
+            if( test.no_run )
             {
-                if( !run_executable(outfile, { outfile.str().c_str() }, run_out_file) )
+                ::std::ofstream(test_output.str()) << "";
+                if( opts.debug_level > 0 )
+                    DEBUG("No run " << test.m_name);
+            }
+            else if( test_output_ts < test_exe_ts )
+            {
+                auto run_out_file_tmp = test_output + ".tmp";
+                if( !run_executable(test_exe, { test_exe.str().c_str() }, run_out_file_tmp, 10) )
                 {
                     DEBUG("RUN FAIL " << test.m_name);
 
                     // Move the failing output file
-                    auto fail_file = run_out_file + "_failed";
+                    auto fail_file = test_output + "_failed";
                     remove(fail_file.str().c_str());
-                    rename(run_out_file.str().c_str(), fail_file.str().c_str());
+                    rename(run_out_file_tmp.str().c_str(), fail_file.str().c_str());
                     DEBUG("- Output in " << fail_file);
 
                     n_fail ++;
@@ -386,6 +450,11 @@ int main(int argc, const char* argv[])
                         return 1;
                     else
                         continue;
+                }
+                else
+                {
+                    remove(test_output.str().c_str());
+                    rename(run_out_file_tmp.str().c_str(), test_output.str().c_str());
                 }
             }
             else
@@ -441,6 +510,16 @@ int Options::parse(int argc, const char* argv[])
                 break;
             case 'v':
                 this->debug_level += 1;
+                break;
+            case 'g':
+                this->debug_enabled = true;
+                break;
+            case 'L':
+                if( i+1 == argc ) {
+                    this->usage_short();
+                    return 1;
+                }
+                this->lib_dirs.push_back( argv[++i] );
                 break;
 
             default:
@@ -501,7 +580,7 @@ void Options::usage_full() const
 }
 
 ///
-bool run_executable(const ::helpers::path& exe_name, const ::std::vector<const char*>& args, const ::helpers::path& outfile)
+bool run_executable(const ::helpers::path& exe_name, const ::std::vector<const char*>& args, const ::helpers::path& outfile, unsigned timeout_seconds)
 {
 #ifdef _WIN32
     ::std::stringstream cmdline;
@@ -530,6 +609,7 @@ bool run_executable(const ::helpers::path& exe_name, const ::std::vector<const c
     CreateProcessA(exe_name.str().c_str(), (LPSTR)cmdline_str.c_str(), NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi);
     SetErrorMode(em);
     CloseHandle(si.hStdOutput);
+    // TODO: Use timeout_seconds
     WaitForSingleObject(pi.hProcess, INFINITE);
     DWORD status = 1;
     GetExitCodeProcess(pi.hProcess, &status);
@@ -567,15 +647,24 @@ bool run_executable(const ::helpers::path& exe_name, const ::std::vector<const c
     posix_spawn_file_actions_destroy(&file_actions);
 
     int status = -1;
-    waitpid(pid, &status, 0);
+    // NOTE: `alarm(0)` clears any pending alarm, so no need to check before
+    // calling
+    alarm(timeout_seconds);
+    if( waitpid(pid, &status, 0) <= 0 )
+    {
+        DEBUG(exe_name << " timed out, killing it");
+        kill(pid, SIGKILL);
+        return false;
+    }
+    alarm(0);
     if( status != 0 )
     {
         if( WIFEXITED(status) )
-            DEBUG(exe_name << " exited with non-zero exit status " << WEXITSTATUS(status) << ", see log " << outfile_str);
+            DEBUG(exe_name << " exited with non-zero exit status " << WEXITSTATUS(status));
         else if( WIFSIGNALED(status) )
-            DEBUG(exe_name << " was terminated with signal " << WTERMSIG(status) << ", see log " << outfile_str);
+            DEBUG(exe_name << " was terminated with signal " << WTERMSIG(status));
         else
-            DEBUG(exe_name << " terminated for unknown reason, status=" << status << ", see log " << outfile_str);
+            DEBUG(exe_name << " terminated for unknown reason, status=" << status);
         return false;
     }
 #endif

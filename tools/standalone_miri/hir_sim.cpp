@@ -42,18 +42,18 @@ size_t HIR::TypeRef::get_size(size_t ofs) const
                 // Need to look up the metadata type for the actual type
                 if( this->inner_type == RawType::Composite )
                 {
-                    if( this->composite_type->dst_meta == RawType::Unreachable )
+                    if( this->composite_type().dst_meta == RawType::Unreachable )
                     {
                         return POINTER_SIZE;
                     }
                     // Special case: extern types (which appear when a type is only ever used by pointer)
-                    if( this->composite_type->dst_meta == RawType::Unit )
+                    if( this->composite_type().dst_meta == RawType::Unit )
                     {
                         return POINTER_SIZE;
                     }
 
                     // TODO: Ideally, this inner type wouldn't be unsized itself... but checking that would be interesting.
-                    return POINTER_SIZE + this->composite_type->dst_meta.get_size();
+                    return POINTER_SIZE + this->composite_type().dst_meta.get_size();
                 }
                 else if( this->inner_type == RawType::Str )
                     return POINTER_SIZE*2;
@@ -77,7 +77,8 @@ size_t HIR::TypeRef::get_size(size_t ofs) const
             return 0;
         case RawType::Composite:
             // NOTE: Don't care if the type has metadata
-            return this->composite_type->size;
+            LOG_ASSERT(this->composite_type().populated, "Getting size of non-defined type - " << *this);
+            return this->composite_type().size;
         case RawType::Unreachable:
             LOG_BUG("Attempting to get size of an unreachable type, " << *this);
         case RawType::TraitObject:
@@ -107,6 +108,56 @@ size_t HIR::TypeRef::get_size(size_t ofs) const
         case RawType::Function: // This should probably be invalid?
         case RawType::USize: case RawType::ISize:
             return POINTER_SIZE;
+        }
+        throw "";
+    }
+}
+size_t HIR::TypeRef::get_align(size_t ofs) const
+{
+    if( const auto* w = this->get_wrapper(ofs) )
+    {
+        LOG_TODO("get_align " << *this);
+    }
+    else
+    {
+        switch(this->inner_type)
+        {
+        case RawType::Unit:
+            return 1;
+        case RawType::Composite:
+            // NOTE: Don't care if the type has metadata
+            LOG_ASSERT(this->composite_type().populated, "Getting alignment of non-defined type - " << *this);
+            return this->composite_type().alignment;
+        case RawType::TraitObject:
+        case RawType::Str:
+            return 1;
+        case RawType::U8:   case RawType::I8:
+            return 1;
+        case RawType::U16:  case RawType::I16:
+            return 2;
+        case RawType::U32:  case RawType::I32:
+            return 4;
+        case RawType::U64:  case RawType::I64:
+            return 8;
+        case RawType::U128: case RawType::I128:
+            return 16;
+
+        case RawType::Bool:
+            return 1;
+        case RawType::Char:
+            return 4;
+
+        case RawType::F32:
+            return 4;
+        case RawType::F64:
+            return 8;
+
+        case RawType::Function: // This should probably be invalid?
+        case RawType::USize:
+        case RawType::ISize:
+            return POINTER_SIZE;
+        case RawType::Unreachable:
+            LOG_BUG("Getting alignment of unreachable type");
         }
         throw "";
     }
@@ -168,7 +219,7 @@ bool HIR::TypeRef::has_pointer() const
         if( this->inner_type == RawType::Composite )
         {
             // Still not sure, check the inner for any pointers.
-            for(const auto& fld : this->composite_type->fields)
+            for(const auto& fld : this->composite_type().fields)
             {
                 if( fld.second.has_pointer() )
                     return true;
@@ -196,13 +247,13 @@ const HIR::TypeRef* HIR::TypeRef::get_unsized_type(size_t& running_inner_size) c
         switch(this->inner_type)
         {
         case RawType::Composite:
-            if(!this->composite_type->variants.empty())
+            if(!this->composite_type().variants.empty())
                 return nullptr;
-            if(this->composite_type->fields.empty())
+            if(this->composite_type().fields.empty())
                 return nullptr;
-            running_inner_size = this->composite_type->fields.back().first;
+            running_inner_size = this->composite_type().fields.back().first;
             size_t tmp;
-            return this->composite_type->fields.back().second.get_unsized_type(tmp);
+            return this->composite_type().fields.back().second.get_unsized_type(tmp);
         case RawType::TraitObject:
         case RawType::Str:
             return this;
@@ -229,11 +280,12 @@ HIR::TypeRef HIR::TypeRef::get_meta_type() const
         switch(this->inner_type)
         {
         case RawType::Composite:
-            if( this->composite_type->dst_meta == RawType::Unreachable )
+            if( this->composite_type().dst_meta == RawType::Unreachable )
                 return TypeRef(RawType::Unreachable);
-            return this->composite_type->dst_meta;
+            return this->composite_type().dst_meta;
         case RawType::TraitObject:
-            return ::HIR::TypeRef(this->composite_type).wrap( TypeWrapper::Ty::Pointer, static_cast<size_t>(BorrowType::Shared) );
+            LOG_ASSERT(this->ptr.composite_type, "get_meta_type - " << *this);
+            return ::HIR::TypeRef(this->ptr.composite_type).wrap( TypeWrapper::Ty::Pointer, static_cast<size_t>(BorrowType::Shared) );
         case RawType::Str:
             return TypeRef(RawType::USize);
         default:
@@ -249,7 +301,7 @@ HIR::TypeRef HIR::TypeRef::get_field(size_t idx, size_t& ofs) const
         if( w->type == TypeWrapper::Ty::Slice )
         {
             // TODO
-            throw "TODO";
+            LOG_TODO("Field on slice - " << *this << " #" << idx);
         }
         else if( w->type == TypeWrapper::Ty::Array )
         {
@@ -260,21 +312,20 @@ HIR::TypeRef HIR::TypeRef::get_field(size_t idx, size_t& ofs) const
         }
         else
         {
-            throw "ERROR";
+            LOG_ERROR("Field on unknown wrapper type - " << *this << " #" << idx);
         }
     }
     else
     {
         if( this->inner_type == RawType::Composite )
         {
-            LOG_ASSERT(idx < this->composite_type->fields.size(), "Field " << idx << " out of bounds in type " << *this);
-            ofs = this->composite_type->fields.at(idx).first;
-            return this->composite_type->fields.at(idx).second;
+            LOG_ASSERT(idx < this->composite_type().fields.size(), "Field " << idx << " out of bounds in type " << *this);
+            ofs = this->composite_type().fields.at(idx).first;
+            return this->composite_type().fields.at(idx).second;
         }
         else
         {
-            ::std::cerr << *this << " doesn't have fields" << ::std::endl;
-            throw "ERROR";
+            LOG_ERROR(*this << " doesn't have fields");
         }
     }
 }
@@ -282,14 +333,14 @@ size_t HIR::TypeRef::get_field_ofs(size_t base_idx, const ::std::vector<size_t>&
 {
     assert(this->wrappers.size() == 0);
     assert(this->inner_type == RawType::Composite);
-    size_t ofs = this->composite_type->fields.at(base_idx).first;
-    const auto* ty_p = &this->composite_type->fields.at(base_idx).second;
+    size_t ofs = this->composite_type().fields.at(base_idx).first;
+    const auto* ty_p = &this->composite_type().fields.at(base_idx).second;
     for(auto idx : other_idx)
     {
         assert(ty_p->wrappers.size() == 0);
         assert(ty_p->inner_type == RawType::Composite);
-        ofs += ty_p->composite_type->fields.at(idx).first;
-        ty_p = &ty_p->composite_type->fields.at(idx).second;
+        ofs += ty_p->composite_type().fields.at(idx).first;
+        ty_p = &ty_p->composite_type().fields.at(idx).second;
     }
     ty = *ty_p;
     return ofs;
@@ -346,19 +397,30 @@ namespace HIR {
             os << "()";
             break;
         case RawType::Composite:
-            os << x.composite_type->my_path;
+            os << x.composite_type().my_path;
             //os << "composite_" << x.composite_type;
             break;
         case RawType::Unreachable:
             os << "!";
             break;
-        case RawType::Function:
-            os << "function_?";
-            break;
+        case RawType::Function: {
+            assert( x.ptr.function_type );
+            const auto& ft = *x.ptr.function_type;
+            if( ft.unsafe )
+                os << "unsafe ";
+            if( ft.abi != "Rust" )
+                os << "extern \"" << ft.abi << "\" ";
+            os << "fn( ";
+            for(const auto& a : ft.args)
+                os << a << ", ";
+            os << ")";
+            if( ft.ret != RawType::Unit )
+                os << "-> " << ft.ret;
+            } break;
         case RawType::TraitObject:
             os << "dyn ";
-            if( x.composite_type )
-                os << x.composite_type->my_path;
+            if( x.ptr.composite_type )
+                os << x.composite_type().my_path;
             else
                 os << "?";
             break;

@@ -17,7 +17,7 @@ namespace {
     {
         const ::HIR::Crate& m_crate;
         //StaticTraitResolve  m_resolve;
-        ::std::function<::HIR::SimplePath(bool, ::std::string, ::HIR::Struct)>  m_new_type;
+        ::std::function<::HIR::SimplePath(bool, RcString, ::HIR::Struct)>  m_new_type;
         ::HIR::SimplePath   m_lang_Sized;
     public:
         OuterVisitor(const ::HIR::Crate& crate):
@@ -32,7 +32,7 @@ namespace {
 
             ::std::vector< decltype(mod.m_mod_items)::value_type> new_types;
             m_new_type = [&](bool pub, auto name, auto s)->auto {
-                auto boxed = box$( (::HIR::VisEnt< ::HIR::TypeItem> { pub, ::HIR::TypeItem( mv$(s) ) }) );
+                auto boxed = box$( (::HIR::VisEnt< ::HIR::TypeItem> { (pub ? ::HIR::Publicity::new_global() : ::HIR::Publicity::new_none()), ::HIR::TypeItem( mv$(s) ) }) );
                 auto ret = (p + name).get_simple_path();
                 new_types.push_back( ::std::make_pair( mv$(name), mv$(boxed)) );
                 return ret;
@@ -72,7 +72,7 @@ namespace {
                             //TODO(Span(), "Handle conflicting associated types - '" << ty.first << "'");
                         }
                         else {
-                            params.m_types.push_back( ::HIR::TypeParamDef { "a#"+ty.first, {}, ty.second.is_sized } );
+                            params.m_types.push_back( ::HIR::TypeParamDef { RcString::new_interned(FMT("a#" << ty.first)), {}, ty.second.is_sized } );
                         }
                         i ++;
                     }
@@ -98,14 +98,14 @@ namespace {
                     auto clone_cb = [&](const auto& t, auto& o) {
                         if(t.m_data.is_Path() && t.m_data.as_Path().path.m_data.is_UfcsKnown()) {
                             const auto& pe = t.m_data.as_Path().path.m_data.as_UfcsKnown();
-                            bool is_self = (*pe.type == ::HIR::TypeRef("Self", 0xFFFF));
+                            bool is_self = (*pe.type == ::HIR::TypeRef(RcString::new_interned("Self"), 0xFFFF));
                             auto it = trait_ptr->m_type_indexes.find(pe.item);
                             bool has_item = (it != trait_ptr->m_type_indexes.end());
                             // TODO: Check the trait against m_type_indexes
                             if( is_self /*&& pe.trait == trait_path*/ && has_item ) {
                                 DEBUG("[clone_cb] t=" << t << " -> " << it->second);
                                 // Replace with a new type param, need to know the index of it
-                                o = ::HIR::TypeRef("a#"+pe.item, it->second);
+                                o = ::HIR::TypeRef( RcString::new_interned(FMT("a#" << pe.item)), it->second);
                                 return true;
                             }
                             else {
@@ -173,7 +173,7 @@ namespace {
                             DEBUG("- '" << vi.first << "' is @" << fields.size());
                             fields.push_back( ::std::make_pair(
                                 vi.first,
-                                ::HIR::VisEnt< ::HIR::TypeRef> { true, mv$(fcn_type) }
+                                ::HIR::VisEnt< ::HIR::TypeRef> { ::HIR::Publicity::new_global(), mv$(fcn_type) }
                                 ) );
                             ),
                         (Static,
@@ -204,11 +204,11 @@ namespace {
             ft.m_abi = ABI_RUST;
             ft.m_rettype.reset( new ::HIR::TypeRef(::HIR::TypeRef::new_unit()) );
             ft.m_arg_types.push_back( ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Owned, ::HIR::TypeRef::new_unit()) );
-            vtc.fields.push_back(::std::make_pair( "#drop_glue", ::HIR::VisEnt<::HIR::TypeRef> { false, ::HIR::TypeRef(mv$(ft)) } ));
+            vtc.fields.push_back(::std::make_pair( "#drop_glue", ::HIR::VisEnt<::HIR::TypeRef> { ::HIR::Publicity::new_none(), ::HIR::TypeRef(mv$(ft)) } ));
             // - Size of data
-            vtc.fields.push_back(::std::make_pair( "#size", ::HIR::VisEnt<::HIR::TypeRef> { false, ::HIR::CoreType::Usize } ));
+            vtc.fields.push_back(::std::make_pair( "#size", ::HIR::VisEnt<::HIR::TypeRef> { ::HIR::Publicity::new_none(), ::HIR::CoreType::Usize } ));
             // - Alignment of data
-            vtc.fields.push_back(::std::make_pair( "#align", ::HIR::VisEnt<::HIR::TypeRef> { false, ::HIR::CoreType::Usize } ));
+            vtc.fields.push_back(::std::make_pair( "#align", ::HIR::VisEnt<::HIR::TypeRef> { ::HIR::Publicity::new_none(), ::HIR::CoreType::Usize } ));
             // - Add methods
             if( ! vtc.add_ents_from_trait(tr, trait_path) )
             {
@@ -231,12 +231,12 @@ namespace {
                 }
             }
             // TODO: Would like to have access to the publicity marker
-            auto item_path = m_new_type(true, FMT(p.get_name() << "#vtable"), ::HIR::Struct {
-                mv$(args),
-                ::HIR::Struct::Repr::Rust,
-                ::HIR::Struct::Data(mv$(fields)),
-                {}
-                });
+            auto item_path = m_new_type(
+                true,
+                RcString::new_interned(FMT(p.get_name() << "#vtable")),
+                ::HIR::Struct(mv$(args), ::HIR::Struct::Repr::Rust, ::HIR::Struct::Data(mv$(fields)))
+                );
+            tr.m_vtable_path = item_path;
             DEBUG("Vtable structure created - " << item_path);
             ::HIR::GenericPath  path( mv$(item_path), mv$(params) );
 

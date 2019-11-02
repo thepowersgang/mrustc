@@ -107,18 +107,15 @@ Function Function::clone() const
     return rv;
 }
 
-void Trait::add_type(::std::string name, AttributeList attrs, TypeRef type) {
-    m_items.push_back( Named<Item>(mv$(name), Item::make_Type({TypeAlias(GenericParams(), mv$(type))}), true) );
-    m_items.back().data.attrs = mv$(attrs);
+void Trait::add_type(Span sp, RcString name, AttributeList attrs, TypeRef type) {
+    m_items.push_back( Named<Item>(sp, mv$(attrs), true, mv$(name), Item::make_Type({TypeAlias(GenericParams(), mv$(type))})) );
 }
-void Trait::add_function(::std::string name, AttributeList attrs, Function fcn) {
+void Trait::add_function(Span sp, RcString name, AttributeList attrs, Function fcn) {
     DEBUG("trait fn " << name);
-    m_items.push_back( Named<Item>(mv$(name), Item::make_Function({mv$(fcn)}), true) );
-    m_items.back().data.attrs = mv$(attrs);
+    m_items.push_back( Named<Item>(sp, mv$(attrs), true, mv$(name), Item::make_Function({mv$(fcn)})) );
 }
-void Trait::add_static(::std::string name, AttributeList attrs, Static v) {
-    m_items.push_back( Named<Item>(mv$(name), Item::make_Static({mv$(v)}), true) );
-    m_items.back().data.attrs = mv$(attrs);
+void Trait::add_static(Span sp, RcString name, AttributeList attrs, Static v) {
+    m_items.push_back( Named<Item>(sp, mv$(attrs), true, mv$(name), Item::make_Static({mv$(v)})) );
 }
 void Trait::set_is_marker() {
     m_is_marker = true;
@@ -126,7 +123,7 @@ void Trait::set_is_marker() {
 bool Trait::is_marker() const {
     return m_is_marker;
 }
-bool Trait::has_named_item(const ::std::string& name, bool& out_is_fcn) const
+bool Trait::has_named_item(const RcString& name, bool& out_is_fcn) const
 {
     for( const auto& i : m_items )
     {
@@ -143,7 +140,7 @@ Trait Trait::clone() const
     auto rv = Trait(m_params.clone(), m_supertraits);
     for(const auto& item : m_items)
     {
-        rv.m_items.push_back( Named<Item> { item.name, item.data.clone(), item.is_pub } );
+        rv.m_items.push_back( Named<Item> { item.span, item.attrs.clone(), item.is_pub, item.name, item.data.clone() } );
     }
     return rv;
 }
@@ -208,24 +205,24 @@ Union Union::clone() const
     return os << "impl<" << impl.m_params << "> " << impl.m_trait.ent << " for " << impl.m_type << "";
 }
 
-void Impl::add_function(bool is_public, bool is_specialisable, ::std::string name, Function fcn)
+void Impl::add_function(Span sp, AttributeList attrs, bool is_public, bool is_specialisable, RcString name, Function fcn)
 {
     DEBUG("impl fn " << name);
-    m_items.push_back( ImplItem { is_public, is_specialisable, mv$(name), box$( Item::make_Function(mv$(fcn)) ) } );
+    m_items.push_back( ImplItem { sp, mv$(attrs), is_public, is_specialisable, mv$(name), box$( Item::make_Function(mv$(fcn)) ) } );
 }
-void Impl::add_type(bool is_public, bool is_specialisable, ::std::string name, TypeRef type)
+void Impl::add_type(Span sp, AttributeList attrs, bool is_public, bool is_specialisable, RcString name, TypeRef type)
 {
-    m_items.push_back( ImplItem { is_public, is_specialisable, mv$(name), box$( Item::make_Type(TypeAlias(GenericParams(), mv$(type))) ) } );
+    m_items.push_back( ImplItem { sp, mv$(attrs), is_public, is_specialisable, mv$(name), box$( Item::make_Type(TypeAlias(GenericParams(), mv$(type))) ) } );
 }
-void Impl::add_static(bool is_public, bool is_specialisable, ::std::string name, Static v)
+void Impl::add_static(Span sp, AttributeList attrs, bool is_public, bool is_specialisable, RcString name, Static v)
 {
-    m_items.push_back( ImplItem { is_public, is_specialisable, mv$(name), box$( Item::make_Static(mv$(v)) ) } );
+    m_items.push_back( ImplItem { sp, mv$(attrs), is_public, is_specialisable, mv$(name), box$( Item::make_Static(mv$(v)) ) } );
 }
 void Impl::add_macro_invocation(MacroInvocation item) {
-    m_items.push_back( ImplItem { false, false, "", box$( Item::make_MacroInv(mv$(item)) ) } );
+    m_items.push_back( ImplItem { item.span(), {}, false, false, "", box$( Item::make_MacroInv(mv$(item)) ) } );
 }
 
-bool Impl::has_named_item(const ::std::string& name) const
+bool Impl::has_named_item(const RcString& name) const
 {
     for( const auto& it : this->items() )
     {
@@ -241,28 +238,28 @@ bool Impl::has_named_item(const ::std::string& name) const
     return os << impl.m_def;
 }
 
-::std::ostream& operator<<(::std::ostream& os, const UseStmt& x)
-{
-    os << "Use(" << x.path << ")";
-    return os;
-}
-
-
 
 MacroInvocation MacroInvocation::clone() const
 {
     return MacroInvocation(m_span, m_macro_name, m_ident, m_input.clone());
 }
 
-
-UseStmt UseStmt::clone() const
+UseItem UseItem::clone() const
 {
-    return UseStmt(sp, path);
+    decltype(this->entries) entries;
+    for(const auto& e : this->entries)
+    {
+        entries.push_back({ e.sp, e.path, e.name });
+    }
+    return UseItem {
+        this->sp,
+        mv$(entries)
+        };
 }
 
 void ExternBlock::add_item(Named<Item> named_item)
 {
-    ASSERT_BUG(named_item.data.span, named_item.data.is_Function() || named_item.data.is_Static(), "Incorrect item type for ExternBlock");
+    ASSERT_BUG(named_item.span, named_item.data.is_Function() || named_item.data.is_Static() || named_item.data.is_Type(), "Incorrect item type for ExternBlock - " << named_item.data.tag_str());
     m_items.push_back( mv$(named_item) );
 }
 ExternBlock ExternBlock::clone() const
@@ -271,7 +268,7 @@ ExternBlock ExternBlock::clone() const
 }
 
 ::std::shared_ptr<AST::Module> Module::add_anon() {
-    auto rv = ::std::shared_ptr<AST::Module>( new Module(m_my_path + FMT("#" << m_anon_modules.size())) );
+    auto rv = ::std::shared_ptr<AST::Module>( new Module(m_my_path + RcString::new_interned(FMT("#" << m_anon_modules.size()))) );
     DEBUG("New anon " << rv->m_my_path);
     rv->m_file_info = m_file_info;
 
@@ -286,55 +283,54 @@ void Module::add_item( Named<Item> named_item ) {
     if( i.name == "" ) {
     }
     else {
-        DEBUG(m_my_path << "::" << i.name << " = " << i.data.tag_str() << ", attrs = " << i.data.attrs);
+        DEBUG(m_my_path << "::" << i.name << " = " << i.data.tag_str() << ", attrs = " << i.attrs);
     }
 }
-void Module::add_item(bool is_pub, ::std::string name, Item it, AttributeList attrs) {
-    it.attrs = mv$(attrs);
-    add_item( Named<Item>( mv$(name), mv$(it), is_pub ) );
+void Module::add_item(Span sp, bool is_pub, RcString name, Item it, AttributeList attrs) {
+    add_item( Named<Item>( mv$(sp), mv$(attrs), is_pub, mv$(name), mv$(it) ) );
 }
-void Module::add_ext_crate(bool is_public, ::std::string ext_name, ::std::string imp_name, AttributeList attrs) {
-    this->add_item( is_public, imp_name, Item::make_Crate({mv$(ext_name)}), mv$(attrs) );
-}
-void Module::add_alias(bool is_public, UseStmt us, ::std::string name, AttributeList attrs) {
-    this->add_item( is_public, mv$(name), Item(mv$(us)), mv$(attrs) );
+void Module::add_ext_crate(Span sp, bool is_pub, RcString ext_name, RcString imp_name, AttributeList attrs) {
+    this->add_item( mv$(sp), is_pub, imp_name, Item::make_Crate({mv$(ext_name)}), mv$(attrs) );
 }
 void Module::add_macro_invocation(MacroInvocation item) {
-    this->add_item( false, "", Item( mv$(item) ), ::AST::AttributeList {} );
+    this->add_item( item.span(), false, "", Item( mv$(item) ), ::AST::AttributeList {} );
 }
-void Module::add_macro(bool is_exported, ::std::string name, MacroRulesPtr macro) {
-    m_macros.push_back( Named<MacroRulesPtr>( mv$(name), mv$(macro), is_exported ) );
+void Module::add_macro(bool is_exported, RcString name, MacroRulesPtr macro) {
+    m_macros.push_back( Named<MacroRulesPtr>( Span(), {}, /*is_pub=*/is_exported, mv$(name), mv$(macro) ) );
 }
-void Module::add_macro_import(::std::string name, const MacroRules& mr) {
-    m_macro_import_res.push_back( Named<const MacroRules*>( mv$(name), &mr, false ) );
+void Module::add_macro_import(RcString name, const MacroRules& mr) {
+    m_macro_import_res.push_back( Named<const MacroRules*>( Span(), /*attrs=*/{}, /*is_pub=*/false, mv$(name), &mr) );
 }
 
 Item Item::clone() const
 {
     TU_MATCHA( (*this), (e),
     (None,
-        return AST::Item(e);
+        return Item(e);
         ),
     (MacroInv,
-        TODO(this->span, "Clone on Item::MacroInv");
+        TODO(Span(), "Clone on Item::MacroInv");
+        ),
+    (Macro,
+        TODO(Span(), "Clone on Item::Macro");
         ),
     (Use,
-        return AST::Item(e.clone());
+        return Item(e.clone());
         ),
     (ExternBlock,
-        TODO(this->span, "Clone on Item::" << this->tag_str());
+        TODO(Span(), "Clone on Item::" << this->tag_str());
         ),
     (Impl,
-        TODO(this->span, "Clone on Item::Impl");
+        TODO(Span(), "Clone on Item::" << this->tag_str());
         ),
     (NegImpl,
-        TODO(this->span, "Clone on Item::NegImpl");
+        TODO(Span(), "Clone on Item::" << this->tag_str());
         ),
     (Module,
-        TODO(this->span, "Clone on Item::Module");
+        TODO(Span(), "Clone on Item::" << this->tag_str());
         ),
     (Crate,
-        return AST::Item(e);
+        return Item(e);
         ),
     (Type,
         return AST::Item(e.clone());

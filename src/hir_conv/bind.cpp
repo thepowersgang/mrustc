@@ -120,7 +120,7 @@ namespace {
             m_cur_module.ptr = &mod;
             m_cur_module.path = &p;
 
-            m_ms.push_traits(mod);
+            m_ms.push_traits(p, mod);
             ::HIR::Visitor::visit_module(p, mod);
             m_ms.pop_traits(mod);
 
@@ -139,6 +139,9 @@ namespace {
         {
             TU_MATCH(::HIR::Literal, (lit), (e),
             (Invalid,
+                ),
+            (Defer,
+                // Shouldn't happen here, but ...
                 ),
             (List,
                 for(auto& val : e) {
@@ -253,17 +256,26 @@ namespace {
 
             ::HIR::Visitor::visit_pattern(pat);
 
-            TU_MATCH_DEF(::HIR::Pattern::Data, (pat.m_data), (e),
-            (
-                ),
-            (Value,
+            TU_MATCH_HDRA( (pat.m_data), {)
+            default:
+                // Nothing
+            TU_ARMA(Value, e) {
                 this->visit_pattern_Value(sp, pat, e.val);
-                ),
-            (Range,
+                }
+            TU_ARMA(Range, e) {
                 this->visit_pattern_Value(sp, pat, e.start);
                 this->visit_pattern_Value(sp, pat, e.end);
-                ),
-            (StructTuple,
+                }
+            TU_ARMA(StructValue, e) {
+                const auto& str = get_struct_ptr(sp, m_crate, e.path);
+                TU_IFLET(::HIR::Struct::Data, str.m_data, Unit, _,
+                    e.binding = &str;
+                )
+                else {
+                    ERROR(sp, E0000, "Struct value pattern on non-unit struct " << e.path);
+                }
+                }
+            TU_ARMA(StructTuple, e) {
                 const auto& str = get_struct_ptr(sp, m_crate, e.path);
                 TU_IFLET(::HIR::Struct::Data, str.m_data, Tuple, _,
                     e.binding = &str;
@@ -271,8 +283,8 @@ namespace {
                 else {
                     ERROR(sp, E0000, "Struct tuple pattern on non-tuple struct " << e.path);
                 }
-                ),
-            (Struct,
+                }
+            TU_ARMA(Struct, e) {
                 const auto& str = get_struct_ptr(sp, m_crate, e.path);
                 if(str.m_data.is_Named() ) {
                 }
@@ -284,8 +296,19 @@ namespace {
                     ERROR(sp, E0000, "Struct pattern `" << pat << "` on field-less struct " << e.path);
                 }
                 e.binding = &str;
-                ),
-            (EnumTuple,
+                }
+            TU_ARMA(EnumValue, e) {
+                auto p = get_enum_ptr(sp, m_crate, e.path);
+                if( p.first->m_data.is_Data() )
+                {
+                    const auto& var = p.first->m_data.as_Data()[p.second];
+                    if( var.is_struct || var.type != ::HIR::TypeRef::new_unit() )
+                        ERROR(sp, E0000, "Enum value pattern on non-unit variant " << e.path);
+                }
+                e.binding_ptr = p.first;
+                e.binding_idx = p.second;
+                }
+            TU_ARMA(EnumTuple, e) {
                 auto p = get_enum_ptr(sp, m_crate, e.path);
                 if( !p.first->m_data.is_Data() )
                     ERROR(sp, E0000, "Enum tuple pattern on non-tuple variant " << e.path);
@@ -294,18 +317,61 @@ namespace {
                     ERROR(sp, E0000, "Enum tuple pattern on non-tuple variant " << e.path);
                 e.binding_ptr = p.first;
                 e.binding_idx = p.second;
-                ),
-            (EnumStruct,
+                }
+            TU_ARMA(EnumStruct, e) {
                 auto p = get_enum_ptr(sp, m_crate, e.path);
-                if( !p.first->m_data.is_Data() )
-                    ERROR(sp, E0000, "Enum struct pattern `" << pat << "` on non-struct variant " << e.path);
-                const auto& var = p.first->m_data.as_Data()[p.second];
-                if( !var.is_struct )
-                    ERROR(sp, E0000, "Enum struct pattern `" << pat << "` on non-struct variant " << e.path);
+                if( !e.is_exhaustive && e.sub_patterns.empty() )
+                {
+                    if( !p.first->m_data.is_Data() ) {
+                        pat.m_data = ::HIR::Pattern::Data::make_EnumValue({
+                                ::std::move(e.path), p.first, p.second
+                                });
+                    }
+                    else {
+                        const auto& var = p.first->m_data.as_Data()[p.second];
+                        if( var.type == ::HIR::TypeRef::new_unit() )
+                        {
+                            pat.m_data = ::HIR::Pattern::Data::make_EnumValue({
+                                    ::std::move(e.path), p.first, p.second
+                                    });
+                        }
+                        else if( !var.is_struct )
+                        {
+                            ASSERT_BUG(sp, var.type.m_data.is_Path(), "");
+                            ASSERT_BUG(sp, var.type.m_data.as_Path().binding.is_Struct(), "EnumStruct pattern on unexpected variant " << e.path << " with " << var.type.m_data.as_Path().binding.tag_str());
+                            const auto& str = *var.type.m_data.as_Path().binding.as_Struct();
+                            ASSERT_BUG(sp, str.m_data.is_Tuple(), "");
+                            const auto& flds = str.m_data.as_Tuple();
+                            ::std::vector<HIR::Pattern> subpats;
+                            for(size_t i = 0; i < flds.size(); i ++)
+                                subpats.push_back(::HIR::Pattern { });
+                            pat.m_data = ::HIR::Pattern::Data::make_EnumTuple({
+                                    ::std::move(e.path), p.first, p.second, mv$(subpats)
+                                    });
+                        }
+                        else
+                        {
+                            // Keep as a struct pattern
+                        }
+                    }
+                }
+                else
+                {
+                    if( !p.first->m_data.is_Data() )
+                    {
+                        ERROR(sp, E0000, "Enum struct pattern `" << pat << "` on non-struct variant " << e.path);
+                    }
+                    else
+                    {
+                        const auto& var = p.first->m_data.as_Data()[p.second];
+                        if( !var.is_struct )
+                            ERROR(sp, E0000, "Enum struct pattern `" << pat << "` on non-struct variant " << e.path);
+                    }
+                }
                 e.binding_ptr = p.first;
                 e.binding_idx = p.second;
-                )
-            )
+                }
+            }
         }
         static void fix_param_count(const Span& sp, const ::HIR::GenericPath& path, const ::HIR::GenericParams& param_defs, ::HIR::PathParams& params, bool fill_infer=true, const ::HIR::TypeRef* self_ty=nullptr)
         {
@@ -313,6 +379,8 @@ namespace {
                 // Nothing to do, all good
                 return ;
             }
+
+            TRACE_FUNCTION_F(path);
 
             if( params.m_types.size() == 0 && fill_infer ) {
                 for(const auto& typ : param_defs.m_types) {
@@ -334,9 +402,20 @@ namespace {
                         auto ty = clone_ty_with(sp, typ.m_default, [&](const auto& ty, auto& out){
                             if(const auto* te = ty.m_data.opt_Generic() )
                             {
-                                if( te->binding != GENERIC_Self || !self_ty )
+                                if( te->binding == GENERIC_Self ) {
+                                    if( !self_ty )
+                                        TODO(sp, "Self enountered in default params, but no Self available - " << ty << " in " << typ.m_default << " for " << path);
+                                    out = self_ty->clone();
+                                }
+                                // NOTE: Should only be seeing impl-level params here. Method-level ones are only seen in expression context.
+                                else if( (te->binding >> 8) == 0 ) {
+                                    auto idx = te->binding & 0xFF;
+                                    ASSERT_BUG(sp, idx < params.m_types.size(), "TODO: Handle use of latter types in defaults");
+                                    out = params.m_types[idx].clone();
+                                }
+                                else {
                                     TODO(sp, "Monomorphise in fix_param_count - encountered " << ty << " in " << typ.m_default);
-                                out = self_ty->clone();
+                                }
                                 return true;
                             }
                             return false;
@@ -376,6 +455,10 @@ namespace {
                         ),
                     (TypeAlias,
                         BUG(sp, "TypeAlias encountered after `Resolve Type Aliases` - " << ty);
+                        ),
+                    (ExternType,
+                        e.binding = ::HIR::TypeRef::TypePathBinding::make_ExternType(&e3);
+                        DEBUG("- " << ty);
                         ),
                     (Struct,
                         fix_param_count(sp, pe, e3.m_params,  pe.m_params);
@@ -429,12 +512,16 @@ namespace {
 
         void visit_type_impl(::HIR::TypeImpl& impl) override
         {
-            TRACE_FUNCTION_F("impl " << impl.m_type);
+            TRACE_FUNCTION_F("impl " << impl.m_type << " - from " << impl.m_src_module);
             auto _ = this->m_ms.set_impl_generics(impl.m_params);
 
+            auto mod_ip = ::HIR::ItemPath(impl.m_src_module);
             const auto* mod = (impl.m_src_module != ::HIR::SimplePath() ? &this->m_ms.m_crate.get_mod_by_path(Span(), impl.m_src_module) : nullptr);
-            if(mod)
-                m_ms.push_traits(*mod);
+            if(mod) {
+                m_ms.push_traits(impl.m_src_module, *mod);
+                m_cur_module.ptr = mod;
+                m_cur_module.path = &mod_ip;
+            }
             ::HIR::Visitor::visit_type_impl(impl);
             if(mod)
                 m_ms.pop_traits(*mod);
@@ -444,9 +531,13 @@ namespace {
             TRACE_FUNCTION_F("impl " << trait_path << " for " << impl.m_type);
             auto _ = this->m_ms.set_impl_generics(impl.m_params);
 
+            auto mod_ip = ::HIR::ItemPath(impl.m_src_module);
             const auto* mod = (impl.m_src_module != ::HIR::SimplePath() ? &this->m_ms.m_crate.get_mod_by_path(Span(), impl.m_src_module) : nullptr);
-            if(mod)
-                m_ms.push_traits(*mod);
+            if(mod) {
+                m_ms.push_traits(impl.m_src_module, *mod);
+                m_cur_module.ptr = mod;
+                m_cur_module.path = &mod_ip;
+            }
             m_ms.m_traits.push_back( ::std::make_pair( &trait_path, &this->m_ms.m_crate.get_trait_by_path(Span(), trait_path) ) );
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);
             m_ms.m_traits.pop_back( );
@@ -458,9 +549,13 @@ namespace {
             TRACE_FUNCTION_F("impl " << trait_path << " for " << impl.m_type << " { }");
             auto _ = this->m_ms.set_impl_generics(impl.m_params);
 
+            auto mod_ip = ::HIR::ItemPath(impl.m_src_module);
             const auto* mod = (impl.m_src_module != ::HIR::SimplePath() ? &this->m_ms.m_crate.get_mod_by_path(Span(), impl.m_src_module) : nullptr);
-            if(mod)
-                m_ms.push_traits(*mod);
+            if(mod) {
+                m_ms.push_traits(impl.m_src_module, *mod);
+                m_cur_module.ptr = mod;
+                m_cur_module.path = &mod_ip;
+            }
             ::HIR::Visitor::visit_marker_impl(trait_path, impl);
             if(mod)
                 m_ms.pop_traits(*mod);
@@ -566,7 +661,7 @@ namespace {
 
                 void visit(::HIR::ExprNode_StructLiteral& node) override
                 {
-                    upper_visitor.visit_generic_path(node.m_path, ::HIR::Visitor::PathContext::TYPE);
+                    upper_visitor.visit_path(node.m_path, ::HIR::Visitor::PathContext::TYPE);
                     ::HIR::ExprVisitorDef::visit(node);
                 }
                 void visit(::HIR::ExprNode_ArraySized& node) override
@@ -609,28 +704,24 @@ namespace {
                 struct H {
                     static void visit_lvalue(Visitor& upper_visitor, ::MIR::LValue& lv)
                     {
-                        TU_MATCHA( (lv), (e),
-                        (Return,
+                        if( lv.m_root.is_Static() ) {
+                            upper_visitor.visit_path(lv.m_root.as_Static(), ::HIR::Visitor::PathContext::VALUE);
+                        }
+                    }
+                    static void visit_constant(Visitor& upper_visitor, ::MIR::Constant& e)
+                    {
+                        TU_MATCHA( (e), (ce),
+                        (Int, ),
+                        (Uint,),
+                        (Float, ),
+                        (Bool, ),
+                        (Bytes, ),
+                        (StaticString, ),  // String
+                        (Const,
+                            upper_visitor.visit_path(*ce.p, ::HIR::Visitor::PathContext::VALUE);
                             ),
-                        (Local,
-                            ),
-                        (Argument,
-                            ),
-                        (Static,
-                            upper_visitor.visit_path(e, ::HIR::Visitor::PathContext::VALUE);
-                            ),
-                        (Field,
-                            H::visit_lvalue(upper_visitor, *e.val);
-                            ),
-                        (Deref,
-                            H::visit_lvalue(upper_visitor, *e.val);
-                            ),
-                        (Index,
-                            H::visit_lvalue(upper_visitor, *e.val);
-                            H::visit_lvalue(upper_visitor, *e.idx);
-                            ),
-                        (Downcast,
-                            H::visit_lvalue(upper_visitor, *e.val);
+                        (ItemAddr,
+                            upper_visitor.visit_path(*ce, ::HIR::Visitor::PathContext::VALUE);
                             )
                         )
                     }
@@ -639,20 +730,7 @@ namespace {
                         TU_MATCHA( (p), (e),
                         (LValue, H::visit_lvalue(upper_visitor, e);),
                         (Constant,
-                            TU_MATCHA( (e), (ce),
-                            (Int, ),
-                            (Uint,),
-                            (Float, ),
-                            (Bool, ),
-                            (Bytes, ),
-                            (StaticString, ),  // String
-                            (Const,
-                                upper_visitor.visit_path(ce.p, ::HIR::Visitor::PathContext::VALUE);
-                                ),
-                            (ItemAddr,
-                                upper_visitor.visit_path(ce, ::HIR::Visitor::PathContext::VALUE);
-                                )
-                            )
+                            H::visit_constant(upper_visitor, e);
                             )
                         )
                     }
@@ -670,20 +748,7 @@ namespace {
                                 H::visit_lvalue(*this, e);
                                 ),
                             (Constant,
-                                TU_MATCHA( (e), (ce),
-                                (Int, ),
-                                (Uint,),
-                                (Float, ),
-                                (Bool, ),
-                                (Bytes, ),
-                                (StaticString, ),  // String
-                                (Const,
-                                    this->visit_path(ce.p, ::HIR::Visitor::PathContext::VALUE);
-                                    ),
-                                (ItemAddr,
-                                    this->visit_path(ce, ::HIR::Visitor::PathContext::VALUE);
-                                    )
-                                )
+                                H::visit_constant(*this, e);
                                 ),
                             (SizedArray,
                                 H::visit_param(*this, e.val);
@@ -779,11 +844,12 @@ namespace {
 void ConvertHIR_Bind(::HIR::Crate& crate)
 {
     Visitor exp { crate };
-    exp.visit_crate( crate );
 
     // Also visit extern crates to update their pointers
     for(auto& ec : crate.m_ext_crates)
     {
         exp.visit_crate( *ec.second.m_data );
     }
+
+    exp.visit_crate( crate );
 }

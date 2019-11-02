@@ -35,7 +35,7 @@ class Decorator_ProcMacroDerive:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
         if( i.is_None() )
             return;
@@ -49,13 +49,13 @@ public:
         {
             if( attr.items()[i].name() == "attributes") {
                 for(const auto& si : attr.items()[i].items()) {
-                    attributes.push_back( si.name() );
+                    attributes.push_back( si.name().c_str() );
                 }
             }
         }
 
         // TODO: Store attributes for later use.
-        crate.m_proc_macros.push_back(AST::ProcMacroDef { FMT("derive#" << trait_name), path, mv$(attributes) });
+        crate.m_proc_macros.push_back(AST::ProcMacroDef { RcString::new_interned(FMT("derive#" << trait_name)), path, mv$(attributes) });
     }
 };
 
@@ -100,7 +100,7 @@ void Expand_ProcMacro(::AST::Crate& crate)
     {
         ::AST::ExprNode_StructLiteral::t_values   desc_vals;
         // `name: "foo",`
-        desc_vals.push_back({ {}, "name", NEWNODE(_String,  desc.name) });
+        desc_vals.push_back({ {}, "name", NEWNODE(_String,  desc.name.c_str()) });
         // `handler`: ::foo
         desc_vals.push_back({ {}, "handler", NEWNODE(_NamedValue, AST::Path(desc.path)) });
 
@@ -121,12 +121,12 @@ void Expand_ProcMacro(::AST::Crate& crate)
     auto newmod = ::AST::Module { ::AST::Path("", { ::AST::PathNode("proc_macro#") }) };
     // - TODO: These need to be loaded too.
     //  > They don't actually need to exist here, just be loaded (and use absolute paths)
-    newmod.add_ext_crate(false, "proc_macro", "proc_macro", {});
+    newmod.add_ext_crate(Span(), false, "proc_macro", "proc_macro", {});
 
-    newmod.add_item(false, "main", mv$(main_fn), {});
-    newmod.add_item(false, "MACROS", mv$(tests_list), {});
+    newmod.add_item(Span(), false, "main", mv$(main_fn), {});
+    newmod.add_item(Span(), false, "MACROS", mv$(tests_list), {});
 
-    crate.m_root_module.add_item(false, "proc_macro#", mv$(newmod), {});
+    crate.m_root_module.add_item(Span(), false, "proc_macro#", mv$(newmod), {});
     crate.m_lang_items["mrustc-main"] = ::AST::Path("", { AST::PathNode("proc_macro#"), AST::PathNode("main") });
 }
 
@@ -211,7 +211,7 @@ public:
     void send_float(eCoreType ct, double v);
     //void send_fragment();
 
-    bool attr_is_used(const ::std::string& n) const {
+    bool attr_is_used(const RcString& n) const {
         return ::std::find(m_proc_macro_desc.attributes.begin(), m_proc_macro_desc.attributes.end(), n) != m_proc_macro_desc.attributes.end();
     }
 
@@ -229,8 +229,9 @@ private:
     uint64_t recv_v128u();
 };
 
-ProcMacroInv ProcMacro_Invoke_int(const Span& sp, const ::AST::Crate& crate, const ::std::vector<::std::string>& mac_path)
+ProcMacroInv ProcMacro_Invoke_int(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path)
 {
+    TRACE_FUNCTION_F(mac_path);
     // 1. Locate macro in HIR list
     const auto& crate_name = mac_path.front();
     const auto& ext_crate = crate.m_extern_crates.at(crate_name);
@@ -259,7 +260,8 @@ ProcMacroInv ProcMacro_Invoke_int(const Span& sp, const ::AST::Crate& crate, con
     }
 
     // 2. Get executable and macro name
-    ::std::string   proc_macro_exe_name = (ext_crate.m_filename + "-plugin");
+    // TODO: Windows will have .exe?
+    ::std::string   proc_macro_exe_name = ext_crate.m_filename;
 
     // 3. Create ProcMacroInv
     return ProcMacroInv(sp, proc_macro_exe_name.c_str(), *pmp);
@@ -516,6 +518,9 @@ namespace {
             TODO(sp, "");
             m_pmi.send_symbol("}");
         }
+        void visit(::AST::ExprNode_Try& node) {
+            TODO(sp, "ExprNode_Try");
+        }
         void visit(::AST::ExprNode_Macro& node) {
             TODO(sp, "ExprNode_Macro");
         }
@@ -606,12 +611,27 @@ namespace {
             TODO(sp, "ExprNode_UniOp");
         }
 
+        void visit_top_attrs(slice<const ::AST::Attribute>& attrs)
+        {
+            for(const auto& a : attrs)
+            {
+                if( m_pmi.attr_is_used(a.name()) )
+                {
+                    DEBUG("Send " << a);
+                    m_pmi.send_symbol("#");
+                    m_pmi.send_symbol("[");
+                    this->visit_meta_item(a);
+                    m_pmi.send_symbol("]");
+                }
+            }
+        }
         void visit_attrs(const ::AST::AttributeList& attrs)
         {
             for(const auto& a : attrs.m_items)
             {
                 if( m_pmi.attr_is_used(a.name()) )
                 {
+                    DEBUG("Send " << a);
                     m_pmi.send_symbol("#");
                     m_pmi.send_symbol("[");
                     this->visit_meta_item(a);
@@ -704,12 +724,15 @@ namespace {
             {
                 this->visit_attrs(v.m_attrs);
                 m_pmi.send_ident(v.m_name.c_str());
-                TU_MATCH(AST::EnumVariantData, (v.m_data), (e),
-                (Value,
-                    m_pmi.send_symbol("=");
-                    this->visit_nodes(e.m_value);
-                    ),
-                (Tuple,
+                TU_MATCH_HDRA( (v.m_data), { )
+                TU_ARMA(Value, e) {
+                    if( e.m_value )
+                    {
+                        m_pmi.send_symbol("=");
+                        this->visit_nodes(e.m_value);
+                    }
+                    }
+                TU_ARMA(Tuple, e) {
                     m_pmi.send_symbol("(");
                     for(const auto& st : e.m_sub_types)
                     {
@@ -718,8 +741,8 @@ namespace {
                         m_pmi.send_symbol(",");
                     }
                     m_pmi.send_symbol(")");
-                    ),
-                (Struct,
+                    }
+                TU_ARMA(Struct, e) {
                     m_pmi.send_symbol("{");
                     for(const auto& f : e.m_fields)
                     {
@@ -730,8 +753,8 @@ namespace {
                         m_pmi.send_symbol(",");
                     }
                     m_pmi.send_symbol("}");
-                    )
-                )
+                    }
+                }
                 m_pmi.send_symbol(",");
             }
             m_pmi.send_symbol("}");
@@ -742,38 +765,45 @@ namespace {
         }
     };
 }
-::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<::std::string>& mac_path, const ::std::string& item_name, const ::AST::Struct& i)
+::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, const ::std::string& item_name, const ::AST::Struct& i)
 {
     // 1. Create ProcMacroInv instance
     auto pmi = ProcMacro_Invoke_int(sp, crate, mac_path);
     if( !pmi.check_good() )
         return ::std::unique_ptr<TokenStream>();
     // 2. Feed item as a token stream.
-    Visitor(sp, pmi).visit_struct(item_name, false, i);
+    // TODO: Get attributes from the caller, filter based on the macro's options then pass to the child.
+    Visitor v(sp, pmi);
+    v.visit_top_attrs(attrs);
+    v.visit_struct(item_name, false, i);
     pmi.send_done();
     // 3. Return boxed invocation instance
     return box$(pmi);
 }
-::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<::std::string>& mac_path, const ::std::string& item_name, const ::AST::Enum& i)
+::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, const ::std::string& item_name, const ::AST::Enum& i)
 {
     // 1. Create ProcMacroInv instance
     auto pmi = ProcMacro_Invoke_int(sp, crate, mac_path);
     if( !pmi.check_good() )
         return ::std::unique_ptr<TokenStream>();
     // 2. Feed item as a token stream.
-    Visitor(sp, pmi).visit_enum(item_name, false, i);
+    Visitor v(sp, pmi);
+    v.visit_top_attrs(attrs);
+    v.visit_enum(item_name, false, i);
     pmi.send_done();
     // 3. Return boxed invocation instance
     return box$(pmi);
 }
-::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<::std::string>& mac_path, const ::std::string& item_name, const ::AST::Union& i)
+::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, const ::std::string& item_name, const ::AST::Union& i)
 {
     // 1. Create ProcMacroInv instance
     auto pmi = ProcMacro_Invoke_int(sp, crate, mac_path);
     if( !pmi.check_good() )
         return ::std::unique_ptr<TokenStream>();
     // 2. Feed item as a token stream.
-    Visitor(sp, pmi).visit_union(item_name, false, i);
+    Visitor v(sp, pmi);
+    v.visit_top_attrs(attrs);
+    v.visit_union(item_name, false, i);
     pmi.send_done();
     // 3. Return boxed invocation instance
     return box$(pmi);
@@ -813,11 +843,12 @@ ProcMacroInv::ProcMacroInv(const Span& sp, const char* executable, const ::HIR::
     posix_spawn_file_actions_addclose(&file_actions, stdout_pipes[1]);
 
     char*   argv[3] = { const_cast<char*>(executable), const_cast<char*>(proc_macro_desc.name.c_str()), nullptr };
+    DEBUG(argv[0] << " " << argv[1]);
     //char*   envp[] = { nullptr };
     int rv = posix_spawn(&this->child_pid, executable, &file_actions, nullptr, argv, environ);
     if( rv != 0 )
     {
-        BUG(sp, "Error in posix_spawn - " << rv);
+        BUG(sp, "Error in posix_spawn - " << rv << " - can't start `" << executable << "`");
     }
 
     posix_spawn_file_actions_destroy(&file_actions);
@@ -1015,11 +1046,11 @@ Token ProcMacroInv::realGetToken_() {
         auto t = Lex_FindReservedWord(val);
         if( t != TOK_NULL )
             return t;
-        return Token(TOK_IDENT, mv$(val));
+        return Token(TOK_IDENT, RcString::new_interned(val));
         }
     case TokenClass::Lifetime: {
         auto val = this->recv_bytes();
-        return Token(TOK_LIFETIME, mv$(val));
+        return Token(TOK_LIFETIME, RcString::new_interned(val));
         }
     case TokenClass::String: {
         auto val = this->recv_bytes();

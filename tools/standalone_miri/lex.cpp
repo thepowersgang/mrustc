@@ -7,6 +7,8 @@
  */
 #include "lex.hpp"
 #include <cctype>
+#include <sstream>
+#include "debug.hpp"
 #include <iostream>
 
 bool Token::operator==(TokenClass tc) const
@@ -25,7 +27,7 @@ bool Token::operator==(const char* s) const
 uint64_t Token::integer() const
 {
     if( this->type != TokenClass::Integer )
-        throw "";
+        throw ::std::runtime_error(FMT_STRING("Expected interger, got " << *this));
     return this->numbers.int_val;
 }
 double Token::real() const

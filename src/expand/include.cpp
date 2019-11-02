@@ -12,6 +12,7 @@
 #include <parse/ttstream.hpp>
 #include <parse/lex.hpp>    // Lexer (new files)
 #include <ast/expr.hpp>
+#include <ast/crate.hpp>
 
 namespace {
 
@@ -63,11 +64,8 @@ namespace {
 class CIncludeExpander:
     public ExpandProcMacro
 {
-    ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
+    ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
-        if( ident != "" )
-            ERROR(sp, E0000, "include! doesn't take an ident");
-
         Token   tok;
         auto lex = TTStream(sp, tt);
 
@@ -75,6 +73,7 @@ class CIncludeExpander:
         GET_CHECK_TOK(tok, lex, TOK_EOF);
 
         ::std::string file_path = get_path_relative_to(mod.m_file_info.path, mv$(path));
+        crate.m_extra_files.push_back(file_path);
 
         try {
             return box$( Lexer(file_path) );
@@ -89,11 +88,8 @@ class CIncludeExpander:
 class CIncludeBytesExpander:
     public ExpandProcMacro
 {
-    ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
+    ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
-        if( ident != "" )
-            ERROR(sp, E0000, "include_bytes! doesn't take an ident");
-
         Token   tok;
         auto lex = TTStream(sp, tt);
 
@@ -101,6 +97,7 @@ class CIncludeBytesExpander:
         GET_CHECK_TOK(tok, lex, TOK_EOF);
 
         ::std::string file_path = get_path_relative_to(mod.m_file_info.path, mv$(path));
+        crate.m_extra_files.push_back(file_path);
 
         ::std::ifstream is(file_path);
         if( !is.good() ) {
@@ -118,11 +115,8 @@ class CIncludeBytesExpander:
 class CIncludeStrExpander:
     public ExpandProcMacro
 {
-    ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
+    ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
-        if( ident != "" )
-            ERROR(sp, E0000, "include_str! doesn't take an ident");
-
         Token   tok;
         auto lex = TTStream(sp, tt);
 
@@ -130,6 +124,7 @@ class CIncludeStrExpander:
         GET_CHECK_TOK(tok, lex, TOK_EOF);
 
         ::std::string file_path = get_path_relative_to(mod.m_file_info.path, mv$(path));
+        crate.m_extra_files.push_back(file_path);
 
         ::std::ifstream is(file_path);
         if( !is.good() ) {

@@ -52,6 +52,10 @@ namespace {
             (TypeAlias,
                 BUG(sp, "Type path pointed to type alias - " << path);
                 ),
+            (ExternType,
+                static ::HIR::GenericParams empty_params;
+                return empty_params;
+                ),
             (Module,
                 BUG(sp, "Type path pointed to module - " << path);
                 ),
@@ -201,13 +205,16 @@ namespace {
         {
             while( param_vals.m_types.size() < param_def.m_types.size() ) {
                 unsigned int i = param_vals.m_types.size();
-                if( param_def.m_types[i].m_default.m_data.is_Infer() ) {
+                const auto& ty_def = param_def.m_types[i];
+                if( ty_def.m_default.m_data.is_Infer() ) {
                     ERROR(sp, E0000, "Unspecified parameter with no default");
                 }
 
                 // Replace and expand
-                param_vals.m_types.push_back( param_def.m_types[i].m_default.clone() );
+                param_vals.m_types.push_back( ty_def.m_default.clone() );
                 auto& ty = param_vals.m_types.back();
+                // TODO: Monomorphise?
+                // Replace `Self` here with the real Self
                 update_self_type(sp, ty);
             }
 
@@ -220,7 +227,7 @@ namespace {
                 if( param_vals.m_types[i] == ::HIR::TypeRef() ) {
                     //if( param_def.m_types[i].m_default == ::HIR::TypeRef() )
                     //    ERROR(sp, E0000, "Unspecified parameter with no default");
-                    // TODO: Monomorph?
+                    // TODO: Monomorphise?
                     param_vals.m_types[i] = param_def.m_types[i].m_default.clone();
                     update_self_type(sp, param_vals.m_types[i]);
                 }
@@ -288,24 +295,53 @@ namespace {
             TU_IFLET(::HIR::TypeRef::Data, ty.m_data, ErasedType, e,
                 if( e.m_origin == ::HIR::SimplePath() )
                 {
-                    // If not, ensure taht we're checking a function return type, and error if not
-                    if( ! m_fcn_path )
-                        ERROR(sp, E0000, "Use of an erased type outside of a function return - " << ty);
-                    assert(m_fcn_ptr);
-                    DEBUG(*m_fcn_path << " " << m_fcn_erased_count);
+                    // If not, figure out what to do with it
 
-                    ::HIR::PathParams    params;
-                    for(unsigned int i = 0; i < m_fcn_ptr->m_params.m_types.size(); i ++)
-                        params.m_types.push_back(::HIR::TypeRef(m_fcn_ptr->m_params.m_types[i].m_name, 256+i));
-                    // Populate with function path
-                    e.m_origin = m_fcn_path->get_full_path();
-                    TU_MATCHA( (e.m_origin.m_data), (e2),
-                    (Generic, e2.m_params = mv$(params); ),
-                    (UfcsInherent, e2.params = mv$(params); ),
-                    (UfcsKnown, e2.params = mv$(params); ),
-                    (UfcsUnknown, throw ""; )
-                    )
-                    e.m_index = m_fcn_erased_count++;
+                    // If the function path is set, we're processing the return type of a function
+                    // - Add this to the list of erased types associated with the function
+                    if( m_fcn_path )
+                    {
+                        assert(m_fcn_ptr);
+                        DEBUG(*m_fcn_path << " " << m_fcn_erased_count);
+
+                        ::HIR::PathParams    params;
+                        for(unsigned int i = 0; i < m_fcn_ptr->m_params.m_types.size(); i ++)
+                            params.m_types.push_back(::HIR::TypeRef(m_fcn_ptr->m_params.m_types[i].m_name, 256+i));
+                        // Populate with function path
+                        e.m_origin = m_fcn_path->get_full_path();
+                        TU_MATCHA( (e.m_origin.m_data), (e2),
+                        (Generic, e2.m_params = mv$(params); ),
+                        (UfcsInherent, e2.params = mv$(params); ),
+                        (UfcsKnown, e2.params = mv$(params); ),
+                        (UfcsUnknown, throw ""; )
+                        )
+                        e.m_index = m_fcn_erased_count++;
+                    }
+                    // If the function _pointer_ is set (but not the path), then we're in the function arguments
+                    // - Add a un-namable generic parameter (TODO: Prevent this from being explicitly set when called)
+                    else if( m_fcn_ptr )
+                    {
+                        size_t idx = m_fcn_ptr->m_params.m_types.size();
+                        auto name = RcString::new_interned(FMT("impl$" << idx));
+                        auto new_ty = ::HIR::TypeRef( name, 256 + idx );
+                        m_fcn_ptr->m_params.m_types.push_back({ name, ::HIR::TypeRef(), true });
+                        for( const auto& trait : e.m_traits )
+                        {
+                            m_fcn_ptr->m_params.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({
+                                    new_ty.clone(),
+                                    trait.clone()
+                                    }));
+                        }
+                        if( e.m_lifetime != ::HIR::LifetimeRef() )
+                        {
+                            TODO(sp, "Add bound " << new_ty << " : " << e.m_lifetime);
+                        }
+                        ty = ::std::move(new_ty);
+                    }
+                    else
+                    {
+                        ERROR(sp, E0000, "Use of an erased type outside of a function return - " << ty);
+                    }
                 }
             )
         }
@@ -429,6 +465,16 @@ namespace {
             }
             return trait_path_g;
         }
+        ::HIR::GenericPath get_current_trait_gp() const
+        {
+            assert(m_current_trait_path);
+            assert(m_current_trait);
+            auto trait_path = ::HIR::GenericPath( m_current_trait_path->get_simple_path() );
+            for(unsigned int i = 0; i < m_current_trait->m_params.m_types.size(); i ++ ) {
+                trait_path.m_params.m_types.push_back( ::HIR::TypeRef(m_current_trait->m_params.m_types[i].m_name, i) );
+            }
+            return trait_path;
+        }
         void visit_path_UfcsUnknown(const Span& sp, ::HIR::Path& p, ::HIR::Visitor::PathContext pc)
         {
             TRACE_FUNCTION_FR("UfcsUnknown - p=" << p, p);
@@ -449,10 +495,7 @@ namespace {
                 // If processing a trait, and the type is 'Self', search for the type/method on the trait
                 // - TODO: This could be encoded by a `Self: Trait` bound in the generics, but that may have knock-on issues?
                 if( te.name == "Self" && m_current_trait ) {
-                    auto trait_path = ::HIR::GenericPath( m_current_trait_path->get_simple_path() );
-                    for(unsigned int i = 0; i < m_current_trait->m_params.m_types.size(); i ++ ) {
-                        trait_path.m_params.m_types.push_back( ::HIR::TypeRef(m_current_trait->m_params.m_types[i].m_name, i) );
-                    }
+                    auto trait_path = this->get_current_trait_gp();
                     if( this->locate_in_trait_and_set(sp, pc, trait_path, *m_current_trait,  p.m_data) ) {
                         // Success!
                         return ;
@@ -463,26 +506,25 @@ namespace {
             )
             else {
                 // 1. Search for applicable inherent methods (COMES FIRST!)
-                for( const auto& impl : this->crate.m_type_impls )
-                {
-                    if( !impl.matches_type(*e.type) ) {
-                        continue ;
-                    }
+                if( this->crate.find_type_impls(*e.type, [](const auto& ty)->const auto&{return ty;}, [&](const auto& impl) {
                     DEBUG("- matched inherent impl " << *e.type);
                     // Search for item in this block
                     switch( pc )
                     {
                     case ::HIR::Visitor::PathContext::VALUE:
                         if( impl.m_methods.find(e.item) == impl.m_methods.end() ) {
-                            continue ;
+                            return false;
                         }
                         // Found it, just keep going (don't care about details here)
                         break;
                     case ::HIR::Visitor::PathContext::TRAIT:
                     case ::HIR::Visitor::PathContext::TYPE:
-                        continue ;
+                        return false;
                     }
 
+                    return true;
+                    }) )
+                {
                     auto new_data = ::HIR::Path::Data::make_UfcsInherent({ mv$(e.type), mv$(e.item), mv$(e.params)} );
                     p.m_data = mv$(new_data);
                     DEBUG("- Resolved, replace with " << p);
@@ -616,6 +658,17 @@ namespace {
             auto _ = m_resolve.set_item_generics(item.m_params);
             ::HIR::Visitor::visit_enum(p, item);
         }
+        void visit_associatedtype(::HIR::ItemPath p, ::HIR::AssociatedType& item)
+        {
+            // Push `Self = <Self as CurTrait>::Type` for processing defaults in the bounds.
+            auto path_aty = ::HIR::Path( ::HIR::TypeRef("Self", 0xFFFF), this->get_current_trait_gp(), p.get_name() );
+            auto ty_aty = ::HIR::TypeRef::new_path( mv$(path_aty), ::HIR::TypeRef::TypePathBinding::make_Opaque({}) );
+            m_self_types.push_back(&ty_aty);
+
+            ::HIR::Visitor::visit_associatedtype(p, item);
+
+            m_self_types.pop_back();
+        }
 
         void visit_type_impl(::HIR::TypeImpl& impl) override
         {
@@ -661,6 +714,12 @@ namespace {
             m_fcn_erased_count = 0;
             visit_type(item.m_return);
             m_fcn_path = nullptr;
+            // TODO: Visit arguments
+            for(auto& arg : item.m_args)
+            {
+                visit_type(arg.second);
+            }
+            m_fcn_ptr = nullptr;
 
             ::HIR::Visitor::visit_function(p, item);
         }

@@ -13,7 +13,7 @@
 class CExpanderRegisterDiagnostic:
     public ExpandProcMacro
 {
-    ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
+    ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
         return box$( TTStreamO(sp, TokenTree()) );
     }
@@ -21,7 +21,7 @@ class CExpanderRegisterDiagnostic:
 class CExpanderDiagnosticUsed:
     public ExpandProcMacro
 {
-    ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
+    ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
         return box$( TTStreamO(sp, TokenTree()) );
     }
@@ -29,10 +29,8 @@ class CExpanderDiagnosticUsed:
 class CExpanderBuildDiagnosticArray:
     public ExpandProcMacro
 {
-    ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
+    ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
-        if( ident != "" )
-            ERROR(sp, E0000, "__build_diagnostic_array! doesn't take an ident");
         auto lex = TTStream(sp, tt);
 
         Token   tok;
@@ -41,7 +39,7 @@ class CExpanderBuildDiagnosticArray:
         //auto crate_name = mv$(tok.str());
         GET_CHECK_TOK(tok, lex, TOK_COMMA);
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
-        auto item_name = mv$(tok.str());
+        auto item_name = tok.istr();
         GET_CHECK_TOK(tok, lex, TOK_EOF);
 
         ::std::vector<TokenTree>    toks;
@@ -51,9 +49,9 @@ class CExpanderBuildDiagnosticArray:
         toks.push_back( TOK_COLON );
         toks.push_back( TOK_SQUARE_OPEN );
         toks.push_back( TOK_PAREN_OPEN );
-        toks.push_back( TOK_AMP ); toks.push_back( Token(TOK_LIFETIME, "static") ); toks.push_back( Token(TOK_IDENT, "str") );
+        toks.push_back( TOK_AMP ); toks.push_back( Token(TOK_LIFETIME, RcString::new_interned("static")) ); toks.push_back( Token(TOK_IDENT, RcString::new_interned("str")) );
         toks.push_back( TOK_COMMA );
-        toks.push_back( TOK_AMP ); toks.push_back( Token(TOK_LIFETIME, "static") ); toks.push_back( Token(TOK_IDENT, "str") );
+        toks.push_back( TOK_AMP ); toks.push_back( Token(TOK_LIFETIME, RcString::new_interned("static")) ); toks.push_back( Token(TOK_IDENT, RcString::new_interned("str")) );
         toks.push_back( TOK_PAREN_CLOSE );
         toks.push_back( TOK_SEMICOLON );
         toks.push_back( Token(static_cast<uint64_t>(0), CORETYPE_UINT) );

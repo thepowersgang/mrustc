@@ -27,6 +27,9 @@
     <ClCompile Include="..\..\tools\minicargo\repository.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\tools\minicargo\cfg.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\tools\minicargo\manifest.h">

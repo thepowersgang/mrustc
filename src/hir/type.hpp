@@ -19,6 +19,8 @@
 
 namespace HIR {
 
+class TraitMarkings;
+class ExternType;
 class Struct;
 class Union;
 class Enum;
@@ -87,8 +89,18 @@ struct LifetimeRef
     static const uint32_t UNKNOWN = 0;
     static const uint32_t STATIC = 0xFFFF;
 
+    //RcString  name;
     // Values below 2^16 are parameters/static, values above are per-function region IDs allocated during region inferrence.
     uint32_t  binding = UNKNOWN;
+
+    LifetimeRef()
+        :binding(UNKNOWN)
+    {
+    }
+    LifetimeRef(uint32_t binding)
+        :binding(binding)
+    {
+    }
 
     static LifetimeRef new_static() {
         LifetimeRef rv;
@@ -96,6 +108,9 @@ struct LifetimeRef
         return rv;
     }
 
+    Ordering ord(const LifetimeRef& x) const {
+        return ::ord(binding, x.binding);
+    }
     bool operator==(const LifetimeRef& x) const {
         return binding == x.binding;
     }
@@ -152,11 +167,17 @@ public:
     TAGGED_UNION_EX(TypePathBinding, (), Unbound, (
     (Unbound, struct {}),   // Not yet bound, either during lowering OR during resolution (when associated and still being resolved)
     (Opaque, struct {}),    // Opaque, i.e. An associated type of a generic (or Self in a trait)
+    (ExternType, const ::HIR::ExternType*),
     (Struct, const ::HIR::Struct*),
     (Union, const ::HIR::Union*),
     (Enum, const ::HIR::Enum*)
     ), (), (), (
         TypePathBinding clone() const;
+
+        const TraitMarkings* get_trait_markings() const;
+
+        bool operator==(const TypePathBinding& x) const;
+        bool operator!=(const TypePathBinding& x) const { return !(*this == x); }
     )
     );
 
@@ -184,9 +205,16 @@ public:
     (Path, struct {
         ::HIR::Path path;
         TypePathBinding binding;
+
+        bool is_closure() const {
+            return path.m_data.is_Generic()
+                && path.m_data.as_Generic().m_path.m_components.back().size() > 8
+                && path.m_data.as_Generic().m_path.m_components.back().compare(0,8, "closure#") == 0
+                ;
+        }
         }),
     (Generic, struct {
-        ::std::string   name;
+        RcString    name;
         // 0xFFFF = Self, 0-255 = Type/Trait, 256-511 = Method, 512-767 = Placeholder
         unsigned int    binding;
 
@@ -208,7 +236,7 @@ public:
     (Array, struct {
         ::std::unique_ptr<TypeRef>  inner;
         ::std::shared_ptr<::HIR::ExprPtr> size;
-        size_t  size_val;
+        uint64_t  size_val;
         }),
     (Slice, struct {
         ::std::unique_ptr<TypeRef>  inner;
@@ -249,7 +277,7 @@ public:
     TypeRef(::std::vector< ::HIR::TypeRef> sts):
         m_data( Data::make_Tuple(mv$(sts)) )
     {}
-    TypeRef(::std::string name, unsigned int slot):
+    TypeRef(RcString name, unsigned int slot):
         m_data( Data::make_Generic({ mv$(name), slot }) )
     {}
     TypeRef(::HIR::TypeRef::Data x):
@@ -316,6 +344,24 @@ public:
 
     // Compares this type with another, using `resolve_placeholder` to get replacements for generics/infers in `x`
     Compare compare_with_placeholders(const Span& sp, const ::HIR::TypeRef& x, t_cb_resolve_type resolve_placeholder) const;
+
+    const ::HIR::SimplePath* get_sort_path() const {
+        // - Generic paths get sorted
+        if( TU_TEST1(this->m_data, Path, .path.m_data.is_Generic()) )
+        {
+            return &this->m_data.as_Path().path.m_data.as_Generic().m_path;
+        }
+        // - So do trait objects
+        else if( this->m_data.is_TraitObject() )
+        {
+            return &this->m_data.as_TraitObject().m_trait.m_path.m_path;
+        }
+        else
+        {
+            // Keep as nullptr, will search primitive list
+            return nullptr;
+        }
+    }
 };
 
 extern ::std::ostream& operator<<(::std::ostream& os, const ::HIR::TypeRef& ty);

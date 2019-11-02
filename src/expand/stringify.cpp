@@ -12,7 +12,7 @@
 class CExpander:
     public ExpandProcMacro
 {
-    ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
+    ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
         Token   tok;
         ::std::string rv;
@@ -22,8 +22,12 @@ class CExpander:
         {
             if(!rv.empty())
                 rv += " ";
+            DEBUG(" += " << tok);
             rv += tok.to_str();
         }
+
+        // TODO: Strip out any `{...}` sequences that aren't from nested
+        // strings.
 
         return box$( TTStreamO(sp, TokenTree(Token(TOK_STRING, mv$(rv)))) );
     }

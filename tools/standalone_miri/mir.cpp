@@ -5,10 +5,13 @@
  * mir/mir.cpp
  * - MIR (Middle Intermediate Representation) definitions
  */
+#include "../../src/include/rc_string.hpp"
 #include "../../src/mir/mir.hpp"
 #include "hir_sim.hpp"
 #include <iostream>
+#include <algorithm>    // std::min
 
+#if 0
 namespace std {
     template <typename T>
     inline ::std::ostream& operator<<(::std::ostream& os, const ::std::vector<T>& v) {
@@ -26,6 +29,7 @@ namespace std {
         return os;
     }
 }
+#endif
 
 namespace MIR {
     ::std::ostream& operator<<(::std::ostream& os, const Constant& v) {
@@ -62,43 +66,94 @@ namespace MIR {
             os << "\"" << e << "\"";
             ),
         (Const,
-            os << e.p;
+            os << *e.p;
             ),
         (ItemAddr,
-            os << "&" << e;
+            os << "&" << *e;
             )
         )
         return os;
     }
-    ::std::ostream& operator<<(::std::ostream& os, const LValue& x)
+    void LValue::RefCommon::fmt(::std::ostream& os) const
     {
-        TU_MATCHA( (x), (e),
+        TU_MATCHA( (m_lv->m_root), (e),
         (Return,
-            os << "Return";
+            os << "retval";
             ),
         (Argument,
-            os << "Argument(" << e.idx << ")";
+            os << "a" << e;
             ),
         (Local,
-            os << "Local(" << e << ")";
+            os << "_" << e;
             ),
         (Static,
-            os << "Static(" << e << ")";
-            ),
-        (Field,
-            os << "Field(" << e.field_index << ", " << *e.val << ")";
-            ),
-        (Deref,
-            os << "Deref(" << *e.val << ")";
-            ),
-        (Index,
-            os << "Index(" << *e.val << ", " << *e.idx << ")";
-            ),
-        (Downcast,
-            os << "Downcast(" << e.variant_index << ", " << *e.val << ")";
+            os << "(" << e << ")";
             )
         )
+        for(size_t i = 0; i < m_wrapper_count; i ++)
+        {
+            const LValue::Wrapper& w = m_lv->m_wrappers.at(i);
+            TU_MATCHA( (w), (e),
+            (Field,
+                os << "." << e;
+                ),
+            (Deref,
+                os << "*";
+                ),
+            (Index,
+                os << "[_" << e << "]";
+                ),
+            (Downcast,
+                os << "#" << e;
+                )
+            )
+        }
+    }
+
+    ::std::ostream& operator<<(::std::ostream& os, const LValue& x)
+    {
+        LValue::CRef(x).fmt(os);
         return os;
+    }
+
+    Ordering LValue::Storage::ord(const LValue::Storage& x) const
+    {
+        if( x.is_Static() )
+        {
+            if( this->is_Static() )
+                return this->as_Static().ord( x.as_Static() );
+            else
+                return OrdLess;
+        }
+        else
+        {
+            if( this->is_Static() )
+                return OrdGreater;
+        }
+
+        return ::ord(this->val, x.val);
+    }
+    Ordering LValue::ord(const LValue& x) const
+    {
+        auto rv = m_root.ord(x.m_root);
+        if( rv != OrdEqual )
+            return rv;
+        return ::ord(m_wrappers, x.m_wrappers);
+    }
+    Ordering LValue::RefCommon::ord(const LValue::RefCommon& x) const
+    {
+        Ordering rv;
+        //TRACE_FUNCTION_FR(FMT_CB(ss, this->fmt(ss); ss << " ? "; x.fmt(ss);), rv);
+        rv = m_lv->m_root.ord(x.m_lv->m_root);
+        if( rv != OrdEqual )
+            return rv;
+        for(size_t i = 0; i < ::std::min(m_wrapper_count, x.m_wrapper_count); i ++)
+        {
+            rv = m_lv->m_wrappers[i].ord(x.m_lv->m_wrappers[i]);
+            if( rv != OrdEqual )
+                return rv;
+        }
+        return (rv = ::ord(m_wrapper_count, x.m_wrapper_count));
     }
     ::std::ostream& operator<<(::std::ostream& os, const Param& x)
     {
@@ -295,6 +350,11 @@ namespace MIR {
             )
         )
         return os;
+    }
+
+    EnumCachePtr::~EnumCachePtr()
+    {
+        assert(!this->p);
     }
 }
 

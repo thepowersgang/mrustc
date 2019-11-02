@@ -74,14 +74,27 @@ struct ExprNode_Block:
     NODE_METHODS();
 };
 
+struct ExprNode_Try:
+    public ExprNode
+{
+    ExprNodeP   m_inner;
+
+    ExprNode_Try(ExprNodeP inner):
+        m_inner(mv$(inner))
+    {
+    }
+
+    NODE_METHODS();
+};
+
 struct ExprNode_Macro:
     public ExprNode
 {
-    ::std::string   m_name;
-    ::std::string   m_ident;
+    RcString   m_name;
+    RcString   m_ident;
     ::TokenTree m_tokens;
 
-    ExprNode_Macro(::std::string name, ::std::string ident, ::TokenTree&& tokens):
+    ExprNode_Macro(RcString name, RcString ident, ::TokenTree&& tokens):
         m_name(name),
         m_ident(ident),
         m_tokens( move(tokens) )
@@ -127,10 +140,10 @@ struct ExprNode_Flow:
         CONTINUE,
         BREAK,
     } m_type;
-    ::std::string   m_target;
+    RcString   m_target;
     unique_ptr<ExprNode>    m_value;
 
-    ExprNode_Flow(Type type, ::std::string target, unique_ptr<ExprNode>&& value):
+    ExprNode_Flow(Type type, RcString target, unique_ptr<ExprNode>&& value):
         m_type(type),
         m_target( move(target) ),
         m_value( move(value) )
@@ -232,24 +245,24 @@ struct ExprNode_Loop:
         WHILELET,
         FOR,
     } m_type;
-    ::std::string   m_label;
+    RcString   m_label;
     AST::Pattern    m_pattern;
     unique_ptr<ExprNode>    m_cond; // if NULL, loop is a 'loop'
     unique_ptr<ExprNode>    m_code;
 
     ExprNode_Loop(): m_type(LOOP) {}
-    ExprNode_Loop(::std::string label, unique_ptr<ExprNode> code):
+    ExprNode_Loop(RcString label, unique_ptr<ExprNode> code):
         m_type(LOOP),
         m_label( ::std::move(label) ),
         m_code( ::std::move(code) )
     {}
-    ExprNode_Loop(::std::string label, unique_ptr<ExprNode> cond, unique_ptr<ExprNode> code):
+    ExprNode_Loop(RcString label, unique_ptr<ExprNode> cond, unique_ptr<ExprNode> code):
         m_type(WHILE),
         m_label( ::std::move(label) ),
         m_cond( ::std::move(cond) ),
         m_code( ::std::move(code) )
     {}
-    ExprNode_Loop(::std::string label, Type type, AST::Pattern pattern, unique_ptr<ExprNode> val, unique_ptr<ExprNode> code):
+    ExprNode_Loop(RcString label, Type type, AST::Pattern pattern, unique_ptr<ExprNode> val, unique_ptr<ExprNode> code):
         m_type(type),
         m_label( ::std::move(label) ),
         m_pattern( ::std::move(pattern) ),
@@ -417,7 +430,7 @@ struct ExprNode_StructLiteral:
 {
     struct Ent {
         AttributeList   attrs;
-        ::std::string   name;
+        RcString   name;
         unique_ptr<ExprNode>    value;
     };
     typedef ::std::vector<Ent> t_values;
@@ -480,9 +493,9 @@ struct ExprNode_Field:
     public ExprNode
 {
     ::std::unique_ptr<ExprNode> m_obj;
-    ::std::string   m_name;
+    RcString   m_name;
 
-    ExprNode_Field(::std::unique_ptr<ExprNode>&& obj, ::std::string name):
+    ExprNode_Field(::std::unique_ptr<ExprNode>&& obj, RcString name):
         m_obj( ::std::move(obj) ),
         m_name( ::std::move(name) )
     {
@@ -634,6 +647,7 @@ public:
         virtual void visit(nt& node) = 0/*; \
         virtual void visit(const nt& node) = 0*/
     NT(ExprNode_Block);
+    NT(ExprNode_Try);
     NT(ExprNode_Macro);
     NT(ExprNode_Asm);
     NT(ExprNode_Flow);
@@ -679,6 +693,7 @@ public:
         virtual void visit(nt& node) override;/* \
         virtual void visit(const nt& node) override*/
     NT(ExprNode_Block);
+    NT(ExprNode_Try);
     NT(ExprNode_Macro);
     NT(ExprNode_Asm);
     NT(ExprNode_Flow);

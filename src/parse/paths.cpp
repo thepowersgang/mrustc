@@ -39,6 +39,9 @@ AST::Path Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode)
         return AST::Path(AST::Path::TagSuper(), count, Parse_PathNodes(lex, generic_mode));
         }
 
+    case TOK_RWORD_CRATE:
+        GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
+        return Parse_Path(lex, true, generic_mode);
     case TOK_DOUBLE_COLON:
         return Parse_Path(lex, true, generic_mode);
 
@@ -80,8 +83,14 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
     Token   tok;
     if( is_abs )
     {
-        if( GET_TOK(tok, lex) == TOK_STRING ) {
-            ::std::string   cratename = tok.str();
+        // QUIRK: `::crate::foo` is valid (semi-surprisingly)
+        if( LOOK_AHEAD(lex) == TOK_RWORD_CRATE ) {
+            GET_CHECK_TOK(tok, lex, TOK_RWORD_CRATE);
+            GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
+            return AST::Path("", Parse_PathNodes(lex, generic_mode));
+        }
+        else if( GET_TOK(tok, lex) == TOK_STRING ) {
+            auto cratename = RcString::new_interned(tok.str());
             GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
             return AST::Path(cratename, Parse_PathNodes(lex, generic_mode));
         }
@@ -94,6 +103,7 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
         // TODO: TOK_INTERPOLATED_IDENT?
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
         auto hygine = lex.getHygiene();
+        DEBUG("hygine = " << hygine);
         PUTBACK(tok, lex);
         return AST::Path(AST::Path::TagRelative(), mv$(hygine), Parse_PathNodes(lex, generic_mode));
     }
@@ -112,7 +122,7 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
         ::AST::PathParams   params;
 
         CHECK_TOK(tok, TOK_IDENT);
-        auto component = mv$( tok.str() );
+        auto component = mv$( tok.istr() );
 
         GET_TOK(tok, lex);
         if( generic_mode == PATH_GENERIC_TYPE )
@@ -133,18 +143,14 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
                 auto ps = lex.start_span();
                 DEBUG("Fn() hack");
                 ::std::vector<TypeRef>  args;
-                if( GET_TOK(tok, lex) == TOK_PAREN_CLOSE )
-                {
-                    // Empty list
-                }
-                else
-                {
-                    PUTBACK(tok, lex);
-                    do {
-                        // TODO: Trailing commas
-                        args.push_back( Parse_Type(lex) );
-                    } while( GET_TOK(tok, lex) == TOK_COMMA );
-                }
+                do {
+                    // Trailing comma or empty list support
+                    if( lex.lookahead(0) == TOK_PAREN_CLOSE ) {
+                        GET_TOK(tok, lex);
+                        break;
+                    }
+                    args.push_back( Parse_Type(lex) );
+                } while( GET_TOK(tok, lex) == TOK_COMMA );
                 CHECK_TOK(tok, TOK_PAREN_CLOSE);
 
                 TypeRef ret_type = TypeRef( TypeRef::TagUnit(), Span(tok.get_pos()) );
@@ -160,7 +166,7 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
                 params = ::AST::PathParams {
                     {},
                     ::make_vec1( TypeRef(TypeRef::TagTuple(), lex.end_span(ps), mv$(args)) ),
-                    ::make_vec1( ::std::make_pair( ::std::string("Output"), mv$(ret_type) ) )
+                    ::make_vec1( ::std::make_pair( RcString::new_interned("Output"), mv$(ret_type) ) )
                     };
 
                 GET_TOK(tok, lex);
@@ -204,7 +210,7 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
 
     ::std::vector<TypeRef>  types;
     ::std::vector<AST::LifetimeRef>   lifetimes;
-    ::std::vector< ::std::pair< ::std::string, TypeRef > > assoc_bounds;
+    ::std::vector< ::std::pair< RcString, TypeRef > > assoc_bounds;
 
     do {
         if( LOOK_AHEAD(lex) == TOK_GT || LOOK_AHEAD(lex) == TOK_DOUBLE_GT || LOOK_AHEAD(lex) == TOK_GTE || LOOK_AHEAD(lex) == TOK_DOUBLE_GT_EQUAL ) {
@@ -219,7 +225,7 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
         case TOK_IDENT:
             if( LOOK_AHEAD(lex) == TOK_EQUAL )
             {
-                ::std::string name = mv$(tok.str());
+                auto name = tok.istr();
                 GET_CHECK_TOK(tok, lex, TOK_EQUAL);
                 assoc_bounds.push_back( ::std::make_pair( mv$(name), Parse_Type(lex,false) ) );
                 break;

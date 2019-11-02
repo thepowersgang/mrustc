@@ -12,21 +12,39 @@
 {
 }
 
+namespace {
+    template<typename T>
+    void visit_impls(::HIR::Crate::ImplGroup<T>& g, ::std::function<void(T&)> cb) {
+        for( auto& impl_group : g.named )
+        {
+            for( auto& impl : impl_group.second )
+            {
+                cb(*impl);
+            }
+        }
+        for( auto& impl : g.non_named )
+        {
+            cb(*impl);
+        }
+        for( auto& impl : g.generic )
+        {
+            cb(*impl);
+        }
+    }
+}
+
 void ::HIR::Visitor::visit_crate(::HIR::Crate& crate)
 {
     this->visit_module(::HIR::ItemPath(crate.m_crate_name), crate.m_root_module );
 
-    for( auto& ty_impl : crate.m_type_impls )
+    visit_impls<::HIR::TypeImpl>(crate.m_type_impls, [&](::HIR::TypeImpl& ty_impl){ this->visit_type_impl(ty_impl); });
+    for( auto& impl_group : crate.m_trait_impls )
     {
-        this->visit_type_impl(ty_impl);
+        visit_impls<::HIR::TraitImpl>(impl_group.second, [&](::HIR::TraitImpl& ty_impl){ this->visit_trait_impl(impl_group.first, ty_impl); });
     }
-    for( auto& impl : crate.m_trait_impls )
+    for( auto& impl_group : crate.m_marker_impls )
     {
-        this->visit_trait_impl(impl.first, impl.second);
-    }
-    for( auto& impl : crate.m_marker_impls )
-    {
-        this->visit_marker_impl(impl.first, impl.second);
+        visit_impls<::HIR::MarkerImpl>(impl_group.second, [&](::HIR::MarkerImpl& ty_impl){ this->visit_marker_impl(impl_group.first, ty_impl); });
     }
 }
 
@@ -46,6 +64,9 @@ void ::HIR::Visitor::visit_module(::HIR::ItemPath p, ::HIR::Module& mod)
         (TypeAlias,
             DEBUG("type " << name);
             this->visit_type_alias(p + name, e);
+            ),
+        (ExternType,
+            DEBUG("extern type " << name);
             ),
         (Enum,
             DEBUG("enum " << name);
@@ -168,10 +189,9 @@ void ::HIR::Visitor::visit_trait(::HIR::ItemPath p, ::HIR::Trait& item)
         this->visit_trait_path(par);
     }
     for(auto& i : item.m_types) {
+        auto item_path = ::HIR::ItemPath(trait_ip, i.first.c_str());
         DEBUG("type " << i.first);
-        for(auto& bound : i.second.m_trait_bounds)
-            this->visit_trait_path(bound);
-        this->visit_type(i.second.m_default);
+        this->visit_associatedtype(item_path, i.second);
     }
     for(auto& i : item.m_values) {
         auto item_path = ::HIR::ItemPath(trait_ip, i.first.c_str());
@@ -230,12 +250,21 @@ void ::HIR::Visitor::visit_enum(::HIR::ItemPath p, ::HIR::Enum& item)
 }
 void ::HIR::Visitor::visit_union(::HIR::ItemPath p, ::HIR::Union& item)
 {
+    TRACE_FUNCTION_F(p);
     this->visit_params(item.m_params);
     for(auto& var : item.m_variants)
         this->visit_type(var.second.ent);
 }
+void ::HIR::Visitor::visit_associatedtype(ItemPath p, ::HIR::AssociatedType& item)
+{
+    TRACE_FUNCTION_F(p);
+    for(auto& bound : item.m_trait_bounds)
+        this->visit_trait_path(bound);
+    this->visit_type(item.m_default);
+}
 void ::HIR::Visitor::visit_function(::HIR::ItemPath p, ::HIR::Function& item)
 {
+    TRACE_FUNCTION_F(p);
     this->visit_params(item.m_params);
     for(auto& arg : item.m_args)
     {
@@ -247,11 +276,13 @@ void ::HIR::Visitor::visit_function(::HIR::ItemPath p, ::HIR::Function& item)
 }
 void ::HIR::Visitor::visit_static(::HIR::ItemPath p, ::HIR::Static& item)
 {
+    TRACE_FUNCTION_F(p);
     this->visit_type(item.m_type);
     this->visit_expr(item.m_value);
 }
 void ::HIR::Visitor::visit_constant(::HIR::ItemPath p, ::HIR::Constant& item)
 {
+    TRACE_FUNCTION_F(p);
     this->visit_params(item.m_params);
     this->visit_type(item.m_type);
     this->visit_expr(item.m_value);
@@ -259,6 +290,7 @@ void ::HIR::Visitor::visit_constant(::HIR::ItemPath p, ::HIR::Constant& item)
 
 void ::HIR::Visitor::visit_params(::HIR::GenericParams& params)
 {
+    TRACE_FUNCTION_F(params.fmt_args() << params.fmt_bounds());
     for(auto& tps : params.m_types)
         this->visit_type( tps.m_default );
     for(auto& bound : params.m_bounds )

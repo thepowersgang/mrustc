@@ -13,20 +13,15 @@
 #include <algorithm>
 #include <cctype>   // toupper
 #include "repository.h"
+#include "cfg.hpp"
 
 // TODO: Extract this from the target at runtime (by invoking the compiler on the passed target)
 #ifdef _WIN32
 # define TARGET_NAME    "i586-windows-msvc"
-# define CFG_UNIX   false
-# define CFG_WINDOWS true
 #elif defined(__NetBSD__)
 # define TARGET_NAME "x86_64-unknown-netbsd"
-# define CFG_UNIX   true
-# define CFG_WINDOWS false
 #else
 # define TARGET_NAME "x86_64-unknown-linux-gnu"
-# define CFG_UNIX   true
-# define CFG_WINDOWS false
 #endif
 
 static ::std::vector<::std::shared_ptr<PackageManifest>>    g_loaded_manifests;
@@ -135,6 +130,16 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
                 }
                 rv.m_links = key_val.value.as_string();
             }
+            else if( key == "autotests" )
+            {
+                // TODO: Fix the outer makefile so it doesn't need `foo-test`
+                // to be created.
+                //rv.m_create_auto_test = key_val.value.as_bool();
+            }
+            else if( key == "autobenches" )
+            {
+                //rv.m_create_auto_bench = key_val.value.as_bool();
+            }
             else
             {
                 // Unknown value in `package`
@@ -184,41 +189,27 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
 
             target_edit_from_kv(*it, key_val, 2);
         }
-        else if( section == "dependencies" )
+        else if( section == "dependencies" || section == "build-dependencies" || section == "dev-dependencies" )
         {
+            ::std::vector<PackageRef>& dep_list =
+                section == "dependencies" ? rv.m_dependencies :
+                section == "build-dependencies" ? rv.m_build_dependencies :
+                /*section == "dev-dependencies" ? */ rv.m_dev_dependencies /*:
+                throw ""*/
+                ;
             assert(key_val.path.size() > 1);
 
             const auto& depname = key_val.path[1];
 
             // Find/create dependency descriptor
-            auto it = ::std::find_if(rv.m_dependencies.begin(), rv.m_dependencies.end(), [&](const auto& x) { return x.m_name == depname; });
-            bool was_added = (it == rv.m_dependencies.end());
+            auto it = ::std::find_if(dep_list.begin(), dep_list.end(), [&](const auto& x) { return x.m_name == depname; });
+            bool was_added = (it == dep_list.end());
             if( was_added )
             {
-                it = rv.m_dependencies.insert(it, PackageRef{ depname });
+                it = dep_list.insert(it, PackageRef{ depname });
             }
 
             it->fill_from_kv(was_added, key_val, 2);
-        }
-        else if( section == "build-dependencies" )
-        {
-            assert(key_val.path.size() > 1);
-
-            const auto& depname = key_val.path[1];
-
-            // Find/create dependency descriptor
-            auto it = ::std::find_if(rv.m_build_dependencies.begin(), rv.m_build_dependencies.end(), [&](const auto& x) { return x.m_name == depname; });
-            bool was_added = (it == rv.m_build_dependencies.end());
-            if(was_added)
-            {
-                it = rv.m_build_dependencies.insert(it, PackageRef{ depname });
-            }
-
-            it->fill_from_kv(was_added, key_val, 2);
-        }
-        else if( section == "dev-dependencies" )
-        {
-            // TODO: Developemnt (test/bench) deps
         }
         else if( section == "patch" )
         {
@@ -241,169 +232,7 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
             // - It can be a target spec, or a cfg(foo) same as rustc
             bool success;
             if( cfg.substr(0, 4) == "cfg(" ) {
-                class Parser
-                {
-                public:
-                    class Tok
-                    {
-                        friend class Parser;
-                        const char* s;
-                        const char* e;
-                        Tok(const char* s, const char* e):
-                            s(s), e(e)
-                        {
-                        }
-                    public:
-                        bool operator==(const char* v) const {
-                            return (strlen(v) == e - s) && memcmp(s, v, e-s) == 0;
-                        }
-                        bool operator!=(const char* v) const {
-                            return (strlen(v) != e - s) || memcmp(s, v, e-s) != 0;
-                        }
-                        ::std::string to_string() const {
-                            return ::std::string(s, e);
-                        }
-                    };
-                private:
-                    const char* m_pos;
-                    Tok m_cur;
-
-                public:
-                    Parser(const char* s):
-                        m_pos(s),
-                        m_cur(nullptr,nullptr)
-                    {
-                        consume();
-                    }
-                    const Tok& cur() const {
-                        return m_cur;
-                    }
-
-                    Tok consume() {
-                        auto rv = m_cur;
-                        m_cur = get_next();
-                        //::std::cout << "consume: " << rv.to_string() << " => " << m_cur.to_string() << ::std::endl;
-                        return rv;
-                    }
-                    bool consume_if(const char* s) {
-                        if( cur() == s ) {
-                            consume();
-                            return true;
-                        }
-                        else {
-                            return false;
-                        }
-                    }
-                private:
-                    Tok get_next() {
-                        while(*m_pos == ' ')
-                            m_pos ++;
-                        if(*m_pos == 0)
-                            return Tok { m_pos, m_pos };
-                        switch(*m_pos)
-                        {
-                        case '(': case ')':
-                        case ',': case '=':
-                            return Tok { m_pos++, m_pos };
-                        case '"': {
-                            auto s = m_pos;
-                            m_pos ++;
-                            while( *m_pos != '"' )
-                            {
-                                if( *m_pos == '\\' )
-                                {
-                                    TODO("Escape sequences in cfg parser");
-                                }
-                                m_pos ++;
-                            }
-                            m_pos ++;
-                            return Tok { s, m_pos }; }
-                        default:
-                            if( isalnum(*m_pos) || *m_pos == '_' )
-                            {
-                                auto s = m_pos;
-                                while(isalnum(*m_pos) || *m_pos == '_')
-                                    m_pos ++;
-                                return Tok { s, m_pos };
-                            }
-                            else
-                            {
-                                throw ::std::runtime_error(format("Unexpected character in cfg() - ", *m_pos));
-                            }
-                        }
-                    }
-                };
-
-                struct H {
-                    static bool check_cfg(Parser& p)
-                    {
-                        if( p.consume_if("not") ) {
-                            if( !p.consume_if("(") )
-                                throw ::std::runtime_error("Expected '(' after `not`");
-                            auto rv = !check_cfg(p);
-                            if( !p.consume_if(")") )
-                                throw ::std::runtime_error("Expected ')' after `not` content");
-                            return rv;
-                        }
-                        else if( p.consume_if("all") ) {
-                            if( !p.consume_if("(") )
-                                throw ::std::runtime_error("Expected '(' after `all`");
-                            bool rv = true;
-                            do
-                            {
-                                rv &= check_cfg(p);
-                            } while(p.consume_if(","));
-                            if( !p.consume_if(")") )
-                                throw ::std::runtime_error("Expected ')' after `all` content");
-                            return rv;
-                        }
-                        // Strings
-                        else if( p.consume_if("target_os") ) {
-                            if( !p.consume_if("=") )
-                                throw ::std::runtime_error("Expected '=' after target_os");
-                            auto t = p.consume();
-                            if( t == "\"emscripten\"" ) {
-                                return false;
-                            }
-                            else if( t == "\"macos\"" ) {
-                                return false;
-                            }
-                            else {
-                                TODO("Handle target_os string - " << t.to_string());
-                            }
-                        }
-                        else if( p.consume_if("target_arch") ) {
-                            if( !p.consume_if("=") )
-                                throw ::std::runtime_error("Expected '=' after target");
-                            auto t = p.consume();
-                            if( t == "\"wasm32\"" ) {
-                                return false;
-                            }
-                            else{
-                                TODO("Handle target_arch string - " << t.to_string());
-                            }
-                        }
-                        // Flags
-                        else if( p.consume_if("unix") ) {
-                            return CFG_UNIX;
-                        }
-                        else if( p.consume_if("windows") ) {
-                            return CFG_WINDOWS;
-                        }
-                        else if( p.consume_if("stage0") ) {
-                            return false;
-                        }
-                        else {
-                            TODO("Unknown fragment in cfg - " << p.cur().to_string());
-                            throw ::std::runtime_error("");
-                        }
-                    }
-                };
-
-                Parser p { cfg.data() + 4 };
-                success = H::check_cfg(p);
-                if( !p.consume_if(")") )
-                    throw ::std::runtime_error(format("Expected ')' after cfg condition - got", p.cur().to_string()));
+                success = Cfg_Check(cfg.c_str());
             }
             else {
                 // It's a target name
@@ -412,25 +241,34 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
             // If so, parse as if the path was `real_section....`
             if( success )
             {
-                if( real_section == "dependencies" )
+                if( real_section == "dependencies"
+                    || real_section == "dev-dependencies" 
+                    || real_section == "build-dependencies" 
+                    )
                 {
+                    ::std::vector<PackageRef>& dep_list =
+                        real_section == "dependencies" ? rv.m_dependencies :
+                        real_section == "build-dependencies" ? rv.m_build_dependencies :
+                        /*real_section == "dev-dependencies" ? */ rv.m_dev_dependencies /*:
+                        throw ""*/
+                        ;
                     assert(key_val.path.size() > 3);
 
                     const auto& depname = key_val.path[3];
 
                     // Find/create dependency descriptor
-                    auto it = ::std::find_if(rv.m_dependencies.begin(), rv.m_dependencies.end(), [&](const auto& x) { return x.m_name == depname; });
-                    bool was_added = (it == rv.m_dependencies.end());
+                    auto it = ::std::find_if(dep_list.begin(), dep_list.end(), [&](const auto& x) { return x.m_name == depname; });
+                    bool was_added = (it == dep_list.end());
                     if( was_added )
                     {
-                        it = rv.m_dependencies.insert(it, PackageRef{ depname });
+                        it = dep_list.insert(it, PackageRef{ depname });
                     }
 
                     it->fill_from_kv(was_added, key_val, 4);
                 }
                 else
                 {
-                    TODO("Unknown manifest section for target - " << real_section);
+                    TODO(toml_file.lexer() << ": Unknown manifest section '" << real_section << "' in `target`");
                 }
             }
         }
@@ -514,10 +352,21 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
                     tgt.m_path = "src/main.rs";
                 }
                 else {
-                    // TODO: What about src/bin/foo/main.rs?
+                    // TODO: Error if both exist
+                    // TODO: More complex search rules
                     tgt.m_path = ::helpers::path("src") / "bin" / tgt.m_name.c_str() + ".rs";
+                    if( !::std::ifstream(package_dir / tgt.m_path).good() )
+                        tgt.m_path = ::helpers::path("src") / "bin" / tgt.m_name.c_str() / "main.rs";
+                    //if( !::std::ifstream(package_dir / tgt.m_path).good() )
+                    //    throw ::std::runtime_error(format("Unable to find source file for ", tgt.m_name, " - ", package_dir / tgt.m_path));
                 }
                 break;
+            case PackageTarget::Type::Test:
+            case PackageTarget::Type::Bench:
+                // no defaults
+                break;
+            case PackageTarget::Type::Example:
+                TODO("Default/implicit path for examples");
             }
         }
         if(tgt.m_name == "")
@@ -525,6 +374,19 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
             tgt.m_name.reserve(rv.m_name.size());
             for(auto c : rv.m_name)
                 tgt.m_name += (c == '-' ? '_' : c);
+        }
+    }
+
+    // If there's a lib target, add a test target using the same path
+    {
+        auto it = ::std::find_if(rv.m_targets.begin(), rv.m_targets.end(), [&](const auto& t) { return t.m_type == PackageTarget::Type::Lib; });
+        if( it != rv.m_targets.end() )
+        {
+            auto path = it->m_path;
+            auto name = it->m_name + "-test";
+            rv.m_targets.push_back(PackageTarget { PackageTarget::Type::Test });
+            rv.m_targets.back().m_name = name;
+            rv.m_targets.back().m_path = path;
         }
     }
 
@@ -542,7 +404,7 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
         // Explicitly disabled `[package] build = false`
         rv.m_build_script = "";
     }
-    else if( rv.m_build_script != "" )
+    else if( rv.m_build_script == "" )
     {
         // Not set, check for a "build.rs" file
         if( ::std::ifstream( package_dir / "build.rs").good() )
@@ -611,7 +473,26 @@ namespace
         }
         else if( key == "crate-type" )
         {
-            // TODO: Support crate types
+            //assert_kv_size(kv, base_idx + 1);
+            //assert_type(kv, base_idx + 1);
+            assert(kv.path.size() == base_idx + 1);
+            if( !target.m_crate_types.empty() ) {
+                // TODO: Error, multiple instances
+            }
+            for(const auto& sv : kv.value.m_sub_values)
+            {
+                const auto& s = sv.as_string();
+                if(s == "rlib") {
+                    target.m_crate_types.push_back(PackageTarget::CrateType::rlib);
+                }
+                else if(s == "dylib") {
+                    target.m_crate_types.push_back(PackageTarget::CrateType::dylib);
+                }
+                // TODO: Other crate types
+                else {
+                    throw ::std::runtime_error(format("Unknown crate type - ", s));
+                }
+            }
         }
         else if( key == "required-features" )
         {
@@ -798,12 +679,19 @@ void PackageManifest::set_features(const ::std::vector<::std::string>& features,
                 it2->m_optional_enabled = true;
             }
         }
+        {
+            auto it2 = ::std::find_if(m_dev_dependencies.begin(), m_dev_dependencies.end(), [&](const auto& x){ return x.m_name == featname; });
+            if(it2 != m_dev_dependencies.end())
+            {
+                it2->m_optional_enabled = true;
+            }
+        }
     }
 
     // Return true if any features were activated
     //return start < m_active_features.size();
 }
-void PackageManifest::load_dependencies(Repository& repo, bool include_build)
+void PackageManifest::load_dependencies(Repository& repo, bool include_build, bool include_dev)
 {
     TRACE_FUNCTION_F(m_name);
     DEBUG("Loading depencencies for " << m_name);
@@ -819,16 +707,30 @@ void PackageManifest::load_dependencies(Repository& repo, bool include_build)
         dep.load_manifest(repo, base_path, include_build);
     }
 
-    // TODO: Only enable if build script overrides aren't enabled.
+    // Load build deps if there's a build script AND build scripts are enabled
     if( m_build_script != "" && include_build )
     {
+        DEBUG("- Build dependencies");
         for(auto& dep : m_build_dependencies)
         {
             if( dep.m_optional && !dep.m_optional_enabled )
             {
                 continue ;
             }
-            dep.load_manifest(repo, base_path, true);
+            dep.load_manifest(repo, base_path, include_build);
+        }
+    }
+    // Load dev dependencies if the caller has indicated they should be
+    if( include_dev )
+    {
+        DEBUG("- Dev dependencies");
+        for(auto& dep : m_dev_dependencies)
+        {
+            if( dep.m_optional && !dep.m_optional_enabled )
+            {
+                continue ;
+            }
+            dep.load_manifest(repo, base_path, include_build);
         }
     }
 }
@@ -1042,6 +944,10 @@ PackageVersionSpec PackageVersionSpec::from_string(const ::std::string& s)
             // Default, compatible
             pos ++;
             break;
+        case '~':
+            ty = PackageVersionSpec::Bound::Type::MinorCompatible;
+            pos ++;
+            break;
         case '=':
             ty = PackageVersionSpec::Bound::Type::Equal;
             pos ++;
@@ -1090,6 +996,17 @@ PackageVersionSpec PackageVersionSpec::from_string(const ::std::string& s)
             {
                 pos ++;
                 v.patch = H::parse_i(s, pos);
+
+                if( pos < s.size() && s[pos] == '-' )
+                {
+                    // Save tag (sequence of dot-seprated alpha-numeric identifiers)
+                    auto tag_start = pos+1;
+                    do {
+                        // Could check the format, but meh.
+                        pos ++;
+                    } while(pos < s.size() && !isblank(s[pos]) && s[pos] != ',' );
+                    //v.tag = ::std::string(s.c_str() + tag_start, s.c_str() + pos);
+                }
             }
             else
             {
@@ -1098,6 +1015,9 @@ PackageVersionSpec PackageVersionSpec::from_string(const ::std::string& s)
         }
         else
         {
+            // NOTE: This changes the behaviour of ~ rules to be bounded on the major version instead
+            if( ty == PackageVersionSpec::Bound::Type::MinorCompatible )
+                ty = PackageVersionSpec::Bound::Type::Compatible;
             v.minor = 0;
             v.patch = 0;
         }
@@ -1110,7 +1030,7 @@ PackageVersionSpec PackageVersionSpec::from_string(const ::std::string& s)
             break ;
     } while(pos < s.size() && s[pos++] == ',');
     if( pos != s.size() )
-        throw ::std::runtime_error(::format( "Bad version string, pos=", pos ));
+        throw ::std::runtime_error(::format( "Bad version string '", s, "', pos=", pos ));
     return rv;
 }
 bool PackageVersionSpec::accepts(const PackageVersion& v) const
@@ -1120,11 +1040,17 @@ bool PackageVersionSpec::accepts(const PackageVersion& v) const
         switch(b.ty)
         {
         case Bound::Type::Compatible:
-            // To be compatible, it has to be higher?
-            // - TODO: Isn't a patch version compatible?
+            // ^ rules are >= specified, and < next major/breaking
             if( !(v >= b.ver) )
                 return false;
             if( !(v < b.ver.next_breaking()) )
+                return false;
+            break;
+        case Bound::Type::MinorCompatible:
+            // ~ rules are >= specified, and < next minor
+            if( !(v >= b.ver) )
+                return false;
+            if( !(v < b.ver.next_minor()) )
                 return false;
             break;
         case Bound::Type::GreaterEqual:

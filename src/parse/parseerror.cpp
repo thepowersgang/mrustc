@@ -61,7 +61,7 @@ ParseError::Unexpected::Unexpected(const TokenStream& lex, const Token& tok)//:
     Span pos = tok.get_pos();
     if(pos.filename == "")
         pos = lex.point_span();
-    ::std::cout << pos << ": Unexpected(" << tok << ")" << ::std::endl;
+    ERROR(pos, E0000, "Unexpected token " << tok);
 }
 ParseError::Unexpected::Unexpected(const TokenStream& lex, const Token& tok, Token exp)//:
 //    m_tok( mv$(tok) )
@@ -69,22 +69,22 @@ ParseError::Unexpected::Unexpected(const TokenStream& lex, const Token& tok, Tok
     Span pos = tok.get_pos();
     if(pos.filename == "")
         pos = lex.point_span();
-    ::std::cout << pos << ": Unexpected(" << tok << ", " << exp << ")" << ::std::endl;
+    ERROR(pos, E0000, "Unexpected token " << tok << ", expected " << exp);
 }
 ParseError::Unexpected::Unexpected(const TokenStream& lex, const Token& tok, ::std::vector<eTokenType> exp)
 {
     Span pos = tok.get_pos();
     if(pos.filename == "")
         pos = lex.point_span();
-    ::std::cout << pos << ": Unexpected " << tok << ", expected ";
-    bool f = true;
-    for(auto v: exp) {
-        if(!f)
-            ::std::cout << " or ";
-        f = false;
-        ::std::cout << Token::typestr(v);
-    }
-    ::std::cout << ::std::endl;
+    ERROR(pos, E0000, "Unexpected token " << tok << ", expected one of " << FMT_CB(os, {
+        bool f = true;
+        for(auto v: exp) {
+            if(!f)
+                os << " or ";
+            f = false;
+            os << Token::typestr(v);
+        }
+        }));
 }
 ParseError::Unexpected::~Unexpected() throw()
 {

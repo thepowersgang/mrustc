@@ -31,6 +31,7 @@ struct ProtoSpan
 };
 struct Span
 {
+//public:
     ::std::shared_ptr<Span> outer_span; // Expansion target for macros
     RcString    filename;
 

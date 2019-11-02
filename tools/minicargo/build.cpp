@@ -24,6 +24,7 @@ extern int _putenv_s(const char*, const char*);
 #include <vector>
 #include <algorithm>
 #include <sstream>  // stringstream
+#include <fstream>  // ifstream
 #include <cstdlib>  // setenv
 #ifndef DISABLE_MULTITHREAD
 # include <thread>
@@ -52,8 +53,10 @@ extern int _putenv_s(const char*, const char*);
 
 #ifdef _WIN32
 # define EXESUF ".exe"
+# define DLLSUF ".dll"
 #else
 # define EXESUF ""
+# define DLLSUF ".so"
 #endif
 #include <target_detect.h>	// tools/common/target_detect.h
 #define HOST_TARGET	DEFAULT_TARGET_NAME
@@ -61,17 +64,19 @@ extern int _putenv_s(const char*, const char*);
 /// Class abstracting access to the compiler
 class Builder
 {
-    BuildOptions    m_opts;
+    const BuildOptions& m_opts;
     ::helpers::path m_compiler_path;
+    size_t m_total_targets;
+    mutable size_t m_targets_built;
 #ifndef _WIN32
     mutable ::std::mutex    chdir_mutex;
 #endif
 
 public:
-    Builder(BuildOptions opts);
+    Builder(const BuildOptions& opts, size_t total_targets);
 
-    bool build_target(const PackageManifest& manifest, const PackageTarget& target, bool is_for_host) const;
-    bool build_library(const PackageManifest& manifest, bool is_for_host) const;
+    bool build_target(const PackageManifest& manifest, const PackageTarget& target, bool is_for_host, size_t index) const;
+    bool build_library(const PackageManifest& manifest, bool is_for_host, size_t index) const;
     ::helpers::path build_build_script(const PackageManifest& manifest, bool is_for_host, bool* out_is_rebuilt) const;
 
 private:
@@ -217,6 +222,18 @@ BuildList::BuildList(const PackageManifest& manifest, const BuildOptions& opts):
     {
         b.m_list.push_back({ &manifest, !cross_compiling, 0 });
     }
+    if( opts.mode != BuildOptions::Mode::Normal)
+    {
+        for(const auto& dep : manifest.dev_dependencies())
+        {
+            if( dep.is_disabled() )
+            {
+                continue ;
+            }
+            DEBUG(manifest.name() << ": Dependency " << dep.name());
+            b.add_package(dep.get_package(), 1, !opts.build_script_overrides.is_valid(), !cross_compiling);
+        }
+    }
 
     // TODO: Add the binaries too?
     // - They need slightly different treatment.
@@ -260,7 +277,7 @@ BuildList::BuildList(const PackageManifest& manifest, const BuildOptions& opts):
 bool BuildList::build(BuildOptions opts, unsigned num_jobs)
 {
     bool include_build = !opts.build_script_overrides.is_valid();
-    Builder builder { ::std::move(opts) };
+    Builder builder { opts, m_list.size() };
 
     // Pre-count how many dependencies are remaining for each package
     struct BuildState
@@ -413,7 +430,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs)
                     }
 
                     DEBUG("Thread " << my_idx << ": Starting " << cur << " - " << list[cur].package->name());
-                    if( ! builder->build_library(*list[cur].package, list[cur].is_host) )
+                    if( ! builder->build_library(*list[cur].package, list[cur].is_host, cur) )
                     {
                         queue.failure = true;
                         queue.signal_all();
@@ -474,7 +491,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs)
         {
             auto cur = state.get_next();
 
-            if( ! builder.build_library(*m_list[cur].package, m_list[cur].is_host) )
+            if( ! builder.build_library(*m_list[cur].package, m_list[cur].is_host, cur) )
             {
                 return false;
             }
@@ -488,7 +505,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs)
         {
             auto cur = state.get_next();
 
-            if( ! builder.build_library(*m_list[cur].package, m_list[cur].is_host) )
+            if( ! builder.build_library(*m_list[cur].package, m_list[cur].is_host, cur) )
             {
                 return false;
             }
@@ -532,14 +549,26 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs)
     }
 
     // Now that all libraries are done, build the binaries (if present)
-    return this->m_root_manifest.foreach_binaries([&](const auto& bin_target) {
-        return builder.build_target(this->m_root_manifest, bin_target, /*is_for_host=*/false);
-        });
+    switch(opts.mode)
+    {
+    case BuildOptions::Mode::Normal:
+        return this->m_root_manifest.foreach_binaries([&](const auto& bin_target) {
+            return builder.build_target(this->m_root_manifest, bin_target, /*is_for_host=*/false, ~0u);
+            });
+    case BuildOptions::Mode::Test:
+        // TODO: What about unit tests?
+        return this->m_root_manifest.foreach_ty(PackageTarget::Type::Test, [&](const auto& test_target) {
+            return builder.build_target(this->m_root_manifest, test_target, /*is_for_host=*/true, ~0u);
+            });
+    }
+    throw "unreachable";
 }
 
 
-Builder::Builder(BuildOptions opts):
-    m_opts(::std::move(opts))
+Builder::Builder(const BuildOptions& opts, size_t total_targets):
+    m_opts(opts),
+    m_total_targets(total_targets),
+    m_targets_built(0)
 {
     if( const char* override_path = getenv("MRUSTC_PATH") ) {
         m_compiler_path = override_path;
@@ -614,12 +643,40 @@ Builder::Builder(BuildOptions opts):
     switch(target.m_type)
     {
     case PackageTarget::Type::Lib:
-        if(crate_type) {
-            *crate_type = target.m_is_proc_macro ? "proc-macro" : "rlib";
+        switch( target.m_crate_types.size() > 0
+                ? target.m_crate_types.front()
+                : (target.m_is_proc_macro
+                    ? PackageTarget::CrateType::proc_macro
+                    : PackageTarget::CrateType::rlib
+                  )
+              )
+        {
+        case PackageTarget::CrateType::proc_macro:
+            if(crate_type)  *crate_type = "proc-macro";
+            outfile /= ::format("lib", target.m_name, crate_suffix, "-plugin" EXESUF);
+            break;
+        case PackageTarget::CrateType::dylib:
+            if( getenv("MINICARGO_DYLIB") )
+            {
+                // TODO: Enable this once mrustc can set rpath or absolute paths
+                if(crate_type)  *crate_type = "dylib";
+                outfile /= ::format("lib", target.m_name, crate_suffix, DLLSUF);
+                break;
+            }
+        case PackageTarget::CrateType::rlib:
+            if(crate_type)  *crate_type = "rlib";
+            outfile /= ::format("lib", target.m_name, crate_suffix, ".rlib");
+            break;
+        default:
+            throw "";
         }
-        outfile /= ::format("lib", target.m_name, crate_suffix, ".hir");
         break;
     case PackageTarget::Type::Bin:
+        if(crate_type)
+            *crate_type = "bin";
+        outfile /= ::format(target.m_name, EXESUF);
+        break;
+    case PackageTarget::Type::Test:
         if(crate_type)
             *crate_type = "bin";
         outfile /= ::format(target.m_name, EXESUF);
@@ -632,11 +689,117 @@ Builder::Builder(BuildOptions opts):
     return outfile;
 }
 
-bool Builder::build_target(const PackageManifest& manifest, const PackageTarget& target, bool is_for_host) const
+namespace {
+    ::std::map< ::std::string, ::std::vector<helpers::path> > load_depfile(const helpers::path& depfile_path)
+    {
+        ::std::map< ::std::string, ::std::vector<helpers::path> >   rv;
+        ::std::ifstream ifp(depfile_path);
+        if( ifp.good() )
+        {
+            // Load space-separated (backslash-escaped) paths
+            struct Lexer {
+                ::std::ifstream ifp;
+                char    m_c;
+
+                Lexer(::std::ifstream ifp)
+                    :ifp(::std::move(ifp))
+                    ,m_c(0)
+                {
+                    nextc();
+                }
+
+                bool nextc() {
+                    int v = ifp.get();
+                    if( v == EOF ) {
+                        m_c = '\0';
+                        return false;
+                    }
+                    else {
+                        m_c = (char)v;
+                        return true;
+                    }
+                }
+                ::std::string get_token() {
+                    auto t = get_token_int();
+                    //DEBUG("get_token '" << t << "'");
+                    return t;
+                }
+                ::std::string get_token_int() {
+                    if( ifp.eof() )
+                        return "";
+                    while( m_c == ' ' )
+                    {
+                        if( !nextc() )
+                            return "";
+                    }
+                    if( m_c == '\n' ) {
+                        nextc();
+                        return "\n";
+                    }
+                    if( m_c == '\t' ) {
+                        nextc();
+                        return "\t";
+                    }
+                    ::std::string   rv;
+                    do {
+                        if( m_c == '\\' )
+                        {
+                            nextc();
+                            if( m_c == ' ' ) {
+                                rv += m_c;
+                            }
+                            else if( m_c == ':' ) {
+                                rv += m_c;
+                            }
+                            // HACK: Only spaces are escaped this way?
+                            else {
+                                rv += '\\';
+                                rv += m_c;
+                            }
+                        }
+                        else
+                        {
+                            rv += m_c;
+                        }
+                    } while( nextc() && m_c != ' ' && m_c != ':' && m_c != '\n' );
+                    return rv;
+                }
+            }   lexer(::std::move(ifp));
+
+            // Look for <string> ":" [<string>]* "\n"
+            do {
+                auto t = lexer.get_token();
+                if( t == "" )
+                    break;
+                if( t == "\n" )
+                    continue ;
+
+                auto v = rv.insert(::std::make_pair(t, ::std::vector<helpers::path>()));
+                auto& list = v.first->second;
+                auto target = t;
+                t = lexer.get_token();
+                assert(t == ":");
+
+                do {
+                    t = lexer.get_token();
+                    if( t == "\n" || t == "" )
+                        break ;
+                    list.push_back(t);
+                } while(1);
+            } while(1);
+        }
+        return rv;
+    }
+}
+
+bool Builder::build_target(const PackageManifest& manifest, const PackageTarget& target, bool is_for_host, size_t index) const
 {
     const char* crate_type;
     ::std::string   crate_suffix;
     auto outfile = this->get_crate_path(manifest, target, is_for_host,  &crate_type, &crate_suffix);
+    auto depfile = outfile + ".d";
+
+    size_t this_target_idx = (index != ~0u ? m_targets_built++ : ~0u);
 
     // TODO: Determine if it needs re-running
     // Rerun if:
@@ -658,22 +821,58 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         DEBUG("Building " << outfile << " - Older than mrustc ( " << ts_result << " < " << Timestamp::for_file(m_compiler_path) << ")");
     }
     else {
-        // TODO: Check dependencies. (from depfile)
-        // Don't rebuild (no need to)
-        DEBUG("Not building " << outfile << " - not out of date");
-        return true;
+        // Check dependencies. (from depfile)
+        auto depfile_ents = load_depfile(depfile);
+        auto it = depfile_ents.find(outfile);
+        bool has_new_file = false;
+        if( it != depfile_ents.end() )
+        {
+            for(const auto& f : it->second)
+            {
+                auto dep_ts = Timestamp::for_file(f);
+                if( ts_result < dep_ts )
+                {
+                    has_new_file = true;
+                    DEBUG("Rebuilding " << outfile << ", older than " << f);
+                    break;
+                }
+            }
+        }
+
+        if( !has_new_file )
+        {
+            // Don't rebuild (no need to)
+            DEBUG("Not building " << outfile << " - not out of date");
+            return true;
+        }
     }
 
     for(const auto& cmd : manifest.build_script_output().pre_build_commands)
     {
         // TODO: Run commands specified by build script (override)
+        TODO("Run command `" << cmd << "` from build script override");
     }
 
-    ::std::cout << "BUILDING " << target.m_name << " from " << manifest.name() << " v" << manifest.version() << " with features [" << manifest.active_features() << "]" << ::std::endl;
+    {
+        // TODO: Determine what number and total targets there are
+        if( index != ~0u ) {
+            //::std::cout << "(" << index << "/" << m_total_targets << ") ";
+            ::std::cout << "(" << this_target_idx << "/" << m_total_targets << ") ";
+        }
+        ::std::cout << "BUILDING ";
+        if(target.m_name != manifest.name())
+            ::std::cout << target.m_name << " from ";
+        ::std::cout << manifest.name() << " v" << manifest.version();
+        if( !manifest.active_features().empty() )
+            ::std::cout << " with features [" << manifest.active_features() << "]";
+        ::std::cout << ::std::endl;
+    }
     StringList  args;
     args.push_back(::helpers::path(manifest.manifest_path()).parent() / ::helpers::path(target.m_path));
+    args.push_back("-o"); args.push_back(outfile);
     args.push_back("--crate-name"); args.push_back(target.m_name.c_str());
     args.push_back("--crate-type"); args.push_back(crate_type);
+    args.push_back("-C"); args.push_back(format("emit-depfile=",depfile));
     if( !crate_suffix.empty() ) {
         args.push_back("--crate-tag"); args.push_back(crate_suffix.c_str() + 1);
     }
@@ -699,7 +898,11 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         args.push_back("-C"); args.push_back("codegen-type=monomir");
     }
 
-    args.push_back("-o"); args.push_back(outfile);
+    for(const auto& d : m_opts.lib_search_dirs)
+    {
+        args.push_back("-L");
+        args.push_back(d.str().c_str());
+    }
     args.push_back("-L"); args.push_back(this->get_output_dir(is_for_host).str());
     for(const auto& dir : manifest.build_script_output().rustc_link_search) {
         args.push_back("-L"); args.push_back(dir.second.c_str());
@@ -725,6 +928,10 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         args.push_back("--extern");
         args.push_back(::format(m.get_library().m_name, "=", path));
     }
+    if( target.m_type == PackageTarget::Type::Test )
+    {
+        args.push_back("--test");
+    }
     for(const auto& dep : manifest.dependencies())
     {
         if( ! dep.is_disabled() )
@@ -735,10 +942,18 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
             args.push_back(::format(m.get_library().m_name, "=", path));
         }
     }
-    for(const auto& d : m_opts.lib_search_dirs)
+    if( target.m_type == PackageTarget::Type::Test )
     {
-        args.push_back("-L");
-        args.push_back(d.str().c_str());
+        for(const auto& dep : manifest.dev_dependencies())
+        {
+            if( ! dep.is_disabled() )
+            {
+                const auto& m = dep.get_package();
+                auto path = this->get_crate_path(m, m.get_library(), is_for_host, nullptr, nullptr);
+                args.push_back("--extern");
+                args.push_back(::format(m.get_library().m_name, "=", path));
+            }
+        }
     }
 
     // TODO: Environment variables (rustc_env)
@@ -867,13 +1082,13 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         StringListKV    env;
         env.push_back("CARGO_MANIFEST_DIR", manifest.directory().to_absolute());
         //env.push_back("CARGO_MANIFEST_LINKS", manifest.m_links);
-        //for(const auto& feat : manifest.m_active_features)
-        //{
-        //    ::std::string   fn = "CARGO_FEATURE_";
-        //    for(char c : feat)
-        //        fn += c == '-' ? '_' : tolower(c);
-        //    env.push_back(fn, manifest.m_links);
-        //}
+        for(const auto& feat : manifest.active_features())
+        {
+            ::std::string   fn = "CARGO_FEATURE_";
+            for(char c : feat)
+                fn += c == '-' ? '_' : toupper(c);
+            env.push_back(fn, "1");
+        }
         //env.push_back("CARGO_CFG_RELEASE", "");
         env.push_back("OUT_DIR", out_dir);
         env.push_back("TARGET", m_opts.target_name ? m_opts.target_name : HOST_TARGET);
@@ -882,6 +1097,11 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         env.push_back("OPT_LEVEL", "2");
         env.push_back("DEBUG", "0");
         env.push_back("PROFILE", "release");
+        // TODO: All cfg(foo_bar) become CARGO_CFG_FOO_BAR
+        env.push_back("CARGO_CFG_TARGET_POINTER_WIDTH", "32");
+        // - Needed for `regex`'s build script, make mrustc pretend to be rustc
+        env.push_back("RUSTC", this->m_compiler_path);
+
         for(const auto& dep : manifest.dependencies())
         {
             if( ! dep.is_disabled() )
@@ -922,7 +1142,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
 
     return out_file;
 }
-bool Builder::build_library(const PackageManifest& manifest, bool is_for_host) const
+bool Builder::build_library(const PackageManifest& manifest, bool is_for_host, size_t index) const
 {
     if( manifest.build_script() != "" )
     {
@@ -948,7 +1168,7 @@ bool Builder::build_library(const PackageManifest& manifest, bool is_for_host) c
         }
     }
 
-    return this->build_target(manifest, manifest.get_library(), is_for_host);
+    return this->build_target(manifest, manifest.get_library(), is_for_host, index);
 }
 bool Builder::spawn_process_mrustc(const StringList& args, StringListKV env, const ::helpers::path& logfile) const
 {
@@ -986,6 +1206,7 @@ bool Builder::spawn_process(const char* exe_name, const StringList& args, const 
 #else
     for(auto kv : env)
     {
+        DEBUG("putenv " << kv.first << "=" << kv.second);
         _putenv_s(kv.first, kv.second);
     }
 #endif

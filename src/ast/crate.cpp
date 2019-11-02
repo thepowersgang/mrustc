@@ -12,6 +12,12 @@
 #include <hir/hir.hpp>  // HIR::Crate
 #include <hir/main_bindings.hpp>    // HIR_Deserialise
 #include <fstream>
+#ifdef _WIN32
+# define NOGDI  // prevent ERROR from being defined
+# include <Windows.h>
+#else
+# include <dirent.h>
+#endif
 
 ::std::vector<::std::string>    AST::g_crate_load_dirs = { };
 ::std::map<::std::string, ::std::string>    AST::g_crate_overrides;
@@ -31,12 +37,13 @@ namespace {
         fcn(mod);
         for( auto& sm : mod.items() )
         {
-            TU_IFLET(::AST::Item, sm.data, Module, e,
-                if( check_item_cfg(sm.data.attrs) )
+            if( auto* e = sm.data.opt_Module() )
+            {
+                if( check_item_cfg(sm.attrs) )
                 {
-                    iterate_module(e, fcn);
+                    iterate_module(*e, fcn);
                 }
-            )
+            }
         }
         // TODO: What about if an anon mod has been #[cfg]-d out?
         // - For now, disable
@@ -60,12 +67,13 @@ void Crate::load_externs()
     auto cb = [this](Module& mod) {
         for( /*const*/ auto& it : mod.items() )
         {
-            TU_IFLET(AST::Item, it.data, Crate, c,
-                if( check_item_cfg(it.data.attrs) )
+            if( auto* c = it.data.opt_Crate() )
+            {
+                if( check_item_cfg(it.attrs) )
                 {
-                    c.name = load_extern_crate( it.data.span, c.name );
+                    c->name = load_extern_crate( it.span, c->name.c_str() );
                 }
-            )
+            }
         }
         };
     iterate_module(m_root_module, cb);
@@ -108,57 +116,134 @@ void Crate::load_externs()
 }
 // TODO: Handle disambiguating crates with the same name (e.g. libc in std and crates.io libc)
 // - Crates recorded in rlibs should specify a hash/tag that's passed in to this function.
-::std::string Crate::load_extern_crate(Span sp, const ::std::string& name, const ::std::string& basename/*=""*/)
+RcString Crate::load_extern_crate(Span sp, const RcString& name, const ::std::string& basename/*=""*/)
 {
-    DEBUG("Loading crate '" << name << "'");
+    TRACE_FUNCTION_F("Loading crate '" << name << "' (basename='" << basename << "')");
 
     ::std::string   path;
-    auto it = g_crate_overrides.find(name);
+    auto it = g_crate_overrides.find(name.c_str());
     if(basename == "" && it != g_crate_overrides.end())
     {
         path = it->second;
         if( !::std::ifstream(path).good() ) {
             ERROR(sp, E0000, "Unable to open crate '" << name << "' at path " << path);
         }
+        DEBUG("path = " << path << " (--extern)");
     }
-    else
+    else if( basename != "" )
     {
+#if 1
+        path = basename;
+#else
         // Search a list of load paths for the crate
         for(const auto& p : g_crate_load_dirs)
         {
-            if( basename == "" )
-            {
-                path = p + "/lib" + name + ".hir";
-                // TODO: Search for `p+"/lib"+name+"-*.hir" (which would match e.g. libnum-0.11.hir)
-            }
-            else
-            {
-                path = p + "/" + basename;
-            }
+            path = p + "/" + basename;
 
             if( ::std::ifstream(path).good() ) {
                 break ;
             }
         }
+#endif
         if( !::std::ifstream(path).good() ) {
-            if( basename.empty() )
-                ERROR(sp, E0000, "Unable to locate crate '" << name << "' in search directories");
-            else
-                ERROR(sp, E0000, "Unable to locate crate '" << name << "' with filename " << basename << " in search directories");
+            ERROR(sp, E0000, "Unable to locate crate '" << name << "' with filename " << basename << " in search directories");
         }
+        DEBUG("path = " << path << " (basename)");
+    }
+    else
+    {
+        ::std::vector<::std::string>    paths;
+#define RLIB_SUFFIX ".rlib"
+#define RDYLIB_SUFFIX ".so"
+        auto direct_filename = FMT("lib" << name.c_str() << RLIB_SUFFIX);
+        auto direct_filename_so = FMT("lib" << name.c_str() << RDYLIB_SUFFIX);
+        auto name_prefix = FMT("lib" << name.c_str() << "-");
+        // Search a list of load paths for the crate
+        for(const auto& p : g_crate_load_dirs)
+        {
+            path = p + "/" + direct_filename;
+            if( ::std::ifstream(path).good() ) {
+                paths.push_back(path);
+            }
+            path = p + "/" + direct_filename_so;
+            if( ::std::ifstream(path).good() ) {
+                paths.push_back(path);
+            }
+            path = "";
+
+            // Search for `p+"/lib"+name+"-*.rlib" (which would match e.g. libnum-0.11.rlib)
+#ifdef _WIN32
+            WIN32_FIND_DATA find_data;
+            auto mask = p + "\\*";
+            HANDLE find_handle = FindFirstFile( mask.c_str(), &find_data );
+            if( find_handle == INVALID_HANDLE_VALUE ) {
+                continue ;
+            }
+            do
+            {
+                const auto* fname = find_data.cFileName;
+#else
+            auto dp = opendir(p.c_str());
+            if( !dp ) {
+                continue ;
+            }
+            struct dirent *ent;
+            while( (ent = readdir(dp)) != nullptr && path == "" )
+            {
+                const auto* fname = ent->d_name;
+#endif
+
+                // AND the start is "lib"+name
+                size_t len = strlen(fname);
+                if( len > (sizeof(RLIB_SUFFIX)-1) && strcmp(fname + len - (sizeof(RLIB_SUFFIX)-1), RLIB_SUFFIX) == 0 )
+                {
+                }
+                else if( len > (sizeof(RDYLIB_SUFFIX)-1) && strcmp(fname + len - (sizeof(RDYLIB_SUFFIX)-1), RDYLIB_SUFFIX) == 0 )
+                {
+                }
+                else
+                {
+                    continue ;
+                }
+
+                DEBUG(fname << " vs " << name_prefix);
+                // Check if the entry ends with .rlib
+                if( strncmp(name_prefix.c_str(), fname, name_prefix.size()) != 0 )
+                    continue ;
+
+                paths.push_back( p + "/" + fname );
+#ifdef _WIN32
+            } while( FindNextFile(find_handle, &find_data) );
+            FindClose(find_handle);
+#else
+            }
+            closedir(dp);
+#endif
+            if( paths.size() > 0 )
+                break;
+        }
+        if( paths.size() > 1 ) {
+            ERROR(sp, E0000, "Multiple options for crate '" << name << "' in search directories - " << paths);
+        }
+        if( paths.size() == 0 || !::std::ifstream(paths.front()).good() ) {
+            ERROR(sp, E0000, "Unable to locate crate '" << name << "' in search directories");
+        }
+        path = paths.front();
+        DEBUG("path = " << path << " (search)");
     }
 
     // NOTE: Creating `ExternCrate` loads the crate from the specified path
     auto ec = ExternCrate { name, path };
     auto real_name = ec.m_hir->m_crate_name;
-    assert(!real_name.empty());
+    assert(real_name != "");
     auto res = m_extern_crates.insert(::std::make_pair( real_name, mv$(ec) ));
     if( !res.second ) {
         // Crate already loaded?
     }
     auto& ext_crate = res.first->second;
     // Move the external list out (doesn't need to be kept in the nested crate)
-    auto crate_ext_list = mv$( ext_crate.m_hir->m_ext_crates );
+    //auto crate_ext_list = mv$( ext_crate.m_hir->m_ext_crates );
+    const auto& crate_ext_list = ext_crate.m_hir->m_ext_crates;
 
     // Load referenced crates
     for( const auto& ext : crate_ext_list )
@@ -178,25 +263,26 @@ void Crate::load_externs()
     return real_name;
 }
 
-ExternCrate::ExternCrate(const ::std::string& name, const ::std::string& path):
+ExternCrate::ExternCrate(const RcString& name, const ::std::string& path):
     m_name(name),
+    m_short_name(name),
     m_filename(path)
 {
     TRACE_FUNCTION_F("name=" << name << ", path='" << path << "'");
-    m_hir = HIR_Deserialise(path, name);
+    m_hir = HIR_Deserialise(path);
 
     m_hir->post_load_update(name);
     m_name = m_hir->m_crate_name;
 }
 
-void ExternCrate::with_all_macros(::std::function<void(const ::std::string& , const MacroRules&)> cb) const
+void ExternCrate::with_all_macros(::std::function<void(const RcString& , const MacroRules&)> cb) const
 {
     for(const auto& m : m_hir->m_exported_macros)
     {
         cb(m.first, *m.second);
     }
 }
-const MacroRules* ExternCrate::find_macro_rules(const ::std::string& name) const
+const MacroRules* ExternCrate::find_macro_rules(const RcString& name) const
 {
     auto i = m_hir->m_exported_macros.find(name);
     if(i != m_hir->m_exported_macros.end())

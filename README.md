@@ -18,8 +18,10 @@ Progress
   - (incomplete) x86 windows
   - (incomplete) x86-64 windows
 - Builds working copies of `rustc` and `cargo` from a release source tarball
-- `rustc` bootstrap tested and validated
+  - Supports both rustc 1.19.0 and 1.29.0
+- `rustc` bootstrap tested and validated (1.19.0 validated once, 1.29.0 is repeatable)
   - See the script `TestRustcBootstrap.sh` for how this was done.
+
 
 Getting Started
 ===============
@@ -120,5 +122,5 @@ Medium-term
 
 
 
-Note: All progress is against the source of rustc 1.19.0
+Note: All progress is against the source of rustc 1.19.0 AND rustc 1.29.0
 

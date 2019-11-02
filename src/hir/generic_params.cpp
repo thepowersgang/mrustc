@@ -33,7 +33,7 @@ namespace HIR {
         {
             os << "<";
             for(const auto& lft : x.gp.m_lifetimes) {
-                os << "'" << lft << ",";
+                os << "'" << lft.m_name << ",";
             }
             for(const auto& typ : x.gp.m_types) {
                 os << typ.m_name;

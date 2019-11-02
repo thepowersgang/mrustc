@@ -191,7 +191,7 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
 #endif
 
         // >> Move common statements (assignments) across gotos.
-        change_happened |= MIR_Optimise_CommonStatements(state, fcn);
+        //change_happened |= MIR_Optimise_CommonStatements(state, fcn);
 
         // >> Combine Duplicate Blocks
         change_happened |= MIR_Optimise_UnifyBlocks(state, fcn);
@@ -305,49 +305,78 @@ namespace {
         Borrow, // Any borrow
     };
 
-    bool visit_mir_lvalue_mut(::MIR::LValue& lv, ValUsage u, ::std::function<bool(::MIR::LValue& , ValUsage)> cb)
+    bool visit_mir_lvalues_inner(const ::MIR::LValue& lv, ValUsage u, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb)
     {
-        //TRACE_FUNCTION_F(lv);
-        if( cb(lv, u) )
-            return true;
-        TU_MATCHA( (lv), (e),
-        (Return,
-            ),
-        (Argument,
-            ),
-        (Local,
-            ),
-        (Static,
-            ),
-        (Field,
-            // HACK: If "moving", use a "Read" value usage (covers some quirks)
-            return visit_mir_lvalue_mut(*e.val, u == ValUsage::Move ? ValUsage::Read : u, cb);
-            ),
-        (Deref,
-            return visit_mir_lvalue_mut(*e.val, u == ValUsage::Borrow ? u : ValUsage::Read, cb);
-            ),
-        (Index,
-            bool rv = false;
-            rv |= visit_mir_lvalue_mut(*e.val, u, cb);
-            rv |= visit_mir_lvalue_mut(*e.idx, ValUsage::Read, cb);
-            return rv;
-            ),
-        (Downcast,
-            return visit_mir_lvalue_mut(*e.val, u, cb);
-            )
-        )
+        for(const auto& w : lv.m_wrappers)
+        {
+            if(w.is_Index())
+            {
+                if( cb(::MIR::LValue::new_Local(w.as_Index()), ValUsage::Read) )
+                    return true;
+            }
+            else if(w.is_Deref())
+            {
+                //u = ValUsage::Read;
+            }
+        }
+        return cb(lv, u);
+    }
+    bool visit_mir_lvalue_mut(::MIR::LValue& lv, ValUsage u, ::std::function<bool(::MIR::LValue::MRef& , ValUsage)> cb)
+    {
+        auto lvr = ::MIR::LValue::MRef(lv);
+        do
+        {
+            if( cb(lvr, u) )
+                return true;
+            // TODO: Use a TU_MATCH?
+            if( lvr.is_Index() )
+            {
+                auto ilv = ::MIR::LValue::new_Local(lvr.as_Index());
+                auto ilv_r = ::MIR::LValue::MRef(ilv);
+                bool rv = cb(ilv_r, ValUsage::Read);
+                assert(ilv.is_Local() && ilv.as_Local() == lvr.as_Index());
+                if( rv )
+                    return true;
+            }
+            else if( lvr.is_Field() )
+            {
+                // HACK: If "moving", use a "Read" value usage (covers some quirks)
+                if( u == ValUsage::Move ) {
+                    u = ValUsage::Read;
+                }
+            }
+            else if( lvr.is_Deref() )
+            {
+                // TODO: Is this right?
+                if( u == ValUsage::Borrow ) {
+                    u = ValUsage::Read;
+                }
+            }
+            else
+            {
+                // No change
+            }
+        } while( lvr.try_unwrap() );
         return false;
     }
-    bool visit_mir_lvalue(const ::MIR::LValue& lv, ValUsage u, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb)
+    bool visit_mir_lvalue(const ::MIR::LValue& lv, ValUsage u, ::std::function<bool(const ::MIR::LValue::CRef& , ValUsage)> cb)
     {
         return visit_mir_lvalue_mut( const_cast<::MIR::LValue&>(lv), u, [&](auto& v, auto u) { return cb(v,u); } );
+    }
+    bool visit_mir_lvalue_raw_mut(::MIR::LValue& lv, ValUsage u, ::std::function<bool(::MIR::LValue& , ValUsage)> cb)
+    {
+        return cb(lv, u);
+    }
+    bool visit_mir_lvalue_raw(const ::MIR::LValue& lv, ValUsage u, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb)
+    {
+        return cb(lv, u);
     }
 
     bool visit_mir_lvalue_mut(::MIR::Param& p, ValUsage u, ::std::function<bool(::MIR::LValue& , ValUsage)> cb)
     {
         if( auto* e = p.opt_LValue() )
         {
-            return visit_mir_lvalue_mut(*e, u, cb);
+            return visit_mir_lvalue_raw_mut(*e, u, cb);
         }
         else
         {
@@ -358,7 +387,7 @@ namespace {
     {
         if( const auto* e = p.opt_LValue() )
         {
-            return visit_mir_lvalue(*e, u, cb);
+            return visit_mir_lvalue_raw(*e, u, cb);
         }
         else
         {
@@ -371,7 +400,7 @@ namespace {
         bool rv = false;
         TU_MATCHA( (rval), (se),
         (Use,
-            rv |= visit_mir_lvalue_mut(se, ValUsage::Move, cb); // Can move
+            rv |= visit_mir_lvalue_raw_mut(se, ValUsage::Move, cb); // Can move
             ),
         (Constant,
             ),
@@ -379,23 +408,23 @@ namespace {
             rv |= visit_mir_lvalue_mut(se.val, ValUsage::Read, cb); // Has to be Read
             ),
         (Borrow,
-            rv |= visit_mir_lvalue_mut(se.val, ValUsage::Borrow, cb);
+            rv |= visit_mir_lvalue_raw_mut(se.val, ValUsage::Borrow, cb);
             ),
         (Cast,
-            rv |= visit_mir_lvalue_mut(se.val, ValUsage::Read, cb); // Also has to be read
+            rv |= visit_mir_lvalue_raw_mut(se.val, ValUsage::Read, cb); // Also has to be read
             ),
         (BinOp,
             rv |= visit_mir_lvalue_mut(se.val_l, ValUsage::Read, cb);   // Same
             rv |= visit_mir_lvalue_mut(se.val_r, ValUsage::Read, cb);
             ),
         (UniOp,
-            rv |= visit_mir_lvalue_mut(se.val, ValUsage::Read, cb);
+            rv |= visit_mir_lvalue_raw_mut(se.val, ValUsage::Read, cb);
             ),
         (DstMeta,
-            rv |= visit_mir_lvalue_mut(se.val, ValUsage::Read, cb); // Reads
+            rv |= visit_mir_lvalue_raw_mut(se.val, ValUsage::Read, cb); // Reads
             ),
         (DstPtr,
-            rv |= visit_mir_lvalue_mut(se.val, ValUsage::Read, cb);
+            rv |= visit_mir_lvalue_raw_mut(se.val, ValUsage::Read, cb);
             ),
         (MakeDst,
             rv |= visit_mir_lvalue_mut(se.ptr_val, ValUsage::Move, cb);
@@ -430,19 +459,19 @@ namespace {
         TU_MATCHA( (stmt), (e),
         (Assign,
             rv |= visit_mir_lvalues_mut(e.src, cb);
-            rv |= visit_mir_lvalue_mut(e.dst, ValUsage::Write, cb);
+            rv |= visit_mir_lvalue_raw_mut(e.dst, ValUsage::Write, cb);
             ),
         (Asm,
             for(auto& v : e.inputs)
-                rv |= visit_mir_lvalue_mut(v.second, ValUsage::Read, cb);
+                rv |= visit_mir_lvalue_raw_mut(v.second, ValUsage::Read, cb);
             for(auto& v : e.outputs)
-                rv |= visit_mir_lvalue_mut(v.second, ValUsage::Write, cb);
+                rv |= visit_mir_lvalue_raw_mut(v.second, ValUsage::Write, cb);
             ),
         (SetDropFlag,
             ),
         (Drop,
             // Well, it mutates...
-            rv |= visit_mir_lvalue_mut(e.slot, ValUsage::Write, cb);
+            rv |= visit_mir_lvalue_raw_mut(e.slot, ValUsage::Write, cb);
             ),
         (ScopeEnd,
             )
@@ -454,8 +483,9 @@ namespace {
         return visit_mir_lvalues_mut(const_cast<::MIR::Statement&>(stmt), [&](auto& lv, auto im){ return cb(lv, im); });
     }
 
-    void visit_mir_lvalues_mut(::MIR::Terminator& term, ::std::function<bool(::MIR::LValue& , ValUsage)> cb)
+    bool visit_mir_lvalues_mut(::MIR::Terminator& term, ::std::function<bool(::MIR::LValue& , ValUsage)> cb)
     {
+        bool rv = false;
         TU_MATCHA( (term), (e),
         (Incomplete,
             ),
@@ -468,27 +498,28 @@ namespace {
         (Panic,
             ),
         (If,
-            visit_mir_lvalue_mut(e.cond, ValUsage::Read, cb);
+            rv |= visit_mir_lvalue_raw_mut(e.cond, ValUsage::Read, cb);
             ),
         (Switch,
-            visit_mir_lvalue_mut(e.val, ValUsage::Read, cb);
+            rv |= visit_mir_lvalue_raw_mut(e.val, ValUsage::Read, cb);
             ),
         (SwitchValue,
-            visit_mir_lvalue_mut(e.val, ValUsage::Read, cb);
+            rv |= visit_mir_lvalue_raw_mut(e.val, ValUsage::Read, cb);
             ),
         (Call,
             if( e.fcn.is_Value() ) {
-                visit_mir_lvalue_mut(e.fcn.as_Value(), ValUsage::Read, cb);
+                rv |= visit_mir_lvalue_raw_mut(e.fcn.as_Value(), ValUsage::Read, cb);
             }
             for(auto& v : e.args)
-                visit_mir_lvalue_mut(v, ValUsage::Move, cb);
-            visit_mir_lvalue_mut(e.ret_val, ValUsage::Write, cb);
+                rv |= visit_mir_lvalue_mut(v, ValUsage::Move, cb);
+            rv |= visit_mir_lvalue_raw_mut(e.ret_val, ValUsage::Write, cb);
             )
         )
+        return rv;
     }
-    void visit_mir_lvalues(const ::MIR::Terminator& term, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb)
+    bool visit_mir_lvalues(const ::MIR::Terminator& term, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb)
     {
-        visit_mir_lvalues_mut(const_cast<::MIR::Terminator&>(term), [&](auto& lv, auto im){ return cb(lv, im); });
+        return visit_mir_lvalues_mut(const_cast<::MIR::Terminator&>(term), [&](auto& lv, auto im){ return cb(lv, im); });
     }
 
     void visit_mir_lvalues_mut(::MIR::TypeResolve& state, ::MIR::Function& fcn, ::std::function<bool(::MIR::LValue& , ValUsage)> cb)
@@ -733,32 +764,6 @@ namespace {
     void visit_blocks(::MIR::TypeResolve& state, const ::MIR::Function& fcn, ::std::function<void(::MIR::BasicBlockId, const ::MIR::BasicBlock&)> cb) {
         visit_blocks_mut(state, const_cast<::MIR::Function&>(fcn), [cb](auto id, auto& blk){ cb(id, blk); });
     }
-
-    bool statement_invalidates_lvalue(const ::MIR::Statement& stmt, const ::MIR::LValue& lv)
-    {
-        return visit_mir_lvalues(stmt, [&](const auto& v, auto vu) {
-            if( v == lv ) {
-                return vu != ValUsage::Read;
-            }
-            return false;
-            });
-    }
-    bool terminator_invalidates_lvalue(const ::MIR::Terminator& term, const ::MIR::LValue& lv)
-    {
-        if( const auto* e = term.opt_Call() )
-        {
-            return visit_mir_lvalue(e->ret_val, ValUsage::Write, [&](const auto& v, auto vu) {
-                if( v == lv ) {
-                    return vu != ValUsage::Read;
-                }
-                return false;
-                });
-        }
-        else
-        {
-            return false;
-        }
-    }
 }
 
 
@@ -859,12 +864,31 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
 {
     bool inline_happened = false;
     TRACE_FUNCTION_FR("", inline_happened);
+    struct InlineEvent {
+        ::HIR::Path path;
+        ::std::vector<size_t>   bb_list;
+        InlineEvent(::HIR::Path p)
+            :path(::std::move(p))
+        {
+        }
+        bool has_bb(size_t i) const {
+            return ::std::find(this->bb_list.begin(), this->bb_list.end(), i) != this->bb_list.end();
+        }
+        void add_range(size_t start, size_t count) {
+            for(size_t j = 0; j < count; j++)
+            {
+                this->bb_list.push_back(start + j);
+            }
+        }
+    };
+    ::std::vector<InlineEvent>  inlined_functions;
 
     struct H
     {
         static bool can_inline(const ::HIR::Path& path, const ::MIR::Function& fcn, bool minimal)
         {
             // TODO: If the function is marked as `inline(always)`, then inline it regardless of the contents
+            // TODO: Take a monomorph helper so recursion can be detected
 
             if( minimal ) {
                 return false;
@@ -888,6 +912,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
                     return false;
                 // Detect and avoid simple recursion.
                 // - This won't detect mutual recursion - that also needs prevention.
+                // TODO: This is the pre-monomorph path, but we're comparing with the post-monomorph path
                 if( blk0_te.fcn.is_Path() && blk0_te.fcn.as_Path() == path )
                     return false;
                 return true;
@@ -906,6 +931,10 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
                         const auto& te = fcn.blocks[i].terminator.as_Call();
                         // Recursion, don't inline.
                         if( te.fcn.is_Path() && te.fcn.as_Path() == path )
+                            return false;
+                        // HACK: Only allow if the wrapped function is an intrinsic
+                        // - Works around the TODO about monomorphed paths above
+                        if(!te.fcn.is_Intrinsic())
                             return false;
                     }
                 }
@@ -1139,42 +1168,34 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
 
         ::MIR::LValue clone_lval(const ::MIR::LValue& src) const
         {
-            TU_MATCHA( (src), (se),
+            auto wrappers = src.m_wrappers;
+            for(auto& w : wrappers)
+            {
+                if( w.is_Index() ) {
+                    w = ::MIR::LValue::Wrapper::new_Index( this->var_base + w.as_Index() );
+                }
+            }
+            TU_MATCHA( (src.m_root), (se),
             (Return,
-                return this->retval.clone();
+                return this->retval.clone_wrapped( mv$(wrappers) );
                 ),
             (Argument,
-                const auto& arg = this->te.args.at(se.idx);
-                if( this->copy_args[se.idx] != ~0u )
+                const auto& arg = this->te.args.at(se);
+                if( this->copy_args[se] != ~0u )
                 {
-                    return ::MIR::LValue::make_Local(this->copy_args[se.idx]);
+                    return ::MIR::LValue( ::MIR::LValue::Storage::new_Local(this->copy_args[se]), mv$(wrappers) );
                 }
                 else
                 {
                     assert( !arg.is_Constant() );   // Should have been handled in the above
-                    return arg.as_LValue().clone();
+                    return arg.as_LValue().clone_wrapped( mv$(wrappers) );
                 }
                 ),
             (Local,
-                return ::MIR::LValue::make_Local(this->var_base + se);
+                return ::MIR::LValue( ::MIR::LValue::Storage::new_Local(this->var_base + se), mv$(wrappers) );
                 ),
             (Static,
-                return this->monomorph( se );
-                ),
-            (Deref,
-                return ::MIR::LValue::make_Deref({ box$(this->clone_lval(*se.val)) });
-                ),
-            (Field,
-                return ::MIR::LValue::make_Field({ box$(this->clone_lval(*se.val)), se.field_index });
-                ),
-            (Index,
-                return ::MIR::LValue::make_Index({
-                    box$(this->clone_lval(*se.val)),
-                    box$(this->clone_lval(*se.idx))
-                    });
-                ),
-            (Downcast,
-                return ::MIR::LValue::make_Downcast({ box$(this->clone_lval(*se.val)), se.variant_index });
+                return ::MIR::LValue( ::MIR::LValue::Storage::new_Static(this->monomorph(se)), mv$(wrappers) );
                 )
             )
             throw "";
@@ -1189,10 +1210,10 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
             (Bytes, return ::MIR::Constant(ce);),
             (StaticString, return ::MIR::Constant(ce);),
             (Const,
-                return ::MIR::Constant::make_Const({ this->monomorph(ce.p) });
+                return ::MIR::Constant::make_Const({ box$(this->monomorph(*ce.p)) });
                 ),
             (ItemAddr,
-                return ::MIR::Constant::make_ItemAddr(this->monomorph(ce));
+                return ::MIR::Constant::make_ItemAddr(box$(this->monomorph(*ce)));
                 )
             )
             throw "";
@@ -1272,6 +1293,15 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
             if( ! te->fcn.is_Path() )
                 continue ;
             const auto& path = te->fcn.as_Path();
+            DEBUG(state << fcn.blocks[i].terminator);
+
+            for(const auto& e : inlined_functions)
+            {
+                if( path == e.path &&  e.has_bb(i) )
+                {
+                    MIR_BUG(state, "Recursive inline of " << path);
+                }
+            }
 
             Cloner  cloner { state.sp, state.m_resolve, *te };
             const auto* called_mir = get_called_mir(state, list, path,  cloner.params);
@@ -1292,12 +1322,11 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
                 DEBUG("Can't inline " << path);
                 continue ;
             }
-            DEBUG(state << fcn.blocks[i].terminator);
             TRACE_FUNCTION_F("Inline " << path);
 
             // Allocate a temporary for the return value
             {
-                cloner.retval = ::MIR::LValue::make_Local( fcn.locals.size() );
+                cloner.retval = ::MIR::LValue::new_Local( fcn.locals.size() );
                 DEBUG("- Storing return value in " << cloner.retval);
                 ::HIR::TypeRef  tmp_ty;
                 fcn.locals.push_back( state.get_lvalue_type(tmp_ty, te->ret_val).clone() );
@@ -1341,7 +1370,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
             {
                 ::HIR::TypeRef  tmp;
                 auto ty = val.is_Constant() ? state.get_const_type(val.as_Constant()) : state.get_lvalue_type(tmp, val.as_LValue()).clone();
-                auto lv = ::MIR::LValue::make_Local( static_cast<unsigned>(fcn.locals.size()) );
+                auto lv = ::MIR::LValue::new_Local( static_cast<unsigned>(fcn.locals.size()) );
                 fcn.locals.push_back( mv$(ty) );
                 auto rval = val.is_Constant() ? ::MIR::RValue(mv$(val.as_Constant())) : ::MIR::RValue( mv$(val.as_LValue()) );
                 auto stmt = ::MIR::Statement::make_Assign({ mv$(lv), mv$(rval) });
@@ -1349,6 +1378,17 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
                 new_blocks[0].statements.insert( new_blocks[0].statements.begin(), mv$(stmt) );
             }
             cloner.const_assignments.clear();
+
+            // Record the inline event
+            for(auto& e : inlined_functions)
+            {
+                if( e.has_bb(i) )
+                {
+                    e.add_range(cloner.bb_base, new_blocks.size());
+                }
+            }
+            inlined_functions.push_back(InlineEvent(path.clone()));
+            inlined_functions.back().add_range(cloner.bb_base, new_blocks.size());
 
             // Apply
             DEBUG("- Append new blocks");
@@ -1359,9 +1399,668 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
             }
             fcn.blocks[i].terminator = ::MIR::Terminator::make_Goto( cloner.bb_base );
             inline_happened = true;
+
+            // TODO: Store the inlined path along with the start and end BBs, and then use that to detect recursive
+            // inlining
+            // - Recursive inlining should be an immediate panic.
         }
     }
     return inline_happened;
+}
+
+namespace {
+    struct StmtRef {
+        unsigned    bb_idx;
+        unsigned    stmt_idx;
+        StmtRef(): bb_idx(~0u), stmt_idx(0) {}
+        StmtRef(unsigned b, unsigned s): bb_idx(b), stmt_idx(s) {}
+    };
+    ::std::ostream& operator<<(::std::ostream& os, const StmtRef& x) {
+        return os << "BB" << x.bb_idx << "/" << x.stmt_idx;
+    }
+
+    // Iterates the path between two positions, NOT visiting entry specified by `end`
+    enum class IterPathRes {
+        Abort,
+        EarlyTrue,
+        Complete,
+    };
+    IterPathRes iter_path(
+            const ::MIR::Function& fcn, const StmtRef& start, const StmtRef& end,
+            ::std::function<bool(StmtRef, const ::MIR::Statement&)> cb_stmt,
+            ::std::function<bool(StmtRef, const ::MIR::Terminator&)> cb_term
+            )
+    {
+        if( start.bb_idx == end.bb_idx ) {
+            assert(start.stmt_idx <= end.stmt_idx);
+        }
+
+        auto visted_bbs = ::std::set<unsigned>();
+        // Loop while not equal (either not in the right block, or before the statement) to the end point
+        for(auto ref = start; ref.bb_idx != end.bb_idx || ref.stmt_idx < end.stmt_idx; )
+        {
+            const auto& bb = fcn.blocks.at(ref.bb_idx);
+            if( ref.stmt_idx < bb.statements.size() )
+            {
+                DEBUG(ref << " " << bb.statements.at(ref.stmt_idx));
+                if( cb_stmt(ref, bb.statements.at(ref.stmt_idx)) )
+                {
+                    return IterPathRes::EarlyTrue;
+                }
+
+                ref.stmt_idx ++;
+            }
+            else
+            {
+                DEBUG(ref << " " << bb.terminator);
+                if( cb_term(ref, bb.terminator) )
+                {
+                    return IterPathRes::EarlyTrue;
+                }
+
+                // If this is the end point, break out before checking the terminator for looping
+                if( ref.bb_idx == end.bb_idx )
+                {
+                    // ^ don't need to check the statment index, this is the last "statement"
+                    break;
+                }
+
+                // If this terminator is a Goto, follow it (tracking for loops)
+                if( const auto* te = bb.terminator.opt_Goto() )
+                {
+                    // Possibly loop into the next block
+                    if( !visted_bbs.insert(*te).second ) {
+                        return IterPathRes::Abort;
+                    }
+                    ref.stmt_idx = 0;
+                    ref.bb_idx = *te;
+                }
+                // If it's a call, check that the target block ends with Diverge, and iterate that in-place
+                // - Then follow the success path as usual
+                else if( const auto* te = bb.terminator.opt_Call() )
+                {
+                    // Check the panic arm (should just be a list of destructor calls follwed by a Diverge terminator)
+                    const auto& panic_bb = fcn.blocks[te->panic_block];
+                    ASSERT_BUG(Span(), panic_bb.terminator.is_Diverge(), "Panic arm of call does not end with Diverge");
+                    if( !panic_bb.statements.empty() )
+                    {
+                        TODO(Span(), "Visit call panic block");
+                    }
+                    // Possibly loop into the next block
+                    if( !visted_bbs.insert(te->ret_block).second ) {
+                        return IterPathRes::Abort;
+                    }
+                    ref.stmt_idx = 0;
+                    ref.bb_idx = te->ret_block;
+                }
+                else
+                {
+                    return IterPathRes::Abort;
+                }
+            }
+        }
+        return IterPathRes::Complete;
+    }
+
+    ::std::function<bool(const ::MIR::LValue& , ValUsage)> check_invalidates_lvalue_cb(const ::MIR::LValue& val, bool also_read=false)
+    {
+        bool has_index = ::std::any_of(val.m_wrappers.begin(), val.m_wrappers.end(), [](const auto& w){ return w.is_Index(); });
+        // Value is invalidated if it's used with ValUsage::Write or ValUsage::Borrow
+        // - Same applies to any component of the lvalue
+        return [&val,has_index,also_read](const ::MIR::LValue& lv, ValUsage vu) {
+            switch(vu)
+            {
+            case ValUsage::Move:    // A move can invalidate
+                // - Ideally this would check if it DOES invalidate
+            case ValUsage::Write:
+            case ValUsage::Borrow:
+                // (Possibly) mutating use, check if it impacts the root or one of the indexes
+                if( lv.m_root == val.m_root ) {
+                    return true;
+                }
+                if( has_index && lv.m_root.is_Local() )
+                {
+                    for(const auto& w : val.m_wrappers)
+                    {
+                        if( w.is_Index() )
+                        {
+                            if( w.as_Index() == lv.m_root.as_Local() )
+                            {
+                                return true;
+                            }
+                        }
+                    }
+                }
+                break;
+            case ValUsage::Read:
+                if( also_read )
+                    return true;
+                break;
+            }
+            return false;
+            };
+    }
+    bool check_invalidates_lvalue(const ::MIR::Statement& stmt, const ::MIR::LValue& val, bool also_read=false)
+    {
+        return visit_mir_lvalues(stmt, check_invalidates_lvalue_cb(val, also_read));
+    }
+    bool check_invalidates_lvalue(const ::MIR::Terminator& term, const ::MIR::LValue& val, bool also_read=false)
+    {
+        return visit_mir_lvalues(term, check_invalidates_lvalue_cb(val, also_read));
+    }
+}
+
+bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::Function& fcn)
+{
+    bool changed = false;
+    TRACE_FUNCTION_FR("", changed);
+
+    // Find all single-use/single-write locals
+    // - IF the usage is a RValue::Use, AND the usage destination is not invalidated between set/use
+    //  - Replace initialisation destination with usage destination (delete usage statement)
+    // - IF the source a Use/Constant, AND is not invalidated between set/use
+    //  - Replace usage with the original source
+    struct LocalUsage {
+        unsigned    n_write;
+        unsigned    n_read;
+        unsigned    n_borrow;
+        StmtRef set_loc;
+        StmtRef use_loc;
+        LocalUsage():
+            n_write(0),
+            n_read(0),
+            n_borrow(0)
+        {
+        }
+    };
+    auto usage_info = ::std::vector<LocalUsage>(fcn.locals.size());
+    for(const auto& bb : fcn.blocks)
+    {
+        StmtRef cur_loc;
+        auto visit_cb = [&](const ::MIR::LValue& lv, auto vu) {
+            if( !lv.m_wrappers.empty() ) {
+                vu = ValUsage::Read;
+            }
+            for(const auto& w : lv.m_wrappers)
+            {
+                if(w.is_Index())
+                {
+                    auto& slot = usage_info[w.as_Index()];
+                    slot.n_read += 1;
+                    slot.use_loc = cur_loc;
+                    //DEBUG(lv << " index use");
+                }
+            }
+            if( lv.m_root.is_Local() )
+            {
+                auto& slot = usage_info[lv.m_root.as_Local()];
+                switch(vu)
+                {
+                case ValUsage::Write:
+                    slot.n_write += 1;
+                    slot.set_loc = cur_loc;
+                    //DEBUG(lv << " set");
+                    break;
+                case ValUsage::Move:
+                    slot.n_read += 1;
+                    slot.use_loc = cur_loc;
+                    //DEBUG(lv << " use");
+                    break;
+                case ValUsage::Read:
+                case ValUsage::Borrow:
+                    slot.n_borrow += 1;
+                    //DEBUG(lv << " borrow");
+                    break;
+                }
+            }
+            return false;
+            };
+        for(const auto& stmt : bb.statements)
+        {
+            cur_loc = StmtRef(&bb - &fcn.blocks.front(), &stmt - &bb.statements.front());
+            //DEBUG(cur_loc << ":" << stmt);
+            visit_mir_lvalues(stmt, visit_cb);
+        }
+        cur_loc = StmtRef(&bb - &fcn.blocks.front(), bb.statements.size());
+        //DEBUG(cur_loc << ":" << bb.terminator);
+        visit_mir_lvalues(bb.terminator, visit_cb);
+    }
+
+    for(size_t var_idx = 0; var_idx < fcn.locals.size(); var_idx ++)
+    {
+        const auto& slot = usage_info[var_idx];
+        auto this_var = ::MIR::LValue::new_Local(var_idx);
+        //ASSERT_BUG(Span(), slot.n_write > 0, "Variable " << var_idx << " not written?");
+        if( slot.n_write == 1 && slot.n_read == 1 && slot.n_borrow == 0 )
+        {
+            // Single-use variable, now check how we can eliminate it
+            DEBUG("Single-use: _" << var_idx << " - Set " << slot.set_loc << ", Use " << slot.use_loc);
+
+            auto& use_bb = fcn.blocks[slot.use_loc.bb_idx];
+            auto& set_bb = fcn.blocks[slot.set_loc.bb_idx];
+            // If usage is direct assignment of the original value.
+            // - In this case, we can move the usage upwards
+            if( slot.use_loc.stmt_idx < use_bb.statements.size() && TU_TEST2(use_bb.statements[slot.use_loc.stmt_idx], Assign, .src, Use, == this_var) )
+            {
+                // Move the usage up to original assignment (if destination isn't invalidated)
+                const auto& dst = use_bb.statements[slot.use_loc.stmt_idx].as_Assign().dst;
+
+                // TODO: If the destination slot was ever borrowed mutably, don't move.
+                // - Maybe, if there's a drop skip? (as the drop could be &mut to the target value)
+
+                // - Iterate the path(s) between the two statements to check if the destination would be invalidated
+                //  > The iterate function doesn't (yet) support following BB chains, so assume invalidated if over a jump.
+                bool invalidated = IterPathRes::Complete != iter_path(fcn, slot.set_loc, slot.use_loc,
+                        [&](auto loc, const auto& stmt)->bool{ return stmt.is_Drop() || check_invalidates_lvalue(stmt, dst, /*also_read=*/true); },
+                        [&](auto loc, const auto& term)->bool{ return check_invalidates_lvalue(term, dst, /*also_read=*/true); }
+                        );
+                if( !invalidated )
+                {
+                    // destination not dependent on any statements between the two, move.
+                    if( slot.set_loc.stmt_idx < set_bb.statements.size() )
+                    {
+                        auto& set_stmt = set_bb.statements[slot.set_loc.stmt_idx];
+                        TU_MATCH_HDRA( (set_stmt), {)
+                        TU_ARMA(Assign, se) {
+                            MIR_ASSERT(state, se.dst == ::MIR::LValue::new_Local(var_idx), "");
+                            DEBUG("Move destination " << dst << " from " << use_bb.statements[slot.use_loc.stmt_idx] << " to " << set_stmt);
+                            se.dst = dst.clone();
+                            use_bb.statements[slot.use_loc.stmt_idx] = ::MIR::Statement();
+                            changed = true;
+                            }
+                        TU_ARMA(Asm, se) {
+                            // Initialised from an ASM statement, find the variable in the output parameters
+                            }
+                            break;
+                        default:
+                            MIR_BUG(state, "Impossibility: Value set in " << set_stmt);
+                        }
+                    }
+                    else
+                    {
+                        auto& set_term = set_bb.terminator;
+                        MIR_ASSERT(state, set_term.is_Call(), "Impossibility: Value set using non-call");
+                        auto& te = set_term.as_Call();
+                        DEBUG("Move destination " << dst << " from " << use_bb.statements[slot.use_loc.stmt_idx] << " to " << set_term);
+                        te.ret_val = dst.clone();
+                        use_bb.statements[slot.use_loc.stmt_idx] = ::MIR::Statement();
+                        changed = true;
+                    }
+                }
+                else
+                {
+                    DEBUG("Destination invalidated");
+                }
+                continue ;
+            }
+            // Can't move up, can we move down?
+            // - If the source is an Assign(Use) then we can move down
+            if( slot.set_loc.stmt_idx < set_bb.statements.size() && TU_TEST1(set_bb.statements[slot.set_loc.stmt_idx], Assign, .src.is_Use()) )
+            {
+                auto& set_stmt = set_bb.statements[slot.set_loc.stmt_idx];
+                const auto& src = set_stmt.as_Assign().src.as_Use();
+
+                // Check if the source of initial assignment is invalidated in the meantime.
+                // - TODO: We don't want to check the set statement, just all others after it
+                bool invalidated = IterPathRes::Complete != iter_path(fcn, slot.set_loc, slot.use_loc,
+                        [&](auto loc, const auto& stmt)->bool{ return check_invalidates_lvalue(stmt, src); },
+                        [&](auto loc, const auto& term)->bool{ return check_invalidates_lvalue(term, src); }
+                        );
+                if( !invalidated )
+                {
+                    // Update the usage site and replace.
+                    auto replace_cb = [&](::MIR::LValue& slot, ValUsage vu)->bool {
+                        if( slot.m_root == this_var.m_root )
+                        {
+                            if( src.m_wrappers.empty() ) {
+                                slot.m_root = src.m_root.clone();
+                            }
+                            else if( slot.m_wrappers.empty() ) {
+                                slot = src.clone();
+                            }
+                            else {
+                                MIR_TODO(state, "Replace inner of " << slot << " with " << src);
+                            }
+                            return true;
+                        }
+                        return false;
+                        };
+                    if( slot.use_loc.stmt_idx < use_bb.statements.size() )
+                    {
+                        auto& use_stmt = use_bb.statements[slot.use_loc.stmt_idx];
+                        DEBUG("Replace " << this_var << " with " << src << " in " << use_stmt);
+                        bool found = visit_mir_lvalues_mut(use_stmt, replace_cb);
+                        if( !found )
+                        {
+                            DEBUG("Can't find use of " << this_var << " in " << use_stmt);
+                        }
+                        else
+                        {
+                            set_stmt = ::MIR::Statement();
+                            changed = true;
+                        }
+                    }
+                    else
+                    {
+                        auto& use_term = use_bb.terminator;
+                        DEBUG("Replace " << this_var << " with " << src << " in " << use_term);
+                        bool found = visit_mir_lvalues_mut(use_term, replace_cb);
+                        if( !found )
+                        {
+                            DEBUG("Can't find use of " << this_var << " in " << use_term);
+                        }
+                        else
+                        {
+                            set_stmt = ::MIR::Statement();
+                            changed = true;
+                        }
+                    }
+                }
+                else
+                {
+                    DEBUG("Source invalidated");
+                }
+                continue;
+            }
+
+            // TODO: If the source is a Borrow and the use is a Deref, then propagate forwards
+            // - This would be a simpler version of a var more compliciated algorithm
+
+            DEBUG("Can't replace:");
+            if( slot.set_loc.stmt_idx < set_bb.statements.size() )
+            {
+                DEBUG("Set: " << set_bb.statements[slot.set_loc.stmt_idx]);
+            }
+            else
+            {
+                DEBUG("Set: " << set_bb.terminator);
+            }
+            if( slot.use_loc.stmt_idx < use_bb.statements.size() )
+            {
+                DEBUG("Use: " << use_bb.statements[slot.use_loc.stmt_idx]);
+            }
+            else
+            {
+                DEBUG("Use: " << use_bb.terminator);
+            }
+        }
+    }
+
+    return changed;
+}
+
+// Remove useless borrows (locals assigned with a borrow, and never used by value)
+// ```
+// _$1 = & _$0;
+// (*_$1).1 = 0x0;
+// ```
+bool MIR_Optimise_DeTemporary_Borrows(::MIR::TypeResolve& state, ::MIR::Function& fcn)
+{
+    bool changed = false;
+#if 1
+    TRACE_FUNCTION_FR("", changed);
+
+    // Find all single-assign borrows that are only ever used via Deref
+    // - Direct drop is ignored for this purpose
+    struct LocalUsage {
+        unsigned    n_write;
+        unsigned    n_other_read;
+        unsigned    n_deref_read;
+        StmtRef set_loc;
+        ::std::vector<StmtRef> drop_locs;
+        LocalUsage():
+            n_write(0),
+            n_other_read(0),
+            n_deref_read(0)
+        {
+        }
+    };
+    auto usage_info = ::std::vector<LocalUsage>(fcn.locals.size());
+    for(const auto& bb : fcn.blocks)
+    {
+        StmtRef cur_loc;
+        auto visit_cb = [&](const ::MIR::LValue& lv, auto vu) {
+            if( lv.m_root.is_Local() )
+            {
+                auto& slot = usage_info[lv.m_root.as_Local()];
+                // NOTE: This pass doesn't care about indexing, as we're looking for values that are borrows (which aren't valid indexes)
+                // > Inner-most wrapper is Deref - it's a deref of this variable
+                if( !lv.m_wrappers.empty() && lv.m_wrappers.front().is_Deref() ) {
+                    slot.n_deref_read ++;
+                    if( fcn.locals[lv.m_root.as_Local()].m_data.is_Borrow() ) {
+                        DEBUG(lv << " deref use " << cur_loc);
+                    }
+                }
+                // > Write with no wrappers - Assignment
+                else if( lv.m_wrappers.empty() && vu == ValUsage::Write ) {
+                    slot.n_write ++;
+                    slot.set_loc = cur_loc;
+                    //DEBUG(lv << " set");
+                }
+                // Anything else, count as a read
+                else {
+                    slot.n_other_read ++;
+                }
+            }
+            return false;
+            };
+        for(const auto& stmt : bb.statements)
+        {
+            cur_loc = StmtRef(&bb - &fcn.blocks.front(), &stmt - &bb.statements.front());
+
+            // If the statement is a drop of a local, then don't count that as a read
+            // - But do record the location of the drop, so it can be deleted later on?
+            if( stmt.is_Drop() )
+            {
+                const auto& drop_lv = stmt.as_Drop().slot;
+                if( drop_lv.m_root.is_Local() && drop_lv.m_wrappers.empty() )
+                {
+                    auto& slot = usage_info[drop_lv.m_root.as_Local()];
+                    slot.drop_locs.push_back(cur_loc);
+                    continue ;
+                }
+            }
+
+            //DEBUG(cur_loc << ":" << stmt);
+            visit_mir_lvalues(stmt, visit_cb);
+        }
+        cur_loc = StmtRef(&bb - &fcn.blocks.front(), bb.statements.size());
+        //DEBUG(cur_loc << ":" << bb.terminator);
+        visit_mir_lvalues(bb.terminator, visit_cb);
+    }
+
+    // Look single-write/deref-only locals assigned with `_0 = Borrow`
+    for(size_t var_idx = 0; var_idx < fcn.locals.size(); var_idx ++)
+    {
+        const auto& slot = usage_info[var_idx];
+        auto this_var = ::MIR::LValue::new_Local(var_idx);
+
+        // This rule only applies to single-write variables, with no use other than via derefs
+        if( !(slot.n_write == 1 && slot.n_other_read == 0) )
+        {
+            //DEBUG(this_var << " - Multi-assign, or use-by-value");
+            continue ;
+        }
+        if( slot.n_deref_read == 0 )
+        {
+            //DEBUG(this_var << " - Not used");
+            continue ;
+        }
+
+        // Check that the source was a borrow statement
+        auto& src_bb = fcn.blocks[slot.set_loc.bb_idx];
+        if( !(slot.set_loc.stmt_idx < src_bb.statements.size() && TU_TEST1(src_bb.statements[slot.set_loc.stmt_idx], Assign, .src.is_Borrow())) )
+        {
+            DEBUG(this_var << " - Source is not a borrow op");
+            continue;
+        }
+        const auto& src_lv = src_bb.statements[slot.set_loc.stmt_idx].as_Assign().src.as_Borrow().val;
+        // Check that the borrow isn't too complex
+        // TODO: If there's only one use, then no complexity limit?
+        if( src_lv.m_wrappers.size() >= 2 )
+        {
+            DEBUG(this_var << " - Source is too complex - " << src_lv);
+            continue;
+        }
+        if( slot.n_deref_read > 1 && fcn.locals[var_idx].m_data.as_Borrow().type != ::HIR::BorrowType::Shared )
+        {
+            DEBUG(this_var << " - Multi-use non-shared borrow, too complex to do");
+            continue;
+        }
+        DEBUG(this_var << " - Borrow of " << src_lv << " at " << slot.set_loc << ", used " << slot.n_deref_read << " times (dropped " << slot.drop_locs << ")");
+
+        // Locate usage sites (by walking forwards) and check for invalidation
+        auto cur_loc = slot.set_loc;
+        cur_loc.stmt_idx ++;
+        unsigned num_replaced = 0;
+        auto replace_cb = [&](::MIR::LValue& lv, auto _vu) {
+            if( lv.m_root == this_var.m_root )
+            {
+                ASSERT_BUG(Span(), !lv.m_wrappers.empty(), cur_loc << " " << lv);
+                assert(lv.m_wrappers.front().is_Deref());
+                // Make a LValue reference, then overwrite it
+                {
+                    auto lvr = ::MIR::LValue::MRef(lv);
+                    while(lvr.wrapper_count() > 1)
+                        lvr.try_unwrap();
+                    DEBUG(this_var << " " << cur_loc << " - Replace " << lvr << " with " << src_lv << " in " << lv);
+                    lvr.replace(src_lv.clone());
+                }
+                DEBUG("= " << lv);
+                assert(lv.m_root != this_var.m_root);
+                assert(num_replaced < slot.n_deref_read);
+                num_replaced += 1;
+            }
+            return false;
+            };
+        for(bool stop = false; !stop; )
+        {
+            auto& cur_bb = fcn.blocks[cur_loc.bb_idx];
+            for(; cur_loc.stmt_idx < cur_bb.statements.size(); cur_loc.stmt_idx ++)
+            {
+                auto& stmt = cur_bb.statements[cur_loc.stmt_idx];
+                DEBUG(cur_loc << " " << stmt);
+                // Replace usage
+                bool invalidates = check_invalidates_lvalue(stmt, src_lv);
+                visit_mir_lvalues_mut(stmt, replace_cb);
+                if( num_replaced == slot.n_deref_read )
+                {
+                    stop = true;
+                    break;
+                }
+                // Check for invalidation (actual check done before replacement)
+                if( invalidates )
+                {
+                    // Invalidated, stop here.
+                    DEBUG(this_var << " - Source invalidated @ " << cur_loc << " in " << stmt);
+                    stop = true;
+                    break;
+                }
+            }
+            if( stop ) {
+                break;
+            }
+            // Replace usage
+            visit_mir_lvalues_mut(cur_bb.terminator, replace_cb);
+            if( num_replaced == slot.n_deref_read )
+            {
+                stop = true;
+                break;
+            }
+            // Check for invalidation
+            if( check_invalidates_lvalue(cur_bb.terminator, src_lv) )
+            {
+                DEBUG(this_var << " - Source invalidated @ " << cur_loc << " in " << cur_bb.terminator);
+                stop = true;
+                break;
+            }
+
+            TU_MATCH_HDRA( (cur_bb.terminator), { )
+            default:
+                stop = true;
+                break;
+            // TODO: History is needed to avoid infinite loops from triggering infinite looping here.
+            //TU_ARMA(Goto, e) {
+            //    cur_pos.bb_idx = e;
+            //    cur_pos.stmt_idx = 0;
+            //    }
+            // NOTE: `Call` can't work in the presense of unwinding, would need to traverse both paths
+            //TU_ARMA(Call, e) {
+            //    }
+            }
+        }
+
+        // If the source was an inner deref, update its counts
+        if( src_lv.m_root.is_Local() && !src_lv.m_wrappers.empty() && src_lv.m_wrappers.front().is_Deref() )
+        {
+            usage_info[src_lv.m_root.as_Local()].n_deref_read += num_replaced;
+            if(num_replaced == slot.n_deref_read)
+            {
+                usage_info[src_lv.m_root.as_Local()].n_deref_read -= 1;
+            }
+        }
+
+        // If all usage sites were updated, then remove the original assignment
+        if(num_replaced == slot.n_deref_read)
+        {
+            DEBUG(this_var << " - Erase " << slot.set_loc << " as it is no longer used (" << src_bb.statements[slot.set_loc.stmt_idx] << ")");
+            src_bb.statements[slot.set_loc.stmt_idx] = ::MIR::Statement();
+            for(const auto& drop_loc : slot.drop_locs)
+            {
+                DEBUG(this_var << " - Drop at " << drop_loc);
+                fcn.blocks[drop_loc.bb_idx].statements[drop_loc.stmt_idx] = ::MIR::Statement();
+            }
+        }
+#if 0
+        else if( num_replaced > 0 )
+        {
+            auto src_rval = ::std::move(src_bb.statements[slot.set_loc.stmt_idx].as_Assign().src);
+            src_bb.statements[slot.set_loc.stmt_idx] = ::MIR::Statement();
+            DEBUG(this_var << " - Move " << slot.set_loc << " to after " << cur_loc);
+            // TODO: Move the source borrow up to this point.
+            auto& cur_bb = fcn.blocks[cur_loc.bb_idx];
+            if( cur_loc.stmt_idx >= cur_bb.statements.size() )
+            {
+                auto push_bb_front = [&fcn,&this_var](unsigned b, ::MIR::RValue s){
+                    fcn.blocks[b].statements.insert(fcn.blocks[b].statements.begin(), ::MIR::Statement::make_Assign({ this_var.clone(), ::std::move(s) }));
+                    // TODO: Update all references to this block?
+                    };
+                // Move the borrow to the next block?
+                // - Terminators shouldn't be able to invalidate...
+                TU_MATCH_HDRA( (cur_bb.terminator), { )
+                default:
+                    TODO(Span(), "Move borrow to after terminator " << cur_bb.terminator);
+                TU_ARMA(Goto, e) {
+                    push_bb_front(e, ::std::move(src_rval));
+                    }
+                TU_ARMA(Call, e) {
+                    push_bb_front(e.ret_block, src_rval.clone());
+                    push_bb_front(e.panic_block, ::std::move(src_rval));
+                    }
+                }
+            }
+            else
+            {
+                // If invalidated, then there _shouldn't_ be more to come (borrow rules)
+                TODO(Span(), "Move borrow to after " << cur_loc);
+            }
+        }
+#endif
+        else
+        {
+            // No replacement, keep the source where it is
+            DEBUG(this_var << " - Keep " << slot.set_loc);
+        }
+
+        // Any replacements? Then there was an actionable change
+        if( num_replaced > 0 )
+        {
+            changed = true;
+        }
+    }
+#endif
+
+    return changed;
 }
 
 // --------------------------------------------------------------------
@@ -1373,10 +2072,16 @@ bool MIR_Optimise_DeTemporary(::MIR::TypeResolve& state, ::MIR::Function& fcn)
     bool changed = false;
     TRACE_FUNCTION_FR("", changed);
 
+    changed |= MIR_Optimise_DeTemporary_SingleSetAndUse(state, fcn);
+    changed |= MIR_Optimise_DeTemporary_Borrows(state, fcn);
+
+
+    // OLD ALGORITHM.
     for(unsigned int bb_idx = 0; bb_idx < fcn.blocks.size(); bb_idx ++)
     {
         auto& bb = fcn.blocks[bb_idx];
         ::std::map<unsigned,unsigned>   local_assignments;  // Local number -> statement index
+        // TODO: Keep track of what variables would invalidate a local (and compound on assignment)
         ::std::vector<unsigned> statements_to_remove;   // List of statements that have to be removed
 
         // ----- Helper closures -----
@@ -1388,7 +2093,7 @@ bool MIR_Optimise_DeTemporary(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                     const auto& src_rvalue = bb.statements[it->second].as_Assign().src;
 
                     // Destination invalidated?
-                    if( lv.is_Local() && it->first == lv.as_Local() )
+                    if( lv.m_root.is_Local() && it->first == lv.m_root.as_Local() )
                     {
                         switch(vu)
                         {
@@ -1409,8 +2114,9 @@ bool MIR_Optimise_DeTemporary(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                         case ValUsage::Borrow:  // Borrows are annoying, assume they invalidate anything used
                         case ValUsage::Write:   // Mutated? It's invalidated
                         case ValUsage::Move:    // Moved? Now invalid
-                            visit_mir_lvalues(src_rvalue, [&](const auto& s_lv, auto /*s_vu*/) {
-                                if( s_lv == lv )
+                            visit_mir_lvalues(src_rvalue, [&](const ::MIR::LValue& s_lv, auto s_vu) {
+                                //DEBUG("   " << s_lv << " ?= " << lv);
+                                if( s_lv.m_root == lv.m_root )
                                 {
                                     DEBUG(state << "> Invalidates source of Local(" << it->first << ") - " << src_rvalue);
                                     invalidated = true;
@@ -1444,39 +2150,37 @@ bool MIR_Optimise_DeTemporary(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             // > For now, don't do the replacement if it would delete the assignment UNLESS it's directly being used)
 
             // 2. Search for replacements
-            bool top_level = true;
-            visit_mir_lvalue_mut(top_lv, top_usage, [&](auto& ilv, auto /*i_usage*/) {
-                if( ilv.is_Local() )
+            if( top_lv.m_root.is_Local() )
+            {
+                bool top_level = top_lv.m_wrappers.empty();
+                auto ilv = ::MIR::LValue::new_Local(top_lv.m_root.as_Local());
+                auto it = local_assignments.find(top_lv.m_root.as_Local());
+                if( it != local_assignments.end() )
                 {
-                    auto it = local_assignments.find(ilv.as_Local());
-                    if( it != local_assignments.end() )
+                    const auto& new_val = bb.statements[it->second].as_Assign().src.as_Use();
+                    // - Copy? All is good.
+                    if( state.lvalue_is_copy(ilv) )
                     {
-                        // - Copy? All is good.
-                        if( state.lvalue_is_copy(ilv) )
-                        {
-                            ilv = bb.statements[it->second].as_Assign().src.as_Use().clone();
-                            DEBUG(state << "> Replace (and keep) Local(" << it->first << ") with " << ilv);
-                        }
-                        // - Top-level (directly used) also good.
-                        else if( top_level && top_usage == ValUsage::Move )
-                        {
-                            // TODO: DstMeta/DstPtr _doesn't_ move, so shouldn't trigger this.
-                            ilv = bb.statements[it->second].as_Assign().src.as_Use().clone();
-                            DEBUG(state << "> Replace (and remove) Local(" << it->first << ") with " << ilv);
-                            statements_to_remove.push_back( it->second );
-                            local_assignments.erase(it);
-                        }
-                        // - Otherwise, remove the record.
-                        else
-                        {
-                            DEBUG(state << "> Non-copy value used within a LValue, remove record of Local(" << it->first << ")");
-                            local_assignments.erase(it);
-                        }
+                        top_lv = new_val.clone_wrapped(top_lv.m_wrappers.begin(), top_lv.m_wrappers.end());
+                        DEBUG(state << "> Replace (and keep) Local(" << it->first << ") with " << new_val);
+                    }
+                    // - Top-level (directly used) also good.
+                    else if( top_level && top_usage == ValUsage::Move )
+                    {
+                        // TODO: DstMeta/DstPtr _doesn't_ move, so shouldn't trigger this.
+                        top_lv = new_val.clone();
+                        DEBUG(state << "> Replace (and remove) Local(" << it->first << ") with " << new_val);
+                        statements_to_remove.push_back( it->second );
+                        local_assignments.erase(it);
+                    }
+                    // - Otherwise, remove the record.
+                    else
+                    {
+                        DEBUG(state << "> Non-copy value used within a LValue, remove record of Local(" << it->first << ")");
+                        local_assignments.erase(it);
                     }
                 }
-                top_level = false;
-                return false;
-                });
+            }
             // Return true to prevent recursion
             return true;
             };
@@ -1503,11 +2207,15 @@ bool MIR_Optimise_DeTemporary(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             // - Check if this is a new assignment
             if( stmt.is_Assign() && stmt.as_Assign().dst.is_Local() && stmt.as_Assign().src.is_Use() )
             {
-                if( visit_mir_lvalue(stmt.as_Assign().src.as_Use(), ValUsage::Read, [&](const auto& lv, auto /*vu*/) {
-                        return lv == stmt.as_Assign().dst;
-                        }) )
+                const auto& dst_lv = stmt.as_Assign().dst;
+                const auto& src_lv = stmt.as_Assign().src.as_Use();
+                if( visit_mir_lvalues_inner(src_lv, ValUsage::Read, [&](const auto& lv, auto) { return lv.m_root == dst_lv.m_root; }) )
                 {
                     DEBUG(state << "> Don't record, self-referrential");
+                }
+                else if( ::std::any_of(src_lv.m_wrappers.begin(), src_lv.m_wrappers.end(), [](const auto& w){ return w.is_Deref(); }) )
+                {
+                    DEBUG(state << "> Don't record, dereference");
                 }
                 else
                 {
@@ -1680,12 +2388,13 @@ bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& f
     {
         DEBUG("Replacing temporaries using {" << replacements << "}");
         visit_mir_lvalues_mut(state, fcn, [&](auto& lv, auto ) {
-            if( auto* ve = lv.opt_Local() ) {
-                auto it = replacements.find(*ve);
+            if( lv.m_root.is_Local() )
+            {
+                auto it = replacements.find(lv.m_root.as_Local());
                 if( it != replacements.end() )
                 {
                     MIR_DEBUG(state, lv << " => Local(" << it->second << ")");
-                    *ve = it->second;
+                    lv.m_root = ::MIR::LValue::Storage::new_Local(it->second);
                     return true;
                 }
             }
@@ -1948,7 +2657,7 @@ bool MIR_Optimise_PropagateKnownValues(::MIR::TypeResolve& state, ::MIR::Functio
                 if( stmt_idx == bb.statements.size() )
                 {
                     DEBUG("BB" << bb_idx << "/TERM - " << bb.terminator);
-                    if( terminator_invalidates_lvalue(bb.terminator, slot_lvalue) ) {
+                    if( check_invalidates_lvalue(bb.terminator, slot_lvalue) ) {
                         return nullptr;
                     }
                     continue ;
@@ -1982,13 +2691,13 @@ bool MIR_Optimise_PropagateKnownValues(::MIR::TypeResolve& state, ::MIR::Functio
                                 if(stmt_idx == bb.statements.size())
                                 {
                                     DEBUG("BB" << bb_idx << "/TERM - " << bb.terminator);
-                                    if( terminator_invalidates_lvalue(bb.terminator, src_lval) ) {
+                                    if( check_invalidates_lvalue(bb.terminator, src_lval) ) {
                                         // Invalidated: Return.
                                         return nullptr;
                                     }
                                     continue ;
                                 }
-                                if( statement_invalidates_lvalue(bb.statements[stmt_idx], src_lval) ) {
+                                if( check_invalidates_lvalue(bb.statements[stmt_idx], src_lval) ) {
                                     // Invalidated: Return.
                                     return nullptr;
                                 }
@@ -2002,7 +2711,7 @@ bool MIR_Optimise_PropagateKnownValues(::MIR::TypeResolve& state, ::MIR::Functio
                 }
 
                 // Check if the slot is invalidated (mutated)
-                if( statement_invalidates_lvalue(stmt, slot_lvalue) ) {
+                if( check_invalidates_lvalue(stmt, slot_lvalue) ) {
                     return nullptr;
                 }
             }
@@ -2021,33 +2730,34 @@ bool MIR_Optimise_PropagateKnownValues(::MIR::TypeResolve& state, ::MIR::Functio
             state.set_cur_stmt(bb_idx, i);
             DEBUG(state << block.statements[i]);
             visit_mir_lvalues_mut(block.statements[i], [&](::MIR::LValue& lv, auto vu) {
-                    if(const auto* e = lv.opt_Field())
+                    if(vu == ValUsage::Read && lv.m_wrappers.size() > 1 && lv.m_wrappers.front().is_Field() && lv.m_root.is_Local())
                     {
-                        if(vu == ValUsage::Read && e->val->is_Local() ) {
-                            // TODO: This value _must_ be Copy for this optimisation to work.
-                            // - OR, it has to somehow invalidate the original tuple
-                            DEBUG(state << "Locating origin of " << lv);
-                            ::HIR::TypeRef  tmp;
-                            if( !state.m_resolve.type_is_copy(state.sp, state.get_lvalue_type(tmp, *e->val)) )
+                        auto field_index = lv.m_wrappers.front().as_Field();
+                        auto inner_lv = ::MIR::LValue::new_Local(lv.m_root.as_Local());
+                        auto outer_lv = ::MIR::LValue::new_Field(inner_lv.clone(), field_index);
+                        // TODO: This value _must_ be Copy for this optimisation to work.
+                        // - OR, it has to somehow invalidate the original tuple
+                        DEBUG(state << "Locating origin of " << lv);
+                        ::HIR::TypeRef  tmp;
+                        if( !state.m_resolve.type_is_copy(state.sp, state.get_lvalue_type(tmp, inner_lv)) )
+                        {
+                            DEBUG(state << "- not Copy, can't optimise");
+                            return false;
+                        }
+                        const auto* source_lvalue = get_field(inner_lv, field_index, bb_idx, i);
+                        if( source_lvalue )
+                        {
+                            if( outer_lv != *source_lvalue )
                             {
-                                DEBUG(state << "- not Copy, can't optimise");
-                                return false;
+                                DEBUG(state << "Source is " << *source_lvalue);
+                                lv = source_lvalue->clone_wrapped( lv.m_wrappers.begin() + 1, lv.m_wrappers.end() );
+                                change_happend = true;
                             }
-                            const auto* source_lvalue = get_field(*e->val, e->field_index, bb_idx, i);
-                            if( source_lvalue )
+                            else
                             {
-                                if( lv != *source_lvalue )
-                                {
-                                    DEBUG(state << "Source is " << *source_lvalue);
-                                    lv = source_lvalue->clone();
-                                    change_happend = true;
-                                }
-                                else
-                                {
-                                    DEBUG(state << "No change");
-                                }
-                                return false;
+                                DEBUG(state << "No change");
                             }
+                            return false;
                         }
                     }
                     return false;
@@ -2148,6 +2858,23 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             bb.terminator = ::MIR::Terminator::make_Goto(te.ret_block);
             changed = true;
         }
+        else if( tef.name == "needs_drop" )
+        {
+            // Returns `true` if the actual type given as `T` requires drop glue;
+            // returns `false` if the actual type provided for `T` implements `Copy`. (Either otherwise)
+            // NOTE: libarena assumes that this returns `true` iff T doesn't require drop glue.
+            const auto& ty = tef.params.m_types.at(0);
+            // - Only expand at this stage if there's no generics, and no unbound paths
+            if( !visit_ty_with(ty, [](const ::HIR::TypeRef& ty)->bool{
+                    return ty.m_data.is_Generic() || TU_TEST1(ty.m_data, Path, .binding.is_Unbound());
+                }) )
+            {
+                bool needs_drop = state.m_resolve.type_needs_drop_glue(state.sp, ty);
+                bb.statements.push_back(::MIR::Statement::make_Assign({ mv$(te.ret_val), ::MIR::RValue::make_Constant(::MIR::Constant::make_Bool({needs_drop})) }));
+                bb.terminator = ::MIR::Terminator::make_Goto(te.ret_block);
+                changed = true;
+            }
+        }
         else
         {
             // Ignore any other intrinsics
@@ -2170,13 +2897,42 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
         ::std::map< ::MIR::LValue, unsigned >   known_values_var;
         ::std::map< unsigned, bool >    known_drop_flags;
 
-        auto check_param = [&](::MIR::Param& p) {
-            if(const auto* pe = p.opt_LValue()) {
-                auto it = known_values.find(*pe);
+        auto check_lv = [&](const ::MIR::LValue& lv)->::MIR::Constant {
+                auto it = known_values.find(lv);
                 if( it != known_values.end() )
                 {
-                    DEBUG(state << "Value " << *pe << " known to be " << it->second);
-                    p = it->second.clone();
+                    DEBUG(state << "Value " << lv << " known to be" << it->second);
+                    return it->second.clone();
+                }
+
+                // TODO: If the inner of the value is known,
+                //   AND all indexes are known - expand
+                //if( !lv.m_wrappers.empty() )
+                //{
+                //    it = known_values.find(lv.m_root);
+                //    if( it != known_values.end() )
+                //    {
+                //        // TODO: Use HIR::Literal instead so composites can be handled.
+                //        for(const auto& w : lv.m_wrappers)
+                //        {
+                //        }
+                //    }
+                //}
+
+                // Not a known value, and not a known composite
+                // - Use a nullptr ItemAddr to indicate this
+                return ::MIR::Constant::make_ItemAddr({});
+            };
+        auto check_param = [&](::MIR::Param& p) {
+            if(const auto* pe = p.opt_LValue()) {
+                auto nv = check_lv(*pe);
+                if( nv.is_ItemAddr() && !nv.as_ItemAddr() )
+                {
+                    // ItemAddr with a nullptr inner means "no expansion"
+                }
+                else
+                {
+                    p = mv$(nv);
                 }
             }
             };
@@ -2193,11 +2949,14 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             {
                 TU_MATCHA( (e->src), (se),
                 (Use,
-                    auto it = known_values.find(se);
-                    if( it != known_values.end() )
+                    auto nv = check_lv(se);
+                    if( nv.is_ItemAddr() && !nv.as_ItemAddr() )
                     {
-                        DEBUG(state << "Value " << se << " known to be" << it->second);
-                        e->src = it->second.clone();
+                        // ItemAddr with a nullptr inner means "no expansion"
+                    }
+                    else
+                    {
+                        e->src = ::MIR::RValue::make_Constant(mv$(nv));
                     }
                     ),
                 (Constant,
@@ -2219,75 +2978,157 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                         const auto& val_l = se.val_l.as_Constant();
                         const auto& val_r = se.val_r.as_Constant();
 
-                        ::MIR::Constant new_value;
-                        bool replace = false;
-                        switch(se.op)
+                        if( val_l.is_Const() || val_r.is_Const() )
                         {
-                        case ::MIR::eBinOp::EQ:
-                            if( val_l.is_Const() || val_r.is_Const() )
-                                ;
-                            else
-                            {
-                                replace = true;
-                                new_value = ::MIR::Constant::make_Bool({val_l == val_r});
-                            }
-                            break;
-                        case ::MIR::eBinOp::NE:
-                            if( val_l.is_Const() || val_r.is_Const() )
-                                ;
-                            else
-                            {
-                                replace = true;
-                                new_value = ::MIR::Constant::make_Bool({val_l != val_r});
-                            }
-                            break;
-                        case ::MIR::eBinOp::LT:
-                            if( val_l.is_Const() || val_r.is_Const() )
-                                ;
-                            else
-                            {
-                                replace = true;
-                                new_value = ::MIR::Constant::make_Bool({val_l < val_r});
-                            }
-                            break;
-                        case ::MIR::eBinOp::LE:
-                            if( val_l.is_Const() || val_r.is_Const() )
-                                ;
-                            else
-                            {
-                                replace = true;
-                                new_value = ::MIR::Constant::make_Bool({val_l <= val_r});
-                            }
-                            break;
-                        case ::MIR::eBinOp::GT:
-                            if( val_l.is_Const() || val_r.is_Const() )
-                                ;
-                            else
-                            {
-                                replace = true;
-                                new_value = ::MIR::Constant::make_Bool({val_l > val_r});
-                            }
-                            break;
-                        case ::MIR::eBinOp::GE:
-                            if( val_l.is_Const() || val_r.is_Const() )
-                                ;
-                            else
-                            {
-                                replace = true;
-                                new_value = ::MIR::Constant::make_Bool({val_l >= val_r});
-                            }
-                            break;
-                        // TODO: Other binary operations
-                        // Could emit a TODO?
-                        default:
-                            break;
                         }
-
-                        if( replace )
+                        else
                         {
-                            DEBUG(state << " " << e->src << " = " << new_value);
-                            e->src = mv$(new_value);
-                            changed = true;
+                            struct H {
+                                static int64_t truncate_s(::HIR::CoreType ct, int64_t v) {
+                                    return v;
+                                }
+                                static uint64_t truncate_u(::HIR::CoreType ct, uint64_t v) {
+                                    switch(ct)
+                                    {
+                                    case ::HIR::CoreType::U8:   return v & 0xFF;
+                                    case ::HIR::CoreType::U16:  return v & 0xFFFF;
+                                    case ::HIR::CoreType::U32:  return v & 0xFFFFFFFF;
+                                    case ::HIR::CoreType::U64:  return v;
+                                    case ::HIR::CoreType::U128: return v;
+                                    case ::HIR::CoreType::Usize:    return v;
+                                    case ::HIR::CoreType::Char:
+                                        //MIR_BUG(state, "Invalid use of operator on char");
+                                        break;
+                                    default:
+                                        // Invalid type for Uint literal
+                                        break;
+                                    }
+                                    return v;
+                                }
+                            };
+                            ::MIR::Constant new_value;
+                            switch(se.op)
+                            {
+                            case ::MIR::eBinOp::EQ:
+                                new_value = ::MIR::Constant::make_Bool({val_l == val_r});
+                                break;
+                            case ::MIR::eBinOp::NE:
+                                new_value = ::MIR::Constant::make_Bool({val_l != val_r});
+                                break;
+                            case ::MIR::eBinOp::LT:
+                                new_value = ::MIR::Constant::make_Bool({val_l < val_r});
+                                break;
+                            case ::MIR::eBinOp::LE:
+                                new_value = ::MIR::Constant::make_Bool({val_l <= val_r});
+                                break;
+                            case ::MIR::eBinOp::GT:
+                                new_value = ::MIR::Constant::make_Bool({val_l > val_r});
+                                break;
+                            case ::MIR::eBinOp::GE:
+                                new_value = ::MIR::Constant::make_Bool({val_l >= val_r});
+                                break;
+
+                            case ::MIR::eBinOp::ADD:
+                                MIR_ASSERT(state, val_l.tag() == val_r.tag(), "Mismatched types for eBinOp::ADD - " << val_l << " + " << val_r);
+                                //{TU_MATCH_HDRA( (val_l, val_r), {)
+                                {TU_MATCH_HDRA( (val_l), {)
+                                default:
+                                    break;
+                                // TU_ARMav(Int, (le, re)) {
+                                TU_ARMA(Int, le) { const auto& re = val_r.as_Int();
+                                    MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::ADD - " << val_l << " + " << val_r);
+                                    new_value = ::MIR::Constant::make_Int({ H::truncate_s(le.t, le.v + re.v), le.t });
+                                    }
+                                TU_ARMA(Uint, le) { const auto& re = val_r.as_Uint();
+                                    MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::ADD - " << val_l << " + " << val_r);
+                                    new_value = ::MIR::Constant::make_Uint({ H::truncate_u(le.t, le.v + re.v), le.t });
+                                    }
+                                }}
+                                break;
+                            case ::MIR::eBinOp::SUB:
+                                MIR_ASSERT(state, val_l.tag() == val_r.tag(), "Mismatched types for eBinOp::SUB - " << val_l << " + " << val_r);
+                                //{TU_MATCH_HDRA( (val_l, val_r), {)
+                                {TU_MATCH_HDRA( (val_l), {)
+                                default:
+                                    break;
+                                // TU_ARMav(Int, (le, re)) {
+                                TU_ARMA(Int, le) { const auto& re = val_r.as_Int();
+                                    MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::SUB - " << val_l << " - " << val_r);
+                                    new_value = ::MIR::Constant::make_Int({ H::truncate_s(le.t, le.v - re.v), le.t });
+                                    }
+                                TU_ARMA(Uint, le) { const auto& re = val_r.as_Uint();
+                                    MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::SUB - " << val_l << " - " << val_r);
+                                    new_value = ::MIR::Constant::make_Uint({ H::truncate_u(le.t, le.v - re.v), le.t });
+                                    }
+                                }}
+                                break;
+                            case ::MIR::eBinOp::MUL:
+                                MIR_ASSERT(state, val_l.tag() == val_r.tag(), "Mismatched types for eBinOp::MUL - " << val_l << " * " << val_r);
+                                //{TU_MATCH_HDRA( (val_l, val_r), {)
+                                {TU_MATCH_HDRA( (val_l), {)
+                                default:
+                                    break;
+                                // TU_ARMav(Int, (le, re)) {
+                                TU_ARMA(Int, le) { const auto& re = val_r.as_Int();
+                                    MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::MUL - " << val_l << " * " << val_r);
+                                    new_value = ::MIR::Constant::make_Int({ H::truncate_s(le.t, le.v * re.v), le.t });
+                                    }
+                                TU_ARMA(Uint, le) { const auto& re = val_r.as_Uint();
+                                    MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::MUL - " << val_l << " * " << val_r);
+                                    new_value = ::MIR::Constant::make_Uint({ H::truncate_u(le.t, le.v * re.v), le.t });
+                                    }
+                                }}
+                                break;
+                            case ::MIR::eBinOp::DIV:
+                                MIR_ASSERT(state, val_l.tag() == val_r.tag(), "Mismatched types for eBinOp::DIV - " << val_l << " / " << val_r);
+                                //{TU_MATCH_HDRA( (val_l, val_r), {)
+                                {TU_MATCH_HDRA( (val_l), {)
+                                default:
+                                    break;
+                                // TU_ARMav(Int, (le, re)) {
+                                TU_ARMA(Int, le) { const auto& re = val_r.as_Int();
+                                    MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::DIV - " << val_l << " / " << val_r);
+                                    MIR_ASSERT(state, re.v != 0, "Const eval error: Constant division by zero");
+                                    new_value = ::MIR::Constant::make_Int({ H::truncate_s(le.t, le.v / re.v), le.t });
+                                    }
+                                TU_ARMA(Uint, le) { const auto& re = val_r.as_Uint();
+                                    MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::DIV - " << val_l << " / " << val_r);
+                                    MIR_ASSERT(state, re.v != 0, "Const eval error: Constant division by zero");
+                                    new_value = ::MIR::Constant::make_Uint({ H::truncate_u(le.t, le.v / re.v), le.t });
+                                    }
+                                }}
+                                break;
+                            case ::MIR::eBinOp::MOD:
+                                MIR_ASSERT(state, val_l.tag() == val_r.tag(), "Mismatched types for eBinOp::MOD - " << val_l << " % " << val_r);
+                                //{TU_MATCH_HDRA( (val_l, val_r), {)
+                                {TU_MATCH_HDRA( (val_l), {)
+                                default:
+                                    break;
+                                // TU_ARMav(Int, (le, re)) {
+                                TU_ARMA(Int, le) { const auto& re = val_r.as_Int();
+                                    MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::MOD - " << val_l << " % " << val_r);
+                                    MIR_ASSERT(state, re.v != 0, "Const eval error: Constant division by zero");
+                                    new_value = ::MIR::Constant::make_Int({ H::truncate_s(le.t, le.v % re.v), le.t });
+                                    }
+                                TU_ARMA(Uint, le) { const auto& re = val_r.as_Uint();
+                                    MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::MOD - " << val_l << " % " << val_r);
+                                    MIR_ASSERT(state, re.v != 0, "Const eval error: Constant division by zero");
+                                    new_value = ::MIR::Constant::make_Uint({ H::truncate_u(le.t, le.v % re.v), le.t });
+                                    }
+                                }}
+                                break;
+                            // TODO: Other binary operations
+                            // Could emit a TODO?
+                            default:
+                                break;
+                            }
+
+                            if( new_value != ::MIR::Constant() )
+                            {
+                                DEBUG(state << " " << e->src << " = " << new_value);
+                                e->src = mv$(new_value);
+                                changed = true;
+                            }
                         }
                     }
                     ),
@@ -2305,6 +3146,7 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                             TU_MATCHA( (val), (ve),
                             (Uint,
                                 auto val = ve.v;
+                                replace = true;
                                 switch(ve.t)
                                 {
                                 case ::HIR::CoreType::U8:   val = (~val) & 0xFF;  break;
@@ -2315,17 +3157,17 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                                     val = ~val;
                                     break;
                                 case ::HIR::CoreType::U128:
-                                    val = ~val;
+                                    replace = false;
                                     break;
                                 case ::HIR::CoreType::Char:
                                     MIR_BUG(state, "Invalid use of ! on char");
                                     break;
                                 default:
                                     // Invalid type for Uint literal
+                                    replace = false;
                                     break;
                                 }
                                 new_value = ::MIR::Constant::make_Uint({ val, ve.t });
-                                replace = true;
                                 ),
                             (Int,
                                 // Is ! valid on Int?
@@ -2588,7 +3430,10 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 
 // --------------------------------------------------------------------
 // Split `var = Tuple(...,)` into `varN = ...` if the tuple isn't used by
-// value.
+// value (nor borrowed).
+//
+// NOTE: The "nor borrowed" rule is needed to avoid issues when the first element of a tuple
+// is used as a proxy for the entire tuple.
 // --------------------------------------------------------------------
 bool MIR_Optimise_SplitAggregates(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 {
@@ -2642,6 +3487,18 @@ bool MIR_Optimise_SplitAggregates(::MIR::TypeResolve& state, ::MIR::Function& fc
                     auto it = potentials.find(lv.as_Local());
                     if( it != potentials.end() )
                     {
+                        DEBUG(lv << " invalidated due to root usage");
+                        potentials.erase(it);
+                    }
+                }
+                // If the variable is borrowed (even via wrappers)
+                // TODO: Restrict this to when the borrow is just via field accesses
+                if( lv.m_root.is_Local() && vu == ValUsage::Borrow )
+                {
+                    auto it = potentials.find(lv.m_root.as_Local());
+                    if( it != potentials.end() )
+                    {
+                        DEBUG(lv << " invalidate due to any borrow");
                         potentials.erase(it);
                     }
                 }
@@ -2689,15 +3546,17 @@ bool MIR_Optimise_SplitAggregates(::MIR::TypeResolve& state, ::MIR::Function& fc
         for(auto& blk : fcn.blocks)
         {
             auto cb = [&](auto& lv, auto _vu) {
-                if(lv.is_Field() && lv.as_Field().val->is_Local())
+                if( !lv.m_wrappers.empty() && lv.m_wrappers.front().is_Field() && lv.m_root.is_Local() )
                 {
-                    auto fld_idx = lv.as_Field().field_index;
-                    auto it = replacements.find( lv.as_Field().val->as_Local() );
+                    auto fld_idx = lv.m_wrappers.front().as_Field();
+                    auto it = replacements.find( lv.m_root.as_Local() );
                     if( it != replacements.end() )
                     {
                         MIR_ASSERT(state, fld_idx < it->second.size(), "Tuple field index out of range");
                         DEBUG(state << "Replace " << lv << " with Local(" << it->second.at(fld_idx) << ")");
-                        lv = ::MIR::LValue::make_Local(it->second.at(fld_idx));
+
+                        lv.m_wrappers.erase( lv.m_wrappers.begin() );
+                        lv.m_root = ::MIR::LValue::Storage::new_Local(it->second.at(fld_idx));
                     }
                 }
                 return false;
@@ -2719,7 +3578,7 @@ bool MIR_Optimise_SplitAggregates(::MIR::TypeResolve& state, ::MIR::Function& fc
 
                         for(size_t i = 0; i < vals.size(); i ++)
                         {
-                            auto lv = ::MIR::LValue::make_Local(rit->second[i]);
+                            auto lv = ::MIR::LValue::new_Local(rit->second[i]);
                             auto rv = vals[i].is_LValue()
                                 ? ::MIR::RValue(::std::move( vals[i].as_LValue() ))
                                 : ::MIR::RValue(::std::move( vals[i].as_Constant() ))
@@ -2764,13 +3623,16 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
         ::std::vector<ValUse> local_uses;
 
         void use_lvalue(const ::MIR::LValue& lv, ValUsage ut) {
-            TU_MATCHA( (lv), (e),
-            (Return,
-                ),
-            (Argument,
-                ),
-            (Local,
-                auto& vu = local_uses[e];
+            for(const auto& w : lv.m_wrappers)
+            {
+                if( w.is_Index() ){
+                    //local_uses[w.as_Index()].read += 1;
+                    local_uses[w.as_Index()].borrow += 1;
+                }
+            }
+            if( lv.m_root.is_Local() )
+            {
+                auto& vu = local_uses[lv.m_root.as_Local()];
                 switch(ut)
                 {
                 case ValUsage::Move:
@@ -2778,23 +3640,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                 case ValUsage::Write:   vu.write += 1;  break;
                 case ValUsage::Borrow:  vu.borrow += 1; break;
                 }
-                ),
-            (Static,
-                ),
-            (Field,
-                use_lvalue(*e.val, ut);
-                ),
-            (Deref,
-                use_lvalue(*e.val, ut);
-                ),
-            (Index,
-                use_lvalue(*e.val, ut);
-                use_lvalue(*e.idx, ValUsage::Read);
-                ),
-            (Downcast,
-                use_lvalue(*e.val, ut);
-                )
-            )
+            }
         }
     } val_uses = {
         ::std::vector<ValUse>(fcn.locals.size())
@@ -2810,7 +3656,11 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
     // > Replace usage with the inner of the original `Use`
     {
         // 1. Assignments (forward propagate)
-        ::std::map< ::MIR::LValue, ::MIR::RValue>    replacements;
+        //::std::map< ::MIR::LValue::CRef, ::MIR::RValue>    replacements;
+        ::std::vector< ::std::pair<::MIR::LValue, ::MIR::RValue> >  replacements;
+        auto replacements_find = [&replacements](const ::MIR::LValue::CRef& lv) {
+            return ::std::find_if(replacements.begin(), replacements.end(), [&](const auto& e) { return lv == e.first; });
+            };
         for(const auto& block : fcn.blocks)
         {
             if( block.terminator.tag() == ::MIR::Terminator::TAGDEAD )
@@ -2818,16 +3668,18 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
 
             for(unsigned int stmt_idx = 0; stmt_idx < block.statements.size(); stmt_idx ++)
             {
+                state.set_cur_stmt(&block - &fcn.blocks.front(), stmt_idx);
                 const auto& stmt = block.statements[stmt_idx];
+                DEBUG(state << stmt);
                 // > Assignment
                 if( ! stmt.is_Assign() )
                     continue ;
                 const auto& e = stmt.as_Assign();
                 // > Of a temporary from with a RValue::Use
-                if( const auto* de = e.dst.opt_Local() )
+                if( e.dst.is_Local() )
                 {
-                    const auto& vu = val_uses.local_uses[*de];
-                    DEBUG(e.dst << " - VU " << e.dst << " R:" << vu.read << " W:" << vu.write << " B:" << vu.borrow);
+                    const auto& vu = val_uses.local_uses[e.dst.as_Local()];
+                    DEBUG(" - VU " << e.dst << " R:" << vu.read << " W:" << vu.write << " B:" << vu.borrow);
                     // TODO: Allow write many?
                     // > Where the variable is written once and read once
                     if( !( vu.read == 1 && vu.write == 1 && vu.borrow == 0 ) )
@@ -2837,38 +3689,33 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                 {
                     continue ;
                 }
-                DEBUG(e.dst << " = " << e.src);
                 if( e.src.is_Use() )
                 {
                     // Keep the complexity down
                     const auto* srcp = &e.src.as_Use();
-                    while( srcp->is_Field() )
-                        srcp = &*srcp->as_Field().val;
-                    if( !srcp->is_Local() )
+                    if( ::std::any_of(srcp->m_wrappers.begin(), srcp->m_wrappers.end(), [](auto& w) { return !w.is_Field(); }) )
+                        continue ;
+                    if( !srcp->m_root.is_Local() )
                         continue ;
 
-                    if( replacements.find(*srcp) != replacements.end() )
+                    if( replacements_find(*srcp) != replacements.end() )
                     {
                         DEBUG("> Can't replace, source has pending replacement");
                         continue;
                     }
                 }
-                // TODO: Allow any rvalue, but that currently breaks due to chaining
-                //else if( e.src.is_Borrow() )
-                //{
-                //}
                 else
                 {
                     continue ;
                 }
                 bool src_is_lvalue = e.src.is_Use();
+                DEBUG("- Locate usage");
 
-                auto is_lvalue_usage = [&](const auto& lv, auto ){ return lv == e.dst; };
-
-                // Returns `true` if the passed lvalue is used as a part of the source
-                auto is_lvalue_in_val = [&](const auto& lv) {
-                    return visit_mir_lvalues(e.src, [&](const auto& slv, auto ) { return lv == slv; });
+                auto is_lvalue_usage = [&](const auto& lv, auto ){
+                    return lv.m_root == e.dst.m_root;
+                    //return lv == e.dst;
                     };
+
                 // Eligable for replacement
                 // Find where this value is used
                 // - Stop on a conditional block terminator
@@ -2877,8 +3724,15 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                 bool found = false;
                 for(unsigned int si2 = stmt_idx+1; si2 < block.statements.size(); si2 ++)
                 {
+                    state.set_cur_stmt(&block - &fcn.blocks.front(), si2);
                     const auto& stmt2 = block.statements[si2];
-                    DEBUG("[find usage] " << stmt2);
+                    DEBUG(state << "[find usage] " << stmt2);
+
+                    // Check for invalidation (done first, to avoid cases where the source is moved into a struct)
+                    if( check_invalidates_lvalue(stmt2, e.src.as_Use()) ) {
+                        stop = true;
+                        break;
+                    }
 
                     // Usage found.
                     if( visit_mir_lvalues(stmt2, is_lvalue_usage) )
@@ -2899,18 +3753,18 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                         stop = true;
                         break;
                     }
-
-                    // Determine if source is mutated.
-                    // > Assume that any mutating access of the root value counts (over-cautious)
-                    if( visit_mir_lvalues(stmt2, [&](const auto& lv, auto vu){ return /*vu == ValUsage::Write &&*/ is_lvalue_in_val(lv); }) )
-                    {
-                        stop = true;
-                        break;
-                    }
                 }
                 if( !stop )
                 {
-                    DEBUG("[find usage] " << block.terminator);
+                    state.set_cur_stmt_term(&block - &fcn.blocks.front());
+                    DEBUG(state << "[find usage] " << block.terminator);
+                    if( src_is_lvalue )
+                    {
+                        visit_mir_lvalues(block.terminator, [&](const auto& lv, auto vu) {
+                            found |= is_lvalue_usage(lv, vu);
+                            return found;
+                            });
+                    }
                     TU_MATCHA( (block.terminator), (e),
                     (Incomplete,
                         ),
@@ -2924,29 +3778,15 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                     (Panic,
                         ),
                     (If,
-                        if( src_is_lvalue && visit_mir_lvalue(e.cond, ValUsage::Read, is_lvalue_usage) )
-                            found = true;
                         stop = true;
                         ),
                     (Switch,
-                        if( src_is_lvalue && visit_mir_lvalue(e.val, ValUsage::Read, is_lvalue_usage) )
-                            found = true;
                         stop = true;
                         ),
                     (SwitchValue,
-                        if( src_is_lvalue && visit_mir_lvalue(e.val, ValUsage::Read, is_lvalue_usage) )
-                            found = true;
                         stop = true;
                         ),
                     (Call,
-                        if( e.fcn.is_Value() )
-                            if( src_is_lvalue && visit_mir_lvalue(e.fcn.as_Value(), ValUsage::Read, is_lvalue_usage) )
-                                found = true;
-                        for(const auto& v : e.args)
-                        {
-                            if( src_is_lvalue && visit_mir_lvalue(v, ValUsage::Read, is_lvalue_usage) )
-                                found = true;
-                        }
                         stop = true;
                         )
                     )
@@ -2954,8 +3794,8 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                 // Schedule a replacement in a future pass
                 if( found )
                 {
-                    DEBUG("> Replace " << e.dst << " with " << e.src.as_Use());
-                    replacements.insert( ::std::make_pair(e.dst.clone(), e.src.clone()) );
+                    DEBUG("> Schedule replace " << e.dst << " with " << e.src.as_Use());
+                    replacements.push_back( ::std::make_pair(e.dst.clone(), e.src.clone()) );
                 }
                 else
                 {
@@ -2964,21 +3804,26 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
             }   // for(stmt : block.statements)
         }
 
+        DEBUG("replacements = " << replacements);
+
         // Apply replacements within replacements
         for(;;)
         {
             unsigned int inner_replaced_count = 0;
             for(auto& r : replacements)
             {
-                visit_mir_lvalues_mut(r.second, [&](auto& lv, auto vu) {
+                visit_mir_lvalues_mut(r.second, [&](::MIR::LValue& lv, auto vu) {
                     if( vu == ValUsage::Read || vu == ValUsage::Move )
                     {
-                        auto it = replacements.find(lv);
-                        if( it != replacements.end() && it->second.is_Use() )
-                        {
-                            lv = it->second.as_Use().clone();
-                            inner_replaced_count ++;
-                        }
+                        visit_mir_lvalue_mut(lv, vu, [&](::MIR::LValue::MRef& lvr, auto vu) {
+                            auto it = replacements_find(lvr);
+                            if( it != replacements.end() && it->second.is_Use() )
+                            {
+                                lvr.replace( it->second.as_Use().clone() );
+                                inner_replaced_count ++;
+                            }
+                            return false;
+                            });
                     }
                     return false;
                     });
@@ -2986,26 +3831,30 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
             if( inner_replaced_count == 0 )
                 break;
         }
+        DEBUG("replacements = " << replacements);
 
         // Apply replacements
         unsigned int replaced = 0;
         while( replaced < replacements.size() )
         {
             auto old_replaced = replaced;
-            auto cb = [&](auto& lv, auto vu){
-                if( vu == ValUsage::Read || vu == ValUsage::Move )
-                {
-                    auto it = replacements.find(lv);
-                    if( it != replacements.end() )
+            auto cb = [&](::MIR::LValue& lv, auto vu){
+                return visit_mir_lvalue_mut(lv, vu, [&](::MIR::LValue::MRef& lv, auto vu) {
+                    if( vu == ValUsage::Read || vu == ValUsage::Move )
                     {
-                        MIR_ASSERT(state, it->second.tag() != ::MIR::RValue::TAGDEAD, "Replacement of  " << lv << " fired twice");
-                        MIR_ASSERT(state, it->second.is_Use(), "Replacing a lvalue with a rvalue - " << lv << " with " << it->second);
-                        auto rval = ::std::move(it->second);
-                        lv = ::std::move(rval.as_Use());
-                        replaced += 1;
+                        auto it = replacements_find(lv);
+                        if( it != replacements.end() )
+                        {
+                            MIR_ASSERT(state, it->second.tag() != ::MIR::RValue::TAGDEAD, "Replacement of  " << lv << " fired twice");
+                            MIR_ASSERT(state, it->second.is_Use(), "Replacing a lvalue with a rvalue - " << lv << " with " << it->second);
+                            auto rval = ::std::move(it->second);
+                            DEBUG("> Do replace " << lv << " => " << rval);
+                            lv.replace( ::std::move(rval.as_Use()) );
+                            replaced += 1;
+                        }
                     }
-                }
-                return false;
+                    return false;
+                    });
                 };
             for(unsigned int block_idx = 0; block_idx < fcn.blocks.size(); block_idx ++)
             {
@@ -3015,10 +3864,12 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                 for(auto& stmt : block.statements)
                 {
                     state.set_cur_stmt(block_idx, (&stmt - &block.statements.front()));
+                    DEBUG(state << stmt);
+#if 0
                     if( stmt.is_Assign() && stmt.as_Assign().src.is_Use() )
                     {
                         auto& e = stmt.as_Assign();
-                        auto it = replacements.find(e.src.as_Use());
+                        auto it = replacements_find(e.src.as_Use());
                         if( it != replacements.end() )
                         {
                             MIR_ASSERT(state, it->second.tag() != ::MIR::RValue::TAGDEAD, "Replacement of  " << it->first << " fired twice");
@@ -3027,6 +3878,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                         }
                     }
                     else
+#endif
                     {
                         visit_mir_lvalues_mut(stmt, cb);
                     }
@@ -3043,8 +3895,11 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
             {
                 state.set_cur_stmt(&block - &fcn.blocks.front(), (it - block.statements.begin()));
                 // If the statement was an assign of a replaced temporary, remove it.
-                if( it->is_Assign() && replacements.count( it->as_Assign().dst ) > 0 )
+                auto it2 = replacements.end();
+                if( it->is_Assign() && (it2 = replacements_find(it->as_Assign().dst)) != replacements.end() ) {
+                    DEBUG(state << "Delete " << *it);
                     it = block.statements.erase(it);
+                }
                 else {
                     MIR_ASSERT(state, !( it->is_Assign() && it->as_Assign().src.tag() == ::MIR::RValue::TAGDEAD ), "");
                     ++it;
@@ -3066,8 +3921,8 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                 if( it->as_Assign().src.tag() == ::MIR::RValue::TAGDEAD )
                     continue ;
                 auto& to_replace_lval = it->as_Assign().dst;
-                if( const auto* e = to_replace_lval.opt_Local() ) {
-                    const auto& vu = val_uses.local_uses[*e];
+                if( to_replace_lval.is_Local() ){
+                    const auto& vu = val_uses.local_uses[to_replace_lval.as_Local()];
                     if( !( vu.read == 1 && vu.write == 1 && vu.borrow == 0 ) )
                         continue ;
                 }
@@ -3091,8 +3946,8 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                     // `... = Use(to_replace_lval)`
 
                     // TODO: Ensure that the target isn't borrowed.
-                    if( const auto* e = new_dst_lval.opt_Local() ) {
-                        const auto& vu = val_uses.local_uses[*e];
+                    if( new_dst_lval.is_Local() ) {
+                        const auto& vu = val_uses.local_uses[new_dst_lval.as_Local()];
                         if( !( vu.read == 1 && vu.write == 1 && vu.borrow == 0 ) )
                             break ;
                     }
@@ -3109,7 +3964,8 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                     {
                         // Closure returns `true` if the passed lvalue is a component of `new_dst_lval`
                         auto is_lvalue_in_val = [&](const auto& lv) {
-                            return visit_mir_lvalue(new_dst_lval, ValUsage::Write, [&](const auto& slv, auto ) { return lv == slv; });
+                            // Don't care about indexing?
+                            return lv.m_root == new_dst_lval.m_root;
                             };
                         if( visit_mir_lvalues(*it3, [&](const auto& lv, auto ){ return is_lvalue_in_val(lv); }) )
                         {
@@ -3159,7 +4015,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                 const ::MIR::LValue* new_dst = nullptr;
                 auto& blk2 = fcn.blocks.at(e.ret_block);
                 for(const auto& stmt : blk2.statements)
-                { 
+                {
                     // Find `RValue::Use( this_lvalue )`
                     if( stmt.is_Assign() && stmt.as_Assign().src.is_Use() && stmt.as_Assign().src.as_Use() == e.ret_val ) {
                         new_dst = &stmt.as_Assign().dst;
@@ -3170,21 +4026,36 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                 // Ensure that the new destination value isn't used before assignment
                 if( new_dst )
                 {
-                    auto lvalue_impacts_dst = [&](const ::MIR::LValue& lv) {
-                        return visit_mir_lvalue(*new_dst, ValUsage::Write, [&](const auto& slv, auto ) { return lv == slv; });
+                    auto lvalue_impacts_dst = [&](const ::MIR::LValue& lv)->bool {
+                        // Returns true if the two lvalues share a common root
+                        // TODO: Could restrict based on the presence of deref/field accesses?
+                        // If `lv` is a local AND matches the index in `new_dst`, check for indexing
+                        if( lv.is_Local() )
+                        {
+                            for(const auto& w : new_dst->m_wrappers)
+                            {
+                                if( w.is_Index() && w.as_Index() == lv.as_Local() )
+                                {
+                                    return true;
+                                }
+                            }
+                        }
+                        return lv.m_root == new_dst->m_root;
                         };
                     for(auto it = blk2.statements.begin(); it != blk2.statements.end(); ++ it)
                     {
+                        state.set_cur_stmt(&blk2 - &fcn.blocks.front(), it - blk2.statements.begin());
                         const auto& stmt = *it;
                         if( stmt.is_Assign() && stmt.as_Assign().src.is_Use() && stmt.as_Assign().src.as_Use() == e.ret_val )
                         {
-                            DEBUG("- Replace function return " << e.ret_val << " with " << *new_dst);
+                            DEBUG(state << "- Replace function return " << e.ret_val << " with " << *new_dst);
                             e.ret_val = new_dst->clone();
+                            // TODO: Invalidate the entry, instead of deleting?
                             it = blk2.statements.erase(it);
                             replacement_happend = true;
                             break;
                         }
-                        if( visit_mir_lvalues(stmt, [&](const auto& lv, ValUsage vu){ return lv == *new_dst || (vu == ValUsage::Write && lvalue_impacts_dst(lv)); }) )
+                        if( visit_mir_lvalues(stmt, [&](const MIR::LValue& lv, ValUsage vu){ return lv == *new_dst || (vu == ValUsage::Write && lvalue_impacts_dst(lv)); }) )
                         {
                             break;
                         }
@@ -3218,17 +4089,14 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                     }
 
                     // Remove assignments of locals that are never read
-                    TU_MATCH_DEF( ::MIR::LValue, (se->dst), (de),
-                    (
-                        ),
-                    (Local,
-                        const auto& vu = val_uses.local_uses[de];
+                    if( se->dst.is_Local() )
+                    {
+                        const auto& vu = val_uses.local_uses[se->dst.as_Local()];
                         if( vu.write == 1 && vu.read == 0 && vu.borrow == 0 ) {
                             DEBUG(state << se->dst << " only written, removing write");
                             it = block.statements.erase(it)-1;
                         }
-                        )
-                    )
+                    }
                 }
             }
             // NOTE: Calls can write values, but they also have side-effects
@@ -3356,9 +4224,12 @@ bool MIR_Optimise_DeadAssignments(::MIR::TypeResolve& state, ::MIR::Function& fc
     for(const auto& bb : fcn.blocks)
     {
         auto cb = [&](const ::MIR::LValue& lv, ValUsage vu) {
-            if( lv.is_Local() ) {
-                read_locals[lv.as_Local()] = true;
+            if( lv.m_root.is_Local() ) {
+                read_locals[lv.m_root.as_Local()] = true;
             }
+            for(const auto& w : lv.m_wrappers)
+                if(w.is_Index())
+                    read_locals[w.as_Index()] = true;
             return false;
             };
         for(const auto& stmt : bb.statements)
@@ -3425,7 +4296,7 @@ bool MIR_Optimise_NoopRemoval(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             if( it->is_Assign()
                 && it->as_Assign().src.is_Borrow()
                 && it->as_Assign().src.as_Borrow().val.is_Deref()
-                && *it->as_Assign().src.as_Borrow().val.as_Deref().val == it->as_Assign().dst
+                && it->as_Assign().src.as_Borrow().val.clone_unwrapped() == it->as_Assign().dst
                 )
             {
                 DEBUG(state << "Useless assignment (v = &*v), remove - " << *it);
@@ -3449,7 +4320,7 @@ bool MIR_Optimise_NoopRemoval(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 bool MIR_Optimise_GarbageCollect_Partial(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 {
     ::std::vector<bool> visited( fcn.blocks.size() );
-    visit_blocks(state, fcn, [&visited](auto bb, const auto& _blokc) {
+    visit_blocks(state, fcn, [&visited](auto bb, const auto& /*block*/) {
             assert( !visited[bb] );
             visited[bb] = true;
             });
@@ -3479,12 +4350,19 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
         visited[bb] = true;
 
         auto assigned_lval = [&](const ::MIR::LValue& lv) {
-            const auto* lvp = &lv;
             // TODO: Consume through indexing/field accesses
-            while(lvp->is_Field())
-                lvp = &*lvp->as_Field().val;
-            if(const auto* le = lvp->opt_Local() )
-                used_locals[*le] = true;
+            for(const auto& w : lv.m_wrappers)
+            {
+                if( w.is_Field() ) {
+                }
+                else {
+                    return ;
+                }
+            }
+            if( lv.m_root.is_Local() )
+            {
+                used_locals[lv.m_root.as_Local()] = true;
+            }
             };
 
         for(const auto& stmt : block.statements)
@@ -3558,20 +4436,23 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
     auto it = fcn.blocks.begin();
     for(unsigned int i = 0; i < visited.size(); i ++)
     {
-        if( !visited[i] )
+        if( visited[i] )
         {
-            // Delete
-            DEBUG("GC bb" << i);
-            it = fcn.blocks.erase(it);
-        }
-        else
-        {
-            auto lvalue_cb = [&](auto& lv, auto ) {
-                if(auto* e = lv.opt_Local() ) {
-                    MIR_ASSERT(state, *e < local_rewrite_table.size(), "Variable out of range - " << lv);
+            auto lvalue_cb = [&](::MIR::LValue& lv, auto ) {
+                if( lv.m_root.is_Local() )
+                {
+                    auto e = lv.m_root.as_Local();
+                    MIR_ASSERT(state, e < local_rewrite_table.size(), "Variable out of range - " << lv);
                     // If the table entry for this variable is !0, it wasn't marked as used
-                    MIR_ASSERT(state, local_rewrite_table.at(*e) != ~0u, "LValue " << lv << " incorrectly marked as unused");
-                    *e = local_rewrite_table.at(*e);
+                    MIR_ASSERT(state, local_rewrite_table.at(e) != ~0u, "LValue " << lv << " incorrectly marked as unused");
+                    lv.m_root = ::MIR::LValue::Storage::new_Local(local_rewrite_table.at(e) );
+                }
+                for(auto& w : lv.m_wrappers)
+                {
+                    if( w.is_Index())
+                    {
+                        w = ::MIR::LValue::Wrapper::new_Index(local_rewrite_table.at( w.as_Index() ));
+                    }
                 }
                 return false;
                 };
@@ -3580,6 +4461,14 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
             {
                 auto stmt_idx = &stmt - &it->statements.front();
                 state.set_cur_stmt(i, stmt_idx);
+
+                if( stmt == ::MIR::Statement() )
+                {
+                    DEBUG(state << "Remove " << stmt << " - Pure default");
+                    to_remove_statements[stmt_idx] = true;
+                    continue ;
+                }
+
                 if( auto* se = stmt.opt_Drop() )
                 {
                     // If the drop flag was unset, either remove the drop or remove the drop flag reference
@@ -3594,6 +4483,14 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
                             to_remove_statements[stmt_idx] = true;
                             continue ;
                         }
+                    }
+
+                    // HACK: Remove drop if it's of an unused value (TODO: only if it's conditional?)
+                    if( se->slot.is_Local() && local_rewrite_table[se->slot.as_Local()] == ~0u )
+                    {
+                        DEBUG(state << "Remove " << stmt << " - Dropping non-set value");
+                        to_remove_statements[stmt_idx] = true;
+                        continue ;
                     }
                 }
 
@@ -3637,6 +4534,7 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
             }
             state.set_cur_stmt_term(i);
             // Rewrite and advance
+            visit_mir_lvalues_mut(it->terminator, lvalue_cb);
             TU_MATCHA( (it->terminator), (e),
             (Incomplete,
                 ),
@@ -3650,49 +4548,45 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
             (Panic,
                 ),
             (If,
-                visit_mir_lvalue_mut(e.cond, ValUsage::Read, lvalue_cb);
                 e.bb0 = block_rewrite_table[e.bb0];
                 e.bb1 = block_rewrite_table[e.bb1];
                 ),
             (Switch,
-                visit_mir_lvalue_mut(e.val, ValUsage::Read, lvalue_cb);
                 for(auto& target : e.targets)
                     target = block_rewrite_table[target];
                 ),
             (SwitchValue,
-                visit_mir_lvalue_mut(e.val, ValUsage::Read, lvalue_cb);
                 for(auto& target : e.targets)
                     target = block_rewrite_table[target];
                 e.def_target = block_rewrite_table[e.def_target];
                 ),
             (Call,
-                if( e.fcn.is_Value() ) {
-                    visit_mir_lvalue_mut(e.fcn.as_Value(), ValUsage::Read, lvalue_cb);
-                }
-                for(auto& v : e.args)
-                    visit_mir_lvalue_mut(v, ValUsage::Read, lvalue_cb);
-                visit_mir_lvalue_mut(e.ret_val, ValUsage::Write, lvalue_cb);
                 e.ret_block   = block_rewrite_table[e.ret_block];
                 e.panic_block = block_rewrite_table[e.panic_block];
                 )
             )
 
             // Delete all statements flagged in a bitmap for deletion
-            auto stmt_it = it->statements.begin();
-            for(auto flag : to_remove_statements)
-            {
-                if(flag) {
-                    stmt_it = it->statements.erase(stmt_it);
-                }
-                else {
-                    ++ stmt_it;
-                }
-            }
-
-            ++it;
+            assert(it->statements.size() == to_remove_statements.size());
+            auto new_end = ::std::remove_if(it->statements.begin(), it->statements.end(), [&](const auto& s){
+                    size_t stmt_idx = (&s - &it->statements.front());
+                    return to_remove_statements[stmt_idx];
+                    });
+            it->statements.erase(new_end, it->statements.end());
         }
+        ++it;
     }
 
+    auto new_blocks_end = ::std::remove_if(fcn.blocks.begin(), fcn.blocks.end(), [&](const auto& bb) {
+        size_t i = &bb - &fcn.blocks.front();
+        if( !visited[i] ) {
+            DEBUG("GC bb" << i);
+        }
+        return !visited[i];
+        });
+    fcn.blocks.erase(new_blocks_end, fcn.blocks.end());
+
+    // NOTE: Drop flags are bool, so can't use the above hack
     for(unsigned int i = 0, j = 0; i < n_df; i ++)
     {
         if( !used_dfs[i] )
@@ -3842,7 +4736,9 @@ void MIR_OptimiseCrate_Inlining(const ::HIR::Crate& crate, TransList& list)
             else if( hir_fcn.m_code )
             {
                 auto& mir = hir_fcn.m_code.get_mir_or_error_mut(Span());
-                did_inline_on_pass |= MIR_OptimiseInline(resolve, ip, mir, hir_fcn.m_args, hir_fcn.m_return, list);
+                bool did_opt = MIR_OptimiseInline(resolve, ip, mir, hir_fcn.m_args, hir_fcn.m_return, list);
+                mir.trans_enum_state = ::MIR::EnumCachePtr();   // Clear MIR enum cache
+                did_inline_on_pass |= did_opt;
             }
             else
             {

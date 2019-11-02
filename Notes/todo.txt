@@ -6,24 +6,62 @@ TODO:
  - Remove variables that are just assigned from arguments
 - Clean up AST
  - Almost done, just a few little niggles left
-- Split arg patterns and arg types up for cleaner serialisation
- - Could be a good idea to do as part of changing HIR::TraitImpl to only contain the impl data
- - May not be too useful due to argument monomorphisation.
 - Optimise typecheck.
+  - Mostly done with trait resolve cleanup
 
 
 ## Big change TODOs
 - Support MIR-only RLibs
+  - Defer C codegen until final binary generation?
+- Dylib support (requires trans API restructure)
+  - Will improve disk usage for tests (can dynamically link libstd)
 - Fix Span annotations
+  - Spans are missing on HIR items, sub-par reporting in typecheck and later
+  - Spans can be off by a line or two
 - Refactor parse to use a consume model lexer
 - Optimise optimise (and typecheck)
+  - Partially down with trait resolution optimisation. Needs further profiling
 - Complete structed C codegen
+  - Upside: It'll look cool
+  - Unknown: Will it be faster?
+- RTL/register-based SSA interrim backend
+  - Convert MIR into a form that can be handed over to LLVM or Cranelift (or GIMPLE)
+  - Use alloca-s for non-pointer/integer/borrowed locals
 
 ## Smaller changes
-- Only generate destructors if needed (removes C warnings)
+- Make type ascritpion its own node type
+  - AST and HIR
+  - Then remove per-node type annotations from AST
 - Cache specialisation tree
-- Dependency files from mrustc
-  - Partally done, not complete
+  - TODO: Profile to determine if this is a slow point.
+- Delete HIR after MIR generation
+  - Problem: HIR is sometimes touched again after MIR gen
+  - May just be able to do the delete in the main MIR gen phase
+- Split types and patterns in HIR function arguments
+  - Upsides:
+    - Less data in the serialsed .hir file
+      - Note: Patterns aren't actually stored in metadata
+    - Simpler logic post MIR generation
+    - Reduced use of .first/.second
+    - Memory usage reduction for external functions
+  - Downsides:
+    - Lots of code touched
+    - Extra complexity in typecheck and MIR lowering?
+- Sort trait impls in a similar way to type impls
+  - ```c++
+        template<T> struct ImplGroup {
+	    std::map<SimplePath, T> named;
+            std::vector<T> primitives;
+            std::vector<T> generic;
+        }
+	std::map<SimplePath, ImplGroup<TraitImpl>> trait_impls;
+     ``` <!-- `-->
+  - Problem: Trait lookup on ivars?
+  - TODO: Profile a large crate again to see what the overhead of searching
+    trait impls is.
+  - Should help with widely implemented traits (e.g. Debug)
+  - Downside: Another SimplePath per impl cluster, plus the vector size - Not
+    too big but something to be aware of (7 pointers overhead plus indirection).
 
 
 ## Optimisations
@@ -32,4 +70,9 @@ TODO:
 - Dead assignment removal (Delete `<val> = Use(<val>)`
 - Tuple destructure removal
  - Spot `#1 = (...,)`, `#2 = (#1).n` where #1 is Write-once, borrow-none
+- Remove useless borrows (remove write-once &T lvalues if they're never used by
+  value - only used via deref)
 
+
+<!-- vim: ft=markdown
+-->

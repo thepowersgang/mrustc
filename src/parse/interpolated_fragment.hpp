@@ -12,6 +12,7 @@
 class TypeRef;
 class TokenTree;
 namespace AST {
+    typedef bool Visibility;
     class Pattern;
     class Path;
     class ExprNode;
@@ -37,6 +38,7 @@ public:
 
         META,
         ITEM,
+        VIS,
     } m_type;
 
     // Owned type-pruned pointer
@@ -53,6 +55,7 @@ public:
     InterpolatedFragment(::AST::Named<AST::Item> );
     ~InterpolatedFragment();
     InterpolatedFragment(Type , ::AST::ExprNode*);
+    InterpolatedFragment(AST::Visibility);  // :vis
 
     TokenTree& as_tt() { assert(m_type == TT); return *reinterpret_cast<TokenTree*>(m_ptr); }
     const TokenTree& as_tt() const { assert(m_type == TT); return *reinterpret_cast<TokenTree*>(m_ptr); }

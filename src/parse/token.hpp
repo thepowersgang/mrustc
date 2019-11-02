@@ -44,6 +44,7 @@ extern ::std::ostream& operator<<(::std::ostream& os, const Position& p);
 class TypeRef;
 class TokenTree;
 namespace AST {
+    typedef bool Visibility;
     class Pattern;
     class Path;
     class ExprNode;
@@ -63,6 +64,7 @@ class Token
 
     TAGGED_UNION(Data, None,
     (None, struct {}),
+    (IString, RcString),
     (String, ::std::string),
     (Integer, struct {
         enum eCoreType  m_datatype;
@@ -107,6 +109,7 @@ public:
 
     Token(enum eTokenType type);
     Token(enum eTokenType type, ::std::string str);
+    Token(enum eTokenType type, RcString str);
     Token(uint64_t val, enum eCoreType datatype);
     Token(double val, enum eCoreType datatype);
     Token(const InterpolatedFragment& );
@@ -114,24 +117,28 @@ public:
     Token(TagTakeIP, InterpolatedFragment );
 
     enum eTokenType type() const { return m_type; }
+    const RcString& istr() const { return m_data.as_IString(); }
     ::std::string& str() { return m_data.as_String(); }
     const ::std::string& str() const { return m_data.as_String(); }
     enum eCoreType  datatype() const { TU_MATCH_DEF(Data, (m_data), (e), (assert(!"Getting datatype of invalid token type");), (Integer, return e.m_datatype;), (Float, return e.m_datatype;)) throw ""; }
     uint64_t intval() const { return m_data.as_Integer().m_intval; }
     double floatval() const { return m_data.as_Float().m_floatval; }
 
+    // TODO: Replace these with a way of getting a InterpolatedFragment&
     TypeRef& frag_type() { assert(m_type == TOK_INTERPOLATED_TYPE); return *reinterpret_cast<TypeRef*>( m_data.as_Fragment() ); }
     AST::Path& frag_path() { assert(m_type == TOK_INTERPOLATED_PATH); return *reinterpret_cast<AST::Path*>( m_data.as_Fragment() ); }
     AST::Pattern& frag_pattern() { assert(m_type == TOK_INTERPOLATED_PATTERN); return *reinterpret_cast<AST::Pattern*>( m_data.as_Fragment() ); }
     AST::Attribute& frag_meta() { assert(m_type == TOK_INTERPOLATED_META); return *reinterpret_cast<AST::Attribute*>( m_data.as_Fragment() ); }
     ::std::unique_ptr<AST::ExprNode> take_frag_node();
     ::AST::Named<AST::Item> take_frag_item();
+    ::AST::Visibility take_frag_vis();
 
     bool operator==(const Token& r) const {
         if(type() != r.type())
             return false;
         TU_MATCH(Data, (m_data, r.m_data), (e, re),
         (None, return true;),
+        (IString, return e == re; ),
         (String, return e == re; ),
         (Integer, return e.m_datatype == re.m_datatype && e.m_intval == re.m_intval;),
         (Float, return e.m_datatype == re.m_datatype && e.m_floatval == re.m_floatval;),

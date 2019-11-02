@@ -1,0 +1,48 @@
+2019-07-13: Sizeof mismatch
+===========================
+
+librustc takes ~20mins to recompile, and that's just one crate out of ~80 in rustc
+- rustc failing on a consistency check
+- Turn on debug logging, add more to find where things become inconsistent
+- add assertion that a hashmap insert worked
+- started crashing earlier (but same place)
+- Print the map, item is there
+- Start dumping hashes, they don't match
+- Check equality of pre-hash values, they match
+- Check input to hasher, don't see anything too odd
+- Add more debug to make it easier to see the instance hashig
+- Notice the difference, a pointer difference?
+- Match the hash inputs to fields, find an odd pair with the `ty::Slice` type
+- Start chasing it's Hash impl down, it's supposed to just hash the pointer
+  - Actual impl hashes two words, not just one
+  - The source code checks sizeof to pick between one/two word hashing
+  - But post-optimisation it's always picking two
+  - Turn off that optimisation and rebuild librustc, no change?
+- Check libcore's metadata, it has the bug already (in the generic version?)
+- Enable optimisation debug and rebuild libcore
+- Oh look, `sizeof<*const T>` where `T: ?Sized` is returning 16 instead of returning "I don't know yet"
+
+
+2019-07-20: Leaking MPSC handles
+================================
+
+- rustc just stopping after codegen
+- gdb backtrace shows only one thread, waiting on a MPSC receiver
+- add debugging for MPSC Shared handles for that specific type, LOOTS of them being made (testing on a 14 core machine)
+- Turn down codegen units to 1, now a total of 6 handles (much easier)
+- Check all allocation paths, looks like all of them should call the destructor on the returned handle...
+  - One path hands a handle to a thread, let's chase that down
+  - Nope... that destuctor does get called... hmm...
+- Break down (after two weekends) and hack in handle indexes to mpsc::Shared
+  (on clone, allocate a unique ID and store that in the handle).
+- Re-run, printing the handle indexes - Notice that one code path (two
+  handles) leaks its handles
+- Re-check, the destructor is called... but I can't break on it?
+- Chase down the call chain, reach a Box drop impl (wait... that exists, I
+  thought the compiler made a custom one)
+  - It does absolutely nothing. No free, no destructor... oops
+- Turns out that 1.29 added a no-op Drop impl for Box (1.19 didn't have one), which
+  caused mrustc's magic Drop impl to not be created.
+
+<!-- vim: ft=markdown
+-->

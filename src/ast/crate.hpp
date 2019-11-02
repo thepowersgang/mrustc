@@ -36,7 +36,7 @@ public:
 class ProcMacroDef
 {
 public:
-    ::std::string   name;
+    RcString    name;
     ::AST::Path path;
     ::std::vector<::std::string>    attributes;
 };
@@ -49,15 +49,16 @@ public:
     ::std::map< ::std::string, ::AST::Path> m_lang_items;
 public:
     Module  m_root_module;
-    ::std::map< ::std::string, ExternCrate> m_extern_crates;
+    ::std::map< RcString, ExternCrate> m_extern_crates;
     // Mapping filled by searching for (?visible) macros with is_pub=true
-    ::std::map< ::std::string, const MacroRules*> m_exported_macros;
+    ::std::map< RcString, const MacroRules*> m_exported_macros;
 
     // List of tests (populated in expand if --test is passed)
     bool    m_test_harness = false;
     ::std::vector<TestDesc>   m_tests;
 
-    //::std::vector<::std::string>    m_extra_files;
+    /// Files loaded using things like include! and include_str!
+    mutable ::std::vector<::std::string>    m_extra_files;
 
     // Procedural macros!
     ::std::vector<ProcMacroDef> m_proc_macros;
@@ -90,26 +91,27 @@ public:
 
     /// Load the named crate and returns the crate's unique name
     /// If the parameter `file` is non-empty, only that particular filename will be loaded (from any of the search paths)
-    ::std::string load_extern_crate(Span sp, const ::std::string& name, const ::std::string& file="");
+    RcString load_extern_crate(Span sp, const RcString& name, const ::std::string& file="");
 };
 
 /// Representation of an imported crate
 class ExternCrate
 {
 public:
-    ::std::string   m_name;
+    RcString    m_name;
+    RcString    m_short_name;
     ::std::string   m_filename;
     ::HIR::CratePtr m_hir;
 
-    ExternCrate(const ::std::string& name, const ::std::string& path);
+    ExternCrate(const RcString& name, const ::std::string& path);
 
     ExternCrate(ExternCrate&&) = default;
     ExternCrate& operator=(ExternCrate&&) = default;
     ExternCrate(const ExternCrate&) = delete;
     ExternCrate& operator=(const ExternCrate& ) = delete;
 
-    void with_all_macros(::std::function<void(const ::std::string& , const MacroRules&)> cb) const;
-    const MacroRules* find_macro_rules(const ::std::string& name) const;
+    void with_all_macros(::std::function<void(const RcString& , const MacroRules&)> cb) const;
+    const MacroRules* find_macro_rules(const RcString& name) const;
 };
 
 extern ::std::vector<::std::string>    g_crate_load_dirs;

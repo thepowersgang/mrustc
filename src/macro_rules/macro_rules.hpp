@@ -18,6 +18,7 @@
 #include <set>
 
 class MacroExpander;
+class SimplePatEnt;
 
 TAGGED_UNION(MacroExpansionEnt, Token,
     // TODO: have a "raw" stream instead of just tokens
@@ -40,8 +41,9 @@ extern ::std::ostream& operator<<(::std::ostream& os, const MacroExpansionEnt& x
 /// Matching pattern entry
 struct MacroPatEnt
 {
-    ::std::string   name;
+    RcString    name;
     unsigned int    name_index = 0;
+    // TODO: Include a point span for the token?
     Token   tok;
 
     ::std::vector<MacroPatEnt>  subpats;
@@ -60,6 +62,8 @@ struct MacroPatEnt
         PAT_BLOCK,
         PAT_META,
         PAT_ITEM,   // :item
+        PAT_VIS,
+        PAT_LIFETIME,
     } type;
 
     MacroPatEnt():
@@ -73,7 +77,7 @@ struct MacroPatEnt
     {
     }
 
-    MacroPatEnt(::std::string name, unsigned int name_index, Type type):
+    MacroPatEnt(RcString name, unsigned int name_index, Type type):
         name( mv$(name) ),
         name_index( name_index ),
         tok(),
@@ -93,21 +97,55 @@ struct MacroPatEnt
     friend ::std::ostream& operator<<(::std::ostream& os, const MacroPatEnt::Type& x);
 };
 
+struct SimplePatIfCheck
+{
+    MacroPatEnt::Type   ty; // If PAT_TOKEN, token is checked
+    Token   tok;
+};
+
+/// Simple pattern entry for macro_rules! arm patterns
+TAGGED_UNION( SimplePatEnt, End,
+    // End of the pattern stream (expects EOF, and terminates the match process)
+    (End, struct{}),
+    (LoopStart, struct{}),
+    (LoopNext, struct{}),
+    (LoopEnd, struct{}),
+    (Jump, struct {
+        size_t jump_target;
+        }),
+    // Expect a specific token, erroring/failing the arm if nt met
+    (ExpectTok, Token),
+    // Expect a pattern match
+    (ExpectPat, struct {
+        MacroPatEnt::Type   type;
+        unsigned int    idx;
+        }),
+    // Compare the head of the input stream and poke the pattern stream
+    (If, struct {
+        bool is_equal;
+        size_t  jump_target;
+        ::std::vector<SimplePatIfCheck> ents;
+        })
+    );
+
+extern::std::ostream& operator<<(::std::ostream& os, const SimplePatEnt& x);
+
 /// An expansion arm within a macro_rules! blcok
 struct MacroRulesArm
 {
     /// Names for the parameters
-    ::std::vector< ::std::string>   m_param_names;
+    ::std::vector<RcString>   m_param_names;
 
     /// Patterns
-    ::std::vector<MacroPatEnt>  m_pattern;
+    ::std::vector<SimplePatEnt> m_pattern;
 
     /// Rule contents
     ::std::vector<MacroExpansionEnt> m_contents;
 
+    ~MacroRulesArm();
     MacroRulesArm()
     {}
-    MacroRulesArm(::std::vector<MacroPatEnt> pattern, ::std::vector<MacroExpansionEnt> contents):
+    MacroRulesArm(::std::vector<SimplePatEnt> pattern, ::std::vector<MacroExpansionEnt> contents):
         m_pattern( mv$(pattern) ),
         m_contents( mv$(contents) )
     {}
@@ -126,7 +164,7 @@ public:
 
     /// Crate that defined this macro
     /// - Populated on deserialise if not already set
-    ::std::string   m_source_crate;
+    RcString   m_source_crate;
 
     Ident::Hygiene  m_hygiene;
 
@@ -142,5 +180,9 @@ public:
 
 extern ::std::unique_ptr<TokenStream>   Macro_InvokeRules(const char *name, const MacroRules& rules, const Span& sp, TokenTree input, AST::Module& mod);
 extern MacroRulesPtr    Parse_MacroRules(TokenStream& lex);
+
+extern ::std::vector<MacroPatEnt> Parse_MacroRules_Pat(TokenStream& lex, enum eTokenType open, enum eTokenType close,  ::std::vector<RcString>& names);
+extern ::std::vector<MacroExpansionEnt> Parse_MacroRules_Cont(TokenStream& lex, enum eTokenType open, enum eTokenType close, const ::std::vector<RcString>& var_names, ::std::map<unsigned int,bool>* var_set_ptr=nullptr);
+extern MacroRulesArm Parse_MacroRules_MakeArm(Span pat_sp, ::std::vector<MacroPatEnt> pattern, ::std::vector<MacroExpansionEnt> contents);
 
 #endif // MACROS_HPP_INCLUDED

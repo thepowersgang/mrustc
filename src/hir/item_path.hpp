@@ -20,7 +20,9 @@ public:
     const char* crate_name = nullptr;
     const ::HIR::Path*  wrapped = nullptr;
 
+    ItemPath(const char* crate): crate_name(crate) {}
     ItemPath(const ::std::string& crate): crate_name(crate.c_str()) {}
+    ItemPath(const RcString& crate): crate_name(crate.c_str()) {}
     ItemPath(const ItemPath& p, const char* n):
         parent(&p),
         name(n)
@@ -54,12 +56,12 @@ public:
         }
         else if( parent ) {
             assert(name);
-            return parent->get_simple_path() + name;
+            return parent->get_simple_path() + RcString::new_interned(name);
         }
         else {
             assert(!name);
             assert(crate_name);
-            return ::HIR::SimplePath(crate_name);
+            return ::HIR::SimplePath(RcString::new_interned(crate_name));
         }
     }
     ::HIR::Path get_full_path() const {
@@ -76,18 +78,26 @@ public:
         else if( parent->trait ) {
             assert(parent->ty);
             assert(parent->trait_params);
-            return ::HIR::Path( parent->ty->clone(), ::HIR::GenericPath(parent->trait->clone(), parent->trait_params->clone()), ::std::string(name) );
+            return ::HIR::Path( parent->ty->clone(), ::HIR::GenericPath(parent->trait->clone(), parent->trait_params->clone()), RcString::new_interned(name) );
         }
         else {
             assert(parent->ty);
-            return ::HIR::Path( parent->ty->clone(), ::std::string(name) );
+            return ::HIR::Path( parent->ty->clone(), RcString::new_interned(name) );
         }
     }
     const char* get_name() const {
         return name ? name : "";
     }
 
+    const ItemPath& get_top_ip() const {
+        if( this->parent )
+            return this->parent->get_top_ip();
+        return *this;
+    }
     ItemPath operator+(const ::std::string& name) const {
+        return ItemPath(*this, name.c_str());
+    }
+    ItemPath operator+(const RcString& name) const {
         return ItemPath(*this, name.c_str());
     }
 
@@ -133,7 +143,7 @@ public:
             os << "<* as " << *x.trait << ">";
         }
         else if( x.crate_name ) {
-            os << "\"" << x.crate_name << "\"";
+            os << "::\"" << x.crate_name << "\"";
         }
         return os;
     }

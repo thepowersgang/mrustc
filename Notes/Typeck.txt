@@ -27,5 +27,17 @@ Needs to be able to point to functions in:
 
 Maybe can use separate types for each usecase?
 
+
+
+# Hard Questions
+
+## libgit2 inferrence quirk
+Query on rust type inferrence rules (as designed/intended, not as implemented)
+
+Can the presence of a trait impl influence type inferrence for the Self type?
+
+- `*mut _ : Convert<*mut T>`, if there's only one type that implements that
+  trait, is it valid to infer `_` based on that impl?
+
 <!-- vim: ft=markdown
 -->

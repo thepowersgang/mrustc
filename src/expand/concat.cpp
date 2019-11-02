@@ -16,13 +16,11 @@
 class CConcatExpander:
     public ExpandProcMacro
 {
-    ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
+    ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
         Token   tok;
 
         auto lex = TTStream(sp, tt);
-        if( ident != "" )
-            ERROR(sp, E0000, "format_args! doesn't take an ident");
 
         ::std::string   rv;
         do {

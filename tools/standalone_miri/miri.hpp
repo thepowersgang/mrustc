@@ -13,10 +13,16 @@ struct ThreadState
 {
     static unsigned s_next_tls_key;
     unsigned call_stack_depth;
-    ::std::vector<uint64_t> tls_values;
+    ::std::vector< ::std::pair<uint64_t, RelocationPtr> > tls_values;
+
+    unsigned    panic_count;
+    bool    panic_active;
+    Value   panic_value;
 
     ThreadState():
         call_stack_depth(0)
+        ,panic_count(0)
+        ,panic_active(false)
     {
     }
 
@@ -35,8 +41,11 @@ class InterpreterThread
     friend struct MirHelpers;
     struct StackFrame
     {
+        static unsigned s_next_frame_index;
+        unsigned    frame_index;
+
         ::std::function<bool(Value&,Value)> cb;
-        const Function& fcn;
+        const Function* fcn;
         Value ret;
         ::std::vector<Value>    args;
         ::std::vector<Value>    locals;
@@ -56,11 +65,13 @@ class InterpreterThread
 
     ModuleTree& m_modtree;
     ThreadState m_thread;
+    size_t  m_instruction_count;
     ::std::vector<StackFrame>   m_stack;
 
 public:
     InterpreterThread(ModuleTree& modtree):
-        m_modtree(modtree)
+        m_modtree(modtree),
+        m_instruction_count(0)
     {
     }
     ~InterpreterThread();
@@ -77,7 +88,7 @@ private:
     // Returns true if the call was resolved instantly
     bool call_extern(Value& ret_val, const ::std::string& name, const ::std::string& abi, ::std::vector<Value> args);
     // Returns true if the call was resolved instantly
-    bool call_intrinsic(Value& ret_val, const ::std::string& name, const ::HIR::PathParams& pp, ::std::vector<Value> args);
+    bool call_intrinsic(Value& ret_val, const RcString& name, const ::HIR::PathParams& pp, ::std::vector<Value> args);
 
     // Returns true if the call was resolved instantly
     bool drop_value(Value ptr, const ::HIR::TypeRef& ty, bool is_shallow=false);

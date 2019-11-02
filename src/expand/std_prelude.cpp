@@ -47,7 +47,7 @@ class Decorator_NoPrelude:
 public:
     AttrStage stage() const override { return AttrStage::Pre; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
         if( i.is_Module() ) {
             i.as_Module().m_insert_prelude = false;
         }
@@ -63,14 +63,14 @@ class Decorator_PreludeImport:
 public:
     AttrStage stage() const override { return AttrStage::Post; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
         if( i.is_Use() ) {
-            const auto& p = i.as_Use().path;
+            const auto& p = i.as_Use().entries.front().path;
             // TODO: Ensure that this statement is a glob (has a name of "")
             crate.m_prelude_path = AST::Path(p);
         }
         else {
-            ERROR(sp, E0000, "Invalid use of #[no_prelude] on non-module");
+            ERROR(sp, E0000, "Invalid use of #[prelude_import] on non-module");
         }
     }
 };

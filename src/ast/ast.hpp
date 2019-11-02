@@ -8,6 +8,8 @@
 #ifndef AST_HPP_INCLUDED
 #define AST_HPP_INCLUDED
 
+#include <target_version.hpp>
+
 #include <string>
 #include <vector>
 #include <stdexcept>
@@ -40,11 +42,16 @@ class Item;
 using ::std::unique_ptr;
 using ::std::move;
 
+typedef bool    Visibility;
+
 enum eItemType
 {
     ITEM_TRAIT,
     ITEM_STRUCT,
+    ITEM_ENUM,
+    ITEM_UNION,
     ITEM_FN,
+    ITEM_EXTERN_FN,
     ITEM_STATIC,
 };
 
@@ -52,12 +59,12 @@ struct StructItem
 {
     ::AST::AttributeList   m_attrs;
     bool    m_is_public;
-    ::std::string   m_name;
+    RcString   m_name;
     TypeRef m_type;
 
     //StructItem() {}
 
-    StructItem(::AST::AttributeList attrs, bool is_pub, ::std::string name, TypeRef ty):
+    StructItem(::AST::AttributeList attrs, bool is_pub, RcString name, TypeRef ty):
         m_attrs( mv$(attrs) ),
         m_is_public(is_pub),
         m_name( mv$(name) ),
@@ -216,16 +223,16 @@ public:
     const NamedList<Item>& items() const { return m_items; }
           NamedList<Item>& items()       { return m_items; }
 
-    void add_type(::std::string name, AttributeList attrs, TypeRef type);
-    void add_function(::std::string name, AttributeList attrs, Function fcn);
-    void add_static(::std::string name, AttributeList attrs, Static v);
+    void add_type(Span sp, RcString name, AttributeList attrs, TypeRef type);
+    void add_function(Span sp, RcString name, AttributeList attrs, Function fcn);
+    void add_static(Span sp, RcString name, AttributeList attrs, Static v);
 
     void set_is_marker();
     bool is_marker() const;
     void set_is_unsafe() { m_is_unsafe = true; }
     bool is_unsafe() const { return m_is_unsafe; }
 
-    bool has_named_item(const ::std::string& name, bool& out_is_fcn) const;
+    bool has_named_item(const RcString& name, bool& out_is_fcn) const;
 
     Trait clone() const;
 };
@@ -251,28 +258,28 @@ TAGGED_UNION_EX(EnumVariantData, (), Value,
 struct EnumVariant
 {
     AttributeList   m_attrs;
-    ::std::string   m_name;
+    RcString   m_name;
     EnumVariantData m_data;
 
     EnumVariant()
     {
     }
 
-    EnumVariant(AttributeList attrs, ::std::string name, Expr&& value):
+    EnumVariant(AttributeList attrs, RcString name, Expr&& value):
         m_attrs( mv$(attrs) ),
         m_name( mv$(name) ),
         m_data( EnumVariantData::make_Value({mv$(value)}) )
     {
     }
 
-    EnumVariant(AttributeList attrs, ::std::string name, ::std::vector<TypeRef> sub_types):
+    EnumVariant(AttributeList attrs, RcString name, ::std::vector<TypeRef> sub_types):
         m_attrs( mv$(attrs) ),
         m_name( ::std::move(name) ),
         m_data( EnumVariantData::make_Tuple( {mv$(sub_types)} ) )
     {
     }
 
-    EnumVariant(AttributeList attrs, ::std::string name, ::std::vector<StructItem> fields):
+    EnumVariant(AttributeList attrs, RcString name, ::std::vector<StructItem> fields):
         m_attrs( mv$(attrs) ),
         m_name( ::std::move(name) ),
         m_data( EnumVariantData::make_Struct( {mv$(fields)} ) )
@@ -417,9 +424,11 @@ class Impl
 {
 public:
     struct ImplItem {
+        Span    sp;
+        AttributeList   attrs;
         bool    is_pub; // Ignored for trait impls
         bool    is_specialisable;
-        ::std::string   name;
+        RcString   name;
 
         ::std::unique_ptr<Item> data;
     };
@@ -439,9 +448,9 @@ public:
     {}
     Impl& operator=(Impl&&) = default;
 
-    void add_function(bool is_public, bool is_specialisable, ::std::string name, Function fcn);
-    void add_type(bool is_public, bool is_specialisable, ::std::string name, TypeRef type);
-    void add_static(bool is_public, bool is_specialisable, ::std::string name, Static v);
+    void add_function(Span sp, AttributeList attrs, bool is_public, bool is_specialisable, RcString name, Function fcn);
+    void add_type(Span sp, AttributeList attrs, bool is_public, bool is_specialisable, RcString name, TypeRef type);
+    void add_static(Span sp, AttributeList attrs, bool is_public, bool is_specialisable, RcString name, Static v);
     void add_macro_invocation( MacroInvocation inv );
 
     const ImplDef& def() const { return m_def; }
@@ -449,28 +458,25 @@ public:
     const ::std::vector<ImplItem>& items() const { return m_items; }
           ::std::vector<ImplItem>& items()       { return m_items; }
 
-    bool has_named_item(const ::std::string& name) const;
+    bool has_named_item(const RcString& name) const;
 
     friend ::std::ostream& operator<<(::std::ostream& os, const Impl& impl);
 
 private:
 };
 
-struct UseStmt
+struct UseItem
 {
-    Span    sp;
-    ::AST::Path path;
-    ::AST::PathBinding  alt_binding;
+    Span    sp; // Span covering the entire `use foo;`
+    struct Ent {
+        Span    sp; // Span covering just the path (final component)
+        ::AST::Path path;
+        RcString   name;   // If "", this is a glob/wildcard use
+    };
+    ::std::vector<Ent>  entries;
 
-    UseStmt(Span sp, Path p):
-        sp(sp),
-        path(p)
-    {
-    }
-
-    UseStmt clone() const;
-
-    friend ::std::ostream& operator<<(::std::ostream& os, const UseStmt& x);
+    UseItem clone() const;
+    //friend ::std::ostream& operator<<(::std::ostream& os, const UseItem& x);
 };
 
 class ExternBlock
@@ -512,7 +518,11 @@ public:
     struct FileInfo
     {
         bool    controls_dir = false;
+        bool    force_no_load = false;
+        // Path to this module
         ::std::string   path = "!";
+        // Directory controlled by this module
+        ::std::string   dir = "";
     };
 
     FileInfo    m_file_info;
@@ -526,13 +536,26 @@ public:
     };
 
     // TODO: Document difference between namespace and Type
-    ::std::unordered_map< ::std::string, IndexEnt >    m_namespace_items;
-    ::std::unordered_map< ::std::string, IndexEnt >    m_type_items;
-    ::std::unordered_map< ::std::string, IndexEnt >    m_value_items;
+    ::std::unordered_map< RcString, IndexEnt >    m_namespace_items;
+    ::std::unordered_map< RcString, IndexEnt >    m_type_items;
+    ::std::unordered_map< RcString, IndexEnt >    m_value_items;
 
     // List of macros imported from other modules (via #[macro_use], includes proc macros)
     // - First value is an absolute path to the macro (including crate name)
-    ::std::vector<::std::pair< ::std::vector<::std::string>, const MacroRules* >>  m_macro_imports;
+    struct MacroImport {
+        bool    is_pub;
+        RcString   name;   // Can be different, if `use foo as bar` is used
+        ::std::vector<RcString>    path;   // includes the crate name
+        const MacroRules*   macro_ptr;
+    };
+    ::std::vector<MacroImport>  m_macro_imports;
+
+    struct Import {
+        bool    is_pub;
+        RcString   name;
+        ::AST::Path path;   // If `name` is "", then this is a module/enum to glob
+    };
+    ::std::vector<Import>   m_item_imports;
 
 public:
     Module() {}
@@ -542,20 +565,19 @@ public:
     }
 
     bool is_anon() const {
-        return m_my_path.nodes().size() > 0 && m_my_path.nodes().back().name()[0] == '#';
+        return m_my_path.nodes().size() > 0 && m_my_path.nodes().back().name().c_str()[0] == '#';
     }
 
     /// Create an anon module (for use inside expressions)
     ::std::shared_ptr<AST::Module> add_anon();
 
     void add_item(Named<Item> item);
-    void add_item(bool is_pub, ::std::string name, Item it, AttributeList attrs);
-    void add_ext_crate(bool is_public, ::std::string ext_name, ::std::string imp_name, AttributeList attrs);
-    void add_alias(bool is_public, UseStmt path, ::std::string name, AttributeList attrs);
+    void add_item(Span sp, bool is_pub, RcString name, Item it, AttributeList attrs);
+    void add_ext_crate(Span sp, bool is_pub, RcString ext_name, RcString imp_name, AttributeList attrs);
     void add_macro_invocation(MacroInvocation item);
 
-    void add_macro(bool is_exported, ::std::string name, MacroRulesPtr macro);
-    void add_macro_import(::std::string name, const MacroRules& mr);
+    void add_macro(bool is_exported, RcString name, MacroRulesPtr macro);
+    void add_macro_import(RcString name, const MacroRules& mr);
 
 
 
@@ -571,25 +593,24 @@ public:
           NamedList<MacroRulesPtr>&    macros()        { return m_macros; }
     const NamedList<MacroRulesPtr>&    macros()  const { return m_macros; }
     const ::std::vector<Named<const MacroRules*> >  macro_imports_res() const { return m_macro_import_res; }
-
-private:
-    void resolve_macro_import(const Crate& crate, const ::std::string& modname, const ::std::string& macro_name);
 };
 
 TAGGED_UNION_EX(Item, (), None,
     (
     (None, struct {} ),
     (MacroInv, MacroInvocation),
-    (Use, UseStmt),
+    // TODO: MacroDefinition
+    (Use, UseItem),
 
     // Nameless items
     (ExternBlock, ExternBlock),
     (Impl, Impl),
     (NegImpl, ImplDef),
 
+    (Macro, MacroRulesPtr),
     (Module, Module),
     (Crate, struct {
-        ::std::string   name;
+        RcString   name;
         }),
 
     (Type, TypeAlias),
@@ -602,12 +623,8 @@ TAGGED_UNION_EX(Item, (), None,
     (Static, Static)
     ),
 
-    (, attrs(mv$(x.attrs))), (attrs = mv$(x.attrs);),
+    (), (),
     (
-    public:
-        AttributeList  attrs;
-        Span    span;
-
         Item clone() const;
     )
     );

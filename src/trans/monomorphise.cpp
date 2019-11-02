@@ -10,42 +10,19 @@
 #include <mir/mir.hpp>
 #include <hir/hir.hpp>
 #include <mir/operations.hpp>   // Needed for post-monomorph checks and optimisations
+#include <hir_conv/constant_evaluation.hpp>
 
 namespace {
     ::MIR::LValue monomorph_LValue(const ::StaticTraitResolve& resolve, const Trans_Params& params, const ::MIR::LValue& tpl)
     {
-        TU_MATCHA( (tpl), (e),
-        (Return, return e; ),
-        (Argument,  return e; ),
-        (Local,  return e; ),
-        (Static,
-            return params.monomorph(resolve, e);
-            ),
-        (Field,
-            return ::MIR::LValue::make_Field({
-                box$(monomorph_LValue(resolve, params, *e.val)),
-                e.field_index
-                });
-            ),
-        (Deref,
-            return ::MIR::LValue::make_Deref({
-                box$(monomorph_LValue(resolve, params, *e.val))
-                });
-            ),
-        (Index,
-            return ::MIR::LValue::make_Index({
-                box$(monomorph_LValue(resolve, params, *e.val)),
-                box$(monomorph_LValue(resolve, params, *e.idx))
-                });
-            ),
-        (Downcast,
-            return ::MIR::LValue::make_Downcast({
-                box$(monomorph_LValue(resolve, params, *e.val)),
-                e.variant_index
-                });
-            )
-        )
-        throw "";
+        if( tpl.m_root.is_Static() )
+        {
+            return ::MIR::LValue( ::MIR::LValue::Storage::new_Static(params.monomorph(resolve, tpl.m_root.as_Static())), tpl.m_wrappers );
+        }
+        else
+        {
+            return tpl.clone();
+        }
     }
     ::MIR::Constant monomorph_Constant(const ::StaticTraitResolve& resolve, const Trans_Params& params, const ::MIR::Constant& tpl)
     {
@@ -70,15 +47,15 @@ namespace {
             ),
         (Const,
             return ::MIR::Constant::make_Const({
-                params.monomorph(resolve, ce.p)
+                box$(params.monomorph(resolve, *ce.p))
                 });
             ),
         (ItemAddr,
-            auto p = params.monomorph(resolve, ce);
+            auto p = params.monomorph(resolve, *ce);
             // TODO: If this is a pointer to a function on a trait object, replace with the address loaded from the vtable.
             // - Requires creating a new temporary for the vtable pointer.
             // - Also requires knowing what the receiver is.
-            return ::MIR::Constant( mv$(p) );
+            return ::MIR::Constant( box$(p) );
             )
         )
         throw "";
@@ -117,6 +94,7 @@ namespace {
 {
     static Span sp;
     TRACE_FUNCTION;
+    assert(tpl);
 
     ::MIR::Function output;
 
@@ -350,6 +328,7 @@ void Trans_Monomorphise_List(const ::HIR::Crate& crate, TransList& list)
             const auto& path = fcn_ent.first;
             const auto& pp = fcn_ent.second->pp;
             TRACE_FUNCTION_FR(path, path);
+            ASSERT_BUG(Span(), fcn.m_code.m_mir, "No code for " << path);
 
             auto mir = Trans_Monomorphise(resolve, fcn_ent.second->pp, fcn.m_code.m_mir);
 
@@ -359,8 +338,8 @@ void Trans_Monomorphise_List(const ::HIR::Crate& crate, TransList& list)
             for(const auto& a : fcn.m_args)
                 args.push_back(::std::make_pair( ::HIR::Pattern{}, pp.monomorph(resolve, a.second) ));
 
-            ::std::string s = FMT(path);
-            ::HIR::ItemPath ip(s);
+            //::std::string s = FMT(path);
+            ::HIR::ItemPath ip(path);
             MIR_Validate(resolve, ip, *mir, args, ret_type);
             MIR_Cleanup(resolve, ip, *mir, args, ret_type);
             MIR_Optimise(resolve, ip, *mir, args, ret_type);
@@ -370,6 +349,33 @@ void Trans_Monomorphise_List(const ::HIR::Crate& crate, TransList& list)
             fcn_ent.second->monomorphised.arg_tys = ::std::move(args);
             fcn_ent.second->monomorphised.code = ::std::move(mir);
         }
+    }
+
+    // Also do constants and statics (stored in where?)
+    // - NOTE: Done in reverse order, because consteval needs used constants to be evaluated
+    for(auto& ent : reverse(list.m_constants))
+    {
+        const auto& path = ent.first;
+        const auto& pp = ent.second->pp;
+        const auto& c = *ent.second->ptr;
+        TRACE_FUNCTION_FR(path, path);
+        auto ty = pp.monomorph(resolve, c.m_type);
+        // 1. Evaluate the constant
+        struct Nvs: public ::HIR::Evaluator::Newval
+        {
+            ::HIR::Path new_static(::HIR::TypeRef type, ::HIR::Literal value) override {
+                TODO(Span(), "Create new static in monomorph pass - " << value << " : " << type);
+            }
+        } nvs;
+        auto eval = ::HIR::Evaluator { pp.sp, crate, nvs };
+        MonomorphState   ms;
+        ms.self_ty = &pp.self_type;
+        ms.pp_impl = &pp.pp_impl;
+        ms.pp_method = &pp.pp_method;
+        auto new_lit = eval.evaluate_constant(path, c.m_value, ::std::move(ty), ::std::move(ms));
+        ASSERT_BUG(Span(), !new_lit.is_Defer(), "Result of evaluating " << path << " was still Defer");
+        // 2. Store evaluated HIR::Literal in c.m_monomorph_cache
+        c.m_monomorph_cache.insert(::std::make_pair( path.clone(), ::std::move(new_lit) ));
     }
 }
 

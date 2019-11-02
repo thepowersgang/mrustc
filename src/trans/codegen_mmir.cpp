@@ -18,6 +18,8 @@
 
 namespace
 {
+    size_t PTR_BASE = 0x1000;   // See matching value in standalone_miri value.hpp
+
     size_t Target_GetSizeOf_Required(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty)
     {
         size_t size;
@@ -39,47 +41,51 @@ namespace
 
     ::std::ostream& operator<<(::std::ostream& os, const Fmt<::MIR::LValue>& x)
     {
-        auto fmt_lhs = [](::std::ostream& os, const ::MIR::LValue& lv) {
-            if( lv.is_Deref() ) {
-                os << "(" << fmt(lv) << ")";
-            }
-            else {
-                os << fmt(lv);
-            }
-            };
-        switch(x.e.tag())
+        for(const auto& w : ::reverse(x.e.m_wrappers))
         {
-        case ::MIR::LValue::TAGDEAD:    throw "";
-        TU_ARM(x.e, Return, _e) (void)_e;
+            if( w.is_Deref() ) {
+                os << "(*";
+            }
+        }
+        TU_MATCHA( (x.e.m_root), (e),
+        (Return,
             os << "RETURN";
-            break;
-        TU_ARM(x.e, Local, e)
+            ),
+        (Local,
             os << "var" << e;
-            break;
-        TU_ARM(x.e, Argument, e)
-            os << "arg" << e.idx;
-            break;
-        TU_ARM(x.e, Static, e)
+            ),
+        (Argument,
+            os << "arg" << e;
+            ),
+        (Static,
             os << e;
-            break;
-        TU_ARM(x.e, Deref, e)
-            os << "*" << fmt(*e.val);
-            break;
-        TU_ARM(x.e, Field, e) {
-            fmt_lhs(os, *e.val);
-            // Avoid `0.` existing in the output
-            if( e.val->is_Field() || e.val->is_Downcast() )
-                os << " ";
-            os << "." << e.field_index;
-            } break;
-        TU_ARM(x.e, Index, e) {
-            fmt_lhs(os, *e.val);
-            os << "[" << fmt(*e.idx) << "]";
-            } break;
-        TU_ARM(x.e, Downcast, e) {
-            fmt_lhs(os, *e.val);
-            os << "@" << e.variant_index;
-            } break;
+            )
+        )
+        bool was_num = false;
+        for(const auto& w : x.e.m_wrappers)
+        {
+            bool prev_was_num = was_num; was_num = false;
+            switch(w.tag())
+            {
+            case ::MIR::LValue::Wrapper::TAGDEAD:   throw "";
+            TU_ARM(w, Deref, e)
+                os << ")";
+                break;
+            TU_ARM(w, Field, field_index) {
+                // Add a space to prevent accidental float literals
+                if( prev_was_num )
+                    os << " ";
+                os << "." << field_index;
+                was_num = true;
+                } break;
+            TU_ARM(w, Index, e) {
+                os << "[" << fmt(::MIR::LValue::new_Local(e)) << "]";
+                } break;
+            TU_ARM(w, Downcast, variant_index) {
+                os << "@" << variant_index;
+                was_num = true;
+                } break;
+            }
         }
         return os;
     }
@@ -112,7 +118,10 @@ namespace
             os << " " << v.t;
             } break;
         TU_ARM(e, ItemAddr, v) {
-            os << "ADDROF " << v;
+            os << "ADDROF " << *v;
+            } break;
+        TU_ARM(e, Const, v) {
+            BUG(Span(), "Stray named constant in MIR after cleanup - " << e);
             } break;
         default:
             os << e;
@@ -158,18 +167,18 @@ namespace
         CodeGenerator_MonoMir(const ::HIR::Crate& crate, const ::std::string& outfile):
             m_crate(crate),
             m_resolve(crate),
-            m_outfile_path(outfile + ".mir"),
-            m_of(m_outfile_path)
+            m_outfile_path(outfile),
+            m_of(m_outfile_path + ".mir")
         {
             for( const auto& crate : m_crate.m_ext_crates )
             {
-                m_of << "crate \"" << FmtEscaped(crate.second.m_path) << ".o.mir\";\n";
+                m_of << "crate \"" << FmtEscaped(crate.second.m_path) << ".mir\";\n";
             }
         }
 
-        void finalise(bool is_executable, const TransOptions& opt) override
+        void finalise(const TransOptions& opt, CodegenOutput out_ty, const ::std::string& hir_file) override
         {
-            if( is_executable )
+            if( out_ty == CodegenOutput::Executable )
             {
                 m_of << "fn ::main#(isize, *const *const i8): isize {\n";
                 auto c_start_path = m_resolve.m_crate.get_lang_item_path_opt("mrustc-start");
@@ -190,10 +199,33 @@ namespace
                 m_of << "\t\tRETURN\n";
                 m_of << "\t}\n";
                 m_of << "}\n";
+
+                {
+                    // Bind `panic_impl` lang item to the item tagged with `panic_implementation`
+                    const auto& panic_impl_path = m_crate.get_lang_item_path(Span(), "mrustc-panic_implementation");
+                    m_of << "fn ::panic_impl#(usize): u32 = \"panic_impl\":\"Rust\" {\n";
+                    m_of << "\t0: {\n";
+                    m_of << "\t\tCALL RETURN = " << panic_impl_path << "(arg0) goto 1 else 2\n";
+                    m_of << "\t}\n";
+                    m_of << "\t1: { RETURN }\n";
+                    m_of << "\t2: { DIVERGE }\n";
+                    m_of << "}\n";
+
+                    // TODO: OOM impl?
+                }
             }
 
             m_of.flush();
             m_of.close();
+
+            // HACK! Create the output file, but keep it empty
+            {
+                ::std::ofstream of( m_outfile_path );
+                if( !of.good() )
+                {
+                    // TODO: Error?
+                }
+            }
         }
 
 
@@ -233,14 +265,14 @@ namespace
 
                         m_of << "\t0: {\n";
 
-                        auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Argument({0})) });
-                        auto fld_lv = ::MIR::LValue::make_Field({ box$(self), 0 });
+                        auto self = ::MIR::LValue::new_Deref( ::MIR::LValue::new_Argument(0) );
+                        auto fld_lv = ::MIR::LValue::new_Field(mv$(self), 0);
                         for(const auto& e : repr->fields)
                         {
                             if( m_resolve.type_needs_drop_glue(sp, e.ty) ) {
                                 m_of << "\t\t""DROP " << fmt(fld_lv) << ";\n";
                             }
-                            fld_lv.as_Field().field_index += 1;
+                            fld_lv.inc_Field();
                         }
                         m_of << "\t\t""RETURN\n";
                         m_of << "\t}\n";
@@ -336,9 +368,9 @@ namespace
                         const auto& te = t.m_data.as_TraitObject();
                         //auto vtp = t.m_data.as_TraitObject().m_trait.m_path;
 
-                        auto vtable_gp = te.m_trait.m_path.clone();
-                        vtable_gp.m_path.m_components.back() += "#vtable";
                         const auto& trait = resolve.m_crate.get_trait_by_path(sp, te.m_trait.m_path.m_path);
+                        auto vtable_gp = ::HIR::GenericPath(trait.m_vtable_path);
+                        vtable_gp.m_params = te.m_trait.m_path.m_params.clone();
                         vtable_gp.m_params.m_types.resize( vtable_gp.m_params.m_types.size() + trait.m_type_indexes.size() );
                         for(const auto& ty : trait.m_type_indexes) {
                             auto aty = te.m_trait.m_type_bounds.at(ty.first).clone();
@@ -364,8 +396,8 @@ namespace
             };
 
 
-            // TODO: Generate the drop glue (and determine if there is any)
-            bool has_drop_glue =  m_resolve.type_needs_drop_glue(sp, ty);
+            // Generate the drop glue (and determine if there is any)
+            bool has_drop_glue = m_resolve.type_needs_drop_glue(sp, ty);
 
             const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
             MIR_ASSERT(*m_mir_res, repr, "No repr for struct " << ty);
@@ -396,13 +428,13 @@ namespace
                     //ASSERT_BUG(sp, !item.m_markings.has_drop_impl, "Box shouldn't have a Drop impl");
 
                     // TODO: This is very specific to the structure of the official liballoc's Box.
-                    auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Argument({0})) });
-                    auto fld_p_lv = ::MIR::LValue::make_Field({ box$(self), 0 });
-                    fld_p_lv = ::MIR::LValue::make_Field({ box$(fld_p_lv), 0 });
-                    fld_p_lv = ::MIR::LValue::make_Field({ box$(fld_p_lv), 0 });
+                    auto self = ::MIR::LValue::new_Deref( ::MIR::LValue::new_Argument(0) );
+                    auto fld_p_lv = ::MIR::LValue::new_Field( mv$(self), 0 );
+                    fld_p_lv = ::MIR::LValue::new_Field( mv$(fld_p_lv), 0 );
+                    fld_p_lv = ::MIR::LValue::new_Field( mv$(fld_p_lv), 0 );
 
                     if( m_resolve.type_needs_drop_glue(sp, *ity) ) {
-                        auto fld_lv = ::MIR::LValue::make_Deref({ box$(fld_p_lv.clone()) });
+                        auto fld_lv = ::MIR::LValue::new_Deref( fld_p_lv.clone() );
                         m_of << "\t\t""DROP " << fmt(fld_lv) << ";\n";
                     }
 
@@ -432,14 +464,14 @@ namespace
                         m_of << "\t2: {\n";
                     }
 
-                    auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Argument({0})) });
-                    auto fld_lv = ::MIR::LValue::make_Field({ box$(self), 0 });
+                    auto self = ::MIR::LValue::new_Deref( ::MIR::LValue::new_Argument(0) );
+                    auto fld_lv = ::MIR::LValue::new_Field( mv$(self), 0 );
                     for(const auto& e : repr->fields)
                     {
                         if( m_resolve.type_needs_drop_glue(sp, e.ty) ) {
                             m_of << "\t\t""DROP " << fmt(fld_lv) << ";\n";
                         }
-                        fld_lv.as_Field().field_index += 1;
+                        fld_lv.inc_Field();
                     }
                 }
                 m_of << "\t\t""RETURN\n";
@@ -447,6 +479,51 @@ namespace
                 m_of << "}\n";
             }
             m_mir_res = nullptr;
+        }
+        virtual void emit_constructor_enum(const Span& sp, const ::HIR::GenericPath& var_path, const ::HIR::Enum& item, size_t var_idx)
+        {
+            TRACE_FUNCTION_F(var_path);
+
+            ::HIR::TypeRef  tmp;
+            auto monomorph = [&](const auto& x)->const auto& {
+                if( monomorphise_type_needed(x) ) {
+                    tmp = monomorphise_type(sp, item.m_params, var_path.m_params, x);
+                    m_resolve.expand_associated_types(sp, tmp);
+                    return tmp;
+                }
+                else {
+                    return x;
+                }
+                };
+
+            auto enum_path = var_path.clone();
+            enum_path.m_path.m_components.pop_back();
+
+            // Create constructor function
+            const auto& var_ty = item.m_data.as_Data().at(var_idx).type;
+            const auto& e = var_ty.m_data.as_Path().binding.as_Struct()->m_data.as_Tuple();
+            m_of << "fn " << var_path << "(";
+            for(unsigned int i = 0; i < e.size(); i ++)
+            {
+                if(i != 0)
+                    m_of << ", ";
+                m_of << monomorph(e[i].ent);
+            }
+            m_of << "): " << enum_path << " {\n";
+            m_of << "\tlet var0: " << monomorph(var_ty) << ";\n";
+            m_of << "\t0: {\n";
+            m_of << "\t\tASSIGN var0 = { ";
+            for(unsigned int i = 0; i < e.size(); i ++)
+            {
+                if(i != 0)
+                    m_of << ", ";
+                m_of << "arg" << i;
+            }
+            m_of << " }: " << monomorph(var_ty) << ";\n";
+            m_of << "\t\tASSIGN RETURN = VARIANT " << enum_path << " " << var_idx << " var0;\n";
+            m_of << "\t\tRETURN\n";
+            m_of << "\t}\n";
+            m_of << "}";
         }
         void emit_constructor_struct(const Span& sp, const ::HIR::GenericPath& p, const ::HIR::Struct& item) override
         {
@@ -462,7 +539,7 @@ namespace
                     return x;
                 }
                 };
-            // Crate constructor function
+            // Create constructor function
             const auto& e = item.m_data.as_Tuple();
             m_of << "fn " << p << "(";
             for(unsigned int i = 0; i < e.size(); i ++)
@@ -494,10 +571,17 @@ namespace
             TRACE_FUNCTION_F(p);
             ::HIR::TypeRef  ty = ::HIR::TypeRef::new_path(p.clone(), &item);
 
+            bool has_drop_glue = m_resolve.type_needs_drop_glue(sp, ty);
+            auto drop_glue_path = ::HIR::Path(ty.clone(), "drop_glue#");
+
             const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
             MIR_ASSERT(*m_mir_res, repr, "No repr for union " << ty);
             m_of << "type " << p << " {\n";
             m_of << "\tSIZE " << repr->size << ", ALIGN " << repr->align << ";\n";
+            if( has_drop_glue )
+            {
+                m_of << "\tDROP " << drop_glue_path << ";\n";
+            }
             for(const auto& e : repr->fields)
             {
                 m_of << "\t" << e.offset << " = " << e.ty << ";\n";
@@ -508,28 +592,28 @@ namespace
             }
             m_of << "}\n";
 
-            // TODO: Drop glue!
-#if 0
-            // Drop glue (calls destructor if there is one)
-            auto item_ty = ::HIR::TypeRef(p.clone(), &item);
-            auto drop_glue_path = ::HIR::Path(item_ty.clone(), "#drop_glue");
-            auto item_ptr_ty = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Owned, item_ty.clone());
-            auto drop_impl_path = (item.m_markings.has_drop_impl ? ::HIR::Path(item_ty.clone(), m_resolve.m_lang_Drop, "drop") : ::HIR::Path(::HIR::SimplePath()));
-            ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), item_ptr_ty, {}, empty_fcn };
-            m_mir_res = &mir_res;
-
-            if( item.m_markings.has_drop_impl )
+            if( has_drop_glue )
             {
-                m_of << "tUNIT " << Trans_Mangle(drop_impl_path) << "(union u_" << Trans_Mangle(p) << "*rv);\n";
+                m_of << "fn " << drop_glue_path << "(&move " << ty << ") {\n";
+                if( item.m_markings.has_drop_impl ) {
+                    m_of << "\tlet nms: &mut " << ty << ";\n";
+                }
+                m_of << "\t0: {\n";
+                if( item.m_markings.has_drop_impl )
+                {
+                    m_of << "\t\t""ASSIGN nms = &mut *arg0;\n";
+                    m_of << "\t\t""CALL unit = " << ::HIR::Path(ty.clone(), m_resolve.m_lang_Drop, "drop") << "(nms) goto 2 else 1\n";
+                    m_of << "\t}\n";
+                    m_of << "\t1: {\n";
+                    m_of << "\t\tDIVERGE\n";
+                    m_of << "\t}\n";
+                    m_of << "\t2: {\n";
+                }
+                // NOTE: Unions don't drop inner values, but do call the destructor
+                m_of << "\t\tRETURN\n";
+                m_of << "\t}\n";
+                m_of << "}\n";
             }
-
-            m_of << "static void " << Trans_Mangle(drop_glue_path) << "(union u_" << Trans_Mangle(p) << "* rv) {\n";
-            if( item.m_markings.has_drop_impl )
-            {
-                m_of << "\t" << Trans_Mangle(drop_impl_path) << "(rv);\n";
-            }
-            m_of << "}\n";
-#endif
         }
 
         void emit_enum(const Span& sp, const ::HIR::GenericPath& p, const ::HIR::Enum& item) override
@@ -542,11 +626,18 @@ namespace
             TRACE_FUNCTION_F(p);
             ::HIR::TypeRef  ty = ::HIR::TypeRef::new_path(p.clone(), &item);
 
+            // Generate the drop glue (and determine if there is any)
+            bool has_drop_glue = m_resolve.type_needs_drop_glue(sp, ty);
+            auto drop_glue_path = ::HIR::Path(ty.clone(), "drop_glue#");
+
             const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
             MIR_ASSERT(*m_mir_res, repr, "No repr for enum " << ty);
             m_of << "type " << p << " {\n";
             m_of << "\tSIZE " << repr->size << ", ALIGN " << repr->align << ";\n";
-            // TODO: Drop glue path
+            if( has_drop_glue )
+            {
+                m_of << "\tDROP " << drop_glue_path << ";\n";
+            }
             for(const auto& e : repr->fields)
             {
                 m_of << "\t" << e.offset << " = " << e.ty << ";\n";
@@ -591,64 +682,61 @@ namespace
             }
             m_of << "}\n";
 
-#if 0
             // ---
             // - Drop Glue
             // ---
-            auto struct_ty = ::HIR::TypeRef(p.clone(), &item);
-            auto drop_glue_path = ::HIR::Path(struct_ty.clone(), "#drop_glue");
-            auto struct_ty_ptr = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Owned, struct_ty.clone());
-            auto drop_impl_path = (item.m_markings.has_drop_impl ? ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") : ::HIR::Path(::HIR::SimplePath()));
-            ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), struct_ty_ptr, {}, empty_fcn };
-            m_mir_res = &mir_res;
-
-            if( item.m_markings.has_drop_impl )
+            if( has_drop_glue )
             {
-                m_of << "tUNIT " << Trans_Mangle(drop_impl_path) << "(struct e_" << Trans_Mangle(p) << "*rv);\n";
-            }
-
-            m_of << "static void " << Trans_Mangle(drop_glue_path) << "(struct e_" << Trans_Mangle(p) << "* rv) {\n";
-
-            // If this type has an impl of Drop, call that impl
-            if( item.m_markings.has_drop_impl )
-            {
-                m_of << "\t" << Trans_Mangle(drop_impl_path) << "(rv);\n";
-            }
-            auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Return({})) });
-
-            if( nonzero_path.size() > 0 )
-            {
-                // TODO: Fat pointers?
-                m_of << "\tif( (*rv)._1"; emit_nonzero_path(nonzero_path); m_of << " ) {\n";
-                emit_destructor_call( ::MIR::LValue::make_Field({ box$(self), 1 }), monomorph(item.m_data.as_Data()[1].type), false, 2 );
-                m_of << "\t}\n";
-            }
-            else if( const auto* e = item.m_data.opt_Data() )
-            {
-                auto var_lv =::MIR::LValue::make_Downcast({ box$(self), 0 });
-
-                m_of << "\tswitch(rv->TAG) {\n";
-                for(unsigned int var_idx = 0; var_idx < e->size(); var_idx ++)
-                {
-                    var_lv.as_Downcast().variant_index = var_idx;
-                    m_of << "\tcase " << var_idx << ":\n";
-                    emit_destructor_call(var_lv, monomorph( (*e)[var_idx].type ), false, 2);
-                    m_of << "\tbreak;\n";
+                m_of << "fn " << drop_glue_path << "(&move " << ty << ") {\n";
+                if( item.m_markings.has_drop_impl ) {
+                    m_of << "\tlet nms: &mut " << ty << ";\n";
                 }
-                m_of << "\t}\n";
-            }
-            else
-            {
-                // Value enum
-                // Glue does nothing (except call the destructor, if there is one)
-            }
-            m_of << "}\n";
+                m_of << "\t0: {\n";
 
-            if( nonzero_path.size() )
-            {
-                m_enum_repr_cache.insert( ::std::make_pair( p.clone(), mv$(nonzero_path) ) );
+                size_t first_drop_bb;
+                if( item.m_markings.has_drop_impl )
+                {
+                    m_of << "\t\t""ASSIGN nms = &mut *arg0;\n";
+                    m_of << "\t\t""CALL unit = " << ::HIR::Path(ty.clone(), m_resolve.m_lang_Drop, "drop") << "(nms) goto 2 else 1\n";
+                    m_of << "\t}\n";
+                    m_of << "\t1: {\n";
+                    m_of << "\t\tDIVERGE\n";
+                    m_of << "\t}\n";
+                    m_of << "\t2: {\n";
+                    first_drop_bb = 3;
+                }
+                else
+                {
+                    first_drop_bb = 1;
+                }
+                if( const auto* e = item.m_data.opt_Data() )
+                {
+                    m_of << "\t\tSWITCH *arg0 { ";
+                    for(unsigned int var_idx = 0; var_idx < e->size(); var_idx ++)
+                    {
+                        if( var_idx != 0 )
+                        {
+                            m_of << ", ";
+                        }
+                        m_of << (first_drop_bb + var_idx);
+                    }
+                    m_of << " }\n";
+                    m_of << "\t}\n";
+                    for(unsigned int var_idx = 0; var_idx < e->size(); var_idx ++)
+                    {
+                        m_of << "\t" << (first_drop_bb+var_idx) << ": {\n";
+                        m_of << "\t\tDROP (*arg0)@" << var_idx << ";\n";
+                        m_of << "\t\tRETURN\n";
+                        m_of << "\t}\n";
+                    }
+                }
+                else
+                {
+                    m_of << "\t}\n";
+                }
+                m_of << "}\n";
             }
-#endif
+
             m_mir_res = nullptr;
         }
         struct Reloc {
@@ -656,6 +744,13 @@ namespace
             size_t  len;
             const ::HIR::Path* p;
             ::std::string   bytes;
+
+            static Reloc new_named(size_t ofs, size_t len, const ::HIR::Path* p) {
+                return Reloc { ofs, len, p, "" };
+            }
+            static Reloc new_bytes(size_t ofs, size_t len, ::std::string bytes) {
+                return Reloc { ofs, len, nullptr, ::std::move(bytes) };
+            }
         };
         void emit_str_byte(uint8_t b) {
             if( b == 0 ) {
@@ -845,9 +940,9 @@ namespace
                 {
                     ASSERT_BUG(sp, lit.is_String(), ty << " not Literal::String - " << lit);
                     const auto& s = lit.as_String();
-                    putsize(0);
+                    putsize(PTR_BASE + 0);
                     putsize(s.size());
-                    out_relocations.push_back(Reloc { base_ofs, 8, nullptr, s });
+                    out_relocations.push_back(Reloc::new_bytes(base_ofs, 8,  s));
                     break;
                 }
                 // fall
@@ -856,35 +951,41 @@ namespace
                 size_t ity_size, ity_align;
                 Target_GetSizeAndAlignOf(sp, m_resolve, ity, ity_size, ity_align);
                 bool is_unsized = (ity_size == SIZE_MAX);
-                if( lit.is_BorrowPath() )
-                {
-                    putsize(0);
-                    out_relocations.push_back(Reloc { base_ofs, 8, &lit.as_BorrowPath(), "" });
+
+                TU_MATCH_HDRA( (lit), { )
+                TU_ARMA(BorrowPath, le) {
+                    putsize(PTR_BASE);
+                    out_relocations.push_back(Reloc::new_named(base_ofs, 8,  &le));
                     if( is_unsized )
                     {
                         // TODO: Get the size of the pointed-to array
                         // OR: Find out the source item type and the target trait.
                         putsize(0);
                     }
-                    break;
-                }
-                else if( lit.is_Integer() )
-                {
-                    ASSERT_BUG(sp, lit.as_Integer() == 0, "Pointer from integer not 0");
+                    }
+                TU_ARMA(Integer, le) {
+                    ASSERT_BUG(sp, le == 0, "Pointer from integer not 0");
                     ASSERT_BUG(sp, ty.m_data.is_Pointer(), "Borrow from integer");
-                    putsize(0);
+                    putsize(le);
                     if( is_unsized )
                     {
                         putsize(0);
                     }
-                    break;
+                    }
+                TU_ARMA(String, le) {
+                    const auto& s = lit.as_String();
+                    putsize(PTR_BASE);
+                    putsize(s.size());
+                    out_relocations.push_back(Reloc::new_bytes(base_ofs, 8,  s));
+                    }
+                break; default:
+                    TODO(sp, "Emit a pointer - " << ty << " from literal " << lit);
                 }
-                TODO(sp, "Pointers - " << ty << " w/ " << lit);
                 } break;
             case ::HIR::TypeRef::Data::TAG_Function:
                 ASSERT_BUG(sp, lit.is_BorrowPath(), ty << " not Literal::BorrowPath - " << lit);
-                putsize(0);
-                out_relocations.push_back(Reloc { base_ofs, 8, &lit.as_BorrowPath(), "" });
+                putsize(PTR_BASE);
+                out_relocations.push_back(Reloc::new_named(base_ofs, 8,  &lit.as_BorrowPath()));
                 break;
             TU_ARM(ty.m_data, Array, te) {
                 // What about byte strings?
@@ -936,16 +1037,17 @@ namespace
             const size_t ptr_size = Target_GetCurSpec().m_arch.m_pointer_bits / 8;
             const auto& trait_path = p.m_data.as_UfcsKnown().trait;
             const auto& type = *p.m_data.as_UfcsKnown().type;
+            bool has_drop_glue =  m_resolve.type_needs_drop_glue(sp, type);
 
             ::HIR::TypeRef  vtable_ty;
             {
-                auto vtable_sp = trait_path.m_path;
-                vtable_sp.m_components.back() += "#vtable";
+                const auto& vtable_sp = trait.m_vtable_path;
                 auto vtable_params = trait_path.m_params.clone();
                 for(const auto& ty : trait.m_type_indexes) {
                     auto aty = ::HIR::TypeRef( ::HIR::Path( type.clone(), trait_path.clone(), ty.first ) );
                     m_resolve.expand_associated_types(sp, aty);
                     vtable_params.m_types.push_back( mv$(aty) );
+                    //vtable_params.m_types.at(ty.second) = ::std::move(aty);
                 }
                 const auto& vtable_ref = m_crate.get_struct_by_path(sp, vtable_sp);
                 vtable_ty = ::HIR::TypeRef( ::HIR::GenericPath(mv$(vtable_sp), mv$(vtable_params)), &vtable_ref );
@@ -956,7 +1058,7 @@ namespace
             m_of << "static " << p << ": " << vtable_ty << " = \"";
             // - Data
             // Drop
-            emit_str_usize(0);
+            emit_str_usize(has_drop_glue ? PTR_BASE : 0);
             // Align
             emit_str_usize(align);
             // Size
@@ -964,15 +1066,17 @@ namespace
             // Methods
             for(unsigned int i = 0; i < trait.m_value_indexes.size(); i ++ )
             {
-                emit_str_usize(0);
+                emit_str_usize(PTR_BASE);
             }
             m_of << "\" {";
 
             // - Relocations
             auto monomorph_cb_trait = monomorphise_type_get_cb(sp, &type, &trait_path.m_params, nullptr);
             // Drop
-            // - TODO: Some types don't have drop glue
-            m_of << "@0+" << ptr_size << " = " << ::HIR::Path(type.clone(), "drop_glue#") << ", ";
+            if( has_drop_glue )
+            {
+                m_of << "@0+" << ptr_size << " = " << ::HIR::Path(type.clone(), "drop_glue#") << ", ";
+            }
             // Methods
             for(unsigned int i = 0; i < trait.m_value_indexes.size(); i ++ )
             {
@@ -1029,11 +1133,6 @@ namespace
             ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << p;), ret_type, arg_types, *code };
             m_mir_res = &mir_res;
 
-            if( item.m_linkage.name != "" )
-            {
-                // TODO: Save the linkage name.
-            }
-
             // - Signature
             m_of << "fn " << p << "(";
             for(unsigned int i = 0; i < item.m_args.size(); i ++)
@@ -1041,7 +1140,12 @@ namespace
                 if( i != 0 )    m_of << ", ";
                 m_of << params.monomorph(m_resolve, item.m_args[i].second);
             }
-            m_of << "): " << ret_type << " {\n";
+            m_of << "): " << ret_type;
+            if( item.m_linkage.name != "" )
+            {
+                m_of << " = \"" << item.m_linkage.name << "\":\"" << item.m_abi << "\"";
+            }
+            m_of << " {\n";
             // - Locals
             for(unsigned int i = 0; i < code->locals.size(); i ++) {
                 DEBUG("var" << i << " : " << code->locals[i]);
@@ -1103,8 +1207,8 @@ namespace
                             case ::MIR::eBinOp::SUB_OV: m_of << "-^";   break;
                             case ::MIR::eBinOp::MUL:    m_of << "*";    break;
                             case ::MIR::eBinOp::MUL_OV: m_of << "*^";   break;
-                            case ::MIR::eBinOp::DIV:    m_of << "*";    break;
-                            case ::MIR::eBinOp::DIV_OV: m_of << "*^";   break;
+                            case ::MIR::eBinOp::DIV:    m_of << "/";    break;
+                            case ::MIR::eBinOp::DIV_OV: m_of << "/^";   break;
                             case ::MIR::eBinOp::MOD:    m_of << "%";    break;
                             case ::MIR::eBinOp::BIT_OR: m_of << "|";    break;
                             case ::MIR::eBinOp::BIT_AND:m_of << "&";    break;

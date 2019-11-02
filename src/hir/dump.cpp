@@ -89,13 +89,46 @@ namespace {
         void visit_trait(::HIR::ItemPath p, ::HIR::Trait& item) override
         {
             m_os << indent() << "trait " << p.get_name() << item.m_params.fmt_args() << "\n";
+            if( ! item.m_parent_traits.empty() )
+            {
+                m_os << indent() << "  " << ": ";
+                bool is_first = true;
+                for(auto& bound : item.m_parent_traits)
+                {
+                    if( !is_first )
+                        m_os << indent() << "  " << "+ ";
+                    m_os << bound << "\n";
+                    is_first = false;
+                }
+            }
             if( ! item.m_params.m_bounds.empty() )
             {
                 m_os << indent() << " " << item.m_params.fmt_bounds() << "\n";
             }
             m_os << indent() << "{\n";
             inc_indent();
+
+            for(auto& i : item.m_types)
+            {
+                m_os << indent() << "type " << i.first;
+                if( ! i.second.m_trait_bounds.empty() )
+                {
+                    m_os << ": ";
+                    bool is_first = true;
+                    for(auto& bound : i.second.m_trait_bounds)
+                    {
+                        if( !is_first )
+                            m_os << " + ";
+                        m_os << bound;
+                        is_first = false;
+                    }
+                }
+                //this->visit_type(i.second.m_default);
+                m_os << ";\n";
+            }
+
             ::HIR::Visitor::visit_trait(p, item);
+
             dec_indent();
             m_os << indent() << "}\n";
         }
@@ -119,7 +152,7 @@ namespace {
                 m_os << "(";
                 for(const auto& fld : flds)
                 {
-                    m_os << (fld.is_public ? "pub " : "") << fld.ent << ", ";
+                    m_os << fld.publicity << " " << fld.ent << ", ";
                 }
                 if( item.m_params.m_bounds.empty() )
                 {
@@ -142,7 +175,7 @@ namespace {
                 inc_indent();
                 for(const auto& fld : flds)
                 {
-                    m_os << indent() << (fld.second.is_public ? "pub " : "") << fld.first << ": " << fld.second.ent << ",\n";
+                    m_os << indent() << fld.second.publicity << " " << fld.first << ": " << fld.second.ent << ",\n";
                 }
                 dec_indent();
                 m_os << indent() << "}\n";
@@ -298,33 +331,21 @@ namespace {
 
         void visit(::HIR::ExprNode_Block& node) override
         {
-            if( node.m_nodes.size() == 0 ) {
-                m_os << "{";
-                if( node.m_value_node )
-                {
-                    m_os << " ";
-                    this->visit_node_ptr(node.m_value_node);
-                }
-                m_os << " }";
+            m_os << "{\n";
+            inc_indent();
+            for(auto& sn : node.m_nodes) {
+                m_os << indent();
+                this->visit_node_ptr(sn);
+                m_os << ";\n";
             }
-            else {
-                m_os << "{\n";
-                inc_indent();
-                for(auto& sn : node.m_nodes) {
-                    m_os << "\n";
-                    m_os << indent();
-                    this->visit_node_ptr(sn);
-                    m_os << ";\n";
-                }
-                if( node.m_value_node )
-                {
-                    m_os << indent();
-                    this->visit_node_ptr(node.m_value_node);
-                    m_os << "\n";
-                }
-                dec_indent();
-                m_os << indent() << "}";
+            if( node.m_value_node )
+            {
+                m_os << indent();
+                this->visit_node_ptr(node.m_value_node);
+                m_os << "\n";
             }
+            dec_indent();
+            m_os << indent() << "}";
         }
 
         void visit(::HIR::ExprNode_Asm& node) override
@@ -362,6 +383,10 @@ namespace {
             m_os << (node.m_continue ? "continue" : "break");
             if( node.m_label != "" ) {
                 m_os << " '" << node.m_label;
+            }
+            if( node.m_value ) {
+                m_os << " ";
+                this->visit_node_ptr(node.m_value);
             }
         }
         void visit(::HIR::ExprNode_Match& node) override

@@ -12,17 +12,25 @@
 #include "pattern_checks.hpp"
 
 MacroRulesPtr Parse_MacroRules(TokenStream& lex);
+namespace {
+    ::std::vector<SimplePatEnt> macro_pattern_to_simple(const Span& sp, const ::std::vector<MacroPatEnt>& pattern);
+}
 
 /// A rule within a macro_rules! blcok
 class MacroRule
 {
 public:
     ::std::vector<MacroPatEnt>  m_pattern;
+    Span    m_pat_span;
     ::std::vector<MacroExpansionEnt> m_contents;
+
+    MacroRule() {}
+    MacroRule(MacroRule&&) = default;
+    MacroRule(const MacroRule&) = delete;
 };
 
 /// Parse the pattern of a macro_rules! arm
-::std::vector<MacroPatEnt> Parse_MacroRules_Pat(TokenStream& lex, enum eTokenType open, enum eTokenType close,  ::std::vector< ::std::string>& names)
+::std::vector<MacroPatEnt> Parse_MacroRules_Pat(TokenStream& lex, enum eTokenType open, enum eTokenType close,  ::std::vector<RcString>& names)
 {
     TRACE_FUNCTION;
     Token tok;
@@ -32,6 +40,7 @@ public:
      int    depth = 0;
     while( GET_TOK(tok, lex) != close || depth > 0 )
     {
+        DEBUG("tok = " << tok);
         if( tok.type() == open )
         {
             depth ++;
@@ -49,13 +58,14 @@ public:
             switch( GET_TOK(tok, lex) )
             {
             // TODO: Allow any reserved word
-            case TOK_RWORD_TYPE:
-            case TOK_RWORD_PUB:
+            default:
+                if( !(TOK_RWORD_PUB <= tok.type() && tok.type() <= TOK_RWORD_UNSIZED) )
+                    throw ParseError::Unexpected(lex, tok);
             case TOK_IDENT: {
-                ::std::string   name = tok.type() == TOK_IDENT ? mv$(tok.str()) : FMT(tok);
+                auto name = tok.type() == TOK_IDENT ? tok.istr() : RcString::new_interned(FMT(tok));
                 GET_CHECK_TOK(tok, lex, TOK_COLON);
                 GET_CHECK_TOK(tok, lex, TOK_IDENT);
-                ::std::string   type = mv$(tok.str());
+                RcString type = tok.istr();
 
                 unsigned int idx = ::std::find( names.begin(), names.end(), name ) - names.begin();
                 if( idx == names.size() )
@@ -83,6 +93,10 @@ public:
                     ret.push_back( MacroPatEnt(name, idx, MacroPatEnt::PAT_BLOCK) );
                 else if( type == "item" )
                     ret.push_back( MacroPatEnt(name, idx, MacroPatEnt::PAT_ITEM) );
+                else if( /*TARGETVER_1_29 && */ type == "vis" ) // TODO: Should this be selective?
+                    ret.push_back( MacroPatEnt(name, idx, MacroPatEnt::PAT_VIS) );
+                else if( /*TARGETVER_1_29 && */ type == "lifetime" ) // TODO: Should this be selective?
+                    ret.push_back( MacroPatEnt(name, idx, MacroPatEnt::PAT_LIFETIME) );
                 else
                     ERROR(lex.point_span(), E0000, "Unknown fragment type '" << type << "'");
                 break; }
@@ -111,8 +125,6 @@ public:
                     throw ParseError::Unexpected(lex, tok);
                 }
                 break; }
-            default:
-                throw ParseError::Unexpected(lex, tok);
             }
             break;
         case TOK_EOF:
@@ -130,8 +142,8 @@ public:
 ::std::vector<MacroExpansionEnt> Parse_MacroRules_Cont(
     TokenStream& lex,
     enum eTokenType open, enum eTokenType close,
-    const ::std::vector< ::std::string>& var_names,
-    ::std::map<unsigned int,bool>* var_set_ptr=nullptr
+    const ::std::vector<RcString>& var_names,
+    ::std::map<unsigned int,bool>* var_set_ptr/*=nullptr*/
     )
 {
     TRACE_FUNCTION;
@@ -200,13 +212,16 @@ public:
                 default:
                     throw ParseError::Unexpected(lex, tok);
                 }
-
+            }
+            else if( tok.type() == TOK_RWORD_CRATE )
+            {
+                ret.push_back( MacroExpansionEnt( (1<<30) | 0 ) );
             }
             //else if( tok.type() == TOK_IDENT || tok_is_rword(tok.type()) )
-            else if( tok.type() == TOK_IDENT || tok.type() == TOK_RWORD_TYPE || tok.type() == TOK_RWORD_PUB )
+            else if( tok.type() == TOK_IDENT || tok.type() >= TOK_RWORD_PUB )
             {
                 // Look up the named parameter in the list of param names for this arm
-                auto name = tok.type() == TOK_IDENT ? tok.str() : FMT(tok);
+                auto name = tok.type() == TOK_IDENT ? tok.istr() : RcString::new_interned(FMT(tok));
                 unsigned int idx = ::std::find(var_names.begin(), var_names.end(), name) - var_names.begin();
                 if( idx == var_names.size() ) {
                     // TODO: `error-chain`'s quick_error macro has an arm which refers to an undefined metavar.
@@ -221,10 +236,6 @@ public:
                     var_set_ptr->insert( ::std::make_pair(idx,true) );
                 }
                 ret.push_back( MacroExpansionEnt(idx) );
-            }
-            else if( tok.type() == TOK_RWORD_CRATE )
-            {
-                ret.push_back( MacroExpansionEnt( (1<<30) | 0 ) );
             }
             else
             {
@@ -259,8 +270,12 @@ MacroRule Parse_MacroRules_Var(TokenStream& lex)
         throw ParseError::Unexpected(lex, tok);
     }
     // - Pattern entries
-    ::std::vector< ::std::string>   names;
-    rule.m_pattern = Parse_MacroRules_Pat(lex, tok.type(), close,  names);
+    ::std::vector<RcString>   names;
+    {
+        auto ps = lex.start_span();
+        rule.m_pattern = Parse_MacroRules_Pat(lex, tok.type(), close,  names);
+        rule.m_pat_span = lex.end_span(ps);
+    }
 
     GET_CHECK_TOK(tok, lex, TOK_FATARROW);
 
@@ -279,164 +294,9 @@ MacroRule Parse_MacroRules_Var(TokenStream& lex)
     return rule;
 }
 
-bool patterns_are_same(const Span& sp, const MacroPatEnt& left, const MacroPatEnt& right)
-{
-    if( left.type > right.type )
-        return patterns_are_same(sp, right, left);
-
-    //if( left.name != right.name ) {
-    //    TODO(sp, "Handle different binding names " << left << " != " << right);
-    //}
-
-    // NOTE: left.type <= right.type
-    switch(right.type)
-    {
-    case MacroPatEnt::PAT_TOKEN:
-        assert( left.type == MacroPatEnt::PAT_TOKEN );
-        return right.tok == left.tok;
-    case MacroPatEnt::PAT_LOOP:
-        switch(left.type)
-        {
-        case MacroPatEnt::PAT_TOKEN:
-            // - Check for compatibility, but these two don't match
-            if( patterns_are_same(sp, left, right.subpats.at(0)) == true )
-                ERROR(sp, E0000, "Incompatible use of loop with matching non-loop");
-            return false;
-        case MacroPatEnt::PAT_LOOP:
-            TODO(sp, "patterns_are_same - PAT_LOOP");
-        default:
-            assert( !"" );
-        }
-
-    case MacroPatEnt::PAT_TT:
-        if( left.type == right.type )
-            return true;
-        ERROR(sp, E0000, "Incompatible macro fragments - " << right << " used with " << left);
-        break;
-
-    case MacroPatEnt::PAT_PAT:
-        switch(left.type)
-        {
-        case MacroPatEnt::PAT_TOKEN:
-            // - If this token is a valid pattern token, error
-            if( is_token_pat(left.tok.type()) )
-                ERROR(sp, E0000, "Incompatible macro fragments - " << right << " used with " << left);
-            return false;
-        case MacroPatEnt::PAT_PAT:
-            return true;
-        default:
-            ERROR(sp, E0000, "Incompatible macro fragments - " << right << " used with " << left);
-        }
-        break;
-    // `:ident` - Compatible with just other tokens
-    case MacroPatEnt::PAT_IDENT:
-        switch(left.type)
-        {
-        case MacroPatEnt::PAT_TOKEN:
-            if( left.tok.type() == TOK_IDENT )
-                ERROR(sp, E0000, "Incompatible macro fragments " << right << " used with " << left);
-            return false;
-        case MacroPatEnt::PAT_IDENT:
-            return true;
-        default:
-            ERROR(sp, E0000, "Incompatible macro fragments " << right << " used with " << left);
-        }
-    case MacroPatEnt::PAT_PATH:
-        switch(left.type)
-        {
-        case MacroPatEnt::PAT_TOKEN:
-            if( is_token_path(left.tok.type()) )
-                ERROR(sp, E0000, "Incompatible macro fragments " << right << " used with " << left);
-            return false;
-        case MacroPatEnt::PAT_PATH:
-            return true;
-        default:
-            ERROR(sp, E0000, "Incompatible macro fragments " << right << " used with " << left);
-        }
-    case MacroPatEnt::PAT_TYPE:
-        switch(left.type)
-        {
-        case MacroPatEnt::PAT_TOKEN:
-            if( is_token_type(left.tok.type()) )
-                ERROR(sp, E0000, "Incompatible macro fragments " << right << " used with " << left);
-            return false;
-        case MacroPatEnt::PAT_TYPE:
-            return true;
-        default:
-            ERROR(sp, E0000, "Incompatible macro fragments " << right << " used with " << left);
-        }
-    case MacroPatEnt::PAT_EXPR:
-        switch(left.type)
-        {
-        case MacroPatEnt::PAT_TOKEN:
-            if( is_token_expr(left.tok.type()) )
-                ERROR(sp, E0000, "Incompatible macro fragments " << right << " used with " << left);
-            return false;
-        // TODO: Allow a loop starting with an expr?
-        // - Consume, add split based on loop condition or next arm
-        // - Possible problem with binding levels.
-        case MacroPatEnt::PAT_EXPR:
-            return true;
-        default:
-            ERROR(sp, E0000, "Incompatible macro fragments " << right << " used with " << left);
-        }
-    case MacroPatEnt::PAT_STMT:
-        switch(left.type)
-        {
-        case MacroPatEnt::PAT_TOKEN:
-            if( is_token_stmt(left.tok.type()) )
-                ERROR(sp, E0000, "Incompatible macro fragments " << right << " used with " << left);
-            return false;
-        case MacroPatEnt::PAT_STMT:
-            return true;
-        default:
-            ERROR(sp, E0000, "Incompatible macro fragments " << right << " used with " << left);
-        }
-    // Block - Expects '{' - Compatible with everything but a literal '{'
-    case MacroPatEnt::PAT_BLOCK:
-        switch(left.type)
-        {
-        case MacroPatEnt::PAT_TOKEN:
-            if( left.tok.type() == TOK_BRACE_OPEN )
-                ERROR(sp, E0000, "Incompatible macro fragments");
-            return false;
-        case MacroPatEnt::PAT_BLOCK:
-            return true;
-        default:
-            return false;
-        }
-    // Matches meta/attribute fragments.
-    case MacroPatEnt::PAT_META:
-        switch(left.type)
-        {
-        case MacroPatEnt::PAT_TOKEN:
-            if( left.tok.type() == TOK_IDENT )
-                ERROR(sp, E0000, "Incompatible macro fragments");
-            return false;
-        case MacroPatEnt::PAT_META:
-            return true;
-        default:
-            ERROR(sp, E0000, "Incompatible macro fragments " << right << " used with " << left);
-        }
-    // Matches items
-    case MacroPatEnt::PAT_ITEM:
-        switch(left.type)
-        {
-        case MacroPatEnt::PAT_TOKEN:
-            if( is_token_item(left.tok.type()) )
-                ERROR(sp, E0000, "Incompatible macro fragments");
-            return false;
-        case MacroPatEnt::PAT_ITEM:
-            return true;
-        default:
-            ERROR(sp, E0000, "Incompatible macro fragments " << right << " used with " << left);
-        }
-    }
-    throw "";
-}
-
 // TODO: Also count the number of times each variable is used?
-void enumerate_names(const ::std::vector<MacroPatEnt>& pats, ::std::vector< ::std::string>& names) {
+void enumerate_names(const ::std::vector<MacroPatEnt>& pats, ::std::vector<RcString>& names)
+{
     for( const auto& pat : pats )
     {
         if( pat.type == MacroPatEnt::PAT_LOOP ) {
@@ -450,6 +310,15 @@ void enumerate_names(const ::std::vector<MacroPatEnt>& pats, ::std::vector< ::st
             }
         }
     }
+}
+
+MacroRulesArm Parse_MacroRules_MakeArm(Span pat_sp, ::std::vector<MacroPatEnt> pattern, ::std::vector<MacroExpansionEnt> contents)
+{
+    // - Convert the rule into an instruction stream
+    auto rule_sequence = macro_pattern_to_simple(pat_sp, pattern);
+    auto arm = MacroRulesArm( mv$(rule_sequence), mv$(contents) );
+    enumerate_names(pattern,  arm.m_param_names);
+    return arm;
 }
 
 /// Parse an entire macro_rules! block into a format that exec.cpp can use
@@ -478,11 +347,7 @@ MacroRulesPtr Parse_MacroRules(TokenStream& lex)
     // Re-parse the patterns into a unified form
     for(auto& rule : rules)
     {
-        MacroRulesArm   arm = MacroRulesArm( mv$(rule.m_pattern), mv$(rule.m_contents) );
-
-        enumerate_names(arm.m_pattern,  arm.m_param_names);
-
-        rule_arms.push_back( mv$(arm) );
+        rule_arms.push_back( Parse_MacroRules_MakeArm(rule.m_pat_span, mv$(rule.m_pattern), mv$(rule.m_contents)) );
     }
 
     auto rv = new MacroRules( );
@@ -490,4 +355,288 @@ MacroRulesPtr Parse_MacroRules(TokenStream& lex)
     rv->m_rules = mv$(rule_arms);
 
     return MacroRulesPtr(rv);
+}
+
+namespace {
+
+    struct ExpTok {
+        MacroPatEnt::Type   ty;
+        const Token* tok;
+        ExpTok(MacroPatEnt::Type ty, const Token* tok): ty(ty), tok(tok) {}
+        bool operator==(const ExpTok& t) const { return this->ty == t.ty && *this->tok == *t.tok; }
+    };
+    ::std::ostream& operator<<(::std::ostream& os, const ExpTok& t) {
+        os << "ExpTok(" << t.ty << " " << *t.tok << ")";
+        return os;
+    }
+
+    // Yields all possible ExpectTok/ExpectPat entries from a pattern position
+    // Returns `true` if there's no fall-through
+    bool macro_pattern_get_head_set_inner(::std::vector<ExpTok>& rv, const ::std::vector<MacroPatEnt>& pattern, size_t direct_pos, size_t indirect_ofs)
+    {
+        for(size_t idx = direct_pos; idx < pattern.size(); idx ++)
+        {
+            const auto& ent = pattern[idx];
+            switch(ent.type)
+            {
+            case MacroPatEnt::PAT_LOOP:
+                if( macro_pattern_get_head_set_inner(rv, ent.subpats, 0, indirect_ofs) )
+                {
+                    // + loops have to iterate at least once, so if the set is closed by the sub-patterns, close us too
+                    if(ent.name == "+")
+                    {
+                        return true;
+                    }
+                    // for * and ? loops, they can be skipped entirely.
+                    // - No separator, this is for the skip case
+                }
+                else
+                {
+                    // If the inner pattern didn't close the option set, then the next token can be the separator
+                    if( ent.tok != TOK_NULL )
+                    {
+                        // If indirect is non-zero, decrement without doing anything
+                        if( indirect_ofs > 0 )
+                        {
+                            indirect_ofs --;
+                        }
+                        else
+                        {
+                            rv.push_back(ExpTok(MacroPatEnt::PAT_TOKEN, &ent.tok));
+                        }
+                    }
+                }
+                break;
+            default:
+                // If indirect is non-zero, decrement
+                if( indirect_ofs > 0 )
+                {
+                    indirect_ofs --;
+                }
+                else
+                {
+                    rv.push_back( ExpTok(ent.type, &ent.tok) );
+                    return true;
+                }
+                break;
+            }
+        }
+        return false;
+    }
+    ::std::vector<ExpTok> macro_pattern_get_head_set(const ::std::vector<MacroPatEnt>& pattern, size_t direct_pos, size_t indirect_ofs)
+    {
+        ::std::vector<ExpTok>   rv;
+        macro_pattern_get_head_set_inner(rv, pattern, direct_pos, indirect_ofs);
+        return rv;
+    }
+
+    void macro_pattern_to_simple_inner(const Span& sp, ::std::vector<SimplePatEnt>& rv, const ::std::vector<MacroPatEnt>& pattern)
+    {
+        size_t level_start = rv.size();
+        TRACE_FUNCTION_FR("[" << pattern << "]", "[" << FMT_CB(ss, for(auto it = rv.begin()+level_start; it != rv.end(); ++it) { ss << *it << ", "; }) << "]");
+        auto push = [&rv](SimplePatEnt spe) {
+            DEBUG("[macro_pattern_to_simple_inner] rv[" << rv.size() << "] = " << spe);
+            rv.push_back( ::std::move(spe) );
+            };
+        auto push_ifv = [&push](bool is_equal, ::std::vector<SimplePatIfCheck> ents, size_t tgt) {
+            push(SimplePatEnt::make_If({ is_equal, tgt, mv$(ents) }));
+            };
+        auto push_if = [&push_ifv](bool is_equal, MacroPatEnt::Type ty, const Token& tok, size_t tgt) {
+            push_ifv(is_equal, make_vec1(SimplePatIfCheck { ty, tok }), tgt);
+            };
+        for(size_t idx = 0; idx < pattern.size(); idx ++)
+        {
+            const auto& ent = pattern[idx];
+            DEBUG("[" << idx << "] ent = " << ent);
+            switch(ent.type)
+            {
+            case MacroPatEnt::PAT_LOOP: {
+                auto entry_pats = macro_pattern_get_head_set(ent.subpats, 0, 0);
+                DEBUG("Entry = [" << entry_pats << "]");
+                ASSERT_BUG(sp, entry_pats.size() > 0, "No entry conditions extracted from sub-pattern [" << ent.subpats << "]");
+                auto skip_pats = macro_pattern_get_head_set(pattern, idx+1, 0);
+                DEBUG("Skip = [" << skip_pats << "]");
+
+                // - Duplicates need special handling (build up a subseqent set)
+                for(const auto& ee : entry_pats)
+                {
+                    if( ::std::find(skip_pats.begin(), skip_pats.end(), ee) != skip_pats.end() )
+                    {
+                        TODO(sp, "Entry and skip patterns share an entry, ambigious - " << ee);
+                    }
+                }
+
+                // TODO: Combine the two cases below into one
+
+                // If the loop is a $()+ loop, then just recurse into it
+                if( ent.name == "+" )
+                {
+                    push( SimplePatEnt::make_LoopStart({}) );
+                    size_t start = rv.size();
+                    macro_pattern_to_simple_inner(sp, rv, ent.subpats);
+                    push( SimplePatEnt::make_LoopNext({}) );
+                    size_t rewrite_start = rv.size();
+                    if( ent.tok != TOK_NULL )
+                    {
+                        // If the loop terminator is also valid after the loop
+                        // - Terminate the loop if the next two tokens aren't `<SEP>` folled by any of `<ENTRY>`
+                        if( ::std::find(skip_pats.begin(), skip_pats.end(), ExpTok(MacroPatEnt::PAT_TOKEN, &ent.tok)) != skip_pats.end() ) {
+                            size_t expect_and_jump_pos = rv.size() + entry_pats.size() + 1;
+                            for(const auto& p : entry_pats)
+                            {
+                                auto v = ::make_vec2<SimplePatIfCheck>(
+                                    { MacroPatEnt::PAT_TOKEN, ent.tok},
+                                    { p.ty, *p.tok }
+                                    );
+                                // Jump if equal
+                                push_ifv(true, mv$(v), expect_and_jump_pos);
+                            }
+                            // If any of the above succeeded, they'll jump past this jump
+                            push( SimplePatEnt::make_Jump({ ~0u }) );
+                        }
+                        else {
+                            size_t end = rv.size() + 3;
+                            push_if( false, MacroPatEnt::PAT_TOKEN, ent.tok, end );
+                        }
+                        push( SimplePatEnt::make_ExpectTok(ent.tok) );
+                        push( SimplePatEnt::make_Jump({ start }) );
+                    }
+                    else
+                    {
+                        // TODO: What if there's a collision at this level?
+                        for(const auto& p : entry_pats)
+                        {
+                            push_if(true, p.ty, *p.tok, start);
+                        }
+                    }
+
+                    size_t post_loop = rv.size();
+                    for(size_t i = rewrite_start; i < post_loop; i++)
+                    {
+                        if( auto* pe = rv[i].opt_If() ) {
+                            if(pe->jump_target == ~0u) {
+                                pe->jump_target = post_loop;
+                            }
+                        }
+                        if( auto* pe = rv[i].opt_Jump() ) {
+                            if(pe->jump_target == ~0u) {
+                                pe->jump_target = post_loop;
+                            }
+                        }
+                    }
+                    push( SimplePatEnt::make_LoopEnd({}) );
+                }
+                else
+                {
+                    push( SimplePatEnt::make_LoopStart({}) );
+
+                    // Options:
+                    // - Enter the loop (if the next token is one of the head set of the loop)
+                    // - Skip the loop (the next token is the head set of the subsequent entries)
+                    size_t rewrite_start = rv.size();
+                    if( ent.name != "+" )
+                    {
+                        if( entry_pats.size() == 1 )
+                        {
+                            // If not the entry pattern, skip.
+                            push_if(false, entry_pats.front().ty, *entry_pats.front().tok, ~0u);
+                        }
+                        else if( skip_pats.empty() )
+                        {
+                            // No skip patterns, try all entry patterns
+                            size_t start = rv.size() + entry_pats.size() + 1;
+                            for(const auto& p : entry_pats)
+                            {
+                                push_if(true, p.ty, *p.tok, start);
+                            }
+                            push(SimplePatEnt::make_Jump({ ~0u }));
+                        }
+                        else
+                        {
+                            for(const auto& p : skip_pats)
+                            {
+                                push_if(true, p.ty, *p.tok, ~0u);
+                            }
+                        }
+                    }
+
+                    macro_pattern_to_simple_inner(sp, rv, ent.subpats);
+                    push( SimplePatEnt::make_LoopNext({}) );
+
+                    if( ent.name != "?" )
+                    {
+                        if( ent.tok != TOK_NULL )
+                        {
+                            // If the joiner is also valid after the loop, handle by also checking the entry conditions
+                            if( ::std::find(skip_pats.begin(), skip_pats.end(), ExpTok(MacroPatEnt::PAT_TOKEN, &ent.tok)) != skip_pats.end() ) {
+                                // Try all re-loop (joiner + entry) patterns, if any fail then jump to the end.
+                                for(const auto& p : entry_pats) {
+                                    auto v = ::make_vec2<SimplePatIfCheck>(
+                                        { MacroPatEnt::PAT_TOKEN, ent.tok},
+                                        { p.ty, *p.tok }
+                                        );
+                                    push_ifv(false, mv$(v), ~0u);
+                                }
+                            }
+                            else {
+                                // If not the joiner, jump to the end
+                                push_if(false, MacroPatEnt::PAT_TOKEN, ent.tok, ~0u);
+                            }
+                            push( SimplePatEnt::make_ExpectTok(ent.tok) );
+                        }
+                        // Jump back to the entry check.
+                        push(SimplePatEnt::make_Jump({ rewrite_start }));
+                    }
+                    else
+                    {
+                        ASSERT_BUG(sp, ent.tok == TOK_NULL, "$()? with a separator isn't valid");
+                    }
+                    size_t post_loop = rv.size();
+                    for(size_t i = rewrite_start; i < post_loop; i++)
+                    {
+                        if( auto* pe = rv[i].opt_If() ) {
+                            if(pe->jump_target == ~0u) {
+                                pe->jump_target = post_loop;
+                            }
+                        }
+                        if( auto* pe = rv[i].opt_Jump() ) {
+                            if(pe->jump_target == ~0u) {
+                                pe->jump_target = post_loop;
+                            }
+                        }
+                    }
+                    push( SimplePatEnt::make_LoopEnd({}) );
+                }
+                } break;
+            case MacroPatEnt::PAT_TOKEN:
+                push( SimplePatEnt::make_ExpectTok(ent.tok) );
+                break;
+            default:
+                push( SimplePatEnt::make_ExpectPat({ ent.type, ent.name_index }) );
+                break;
+            }
+        }
+
+        for(size_t i = level_start; i < rv.size(); i ++)
+        {
+            TU_MATCH_HDRA( (rv[i]), { )
+            default:
+                // Ignore
+            TU_ARMA(If, e) {
+                ASSERT_BUG(sp, e.jump_target < rv.size(), "If target out of bounds, " << e.jump_target << " >= " << rv.size());
+                }
+            TU_ARMA(Jump, e) {
+                ASSERT_BUG(sp, e.jump_target < rv.size(), "Jump target out of bounds, " << e.jump_target << " >= " << rv.size());
+                }
+            }
+        }
+    }
+
+    ::std::vector<SimplePatEnt> macro_pattern_to_simple(const Span& sp, const ::std::vector<MacroPatEnt>& pattern)
+    {
+        ::std::vector<SimplePatEnt> rv;
+        TRACE_FUNCTION_FR(pattern, rv);
+        macro_pattern_to_simple_inner(sp, rv, pattern);
+        return rv;
+    }
 }

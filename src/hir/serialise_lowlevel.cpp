@@ -11,6 +11,7 @@
 #include <fstream>
 #include <string.h>   // memcpy
 #include <common.hpp>
+#include <algorithm>
 
 namespace HIR {
 namespace serialise {
@@ -29,17 +30,58 @@ public:
     void write(const void* buf, size_t len);
 };
 
-Writer::Writer(const ::std::string& filename):
-    m_inner( new WriterInner(filename) )
+Writer::Writer():
+    m_inner(nullptr)
 {
 }
 Writer::~Writer()
 {
     delete m_inner, m_inner = nullptr;
 }
+void Writer::open(const ::std::string& filename)
+{
+    // 1. Sort strings by frequency
+    ::std::vector<::std::pair<RcString, unsigned>> sorted;
+    sorted.reserve(m_istring_cache.size());
+    for(const auto& e : m_istring_cache)
+        sorted.push_back( e );
+    // 2. Write out string table
+    ::std::sort(sorted.begin(), sorted.end(), [](const auto& a, const auto& b){ return a.second > b.second; });
+
+    m_inner = new WriterInner(filename);
+    // 3. Reset m_istring_cache to use the same value
+    this->write_count(sorted.size());
+    for(size_t i = 0; i < sorted.size(); i ++)
+    {
+        const auto& s = sorted[i].first;
+        this->write_string(s.size(), s.c_str());
+        DEBUG(i << " = " << m_istring_cache[s] << " '" << s << "'");
+        m_istring_cache[s] = i;
+    }
+    for(const auto& e : m_istring_cache)
+    {
+        assert(e.second < sorted.size());
+    }
+}
 void Writer::write(const void* buf, size_t len)
 {
-    m_inner->write(buf, len);
+    if( m_inner ) {
+        m_inner->write(buf, len);
+    }
+    else {
+        // No-op, pre caching
+    }
+}
+void Writer::write_string(const RcString& v)
+{
+    if( m_inner ) {
+        // Emit ID from the cache
+        this->write_count( m_istring_cache.at(v) );
+    }
+    else {
+        // Find/add in cache
+        m_istring_cache.insert(::std::make_pair(v, 0)).first->second += 1;
+    }
 }
 
 
@@ -186,8 +228,17 @@ void ReadBuffer::populate(ReaderInner& is)
 
 Reader::Reader(const ::std::string& filename):
     m_inner( new ReaderInner(filename) ),
-    m_buffer(1024)
+    m_buffer(1024),
+    m_pos(0)
 {
+    size_t n_strings = read_count();
+    m_strings.reserve(n_strings);
+    DEBUG("n_strings = " << n_strings);
+    for(size_t i = 0; i < n_strings; i ++)
+    {
+        auto s = read_string();
+        m_strings.push_back( RcString::new_interned(s) );
+    }
 }
 Reader::~Reader()
 {
@@ -198,6 +249,7 @@ void Reader::read(void* buf, size_t len)
 {
     auto used = m_buffer.read(buf, len);
     if( used == len ) {
+        m_pos += len;
         return ;
     }
     buf = reinterpret_cast<uint8_t*>(buf) + used;
@@ -214,6 +266,8 @@ void Reader::read(void* buf, size_t len)
         if( used != len )
             throw ::std::runtime_error( FMT("Reader::read - Requested " << len << " bytes from buffer, got " << used) );
     }
+
+    m_pos += len;
 }
 
 

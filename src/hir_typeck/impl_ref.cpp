@@ -32,10 +32,24 @@ bool ImplRef::more_specific_than(const ImplRef& other) const
         )
         ),
     (BoundedPtr,
-        return true;
+        if( !other.m_data.is_BoundedPtr() )
+            return false;
+        const auto& oe = other.m_data.as_BoundedPtr();
+        assert( *te.type == *oe.type );
+        assert( *te.trait_args == *oe.trait_args );
+        if( te.assoc->size() > oe.assoc->size() )
+            return true;
+        return false;
         ),
     (Bounded,
-        return true;
+        if( !other.m_data.is_Bounded() )
+            return false;
+        const auto& oe = other.m_data.as_Bounded();
+        assert( te.type == oe.type );
+        assert( te.trait_args == oe.trait_args );
+        if( te.assoc.size() > oe.assoc.size() )
+            return true;
+        return false;
         )
     )
     throw "";
@@ -50,9 +64,31 @@ bool ImplRef::overlaps_with(const ::HIR::Crate& crate, const ImplRef& other) con
             return te.impl->overlaps_with( crate, *oe.impl );
         ),
     (BoundedPtr,
+        // TODO: Bounded and BoundedPtr are compatible
+        if( *te.type != *oe.type )
+            return false;
+        if( *te.trait_args != *oe.trait_args )
+            return false;
+        // Don't check associated types
+        return true;
         ),
     (Bounded,
+        if( te.type != oe.type )
+            return false;
+        if( te.trait_args != oe.trait_args )
+            return false;
+        // Don't check associated types
+        return true;
         )
+    )
+    return false;
+}
+bool ImplRef::has_magic_params() const
+{
+    TU_IFLET(Data, m_data, TraitImpl, e,
+        for(const auto& t : e.params_ph)
+            if( visit_ty_with(t, [](const ::HIR::TypeRef& t){ return t.m_data.is_Generic() && (t.m_data.as_Generic().binding >> 8) == 2; }) )
+                return true;
     )
     return false;
 }
@@ -189,11 +225,11 @@ bool ImplRef::type_is_specialisable(const char* name) const
     static Span  sp;
     TU_MATCH(Data, (this->m_data), (e),
     (TraitImpl,
-        DEBUG("name=" << name << " " << *this);
         auto it = e.impl->m_types.find(name);
         if( it == e.impl->m_types.end() )
             return ::HIR::TypeRef();
         const ::HIR::TypeRef& tpl_ty = it->second.data;
+        DEBUG("name=" << name << " tpl_ty=" << tpl_ty << " " << *this);
         if( monomorphise_type_needed(tpl_ty) ) {
             return monomorphise_type_with(sp, tpl_ty, this->get_cb_monomorph_traitimpl(sp));
         }
@@ -219,8 +255,8 @@ bool ImplRef::type_is_specialisable(const char* name) const
 
 ::std::ostream& operator<<(::std::ostream& os, const ImplRef& x)
 {
-    TU_MATCH(ImplRef::Data, (x.m_data), (e),
-    (TraitImpl,
+    TU_MATCH_HDR( (x.m_data), { )
+    TU_ARM(x.m_data, TraitImpl, e) {
         if( e.impl == nullptr ) {
             os << "none";
         }
@@ -258,13 +294,16 @@ bool ImplRef::type_is_specialisable(const char* name) const
             }
             os << "}";
         }
-        ),
-    (BoundedPtr,
+        }
+    TU_ARM(x.m_data, BoundedPtr, e) {
+        assert(e.type);
+        assert(e.trait_args);
+        assert(e.assoc);
         os << "bound (ptr) " << *e.type << " : ?" << *e.trait_args << " + {" << *e.assoc << "}";
-        ),
-    (Bounded,
+        }
+    TU_ARM(x.m_data, Bounded, e) {
         os << "bound " << e.type << " : ?" << e.trait_args << " + {"<<e.assoc<<"}";
-        )
-    )
+        }
+    }
     return os;
 }

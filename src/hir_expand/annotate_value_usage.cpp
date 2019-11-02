@@ -122,6 +122,10 @@ namespace {
         void visit(::HIR::ExprNode_LoopControl& node) override
         {
             // NOTE: Leaf
+            if( node.m_value )
+            {
+                this->visit_node_ptr(node.m_value);
+            }
         }
         void visit(::HIR::ExprNode_Match& node) override
         {
@@ -333,9 +337,32 @@ namespace {
         }
         void visit(::HIR::ExprNode_CallMethod& node) override
         {
+            {
+                assert(node.m_cache.m_fcn);
+                ::HIR::ValueUsage   vu = ::HIR::ValueUsage::Borrow;
+                switch(node.m_cache.m_fcn->m_receiver)
+                {
+                case ::HIR::Function::Receiver::Free:
+                    BUG(node.span(), "_CallMethod resolved to free function");
+                case ::HIR::Function::Receiver::Value:
+                case ::HIR::Function::Receiver::Box:
+                case ::HIR::Function::Receiver::Custom:
+                case ::HIR::Function::Receiver::BorrowOwned:
+                    vu = ::HIR::ValueUsage::Move;
+                    break;
+                case ::HIR::Function::Receiver::BorrowUnique:
+                    vu = ::HIR::ValueUsage::Mutate;
+                    break;
+                case ::HIR::Function::Receiver::BorrowShared:
+                    vu = ::HIR::ValueUsage::Borrow;
+                    break;
+                //case ::HIR::Function::Receiver::PointerMut:
+                //case ::HIR::Function::Receiver::PointerConst:
+                }
+                auto _ = push_usage( vu );
+                this->visit_node_ptr(node.m_value);
+            }
             auto _ = push_usage( ::HIR::ValueUsage::Move );
-
-            this->visit_node_ptr(node.m_value);
             for( auto& val : node.m_args )
                 this->visit_node_ptr(val);
         }
@@ -356,13 +383,15 @@ namespace {
         void visit(::HIR::ExprNode_StructLiteral& node) override
         {
             const auto& sp = node.span();
+            ASSERT_BUG(sp, node.m_path.m_data.is_Generic(), "Struct literal with non-Generic path - " << node.m_path);
+            auto& ty_path = node.m_path.m_data.as_Generic();
             if( node.m_base_value ) {
                 bool is_moved = false;
                 const auto& tpb = node.m_base_value->m_res_type.m_data.as_Path().binding;
                 const ::HIR::Struct* str;
                 if( tpb.is_Enum() ) {
                     const auto& enm = *tpb.as_Enum();
-                    auto idx = enm.find_variant(node.m_path.m_path.m_components.back());
+                    auto idx = enm.find_variant(ty_path.m_path.m_components.back());
                     ASSERT_BUG(sp, idx != SIZE_MAX, "");
                     const auto& var_ty = enm.m_data.as_Data()[idx].type;
                     str = var_ty.m_data.as_Path().binding.as_Struct();
@@ -379,7 +408,7 @@ namespace {
                     provided_mask[idx] = true;
                 }
 
-                const auto monomorph_cb = monomorphise_type_get_cb(node.span(), nullptr, &node.m_path.m_params, nullptr);
+                const auto monomorph_cb = monomorphise_type_get_cb(node.span(), nullptr, &ty_path.m_params, nullptr);
                 for( unsigned int i = 0; i < fields.size(); i ++ ) {
                     if( ! provided_mask[i] ) {
                         const auto& ty_o = fields[i].second.ent;
@@ -452,11 +481,19 @@ namespace {
             throw "";
         }
 
-        ::HIR::ValueUsage get_usage_for_pattern(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::TypeRef& ty) const
+        ::HIR::ValueUsage get_usage_for_pattern(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::TypeRef& outer_ty) const
         {
             if( pat.m_binding.is_valid() ) {
-                return get_usage_for_pattern_binding(sp, pat.m_binding, ty);
+                return get_usage_for_pattern_binding(sp, pat.m_binding, outer_ty);
             }
+
+            // Implicit derefs
+            const ::HIR::TypeRef* typ = &outer_ty;
+            for(size_t i = 0; i < pat.m_implicit_deref_count; i ++)
+            {
+                typ = &*typ->m_data.as_Borrow().inner;
+            }
+            const ::HIR::TypeRef& ty = *typ;
 
             TU_MATCHA( (pat.m_data), (pe),
             (Any,
@@ -510,6 +547,12 @@ namespace {
                 ),
             (Struct,
                 const auto& str = *pe.binding;
+                if( pe.is_wildcard() )
+                    return ::HIR::ValueUsage::Borrow;
+                if( pe.sub_patterns.empty() && (TU_TEST1(str.m_data, Tuple, .empty()) || str.m_data.is_Unit()) ) {
+                    return ::HIR::ValueUsage::Borrow;
+                }
+                ASSERT_BUG(sp, str.m_data.is_Named(), "Struct pattern on non-brace struct");
                 const auto& flds = str.m_data.as_Named();
                 auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr,  &pe.path.m_params, nullptr);
 
@@ -552,10 +595,10 @@ namespace {
                 ),
             (EnumStruct,
                 const auto& enm = *pe.binding_ptr;
-                ASSERT_BUG(sp, enm.m_data.is_Data(), "");
+                ASSERT_BUG(sp, enm.m_data.is_Data(), "EnumStruct pattern on non-data enum");
                 const auto& var = enm.m_data.as_Data().at(pe.binding_idx);
                 const auto& str = *var.type.m_data.as_Path().binding.as_Struct();
-                ASSERT_BUG(sp, str.m_data.is_Named(), "");
+                ASSERT_BUG(sp, str.m_data.is_Named(), "EnumStruct pattern on non-struct variant - " << pe.path);
                 const auto& flds = str.m_data.as_Named();
                 auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr,  &pe.path.m_params, nullptr);
 

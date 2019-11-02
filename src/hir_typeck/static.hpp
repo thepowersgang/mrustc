@@ -11,18 +11,27 @@
 #include "common.hpp"
 #include "impl_ref.hpp"
 
+enum class MetadataType {
+    Unknown,    // Unknown still
+    None,   // Sized pointer
+    Zero,   // No metadata, but still unsized
+    Slice,  // usize metadata
+    TraitObject,    // VTable pointer metadata
+};
+
 class StaticTraitResolve
 {
 public:
     const ::HIR::Crate&   m_crate;
 
-    ::HIR::GenericParams*   m_impl_generics;
-    ::HIR::GenericParams*   m_item_generics;
+    const ::HIR::GenericParams*   m_impl_generics;
+    const ::HIR::GenericParams*   m_item_generics;
 
 
     ::std::map< ::HIR::TypeRef, ::HIR::TypeRef> m_type_equalities;
 
     ::HIR::SimplePath   m_lang_Copy;
+    ::HIR::SimplePath   m_lang_Clone;   // 1.29
     ::HIR::SimplePath   m_lang_Drop;
     ::HIR::SimplePath   m_lang_Sized;
     ::HIR::SimplePath   m_lang_Unsize;
@@ -34,6 +43,8 @@ public:
 
 private:
     mutable ::std::map< ::HIR::TypeRef, bool >  m_copy_cache;
+    mutable ::std::map< ::HIR::TypeRef, bool >  m_clone_cache;
+    mutable ::std::map< ::HIR::TypeRef, bool >  m_drop_cache;
 
 public:
     StaticTraitResolve(const ::HIR::Crate& crate):
@@ -42,6 +53,8 @@ public:
         m_item_generics(nullptr)
     {
         m_lang_Copy = m_crate.get_lang_item_path_opt("copy");
+        if( TARGETVER_1_29 )
+            m_lang_Clone = m_crate.get_lang_item_path_opt("clone");
         m_lang_Drop = m_crate.get_lang_item_path_opt("drop");
         m_lang_Sized = m_crate.get_lang_item_path_opt("sized");
         m_lang_Unsize = m_crate.get_lang_item_path_opt("unsize");
@@ -71,30 +84,35 @@ public:
 
     /// \brief State manipulation
     /// \{
-    template<typename T>
-    class NullOnDrop {
-        T*& ptr;
-    public:
-        NullOnDrop(T*& ptr):
-            ptr(ptr)
-        {}
-        ~NullOnDrop() {
-            ptr = nullptr;
-        }
-    };
-    NullOnDrop< ::HIR::GenericParams> set_impl_generics(::HIR::GenericParams& gps) {
+    NullOnDrop<const ::HIR::GenericParams> set_impl_generics(const ::HIR::GenericParams& gps) {
+        set_impl_generics_raw(gps);
+        return NullOnDrop<const ::HIR::GenericParams>(m_impl_generics);
+    }
+    NullOnDrop<const ::HIR::GenericParams> set_item_generics(const ::HIR::GenericParams& gps) {
+        set_item_generics_raw(gps);
+        return NullOnDrop<const ::HIR::GenericParams>(m_item_generics);
+    }
+    void set_impl_generics_raw(const ::HIR::GenericParams& gps) {
         assert( !m_impl_generics );
         m_impl_generics = &gps;
         m_type_equalities.clear();
         prep_indexes();
-        return NullOnDrop< ::HIR::GenericParams>(m_impl_generics);
     }
-    NullOnDrop< ::HIR::GenericParams> set_item_generics(::HIR::GenericParams& gps) {
+    void clear_impl_generics() {
+        m_impl_generics = nullptr;
+        m_type_equalities.clear();
+        prep_indexes();
+    }
+    void set_item_generics_raw(const ::HIR::GenericParams& gps) {
         assert( !m_item_generics );
         m_item_generics = &gps;
         m_type_equalities.clear();
         prep_indexes();
-        return NullOnDrop< ::HIR::GenericParams>(m_item_generics);
+    }
+    void clear_item_generics() {
+        m_item_generics = nullptr;
+        m_type_equalities.clear();
+        prep_indexes();
     }
     /// \}
 
@@ -167,10 +185,10 @@ public:
             const ::HIR::SimplePath& des, const ::HIR::PathParams& params,
             const ::HIR::Trait& trait_ptr, const ::HIR::SimplePath& trait_path, const ::HIR::PathParams& pp,
             const ::HIR::TypeRef& self_type,
-            ::std::function<void(const ::HIR::PathParams&, ::std::map< ::std::string, ::HIR::TypeRef>)> callback
+            ::std::function<void(const ::HIR::PathParams&, ::std::map< RcString, ::HIR::TypeRef>)> callback
             ) const;
     ///
-    bool trait_contains_type(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::std::string& name,  ::HIR::GenericPath& out_path) const;
+    bool trait_contains_type(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const char* name,  ::HIR::GenericPath& out_path) const;
     bool iterate_aty_bounds(const Span& sp, const ::HIR::Path::Data::Data_UfcsKnown& pe, ::std::function<bool(const ::HIR::TraitPath&)> cb) const;
 
 
@@ -178,8 +196,12 @@ public:
     // Common bounds
     // -------------
     bool type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) const;
+    bool type_is_clone(const Span& sp, const ::HIR::TypeRef& ty) const; // 1.29
     bool type_is_sized(const Span& sp, const ::HIR::TypeRef& ty) const;
+    bool type_is_impossible(const Span& sp, const ::HIR::TypeRef& ty) const;
     bool can_unsize(const Span& sp, const ::HIR::TypeRef& dst, const ::HIR::TypeRef& src) const;
+
+    MetadataType metadata_type(const Span& sp, const ::HIR::TypeRef& ty, bool err_on_unknown=false) const;
 
     /// Returns `true` if the passed type either implements Drop, or contains a type that implements Drop
     bool type_needs_drop_glue(const Span& sp, const ::HIR::TypeRef& ty) const;

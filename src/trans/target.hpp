@@ -78,18 +78,6 @@ struct TargetSpec
     TargetArch  m_arch;
 };
 
-struct StructRepr
-{
-    struct Ent {
-        unsigned int    field_idx;
-        size_t  size;
-        size_t  align;
-        ::HIR::TypeRef  ty;
-    };
-    // List of types, including padding (indicated by a UINT_MAX field idx)
-    // Ordered as they would be emitted
-    ::std::vector<Ent>  ents;
-};
 struct TypeRepr
 {
     size_t  align = 0;
@@ -137,7 +125,6 @@ extern void Target_ExportCurSpec(const ::std::string& filename);
 extern bool Target_GetSizeOf(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty, size_t& out_size);
 extern bool Target_GetAlignOf(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty, size_t& out_align);
 extern bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty, size_t& out_size, size_t& out_align);
-extern const StructRepr* Target_GetStructRepr(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& struct_ty);
 
 extern const TypeRepr* Target_GetTypeRepr(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty);
 

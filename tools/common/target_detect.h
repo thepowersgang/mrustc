@@ -10,9 +10,9 @@
 // - Windows (MSVC)
 #ifdef _MSC_VER
 # if defined(_WIN64)
-#  define DEFAULT_TARGET_NAME "x86_64-windows-msvc"
+#  define DEFAULT_TARGET_NAME "x86_64-pc-windows-msvc"
 # else
-#  define DEFAULT_TARGET_NAME "x86-windows-msvc"
+#  define DEFAULT_TARGET_NAME "x86-pc-windows-msvc"
 # endif
 // - Linux
 #elif defined(__linux__)
@@ -32,9 +32,9 @@
 // - MinGW
 #elif defined(__MINGW32__)
 # if defined(_WIN64)
-#  define DEFAULT_TARGET_NAME "x86_64-windows-gnu"
+#  define DEFAULT_TARGET_NAME "x86_64-pc-windows-gnu"
 # else
-#  define DEFAULT_TARGET_NAME "i586-windows-gnu"
+#  define DEFAULT_TARGET_NAME "i586-pc-windows-gnu"
 # endif
 // - FreeBSD
 #elif defined(__FreeBSD__)

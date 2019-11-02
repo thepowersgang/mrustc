@@ -30,6 +30,7 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
     else if( name == "copy" ) {
         DEBUG("Bind 'copy' to " << path);
     }
+    else if( TARGETVER_1_29 && name == "clone" ) {}   // - Trait
     // ops traits
     else if( name == "drop" ) { DEBUG("Bind '"<<name<<"' to " << path); }
     else if( name == "add" ) { DEBUG("Bind '"<<name<<"' to " << path); }
@@ -67,7 +68,8 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
     else if( name == "fn_once" ) { DEBUG("Bind '"<<name<<"' to " << path); }
 
     else if( name == "eq"  ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "ord" ) { DEBUG("Bind '"<<name<<"' to " << path); }
+    else if( name == "ord" ) { DEBUG("Bind '"<<name<<"' to " << path); }	// In 1.29 this is Ord, before it was PartialOrd
+    else if( TARGETVER_1_29 && name == "partial_ord" ) { DEBUG("Bind '"<<name<<"' to " << path); }    // New name for v1.29
     else if( name == "unsize" ) { DEBUG("Bind '"<<name<<"' to " << path); }
     else if( name == "coerce_unsized" ) { DEBUG("Bind '"<<name<<"' to " << path); }
     else if( name == "freeze" ) { DEBUG("Bind '"<<name<<"' to " << path); }
@@ -75,6 +77,8 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
     else if( name == "iterator" ) { /* mrustc just desugars? */ }
 
     else if( name == "debug_trait" ) { /* TODO: Poke derive() with this */ }
+
+    else if( TARGETVER_1_29 && name == "termination" ) { }    // 1.29 - trait used for non-() main
 
     // Structs
     else if( name == "non_zero" ) { }
@@ -84,18 +88,30 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
     else if( name == "range_from" ) { }
     else if( name == "range_to" ) { }
     else if( name == "unsafe_cell" ) { }
+    else if( TARGETVER_1_29 && name == "alloc_layout") { }
+    else if( TARGETVER_1_29 && name == "panic_info" ) {}    // Struct
+    else if( TARGETVER_1_29 && name == "manually_drop" ) {}    // Struct
+
+    // Generators
+    else if( TARGETVER_1_29 && name == "generator" ) {}   // - Trait
+    else if( TARGETVER_1_29 && name == "generator_state" ) {}   // - State enum
 
     // Statics
     else if( name == "msvc_try_filter" ) { }
 
+    // Extern functions
+    else if( name == "panic_impl" ) {
+    }
+    else if( name == "oom" ) {
+    }
+
     // Functions
     else if( name == "panic" ) { }
     else if( name == "panic_bounds_check" ) { }
-    else if( name == "panic_fmt" ) {
-
-    }
+    else if( name == "panic_fmt" ) { }
     else if( name == "str_eq" ) { }
     else if( name == "drop_in_place" ) { }
+    else if( name == "align_offset" ) { }
     // - builtin `box` support
     else if( name == "exchange_malloc" ) { }
     else if( name == "exchange_free" ) { }
@@ -105,9 +121,41 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
     else if( name == "start" ) { }
 
     else if( name == "eh_personality" ) { }
+    // libcompiler_builtins
+    // - i128/u128 helpers (not used by mrustc)
+    else if( name == "i128_add" ) { }
+    else if( name == "i128_addo" ) { }
+    else if( name == "u128_add" ) { }
+    else if( name == "u128_addo" ) { }
+    else if( name == "i128_sub" ) { }
+    else if( name == "i128_subo" ) { }
+    else if( name == "u128_sub" ) { }
+    else if( name == "u128_subo" ) { }
+    else if( name == "i128_mul" ) { }
+    else if( name == "i128_mulo" ) { }
+    else if( name == "u128_mul" ) { }
+    else if( name == "u128_mulo" ) { }
+    else if( name == "i128_div" ) { }
+    else if( name == "i128_rem" ) { }
+    else if( name == "u128_div" ) { }
+    else if( name == "u128_rem" ) { }
+    else if( name == "i128_shl" ) { }
+    else if( name == "i128_shlo" ) { }
+    else if( name == "u128_shl" ) { }
+    else if( name == "u128_shlo" ) { }
+    else if( name == "i128_shr" ) { }
+    else if( name == "i128_shro" ) { }
+    else if( name == "u128_shr" ) { }
+    else if( name == "u128_shro" ) { }
 
     else {
         ERROR(sp, E0000, "Unknown language item '" << name << "'");
+    }
+
+    if( type == AST::ITEM_EXTERN_FN )
+    {
+        // TODO: This should force a specific link name instead
+        return ;
     }
 
     auto rv = crate.m_lang_items.insert( ::std::make_pair( name, ::AST::Path(path) ) );
@@ -125,7 +173,7 @@ class Decorator_LangItem:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
         TU_MATCH_DEF(::AST::Item, (i), (e),
         (
@@ -139,7 +187,7 @@ public:
                 handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_FN);
             }
             else {
-                //handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_EXTERN_FN);
+                handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_EXTERN_FN);
             }
             ),
         (Static,
@@ -147,6 +195,9 @@ public:
             ),
         (Struct,
             handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_STRUCT);
+            ),
+        (Enum,
+            handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_ENUM);
             ),
         (Trait,
             handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_TRAIT);
@@ -176,9 +227,15 @@ public:
         // collections
         else if( name == "str" ) {}
         else if( name == "slice" ) {}
+        else if( TARGETVER_1_29 && name == "slice_u8" ) {}  // libcore now, `impl [u8]`
+        else if( TARGETVER_1_29 && name == "slice_alloc" ) {}   // liballoc's impls on [T]
+        else if( TARGETVER_1_29 && name == "slice_u8_alloc" ) {}   // liballoc's impls on [u8]
+        else if( TARGETVER_1_29 && name == "str_alloc" ) {}   // liballoc's impls on str
         // std - interestingly
         else if( name == "f32" ) {}
         else if( name == "f64" ) {}
+        else if( TARGETVER_1_29 && name == "f32_runtime" ) {}
+        else if( TARGETVER_1_29 && name == "f64_runtime" ) {}
         else {
             ERROR(sp, E0000, "Unknown lang item '" << name << "' on impl");
         }
@@ -193,7 +250,7 @@ class Decorator_Main:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
         if( i.is_None() ) {
             // Ignore.
@@ -217,7 +274,7 @@ class Decorator_Start:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
         TU_IFLET(::AST::Item, i, Function, e,
             auto rv = crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-start"), ::AST::Path(path) ));
@@ -233,9 +290,30 @@ public:
     }
 };
 
+class Decorator_PanicImplementation:
+    public ExpandDecorator
+{
+public:
+    AttrStage stage() const override { return AttrStage::Post; }
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    {
+        TU_IFLET(::AST::Item, i, Function, e,
+            auto rv = crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-panic_implementation"), ::AST::Path(path) ));
+            if( !rv.second )
+            {
+                const auto& other_path = rv.first->second;
+                ERROR(sp, E0000, "Duplicate definition of #[panic_implementation] - " << other_path << " and " << path);
+            }
+        )
+        else {
+            ERROR(sp, E0000, "#[panic_implementation] on non-function " << path);
+        }
+    }
+};
 
 STATIC_DECORATOR("lang", Decorator_LangItem)
 STATIC_DECORATOR("main", Decorator_Main);
 STATIC_DECORATOR("start", Decorator_Start);
+STATIC_DECORATOR("panic_implementation", Decorator_PanicImplementation);
 
 

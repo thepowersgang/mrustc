@@ -34,7 +34,7 @@ namespace {
         };
 
         Align   align = Align::Unspec;
-        char    align_char = ' ';
+        uint32_t align_char = ' ';
 
         Sign    sign = Sign::Unspec;
         bool    alternate = false;
@@ -118,17 +118,82 @@ namespace {
         }
     };
 
+    uint32_t parse_utf8(const char* s, int& out_len)
+    {
+        uint8_t v1 = s[0];
+        if( v1 < 0x80 )
+        {
+            out_len = 1;
+            return v1;
+        }
+        else if( (v1 & 0xC0) == 0x80 )
+        {
+            // Invalid (continuation)
+            out_len = 1;
+            return 0xFFFE;
+        }
+        else if( (v1 & 0xE0) == 0xC0 ) {
+            // Two bytes
+            out_len = 2;
+
+            uint8_t e1 = s[1];
+            if( (e1 & 0xC0) != 0x80 )  return 0xFFFE;
+
+            uint32_t outval
+                = ((v1 & 0x1F) << 6)
+                | ((e1 & 0x3F) <<0)
+                ;
+            return outval;
+        }
+        else if( (v1 & 0xF0) == 0xE0 ) {
+            // Three bytes
+            out_len = 3;
+            uint8_t e1 = s[1];
+            if( (e1 & 0xC0) != 0x80 )  return 0xFFFE;
+            uint8_t e2 = s[2];
+            if( (e2 & 0xC0) != 0x80 )  return 0xFFFE;
+
+            uint32_t outval
+                = ((v1 & 0x0F) << 12)
+                | ((e1 & 0x3F) <<  6)
+                | ((e2 & 0x3F) <<  0)
+                ;
+            return outval;
+        }
+        else if( (v1 & 0xF8) == 0xF0 ) {
+            // Four bytes
+            out_len = 4;
+            uint8_t e1 = s[1];
+            if( (e1 & 0xC0) != 0x80 )  return 0xFFFE;
+            uint8_t e2 = s[2];
+            if( (e2 & 0xC0) != 0x80 )  return 0xFFFE;
+            uint8_t e3 = s[3];
+            if( (e3 & 0xC0) != 0x80 )  return 0xFFFE;
+
+            uint32_t outval
+                = ((v1 & 0x07) << 18)
+                | ((e1 & 0x3F) << 12)
+                | ((e2 & 0x3F) <<  6)
+                | ((e3 & 0x3F) <<  0)
+                ;
+            return outval;
+        }
+        else {
+            throw "";   // Should be impossible.
+        }
+    }
+
     /// Parse a format string into a sequence of fragments.
     ///
     /// Returns a list of fragments, and the remaining free text after the last format sequence
     ::std::tuple< ::std::vector<FmtFrag>, ::std::string> parse_format_string(
         const Span& sp,
         const ::std::string& format_string,
-        const ::std::map< ::std::string,unsigned int>& named,
+        const ::std::map<RcString,unsigned int>& named,
         unsigned int n_free
         )
     {
-        unsigned int n_named = named.size();
+        //unsigned int n_named = named.size();
         unsigned int next_free = 0;
 
         ::std::vector<FmtFrag>  frags;
@@ -183,7 +248,7 @@ namespace {
                             s ++;
                         } while(isdigit(*s));
                         if( arg_idx >= n_free )
-                            ERROR(sp, E0000, "Positional argument " << arg_idx << " out of range");
+                            ERROR(sp, E0000, "Positional argument " << arg_idx << " out of range in \"" << format_string << "\"");
                         index = arg_idx;
                     }
                     else {
@@ -191,7 +256,7 @@ namespace {
                         while( isalnum(*s) || *s == '_' || (*s < 0 || *s > 127) ) {
                             s ++;
                         }
-                        ::std::string   ident { start, s };
+                        auto ident = RcString(start, s - start);
                         auto it = named.find(ident);
                         if( it == named.end() )
                             ERROR(sp, E0000, "Named argument '"<<ident<<"' not found");
@@ -209,9 +274,15 @@ namespace {
                     s ++;   // eat ':'
 
                     // Alignment
-                    if( s[0] != '\0' && (s[1] == '<' || s[1] == '^' || s[1] == '>') ) {
-                        args.align_char = s[0];
-                        s ++;
+                    // - Padding character, a single unicode codepoint followed by '<'/'^'/'>'
+                    {
+                        int next_c_i;
+                        uint32_t ch = parse_utf8(s, next_c_i);
+                        char next_c = s[next_c_i];
+                        if( ch != '}' && ch != '\0' && (next_c == '<' || next_c == '^' || next_c == '>') ) {
+                            args.align_char = ch;
+                            s += next_c_i;
+                        }
                     }
                     if( *s == '<' ) {
                         args.align = FmtArgs::Align::Left;
@@ -288,7 +359,7 @@ namespace {
                         }
                         if( *s == '$' )
                         {
-                            ::std::string   ident { start, s };
+                            auto ident = RcString(start, s - start);
                             auto it = named.find(ident);
                             if( it == named.end() )
                                 ERROR(sp, E0000, "Named argument '"<<ident<<"' not found");
@@ -312,7 +383,7 @@ namespace {
                             if( next_free == n_free ) {
                                 ERROR(sp, E0000, "Not enough arguments passed, expected at least " << n_free+1);
                             }
-                            args.prec = next_free + n_named;
+                            args.prec = next_free;
                             next_free ++;
                         }
                         else if( ::std::isdigit(*s) ) {
@@ -338,16 +409,17 @@ namespace {
                         }
                     }
 
+                    if( s[0] == '\0' )
+                        ERROR(sp, E0000, "Unexpected end of formatting string");
+
                     // Parse ident?
                     // - Lazy way is to just handle a single char and ensure that it is just a single char
-                    if( s[0] != '}' && s[0] != '\0' && s[1] != '}' ) {
-                        TODO(sp, "Parse formatting fragment at \"" << fmt_frag_str << "\" (long type)");
+                    if( s[0] != '}' && s[1] != '}' ) {
+                        TODO(sp, "Parse formatting fragment at \"" << fmt_frag_str << "\" (long type) - s=...\"" << s << "\"");
                     }
 
                     switch(s[0])
                     {
-                    case '\0':
-                        ERROR(sp, E0000, "Unexpected end of formatting string");
                     default:
                         ERROR(sp, E0000, "Unknown formatting type specifier '" << *s << "'");
                     case '}':      trait_name = "Display"; break;
@@ -375,7 +447,7 @@ namespace {
                     if( next_free == n_free ) {
                         ERROR(sp, E0000, "Not enough arguments passed, expected at least " << n_free+1);
                     }
-                    index = next_free + n_named;
+                    index = next_free;
                     next_free ++;
                 }
 
@@ -392,6 +464,9 @@ namespace {
 }
 
 namespace {
+    Token ident(const char* s) {
+        return Token(TOK_IDENT, RcString::new_interned(s));
+    }
     void push_path(::std::vector<TokenTree>& toks, const AST::Crate& crate, ::std::initializer_list<const char*> il)
     {
         switch(crate.m_load_std)
@@ -400,17 +475,17 @@ namespace {
             break;
         case ::AST::Crate::LOAD_CORE:
             toks.push_back( TokenTree(TOK_DOUBLE_COLON) );
-            toks.push_back( Token(TOK_IDENT, "core") );
+            toks.push_back( ident("core") );
             break;
         case ::AST::Crate::LOAD_STD:
             toks.push_back( TokenTree(TOK_DOUBLE_COLON) );
-            toks.push_back( Token(TOK_IDENT, "std") );
+            toks.push_back( ident("std") );
             break;
         }
         for(auto ent : il)
         {
             toks.push_back( TokenTree(TOK_DOUBLE_COLON) );
-            toks.push_back( Token(TOK_IDENT, ent) );
+            toks.push_back( ident(ent) );
         }
     }
     void push_toks(::std::vector<TokenTree>& toks, Token t1) {
@@ -431,32 +506,23 @@ namespace {
         toks.push_back( mv$(t3) );
         toks.push_back( mv$(t4) );
     }
-}
 
-class CFormatArgsExpander:
-    public ExpandProcMacro
-{
-    ::std::unique_ptr<TokenStream> expand(const Span& sp, const ::AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
+    ::std::unique_ptr<TokenStream> expand_format_args(const Span& sp, const ::AST::Crate& crate, TTStream& lex, bool add_newline)
     {
         Token   tok;
 
-        auto lex = TTStream(sp, tt);
-        lex.parse_state().module = &mod;
-        if( ident != "" )
-            ERROR(sp, E0000, "format_args! doesn't take an ident");
+        auto format_string_node = Parse_ExprVal(lex);
+        ASSERT_BUG(sp, format_string_node, "No expression returned");
+        Expand_BareExpr(crate, lex.parse_state().get_current_mod(), format_string_node);
 
-        auto n = Parse_ExprVal(lex);
-        ASSERT_BUG(sp, n, "No expression returned");
-        Expand_BareExpr(crate, mod, n);
-
-        auto* format_string_np = dynamic_cast<AST::ExprNode_String*>(&*n);
+        auto* format_string_np = dynamic_cast<AST::ExprNode_String*>(&*format_string_node);
         if( !format_string_np ) {
-            ERROR(sp, E0000, "format_args! requires a string literal - got " << *n);
+            ERROR(sp, E0000, "format_args! requires a string literal - got " << *format_string_node);
         }
         const auto& format_string_sp = format_string_np->span();
         const auto& format_string = format_string_np->m_value;
 
-        ::std::map< ::std::string, unsigned int>   named_args_index;
+        ::std::map<RcString, unsigned int>   named_args_index;
         ::std::vector<TokenTree>    named_args;
         ::std::vector<TokenTree>    free_args;
 
@@ -472,7 +538,7 @@ class CFormatArgsExpander:
             if( lex.lookahead(0) == TOK_IDENT && lex.lookahead(1) == TOK_EQUAL )
             {
                 GET_CHECK_TOK(tok, lex, TOK_IDENT);
-                auto name = mv$(tok.str());
+                auto name = tok.istr();
 
                 GET_CHECK_TOK(tok, lex, TOK_EQUAL);
 
@@ -497,6 +563,10 @@ class CFormatArgsExpander:
         ::std::vector< FmtFrag> fragments;
         ::std::string   tail;
         ::std::tie( fragments, tail ) = parse_format_string(format_string_sp, format_string,  named_args_index, free_args.size());
+        if( add_newline )
+        {
+            tail += "\n";
+        }
 
         bool is_simple = true;
         for(unsigned int i = 0; i < fragments.size(); i ++)
@@ -533,7 +603,7 @@ class CFormatArgsExpander:
         toks.push_back( TokenTree(TOK_PAREN_OPEN) );
         for(unsigned int i = 0; i < free_args.size() + named_args.size(); i ++ )
         {
-            toks.push_back( Token(TOK_IDENT, FMT("a" << i)) );
+            toks.push_back( ident(FMT("a" << i).c_str()) );
             toks.push_back( TokenTree(TOK_COMMA) );
         }
         toks.push_back( TokenTree(TOK_PAREN_CLOSE) );
@@ -545,13 +615,13 @@ class CFormatArgsExpander:
         // - Contains N+1 entries, where N is the number of fragments
         {
             toks.push_back( TokenTree(TOK_RWORD_STATIC) );
-            toks.push_back( Token(TOK_IDENT, "FRAGMENTS") );
+            toks.push_back( ident("FRAGMENTS") );
             toks.push_back( TokenTree(TOK_COLON) );
 
             toks.push_back( TokenTree(TOK_SQUARE_OPEN) );
             toks.push_back( Token(TOK_AMP) );
-            toks.push_back( Token(TOK_LIFETIME, "static") );
-            toks.push_back( Token(TOK_IDENT, "str") );
+            toks.push_back( Token(TOK_LIFETIME, RcString::new_interned("static")) );
+            toks.push_back( ident("str") );
             toks.push_back( Token(TOK_SEMICOLON) );
             toks.push_back( Token(static_cast<uint64_t>(fragments.size() + 1), CORETYPE_UINT) );
             toks.push_back( TokenTree(TOK_SQUARE_CLOSE) );
@@ -577,7 +647,7 @@ class CFormatArgsExpander:
             toks.push_back( TokenTree(TOK_PAREN_OPEN) );
             {
                 toks.push_back( TokenTree(TOK_AMP) );
-                toks.push_back( Token(TOK_IDENT, "FRAGMENTS") );
+                toks.push_back( ident("FRAGMENTS") );
                 toks.push_back( TokenTree(TOK_COMMA) );
 
                 toks.push_back( TokenTree(TOK_AMP) );
@@ -586,7 +656,7 @@ class CFormatArgsExpander:
                 {
                     push_path(toks, crate, {"fmt", "ArgumentV1", "new"});
                     toks.push_back( Token(TOK_PAREN_OPEN) );
-                    toks.push_back( Token(TOK_IDENT, FMT("a" << frag.arg_index)) );
+                    toks.push_back( ident( FMT("a" << frag.arg_index).c_str() ) );
 
                     toks.push_back( TokenTree(TOK_COMMA) );
 
@@ -611,7 +681,7 @@ class CFormatArgsExpander:
             toks.push_back( TokenTree(TOK_PAREN_OPEN) );
             {
                 toks.push_back( TokenTree(TOK_AMP) );
-                toks.push_back( Token(TOK_IDENT, "FRAGMENTS") );
+                toks.push_back( ident("FRAGMENTS") );
                 toks.push_back( TokenTree(TOK_COMMA) );
 
                 // TODO: Fragments to format
@@ -622,7 +692,7 @@ class CFormatArgsExpander:
                 {
                     push_path(toks, crate, {"fmt", "ArgumentV1", "new"});
                     toks.push_back( Token(TOK_PAREN_OPEN) );
-                    toks.push_back( Token(TOK_IDENT, FMT("a" << frag.arg_index)) );
+                    toks.push_back( ident(FMT("a" << frag.arg_index).c_str()) );
 
                     toks.push_back( TokenTree(TOK_COMMA) );
 
@@ -640,17 +710,17 @@ class CFormatArgsExpander:
                     push_path(toks, crate, {"fmt", "rt", "v1", "Argument"});
                     toks.push_back( TokenTree(TOK_BRACE_OPEN) );
 
-                    push_toks(toks, Token(TOK_IDENT, "position"), TOK_COLON );
+                    push_toks(toks, ident("position"), TOK_COLON );
                     push_path(toks, crate, {"fmt", "rt", "v1", "Position", "Next"});
                     push_toks(toks, TOK_COMMA);
 
-                    push_toks(toks, Token(TOK_IDENT, "format"), TOK_COLON );
+                    push_toks(toks, ident("format"), TOK_COLON );
                     push_path(toks, crate, {"fmt", "rt", "v1", "FormatSpec"});
                     toks.push_back( TokenTree(TOK_BRACE_OPEN) );
                     {
-                        push_toks(toks, Token(TOK_IDENT, "fill"), TOK_COLON, Token(uint64_t(frag.args.align_char), CORETYPE_CHAR), TOK_COMMA );
+                        push_toks(toks, ident("fill"), TOK_COLON, Token(uint64_t(frag.args.align_char), CORETYPE_CHAR), TOK_COMMA );
 
-                        push_toks(toks, Token(TOK_IDENT, "align"), TOK_COLON);
+                        push_toks(toks, ident("align"), TOK_COLON);
                         const char* align_var_name = nullptr;
                         switch( frag.args.align )
                         {
@@ -662,19 +732,19 @@ class CFormatArgsExpander:
                         push_path(toks, crate, {"fmt", "rt", "v1", "Alignment", align_var_name});
                         push_toks(toks, TOK_COMMA);
 
-                        push_toks(toks, Token(TOK_IDENT, "flags"), TOK_COLON);
+                        push_toks(toks, ident("flags"), TOK_COLON);
                         uint64_t flags = 0;
                         if(frag.args.alternate)
                             flags |= 1 << 2;
                         push_toks(toks, Token(uint64_t(flags), CORETYPE_U32));
                         push_toks(toks, TOK_COMMA);
 
-                        push_toks(toks, Token(TOK_IDENT, "precision"), TOK_COLON );
+                        push_toks(toks, ident("precision"), TOK_COLON );
                         if( frag.args.prec_is_arg || frag.args.prec != 0 ) {
                             push_path(toks, crate, {"fmt", "rt", "v1", "Count", "Is"});
                             push_toks(toks, TOK_PAREN_OPEN);
                             if( frag.args.prec_is_arg ) {
-                                push_toks(toks, TOK_STAR, Token(TOK_IDENT, FMT("a" << frag.args.prec)) );
+                                push_toks(toks, TOK_STAR, ident(FMT("a" << frag.args.prec).c_str()) );
                             }
                             else {
                                 push_toks(toks, Token(uint64_t(frag.args.prec), CORETYPE_UINT) );
@@ -686,12 +756,12 @@ class CFormatArgsExpander:
                         }
                         toks.push_back( TokenTree(TOK_COMMA) );
 
-                        push_toks(toks, Token(TOK_IDENT, "width"), TOK_COLON );
+                        push_toks(toks, ident("width"), TOK_COLON );
                         if( frag.args.width_is_arg || frag.args.width != 0 ) {
                             push_path(toks, crate, {"fmt", "rt", "v1", "Count", "Is"});
                             push_toks(toks, TOK_PAREN_OPEN);
                             if( frag.args.width_is_arg ) {
-                                push_toks(toks, TOK_STAR, Token(TOK_IDENT, FMT("a" << frag.args.width)) );
+                                push_toks(toks, TOK_STAR, ident(FMT("a" << frag.args.width).c_str()) );
                             }
                             else {
                                 push_toks(toks, Token(uint64_t(frag.args.width), CORETYPE_UINT) );
@@ -719,7 +789,36 @@ class CFormatArgsExpander:
 
         return box$( TTStreamO(sp, TokenTree(Ident::Hygiene::new_scope(), mv$(toks))) );
     }
+}
+
+class CFormatArgsExpander:
+    public ExpandProcMacro
+{
+    ::std::unique_ptr<TokenStream> expand(const Span& sp, const ::AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
+    {
+        Token   tok;
+
+        auto lex = TTStream(sp, tt);
+        lex.parse_state().module = &mod;
+
+        return expand_format_args(sp, crate, lex, /*add_newline=*/false);
+    }
+};
+
+class CFormatArgsNlExpander:
+    public ExpandProcMacro
+{
+    ::std::unique_ptr<TokenStream> expand(const Span& sp, const ::AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
+    {
+        Token   tok;
+
+        auto lex = TTStream(sp, tt);
+        lex.parse_state().module = &mod;
+
+        return expand_format_args(sp, crate, lex, /*add_newline=*/true);
+    }
 };
 
 STATIC_MACRO("format_args", CFormatArgsExpander);
+STATIC_MACRO("format_args_nl", CFormatArgsNlExpander);
 

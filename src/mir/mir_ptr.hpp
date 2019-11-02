@@ -7,7 +7,6 @@
  */
 #pragma once
 
-
 namespace MIR {
 
 class Function;
@@ -32,10 +31,10 @@ public:
 
     void reset();
 
-    ::MIR::Function* operator->() { return ptr; }
-    ::MIR::Function& operator*() { return *ptr; }
-    const ::MIR::Function* operator->() const { return ptr; }
-    const ::MIR::Function& operator*() const { return *ptr; }
+          ::MIR::Function* operator->()       { if(!ptr) throw ""; return ptr; }
+    const ::MIR::Function* operator->() const { if(!ptr) throw ""; return ptr; }
+          ::MIR::Function& operator*()       { if(!ptr) throw ""; return *ptr; }
+    const ::MIR::Function& operator*() const { if(!ptr) throw ""; return *ptr; }
 
     operator bool() const { return ptr != nullptr; }
 };

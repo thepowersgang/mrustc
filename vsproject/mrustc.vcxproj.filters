@@ -209,9 +209,6 @@
     <ClCompile Include="..\src\trans\monomorphise.cpp">
       <Filter>Source Files\trans</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\trans\mangling.cpp">
-      <Filter>Source Files\trans</Filter>
-    </ClCompile>
     <ClCompile Include="..\src\expand\lang_item.cpp">
       <Filter>Source Files\expand</Filter>
     </ClCompile>
@@ -388,6 +385,21 @@
     </ClCompile>
     <ClCompile Include="..\src\version.cpp">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\trans\auto_impls.cpp">
+      <Filter>Source Files\trans</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\trans\mangling_v2.cpp">
+      <Filter>Source Files\trans</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hir_conv\resolve_ufcs_outer.cpp">
+      <Filter>Source Files\hir_conv</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hir\hir_ops.cpp">
+      <Filter>Source Files\hir</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\expand\assert.cpp">
+      <Filter>Source Files\expand</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

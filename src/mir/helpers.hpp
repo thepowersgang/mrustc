@@ -104,7 +104,7 @@ public:
     }
     unsigned int get_cur_stmt_ofs() const;
 
-    void fmt_pos(::std::ostream& os) const;
+    void fmt_pos(::std::ostream& os, bool include_path=false) const;
     void print_bug(::std::function<void(::std::ostream& os)> cb) const {
         print_msg("ERROR", cb);
     }
@@ -116,7 +116,14 @@ public:
     const ::MIR::BasicBlock& get_block(::MIR::BasicBlockId id) const;
 
     const ::HIR::TypeRef& get_static_type(::HIR::TypeRef& tmp, const ::HIR::Path& path) const;
-    const ::HIR::TypeRef& get_lvalue_type(::HIR::TypeRef& tmp, const ::MIR::LValue& val) const;
+    const ::HIR::TypeRef& get_lvalue_type(::HIR::TypeRef& tmp, const ::MIR::LValue& val, unsigned wrapper_skip_count=0) const;
+    const ::HIR::TypeRef& get_lvalue_type(::HIR::TypeRef& tmp, const ::MIR::LValue::CRef& val) const {
+        return get_lvalue_type(tmp, val.lv(), val.lv().m_wrappers.size() - val.wrapper_count());
+    }
+    const ::HIR::TypeRef& get_lvalue_type(::HIR::TypeRef& tmp, const ::MIR::LValue::MRef& val) const {
+        return get_lvalue_type(tmp, val.lv(), val.lv().m_wrappers.size() - val.wrapper_count());
+    }
+    const ::HIR::TypeRef& get_unwrapped_type(::HIR::TypeRef& tmp, const ::MIR::LValue::Wrapper& w, const ::HIR::TypeRef& ty) const;
     const ::HIR::TypeRef& get_param_type(::HIR::TypeRef& tmp, const ::MIR::Param& val) const;
 
     ::HIR::TypeRef get_const_type(const ::MIR::Constant& c) const;

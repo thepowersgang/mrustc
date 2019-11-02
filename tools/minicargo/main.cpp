@@ -44,6 +44,11 @@ struct ProgramOptions
     // Pause for user input before quitting (useful for MSVC debugging)
     bool pause_before_quit = false;
 
+    /// Build and run tests?
+    bool test = false;
+
+    ::std::vector<::std::string>    features;
+
     int parse(int argc, const char* argv[]);
     void usage() const;
     void help() const;
@@ -97,10 +102,11 @@ int main(int argc, const char* argv[])
         Debug_SetPhase("Load Root");
         auto dir = ::helpers::path(opts.directory ? opts.directory : ".");
         auto m = PackageManifest::load_from_toml( dir / "Cargo.toml" );
+        m.set_features(opts.features, opts.features.empty());
 
         // 2. Load all dependencies
         Debug_SetPhase("Load Dependencies");
-        m.load_dependencies(repo, !bs_override_dir.is_valid());
+        m.load_dependencies(repo, !bs_override_dir.is_valid(), /*include_dev=*/opts.test);
 
         // 3. Build dependency tree and build program.
         BuildOptions    build_opts;
@@ -111,6 +117,11 @@ int main(int argc, const char* argv[])
         build_opts.target_name = opts.target;
         for(const auto* d : opts.lib_search_dirs)
             build_opts.lib_search_dirs.push_back( ::helpers::path(d) );
+        // Indicate desire to build tests (or examples) instead of the primary target
+        build_opts.mode =
+            opts.test ? BuildOptions::Mode::Test :
+            BuildOptions::Mode::Normal
+            ;
         Debug_SetPhase("Enumerate Build");
         auto build_list = BuildList(m, build_opts);
         Debug_SetPhase("Run Build");
@@ -251,8 +262,24 @@ int ProgramOptions::parse(int argc, const char* argv[])
                 }
                 this->target = argv[++i];
             }
+            else if( ::std::strcmp(arg, "--features") == 0 ) {
+                if(i+1 == argc) {
+                    ::std::cerr << "Flag " << arg << " takes an argument" << ::std::endl;
+                    return 1;
+                }
+                const auto* a = argv[++i];
+                while(const char* e = strchr(a, ','))
+                {
+                    this->features.push_back( ::std::string(a, e) );
+                    a = e + 1;
+                }
+                this->features.push_back( ::std::string(a) );
+            }
             else if( ::std::strcmp(arg, "--pause") == 0 ) {
                 this->pause_before_quit = true;
+            }
+            else if( ::std::strcmp(arg, "--test") == 0 ) {
+                this->test = true;
             }
             else {
                 ::std::cerr << "Unknown flag " << arg << ::std::endl;

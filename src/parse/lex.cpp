@@ -83,8 +83,10 @@ static const struct {
   TOKENT("-=", TOK_DASH_EQUAL),
   TOKENT("->", TOK_THINARROW),
   TOKENT(".",  TOK_DOT),
+  // NOTE: These have special handling when following numbers
   TOKENT("..", TOK_DOUBLE_DOT),
   TOKENT("...",TOK_TRIPLE_DOT),
+  TOKENT("..=",TOK_DOUBLE_DOT_EQUAL),
   TOKENT("/" , TOK_SLASH),
   TOKENT("/*", BLOCKCOMMENT),
   TOKENT("//", LINECOMMENT),
@@ -153,6 +155,7 @@ static const struct {
   TOKENT("in",      TOK_RWORD_IN),
   TOKENT("let",     TOK_RWORD_LET),
   TOKENT("loop",    TOK_RWORD_LOOP),
+  TOKENT("macro",   TOK_RWORD_MACRO),
   TOKENT("match",   TOK_RWORD_MATCH),
   TOKENT("mod",     TOK_RWORD_MOD),
   TOKENT("move",    TOK_RWORD_MOVE),
@@ -402,8 +405,12 @@ Token Lexer::getTokenInt()
                         // Double/Triple Dot
                         if( ch == '.' )
                         {
-                            if( this->getc() == '.') {
+                            ch = this->getc();
+                            if( ch == '.') {
                                 this->m_next_tokens.push_back(TOK_TRIPLE_DOT);
+                            }
+                            else if( ch == '=') {
+                                this->m_next_tokens.push_back(TOK_DOUBLE_DOT_EQUAL);
                             }
                             else {
                                 this->ungetc();
@@ -529,7 +536,7 @@ Token Lexer::getTokenInt()
                                 str += ch;
                             }
                         }
-                        return Token(TOK_BYTESTRING, str);
+                        return Token(TOK_BYTESTRING, mv$(str));
                     }
                     // Byte constant
                     else if( ch == '\'' ) {
@@ -601,7 +608,7 @@ Token Lexer::getTokenInt()
                     m_next_tokens.push_back(TOK_SQUARE_CLOSE);
                     m_next_tokens.push_back(Token(TOK_STRING, mv$(str)));
                     m_next_tokens.push_back(TOK_EQUAL);
-                    m_next_tokens.push_back(Token(TOK_IDENT, "doc"));
+                    m_next_tokens.push_back(Token(TOK_IDENT, RcString::new_interned("doc")));
                     m_next_tokens.push_back(TOK_SQUARE_OPEN);
                     if(is_pdoc)
                         m_next_tokens.push_back(TOK_EXCLAM);
@@ -664,7 +671,7 @@ Token Lexer::getTokenInt()
                     m_next_tokens.push_back(TOK_SQUARE_CLOSE);
                     m_next_tokens.push_back(Token(TOK_STRING, mv$(str)));
                     m_next_tokens.push_back(TOK_EQUAL);
-                    m_next_tokens.push_back(Token(TOK_IDENT, "doc"));
+                    m_next_tokens.push_back(Token(TOK_IDENT, RcString::new_interned("doc")));
                     m_next_tokens.push_back(TOK_SQUARE_OPEN);
                     if(is_pdoc)
                         m_next_tokens.push_back(TOK_EXCLAM);
@@ -697,7 +704,7 @@ Token Lexer::getTokenInt()
                             ch = this->getc();
                         }
                         this->ungetc();
-                        return Token(TOK_LIFETIME, str);
+                        return Token(TOK_LIFETIME, RcString::new_interned(str));
                     }
                     else {
                         throw ParseError::Todo("Lex Fail - Expected ' after character constant");
@@ -721,7 +728,7 @@ Token Lexer::getTokenInt()
                         str += ch;
                     }
                 }
-                return Token(TOK_STRING, str);
+                return Token(TOK_STRING, mv$(str));
                 }
             default:
                 assert(!"bugcheck");
@@ -799,7 +806,7 @@ Token Lexer::getTokenInt_RawString(bool is_byte)
             }
         }
     }
-    return Token(is_byte ? TOK_BYTESTRING : TOK_STRING, val);
+    return Token(is_byte ? TOK_BYTESTRING : TOK_STRING, mv$(val));
 }
 Token Lexer::getTokenInt_Identifier(Codepoint leader, Codepoint leader2)
 {
@@ -819,7 +826,7 @@ Token Lexer::getTokenInt_Identifier(Codepoint leader, Codepoint leader2)
         if( str < RWORDS[i].chars ) break;
         if( str == RWORDS[i].chars )    return Token((enum eTokenType)RWORDS[i].type);
     }
-    return Token(TOK_IDENT, mv$(str));
+    return Token(TOK_IDENT, RcString::new_interned(str));
 }
 
 // Takes the VERY lazy way of reading the float into a string then passing to strtod

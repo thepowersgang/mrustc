@@ -9,15 +9,18 @@
 
 #include <string>
 #include <vector>
+#include "attrs.hpp"
 
 namespace AST {
 
 template <typename T>
 struct Named
 {
-    ::std::string   name;
-    T   data;
+    Span    span;
+    AttributeList   attrs;
     bool    is_pub;
+    RcString   name;
+    T   data;
 
     Named():
         is_pub(false)
@@ -25,10 +28,12 @@ struct Named
     Named(Named&&) = default;
     Named(const Named&) = default;
     Named& operator=(Named&&) = default;
-    Named(::std::string name, T data, bool is_pub):
+    Named(Span sp, AttributeList attrs, bool is_pub, RcString name, T data):
+        span(sp),
+        attrs( ::std::move(attrs) ),
+        is_pub( is_pub ),
         name( ::std::move(name) ),
-        data( ::std::move(data) ),
-        is_pub( is_pub )
+        data( ::std::move(data) )
     {
     }
 };

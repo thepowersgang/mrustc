@@ -5,18 +5,26 @@
  * miri.cpp
  * - Interpreter core
  */
+#define _CRT_SECURE_NO_WARNINGS
 #include <iostream>
 #include "module_tree.hpp"
 #include "value.hpp"
+#include "string_view.hpp"
 #include <algorithm>
 #include <iomanip>
 #include "debug.hpp"
 #include "miri.hpp"
+// VVV FFI
 #include <cstring>  // memrchr
+#include <sys/stat.h>
+#include <fcntl.h>
 #ifdef _WIN32
 # define NOMINMAX
 # include <Windows.h>
+#else
+# include <unistd.h>
 #endif
+#undef DEBUG
 
 unsigned ThreadState::s_next_tls_key = 1;
 
@@ -25,6 +33,7 @@ class PrimitiveValue
 public:
     virtual ~PrimitiveValue() {}
 
+    virtual bool is_zero() const = 0;
     virtual bool add(const PrimitiveValue& v) = 0;
     virtual bool subtract(const PrimitiveValue& v) = 0;
     virtual bool multiply(const PrimitiveValue& v) = 0;
@@ -50,6 +59,9 @@ struct PrimitiveUInt:
     PrimitiveUInt(T v): v(v) {}
     ~PrimitiveUInt() override {}
 
+    virtual bool is_zero() const {
+        return this->v == 0;
+    }
     bool add(const PrimitiveValue& x) override {
         const auto* xp = &x.check<Self>("add");
         T newv = this->v + xp->v;
@@ -100,6 +112,20 @@ struct PrimitiveU32: public PrimitiveUInt<uint32_t>
         tgt.write_u32(ofs, this->v);
     }
 };
+struct PrimitiveU16: public PrimitiveUInt<uint16_t>
+{
+    PrimitiveU16(uint16_t v): PrimitiveUInt(v) {}
+    void write_to_value(ValueCommonWrite& tgt, size_t ofs) const override {
+        tgt.write_u16(ofs, this->v);
+    }
+};
+struct PrimitiveU8: public PrimitiveUInt<uint8_t>
+{
+    PrimitiveU8(uint8_t v): PrimitiveUInt(v) {}
+    void write_to_value(ValueCommonWrite& tgt, size_t ofs) const override {
+        tgt.write_u8(ofs, this->v);
+    }
+};
 template<typename T>
 struct PrimitiveSInt:
     public PrimitiveValue
@@ -110,6 +136,9 @@ struct PrimitiveSInt:
     PrimitiveSInt(T v): v(v) {}
     ~PrimitiveSInt() override {}
 
+    virtual bool is_zero() const {
+        return this->v == 0;
+    }
     // TODO: Make this correct.
     bool add(const PrimitiveValue& x) override {
         const auto* xp = &x.check<Self>("add");
@@ -179,6 +208,12 @@ public:
         LOG_ASSERT(t.get_wrapper() == nullptr, "PrimitiveValueVirt::from_value: " << t);
         switch(t.inner_type)
         {
+        case RawType::U8:
+            new(&rv.buf) PrimitiveU8(v.read_u8(0));
+            break;
+        case RawType::U16:
+            new(&rv.buf) PrimitiveU16(v.read_u16(0));
+            break;
         case RawType::U32:
             new(&rv.buf) PrimitiveU32(v.read_u32(0));
             break;
@@ -254,142 +289,166 @@ struct MirHelpers
     {
     }
 
-    ValueRef get_value_and_type(const ::MIR::LValue& lv, ::HIR::TypeRef& ty)
+    ValueRef get_value_and_type_root(const ::MIR::LValue::Storage& lv_root, ::HIR::TypeRef& ty)
     {
-        switch(lv.tag())
+        switch(lv_root.tag())
         {
-        case ::MIR::LValue::TAGDEAD:    throw "";
+        case ::MIR::LValue::Storage::TAGDEAD:    throw "";
         // --> Slots
-        TU_ARM(lv, Return, _e) {
-            ty = this->frame.fcn.ret_ty;
+        TU_ARM(lv_root, Return, _e) {
+            ty = this->frame.fcn->ret_ty;
             return ValueRef(this->frame.ret);
             } break;
-        TU_ARM(lv, Local, e) {
-            ty = this->frame.fcn.m_mir.locals.at(e);
+        TU_ARM(lv_root, Local, e) {
+            ty = this->frame.fcn->m_mir.locals.at(e);
             return ValueRef(this->frame.locals.at(e));
             } break;
-        TU_ARM(lv, Argument, e) {
-            ty = this->frame.fcn.args.at(e.idx);
-            return ValueRef(this->frame.args.at(e.idx));
+        TU_ARM(lv_root, Argument, e) {
+            ty = this->frame.fcn->args.at(e);
+            return ValueRef(this->frame.args.at(e));
             } break;
-        TU_ARM(lv, Static, e) {
+        TU_ARM(lv_root, Static, e) {
             /*const*/ auto& s = this->thread.m_modtree.get_static(e);
             ty = s.ty;
             return ValueRef(s.val);
             } break;
-        // --> Modifiers
-        TU_ARM(lv, Index, e) {
-            auto idx = get_value_ref(*e.idx).read_usize(0);
-            ::HIR::TypeRef  array_ty;
-            auto base_val = get_value_and_type(*e.val, array_ty);
-            const auto* wrapper = array_ty.get_wrapper();
-            if( !wrapper )
-            {
-                LOG_ERROR("Indexing non-array/slice - " << array_ty);
-            }
-            else if( wrapper->type == TypeWrapper::Ty::Array )
-            {
-                ty = array_ty.get_inner();
-                // Check index against array size
-                if( idx >= wrapper->size ) {
-                    LOG_ERROR("Index out of bounds on array " << array_ty << ", idx=" << idx);
-                    throw "ERROR";
-                }
-                base_val.m_offset += static_cast<size_t>(ty.get_size() * idx);
-                return base_val;
-            }
-            else if( wrapper->type == TypeWrapper::Ty::Slice )
-            {
-                LOG_TODO("Slice index");
-            }
-            else
-            {
-                LOG_ERROR("Indexing non-array/slice - " << array_ty);
-                throw "ERROR";
-            }
-            } break;
-        TU_ARM(lv, Field, e) {
-            ::HIR::TypeRef  composite_ty;
-            auto base_val = get_value_and_type(*e.val, composite_ty);
-            // TODO: if there's metadata present in the base, but the inner doesn't have metadata, clear the metadata
-            size_t inner_ofs;
-            ty = composite_ty.get_field(e.field_index, inner_ofs);
-            LOG_DEBUG("Field - " << composite_ty << "#" << e.field_index << " = @" << inner_ofs << " " << ty);
-            base_val.m_offset += inner_ofs;
-            if( ty.get_meta_type() == HIR::TypeRef(RawType::Unreachable) )
-            {
-                LOG_ASSERT(base_val.m_size >= ty.get_size(), "Field didn't fit in the value - " << ty.get_size() << " required, but " << base_val.m_size << " avail");
-                base_val.m_size = ty.get_size();
-            }
-            return base_val;
-            }
-        TU_ARM(lv, Downcast, e) {
-            ::HIR::TypeRef  composite_ty;
-            auto base_val = get_value_and_type(*e.val, composite_ty);
-            LOG_DEBUG("Downcast - " << composite_ty);
-
-            size_t inner_ofs;
-            ty = composite_ty.get_field(e.variant_index, inner_ofs);
-            base_val.m_offset += inner_ofs;
-            return base_val;
-            }
-        TU_ARM(lv, Deref, e) {
-            ::HIR::TypeRef  ptr_ty;
-            auto val = get_value_and_type(*e.val, ptr_ty);
-            ty = ptr_ty.get_inner();
-            LOG_DEBUG("val = " << val << ", (inner) ty=" << ty);
-
-            LOG_ASSERT(val.m_size >= POINTER_SIZE, "Deref of a value that doesn't fit a pointer - " << ty);
-            size_t ofs = static_cast<size_t>( val.read_usize(0) );  // TODO: Limits?
-
-            // There MUST be a relocation at this point with a valid allocation.
-            auto alloc = val.get_relocation(val.m_offset);
-            LOG_TRACE("Deref " << alloc << " + " << ofs << " to give value of type " << ty);
-            // NOTE: No alloc can happen when dereferencing a zero-sized pointer
-            if( alloc.is_alloc() )
-            {
-                LOG_DEBUG("> " << lv << " alloc=" << alloc.alloc());
-            }
-            size_t size;
-
-            const auto meta_ty = ty.get_meta_type();
-            ::std::shared_ptr<Value>    meta_val;
-            // If the type has metadata, store it.
-            if( meta_ty != RawType::Unreachable )
-            {
-                auto meta_size = meta_ty.get_size();
-                LOG_ASSERT(val.m_size == POINTER_SIZE + meta_size, "Deref of " << ty << ", but pointer isn't correct size");
-                meta_val = ::std::make_shared<Value>( val.read_value(POINTER_SIZE, meta_size) );
-
-                size_t    slice_inner_size;
-                if( ty.has_slice_meta(slice_inner_size) ) {
-                    size = (ty.get_wrapper() == nullptr ? ty.get_size() : 0) + static_cast<size_t>(meta_val->read_usize(0)) * slice_inner_size;
-                }
-                //else if( ty == RawType::TraitObject) {
-                //    // NOTE: Getting the size from the allocation is semi-valid, as you can't sub-slice trait objects
-                //    size = alloc.get_size() - ofs;
-                //}
-                else {
-                    LOG_DEBUG("> Meta " << *meta_val << ", size = " << alloc.get_size() << " - " << ofs);
-                    size = alloc.get_size() - ofs;
-                }
-            }
-            else
-            {
-                LOG_ASSERT(val.m_size == POINTER_SIZE, "Deref of a value that isn't a pointer-sized value (size=" << val.m_size << ") - " << val << ": " << ptr_ty);
-                size = ty.get_size();
-                if( !alloc ) {
-                    LOG_ERROR("Deref of a value with no relocation - " << val);
-                }
-            }
-
-            LOG_DEBUG("alloc=" << alloc << ", ofs=" << ofs << ", size=" << size);
-            auto rv = ValueRef(::std::move(alloc), ofs, size);
-            rv.m_metadata = ::std::move(meta_val);
-            return rv;
-            } break;
         }
         throw "";
+    }
+    ValueRef get_value_and_type(const ::MIR::LValue& lv, ::HIR::TypeRef& ty)
+    {
+        auto vr = get_value_and_type_root(lv.m_root, ty);
+        for(const auto& w : lv.m_wrappers)
+        {
+            switch(w.tag())
+            {
+            case ::MIR::LValue::Wrapper::TAGDEAD:    throw "";
+            // --> Modifiers
+            TU_ARM(w, Index, idx_var) {
+                auto idx = this->frame.locals.at(idx_var).read_usize(0);
+                const auto* wrapper = ty.get_wrapper();
+                if( !wrapper )
+                {
+                    LOG_ERROR("Indexing non-array/slice - " << ty);
+                    throw "ERROR";
+                }
+                else if( wrapper->type == TypeWrapper::Ty::Array )
+                {
+                    ty = ty.get_inner();
+                    vr.m_offset += ty.get_size() * idx;
+                }
+                else if( wrapper->type == TypeWrapper::Ty::Slice )
+                {
+                    ty = ty.get_inner();
+                    LOG_ASSERT(vr.m_metadata, "No slice metadata");
+                    auto len = vr.m_metadata->read_usize(0);
+                    LOG_ASSERT(idx < len, "Slice index out of range");
+                    vr.m_offset += ty.get_size() * idx;
+                    vr.m_metadata.reset();
+                }
+                else
+                {
+                    LOG_ERROR("Indexing non-array/slice - " << ty);
+                    throw "ERROR";
+                }
+                } break;
+            TU_ARM(w, Field, fld_idx) {
+                // TODO: if there's metadata present in the base, but the inner doesn't have metadata, clear the metadata
+                size_t inner_ofs;
+                auto inner_ty = ty.get_field(fld_idx, inner_ofs);
+                LOG_DEBUG("Field - " << ty << "#" << fld_idx << " = @" << inner_ofs << " " << inner_ty);
+                vr.m_offset += inner_ofs;
+                if( inner_ty.get_meta_type() == HIR::TypeRef(RawType::Unreachable) )
+                {
+                    LOG_ASSERT(vr.m_size >= inner_ty.get_size(), "Field didn't fit in the value - " << inner_ty.get_size() << " required, but " << vr.m_size << " available");
+                    vr.m_size = inner_ty.get_size();
+                }
+                ty = ::std::move(inner_ty);
+                }
+            TU_ARM(w, Downcast, variant_index) {
+                auto composite_ty = ::std::move(ty);
+                LOG_DEBUG("Downcast - " << composite_ty);
+
+                size_t inner_ofs;
+                ty = composite_ty.get_field(variant_index, inner_ofs);
+                vr.m_offset += inner_ofs;
+                }
+            TU_ARM(w, Deref, _) {
+                auto ptr_ty = ::std::move(ty);
+                ty = ptr_ty.get_inner();
+                LOG_DEBUG("Deref - " << vr << " into " << ty);
+
+                LOG_ASSERT(vr.m_size >= POINTER_SIZE, "Deref pointer isn't large enough to be a pointer");
+                // TODO: Move the metadata machinery into `deref` (or at least the logic needed to get the value size)
+                //auto inner_val = vr.deref(0, ty);
+                size_t ofs = vr.read_usize(0);
+                LOG_ASSERT(ofs != 0, "Dereferencing NULL pointer");
+                auto alloc = vr.get_relocation(0);
+                if( alloc )
+                {
+                    // TODO: It's valid to dereference (but not read) a non-null invalid pointer.
+                    LOG_ASSERT(ofs >= Allocation::PTR_BASE, "Dereferencing invalid pointer - " << ofs << " into " << alloc);
+                    ofs -= Allocation::PTR_BASE;
+                }
+                else
+                {
+                }
+
+                // There MUST be a relocation at this point with a valid allocation.
+                LOG_TRACE("Interpret " << alloc << " + " << ofs << " as value of type " << ty);
+                // NOTE: No alloc can happen when dereferencing a zero-sized pointer
+                if( alloc.is_alloc() )
+                {
+                    //LOG_DEBUG("Deref - lvr=" << ::MIR::LValue::CRef(lv, &w - &lv.m_wrappers.front()) << " alloc=" << alloc.alloc());
+                }
+                else
+                {
+                    LOG_ASSERT(ty.get_meta_type() != RawType::Unreachable || ty.get_size() >= 0, "Dereference (giving a non-ZST) with no allocation");
+                }
+                size_t size;
+
+                const auto meta_ty = ty.get_meta_type();
+                ::std::shared_ptr<Value>    meta_val;
+                // If the type has metadata, store it.
+                if( meta_ty != RawType::Unreachable )
+                {
+                    auto meta_size = meta_ty.get_size();
+                    LOG_ASSERT(vr.m_size == POINTER_SIZE + meta_size, "Deref of " << ty << ", but pointer isn't correct size");
+                    meta_val = ::std::make_shared<Value>( vr.read_value(POINTER_SIZE, meta_size) );
+
+                    size_t    slice_inner_size;
+                    if( ty.has_slice_meta(slice_inner_size) ) {
+                        // Slice metadata, add the base size (if it's a struct) to the variable size
+                        // - `get_wrapper` will return non-null for `[T]`, special-case `str`
+                        size = (ty != RawType::Str && ty.get_wrapper() == nullptr ? ty.get_size() : 0) + meta_val->read_usize(0) * slice_inner_size;
+                    }
+                    //else if( ty == RawType::TraitObject) {
+                    //    // NOTE: Getting the size from the allocation is semi-valid, as you can't sub-slice trait objects
+                    //    size = alloc.get_size() - ofs;
+                    //}
+                    else {
+                        LOG_DEBUG("> Meta " << *meta_val << ", size = " << alloc.get_size() << " - " << ofs);
+                        // TODO: if the inner type is a trait object, then check that it has an allocation.
+                        size = alloc.get_size() - ofs;
+                    }
+                }
+                else
+                {
+                    LOG_DEBUG("sizeof(" << ty << ") = " << ty.get_size());
+                    LOG_ASSERT(vr.m_size == POINTER_SIZE, "Deref of a value that isn't a pointer-sized value (size=" << vr << ") - " << vr << ": " << ptr_ty);
+                    size = ty.get_size();
+                    if( !alloc && size > 0 ) {
+                        LOG_ERROR("Deref of a non-ZST pointer with no relocation - " << vr);
+                    }
+                }
+
+                LOG_DEBUG("Deref - New VR: alloc=" << alloc << ", ofs=" << ofs << ", size=" << size);
+                vr = ValueRef(::std::move(alloc), ofs, size);
+                vr.m_metadata = ::std::move(meta_val);
+                } break;
+            }
+        }
+        return vr;
     }
     ValueRef get_value_ref(const ::MIR::LValue& lv)
     {
@@ -422,11 +481,14 @@ struct MirHelpers
         ::HIR::TypeRef  ty;
         auto base_value = get_value_and_type(lv, ty);
 
-        if(base_value.m_alloc) {
-            base_value.m_alloc.alloc().write_value(base_value.m_offset, ::std::move(val));
-        }
-        else {
-            base_value.m_value->write_value(base_value.m_offset, ::std::move(val));
+        if( val.size() > 0 )
+        {
+            if(!base_value.m_value) {
+                base_value.m_alloc.alloc().write_value(base_value.m_offset, ::std::move(val));
+            }
+            else {
+                base_value.m_value->write_value(base_value.m_offset, ::std::move(val));
+            }
         }
     }
 
@@ -447,7 +509,11 @@ struct MirHelpers
             ty = ::HIR::TypeRef(ce.t);
             Value val = Value(ty);
             val.write_bytes(0, &ce.v, ::std::min(ty.get_size(), sizeof(ce.v)));  // TODO: Endian
-            // TODO: i128/u128 need the upper bytes cleared+valid
+            // i128/u128 need the upper bytes cleared+valid
+            if( ce.t.raw_type == RawType::U128 ) {
+                uint64_t    zero = 0;
+                val.write_bytes(8, &zero, 8);
+            }
             return val;
             } break;
         TU_ARM(c, Bool, ce) {
@@ -474,12 +540,17 @@ struct MirHelpers
             LOG_BUG("Constant::Const in mmir");
             } break;
         TU_ARM(c, Bytes, ce) {
-            LOG_TODO("Constant::Bytes");
+            ty = ::HIR::TypeRef(RawType::U8).wrap(TypeWrapper::Ty::Slice, 0).wrap(TypeWrapper::Ty::Borrow, 0);
+            Value val = Value(ty);
+            val.write_ptr(0, Allocation::PTR_BASE + 0, RelocationPtr::new_ffi(FFIPointer::new_const_bytes("Constant::Bytes", ce.data(), ce.size())));
+            val.write_usize(POINTER_SIZE, ce.size());
+            LOG_DEBUG(c << " = " << val);
+            return val;
             } break;
         TU_ARM(c, StaticString, ce) {
             ty = ::HIR::TypeRef(RawType::Str).wrap(TypeWrapper::Ty::Borrow, 0);
             Value val = Value(ty);
-            val.write_ptr(0,  0, RelocationPtr::new_string(&ce));
+            val.write_ptr(0, Allocation::PTR_BASE + 0, RelocationPtr::new_string(&ce));
             val.write_usize(POINTER_SIZE, ce.size());
             LOG_DEBUG(c << " = " << val);
             return val;
@@ -487,15 +558,16 @@ struct MirHelpers
         // --> Accessor
         TU_ARM(c, ItemAddr, ce) {
             // Create a value with a special backing allocation of zero size that references the specified item.
-            if( /*const auto* fn =*/ this->thread.m_modtree.get_function_opt(ce) ) {
+            if( /*const auto* fn =*/ this->thread.m_modtree.get_function_opt(*ce) ) {
                 ty = ::HIR::TypeRef(RawType::Function);
-                return Value::new_fnptr(ce);
+                return Value::new_fnptr(*ce);
             }
-            if( const auto* s = this->thread.m_modtree.get_static_opt(ce) ) {
+            if( const auto* s = this->thread.m_modtree.get_static_opt(*ce) ) {
                 ty = s->ty.wrapped(TypeWrapper::Ty::Borrow, 0);
-                return Value::new_pointer(ty, 0, RelocationPtr::new_alloc(s->val.allocation));
+                LOG_ASSERT(s->val.m_inner.is_alloc, "Statics should already have an allocation assigned");
+                return Value::new_pointer(ty, Allocation::PTR_BASE + 0, RelocationPtr::new_alloc(s->val.m_inner.alloc.alloc));
             }
-            LOG_ERROR("Constant::ItemAddr - " << ce << " - not found");
+            LOG_ERROR("Constant::ItemAddr - " << *ce << " - not found");
             } break;
         }
         throw "";
@@ -546,15 +618,15 @@ InterpreterThread::~InterpreterThread()
     for(size_t i = 0; i < m_stack.size(); i++)
     {
         const auto& frame = m_stack[m_stack.size() - 1 - i];
-        ::std::cout << "#" << i << ": ";
+        ::std::cout << "#" << i << ": F" << frame.frame_index << " ";
         if( frame.cb )
         {
             ::std::cout << "WRAPPER";
         }
         else
         {
-            ::std::cout << frame.fcn.my_path << " BB" << frame.bb_idx << "/";
-            if( frame.stmt_idx == frame.fcn.m_mir.blocks.at(frame.bb_idx).statements.size() )
+            ::std::cout << frame.fcn->my_path << " BB" << frame.bb_idx << "/";
+            if( frame.stmt_idx == frame.fcn->m_mir.blocks.at(frame.bb_idx).statements.size() )
                 ::std::cout << "TERM";
             else
                 ::std::cout << frame.stmt_idx;
@@ -576,10 +648,11 @@ bool InterpreterThread::step_one(Value& out_thread_result)
     assert( !this->m_stack.empty() );
     assert( !this->m_stack.back().cb );
     auto& cur_frame = this->m_stack.back();
-    TRACE_FUNCTION_R(cur_frame.fcn.my_path, "");
-    const auto& bb = cur_frame.fcn.m_mir.blocks.at( cur_frame.bb_idx );
+    auto instr_idx = this->m_instruction_count++;
+    TRACE_FUNCTION_R("#" << instr_idx << " " << cur_frame.fcn->my_path << " BB" << cur_frame.bb_idx << "/" << cur_frame.stmt_idx, "#" << instr_idx);
+    const auto& bb = cur_frame.fcn->m_mir.blocks.at( cur_frame.bb_idx );
 
-    const size_t    MAX_STACK_DEPTH = 40;
+    const size_t    MAX_STACK_DEPTH = 90;
     if( this->m_stack.size() > MAX_STACK_DEPTH )
     {
         LOG_ERROR("Maximum stack depth of " << MAX_STACK_DEPTH << " exceeded");
@@ -590,7 +663,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
     if( cur_frame.stmt_idx < bb.statements.size() )
     {
         const auto& stmt = bb.statements[cur_frame.stmt_idx];
-        LOG_DEBUG("=== BB" << cur_frame.bb_idx << "/" << cur_frame.stmt_idx << ": " << stmt);
+        LOG_DEBUG("=== F" << cur_frame.frame_index << " BB" << cur_frame.bb_idx << "/" << cur_frame.stmt_idx << ": " << stmt);
         switch(stmt.tag())
         {
         case ::MIR::Statement::TAGDEAD: throw "";
@@ -609,25 +682,24 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                 ::HIR::TypeRef  src_ty;
                 ValueRef src_base_value = state.get_value_and_type(re.val, src_ty);
                 auto alloc = src_base_value.m_alloc;
+                // If the source doesn't yet have a relocation, give it a backing allocation so we can borrow
                 if( !alloc && src_base_value.m_value )
                 {
-                    if( !src_base_value.m_value->allocation )
-                    {
-                        src_base_value.m_value->create_allocation();
-                    }
-                    alloc = RelocationPtr::new_alloc( src_base_value.m_value->allocation );
+                    LOG_DEBUG("Borrow - Creating allocation for " << src_base_value);
+                    alloc = RelocationPtr::new_alloc( src_base_value.m_value->borrow("Borrow") );
                 }
                 if( alloc.is_alloc() )
-                    LOG_DEBUG("- alloc=" << alloc << " (" << alloc.alloc() << ")");
+                    LOG_DEBUG("Borrow - alloc=" << alloc << " (" << alloc.alloc() << ")");
                 else
-                    LOG_DEBUG("- alloc=" << alloc);
+                    LOG_DEBUG("Borrow - alloc=" << alloc);
                 size_t ofs = src_base_value.m_offset;
                 const auto meta = src_ty.get_meta_type();
                 auto dst_ty = src_ty.wrapped(TypeWrapper::Ty::Borrow, static_cast<size_t>(re.type));
+                LOG_DEBUG("Borrow - ofs=" << ofs << ", meta_ty=" << meta);
 
-                // Create the pointer
+                // Create the pointer (can this just store into the target?)
                 new_val = Value(dst_ty);
-                new_val.write_ptr(0, ofs, ::std::move(alloc));
+                new_val.write_ptr(0, Allocation::PTR_BASE + ofs, ::std::move(alloc));
                 // - Add metadata if required
                 if( meta != RawType::Unreachable )
                 {
@@ -687,13 +759,22 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                 else if( const auto* src_w = src_ty.get_wrapper() )
                 {
                     if( src_w->type != TypeWrapper::Ty::Pointer && src_w->type != TypeWrapper::Ty::Borrow ) {
-                        LOG_ERROR("Attempting to cast to a non-pointer - " << src_ty);
+                        LOG_ERROR("Attempting to cast from a non-pointer - " << src_ty);
                     }
                     // TODO: MUST be a thin pointer?
 
                     // TODO: MUST be an integer (usize only?)
-                    if( re.type != RawType::USize && re.type != RawType::ISize ) {
-                        LOG_ERROR("Casting from a pointer to non-usize - " << re.type << " to " << src_ty);
+                    switch(re.type.wrappers.empty() ? re.type.inner_type : RawType::Unreachable)
+                    {
+                    case RawType::USize:
+                    case RawType::ISize:
+                        break;
+                    case RawType::U64:
+                    case RawType::I64:
+                        // TODO: Only if 64-bit?
+                        break;
+                    default:
+                        LOG_ERROR("Casting from a pointer to non-usize - " << src_ty << " to " << re.type);
                         throw "ERROR";
                     }
                     new_val = src_value.read_value(0, re.type.get_size());
@@ -726,8 +807,8 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                         case RawType::Bool: throw "ERROR";
                         case RawType::F32:  throw "BUG";
                         case RawType::F64:  dst_val = static_cast<float>( src_value.read_f64(0) ); break;
-                        case RawType::USize:    throw "TODO";// /*dst_val = src_value.read_usize();*/   break;
-                        case RawType::ISize:    throw "TODO";// /*dst_val = src_value.read_isize();*/   break;
+                        case RawType::USize:    LOG_TODO("f32 from " << src_ty);// /*dst_val = src_value.read_usize();*/   break;
+                        case RawType::ISize:    LOG_TODO("f32 from " << src_ty);// /*dst_val = src_value.read_isize();*/   break;
                         case RawType::U8:   dst_val = static_cast<float>( src_value.read_u8 (0) );  break;
                         case RawType::I8:   dst_val = static_cast<float>( src_value.read_i8 (0) );  break;
                         case RawType::U16:  dst_val = static_cast<float>( src_value.read_u16(0) );  break;
@@ -736,8 +817,8 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                         case RawType::I32:  dst_val = static_cast<float>( src_value.read_i32(0) );  break;
                         case RawType::U64:  dst_val = static_cast<float>( src_value.read_u64(0) );  break;
                         case RawType::I64:  dst_val = static_cast<float>( src_value.read_i64(0) );  break;
-                        case RawType::U128: throw "TODO";// /*dst_val = src_value.read_u128();*/ break;
-                        case RawType::I128: throw "TODO";// /*dst_val = src_value.read_i128();*/ break;
+                        case RawType::U128: LOG_TODO("f32 from " << src_ty);// /*dst_val = src_value.read_u128();*/ break;
+                        case RawType::I128: LOG_TODO("f32 from " << src_ty);// /*dst_val = src_value.read_i128();*/ break;
                         }
                         new_val.write_f32(0, dst_val);
                         } break;
@@ -774,7 +855,15 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     case RawType::Bool:
                         LOG_TODO("Cast to " << re.type);
                     case RawType::Char:
-                        LOG_TODO("Cast to " << re.type);
+                        switch(src_ty.inner_type)
+                        {
+                        case RawType::Char: new_val.write_u32(0, src_value.read_u32(0) );  break;
+                        case RawType::U8:   new_val.write_u32(0, src_value.read_u8(0) );   break;
+                        default:
+                            LOG_ERROR("Cast from " << src_ty << " to char isn't valid");
+                            break;
+                        }
+                        break;
                     case RawType::USize:
                     case RawType::U8:
                     case RawType::U16:
@@ -799,14 +888,30 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                             LOG_ASSERT(re.type.inner_type == RawType::USize, "Function pointers can only be casted to usize, instead " << re.type);
                             new_val = src_value.read_value(0, re.type.get_size());
                             break;
-                        case RawType::Char:
-                            LOG_ASSERT(re.type.inner_type == RawType::U32, "Char can only be casted to u32, instead " << re.type);
-                            new_val = src_value.read_value(0, 4);
-                            break;
+                        case RawType::Char: {
+                            uint32_t v = src_value.read_u32(0);
+                            switch(re.type.inner_type)
+                            {
+                            case RawType::U8:
+                                if( v > 0xFF ) {
+                                    LOG_NOTICE("Casting to u8 from char above 255");
+                                }
+                                new_val.write_u8(0, v & 0xFF);
+                                break;
+                            case RawType::U32:
+                                new_val = src_value.read_value(0, 4);
+                                break;
+                            case RawType::USize:
+                                new_val.write_usize(0, v);
+                                break;
+                            default:
+                                LOG_ERROR("Char can only be casted to u32/u8, instead " << re.type);
+                            }
+                            } break;
                         case RawType::Unit:
                             LOG_FATAL("Cast of unit");
                         case RawType::Composite: {
-                            const auto& dt = *src_ty.composite_type;
+                            const auto& dt = src_ty.composite_type();
                             if( dt.variants.size() == 0 ) {
                                 LOG_FATAL("Cast of composite - " << src_ty);
                             }
@@ -893,6 +998,13 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                             if(0)
                         case RawType::I64:
                             dst_val = static_cast<uint64_t>( src_value.read_i64(0) );
+                            if(0)
+                        case RawType::U128:
+                            dst_val = static_cast<uint64_t>( src_value.read_u128(0) );
+                            if(0)
+                        case RawType::I128:
+                            LOG_TODO("Cast i128 to " << re.type);
+                            //dst_val = static_cast<uint64_t>( src_value.read_i128(0) );
 
                             switch(re.type.inner_type)
                             {
@@ -930,13 +1042,20 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                                 throw "";
                             }
                             break;
-                        case RawType::U128: throw "TODO"; /*dst_val = src_value.read_u128();*/ break;
-                        case RawType::I128: throw "TODO"; /*dst_val = src_value.read_i128();*/ break;
                         }
                         } break;
                     case RawType::U128:
-                    case RawType::I128:
-                        LOG_TODO("Cast to " << re.type);
+                    case RawType::I128: {
+                        U128    dst_val;
+                        switch(src_ty.inner_type)
+                        {
+                        case RawType::U8:   dst_val = src_value.read_u8 (0);    break;
+                        case RawType::I8:   dst_val = src_value.read_i8 (0);    break;
+                        default:
+                            LOG_TODO("Cast " << src_ty << " to " << re.type);
+                        }
+                        new_val.write_u128(0, dst_val);
+                        } break;
                     }
                 }
                 } break;
@@ -957,18 +1076,65 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                 case ::MIR::eBinOp::LE: {
                     LOG_ASSERT(ty_l == ty_r, "BinOp type mismatch - " << ty_l << " != " << ty_r);
                     int res = 0;
+
+                    auto reloc_l = v_l.get_relocation(0);
+                    auto reloc_r = v_r.get_relocation(0);
+
+
                     // TODO: Handle comparison of the relocations too
-
-                    //const auto& alloc_l = v_l.m_value ? v_l.m_value->allocation : v_l.m_alloc;
-                    //const auto& alloc_r = v_r.m_value ? v_r.m_value->allocation : v_r.m_alloc;
-                    auto reloc_l = /*alloc_l ? */v_l.get_relocation(v_l.m_offset)/* : RelocationPtr()*/;
-                    auto reloc_r = /*alloc_r ? */v_r.get_relocation(v_r.m_offset)/* : RelocationPtr()*/;
-
-                    if( reloc_l != reloc_r )
+                    // - If both sides have a relocation:
+                    //   > EQ/NE always valid
+                    //   > others require the same relocation
+                    // - If one side has a relocation:
+                    //   > EQ/NE only allow zero on the non-reloc side
+                    //   > others are invalid?
+                    if( reloc_l && reloc_r )
                     {
-                        res = (reloc_l < reloc_r ? -1 : 1);
+                        // Both have relocations, check if they're equal
+                        if( reloc_l != reloc_r )
+                        {
+                            switch(re.op)
+                            {
+                            case ::MIR::eBinOp::EQ:
+                            case ::MIR::eBinOp::NE:
+                                res = 1;
+                                break;
+                            default:
+                                LOG_FATAL("Unable to compare " << v_l << " and " << v_r << " - different relocations (" << reloc_l << " != " << reloc_r << ")");
+                            }
+                            // - Equality will always fail
+                            // - Ordering is a bug
+                        }
+                        else
+                        {
+                            // Equal: Allow all comparisons
+                        }
                     }
-                    LOG_DEBUG("res=" << res << ", " << reloc_l << " ? " << reloc_r);
+                    else if( reloc_l || reloc_r )
+                    {
+                        // Only one side
+                        // - Ordering is a bug
+                        // - Equalities are allowed, but only for `0`?
+                        //  > TODO: If the side with no reloation doesn't have value `0` then error?
+                        switch(re.op)
+                        {
+                        case ::MIR::eBinOp::EQ:
+                        case ::MIR::eBinOp::NE:
+                            // - Allow success, as addresses can be masked down
+                            break;
+                        default:
+                            if( reloc_l )
+                                res = 1;
+                            else// if( reloc_r )
+                                res = -1;
+                            //LOG_FATAL("Unable to order " << v_l << " and " << v_r << " - different relocations");
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        // No relocations, no need to check more
+                    }
 
                     if( const auto* w = ty_l.get_wrapper() )
                     {
@@ -1010,6 +1176,10 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                         case RawType::I8 :  res = res != 0 ? res : Ops::do_compare(v_l.read_i8 (0), v_r.read_i8 (0));   break;
                         case RawType::USize: res = res != 0 ? res : Ops::do_compare(v_l.read_usize(0), v_r.read_usize(0)); break;
                         case RawType::ISize: res = res != 0 ? res : Ops::do_compare(v_l.read_isize(0), v_r.read_isize(0)); break;
+                        case RawType::Char: res = res != 0 ? res : Ops::do_compare(v_l.read_u32(0), v_r.read_u32(0)); break;
+                        case RawType::Bool: res = res != 0 ? res : Ops::do_compare(v_l.read_u8(0), v_r.read_u8(0)); break;  // TODO: `read_bool` that checks for bool values?
+                        case RawType::U128: res = res != 0 ? res : Ops::do_compare(v_l.read_u128(0), v_r.read_u128(0));   break;
+                        case RawType::I128: res = res != 0 ? res : Ops::do_compare(v_l.read_i128(0), v_r.read_i128(0));   break;
                         default:
                             LOG_TODO("BinOp comparisons - " << se.src << " w/ " << ty_l);
                         }
@@ -1034,36 +1204,40 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                 case ::MIR::eBinOp::BIT_SHR: {
                     LOG_ASSERT(ty_l.get_wrapper() == nullptr, "Bitwise operator on non-primitive - " << ty_l);
                     LOG_ASSERT(ty_r.get_wrapper() == nullptr, "Bitwise operator with non-primitive - " << ty_r);
-                    size_t max_bits = ty_r.get_size() * 8;
+                    size_t max_bits = ty_l.get_size() * 8;
                     uint8_t shift;
-                    auto check_cast = [&](uint64_t v){ LOG_ASSERT(0 <= v && v <= static_cast<decltype(v)>(max_bits), "Shift out of range - " << v); return static_cast<uint8_t>(v); };
+                    auto check_cast_u = [&](auto v){ LOG_ASSERT(0 <= v && v <= max_bits, "Shift out of range - " << v); return static_cast<uint8_t>(v); };
+                    auto check_cast_s = [&](auto v){ LOG_ASSERT(v <= static_cast<int64_t>(max_bits), "Shift out of range - " << v); return static_cast<uint8_t>(v); };
                     switch(ty_r.inner_type)
                     {
-                    case RawType::U64:  shift = check_cast(v_r.read_u64(0));    break;
-                    case RawType::U32:  shift = check_cast(v_r.read_u32(0));    break;
-                    case RawType::U16:  shift = check_cast(v_r.read_u16(0));    break;
-                    case RawType::U8 :  shift = check_cast(v_r.read_u8 (0));    break;
-                    case RawType::I64:  shift = check_cast(v_r.read_i64(0));    break;
-                    case RawType::I32:  shift = check_cast(v_r.read_i32(0));    break;
-                    case RawType::I16:  shift = check_cast(v_r.read_i16(0));    break;
-                    case RawType::I8 :  shift = check_cast(v_r.read_i8 (0));    break;
-                    case RawType::USize:  shift = check_cast(v_r.read_usize(0));    break;
-                    case RawType::ISize:  shift = check_cast(v_r.read_isize(0));    break;
+                    case RawType::U64:  shift = check_cast_u(v_r.read_u64(0));    break;
+                    case RawType::U32:  shift = check_cast_u(v_r.read_u32(0));    break;
+                    case RawType::U16:  shift = check_cast_u(v_r.read_u16(0));    break;
+                    case RawType::U8 :  shift = check_cast_u(v_r.read_u8 (0));    break;
+                    case RawType::I64:  shift = check_cast_s(v_r.read_i64(0));    break;
+                    case RawType::I32:  shift = check_cast_s(v_r.read_i32(0));    break;
+                    case RawType::I16:  shift = check_cast_s(v_r.read_i16(0));    break;
+                    case RawType::I8 :  shift = check_cast_s(v_r.read_i8 (0));    break;
+                    case RawType::USize:  shift = check_cast_u(v_r.read_usize(0));    break;
+                    case RawType::ISize:  shift = check_cast_s(v_r.read_isize(0));    break;
                     default:
-                        LOG_TODO("BinOp shift rhs unknown type - " << se.src << " w/ " << ty_r);
+                        LOG_TODO("BinOp shift RHS unknown type - " << se.src << " w/ " << ty_r);
                     }
                     new_val = Value(ty_l);
                     switch(ty_l.inner_type)
                     {
                     // TODO: U128
+                    case RawType::U128: new_val.write_u128(0, Ops::do_bitwise(v_l.read_u128(0), U128(shift), re.op));   break;
                     case RawType::U64:  new_val.write_u64(0, Ops::do_bitwise(v_l.read_u64(0), static_cast<uint64_t>(shift), re.op));   break;
                     case RawType::U32:  new_val.write_u32(0, Ops::do_bitwise(v_l.read_u32(0), static_cast<uint32_t>(shift), re.op));   break;
                     case RawType::U16:  new_val.write_u16(0, Ops::do_bitwise(v_l.read_u16(0), static_cast<uint16_t>(shift), re.op));   break;
                     case RawType::U8 :  new_val.write_u8 (0, Ops::do_bitwise(v_l.read_u8 (0), static_cast<uint8_t >(shift), re.op));   break;
                     case RawType::USize: new_val.write_usize(0, Ops::do_bitwise(v_l.read_usize(0), static_cast<uint64_t>(shift), re.op));   break;
-                    // TODO: Is signed allowed?
+                    // Is signed allowed? (yes)
+                    // - What's the exact semantics? For now assuming it's unsigned+reinterpret
+                    case RawType::ISize: new_val.write_usize(0, Ops::do_bitwise(v_l.read_usize(0), static_cast<uint64_t>(shift), re.op));   break;
                     default:
-                        LOG_TODO("BinOp shift rhs unknown type - " << se.src << " w/ " << ty_r);
+                        LOG_TODO("BinOp shift LHS unknown type - " << se.src << " w/ " << ty_l);
                     }
                     } break;
                 case ::MIR::eBinOp::BIT_AND:
@@ -1074,7 +1248,10 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     new_val = Value(ty_l);
                     switch(ty_l.inner_type)
                     {
-                    // TODO: U128/I128
+                    case RawType::U128:
+                    case RawType::I128:
+                        new_val.write_u128( 0, Ops::do_bitwise(v_l.read_u128(0), v_r.read_u128(0), re.op) );
+                        break;
                     case RawType::U64:
                     case RawType::I64:
                         new_val.write_u64( 0, Ops::do_bitwise(v_l.read_u64(0), v_r.read_u64(0), re.op) );
@@ -1089,6 +1266,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                         break;
                     case RawType::U8:
                     case RawType::I8:
+                    case RawType::Bool:
                         new_val.write_u8 ( 0, static_cast<uint8_t >(Ops::do_bitwise(v_l.read_u8 (0), v_r.read_u8 (0), re.op)) );
                         break;
                     case RawType::USize:
@@ -1098,16 +1276,44 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     default:
                         LOG_TODO("BinOp bitwise - " << se.src << " w/ " << ty_l);
                     }
+                    // If the LHS had a relocation, propagate it over
+                    if( auto r = v_l.get_relocation(0) )
+                    {
+                        LOG_DEBUG("- Restore relocation " << r);
+                        new_val.set_reloc(0, ::std::min(POINTER_SIZE, new_val.size()), r);
+                    }
 
                     break;
                 default:
                     LOG_ASSERT(ty_l == ty_r, "BinOp type mismatch - " << ty_l << " != " << ty_r);
                     auto val_l = PrimitiveValueVirt::from_value(ty_l, v_l);
                     auto val_r = PrimitiveValueVirt::from_value(ty_r, v_r);
+                    RelocationPtr   new_val_reloc;
                     switch(re.op)
                     {
-                    case ::MIR::eBinOp::ADD:    val_l.get().add( val_r.get() ); break;
-                    case ::MIR::eBinOp::SUB:    val_l.get().subtract( val_r.get() ); break;
+                    case ::MIR::eBinOp::ADD:
+                        LOG_ASSERT(!v_r.get_relocation(0), "RHS of `+` has a relocation");
+                        new_val_reloc = v_l.get_relocation(0);
+                        val_l.get().add( val_r.get() );
+                        break;
+                    case ::MIR::eBinOp::SUB:
+                        if( auto r = v_l.get_relocation(0) )
+                        {
+                            if( v_r.get_relocation(0) )
+                            {
+                                // Pointer difference, no relocation in output
+                            }
+                            else
+                            {
+                                new_val_reloc = ::std::move(r);
+                            }
+                        }
+                        else
+                        {
+                            LOG_ASSERT(!v_r.get_relocation(0), "RHS of `-` has a relocation but LHS does not");
+                        }
+                        val_l.get().subtract( val_r.get() );
+                        break;
                     case ::MIR::eBinOp::MUL:    val_l.get().multiply( val_r.get() ); break;
                     case ::MIR::eBinOp::DIV:    val_l.get().divide( val_r.get() ); break;
                     case ::MIR::eBinOp::MOD:    val_l.get().modulo( val_r.get() ); break;
@@ -1117,6 +1323,10 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     }
                     new_val = Value(ty_l);
                     val_l.get().write_to_value(new_val, 0);
+                    if( new_val_reloc )
+                    {
+                        new_val.set_reloc(0, ::std::min(POINTER_SIZE, new_val.size()), ::std::move(new_val_reloc));
+                    }
                     break;
                 }
                 } break;
@@ -1216,10 +1426,18 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                 state.get_value_and_type(se.dst, dst_ty);
                 new_val = Value(dst_ty);
 
-                for(size_t i = 0; i < re.vals.size(); i++)
+                if( dst_ty.inner_type == RawType::Unit )
                 {
-                    auto fld_ofs = dst_ty.composite_type->fields.at(i).first;
-                    new_val.write_value(fld_ofs, state.param_to_value(re.vals[i]));
+                    LOG_ASSERT(re.vals.size() == 0 , "");
+                }
+                else
+                {
+                    LOG_ASSERT(dst_ty.inner_type == RawType::Composite, dst_ty);
+                    for(size_t i = 0; i < re.vals.size(); i++)
+                    {
+                        auto fld_ofs = dst_ty.composite_type().fields.at(i).first;
+                        new_val.write_value(fld_ofs, state.param_to_value(re.vals[i]));
+                    }
                 }
                 } break;
             TU_ARM(se.src, Array, re) {
@@ -1287,12 +1505,15 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                 ::HIR::TypeRef  dst_ty;
                 state.get_value_and_type(se.dst, dst_ty);
                 new_val = Value(dst_ty);
-                LOG_ASSERT(dst_ty.composite_type == &data_ty, "Destination type of RValue::Struct isn't the same as the input");
+                LOG_ASSERT(dst_ty.inner_type == RawType::Composite, dst_ty);
+                LOG_ASSERT(dst_ty.ptr.composite_type == &data_ty, "Destination type of RValue::Struct isn't the same as the input");
 
                 for(size_t i = 0; i < re.vals.size(); i++)
                 {
                     auto fld_ofs = data_ty.fields.at(i).first;
-                    new_val.write_value(fld_ofs, state.param_to_value(re.vals[i]));
+                    auto v = state.param_to_value(re.vals[i]);
+                    LOG_DEBUG("Struct - @" << fld_ofs << " = " << v);
+                    new_val.write_value(fld_ofs, ::std::move(v));
                 }
                 } break;
             }
@@ -1309,21 +1530,17 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                 auto v = state.get_value_and_type(se.slot, ty);
 
                 // - Take a pointer to the inner
-                auto alloc = v.m_alloc;
-                if( !alloc )
-                {
-                    if( !v.m_value->allocation )
-                    {
-                        v.m_value->create_allocation();
-                    }
-                    alloc = RelocationPtr::new_alloc( v.m_value->allocation );
-                }
+                auto alloc = (v.m_value ? RelocationPtr::new_alloc(v.m_value->borrow("drop")) : v.m_alloc);
                 size_t ofs = v.m_offset;
-                assert(ty.get_meta_type() == RawType::Unreachable);
+                //LOG_ASSERT(ty.get_meta_type() == RawType::Unreachable, "Dropping an unsized type with Statement::Drop - " << ty);
 
-                auto ptr_ty = ty.wrapped(TypeWrapper::Ty::Borrow, 2);
+                auto ptr_ty = ty.wrapped(TypeWrapper::Ty::Borrow, /*BorrowTy::Unique*/2);
 
-                auto ptr_val = Value::new_pointer(ptr_ty, ofs, ::std::move(alloc));
+                auto ptr_val = Value::new_pointer(ptr_ty, Allocation::PTR_BASE + ofs, ::std::move(alloc));
+                if( v.m_metadata )
+                {
+                    ptr_val.write_value(POINTER_SIZE, *v.m_metadata);
+                }
 
                 if( !drop_value(ptr_val, ty, /*shallow=*/se.kind == ::MIR::eDropKind::SHALLOW) )
                 {
@@ -1345,14 +1562,17 @@ bool InterpreterThread::step_one(Value& out_thread_result)
     }
     else
     {
-        LOG_DEBUG("=== BB" << cur_frame.bb_idx << "/TERM: " << bb.terminator);
+        LOG_DEBUG("=== F" << cur_frame.frame_index << "  BB" << cur_frame.bb_idx << "/TERM: " << bb.terminator);
         switch(bb.terminator.tag())
         {
         case ::MIR::Terminator::TAGDEAD:    throw "";
         TU_ARM(bb.terminator, Incomplete, _te)
             LOG_TODO("Terminator::Incomplete hit");
         TU_ARM(bb.terminator, Diverge, _te)
-            LOG_TODO("Terminator::Diverge hit");
+            LOG_DEBUG("DIVERGE (continue panic)");
+            assert(m_thread.panic_count > 0);
+            m_thread.panic_active = true;
+            return this->pop_stack(out_thread_result);
         TU_ARM(bb.terminator, Panic, _te)
             LOG_TODO("Terminator::Panic");
         TU_ARM(bb.terminator, Goto, te)
@@ -1371,13 +1591,14 @@ bool InterpreterThread::step_one(Value& out_thread_result)
             auto v = state.get_value_and_type(te.val, ty);
             LOG_ASSERT(ty.get_wrapper() == nullptr, "Matching on wrapped value - " << ty);
             LOG_ASSERT(ty.inner_type == RawType::Composite, "Matching on non-coposite - " << ty);
+            LOG_DEBUG("Switch v = " << v);
 
             // TODO: Convert the variant list into something that makes it easier to switch on.
             size_t found_target = SIZE_MAX;
             size_t default_target = SIZE_MAX;
-            for(size_t i = 0; i < ty.composite_type->variants.size(); i ++)
+            for(size_t i = 0; i < ty.composite_type().variants.size(); i ++)
             {
-                const auto& var = ty.composite_type->variants[i];
+                const auto& var = ty.composite_type().variants[i];
                 if( var.tag_data.size() == 0 )
                 {
                     // Save as the default, error for multiple defaults
@@ -1399,6 +1620,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                         continue ;
                     if( ::std::memcmp(tmp.data(), var.tag_data.data(), tmp.size()) == 0 )
                     {
+                        LOG_DEBUG("Explicit match " << i);
                         found_target = i;
                         break ;
                     }
@@ -1407,6 +1629,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
 
             if( found_target == SIZE_MAX )
             {
+                LOG_DEBUG("Default match " << default_target);
                 found_target = default_target;
             }
             if( found_target == SIZE_MAX )
@@ -1415,8 +1638,93 @@ bool InterpreterThread::step_one(Value& out_thread_result)
             }
             cur_frame.bb_idx = te.targets.at(found_target);
             } break;
-        TU_ARM(bb.terminator, SwitchValue, _te)
-            LOG_TODO("Terminator::SwitchValue");
+        TU_ARM(bb.terminator, SwitchValue, te) {
+            ::HIR::TypeRef ty;
+            auto v = state.get_value_and_type(te.val, ty);
+            TU_MATCH_HDRA( (te.values), {)
+            TU_ARMA(Unsigned, vals) {
+                LOG_ASSERT(vals.size() == te.targets.size(), "Mismatch in SwitchValue target/value list lengths");
+                // Read an unsigned value 
+                if( ty.get_wrapper() ) {
+                    LOG_ERROR("Terminator::SwitchValue::Unsigned with wrapped type - " << ty);
+                }
+                uint64_t switch_val;
+                switch(ty.inner_type)
+                {
+                case RawType::U8:   switch_val = v.read_u8(0); break;
+                case RawType::U16:  switch_val = v.read_u16(0); break;
+                case RawType::U32:  switch_val = v.read_u32(0); break;
+                case RawType::U64:  switch_val = v.read_u64(0); break;
+                case RawType::U128: LOG_TODO("Terminator::SwitchValue::Unsigned with u128");
+                case RawType::USize:    switch_val = v.read_usize(0); break;
+                case RawType::Char:  switch_val = v.read_u32(0); break;
+                default:
+                    LOG_ERROR("Terminator::SwitchValue::Unsigned with unexpected type - " << ty);
+                }
+
+                auto it = ::std::find(vals.begin(), vals.end(), switch_val);
+                if( it != vals.end() )
+                {
+                    auto idx = it - vals.begin();
+                    LOG_TRACE("- " << switch_val << " matched arm " << idx);
+                    cur_frame.bb_idx = te.targets.at(idx);
+                }
+                else
+                {
+                    LOG_TRACE("- " << switch_val << " not matched, taking default arm");
+                    cur_frame.bb_idx = te.def_target;
+                }
+                }
+            TU_ARMA(Signed, vals) {
+                if( ty.get_wrapper() ) {
+                    LOG_ERROR("Terminator::SwitchValue::Signed with wrapped type - " << ty);
+                }
+                int64_t switch_val;
+                switch(ty.inner_type)
+                {
+                case RawType::I8:   switch_val = v.read_i8(0); break;
+                case RawType::I16:  switch_val = v.read_i16(0); break;
+                case RawType::I32:  switch_val = v.read_i32(0); break;
+                case RawType::I64:  switch_val = v.read_i64(0); break;
+                case RawType::I128: LOG_TODO("Terminator::SwitchValue::Signed with i128");
+                case RawType::ISize:    switch_val = v.read_isize(0); break;
+                default:
+                    LOG_ERROR("Terminator::SwitchValue::Signed with unexpected type - " << ty);
+                }
+
+                auto it = ::std::find(vals.begin(), vals.end(), switch_val);
+                if( it != vals.end() )
+                {
+                    auto idx = it - vals.begin();
+                    LOG_TRACE("- " << switch_val << " matched arm " << idx);
+                    cur_frame.bb_idx = te.targets.at(idx);
+                }
+                else
+                {
+                    LOG_TRACE("- " << switch_val << " not matched, taking default arm");
+                    cur_frame.bb_idx = te.def_target;
+                }
+                }
+            TU_ARMA(String, vals) {
+                auto size = v.read_usize(POINTER_SIZE);
+                const char* sv_ptr = reinterpret_cast<const char*>(v.read_pointer_const(0, size));
+                auto switch_val = ::stdx::string_view(sv_ptr, sv_ptr+size);
+
+                auto it = ::std::find_if(vals.begin(), vals.end(), [&](const ::std::string& x){ return switch_val == x; });
+                if( it != vals.end() )
+                {
+                    auto idx = it - vals.begin();
+                    LOG_TRACE("- '" << switch_val << "' matched arm " << idx);
+                    cur_frame.bb_idx = te.targets.at(idx);
+                }
+                else
+                {
+                    LOG_TRACE("- '" << switch_val << "' not matched, taking default arm");
+                    cur_frame.bb_idx = te.def_target;
+                }
+                }
+            }
+            }
         TU_ARM(bb.terminator, Call, te) {
             ::std::vector<Value>    sub_args; sub_args.reserve(te.args.size());
             for(const auto& a : te.args)
@@ -1447,10 +1755,9 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     LOG_DEBUG("> Indirect call " << v);
                     // TODO: Assert type
                     // TODO: Assert offset/content.
-                    assert(v.read_usize(0) == 0);
-                    fcn_alloc_ptr = v.get_relocation(v.m_offset);
-                    if( !fcn_alloc_ptr )
-                        LOG_FATAL("Calling value with no relocation - " << v);
+                    LOG_ASSERT(v.read_usize(0) == Allocation::PTR_BASE, "Function pointer value invalid - " << v);
+                    fcn_alloc_ptr = v.get_relocation(0);
+                    LOG_ASSERT(fcn_alloc_ptr, "Calling value with no relocation - " << v);
                     LOG_ASSERT(fcn_alloc_ptr.get_ty() == RelocationPtr::Ty::Function, "Calling value that isn't a function pointer");
                     fcn_p = &fcn_alloc_ptr.fcn();
                 }
@@ -1459,12 +1766,23 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                 if( !this->call_path(rv, *fcn_p, ::std::move(sub_args)) )
                 {
                     // Early return, don't want to update stmt_idx yet
+                    LOG_DEBUG("- Non-immediate return, do not advance yet");
                     return false;
                 }
             }
-            LOG_DEBUG(te.ret_val << " = " << rv << " (resume " << cur_frame.fcn.my_path << ")");
-            state.write_lvalue(te.ret_val, rv);
-            cur_frame.bb_idx = te.ret_block;
+            // If a panic is in progress (in thread state), take the panic block instead
+            if( m_thread.panic_active )
+            {
+                m_thread.panic_active = false;
+                LOG_DEBUG("Panic into " << cur_frame.fcn->my_path);
+                cur_frame.bb_idx = te.panic_block;
+            }
+            else
+            {
+                LOG_DEBUG(te.ret_val << " = " << rv << " (resume " << cur_frame.fcn->my_path << ")");
+                state.write_lvalue(te.ret_val, rv);
+                cur_frame.bb_idx = te.ret_block;
+            }
             } break;
         }
         cur_frame.stmt_idx = 0;
@@ -1502,41 +1820,56 @@ bool InterpreterThread::pop_stack(Value& out_thread_result)
         auto& cur_frame = this->m_stack.back();
         MirHelpers  state { *this, cur_frame };
 
-        const auto& blk = cur_frame.fcn.m_mir.blocks.at( cur_frame.bb_idx );
+        const auto& blk = cur_frame.fcn->m_mir.blocks.at( cur_frame.bb_idx );
         if( cur_frame.stmt_idx < blk.statements.size() )
         {
             assert( blk.statements[cur_frame.stmt_idx].is_Drop() );
             cur_frame.stmt_idx ++;
-            LOG_DEBUG("DROP complete (resume " << cur_frame.fcn.my_path << ")");
+            LOG_DEBUG("DROP complete (resume " << cur_frame.fcn->my_path << ")");
         }
         else
         {
             assert( blk.terminator.is_Call() );
             const auto& te = blk.terminator.as_Call();
 
-            LOG_DEBUG(te.ret_val << " = " << res_v << " (resume " << cur_frame.fcn.my_path << ")");
+            LOG_DEBUG("Resume " << cur_frame.fcn->my_path);
+            LOG_DEBUG("F" << cur_frame.frame_index << " " << te.ret_val << " = " << res_v);
 
-            state.write_lvalue(te.ret_val, res_v);
             cur_frame.stmt_idx = 0;
-            cur_frame.bb_idx = te.ret_block;
+            // If a panic is in progress (in thread state), take the panic block instead
+            if( m_thread.panic_active )
+            {
+                m_thread.panic_active = false;
+                LOG_DEBUG("Panic into " << cur_frame.fcn->my_path);
+                cur_frame.bb_idx = te.panic_block;
+            }
+            else
+            {
+                state.write_lvalue(te.ret_val, res_v);
+                cur_frame.bb_idx = te.ret_block;
+            }
         }
 
         return false;
     }
 }
 
+unsigned InterpreterThread::StackFrame::s_next_frame_index = 0;
 InterpreterThread::StackFrame::StackFrame(const Function& fcn, ::std::vector<Value> args):
-    fcn(fcn),
-    ret( fcn.ret_ty ),
+    frame_index(s_next_frame_index++),
+    fcn(&fcn),
+    ret( fcn.ret_ty == RawType::Unreachable ? Value() : Value(fcn.ret_ty) ),
     args( ::std::move(args) ),
     locals( ),
     drop_flags( fcn.m_mir.drop_flags ),
     bb_idx(0),
     stmt_idx(0)
 {
+    LOG_DEBUG("F" << frame_index << " - Initializing " << fcn.m_mir.locals.size() << " locals");
     this->locals.reserve( fcn.m_mir.locals.size() );
     for(const auto& ty : fcn.m_mir.locals)
     {
+        LOG_DEBUG("_" << (&ty - &fcn.m_mir.locals.front()) << ": " << ty);
         if( ty == RawType::Unreachable ) {
             // HACK: Locals can be !, but they can NEVER be accessed
             this->locals.push_back( Value() );
@@ -1557,7 +1890,9 @@ bool InterpreterThread::call_path(Value& ret, const ::HIR::Path& path, ::std::ve
         }
 
         // - No guard page needed
-        if( path == ::HIR::SimplePath { "std",  {"sys", "imp", "thread", "guard", "init" } } )
+        if( path == ::HIR::SimplePath { "std",  {"sys", "imp", "thread", "guard", "init" } }
+         ||  path == ::HIR::SimplePath { "std",  {"sys", "unix", "thread", "guard", "init" } }
+         )
         {
             ret = Value::with_size(16, false);
             ret.write_u64(0, 0);
@@ -1576,8 +1911,17 @@ bool InterpreterThread::call_path(Value& ret, const ::HIR::Path& path, ::std::ve
 
     if( fcn.external.link_name != "" )
     {
-        // External function!
-        return this->call_extern(ret, fcn.external.link_name, fcn.external.link_abi, ::std::move(args));
+        // TODO: Search for a function with both code and this link name
+        if(const auto* ext_fcn = m_modtree.get_ext_function(fcn.external.link_name.c_str()))
+        {
+            this->m_stack.push_back(StackFrame(*ext_fcn, ::std::move(args)));
+            return false;
+        }
+        else
+        {
+            // External function!
+            return this->call_extern(ret, fcn.external.link_name, fcn.external.link_abi, ::std::move(args));
+        }
     }
 
     this->m_stack.push_back(StackFrame(fcn, ::std::move(args)));
@@ -1603,42 +1947,73 @@ extern "C" {
 #endif
 bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, const ::std::string& abi, ::std::vector<Value> args)
 {
-    if( link_name == "__rust_allocate" )
+    struct FfiHelpers {
+        static const char* read_cstr(const Value& v, size_t ptr_ofs, size_t* out_strlen=nullptr)
+        {
+            bool _is_mut;
+            size_t  size;
+            // Get the base pointer and allocation size (checking for at least one valid byte to start with)
+            const char* ptr = reinterpret_cast<const char*>( v.read_pointer_unsafe(0, 1, /*out->*/ size, _is_mut) );
+            size_t len = 0;
+            // Seek until either out of space, or a NUL is found
+            while(size -- && *ptr)
+            {
+                ptr ++;
+                len ++;
+            }
+            if( out_strlen )
+            {
+                *out_strlen = len;
+            }
+            return reinterpret_cast<const char*>(v.read_pointer_const(0, len + 1));  // Final read will trigger an error if the NUL isn't there
+        }
+    };
+    if( link_name == "__rust_allocate" || link_name == "__rust_alloc" || link_name == "__rust_alloc_zeroed" )
     {
+        static unsigned s_alloc_count = 0;
+
+        auto alloc_idx = s_alloc_count ++;
+        auto alloc_name = FMT_STRING("__rust_alloc#" << alloc_idx);
         auto size = args.at(0).read_usize(0);
         auto align = args.at(1).read_usize(0);
-        LOG_DEBUG("__rust_allocate(size=" << size << ", align=" << align << ")");
-        auto rty = ::HIR::TypeRef(RawType::Unit).wrap( TypeWrapper::Ty::Pointer, 0 );
+        LOG_DEBUG(link_name << "(size=" << size << ", align=" << align << "): name=" << alloc_name);
 
         // TODO: Use the alignment when making an allocation?
-        rv = Value::new_pointer(rty, 0, RelocationPtr::new_alloc(Allocation::new_alloc(size)));
+        auto alloc = Allocation::new_alloc(size, ::std::move(alloc_name));
+        LOG_TRACE("- alloc=" << alloc << " (" << alloc->size() << " bytes)");
+        auto rty = ::HIR::TypeRef(RawType::Unit).wrap( TypeWrapper::Ty::Pointer, 0 );
+
+        if( link_name == "__rust_alloc_zeroed" )
+        {
+            alloc->mark_bytes_valid(0, size);
+        }
+
+        rv = Value::new_pointer(rty, Allocation::PTR_BASE, RelocationPtr::new_alloc(::std::move(alloc)));
     }
-    else if( link_name == "__rust_reallocate" )
+    else if( link_name == "__rust_reallocate" || link_name == "__rust_realloc" )
     {
-        LOG_ASSERT(args.at(0).allocation, "__rust_reallocate first argument doesn't have an allocation");
         auto alloc_ptr = args.at(0).get_relocation(0);
         auto ptr_ofs = args.at(0).read_usize(0);
-        LOG_ASSERT(ptr_ofs == 0, "__rust_reallocate with offset pointer");
         auto oldsize = args.at(1).read_usize(0);
-        auto newsize = args.at(2).read_usize(0);
-        auto align = args.at(3).read_usize(0);
+        // NOTE: The ordering here depends on the rust version (1.19 has: old, new, align - 1.29 has: old, align, new)
+        auto align = args.at(true /*1.29*/ ? 2 : 3).read_usize(0);
+        auto newsize = args.at(true /*1.29*/ ? 3 : 2).read_usize(0);
         LOG_DEBUG("__rust_reallocate(ptr=" << alloc_ptr << ", oldsize=" << oldsize << ", newsize=" << newsize << ", align=" << align << ")");
+        LOG_ASSERT(ptr_ofs == Allocation::PTR_BASE, "__rust_reallocate with offset pointer");
 
         LOG_ASSERT(alloc_ptr, "__rust_reallocate with no backing allocation attached to pointer");
         LOG_ASSERT(alloc_ptr.is_alloc(), "__rust_reallocate with no backing allocation attached to pointer");
         auto& alloc = alloc_ptr.alloc();
         // TODO: Check old size and alignment against allocation.
-        alloc.data.resize( (newsize + 8-1) / 8 );
-        alloc.mask.resize( (newsize + 8-1) / 8 );
+        alloc.resize(newsize);
         // TODO: Should this instead make a new allocation to catch use-after-free?
         rv = ::std::move(args.at(0));
     }
-    else if( link_name == "__rust_deallocate" )
+    else if( link_name == "__rust_deallocate" || link_name == "__rust_dealloc" )
     {
-        LOG_ASSERT(args.at(0).allocation, "__rust_deallocate first argument doesn't have an allocation");
         auto alloc_ptr = args.at(0).get_relocation(0);
         auto ptr_ofs = args.at(0).read_usize(0);
-        LOG_ASSERT(ptr_ofs == 0, "__rust_deallocate with offset pointer");
+        LOG_ASSERT(ptr_ofs == Allocation::PTR_BASE, "__rust_deallocate with offset pointer");
         LOG_DEBUG("__rust_deallocate(ptr=" << alloc_ptr << ")");
 
         LOG_ASSERT(alloc_ptr, "__rust_deallocate with no backing allocation attached to pointer");
@@ -1675,6 +2050,10 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
             return false;
         }
     }
+    else if( link_name == "panic_impl" )
+    {
+        LOG_TODO("panic_impl");
+    }
     else if( link_name == "__rust_start_panic" )
     {
         LOG_TODO("__rust_start_panic");
@@ -1682,6 +2061,19 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     else if( link_name == "rust_begin_unwind" )
     {
         LOG_TODO("rust_begin_unwind");
+    }
+    // libunwind
+    else if( link_name == "_Unwind_RaiseException" )
+    {
+        LOG_DEBUG("_Unwind_RaiseException(" << args.at(0) << ")");
+        // Save the first argument in TLS, then return a status that indicates unwinding should commence.
+        m_thread.panic_active = true;
+        m_thread.panic_count += 1;
+        m_thread.panic_value = ::std::move(args.at(0));
+    }
+    else if( link_name == "_Unwind_DeleteException" )
+    {
+        LOG_DEBUG("_Unwind_DeleteException(" << args.at(0) << ")");
     }
 #ifdef _WIN32
     // WinAPI functions used by libstd
@@ -1692,7 +2084,6 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     }
     else if( link_name == "GetModuleHandleW" )
     {
-        LOG_ASSERT(args.at(0).allocation, "");
         const auto& tgt_alloc = args.at(0).get_relocation(0);
         const void* arg0 = (tgt_alloc ? tgt_alloc.alloc().data_ptr() : nullptr);
         //extern void* GetModuleHandleW(const void* s);
@@ -1706,7 +2097,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         auto ret = GetModuleHandleW(static_cast<LPCWSTR>(arg0));
         if(ret)
         {
-            rv = Value::new_ffiptr(FFIPointer { "GetModuleHandleW", ret, 0 });
+            rv = Value::new_ffiptr(FFIPointer::new_void("GetModuleHandleW", ret));
         }
         else
         {
@@ -1731,7 +2122,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
 
         if( ret )
         {
-            rv = Value::new_ffiptr(FFIPointer { "GetProcAddress", ret, 0 });
+            rv = Value::new_ffiptr(FFIPointer::new_void("GetProcAddress", ret));
         }
         else
         {
@@ -1752,6 +2143,96 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
 
         rv = Value::new_isize(val);
     }
+    else if( link_name == "read" )
+    {
+        auto fd = args.at(0).read_i32(0);
+        auto count = args.at(2).read_isize(0);
+        auto buf_vr = args.at(1).read_pointer_valref_mut(0, count);
+
+        LOG_DEBUG("read(" << fd << ", " << buf_vr.data_ptr_mut() << ", " << count << ")");
+        ssize_t val = read(fd, buf_vr.data_ptr_mut(), count);
+        LOG_DEBUG("= " << val);
+
+        if( val > 0 )
+        {
+            buf_vr.mark_bytes_valid(0, val);
+        }
+
+        rv = Value::new_isize(val);
+    }
+    else if( link_name == "close" )
+    {
+        auto fd = args.at(0).read_i32(0);
+        LOG_DEBUG("close(" << fd << ")");
+        // TODO: Ensure that this FD is from the set known by the FFI layer
+        close(fd);
+    }
+    else if( link_name == "isatty" )
+    {
+        auto fd = args.at(0).read_i32(0);
+        LOG_DEBUG("isatty(" << fd << ")");
+        int rv_i = isatty(fd);
+        LOG_DEBUG("= " << rv_i);
+        rv = Value::new_i32(rv_i);
+    }
+    else if( link_name == "fcntl" )
+    {
+        // `fcntl` has custom handling for the third argument, as some are pointers
+        int fd = args.at(0).read_i32(0);
+        int command = args.at(1).read_i32(0);
+
+        int rv_i;
+        const char* name;
+        switch(command)
+        {
+        // - No argument
+        case F_GETFD: name = "F_GETFD"; if(0)
+            ;
+            {
+                LOG_DEBUG("fcntl(" << fd << ", " << name << ")");
+                rv_i = fcntl(fd, command);
+            } break;
+        // - Integer arguments
+        case F_DUPFD: name = "F_DUPFD"; if(0)
+        case F_DUPFD_CLOEXEC: name = "F_DUPFD_CLOEXEC"; if(0)
+        case F_SETFD: name = "F_SETFD"; if(0)
+            ;
+            {
+                int arg = args.at(2).read_i32(0);
+                LOG_DEBUG("fcntl(" << fd << ", " << name << ", " << arg << ")");
+                rv_i = fcntl(fd, command, arg);
+            } break;
+        default:
+            if( args.size() > 2 )
+            {
+                LOG_TODO("fnctl(..., " << command << ", " << args[2] << ")");
+            }
+            else
+            {
+                LOG_TODO("fnctl(..., " << command << ")");
+            }
+        }
+
+        LOG_DEBUG("= " << rv_i);
+        rv = Value(::HIR::TypeRef(RawType::I32));
+        rv.write_i32(0, rv_i);
+    }
+    else if( link_name == "prctl" )
+    {
+        auto option = args.at(0).read_i32(0);
+        int rv_i;
+        switch(option)
+        {
+        case 15: {   // PR_SET_NAME - set thread name
+            auto name = FfiHelpers::read_cstr(args.at(1), 0);
+            LOG_DEBUG("prctl(PR_SET_NAME, \"" << name << "\"");
+            rv_i = 0;
+            } break;
+        default:
+            LOG_TODO("prctl(" << option << ", ...");
+        }
+        rv = Value::new_i32(rv_i);
+    }
     else if( link_name == "sysconf" )
     {
         auto name = args.at(0).read_i32(0);
@@ -1761,6 +2242,10 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
 
         rv = Value::new_usize(val);
     }
+    else if( link_name == "pthread_self" )
+    {
+        rv = Value::new_i32(0);
+    }
     else if( link_name == "pthread_mutex_init" || link_name == "pthread_mutex_lock" || link_name == "pthread_mutex_unlock" || link_name == "pthread_mutex_destroy" )
     {
         rv = Value::new_i32(0);
@@ -1769,12 +2254,86 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     {
         rv = Value::new_i32(0);
     }
+    else if( link_name == "pthread_rwlock_unlock" )
+    {
+        // TODO: Check that this thread holds the lock?
+        rv = Value::new_i32(0);
+    }
     else if( link_name == "pthread_mutexattr_init" || link_name == "pthread_mutexattr_settype" || link_name == "pthread_mutexattr_destroy" )
     {
         rv = Value::new_i32(0);
     }
     else if( link_name == "pthread_condattr_init" || link_name == "pthread_condattr_destroy" || link_name == "pthread_condattr_setclock" )
     {
+        rv = Value::new_i32(0);
+    }
+    else if( link_name == "pthread_attr_init" || link_name == "pthread_attr_destroy" || link_name == "pthread_getattr_np" )
+    {
+        rv = Value::new_i32(0);
+    }
+    else if( link_name == "pthread_attr_setstacksize" )
+    {
+        // Lie and return succeess
+        rv = Value::new_i32(0);
+    }
+    else if( link_name == "pthread_attr_getguardsize" )
+    {
+        const auto attr_p = args.at(0).read_pointer_const(0, 1);
+        auto out_size = args.at(1).deref(0, HIR::TypeRef(RawType::USize));
+
+        out_size.m_alloc.alloc().write_usize(out_size.m_offset, 0x1000);
+
+        rv = Value::new_i32(0);
+    }
+    else if( link_name == "pthread_attr_getstack" )
+    {
+        const auto attr_p = args.at(0).read_pointer_const(0, 1);
+        auto out_ptr = args.at(2).deref(0, HIR::TypeRef(RawType::USize));
+        auto out_size = args.at(2).deref(0, HIR::TypeRef(RawType::USize));
+
+        out_size.m_alloc.alloc().write_usize(out_size.m_offset, 0x4000);
+
+        rv = Value::new_i32(0);
+    }
+    else if( link_name == "pthread_create" )
+    {
+        auto thread_handle_out = args.at(0).read_pointer_valref_mut(0, sizeof(pthread_t));
+        auto attrs = args.at(1).read_pointer_const(0, sizeof(pthread_attr_t));
+        auto fcn_path = args.at(2).get_relocation(0).fcn();
+        LOG_ASSERT(args.at(2).read_usize(0) == Allocation::PTR_BASE, "");
+        auto arg = args.at(3);
+        LOG_NOTICE("TODO: pthread_create(" << thread_handle_out << ", " << attrs << ", " << fcn_path << ", " << arg << ")");
+        // TODO: Create a new interpreter context with this thread, use co-operative scheduling
+        // HACK: Just run inline
+        if( true )
+        {
+            auto tls = ::std::move(m_thread.tls_values);
+            this->m_stack.push_back(StackFrame::make_wrapper([=](Value& out_rv, Value /*rv*/)mutable ->bool {
+                out_rv = Value::new_i32(0);
+                m_thread.tls_values = ::std::move(tls);
+                return true;
+                }));
+
+            // TODO: Catch the panic out of this.
+            if( this->call_path(rv, fcn_path, { ::std::move(arg) }) )
+            {
+                bool v = this->pop_stack(rv);
+                assert( v == false );
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
+        else {
+            //this->m_parent.create_thread(fcn_path, arg);
+            rv = Value::new_i32(EPERM);
+        }
+    }
+    else if( link_name == "pthread_detach" )
+    {
+        // "detach" - Prevent the need to explitly join a thread
         rv = Value::new_i32(0);
     }
     else if( link_name == "pthread_cond_init" || link_name == "pthread_cond_destroy" )
@@ -1795,26 +2354,104 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         auto key = args.at(0).read_u32(0);
 
         // Get a pointer-sized value from storage
-        uint64_t v = key < m_thread.tls_values.size() ? m_thread.tls_values[key] : 0;
-
-        rv = Value::new_usize(v);
+        if( key < m_thread.tls_values.size() )
+        {
+            const auto& e = m_thread.tls_values[key];
+            rv = Value::new_usize(e.first);
+            if( e.second )
+            {
+                rv.set_reloc(0, POINTER_SIZE, e.second);
+            }
+        }
+        else
+        {
+            // Return zero until populated
+            rv = Value::new_usize(0);
+        }
     }
     else if( link_name == "pthread_setspecific" )
     {
         auto key = args.at(0).read_u32(0);
         auto v = args.at(1).read_u64(0);
+        auto v_reloc = args.at(1).get_relocation(0);
 
-        // Get a pointer-sized value from storage
+        // Store a pointer-sized value in storage
         if( key >= m_thread.tls_values.size() ) {
             m_thread.tls_values.resize(key+1);
         }
-        m_thread.tls_values[key] = v;
+        m_thread.tls_values[key] = ::std::make_pair(v, v_reloc);
 
         rv = Value::new_i32(0);
     }
     else if( link_name == "pthread_key_delete" )
     {
         rv = Value::new_i32(0);
+    }
+    // - Time
+    else if( link_name == "clock_gettime" )
+    {
+        // int clock_gettime(clockid_t clk_id, struct timespec *tp);
+        auto clk_id = args.at(0).read_u32(0);
+        auto tp_vr = args.at(1).read_pointer_valref_mut(0, sizeof(struct timespec));
+
+        LOG_DEBUG("clock_gettime(" << clk_id << ", " << tp_vr);
+        int rv_i = clock_gettime(clk_id, reinterpret_cast<struct timespec*>(tp_vr.data_ptr_mut()));
+        if(rv_i == 0)
+            tp_vr.mark_bytes_valid(0, tp_vr.m_size);
+        LOG_DEBUG("= " << rv_i << " (" << tp_vr << ")");
+        rv = Value::new_i32(rv_i);
+    }
+    // - Linux extensions
+    else if( link_name == "open64" )
+    {
+        const auto* path = FfiHelpers::read_cstr(args.at(0), 0);
+        auto flags = args.at(1).read_i32(0);
+        auto mode = (args.size() > 2 ? args.at(2).read_i32(0) : 0);
+
+        LOG_DEBUG("open64(\"" << path << "\", " << flags << ")");
+        int rv_i = open(path, flags, mode);
+        LOG_DEBUG("= " << rv_i);
+
+        rv = Value(::HIR::TypeRef(RawType::I32));
+        rv.write_i32(0, rv_i);
+    }
+    else if( link_name == "stat64" )
+    {
+        const auto* path = FfiHelpers::read_cstr(args.at(0), 0);
+        auto outbuf_vr = args.at(1).read_pointer_valref_mut(0, sizeof(struct stat));
+
+        LOG_DEBUG("stat64(\"" << path << "\", " << outbuf_vr << ")");
+        int rv_i = stat(path, reinterpret_cast<struct stat*>(outbuf_vr.data_ptr_mut()));
+        LOG_DEBUG("= " << rv_i);
+
+        if( rv_i == 0 )
+        {
+            // TODO: Mark the buffer as valid?
+        }
+
+        rv = Value(::HIR::TypeRef(RawType::I32));
+        rv.write_i32(0, rv_i);
+    }
+    else if( link_name == "__errno_location" )
+    {
+        rv = Value::new_ffiptr(FFIPointer::new_const_bytes("errno", &errno, sizeof(errno)));
+    }
+    else if( link_name == "syscall" )
+    {
+        auto num = args.at(0).read_u32(0);
+
+        LOG_DEBUG("syscall(" << num << ", ...) - hack return ENOSYS");
+        errno = ENOSYS;
+        rv = Value::new_i64(-1);
+    }
+    else if( link_name == "dlsym" )
+    {
+        auto handle = args.at(0).read_usize(0);
+        const char* name = FfiHelpers::read_cstr(args.at(1), 0);
+
+        LOG_DEBUG("dlsym(0x" << ::std::hex << handle << ", '" << name << "')");
+        LOG_NOTICE("dlsym stubbed to zero");
+        rv = Value::new_usize(0);
     }
 #endif
     // std C
@@ -1823,6 +2460,31 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         LOG_DEBUG("Call `signal` - Ignoring and returning SIG_IGN");
         rv = Value(::HIR::TypeRef(RawType::USize));
         rv.write_usize(0, 1);
+    }
+    else if( link_name == "sigaction" )
+    {
+        rv = Value::new_i32(-1);
+    }
+    else if( link_name == "sigaltstack" )   // POSIX: Set alternate signal stack
+    {
+        rv = Value::new_i32(-1);
+    }
+    else if( link_name == "memcmp" )
+    {
+        auto n = args.at(2).read_usize(0);
+        int rv_i;
+        if( n > 0 )
+        {
+            const void* ptr_b = args.at(1).read_pointer_const(0, n);
+            const void* ptr_a = args.at(0).read_pointer_const(0, n);
+
+            rv_i = memcmp(ptr_a, ptr_b, n);
+        }
+        else
+        {
+            rv_i = 0;
+        }
+        rv = Value::new_i32(rv_i);
     }
     // - `void *memchr(const void *s, int c, size_t n);`
     else if( link_name == "memchr" )
@@ -1835,11 +2497,10 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         const void* ret = memchr(ptr, c, n);
 
         rv = Value(::HIR::TypeRef(RawType::USize));
-        rv.create_allocation();
         if( ret )
         {
-            rv.write_usize(0, args.at(0).read_usize(0) + ( static_cast<const uint8_t*>(ret) - static_cast<const uint8_t*>(ptr) ));
-            rv.allocation->relocations.push_back({ 0, ptr_alloc });
+            auto rv_ofs = args.at(0).read_usize(0) + ( static_cast<const uint8_t*>(ret) - static_cast<const uint8_t*>(ptr) );
+            rv.write_ptr(0, rv_ofs, ptr_alloc);
         }
         else
         {
@@ -1856,11 +2517,10 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         const void* ret = memrchr(ptr, c, n);
 
         rv = Value(::HIR::TypeRef(RawType::USize));
-        rv.create_allocation();
         if( ret )
         {
-            rv.write_usize(0, args.at(0).read_usize(0) + ( static_cast<const uint8_t*>(ret) - static_cast<const uint8_t*>(ptr) ));
-            rv.allocation->relocations.push_back({ 0, ptr_alloc });
+            auto rv_ofs = args.at(0).read_usize(0) + ( static_cast<const uint8_t*>(ret) - static_cast<const uint8_t*>(ptr) );
+            rv.write_ptr(0, rv_ofs, ptr_alloc);
         }
         else
         {
@@ -1870,20 +2530,34 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     else if( link_name == "strlen" )
     {
         // strlen - custom implementation to ensure validity
-        bool _is_mut;
-        size_t  size;
-        const char* ptr = reinterpret_cast<const char*>( args.at(0).read_pointer_unsafe(0, 1, size, _is_mut) );
         size_t len = 0;
-        while(size -- && *ptr)
-        {
-            ptr ++;
-            len ++;
-        }
-        args.at(0).read_pointer_const(0, len + 1);
+        FfiHelpers::read_cstr(args.at(0), 0, &len);
 
         //rv = Value::new_usize(len);
         rv = Value(::HIR::TypeRef(RawType::USize));
         rv.write_usize(0, len);
+    }
+    else if( link_name == "getenv" )
+    {
+        const auto* name = FfiHelpers::read_cstr(args.at(0), 0);
+        LOG_DEBUG("getenv(\"" << name << "\")");
+        const auto* ret_ptr = getenv(name);
+        if( ret_ptr )
+        {
+            LOG_DEBUG("= \"" << ret_ptr << "\"");
+            rv = Value::new_ffiptr(FFIPointer::new_const_bytes("getenv", ret_ptr, strlen(ret_ptr)+1));
+        }
+        else
+        {
+            LOG_DEBUG("= NULL");
+            rv = Value(::HIR::TypeRef(RawType::USize));
+            rv.create_allocation();
+            rv.write_usize(0,0);
+        }
+    }
+    else if( link_name == "setenv" )
+    {
+        LOG_TODO("Allow `setenv` without incurring thread unsafety");
     }
     // Allocators!
     else
@@ -1893,7 +2567,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     return true;
 }
 
-bool InterpreterThread::call_intrinsic(Value& rv, const ::std::string& name, const ::HIR::PathParams& ty_params, ::std::vector<Value> args)
+bool InterpreterThread::call_intrinsic(Value& rv, const RcString& name, const ::HIR::PathParams& ty_params, ::std::vector<Value> args)
 {
     TRACE_FUNCTION_R(name, rv);
     for(const auto& a : args)
@@ -1907,15 +2581,69 @@ bool InterpreterThread::call_intrinsic(Value& rv, const ::std::string& name, con
         {
             it = type_ids.insert(it, ty_T);
         }
-        
+
         rv = Value::with_size(POINTER_SIZE, false);
         rv.write_usize(0, it - type_ids.begin());
+    }
+    else if( name == "type_name" )
+    {
+        const auto& ty_T = ty_params.tys.at(0);
+
+        static ::std::map<HIR::TypeRef, ::std::string>  s_type_names;
+        auto it = s_type_names.find(ty_T);
+        if( it == s_type_names.end() )
+        {
+            it = s_type_names.insert( ::std::make_pair(ty_T, FMT_STRING(ty_T)) ).first;
+        }
+
+        rv = Value::with_size(2*POINTER_SIZE, /*needs_alloc=*/true);
+        rv.write_ptr(0*POINTER_SIZE, Allocation::PTR_BASE, RelocationPtr::new_string(&it->second));
+        rv.write_usize(1*POINTER_SIZE, 0);
+    }
+    else if( name == "discriminant_value" )
+    {
+        const auto& ty = ty_params.tys.at(0);
+        ValueRef val = args.at(0).deref(0, ty);
+
+        size_t fallback = SIZE_MAX;
+        size_t found_index = SIZE_MAX;
+        LOG_ASSERT(ty.inner_type == RawType::Composite, "discriminant_value " << ty);
+        for(size_t i = 0; i < ty.composite_type().variants.size(); i ++)
+        {
+            const auto& var = ty.composite_type().variants[i];
+            if( var.tag_data.size() == 0 )
+            {
+                // Only seen in Option<NonNull>
+                assert(fallback == SIZE_MAX);
+                fallback = i;
+            }
+            else
+            {
+                // Get offset to the tag
+                ::HIR::TypeRef  tag_ty;
+                size_t tag_ofs = ty.get_field_ofs(var.base_field, var.field_path, tag_ty);
+                // Compare
+                if( val.compare(tag_ofs, var.tag_data.data(), var.tag_data.size()) == 0 )
+                {
+                    found_index = i;
+                    break ;
+                }
+            }
+        }
+
+        if( found_index == SIZE_MAX )
+        {
+            LOG_ASSERT(fallback != SIZE_MAX, "Can't find variant of " << ty << " for " << val);
+            found_index = fallback;
+        }
+
+        rv = Value::new_usize(found_index);
     }
     else if( name == "atomic_fence" || name == "atomic_fence_acq" )
     {
         rv = Value();
     }
-    else if( name == "atomic_store" )
+    else if( name == "atomic_store" || name == "atomic_store_relaxed" || name == "atomic_store_rel" )
     {
         auto& ptr_val = args.at(0);
         auto& data_val = args.at(1);
@@ -1927,20 +2655,20 @@ bool InterpreterThread::call_intrinsic(Value& rv, const ::std::string& name, con
         LOG_ASSERT(alloc, "Deref of a value with no relocation");
 
         // TODO: Atomic side of this?
-        size_t ofs = ptr_val.read_usize(0);
+        size_t ofs = ptr_val.read_usize(0) - Allocation::PTR_BASE;
         alloc.alloc().write_value(ofs, ::std::move(data_val));
     }
-    else if( name == "atomic_load" || name == "atomic_load_relaxed" )
+    else if( name == "atomic_load" || name == "atomic_load_relaxed" || name == "atomic_load_acq" )
     {
         auto& ptr_val = args.at(0);
-        LOG_ASSERT(ptr_val.size() == POINTER_SIZE, "atomic_store of a value that isn't a pointer-sized value");
+        LOG_ASSERT(ptr_val.size() == POINTER_SIZE, "atomic_load of a value that isn't a pointer-sized value");
 
         // There MUST be a relocation at this point with a valid allocation.
         auto alloc = ptr_val.get_relocation(0);
         LOG_ASSERT(alloc, "Deref of a value with no relocation");
         // TODO: Atomic lock the allocation.
 
-        size_t ofs = ptr_val.read_usize(0);
+        size_t ofs = ptr_val.read_usize(0) - Allocation::PTR_BASE;
         const auto& ty = ty_params.tys.at(0);
 
         rv = alloc.alloc().read_value(ofs, ty.get_size());
@@ -1948,7 +2676,7 @@ bool InterpreterThread::call_intrinsic(Value& rv, const ::std::string& name, con
     else if( name == "atomic_xadd" || name == "atomic_xadd_relaxed" )
     {
         const auto& ty_T = ty_params.tys.at(0);
-        auto ptr_ofs = args.at(0).read_usize(0);
+        auto ptr_ofs = args.at(0).read_usize(0) - Allocation::PTR_BASE;
         auto ptr_alloc = args.at(0).get_relocation(0);
         auto v = args.at(1).read_value(0, ty_T.get_size());
 
@@ -1969,7 +2697,7 @@ bool InterpreterThread::call_intrinsic(Value& rv, const ::std::string& name, con
     else if( name == "atomic_xsub" || name == "atomic_xsub_relaxed" || name == "atomic_xsub_rel" )
     {
         const auto& ty_T = ty_params.tys.at(0);
-        auto ptr_ofs = args.at(0).read_usize(0);
+        auto ptr_ofs = args.at(0).read_usize(0) - Allocation::PTR_BASE;
         auto ptr_alloc = args.at(0).get_relocation(0);
         auto v = args.at(1).read_value(0, ty_T.get_size());
 
@@ -1987,7 +2715,7 @@ bool InterpreterThread::call_intrinsic(Value& rv, const ::std::string& name, con
 
         val_l.get().write_to_value( ptr_alloc.alloc(), ptr_ofs );
     }
-    else if( name == "atomic_xchg" )
+    else if( name == "atomic_xchg" || name == "atomic_xchg_acqrel" )
     {
         const auto& ty_T = ty_params.tys.at(0);
         auto data_ref = args.at(0).read_pointer_valref_mut(0, ty_T.get_size());
@@ -2006,7 +2734,7 @@ bool InterpreterThread::call_intrinsic(Value& rv, const ::std::string& name, con
         rv = Value::with_size( ty_T.get_size() + 1, false );
         rv.write_value(0, data_ref.read_value(0, old_v.size()));
         LOG_DEBUG("> *ptr = " << data_ref);
-        if( data_ref.compare(old_v.data_ptr(), old_v.size()) == true ) {
+        if( data_ref.compare(0, old_v.data_ptr(), old_v.size()) == true ) {
             data_ref.m_alloc.alloc().write_value( data_ref.m_offset, new_v );
             rv.write_u8( old_v.size(), 1 );
         }
@@ -2027,6 +2755,27 @@ bool InterpreterThread::call_intrinsic(Value& rv, const ::std::string& name, con
     {
         auto ptr_alloc = args.at(0).get_relocation(0);
         auto ptr_ofs = args.at(0).read_usize(0);
+        LOG_ASSERT(ptr_ofs >= Allocation::PTR_BASE, "`offset` with invalid pointer - " << args.at(0));
+        auto& ofs_val = args.at(1);
+
+        auto delta_counts = ofs_val.read_usize(0);
+        auto ty_size = ty_params.tys.at(0).get_size();
+        LOG_DEBUG("\"offset\": 0x" << ::std::hex << ptr_ofs << " + 0x" << delta_counts << " * 0x" << ty_size);
+        ptr_ofs -= Allocation::PTR_BASE;
+        auto new_ofs = ptr_ofs + delta_counts * ty_size;
+        if(POINTER_SIZE != 8) {
+            new_ofs &= 0xFFFFFFFF;
+        }
+
+        rv = ::std::move(args.at(0));
+        rv.write_ptr(0, Allocation::PTR_BASE + new_ofs, ptr_alloc);
+    }
+    else if( name == "arith_offset" )   // Doesn't check validity, and allows wrapping
+    {
+        auto ptr_alloc = args.at(0).get_relocation(0);
+        auto ptr_ofs = args.at(0).read_usize(0);
+        //LOG_ASSERT(ptr_ofs >= Allocation::PTR_BASE, "`offset` with invalid pointer - " << args.at(0));
+        //ptr_ofs -= Allocation::PTR_BASE;
         auto& ofs_val = args.at(1);
 
         auto delta_counts = ofs_val.read_usize(0);
@@ -2034,11 +2783,16 @@ bool InterpreterThread::call_intrinsic(Value& rv, const ::std::string& name, con
         if(POINTER_SIZE != 8) {
             new_ofs &= 0xFFFFFFFF;
         }
+        //new_ofs += Allocation::PTR_BASE;
 
         rv = ::std::move(args.at(0));
-        rv.write_usize(0, new_ofs);
-        if( ptr_alloc ) {
-            rv.allocation->relocations.push_back({ 0, ptr_alloc });
+        if( ptr_alloc )
+        {
+            rv.write_ptr(0, new_ofs, ptr_alloc);
+        }
+        else
+        {
+            rv.write_usize(0, new_ofs);
         }
     }
     // effectively ptr::write
@@ -2047,18 +2801,13 @@ bool InterpreterThread::call_intrinsic(Value& rv, const ::std::string& name, con
         auto& ptr_val = args.at(0);
         auto& data_val = args.at(1);
 
-        LOG_ASSERT(ptr_val.size() == POINTER_SIZE, "move_val_init of an address that isn't a pointer-sized value");
-
         // There MUST be a relocation at this point with a valid allocation.
-        LOG_ASSERT(ptr_val.allocation, "Deref of a value with no allocation (hence no relocations)");
-        LOG_TRACE("Deref " << ptr_val << " and store " << data_val);
+        // - TODO: What about FFI? (can't be a string or function though)
+        auto dst_vr = ptr_val.deref(0, ty_params.tys.at(0));
+        LOG_ASSERT(dst_vr.m_alloc, "Deref didn't yeild an allocation (error?)");
+        LOG_ASSERT(dst_vr.m_alloc.is_alloc(), "Deref didn't yield an allocation");
 
-        auto ptr_alloc = ptr_val.get_relocation(0);
-        LOG_ASSERT(ptr_alloc, "Deref of a value with no relocation");
-
-        size_t ofs = ptr_val.read_usize(0);
-        ptr_alloc.alloc().write_value(ofs, ::std::move(data_val));
-        LOG_DEBUG(ptr_alloc.alloc());
+        dst_vr.m_alloc.alloc().write_value(dst_vr.m_offset, ::std::move(data_val));
     }
     else if( name == "uninit" )
     {
@@ -2068,6 +2817,22 @@ bool InterpreterThread::call_intrinsic(Value& rv, const ::std::string& name, con
     {
         rv = Value(ty_params.tys.at(0));
         rv.mark_bytes_valid(0, rv.size());
+    }
+    else if( name == "write_bytes" )
+    {
+        auto& dst_ptr_v = args.at(0);
+        auto byte = args.at(1).read_u8(0);
+        auto count = args.at(2).read_usize(0);
+        auto bytes = count * ty_params.tys.at(0).get_size();
+
+        LOG_DEBUG("'write_bytes'(" << dst_ptr_v << ", " << (int)byte << ", " << count << "): bytes=" << bytes);
+
+        if( count > 0 )
+        {
+            auto dst_vr = dst_ptr_v.read_pointer_valref_mut(0, bytes);
+            memset(dst_vr.data_ptr_mut(), byte, bytes);
+            dst_vr.mark_bytes_valid(0, bytes);
+        }
     }
     // - Unsized stuff
     else if( name == "size_of_val" )
@@ -2097,7 +2862,12 @@ bool InterpreterThread::call_intrinsic(Value& rv, const ::std::string& name, con
             }
             else if( ity->inner_type == RawType::TraitObject )
             {
-                LOG_TODO("size_of_val - Trait Object - " << ty);
+                auto vtable_ty = meta_ty.get_inner();
+                LOG_DEBUG("> vtable_ty = " << vtable_ty << " (size= " << vtable_ty.get_size() << ")");
+                auto vtable = val.deref(POINTER_SIZE, vtable_ty);
+                LOG_DEBUG("> vtable = " << vtable);
+                auto size = vtable.read_usize(1*POINTER_SIZE);
+                flex_size = size;
             }
             else
             {
@@ -2111,11 +2881,85 @@ bool InterpreterThread::call_intrinsic(Value& rv, const ::std::string& name, con
             rv.write_usize(0, ty.get_size());
         }
     }
+    else if( name == "min_align_of_val" )
+    {
+        /*const*/ auto& val = args.at(0);
+        const auto& ty = ty_params.tys.at(0);
+        rv = Value(::HIR::TypeRef(RawType::USize));
+        size_t fixed_size = 0;  // unused
+        size_t flex_align = 0;
+        if( const auto* ity = ty.get_unsized_type(fixed_size) )
+        {
+            if( const auto* w = ity->get_wrapper() )
+            {
+                LOG_ASSERT(w->type == TypeWrapper::Ty::Slice, "align_of_val on wrapped type that isn't a slice - " << *ity);
+                flex_align = ity->get_inner().get_align();
+            }
+            else if( ity->inner_type == RawType::Str )
+            {
+                flex_align = 1;
+            }
+            else if( ity->inner_type == RawType::TraitObject )
+            {
+                const auto meta_ty = ty.get_meta_type();
+                auto vtable_ty = meta_ty.get_inner();
+                LOG_DEBUG("> vtable_ty = " << vtable_ty << " (size= " << vtable_ty.get_size() << ")");
+                auto vtable = val.deref(POINTER_SIZE, vtable_ty);
+                LOG_DEBUG("> vtable = " << vtable);
+                flex_align = vtable.read_usize(2*POINTER_SIZE);
+            }
+            else
+            {
+                LOG_BUG("Inner unsized type unknown - " << *ity);
+            }
+        }
+        rv.write_usize(0, ::std::max( ty.get_align(), flex_align ));
+    }
     else if( name == "drop_in_place" )
     {
         auto& val = args.at(0);
         const auto& ty = ty_params.tys.at(0);
         return drop_value(val, ty);
+    }
+    else if( name == "try" )
+    {
+        auto fcn_path = args.at(0).get_relocation(0).fcn();
+        auto arg = args.at(1);
+        auto out_panic_value = args.at(2).read_pointer_valref_mut(0, POINTER_SIZE);
+
+        ::std::vector<Value>    sub_args;
+        sub_args.push_back( ::std::move(arg) );
+
+        this->m_stack.push_back(StackFrame::make_wrapper([=](Value& out_rv, Value /*rv*/)mutable->bool{
+            if( m_thread.panic_active )
+            {
+                assert(m_thread.panic_count > 0);
+                m_thread.panic_active = false;
+                m_thread.panic_count --;
+                LOG_ASSERT(m_thread.panic_value.size() == out_panic_value.m_size, "Panic value " << m_thread.panic_value << " doesn't fit in " << out_panic_value);
+                out_panic_value.m_alloc.alloc().write_value( out_panic_value.m_offset, ::std::move(m_thread.panic_value) );
+                out_rv = Value::new_u32(1);
+                return true;
+            }
+            else
+            {
+                LOG_ASSERT(m_thread.panic_count == 0, "Panic count non-zero, but previous function returned non-panic");
+                out_rv = Value::new_u32(0);
+                return true;
+            }
+            }));
+
+        // TODO: Catch the panic out of this.
+        if( this->call_path(rv, fcn_path, ::std::move(sub_args)) )
+        {
+            bool v = this->pop_stack(rv);
+            assert( v == false );
+            return true;
+        }
+        else
+        {
+            return false;
+        }
     }
     // ----------------------------------------------------------------
     // Checked arithmatic
@@ -2158,7 +3002,7 @@ bool InterpreterThread::call_intrinsic(Value& rv, const ::std::string& name, con
     else if( name == "mul_with_overflow" )
     {
         const auto& ty = ty_params.tys.at(0);
-    
+
         auto lhs = PrimitiveValueVirt::from_value(ty, args.at(0));
         auto rhs = PrimitiveValueVirt::from_value(ty, args.at(1));
         bool didnt_overflow = lhs.get().multiply( rhs.get() );
@@ -2173,6 +3017,24 @@ bool InterpreterThread::call_intrinsic(Value& rv, const ::std::string& name, con
         lhs.get().write_to_value(rv, dty.fields[0].first);
         rv.write_u8( dty.fields[1].first, didnt_overflow ? 0 : 1 ); // Returns true if overflow happened
     }
+    // - "exact_div" :: Normal divide, but UB if not an exact multiple
+    else if( name == "exact_div" )
+    {
+        const auto& ty = ty_params.tys.at(0);
+
+        auto lhs = PrimitiveValueVirt::from_value(ty, args.at(0));
+        auto rhs = PrimitiveValueVirt::from_value(ty, args.at(1));
+
+        LOG_ASSERT(!rhs.get().is_zero(), "`exact_div` with zero divisor: " << args.at(0) << " / " << args.at(1));
+        auto rem = lhs;
+        rem.get().modulo( rhs.get() );
+        LOG_ASSERT(rem.get().is_zero(), "`exact_div` with yielded non-zero remainder: " << args.at(0) << " / " << args.at(1));
+        bool didnt_overflow = lhs.get().divide( rhs.get() );
+        LOG_ASSERT(didnt_overflow, "`exact_div` failed for unknown reason: " << args.at(0) << " /" << args.at(1));
+
+        rv = Value(ty);
+        lhs.get().write_to_value(rv, 0);
+    }
     // Overflowing artithmatic
     else if( name == "overflowing_sub" )
     {
@@ -2181,6 +3043,18 @@ bool InterpreterThread::call_intrinsic(Value& rv, const ::std::string& name, con
         auto lhs = PrimitiveValueVirt::from_value(ty, args.at(0));
         auto rhs = PrimitiveValueVirt::from_value(ty, args.at(1));
         lhs.get().subtract( rhs.get() );
+        // TODO: Overflowing part
+
+        rv = Value(ty);
+        lhs.get().write_to_value(rv, 0);
+    }
+    else if( name == "overflowing_add" )
+    {
+        const auto& ty = ty_params.tys.at(0);
+
+        auto lhs = PrimitiveValueVirt::from_value(ty, args.at(0));
+        auto rhs = PrimitiveValueVirt::from_value(ty, args.at(1));
+        lhs.get().add( rhs.get() );
 
         rv = Value(ty);
         lhs.get().write_to_value(rv, 0);
@@ -2189,40 +3063,29 @@ bool InterpreterThread::call_intrinsic(Value& rv, const ::std::string& name, con
     // memcpy
     else if( name == "copy_nonoverlapping" )
     {
-        auto src_ofs = args.at(0).read_usize(0);
-        auto src_alloc = args.at(0).get_relocation(0);
-        auto dst_ofs = args.at(1).read_usize(0);
-        auto dst_alloc = args.at(1).get_relocation(0);
+        //auto src_ofs = args.at(0).read_usize(0);
+        //auto src_alloc = args.at(0).get_relocation(0);
+        //auto dst_ofs = args.at(1).read_usize(0);
+        //auto dst_alloc = args.at(1).get_relocation(0);
         size_t ent_count = args.at(2).read_usize(0);
         size_t ent_size = ty_params.tys.at(0).get_size();
         auto byte_count = ent_count * ent_size;
+        LOG_DEBUG("`copy_nonoverlapping`: byte_count=" << byte_count);
 
-        LOG_ASSERT(src_alloc, "Source of copy* must have an allocation");
-        LOG_ASSERT(dst_alloc, "Destination of copy* must be a memory allocation");
-        LOG_ASSERT(dst_alloc.is_alloc(), "Destination of copy* must be a memory allocation");
-
-        switch(src_alloc.get_ty())
+        // A count of zero doesn't need to do any of the checks (TODO: Validate this rule)
+        if( byte_count > 0 )
         {
-        case RelocationPtr::Ty::Allocation: {
-            auto v = src_alloc.alloc().read_value(src_ofs, byte_count);
-            LOG_DEBUG("v = " << v);
-            dst_alloc.alloc().write_value(dst_ofs, ::std::move(v));
-            } break;
-        case RelocationPtr::Ty::StdString:
-            LOG_ASSERT(src_ofs <= src_alloc.str().size(), "");
-            LOG_ASSERT(byte_count <= src_alloc.str().size(), "");
-            LOG_ASSERT(src_ofs + byte_count <= src_alloc.str().size(), "");
-            dst_alloc.alloc().write_bytes(dst_ofs, src_alloc.str().data() + src_ofs, byte_count);
-            break;
-        case RelocationPtr::Ty::Function:
-            LOG_FATAL("Attempt to copy* a function");
-            break;
-        case RelocationPtr::Ty::FfiPointer:
-            LOG_ASSERT(src_ofs <= src_alloc.ffi().size, "");
-            LOG_ASSERT(byte_count <= src_alloc.ffi().size, "");
-            LOG_ASSERT(src_ofs + byte_count <= src_alloc.ffi().size, "");
-            dst_alloc.alloc().write_bytes(dst_ofs, reinterpret_cast<const char*>(src_alloc.ffi().ptr_value) + src_ofs, byte_count);
-            break;
+            auto src_vr = args.at(0).read_pointer_valref_mut(0, byte_count);
+            auto dst_vr = args.at(1).read_pointer_valref_mut(0, byte_count);
+
+            auto& dst_alloc = dst_vr.m_alloc;
+            LOG_ASSERT(dst_alloc, "Destination of copy* must be a memory allocation");
+            LOG_ASSERT(dst_alloc.is_alloc(), "Destination of copy* must be a memory allocation");
+
+            // TODO: is this inefficient?
+            auto src_val = src_vr.read_value(0, byte_count);
+            LOG_DEBUG("src_val = " << src_val);
+            dst_alloc.alloc().write_value(dst_vr.m_offset, ::std::move(src_val));
         }
     }
     else
@@ -2235,6 +3098,7 @@ bool InterpreterThread::call_intrinsic(Value& rv, const ::std::string& name, con
 // TODO: Use a ValueRef instead?
 bool InterpreterThread::drop_value(Value ptr, const ::HIR::TypeRef& ty, bool is_shallow/*=false*/)
 {
+    TRACE_FUNCTION_R(ptr << ": " << ty << (is_shallow ? " (shallow)" : ""), "");
     // TODO: After the drop is done, flag the backing allocation for `ptr` as freed
     if( is_shallow )
     {
@@ -2242,7 +3106,7 @@ bool InterpreterThread::drop_value(Value ptr, const ::HIR::TypeRef& ty, bool is_
         auto box_ptr_vr = ptr.read_pointer_valref_mut(0, POINTER_SIZE);
         auto ofs = box_ptr_vr.read_usize(0);
         auto alloc = box_ptr_vr.get_relocation(0);
-        if( ofs != 0 || !alloc || !alloc.is_alloc() ) {
+        if( ofs != Allocation::PTR_BASE || !alloc || !alloc.is_alloc() ) {
             LOG_ERROR("Attempting to shallow drop with invalid pointer (no relocation or non-zero offset) - " << box_ptr_vr);
         }
 
@@ -2273,6 +3137,7 @@ bool InterpreterThread::drop_value(Value ptr, const ::HIR::TypeRef& ty, bool is_
         case TypeWrapper::Ty::Slice: {
             // - Get thin pointer and count
             auto ofs = ptr.read_usize(0);
+            LOG_ASSERT(ofs >= Allocation::PTR_BASE, "");
             auto ptr_reloc = ptr.get_relocation(0);
             auto count = ptr.read_usize(POINTER_SIZE);
 
@@ -2281,8 +3146,28 @@ bool InterpreterThread::drop_value(Value ptr, const ::HIR::TypeRef& ty, bool is_
             for(uint64_t i = 0; i < count; i ++)
             {
                 auto ptr = Value::new_pointer(pty, ofs, ptr_reloc);
-                if( !drop_value(ptr, ity) ) {
-                    LOG_TODO("Handle closure looping when dropping a slice");
+                if( !drop_value(ptr, ity) )
+                {
+                    // - This is trying to invoke custom drop glue, need to suspend this operation and come back later
+
+                    // > insert a new frame shim BEFORE the current top (which would be the frame created by
+                    // `drop_value` calling a function)
+                    m_stack.insert( m_stack.end() - 1, StackFrame::make_wrapper([this,pty,ity,ptr_reloc,count, i,ofs](Value& rv, Value drop_rv) mutable {
+                        assert(i < count);
+                        i ++;
+                        ofs += ity.get_size();
+                        if( i < count )
+                        {
+                            auto ptr = Value::new_pointer(pty, ofs, ptr_reloc);
+                            assert(!drop_value(ptr, ity));
+                            return false;
+                        }
+                        else
+                        {
+                            return true;
+                        }
+                        }) );
+                    return false;
                 }
                 ofs += ity.get_size();
             }
@@ -2297,12 +3182,12 @@ bool InterpreterThread::drop_value(Value ptr, const ::HIR::TypeRef& ty, bool is_
     {
         if( ty.inner_type == RawType::Composite )
         {
-            if( ty.composite_type->drop_glue != ::HIR::Path() )
+            if( ty.composite_type().drop_glue != ::HIR::Path() )
             {
                 LOG_DEBUG("Drop - " << ty);
 
                 Value   tmp;
-                return this->call_path(tmp, ty.composite_type->drop_glue, { ptr });
+                return this->call_path(tmp, ty.composite_type().drop_glue, { ptr });
             }
             else
             {
@@ -2311,7 +3196,21 @@ bool InterpreterThread::drop_value(Value ptr, const ::HIR::TypeRef& ty, bool is_
         }
         else if( ty.inner_type == RawType::TraitObject )
         {
-            LOG_TODO("Drop - " << ty << " - trait object");
+            // Get the drop glue from the vtable (first entry)
+            auto inner_ptr = ptr.read_value(0, POINTER_SIZE);
+            auto vtable = ptr.deref(POINTER_SIZE, ty.get_meta_type().get_inner());
+            auto drop_r = vtable.get_relocation(0);
+            if( drop_r )
+            {
+                LOG_ASSERT(drop_r.get_ty() == RelocationPtr::Ty::Function, "");
+                auto fcn = drop_r.fcn();
+                static Value    tmp;
+                return this->call_path(tmp, fcn, { ::std::move(inner_ptr) });
+            }
+            else
+            {
+                // None
+            }
         }
         else
         {

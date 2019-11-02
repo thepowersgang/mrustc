@@ -18,8 +18,8 @@ class MacroInvocation
 {
     Span    m_span;
 
-    ::std::string   m_macro_name;
-    ::std::string   m_ident;
+    RcString   m_macro_name;
+    RcString   m_ident;
     TokenTree   m_input;
 public:
     MacroInvocation(MacroInvocation&&) = default;
@@ -31,7 +31,7 @@ public:
     {
     }
 
-    MacroInvocation(Span span, ::std::string macro, ::std::string ident, TokenTree input):
+    MacroInvocation(Span span, RcString macro, RcString ident, TokenTree input):
         m_span( mv$(span) ),
         m_macro_name( mv$(macro) ),
         m_ident( mv$(ident) ),
@@ -48,9 +48,9 @@ public:
     }
 
     const Span& span() const { return m_span; }
-    const ::std::string& name() const { return m_macro_name; }
+    const RcString& name() const { return m_macro_name; }
 
-    const ::std::string& input_ident() const { return m_ident; }
+    const RcString& input_ident() const { return m_ident; }
     const TokenTree& input_tt() const { return m_input; }
           TokenTree& input_tt()       { return m_input; }
 

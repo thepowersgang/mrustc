@@ -35,12 +35,10 @@ namespace
 class CAsmExpander:
     public ExpandProcMacro
 {
-    ::std::unique_ptr<TokenStream> expand(const Span& sp, const ::AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
+    ::std::unique_ptr<TokenStream> expand(const Span& sp, const ::AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
         Token   tok;
         auto lex = TTStream(sp, tt);
-        if( ident != "" )
-            ERROR(sp, E0000, "asm! doesn't take an ident");
 
         auto template_text = get_string(sp, lex,  crate, mod);
         ::std::vector<::AST::ExprNode_Asm::ValRef>  outputs;
@@ -168,7 +166,7 @@ class CAsmExpander:
         {
             GET_TOK(tok, lex);
 
-            if( GET_TOK(tok, lex) == TOK_IDENT && tok.str() == "volatile" )
+            if( GET_TOK(tok, lex) == TOK_IDENT && tok.istr() == "volatile" )
             {
                 flags.push_back( "volatile" );
             }

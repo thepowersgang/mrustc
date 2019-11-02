@@ -17,7 +17,7 @@ class TypeParam
     ::AST::AttributeList    m_attrs;
     Span    m_span;
     // TODO: use an Ident?
-    ::std::string   m_name;
+    RcString   m_name;
     ::TypeRef m_default;
 public:
     TypeParam(TypeParam&& x) = default;
@@ -30,7 +30,7 @@ public:
     {
     }
 
-    TypeParam(Span sp, ::AST::AttributeList attrs, ::std::string name):
+    TypeParam(Span sp, ::AST::AttributeList attrs, RcString name):
         m_attrs( ::std::move(attrs) ),
         m_span( ::std::move(sp) ),
         m_name( ::std::move(name) ),
@@ -44,7 +44,7 @@ public:
 
     const ::AST::AttributeList& attrs() const { return m_attrs; }
     const Span& span() const { return m_span; }
-    const ::std::string& name() const { return m_name; }
+    const RcString& name() const { return m_name; }
 
     const TypeRef& get_default() const { return m_default; }
           TypeRef& get_default()       { return m_default; }

@@ -156,6 +156,17 @@ bool is_token_item(eTokenType tt) {
         return false;
     }
 }
+bool is_token_vis(eTokenType tt) {
+    switch(tt)
+    {
+    case TOK_RWORD_PUB:
+    case TOK_RWORD_CRATE:
+    case TOK_INTERPOLATED_VIS:
+        return true;
+    default:
+        return true;    // TODO: Is this true? it can capture just nothing
+    }
+}
 
 MacroRulesPtr::MacroRulesPtr(MacroRules* p):
     m_ptr(p)
@@ -177,7 +188,7 @@ MacroRulesPtr::~MacroRulesPtr()
     switch(x.type)
     {
     case MacroPatEnt::PAT_TOKEN: os << "=" << x.tok; break;
-    case MacroPatEnt::PAT_LOOP:  os << "loop w/ "  << x.tok << " [" << x.subpats << "]";  break;
+    case MacroPatEnt::PAT_LOOP:  os << "loop" << x.name << " w/ "  << x.tok << " [" << x.subpats << "]";  break;
     default:
         os << "$" << x.name << ":";
         switch(x.type)
@@ -194,6 +205,8 @@ MacroRulesPtr::~MacroRulesPtr()
         case MacroPatEnt::PAT_BLOCK: os << "block"; break;
         case MacroPatEnt::PAT_META:  os << "meta"; break;
         case MacroPatEnt::PAT_ITEM:  os << "item"; break;
+        case MacroPatEnt::PAT_VIS:   os << "vis"; break;
+        case MacroPatEnt::PAT_LIFETIME: os << "lifetime"; break;
         }
         break;
     }
@@ -215,6 +228,39 @@ MacroRulesPtr::~MacroRulesPtr()
     case MacroPatEnt::PAT_BLOCK: os << "PAT_BLOCK"; break;
     case MacroPatEnt::PAT_META:  os << "PAT_META"; break;
     case MacroPatEnt::PAT_ITEM:  os << "PAT_ITEM"; break;
+    case MacroPatEnt::PAT_VIS:   os << "PAT_VIS"; break;
+    case MacroPatEnt::PAT_LIFETIME: os << "PAT_LIFETIME"; break;
+    }
+    return os;
+}
+
+::std::ostream& operator<<(::std::ostream& os, const SimplePatEnt& x)
+{
+    TU_MATCH_HDRA( (x), { )
+    TU_ARMA(End, _e) os << "End";
+    TU_ARMA(LoopStart, _e) os << "LoopStart";
+    TU_ARMA(LoopNext, _e) os << "LoopNext";
+    TU_ARMA(LoopEnd, _e) os << "LoopEnd";
+    TU_ARMA(Jump, e) {
+        os << "Jump(->" << e.jump_target << ")";
+        }
+    TU_ARMA(ExpectTok, e) {
+        os << "Expect(" << e << ")";
+        }
+    TU_ARMA(ExpectPat, e) {
+        os << "Expect($" << e.idx << " = " << e.type << ")";
+        }
+    TU_ARMA(If, e) {
+        os << "If(" << (e.is_equal ? "=" : "!=") << "[";
+        for(const auto& p : e.ents) {
+            if(p.ty == MacroPatEnt::PAT_TOKEN)
+                os << p.tok;
+            else
+                os << p.ty;
+            os << ", ";
+        }
+        os << "] ->" << e.jump_target << ")";
+        }
     }
     return os;
 }
@@ -241,6 +287,9 @@ MacroRulesPtr::~MacroRulesPtr()
 }
 
 MacroRules::~MacroRules()
+{
+}
+MacroRulesArm::~MacroRulesArm()
 {
 }
 

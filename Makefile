@@ -15,9 +15,13 @@ ifeq ($(OS),Windows_NT)
 endif
 EXESUF ?=
 CXX ?= g++
-V ?= @
-
-TARGET_CC ?= clang
+V ?= !
+GPROF ?=
+ifeq ($(V),!)
+  V := @
+else
+  V :=
+endif
 
 TAIL_COUNT ?= 10
 
@@ -50,7 +54,7 @@ CXXFLAGS += -Wno-unknown-warning-option
 RUST_FLAGS := --cfg debug_assertions
 RUST_FLAGS += -g
 RUST_FLAGS += -O
-RUST_FLAGS += -L output/
+RUST_FLAGS += -L output$(OUTDIR_SUF)/
 RUST_FLAGS += $(RUST_FLAGS_EXTRA)
 
 SHELL = bash
@@ -67,6 +71,13 @@ else
 endif
 
 OBJDIR = .obj/
+
+ifneq ($(GPROF),)
+  OBJDIR := .obj-gprof/
+  CXXFLAGS += -pg -no-pie
+  LINKFLAGS += -pg -no-pie
+  EXESUF := -gprof$(EXESUF)
+endif
 
 BIN := bin/mrustc$(EXESUF)
 
@@ -89,16 +100,17 @@ OBJ +=  expand/env.o
 OBJ +=  expand/test.o
 OBJ +=  expand/rustc_diagnostics.o
 OBJ +=  expand/proc_macro.o
+OBJ +=  expand/assert.o
 OBJ += expand/test_harness.o
 OBJ += macro_rules/mod.o macro_rules/eval.o macro_rules/parse.o
 OBJ += resolve/use.o resolve/index.o resolve/absolute.o
 OBJ += hir/from_ast.o hir/from_ast_expr.o
 OBJ +=  hir/dump.o
-OBJ +=  hir/hir.o hir/generic_params.o
+OBJ +=  hir/hir.o hir/hir_ops.o hir/generic_params.o
 OBJ +=  hir/crate_ptr.o hir/expr_ptr.o
 OBJ +=  hir/type.o hir/path.o hir/expr.o hir/pattern.o
 OBJ +=  hir/visitor.o hir/crate_post_load.o
-OBJ += hir_conv/expand_type.o hir_conv/constant_evaluation.o hir_conv/resolve_ufcs.o hir_conv/bind.o hir_conv/markings.o
+OBJ += hir_conv/expand_type.o hir_conv/constant_evaluation.o hir_conv/resolve_ufcs.o hir_conv/resolve_ufcs_outer.o hir_conv/bind.o hir_conv/markings.o
 OBJ += hir_typeck/outer.o hir_typeck/common.o hir_typeck/helpers.o hir_typeck/static.o hir_typeck/impl_ref.o
 OBJ += hir_typeck/expr_visit.o
 OBJ += hir_typeck/expr_cs.o
@@ -112,8 +124,8 @@ OBJ +=  mir/from_hir.o mir/from_hir_match.o mir/mir_builder.o
 OBJ +=  mir/check.o mir/cleanup.o mir/optimise.o
 OBJ +=  mir/check_full.o
 OBJ += hir/serialise.o hir/deserialise.o hir/serialise_lowlevel.o
-OBJ += trans/trans_list.o trans/mangling.o
-OBJ += trans/enumerate.o trans/monomorphise.o trans/codegen.o
+OBJ += trans/trans_list.o trans/mangling_v2.o
+OBJ += trans/enumerate.o trans/auto_impls.o trans/monomorphise.o trans/codegen.o
 OBJ += trans/codegen_c.o trans/codegen_c_structured.o trans/codegen_mmir.o
 OBJ += trans/target.o trans/allocator.o
 
@@ -137,25 +149,26 @@ RUSTC_SRC_DES := rust-nightly-date
 RUSTCSRC := rustc-nightly-src/
 else ifeq ($(RUSTC_SRC_TY),stable)
 RUSTC_SRC_DES := rust-version
-RUSTCSRC := rustc-$(shell cat $(RUSTC_SRC_DES))-src/
+RUSTC_VERSION ?= $(shell cat $(RUSTC_SRC_DES))
+RUSTCSRC := rustc-$(RUSTC_VERSION)-src/
 else
 $(error Unknown rustc channel)
 endif
 RUSTC_SRC_DL := $(RUSTCSRC)/dl-version
 
-MAKE_MINICARGO = $(MAKE) -f minicargo.mk RUSTC_VERSION=$(shell cat $(RUSTC_SRC_DES)) RUSTC_CHANNEL=$(RUSTC_SRC_TY)
+MAKE_MINICARGO = $(MAKE) -f minicargo.mk RUSTC_VERSION=$(RUSTC_VERSION) RUSTC_CHANNEL=$(RUSTC_SRC_TY) OUTDIR_SUF=$(OUTDIR_SUF)
 
 
-output/libstd.hir: $(BIN)
+output$(OUTDIR_SUF)/libstd.rlib: $(RUSTC_SRC_DL) $(BIN)
 	$(MAKE_MINICARGO) $@
-output/libtest.hir output/libpanic_unwind.hir output/libproc_macro.hir: output/libstd.hir
+output$(OUTDIR_SUF)/libtest.rlib output$(OUTDIR_SUF)/libpanic_unwind.rlib output$(OUTDIR_SUF)/libproc_macro.rlib: output$(OUTDIR_SUF)/libstd.rlib
 	$(MAKE_MINICARGO) $@
-output/rustc output/cargo: output/libtest.hir
+output$(OUTDIR_SUF)/rustc output$(OUTDIR_SUF)/cargo: output$(OUTDIR_SUF)/libtest.rlib
 	$(MAKE_MINICARGO) $@
 
-TEST_DEPS := output/libstd.hir output/libtest.hir output/libpanic_unwind.hir output/librust_test_helpers.a
+TEST_DEPS := output$(OUTDIR_SUF)/libstd.rlib output$(OUTDIR_SUF)/libtest.rlib output$(OUTDIR_SUF)/libpanic_unwind.rlib
 
-fcn_extcrate = $(patsubst %,output/lib%.hir,$(1))
+fcn_extcrate = $(patsubst %,output$(OUTDIR_SUF)/lib%.rlib,$(1))
 
 fn_getdeps = \
   $(shell cat $1 \
@@ -166,6 +179,10 @@ fn_getdeps = \
 .PHONY: RUSTCSRC
 RUSTCSRC: $(RUSTC_SRC_DL)
 
+#
+# rustc (with std/cargo) source download
+#
+# NIGHTLY:
 ifeq ($(RUSTC_SRC_TY),nightly)
 rustc-nightly-src.tar.gz: $(RUSTC_SRC_DES)
 	@export DL_RUST_DATE=$$(cat rust-nightly-date); \
@@ -174,25 +191,25 @@ rustc-nightly-src.tar.gz: $(RUSTC_SRC_DES)
 	rm -f rustc-nightly-src.tar.gz; \
 	curl -sS https://static.rust-lang.org/dist/$${DL_RUST_DATE}/rustc-nightly-src.tar.gz -o rustc-nightly-src.tar.gz
 
-# TODO: Handle non-nightly download
-$(RUSTC_SRC_DL): rust-nightly-date rustc-nightly-src.tar.gz rust_src.patch
+$(RUSTC_SRC_DL): rust-nightly-date rustc-nightly-src.tar.gz rustc-nightly-src.patch
 	@export DL_RUST_DATE=$$(cat rust-nightly-date); \
 	export DISK_RUST_DATE=$$([ -f $(RUSTC_SRC_DL) ] && cat $(RUSTC_SRC_DL)); \
 	if [ "$$DL_RUST_DATE" != "$$DISK_RUST_DATE" ]; then \
 		rm -rf rustc-nightly-src; \
 		tar -xf rustc-nightly-src.tar.gz; \
-		cd $(RUSTSRC) && patch -p0 < ../rust_src.patch; \
+		cd $(RUSTSRC) && patch -p0 < ../rustc-nightly-src.patch; \
 	fi
 	cat rust-nightly-date > $(RUSTC_SRC_DL)
 else
-RUSTC_SRC_TARBALL := rustc-$(shell cat $(RUSTC_SRC_DES))-src.tar.gz
+# NAMED (Stable or beta)
+RUSTC_SRC_TARBALL := rustc-$(RUSTC_VERSION)-src.tar.gz
 $(RUSTC_SRC_TARBALL): $(RUSTC_SRC_DES)
 	@echo [CURL] $@
 	@rm -f $@
 	@curl -sS https://static.rust-lang.org/dist/$@ -o $@
-$(RUSTC_SRC_DL): $(RUSTC_SRC_TARBALL) rust_src.patch
+$(RUSTC_SRC_DL): $(RUSTC_SRC_TARBALL) rustc-$(RUSTC_VERSION)-src.patch
 	tar -xf $(RUSTC_SRC_TARBALL)
-	cd $(RUSTCSRC) && patch -p0 < ../rust_src.patch;
+	cd $(RUSTCSRC) && patch -p0 < ../rustc-$(RUSTC_VERSION)-src.patch;
 	cat $(RUSTC_SRC_DES) > $(RUSTC_SRC_DL)
 endif
 
@@ -201,8 +218,8 @@ endif
 .PHONY: local_tests
 local_tests:
 	@$(MAKE) -C tools/testrunner
-	@mkdir -p output/local_tests
-	./tools/bin/testrunner -o output/local_tests samples/test
+	@mkdir -p output$(OUTDIR_SUF)/local_tests
+	./tools/bin/testrunner -o output$(OUTDIR_SUF)/local_tests -L output samples/test
 
 # 
 # RUSTC TESTS
@@ -215,14 +232,20 @@ rust_tests: RUST_TESTS_run-pass
 
 .PHONY: RUST_TESTS RUST_TESTS_run-pass
 RUST_TESTS: RUST_TESTS_run-pass
-RUST_TESTS_run-pass: output/librust_test_helpers.a
+RUST_TESTS_run-pass: output$(OUTDIR_SUF)/test/librust_test_helpers.a
 	@$(MAKE) -C tools/testrunner
-	@mkdir -p output/rust_tests/run-pass
-	./tools/bin/testrunner -o output/rust_tests/run-pass $(RUST_TESTS_DIR)run-pass --exceptions disabled_tests_run-pass.txt
-output/librust_test_helpers.a: output/rust_test_helpers.o
+	@mkdir -p output$(OUTDIR_SUF)/rust_tests/run-pass
+	make -f minicargo.mk output$(OUTDIR_SUF)/test/libtest.so
+	./tools/bin/testrunner -L output$(OUTDIR_SUF)/test -o output$(OUTDIR_SUF)/rust_tests/run-pass $(RUST_TESTS_DIR)run-pass --exceptions disabled_tests_run-pass.txt
+output$(OUTDIR_SUF)/test/librust_test_helpers.a: output$(OUTDIR_SUF)/test/rust_test_helpers.o
 	@mkdir -p $(dir $@)
 	ar cur $@ $<
-output/rust_test_helpers.o: $(RUSTCSRC)src/rt/rust_test_helpers.c
+ifeq ($(RUSTC_VERSION),1.19.0)
+RUST_TEST_HELPERS_C := $(RUSTCSRC)src/rt/rust_test_helpers.c
+else
+RUST_TEST_HELPERS_C := $(RUSTCSRC)src/test/auxiliary/rust_test_helpers.c
+endif
+output$(OUTDIR_SUF)/test/rust_test_helpers.o: $(RUST_TEST_HELPERS_C)
 	@mkdir -p $(dir $@)
 	$(CC) -c $< -o $@
 
@@ -230,85 +253,24 @@ output/rust_test_helpers.o: $(RUSTCSRC)src/rt/rust_test_helpers.c
 # libstd tests
 # 
 .PHONY: rust_tests-libs
-
-LIB_TESTS := collections #std
-#LIB_TESTS += rustc_data_structures
-rust_tests-libs: $(patsubst %,output/lib%-test_out.txt, $(LIB_TESTS))
-
-RUNTIME_ARGS_output/libcollections-test := --test-threads 1
-#RUNTIME_ARGS_output/libcore-test := --test-threads 1
-RUNTIME_ARGS_output/libstd-test := --test-threads 1
-RUNTIME_ARGS_output/libstd-test += --skip ::collections::hash::map::test_map::test_index_nonexistent
-RUNTIME_ARGS_output/libstd-test += --skip ::collections::hash::map::test_map::test_drops
-RUNTIME_ARGS_output/libstd-test += --skip ::collections::hash::map::test_map::test_placement_drop
-RUNTIME_ARGS_output/libstd-test += --skip ::collections::hash::map::test_map::test_placement_panic
-RUNTIME_ARGS_output/libstd-test += --skip ::io::stdio::tests::panic_doesnt_poison	# Unbounded execution
-
-output/libcore-test: $(RUSTCSRC)src/libcore/tests/lib.rs $(TEST_DEPS)
-	@echo "--- [MRUSTC] --test -o $@"
-	@mkdir -p output/
-	@rm -f $@
-	$(DBG) $(ENV_$@) $(BIN) --test $< -o $@ $(RUST_FLAGS) $(ARGS_$@) $(PIPECMD)
-#	# HACK: Work around gdb returning success even if the program crashed
-	@test -e $@
-output/lib%-test: $(RUSTCSRC)src/lib%/lib.rs $(TEST_DEPS)
-	@echo "--- [MRUSTC] --test -o $@"
-	@mkdir -p output/
-	@rm -f $@
-	$(DBG) $(ENV_$@) $(BIN) --test $< -o $@ $(RUST_FLAGS) $(ARGS_$@) $(PIPECMD)
-#	# HACK: Work around gdb returning success even if the program crashed
-	@test -e $@
-output/lib%-test: $(RUSTCSRC)src/lib%/src/lib.rs $(TEST_DEPS)
-	@echo "--- [MRUSTC] $@"
-	@mkdir -p output/
-	@rm -f $@
-	$(DBG) $(ENV_$@) $(BIN) --test $< -o $@ $(RUST_FLAGS) $(ARGS_$@) $(PIPECMD)
-#	# HACK: Work around gdb returning success even if the program crashed
-	@test -e $@
-output/%_out.txt: output/%
-	@echo "--- [$<]"
-	$V./$< $(RUNTIME_ARGS_$<) > $@ || (tail -n 1 $@; mv $@ $@_fail; false)
-
-# "hello, world" test - Invoked by the `make test` target
-output/rust/test_run-pass_hello: $(RUST_TESTS_DIR)run-pass/hello.rs $(TEST_DEPS)
-	@mkdir -p $(dir $@)
-	@echo "--- [MRUSTC] -o $@"
-	$(DBG) $(BIN) $< -o $@ $(RUST_FLAGS) $(PIPECMD)
-output/rust/test_run-pass_hello_out.txt: output/rust/test_run-pass_hello
-	@echo "--- [$<]"
-	@./$< | tee $@
+rust_tests-libs: $(TEST_DEPS)
+	make -f minicargo.mk $@
 
 
-
-.PHONY: test test_rustos
+.PHONY: test
 #
 # TEST: Rust standard library and the "hello, world" run-pass test
 #
-test: output/libstd.hir output/rust/test_run-pass_hello_out.txt $(BIN) TEST_targetsaveback
+test: output$(OUTDIR_SUF)/rust/test_run-pass_hello_out.txt
 
-.PHONY: TEST_targetsaveback
-TEST_targetsaveback:
-	$(BIN) --target ./samples/target_stress_test.toml --dump-target-spec TMP-dump-target_stress_test.toml
-	$(BIN) --target ./TMP-dump-target_stress_test.toml --dump-target-spec TMP-dump-target_stress_test-2.toml
-	diff ./samples/target_stress_test.toml TMP-dump-target_stress_test.toml
-	diff TMP-dump-target_stress_test.toml TMP-dump-target_stress_test-2.toml
-
-#
-# TEST: Attempt to compile rust_os (Tifflin) from ../rust_os
-#
-test_rustos: $(addprefix output/rust_os/,libkernel.hir)
-
-RUSTOS_ENV := RUST_VERSION="mrustc 0.1"
-RUSTOS_ENV += TK_GITSPEC="unknown"
-RUSTOS_ENV += TK_VERSION="0.1"
-RUSTOS_ENV += TK_BUILD="mrustc:0"
-
-output/rust_os/libkernel.hir: ../rust_os/Kernel/Core/main.rs output/libcore.hir output/libstack_dst.hir $(BIN)
+# "hello, world" test - Invoked by the `make test` target
+output$(OUTDIR_SUF)/rust/test_run-pass_hello: $(RUST_TESTS_DIR)run-pass/hello.rs $(TEST_DEPS)
 	@mkdir -p $(dir $@)
-	export $(RUSTOS_ENV) ; $(DBG) $(BIN) $(RUST_FLAGS) $< -o $@ --cfg arch=amd64 $(PIPECMD)
-output/libstack_dst.hir: ../rust_os/externals/crates.io/stack_dst/src/lib.rs $(BIN)
-	@mkdir -p $(dir $@)
-	$(DBG) $(BIN) $(RUST_FLAGS) $< -o $@ --cfg feature=no_std $(PIPECMD)
+	@echo "--- [MRUSTC] -o $@"
+	$(DBG) $(BIN) $< -o $@ $(RUST_FLAGS) $(PIPECMD)
+output$(OUTDIR_SUF)/rust/test_run-pass_hello_out.txt: output$(OUTDIR_SUF)/rust/test_run-pass_hello
+	@echo "--- [$<]"
+	@./$< | tee $@
 
 
 # -------------------------------

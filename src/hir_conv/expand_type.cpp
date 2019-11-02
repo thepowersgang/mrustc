@@ -21,8 +21,14 @@
         // Anything else - leave it be
         ),
     (TypeAlias,
-        if( !is_expr && path.m_params.m_types.size() != e2.m_params.m_types.size() ) {
-            ERROR(sp, E0000, "Mismatched parameter count in " << path << ", expected " << e2.m_params.m_types.size() << " got " << path.m_params.m_types.size());
+        auto pp = path.m_params.clone();
+        if( !is_expr ) {
+            while( pp.m_types.size() < e2.m_params.m_types.size() && e2.m_params.m_types[pp.m_types.size()].m_default != ::HIR::TypeRef() ) {
+                pp.m_types.push_back( e2.m_params.m_types[pp.m_types.size()].m_default.clone() );
+            }
+            if( pp.m_types.size() != e2.m_params.m_types.size() ) {
+                ERROR(sp, E0000, "Mismatched parameter count in " << path << ", expected " << e2.m_params.m_types.size() << " got " << pp.m_types.size());
+            }
         }
         if( e2.m_params.m_types.size() > 0 ) {
             // TODO: Better `monomorphise_type`
@@ -33,8 +39,8 @@
                 }
                 else if( (ge.binding >> 8) == 0 ) {
                     auto idx = ge.binding & 0xFF;
-                    if( idx < path.m_params.m_types.size() )
-                        return path.m_params.m_types[idx];
+                    if( idx < pp.m_types.size() )
+                        return pp.m_types[idx];
                     else if( is_expr )
                         return empty_type;
                     else
@@ -255,9 +261,10 @@ public:
             {
                 if( node.m_is_struct )
                 {
-                    auto new_path = upper_visitor.expand_alias_gp(node.span(), node.m_path);
-                    if( new_path.m_path.m_components.size() != 0 )
+                    auto new_type = ConvertHIR_ExpandAliases_GetExpansion(upper_visitor.m_crate, node.m_path, /*in_expr=*/true);
+                    if( new_type != ::HIR::TypeRef() )
                     {
+                        auto new_path = mv$(new_type.m_data.as_Path().path);
                         DEBUG("Replacing " << node.m_path << " with " << new_path);
                         node.m_path = mv$(new_path);
                     }

@@ -21,11 +21,12 @@
 class CMacroRulesExpander:
     public ExpandProcMacro
 {
-    ::std::unique_ptr<TokenStream> expand(const Span& sp, const ::AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
+    ::std::unique_ptr<TokenStream> expand(const Span& sp, const ::AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
-        if( ident == "" )
-            ERROR(sp, E0000, "macro_rules! requires an identifier" );
-
+        ERROR(sp, E0000, "macro_rules! requires an identifier" );
+    }
+    ::std::unique_ptr<TokenStream> expand_ident(const Span& sp, const ::AST::Crate& crate, const RcString& ident, const TokenTree& tt, AST::Module& mod) override
+    {
         DEBUG("Parsing macro_rules! " << ident);
         TTStream    lex(sp, tt);
         auto mac = Parse_MacroRules(lex);
@@ -40,7 +41,7 @@ class CMacroUseHandler:
 {
     AttrStage stage() const override { return AttrStage::Post; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
         TRACE_FUNCTION_F("path=" << path);
 
@@ -48,7 +49,7 @@ class CMacroUseHandler:
             // Just ignore
         )
         else TU_IFLET( ::AST::Item, i, Crate, ec_name,
-            const auto& ec = crate.m_extern_crates.at(ec_name.name);
+            const auto& ec = crate.m_extern_crates.at(ec_name.name.c_str());
             if( mi.has_sub_items() )
             {
                 TODO(sp, "Named import from extern crate");
@@ -61,8 +62,13 @@ class CMacroUseHandler:
                     });
                 for(const auto& p : ec.m_hir->m_proc_macros)
                 {
-                    mod.m_macro_imports.push_back(::std::make_pair( p.path.m_components, nullptr ));
-                    mod.m_macro_imports.back().first.insert( mod.m_macro_imports.back().first.begin(), p.path.m_crate_name );
+                    mod.m_macro_imports.push_back(AST::Module::MacroImport{ false, p.path.m_components.back(), p.path.m_components, nullptr });
+                    mod.m_macro_imports.back().path.insert( mod.m_macro_imports.back().path.begin(), p.path.m_crate_name );
+                }
+                for(const auto& p : ec.m_hir->m_proc_macro_reexports)
+                {
+                    mod.m_macro_imports.push_back(AST::Module::MacroImport{ /*is_pub=*/ false, p.first, p.second.path.m_components, nullptr });
+                    mod.m_macro_imports.back().path.insert( mod.m_macro_imports.back().path.begin(), p.second.path.m_crate_name );
                 }
             }
         )
@@ -119,7 +125,7 @@ class CMacroExportHandler:
 {
     AttrStage stage() const override { return AttrStage::Post; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
         if( i.is_None() ) {
         }
@@ -146,14 +152,14 @@ class CMacroReexportHandler:
     public ExpandDecorator
 {
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
         if( !i.is_Crate() ) {
             ERROR(sp, E0000, "Use of #[macro_reexport] on non-crate - " << i.tag_str());
         }
 
         const auto& crate_name = i.as_Crate().name;
-        auto& ext_crate = *crate.m_extern_crates.at(crate_name).m_hir;
+        auto& ext_crate = *crate.m_extern_crates.at(crate_name.c_str()).m_hir;
 
         if( mi.has_sub_items() )
         {

@@ -24,7 +24,7 @@ enum eCoreType
     CORETYPE_F64,
 };
 
-extern enum eCoreType coretype_fromstring(const ::std::string& name);
+extern enum eCoreType coretype_fromstring(const char* name);
 extern const char* coretype_name(const eCoreType ct);
 
 #endif // CORETYPES_HPP_INCLUDED

@@ -6,6 +6,7 @@
  * - MIR (Middle Intermediate Representation) definitions
  */
 #include <mir/mir.hpp>
+#include <algorithm>    // std::min
 
 namespace MIR {
     ::std::ostream& operator<<(::std::ostream& os, const Constant& v) {
@@ -44,10 +45,10 @@ namespace MIR {
             os << "\"" << FmtEscaped(e) << "\"";
             ),
         (Const,
-            os << e.p;
+            os << *e.p;
             ),
         (ItemAddr,
-            os << "&" << e;
+            os << "&" << *e;
             )
         )
         return os;
@@ -55,7 +56,7 @@ namespace MIR {
     ::Ordering Constant::ord(const Constant& b) const
     {
         if( this->tag() != b.tag() )
-            return ::ord( static_cast<unsigned int>(this->tag()), b.tag() );
+            return ::ord( static_cast<unsigned int>(this->tag()), static_cast<unsigned int>(b.tag()) );
         TU_MATCHA( (*this,b), (ae,be),
         (Int,
             if( ae.v != be.v )
@@ -82,128 +83,95 @@ namespace MIR {
             return ::ord(ae, be);
             ),
         (Const,
-            return ::ord(ae.p, be.p);
+            return ::ord(*ae.p, *be.p);
             ),
         (ItemAddr,
-            return ::ord(ae, be);
+            return ::ord(*ae, *be);
             )
         )
         throw "";
     }
 
+    void LValue::RefCommon::fmt(::std::ostream& os) const
+    {
+        TU_MATCHA( (m_lv->m_root), (e),
+        (Return,
+            os << "retval";
+            ),
+        (Argument,
+            os << "a" << e;
+            ),
+        (Local,
+            os << "_" << e;
+            ),
+        (Static,
+            os << "(" << e << ")";
+            )
+        )
+        for(size_t i = 0; i < m_wrapper_count; i ++)
+        {
+            const LValue::Wrapper& w = m_lv->m_wrappers.at(i);
+            TU_MATCHA( (w), (e),
+            (Field,
+                os << "." << e;
+                ),
+            (Deref,
+                os << "*";
+                ),
+            (Index,
+                os << "[_" << e << "]";
+                ),
+            (Downcast,
+                os << "#" << e;
+                )
+            )
+        }
+    }
+
     ::std::ostream& operator<<(::std::ostream& os, const LValue& x)
     {
-        TU_MATCHA( (x), (e),
-        (Return,
-            os << "Return";
-            ),
-        (Argument,
-            os << "Argument(" << e.idx << ")";
-            ),
-        (Local,
-            os << "Local(" << e << ")";
-            ),
-        (Static,
-            os << "Static(" << e << ")";
-            ),
-        (Field,
-            os << "Field(" << e.field_index << ", " << *e.val << ")";
-            ),
-        (Deref,
-            os << "Deref(" << *e.val << ")";
-            ),
-        (Index,
-            os << "Index(" << *e.val << ", " << *e.idx << ")";
-            ),
-        (Downcast,
-            os << "Downcast(" << e.variant_index << ", " << *e.val << ")";
-            )
-        )
+        LValue::CRef(x).fmt(os);
         return os;
     }
-    bool operator<(const LValue& a, const LValue& b)
+
+    Ordering LValue::Storage::ord(const LValue::Storage& x) const
     {
-        if( a.tag() != b.tag() )
-            return a.tag() < b.tag();
-        TU_MATCHA( (a, b), (ea, eb),
-        (Return,
-            return false;
-            ),
-        (Argument,
-            return ea.idx < eb.idx;
-            ),
-        (Local,
-            return ea < eb;
-            ),
-        (Static,
-            return ea < eb;
-            ),
-        (Field,
-            if( *ea.val != *eb.val )
-                return *ea.val < *eb.val;
-            if( ea.field_index != eb.field_index )
-                return ea.field_index < eb.field_index;
-            return true;
-            ),
-        (Deref,
-            return *ea.val < *eb.val;
-            ),
-        (Index,
-            if( *ea.val != *eb.val )
-                return *ea.val < *eb.val;
-            return *ea.idx < *eb.idx;
-            ),
-        (Downcast,
-            if( *ea.val != *eb.val )
-                return *ea.val < *eb.val;
-            return ea.variant_index < eb.variant_index;
-            )
-        )
-        throw "";
+        if( x.is_Static() )
+        {
+            if( this->is_Static() )
+                return this->as_Static().ord( x.as_Static() );
+            else
+                return OrdLess;
+        }
+        else
+        {
+            if( this->is_Static() )
+                return OrdGreater;
+        }
+
+        return ::ord(this->val, x.val);
     }
-    bool operator==(const LValue& a, const LValue& b)
+    Ordering LValue::ord(const LValue& x) const
     {
-        if( a.tag() != b.tag() )
-            return false;
-        TU_MATCHA( (a, b), (ea, eb),
-        (Return,
-            return true;
-            ),
-        (Argument,
-            return ea.idx == eb.idx;
-            ),
-        (Local,
-            return ea == eb;
-            ),
-        (Static,
-            return ea == eb;
-            ),
-        (Field,
-            if( *ea.val != *eb.val )
-                return false;
-            if( ea.field_index != eb.field_index )
-                return false;
-            return true;
-            ),
-        (Deref,
-            return *ea.val == *eb.val;
-            ),
-        (Index,
-            if( *ea.val != *eb.val )
-                return false;
-            if( *ea.idx != *eb.idx )
-                return false;
-            return true;
-            ),
-        (Downcast,
-            if( *ea.val != *eb.val )
-                return false;
-            if( ea.variant_index != eb.variant_index )
-                return false;
-            return true;
-            )
-        )
-        throw "";
+        auto rv = m_root.ord(x.m_root);
+        if( rv != OrdEqual )
+            return rv;
+        return ::ord(m_wrappers, x.m_wrappers);
+    }
+    Ordering LValue::RefCommon::ord(const LValue::RefCommon& x) const
+    {
+        Ordering rv;
+        //TRACE_FUNCTION_FR(FMT_CB(ss, this->fmt(ss); ss << " ? "; x.fmt(ss);), rv);
+        rv = m_lv->m_root.ord(x.m_lv->m_root);
+        if( rv != OrdEqual )
+            return rv;
+        for(size_t i = 0; i < ::std::min(m_wrapper_count, x.m_wrapper_count); i ++)
+        {
+            rv = m_lv->m_wrappers[i].ord(x.m_lv->m_wrappers[i]);
+            if( rv != OrdEqual )
+                return rv;
+        }
+        return (rv = ::ord(m_wrapper_count, x.m_wrapper_count));
     }
 
     ::std::ostream& operator<<(::std::ostream& os, const Param& x)
@@ -537,30 +505,14 @@ namespace MIR {
     }
 }
 
-::MIR::LValue MIR::LValue::clone() const
+::MIR::LValue::Storage MIR::LValue::Storage::clone() const
 {
-    TU_MATCHA( (*this), (e),
-    (Return, return LValue(e); ),
-    (Argument, return LValue(e); ),
-    (Local,  return LValue(e); ),
-    (Static, return LValue(e.clone()); ),
-    (Field, return LValue::make_Field({
-        box$( e.val->clone() ),
-        e.field_index
-        }); ),
-    (Deref, return LValue::make_Deref({
-        box$( e.val->clone() )
-        }); ),
-    (Index, return LValue::make_Index({
-        box$( e.val->clone() ),
-        box$( e.idx->clone() )
-        }); ),
-    (Downcast, return LValue::make_Downcast({
-        box$( e.val->clone() ),
-        e.variant_index
-        }); )
-    )
-    throw "";
+    if( is_Static() ) {
+        return new_Static(as_Static().clone());
+    }
+    else {
+        return Storage(this->val);
+    }
 }
 ::MIR::Constant MIR::Constant::clone() const
 {
@@ -571,8 +523,8 @@ namespace MIR {
     (Bool, return ::MIR::Constant(e2); ),
     (Bytes, return ::MIR::Constant(e2); ),
     (StaticString, return ::MIR::Constant(e2); ),
-    (Const, return ::MIR::Constant::make_Const({e2.p.clone()}); ),
-    (ItemAddr, return ::MIR::Constant(e2.clone()); )
+    (Const, return ::MIR::Constant::make_Const({box$(e2.p->clone())}); ),
+    (ItemAddr, return ::MIR::Constant(box$(e2->clone())); )
     )
     throw "";
 }

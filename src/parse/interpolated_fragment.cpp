@@ -31,6 +31,9 @@ InterpolatedFragment::~InterpolatedFragment()
         case InterpolatedFragment::ITEM:
             delete reinterpret_cast<AST::Named<AST::Item>*>(m_ptr);
             break;
+        case InterpolatedFragment::VIS:
+            delete reinterpret_cast<AST::Visibility*>(m_ptr);
+            break;
         }
     }
 }
@@ -82,6 +85,11 @@ InterpolatedFragment::InterpolatedFragment(TypeRef v):
     m_ptr( new TypeRef(mv$(v)) )
 {
 }
+InterpolatedFragment::InterpolatedFragment(AST::Visibility v):
+    m_type( InterpolatedFragment::VIS ),
+    m_ptr( new AST::Visibility(mv$(v)) )
+{
+}
 
 ::std::ostream& operator<<(::std::ostream& os, InterpolatedFragment const& x)
 {
@@ -117,6 +125,9 @@ InterpolatedFragment::InterpolatedFragment(TypeRef v):
         const auto& named_item = *reinterpret_cast<const AST::Named<AST::Item>*>(x.m_ptr);
         os << "item[" << named_item.data.tag_str() << "(" << named_item.name << ")]";
         } break;
+    case InterpolatedFragment::VIS:
+        os << "vis[" << *reinterpret_cast<const AST::Visibility*>(x.m_ptr) << "]";
+        break;
     }
     return os;
 }

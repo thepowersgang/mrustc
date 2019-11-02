@@ -57,6 +57,7 @@ public:
 public: // ?? - Needed once, anymore?
     struct IVar
     {
+        //bool could_be_diverge;    // TODO: use this instead of InferClass::Diverge
         unsigned int alias; // If not ~0, this points to another ivar
         ::std::unique_ptr< ::HIR::TypeRef> type;    // Type (only nullptr if alias!=0)
 
@@ -149,17 +150,19 @@ class TraitResolution
     const ::HIR::Crate& m_crate;
     const ::HIR::GenericParams* m_impl_params;
     const ::HIR::GenericParams* m_item_params;
+    const ::HIR::SimplePath&    m_vis_path;
 
     ::std::map< ::HIR::TypeRef, ::HIR::TypeRef> m_type_equalities;
 
     ::HIR::SimplePath   m_lang_Box;
     mutable ::std::vector< ::HIR::TypeRef>  m_eat_active_stack;
 public:
-    TraitResolution(const HMTypeInferrence& ivars, const ::HIR::Crate& crate, const ::HIR::GenericParams* impl_params, const ::HIR::GenericParams* item_params):
+    TraitResolution(const HMTypeInferrence& ivars, const ::HIR::Crate& crate, const ::HIR::GenericParams* impl_params, const ::HIR::GenericParams* item_params, const ::HIR::SimplePath& vis_path):
         m_ivars(ivars),
         m_crate(crate),
         m_impl_params( impl_params ),
         m_item_params( item_params )
+        ,m_vis_path(vis_path)
     {
         prep_indexes();
         m_lang_Box = crate.get_lang_item_path_opt("owned_box");
@@ -201,13 +204,14 @@ public:
 
     /// Iterate over in-scope bounds (function then top)
     bool iterate_bounds( ::std::function<bool(const ::HIR::GenericBound&)> cb) const;
+    bool iterate_bounds_traits(const Span& sp, ::std::function<bool(const ::HIR::TypeRef&, const ::HIR::TraitPath& trait)> cb) const;
     bool iterate_aty_bounds(const Span& sp, const ::HIR::Path::Data::Data_UfcsKnown& pe, ::std::function<bool(const ::HIR::TraitPath&)> cb) const;
 
-    typedef ::std::function<bool(const ::HIR::TypeRef&, const ::HIR::PathParams&, const ::std::map< ::std::string,::HIR::TypeRef>&)> t_cb_trait_impl;
+    typedef ::std::function<bool(const ::HIR::TypeRef&, const ::HIR::PathParams&, const ::std::map< RcString,::HIR::TypeRef>&)> t_cb_trait_impl;
     typedef ::std::function<bool(ImplRef, ::HIR::Compare)> t_cb_trait_impl_r;
 
     /// Searches for a trait impl that matches the provided trait name and type
-    bool find_trait_impls(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl_r callback) const;
+    bool find_trait_impls(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl_r callback, bool magic_trait_impls=true) const;
 
     /// Locate a named trait in the provied trait (either itself or as a parent trait)
     bool find_named_trait_in_trait(const Span& sp,
@@ -224,6 +228,8 @@ public:
     }
     /// Search for a trait implementation in the crate (allows nullptr to ignore params)
     bool find_trait_impls_crate(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams* params, const ::HIR::TypeRef& type,  t_cb_trait_impl_r callback) const;
+    /// Check for magic (automatically determined) trait implementations
+    bool find_trait_impls_magic(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl_r callback) const;
 
 private:
     ::HIR::Compare check_auto_trait_impl_destructure(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams* params_ptr, const ::HIR::TypeRef& type) const;
@@ -244,17 +250,17 @@ public:
     /// Locate the named method by applying auto-dereferencing.
     /// \return Number of times deref was applied (or ~0 if _ was hit)
     unsigned int autoderef_find_method(const Span& sp,
-            const HIR::t_trait_list& traits, const ::std::vector<unsigned>& ivars, const ::HIR::TypeRef& top_ty, const ::std::string& method_name,
+            const HIR::t_trait_list& traits, const ::std::vector<unsigned>& ivars, const ::HIR::TypeRef& top_ty, const char* method_name,
             /* Out -> */::std::vector<::std::pair<AutoderefBorrow,::HIR::Path>>& possibilities
             ) const;
     /// Locate the named field by applying auto-dereferencing.
     /// \return Number of times deref was applied (or ~0 if _ was hit)
-    unsigned int autoderef_find_field(const Span& sp, const ::HIR::TypeRef& top_ty, const ::std::string& name,  /* Out -> */::HIR::TypeRef& field_type) const;
+    unsigned int autoderef_find_field(const Span& sp, const ::HIR::TypeRef& top_ty, const char* name,  /* Out -> */::HIR::TypeRef& field_type) const;
 
     /// Apply an automatic dereference
     const ::HIR::TypeRef* autoderef(const Span& sp, const ::HIR::TypeRef& ty,  ::HIR::TypeRef& tmp_type) const;
 
-    bool find_field(const Span& sp, const ::HIR::TypeRef& ty, const ::std::string& name,  /* Out -> */::HIR::TypeRef& field_type) const;
+    bool find_field(const Span& sp, const ::HIR::TypeRef& ty, const char* name,  /* Out -> */::HIR::TypeRef& field_type) const;
 
     enum class MethodAccess {
         Shared,
@@ -262,7 +268,7 @@ public:
         Move,
     };
 private:
-    const ::HIR::TypeRef* check_method_receiver(const Span& sp, ::HIR::Function::Receiver receiver, const ::HIR::TypeRef& ty, TraitResolution::MethodAccess access) const;
+    const ::HIR::TypeRef* check_method_receiver(const Span& sp, const ::HIR::Function& fcn, const ::HIR::TypeRef& ty, TraitResolution::MethodAccess access) const;
 public:
     enum class AllowedReceivers {
         All,
@@ -273,16 +279,17 @@ public:
     };
     friend ::std::ostream& operator<<(::std::ostream& os, const AllowedReceivers& x);
     bool find_method(const Span& sp,
-            const HIR::t_trait_list& traits, const ::std::vector<unsigned>& ivars, const ::HIR::TypeRef& ty, const ::std::string& method_name, MethodAccess access,
+            const HIR::t_trait_list& traits, const ::std::vector<unsigned>& ivars, const ::HIR::TypeRef& ty, const char* method_name, MethodAccess access,
             AutoderefBorrow borrow_type, /* Out -> */::std::vector<::std::pair<AutoderefBorrow,::HIR::Path>>& possibilities
             ) const;
 
     /// Locates a named method in a trait, and returns the path of the trait that contains it (with fixed parameters)
-    bool trait_contains_method(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::HIR::TypeRef& self, const ::std::string& name,  ::HIR::Function::Receiver& out_receiver, ::HIR::GenericPath& out_path) const;
-    bool trait_contains_type(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::std::string& name,  ::HIR::GenericPath& out_path) const;
+    const ::HIR::Function* trait_contains_method(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::HIR::TypeRef& self, const char* name,  ::HIR::GenericPath& out_path) const;
+    bool trait_contains_type(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const char* name,  ::HIR::GenericPath& out_path) const;
 
     ::HIR::Compare type_is_sized(const Span& sp, const ::HIR::TypeRef& ty) const;
     ::HIR::Compare type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) const;
+    ::HIR::Compare type_is_clone(const Span& sp, const ::HIR::TypeRef& ty) const;
 
     // If `new_type_callback` is populated, it will be called with the actual/possible dst_type
     // If `infer_callback` is populated, it will be called when either side is an ivar

@@ -17,8 +17,8 @@
 namespace AST {
 
 // --- AST::PathBinding
-::std::ostream& operator<<(::std::ostream& os, const PathBinding& x) {
-    TU_MATCH(PathBinding, (x), (i),
+::std::ostream& operator<<(::std::ostream& os, const PathBinding_Type& x) {
+    TU_MATCHA( (x), (i),
     (Unbound, os << "_";   ),
     (Crate ,  os << "Crate";    ),
     (Module,  os << "Module";    ),
@@ -26,39 +26,80 @@ namespace AST {
     (Struct,    os << "Struct";  ),
     (Enum,      os << "Enum";    ),
     (Union,     os << "Union";   ),
+    (EnumVar,   os << "EnumVar(" << i.idx << ")"; ),
+    (TypeAlias, os << "TypeAlias";),
+    (TypeParameter, os << "TyParam(" << i.level << " # " << i.idx << ")"; )
+    )
+    return os;
+}
+PathBinding_Type PathBinding_Type::clone() const
+{
+    TU_MATCHA( (*this), (e),
+    (Unbound  , return PathBinding_Type::make_Unbound({}); ),
+    (Module   , return PathBinding_Type::make_Module(e);   ),
+    (Crate    , return PathBinding_Type(e); ),
+    (Trait    , return PathBinding_Type(e); ),
+    (Struct   , return PathBinding_Type(e); ),
+    (Enum     , return PathBinding_Type(e); ),
+    (Union    , return PathBinding_Type(e); ),
+    (TypeAlias, return PathBinding_Type::make_TypeAlias(e); ),
+    (EnumVar  , return PathBinding_Type::make_EnumVar(e);  ),
+
+    (TypeParameter, return PathBinding_Type::make_TypeParameter(e); )
+    )
+    throw "BUG: Fell off the end of PathBinding_Type::clone";
+}
+::std::ostream& operator<<(::std::ostream& os, const PathBinding_Value& x) {
+    TU_MATCHA( (x), (i),
+    (Unbound, os << "_";   ),
+    (Struct,    os << "Struct";  ),
     (Static,    os << "Static";  ),
     (Function,  os << "Function";),
     (EnumVar,  os << "EnumVar(" << i.idx << ")"; ),
-    (TypeAlias, os << "TypeAlias";),
-    (StructMethod, os << "StructMethod"; ),
-    (TraitMethod,  os << "TraitMethod";  ),
-
-    (TypeParameter, os << "TyParam(" << i.level << " # " << i.idx << ")"; ),
     (Variable, os << "Var(" << i.slot << ")"; )
     )
     return os;
 }
-PathBinding PathBinding::clone() const
+PathBinding_Value PathBinding_Value::clone() const
 {
-    TU_MATCH(::AST::PathBinding, (*this), (e),
-    (Unbound , return PathBinding::make_Unbound({}); ),
-    (Module  , return PathBinding::make_Module(e);   ),
-    (Crate   , return PathBinding(e); ),
-    (Trait   , return PathBinding(e); ),
-    (Struct  , return PathBinding(e); ),
-    (Enum    , return PathBinding(e); ),
-    (Union   , return PathBinding(e); ),
-    (Static  , return PathBinding(e); ),
-    (Function, return PathBinding(e); ),
-    (TypeAlias, return PathBinding::make_TypeAlias(e); ),
-    (EnumVar , return PathBinding::make_EnumVar(e);  ),
-    (StructMethod, return PathBinding::make_StructMethod(e); ),
-    (TraitMethod, return PathBinding::make_TraitMethod(e); ),
-
-    (TypeParameter, return PathBinding::make_TypeParameter(e); ),
-    (Variable, return PathBinding::make_Variable(e); )
+    TU_MATCHA( (*this), (e),
+    (Unbound , return PathBinding_Value::make_Unbound({}); ),
+    (Struct  , return PathBinding_Value(e); ),
+    (Static  , return PathBinding_Value(e); ),
+    (Function, return PathBinding_Value(e); ),
+    (EnumVar , return PathBinding_Value::make_EnumVar(e);  ),
+    (Variable, return PathBinding_Value::make_Variable(e); )
     )
-    throw "BUG: Fell off the end of PathBinding::clone";
+    throw "BUG: Fell off the end of PathBinding_Value::clone";
+}
+::std::ostream& operator<<(::std::ostream& os, const PathBinding_Macro& x) {
+    TU_MATCHA( (x), (i),
+    (Unbound, os << "_";   ),
+    (ProcMacroDerive,
+        os << "ProcMacroDerive(? " << i.mac_name << ")";
+        ),
+    (ProcMacroAttribute,
+        os << "ProcMacroAttribute(? " << i.mac_name << ")";
+        ),
+    (ProcMacro,
+        os << "ProcMacro(? " << i.mac_name << ")";
+        ),
+    (MacroRules,
+        os << "MacroRules(? ?)";
+        )
+    )
+    return os;
+}
+PathBinding_Macro PathBinding_Macro::clone() const
+{
+    TU_MATCHA( (*this), (e),
+    (Unbound , return PathBinding_Macro::make_Unbound({}); ),
+    (ProcMacroDerive, return PathBinding_Macro(e); ),
+    (ProcMacroAttribute, return PathBinding_Macro(e); ),
+    (ProcMacro, return PathBinding_Macro(e); ),
+    (MacroRules, return PathBinding_Macro(e); )
+    )
+    throw "BUG: Fell off the end of PathBinding_Macro::clone";
 }
 
 ::std::ostream& operator<<(::std::ostream& os, const PathParams& x)
@@ -68,7 +109,7 @@ PathBinding PathBinding::clone() const
     for(const auto& v : x.m_lifetimes) {
         if(needs_comma) os << ", ";
         needs_comma = true;
-        os << "'" << v;
+        os << v;
     }
     for(const auto& v : x.m_types) {
         if(needs_comma) os << ", ";
@@ -107,7 +148,7 @@ Ordering PathParams::ord(const PathParams& x) const
 }
 
 // --- AST::PathNode
-PathNode::PathNode(::std::string name, PathParams args):
+PathNode::PathNode(RcString name, PathParams args):
     m_name( mv$(name) ),
     m_params( mv$(args) )
 {
@@ -159,8 +200,10 @@ AST::Path::Path(TagUfcs, TypeRef type, Path trait, ::std::vector<AST::PathNode> 
 }
 AST::Path::Path(const Path& x):
     m_class()
-    //m_binding(x.m_binding)
+    //,m_bindings(x.m_bindings)
 {
+    memcpy(&m_bindings, &x.m_bindings, sizeof(Bindings));
+
     TU_MATCH(Class, (x.m_class), (ent),
     (Invalid, m_class = Class::make_Invalid({});),
     (Local,
@@ -185,15 +228,35 @@ AST::Path::Path(const Path& x):
             m_class = Class::make_UFCS({ box$(ent.type->clone()), nullptr, ent.nodes });
         )
     )
+}
 
-    memcpy(&m_binding, &x.m_binding, sizeof(PathBinding));
+bool Path::is_parent_of(const Path& x) const
+{
+    if( !this->m_class.is_Absolute() || !x.m_class.is_Absolute() )
+        return false;
+    const auto& te = this->m_class.as_Absolute();
+    const auto& xe = x.m_class.as_Absolute();
+
+    if( te.crate != xe.crate )
+        return false;
+
+    if( te.nodes.size() > xe.nodes.size() )
+        return false;
+
+    for(size_t i = 0; i < te.nodes.size(); i ++)
+    {
+        if( te.nodes[i].name() != xe.nodes[i].name() )
+            return false;
+    }
+
+    return true;
 }
 
 void Path::bind_variable(unsigned int slot)
 {
-    m_binding = PathBinding::make_Variable({slot});
+    m_bindings.value = PathBinding_Value::make_Variable({slot});
 }
-void Path::bind_enum_var(const Enum& ent, const ::std::string& name, const ::std::vector<TypeRef>& /*args*/)
+void Path::bind_enum_var(const Enum& ent, const RcString& name)
 {
     auto it = ::std::find_if(ent.variants().begin(), ent.variants().end(), [&](const auto& x) { return x.m_name == name; });
     if( it == ent.variants().end() )
@@ -203,10 +266,8 @@ void Path::bind_enum_var(const Enum& ent, const ::std::string& name, const ::std
     unsigned int idx = it - ent.variants().begin();
 
     DEBUG("Bound to enum variant '" << name << "' (#" << idx << ")");
-    ::AST::PathBinding::Data_EnumVar tmp = {};
-    tmp.enum_ = &ent;
-    tmp.idx = idx;
-    m_binding = PathBinding::make_EnumVar( mv$(tmp) );
+    m_bindings.type = PathBinding_Type::make_EnumVar({ &ent, idx });
+    m_bindings.value = PathBinding_Value::make_EnumVar({ &ent, idx });
 }
 
 Path& Path::operator+=(const Path& other)
@@ -214,7 +275,7 @@ Path& Path::operator+=(const Path& other)
     for(auto& node : other.nodes())
         append(node);
     // If the path is modified, clear the binding
-    m_binding = PathBinding();
+    m_bindings = Bindings();
     return *this;
 }
 
@@ -268,13 +329,13 @@ void Path::print_pretty(::std::ostream& os, bool is_type_context, bool is_debug)
         ),
     (Local,
         // Only print comment if there's no binding
-        if( m_binding.is_Unbound() )
+        if( m_bindings.value.is_Unbound() )
         {
             if( is_debug )
                 os << "/*var*/";
         }
         else
-            assert( m_binding.is_Variable() );
+            assert( m_bindings.value.is_Variable() );
         os << ent.name;
         ),
     (Relative,
@@ -334,8 +395,29 @@ void Path::print_pretty(::std::ostream& os, bool is_type_context, bool is_debug)
         }
         )
     )
-    if( is_debug )
-        os << "/*" << m_binding << "*/";
+    if( is_debug ) {
+        os << "/*";
+        bool printed = false;
+        if( !m_bindings.value.is_Unbound() ) {
+            if(printed) os << ",";
+            os << "v:" << m_bindings.value;
+            printed = true;
+        }
+        if( !m_bindings.type.is_Unbound() ) {
+            if(printed) os << ",";
+            os << "t:" << m_bindings.type;
+            printed = true;
+        }
+        if( !m_bindings.macro.is_Unbound() ) {
+            if(printed) os << ",";
+            os << "m:" << m_bindings.macro;
+            printed = true;
+        }
+        if( !printed ) {
+            os << "?";
+        }
+        os << "*/";
+    }
 }
 
 ::std::ostream& operator<<(::std::ostream& os, const Path& path)

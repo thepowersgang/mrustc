@@ -13,13 +13,98 @@
 #include <algorithm>
 #include "debug.hpp"
 
-AllocationHandle Allocation::new_alloc(size_t size)
+namespace {
+    static bool in_bounds(size_t ofs, size_t size, size_t max_size) {
+        if( !(ofs < max_size) )
+            return false;
+        if( !(size <= max_size) )
+            return false;
+        return ofs + size <= max_size;
+    }
+
+    void set_bit(uint8_t* p, size_t i, bool v)
+    {
+        if(v) {
+            p[i/8] |= 1 << (i%8);
+        }
+        else {
+            p[i/8] &= ~(1 << (i%8));
+        }
+    }
+    bool get_bit(const uint8_t* p, size_t i) {
+        return (p[i/8] & (1 << (i%8))) != 0;
+    }
+    void copy_bits(uint8_t* dst, size_t dst_ofs, const uint8_t* src, size_t src_ofs,  size_t len)
+    {
+        // Even number of bytes, fast copy
+        if( dst_ofs % 8 == 0 && src_ofs % 8 == 0 && len % 8 == 0 )
+        {
+            for(size_t i = 0; i < len/8; i ++)
+            {
+                dst[dst_ofs/8 + i] = src[src_ofs/8 + i];
+            }
+        }
+        else
+        {
+            for(size_t i = 0; i < len; i ++)
+            {
+                set_bit( dst, dst_ofs+i, get_bit(src, src_ofs+i) );
+            }
+        }
+    }
+};
+
+::std::ostream& operator<<(::std::ostream& os, const Allocation* x)
+{
+    os << "A(#" << x->m_index << " " << x->tag() /*<< " +" << x->size()*/ << ")";
+    return os;
+}
+
+FfiLayout FfiLayout::new_const_bytes(size_t s)
+{
+    return FfiLayout {
+        { Range {s, true, false} }
+        };
+}
+bool FfiLayout::is_valid_read(size_t o, size_t s) const
+{
+    for(const auto& r : ranges)
+    {
+        if( o < r.len ) {
+            if( !r.is_valid )
+                return false;
+            if( o + s <= r.len )
+            {
+                s = 0;
+                break;
+            }
+            s -= (r.len - o);
+            o = 0;
+        }
+        else {
+            o -= r.len;
+        }
+    }
+    if( s > 0 )
+    {
+        return false;
+    }
+    return true;
+}
+
+uint64_t Allocation::s_next_index = 0;
+
+AllocationHandle Allocation::new_alloc(size_t size, ::std::string tag)
 {
     Allocation* rv = new Allocation();
+    rv->m_index = s_next_index++;
+    rv->m_tag = ::std::move(tag);
     rv->refcount = 1;
-    rv->data.resize( (size + 8-1) / 8 );    // QWORDS
-    rv->mask.resize( (size + 8-1) / 8 );    // bitmap bytes
+    rv->m_size = size;
+    rv->m_data.resize( (size + 8-1) / 8 );    // QWORDS
+    rv->m_mask.resize( (size + 8-1) / 8 );    // bitmap bytes
     //LOG_DEBUG(rv << " ALLOC");
+    LOG_DEBUG(rv);
     return AllocationHandle(rv);
 }
 AllocationHandle::AllocationHandle(const AllocationHandle& x):
@@ -167,7 +252,7 @@ size_t RelocationPtr::get_size() const
             os << "\"" << x.str() << "\"";
             break;
         case RelocationPtr::Ty::FfiPointer:
-            os << "FFI " << x.ffi().source_function << " " << x.ffi().ptr_value;
+            os << "FFI '" << x.ffi().tag_name << "' " << x.ffi().ptr_value;
             break;
         }
     }
@@ -191,6 +276,8 @@ void ValueCommonWrite::write_usize(size_t ofs, uint64_t v)
 void* ValueCommonRead::read_pointer_unsafe(size_t rd_ofs, size_t req_valid, size_t& out_size, bool& out_is_mut) const
 {
     auto ofs = read_usize(rd_ofs);
+    LOG_ASSERT(ofs >= Allocation::PTR_BASE, "Deref of invalid pointer");
+    ofs -= Allocation::PTR_BASE;
     auto reloc = get_relocation(rd_ofs);
     if( !reloc )
     {
@@ -210,22 +297,16 @@ void* ValueCommonRead::read_pointer_unsafe(size_t rd_ofs, size_t req_valid, size
         {
         case RelocationPtr::Ty::Allocation: {
             auto& a = reloc.alloc();
-            if( ofs > a.size() )
-                LOG_FATAL("Out-of-bounds pointer");
-            if( ofs + req_valid > a.size() )
-                LOG_FATAL("Out-of-bounds pointer (" << ofs << " + " << req_valid << " > " << a.size());
-            a.check_bytes_valid( static_cast<size_t>(ofs), req_valid );
-            out_size = a.size() - static_cast<size_t>(ofs);
+            LOG_ASSERT(in_bounds(ofs, req_valid, a.size()), "Out-of-bounds pointer (" << ofs << " + " << req_valid << " > " << a.size() << ")");
+            a.check_bytes_valid( ofs, req_valid );
+            out_size = a.size() - ofs;
             out_is_mut = true;
             return a.data_ptr() + ofs;
             }
         case RelocationPtr::Ty::StdString: {
             const auto& s = reloc.str();
-            if( ofs > s.size() )
-                LOG_FATAL("Out-of-bounds pointer");
-            if( ofs + req_valid > s.size() )
-                LOG_FATAL("Out-of-bounds pointer (" << ofs << " + " << req_valid << " > " << s.size());
-            out_size = s.size() - static_cast<size_t>(ofs);
+            LOG_ASSERT(in_bounds(ofs, req_valid, s.size()), "Out-of-bounds pointer (" << ofs << " + " << req_valid << " > " << s.size() << ")");
+            out_size = s.size() - ofs;
             out_is_mut = false;
             return const_cast<void*>( static_cast<const void*>(s.data() + ofs) );
             }
@@ -233,11 +314,13 @@ void* ValueCommonRead::read_pointer_unsafe(size_t rd_ofs, size_t req_valid, size
             LOG_FATAL("read_pointer w/ function");
         case RelocationPtr::Ty::FfiPointer: {
             const auto& f = reloc.ffi();
+            size_t size = f.get_size();
+            LOG_ASSERT(in_bounds(ofs, req_valid, size), "Out-of-bounds pointer (" << ofs << " + " << req_valid << " > " << size << ")");
             // TODO: Validity?
             //if( req_valid )
             //    LOG_FATAL("Can't request valid data from a FFI pointer");
             // TODO: Have an idea of mutability and available size from FFI
-            out_size = f.size - static_cast<size_t>(ofs);
+            out_size = size - ofs;
             out_is_mut = false;
             return reinterpret_cast<char*>(reloc.ffi().ptr_value) + ofs;
             }
@@ -248,16 +331,37 @@ void* ValueCommonRead::read_pointer_unsafe(size_t rd_ofs, size_t req_valid, size
 ValueRef ValueCommonRead::read_pointer_valref_mut(size_t rd_ofs, size_t size)
 {
     auto ofs = read_usize(rd_ofs);
+    LOG_ASSERT(ofs >= Allocation::PTR_BASE, "Invalid pointer read");
+    ofs -= Allocation::PTR_BASE;
     auto reloc = get_relocation(rd_ofs);
+    LOG_DEBUG("ValueCommonRead::read_pointer_valref_mut(" << ofs << "+" << size << ", reloc=" << reloc << ")");
     if( !reloc )
     {
         LOG_ERROR("Getting ValRef to null pointer (no relocation)");
     }
     else
     {
-        // TODO: Validate size
-        return ValueRef(reloc, static_cast<size_t>(ofs), size);
+        // Validate size and offset are in bounds
+        switch(reloc.get_ty())
+        {
+        case RelocationPtr::Ty::Allocation:
+            LOG_ASSERT( in_bounds(ofs, size,  reloc.alloc().size()), "Deref with OOB size - " << ofs << "+" << size << " > " << reloc.alloc().size() );
+            break;
+        case RelocationPtr::Ty::StdString:
+            LOG_ASSERT( in_bounds(ofs, size,  reloc.str().size()), "Deref with OOB size - " << ofs << "+" << size << " > " << reloc.str().size() );
+            break;
+        case RelocationPtr::Ty::Function:
+            LOG_FATAL("read_pointer_valref_mut w/ function");
+        case RelocationPtr::Ty::FfiPointer:
+            LOG_ASSERT( in_bounds(ofs, size,  reloc.ffi().get_size()), "Deref with OOB size - " << ofs << "+" << size << " > " << reloc.ffi().get_size() );
+            break;
+        }
+        return ValueRef(reloc, ofs, size);
     }
+}
+ValueRef ValueCommonRead::deref(size_t ofs, const ::HIR::TypeRef& ty)
+{
+    return read_pointer_valref_mut(ofs, ty.get_size());
 }
 
 
@@ -268,18 +372,19 @@ void Allocation::resize(size_t new_size)
     //size_t old_size = this->size();
     //size_t extra_bytes = (new_size > old_size ? new_size - old_size : 0);
 
-    this->data.resize( (new_size + 8-1) / 8 );
-    this->mask.resize( (new_size + 8-1) / 8 );
+    this->m_size = new_size;
+    this->m_data.resize( (new_size + 8-1) / 8 );
+    this->m_mask.resize( (new_size + 8-1) / 8 );
 }
 
 void Allocation::check_bytes_valid(size_t ofs, size_t size) const
 {
-    if( !(ofs + size <= this->size()) ) {
+    if( !in_bounds(ofs, size, this->size()) ) {
         LOG_FATAL("Out of range - " << ofs << "+" << size << " > " << this->size());
     }
     for(size_t i = ofs; i < ofs + size; i++)
     {
-        if( !(this->mask[i/8] & (1 << (i%8))) )
+        if( !(this->m_mask[i/8] & (1 << (i%8))) )
         {
             LOG_ERROR("Invalid bytes in value - " << ofs << "+" << size << " - " << *this);
             throw "ERROR";
@@ -288,19 +393,20 @@ void Allocation::check_bytes_valid(size_t ofs, size_t size) const
 }
 void Allocation::mark_bytes_valid(size_t ofs, size_t size)
 {
-    assert( ofs+size <= this->mask.size() * 8 );
+    assert( ofs+size <= this->m_mask.size() * 8 );
     for(size_t i = ofs; i < ofs + size; i++)
     {
-        this->mask[i/8] |= (1 << (i%8));
+        this->m_mask[i/8] |= (1 << (i%8));
     }
 }
 Value Allocation::read_value(size_t ofs, size_t size) const
 {
     Value rv;
-    TRACE_FUNCTION_R("Allocation::read_value " << this << " " << ofs << "+" << size, *this << " | " << rv);
+    //TRACE_FUNCTION_R("Allocation::read_value " << this << " " << ofs << "+" << size, *this << " | " << size << "=" << rv);
     if( this->is_freed )
         LOG_ERROR("Use of freed memory " << this);
     LOG_DEBUG(*this);
+    LOG_ASSERT( in_bounds(ofs, size, this->size()), "Read out of bounds (" << ofs << "+" << size << " > " << this->size() << ")" );
 
     // Determine if this can become an inline allocation.
     bool has_reloc = false;
@@ -308,57 +414,25 @@ Value Allocation::read_value(size_t ofs, size_t size) const
     {
         if( ofs <= r.slot_ofs && r.slot_ofs < ofs + size )
         {
+            // NOTE: A relocation at offset zero is allowed
+            if( r.slot_ofs == ofs )
+                continue ;
             has_reloc = true;
         }
     }
-    if( has_reloc || size > sizeof(rv.direct_data.data) )
+    rv = Value::with_size(size, has_reloc);
+    rv.write_bytes(0, this->data_ptr() + ofs, size);
+
+    for(const auto& r : this->relocations)
     {
-        rv.allocation = Allocation::new_alloc(size);
-
-        rv.write_bytes(0, this->data_ptr() + ofs, size);
-
-        for(const auto& r : this->relocations)
+        if( ofs <= r.slot_ofs && r.slot_ofs < ofs + size )
         {
-            if( ofs <= r.slot_ofs && r.slot_ofs < ofs + size )
-            {
-                rv.allocation->relocations.push_back({ r.slot_ofs - ofs, r.backing_alloc });
-            }
-        }
-
-        // Copy the mask bits
-        for(size_t i = 0; i < size; i ++)
-        {
-            size_t j = ofs + i;
-            const uint8_t test_mask = (1 << (j%8));
-            const uint8_t set_mask = (1 << (i%8));
-            bool v = (this->mask[j/8] & test_mask) != 0;
-            if( v )
-            {
-                rv.allocation->mask[i/8] |= set_mask;
-            }
+            rv.set_reloc(r.slot_ofs - ofs, /*r.size*/POINTER_SIZE, r.backing_alloc);
         }
     }
-    else
-    {
-        rv.direct_data.size = static_cast<uint8_t>(size);
+    // Copy the mask bits
+    copy_bits(rv.get_mask_mut(), 0, m_mask.data(), ofs, size);
 
-        rv.write_bytes(0, this->data_ptr() + ofs, size);
-        rv.direct_data.mask[0] = 0;
-        rv.direct_data.mask[1] = 0;
-
-        // Copy the mask bits
-        for(size_t i = 0; i < size; i ++)
-        {
-            size_t j = ofs + i;
-            const uint8_t tst_mask = 1 << (j%8);
-            const uint8_t set_mask = 1 << (i%8);
-            bool v = (this->mask[j/8] & tst_mask) != 0;
-            if( v )
-            {
-                rv.direct_data.mask[i/8] |= set_mask;
-            }
-        }
-    }
     return rv;
 }
 void Allocation::read_bytes(size_t ofs, void* dst, size_t count) const
@@ -366,19 +440,11 @@ void Allocation::read_bytes(size_t ofs, void* dst, size_t count) const
     if( this->is_freed )
         LOG_ERROR("Use of freed memory " << this);
 
-    LOG_DEBUG("Allocation::read_bytes " << this << " " << ofs << "+" << count);
+    //LOG_DEBUG("Allocation::read_bytes " << this << " " << ofs << "+" << count);
     if(count == 0)
         return ;
 
-    if(ofs >= this->size() ) {
-        LOG_ERROR("Out of bounds read, " << ofs << "+" << count << " > " << this->size());
-        throw "ERROR";
-    }
-    if(count > this->size() ) {
-        LOG_ERROR("Out of bounds read, " << ofs << "+" << count << " > " << this->size());
-        throw "ERROR";
-    }
-    if(ofs+count > this->size() ) {
+    if( !in_bounds(ofs, count, this->size()) ) {
         LOG_ERROR("Out of bounds read, " << ofs << "+" << count << " > " << this->size());
         throw "ERROR";
     }
@@ -394,14 +460,15 @@ void Allocation::write_value(size_t ofs, Value v)
         LOG_ERROR("Use of freed memory " << this);
     //if( this->is_read_only )
     //    LOG_ERROR("Writing to read-only allocation " << this);
-    if( v.allocation )
+    if( v.m_inner.is_alloc )
     {
-        size_t  v_size = v.allocation->size();
-        const auto& src_alloc = *v.allocation;
-        // Take a copy of the source mask
-        auto s_mask = src_alloc.mask;
+        const auto& src_alloc = *v.m_inner.alloc.alloc;
+        size_t  v_size = src_alloc.size();
+        assert(&src_alloc != this); // Shouldn't happen?
 
-        // Save relocations first, because `Foo = Foo` is valid.
+        // Take a copy of the source mask
+        auto s_mask = src_alloc.m_mask;
+        // Save relocations first, because `Foo = Foo` is valid?
         ::std::vector<Relocation>   new_relocs = src_alloc.relocations;
         // - write_bytes removes any relocations in this region.
         write_bytes(ofs, src_alloc.data_ptr(), v_size);
@@ -420,39 +487,16 @@ void Allocation::write_value(size_t ofs, Value v)
         }
 
         // Set mask in destination
-        if( ofs % 8 != 0 || v_size % 8 != 0 )
-        {
-            // Lazy way, sets/clears individual bits
-            for(size_t i = 0; i < v_size; i ++)
-            {
-                uint8_t dbit = 1 << ((ofs+i) % 8);
-                if( s_mask[i/8] & (1 << (i %8)) )
-                    this->mask[ (ofs+i) / 8 ] |= dbit;
-                else
-                    this->mask[ (ofs+i) / 8 ] &= ~dbit;
-            }
-        }
-        else
-        {
-            // Copy the mask bytes directly
-            for(size_t i = 0; i < v_size / 8; i ++)
-            {
-                this->mask[ofs/8+i] = s_mask[i];
-            }
-        }
+        copy_bits(m_mask.data(), ofs,  s_mask.data(), 0,  v_size);
     }
     else
     {
-        this->write_bytes(ofs, v.direct_data.data, v.direct_data.size);
-
-        // Lazy way, sets/clears individual bits
-        for(size_t i = 0; i < v.direct_data.size; i ++)
+        this->write_bytes(ofs, v.data_ptr(), v.size());
+        copy_bits(m_mask.data(), ofs,  v.get_mask(), 0,  v.size());
+        // TODO: Copy relocation
+        if( v.m_inner.direct.reloc_0 )
         {
-            uint8_t dbit = 1 << ((ofs+i) % 8);
-            if( v.direct_data.mask[i/8] & (1 << (i %8)) )
-                this->mask[ (ofs+i) / 8 ] |= dbit;
-            else
-                this->mask[ (ofs+i) / 8 ] &= ~dbit;
+            this->set_reloc(ofs, POINTER_SIZE,  ::std::move(v.m_inner.direct.reloc_0));
         }
     }
 }
@@ -466,16 +510,8 @@ void Allocation::write_bytes(size_t ofs, const void* src, size_t count)
 
     if(count == 0)
         return ;
-    TRACE_FUNCTION_R("Allocation::write_bytes " << this << " " << ofs << "+" << count, *this);
-    if(ofs >= this->size() ) {
-        LOG_ERROR("Out of bounds write, " << ofs << "+" << count << " > " << this->size());
-        throw "ERROR";
-    }
-    if(count > this->size() ) {
-        LOG_ERROR("Out of bounds write, " << ofs << "+" << count << " > " << this->size());
-        throw "ERROR";
-    }
-    if(ofs+count > this->size() ) {
+    //TRACE_FUNCTION_R("Allocation::write_bytes " << this << " " << ofs << "+" << count, *this);
+    if( !in_bounds(ofs, count, this->size()) ) {
         LOG_ERROR("Out of bounds write, " << ofs << "+" << count << " > " << this->size());
         throw "ERROR";
     }
@@ -501,8 +537,29 @@ void Allocation::write_bytes(size_t ofs, const void* src, size_t count)
 }
 void Allocation::write_ptr(size_t ofs, size_t ptr_ofs, RelocationPtr reloc)
 {
+    LOG_ASSERT(ptr_ofs >= Allocation::PTR_BASE, "Invalid pointer being written");
     this->write_usize(ofs, ptr_ofs);
-    this->relocations.push_back(Relocation { ofs, /*POINTER_SIZE,*/ ::std::move(reloc) });
+    this->set_reloc(ofs, POINTER_SIZE, ::std::move(reloc));
+}
+void Allocation::set_reloc(size_t ofs, size_t len, RelocationPtr reloc)
+{
+    LOG_ASSERT(ofs % POINTER_SIZE == 0, "");
+    LOG_ASSERT(len == POINTER_SIZE, "");
+    // Delete any existing relocation at this position
+    for(auto it = this->relocations.begin(); it != this->relocations.end();)
+    {
+        if( ofs <= it->slot_ofs && it->slot_ofs < ofs + len )
+        {
+            // Slot starts in this updated region
+            // - TODO: Split in half?
+            it = this->relocations.erase(it);
+            continue ;
+        }
+        // TODO: What if the slot ends in the new region?
+        // What if the new region is in the middle of the slot
+        ++ it;
+    }
+    this->relocations.push_back(Relocation { ofs, /*len,*/ ::std::move(reloc) });
 }
 ::std::ostream& operator<<(::std::ostream& os, const Allocation& x)
 {
@@ -513,7 +570,7 @@ void Allocation::write_ptr(size_t ofs, size_t ptr_ofs, RelocationPtr reloc)
         if( i != 0 )
             os << " ";
 
-        if( x.mask[i/8] & (1 << (i%8)) )
+        if( x.m_mask[i/8] & (1 << (i%8)) )
         {
             os << ::std::setw(2) << ::std::setfill('0') << (int)x.data_ptr()[i];
         }
@@ -538,72 +595,62 @@ void Allocation::write_ptr(size_t ofs, size_t ptr_ofs, RelocationPtr reloc)
 
 Value::Value()
 {
-    this->direct_data.size = 0;
-    this->direct_data.mask[0] = 0;
-    this->direct_data.mask[1] = 0;
+    memset(&m_inner, 0, sizeof(m_inner));
 }
 Value::Value(::HIR::TypeRef ty)
 {
     size_t size = ty.get_size();
 
     // Support inline data if the data will fit within the inline region (which is the size of the metadata)
-    if( ty.get_size() <= sizeof(this->direct_data.data) )
+    if( size <= sizeof(m_inner.direct.data) )
     {
         // AND the type doesn't contain a pointer (of any kind)
-        if( ! ty.has_pointer() )
+        // TODO: Pointers _are_ allowed now (but only one)
+        if( true || ! ty.has_pointer() )
         {
             // Will fit in a inline allocation, nice.
             //LOG_TRACE("No pointers in " << ty << ", storing inline");
-            this->direct_data.size = static_cast<uint8_t>(size);
-            this->direct_data.mask[0] = 0;
-            this->direct_data.mask[1] = 0;
+            new(&m_inner.direct) Inner::Direct(size);
             return ;
         }
     }
 
     // Fallback: Make a new allocation
     //LOG_TRACE(" Creating allocation for " << ty);
-    this->allocation = Allocation::new_alloc(size);
+    new(&m_inner.alloc) Inner::Alloc( Allocation::new_alloc(size, FMT_STRING(ty)) );
+    assert(m_inner.is_alloc);
 }
 Value Value::with_size(size_t size, bool have_allocation)
 {
     Value   rv;
-    if(have_allocation)
+    if(have_allocation || size > sizeof(m_inner.direct.data))
     {
-        rv.allocation = Allocation::new_alloc(size);
+        new(&rv.m_inner.alloc) Inner::Alloc( Allocation::new_alloc(size, FMT_STRING("with_size(" << size << ")")) );
     }
     else
     {
-        rv.direct_data.size = static_cast<uint8_t>(size);
-        rv.direct_data.mask[0] = 0;
-        rv.direct_data.mask[1] = 0;
+        new(&rv.m_inner.direct) Inner::Direct(size);
     }
     return rv;
 }
 Value Value::new_fnptr(const ::HIR::Path& fn_path)
 {
     Value   rv( ::HIR::TypeRef(::HIR::CoreType { RawType::Function }) );
-    assert(rv.allocation);
-    rv.allocation->relocations.push_back(Relocation { 0, RelocationPtr::new_fcn(fn_path) });
-    rv.allocation->data.at(0) = 0;
-    rv.allocation->mask.at(0) = (1 << POINTER_SIZE)-1;
+    rv.write_ptr(0, Allocation::PTR_BASE, RelocationPtr::new_fcn(fn_path));
     return rv;
 }
 Value Value::new_ffiptr(FFIPointer ffi)
 {
     Value   rv( ::HIR::TypeRef(::HIR::CoreType { RawType::USize }) );
-    rv.create_allocation();
-    rv.allocation->relocations.push_back(Relocation { 0, RelocationPtr::new_ffi(ffi) });
-    rv.allocation->data.at(0) = 0;
-    rv.allocation->mask.at(0) = (1 << POINTER_SIZE)-1;
+    assert( !rv.m_inner.is_alloc );
+    rv.write_ptr(0, Allocation::PTR_BASE, RelocationPtr::new_ffi(ffi));
     return rv;
 }
 Value Value::new_pointer(::HIR::TypeRef ty, uint64_t v, RelocationPtr r) {
     assert(ty.get_wrapper());
     assert(ty.get_wrapper()->type == TypeWrapper::Ty::Borrow || ty.get_wrapper()->type == TypeWrapper::Ty::Pointer);
     Value   rv(ty);
-    rv.write_usize(0, v);
-    rv.allocation->relocations.push_back(Relocation { 0, /*POINTER_SIZE,*/ ::std::move(r) });
+    rv.write_ptr(0, v, ::std::move(r));
     return rv;
 }
 Value Value::new_usize(uint64_t v) {
@@ -626,59 +673,57 @@ Value Value::new_i32(int32_t v) {
     rv.write_i32(0, v);
     return rv;
 }
+Value Value::new_i64(int64_t v) {
+    auto rv = Value( ::HIR::TypeRef(RawType::I64) );
+    rv.write_i64(0, v);
+    return rv;
+}
 
 void Value::create_allocation()
 {
-    assert(!this->allocation);
-    this->allocation = Allocation::new_alloc(this->direct_data.size);
-    if( this->direct_data.size > 0 )
-        this->allocation->mask[0] = this->direct_data.mask[0];
-    if( this->direct_data.size > 8 )
-        this->allocation->mask[1] = this->direct_data.mask[1];
-    ::std::memcpy(this->allocation->data.data(), this->direct_data.data, this->direct_data.size);
+    assert(!m_inner.is_alloc);
+    auto new_alloc = Allocation::new_alloc(m_inner.direct.size, "create_allocation");   // TODO: Provide a better name?
+    auto& direct = m_inner.direct;
+    if( direct.size > 0 )
+        new_alloc->m_mask[0] = direct.mask[0];
+    if( direct.size > 8 )
+        new_alloc->m_mask[1] = direct.mask[1];
+    ::std::memcpy(new_alloc->data_ptr(), direct.data, direct.size);
+    if( direct.reloc_0 )
+    {
+        new_alloc->set_reloc(0, POINTER_SIZE, ::std::move(direct.reloc_0));
+    }
+
+    new(&m_inner.alloc) Inner::Alloc(::std::move(new_alloc));
 }
 void Value::check_bytes_valid(size_t ofs, size_t size) const
 {
     if( size == 0 )
         return ;
-    if( this->allocation )
-    {
-        this->allocation->check_bytes_valid(ofs, size);
+    if( !in_bounds(ofs, size, this->size()) ) {
+        LOG_ERROR("Read out of bounds " << ofs+size << " >= " << this->size());
+        throw "ERROR";
     }
-    else
+    const auto* mask = this->get_mask();
+    for(size_t i = ofs; i < ofs + size; i++)
     {
-        if( size == 0 && this->direct_data.size > 0 ) {
-            return ;
-        }
-        if( ofs >= this->direct_data.size ) {
-            LOG_ERROR("Read out of bounds " << ofs << "+" << size << " > " << int(this->direct_data.size));
-            throw "ERROR";
-        }
-        if( ofs+size > this->direct_data.size ) {
-            LOG_ERROR("Read out of bounds " << ofs+size << " >= " << int(this->direct_data.size));
-            throw "ERROR";
-        }
-        for(size_t i = ofs; i < ofs + size; i++)
+        if( !get_bit(mask, i) )
         {
-            if( !(this->direct_data.mask[i/8] & (1 << i%8)) )
-            {
-                LOG_ERROR("Accessing invalid bytes in value");
-                throw "ERROR";
-            }
+            LOG_ERROR("Accessing invalid bytes in value, offset " << i << " of " << *this);
         }
     }
 }
 void Value::mark_bytes_valid(size_t ofs, size_t size)
 {
-    if( this->allocation )
+    if( m_inner.is_alloc )
     {
-        this->allocation->mark_bytes_valid(ofs, size);
+        m_inner.alloc.alloc->mark_bytes_valid(ofs, size);
     }
     else
     {
         for(size_t i = ofs; i < ofs+size; i++)
         {
-            this->direct_data.mask[i/8] |= (1 << i%8);
+            m_inner.direct.mask[i/8] |= (1 << i%8);
         }
     }
 }
@@ -686,18 +731,28 @@ void Value::mark_bytes_valid(size_t ofs, size_t size)
 Value Value::read_value(size_t ofs, size_t size) const
 {
     Value   rv;
-    //TRACE_FUNCTION_R(ofs << ", " << size << ") - " << *this, rv);
-    if( this->allocation )
+    TRACE_FUNCTION_R(ofs << ", " << size << " - " << *this, rv);
+    if( m_inner.is_alloc )
     {
-        rv = this->allocation->read_value(ofs, size);
+        rv = m_inner.alloc.alloc->read_value(ofs, size);
     }
     else
     {
-        // Inline can become inline.
-        rv.direct_data.size = static_cast<uint8_t>(size);
-        rv.write_bytes(0, this->direct_data.data+ofs, size);
-        rv.direct_data.mask[0] = this->direct_data.mask[0];
-        rv.direct_data.mask[1] = this->direct_data.mask[1];
+        // Inline always fits in inline.
+        if( ofs == 0 && size == this->size() )
+        {
+            rv = Value(*this);
+        }
+        else
+        {
+            rv.m_inner.direct.size = static_cast<uint8_t>(size);
+            memcpy(rv.m_inner.direct.data, this->data_ptr() + ofs, size);
+            copy_bits(rv.m_inner.direct.mask, 0, this->get_mask(), ofs, size);
+            if( ofs == 0 )
+            {
+                rv.m_inner.direct.reloc_0 = RelocationPtr(m_inner.direct.reloc_0);
+            }
+        }
     }
     return rv;
 }
@@ -705,27 +760,14 @@ void Value::read_bytes(size_t ofs, void* dst, size_t count) const
 {
     if(count == 0)
         return ;
-    if( this->allocation )
+    if( m_inner.is_alloc )
     {
-        this->allocation->read_bytes(ofs, dst, count);
+        m_inner.alloc.alloc->read_bytes(ofs, dst, count);
     }
     else
     {
         check_bytes_valid(ofs, count);
-
-        if(ofs >= this->direct_data.size ) {
-            LOG_ERROR("Out of bounds read, " << ofs << "+" << count << " > " << this->size());
-            throw "ERROR";
-        }
-        if(count > this->direct_data.size ) {
-            LOG_ERROR("Out of bounds read, " << ofs << "+" << count << " > " << this->size());
-            throw "ERROR";
-        }
-        if(ofs+count > this->direct_data.size ) {
-            LOG_ERROR("Out of bounds read, " << ofs << "+" << count << " > " << this->size());
-            throw "ERROR";
-        }
-        ::std::memcpy(dst, this->direct_data.data + ofs, count);
+        ::std::memcpy(dst, m_inner.direct.data + ofs, count);
     }
 }
 
@@ -733,88 +775,65 @@ void Value::write_bytes(size_t ofs, const void* src, size_t count)
 {
     if( count == 0 )
         return ;
-    if( this->allocation )
+    if( m_inner.is_alloc )
     {
-        this->allocation->write_bytes(ofs, src, count);
+        m_inner.alloc.alloc->write_bytes(ofs, src, count);
     }
     else
     {
-        if(ofs >= this->direct_data.size ) {
-            LOG_BUG("Write to offset outside value size (" << ofs << "+" << count << " >= " << (int)this->direct_data.size << ")");
+        auto& direct = m_inner.direct;
+        if( !in_bounds(ofs, count, direct.size) ) {
+            LOG_ERROR("Write extends outside value size (" << ofs << "+" << count << " >= " << (int)direct.size << ")");
         }
-        if(count > this->direct_data.size ){
-            LOG_BUG("Write larger than value size (" << ofs << "+" << count << " >= " << (int)this->direct_data.size << ")");
-        }
-        if(ofs+count > this->direct_data.size ) {
-            LOG_BUG("Write extends outside value size (" << ofs << "+" << count << " >= " << (int)this->direct_data.size << ")");
-        }
-        ::std::memcpy(this->direct_data.data + ofs, src, count);
+        ::std::memcpy(direct.data + ofs, src, count);
         mark_bytes_valid(ofs, count);
+        if( 0 <= ofs && ofs < POINTER_SIZE ) {
+            direct.reloc_0 = RelocationPtr();
+        }
     }
 }
 void Value::write_value(size_t ofs, Value v)
 {
-    if( this->allocation )
+    if( m_inner.is_alloc )
     {
-        this->allocation->write_value(ofs, ::std::move(v));
+        m_inner.alloc.alloc->write_value(ofs, ::std::move(v));
     }
     else
     {
-        if( v.allocation && !v.allocation->relocations.empty() )
-        {
-            this->create_allocation();
-            this->allocation->write_value(ofs, ::std::move(v));
-        }
-        else
-        {
-            write_bytes(ofs, v.direct_data.data, v.direct_data.size);
+        write_bytes(ofs, v.data_ptr(), v.size());
+        // - Copy mask
+        copy_bits(this->get_mask_mut(), ofs,  v.get_mask(), 0,  v.size());
 
-            // Lazy way, sets/clears individual bits
-            for(size_t i = 0; i < v.direct_data.size; i ++)
+        // TODO: Faster way of knowing where there are relocations
+        for(size_t i = 0; i < v.size(); i ++)
+        {
+            if( auto r = v.get_relocation(i) )
             {
-                uint8_t dbit = 1 << ((ofs+i) % 8);
-                if( v.direct_data.mask[i/8] & (1 << (i %8)) )
-                    this->direct_data.mask[ (ofs+i) / 8 ] |= dbit;
-                else
-                    this->direct_data.mask[ (ofs+i) / 8 ] &= ~dbit;
+                this->set_reloc(ofs + i, POINTER_SIZE, r);
             }
         }
     }
 }
 void Value::write_ptr(size_t ofs, size_t ptr_ofs, RelocationPtr reloc)
 {
-    if( !this->allocation )
+    if( m_inner.is_alloc )
     {
-        LOG_ERROR("Writing a pointer with no allocation");
+        m_inner.alloc.alloc->write_ptr(ofs, ptr_ofs, ::std::move(reloc));
     }
-    this->allocation->write_ptr(ofs, ptr_ofs, ::std::move(reloc));
+    else
+    {
+        write_usize(ofs, ptr_ofs);
+        if( ofs != 0 )
+        {
+            LOG_ERROR("Writing a pointer with no allocation");
+        }
+        m_inner.direct.reloc_0 = ::std::move(reloc);
+    }
 }
 
 ::std::ostream& operator<<(::std::ostream& os, const Value& v)
 {
-    if( v.allocation )
-    {
-        os << *v.allocation;
-    }
-    else
-    {
-        auto flags = os.flags();
-        os << ::std::hex;
-        for(size_t i = 0; i < v.direct_data.size; i++)
-        {
-            if( i != 0 )
-                os << " ";
-            if( v.direct_data.mask[i/8] & (1 << i%8) )
-            {
-                os << ::std::setw(2) << ::std::setfill('0') << (int)v.direct_data.data[i];
-            }
-            else
-            {
-                os << "--";
-            }
-        }
-        os.setf(flags);
-    }
+    os << ValueRef(const_cast<Value&>(v), 0, v.size());
     return os;
 }
 extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v)
@@ -830,6 +849,8 @@ extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v)
         case RelocationPtr::Ty::Allocation: {
             const auto& alloc = alloc_ptr.alloc();
 
+            os << &alloc << "@" << v.m_offset << "+" << v.m_size << " ";
+
             auto flags = os.flags();
             os << ::std::hex;
             for(size_t i = v.m_offset; i < ::std::min(alloc.size(), v.m_offset + v.m_size); i++)
@@ -837,7 +858,7 @@ extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v)
                 if( i != 0 )
                     os << " ";
 
-                if( alloc.mask[i/8] & (1 << i%8) )
+                if( alloc.m_mask[i/8] & (1 << i%8) )
                 {
                     os << ::std::setw(2) << ::std::setfill('0') << (int)alloc.data_ptr()[i];
                 }
@@ -863,9 +884,7 @@ extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v)
             break;
         case RelocationPtr::Ty::StdString: {
             const auto& s = alloc_ptr.str();
-            assert(v.m_offset < s.size());
-            assert(v.m_size < s.size());
-            assert(v.m_offset + v.m_size <= s.size());
+            assert( in_bounds(v.m_offset, v.m_size, s.size()) );
             auto flags = os.flags();
             os << ::std::hex;
             for(size_t i = v.m_offset; i < v.m_offset + v.m_size; i++)
@@ -879,9 +898,11 @@ extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v)
             break;
         }
     }
-    else if( v.m_value && v.m_value->allocation )
+    else if( v.m_value && v.m_value->m_inner.is_alloc )
     {
-        const auto& alloc = *v.m_value->allocation;
+        const auto& alloc = *v.m_value->m_inner.alloc.alloc;
+
+        os << &alloc << "@" << v.m_offset << "+" << v.m_size << " ";
 
         auto flags = os.flags();
         os << ::std::hex;
@@ -890,7 +911,7 @@ extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v)
             if( i != 0 )
                 os << " ";
 
-            if( alloc.mask[i/8] & (1 << i%8) )
+            if( alloc.m_mask[i/8] & (1 << i%8) )
             {
                 os << ::std::setw(2) << ::std::setfill('0') << (int)alloc.data_ptr()[i];
             }
@@ -913,7 +934,7 @@ extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v)
     }
     else if( v.m_value )
     {
-        const auto& direct = v.m_value->direct_data;
+        const auto& direct = v.m_value->m_inner.direct;
 
         auto flags = os.flags();
         os << ::std::hex;
@@ -931,6 +952,10 @@ extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v)
             }
         }
         os.setf(flags);
+        if(direct.reloc_0)
+        {
+            os << " { " << direct.reloc_0 << " }";
+        }
     }
     else
     {
@@ -939,11 +964,28 @@ extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v)
     return os;
 }
 
+void ValueRef::mark_bytes_valid(size_t ofs, size_t size)
+{
+    if( m_alloc ) {
+        switch(m_alloc.get_ty())
+        {
+        case RelocationPtr::Ty::Allocation:
+            m_alloc.alloc().mark_bytes_valid(m_offset + ofs, size);
+            break;
+        default:
+            LOG_TODO("mark_valid in " << m_alloc);
+        }
+    }
+    else {
+        m_value->mark_bytes_valid(m_offset + ofs, size);
+    }
+}
+
 Value ValueRef::read_value(size_t ofs, size_t size) const
 {
     if( size == 0 )
         return Value();
-    if( !(ofs < m_size && size <= m_size && ofs + size <= m_size) ) {
+    if( !in_bounds(ofs, size,  m_size) ) {
         LOG_ERROR("Read exceeds bounds, " << ofs << " + " << size << " > " << m_size << " - from " << *this);
     }
     if( m_alloc ) {
@@ -952,25 +994,27 @@ Value ValueRef::read_value(size_t ofs, size_t size) const
         case RelocationPtr::Ty::Allocation:
             return m_alloc.alloc().read_value(m_offset + ofs, size);
         case RelocationPtr::Ty::StdString: {
+            LOG_ASSERT(in_bounds(m_offset + ofs, size, m_alloc.str().size()), "");
             auto rv = Value::with_size(size, false);
-            //ASSERT_BUG(ofs <= m_alloc.str().size(), "");
-            //ASSERT_BUG(size <= m_alloc.str().size(), "");
-            //ASSERT_BUG(ofs+size <= m_alloc.str().size(), "");
-            assert(m_offset+ofs <= m_alloc.str().size() && size <= m_alloc.str().size() && m_offset+ofs+size <= m_alloc.str().size());
             rv.write_bytes(0, m_alloc.str().data() + m_offset + ofs, size);
             return rv;
             }
+        case RelocationPtr::Ty::FfiPointer: {
+            LOG_ASSERT(in_bounds(m_offset + ofs, size, m_alloc.ffi().get_size()), "");
+            auto rv = Value::with_size(size, false);
+            rv.write_bytes(0, reinterpret_cast<const char*>(m_alloc.ffi().ptr_value) + m_offset + ofs, size);
+            return rv;
+            }
         default:
-            //ASSERT_BUG(m_alloc.is_alloc(), "read_value on non-data backed Value - " << );
-            throw "TODO";
+            LOG_TODO("read_value from " << m_alloc);
         }
     }
     else {
         return m_value->read_value(m_offset + ofs, size);
     }
 }
-bool ValueRef::compare(const void* other, size_t other_len) const
+bool ValueRef::compare(size_t offset, const void* other, size_t other_len) const
 {
-    check_bytes_valid(0, other_len);
-    return ::std::memcmp(data_ptr(), other, other_len) == 0;
+    check_bytes_valid(offset, other_len);
+    return ::std::memcmp(data_ptr() + offset, other, other_len) == 0;
 }

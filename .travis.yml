@@ -8,7 +8,7 @@ matrix:
    - os: linux
      before_install:
       - export CC=gcc-6
-      - export CC-x86_64-linux-gnu=gcc-6
+#      - export CC-x86_64-linux-gnu=gcc-6
       - export CXX=g++-6
      addons:
       apt:
@@ -31,7 +31,7 @@ install:
 
 script:
  - set -e
- - make -f minicargo.mk output/libtest.hir      # libstd
+ - make -f minicargo.mk output/libtest.rlib      # libstd
  - make test    # hello_world
 # Tests
  - set +e

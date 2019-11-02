@@ -25,7 +25,7 @@ enum Compare {
 };
 
 typedef ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> t_cb_resolve_type;
-typedef ::std::function< ::HIR::Compare(unsigned int, const ::std::string&, const ::HIR::TypeRef&) > t_cb_match_generics;
+typedef ::std::function< ::HIR::Compare(unsigned int, const RcString&, const ::HIR::TypeRef&) > t_cb_match_generics;
 
 static inline ::std::ostream& operator<<(::std::ostream& os, const Compare& x) {
     switch(x)
@@ -54,18 +54,18 @@ static inline Compare& operator &=(Compare& x, const Compare& y) {
 /// Simple path - Absolute with no generic parameters
 struct SimplePath
 {
-    ::std::string   m_crate_name;
-    ::std::vector< ::std::string>   m_components;
+    RcString   m_crate_name;
+    ::std::vector< RcString>   m_components;
 
     SimplePath():
         m_crate_name("")
     {
     }
-    SimplePath(::std::string crate):
+    SimplePath(RcString crate):
         m_crate_name( mv$(crate) )
     {
     }
-    SimplePath(::std::string crate, ::std::vector< ::std::string> components):
+    SimplePath(RcString crate, ::std::vector< RcString> components):
         m_crate_name( mv$(crate) ),
         m_components( mv$(components) )
     {
@@ -73,7 +73,7 @@ struct SimplePath
 
     SimplePath clone() const;
 
-    SimplePath operator+(const ::std::string& s) const;
+    SimplePath operator+(const RcString& s) const;
     bool operator==(const SimplePath& x) const {
         return m_crate_name == x.m_crate_name && m_components == x.m_components;
     }
@@ -158,9 +158,9 @@ class TraitPath
 {
 public:
     GenericPath m_path;
-    ::std::vector< ::std::string>   m_hrls;
+    ::std::vector< RcString>   m_hrls;
     // TODO: Each bound should list its origin trait
-    ::std::map< ::std::string, ::HIR::TypeRef>    m_type_bounds;
+    ::std::map< RcString, ::HIR::TypeRef>    m_type_bounds;
 
     const ::HIR::Trait* m_trait_ptr;
 
@@ -190,20 +190,20 @@ public:
     (Generic, GenericPath),
     (UfcsInherent, struct {
         ::std::unique_ptr<TypeRef>  type;
-        ::std::string   item;
+        RcString   item;
         PathParams  params;
         PathParams  impl_params;
         }),
     (UfcsKnown, struct {
         ::std::unique_ptr<TypeRef>  type;
         GenericPath trait;
-        ::std::string   item;
+        RcString   item;
         PathParams  params;
         }),
     (UfcsUnknown, struct {
         ::std::unique_ptr<TypeRef>  type;
         //GenericPath ??;
-        ::std::string   item;
+        RcString   item;
         PathParams  params;
         })
     );
@@ -216,8 +216,8 @@ public:
     Path(GenericPath _);
     Path(SimplePath _);
 
-    Path(TypeRef ty, ::std::string item, PathParams item_params=PathParams());
-    Path(TypeRef ty, GenericPath trait, ::std::string item, PathParams item_params=PathParams());
+    Path(TypeRef ty, RcString item, PathParams item_params=PathParams());
+    Path(TypeRef ty, GenericPath trait, RcString item, PathParams item_params=PathParams());
 
     Path clone() const;
     Compare compare_with_placeholders(const Span& sp, const Path& x, t_cb_resolve_type resolve_placeholder) const;

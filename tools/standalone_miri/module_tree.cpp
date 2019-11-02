@@ -57,6 +57,24 @@ void ModuleTree::load_file(const ::std::string& path)
         // Keep going!
     }
 }
+void ModuleTree::validate()
+{
+    TRACE_FUNCTION_R("", "");
+    for(const auto& dt : this->data_types)
+    {
+        //LOG_ASSERT(dt.second->populated, "Type " << dt.first << " never defined");
+    }
+
+    for(const auto& fcn : this->functions)
+    {
+        // TODO: This doesn't actually happen yet (this combination can't be parsed)
+        if( fcn.second.external.link_name != "" && !fcn.second.m_mir.blocks.empty() )
+        {
+            LOG_DEBUG(fcn.first << " = '" << fcn.second.external.link_name << "'");
+            ext_functions.insert(::std::make_pair( fcn.second.external.link_name, &fcn.second ));
+        }
+    }
+}
 // Parse a single item from a .mir file
 bool Parser::parse_one()
 {
@@ -99,25 +117,26 @@ bool Parser::parse_one()
             rv_ty = parse_type();
         }
 
+        Function::ExtInfo   ext;
         if( lex.consume_if('=') )
         {
-            auto link_name = ::std::move(lex.check_consume(TokenClass::String).strval);
+            ext.link_name = ::std::move(lex.check_consume(TokenClass::String).strval);
             lex.check_consume(':');
-            auto abi = ::std::move(lex.check_consume(TokenClass::String).strval);
-            lex.check_consume(';');
-
+            ext.link_abi = ::std::move(lex.check_consume(TokenClass::String).strval);
+        }
+        ::MIR::Function body;
+        if( lex.consume_if(';') )
+        {
             LOG_DEBUG(lex << "extern fn " << p);
-            auto p2 = p;
-            tree.functions.insert( ::std::make_pair(::std::move(p), Function { ::std::move(p2), ::std::move(arg_tys), rv_ty, {link_name, abi}, {} }) );
         }
         else
         {
-            auto body = parse_body();
+            body = parse_body();
 
             LOG_DEBUG(lex << "fn " << p);
-            auto p2 = p;
-            tree.functions.insert( ::std::make_pair(::std::move(p), Function { ::std::move(p2), ::std::move(arg_tys), rv_ty, {}, ::std::move(body) }) );
         }
+        auto p2 = p;
+        tree.functions.insert( ::std::make_pair(::std::move(p), Function { ::std::move(p2), ::std::move(arg_tys), rv_ty, ::std::move(ext), ::std::move(body) }) );
     }
     else if( lex.consume_if("static") )
     {
@@ -133,8 +152,7 @@ bool Parser::parse_one()
         Static s;
         s.val = Value(ty);
         // - Statics need to always have an allocation (for references)
-        if( !s.val.allocation )
-            s.val.create_allocation();
+        s.val.ensure_allocation();
         s.val.write_bytes(0, data.data(), data.size());
         s.ty = ty;
 
@@ -153,15 +171,14 @@ bool Parser::parse_one()
                 {
                     auto reloc_str = ::std::move(lex.consume().strval);
 
-                    auto a = Allocation::new_alloc( reloc_str.size() );
-                    //a.alloc().set_tag();
+                    auto a = Allocation::new_alloc( reloc_str.size(), FMT_STRING("static " << p) );
                     a->write_bytes(0, reloc_str.data(), reloc_str.size());
-                    s.val.allocation->relocations.push_back({ static_cast<size_t>(ofs), /*size,*/ RelocationPtr::new_alloc(::std::move(a)) });
+                    s.val.set_reloc( ofs, size, RelocationPtr::new_alloc(::std::move(a)) );
                 }
                 else if( lex.next() == "::" || lex.next() == "<" )
                 {
                     auto reloc_path = parse_path();
-                    s.val.allocation->relocations.push_back({ static_cast<size_t>(ofs), /*size,*/ RelocationPtr::new_fcn(reloc_path) });
+                    s.val.set_reloc( ofs, size, RelocationPtr::new_fcn(reloc_path) );
                 }
                 else
                 {
@@ -185,6 +202,7 @@ bool Parser::parse_one()
         //LOG_TRACE("type " << p);
 
         auto rv = DataType {};
+        rv.populated = true;
         rv.my_path = p;
 
         lex.check_consume('{');
@@ -332,9 +350,6 @@ bool Parser::parse_one()
 
     struct H
     {
-        static ::std::unique_ptr<::MIR::LValue> make_lvp(::MIR::LValue&& lv) {
-            return ::std::unique_ptr<::MIR::LValue>(new ::MIR::LValue(::std::move(lv)));
-        }
         //
         // Parse a LValue
         //
@@ -357,7 +372,7 @@ bool Parser::parse_one()
                 if( name.substr(0,3) == "arg" ) {
                     try {
                         auto idx = static_cast<unsigned>( ::std::stol(name.substr(3)) );
-                        lv = ::MIR::LValue::make_Argument({ idx });
+                        lv = ::MIR::LValue::new_Argument( idx );
                     }
                     catch(const ::std::exception& e) {
                         LOG_ERROR(lex << "Invalid argument name - " << name << " - " << e.what());
@@ -365,7 +380,7 @@ bool Parser::parse_one()
                 }
                 // Hard-coded "RETURN" lvalue
                 else if( name == "RETURN" ) {
-                    lv = ::MIR::LValue::make_Return({});
+                    lv = ::MIR::LValue::new_Return();
                 }
                 // Otherwise, look up variable names
                 else {
@@ -373,13 +388,13 @@ bool Parser::parse_one()
                     if( it == var_names.end() ) {
                         LOG_ERROR(lex << "Cannot find variable named '" << name << "'");
                     }
-                    lv = ::MIR::LValue::make_Local(static_cast<unsigned>(it - var_names.begin()));
+                    lv = ::MIR::LValue::new_Local(static_cast<unsigned>(it - var_names.begin()));
                 }
             }
             else if( lex.next() == "::" || lex.next() == '<' )
             {
                 auto path = p.parse_path();
-                lv = ::MIR::LValue( ::std::move(path) );
+                lv = ::MIR::LValue::new_Static( ::std::move(path) );
             }
             else {
                 LOG_ERROR(lex << "Unexpected token in LValue - " << lex.next());
@@ -390,19 +405,19 @@ bool Parser::parse_one()
                 {
                     lex.check(TokenClass::Integer);
                     auto idx = static_cast<unsigned>( lex.consume().integer() );
-                    lv = ::MIR::LValue::make_Downcast({ make_lvp(::std::move(lv)), idx });
+                    lv = ::MIR::LValue::new_Downcast(::std::move(lv), idx);
                 }
                 else if( lex.consume_if('.') )
                 {
                     lex.check(TokenClass::Integer);
                     auto idx = static_cast<unsigned>( lex.consume().integer() );
-                    lv = ::MIR::LValue::make_Field({ make_lvp(::std::move(lv)), idx });
+                    lv = ::MIR::LValue::new_Field( ::std::move(lv), idx );
                 }
                 else if( lex.next() == '[' )
                 {
                     lex.consume();
                     auto idx_lv = parse_lvalue(p, var_names);
-                    lv = ::MIR::LValue::make_Index({ make_lvp(::std::move(lv)), make_lvp(::std::move(idx_lv)) });
+                    lv = ::MIR::LValue::new_Index(::std::move(lv), idx_lv.as_Local());
                     lex.check_consume(']');
                 }
                 else
@@ -412,7 +427,7 @@ bool Parser::parse_one()
             }
             while(deref --)
             {
-                lv = ::MIR::LValue::make_Deref({ make_lvp(::std::move(lv)) });
+                lv = ::MIR::LValue::new_Deref( ::std::move(lv) );
             }
             return lv;
         }
@@ -464,7 +479,7 @@ bool Parser::parse_one()
             else if( p.lex.consume_if("ADDROF") ) {
                 auto path = p.parse_path();
 
-                return ::MIR::Constant::make_ItemAddr({ ::std::move(path) });
+                return ::MIR::Constant::make_ItemAddr({ ::std::make_unique<HIR::Path>(::std::move(path)) });
             }
             else {
                 LOG_BUG(p.lex << "BUG? " << p.lex.next());
@@ -867,7 +882,7 @@ bool Parser::parse_one()
             ::std::vector<unsigned> targets;
             while(lex.next() != '{')
             {
-                targets.push_back( static_cast<unsigned>(lex.consume().integer()) );
+                targets.push_back( static_cast<unsigned>(lex.check_consume(TokenClass::Integer).integer()) );
                 if( !lex.consume_if(',') )
                     break;
             }
@@ -936,7 +951,7 @@ bool Parser::parse_one()
                 lex.check_consume(')');
             }
             else if( lex.next() == TokenClass::String ) {
-                auto name = ::std::move(lex.consume().strval);
+                auto name = RcString::new_interned(lex.consume().strval);
                 auto params = parse_pathparams();
                 ct = ::MIR::CallTarget::make_Intrinsic({ ::std::move(name), ::std::move(params) });
             }
@@ -1214,7 +1229,14 @@ RawType Parser::parse_core_type()
         {
             ret_ty = ::HIR::TypeRef::unit();
         }
-        return ::HIR::TypeRef(RawType::Function);
+        auto ft = FunctionType {
+            is_unsafe,
+            ::std::move(abi),
+            ::std::move(args),
+            ::std::move(ret_ty)
+            };
+        const auto* ft_p = &*tree.function_types.insert(::std::move(ft)).first;
+        return ::HIR::TypeRef(ft_p);
         // TODO: Use abi/ret_ty/args as part of that
     }
     else if( lex.consume_if("dyn") )
@@ -1262,14 +1284,28 @@ RawType Parser::parse_core_type()
         }
         lex.consume_if(')');
 
+        // Ignore marker traits.
+
         auto rv = ::HIR::TypeRef(RawType::TraitObject);
         if( base_trait != ::HIR::GenericPath() )
         {
             // Generate vtable path
             auto vtable_path = base_trait;
             vtable_path.m_simplepath.ents.back() += "#vtable";
-            // - TODO: Associated types?
-            rv.composite_type = this->get_composite( ::std::move(vtable_path) );
+            if( atys.size() > 1 )
+            {
+                LOG_TODO("Handle multiple ATYs in vtable path");
+            }
+            else if( atys.size() == 1 )
+            {
+                vtable_path.m_params.tys.push_back( ::std::move(atys[0].second) );
+            }
+            // - TODO: Associated types? (Need to ensure ordering is correct)
+            rv.ptr.composite_type = this->get_composite( ::std::move(vtable_path) );
+        }
+        else
+        {
+            // TODO: vtable for empty trait?
         }
         return rv;
     }
@@ -1289,6 +1325,7 @@ const DataType* Parser::get_composite(::HIR::GenericPath gp)
     {
         // TODO: Later on need to check if the type is valid.
         auto v = ::std::make_unique<DataType>(DataType {});
+        v->populated = false;
         v->my_path = gp;
         auto ir = tree.data_types.insert(::std::make_pair( ::std::move(gp), ::std::move(v)) );
         it = ir.first;
@@ -1317,6 +1354,15 @@ const Function* ModuleTree::get_function_opt(const ::HIR::Path& p) const
         return nullptr;
     }
     return &it->second;
+}
+const Function* ModuleTree::get_ext_function(const char* name) const
+{
+    auto it = ext_functions.find(name);
+    if( it == ext_functions.end() )
+    {
+        return nullptr;
+    }
+    return it->second;
 }
 Static& ModuleTree::get_static(const ::HIR::Path& p)
 {

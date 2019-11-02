@@ -88,7 +88,7 @@ public:
         (Value,     struct { Value start; Value end; } ),
         (Tuple,     TuplePat ),
         (StructTuple, struct { Path path; TuplePat tup_pat; } ),
-        (Struct,    struct { Path path; ::std::vector< ::std::pair< ::std::string, Pattern> > sub_patterns; bool is_exhaustive; } ),
+        (Struct,    struct { Path path; ::std::vector< ::std::pair< RcString, Pattern> > sub_patterns; bool is_exhaustive; } ),
         (Slice,     struct { ::std::vector<Pattern> sub_pats; }),
         (SplitSlice, struct { ::std::vector<Pattern> leading; PatternBinding extra_bind; ::std::vector<Pattern> trailing; } )
         );
@@ -171,7 +171,7 @@ public:
     {}
 
     struct TagStruct {};
-    Pattern(TagStruct, Span sp, Path path, ::std::vector< ::std::pair< ::std::string,Pattern> > sub_patterns, bool is_exhaustive):
+    Pattern(TagStruct, Span sp, Path path, ::std::vector< ::std::pair< RcString,Pattern> > sub_patterns, bool is_exhaustive):
         m_span( mv$(sp) ),
         m_data( Data::make_Struct( { ::std::move(path), ::std::move(sub_patterns), is_exhaustive } ) )
     {}

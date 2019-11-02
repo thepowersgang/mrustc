@@ -15,10 +15,10 @@ public:
     AttrStage stage() const override { return AttrStage::Pre; }
 
     void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate) const override {
-        if( crate.m_crate_type != AST::Crate::Type::Unknown ) {
-            //ERROR(sp, E0000, "Multiple #![crate_type] attributes");
-            return ;
-        }
+        //if( crate.m_crate_type != AST::Crate::Type::Unknown ) {
+        //    //ERROR(sp, E0000, "Multiple #![crate_type] attributes");
+        //    return ;
+        //}
         if( !mi.has_string() ) {
             ERROR(sp, E0000, "#![crate_type] requires a string argument");
         }
@@ -42,9 +42,9 @@ public:
     AttrStage stage() const override { return AttrStage::Pre; }
 
     void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate) const override {
-        if( crate.m_crate_name != "" ) {
-            ERROR(sp, E0000, "Multiple #![crate_name] attributes");
-        }
+        //if( crate.m_crate_name != "" ) {
+        //    ERROR(sp, E0000, "Multiple #![crate_name] attributes");
+        //}
         if( !mi.has_string() || mi.string() == "" ) {
             ERROR(sp, E0000, "#![crate_name] requires a non-empty string argument");
         }
@@ -61,6 +61,14 @@ public:
     void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate) const override {
         // TODO: Check for an existing allocator crate
         crate.m_lang_items.insert(::std::make_pair( "mrustc-allocator", AST::Path("",{}) ));
+    }
+
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
+        if( ! i.is_Function() ) {
+            ERROR(sp, E0000, "#[allocator] can only be put on functions and the crate - found on " << i.tag_str());
+        }
+        // TODO: Ensure that this is an extern { fn }
+        // TODO: Does this need to do anything?
     }
 };
 class Decorator_PanicRuntime:

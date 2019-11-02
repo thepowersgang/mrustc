@@ -157,6 +157,8 @@
     <ProjectReference />
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\src\trans\auto_impls.cpp" />
+    <ClCompile Include="..\src\trans\mangling_v2.cpp" />
     <ClCompile Include="..\src\ast\ast.cpp" />
     <ClCompile Include="..\src\ast\crate.cpp" />
     <ClCompile Include="..\src\ast\dump.cpp" />
@@ -166,6 +168,7 @@
     <ClCompile Include="..\src\ast\types.cpp" />
     <ClCompile Include="..\src\debug.cpp" />
     <ClCompile Include="..\src\expand\asm.cpp" />
+    <ClCompile Include="..\src\expand\assert.cpp" />
     <ClCompile Include="..\src\expand\cfg.cpp" />
     <ClCompile Include="..\src\expand\concat.cpp" />
     <ClCompile Include="..\src\expand\crate_tags.cpp" />
@@ -193,6 +196,7 @@
     <ClCompile Include="..\src\hir\from_ast_expr.cpp" />
     <ClCompile Include="..\src\hir\generic_params.cpp" />
     <ClCompile Include="..\src\hir\hir.cpp" />
+    <ClCompile Include="..\src\hir\hir_ops.cpp" />
     <ClCompile Include="..\src\hir\path.cpp" />
     <ClCompile Include="..\src\hir\pattern.cpp" />
     <ClCompile Include="..\src\hir\serialise.cpp" />
@@ -204,6 +208,7 @@
     <ClCompile Include="..\src\hir_conv\expand_type.cpp" />
     <ClCompile Include="..\src\hir_conv\markings.cpp" />
     <ClCompile Include="..\src\hir_conv\resolve_ufcs.cpp" />
+    <ClCompile Include="..\src\hir_conv\resolve_ufcs_outer.cpp" />
     <ClCompile Include="..\src\hir_expand\annotate_value_usage.cpp" />
     <ClCompile Include="..\src\hir_expand\closures.cpp" />
     <ClCompile Include="..\src\hir_expand\erased_types.cpp" />
@@ -258,7 +263,6 @@
     <ClCompile Include="..\src\trans\codegen_c_structured.cpp" />
     <ClCompile Include="..\src\trans\codegen_mmir.cpp" />
     <ClCompile Include="..\src\trans\enumerate.cpp" />
-    <ClCompile Include="..\src\trans\mangling.cpp" />
     <ClCompile Include="..\src\trans\monomorphise.cpp" />
     <ClCompile Include="..\src\trans\target.cpp" />
     <ClCompile Include="..\src\trans\trans_list.cpp" />

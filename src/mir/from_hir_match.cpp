@@ -395,6 +395,8 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
         else
         {
             ac.has_condition = false;
+            ac.cond_start = ~0u;
+            ac.cond_false = ~0u;
         }
 
         // Code
@@ -802,6 +804,9 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, const ::HIR::Literal
                 )
             )
             ),
+        (ExternType,
+            TODO(sp, "Match extern type");
+            ),
         (Union,
             TODO(sp, "Match union");
             ),
@@ -886,9 +891,10 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, const ::HIR::Literal
         )
     )
 }
-void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::TypeRef& ty)
+void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::TypeRef& top_ty)
 {
-    TRACE_FUNCTION_F("pat="<<pat<<", ty="<<ty<<",   m_field_path=[" << m_field_path << "]");
+    static ::HIR::Pattern   empty_pattern;
+    TRACE_FUNCTION_F("pat="<<pat<<", ty="<<top_ty<<",   m_field_path=[" << m_field_path << "]");
     struct H {
         static uint64_t get_pattern_value_int(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::Pattern::Value& val) {
             TU_MATCH_DEF( ::HIR::Pattern::Value, (val), (e),
@@ -922,6 +928,16 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
         }
     };
 
+    const auto* ty_p = &top_ty;
+    for(size_t i = 0; i < pat.m_implicit_deref_count; i ++)
+    {
+        if( !ty_p->m_data.is_Borrow() )
+            BUG(sp, "Deref step " << i << "/" << pat.m_implicit_deref_count << " hit a non-borrow " << *ty_p << " from " << top_ty);
+        ty_p = &*ty_p->m_data.as_Borrow().inner;
+        m_field_path.push_back( FIELD_DEREF );
+    }
+    const auto& ty = *ty_p;
+
     // TODO: Outer handling for Value::Named patterns
     // - Convert them into either a pattern, or just a variant of this function that operates on ::HIR::Literal
     //  > It does need a way of handling unknown-value constants (e.g. <GenericT as Foo>::CONST)
@@ -931,6 +947,10 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             if( pve.binding )
             {
                 this->append_from_lit(sp, pve.binding->m_value_res, ty);
+                for(size_t i = 0; i < pat.m_implicit_deref_count; i ++)
+                {
+                    m_field_path.pop_back();
+                }
                 return ;
             }
             else
@@ -940,20 +960,23 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
         )
     )
 
-    TU_MATCHA( (ty.m_data), (e),
-    (Infer,   BUG(sp, "Ivar for in match type"); ),
-    (Diverge,
+    TU_MATCH_HDR( (ty.m_data), {)
+    TU_ARM(ty.m_data, Infer, e) {
+        BUG(sp, "Ivar for in match type");
+        }
+    TU_ARM(ty.m_data, Diverge, e) {
         // Since ! can never exist, mark this arm as impossible.
         // TODO: Marking as impossible (and not emitting) leads to exhuaustiveness failure.
         //this->m_is_impossible = true;
-        ),
-    (Primitive,
-        TU_MATCH_DEF(::HIR::Pattern::Data, (pat.m_data), (pe),
-        ( BUG(sp, "Matching primitive with invalid pattern - " << pat); ),
-        (Any,
+        }
+    TU_ARM(ty.m_data, Primitive, e) {
+        TU_MATCH_HDR( (pat.m_data), {)
+        default:
+            BUG(sp, "Matching primitive with invalid pattern - " << pat);
+        TU_ARM(pat.m_data, Any, pe) {
             this->push_rule( PatternRule::make_Any({}) );
-            ),
-        (Range,
+            }
+        TU_ARM(pat.m_data, Range, pe) {
             switch(e)
             {
             case ::HIR::CoreType::F32:
@@ -994,8 +1017,8 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 BUG(sp, "Hit match over `str` - must be `&str`");
                 break;
             }
-            ),
-        (Value,
+            }
+        TU_ARM(pat.m_data, Value, pe) {
             switch(e)
             {
             case ::HIR::CoreType::F32:
@@ -1035,16 +1058,16 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 BUG(sp, "Hit match over `str` - must be `&str`");
                 break;
             }
-            )
-        )
-        ),
-    (Tuple,
+            }
+        }
+        }
+    TU_ARM(ty.m_data, Tuple, e) {
         m_field_path.push_back(0);
         TU_MATCH_DEF(::HIR::Pattern::Data, (pat.m_data), (pe),
         ( BUG(sp, "Matching tuple with invalid pattern - " << pat); ),
         (Any,
             for(const auto& sty : e) {
-                this->append_from(sp, pat, sty);
+                this->append_from(sp, empty_pattern, sty);
                 m_field_path.back() ++;
             }
             ),
@@ -1070,22 +1093,22 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             )
         )
         m_field_path.pop_back();
-        ),
-    (Path,
+        }
+    TU_ARM(ty.m_data, Path, e) {
         // This is either a struct destructure or an enum
-        TU_MATCHA( (e.binding), (pbe),
-        (Unbound,
+        TU_MATCH_HDRA( (e.binding), {)
+        TU_ARMA(Unbound, pbe) {
             BUG(sp, "Encounterd unbound path - " << e.path);
-            ),
-        (Opaque,
+            }
+        TU_ARMA(Opaque, be) {
             TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
             ( BUG(sp, "Matching opaque type with invalid pattern - " << pat); ),
             (Any,
                 this->push_rule( PatternRule::make_Any({}) );
                 )
             )
-            ),
-        (Struct,
+            }
+        TU_ARMA(Struct, pbe) {
             auto monomorph = [&](const auto& ty) {
                 auto rv = monomorphise_type(sp, pbe->m_params, e.path.m_data.as_Generic().m_params, ty);
                 this->m_resolve.expand_associated_types(sp, rv);
@@ -1101,7 +1124,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 (Any,
                     // _ on a box, recurse into the box type.
                     m_field_path.push_back(FIELD_DEREF);
-                    this->append_from(sp, pat, inner_ty);
+                    this->append_from(sp, empty_pattern, inner_ty);
                     m_field_path.pop_back();
                     ),
                 (Box,
@@ -1132,12 +1155,12 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
                 ( BUG(sp, "Match not allowed, " << ty <<  " with " << pat); ),
                 (Any,
-                    // - Recurse into type and use the same pattern again
+                    // - Recurse into type using an empty pattern
                     for(const auto& fld : sd)
                     {
                         ::HIR::TypeRef  tmp;
                         const auto& sty_mono = (monomorphise_type_needed(fld.ent) ? tmp = monomorph(fld.ent) : fld.ent);
-                        this->append_from(sp, pat, sty_mono);
+                        this->append_from(sp, empty_pattern, sty_mono);
                         m_field_path.back() ++;
                     }
                     ),
@@ -1166,7 +1189,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                     {
                         ::HIR::TypeRef  tmp;
                         const auto& sty_mono = (monomorphise_type_needed(fld.second.ent) ? tmp = monomorph(fld.second.ent) : fld.second.ent);
-                        this->append_from(sp, pat, sty_mono);
+                        this->append_from(sp, empty_pattern, sty_mono);
                         m_field_path.back() ++;
                     }
                     m_field_path.pop_back();
@@ -1182,8 +1205,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                         auto it = ::std::find_if( pe.sub_patterns.begin(), pe.sub_patterns.end(), [&](const auto& x){ return x.first == fld.first; } );
                         if( it == pe.sub_patterns.end() )
                         {
-                            ::HIR::Pattern  any_pat {};
-                            this->append_from(sp, any_pat, sty_mono);
+                            this->append_from(sp, empty_pattern, sty_mono);
                         }
                         else
                         {
@@ -1196,11 +1218,24 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 )
                 )
             )
-            ),
-        (Union,
-            TODO(sp, "Match over union - " << ty);
-            ),
-        (Enum,
+            }
+        TU_ARMA(Union, pbe) {
+            TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
+            ( TODO(sp, "Match over union - " << ty << " with " << pat); ),
+            (Any,
+                this->push_rule( PatternRule::make_Any({}) );
+                )
+            )
+            }
+        TU_ARMA(ExternType, pbe) {
+            TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
+            ( BUG(sp, "Matching extern type with invalid pattern - " << pat); ),
+            (Any,
+                this->push_rule( PatternRule::make_Any({}) );
+                )
+            )
+            }
+        TU_ARMA(Enum, pbe) {
             auto monomorph = [&](const auto& ty) {
                 auto rv = monomorphise_type(sp, pbe->m_params, e.path.m_data.as_Generic().m_params, ty);
                 this->m_resolve.expand_associated_types(sp, rv);
@@ -1287,10 +1322,10 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 this->push_rule( PatternRule::make_Variant({ pe.binding_idx, mv$(sub_builder.m_rules) }) );
                 )
             )
-            )
-        )
-        ),
-    (Generic,
+            }
+        }
+        }
+    TU_ARM(ty.m_data, Generic, e) {
         // Generics don't destructure, so the only valid pattern is `_`
         TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
         ( BUG(sp, "Match not allowed, " << ty <<  " with " << pat); ),
@@ -1298,29 +1333,29 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             this->push_rule( PatternRule::make_Any({}) );
             )
         )
-        ),
-    (TraitObject,
+        }
+    TU_ARM(ty.m_data, TraitObject, e) {
         if( pat.m_data.is_Any() ) {
         }
         else {
             ERROR(sp, E0000, "Attempting to match over a trait object");
         }
-        ),
-    (ErasedType,
+        }
+    TU_ARM(ty.m_data, ErasedType, e) {
         if( pat.m_data.is_Any() ) {
         }
         else {
             ERROR(sp, E0000, "Attempting to match over an erased type");
         }
-        ),
-    (Array,
+        }
+    TU_ARM(ty.m_data, Array, e) {
         // Sequential match just like tuples.
         m_field_path.push_back(0);
         TU_MATCH_DEF(::HIR::Pattern::Data, (pat.m_data), (pe),
         ( BUG(sp, "Matching array with invalid pattern - " << pat); ),
         (Any,
             for(unsigned int i = 0; i < e.size_val; i ++) {
-                this->append_from(sp, pat, *e.inner);
+                this->append_from(sp, empty_pattern, *e.inner);
                 m_field_path.back() ++;
             }
             ),
@@ -1336,8 +1371,8 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             )
         )
         m_field_path.pop_back();
-        ),
-    (Slice,
+        }
+    TU_ARM(ty.m_data, Slice, e) {
         TU_MATCH_DEF(::HIR::Pattern::Data, (pat.m_data), (pe),
         (
             BUG(sp, "Matching over [T] with invalid pattern - " << pat);
@@ -1393,18 +1428,19 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 }) );
             )
         )
-        ),
-    (Borrow,
+        }
+    TU_ARM(ty.m_data, Borrow, e) {
         m_field_path.push_back( FIELD_DEREF );
-        TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
-        ( BUG(sp, "Matching borrow invalid pattern - " << pat); ),
-        (Any,
-            this->append_from( sp, pat, *e.inner );
-            ),
-        (Ref,
+        TU_MATCH_HDR( (pat.m_data), {)
+        default:
+            BUG(sp, "Matching borrow invalid pattern - " << ty << " with " << pat);
+        TU_ARM(pat.m_data, Any, pe) {
+            this->append_from( sp, empty_pattern, *e.inner );
+            }
+        TU_ARM(pat.m_data, Ref, pe) {
             this->append_from( sp, *pe.sub, *e.inner );
-            ),
-        (Value,
+            }
+        TU_ARM(pat.m_data, Value, pe) {
             // TODO: Check type?
             if( pe.val.is_String() ) {
                 const auto& s = pe.val.as_String();
@@ -1423,32 +1459,36 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             else {
                 BUG(sp, "Matching borrow invalid pattern - " << pat);
             }
-            )
-        )
+            }
+        }
         m_field_path.pop_back();
-        ),
-    (Pointer,
+        }
+    TU_ARM(ty.m_data, Pointer, e) {
         if( pat.m_data.is_Any() ) {
         }
         else {
             ERROR(sp, E0000, "Attempting to match over a pointer");
         }
-        ),
-    (Function,
+        }
+    TU_ARM(ty.m_data, Function, e) {
         if( pat.m_data.is_Any() ) {
         }
         else {
             ERROR(sp, E0000, "Attempting to match over a functon pointer");
         }
-        ),
-    (Closure,
+        }
+    TU_ARM(ty.m_data, Closure, e) {
         if( pat.m_data.is_Any() ) {
         }
         else {
             ERROR(sp, E0000, "Attempting to match over a closure");
         }
-        )
-    )
+        }
+    }
+    for(size_t i = 0; i < pat.m_implicit_deref_count; i ++)
+    {
+        m_field_path.pop_back();
+    }
 }
 
 namespace {
@@ -1456,7 +1496,7 @@ namespace {
     Ordering ord_rule_compatible(const PatternRule& a, const PatternRule& b)
     {
         if(a.tag() != b.tag())
-            return ::ord( (unsigned)a.tag(), b.tag() );
+            return ::ord( (unsigned)a.tag(), (unsigned)b.tag() );
 
         TU_MATCHA( (a, b), (ae, be),
         (Any,
@@ -1699,13 +1739,13 @@ namespace {
                 ),
             (Tuple,
                 ASSERT_BUG(sp, idx < e.size(), "Tuple index out of range");
-                lval = ::MIR::LValue::make_Field({ box$(lval), idx });
+                lval = ::MIR::LValue::new_Field(mv$(lval), idx);
                 cur_ty = &e[idx];
                 ),
             (Path,
                 if( idx == FIELD_DEREF ) {
                     // TODO: Check that the path is Box
-                    lval = ::MIR::LValue::make_Deref({ box$(lval) });
+                    lval = ::MIR::LValue::new_Deref( mv$(lval) );
                     cur_ty = &e.path.m_data.as_Generic().m_params.m_types.at(0);
                     break;
                 }
@@ -1715,6 +1755,9 @@ namespace {
                     ),
                 (Opaque,
                     BUG(sp, "Destructuring an opaque type - " << *cur_ty);
+                    ),
+                (ExternType,
+                    BUG(sp, "Destructuring an extern type - " << *cur_ty);
                     ),
                 (Struct,
                     // TODO: Should this do a call to expand_associated_types?
@@ -1737,7 +1780,7 @@ namespace {
                         else {
                             cur_ty = &fld.ent;
                         }
-                        lval = ::MIR::LValue::make_Field({ box$(lval), idx });
+                        lval = ::MIR::LValue::new_Field(mv$(lval), idx);
                         ),
                     (Named,
                         assert( idx < fields.size() );
@@ -1749,7 +1792,7 @@ namespace {
                         else {
                             cur_ty = &fld.ent;
                         }
-                        lval = ::MIR::LValue::make_Field({ box$(lval), idx });
+                        lval = ::MIR::LValue::new_Field(mv$(lval), idx);
                         )
                     )
                     ),
@@ -1768,7 +1811,7 @@ namespace {
                     else {
                         cur_ty = &fld.second.ent;
                     }
-                    lval = ::MIR::LValue::make_Downcast({ box$(lval), idx });
+                    lval = ::MIR::LValue::new_Downcast(mv$(lval), idx);
                     ),
                 (Enum,
                     auto monomorph_to_ptr = [&](const auto& ty)->const auto* {
@@ -1788,7 +1831,7 @@ namespace {
                     const auto& var = variants[idx];
 
                     cur_ty = monomorph_to_ptr(var.type);
-                    lval = ::MIR::LValue::make_Downcast({ box$(lval), idx });
+                    lval = ::MIR::LValue::new_Downcast(mv$(lval), idx);
                     )
                 )
                 ),
@@ -1805,7 +1848,7 @@ namespace {
                 assert(idx < e.size_val);
                 cur_ty = &*e.inner;
                 if( idx < FIELD_INDEX_MAX )
-                    lval = ::MIR::LValue::make_Field({ box$(lval), idx });
+                    lval = ::MIR::LValue::new_Field(mv$(lval), idx);
                 else {
                     idx -= FIELD_INDEX_MAX;
                     idx = FIELD_INDEX_MAX - idx;
@@ -1815,16 +1858,16 @@ namespace {
             (Slice,
                 cur_ty = &*e.inner;
                 if( idx < FIELD_INDEX_MAX )
-                    lval = ::MIR::LValue::make_Field({ box$(lval), idx });
+                    lval = ::MIR::LValue::new_Field(mv$(lval), idx);
                 else {
                     idx -= FIELD_INDEX_MAX;
                     idx = FIELD_INDEX_MAX - idx;
                     // 1. Create an LValue containing the size of this slice subtract `idx`
-                    auto len_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ builder.get_ptr_to_dst(sp, lval).clone() }));
+                    auto len_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ builder.get_ptr_to_dst(sp, lval) }));
                     auto sub_val = ::MIR::Param(::MIR::Constant::make_Uint({ idx, ::HIR::CoreType::Usize }));
                     auto ofs_val = builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_BinOp({ mv$(len_lval), ::MIR::eBinOp::SUB, mv$(sub_val) }) );
                     // 2. Return _Index with that value
-                    lval = ::MIR::LValue::make_Index({ box$(lval), box$(ofs_val) });
+                    lval = ::MIR::LValue::new_Index(mv$(lval), ofs_val.as_Local());
                 }
                 ),
             (Borrow,
@@ -1838,7 +1881,7 @@ namespace {
                     cur_ty = &*e.inner;
                 }
                 DEBUG(i << " " << *cur_ty);
-                lval = ::MIR::LValue::make_Deref({ box$(lval) });
+                lval = ::MIR::LValue::new_Deref(mv$(lval));
                 ),
             (Pointer,
                 ERROR(sp, E0000, "Attempting to match over a pointer");
@@ -1942,14 +1985,14 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
         DEBUG("ty = " << ity << ", val = " << val);
 
         const auto& ty = ity;
-        TU_MATCHA( (ty.m_data), (te),
-        (Infer,
+        TU_MATCH_HDRA( (ty.m_data), {)
+        TU_ARMA(Infer, _te) {
             BUG(sp, "Hit _ in type - " << ty);
-            ),
-        (Diverge,
+            }
+        TU_ARMA(Diverge, _te) {
             BUG(sp, "Matching over !");
-            ),
-        (Primitive,
+            }
+        TU_ARMA(Primitive, te) {
             switch(te)
             {
             case ::HIR::CoreType::Bool: {
@@ -2116,17 +2159,20 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
             case ::HIR::CoreType::Str: {
                 ASSERT_BUG(sp, rule.is_Value() && rule.as_Value().is_StaticString(), "");
                 const auto& v = rule.as_Value();
+                ASSERT_BUG(sp, val.is_Deref(), "");
+                val.m_wrappers.pop_back();
+                auto str_val = mv$(val);
 
                 auto succ_bb = builder.new_bb_unlinked();
 
                 auto test_val = ::MIR::Param(::MIR::Constant( v.as_StaticString() ));
-                auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ mv$(*val.as_Deref().val), ::MIR::eBinOp::EQ, mv$(test_val) }));
+                auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ mv$(str_val), ::MIR::eBinOp::EQ, mv$(test_val) }));
                 builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval), succ_bb, fail_bb }) );
                 builder.set_cur_block(succ_bb);
                 } break;
             }
-            ),
-        (Path,
+            }
+        TU_ARMA(Path, te) {
             TU_MATCHA( (te.binding), (pbe),
             (Unbound,
                 BUG(sp, "Encounterd unbound path - " << te.path);
@@ -2150,6 +2196,9 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                 ),
             (Union,
                 TODO(sp, "Match over Union");
+                ),
+            (ExternType,
+                TODO(sp, "Match over ExternType");
                 ),
             (Enum,
                 auto monomorph = [&](const auto& ty) {
@@ -2182,26 +2231,26 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                     // Recurse with the new ruleset
                     MIR_LowerHIR_Match_Simple__GeneratePattern(builder, sp,
                         re.sub_rules.data(), re.sub_rules.size(),
-                        var_ty_m, ::MIR::LValue::make_Downcast({ box$(val.clone()), var_idx }), rule.field_path.size()+1,
+                        var_ty_m, ::MIR::LValue::new_Downcast(val.clone(), var_idx), rule.field_path.size()+1,
                         fail_bb
                         );
                 }
                 )   // TypePathBinding::Enum
             )
-            ),  // Type::Data::Path
-        (Generic,
+            }  // Type::Data::Path
+        TU_ARMA(Generic, _te) {
             BUG(sp, "Attempting to match a generic");
-            ),
-        (TraitObject,
+            }
+        TU_ARMA(TraitObject, te) {
             BUG(sp, "Attempting to match a trait object");
-            ),
-        (ErasedType,
+            }
+        TU_ARMA(ErasedType, te) {
             BUG(sp, "Attempting to match an erased type");
-            ),
-        (Array,
+            }
+        TU_ARMA(Array, te) {
             TODO(sp, "Match directly on array?");
-            ),
-        (Slice,
+            }
+        TU_ARMA(Slice, te) {
             ASSERT_BUG(sp, rule.is_Slice() || rule.is_SplitSlice() || (rule.is_Value() && rule.as_Value().is_Bytes()), "Can only match slice with Bytes or Slice rules - " << rule);
             if( rule.is_Value() ) {
                 ASSERT_BUG(sp, *te.inner == ::HIR::CoreType::U8, "Bytes pattern on non-&[u8]");
@@ -2210,7 +2259,8 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
 
                 auto succ_bb = builder.new_bb_unlinked();
 
-                auto inner_val = val.as_Deref().val->clone();
+                ASSERT_BUG(sp, val.is_Deref(), "Slice pattern on non-Deref - " << val);
+                auto inner_val = val.clone_unwrapped();
 
                 auto slice_rval = ::MIR::RValue::make_MakeDst({ mv$(cloned_val), mv$(size_val) });
                 auto test_lval = builder.lvalue_or_temp(sp, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, ty.clone()), mv$(slice_rval));
@@ -2223,7 +2273,7 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
 
                 // Compare length
                 auto test_val = ::MIR::Param( ::MIR::Constant::make_Uint({ re.len, ::HIR::CoreType::Usize }) );
-                auto len_val = builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ builder.get_ptr_to_dst(sp, val).clone() }));
+                auto len_val = builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ builder.get_ptr_to_dst(sp, val) }));
                 auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ mv$(len_val), ::MIR::eBinOp::EQ, mv$(test_val) }));
 
                 auto len_succ_bb = builder.new_bb_unlinked();
@@ -2242,7 +2292,7 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
 
                 // Compare length
                 auto test_val = ::MIR::Param( ::MIR::Constant::make_Uint({ re.min_len, ::HIR::CoreType::Usize}) );
-                auto len_val = builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ builder.get_ptr_to_dst(sp, val).clone() }));
+                auto len_val = builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ builder.get_ptr_to_dst(sp, val) }));
                 auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ mv$(len_val), ::MIR::eBinOp::LT, mv$(test_val) }));
 
                 auto len_succ_bb = builder.new_bb_unlinked();
@@ -2263,23 +2313,23 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
             else {
                 BUG(sp, "Invalid rule type for slice - " << rule);
             }
-            ),
-        (Tuple,
+            }   // Type::Data::Array
+        TU_ARMA(Tuple, te) {
             TODO(sp, "Match directly on tuple?");
-            ),
-        (Borrow,
+            }
+        TU_ARMA(Borrow, te) {
             TODO(sp, "Match directly on borrow?");
-            ),  // Type::Data::Borrow
-        (Pointer,
+            }   // Type::Data::Borrow
+        TU_ARMA(Pointer, te) {
             BUG(sp, "Attempting to match a pointer - " << rule << " against " << ty);
-            ),
-        (Function,
+            }
+        TU_ARMA(Function, te) {
             BUG(sp, "Attempting to match a function pointer - " << rule << " against " << ty);
-            ),
-        (Closure,
+            }
+        TU_ARMA(Closure, te) {
             BUG(sp, "Attempting to match a closure");
-            )
-        )
+            }
+        }
     }
     return 0;
 }
@@ -2780,37 +2830,37 @@ void MatchGenGrouped::gen_dispatch(const ::std::vector<t_rules_subset>& rules, s
         // Matching over a path can only happen with an enum.
         // TODO: What about `box` destructures?
         // - They're handled via hidden derefs
-        if( !te.binding.is_Enum() ) {
-            TU_MATCHA( (te.binding), (pbe),
-            (Unbound,
-                BUG(sp, "Encounterd unbound path - " << te.path);
+        TU_MATCH_HDR( (te.binding), { )
+        TU_ARM(te.binding, Unbound, pbe) {
+            BUG(sp, "Encounterd unbound path - " << te.path);
+            }
+        TU_ARM(te.binding, Opaque, pbe) {
+            BUG(sp, "Attempting to match over opaque type - " << ty);
+            }
+        TU_ARM(te.binding, Struct, pbe) {
+            const auto& str_data = pbe->m_data;
+            TU_MATCHA( (str_data), (sd),
+            (Unit,
+                BUG(sp, "Attempting to match over unit type - " << ty);
                 ),
-            (Opaque,
-                BUG(sp, "Attempting to match over opaque type - " << ty);
+            (Tuple,
+                TODO(sp, "Matching on tuple-like struct?");
                 ),
-            (Struct,
-                const auto& str_data = pbe->m_data;
-                TU_MATCHA( (str_data), (sd),
-                (Unit,
-                    BUG(sp, "Attempting to match over unit type - " << ty);
-                    ),
-                (Tuple,
-                    TODO(sp, "Matching on tuple-like struct?");
-                    ),
-                (Named,
-                    TODO(sp, "Matching on struct?");
-                    )
-                )
-                ),
-            (Union,
-                TODO(sp, "Match over Union");
-                ),
-            (Enum,
+            (Named,
+                TODO(sp, "Matching on struct? - " << ty);
                 )
             )
+            }
+        TU_ARM(te.binding, Union, pbe) {
+            TODO(sp, "Match over Union");
+            }
+        TU_ARM(te.binding, ExternType, pbe) {
+            TODO(sp, "Match over ExternType - " << ty);
+            }
+        TU_ARM(te.binding, Enum, pbe) {
+            this->gen_dispatch__enum(mv$(ty), mv$(val), rules, ofs, arm_targets, def_blk);
+            }
         }
-
-        this->gen_dispatch__enum(mv$(ty), mv$(val), rules, ofs, arm_targets, def_blk);
         ),
     (Generic,
         BUG(sp, "Attempting to match a generic");
@@ -2996,10 +3046,10 @@ void MatchGenGrouped::gen_dispatch__primitive(::HIR::TypeRef ty, ::MIR::LValue v
         }
         m_builder.end_block( ::MIR::Terminator::make_Goto(def_blk) );
         } break;
-    case ::HIR::CoreType::Str:
+    case ::HIR::CoreType::Str: {
         // Remove the deref on the &str
-        auto oval = mv$(val);
-        auto val = mv$(*oval.as_Deref().val);
+        ASSERT_BUG(sp, !val.m_wrappers.empty() && val.m_wrappers.back().is_Deref(), "&str match on non-Deref lvalue - " << val);
+        val.m_wrappers.pop_back();
 
         ::std::vector< ::MIR::BasicBlockId> targets;
         ::std::vector< ::std::string>   values;
@@ -3023,7 +3073,7 @@ void MatchGenGrouped::gen_dispatch__primitive(::HIR::TypeRef ty, ::MIR::LValue v
         m_builder.end_block( ::MIR::Terminator::make_SwitchValue({
             mv$(val), def_blk, mv$(targets), ::MIR::SwitchValues(mv$(values))
             }) );
-        break;
+       } break;
     }
 }
 
@@ -3061,7 +3111,7 @@ void MatchGenGrouped::gen_dispatch__enum(::HIR::TypeRef ty, ::MIR::LValue val, c
 
 void MatchGenGrouped::gen_dispatch__slice(::HIR::TypeRef ty, ::MIR::LValue val, const ::std::vector<t_rules_subset>& rules, size_t ofs, const ::std::vector<::MIR::BasicBlockId>& arm_targets, ::MIR::BasicBlockId def_blk)
 {
-    auto val_len = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ m_builder.get_ptr_to_dst(sp, val).clone() }));
+    auto val_len = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ m_builder.get_ptr_to_dst(sp, val) }));
 
     // TODO: Re-sort the rules list to interleve Constant::Bytes and Slice
 
@@ -3123,8 +3173,8 @@ void MatchGenGrouped::gen_dispatch__slice(::HIR::TypeRef ty, ::MIR::LValue val, 
                 m_builder.set_cur_block(succ_blk);
 
                 // TODO: What if `val` isn't a Deref?
-                ASSERT_BUG(sp, val.is_Deref(), "TODO: Handle non-Deref matches of byte strings");
-                cmp_lval_eq = this->push_compare( val.as_Deref().val->clone(), ::MIR::eBinOp::EQ, mv$(cmp_slice_val) );
+                ASSERT_BUG(sp, !val.m_wrappers.empty() && val.m_wrappers.back().is_Deref(), "TODO: Handle non-Deref matches of byte strings - " << val);
+                cmp_lval_eq = this->push_compare( val.clone_unwrapped(), ::MIR::eBinOp::EQ, mv$(cmp_slice_val) );
                 m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval_eq), arm_targets[tgt_ofs], def_blk }) );
 
                 m_builder.set_cur_block(next_cmp_blk);
@@ -3234,7 +3284,7 @@ void MatchGenGrouped::gen_dispatch_splitslice(const field_path_t& field_path, co
     ASSERT_BUG(sp, ty.m_data.is_Slice(), "SplitSlice pattern on non-slice - " << ty);
 
     // Obtain slice length
-    auto val_len = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ m_builder.get_ptr_to_dst(sp, val).clone() }));
+    auto val_len = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ m_builder.get_ptr_to_dst(sp, val) }));
 
     // 1. Check that length is sufficient for the pattern to be used
     // `IF len < min_len : def_blk, next

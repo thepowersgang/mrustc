@@ -11,7 +11,7 @@ V ?= @
 OBJDIR := .obj/
 
 BIN := ../bin/standalone_miri$(EXESUF)
-OBJS := main.o debug.o mir.o lex.o value.o module_tree.o hir_sim.o miri.o
+OBJS := main.o debug.o mir.o lex.o value.o module_tree.o hir_sim.o miri.o rc_string.o
 
 LINKFLAGS := -g -lpthread
 CXXFLAGS := -Wall -std=c++14 -g -O2
@@ -33,6 +33,11 @@ $(BIN): $(OBJS) ../bin/common_lib.a
 	$V$(CXX) -o $@ $(OBJS) ../bin/common_lib.a $(LINKFLAGS)
 
 $(OBJDIR)%.o: %.cpp
+	@mkdir -p $(dir $@)
+	@echo [CXX] $<
+	$V$(CXX) -o $@ -c $< $(CXXFLAGS) -MMD -MP -MF $@.dep
+
+$(OBJDIR)%.o: ../../src/%.cpp
 	@mkdir -p $(dir $@)
 	@echo [CXX] $<
 	$V$(CXX) -o $@ -c $< $(CXXFLAGS) -MMD -MP -MF $@.dep

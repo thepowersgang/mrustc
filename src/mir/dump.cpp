@@ -176,51 +176,18 @@ namespace {
             #undef FMT
         }
         void fmt_val(::std::ostream& os, const ::MIR::LValue& lval) {
-            TU_MATCHA( (lval), (e),
-            (Return,
-                os << "RETURN";
-                ),
-            (Argument,
-                os << "arg$" << e.idx;
-                ),
-            (Local,
-                os << "_$" << e;
-                ),
-            (Static,
-                os << e;
-                ),
-            (Field,
-                os << "(";
-                fmt_val(os, *e.val);
-                os << ")." << e.field_index;
-                ),
-            (Deref,
-                os << "*";
-                fmt_val(os, *e.val);
-                ),
-            (Index,
-                os << "(";
-                fmt_val(os, *e.val);
-                os << ")[";
-                fmt_val(os, *e.idx);
-                os << "]";
-                ),
-            (Downcast,
-                fmt_val(os, *e.val);
-                os << " as variant" << e.variant_index;
-                )
-            )
+            os << lval;
         }
         void fmt_val(::std::ostream& os, const ::MIR::Constant& e) {
             TU_MATCHA( (e), (ce),
             (Int,
-                os << ce.v;
+                os << ce.v << "_" << ce.t;
                 ),
             (Uint,
-                os << "0x" << ::std::hex << ce.v << ::std::dec;
+                os << "0x" << ::std::hex << ce.v << ::std::dec << "_" << ce.t;
                 ),
             (Float,
-                os << ce.v;
+                os << ce.v << "_" << ce.t;
                 ),
             (Bool,
                 os << (ce.v ? "true" : "false");
@@ -244,10 +211,10 @@ namespace {
                 os << "\"" << ce << "\"";
                 ),
             (Const,
-                os << ce.p;
+                os << *ce.p;
                 ),
             (ItemAddr,
-                os << "addr " << ce;
+                os << "addr " << *ce;
                 )
             )
         }

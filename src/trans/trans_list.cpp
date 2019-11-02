@@ -15,7 +15,7 @@ TransList_Function* TransList::add_function(::HIR::Path p)
     {
         DEBUG("Function " << rv.first->first);
         assert( !rv.first->second );
-        rv.first->second.reset( new TransList_Function {} );
+        rv.first->second.reset( new TransList_Function(rv.first->first) );
         return &*rv.first->second;
     }
     else
@@ -31,6 +31,21 @@ TransList_Static* TransList::add_static(::HIR::Path p)
         DEBUG("Static " << rv.first->first);
         assert( !rv.first->second );
         rv.first->second.reset( new TransList_Static {} );
+        return &*rv.first->second;
+    }
+    else
+    {
+        return nullptr;
+    }
+}
+TransList_Const* TransList::add_const(::HIR::Path p)
+{
+    auto rv = m_constants.insert( ::std::make_pair(mv$(p), nullptr) );
+    if( rv.second )
+    {
+        DEBUG("Const " << rv.first->first);
+        assert( !rv.first->second );
+        rv.first->second.reset( new TransList_Const {} );
         return &*rv.first->second;
     }
     else

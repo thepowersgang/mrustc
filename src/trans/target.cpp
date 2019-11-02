@@ -404,21 +404,21 @@ namespace
                 ARCH_M68K
                 };
         }
-        else if(target_name == "i586-windows-gnu")
+        else if(target_name == "i586-pc-windows-gnu")
         {
             return TargetSpec {
                 "windows", "windows", "gnu", {CodegenMode::Gnu11, true, "mingw32", BACKEND_C_OPTS_GNU},
                 ARCH_X86
             };
         }
-        else if(target_name == "x86_64-windows-gnu")
+        else if(target_name == "x86_64-pc-windows-gnu")
         {
             return TargetSpec {
                 "windows", "windows", "gnu", {CodegenMode::Gnu11, false, "x86_64-w64-mingw32", BACKEND_C_OPTS_GNU},
                 ARCH_X86_64
                 };
         }
-        else if (target_name == "x86-windows-msvc")
+        else if (target_name == "x86-pc-windows-msvc")
         {
             // TODO: Should this include the "kernel32.lib" inclusion?
             return TargetSpec {
@@ -426,7 +426,7 @@ namespace
                 ARCH_X86
             };
         }
-        else if (target_name == "x86_64-windows-msvc")
+        else if (target_name == "x86_64-pc-windows-msvc")
         {
             return TargetSpec {
                 "windows", "windows", "msvc", {CodegenMode::Msvc, true, "amd64", {}, {}},
@@ -595,144 +595,12 @@ void Target_SetCfg(const ::std::string& target_name)
         if(s == "32")   return g_target.m_arch.m_atomics.u32;
         if(s == "64")   return g_target.m_arch.m_atomics.u64;
         if(s == "ptr")  return g_target.m_arch.m_atomics.ptr;   // Has an atomic pointer-sized value
+        if(s == "cas")  return g_target.m_arch.m_atomics.ptr;   // TODO: Atomic compare-and-set option
         return false;
         });
     Cfg_SetValueCb("target_feature", [](const ::std::string& s) {
         return false;
         });
-}
-
-namespace {
-    // Returns NULL when the repr can't be determined
-    ::std::unique_ptr<StructRepr> make_struct_repr(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty)
-    {
-        TRACE_FUNCTION_F(ty);
-        ::std::vector<StructRepr::Ent>  ents;
-        bool packed = false;
-        bool allow_sort = false;
-        if( const auto* te = ty.m_data.opt_Path() )
-        {
-            const auto& str = *te->binding.as_Struct();
-            auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr, &te->path.m_data.as_Generic().m_params, nullptr);
-            auto monomorph = [&](const auto& tpl) {
-                auto rv = monomorphise_type_with(sp, tpl, monomorph_cb);
-                resolve.expand_associated_types(sp, rv);
-                return rv;
-                };
-            TU_MATCHA( (str.m_data), (se),
-            (Unit,
-                ),
-            (Tuple,
-                unsigned int idx = 0;
-                for(const auto& e : se)
-                {
-                    auto ty = monomorph(e.ent);
-                    size_t  size, align;
-                    if( !Target_GetSizeAndAlignOf(sp, resolve, ty, size,align) )
-                        return nullptr;
-                    if( size == SIZE_MAX )
-                        BUG(sp, "Unsized type in tuple struct");
-                    ents.push_back(StructRepr::Ent { idx++, size, align, mv$(ty) });
-                }
-                ),
-            (Named,
-                unsigned int idx = 0;
-                for(const auto& e : se)
-                {
-                    auto ty = monomorph(e.second.ent);
-                    size_t  size, align;
-                    if( !Target_GetSizeAndAlignOf(sp, resolve, ty, size,align) )
-                        return nullptr;
-                    if( size == SIZE_MAX )
-                        BUG(sp, "Unsized type in struct");
-                    ents.push_back(StructRepr::Ent { idx++, size, align, mv$(ty) });
-                }
-                )
-            )
-            switch(str.m_repr)
-            {
-            case ::HIR::Struct::Repr::Packed:
-                packed = true;
-                TODO(sp, "make_struct_repr - repr(packed)");    // needs codegen to know to pack the structure
-                break;
-            case ::HIR::Struct::Repr::Simd:
-            case ::HIR::Struct::Repr::C:
-                // No sorting, no packing
-                break;
-            case ::HIR::Struct::Repr::Rust:
-                allow_sort = true;
-                break;
-            }
-        }
-        else if( const auto* te = ty.m_data.opt_Tuple() )
-        {
-            unsigned int idx = 0;
-            for(const auto& t : *te)
-            {
-                size_t  size, align;
-                if( !Target_GetSizeAndAlignOf(sp, resolve, t, size,align) )
-                    return nullptr;
-                if( size == SIZE_MAX )
-                    BUG(sp, "Unsized type in tuple");
-                ents.push_back(StructRepr::Ent { idx++, size, align, t.clone() });
-            }
-        }
-        else
-        {
-            BUG(sp, "Unexpected type in creating struct repr");
-        }
-
-
-        if( allow_sort )
-        {
-            // TODO: Sort by alignment then size (largest first)
-            // - Requires codegen to use this information
-        }
-
-        StructRepr  rv;
-        size_t  cur_ofs = 0;
-        size_t  max_align = 1;
-        for(auto& e : ents)
-        {
-            // Increase offset to fit alignment
-            if( !packed )
-            {
-                while( cur_ofs % e.align != 0 )
-                {
-                    rv.ents.push_back({ ~0u, 1, 1, ::HIR::TypeRef( ::HIR::CoreType::U8 ) });
-                    cur_ofs ++;
-                }
-            }
-            max_align = ::std::max(max_align, e.align);
-
-            rv.ents.push_back(mv$(e));
-            cur_ofs += e.size;
-        }
-        if( !packed )
-        {
-            while( cur_ofs % max_align != 0 )
-            {
-                rv.ents.push_back({ ~0u, 1, 1, ::HIR::TypeRef( ::HIR::CoreType::U8 ) });
-                cur_ofs ++;
-            }
-        }
-        return box$(rv);
-    }
-}
-const StructRepr* Target_GetStructRepr(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty)
-{
-    // TODO: Thread safety
-    // Map of generic paths to struct representations.
-    static ::std::map<::HIR::TypeRef, ::std::unique_ptr<StructRepr>>  s_cache;
-
-    auto it = s_cache.find(ty);
-    if( it != s_cache.end() )
-    {
-        return it->second.get();
-    }
-
-    auto ires = s_cache.insert(::std::make_pair( ty.clone(), make_struct_repr(sp, resolve, ty) ));
-    return ires.first->second.get();
 }
 
 bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty, size_t& out_size, size_t& out_align)
@@ -802,6 +670,15 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve,
         }
         ),
     (Path,
+        if( te.binding.is_Opaque() )
+            return false;
+        if( te.binding.is_ExternType() )
+        {
+            DEBUG("sizeof on extern type - unsized");
+            out_align = 0;
+            out_size = SIZE_MAX;
+            return true;
+        }
         const auto* repr = Target_GetTypeRepr(sp, resolve, ty);
         if( !repr )
         {
@@ -865,26 +742,39 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve,
         // - Alignment is machine native
         out_align = g_target.m_arch.m_pointer_bits / 8;
         // - Size depends on Sized-nes of the parameter
-        if( resolve.type_is_sized(sp, *te.inner) )
-        {
-            out_size = g_target.m_arch.m_pointer_bits / 8;
-            return true;
-        }
         // TODO: Handle different types of Unsized (ones with different pointer sizes)
-        out_size = g_target.m_arch.m_pointer_bits / 8 * 2;
+        switch(resolve.metadata_type(sp, *te.inner))
+        {
+        case MetadataType::Unknown:
+            return false;
+        case MetadataType::None:
+        case MetadataType::Zero:
+            out_size = g_target.m_arch.m_pointer_bits / 8;
+            break;
+        case MetadataType::Slice:
+        case MetadataType::TraitObject:
+            out_size = g_target.m_arch.m_pointer_bits / 8 * 2;
+            break;
+        }
         return true;
         ),
     (Pointer,
         // - Alignment is machine native
         out_align = g_target.m_arch.m_pointer_bits / 8;
         // - Size depends on Sized-nes of the parameter
-        if( resolve.type_is_sized(sp, *te.inner) )
+        switch(resolve.metadata_type(sp, *te.inner))
         {
+        case MetadataType::Unknown:
+            return false;
+        case MetadataType::None:
+        case MetadataType::Zero:
             out_size = g_target.m_arch.m_pointer_bits / 8;
-            return true;
+            break;
+        case MetadataType::Slice:
+        case MetadataType::TraitObject:
+            out_size = g_target.m_arch.m_pointer_bits / 8 * 2;
+            break;
         }
-        // TODO: Handle different types of Unsized (ones with different pointer sizes)
-        out_size = g_target.m_arch.m_pointer_bits / 8 * 2;
         return true;
         ),
     (Function,
@@ -911,7 +801,7 @@ bool Target_GetAlignOf(const Span& sp, const StaticTraitResolve& resolve, const 
 {
     size_t  ignore_size;
     bool rv = Target_GetSizeAndAlignOf(sp, resolve, ty, ignore_size, out_align);
-    if( ignore_size == SIZE_MAX )
+    if( rv && ignore_size == SIZE_MAX )
         BUG(sp, "Getting alignment of Unsized type - " << ty);
     return rv;
 }
@@ -986,6 +876,9 @@ namespace {
             case ::HIR::Struct::Repr::Simd:
                 // No sorting, no packing
                 break;
+            case ::HIR::Struct::Repr::Aligned:
+                // TODO: Update the minimum alignment
+            case ::HIR::Struct::Repr::Transparent:
             case ::HIR::Struct::Repr::Rust:
                 allow_sort = true;
                 break;
@@ -1058,7 +951,7 @@ namespace {
                 cur_ofs ++;
             }
         }
-        rv.align = max_align;
+        rv.align = packed ? 1 : max_align;
         rv.size = cur_ofs;
         rv.fields = ::std::move(fields);
         DEBUG("size = " << rv.size << ", align = " << rv.align);
@@ -1367,6 +1260,11 @@ namespace {
         else if( TU_TEST1(ty.m_data, Path, .binding.is_Enum()) )
         {
             return make_type_repr_enum(sp, resolve, ty);
+        }
+        else if( TU_TEST1(ty.m_data, Path, .binding.is_ExternType()) )
+        {
+            // TODO: Do extern types need anything?
+            return nullptr;
         }
         else if( ty.m_data.is_Primitive() )
         {
