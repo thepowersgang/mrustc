@@ -1,0 +1,50 @@
+#
+# Expression grammar:
+# `let <name> = <expr>;`
+# `<slot> <op>= <expr>;`
+# `<expr>`
+
+# `signal` - Just ignore it
+fn signal(..) -> *const [null] void [size(0)] {
+	0
+}
+fn memchr(ptr: *const [count(n)] u8, c: u8, n: usize) -> *const [null,alloc(ptr)] u8 = "":"memchr";
+fn memrchr(ptr: *const [count(n)] u8, c: u8, n: usize) -> *const [null,alloc(ptr)] u8 = "":"memrchr";
+fn strlen(ptr: *const [cstr] u8) -> usize = "":"strlen";
+
+
+#fn write(fd: i32, count: isize, buf: *const void [size(count)]) -> i32 = "":"write";
+fn write(fd: i32, count: isize, buf: *const void) -> i32 {
+	miri::assert("invalid fd passed", fd > 0);
+	miri::ensure_valid_read("source buffer invalid", buf, 0, count);
+	miri::call_i32("", "write", fd, count, buf)
+}
+fn sysconf(name: i32) -> usize = "":"sysconf";
+
+
+# 64-bit linux pthread_attr_t
+type pthread_attr_t = void [size(56),align(8)];
+fn pthread_attr_init(*mut pthread_attr_t) -> i32 = "":"pthread_attr_init";
+fn pthread_attr_destroy(*mut pthread_attr_t) -> i32 = "":"pthread_attr_destroy";
+
+type pthread_key_t = u32;
+static PTHREAD_NEXT_KEY: u32 = 1;
+static PTHREAD_TLS: Map<u32,u64>;
+fn pthread_key_create(ptr: *mut pthread_key_t) -> i32 {
+	let key = PTHREAD_NEXT_KEY;
+	PTHREAD_NEXT_KEY += 1;
+	*ptr = key;
+	0
+}
+fn pthread_key_delete(key: pthread_key_t) -> i32 {
+	let _ = Map::remove(key);
+	0
+}
+fn pthread_setspecific(key: pthread_key_t, val: u64) -> i32 {
+	Map::set(PTHREAD_TLS, key, val);
+	0
+}
+fn pthread_getspecific(key: pthread_key_t) -> u64 {
+	let rv_opt = Map::get(PTHREAD_TLS, key);
+	Option::unwrap_or(rv_opt, 0)
+}

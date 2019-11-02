@@ -1,0 +1,24 @@
+#
+# Windows API calls
+#
+
+type HMODULE = void [size(0), name("HMODULE")];
+
+#fn GetModuleHandleW(lpcwsName: *const [cstr,null] u16) -> *const [null] HMODULE = "Kernel32.dll":"GetModuleHandleW";
+fn GetModuleHandleW(lpcwsName: *const [cstr,null] u16) -> *const [null] HMODULE {
+	miri::ensure_valid_nulseq("lpcwsName", lpcwsName);
+	return miri::call_ptr("Kernel32.dll", "GetModuleHandleW", lpcwsName);
+}
+
+# - The returned function pointer is annotated with the passed name
+fn GetProcAddress(hModule: *const HMODULE, name: *const [cstr] u8) -> fn(?) [null] {
+	miri::ensure_valid_nulseq("name", name);
+	let rv = miri::call_ptr("Kernel32.dll", "GetProcAddress", hModule, name);
+	# Create a named function pointer from the raw pointer return, that will go though the .api file
+	return miri::make_named_fn_ptr(rv, miri::cstr8_to_string(name));
+}
+
+fn AddVectoredExceptionHandler(..) -> usize {
+    1
+}
+
