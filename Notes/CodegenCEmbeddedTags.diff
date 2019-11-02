@@ -1,0 +1,168 @@
+diff --git a/src/trans/codegen_c.cpp b/src/trans/codegen_c.cpp
+index 9af87d47..bcf296db 100644
+--- a/src/trans/codegen_c.cpp
++++ b/src/trans/codegen_c.cpp
+@@ -1385,12 +1385,22 @@ namespace {
+ 
+         void emit_enum_path(const TypeRepr* repr, const TypeRepr::FieldPath& path)
+         {
+-            if( TU_TEST1(repr->variants, Values, .field.index == path.index) )
++            if( TU_TEST1(repr->variants, Values, .field.index == path.index) || path.index == ~0u )
+             {
+-                m_of << ".TAG";
++                // TODO: The tag can be within the union
++                if( repr->fields.size() >= 2 )
++                {
++                    m_of << ".DATA.var_tag.TAG";
++                }
++                else
++                {
++                    m_of << ".TAG";
++                }
++                return ;
+             }
+             else
+             {
++                // TODO: Support for non-zero offsets?
+                 m_of << ".DATA.var_" << path.index;
+             }
+             const auto* ty = &repr->fields[path.index].ty;
+@@ -1458,55 +1468,44 @@ namespace {
+                 assert(1 + union_fields.size() + 1 >= repr->fields.size());
+                 // Make the union!
+                 // NOTE: The way the structure generation works is that enum variants are always first, so the field index = the variant index
+-                // TODO: 
+-                if( !this->type_is_bad_zst(repr->fields[0].ty) || ::std::any_of(union_fields.begin(), union_fields.end(), [this,repr](auto x){ return !this->type_is_bad_zst(repr->fields[x].ty); }) )
++                m_of << "\tunion {\n";
++                bool is_tagged = (1 + union_fields.size() < repr->fields.size());
++                // > First field
++                for(size_t idx = 0; idx < repr->fields.size()-(is_tagged ? 1 : 0); idx ++)
+                 {
+-                    m_of << "\tunion {\n";
+-                    // > First field
+-                    {
+-                        m_of << "\t\t";
+-                        const auto& ty = repr->fields[0].ty;
+-                        if( this->type_is_bad_zst(ty) ) {
+-                            m_of << "// ZST: " << ty << "\n";
+-                        }
+-                        else {
+-                            emit_ctype( ty, FMT_CB(ss, ss << "var_0") );
+-                            m_of << ";\n";
+-                            //sized_fields ++;
+-                        }
++                    m_of << "\t\tstruct {";
++                    const auto& ty = repr->fields[idx].ty;
++                    if( this->type_is_bad_zst(ty) ) {
++                        m_of << "/* ZST: " << ty << "*/";
+                     }
+-                    // > All others
+-                    for(auto idx : union_fields)
++                    else {
++                        emit_ctype( ty, FMT_CB(os, os << "d") );
++                        m_of << ";";
++                        //sized_fields ++;
++                    }
++                    if( is_tagged )
+                     {
+-                        m_of << "\t\t";
+-
+-                        const auto& ty = repr->fields[idx].ty;
+-                        if( this->type_is_bad_zst(ty) ) {
+-                            m_of << "// ZST: " << ty << "\n";
+-                        }
+-                        else {
+-                            emit_ctype( ty, FMT_CB(ss, ss << "var_" << idx) );
+-                            m_of << ";\n";
+-                            //sized_fields ++;
++                        auto padbytes = repr->fields.back().offset - Target_GetSizeOf(ty);
++                        if( padbytes > 0 )
++                        {
++                            m_of << "char pad[" << padbytes << "];";
+                         }
++                        emit_ctype(repr->fields.back().ty, FMT_CB(os, os << "TAG")); m_of << ";";
+                     }
+-                    m_of << "\t} DATA;\n";
++                    m_of << "} var_" << idx << "\n";
+                 }
+-
+-                if( repr->fields.size() == 1 + union_fields.size() )
++                // NOTE: The tag can be placed within variants (overlapping with padding bytes)
++                if( !is_tagged )
+                 {
+                     // No tag, the tag is in one of the fields.
+                     DEBUG("Untagged, nonzero or other");
+                 }
+                 else
+                 {
+-                    //assert(repr->fields.back().offset != repr->fields.front().offset);
+                     DEBUG("Tag present at offset " << repr->fields.back().offset << " - " << repr->fields.back().ty);
+-
+-                    m_of << "\t";
+-                    emit_ctype(repr->fields.back().ty, FMT_CB(os, os << "TAG"));
+-                    m_of << ";\n";
++                    m_of << "\t\tstruct { char pad[" << repr->fields.back().offset << "]; "; emit_ctype(repr->fields.back().ty, FMT_CB(os, os << "TAG")); m_of << "; } var_tag;\n";
+                 }
++                m_of << "\t} DATA;\n";
+             }
+             else if( repr->fields.size() == 1 )
+             {
+@@ -1591,7 +1590,7 @@ namespace {
+                 {
+                     auto var_lv =::MIR::LValue::new_Downcast(mv$(self), 0);
+ 
+-                    m_of << "\tswitch(rv->TAG) {\n";
++                    m_of << "\tswitch((*rv)";emit_enum_path(repr, {~0u}); m_of << ") {\n";
+                     for(unsigned int var_idx = 0; var_idx < e->values.size(); var_idx ++)
+                     {
+                         m_of << "\tcase " << e->values[var_idx] << ":\n";
+@@ -1652,7 +1651,7 @@ namespace {
+             {
+             case TypeRepr::VariantMode::TAGDEAD:    throw "";
+             TU_ARM(repr->variants, Values, ve) {
+-                m_of << " .TAG = "; emit_enum_variant_val(repr, var_idx); m_of << ",";
++                m_of << " .DATA = { .var_tag = { .TAG = "; emit_enum_variant_val(repr, var_idx); m_of << " }},";
+                 } break;
+             TU_ARM(repr->variants, NonZero, ve) {
+                 } break;
+@@ -1949,7 +1948,7 @@ namespace {
+                         emit_literal(ity, *e.val, params);
+                         m_of << " }, ";
+                     }
+-                    m_of << ".TAG = "; emit_enum_variant_val(repr, e.idx);
++                    emit_enum_path(repr, {~0u}); m_of << " = "; emit_enum_variant_val(repr, e.idx);
+                     m_of << "}";
+                 }
+                 ),
+@@ -3292,11 +3291,11 @@ namespace {
+                         }
+                         else if( enm_p->is_value() )
+                         {
+-                            emit_lvalue(e.dst); m_of << ".TAG = "; emit_enum_variant_val(repr, ve.index);
++                            emit_lvalue(e.dst); emit_enum_path(repr, {~0u}); m_of << " = "; emit_enum_variant_val(repr, ve.index);
+                         }
+                         else
+                         {
+-                            emit_lvalue(e.dst); m_of << ".TAG = "; emit_enum_variant_val(repr, ve.index);
++                            emit_lvalue(e.dst); emit_enum_path(repr, {~0u}); m_of << " = "; emit_enum_variant_val(repr, ve.index);
+ 
+                             ::HIR::TypeRef  tmp;
+                             const auto& vty = mir_res.get_param_type(tmp, ve.val);
+@@ -3542,7 +3541,7 @@ namespace {
+             if (ve.type.m_data.is_Primitive() && ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Enum())
+             {
+                 emit_lvalue(ve.val);
+-                m_of << ".TAG";
++                m_of << ".TAG"; // TODO: Fix for tag locations? (may not be needed for value-only enums)
+                 special = true;
+             }
+             if (!special)
+@@ -3605,7 +3604,7 @@ namespace {
+                 case ::HIR::CoreType::Str:
+                     MIR_BUG(mir_res, "Unsized tag?!");
+                 }
+-                m_of << indent << "switch("; emit_lvalue(val); m_of << ".TAG) {\n";
++                m_of << indent << "switch("; emit_lvalue(val); emit_enum_path(repr, {~0u}); m_of << ") {\n";
+                 for(size_t j = 0; j < n_arms; j ++)
+                 {
+                     // TODO: Get type of this field and check if it's signed.
