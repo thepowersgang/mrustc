@@ -1,0 +1,177 @@
+
+Interesting topics:
+- Evolution of the codebase (from initial AST-C conversion, through to current MIR based codegen)
+- Typecheck pain. Complications from inferrence combined with coercions
+- Shortcuts taken: no borrowck, no privacy (suprisingly works), no coherence
+- MIR match generation
+- Design choices and deviation: MIR structure, proc macros
+- `macro_rules!`, aborted attempts
+- C backend pain (compiler bugs, standards quirks, workarounds)
+- Future Evolution: Borrowcheck, archetectual changes (for consteval, expand/resolve interaction)
+
+
+Introduction
+============
+- What is it
+- Origin and original intention
+  - Always been the intention to convert rust into C
+  - Meant to break the bootstrap chain
+  - But also for fun
+  - Started as just a parser and AST, with the intention of just converting the AST straight into C
+- Frozen version
+  - Frozen to target rustc 1.19, because that was the stable version at the time
+  - The built rustc can then go and build 1.20 and bootstrap continues down the line.
+- Rewrites
+  - No SW engineering project gets things right first time, almost everything has been through at least one re-factor
+- Architecture
+  - Parsing, expansion, and name resolution
+  - HIR generated from name-resolved AST (simpler, no more relative paths)
+  - Consteval, typechecking, closure expansion
+  - MIR generated from the fully type-annotated HIR (high-level, rust-specialised assembly)
+  - MIR validated, optimised, validated again, monomorphised, optimised again
+  - MIR passed to the codegen backend (C generator usually)
+  - Module tree and MIR serialised and saved (for libraries)
+- Side-projects
+  - `minicargo` - Clone of cargo, but specialised for building rustc/cargo
+  - `standalone_miri` - Just-for-fun miri clone, with some very rough FFI support
+
+
+Evolution
+=========
+- Started as effectively just a parser back in 2014
+- Original intent was to convert the AST directly into C code
+- First attempt at typecheck was in AST, but AST has constructs that only apply before expand/resolve
+- HIR added to simplify post-expand passes (remove syntatic sugar, relative paths, ...)
+- HIR Typecheck originally worked directly with the syntax tree, worked up to a point
+- HIR Typecheck v2 switched to enumerating rules/inferrence variables from the source tree, and then resolved those until stability.
+  - Typecheck is still a pain the rear, enough to make another article.
+- HIR went direct to MIR (this was after rustc gained a MIR)
+  - This isn't exactly nesessesary, as it should be possible to convert HIR to C.
+  - But, at this stage, mrustc was so close to a fully-fledged compiler, might as well go the full way
+- `macro_rules!` - Rewritten a few times, but that's its own article
+- MIR optimisation added not long after codegen, in an attempt reduce time spent in the C compiler (it worked, but optimisation is expensive)
+
+
+Typecheck Pain
+==============
+- Rust has type inferrence interacting with coercions and trait resolution
+- Rustc's type resolution (... as far as I know) works directly on the AST (well, HIR/HAIR)
+- Mrustc did that to begin with, but it makes reasoning inferrence interactions hard
+- Re-wrote type resolution to build up equality, coercion, and complex rules and iterates over them to do type equalities
+  - The complex rules handle things like method calls, operators, casts, patterns with `..` in them, ...
+
+Inferrence on its own is relatively easy, fixed coercion sets (and associated coercion points) are a little harder, but once trait bounds are introduced the system becomes extremely compleex.
+
+
+Shortcuts
+========
+- Borrow checking (by-design) doesn't impact codegen in any way
+- Privacy technically impacts name lookups (with autoderef), but isn't used in rustc/cargo
+- Coherence just exists to aid the reader/compiler, mrustc just searches every known impl (becuase it's simpler)
+
+MIR Match Generation
+====================
+Pattern matching is a complex part of rust, especially if you're interested in generating efficient code.
+
+The simplest model just handles match statements as chained `if let` statements (check each pattern, and fall on to the next one if it doesn't match).
+This is actually how `match` logically works (you can see this when using `if` guards on match arms, or by having a `_` pattern before other patterns), and in the degerate case chained attern checks are the only correct conversion.
+
+For efficiency though, you'd want to convert match into effectively a C switch statment (a jump table, binary search, or just an easy-to-predict chain of comparisons).
+
+Mrustc does this by first turning match arms into a list of pattern rules (simplified patterns that handle destructuring and value ranges), then checking if it's possible to re-order and combine the patterns into an efficient form. If possible, then the arms are sorted and parsed into a decision tree in MIR (using binary searches, switch-like constructs, and simple equalitiy checks). If not possible (mostly if there's if-guarded arms), then the rules are turned into chained pattern checks and left with the hope that the backend can optimise them better.
+
+All said and done, MIR generation for match statements clocks in to be larger than the rest of MIR generation (by a significant margin), and that's not accounting for the sections it shares with the rest (scope handling is another aspect that is complicated by match statements and how they extend value lifetimes).
+
+
+Design Choices
+==============
+
+MIR
+---
+- Prefer a smaller generated MIR over conceptual simplicity
+- Doesn't follow SSA, instead re-using and de-duplicating variables wherever possible
+
+Procedual Macros
+----------------
+- Had a chance to do proc macros the "right" way
+- Entirely IPC-based, with each macro invocation spawning a fresh process
+- IPC is via basic serialisation over stdin/stdout
+
+C as the primary backend
+------------------------
+- A pain in the rear to avoid compiler bugs (and undefined behavior) BUT
+- C is everywhere, while LLVM (and to a lesser extent gcc) have a constained target range
+- Even with LLVM-supported targets, building/linking LLVM is a non-trivial task.
+  - mrustc's primary goal is to allow building rustc with minimal third-party code (just a working C++ compiler, which nearly always includes a working C compiler)
+
+
+`macro_rules!` attemts
+----------------------
+
+At first, macro handling went the full C++ way - for each arm the parser would attempt to parse the arm, and catch the syntax error exception and move on to the next arm. This wasn't exactly efficient, or easy to debug, but it did ensure that the macro evaluation parser and the main parser were the same. The dowside here was that, because the lexer has to create tokens to hand out to the parser, and it's not known when parsing if another arm might still be tried, expensive copies need to be made of every single captured variable (even if they only ever get used once).
+
+The second attempt went the complete oposite way, attempting to parse the entire set of macro patterns into a decision tree. Turns out that rust macros are very like rust match statemets, they logically work by trying each arm in sequence and pick the first one that works. This turns out to make a simple decision tree impossible (sometimes macros will have ambigious captures, e.g. one arm capturing a :ident and another :expr - both could match).
+
+The third and final model uses a vastly simplified version of the main parser, that just checks if an input token stream is valid for the specified syntax fragment. Combined with a "lexer" that doesn't hand out ownership of the captured items, this new model is both correct and efficient (only doing expensive copies when captures are used multiple times). The only downside is that now there's two parsers involved with macro expansion (and it's easy for them to get out of sync).
+
+C Pains
+=======
+
+- Zero-sized structures
+  - Stritly-speaking not allowed in C, required a lot of work to remove
+- gcc/msvc featureset mismatches
+  - The C backend has hard-coded asm to intrinsic mappings for MSVC
+- Alignment quirks
+  - Turns out that `uint64_t` has an alignment of 4 on x86 gcc
+- Compiler bugs!
+  - Older versions of gcc treating zero-sized structures as UB (and mis-optimising because of it)
+  - x86 FPU overflow, still an outstanding issue
+- Slooooow
+  - Despite optimisation in mrustc, translating MIR directly to C is slow, and the C optimisation/codegen phase isn't fast either.
+
+
+Rustc Bootstrap
+==============
+
+Proc macros
+-----------
+1.29.0's bootstrap program uses proc macro derive, so ends up dynamically
+linking with rustc. This leads to an ABI disagreement if rustc was built with
+mrustc.
+
+Solution: Build rustc manually using itself, by patching minicargo to support
+running with rustc.
+OR: Build rustc using a manual cargo invocation.
+- If this uses proc macros... bootstrap is "broken" at 1.29
+
+
+Future Evolution
+================
+
+Upgrade target version
+----------------------
+
+Mrust targets rustc 1.19 currently, which is over a year old at this point. Upgrading however isn't a simple task, as new compiler features have been added (notable MIR-based consteval, which requires doing MIR generation for some items before typecheck is possible on others).
+
+Borrow Check
+------------
+
+More than one MIR generation issue has lead to bugs that could have been caught by a borrowcheck implementation, Compared to other parts of the compiler (looking at you match generation), a borrow checker itself wouldn't be too hard. What is hard about adding a borrow checkers is region inferrence (propagating lifetime annotations around the type checking phase)
+
+
+On-demand codegen
+-----------------
+
+As part of upgrading the target version, and just removing old and redundant code, it'd be nice to support full MIR constant evaluation (currently the consteval phase has two evaluatorss - one handling local HIR, the other handling MIR from external sources). Generating MIR (and doing typeheck of required items) during the constant evaluation phase would completely remove the HIR evaluator, and all of the type guessing performed to allow HIR constant evaluation (which routinely falls over when exposed to new code).
+
+Parser Re-write
+---------------
+
+The mrustc parser is ancient, with some functions dating back to the start of the project in 2014. On its own, this isn't a problem, but the parsing model itself makes both debugging nd extending the parser challenging. The current model works with a push-pull lexer (which hands out tokens, and allows the caller to push the token back if not needed). More recent code (e.g. the MIRI parser) use a peek/consume model, where the lexer "owns" the tokens until the token is actually consumed - much simpler to debug (via logging when tokens are consumed) and is a closer match to how the lexer gets used in practice.
+
+
+
+
+<!-- vim: ft=markdown
+-->
+
