@@ -41,7 +41,6 @@ V ?= @
 
 
 all: $(BINDIR)rustc $(LIBDIR)libstd.rlib $(BINDIR)hello_world
-# $(LIBDIR)libproc_macro.rlib
 all: $(BINDIR)cargo
 
 RUSTFLAGS_core := 
@@ -91,12 +90,6 @@ $(LIBDIR)libtest.rlib: $(BINDIR)rustc_m $(LIBDIR)libstd.rlib $(CARGO_HOME)config
 	@mkdir -p $(LIBDIR)
 	$Vcp --remove-destination $(OUTDIR)build-test/release/deps/*.rlib $(LIBDIR)
 	$Vcp --remove-destination $(OUTDIR)build-test/release/deps/*.so $(LIBDIR)
-$(LIBDIR)libproc_macro.rlib: $(LIBDIR)libstd.rlib $(LIBDIR)libtest.rlib $(CARGO_HOME)config
-	@mkdir -p $(OUTDIR)build-pm
-	@echo [CARGO] $(RUST_SRC)libproc_macro/Cargo.toml
-	$VCARGO_TARGET_DIR=$(OUTDIR)build-pm RUSTC=$(BINDIR)rustc_m RUSTC_ERROR_METADATA_DST=$(abspath $(PREFIX)) $(CARGO_ENV) $(BINDIR)cargo build --manifest-path $(RUST_SRC)libproc_macro/Cargo.toml --release -j 1
-	$Vcp --remove-destination $(OUTDIR)build-pm/release/deps/lib*.so $(LIBDIR)
-	$Vcp --remove-destination $(OUTDIR)build-pm/release/deps/lib*.rlib $(LIBDIR)
 
 # - Build rustc with itself (so we have a rustc with the right ABI)
 $(BINDIR)rustc: $(BINDIR)rustc_m $(BINDIR)cargo $(CARGO_HOME)config $(LIBDIR)libtest.rlib
@@ -104,6 +97,7 @@ $(BINDIR)rustc: $(BINDIR)rustc_m $(BINDIR)cargo $(CARGO_HOME)config $(LIBDIR)lib
 	@echo [CARGO] $(RUST_SRC)rustc/Cargo.toml
 	$V$(RUSTC_ENV_VARS) TMPDIR=$(abspath $(PREFIX)tmp) CARGO_TARGET_DIR=$(OUTDIR)build-rustc RUSTC=$(BINDIR)rustc_m RUSTC_ERROR_METADATA_DST=$(abspath $(PREFIX)) $(CARGO_ENV) $(BINDIR)cargo build --manifest-path $(RUST_SRC)rustc/Cargo.toml --release -j 1
 	cp $(OUTDIR)build-rustc/release/deps/*.so $(LIBDIR)
+	cp $(OUTDIR)build-rustc/release/deps/*.rlib $(LIBDIR)
 ifeq ($(RUSTC_VERSION),1.19.0)
 	cp $(OUTDIR)build-rustc/release/rustc $(BINDIR)rustc_binary
 else
