@@ -25,7 +25,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
 ::AST::Path::Bindings Resolve_Use_GetBinding(
     const Span& span, const ::AST::Crate& crate, const ::AST::Path& source_mod_path,
     const ::AST::Path& path, ::std::span< const ::AST::Module* > parent_modules,
-    bool types_only=true
+    bool types_only=false
     );
 ::AST::Path::Bindings Resolve_Use_GetBinding__ext(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path,  const ::HIR::Module& hmodr, unsigned int start);
 
