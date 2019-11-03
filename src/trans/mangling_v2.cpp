@@ -281,12 +281,36 @@ public:
 {
     return FMT_CB(os, os << "ZRG"; Mangler(os).fmt_generic_path(p));
 }
-::FmtLambda Trans_MangleType(const ::HIR::TypeRef& p)
+::FmtLambda Trans_MangleTypeRef(const ::HIR::TypeRef& p)
 {
     return FMT_CB(os, os << "ZRT"; Mangler(os).fmt_type(p));
 }
 
-::FmtLambda Trans_Mangle(const ::HIR::SimplePath& path) { return Trans_MangleSimplePath(path); }
-::FmtLambda Trans_Mangle(const ::HIR::GenericPath& path) { return Trans_MangleGenericPath(path); }
-::FmtLambda Trans_Mangle(const ::HIR::Path& path) { return Trans_ManglePath(path); }
-::FmtLambda Trans_Mangle(const ::HIR::TypeRef& ty) { return Trans_MangleType(ty); }
+namespace {
+    ::FmtLambda max_len(::FmtLambda v) {
+        std::stringstream   ss;
+        ss << v;
+        auto s = ss.str();
+        static const size_t MAX_LEN = 128;
+        if( s.size() > 128 ) {
+            size_t hash = ::std::hash<std::string>()(s);
+            ss.str("");
+            ss << s.substr(0, MAX_LEN-9) << "$" << ::std::hex << hash;
+            DEBUG("Over-long symbol '" << s << "' -> '" << ss.str() << "'");
+            s = ss.str();
+        }
+        else {
+        }
+        return ::FmtLambda([=](::std::ostream& os){
+            os << s;
+            });
+    }
+}
+// TODO: If the mangled name exceeds a limit, stop emitting the real name and start hashing the rest.
+#define DO_MANGLE(ty) ::FmtLambda Trans_Mangle(const ::HIR::ty& v) { \
+    return max_len(Trans_Mangle##ty(v)); \
+}
+DO_MANGLE(SimplePath)
+DO_MANGLE(GenericPath)
+DO_MANGLE(Path)
+DO_MANGLE(TypeRef)
