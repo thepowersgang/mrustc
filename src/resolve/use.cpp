@@ -20,9 +20,13 @@ enum class Lookup
     Value,  // Allow only value bindings
 };
 
-::AST::Path Resolve_Use_AbsolutisePath(const ::AST::Path& base_path, ::AST::Path path);
+
 void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path path, ::std::span< const ::AST::Module* > parent_modules={});
-::AST::Path::Bindings Resolve_Use_GetBinding(const Span& span, const ::AST::Crate& crate, const ::AST::Path& source_mod_path, const ::AST::Path& path, ::std::span< const ::AST::Module* > parent_modules);
+::AST::Path::Bindings Resolve_Use_GetBinding(
+    const Span& span, const ::AST::Crate& crate, const ::AST::Path& source_mod_path,
+    const ::AST::Path& path, ::std::span< const ::AST::Module* > parent_modules,
+    bool types_only=true
+    );
 ::AST::Path::Bindings Resolve_Use_GetBinding__ext(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path,  const ::HIR::Module& hmodr, unsigned int start);
 
 
@@ -253,7 +257,8 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         const Span& span,
         const ::AST::Crate& crate, const ::AST::Path& source_mod_path, const ::AST::Module& mod,
         const RcString& des_item_name,
-        ::std::span< const ::AST::Module* > parent_modules
+        ::std::span< const ::AST::Module* > parent_modules,
+        bool types_only = false
     )
 {
     ::AST::Path::Bindings   rv;
@@ -342,6 +347,10 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         }
     }
 
+    if( types_only && !rv.type.is_Unbound() ) {
+        return rv;
+    }
+
     // Imports
     for( const auto& imp : mod.items() )
     {
@@ -389,7 +398,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                     if( ::std::find(resolve_stack_ptrs.begin(), resolve_stack_ptrs.end(), &imp_data) == resolve_stack_ptrs.end() )
                     {
                         resolve_stack_ptrs.push_back( &imp_data );
-                        bindings_ = Resolve_Use_GetBinding(sp2, crate, mod.path(), Resolve_Use_AbsolutisePath(sp2, mod.path(), imp_e.path), parent_modules);
+                        bindings_ = Resolve_Use_GetBinding(sp2, crate, mod.path(), Resolve_Use_AbsolutisePath(sp2, mod.path(), imp_e.path), parent_modules, /*type_only=*/true);
                         if( bindings_.type.is_Unbound() ) {
                             DEBUG("Recursion detected, skipping " << imp_e.path);
                             continue ;
@@ -763,7 +772,11 @@ namespace {
     return rv;
 }
 
-::AST::Path::Bindings Resolve_Use_GetBinding(const Span& span, const ::AST::Crate& crate, const ::AST::Path& source_mod_path, const ::AST::Path& path, ::std::span< const ::AST::Module* > parent_modules)
+::AST::Path::Bindings Resolve_Use_GetBinding(
+    const Span& span, const ::AST::Crate& crate, const ::AST::Path& source_mod_path,
+    const ::AST::Path& path, ::std::span< const ::AST::Module* > parent_modules,
+    bool types_only/*=false*/
+    )
 {
     TRACE_FUNCTION_F(path);
     //::AST::Path rv;
@@ -792,7 +805,7 @@ namespace {
         //rv = Resolve_Use_CanoniseAndBind_Mod(span, crate, *mod, mv$(rv), nodes[i].name(), parent_modules, Lookup::Type);
         //const auto& b = rv.binding();
         assert(mod);
-        auto b = Resolve_Use_GetBinding_Mod(span, crate, source_mod_path, *mod, nodes.at(i).name(), parent_modules);
+        auto b = Resolve_Use_GetBinding_Mod(span, crate, source_mod_path, *mod, nodes.at(i).name(), parent_modules, /*types_only=*/true);
         TU_MATCH_HDRA( (b.type), {)
         default:
             ERROR(span, E0000, "Unexpected item type " << b.type.tag_str() << " in import of " << path);
@@ -872,7 +885,7 @@ namespace {
     }
 
     assert(mod);
-    return Resolve_Use_GetBinding_Mod(span, crate, source_mod_path, *mod, nodes.back().name(), parent_modules);
+    return Resolve_Use_GetBinding_Mod(span, crate, source_mod_path, *mod, nodes.back().name(), parent_modules, types_only);
 }
 
 //::AST::PathBinding_Macro Resolve_Use_GetBinding_Macro(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path, ::std::span< const ::AST::Module* > parent_modules)
