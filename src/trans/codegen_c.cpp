@@ -2191,13 +2191,20 @@ namespace {
                 MIR_TODO(*m_mir_res, "Handle BorrowData (emit_literal) - " << *e);
                 ),
             (String,
-                m_of << "{ ";
+                bool is_slice
+                    = TU_TEST2(ty.m_data, Borrow, .inner->m_data, Primitive, == HIR::CoreType::Str)
+                    || TU_TEST1(ty.m_data, Borrow, .inner->m_data.is_Slice())
+                    ;
+                bool is_wrapped = is_slice
+                    || ty.m_data.is_Array()
+                    ;
+                if( is_wrapped )
+                    m_of << "{ ";
                 this->print_escaped_string(e);
-                // TODO: Better type checking?
-                if( !ty.m_data.is_Array() ) {
+                if( is_slice )
                     m_of << ", " << e.size();
-                }
-                m_of << "}";
+                if( is_wrapped )
+                    m_of << "}";
                 )
             )
         }
