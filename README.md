@@ -1,4 +1,4 @@
-Mutabah's Rust Compiler
+# Mutabah's Rust Compiler
 
 _In-progress_ alternative rust compiler. Capable of building a fully-working copy of rustc, but not yet suitable for everyday use.
 
@@ -40,7 +40,7 @@ Linux
 -----
 - `make RUSTCSRC` - Downloads the rustc source tarball (1.19.0 by default)
 - `make -f minicargo.mk` - Builds `mrustc` and `minicargo`, then builds `libstd`, `libtest`, finally `rustc` and `cargo`
-- `make -C run_rustc` - Build libstd and a "hello, world" using the above-built rustc
+- `make -C run_rustc` - Build `libstd` and a "hello, world" using the above-built rustc
 
 BSD
 ---
@@ -111,7 +111,7 @@ Plans
 
 Short-term
 ----------
-- Fix currently-failing tests (mostly in type inferrence)
+- Fix currently-failing tests (mostly in type inference)
 - Fix all known TODOs in MIR generation (still some possible leaks)
 
 Medium-term
