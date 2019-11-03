@@ -580,10 +580,15 @@ void PackageRef::fill_from_kv(bool was_added, const TomlKeyValue& key_val, size_
                 this->m_features.push_back( sv.as_string() );
             }
         }
+        else if ( attr == "package" )
+        {
+            assert(key_val.path.size() == base_idx+1);
+            this->m_name = key_val.value.as_string();
+        }
         else
         {
             // TODO: Error
-            throw ::std::runtime_error(::format("ERROR: Unkown depencency attribute `", attr, "` on dependency `", this->m_name, "`"));
+            throw ::std::runtime_error(::format("ERROR: Unkown dependency attribute `", attr, "` on dependency `", this->m_name, "`"));
         }
     }
 }
