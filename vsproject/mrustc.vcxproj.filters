@@ -164,9 +164,6 @@
     <ClCompile Include="..\src\trans\enumerate.cpp">
       <Filter>Source Files\trans</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\hir_typeck\expr_visit.cpp">
-      <Filter>Source Files\hir</Filter>
-    </ClCompile>
     <ClCompile Include="..\src\hir\expr_ptr.cpp">
       <Filter>Source Files\hir</Filter>
     </ClCompile>
@@ -400,6 +397,9 @@
     </ClCompile>
     <ClCompile Include="..\src\expand\assert.cpp">
       <Filter>Source Files\expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hir_typeck\expr_visit.cpp">
+      <Filter>Source Files\hir_typeck</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

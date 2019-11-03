@@ -1172,7 +1172,7 @@ namespace {
             static Span sp;
             if( auto* e = item.m_data.opt_Value() )
             {
-                ::HIR::TypeRef  ty = ::HIR::CoreType::Isize;
+                auto ty = ::HIR::Enum::get_repr_type(e->repr);
                 uint64_t i = 0;
                 for(auto& var : e->variants)
                 {

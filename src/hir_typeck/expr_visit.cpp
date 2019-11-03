@@ -221,8 +221,7 @@ namespace {
 
             if( auto* e = item.m_data.opt_Value() )
             {
-                // TODO: Use a different type depding on repr()
-                auto enum_type = ::HIR::TypeRef(::HIR::CoreType::Isize);
+                auto enum_type = ::HIR::Enum::get_repr_type(e->repr);
 
                 for(auto& var : e->variants)
                 {

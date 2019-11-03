@@ -188,6 +188,22 @@ uint32_t HIR::Enum::get_value(size_t idx) const
         throw "";
     }
 }
+/*static*/ ::HIR::TypeRef HIR::Enum::get_repr_type(Repr r)
+{
+    switch(r)
+    {
+    case ::HIR::Enum::Repr::Rust:
+    case ::HIR::Enum::Repr::C:
+        return ::HIR::CoreType::Isize;
+        break;
+    case ::HIR::Enum::Repr::Usize: return ::HIR::CoreType::Usize; break;
+    case ::HIR::Enum::Repr::U8 : return ::HIR::CoreType::U8 ; break;
+    case ::HIR::Enum::Repr::U16: return ::HIR::CoreType::U16; break;
+    case ::HIR::Enum::Repr::U32: return ::HIR::CoreType::U32; break;
+    case ::HIR::Enum::Repr::U64: return ::HIR::CoreType::U64; break;
+    }
+    throw "";
+}
 
 
 const ::HIR::SimplePath& ::HIR::Crate::get_lang_item_path(const Span& sp, const char* name) const
