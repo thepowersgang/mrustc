@@ -109,8 +109,7 @@ void Trans_AutoImpl_Clone(State& state, ::HIR::TypeRef ty)
         default:
             TODO(sp, "auto Clone for " << ty << " - Unknown and not Copy");
         TU_ARMA(Path, te) {
-            // closures are identified by the name starting with 'closure#'
-            if( TU_TEST1(te.path.m_data, Generic, .m_path.m_components.back().compare(0, 8, "closure#") == 0) ) {
+            if( te.is_closure() ) {
                 const auto& gp = te.path.m_data.as_Generic();
                 const auto& str = state.resolve.m_crate.get_struct_by_path(sp, gp.m_path);
                 Trans_Params p;

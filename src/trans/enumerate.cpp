@@ -1447,7 +1447,7 @@ void Trans_Enumerate_FillFrom_PathMono(EnumState& state, ::HIR::Path path_mono)
                 else if( const auto* te = inner_ty.m_data.opt_Array() ) {
                     enum_impl(*te->inner);
                 }
-                else if( TU_TEST2(inner_ty.m_data, Path, .path.m_data, Generic, .m_path.m_components.back().compare(0, 8, "closure#") == 0) ) {
+                else if( TU_TEST1(inner_ty.m_data, Path, .is_closure()) ) {
                     const auto& gp = inner_ty.m_data.as_Path().path.m_data.as_Generic();
                     const auto& str = state.crate.get_struct_by_path(sp, gp.m_path);
                     Trans_Params p;

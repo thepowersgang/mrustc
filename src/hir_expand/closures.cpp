@@ -1261,7 +1261,7 @@ namespace {
             ::HIR::SimplePath   root_mod_path(crate.m_crate_name,{});
             m_cur_mod_path = &root_mod_path;
             m_new_type = [&](const char* suffix, auto s)->auto {
-                auto name = RcString::new_interned(FMT("closure#I_" << closure_count));
+                auto name = RcString::new_interned(FMT(CLOSURE_PATH_PREFIX << "I_" << closure_count));
                 closure_count += 1;
                 auto boxed = box$(( ::HIR::VisEnt< ::HIR::TypeItem> { ::HIR::Publicity::new_none(), ::HIR::TypeItem( mv$(s) ) } ));
                 auto* ret_ptr = &boxed->ent.as_Struct();
@@ -1287,7 +1287,7 @@ namespace {
             auto saved_nt = mv$(m_new_type);
             m_new_type = [&](const char* suffix, auto s)->auto {
                 // TODO: Use a function on `mod` that adds a closure and makes the indexes be per suffix
-                auto name = RcString( FMT("closure#" << suffix << (suffix[0] ? "_" : "") << closure_count) );
+                auto name = RcString( FMT(CLOSURE_PATH_PREFIX << suffix << (suffix[0] ? "_" : "") << closure_count) );
                 closure_count += 1;
                 auto boxed = box$( (::HIR::VisEnt< ::HIR::TypeItem> { ::HIR::Publicity::new_none(), ::HIR::TypeItem( mv$(s) ) }) );
                 auto* ret_ptr = &boxed->ent.as_Struct(); 
@@ -1437,7 +1437,7 @@ void HIR_Expand_Closures_Expr(const ::HIR::Crate& crate_ro, ::HIR::ExprPtr& exp)
     static int closure_count = 0;
     out_impls_t new_trait_impls;
     new_type_cb_t new_type_cb = [&](const char* suffix, auto s)->auto {
-        auto name = RcString::new_interned(FMT("closure#C_" << closure_count));
+        auto name = RcString::new_interned(FMT(CLOSURE_PATH_PREFIX << "C_" << closure_count));
         closure_count += 1;
         auto boxed = box$(( ::HIR::VisEnt< ::HIR::TypeItem> { ::HIR::Publicity::new_none(), ::HIR::TypeItem( mv$(s) ) } ));
         auto* ret_ptr = &boxed->ent.as_Struct();

@@ -17,6 +17,8 @@
 /// Binding index for a Generic that indicates "Self"
 #define GENERIC_Self    0xFFFF
 
+constexpr const char* CLOSURE_PATH_PREFIX = "closure#";
+
 namespace HIR {
 
 class TraitMarkings;
@@ -209,7 +211,7 @@ public:
         bool is_closure() const {
             return path.m_data.is_Generic()
                 && path.m_data.as_Generic().m_path.m_components.back().size() > 8
-                && path.m_data.as_Generic().m_path.m_components.back().compare(0,8, "closure#") == 0
+                && path.m_data.as_Generic().m_path.m_components.back().compare(0,strlen(CLOSURE_PATH_PREFIX), CLOSURE_PATH_PREFIX) == 0
                 ;
         }
         }),
