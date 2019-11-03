@@ -1121,7 +1121,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
             remove(failed_filename.str().c_str());
             rename(out_file.str().c_str(), failed_filename.str().c_str());
 
-            ::std::cerr << "Calling " << script_exe_abs << " failed" << ::std::endl;
+            if(false)
             {
                 ::std::ifstream ifs(failed_filename);
                 char    linebuf[1024];
@@ -1133,6 +1133,11 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
                     }
                     ::std::cerr << "> " << linebuf << ::std::endl;
                 }
+                ::std::cerr << "Calling " << script_exe_abs << " failed" << ::std::endl;
+            }
+            else
+            {
+                ::std::cerr << "Calling " << script_exe_abs << " failed (see " << failed_filename << " for stdout)" << ::std::endl;
             }
 
             // Build failed, return an invalid path
@@ -1316,13 +1321,17 @@ bool Builder::spawn_process(const char* exe_name, const StringList& args, const 
     if( status != 0 )
     {
         if( WIFEXITED(status) )
-            DEBUG("Compiler exited with non-zero exit status " << WEXITSTATUS(status));
+            ::std::cerr << "Process exited with non-zero exit status " << WEXITSTATUS(status) << ::std::endl;
         else if( WIFSIGNALED(status) )
-            DEBUG("Compiler was terminated with signal " << WTERMSIG(status));
+            ::std::cerr << "Process was terminated with signal " << WTERMSIG(status) << ::std::endl;
         else
-            DEBUG("Compiler terminated for unknown reason, status=" << status);
-        DEBUG("See " << logfile << " for the compiler output");
+            ::std::cerr << "Process terminated for unknown reason, status=" << status << ::std::endl;
+        //::std::cerr << "See " << logfile << " for the compiler output" << ::std::endl;
         return false;
+    }
+    else
+    {
+        DEBUG("Successful exit");
     }
 #endif
     return true;
