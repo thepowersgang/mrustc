@@ -14,6 +14,8 @@
 #include <helpers.h>
 #include "repository.h"
 #include "build.h"
+#include <toml.h>   // TomlFile (workspace)
+#include <fstream>  // for workspace enumeration
 
 struct ProgramOptions
 {
@@ -64,6 +66,7 @@ int main(int argc, const char* argv[])
     {
         Debug_DisablePhase("Load Repository");
         Debug_DisablePhase("Load Root");
+        Debug_DisablePhase("Load Workspace");
         Debug_DisablePhase("Load Dependencies");
         Debug_DisablePhase("Enumerate Build");
         Debug_DisablePhase("Run Build");
@@ -103,6 +106,102 @@ int main(int argc, const char* argv[])
         auto dir = ::helpers::path(opts.directory ? opts.directory : ".");
         auto m = PackageManifest::load_from_toml( dir / "Cargo.toml" );
         m.set_features(opts.features, opts.features.empty());
+
+        Debug_SetPhase("Load Workspace");
+        auto workspace_manifest_path = m.workspace_path();
+        if( !workspace_manifest_path.is_valid() )
+        {
+            auto p = helpers::path( m.manifest_path() );
+            p.pop_component();  // remove `Cargo.toml`
+            // Search parent dir and up (pop current dir and then start checking)
+            while( p.pop_component() )
+            {
+                auto pp = p / "Cargo.toml";
+                bool exists = ::std::ifstream(pp.str()).is_open();
+                bool is_workspace = false;
+                if( exists )
+                {
+                    // Parse toml, see if there's a `workspace` section at root
+                    TomlFile    toml_file(pp);
+
+                    for(auto key_val : toml_file)
+                    {
+                        //assert(key_val.path.size() > 0);
+                        if( key_val.path[0] == "workspace" )
+                        {
+                            is_workspace = true;
+                            break;
+                        }
+                    }
+                }
+
+                if( is_workspace )
+                {
+                    workspace_manifest_path = pp;
+                    break;
+                }
+            }
+        }
+        if( !workspace_manifest_path.is_valid() )
+        {
+            DEBUG("Not part of a workspace");
+        }
+        else
+        {
+            DEBUG("Workspace manifest " << workspace_manifest_path);
+            TomlFile    toml_file(workspace_manifest_path);
+
+            for(auto key_val : toml_file)
+            {
+                if( key_val.path[0] == "patch" )
+                {
+                    if( key_val.path.size() < 4 ) {
+                        DEBUG("Too-short path " << key_val.path);
+                        continue ;
+                    }
+                    const auto& repo_name = key_val.path[1];
+                    const auto& package_name = key_val.path[2];
+                    // This is a dependency section
+                    if( key_val.path[3] == "path" )
+                    {
+                        if( key_val.path.size() != 4 ) {
+                            DEBUG("Wrong-length path " << key_val.path);
+                            continue ;
+                        }
+                        if( key_val.value.m_type != TomlValue::Type::String ) {
+                            DEBUG("Incorrect type " << key_val.value);
+                            continue ;
+                        }
+                        if( repo_name == "crates-io" )
+                        {
+                            // Kinda hacky to do overrides in the repository, but it works
+                            auto p = workspace_manifest_path.parent() / key_val.value.as_string();
+                            DEBUG("Override " << package_name << " = path " << p);
+                            repo.add_patch_path(package_name, p);
+                        }
+                        else
+                        {
+                            DEBUG("TODO: Handle patching other types of dependencies");
+                        }
+                    }
+                    else
+                    {
+                        TODO("Handle workspace patch dependency frag '" << key_val.path[3] << "'");
+                    }
+                }
+                else if( key_val.path[0] == "replace" )
+                {
+                    TODO(toml_file.lexer() << ": Handle [replace]");
+                }
+                else if( key_val.path[0] == "profile" )
+                {
+                    // Igonore for now
+                }
+                else
+                {
+                }
+            }
+        }
 
         // 2. Load all dependencies
         Debug_SetPhase("Load Dependencies");

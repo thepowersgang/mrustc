@@ -31,6 +31,8 @@ public:
     void load_cache(const ::helpers::path& path);
     void load_vendored(const ::helpers::path& path);
 
+    void add_patch_path(const std::string& package_name, ::helpers::path path);
+
     ::std::shared_ptr<PackageManifest> from_path(::helpers::path path);
     ::std::shared_ptr<PackageManifest> find(const ::std::string& name, const PackageVersionSpec& version);
 };

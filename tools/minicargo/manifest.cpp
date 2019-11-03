@@ -140,6 +140,17 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
             {
                 //rv.m_create_auto_bench = key_val.value.as_bool();
             }
+            else if( key == "workspace" )
+            {
+                if( rv.m_workspace_manifest.is_valid() )
+                {
+                    ::std::cerr << toml_file.lexer() << ": Duplicate workspace specification" << ::std::endl;
+                }
+                else
+                {
+                    rv.m_workspace_manifest = key_val.value.as_string();
+                }
+            }
             else
             {
                 // Unknown value in `package`
@@ -292,7 +303,12 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
         }
         else if( section == "workspace" )
         {
-            // TODO: Workspaces?
+            // NOTE: This will be parsed in full by other code?
+            if( ! rv.m_workspace_manifest.is_valid() )
+            {
+                // TODO: if the workspace was specified via `[package] workspace` then error
+                rv.m_workspace_manifest = rv.m_manifest_path;
+            }
         }
         // crates.io metadata
         else if( section == "badges" )

@@ -115,6 +115,19 @@ void Repository::load_vendored(const ::helpers::path& path)
         return it->second;
     }
 }
+void Repository::add_patch_path(const std::string& package_name, ::helpers::path path)
+{
+    auto manifest_path = path / "Cargo.toml";
+
+    auto loaded_manifest = ::std::shared_ptr<PackageManifest>( new PackageManifest(PackageManifest::load_from_toml(manifest_path)) );
+
+    Entry   cache_ent;
+    cache_ent.manifest_path = manifest_path;
+    cache_ent.version = loaded_manifest->version();
+    cache_ent.loaded_manifest = ::std::move(loaded_manifest);
+    m_cache.insert(::std::make_pair( package_name, ::std::move(cache_ent) ));
+    // TODO: If there's other packages with the same name, check for compatability (or otherwise ensure that this is the chosen version)
+}
 ::std::shared_ptr<PackageManifest> Repository::find(const ::std::string& name, const PackageVersionSpec& version)
 {
     DEBUG("FIND " << name << " matching " << version);

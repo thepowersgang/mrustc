@@ -255,6 +255,7 @@ public:
 class PackageManifest
 {
     ::std::string   m_manifest_path;
+    helpers::path   m_workspace_manifest;
 
     ::std::string   m_name;
     PackageVersion  m_version;
@@ -301,6 +302,9 @@ public:
     }
     const ::std::string& manifest_path() const {
         return m_manifest_path;
+    }
+    const ::helpers::path& workspace_path() const {
+        return m_workspace_manifest;
     }
     const ::std::string& name() const {
         return m_name;
