@@ -1326,7 +1326,7 @@ namespace {
                 switch(m_compiler)
                 {
                 case Compiler::Msvc:
-                    m_of << "#pragma align(push, " << repr->align << ")\n";
+                    m_of << "__declspec(align(" << repr->align << "))\n";
                     break;
                 case Compiler::Gcc:
                     break;
@@ -1353,12 +1353,15 @@ namespace {
                     m_of << "uint8_t _" << fld << "[0]";
                     has_unsized = true;
                 }
+                else if( TU_TEST1(ty.m_data, Path, .binding.is_ExternType()) ) {
+                    m_of << "// External";
+                    has_unsized = true;
+                }
                 else {
-                    size_t s, a;
+                    size_t s = 0, a;
                     Target_GetSizeAndAlignOf(sp, m_resolve, ty, s, a);
                     if( s == 0 && m_options.disallow_empty_structs ) {
-                        m_of << "// ZST: " << ty << "\n";
-                        continue ;
+                        m_of << "// ZST";
                     }
                     else {
 
@@ -1369,7 +1372,7 @@ namespace {
                         has_unsized |= (s == SIZE_MAX);
                     }
                 }
-                m_of << ";\n";
+                m_of << "; // " << ty << "\n";
             }
             if( sized_fields == 0 && !has_unsized && m_options.disallow_empty_structs )
             {
@@ -1381,10 +1384,10 @@ namespace {
                 switch(m_compiler)
                 {
                 case Compiler::Msvc:
+                    m_of << ";";
                     if( is_packed )
-                        m_of << ";\n#pragma pack(pop)\n";
-                    if( has_manual_align )
-                        m_of << ";\n#pragma align(pop)\n";
+                        m_of << "\n#pragma pack(pop)";
+                    m_of << "\n";
                     break;
                 case Compiler::Gcc:
                     m_of << " __attribute__((";
@@ -5863,8 +5866,8 @@ namespace {
         }
         void emit_constant(const ::MIR::Constant& ve, const ::MIR::LValue* dst_ptr=nullptr)
         {
-            TU_MATCHA( (ve), (c),
-            (Int,
+            TU_MATCH_HDRA( (ve), {)
+            TU_ARMA(Int, c) {
                 if( c.v == INT64_MIN )
                 {
                     if( m_options.emulated_i128 && c.t == ::HIR::CoreType::I128 )
@@ -5912,8 +5915,8 @@ namespace {
                         break;
                     }
                 }
-                ),
-            (Uint,
+                }
+            TU_ARMA(Uint, c) {
                 switch(c.t)
                 {
                 case ::HIR::CoreType::U8:
@@ -5952,25 +5955,25 @@ namespace {
                 default:
                     MIR_BUG(*m_mir_res, "Invalid type for UInt literal - " << c.t);
                 }
-                ),
-            (Float,
+                }
+            TU_ARMA(Float, c) {
                 this->emit_float(c.v);
-                ),
-            (Bool,
+                }
+            TU_ARMA(Bool, c) {
                 m_of << (c.v ? "true" : "false");
-                ),
-            (Bytes,
+                }
+            TU_ARMA(Bytes, c) {
                 // Array borrow : Cast the C string to the array
                 // - Laziness
                 m_of << "(void*)";
                 this->print_escaped_string(c);
-                ),
-            (StaticString,
+                }
+            TU_ARMA(StaticString, c) {
                 m_of << "make_sliceptr(";
                 this->print_escaped_string(c);
                 m_of << ", " << ::std::dec << c.size() << ")";
-                ),
-            (Const,
+                }
+            TU_ARMA(Const, c) {
                 // TODO: This should have been eliminated? ("MIR Cleanup" should have removed all inline Const references)
                 ::HIR::TypeRef  ty;
                 const auto& lit = get_literal_for_const(*c.p, ty);
@@ -5987,13 +5990,13 @@ namespace {
                 else
                 {
                     // NOTE: GCC hack - statement expressions
-                    MIR_ASSERT(*m_mir_res, m_compiler == Compiler::Gcc, "TODO: Support inline constants without statement expressions");
+                    MIR_ASSERT(*m_mir_res, m_compiler == Compiler::Gcc, "TODO: Support inline constants without using GCC statement expressions - " << ty << " { " << lit << " }");
                     m_of << "({"; emit_ctype(ty, FMT_CB(ss, ss<<"v";)); m_of << "; ";
                     assign_from_literal([&](){ m_of << "v"; }, ty, lit);
                     m_of << "; v;})";
                 }
-                ),
-            (ItemAddr,
+                }
+            TU_ARMA(ItemAddr, c) {
                 TU_MATCHA( (c->m_data), (pe),
                 (Generic,
                     if( pe.m_path.m_components.size() > 1 && m_crate.get_typeitem_by_path(sp, pe.m_path, false, true).is_Enum() )
@@ -6023,8 +6026,8 @@ namespace {
                     )
                 )
                 m_of << Trans_Mangle(*c);
-                )
-            )
+                }
+            }
         }
         void emit_param(const ::MIR::Param& p) {
             TU_MATCHA( (p), (e),
