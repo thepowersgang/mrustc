@@ -47,12 +47,7 @@ public:
         return get(name) != 0;
     }
 
-    friend ::std::ostream& operator<<(::std::ostream& os, const AttributeList& x) {
-        for(const auto& i : x.m_items) {
-            os << "#[" << i << "]";
-        }
-        return os;
-    }
+    friend ::std::ostream& operator<<(::std::ostream& os, const AttributeList& x);
 };
 
 
