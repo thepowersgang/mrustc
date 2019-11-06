@@ -887,12 +887,16 @@ namespace {
             else
             {
                 // 1. Look up the encoded trait
-                const auto& trait = (
-                      node.m_trait_used == ::HIR::ExprNode_CallValue::TraitUsed::Fn ? m_resolve.m_crate.get_lang_item_path(node.span(), "fn")
-                    : node.m_trait_used == ::HIR::ExprNode_CallValue::TraitUsed::FnMut ? m_resolve.m_crate.get_lang_item_path(node.span(), "fn_mut")
-                    : node.m_trait_used == ::HIR::ExprNode_CallValue::TraitUsed::FnOnce ? m_resolve.m_crate.get_lang_item_path(node.span(), "fn_once")
-                    : throw ""
-                    );
+                const ::HIR::SimplePath* trait_p;
+                switch(node.m_trait_used)
+                {
+                case ::HIR::ExprNode_CallValue::TraitUsed::Fn:     trait_p = &m_resolve.m_crate.get_lang_item_path(node.span(), "fn"); break;
+                case ::HIR::ExprNode_CallValue::TraitUsed::FnMut:  trait_p = &m_resolve.m_crate.get_lang_item_path(node.span(), "fn_mut"); break;
+                case ::HIR::ExprNode_CallValue::TraitUsed::FnOnce: trait_p = &m_resolve.m_crate.get_lang_item_path(node.span(), "fn_once"); break;
+                default:
+                    throw "";
+                }
+                const auto& trait = *trait_p;
 
                 ::std::vector< ::HIR::TypeRef>  tup_ents;
                 for(const auto& arg : node.m_args) {
