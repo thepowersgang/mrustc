@@ -21,7 +21,7 @@ constexpr const char* CLOSURE_PATH_PREFIX = "closure#";
 
 namespace HIR {
 
-class TraitMarkings;
+struct TraitMarkings;
 class ExternType;
 class Struct;
 class Union;

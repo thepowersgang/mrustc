@@ -319,8 +319,8 @@ namespace
                             (Tuple, return metadata_type( monomorph(se.back().ent) ); ),
                             (Named, return metadata_type( monomorph(se.back().second.ent) ); )
                         )
-                            //MIR_TODO(*m_mir_res, "Determine DST type when ::Possible - " << ty);
-                            return MetadataType::None;
+                        //MIR_TODO(*m_mir_res, "Determine DST type when ::Possible - " << ty);
+                        return MetadataType::None;
                     }
                     case ::HIR::StructMarkings::DstType::Slice:
                         return MetadataType::Slice;
@@ -336,6 +336,7 @@ namespace
                 default:
                     MIR_BUG(*m_mir_res, "Unbound/opaque path in trans - " << ty);
                 }
+                throw "";
             }
             else {
                 return MetadataType::None;
@@ -480,7 +481,7 @@ namespace
             }
             m_mir_res = nullptr;
         }
-        virtual void emit_constructor_enum(const Span& sp, const ::HIR::GenericPath& var_path, const ::HIR::Enum& item, size_t var_idx)
+        void emit_constructor_enum(const Span& sp, const ::HIR::GenericPath& var_path, const ::HIR::Enum& item, size_t var_idx) override
         {
             TRACE_FUNCTION_F(var_path);
 

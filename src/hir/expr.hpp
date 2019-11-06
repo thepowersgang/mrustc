@@ -873,7 +873,7 @@ class ExprVisitorDef:
     public ExprVisitor
 {
 public:
-    #define NV(nt)  virtual void visit(nt& n);
+    #define NV(nt)  virtual void visit(nt& n) override;
 
     virtual void visit_node_ptr(::std::unique_ptr<ExprNode>& node_ptr) override;
 

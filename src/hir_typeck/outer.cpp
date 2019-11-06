@@ -658,7 +658,7 @@ namespace {
             auto _ = m_resolve.set_item_generics(item.m_params);
             ::HIR::Visitor::visit_enum(p, item);
         }
-        void visit_associatedtype(::HIR::ItemPath p, ::HIR::AssociatedType& item)
+        void visit_associatedtype(::HIR::ItemPath p, ::HIR::AssociatedType& item) override
         {
             // Push `Self = <Self as CurTrait>::Type` for processing defaults in the bounds.
             auto path_aty = ::HIR::Path( ::HIR::TypeRef("Self", 0xFFFF), this->get_current_trait_gp(), p.get_name() );

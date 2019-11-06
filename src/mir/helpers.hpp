@@ -21,7 +21,7 @@ struct SimplePath;
 namespace MIR {
 
 class Function;
-class LValue;
+struct LValue;
 class Constant;
 struct BasicBlock;
 class Terminator;

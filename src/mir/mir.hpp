@@ -12,7 +12,7 @@
 #include <memory>   // std::unique_ptr
 #include <hir/type.hpp>
 
-class MonomorphState;
+struct MonomorphState;
 
 namespace MIR {
 
