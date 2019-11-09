@@ -2597,12 +2597,21 @@ void HIR_GenerateMIR_Expr(const ::HIR::Crate& crate, const ::HIR::ItemPath& path
 
 void HIR_GenerateMIR(::HIR::Crate& crate)
 {
-    ::MIR::OuterVisitor    ov { crate, [&](const auto& res, const auto& p, auto& expr_ptr, const auto& args, const auto& ty){
+    ::MIR::OuterVisitor    ov { crate, [&](const auto& res, const auto& p, ::HIR::ExprPtr& expr_ptr, const auto& args, const auto& ty){
             if( !expr_ptr.get_mir_opt() )
             {
                 expr_ptr.set_mir( LowerMIR(res, p, expr_ptr, ty, args) );
             }
         } };
     ov.visit_crate(crate);
+
+    // Once MIR is generated, free the HIR expression tree (replace each node with an empty tuple node)
+    ::MIR::OuterVisitor ov_free(crate, [&](const auto& res, const auto& p, ::HIR::ExprPtr& expr_ptr, const auto& args, const auto& ty){
+        if( expr_ptr )
+        {
+            expr_ptr.reset(new ::HIR::ExprNode_Tuple(expr_ptr->m_span, {}));
+        }
+        });
+    ov_free.visit_crate(crate);
 }
 
