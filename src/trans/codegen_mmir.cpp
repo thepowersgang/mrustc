@@ -994,7 +994,7 @@ namespace
                 for(const auto& v : lit.as_List())
                 {
                     emit_literal_as_bytes(v, *te.inner, out_relocations, base_ofs);
-                    size_t size = Target_GetSizeOf(sp, m_resolve, *te.inner, size);
+                    size_t size = Target_GetSizeOf_Required(sp, m_resolve, *te.inner);
                     base_ofs += size;
                 }
                 } break;
@@ -1331,7 +1331,7 @@ namespace
                 {
                 case ::MIR::Terminator::TAGDEAD: throw "";
                 TU_ARM(term, Incomplete, _e) (void)_e;
-                    m_of << "INCOMPLTE\n";
+                    m_of << "INCOMPLETE\n";
                     break;
                 TU_ARM(term, Return, _e) (void)_e;
                     m_of << "RETURN\n";

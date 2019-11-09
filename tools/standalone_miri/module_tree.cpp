@@ -866,6 +866,10 @@ bool Parser::parse_one()
         {
             term = ::MIR::Terminator::make_Diverge({});
         }
+        else if( lex.consume_if("INCOMPLETE") )
+        {
+            term = ::MIR::Terminator::make_Incomplete({});
+        }
         else if( lex.consume_if("IF") )
         {
             auto val = H::parse_lvalue(*this, var_names);

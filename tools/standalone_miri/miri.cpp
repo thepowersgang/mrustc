@@ -1758,8 +1758,25 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     LOG_ASSERT(v.read_usize(0) == Allocation::PTR_BASE, "Function pointer value invalid - " << v);
                     fcn_alloc_ptr = v.get_relocation(0);
                     LOG_ASSERT(fcn_alloc_ptr, "Calling value with no relocation - " << v);
-                    LOG_ASSERT(fcn_alloc_ptr.get_ty() == RelocationPtr::Ty::Function, "Calling value that isn't a function pointer");
-                    fcn_p = &fcn_alloc_ptr.fcn();
+                    switch(fcn_alloc_ptr.get_ty())
+                    {
+                    case RelocationPtr::Ty::Function:
+                        fcn_p = &fcn_alloc_ptr.fcn();
+                        break;
+                    case RelocationPtr::Ty::FfiPointer:
+                        if( !fcn_alloc_ptr.ffi().layout )
+                        {
+#ifdef _WIN32
+                            if( fcn_alloc_ptr.ffi().ptr_value == AcquireSRWLockExclusive )
+                            {
+                                LOG_TODO("");
+                                break;
+                            }
+#endif
+                        }
+                    default:
+                        LOG_ERROR("Calling value that isn't a function pointer - " << v);
+                    }
                 }
 
                 LOG_DEBUG("Call " << *fcn_p);
@@ -1883,7 +1900,9 @@ bool InterpreterThread::call_path(Value& ret, const ::HIR::Path& path, ::std::ve
 {
     // TODO: Support overriding certain functions
     {
-        if( path == ::HIR::SimplePath { "std", { "sys", "imp", "c", "SetThreadStackGuarantee" } } )
+        if( path == ::HIR::SimplePath { "std", { "sys", "imp", "c", "SetThreadStackGuarantee" } } 
+         || path == ::HIR::SimplePath { "std", { "sys", "windows", "c", "SetThreadStackGuarantee" } }
+         )
         {
             ret = Value::new_i32(120);  //ERROR_CALL_NOT_IMPLEMENTED
             return true;
@@ -1891,7 +1910,7 @@ bool InterpreterThread::call_path(Value& ret, const ::HIR::Path& path, ::std::ve
 
         // - No guard page needed
         if( path == ::HIR::SimplePath { "std",  {"sys", "imp", "thread", "guard", "init" } }
-         ||  path == ::HIR::SimplePath { "std",  {"sys", "unix", "thread", "guard", "init" } }
+         || path == ::HIR::SimplePath { "std",  {"sys", "unix", "thread", "guard", "init" } }
          )
         {
             ret = Value::with_size(16, false);

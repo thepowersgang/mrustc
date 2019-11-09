@@ -34,7 +34,7 @@ public:
 
     template<typename T>
     DebugSink& operator<<(const T& v) {
-        if( m_stderr_too )
+        if( m_stderr_too && s_out_file )
         {
             ::std::cerr << v;
         }

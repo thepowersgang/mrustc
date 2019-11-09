@@ -543,8 +543,8 @@ void Allocation::write_ptr(size_t ofs, size_t ptr_ofs, RelocationPtr reloc)
 }
 void Allocation::set_reloc(size_t ofs, size_t len, RelocationPtr reloc)
 {
-    LOG_ASSERT(ofs % POINTER_SIZE == 0, "");
-    LOG_ASSERT(len == POINTER_SIZE, "");
+    LOG_ASSERT(ofs % POINTER_SIZE == 0, "Allocation::set_reloc(" << ofs << ", " << len << ", " << reloc << ")");
+    LOG_ASSERT(len == POINTER_SIZE, "Allocation::set_reloc(" << ofs << ", " << len << ", " << reloc << ")");
     // Delete any existing relocation at this position
     for(auto it = this->relocations.begin(); it != this->relocations.end();)
     {
