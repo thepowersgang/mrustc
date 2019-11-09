@@ -112,21 +112,23 @@ public:
             }
         }
 
-        TU_IFLET(::HIR::TypeRef::Data, (ty.m_data), Path, (e),
-            ::HIR::TypeRef  new_type = ConvertHIR_ExpandAliases_GetExpansion(m_crate, e.path, m_in_expr);
+        if( const auto* e = ty.m_data.opt_Path() ) 
+        {
+            ::HIR::TypeRef  new_type = ConvertHIR_ExpandAliases_GetExpansion(m_crate, e->path, m_in_expr);
             // Keep trying to expand down the chain
             unsigned int num_exp = 1;
             const unsigned int MAX_RECURSIVE_TYPE_EXPANSIONS = 100;
             while(num_exp < MAX_RECURSIVE_TYPE_EXPANSIONS)
             {
                 ::HIR::Visitor::visit_type(new_type);
-                TU_IFLET(::HIR::TypeRef::Data, (new_type.m_data), Path, (e),
-                    auto nt = ConvertHIR_ExpandAliases_GetExpansion(m_crate, e.path, m_in_expr);
+                if( const auto* e = new_type.m_data.opt_Path() )
+                {
+                    auto nt = ConvertHIR_ExpandAliases_GetExpansion(m_crate, e->path, m_in_expr);
                     if( nt == ::HIR::TypeRef() )
                         break;
                     num_exp ++;
                     new_type = mv$(nt);
-                )
+                }
                 else {
                     break;
                 }
@@ -136,7 +138,7 @@ public:
                 DEBUG("Replacing " << ty << " with " << new_type << " (" << num_exp << " expansions)");
                 ty = mv$(new_type);
             }
-        )
+        }
     }
 
 
