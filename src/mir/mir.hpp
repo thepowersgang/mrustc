@@ -94,8 +94,8 @@ struct LValue
         bool is_Static() const   { return (val & 3) == 2; }
 
         const char     as_Return  () const { assert(is_Return()); return 0; }
-        const unsigned as_Argument() const { assert(is_Argument()); return (val >> 2) - 1; }
-        const unsigned as_Local   () const { assert(is_Local()); return val >> 2; }
+        const unsigned as_Argument() const { assert(is_Argument()); return static_cast<unsigned>( (val >> 2) - 1 ); }
+        const unsigned as_Local   () const { assert(is_Local()); return static_cast<unsigned>(val >> 2); }
 
         const ::HIR::Path& as_Static() const { assert(is_Static()); return *reinterpret_cast<const ::HIR::Path*>(val & ~3llu); }
               ::HIR::Path& as_Static()       { assert(is_Static()); return *reinterpret_cast<      ::HIR::Path*>(val & ~3llu); }

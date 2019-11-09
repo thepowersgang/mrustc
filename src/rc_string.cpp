@@ -11,14 +11,14 @@
 #include <iostream>
 #include <algorithm>    // std::max
 
-RcString::RcString(const char* s, unsigned int len):
+RcString::RcString(const char* s, size_t len):
     m_ptr(nullptr)
 {
     if( len > 0 )
     {
         m_ptr = new unsigned int[2 + (len+1 + sizeof(unsigned int)-1) / sizeof(unsigned int)];
         m_ptr[0] = 1;
-        m_ptr[1] = len;
+        m_ptr[1] = static_cast<unsigned>(len);
         char* data_mut = reinterpret_cast<char*>(m_ptr + 2);
         for(unsigned int j = 0; j < len; j ++ )
             data_mut[j] = s[j];

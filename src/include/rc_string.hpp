@@ -18,7 +18,7 @@ public:
     RcString():
         m_ptr(nullptr)
     {}
-    RcString(const char* s, unsigned int len);
+    RcString(const char* s, size_t len);
     RcString(const char* s):
         RcString(s, ::std::strlen(s))
     {
