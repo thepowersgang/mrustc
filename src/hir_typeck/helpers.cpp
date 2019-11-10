@@ -652,8 +652,10 @@ void HMTypeInferrence::ivar_unify(unsigned int left_slot, unsigned int right_slo
         // TODO: Assert that setting this won't cause a loop.
         auto& root_ivar = this->get_pointed_ivar(right_slot);
 
-        TU_IFLET(::HIR::TypeRef::Data, root_ivar.type->m_data, Infer, re,
-            if( re.ty_class == ::HIR::InferClass::Diverge )
+        if( const auto* re = root_ivar.type->m_data.opt_Infer() )
+        {
+            DEBUG("Class unify " << *left_ivar.type << " <- " << *root_ivar.type);
+            if( re->ty_class == ::HIR::InferClass::Diverge )
             {
                 TU_IFLET(::HIR::TypeRef::Data, left_ivar.type->m_data, Infer, le,
                     if( le.ty_class == ::HIR::InferClass::None ) {
@@ -661,7 +663,7 @@ void HMTypeInferrence::ivar_unify(unsigned int left_slot, unsigned int right_slo
                     }
                 )
             }
-            else if(re.ty_class != ::HIR::InferClass::None)
+            else if(re->ty_class != ::HIR::InferClass::None)
             {
                 TU_MATCH_DEF(::HIR::TypeRef::Data, (left_ivar.type->m_data), (le),
                 (
@@ -671,24 +673,24 @@ void HMTypeInferrence::ivar_unify(unsigned int left_slot, unsigned int right_slo
                     if( le.ty_class == ::HIR::InferClass::Diverge )
                     {
                     }
-                    else if( le.ty_class != ::HIR::InferClass::None && le.ty_class != re.ty_class )
+                    else if( le.ty_class != ::HIR::InferClass::None && le.ty_class != re->ty_class )
                     {
                         ERROR(sp, E0000, "Unifying types with mismatching literal classes - " << *left_ivar.type << " := " << *root_ivar.type);
                     }
                     else
                     {
                     }
-                    le.ty_class = re.ty_class;
+                    le.ty_class = re->ty_class;
                     ),
                 (Primitive,
-                    check_type_class_primitive(sp, *left_ivar.type, re.ty_class, le);
+                    check_type_class_primitive(sp, *left_ivar.type, re->ty_class, le);
                     )
                 )
             }
             else
             {
             }
-        )
+        }
         else {
             BUG(sp, "Unifying over a concrete type - " << *root_ivar.type);
         }

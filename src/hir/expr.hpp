@@ -56,10 +56,6 @@ public:
     ExprNode(Span sp):
         m_span( mv$(sp) )
     {}
-    ExprNode(Span sp, ::HIR::TypeRef ty):
-        m_span( mv$(sp) ),
-        m_res_type( mv$(ty) )
-    {}
     virtual ~ExprNode();
 };
 
@@ -106,7 +102,7 @@ struct ExprNode_Asm:
     ::std::vector< ::std::string>   m_flags;
 
     ExprNode_Asm(Span sp, ::std::string tpl_str, ::std::vector<ValRef> outputs, ::std::vector<ValRef> inputs, ::std::vector< ::std::string> clobbers, ::std::vector< ::std::string> flags):
-        ExprNode(mv$(sp), ::HIR::TypeRef::new_unit()),
+        ExprNode(mv$(sp)),
         m_template( mv$(tpl_str) ),
         m_outputs( mv$(outputs) ),
         m_inputs( mv$(inputs) ),
@@ -123,7 +119,7 @@ struct ExprNode_Return:
     ::HIR::ExprNodeP    m_value;
 
     ExprNode_Return(Span sp, ::HIR::ExprNodeP value):
-        ExprNode(mv$(sp), ::HIR::TypeRef::new_diverge()),
+        ExprNode(mv$(sp)),
         m_value( mv$(value) )
     {
     }
@@ -138,8 +134,7 @@ struct ExprNode_Loop:
     bool    m_diverges = false;
 
     ExprNode_Loop(Span sp, RcString label, ::HIR::ExprNodeP code):
-        //ExprNode(mv$(sp), ::HIR::TypeRef::new_unit()),
-        ExprNode(mv$(sp), ::HIR::TypeRef()),
+        ExprNode(mv$(sp)),
         m_label( mv$(label) ),
         m_code( mv$(code) )
     {}
@@ -154,7 +149,7 @@ struct ExprNode_LoopControl:
     ::HIR::ExprNodeP    m_value;
 
     ExprNode_LoopControl(Span sp, RcString label, bool cont, ::HIR::ExprNodeP value={}):
-        ExprNode(mv$(sp), ::HIR::TypeRef::new_diverge()),
+        ExprNode(mv$(sp)),
         m_label( mv$(label) ),
         m_continue( cont ),
         m_value( mv$(value) )
@@ -170,7 +165,7 @@ struct ExprNode_Let:
     ::HIR::ExprNodeP    m_value;
 
     ExprNode_Let(Span sp, ::HIR::Pattern pat, ::HIR::TypeRef ty, ::HIR::ExprNodeP val):
-        ExprNode(mv$(sp), ::HIR::TypeRef::new_unit()),
+        ExprNode(mv$(sp)),
         m_pattern( mv$(pat) ),
         m_type( mv$(ty) ),
         m_value( mv$(val) )
@@ -253,7 +248,7 @@ struct ExprNode_Assign:
     ExprNodeP   m_value;
 
     ExprNode_Assign(Span sp, Op op, ::HIR::ExprNodeP slot, ::HIR::ExprNodeP value):
-        ExprNode(mv$(sp), ::HIR::TypeRef::new_unit()),
+        ExprNode(mv$(sp)),
         m_op(op),
         m_slot( mv$(slot) ),
         m_value( mv$(value) )
@@ -378,12 +373,15 @@ struct ExprNode_Cast:
     public ExprNode
 {
     ::HIR::ExprNodeP    m_value;
-    // TODO: Re-instate the local type, to allow for coercions?
+    //::HIR::TypeRef  m_dst_type;
 
     ExprNode_Cast(Span sp, ::HIR::ExprNodeP value, ::HIR::TypeRef dst_type):
-        ExprNode( mv$(sp), mv$(dst_type) ),
-        m_value( mv$(value) )
-    {}
+        ExprNode( mv$(sp) )
+        ,m_value( mv$(value) )
+        //,m_dst_type( mv$(dst_type) )
+    {
+        m_res_type = mv$(dst_type);
+    }
 
     NODE_METHODS();
 };
@@ -391,15 +389,20 @@ struct ExprNode_Cast:
 // - `&[T; n] -> &[T]`
 // - `&T -> &Trait`
 // - `Box<T> -> Box<Trait>`
+// NOTE: Also used for type ascription
 struct ExprNode_Unsize:
     public ExprNode
 {
     ::HIR::ExprNodeP    m_value;
+    //::HIR::TypeRef  m_dst_type;
 
     ExprNode_Unsize(Span sp, ::HIR::ExprNodeP value, ::HIR::TypeRef dst_type):
-        ExprNode( mv$(sp), mv$(dst_type) ),
-        m_value( mv$(value) )
-    {}
+        ExprNode( mv$(sp) )
+        ,m_value( mv$(value) )
+        //,m_dst_type( mv$(dst_type) )
+    {
+        m_res_type = mv$(dst_type);
+    }
 
     NODE_METHODS();
 };
@@ -756,7 +759,7 @@ struct ExprNode_ArrayList:
     ::std::vector< ::HIR::ExprNodeP>    m_vals;
 
     ExprNode_ArrayList(Span sp, ::std::vector< ::HIR::ExprNodeP> vals):
-        ExprNode( mv$(sp), ::HIR::TypeRef::new_array( ::HIR::TypeRef(), vals.size() ) ),
+        ExprNode( mv$(sp) ),
         m_vals( mv$(vals) )
     {}
 

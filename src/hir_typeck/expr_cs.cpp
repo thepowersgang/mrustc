@@ -621,7 +621,7 @@ namespace {
 
         void visit(::HIR::ExprNode_Block& node) override
         {
-            TRACE_FUNCTION_F(&node << " { ... }");
+            TRACE_FUNCTION_FR(&node << " { ... }", &node << " " << this->context.get_type(node.m_res_type));
 
             const auto is_diverge = [&](const ::HIR::TypeRef& rty)->bool {
                 const auto& ty = this->context.get_type(rty);
@@ -724,6 +724,7 @@ namespace {
             }
             this->pop_inner_coerce();
             // TODO: Revisit to check that the input are integers, and the outputs are integer lvalues
+            this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
         }
         void visit(::HIR::ExprNode_Return& node) override
         {
@@ -736,6 +737,7 @@ namespace {
             this->push_inner_coerce( true );
             node.m_value->visit( *this );
             this->pop_inner_coerce();
+            this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_diverge());
         }
 
         void visit(::HIR::ExprNode_Loop& node) override
@@ -797,6 +799,7 @@ namespace {
                     this->context.equate_types(node.span(), loop_node.m_res_type, ::HIR::TypeRef::new_unit());
                 }
             }
+            this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_diverge());
         }
 
         void visit(::HIR::ExprNode_Let& node) override
@@ -824,6 +827,7 @@ namespace {
                 this->context.require_sized(node.span(), node.m_value->m_res_type);
                 this->pop_inner_coerce();
             }
+            this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
         }
         void visit(::HIR::ExprNode_Match& node) override
         {
@@ -942,6 +946,8 @@ namespace {
             auto _2 = this->push_inner_coerce_scoped( node.m_op == ::HIR::ExprNode_Assign::Op::None );
             node.m_value->visit( *this );
             this->context.require_sized(node.span(), node.m_value->m_res_type);
+
+            this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
         }
         void visit(::HIR::ExprNode_BinOp& node) override
         {
@@ -1617,9 +1623,10 @@ namespace {
                 this->context.add_ivars( val->m_res_type );
             }
 
+            auto array_ty = ::HIR::TypeRef::new_array( context.m_ivars.new_ivar_tr(), node.m_vals.size() );
+            this->context.equate_types(node.span(), node.m_res_type, array_ty);
             // Cleanly equate into array (with coercions)
-            // - Result type already set, just need to extract ivar
-            const auto& inner_ty = *node.m_res_type.m_data.as_Array().inner;
+            const auto& inner_ty = *array_ty.m_data.as_Array().inner;
             for( auto& val : node.m_vals ) {
                 this->equate_types_inner_coerce(node.span(), inner_ty,  val);
             }
@@ -1635,8 +1642,7 @@ namespace {
 
             // Create result type (can't be known until after const expansion)
             // - Should it be created in const expansion?
-            auto ty = ::HIR::TypeRef::new_array( ::HIR::TypeRef(), node.m_size_val );
-            this->context.add_ivars(ty);
+            auto ty = ::HIR::TypeRef::new_array( context.m_ivars.new_ivar_tr(), node.m_size_val );
             this->context.equate_types(node.span(), node.m_res_type, ty);
             // Equate with coercions
             const auto& inner_ty = *ty.m_data.as_Array().inner;
@@ -8830,13 +8836,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         for(const auto& node : context.to_visit)
         {
             const auto& sp = node->span();
-            if( const auto* np = dynamic_cast<::HIR::ExprNode_CallMethod*>(node) )
-            {
-                WARNING(sp, W0000, "Spare Rule - {" << context.m_ivars.fmt_type(np->m_value->m_res_type) << "}." << np->m_method << " -> " << context.m_ivars.fmt_type(np->m_res_type));
-            }
-            else
-            {
-            }
+            WARNING(sp, W0000, "Spare rule - " << FMT_CB(os, { ExprVisitor_Print ev(context, os); node->visit(ev); }) << " -> " << context.m_ivars.fmt_type(node->m_res_type));
         }
         for(const auto& adv : context.adv_revisits)
         {
