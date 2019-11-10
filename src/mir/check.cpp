@@ -276,6 +276,7 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
         {
             bool rv = false;
             assert( a.size() == b.size() );
+            // TODO: This is a really hot bit of code (according to valgrind), need to find a way of cooling it
             for(unsigned int i = 0; i < a.size(); i++)
             {
                 rv |= merge_state(a[i], b[i]);

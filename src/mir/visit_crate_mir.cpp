@@ -34,24 +34,7 @@ void MIR::OuterVisitor::visit_function(::HIR::ItemPath p, ::HIR::Function& item)
     if( item.m_code )
     {
         DEBUG("Function code " << p);
-        // TODO: Get span without needing hir/expr.hpp
-        static Span sp;
-
-        // Replace ErasedType instances in `ret_type`
-        const auto& ret_type = item.m_return;
-        auto ret_type_v = clone_ty_with(sp, ret_type, [&](const auto& tpl, auto& rv) {
-            if( tpl.m_data.is_ErasedType() )
-            {
-                const auto& e = tpl.m_data.as_ErasedType();
-                assert(e.m_index < item.m_code.m_erased_types.size());
-                rv = item.m_code.m_erased_types[e.m_index].clone();
-                return true;
-            }
-            return false;
-            });
-        this->m_resolve.expand_associated_types(sp, ret_type_v);
-
-        m_cb(m_resolve, p, item.m_code, item.m_args, ret_type_v);
+        m_cb(m_resolve, p, item.m_code, item.m_args, item.m_return);
     }
 }
 void MIR::OuterVisitor::visit_static(::HIR::ItemPath p, ::HIR::Static& item)

@@ -617,15 +617,6 @@ int main(int argc, char *argv[])
             MIR_CheckCrate(*hir_crate);
             });
 
-        if( params.debug.dump_hir )
-        {
-            // DUMP after consteval (full HIR again)
-            CompilePhaseV("Dump HIR", [&]() {
-                ::std::ofstream os (FMT(params.outfile << "_2_hir.rs"));
-                HIR_Dump( os, *hir_crate );
-                });
-        }
-
         // - Expand constants in HIR and virtualise calls
         CompilePhaseV("MIR Cleanup", [&]() {
             MIR_CleanupCrate(*hir_crate);

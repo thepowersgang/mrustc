@@ -2537,7 +2537,7 @@ namespace {
 
 ::MIR::FunctionPointer LowerMIR(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path, const ::HIR::ExprPtr& ptr, const ::HIR::TypeRef& ret_ty, const ::HIR::Function::args_t& args)
 {
-    TRACE_FUNCTION;
+    TRACE_FUNCTION_F(path);
 
     ::MIR::Function fcn;
     fcn.locals.reserve(ptr.m_bindings.size());
