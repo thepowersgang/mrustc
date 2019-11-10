@@ -144,7 +144,8 @@ struct Context
     TraitResolution m_resolve;
 
     unsigned next_rule_idx;
-    ::std::vector<Coercion> link_coerce;
+    // NOTE: unique_ptr used to reduce copy costs of the list
+    ::std::vector< ::std::unique_ptr<Coercion> > link_coerce;
     ::std::vector<Associated> link_assoc;
     /// Nodes that need revisiting (e.g. method calls when the receiver isn't known)
     ::std::vector< ::HIR::ExprNode*>    to_visit;
@@ -3609,7 +3610,8 @@ void Context::dump() const {
     DEBUG("--- Ivars");
     m_ivars.dump();
     DEBUG("--- CS Context - " << link_coerce.size() << " Coercions, " << link_assoc.size() << " associated, " << to_visit.size() << " nodes, " << adv_revisits.size() << " callbacks");
-    for(const auto& v : link_coerce) {
+    for(const auto& vp : link_coerce) {
+        const auto& v = *vp;
         //DEBUG(v);
         DEBUG("R" << v.rule_idx << " " << this->m_ivars.fmt_type(v.left_ty) << " := " << v.right_node_ptr << " " << &**v.right_node_ptr << " (" << this->m_ivars.fmt_type((*v.right_node_ptr)->m_res_type) << ")");
     }
@@ -5201,11 +5203,11 @@ void Context::equate_types_coerce(const Span& sp, const ::HIR::TypeRef& l, ::HIR
 {
     this->m_ivars.get_type(l);
     // - Just record the equality
-    this->link_coerce.push_back(Coercion {
+    this->link_coerce.push_back(std::make_unique<Coercion>(Coercion {
         this->next_rule_idx ++,
         l.clone(), &node_ptr
-        });
-    DEBUG("++ " << this->link_coerce.back());
+        }));
+    DEBUG("++ " << *this->link_coerce.back());
     this->m_ivars.mark_change();
 }
 void Context::equate_types_shadow(const Span& sp, const ::HIR::TypeRef& l, bool is_to)
@@ -8456,12 +8458,13 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         for(size_t i = 0; i < context.link_coerce.size(); )
         {
             auto ent = mv$(context.link_coerce[i]);
-            auto& src_ty = (**ent.right_node_ptr).m_res_type;
-            //src_ty = context.m_resolve.expand_associated_types( (*ent.right_node_ptr)->span(), mv$(src_ty) );
-            ent.left_ty = context.m_resolve.expand_associated_types( (*ent.right_node_ptr)->span(), mv$(ent.left_ty) );
-            if( check_coerce(context, ent) )
+            const auto& span = (*ent->right_node_ptr)->span();
+            auto& src_ty = (*ent->right_node_ptr)->m_res_type;
+            //src_ty = context.m_resolve.expand_associated_types( span, mv$(src_ty) );
+            ent->left_ty = context.m_resolve.expand_associated_types( span, mv$(ent->left_ty) );
+            if( check_coerce(context, *ent) )
             {
-                DEBUG("- Consumed coercion " << ent.left_ty << " := " << src_ty);
+                DEBUG("- Consumed coercion " << ent->left_ty << " := " << src_ty);
 
 #if 0
                 // If this isn't the last item in the list
@@ -8614,13 +8617,13 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
                 auto ent = mv$(context.link_coerce.front());
                 context.link_coerce.erase( context.link_coerce.begin() );
 
-                const auto& sp = (*ent.right_node_ptr)->span();
-                auto& src_ty = (**ent.right_node_ptr).m_res_type;
+                const auto& sp = (*ent->right_node_ptr)->span();
+                auto& src_ty = (*ent->right_node_ptr)->m_res_type;
                 //src_ty = context.m_resolve.expand_associated_types( sp, mv$(src_ty) );
-                ent.left_ty = context.m_resolve.expand_associated_types( sp, mv$(ent.left_ty) );
-                DEBUG("- Equate coercion R" << ent.rule_idx << " " << ent.left_ty << " := " << src_ty);
+                ent->left_ty = context.m_resolve.expand_associated_types( sp, mv$(ent->left_ty) );
+                DEBUG("- Equate coercion R" << ent->rule_idx << " " << ent->left_ty << " := " << src_ty);
 
-                context.equate_types(sp, ent.left_ty, src_ty);
+                context.equate_types(sp, ent->left_ty, src_ty);
             }
         }
 #endif
@@ -8646,13 +8649,13 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
                 auto ent = mv$(context.link_coerce.front());
                 context.link_coerce.erase( context.link_coerce.begin() );
 
-                const auto& sp = (*ent.right_node_ptr)->span();
-                auto& src_ty = (**ent.right_node_ptr).m_res_type;
+                const auto& sp = (*ent->right_node_ptr)->span();
+                auto& src_ty = (*ent->right_node_ptr)->m_res_type;
                 //src_ty = context.m_resolve.expand_associated_types( sp, mv$(src_ty) );
-                ent.left_ty = context.m_resolve.expand_associated_types( sp, mv$(ent.left_ty) );
-                DEBUG("- Equate coercion R" << ent.rule_idx << " " << ent.left_ty << " := " << src_ty);
+                ent->left_ty = context.m_resolve.expand_associated_types( sp, mv$(ent->left_ty) );
+                DEBUG("- Equate coercion R" << ent->rule_idx << " " << ent->left_ty << " := " << src_ty);
 
-                context.equate_types(sp, ent.left_ty, src_ty);
+                context.equate_types(sp, ent->left_ty, src_ty);
             }
         }
 #endif
@@ -8778,13 +8781,13 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
                 auto ent = mv$(context.link_coerce.front());
                 context.link_coerce.erase( context.link_coerce.begin() );
 
-                const auto& sp = (*ent.right_node_ptr)->span();
-                auto& src_ty = (**ent.right_node_ptr).m_res_type;
+                const auto& sp = (*ent->right_node_ptr)->span();
+                auto& src_ty = (*ent->right_node_ptr)->m_res_type;
                 //src_ty = context.m_resolve.expand_associated_types( sp, mv$(src_ty) );
-                ent.left_ty = context.m_resolve.expand_associated_types( sp, mv$(ent.left_ty) );
-                DEBUG("- Equate coercion " << ent.left_ty << " := " << src_ty);
+                ent->left_ty = context.m_resolve.expand_associated_types( sp, mv$(ent->left_ty) );
+                DEBUG("- Equate coercion R" << ent->rule_idx << " " << ent->left_ty << " := " << src_ty);
 
-                context.equate_types(sp, ent.left_ty, src_ty);
+                context.equate_types(sp, ent->left_ty, src_ty);
             }
         }
 #endif
@@ -8813,8 +8816,9 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
 
     if( context.has_rules() )
     {
-        for(const auto& coercion : context.link_coerce)
+        for(const auto& coercion_p : context.link_coerce)
         {
+            const auto& coercion = *coercion_p;
             const auto& sp = (**coercion.right_node_ptr).span();
             const auto& src_ty = (**coercion.right_node_ptr).m_res_type;
             WARNING(sp, W0000, "Spare Rule - " << context.m_ivars.fmt_type(coercion.left_ty) << " := " << context.m_ivars.fmt_type(src_ty) );
