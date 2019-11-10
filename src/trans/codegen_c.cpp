@@ -602,7 +602,12 @@ namespace {
             }
             else
             {
-                m_of << "static inline uint128_t __mrustc_bitrev128(uint128_t v) { if(v==0) return 0; uint128_t rv = ((uint128_t)__mrustc_bitrev64(v>>64))|((uint128_t)__mrustc_bitrev64(v)<<64); }\n";
+                m_of << "static inline uint128_t __mrustc_bitrev128(uint128_t v) {"
+                    << " if(v==0) return 0;"
+                    << " uint128_t rv = ((uint128_t)__mrustc_bitrev64(v>>64))|((uint128_t)__mrustc_bitrev64(v)<<64);"
+                    << " return rv;"
+                    << " }\n"
+                    ;
             }
             for(int sz = 8; sz <= 64; sz *= 2)
             {
@@ -3949,8 +3954,14 @@ namespace {
                     if (::std::strcmp(r, "{eax}") == 0 || ::std::strcmp(r, "{rax}") == 0) {
                         return "a";
                     }
+                    else if (::std::strcmp(r, "{ebx}") == 0 || ::std::strcmp(r, "{rbx}") == 0) {
+                        return "b";
+                    }
                     else if (::std::strcmp(r, "{ecx}") == 0 || ::std::strcmp(r, "{rcx}") == 0) {
                         return "c";
+                    }
+                    else if (::std::strcmp(r, "{edx}") == 0 || ::std::strcmp(r, "{rdx}") == 0) {
+                        return "d";
                     }
                     else {
                         return r;
@@ -4010,12 +4021,16 @@ namespace {
             {
                 const auto& v = e.inputs[i];
                 if (i != 0)    m_of << ", ";
+                // TODO: If this is the same reg as an output, use the output index
                 m_of << "\"" << H::convert_reg(v.first.c_str()) << "\" ("; emit_lvalue(v.second); m_of << ")";
             }
             m_of << ": ";
             for (unsigned int i = 0; i < e.clobbers.size(); i++)
             {
                 if (i != 0)    m_of << ", ";
+                if( e.tpl == "cpuid\n" && e.clobbers[i] == "rbx" ) {
+                    continue;
+                }
                 m_of << "\"" << e.clobbers[i] << "\"";
             }
             m_of << ");\n";
@@ -5214,6 +5229,7 @@ namespace {
                 auto ordering = get_atomic_ordering(name, 7+4+1);
                 const auto& ty = params.m_types.at(0);
                 emit_lvalue(e.ret_val); m_of << " = __mrustc_atomicloop" << get_prim_size(ty) << "(";
+                    m_of << "(volatile "; emit_ctype(ty); m_of << "*)";
                     emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1));
                     if( m_compiler == Compiler::Gcc )
                     {
@@ -5236,6 +5252,7 @@ namespace {
                 const auto& ty = params.m_types.at(0);
                 const char* op = (name.c_str()[7+1] == 'a' ? "imax" : "imin");    // m'a'x vs m'i'n
                 emit_lvalue(e.ret_val); m_of << " = __mrustc_atomicloop" << get_prim_size(ty) << "(";
+                    m_of << "(volatile "; emit_ctype(ty); m_of << "*)";
                     emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1));
                     if( m_compiler == Compiler::Gcc )
                     {
@@ -5250,6 +5267,7 @@ namespace {
                 const auto& ty = params.m_types.at(0);
                 const char* op = (name.c_str()[7+2] == 'a' ? "umax" : "umin");    // m'a'x vs m'i'n
                 emit_lvalue(e.ret_val); m_of << " = __mrustc_atomicloop" << get_prim_size(ty) << "(";
+                    m_of << "(volatile "; emit_ctype(ty); m_of << "*)";
                     emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1));
                     if( m_compiler == Compiler::Gcc )
                     {
