@@ -38,7 +38,7 @@ Dependencies
 
 Linux
 -----
-- `make RUSTCSRC` - Downloads the rustc source tarball (1.19.0 by default)
+- `make RUSTCSRC` - Downloads the rustc source tarball (1.29.0 by default)
 - `make -f minicargo.mk` - Builds `mrustc` and `minicargo`, then builds `libstd`, `libtest`, finally `rustc` and `cargo`
 - `make -C run_rustc` - Build `libstd` and a "hello, world" using the above-built rustc
 
@@ -54,7 +54,7 @@ e.g. `gmake CC=cc RUSTC_TARGET=x86_64-unknown-freebsd -f minicargo.mk`
 Windows
 --------
 (NOTE: Incomplete, doesn't yet compile executables and missing helper scripts)
-- Download and extract `rustc-1.19.0-src.tar.gz` to the repository root (such that the `rustc-1.19.0-src` directory is present)
+- Download and extract `rustc-1.29.0-src.tar.gz` to the repository root (such that the `rustc-1.29.0-src` directory is present)
   - NOTE: I am open to suggestions for how to automate that step
 - Open `vsproject/mrustc.sln` and build minicargo
 - Run `vsproject/build_rustc_minicargo.cmd` to attempt to build libstd
