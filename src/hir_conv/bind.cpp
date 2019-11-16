@@ -442,12 +442,12 @@ namespace {
         void visit_type(::HIR::TypeRef& ty) override
         {
             //TRACE_FUNCTION_F(ty);
-            static Span _sp = Span();
-            const Span& sp = _sp;
+            static Span sp;
 
-            TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Path, e,
-                TU_MATCH( ::HIR::Path::Data, (e.path.m_data), (pe),
-                (Generic,
+            if(auto* e = ty.m_data.opt_Path())
+            {
+                TU_MATCH_HDRA( (e->path.m_data), {)
+                TU_ARMA(Generic, pe) {
                     const auto& item = *reinterpret_cast< const ::HIR::TypeItem*>( get_type_pointer(sp, m_crate, pe.m_path, Target::TypeItem) );
                     TU_MATCH_DEF( ::HIR::TypeItem, (item), (e3),
                     (
@@ -457,42 +457,46 @@ namespace {
                         BUG(sp, "TypeAlias encountered after `Resolve Type Aliases` - " << ty);
                         ),
                     (ExternType,
-                        e.binding = ::HIR::TypeRef::TypePathBinding::make_ExternType(&e3);
+                        e->binding = ::HIR::TypeRef::TypePathBinding::make_ExternType(&e3);
                         DEBUG("- " << ty);
                         ),
                     (Struct,
                         fix_param_count(sp, pe, e3.m_params,  pe.m_params);
-                        e.binding = ::HIR::TypeRef::TypePathBinding::make_Struct(&e3);
+                        e->binding = ::HIR::TypeRef::TypePathBinding::make_Struct(&e3);
                         DEBUG("- " << ty);
                         ),
                     (Union,
                         fix_param_count(sp, pe, e3.m_params,  pe.m_params);
-                        e.binding = ::HIR::TypeRef::TypePathBinding::make_Union(&e3);
+                        e->binding = ::HIR::TypeRef::TypePathBinding::make_Union(&e3);
                         DEBUG("- " << ty);
                         ),
                     (Enum,
                         fix_param_count(sp, pe, e3.m_params,  pe.m_params);
-                        e.binding = ::HIR::TypeRef::TypePathBinding::make_Enum(&e3);
+                        e->binding = ::HIR::TypeRef::TypePathBinding::make_Enum(&e3);
                         DEBUG("- " << ty);
                         ),
                     (Trait,
                         ty.m_data = ::HIR::TypeRef::Data::make_TraitObject({ ::HIR::TraitPath { mv$(pe), {}, {} }, {}, {} });
                         )
                     )
-                    ),
-                (UfcsUnknown,
+                    }
+                TU_ARMA(UfcsUnknown, pe) {
                     //TODO(sp, "Should UfcsKnown be encountered here?");
-                    ),
-                (UfcsInherent,
-                    ),
-                (UfcsKnown,
+                    }
+                TU_ARMA(UfcsInherent, pe) {
+                    }
+                TU_ARMA(UfcsKnown, pe) {
+
+                    const auto& trait = m_crate.get_trait_by_path(sp, pe.trait.m_path);
+                    fix_param_count(sp, pe.trait, trait.m_params, pe.trait.m_params, /*fill_infer=*/false, &*pe.type);
+
                     if( pe.type->m_data.is_Path() && pe.type->m_data.as_Path().binding.is_Opaque() ) {
                         // - Opaque type, opaque result
-                        e.binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
+                        e->binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
                     }
                     else if( pe.type->m_data.is_Generic() ) {
                         // - Generic type, opaque resut. (TODO: Sometimes these are known - via generic bounds)
-                        e.binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
+                        e->binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
                     }
                     else {
                         //bool found = find_impl(sp, m_crate, pe.trait.m_path, pe.trait.m_params, *pe.type, [&](const auto& impl_params, const auto& impl) {
@@ -503,9 +507,9 @@ namespace {
                         //}
                         //TODO(sp, "Resolve known UfcsKnown - " << ty);
                     }
-                    )
-                )
-            )
+                    }
+                }
+            }
 
             ::HIR::Visitor::visit_type(ty);
         }
