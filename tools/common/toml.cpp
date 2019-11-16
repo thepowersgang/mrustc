@@ -216,6 +216,10 @@ TomlKeyValue TomlFile::get_next_value()
             if(t.m_type != Token::Type::Comma)
                 break;
         }
+        while( t.m_type == Token::Type::Newline )
+        {
+            t = m_lexer.get_token();
+        }
         if(t.m_type != Token::Type::SquareClose)
             throw ::std::runtime_error(::format(m_lexer, ": Unexpected token after array - ", t));
         break;
