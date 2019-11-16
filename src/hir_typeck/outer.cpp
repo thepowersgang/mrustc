@@ -670,6 +670,11 @@ namespace {
             m_self_types.pop_back();
         }
 
+        void visit_type_alias(::HIR::ItemPath p, ::HIR::TypeAlias& item) override
+        {
+            // Ignore type aliases, they don't have to typecheck.
+        }
+
         void visit_type_impl(::HIR::TypeImpl& impl) override
         {
             TRACE_FUNCTION_F("impl " << impl.m_type);
