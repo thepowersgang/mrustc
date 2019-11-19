@@ -197,7 +197,7 @@ $(RUSTC_SRC_DL): rust-nightly-date rustc-nightly-src.tar.gz rustc-nightly-src.pa
 	if [ "$$DL_RUST_DATE" != "$$DISK_RUST_DATE" ]; then \
 		rm -rf rustc-nightly-src; \
 		tar -xf rustc-nightly-src.tar.gz; \
-		cd $(RUSTSRC) && patch -p0 < ../rustc-nightly-src.patch; \
+		cd $(RUSTCSRC) && patch -p0 < ../rustc-nightly-src.patch; \
 	fi
 	cat rust-nightly-date > $(RUSTC_SRC_DL)
 else
