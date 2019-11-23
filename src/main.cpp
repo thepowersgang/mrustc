@@ -517,6 +517,9 @@ int main(int argc, char *argv[])
         CompilePhaseV("Resolve HIR Markings", [&]() {
             ConvertHIR_Markings(*hir_crate);
             });
+        CompilePhaseV("Sort Impls", [&]() {
+            ConvertHIR_ResolveUFCS_SortImpls(*hir_crate);
+            });
         // Determine what trait to use for <T>::Foo in outer scope
         CompilePhaseV("Resolve UFCS Outer", [&]() {
             ConvertHIR_ResolveUFCS_Outer(*hir_crate);

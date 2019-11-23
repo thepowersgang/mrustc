@@ -12,6 +12,7 @@
 #include <hir/hir.hpp>
 #include <hir/expr.hpp>
 #include <hir/visitor.hpp>
+#include <hir_typeck/static.hpp>
 #include <hir_typeck/common.hpp>    // monomorphise_genericpath_needed
 #include <algorithm>
 
@@ -21,32 +22,28 @@ namespace {
     {
         const ::HIR::Crate& m_crate;
 
-        const ::HIR::GenericParams*   m_params_impl = nullptr;
-        const ::HIR::GenericParams*   m_params_method = nullptr;
-
-        const ::HIR::TypeRef* m_current_type = nullptr; // used because sometimes `Self` is already replaced
+        StaticTraitResolve  m_resolve;
+        const ::HIR::TypeRef* m_current_type = nullptr; // used because sometimes `Self` is encoded expanded (is this a problem?)
         const ::HIR::Trait* m_current_trait = nullptr;
         const ::HIR::ItemPath* m_current_trait_path = nullptr;
 
     public:
         Visitor(const ::HIR::Crate& crate):
-            m_crate(crate)
+            m_crate(crate),
+            m_resolve(crate)
         {}
 
         void visit_struct(::HIR::ItemPath p, ::HIR::Struct& item) override {
-            m_params_method = &item.m_params;
+            auto _ = m_resolve.set_item_generics(item.m_params);
             ::HIR::Visitor::visit_struct(p, item);
-            m_params_method = nullptr;
         }
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override {
-            m_params_method = &item.m_params;
+            auto _ = m_resolve.set_item_generics(item.m_params);
             ::HIR::Visitor::visit_enum(p, item);
-            m_params_method = nullptr;
         }
         void visit_function(::HIR::ItemPath p, ::HIR::Function& item) override {
-            m_params_method = &item.m_params;
+            auto _ = m_resolve.set_item_generics(item.m_params);
             ::HIR::Visitor::visit_function(p, item);
-            m_params_method = nullptr;
         }
         void visit_type_alias(::HIR::ItemPath p, ::HIR::TypeAlias& item) override {
             // NOTE: Disabled, becuase generics in type aliases are never checked
@@ -56,26 +53,24 @@ namespace {
 #endif
         }
         void visit_trait(::HIR::ItemPath p, ::HIR::Trait& trait) override {
-            m_params_impl = &trait.m_params;
             m_current_trait = &trait;
             m_current_trait_path = &p;
+            auto _ = m_resolve.set_impl_generics(trait.m_params);
             ::HIR::Visitor::visit_trait(p, trait);
             m_current_trait = nullptr;
-            m_params_impl = nullptr;
         }
         void visit_type_impl(::HIR::TypeImpl& impl) override {
             TRACE_FUNCTION_F("impl" << impl.m_params.fmt_args() << " " << impl.m_type << " (mod=" << impl.m_src_module << ")");
-            m_params_impl = &impl.m_params;
+            auto _g = m_resolve.set_impl_generics(impl.m_params);
             m_current_type = &impl.m_type;
             ::HIR::Visitor::visit_type_impl(impl);
             m_current_type = nullptr;
-            m_params_impl = nullptr;
         }
         void visit_marker_impl(const ::HIR::SimplePath& trait_path, ::HIR::MarkerImpl& impl) override {
             ::HIR::ItemPath    p( impl.m_type, trait_path, impl.m_trait_args );
             TRACE_FUNCTION_F("impl" << impl.m_params.fmt_args() << " " << trait_path << impl.m_trait_args << " for " << impl.m_type << " (mod=" << impl.m_src_module << ")");
 
-            m_params_impl = &impl.m_params;
+            auto _g = m_resolve.set_impl_generics(impl.m_params);
             m_current_type = &impl.m_type;
             m_current_trait = &m_crate.get_trait_by_path(Span(), trait_path);
             m_current_trait_path = &p;
@@ -84,13 +79,12 @@ namespace {
 
             m_current_trait = nullptr;
             m_current_type = nullptr;
-            m_params_impl = nullptr;
         }
         void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override {
             ::HIR::ItemPath    p( impl.m_type, trait_path, impl.m_trait_args );
             TRACE_FUNCTION_F("impl" << impl.m_params.fmt_args() << " " << trait_path << impl.m_trait_args << " for " << impl.m_type << " (mod=" << impl.m_src_module << ")");
 
-            m_params_impl = &impl.m_params;
+            auto _g = m_resolve.set_impl_generics(impl.m_params);
             m_current_type = &impl.m_type;
             m_current_trait = &m_crate.get_trait_by_path(Span(), trait_path);
             m_current_trait_path = &p;
@@ -99,7 +93,6 @@ namespace {
 
             m_current_trait = nullptr;
             m_current_type = nullptr;
-            m_params_impl = nullptr;
         }
 
         void visit_expr(::HIR::ExprPtr& expr) override
@@ -356,6 +349,30 @@ namespace {
                 });
         }
 
+
+        void visit_type(::HIR::TypeRef& ty) override
+        {
+#if 0
+            // TODO: Add a span parameter.
+            static Span sp;
+#endif
+
+            ::HIR::Visitor::visit_type(ty);
+
+#if 0
+            // TODO: If this an associated type, check for default trait params
+
+            unsigned counter = 0;
+            while( m_resolve.expand_associated_types_single(sp, ty) )
+            {
+                ASSERT_BUG(sp, counter++ < 20, "Sanity limit exceeded when resolving UFCS in type " << ty);
+                // Invoke a special version of EAT that only processes a single item.
+                // - Keep recursing while this does replacements
+                ::HIR::Visitor::visit_type(ty);
+            }
+#endif
+        }
+
         void visit_path(::HIR::Path& p, ::HIR::Visitor::PathContext pc) override
         {
             static Span sp;
@@ -370,8 +387,7 @@ namespace {
                 this->visit_path_params( e.params );
 
                 // If processing a trait, and the type is 'Self', search for the type/method on the trait
-                // - TODO: This could be encoded by a `Self: Trait` bound in the generics, but that may have knock-on issues?
-                // NOTE: `Self` can already be replaced by the self type (AST resolve does this)
+                // - Explicitly encoded because `Self::Type` has a different meaning to `MyType::Type` (the latter will search bounds first)
                 if( *e.type == ::HIR::TypeRef("Self", 0xFFFF) )
                 {
                     ::HIR::GenericPath  trait_path;
@@ -395,15 +411,18 @@ namespace {
                 }
 
                 // Search for matching impls in current generic blocks
-                if( m_params_method != nullptr && locate_trait_item_in_bounds(pc, *e.type, *m_params_method,  p.m_data) ) {
+                if( m_resolve.m_item_generics != nullptr && locate_trait_item_in_bounds(pc, *e.type, *m_resolve.m_item_generics,  p.m_data) ) {
                     DEBUG("Found in item params, p = " << p);
                     return ;
                 }
-                if( m_params_impl != nullptr && locate_trait_item_in_bounds(pc, *e.type, *m_params_impl,  p.m_data) ) {
+                if( m_resolve.m_impl_generics != nullptr && locate_trait_item_in_bounds(pc, *e.type, *m_resolve.m_impl_generics,  p.m_data) ) {
                     DEBUG("Found in impl params, p = " << p);
                     return ;
                 }
 
+
+                // If the type is the impl type, look for items AFTER generic lookup
+                // TODO: Should this look up in-scope traits instead of hard-coding this hack?
                 if( m_current_type && *e.type == *m_current_type )
                 {
                     ::HIR::GenericPath  trait_path;
@@ -426,24 +445,14 @@ namespace {
                     DEBUG("- Item " << e.item << " not found in Self - ty=" << *e.type);
                 }
 
-                // Cases for the type:
-                // - Path:UfcsKnown - Search trait impl's ATY bounds (and our own bound set?)
-                // - Generic - Search local bound set for a suitable implemented trait
-                // - Anything else - ERROR
-                if( e.type->m_data.is_Path() && e.type->m_data.as_Path().path.m_data.is_UfcsKnown() )
-                {
-                    // TODO: Search bounds on this ATY (in the trait defintiion)
-                    TODO(sp, "Get " << e.item << " for " << *e.type);
-                }
-                else if( e.type->m_data.is_Generic())
-                {
-                    // Local bounds have already been searched, error now?
-                    TODO(sp, "Get " << e.item << " for " << *e.type);
-                }
-                else
-                {
-                    ERROR(sp, E0000, "Ambigious associated type " << p);    // rustc E0223
-                }
+                // TODO: Search all impls of in-scope traits for this method on this type?
+                //if( this->resolve_UfcsUnknown_trait(p, pc, p.m_data) ) {
+                //    return ;
+                //}
+                assert(p.m_data.is_UfcsUnknown());
+
+                // Couldn't find it
+                ERROR(sp, E0000, "Failed to find impl with '" << e.item << "' for " << *e.type << " (in " << p << ")");
             }
             else
             {
@@ -452,9 +461,6 @@ namespace {
         }
     };
 
-}
-
-namespace {
     template<typename T>
     void sort_impl_group(::HIR::Crate::ImplGroup<T>& ig)
     {
@@ -478,8 +484,9 @@ namespace {
             });
         ig.generic.erase(new_end, ig.generic.end());
     }
-}
+}   // namespace ""
 
+#if 0
 void ConvertHIR_ResolveUFCS_Outer(::HIR::Crate& crate)
 {
     Visitor exp { crate };
@@ -497,3 +504,4 @@ void ConvertHIR_ResolveUFCS_Outer(::HIR::Crate& crate)
         sort_impl_group(impl_group.second);
     }
 }
+#endif

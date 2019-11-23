@@ -15,12 +15,14 @@
 #include <hir/expr.hpp>
 #include <hir/visitor.hpp>
 #include <hir_typeck/static.hpp>
+#include <algorithm>    // std::remove_if
 
 namespace {
     class Visitor:
         public ::HIR::Visitor
     {
         const ::HIR::Crate& m_crate;
+        bool m_visit_exprs;
 
         typedef ::std::vector< ::std::pair< const ::HIR::SimplePath*, const ::HIR::Trait* > >   t_trait_imports;
         t_trait_imports m_traits;
@@ -28,12 +30,13 @@ namespace {
         StaticTraitResolve  m_resolve;
         const ::HIR::TypeRef* m_current_type = nullptr;
         const ::HIR::Trait* m_current_trait = nullptr;
-        const ::HIR::ItemPath* m_current_trait_path;
+        const ::HIR::ItemPath* m_current_trait_path = nullptr;
         bool m_in_expr = false;
 
     public:
-        Visitor(const ::HIR::Crate& crate):
+        Visitor(const ::HIR::Crate& crate, bool visit_exprs):
             m_crate(crate),
+            m_visit_exprs(visit_exprs),
             m_resolve(crate)
         {}
 
@@ -228,7 +231,7 @@ namespace {
                 }
             };
 
-            if( expr.get() != nullptr )
+            if( m_visit_exprs &&  expr.get() != nullptr )
             {
                 m_in_expr = true;
                 ExprVisitor v { *this };
@@ -523,13 +526,16 @@ namespace {
 
             // TODO: If this an associated type, check for default trait params
 
-            unsigned counter = 0;
-            while( m_resolve.expand_associated_types_single(sp, ty) )
+            if( m_visit_exprs )
             {
-                ASSERT_BUG(sp, counter++ < 20, "Sanity limit exceeded when resolving UFCS in type " << ty);
-                // Invoke a special version of EAT that only processes a single item.
-                // - Keep recursing while this does replacements
-                ::HIR::Visitor::visit_type(ty);
+                unsigned counter = 0;
+                while( m_resolve.expand_associated_types_single(sp, ty) )
+                {
+                    ASSERT_BUG(sp, counter++ < 20, "Sanity limit exceeded when resolving UFCS in type " << ty);
+                    // Invoke a special version of EAT that only processes a single item.
+                    // - Keep recursing while this does replacements
+                    ::HIR::Visitor::visit_type(ty);
+                }
             }
         }
 
@@ -558,7 +564,8 @@ namespace {
                 this->visit_type( *e.type );
                 this->visit_path_params( e.params );
 
-                // Self resolves from the current trait before looking for bounds
+                // If processing a trait, and the type is 'Self', search for the type/method on the trait
+                // - Explicitly encoded because `Self::Type` has a different meaning to `MyType::Type` (the latter will search bounds first)
                 if( *e.type == ::HIR::TypeRef("Self", 0xFFFF) )
                 {
                     ::HIR::GenericPath  trait_path;
@@ -604,6 +611,7 @@ namespace {
                 assert(p.m_data.is_UfcsUnknown());
 
                 // If the type is the impl type, look for items AFTER generic lookup
+                // TODO: Should this look up in-scope traits instead of hard-coding this hack?
                 if( m_current_type && *e.type == *m_current_type )
                 {
                     ::HIR::GenericPath  trait_path;
@@ -640,7 +648,8 @@ namespace {
                 // Couldn't find it
                 ERROR(sp, E0000, "Failed to find impl with '" << e.item << "' for " << *e.type << " (in " << p << ")");
             }
-            else {
+            else
+            {
                 ::HIR::Visitor::visit_path(p, pc);
             }
         }
@@ -708,10 +717,53 @@ namespace {
         }
     };
 
-}
+    template<typename T>
+    void sort_impl_group(::HIR::Crate::ImplGroup<T>& ig)
+    {
+        auto new_end = ::std::remove_if(ig.generic.begin(), ig.generic.end(), [&ig](::std::unique_ptr<T>& ty_impl) {
+            const auto& type = ty_impl->m_type;  // Using field accesses in templates feels so dirty
+            const ::HIR::SimplePath*    path = type.get_sort_path();
 
+            if( path )
+            {
+                ig.named[*path].push_back(mv$(ty_impl));
+            }
+            else if( type.m_data.is_Path() || type.m_data.is_Generic() )
+            {
+                return false;
+            }
+            else
+            {
+                ig.non_named.push_back(mv$(ty_impl));
+            }
+            return true;
+            });
+        ig.generic.erase(new_end, ig.generic.end());
+    }
+}   // namespace ""
+
+void ConvertHIR_ResolveUFCS_Outer(::HIR::Crate& crate)
+{
+    Visitor exp { crate, false };
+    exp.visit_crate( crate );
+}
 void ConvertHIR_ResolveUFCS(::HIR::Crate& crate)
 {
-    Visitor exp { crate };
+    Visitor exp { crate, true };
     exp.visit_crate( crate );
+}
+
+void ConvertHIR_ResolveUFCS_SortImpls(::HIR::Crate& crate)
+{
+    // Sort impls!
+    sort_impl_group(crate.m_type_impls);
+    DEBUG("Type impl counts: " << crate.m_type_impls.named.size() << " path groups, " << crate.m_type_impls.non_named.size() << " primitive, " << crate.m_type_impls.generic.size() << " ungrouped");
+    for(auto& impl_group : crate.m_trait_impls)
+    {
+        sort_impl_group(impl_group.second);
+    }
+    for(auto& impl_group : crate.m_marker_impls)
+    {
+        sort_impl_group(impl_group.second);
+    }
 }
