@@ -1250,9 +1250,9 @@ namespace {
         void visit(::HIR::ExprNode_StructLiteral& node) override
         {
             const auto& sp = node.span();
-            TRACE_FUNCTION_F(&node << " " << node.m_path << "{...} [" << (node.m_is_struct ? "struct" : "enum") << "]");
+            TRACE_FUNCTION_F(&node << " " << node.m_type << "{...} [" << (node.m_is_struct ? "struct" : "enum") << "]");
 
-            this->add_ivars_path(node.span(), node.m_path);
+            this->context.add_ivars(node.m_type);
 
             for( auto& val : node.m_values ) {
                 this->context.add_ivars( val.second->m_res_type );
@@ -1261,14 +1261,11 @@ namespace {
                 this->context.add_ivars( node.m_base_value->m_res_type );
             }
 
-            // TODO: The path can be a Ufcs (any type)
-            if( !node.m_path.m_data.is_Generic() )
-            {
-                auto t = this->context.m_resolve.expand_associated_types(sp, ::HIR::TypeRef::new_path( mv$(node.m_path), {} ));
-                node.m_path = mv$(t.m_data.as_Path().path);
-            }
-            ASSERT_BUG(sp, node.m_path.m_data.is_Generic(), "Struct literal with non-Generic path - " << node.m_path);
-            auto& ty_path = node.m_path.m_data.as_Generic();
+            auto t = this->context.m_resolve.expand_associated_types(sp, mv$(node.m_type));
+            node.m_type = HIR::TypeRef();
+            ASSERT_BUG(sp, TU_TEST1(t.m_data, Path, .path.m_data.is_Generic()), "Struct literal with non-Generic path - " << t);
+            node.m_real_path = mv$(t.m_data.as_Path().path.m_data.as_Generic());
+            auto& ty_path = node.m_real_path;
 
             // - Create ivars in path, and set result type
             const auto ty = this->get_structenum_ty(node.span(), node.m_is_struct, ty_path);
@@ -3289,7 +3286,7 @@ namespace {
             this->check_type_resolved_genericpath(node.span(), node.m_path);
         }
         void visit(::HIR::ExprNode_StructLiteral& node) override {
-            this->check_type_resolved_path(node.span(), node.m_path);
+            this->check_type_resolved_genericpath(node.span(), node.m_real_path);
             for(auto& ty : node.m_value_types) {
                 if( ty != ::HIR::TypeRef() ) {
                     this->check_type_resolved_top(node.span(), ty);

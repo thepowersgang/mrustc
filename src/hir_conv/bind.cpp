@@ -441,6 +441,10 @@ namespace {
         }
         void visit_type(::HIR::TypeRef& ty) override
         {
+            visit_type_inner(ty);
+        }
+        void visit_type_inner(::HIR::TypeRef& ty, bool do_bind=true)
+        {
             //TRACE_FUNCTION_F(ty);
             static Span sp;
 
@@ -448,6 +452,8 @@ namespace {
             {
                 TU_MATCH_HDRA( (e->path.m_data), {)
                 TU_ARMA(Generic, pe) {
+                    if(!do_bind)
+                        break;
                     const auto& item = *reinterpret_cast< const ::HIR::TypeItem*>( get_type_pointer(sp, m_crate, pe.m_path, Target::TypeItem) );
                     TU_MATCH_DEF( ::HIR::TypeItem, (item), (e3),
                     (
@@ -665,7 +671,7 @@ namespace {
 
                 void visit(::HIR::ExprNode_StructLiteral& node) override
                 {
-                    upper_visitor.visit_path(node.m_path, ::HIR::Visitor::PathContext::TYPE);
+                    upper_visitor.visit_type_inner(node.m_type, false);
                     ::HIR::ExprVisitorDef::visit(node);
                 }
                 void visit(::HIR::ExprNode_ArraySized& node) override

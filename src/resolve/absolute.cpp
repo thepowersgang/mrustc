@@ -192,7 +192,7 @@ namespace
                 (
                     ),
                 (ConcreteSelf,
-                    if( e ) {
+                    if( false && e ) {
                         return e->clone();
                     }
                     else {
@@ -460,7 +460,15 @@ namespace
                 (ConcreteSelf,
                     DEBUG("- ConcreteSelf");
                     if( ( mode == LookupMode::Type || mode == LookupMode::Namespace ) && name == "Self" ) {
-                        return ::AST::Path( ::AST::Path::TagUfcs(), e->clone(), ::AST::Path(), ::std::vector< ::AST::PathNode>() );
+                        // TODO: Want to return the type if handling a struct literal
+                        if( false ) {
+                            return ::AST::Path( ::AST::Path::TagUfcs(), e->clone(), ::AST::Path(), ::std::vector< ::AST::PathNode>() );
+                        }
+                        else {
+                            ::AST::Path rv(name);
+                            rv.bind_variable(0xFFFF);
+                            return rv;
+                        }
                     }
                     ),
                 (VarBlock,

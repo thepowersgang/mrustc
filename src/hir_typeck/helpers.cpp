@@ -990,7 +990,7 @@ void TraitResolution::prep_indexes()
             const auto& trait_params = be.trait.m_path.m_params;
             auto cb_mono = [&](const auto& ty)->const ::HIR::TypeRef& {
                 const auto& ge = ty.m_data.as_Generic();
-                if( ge.binding == 0xFFFF ) {
+                if( ge.binding == GENERIC_Self ) {
                     return be.type;
                 }
                 else if( ge.binding < 256 ) {
@@ -1130,7 +1130,7 @@ bool TraitResolution::iterate_aty_bounds(const Span& sp, const ::HIR::Path::Data
         if( ! be.type.m_data.as_Path().binding.is_Opaque() )   continue ;
 
         const auto& be_type_pe = be.type.m_data.as_Path().path.m_data.as_UfcsKnown();
-        if( *be_type_pe.type != ::HIR::TypeRef("Self", 0xFFFF) )
+        if( *be_type_pe.type != ::HIR::TypeRef("Self", GENERIC_Self) )
             continue ;
         if( be_type_pe.trait.m_path != pe.trait.m_path )
             continue ;
@@ -2105,7 +2105,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
             // Resolve where Self=pe_inner.type (i.e. for the trait this inner UFCS is on)
             auto cb_placeholders_trait = [&](const auto& ty)->const ::HIR::TypeRef&{
                 TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Generic, e,
-                    if( e.binding == 0xFFFF )
+                    if( e.binding == GENERIC_Self )
                         return *pe_inner.type;
                     else if( e.binding >> 8 == 0 ) {
                         ASSERT_BUG(sp, e.binding < pe_inner.trait.m_params.m_types.size(), "");
@@ -2281,7 +2281,7 @@ bool TraitResolution::find_named_trait_in_trait(const Span& sp,
 
     const auto monomorph_cb = [&](const auto& gt)->const ::HIR::TypeRef& {
         const auto& ge = gt.m_data.as_Generic();
-        if( ge.binding == 0xFFFF ) {
+        if( ge.binding == GENERIC_Self ) {
             return target_type;
         }
         else {
@@ -2413,7 +2413,7 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
                 {
                     auto monomorph_cb = [&](const auto& gt)->const ::HIR::TypeRef& {
                         const auto& ge = gt.m_data.as_Generic();
-                        if( ge.binding == 0xFFFF ) {
+                        if( ge.binding == GENERIC_Self ) {
                             return *assoc_info->type;
                         }
                         else {
@@ -2648,7 +2648,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             ::HIR::TypeRef  tmp;
             auto monomorph_cb = [&](const auto& gt)->const ::HIR::TypeRef& {
                 const auto& ge = gt.m_data.as_Generic();
-                if( ge.binding == 0xFFFF ) {
+                if( ge.binding == GENERIC_Self ) {
                     BUG(sp, "Self type in struct/enum generics");
                 }
                 else if( ge.binding >> 8 == 0 ) {
@@ -3927,7 +3927,7 @@ const ::HIR::TypeRef* TraitResolution::check_method_receiver(const Span& sp, con
         {
             const ::HIR::TypeRef*   detected_self_ty = nullptr;
             auto cb_getself = [&](auto idx, const auto& /*name*/, const auto& ty)->::HIR::Compare{
-                if( idx == 0xFFFF )
+                if( idx == GENERIC_Self )
                 {
                     detected_self_ty = &ty;
                 }
@@ -4070,7 +4070,7 @@ bool TraitResolution::find_method(const Span& sp,
         const auto& trait = this->m_crate.get_trait_by_path(sp, e.m_trait.m_path.m_path);
 
         ::HIR::GenericPath final_trait_path;
-        if( const auto* fcn_ptr = this->trait_contains_method(sp, e.m_trait.m_path, trait, ::HIR::TypeRef("Self", 0xFFFF), method_name,  final_trait_path) )
+        if( const auto* fcn_ptr = this->trait_contains_method(sp, e.m_trait.m_path, trait, ::HIR::TypeRef("Self", GENERIC_Self), method_name,  final_trait_path) )
         {
             DEBUG("- Found trait " << final_trait_path);
             // - If the receiver is valid, then it's correct (no need to check the type again)
@@ -4099,7 +4099,7 @@ bool TraitResolution::find_method(const Span& sp,
             const auto& trait = this->m_crate.get_trait_by_path(sp, trait_path.m_path.m_path);
 
             ::HIR::GenericPath final_trait_path;
-            if( const auto* fcn_ptr = this->trait_contains_method(sp, trait_path.m_path, trait, ::HIR::TypeRef("Self", 0xFFFF), method_name,  final_trait_path) )
+            if( const auto* fcn_ptr = this->trait_contains_method(sp, trait_path.m_path, trait, ::HIR::TypeRef("Self", GENERIC_Self), method_name,  final_trait_path) )
             {
                 DEBUG("- Found trait " << final_trait_path);
 
@@ -4128,7 +4128,7 @@ bool TraitResolution::find_method(const Span& sp,
         // `/*I:#*/` := `e.trait.m_params`
         auto monomorph_cb = [&](const auto& gt)->const ::HIR::TypeRef& {
             const auto& ge = gt.m_data.as_Generic();
-            if( ge.binding == 0xFFFF ) {
+            if( ge.binding == GENERIC_Self ) {
                 return *e.type;
             }
             else if( ge.binding >> 8 == 0 ) {
@@ -4152,7 +4152,7 @@ bool TraitResolution::find_method(const Span& sp,
             ASSERT_BUG(sp, bound.m_trait_ptr, "Pointer to trait " << bound.m_path << " not set in " << e.trait.m_path);
             ::HIR::GenericPath final_trait_path;
 
-            if( const auto* fcn_ptr = this->trait_contains_method(sp, bound.m_path, *bound.m_trait_ptr, ::HIR::TypeRef("Self", 0xFFFF), method_name,  final_trait_path) )
+            if( const auto* fcn_ptr = this->trait_contains_method(sp, bound.m_path, *bound.m_trait_ptr, ::HIR::TypeRef("Self", GENERIC_Self), method_name,  final_trait_path) )
             {
                 DEBUG("- Found trait " << final_trait_path);
 
@@ -4181,7 +4181,7 @@ bool TraitResolution::find_method(const Span& sp,
             if( ! be.type.m_data.as_Path().binding.is_Opaque() )   continue ;
 
             const auto& be_type_pe = be.type.m_data.as_Path().path.m_data.as_UfcsKnown();
-            if( *be_type_pe.type != ::HIR::TypeRef("Self", 0xFFFF) )
+            if( *be_type_pe.type != ::HIR::TypeRef("Self", GENERIC_Self) )
                 continue ;
             if( be_type_pe.trait.m_path != e.trait.m_path )
                 continue ;
@@ -4191,7 +4191,7 @@ bool TraitResolution::find_method(const Span& sp,
             // Found such a bound, now to test if it is useful
 
             ::HIR::GenericPath final_trait_path;
-            if( const auto* fcn_ptr = this->trait_contains_method(sp, be.trait.m_path, *be.trait.m_trait_ptr, ::HIR::TypeRef("Self", 0xFFFF), method_name,  final_trait_path) )
+            if( const auto* fcn_ptr = this->trait_contains_method(sp, be.trait.m_path, *be.trait.m_trait_ptr, ::HIR::TypeRef("Self", GENERIC_Self), method_name,  final_trait_path) )
             {
                 DEBUG("- Found trait " << final_trait_path);
 
@@ -4264,7 +4264,7 @@ bool TraitResolution::find_method(const Span& sp,
 
         ::HIR::GenericPath final_trait_path;
         const ::HIR::Function* fcn_ptr;
-        if( !(fcn_ptr = this->trait_contains_method(sp, *trait_ref.first, *trait_ref.second, ::HIR::TypeRef("Self", 0xFFFF), method_name,  final_trait_path)) )
+        if( !(fcn_ptr = this->trait_contains_method(sp, *trait_ref.first, *trait_ref.second, ::HIR::TypeRef("Self", GENERIC_Self), method_name,  final_trait_path)) )
             continue ;
         DEBUG("- Found trait " << final_trait_path);
 
@@ -4372,7 +4372,7 @@ bool TraitResolution::find_field(const Span& sp, const ::HIR::TypeRef& ty, const
             const auto& params = e.path.m_data.as_Generic().m_params;
             auto monomorph = [&](const auto& gt)->const ::HIR::TypeRef& {
                 const auto& ge = gt.m_data.as_Generic();
-                if( ge.binding == 0xFFFF )
+                if( ge.binding == GENERIC_Self )
                     TODO(sp, "Monomorphise struct field types (Self) - " << gt);
                 else if( ge.binding < 256 ) {
                     assert(ge.binding < params.m_types.size());
@@ -4420,7 +4420,7 @@ bool TraitResolution::find_field(const Span& sp, const ::HIR::TypeRef& ty, const
             const auto& params = e.path.m_data.as_Generic().m_params;
             auto monomorph = [&](const auto& gt)->const ::HIR::TypeRef& {
                 const auto& ge = gt.m_data.as_Generic();
-                if( ge.binding == 0xFFFF )
+                if( ge.binding == GENERIC_Self )
                     TODO(sp, "Monomorphise union field types (Self) - " << gt);
                 else if( ge.binding < 256 ) {
                     assert(ge.binding < params.m_types.size());

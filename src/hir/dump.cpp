@@ -643,7 +643,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_StructLiteral& node) override
         {
-            m_os << node.m_path << " {\n";
+            m_os << node.m_type << " {\n";
             inc_indent();
             for(/*const*/ auto& val : node.m_values) {
                 m_os << indent() << val.first << ": ";

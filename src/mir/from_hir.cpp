@@ -2394,8 +2394,7 @@ namespace {
         {
             TRACE_FUNCTION_F("_StructLiteral");
 
-            ASSERT_BUG(node.span(), node.m_path.m_data.is_Generic(), "_StructLiteral with non-Generic path - " << node.m_path);
-            const auto& ty_path = node.m_path.m_data.as_Generic();
+            const auto& ty_path = node.m_real_path;
 
             TU_MATCH_HDRA( (node.m_res_type.m_data.as_Path().binding), {)
             TU_ARMA(Unbound, _e) {

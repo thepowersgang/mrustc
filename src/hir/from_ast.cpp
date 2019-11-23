@@ -1264,9 +1264,10 @@ namespace {
 
     return rv;
 }
-::HIR::Function LowerHIR_Function(::HIR::ItemPath p, const ::AST::AttributeList& attrs, const ::AST::Function& f, const ::HIR::TypeRef& self_type)
+::HIR::Function LowerHIR_Function(::HIR::ItemPath p, const ::AST::AttributeList& attrs, const ::AST::Function& f, const ::HIR::TypeRef& real_self_type)
 {
     static Span sp;
+    static HIR::TypeRef explicit_self_type = HIR::TypeRef("Self", 0xFFFF);
 
     TRACE_FUNCTION_F(p);
 
@@ -1279,11 +1280,11 @@ namespace {
     if( args.size() > 0 && args.front().first.m_binding.m_name == "self" )
     {
         const auto& arg_self_ty = args.front().second;
-        if( arg_self_ty == self_type ) {
+        if( arg_self_ty == explicit_self_type || arg_self_ty == real_self_type ) {
             receiver = ::HIR::Function::Receiver::Value;
         }
         else TU_IFLET(::HIR::TypeRef::Data, arg_self_ty.m_data, Borrow, e,
-            if( *e.inner == self_type )
+            if( *e.inner == explicit_self_type || *e.inner == real_self_type )
             {
                 switch(e.type)
                 {
@@ -1299,7 +1300,7 @@ namespace {
                 auto p = g_crate_ptr->get_lang_item_path_opt("owned_box");
                 if( pe.m_path == p )
                 {
-                    if( pe.m_params.m_types.size() == 1 && pe.m_params.m_types[0] == self_type )
+                    if( pe.m_params.m_types.size() == 1 && (pe.m_params.m_types[0] == explicit_self_type || pe.m_params.m_types[0] == real_self_type) )
                     {
                         receiver = ::HIR::Function::Receiver::Box;
                     }
@@ -1314,7 +1315,7 @@ namespace {
                     if( pe.m_params.m_types.size() != 1 ) {
                         TODO(sp, "Receiver types with more than one param - " << arg_self_ty);
                     }
-                    if( pe.m_params.m_types[0] != self_type ) {
+                    if( !(pe.m_params.m_types[0] == explicit_self_type || pe.m_params.m_types[0] == real_self_type) ) {
                         ERROR(sp, E0000, "Unsupported receiver type - " << arg_self_ty);
                     }
                     receiver = ::HIR::Function::Receiver::Custom;

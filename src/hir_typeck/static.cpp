@@ -476,7 +476,7 @@ bool StaticTraitResolve::find_impl__check_bound(
 {
     struct H {
         static bool compare_pp(const Span& sp, const ::HIR::PathParams& left, const ::HIR::PathParams& right) {
-            ASSERT_BUG( sp, left.m_types.size() == right.m_types.size(), "Parameter count mismatch" );
+            ASSERT_BUG( sp, left.m_types.size() == right.m_types.size(), "Parameter count mismatch between " << left << " and " << right );
             for(unsigned int i = 0; i < left.m_types.size(); i ++) {
                 // TODO: Permits fuzzy comparison to handle placeholder params, should instead do a match/test/assign
                 if( left.m_types[i].compare_with_placeholders(sp, right.m_types[i], [](const auto&t)->const ::HIR::TypeRef&{return t;}) == ::HIR::Compare::Unequal ) {
@@ -1291,6 +1291,10 @@ bool StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
             }
             else {
                 DEBUG("Converted UfcsKnown - " << e.path << " = " << nt);
+                if( input == nt ) {
+                    replacement_happened = false;
+                    return true;
+                }
                 input = mv$(nt);
                 replacement_happened = true;
             }

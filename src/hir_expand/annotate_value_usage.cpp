@@ -383,8 +383,7 @@ namespace {
         void visit(::HIR::ExprNode_StructLiteral& node) override
         {
             const auto& sp = node.span();
-            ASSERT_BUG(sp, node.m_path.m_data.is_Generic(), "Struct literal with non-Generic path - " << node.m_path);
-            auto& ty_path = node.m_path.m_data.as_Generic();
+            const auto& ty_path = node.m_real_path;
             if( node.m_base_value ) {
                 bool is_moved = false;
                 const auto& tpb = node.m_base_value->m_res_type.m_data.as_Path().binding;

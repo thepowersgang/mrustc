@@ -701,17 +701,19 @@ struct ExprNode_StructLiteral:
 {
     typedef ::std::vector< ::std::pair< RcString, ExprNodeP > > t_values;
 
-    ::HIR::Path m_path;
+    ::HIR::TypeRef  m_type;
     bool    m_is_struct;
     ::HIR::ExprNodeP    m_base_value;
     t_values    m_values;
 
+    /// Actual path extracted from the TypeRef (populated after inner UFCS expansion)
+    ::HIR::GenericPath   m_real_path;
     /// Monomorphised types of each field.
     ::std::vector< ::HIR::TypeRef>  m_value_types;
 
-    ExprNode_StructLiteral(Span sp, ::HIR::Path path, bool is_struct, ::HIR::ExprNodeP base_value, t_values values):
+    ExprNode_StructLiteral(Span sp, ::HIR::TypeRef ty, bool is_struct, ::HIR::ExprNodeP base_value, t_values values):
         ExprNode( mv$(sp) ),
-        m_path( mv$(path) ),
+        m_type( mv$(ty) ),
         m_is_struct( is_struct ),
         m_base_value( mv$(base_value) ),
         m_values( mv$(values) )

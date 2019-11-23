@@ -27,15 +27,14 @@ namespace {
 
         StaticTraitResolve  m_resolve;
         const ::HIR::TypeRef* m_current_type = nullptr;
-        const ::HIR::Trait* m_current_trait;
+        const ::HIR::Trait* m_current_trait = nullptr;
         const ::HIR::ItemPath* m_current_trait_path;
         bool m_in_expr = false;
 
     public:
         Visitor(const ::HIR::Crate& crate):
             m_crate(crate),
-            m_resolve(crate),
-            m_current_trait(nullptr)
+            m_resolve(crate)
         {}
 
         struct ModTraitsGuard {
@@ -78,7 +77,7 @@ namespace {
             // NOTE: Disabled, becuase generics in type aliases are never checked
 #if 0
             auto _ = m_resolve.set_item_generics(item.m_params);
-            ::HIR::Visitor::visit_function(p, item);
+            ::HIR::Visitor::visit_type_alias(p, item);
 #endif
         }
         void visit_trait(::HIR::ItemPath p, ::HIR::Trait& trait) override {
@@ -189,7 +188,7 @@ namespace {
                 }
                 void visit(::HIR::ExprNode_StructLiteral& node) override
                 {
-                    upper_visitor.visit_path(node.m_path, ::HIR::Visitor::PathContext::TYPE);
+                    upper_visitor.visit_type(node.m_type);
                     ::HIR::ExprVisitorDef::visit(node);
                 }
 
@@ -522,6 +521,8 @@ namespace {
 
             ::HIR::Visitor::visit_type(ty);
 
+            // TODO: If this an associated type, check for default trait params
+
             unsigned counter = 0;
             while( m_resolve.expand_associated_types_single(sp, ty) )
             {
@@ -548,11 +549,42 @@ namespace {
                 }
             }
 
-            TU_IFLET(::HIR::Path::Data, p.m_data, UfcsUnknown, e,
+            // TODO: Would like to remove this, but it's required still (for expressions)
+            if(auto* pe = p.m_data.opt_UfcsUnknown())
+            {
+                auto& e = *pe;
                 TRACE_FUNCTION_FR("UfcsUnknown - p=" << p, p);
 
                 this->visit_type( *e.type );
                 this->visit_path_params( e.params );
+
+                // Self resolves from the current trait before looking for bounds
+                if( *e.type == ::HIR::TypeRef("Self", 0xFFFF) )
+                {
+                    ::HIR::GenericPath  trait_path;
+                    if( m_current_trait_path->trait_path() )
+                    {
+                        trait_path = ::HIR::GenericPath( *m_current_trait_path->trait_path() );
+                        trait_path.m_params = m_current_trait_path->trait_args()->clone();
+                    }
+                    else
+                    {
+                        trait_path = ::HIR::GenericPath( m_current_trait_path->get_simple_path() );
+                        for(unsigned int i = 0; i < m_current_trait->m_params.m_types.size(); i ++ ) {
+                            trait_path.m_params.m_types.push_back( ::HIR::TypeRef(m_current_trait->m_params.m_types[i].m_name, i) );
+                        }
+                    }
+                    if( locate_in_trait_and_set(pc, trait_path, *m_current_trait,  p.m_data) ) {
+                        // Success!
+                        if( m_in_expr ) {
+                            for(auto& t : p.m_data.as_UfcsKnown().trait.m_params.m_types)
+                                t = ::HIR::TypeRef();
+                        }
+                        DEBUG("Found in Self, p = " << p);
+                        return ;
+                    }
+                    DEBUG("- Item " << e.item << " not found in Self - ty=" << *e.type);
+                }
 
                 // Search for matching impls in current generic blocks
                 if( m_resolve.m_item_generics != nullptr && locate_trait_item_in_bounds(pc, *e.type, *m_resolve.m_item_generics,  p.m_data) ) {
@@ -571,9 +603,8 @@ namespace {
                 }
                 assert(p.m_data.is_UfcsUnknown());
 
-                // If processing a trait, and the type is 'Self', search for the type/method on the trait
-                // - TODO: This could be encoded by a `Self: Trait` bound in the generics, but that may have knock-on issues?
-                if( *e.type == ::HIR::TypeRef("Self", 0xFFFF) || (m_current_type && *e.type == *m_current_type) )
+                // If the type is the impl type, look for items AFTER generic lookup
+                if( m_current_type && *e.type == *m_current_type )
                 {
                     ::HIR::GenericPath  trait_path;
                     if( m_current_trait_path->trait_path() )
@@ -608,7 +639,7 @@ namespace {
 
                 // Couldn't find it
                 ERROR(sp, E0000, "Failed to find impl with '" << e.item << "' for " << *e.type << " (in " << p << ")");
-            )
+            }
             else {
                 ::HIR::Visitor::visit_path(p, pc);
             }

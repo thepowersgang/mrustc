@@ -538,13 +538,12 @@ namespace {
         }
         void visit(::HIR::ExprNode_StructLiteral& node) override
         {
-            TRACE_FUNCTION_F(&node << " " << node.m_path << "{...} [" << (node.m_is_struct ? "struct" : "enum") << "]");
+            TRACE_FUNCTION_F(&node << " " << node.m_real_path << "{...} [" << (node.m_is_struct ? "struct" : "enum") << "]");
             const auto& sp = node.span();
             if( node.m_base_value) {
                 check_types_equal( node.m_base_value->span(), node.m_res_type, node.m_base_value->m_res_type );
             }
-            ASSERT_BUG(sp, node.m_path.m_data.is_Generic(), "_StructLiteral with non-Generic path - " << node.m_path);
-            auto& ty_path = node.m_path.m_data.as_Generic();
+            const auto& ty_path = node.m_real_path;
 
             // - Create ivars in path, and set result type
             const auto& ty = node.m_res_type;

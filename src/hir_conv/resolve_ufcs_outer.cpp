@@ -52,7 +52,7 @@ namespace {
             // NOTE: Disabled, becuase generics in type aliases are never checked
 #if 0
             auto _ = m_resolve.set_item_generics(item.m_params);
-            ::HIR::Visitor::visit_function(p, item);
+            ::HIR::Visitor::visit_type_alias(p, item);
 #endif
         }
         void visit_trait(::HIR::ItemPath p, ::HIR::Trait& trait) override {
@@ -104,7 +104,100 @@ namespace {
 
         void visit_expr(::HIR::ExprPtr& expr) override
         {
-            // No inner visiting for expressions
+#if 0
+            struct ExprVisitor:
+                public ::HIR::ExprVisitorDef
+            {
+                Visitor& upper_visitor;
+
+                ExprVisitor(Visitor& uv):
+                    upper_visitor(uv)
+                {}
+
+                void visit(::HIR::ExprNode_Let& node) override
+                {
+                    upper_visitor.visit_pattern(node.m_pattern);
+                    upper_visitor.visit_type(node.m_type);
+                    ::HIR::ExprVisitorDef::visit(node);
+                }
+                void visit(::HIR::ExprNode_Cast& node) override
+                {
+                    upper_visitor.visit_type(node.m_res_type);
+                    ::HIR::ExprVisitorDef::visit(node);
+                }
+
+                void visit(::HIR::ExprNode_CallPath& node) override
+                {
+                    upper_visitor.visit_path(node.m_path, ::HIR::Visitor::PathContext::VALUE);
+                    ::HIR::ExprVisitorDef::visit(node);
+                }
+                void visit(::HIR::ExprNode_CallMethod& node) override
+                {
+                    upper_visitor.visit_path_params(node.m_params);
+                    ::HIR::ExprVisitorDef::visit(node);
+                }
+
+                void visit(::HIR::ExprNode_ArraySized& node) override
+                {
+                    upper_visitor.visit_expr(node.m_size);
+                    ::HIR::ExprVisitorDef::visit(node);
+                }
+
+                void visit(::HIR::ExprNode_PathValue& node) override
+                {
+                    upper_visitor.visit_path(node.m_path, ::HIR::Visitor::PathContext::VALUE);
+                    ::HIR::ExprVisitorDef::visit(node);
+                }
+                void visit(::HIR::ExprNode_StructLiteral& node) override
+                {
+                    upper_visitor.visit_type(node.m_type);
+                    ::HIR::ExprVisitorDef::visit(node);
+                }
+
+                void visit(::HIR::ExprNode_Match& node) override
+                {
+                    for(auto& arm : node.m_arms)
+                    {
+                        for(auto& pat : arm.m_patterns)
+                            upper_visitor.visit_pattern(pat);
+                    }
+                    ::HIR::ExprVisitorDef::visit(node);
+                }
+
+                void visit(::HIR::ExprNode_Closure& node) override
+                {
+                    upper_visitor.visit_type(node.m_return);
+                    for(auto& arg : node.m_args) {
+                        upper_visitor.visit_pattern(arg.first);
+                        upper_visitor.visit_type(arg.second);
+                    }
+                    ::HIR::ExprVisitorDef::visit(node);
+                }
+
+                void visit(::HIR::ExprNode_Block& node) override
+                {
+                    if( node.m_traits.size() == 0 && node.m_local_mod.m_components.size() > 0 ) {
+                        const auto& mod = upper_visitor.m_crate.get_mod_by_path(node.span(), node.m_local_mod);
+                        for( const auto& trait_path : mod.m_traits ) {
+                            node.m_traits.push_back( ::std::make_pair( &trait_path, &upper_visitor.m_crate.get_trait_by_path(node.span(), trait_path) ) );
+                        }
+                    }
+                    for( const auto& trait_ref : node.m_traits )
+                        upper_visitor.m_traits.push_back( trait_ref );
+                    ::HIR::ExprVisitorDef::visit(node);
+                    for(unsigned int i = 0; i < node.m_traits.size(); i ++ )
+                        upper_visitor.m_traits.pop_back();
+                }
+            };
+
+            if( expr.get() != nullptr )
+            {
+                m_in_expr = true;
+                ExprVisitor v { *this };
+                (*expr).visit(v);
+                m_in_expr = false;
+            }
+#endif
         }
 
         bool locate_trait_item_in_bounds(::HIR::Visitor::PathContext pc,  const ::HIR::TypeRef& tr, const ::HIR::GenericParams& params,  ::HIR::Path::Data& pd) {
@@ -276,6 +369,31 @@ namespace {
                 this->visit_type( *e.type );
                 this->visit_path_params( e.params );
 
+                // If processing a trait, and the type is 'Self', search for the type/method on the trait
+                // - TODO: This could be encoded by a `Self: Trait` bound in the generics, but that may have knock-on issues?
+                // NOTE: `Self` can already be replaced by the self type (AST resolve does this)
+                if( *e.type == ::HIR::TypeRef("Self", 0xFFFF) )
+                {
+                    ::HIR::GenericPath  trait_path;
+                    if( m_current_trait_path->trait_path() )
+                    {
+                        trait_path = ::HIR::GenericPath( *m_current_trait_path->trait_path() );
+                        trait_path.m_params = m_current_trait_path->trait_args()->clone();
+                    }
+                    else
+                    {
+                        trait_path = ::HIR::GenericPath( m_current_trait_path->get_simple_path() );
+                        for(unsigned int i = 0; i < m_current_trait->m_params.m_types.size(); i ++ ) {
+                            trait_path.m_params.m_types.push_back( ::HIR::TypeRef(m_current_trait->m_params.m_types[i].m_name, i) );
+                        }
+                    }
+                    if( locate_in_trait_and_set(pc, trait_path, *m_current_trait,  p.m_data) ) {
+                        DEBUG("Found in Self, p = " << p);
+                        return ;
+                    }
+                    DEBUG("- Item " << e.item << " not found in Self - ty=" << *e.type);
+                }
+
                 // Search for matching impls in current generic blocks
                 if( m_params_method != nullptr && locate_trait_item_in_bounds(pc, *e.type, *m_params_method,  p.m_data) ) {
                     DEBUG("Found in item params, p = " << p);
@@ -286,10 +404,7 @@ namespace {
                     return ;
                 }
 
-                // If processing a trait, and the type is 'Self', search for the type/method on the trait
-                // - TODO: This could be encoded by a `Self: Trait` bound in the generics, but that may have knock-on issues?
-                // NOTE: `Self` can already be replaced by the self type (AST resolve does this)
-                if( *e.type == ::HIR::TypeRef("Self", 0xFFFF) || (m_current_type && *e.type == *m_current_type) )
+                if( m_current_type && *e.type == *m_current_type )
                 {
                     ::HIR::GenericPath  trait_path;
                     if( m_current_trait_path->trait_path() )
