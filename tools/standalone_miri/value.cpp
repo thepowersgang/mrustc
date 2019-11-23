@@ -273,6 +273,37 @@ void ValueCommonWrite::write_usize(size_t ofs, uint64_t v)
 {
     this->write_bytes(ofs, &v, POINTER_SIZE);
 }
+void* ValueCommonRead::read_pointer_tagged_null(size_t rd_ofs, const char* tag) const
+{
+    auto ofs = read_usize(rd_ofs);
+    LOG_ASSERT(ofs >= Allocation::PTR_BASE, "Deref of invalid pointer");
+    ofs -= Allocation::PTR_BASE;
+    if( ofs != 0 ) {
+        LOG_FATAL("Read a non-zero offset for tagged pointer");
+    }
+    auto reloc = get_relocation(rd_ofs);
+    //LOG_TODO("read_pointer_tagged_null(" << rd_ofs << ", '" << tag << "')");
+    if( !reloc )
+    {
+        return nullptr;
+    }
+    else
+    {
+        switch(reloc.get_ty())
+        {
+        case RelocationPtr::Ty::FfiPointer: {
+            const auto& f = reloc.ffi();
+            assert(f.tag_name);
+            assert(tag);
+            if( ::std::strcmp(f.tag_name, tag) != 0 )
+                LOG_FATAL("Expected a '" << tag <<  "' pointer, got a '" << f.tag_name << "' pointer");
+            return f.ptr_value;
+            }
+        default:
+            LOG_FATAL("Reading a tagged pointer from non-FFI source");
+        }
+    }
+}
 void* ValueCommonRead::read_pointer_unsafe(size_t rd_ofs, size_t req_valid, size_t& out_size, bool& out_is_mut) const
 {
     auto ofs = read_usize(rd_ofs);

@@ -210,6 +210,15 @@ struct ValueCommonRead
     /// De-reference a pointer (of target type `ty`) at the given offset, and return a reference to it
     ValueRef deref(size_t ofs, const ::HIR::TypeRef& ty);
 
+    /// Read a pointer that must be FFI with the specified tag (or NULL)
+    void* read_pointer_tagged_null(size_t rd_ofs, const char* tag) const;
+    /// Read a pointer that must be FFI with the specified tag (cannot be NULL)
+    void* read_pointer_tagged_nonnull(size_t rd_ofs, const char* tag) const {
+        auto rv = read_pointer_tagged_null(rd_ofs, tag);
+        if(!rv)
+            LOG_FATAL("Accessing NUL pointer");
+        return rv;
+    }
     /// Read a pointer from the value, requiring at least `req_valid` valid bytes, saves avaliable space in `size`
     void* read_pointer_unsafe(size_t rd_ofs, size_t req_valid, size_t& size, bool& is_mut) const;
     /// Read a pointer, requiring `req_len` valid bytes

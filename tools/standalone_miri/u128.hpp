@@ -7,6 +7,7 @@ class U128
 public:
     U128(): lo(0), hi(0) {}
 
+    explicit U128(uint64_t v): lo(v), hi(0) {}
     U128(uint8_t v): lo(v), hi(0) {}
     U128(int8_t v): lo(v), hi(v < 0 ? -1 : 0) {}
 

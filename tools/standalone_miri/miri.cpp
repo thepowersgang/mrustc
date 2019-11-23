@@ -41,6 +41,8 @@ public:
     virtual bool modulo(const PrimitiveValue& v) = 0;
     virtual void write_to_value(ValueCommonWrite& tgt, size_t ofs) const = 0;
 
+    virtual U128 as_u128() const = 0;
+
     template<typename T>
     const T& check(const char* opname) const
     {
@@ -96,6 +98,10 @@ struct PrimitiveUInt:
         T newv = this->v % xp->v;
         this->v = newv;
         return true;
+    }
+
+    U128 as_u128() const override {
+        return U128(static_cast<uint64_t>(this->v));
     }
 };
 struct PrimitiveU64: public PrimitiveUInt<uint64_t>
@@ -174,6 +180,10 @@ struct PrimitiveSInt:
         T newv = this->v % xp->v;
         this->v = newv;
         return true;
+    }
+
+    U128 as_u128() const override {
+        return U128(static_cast<uint64_t>(this->v));
     }
 };
 struct PrimitiveI64: public PrimitiveSInt<int64_t>
@@ -1746,6 +1756,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
             {
                 RelocationPtr   fcn_alloc_ptr;
                 const ::HIR::Path* fcn_p;
+                ::HIR::Path ffi_fcn_ptr;
                 if( te.fcn.is_Path() ) {
                     fcn_p = &te.fcn.as_Path();
                 }
@@ -1763,17 +1774,28 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     case RelocationPtr::Ty::Function:
                         fcn_p = &fcn_alloc_ptr.fcn();
                         break;
+#if 0
                     case RelocationPtr::Ty::FfiPointer:
                         if( !fcn_alloc_ptr.ffi().layout )
                         {
+                            // TODO: FFI function pointers
+                            // - Call the function pointer using known argument rules
 #ifdef _WIN32
                             if( fcn_alloc_ptr.ffi().ptr_value == AcquireSRWLockExclusive )
                             {
-                                LOG_TODO("");
+                                ffi_fcn_ptr = ::HIR::Path(::HIR::SimplePath { "#FFI", { "system", "AcquireSRWLockExclusive" } });
+                                fcn_p = &ffi_fcn_ptr;
+                                break;
+                            }
+                            else if( fcn_alloc_ptr.ffi().ptr_value == ReleaseSRWLockExclusive )
+                            {
+                                ffi_fcn_ptr = ::HIR::Path(::HIR::SimplePath { "#FFI", { "system", "ReleaseSRWLockExclusive" } });
+                                fcn_p = &ffi_fcn_ptr;
                                 break;
                             }
 #endif
                         }
+#endif
                     default:
                         LOG_ERROR("Calling value that isn't a function pointer - " << v);
                     }
@@ -1907,6 +1929,13 @@ bool InterpreterThread::call_path(Value& ret, const ::HIR::Path& path, ::std::ve
             ret = Value::new_i32(120);  //ERROR_CALL_NOT_IMPLEMENTED
             return true;
         }
+        // Win32 Shared RW locks (no-op)
+        if( path == ::HIR::SimplePath { "std", { "sys", "windows", "c", "AcquireSRWLockExclusive" } }
+         || path == ::HIR::SimplePath { "std", { "sys", "windows", "c", "ReleaseSRWLockExclusive" } }
+            )
+        {
+            return true;
+        }
 
         // - No guard page needed
         if( path == ::HIR::SimplePath { "std",  {"sys", "imp", "thread", "guard", "init" } }
@@ -1924,6 +1953,13 @@ bool InterpreterThread::call_path(Value& ret, const ::HIR::Path& path, ::std::ve
         {
             return true;
         }
+    }
+
+    if( path.m_name == "" && path.m_trait.m_simplepath.crate_name == "#FFI" )
+    {
+        const auto& link_abi  = path.m_trait.m_simplepath.ents.at(0);
+        const auto& link_name = path.m_trait.m_simplepath.ents.at(1);
+        return this->call_extern(ret, link_name, link_abi, ::std::move(args));
     }
 
     const auto& fcn = m_modtree.get_function(path);
@@ -2141,6 +2177,8 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
 
         if( ret )
         {
+            // TODO: Get the functon name (and source library) and store in the result
+            // - Maybe return a FFI function pointer (::"#FFI"::DllName+ProcName)
             rv = Value::new_ffiptr(FFIPointer::new_void("GetProcAddress", ret));
         }
         else
@@ -2149,6 +2187,121 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
             rv.create_allocation();
             rv.write_usize(0,0);
         }
+    }
+    // --- Thread-local storage
+    else if( link_name == "TlsAlloc" )
+    {
+        auto key = ThreadState::s_next_tls_key ++;
+
+        rv = Value::new_u32(key);
+    }
+    else if( link_name == "TlsGetValue" )
+    {
+        // LPVOID TlsGetValue( DWORD dwTlsIndex );
+        auto key = args.at(0).read_u32(0);
+
+        // Get a pointer-sized value from storage
+        if( key < m_thread.tls_values.size() )
+        {
+            const auto& e = m_thread.tls_values[key];
+            rv = Value::new_usize(e.first);
+            if( e.second )
+            {
+                rv.set_reloc(0, POINTER_SIZE, e.second);
+            }
+        }
+        else
+        {
+            // Return zero until populated
+            rv = Value::new_usize(0);
+        }
+    }
+    else if( link_name == "TlsSetValue" )
+    {
+        // BOOL TlsSetValue( DWORD  dwTlsIndex, LPVOID lpTlsValue );
+        auto key = args.at(0).read_u32(0);
+        auto v = args.at(1).read_usize(0);
+        auto v_reloc = args.at(1).get_relocation(0);
+
+        // Store a pointer-sized value in storage
+        if( key >= m_thread.tls_values.size() ) {
+            m_thread.tls_values.resize(key+1);
+        }
+        m_thread.tls_values[key] = ::std::make_pair(v, v_reloc);
+
+        rv = Value::new_i32(1);
+    }
+    // ---
+    else if( link_name == "InitializeCriticalSection" )
+    {
+        // HACK: Just ignore, no locks
+    }
+    else if( link_name == "EnterCriticalSection" )
+    {
+        // HACK: Just ignore, no locks
+    }
+    else if( link_name == "TryEnterCriticalSection" )
+    {
+        // HACK: Just ignore, no locks
+        rv = Value::new_i32(1);
+    }
+    else if( link_name == "LeaveCriticalSection" )
+    {
+        // HACK: Just ignore, no locks
+    }
+    else if( link_name == "DeleteCriticalSection" )
+    {
+        // HACK: Just ignore, no locks
+    }
+    // ---
+    else if( link_name == "GetStdHandle" )
+    {
+        // HANDLE WINAPI GetStdHandle( _In_ DWORD nStdHandle );
+        auto val = args.at(0).read_u32(0);
+        rv = Value::new_ffiptr(FFIPointer::new_void("HANDLE", GetStdHandle(val)));
+    }
+    else if( link_name == "GetConsoleMode" )
+    {
+        // BOOL WINAPI GetConsoleMode( _In_  HANDLE  hConsoleHandle, _Out_ LPDWORD lpMode );
+        auto hConsoleHandle = args.at(0).read_pointer_tagged_nonnull(0, "HANDLE");
+        auto lpMode_vr = args.at(1).read_pointer_valref_mut(0, sizeof(DWORD));
+        LOG_DEBUG("GetConsoleMode(" << hConsoleHandle << ", " << lpMode_vr);
+        auto lpMode = reinterpret_cast<LPDWORD>(lpMode_vr.data_ptr_mut());
+        auto rv_bool = GetConsoleMode(hConsoleHandle, lpMode);
+        if( rv_bool )
+        {
+            LOG_DEBUG("= TRUE (" << *lpMode << ")");
+            lpMode_vr.mark_bytes_valid(0, sizeof(DWORD));
+        }
+        else
+        {
+            LOG_DEBUG("= FALSE");
+        }
+        rv = Value::new_i32(rv_bool ? 1 : 0);
+    }
+    else if( link_name == "WriteConsoleW" )
+    {
+        //BOOL WINAPI WriteConsole( _In_ HANDLE  hConsoleOutput, _In_ const VOID    *lpBuffer, _In_ DWORD   nNumberOfCharsToWrite,  _Out_ LPDWORD lpNumberOfCharsWritten, _Reserved_ LPVOID  lpReserved );
+        auto hConsoleOutput = args.at(0).read_pointer_tagged_nonnull(0, "HANDLE");
+        auto nNumberOfCharsToWrite = args.at(2).read_u32(0);
+        auto lpBuffer = args.at(1).read_pointer_const(0, nNumberOfCharsToWrite * 2);
+        auto lpNumberOfCharsWritten_vr = args.at(3).read_pointer_valref_mut(0, sizeof(DWORD));
+        auto lpReserved = args.at(4).read_usize(0);
+        LOG_DEBUG("WriteConsoleW(" << hConsoleOutput << ", " << lpBuffer << ", " << nNumberOfCharsToWrite << ", " << lpNumberOfCharsWritten_vr << ")");
+
+        auto lpNumberOfCharsWritten = reinterpret_cast<LPDWORD>(lpNumberOfCharsWritten_vr.data_ptr_mut());
+
+        LOG_ASSERT(lpReserved == 0, "");
+        auto rv_bool = WriteConsoleW(hConsoleOutput, lpBuffer, nNumberOfCharsToWrite, lpNumberOfCharsWritten, nullptr);
+        if( rv_bool )
+        {
+            LOG_DEBUG("= TRUE (" << *lpNumberOfCharsWritten << ")");
+        }
+        else
+        {
+            LOG_DEBUG("= FALSE");
+        }
+        rv = Value::new_i32(rv_bool ? 1 : 0);
     }
 #else
     // POSIX
@@ -3106,6 +3259,24 @@ bool InterpreterThread::call_intrinsic(Value& rv, const RcString& name, const ::
             LOG_DEBUG("src_val = " << src_val);
             dst_alloc.alloc().write_value(dst_vr.m_offset, ::std::move(src_val));
         }
+    }
+    // ----------------------------------------------------------------
+    // Bit Twiddling
+    // ---
+    // cttz = CounT Trailing Zeroes
+    else if( name == "cttz_nonzero" )
+    {
+        const auto& ty_T = ty_params.tys.at(0);
+        auto v_inner = PrimitiveValueVirt::from_value(ty_T, args.at(0));
+        auto v = v_inner.get().as_u128();
+        unsigned n = 0;
+        while( (v & 1) == 0 && n < ty_T.get_size()*8 )
+        {
+            v = v >> static_cast<uint8_t>(1);
+            n ++;
+        }
+        rv = Value( HIR::TypeRef(RawType::USize) );
+        rv.write_usize(0, n);
     }
     else
     {

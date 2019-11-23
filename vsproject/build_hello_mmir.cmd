@@ -12,5 +12,5 @@ if %errorlevel% neq 0 exit /b %errorlevel%
 
 x64\Release\mrustc.exe ..\rustc-%RUSTC_VERSION%-src\src\test\run-pass\hello.rs -L %OUTDIR% -o %OUTDIR%\hello.exe -C codegen-type=monomir
 if %errorlevel% neq 0 exit /b %errorlevel%
-x64\Release\standalone_miri.exe %OUTDIR%\hello.exe.mir
+x64\Release\standalone_miri.exe --logfile smiri.log %OUTDIR%\hello.exe.mir
 if %errorlevel% neq 0 exit /b %errorlevel%
