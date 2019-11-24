@@ -24,6 +24,8 @@ struct Options
 {
     helpers::path   test_dir;
 
+    // TODO: List of test globs
+
     bool parse(int argc, char* argv[]);
     void print_usage() const;
     void print_help() const;
@@ -96,6 +98,7 @@ int main(int argc, char* argv[])
 #endif
     }
 
+    // Run HIR bind on the loaded code (makes sure that it's ready for use)
     {
         auto ph = DebugTimedPhase("Cleanup");
         for(auto& f : test_files)
@@ -104,6 +107,7 @@ int main(int argc, char* argv[])
         }
     }
 
+    // Run MIR validation BEFORE attempting optimisaion
     {
         auto ph = DebugTimedPhase("Validate");
         for(auto& f : test_files)
@@ -112,21 +116,27 @@ int main(int argc, char* argv[])
         }
     }
 
-    for(auto& f : test_files)
+    // Funally run the tests
     {
         auto ph = DebugTimedPhase("Run Tests");
-        for(const auto& test : f.m_tests)
+        for(auto& f : test_files)
         {
-            const auto& in_fcn = f.m_crate->get_function_by_path(Span(), test.input_function);
-            const auto& exp_mir = *f.m_crate->get_function_by_path(Span(), test.output_template_function).m_code.m_mir;
+            for(const auto& test : f.m_tests)
+            {
+                const auto& in_fcn = f.m_crate->get_function_by_path(Span(), test.input_function);
+                const auto& exp_mir = *f.m_crate->get_function_by_path(Span(), test.output_template_function).m_code.m_mir;
 
-            StaticTraitResolve  resolve(*f.m_crate);
-            // TODO: Generics?
-            auto cloned_mir = clone_mir(resolve, in_fcn.m_code.m_mir);
+                StaticTraitResolve  resolve(*f.m_crate);
+                // TODO: Generics?
+                auto cloned_mir = clone_mir(resolve, in_fcn.m_code.m_mir);
 
-            MIR_Optimise(resolve, test.input_function, *cloned_mir, in_fcn.m_args, in_fcn.m_return);
+                MIR_Optimise(resolve, test.input_function, *cloned_mir, in_fcn.m_args, in_fcn.m_return);
 
-            compare_mir(exp_mir, *cloned_mir, test.input_function);
+                if( !compare_mir(exp_mir, *cloned_mir, test.input_function) )
+                {
+                    MIR_Dump_Fcn(std::cout, *cloned_mir);
+                }
+            }
         }
     }
 
