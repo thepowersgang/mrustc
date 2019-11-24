@@ -11,6 +11,7 @@
 
 struct MirOptTestFile
 {
+    ::std::string   m_filename;
     ::HIR::CratePtr m_crate;
 
     struct Test

@@ -132,7 +132,9 @@ int main(int argc, char* argv[])
 
                 MIR_Optimise(resolve, test.input_function, *cloned_mir, in_fcn.m_args, in_fcn.m_return);
 
-                if( !compare_mir(exp_mir, *cloned_mir, test.input_function) )
+                auto p = test.input_function;
+                p.m_crate_name = RcString(f.m_filename);
+                if( !compare_mir(exp_mir, *cloned_mir, p) )
                 {
                     MIR_Dump_Fcn(std::cout, *cloned_mir);
                 }

@@ -33,7 +33,9 @@ MirOptTestFile  MirOptTestFile::load_from_file(const helpers::path& p)
     Token   tok;
 
     MirOptTestFile  rv;
+    rv.m_filename = p.basename();
     rv.m_crate = HIR::CratePtr(::HIR::Crate());
+    //rv.m_crate->m_crate_name = RcString(p.str());
 
     while(lex.lookahead(0) != TOK_EOF)
     {
@@ -209,11 +211,35 @@ namespace {
                     case TOK_RWORD_TRUE:    src = MIR::Constant::make_Bool({true });   break;
                     case TOK_RWORD_FALSE:   src = MIR::Constant::make_Bool({false});   break;
 
+                    case TOK_AMP:
+                        if( consume_if(lex, TOK_RWORD_MOVE) )
+                            src = MIR::RValue::make_Borrow({ 0, HIR::BorrowType::Owned, parse_lvalue(lex, val_name_map) });
+                        else if( consume_if(lex, TOK_RWORD_MUT) )
+                            src = MIR::RValue::make_Borrow({ 0, HIR::BorrowType::Unique, parse_lvalue(lex, val_name_map) });
+                        else
+                            src = MIR::RValue::make_Borrow({ 0, HIR::BorrowType::Shared, parse_lvalue(lex, val_name_map) });
+                        break;
+
                     // Operator (e.g. `ADD(...)`) or an lvalue
                     case TOK_IDENT:
                         if( consume_if(lex, TOK_PAREN_OPEN) )
                         {
-                            TODO(lex.point_span(), "MIR assign operator - " << tok.istr());
+                            auto parse_binop = [&](TokenStream& lex, MIR::eBinOp op) {
+                                Token   tok;
+                                auto l = parse_param(lex, val_name_map);
+                                GET_CHECK_TOK(tok, lex, TOK_COMMA);
+                                auto r = parse_param(lex, val_name_map);
+                                return MIR::RValue::make_BinOp({ mv$(l), op, mv$(r) });
+                                };
+                            if(tok.istr() == "ADD")
+                                src = parse_binop(lex, MIR::eBinOp::ADD);
+                            else if(tok.istr() == "SUB")
+                                src = parse_binop(lex, MIR::eBinOp::SUB);
+                            else
+                            {
+                                TODO(lex.point_span(), "MIR assign operator - " << tok.istr());
+                            }
+                            GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
                         }
                         else
                         {
@@ -494,11 +520,30 @@ namespace {
             else if( tok.istr() == "str" )  return HIR::TypeRef(HIR::CoreType::Str );
             else if( tok.istr() == "u8" ) return HIR::TypeRef(HIR::CoreType::U8);
             else if( tok.istr() == "i8" ) return HIR::TypeRef(HIR::CoreType::I8);
+            else if( tok.istr() == "u16" ) return HIR::TypeRef(HIR::CoreType::U16);
+            else if( tok.istr() == "i16" ) return HIR::TypeRef(HIR::CoreType::I16);
+            else if( tok.istr() == "u32" ) return HIR::TypeRef(HIR::CoreType::U32);
+            else if( tok.istr() == "i32" ) return HIR::TypeRef(HIR::CoreType::I32);
+            else if( tok.istr() == "u64" ) return HIR::TypeRef(HIR::CoreType::U64);
+            else if( tok.istr() == "i64" ) return HIR::TypeRef(HIR::CoreType::I64);
+            else if( tok.istr() == "u128" ) return HIR::TypeRef(HIR::CoreType::U128);
+            else if( tok.istr() == "i128" ) return HIR::TypeRef(HIR::CoreType::I128);
+            else if( tok.istr() == "usize" ) return HIR::TypeRef(HIR::CoreType::Usize);
+            else if( tok.istr() == "isize" ) return HIR::TypeRef(HIR::CoreType::Isize);
             else
             {
                 TODO(lex.point_span(), tok);
             }
             break;
+        case TOK_DOUBLE_AMP:
+            lex.putback(TOK_AMP);
+        case TOK_AMP:
+            if( consume_if(lex, TOK_RWORD_MOVE) )
+                return HIR::TypeRef::new_borrow(HIR::BorrowType::Owned, parse_type(lex));
+            else if( consume_if(lex, TOK_RWORD_MUT) )
+                return HIR::TypeRef::new_borrow(HIR::BorrowType::Unique, parse_type(lex));
+            else
+                return HIR::TypeRef::new_borrow(HIR::BorrowType::Shared, parse_type(lex));
         default:
             TODO(lex.point_span(), tok);
         }
@@ -533,10 +578,14 @@ namespace {
                 TODO(lex.point_span(), "parse_lvalue - indexing");
                 break;
             case TOK_DOT:
-                TODO(lex.point_span(), "parse_lvalue - field");
+                GET_CHECK_TOK(tok, lex, TOK_INTEGER);
+                ASSERT_BUG(lex.point_span(), tok.intval() < UINT_MAX, "");
+                wrappers.push_back(::MIR::LValue::Wrapper::new_Field( static_cast<unsigned>(tok.intval()) ));
                 break;
             case TOK_HASH:
-                TODO(lex.point_span(), "parse_lvalue - downcast");
+                GET_CHECK_TOK(tok, lex, TOK_INTEGER);
+                ASSERT_BUG(lex.point_span(), tok.intval() < UINT_MAX, "");
+                wrappers.push_back(::MIR::LValue::Wrapper::new_Downcast( static_cast<unsigned>(tok.intval()) ));
                 break;
             case TOK_STAR:
                 wrappers.push_back(::MIR::LValue::Wrapper::new_Deref());
