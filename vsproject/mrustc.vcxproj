@@ -208,7 +208,6 @@
     <ClCompile Include="..\src\hir_conv\expand_type.cpp" />
     <ClCompile Include="..\src\hir_conv\markings.cpp" />
     <ClCompile Include="..\src\hir_conv\resolve_ufcs.cpp" />
-    <ClCompile Include="..\src\hir_conv\resolve_ufcs_outer.cpp" />
     <ClCompile Include="..\src\hir_expand\annotate_value_usage.cpp" />
     <ClCompile Include="..\src\hir_expand\closures.cpp" />
     <ClCompile Include="..\src\hir_expand\erased_types.cpp" />
