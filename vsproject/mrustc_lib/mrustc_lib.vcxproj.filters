@@ -1,0 +1,618 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;hm;inl;inc;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav</Extensions>
+    </Filter>
+    <Filter Include="Source Files\mir">
+      <UniqueIdentifier>{37f428ea-aa89-4cf7-94b8-38a1ed530917}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\hir_expand">
+      <UniqueIdentifier>{9b7b8a58-8e87-4c7f-a418-f5e3820e93e9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\ast">
+      <UniqueIdentifier>{cbf97f1c-f415-42a8-bf0e-d2331ee7fb30}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\expand">
+      <UniqueIdentifier>{a1148def-ba0b-4c18-a118-a1441ae50815}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\hir_conv">
+      <UniqueIdentifier>{23c5e44e-55f1-4a88-ae1e-93bf2ae910ce}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\hir">
+      <UniqueIdentifier>{b04c313f-020b-48cc-b2a2-b0bb143ef4c4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\macro_rules">
+      <UniqueIdentifier>{176e70ec-ebc0-4362-8946-5eab5d9c7970}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\resolve">
+      <UniqueIdentifier>{afb300e4-b247-43e7-ac13-6c367fa28bf3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\parse">
+      <UniqueIdentifier>{152623f5-cdba-4d35-a378-24ced1e05809}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\trans">
+      <UniqueIdentifier>{26d5bc90-94b8-45b4-82cb-29a624246d83}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\hir_typeck">
+      <UniqueIdentifier>{813e552f-43d8-429a-afc0-0d1998a376b7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\ast">
+      <UniqueIdentifier>{7d11d59d-5894-417c-ae2e-a85c79d9490e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\hir_typeck">
+      <UniqueIdentifier>{6e602432-c609-4771-ab76-55f5e4998035}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\mir">
+      <UniqueIdentifier>{1233e2f6-7b44-4379-9f43-d572b8944ba0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\parse">
+      <UniqueIdentifier>{3709226c-e95b-4da0-9735-42e2a5cad1a7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\expand">
+      <UniqueIdentifier>{c78c419b-2b25-4c6f-8f91-95a9d0142fff}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\trans">
+      <UniqueIdentifier>{6bbfdfb3-9557-43a9-bddd-07a243569fa3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\hir">
+      <UniqueIdentifier>{e3219c19-8898-418e-b2ba-84254977a792}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\hir_expand">
+      <UniqueIdentifier>{a6675903-7d69-4179-b1e3-d64c5d3b85f3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\hir_conv">
+      <UniqueIdentifier>{5826b344-8484-4eca-9c7a-3e6894caefc3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\resolve">
+      <UniqueIdentifier>{039990d5-7b06-4055-8187-afd700ffa03d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\macro_rules">
+      <UniqueIdentifier>{fe389362-4565-407c-b5a7-be2503d6e051}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\..\src\debug.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\rc_string.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\span.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\mir\dump.cpp">
+      <Filter>Source Files\mir</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\mir\check.cpp">
+      <Filter>Source Files\mir</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir_expand\annotate_value_usage.cpp">
+      <Filter>Source Files\hir_expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\mir\cleanup.cpp">
+      <Filter>Source Files\mir</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir_expand\closures.cpp">
+      <Filter>Source Files\hir_expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir_conv\bind.cpp">
+      <Filter>Source Files\hir_conv</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir_conv\constant_evaluation.cpp">
+      <Filter>Source Files\hir_conv</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir_expand\erased_types.cpp">
+      <Filter>Source Files\hir_expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\ast\ast.cpp">
+      <Filter>Source Files\ast</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\ast\crate.cpp">
+      <Filter>Source Files\ast</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\expand\cfg.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\expand\concat.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\expand\derive.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\ast\dump.cpp">
+      <Filter>Source Files\ast</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir_conv\expand_type.cpp">
+      <Filter>Source Files\hir_conv</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\macro_rules\eval.cpp">
+      <Filter>Source Files\macro_rules</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir\expr.cpp">
+      <Filter>Source Files\hir</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\resolve\absolute.cpp">
+      <Filter>Source Files\resolve</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\trans\codegen_c.cpp">
+      <Filter>Source Files\trans</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\trans\codegen.cpp">
+      <Filter>Source Files\trans</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir\crate_post_load.cpp">
+      <Filter>Source Files\hir</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir\crate_ptr.cpp">
+      <Filter>Source Files\hir</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir\deserialise.cpp">
+      <Filter>Source Files\hir</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir\dump.cpp">
+      <Filter>Source Files\hir</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\parse\expr.cpp">
+      <Filter>Source Files\parse</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\ast\expr.cpp">
+      <Filter>Source Files\ast</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\trans\enumerate.cpp">
+      <Filter>Source Files\trans</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir\expr_ptr.cpp">
+      <Filter>Source Files\hir</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\expand\format_args.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\mir\from_hir.cpp">
+      <Filter>Source Files\mir</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\mir\from_hir_match.cpp">
+      <Filter>Source Files\mir</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir\from_ast.cpp">
+      <Filter>Source Files\hir</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir\from_ast_expr.cpp">
+      <Filter>Source Files\hir</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\expand\file_line.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\expand\mod.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\macro_rules\mod.cpp">
+      <Filter>Source Files\macro_rules</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\expand\macro_rules.cpp">
+      <Filter>Source Files\macro_rules</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\mir\mir_ptr.cpp">
+      <Filter>Source Files\mir</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\mir\mir_builder.cpp">
+      <Filter>Source Files\mir</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\mir\mir.cpp">
+      <Filter>Source Files\mir</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\trans\monomorphise.cpp">
+      <Filter>Source Files\trans</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\expand\lang_item.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\parse\lex.cpp">
+      <Filter>Source Files\parse</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir\serialise.cpp">
+      <Filter>Source Files\hir</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir\pattern.cpp">
+      <Filter>Source Files\hir</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\mir\optimise.cpp">
+      <Filter>Source Files\mir</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir_expand\vtable.cpp">
+      <Filter>Source Files\hir_expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir_expand\ufcs_everything.cpp">
+      <Filter>Source Files\hir_expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\parse\paths.cpp">
+      <Filter>Source Files\parse</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\parse\pattern.cpp">
+      <Filter>Source Files\parse</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\macro_rules\parse.cpp">
+      <Filter>Source Files\parse</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\parse\root.cpp">
+      <Filter>Source Files\parse</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\parse\token.cpp">
+      <Filter>Source Files\parse</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\parse\tokenstream.cpp">
+      <Filter>Source Files\parse</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\parse\tokentree.cpp">
+      <Filter>Source Files\parse</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\parse\ttstream.cpp">
+      <Filter>Source Files\parse</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir\serialise_lowlevel.cpp">
+      <Filter>Source Files\hir</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir_conv\resolve_ufcs.cpp">
+      <Filter>Source Files\hir_conv</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir_typeck\expr_check.cpp">
+      <Filter>Source Files\hir_typeck</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir_typeck\expr_cs.cpp">
+      <Filter>Source Files\hir_typeck</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir_typeck\helpers.cpp">
+      <Filter>Source Files\hir_typeck</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir_typeck\impl_ref.cpp">
+      <Filter>Source Files\hir_typeck</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\mir\helpers.cpp">
+      <Filter>Source Files\mir</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir_expand\reborrow.cpp">
+      <Filter>Source Files\hir_expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir\hir.cpp">
+      <Filter>Source Files\hir</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\parse\interpolated_fragment.cpp">
+      <Filter>Source Files\parse</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\ast\pattern.cpp">
+      <Filter>Source Files\ast</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\ast\path.cpp">
+      <Filter>Source Files\ast</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir\path.cpp">
+      <Filter>Source Files\hir</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir\generic_params.cpp">
+      <Filter>Source Files\ast</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\resolve\index.cpp">
+      <Filter>Source Files\resolve</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir_typeck\outer.cpp">
+      <Filter>Source Files\hir_typeck</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\resolve\use.cpp">
+      <Filter>Source Files\resolve</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\mir\visit_crate_mir.cpp">
+      <Filter>Source Files\mir</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir\type.cpp">
+      <Filter>Source Files\hir</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\expand\std_prelude.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\parse\parseerror.cpp">
+      <Filter>Source Files\parse</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir_typeck\static.cpp">
+      <Filter>Source Files\hir_typeck</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\parse\types.cpp">
+      <Filter>Source Files\parse</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\ast\types.cpp">
+      <Filter>Source Files\ast</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir\visitor.cpp">
+      <Filter>Source Files\hir</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\expand\stringify.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\trans\trans_list.cpp">
+      <Filter>Source Files\trans</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir_conv\markings.cpp">
+      <Filter>Source Files\hir_conv</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir_typeck\common.cpp">
+      <Filter>Source Files\hir_typeck</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\ident.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\expand\test.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\expand\asm.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\expand\crate_tags.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\expand\env.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\expand\include.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\expand\rustc_diagnostics.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\expand\test_harness.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\trans\target.cpp">
+      <Filter>Source Files\trans</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\mir\check_full.cpp">
+      <Filter>Source Files\mir</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\trans\codegen_c_structured.cpp">
+      <Filter>Source Files\trans</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\trans\allocator.cpp">
+      <Filter>Source Files\trans</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\expand\proc_macro.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\trans\codegen_mmir.cpp">
+      <Filter>Source Files\trans</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\version.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\trans\auto_impls.cpp">
+      <Filter>Source Files\trans</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\trans\mangling_v2.cpp">
+      <Filter>Source Files\trans</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir\hir_ops.cpp">
+      <Filter>Source Files\hir</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\expand\assert.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir_typeck\expr_visit.cpp">
+      <Filter>Source Files\hir_typeck</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\src\common.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\coretypes.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\include\cpp_unpack.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\include\compile_error.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\include\debug.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\include\main_bindings.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\include\rc_string.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\include\rustic.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\include\span.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\include\synext.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\include\synext_decorator.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\include\synext_macro.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\include\tagged_union.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\ast\attrs.hpp">
+      <Filter>Header Files\ast</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\ast\ast.hpp">
+      <Filter>Header Files\ast</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\ast\expr.hpp">
+      <Filter>Header Files\ast</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\ast\generics.hpp">
+      <Filter>Header Files\ast</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\ast\macro.hpp">
+      <Filter>Header Files\ast</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\ast\item.hpp">
+      <Filter>Header Files\ast</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\hir_typeck\helpers.hpp">
+      <Filter>Header Files\hir_typeck</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\mir\mir.hpp">
+      <Filter>Header Files\mir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\mir\mir_ptr.hpp">
+      <Filter>Header Files\mir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\trans\monomorphise.hpp">
+      <Filter>Header Files\mir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\mir\operations.hpp">
+      <Filter>Header Files\mir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\hir_typeck\impl_ref.hpp">
+      <Filter>Header Files\hir_typeck</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\ast\path.hpp">
+      <Filter>Header Files\ast</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\mir\helpers.hpp">
+      <Filter>Header Files\mir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\ast\types.hpp">
+      <Filter>Header Files\ast</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\ast\crate.hpp">
+      <Filter>Header Files\ast</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\parse\common.hpp">
+      <Filter>Header Files\parse</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\hir\crate_ptr.hpp">
+      <Filter>Header Files\hir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\parse\eTokenType.enum.h">
+      <Filter>Header Files\parse</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\hir\expr_ptr.hpp">
+      <Filter>Header Files\hir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\hir_typeck\expr_visit.hpp">
+      <Filter>Header Files\hir_typeck</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\hir\expr.hpp">
+      <Filter>Header Files\hir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\mir\main_bindings.hpp">
+      <Filter>Header Files\mir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\include\serialise.hpp">
+      <Filter>Header Files\hir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\include\serialiser_texttree.hpp">
+      <Filter>Header Files\hir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\expand\cfg.hpp">
+      <Filter>Header Files\expand</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\trans\codegen.hpp">
+      <Filter>Header Files\trans</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\hir\from_ast.hpp">
+      <Filter>Header Files\hir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\mir\from_hir.hpp">
+      <Filter>Header Files\mir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\hir\generic_params.hpp">
+      <Filter>Header Files\hir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\parse\interpolated_fragment.hpp">
+      <Filter>Header Files\parse</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\hir\pattern.hpp">
+      <Filter>Header Files\hir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\ast\pattern.hpp">
+      <Filter>Header Files\ast</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\hir_typeck\static.hpp">
+      <Filter>Header Files\hir_typeck</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\hir\type.hpp">
+      <Filter>Header Files\hir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\hir\visitor.hpp">
+      <Filter>Header Files\hir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\mir\visit_crate_mir.hpp">
+      <Filter>Header Files\mir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\parse\token.hpp">
+      <Filter>Header Files\parse</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\parse\tokenstream.hpp">
+      <Filter>Header Files\parse</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\trans\trans_list.hpp">
+      <Filter>Header Files\trans</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\parse\ttstream.hpp">
+      <Filter>Header Files\parse</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\parse\tokentree.hpp">
+      <Filter>Header Files\parse</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\hir\hir.hpp">
+      <Filter>Header Files\hir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\hir_typeck\main_bindings.hpp">
+      <Filter>Header Files\hir_typeck</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\trans\main_bindings.hpp">
+      <Filter>Header Files\trans</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\trans\mangling.hpp">
+      <Filter>Header Files\trans</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\parse\parseerror.hpp">
+      <Filter>Header Files\parse</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\resolve\main_bindings.hpp">
+      <Filter>Header Files\resolve</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\hir_expand\main_bindings.hpp">
+      <Filter>Header Files\hir_expand</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\hir_conv\main_bindings.hpp">
+      <Filter>Header Files\hir_conv</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\parse\lex.hpp">
+      <Filter>Header Files\parse</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\macro_rules\macro_rules_ptr.hpp">
+      <Filter>Header Files\macro_rules</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\macro_rules\macro_rules.hpp">
+      <Filter>Header Files\macro_rules</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\hir\path.hpp">
+      <Filter>Header Files\hir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\macro_rules\pattern_checks.hpp">
+      <Filter>Header Files\macro_rules</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="../packages.config" />
+  </ItemGroup>
+</Project>

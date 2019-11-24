@@ -1,0 +1,354 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>16.0</VCProjectVersion>
+    <ProjectGuid>{79D1C15A-1FFD-4957-B56F-FE9874793C9A}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>mrustclib</RootNamespace>
+    <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v140</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v140</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v140</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v140</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>../../src/include;../../src;../../tools/common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AssemblerListingLocation>$(IntDir)\dummy1\dummy1\%(RelativeDir)</AssemblerListingLocation>
+      <ObjectFileName>$(IntDir)\dummy1\dummy1\%(RelativeDir)</ObjectFileName>
+      <WarningLevel>Level2</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>NDEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <WholeProgramOptimization>false</WholeProgramOptimization>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>../../src/include;../../src;../../tools/common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AssemblerListingLocation>$(IntDir)\dummy1\dummy1\%(RelativeDir)</AssemblerListingLocation>
+      <ObjectFileName>$(IntDir)\dummy1\dummy1\%(RelativeDir)</ObjectFileName>
+      <WarningLevel>Level2</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>../../src/include;../../src;../../tools/common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AssemblerListingLocation>$(IntDir)\dummy1\dummy1\%(RelativeDir)</AssemblerListingLocation>
+      <ObjectFileName>$(IntDir)\dummy1\dummy1\%(RelativeDir)</ObjectFileName>
+      <WarningLevel>Level2</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>_DEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>../../src/include;../../src;../../tools/common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AssemblerListingLocation>$(IntDir)\dummy1\dummy1\%(RelativeDir)</AssemblerListingLocation>
+      <ObjectFileName>$(IntDir)\dummy1\dummy1\%(RelativeDir)</ObjectFileName>
+      <WarningLevel>Level2</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <WholeProgramOptimization>false</WholeProgramOptimization>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="..\..\src\trans\auto_impls.cpp" />
+    <ClCompile Include="..\..\src\trans\mangling_v2.cpp" />
+    <ClCompile Include="..\..\src\ast\ast.cpp" />
+    <ClCompile Include="..\..\src\ast\crate.cpp" />
+    <ClCompile Include="..\..\src\ast\dump.cpp" />
+    <ClCompile Include="..\..\src\ast\expr.cpp" />
+    <ClCompile Include="..\..\src\ast\path.cpp" />
+    <ClCompile Include="..\..\src\ast\pattern.cpp" />
+    <ClCompile Include="..\..\src\ast\types.cpp" />
+    <ClCompile Include="..\..\src\debug.cpp" />
+    <ClCompile Include="..\..\src\expand\asm.cpp" />
+    <ClCompile Include="..\..\src\expand\assert.cpp" />
+    <ClCompile Include="..\..\src\expand\cfg.cpp" />
+    <ClCompile Include="..\..\src\expand\concat.cpp" />
+    <ClCompile Include="..\..\src\expand\crate_tags.cpp" />
+    <ClCompile Include="..\..\src\expand\derive.cpp" />
+    <ClCompile Include="..\..\src\expand\env.cpp" />
+    <ClCompile Include="..\..\src\expand\file_line.cpp" />
+    <ClCompile Include="..\..\src\expand\format_args.cpp" />
+    <ClCompile Include="..\..\src\expand\include.cpp" />
+    <ClCompile Include="..\..\src\expand\lang_item.cpp" />
+    <ClCompile Include="..\..\src\expand\macro_rules.cpp" />
+    <ClCompile Include="..\..\src\expand\mod.cpp" />
+    <ClCompile Include="..\..\src\expand\proc_macro.cpp" />
+    <ClCompile Include="..\..\src\expand\rustc_diagnostics.cpp" />
+    <ClCompile Include="..\..\src\expand\std_prelude.cpp" />
+    <ClCompile Include="..\..\src\expand\stringify.cpp" />
+    <ClCompile Include="..\..\src\expand\test.cpp" />
+    <ClCompile Include="..\..\src\expand\test_harness.cpp" />
+    <ClCompile Include="..\..\src\hir\crate_post_load.cpp" />
+    <ClCompile Include="..\..\src\hir\crate_ptr.cpp" />
+    <ClCompile Include="..\..\src\hir\deserialise.cpp" />
+    <ClCompile Include="..\..\src\hir\dump.cpp" />
+    <ClCompile Include="..\..\src\hir\expr.cpp" />
+    <ClCompile Include="..\..\src\hir\expr_ptr.cpp" />
+    <ClCompile Include="..\..\src\hir\from_ast.cpp" />
+    <ClCompile Include="..\..\src\hir\from_ast_expr.cpp" />
+    <ClCompile Include="..\..\src\hir\generic_params.cpp" />
+    <ClCompile Include="..\..\src\hir\hir.cpp" />
+    <ClCompile Include="..\..\src\hir\hir_ops.cpp" />
+    <ClCompile Include="..\..\src\hir\path.cpp" />
+    <ClCompile Include="..\..\src\hir\pattern.cpp" />
+    <ClCompile Include="..\..\src\hir\serialise.cpp" />
+    <ClCompile Include="..\..\src\hir\serialise_lowlevel.cpp" />
+    <ClCompile Include="..\..\src\hir\type.cpp" />
+    <ClCompile Include="..\..\src\hir\visitor.cpp" />
+    <ClCompile Include="..\..\src\hir_conv\bind.cpp" />
+    <ClCompile Include="..\..\src\hir_conv\constant_evaluation.cpp" />
+    <ClCompile Include="..\..\src\hir_conv\expand_type.cpp" />
+    <ClCompile Include="..\..\src\hir_conv\markings.cpp" />
+    <ClCompile Include="..\..\src\hir_conv\resolve_ufcs.cpp" />
+    <ClCompile Include="..\..\src\hir_expand\annotate_value_usage.cpp" />
+    <ClCompile Include="..\..\src\hir_expand\closures.cpp" />
+    <ClCompile Include="..\..\src\hir_expand\erased_types.cpp" />
+    <ClCompile Include="..\..\src\hir_expand\reborrow.cpp" />
+    <ClCompile Include="..\..\src\hir_expand\ufcs_everything.cpp" />
+    <ClCompile Include="..\..\src\hir_expand\vtable.cpp" />
+    <ClCompile Include="..\..\src\hir_typeck\common.cpp" />
+    <ClCompile Include="..\..\src\hir_typeck\expr_check.cpp" />
+    <ClCompile Include="..\..\src\hir_typeck\expr_cs.cpp" />
+    <ClCompile Include="..\..\src\hir_typeck\expr_visit.cpp" />
+    <ClCompile Include="..\..\src\hir_typeck\helpers.cpp" />
+    <ClCompile Include="..\..\src\hir_typeck\impl_ref.cpp" />
+    <ClCompile Include="..\..\src\hir_typeck\outer.cpp" />
+    <ClCompile Include="..\..\src\hir_typeck\static.cpp" />
+    <ClCompile Include="..\..\src\ident.cpp" />
+    <ClCompile Include="..\..\src\macro_rules\eval.cpp" />
+    <ClCompile Include="..\..\src\macro_rules\mod.cpp" />
+    <ClCompile Include="..\..\src\macro_rules\parse.cpp" />
+    <ClCompile Include="..\..\src\mir\check.cpp" />
+    <ClCompile Include="..\..\src\mir\check_full.cpp" />
+    <ClCompile Include="..\..\src\mir\cleanup.cpp" />
+    <ClCompile Include="..\..\src\mir\dump.cpp" />
+    <ClCompile Include="..\..\src\mir\from_hir.cpp" />
+    <ClCompile Include="..\..\src\mir\from_hir_match.cpp" />
+    <ClCompile Include="..\..\src\mir\helpers.cpp" />
+    <ClCompile Include="..\..\src\mir\mir.cpp" />
+    <ClCompile Include="..\..\src\mir\mir_builder.cpp" />
+    <ClCompile Include="..\..\src\mir\mir_ptr.cpp" />
+    <ClCompile Include="..\..\src\mir\optimise.cpp" />
+    <ClCompile Include="..\..\src\mir\visit_crate_mir.cpp" />
+    <ClCompile Include="..\..\src\parse\expr.cpp" />
+    <ClCompile Include="..\..\src\parse\interpolated_fragment.cpp" />
+    <ClCompile Include="..\..\src\parse\lex.cpp" />
+    <ClCompile Include="..\..\src\parse\parseerror.cpp" />
+    <ClCompile Include="..\..\src\parse\paths.cpp" />
+    <ClCompile Include="..\..\src\parse\pattern.cpp" />
+    <ClCompile Include="..\..\src\parse\root.cpp" />
+    <ClCompile Include="..\..\src\parse\token.cpp" />
+    <ClCompile Include="..\..\src\parse\tokenstream.cpp" />
+    <ClCompile Include="..\..\src\parse\tokentree.cpp" />
+    <ClCompile Include="..\..\src\parse\ttstream.cpp" />
+    <ClCompile Include="..\..\src\parse\types.cpp" />
+    <ClCompile Include="..\..\src\rc_string.cpp" />
+    <ClCompile Include="..\..\src\resolve\absolute.cpp" />
+    <ClCompile Include="..\..\src\resolve\index.cpp" />
+    <ClCompile Include="..\..\src\resolve\use.cpp" />
+    <ClCompile Include="..\..\src\span.cpp" />
+    <ClCompile Include="..\..\src\trans\allocator.cpp" />
+    <ClCompile Include="..\..\src\trans\codegen.cpp" />
+    <ClCompile Include="..\..\src\trans\codegen_c.cpp" />
+    <ClCompile Include="..\..\src\trans\codegen_c_structured.cpp" />
+    <ClCompile Include="..\..\src\trans\codegen_mmir.cpp" />
+    <ClCompile Include="..\..\src\trans\enumerate.cpp" />
+    <ClCompile Include="..\..\src\trans\monomorphise.cpp" />
+    <ClCompile Include="..\..\src\trans\target.cpp" />
+    <ClCompile Include="..\..\src\trans\trans_list.cpp" />
+    <ClCompile Include="..\..\src\version.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\src\ast\ast.hpp" />
+    <ClInclude Include="..\..\src\ast\attrs.hpp" />
+    <ClInclude Include="..\..\src\ast\crate.hpp" />
+    <ClInclude Include="..\..\src\ast\expr.hpp" />
+    <ClInclude Include="..\..\src\ast\generics.hpp" />
+    <ClInclude Include="..\..\src\ast\item.hpp" />
+    <ClInclude Include="..\..\src\ast\macro.hpp" />
+    <ClInclude Include="..\..\src\ast\path.hpp" />
+    <ClInclude Include="..\..\src\ast\pattern.hpp" />
+    <ClInclude Include="..\..\src\ast\types.hpp" />
+    <ClInclude Include="..\..\src\common.hpp" />
+    <ClInclude Include="..\..\src\coretypes.hpp" />
+    <ClInclude Include="..\..\src\expand\cfg.hpp" />
+    <ClInclude Include="..\..\src\hir\crate_ptr.hpp" />
+    <ClInclude Include="..\..\src\hir\expr.hpp" />
+    <ClInclude Include="..\..\src\hir\expr_ptr.hpp" />
+    <ClInclude Include="..\..\src\hir\from_ast.hpp" />
+    <ClInclude Include="..\..\src\hir\generic_params.hpp" />
+    <ClInclude Include="..\..\src\hir\hir.hpp" />
+    <ClInclude Include="..\..\src\hir\path.hpp" />
+    <ClInclude Include="..\..\src\hir\pattern.hpp" />
+    <ClInclude Include="..\..\src\hir\type.hpp" />
+    <ClInclude Include="..\..\src\hir\visitor.hpp" />
+    <ClInclude Include="..\..\src\hir_conv\main_bindings.hpp" />
+    <ClInclude Include="..\..\src\hir_expand\main_bindings.hpp" />
+    <ClInclude Include="..\..\src\hir_typeck\expr_visit.hpp" />
+    <ClInclude Include="..\..\src\hir_typeck\helpers.hpp" />
+    <ClInclude Include="..\..\src\hir_typeck\impl_ref.hpp" />
+    <ClInclude Include="..\..\src\hir_typeck\main_bindings.hpp" />
+    <ClInclude Include="..\..\src\hir_typeck\static.hpp" />
+    <ClInclude Include="..\..\src\include\compile_error.hpp" />
+    <ClInclude Include="..\..\src\include\cpp_unpack.h" />
+    <ClInclude Include="..\..\src\include\debug.hpp" />
+    <ClInclude Include="..\..\src\include\main_bindings.hpp" />
+    <ClInclude Include="..\..\src\include\rc_string.hpp" />
+    <ClInclude Include="..\..\src\include\rustic.hpp" />
+    <ClInclude Include="..\..\src\include\serialise.hpp" />
+    <ClInclude Include="..\..\src\include\serialiser_texttree.hpp" />
+    <ClInclude Include="..\..\src\include\span.hpp" />
+    <ClInclude Include="..\..\src\include\synext.hpp" />
+    <ClInclude Include="..\..\src\include\synext_decorator.hpp" />
+    <ClInclude Include="..\..\src\include\synext_macro.hpp" />
+    <ClInclude Include="..\..\src\include\tagged_union.hpp" />
+    <ClInclude Include="..\..\src\macro_rules\macro_rules.hpp" />
+    <ClInclude Include="..\..\src\macro_rules\macro_rules_ptr.hpp" />
+    <ClInclude Include="..\..\src\macro_rules\pattern_checks.hpp" />
+    <ClInclude Include="..\..\src\mir\from_hir.hpp" />
+    <ClInclude Include="..\..\src\mir\helpers.hpp" />
+    <ClInclude Include="..\..\src\mir\main_bindings.hpp" />
+    <ClInclude Include="..\..\src\mir\mir.hpp" />
+    <ClInclude Include="..\..\src\mir\mir_ptr.hpp" />
+    <ClInclude Include="..\..\src\mir\operations.hpp" />
+    <ClInclude Include="..\..\src\mir\visit_crate_mir.hpp" />
+    <ClInclude Include="..\..\src\parse\common.hpp" />
+    <ClInclude Include="..\..\src\parse\eTokenType.enum.h" />
+    <ClInclude Include="..\..\src\parse\interpolated_fragment.hpp" />
+    <ClInclude Include="..\..\src\parse\lex.hpp" />
+    <ClInclude Include="..\..\src\parse\parseerror.hpp" />
+    <ClInclude Include="..\..\src\parse\token.hpp" />
+    <ClInclude Include="..\..\src\parse\tokenstream.hpp" />
+    <ClInclude Include="..\..\src\parse\tokentree.hpp" />
+    <ClInclude Include="..\..\src\parse\ttstream.hpp" />
+    <ClInclude Include="..\..\src\resolve\main_bindings.hpp" />
+    <ClInclude Include="..\..\src\trans\codegen.hpp" />
+    <ClInclude Include="..\..\src\trans\main_bindings.hpp" />
+    <ClInclude Include="..\..\src\trans\mangling.hpp" />
+    <ClInclude Include="..\..\src\trans\monomorphise.hpp" />
+    <ClInclude Include="..\..\src\trans\trans_list.hpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="../packages.config" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+    <Import Project="..\packages\zlib.v120.windesktop.msvcstl.dyn.rt-dyn.1.2.8.8\build\native\zlib.v120.windesktop.msvcstl.dyn.rt-dyn.targets" Condition="Exists('..\packages\zlib.v120.windesktop.msvcstl.dyn.rt-dyn.1.2.8.8\build\native\zlib.v120.windesktop.msvcstl.dyn.rt-dyn.targets')" />
+    <Import Project="..\packages\zlib.v140.windesktop.msvcstl.dyn.rt-dyn.1.2.8.8\build\native\zlib.v140.windesktop.msvcstl.dyn.rt-dyn.targets" Condition="Exists('..\packages\zlib.v140.windesktop.msvcstl.dyn.rt-dyn.1.2.8.8\build\native\zlib.v140.windesktop.msvcstl.dyn.rt-dyn.targets')" />
+  </ImportGroup>
+  <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
+    <PropertyGroup>
+      <ErrorText>This project references NuGet package(s) that are missing on this computer. Use NuGet Package Restore to download them.  For more information, see http://go.microsoft.com/fwlink/?LinkID=322105. The missing file is {0}.</ErrorText>
+    </PropertyGroup>
+    <Error Condition="!Exists('..\packages\zlib.v120.windesktop.msvcstl.dyn.rt-dyn.1.2.8.8\build\native\zlib.v120.windesktop.msvcstl.dyn.rt-dyn.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\zlib.v120.windesktop.msvcstl.dyn.rt-dyn.1.2.8.8\build\native\zlib.v120.windesktop.msvcstl.dyn.rt-dyn.targets'))" />
+    <Error Condition="!Exists('..\packages\zlib.v140.windesktop.msvcstl.dyn.rt-dyn.1.2.8.8\build\native\zlib.v140.windesktop.msvcstl.dyn.rt-dyn.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\zlib.v140.windesktop.msvcstl.dyn.rt-dyn.1.2.8.8\build\native\zlib.v140.windesktop.msvcstl.dyn.rt-dyn.targets'))" />
+  </Target>
+</Project>

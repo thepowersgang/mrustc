@@ -1,10 +1,11 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 14
-VisualStudioVersion = 14.0.25420.1
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.29306.81
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "mrustc", "mrustc.vcxproj", "{12AA9964-C1BD-406A-9545-43EE63230EBE}"
 	ProjectSection(ProjectDependencies) = postProject
+		{79D1C15A-1FFD-4957-B56F-FE9874793C9A} = {79D1C15A-1FFD-4957-B56F-FE9874793C9A}
 		{C2AE52D0-1EA5-4072-BE90-E4CEEB5002C4} = {C2AE52D0-1EA5-4072-BE90-E4CEEB5002C4}
 	EndProjectSection
 EndProject
@@ -24,6 +25,14 @@ EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "standalone_miri", "standalone_miri\standalone_miri.vcxproj", "{253306D0-355B-41F2-A2F6-033DED548878}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "common_lib", "common_lib\common_lib.vcxproj", "{C2AE52D0-1EA5-4072-BE90-E4CEEB5002C4}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "mir_opt_test", "mir_opt_test\mir_opt_test.vcxproj", "{09D9A76F-51FF-4310-ABBE-CD7C52F3B6EA}"
+	ProjectSection(ProjectDependencies) = postProject
+		{79D1C15A-1FFD-4957-B56F-FE9874793C9A} = {79D1C15A-1FFD-4957-B56F-FE9874793C9A}
+		{C2AE52D0-1EA5-4072-BE90-E4CEEB5002C4} = {C2AE52D0-1EA5-4072-BE90-E4CEEB5002C4}
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "mrustc_lib", "mrustc_lib\mrustc_lib.vcxproj", "{79D1C15A-1FFD-4957-B56F-FE9874793C9A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -81,8 +90,27 @@ Global
 		{C2AE52D0-1EA5-4072-BE90-E4CEEB5002C4}.Release|x64.Build.0 = Release|x64
 		{C2AE52D0-1EA5-4072-BE90-E4CEEB5002C4}.Release|x86.ActiveCfg = Release|Win32
 		{C2AE52D0-1EA5-4072-BE90-E4CEEB5002C4}.Release|x86.Build.0 = Release|Win32
+		{09D9A76F-51FF-4310-ABBE-CD7C52F3B6EA}.Debug|x64.ActiveCfg = Debug|x64
+		{09D9A76F-51FF-4310-ABBE-CD7C52F3B6EA}.Debug|x64.Build.0 = Debug|x64
+		{09D9A76F-51FF-4310-ABBE-CD7C52F3B6EA}.Debug|x86.ActiveCfg = Debug|Win32
+		{09D9A76F-51FF-4310-ABBE-CD7C52F3B6EA}.Debug|x86.Build.0 = Debug|Win32
+		{09D9A76F-51FF-4310-ABBE-CD7C52F3B6EA}.Release|x64.ActiveCfg = Release|x64
+		{09D9A76F-51FF-4310-ABBE-CD7C52F3B6EA}.Release|x64.Build.0 = Release|x64
+		{09D9A76F-51FF-4310-ABBE-CD7C52F3B6EA}.Release|x86.ActiveCfg = Release|Win32
+		{09D9A76F-51FF-4310-ABBE-CD7C52F3B6EA}.Release|x86.Build.0 = Release|Win32
+		{79D1C15A-1FFD-4957-B56F-FE9874793C9A}.Debug|x64.ActiveCfg = Debug|x64
+		{79D1C15A-1FFD-4957-B56F-FE9874793C9A}.Debug|x64.Build.0 = Debug|x64
+		{79D1C15A-1FFD-4957-B56F-FE9874793C9A}.Debug|x86.ActiveCfg = Debug|Win32
+		{79D1C15A-1FFD-4957-B56F-FE9874793C9A}.Debug|x86.Build.0 = Debug|Win32
+		{79D1C15A-1FFD-4957-B56F-FE9874793C9A}.Release|x64.ActiveCfg = Release|x64
+		{79D1C15A-1FFD-4957-B56F-FE9874793C9A}.Release|x64.Build.0 = Release|x64
+		{79D1C15A-1FFD-4957-B56F-FE9874793C9A}.Release|x86.ActiveCfg = Release|Win32
+		{79D1C15A-1FFD-4957-B56F-FE9874793C9A}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {0E880A34-777B-40F3-A837-B3C9054B3003}
 	EndGlobalSection
 EndGlobal
