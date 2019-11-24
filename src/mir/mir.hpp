@@ -598,6 +598,10 @@ TAGGED_UNION(Terminator, Incomplete,
         })
     );
 extern ::std::ostream& operator<<(::std::ostream& os, const Terminator& x);
+extern bool operator==(const Terminator& a, const Terminator& b);
+static inline bool operator!=(const Terminator& a, const Terminator& b) {
+    return !(a == b);
+}
 
 enum class eDropKind {
     SHALLOW,

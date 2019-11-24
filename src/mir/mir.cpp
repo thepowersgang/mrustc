@@ -427,6 +427,89 @@ namespace MIR {
 
         return os;
     }
+    bool operator==(const Terminator& a, const Terminator& b) {
+        if( a.tag() != b.tag() )
+            return false;
+        TU_MATCHA( (a,b), (ae,be),
+        (Incomplete,
+            ),
+        (Return,
+            ),
+        (Diverge,
+            ),
+        (Goto,
+            if( ae != be )
+                return false;
+            ),
+        (Panic,
+            if( ae.dst != be.dst )
+                return false;
+            ),
+        (If,
+            if( ae.cond != be.cond )
+                return false;
+            if( ae.bb0 != be.bb0 )
+                return false;
+            if( ae.bb1 != be.bb1 )
+                return false;
+            ),
+        (Switch,
+            if( ae.val != be.val )
+                return false;
+            if( ae.targets != be.targets )
+                return false;
+            ),
+        (SwitchValue,
+            if( ae.val != be.val )
+                return false;
+            if( ae.targets != be.targets )
+                return false;
+            if( ae.values.tag() != be.values.tag() )
+                return false;
+            TU_MATCHA( (ae.values, be.values), (ave, bve),
+            (Unsigned,
+                if( ave != bve )
+                    return false;
+                ),
+            (Signed,
+                if( ave != bve )
+                    return false;
+                ),
+            (String,
+                if( ave != bve )
+                    return false;
+                )
+            )
+            ),
+        (Call,
+            if( ae.ret_val != be.ret_val )
+                return false;
+            TU_MATCHA( (ae.fcn, be.fcn), (afe, bfe),
+            (Value,
+                if( afe != bfe )
+                    return false;
+                ),
+            (Path,
+                if( afe != bfe )
+                    return false;
+                ),
+            (Intrinsic,
+                if( afe.name != bfe.name )
+                    return false;
+                if( afe.params != bfe.params )
+                    return false;
+                )
+            )
+            if( ae.args != be.args )
+                return false;
+            if( ae.ret_block != be.ret_block )
+                return false;
+            if( ae.panic_block != be.panic_block )
+                return false;
+            )
+        )
+        return true;
+    }
     ::std::ostream& operator<<(::std::ostream& os, const Statement& x)
     {
         TU_MATCHA( (x), (e),
