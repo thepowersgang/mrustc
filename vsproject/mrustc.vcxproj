@@ -302,6 +302,7 @@
     <ClInclude Include="..\src\include\compile_error.hpp" />
     <ClInclude Include="..\src\include\cpp_unpack.h" />
     <ClInclude Include="..\src\include\debug.hpp" />
+    <ClInclude Include="..\src\include\debug_inner.hpp" />
     <ClInclude Include="..\src\include\main_bindings.hpp" />
     <ClInclude Include="..\src\include\rc_string.hpp" />
     <ClInclude Include="..\src\include\rustic.hpp" />

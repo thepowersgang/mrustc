@@ -607,6 +607,9 @@
     <ClInclude Include="..\src\parse\parseerror.hpp">
       <Filter>Header Files\parse</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\include\debug_inner.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

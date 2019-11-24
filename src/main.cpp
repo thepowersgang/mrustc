@@ -28,109 +28,9 @@
 
 #include "expand/cfg.hpp"
 #include <target_detect.h>	// tools/common/target_detect.h
-
-int g_debug_indent_level = 0;
-bool g_debug_enabled = true;
-::std::string g_cur_phase;
-::std::set< ::std::string>    g_debug_disable_map;
+#include <debug_inner.hpp>
 
 TargetVersion	gTargetVersion = TargetVersion::Rustc1_29;
-
-void init_debug_list()
-{
-    g_debug_disable_map.insert( "Target Load" );
-    g_debug_disable_map.insert( "Parse" );
-    g_debug_disable_map.insert( "LoadCrates" );
-    g_debug_disable_map.insert( "Expand" );
-    g_debug_disable_map.insert( "Dump Expanded" );
-    g_debug_disable_map.insert( "Implicit Crates" );
-
-    g_debug_disable_map.insert( "Resolve Use" );
-    g_debug_disable_map.insert( "Resolve Index" );
-    g_debug_disable_map.insert( "Resolve Absolute" );
-
-    g_debug_disable_map.insert( "HIR Lower" );
-
-    g_debug_disable_map.insert( "Resolve Type Aliases" );
-    g_debug_disable_map.insert( "Resolve Bind" );
-    g_debug_disable_map.insert( "Resolve UFCS Outer" );
-    g_debug_disable_map.insert( "Resolve UFCS paths" );
-    g_debug_disable_map.insert( "Resolve HIR Markings" );
-    g_debug_disable_map.insert( "Constant Evaluate" );
-
-    g_debug_disable_map.insert( "Typecheck Outer");
-    g_debug_disable_map.insert( "Typecheck Expressions" );
-
-    g_debug_disable_map.insert( "Expand HIR Annotate" );
-    g_debug_disable_map.insert( "Expand HIR Closures" );
-    g_debug_disable_map.insert( "Expand HIR Calls" );
-    g_debug_disable_map.insert( "Expand HIR VTables" );
-    g_debug_disable_map.insert( "Expand HIR Reborrows" );
-    g_debug_disable_map.insert( "Expand HIR ErasedType" );
-    g_debug_disable_map.insert( "Typecheck Expressions (validate)" );
-
-    g_debug_disable_map.insert( "Dump HIR" );
-    g_debug_disable_map.insert( "Lower MIR" );
-    g_debug_disable_map.insert( "MIR Validate" );
-    g_debug_disable_map.insert( "MIR Validate Full Early" );
-    g_debug_disable_map.insert( "Dump MIR" );
-    g_debug_disable_map.insert( "Constant Evaluate Full" );
-    g_debug_disable_map.insert( "MIR Cleanup" );
-    g_debug_disable_map.insert( "MIR Optimise" );
-    g_debug_disable_map.insert( "MIR Validate PO" );
-    g_debug_disable_map.insert( "MIR Validate Full" );
-
-    g_debug_disable_map.insert( "HIR Serialise" );
-    g_debug_disable_map.insert( "Trans Enumerate" );
-    g_debug_disable_map.insert( "Trans Auto Impls" );
-    g_debug_disable_map.insert( "Trans Monomorph" );
-    g_debug_disable_map.insert( "MIR Optimise Inline" );
-    g_debug_disable_map.insert( "Trans Codegen" );
-
-    // Mutate this map using an environment variable
-    const char* debug_string = ::std::getenv("MRUSTC_DEBUG");
-    if( debug_string )
-    {
-        while( debug_string[0] )
-        {
-            const char* end = strchr(debug_string, ':');
-
-            ::std::string   s;
-            if( end )
-            {
-                s = ::std::string { debug_string, end };
-                debug_string = end + 1;
-            }
-            else
-            {
-                s = debug_string;
-            }
-            if( g_debug_disable_map.erase(s) == 0 )
-            {
-                ::std::cerr << "WARN: Unknown compiler phase '" << s << "' in $MRUSTC_DEBUG" << ::std::endl;
-            }
-            if( !end ) {
-                break;
-            }
-        }
-    }
-}
-bool debug_enabled_update() {
-    if( g_debug_disable_map.count(g_cur_phase) != 0 ) {
-        return false;
-    }
-    else {
-        return true;
-    }
-}
-bool debug_enabled()
-{
-    return g_debug_enabled;
-}
-::std::ostream& debug_output(int indent, const char* function)
-{
-    return ::std::cout << g_cur_phase << "- " << RepeatLitStr { " ", indent } << function << ": ";
-}
 
 struct ProgramParams
 {
@@ -190,24 +90,67 @@ struct ProgramParams
 
 template <typename Rv, typename Fcn>
 Rv CompilePhase(const char *name, Fcn f) {
-    ::std::cout << name << ": V V V" << ::std::endl;
-    g_cur_phase = name;
-    g_debug_enabled = debug_enabled_update();
-    auto start = clock();
-    auto rv = f();
-    auto end = clock();
-    g_cur_phase = "";
-    g_debug_enabled = debug_enabled_update();
-
-    // TODO: Show wall time too?
-    ::std::cout <<"(" << ::std::fixed << ::std::setprecision(2) << static_cast<double>(end - start) / static_cast<double>(CLOCKS_PER_SEC) << " s) ";
-    ::std::cout << name << ": DONE";
-    ::std::cout << ::std::endl;
-    return rv;
+    DebugTimedPhase timed_phase(name);
+    return f();
 }
 template <typename Fcn>
 void CompilePhaseV(const char *name, Fcn f) {
-    CompilePhase<int>(name, [&]() { f(); return 0; });
+    DebugTimedPhase timed_phase(name);
+    f();
+}
+
+void init_debug_list()
+{
+    debug_init_phases("MRUSTC_DEBUG", {
+        "Target Load",
+        "Parse",
+        "LoadCrates",
+        "Expand",
+        "Dump Expanded",
+        "Implicit Crates",
+
+        "Resolve Use",
+        "Resolve Index",
+        "Resolve Absolute",
+
+        "HIR Lower",
+
+        "Resolve Type Aliases",
+        "Resolve Bind",
+        "Resolve UFCS Outer",
+        "Resolve UFCS paths",
+        "Resolve HIR Markings",
+        "Constant Evaluate",
+
+        "Typecheck Outer",
+        "Typecheck Expressions",
+
+        "Expand HIR Annotate",
+        "Expand HIR Closures",
+        "Expand HIR Calls",
+        "Expand HIR VTables",
+        "Expand HIR Reborrows",
+        "Expand HIR ErasedType",
+        "Typecheck Expressions (validate)",
+
+        "Dump HIR",
+        "Lower MIR",
+        "MIR Validate",
+        "MIR Validate Full Early",
+        "Dump MIR",
+        "Constant Evaluate Full",
+        "MIR Cleanup",
+        "MIR Optimise",
+        "MIR Validate PO",
+        "MIR Validate Full",
+
+        "HIR Serialise",
+        "Trans Enumerate",
+        "Trans Auto Impls",
+        "Trans Monomorph",
+        "MIR Optimise Inline",
+        "Trans Codegen"
+        });
 }
 
 /// main!
@@ -1207,55 +1150,4 @@ void ProgramParams::show_help() const
         "-C <option>        : Code-generation options\n"
         "-Z <option>        : Debugging/experiemental options\n"
         ;
-}
-
-
-::std::ostream& operator<<(::std::ostream& os, const FmtEscaped& x)
-{
-    os << ::std::hex;
-    for(auto s = x.s; *s != '\0'; s ++)
-    {
-        switch(*s)
-        {
-        case '\0':  os << "\\0";    break;
-        case '\n':  os << "\\n";    break;
-        case '\\':  os << "\\\\";   break;
-        case '"':   os << "\\\"";   break;
-        default:
-            uint8_t v = *s;
-            if( v < 0x80 )
-            {
-                if( v < ' ' || v > 0x7F )
-                    os << "\\u{" << ::std::hex << (unsigned int)v << "}";
-                else
-                    os << v;
-            }
-            else if( v < 0xC0 )
-                ;
-            else if( v < 0xE0 )
-            {
-                uint32_t    val = (uint32_t)(v & 0x1F) << 6;
-                v = (uint8_t)*++s; if( (v & 0xC0) != 0x80 ) { s--; continue ; } val |= (uint32_t)v << 6;
-                os << "\\u{" << ::std::hex << val << "}";
-            }
-            else if( v < 0xF0 )
-            {
-                uint32_t    val = (uint32_t)(v & 0x0F) << 12;
-                v = (uint8_t)*++s; if( (v & 0xC0) != 0x80 ) { s--; continue ; } val |= (uint32_t)v << 12;
-                v = (uint8_t)*++s; if( (v & 0xC0) != 0x80 ) { s--; continue ; } val |= (uint32_t)v << 6;
-                os << "\\u{" << ::std::hex << val << "}";
-            }
-            else if( v < 0xF8 )
-            {
-                uint32_t    val = (uint32_t)(v & 0x07) << 18;
-                v = (uint8_t)*++s; if( (v & 0xC0) != 0x80 ) { s--; continue ; } val |= (uint32_t)v << 18;
-                v = (uint8_t)*++s; if( (v & 0xC0) != 0x80 ) { s--; continue ; } val |= (uint32_t)v << 12;
-                v = (uint8_t)*++s; if( (v & 0xC0) != 0x80 ) { s--; continue ; } val |= (uint32_t)v << 6;
-                os << "\\u{" << ::std::hex << val << "}";
-            }
-            break;
-        }
-    }
-    os << ::std::dec;
-    return os;
 }
