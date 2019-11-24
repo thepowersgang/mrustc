@@ -162,12 +162,12 @@ More than one MIR generation issue has lead to bugs that could have been caught 
 On-demand codegen
 -----------------
 
-As part of upgrading the target version, and just removing old and redundant code, it'd be nice to support full MIR constant evaluation (currently the consteval phase has two evaluatorss - one handling local HIR, the other handling MIR from external sources). Generating MIR (and doing typeheck of required items) during the constant evaluation phase would completely remove the HIR evaluator, and all of the type guessing performed to allow HIR constant evaluation (which routinely falls over when exposed to new code).
+As part of upgrading the target version, and just removing old and redundant code, it'd be nice to support full MIR constant evaluation (currently the consteval phase has two evaluators - one handling local HIR, the other handling MIR from external sources). Generating MIR (and doing typeheck of required items) during the constant evaluation phase would completely remove the HIR evaluator, and all of the type guessing performed to allow HIR constant evaluation (which routinely falls over when exposed to new code).
 
 Parser Re-write
 ---------------
 
-The mrustc parser is ancient, with some functions dating back to the start of the project in 2014. On its own, this isn't a problem, but the parsing model itself makes both debugging nd extending the parser challenging. The current model works with a push-pull lexer (which hands out tokens, and allows the caller to push the token back if not needed). More recent code (e.g. the MIRI parser) use a peek/consume model, where the lexer "owns" the tokens until the token is actually consumed - much simpler to debug (via logging when tokens are consumed) and is a closer match to how the lexer gets used in practice.
+The mrustc parser is ancient, with some functions dating back to the start of the project in 2014. On its own, this isn't a problem, but the parsing model itself makes both debugging and extending the parser challenging. The current model works with a push-pull lexer (which hands out tokens, and allows the caller to push the token back if not needed). More recent code (e.g. the MIRI parser) use a peek/consume model, where the lexer "owns" the tokens until the token is actually consumed - much simpler to debug (via logging when tokens are consumed) and is a closer match to how the lexer gets used in practice.
 
 
 
