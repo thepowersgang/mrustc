@@ -1946,7 +1946,7 @@ VarState& MirBuilder::get_slot_state_mut(const Span& sp, unsigned int idx, SlotT
 VarState* MirBuilder::get_val_state_mut_p(const Span& sp, const ::MIR::LValue& lv, bool expect_valid/*=false*/)
 {
     TRACE_FUNCTION_F(lv);
-    VarState*   vs;
+    VarState*   vs = nullptr;
     TU_MATCHA( (lv.m_root), (e),
     (Return,
         BUG(sp, "Move of return value");
@@ -1963,6 +1963,7 @@ VarState* MirBuilder::get_val_state_mut_p(const Span& sp, const ::MIR::LValue& l
         //BUG(sp, "Attempting to mutate state of a static");
         )
     )
+    assert(vs);
 
     if( expect_valid && vs->is_Valid() )
     {

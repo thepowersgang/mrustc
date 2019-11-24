@@ -224,7 +224,7 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable)
         {
             auto dt = tok.datatype();
             // TODO: Ensure that the type is ANY or a signed integer
-            return AST::Pattern( AST::Pattern::TagValue(), lex.end_span(ps), AST::Pattern::Value::make_Integer({dt, -tok.intval()}) );
+            return AST::Pattern( AST::Pattern::TagValue(), lex.end_span(ps), AST::Pattern::Value::make_Integer({dt, ~tok.intval() + 1}) );
         }
         else if( tok.type() == TOK_FLOAT )
         {

@@ -462,14 +462,14 @@ namespace HIR {
 
                 ::HIR::Literal  val;
                 const auto& sa = stmt.as_Assign();
-                TU_MATCHA( (sa.src), (e),
-                (Use,
+                TU_MATCH_HDRA( (sa.src), {)
+                TU_ARMA(Use, e) {
                     val = local_state.read_lval(e);
-                    ),
-                (Constant,
+                    }
+                TU_ARMA(Constant, e) {
                     val = const_to_lit(e);
-                    ),
-                (SizedArray,
+                    }
+                TU_ARMA(SizedArray, e) {
                     ::std::vector< ::HIR::Literal>  vals;
                     if( e.count > 0 )
                     {
@@ -480,8 +480,8 @@ namespace HIR {
                         vals.push_back( mv$(val) );
                     }
                     val = ::HIR::Literal::make_List( mv$(vals) );
-                    ),
-                (Borrow,
+                    }
+                TU_ARMA(Borrow, e) {
                     if( e.type != ::HIR::BorrowType::Shared ) {
                         MIR_BUG(state, "Only shared borrows are allowed in constants");
                     }
@@ -508,8 +508,8 @@ namespace HIR {
                         auto item_path = this->nvs.new_static( mv$(inner_ty), mv$(inner_val) );
                         val = ::HIR::Literal::make_BorrowPath( mv$(item_path) );
                     }
-                    ),
-                (Cast,
+                    }
+                TU_ARMA(Cast, e) {
                     auto inval = local_state.read_lval(e.val);
                     if( inval.is_Defer() ) {
                         val = ::HIR::Literal::make_Defer({});
@@ -592,8 +592,8 @@ namespace HIR {
                         }
                         )
                     )
-                    ),
-                (BinOp,
+                    }
+                TU_ARMA(BinOp, e) {
                     auto inval_l = read_param(e.val_l);
                     auto inval_r = read_param(e.val_r);
                     if( inval_l.is_Defer() || inval_r.is_Defer() )
@@ -661,8 +661,8 @@ namespace HIR {
                         }
                         )
                     )
-                    ),
-                (UniOp,
+                    }
+                TU_ARMA(UniOp, e) {
                     auto inval = local_state.read_lval(e.val);
                     if( inval.is_Defer() )
                         return ::HIR::Literal::make_Defer({});
@@ -673,7 +673,7 @@ namespace HIR {
                             val = ::HIR::Literal( ~i );
                             break;
                         case ::MIR::eUniOp::NEG:
-                            val = ::HIR::Literal( -i );
+                            val = ::HIR::Literal( static_cast<uint64_t>(-static_cast<int64_t>(i)) );
                             break;
                         }
                     )
@@ -691,14 +691,14 @@ namespace HIR {
                     else {
                         MIR_BUG(state, "Invalid invert of " << inval.tag_str());
                     }
-                    ),
-                (DstMeta,
+                    }
+                TU_ARMA(DstMeta, e) {
                     MIR_TODO(state, "RValue::DstMeta");
-                    ),
-                (DstPtr,
+                    }
+                TU_ARMA(DstPtr, e) {
                     MIR_TODO(state, "RValue::DstPtr");
-                    ),
-                (MakeDst,
+                    }
+                TU_ARMA(MakeDst, e) {
                     auto ptr = read_param(e.ptr_val);
                     if(ptr.is_Defer()) return ::HIR::Literal::make_Defer({});
                     auto meta = read_param(e.meta_val);
@@ -709,8 +709,8 @@ namespace HIR {
                     else {
                         val = mv$(ptr);
                     }
-                    ),
-                (Tuple,
+                    }
+                TU_ARMA(Tuple, e) {
                     ::std::vector< ::HIR::Literal>  vals;
                     vals.reserve( e.vals.size() );
                     for(const auto& v : e.vals) {
@@ -720,8 +720,8 @@ namespace HIR {
                         }
                     }
                     val = ::HIR::Literal::make_List( mv$(vals) );
-                    ),
-                (Array,
+                    }
+                TU_ARMA(Array, e) {
                     ::std::vector< ::HIR::Literal>  vals;
                     vals.reserve( e.vals.size() );
                     for(const auto& v : e.vals) {
@@ -731,13 +731,13 @@ namespace HIR {
                         }
                     }
                     val = ::HIR::Literal::make_List( mv$(vals) );
-                    ),
-                (Variant,
+                    }
+                TU_ARMA(Variant, e) {
                     auto ival = read_param(e.val);
                     if(ival.is_Defer()) return ::HIR::Literal::make_Defer({});
                     val = ::HIR::Literal::make_Variant({ e.index, box$(ival) });
-                    ),
-                (Struct,
+                    }
+                TU_ARMA(Struct, e) {
                     ::std::vector< ::HIR::Literal>  vals;
                     vals.reserve( e.vals.size() );
                     for(const auto& v : e.vals) {
@@ -747,8 +747,8 @@ namespace HIR {
                         }
                     }
                     val = ::HIR::Literal::make_List( mv$(vals) );
-                    )
-                )
+                    }
+                }
 
                 auto& dst = local_state.get_lval(sa.dst);
                 dst = mv$(val);

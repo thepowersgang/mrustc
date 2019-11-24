@@ -46,7 +46,7 @@ public:
     bool is_token() const {
         return m_tok.type() != TOK_NULL;
     }
-    unsigned int size() const {
+    size_t size() const {
         return m_subtrees.size();
     }
     const TokenTree& operator[](unsigned int idx) const { assert(idx < m_subtrees.size()); return m_subtrees[idx]; }

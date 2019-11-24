@@ -1275,7 +1275,7 @@ namespace {
             }
 
             const ::HIR::t_struct_fields* fields_ptr = nullptr;
-            const ::HIR::GenericParams* generics;
+            const ::HIR::GenericParams* generics = nullptr;
             TU_MATCH(::HIR::TypeRef::TypePathBinding, (ty.m_data.as_Path().binding), (e),
             (Unbound, ),
             (Opaque, ),
@@ -1322,6 +1322,7 @@ namespace {
                 )
             )
             ASSERT_BUG(node.span(), fields_ptr, "");
+            assert(generics);
             const ::HIR::t_struct_fields& fields = *fields_ptr;
 
             const auto& ty_params = ty_path.m_params.m_types;

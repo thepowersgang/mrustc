@@ -1147,7 +1147,7 @@ namespace {
                     {
                         pow8 = ::std::max(pow8, 2);
                     }
-                    else if( -0x80000000 <= v2 && v2 < 0x80000000 )
+                    else if( -0x80000000ll <= v2 && v2 < 0x80000000ll )
                     {
                         pow8 = ::std::max(pow8, 3);
                     }
