@@ -11,6 +11,7 @@
 #include <iostream>
 #include <iomanip>
 #include <common.hpp>   // FmtEscaped
+#include <cstring>	// strchr
 
 
 int g_debug_indent_level = 0;
