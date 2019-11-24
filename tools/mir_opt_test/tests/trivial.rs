@@ -1,3 +1,4 @@
+// No-op test
 #[test="test_trivial"]
 fn test_trivial()
 {
@@ -39,6 +40,7 @@ fn dce_exp()
 	} RETURN;
 }
 
+// Inlining
 #[test="inlining_exp"]
 fn inlining()
 {
@@ -56,6 +58,27 @@ fn inlining_target()
 	} RETURN;
 }
 fn inlining_exp()
+{
+	bb0: {
+		ASSIGN retval = ();
+	} RETURN;
+}
+
+// Constant propagation leading to DCE
+#[test="constprop_exp"]
+fn constprop()
+{
+	let v1: bool;
+	bb0: {
+		ASSIGN v1 = true;
+	} IF v1 => bb1 else bb2;
+	bb1: {
+		ASSIGN retval = ();
+	} RETURN;
+	bb2: {
+	} DIVERGE;
+}
+fn constprop_exp()
 {
 	bb0: {
 		ASSIGN retval = ();

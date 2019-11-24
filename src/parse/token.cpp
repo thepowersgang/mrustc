@@ -504,6 +504,12 @@ struct EscapedString {
     case TOK_LIFETIME:
         if( tok.m_data.is_String() )
             os << "\"" << EscapedString(tok.str()) << "\"";
+        else if( tok.m_data.is_IString() )
+            os << "\"" << tok.istr() << "\"";
+        else if( tok.m_data.is_None() )
+            ;
+        else
+            os << "?inner?";
         break;
     case TOK_INTEGER:
         if( tok.m_data.is_Integer() )
