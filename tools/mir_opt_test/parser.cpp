@@ -115,6 +115,11 @@ namespace {
         auto fcn_name = tok.istr();
         DEBUG("fn " << fcn_name);
 
+        if(consume_if(lex, TOK_LT) )
+        {
+            TODO(lex.point_span(), "Generic functions");
+        }
+
         // Arguments
         auto& args = fcn_decl.m_args;
         GET_CHECK_TOK(tok, lex, TOK_PAREN_OPEN);
@@ -187,7 +192,15 @@ namespace {
                 GET_CHECK_TOK(tok, lex, TOK_IDENT);
                 if( tok.istr() == "DROP" )
                 {
-                    TODO(lex.point_span(), "MIR statement - " << tok);
+                    auto slot = parse_lvalue(lex, val_name_map);
+                    if( consume_if(lex, TOK_RWORD_IF) )
+                    {
+                        TODO(lex.point_span(), "MIR statement - DROP if");
+                    }
+                    else
+                    {
+                        bb.statements.push_back(::MIR::Statement::make_Drop({ MIR::eDropKind::DEEP, mv$(slot), ~0u }));
+                    }
                 }
                 else if( tok.istr() == "ASM" )
                 {
@@ -207,9 +220,28 @@ namespace {
                     GET_TOK(tok, lex);
                     switch(tok.type())
                     {
-                    // Cnstant boolean
+                    // Constant boolean
                     case TOK_RWORD_TRUE:    src = MIR::Constant::make_Bool({true });   break;
                     case TOK_RWORD_FALSE:   src = MIR::Constant::make_Bool({false});   break;
+
+                    case TOK_PLUS:
+                    case TOK_DASH: {
+                        bool is_neg = (tok.type() == TOK_DASH);
+                        GET_TOK(tok, lex);
+                        switch(tok.type())
+                        {
+                        case TOK_INTEGER:
+                            TODO(lex.point_span(), "MIR assign - " << (is_neg ? "-" : "+") << tok.intval());
+                            //src = MIR::Constant::make_Int({ tok.intval(), ct });
+                        case TOK_FLOAT:
+                            TODO(lex.point_span(), "MIR assign - " << (is_neg ? "-" : "+") << tok.floatval());
+                            //src = MIR::Constant::make_Float({ tok.floatval(), ct });
+                        default:
+                            throw ParseError::Unexpected(lex, tok, { TOK_INTEGER, TOK_FLOAT });
+                        }
+                        } break;
+                    case TOK_INTEGER:
+                        TODO(lex.point_span(), "MIR assign - " << tok.intval());
 
                     case TOK_AMP:
                         if( consume_if(lex, TOK_RWORD_MOVE) )
