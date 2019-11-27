@@ -279,11 +279,11 @@ output$(OUTDIR_SUF)/rust/test_run-pass_hello_out.txt: output$(OUTDIR_SUF)/rust/t
 bin/mrustc.a: $(filter-out $(OBJDIR)main.o, $(OBJ))
 	@mkdir -p $(dir $@)
 	@echo [AR] -o $@
-	$Var rcD $@ $(OBJ)
+	$Var rcD $@ $(filter-out $(OBJDIR)main.o, $(OBJ))
 $(BIN): $(OBJDIR)main.o bin/mrustc.a tools/bin/common_lib.a
 	@mkdir -p $(dir $@)
 	@echo [CXX] -o $@
-	$V$(CXX) -o $@ $(LINKFLAGS) $(OBJDIR)main.o bin/mrustc.a tools/bin/common_lib.a $(LIBS)
+	$V$(CXX) -o $@ $(LINKFLAGS) $(OBJDIR)main.o -Wl,--whole-archive bin/mrustc.a -Wl,--no-whole-archive tools/bin/common_lib.a $(LIBS)
 ifeq ($(OS),Windows_NT)
 else ifeq ($(shell uname -s || echo not),Darwin)
 else
