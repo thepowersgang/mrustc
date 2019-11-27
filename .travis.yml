@@ -31,6 +31,7 @@ install:
 
 script:
  - set -e
+ - make -C tools/mir_opt_test
  - make -f minicargo.mk output/libtest.rlib      # libstd
  - make test    # hello_world
 # Tests
