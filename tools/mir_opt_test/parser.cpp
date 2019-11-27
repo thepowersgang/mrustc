@@ -4,6 +4,7 @@
 #include <parse/lex.hpp>
 #include <parse/common.hpp>
 #include <parse/parseerror.hpp>
+#include <climits>	// UINT_MAX
 
 #include <hir/hir.hpp>
 #include <mir/mir.hpp>
