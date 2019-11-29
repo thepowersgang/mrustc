@@ -767,7 +767,7 @@ void PackageManifest::load_build_script(const ::std::string& path)
     while( !is.eof() )
     {
         ::std::string   line;
-        is >> line;
+        std::getline(is, line);
         if( line.compare(0, 5+1, "cargo:") == 0 )
         {
             size_t start = 5+1;
@@ -832,8 +832,10 @@ void PackageManifest::load_build_script(const ::std::string& path)
             }
             // cargo:rustc-flags=-l foo
             else if( key == "rustc-flags" ) {
-                // Split on space, then push each.
-                throw ::std::runtime_error("TODO: rustc-flags");
+                std::istringstream iss(value);
+                for(std::string s; iss >> s;) {
+                    rv.rustc_flags.push_back(s);
+                }
             }
             // cargo:rustc-env=FOO=BAR
             else if( key == "rustc-env" ) {
