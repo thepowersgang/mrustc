@@ -75,11 +75,11 @@ public:
     }
 };
 
-
-STATIC_DECORATOR("no_std", Decorator_NoStd)
-STATIC_DECORATOR("no_core", Decorator_NoCore)
-//STATIC_DECORATOR("prelude", Decorator_Prelude)    // mrustc
-STATIC_DECORATOR("prelude_import", Decorator_PreludeImport)   // rustc
-
-STATIC_DECORATOR("no_prelude", Decorator_NoPrelude)
+void Expand_init_std_prelude() {
+    Register_Synext_Decorator_G<Decorator_NoStd>("no_std");
+    Register_Synext_Decorator_G<Decorator_NoCore>("no_core");
+    //Register_Synext_Decorator_G<Decorator_Prelude>("prelude");
+    Register_Synext_Decorator_G<Decorator_PreludeImport>("prelude_import");
+    Register_Synext_Decorator_G<Decorator_NoPrelude>("no_prelude");
+}
 
