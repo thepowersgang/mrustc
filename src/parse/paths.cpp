@@ -153,7 +153,7 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
                 } while( GET_TOK(tok, lex) == TOK_COMMA );
                 CHECK_TOK(tok, TOK_PAREN_CLOSE);
 
-                TypeRef ret_type = TypeRef( TypeRef::TagUnit(), Span(tok.get_pos()) );
+                TypeRef ret_type = TypeRef( TypeRef::TagUnit(), lex.point_span() );
                 if( GET_TOK(tok, lex) == TOK_THINARROW ) {
                     ret_type = Parse_Type(lex, false);
                 }

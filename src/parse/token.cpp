@@ -172,7 +172,7 @@ Token::Token(const Token& t):
     (String,    m_data = Data::make_String(e); ),
     (Integer,   m_data = Data::make_Integer(e);),
     (Float, m_data = Data::make_Float(e);),
-    (Fragment, BUG(t.m_pos, "Attempted to copy a fragment - " << t);)
+    (Fragment, BUG(Span(Span(),t.m_pos), "Attempted to copy a fragment - " << t);)
     )
 }
 Token Token::clone() const
@@ -222,11 +222,11 @@ Token Token::clone() const
             rv.m_data = new AST::Attribute( reinterpret_cast<AST::Attribute*>(e)->clone() );
             break;
         case TOK_INTERPOLATED_ITEM:
-            TODO(m_pos, "clone interpolated item");
+            TODO(Span(Span(),m_pos), "clone interpolated item");
             //rv.m_data = new AST::Named( AST::Item( reinterpret_cast<AST::Attribute*>(e)->clone() ) );
             break;
         default:
-            BUG(m_pos, "Fragment with invalid token type (" << *this << ")");
+            BUG(Span(Span(),m_pos), "Fragment with invalid token type (" << *this << ")");
             break;
         }
         assert(rv.m_data.is_Fragment());

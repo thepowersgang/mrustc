@@ -524,7 +524,7 @@ namespace
                 auto ct = coretype_fromstring(name.c_str());
                 if( ct != CORETYPE_INVAL )
                 {
-                    return ::AST::Path( ::AST::Path::TagUfcs(), TypeRef(Span("-",0,0,0,0), ct), ::AST::Path(), ::std::vector< ::AST::PathNode>() );
+                    return ::AST::Path( ::AST::Path::TagUfcs(), TypeRef(Span(), ct), ::AST::Path(), ::std::vector< ::AST::PathNode>() );
                 }
                 } break;
             default:
@@ -1439,7 +1439,7 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
                     if( !found )
                     {
                         auto ct = coretype_fromstring(e.nodes[0].name().c_str());
-                        p = ::AST::Path( ::AST::Path::TagUfcs(), TypeRef(Span("-",0,0,0,0), ct), ::AST::Path(), ::std::vector< ::AST::PathNode>() );
+                        p = ::AST::Path( ::AST::Path::TagUfcs(), TypeRef(Span(), ct), ::AST::Path(), ::std::vector< ::AST::PathNode>() );
                     }
 
                     DEBUG("Primitive module hack yeilded " << p);

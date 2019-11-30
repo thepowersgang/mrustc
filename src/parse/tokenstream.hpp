@@ -72,11 +72,15 @@ public:
     Span    end_span(ProtoSpan ps) const;
     Span    point_span() const;
 
+    Span    sub_span(const Position& p) const {
+        return Span(outerSpan(), p);
+    }
+
     Ident get_ident(Token tok) const;
 
 protected:
     virtual Position getPosition() const = 0;
-    virtual ::std::shared_ptr<Span> outerSpan() const { return ::std::shared_ptr<Span>(0); }
+    virtual Span    outerSpan() const { return Span(); }
     virtual Token   realGetToken() = 0;
     virtual Ident::Hygiene realGetHygiene() const = 0;
 private:

@@ -12,12 +12,12 @@
 
 namespace {
     const Span& get_top_span(const Span& sp) {
-        if( sp.outer_span ) {
-            return get_top_span(*sp.outer_span);
+        auto* top_span = &sp;
+        while((*top_span)->parent_span != Span())
+        {
+            top_span = &(*top_span)->parent_span;
         }
-        else {
-            return sp;
-        }
+        return *top_span;
     }
 }
 
@@ -26,7 +26,7 @@ class CExpanderFile:
 {
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
-        return box$( TTStreamO(sp, TokenTree(Token(TOK_STRING, ::std::string(get_top_span(sp).filename.c_str())))) );
+        return box$( TTStreamO(sp, TokenTree(Token(TOK_STRING, ::std::string(get_top_span(sp)->filename.c_str())))) );
     }
 };
 
@@ -35,7 +35,7 @@ class CExpanderLine:
 {
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
-        return box$( TTStreamO(sp, TokenTree(Token((uint64_t)get_top_span(sp).start_line, CORETYPE_U32))) );
+        return box$( TTStreamO(sp, TokenTree(Token((uint64_t)get_top_span(sp)->start_line, CORETYPE_U32))) );
     }
 };
 
@@ -44,7 +44,7 @@ class CExpanderColumn:
 {
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
-        return box$( TTStreamO(sp, TokenTree(Token((uint64_t)get_top_span(sp).start_ofs, CORETYPE_U32))) );
+        return box$( TTStreamO(sp, TokenTree(Token((uint64_t)get_top_span(sp)->start_ofs, CORETYPE_U32))) );
     }
 };
 class CExpanderUnstableColumn:
@@ -52,7 +52,7 @@ class CExpanderUnstableColumn:
 {
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
-        return box$( TTStreamO(sp, TokenTree(Token((uint64_t)get_top_span(sp).start_ofs, CORETYPE_U32))) );
+        return box$( TTStreamO(sp, TokenTree(Token((uint64_t)get_top_span(sp)->start_ofs, CORETYPE_U32))) );
     }
 };
 

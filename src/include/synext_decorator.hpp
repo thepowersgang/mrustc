@@ -70,6 +70,9 @@ public:
 struct DecoratorDef;
 extern void Register_Synext_Decorator(::std::string name, ::std::unique_ptr<ExpandDecorator> handler);
 extern void Register_Synext_Decorator_Static(DecoratorDef* def);
+template<typename T> void Register_Synext_Decorator_G(::std::string name) {
+    Register_Synext_Decorator( mv$(name), ::std::unique_ptr<ExpandDecorator>(new T()) ); 
+}
 
 struct DecoratorDef
 {

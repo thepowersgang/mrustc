@@ -11,39 +11,46 @@
 #include <parse/lex.hpp>
 #include <common.hpp>
 
-Span::Span(const Position& pos):
-    outer_span(),
-    filename(pos.filename),
-    start_line(pos.line),
-    start_ofs(pos.ofs),
-    end_line(pos.line),
-    end_ofs(pos.ofs)
+SpanInner Span::s_empty_span;
+
+Span::Span(Span parent, RcString filename, unsigned int start_line, unsigned int start_ofs,  unsigned int end_line, unsigned int end_ofs):
+    m_ptr(SpanInner::alloc( parent, ::std::move(filename), start_line, start_ofs, end_line, end_ofs ))
+{}
+Span::Span(Span parent, const Position& pos):
+    m_ptr(SpanInner::alloc( parent, pos.filename, pos.line,pos.ofs, pos.line,pos.ofs ))
 {
 }
-Span::Span():
-    outer_span(),
-    filename(""),
-    start_line(0), start_ofs(0),
-    end_line(0), end_ofs(0) // */
+Span::Span(const Span& x):
+    m_ptr(x.m_ptr)
 {
-    //DEBUG("Empty span");
-    //filename = FMT(":" << __builtin_return_address(0));
+    m_ptr->reference_count += 1;
+}
+Span::~Span()
+{
+    if(m_ptr && m_ptr != &s_empty_span)
+    {
+        m_ptr->reference_count --;
+        if( m_ptr->reference_count == 0 )
+        {
+            delete m_ptr;
+        }
+        m_ptr = nullptr;
+    }
 }
 
 namespace {
     void print_span_message(const Span& sp, ::std::function<void(::std::ostream&)> tag, ::std::function<void(::std::ostream&)> msg)
     {
         auto& sink = ::std::cerr;
-        sink << sp.filename << ":" << sp.start_line << ": ";
+        sink << sp->filename << ":" << sp->start_line << ": ";
         tag(sink);
         sink << ":";
         msg(sink);
         sink << ::std::endl;
-        const auto* parent = sp.outer_span.get();
-        while(parent)
+        
+        for(auto parent = sp->parent_span; parent != Span(); parent = parent->parent_span)
         {
             sink << parent->filename << ":" << parent->start_line << ": note: From here" << ::std::endl;
-            parent = parent->outer_span.get();
         }
     }
 }
@@ -74,6 +81,6 @@ void Span::note(::std::function<void(::std::ostream&)> msg) const {
 
 ::std::ostream& operator<<(::std::ostream& os, const Span& sp)
 {
-    os << sp.filename << ":" << sp.start_line;
+    os << sp->filename << ":" << sp->start_line;
     return os;
 }

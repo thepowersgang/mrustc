@@ -406,7 +406,7 @@ class MacroExpander:
     const RcString  m_macro_filename;
 
     const RcString  m_crate_name;
-    ::std::shared_ptr<Span> m_invocation_span;
+    Span m_invocation_span;
 
     ParameterMappings m_mappings;
     MacroExpandState    m_state;
@@ -421,7 +421,7 @@ public:
     MacroExpander(const ::std::string& macro_name, const Span& sp, const Ident::Hygiene& parent_hygiene, const ::std::vector<MacroExpansionEnt>& contents, ParameterMappings mappings, RcString crate_name):
         m_macro_filename( FMT("Macro:" << macro_name) ),
         m_crate_name( mv$(crate_name) ),
-        m_invocation_span( new Span(sp) ),
+        m_invocation_span( sp ),
         m_mappings( mv$(mappings) ),
         m_state( contents, m_mappings ),
         m_hygiene( Ident::Hygiene::new_scope_chained(parent_hygiene) )
@@ -429,7 +429,7 @@ public:
     }
 
     Position getPosition() const override;
-    ::std::shared_ptr<Span> outerSpan() const override;
+    Span outerSpan() const override { return m_invocation_span; }
     Ident::Hygiene realGetHygiene() const override;
     Token realGetToken() override;
 };
@@ -1932,10 +1932,6 @@ Position MacroExpander::getPosition() const
     // TODO: Return the attached position of the last fetched token
     return Position(m_macro_filename, 0, m_state.top_pos());
 }
-::std::shared_ptr<Span> MacroExpander::outerSpan() const
-{
-    return m_invocation_span;
-}
 Ident::Hygiene MacroExpander::realGetHygiene() const
 {
     if( m_ttstream )
@@ -1992,7 +1988,7 @@ Token MacroExpander::realGetToken()
             }
             else {
                 auto* frag = m_mappings.get(m_state.iterations(), e);
-                ASSERT_BUG(this->getPosition(), frag, "Cannot find '" << e << "' for " << m_state.iterations());
+                ASSERT_BUG(this->point_span(), frag, "Cannot find '" << e << "' for " << m_state.iterations());
 
                 bool can_steal = ( m_mappings.dec_count(m_state.iterations(), e) == false );
                 DEBUG("Insert replacement #" << e << " = " << *frag);
@@ -2000,11 +1996,11 @@ Token MacroExpander::realGetToken()
                 {
                     if( can_steal )
                     {
-                        m_ttstream.reset( new TTStreamO(*this->outerSpan(), mv$(frag->as_tt()) ) );
+                        m_ttstream.reset( new TTStreamO(this->outerSpan(), mv$(frag->as_tt()) ) );
                     }
                     else
                     {
-                        m_ttstream.reset( new TTStreamO(*this->outerSpan(), frag->as_tt().clone() ) );
+                        m_ttstream.reset( new TTStreamO(this->outerSpan(), frag->as_tt().clone() ) );
                     }
                     return m_ttstream->getToken();
                 }

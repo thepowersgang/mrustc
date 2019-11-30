@@ -125,15 +125,11 @@ ProtoSpan TokenStream::start_span() const
 Span TokenStream::end_span(ProtoSpan ps) const
 {
     auto p = this->getPosition();
-    auto rv = Span( ::std::move(ps.filename),  ps.start_line, ps.start_ofs,  p.line, p.ofs );
-    rv.outer_span = this->outerSpan();
-    return rv;
+    return Span( this->outerSpan(), ::std::move(ps.filename),  ps.start_line, ps.start_ofs,  p.line, p.ofs );
 }
 Span TokenStream::point_span() const
 {
-    Span rv = this->getPosition();
-    rv.outer_span = this->outerSpan();
-    return rv;
+    return Span( this->outerSpan(), this->getPosition() );
 }
 Ident TokenStream::get_ident(Token tok) const
 {
@@ -145,7 +141,7 @@ Ident TokenStream::get_ident(Token tok) const
         return Ident(getHygiene(), tok.istr());
     }
     else if( tok.type() == TOK_INTERPOLATED_IDENT ) {
-        TODO(getPosition(), "get_ident from TOK_INTERPOLATED_IDENT");
+        TODO(point_span(), "get_ident from TOK_INTERPOLATED_IDENT");
     }
     else {
         throw ParseError::Unexpected(*this, tok);

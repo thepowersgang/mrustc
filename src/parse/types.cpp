@@ -40,10 +40,10 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
         return mv$(tok.frag_type());
     // '!' - Only ever used as part of function prototypes, but is kinda a type... not allowed here though
     case TOK_EXCLAM:
-        return TypeRef( Span(tok.get_pos()), TypeData::make_Bang({}) );
+        return TypeRef(lex.sub_span(tok.get_pos()), TypeData::make_Bang({}) );
     // '_' = Wildcard (type inferrence variable)
     case TOK_UNDERSCORE:
-        return TypeRef(Span(tok.get_pos()));
+        return TypeRef(lex.sub_span(tok.get_pos()));
 
     // 'unsafe' - An unsafe function type
     case TOK_RWORD_UNSAFE:
@@ -265,7 +265,7 @@ TypeRef Parse_Type_Fn(TokenStream& lex, ::AST::HigherRankedBounds hrbs)
     GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
 
     // `-> RetType`
-    TypeRef ret_type = TypeRef(TypeRef::TagUnit(), Span(tok.get_pos()));
+    TypeRef ret_type = TypeRef(TypeRef::TagUnit(), lex.point_span());
     if( GET_TOK(tok, lex) == TOK_THINARROW )
     {
         ret_type = Parse_Type(lex, false);

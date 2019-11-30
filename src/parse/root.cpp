@@ -493,7 +493,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, bool allow_
         // Eat 'tok', negative comparison
     }
 
-    TypeRef ret_type = TypeRef(TypeRef::TagUnit(), Span(tok.get_pos()));
+    TypeRef ret_type = TypeRef(TypeRef::TagUnit(), lex.point_span());
     if( GET_TOK(tok, lex) == TOK_THINARROW )
     {
         // Return type

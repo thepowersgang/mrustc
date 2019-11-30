@@ -21,6 +21,7 @@ enum WarningType
 };
 
 class Position;
+struct SpanInner;
 
 struct ProtoSpan
 {
@@ -31,29 +32,42 @@ struct ProtoSpan
 };
 struct Span
 {
-//public:
-    ::std::shared_ptr<Span> outer_span; // Expansion target for macros
-    RcString    filename;
-
-    unsigned int start_line;
-    unsigned int start_ofs;
-    unsigned int end_line;
-    unsigned int end_ofs;
-
-    Span(RcString filename, unsigned int start_line, unsigned int start_ofs,  unsigned int end_line, unsigned int end_ofs):
-        filename( ::std::move(filename) ),
-        start_line(start_line),
-        start_ofs(start_ofs),
-        end_line(end_line),
-        end_ofs(end_ofs)
+private:
+    SpanInner*  m_ptr;
+    static SpanInner    s_empty_span;
+public:
+    Span():
+        m_ptr(&s_empty_span)
     {}
-    Span(const Span& x) = default;
-    Span(Span&& x) = default;
-    Span(const Position& position);
-    Span();
+    Span(Span parent, RcString filename, unsigned int start_line, unsigned int start_ofs,  unsigned int end_line, unsigned int end_ofs);
+    Span(Span parent, const Position& position);
+    ~Span();
 
-    Span& operator=(const Span& x) = default;
-    Span& operator=(Span&& x) = default;
+    Span(const Span& x);
+    Span(Span&& x):
+        m_ptr(x.m_ptr)
+    {
+        x.m_ptr = nullptr;
+    }
+
+    Span& operator=(const Span& x)
+    {
+        this->~Span();
+        new (this) Span(x);
+        return *this;
+    }
+    Span& operator=(Span&& x)
+    {
+        this->~Span();
+        new (this) Span(std::move(x));
+        return *this;
+    }
+
+    bool operator==(const Span& x) const { return m_ptr == x.m_ptr; }
+    bool operator!=(const Span& x) const { return !(*this == x); }
+
+    const SpanInner& operator*() const { return *m_ptr; }
+    const SpanInner* operator->() const { return m_ptr; }
 
     void bug(::std::function<void(::std::ostream&)> msg) const;
     void error(ErrorType tag, ::std::function<void(::std::ostream&)> msg) const;
@@ -61,6 +75,33 @@ struct Span
     void note(::std::function<void(::std::ostream&)> msg) const;
 
     friend ::std::ostream& operator<<(::std::ostream& os, const Span& sp);
+};
+struct SpanInner
+{
+    friend struct Span;
+private:
+    size_t  reference_count;
+public:
+    Span    parent_span;
+    RcString    filename;
+
+    unsigned int start_line;
+    unsigned int start_ofs;
+    unsigned int end_line;
+    unsigned int end_ofs;
+
+private:
+    static SpanInner* alloc(Span parent, RcString filename, unsigned int start_line, unsigned int start_ofs,  unsigned int end_line, unsigned int end_ofs) {
+        auto* rv = new SpanInner();
+        rv->reference_count = 1;
+        rv->parent_span = parent;
+        rv->filename = ::std::move(filename);
+        rv->start_line = start_line;
+        rv->start_ofs = start_ofs;
+        rv->end_line = end_line;
+        rv->end_ofs = end_ofs;
+        return rv;
+    }
 };
 
 template<typename T>

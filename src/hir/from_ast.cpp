@@ -135,7 +135,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
 
 ::HIR::Pattern LowerHIR_Pattern(const ::AST::Pattern& pat)
 {
-    TRACE_FUNCTION_F("@" << pat.span().filename << ":" << pat.span().start_line << " pat = " << pat);
+    TRACE_FUNCTION_F("@" << pat.span() << " pat = " << pat);
 
     ::HIR::PatternBinding   binding;
     if( pat.binding().is_valid() )

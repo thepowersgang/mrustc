@@ -1092,8 +1092,9 @@ ExprNodeP Parse_ExprVal_Closure(TokenStream& lex, bool is_move)
     auto rt = TypeRef(lex.point_span());
     if( GET_TOK(tok, lex) == TOK_THINARROW ) {
 
+        auto bang_sp = lex.point_span();
         if( GET_TOK(tok, lex) == TOK_EXCLAM ) {
-            rt = TypeRef(TypeRef::TagInvalid(), Span(tok.get_pos()));
+            rt = TypeRef(TypeRef::TagInvalid(), bang_sp);
         }
         else {
             PUTBACK(tok, lex);

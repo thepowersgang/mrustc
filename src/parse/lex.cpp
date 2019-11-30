@@ -442,7 +442,7 @@ Token Lexer::getTokenInt()
                         }
                     }
                     if( num_mode != DEC )
-                        TODO(this->getPosition(), "Non-decimal floats");
+                        TODO(this->point_span(), "Non-decimal floats");
 
 
                     this->ungetc();
