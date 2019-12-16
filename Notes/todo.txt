@@ -14,7 +14,6 @@ TODO:
 - Fix Span annotations
   - Spans are missing on HIR items, sub-par reporting in typecheck and later
   - Spans can be off by a line or two
-  - Convert spans so they're 1 pointer inline (to save space)
 - Refactor parse to use a consume model lexer
   - Will _probably_ improve speed and simplicity, but will need checking
 - Optimise optimise (and typecheck)
@@ -30,18 +29,11 @@ TODO:
   - This can share the ivar table
   - Compact/dedup the table once done?
   - Store a `shared_ptr` and index on each node (3 pointers instead of huge TypeRef instance)
-- Add a test framework for MIR optimistations
-  - Have an input MIR function, and check that the output is as expected
-  - Can ensure that mis-optimisations don't happen
-  - ?Standalone application that parses serialised MIR and types
 - Deferred constant evaluation (for generic array sizes)
 
 ## Smaller changes
 - Cache specialisation tree
   - TODO: Profile to determine if this is a slow point.
-- Delete HIR after MIR generation
-  - Problem: HIR is sometimes touched again after MIR gen
-  - May just be able to do the delete in the main MIR gen phase
 - Split types and patterns in HIR function arguments
   - Upsides:
     - Simpler logic post MIR generation
