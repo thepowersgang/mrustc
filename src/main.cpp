@@ -30,6 +30,12 @@
 #include <target_detect.h>	// tools/common/target_detect.h
 #include <debug_inner.hpp>
 
+#ifdef _WIN32
+# define NOGDI
+# include <Windows.h>
+# include <DbgHelp.h>
+#endif
+
 TargetVersion	gTargetVersion = TargetVersion::Rustc1_29;
 
 struct ProgramParams
@@ -120,6 +126,7 @@ void init_debug_list()
         "Resolve UFCS Outer",
         "Resolve UFCS paths",
         "Resolve HIR Markings",
+        "Sort Impls",
         "Constant Evaluate",
 
         "Typecheck Outer",
@@ -153,6 +160,63 @@ void init_debug_list()
         });
 }
 
+void memory_dump(const char* phase) {
+#ifdef _WIN32
+#pragma comment(lib, "dbghelp.lib")
+    if( false )
+    {
+        struct H {
+            static int GenerateDump(const char* phase, EXCEPTION_POINTERS* pExceptionPointers)
+            {
+                static unsigned s_count;
+                auto idx = s_count ++;
+                char filename[256];
+                sprintf_s(filename, "mrustc-%i-%s.dmp", idx, phase);
+                HANDLE outfile = CreateFileA(filename, GENERIC_READ|GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+                if( outfile != NULL && outfile != INVALID_HANDLE_VALUE )
+                {
+                    MINIDUMP_EXCEPTION_INFORMATION ExpParam;
+                    ExpParam.ThreadId = GetCurrentThreadId();
+                    ExpParam.ExceptionPointers = pExceptionPointers;
+                    ExpParam.ClientPointers = TRUE;
+
+                    if( !MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), outfile, MiniDumpWithFullMemory, &ExpParam, NULL, NULL) )
+                    {
+                        std::cerr << "Unable to dump to " << filename << ": (MiniDumpWriteDump) " << std::hex << GetLastError() << std::endl;
+                    }
+                    else
+                    {
+                        std::cerr << "Wrote dump to  " << filename << std::endl;
+                    }
+                    CloseHandle(outfile);
+                }
+                else
+                {
+                    std::cerr << "Unable to dump to " << filename << ": (CreateFileA) " << std::hex << GetLastError() << std::endl;
+                }
+
+                return EXCEPTION_EXECUTE_HANDLER;
+            }
+        };
+
+        __try
+        {
+            int *pBadPtr = NULL;
+            *pBadPtr = 0;
+        }
+        __except(H::GenerateDump(phase, GetExceptionInformation()))
+        {
+        }
+    }
+#endif
+    
+    if( false )
+    {
+        std::cerr << "Press enter to continue after '" << phase << "'" << std::endl;
+        std::cin.get();
+    }
+}
+
 /// main!
 int main(int argc, char *argv[])
 {
@@ -160,15 +224,25 @@ int main(int argc, char *argv[])
     ProgramParams   params(argc, argv);
 
     // Set up cfg values
-    Cfg_SetValue("rust_compiler", "mrustc");
-    Cfg_SetValueCb("feature", [&params](const ::std::string& s) {
-        return params.features.count(s) != 0;
+    CompilePhaseV("Setup", [&]() {
+        Cfg_SetValue("rust_compiler", "mrustc");
+        Cfg_SetValueCb("feature", [&params](const ::std::string& s) {
+            return params.features.count(s) != 0;
+            });
+
+        DEBUG("sizeof(AST::TypeRef) = " << sizeof(TypeRef));
+        DEBUG("sizeof(AST::Item) = " << sizeof(AST::Item));
+        DEBUG("sizeof(AST::Impl) = " << sizeof(AST::Impl));
+        DEBUG("sizeof(AST::Function) = " << sizeof(AST::Function));
+        DEBUG("sizeof(AST::Module) = " << sizeof(AST::Module));
+        DEBUG("sizeof(HIR::TypeRef) = " << sizeof(HIR::TypeRef));
+        DEBUG("sizeof(HIR::Path) = " << sizeof(HIR::Path));
         });
     CompilePhaseV("Target Load", [&]() {
         Target_SetCfg(params.target);
         });
 
-    if( params.target_saveback != "")
+    if( params.target_saveback != "" )
     {
         Target_ExportCurSpec(params.target_saveback);
         return 0;
@@ -200,6 +274,7 @@ int main(int argc, char *argv[])
         if( params.last_stage == ProgramParams::STAGE_PARSE ) {
             return 0;
         }
+        memory_dump("Parsed");
 
         // Load external crates.
         CompilePhaseV("LoadCrates", [&]() {
@@ -306,6 +381,7 @@ int main(int argc, char *argv[])
         if( params.last_stage == ProgramParams::STAGE_EXPAND ) {
             return 0;
         }
+        memory_dump("Expanded");
 
         // Allocator and panic strategies
         CompilePhaseV("Implicit Crates", [&]() {
@@ -418,6 +494,7 @@ int main(int argc, char *argv[])
         CompilePhaseV("Resolve Absolute", [&]() {
             Resolve_Absolutise(crate);  // - Convert all paths to Absolute or UFCS, and resolve variables
             });
+        memory_dump("Resolved");
 
         if( params.debug.dump_ast )
         {
@@ -433,12 +510,12 @@ int main(int argc, char *argv[])
         // --------------------------------------
         // HIR Section
         // --------------------------------------
-        // Construc the HIR from the AST
+        // Construct the HIR from the AST
+        // - Note `LowerHIR_FromAST` consumes the AST
         ::HIR::CratePtr hir_crate = CompilePhase< ::HIR::CratePtr>("HIR Lower", [&]() {
             return LowerHIR_FromAST(mv$( crate ));
             });
-        // Deallocate the original crate
-        crate = ::AST::Crate();
+        memory_dump("HIR Gen");
         if( params.debug.dump_hir )
         {
             CompilePhaseV("Dump HIR", [&]() {
@@ -446,6 +523,7 @@ int main(int argc, char *argv[])
                 HIR_Dump( os, *hir_crate );
                 });
         }
+        memory_dump("HIR");
 
         // Replace type aliases (`type`) into the actual type
         // - Also inserts defaults in trait impls
@@ -467,16 +545,16 @@ int main(int argc, char *argv[])
         CompilePhaseV("Resolve UFCS Outer", [&]() {
             ConvertHIR_ResolveUFCS_Outer(*hir_crate);
             });
+        // Determine what trait to use for <T>::Foo (and does some associated type expansion)
+        CompilePhaseV("Resolve UFCS paths", [&]() {
+            ConvertHIR_ResolveUFCS(*hir_crate);
+            });
         if( params.debug.dump_hir ) {
             CompilePhaseV("Dump HIR", [&]() {
                 ::std::ofstream os (FMT(params.outfile << "_2_hir.rs"));
                 HIR_Dump( os, *hir_crate );
                 });
         }
-        // Determine what trait to use for <T>::Foo (and does some associated type expansion)
-        CompilePhaseV("Resolve UFCS paths", [&]() {
-            ConvertHIR_ResolveUFCS(*hir_crate);
-            });
         // Basic constant evalulation (intergers/floats only)
         CompilePhaseV("Constant Evaluate", [&]() {
             ConvertHIR_ConstantEvaluate(*hir_crate);
@@ -543,6 +621,7 @@ int main(int argc, char *argv[])
         if( params.last_stage == ProgramParams::STAGE_TYPECK ) {
             return 0;
         }
+        memory_dump("Typecheck");
 
         // Lower expressions into MIR
         CompilePhaseV("Lower MIR", [&]() {
@@ -557,6 +636,7 @@ int main(int argc, char *argv[])
                 MIR_Dump( os, *hir_crate );
                 });
         }
+        memory_dump("MIR Gen");
 
         // Validate the MIR
         CompilePhaseV("MIR Validate", [&]() {
@@ -600,6 +680,7 @@ int main(int argc, char *argv[])
         if( params.last_stage == ProgramParams::STAGE_MIR ) {
             return 0;
         }
+        memory_dump("MIR Opt");
 
         // TODO: Pass to mark items that are..
         // - Signature Exportable (public)
@@ -658,6 +739,8 @@ int main(int argc, char *argv[])
         CompilePhaseV("MIR Optimise Inline", [&]() { MIR_OptimiseCrate_Inlining(*hir_crate, items); });
         // - Clean up no-unused functions
         //CompilePhaseV("Trans Enumerate Cleanup", [&]() { Trans_Enumerate_Cleanup(*hir_crate, items); });
+
+        memory_dump("Trans");
 
         switch(crate_type)
         {
