@@ -334,27 +334,26 @@ int main()
     }
     SymRefreshModuleList(proc_handle);
 
-    MINIDUMP_DIRECTORY*  thread_dir;
+
+    // TODO: Obtain a mapping of vtables addresses to types
+    // - Could fetch the type name form the vtable itself?
+
+
     MINIDUMP_THREAD_LIST*   thread_list = NULL;
-    ULONG   thread_list_bytes = 0;
-    if( !MiniDumpReadDumpStream(view, ThreadListStream, &thread_dir, (PVOID*)&thread_list, &thread_list_bytes) || !thread_list ) {
+    if( !MiniDumpReadDumpStream(view, ThreadListStream, NULL, (PVOID*)&thread_list, NULL) || !thread_list ) {
         return error("MiniDumpReadDumpStream - ThreadListStream");
     }
 
-    MINIDUMP_DIRECTORY*  mem_dir;
     MINIDUMP_MEMORY_LIST*   memory_list = NULL;
-    ULONG   memory_list_bytes = 0;
-    if( !MiniDumpReadDumpStream(view, MemoryListStream, &mem_dir, (PVOID*)&memory_list, &memory_list_bytes) || !memory_list ) {
+    if( !MiniDumpReadDumpStream(view, MemoryListStream, NULL, (PVOID*)&memory_list, NULL) || !memory_list ) {
         if( GetLastError() != ERROR_NOT_FOUND )
         {
             return error("MiniDumpReadDumpStream - MemoryListStream");
         }
     }
 
-    //MINIDUMP_DIRECTORY*  mem_dir;
     MINIDUMP_MEMORY64_LIST*   memory64_list = NULL;
-    //ULONG   memory_list_bytes = 0;
-    if( !MiniDumpReadDumpStream(view, Memory64ListStream, &mem_dir, (PVOID*)&memory64_list, NULL) || !memory64_list ) {
+    if( !MiniDumpReadDumpStream(view, Memory64ListStream, NULL, (PVOID*)&memory64_list, NULL) || !memory64_list ) {
         if( GetLastError() != ERROR_NOT_FOUND )
         {
             return error("MiniDumpReadDumpStream - Memory64ListStream");
@@ -363,54 +362,6 @@ int main()
 
     auto rm = ReadMemory { view, memory_list, memory64_list };
     ReadMemory::s_self = &rm;
-
-    if(false)
-    {
-        static const DWORD64 ADDR = 0x00007FF6559D184B;
-        static unsigned N_SYMS = 0;
-        struct H {
-            static BOOL print_sym(PSYMBOL_INFO pSymInfo, ULONG SymbolSize, PVOID UserContext) {
-                if( pSymInfo->Address <= ADDR && ADDR < pSymInfo->Address + pSymInfo->Size ) {
-                    std::cout << pSymInfo << " " << (void*)pSymInfo->Address << "+" << (void*)pSymInfo->Size << " " << pSymInfo->Name << std::endl;
-                }
-                N_SYMS += 1;
-                return TRUE;
-            }
-            static BOOL get_first_sym(PSYMBOL_INFO pSymInfo, ULONG SymbolSize, PVOID UserContext) {
-                memcpy(UserContext, pSymInfo, pSymInfo->SizeOfStruct);
-                std::cout << pSymInfo << std::endl;
-                //std::cout << pSymInfo << pSymInfo->Name << std::endl;
-                return TRUE;
-            }
-        };
-        for(ULONG32 i = 0; i < module_list->NumberOfModules; i ++)
-        {
-            const auto& mod = module_list->Modules[i];
-            std::cout << module_names[i].c_str() << std::endl;
-            SymEnumSymbols(proc_handle, mod.BaseOfImage, "", H::print_sym, NULL);
-            std::cout << " " << N_SYMS << std::endl;
-        }
-        char symbolBuffer[sizeof(SYMBOL_INFO ) + 256];
-        memset(symbolBuffer, 0, sizeof(symbolBuffer));
-        PSYMBOL_INFO  symbol = (PSYMBOL_INFO )symbolBuffer;
-        symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
-        symbol->MaxNameLen = 255;
-        if( !SymFromAddr(proc_handle, ADDR, NULL, symbol) ) {
-            error("fixed SymFromAddr");
-        }
-        else
-        {
-            std::cout << symbol->Name << " " << (void*)symbol->Address << ::std::endl;
-            auto ft = SymFunctionTableAccess64(proc_handle, symbol->Address);
-            if(!ft)
-            {
-                error("fixed SymFunctionTableAccess64");
-            }
-            else
-            {
-            }
-        }
-    }
 
     if(true)
     {
@@ -476,10 +427,6 @@ int main()
 
                         try
                         {
-                            auto ty = TypeRef::lookup(this->proc_handle, pSymInfo->ModBase, pSymInfo->TypeIndex);
-                            std::cout << "VAR: (" << std::hex << pSymInfo->Flags << std::dec << ") " << pSymInfo->Name << " @ " << (void*)pSymInfo->Address << "+" << ty.size() <<  ": ";
-                            std::cout << ty;
-                            std::cout << std::endl;
 
                             auto addr = pSymInfo->Address;
                             if( pSymInfo->Flags & SYMFLAG_REGREL ) {
@@ -493,7 +440,6 @@ int main()
                                 }
                             }
                             else if( pSymInfo->Flags & SYMFLAG_FRAMEREL ) {
-                                // TODO: Add frame offset to it
                                 addr += this->frame->AddrFrame.Offset;
                             }
                             else if( pSymInfo->Flags & SYMFLAG_REGISTER ) {
@@ -503,13 +449,18 @@ int main()
                             else {
                             }
 
+                            auto ty = TypeRef::lookup(this->proc_handle, pSymInfo->ModBase, pSymInfo->TypeIndex);
+                            std::cout << "VAR: (" << std::hex << pSymInfo->Flags << std::dec << ") " << pSymInfo->Name << " @ " << addr << "+" << ty.size() <<  ": ";
+                            std::cout << ty;
+                            std::cout << std::endl;
+
                             // Do type/memory walk on this variable
                             if( addr )
                             {
                                 if( var_list->count(pSymInfo->Name) > 0 )
                                 {
                                     std::cout << "FULL TYPE: ";
-                                    ty.fmt(std::cout, /*recurse_depth=*/7, /*indent_level=*/1);
+                                    ty.fmt(std::cout, /*recurse_depth=*/10, /*indent_level=*/1);
                                     std::cout << std::endl;
                                     ms.enum_type_at(ty, addr);
                                 }
@@ -524,8 +475,11 @@ int main()
                     }
                 };
                 IMAGEHLP_STACK_FRAME    ih_frame = {0};
-                ih_frame.InstructionOffset = symbol->Address;
-                SymSetContext(proc_handle, &ih_frame, NULL);
+                ih_frame.InstructionOffset = context.Rip;
+                ih_frame.FrameOffset = context.Rbp;
+                ih_frame.StackOffset = context.Rsp;
+                //ih_frame.FuncTableEntry = (DWORD64)ReadMemory::FunctionTableAccess64(proc_handle, symbol->Address);
+                SymSetContext(proc_handle, &ih_frame, /*(unused) Context=*/NULL);
                 EnumLocals  el;
                 el.frame = &frame;
                 el.context = &context;
@@ -534,6 +488,7 @@ int main()
                 auto it = variables.find(symbol->Name);
                 if( it != variables.end() )
                 {
+                    std::cout << "Enumerating for " << symbol->Name << std::endl;
                     el.var_list = &it->second;
                     try {
                         SymEnumSymbols(proc_handle, NULL, "", EnumLocals::cb_static, &el);
@@ -1262,7 +1217,32 @@ void MemoryStats::enum_type_at(const TypeRef& ty, DWORD64 addr, bool is_top_leve
         auto ptr = ReadMemory::read_ptr(addr);
         auto inner_ty = ty.get_field({"_Mypair", "_Myval2", nullptr});
         DO_DEBUG("std::unique_ptr< " << inner_ty << " >: " << (void*)ptr);
-        this->enum_type_at(inner_ty, ptr, true);
+        if(ptr)
+        {
+            this->enum_type_at(inner_ty, ptr, true);
+        }
+        m_counts[FMT_STRING(">" << ty)] ++;
+    }
+    // HIR::CratePtr
+    else if( ty.is_udt("HIR::CratePtr") ) {
+        auto ptr = ReadMemory::read_ptr(addr);
+        auto inner_ty = ty.get_field({"m_ptr", nullptr});
+        DO_DEBUG("HIR::CratePtr: " << inner_ty << " @ " << (void*)ptr);
+        if(ptr)
+        {
+            this->enum_type_at(inner_ty, ptr, true);
+        }
+        m_counts[FMT_STRING(">" << ty)] ++;
+    }
+    // HIR::ExprPtrInner
+    else if( ty.is_udt("HIR::ExprPtrInner") ) {
+        auto ptr = ReadMemory::read_ptr(addr);
+        auto inner_ty = ty.get_field({"ptr", nullptr});
+        DO_DEBUG("HIR::CratePtr: " << inner_ty << " @ " << (void*)ptr);
+        if(ptr)
+        {
+            this->enum_type_at(inner_ty, ptr, true);
+        }
         m_counts[FMT_STRING(">" << ty)] ++;
     }
     else {

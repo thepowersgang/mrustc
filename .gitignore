@@ -34,6 +34,8 @@
 /vsproject/output_mmir
 /vsproject/*.obj
 /vsproject/*.pdb
+/vsproject/smiri.log
+/vsproject/*.dmp
 
 
 /run_rustc/output
@@ -53,4 +55,3 @@
 /bnf/rust.tab.h
 /bnf/rust.output
 /bnf/test.bin
-/vsproject/smiri.log
