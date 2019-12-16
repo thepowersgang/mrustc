@@ -2536,8 +2536,8 @@ namespace {
                 )
             }
 
-            const bool EMIT_STRUCTURED = false; // Saves time.
-            const bool USE_STRUCTURED = true;  // Still not correct.
+            const bool EMIT_STRUCTURED = (nullptr != getenv("MRUSTC_STRUCTURED_C")); // Saves time.
+            const bool USE_STRUCTURED = EMIT_STRUCTURED && (0 == strcmp("1", getenv("MRUSTC_STRUCTURED_C")));  // Still not correct.
             if( EMIT_STRUCTURED )
             {
                 m_of << "#if " << USE_STRUCTURED << "\n";

@@ -5,6 +5,7 @@
  * ffi.cpp
  * - FFI wrappers
  */
+#include <cstdint>
 
 /// Argument reference (for checking validity)
 struct ArgRef
