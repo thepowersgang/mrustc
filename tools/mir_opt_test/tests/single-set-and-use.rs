@@ -46,7 +46,7 @@ fn nomut(a: i32) -> (i32,)
 	bb0: {
 		ASSIGN v = a;
 		ASSIGN ba = &mut a;
-		//ASSIGN a* = +0;
+		//ASSIGN ba* = +0;	// This could be here, which is why the optimisation is unsound
 		ASSIGN retval = (v,);
 		DROP ba;
 	} RETURN;
