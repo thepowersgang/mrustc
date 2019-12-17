@@ -430,6 +430,54 @@ Token Token::lex_from_inner(::std::ifstream& is)
             is.putback(c);
             return Token { Type::Ident, str };
         }
+        else if( c == '0' )
+        {
+            c = is.get();
+            if( c == 'x' )
+            {
+                c = is.get();
+                int64_t val = 0;
+                while(isxdigit(c))
+                {
+                    val *= 16;
+                    val += (c <= '9' ? c - '0' : (c & ~0x20) - 'A' + 10);
+                    c = is.get();
+                }
+                is.putback(c);
+                return Token { Type::Integer, val };
+            }
+            else if( c == 'o' )
+            {
+                c = is.get();
+                int64_t val = 0;
+                while(isdigit(c))
+                {
+                    val *= 8;
+                    val += c - '0';
+                    c = is.get();
+                }
+                is.putback(c);
+                return Token { Type::Integer, val };
+            }
+            else if( c == 'b' )
+            {
+                c = is.get();
+                int64_t val = 0;
+                while(isdigit(c))
+                {
+                    val *= 2;
+                    val += c - '0';
+                    c = is.get();
+                }
+                is.putback(c);
+                return Token { Type::Integer, val };
+            }
+            else
+            {
+                is.putback(c);
+                return Token { Type::Integer, 0 };
+            }
+        }
         else if( isdigit(c) )
         {
             int64_t val = 0;
