@@ -294,30 +294,8 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
 #endif
 }
 
-namespace {
-    ::MIR::BasicBlockId get_new_target(const ::MIR::TypeResolve& state, ::MIR::BasicBlockId bb)
-    {
-        const auto& target = state.get_block(bb);
-        if( target.statements.size() != 0 )
-        {
-            return bb;
-        }
-        else if( !target.terminator.is_Goto() )
-        {
-            return bb;
-        }
-        else
-        {
-            // Make sure we don't infinite loop
-            if( bb == target.terminator.as_Goto() )
-                return bb;
-
-            auto rv = get_new_target(state, target.terminator.as_Goto());
-            DEBUG(bb << " => " << rv);
-            return rv;
-        }
-    }
-
+namespace
+{
     enum class ValUsage {
         Move,   // Moving read (even if T: Copy)
         Read,   // Non-moving read (e.g. indexing or deref, TODO: &move pointers?)
@@ -726,36 +704,37 @@ namespace {
 
 
     void visit_terminator_target_mut(::MIR::Terminator& term, ::std::function<void(::MIR::BasicBlockId&)> cb) {
-        TU_MATCHA( (term), (e),
-        (Incomplete,
-            ),
-        (Return,
-            ),
-        (Diverge,
-            ),
-        (Goto,
+        TU_MATCH_HDRA( (term), {)
+        TU_ARMA(Incomplete, e) {
+            }
+        TU_ARMA(Return, e) {
+            }
+        TU_ARMA(Diverge, e) {
+            }
+        TU_ARMA(Goto, e) {
             cb(e);
-            ),
-        (Panic,
-            ),
-        (If,
+            }
+        TU_ARMA(Panic, e) {
+            cb(e.dst);
+            }
+        TU_ARMA(If, e) {
             cb(e.bb0);
             cb(e.bb1);
-            ),
-        (Switch,
+            }
+        TU_ARMA(Switch, e) {
             for(auto& target : e.targets)
                 cb(target);
-            ),
-        (SwitchValue,
+            }
+        TU_ARMA(SwitchValue, e) {
             for(auto& target : e.targets)
                 cb(target);
             cb(e.def_target);
-            ),
-        (Call,
+            }
+        TU_ARMA(Call, e) {
             cb(e.ret_block);
             cb(e.panic_block);
-            )
-        )
+            }
+        }
     }
     void visit_terminator_target(const ::MIR::Terminator& term, ::std::function<void(const ::MIR::BasicBlockId&)> cb) {
         visit_terminator_target_mut(const_cast<::MIR::Terminator&>(term), cb);
@@ -799,7 +778,7 @@ namespace {
         }
         throw std::runtime_error("Corrupted MIR::Param");
     }
-}
+} // namespace ""
 
 
 // --------------------------------------------------------------------
@@ -807,10 +786,48 @@ namespace {
 // --------------------------------------------------------------------
 bool MIR_Optimise_BlockSimplify(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 {
+    struct H {
+        static ::MIR::BasicBlockId get_new_target(const ::MIR::TypeResolve& state, ::MIR::BasicBlockId bb)
+        {
+            const auto& target = state.get_block(bb);
+            if( target.statements.size() != 0 )
+            {
+                return bb;
+            }
+            else if( !target.terminator.is_Goto() )
+            {
+                return bb;
+            }
+            else
+            {
+                // Make sure we don't infinite loop (TODO: What about mutual recursion?)
+                if( bb == target.terminator.as_Goto() )
+                    return bb;
+
+                return get_new_target(state, target.terminator.as_Goto());
+            }
+        }
+    };
+
     // >> Replace targets that point to a block that is just a goto
     for(auto& block : fcn.blocks)
     {
-        // Unify sequential ScopeEnd statements
+        visit_terminator_target_mut(block.terminator, [&](auto& e) {
+            if( &fcn.blocks[e] != &block )
+            {
+                auto new_bb = H::get_new_target(state, e);
+                if( new_bb != e )
+                {
+                    DEBUG("BB" << &block - fcn.blocks.data() << "/TERM: " << e << " => " << new_bb);
+                    e = new_bb;
+                }
+            }
+            });
+    }
+
+    // >> Unify sequential `ScopeEnd` statements
+    for(auto& block : fcn.blocks)
+    {
         if( block.statements.size() > 1 )
         {
             for(auto it = block.statements.begin() + 1; it != block.statements.end(); )
@@ -831,11 +848,6 @@ bool MIR_Optimise_BlockSimplify(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                 }
             }
         }
-
-        visit_terminator_target_mut(block.terminator, [&](auto& e) {
-            if( &fcn.blocks[e] != &block )
-                e = get_new_target(state, e);
-            });
     }
 
     // >> Merge blocks where a block goto-s to a single-use block.
@@ -4514,6 +4526,16 @@ bool MIR_Optimise_NoopRemoval(::MIR::TypeResolve& state, ::MIR::Function& fcn)
     {
         for(auto it = bb.statements.begin(); it != bb.statements.end(); )
         {
+            // Placeholder: Asm block with empty template and no inputs/outputs/flags
+            if( *it == MIR::Statement::make_Asm({}) )
+            {
+                DEBUG(state << "Empty ASM placeholder, remove - " << *it);
+                it = bb.statements.erase(it);
+                changed = true;
+
+                continue;
+            }
+
             // `Value = Use(Value)`
             if( it->is_Assign()
                 && it->as_Assign().src.is_Use()
