@@ -43,15 +43,17 @@ TODO:
     - Lots of code touched
     - Extra complexity in typecheck and MIR lowering?
     - Need to check/assume that the lists are the same length
+- Borrowed constant RValues to statics
+  - And/or large arrays (even if not borrowed) to statics
 
 ## Optimisations
 - Argument propagation: replace assignments from `Argument(_)` if target is only
   written once
-- Dead assignment removal (Delete `<val> = Use(<val>)`
-- Tuple destructure removal
- - Spot `#1 = (...,)`, `#2 = (#1).n` where #1 is Write-once, borrow-none
 - Remove useless borrows (remove write-once &T lvalues if they're never used by
   value - only used via deref)
+- Remove useless re-borrows (borrow used once, source only every dropped)
+- Targeted transformations
+  - Detect slice metadata accesses (union between `(usize,usize)` and `*const [T]`) and replace with `DSTMETA` op
 
 
 <!-- vim: ft=markdown
