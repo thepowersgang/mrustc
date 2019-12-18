@@ -124,32 +124,48 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
         TRACE_FUNCTION_FR("Pass " << pass_num, change_happened);
 
         // >> Simplify call graph (removes gotos to blocks with a single use)
-        MIR_Optimise_BlockSimplify(state, fcn);
+        MIR_Optimise_BlockSimplify(state, fcn); // first optimisation, so don't care if it changed anything
 
         // >> Apply known constants
-        change_happened |= MIR_Optimise_ConstPropagate(state, fcn);
-        #if CHECK_AFTER_ALL
-        MIR_Validate(resolve, path, fcn, args, ret_type);
-        #endif
-
-        // Attempt to remove useless temporaries
-        while( MIR_Optimise_DeTemporary(state, fcn) )
+        if( MIR_Optimise_ConstPropagate(state, fcn) )
         {
+#if CHECK_AFTER_ALL
+            MIR_Validate(resolve, path, fcn, args, ret_type);
+#endif
             change_happened = true;
         }
-#if CHECK_AFTER_ALL
-        MIR_Validate(resolve, path, fcn, args, ret_type);
-#endif
 
-        // Split apart aggregates that are never used such (Written once, never used directly)
-        change_happened |= MIR_Optimise_SplitAggregates(state, fcn);
+        // >> Attempt to remove useless temporaries
+        if( MIR_Optimise_DeTemporary(state, fcn) )
+        {
+            // - Run until no changes
+            while( MIR_Optimise_DeTemporary(state, fcn) )
+            {
+            }
+#if CHECK_AFTER_ALL
+            MIR_Validate(resolve, path, fcn, args, ret_type);
+#endif
+            change_happened = true;
+        }
+
+        // >> Split apart aggregates that are never used such (Written once, never used directly)
+        if( MIR_Optimise_SplitAggregates(state, fcn) )
+        {
+#if CHECK_AFTER_ALL
+            MIR_Validate(resolve, path, fcn, args, ret_type);
+#endif
+            change_happened = true;
+        }
 
         // >> Replace values from composites if they're known
         //   - Undoes the inefficiencies from the `match (a, b) { ... }` pattern
-        change_happened |= MIR_Optimise_PropagateKnownValues(state, fcn);
+        if( MIR_Optimise_PropagateKnownValues(state, fcn) )
+        {
 #if CHECK_AFTER_ALL
-        MIR_Validate(resolve, path, fcn, args, ret_type);
+            MIR_Validate(resolve, path, fcn, args, ret_type);
 #endif
+            change_happened = true;
+        }
 
         // TODO: Convert `&mut *mut_foo` into `mut_foo` if the source is movable and not used afterwards
 
@@ -157,42 +173,73 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
         if( debug_enabled() ) MIR_Dump_Fcn(::std::cout, fcn);
 #endif
         // >> Propagate/remove dead assignments
-        while( MIR_Optimise_PropagateSingleAssignments(state, fcn) )
-            change_happened = true;
+        if( MIR_Optimise_PropagateSingleAssignments(state, fcn) )
+        {
+            // - Run until no changes
+            while( MIR_Optimise_PropagateSingleAssignments(state, fcn) )
+            {
+            }
 #if CHECK_AFTER_ALL
-        MIR_Validate(resolve, path, fcn, args, ret_type);
+            MIR_Validate(resolve, path, fcn, args, ret_type);
 #endif
+            change_happened = true;
+        }
 
         // >> Move common statements (assignments) across gotos.
-        //change_happened |= MIR_Optimise_CommonStatements(state, fcn);
+        //if( MIR_Optimise_CommonStatements(state, fcn) )
+        //{
+        //    #if CHECK_AFTER_ALL
+        //    MIR_Validate(resolve, path, fcn, args, ret_type);
+        //    #endif
+        //    change_happened = true;
+        //}
 
         // >> Combine Duplicate Blocks
-        change_happened |= MIR_Optimise_UnifyBlocks(state, fcn);
+        if( MIR_Optimise_UnifyBlocks(state, fcn) )
+        {
+#if CHECK_AFTER_ALL
+            MIR_Validate(resolve, path, fcn, args, ret_type);
+#endif
+            change_happened = true;
+        }
         // >> Remove assignments of unsed drop flags
-        change_happened |= MIR_Optimise_DeadDropFlags(state, fcn);
+        if( MIR_Optimise_DeadDropFlags(state, fcn) )
+        {
+#if CHECK_AFTER_ALL
+            MIR_Validate(resolve, path, fcn, args, ret_type);
+#endif
+            change_happened = true;
+        }
         // >> Remove assignments that are never read
-        change_happened |= MIR_Optimise_DeadAssignments(state, fcn);
+        if( MIR_Optimise_DeadAssignments(state, fcn) )
+        {
+#if CHECK_AFTER_ALL
+            MIR_Validate(resolve, path, fcn, args, ret_type);
+#endif
+            change_happened = true;
+        }
         // >> Remove no-op assignments
-        change_happened |= MIR_Optimise_NoopRemoval(state, fcn);
-
-        #if CHECK_AFTER_ALL
-        MIR_Validate(resolve, path, fcn, args, ret_type);
-        #endif
+        if( MIR_Optimise_NoopRemoval(state, fcn) )
+        {
+#if CHECK_AFTER_ALL
+            MIR_Validate(resolve, path, fcn, args, ret_type);
+#endif
+            change_happened = true;
+        }
 
         // >> Inline short functions
         if( do_inline && !change_happened )
         {
-            bool inline_happened = MIR_Optimise_Inlining(state, fcn, false);
-            if( inline_happened )
+            if( MIR_Optimise_Inlining(state, fcn, /*minimal=*/false) )
             {
                 // Apply cleanup again (as monomorpisation in inlining may have exposed a vtable call)
                 MIR_Cleanup(resolve, path, fcn, args, ret_type);
                 //MIR_Dump_Fcn(::std::cout, fcn);
+#if CHECK_AFTER_ALL
+                MIR_Validate(resolve, path, fcn, args, ret_type);
+#endif
                 change_happened = true;
             }
-            #if CHECK_AFTER_ALL
-            MIR_Validate(resolve, path, fcn, args, ret_type);
-            #endif
         }
 
         if( change_happened )
@@ -4461,6 +4508,7 @@ bool MIR_Optimise_NoopRemoval(::MIR::TypeResolve& state, ::MIR::Function& fcn)
     bool changed = false;
     TRACE_FUNCTION_FR("", changed);
 
+    HIR::TypeRef    tmp_ty;
     // Remove useless operations
     for(auto& bb : fcn.blocks)
     {
@@ -4489,11 +4537,36 @@ bool MIR_Optimise_NoopRemoval(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                 DEBUG(state << "Useless assignment (v = &*v), remove - " << *it);
                 it = bb.statements.erase(it);
                 changed = true;
-
+            
                 continue ;
             }
 
-            // TODO: Cast of same type
+            // Cast to the same type
+            if( it->is_Assign()
+                && it->as_Assign().src.is_Cast()
+                && it->as_Assign().src.as_Cast().type == state.get_lvalue_type(tmp_ty, it->as_Assign().src.as_Cast().val)
+                )
+            {
+                DEBUG(state << "No-op cast, replace with assignment - " << *it);
+                auto v = mv$(it->as_Assign().src.as_Cast().val);
+                it->as_Assign().src = MIR::RValue::make_Use({ mv$(v) });
+                changed = true;
+
+                ++ it;
+                continue ;
+            }
+
+            // Drop of Copy type
+            if( it->is_Drop()
+                && state.lvalue_is_copy(it->as_Drop().slot)
+                )
+            {
+                DEBUG(state << "Drop of Copy type, remove - " << *it);
+                it = bb.statements.erase(it);
+                changed = true;
+
+                continue;
+            }
 
             ++ it;
         }
