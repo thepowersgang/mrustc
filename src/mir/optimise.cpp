@@ -935,18 +935,32 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
         static bool can_inline(const ::HIR::Path& path, const ::MIR::Function& fcn, bool minimal)
         {
             // TODO: If the function is marked as `inline(always)`, then inline it regardless of the contents
+            // TODO: If the function is marked as `inline(never)`, then don't inline
             // TODO: Take a monomorph helper so recursion can be detected
 
             if( minimal ) {
                 return false;
             }
 
-            // TODO: If the function is marked as `inline(never)`, then don't inline
 
             // TODO: Allow functions that are just a switch on an input.
             if( fcn.blocks.size() == 1 )
             {
                 return fcn.blocks[0].statements.size() < 10 && ! fcn.blocks[0].terminator.is_Goto();
+            }
+            else if( fcn.blocks.size() == 2 && fcn.blocks[0].terminator.is_Call() )
+            {
+                const auto& blk0_te = fcn.blocks[0].terminator.as_Call();
+                if( !fcn.blocks[1].terminator.is_Diverge() )
+                    return false;
+                if( fcn.blocks[0].statements.size() + fcn.blocks[1].statements.size() > 10 )
+                    return false;
+                // Detect and avoid simple recursion.
+                // - This won't detect mutual recursion - that also needs prevention.
+                // TODO: This is the pre-monomorph path, but we're comparing with the post-monomorph path
+                if( blk0_te.fcn.is_Path() && blk0_te.fcn.as_Path() == path )
+                    return false;
+                return true;
             }
             else if( fcn.blocks.size() == 3 && fcn.blocks[0].terminator.is_Call() )
             {
