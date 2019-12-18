@@ -1433,6 +1433,7 @@ namespace {
                 DEBUG(ref << " " << bb.statements.at(ref.stmt_idx));
                 if( cb_stmt(ref, bb.statements.at(ref.stmt_idx)) )
                 {
+                    DEBUG("> Early true");
                     return IterPathRes::EarlyTrue;
                 }
 
@@ -1443,6 +1444,7 @@ namespace {
                 DEBUG(ref << " " << bb.terminator);
                 if( cb_term(ref, bb.terminator) )
                 {
+                    DEBUG("> Early true");
                     return IterPathRes::EarlyTrue;
                 }
 
@@ -1458,6 +1460,7 @@ namespace {
                 {
                     // Possibly loop into the next block
                     if( !visted_bbs.insert(*te).second ) {
+                        DEBUG("> Loop abort");
                         return IterPathRes::Abort;
                     }
                     ref.stmt_idx = 0;
@@ -1476,6 +1479,7 @@ namespace {
                     }
                     // Possibly loop into the next block
                     if( !visted_bbs.insert(te->ret_block).second ) {
+                        DEBUG("> Loop abort");
                         return IterPathRes::Abort;
                     }
                     ref.stmt_idx = 0;
@@ -1483,6 +1487,7 @@ namespace {
                 }
                 else
                 {
+                    DEBUG("> Terminator abort");
                     return IterPathRes::Abort;
                 }
             }
@@ -1506,23 +1511,28 @@ namespace {
                 if( lv.m_root == val.m_root ) {
                     return true;
                 }
+                // If the desired lvalue has an index in it's wrappers, AND the current lvalue is a local
                 if( has_index && lv.m_root.is_Local() )
                 {
+                    // Search for any wrapper on `val` that Index(lv)
                     for(const auto& w : val.m_wrappers)
                     {
-                        if( w.is_Index() )
+                        if( w.is_Index() && w.as_Index() == lv.m_root.as_Local() )
                         {
-                            if( w.as_Index() == lv.m_root.as_Local() )
-                            {
-                                return true;
-                            }
+                            // This lvalue is changed, so the index is invalidated
+                            return true;
                         }
                     }
                 }
                 break;
             case ValUsage::Read:
                 if( also_read )
-                    return true;
+                {
+                    // NOTE: A read of the same root is a read of this value (what if they're disjoint fields?)
+                    if( lv.m_root == val.m_root ) {
+                        return true;
+                    }
+                }
                 break;
             }
             return false;
@@ -1638,7 +1648,18 @@ bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::
 
                 // - Iterate the path(s) between the two statements to check if the destination would be invalidated
                 //  > The iterate function doesn't (yet) support following BB chains, so assume invalidated if over a jump.
-                bool invalidated = IterPathRes::Complete != iter_path(fcn, slot.set_loc, slot.use_loc,
+                auto set_loc_next = slot.set_loc;
+                if( slot.set_loc.stmt_idx < set_bb.statements.size() )
+                {
+                    set_loc_next.stmt_idx += 1;
+                }
+                else
+                {
+                    set_loc_next.bb_idx = set_bb.terminator.as_Call().ret_block;
+                    set_loc_next.stmt_idx = 0;
+                }
+                // TODO: What if the set location is a call?
+                bool invalidated = IterPathRes::Complete != iter_path(fcn, set_loc_next, slot.use_loc,
                         [&](auto loc, const auto& stmt)->bool{ return stmt.is_Drop() || check_invalidates_lvalue(stmt, dst, /*also_read=*/true); },
                         [&](auto loc, const auto& term)->bool{ return check_invalidates_lvalue(term, dst, /*also_read=*/true); }
                         );
@@ -4471,6 +4492,8 @@ bool MIR_Optimise_NoopRemoval(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 
                 continue ;
             }
+
+            // TODO: Cast of same type
 
             ++ it;
         }

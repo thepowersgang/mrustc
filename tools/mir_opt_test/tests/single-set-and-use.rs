@@ -52,8 +52,7 @@ fn nomut(a: i32) -> (i32,)
 	} RETURN;
 }
 
-/*	// TODO: This doesn't pass yet (can't move the assignment up it seems)
-// NOTE: Test based on sample from `<::"alloc"::rc::Rc<[u8],>>::allocate_for_ptr`
+// NOTE: Test based on a snippet from `<::"alloc"::rc::Rc<[u8],>>::allocate_for_ptr`
 // Reverse (upwards) movement
 #[test="borrowed_rev_exp"]
 fn borrowed_rev(a: &mut [u8], a2: &mut u8)
