@@ -127,14 +127,19 @@ struct CfgChecker
 {
     const char* target_env;
     const char* target_os;
+    const char* target_vendor;
     const char* target_arch;
 
+    static CfgChecker for_target(const char* compiler_path, const char* target_spec);
+    bool check_cfg(const char* str) const;
+private:
     bool check_cfg(CfgParseLexer& p) const;
 };
 
 CfgChecker  gCfgChecker {
     (CFG_WINDOWS ? "msvc" : "gnu"),
     (CFG_WINDOWS ? "windows" : "linux"),
+    "",
     "x86"
     };
 
@@ -181,17 +186,27 @@ CfgParseLexer::Tok CfgParseLexer::get_next()
 
 bool Cfg_Check(const char* cfg_string)
 {
-    CfgParseLexer p { cfg_string + 4 };
-
     if( gCfgChecker.target_os == nullptr )
     {
         // TODO: If the checker isn't initialised, invoke the compiler and ask it to dump the current target
         // - It's pre-initialised above currently
     }
+    return gCfgChecker.check_cfg(cfg_string);
+}
 
-    bool success = gCfgChecker.check_cfg(p);
+/*static*/ CfgChecker CfgChecker::for_target(const char* compiler_path, const char* target_spec)
+{
+    throw "";
+}
+
+bool CfgChecker::check_cfg(const char* cfg_string) const
+{
+    CfgParseLexer p { cfg_string + 4 };
+
+    bool success = this->check_cfg(p);
     if( !p.consume_if(")") )
         throw ::std::runtime_error(format("Expected ')' after cfg condition - got", p.cur().to_string()));
+
     return success;
 }
 
@@ -223,7 +238,7 @@ bool CfgChecker::check_cfg(CfgParseLexer& p) const
             } while(p.consume_if(','));
         }
         else {
-            TODO("Unknown fragment in cfg - " << name.to_string());
+            throw std::runtime_error(format("Unknown operator in cfg `", name.to_string(), "`"));
         }
         if( !p.consume_if(')') )
             throw ::std::runtime_error("Expected ')' after combinator content");
@@ -244,8 +259,10 @@ bool CfgChecker::check_cfg(CfgParseLexer& p) const
             return val == this->target_os;
         else if( name == "target_arch" )
             return val == this->target_arch;
+        else if( name == "target_vendor" )
+            return val == this->target_vendor;
         else {
-            TODO("Unknown fragment in cfg - " << name.to_string());
+            throw std::runtime_error(format("Unknown cfg value `", name.to_string(), "` (=\"", val, "\")"));
         }
     }
     // Flags
@@ -262,7 +279,7 @@ bool CfgChecker::check_cfg(CfgParseLexer& p) const
             return false;
         }
         else {
-            TODO("Unknown fragment in cfg - " << name.to_string());
+            throw std::runtime_error(format("Unknown cfg flag `", name.to_string(), "`"));
         }
     }
     throw ::std::runtime_error("Hit end of check_cfg");
