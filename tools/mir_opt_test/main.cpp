@@ -25,6 +25,7 @@ struct Options
     helpers::path   test_dir;
 
     // TODO: List of test globs
+    std::vector<std::string>    filters;
 
     bool parse(int argc, char* argv[]);
     void print_usage() const;
@@ -123,6 +124,22 @@ int main(int argc, char* argv[])
         {
             for(const auto& test : f.m_tests)
             {
+                if(!opts.filters.empty())
+                {
+                    bool found = false;
+                    for(const auto& f : opts.filters)
+                    {
+                        if( f == test.input_function.m_components.back() )
+                        {
+                            found = true;
+                            break;
+                        }
+                    }
+                    if(!found)
+                    {
+                        continue;
+                    }
+                }
                 const auto& in_fcn = f.m_crate->get_function_by_path(Span(), test.input_function);
                 const auto& exp_mir = *f.m_crate->get_function_by_path(Span(), test.output_template_function).m_code.m_mir;
 
@@ -158,8 +175,7 @@ bool Options::parse(int argc, char* argv[])
             }
             else
             {
-                this->print_usage();
-                return false;
+                this->filters.push_back( arg );
             }
         }
         else if( arg[1] != '-' )
@@ -193,9 +209,11 @@ bool Options::parse(int argc, char* argv[])
 
 void Options::print_usage() const
 {
+    std::cerr << "Usage: mir_opt_test <dir> [tests ...]" << std::endl;
 }
 void Options::print_help() const
 {
+    this->print_usage();
 }
 
 namespace {
