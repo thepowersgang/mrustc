@@ -141,14 +141,14 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
                     case State::Valid:  break;
                     }
                     if( range.first == range.second ) {
-                        os << prefix << "$" << range.first << ", ";
+                        os << prefix << range.first << ", ";
                     }
                     else {
-                        os << prefix << "$" << range.first << "-" << prefix << "$" << range.second << ", ";
+                        os << prefix << range.first << "-" << prefix << range.second << ", ";
                     }
                 }
                 };
-            fmt_val_range("arg", this->args);
+            fmt_val_range("a", this->args);
             fmt_val_range("_", this->locals);
             os << "}";
         }
