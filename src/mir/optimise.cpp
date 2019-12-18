@@ -2925,10 +2925,34 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
             }
             };
 
+        // Convert known indexes into field acceses
+        auto edit_lval = [&](auto& lv, auto _vu)->bool {
+            for(auto& w : lv.m_wrappers)
+            {
+                if( w.is_Index() )
+                {
+                    auto it = known_values.find(MIR::LValue::new_Local(w.as_Index()));
+                    if( it != known_values.find(lv) )
+                    {
+                        MIR_ASSERT(state, it->second.is_Uint(), "Indexing with non-Uint constant - " << it->second);
+                        MIR_ASSERT(state, it->second.as_Uint().t == HIR::CoreType::Usize, "Indexing with non-usize constant - " << it->second);
+                        auto idx = it->second.as_Uint().v;
+                        MIR_ASSERT(state, idx < (1<<30), "Known index is excessively large");
+                        w = MIR::LValue::Wrapper::new_Field( idx );
+                        changed = true;
+                    }
+                }
+            }
+            return true;
+            };
+
         for(auto& stmt : bb.statements)
         {
             auto stmtidx = &stmt - &bb.statements.front();
             state.set_cur_stmt(bbidx, stmtidx);
+
+            visit_mir_lvalues_mut(stmt, edit_lval);
+
             // Scan statements forwards:
             // - If a known temporary is used as Param::LValue, replace LValue with the value
             // - If a UniOp has its input known, evaluate
@@ -3008,6 +3032,13 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                         *te
                                         }));
                                 }
+                                else if( const auto* vp = nv.opt_Bool() )
+                                {
+                                    e->src = ::MIR::RValue::make_Constant(::MIR::Constant::make_Uint({
+                                        (vp->v ? 1u : 0u),
+                                        *te
+                                        }));
+                                }
                                 else
                                 {
                                 }
@@ -3029,6 +3060,13 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                 {
                                     e->src = ::MIR::RValue::make_Constant(::MIR::Constant::make_Int({
                                         H::truncate_s(*te, vp->v),
+                                        *te
+                                        }));
+                                }
+                                else if( const auto* vp = nv.opt_Bool() )
+                                {
+                                    e->src = ::MIR::RValue::make_Constant(::MIR::Constant::make_Int({
+                                        (vp->v ? 1 : 0),
                                         *te
                                         }));
                                 }
@@ -3378,6 +3416,7 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
         }
 
         state.set_cur_stmt_term(bbidx);
+        visit_mir_lvalues_mut(bb.terminator, edit_lval);
         switch(bb.terminator.tag())
         {
         case ::MIR::Terminator::TAGDEAD:    throw "";
@@ -3495,13 +3534,16 @@ bool MIR_Optimise_SplitAggregates(::MIR::TypeResolve& state, ::MIR::Function& fc
     struct Potential {
         size_t  src_bb_idx;
         size_t  src_stmt_idx;
+        unsigned    variant_idx;
+
         bool    is_direct_used;
         unsigned    n_write;
         std::vector<unsigned>   replacements;
 
-        Potential(size_t src_bb_idx, size_t src_stmt_idx)
+        Potential(size_t src_bb_idx, size_t src_stmt_idx, unsigned variant_idx = ~0u)
             :src_bb_idx(src_bb_idx)
             ,src_stmt_idx(src_stmt_idx)
+            ,variant_idx(variant_idx)
             ,is_direct_used(false)
             ,n_write(0)
         {
@@ -3529,11 +3571,23 @@ bool MIR_Optimise_SplitAggregates(::MIR::TypeResolve& state, ::MIR::Function& fc
                     if( sse->vals.size() == 0 )
                         continue ;
                 }
+                // NOTE: Arrays are eligable (as long as they're only accessed using field operator
+                else if( auto* sse = se->src.opt_Array() ) {
+                    if( sse->vals.size() == 0 )
+                        continue ;
+                }
+                // Variants are allowed, they store the variant index for later checking
+                else if( auto* sse = se->src.opt_Variant() ) {
+                    DEBUG("> BB" << bb_idx << "/" << i << ": POSSIBLE " << stmt);
+                    potentials.insert( std::make_pair(se->dst.as_Local(), Potential(bb_idx, i, sse->index)) );
+                    continue ;
+                }
                 else {
                     continue ;
                 }
 
                 // Found a potential.
+                DEBUG("> BB" << bb_idx << "/" << i << ": POSSIBLE " << stmt);
                 potentials.insert( std::make_pair(se->dst.as_Local(), Potential(bb_idx, i)) );
             }
         }
@@ -3551,8 +3605,7 @@ bool MIR_Optimise_SplitAggregates(::MIR::TypeResolve& state, ::MIR::Function& fc
             auto it = potentials.find(lv.m_root.as_Local());
             if( it != potentials.end() )
             {
-                // NOTE: Strictly speaking, don't need to check `is_Field`, but it helps for eventual arary support
-                if( lv.m_wrappers.empty() || !lv.m_wrappers.front().is_Field() )
+                if( lv.m_wrappers.empty() )
                 {
                     // NOTE: A single write is allowed (the assignment)
                     // - Any other would be a re-assignent or a drop
@@ -3562,22 +3615,39 @@ bool MIR_Optimise_SplitAggregates(::MIR::TypeResolve& state, ::MIR::Function& fc
                     }
                     else
                     {
-                        // Direct usage! 
+                        // Direct usage!
+                        it->second.is_direct_used = true;
+                    }
+                }
+                else if( lv.m_wrappers.front().is_Field() )
+                {
+                    // Field acess: allowed UNLESS it's a borrow of the first field
+                    // TODO: Find out what code makes the assumption that `&foo.0` is a good stand-in for `&foo`
+                    if( lv.m_wrappers.front().as_Field() == 0 && vu == ValUsage::Borrow )
+                    {
+                        it->second.is_direct_used = true;
+                    }
+                }
+                else if( lv.m_wrappers.front().is_Downcast() )
+                {
+                    // Downcast to a variant other than the variant it was constructed as, don't do anything.
+                    // - For enums, this is an error (but here we don't know for sure). For unions it's valid behaviour
+                    if( lv.m_wrappers.front().as_Downcast() != it->second.variant_idx )
+                    {
                         it->second.is_direct_used = true;
                     }
                 }
                 else
                 {
-                    if( lv.m_wrappers.front().as_Field() == 0 && vu == ValUsage::Borrow )
-                    {
-                        // NOTE: Assume direct usage, as some code (TODO: What code) uses `&foo.0` instead of `&foo`
-                        it->second.is_direct_used = true;
-                    }
+                    // Index and deref are disallowed
+                    it->second.is_direct_used = true;
                 }
 
                 // If invalidated, delete.
                 if( it->second.is_direct_used || it->second.n_write > 1 )
                 {
+                    const auto& stmt = fcn.blocks[it->second.src_bb_idx].statements[it->second.src_stmt_idx];
+                    DEBUG(state << ": REMOVE BB" << it->second.src_bb_idx << "/" << it->second.src_stmt_idx << " " << stmt << " from " << lv /*<< " vu=" << vu*/);
                     potentials.erase(it);
                 }
             }
@@ -3607,6 +3677,12 @@ bool MIR_Optimise_SplitAggregates(::MIR::TypeResolve& state, ::MIR::Function& fc
             }
             else if( auto* se = src.opt_Tuple() ) {
                 vals = std::move(se->vals);
+            }
+            else if( auto* se = src.opt_Array() ) {
+                vals = std::move(se->vals);
+            }
+            else if( auto* sse = src.opt_Variant() ) {
+                vals.push_back( mv$(sse->val) );
             }
             else {
                 MIR_BUG(state, "Unexpected rvalue type in SplitAggregates - " << src);
@@ -3667,7 +3743,16 @@ bool MIR_Optimise_SplitAggregates(::MIR::TypeResolve& state, ::MIR::Function& fc
             auto it = potentials.find(lv.m_root.as_Local());
             if( it != potentials.end() )
             {
-                auto field_idx = lv.m_wrappers.front().as_Field();
+                size_t field_idx;
+                if( it->second.variant_idx == ~0u )
+                {
+                    field_idx = lv.m_wrappers.front().as_Field();
+                }
+                else
+                {
+                    MIR_ASSERT(state, lv.m_wrappers.front().is_Downcast(), lv);
+                    field_idx = 0;
+                }
                 auto new_wrappers = std::vector<MIR::LValue::Wrapper>(lv.m_wrappers.begin() + 1, lv.m_wrappers.end());
                 auto new_root = MIR::LValue::Storage::new_Local(it->second.replacements.at(field_idx));
                 auto new_lv = MIR::LValue(mv$(new_root), mv$(new_wrappers));
