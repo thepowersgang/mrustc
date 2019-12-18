@@ -337,6 +337,53 @@ int main()
 
     // TODO: Obtain a mapping of vtables addresses to types
     // - Could fetch the type name form the vtable itself?
+    {
+        struct H {
+            static BOOL ty_enum_cb(PSYMBOL_INFO pSymInfo, ULONG SymbolSize, PVOID UserContext)
+            {
+                auto proc_handle = (HANDLE)1;
+                auto mod_base = pSymInfo->ModBase;
+                auto get_dword = [proc_handle,mod_base](DWORD type_id, const char* name, IMAGEHLP_SYMBOL_TYPE_INFO info_ty) {
+                    DWORD v;
+                    if( !SymGetTypeInfo(proc_handle, mod_base, type_id, info_ty, &v) )
+                    {
+                        throw std::runtime_error(FMT_STRING("#" << type_id << " " << name << "=" << WinErrStr(GetLastError())));
+                    }
+                    return v;
+                };
+                auto get_str = [proc_handle,mod_base](DWORD type_id, const char* name, IMAGEHLP_SYMBOL_TYPE_INFO info_ty)->WideStrLocalFree {
+                    WCHAR* v;
+                    if( !SymGetTypeInfo(proc_handle, mod_base, type_id, info_ty, &v) )
+                    {
+                        throw std::runtime_error(FMT_STRING("#" << type_id << " " << name << "=" << WinErrStr(GetLastError())));
+                    }
+                    return WideStrLocalFree(v);
+                };
+                try
+                {
+                    auto symtag = get_dword(pSymInfo->TypeIndex, "SYMTAG", TI_GET_SYMTAG);
+                    if( symtag == SymTagVTable )
+                    {
+                        std::cout << "#" << pSymInfo->TypeIndex << " VTable" << std::endl;
+                    }
+                    if(symtag == SymTagUDT)
+                    {
+                        //if( get_dword(pSymInfo->TypeIndex, "VIRTUALBASECLASS", TI_GET_VIRTUALBASECLASS) )
+                        //{
+                            auto v = get_dword(pSymInfo->TypeIndex, "VIRTUALTABLESHAPEID", TI_GET_VIRTUALTABLESHAPEID);
+                            std::cout << "#" << pSymInfo->TypeIndex << " " << pSymInfo->Name << " VTable " << v << std::endl;
+                        //}
+                    }
+                }
+                catch(const std::exception& e)
+                {
+                    std::cout << e.what() << std::endl;
+                }
+                return TRUE;
+            }
+        };
+        SymEnumTypes(proc_handle, module_list->Modules[0].BaseOfImage, H::ty_enum_cb, nullptr);
+    }
 
 
     MINIDUMP_THREAD_LIST*   thread_list = NULL;
@@ -683,6 +730,10 @@ TypeRef::t_cache    TypeRef::s_cache;
         rv.m_data.misc.name = _strdup(FMT_STRING(get_str("SYMNAME", TI_GET_SYMNAME)).c_str());
         rv.m_data.misc.size = static_cast<uint8_t>(get_dword("LENGTH", TI_GET_LENGTH));
         break;
+    case SymTagVTableShape:
+        rv.m_class = ClassUdt;
+        rv.m_data.udt = TypeDefinition::from_syminfo(hProcess, mod_base, type_id);
+        break;
     default:
         throw std::runtime_error(FMT_STRING("#" << type_id << " SYMTAG=" << symtag));
     }
@@ -834,7 +885,7 @@ struct Indent {
 /*static*/ TypeDefinition* TypeDefinition::from_syminfo(HANDLE hProcess, ULONG64 mod_base, DWORD type_id)
 {
     static Indent s_indent = Indent(" ");
-#define DO_DEBUG(v) do { if(false) { std::cout << s_indent << v << std::endl; } } while(0)
+#define DO_DEBUG(v) do { if(true) { std::cout << s_indent << v << std::endl; } } while(0)
     static std::unordered_map<DWORD, TypeDefinition*>   s_anti_recurse;
     if( s_anti_recurse.find(type_id) != s_anti_recurse.end() ) {
         DO_DEBUG("Recursion on #" << type_id);
@@ -861,13 +912,21 @@ struct Indent {
         return WideStrLocalFree(v);
     };
 
-    if( !(get_dword(type_id, "SYMTAG", TI_GET_SYMTAG) == SymTagUDT) ) {
+    auto rv = ::std::unique_ptr<TypeDefinition>(new TypeDefinition);
+
+    auto symtag = get_dword(type_id, "SYMTAG", TI_GET_SYMTAG);
+    if( symtag == SymTagUDT ) {
+        rv->name = FMT_STRING(get_str(type_id, "SYMNAME", TI_GET_SYMNAME));
+        rv->size = get_dword(type_id, "LENGTH", TI_GET_LENGTH);
+    }
+    else if( symtag == SymTagVTableShape ) {
+        rv->name = FMT_STRING("VTABLE #" << type_id);
+        rv->size = 0;
+    }
+    else {
         throw std::runtime_error(FMT_STRING("BUG #" << type_id << " SYMTAG=" << get_dword(type_id, "SYMTAG", TI_GET_SYMTAG)));
     }
 
-    auto rv = ::std::unique_ptr<TypeDefinition>(new TypeDefinition);
-    rv->name = FMT_STRING(get_str(type_id, "SYMNAME", TI_GET_SYMNAME));
-    rv->size = get_dword(type_id, "LENGTH", TI_GET_LENGTH);
     s_anti_recurse.insert(std::make_pair(type_id, rv.get()));
 
     DWORD child_count = get_dword(type_id, "CHILDRENCOUNT", TI_GET_CHILDRENCOUNT);
@@ -925,9 +984,13 @@ struct Indent {
                     }
                 }
                 break;
-            case SymTagVTable:
-                // Don't care? Or add as a field
-                break;
+            case SymTagVTable:{ // VTable: Add as field
+                Field   f;
+                f.name = "#VTABLE";
+                f.offset = get_dword(child_type_id, "OFFSET", TI_GET_OFFSET);
+                f.ty = TypeRef::lookup(hProcess, mod_base, get_dword(child_type_id, "TYPE", TI_GET_TYPE));
+                rv->fields.push_back(std::move(f));
+                } break;
             case SymTagTypedef:
                 break;
             case SymTagEnum:
@@ -1048,6 +1111,14 @@ void MemoryStats::enum_type_at(const TypeRef& ty, DWORD64 addr, bool is_top_leve
     if( is_top_level )
     {
         m_counts[FMT_STRING(ty)] ++;
+    }
+
+    if( const auto* udt = ty.any_udt() )
+    {
+        if( udt->fields.size() > 0 && udt->fields[0].name == "#VTABLE" ) {
+            auto vtable = ReadMemory::read_ptr(addr + udt->fields[0].offset);
+            std::cout << s_indent << ty << " vtable = " << (void*)vtable << std::endl;
+        }
     }
 
     // 2. Recurse (using special handlers if required)
