@@ -51,3 +51,41 @@ fn nomut(a: i32) -> (i32,)
 		DROP ba;
 	} RETURN;
 }
+
+/*	// TODO: This doesn't pass yet (can't move the assignment up it seems)
+// NOTE: Test based on sample from `<::"alloc"::rc::Rc<[u8],>>::allocate_for_ptr`
+// Reverse (upwards) movement
+#[test="borrowed_rev_exp"]
+fn borrowed_rev(a: &mut [u8], a2: &mut u8)
+{
+	let var11: *mut [u8];
+	let var21: *mut u8;
+	let var30: *mut [u8];
+	let var22: &mut *mut [u8];
+	bb0: {
+		ASSIGN var11 = CAST a as *mut [u8];
+		ASSIGN var21 = CAST a2 as *mut u8;
+		ASSIGN var30 = var11;
+		ASSIGN var22 = &mut var30;
+	} CALL retval = "black_box"(var22, var21) => bb1 else bb2;
+	bb1: {
+	} RETURN;
+	bb2: {
+	} DIVERGE;
+}
+fn borrowed_rev_exp(a: &mut [u8], a2: &mut u8)
+{
+	let var21: *mut u8;
+	let var30: *mut [u8];
+	let var22: &mut *mut [u8];
+	bb0: {
+		ASSIGN var30 = CAST a as *mut [u8];
+		ASSIGN var21 = CAST a2 as *mut u8;
+		ASSIGN var22 = &mut var30;
+	} CALL retval = "black_box"(var22, var21) => bb1 else bb2;
+	bb1: {
+	} RETURN;
+	bb2: {
+	} DIVERGE;
+}
+//*/

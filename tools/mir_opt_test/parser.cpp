@@ -97,6 +97,31 @@ MirOptTestFile  MirOptTestFile::load_from_file(const helpers::path& p)
     return rv;
 }
 namespace {
+    const HIR::GenericParams* g_item_params;
+
+    HIR::GenericParams parse_genericdef(TokenStream& lex)
+    {
+        Token   tok;
+        HIR::GenericParams  rv;
+        if(consume_if(lex, TOK_LT) )
+        {
+            while( lex.lookahead(0) != TOK_GT )
+            {
+                GET_CHECK_TOK(tok, lex, TOK_IDENT);
+                auto name = tok.istr();
+
+                rv.m_types.push_back(HIR::TypeParamDef());
+                rv.m_types.back().m_name = name;
+
+                if( consume_if(lex, TOK_COLON) )
+                {
+                    TODO(lex.point_span(), "parse_genericdef - bounds");
+                }
+            }
+            GET_CHECK_TOK(tok, lex, TOK_GT);
+        }
+        return rv;
+    }
     HIR::Function parse_function(TokenStream& lex, RcString& out_name)
     {
         Token   tok;
@@ -116,10 +141,8 @@ namespace {
         auto fcn_name = tok.istr();
         DEBUG("fn " << fcn_name);
 
-        if(consume_if(lex, TOK_LT) )
-        {
-            TODO(lex.point_span(), "Generic functions");
-        }
+        fcn_decl.m_params = parse_genericdef(lex);
+        g_item_params = &fcn_decl.m_params;
 
         // Arguments
         auto& args = fcn_decl.m_args;
@@ -255,7 +278,14 @@ namespace {
 
                     // Operator (e.g. `ADD(...)`) or an lvalue
                     case TOK_IDENT:
-                        if( consume_if(lex, TOK_PAREN_OPEN) )
+                        if( tok.istr() == "CAST" )
+                        {
+                            auto v = parse_lvalue(lex, val_name_map);
+                            GET_CHECK_TOK(tok, lex, TOK_RWORD_AS);
+                            auto ty = parse_type(lex);
+                            src = MIR::RValue::make_Cast({ mv$(v), mv$(ty) });
+                        }
+                        else if( consume_if(lex, TOK_PAREN_OPEN) )
                         {
                             auto parse_binop = [&](TokenStream& lex, MIR::eBinOp op) {
                                 Token   tok;
@@ -482,6 +512,7 @@ namespace {
 
         DEBUG(fcn_decl.m_args << " -> " << fcn_decl.m_return);
         out_name = mv$(fcn_name);
+        g_item_params = nullptr;
         return fcn_decl;
     }
     HIR::PathParams parse_params(TokenStream& lex)
@@ -489,7 +520,31 @@ namespace {
         HIR::PathParams rv;
         if( lex.lookahead(0) == TOK_LT || lex.lookahead(0) == TOK_DOUBLE_LT )
         {
-            TODO(lex.point_span(), "parse_params");
+            if( !consume_if(lex, TOK_LT) ) {
+                lex.getToken();
+                lex.putback(TOK_LT);
+            }
+
+            while( !(lex.lookahead(0) == TOK_GT || lex.lookahead(0) == TOK_DOUBLE_GT) )
+            {
+                // TODO: Lifetimes?
+                rv.m_types.push_back( parse_type(lex) );
+                if( !consume_if(lex, TOK_COMMA) )
+                    break;
+            }
+
+            if( consume_if(lex, TOK_GT) )
+            {
+            }
+            else if( consume_if(lex, TOK_DOUBLE_GT) )
+            {
+                lex.putback(TOK_GT);
+            }
+            else
+            {
+                auto tok = lex.getToken();
+                throw ParseError::Unexpected(lex, tok, { TOK_GT, TOK_DOUBLE_GT });
+            }
         }
         return rv;
     }
@@ -544,6 +599,24 @@ namespace {
             GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
             return HIR::TypeRef(mv$(tys));
             } break;
+        case TOK_SQUARE_OPEN: {
+            auto ity = parse_type(lex);
+            GET_TOK(tok, lex);
+            if( tok == TOK_SEMICOLON )
+            {
+                GET_CHECK_TOK(tok, lex, TOK_INTEGER);
+                auto size = tok.intval();
+                return HIR::TypeRef::new_array(mv$(ity), size);
+            }
+            else if( tok == TOK_SQUARE_CLOSE )
+            {
+                return HIR::TypeRef::new_slice(mv$(ity));
+            }
+            else
+            {
+                throw ParseError::Unexpected(lex, tok, {TOK_SEMICOLON, TOK_SQUARE_CLOSE});
+            }
+            } break;
         case TOK_IDENT:
             if( tok.istr() == "dyn" )
             {
@@ -565,6 +638,16 @@ namespace {
             else if( tok.istr() == "isize" ) return HIR::TypeRef(HIR::CoreType::Isize);
             else
             {
+                if( g_item_params )
+                {
+                    for(size_t i = 0; i < g_item_params->m_types.size(); i ++)
+                    {
+                        if( g_item_params->m_types[i].m_name == tok.istr() )
+                        {
+                            return HIR::TypeRef(tok.istr(), 256 + i);
+                        }
+                    }
+                }
                 TODO(lex.point_span(), tok);
             }
             break;
@@ -577,6 +660,15 @@ namespace {
                 return HIR::TypeRef::new_borrow(HIR::BorrowType::Unique, parse_type(lex));
             else
                 return HIR::TypeRef::new_borrow(HIR::BorrowType::Shared, parse_type(lex));
+        case TOK_STAR:
+            if( consume_if(lex, TOK_RWORD_MOVE) )
+                return HIR::TypeRef::new_pointer(HIR::BorrowType::Owned, parse_type(lex));
+            else if( consume_if(lex, TOK_RWORD_MUT) )
+                return HIR::TypeRef::new_pointer(HIR::BorrowType::Unique, parse_type(lex));
+            else if( consume_if(lex, TOK_RWORD_CONST) )
+                return HIR::TypeRef::new_pointer(HIR::BorrowType::Shared, parse_type(lex));
+            else
+                throw ParseError::Unexpected(lex, lex.getToken(), { TOK_RWORD_MOVE, TOK_RWORD_MUT, TOK_RWORD_CONST });
         default:
             TODO(lex.point_span(), tok);
         }
@@ -593,7 +685,10 @@ namespace {
             Token   tok;
             GET_TOK(tok, lex);
             CHECK_TOK(tok, TOK_IDENT);
-            return name_map.at(tok.istr()).clone();
+            auto it = name_map.find(tok.istr());
+            if( it == name_map.end() )
+                ERROR(lex.point_span(), E0000, "Unable to find value " << tok.istr());
+            return it->second.clone();
         }
     }
     MIR::LValue parse_lvalue(TokenStream& lex, const ::std::map<RcString, MIR::LValue::Storage>& name_map)
