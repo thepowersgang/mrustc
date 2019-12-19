@@ -87,7 +87,7 @@ struct VisEnt
 
 /// Literal type used for constant evaluation
 /// NOTE: Intentionally minimal, just covers the values (not the types)
-TAGGED_UNION(Literal, Invalid,
+TAGGED_UNION_EX(Literal, (), Invalid, (
     (Invalid, struct {}),
     (Defer, struct {}),
     // List = Array, Tuple, struct literal
@@ -106,6 +106,22 @@ TAGGED_UNION(Literal, Invalid,
     (BorrowData, ::std::unique_ptr<Literal>),
     // String = &'static str or &[u8; N]
     (String, ::std::string)
+    ),
+    /*extra_move=*/(),
+    /*extra_assign=*/(),
+    /*extra=*/(
+        static Literal new_invalid() { return Literal::make_Invalid({}); }
+        static Literal new_defer() { return Literal::make_Defer({}); }
+        static Literal new_list(::std::vector<Literal> l) { return Literal::make_List(std::move(l)); }
+        static Literal new_variant(unsigned idx, Literal inner) { return Literal::make_Variant({ idx, box$(inner) }); }
+        static Literal new_integer(uint64_t v) { return Literal::make_Integer(v); }
+        static Literal new_integer(double v) { return Literal::make_Float(v); }
+        static Literal new_borrow_path(::HIR::Path p) { return Literal::make_BorrowPath(mv$(p)); }
+        static Literal new_borrow_data(Literal inner) { return Literal::make_BorrowData(box$(inner)); }
+        static Literal new_string(std::string v) { return Literal::make_String(mv$(v)); }
+
+        Literal clone() const;
+        )
     );
 extern ::std::ostream& operator<<(::std::ostream& os, const Literal& v);
 extern bool operator==(const Literal& l, const Literal& r);

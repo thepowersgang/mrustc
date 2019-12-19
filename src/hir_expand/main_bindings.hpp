@@ -18,9 +18,10 @@ extern void HIR_Expand_Closures(::HIR::Crate& crate);
 extern void HIR_Expand_UfcsEverything(::HIR::Crate& crate);
 extern void HIR_Expand_Reborrows(::HIR::Crate& crate);
 extern void HIR_Expand_ErasedType(::HIR::Crate& crate);
-extern void ConvertHIR_ConstantEvaluateFull(::HIR::Crate& crate);
+extern void HIR_Expand_StaticBorrowConstants(::HIR::Crate& crate);
 
 extern void HIR_Expand_AnnotateUsage_Expr(const ::HIR::Crate& crate, ::HIR::ExprPtr& exp);
 extern void HIR_Expand_Closures_Expr(const ::HIR::Crate& crate, ::HIR::ExprPtr& exp);
 extern void HIR_Expand_UfcsEverything_Expr(const ::HIR::Crate& crate, ::HIR::ExprPtr& exp);
 extern void HIR_Expand_Reborrows_Expr(const ::HIR::Crate& crate, ::HIR::ExprPtr& exp);
+//extern void HIR_Expand_StaticBorrowConstants_Expr(const ::HIR::Crate& crate, ::HIR::ExprPtr& exp);

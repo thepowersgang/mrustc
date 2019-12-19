@@ -1948,6 +1948,74 @@ bool StaticTraitResolve::can_unsize(const Span& sp, const ::HIR::TypeRef& dst_ty
     return false;
 }
 
+// Check if the passed type contains an UnsafeCell
+// Returns `Fuzzy` if generic, `Equal` if it does contain an UnsafeCell, and `Unequal` if it doesn't (shared=immutable)
+HIR::Compare StaticTraitResolve::type_is_interior_mutable(const Span& sp, const ::HIR::TypeRef& ty) const
+{
+    TU_MATCH_HDRA( (ty.m_data), {)
+    TU_ARMA(Infer, e) {
+        // Is this a bug?
+        return HIR::Compare::Fuzzy;
+        }
+    TU_ARMA(Diverge, e) {
+        return HIR::Compare::Unequal;
+        }
+    TU_ARMA(Primitive, e) {
+        return HIR::Compare::Unequal;
+        }
+    TU_ARMA(Path, e) {
+        TU_MATCH_HDRA( (e.binding), {)
+        TU_ARMA(Unbound, pbe)
+            return HIR::Compare::Fuzzy;
+        TU_ARMA(Opaque, pbe)
+            return HIR::Compare::Fuzzy;
+        TU_ARMA(ExternType, pbe)    // Extern types can't be interior mutable (but they also shouldn't be direct)
+            return HIR::Compare::Unequal;
+        // TODO: For struct/enum/union, look up.
+        default:
+            return HIR::Compare::Fuzzy;
+        }
+        }
+    TU_ARMA(Generic, e) {
+        return HIR::Compare::Fuzzy;
+        }
+    TU_ARMA(TraitObject, e) {
+        // Can't know with a trait object
+        return HIR::Compare::Fuzzy;
+        }
+    TU_ARMA(ErasedType, e) {
+        // Can't know with an erased type (effectively a generic)
+        return HIR::Compare::Fuzzy;
+        }
+    TU_ARMA(Array, e) {
+        return this->type_is_interior_mutable(sp, *e.inner);
+        }
+    TU_ARMA(Slice, e) {
+        return this->type_is_interior_mutable(sp, *e.inner);
+        }
+    TU_ARMA(Tuple, e) {
+        for(const auto& t : e)
+        {
+            auto rv = this->type_is_interior_mutable(sp, t);
+            if(rv != HIR::Compare::Unequal)
+                return rv;
+        }
+        return HIR::Compare::Unequal;
+        }
+    // Borrow and pointer are not interior mutable (they might point to something, but that doesn't matter)
+    TU_ARMA(Borrow, e) {
+        return HIR::Compare::Unequal;
+        }
+    TU_ARMA(Pointer, e) {
+        return HIR::Compare::Unequal;
+        }
+    TU_ARMA(Function, e) {
+        return HIR::Compare::Unequal;
+        }
+    }
+    return HIR::Compare::Fuzzy;
+}
+
 MetadataType StaticTraitResolve::metadata_type(const Span& sp, const ::HIR::TypeRef& ty, bool err_on_unknown/*=false*/) const
 {
     TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (e),

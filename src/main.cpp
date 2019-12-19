@@ -133,6 +133,7 @@ void init_debug_list()
         "Typecheck Expressions",
 
         "Expand HIR Annotate",
+        "Expand HIR Static Borrow",
         "Expand HIR Closures",
         "Expand HIR Calls",
         "Expand HIR VTables",
@@ -161,7 +162,7 @@ void init_debug_list()
 }
 
 void memory_dump(const char* phase) {
-#ifdef _WIN32
+#ifdef _MSC_VER
 #pragma comment(lib, "dbghelp.lib")
     if( false )
     {
@@ -585,6 +586,9 @@ int main(int argc, char *argv[])
         // Annotate how each node's result is used
         CompilePhaseV("Expand HIR Annotate", [&]() {
             HIR_Expand_AnnotateUsage(*hir_crate);
+            });
+        CompilePhaseV("Expand HIR Static Borrow", [&]() {
+            HIR_Expand_StaticBorrowConstants(*hir_crate);
             });
         // - Now that all types are known, closures can be desugared
         CompilePhaseV("Expand HIR Closures", [&]() {

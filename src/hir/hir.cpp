@@ -124,6 +124,44 @@ namespace HIR {
     }
 }
 
+HIR::Literal HIR::Literal::clone() const
+{
+    TU_MATCH(::HIR::Literal, (*this), (e),
+    (Invalid,
+        return ::HIR::Literal();
+        ),
+    (Defer,
+        return ::HIR::Literal::make_Defer({});
+        ),
+    (List,
+        ::std::vector< ::HIR::Literal>  vals;
+        for(const auto& val : e) {
+            vals.push_back( val.clone() );
+        }
+        return ::HIR::Literal( mv$(vals) );
+        ),
+    (Variant,
+        return ::HIR::Literal::make_Variant({ e.idx, box$(e.val->clone()) });
+        ),
+    (Integer,
+        return ::HIR::Literal(e);
+        ),
+    (Float,
+        return ::HIR::Literal(e);
+        ),
+    (BorrowPath,
+        return ::HIR::Literal(e.clone());
+        ),
+    (BorrowData,
+        return ::HIR::Literal(box$( e->clone() ));
+        ),
+    (String,
+        return ::HIR::Literal(e);
+        )
+    )
+    throw "";
+}
+
 ::std::shared_ptr<::HIR::SimplePath> HIR::Publicity::none_path = ::std::make_shared<HIR::SimplePath>(::HIR::SimplePath{"#", {}});
 
 bool HIR::Publicity::is_visible(const ::HIR::SimplePath& p) const

@@ -200,6 +200,12 @@ public:
     bool type_is_sized(const Span& sp, const ::HIR::TypeRef& ty) const;
     bool type_is_impossible(const Span& sp, const ::HIR::TypeRef& ty) const;
     bool can_unsize(const Span& sp, const ::HIR::TypeRef& dst, const ::HIR::TypeRef& src) const;
+    /// Check if the passed type contains an UnsafeCell (i.e. is interior mutable)
+    /// Returns:
+    /// - `Fuzzy` if generic (can't know for sure yet)
+    /// - `Equal` if it does contain an UnsafeCell
+    //  - `Unequal` if it doesn't (shared=immutable)
+    HIR::Compare type_is_interior_mutable(const Span& sp, const ::HIR::TypeRef& ty) const;
 
     MetadataType metadata_type(const Span& sp, const ::HIR::TypeRef& ty, bool err_on_unknown=false) const;
 

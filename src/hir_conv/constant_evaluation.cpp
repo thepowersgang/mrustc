@@ -55,44 +55,6 @@ namespace {
         }
     };
 
-    ::HIR::Literal clone_literal(const ::HIR::Literal& v)
-    {
-        TU_MATCH(::HIR::Literal, (v), (e),
-        (Invalid,
-            return ::HIR::Literal();
-            ),
-        (Defer,
-            return ::HIR::Literal::make_Defer({});
-            ),
-        (List,
-            ::std::vector< ::HIR::Literal>  vals;
-            for(const auto& val : e) {
-                vals.push_back( clone_literal(val) );
-            }
-            return ::HIR::Literal( mv$(vals) );
-            ),
-        (Variant,
-            return ::HIR::Literal::make_Variant({ e.idx, box$(clone_literal(*e.val)) });
-            ),
-        (Integer,
-            return ::HIR::Literal(e);
-            ),
-        (Float,
-            return ::HIR::Literal(e);
-            ),
-        (BorrowPath,
-            return ::HIR::Literal(e.clone());
-            ),
-        (BorrowData,
-            return ::HIR::Literal(box$( clone_literal(*e) ));
-            ),
-        (String,
-            return ::HIR::Literal(e);
-            )
-        )
-        throw "";
-    }
-
     TAGGED_UNION(EntPtr, NotFound,
         (NotFound, struct{}),
         (Function, const ::HIR::Function*),
@@ -423,9 +385,9 @@ namespace HIR {
                 if( it != c.m_monomorph_cache.end() )
                 {
                     MIR_ASSERT(state, !it->second.is_Defer(), "Cached literal for " << *e2.p << " is Defer");
-                    return clone_literal( it->second );
+                    return it->second.clone();
                 }
-                return clone_literal( c.m_value_res );
+                return c.m_value_res.clone();
                 }
             TU_ARM(c, ItemAddr, e2)
                 return ::HIR::Literal::make_BorrowPath( ms.monomorph(state.sp, *e2) );
@@ -476,7 +438,7 @@ namespace HIR {
                         vals.reserve( e.count );
                         val = read_param(e.val);
                         for(unsigned int i = 1; i < e.count; i++)
-                            vals.push_back( clone_literal(val) );
+                            vals.push_back( val.clone() );
                         vals.push_back( mv$(val) );
                     }
                     val = ::HIR::Literal::make_List( mv$(vals) );
@@ -1064,7 +1026,7 @@ namespace {
                                     template_const.m_params.clone(),
                                     /*m_type=*/ms.monomorph(sp, template_const.m_type),
                                     /*m_value=*/::HIR::ExprPtr(),
-                                    clone_literal(template_const.m_value_res)
+                                    template_const.m_value_res.clone()
                                     }
                                 }
                             ));

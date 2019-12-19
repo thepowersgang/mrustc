@@ -157,6 +157,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\..\src\hir_expand\static_borrow_constants.cpp" />
     <ClCompile Include="..\..\src\trans\auto_impls.cpp" />
     <ClCompile Include="..\..\src\trans\mangling_v2.cpp" />
     <ClCompile Include="..\..\src\ast\ast.cpp" />

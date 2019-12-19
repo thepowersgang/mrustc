@@ -405,6 +405,9 @@
     <ClCompile Include="..\..\src\hir_typeck\expr_visit.cpp">
       <Filter>Source Files\hir_typeck</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\src\hir_expand\static_borrow_constants.cpp">
+      <Filter>Source Files\hir_expand</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\src\common.hpp">
