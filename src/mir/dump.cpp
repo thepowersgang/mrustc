@@ -144,7 +144,7 @@ namespace {
                         ),
                     (String,
                         for(unsigned int j = 0; j < e.targets.size(); j ++)
-                            m_os << "\"" << ve[j] << "\" => bb" << e.targets[j] << ", ";
+                            m_os << "\"" << FmtEscaped(ve[j]) << "\" => bb" << e.targets[j] << ", ";
                         )
                     )
                     m_os << "_ => bb" << e.def_target <<  "}\n";
@@ -208,7 +208,7 @@ namespace {
                 os << ::std::dec << "\"";
                 ),
             (StaticString,
-                os << "\"" << ce << "\"";
+                os << "\"" << FmtEscaped(ce) << "\"";
                 ),
             (Const,
                 os << *ce.p;

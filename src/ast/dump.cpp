@@ -415,11 +415,11 @@ public:
     }
     virtual void visit(AST::ExprNode_String& n) override {
         m_expr_root = false;
-        m_os << "\"" << n.m_value << "\"";
+        m_os << "\"" << FmtEscaped(n.m_value) << "\"";
     }
     virtual void visit(AST::ExprNode_ByteString& n) override {
         m_expr_root = false;
-        m_os << "b\"" << n.m_value << "\"";
+        m_os << "b\"" << FmtEscaped(n.m_value) << "\"";
     }
 
     virtual void visit(AST::ExprNode_StructLiteral& n) override {

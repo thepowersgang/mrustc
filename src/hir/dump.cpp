@@ -620,12 +620,28 @@ namespace {
                 m_os << (e ? "true" : "false");
                 ),
             (String,
-                // TODO: Escape
-                m_os << "\"" << e << "\"";
+                m_os << "\"" << FmtEscaped(e) << "\"";
                 ),
             (ByteString,
-                // TODO: Escape
-                m_os << "b\"" << e << "\"";
+                m_os << "b\"";
+                for(auto b : e)
+                {
+                    if( b == '\\' || b == '\"' )
+                    {
+                        m_os << "\\" << b;
+                    }
+                    else if( ' ' <= b && b <= 0x7F )
+                    {
+                        m_os << b;
+                    }
+                    else
+                    {
+                        char buf[3];
+                        sprintf(buf, "%02x", static_cast<uint8_t>(b));
+                        m_os << "\\x" << buf;
+                    }
+                }
+                m_os << "\"";
                 )
             )
         }
