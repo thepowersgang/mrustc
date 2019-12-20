@@ -102,6 +102,7 @@ public:
         this->bb_idx = bb_idx;
         this->stmt_idx = STMT_TERM;
     }
+    unsigned int get_cur_block() const { return bb_idx; }
     unsigned int get_cur_stmt_ofs() const;
 
     void fmt_pos(::std::ostream& os, bool include_path=false) const;

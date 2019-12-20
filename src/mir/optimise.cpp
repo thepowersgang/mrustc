@@ -1649,9 +1649,12 @@ bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::
         }
     };
     auto usage_info = ::std::vector<LocalUsage>(fcn.locals.size());
-    for(const auto& bb : fcn.blocks)
+
+    // 1. Enumrate usage
     {
-        StmtRef cur_loc;
+        auto get_cur_loc = [&state]() {
+            return StmtRef(state.get_cur_block(), state.get_cur_stmt_ofs());
+            };
         auto visit_cb = [&](const ::MIR::LValue& lv, auto vu) {
             if( !lv.m_wrappers.empty() ) {
                 vu = ValUsage::Read;
@@ -1662,7 +1665,7 @@ bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::
                 {
                     auto& slot = usage_info[w.as_Index()];
                     slot.n_read += 1;
-                    slot.use_loc = cur_loc;
+                    slot.use_loc = get_cur_loc();
                     //DEBUG(lv << " index use");
                 }
             }
@@ -1673,12 +1676,12 @@ bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::
                 {
                 case ValUsage::Write:
                     slot.n_write += 1;
-                    slot.set_loc = cur_loc;
+                    slot.set_loc = get_cur_loc();
                     //DEBUG(lv << " set");
                     break;
                 case ValUsage::Move:
                     slot.n_read += 1;
-                    slot.use_loc = cur_loc;
+                    slot.use_loc = get_cur_loc();
                     //DEBUG(lv << " use");
                     break;
                 case ValUsage::Read:
@@ -1690,17 +1693,10 @@ bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::
             }
             return false;
             };
-        for(const auto& stmt : bb.statements)
-        {
-            cur_loc = StmtRef(&bb - &fcn.blocks.front(), &stmt - &bb.statements.front());
-            //DEBUG(cur_loc << ":" << stmt);
-            visit_mir_lvalues(stmt, visit_cb);
-        }
-        cur_loc = StmtRef(&bb - &fcn.blocks.front(), bb.statements.size());
-        //DEBUG(cur_loc << ":" << bb.terminator);
-        visit_mir_lvalues(bb.terminator, visit_cb);
+        visit_mir_lvalues(state, fcn, visit_cb);
     }
 
+    // 2. Find any local with 1 write, 1 read, and no borrows
     for(size_t var_idx = 0; var_idx < fcn.locals.size(); var_idx ++)
     {
         const auto& slot = usage_info[var_idx];
@@ -1713,6 +1709,18 @@ bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::
 
             auto& use_bb = fcn.blocks[slot.use_loc.bb_idx];
             auto& set_bb = fcn.blocks[slot.set_loc.bb_idx];
+
+            auto set_loc_next = slot.set_loc;
+            if( slot.set_loc.stmt_idx < set_bb.statements.size() )
+            {
+                set_loc_next.stmt_idx += 1;
+            }
+            else
+            {
+                set_loc_next.bb_idx = set_bb.terminator.as_Call().ret_block;
+                set_loc_next.stmt_idx = 0;
+            }
+
             // If usage is direct assignment of the original value.
             // - In this case, we can move the usage upwards
             if( slot.use_loc.stmt_idx < use_bb.statements.size() && TU_TEST2(use_bb.statements[slot.use_loc.stmt_idx], Assign, .src, Use, == this_var) )
@@ -1725,16 +1733,6 @@ bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::
 
                 // - Iterate the path(s) between the two statements to check if the destination would be invalidated
                 //  > The iterate function doesn't (yet) support following BB chains, so assume invalidated if over a jump.
-                auto set_loc_next = slot.set_loc;
-                if( slot.set_loc.stmt_idx < set_bb.statements.size() )
-                {
-                    set_loc_next.stmt_idx += 1;
-                }
-                else
-                {
-                    set_loc_next.bb_idx = set_bb.terminator.as_Call().ret_block;
-                    set_loc_next.stmt_idx = 0;
-                }
                 // TODO: What if the set location is a call?
                 bool invalidated = IterPathRes::Complete != iter_path(fcn, set_loc_next, slot.use_loc,
                         [&](auto loc, const auto& stmt)->bool{ return stmt.is_Drop() || check_invalidates_lvalue(stmt, dst, /*also_read=*/true); },
@@ -1779,6 +1777,7 @@ bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::
                 }
                 continue ;
             }
+
             // Can't move up, can we move down?
             // - If the source is an Assign(Use) then we can move down
             if( slot.set_loc.stmt_idx < set_bb.statements.size() && TU_TEST1(set_bb.statements[slot.set_loc.stmt_idx], Assign, .src.is_Use()) )
@@ -1787,8 +1786,7 @@ bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::
                 const auto& src = set_stmt.as_Assign().src.as_Use();
 
                 // Check if the source of initial assignment is invalidated in the meantime.
-                // - TODO: We don't want to check the set statement, just all others after it
-                bool invalidated = IterPathRes::Complete != iter_path(fcn, slot.set_loc, slot.use_loc,
+                bool invalidated = IterPathRes::Complete != iter_path(fcn, set_loc_next, slot.use_loc,
                         [&](auto loc, const auto& stmt)->bool{ return check_invalidates_lvalue(stmt, src); },
                         [&](auto loc, const auto& term)->bool{ return check_invalidates_lvalue(term, src); }
                         );
