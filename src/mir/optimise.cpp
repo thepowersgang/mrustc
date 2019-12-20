@@ -1621,6 +1621,10 @@ namespace {
     }
 }
 
+// --------------------------------------------------------------------
+// Locates locals that are only set/used once, and replaces them with
+//  their source IF the source isn't invalidated
+// --------------------------------------------------------------------
 bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 {
     bool changed = false;
@@ -2690,6 +2694,8 @@ bool MIR_Optimise_UnifyBlocks(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 
 // --------------------------------------------------------------------
 // Propagate source values when a composite (tuple) is read
+//
+// TODO: Is this needed now that SplitAggregates exists?
 // --------------------------------------------------------------------
 bool MIR_Optimise_PropagateKnownValues(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 {
@@ -3098,6 +3104,8 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                 TU_ARMA(Borrow, se) {
                     }
                 TU_ARMA(Cast, se) {
+                    ::MIR::Constant new_value;
+
                     // If casting a number to a number, do the cast and 
                     auto nv = check_lv(se.val);
                     if( !nv.is_ItemAddr() )
@@ -3114,24 +3122,24 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                             case ::HIR::CoreType::Usize:
                                 if( const auto* vp = nv.opt_Uint() )
                                 {
-                                    e->src = ::MIR::RValue::make_Constant(::MIR::Constant::make_Uint({
+                                    new_value = ::MIR::Constant::make_Uint({
                                         H::truncate_u(*te, vp->v),
                                         *te
-                                        }));
+                                        });
                                 }
                                 else if( const auto* vp = nv.opt_Int() )
                                 {
-                                    e->src = ::MIR::RValue::make_Constant(::MIR::Constant::make_Uint({
+                                    new_value = ::MIR::Constant::make_Uint({
                                         H::truncate_u(*te, vp->v),
                                         *te
-                                        }));
+                                        });
                                 }
                                 else if( const auto* vp = nv.opt_Bool() )
                                 {
-                                    e->src = ::MIR::RValue::make_Constant(::MIR::Constant::make_Uint({
+                                    new_value = ::MIR::Constant::make_Uint({
                                         (vp->v ? 1u : 0u),
                                         *te
-                                        }));
+                                        });
                                 }
                                 else
                                 {
@@ -3145,24 +3153,24 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                             case ::HIR::CoreType::Isize:
                                 if( const auto* vp = nv.opt_Uint() )
                                 {
-                                    e->src = ::MIR::RValue::make_Constant(::MIR::Constant::make_Int({
+                                    new_value = ::MIR::Constant::make_Int({
                                         H::truncate_s(*te, vp->v),
                                         *te
-                                        }));
+                                        });
                                 }
                                 else if( const auto* vp = nv.opt_Int() )
                                 {
-                                    e->src = ::MIR::RValue::make_Constant(::MIR::Constant::make_Int({
+                                    new_value = ::MIR::Constant::make_Int({
                                         H::truncate_s(*te, vp->v),
                                         *te
-                                        }));
+                                        });
                                 }
                                 else if( const auto* vp = nv.opt_Bool() )
                                 {
-                                    e->src = ::MIR::RValue::make_Constant(::MIR::Constant::make_Int({
+                                    new_value = ::MIR::Constant::make_Int({
                                         (vp->v ? 1 : 0),
                                         *te
-                                        }));
+                                        });
                                 }
                                 else
                                 {
@@ -3170,6 +3178,48 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                 break;
                             }
                         }
+                    }
+                    else if( known_values_var.count(se.val) )
+                    {
+                        auto variant_idx = known_values_var.at(se.val);
+                        MIR_ASSERT(state, se.type.m_data.is_Primitive(), "Casting enum to non-primitive - " << se.type);
+
+                        HIR::TypeRef    tmp;
+                        const auto& src_ty = state.get_lvalue_type(tmp, se.val);
+                        const HIR::Enum& enm = *src_ty.m_data.as_Path().binding.as_Enum();
+                        MIR_ASSERT(state, enm.is_value(), "Casting non-value enum to value");
+                        uint32_t v = enm.get_value(variant_idx);
+
+                        auto ct = se.type.m_data.as_Primitive();
+                        switch(ct)
+                        {
+                        case ::HIR::CoreType::U8:
+                        case ::HIR::CoreType::U16:
+                        case ::HIR::CoreType::U32:
+                        case ::HIR::CoreType::U64:
+                        case ::HIR::CoreType::U128:
+                        case ::HIR::CoreType::Usize:
+                            new_value = ::MIR::Constant::make_Uint({ v, ct });
+                            break;
+                        case ::HIR::CoreType::I8:
+                        case ::HIR::CoreType::I16:
+                        case ::HIR::CoreType::I32:
+                        case ::HIR::CoreType::I64:
+                        case ::HIR::CoreType::I128:
+                        case ::HIR::CoreType::Isize:
+                            new_value = ::MIR::Constant::make_Int({ static_cast<int32_t>(v), ct });
+                            break;
+                        }
+                    }
+                    else
+                    {
+                    }
+
+                    if( new_value != MIR::Constant() )
+                    {
+                        DEBUG(state << " " << e->src << " = " << new_value);
+                        e->src = mv$(new_value);
+                        changed = true;
                     }
                     }
                 TU_ARMA(BinOp, se) {
@@ -3297,6 +3347,71 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                     }
                                 }}
                                 break;
+                                
+                            case ::MIR::eBinOp::BIT_SHL: {
+                                uint64_t shift_len = 0;
+                                TU_MATCH_HDRA( (val_r), {)
+                                default:
+                                    MIR_BUG(state, "Mismatched types for eBinOp::BIT_SHL - " << val_l << " << " << val_r);
+                                    break;
+                                TU_ARMA(Int, re) {
+                                    shift_len = re.v;
+                                    }
+                                TU_ARMA(Uint, re) {
+                                    shift_len = re.v;
+                                    }
+                                }
+                                TU_MATCH_HDRA( (val_l), {)
+                                default:
+                                    break;
+                                TU_ARMA(Int, le) {
+                                    if( le.t != HIR::CoreType::I128 )
+                                    {
+                                        MIR_ASSERT(state, shift_len < 64, "Const eval error: Over-sized eBinOp::BIT_SHL - " << val_l << " << " << val_r);
+                                        new_value = ::MIR::Constant::make_Int({ H::truncate_s(le.t, le.v << shift_len), le.t });
+                                    }
+                                    }
+                                TU_ARMA(Uint, le) {
+                                    if( le.t != HIR::CoreType::U128 )
+                                    {
+                                        MIR_ASSERT(state, shift_len < 64, "Const eval error: Over-sized eBinOp::BIT_SHL - " << val_l << " << " << val_r);
+                                        new_value = ::MIR::Constant::make_Uint({ H::truncate_u(le.t, le.v << shift_len), le.t });
+                                    }
+                                    }
+                                }
+                                } break;
+                            case ::MIR::eBinOp::BIT_SHR:{
+                                uint64_t shift_len = 0;
+                                TU_MATCH_HDRA( (val_r), {)
+                                default:
+                                    MIR_BUG(state, "Mismatched types for eBinOp::BIT_SHR - " << val_l << " >> " << val_r);
+                                    break;
+                                TU_ARMA(Int, re) {
+                                    shift_len = re.v;
+                                    }
+                                TU_ARMA(Uint, re) {
+                                    shift_len = re.v;
+                                    }
+                                }
+                                TU_MATCH_HDRA( (val_l), {)
+                                default:
+                                    break;
+                                TU_ARMA(Int, le) {
+                                    if( le.t != HIR::CoreType::I128 )
+                                    {
+                                        MIR_ASSERT(state, shift_len < 64, "Const eval error: Over-sized eBinOp::BIT_SHR - " << val_l << " >> " << val_r);
+                                        new_value = ::MIR::Constant::make_Int({ H::truncate_s(le.t, le.v >> shift_len), le.t });
+                                    }
+                                    }
+                                TU_ARMA(Uint, le) {
+                                    if( le.t != HIR::CoreType::U128 )
+                                    {
+                                        MIR_ASSERT(state, shift_len < 64, "Const eval error: Over-sized eBinOp::BIT_SHR - " << val_l << " >> " << val_r);
+                                        new_value = ::MIR::Constant::make_Uint({ H::truncate_u(le.t, le.v >> shift_len), le.t });
+                                    }
+                                    }
+                                }
+                                } break;
                             // TODO: Other binary operations
                             // Could emit a TODO?
                             default:
@@ -3496,7 +3611,7 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                 known_values.insert(::std::make_pair( e->dst.clone(), it1->second.clone() ));
                                 DEBUG(state << stmt);
                             }
-                            else if( it1 != known_values.end() ) {
+                            else if( it2 != known_values_var.end() ) {
                                 known_values_var.insert(::std::make_pair( e->dst.clone(), it2->second ));
                                 DEBUG(state << stmt);
                             }
@@ -3504,6 +3619,10 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                 // Neither known, don't propagate
                             }
                         }
+                    }
+                    else
+                    {
+                        // No need to clear, the visit above this if block handles it.
                     }
                 }
             }
