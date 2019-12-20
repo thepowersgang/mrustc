@@ -164,22 +164,22 @@ extern void debug_init_phases(const char* env_var_name, std::initializer_list<co
             else if( v < 0xE0 )
             {
                 uint32_t    val = (uint32_t)(v & 0x1F) << 6;
-                v = (uint8_t)*++s; if( (v & 0xC0) != 0x80 ) { s--; continue ; } val |= (uint32_t)v << 6;
+                v = (uint8_t)*++s; if( (v & 0xC0) != 0x80 ) { s--; continue ; } val |= (uint32_t)(v & 0x3F) << 0;
                 os << "\\u{" << ::std::hex << val << "}";
             }
             else if( v < 0xF0 )
             {
                 uint32_t    val = (uint32_t)(v & 0x0F) << 12;
-                v = (uint8_t)*++s; if( (v & 0xC0) != 0x80 ) { s--; continue ; } val |= (uint32_t)v << 12;
-                v = (uint8_t)*++s; if( (v & 0xC0) != 0x80 ) { s--; continue ; } val |= (uint32_t)v << 6;
+                v = (uint8_t)*++s; if( (v & 0xC0) != 0x80 ) { s--; continue ; } val |= (uint32_t)(v & 0x3F) << 6;
+                v = (uint8_t)*++s; if( (v & 0xC0) != 0x80 ) { s--; continue ; } val |= (uint32_t)(v & 0x3F) << 0;
                 os << "\\u{" << ::std::hex << val << "}";
             }
             else if( v < 0xF8 )
             {
                 uint32_t    val = (uint32_t)(v & 0x07) << 18;
-                v = (uint8_t)*++s; if( (v & 0xC0) != 0x80 ) { s--; continue ; } val |= (uint32_t)v << 18;
-                v = (uint8_t)*++s; if( (v & 0xC0) != 0x80 ) { s--; continue ; } val |= (uint32_t)v << 12;
-                v = (uint8_t)*++s; if( (v & 0xC0) != 0x80 ) { s--; continue ; } val |= (uint32_t)v << 6;
+                v = (uint8_t)*++s; if( (v & 0xC0) != 0x80 ) { s--; continue ; } val |= (uint32_t)(v & 0x3F) << 12;
+                v = (uint8_t)*++s; if( (v & 0xC0) != 0x80 ) { s--; continue ; } val |= (uint32_t)(v & 0x3F) << 6;
+                v = (uint8_t)*++s; if( (v & 0xC0) != 0x80 ) { s--; continue ; } val |= (uint32_t)(v & 0x3F) << 0;
                 os << "\\u{" << ::std::hex << val << "}";
             }
             break;
