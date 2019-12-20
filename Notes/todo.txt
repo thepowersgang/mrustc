@@ -43,18 +43,27 @@ TODO:
     - Lots of code touched
     - Extra complexity in typecheck and MIR lowering?
     - Need to check/assume that the lists are the same length
-- Borrowed constant RValues to statics
-  - And/or large arrays (even if not borrowed) to statics
+  - Alternative: Create a custom type instead of std::pair
+    - Reduces typing
+    - No memory gains though.
 
 ## Optimisations
 - Argument propagation: replace assignments from `Argument(_)` if target is only
   written once
 - Remove useless borrows (remove write-once &T lvalues if they're never used by
   value - only used via deref)
-- Remove useless re-borrows (borrow used once, source only every dropped)
+- Remove useless re-borrows (borrow used once, source only ever dropped)
+- Convert `&STATIC` RValue into `ADDROF` Constant
+  - They mean the same thing, but ADDROF is conceptually simpler
+- Move assignents backwards across jumps
+ > If the first statement of a block is `ASSIGN foo = bar;` and all source blocks assign to `bar`, then replace `bar` with `foo` and delete `ASSIGN foo = bar;`
+ > Catches cases where `ASSIGN RETURN = var0;` is common
+ > Only allow if the previous terminator is: `CALL` (assigning to `bar`), or `GOTO`
 - Targeted transformations
   - Detect slice metadata accesses (union between `(usize,usize)` and `*const [T]`) and replace with `DSTMETA` op
 
+
+- Fix/remove the optimisation that replaces `foo` with `bar` if `foo = bar;` is seen (it's blocking better optimisations that would eliminate `bar`)
 
 <!-- vim: ft=markdown
 -->
