@@ -3369,6 +3369,58 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                 }}
                                 break;
                                 
+                            case ::MIR::eBinOp::BIT_AND:
+                                MIR_ASSERT(state, val_l.tag() == val_r.tag(), "Mismatched types for eBinOp::BIT_AND - " << val_l << " & " << val_r);
+                                //TU_MATCH_HDRA( (val_l, val_r), {)
+                                TU_MATCH_HDRA( (val_l), {)
+                                default:
+                                    break;
+                                // TU_ARMav(Int, (le, re)) {
+                                TU_ARMA(Int, le) { const auto& re = val_r.as_Int();
+                                    MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::BIT_AND - " << val_l << " ^ " << val_r);
+                                    new_value = ::MIR::Constant::make_Int({ H::truncate_s(le.t, le.v & re.v), le.t });
+                                    }
+                                TU_ARMA(Uint, le) { const auto& re = val_r.as_Uint();
+                                    MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::BIT_AND - " << val_l << " ^ " << val_r);
+                                    new_value = ::MIR::Constant::make_Uint({ H::truncate_u(le.t, le.v & re.v), le.t });
+                                    }
+                                }
+                                break;
+                            case ::MIR::eBinOp::BIT_OR:
+                                MIR_ASSERT(state, val_l.tag() == val_r.tag(), "Mismatched types for eBinOp::BIT_OR - " << val_l << " | " << val_r);
+                                //TU_MATCH_HDRA( (val_l, val_r), {)
+                                TU_MATCH_HDRA( (val_l), {)
+                                default:
+                                    break;
+                                // TU_ARMav(Int, (le, re)) {
+                                TU_ARMA(Int, le) { const auto& re = val_r.as_Int();
+                                    MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::BIT_OR - " << val_l << " | " << val_r);
+                                    new_value = ::MIR::Constant::make_Int({ H::truncate_s(le.t, le.v | re.v), le.t });
+                                    }
+                                TU_ARMA(Uint, le) { const auto& re = val_r.as_Uint();
+                                    MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::BIT_OR - " << val_l << " | " << val_r);
+                                    new_value = ::MIR::Constant::make_Uint({ H::truncate_u(le.t, le.v | re.v), le.t });
+                                    }
+                                }
+                                break;
+                            case ::MIR::eBinOp::BIT_XOR:
+                                MIR_ASSERT(state, val_l.tag() == val_r.tag(), "Mismatched types for eBinOp::BIT_XOR - " << val_l << " ^ " << val_r);
+                                //TU_MATCH_HDRA( (val_l, val_r), {)
+                                TU_MATCH_HDRA( (val_l), {)
+                                default:
+                                    break;
+                                // TU_ARMav(Int, (le, re)) {
+                                TU_ARMA(Int, le) { const auto& re = val_r.as_Int();
+                                    MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::BIT_XOR - " << val_l << " ^ " << val_r);
+                                    new_value = ::MIR::Constant::make_Int({ H::truncate_s(le.t, le.v ^ re.v), le.t });
+                                    }
+                                TU_ARMA(Uint, le) { const auto& re = val_r.as_Uint();
+                                    MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::BIT_XOR - " << val_l << " ^ " << val_r);
+                                    new_value = ::MIR::Constant::make_Uint({ H::truncate_u(le.t, le.v ^ re.v), le.t });
+                                    }
+                                }
+                                break;
+                                
                             case ::MIR::eBinOp::BIT_SHL: {
                                 uint64_t shift_len = 0;
                                 TU_MATCH_HDRA( (val_r), {)
@@ -3487,6 +3539,9 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                 ),
                             (Int,
                                 // Is ! valid on Int?
+                                auto val = ve.v;
+                                new_value = ::MIR::Constant::make_Int({ ~val, ve.t });
+                                replace = true;
                                 ),
                             (Float,
                                 // Not valid?
