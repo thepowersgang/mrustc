@@ -45,9 +45,11 @@ bool MIR_Optimise_UnifyBlocks(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_DeadDropFlags(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_DeadAssignments(::MIR::TypeResolve& state, ::MIR::Function& fcn);
+bool MIR_Optimise_GotoAssign(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_NoopRemoval(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_GarbageCollect_Partial(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn);
+
 
 /// A minimum set of optimisations:
 /// - Inlines `#[inline(always)]` functions
@@ -227,6 +229,24 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
             change_happened = true;
         }
 
+        // >> Remove re-borrow operations that don't need to exist
+        //if( MIR_Optimise_UselessReborrows(state, fcn) )
+        //{
+        //    #if CHECK_AFTER_ALL
+        //    MIR_Validate(resolve, path, fcn, args, ret_type);
+        //    #endif
+        //    change_happened = true;
+        //}
+
+        // >> If the first statement of a block is an assignment, and the last op of the previous is to that assignment's source, move up.
+        if( MIR_Optimise_GotoAssign(state, fcn) )
+        {
+            #if CHECK_AFTER_ALL
+            MIR_Validate(resolve, path, fcn, args, ret_type);
+            #endif
+            change_happened = true;
+        }
+
         // >> Inline short functions
         if( do_inline && !change_happened )
         {
@@ -254,7 +274,10 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
             #endif
         }
 
-        MIR_Optimise_GarbageCollect_Partial(state, fcn);
+        if( MIR_Optimise_GarbageCollect_Partial(state, fcn) )
+        {
+            change_happened = true;
+        }
         pass_num += 1;
     } while( change_happened );
 
@@ -4728,6 +4751,169 @@ bool MIR_Optimise_NoopRemoval(::MIR::TypeResolve& state, ::MIR::Function& fcn)
     return changed;
 }
 
+// --------------------------------------------------------------------
+// If the first statement of a block is an assignment from a local, and all sources of that block assign to that local
+// - Move the assigment backwards
+// --------------------------------------------------------------------
+bool MIR_Optimise_GotoAssign(::MIR::TypeResolve& state, ::MIR::Function& fcn)
+{
+    bool changed = false;
+    TRACE_FUNCTION_FR("", changed);
+
+    // 1. Locate blocks that start with an elligable assignemnt 
+    // - Target must be "simple" (not a static, no wrappers)
+    // - Source can be any lvalue? Restrict to locals for now (static/deref assignment is a side-effect)
+    //   > Restrict to single-read locals? Or replace the trigger statement with a reversed copy?
+    // 2. Check all source blocks, and see if they assign to that block
+    // > Terminator must be: GOTO, or CALL <lv> = ... (with the non-panic arm)
+    // 3. If more than half the source blocks assign the source, then move up
+    // - Any IF/SWITCH/... terminator blocks the optimisation
+    for(auto& dst_bb : fcn.blocks)
+    {
+        if( dst_bb.statements.empty() )
+            continue;
+        auto bb_idx = &dst_bb - fcn.blocks.data();
+        state.set_cur_stmt(bb_idx, 0);
+        auto& stmt = dst_bb.statements[0];
+        if( !stmt.is_Assign() )
+            continue ;
+        if( !stmt.as_Assign().src.is_Use() )
+            continue ;
+        auto& dst = stmt.as_Assign().dst;
+        auto& src = stmt.as_Assign().src.as_Use();
+
+        if( !dst.m_wrappers.empty() || dst.m_root.is_Static() )
+            continue;
+        if( !src.is_Local() )
+            continue ;
+        // Source must be a single-read local (so this assignment can be deleted)
+        unsigned n_read = 0;
+        unsigned n_borrow = 0;
+        visit_mir_lvalues(state, fcn, [&](const auto& lv, auto vu) {
+            if(lv == src) {
+                switch(vu)
+                {
+                case ValUsage::Read:
+                case ValUsage::Move:
+                    n_read ++;
+                    break;
+                case ValUsage::Borrow:
+                    n_borrow ++;
+                    break;
+                case ValUsage::Write:
+                    // Don't care
+                    break;
+                }
+            }
+            return true;
+            });
+        state.set_cur_stmt(bb_idx, 0);
+        if( n_read > 1 ) {
+            DEBUG(state << "Source " << src << " is read " << n_read << " times and borrowed " << n_borrow);
+            continue ;
+        }
+        DEBUG(state << "Eligible assignment (" << stmt << ")");
+
+        // Find source blocks, check terminators/last
+        std::vector<unsigned> sources;
+        unsigned num_used = 0;
+        for(const auto& src_bb : fcn.blocks)
+        {
+            unsigned bb_idx = &src_bb - fcn.blocks.data();
+            bool used = false;
+            visit_terminator_target(src_bb.terminator, [&](const auto& tgt) { 
+                if( tgt == state.get_cur_block() ) {
+                    used = true;
+                    sources.push_back(bb_idx);
+                }
+                });
+            if( used )
+            {
+                TU_MATCH_HDRA( (src_bb.terminator), { )
+                TU_ARMA(Goto, e) {
+                    if( src_bb.statements.empty() ) {
+                        DEBUG(state << "BB" << bb_idx << " empty");
+                    }
+                    else if( TU_TEST1(src_bb.statements.back(), Assign, .dst == src) ) {
+                        DEBUG("BB" << bb_idx << "/" << src_bb.statements.size() << " " << src_bb.statements.back());
+                        num_used += 1;
+                    }
+                    else {
+                        DEBUG("BB" << bb_idx << "/" << src_bb.statements.size() << " " << src_bb.statements.back() << " - Doesn't write");
+                    }
+                    }
+                TU_ARMA(Call, e) {
+                    if( e.ret_block != state.get_cur_block() ) {
+                        DEBUG(state << "BB" << bb_idx << "/TERM " << src_bb.terminator << " - Not return block");
+                    }
+                    else if( e.ret_val != src ) {
+                        DEBUG(state << "BB" << bb_idx << "/TERM " << src_bb.terminator << " - Doesn't write to source");
+                    }
+                    else {
+                        num_used += 1;
+                    }
+                    }
+                break; default:
+                    DEBUG(state << "BB" << bb_idx << "/TERM " << src_bb.terminator << " - Wrong terminator type");
+                    break;
+                }
+            }
+        }
+
+        // TODO: Allow if one arm doesn't update?
+        // - What if a call invalidates the target?
+        if( num_used < sources.size() ) {
+            DEBUG(state << "- Not all sources set the value");
+            continue ;
+        }
+
+        changed = true;
+
+        // Time to edit.
+        // 1. Update all sources
+        for(auto bb_idx : sources)
+        {
+            auto& src_bb = fcn.blocks[bb_idx];
+
+            if( TU_TEST1(src_bb.terminator, Call, .ret_val == src) )
+            {
+                DEBUG("- Source block: BB" << bb_idx << " - term " << src_bb.terminator);
+                src_bb.terminator.as_Call().ret_val = dst.clone();
+            }
+            else if( !src_bb.statements.empty() && TU_TEST1(src_bb.statements.back(), Assign, .dst == src) )
+            {
+                DEBUG("- Source block: BB" << bb_idx << " - tail " << src_bb.statements.back());
+                src_bb.statements.back().as_Assign().dst = dst.clone();
+            }
+            else
+            {
+                MIR_TODO(state, "Handle copying assignment to source");
+            }
+            if( !src_bb.statements.empty() )
+            {
+                DEBUG("+- BB" << bb_idx << "/" << (src_bb.statements.size()-1) << " " << src_bb.statements.back());
+            }
+            DEBUG("+- BB" << bb_idx << "/TERM " << src_bb.terminator);
+        }
+        // IF the value is `Copy` (i.e. the initial assignment could be expected to survive), then reverse the destination
+        // - Can't do this, it's going to cause infinite recursion!
+        if( false && state.lvalue_is_copy(dst) )
+        {
+            auto d = dst.clone();
+            dst = mv$(src);
+            src = mv$(d);
+            DEBUG(state << "- Updated (" << stmt << ")");
+        }
+        else
+        {
+            stmt = MIR::Statement();
+            DEBUG(state << "- Deleted");
+        }
+    }
+
+    return changed;
+}
+
 
 // --------------------------------------------------------------------
 // Clear all unused blocks
@@ -4742,11 +4928,18 @@ bool MIR_Optimise_GarbageCollect_Partial(::MIR::TypeResolve& state, ::MIR::Funct
     bool rv = false;
     for(unsigned int i = 0; i < visited.size(); i ++)
     {
-        if( !visited[i] )
+        auto& blk = fcn.blocks[i];
+        if( blk.terminator.is_Incomplete() && blk.statements.empty() )
+        {
+        }
+        else if( visited[i] )
+        {
+        }
+        else
         {
             DEBUG("CLEAR bb" << i);
-            fcn.blocks[i].statements.clear();
-            fcn.blocks[i].terminator = ::MIR::Terminator::make_Incomplete({});
+            blk.statements.clear();
+            blk.terminator = ::MIR::Terminator::make_Incomplete({});
             rv = true;
         }
     }
