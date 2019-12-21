@@ -13,6 +13,7 @@ namespace {
     HIR::Function parse_function(TokenStream& lex, RcString& out_name);
     HIR::PathParams parse_params(TokenStream& lex);
     HIR::Path parse_path(TokenStream& lex);
+    HIR::TypeRef get_core_type(const RcString& s);
     HIR::TypeRef parse_type(TokenStream& lex);
     MIR::LValue parse_lvalue(TokenStream& lex, const ::std::map<RcString, MIR::LValue::Storage>& name_map);
     MIR::LValue parse_param(TokenStream& lex, const ::std::map<RcString, MIR::LValue::Storage>& name_map);
@@ -80,7 +81,7 @@ MirOptTestFile  MirOptTestFile::load_from_file(const helpers::path& p)
                 }
                 else
                 {
-                    // Ignore?
+                    // Ignore? Support other forms of tests?
                 }
             }
         }
@@ -252,20 +253,67 @@ namespace {
                     case TOK_DASH: {
                         bool is_neg = (tok.type() == TOK_DASH);
                         GET_TOK(tok, lex);
+                        Token   ty_tok;
+                        GET_CHECK_TOK(ty_tok, lex, TOK_IDENT);
+                        auto t = get_core_type(ty_tok.istr());
+                        if(t == HIR::TypeRef())
+                            throw ParseError::Unexpected(lex, ty_tok);
+                        auto ct = t.m_data.as_Primitive();
                         switch(tok.type())
                         {
-                        case TOK_INTEGER:
-                            TODO(lex.point_span(), "MIR assign - " << (is_neg ? "-" : "+") << tok.intval());
-                            //src = MIR::Constant::make_Int({ tok.intval(), ct });
-                        case TOK_FLOAT:
-                            TODO(lex.point_span(), "MIR assign - " << (is_neg ? "-" : "+") << tok.floatval());
-                            //src = MIR::Constant::make_Float({ tok.floatval(), ct });
+                        case TOK_INTEGER: {
+                            auto v = tok.intval();
+                            switch(ct)
+                            {
+                            case HIR::CoreType::I8:
+                            case HIR::CoreType::I16:
+                            case HIR::CoreType::I32:
+                            case HIR::CoreType::I64:
+                            case HIR::CoreType::I128:
+                            case HIR::CoreType::Isize:
+                                break;
+                            default:
+                                throw ParseError::Unexpected(lex, ty_tok);
+                            }
+                            src = MIR::Constant::make_Int({ is_neg ? -static_cast<int64_t>(v) : static_cast<int64_t>(v), ct });
+                            } break;
+                        case TOK_FLOAT: {
+                            auto v = tok.floatval();
+                            switch(ct)
+                            {
+                            case HIR::CoreType::F32:
+                            case HIR::CoreType::F64:
+                                break;
+                            default:
+                                throw ParseError::Unexpected(lex, ty_tok);
+                            }
+                            src = MIR::Constant::make_Float({ (is_neg ? -1 : 1) * v, ct });
+                            } break;
                         default:
                             throw ParseError::Unexpected(lex, tok, { TOK_INTEGER, TOK_FLOAT });
                         }
                         } break;
-                    case TOK_INTEGER:
-                        TODO(lex.point_span(), "MIR assign - " << tok.intval());
+                    case TOK_INTEGER: {
+                        auto v = tok.intval();
+                        GET_CHECK_TOK(tok, lex, TOK_IDENT);
+                        auto t = get_core_type(tok.istr());
+                        if(t == HIR::TypeRef())
+                            throw ParseError::Unexpected(lex, tok);
+                        auto ct = t.m_data.as_Primitive();
+                        switch(ct)
+                        {
+                        case HIR::CoreType::U8:
+                        case HIR::CoreType::U16:
+                        case HIR::CoreType::U32:
+                        case HIR::CoreType::U64:
+                        case HIR::CoreType::U128:
+                        case HIR::CoreType::Usize:
+                            break;
+                        default:
+                            throw ParseError::Unexpected(lex, tok);
+                        }
+                        src = MIR::Constant::make_Uint({ v, ct });
+                        } break;
 
                     case TOK_AMP:
                         if( consume_if(lex, TOK_RWORD_MOVE) )
@@ -582,6 +630,25 @@ namespace {
             return parse_genericpath(lex);
         }
     }
+    HIR::TypeRef get_core_type(const RcString& s)
+    {
+             if( s == "bool"  ) return HIR::TypeRef(HIR::CoreType::Bool);
+        else if( s == "str"   ) return HIR::TypeRef(HIR::CoreType::Str );
+        else if( s == "u8"    ) return HIR::TypeRef(HIR::CoreType::U8);
+        else if( s == "i8"    ) return HIR::TypeRef(HIR::CoreType::I8);
+        else if( s == "u16"   ) return HIR::TypeRef(HIR::CoreType::U16);
+        else if( s == "i16"   ) return HIR::TypeRef(HIR::CoreType::I16);
+        else if( s == "u32"   ) return HIR::TypeRef(HIR::CoreType::U32);
+        else if( s == "i32"   ) return HIR::TypeRef(HIR::CoreType::I32);
+        else if( s == "u64"   ) return HIR::TypeRef(HIR::CoreType::U64);
+        else if( s == "i64"   ) return HIR::TypeRef(HIR::CoreType::I64);
+        else if( s == "u128"  ) return HIR::TypeRef(HIR::CoreType::U128);
+        else if( s == "i128"  ) return HIR::TypeRef(HIR::CoreType::I128);
+        else if( s == "usize" ) return HIR::TypeRef(HIR::CoreType::Usize);
+        else if( s == "isize" ) return HIR::TypeRef(HIR::CoreType::Isize);
+        else
+            return HIR::TypeRef();
+    }
     HIR::TypeRef parse_type(TokenStream& lex)
     {
         Token   tok;
@@ -606,7 +673,8 @@ namespace {
             {
                 GET_CHECK_TOK(tok, lex, TOK_INTEGER);
                 auto size = tok.intval();
-                return HIR::TypeRef::new_array(mv$(ity), size);
+                ASSERT_BUG(lex.point_span(), size < UINT_MAX, "");
+                return HIR::TypeRef::new_array(mv$(ity), static_cast<unsigned>(size));
             }
             else if( tok == TOK_SQUARE_CLOSE )
             {
@@ -622,29 +690,20 @@ namespace {
             {
                 TODO(lex.point_span(), tok);
             }
-            else if( tok.istr() == "bool" ) return HIR::TypeRef(HIR::CoreType::Bool);
-            else if( tok.istr() == "str" )  return HIR::TypeRef(HIR::CoreType::Str );
-            else if( tok.istr() == "u8" ) return HIR::TypeRef(HIR::CoreType::U8);
-            else if( tok.istr() == "i8" ) return HIR::TypeRef(HIR::CoreType::I8);
-            else if( tok.istr() == "u16" ) return HIR::TypeRef(HIR::CoreType::U16);
-            else if( tok.istr() == "i16" ) return HIR::TypeRef(HIR::CoreType::I16);
-            else if( tok.istr() == "u32" ) return HIR::TypeRef(HIR::CoreType::U32);
-            else if( tok.istr() == "i32" ) return HIR::TypeRef(HIR::CoreType::I32);
-            else if( tok.istr() == "u64" ) return HIR::TypeRef(HIR::CoreType::U64);
-            else if( tok.istr() == "i64" ) return HIR::TypeRef(HIR::CoreType::I64);
-            else if( tok.istr() == "u128" ) return HIR::TypeRef(HIR::CoreType::U128);
-            else if( tok.istr() == "i128" ) return HIR::TypeRef(HIR::CoreType::I128);
-            else if( tok.istr() == "usize" ) return HIR::TypeRef(HIR::CoreType::Usize);
-            else if( tok.istr() == "isize" ) return HIR::TypeRef(HIR::CoreType::Isize);
             else
             {
+                auto t = get_core_type(tok.istr());
+                if( t != HIR::TypeRef() )
+                {
+                    return t;
+                }
                 if( g_item_params )
                 {
                     for(size_t i = 0; i < g_item_params->m_types.size(); i ++)
                     {
                         if( g_item_params->m_types[i].m_name == tok.istr() )
                         {
-                            return HIR::TypeRef(tok.istr(), 256 + i);
+                            return HIR::TypeRef(tok.istr(), 256 + static_cast<unsigned>(i));
                         }
                     }
                 }
