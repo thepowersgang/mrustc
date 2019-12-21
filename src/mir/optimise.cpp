@@ -809,6 +809,7 @@ namespace
 // --------------------------------------------------------------------
 bool MIR_Optimise_BlockSimplify(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 {
+    bool changed = false;
     struct H {
         static ::MIR::BasicBlockId get_new_target(const ::MIR::TypeResolve& state, ::MIR::BasicBlockId bb)
         {
@@ -843,6 +844,7 @@ bool MIR_Optimise_BlockSimplify(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                 {
                     DEBUG("BB" << &block - fcn.blocks.data() << "/TERM: " << e << " => " << new_bb);
                     e = new_bb;
+                    changed = true;
                 }
             }
             });
@@ -864,6 +866,7 @@ bool MIR_Optimise_BlockSimplify(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                         dst.slots.push_back(v);
                     ::std::sort(dst.slots.begin(), dst.slots.end());
                     it = block.statements.erase(it);
+                    changed = true;
                 }
                 else
                 {
@@ -916,9 +919,32 @@ bool MIR_Optimise_BlockSimplify(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                     for(auto& stmt : src_block.statements)
                         block.statements.push_back( mv$(stmt) );
                     block.terminator = mv$( src_block.terminator );
+                    changed = true;
                 }
             }
             i ++;
+        }
+    }
+
+    // >> If a block GOTOs a block that is just a `RETURN` or `DIVERGE`, then change terminator
+    for(auto& block : fcn.blocks)
+    {
+        if(block.terminator.is_Goto())
+        {
+            auto tgt = block.terminator.as_Goto();
+            if( !fcn.blocks[tgt].statements.empty() ) {
+            }
+            else if( fcn.blocks[tgt].terminator.is_Return() ) {
+                block.terminator = MIR::Terminator::make_Return({});
+                changed = true;
+            }
+            else if( fcn.blocks[tgt].terminator.is_Diverge() ) {
+                block.terminator = MIR::Terminator::make_Diverge({});
+                changed = true;
+            }
+            else {
+                // No replace
+            }
         }
     }
 
