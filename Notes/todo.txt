@@ -53,14 +53,12 @@ TODO:
 - Remove useless borrows (remove write-once &T lvalues if they're never used by
   value - only used via deref)
 - Remove useless re-borrows (borrow used once, source only ever dropped)
-- Convert `&STATIC` RValue into `ADDROF` Constant
-  - They mean the same thing, but ADDROF is conceptually simpler
-- Move assignents backwards across jumps
- > If the first statement of a block is `ASSIGN foo = bar;` and all source blocks assign to `bar`, then replace `bar` with `foo` and delete `ASSIGN foo = bar;`
- > Catches cases where `ASSIGN RETURN = var0;` is common
- > Only allow if the previous terminator is: `CALL` (assigning to `bar`), or `GOTO`
+  - Find `foo = &mut *bar;` where `bar` is only borrowed once (here) and dropped once
+  - Replace the borrow with a move, delete the drop
+  - Need to avoid loops
 - Targeted transformations
   - Detect slice metadata accesses (union between `(usize,usize)` and `*const [T]`) and replace with `DSTMETA` op
+  - Will avoid the need for patching libcore's slice len method
 
 
 - Fix/remove the optimisation that replaces `foo` with `bar` if `foo = bar;` is seen (it's blocking better optimisations that would eliminate `bar`)

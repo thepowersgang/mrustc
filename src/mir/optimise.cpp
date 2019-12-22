@@ -45,8 +45,9 @@ bool MIR_Optimise_UnifyBlocks(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_DeadDropFlags(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_DeadAssignments(::MIR::TypeResolve& state, ::MIR::Function& fcn);
-bool MIR_Optimise_GotoAssign(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_NoopRemoval(::MIR::TypeResolve& state, ::MIR::Function& fcn);
+bool MIR_Optimise_GotoAssign(::MIR::TypeResolve& state, ::MIR::Function& fcn);
+bool MIR_Optimise_UselessReborrows(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_GarbageCollect_Partial(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 
@@ -230,13 +231,13 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
         }
 
         // >> Remove re-borrow operations that don't need to exist
-        //if( MIR_Optimise_UselessReborrows(state, fcn) )
-        //{
-        //    #if CHECK_AFTER_ALL
-        //    MIR_Validate(resolve, path, fcn, args, ret_type);
-        //    #endif
-        //    change_happened = true;
-        //}
+        if( MIR_Optimise_UselessReborrows(state, fcn) )
+        {
+            #if CHECK_AFTER_ALL
+            MIR_Validate(resolve, path, fcn, args, ret_type);
+            #endif
+            change_happened = true;
+        }
 
         // >> If the first statement of a block is an assignment, and the last op of the previous is to that assignment's source, move up.
         if( MIR_Optimise_GotoAssign(state, fcn) )
@@ -5003,6 +5004,125 @@ bool MIR_Optimise_GotoAssign(::MIR::TypeResolve& state, ::MIR::Function& fcn)
     return changed;
 }
 
+// --------------------------------------------------------------------
+// Find re-borrows of values that aren't otherwise used.
+//
+// - Look for `<local> = &[mut] *<local/arg>`
+// - Check if the source is only ever used here (and in a drop)
+// - If that's the case, replace usage with a move and delete the drop
+//
+// TODO: Could allow multiple uses if it's a shared borrow
+// --------------------------------------------------------------------
+bool MIR_Optimise_UselessReborrows(::MIR::TypeResolve& state, ::MIR::Function& fcn)
+{
+    bool changed = false;
+    TRACE_FUNCTION_FR("", changed);
+
+    // TODO: This doesn't work if the assignment happens in a loop (can lead to multiple moves)
+    // - Need to have a way of knowing if a block is a loop member
+#if 0
+    for(auto& blk : fcn.blocks)
+    {
+        for(auto& stmt : blk.statements)
+        {
+            state.set_cur_stmt(&blk - fcn.blocks.data(), &stmt - blk.statements.data());
+            // Must be `<local> = &[mut] *<local/arg>`
+            if( !stmt.is_Assign() )
+                continue ;
+            const auto& dst = stmt.as_Assign().dst;
+            auto& src_rv = stmt.as_Assign().src;    // Will be updated at the end of the block
+            if( !dst.is_Local() )
+                continue;
+            if( !src_rv.is_Borrow() )
+                continue ;
+            const auto& src_lv = src_rv.as_Borrow().val;
+            if( src_lv.m_wrappers.size() != 1 )
+                continue ;
+            if( src_lv.m_wrappers[0].is_Deref() == false )
+                continue ;
+            if( !(src_lv.m_root.is_Local() || src_lv.m_root.is_Argument()) )
+                continue ;
+            auto src_slot = MIR::LValue(src_lv.m_root.clone(), {});
+            // Ensure that the type is a borrow of the same class
+            HIR::TypeRef tmp_ty;
+            const auto& src_ty = state.get_lvalue_type(tmp_ty, src_slot);
+            if(!TU_TEST1(src_ty.m_data, Borrow, .type == src_rv.as_Borrow().type))
+                continue;
+            DEBUG(state << "Suitable re-borrow operation");
+
+            // With this value, count places it's used
+            unsigned n_wrapped = 0;
+            unsigned n_drop = 0;
+            bool invalidate = false;
+            StmtRef drop_pos;
+            visit_mir_lvalues(state, fcn, [&](const auto& lv, ValUsage vu)->bool {
+                if(lv == src_slot)
+                {
+                    auto pos = StmtRef(state.get_cur_block(), state.get_cur_stmt_ofs());
+                    // Direct usage (only one), should be a drop (look that up)
+                    const auto& blk = fcn.blocks.at(pos.bb_idx);
+                    if( pos.stmt_idx < blk.statements.size() && blk.statements.at(pos.stmt_idx).is_Drop() )
+                    {
+                        DEBUG(state << " Dropped");
+                        // Valid!
+                        n_drop ++;
+                        if( n_drop > 1 )
+                        {
+                            invalidate = true;
+                        }
+                        else
+                        {
+                            drop_pos = pos;
+                        }
+                    }
+                    else
+                    {
+                        invalidate = true;
+                    }
+                }
+                else if(lv.m_root == src_slot.m_root)
+                {
+                    DEBUG(state << " Wrapped usage");
+                    // Wrapped usage (expect only one)
+                    n_wrapped ++;
+                    if(n_wrapped > 1)
+                    {
+                        invalidate = true;
+                    }
+                }
+                else
+                {
+                    // Ignore
+                }
+                return false;
+                });
+            state.set_cur_stmt(&blk - fcn.blocks.data(), &stmt - blk.statements.data());
+            if( invalidate )
+            {
+                DEBUG(state << "Source isn't suitable");
+                continue ;
+            }
+
+            // Can now delete!
+            if(n_drop > 0)
+            {
+                DEBUG(state << "Wiping drop at " << drop_pos);
+                // Clear drop statement
+                auto& drop_blk = fcn.blocks.at(drop_pos.bb_idx);
+                auto& drop_stmt = drop_blk.statements.at(drop_pos.stmt_idx);
+                drop_stmt = MIR::Statement();
+            }
+            // Update the initial assignment
+            DEBUG(state << "Updating assignment");
+            src_rv = ::MIR::RValue::make_Use(mv$(src_slot));
+
+            changed = true;
+        }
+    }
+#endif
+
+    return changed;
+}
 
 // --------------------------------------------------------------------
 // Clear all unused blocks
