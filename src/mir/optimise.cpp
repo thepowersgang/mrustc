@@ -3068,6 +3068,7 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                 else
                 {
                     p = mv$(nv);
+                    changed = true;
                 }
             }
             };
@@ -3140,6 +3141,7 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                     else
                     {
                         e->src = ::MIR::RValue::make_Constant(mv$(nv));
+                        changed = true;
                     }
                     }
                 TU_ARMA(Constant, se) {
@@ -3149,6 +3151,12 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                     check_param(se.val);
                     }
                 TU_ARMA(Borrow, se) {
+                    // Shared borrows of statics can be better represented with the ItemAddr constant
+                    if( se.type == HIR::BorrowType::Shared && se.val.m_wrappers.empty() && se.val.m_root.is_Static() )
+                    {
+                        e->src = ::MIR::RValue::make_Constant( ::MIR::Constant::make_ItemAddr({ box$(se.val.m_root.as_Static()) }) );
+                        changed = true;
+                    }
                     }
                 TU_ARMA(Cast, se) {
                     ::MIR::Constant new_value;

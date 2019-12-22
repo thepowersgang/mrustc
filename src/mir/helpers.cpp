@@ -311,7 +311,16 @@ const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, cons
             MIR_TODO(*this, "get_const_type - Get type for constant borrow `" << c << "`");
             ),
         (Static,
-            MIR_TODO(*this, "get_const_type - Get type for static borrow `" << c << "`");
+            const auto& ty = ve->m_type;
+            HIR::TypeRef    rv;
+            if( monomorphise_type_needed(ty) ) {
+                rv = p.monomorph(this->sp, ty);
+                m_resolve.expand_associated_types(this->sp, rv);
+            }
+            else {
+                rv = ty.clone();
+            }
+            return HIR::TypeRef::new_borrow(HIR::BorrowType::Shared, mv$(rv));
             ),
         (Function,
             ::HIR::FunctionType ft;
