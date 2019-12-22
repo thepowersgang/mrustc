@@ -26,7 +26,7 @@ fn simple_exp(bv: bool) -> u32
 	} IF bv => bb1 else bb2;
 	bb1: {
 		ASSIGN retval = 0 u32;
-	} GOTO bb3;
+	} RETURN;	// Another optimisation converts the goto into a return
 	bb2: {
 	} CALL retval = "black_box"() => bb3 else bb_panic;
 	bb3: {

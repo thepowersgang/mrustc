@@ -88,3 +88,21 @@ fn borrowed_rev_exp(a: &mut [u8], a2: &mut u8)
 	} DIVERGE;
 }
 //*/
+
+
+//fn <&usize as ::"core"::ops::bit::Shl<&i8,>>::shl(arg0: &usize, arg1: &i8) -> usize
+fn borrow_usize_shl_borrow_i8(arg0: &usize, arg1: &i8) -> usize {
+	let var0: usize;
+	let var1: i8;
+	bb0: {
+		ASSIGN var1 = arg1*;
+		ASSIGN var0 = arg0*;
+		ASSIGN retval = BIT_SHL(var0, var1);
+	} RETURN;
+}
+#[test="borrow_usize_shl_borrow_i8_exp"]
+fn borrow_usize_shl_borrow_i8_exp(arg0: &usize, arg1: &i8) -> usize {
+	bb0: {
+		ASSIGN retval = BIT_SHL(arg0*, arg1*);
+	} RETURN;
+}

@@ -346,6 +346,16 @@ namespace {
                                 src = parse_binop(lex, MIR::eBinOp::ADD);
                             else if(tok.istr() == "SUB")
                                 src = parse_binop(lex, MIR::eBinOp::SUB);
+                            else if(tok.istr() == "BIT_SHL")
+                                src = parse_binop(lex, MIR::eBinOp::BIT_SHL);
+                            else if(tok.istr() == "BIT_SHR")
+                                src = parse_binop(lex, MIR::eBinOp::BIT_SHR);
+                            else if(tok.istr() == "BIT_AND")
+                                src = parse_binop(lex, MIR::eBinOp::BIT_AND);
+                            else if(tok.istr() == "BIT_OR")
+                                src = parse_binop(lex, MIR::eBinOp::BIT_OR);
+                            else if(tok.istr() == "BIT_XOR")
+                                src = parse_binop(lex, MIR::eBinOp::BIT_XOR);
                             else
                             {
                                 TODO(lex.point_span(), "MIR assign operator - " << tok.istr());
@@ -526,6 +536,14 @@ namespace {
         // 3. Convert BB indexes into correct numbering
         for(auto& blk : mir_fcn.blocks)
         {
+            auto bb_idx = &blk - mir_fcn.blocks.data();
+            auto translate_bb = [&](unsigned e)->unsigned {
+                const auto& name = lookup_bb_names[e];
+                auto it = real_bb_name_map.find(name);
+                if(it == real_bb_name_map.end())
+                    throw std::runtime_error(FMT(lex.point_span() << ": BB" << bb_idx << "/TERM Unable to find basic block name `" << name << "`")); 
+                return it->second;
+                };
             TU_MATCH_HDRA( (blk.terminator), {)
             TU_ARMA(Diverge, e) {
                 }
@@ -534,26 +552,26 @@ namespace {
             TU_ARMA(Incomplete, e) {
                 }
             TU_ARMA(Goto, e) {
-                e = real_bb_name_map.at( lookup_bb_names[e] );
+                e = translate_bb(e);
                 }
             TU_ARMA(Panic, e) {
-                e.dst = real_bb_name_map.at( lookup_bb_names[e.dst] );
+                e.dst = translate_bb(e.dst);
                 }
             TU_ARMA(Call, e) {
-                e.ret_block = real_bb_name_map.at( lookup_bb_names[e.ret_block] );
-                e.panic_block = real_bb_name_map.at( lookup_bb_names[e.panic_block] );
+                e.ret_block = translate_bb(e.ret_block);
+                e.panic_block = translate_bb(e.panic_block);
                 }
             TU_ARMA(If, e) {
-                e.bb0 = real_bb_name_map.at( lookup_bb_names[e.bb0] );
-                e.bb1 = real_bb_name_map.at( lookup_bb_names[e.bb1] );
+                e.bb0 = translate_bb(e.bb0);
+                e.bb1 = translate_bb(e.bb1);
                 }
             TU_ARMA(Switch, e) {
                 for(auto& tgt : e.targets)
-                    tgt = real_bb_name_map.at( lookup_bb_names[tgt] );
+                    tgt = translate_bb(tgt);
                 }
             TU_ARMA(SwitchValue, e) {
                 for(auto& tgt : e.targets)
-                    tgt = real_bb_name_map.at( lookup_bb_names[tgt] );
+                    tgt = translate_bb(tgt); 
                 }
             }
         }
