@@ -68,6 +68,8 @@ struct ProgramParams
 
     // NOTE: If populated, nothing happens except for loading the target
     ::std::string   target_saveback;
+    // NOTE: if true, no parse/compilation performed (target is loaded though)
+    bool    print_cfgs = false;
 
     ::std::vector<const char*> lib_search_dirs;
     ::std::vector<const char*> libraries;
@@ -243,6 +245,11 @@ int main(int argc, char *argv[])
         Target_SetCfg(params.target);
         });
 
+    if( params.print_cfgs )
+    {
+        Cfg_Dump(std::cout);
+        return 0;
+    }
     if( params.target_saveback != "" )
     {
         Target_ExportCurSpec(params.target_saveback);
@@ -979,6 +986,10 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                         ::std::cerr << "Unknown argument to -Z stop-after - '" << optval << "'" << ::std::endl;
                         exit(1);
                     }
+                }
+                else if( optname == "print-cfgs") {
+                    no_optval();
+                    this->print_cfgs = true;
                 }
                 else {
                     ::std::cerr << "Unknown debug option: '" << optname << "'" << ::std::endl;

@@ -120,7 +120,7 @@ public:
         auto pos = m_str.find_last_of(SEP);
         if(pos == ::std::string::npos)
         {
-            return *this;
+            return path();
         }
         else
         {

@@ -41,5 +41,8 @@
     <ClInclude Include="..\..\tools\minicargo\build.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\tools\minicargo\cfg.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

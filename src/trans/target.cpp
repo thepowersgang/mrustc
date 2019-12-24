@@ -589,15 +589,12 @@ void Target_SetCfg(const ::std::string& target_name)
     Cfg_SetValue("target_pointer_width", FMT(g_target.m_arch.m_pointer_bits));
     Cfg_SetValue("target_endian", g_target.m_arch.m_big_endian ? "big" : "little");
     Cfg_SetValue("target_arch", g_target.m_arch.m_name);
-    Cfg_SetValueCb("target_has_atomic", [&](const ::std::string& s) {
-        if(s == "8")    return g_target.m_arch.m_atomics.u8;    // Has an atomic byte
-        if(s == "16")   return g_target.m_arch.m_atomics.u16;
-        if(s == "32")   return g_target.m_arch.m_atomics.u32;
-        if(s == "64")   return g_target.m_arch.m_atomics.u64;
-        if(s == "ptr")  return g_target.m_arch.m_atomics.ptr;   // Has an atomic pointer-sized value
-        if(s == "cas")  return g_target.m_arch.m_atomics.ptr;   // TODO: Atomic compare-and-set option
-        return false;
-        });
+    if(g_target.m_arch.m_atomics.u8)    Cfg_SetValue("target_has_atomic", "8");
+    if(g_target.m_arch.m_atomics.u16)   Cfg_SetValue("target_has_atomic", "16");
+    if(g_target.m_arch.m_atomics.u32)   Cfg_SetValue("target_has_atomic", "32");
+    if(g_target.m_arch.m_atomics.u64)   Cfg_SetValue("target_has_atomic", "64");
+    if(g_target.m_arch.m_atomics.ptr)   Cfg_SetValue("target_has_atomic", "ptr");
+    if(g_target.m_arch.m_atomics.ptr)   Cfg_SetValue("target_has_atomic", "cas");   // TODO: Atomic compare-and-set option
     Cfg_SetValueCb("target_feature", [](const ::std::string& s) {
         return false;
         });

@@ -149,6 +149,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\tools\minicargo\build.h" />
+    <ClInclude Include="..\..\tools\minicargo\cfg.hpp" />
     <ClInclude Include="..\..\tools\minicargo\manifest.h" />
     <ClInclude Include="..\..\tools\minicargo\repository.h" />
   </ItemGroup>

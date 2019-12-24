@@ -20,6 +20,15 @@
 ::std::map< ::std::string, ::std::function<bool(const ::std::string&)> >   g_cfg_value_fcns;
 ::std::set< ::std::string >   g_cfg_flags;
 
+void Cfg_Dump(::std::ostream& os) {
+    for(const auto& v : g_cfg_values) {
+        os << ">" << v.first << "=" << v.second << std::endl;
+    }
+    for(const auto& f : g_cfg_flags) {
+        os << ">" << f << std::endl;
+    }
+    // NOTE: `g_cfg_value_fcns` is only used for feature flags, which minicargo doesn't need
+}
 void Cfg_SetFlag(::std::string name) {
     g_cfg_flags.insert( mv$(name) );
 }

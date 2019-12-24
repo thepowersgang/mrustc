@@ -16,6 +16,7 @@
 #include "build.h"
 #include <toml.h>   // TomlFile (workspace)
 #include <fstream>  // for workspace enumeration
+#include "cfg.hpp"
 
 struct ProgramOptions
 {
@@ -100,6 +101,8 @@ int main(int argc, const char* argv[])
         }
 
         auto bs_override_dir = opts.override_directory ? ::helpers::path(opts.override_directory) : ::helpers::path();
+
+        Cfg_SetTarget(opts.target);
 
         // 1. Load the Cargo.toml file from the passed directory
         Debug_SetPhase("Load Root");

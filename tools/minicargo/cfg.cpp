@@ -12,21 +12,12 @@
 #include <string>
 #include <cstring>
 #include "cfg.hpp"
-
-// TODO: Extract this from the target at runtime (by invoking the compiler on the passed target)
-#ifdef _WIN32
-//# define TARGET_NAME    "i586-windows-msvc"
-# define CFG_UNIX   false
-# define CFG_WINDOWS true
-#elif defined(__NetBSD__)
-//# define TARGET_NAME "x86_64-unknown-netbsd"
-# define CFG_UNIX   true
-# define CFG_WINDOWS false
-#else
-//# define TARGET_NAME "x86_64-unknown-linux-gnu"
-# define CFG_UNIX   true
-# define CFG_WINDOWS false
-#endif
+#include <path.h>
+#include "stringlist.h"
+#include "build.h"  // spawn_process
+#include <fstream>
+#include <unordered_map>
+#include <unordered_set>
 
 class CfgParseLexer
 {
@@ -123,26 +114,6 @@ private:
     Tok get_next();
 };
 
-struct CfgChecker
-{
-    const char* target_env;
-    const char* target_os;
-    const char* target_vendor;
-    const char* target_arch;
-
-    static CfgChecker for_target(const char* compiler_path, const char* target_spec);
-    bool check_cfg(const char* str) const;
-private:
-    bool check_cfg(CfgParseLexer& p) const;
-};
-
-CfgChecker  gCfgChecker {
-    (CFG_WINDOWS ? "msvc" : "gnu"),
-    (CFG_WINDOWS ? "windows" : "linux"),
-    "",
-    "x86"
-    };
-
 CfgParseLexer::Tok CfgParseLexer::get_next()
 {
     while(*m_pos == ' ')
@@ -184,19 +155,80 @@ CfgParseLexer::Tok CfgParseLexer::get_next()
     }
 }
 
+struct CfgChecker
+{
+    std::unordered_set<std::string>   flags;
+    std::unordered_map<std::string, std::string>    values;
+
+    static CfgChecker for_target(const helpers::path& compiler_path, const char* target_spec);
+    bool check_cfg(const char* str) const;
+private:
+    bool check_cfg(CfgParseLexer& p) const;
+};
+
+CfgChecker  gCfgChecker;
+
+void Cfg_SetTarget(const char* target_name)
+{
+    gCfgChecker = CfgChecker::for_target(get_mrustc_path(), target_name);
+}
 bool Cfg_Check(const char* cfg_string)
 {
-    if( gCfgChecker.target_os == nullptr )
-    {
-        // TODO: If the checker isn't initialised, invoke the compiler and ask it to dump the current target
-        // - It's pre-initialised above currently
-    }
     return gCfgChecker.check_cfg(cfg_string);
 }
 
-/*static*/ CfgChecker CfgChecker::for_target(const char* compiler_path, const char* target_spec)
+/*static*/ CfgChecker CfgChecker::for_target(const helpers::path& compiler_path, const char* target_spec)
 {
-    throw "";
+    auto tmp_file_stdout = helpers::path(".temp.txt");
+    StringList  args;
+    if( target_spec )
+    {
+        args.push_back("--target");
+        args.push_back(target_spec);
+    }
+    args.push_back("-Z");
+    args.push_back("print-cfgs");
+    if( !spawn_process(compiler_path.str().c_str(), args, StringListKV(), tmp_file_stdout) )
+        throw std::runtime_error("Unable to invoke compiler to get config options");
+
+    ::std::ifstream ifs(tmp_file_stdout.str());
+    if(!ifs.good())
+        throw std::runtime_error("Unable to read compiler output");
+
+    CfgChecker  rv;
+
+    std::string line;
+    while(!ifs.eof())
+    {
+        line.clear();
+        ifs >> line;
+
+        while(!line.empty() && isspace(line.back()))
+        {
+            line.pop_back();
+        }
+
+        if(line.empty())
+            continue;
+
+        if(line[0] == '>')
+        {
+            // Parse a cfg option (split on '=')
+            auto pos = line.find('=');
+            if(pos == std::string::npos)
+            {
+                rv.flags.insert(line.substr(1));
+            }
+            else
+            {
+                auto k = line.substr(1, pos - 1);
+                auto v = line.substr(pos+1);
+                rv.values.insert(std::make_pair( std::move(k), std::move(v) ));
+            }
+        }
+    }
+
+    return rv;
 }
 
 bool CfgChecker::check_cfg(const char* cfg_string) const
@@ -212,9 +244,10 @@ bool CfgChecker::check_cfg(const char* cfg_string) const
 
 bool CfgChecker::check_cfg(CfgParseLexer& p) const
 {
-    auto name = p.consume();
-    if( name.ty() != CfgParseLexer::Tok::Ident )
+    auto name_tok = p.consume();
+    if( name_tok.ty() != CfgParseLexer::Tok::Ident )
         throw ::std::runtime_error("Expected an identifier");
+    auto name = name_tok.to_string();
     // Combinators
     if( p.consume_if('(') ) {
         bool rv;
@@ -238,7 +271,7 @@ bool CfgChecker::check_cfg(CfgParseLexer& p) const
             } while(p.consume_if(','));
         }
         else {
-            throw std::runtime_error(format("Unknown operator in cfg `", name.to_string(), "`"));
+            throw std::runtime_error(format("Unknown operator in cfg `", name, "`"));
         }
         if( !p.consume_if(')') )
             throw ::std::runtime_error("Expected ')' after combinator content");
@@ -251,36 +284,17 @@ bool CfgChecker::check_cfg(CfgParseLexer& p) const
             throw ::std::runtime_error("Expected a string after `=`");
         const auto& val = t.str();
 
-        if( false ) {
+        auto it = this->values.find(name);
+        if( it != this->values.end() ) {
+            return it->second == val;
         }
-        else if( name == "target_env" )
-            return val == this->target_env;
-        else if( name == "target_os" )
-            return val == this->target_os;
-        else if( name == "target_arch" )
-            return val == this->target_arch;
-        else if( name == "target_vendor" )
-            return val == this->target_vendor;
         else {
-            throw std::runtime_error(format("Unknown cfg value `", name.to_string(), "` (=\"", val, "\")"));
+            throw std::runtime_error(format("Unknown cfg value `", name, "` (=\"", val, "\")"));
         }
     }
     // Flags
     else {
-        if( false ) {
-        }
-        else if( name == "unix" ) {
-            return CFG_UNIX;
-        }
-        else if( name == "windows" ) {
-            return CFG_WINDOWS;
-        }
-        else if( name == "stage0" ) {
-            return false;
-        }
-        else {
-            throw std::runtime_error(format("Unknown cfg flag `", name.to_string(), "`"));
-        }
+        return this->flags.count(name) > 0;
     }
     throw ::std::runtime_error("Hit end of check_cfg");
 }
