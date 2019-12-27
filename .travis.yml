@@ -28,10 +28,11 @@ install:
  - make RUSTCSRC
  - make -j 2
  - make -C tools/minicargo
+ - make -C tools/mir_opt_test
 
 script:
  - set -e
- - make -C tools/mir_opt_test
+ - make -C tools/mir_opt_test run
  - make -f minicargo.mk output/libtest.rlib      # libstd
  - make test    # hello_world
 # Tests
