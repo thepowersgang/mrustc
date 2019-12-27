@@ -100,14 +100,14 @@ NODE(ExprNode_Try, {
 })
 
 NODE(ExprNode_Macro, {
-    os << m_name << "!";
+    os << m_path << "!";
     if( m_ident.size() > 0 )
     {
         os << " " << m_ident << " ";
     }
     os << "(" << " /*TODO*/ " << ")";
 },{
-    return NEWNODE(ExprNode_Macro, m_name, m_ident, m_tokens.clone());
+    return NEWNODE(ExprNode_Macro, AST::Path(m_path), m_ident, m_tokens.clone());
 })
 
 NODE(ExprNode_Asm, {

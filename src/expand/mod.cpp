@@ -116,68 +116,94 @@ void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::AST::Cr
 
 ::std::unique_ptr<TokenStream> Expand_Macro_Inner(
     const ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod,
-    Span mi_span, const RcString& name, const RcString& input_ident, TokenTree& input_tt
+    Span mi_span, const AST::Path& path, const RcString& input_ident, TokenTree& input_tt
     )
 {
-    if( name == "" ) {
+    if( !path.is_valid() ) {
         return ::std::unique_ptr<TokenStream>();
     }
 
-    for( const auto& m : g_macros )
-    {
-        if( name == m.first )
-        {
-            auto e = input_ident == ""
-                ? m.second->expand(mi_span, crate, input_tt, mod)
-                : m.second->expand_ident(mi_span, crate, input_ident, input_tt, mod)
-                ;
-            return e;
-        }
-    }
+    // Find the macro
+    /*const*/ ExpandProcMacro*  proc_mac = nullptr;
+    const MacroRules*   mr_ptr = nullptr;
 
-
-    // Iterate up the module tree, using the first located macro
-    for(const auto* ll = &modstack; ll; ll = ll->m_prev)
+    if( path.is_trivial() )
     {
-        const auto& mac_mod = *ll->m_item;
-        for( const auto& mr : mac_mod.macros() )
+        const auto& name = path.as_trivial();
+        for( const auto& m : g_macros )
         {
-            //DEBUG("- " << mr.name);
-            if( mr.name == name )
+            if( name == m.first )
             {
-                if( input_ident != "" )
-                    ERROR(mi_span, E0000, "macro_rules! macros can't take an ident");
-
-                auto e = Macro_InvokeRules(name.c_str(), *mr.data, mi_span, mv$(input_tt), mod);
-                return e;
+                proc_mac = &*m.second;
+                break;
             }
         }
-        // Find the last macro of this name (allows later #[macro_use] definitions to override)
-        const MacroRules* last_mac = nullptr;
-        for( const auto& mri : mac_mod.macro_imports_res() )
+        // Iterate up the module tree, using the first located macro
+        for(const auto* ll = &modstack; ll; ll = ll->m_prev)
         {
-            //DEBUG("- " << mri.name);
-            if( mri.name == name )
+            const auto& mac_mod = *ll->m_item;
+            for( const auto& mr : mac_mod.macros() )
             {
-                if( input_ident != "" )
-                    ERROR(mi_span, E0000, "macro_rules! macros can't take an ident");
+                //DEBUG("- " << mr.name);
+                if( mr.name == name )
+                {
+                    mr_ptr = &*mr.data;
+                    break;
+                }
+            }
+            if( !mr_ptr )
+            {
+                // Find the last macro of this name (allows later #[macro_use] definitions to override)
+                const MacroRules* last_mac = nullptr;
+                for( const auto& mri : mac_mod.macro_imports_res() )
+                {
+                    //DEBUG("- " << mri.name);
+                    if( mri.name == name )
+                    {
+                        if( input_ident != "" )
+                            ERROR(mi_span, E0000, "macro_rules! macros can't take an ident");
 
-                last_mac = mri.data;
+                        last_mac = mri.data;
+                    }
+                }
+                if( last_mac )
+                {
+                    mr_ptr = last_mac;
+                }
             }
         }
-        if( last_mac )
-        {
-            auto e = Macro_InvokeRules(name.c_str(), *last_mac, mi_span, mv$(input_tt), mod);
-            return e;
-        }
+
+    }
+    else
+    {
+        TODO(mi_span, "Expand path macros - " << path);
     }
 
+    if( proc_mac )
+    {
+        auto e = input_ident == ""
+            ? proc_mac->expand(mi_span, crate, input_tt, mod)
+            : proc_mac->expand_ident(mi_span, crate, input_ident, input_tt, mod)
+            ;
+        return e;
+    }
+    else if( mr_ptr )
+    {
+        if( input_ident != "" )
+            ERROR(mi_span, E0000, "macro_rules! macros can't take an ident");
+
+        auto e = Macro_InvokeRules(path.is_trivial() ? path.as_trivial().c_str() : "", *mr_ptr, mi_span, mv$(input_tt), mod);
+        return e;
+    }
+    else
+    {
+    }
     // Error - Unknown macro name
-    ERROR(mi_span, E0000, "Unknown macro '" << name << "'");
+    ERROR(mi_span, E0000, "Unknown macro " << path);
 }
 ::std::unique_ptr<TokenStream> Expand_Macro(
     const ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod,
-    Span mi_span, const RcString& name, const RcString& input_ident, TokenTree& input_tt
+    Span mi_span, const AST::Path& name, const RcString& input_ident, TokenTree& input_tt
     )
 {
     auto rv = Expand_Macro_Inner(crate, modstack, mod, mi_span, name, input_ident, input_tt);
@@ -188,7 +214,7 @@ void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::AST::Cr
 }
 ::std::unique_ptr<TokenStream> Expand_Macro(const ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod, ::AST::MacroInvocation& mi)
 {
-    return Expand_Macro(crate, modstack, mod,  mi.span(), mi.name(), mi.input_ident(), mi.input_tt());
+    return Expand_Macro(crate, modstack, mod,  mi.span(), mi.path(), mi.input_ident(), mi.input_tt());
 }
 
 void Expand_Pattern(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod, ::AST::Pattern& pat, bool is_refutable)
@@ -405,7 +431,7 @@ struct CExpandExpr:
             // If the node was a macro, and it was consumed, reset it
             if( auto* n_mac = dynamic_cast<AST::ExprNode_Macro*>(cnode.get()) )
             {
-                if( n_mac->m_name == "" )
+                if( !n_mac->m_path.is_valid() )
                     cnode.reset();
             }
             if( this->replacement ) {
@@ -441,14 +467,14 @@ struct CExpandExpr:
 
     ::AST::ExprNodeP visit_macro(::AST::ExprNode_Macro& node, ::std::vector< ::AST::ExprNodeP>* nodes_out)
     {
-        TRACE_FUNCTION_F(node.m_name << "!");
-        if( node.m_name == "" ) {
+        TRACE_FUNCTION_F(node.m_path << "!");
+        if( !node.m_path.is_valid() ) {
             return ::AST::ExprNodeP();
         }
 
         ::AST::ExprNodeP    rv;
         auto& mod = this->cur_mod();
-        auto ttl = Expand_Macro( crate, modstack, mod,  node.span(),  node.m_name, node.m_ident, node.m_tokens );
+        auto ttl = Expand_Macro( crate, modstack, mod,  node.span(),  node.m_path, node.m_ident, node.m_tokens );
         if( !ttl.get() )
         {
             // No expansion
@@ -493,14 +519,14 @@ struct CExpandExpr:
             }
         }
 
-        node.m_name = "";
+        node.m_path = AST::Path();
         return mv$(rv);
     }
 
     void visit(::AST::ExprNode_Macro& node) override
     {
-        TRACE_FUNCTION_F("ExprNode_Macro - name = " << node.m_name);
-        if( node.m_name == "" ) {
+        TRACE_FUNCTION_F("ExprNode_Macro - name = " << node.m_path);
+        if( !node.m_path.is_valid() ) {
             return ;
         }
 
@@ -1017,15 +1043,15 @@ void Expand_Impl(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST:
         Expand_Attrs_CfgAttr(attrs);
         Expand_Attrs(attrs, AttrStage::Pre,  crate, AST::Path(), mod, *i.data);
 
-        TU_MATCH_DEF(AST::Item, (*i.data), (e),
-        (
+        TU_MATCH_HDRA( (*i.data), {)
+        default:
             BUG(Span(), "Unknown item type in impl block - " << i.data->tag_str());
-            ),
-        (None, ),
-        (MacroInv,
-            if( e.name() != "" )
+        TU_ARMA(None, e) {
+            }
+        TU_ARMA(MacroInv, e) {
+            if( e.path().is_valid() )
             {
-                TRACE_FUNCTION_F("Macro invoke " << e.name());
+                TRACE_FUNCTION_F("Macro invoke " << e.path());
                 // Move out of the module to avoid invalidation if a new macro invocation is added
                 auto mi_owned = mv$(e);
 
@@ -1043,8 +1069,8 @@ void Expand_Impl(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST:
                 // Move back in (using the index, as the old pointr may be invalid)
                 impl.items()[idx].data->as_MacroInv() = mv$(mi_owned);
             }
-            ),
-        (Function,
+            }
+        TU_ARMA(Function, e) {
             TRACE_FUNCTION_F("fn " << i.name);
             for(auto& arg : e.args()) {
                 Expand_Pattern(crate, modstack, mod,  arg.first, false);
@@ -1052,17 +1078,17 @@ void Expand_Impl(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST:
             }
             Expand_Type(crate, modstack, mod,  e.rettype());
             Expand_Expr(crate, modstack, e.code());
-            ),
-        (Static,
+            }
+        TU_ARMA(Static, e) {
             TRACE_FUNCTION_F("static " << i.name);
             Expand_Expr(crate, modstack, e.value());
             Expand_Type(crate, modstack, mod,  e.type());
-            ),
-        (Type,
+            }
+        TU_ARMA(Type, e) {
             TRACE_FUNCTION_F("type " << i.name);
             Expand_Type(crate, modstack, mod,  e.type());
-            )
-        )
+            }
+        }
 
         // Run post-expansion decorators and restore attributes
         {
@@ -1144,7 +1170,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             // Move out of the module to avoid invalidation if a new macro invocation is added
             auto mi_owned = mv$(e);
 
-            TRACE_FUNCTION_F("Macro invoke " << mi_owned.name());
+            TRACE_FUNCTION_F("Macro invoke " << mi_owned.path());
 
             auto ttl = Expand_Macro(crate, modstack, mod, mi_owned);
             assert( mi_owned.name() != "");
@@ -1300,15 +1326,14 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                 Expand_Attrs_CfgAttr(attrs);
                 Expand_Attrs(attrs, AttrStage::Pre,  crate, AST::Path(), mod, ti.data);
 
-                TU_MATCH_DEF(AST::Item, (ti.data), (e),
-                (
+                TU_MATCH_HDRA( (ti.data), {)
+                default:
                     BUG(Span(), "Unknown item type in trait block - " << ti.data.tag_str());
-                    ),
-                (None, ),
-                (MacroInv,
-                    if( e.name() != "" )
+                TU_ARMA(None, e) {}
+                TU_ARMA(MacroInv, e) {
+                    if( e.path().is_valid() )
                     {
-                        TRACE_FUNCTION_F("Macro invoke " << e.name());
+                        TRACE_FUNCTION_F("Macro invoke " << e.path());
                         // Move out of the module to avoid invalidation if a new macro invocation is added
                         auto mi_owned = mv$(e);
 
@@ -1329,8 +1354,8 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                         // Move back in (using the index, as the old pointer may be invalid)
                         trait_items[idx].data.as_MacroInv() = mv$(mi_owned);
                     }
-                    ),
-                (Function,
+                    }
+                TU_ARMA(Function, e) {
                     Expand_GenericParams(crate, modstack, mod,  e.params());
                     for(auto& arg : e.args()) {
                         Expand_Pattern(crate, modstack, mod,  arg.first, false);
@@ -1338,15 +1363,15 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                     }
                     Expand_Type(crate, modstack, mod,  e.rettype());
                     Expand_Expr(crate, modstack, e.code());
-                    ),
-                (Static,
+                    }
+                TU_ARMA(Static, e) {
                     Expand_Expr(crate, modstack, e.value());
                     Expand_Type(crate, modstack, mod,  e.type());
-                    ),
-                (Type,
+                    }
+                TU_ARMA(Type, e) {
                     Expand_Type(crate, modstack, mod,  e.type());
-                    )
-                )
+                    }
+                }
 
                 {
                     auto& ti = trait_items[idx];

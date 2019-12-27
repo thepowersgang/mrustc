@@ -1317,12 +1317,8 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
 }
 ExprNodeP Parse_ExprMacro(TokenStream& lex, AST::Path path)
 {
-    if( !path.is_trivial() ) {
-        TODO(lex.point_span(), "Support path macros - " << path);
-    }
-
     Token   tok;
-    auto name = path.m_class.is_Local() ? path.m_class.as_Local().name : path.nodes()[0].name();
+
     RcString ident;
     if( GET_TOK(tok, lex) == TOK_IDENT ) {
         ident = tok.istr();
@@ -1330,11 +1326,13 @@ ExprNodeP Parse_ExprMacro(TokenStream& lex, AST::Path path)
     else {
         PUTBACK(tok, lex);
     }
+
     TokenTree tt = Parse_TT(lex, true);
     if( tt.is_token() ) {
         throw ParseError::Unexpected(lex, tt.tok());
     }
-    return NEWNODE(AST::ExprNode_Macro, mv$(name), mv$(ident), mv$(tt));
+
+    return NEWNODE(AST::ExprNode_Macro, mv$(path), mv$(ident), mv$(tt));
 }
 
 // Token Tree Parsing

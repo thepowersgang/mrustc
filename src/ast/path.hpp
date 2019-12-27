@@ -343,6 +343,19 @@ public:
             )
         )
     }
+    const RcString& as_trivial() const {
+        TU_MATCH_HDRA( (m_class), {)
+        default:
+            break;
+        TU_ARMA(Local, e) {
+            return e.name;
+            }
+        TU_ARMA(Relative, e) {
+            return e.nodes[0].name();
+            }
+        }
+        throw std::runtime_error("as_trivial on non-trivial path");
+    }
 
     bool is_valid() const { return !m_class.is_Invalid(); }
     bool is_absolute() const { return m_class.is_Absolute(); }

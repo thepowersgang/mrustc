@@ -18,7 +18,7 @@ class MacroInvocation
 {
     Span    m_span;
 
-    RcString   m_macro_name;
+    AST::Path   m_macro_path;
     RcString   m_ident;
     TokenTree   m_input;
 public:
@@ -31,9 +31,9 @@ public:
     {
     }
 
-    MacroInvocation(Span span, RcString macro, RcString ident, TokenTree input):
+    MacroInvocation(Span span, AST::Path macro, RcString ident, TokenTree input):
         m_span( mv$(span) ),
-        m_macro_name( mv$(macro) ),
+        m_macro_path( mv$(macro) ),
         m_ident( mv$(ident) ),
         m_input( mv$(input) )
     {
@@ -42,20 +42,20 @@ public:
     MacroInvocation clone() const;
 
     void clear() {
-        m_macro_name = "";
+        m_macro_path = AST::Path();
         m_ident = "";
         m_input = TokenTree();
     }
 
     const Span& span() const { return m_span; }
-    const RcString& name() const { return m_macro_name; }
+    const AST::Path& path() const { return m_macro_path; }
 
     const RcString& input_ident() const { return m_ident; }
     const TokenTree& input_tt() const { return m_input; }
           TokenTree& input_tt()       { return m_input; }
 
     friend ::std::ostream& operator<<(::std::ostream& os, const MacroInvocation& x) {
-        os << x.m_macro_name << "! " << x.m_ident << x.m_input;
+        os << x.m_macro_path << "! " << x.m_ident << x.m_input;
         return os;
     }
 };

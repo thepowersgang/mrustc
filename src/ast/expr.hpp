@@ -90,12 +90,12 @@ struct ExprNode_Try:
 struct ExprNode_Macro:
     public ExprNode
 {
-    RcString   m_name;
+    AST::Path   m_path;
     RcString   m_ident;
     ::TokenTree m_tokens;
 
-    ExprNode_Macro(RcString name, RcString ident, ::TokenTree&& tokens):
-        m_name(name),
+    ExprNode_Macro(AST::Path name, RcString ident, ::TokenTree&& tokens):
+        m_path( move(name) ),
         m_ident(ident),
         m_tokens( move(tokens) )
     {}

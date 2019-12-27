@@ -77,7 +77,7 @@ public:
     }
     virtual void visit(AST::ExprNode_Macro& n) override {
         m_expr_root = false;
-        m_os << n.m_name << "!( /* TODO: Macro TT */ )";
+        m_os << n.m_path << "!( /* TODO: Macro TT */ )";
     }
     virtual void visit(AST::ExprNode_Asm& n) override {
         m_os << "asm!( \"" << n.m_text << "\"";

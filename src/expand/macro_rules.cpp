@@ -135,7 +135,7 @@ class CMacroExportHandler:
         }
         else if( i.is_MacroInv() ) {
             const auto& mac = i.as_MacroInv();
-            if( mac.name() != "macro_rules" ) {
+            if( !(mac.path().is_trivial() && mac.path().as_trivial() == "macro_rules") ) {
                 ERROR(sp, E0000, "#[macro_export] is only valid on macro_rules!");
             }
             const auto& name = mac.input_ident();

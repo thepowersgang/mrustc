@@ -269,7 +269,7 @@ bool Impl::has_named_item(const RcString& name) const
 
 MacroInvocation MacroInvocation::clone() const
 {
-    return MacroInvocation(m_span, m_macro_name, m_ident, m_input.clone());
+    return MacroInvocation(m_span, AST::Path(m_macro_path), m_ident, m_input.clone());
 }
 
 UseItem UseItem::clone() const
