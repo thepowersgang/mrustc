@@ -116,10 +116,15 @@ PathBinding_Macro PathBinding_Macro::clone() const
         needs_comma = true;
         os << v;
     }
-    for(const auto& v : x.m_assoc) {
+    for(const auto& v : x.m_assoc_equal) {
         if(needs_comma) os << ", ";
         needs_comma = true;
         os << v.first << "=" << v.second;
+    }
+    for(const auto& v : x.m_assoc_bound) {
+        if(needs_comma) os << ", ";
+        needs_comma = true;
+        os << v.first << ": " << v.second;
     }
     os << ">";
     return os;
@@ -131,9 +136,13 @@ PathParams::PathParams(const PathParams& x):
     for(const auto& t : x.m_types)
         m_types.push_back(t.clone());
 
-    m_assoc.reserve( x.m_assoc.size() );
-    for(const auto& t : x.m_assoc)
-        m_assoc.push_back( ::std::make_pair(t.first, t.second.clone()) );
+    m_assoc_equal.reserve( x.m_assoc_equal.size() );
+    for(const auto& t : x.m_assoc_equal)
+        m_assoc_equal.push_back( ::std::make_pair(t.first, t.second.clone()) );
+
+    m_assoc_bound.reserve( x.m_assoc_bound.size() );
+    for(const auto& t : x.m_assoc_bound)
+        m_assoc_bound.push_back( ::std::make_pair(t.first, AST::Path(t.second)) );
 }
 Ordering PathParams::ord(const PathParams& x) const
 {
@@ -142,7 +151,9 @@ Ordering PathParams::ord(const PathParams& x) const
     if(rv != OrdEqual)  return rv;
     rv = ::ord(m_types, x.m_types);
     if(rv != OrdEqual)  return rv;
-    rv = ::ord(m_assoc, x.m_assoc);
+    rv = ::ord(m_assoc_equal, x.m_assoc_equal);
+    if(rv != OrdEqual)  return rv;
+    rv = ::ord(m_assoc_bound, x.m_assoc_bound);
     if(rv != OrdEqual)  return rv;
     return rv;
 }

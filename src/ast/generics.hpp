@@ -73,6 +73,53 @@ public:
 
     friend ::std::ostream& operator<<(::std::ostream& os, const LifetimeParam& p);
 };
+class ValueParam
+{
+    ::AST::AttributeList    m_attrs;
+    Span    m_span;
+    Ident   m_name;
+    TypeRef m_type;
+public:
+    ValueParam(Span sp, ::AST::AttributeList attrs, Ident name, TypeRef type)
+        :m_attrs( ::std::move(attrs) )
+        ,m_span( ::std::move(sp) )
+        ,m_name( ::std::move(name) )
+        ,m_type( ::std::move(type) )
+    {
+    }
+    ValueParam(ValueParam&&) = default;
+    ValueParam& operator=(ValueParam&&) = default;
+    explicit ValueParam(const ValueParam& x):
+        m_attrs( x.m_attrs ),
+        m_span( x.m_span ),
+        m_name( x.m_name ),
+        m_type( x.m_type.clone() )
+    {
+    }
+
+    const ::AST::AttributeList& attrs() const { return m_attrs; }
+    const Span& span() const { return m_span; }
+    const Ident& name() const { return m_name; }
+
+    const TypeRef& type() const { return m_type; }
+          TypeRef& type()       { return m_type; }
+
+    friend ::std::ostream& operator<<(::std::ostream& os, const ValueParam& p);
+};
+TAGGED_UNION_EX( GenericParam, (), None,
+    (
+        (None, struct {}),
+        (Lifetime, LifetimeParam),
+        (Type, TypeParam),
+        (Value, ValueParam)
+        ),
+    (), (),
+    (
+        GenericParam clone() const;
+
+        friend std::ostream& operator<<(std::ostream& os, const GenericParam& x);
+        )
+    );
 
 // HigherRankedBounds is defined in `types.hpp`
 
@@ -138,10 +185,10 @@ TAGGED_UNION_EX( GenericBound, (), None,
 
 class GenericParams
 {
-    ::std::vector<TypeParam>    m_type_params;
-    ::std::vector<LifetimeParam>    m_lifetime_params;
-    ::std::vector<GenericBound>    m_bounds;
 public:
+    ::std::vector<GenericParam> m_params;
+    ::std::vector<GenericBound> m_bounds;
+
     GenericParams() {}
     GenericParams(GenericParams&& x) = default;
     GenericParams& operator=(GenericParams&& x) = default;
@@ -149,29 +196,27 @@ public:
 
     GenericParams clone() const {
         GenericParams   rv;
-        rv.m_type_params = ::std::vector<TypeParam>( m_type_params );   // Copy-constructable
-        rv.m_lifetime_params = ::std::vector<LifetimeParam>(m_lifetime_params);
+        rv.m_params.reserve( m_params.size() );
+        for(const auto& e : m_params)
+            rv.m_params.push_back( e.clone() );
         rv.m_bounds.reserve( m_bounds.size() );
         for(auto& e: m_bounds)
             rv.m_bounds.push_back( e.clone() );
         return rv;
     }
 
-    const ::std::vector<TypeParam>& ty_params() const { return m_type_params; }
-          ::std::vector<TypeParam>& ty_params()       { return m_type_params; }
-    const ::std::vector<LifetimeParam>& lft_params() const { return m_lifetime_params; }
-    const ::std::vector<GenericBound>& bounds() const { return m_bounds; }
-          ::std::vector<GenericBound>& bounds()       { return m_bounds; }
 
-    void add_ty_param(TypeParam param) { m_type_params.push_back( ::std::move(param) ); }
-    void add_lft_param(LifetimeParam lft) { m_lifetime_params.push_back( ::std::move(lft) ); }
+    void add_lft_param(LifetimeParam lft) { m_params.push_back( ::std::move(lft) ); }
+    void add_ty_param(TypeParam param) { m_params.push_back( ::std::move(param) ); }
+    void add_value_param(Span sp, AttributeList attrs, Ident name, TypeRef ty) {
+        m_params.push_back(ValueParam(mv$(sp), mv$(attrs), mv$(name), mv$(ty)));
+    }
+
     void add_bound(GenericBound bound) {
         m_bounds.push_back( ::std::move(bound) );
     }
 
     int find_name(const char* name) const;
-    bool check_params(Crate& crate, const ::std::vector<TypeRef>& types) const;
-    bool check_params(Crate& crate, ::std::vector<TypeRef>& types, bool allow_infer) const;
 
     friend ::std::ostream& operator<<(::std::ostream& os, const GenericParams& tp);
 };

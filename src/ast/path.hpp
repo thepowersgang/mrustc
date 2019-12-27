@@ -46,6 +46,8 @@ class Static;
 class Function;
 class ExternCrate;
 
+class Path;
+
 TAGGED_UNION_EX(PathBinding_Value, (), Unbound, (
     (Unbound, struct {
         }),
@@ -157,22 +159,18 @@ struct PathParams
 {
     ::std::vector< LifetimeRef >  m_lifetimes;
     ::std::vector< TypeRef >    m_types;
-    ::std::vector< ::std::pair< RcString, TypeRef> >   m_assoc;
+    ::std::vector< ::std::pair< RcString, TypeRef> >   m_assoc_equal;
+    ::std::vector< ::std::pair< RcString, Path> >   m_assoc_bound;
 
     PathParams(PathParams&& x) = default;
     PathParams(const PathParams& x);
     PathParams() {}
-    PathParams(::std::vector<LifetimeRef> lfts, ::std::vector<TypeRef> tys, ::std::vector<::std::pair<RcString,TypeRef>> a):
-        m_lifetimes(mv$(lfts)),
-        m_types(mv$(tys)),
-        m_assoc(mv$(a))
-    {}
 
     PathParams& operator=(PathParams&& x) = default;
     PathParams& operator=(const PathParams& x) = delete;
 
     bool is_empty() const {
-        return m_lifetimes.empty() && m_types.empty() && m_assoc.empty();
+        return m_lifetimes.empty() && m_types.empty() && m_assoc_equal.empty() && m_assoc_bound.empty();
     }
 
     Ordering ord(const PathParams& x) const;

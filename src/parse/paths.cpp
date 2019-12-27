@@ -34,6 +34,8 @@ AST::Path Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode)
         while( LOOK_AHEAD(lex) == TOK_RWORD_SUPER ) {
             count += 1;
             GET_TOK(tok, lex);
+            if( lex.lookahead(0) != TOK_DOUBLE_COLON )
+                return AST::Path(AST::Path::TagSuper(), count, {});
             GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
         }
         return AST::Path(AST::Path::TagSuper(), count, Parse_PathNodes(lex, generic_mode));
@@ -163,11 +165,9 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
                 DEBUG("- Fn("<<args<<")->"<<ret_type<<"");
 
                 // Encode into path, by converting Fn(A,B)->C into Fn<(A,B),Ret=C>
-                params = ::AST::PathParams {
-                    {},
-                    ::make_vec1( TypeRef(TypeRef::TagTuple(), lex.end_span(ps), mv$(args)) ),
-                    ::make_vec1( ::std::make_pair( RcString::new_interned("Output"), mv$(ret_type) ) )
-                    };
+                params = ::AST::PathParams();
+                params.m_types = ::make_vec1( TypeRef(TypeRef::TagTuple(), lex.end_span(ps), mv$(args)) );
+                params.m_assoc_equal = ::make_vec1( ::std::make_pair( RcString::new_interned("Output"), mv$(ret_type) ) );
 
                 GET_TOK(tok, lex);
             }
@@ -208,9 +208,7 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
     TRACE_FUNCTION;
     Token   tok;
 
-    ::std::vector<TypeRef>  types;
-    ::std::vector<AST::LifetimeRef>   lifetimes;
-    ::std::vector< ::std::pair< RcString, TypeRef > > assoc_bounds;
+    ::AST::PathParams   rv;
 
     do {
         if( LOOK_AHEAD(lex) == TOK_GT || LOOK_AHEAD(lex) == TOK_DOUBLE_GT || LOOK_AHEAD(lex) == TOK_GTE || LOOK_AHEAD(lex) == TOK_DOUBLE_GT_EQUAL ) {
@@ -220,19 +218,26 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
         switch(GET_TOK(tok, lex))
         {
         case TOK_LIFETIME:
-            lifetimes.push_back(AST::LifetimeRef(/*lex.point_span(),*/ lex.get_ident(mv$(tok)) ));
+            rv.m_lifetimes.push_back(AST::LifetimeRef(/*lex.point_span(),*/ lex.get_ident(mv$(tok)) ));
             break;
         case TOK_IDENT:
             if( LOOK_AHEAD(lex) == TOK_EQUAL )
             {
                 auto name = tok.istr();
                 GET_CHECK_TOK(tok, lex, TOK_EQUAL);
-                assoc_bounds.push_back( ::std::make_pair( mv$(name), Parse_Type(lex,false) ) );
+                rv.m_assoc_equal.push_back( ::std::make_pair( mv$(name), Parse_Type(lex,false) ) );
+                break;
+            }
+            if( LOOK_AHEAD(lex) == TOK_COLON )
+            {
+                auto name = tok.istr();
+                GET_CHECK_TOK(tok, lex, TOK_COLON);
+                rv.m_assoc_bound.push_back( ::std::make_pair( mv$(name), Parse_Path(lex, PATH_GENERIC_TYPE) ) );
                 break;
             }
         default:
             PUTBACK(tok, lex);
-            types.push_back( Parse_Type(lex) );
+            rv.m_types.push_back( Parse_Type(lex) );
             break;
         }
     } while( GET_TOK(tok, lex) == TOK_COMMA );
@@ -251,10 +256,6 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
         CHECK_TOK(tok, TOK_GT);
     }
 
-    return ::AST::PathParams {
-        mv$( lifetimes ),
-        mv$( types ),
-        mv$( assoc_bounds )
-        };
+    return rv;
 }
 

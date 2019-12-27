@@ -414,9 +414,13 @@ struct LowerHIR_ExprNode_Visitor:
     virtual void visit(::AST::ExprNode_IfLet& v) override {
         ::std::vector< ::HIR::ExprNode_Match::Arm>  arms;
 
+        std::vector<HIR::Pattern>   patterns;
+        patterns.reserve(v.m_patterns.size());
+        for(const auto& pat : v.m_patterns)
+            patterns.push_back( LowerHIR_Pattern(pat) );
         // - Matches pattern - Take true branch
         arms.push_back(::HIR::ExprNode_Match::Arm {
-            ::make_vec1( LowerHIR_Pattern(v.m_pattern) ),
+            mv$(patterns),
             ::HIR::ExprNodeP(),
             LowerHIR_ExprNode_Inner(*v.m_true)
             });

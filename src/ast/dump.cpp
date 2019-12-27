@@ -296,7 +296,12 @@ public:
         bool expr_root = m_expr_root;
         m_expr_root = false;
         m_os << "if let ";
-        print_pattern(n.m_pattern, true);
+        for(const auto& pat : n.m_patterns)
+        {
+            if(&pat != &n.m_patterns.front())
+                m_os << " | ";
+            print_pattern(pat, /*is_refutable=*/true);
+        }
         m_os << " = ";
         AST::NodeVisitor::visit(n.m_value);
 
@@ -820,26 +825,24 @@ void RustPrinter::handle_module(const AST::Module& mod)
 
 void RustPrinter::print_params(const AST::GenericParams& params)
 {
-    if( params.ty_params().size() > 0 || params.lft_params().size() > 0 )
+    if( !params.m_params.empty() )
     {
         bool is_first = true;
         m_os << "<";
-        // Lifetimes
-        for( const auto& p : params.lft_params() )
+        for( const auto& p : params.m_params )
         {
             if( !is_first )
                 m_os << ", ";
-            m_os << "'" << p;
-            is_first = false;
-        }
-        // Types
-        for( const auto& p : params.ty_params() )
-        {
-            if( !is_first )
-                m_os << ", ";
-            m_os << p.name();
-            if( !p.get_default().is_wildcard() )
-                m_os << " = " << p.get_default();
+            TU_MATCH_HDRA( (p), {)
+            TU_ARMA(Lifetime, p) {
+                m_os << "'" << p;
+                }
+            TU_ARMA(Type, p) {
+                m_os << p.name();
+                if( !p.get_default().is_wildcard() )
+                    m_os << " = " << p.get_default();
+                }
+            }
             is_first = false;
         }
         m_os << ">";
@@ -848,13 +851,13 @@ void RustPrinter::print_params(const AST::GenericParams& params)
 
 void RustPrinter::print_bounds(const AST::GenericParams& params)
 {
-    if( params.bounds().size() )
+    if( !params.m_bounds.empty() )
     {
         m_os << indent() << "where\n";
         inc_indent();
         bool is_first = true;
 
-        for( const auto& b : params.bounds() )
+        for( const auto& b : params.m_bounds )
         {
             if( !is_first )
                 m_os << ",\n";

@@ -75,6 +75,13 @@ class Attribute
     mutable bool    m_is_used;
     // TODO: Parse as a TT then expand?
 public:
+    Attribute(Span sp, RcString name, AttributeData data):
+        m_span(::std::move(sp)),
+        m_name(name),
+        m_data(::std::move(data)),
+        m_is_used(false)
+    {
+    }
     Attribute(Span sp, RcString name):
         m_span(::std::move(sp)),
         m_name(name),

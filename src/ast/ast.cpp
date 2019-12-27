@@ -381,6 +381,11 @@ Item Item::clone() const
     os << "'" << p.m_name;
     return os;
 }
+::std::ostream& operator<<(::std::ostream& os, const ValueParam& p)
+{
+    os << "const " << p.m_name << ": " << p.m_type;
+    return os;
+}
 
 ::std::ostream& operator<<(::std::ostream& os, const HigherRankedBounds& x)
 {
@@ -394,6 +399,32 @@ Item Item::clone() const
     return os;
 }
 
+
+GenericParam GenericParam::clone() const
+{
+    TU_MATCH_HDRA( (*this), {)
+    TU_ARMA(Lifetime, e)
+        return LifetimeParam(e);
+    TU_ARMA(Type, e)
+        return TypeParam(e);
+    TU_ARMA(Value, e)
+        return ValueParam(e);
+    }
+    throw "";
+}
+
+std::ostream& operator<<(std::ostream& os, const GenericParam& x)
+{
+    TU_MATCH_HDRA( (x), {)
+    TU_ARMA(Lifetime, e)
+        os << e;
+    TU_ARMA(Type, e)
+        os << e;
+    TU_ARMA(Value, e)
+        os << e;
+    }
+    return os;
+}
 
 ::std::ostream& operator<<(::std::ostream& os, const GenericBound& x)
 {
@@ -424,20 +455,20 @@ Item Item::clone() const
 }
 
 
-int GenericParams::find_name(const char* name) const
-{
-    for( unsigned int i = 0; i < m_type_params.size(); i ++ )
-    {
-        if( m_type_params[i].name() == name )
-            return i;
-    }
-    DEBUG("Type param '" << name << "' not in list");
-    return -1;
-}
+//int GenericParams::find_name(const char* name) const
+//{
+//    for( unsigned int i = 0; i < m_type_params.size(); i ++ )
+//    {
+//        if( m_type_params[i].name() == name )
+//            return i;
+//    }
+//    DEBUG("Type param '" << name << "' not in list");
+//    return -1;
+//}
 
 ::std::ostream& operator<<(::std::ostream& os, const GenericParams& tps)
 {
-    return os << "<" << tps.m_lifetime_params << "," << tps.m_type_params << "> where {" << tps.m_bounds << "}";
+    return os << "<" << tps.m_params << "> where {" << tps.m_bounds << "}";
 }
 
 }    // namespace AST

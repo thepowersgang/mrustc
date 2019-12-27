@@ -372,16 +372,16 @@ ExprNodeP Parse_IfStmt(TokenStream& lex)
 
     Token   tok;
     ExprNodeP cond;
-    AST::Pattern    pat;
-    bool if_let = false;
+    std::vector<AST::Pattern>   paterns;
 
     {
         SET_PARSE_FLAG(lex, disallow_struct_literal);
         if( GET_TOK(tok, lex) == TOK_RWORD_LET ) {
-            if_let = true;
             // Refutable pattern
-            pat = Parse_Pattern(lex, true);
-            GET_CHECK_TOK(tok, lex, TOK_EQUAL);
+            do {
+                paterns.push_back( Parse_Pattern(lex, true) );
+            } while(GET_TOK(tok, lex) == TOK_PIPE);
+            CHECK_TOK(tok, TOK_EQUAL);
             cond = Parse_Expr0(lex);
         }
         else {
@@ -412,8 +412,8 @@ ExprNodeP Parse_IfStmt(TokenStream& lex)
         PUTBACK(tok, lex);
     }
 
-    if( if_let )
-        return NEWNODE( AST::ExprNode_IfLet, ::std::move(pat), ::std::move(cond), ::std::move(code), ::std::move(altcode) );
+    if( !paterns.empty() )
+        return NEWNODE( AST::ExprNode_IfLet, ::std::move(paterns), ::std::move(cond), ::std::move(code), ::std::move(altcode) );
     else
         return NEWNODE( AST::ExprNode_If, ::std::move(cond), ::std::move(code), ::std::move(altcode) );
 }
@@ -1182,6 +1182,7 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
             }
         }
         if(0)
+    case TOK_RWORD_CRATE:
     case TOK_RWORD_SUPER:
         {
             PUTBACK(tok, lex);

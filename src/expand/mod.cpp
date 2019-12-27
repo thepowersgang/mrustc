@@ -333,8 +333,10 @@ void Expand_Path(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST:
         {
             for(auto& typ : node.args().m_types)
                 Expand_Type(crate, modstack, mod, typ);
-            for(auto& aty : node.args().m_assoc)
+            for(auto& aty : node.args().m_assoc_equal)
                 Expand_Type(crate, modstack, mod, aty.second);
+            for(auto& aty : node.args().m_assoc_bound)
+                Expand_Path(crate, modstack, mod, aty.second);
         }
         };
 
@@ -719,7 +721,8 @@ struct CExpandExpr:
         this->visit_nodelete(node, node.m_false);
     }
     void visit(::AST::ExprNode_IfLet& node) override {
-        Expand_Pattern(crate, modstack, this->cur_mod(),  node.m_pattern, true);
+        for(auto& pat : node.m_patterns)
+            Expand_Pattern(crate, modstack, this->cur_mod(),  pat, true);
         this->visit_nodelete(node, node.m_value);
         this->visit_nodelete(node, node.m_true);
         this->visit_nodelete(node, node.m_false);
@@ -938,11 +941,20 @@ void Expand_Expr(::AST::Crate& crate, LList<const AST::Module*> modstack, AST::E
 
 void Expand_GenericParams(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod,  ::AST::GenericParams& params)
 {
-    for(auto& ty_def : params.ty_params())
+    for(auto& param_def : params.m_params)
     {
-        Expand_Type(crate, modstack, mod,  ty_def.get_default());
+        TU_MATCH_HDRA( (param_def), {)
+        TU_ARMA(Lifetime, e) {
+            }
+        TU_ARMA(Type, ty_def) {
+            Expand_Type(crate, modstack, mod,  ty_def.get_default());
+            }
+        TU_ARMA(Value, val_def) {
+            Expand_Type(crate, modstack, mod,  val_def.type());
+            }
+        }
     }
-    for(auto& bound : params.bounds())
+    for(auto& bound : params.m_bounds)
     {
         TU_MATCHA( (bound), (be),
         (None,

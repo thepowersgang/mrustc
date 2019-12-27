@@ -631,25 +631,5 @@ TAGGED_UNION_EX(Item, (), None,
 
 } // namespace AST
 
-class GenericResolveClosure
-{
-    const ::AST::GenericParams&  m_params;
-    const ::std::vector<TypeRef>&   m_args;
-public:
-    GenericResolveClosure(const AST::GenericParams& params, const ::std::vector<TypeRef>& args):
-        m_params(params),
-        m_args(args)
-    {}
-    const TypeRef& operator()(const char *argname) {
-        for(unsigned int i = 0; i < m_params.ty_params().size(); i ++)
-        {
-            if( m_params.ty_params()[i].name() == argname ) {
-                return m_args.at(i);
-            }
-        }
-        throw ::std::runtime_error("BUGCHECK - Unknown arg in field type");
-    }
-};
-
 
 #endif // AST_HPP_INCLUDED

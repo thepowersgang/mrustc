@@ -112,6 +112,8 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
     case TOK_RWORD_SELF:
     // 'super' - Parent relative path
     case TOK_RWORD_SUPER:
+    // 'crate' - Crate-relative path
+    case TOK_RWORD_CRATE:
     // ':path' fragment
     case TOK_INTERPOLATED_PATH:
         PUTBACK(tok, lex);

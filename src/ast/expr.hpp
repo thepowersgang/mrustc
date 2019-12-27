@@ -322,13 +322,13 @@ struct ExprNode_If:
 struct ExprNode_IfLet:
     public ExprNode
 {
-    AST::Pattern    m_pattern;
+    std::vector<AST::Pattern>   m_patterns;
     unique_ptr<ExprNode>    m_value;
     unique_ptr<ExprNode>    m_true;
     unique_ptr<ExprNode>    m_false;
 
-    ExprNode_IfLet(AST::Pattern pattern, unique_ptr<ExprNode>&& cond, unique_ptr<ExprNode>&& true_code, unique_ptr<ExprNode>&& false_code):
-        m_pattern( ::std::move(pattern) ),
+    ExprNode_IfLet(std::vector<AST::Pattern> patterns, unique_ptr<ExprNode>&& cond, unique_ptr<ExprNode>&& true_code, unique_ptr<ExprNode>&& false_code):
+        m_patterns( ::std::move(patterns) ),
         m_value( ::std::move(cond) ),
         m_true( ::std::move(true_code) ),
         m_false( ::std::move(false_code) )
