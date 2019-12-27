@@ -57,6 +57,7 @@ struct ProgramParams
 
     ::std::string   emit_depfile;
 
+    ::AST::Edition      edition = ::AST::Edition::Rust2015;
     ::AST::Crate::Type  crate_type = ::AST::Crate::Type::Unknown;
     ::std::string   crate_name;
     ::std::string   crate_name_suffix;
@@ -1168,6 +1169,24 @@ ProgramParams::ProgramParams(int argc, char *argv[])
             }
             else if( strcmp(arg, "--test") == 0 ) {
                 this->test_harness = true;
+            }
+            else if( strcmp(arg, "--edition") == 0 ) {
+                if (i == argc - 1) {
+                    ::std::cerr << "Flag " << arg << " requires an argument" << ::std::endl;
+                    exit(1);
+                }
+
+                const char* edition_str = argv[++i];
+                if( strcmp(edition_str, "2015") == 0 ) {
+                    this->edition = AST::Edition::Rust2015;
+                }
+                else if( strcmp(edition_str, "2018") == 0 ) {
+                    this->edition = AST::Edition::Rust2018;
+                }
+                else {
+                    ::std::cerr << "Unknown value for " << arg << " - '" << edition_str << "'" << ::std::endl;
+                    exit(1);
+                }
             }
             else {
                 ::std::cerr << "Unknown option '" << arg << "'" << ::std::endl;

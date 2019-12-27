@@ -180,6 +180,12 @@ public:
     void load_manifest(Repository& repo, const ::helpers::path& base_path, bool include_build_deps);
 };
 
+enum class Edition
+{
+    Unspec,
+    Rust2015,
+    Rust2018,
+};
 struct PackageTarget
 {
     enum class Type
@@ -202,6 +208,7 @@ struct PackageTarget
     Type    m_type;
     ::std::string   m_name;
     ::std::string   m_path;
+    Edition m_edition = Edition::Unspec;
     bool    m_enable_test = true;
     bool    m_enable_doctest = true;
     bool    m_enable_bench = true;
@@ -260,6 +267,8 @@ class PackageManifest
     ::std::string   m_name;
     PackageVersion  m_version;
     ::std::string   m_links;
+
+    Edition m_edition = Edition::Unspec;
 
     ::std::string   m_build_script;
 

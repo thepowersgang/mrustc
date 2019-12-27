@@ -151,6 +151,20 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
                     rv.m_workspace_manifest = key_val.value.as_string();
                 }
             }
+            else if( key == "edition" )
+            {
+                assert(key_val.path.size() == 2);
+                assert(key_val.value.m_type == TomlValue::Type::String);
+                if(key_val.value.as_string() == "2015") {
+                    rv.m_edition = Edition::Rust2015;
+                }
+                else if(key_val.value.as_string() == "2018") {
+                    rv.m_edition = Edition::Rust2018;
+                }
+                else {
+                    throw ::std::runtime_error( ::format(toml_file.lexer(), ": Unknown edition value ", key_val.value) );
+                }
+            }
             else
             {
                 // Unknown value in `package`
@@ -359,6 +373,11 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
         throw ::std::runtime_error(format("Manifest file ", path, " didn't specify any targets (and src/{main,lib}.rs doesn't exist)"));
     }
 
+    //if(rv.m_edition == Edition::Unspec)
+    //{
+    //    rv.m_edition = Edition::Rust2015;
+    //}
+
     // Default target names
     for(auto& tgt : rv.m_targets)
     {
@@ -396,6 +415,10 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
             tgt.m_name.reserve(rv.m_name.size());
             for(auto c : rv.m_name)
                 tgt.m_name += (c == '-' ? '_' : c);
+        }
+        if(tgt.m_edition == Edition::Unspec)
+        {
+            tgt.m_edition = rv.m_edition;
         }
     }
 
@@ -496,7 +519,16 @@ namespace
         else if( key == "edition" )
         {
             assert(kv.path.size() == base_idx + 1);
-            throw ::std::runtime_error( ::format(lex, ": TODO: Handle target option `edition`") );
+            assert(kv.value.m_type == TomlValue::Type::String);
+            if(kv.value.as_string() == "2015") {
+                target.m_edition = Edition::Rust2015;
+            }
+            else if(kv.value.as_string() == "2018") {
+                target.m_edition = Edition::Rust2018;
+            }
+            else {
+                throw ::std::runtime_error( ::format(lex, ": Unknown edition value ", kv.value) );
+            }
         }
         else if( key == "crate-type" )
         {

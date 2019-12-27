@@ -874,6 +874,19 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         args.push_back("--extern");
         args.push_back(::format(m.get_library().m_name, "=", path));
     }
+    switch(target.m_edition)
+    {
+    case Edition::Unspec:
+        break;
+    case Edition::Rust2015:
+        args.push_back("--edition");
+        args.push_back("2015");
+        break;
+    case Edition::Rust2018:
+        args.push_back("--edition");
+        args.push_back("2018");
+        break;
+    }
     if( target.m_type == PackageTarget::Type::Test )
     {
         args.push_back("--test");
