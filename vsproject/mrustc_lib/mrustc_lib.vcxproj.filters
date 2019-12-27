@@ -297,9 +297,6 @@
     <ClCompile Include="..\..\src\hir\path.cpp">
       <Filter>Source Files\hir</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\src\hir\generic_params.cpp">
-      <Filter>Source Files\ast</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\src\resolve\index.cpp">
       <Filter>Source Files\resolve</Filter>
     </ClCompile>
@@ -407,6 +404,12 @@
     </ClCompile>
     <ClCompile Include="..\..\src\hir_expand\static_borrow_constants.cpp">
       <Filter>Source Files\hir_expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\mir\borrow_check.cpp">
+      <Filter>Source Files\mir</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir\generic_params.cpp">
+      <Filter>Source Files\hir</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
