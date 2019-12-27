@@ -68,9 +68,6 @@ class Builder
     ::helpers::path m_compiler_path;
     size_t m_total_targets;
     mutable size_t m_targets_built;
-#ifndef _WIN32
-    mutable ::std::mutex    chdir_mutex;
-#endif
 
 public:
     Builder(const BuildOptions& opts, size_t total_targets);
@@ -1329,7 +1326,8 @@ bool spawn_process(const char* exe_name, const StringList& args, const StringLis
 
     // TODO: Acquire a lock
     {
-        ::std::lock_guard<::std::mutex> lh { this->chdir_mutex };
+    	static ::std::mutex    s_chdir_mutex;
+        ::std::lock_guard<::std::mutex> lh { s_chdir_mutex };
         auto fd_cwd = open(".", O_DIRECTORY);
         if( working_directory != ::helpers::path() ) {
             chdir(working_directory.str().c_str());
