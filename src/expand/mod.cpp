@@ -17,8 +17,8 @@
 
 DecoratorDef*   g_decorators_list = nullptr;
 MacroDef*   g_macros_list = nullptr;
-::std::map< ::std::string, ::std::unique_ptr<ExpandDecorator> >  g_decorators;
-::std::map< ::std::string, ::std::unique_ptr<ExpandProcMacro> >  g_macros;
+::std::map< RcString, ::std::unique_ptr<ExpandDecorator> >  g_decorators;
+::std::map< RcString, ::std::unique_ptr<ExpandProcMacro> >  g_macros;
 
 void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::std::function<void(const ExpandDecorator& d,const ::AST::Attribute& a)> f);
 void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Path modpath, ::AST::Module& mod, unsigned int first_item = 0);
@@ -27,10 +27,10 @@ void Expand_Expr(::AST::Crate& crate, LList<const AST::Module*> modstack, ::std:
 void Expand_Path(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod, ::AST::Path& p);
 
 void Register_Synext_Decorator(::std::string name, ::std::unique_ptr<ExpandDecorator> handler) {
-    g_decorators.insert(::std::make_pair( mv$(name), mv$(handler) )); 
+    g_decorators.insert(::std::make_pair( RcString::new_interned(name), mv$(handler) )); 
 }
 void Register_Synext_Macro(::std::string name, ::std::unique_ptr<ExpandProcMacro> handler) {
-    g_macros.insert(::std::make_pair( mv$(name), mv$(handler) ));
+    g_macros.insert(::std::make_pair( RcString::new_interned(name), mv$(handler) ));
 }
 void Register_Synext_Decorator_Static(DecoratorDef* def) {
     def->prev = g_decorators_list;

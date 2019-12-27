@@ -53,13 +53,25 @@ public:
 
 TAGGED_UNION(AttributeData, None,
     (None, struct {}),
-    (String, struct {
-        ::std::string   val;
-        }),
-    (List, struct {
-        ::std::vector<Attribute> sub_items;
-        })
+    (String, struct { ::std::string val; }),
+    (List,  struct { ::std::vector<Attribute> sub_items; })
     );
+
+struct AttributeName
+{
+    ::std::vector<RcString>   elems;
+
+    bool is_trivial() const { return elems.size() == 1; }
+    const RcString& as_trivial() const { return elems.at(0); }
+
+    bool operator==(const char* s) const { return elems.size() == 1 && elems[0] == s; }
+    bool operator==(const RcString& x) const { return elems.size() == 1 && elems[0] == x; }
+
+    template<typename T>
+    bool operator!=(const T& x) const { return !(*this == x); }
+
+    friend std::ostream& operator<<(std::ostream& os, const AttributeName& x);
+};
 
 // An attribute can has a name, and optional data:
 // Data can be:
@@ -70,34 +82,16 @@ TAGGED_UNION(AttributeData, None,
 class Attribute
 {
     Span    m_span;
-    RcString   m_name;
+    AttributeName   m_name;
     AttributeData   m_data;
     mutable bool    m_is_used;
     // TODO: Parse as a TT then expand?
 public:
-    Attribute(Span sp, RcString name, AttributeData data):
+    Attribute(Span sp, AttributeName name, AttributeData data):
         m_span(::std::move(sp)),
-        m_name(name),
+        m_name(::std::move(name)),
         m_data(::std::move(data)),
         m_is_used(false)
-    {
-    }
-    Attribute(Span sp, RcString name):
-        m_span(::std::move(sp)),
-        m_name(name),
-        m_data( AttributeData::make_None({}) )
-    {
-    }
-    Attribute(Span sp, RcString name, ::std::string str_val):
-        m_span(::std::move(sp)),
-        m_name(name),
-        m_data( AttributeData::make_String({mv$(str_val)}) )
-    {
-    }
-    Attribute(Span sp, RcString name, ::std::vector<Attribute> items):
-        m_span(::std::move(sp)),
-        m_name(name),
-        m_data( AttributeData::make_List({mv$(items)}) )
     {
     }
 
@@ -126,7 +120,7 @@ public:
     bool is_used() const { return m_is_used; }
 
     const Span& span() const { return m_span; }
-    const RcString& name() const { return m_name; }
+    const AttributeName& name() const { return m_name; }
     const AttributeData& data() const { return m_data; }
 
     // Legacy accessors/checkers

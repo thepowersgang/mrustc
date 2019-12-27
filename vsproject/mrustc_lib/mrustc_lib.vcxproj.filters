@@ -617,6 +617,9 @@
     <ClInclude Include="..\..\src\macro_rules\pattern_checks.hpp">
       <Filter>Header Files\macro_rules</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\src\ast\edition.hpp">
+      <Filter>Header Files\ast</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="../packages.config" />

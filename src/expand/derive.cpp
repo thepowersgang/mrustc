@@ -2136,42 +2136,57 @@ static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mo
         attr.items()
         };
 
-    ::std::vector< RcString>   missing_handlers;
+    ::std::vector<AST::AttributeName>   missing_handlers;
     for( const auto& trait : attr.items() )
     {
         DEBUG("- " << trait.name());
-        auto dp = find_impl(trait.name());
-        if( dp ) {
-            mod.add_item(sp, false, "", dp->handle_item(sp, opts, params, type, item), {} );
-            continue ;
-        }
 
-        // Support custom derive
-        auto mac_name = FMT("derive#" << trait.name());
-        // - Requires support all through the chain.
-        bool found = false;
-        for(const auto& mac_path : mod.m_macro_imports)
+        std::vector<RcString>   mac_path;
+
+        if( trait.name().elems.size() == 1 )
         {
-            if( mac_path.name == mac_name )
+            auto dp = find_impl(trait.name().elems[0]);
+            if( dp ) {
+                mod.add_item(sp, false, "", dp->handle_item(sp, opts, params, type, item), {} );
+                continue ;
+            }
+
+            auto mac_name = FMT("derive#" << trait.name().elems[0]);
+            for(const auto& mac_import : mod.m_macro_imports)
             {
-                if( mac_path.macro_ptr ) {
-                    // macro_rules! based derive?
-                    TODO(sp, "Custom derive using macro_rules?");
-                }
-                else {
-                    // proc_macro - Invoke the handler.
-                    DEBUG("proc_macro " << mac_path.path << ", attrs = " << attrs);
-                    auto lex = ProcMacro_Invoke(sp, crate, mac_path.path, attrs, path.nodes().back().name().c_str(), item);
-                    if( lex )
-                    {
-                        Parse_ModRoot_Items(*lex, mod);
-                        found = true;
+                if( mac_import.name == mac_name )
+                {
+                    if( mac_import.macro_ptr ) {
+                        // macro_rules! based derive?
+                        TODO(sp, "Custom derive using macro_rules?");
                     }
                     else {
-                        ERROR(sp, E0000, "proc_macro derive failed");
+                        // proc_macro - Invoke the handler.
+                        DEBUG("proc_macro " << mac_import.path << ", attrs = " << attrs);
+                        mac_path = mac_import.path;
+                        break;
                     }
-                    break;
                 }
+            }
+        }
+        else
+        {
+            auto mac_name = RcString::new_interned( FMT("derive#" << trait.name().elems.back()) );
+            mac_path = trait.name().elems;
+            mac_path.back() = mac_name;
+        }
+
+        bool found = false;
+        if( !mac_path.empty() )
+        {
+            auto lex = ProcMacro_Invoke(sp, crate, mac_path, attrs, path.nodes().back().name().c_str(), item);
+            if( lex )
+            {
+                Parse_ModRoot_Items(*lex, mod);
+                found = true;
+            }
+            else {
+                ERROR(sp, E0000, "proc_macro derive failed");
             }
         }
         if( found )

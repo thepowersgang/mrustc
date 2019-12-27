@@ -1034,24 +1034,23 @@ AST::Attribute Parse_MetaItem(TokenStream& lex)
     }
 
     auto ps = lex.start_span();
-    GET_TOK(tok, lex);
-
-    switch(tok.type())
-    {
-    case TOK_IDENT:
-        break;
-    case TOK_INTEGER:
-        if( TARGETVER_1_29 )
-            return AST::Attribute(lex.end_span(ps), "", tok.to_str());
-    default:
-        throw ParseError::Unexpected(lex, tok, {TOK_IDENT, TOK_INTEGER});
-    }
     
-    //PUTBACK(tok, lex);
-    //auto name = Parse_Path(lex, PATH_GENERIC_NONE);
-    auto name = tok.istr();
+    AST::AttributeName  name;
+    // NOTE: After 1.19 mode, values can be present with no name
+    if( !TARGETVER_1_19 && lex.lookahead(0) != TOK_IDENT )
+    {
+        // Put a fake equals token in the queue
+        tok = Token(TOK_EQUAL);
+    }
+    else
+    {
+        do {
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            name.elems.push_back(tok.istr());
+        } while(GET_TOK(tok, lex) == TOK_DOUBLE_COLON);
+    }
     ::AST::AttributeData  attr_data;
-    switch(GET_TOK(tok, lex))
+    switch(tok.type())
     {
     case TOK_EQUAL:
         switch(GET_TOK(tok, lex))
@@ -1084,7 +1083,15 @@ AST::Attribute Parse_MetaItem(TokenStream& lex)
         case TOK_IDENT:
             if( TARGETVER_1_29 )
             {
-                attr_data = AST::AttributeData::make_String({ tok.to_str() });
+                auto s = tok.to_str();
+                while(lex.lookahead(0) == TOK_DOUBLE_COLON)
+                {
+                    GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
+                    s += "::";
+                    GET_CHECK_TOK(tok, lex, TOK_IDENT);
+                    s += tok.to_str();
+                }
+                attr_data = AST::AttributeData::make_String({ s });
                 break;
             }
         default:
@@ -2185,7 +2192,7 @@ void Parse_ModRoot(TokenStream& lex, AST::Module& mod, AST::AttributeList& mod_a
     Parse_ModRoot_Items(lex, mod);
 }
 
-AST::Crate Parse_Crate(::std::string mainfile)
+AST::Crate Parse_Crate(::std::string mainfile, AST::Edition edition)
 {
     Token   tok;
 
@@ -2196,6 +2203,7 @@ AST::Crate Parse_Crate(::std::string mainfile)
     ::std::string mainpath = (p != ::std::string::npos ? ::std::string(mainfile.begin(), mainfile.begin()+p+1) : "./");
 
     AST::Crate  crate;
+    crate.m_edition = edition;
 
     //crate.root_module().m_file_info.file_path = mainfile;
     crate.root_module().m_file_info.path = mainpath;

@@ -274,7 +274,7 @@ int main(int argc, char *argv[])
     {
         // Parse the crate into AST
         AST::Crate crate = CompilePhase<AST::Crate>("Parse", [&]() {
-            return Parse_Crate(params.infile);
+            return Parse_Crate(params.infile, params.edition);
             });
         crate.m_test_harness = params.test_harness;
         crate.m_crate_name_suffix = params.crate_name_suffix;

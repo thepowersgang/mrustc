@@ -10,13 +10,9 @@
 #include "ast.hpp"
 #include "types.hpp"
 #include <hir/crate_ptr.hpp>
+#include <ast/edition.hpp>
 
 namespace AST {
-
-enum class Edition {
-    Rust2015,
-    Rust2018,
-};
 
 class ExternCrate;
 
@@ -84,7 +80,7 @@ public:
     ::std::string   m_crate_name;
     AST::Path   m_prelude_path;
 
-    Edition m_edition;
+    Edition m_edition = Edition::Rust2015;
 
     Crate();
 

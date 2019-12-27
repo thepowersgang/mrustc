@@ -53,21 +53,42 @@ const Attribute* AttributeList::get(const char *name) const
     }
     return os;
 }
+::std::ostream& operator<<(::std::ostream& os, const AttributeName& x) {
+    if(x.elems.empty())
+    {
+        os << "''";
+    }
+    else
+    {
+        for(const auto& i : x.elems)
+        {
+            if(&i != &x.elems.front())
+                os << "::";
+            os << i;
+        }
+    }
+    return os;
+}
 
 Attribute Attribute::clone() const
 {
-    TU_MATCHA( (m_data), (e),
-    (None,
-        return Attribute(m_span, m_name);
-        ),
-    (String,
-        return Attribute(m_span, m_name, e.val);
-        ),
-    (List,
-        return Attribute(m_span, m_name, clone_mivec(e.sub_items));
-        )
-    )
-    throw ::std::runtime_error("Attribute::clone - Fell off end");
+    struct H {
+        static AttributeData clone_ad(const AttributeData& ad) {
+            TU_MATCHA( (ad), (e),
+            (None,
+                return AttributeData::make_None({});
+                ),
+            (String,
+                return AttributeData::make_String({ e.val });
+                ),
+            (List,
+                return AttributeData::make_List({ clone_mivec(e.sub_items) });
+                )
+            )
+            throw ::std::runtime_error("Attribute::clone - Fell off end");
+        }
+    };
+    return Attribute(m_span, m_name, H::clone_ad(m_data));
 }
 
 StructItem StructItem::clone() const

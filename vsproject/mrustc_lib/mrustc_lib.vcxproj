@@ -272,6 +272,7 @@
     <ClInclude Include="..\..\src\ast\ast.hpp" />
     <ClInclude Include="..\..\src\ast\attrs.hpp" />
     <ClInclude Include="..\..\src\ast\crate.hpp" />
+    <ClInclude Include="..\..\src\ast\edition.hpp" />
     <ClInclude Include="..\..\src\ast\expr.hpp" />
     <ClInclude Include="..\..\src\ast\generics.hpp" />
     <ClInclude Include="..\..\src\ast\item.hpp" />

@@ -85,8 +85,8 @@ struct MacroPatEnt
     {
     }
 
-    MacroPatEnt(Token sep, bool need_once, ::std::vector<MacroPatEnt> ents):
-        name( need_once ? "+" : "*" ),
+    MacroPatEnt(Token sep, const char* op, ::std::vector<MacroPatEnt> ents):
+        name( op ),
         tok( mv$(sep) ),
         subpats( move(ents) ),
         type(PAT_LOOP)

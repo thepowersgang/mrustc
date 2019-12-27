@@ -10,6 +10,7 @@
 #include "../parse/parseerror.hpp"
 #include "macro_rules.hpp"
 #include "pattern_checks.hpp"
+#include <ast/crate.hpp>    // for editions
 
 MacroRulesPtr Parse_MacroRules(TokenStream& lex);
 namespace {
@@ -104,7 +105,15 @@ public:
                 auto subpat = Parse_MacroRules_Pat(lex, TOK_PAREN_OPEN, TOK_PAREN_CLOSE, names);
                 enum eTokenType joiner = TOK_NULL;
                 GET_TOK(tok, lex);
-                if( tok.type() != TOK_PLUS && tok.type() != TOK_STAR )
+                if( lex.parse_state().edition_after(AST::Edition::Rust2018) && tok.type() == TOK_QMARK )
+                {
+                    // 2018 added `?` repetition operator
+                }
+                else if( tok.type() == TOK_PLUS || tok.type() == TOK_STAR )
+                {
+                    // `+` and `*` were present at 1.0 (2015)
+                }
+                else
                 {
                     DEBUG("joiner = " << tok);
                     joiner = tok.type();
@@ -115,14 +124,18 @@ public:
                 {
                 case TOK_PLUS:
                     DEBUG("$()+ " << subpat);
-                    ret.push_back( MacroPatEnt(Token(joiner), true, ::std::move(subpat)) );
+                    ret.push_back( MacroPatEnt(Token(joiner), "+", ::std::move(subpat)) );
                     break;
                 case TOK_STAR:
                     DEBUG("$()* " << subpat);
-                    ret.push_back( MacroPatEnt(Token(joiner), false, ::std::move(subpat)) );
+                    ret.push_back( MacroPatEnt(Token(joiner), "*", ::std::move(subpat)) );
+                    break;
+                case TOK_QMARK:
+                    DEBUG("$()? " << subpat);
+                    ret.push_back( MacroPatEnt(Token(joiner), "?", ::std::move(subpat)) );
                     break;
                 default:
-                    throw ParseError::Unexpected(lex, tok);
+                    throw ParseError::Unexpected(lex, tok, { TOK_PLUS, TOK_STAR });
                 }
                 break; }
             }
@@ -187,7 +200,15 @@ public:
 
                 GET_TOK(tok, lex);
                 enum eTokenType joiner = TOK_NULL;
-                if( tok.type() != TOK_PLUS && tok.type() != TOK_STAR )
+                if( lex.parse_state().edition_after(AST::Edition::Rust2018) && tok.type() == TOK_QMARK )
+                {
+                    // 2018 added `?` repetition operator
+                }
+                else if( tok.type() == TOK_PLUS || tok.type() == TOK_STAR )
+                {
+                    // `+` and `*` were present at 1.0 (2015)
+                }
+                else
                 {
                     joiner = tok.type();
                     GET_TOK(tok, lex);
@@ -206,6 +227,7 @@ public:
                 {
                 case TOK_PLUS:
                 case TOK_STAR:
+                case TOK_QMARK:
                     // TODO: Ensure that +/* match up?
                     ret.push_back( MacroExpansionEnt({mv$(content), joiner, mv$(var_set)}) );
                     break;

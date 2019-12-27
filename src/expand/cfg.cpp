@@ -39,8 +39,9 @@ void Cfg_SetValueCb(::std::string name, ::std::function<bool(const ::std::string
     g_cfg_value_fcns.insert( ::std::make_pair(mv$(name), mv$(cb)) );
 }
 
-bool check_cfg(const Span& sp, const ::AST::Attribute& mi) {
-
+bool check_cfg(const Span& sp, const ::AST::Attribute& mi)
+{
+    if( !mi.name().is_trivial() )   ERROR(sp, E0000, "Non-trivial attribute name in cfg - " << mi.name());
     if( mi.has_sub_items() ) {
         // Must be `any`/`not`/`all`
         if( mi.name() == "any" || mi.name() == "cfg" ) {
@@ -69,7 +70,7 @@ bool check_cfg(const Span& sp, const ::AST::Attribute& mi) {
     }
     else if( mi.has_string() ) {
         // Equaliy
-        auto its = g_cfg_values.equal_range(mi.name().c_str());
+        auto its = g_cfg_values.equal_range(mi.name().as_trivial().c_str());
         for(auto it = its.first; it != its.second; ++it)
         {
             DEBUG(""<<mi.name()<<": '"<<it->second<<"' == '"<<mi.string()<<"'");
@@ -79,7 +80,7 @@ bool check_cfg(const Span& sp, const ::AST::Attribute& mi) {
         if( its.first != its.second )
             return false;
 
-        auto it2 = g_cfg_value_fcns.find(mi.name().c_str());
+        auto it2 = g_cfg_value_fcns.find(mi.name().as_trivial().c_str());
         if(it2 != g_cfg_value_fcns.end() )
         {
             DEBUG(""<<mi.name()<<": ('"<<mi.string()<<"')?");
@@ -91,7 +92,7 @@ bool check_cfg(const Span& sp, const ::AST::Attribute& mi) {
     }
     else {
         // Flag
-        auto it = g_cfg_flags.find(mi.name().c_str());
+        auto it = g_cfg_flags.find(mi.name().as_trivial().c_str());
         return (it != g_cfg_flags.end());
     }
     BUG(sp, "Fell off the end of check_cfg");

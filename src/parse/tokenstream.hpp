@@ -13,6 +13,7 @@
 #include <debug.hpp>
 #include <ident.hpp>
 #include "token.hpp"
+#include <ast/edition.hpp>
 
 namespace AST {
     class Module;
@@ -36,6 +37,10 @@ struct ParseState
         assert(this->module);
         return *this->module;
     }
+
+    AST::Edition get_edition() const;
+    bool edition_after(AST::Edition e) { return get_edition() >= e; }
+    bool edition_before(AST::Edition e) { return get_edition() < e; }
 
     friend ::std::ostream& operator<<(::std::ostream& os, const ParseState& ps) {
         os << "ParseState {";

@@ -8,6 +8,7 @@
 #include "tokenstream.hpp"
 #include <common.hpp>
 #include "parseerror.hpp"
+#include <ast/crate.hpp>    // Edition lookup
 
 const bool DEBUG_PRINT_TOKENS = false;
 //const bool DEBUG_PRINT_TOKENS = true;
@@ -146,4 +147,10 @@ Ident TokenStream::get_ident(Token tok) const
     else {
         throw ParseError::Unexpected(*this, tok);
     }
+}
+
+AST::Edition ParseState::get_edition() const
+{
+    ASSERT_BUG(Span(), this->crate, "Crate not set during parse");
+    return this->crate->m_edition;
 }

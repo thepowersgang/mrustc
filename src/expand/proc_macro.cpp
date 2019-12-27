@@ -49,7 +49,7 @@ public:
         {
             if( attr.items()[i].name() == "attributes") {
                 for(const auto& si : attr.items()[i].items()) {
-                    attributes.push_back( si.name().c_str() );
+                    attributes.push_back( si.name().as_trivial().c_str() );
                 }
             }
         }
@@ -628,7 +628,7 @@ namespace {
         {
             for(const auto& a : attrs)
             {
-                if( m_pmi.attr_is_used(a.name()) )
+                if( a.name().is_trivial() && m_pmi.attr_is_used(a.name().as_trivial()) )
                 {
                     DEBUG("Send " << a);
                     m_pmi.send_symbol("#");
@@ -642,7 +642,7 @@ namespace {
         {
             for(const auto& a : attrs.m_items)
             {
-                if( m_pmi.attr_is_used(a.name()) )
+                if( a.name().is_trivial() && m_pmi.attr_is_used(a.name().as_trivial()) )
                 {
                     DEBUG("Send " << a);
                     m_pmi.send_symbol("#");
@@ -654,7 +654,13 @@ namespace {
         }
         void visit_meta_item(const ::AST::Attribute& i)
         {
-            m_pmi.send_ident(i.name().c_str());
+            for(const auto& e : i.name().elems)
+            {
+                if( &e != &i.name().elems.front() )
+                    m_pmi.send_symbol("::");
+                m_pmi.send_ident(e.c_str());
+            }
+
             if( i.has_noarg() ) {
             }
             else if( i.has_string() ) {

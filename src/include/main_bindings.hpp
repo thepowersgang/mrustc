@@ -10,13 +10,14 @@
 
 #include <string>
 #include <memory>
+#include <ast/edition.hpp>
 
 namespace AST {
     class Crate;
 }
 
 /// Parse a crate from the given file
-extern AST::Crate Parse_Crate(::std::string mainfile);
+extern AST::Crate Parse_Crate(::std::string mainfile, AST::Edition edition);
 
 extern void Expand_Init();
 extern void Expand(::AST::Crate& crate);
