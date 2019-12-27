@@ -2091,8 +2091,7 @@ void Resolve_Absolute_ImplItems(Context& item_context,  ::AST::NamedList< ::AST:
         (Union , BUG(i.span, "Resolve_Absolute_ImplItems - Union");),
         (Type,
             DEBUG("Type - " << i.name);
-            assert( e.params().ty_params().size() == 0 );
-            assert( e.params().lft_params().size() == 0 );
+            assert( e.params().m_params.size() == 0 );
             item_context.push( e.params(), GenericSlot::Level::Method, true );
             Resolve_Absolute_Generic(item_context,  e.params());
 
@@ -2136,8 +2135,7 @@ void Resolve_Absolute_ImplItems(Context& item_context,  ::std::vector< ::AST::Im
         (Union , BUG(i.sp, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
         (Type,
             DEBUG("Type - " << i.name);
-            assert( e.params().ty_params().size() == 0 );
-            assert( e.params().lft_params().size() == 0 );
+            assert( e.params().m_params.size() == 0 );
             item_context.push( e.params(), GenericSlot::Level::Method, true );
             Resolve_Absolute_Generic(item_context,  e.params());
 
