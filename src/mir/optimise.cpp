@@ -5421,6 +5421,20 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
 }
 
 
+#if 0
+// --------------------------------------------------------------------
+// Detect patterns
+// --------------------------------------------------------------------
+bool MIR_Optimise_PatternRec(::MIR::TypeResolve& state, ::MIR::Function& fcn)
+{
+    // ASSIGN _1 = VARIANT ? #? (_0: &[T]/&str);
+    // ASSIGN _2 = _0@?.1 (where the variant is (usize, usize)
+    // ->
+    // ASSIGN _2 = DSTMETA _0
+}
+#endif
+
+
 /// Sort basic blocks to approximate program flow (helps when reading MIR)
 void MIR_SortBlocks(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path, ::MIR::Function& fcn)
 {
