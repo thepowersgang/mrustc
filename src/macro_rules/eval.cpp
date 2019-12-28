@@ -494,6 +494,21 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
     case MacroPatEnt::PAT_LIFETIME:
         GET_CHECK_TOK(tok, lex, TOK_LIFETIME);
         return InterpolatedFragment( TokenTree(lex.getHygiene(), tok) );
+    case MacroPatEnt::PAT_LITERAL:
+        GET_TOK(tok, lex);
+        switch(tok.type())
+        {
+        case TOK_INTEGER:
+        case TOK_FLOAT:
+        case TOK_STRING:
+        case TOK_BYTESTRING:
+        case TOK_RWORD_TRUE:
+        case TOK_RWORD_FALSE:
+            break;
+        default:
+            throw ParseError::Unexpected(lex, tok, {TOK_INTEGER, TOK_FLOAT, TOK_STRING, TOK_BYTESTRING, TOK_RWORD_TRUE, TOK_RWORD_FALSE});
+        }
+        return InterpolatedFragment( TokenTree(lex.getHygiene(), tok) );
     }
     throw "";
 }
@@ -1741,6 +1756,19 @@ namespace
             return consume_vis(lex);
         case MacroPatEnt::PAT_LIFETIME:
             return lex.consume_if(TOK_LIFETIME);
+        case MacroPatEnt::PAT_LITERAL:
+            switch(lex.next())
+            {
+            case TOK_INTEGER:
+            case TOK_FLOAT:
+            case TOK_STRING:
+            case TOK_RWORD_TRUE:
+            case TOK_RWORD_FALSE:
+                lex.consume();
+                return true;
+            default:
+                return false;
+            }
         }
         return true;
     }

@@ -38,7 +38,9 @@ public:
     const Span& span() const { return m_span; }
 
     void set_attrs(AttributeList&& mi) {
-        m_attrs = mv$(mi);
+        for(auto& i : mi.m_items)
+            m_attrs.m_items.push_back(mv$(i));
+        mi.m_items.clear();
     }
     AttributeList& attrs() { return m_attrs; }
 };

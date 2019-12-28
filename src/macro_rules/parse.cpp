@@ -98,6 +98,8 @@ public:
                     ret.push_back( MacroPatEnt(name, idx, MacroPatEnt::PAT_VIS) );
                 else if( /*TARGETVER_1_29 && */ type == "lifetime" ) // TODO: Should this be selective?
                     ret.push_back( MacroPatEnt(name, idx, MacroPatEnt::PAT_LIFETIME) );
+                else if( /*TARGETVER_1_39 && */ type == "literal" ) // TODO: Should this be selective?
+                    ret.push_back( MacroPatEnt(name, idx, MacroPatEnt::PAT_LITERAL) );
                 else
                     ERROR(lex.point_span(), E0000, "Unknown fragment type '" << type << "'");
                 break; }

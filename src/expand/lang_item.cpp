@@ -92,6 +92,20 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
     else if( TARGETVER_1_29 && name == "panic_info" ) {}    // Struct
     else if( TARGETVER_1_29 && name == "manually_drop" ) {}    // Struct
 
+    else if( /*TARGETVER_1_39 &&*/ name == "maybe_uninit" ) {}    // Union
+
+    // Futures
+    else if( /*TARGETVER_1_39 &&*/ name == "unpin" ) {}    // Trait
+    else if( /*TARGETVER_1_39 &&*/ name == "pin" ) {}    // Struct
+    else if( /*TARGETVER_1_39 &&*/ name == "future_trait" ) {}    // Trait
+
+    // Variable argument lists
+    else if( /*TARGETVER_1_39 &&*/ name == "va_list" ) {}    // Struct
+
+    // Arbitary receivers
+    else if( /*TARGETVER_1_39 &&*/ name == "receiver" ) {}    // Trait
+    else if( /*TARGETVER_1_39 &&*/ name == "dispatch_from_dyn" ) {}    // Trait
+
     // Generators
     else if( TARGETVER_1_29 && name == "generator" ) {}   // - Trait
     else if( TARGETVER_1_29 && name == "generator_state" ) {}   // - State enum
@@ -199,6 +213,9 @@ public:
         (Enum,
             handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_ENUM);
             ),
+        (Union,
+            handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_UNION);
+            ),
         (Trait,
             handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_TRAIT);
             )
@@ -222,6 +239,7 @@ public:
         else if( name == "usize" ) {}
         else if( name == "const_ptr" ) {}
         else if( name == "mut_ptr" ) {}
+        else if( /*TARGETVER_1_39 &&*/ name == "bool" ) {}
         // rustc_unicode
         else if( name == "char" ) {}
         // collections

@@ -240,9 +240,6 @@
     <ClCompile Include="..\..\src\parse\pattern.cpp">
       <Filter>Source Files\parse</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\src\macro_rules\parse.cpp">
-      <Filter>Source Files\parse</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\src\parse\root.cpp">
       <Filter>Source Files\parse</Filter>
     </ClCompile>
@@ -410,6 +407,9 @@
     </ClCompile>
     <ClCompile Include="..\..\src\hir\generic_params.cpp">
       <Filter>Source Files\hir</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\macro_rules\parse.cpp">
+      <Filter>Source Files\macro_rules</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

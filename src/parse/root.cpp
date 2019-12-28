@@ -1068,6 +1068,10 @@ AST::Attribute Parse_MetaItem(TokenStream& lex)
             {
                 attr_data = AST::AttributeData::make_String({ mv$(v->m_value) });
             }
+            else if( auto* v = dynamic_cast<::AST::ExprNode_Integer*>(&*n) )
+            {
+                attr_data = AST::AttributeData::make_String({ FMT(v->m_value) });
+            }
             else
             {
                 // - Force an error.

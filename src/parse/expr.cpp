@@ -54,6 +54,7 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe/*=false*/)
     Token   tok;
 
     ::std::vector<ExprNodeP> nodes;
+    AST::AttributeList  attrs;
 
     ::std::shared_ptr<AST::Module> local_mod;
 
@@ -70,11 +71,7 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe/*=false*/)
     {
         last_value_yielded = false;
 
-        // NOTE: Doc comments can appear within a function and apply to the function
-        if( lex.parse_state().parent_attrs )
-        {
-            Parse_ParentAttrs(lex, *lex.parse_state().parent_attrs);
-        }
+        Parse_ParentAttrs(lex, attrs);
         if( LOOK_AHEAD(lex) == TOK_BRACE_CLOSE )
             break;
 
@@ -94,7 +91,9 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe/*=false*/)
     }
     GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
 
-    return NEWNODE( AST::ExprNode_Block, is_unsafe, last_value_yielded, mv$(nodes), mv$(local_mod) );
+    auto rv = NEWNODE( AST::ExprNode_Block, is_unsafe, last_value_yielded, mv$(nodes), mv$(local_mod) );
+    rv->set_attrs( mv$(attrs) );
+    return rv;
 }
 
 /// Parse a single line in a block, handling items added to the local module

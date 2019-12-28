@@ -64,6 +64,7 @@ struct MacroPatEnt
         PAT_ITEM,   // :item
         PAT_VIS,
         PAT_LIFETIME,
+        PAT_LITERAL,
     } type;
 
     MacroPatEnt():

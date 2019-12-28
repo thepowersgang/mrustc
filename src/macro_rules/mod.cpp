@@ -207,6 +207,7 @@ MacroRulesPtr::~MacroRulesPtr()
         case MacroPatEnt::PAT_ITEM:  os << "item"; break;
         case MacroPatEnt::PAT_VIS:   os << "vis"; break;
         case MacroPatEnt::PAT_LIFETIME: os << "lifetime"; break;
+        case MacroPatEnt::PAT_LITERAL: os << "literal"; break;
         }
         break;
     }
@@ -230,6 +231,7 @@ MacroRulesPtr::~MacroRulesPtr()
     case MacroPatEnt::PAT_ITEM:  os << "PAT_ITEM"; break;
     case MacroPatEnt::PAT_VIS:   os << "PAT_VIS"; break;
     case MacroPatEnt::PAT_LIFETIME: os << "PAT_LIFETIME"; break;
+    case MacroPatEnt::PAT_LITERAL: os << "PAT_LITERAL"; break;
     }
     return os;
 }
