@@ -15,8 +15,9 @@ const bool DEBUG_PRINT_TOKENS = false;
 //#define DEBUG_PRINT_TOKENS  debug_enabled("Lexer Tokens")
 //#define FULL_TRACE
 
-TokenStream::TokenStream():
-    m_cache_valid(false)
+TokenStream::TokenStream(ParseState ps):
+    m_cache_valid(false),
+    m_parse_state(ps)
 {
 }
 TokenStream::~TokenStream()
@@ -147,10 +148,4 @@ Ident TokenStream::get_ident(Token tok) const
     else {
         throw ParseError::Unexpected(*this, tok);
     }
-}
-
-AST::Edition ParseState::get_edition() const
-{
-    ASSERT_BUG(Span(), this->crate, "Crate not set during parse");
-    return this->crate->m_edition;
 }

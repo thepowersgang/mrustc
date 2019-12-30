@@ -28,12 +28,11 @@ class CMacroRulesExpander:
     ::std::unique_ptr<TokenStream> expand_ident(const Span& sp, const ::AST::Crate& crate, const RcString& ident, const TokenTree& tt, AST::Module& mod) override
     {
         DEBUG("Parsing macro_rules! " << ident);
-        TTStream    lex(sp, tt);
-        lex.parse_state().crate = &crate;
+        TTStream    lex(sp, ParseState(crate.m_edition), tt);
         auto mac = Parse_MacroRules(lex);
         mod.add_macro( false, ident, mv$(mac) );
 
-        return ::std::unique_ptr<TokenStream>( new TTStreamO(sp, TokenTree()) );
+        return ::std::unique_ptr<TokenStream>( new TTStreamO(sp, ParseState(crate.m_edition), TokenTree()) );
     }
 };
 

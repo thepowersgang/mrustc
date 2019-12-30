@@ -14,6 +14,7 @@
 #include <parse/parseerror.hpp>
 #include <ast/expr.hpp>    // for ExprNode_*
 #include <parse/interpolated_fragment.hpp>
+#include <ast/crate.hpp>
 
 namespace
 {
@@ -38,7 +39,7 @@ class CAsmExpander:
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const ::AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
         Token   tok;
-        auto lex = TTStream(sp, tt);
+        auto lex = TTStream(sp, ParseState(crate.m_edition), tt);
 
         auto template_text = get_string(sp, lex,  crate, mod);
         ::std::vector<::AST::ExprNode_Asm::ValRef>  outputs;
@@ -187,7 +188,7 @@ class CAsmExpander:
 
         // Convert this into an AST node and insert as an intepolated expression
         ::AST::ExprNodeP rv = ::AST::ExprNodeP( new ::AST::ExprNode_Asm { mv$(template_text), mv$(outputs), mv$(inputs), mv$(clobbers), mv$(flags) } );
-        return box$( TTStreamO(sp, TokenTree(Token( InterpolatedFragment(InterpolatedFragment::EXPR, rv.release()) ))));
+        return box$( TTStreamO(sp, ParseState(crate.m_edition), TokenTree(Token( InterpolatedFragment(InterpolatedFragment::EXPR, rv.release()) ))));
     }
 };
 

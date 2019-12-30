@@ -1053,6 +1053,8 @@ AST::Attribute Parse_MetaItem(TokenStream& lex)
     switch(tok.type())
     {
     case TOK_EQUAL:
+        //auto e = Parse_ExprVal(lex);
+        // TODO: Just store an expression (avoids needing to run expand here)
         switch(GET_TOK(tok, lex))
         {
         case TOK_STRING:
@@ -1061,8 +1063,8 @@ AST::Attribute Parse_MetaItem(TokenStream& lex)
         case TOK_INTERPOLATED_EXPR: {
             auto n = tok.take_frag_node();
             void Expand_BareExpr(const AST::Crate& , const AST::Module&, ::std::unique_ptr<AST::ExprNode>& n);
-            assert( lex.parse_state().crate );
-            assert( lex.parse_state().module );
+            ASSERT_BUG( lex.point_span(), lex.parse_state().crate, "Crate not set" );
+            ASSERT_BUG( lex.point_span(), lex.parse_state().module, "Module not set" );
             Expand_BareExpr(*lex.parse_state().crate, *lex.parse_state().module, n);
             if( auto* v = dynamic_cast<::AST::ExprNode_String*>(&*n) )
             {
@@ -1501,6 +1503,10 @@ void Parse_Use_Inner(TokenStream& lex, ::std::vector<AST::UseItem::Ent>& entries
         GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
         break;
     default:
+        if(lex.parse_state().edition_after(AST::Edition::Rust2018))
+        {
+            path = AST::Path(lex.parse_state().module->path());
+        }
         PUTBACK(tok, lex);
         break;
     }
@@ -2092,7 +2098,7 @@ namespace {
                     submod.m_file_info.path = newpath_file;
                     submod.m_file_info.controls_dir = false;
                     DEBUG("- path = " << submod.m_file_info.path);
-                    Lexer sub_lex(submod.m_file_info.path);
+                    Lexer sub_lex(submod.m_file_info.path, lex.parse_state());
                     Parse_ModRoot(sub_lex, submod, meta_items);
                     GET_CHECK_TOK(tok, sub_lex, TOK_EOF);
                 }
@@ -2133,7 +2139,7 @@ namespace {
                     ERROR(lex.point_span(), E0000, "Can't find file for '" << name << "' in '" << mod_fileinfo.path << "'");
                 }
                 DEBUG("- path = " << submod.m_file_info.path);
-                Lexer sub_lex(submod.m_file_info.path);
+                Lexer sub_lex(submod.m_file_info.path, lex.parse_state());
                 Parse_ModRoot(sub_lex, submod, meta_items);
                 GET_CHECK_TOK(tok, sub_lex, TOK_EOF);
             }
@@ -2155,6 +2161,7 @@ namespace {
 void Parse_Mod_Item(TokenStream& lex, AST::Module& mod, AST::AttributeList meta_items)
 {
     SET_MODULE(lex, mod);
+    lex.parse_state().module = &mod;
     lex.parse_state().parent_attrs = &meta_items;
 
     mod.add_item( Parse_Mod_Item_S(lex, mod.m_file_info, mod.path(), mv$(meta_items)) );
@@ -2200,7 +2207,7 @@ AST::Crate Parse_Crate(::std::string mainfile, AST::Edition edition)
 {
     Token   tok;
 
-    Lexer lex(mainfile);
+    Lexer lex(mainfile, ParseState(edition));
 
     size_t p = mainfile.find_last_of('/');
     p = (p == ::std::string::npos ? mainfile.find_last_of('\\') : p);

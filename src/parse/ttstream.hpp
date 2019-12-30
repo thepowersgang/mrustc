@@ -18,7 +18,7 @@ class TTStream:
     Span m_parent_span;
     const Ident::Hygiene*   m_hygiene_ptr = nullptr;
 public:
-    TTStream(Span parent, const TokenTree& input_tt);
+    TTStream(Span parent, ParseState ps, const TokenTree& input_tt);
     ~TTStream();
 
     TTStream& operator=(const TTStream& x) { m_stack = x.m_stack; return *this; }
@@ -41,7 +41,7 @@ class TTStreamO:
     ::std::vector< ::std::pair<unsigned int, TokenTree*> > m_stack;
     const Ident::Hygiene*   m_hygiene_ptr = nullptr;
 public:
-    TTStreamO(Span parent, TokenTree input_tt);
+    TTStreamO(Span parent, ParseState ps, TokenTree input_tt);
     TTStreamO(TTStreamO&& x) = default;
     ~TTStreamO();
 

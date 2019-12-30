@@ -1908,9 +1908,6 @@ public:
             if( mac.is_pub )
             {
                 if( !mac.macro_ptr ) {
-                    // Add to the re-export list
-                    auto path = ::HIR::SimplePath(mac.path.front(), ::std::vector<RcString>(mac.path.begin()+1, mac.path.end()));;
-                    rv.m_proc_macro_reexports.insert( ::std::make_pair( mac.name, ::HIR::Crate::MacroImport { path } ));
                     continue ;
                 }
                 // TODO: Why does this to such a move?
@@ -1929,6 +1926,16 @@ public:
                     DEBUG("- Replace " << mac.name << "! (from \"" << it->second->m_source_crate << "\") with one from \"" << v.second->m_source_crate << "\"");
                     it->second = mv$( v.second );
                 }
+            }
+        }
+
+
+        for( const auto& mac : crate.m_root_module.m_macro_imports )
+        {
+            if( mac.is_pub && !mac.macro_ptr ) {
+                // Add to the re-export list
+                auto path = ::HIR::SimplePath(mac.path.front(), ::std::vector<RcString>(mac.path.begin()+1, mac.path.end()));;
+                rv.m_proc_macro_reexports.insert( ::std::make_pair( mac.name, ::HIR::Crate::MacroImport { path } ));
             }
         }
     }

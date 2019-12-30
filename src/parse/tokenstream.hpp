@@ -24,12 +24,20 @@ namespace AST {
 /// State the parser needs to pass down via a second channel.
 struct ParseState
 {
+private:
+    AST::Edition edition;
+public:
+    ParseState(AST::Edition e):
+        edition(e)
+    {
+    }
+
     // Used for "for/if/while" to handle ambiguity
     bool disallow_struct_literal = false;
     // A debugging hook that disables expansion of macros
     bool no_expand_macros = false;
 
-    const ::AST::Crate* crate = nullptr;
+    const ::AST::Crate*  crate = nullptr;  // TODO: Remove this (needed for MetaItem)
     ::AST::Module*  module = nullptr;
     ::AST::AttributeList*   parent_attrs = nullptr;
 
@@ -38,9 +46,9 @@ struct ParseState
         return *this->module;
     }
 
-    AST::Edition get_edition() const;
-    bool edition_after(AST::Edition e) { return get_edition() >= e; }
-    bool edition_before(AST::Edition e) { return get_edition() < e; }
+    AST::Edition get_edition() const { return edition; }
+    bool edition_after(AST::Edition e) { return edition >= e; }
+    bool edition_before(AST::Edition e) { return edition < e; }
 
     friend ::std::ostream& operator<<(::std::ostream& os, const ParseState& ps) {
         os << "ParseState {";
@@ -61,7 +69,7 @@ class TokenStream
     ::std::vector< ::std::pair<Token, Ident::Hygiene> > m_lookahead;
     ParseState  m_parse_state;
 public:
-    TokenStream();
+    TokenStream(ParseState ps);
     virtual ~TokenStream();
     Token   getToken();
     void    putback(Token tok);

@@ -829,6 +829,7 @@ namespace {
 }
 
 ProcMacroInv::ProcMacroInv(const Span& sp, const char* executable, const ::HIR::ProcMacro& proc_macro_desc):
+    TokenStream(ParseState(AST::Edition::Rust2015)), // TODO: Pull edition from the macro
     m_parent_span(sp),
     m_proc_macro_desc(proc_macro_desc)
 {
@@ -838,6 +839,7 @@ ProcMacroInv::ProcMacroInv(const Span& sp, const char* executable, const ::HIR::
         m_dump_file.open( getenv("MRUSTC_DUMP_PROCMACRO"), ::std::ios::out | ::std::ios::binary );
     }
 #ifdef _WIN32
+    TODO(sp, "Invoke proc macro on win32");
 #else
      int    stdin_pipes[2];
     if( pipe(stdin_pipes) != 0 )
@@ -878,6 +880,7 @@ ProcMacroInv::ProcMacroInv(const Span& sp, const char* executable, const ::HIR::
 #endif
 }
 ProcMacroInv::ProcMacroInv(ProcMacroInv&& x):
+    TokenStream(x.parse_state()),
     m_parent_span(x.m_parent_span),
     m_proc_macro_desc(x.m_proc_macro_desc),
 #ifdef _WIN32

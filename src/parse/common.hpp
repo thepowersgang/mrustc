@@ -27,6 +27,7 @@
     } \
 } while(0)
 
+
 // --- path.cpp
 enum eParsePathGenericMode
 {

@@ -13,6 +13,7 @@
 #include <string_view.hpp>
 #include "parse/lex.hpp"
 #include "parse/parseerror.hpp"
+#include "parse/common.hpp"    // For edition checks
 #include "ast/ast.hpp"
 #include "ast/crate.hpp"
 #include <cstring>
@@ -57,7 +58,7 @@ struct ProgramParams
 
     ::std::string   emit_depfile;
 
-    ::AST::Edition      edition = ::AST::Edition::Rust2015;
+    AST::Edition      edition = AST::Edition::Rust2015;
     ::AST::Crate::Type  crate_type = ::AST::Crate::Type::Unknown;
     ::std::string   crate_name;
     ::std::string   crate_name_suffix;

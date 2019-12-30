@@ -18,7 +18,8 @@
 //#define TRACE_CHARS
 //#define TRACE_RAW_TOKENS
 
-Lexer::Lexer(const ::std::string& filename):
+Lexer::Lexer(const ::std::string& filename, ParseState ps):
+    TokenStream(ps),
     m_path(filename.c_str()),
     m_line(1),
     m_line_ofs(0),

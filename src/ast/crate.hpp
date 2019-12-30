@@ -63,6 +63,7 @@ public:
     // Procedural macros!
     ::std::vector<ProcMacroDef> m_proc_macros;
 
+    AST::Edition    m_edition;
     enum class Type {
         Unknown,
         RustLib,
@@ -79,8 +80,6 @@ public:
     ::std::string   m_crate_name_suffix;
     ::std::string   m_crate_name;
     AST::Path   m_prelude_path;
-
-    Edition m_edition = Edition::Rust2015;
 
     Crate();
 

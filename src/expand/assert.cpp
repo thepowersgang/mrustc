@@ -8,6 +8,7 @@
 #include <synext_macro.hpp>
 #include <synext.hpp>   // for Expand_BareExpr
 #include <parse/interpolated_fragment.hpp>
+#include <ast/crate.hpp>
 #include "../parse/ttstream.hpp"
 #include "../parse/common.hpp"
 #include "../parse/parseerror.hpp"
@@ -19,7 +20,7 @@ class CExpander_assert:
     {
         Token   tok;
 
-        auto lex = TTStream(sp, tt);
+        auto lex = TTStream(sp, ParseState(crate.m_edition), tt);
         lex.parse_state().module = &mod;
 
         // assertion condition
@@ -74,7 +75,7 @@ class CExpander_assert:
 
         toks.push_back( Token(TOK_BRACE_CLOSE) );
 
-        return box$( TTStreamO(sp, TokenTree(Ident::Hygiene::new_scope(), mv$(toks))) );
+        return box$( TTStreamO(sp, ParseState(crate.m_edition), TokenTree(Ident::Hygiene::new_scope(), mv$(toks))) );
     }
 };
 

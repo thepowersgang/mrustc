@@ -787,7 +787,7 @@ namespace {
         toks.push_back( TokenTree(TOK_BRACE_CLOSE) );
         toks.push_back( TokenTree(TOK_BRACE_CLOSE) );
 
-        return box$( TTStreamO(sp, TokenTree(Ident::Hygiene::new_scope(), mv$(toks))) );
+        return box$( TTStreamO(sp, ParseState(crate.m_edition), TokenTree(Ident::Hygiene::new_scope(), mv$(toks))) );
     }
 }
 
@@ -798,7 +798,7 @@ class CFormatArgsExpander:
     {
         Token   tok;
 
-        auto lex = TTStream(sp, tt);
+        auto lex = TTStream(sp, ParseState(crate.m_edition), tt);
         lex.parse_state().module = &mod;
 
         return expand_format_args(sp, crate, lex, /*add_newline=*/false);
@@ -812,7 +812,7 @@ class CFormatArgsNlExpander:
     {
         Token   tok;
 
-        auto lex = TTStream(sp, tt);
+        auto lex = TTStream(sp, ParseState(crate.m_edition), tt);
         lex.parse_state().module = &mod;
 
         return expand_format_args(sp, crate, lex, /*add_newline=*/true);

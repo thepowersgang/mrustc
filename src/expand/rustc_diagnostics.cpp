@@ -9,13 +9,14 @@
 #include <parse/parseerror.hpp> // For GET_CHECK_TOK
 #include <parse/common.hpp>  // TokenTree etc
 #include <parse/ttstream.hpp>
+#include <ast/crate.hpp>
 
 class CExpanderRegisterDiagnostic:
     public ExpandProcMacro
 {
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
-        return box$( TTStreamO(sp, TokenTree()) );
+        return box$( TTStreamO(sp, ParseState(crate.m_edition), TokenTree()) );
     }
 };
 class CExpanderDiagnosticUsed:
@@ -23,7 +24,7 @@ class CExpanderDiagnosticUsed:
 {
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
-        return box$( TTStreamO(sp, TokenTree()) );
+        return box$( TTStreamO(sp, ParseState(crate.m_edition), TokenTree()) );
     }
 };
 class CExpanderBuildDiagnosticArray:
@@ -31,7 +32,7 @@ class CExpanderBuildDiagnosticArray:
 {
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
-        auto lex = TTStream(sp, tt);
+        auto lex = TTStream(sp, ParseState(crate.m_edition), tt);
 
         Token   tok;
 
@@ -62,7 +63,7 @@ class CExpanderBuildDiagnosticArray:
         toks.push_back( TOK_SQUARE_CLOSE );
         toks.push_back( TOK_SEMICOLON );
 
-        return box$( TTStreamO(sp, TokenTree( lex.getHygiene(), mv$(toks) )) );
+        return box$( TTStreamO(sp, ParseState(crate.m_edition), TokenTree( lex.getHygiene(), mv$(toks) )) );
     }
 };
 

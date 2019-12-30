@@ -12,6 +12,7 @@
 #include "../parse/ttstream.hpp"
 #include "../parse/lex.hpp" // For Codepoint
 #include <ast/expr.hpp>
+#include <ast/crate.hpp>
 
 class CConcatExpander:
     public ExpandProcMacro
@@ -20,7 +21,7 @@ class CConcatExpander:
     {
         Token   tok;
 
-        auto lex = TTStream(sp, tt);
+        auto lex = TTStream(sp, ParseState(crate.m_edition), tt);
 
         ::std::string   rv;
         do {
@@ -62,7 +63,7 @@ class CConcatExpander:
         if( tok.type() != TOK_EOF )
             throw ParseError::Unexpected(lex, tok, {TOK_COMMA, TOK_EOF});
 
-        return box$( TTStreamO(sp, TokenTree(Token(TOK_STRING, mv$(rv)))) );
+        return box$( TTStreamO(sp, ParseState(crate.m_edition), TokenTree(Token(TOK_STRING, mv$(rv)))) );
     }
 };
 

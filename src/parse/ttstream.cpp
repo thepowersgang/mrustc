@@ -8,7 +8,8 @@
 #include "ttstream.hpp"
 #include <common.hpp>
 
-TTStream::TTStream(Span parent, const TokenTree& input_tt):
+TTStream::TTStream(Span parent, ParseState ps, const TokenTree& input_tt):
+    TokenStream(ps),
     m_parent_span( mv$(parent) )
 {
     DEBUG("input_tt = [" << input_tt << "]");
@@ -65,7 +66,8 @@ Ident::Hygiene TTStream::realGetHygiene() const
 }
 
 
-TTStreamO::TTStreamO(Span parent, TokenTree input_tt):
+TTStreamO::TTStreamO(Span parent, ParseState ps, TokenTree input_tt):
+    TokenStream(ps),
     m_input_tt( mv$(input_tt) ),
     m_parent_span( mv$(parent) )
 {

@@ -46,7 +46,7 @@ class Lexer:
 
     Ident::Hygiene m_hygiene;
 public:
-    Lexer(const ::std::string& filename);
+    Lexer(const ::std::string& filename, ParseState ps);
 
     Position getPosition() const override;
     Ident::Hygiene realGetHygiene() const override;

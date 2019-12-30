@@ -103,15 +103,15 @@ class CCfgExpander:
 {
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const ::AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
-        auto lex = TTStream(sp, tt);
+        auto lex = TTStream(sp, ParseState(crate.m_edition), tt);
         auto attrs = Parse_MetaItem(lex);
         DEBUG("cfg!() - " << attrs);
 
         if( check_cfg(sp, attrs) ) {
-            return box$( TTStreamO(sp, TokenTree({},TOK_RWORD_TRUE )) );
+            return box$( TTStreamO(sp, ParseState(crate.m_edition), TokenTree({},TOK_RWORD_TRUE )) );
         }
         else {
-            return box$( TTStreamO(sp, TokenTree({},TOK_RWORD_FALSE)) );
+            return box$( TTStreamO(sp, ParseState(crate.m_edition), TokenTree({},TOK_RWORD_FALSE)) );
         }
     }
 };

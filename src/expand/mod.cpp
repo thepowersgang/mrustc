@@ -431,7 +431,8 @@ void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::AST::Cr
         if( input_ident != "" )
             ERROR(mi_span, E0000, "macro_rules! macros can't take an ident");
 
-        auto e = Macro_InvokeRules(path.is_trivial() ? path.as_trivial().c_str() : "", *mr_ptr, mi_span, mv$(input_tt), mod);
+        auto e = Macro_InvokeRules(path.is_trivial() ? path.as_trivial().c_str() : "", *mr_ptr, mi_span, mv$(input_tt), crate, mod);
+        e->parse_state().crate = &crate;
         return e;
     }
     else
@@ -448,7 +449,6 @@ void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::AST::Cr
     auto rv = Expand_Macro_Inner(crate, modstack, mod, mi_span, name, input_ident, input_tt);
     assert(rv);
     rv->parse_state().module = &mod;
-    rv->parse_state().crate = &crate;
     return rv;
 }
 ::std::unique_ptr<TokenStream> Expand_Macro(const ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod, ::AST::MacroInvocation& mi)
@@ -1412,7 +1412,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             TRACE_FUNCTION_F("Macro invoke " << mi_owned.path());
 
             auto ttl = Expand_Macro(crate, modstack, mod, mi_owned);
-            assert( mi_owned.name() != "");
+            assert( mi_owned.path().is_valid() );
 
             if( ttl.get() )
             {
@@ -1752,6 +1752,81 @@ void Expand(::AST::Crate& crate)
 
     // Post-process
     Expand_Mod_IndexAnon(crate, crate.m_root_module);
+
+    // Extract exported macros
+
+    {
+        auto& exported_macros = crate.m_exported_macros;
+
+        ::std::vector< ::AST::Module*>    mods;
+        mods.push_back( &crate.m_root_module );
+        do
+        {
+            auto& mod = *mods.back();
+            mods.pop_back();
+
+            for( /*const*/ auto& mac : mod.macros() ) {
+                if( mac.data->m_exported ) {
+                    auto res = exported_macros.insert( ::std::make_pair(mac.name,  &*mac.data) );
+                    if( res.second )
+                        DEBUG("- Define " << mac.name << "!");
+                }
+                else {
+                    DEBUG("- Non-exported " << mac.name << "!");
+                }
+            }
+
+            for(auto& i : mod.items()) {
+                if( i.data.is_Module() )
+                    mods.push_back( &i.data.as_Module() );
+            }
+        } while( mods.size() > 0 );
+
+        // - Exported macros imported by the root (is this needed?)
+        for( auto& mac : crate.m_root_module.macro_imports_res() ) {
+            if( mac.data->m_exported && mac.name != "" ) {
+                auto v = ::std::make_pair( mac.name, mac.data );
+                auto it = exported_macros.find(mac.name);
+                if( it == exported_macros.end() )
+                {
+                    auto res = exported_macros.insert( mv$(v) );
+                    DEBUG("- Import " << mac.name << "! (from \"" << res.first->second->m_source_crate << "\")");
+                }
+                else if( v.second->m_rules.empty() ) {
+                    // Skip
+                }
+                else {
+                    DEBUG("- Replace " << mac.name << "! (from \"" << it->second->m_source_crate << "\") with one from \"" << v.second->m_source_crate << "\"");
+                    it->second = mv$( v.second );
+                }
+            }
+        }
+        // - Re-exported macros (ignore proc macros for now?)
+        for( const auto& mac : crate.m_root_module.m_macro_imports )
+        {
+            if( mac.is_pub )
+            {
+                if( !mac.macro_ptr ) {
+                    continue ;
+                }
+                auto v = ::std::make_pair( mac.name, mac.macro_ptr );
+
+                auto it = exported_macros.find(mac.name);
+                if( it == exported_macros.end() )
+                {
+                    auto res = exported_macros.insert( mv$(v) );
+                    DEBUG("- Import " << mac.name << "! (from \"" << res.first->second->m_source_crate << "\")");
+                }
+                else if( v.second->m_rules.empty() ) {
+                    // Skip
+                }
+                else {
+                    DEBUG("- Replace " << mac.name << "! (from \"" << it->second->m_source_crate << "\") with one from \"" << v.second->m_source_crate << "\"");
+                    it->second = mv$( v.second );
+                }
+            }
+        }
+    }
 }
 
 

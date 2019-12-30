@@ -6,6 +6,7 @@
  * - stringify! macro
  */
 #include <synext.hpp>
+#include <ast/crate.hpp>
 #include "../parse/common.hpp"
 #include "../parse/ttstream.hpp"
 
@@ -17,7 +18,7 @@ class CExpander:
         Token   tok;
         ::std::string rv;
 
-        auto lex = TTStream(sp, tt);
+        auto lex = TTStream(sp, ParseState(crate.m_edition), tt);
         while( GET_TOK(tok, lex) != TOK_EOF )
         {
             if(!rv.empty())
@@ -29,7 +30,7 @@ class CExpander:
         // TODO: Strip out any `{...}` sequences that aren't from nested
         // strings.
 
-        return box$( TTStreamO(sp, TokenTree(Token(TOK_STRING, mv$(rv)))) );
+        return box$( TTStreamO(sp, ParseState(crate.m_edition), TokenTree(Token(TOK_STRING, mv$(rv)))) );
     }
 };
 

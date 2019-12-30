@@ -346,6 +346,15 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             break;
         }
     }
+    // TODO: If target is the crate root AND the crate exports macros with `macro_export`
+    if( rv.macro.is_Unbound() && &mod == &crate.m_root_module )
+    {
+        auto it = crate.m_exported_macros.find(des_item_name);
+        if(it != crate.m_exported_macros.end())
+        {
+            rv.macro = ::AST::PathBinding_Macro::make_MacroRules({ nullptr, &*it->second });
+        }
+    }
 
     if( types_only && !rv.type.is_Unbound() ) {
         return rv;
