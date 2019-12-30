@@ -67,6 +67,9 @@ TAGGED_UNION_EX(PathBinding_Value, (), Unbound, (
         unsigned int idx;
         const ::HIR::Enum*  hir;
         }),
+    (Generic, struct {
+        unsigned int index;
+        }),
     (Variable, struct {
         unsigned int slot;
         })

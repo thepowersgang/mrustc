@@ -649,6 +649,9 @@ void RustPrinter::handle_module(const AST::Module& mod)
             else {
             }
         }
+        if( i_data.entries.size() > 1 ) {
+            m_os << "}";
+        }
         m_os << ";\n";
     }
     need_nl = true;
@@ -835,7 +838,7 @@ void RustPrinter::print_params(const AST::GenericParams& params)
                 m_os << ", ";
             TU_MATCH_HDRA( (p), {)
             TU_ARMA(Lifetime, p) {
-                m_os << "'" << p;
+                m_os << p;
                 }
             TU_ARMA(Type, p) {
                 m_os << p.name();

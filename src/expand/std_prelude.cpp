@@ -64,13 +64,27 @@ public:
     AttrStage stage() const override { return AttrStage::Post; }
 
     void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
-        if( i.is_Use() ) {
-            const auto& p = i.as_Use().entries.front().path;
+        if( const auto* e = i.opt_Use() ) {
+            if(e->entries.size() != 1)
+                ERROR(sp, E0000, "#[prelude_import] should be on a single-entry use");
+            ASSERT_BUG(sp, path.nodes().back().name() == "", path);
+            if(e->entries.front().name != "")
+                ERROR(sp, E0000, "#[prelude_import] should be on a glob");
+            const auto& p = e->entries.front().path;
             // TODO: Ensure that this statement is a glob (has a name of "")
-            crate.m_prelude_path = AST::Path(p);
+            if(p.is_relative())
+            {
+                crate.m_prelude_path = AST::Path( path );
+                crate.m_prelude_path.nodes().pop_back();
+                crate.m_prelude_path.nodes().insert( crate.m_prelude_path.nodes().end(), p.nodes().begin(), p.nodes().end() );
+            }
+            else
+            {
+                crate.m_prelude_path = AST::Path(p);
+            }
         }
         else {
-            ERROR(sp, E0000, "Invalid use of #[prelude_import] on non-module");
+            ERROR(sp, E0000, "Invalid use of #[prelude_import] on non-use");
         }
     }
 };

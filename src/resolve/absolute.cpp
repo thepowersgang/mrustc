@@ -459,15 +459,15 @@ namespace
             }
             for(auto it = m_name_context.rbegin(); it != m_name_context.rend(); ++ it)
             {
-                TU_MATCH(Ent, (*it), (e),
-                (Module,
+                TU_MATCH_HDRA( (*it), {)
+                TU_ARMA(Module, e) {
                     DEBUG("- Module");
                     ::AST::Path rv;
                     if( this->lookup_in_mod(*e.mod, name, mode,  rv) ) {
                         return rv;
                     }
-                    ),
-                (ConcreteSelf,
+                    }
+                TU_ARMA(ConcreteSelf, e) {
                     DEBUG("- ConcreteSelf");
                     if( ( mode == LookupMode::Type || mode == LookupMode::Namespace ) && name == "Self" ) {
                         // TODO: Want to return the type if handling a struct literal
@@ -480,8 +480,8 @@ namespace
                             return rv;
                         }
                     }
-                    ),
-                (VarBlock,
+                    }
+                TU_ARMA(VarBlock, e) {
                     DEBUG("- VarBlock");
                     assert(e.level <= m_block_level);
                     if( mode != LookupMode::Variable ) {
@@ -497,10 +497,13 @@ namespace
                             }
                         }
                     }
-                    ),
-                (Generic,
+                    }
+                TU_ARMA(Generic, e) {
                     DEBUG("- Generic");
-                    if( mode == LookupMode::Type || mode == LookupMode::Namespace ) {
+                    switch(mode)
+                    {
+                    case LookupMode::Type:
+                    case LookupMode::Namespace:
                         for( auto it2 = e.types.rbegin(); it2 != e.types.rend(); ++ it2 )
                         {
                             if( it2->name == name ) {
@@ -509,13 +512,25 @@ namespace
                                 return rv;
                             }
                         }
-                    }
-                    else {
+                        break;
+                    case LookupMode::Variable:
+                    case LookupMode::Constant:
+                        for(auto it2 = e.constants.rbegin(); it2 != e.constants.rend(); ++it2)
+                        {
+                            if( it2->name == name ) {
+                                ::AST::Path rv(name);
+                                rv.m_bindings.value = AST::PathBinding_Value::make_Generic({ it2->value.to_binding() });
+                                return rv;
+                            }
+                        }
+                        break;
+                    default:
                         // ignore.
                         // TODO: Integer generics
+                        break;
                     }
-                    )
-                )
+                    }
+                }
             }
 
             // Top-level module

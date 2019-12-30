@@ -1280,7 +1280,7 @@ void Expand_Impl(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST:
 
         auto attrs = mv$(i.attrs);
         Expand_Attrs_CfgAttr(attrs);
-        Expand_Attrs(attrs, AttrStage::Pre,  crate, AST::Path(), mod, *i.data);
+        Expand_Attrs(attrs, AttrStage::Pre,  crate, AST::Path(), mod, *i.data); // TODO: UFCS path
 
         TU_MATCH_HDRA( (*i.data), {)
         default:
@@ -1332,7 +1332,7 @@ void Expand_Impl(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST:
         // Run post-expansion decorators and restore attributes
         {
             auto& i = impl.items()[idx];
-            Expand_Attrs(attrs, AttrStage::Post,  crate, AST::Path(), mod, *i.data);
+            Expand_Attrs(attrs, AttrStage::Post,  crate, AST::Path(), mod, *i.data); // TODO: UFCS path
             // TODO: How would this be populated? It got moved out?
             if( i.attrs.m_items.size() == 0 )
                 i.attrs = mv$(attrs);
@@ -1383,7 +1383,11 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
     if( crate.m_prelude_path != AST::Path() )
     {
         if( mod.m_insert_prelude && ! mod.is_anon() ) {
+            DEBUG("> Adding custom prelude " << crate.m_prelude_path);
             mod.add_item(Span(), false, "", ::AST::UseItem { Span(), ::make_vec1(::AST::UseItem::Ent { Span(), crate.m_prelude_path, "" }) }, {});
+        }
+        else {
+            DEBUG("> Not inserting custom prelude (anon or disabled)");
         }
     }
 

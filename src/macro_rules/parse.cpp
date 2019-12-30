@@ -202,6 +202,7 @@ public:
 
                 GET_TOK(tok, lex);
                 enum eTokenType joiner = TOK_NULL;
+                bool is_optional;
                 if( lex.parse_state().edition_after(AST::Edition::Rust2018) && tok.type() == TOK_QMARK )
                 {
                     // 2018 added `?` repetition operator
@@ -213,9 +214,22 @@ public:
                 else
                 {
                     joiner = tok.type();
+                    is_optional = false;
                     GET_TOK(tok, lex);
                 }
-                bool is_optional = (tok.type() == TOK_STAR);
+                switch(tok.type())
+                {
+                case TOK_PLUS:
+                    is_optional = false; if(0)
+                case TOK_STAR:
+                    is_optional = true; if(0)
+                case TOK_QMARK:
+                    is_optional = true;
+                    // TODO: Ensure that +/* match up?
+                    break;
+                default:
+                    throw ParseError::Unexpected(lex, tok);
+                }
                 if( var_set_ptr ) {
                     for(const auto& v : var_set) {
                         // If `is_optional`: Loop may not be expanded, so var_not_opt=false
@@ -224,18 +238,8 @@ public:
                         var_set_ptr->insert( ::std::make_pair(v.first, var_not_opt) ).first->second |= var_not_opt;
                     }
                 }
-                DEBUG("joiner = " << Token(joiner) << ", content = " << content);
-                switch(tok.type())
-                {
-                case TOK_PLUS:
-                case TOK_STAR:
-                case TOK_QMARK:
-                    // TODO: Ensure that +/* match up?
-                    ret.push_back( MacroExpansionEnt({mv$(content), joiner, mv$(var_set)}) );
-                    break;
-                default:
-                    throw ParseError::Unexpected(lex, tok);
-                }
+                DEBUG("joiner = " << Token(joiner) << ", var_set = " << var_set << ", content = " << content);
+                ret.push_back( MacroExpansionEnt::make_Loop({mv$(content), joiner, mv$(var_set)}) );
             }
             else if( tok.type() == TOK_RWORD_CRATE )
             {
@@ -411,8 +415,15 @@ namespace {
                     {
                         return true;
                     }
-                    // for * and ? loops, they can be skipped entirely.
-                    // - No separator, this is for the skip case
+                    else if( ent.name == "*" || ent.name == "?" )
+                    {
+                        // for * and ? loops, they can be skipped entirely.
+                        // - No separator, this is for the skip case
+                    }
+                    else
+                    {
+                        BUG(Span(), "Unknown loop type " << ent.name);
+                    }
                 }
                 else
                 {
@@ -550,7 +561,7 @@ namespace {
                     }
                     push( SimplePatEnt::make_LoopEnd({}) );
                 }
-                else
+                else if( ent.name == "*" || ent.name == "?" )
                 {
                     push( SimplePatEnt::make_LoopStart({}) );
 
@@ -558,36 +569,33 @@ namespace {
                     // - Enter the loop (if the next token is one of the head set of the loop)
                     // - Skip the loop (the next token is the head set of the subsequent entries)
                     size_t rewrite_start = rv.size();
-                    if( ent.name != "+" )
+                    if( entry_pats.size() == 1 )
                     {
-                        if( entry_pats.size() == 1 )
+                        // If not the entry pattern, skip.
+                        push_if(false, entry_pats.front().ty, *entry_pats.front().tok, ~0u);
+                    }
+                    else if( skip_pats.empty() )
+                    {
+                        // No skip patterns, try all entry patterns
+                        size_t start = rv.size() + entry_pats.size() + 1;
+                        for(const auto& p : entry_pats)
                         {
-                            // If not the entry pattern, skip.
-                            push_if(false, entry_pats.front().ty, *entry_pats.front().tok, ~0u);
+                            push_if(true, p.ty, *p.tok, start);
                         }
-                        else if( skip_pats.empty() )
+                        push(SimplePatEnt::make_Jump({ ~0u }));
+                    }
+                    else
+                    {
+                        for(const auto& p : skip_pats)
                         {
-                            // No skip patterns, try all entry patterns
-                            size_t start = rv.size() + entry_pats.size() + 1;
-                            for(const auto& p : entry_pats)
-                            {
-                                push_if(true, p.ty, *p.tok, start);
-                            }
-                            push(SimplePatEnt::make_Jump({ ~0u }));
-                        }
-                        else
-                        {
-                            for(const auto& p : skip_pats)
-                            {
-                                push_if(true, p.ty, *p.tok, ~0u);
-                            }
+                            push_if(true, p.ty, *p.tok, ~0u);
                         }
                     }
 
                     macro_pattern_to_simple_inner(sp, rv, ent.subpats);
                     push( SimplePatEnt::make_LoopNext({}) );
 
-                    if( ent.name != "?" )
+                    if( ent.name == "*" )
                     {
                         if( ent.tok != TOK_NULL )
                         {
@@ -611,9 +619,13 @@ namespace {
                         // Jump back to the entry check.
                         push(SimplePatEnt::make_Jump({ rewrite_start }));
                     }
-                    else
+                    else if( ent.name == "?" )
                     {
                         ASSERT_BUG(sp, ent.tok == TOK_NULL, "$()? with a separator isn't valid");
+                    }
+                    else
+                    {
+                        BUG(sp, "");
                     }
                     size_t post_loop = rv.size();
                     for(size_t i = rewrite_start; i < post_loop; i++)
@@ -630,6 +642,10 @@ namespace {
                         }
                     }
                     push( SimplePatEnt::make_LoopEnd({}) );
+                }
+                else
+                {
+                    TODO(sp, "Handle loop type '" << ent.name << "'");
                 }
                 } break;
             case MacroPatEnt::PAT_TOKEN:

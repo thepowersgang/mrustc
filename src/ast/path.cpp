@@ -332,24 +332,26 @@ Ordering Path::ord(const Path& x) const
 
 void Path::print_pretty(::std::ostream& os, bool is_type_context, bool is_debug) const
 {
-    TU_MATCH(Path::Class, (m_class), (ent),
-    (Invalid,
+    TU_MATCH_HDRA( (m_class), {)
+    TU_ARMA(Invalid, ent) {
         os << "/*inv*/";
         // NOTE: Don't print the binding for invalid paths
         return ;
-        ),
-    (Local,
+        }
+    TU_ARMA(Local, ent) {
         // Only print comment if there's no binding
-        if( m_bindings.value.is_Unbound() )
+        if( m_bindings.value.is_Unbound() && m_bindings.type.is_Unbound() )
         {
             if( is_debug )
                 os << "/*var*/";
         }
         else
-            assert( m_bindings.value.is_Variable() );
+        {
+            assert( m_bindings.value.is_Variable() || m_bindings.value.is_Generic() || m_bindings.type.is_TypeParameter() );
+        }
         os << ent.name;
-        ),
-    (Relative,
+        }
+    TU_ARMA(Relative, ent) {
         if( is_debug )
             os << ent.hygiene;
         for(const auto& n : ent.nodes)
@@ -359,24 +361,24 @@ void Path::print_pretty(::std::ostream& os, bool is_type_context, bool is_debug)
             }
             n.print_pretty(os, is_type_context);
         }
-        ),
-    (Self,
+        }
+    TU_ARMA(Self, ent) {
         os << "self";
         for(const auto& n : ent.nodes)
         {
             os << "::";
             n.print_pretty(os, is_type_context);
         }
-        ),
-    (Super,
+        }
+    TU_ARMA(Super, ent) {
         os << "super";
         for(const auto& n : ent.nodes)
         {
             os << "::";
             n.print_pretty(os, is_type_context);
         }
-        ),
-    (Absolute,
+        }
+    TU_ARMA(Absolute, ent) {
         if( ent.crate != "" )
             os << "::\"" << ent.crate << "\"";
         for(const auto& n : ent.nodes)
@@ -384,8 +386,8 @@ void Path::print_pretty(::std::ostream& os, bool is_type_context, bool is_debug)
             os << "::";
             n.print_pretty(os, is_type_context);
         }
-        ),
-    (UFCS,
+        }
+    TU_ARMA(UFCS, ent) {
         //os << "/*ufcs*/";
         if( ent.trait ) {
             os << "<" << *ent.type << " as ";
@@ -404,8 +406,8 @@ void Path::print_pretty(::std::ostream& os, bool is_type_context, bool is_debug)
             os << "::";
             n.print_pretty(os, is_type_context);
         }
-        )
-    )
+        }
+    }
     if( is_debug ) {
         os << "/*";
         bool printed = false;

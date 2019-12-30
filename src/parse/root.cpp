@@ -1505,7 +1505,8 @@ void Parse_Use_Inner(TokenStream& lex, ::std::vector<AST::UseItem::Ent>& entries
     default:
         if(lex.parse_state().edition_after(AST::Edition::Rust2018))
         {
-            path = AST::Path(lex.parse_state().module->path());
+            //path = AST::Path(lex.parse_state().module->path());
+            path = AST::Path(AST::Path::TagRelative(), /*hygine=*/{}, {});
         }
         PUTBACK(tok, lex);
         break;
