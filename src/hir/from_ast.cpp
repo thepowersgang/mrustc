@@ -44,6 +44,8 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
     for(const auto& param : gp.m_params)
     {
         TU_MATCH_HDRA( (param), {)
+        TU_ARMA(None, _) {
+            }
         TU_ARMA(Lifetime, lft_def) {
             rv.m_lifetimes.push_back( HIR::LifetimeDef { lft_def.name().name } );
             }

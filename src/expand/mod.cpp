@@ -340,13 +340,15 @@ void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::AST::Cr
                 {
                     ERROR(mi_span, E0000, "Cannot find module for " << path);
                 }
-                real_path.nodes().insert( real_path.nodes().end(), e.nodes.begin() + 1, e.nodes.end() );
+                for(size_t i = 1; i < e.nodes.size(); i ++)
+                    real_path.nodes().push_back(e.nodes[i]);
                 }
             TU_ARMA(Self, e) {
                 auto new_path = mod.path();
                 if(new_path.nodes().back().name().c_str()[0] == '#')
                     TODO(mi_span, "Handle self paths in anon");
-                new_path.nodes().insert( real_path.nodes().end(), e.nodes.begin(), e.nodes.end() );
+                for(size_t i = 0; i < e.nodes.size(); i ++)
+                    new_path.nodes().push_back(e.nodes[i]);
                 real_path = mv$(new_path);
                 }
             TU_ARMA(Super, e) {
@@ -359,7 +361,8 @@ void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::AST::Cr
                         ERROR(mi_span, E0000, "Invalid path (too many `super`) - " << path);
                     new_path.nodes().pop_back();
                 }
-                new_path.nodes().insert( real_path.nodes().end(), e.nodes.begin(), e.nodes.end() );
+                for(size_t i = 0; i < e.nodes.size(); i ++)
+                    new_path.nodes().push_back(e.nodes[i]);
                 real_path = mv$(new_path);
                 }
             TU_ARMA(Absolute, e) {
@@ -1209,6 +1212,9 @@ void Expand_GenericParams(::AST::Crate& crate, LList<const AST::Module*> modstac
     for(auto& param_def : params.m_params)
     {
         TU_MATCH_HDRA( (param_def), {)
+        TU_ARMA(None, e) {
+            // Ignore
+            }
         TU_ARMA(Lifetime, e) {
             }
         TU_ARMA(Type, ty_def) {
@@ -1692,12 +1698,12 @@ void Expand(::AST::Crate& crate)
     // Fill macro/decorator map from init list
     while(g_decorators_list)
     {
-        g_decorators.insert(::std::make_pair( mv$(g_decorators_list->name), mv$(g_decorators_list->def) ));
+        g_decorators.insert(::std::make_pair( RcString::new_interned(g_decorators_list->name), mv$(g_decorators_list->def) ));
         g_decorators_list = g_decorators_list->prev;
     }
     while(g_macros_list)
     {
-        g_macros.insert(::std::make_pair(mv$(g_macros_list->name), mv$(g_macros_list->def)));
+        g_macros.insert(::std::make_pair(RcString::new_interned(g_macros_list->name), mv$(g_macros_list->def)));
         g_macros_list = g_macros_list->prev;
     }
     for(const auto& e : g_decorators)

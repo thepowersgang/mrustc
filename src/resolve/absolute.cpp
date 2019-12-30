@@ -120,6 +120,8 @@ namespace
                 for(const auto& e : params.m_params)
                 {
                     TU_MATCH_HDRA( (e), {)
+                    TU_ARMA(None, param) {
+                        }
                     TU_ARMA(Lifetime, lft) {
                         data.lifetimes.push_back( NamedI<GenericSlot> { lft.name(), GenericSlot { level, lft_idx } } );
                         lft_idx += 1;
@@ -1246,6 +1248,8 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
                         for(const auto& param : e.trait_->params().m_params)
                         {
                             TU_MATCH_HDRA( (param), {)
+                            TU_ARMA(None, e) {
+                                }
                             TU_ARMA(Lifetime, e) {
                                 }
                             TU_ARMA(Type, typ) {
@@ -1931,6 +1935,8 @@ void Resolve_Absolute_Generic(Context& context, ::AST::GenericParams& params)
     for( auto& param : params.m_params )
     {
         TU_MATCH_HDRA( (param), {)
+        TU_ARMA(None, _) {
+            }
         TU_ARMA(Lifetime, param) {
             }
         TU_ARMA(Type, param) {

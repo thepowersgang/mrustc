@@ -481,6 +481,10 @@ namespace {
                     if( !is_first )
                         m_pmi.send_symbol(",");
                     TU_MATCH_HDRA( (p), {)
+                    TU_ARMA(None, p) {
+                        // Uh... oops?
+                        BUG(Span(), "Enountered GenericParam::None");
+                        }
                     TU_ARMA(Lifetime, p) {
                         m_pmi.send_lifetime(p.name().name.c_str());
                         }

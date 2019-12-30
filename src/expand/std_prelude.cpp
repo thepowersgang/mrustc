@@ -76,7 +76,7 @@ public:
             {
                 crate.m_prelude_path = AST::Path( path );
                 crate.m_prelude_path.nodes().pop_back();
-                crate.m_prelude_path.nodes().insert( crate.m_prelude_path.nodes().end(), p.nodes().begin(), p.nodes().end() );
+                crate.m_prelude_path += p;
             }
             else
             {
