@@ -91,6 +91,7 @@ fn borrowed_rev_exp(a: &mut [u8], a2: &mut u8)
 
 
 //fn <&usize as ::"core"::ops::bit::Shl<&i8,>>::shl(arg0: &usize, arg1: &i8) -> usize
+//#[test="borrow_usize_shl_borrow_i8_exp"]
 fn borrow_usize_shl_borrow_i8(arg0: &usize, arg1: &i8) -> usize {
 	let var0: usize;
 	let var1: i8;
@@ -100,9 +101,19 @@ fn borrow_usize_shl_borrow_i8(arg0: &usize, arg1: &i8) -> usize {
 		ASSIGN retval = BIT_SHL(var0, var1);
 	} RETURN;
 }
-#[test="borrow_usize_shl_borrow_i8_exp"]
 fn borrow_usize_shl_borrow_i8_exp(arg0: &usize, arg1: &i8) -> usize {
 	bb0: {
 		ASSIGN retval = BIT_SHL(arg0*, arg1*);
 	} RETURN;
+}
+
+
+#[test="neg_srcused"]
+fn neg_srcused(v: (u32, &mut u32,)) -> ((u32, &mut u32,), u32,)
+{
+    let v1: u32;
+    bb0: {
+        ASSIGN v1 = v.0;
+        ASSIGN retval = (v, v1);
+    } RETURN;
 }

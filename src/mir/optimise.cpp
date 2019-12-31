@@ -1836,7 +1836,9 @@ bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::
                 const auto& src = set_stmt.as_Assign().src.as_Use();
 
                 // Check if the source of initial assignment is invalidated in the meantime.
-                bool invalidated = IterPathRes::Complete != iter_path(fcn, set_loc_next, slot.use_loc,
+                auto use_loc_inc = slot.use_loc;
+                use_loc_inc.stmt_idx += 1;
+                bool invalidated = IterPathRes::Complete != iter_path(fcn, set_loc_next, use_loc_inc,
                         [&](auto loc, const auto& stmt)->bool{ return check_invalidates_lvalue(stmt, src); },
                         [&](auto loc, const auto& term)->bool{ return check_invalidates_lvalue(term, src); }
                         );
@@ -1862,7 +1864,7 @@ bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::
                     if( slot.use_loc.stmt_idx < use_bb.statements.size() )
                     {
                         auto& use_stmt = use_bb.statements[slot.use_loc.stmt_idx];
-                        DEBUG("Replace " << this_var << " with " << src << " in " << use_stmt);
+                        DEBUG("Replace " << this_var << " with " << src << " in BB" << slot.use_loc.bb_idx << "/" << slot.use_loc.stmt_idx  << " " << use_stmt);
                         bool found = visit_mir_lvalues_mut(use_stmt, replace_cb);
                         if( !found )
                         {
