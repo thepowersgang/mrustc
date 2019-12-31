@@ -3801,7 +3801,7 @@ namespace {
 
             bool has_zst = false;
             for(unsigned int j = 0; j < e.args.size(); j ++) {
-                if( m_options.disallow_empty_structs && TU_TEST1(e.args[j], LValue, .is_Field()) )
+                if( m_options.disallow_empty_structs /*&& TU_TEST1(e.args[j], LValue, .is_Field())*/ )
                 {
                     ::HIR::TypeRef tmp;
                     const auto& ty = m_mir_res->get_param_type(tmp, e.args[j]);
@@ -3837,8 +3837,8 @@ namespace {
                 }
             }
 
-            TU_MATCHA( (e.fcn), (e2),
-            (Value,
+            TU_MATCH_HDRA( (e.fcn), {)
+            TU_ARMA(Value, e2) {
                 {
                     ::HIR::TypeRef  tmp;
                     const auto& ty = mir_res.get_lvalue_type(tmp, e2);
@@ -3852,18 +3852,18 @@ namespace {
                     }
                 }
                 m_of << "("; emit_lvalue(e2); m_of << ")";
-                ),
-            (Path,
+                }
+            TU_ARMA(Path, e2) {
                 {
-                    TU_MATCHA( (e2.m_data), (pe),
-                    (Generic,
+                    TU_MATCH_HDRA( (e2.m_data), {)
+                    TU_ARMA(Generic, pe) {
                         const auto& fcn = m_crate.get_function_by_path(sp, pe.m_path);
                         omit_assign |= fcn.m_return.m_data.is_Diverge();
                         // TODO: Monomorph.
-                        ),
-                    (UfcsUnknown,
-                        ),
-                    (UfcsInherent,
+                        }
+                    TU_ARMA(UfcsUnknown, pe) {
+                        }
+                    TU_ARMA(UfcsInherent, pe) {
                         // Check if the return type is !
                         omit_assign |= m_resolve.m_crate.find_type_impls(*pe.type, [&](const auto& ty)->const auto& { return ty; },
                             [&](const auto& impl) {
@@ -3877,8 +3877,8 @@ namespace {
                                 // Associated static (undef)
                                 return false;
                             });
-                        ),
-                    (UfcsKnown,
+                        }
+                    TU_ARMA(UfcsKnown, pe) {
                         // Check if the return type is !
                         const auto& tr = m_resolve.m_crate.get_trait_by_path(sp, pe.trait.m_path);
                         const auto& fcn = tr.m_values.find(pe.item)->second.as_Function();
@@ -3902,18 +3902,18 @@ namespace {
                         {
                             // Not a ! type
                         }
-                        )
-                    )
+                        }
+                    }
                     if(!omit_assign)
                     {
                         emit_lvalue(e.ret_val); m_of << " = ";
                     }
                 }
                 m_of << Trans_Mangle(e2);
-                ),
-            (Intrinsic,
-                const auto& name = e.fcn.as_Intrinsic().name;
-                const auto& params = e.fcn.as_Intrinsic().params;
+                }
+            TU_ARMA(Intrinsic, e2) {
+                const auto& name = e2.name;
+                const auto& params = e2.params;
                 emit_intrinsic_call(name, params, e);
                 if( has_zst )
                 {
@@ -3921,13 +3921,13 @@ namespace {
                     m_of << indent << "}\n";
                 }
                 return ;
-                )
-            )
+                }
+            }
             m_of << "(";
             for(unsigned int j = 0; j < e.args.size(); j ++) {
                 if(j != 0)  m_of << ",";
                 m_of << " ";
-                if( m_options.disallow_empty_structs && TU_TEST1(e.args[j], LValue, .is_Field()) )
+                if( m_options.disallow_empty_structs /*&& TU_TEST1(e.args[j], LValue, .is_Field())*/ )
                 {
                     ::HIR::TypeRef tmp;
                     const auto& ty = m_mir_res->get_param_type(tmp, e.args[j]);
