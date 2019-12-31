@@ -38,7 +38,8 @@ namespace {
         void visit_node_ptr(::HIR::ExprNodeP& node) override {
             const auto& node_ref = *node;
             const char* node_ty = typeid(node_ref).name();
-            BUG(node->span(), "Unhandled node typ in static_borrow_constants ExprVisitor_Extract - " << node_ty);
+            // NOTE: It's the parent node that's unhandled, not this one
+            BUG(node->span(), "Unhandled node type in static_borrow_constants ExprVisitor_Extract - child=" << node_ty);
         }
 
         void visit(::HIR::ExprNode_ArraySized& node) override {
@@ -76,6 +77,7 @@ namespace {
                 // Find field index
                 // Ensure correct size
                 // Set field
+                TODO(node.span(), "StructLiteral");
             }
             m_out = mv$(rv);
             if( !node.m_is_struct )
@@ -135,6 +137,14 @@ namespace {
         void visit(::HIR::ExprNode_PathValue& node) override {
             // If the target is a constant, set `m_is_constant`
             TODO(node.span(), "Path constant to Literal");
+        }
+
+        // Borrow (from an inner lift)
+        void visit(::HIR::ExprNode_Borrow& node) override {
+            ASSERT_BUG(node.span(), node.m_type == HIR::BorrowType::Shared, "");
+            ASSERT_BUG(node.span(), dynamic_cast<::HIR::ExprNode_PathValue*>(&*node.m_value), "");
+            auto& val_path_node = dynamic_cast<::HIR::ExprNode_PathValue&>(*node.m_value);
+            m_out = HIR::Literal::new_borrow_path( val_path_node.m_path.clone() );
         }
     };
 
