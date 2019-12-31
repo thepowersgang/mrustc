@@ -12,17 +12,44 @@
 #include <iostream>
 #include "debug.h"
 #include <mutex>
+#include <cstring>  // strr
 
 static int giIndentLevel = 0;
 static const char* gsDebugPhase = "";
+static bool gbEnableHeaders = false;
 static ::std::set<::std::string> gmDisabledDebug;
 #ifndef DISABLE_MULTITHREAD
 static ::std::mutex gDebugLock;
 #endif
 
+void Debug_ProcessEnable(const char* e)
+{
+    if(*e)
+    {
+        gbEnableHeaders = true;
+    }
+    while( *e )
+    {
+        const char* colon = ::std::strchr(e, ':');
+        size_t len = colon ? colon - e : ::std::strlen(e);
+
+        if(len > 0 )
+        {
+            Debug_EnablePhase(::std::string(e, len).c_str());
+        }
+
+        if( colon )
+            e = colon + 1;
+        else
+            e = e + len;
+    }
+}
+
 void Debug_SetPhase(const char* phase_name)
 {
     gsDebugPhase = phase_name;
+    if( gbEnableHeaders )
+        ::std::cout << phase_name << ": BEGIN" << ::std::endl;
 }
 bool Debug_IsEnabled()
 {

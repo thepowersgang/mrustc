@@ -13,6 +13,7 @@
 
 typedef ::std::function<void(::std::ostream& os)> dbg_cb_t;
 extern void Debug_SetPhase(const char* phase_name);
+extern void Debug_ProcessEnable(const char* enable_string);
 extern void Debug_DisablePhase(const char* phase_name);
 extern void Debug_EnablePhase(const char* phase_name);
 extern bool Debug_IsEnabled();

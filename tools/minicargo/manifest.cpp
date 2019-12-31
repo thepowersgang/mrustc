@@ -923,11 +923,6 @@ void PackageRef::load_manifest(Repository& repo, const ::helpers::path& base_pat
             DEBUG("Load dependency " << this->name() << " from git");
             throw "TODO: Git";
         }
-        else if( !this->get_version().m_bounds.empty() )
-        {
-            DEBUG("Load dependency " << this->name() << " from repo");
-            m_manifest = repo.find(this->name(), this->get_version());
-        }
         else if( this->has_path() )
         {
             DEBUG("Load dependency " << m_name << " from path " << m_path);
@@ -948,6 +943,11 @@ void PackageRef::load_manifest(Repository& repo, const ::helpers::path& base_pat
             {
                 throw ::std::runtime_error(format("Cannot open manifest ", path, " for ", this->name()));
             }
+        }
+        else if( !this->get_version().m_bounds.empty() )
+        {
+            DEBUG("Load dependency " << this->name() << " from repo");
+            m_manifest = repo.find(this->name(), this->get_version());
         }
         else
         {
