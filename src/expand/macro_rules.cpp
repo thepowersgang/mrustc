@@ -30,6 +30,7 @@ class CMacroRulesExpander:
         DEBUG("Parsing macro_rules! " << ident);
         TTStream    lex(sp, ParseState(crate.m_edition), tt);
         auto mac = Parse_MacroRules(lex);
+        DEBUG("macro_rules! " << mod.path() + ident << " " << &*mac);
         mod.add_macro( false, ident, mv$(mac) );
 
         return ::std::unique_ptr<TokenStream>( new TTStreamO(sp, ParseState(crate.m_edition), TokenTree()) );

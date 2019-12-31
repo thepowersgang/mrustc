@@ -1780,10 +1780,11 @@ namespace
 
 unsigned int Macro_InvokeRules_MatchPattern(const Span& sp, const MacroRules& rules, TokenTree input, const AST::Crate& crate, AST::Module& mod,  ParameterMappings& bound_tts)
 {
-    TRACE_FUNCTION;
+    TRACE_FUNCTION_F(rules.m_rules.size() << " options");
     ASSERT_BUG(sp, rules.m_rules.size() > 0, "Empty macro_rules set");
 
     ::std::vector< ::std::pair<size_t, ::std::vector<bool>> >    matches;
+    ::std::vector< std::pair<size_t, eTokenType> >  fail_pos;
     for(size_t i = 0; i < rules.m_rules.size(); i ++)
     {
         auto lex = TokenStreamRO(input);
@@ -1864,14 +1865,15 @@ unsigned int Macro_InvokeRules_MatchPattern(const Span& sp, const MacroRules& ru
         else
         {
             DEBUG(i << " FAILED");
+            fail_pos.push_back( std::make_pair(lex.position(), lex.next()) );
         }
     }
 
     if( matches.size() == 0 )
     {
         // ERROR!
-	// TODO: Keep track of where each arm failed.
-        TODO(sp, "No arm matched");
+        // TODO: Keep track of where each arm failed.
+        TODO(sp, "No arm matched - " << fail_pos);
     }
     else
     {

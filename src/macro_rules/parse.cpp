@@ -370,19 +370,17 @@ MacroRulesPtr Parse_MacroRules(TokenStream& lex)
     }
     DEBUG("- " << rules.size() << " rules");
 
-    ::std::vector<MacroRulesArm>    rule_arms;
+    auto rv = MacroRulesPtr(new MacroRules( ));
+    rv->m_hygiene = lex.getHygiene();
+    //rv->m_rules = mv$(rule_arms);
 
     // Re-parse the patterns into a unified form
     for(auto& rule : rules)
     {
-        rule_arms.push_back( Parse_MacroRules_MakeArm(rule.m_pat_span, mv$(rule.m_pattern), mv$(rule.m_contents)) );
+        rv->m_rules.push_back( Parse_MacroRules_MakeArm(rule.m_pat_span, mv$(rule.m_pattern), mv$(rule.m_contents)) );
     }
 
-    auto rv = new MacroRules( );
-    rv->m_hygiene = lex.getHygiene();
-    rv->m_rules = mv$(rule_arms);
-
-    return MacroRulesPtr(rv);
+    return rv;
 }
 
 namespace {

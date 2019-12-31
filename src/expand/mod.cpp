@@ -131,6 +131,7 @@ void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::AST::Cr
     if( path.is_trivial() )
     {
         const auto& name = path.as_trivial();
+        // 1. Search compiler-provided proc macros
         for( const auto& m : g_macros )
         {
             if( name == m.first )
@@ -145,35 +146,36 @@ void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::AST::Cr
             const auto& mac_mod = *ll->m_item;
             for( const auto& mr : mac_mod.macros() )
             {
-                //DEBUG("- " << mr.name);
                 if( mr.name == name )
                 {
+                    DEBUG(mac_mod.path() << "::" << mr.name << " - Defined");
                     mr_ptr = &*mr.data;
                     break;
                 }
             }
-            if( !mr_ptr )
-            {
-                // Find the last macro of this name (allows later #[macro_use] definitions to override)
-                const MacroRules* last_mac = nullptr;
-                for( const auto& mri : mac_mod.macro_imports_res() )
-                {
-                    //DEBUG("- " << mri.name);
-                    if( mri.name == name )
-                    {
-                        if( input_ident != "" )
-                            ERROR(mi_span, E0000, "macro_rules! macros can't take an ident");
+            if( mr_ptr )
+                break;
 
-                        last_mac = mri.data;
-                    }
-                }
-                if( last_mac )
+            // Find the last macro of this name (allows later #[macro_use] definitions to override)
+            const MacroRules* last_mac = nullptr;
+            for( const auto& mri : mac_mod.macro_imports_res() )
+            {
+                //DEBUG("- " << mri.name);
+                if( mri.name == name )
                 {
-                    mr_ptr = last_mac;
+                    if( input_ident != "" )
+                        ERROR(mi_span, E0000, "macro_rules! macros can't take an ident");
+                    DEBUG("?::" << mri.name << " - Imported");
+
+                    last_mac = mri.data;
                 }
             }
+            if( last_mac )
+            {
+                mr_ptr = last_mac;
+                break;
+            }
         }
-
     }
     else
     {
@@ -434,6 +436,7 @@ void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::AST::Cr
         if( input_ident != "" )
             ERROR(mi_span, E0000, "macro_rules! macros can't take an ident");
 
+        DEBUG("Invoking macro_rules " << path << " " << mr_ptr);
         auto e = Macro_InvokeRules(path.is_trivial() ? path.as_trivial().c_str() : "", *mr_ptr, mi_span, mv$(input_tt), crate, mod);
         e->parse_state().crate = &crate;
         return e;
