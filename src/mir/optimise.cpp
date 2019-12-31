@@ -4880,7 +4880,7 @@ bool MIR_Optimise_GotoAssign(::MIR::TypeResolve& state, ::MIR::Function& fcn)
         unsigned n_read = 0;
         unsigned n_borrow = 0;
         visit_mir_lvalues(state, fcn, [&](const auto& lv, auto vu) {
-            if(lv == src) {
+            if(lv.m_root == src.m_root) {
                 switch(vu)
                 {
                 case ValUsage::Read:
@@ -4898,7 +4898,7 @@ bool MIR_Optimise_GotoAssign(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             return true;
             });
         state.set_cur_stmt(bb_idx, 0);
-        if( n_read > 1 ) {
+        if( n_read > 1 || n_borrow > 0 ) {
             DEBUG(state << "Source " << src << " is read " << n_read << " times and borrowed " << n_borrow);
             continue ;
         }
