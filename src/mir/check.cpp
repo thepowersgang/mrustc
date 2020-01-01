@@ -262,7 +262,8 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
             bool rv = false;
             if( a != b )
             {
-                if( a == State::Either || b == State::Either ) {
+                // NOTE: This is an attempted optimisation to avoid re-running a block when it's not a new state.
+                if( a == State::Either /*|| b == State::Either*/ ) {
                 }
                 else {
                     rv = true;
@@ -324,6 +325,7 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
         // 1. Apply current state to `block_start_states` (merging if needed)
         // - If no change happened, skip.
         if( ! block_start_states.at(block).merge(block, val_state) ) {
+            DEBUG("BB" << block << " via [" << path << "] nochange " << FMT_CB(ss,val_state.fmt(ss);));
             continue ;
         }
         ASSERT_BUG(Span(), val_state.locals.size() == fcn.locals.size(), "");
