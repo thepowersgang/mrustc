@@ -389,8 +389,9 @@ void MirBuilder::push_stmt_set_dropflag_default(const Span& sp, unsigned int idx
 void MirBuilder::push_stmt(const Span& sp, ::MIR::Statement stmt)
 {
     ASSERT_BUG(sp, m_block_active, "Pushing statement with no active block");
-    DEBUG("BB" << m_current_block << " += " << stmt);
-    m_output.blocks.at(m_current_block).statements.push_back( mv$(stmt) );
+    auto& blk = m_output.blocks.at(m_current_block);
+    DEBUG("BB" << m_current_block << "/" << blk.statements.size() << " = " << stmt);
+    blk.statements.push_back( mv$(stmt) );
 }
 
 void MirBuilder::mark_value_assigned(const Span& sp, const ::MIR::LValue& dst)
@@ -1410,7 +1411,7 @@ void MirBuilder::end_split_arm(const Span& sp, const ScopeHandle& handle, bool r
     auto& sd_split = sd.data.as_Split();
     ASSERT_BUG(sp, !sd_split.arms.empty(), "Split arm list is empty (impossible)");
 
-    TRACE_FUNCTION_F("end split scope " << handle.idx << " arm " << (sd_split.arms.size()-1));
+    TRACE_FUNCTION_F("end split scope " << handle.idx << " arm " << (sd_split.arms.size()-1) << (reachable ? " reachable" : "") << (early ? " early" : ""));
     if( reachable )
         ASSERT_BUG(sp, m_block_active, "Block must be active when ending a reachable split arm");
 

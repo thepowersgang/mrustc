@@ -119,6 +119,7 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_unwrapped_type(::HIR::TypeRef& tmp
             return te[field_index];
             ),
         (Path,
+            // TODO: Cache result (to avoid needing to re-monomorph)
             if( const auto* tep = te.binding.opt_Struct() )
             {
                 const auto& str = **tep;
@@ -731,7 +732,7 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
         const ::MIR::LValue& lv, const ::std::vector<size_t>& block_offsets, ValueLifetime& vl
         )
 {
-    TRACE_FUNCTION_F(mir_res << " " << lv);
+    TRACE_FUNCTION_F(mir_res << lv << " assigned");
     // Walk the BB tree until:
     // - Loopback
     // - Assignment
@@ -893,23 +894,45 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
             bool was_moved = false;
             bool was_updated = false;
             auto visit_cb = [&](const auto& lv, auto vu) {
-                    if(lv == m_lv) {
-                        if( vu == ValUsage::Read ) {
+                    if(lv.m_root == m_lv.m_root) {
+                        switch(vu)
+                        {
+                        case ValUsage::Read:
                             DEBUG(m_mir_res << "Used");
                             state.mark_read(stmt_idx);
                             was_updated = true;
-                        }
-                        if( vu == ValUsage::Move ) {
-                            DEBUG(m_mir_res << (m_is_copy ? "Read" : "Moved"));
-                            state.mark_read(stmt_idx);
-                            was_moved = ! m_is_copy;
-                        }
-                        if( vu == ValUsage::Borrow ) {
+                            break;
+                        case ValUsage::Move:
+                            if( lv.m_wrappers.size() == m_lv.m_wrappers.size() )
+                            {
+                                DEBUG(m_mir_res << (m_is_copy ? "Read" : "Moved"));
+                                state.mark_read(stmt_idx);
+                                was_moved = ! m_is_copy;
+                            }
+                            else
+                            {
+                                DEBUG(m_mir_res << "Used (partial)");
+                                state.mark_read(stmt_idx);
+                                was_updated = true;
+                            }
+                            break;
+                        case ValUsage::Borrow:
                             DEBUG(m_mir_res << "Borrowed");
                             state.mark_borrowed(stmt_idx);
                             was_updated = true;
+                            break;
+                        case ValUsage::Write:
+                            // Don't care
+                            break;
                         }
-                        return true;
+                    }
+                    for(const auto& w : lv.m_wrappers)
+                    {
+                        if( w.is_Index() && w.as_Index() == m_lv.as_Local() ) {
+                            DEBUG(m_mir_res << "Index used");
+                            state.mark_read(stmt_idx);
+                            was_updated = true;
+                        }
                     }
                     return false;
                     };
@@ -921,7 +944,12 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
                 m_visited_statements[ m_block_offsets.at(bb_idx) + stmt_idx ] = true;
 
                 // Visit and see if the value is read (setting the read flag or end depending on if the value is Copy)
+                was_updated = false;
                 visit_mir_lvalues(stmt, visit_cb);
+                if(was_updated || was_moved)
+                {
+                    DEBUG(m_mir_res << stmt);
+                }
 
                 if( was_moved )
                 {
@@ -981,7 +1009,9 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
             m_mir_res.set_cur_stmt_term(bb_idx);
             m_visited_statements[ m_block_offsets.at(bb_idx) + stmt_idx ] = true;
 
+            was_updated = false;
             visit_mir_lvalues(bb.terminator, visit_cb);
+            DEBUG(m_mir_res << bb.terminator << (was_updated ? " (used)" : ""));
 
             if( was_moved )
             {

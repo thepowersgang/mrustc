@@ -196,7 +196,7 @@ namespace
             using ::MIR::visit::visit_mir_lvalues;
 
             ::HIR::TypeRef  tmp;
-            bool is_copy = mir_res.m_resolve.type_is_copy( mir_res.sp, mir_res.get_lvalue_type(tmp, root_lv) );
+            bool is_copy = mir_res.lvalue_is_copy(root_lv);
             size_t cur_stmt = mir_res.get_cur_stmt_ofs();
 
             // Dump all statements
@@ -281,7 +281,8 @@ namespace
 
                 bool assigned = false;
                 auto visit_cb = [&](const auto& lv, auto vu) {
-                    if(lv == root_lv && vu == ValUsage::Write) {
+                    //if(lv.is_subset_of(root_lv) && vu == ValUsage::Write) {
+                    if(lv.m_root == root_lv.m_root && vu == ValUsage::Write) {
                         assigned = true;
                         //assigned_bb = this->bb_path[i];
                         //assigned_stmt = j;
@@ -356,9 +357,7 @@ namespace
         {
             this->ensure_lvalue_valid(mir_res, lv);
 
-            ::HIR::TypeRef  tmp;
-            const auto& ty = mir_res.get_lvalue_type(tmp, lv);
-            if( mir_res.m_resolve.type_is_copy(mir_res.sp, ty) )
+            if( mir_res.lvalue_is_copy(lv) )
             {
                 // NOTE: Copy types aren't moved.
             }
@@ -436,12 +435,14 @@ namespace
     public:
         ::std::vector<State>& get_composite(const ::MIR::TypeResolve& mir_res, const State& vs)
         {
-            MIR_ASSERT(mir_res, vs.index-1 < this->inner_states.size(), "");
+            MIR_ASSERT(mir_res, vs.index != 0, "No inner state");
+            MIR_ASSERT(mir_res, vs.index-1 < this->inner_states.size(), "Inner state index out of range - " << vs.index-1 << " >= " << this->inner_states.size());
             return this->inner_states.at( vs.index - 1 );
         }
         const ::std::vector<State>& get_composite(const ::MIR::TypeResolve& mir_res, const State& vs) const
         {
-            MIR_ASSERT(mir_res, vs.index-1 < this->inner_states.size(), "");
+            MIR_ASSERT(mir_res, vs.index != 0, "No inner state");
+            MIR_ASSERT(mir_res, vs.index-1 < this->inner_states.size(), "Inner state index out of range - " << vs.index-1 << " >= " << this->inner_states.size());
             return this->inner_states.at( vs.index - 1 );
         }
         const State& get_lvalue_state(const ::MIR::TypeResolve& mir_res, const ::MIR::LValue& lv) const
@@ -465,7 +466,16 @@ namespace
 
             for(const auto& w : lv.m_wrappers)
             {
-                if( state_p->is_composite() ) {
+                if( w.is_Index() )
+                {
+                    const auto& vs_i = get_lvalue_state(mir_res, ::MIR::LValue::new_Local(w.as_Index()));
+                    MIR_ASSERT(mir_res, vs_i.is_valid(), "Indexing with an invalidated value");
+                }
+            }
+            for(const auto& w : lv.m_wrappers)
+            {
+                if( !state_p->is_composite() ) {
+                    // Not a composite, stop immediately
                     break;
                 }
                 const auto& vs = *state_p;
@@ -478,11 +488,12 @@ namespace
                     state_p = &states[e];
                     ),
                 (Deref,
-                    MIR_TODO(mir_res, "Deref with composite state");
+                    //MIR_TODO(mir_res, "Deref with composite state - " << lv);
+                    const auto& states = this->get_composite(mir_res, vs);
+                    MIR_ASSERT(mir_res, states.size() == 2, "Deref on composite of invalid size - " << StateFmt(*this, vs));
+                    state_p = &states[1];
                     ),
                 (Index,
-                    const auto& vs_i = get_lvalue_state(mir_res, ::MIR::LValue::new_Local(e));
-                    MIR_ASSERT(mir_res, vs_i.is_valid(), "Indexing with an invalidated value");
                     MIR_BUG(mir_res, "Indexing a composite state");
                     ),
                 (Downcast,
@@ -536,13 +547,13 @@ namespace
                 }
 
                 state_p = nullptr;
-                TU_MATCHA( (w), (e),
-                (Field,
+                TU_MATCH_HDRA( (w), {)
+                TU_ARMA(Field, e) {
                     // Current isn't a composite, we need to change that
                     if( !cur_vs.is_composite() )
                     {
                         ::HIR::TypeRef    tmp;
-                        const auto& ty = mir_res.get_lvalue_type(tmp, lv, /*wrapper_skip_count=*/(&lv.m_wrappers.back() - &w));
+                        const auto& ty = mir_res.get_lvalue_type(tmp, lv, /*wrapper_skip_count=*/(1 + &lv.m_wrappers.back() - &w));
                         unsigned int n_fields = 0;
                         if( const auto* e = ty.m_data.opt_Tuple() )
                         {
@@ -566,7 +577,7 @@ namespace
                         }
                         else
                         {
-                            MIR_BUG(mir_res, "Unknown type being accessed with Field - " << ty);
+                            MIR_BUG(mir_res, "Unknown type being accessed with Field " << lv << ": " << ty);
                         }
 
                         cur_vs = State(this->allocate_composite(n_fields, cur_vs));
@@ -575,8 +586,8 @@ namespace
                     auto& states = this->get_composite(mir_res, cur_vs);
                     MIR_ASSERT(mir_res, e< states.size(), "Field index out of range");
                     state_p = &states[e];
-                    ),
-                (Deref,
+                    }
+                TU_ARMA(Deref, e) {
                     if( !cur_vs.is_composite() )
                     {
                         // TODO: Should this check if the type is Box?
@@ -589,8 +600,8 @@ namespace
                     auto& states = this->get_composite(mir_res, cur_vs);
                     MIR_ASSERT(mir_res, states.size() == 2, "Deref with invalid state list size");
                     state_p = &states[1];
-                    ),
-                (Index,
+                    }
+                TU_ARMA(Index, e) {
                     const auto& vs_i = get_lvalue_state(mir_res, ::MIR::LValue::new_Local(e));
                     MIR_ASSERT(mir_res, !cur_vs.is_composite(), "");
                     MIR_ASSERT(mir_res, !vs_i.is_composite(), "");
@@ -600,8 +611,8 @@ namespace
 
                     // NOTE: Ignore
                     return ;
-                    ),
-                (Downcast,
+                    }
+                TU_ARMA(Downcast, e) {
                     if( !cur_vs.is_composite() )
                     {
                         cur_vs = State(this->allocate_composite(1, cur_vs));
@@ -609,11 +620,10 @@ namespace
                     // Get composite state and assign into it
                     auto& states = this->get_composite(mir_res, cur_vs);
                     MIR_ASSERT(mir_res, states.size() == 1, "Downcast on composite of invalid size - " << lv << " - " << StateFmt(*this, cur_vs));
-                    this->clear_state(mir_res, states[0]);
-                    states[0] = mv$(new_vs);
-                    )
-                )
-                assert(state_p);
+                    state_p = &states[0];
+                    }
+                }
+                MIR_ASSERT(mir_res, state_p, "No state result?");
             }
             this->clear_state(mir_res, *state_p);
             *state_p = mv$(new_vs);
@@ -763,7 +773,7 @@ void MIR_Validate_FullValState(::MIR::TypeResolve& mir_res, const ::MIR::Functio
         {
             mir_res.set_cur_stmt(cur_block, i);
 
-            DEBUG(mir_res << blk.statements[i]);
+            DEBUG(mir_res << blk.statements[i] << " " << state);
 
             TU_MATCHA( (blk.statements[i]), (se),
             (Assign,
@@ -901,9 +911,7 @@ void MIR_Validate_FullValState(::MIR::TypeResolve& mir_res, const ::MIR::Functio
                 auto ensure_dropped = [&](const State& s, const ::MIR::LValue& lv) {
                     if( s.is_valid() ) {
                         // Check if !Copy
-                        ::HIR::TypeRef  tmp;
-                        const auto& ty = mir_res.get_lvalue_type(tmp, lv);
-                        if( mir_res.m_resolve.type_is_copy(mir_res.sp, ty) ) {
+                        if( mir_res.lvalue_is_copy(lv) ) {
                         }
                         else {
                             MIR_BUG(mir_res, "Value " << lv << " was not dropped at end of function");
