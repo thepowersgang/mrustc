@@ -928,7 +928,7 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
                     }
                     for(const auto& w : lv.m_wrappers)
                     {
-                        if( w.is_Index() && w.as_Index() == m_lv.as_Local() ) {
+                        if( w.is_Index() && m_lv.is_Local() && w.as_Index() == m_lv.as_Local() ) {
                             DEBUG(m_mir_res << "Index used");
                             state.mark_read(stmt_idx);
                             was_updated = true;
