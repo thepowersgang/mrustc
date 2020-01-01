@@ -349,7 +349,8 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             // - Emit code to destructure the matched pattern
             builder.set_cur_block( ac.destructures.back() );
             conv.destructure_from( arm.m_code->span(), pat, match_val.clone(), true );
-            builder.end_split_arm( arm.m_code->span(), pat_scope, /*reachable=*/false );    // HACK: Mark as not reachable, this scope isn't for codegen.
+            // TODO: Previous versions had reachable=false here (causing a use-after-free), would having `true` lead to leaks?
+            builder.end_split_arm( arm.m_code->span(), pat_scope, /*reachable=*/true );
             builder.pause_cur_block();
             // NOTE: Paused block resumed upon successful match
         }
