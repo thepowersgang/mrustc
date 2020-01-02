@@ -6,11 +6,14 @@ OUTDIR_SUF ?=
 MMIR ?=
 RUSTC_CHANNEL ?= stable
 RUSTC_VERSION ?= $(shell cat rust-version)
+
+EXESUF :=
 ifeq ($(OS),Windows_NT)
+  EXESUF := .exe
 else ifeq ($(shell uname -s || echo not),Darwin)
-OVERRIDE_SUFFIX ?= -macos
+  OVERRIDE_SUFFIX ?= -macos
 else
-OVERRIDE_SUFFIX ?= -linux
+  OVERRIDE_SUFFIX ?= -linux
 endif
 PARLEVEL ?= 1
 MINICARGO_FLAGS ?=
@@ -25,16 +28,16 @@ endif
 
 OUTDIR := output$(OUTDIR_SUF)/
 
-MRUSTC := bin/mrustc
-MINICARGO := tools/bin/minicargo
+MRUSTC ?= bin/mrustc$(EXESUF)
+MINICARGO := tools/bin/minicargo$(EXESUF)
 RUSTC_OUT_BIN := rustc
 ifeq ($(RUSTC_VERSION),1.29.0)
   RUSTC_OUT_BIN := rustc_binary
 endif
 ifeq ($(RUSTC_CHANNEL),nightly)
-	RUSTCSRC := rustc-nightly-src/
+  RUSTCSRC := rustc-nightly-src/
 else
-	RUSTCSRC := rustc-$(RUSTC_VERSION)-src/
+  RUSTCSRC := rustc-$(RUSTC_VERSION)-src/
 endif
 
 LLVM_CONFIG := $(RUSTCSRC)build/bin/llvm-config
@@ -127,6 +130,8 @@ $(RUSTCSRC)build/Makefile: $(RUSTCSRC)src/llvm/CMakeLists.txt
 #
 # Developement-only targets
 #
+$(OUTDIR)libcore.rlib: $(MRUSTC) $(MINICARGO)
+	$(MINICARGO) $(RUSTCSRC)src/libcore --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
 $(OUTDIR)liballoc.rlib: $(MRUSTC) $(MINICARGO)
 	$(MINICARGO) $(RUSTCSRC)src/liballoc --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
 $(OUTDIR)rustc-build/librustdoc.rlib: $(MRUSTC) LIBS
