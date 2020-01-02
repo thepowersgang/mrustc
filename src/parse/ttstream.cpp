@@ -68,8 +68,8 @@ Ident::Hygiene TTStream::realGetHygiene() const
 
 TTStreamO::TTStreamO(Span parent, ParseState ps, TokenTree input_tt):
     TokenStream(ps),
-    m_input_tt( mv$(input_tt) ),
-    m_parent_span( mv$(parent) )
+    m_parent_span( mv$(parent) ),
+    m_input_tt( mv$(input_tt) )
 {
     m_stack.push_back( ::std::make_pair(0, nullptr) );
 }

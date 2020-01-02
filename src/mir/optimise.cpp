@@ -3306,6 +3306,17 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                 {
                                 }
                                 break;
+                            case ::HIR::CoreType::F32:
+                            case ::HIR::CoreType::F64:
+                                // TODO: Cast to float
+                                break;
+                            case ::HIR::CoreType::Char:
+                                // TODO: Only `u8` can be casted to char
+                                break;
+                            case ::HIR::CoreType::Bool:
+                                break;
+                            case ::HIR::CoreType::Str:
+                                MIR_BUG(state, "Casting to str");
                             }
                         }
                     }
@@ -3339,6 +3350,17 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                         case ::HIR::CoreType::Isize:
                             new_value = ::MIR::Constant::make_Int({ static_cast<int32_t>(v), ct });
                             break;
+                        case ::HIR::CoreType::F32:
+                        case ::HIR::CoreType::F64:
+                            // TODO: Cast to float (can variants be casted to float?)
+                            break;
+                        case ::HIR::CoreType::Char:
+                            // TODO: Only `u8` can be casted to char (what about a u8 discriminator?)
+                            break;
+                        case ::HIR::CoreType::Bool:
+                            break;
+                        case ::HIR::CoreType::Str:
+                            MIR_BUG(state, "Casting to str");
                         }
                     }
                     else
@@ -3529,7 +3551,7 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                     }
                                 }
                                 break;
-                                
+
                             case ::MIR::eBinOp::BIT_SHL: {
                                 uint64_t shift_len = 0;
                                 TU_MATCH_HDRA( (val_r), {)
