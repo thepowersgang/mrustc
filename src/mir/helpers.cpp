@@ -597,6 +597,43 @@ namespace visit {
         visit_mir_lvalues_mut(state, const_cast<::MIR::Function&>(fcn), [&](auto& lv, auto im){ return cb(lv, im); });
     }
     */
+
+    void visit_terminator_target_mut(::MIR::Terminator& term, ::std::function<void(::MIR::BasicBlockId&)> cb) {
+        TU_MATCH_HDRA( (term), {)
+        TU_ARMA(Incomplete, e) {
+            }
+        TU_ARMA(Return, e) {
+            }
+        TU_ARMA(Diverge, e) {
+            }
+        TU_ARMA(Goto, e) {
+            cb(e);
+            }
+        TU_ARMA(Panic, e) {
+            cb(e.dst);
+            }
+        TU_ARMA(If, e) {
+            cb(e.bb0);
+            cb(e.bb1);
+            }
+        TU_ARMA(Switch, e) {
+            for(auto& target : e.targets)
+                cb(target);
+            }
+        TU_ARMA(SwitchValue, e) {
+            for(auto& target : e.targets)
+                cb(target);
+            cb(e.def_target);
+            }
+        TU_ARMA(Call, e) {
+            cb(e.ret_block);
+            cb(e.panic_block);
+            }
+        }
+    }
+    void visit_terminator_target(const ::MIR::Terminator& term, ::std::function<void(const ::MIR::BasicBlockId&)> cb) {
+        visit_terminator_target_mut(const_cast<::MIR::Terminator&>(term), cb);
+    }
 }   // namespace visit
 }   // namespace MIR
 namespace

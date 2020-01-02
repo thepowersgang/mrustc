@@ -148,6 +148,8 @@ struct LValue
         void inc_Downcast() { assert(is_Downcast()); *this = Wrapper::new_Downcast(as_Downcast() + 1); }
 
         Ordering ord(const Wrapper& x) const { return ::ord(val, x.val); }
+        bool operator==(const Wrapper& x) const { return val == x.val; }
+        bool operator!=(const Wrapper& x) const { return val != x.val; }
     };
 
     Storage m_root;
@@ -213,6 +215,21 @@ struct LValue
         assert(count > 0);
         assert(count <= m_wrappers.size());
         return LValue(m_root.clone(), ::std::vector<Wrapper>(m_wrappers.begin(), m_wrappers.end() - count));
+    }
+
+    // Returns true if this LValue is a subset of the other (e.g. `_1.0` is a subset of `_1.0*`)
+    bool is_subset_of(const LValue& other) const {
+        return m_root == other.m_root && other.m_wrappers.size() >= m_wrappers.size() && std::equal(m_wrappers.begin(), m_wrappers.end(), other.m_wrappers.begin());
+    }
+    // Returns true if one lvalue is a subset of the other
+    // - Equivalent to `a.is_subset_of(b) || b.is_subset_of(a)` (but more efficient)
+    bool is_either_subset(const LValue& other) const {
+        if( !(m_root == other.m_root) )
+            return false;
+        if( other.m_wrappers.size() > m_wrappers.size() )
+            return ::std::equal(m_wrappers.begin(), m_wrappers.end(), other.m_wrappers.begin());
+        else
+            return ::std::equal(other.m_wrappers.begin(), other.m_wrappers.end(), m_wrappers.begin());
     }
 
     /// Helper class that represents a LValue unwrapped to a certain degree

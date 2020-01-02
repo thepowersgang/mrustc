@@ -234,7 +234,9 @@ namespace
                 bool was_moved = false;
                 size_t  moved_bb, moved_stmt;
                 auto visit_cb = [&](const auto& lv, auto vu) {
-                    if(lv == root_lv && vu == ValUsage::Move) {
+                    // If this is a move that touches the slot of interest (in part or full)
+                    // e.g. if `root_lv` is `_1.0` then `_1` and `_1.0*` should be handled, but `_1.1` should not
+                    if(lv.is_either_subset(root_lv) && vu == ValUsage::Move) {
                         was_moved = true;
                         moved_bb = bb_idx;
                         moved_stmt = stmt_idx;
@@ -281,8 +283,7 @@ namespace
 
                 bool assigned = false;
                 auto visit_cb = [&](const auto& lv, auto vu) {
-                    //if(lv.is_subset_of(root_lv) && vu == ValUsage::Write) {
-                    if(lv.m_root == root_lv.m_root && vu == ValUsage::Write) {
+                    if(lv.is_either_subset(root_lv) && vu == ValUsage::Write) {
                         assigned = true;
                         //assigned_bb = this->bb_path[i];
                         //assigned_stmt = j;
@@ -590,10 +591,6 @@ namespace
                 TU_ARMA(Deref, e) {
                     if( !cur_vs.is_composite() )
                     {
-                        // TODO: Should this check if the type is Box?
-                        //::HIR::TypeRef    tmp;
-                        //const auto& ty = mir_res.get_lvalue_type(tmp, *e.val);
-
                         cur_vs = State(this->allocate_composite(2, cur_vs));
                     }
                     // Get composite state and assign into it
@@ -705,6 +702,7 @@ void MIR_Validate_FullValState(::MIR::TypeResolve& mir_res, const ::MIR::Functio
     // TODO: Use a timer to check elapsed CPU time in this function, and check on each iteration
     // - If more than `n` (10?) seconds passes on one function, warn and abort
     //ElapsedTimeCounter    timer;
+    ::std::vector<unsigned> block_ref_counts( fcn.blocks.size() );
     ::std::vector<StateSet> block_entry_states( fcn.blocks.size() );
 
     // Determine value lifetimes (BBs in which Copy values are valid)
@@ -725,6 +723,14 @@ void MIR_Validate_FullValState(::MIR::TypeResolve& mir_res, const ::MIR::Functio
     state.args = H::make_list(mir_res.m_args.size(), true);
     state.locals = H::make_list(fcn.locals.size(), false);
     state.drop_flags = fcn.drop_flags;
+
+    block_ref_counts[0] = 1;
+    for(const auto& blk : fcn.blocks)
+    {
+        MIR::visit::visit_terminator_target(blk.terminator, [&](const ::MIR::BasicBlockId& e) {
+            block_ref_counts.at(e) += 1;
+            });
+    }
 
     ::std::vector< ::std::pair<unsigned int, ValueStates> > todo_queue;
     todo_queue.push_back( ::std::make_pair(0, mv$(state)) );
@@ -760,7 +766,8 @@ void MIR_Validate_FullValState(::MIR::TypeResolve& mir_res, const ::MIR::Functio
         }
 
         // If this state already exists in the map, skip
-        if( ! block_entry_states[cur_block].add_state(state) )
+        // - Note: The `block_ref_counts` check saves a tiny bit of time, but not a huge amount
+        if( block_ref_counts[cur_block] > 1 && ! block_entry_states[cur_block].add_state(state) )
         {
             DEBUG("BB" << cur_block << " - Nothing new");
             continue ;
@@ -901,6 +908,9 @@ void MIR_Validate_FullValState(::MIR::TypeResolve& mir_res, const ::MIR::Functio
 
         mir_res.set_cur_stmt_term(cur_block);
         DEBUG(mir_res << " " << blk.terminator);
+        // TODO: Don't clone/push if the state already exists in the target
+        // 1. Check all targets, calling `add_state` and checking result.
+        //  - Count number of true results (and which bbs they were)
         TU_MATCHA( (blk.terminator), (te),
         (Incomplete,
             ),
@@ -966,7 +976,12 @@ void MIR_Validate_FullValState(::MIR::TypeResolve& mir_res, const ::MIR::Functio
                     state.move_lvalue(mir_res, *e);
                 }
             }
-            todo_queue.push_back( ::std::make_pair(te.panic_block, state.clone()) );
+            if( fcn.blocks[te.panic_block].statements.empty() && fcn.blocks[te.panic_block].terminator.is_Diverge() ) {
+                // Don't bother, it's just an empty block
+            }
+            else {
+                todo_queue.push_back( ::std::make_pair(te.panic_block, state.clone()) );
+            }
             state.mark_lvalue_valid(mir_res, te.ret_val);
             todo_queue.push_back( ::std::make_pair(te.ret_block, mv$(state)) );
             )
