@@ -200,7 +200,8 @@ namespace {
         ::std::string   cur_literal;
 
         const char* s = format_string.c_str();
-        for( ; *s; s ++)
+        const char* const s_end = s + format_string.length();
+        for( ; s < s_end; s ++)
         {
             if( *s != '{' )
             {
@@ -229,7 +230,7 @@ namespace {
 
                 // Debugging: A view of the formatting fragment
                 const char* s2 = s;
-                while(*s2 && *s2 != '}')
+                while(s2 < s_end && *s2 != '}')
                     s2 ++;
                 auto fmt_frag_str = string_view { s, s2 };
 
