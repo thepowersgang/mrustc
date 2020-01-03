@@ -63,7 +63,7 @@ public:
                 if( !(TOK_RWORD_PUB <= tok.type() && tok.type() <= TOK_RWORD_UNSIZED) )
                     throw ParseError::Unexpected(lex, tok);
             case TOK_IDENT: {
-                auto name = tok.type() == TOK_IDENT ? tok.istr() : RcString::new_interned(FMT(tok));
+                auto name = tok.type() == TOK_IDENT ? tok.istr() : RcString::new_interned(tok.to_str());
                 GET_CHECK_TOK(tok, lex, TOK_COLON);
                 GET_CHECK_TOK(tok, lex, TOK_IDENT);
                 RcString type = tok.istr();
@@ -249,12 +249,14 @@ public:
             else if( tok.type() == TOK_IDENT || tok.type() >= TOK_RWORD_PUB )
             {
                 // Look up the named parameter in the list of param names for this arm
-                auto name = tok.type() == TOK_IDENT ? tok.istr() : RcString::new_interned(FMT(tok));
+                auto name = tok.type() == TOK_IDENT ? tok.istr() : RcString::new_interned(tok.to_str());
                 unsigned int idx = ::std::find(var_names.begin(), var_names.end(), name) - var_names.begin();
                 if( idx == var_names.size() ) {
                     // TODO: `error-chain`'s quick_error macro has an arm which refers to an undefined metavar.
                     // - Maybe emit a warning and use a marker index.
-                    WARNING(lex.point_span(), W0000, "Macro variable $" << name << " not found");
+                    // NOTE: No warning emitted, it's just noise...
+                    //WARNING(lex.point_span(), W0000, "Macro variable $" << name << " not found");
+
                     // Emit the literal $ <name>
                     ret.push_back( MacroExpansionEnt(Token(TOK_DOLLAR)) );
                     ret.push_back( MacroExpansionEnt(mv$(tok)) );
