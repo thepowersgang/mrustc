@@ -390,7 +390,7 @@ namespace HIR {
                 return c.m_value_res.clone();
                 }
             TU_ARM(c, Generic, e2) {
-                MIR_TODO(state, "Handle MIR::Constant::Generic in consteval");
+                return ::HIR::Literal::make_Defer({});
                 }
             TU_ARM(c, ItemAddr, e2)
                 return ::HIR::Literal::make_BorrowPath( ms.monomorph(state.sp, *e2) );
@@ -479,12 +479,11 @@ namespace HIR {
                         val = ::HIR::Literal::make_Defer({});
                     }
                     else
-                    TU_MATCH_DEF(::HIR::TypeRef::Data, (e.type.m_data), (te),
-                    (
+                    TU_MATCH_HDRA( (e.type.m_data), {)
+                    default:
                         // NOTE: Can be an unsizing!
                         MIR_TODO(state, "RValue::Cast to " << e.type << ", val = " << inval);
-                        ),
-                    (Primitive,
+                    TU_ARMA(Primitive, te) {
                         uint64_t mask;
                         switch(te)
                         {
@@ -534,9 +533,9 @@ namespace HIR {
                         default:
                             MIR_TODO(state, "RValue::Cast to " << e.type << ", val = " << inval);
                         }
-                        ),
+                        }
                     // Allow casting any integer value to a pointer (TODO: Ensure that the pointer is sized?)
-                    (Pointer,
+                    TU_ARMA(Pointer, te) {
                         TU_IFLET( ::HIR::Literal, inval, Integer, i,
                             val = ::HIR::Literal(i);
                         )
@@ -546,16 +545,16 @@ namespace HIR {
                         else {
                             MIR_BUG(state, "Invalid cast of " << inval.tag_str() << " to " << e.type);
                         }
-                        ),
-                    (Borrow,
+                        }
+                    TU_ARMA(Borrow, te) {
                         if( inval.is_BorrowData() || inval.is_BorrowPath() ) {
                             val = mv$(inval);
                         }
                         else {
                             MIR_BUG(state, "Invalid cast of " << inval.tag_str() << " to " << e.type);
                         }
-                        )
-                    )
+                        }
+                    }
                     }
                 TU_ARMA(BinOp, e) {
                     auto inval_l = read_param(e.val_l);
@@ -563,11 +562,10 @@ namespace HIR {
                     if( inval_l.is_Defer() || inval_r.is_Defer() )
                         return ::HIR::Literal::make_Defer({});
                     MIR_ASSERT(state, inval_l.tag() == inval_r.tag(), "Mismatched literal types in binop - " << inval_l << " and " << inval_r);
-                    TU_MATCH_DEF( ::HIR::Literal, (inval_l, inval_r), (l, r),
-                    (
+                    TU_MATCH_HDRA( (inval_l, inval_r), {)
+                    default:
                         MIR_TODO(state, "RValue::BinOp - " << sa.src << ", val = " << inval_l << " , " << inval_r);
-                        ),
-                    (Float,
+                    TU_ARMA(Float, l, r) {
                         switch(e.op)
                         {
                         case ::MIR::eBinOp::ADD:    val = ::HIR::Literal( l + r );  break;
@@ -595,8 +593,8 @@ namespace HIR {
                         case ::MIR::eBinOp::LT: val = ::HIR::Literal( static_cast<uint64_t>(l <  r) );  break;
                         case ::MIR::eBinOp::LE: val = ::HIR::Literal( static_cast<uint64_t>(l <= r) );  break;
                         }
-                        ),
-                    (Integer,
+                        }
+                    TU_ARMA(Integer, l, r) {
                         switch(e.op)
                         {
                         case ::MIR::eBinOp::ADD:    val = ::HIR::Literal( l + r );  break;
@@ -623,35 +621,36 @@ namespace HIR {
                         case ::MIR::eBinOp::LT: val = ::HIR::Literal( static_cast<uint64_t>(l <  r) );  break;
                         case ::MIR::eBinOp::LE: val = ::HIR::Literal( static_cast<uint64_t>(l <= r) );  break;
                         }
-                        )
-                    )
+                        }
+                    }
                     }
                 TU_ARMA(UniOp, e) {
                     auto inval = local_state.read_lval(e.val);
                     if( inval.is_Defer() )
                         return ::HIR::Literal::make_Defer({});
-                    TU_IFLET( ::HIR::Literal, inval, Integer, i,
+                    
+                    if( const auto* i = inval.opt_Integer() ) {
                         switch( e.op )
                         {
                         case ::MIR::eUniOp::INV:
-                            val = ::HIR::Literal( ~i );
+                            val = ::HIR::Literal( ~*i );
                             break;
                         case ::MIR::eUniOp::NEG:
-                            val = ::HIR::Literal( static_cast<uint64_t>(-static_cast<int64_t>(i)) );
+                            val = ::HIR::Literal( static_cast<uint64_t>(-static_cast<int64_t>(*i)) );
                             break;
                         }
-                    )
-                    else TU_IFLET( ::HIR::Literal, inval, Float, i,
+                    }
+                    else if( const auto* i = inval.opt_Float() ) {
                         switch( e.op )
                         {
                         case ::MIR::eUniOp::INV:
                             MIR_BUG(state, "Invalid invert of Float");
                             break;
                         case ::MIR::eUniOp::NEG:
-                            val = ::HIR::Literal( -i );
+                            val = ::HIR::Literal( -*i );
                             break;
                         }
-                    )
+                    }
                     else {
                         MIR_BUG(state, "Invalid invert of " << inval.tag_str());
                     }
@@ -1083,9 +1082,12 @@ namespace {
                     auto nvs = NewvalState { *m_mod, *m_mod_path, ty_name };
                     auto eval = ::HIR::Evaluator { expr_ptr->span(), m_crate, nvs };
                     auto val = eval.evaluate_constant(::HIR::ItemPath(*m_mod_path, ty_name.c_str()), expr_ptr, ::HIR::CoreType::Usize);
-                    if( !val.is_Integer() )
-                        ERROR(expr_ptr->span(), E0000, "Array size isn't an integer");
-                    e.size_val = static_cast<size_t>(val.as_Integer());
+                    if( val.is_Defer() )
+                        TODO(expr_ptr->span(), "Handle defer for array sizes");
+                    else if( val.is_Integer() )
+                        e.size_val = static_cast<size_t>(val.as_Integer());
+                    else
+                        ERROR(expr_ptr->span(), E0000, "Array size isn't an integer, got " << val.tag_str());
                 }
                 DEBUG("Array " << ty << " - size = " << e.size_val);
             )
