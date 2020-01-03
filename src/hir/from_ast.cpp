@@ -16,6 +16,7 @@
 #include <macro_rules/macro_rules.hpp>
 #include <hir/item_path.hpp>
 #include <limits.h>
+#include <hir_typeck/helpers.hpp>   // monomorph
 
 ::HIR::Module LowerHIR_Module(const ::AST::Module& module, ::HIR::ItemPath path, ::std::vector< ::HIR::SimplePath> traits = {});
 ::HIR::Function LowerHIR_Function(::HIR::ItemPath path, const ::AST::AttributeList& attrs, const ::AST::Function& f, const ::HIR::TypeRef& self_type);
@@ -76,14 +77,64 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
                 }));
             }
         TU_ARMA(IsTrait, e) {
+            const auto sp = Span();
             auto type = LowerHIR_Type(e.type);
 
             // TODO: Check if this trait is `Sized` and ignore if it is? (It's a useless bound)
             
+            struct H {
+                static ::HIR::GenericPath find_source_trait(
+                    const Span& sp,
+                    const ::HIR::GenericPath& path, const AST::PathBinding_Type::Data_Trait& pbe, const RcString& name,
+                    t_cb_generic monomorph_cb
+                    )
+                {
+                    if(pbe.hir)
+                    {
+                        assert(pbe.hir);
+                        const auto& trait = *pbe.hir;
+                        TODO(sp, "");
+                    }
+                    else if( pbe.trait_ )
+                    {
+                        assert(pbe.trait_);
+                        const auto& trait = *pbe.trait_;
+                        for(const auto& i : trait.items())
+                        {
+                            if( i.data.is_Type() && i.name == name ) {
+                                // Return current path.
+                                return monomorphise_genericpath_with(sp, path, monomorph_cb, /*allow_infer=*/false);
+                            }
+                        }
+
+                        auto cb = [&](const HIR::TypeRef& t) {
+                            return path.m_params.m_types.at(t.m_data.as_Generic().binding).clone();
+                            };
+                        for( const auto& st : trait.supertraits() )
+                        {
+                            auto b = LowerHIR_TraitPath(sp, st.ent.path, true);
+                            auto rv = H::find_source_trait(sp, b.m_path, st.ent.path.m_bindings.type.as_Trait(), name, cb);
+                            if(rv != HIR::GenericPath())
+                                return rv;
+                        }
+                    }
+                    else
+                    {
+                        BUG(sp, "Unbound path");
+                    }
+                    return ::HIR::GenericPath();
+                }
+            };
+
+            auto bound_trait_path = LowerHIR_TraitPath(bound.span, e.trait, /*allow_bounds=*/true);
             for(const auto& b : e.trait.nodes().back().args().m_assoc_bound)
             {
+                auto src_trait = H::find_source_trait(sp, bound_trait_path.m_path, e.trait.m_bindings.type.as_Trait(), b.first, [&](const auto& t){ return t.clone(); });
+                if(src_trait == ::HIR::GenericPath())
+                    ERROR(sp, E0000, "Unable to find source trait for " << b.first << " in " << bound_trait_path.m_path);
                 rv.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({
-                    type.clone(),
+                    ::HIR::Path(type.clone(), mv$(src_trait), b.first),
+                    // TODO: Recursively expand
                     LowerHIR_TraitPath(bound.span, b.second)
                     }));
             }
@@ -91,7 +142,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
             rv.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({
                 /*LowerHIR_HigherRankedBounds(e.outer_hrbs),*/
                 mv$(type),
-                LowerHIR_TraitPath(bound.span, e.trait, /*allow_bounds=*/true)
+                mv$(bound_trait_path)
                 }));
             //rv.m_bounds.back().as_TraitBound().trait.m_hrls = LowerHIR_HigherRankedBounds(e.inner_hrbs);
             }

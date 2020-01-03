@@ -411,10 +411,9 @@ namespace HIR {
         for(;;)
         {
             const auto& block = fcn.blocks[cur_block];
-            unsigned int next_stmt_idx = 0;
             for(const auto& stmt : block.statements)
             {
-                state.set_cur_stmt(cur_block, next_stmt_idx++);
+                state.set_cur_stmt(cur_block, &stmt - &block.statements.front());
                 DEBUG(state << stmt);
 
                 if( ! stmt.is_Assign() ) {
@@ -716,6 +715,7 @@ namespace HIR {
                 dst = mv$(val);
             }
             state.set_cur_stmt_term(cur_block);
+            DEBUG(state << block.terminator);
             TU_MATCH_HDRA( (block.terminator), {)
             default:
                 MIR_BUG(state, "Unexpected terminator - " << block.terminator);
@@ -1042,6 +1042,23 @@ namespace {
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);
 
             m_monomorph_state.pp_impl = nullptr;
+
+            m_mod = nullptr;
+            m_mod_path = nullptr;
+        }
+        void visit_type_impl(::HIR::TypeImpl& impl) override
+        {
+            static Span sp;
+            auto mp = ::HIR::ItemPath(impl.m_src_module);
+            m_mod_path = &mp;
+            m_mod = &m_crate.get_mod_by_path(sp, impl.m_src_module);
+
+            ::HIR::PathParams   pp_impl;
+            for(const auto& tp : impl.m_params.m_types)
+                pp_impl.m_types.push_back( ::HIR::TypeRef(tp.m_name, pp_impl.m_types.size() | 256) );
+            m_monomorph_state.pp_impl = &pp_impl;
+
+            ::HIR::Visitor::visit_type_impl(impl);
 
             m_mod = nullptr;
             m_mod_path = nullptr;
