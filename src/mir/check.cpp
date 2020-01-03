@@ -707,6 +707,9 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                         (Const,
                             // TODO: Check result type against type of const
                             ),
+                        (Generic,
+                            // TODO: Check result type against type of const
+                            ),
                         (ItemAddr,
                             // TODO: Check result type against pointer to item type
                             )

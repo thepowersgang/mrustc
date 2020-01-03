@@ -31,7 +31,9 @@ namespace MIR {
             os << ::std::hex;
             for(auto v : e)
             {
-                if( ' ' <= v && v < 0x7F && v != '"' && v != '\\' )
+                if( v == '\\' || v == '"' )
+                    os << "\\" << v;
+                else if( ' ' <= v && v < 0x7F )
                     os << v;
                 else if( v < 16 )
                     os << "\\x0" << (unsigned int)v;
@@ -46,6 +48,9 @@ namespace MIR {
             ),
         (Const,
             os << *e.p;
+            ),
+        (Generic,
+            os << e.name << "/*" << e.binding << "*/";
             ),
         (ItemAddr,
             os << "&" << *e;
@@ -84,6 +89,9 @@ namespace MIR {
             ),
         (Const,
             return ::ord(*ae.p, *be.p);
+            ),
+        (Generic,
+            return ::ord(ae.binding, be.binding);
             ),
         (ItemAddr,
             return ::ord(*ae, *be);
@@ -607,6 +615,7 @@ namespace MIR {
     (Bytes, return ::MIR::Constant(e2); ),
     (StaticString, return ::MIR::Constant(e2); ),
     (Const, return ::MIR::Constant::make_Const({box$(e2.p->clone())}); ),
+    (Generic, return ::MIR::Constant(e2); ),
     (ItemAddr, return ::MIR::Constant(box$(e2->clone())); )
     )
     throw "";

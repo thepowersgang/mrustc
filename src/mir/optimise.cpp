@@ -1391,6 +1391,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
             (Const,
                 return ::MIR::Constant::make_Const({ box$(this->monomorph(*ce.p)) });
                 ),
+            (Generic, return ::MIR::Constant(ce);),
             (ItemAddr,
                 return ::MIR::Constant::make_ItemAddr(box$(this->monomorph(*ce)));
                 )
@@ -3686,6 +3687,8 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                             (Const,
                                 // TODO:
                                 ),
+                            (Generic,
+                                ),
                             (ItemAddr,
                                 )
                             )
@@ -3710,6 +3713,8 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                             (StaticString, ),
                             (Const,
                                 // TODO:
+                                ),
+                            (Generic,
                                 ),
                             (ItemAddr,
                                 )

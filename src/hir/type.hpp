@@ -237,6 +237,10 @@ public:
         }),
     (Array, struct {
         ::std::unique_ptr<TypeRef>  inner;
+        // TODO: Support deferred sizes (when a const generic is present)
+        // - The rust RFC spcifies that they're treated as opaque expressions (only an identical expression counts)
+        // - Could compare the generated MIR? (that already has some comparision support)
+        // - OR: When running consteval, build up an expression type in HIR::Literal
         ::std::shared_ptr<::HIR::ExprPtr> size;
         uint64_t  size_val;
         }),

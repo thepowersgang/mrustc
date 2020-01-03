@@ -6018,6 +6018,9 @@ namespace {
                     m_of << "; v;})";
                 }
                 }
+            TU_ARMA(Generic, c) {
+                MIR_BUG(*m_mir_res, "Generic value present at codegen");
+                }
             TU_ARMA(ItemAddr, c) {
                 TU_MATCHA( (c->m_data), (pe),
                 (Generic,

@@ -549,6 +549,9 @@ struct MirHelpers
         TU_ARM(c, Const, ce) {
             LOG_BUG("Constant::Const in mmir");
             } break;
+        TU_ARM(c, Generic, ce) {
+            LOG_BUG("Constant::Generic in mmir");
+            } break;
         TU_ARM(c, Bytes, ce) {
             ty = ::HIR::TypeRef(RawType::U8).wrap(TypeWrapper::Ty::Slice, 0).wrap(TypeWrapper::Ty::Borrow, 0);
             Value val = Value(ty);

@@ -1522,6 +1522,8 @@ void Trans_Enumerate_FillFrom_MIR_Constant(MIR::EnumCache& state, const ::MIR::C
         // - Check if this constant has a value of Defer
         state.insert_path(*ce.p);
         ),
+    (Generic,
+        ),
     (ItemAddr,
         state.insert_path(*ce);
         )

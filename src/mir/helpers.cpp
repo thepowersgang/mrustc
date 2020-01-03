@@ -301,6 +301,9 @@ const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, cons
             MIR_BUG(*this, "get_const_type - Not a constant " << *e.p);
         }
         ),
+    (Generic,
+        return m_resolve.get_const_param_type(this->sp, e.binding).clone();
+        ),
     (ItemAddr,
         MonomorphState  p;
         auto v = m_resolve.get_value(this->sp, *e, p, /*signature_only=*/true);

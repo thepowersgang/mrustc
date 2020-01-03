@@ -853,6 +853,10 @@
             (Const,
                 serialise_path(*e.p);
                 ),
+            (Generic,
+                m_out.write_string(e.name);
+                m_out.write_count(e.binding);
+                ),
             (ItemAddr,
                 serialise_path(*e);
                 )

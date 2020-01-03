@@ -469,6 +469,10 @@ TAGGED_UNION_EX(Constant, (), Int, (
     // NOTE: These are behind pointers to save inline space (HIR::Path is ~11
     // words, compared to 4 for MIR::Constant without it)
     (Const, struct { ::std::unique_ptr<::HIR::Path> p; }),   // `const`
+    (Generic, struct {
+        RcString    name;
+        unsigned    binding;
+        }),
     (ItemAddr, ::std::unique_ptr<::HIR::Path>) // address of a value
     ), (), (), (
         friend ::std::ostream& operator<<(::std::ostream& os, const Constant& v);

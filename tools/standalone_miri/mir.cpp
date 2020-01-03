@@ -52,7 +52,9 @@ namespace MIR {
             os << ::std::hex;
             for(auto v : e)
             {
-                if( ' ' <= v && v < 0x7F && v != '"' && v != '\\' )
+                if( v == '\\' || v == '"' )
+                    os << "\\" << v;
+                else if( ' ' <= v && v < 0x7F )
                     os << v;
                 else if( v < 16 )
                     os << "\\x0" << (unsigned int)v;
@@ -63,13 +65,16 @@ namespace MIR {
             os << ::std::dec;
             ),
         (StaticString,
-            os << "\"" << e << "\"";
+            os << "\"" << FmtEscaped(e) << "\"";
             ),
         (Const,
             os << *e.p;
             ),
+        (Generic,
+            os << e.name << "/*" << e.binding << "*/";
+            ),
         (ItemAddr,
-            os << "&" << *e;
+            os << "addr " << *e;
             )
         )
         return os;

@@ -730,6 +730,8 @@ namespace {
                         (Const,
                             upper_visitor.visit_path(*ce.p, ::HIR::Visitor::PathContext::VALUE);
                             ),
+                        (Generic,
+                            ),
                         (ItemAddr,
                             upper_visitor.visit_path(*ce, ::HIR::Visitor::PathContext::VALUE);
                             )

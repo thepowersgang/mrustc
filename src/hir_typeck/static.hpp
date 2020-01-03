@@ -82,6 +82,8 @@ public:
         return m_item_generics ? *m_item_generics : empty;
     }
 
+    const ::HIR::TypeRef& get_const_param_type(const Span& sp, unsigned binding) const;
+
     /// \brief State manipulation
     /// \{
     NullOnDrop<const ::HIR::GenericParams> set_impl_generics(const ::HIR::GenericParams& gps) {

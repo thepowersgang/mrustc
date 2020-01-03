@@ -1047,6 +1047,26 @@ void TraitResolution::prep_indexes()
         });
 }
 
+const ::HIR::TypeRef& TraitResolution::get_const_param_type(const Span& sp, unsigned binding) const
+{
+    const HIR::GenericParams* p;
+    switch(binding >> 8)
+    {
+    case 0: // impl level
+        p = m_impl_params;
+        break;
+    case 1: // method level
+        p = m_item_params;
+        break;
+    default:
+        TODO(sp, "Typecheck const generics - look up the type");
+    }
+    auto slot = binding & 0xFF;
+    ASSERT_BUG(sp, p, "No generic list");
+    ASSERT_BUG(sp, slot < p->m_values.size(), "Generic param index out of range");
+    return p->m_values.at(slot).m_type;
+}
+
 
 ::HIR::Compare TraitResolution::compare_pp(const Span& sp, const ::HIR::PathParams& left, const ::HIR::PathParams& right) const
 {

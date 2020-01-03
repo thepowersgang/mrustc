@@ -50,6 +50,9 @@ namespace {
                 box$(params.monomorph(resolve, *ce.p))
                 });
             ),
+        (Generic,
+            TODO(Span(), "Monomorphise MIR generic constant");
+            ),
         (ItemAddr,
             auto p = params.monomorph(resolve, *ce);
             // TODO: If this is a pointer to a function on a trait object, replace with the address loaded from the vtable.

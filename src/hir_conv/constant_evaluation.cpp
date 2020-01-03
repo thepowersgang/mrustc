@@ -389,6 +389,9 @@ namespace HIR {
                 }
                 return c.m_value_res.clone();
                 }
+            TU_ARM(c, Generic, e2) {
+                MIR_TODO(state, "Handle MIR::Constant::Generic in consteval");
+                }
             TU_ARM(c, ItemAddr, e2)
                 return ::HIR::Literal::make_BorrowPath( ms.monomorph(state.sp, *e2) );
             }

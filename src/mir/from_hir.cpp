@@ -2331,8 +2331,7 @@ namespace {
         void visit(::HIR::ExprNode_ConstParam& node) override
         {
             TRACE_FUNCTION_F("_ConstParam - " << node.m_name << " #" << node.m_binding);
-            //m_builder.set_result( node.span(), m_builder.get_variable(node.span(), node.m_slot) );
-            TODO(node.span(), "Convert const generics to MIR (needs a MIR constant type)");
+            m_builder.set_result( node.span(), ::MIR::Constant::make_Generic({ node.m_name, node.m_binding }));
         }
 
         void visit_sl_inner(::HIR::ExprNode_StructLiteral& node, const ::HIR::Struct& str, const ::HIR::GenericPath& path)

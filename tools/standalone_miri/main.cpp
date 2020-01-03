@@ -12,7 +12,7 @@
 #include <iomanip>
 #include "debug.hpp"
 #include "miri.hpp"
-
+#include "../../src/common.hpp"
 
 struct ProgramOptions
 {
@@ -199,4 +199,55 @@ int ProgramOptions::parse(int argc, const char* argv[])
 void ProgramOptions::show_help(const char* prog) const
 {
     ::std::cout << "USAGE: " << prog << " <infile> <... args>" << ::std::endl;
+}
+
+
+::std::ostream& operator<<(::std::ostream& os, const FmtEscaped& x)
+{
+    os << ::std::hex;
+    for(auto s = x.s; *s != '\0'; s ++)
+    {
+        switch(*s)
+        {
+        case '\0':  os << "\\0";    break;
+        case '\n':  os << "\\n";    break;
+        case '\\':  os << "\\\\";   break;
+        case '"':   os << "\\\"";   break;
+        default:
+            uint8_t v = *s;
+            if( v < 0x80 )
+            {
+                if( v < ' ' || v > 0x7F )
+                    os << "\\u{" << ::std::hex << (unsigned int)v << "}";
+                else
+                    os << v;
+            }
+            else if( v < 0xC0 )
+                ;
+            else if( v < 0xE0 )
+            {
+                uint32_t    val = (uint32_t)(v & 0x1F) << 6;
+                v = (uint8_t)*++s; if( (v & 0xC0) != 0x80 ) { s--; continue ; } val |= (uint32_t)(v & 0x3F) << 0;
+                os << "\\u{" << ::std::hex << val << "}";
+            }
+            else if( v < 0xF0 )
+            {
+                uint32_t    val = (uint32_t)(v & 0x0F) << 12;
+                v = (uint8_t)*++s; if( (v & 0xC0) != 0x80 ) { s--; continue ; } val |= (uint32_t)(v & 0x3F) << 6;
+                v = (uint8_t)*++s; if( (v & 0xC0) != 0x80 ) { s--; continue ; } val |= (uint32_t)(v & 0x3F) << 0;
+                os << "\\u{" << ::std::hex << val << "}";
+            }
+            else if( v < 0xF8 )
+            {
+                uint32_t    val = (uint32_t)(v & 0x07) << 18;
+                v = (uint8_t)*++s; if( (v & 0xC0) != 0x80 ) { s--; continue ; } val |= (uint32_t)(v & 0x3F) << 12;
+                v = (uint8_t)*++s; if( (v & 0xC0) != 0x80 ) { s--; continue ; } val |= (uint32_t)(v & 0x3F) << 6;
+                v = (uint8_t)*++s; if( (v & 0xC0) != 0x80 ) { s--; continue ; } val |= (uint32_t)(v & 0x3F) << 0;
+                os << "\\u{" << ::std::hex << val << "}";
+            }
+            break;
+        }
+    }
+    os << ::std::dec;
+    return os;
 }
