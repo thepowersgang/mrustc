@@ -837,13 +837,22 @@ void RustPrinter::print_params(const AST::GenericParams& params)
             if( !is_first )
                 m_os << ", ";
             TU_MATCH_HDRA( (p), {)
+            TU_ARMA(None, p) {
+                m_os << "/*-*/";
+                }
             TU_ARMA(Lifetime, p) {
+                //m_os << p.attrs();
                 m_os << p;
                 }
             TU_ARMA(Type, p) {
+                m_os << p.attrs();
                 m_os << p.name();
                 if( !p.get_default().is_wildcard() )
                     m_os << " = " << p.get_default();
+                }
+            TU_ARMA(Value, p) {
+                m_os << p.attrs();
+                m_os << "const " << p.name() << ": " << p.type();
                 }
             }
             is_first = false;
