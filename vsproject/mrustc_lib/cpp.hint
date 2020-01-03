@@ -1,0 +1,10 @@
+// Hint files help the Visual Studio IDE interpret Visual C++ identifiers
+// such as names of functions and macros.
+// For more information see https://go.microsoft.com/fwlink/?linkid=865984
+#define TODO(span, msg) do { const char* __TODO_func = __func__; ::Span(span).bug([&](::std::ostream& os) { os << __FILE__ << ":" << __LINE__ << ": TODO: " << __TODO_func << " - " << msg; }); throw ::std::runtime_error("Bug (todo) fell through"); } while(0)
+#define TODO(fmt) do { ::std::cerr << "TODO: " << fmt << ::std::endl; abort(); } while(0)
+
+// Hint files help the Visual Studio IDE interpret Visual C++ identifiers
+// such as names of functions and macros.
+// For more information see https://go.microsoft.com/fwlink/?linkid=865984
+#define BUG(span, msg) do { ::Span(span).bug([&](::std::ostream& os) { os << __FILE__ << ":" << __LINE__ << ": " << msg; }); throw ::std::runtime_error("Bug fell through"); } while(0)
