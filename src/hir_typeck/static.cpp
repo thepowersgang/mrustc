@@ -2002,6 +2002,10 @@ HIR::Compare StaticTraitResolve::type_is_interior_mutable(const Span& sp, const 
         }
         return HIR::Compare::Unequal;
         }
+    TU_ARMA(Closure, e) {
+        // TODO: Closures could be known?
+        return HIR::Compare::Fuzzy;
+        }
     // Borrow and pointer are not interior mutable (they might point to something, but that doesn't matter)
     TU_ARMA(Borrow, e) {
         return HIR::Compare::Unequal;

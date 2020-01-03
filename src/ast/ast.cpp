@@ -410,13 +410,13 @@ Item Item::clone() const
 
 ::std::ostream& operator<<(::std::ostream& os, const HigherRankedBounds& x)
 {
-    if( x.m_lifetimes.empty() ) {
-        return os;
+    if( !x.empty() )
+    {
+        os << "for<";
+        for(const auto& l : x.m_lifetimes)
+            os << "'" << l << ",";
+        os << "> ";
     }
-    os << "for<";
-    for(const auto& l : x.m_lifetimes)
-        os << "'" << l << ",";
-    os << "> ";
     return os;
 }
 
@@ -424,6 +424,8 @@ Item Item::clone() const
 GenericParam GenericParam::clone() const
 {
     TU_MATCH_HDRA( (*this), {)
+    TU_ARMA(None, e)
+        return e;
     TU_ARMA(Lifetime, e)
         return LifetimeParam(e);
     TU_ARMA(Type, e)
@@ -437,6 +439,8 @@ GenericParam GenericParam::clone() const
 std::ostream& operator<<(std::ostream& os, const GenericParam& x)
 {
     TU_MATCH_HDRA( (x), {)
+    TU_ARMA(None, e)
+        os << "/*-*/";
     TU_ARMA(Lifetime, e)
         os << e;
     TU_ARMA(Type, e)

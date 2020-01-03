@@ -222,6 +222,8 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
                 }
             TU_ARMA(Variable, e)
                 BUG(sp, "Import was bound to a variable");
+            TU_ARMA(Generic, e)
+                BUG(sp, "Import was bound to a generic value");
             TU_ARMA(Struct, e)
                 _add_item_value(sp, mod, i_data.name, i.is_pub,  i_data.path, !allow_collide);
             TU_ARMA(EnumVar, e)
