@@ -89,6 +89,7 @@
 #define TU_GM(SUF,...) TU_EXP1( TU_GM_I(SUF, __VA_ARGS__,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0) )
 // - _DISP based variant (for iteration)
 #define TU_GMX(...) TU_EXP1( TU_GM(TU_DISP, __VA_ARGS__) )
+#define TU_GMO(...) TU_EXP1( TU_GM(TU_DISPO, __VA_ARGS__) )
 #define TU_GMA(...) TU_EXP1( TU_GM(TU_DISPA, __VA_ARGS__) )
 
 // TODO: use `decltype` in place of the `class` argument to TU_MATCH/TU_IFLET
@@ -121,9 +122,22 @@
 #define TU_ARM(VAR, TAG, NAME)  break; case ::std::remove_reference<decltype(VAR)>::type::TAG_##TAG: for(bool tu_lc = true; tu_lc; tu_lc=false) for(decltype((VAR).as_##TAG()) NAME = (VAR).as_##TAG(); (void)NAME, tu_lc; tu_lc=false)
 
 #define TU_MATCH_HDRA(VARS, brace)  TU_MATCH_HDRA_(::std::remove_reference<decltype(TU_FIRST VARS)>::type, VARS, brace)
-#define TU_MATCH_HDRA_(CLASS, VARS, brace)  for(bool tu_lc = true; tu_lc; tu_lc=false) for(auto& tu_match_hdr2_v = (TU_FIRST VARS); tu_lc; tu_lc=false) switch( tu_match_hdr2_v.tag() ) brace case CLASS::TAGDEAD: assert(!"ERROR: destructed tagged union used");
+#define TU_MATCH_HDRA_(CLASS, VARS, brace)  /*
+    */for(bool tu_lc = true; tu_lc; tu_lc=false) for(TU_EXP1(TU_MATCH_HDRA_Decl VARS); tu_lc; tu_lc=false) /*
+        */switch( tu_match_hdr2_v.tag() ) brace /*
+        */case CLASS::TAGDEAD: assert(!"ERROR: destructed tagged union used");
+#define TU_MATCH_HDRA_DeclRest1(v1) &tu_match_hdr2_v = v1
+#define TU_MATCH_HDRA_DeclRest2(v1, v2) TU_MATCH_HDRA_DeclRest1(v1), &tu_match_hdr2_v2 = v2
+#define TU_MATCH_HDRA_DeclRest3(v1, v2, v3) TU_MATCH_HDRA_DeclRest2(_, v2), &tu_match_hdr2_v3 = v3
+#define TU_MATCH_HDRA_Decl(...)   auto TU_EXP1( TU_GM(TU_MATCH_HDRA_DeclRest, __VA_ARGS__)(__VA_ARGS__) )
+#define TU_ARMA_DeclInner1(TAG, v1)   v1 = tu_match_hdr2_v.as_##TAG()
+#define TU_ARMA_DeclInner2(TAG, v1, v2)   TU_ARMA_DeclInner1(TAG, v1), v2 = tu_match_hdr2_v2.as_##TAG()
+#define TU_ARMA_DeclInner3(TAG, v1, v2, v3)   TU_ARMA_DeclInner1(TAG, v1, v2), v3 = tu_match_hdr2_v3.as_##TAG()
+#define TU_ARMA_Decl(TAG, ...)   decltype(tu_match_hdr2_v.as_##TAG()) TU_EXP1( TU_GM(TU_ARMA_DeclInner, __VA_ARGS__)(TAG, __VA_ARGS__) )
+#define TU_ARMA_IgnVal(v)   (void)v,
 // Evil hack: two for loops, the inner stops the outer after it's done.
-#define TU_ARMA(TAG, NAME)  break; case ::std::remove_reference<decltype(tu_match_hdr2_v)>::type::TAG_##TAG: for(bool tu_lc = true; tu_lc; tu_lc=false) for(decltype(tu_match_hdr2_v.as_##TAG()) NAME = tu_match_hdr2_v.as_##TAG(); (void)NAME, tu_lc; tu_lc=false)
+#define TU_ARMA(TAG, ...)  break; case ::std::remove_reference<decltype(tu_match_hdr2_v)>::type::TAG_##TAG: /*
+    */for(bool tu_lc = true; tu_lc; tu_lc=false) for(TU_ARMA_Decl(TAG, __VA_ARGS__); TU_EXP1( TU_GMO(__VA_ARGS__)(TU_ARMA_IgnVal, __VA_ARGS__) ) tu_lc; tu_lc=false)
 
 //#define TU_TEST(VAL, ...)    (VAL.is_##TAG() && VAL.as_##TAG() TEST)
 #define TU_TEST1(VAL, TAG1, TEST)    (VAL.is_##TAG1() && VAL.as_##TAG1() TEST)
