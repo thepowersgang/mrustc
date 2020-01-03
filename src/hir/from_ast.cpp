@@ -53,7 +53,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
             rv.m_types.push_back({ tp.name(), LowerHIR_Type(tp.get_default()), true });
             }
         TU_ARMA(Value, tp) {
-            TODO(Span(), "Convert AST value param to HIR - " << tp);
+            rv.m_values.push_back(HIR::ValueParamDef { tp.name().name, LowerHIR_Type(tp.type()) });
             }
         }
     }

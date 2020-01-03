@@ -23,6 +23,11 @@ struct LifetimeDef
 {
     RcString    m_name;
 };
+struct ValueParamDef
+{
+    RcString    m_name;
+    ::HIR::TypeRef  m_type;
+};
 
 TAGGED_UNION(GenericBound, Lifetime,
     (Lifetime, struct {
@@ -53,6 +58,7 @@ class GenericParams
 public:
     ::std::vector<TypeParamDef> m_types;
     ::std::vector<LifetimeDef>  m_lifetimes;
+    ::std::vector<ValueParamDef>    m_values;
 
     ::std::vector<GenericBound>    m_bounds;
 

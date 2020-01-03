@@ -56,6 +56,7 @@ PathBinding_Type PathBinding_Type::clone() const
     (Static,    os << "Static";  ),
     (Function,  os << "Function";),
     (EnumVar,  os << "EnumVar(" << i.idx << ")"; ),
+    (Generic, os << "Param(" << i.index << ")"; ),
     (Variable, os << "Var(" << i.slot << ")"; )
     )
     return os;
