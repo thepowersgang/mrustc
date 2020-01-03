@@ -1954,7 +1954,24 @@ namespace {
         {
             TRACE_FUNCTION_F(&node << " " << node.m_name << "{" << node.m_binding << "}");
 
-            TODO(node.span(), "Typecheck const generics - look up the type");
+            const HIR::GenericParams* p;
+            switch(node.m_binding >> 8)
+            {
+            case 0: // impl level
+                p = &this->context.m_resolve.impl_params();
+                break;
+            case 1: // method level
+                p = &this->context.m_resolve.item_params();
+                break;
+            default:
+                TODO(node.span(), "Typecheck const generics - look up the type");
+            }
+            auto slot = node.m_binding & 0xFF;
+            ASSERT_BUG(node.span(), p, "No generic list");
+            ASSERT_BUG(node.span(), slot < p->m_values.size(), "Generic param index out of range");
+            const auto& vd = p->m_values.at(slot);
+
+            this->context.equate_types(node.span(), node.m_res_type,  vd.m_type);
         }
 
         void visit(::HIR::ExprNode_Closure& node) override
