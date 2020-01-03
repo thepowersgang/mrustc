@@ -577,11 +577,10 @@ struct LowerHIR_ExprNode_Visitor:
             default:
                 BUG(v.span(), "Named value was a local, but wasn't bound to a known type - " << v.m_path);
             TU_ARMA(Generic, binding) {
-                TODO(v.span(), "Create node for generic values - " << v.m_path);
+                m_rv.reset( new ::HIR::ExprNode_ConstParam( v.span(), e->name, binding.index ) );
                 }
             TU_ARMA(Variable, binding) {
-                auto slot = binding.slot;
-                m_rv.reset( new ::HIR::ExprNode_Variable( v.span(), e->name, slot ) );
+                m_rv.reset( new ::HIR::ExprNode_Variable( v.span(), e->name, binding.slot ) );
                 }
             }
         }

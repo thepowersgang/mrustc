@@ -1091,6 +1091,10 @@ namespace {
         {
             // TODO: Check against variable slot? Nah.
         }
+        void visit(::HIR::ExprNode_ConstParam& node) override
+        {
+            // TODO: Check against variable slot? Nah.
+        }
 
         void visit(::HIR::ExprNode_Closure& node) override
         {

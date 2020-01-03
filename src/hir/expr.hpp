@@ -695,6 +695,20 @@ struct ExprNode_Variable:
 
     NODE_METHODS();
 };
+struct ExprNode_ConstParam:
+    public ExprNode
+{
+    RcString   m_name;
+    unsigned int    m_binding;
+
+    ExprNode_ConstParam(Span sp, RcString name, unsigned int binding):
+        ExprNode(mv$(sp)),
+        m_name( mv$(name) ),
+        m_binding( binding )
+    {}
+
+    NODE_METHODS();
+};
 
 struct ExprNode_StructLiteral:
     public ExprNode
@@ -860,6 +874,7 @@ public:
     NV(ExprNode_UnitVariant);
     NV(ExprNode_PathValue);
     NV(ExprNode_Variable);
+    NV(ExprNode_ConstParam);
 
     NV(ExprNode_StructLiteral);
     NV(ExprNode_UnionLiteral);
@@ -908,6 +923,7 @@ public:
     NV(ExprNode_UnitVariant);
     NV(ExprNode_PathValue);
     NV(ExprNode_Variable);
+    NV(ExprNode_ConstParam);
 
     NV(ExprNode_StructLiteral);
     NV(ExprNode_UnionLiteral);

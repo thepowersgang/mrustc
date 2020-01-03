@@ -379,6 +379,9 @@ namespace {
         void visit(::HIR::ExprNode_Variable& node) override
         {
         }
+        void visit(::HIR::ExprNode_ConstParam& node) override
+        {
+        }
 
         void visit(::HIR::ExprNode_StructLiteral& node) override
         {

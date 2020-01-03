@@ -1950,6 +1950,12 @@ namespace {
 
             this->context.equate_types(node.span(), node.m_res_type,  this->context.get_var(node.span(), node.m_slot));
         }
+        void visit(::HIR::ExprNode_ConstParam& node) override
+        {
+            TRACE_FUNCTION_F(&node << " " << node.m_name << "{" << node.m_binding << "}");
+
+            TODO(node.span(), "Typecheck const generics - look up the type");
+        }
 
         void visit(::HIR::ExprNode_Closure& node) override
         {
@@ -3121,6 +3127,9 @@ namespace {
         void visit(::HIR::ExprNode_Variable& node) override {
             no_revisit(node);
         }
+        void visit(::HIR::ExprNode_ConstParam& node) override {
+            no_revisit(node);
+        }
 
         void visit(::HIR::ExprNode_StructLiteral& node) override {
             no_revisit(node);
@@ -3566,6 +3575,9 @@ namespace {
             no_revisit(node);
         }
         void visit(::HIR::ExprNode_Variable& node) override {
+            no_revisit(node);
+        }
+        void visit(::HIR::ExprNode_ConstParam& node) override {
             no_revisit(node);
         }
 

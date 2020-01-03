@@ -657,6 +657,10 @@ namespace {
         {
             m_os << node.m_name << "#" << node.m_slot;
         }
+        void visit(::HIR::ExprNode_ConstParam& node) override
+        {
+            m_os << node.m_name << "#" << node.m_binding;
+        }
         void visit(::HIR::ExprNode_StructLiteral& node) override
         {
             m_os << node.m_type << " {\n";

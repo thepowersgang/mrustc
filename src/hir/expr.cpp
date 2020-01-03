@@ -158,6 +158,7 @@ DEF_VISIT(ExprNode_PathValue, node,
     visit_path(::HIR::Visitor::PathContext::VALUE, node.m_path);
 )
 DEF_VISIT(ExprNode_Variable, , )
+DEF_VISIT(ExprNode_ConstParam, , )
 DEF_VISIT(ExprNode_StructLiteral, node,
     visit_type(node.m_type);
     if( node.m_base_value )
