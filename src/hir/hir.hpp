@@ -376,6 +376,7 @@ public:
     {
         Rust,
         C,
+        Transparent,
     };
 
     GenericParams   m_params;
