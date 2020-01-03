@@ -192,7 +192,7 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
 
             bool allow_collide = false;
             // - Types
-            {TU_MATCH_HDRA( (i_data.path.m_bindings.type), {)
+            TU_MATCH_HDRA( (i_data.path.m_bindings.type), {)
             TU_ARMA(Unbound, _e) {
                 DEBUG(i_data.name << " - Not a type/module");
                 }
@@ -214,9 +214,9 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
                 _add_item_type(sp, mod, i_data.name, i.is_pub,  i_data.path, !allow_collide);
             TU_ARMA(EnumVar, e)
                 _add_item_type(sp, mod, i_data.name, i.is_pub,  i_data.path, !allow_collide);
-            }}
+            }
             // - Values
-            {TU_MATCH_HDRA( (i_data.path.m_bindings.value), {)
+            TU_MATCH_HDRA( (i_data.path.m_bindings.value), {)
             TU_ARMA(Unbound, _e) {
                 DEBUG(i_data.name << " - Not a value");
                 }
@@ -232,9 +232,9 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
                 _add_item_value(sp, mod, i_data.name, i.is_pub,  i_data.path, !allow_collide);
             TU_ARMA(Function, e)
                 _add_item_value(sp, mod, i_data.name, i.is_pub,  i_data.path, !allow_collide);
-            }}
+            }
             // - Macros
-            {TU_MATCH_HDRA( (i_data.path.m_bindings.macro), {)
+            TU_MATCH_HDRA( (i_data.path.m_bindings.macro), {)
             TU_ARMA(Unbound, _e) {
                 DEBUG(i_data.name << " - Not a macro");
                 }
@@ -256,7 +256,7 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
             TU_ARMA(ProcMacroDerive, e) {
                 TODO(sp, "ProcMacroDerive import");
                 }
-            }}
+            }
         }
         else
         {
