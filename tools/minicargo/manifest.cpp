@@ -239,7 +239,7 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
         else if( section == "patch" )
         {
             //const auto& repo = key_val.path[1];
-            TODO("Support repository patches");
+            TODO(toml_file.lexer() << ":" << "Support repository patches");
         }
         else if( section == "profile" )
         {
@@ -923,7 +923,16 @@ void PackageRef::load_manifest(Repository& repo, const ::helpers::path& base_pat
             DEBUG("Load dependency " << this->name() << " from git");
             throw "TODO: Git";
         }
-        else if( this->has_path() )
+
+        if( !this->get_version().m_bounds.empty() )
+        {
+            DEBUG("Load dependency " << this->name() << " from repo");
+            m_manifest = repo.find(this->name(), this->get_version());
+        }
+
+        // NOTE: kernel32-sys specifies both a path and a version for its `winapi` dep
+        // - Ideally, path would be processed first BUT the path in this case points at the workspace (which isn't handled well)
+        if( !m_manifest && this->has_path() )
         {
             DEBUG("Load dependency " << m_name << " from path " << m_path);
             // Search for a copy of this already loaded
@@ -944,12 +953,8 @@ void PackageRef::load_manifest(Repository& repo, const ::helpers::path& base_pat
                 throw ::std::runtime_error(format("Cannot open manifest ", path, " for ", this->name()));
             }
         }
-        else if( !this->get_version().m_bounds.empty() )
-        {
-            DEBUG("Load dependency " << this->name() << " from repo");
-            m_manifest = repo.find(this->name(), this->get_version());
-        }
-        else
+
+        if( !(this->has_git() || !this->get_version().m_bounds.empty() || this->has_path()) )
         {
             //DEBUG("Load dependency " << this->name() << " from repo");
             //m_manifest = repo.find(this->name(), this->get_version());
