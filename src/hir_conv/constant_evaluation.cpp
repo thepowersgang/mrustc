@@ -397,17 +397,14 @@ namespace HIR {
             }
             throw "";
             };
-        auto read_param = [&](const ::MIR::Param& p) -> ::HIR::Literal
-            {
-                TU_MATCH(::MIR::Param, (p), (e),
-                (LValue,
-                    return local_state.read_lval(e);
-                    ),
-                (Constant,
-                    return const_to_lit(e);
-                    )
-                )
-                throw "";
+        auto read_param = [&](const ::MIR::Param& p) -> ::HIR::Literal {
+            TU_MATCH_HDRA( (p), { )
+            TU_ARMA(LValue, e)
+                return local_state.read_lval(e);
+            TU_ARMA(Constant, e)
+                return const_to_lit(e);
+            }
+            throw "";
             };
 
         unsigned int cur_block = 0;
@@ -1085,7 +1082,7 @@ namespace {
                     if( val.is_Defer() )
                         TODO(expr_ptr->span(), "Handle defer for array sizes");
                     else if( val.is_Integer() )
-                        e.size_val = static_cast<size_t>(val.as_Integer());
+                        e.size_val = val.as_Integer();
                     else
                         ERROR(expr_ptr->span(), E0000, "Array size isn't an integer, got " << val.tag_str());
                 }
