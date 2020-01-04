@@ -1067,13 +1067,12 @@ namespace {
         {
             ::HIR::Visitor::visit_type(ty);
 
-            TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, e,
+            if(auto* e = ty.m_data.opt_Array())
+            {
                 TRACE_FUNCTION_FR(ty, ty);
-                if( e.size_val == ~0u )
+                if( e->size.is_Unevaluated() )
                 {
-                    assert(e.size);
-                    assert(*e.size);
-                    const auto& expr_ptr = *e.size;
+                    const auto& expr_ptr = *e->size.as_Unevaluated();
                     auto ty_name = FMT("ty_" << &ty << "#");
 
                     auto nvs = NewvalState { *m_mod, *m_mod_path, ty_name };
@@ -1082,12 +1081,12 @@ namespace {
                     if( val.is_Defer() )
                         TODO(expr_ptr->span(), "Handle defer for array sizes");
                     else if( val.is_Integer() )
-                        e.size_val = val.as_Integer();
+                        e->size = val.as_Integer();
                     else
                         ERROR(expr_ptr->span(), E0000, "Array size isn't an integer, got " << val.tag_str());
                 }
-                DEBUG("Array " << ty << " - size = " << e.size_val);
-            )
+                DEBUG("Array " << ty << " - size = " << e->size.as_Known());
+            }
 
             if( m_recurse_types )
             {

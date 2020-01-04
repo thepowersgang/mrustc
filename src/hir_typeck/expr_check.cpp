@@ -1280,16 +1280,17 @@ namespace {
 
         void visit_type(::HIR::TypeRef& ty) override
         {
-            TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, e,
-                this->visit_type( *e.inner );
+            if(auto* e = ty.m_data.opt_Array())
+            {
+                this->visit_type( *e->inner );
                 DEBUG("Array size " << ty);
-                if( e.size ) {
+                if( auto* se = e->size.opt_Unevaluated() ) {
                     t_args  tmp;
                     auto ty_usize = ::HIR::TypeRef(::HIR::CoreType::Usize);
                     ExprVisitor_Validate    ev(m_resolve, tmp, ty_usize);
-                    ev.visit_root( *e.size );
+                    ev.visit_root( **se );
                 }
-            )
+            }
             else {
                 ::HIR::Visitor::visit_type(ty);
             }

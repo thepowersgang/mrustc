@@ -851,11 +851,11 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, const ::HIR::Literal
     (Array,
         ASSERT_BUG(sp, lit.is_List(), "Matching array with non-list literal - " << lit);
         const auto& list = lit.as_List();
-        ASSERT_BUG(sp, e.size_val == list.size(), "Matching array with mismatched literal size - " << e.size_val << " != " << list.size());
+        ASSERT_BUG(sp, TU_TEST1(e.size, Known, == list.size()), "Matching array with mismatched literal size - " << ty << " != " << list.size());
 
         // Sequential match just like tuples.
         m_field_path.push_back(0);
-        for(unsigned int i = 0; i < e.size_val; i ++) {
+        for(unsigned int i = 0; i < list.size(); i ++) {
             this->append_from_lit(sp, list[i], *e.inner);
             m_field_path.back() ++;
         }
@@ -1355,15 +1355,15 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
         TU_MATCH_DEF(::HIR::Pattern::Data, (pat.m_data), (pe),
         ( BUG(sp, "Matching array with invalid pattern - " << pat); ),
         (Any,
-            for(unsigned int i = 0; i < e.size_val; i ++) {
+            for(unsigned int i = 0; i < e.size.as_Known(); i ++) {
                 this->append_from(sp, empty_pattern, *e.inner);
                 m_field_path.back() ++;
             }
             ),
         (Slice,
-            assert(e.size_val == pe.sub_patterns.size());
-            for(unsigned int i = 0; i < e.size_val; i ++) {
-                this->append_from(sp, pe.sub_patterns[i], *e.inner);
+            ASSERT_BUG(sp, e.size.as_Known() == pe.sub_patterns.size(), "Pattern size mismatch");
+            for(const auto& v : pe.sub_patterns) {
+                this->append_from(sp, v, *e.inner);
                 m_field_path.back() ++;
             }
             ),
@@ -1846,7 +1846,7 @@ namespace {
                 BUG(sp, "Destructuring an erased type - " << *cur_ty);
                 ),
             (Array,
-                assert(idx < e.size_val);
+                ASSERT_BUG(sp, idx < e.size.as_Known(), "Index out of range");
                 cur_ty = &*e.inner;
                 if( idx < FIELD_INDEX_MAX )
                     lval = ::MIR::LValue::new_Field(mv$(lval), idx);

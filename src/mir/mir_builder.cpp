@@ -2019,7 +2019,8 @@ VarState* MirBuilder::get_val_state_mut_p(const Span& sp, const ::MIR::LValue& l
                         n_flds = e->size();
                     }
                     else if(const auto* e = ty.m_data.opt_Array()) {
-                        n_flds = e->size_val;
+                        ASSERT_BUG(sp, e->size.is_Known(), "Array size not known");
+                        n_flds = e->size.as_Known();
                     }
                     else {
                         TODO(sp, "Determine field count for " << ty);

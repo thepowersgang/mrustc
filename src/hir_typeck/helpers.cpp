@@ -274,7 +274,7 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr) 
     (Array,
         os << "[";
         this->print_type(os, *e.inner);
-        os << "; " << e.size_val << "]";
+        os << "; " << e.size << "]";
         ),
     (Closure,
         os << "{" << e.node << "}(";
@@ -898,7 +898,7 @@ bool HMTypeInferrence::types_equal(const ::HIR::TypeRef& rl, const ::HIR::TypeRe
         return types_equal(*le.inner, *re.inner);
         ),
     (Array,
-        if( le.size_val != re.size_val )
+        if( le.size != re.size )
             return false;
         return types_equal(*le.inner, *re.inner);
         ),

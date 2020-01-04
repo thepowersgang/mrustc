@@ -349,13 +349,13 @@ namespace {
 
         void visit_type(::HIR::TypeRef& ty) override
         {
-            if(const auto* ep = ty.m_data.opt_Array())
+            if( auto* ep = ty.m_data.opt_Array() )
             {
                 this->visit_type( *ep->inner );
                 DEBUG("Array size " << ty);
-                if( ep->size ) {
+                if( ep->size.is_Unevaluated() ) {
                     ExprVisitor_Mutate  ev(m_crate, this->get_new_ty_cb());
-                    ev.visit_node_ptr( *ep->size );
+                    ev.visit_node_ptr( *ep->size.as_Unevaluated() );
                 }
             }
             else {

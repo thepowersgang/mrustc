@@ -16,13 +16,14 @@ void MIR::OuterVisitor::visit_expr(::HIR::ExprPtr& exp)
 
 void MIR::OuterVisitor::visit_type(::HIR::TypeRef& ty)
 {
-    TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, e,
-        this->visit_type( *e.inner );
+    if(auto* e = ty.m_data.opt_Array())
+    {
+        this->visit_type( *e->inner );
         DEBUG("Array size " << ty);
-        if( e.size ) {
-            m_cb(m_resolve, ::HIR::ItemPath(""), *e.size, {}, ::HIR::TypeRef(::HIR::CoreType::Usize));
+        if( auto* se = e->size.opt_Unevaluated() ) {
+            m_cb(m_resolve, ::HIR::ItemPath(""), **se, {}, ::HIR::TypeRef(::HIR::CoreType::Usize));
         }
-    )
+    }
     else {
         ::HIR::Visitor::visit_type(ty);
     }

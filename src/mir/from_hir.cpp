@@ -358,7 +358,7 @@ namespace {
                 ::HIR::TypeRef  inner_type;
                 m_builder.with_val_type(sp, lval, [&ty_is_array,&array_size,&e,&inner_type](const auto& ty){
                     if( ty.m_data.is_Array() ) {
-                        array_size = ty.m_data.as_Array().size_val;
+                        array_size = ty.m_data.as_Array().size.as_Known();
                         if( e.extra_bind.is_valid() )
                             inner_type = ty.m_data.as_Array().inner->clone();
                         ty_is_array = true;
@@ -1432,7 +1432,7 @@ namespace {
                     if( ty_in.m_data.is_Array() )
                     {
                         const auto& in_array = ty_in.m_data.as_Array();
-                        auto size_val = ::MIR::Constant::make_Uint({ static_cast<uint64_t>(in_array.size_val), ::HIR::CoreType::Usize });
+                        auto size_val = ::MIR::Constant::make_Uint({ in_array.size.as_Known(), ::HIR::CoreType::Usize });
                         m_builder.set_result( node.span(), ::MIR::RValue::make_MakeDst({ mv$(ptr_lval), mv$(size_val) }) );
                     }
                     else if( ty_in.m_data.is_Generic() || (ty_in.m_data.is_Path() && ty_in.m_data.as_Path().binding.is_Opaque()) )
@@ -1482,7 +1482,7 @@ namespace {
                 BUG(node.span(), "Indexing unsupported type " << ty_val);
                 ),
             (Array,
-                limit_val = ::MIR::Constant::make_Uint({ e.size_val, ::HIR::CoreType::Usize });
+                limit_val = ::MIR::Constant::make_Uint({ e.size.as_Known(), ::HIR::CoreType::Usize });
                 ),
             (Slice,
                 limit_val = ::MIR::RValue::make_DstMeta({ m_builder.get_ptr_to_dst(node.m_value->span(), value) });

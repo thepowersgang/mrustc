@@ -1559,7 +1559,7 @@ bool StaticTraitResolve::type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) 
         return e != ::HIR::CoreType::Str;
         ),
     (Array,
-        return e.size_val == 0 || type_is_copy(sp, *e.inner);
+        return e.size.as_Known() == 0 || type_is_copy(sp, *e.inner);
         ),
     (Slice,
         // [T] isn't Sized, so isn't Copy ether
@@ -1658,7 +1658,7 @@ bool StaticTraitResolve::type_is_clone(const Span& sp, const ::HIR::TypeRef& ty)
         return e != ::HIR::CoreType::Str;
         ),
     (Array,
-        return e.size_val == 0 || type_is_clone(sp, *e.inner);
+        return e.size.as_Known() == 0 || type_is_clone(sp, *e.inner);
         ),
     (Slice,
         // [T] isn't Sized, so isn't Copy ether

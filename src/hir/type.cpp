@@ -54,6 +54,44 @@ namespace HIR {
         }
         return os;
     }
+    ::std::ostream& operator<<(::std::ostream& os, const ArraySize& x)
+    {
+        TU_MATCH_HDRA( (x), { )
+        TU_ARMA(Unevaluated, se) {
+            os << "/*expr:*/";
+            HIR_DumpExpr(os, *se);
+            }
+        TU_ARMA(Known, se)
+            os << se;
+        }
+        return os;
+    }
+}
+
+Ordering HIR::ArraySize::ord(const HIR::ArraySize& x) const
+{
+    if(this->tag() != x.tag())
+        return ::ord( static_cast<unsigned>(this->tag()), static_cast<unsigned>(x.tag()) );
+    TU_MATCH_HDRA( (*this, x), {)
+    TU_ARMA(Unevaluated, tse, xse) {
+        //TODO(Span(), "Compare non-expanded array sizes - " << *this << " and " << x);
+        return OrdLess;
+        }
+    TU_ARMA(Known, tse, xse)
+        return ::ord(tse, xse);
+    }
+    throw "";
+}
+
+HIR::ArraySize HIR::ArraySize::clone() const
+{
+    TU_MATCH_HDRA( (*this), {)
+    TU_ARMA(Unevaluated, se)
+        return se;
+    TU_ARMA(Known, se)
+        return se;
+    }
+    throw "";
 }
 
 void ::HIR::TypeRef::fmt(::std::ostream& os) const
@@ -129,12 +167,7 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         os << "/*" << e.m_origin << "#" << e.m_index << "*/";
         }
     TU_ARM(m_data, Array, e) {
-        os << "[" << *e.inner << "; ";
-        if( e.size_val != ~0u )
-            os << e.size_val;
-        else
-            os << "/*sz*/";
-        os << "]";
+        os << "[" << *e.inner << "; " << e.size << "]";
         }
     TU_ARM(m_data, Slice, e) {
         os << "[" << *e.inner << "]";
@@ -254,13 +287,8 @@ bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const
     (Array,
         if( *te.inner != *xe.inner )
             return false;
-        if( xe.size_val != te.size_val )
+        if( xe.size != te.size )
             return false;
-        if( te.size_val == ~0u ) {
-            // LAZY - Assume equal
-            return true;
-            assert(!"TODO: Compre array types with non-resolved sizes");
-        }
         return true;
         ),
     (Slice,
@@ -346,9 +374,7 @@ Ordering HIR::TypeRef::ord(const ::HIR::TypeRef& x) const
         ),
     (Array,
         ORD(*te.inner, *xe.inner);
-        ORD(te.size_val, xe.size_val);
-        if( te.size_val == ~0u )
-            TODO(Span(), "Compre array types with non-resolved sizes");
+        ORD(te.size, xe.size);
         return OrdEqual;
         ),
     (Slice,
@@ -722,7 +748,8 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         return Compare::Equal;
         ),
     (Array,
-        if( te.size_val != xe.size_val ) {
+        // TODO: May need to match generic sizes
+        if( te.size != xe.size ) {
             return Compare::Unequal;
         }
         return te.inner->match_test_generics_fuzz( sp, *xe.inner, resolve_placeholder, callback );
@@ -859,21 +886,7 @@ const ::HIR::TraitMarkings* HIR::TypeRef::TypePathBinding::get_trait_markings() 
             }) );
         ),
     (Array,
-        unsigned int size_val = e.size_val;
-        if( e.size_val == ~0u ) {
-            assert( e.size );
-            assert( *e.size );
-            // TODO: Need to invoke const eval here? Or support cloning expressions? Or run consteval earlier.
-            if( const auto* ptr = dynamic_cast<const ::HIR::ExprNode_Literal*>(&**e.size) )
-            {
-                size_val = static_cast<unsigned int>( ptr->m_data.as_Integer().m_value );
-            }
-            else
-            {
-                return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Array({ box$(e.inner->clone()), e.size, ~0u }) );
-            }
-        }
-        return ::HIR::TypeRef::new_array( e.inner->clone(), size_val );
+        return ::HIR::TypeRef(Data::make_Array({ box$(e.inner->clone()), e.size.clone() }));
         ),
     (Slice,
         return ::HIR::TypeRef( Data::make_Slice({
@@ -1117,7 +1130,7 @@ const ::HIR::TraitMarkings* HIR::TypeRef::TypePathBinding::get_trait_markings() 
         //TODO(sp, "ErasedType");
         ),
     (Array,
-        if( le.size_val != re.size_val )
+        if( le.size != re.size )
             return Compare::Unequal;
         return le.inner->compare_with_placeholders(sp, *re.inner, resolve_placeholder);
         ),

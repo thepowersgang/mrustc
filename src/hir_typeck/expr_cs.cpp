@@ -3857,7 +3857,7 @@ void Context::equate_types_inner(const Span& sp, const ::HIR::TypeRef& li, const
                 ),
             (Array,
                 this->equate_types_inner(sp, *l_e.inner, *r_e.inner);
-                if( l_e.size_val != r_e.size_val ) {
+                if( l_e.size != r_e.size ) {
                     ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - sizes differ");
                 }
                 ),
@@ -4965,7 +4965,7 @@ void Context::handle_pattern_direct_inner(const Span& sp, ::HIR::Pattern& pat, c
                         return true;
                     )
                     else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, te,
-                        if( te.size_val != size ) {
+                        if( te.size.as_Known() != size ) {
                             ERROR(sp, E0000, "Slice pattern on an array if differing size");
                         }
                         context.equate_types(sp, *te.inner, inner);
@@ -4999,10 +4999,10 @@ void Context::handle_pattern_direct_inner(const Span& sp, ::HIR::Pattern& pat, c
         )
         else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, te,
             inner = te.inner->clone();
-            if( te.size_val < min_len ) {
+            if( te.size.as_Known() < min_len ) {
                 ERROR(sp, E0000, "Slice pattern on an array smaller than the pattern");
             }
-            unsigned extra_len = te.size_val - min_len;
+            unsigned extra_len = te.size.as_Known() - min_len;
 
             if( e.extra_bind.is_valid() ) {
                 this->add_binding_inner( sp, e.extra_bind, ::HIR::TypeRef::new_array(inner.clone(), extra_len) );
@@ -5051,10 +5051,10 @@ void Context::handle_pattern_direct_inner(const Span& sp, ::HIR::Pattern& pat, c
                     // Array - Equate inners and check size
                     else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, te,
                         context.equate_types(this->sp, this->inner, *te.inner);
-                        if( te.size_val < this->min_size ) {
+                        if( te.size.as_Known() < this->min_size ) {
                             ERROR(sp, E0000, "Slice pattern on an array smaller than the pattern");
                         }
-                        unsigned extra_len = te.size_val - this->min_size;
+                        unsigned extra_len = te.size.as_Known() - this->min_size;
 
                         if( this->var_ty != ::HIR::TypeRef() ) {
                             context.equate_types(this->sp, this->var_ty, ::HIR::TypeRef::new_array(this->inner.clone(), extra_len) );

@@ -137,9 +137,9 @@ void Trans_AutoImpl_Clone(State& state, ::HIR::TypeRef ty)
             }
             }
         TU_ARMA(Array, te) {
-            ASSERT_BUG(sp, te.size_val < 256, "TODO: Is more than 256 elements sane for auto-generated non-Copy Clone impl? " << ty);
-            ::std::vector< ::MIR::Param>   values; values.reserve(te.size_val);
-            for(size_t i = 0; i < te.size_val; i ++)
+            ASSERT_BUG(sp, te.size.as_Known() < 256, "TODO: Is more than 256 elements sane for auto-generated non-Copy Clone impl? " << ty);
+            ::std::vector< ::MIR::Param>   values; values.reserve(te.size.as_Known());
+            for(size_t i = 0; i < te.size.as_Known(); i ++)
             {
                 auto fld_lvalue = ::MIR::LValue::new_Field( ::MIR::LValue::new_Deref(::MIR::LValue::new_Argument(0)), static_cast<unsigned>(values.size()) );
                 values.push_back( clone_field(state, sp, mir_fcn, *te.inner, mv$(fld_lvalue)) );

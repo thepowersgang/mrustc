@@ -833,8 +833,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
                     if( ptr->m_value >= UINT64_MAX ) {
                         ERROR(ty.span(), E0000, "Array size out of bounds - 0x" << ::std::hex << ptr->m_value << " > 0x" << UINT64_MAX << " in " << ::std::dec << ty);
                     }
-                    auto size_val = static_cast<unsigned int>( ptr->m_value );
-                    return ::HIR::TypeRef::new_array( mv$(inner), size_val );
+                    return ::HIR::TypeRef::new_array( mv$(inner), ptr->m_value );
                 }
             }
 

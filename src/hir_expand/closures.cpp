@@ -1313,15 +1313,16 @@ namespace {
 
         void visit_type(::HIR::TypeRef& ty) override
         {
-            TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, e,
-                this->visit_type( *e.inner );
+            if(auto* e = ty.m_data.opt_Array())
+            {
+                this->visit_type( *e->inner );
                 DEBUG("Array size " << ty);
-                if( e.size ) {
+                if( e->size.is_Unevaluated() ) {
                     //::std::vector< ::HIR::TypeRef>  tmp;
                     //ExprVisitor_Extract    ev(m_resolve, tmp, m_new_trait_impls);
                     //ev.visit_root( *e.size );
                 }
-            )
+            }
             else {
                 ::HIR::Visitor::visit_type(ty);
             }

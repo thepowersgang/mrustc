@@ -944,3 +944,4 @@ public:
 
 }
 
+void HIR_DumpExpr(::std::ostream& sink, const ::HIR::ExprPtr& expr);

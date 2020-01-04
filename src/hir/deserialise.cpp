@@ -903,8 +903,7 @@
             })
         _(Array, {
             deserialise_ptr< ::HIR::TypeRef>(),
-            nullptr,
-            static_cast<size_t>(m_in.read_u64c() & SIZE_MAX)
+            m_in.read_u64c()
             })
         _(Slice, {
             deserialise_ptr< ::HIR::TypeRef>()

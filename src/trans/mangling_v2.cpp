@@ -187,7 +187,7 @@ public:
             this->fmt_type(*e.inner);
             }
         TU_ARMA(Array, e) {
-            m_os << "A" << e.size_val;
+            m_os << "A" << e.size.as_Known();
             this->fmt_type(*e.inner);
             }
         TU_ARMA(Path, e) {

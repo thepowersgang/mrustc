@@ -260,12 +260,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
             } );
         ),
     (Array,
-        if( e.size_val == ~0u ) {
-            rv = ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Array({ box$(clone_ty_with(sp, *e.inner, callback)), e.size, ~0u }) );
-        }
-        else {
-            rv = ::HIR::TypeRef::new_array( clone_ty_with(sp, *e.inner, callback), e.size_val );
-        }
+        rv = ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Array({ box$(clone_ty_with(sp, *e.inner, callback)), e.size.clone() }) );
         ),
     (Slice,
         rv = ::HIR::TypeRef::new_slice( clone_ty_with(sp, *e.inner, callback) );

@@ -62,7 +62,7 @@ namespace HIR {
             os << "&" << *e;
             ),
         (String,
-            os << "\"" << e << "\"";
+            os << "\"" << FmtEscaped(e) << "\"";
             )
         )
         return os;

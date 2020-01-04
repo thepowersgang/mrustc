@@ -1264,13 +1264,13 @@ namespace {
             else if( const auto* te = ty.m_data.opt_Array() )
             {
                 m_of << "typedef struct "; emit_ctype(ty); m_of << " { ";
-                if( te->size_val == 0 && m_options.disallow_empty_structs )
+                if( te->size.as_Known() == 0 && m_options.disallow_empty_structs )
                 {
                     m_of << "char _d;";
                 }
                 else
                 {
-                    emit_ctype(*te->inner); m_of << " DATA[" << te->size_val << "];";
+                    emit_ctype(*te->inner); m_of << " DATA[" << te->size.as_Known() << "];";
                 }
                 m_of << " } "; emit_ctype(ty); m_of << ";";
                 m_of << " // " << ty << "\n";
@@ -1313,7 +1313,7 @@ namespace {
             for(unsigned fld : fields )
             {
                 const auto& ty = repr->fields[fld].ty;
-                if( ty.m_data.is_Array() && ty.m_data.as_Array().size_val == 0 ) {
+                if( ty.m_data.is_Array() && ty.m_data.as_Array().size.as_Known() == 0 ) {
                     has_manual_align = true;
                 }
             }
@@ -2016,7 +2016,7 @@ namespace {
                 m_of << "{";
                 if( ty.m_data.is_Array() )
                 {
-                    if( ty.m_data.as_Array().size_val == 0 && m_options.disallow_empty_structs)
+                    if( ty.m_data.as_Array().size.as_Known() == 0 && m_options.disallow_empty_structs)
                     {
                         m_of << "0";
                     }
@@ -2038,7 +2038,7 @@ namespace {
                 }
                 if( (ty.m_data.is_Path() || ty.m_data.is_Tuple()) && !emitted_field && m_options.disallow_empty_structs )
                     m_of << "0";
-                if( ty.m_data.is_Array() && !(ty.m_data.as_Array().size_val == 0 && m_options.disallow_empty_structs) )
+                if( ty.m_data.is_Array() && !(ty.m_data.as_Array().size.as_Known() == 0 && m_options.disallow_empty_structs) )
                     m_of << "}";
                 m_of << " }";
                 ),
@@ -2167,7 +2167,7 @@ namespace {
                             MIR_ASSERT(*m_mir_res, vi.is_Static(), "BorrowOf returning &[T] not of a static - " << pe.m_path << " is " << vi.tag_str());
                             const auto& stat = vi.as_Static();
                             MIR_ASSERT(*m_mir_res, stat.m_type.m_data.is_Array(), "BorrowOf : &[T] of non-array static, " << pe.m_path << " - " << stat.m_type);
-                            unsigned int size = stat.m_type.m_data.as_Array().size_val;
+                            auto size = stat.m_type.m_data.as_Array().size.as_Known();
                             m_of << "{ &" << Trans_Mangle( params.monomorph(m_resolve, e)) << ", " << size << "}";
                             return ;
                         }
@@ -5475,9 +5475,9 @@ namespace {
                 ),
             (Array,
                 // Emit destructors for all entries
-                if( te.size_val > 0 )
+                if( te.size.as_Known() > 0 )
                 {
-                    m_of << indent << "for(unsigned i = 0; i < " << te.size_val << "; i++) {\n";
+                    m_of << indent << "for(unsigned i = 0; i < " << te.size.as_Known() << "; i++) {\n";
                     emit_destructor_call(::MIR::LValue::new_Index(slot.clone(), ::MIR::LValue::Storage::MAX_ARG), *te.inner, false, indent_level+1);
                     m_of << "\n" << indent << "}";
                 }
@@ -6141,7 +6141,7 @@ namespace {
             (Array,
                 m_of << "t_" << Trans_Mangle(ty) << " " << inner;
                 //emit_ctype(*te.inner, inner);
-                //m_of << "[" << te.size_val << "]";
+                //m_of << "[" << te.size.as_Known() << "]";
                 ),
             (Slice,
                 MIR_BUG(*m_mir_res, "Raw slice object - " << ty);

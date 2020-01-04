@@ -171,14 +171,15 @@ namespace {
 
         void visit_type(::HIR::TypeRef& ty) override
         {
-            TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, e,
-                this->visit_type( *e.inner );
+            if(auto* e = ty.m_data.opt_Array())
+            {
+                this->visit_type( *e->inner );
                 DEBUG("Array size " << ty);
                 t_args  tmp;
-                if( e.size ) {
-                    Typecheck_Code( m_ms, tmp, ::HIR::TypeRef(::HIR::CoreType::Usize), *e.size );
+                if( auto* se = e->size.opt_Unevaluated() ) {
+                    Typecheck_Code( m_ms, tmp, ::HIR::TypeRef(::HIR::CoreType::Usize), **se );
                 }
-            )
+            }
             else {
                 ::HIR::Visitor::visit_type(ty);
             }

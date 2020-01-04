@@ -125,7 +125,7 @@ namespace {
         (Array,
             if( ! matches_type_int(*le.inner, *re.inner, ty_res, expand_generic) )
                 return false;
-            if( le.size_val != re.size_val )
+            if( le.size != re.size )
                 return false;
             return true;
             ),
@@ -352,7 +352,7 @@ namespace {
             ),
         (Array,
             TU_IFLET(::HIR::TypeRef::Data, right.m_data, Array, re,
-                if( le.size_val != re.size_val )
+                if( le.size != re.size )
                     BUG(sp, "Mismatched types - " << left << " and " << right);
                 return type_ord_specific(sp, *le.inner, *re.inner);
             )
@@ -658,7 +658,7 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
                 return H::types_overlap( *ae.inner, *be.inner );
                 ),
             (Array,
-                if( ae.size_val != be.size_val )
+                if( ae.size != be.size )
                     return false;
                 return H::types_overlap( *ae.inner, *be.inner );
                 ),

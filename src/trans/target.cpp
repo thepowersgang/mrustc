@@ -705,15 +705,15 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve,
             return false;
         if( out_size == SIZE_MAX )
             BUG(sp, "Unsized type in array - " << ty);
-        if( te.size_val == 0 || out_size == 0 )
+        if( te.size.as_Known() == 0 || out_size == 0 )
         {
             out_size = 0;
         }
         else
         {
-            if( SIZE_MAX / te.size_val <= out_size )
+            if( SIZE_MAX / te.size.as_Known() <= out_size )
                 BUG(sp, "Integer overflow calculating array size");
-            out_size *= te.size_val;
+            out_size *= te.size.as_Known();
         }
         return true;
         ),

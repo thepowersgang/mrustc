@@ -153,6 +153,26 @@ struct FunctionType
     ::std::vector<TypeRef>  m_arg_types;
 };
 
+/// Array size used for types AND array literals
+TAGGED_UNION_EX(ArraySize, (), Unevaluated, (
+    /// Un-evaluated size (still an expression)
+    (Unevaluated, ::std::shared_ptr<::HIR::ExprPtr>),
+    /// Compiled and partially evaluated
+    //(LiteralExpr, ::HIR::LiteralExpr),
+    /// Fully known
+    (Known, uint64_t)
+    ),
+    /*extra_move=*/(),
+    /*extra_assign=*/(),
+    /*extra=*/(
+        ArraySize clone() const;
+        Ordering ord(const ArraySize& x) const;
+        bool operator==(const ArraySize& x) const { return ord(x) == OrdEqual; }
+        bool operator!=(const ArraySize& x) const { return !operator==(x); }
+    )
+    );
+extern ::std::ostream& operator<<(::std::ostream& os, const ArraySize& x);
+
 class TypeRef
 {
 public:
@@ -237,12 +257,7 @@ public:
         }),
     (Array, struct {
         ::std::unique_ptr<TypeRef>  inner;
-        // TODO: Support deferred sizes (when a const generic is present)
-        // - The rust RFC spcifies that they're treated as opaque expressions (only an identical expression counts)
-        // - Could compare the generated MIR? (that already has some comparision support)
-        // - OR: When running consteval, build up an expression type in HIR::Literal
-        ::std::shared_ptr<::HIR::ExprPtr> size;
-        uint64_t  size_val;
+        ArraySize  size;
         }),
     (Slice, struct {
         ::std::unique_ptr<TypeRef>  inner;
@@ -314,12 +329,12 @@ public:
     static TypeRef new_slice(TypeRef inner) {
         return TypeRef(Data::make_Slice({box$(mv$(inner))}));
     }
-    static TypeRef new_array(TypeRef inner, unsigned int size) {
+    static TypeRef new_array(TypeRef inner, uint64_t size) {
         assert(size != ~0u);
-        return TypeRef(Data::make_Array({box$(mv$(inner)), nullptr, size}));
+        return TypeRef(Data::make_Array({box$(mv$(inner)), size}));
     }
     static TypeRef new_array(TypeRef inner, ::HIR::ExprPtr size_expr) {
-        return TypeRef(Data::make_Array({box$(mv$(inner)), ::std::shared_ptr< ::HIR::ExprPtr>( new ::HIR::ExprPtr(mv$(size_expr)) ), ~0u}));
+        return TypeRef(Data::make_Array({box$(mv$(inner)), std::make_shared<HIR::ExprPtr>(mv$(size_expr)) }));
     }
     static TypeRef new_path(::HIR::Path path, TypePathBinding binding) {
         return TypeRef(Data::make_Path({ mv$(path), mv$(binding) }));

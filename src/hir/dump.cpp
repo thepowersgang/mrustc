@@ -751,4 +751,10 @@ void HIR_Dump(::std::ostream& sink, const ::HIR::Crate& crate)
 
     tv.visit_crate( const_cast< ::HIR::Crate&>(crate) );
 }
+void HIR_DumpExpr(::std::ostream& sink, const ::HIR::ExprPtr& expr)
+{
+    TreeVisitor tv { sink };
+
+    const_cast<HIR::ExprPtr&>(expr)->visit(tv);
+}
 

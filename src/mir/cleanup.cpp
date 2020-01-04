@@ -237,7 +237,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
         MIR_ASSERT(state, lit.is_List(), "Non-list literal for Array - " << lit);
         const auto& vals = lit.as_List();
 
-        MIR_ASSERT(state, vals.size() == te.size_val, "Literal size mismatched with array size");
+        MIR_ASSERT(state, TU_TEST1(te.size, Known, == vals.size()), "Literal size mismatched with array size - [_; " << vals.size() << "] != " << ty);
 
         bool is_all_same = false;
         if( vals.size() > 1 )
@@ -252,11 +252,12 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
             }
         }
 
+        // If all of the literals are the same value, then optimise into a count-based initialisation
         if( is_all_same )
         {
             auto rval = MIR_Cleanup_LiteralToRValue(state, mutator, vals[0], te.inner->clone(), ::HIR::GenericPath());
             auto data_lval = mutator.in_temporary(te.inner->clone(), mv$(rval));
-            return ::MIR::RValue::make_SizedArray({ mv$(data_lval), static_cast<unsigned int>(te.size_val) });
+            return ::MIR::RValue::make_SizedArray({ mv$(data_lval), static_cast<unsigned int>(vals.size()) });
         }
         else
         {
@@ -384,7 +385,9 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
                 ::HIR::TypeRef tmp;
                 const auto& ty = state.get_static_type(tmp, path);
                 MIR_ASSERT(state, ty.m_data.is_Array(), "BorrowOf returning slice not of an array, instead " << ty);
-                unsigned int size = ty.m_data.as_Array().size_val;
+                const auto& te = ty.m_data.as_Array();
+                MIR_ASSERT(state, te.size.is_Known(), "BorrowOf returning slice of unknown-sized array - " << ty);
+                unsigned int size = te.size.as_Known();
 
                 auto size_val = ::MIR::Param( ::MIR::Constant::make_Uint({ size, ::HIR::CoreType::Usize }) );
                 return ::MIR::RValue::make_MakeDst({ ::MIR::Param(mv$(ptr_val)), mv$(size_val) });
@@ -638,7 +641,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
         {
             const auto& in_array = src_ty.m_data.as_Array();
             out_meta_ty = ::HIR::CoreType::Usize;
-            out_meta_val = ::MIR::Constant::make_Uint({ static_cast<uint64_t>(in_array.size_val), ::HIR::CoreType::Usize });
+            out_meta_val = ::MIR::Constant::make_Uint({ in_array.size.as_Known(), ::HIR::CoreType::Usize });
             return true;
         }
         else if( src_ty.m_data.is_Generic() || (src_ty.m_data.is_Path() && src_ty.m_data.as_Path().binding.is_Opaque()) )
@@ -1075,7 +1078,7 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                         BUG(Span(), "Unexpected input type for DstMeta - " << ty);
                     }
                     if( const auto* te = ity_p->m_data.opt_Array() ) {
-                        se.src = ::MIR::Constant::make_Uint({ te->size_val, ::HIR::CoreType::Usize });
+                        se.src = ::MIR::Constant::make_Uint({ te->size.as_Known(), ::HIR::CoreType::Usize });
                     }
                     }
                 TU_ARMA(DstPtr, re) {
