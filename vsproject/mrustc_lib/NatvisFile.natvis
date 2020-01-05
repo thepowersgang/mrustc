@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?> 
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+  <Type Name="RcString">
+    <DisplayString>{(const char*)(m_ptr+2),s}</DisplayString>
+    <StringView>(const char*)(m_ptr+2),s</StringView>
+    <Expand>
+      <Item Name="nRef">m_ptr[0]</Item>
+      <Item Name="len">m_ptr[1]</Item>
+      <Item Name="data">m_ptr+2,s</Item>
+    </Expand>
+  </Type>
+  <Type Name="HIR::TypeRef::Data">
+    <DisplayString Condition="m_tag == TAG_Generic">Generic {m_data.Generic}</DisplayString>
+  </Type>
+  <Type Name="HIR::Path::Data">
+    <DisplayString Condition="m_tag == TAG_Generic">Generic {m_data.Generic}</DisplayString>
+    <Expand>
+      <Item Name="Generic" Condition="m_tag == TAG_Generic">m_data.Generic</Item>
+    </Expand>
+  </Type>
+</AutoVisualizer>

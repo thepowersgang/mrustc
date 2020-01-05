@@ -625,4 +625,7 @@
     <None Include="../packages.config" />
     <None Include="cpp.hint" />
   </ItemGroup>
+  <ItemGroup>
+    <Natvis Include="NatvisFile.natvis" />
+  </ItemGroup>
 </Project>
