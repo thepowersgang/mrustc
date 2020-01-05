@@ -1078,14 +1078,20 @@ namespace {
                     auto nvs = NewvalState { *m_mod, *m_mod_path, ty_name };
                     auto eval = ::HIR::Evaluator { expr_ptr->span(), m_crate, nvs };
                     auto val = eval.evaluate_constant(::HIR::ItemPath(*m_mod_path, ty_name.c_str()), expr_ptr, ::HIR::CoreType::Usize);
-                    if( val.is_Defer() )
-                        TODO(expr_ptr->span(), "Handle defer for array sizes");
-                    else if( val.is_Integer() )
+                    if( val.is_Defer() ) {
+                        //TODO(expr_ptr->span(), "Handle defer for array sizes");
+                    }
+                    else if( val.is_Integer() ) {
                         e->size = val.as_Integer();
+                        DEBUG("Array " << ty << " - size = " << e->size.as_Known());
+                    }
                     else
                         ERROR(expr_ptr->span(), E0000, "Array size isn't an integer, got " << val.tag_str());
                 }
-                DEBUG("Array " << ty << " - size = " << e->size.as_Known());
+                else
+                {
+                    DEBUG("Array " << ty << " - size = " << e->size.as_Known());
+                }
             }
 
             if( m_recurse_types )
