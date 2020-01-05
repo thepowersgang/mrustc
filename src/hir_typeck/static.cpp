@@ -273,16 +273,17 @@ bool StaticTraitResolve::find_impl(
         }
     )
     // --- / ---
-    TU_IFLET( ::HIR::TypeRef::Data, type.m_data, ErasedType, e,
-        for(const auto& trait : e.m_traits)
+    if( const auto* e = type.m_data.opt_ErasedType() )
+    {
+        for(const auto& trait : e->m_traits)
         {
             if( trait_path == trait.m_path.m_path && (!trait_params || trait.m_path.m_params == *trait_params) )
             {
                 return found_cb( ImplRef(&type, &trait.m_path.m_params, &trait.m_type_bounds), false );
             }
 
-            // TODO: What if `trait_params` is nullptr?
             bool rv = false;
+            // TODO: If `trait_params` is nullptr, this doesn't run (is that sane?)
             bool is_supertrait = trait_params && this->find_named_trait_in_trait(sp, trait_path,*trait_params, *trait.m_trait_ptr, trait.m_path.m_path,trait.m_path.m_params, type,
                 [&](const auto& i_params, const auto& i_assoc) {
                     // Invoke callback with a proper ImplRef
@@ -293,7 +294,7 @@ bool StaticTraitResolve::find_impl(
                     for(const auto& e2 : trait.m_type_bounds)
                         assoc_clone.insert( ::std::make_pair(e2.first, e2.second.clone()) );
                     auto ir = ImplRef(type.clone(), i_params.clone(), mv$(assoc_clone));
-                    DEBUG("- ir = " << ir);
+                    DEBUG("[find_impl] - ir = " << ir);
                     rv = found_cb( mv$(ir), false );
                     return false;
                 });
@@ -302,16 +303,17 @@ bool StaticTraitResolve::find_impl(
                 return rv;
             }
         }
-    )
+    }
 
     // ---
     // If this type is an opaque UfcsKnown - check bounds
     // ---
-    TU_IFLET(::HIR::TypeRef::Data, type.m_data, Path, e,
-        if( e.binding.is_Opaque() )
+    if(const auto* e = type.m_data.opt_Path() )
+    {
+        if( e->binding.is_Opaque() )
         {
-            ASSERT_BUG(sp, e.path.m_data.is_UfcsKnown(), "Opaque bound type wasn't UfcsKnown - " << type);
-            const auto& pe = e.path.m_data.as_UfcsKnown();
+            ASSERT_BUG(sp, e->path.m_data.is_UfcsKnown(), "Opaque bound type wasn't UfcsKnown - " << type);
+            const auto& pe = e->path.m_data.as_UfcsKnown();
             DEBUG("Checking bounds on definition of " << pe.item << " in " << pe.trait);
 
             // If this associated type has a bound of the desired trait, return it.
@@ -398,7 +400,7 @@ bool StaticTraitResolve::find_impl(
 
             DEBUG("- No bounds matched");
         }
-    )
+    }
     // --- /UfcsKnown ---
 
     bool ret;
