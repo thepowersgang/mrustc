@@ -1121,41 +1121,43 @@ namespace {
         void emit_type_proto(const ::HIR::TypeRef& ty) override
         {
             TRACE_FUNCTION_F(ty);
-            TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Tuple, te,
+            TU_MATCH_HDRA( (ty.m_data), {)
+            default:
+                // No prototype required
+            TU_ARMA(Tuple, te) {
                 if( te.size() > 0 )
                 {
                     m_of << "typedef struct "; emit_ctype(ty); m_of << " "; emit_ctype(ty); m_of << ";\n";
                 }
-            )
-            else TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Function, te,
+                }
+            TU_ARMA(Function, te) {
                 emit_type_fn(ty); m_of << "\n";
-            )
-            else TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Array, te,
+                }
+            TU_ARMA(Array, te) {
                 m_of << "typedef struct "; emit_ctype(ty); m_of << " "; emit_ctype(ty); m_of << ";\n";
-            )
-            else TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Path, te,
-                TU_MATCHA( (te.binding), (tpb),
-                (Unbound,  throw ""; ),
-                (Opaque,  throw ""; ),
-                (Struct,
+                }
+            TU_ARMA(Path, te) {
+                TU_MATCH_HDRA( (te.binding), {)
+                TU_ARMA(Unbound, tpb) throw "";
+                TU_ARMA(Opaque,  tpb) throw "";
+                TU_ARMA(Struct, tpb) {
                     m_of << "struct s_" << Trans_Mangle(te.path) << ";\n";
-                    ),
-                (ExternType,
+                    }
+                TU_ARMA(ExternType, tpb) {
                     m_of << "struct x_" << Trans_Mangle(te.path) << ";\n";
-                    ),
-                (Union,
+                    }
+                TU_ARMA(Union, tpb) {
                     m_of << "union u_" << Trans_Mangle(te.path) << ";\n";
-                    ),
-                (Enum,
+                    }
+                TU_ARMA(Enum, tpb) {
                     m_of << "struct e_" << Trans_Mangle(te.path) << ";\n";
-                    )
-                )
-            )
-            else if( ty.m_data.is_ErasedType() ) {
+                    }
+                }
+                }
+            TU_ARMA(ErasedType, te) {
                 // TODO: Is this actually a bug?
                 return ;
-            }
-            else {
+                }
             }
         }
         void emit_type_fn(const ::HIR::TypeRef& ty)
@@ -1211,7 +1213,11 @@ namespace {
             m_mir_res = &top_mir_res;
 
             TRACE_FUNCTION_F(ty);
-            TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Tuple, te,
+            TU_MATCH_HDRA( (ty.m_data), { )
+            default:
+                // Nothing to emit
+                break;
+            TU_ARMA(Tuple, te) {
                 if( te.size() > 0 )
                 {
                     m_of << "typedef struct "; emit_ctype(ty); m_of << " {\n";
@@ -1256,30 +1262,28 @@ namespace {
                     }
                 }
                 m_of << "}\n";
-            )
-            else TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Function, te,
+                }
+            TU_ARMA(Function, te) {
                 emit_type_fn(ty);
                 m_of << " // " << ty << "\n";
-            )
-            else if( const auto* te = ty.m_data.opt_Array() )
-            {
+                }
+            TU_ARMA(Array, te) {
                 m_of << "typedef struct "; emit_ctype(ty); m_of << " { ";
-                if( te->size.as_Known() == 0 && m_options.disallow_empty_structs )
+                if( te.size.as_Known() == 0 && m_options.disallow_empty_structs )
                 {
                     m_of << "char _d;";
                 }
                 else
                 {
-                    emit_ctype(*te->inner); m_of << " DATA[" << te->size.as_Known() << "];";
+                    emit_ctype(*te.inner); m_of << " DATA[" << te.size.as_Known() << "];";
                 }
                 m_of << " } "; emit_ctype(ty); m_of << ";";
                 m_of << " // " << ty << "\n";
-            }
-            else if( ty.m_data.is_ErasedType() ) {
+                }
+            TU_ARMA(ErasedType, te) {
                 // TODO: Is this actually a bug?
                 return ;
-            }
-            else {
+                }
             }
 
             m_mir_res = nullptr;
@@ -1354,10 +1358,10 @@ namespace {
                     emit_ctype( *te->inner, FMT_CB(ss, ss << "_" << fld << "[0]";) );
                     has_unsized = true;
                 }
-                else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, TraitObject, te,
+                else if( ty.m_data.is_TraitObject() ) {
                     m_of << "unsigned char _" << fld << "[0]";
                     has_unsized = true;
-                )
+                }
                 else if( ty == ::HIR::CoreType::Str ) {
                     m_of << "uint8_t _" << fld << "[0]";
                     has_unsized = true;
@@ -1967,52 +1971,59 @@ namespace {
                 }
                 };
             auto get_inner_type = [&](unsigned int var, unsigned int idx)->const ::HIR::TypeRef& {
-                TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, te,
+                TU_MATCH_HDRA( (ty.m_data), { )
+                default:
+                    MIR_TODO(*m_mir_res, "Unknown type in list literal - " << ty);
+                TU_ARMA(Array, te) {
                     return *te.inner;
-                )
-                else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Path, te,
+                    }
+                TU_ARMA(Path, te) {
                     const auto& pp = te.path.m_data.as_Generic().m_params;
-                    TU_MATCHA((te.binding), (pbe),
-                    (Unbound, MIR_BUG(*m_mir_res, "Unbound type path " << ty); ),
-                    (Opaque, MIR_BUG(*m_mir_res, "Opaque type path " << ty); ),
-                    (ExternType, MIR_BUG(*m_mir_res, "Extern type literal " << ty); ),
-                    (Struct,
-                        TU_MATCHA( (pbe->m_data), (se),
-                        (Unit,
+                    TU_MATCH_HDRA((te.binding), {)
+                    TU_ARMA(Unbound, pbe) {
+                        MIR_BUG(*m_mir_res, "Unbound type path " << ty);
+                        }
+                    TU_ARMA(Opaque, pbe) {
+                        MIR_BUG(*m_mir_res, "Opaque type path " << ty);
+                        }
+                    TU_ARMA(ExternType, pbe) {
+                        MIR_BUG(*m_mir_res, "Extern type literal " << ty);
+                        }
+                    TU_ARMA(Struct, pbe) {
+                        TU_MATCH_HDRA( (pbe->m_data), { )
+                        TU_ARMA(Unit, se) {
                             MIR_BUG(*m_mir_res, "Unit struct " << ty);
-                            ),
-                        (Tuple,
+                            }
+                        TU_ARMA(Tuple, se) {
                             return monomorph_with(pp, se.at(idx).ent);
-                            ),
-                        (Named,
+                            }
+                        TU_ARMA(Named, se) {
                             return monomorph_with(pp, se.at(idx).second.ent);
-                            )
-                        )
-                        ),
-                    (Union,
+                            }
+                        }
+                        }
+                    TU_ARMA(Union, pbe) {
                         MIR_TODO(*m_mir_res, "Union literals");
-                        ),
-                    (Enum,
+                        }
+                    TU_ARMA(Enum, pbe) {
                         MIR_ASSERT(*m_mir_res, pbe->m_data.is_Data(), "Getting inner type of a non-Data enum");
                         const auto& evar = pbe->m_data.as_Data().at(var);
                         return monomorph_with(pp, evar.type);
-                        )
-                    )
+                        }
+                    }
                     throw "";
-                )
-                else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Tuple, te,
+                    }
+                TU_ARMA(Tuple, te) {
                     return te.at(idx);
-                )
-                else {
-                    MIR_TODO(*m_mir_res, "Unknown type in list literal - " << ty);
+                    }
                 }
                 };
-            TU_MATCHA( (lit), (e),
-            (Invalid, m_of << "/* INVALID */"; ),
-            (Defer,
+            TU_MATCH_HDRA( (lit), {)
+            TU_ARMA(Invalid, e) { m_of << "/* INVALID */"; }
+            TU_ARMA(Defer, e) {
                 MIR_BUG(*m_mir_res, "Defer literal encountered");
-                ),
-            (List,
+                }
+            TU_ARMA(List, e) {
                 m_of << "{";
                 if( ty.m_data.is_Array() )
                 {
@@ -2041,8 +2052,8 @@ namespace {
                 if( ty.m_data.is_Array() && !(ty.m_data.as_Array().size.as_Known() == 0 && m_options.disallow_empty_structs) )
                     m_of << "}";
                 m_of << " }";
-                ),
-            (Variant,
+                }
+            TU_ARMA(Variant, e) {
                 MIR_ASSERT(*m_mir_res, ty.m_data.is_Path(), "");
                 MIR_ASSERT(*m_mir_res, ty.m_data.as_Path().binding.is_Enum(), "");
                 const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
@@ -2084,8 +2095,8 @@ namespace {
                     m_of << ".TAG = "; emit_enum_variant_val(repr, e.idx);
                     m_of << "}";
                 }
-                ),
-            (Integer,
+                }
+            TU_ARMA(Integer, e) {
                 if( ty.m_data.is_Primitive() )
                 {
                     switch(ty.m_data.as_Primitive())
@@ -2144,13 +2155,13 @@ namespace {
                 {
                     MIR_BUG(*m_mir_res, "Integer literal for invalid type - " << ty);
                 }
-                ),
-            (Float,
+                }
+            TU_ARMA(Float, e) {
                 this->emit_float(e);
-                ),
-            (BorrowPath,
-                TU_MATCHA( (e.m_data), (pe),
-                (Generic,
+                }
+            TU_ARMA(BorrowPath, e) {
+                TU_MATCH_HDRA( (e.m_data), {)
+                TU_ARMA(Generic, pe) {
                     const auto& vi = m_crate.get_valitem_by_path(sp, pe.m_path);
                     if( vi.is_Function() )
                     {
@@ -2186,23 +2197,23 @@ namespace {
                             m_of << "&";
                         }
                     }
-                    ),
-                (UfcsUnknown,
+                    }
+                TU_ARMA(UfcsUnknown, pe) {
                     MIR_BUG(*m_mir_res, "UfcsUnknown in trans " << e);
-                    ),
-                (UfcsInherent,
+                    }
+                TU_ARMA(UfcsInherent, pe) {
                     m_of << "&";
-                    ),
-                (UfcsKnown,
+                    }
+                TU_ARMA(UfcsKnown, pe) {
                     m_of << "&";
-                    )
-                )
+                    }
+                }
                 m_of << Trans_Mangle( params.monomorph(m_resolve, e));
-                ),
-            (BorrowData,
+                }
+            TU_ARMA(BorrowData, e) {
                 MIR_TODO(*m_mir_res, "Handle BorrowData (emit_literal) - " << *e);
-                ),
-            (String,
+                }
+            TU_ARMA(String, e) {
                 bool is_slice
                     = TU_TEST2(ty.m_data, Borrow, .inner->m_data, Primitive, == HIR::CoreType::Str)
                     || TU_TEST1(ty.m_data, Borrow, .inner->m_data.is_Slice())
@@ -2217,8 +2228,8 @@ namespace {
                     m_of << ", " << e.size();
                 if( is_wrapped )
                     m_of << "}";
-                )
-            )
+                }
+            }
         }
 
         //void print_escaped_string(const ::std::string& s)
@@ -2508,36 +2519,12 @@ namespace {
             ::std::vector<unsigned> bb_use_counts( code->blocks.size() );
             for(const auto& blk : code->blocks)
             {
-                TU_MATCHA( (blk.terminator), (te),
-                (Incomplete,
-                    ),
-                (Return,
-                    ),
-                (Diverge,
-                    ),
-                (Goto,
-                    bb_use_counts[te] ++;
-                    ),
-                (Panic,
-                    bb_use_counts[te.dst] ++;
-                    ),
-                (If,
-                    bb_use_counts[te.bb0] ++;
-                    bb_use_counts[te.bb1] ++;
-                    ),
-                (Switch,
-                    for(const auto& t : te.targets)
-                        bb_use_counts[t] ++;
-                    ),
-                (SwitchValue,
-                    for(const auto& t : te.targets)
-                        bb_use_counts[t] ++;
-                    bb_use_counts[te.def_target] ++;
-                    ),
-                (Call,
-                    bb_use_counts[te.ret_block] ++;
-                    )
-                )
+                MIR::visit::visit_terminator_target(blk.terminator, [&](const auto& tgt){ bb_use_counts[tgt] ++; });
+                // Ignore the panic arm. (TODO: is this correct?)
+                if( const auto* te = blk.terminator.opt_Call() )
+                {
+                    bb_use_counts[te->panic_block] --;
+                }
             }
 
             const bool EMIT_STRUCTURED = (nullptr != getenv("MRUSTC_STRUCTURED_C")); // Saves time.
@@ -2700,21 +2687,21 @@ namespace {
 
                 mir_res.set_cur_stmt_term(i);
                 DEBUG("- " << code->blocks[i].terminator);
-                TU_MATCHA( (code->blocks[i].terminator), (e),
-                (Incomplete,
+                TU_MATCH_HDRA( (code->blocks[i].terminator), {)
+                TU_ARMA(Incomplete, e) {
                     m_of << "\tfor(;;);\n";
-                    ),
-                (Return,
+                    }
+                TU_ARMA(Return, e) {
                     // If the return type is (), don't return a value.
                     if( ret_type == ::HIR::TypeRef::new_unit() )
                         m_of << "\treturn ;\n";
                     else
                         m_of << "\treturn rv;\n";
-                    ),
-                (Diverge,
+                    }
+                TU_ARMA(Diverge, e) {
                     m_of << "\t_Unwind_Resume();\n";
-                    ),
-                (Goto,
+                    }
+                TU_ARMA(Goto, e) {
                     if( e == i+1 )
                     {
                         // Let it flow on to the next block
@@ -2723,24 +2710,24 @@ namespace {
                     {
                         m_of << "\tgoto bb" << e << ";\n";
                     }
-                    ),
-                (Panic,
+                    }
+                TU_ARMA(Panic, e) {
                     m_of << "\tgoto bb" << e << "; /* panic */\n";
-                    ),
-                (If,
+                    }
+                TU_ARMA(If, e) {
                     m_of << "\tif("; emit_lvalue(e.cond); m_of << ") goto bb" << e.bb0 << "; else goto bb" << e.bb1 << ";\n";
-                    ),
-                (Switch,
+                    }
+                TU_ARMA(Switch, e) {
                     emit_term_switch(mir_res, e.val, e.targets.size(), 1, [&](size_t idx) {
                         m_of << "goto bb" << e.targets[idx] << ";";
                         });
-                    ),
-                (SwitchValue,
+                    }
+                TU_ARMA(SwitchValue, e) {
                     emit_term_switchvalue(mir_res, e.val, e.values, 1, [&](size_t idx) {
                         m_of << "goto bb" << (idx == SIZE_MAX ? e.def_target : e.targets[idx]) << ";";
                         });
-                    ),
-                (Call,
+                    }
+                TU_ARMA(Call, e) {
                     emit_term_call(mir_res, e, 1);
                     if( e.ret_block == i+1 )
                     {
@@ -2750,8 +2737,8 @@ namespace {
                     {
                         m_of << "\tgoto bb" << e.ret_block << ";\n";
                     }
-                    )
-                )
+                    }
+                }
                 m_of << "\t// ^ " << code->blocks[i].terminator << "\n";
             }
 
@@ -2790,35 +2777,35 @@ namespace {
                             this->emit_statement(mir_res, stmt, indent_level);
                         }
 
-                        TU_MATCHA( (bb.terminator), (te),
-                        (Incomplete, ),
-                        (Return,
+                        TU_MATCH_HDRA( (bb.terminator), {)
+                        TU_ARMA(Incomplete, te) {}
+                        TU_ARMA(Return, te) {
                             // TODO: If the return type is (), just emit "return"
                             assert(i == e.nodes.size()-1 && "Return");
                             m_of << indent << "return rv;\n";
-                            ),
-                        (Goto,
+                            }
+                        TU_ARMA(Goto, te) {
                             // Ignore (handled by caller)
-                            ),
-                        (Diverge,
+                            }
+                        TU_ARMA(Diverge, te) {
                             m_of << indent << "_Unwind_Resume();\n";
-                            ),
-                        (Panic,
-                            ),
-                        (If,
+                            }
+                        TU_ARMA(Panic, te) {
+                            }
+                        TU_ARMA(If, te) {
                             //assert(i == e.nodes.size()-1 && "If");
                             // - This is valid, the next node should be a If (but could be a loop)
-                            ),
-                        (Call,
+                            }
+                        TU_ARMA(Call, te) {
                             emit_term_call(mir_res, te, indent_level);
-                            ),
-                        (Switch,
+                            }
+                        TU_ARMA(Switch, te) {
                             //assert(i == e.nodes.size()-1 && "Switch");
-                            ),
-                        (SwitchValue,
+                            }
+                        TU_ARMA(SwitchValue, te) {
                             //assert(i == e.nodes.size()-1 && "Switch");
-                            )
-                        )
+                            }
+                        }
                     }
                 }
                 } break;
@@ -4210,10 +4197,10 @@ namespace {
             if( visit_ty_with(item.m_return, [&](const auto& x){ return x.m_data.is_ErasedType() || x.m_data.is_Generic(); }) )
             {
                 tmp = clone_ty_with(Span(), item.m_return, [&](const auto& tpl, auto& out){
-                    TU_IFLET( ::HIR::TypeRef::Data, tpl.m_data, ErasedType, e,
-                        out = params.monomorph(m_resolve, item.m_code.m_erased_types.at(e.m_index));
+                    if( const auto* e = tpl.m_data.opt_ErasedType() ) {
+                        out = params.monomorph(m_resolve, item.m_code.m_erased_types.at(e->m_index));
                         return true;
-                    )
+                    }
                     else if( tpl.m_data.is_Generic() ) {
                         out = params.get_cb()(tpl).clone();
                         return true;
@@ -5405,30 +5392,30 @@ namespace {
                 return ;
             }
             auto indent = RepeatLitStr { "\t", static_cast<int>(indent_level) };
-            TU_MATCHA( (ty.m_data), (te),
+            TU_MATCH_HDRA( (ty.m_data), {)
             // Impossible
-            (Diverge, ),
-            (Infer, ),
-            (ErasedType, ),
-            (Closure, ),
-            (Generic, ),
+            TU_ARMA(Diverge, te) {}
+            TU_ARMA(Infer, te) {}
+            TU_ARMA(ErasedType, te) {}
+            TU_ARMA(Closure, te) {}
+            TU_ARMA(Generic, te) {}
 
             // Nothing
-            (Primitive,
-                ),
-            (Pointer,
-                ),
-            (Function,
-                ),
+            TU_ARMA(Primitive, te) {
+                }
+            TU_ARMA(Pointer, te) {
+                }
+            TU_ARMA(Function, te) {
+                }
             // Has drop glue/destructors
-            (Borrow,
+            TU_ARMA(Borrow, te) {
                 if( te.type == ::HIR::BorrowType::Owned )
                 {
                     // Call drop glue on inner.
                     emit_destructor_call( ::MIR::LValue::new_Deref(slot.clone()), *te.inner, true, indent_level );
                 }
-                ),
-            (Path,
+                }
+            TU_ARMA(Path, te) {
                 // Call drop glue
                 // - TODO: If the destructor is known to do nothing, don't call it.
                 auto p = ::HIR::Path(ty.clone(), "#drop_glue");
@@ -5472,8 +5459,8 @@ namespace {
                     m_of << ") );\n";
                     break;
                 }
-                ),
-            (Array,
+                }
+            TU_ARMA(Array, te) {
                 // Emit destructors for all entries
                 if( te.size.as_Known() > 0 )
                 {
@@ -5481,8 +5468,8 @@ namespace {
                     emit_destructor_call(::MIR::LValue::new_Index(slot.clone(), ::MIR::LValue::Storage::MAX_ARG), *te.inner, false, indent_level+1);
                     m_of << "\n" << indent << "}";
                 }
-                ),
-            (Tuple,
+                }
+            TU_ARMA(Tuple, te) {
                 // Emit destructors for all entries
                 if( te.size() > 0 )
                 {
@@ -5493,8 +5480,8 @@ namespace {
                         lv.inc_Field();
                     }
                 }
-                ),
-            (TraitObject,
+                }
+            TU_ARMA(TraitObject, te) {
                 MIR_ASSERT(*m_mir_res, unsized_valid, "Dropping TraitObject without a pointer");
                 // Call destructor in vtable
                 auto lvr = ::MIR::LValue::CRef(slot);
@@ -5510,8 +5497,8 @@ namespace {
                     m_of << "&"; emit_lvalue(slot);
                 }
                 m_of << ");";
-                ),
-            (Slice,
+                }
+            TU_ARMA(Slice, te) {
                 MIR_ASSERT(*m_mir_res, unsized_valid, "Dropping Slice without a pointer");
                 auto lvr = ::MIR::LValue::CRef(slot);
                 while(lvr.is_Field())   lvr.try_unwrap();
@@ -5520,8 +5507,8 @@ namespace {
                 m_of << indent << "for(unsigned i = 0; i < "; emit_lvalue(lvr.inner_ref()); m_of << ".META; i++) {\n";
                 emit_destructor_call(::MIR::LValue::new_Index(slot.clone(), ::MIR::LValue::Storage::MAX_ARG), *te.inner, false, indent_level+1);
                 m_of << "\n" << indent << "}";
-                )
-            )
+                }
+            }
         }
 
         const ::HIR::Literal& get_literal_for_const(const ::HIR::Path& path, ::HIR::TypeRef& ty)
@@ -5604,56 +5591,57 @@ namespace {
                 }
                 };
             auto get_inner_type = [&](unsigned int var, unsigned int idx)->const ::HIR::TypeRef& {
-                TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, te,
+                TU_MATCH_HDRA( (ty.m_data), { )
+                default:
+                    MIR_TODO(*m_mir_res, "Unknown type in list literal - " << ty);
+                TU_ARMA(Array, te) {
                     return *te.inner;
-                )
-                else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Path, te,
+                    }
+                TU_ARMA(Path, te) {
                     const auto& pp = te.path.m_data.as_Generic().m_params;
-                    TU_MATCHA((te.binding), (pbe),
-                    (Unbound, MIR_BUG(*m_mir_res, "Unbound type path " << ty); ),
-                    (Opaque, MIR_BUG(*m_mir_res, "Opaque type path " << ty); ),
-                    (ExternType,
+                    TU_MATCH_HDRA((te.binding), {)
+                    TU_ARMA(Unbound, pbe)   MIR_BUG(*m_mir_res, "Unbound type path " << ty);
+                    TU_ARMA(Opaque, pbe)    MIR_BUG(*m_mir_res, "Opaque type path " << ty);
+                    TU_ARMA(ExternType, pbe) {
                         MIR_BUG(*m_mir_res, "Extern type literal");
-                        ),
-                    (Struct,
-                        TU_MATCHA( (pbe->m_data), (se),
-                        (Unit,
+                        }
+                    TU_ARMA(Struct, pbe) {
+                        TU_MATCH_HDRA( (pbe->m_data), {)
+                        TU_ARMA(Unit, se) {
                             MIR_BUG(*m_mir_res, "Unit struct " << ty);
-                            ),
-                        (Tuple,
+                            }
+                        TU_ARMA(Tuple, se) {
                             return monomorph_with(pp, se.at(idx).ent);
-                            ),
-                        (Named,
+                            }
+                        TU_ARMA(Named, se) {
                             return monomorph_with(pp, se.at(idx).second.ent);
-                            )
-                        )
-                        ),
-                    (Union,
+                            }
+                        }
+                        }
+                    TU_ARMA(Union, pbe) {
                         MIR_TODO(*m_mir_res, "Union literals");
-                        ),
-                    (Enum,
+                        }
+                    TU_ARMA(Enum, pbe) {
                         MIR_ASSERT(*m_mir_res, pbe->m_data.is_Data(), "");
                         const auto& evar = pbe->m_data.as_Data().at(var);
                         return monomorph_with(pp, evar.type);
-                        )
-                    )
+                        }
+                    }
                     throw "";
-                )
-                else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Tuple, te,
+                    }
+                TU_ARMA(Tuple, te) {
                     return te.at(idx);
-                )
-                else {
-                    MIR_TODO(*m_mir_res, "Unknown type in list literal - " << ty);
+                    }
                 }
                 };
-            TU_MATCHA( (lit), (e),
-            (Invalid,
+            TU_MATCH_HDRA( (lit), {)
+            TU_ARMA(Invalid, e) {
                 m_of << "/* INVALID */";
-                ),
-            (Defer,
+                }
+            TU_ARMA(Defer, e) {
                 MIR_BUG(*m_mir_res, "Defer literal encountered");
-                ),
-            (List,
+                }
+            TU_ARMA(List, e) {
                 if( ty.m_data.is_Array() )
                 {
                     for(unsigned int i = 0; i < e.size(); i ++) {
@@ -5677,8 +5665,8 @@ namespace {
                     //{
                     //}
                 }
-                ),
-            (Variant,
+                }
+            TU_ARMA(Variant, e) {
                 MIR_ASSERT(*m_mir_res, ty.m_data.is_Path(), "");
                 MIR_ASSERT(*m_mir_res, ty.m_data.as_Path().binding.is_Enum(), "");
                 const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
@@ -5707,16 +5695,16 @@ namespace {
                     }
                     } break;
                 }
-                ),
-            (Integer,
+                }
+            TU_ARMA(Integer, e) {
                 emit_dst(); m_of << " = ";
                 emit_literal(ty, lit, {});
-                ),
-            (Float,
+                }
+            TU_ARMA(Float, e) {
                 emit_dst(); m_of << " = ";
                 emit_literal(ty, lit, {});
-                ),
-            (BorrowPath,
+                }
+            TU_ARMA(BorrowPath, e) {
                 if( ty.m_data.is_Function() )
                 {
                     emit_dst(); m_of << " = " << Trans_Mangle(e);
@@ -5753,17 +5741,17 @@ namespace {
                 {
                     emit_dst(); m_of << " = &" << Trans_Mangle(e);
                 }
-                ),
-            (BorrowData,
+                }
+            TU_ARMA(BorrowData, e) {
                 MIR_TODO(*m_mir_res, "Handle BorrowData (assign_from_literal) - " << *e);
-                ),
-            (String,
+                }
+            TU_ARMA(String, e) {
                 emit_dst(); m_of << ".PTR = ";
                 this->print_escaped_string(e);
                 m_of << ";\n\t";
                 emit_dst(); m_of << ".META = " << e.size();
-                )
-            )
+                }
+            }
         }
 
         void emit_lvalue(const ::MIR::LValue::CRef& val)
@@ -6022,8 +6010,8 @@ namespace {
                 MIR_BUG(*m_mir_res, "Generic value present at codegen");
                 }
             TU_ARMA(ItemAddr, c) {
-                TU_MATCHA( (c->m_data), (pe),
-                (Generic,
+                TU_MATCH_HDRA( (c->m_data), {)
+                TU_ARMA(Generic, pe) {
                     if( pe.m_path.m_components.size() > 1 && m_crate.get_typeitem_by_path(sp, pe.m_path, false, true).is_Enum() )
                         ;
                     else
@@ -6037,45 +6025,45 @@ namespace {
                             m_of << "&";
                         }
                     }
-                    ),
-                (UfcsUnknown,
+                    }
+                TU_ARMA(UfcsUnknown, pe) {
                     MIR_BUG(*m_mir_res, "UfcsUnknown in trans " << *c);
-                    ),
-                (UfcsInherent,
+                    }
+                TU_ARMA(UfcsInherent, pe) {
                     // TODO: If the target is a function, don't emit the &
                     m_of << "&";
-                    ),
-                (UfcsKnown,
+                    }
+                TU_ARMA(UfcsKnown, pe) {
                     // TODO: If the target is a function, don't emit the &
                     m_of << "&";
-                    )
-                )
+                    }
+                }
                 m_of << Trans_Mangle(*c);
                 }
             }
         }
         void emit_param(const ::MIR::Param& p) {
-            TU_MATCHA( (p), (e),
-            (LValue,
+            TU_MATCH_HDRA( (p), {)
+            TU_ARMA(LValue, e) {
                 emit_lvalue(e);
-                ),
-            (Constant,
+                }
+            TU_ARMA(Constant, e) {
                 emit_constant(e);
-                )
-            )
+                }
+            }
         }
         void emit_ctype(const ::HIR::TypeRef& ty) {
             emit_ctype(ty, FMT_CB(_,));
         }
         void emit_ctype(const ::HIR::TypeRef& ty, ::FmtLambda inner, bool is_extern_c=false) {
-            TU_MATCHA( (ty.m_data), (te),
-            (Infer,
+            TU_MATCH_HDRA( (ty.m_data), {)
+            TU_ARMA(Infer, te) {
                 m_of << "@" << ty << "@" << inner;
-                ),
-            (Diverge,
+                }
+            TU_ARMA(Diverge, te) {
                 m_of << "tBANG " << inner;
-                ),
-            (Primitive,
+                }
+            TU_ARMA(Primitive, te) {
                 switch(te)
                 {
                 case ::HIR::CoreType::Usize:    m_of << "uintptr_t";   break;
@@ -6100,53 +6088,53 @@ namespace {
                     MIR_BUG(*m_mir_res, "Raw str");
                 }
                 m_of << " " << inner;
-                ),
-            (Path,
+                }
+            TU_ARMA(Path, te) {
                 //if( const auto* ity = m_resolve.is_type_owned_box(ty) ) {
                 //    emit_ctype_ptr(*ity, inner);
                 //    return ;
                 //}
-                TU_MATCHA( (te.binding), (tpb),
-                (Struct,
+                TU_MATCH_HDRA( (te.binding), { )
+                TU_ARMA(Struct, tpb) {
                     m_of << "struct s_" << Trans_Mangle(te.path);
-                    ),
-                (Union,
+                    }
+                TU_ARMA(Union, tpb) {
                     m_of << "union u_" << Trans_Mangle(te.path);
-                    ),
-                (Enum,
+                    }
+                TU_ARMA(Enum, tpb) {
                     m_of << "struct e_" << Trans_Mangle(te.path);
-                    ),
-                (ExternType,
+                    }
+                TU_ARMA(ExternType, tpb) {
                     //m_of << "struct x_" << Trans_Mangle(te.path);
                     return ;
-                    ),
-                (Unbound,
+                    }
+                TU_ARMA(Unbound, tpb) {
                     MIR_BUG(*m_mir_res, "Unbound type path in trans - " << ty);
-                    ),
-                (Opaque,
+                    }
+                TU_ARMA(Opaque, tpb) {
                     MIR_BUG(*m_mir_res, "Opaque path in trans - " << ty);
-                    )
-                )
+                    }
+                }
                 m_of << " " << inner;
-                ),
-            (Generic,
+                }
+            TU_ARMA(Generic, te) {
                 MIR_BUG(*m_mir_res, "Generic in trans - " << ty);
-                ),
-            (TraitObject,
+                }
+            TU_ARMA(TraitObject, te) {
                 MIR_BUG(*m_mir_res, "Raw trait object - " << ty);
-                ),
-            (ErasedType,
+                }
+            TU_ARMA(ErasedType, te) {
                 MIR_BUG(*m_mir_res, "ErasedType in trans - " << ty);
-                ),
-            (Array,
+                }
+            TU_ARMA(Array, te) {
                 m_of << "t_" << Trans_Mangle(ty) << " " << inner;
                 //emit_ctype(*te.inner, inner);
                 //m_of << "[" << te.size.as_Known() << "]";
-                ),
-            (Slice,
+                }
+            TU_ARMA(Slice, te) {
                 MIR_BUG(*m_mir_res, "Raw slice object - " << ty);
-                ),
-            (Tuple,
+                }
+            TU_ARMA(Tuple, te) {
                 if( te.size() == 0 )
                     m_of << "tUNIT";
                 else {
@@ -6157,20 +6145,20 @@ namespace {
                     }
                 }
                 m_of << " " << inner;
-                ),
-            (Borrow,
+                }
+            TU_ARMA(Borrow, te) {
                 emit_ctype_ptr(*te.inner, inner);
-                ),
-            (Pointer,
+                }
+            TU_ARMA(Pointer, te) {
                 emit_ctype_ptr(*te.inner, inner);
-                ),
-            (Function,
+                }
+            TU_ARMA(Function, te) {
                 m_of << "t_" << Trans_Mangle(ty) << " " << inner;
-                ),
-            (Closure,
+                }
+            TU_ARMA(Closure, te) {
                 MIR_BUG(*m_mir_res, "Closure during trans - " << ty);
-                )
-            )
+                }
+            }
         }
 
         ::HIR::TypeRef get_inner_unsized_type(const ::HIR::TypeRef& ty)
@@ -6183,12 +6171,11 @@ namespace {
             }
             else if( ty.m_data.is_Path() )
             {
-                TU_MATCH_DEF( ::HIR::TypeRef::TypePathBinding, (ty.m_data.as_Path().binding), (tpb),
-                (
+                TU_MATCH_HDRA( (ty.m_data.as_Path().binding), {)
+                default:
                     MIR_BUG(*m_mir_res, "Unbound/opaque path in trans - " << ty);
                     throw "";
-                    ),
-                (Struct,
+                TU_ARMA(Struct, tpb) {
                     switch( tpb->m_struct_markings.dst_type )
                     {
                     case ::HIR::StructMarkings::DstType::None:
@@ -6205,22 +6192,22 @@ namespace {
                             m_resolve.expand_associated_types(sp, rv);
                             return rv;
                             };
-                        TU_MATCHA( (str.m_data), (se),
-                        (Unit,  MIR_BUG(*m_mir_res, "Unit-like struct with DstType::Possible"); ),
-                        (Tuple, return get_inner_unsized_type( monomorph(se.back().ent) ); ),
-                        (Named, return get_inner_unsized_type( monomorph(se.back().second.ent) ); )
-                        )
+                        TU_MATCH_HDRA( (str.m_data), { )
+                        TU_ARMA(Unit, se) MIR_BUG(*m_mir_res, "Unit-like struct with DstType::Possible");
+                        TU_ARMA(Tuple,se) return get_inner_unsized_type( monomorph(se.back().ent) );
+                        TU_ARMA(Named,se) return get_inner_unsized_type( monomorph(se.back().second.ent) );
+                        }
                         throw "";
                         }
                     }
-                    ),
-                (Union,
+                    }
+                TU_ARMA(Union, tpb) {
                     return ::HIR::TypeRef();
-                    ),
-                (Enum,
+                    }
+                TU_ARMA(Enum, tpb) {
                     return ::HIR::TypeRef();
-                    )
-                )
+                    }
+                }
                 throw "";
             }
             else
