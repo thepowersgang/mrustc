@@ -225,7 +225,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
         ::std::vector< ::MIR::Param>   lvals;
         lvals.reserve( vals.size() );
 
-        for(unsigned int i = 0; i < vals.size(); i ++)
+        for(size_t i = 0; i < vals.size(); i ++)
         {
             auto rval = MIR_Cleanup_LiteralToRValue(state, mutator, vals[i], te[i].clone(), ::HIR::GenericPath());
             lvals.push_back( mutator.in_temporary( mv$(te[i]), mv$(rval)) );

@@ -104,7 +104,7 @@ public:
     bool operator==(const ::HIR::SimplePath& sp) const {
         if( sp.m_crate_name != "" )  return false;
 
-        unsigned int i = sp.m_components.size();
+        auto i = sp.m_components.size();
         const auto* n = this;
         while( n && i -- )
         {
