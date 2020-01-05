@@ -74,8 +74,34 @@ Ordering HIR::ArraySize::ord(const HIR::ArraySize& x) const
         return ::ord( static_cast<unsigned>(this->tag()), static_cast<unsigned>(x.tag()) );
     TU_MATCH_HDRA( (*this, x), {)
     TU_ARMA(Unevaluated, tse, xse) {
-        //TODO(Span(), "Compare non-expanded array sizes - " << *this << " and " << x);
-        return OrdLess;
+        // If the two types are the exact same expression (i.e. same pointer)
+        // - They're equal
+        if( tse == xse )
+            return OrdEqual;
+
+        // If only one has populated MIR, they can't be equal (sort populated MIR after)
+        if( !tse->m_mir != !xse->m_mir ) {
+            return (tse->m_mir ? OrdGreater : OrdLess);
+        }
+        if( tse->m_mir )
+        {
+            assert(xse->m_mir);
+            // TODO: Compare MIR
+            TODO(Span(), "Compare non-expanded array sizes - (w/ MIR) " << *this << " and " << x);
+        }
+        else
+        {
+            // HACK: If the inner is a const param on both, sort based on that.
+            // - Very similar to the ordering of TypeRef::Generic
+            const auto* tn = dynamic_cast<const HIR::ExprNode_ConstParam*>(&**tse);
+            const auto& xn = dynamic_cast<const HIR::ExprNode_ConstParam*>(&**xse);
+            if( tn && xn )
+            {
+                // Is this valid? What if they're from different scopes?
+                return ::ord(tn->m_binding, xn->m_binding);
+            }
+            TODO(Span(), "Compare non-expanded array sizes - (wo/ MIR) " << *this << " and " << x);
+        }
         }
     TU_ARMA(Known, tse, xse)
         return ::ord(tse, xse);
