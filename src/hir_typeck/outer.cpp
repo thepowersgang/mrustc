@@ -207,7 +207,7 @@ namespace {
                 unsigned int i = param_vals.m_types.size();
                 const auto& ty_def = param_def.m_types[i];
                 if( ty_def.m_default.m_data.is_Infer() ) {
-                    ERROR(sp, E0000, "Unspecified parameter with no default");
+                    ERROR(sp, E0000, "Unspecified parameter with no default - " << param_def.fmt_args() << " with " << param_vals);
                 }
 
                 // Replace and expand
@@ -292,9 +292,11 @@ namespace {
             )
 
             // If an ErasedType is encountered, check if it has an origin set.
-            TU_IFLET(::HIR::TypeRef::Data, ty.m_data, ErasedType, e,
-                if( e.m_origin == ::HIR::SimplePath() )
+            if(auto* e = ty.m_data.opt_ErasedType())
+            {
+                if( e->m_origin == ::HIR::SimplePath() )
                 {
+                    DEBUG("Set origin of ErasedType - " << ty);
                     // If not, figure out what to do with it
 
                     // If the function path is set, we're processing the return type of a function
@@ -308,14 +310,14 @@ namespace {
                         for(unsigned int i = 0; i < m_fcn_ptr->m_params.m_types.size(); i ++)
                             params.m_types.push_back(::HIR::TypeRef(m_fcn_ptr->m_params.m_types[i].m_name, 256+i));
                         // Populate with function path
-                        e.m_origin = m_fcn_path->get_full_path();
-                        TU_MATCHA( (e.m_origin.m_data), (e2),
+                        e->m_origin = m_fcn_path->get_full_path();
+                        TU_MATCHA( (e->m_origin.m_data), (e2),
                         (Generic, e2.m_params = mv$(params); ),
                         (UfcsInherent, e2.params = mv$(params); ),
                         (UfcsKnown, e2.params = mv$(params); ),
                         (UfcsUnknown, throw ""; )
                         )
-                        e.m_index = m_fcn_erased_count++;
+                        e->m_index = m_fcn_erased_count++;
                     }
                     // If the function _pointer_ is set (but not the path), then we're in the function arguments
                     // - Add a un-namable generic parameter (TODO: Prevent this from being explicitly set when called)
@@ -325,16 +327,16 @@ namespace {
                         auto name = RcString::new_interned(FMT("impl$" << idx));
                         auto new_ty = ::HIR::TypeRef( name, 256 + idx );
                         m_fcn_ptr->m_params.m_types.push_back({ name, ::HIR::TypeRef(), true });
-                        for( const auto& trait : e.m_traits )
+                        for( const auto& trait : e->m_traits )
                         {
                             m_fcn_ptr->m_params.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({
                                     new_ty.clone(),
                                     trait.clone()
                                     }));
                         }
-                        if( e.m_lifetime != ::HIR::LifetimeRef() )
+                        if( e->m_lifetime != ::HIR::LifetimeRef() )
                         {
-                            TODO(sp, "Add bound " << new_ty << " : " << e.m_lifetime);
+                            TODO(sp, "Add bound " << new_ty << " : " << e->m_lifetime);
                         }
                         ty = ::std::move(new_ty);
                     }
@@ -343,7 +345,7 @@ namespace {
                         ERROR(sp, E0000, "Use of an erased type outside of a function return - " << ty);
                     }
                 }
-            )
+            }
         }
 
         void visit_generic_path(::HIR::GenericPath& p, PathContext pc) override
@@ -714,16 +716,20 @@ namespace {
             // NOTE: Superfluous... except that it makes the params valid for the return type.
             visit_params(item.m_params);
 
-            m_fcn_path = &p;
             m_fcn_ptr = &item;
-            m_fcn_erased_count = 0;
-            visit_type(item.m_return);
-            m_fcn_path = nullptr;
-            // TODO: Visit arguments
+
+            // Visit arguments
+            // - Used to convert `impl Trait` in argument position into generics
+            // - Done first so the path in return-position `impl Trait` is valid
             for(auto& arg : item.m_args)
             {
                 visit_type(arg.second);
             }
+            // Visit return type (populates path for `impl Trait` in return position
+            m_fcn_path = &p;
+            m_fcn_erased_count = 0;
+            visit_type(item.m_return);
+            m_fcn_path = nullptr;
             m_fcn_ptr = nullptr;
 
             ::HIR::Visitor::visit_function(p, item);
