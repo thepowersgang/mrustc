@@ -322,8 +322,8 @@ namespace {
                 break;
             case Compiler::Msvc:
                 m_of
-                    << "static inline uint64_t __builtin_popcount(uint64_t v) {\n"
-                    << "\treturn (v >> 32 != 0 ? __popcnt64(v>>32) : 32 + __popcnt64(v));\n"
+                    << "static inline int32_t __builtin_popcountll(uint64_t v) {\n"
+                    << "\treturn __popcnt(v & 0xFFFFFFFF) + __popcnt(v >> 32);\n"
                     << "}\n"
                     << "static inline int __builtin_ctz(uint32_t v) { int rv; _BitScanForward(&rv, v); return rv; }\n"
                     << "static inline int __builtin_clz(uint32_t v) { int rv; _BitScanReverse(&rv, v); return 31 - rv; }\n"
@@ -335,11 +335,13 @@ namespace {
                     << "}\n"
                     << "static inline bool __builtin_mul_overflow_u8(uint8_t a, uint8_t b, uint8_t* out) {\n"
                     << "\t*out = a*b;\n"
+                    << "\tif(b == 0) return false;\n"
                     << "\tif(a > UINT8_MAX/b)  return true;\n"
                     << "\treturn false;\n"
                     << "}\n"
                     << "static inline bool __builtin_mul_overflow_i8(int8_t a, int8_t b, int8_t* out) {\n"
                     << "\t*out = a*b;\n"    // Wait, this isn't valid?
+                    << "\tif(b == 0) return false;\n"
                     << "\tif(a > INT8_MAX/b)  return true;\n"
                     << "\tif(a < INT8_MIN/b)  return true;\n"
                     << "\tif( (a == -1) && (b == INT8_MIN))  return true;\n"
@@ -348,11 +350,13 @@ namespace {
                     << "}\n"
                     << "static inline bool __builtin_mul_overflow_u16(uint16_t a, uint16_t b, uint16_t* out) {\n"
                     << "\t*out = a*b;\n"
+                    << "\tif(b == 0) return false;\n"
                     << "\tif(a > UINT16_MAX/b)  return true;\n"
                     << "\treturn false;\n"
                     << "}\n"
                     << "static inline bool __builtin_mul_overflow_i16(int16_t a, int16_t b, int16_t* out) {\n"
                     << "\t*out = a*b;\n"    // Wait, this isn't valid?
+                    << "\tif(b == 0) return false;\n"
                     << "\tif(a > INT16_MAX/b)  return true;\n"
                     << "\tif(a < INT16_MIN/b)  return true;\n"
                     << "\tif( (a == -1) && (b == INT16_MIN))  return true;\n"
@@ -361,11 +365,13 @@ namespace {
                     << "}\n"
                     << "static inline bool __builtin_mul_overflow_u32(uint32_t a, uint32_t b, uint32_t* out) {\n"
                     << "\t*out = a*b;\n"
+                    << "\tif(b == 0) return false;\n"
                     << "\tif(a > UINT32_MAX/b)  return true;\n"
                     << "\treturn false;\n"
                     << "}\n"
                     << "static inline bool __builtin_mul_overflow_i32(int32_t a, int32_t b, int32_t* out) {\n"
                     << "\t*out = a*b;\n"    // Wait, this isn't valid?
+                    << "\tif(b == 0) return false;\n"
                     << "\tif(a > INT32_MAX/b)  return true;\n"
                     << "\tif(a < INT32_MIN/b)  return true;\n"
                     << "\tif( (a == -1) && (b == INT32_MIN))  return true;\n"
@@ -374,11 +380,13 @@ namespace {
                     << "}\n"
                     << "static inline bool __builtin_mul_overflow_u64(uint64_t a, uint64_t b, uint64_t* out) {\n"
                     << "\t*out = a*b;\n"
+                    << "\tif(b == 0) return false;\n"
                     << "\tif(a > UINT64_MAX/b)  return true;\n"
                     << "\treturn false;\n"
                     << "}\n"
                     << "static inline bool __builtin_mul_overflow_i64(int64_t a, int64_t b, int64_t* out) {\n"
                     << "\t*out = a*b;\n"    // Wait, this isn't valid?
+                    << "\tif(b == 0) return false;\n"
                     << "\tif(a > INT64_MAX/b)  return true;\n"
                     << "\tif(a < INT64_MIN/b)  return true;\n"
                     << "\tif( (a == -1) && (b == INT64_MIN))  return true;\n"
@@ -391,21 +399,81 @@ namespace {
                     << "static inline bool __builtin_mul_overflow_isize(intptr_t a, intptr_t b, intptr_t* out) {\n"
                     << "\treturn __builtin_mul_overflow_i" << Target_GetCurSpec().m_arch.m_pointer_bits << "(a, b, out);\n"
                     << "}\n"
-                    << "static inline _subcarry_u64(uint64_t a, uint64_t b, uint64_t* o) {\n"
+                    << "static inline bool __builtin_sub_overflow_u64(uint64_t a, uint64_t b, uint64_t* o) {\n"
                     << "\t""*o = a - b;\n"
-                    << "\t""return (a > b ? *o >= b : *o > a);\n"
+                    << "\t""return a < b;\n"
                     << "}\n"
-                    << "static inline _subcarry_u32(uint32_t a, uint32_t b, uint32_t* o) {\n"
+                    << "static inline bool __builtin_sub_overflow_u32(uint32_t a, uint32_t b, uint32_t* o) {\n"
                     << "\t""*o = a - b;\n"
-                    << "\t""return (a > b ? *o >= b : *o > a);\n"
+                    << "\t""return a < b;\n"
                     << "}\n"
-                    << "static inline _subcarry_u16(uint16_t a, uint16_t b, uint16_t* o) {\n"
+                    << "static inline bool __builtin_sub_overflow_u16(uint16_t a, uint16_t b, uint16_t* o) {\n"
                     << "\t""*o = a - b;\n"
-                    << "\t""return (a > b ? *o >= b : *o > a);\n"
+                    << "\t""return a < b;\n"
                     << "}\n"
-                    << "static inline _subcarry_u8(uint8_t a, uint8_t b, uint8_t* o) {\n"
+                    << "static inline bool __builtin_sub_overflow_u8(uint8_t a, uint8_t b, uint8_t* o) {\n"
                     << "\t""*o = a - b;\n"
-                    << "\t""return (a > b ? *o >= b : *o > a);\n"
+                    << "\t""return a < b;\n"
+                    << "}\n"
+                    << "static inline bool __builtin_sub_overflow_usize(uintptr_t a, uintptr_t b, uintptr_t* out) {\n"
+                    << "\treturn __builtin_sub_overflow_u" << Target_GetCurSpec().m_arch.m_pointer_bits << "(a, b, out);\n"
+                    << "}\n"
+                    << "static inline bool __builtin_add_overflow_u64(uint64_t a, uint64_t b, uint64_t* o) {\n"
+                    << "\t""*o = a + b;\n"
+                    << "\t""return a > UINT64_MAX - b;\n"
+                    << "}\n"
+                    << "static inline bool __builtin_add_overflow_u32(uint32_t a, uint32_t b, uint32_t* o) {\n"
+                    << "\t""*o = a + b;\n"
+                    << "\t""return a > UINT32_MAX - b;\n"
+                    << "}\n"
+                    << "static inline bool __builtin_add_overflow_u16(uint16_t a, uint16_t b, uint16_t* o) {\n"
+                    << "\t""*o = a + b;\n"
+                    << "\t""return a > UINT16_MAX - b;\n"
+                    << "}\n"
+                    << "static inline bool __builtin_add_overflow_u8(uint8_t a, uint8_t b, uint8_t* o) {\n"
+                    << "\t""*o = a + b;\n"
+                    << "\t""return a > UINT8_MAX - b;\n"
+                    << "}\n"
+                    << "static inline bool __builtin_add_overflow_usize(uintptr_t a, uintptr_t b, uintptr_t* out) {\n"
+                    << "\treturn __builtin_add_overflow_u" << Target_GetCurSpec().m_arch.m_pointer_bits << "(a, b, out);\n"
+                    << "}\n"
+                    << "static inline bool __builtin_sub_overflow_i64(int64_t a, int64_t b, int64_t* o) {\n"
+                    << "\t""*o = a - b;\n"
+                    << "\t""return ((b < 0) && (a > INT64_MAX + b)) || ((b > 0) && (a < INT64_MIN + b));\n"
+                    << "}\n"
+                    << "static inline bool __builtin_sub_overflow_i32(int32_t a, int32_t b, int32_t* o) {\n"
+                    << "\t""*o = a - b;\n"
+                    << "\t""return ((b < 0) && (a > INT32_MAX + b)) || ((b > 0) && (a < INT32_MIN + b));\n"
+                    << "}\n"
+                    << "static inline bool __builtin_sub_overflow_i16(int16_t a, int16_t b, int16_t* o) {\n"
+                    << "\t""*o = a - b;\n"
+                    << "\t""return ((b < 0) && (a > INT16_MAX + b)) || ((b > 0) && (a < INT16_MIN + b));\n"
+                    << "}\n"
+                    << "static inline bool __builtin_sub_overflow_i8(int8_t a, int8_t b, int8_t* o) {\n"
+                    << "\t""*o = a - b;\n"
+                    << "\t""return ((b < 0) && (a > INT8_MAX + b)) || ((b > 0) && (a < INT8_MIN + b));\n"
+                    << "}\n"
+                    << "static inline bool __builtin_sub_overflow_isize(intptr_t a, intptr_t b, intptr_t* out) {\n"
+                    << "\treturn __builtin_sub_overflow_i" << Target_GetCurSpec().m_arch.m_pointer_bits << "(a, b, out);\n"
+                    << "}\n"
+                    << "static inline bool __builtin_add_overflow_i64(int64_t a, int64_t b, int64_t* o) {\n"
+                    << "\t""*o = a + b;\n"
+                    << "\t""return ((b > 0) && (a > INT64_MAX - b)) || ((b < 0) && (a < INT64_MIN - b));\n"
+                    << "}\n"
+                    << "static inline bool __builtin_add_overflow_i32(int32_t a, int32_t b, int32_t* o) {\n"
+                    << "\t""*o = a + b;\n"
+                    << "\t""return ((b > 0) && (a > INT32_MAX - b)) || ((b < 0) && (a < INT32_MIN - b));\n"
+                    << "}\n"
+                    << "static inline bool __builtin_add_overflow_i16(int16_t a, int16_t b, int16_t* o) {\n"
+                    << "\t""*o = a + b;\n"
+                    << "\t""return ((b > 0) && (a > INT16_MAX - b)) || ((b < 0) && (a < INT16_MIN - b));\n"
+                    << "}\n"
+                    << "static inline bool __builtin_add_overflow_i8(int8_t a, int8_t b, int8_t* o) {\n"
+                    << "\t""*o = a + b;\n"
+                    << "\t""return ((b > 0) && (a > INT8_MAX - b)) || ((b < 0) && (a < INT8_MIN - b));\n"
+                    << "}\n"
+                    << "static inline bool __builtin_add_overflow_isize(intptr_t a, intptr_t b, intptr_t* out) {\n"
+                    << "\treturn __builtin_add_overflow_i" << Target_GetCurSpec().m_arch.m_pointer_bits << "(a, b, out);\n"
                     << "}\n"
                     << "static inline uint64_t __builtin_bswap64(uint64_t v) { return _byteswap_uint64(v); }\n"
                     << "static inline uint8_t InterlockedCompareExchange8(volatile uint8_t* v, uint8_t n, uint8_t e){ return _InterlockedCompareExchange8(v, n, e); }\n"
@@ -494,7 +562,7 @@ namespace {
                     << "static inline uint128_t xor128(uint128_t a, uint128_t b) { uint128_t v = { a.lo ^ b.lo, a.hi ^ b.hi }; return v; }\n"
                     << "static inline uint128_t shl128(uint128_t a, uint32_t b) { uint128_t v; if(b == 0) { return a; } else if(b < 64) { v.lo = a.lo << b; v.hi = (a.hi << b) | (a.lo >> (64 - b)); } else { v.hi = a.lo << (b - 64); v.lo = 0; } return v; }\n"
                     << "static inline uint128_t shr128(uint128_t a, uint32_t b) { uint128_t v; if(b == 0) { return a; } else if(b < 64) { v.lo = (a.lo >> b)|(a.hi << (64 - b)); v.hi = a.hi >> b; } else { v.lo = a.hi >> (b - 64); v.hi = 0; } return v; }\n"
-                    << "static inline uint128_t popcount128(uint128_t a) { uint128_t v = { __builtin_popcount(a.lo) + __builtin_popcount(a.hi), 0 }; return v; }\n"
+                    << "static inline uint128_t popcount128(uint128_t a) { uint128_t v = { __builtin_popcountll(a.lo) + __builtin_popcountll(a.hi), 0 }; return v; }\n"
                     << "static inline uint128_t __builtin_bswap128(uint128_t v) { uint128_t rv = { __builtin_bswap64(v.hi), __builtin_bswap64(v.lo) }; return rv; }\n"
                     << "static inline uint128_t intrinsic_ctlz_u128(uint128_t v) {\n"
                     << "\tuint128_t rv = { (v.hi != 0 ? __builtin_clz64(v.hi) : (v.lo != 0 ? 64 + __builtin_clz64(v.lo) : 128)), 0 };\n"
@@ -540,7 +608,7 @@ namespace {
                     << "static inline int128_t or128s (int128_t a, int128_t b) { int128_t v = { a.lo | b.lo, a.hi | b.hi }; return v; }\n"
                     << "static inline int128_t xor128s(int128_t a, int128_t b) { int128_t v = { a.lo ^ b.lo, a.hi ^ b.hi }; return v; }\n"
                     << "static inline int128_t shl128s(int128_t a, uint32_t b) { int128_t v; if(b == 0) { return a; } else if(b < 64) { v.lo = a.lo << b; v.hi = (a.hi << b) | (a.lo >> (64 - b)); } else { v.hi = a.lo << (b - 64); v.lo = 0; } return v; }\n"
-                    << "static inline int128_t shr128s(int128_t a, uint32_t b) { int128_t v; if(b == 0) { return a; } else if(b < 64) { v.lo = (a.lo >> b)|(a.hi << (64 - b)); v.hi = a.hi >> b; } else { v.lo = a.hi >> (b - 64); v.hi = 0; } return v; }\n"
+                    << "static inline int128_t shr128s(int128_t a, uint32_t b) { int128_t v; if(b == 0) { return a; } else if(b < 64) { v.lo = (a.lo >> b)|(a.hi << (64 - b)); v.hi = (int64_t)a.hi >> b; } else { v.lo = (int64_t)a.hi >> (b - 64); v.hi = (int64_t)a.hi < 0 ? -1 : 0; } return v; }\n"
                     ;
             }
             else
@@ -2118,7 +2186,15 @@ namespace {
                         m_of << ::std::hex << "0x" << e << "ull" << ::std::dec;
                         break;
                     case ::HIR::CoreType::U128:
-                        m_of << ::std::hex << "0x" << e << "ull" << ::std::dec;
+                        if (m_options.emulated_i128)
+                        {
+                            m_of << "{" << ::std::hex << "0x" << e << "ull, 0}" << ::std::dec;
+                        }
+                        else
+                        {
+                            m_of << "(uint128_t)";
+                            m_of << ::std::hex << "0x" << e << "ull" << ::std::dec;
+                        }
                         break;
                     case ::HIR::CoreType::I8:
                         m_of << static_cast<uint16_t>( static_cast<int8_t>(e) );
@@ -2130,9 +2206,20 @@ namespace {
                         m_of << static_cast<int32_t>(e);
                         break;
                     case ::HIR::CoreType::I64:
-                    case ::HIR::CoreType::I128:
                     case ::HIR::CoreType::Isize:
                         m_of << static_cast<int64_t>(e) << "ll";
+                        break;
+                    case ::HIR::CoreType::I128:
+                        if (m_options.emulated_i128)
+                        {
+                            m_of << "{" << e << "ll, 0}";
+                        }
+                        else
+                        {
+                            m_of << "(int128_t)";
+                            m_of << e;
+                            m_of << "ll";
+                        }
                         break;
                     case ::HIR::CoreType::Char:
                         assert(0 <= e && e <= 0x10FFFF);
@@ -3491,31 +3578,10 @@ namespace {
                 MIR_ASSERT(mir_res, ty.m_data.is_Primitive(), "i128/u128 cast from non-primitive");
                 switch (ve.type.m_data.as_Primitive())
                 {
-                case ::HIR::CoreType::U128:
-                    if (ty == ::HIR::CoreType::I128) {
-                        // Cast from i128 to u128
-                        emit_lvalue(dst);
-                        m_of << ".lo = ";
-                        emit_lvalue(ve.val);
-                        m_of << ".lo; ";
-                        emit_lvalue(dst);
-                        m_of << ".hi = ";
-                        emit_lvalue(ve.val);
-                        m_of << ".hi";
-                    }
-                    else {
-                        // Cast from small to u128
-                        emit_lvalue(dst);
-                        m_of << ".lo = ";
-                        emit_lvalue(ve.val);
-                        m_of << "; ";
-                        emit_lvalue(dst);
-                        m_of << ".hi = 0";
-                    }
-                    break;
                 case ::HIR::CoreType::I128:
-                    if (ty == ::HIR::CoreType::U128) {
-                        // Cast from u128 to i128
+                case ::HIR::CoreType::U128:
+                    if (ty == ::HIR::CoreType::I128 || ty == ::HIR::CoreType::U128) {
+                        // Cast between i128 and u128
                         emit_lvalue(dst);
                         m_of << ".lo = ";
                         emit_lvalue(ve.val);
@@ -3526,13 +3592,15 @@ namespace {
                         m_of << ".hi";
                     }
                     else {
-                        // Cast from small to i128
+                        // Cast from small to i128/u128
                         emit_lvalue(dst);
                         m_of << ".lo = ";
                         emit_lvalue(ve.val);
                         m_of << "; ";
                         emit_lvalue(dst);
-                        m_of << ".hi = 0";  // TODO: Sign
+                        m_of << ".hi = ";
+                        emit_lvalue(ve.val);
+                        m_of << " < 0 ? -1 : 0";
                     }
                     break;
                 case ::HIR::CoreType::I8:
@@ -3540,23 +3608,6 @@ namespace {
                 case ::HIR::CoreType::I32:
                 case ::HIR::CoreType::I64:
                 case ::HIR::CoreType::Isize:
-                    emit_lvalue(dst);
-                    m_of << " = ";
-                    switch (ty.m_data.as_Primitive())
-                    {
-                    case ::HIR::CoreType::U128:
-                        emit_lvalue(ve.val);
-                        m_of << ".lo";
-                        break;
-                    case ::HIR::CoreType::I128:
-                        // TODO: Maintain sign
-                        emit_lvalue(ve.val);
-                        m_of << ".lo";
-                        break;
-                    default:
-                        MIR_BUG(mir_res, "Unreachable");
-                    }
-                    break;
                 case ::HIR::CoreType::U8:
                 case ::HIR::CoreType::U16:
                 case ::HIR::CoreType::U32:
@@ -3567,9 +3618,6 @@ namespace {
                     switch (ty.m_data.as_Primitive())
                     {
                     case ::HIR::CoreType::U128:
-                        emit_lvalue(ve.val);
-                        m_of << ".lo";
-                        break;
                     case ::HIR::CoreType::I128:
                         emit_lvalue(ve.val);
                         m_of << ".lo";
@@ -4853,8 +4901,8 @@ namespace {
                         m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
                         break;
                     case Compiler::Msvc:
-                        emit_lvalue(e.ret_val); m_of << "._1 = _addcarry_u" << get_prim_size(params.m_types.at(0));
-                        m_of << "(0, "; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
+                        emit_lvalue(e.ret_val); m_of << "._1 = __builtin_add_overflow_" << params.m_types.at(0);
+                        m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
                         break;
                     }
                 }
@@ -4879,7 +4927,7 @@ namespace {
                         m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
                         break;
                     case Compiler::Msvc:
-                        emit_lvalue(e.ret_val); m_of << "._1 = _subcarry_u" << get_prim_size(params.m_types.at(0));
+                        emit_lvalue(e.ret_val); m_of << "._1 = __builtin_sub_overflow_" << params.m_types.at(0);
                         m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
                         break;
                     }
@@ -4932,8 +4980,8 @@ namespace {
                         m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
                         break;
                     case Compiler::Msvc:
-                        m_of << "_addcarry_u" << get_prim_size(params.m_types.at(0));
-                        m_of << "(0, "; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+                        m_of << "__builtin_add_overflow_" << params.m_types.at(0);
+                        m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
                         break;
                     }
                 }
@@ -4958,7 +5006,7 @@ namespace {
                         m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
                         break;
                     case Compiler::Msvc:
-                        m_of << "_subcarry_u" << get_prim_size(params.m_types.at(0));
+                        m_of << "__builtin_sub_overflow_" << params.m_types.at(0);
                         m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
                         break;
                     }
@@ -5109,27 +5157,10 @@ namespace {
                 if( type_is_emulated_i128(params.m_types.at(0)) )
                 {
                     m_of << "popcount128";
-                    if(params.m_types.at(0) == ::HIR::CoreType::I128)
-                        m_of << "s";
                 }
                 else
                 {
-                    switch(m_compiler)
-                    {
-                    case Compiler::Gcc:
-                        m_of << "__builtin_popcount";
-                        break;
-                    case Compiler::Msvc:
-                        if( params.m_types.at(0) == ::HIR::CoreType::U64 || params.m_types.at(0) == ::HIR::CoreType::I64 )
-                        {
-                            m_of << "__popcnt64";
-                        }
-                        else
-                        {
-                            m_of << "__popcnt";
-                        }
-                        break;
-                    }
+                    m_of << "__builtin_popcountll";
                 }
                 m_of << "("; emit_param(e.args.at(0)); m_of << ")";
             }
