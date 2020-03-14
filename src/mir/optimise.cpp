@@ -3672,10 +3672,29 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                 new_value = ::MIR::Constant::make_Uint({ val, ve.t });
                                 ),
                             (Int,
-                                // Is ! valid on Int?
+                                // ! is valid on Int, it inverts bits the same way as an uint
                                 auto val = ve.v;
-                                new_value = ::MIR::Constant::make_Int({ ~val, ve.t });
-                                replace = true;
+                                switch(ve.t)
+                                {
+                                case ::HIR::CoreType::U8:   val = (~val) & 0xFF;  break;
+                                case ::HIR::CoreType::U16:  val = (~val) & 0xFFFF;  break;
+                                case ::HIR::CoreType::U32:  val = (~val) & 0xFFFFFFFF;  break;
+                                case ::HIR::CoreType::Usize:
+                                case ::HIR::CoreType::U64:
+                                    val = ~val;
+                                    break;
+                                case ::HIR::CoreType::U128:
+                                    replace = false;
+                                    break;
+                                case ::HIR::CoreType::Char:
+                                    MIR_BUG(state, "Invalid use of ! on char");
+                                    break;
+                                default:
+                                    // Invalid type for Uint literal
+                                    replace = false;
+                                    break;
+                                }
+                                new_value = ::MIR::Constant::make_Int({ val, ve.t });
                                 ),
                             (Float,
                                 // Not valid?
