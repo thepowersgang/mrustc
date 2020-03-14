@@ -26,8 +26,8 @@ struct BuildOptions
         Normal,
         /// Build tests
         Test,
-        /// Build examples
-        Examples,
+        ///// Build examples
+        //Examples,
     } mode = Mode::Normal;
 };
 

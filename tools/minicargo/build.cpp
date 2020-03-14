@@ -136,6 +136,8 @@ public:
     }
 };
 
+static ::std::mutex s_cout_mutex;
+
 BuildList::BuildList(const PackageManifest& manifest, const BuildOptions& opts):
     m_root_manifest(manifest)
 {
@@ -510,6 +512,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs)
     }
     else
     {
+        // NOTE: Don't bother locking, not multi-threaded
         ::std::cout << "DRY RUN BUILD" << ::std::endl;
         unsigned pass = 0;
         while( !state.build_queue.empty() )
@@ -556,6 +559,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs)
         return this->m_root_manifest.foreach_ty(PackageTarget::Type::Test, [&](const auto& test_target) {
             return builder.build_target(this->m_root_manifest, test_target, /*is_for_host=*/true, ~0u);
             });
+    //case BuildOptions::Mode::Examples:
     }
     throw "unreachable";
 }
@@ -797,6 +801,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     }
 
     {
+        ::std::lock_guard<::std::mutex> lh { s_cout_mutex };
         // TODO: Determine what number and total targets there are
         if( index != ~0u ) {
             //::std::cout << "(" << index << "/" << m_total_targets << ") ";
@@ -1207,11 +1212,12 @@ bool spawn_process(const char* exe_name, const StringList& args, const StringLis
     ::std::stringstream cmdline;
     cmdline << exe_name;
     for (const auto& arg : args.get_vec())
-        // TODO: Escaping
+        // TODO: Escaping rules (quote if spaces, `^` before interior quotes or `^`)
         cmdline << " " << arg;
     auto cmdline_str = cmdline.str();
     if(true)
     {
+        ::std::lock_guard<::std::mutex> lh { s_cout_mutex };
         ::std::cout << "> " << cmdline_str << ::std::endl;
     }
     else
@@ -1290,6 +1296,7 @@ bool spawn_process(const char* exe_name, const StringList& args, const StringLis
 
     if(true)
     {
+        ::std::lock_guard<::std::mutex> lh { s_cout_mutex };
         ::std::cout << ">";
         for(const auto& p : argv)
             ::std::cout  << " " << p;
@@ -1324,9 +1331,8 @@ bool spawn_process(const char* exe_name, const StringList& args, const StringLis
     //    });
     envp.push_back(nullptr);
 
-    // TODO: Acquire a lock
     {
-    	static ::std::mutex    s_chdir_mutex;
+        static ::std::mutex    s_chdir_mutex;
         ::std::lock_guard<::std::mutex> lh { s_chdir_mutex };
         auto fd_cwd = open(".", O_DIRECTORY);
         if( working_directory != ::helpers::path() ) {
