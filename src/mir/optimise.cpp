@@ -1854,6 +1854,7 @@ bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::
                 //  > The iterate function doesn't (yet) support following BB chains, so assume invalidated if over a jump.
                 // TODO: What if the set location is a call?
                 bool invalidated = IterPathRes::Complete != iter_path(fcn, set_loc_next, slot.use_loc,
+                        // TODO: What about a mutable borrow?
                         [&](auto loc, const auto& stmt)->bool{ return stmt.is_Drop() || check_invalidates_lvalue(stmt, dst, /*also_read=*/true); },
                         [&](auto loc, const auto& term)->bool{ return check_invalidates_lvalue(term, dst, /*also_read=*/true); }
                         );
@@ -1908,7 +1909,8 @@ bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::
                 auto use_loc_inc = slot.use_loc;
                 use_loc_inc.stmt_idx += 1;
                 bool invalidated = IterPathRes::Complete != iter_path(fcn, set_loc_next, use_loc_inc,
-                        [&](auto loc, const auto& stmt)->bool{ return check_invalidates_lvalue(stmt, src); },
+                        // NOTE: If a mutable borrow happens, assume it invalidates the source
+                        [&](auto loc, const auto& stmt)->bool{ return check_invalidates_lvalue(stmt, src) || TU_TEST2(stmt, Assign, .src, Borrow, .type != HIR::BorrowType::Shared); },
                         [&](auto loc, const auto& term)->bool{ return check_invalidates_lvalue(term, src); }
                         );
                 if( !invalidated )
