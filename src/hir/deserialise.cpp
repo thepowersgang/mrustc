@@ -581,6 +581,7 @@
                 }
             _(StaticString, m_in.read_string() )
             _(Const,  { box$(deserialise_path()) } )
+            _(Generic,  { m_in.read_istring(), m_in.read_count() })
             _(ItemAddr, box$(deserialise_path()) )
             #undef _
             default:
