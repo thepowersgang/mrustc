@@ -19,6 +19,8 @@
 
 //#include <cvconst.h>
 
+static bool ENABLE_DEBUG_SYMINFO = false;
+
 // #include <cvconst.h>
 // https://docs.microsoft.com/en-us/visualstudio/debugger/debug-interface-access/symtagenum?view=vs-2019
 enum SymTagEnum {
@@ -234,6 +236,7 @@ public:
     } m_data;
 
     static TypeRef lookup(HANDLE hProcess, ULONG64 mod_base, DWORD type_id);
+    static TypeRef lookup_by_name(const std::string& name);
 
     size_t size() const;
 
@@ -285,14 +288,16 @@ struct MemoryStats
 };
 
 
+std::map<uint64_t, TypeRef> g_vtable_cache;
+
 int main()
 {
     std::map<std::string, std::set<std::string>>    variables;
     variables["main"].insert("crate");
-    //const char* infile = "mrustc-0-Parsed.dmp";
+    const char* infile = "mrustc-0-Parsed.dmp";
     //const char* infile = "mrustc-2-Resolved.dmp";   // Last with the AST
-    const char* infile = "mrustc-4-HIR.dmp";
-    variables["main"].insert("hir_crate");
+    //const char* infile = "mrustc-4-HIR.dmp";
+    //variables["main"].insert("hir_crate");
 
     auto file = CreateFileA(infile, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if( file == INVALID_HANDLE_VALUE ) {
@@ -334,7 +339,6 @@ int main()
     }
     SymRefreshModuleList(proc_handle);
 
-
     // TODO: Obtain a mapping of vtables addresses to types
     // - Could fetch the type name form the vtable itself?
     {
@@ -361,28 +365,97 @@ int main()
                 };
                 try
                 {
-                    auto symtag = get_dword(pSymInfo->TypeIndex, "SYMTAG", TI_GET_SYMTAG);
-                    if( symtag == SymTagVTable )
+                    if( pSymInfo->Tag == SymTagUDT )
                     {
-                        std::cout << "#" << pSymInfo->TypeIndex << " VTable" << std::endl;
+                        //std::cout << "#" << pSymInfo->TypeIndex << " " << pSymInfo->Name << " VClass " << std::endl;
+                        TypeRef::lookup(proc_handle, mod_base, pSymInfo->Index);
                     }
-                    if(symtag == SymTagUDT)
+                    auto symtag = get_dword(pSymInfo->TypeIndex, "SYMTAG", TI_GET_SYMTAG);
+                    switch(symtag)
                     {
-                        //if( get_dword(pSymInfo->TypeIndex, "VIRTUALBASECLASS", TI_GET_VIRTUALBASECLASS) )
-                        //{
+                    case SymTagVTable:
+                        if(false)
+                        {
+                            std::cout << "#" << pSymInfo->TypeIndex << " VTable" << std::endl;
+                        }
+                        break;
+                    case SymTagUDT:
+                        if(false)
+                        {
+                            //if( get_dword(pSymInfo->TypeIndex, "VIRTUALBASECLASS", TI_GET_VIRTUALBASECLASS) )
+                            //{
                             auto v = get_dword(pSymInfo->TypeIndex, "VIRTUALTABLESHAPEID", TI_GET_VIRTUALTABLESHAPEID);
                             std::cout << "#" << pSymInfo->TypeIndex << " " << pSymInfo->Name << " VTable " << v << std::endl;
-                        //}
+                            //}
+                        }
+                        break;
                     }
                 }
                 catch(const std::exception& e)
                 {
-                    std::cout << e.what() << std::endl;
+                    std::cout << "EXCEPTION in ty_enum_cb: " << e.what() << std::endl;
+                }
+                return TRUE;
+            }
+            static BOOL vt_enum_cb(PSYMBOL_INFO pSymInfo, ULONG SymbolSize, PVOID UserContext)
+            {
+                auto proc_handle = (HANDLE)1;
+                auto mod_base = pSymInfo->ModBase;
+                auto get_dword = [proc_handle,mod_base](DWORD type_id, const char* name, IMAGEHLP_SYMBOL_TYPE_INFO info_ty) {
+                    DWORD v;
+                    if( !SymGetTypeInfo(proc_handle, mod_base, type_id, info_ty, &v) )
+                    {
+                        throw std::runtime_error(FMT_STRING("#" << type_id << " " << name << "=" << WinErrStr(GetLastError())));
+                    }
+                    return v;
+                };
+                auto get_str = [proc_handle,mod_base](DWORD type_id, const char* name, IMAGEHLP_SYMBOL_TYPE_INFO info_ty)->WideStrLocalFree {
+                    WCHAR* v;
+                    if( !SymGetTypeInfo(proc_handle, mod_base, type_id, info_ty, &v) )
+                    {
+                        throw std::runtime_error(FMT_STRING("#" << type_id << " " << name << "=" << WinErrStr(GetLastError())));
+                    }
+                    return WideStrLocalFree(v);
+                };
+                try
+                {
+                    //auto symtag = get_dword(pSymInfo->Index, "SYMTAG", TI_GET_SYMTAG);
+                    const auto* suf = "::`vftable'";
+                    const size_t suf_len = strlen(suf);
+                    auto len = strlen(pSymInfo->Name);
+                    auto ofs = len > suf_len ? len - suf_len : 0;
+                    if( ofs > 0 && strcmp(pSymInfo->Name + ofs, suf) == 0 )
+                    {
+                        if(strncmp(pSymInfo->Name, "std::_Func_impl", 5+5+5) != 0 )
+                        {
+                            std::string tyname( pSymInfo->Name, pSymInfo->Name + ofs );
+                            std::cout << "vt_enum_cb: " << tyname << " = " << std::hex << pSymInfo->Address << std::dec << std::endl;
+                            g_vtable_cache[pSymInfo->Address] = TypeRef::lookup_by_name(tyname);
+                        }
+                    }
+                    else
+                    {
+                        if(strstr(pSymInfo->Name, "vftable"))
+                        {
+                            std::cerr << "ofs=" << ofs << " " << (ofs > 0 ? pSymInfo->Name + ofs : pSymInfo->Name) << std::endl;
+                            assert(false);
+                        }
+                    }
+                    //switch(symtag)
+                    //{
+                    //case SymTagData:
+                    //    break;
+                    //}
+                }
+                catch(const std::exception& e)
+                {
+                    std::cout << "EXCEPTION in vt_enum_cb: " << e.what() << std::endl;
                 }
                 return TRUE;
             }
         };
         SymEnumTypes(proc_handle, module_list->Modules[0].BaseOfImage, H::ty_enum_cb, nullptr);
+        SymEnumSymbols(proc_handle, module_list->Modules[0].BaseOfImage, "", H::vt_enum_cb, nullptr);
     }
 
 
@@ -407,9 +480,12 @@ int main()
         }
     }
 
+    // TODO: Dump all types?
+
     auto rm = ReadMemory { view, memory_list, memory64_list };
     ReadMemory::s_self = &rm;
 
+    std::cout << "--- Enumerating memory" << std::endl;
     if(true)
     {
         MINIDUMP_EXCEPTION_STREAM*  exception_stream = NULL;
@@ -507,7 +583,7 @@ int main()
                                 if( var_list->count(pSymInfo->Name) > 0 )
                                 {
                                     std::cout << "FULL TYPE: ";
-                                    ty.fmt(std::cout, /*recurse_depth=*/10, /*indent_level=*/1);
+                                    ty.fmt(std::cout, /*recurse_depth=*/12, /*indent_level=*/1);
                                     std::cout << std::endl;
                                     ms.enum_type_at(ty, addr);
                                 }
@@ -724,6 +800,7 @@ TypeRef::t_cache    TypeRef::s_cache;
     case SymTagUDT:
         rv.m_class = ClassUdt;
         rv.m_data.udt = TypeDefinition::from_syminfo(hProcess, mod_base, type_id);
+        assert(rv.m_data.udt);
         break;
     case SymTagFunctionType:
         rv.m_class = ClassMisc;
@@ -733,12 +810,24 @@ TypeRef::t_cache    TypeRef::s_cache;
     case SymTagVTableShape:
         rv.m_class = ClassUdt;
         rv.m_data.udt = TypeDefinition::from_syminfo(hProcess, mod_base, type_id);
+        assert(rv.m_data.udt);
         break;
     default:
         throw std::runtime_error(FMT_STRING("#" << type_id << " SYMTAG=" << symtag));
     }
     s_cache.insert(std::make_pair(type_id, rv));
     return rv;
+}
+/*static*/ TypeRef TypeRef::lookup_by_name(const std::string& name)
+{
+    for(const auto& e : s_cache)
+    {
+        if( e.second.is_udt(name.c_str()) )
+        {
+            return e.second;
+        }
+    }
+    throw ::std::runtime_error("Type not loaded");
 }
 
 bool TypeRef::is_udt(const char* name) const {
@@ -885,7 +974,7 @@ struct Indent {
 /*static*/ TypeDefinition* TypeDefinition::from_syminfo(HANDLE hProcess, ULONG64 mod_base, DWORD type_id)
 {
     static Indent s_indent = Indent(" ");
-#define DO_DEBUG(v) do { if(true) { std::cout << s_indent << v << std::endl; } } while(0)
+#define DO_DEBUG(v) do { if(ENABLE_DEBUG_SYMINFO) { std::cout << s_indent << v << std::endl; } } while(0)
     static std::unordered_map<DWORD, TypeDefinition*>   s_anti_recurse;
     if( s_anti_recurse.find(type_id) != s_anti_recurse.end() ) {
         DO_DEBUG("Recursion on #" << type_id);
@@ -933,78 +1022,91 @@ struct Indent {
     DO_DEBUG(rv->name << " child_count=" << child_count);
     if(child_count > 0)
     {
-        std::vector<ULONG>  buf( (sizeof(TI_FINDCHILDREN_PARAMS) + (child_count-1) * sizeof(ULONG))/sizeof(ULONG) );
-        auto* child_params = reinterpret_cast<TI_FINDCHILDREN_PARAMS*>(buf.data());
-        child_params->Count = child_count;
-        child_params->Start = 0;
-
-        get_raw(type_id, "FINDCHILDREN", TI_FINDCHILDREN, child_params);
-
-        for(DWORD i = 0; i < child_count; i ++)
+        try
         {
-            auto child_type_id = child_params->ChildId[i];
-            auto child_tag = get_dword(child_type_id, "SYMTAG", TI_GET_SYMTAG);
-            switch(child_tag)
+            std::vector<ULONG>  buf( (sizeof(TI_FINDCHILDREN_PARAMS) + (child_count-1) * sizeof(ULONG))/sizeof(ULONG) );
+            auto* child_params = reinterpret_cast<TI_FINDCHILDREN_PARAMS*>(buf.data());
+            child_params->Count = child_count;
+            child_params->Start = 0;
+
+            get_raw(type_id, "FINDCHILDREN", TI_FINDCHILDREN, child_params);
+
+            for(DWORD i = 0; i < child_count; i ++)
             {
-            case SymTagData: {
-                auto data_kind = get_dword(child_type_id, "DATAKIND", TI_GET_DATAKIND);
-                switch(data_kind)
+                auto child_type_id = child_params->ChildId[i];
+                auto child_tag = get_dword(child_type_id, "SYMTAG", TI_GET_SYMTAG);
+                switch(child_tag)
                 {
-                case 7: { // Field?
+                case SymTagData: {
+                    auto data_kind = get_dword(child_type_id, "DATAKIND", TI_GET_DATAKIND);
+                    //DO_DEBUG(i << ":" << child_type_id << " " << child_tag << "/" << data_kind);
+                    switch(data_kind)
+                    {
+                    case 7: { // Field?
+                        Field   f;
+                        // TODO: Sometimes this fails with "Incorrect function"
+                        f.name = FMT_STRING(get_str(child_type_id, "SYMNAME", TI_GET_SYMNAME));
+                        f.offset = get_dword(child_type_id, "OFFSET", TI_GET_OFFSET);
+                        f.ty = TypeRef::lookup(hProcess, mod_base, get_dword(child_type_id, "TYPE", TI_GET_TYPE));
+                        rv->fields.push_back(std::move(f));
+                        } break;
+                    case 8: // Constant?
+                        // Seen for `npos` on std::string
+                        break;
+                    default:
+                        throw std::runtime_error(FMT_STRING("#" << type_id << "->" << child_type_id << " DATAKIND=" << data_kind));
+                    }
+                    } break;
+                case SymTagFunction:
+                    //DO_DEBUG(rv->name << " fn " << get_str(child_type_id, "SYMNAME", TI_GET_SYMNAME));
+                    break;
+                case SymTagBaseClass:
+                    // TODO: Recuse into this type (or look it up?)
+                    //DO_DEBUG(rv->name << " => " << child_type_id);
+                    DO_DEBUG(rv->name << " => " << get_str(child_type_id, "SYMNAME", TI_GET_SYMNAME));
+                    {
+                        DO_DEBUG(">> " << child_type_id << " " << get_dword(child_type_id, "TYPE", TI_GET_TYPE));
+                        auto p = TypeRef::lookup(hProcess, mod_base, get_dword(child_type_id, "TYPE", TI_GET_TYPE));
+                        switch(p.m_class)
+                        {
+                        case TypeRef::ClassUdt:
+                            for(auto& f : p.m_data.udt->fields)
+                            {
+                                rv->fields.push_back(f);
+                            }
+                            break;
+                        }
+                    }
+                    break;
+                case SymTagVTable:{ // VTable: Add as field
                     Field   f;
-                    f.name = FMT_STRING(get_str(child_type_id, "SYMNAME", TI_GET_SYMNAME));
+                    f.name = "#VTABLE";
                     f.offset = get_dword(child_type_id, "OFFSET", TI_GET_OFFSET);
+                    DO_DEBUG(">> VT " << child_type_id << " " << get_dword(child_type_id, "TYPE", TI_GET_TYPE));
                     f.ty = TypeRef::lookup(hProcess, mod_base, get_dword(child_type_id, "TYPE", TI_GET_TYPE));
                     rv->fields.push_back(std::move(f));
                     } break;
-                case 8: // Constant?
-                    // Seen for `npos` on std::string
+                case SymTagTypedef:
+                    break;
+                case SymTagEnum:
+                    break;
+                // Why? Inline structure?
+                case SymTagUDT:
                     break;
                 default:
-                    throw std::runtime_error(FMT_STRING("#" << type_id << "->" << child_type_id << " DATAKIND=" << data_kind));
+                    throw std::runtime_error(FMT_STRING("#" << type_id << "->" << child_type_id << " SYMTAG=" << child_tag));
                 }
-                } break;
-            case SymTagFunction:
-                //DO_DEBUG(rv->name << " fn " << get_str(child_type_id, "SYMNAME", TI_GET_SYMNAME));
-                break;
-            case SymTagBaseClass:
-                // TODO: Recuse into this type (or look it up?)
-                //DO_DEBUG(rv->name << " => " << child_type_id);
-                DO_DEBUG(rv->name << " => " << get_str(child_type_id, "SYMNAME", TI_GET_SYMNAME));
-                {
-                    auto p = TypeRef::lookup(hProcess, mod_base, get_dword(child_type_id, "TYPE", TI_GET_TYPE));
-                    switch(p.m_class)
-                    {
-                    case TypeRef::ClassUdt:
-                        for(auto& f : p.m_data.udt->fields)
-                        {
-                            rv->fields.push_back(f);
-                        }
-                        break;
-                    }
-                }
-                break;
-            case SymTagVTable:{ // VTable: Add as field
-                Field   f;
-                f.name = "#VTABLE";
-                f.offset = get_dword(child_type_id, "OFFSET", TI_GET_OFFSET);
-                f.ty = TypeRef::lookup(hProcess, mod_base, get_dword(child_type_id, "TYPE", TI_GET_TYPE));
-                rv->fields.push_back(std::move(f));
-                } break;
-            case SymTagTypedef:
-                break;
-            case SymTagEnum:
-                break;
-            // Why? Inline structure?
-            case SymTagUDT:
-                break;
-            default:
-                throw std::runtime_error(FMT_STRING("#" << type_id << "->" << child_type_id << " SYMTAG=" << child_tag));
             }
+        }
+        catch(const std::exception& e)
+        {
+            ::std::cout << "Exception " << e.what() << " in TypeDefinition::from_syminfo(" << type_id << "): " << rv->name << std::endl;
+            //rv->
         }
     }
     DO_DEBUG("TypeDefinition::from_syminfo(" << type_id << "): " << rv->name);
 
+    s_anti_recurse.erase(type_id);
     return rv.release();
 #undef DO_DEBUG
 }
@@ -1096,7 +1198,7 @@ std::string MemoryStats::get_enum_key(const TypeRef& ty, DWORD64 addr) const
 void MemoryStats::enum_type_at(const TypeRef& ty, DWORD64 addr, bool is_top_level/*=true*/)
 {
     static Indent s_indent = Indent(" ");
-#define DO_DEBUG(v) do { if(false) { std::cout << s_indent << v << std::endl; } } while(0)
+#define DO_DEBUG(v) do { if(true) { std::cout << s_indent << v << std::endl; } } while(0)
     auto _ = s_indent.inc();
     DO_DEBUG("enum_type_at: >> " << ty << ", " << (void*)addr);
     // 1. Get the enumeration key for the instance (e.g. TypeRef(Prim) or AST::Item(Fcn))
@@ -1118,6 +1220,26 @@ void MemoryStats::enum_type_at(const TypeRef& ty, DWORD64 addr, bool is_top_leve
         if( udt->fields.size() > 0 && udt->fields[0].name == "#VTABLE" ) {
             auto vtable = ReadMemory::read_ptr(addr + udt->fields[0].offset);
             std::cout << s_indent << ty << " vtable = " << (void*)vtable << std::endl;
+            // TODO: Look up the actual type
+            auto it = g_vtable_cache.find(vtable);
+            if( it != g_vtable_cache.end() )
+            {
+                if( it->second.any_udt() != udt )
+                {
+                    enum_type_at(it->second, addr, is_top_level);
+                    return ;
+                }
+                else
+                {
+                    // Recursion!
+                    //throw std::runtime_error(FMT_STRING("VTABLE recursion on " << ty));
+                }
+            }
+            else
+            {
+                // VTable not found!
+                throw std::runtime_error(FMT_STRING("VTABLE " << ty << " 0x" << std::hex << vtable << " not known"));
+            }
         }
     }
 
@@ -1291,6 +1413,22 @@ void MemoryStats::enum_type_at(const TypeRef& ty, DWORD64 addr, bool is_top_leve
         if(ptr)
         {
             this->enum_type_at(inner_ty, ptr, true);
+        }
+        m_counts[FMT_STRING(">" << ty)] ++;
+    }
+    // shared_ptr
+    else if( ty.is_udt_suffix("std::shared_ptr<") ) {
+        auto ptr = ReadMemory::read_ptr(addr);
+        auto inner_ty = ty.get_field({"_Ptr", nullptr});
+        DO_DEBUG("std::shared_ptr< " << inner_ty << " >: " << (void*)ptr);
+        if(ptr)
+        {
+            static std::set<DWORD64>    s_shared_ptrs;
+            if( s_shared_ptrs.count(ptr) == 0 )
+            {
+                s_shared_ptrs.insert(ptr);
+                this->enum_type_at(inner_ty, ptr, true);
+            }
         }
         m_counts[FMT_STRING(">" << ty)] ++;
     }
