@@ -293,11 +293,13 @@ std::map<uint64_t, TypeRef> g_vtable_cache;
 int main()
 {
     std::map<std::string, std::set<std::string>>    variables;
-    variables["main"].insert("crate");
-    const char* infile = "mrustc-0-Parsed.dmp";
+    //const char* infile = "mrustc-0-Parsed.dmp";
     //const char* infile = "mrustc-2-Resolved.dmp";   // Last with the AST
     //const char* infile = "mrustc-4-HIR.dmp";
-    //variables["main"].insert("hir_crate");
+    const char* infile = "mrustc-8-Trans.dmp";
+    //variables["main"].insert("crate");
+    variables["main"].insert("hir_crate");
+    variables["main"].insert("items");
 
     auto file = CreateFileA(infile, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if( file == INVALID_HANDLE_VALUE ) {
@@ -454,10 +456,14 @@ int main()
                 return TRUE;
             }
         };
+        std::cout << "--- Enumerating all UDT types" << std::endl; std::cout.flush();
         SymEnumTypes(proc_handle, module_list->Modules[0].BaseOfImage, H::ty_enum_cb, nullptr);
+        std::cout << "--- Enumerating all VTables" << std::endl; std::cout.flush();
         SymEnumSymbols(proc_handle, module_list->Modules[0].BaseOfImage, "", H::vt_enum_cb, nullptr);
     }
 
+    std::cout << "--- Loading dump file" << std::endl;
+    std::cout.flush();
 
     MINIDUMP_THREAD_LIST*   thread_list = NULL;
     if( !MiniDumpReadDumpStream(view, ThreadListStream, NULL, (PVOID*)&thread_list, NULL) || !thread_list ) {
@@ -486,6 +492,7 @@ int main()
     ReadMemory::s_self = &rm;
 
     std::cout << "--- Enumerating memory" << std::endl;
+    std::cout.flush();
     if(true)
     {
         MINIDUMP_EXCEPTION_STREAM*  exception_stream = NULL;
@@ -1200,20 +1207,8 @@ void MemoryStats::enum_type_at(const TypeRef& ty, DWORD64 addr, bool is_top_leve
     static Indent s_indent = Indent(" ");
 #define DO_DEBUG(v) do { if(true) { std::cout << s_indent << v << std::endl; } } while(0)
     auto _ = s_indent.inc();
+    try {
     DO_DEBUG("enum_type_at: >> " << ty << ", " << (void*)addr);
-    // 1. Get the enumeration key for the instance (e.g. TypeRef(Prim) or AST::Item(Fcn))
-    // - If none, skip
-    auto enum_key = this->get_enum_key(ty, addr);
-    if(enum_key != "")
-    {
-        m_counts[enum_key] ++;
-    }
-
-    // IDEA: If top-level (either pointed-to or part of a vector), then count raw type
-    if( is_top_level )
-    {
-        m_counts[FMT_STRING(ty)] ++;
-    }
 
     if( const auto* udt = ty.any_udt() )
     {
@@ -1243,11 +1238,25 @@ void MemoryStats::enum_type_at(const TypeRef& ty, DWORD64 addr, bool is_top_leve
         }
     }
 
+    // 1. Get the enumeration key for the instance (e.g. TypeRef(Prim) or AST::Item(Fcn))
+    // - If none, skip
+    auto enum_key = this->get_enum_key(ty, addr);
+    if(enum_key != "")
+    {
+        m_counts[enum_key] ++;
+    }
+
+    // IDEA: If top-level (either pointed-to or part of a vector), then count raw type
+    if( is_top_level )
+    {
+        m_counts[FMT_STRING(ty << " [" << ty.size() << "]")] ++;
+    }
+
     // 2. Recurse (using special handlers if required)
     if( ty.is_any_basic() || (!ty.wrappers.empty() && ty.wrappers.back().is_pointer()) ) {
         DWORD64 v = 0;
         ReadMemory::read(NULL, addr, &v, ty.size(), NULL);
-        DO_DEBUG("enum_type_at: >> " << ty << " @ " << (void*)addr << " = " << (void*)v);
+        DO_DEBUG("enum_type_at: " << ty << " @ " << (void*)addr << " = " << (void*)v);
     }
     else if( !ty.wrappers.empty() ) {
         // What should happen with pointers?
@@ -1447,7 +1456,18 @@ void MemoryStats::enum_type_at(const TypeRef& ty, DWORD64 addr, bool is_top_leve
     else if( ty.is_udt("HIR::ExprPtrInner") ) {
         auto ptr = ReadMemory::read_ptr(addr);
         auto inner_ty = ty.get_field({"ptr", nullptr});
-        DO_DEBUG("HIR::CratePtr: " << inner_ty << " @ " << (void*)ptr);
+        DO_DEBUG("HIR::ExprPtrInner: " << inner_ty << " @ " << (void*)ptr);
+        if(ptr)
+        {
+            this->enum_type_at(inner_ty, ptr, true);
+        }
+        m_counts[FMT_STRING(">" << ty)] ++;
+    }
+    // HIR::ExprPtrInner
+    else if( ty.is_udt("MIR::FunctionPointer") ) {
+        auto ptr = ReadMemory::read_ptr(addr);
+        auto inner_ty = ty.get_field({"ptr", nullptr});
+        DO_DEBUG("MIR::FunctionPointer: " << inner_ty << " @ " << (void*)ptr);
         if(ptr)
         {
             this->enum_type_at(inner_ty, ptr, true);
@@ -1479,11 +1499,17 @@ void MemoryStats::enum_type_at(const TypeRef& ty, DWORD64 addr, bool is_top_leve
             if( !is_union ) {
                 for(const auto& f : ty.m_data.udt->fields)
                 {
+                    DO_DEBUG("enum_type_at: " << (void*)addr << "+" << f.offset << " " << f.name << ": " << f.ty);
                     enum_type_at(f.ty, addr + f.offset, /*is_top_level=*/false);
                 }
             }
         }
     }
     DO_DEBUG("enum_type_at: << " << ty << ", " << (void*)addr);
+    }
+    catch(const std::exception& e)
+    {
+        DO_DEBUG("enum_type_at: << " << ty << ", " << (void*)addr << " == EXCEPTION: " << e.what());
+    }
 #undef DO_DEBUG
 }
