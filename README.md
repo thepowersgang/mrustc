@@ -79,8 +79,8 @@ Debugging
 ---------
 Both the makefiles and `minicargo` write the compiler's stdout to a file in the output directory, e.g. when building
 `output/libcore.hir` it'll save to `output/libcore.hir_dbg.txt`.
-To get full debug output for a compilation run, set the environemnt variable `MRUSTC_DEBUG` to the pass you want to debug
-(pass names are printed in every log line). E.g. `MRUSTC_DEBUG=Expand make -f minicargo.mk`
+To get full debug output for a compilation run, set the environemnt variable `MRUSTC_DEBUG` to a : separated list of the passes you want to debug
+(pass names are printed in every log line). E.g. `MRUSTC_DEBUG=Expand:Parse make -f minicargo.mk`
 
 Bug Reports
 -----------
