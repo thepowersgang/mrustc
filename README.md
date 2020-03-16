@@ -92,7 +92,7 @@ Please try to include the following when submitting a bug report:
 
 Support and Discussion
 ----------------------
-For problems that don't warrant opening an issue, join the IRC channel - `irc.mozilla.org#mrustc`
+For problems that don't warrant opening an issue, join the IRC channel - `irc.freenode.net#mrustc`
 
 
 Current Features
