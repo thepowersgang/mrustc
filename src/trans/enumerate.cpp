@@ -572,21 +572,21 @@ namespace
 
             if( mode == Mode::Shallow )
             {
-                TU_MATCH_DEF(::HIR::TypeRef::Data, (ty.m_data), (te),
-                (
-                    ),
-                (Function,
+                TU_MATCH_HDRA( (ty.m_data), {)
+                default:
+                    break;
+                TU_ARMA(Function, te) {
                     visit_type(*te.m_rettype, Mode::Shallow);
                     for(const auto& sty : te.m_arg_types)
                         visit_type(sty, Mode::Shallow);
-                    ),
-                (Pointer,
+                    }
+                TU_ARMA(Pointer, te) {
                     visit_type(*te.inner, Mode::Shallow);
-                    ),
-                (Borrow,
+                    }
+                TU_ARMA(Borrow, te) {
                     visit_type(*te.inner, Mode::Shallow);
-                    )
-                )
+                    }
+                }
             }
             else
             {
@@ -596,26 +596,26 @@ namespace
                 }
                 active_set.insert( &ty );
 
-                TU_MATCHA( (ty.m_data), (te),
+                TU_MATCH_HDRA( (ty.m_data), {)
                 // Impossible
-                (Infer,
-                    ),
-                (Generic,
+                TU_ARMA(Infer, te) {
+                    }
+                TU_ARMA(Generic, te) {
                     BUG(Span(), "Generic type hit in enumeration - " << ty);
-                    ),
-                (ErasedType,
+                    }
+                TU_ARMA(ErasedType, te) {
                     //BUG(Span(), "ErasedType hit in enumeration - " << ty);
-                    ),
-                (Closure,
+                    }
+                TU_ARMA(Closure, te) {
                     BUG(Span(), "Closure type hit in enumeration - " << ty);
-                    ),
+                    }
                 // Nothing to do
-                (Diverge,
-                    ),
-                (Primitive,
-                    ),
+                TU_ARMA(Diverge, te) {
+                    }
+                TU_ARMA(Primitive, te) {
+                    }
                 // Recursion!
-                (Path,
+                TU_ARMA(Path, te) {
                     TU_MATCHA( (te.binding), (tpb),
                     (Unbound,
                         BUG(Span(), "Unbound type hit in enumeration - " << ty);
@@ -636,8 +636,8 @@ namespace
                         visit_enum(te.path.m_data.as_Generic(), *tpb);
                         )
                     )
-                    ),
-                (TraitObject,
+                    }
+                TU_ARMA(TraitObject, te) {
                     static Span sp;
                     // Ensure that the data trait's vtable is present
                     const auto& trait = *te.m_trait.m_trait_ptr;
@@ -655,31 +655,31 @@ namespace
                         vtable_params.m_types[idx] = ty_b.second.clone();
                     }
 
-                    visit_type( ::HIR::TypeRef( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref ) );
-                    ),
-                (Array,
+                    visit_type( ::HIR::TypeRef::new_path( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref ) );
+                    }
+                TU_ARMA(Array, te) {
                     visit_type(*te.inner, mode);
-                    ),
-                (Slice,
+                    }
+                TU_ARMA(Slice, te) {
                     visit_type(*te.inner, mode);
-                    ),
-                (Borrow,
+                    }
+                TU_ARMA(Borrow, te) {
                     visit_type(*te.inner, mode != Mode::Deep ? Mode::Shallow : Mode::Deep);
-                    ),
-                (Pointer,
+                    }
+                TU_ARMA(Pointer, te) {
                     visit_type(*te.inner, mode != Mode::Deep ? Mode::Shallow : Mode::Deep);
-                    ),
-                (Tuple,
+                    }
+                TU_ARMA(Tuple, te) {
                     for(const auto& sty : te)
                         visit_type(sty, mode);
-                    ),
-                (Function,
+                    }
+                TU_ARMA(Function, te) {
                     // TODO: Should shallow=true for these too?
                     visit_type(*te.m_rettype, mode);
                     for(const auto& sty : te.m_arg_types)
                         visit_type(sty, mode);
-                    )
-                )
+                    }
+                }
                 active_set.erase( active_set.find(&ty) );
             }
 
@@ -1013,7 +1013,7 @@ void Trans_Enumerate_Types(EnumState& state)
             }
 
             tv.visit_type( *ent.first.m_data.as_UfcsKnown().type );
-            tv.visit_type( ::HIR::TypeRef( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref ) );
+            tv.visit_type( ::HIR::TypeRef::new_path( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref ) );
         }
 
         constructors_added = false;

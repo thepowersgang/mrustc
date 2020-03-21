@@ -53,8 +53,9 @@ namespace {
 
         ::HIR::ExprNodeP do_reborrow(::HIR::ExprNodeP node_ptr)
         {
-            TU_IFLET( ::HIR::TypeRef::Data, node_ptr->m_res_type.m_data, Borrow, e,
-                if( e.type == ::HIR::BorrowType::Unique )
+            if(const auto* e = node_ptr->m_res_type.m_data.opt_Borrow())
+            {
+                if( e->type == ::HIR::BorrowType::Unique )
                 {
                     if( dynamic_cast< ::HIR::ExprNode_Index*>(node_ptr.get())
                      || dynamic_cast< ::HIR::ExprNode_Variable*>(node_ptr.get())
@@ -65,7 +66,7 @@ namespace {
                         DEBUG("Insert reborrow - " << node_ptr->span() << " - type=" << node_ptr->m_res_type);
                         auto sp = node_ptr->span();
                         auto ty_mut = node_ptr->m_res_type.clone();
-                        auto ty = e.inner->clone();
+                        auto ty = e->inner->clone();
                         node_ptr = NEWNODE(mv$(ty_mut), Borrow, sp, ::HIR::BorrowType::Unique,
                             NEWNODE(mv$(ty), Deref, sp,  mv$(node_ptr))
                             );
@@ -83,7 +84,7 @@ namespace {
                         DEBUG("Node " << node << " " << typeid(*node).name() << " cannot have a reborrow");
                     }
                 }
-            )
+            }
             return node_ptr;
         }
 

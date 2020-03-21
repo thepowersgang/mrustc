@@ -318,7 +318,7 @@ void ::HIR::Visitor::visit_params(::HIR::GenericParams& params)
 }
 void ::HIR::Visitor::visit_type(::HIR::TypeRef& ty)
 {
-    TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (e),
+    TU_MATCH(::HIR::TypeData, (ty.m_data), (e),
     (Infer,
         ),
     (Diverge,

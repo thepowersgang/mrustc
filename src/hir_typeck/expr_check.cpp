@@ -321,17 +321,16 @@ namespace {
             default:
                 ERROR(sp, E0000, "Invalid cast to\n " << dst_ty << "\n from\n " << src_ty);
             TU_ARMA(Pointer, de) {
-                TU_MATCH_DEF(::HIR::TypeRef::Data, (src_ty.m_data), (se),
-                (
+                TU_MATCH_HDRA( (src_ty.m_data), {)
+                default:
                     ERROR(sp, E0000, "Invalid cast to " << dst_ty << " from " << src_ty);
-                    ),
-                (Pointer,
+                TU_ARMA(Pointer, se) {
                     // TODO: Sized check - can't cast to a fat pointer from a thin one
                     //if( ! this->m_resolve.type_is_sized(*de.inner) ) {
                     //    ERROR(sp, E0000, "Invalid cast to fat pointer " << dst_ty << " from " << src_ty);
                     //}
-                    ),
-                (Primitive,
+                    }
+                TU_ARMA(Primitive, se) {
                     switch(se)
                     {
                     case ::HIR::CoreType::Bool:
@@ -346,16 +345,16 @@ namespace {
                     //if( ! this->m_resolve.type_is_sized(*de.inner) ) {
                     //    ERROR(sp, E0000, "Invalid cast to fat pointer " << dst_ty << " from " << src_ty);
                     //}
-                    ),
-                (Function,
+                    }
+                TU_ARMA(Function, se) {
                     if( *de.inner != ::HIR::TypeRef::new_unit() && *de.inner != ::HIR::CoreType::U8 && *de.inner != ::HIR::CoreType::I8 ) {
                         ERROR(sp, E0000, "Invalid cast to " << dst_ty << " from " << src_ty);
                     }
-                    ),
-                (Borrow,
+                    }
+                TU_ARMA(Borrow, se) {
                     this->check_types_equal(sp, *de.inner, *se.inner);
-                    )
-                )
+                    }
+                }
                 }
             TU_ARMA(Function, de) {
                 // NOTE: cast fn() only valid from:
@@ -487,7 +486,7 @@ namespace {
 
             const ::HIR::t_tuple_fields* fields_ptr = nullptr;
             ASSERT_BUG(sp, ty.m_data.is_Path(), "Result type of _TupleVariant isn't Path");
-            TU_MATCH(::HIR::TypeRef::TypePathBinding, (ty.m_data.as_Path().binding), (e),
+            TU_MATCH(::HIR::TypePathBinding, (ty.m_data.as_Path().binding), (e),
             (Unbound,
                 BUG(sp, "Unbound type in _TupleVariant - " << ty);
                 ),
@@ -550,7 +549,7 @@ namespace {
             ASSERT_BUG(sp, ty.m_data.is_Path(), "Result type of _StructLiteral isn't Path");
 
             const ::HIR::t_struct_fields* fields_ptr = nullptr;
-            TU_MATCH(::HIR::TypeRef::TypePathBinding, (ty.m_data.as_Path().binding), (e),
+            TU_MATCH(::HIR::TypePathBinding, (ty.m_data.as_Path().binding), (e),
             (Unbound, ),
             (Opaque, ),
             (Enum,
@@ -644,7 +643,7 @@ namespace {
             const auto& ty = node.m_res_type;
             ASSERT_BUG(sp, ty.m_data.is_Path(), "Result type of _UnitVariant isn't Path");
 
-            TU_MATCH(::HIR::TypeRef::TypePathBinding, (ty.m_data.as_Path().binding), (e),
+            TU_MATCH(::HIR::TypePathBinding, (ty.m_data.as_Path().binding), (e),
             (Unbound, ),
             (Opaque, ),
             (Enum,
@@ -869,17 +868,18 @@ namespace {
 
             const auto& val_ty = node.m_value->m_res_type;
 
-            TU_IFLET( ::HIR::TypeRef::Data, val_ty.m_data, Function, e,
+            if( const auto* e = val_ty.m_data.opt_Function() )
+            {
                 DEBUG("- Function pointer: " << val_ty);
-                if( node.m_args.size() != e.m_arg_types.size() ) {
+                if( node.m_args.size() != e->m_arg_types.size() ) {
                     ERROR(node.span(), E0000, "Incorrect number of arguments to call via " << val_ty);
                 }
                 for( unsigned int i = 0; i < node.m_args.size(); i ++ )
                 {
-                    check_types_equal(node.m_args[i]->span(), e.m_arg_types[i], node.m_args[i]->m_res_type);
+                    check_types_equal(node.m_args[i]->span(), e->m_arg_types[i], node.m_args[i]->m_res_type);
                 }
-                check_types_equal(node.span(), node.m_res_type, *e.m_rettype);
-            )
+                check_types_equal(node.span(), node.m_res_type, *e->m_rettype);
+            }
             else if( node.m_trait_used == ::HIR::ExprNode_CallValue::TraitUsed::Unknown )
             {
             }
@@ -911,11 +911,11 @@ namespace {
                 if( !found ) {
                     ERROR(node.span(), E0000, "Unable to find a matching impl of " << trait << " for " << val_ty);
                 }
-                ::HIR::TypeRef  exp_ret( ::HIR::Path(
+                auto exp_ret = ::HIR::TypeRef::new_path( ::HIR::Path(
                     node.m_value->m_res_type.clone(),
                     { m_resolve.m_crate.get_lang_item_path(node.span(), "fn_once"), mv$(params) },
                     "Output", {}
-                    ) );
+                    ), {} );
                 m_resolve.expand_associated_types(node.span(), exp_ret);
                 check_types_equal(node.span(), node.m_res_type, exp_ret);
             }
@@ -1125,7 +1125,7 @@ namespace {
             //{
             //    return check_types_equal(sp, l, m_cur_expr->m_erased_types.at(e->m_index));
             //}
-            //DEBUG(sp << " - " << l << " == " << r);
+            DEBUG(sp << " - " << l << " == " << r);
             if( /*l.m_data.is_Diverge() ||*/ r.m_data.is_Diverge() ) {
                 // Diverge, matches everything.
                 // TODO: Is this always true?

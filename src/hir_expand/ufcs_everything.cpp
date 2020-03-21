@@ -93,11 +93,12 @@ namespace {
 
             // - If the called value is a local closure, figure out how it's being used.
             // TODO: You can call via &-ptrs, but that currently isn't handled in typeck
-            TU_IFLET(::HIR::TypeRef::Data, node.m_value->m_res_type.m_data, Closure, e,
+            if(const auto* e = node.m_value->m_res_type.m_data.opt_Closure() )
+            {
                 if( node.m_trait_used == ::HIR::ExprNode_CallValue::TraitUsed::Unknown )
                 {
                     // NOTE: Closure node still exists, and will do until MIR construction deletes the HIR
-                    switch(e.node->m_class)
+                    switch(e->node->m_class)
                     {
                     case ::HIR::ExprNode_Closure::Class::Unknown:
                         BUG(sp, "References an ::Unknown closure");
@@ -113,7 +114,7 @@ namespace {
                         break;
                     }
                 }
-            )
+            }
 
             // Use marking in node to determine trait to use
             ::HIR::TypeRef self_arg_type;
@@ -234,8 +235,9 @@ namespace {
         {
             // Equal integers and bool are valid
             if( ty_l == ty_r ) {
-                TU_IFLET(::HIR::TypeRef::Data, ty_l.m_data, Primitive, e,
-                    switch(e)
+                if(const auto* e = ty_l.m_data.opt_Primitive())
+                {
+                    switch(*e)
                     {
                     case ::HIR::CoreType::Char:
                     case ::HIR::CoreType::Str:
@@ -244,7 +246,7 @@ namespace {
                         // RETURN early
                         return true;
                     }
-                )
+                }
             }
             return false;
         }
@@ -252,8 +254,9 @@ namespace {
         {
             // Equal floats/integers are valid, others go to overload
             if( ty_l == ty_r ) {
-                TU_IFLET(::HIR::TypeRef::Data, ty_l.m_data, Primitive, e,
-                    switch(e)
+                if(const auto* e = ty_l.m_data.opt_Primitive())
+                {
+                    switch(*e)
                     {
                     case ::HIR::CoreType::Char:
                     case ::HIR::CoreType::Str:
@@ -263,7 +266,7 @@ namespace {
                         // RETURN early
                         return true;
                     }
-                )
+                }
             }
             return false;
         }
@@ -360,7 +363,7 @@ namespace {
                 {
                 // 1. Check if the types are valid for primitive comparison
                 if( ty_l == ty_r ) {
-                    TU_MATCH_DEF(::HIR::TypeRef::Data, (ty_l.m_data), (e),
+                    TU_MATCH_DEF(::HIR::TypeData, (ty_l.m_data), (e),
                     (
                         // Unknown - Overload
                         ),
@@ -543,7 +546,7 @@ namespace {
             const auto& ty_idx = node.m_index->m_res_type;
             const auto& ty_val = node.m_value->m_res_type;
 
-            TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty_val.m_data), (val_te),
+            TU_MATCH_DEF( ::HIR::TypeData, (ty_val.m_data), (val_te),
             (
                 // Unknown? fall down to the method call
                 ),
@@ -622,20 +625,19 @@ namespace {
 
             const auto& ty_val = node.m_value->m_res_type;
 
-            TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty_val.m_data), (e),
+            TU_MATCH_DEF( ::HIR::TypeData, (ty_val.m_data), (e),
             (
                 BUG(sp, "Deref on unexpected type - " << ty_val);
                 ),
             (Generic,
                 ),
             (Path,
-                TU_IFLET( ::HIR::Path::Data, e.path.m_data, Generic, pe,
-                    // Box<T> ("owned_box") is magical!
-                    if( pe.m_path == m_lang_Box ) {
-                        // Leave as is - MIR handles this
-                        return ;
-                    }
-                )
+                // Box<T> ("owned_box") is magical!
+                if(TU_TEST1(e.path.m_data, Generic, .m_path == m_lang_Box())
+                {
+                    // Leave as is - MIR handles this
+                    return ;
+                }
                 ),
             (Pointer,
                 // Leave as is (primitive operation)

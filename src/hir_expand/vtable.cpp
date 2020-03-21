@@ -227,7 +227,7 @@ namespace {
                 }
                 for(const auto& ty : tr.m_type_indexes) {
                     ::HIR::Path path( ::HIR::TypeRef("Self",0xFFFF), trait_path.clone(), ty.first );
-                    params.m_types.push_back( ::HIR::TypeRef( mv$(path) ) );
+                    params.m_types.push_back( ::HIR::TypeRef::new_path( mv$(path), {} ) );
                 }
             }
             // TODO: Would like to have access to the publicity marker
@@ -242,7 +242,7 @@ namespace {
 
             tr.m_values.insert( ::std::make_pair(
                 "vtable#",
-                ::HIR::TraitValueItem(::HIR::Static { ::HIR::Linkage(), false, ::HIR::TypeRef( mv$(path) ), {},{} })
+                ::HIR::TraitValueItem(::HIR::Static { ::HIR::Linkage(), false, ::HIR::TypeRef::new_path( mv$(path), {} ), {},{} })
                 ) );
         }
 

@@ -49,68 +49,68 @@ bool visit_ty_with(const ::HIR::TypeRef& ty, t_cb_visit_ty callback)
         return true;
     }
 
-    TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (e),
-    (Infer,
-        ),
-    (Diverge,
-        ),
-    (Primitive,
-        ),
-    (Generic,
-        ),
-    (Path,
+    TU_MATCH_HDRA( (ty.m_data), {)
+    TU_ARMA(Infer, e) {
+        }
+    TU_ARMA(Diverge, e) {
+        }
+    TU_ARMA(Primitive, e) {
+        }
+    TU_ARMA(Generic, e) {
+        }
+    TU_ARMA(Path, e) {
         return visit_ty_with__path(e.path, callback);
-        ),
-    (TraitObject,
+        }
+    TU_ARMA(TraitObject, e) {
         if( visit_ty_with__trait_path(e.m_trait, callback) )
             return true;
         for(const auto& trait : e.m_markers)
             if( visit_ty_with__path_params(trait.m_params, callback) )
                 return true;
         return false;
-        ),
-    (ErasedType,
+        }
+    TU_ARMA(ErasedType, e) {
         if( visit_ty_with__path(e.m_origin, callback) )
             return true;
         for(const auto& trait : e.m_traits)
             if( visit_ty_with__trait_path(trait, callback) )
                 return true;
         return false;
-        ),
-    (Array,
+        }
+    TU_ARMA(Array, e) {
         return visit_ty_with(*e.inner, callback);
-        ),
-    (Slice,
+        }
+    TU_ARMA(Slice, e) {
         return visit_ty_with(*e.inner, callback);
-        ),
-    (Tuple,
+        }
+    TU_ARMA(Tuple, e) {
         for(const auto& ty : e) {
             if( visit_ty_with(ty, callback) )
                 return true;
         }
         return false;
-        ),
-    (Borrow,
+        }
+    TU_ARMA(Borrow, e) {
         return visit_ty_with(*e.inner, callback);
-        ),
-    (Pointer,
+        }
+    TU_ARMA(Pointer, e) {
         return visit_ty_with(*e.inner, callback);
-        ),
-    (Function,
+        }
+    TU_ARMA(Function, e) {
         for(const auto& ty : e.m_arg_types) {
             if( visit_ty_with(ty, callback) )
                 return true;
         }
         return visit_ty_with(*e.m_rettype, callback);
-        ),
-    (Closure,
+        }
+    TU_ARMA(Closure, e) {
         for(const auto& ty : e.m_arg_types) {
             if( visit_ty_with(ty, callback) )
                 return true;
         }
         return visit_ty_with(*e.m_rettype, callback);
-        )
-    )
+        }
+    }
     return false;
 }
 bool visit_path_tys_with(const ::HIR::Path& path, t_cb_visit_ty callback)
@@ -211,32 +211,32 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
         return rv;
     }
 
-    TU_MATCH(::HIR::TypeRef::Data, (tpl.m_data), (e),
-    (Infer,
+    TU_MATCH_HDRA( (tpl.m_data), {)
+    TU_ARMA(Infer, e) {
         rv = ::HIR::TypeRef(e);
-        ),
-    (Diverge,
+        }
+    TU_ARMA(Diverge, e) {
         rv = ::HIR::TypeRef(e);
-        ),
-    (Primitive,
+        }
+    TU_ARMA(Primitive, e) {
         rv = ::HIR::TypeRef(e);
-        ),
-    (Path,
-        rv = ::HIR::TypeRef( ::HIR::TypeRef::Data::Data_Path {
+        }
+    TU_ARMA(Path, e) {
+        rv = ::HIR::TypeRef( ::HIR::TypeData::Data_Path {
             clone_ty_with__path(sp, e.path, callback),
             e.binding.clone()
             } );
         // If the input binding was Opaque, AND the type changed, clear it back to Unbound
         if( e.binding.is_Opaque() /*&& rv != tpl*/ ) {
             // NOTE: The replacement can be Self=Self, which should trigger a binding clear.
-            rv.m_data.as_Path().binding = ::HIR::TypeRef::TypePathBinding();
+            rv.m_data.as_Path().binding = ::HIR::TypePathBinding();
         }
-        ),
-    (Generic,
+        }
+    TU_ARMA(Generic, e) {
         rv = ::HIR::TypeRef(e);
-        ),
-    (TraitObject,
-        ::HIR::TypeRef::Data::Data_TraitObject  to;
+        }
+    TU_ARMA(TraitObject, e) {
+        ::HIR::TypeData::Data_TraitObject  to;
         to.m_trait = clone_ty_with__trait_path(sp, e.m_trait, callback);
         for(const auto& trait : e.m_markers)
         {
@@ -244,8 +244,8 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
         }
         to.m_lifetime = e.m_lifetime;
         rv = ::HIR::TypeRef( mv$(to) );
-        ),
-    (ErasedType,
+        }
+    TU_ARMA(ErasedType, e) {
         auto origin = clone_ty_with__path(sp, e.m_origin, callback);
 
         ::std::vector< ::HIR::TraitPath>    traits;
@@ -253,32 +253,32 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
         for(const auto& trait : e.m_traits)
             traits.push_back( clone_ty_with__trait_path(sp, trait, callback) );
 
-        rv = ::HIR::TypeRef( ::HIR::TypeRef::Data::Data_ErasedType {
+        rv = ::HIR::TypeRef( ::HIR::TypeData::Data_ErasedType {
             mv$(origin), e.m_index,
             mv$(traits),
             e.m_lifetime
             } );
-        ),
-    (Array,
-        rv = ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Array({ box$(clone_ty_with(sp, *e.inner, callback)), e.size.clone() }) );
-        ),
-    (Slice,
+        }
+    TU_ARMA(Array, e) {
+        rv = ::HIR::TypeRef( ::HIR::TypeData::make_Array({ box$(clone_ty_with(sp, *e.inner, callback)), e.size.clone() }) );
+        }
+    TU_ARMA(Slice, e) {
         rv = ::HIR::TypeRef::new_slice( clone_ty_with(sp, *e.inner, callback) );
-        ),
-    (Tuple,
+        }
+    TU_ARMA(Tuple, e) {
         ::std::vector< ::HIR::TypeRef>  types;
         for(const auto& ty : e) {
             types.push_back( clone_ty_with(sp, ty, callback) );
         }
         rv = ::HIR::TypeRef( mv$(types) );
-        ),
-    (Borrow,
+        }
+    TU_ARMA(Borrow, e) {
         rv = ::HIR::TypeRef::new_borrow (e.type, clone_ty_with(sp, *e.inner, callback));
-        ),
-    (Pointer,
+        }
+    TU_ARMA(Pointer, e) {
         rv = ::HIR::TypeRef::new_pointer(e.type, clone_ty_with(sp, *e.inner, callback));
-        ),
-    (Function,
+        }
+    TU_ARMA(Function, e) {
         ::HIR::FunctionType ft;
         ft.is_unsafe = e.is_unsafe;
         ft.m_abi = e.m_abi;
@@ -286,16 +286,16 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
         for( const auto& arg : e.m_arg_types )
             ft.m_arg_types.push_back( clone_ty_with(sp, arg, callback) );
         rv = ::HIR::TypeRef( mv$(ft) );
-        ),
-    (Closure,
-        ::HIR::TypeRef::Data::Data_Closure  oe;
+        }
+    TU_ARMA(Closure, e) {
+        ::HIR::TypeData::Data_Closure  oe;
         oe.node = e.node;
         oe.m_rettype = box$( clone_ty_with(sp, *e.m_rettype, callback) );
         for(const auto& a : e.m_arg_types)
             oe.m_arg_types.push_back( clone_ty_with(sp, a, callback) );
         rv = ::HIR::TypeRef( mv$(oe) );
-        )
-    )
+        }
+    }
     return rv;
 }
 

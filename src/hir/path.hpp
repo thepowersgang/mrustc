@@ -52,6 +52,7 @@ static inline Compare& operator &=(Compare& x, const Compare& y) {
 }
 
 /// Simple path - Absolute with no generic parameters
+// TODO: Investigate having this be a custom Rc vector-alike
 struct SimplePath
 {
     RcString   m_crate_name;

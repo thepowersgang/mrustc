@@ -103,22 +103,21 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_unwrapped_type(::HIR::TypeRef& tmp
 {
     TU_MATCH_HDRA( (w), {)
     TU_ARMA(Field, field_index) {
-        TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty.m_data), (te),
-        (
+        TU_MATCH_HDRA( (ty.m_data), {)
+        default:
             MIR_BUG(*this, "Field access on unexpected type - " << ty);
-            ),
         // Array and Slice use LValue::Field when the index is constant and known-good
-        (Array,
+        TU_ARMA(Array, te) {
             return *te.inner;
-            ),
-        (Slice,
+            }
+        TU_ARMA(Slice, te) {
             return *te.inner;
-            ),
-        (Tuple,
+            }
+        TU_ARMA(Tuple, te) {
             MIR_ASSERT(*this, field_index < te.size(), "Field index out of range in tuple " << field_index << " >= " << te.size());
             return te[field_index];
-            ),
-        (Path,
+            }
+        TU_ARMA(Path, te) {
             // TODO: Cache result (to avoid needing to re-monomorph)
             if( const auto* tep = te.binding.opt_Struct() )
             {
@@ -167,15 +166,14 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_unwrapped_type(::HIR::TypeRef& tmp
             {
                 MIR_BUG(*this, "Field access on invalid type - " << ty);
             }
-            )
-        )
+            }
+        }
         }
     TU_ARMA(Deref, _e) {
-        TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty.m_data), (te),
-        (
+        TU_MATCH_HDRA( (ty.m_data), {)
+        default:
             MIR_BUG(*this, "Deref on unexpected type - " << ty);
-            ),
-        (Path,
+        TU_ARMA(Path, te) {
             if( const auto* inner_ptr = this->is_type_owned_box(ty) )
             {
                 return *inner_ptr;
@@ -183,34 +181,32 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_unwrapped_type(::HIR::TypeRef& tmp
             else {
                 MIR_BUG(*this, "Deref on unexpected type - " << ty);
             }
-            ),
-        (Pointer,
+            }
+        TU_ARMA(Pointer, te) {
             return *te.inner;
-            ),
-        (Borrow,
+            }
+        TU_ARMA(Borrow, te) {
             return *te.inner;
-            )
-        )
+            }
+        }
         }
     TU_ARMA(Index, index_local) {
-        TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty.m_data), (te),
-        (
+        TU_MATCH_HDRA( (ty.m_data), { )
+        default:
             MIR_BUG(*this, "Index on unexpected type - " << ty);
-            ),
-        (Slice,
+        TU_ARMA(Slice, te) {
             return *te.inner;
-            ),
-        (Array,
+            }
+        TU_ARMA(Array, te) {
             return *te.inner;
-            )
-        )
+            }
+        }
         }
     TU_ARMA(Downcast, variant_index) {
-        TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty.m_data), (te),
-        (
+        TU_MATCH_HDRA( (ty.m_data), {)
+        default:
             MIR_BUG(*this, "Downcast on unexpected type - " << ty);
-            ),
-        (Path,
+        TU_ARMA(Path, te) {
             MIR_ASSERT(*this, te.binding.is_Enum() || te.binding.is_Union(), "Downcast on non-Enum");
             if( te.binding.is_Enum() )
             {
@@ -247,8 +243,8 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_unwrapped_type(::HIR::TypeRef& tmp
                     return var_ty;
                 }
             }
-            )
-        )
+            }
+        }
         }
     }
     throw "";

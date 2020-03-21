@@ -71,7 +71,7 @@ struct MirMutator
 void MIR_Cleanup_LValue(const ::MIR::TypeResolve& state, MirMutator& mutator, ::MIR::LValue& lval);
 
 namespace {
-    ::HIR::TypeRef get_vtable_type(const Span& sp, const ::StaticTraitResolve& resolve, const ::HIR::TypeRef::Data::Data_TraitObject& te)
+    ::HIR::TypeRef get_vtable_type(const Span& sp, const ::StaticTraitResolve& resolve, const ::HIR::TypeData::Data_TraitObject& te)
     {
         const auto& trait = *te.m_trait.m_trait_ptr;
 
@@ -86,7 +86,7 @@ namespace {
                 vtable_params.m_types.resize(idx+1);
             vtable_params.m_types[idx] = ty_b.second.clone();
         }
-        return ::HIR::TypeRef( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref );
+        return ::HIR::TypeRef::new_path( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref );
     }
 }
 
@@ -469,7 +469,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
 ::MIR::LValue MIR_Cleanup_Virtualize(
     const Span& sp, const ::MIR::TypeResolve& state, MirMutator& mutator,
     ::MIR::LValue& receiver_lvp,
-    const ::HIR::TypeRef::Data::Data_TraitObject& te, const ::HIR::Path::Data::Data_UfcsKnown& pe
+    const ::HIR::TypeData::Data_TraitObject& te, const ::HIR::Path::Data::Data_UfcsKnown& pe
     )
 {
     assert( te.m_trait.m_trait_ptr );
@@ -690,7 +690,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
                     vtable_params.m_types.resize(idx+1);
                 vtable_params.m_types[idx] = ty_b.second.clone();
             }
-            auto vtable_type = ::HIR::TypeRef( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref );
+            auto vtable_type = ::HIR::TypeRef::new_path( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref );
 
             out_meta_ty = ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, mv$(vtable_type));
 

@@ -133,7 +133,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
                 if(src_trait == ::HIR::GenericPath())
                     ERROR(sp, E0000, "Unable to find source trait for " << b.first << " in " << bound_trait_path.m_path);
                 rv.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({
-                    ::HIR::Path(type.clone(), mv$(src_trait), b.first),
+                    ::HIR::TypeRef::new_path( ::HIR::Path(type.clone(), mv$(src_trait), b.first), {} ),
                     // TODO: Recursively expand
                     LowerHIR_TraitPath(bound.span, b.second)
                     }));
@@ -765,13 +765,13 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
         }
     TU_ARMA(Bang, e) {
         // Aka diverging
-        return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Diverge({}) );
+        return ::HIR::TypeRef( ::HIR::TypeData::make_Diverge({}) );
         }
     TU_ARMA(Any, e) {
         return ::HIR::TypeRef();
         }
     TU_ARMA(Unit, e) {
-        return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Tuple({}) );
+        return ::HIR::TypeRef( ::HIR::TypeData::make_Tuple({}) );
         }
     TU_ARMA(Macro, e) {
         BUG(ty.span(), "TypeData::Macro");
@@ -806,12 +806,12 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
         }
         }
     TU_ARMA(Tuple, e) {
-        ::HIR::TypeRef::Data::Data_Tuple v;
+        ::HIR::TypeData::Data_Tuple v;
         for( const auto& st : e.inner_types )
         {
             v.push_back( LowerHIR_Type(st) );
         }
-        return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Tuple(mv$(v)) );
+        return ::HIR::TypeRef( ::HIR::TypeData::make_Tuple(mv$(v)) );
         }
     TU_ARMA(Borrow, e) {
         auto cl = (e.is_mut ? ::HIR::BorrowType::Unique : ::HIR::BorrowType::Shared);
@@ -856,11 +856,11 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
             return ::HIR::TypeRef( l->name, slot );
         }
         else {
-            return ::HIR::TypeRef( LowerHIR_Path(ty.span(), e.path) );
+            return ::HIR::TypeRef::new_path( LowerHIR_Path(ty.span(), e.path), {} );
         }
         }
     TU_ARMA(TraitObject, e) {
-        ::HIR::TypeRef::Data::Data_TraitObject  v;
+        ::HIR::TypeData::Data_TraitObject  v;
         // TODO: Lifetime
         for(const auto& t : e.traits)
         {
@@ -884,7 +884,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
                 v.m_trait = LowerHIR_TraitPath(ty.span(), t.path);
             }
         }
-        return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_TraitObject( mv$(v) ) );
+        return ::HIR::TypeRef( ::HIR::TypeData::make_TraitObject( mv$(v) ) );
         }
     TU_ARMA(ErasedType, e) {
         ASSERT_BUG(ty.span(), e.traits.size() > 0, "ErasedType with no traits");
@@ -909,7 +909,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
             TODO(ty.span(), "Handle multiple lifetime parameters - " << ty);
         }
         // Leave `m_origin` until the bind pass
-        return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_ErasedType(::HIR::TypeRef::Data::Data_ErasedType {
+        return ::HIR::TypeRef( ::HIR::TypeData::make_ErasedType(::HIR::TypeData::Data_ErasedType {
             ::HIR::Path(::HIR::SimplePath()), 0,
             mv$(traits),
             lft
@@ -927,11 +927,11 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
             };
         if( f.m_abi == "" )
             f.m_abi = ABI_RUST;
-        return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Function( mv$(f) ) );
+        return ::HIR::TypeRef( ::HIR::TypeData::make_Function( mv$(f) ) );
         }
     TU_ARMA(Generic, e) {
         assert(e.index < 0x10000);
-        return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Generic({ e.name, e.index }) );
+        return ::HIR::TypeRef( ::HIR::TypeData::make_Generic({ e.name, e.index }) );
         }
     }
     throw "BUGCHECK: Reached end of LowerHIR_Type";

@@ -43,24 +43,25 @@ void Trans_Codegen(const ::std::string& outfile, CodegenOutput out_ty, const Tra
         }
         else
         {
-            TU_IFLET( ::HIR::TypeRef::Data, ty.first.m_data, Path, te,
-                TU_MATCHA( (te.binding), (tpb),
+            if( const auto* te = ty.first.m_data.opt_Path() )
+            {
+                TU_MATCHA( (te->binding), (tpb),
                 (Unbound,  throw ""; ),
                 (Opaque,  throw ""; ),
                 (ExternType,
-                    //codegen->emit_extern_type(sp, te.path.m_data.as_Generic(), *tpb);
+                    //codegen->emit_extern_type(sp, te->path.m_data.as_Generic(), *tpb);
                     ),
                 (Struct,
-                    codegen->emit_struct(sp, te.path.m_data.as_Generic(), *tpb);
+                    codegen->emit_struct(sp, te->path.m_data.as_Generic(), *tpb);
                     ),
                 (Union,
-                    codegen->emit_union(sp, te.path.m_data.as_Generic(), *tpb);
+                    codegen->emit_union(sp, te->path.m_data.as_Generic(), *tpb);
                     ),
                 (Enum,
-                    codegen->emit_enum(sp, te.path.m_data.as_Generic(), *tpb);
+                    codegen->emit_enum(sp, te->path.m_data.as_Generic(), *tpb);
                     )
                 )
-            )
+            }
             codegen->emit_type(ty.first);
         }
     }

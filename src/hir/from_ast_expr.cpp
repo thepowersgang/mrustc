@@ -378,7 +378,7 @@ struct LowerHIR_ExprNode_Visitor:
             loop_node.m_code->visit(lv);
             if( ! lv.top_is_broken ) {
                 // If the loop never hit a 'break', the loop yields ! not ()
-                loop_node.m_res_type.m_data = ::HIR::TypeRef::Data::make_Diverge({});
+                loop_node.m_res_type = ::HIR::TypeRef::new_diverge();
             }
         }
     }

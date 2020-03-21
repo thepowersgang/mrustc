@@ -349,7 +349,7 @@ namespace
             ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "struct " << p;), ::HIR::TypeRef(), {}, empty_fcn };
             m_mir_res = &top_mir_res;
 
-            auto drop_glue_path = ::HIR::Path(::HIR::TypeRef(p.clone(), &item), "drop_glue#");
+            auto drop_glue_path = ::HIR::Path(::HIR::TypeRef::new_path(p.clone(), &item), "drop_glue#");
 
             TRACE_FUNCTION_F(p);
             ::HIR::TypeRef  ty = ::HIR::TypeRef::new_path(p.clone(), &item);
@@ -799,14 +799,14 @@ namespace
             auto putsize = [&](uint64_t v) { emit_str_usize(v); };
             switch(ty.m_data.tag())
             {
-            case ::HIR::TypeRef::Data::TAGDEAD: throw "";
-            case ::HIR::TypeRef::Data::TAG_Generic:
-            case ::HIR::TypeRef::Data::TAG_ErasedType:
-            case ::HIR::TypeRef::Data::TAG_Diverge:
-            case ::HIR::TypeRef::Data::TAG_Infer:
-            case ::HIR::TypeRef::Data::TAG_TraitObject:
-            case ::HIR::TypeRef::Data::TAG_Slice:
-            case ::HIR::TypeRef::Data::TAG_Closure:
+            case ::HIR::TypeData::TAGDEAD: throw "";
+            case ::HIR::TypeData::TAG_Generic:
+            case ::HIR::TypeData::TAG_ErasedType:
+            case ::HIR::TypeData::TAG_Diverge:
+            case ::HIR::TypeData::TAG_Infer:
+            case ::HIR::TypeData::TAG_TraitObject:
+            case ::HIR::TypeData::TAG_Slice:
+            case ::HIR::TypeData::TAG_Closure:
                 BUG(sp, "Unexpected " << ty << " in decoding literal");
             TU_ARM(ty.m_data, Primitive, te) {
                 switch(te)
@@ -865,8 +865,8 @@ namespace
                     BUG(sp, "Unexpected " << ty << " in decoding literal");
                 }
                 } break;
-            case ::HIR::TypeRef::Data::TAG_Path:
-            case ::HIR::TypeRef::Data::TAG_Tuple: {
+            case ::HIR::TypeData::TAG_Path:
+            case ::HIR::TypeData::TAG_Tuple: {
                 const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
                 assert(repr);
                 size_t cur_ofs = 0;
@@ -936,7 +936,7 @@ namespace
                     TODO(sp, "Composites - " << ty << " w/ " << lit);
                 }
                 } break;
-            case ::HIR::TypeRef::Data::TAG_Borrow:
+            case ::HIR::TypeData::TAG_Borrow:
                 if( *ty.m_data.as_Borrow().inner == ::HIR::CoreType::Str )
                 {
                     ASSERT_BUG(sp, lit.is_String(), ty << " not Literal::String - " << lit);
@@ -947,7 +947,7 @@ namespace
                     break;
                 }
                 // fall
-            case ::HIR::TypeRef::Data::TAG_Pointer: {
+            case ::HIR::TypeData::TAG_Pointer: {
                 const auto& ity = (ty.m_data.is_Borrow() ? *ty.m_data.as_Borrow().inner : *ty.m_data.as_Pointer().inner);
                 size_t ity_size, ity_align;
                 Target_GetSizeAndAlignOf(sp, m_resolve, ity, ity_size, ity_align);
@@ -983,7 +983,7 @@ namespace
                     TODO(sp, "Emit a pointer - " << ty << " from literal " << lit);
                 }
                 } break;
-            case ::HIR::TypeRef::Data::TAG_Function:
+            case ::HIR::TypeData::TAG_Function:
                 ASSERT_BUG(sp, lit.is_BorrowPath(), ty << " not Literal::BorrowPath - " << lit);
                 putsize(PTR_BASE);
                 out_relocations.push_back(Reloc::new_named(base_ofs, 8,  &lit.as_BorrowPath()));
@@ -1045,13 +1045,13 @@ namespace
                 const auto& vtable_sp = trait.m_vtable_path;
                 auto vtable_params = trait_path.m_params.clone();
                 for(const auto& ty : trait.m_type_indexes) {
-                    auto aty = ::HIR::TypeRef( ::HIR::Path( type.clone(), trait_path.clone(), ty.first ) );
+                    auto aty = ::HIR::TypeRef::new_path( ::HIR::Path( type.clone(), trait_path.clone(), ty.first ), {} );
                     m_resolve.expand_associated_types(sp, aty);
                     vtable_params.m_types.push_back( mv$(aty) );
                     //vtable_params.m_types.at(ty.second) = ::std::move(aty);
                 }
                 const auto& vtable_ref = m_crate.get_struct_by_path(sp, vtable_sp);
-                vtable_ty = ::HIR::TypeRef( ::HIR::GenericPath(mv$(vtable_sp), mv$(vtable_params)), &vtable_ref );
+                vtable_ty = ::HIR::TypeRef::new_path( ::HIR::GenericPath(mv$(vtable_sp), mv$(vtable_params)), &vtable_ref );
             }
 
             size_t  size, align;
@@ -1419,10 +1419,11 @@ namespace
             if( visit_ty_with(item.m_return, [&](const auto& x){ return x.m_data.is_ErasedType() || x.m_data.is_Generic(); }) )
             {
                 tmp = clone_ty_with(Span(), item.m_return, [&](const auto& tpl, auto& out) {
-                    TU_IFLET( ::HIR::TypeRef::Data, tpl.m_data, ErasedType, e,
-                        out = params.monomorph(m_resolve, item.m_code.m_erased_types.at(e.m_index));
+                    if( const auto* e = tpl.m_data.opt_ErasedType() )
+                    {
+                        out = params.monomorph(m_resolve, item.m_code.m_erased_types.at(e->m_index));
                         return true;
-                    )
+                    }
                     else if( tpl.m_data.is_Generic() ) {
                         out = params.get_cb()(tpl).clone();
                         return true;

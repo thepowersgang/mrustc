@@ -137,11 +137,11 @@ namespace {
         }
 
         void visit_type(::HIR::TypeRef& ty) override {
-            TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Generic, e,
+            if( ty.m_data.is_Generic() ) {
                 auto n = m_monomorph_cb(ty).clone();
                 DEBUG(ty << " -> " << n);
                 ty = mv$(n);
-            )
+            }
             else {
                 ::HIR::ExprVisitorDef::visit_type(ty);
             }
@@ -259,19 +259,20 @@ namespace {
         }
 
         static void fix_type(const ::HIR::Crate& crate, const Span& sp, t_cb_generic monomorph_cb, ::HIR::TypeRef& ty) {
-            TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Closure, e,
-                DEBUG("Closure: " << e.node->m_obj_path_base);
-                auto path = monomorphise_genericpath_with(sp, e.node->m_obj_path_base, monomorph_cb, false);
-                const auto& str = *e.node->m_obj_ptr;
+            if( const auto* e = ty.m_data.opt_Closure() )
+            {
+                DEBUG("Closure: " << e->node->m_obj_path_base);
+                auto path = monomorphise_genericpath_with(sp, e->node->m_obj_path_base, monomorph_cb, false);
+                const auto& str = *e->node->m_obj_ptr;
                 DEBUG(ty << " -> " << path);
-                ty = ::HIR::TypeRef::new_path( mv$(path), ::HIR::TypeRef::TypePathBinding::make_Struct(&str) );
-            )
+                ty = ::HIR::TypeRef::new_path( mv$(path), ::HIR::TypePathBinding::make_Struct(&str) );
+            }
 
             if( auto* e = ty.m_data.opt_Path() )
             {
                 if( e->binding.is_Unbound() && e->path.m_data.is_UfcsKnown() )
                 {
-                    e->binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
+                    e->binding = ::HIR::TypePathBinding::make_Opaque({});
                 }
             }
         }
@@ -335,8 +336,9 @@ namespace {
 
         void visit(::HIR::ExprNode_CallValue& node) override
         {
-            TU_IFLET( ::HIR::TypeRef::Data, node.m_value->m_res_type.m_data, Closure, e,
-                switch(e.node->m_class)
+            if( const auto* e = node.m_value->m_res_type.m_data.opt_Closure() )
+            {
+                switch(e->node->m_class)
                 {
                 case ::HIR::ExprNode_Closure::Class::Unknown:
                     BUG(node.span(), "References an ::Unknown closure");
@@ -351,7 +353,7 @@ namespace {
                     node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::FnOnce;
                     break;
                 }
-            )
+            }
 
             ::HIR::ExprVisitorDef::visit(node);
         }
@@ -804,8 +806,10 @@ namespace {
             node.m_captures = mv$(capture_nodes);
             //node.m_res_type = ::HIR::TypeRef( node.m_obj_path.clone() );
             DEBUG("-- Object name: " << node.m_obj_path);
-            ::HIR::TypeRef  closure_type = ::HIR::TypeRef( ::HIR::GenericPath(node.m_obj_path.m_path.clone(), mv$(impl_path_params)) );
-            closure_type.m_data.as_Path().binding = ::HIR::TypeRef::TypePathBinding::make_Struct(&closure_struct_ref);
+            ::HIR::TypeRef  closure_type = ::HIR::TypeRef::new_path(
+                ::HIR::GenericPath(node.m_obj_path.m_path.clone(), mv$(impl_path_params)),
+                ::HIR::TypePathBinding::make_Struct(&closure_struct_ref)
+                );
 
             // - Args
             ::std::vector< ::HIR::Pattern>  args_pat_inner;

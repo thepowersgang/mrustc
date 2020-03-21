@@ -39,17 +39,17 @@ namespace {
                 //return left.m_data.is_Generic();
                 return true;
             case ::HIR::InferClass::Integer:
-                TU_IFLET(::HIR::TypeRef::Data, left.m_data, Primitive, le,
-                    return is_integer(le);
-                )
+                if(const auto* le = left.m_data.opt_Primitive()) {
+                    return is_integer(*le);
+                }
                 else {
                     return left.m_data.is_Generic();
                 }
                 break;
             case ::HIR::InferClass::Float:
-                TU_IFLET(::HIR::TypeRef::Data, left.m_data, Primitive, le,
-                    return is_float(le);
-                )
+                if(const auto* le = left.m_data.opt_Primitive()) {
+                    return is_float(*le);
+                }
                 else {
                     return left.m_data.is_Generic();
                 }
@@ -86,11 +86,11 @@ namespace {
             //DEBUG("> Tag mismatch, failure");
             return false;
         }
-        TU_MATCH(::HIR::TypeRef::Data, (left.m_data, right.m_data), (le, re),
-        (Infer, assert(!"infer");),
-        (Diverge, return true; ),
-        (Primitive, return le == re;),
-        (Path,
+        TU_MATCH_HDRA( (left.m_data, right.m_data), {)
+        TU_ARMA(Infer, le, re) throw "infer";
+        TU_ARMA(Diverge, le, re) return true;
+        TU_ARMA(Primitive, le, re) return le == re;
+        TU_ARMA(Path, le, re) {
             if( le.path.m_data.tag() != re.path.m_data.tag() )
                 return false;
             TU_MATCH_DEF(::HIR::Path::Data, (le.path.m_data, re.path.m_data), (ple, pre),
@@ -101,11 +101,11 @@ namespace {
                 return matches_genericpath( ple, pre, ty_res, expand_generic);
                 )
             )
-            ),
-        (Generic,
+            }
+        TU_ARMA(Generic, le, re) {
             throw "";
-            ),
-        (TraitObject,
+            }
+        TU_ARMA(TraitObject, le, re) {
             if( !matches_genericpath(le.m_trait.m_path, re.m_trait.m_path, ty_res, expand_generic) )
                 return false;
             if( le.m_markers.size() != re.m_markers.size() )
@@ -118,39 +118,39 @@ namespace {
                     return false;
             }
             return true;
-            ),
-        (ErasedType,
+            }
+        TU_ARMA(ErasedType, le, re) {
             throw "Unexpected ErasedType in matches_type_int";
-            ),
-        (Array,
+            }
+        TU_ARMA(Array, le, re) {
             if( ! matches_type_int(*le.inner, *re.inner, ty_res, expand_generic) )
                 return false;
             if( le.size != re.size )
                 return false;
             return true;
-            ),
-        (Slice,
+            }
+        TU_ARMA(Slice, le, re) {
             return matches_type_int(*le.inner, *re.inner, ty_res, expand_generic);
-            ),
-        (Tuple,
+            }
+        TU_ARMA(Tuple, le, re) {
             if( le.size() != re.size() )
                 return false;
             for( unsigned int i = 0; i < le.size(); i ++ )
                 if( !matches_type_int(le[i], re[i], ty_res, expand_generic) )
                     return false;
             return true;
-            ),
-        (Borrow,
+            }
+        TU_ARMA(Borrow, le, re) {
             if( le.type != re.type )
                 return false;
             return matches_type_int(*le.inner, *re.inner, ty_res, expand_generic);
-            ),
-        (Pointer,
+            }
+        TU_ARMA(Pointer, le, re) {
             if( le.type != re.type )
                 return false;
             return matches_type_int(*le.inner, *re.inner, ty_res, expand_generic);
-            ),
-        (Function,
+            }
+        TU_ARMA(Function, le, re) {
             if( le.is_unsafe != re.is_unsafe )
                 return false;
             if( le.m_abi != re.m_abi )
@@ -161,11 +161,11 @@ namespace {
                 if( !matches_type_int(le.m_arg_types[i], re.m_arg_types[i], ty_res, expand_generic) )
                     return false;
             return matches_type_int(*le.m_rettype, *re.m_rettype, ty_res, expand_generic);
-            ),
-        (Closure,
+            }
+        TU_ARMA(Closure, le, re) {
             return le.node == re.node;
-            )
-        )
+            }
+        }
         return false;
     }
     bool matches_genericpath(const ::HIR::GenericPath& left, const ::HIR::GenericPath& right, ::HIR::t_cb_resolve_type ty_res, bool expand_generic)
@@ -261,30 +261,30 @@ namespace {
             return ::OrdEqual;
         }
 
-        TU_MATCH(::HIR::TypeRef::Data, (left.m_data), (le),
-        (Generic,
+        TU_MATCH_HDRA( (left.m_data), {)
+        TU_ARMA(Generic, le)
             throw "";
-            ),
-        (Infer,
+        TU_ARMA(Infer, le) {
             BUG(sp, "Hit infer");
-            ),
-        (Diverge,
+            }
+        TU_ARMA(Diverge, le) {
             BUG(sp, "Hit diverge");
-            ),
-        (Closure,
+            }
+        TU_ARMA(Closure, le) {
             BUG(sp, "Hit closure");
-            ),
-        (Primitive,
-            TU_IFLET(::HIR::TypeRef::Data, right.m_data, Primitive, re,
-                if( le != re )
+            }
+        TU_ARMA(Primitive, le) {
+            if(const auto* re = right.m_data.opt_Primitive() )
+            {
+                if( le != *re )
                     BUG(sp, "Mismatched types - " << left << " and " << right);
                 return ::OrdEqual;
-            )
+            }
             else {
                 BUG(sp, "Mismatched types - " << left << " and " << right);
             }
-            ),
-        (Path,
+            }
+        TU_ARMA(Path, le) {
             if( !right.m_data.is_Path() || le.path.m_data.tag() != right.m_data.as_Path().path.m_data.tag() )
                 BUG(sp, "Mismatched types - " << left << " and " << right);
             TU_MATCHA( (le.path.m_data, right.m_data.as_Path().path.m_data), (lpe, rpe),
@@ -301,8 +301,8 @@ namespace {
                 )
             )
             TODO(sp, "Path - " << le.path << " and " << right);
-            ),
-        (TraitObject,
+            }
+        TU_ARMA(TraitObject, le) {
             ASSERT_BUG(sp, right.m_data.is_TraitObject(), "Mismatched types - "<< left << " vs " << right);
             const auto& re = right.m_data.as_TraitObject();
             ASSERT_BUG(sp, le.m_trait.m_path.m_path == re.m_trait.m_path.m_path, "Mismatched types - "<< left << " vs " << right);
@@ -319,11 +319,11 @@ namespace {
                     return ord;
             }
             return ::OrdEqual;
-            ),
-        (ErasedType,
+            }
+        TU_ARMA(ErasedType, le) {
             TODO(sp, "ErasedType - " << left);
-            ),
-        (Function,
+            }
+        TU_ARMA(Function, le) {
             if(/*const auto* re =*/ right.m_data.opt_Function() ) {
                 if( left == right )
                     return ::OrdEqual;
@@ -333,54 +333,59 @@ namespace {
             else {
                 BUG(sp, "Mismatched types - " << left << " and " << right);
             }
-            ),
-        (Tuple,
-            TU_IFLET(::HIR::TypeRef::Data, right.m_data, Tuple, re,
-                return typelist_ord_specific(sp, le, re);
-            )
+            }
+        TU_ARMA(Tuple, le) {
+            if(const auto* re = right.m_data.opt_Tuple())
+            {
+                return typelist_ord_specific(sp, le, *re);
+            }
             else {
                 BUG(sp, "Mismatched types - " << left << " and " << right);
             }
-            ),
-        (Slice,
-            TU_IFLET(::HIR::TypeRef::Data, right.m_data, Slice, re,
-                return type_ord_specific(sp, *le.inner, *re.inner);
-            )
+            }
+        TU_ARMA(Slice, le) {
+            if(const auto* re = right.m_data.opt_Slice() )
+            {
+                return type_ord_specific(sp, *le.inner, *re->inner);
+            }
             else {
                 BUG(sp, "Mismatched types - " << left << " and " << right);
             }
-            ),
-        (Array,
-            TU_IFLET(::HIR::TypeRef::Data, right.m_data, Array, re,
-                if( le.size != re.size )
+            }
+        TU_ARMA(Array, le) {
+            if(const auto* re = right.m_data.opt_Array() )
+            {
+                if( le.size != re->size )
                     BUG(sp, "Mismatched types - " << left << " and " << right);
-                return type_ord_specific(sp, *le.inner, *re.inner);
-            )
+                return type_ord_specific(sp, *le.inner, *re->inner);
+            }
             else {
                 BUG(sp, "Mismatched types - " << left << " and " << right);
             }
-            ),
-        (Pointer,
-            TU_IFLET(::HIR::TypeRef::Data, right.m_data, Pointer, re,
-                if( le.type != re.type )
+            }
+        TU_ARMA(Pointer, le) {
+            if(const auto* re = right.m_data.opt_Pointer() )
+            {
+                if( le.type != re->type )
                     BUG(sp, "Mismatched types - " << left << " and " << right);
-                return type_ord_specific(sp, *le.inner, *re.inner);
-            )
+                return type_ord_specific(sp, *le.inner, *re->inner);
+            }
             else {
                 BUG(sp, "Mismatched types - " << left << " and " << right);
             }
-            ),
-        (Borrow,
-            TU_IFLET(::HIR::TypeRef::Data, right.m_data, Borrow, re,
-                if( le.type != re.type )
+            }
+        TU_ARMA(Borrow, le) {
+            if(const auto* re = right.m_data.opt_Borrow())
+            {
+                if( le.type != re->type )
                     BUG(sp, "Mismatched types - " << left << " and " << right);
-                return type_ord_specific(sp, *le.inner, *re.inner);
-            )
+                return type_ord_specific(sp, *le.inner, *re->inner);
+            }
             else {
                 BUG(sp, "Mismatched types - " << left << " and " << right);
             }
-            )
-        )
+            }
+        }
         throw "Fell off end of type_ord_specific";
     }
 

@@ -611,10 +611,10 @@ struct ExprNode_Literal:
         ExprNode( mv$(sp) ),
         m_data( mv$(data) )
     {
-        TU_MATCH(Data, (m_data), (e),
+        TU_MATCHA( (m_data), (e),
         (Integer,
             if( e.m_type != ::HIR::CoreType::Str ) {
-                m_res_type = ::HIR::TypeRef::Data::make_Primitive(e.m_type);
+                m_res_type = ::HIR::TypeRef(e.m_type);
             }
             else {
                 m_res_type.m_data.as_Infer().ty_class = ::HIR::InferClass::Integer;
@@ -622,14 +622,14 @@ struct ExprNode_Literal:
             ),
         (Float,
             if( e.m_type != ::HIR::CoreType::Str ) {
-                m_res_type = ::HIR::TypeRef::Data::make_Primitive(e.m_type);
+                m_res_type = ::HIR::TypeRef(e.m_type);
             }
             else {
                 m_res_type.m_data.as_Infer().ty_class = ::HIR::InferClass::Float;
             }
             ),
         (Boolean,
-            m_res_type = ::HIR::TypeRef::Data::make_Primitive( ::HIR::CoreType::Bool );
+            m_res_type = ::HIR::TypeRef( ::HIR::CoreType::Bool );
             ),
         (String,
             // TODO: &'static

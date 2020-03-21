@@ -1151,7 +1151,7 @@ namespace {
         }
         void emit_box_drop_glue(::HIR::GenericPath p, const ::HIR::Struct& item)
         {
-            auto struct_ty = ::HIR::TypeRef( p.clone(), &item );
+            auto struct_ty = ::HIR::TypeRef::new_path( p.clone(), &item );
             auto drop_glue_path = ::HIR::Path(struct_ty.clone(), "#drop_glue");
             auto struct_ty_ptr = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Owned, struct_ty.clone());
             // - Drop Glue
@@ -1492,7 +1492,7 @@ namespace {
                 //m_of << "typedef char alignof_assert_" << Trans_Mangle(p) << "[ (ALIGNOF(struct s_" << Trans_Mangle(p) << ") == " << repr->align << ") ? 1 : -1 ];\n";
             }
 
-            auto struct_ty = ::HIR::TypeRef(p.clone(), &item);
+            auto struct_ty = ::HIR::TypeRef::new_path(p.clone(), &item);
             auto drop_glue_path = ::HIR::Path(struct_ty.clone(), "#drop_glue");
             auto struct_ty_ptr = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Owned, struct_ty.clone());
             // - Drop Glue
@@ -1756,7 +1756,7 @@ namespace {
             // ---
             // - Drop Glue
             // ---
-            auto struct_ty = ::HIR::TypeRef(p.clone(), &item);
+            auto struct_ty = ::HIR::TypeRef::new_path(p.clone(), &item);
             auto drop_glue_path = ::HIR::Path(struct_ty.clone(), "#drop_glue");
             auto struct_ty_ptr = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Owned, struct_ty.clone());
             auto drop_impl_path = (item.m_markings.has_drop_impl ? ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") : ::HIR::Path(::HIR::SimplePath()));
@@ -2429,12 +2429,12 @@ namespace {
                 const auto& vtable_sp = trait.m_vtable_path;
                 auto vtable_params = trait_path.m_params.clone();
                 for(const auto& ty : trait.m_type_indexes) {
-                    auto aty = ::HIR::TypeRef( ::HIR::Path( type.clone(), trait_path.clone(), ty.first ) );
+                    auto aty = ::HIR::TypeRef::new_path( ::HIR::Path( type.clone(), trait_path.clone(), ty.first ), {} );
                     m_resolve.expand_associated_types(sp, aty);
                     vtable_params.m_types.push_back( mv$(aty) );
                 }
                 const auto& vtable_ref = m_crate.get_struct_by_path(sp, vtable_sp);
-                ::HIR::TypeRef  vtable_ty( ::HIR::GenericPath(mv$(vtable_sp), mv$(vtable_params)), &vtable_ref );
+                auto vtable_ty = ::HIR::TypeRef::new_path( ::HIR::GenericPath(mv$(vtable_sp), mv$(vtable_params)), &vtable_ref );
 
                 // Weak link for vtables
                 switch(m_compiler)

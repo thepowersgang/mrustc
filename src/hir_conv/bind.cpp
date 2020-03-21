@@ -463,26 +463,27 @@ namespace {
                         BUG(sp, "TypeAlias encountered after `Resolve Type Aliases` - " << ty);
                         ),
                     (ExternType,
-                        e->binding = ::HIR::TypeRef::TypePathBinding::make_ExternType(&e3);
+                        e->binding = ::HIR::TypePathBinding::make_ExternType(&e3);
                         DEBUG("- " << ty);
                         ),
                     (Struct,
                         fix_param_count(sp, pe, e3.m_params,  pe.m_params);
-                        e->binding = ::HIR::TypeRef::TypePathBinding::make_Struct(&e3);
+                        e->binding = ::HIR::TypePathBinding::make_Struct(&e3);
                         DEBUG("- " << ty);
                         ),
                     (Union,
                         fix_param_count(sp, pe, e3.m_params,  pe.m_params);
-                        e->binding = ::HIR::TypeRef::TypePathBinding::make_Union(&e3);
+                        e->binding = ::HIR::TypePathBinding::make_Union(&e3);
                         DEBUG("- " << ty);
                         ),
                     (Enum,
                         fix_param_count(sp, pe, e3.m_params,  pe.m_params);
-                        e->binding = ::HIR::TypeRef::TypePathBinding::make_Enum(&e3);
+                        e->binding = ::HIR::TypePathBinding::make_Enum(&e3);
                         DEBUG("- " << ty);
                         ),
                     (Trait,
-                        ty.m_data = ::HIR::TypeRef::Data::make_TraitObject({ ::HIR::TraitPath { mv$(pe), {}, {} }, {}, {} });
+                        // TODO: Should this reassign instead?
+                        ty.m_data = ::HIR::TypeData::make_TraitObject({ ::HIR::TraitPath { mv$(pe), {}, {} }, {}, {} });
                         )
                     )
                     }
@@ -498,11 +499,11 @@ namespace {
 
                     if( pe.type->m_data.is_Path() && pe.type->m_data.as_Path().binding.is_Opaque() ) {
                         // - Opaque type, opaque result
-                        e->binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
+                        e->binding = ::HIR::TypePathBinding::make_Opaque({});
                     }
                     else if( pe.type->m_data.is_Generic() ) {
                         // - Generic type, opaque resut. (TODO: Sometimes these are known - via generic bounds)
-                        e->binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
+                        e->binding = ::HIR::TypePathBinding::make_Opaque({});
                     }
                     else {
                         //bool found = find_impl(sp, m_crate, pe.trait.m_path, pe.trait.m_params, *pe.type, [&](const auto& impl_params, const auto& impl) {

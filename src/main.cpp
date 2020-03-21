@@ -168,7 +168,7 @@ void init_debug_list()
 void memory_dump(const char* phase) {
 #ifdef _MSC_VER
 #pragma comment(lib, "dbghelp.lib")
-    if( false )
+    if( getenv("MRUSTC_DUMPMEM") )
     {
         struct H {
             static int GenerateDump(const char* phase, EXCEPTION_POINTERS* pExceptionPointers)

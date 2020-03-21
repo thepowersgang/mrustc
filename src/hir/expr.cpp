@@ -268,7 +268,7 @@ void ::HIR::ExprVisitorDef::visit_pattern(const Span& sp, ::HIR::Pattern& pat)
 }
 void ::HIR::ExprVisitorDef::visit_type(::HIR::TypeRef& ty)
 {
-    TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (e),
+    TU_MATCH(::HIR::TypeData, (ty.m_data), (e),
     (Infer,
         ),
     (Diverge,

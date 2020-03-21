@@ -144,7 +144,7 @@ void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::AST::Cr
         for(const auto* ll = &modstack; ll; ll = ll->m_prev)
         {
             const auto& mac_mod = *ll->m_item;
-            for( const auto& mr : mac_mod.macros() )
+            for( const auto& mr : reverse(mac_mod.macros()) )
             {
                 if( mr.name == name )
                 {
@@ -163,8 +163,6 @@ void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::AST::Cr
                 //DEBUG("- " << mri.name);
                 if( mri.name == name )
                 {
-                    if( input_ident != "" )
-                        ERROR(mi_span, E0000, "macro_rules! macros can't take an ident");
                     DEBUG("?::" << mri.name << " - Imported");
 
                     last_mac = mri.data;
@@ -1430,6 +1428,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             if( ttl.get() )
             {
                 // Re-parse tt
+                // TODO: All new items should be placed just after this?
                 assert(ttl.get());
                 DEBUG("-- Parsing as mod items");
                 Parse_ModRoot_Items(*ttl, mod);

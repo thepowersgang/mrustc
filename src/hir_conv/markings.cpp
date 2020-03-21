@@ -375,19 +375,17 @@ public:
                     auto monomorph_cb_l = monomorphise_type_get_cb(sp, nullptr, &dst_te.path.m_data.as_Generic().m_params, nullptr);
                     auto monomorph_cb_r = monomorphise_type_get_cb(sp, nullptr, &te.path.m_data.as_Generic().m_params, nullptr);
 
-                    TU_MATCHA( (str->m_data), (se),
-                    (Unit,
-                        ),
-                    (Tuple,
+                    TU_MATCH_HDRA( (str->m_data), {)
+                    TU_ARMA(Unit, se) {
+                        }
+                    TU_ARMA(Tuple, se) {
                         for(unsigned int i = 0; i < se.size(); i ++)
                         {
                             // If the data is PhantomData, ignore it.
-                            TU_IFLET(::HIR::TypeRef::Data, se[i].ent.m_data, Path, ite,
-                                TU_IFLET(::HIR::Path::Data, ite.path.m_data, Generic, pe,
-                                    if( pe.m_path == m_lang_PhantomData )
-                                        continue ;
-                                )
-                            )
+                            if( TU_TEST2(se[i].ent.m_data, Path, .path.m_data, Generic, .m_path == m_lang_PhantomData) )
+                            {
+                                continue ;
+                            }
                             if( monomorphise_type_needed(se[i].ent) ) {
                                 auto ty_l = monomorphise_type_with(sp, se[i].ent, monomorph_cb_l, false);
                                 auto ty_r = monomorphise_type_with(sp, se[i].ent, monomorph_cb_r, false);
@@ -398,17 +396,15 @@ public:
                                 }
                             }
                         }
-                        ),
-                    (Named,
+                        }
+                    TU_ARMA(Named, se) {
                         for(unsigned int i = 0; i < se.size(); i ++)
                         {
                             // If the data is PhantomData, ignore it.
-                            TU_IFLET(::HIR::TypeRef::Data, se[i].second.ent.m_data, Path, ite,
-                                TU_IFLET(::HIR::Path::Data, ite.path.m_data, Generic, pe,
-                                    if( pe.m_path == m_lang_PhantomData )
-                                        continue ;
-                                )
-                            )
+                            if( TU_TEST2(se[i].second.ent.m_data, Path, .path.m_data, Generic, .m_path == m_lang_PhantomData) )
+                            {
+                                continue ;
+                            }
                             if( monomorphise_type_needed(se[i].second.ent) ) {
                                 auto ty_l = monomorphise_type_with(sp, se[i].second.ent, monomorph_cb_l, false);
                                 auto ty_r = monomorphise_type_with(sp, se[i].second.ent, monomorph_cb_r, false);
@@ -419,8 +415,8 @@ public:
                                 }
                             }
                         }
-                        )
-                    )
+                        }
+                    }
                     if( field == ~0u )
                         ERROR(sp, E0000, "CoerceUnsized requires a field to differ between source and destination");
                     struct_markings.coerce_unsized_index = field;

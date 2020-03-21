@@ -924,20 +924,19 @@ namespace {
             case ::MIR::eBinOp::GT: case ::MIR::eBinOp::GE:
                 ASSERT_BUG(sp, ty_l == ty_r, "Types in comparison operators must be equal - " << ty_l << " != " << ty_r);
                 // Defensive assert that the type is a valid MIR comparison
-                TU_MATCH_DEF(::HIR::TypeRef::Data, (ty_l.m_data), (e),
-                (
+                TU_MATCH_HDRA( (ty_l.m_data), {)
+                default:
                     BUG(sp, "Invalid type in comparison - " << ty_l);
-                    ),
-                (Pointer,
+                TU_ARMA(Pointer, e) {
                     // Valid
-                    ),
+                    }
                 // TODO: Should straight comparisons on &str be supported here?
-                (Primitive,
+                TU_ARMA(Primitive, e) {
                     if( e == ::HIR::CoreType::Str ) {
                         BUG(sp, "Invalid type in comparison - " << ty_l);
                     }
-                    )
-                )
+                    }
+                }
                 m_builder.push_stmt_assign(sp, mv$(res_slot), ::MIR::RValue::make_BinOp({ mv$(val_l), op, mv$(val_r) }));
                 break;
             // Bitwise masking operations: Require equal integer types or bool
@@ -1301,21 +1300,24 @@ namespace {
                     }
                     // TODO: Only valid if T: Sized in *{const/mut/move} T
                 }
-                else TU_IFLET( ::HIR::TypeRef::Data, ty_in.m_data, Borrow, se,
-                    if( *de.inner != *se.inner ) {
+                else if(const auto* se = ty_in.m_data.opt_Borrow() )
+                {
+                    if( *de.inner != *se->inner ) {
                         BUG(node.span(), "Cannot cast to " << ty_out << " from " << ty_in);
                     }
                     // Valid
-                )
-                else TU_IFLET( ::HIR::TypeRef::Data, ty_in.m_data, Function, se,
+                }
+                else if( const auto* se = ty_in.m_data.opt_Function() )
+                {
                     if( *de.inner != ::HIR::TypeRef::new_unit() && *de.inner != ::HIR::CoreType::U8 && *de.inner != ::HIR::CoreType::I8 ) {
                         BUG(node.span(), "Cannot cast to " << ty_out << " from " << ty_in);
                     }
                     // Valid
-                )
-                else TU_IFLET( ::HIR::TypeRef::Data, ty_in.m_data, Pointer, se,
+                }
+                else if( ty_in.m_data.is_Pointer() )
+                {
                     // Valid
-                )
+                }
                 else {
                     BUG(node.span(), "Cannot cast to pointer from " << ty_in);
                 }
@@ -1339,7 +1341,8 @@ namespace {
                     break;
                 case ::HIR::CoreType::F32:
                 case ::HIR::CoreType::F64:
-                    TU_IFLET(::HIR::TypeRef::Data, ty_in.m_data, Primitive, se,
+                    if(ty_in.m_data.is_Primitive())
+                    {
                         switch(de)
                         {
                         case ::HIR::CoreType::Str:
@@ -1351,13 +1354,14 @@ namespace {
                             // Valid
                             break;
                         }
-                    )
+                    }
                     else {
                         BUG(node.span(), "Cannot cast to " << ty_out << " from " << ty_in);
                     }
                     break;
                 default:
-                    TU_IFLET(::HIR::TypeRef::Data, ty_in.m_data, Primitive, se,
+                    if(ty_in.m_data.opt_Primitive())
+                    {
                         switch(de)
                         {
                         case ::HIR::CoreType::Str:
@@ -1366,15 +1370,17 @@ namespace {
                             // Valid
                             break;
                         }
-                    )
-                    else TU_IFLET(::HIR::TypeRef::Data, ty_in.m_data, Path, se,
-                        TU_IFLET(::HIR::TypeRef::TypePathBinding, se.binding, Enum, pbe,
+                    }
+                    else if( const auto* se = ty_in.m_data.opt_Path() )
+                    {
+                        if( se->binding.is_Enum() )
+                        {
                             // TODO: Check if it's a repr(ty/C) enum - and if the type matches
-                        )
+                        }
                         else {
                             BUG(node.span(), "Cannot cast to " << ty_out << " from " << ty_in);
                         }
-                    )
+                    }
                     // NOTE: Valid for all integer types
                     else if( ty_in.m_data.is_Pointer() ) {
                         // TODO: Only valid for T: Sized?
@@ -1413,8 +1419,8 @@ namespace {
                 const auto& ie = ty_in.m_data.as_Borrow();
                 const auto& ty_out = *oe.inner;
                 const auto& ty_in = *ie.inner;
-                TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty_out.m_data), (e),
-                (
+                TU_MATCH_HDRA( (ty_out.m_data), {)
+                default: {
                     const auto& lang_Unsize = m_builder.crate().get_lang_item_path(node.span(), "unsize");
                     if( m_builder.resolve().find_impl( node.span(), lang_Unsize, ::HIR::PathParams(ty_out.clone()), ty_in.clone(), [](auto , bool ){ return true; }) )
                     {
@@ -1427,8 +1433,8 @@ namespace {
                         m_builder.set_result( node.span(), ::MIR::RValue::make_Cast({ mv$(ptr_lval), node.m_res_type.clone() }) );
                         //TODO(node.span(), "MIR _Unsize to " << ty_out);
                     }
-                    ),
-                (Slice,
+                    }
+                TU_ARMA(Slice, e) {
                     if( ty_in.m_data.is_Array() )
                     {
                         const auto& in_array = ty_in.m_data.as_Array();
@@ -1446,11 +1452,11 @@ namespace {
                     {
                         ASSERT_BUG(node.span(), ty_in.m_data.is_Array(), "Unsize to slice from non-array - " << ty_in);
                     }
-                    ),
-                (TraitObject,
+                    }
+                TU_ARMA(TraitObject, e) {
                     m_builder.set_result( node.span(), ::MIR::RValue::make_Cast({ mv$(ptr_lval), node.m_res_type.clone() }) );
-                    )
-                )
+                    }
+                }
             }
             else
             {
@@ -1477,28 +1483,21 @@ namespace {
             auto value = m_builder.get_result_in_lvalue(node.m_value->span(), ty_val);
 
             ::MIR::RValue   limit_val;
-            TU_MATCH_DEF(::HIR::TypeRef::Data, (ty_val.m_data), (e),
-            (
+            TU_MATCH_HDRA( (ty_val.m_data), {)
+            default:
                 BUG(node.span(), "Indexing unsupported type " << ty_val);
-                ),
-            (Array,
+            TU_ARMA(Array, e) {
                 limit_val = ::MIR::Constant::make_Uint({ e.size.as_Known(), ::HIR::CoreType::Usize });
-                ),
-            (Slice,
-                limit_val = ::MIR::RValue::make_DstMeta({ m_builder.get_ptr_to_dst(node.m_value->span(), value) });
-                )
-            )
-
-            TU_MATCH_DEF(::HIR::TypeRef::Data, (ty_idx.m_data), (e),
-            (
-                BUG(node.span(), "Indexing using unsupported index type " << ty_idx);
-                ),
-            (Primitive,
-                if( e != ::HIR::CoreType::Usize ) {
-                    BUG(node.span(), "Indexing using unsupported index type " << ty_idx);
                 }
-                )
-            )
+            TU_ARMA(Slice, e) {
+                limit_val = ::MIR::RValue::make_DstMeta({ m_builder.get_ptr_to_dst(node.m_value->span(), value) });
+                }
+            }
+
+            if( ty_idx != ::HIR::CoreType::Usize )
+            {
+                BUG(node.span(), "Indexing using unsupported index type " << ty_idx);
+            }
 
             // Range checking (DISABLED)
             if( false )

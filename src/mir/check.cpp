@@ -41,7 +41,7 @@ namespace {
                     vtable_params.m_types[idx] = ty_b.second.clone();
                 }
                 // TODO: This should be a pointer
-                return ::HIR::TypeRef( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref );
+                return ::HIR::TypeRef::new_path( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref );
             }
         }
         else if( unsized_ty.m_data.is_Slice() )

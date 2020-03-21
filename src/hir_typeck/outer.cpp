@@ -132,7 +132,7 @@ namespace {
                 }
             };
 
-            TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (e),
+            TU_MATCH(::HIR::TypeData, (ty.m_data), (e),
             (Generic,
                 if(e.name == "Self") {
                     if( m_self_types.empty() )
@@ -274,8 +274,9 @@ namespace {
             }
             #endif
 
-            TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Path, e,
-                TU_MATCH( ::HIR::Path::Data, (e.path.m_data), (pe),
+            if(auto* e = ty.m_data.opt_Path())
+            {
+                TU_MATCH( ::HIR::Path::Data, (e->path.m_data), (pe),
                 (Generic,
                     ),
                 (UfcsUnknown,
@@ -289,7 +290,7 @@ namespace {
                     m_resolve.expand_associated_types(sp,ty);
                     )
                 )
-            )
+            }
 
             // If an ErasedType is encountered, check if it has an origin set.
             if(auto* e = ty.m_data.opt_ErasedType())
@@ -493,10 +494,11 @@ namespace {
                 return ;
             }
 
-            TU_IFLET(::HIR::TypeRef::Data, e.type->m_data, Generic, te,
+            if(const auto* te = e.type->m_data.opt_Generic())
+            {
                 // If processing a trait, and the type is 'Self', search for the type/method on the trait
                 // - TODO: This could be encoded by a `Self: Trait` bound in the generics, but that may have knock-on issues?
-                if( te.name == "Self" && m_current_trait ) {
+                if( te->name == "Self" && m_current_trait ) {
                     auto trait_path = this->get_current_trait_gp();
                     if( this->locate_in_trait_and_set(sp, pc, trait_path, *m_current_trait,  p.m_data) ) {
                         // Success!
@@ -505,7 +507,7 @@ namespace {
                 }
                 ERROR(sp, E0000, "Failed to find impl with '" << e.item << "' for " << *e.type);
                 return ;
-            )
+            }
             else {
                 // 1. Search for applicable inherent methods (COMES FIRST!)
                 if( this->crate.find_type_impls(*e.type, [](const auto& ty)->const auto&{return ty;}, [&](const auto& impl) {
@@ -664,7 +666,7 @@ namespace {
         {
             // Push `Self = <Self as CurTrait>::Type` for processing defaults in the bounds.
             auto path_aty = ::HIR::Path( ::HIR::TypeRef("Self", 0xFFFF), this->get_current_trait_gp(), p.get_name() );
-            auto ty_aty = ::HIR::TypeRef::new_path( mv$(path_aty), ::HIR::TypeRef::TypePathBinding::make_Opaque({}) );
+            auto ty_aty = ::HIR::TypeRef::new_path( mv$(path_aty), ::HIR::TypePathBinding::make_Opaque({}) );
             m_self_types.push_back(&ty_aty);
 
             ::HIR::Visitor::visit_associatedtype(p, item);
