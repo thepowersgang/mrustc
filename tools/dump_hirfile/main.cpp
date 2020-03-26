@@ -5,7 +5,7 @@
 #include <mir/mir.hpp>
 #include <mir/operations.hpp>   // MIR_Dump_Fcn
 
-int g_debug_indent_level = 0;
+//int g_debug_indent_level = 0;
 
 struct Args
 {
@@ -256,20 +256,23 @@ void Dumper::dump_trait(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const :
     ::std::cout << ::std::endl;
 }
 
+/*
 bool debug_enabled()
 {
     return false;
 }
+
 ::std::ostream& debug_output(int indent, const char* function)
 {
     return ::std::cout << "- " << RepeatLitStr { " ", indent } << function << ": ";
 }
+*/
 
 Args::Args(int argc, const char* const argv[])
 {
     this->infile = argv[1];
 }
-
+/*
 // TODO: This is copy-pasted from src/main.cpp, should live somewhere better
 ::std::ostream& operator<<(::std::ostream& os, const FmtEscaped& x)
 {
@@ -320,6 +323,7 @@ Args::Args(int argc, const char* const argv[])
     os << ::std::dec;
     return os;
 }
+*/
 
 MIR::EnumCachePtr::~EnumCachePtr()
 {
