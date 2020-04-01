@@ -1032,7 +1032,9 @@ namespace {
 
                     for( const auto& crate : m_crate.m_ext_crates )
                     {
-                        args.push_back(crate.second.m_path + ".obj");
+                        if (crate.second.m_path.compare(crate.second.m_path.size() - 5, 5, ".rlib") == 0) {
+                            args.push_back(crate.second.m_path + ".obj");
+                        }
                     }
                     // Crate-specified libraries
                     for(const auto& lib : m_crate.m_ext_libs) {
