@@ -995,6 +995,7 @@ namespace {
                 args.push_back("&");
                 args.push_back("cl.exe");
                 args.push_back("/nologo");
+                args.push_back("/F8388608"); // Set max stack size to 8 MB.
                 args.push_back(m_outfile_path_c.c_str());
                 switch(opt.opt_level)
                 {
