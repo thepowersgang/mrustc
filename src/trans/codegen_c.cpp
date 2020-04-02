@@ -2004,12 +2004,15 @@ namespace {
             TRACE_FUNCTION_F(p);
 
             auto type = params.monomorph(m_resolve, item.m_type);
-            emit_ctype( type, FMT_CB(ss, ss << Trans_Mangle(p);) );
-            m_of << " = ";
-            emit_literal(type, item.m_value_res, params);
-            m_of << ";";
-            m_of << "\t// static " << p << " : " << type;
-            m_of << "\n";
+            // statics that are zero do not require initializers, since they will be initialized to zero on program startup.
+            if (!is_zero_literal(type, item.m_value_res, params)) {
+                emit_ctype(type, FMT_CB(ss, ss << Trans_Mangle(p);));
+                m_of << " = ";
+                emit_literal(type, item.m_value_res, params);
+                m_of << ";";
+                m_of << "\t// static " << p << " : " << type;
+                m_of << "\n";
+            }
 
             m_mir_res = nullptr;
         }
@@ -5606,13 +5609,11 @@ namespace {
             }
         }
 
-        void assign_from_literal(::std::function<void()> emit_dst, const ::HIR::TypeRef& ty, const ::HIR::Literal& lit)
-        {
-            TRACE_FUNCTION_F("ty=" << ty << ", lit=" << lit);
-            Span    sp;
+        // returns whether a literal can be represented as zeroed memory.
+        bool is_zero_literal(const ::HIR::TypeRef& ty, const ::HIR::Literal& lit, const Trans_Params& params) {
             ::HIR::TypeRef  tmp;
             auto monomorph_with = [&](const ::HIR::PathParams& pp, const ::HIR::TypeRef& ty)->const ::HIR::TypeRef& {
-                if( monomorphise_type_needed(ty) ) {
+                if (monomorphise_type_needed(ty)) {
                     tmp = monomorphise_type_with(sp, ty, monomorphise_type_get_cb(sp, nullptr, &pp, nullptr), false);
                     m_resolve.expand_associated_types(sp, tmp);
                     return tmp;
@@ -5620,9 +5621,9 @@ namespace {
                 else {
                     return ty;
                 }
-                };
+            };
             auto get_inner_type = [&](unsigned int var, unsigned int idx)->const ::HIR::TypeRef& {
-                TU_MATCH_HDRA( (ty.m_data), { )
+                TU_MATCH_HDRA((ty.m_data), { )
                 default:
                     MIR_TODO(*m_mir_res, "Unknown type in list literal - " << ty);
                 TU_ARMA(Array, te) {
@@ -5637,7 +5638,7 @@ namespace {
                         MIR_BUG(*m_mir_res, "Extern type literal");
                         }
                     TU_ARMA(Struct, pbe) {
-                        TU_MATCH_HDRA( (pbe->m_data), {)
+                        TU_MATCH_HDRA((pbe->m_data), {)
                         TU_ARMA(Unit, se) {
                             MIR_BUG(*m_mir_res, "Unit struct " << ty);
                             }
@@ -5664,127 +5665,46 @@ namespace {
                     return te.at(idx);
                     }
                 }
-                };
+            };
+
             TU_MATCH_HDRA( (lit), {)
-            TU_ARMA(Invalid, e) {
-                m_of << "/* INVALID */";
-                }
-            TU_ARMA(Defer, e) {
-                MIR_BUG(*m_mir_res, "Defer literal encountered");
-                }
             TU_ARMA(List, e) {
-                if( ty.m_data.is_Array() )
-                {
-                    for(unsigned int i = 0; i < e.size(); i ++) {
-                        if(i != 0)  m_of << ";\n\t";
-                        assign_from_literal([&](){ emit_dst(); m_of << ".DATA[" << i << "]"; }, *ty.m_data.as_Array().inner, e[i]);
-                    }
+                bool all_zero = true;
+                for(unsigned int i = 0; i < e.size(); i ++) {
+                    const auto& ity = get_inner_type(0, i);
+                    all_zero &= is_zero_literal(ity, e[i], params);
                 }
-                else
-                {
-                    bool emitted_field = false;
-                    for(unsigned int i = 0; i < e.size(); i ++) {
-                        const auto& ity = get_inner_type(0, i);
-                        // Don't emit ZSTs if they're being omitted
-                        if( this->type_is_bad_zst(ity) )
-                            continue ;
-                        if(emitted_field)  m_of << ";\n\t";
-                        emitted_field = true;
-                        assign_from_literal([&](){ emit_dst(); m_of << "._" << i; }, get_inner_type(0, i), e[i]);
-                    }
-                    //if( !emitted_field )
-                    //{
-                    //}
-                }
+                return all_zero;
                 }
             TU_ARMA(Variant, e) {
                 MIR_ASSERT(*m_mir_res, ty.m_data.is_Path(), "");
                 MIR_ASSERT(*m_mir_res, ty.m_data.as_Path().binding.is_Enum(), "");
                 const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
-                MIR_ASSERT(*m_mir_res, repr, "");
-                switch(repr->variants.tag())
-                {
-                case TypeRepr::VariantMode::TAGDEAD:    throw "";
-                TU_ARM(repr->variants, None, ve)
-                    BUG(sp, "");
-                TU_ARM(repr->variants, NonZero, ve) {
-                    if( e.idx == ve.zero_variant ) {
-                        emit_dst(); emit_enum_path(repr, ve.field); m_of << " = 0";
+                const auto& enm = *ty.m_data.as_Path().binding.as_Enum();
+                if( repr->variants.is_None() ) {
+                    return true;
+                } else if( const auto* ve = repr->variants.opt_NonZero() ) {
+                    if( e.idx == ve->zero_variant ) {
+                        return true;
+                    } else {
+                        return is_zero_literal(get_inner_type(e.idx, 0), *e.val, params);
                     }
-                    else {
-                        assign_from_literal([&](){ emit_dst(); }, get_inner_type(e.idx, 0), *e.val);
-                    }
-                    } break;
-                TU_ARM(repr->variants, Values, ve) {
-                    emit_dst(); emit_enum_path(repr, ve.field); m_of << " = ";
-
-                    emit_enum_variant_val(repr, e.idx);
-                    if( TU_TEST1((*e.val), List, .empty() == false) )
-                    {
-                        m_of << ";\n\t";
-                        assign_from_literal([&](){ emit_dst(); m_of << ".DATA.var_" << e.idx; }, get_inner_type(e.idx, 0), *e.val);
-                    }
-                    } break;
-                }
-                }
-            TU_ARMA(Integer, e) {
-                emit_dst(); m_of << " = ";
-                emit_literal(ty, lit, {});
-                }
-            TU_ARMA(Float, e) {
-                emit_dst(); m_of << " = ";
-                emit_literal(ty, lit, {});
-                }
-            TU_ARMA(BorrowPath, e) {
-                if( ty.m_data.is_Function() )
-                {
-                    emit_dst(); m_of << " = " << Trans_Mangle(e);
-                }
-                else if( ty.m_data.is_Borrow() )
-                {
-                    const auto& ity = *ty.m_data.as_Borrow().inner;
-                    switch( metadata_type(ity) )
-                    {
-                    case MetadataType::Unknown:
-                        MIR_BUG(*m_mir_res, ity << " - Unknown meta");
-                    case MetadataType::None:
-                    case MetadataType::Zero:
-                        emit_dst(); m_of << " = &" << Trans_Mangle(e);
-                        break;
-                    case MetadataType::Slice:
-                        emit_dst(); m_of << ".PTR = &" << Trans_Mangle(e) << ";\n\t";
-                        // HACK: Since getting the size is hard, use two sizeofs
-                        emit_dst(); m_of << ".META = sizeof(" << Trans_Mangle(e) << ") / ";
-                        if( ity.m_data.is_Slice() ) {
-                            m_of << "sizeof("; emit_ctype(*ity.m_data.as_Slice().inner); m_of << ")";
-                        }
-                        else {
-                            m_of << "/*TODO*/";
-                        }
-                        break;
-                    case MetadataType::TraitObject:
-                        emit_dst(); m_of << ".PTR = &" << Trans_Mangle(e) << ";\n\t";
-                        emit_dst(); m_of << ".META = /* TODO: Const VTable */";
-                        break;
-                    }
-                }
-                else
-                {
-                    emit_dst(); m_of << " = &" << Trans_Mangle(e);
-                }
-                }
-            TU_ARMA(BorrowData, e) {
-                MIR_TODO(*m_mir_res, "Handle BorrowData (assign_from_literal) - " << *e);
-                }
-            TU_ARMA(String, e) {
-                emit_dst(); m_of << ".PTR = ";
-                this->print_escaped_string(e);
-                m_of << ";\n\t";
-                emit_dst(); m_of << ".META = " << e.size();
+                } else if( enm.is_value() ) {
+                    return false;
+                } else {
+                    return repr->variants.as_Values().values[e.idx] == 0 && is_zero_literal(get_inner_type(e.idx, 0), *e.val, params);
                 }
             }
+            TU_ARMA(Integer, e) { return e == 0; }
+            TU_ARMA(Float, e) { return e == 0; }
+            TU_ARMA(String, e) { return false; }
+            TU_ARMA(Invalid, e) { return false; }
+            TU_ARMA(Defer, e) { return false; }
+            TU_ARMA(BorrowPath, e) { return false; }
+            TU_ARMA(BorrowData, e) { return false; }
+            }
+            return false;
         }
-
         void emit_lvalue(const ::MIR::LValue::CRef& val)
         {
             TU_MATCH_HDRA( (val), {)
@@ -6018,11 +5938,7 @@ namespace {
                 // TODO: This should have been eliminated? ("MIR Cleanup" should have removed all inline Const references)
                 ::HIR::TypeRef  ty;
                 const auto& lit = get_literal_for_const(*c.p, ty);
-                if(lit.is_Integer() || lit.is_Float())
-                {
-                    emit_literal(ty, lit, {});
-                }
-                else if( lit.is_String())
+                if( lit.is_String())
                 {
                     m_of << "make_sliceptr(";
                     this->print_escaped_string( lit.as_String() );
@@ -6030,11 +5946,9 @@ namespace {
                 }
                 else
                 {
-                    // NOTE: GCC hack - statement expressions
-                    MIR_ASSERT(*m_mir_res, m_compiler == Compiler::Gcc, "TODO: Support inline constants without using GCC statement expressions - " << ty << " { " << lit << " }");
-                    m_of << "({"; emit_ctype(ty, FMT_CB(ss, ss<<"v";)); m_of << "; ";
-                    assign_from_literal([&](){ m_of << "v"; }, ty, lit);
-                    m_of << "; v;})";
+                    m_of << "(("; emit_ctype(ty); m_of << ")";
+                    emit_literal(ty, lit, {});
+                    m_of << ")";
                 }
                 }
             TU_ARMA(Generic, c) {
