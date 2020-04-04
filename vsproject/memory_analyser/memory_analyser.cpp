@@ -112,6 +112,7 @@ int error(const char* name) {
     return error(name, GetLastError());
 }
 
+
 struct fmt_u16z
 {
     const WCHAR* ptr;
@@ -279,27 +280,153 @@ struct TypeDefinition
     static TypeDefinition* from_syminfo(HANDLE hProcess, ULONG64 mod_base, DWORD type_id);
 };
 
+
 struct MemoryStats
 {
     std::map<std::string, unsigned>   m_counts;
+    std::map<DWORD64, unsigned>   m_duplicates_SimplePath;
+    std::map<DWORD64, unsigned>   m_duplicates_TypeRef;
 
     std::string get_enum_key(const TypeRef& ty, DWORD64 addr) const;
+    const TypeRef& get_real_type(const TypeRef& ty, DWORD64 addr) const;
+    bool are_equal(const TypeRef& ty, DWORD64 addr1, DWORD64 addr2);
     void enum_type_at(const TypeRef& ty, DWORD64 addr, bool is_top_level=true);
 };
 
 
+namespace {
+    ::std::pair<DWORD64,DWORD64> get_checked_vector(DWORD64 addr, size_t inner_size)
+    {
+        auto start = ReadMemory::read_ptr(addr + 0*8);
+        auto end = ReadMemory::read_ptr(addr + 1*8);
+        auto max = ReadMemory::read_ptr(addr + 2*8);
+        if( !(start <= end && end <= max) )
+            throw std::runtime_error("");
+        if( !((end - start) % inner_size == 0) && !((max - start) % inner_size == 0) )
+            throw std::runtime_error("");
+        if( start == 0)
+            return std::make_pair(0, 0);
+        return std::make_pair(start, end);
+    }
+}
+
+namespace virt_types {
+    struct StdVector
+    {
+        const TypeRef& ty;
+        DWORD64 start;
+        DWORD64 end;
+
+        DWORD64 cur;
+
+        StdVector(const TypeRef& inner_ty, DWORD64 addr):
+            ty(inner_ty)
+        {
+            size_t inner_size = inner_ty.size();
+            start = ReadMemory::read_ptr(addr + 0*8);
+            end = ReadMemory::read_ptr(addr + 1*8);
+            auto max = ReadMemory::read_ptr(addr + 2*8);
+            if( !(start <= end && end <= max) )
+                throw std::runtime_error("");
+            if( !((end - start) % inner_size == 0) && !((max - start) % inner_size == 0) )
+                throw std::runtime_error("");
+            if( start == 0 )
+            {
+                end = 0;
+                cur = 0;
+            }
+            else
+            {
+                cur = start;
+            }
+        }
+
+        static StdVector at(const TypeRef& vec_ty, DWORD64 addr)
+        {
+            return StdVector(vec_ty.get_field({"_Mypair", "_Myval2", "_Myfirst"}).deref(), addr);
+        }
+    };
+
+    std::string fmt_rcstring(/*const TypeRef& ty,*/ DWORD64 addr) {
+        try
+        {
+            std::string s;
+            auto refcnt = ReadMemory::read_u32(addr + 0);
+            auto len = ReadMemory::read_u32(addr + 4);
+            //s += FMT_STRING("(@" << (void*)addr << " " << len << "/" << refcnt << ")");
+            for(size_t i = 0; i < len; i ++)
+            {
+                s += ReadMemory::read_u8(addr + 8 + i);
+            }
+            return s;
+        }
+        catch(const std::exception& e)
+        {
+            return FMT_STRING("EXCEPTION(fmt_rcstring): " << e.what());
+        }
+    }
+    std::string fmt_simplepath(const TypeRef& ty, DWORD64 addr) {
+        try
+        {
+            std::string s;
+            s += "::\"";
+            s += fmt_rcstring(ReadMemory::read_ptr(addr + ty.get_field_ofs({"m_crate_name"})));
+            s += "\"";
+
+            auto inner_ty = ty.get_field({"m_components", "_Mypair", "_Myval2", "_Myfirst"}).deref();
+            auto inner_size = inner_ty.size();
+            auto v = get_checked_vector( addr + ty.get_field_ofs({"m_components"}), inner_size );
+            for(auto cur = v.first; cur != v.second; cur += inner_size)
+            {
+                s += "::";
+                s += fmt_rcstring(ReadMemory::read_ptr(cur));
+            }
+            return s;
+        }
+        catch(const std::exception& e)
+        {
+            return FMT_STRING("EXCEPTION(fmt_simplepath): " << e.what());
+        }
+    }
+    std::string fmt_typeref(const TypeRef& ty, DWORD64 addr) {
+        try
+        {
+        }
+        catch(const std::exception& e)
+        {
+            return FMT_STRING("EXCEPTION(fmt_typeref): " << e.what());
+        }
+    }
+}
+
+
 std::map<uint64_t, TypeRef> g_vtable_cache;
 
-int main()
+int main(int argc, char* argv[])
 {
     std::map<std::string, std::set<std::string>>    variables;
+    const char* infile = nullptr;
+    for(int i = 1; i < argc; i ++)
+    {
+        if(!infile) {
+            infile = argv[i];
+        }
+        else {
+            variables["main"].insert(argv[i]);
+        }
+    }
+    if( !infile || variables.empty() ) {
+        std::cerr << "USAGE: " << argv[0] << " <dump> <main_var>+" << std::endl;
+        return 1;
+    }
     //const char* infile = "mrustc-0-Parsed.dmp";
     //const char* infile = "mrustc-2-Resolved.dmp";   // Last with the AST
     //const char* infile = "mrustc-4-HIR.dmp";
-    const char* infile = "mrustc-8-Trans.dmp";
+    //const char* infile = "mrustc-7-MIR Opt.dmp";
+    //const char* infile = "mrustc-8-Trans.dmp";
     //variables["main"].insert("crate");
-    variables["main"].insert("hir_crate");
-    variables["main"].insert("items");
+    //variables["main"].insert("hir_crate");
+    //variables["main"].insert("items");
 
     auto file = CreateFileA(infile, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if( file == INVALID_HANDLE_VALUE ) {
@@ -495,6 +622,74 @@ int main()
     std::cout.flush();
     if(true)
     {
+        struct EnumLocals
+        {
+            HANDLE  proc_handle;
+            const STACKFRAME* frame;
+            const CONTEXT* context;
+            MemoryStats ms;
+            std::set<std::string>*  var_list;
+
+            static BOOL cb_static(PSYMBOL_INFO pSymInfo, ULONG SymbolSize, PVOID UserContext) {
+                return reinterpret_cast<EnumLocals*>(UserContext)->cb(pSymInfo, SymbolSize);
+            }
+            BOOL cb(PSYMBOL_INFO pSymInfo, ULONG SymbolSize) {
+                if( !(pSymInfo->Flags & SYMFLAG_LOCAL) )
+                    return TRUE;
+
+                // TODO: How to know if the variable is valid yet?
+
+                try
+                {
+
+                    auto addr = pSymInfo->Address;
+                    if( pSymInfo->Flags & SYMFLAG_REGREL ) {
+                        switch(pSymInfo->Register)
+                        {
+                        case 335:   // CV_AMD64_RSP
+                            addr += this->context->Rsp;
+                            break;
+                        default:
+                            throw std::runtime_error(FMT_STRING("Unknown register " << pSymInfo->Register));
+                        }
+                    }
+                    else if( pSymInfo->Flags & SYMFLAG_FRAMEREL ) {
+                        addr += this->frame->AddrFrame.Offset;
+                    }
+                    else if( pSymInfo->Flags & SYMFLAG_REGISTER ) {
+                        // TODO: Handle register values
+                        addr = 0;
+                    }
+                    else {
+                    }
+
+                    auto ty = TypeRef::lookup(this->proc_handle, pSymInfo->ModBase, pSymInfo->TypeIndex);
+                    std::cout << "VAR: (" << std::hex << pSymInfo->Flags << std::dec << ") " << pSymInfo->Name << " @ " << addr << "+" << ty.size() <<  ": ";
+                    std::cout << ty;
+                    std::cout << std::endl;
+
+                    // Do type/memory walk on this variable
+                    if( addr )
+                    {
+                        if( var_list->count(pSymInfo->Name) > 0 )
+                        {
+                            std::cout << "FULL TYPE: ";
+                            ty.fmt(std::cout, /*recurse_depth=*/12, /*indent_level=*/1);
+                            std::cout << std::endl;
+                            ms.enum_type_at(ty, addr);
+                        }
+                    }
+                }
+                catch(const std::exception& e)
+                {
+                    std::cout << "VAR: " << pSymInfo->Name << ": EXCEPTION " << e.what() << std::endl;
+                }
+
+                return TRUE;
+            }
+        };
+        EnumLocals  el;
+
         MINIDUMP_EXCEPTION_STREAM*  exception_stream = NULL;
         if( !MiniDumpReadDumpStream(view, ExceptionStream, NULL, (PVOID*)&exception_stream, NULL) || !exception_stream ) {
             if( GetLastError() != ERROR_NOT_FOUND )
@@ -537,80 +732,12 @@ int main()
                     << " BP=" << (void*)frame.AddrFrame.Offset
                     << " SP=" << (void*)frame.AddrStack.Offset
                     << std::endl;
-
-                struct EnumLocals
-                {
-                    HANDLE  proc_handle;
-                    const STACKFRAME* frame;
-                    const CONTEXT* context;
-                    MemoryStats ms;
-                    std::set<std::string>*  var_list;
-
-                    static BOOL cb_static(PSYMBOL_INFO pSymInfo, ULONG SymbolSize, PVOID UserContext) {
-                        return reinterpret_cast<EnumLocals*>(UserContext)->cb(pSymInfo, SymbolSize);
-                    }
-                    BOOL cb(PSYMBOL_INFO pSymInfo, ULONG SymbolSize) {
-                        if( !(pSymInfo->Flags & SYMFLAG_LOCAL) )
-                            return TRUE;
-
-                        // TODO: How to know if the variable is valid yet?
-
-                        try
-                        {
-
-                            auto addr = pSymInfo->Address;
-                            if( pSymInfo->Flags & SYMFLAG_REGREL ) {
-                                switch(pSymInfo->Register)
-                                {
-                                case 335:   // CV_AMD64_RSP
-                                    addr += this->context->Rsp;
-                                    break;
-                                default:
-                                    throw std::runtime_error(FMT_STRING("Unknown register " << pSymInfo->Register));
-                                }
-                            }
-                            else if( pSymInfo->Flags & SYMFLAG_FRAMEREL ) {
-                                addr += this->frame->AddrFrame.Offset;
-                            }
-                            else if( pSymInfo->Flags & SYMFLAG_REGISTER ) {
-                                // TODO: Handle register values
-                                addr = 0;
-                            }
-                            else {
-                            }
-
-                            auto ty = TypeRef::lookup(this->proc_handle, pSymInfo->ModBase, pSymInfo->TypeIndex);
-                            std::cout << "VAR: (" << std::hex << pSymInfo->Flags << std::dec << ") " << pSymInfo->Name << " @ " << addr << "+" << ty.size() <<  ": ";
-                            std::cout << ty;
-                            std::cout << std::endl;
-
-                            // Do type/memory walk on this variable
-                            if( addr )
-                            {
-                                if( var_list->count(pSymInfo->Name) > 0 )
-                                {
-                                    std::cout << "FULL TYPE: ";
-                                    ty.fmt(std::cout, /*recurse_depth=*/12, /*indent_level=*/1);
-                                    std::cout << std::endl;
-                                    ms.enum_type_at(ty, addr);
-                                }
-                            }
-                        }
-                        catch(const std::exception& e)
-                        {
-                            std::cout << "VAR: " << pSymInfo->Name << ": EXCEPTION " << e.what() << std::endl;
-                        }
-
-                        return TRUE;
-                    }
-                };
                 IMAGEHLP_STACK_FRAME    ih_frame = {0};
                 ih_frame.InstructionOffset = context.Rip;
                 ih_frame.FrameOffset = context.Rbp;
                 ih_frame.StackOffset = context.Rsp;
                 //ih_frame.FuncTableEntry = (DWORD64)ReadMemory::FunctionTableAccess64(proc_handle, symbol->Address);
                 SymSetContext(proc_handle, &ih_frame, /*(unused) Context=*/NULL);
-                EnumLocals  el;
                 el.frame = &frame;
                 el.context = &context;
                 el.proc_handle = proc_handle;
@@ -629,13 +756,49 @@ int main()
                         std::cout << "EXCEPTION: " << e.what() << std::endl;
                     }
 
-                    for(const auto& e : el.ms.m_counts)
-                    {
-                        std::cout << e.first << " = " << e.second << std::endl;
-                    }
-
                 }
             } while( StackWalk(IMAGE_FILE_MACHINE_AMD64, proc_handle, (HANDLE)2, &frame, &context, ReadMemory::read, ReadMemory::FunctionTableAccess64, SymGetModuleBase64, NULL) );
+        }
+
+        for(const auto& e : el.ms.m_counts)
+        {
+            std::cout << e.first << " = " << e.second << std::endl;
+        }
+        {
+            const auto& ty = TypeRef::lookup_by_name("HIR::SimplePath");
+            const auto& list = el.ms.m_duplicates_SimplePath;
+            std::cout << "Duplicates of " << ty << std::endl;
+            unsigned unique = 0;
+            for(const auto& e : list)
+            {
+                if(e.second > 1)
+                {
+                    std::cout << "> " << (void*)e.first << " * " << e.second << " - " << virt_types::fmt_simplepath(ty, e.first) << std::endl;
+                }
+                else
+                {
+                    unique += 1;
+                }
+            }
+            std::cout << "> UNIQUE * " << unique << std::endl;
+        }
+        {
+            const auto& ty = TypeRef::lookup_by_name("HIR::TypeRef");
+            const auto& list = el.ms.m_duplicates_TypeRef;
+            std::cout << "Duplicates of " << ty << std::endl;
+            unsigned unique = 0;
+            for(const auto& e : list)
+            {
+                if(e.second > 1)
+                {
+                    std::cout << "> " << (void*)e.first << " * " << e.second << " - " << virt_types::fmt_typeref(ty, e.first) << std::endl;
+                }
+                else
+                {
+                    unique += 1;
+                }
+            }
+            std::cout << "> UNIQUE * " << unique << std::endl;
         }
         return 0;
     }
@@ -751,7 +914,7 @@ int main()
             base_rva += rng.DataSize;
         }
     }
-    std::cout << "> " << std::hex << qwBaseAddress << "+" << nSize << " == Not found" << std::endl;
+    std::cout << "> " << std::hex << qwBaseAddress << "+" << nSize << " == Not found" << std::dec << std::endl;
     return FALSE;
 }
 
@@ -1202,41 +1365,155 @@ std::string MemoryStats::get_enum_key(const TypeRef& ty, DWORD64 addr) const
     return "";
 }
 
-void MemoryStats::enum_type_at(const TypeRef& ty, DWORD64 addr, bool is_top_level/*=true*/)
+const TypeRef& MemoryStats::get_real_type(const TypeRef& ty, DWORD64 addr) const
 {
-    static Indent s_indent = Indent(" ");
-#define DO_DEBUG(v) do { if(true) { std::cout << s_indent << v << std::endl; } } while(0)
-    auto _ = s_indent.inc();
-    try {
-    DO_DEBUG("enum_type_at: >> " << ty << ", " << (void*)addr);
-
-    if( const auto* udt = ty.any_udt() )
+    const TypeRef* typ = &ty;
+    for(;;)
     {
-        if( udt->fields.size() > 0 && udt->fields[0].name == "#VTABLE" ) {
-            auto vtable = ReadMemory::read_ptr(addr + udt->fields[0].offset);
-            std::cout << s_indent << ty << " vtable = " << (void*)vtable << std::endl;
-            // TODO: Look up the actual type
-            auto it = g_vtable_cache.find(vtable);
-            if( it != g_vtable_cache.end() )
-            {
-                if( it->second.any_udt() != udt )
+        assert(typ);
+        const auto& ty = *typ;
+        typ = nullptr;
+
+        if( const auto* udt = ty.any_udt() )
+        {
+            if( udt->fields.size() > 0 && udt->fields[0].name == "#VTABLE" ) {
+                auto vtable = ReadMemory::read_ptr(addr + udt->fields[0].offset);
+                //std::cout << s_indent << ty << " vtable = " << (void*)vtable << std::endl;
+                // Look up the actual type from a list of vtables
+                auto it = g_vtable_cache.find(vtable);
+                if( it != g_vtable_cache.end() )
                 {
-                    enum_type_at(it->second, addr, is_top_level);
-                    return ;
+                    if( it->second.any_udt() != udt )
+                    {
+                        typ = &it->second;
+                        continue ;
+                    }
+                    else
+                    {
+                        // Recursion!
+                        //throw std::runtime_error(FMT_STRING("VTABLE recursion on " << ty));
+                    }
                 }
                 else
                 {
-                    // Recursion!
-                    //throw std::runtime_error(FMT_STRING("VTABLE recursion on " << ty));
+                    // VTable not found!
+                    throw std::runtime_error(FMT_STRING("VTABLE " << ty << " 0x" << std::hex << vtable << " not known"));
                 }
             }
-            else
+        }
+        return ty;
+    }
+}
+
+bool MemoryStats::are_equal(const TypeRef& val_ty, DWORD64 addr1, DWORD64 addr2)
+{
+    // Recurse on fields
+    const auto& ty = this->get_real_type(val_ty, addr1);
+    const auto& ty2 = this->get_real_type(val_ty, addr2);
+    // If the real type (concrete of a virtual type) is different, return early
+    if( &ty != &ty2 ) {
+        return false;
+    }
+    //std::cout << ty << " @ " << (void*)addr1 << " & " << (void*)addr2 << std::endl;
+
+    // HACK: Compare pointers literally
+    if( ty.is_any_basic() || (!ty.wrappers.empty() && ty.wrappers.back().is_pointer()) ) {
+        DWORD64 v1 = 0;
+        DWORD64 v2 = 0;
+        ReadMemory::read(NULL, addr1, &v1, ty.size(), NULL);
+        ReadMemory::read(NULL, addr2, &v2, ty.size(), NULL);
+        //std::cout << ty << " " << v1 << " ?= " << v2 << std::endl;
+        return v1 == v2;
+    }
+    else if( is_tagged_union(ty) ) {
+        const auto* udt = ty.any_udt();
+        const auto& flds = udt->fields;
+        const auto* data_udt = flds[1].ty.any_udt();
+        auto tag1 = ReadMemory::read_u32(addr1) - 1;
+        auto tag2 = ReadMemory::read_u32(addr2) - 1;
+        if( tag1 != tag2 )
+            return false;
+
+        if( tag1 + 1 == 0 || tag2 + 1 == 0 ) {
+            // Dead, just log
+            //DO_DEBUG("TAGGED_UNION " << ty << " #DEAD");
+        }
+        else if( tag1 < data_udt->fields.size() && tag2 < data_udt->fields.size() ) {
+            //DO_DEBUG("TAGGED_UNION " << ty << " #" << tag << " : " << data_udt->fields[tag].name);
+            return this->are_equal(data_udt->fields[tag1].ty, addr1 + flds[1].offset, addr2 + flds[1].offset);
+        }
+        else {
+            throw std::runtime_error(FMT_STRING("TAGGED_UNION " << ty << " #" << tag1 << " || #" << tag2));
+        }
+    }
+    // std::vector
+    else if( ty.is_udt_suffix("std::vector<") ) {
+        auto inner_ty = ty.get_field({"_Mypair", "_Myval2", "_Myfirst"}).deref();
+        auto inner_size = inner_ty.size();
+        try
+        {
+            auto v1 = get_checked_vector(addr1, inner_size);
+            auto v2 = get_checked_vector(addr2, inner_size);
+            auto s1 = v1.second - v1.first;
+            auto s2 = v2.second - v2.first;
+            //std::cout << " > " << s1 << " & " << s2 << std::endl;
+            if( s1 != s2 )
+                return false;
+            for(auto cur1 = v1.first, cur2 = v2.first; cur1 < v1.second; cur1 += inner_size, cur2 += inner_size)
             {
-                // VTable not found!
-                throw std::runtime_error(FMT_STRING("VTABLE " << ty << " 0x" << std::hex << vtable << " not known"));
+                if( !this->are_equal(inner_ty, cur1, cur2) )
+                    return false;
+            }
+            return true;
+        }
+        catch(...)
+        {
+        }
+    }
+    // TODO: Further checks
+    else {
+        // TODO: What about unions?
+        // Enumerate inner types of a struct
+        if( ty.wrappers.empty() && ty.m_class == TypeRef::ClassUdt )
+        {
+            // TODO: If this is a union, don't recurse!
+            bool is_union = false;
+            for(const auto& f : ty.m_data.udt->fields)
+            {
+                for(const auto& f2 : ty.m_data.udt->fields)
+                {
+                    if(&f == &f2)
+                        continue;
+                    if(f.offset == f2.offset) {
+                        is_union = true;
+                        break;
+                    }
+                }
+                if(is_union) {
+                    break;
+                }
+            }
+            if( !is_union ) {
+                for(const auto& f : ty.m_data.udt->fields)
+                {
+                    if( !this->are_equal(f.ty, addr1 + f.offset, addr2 + f.offset) )
+                        return false;
+                }
+                return true;
             }
         }
     }
+    return false;
+}
+
+void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_level/*=true*/)
+{
+    static Indent s_indent = Indent(" ");
+#define DO_DEBUG(v) do { if(true && s_indent.level < 5) { std::cout << s_indent << v << std::endl; } } while(0)
+    auto _ = s_indent.inc();
+    try {
+    DO_DEBUG("enum_type_at: >> " << val_ty << ", " << (void*)addr);
+    const auto& ty = this->get_real_type(val_ty, addr);
 
     // 1. Get the enumeration key for the instance (e.g. TypeRef(Prim) or AST::Item(Fcn))
     // - If none, skip
@@ -1246,10 +1523,83 @@ void MemoryStats::enum_type_at(const TypeRef& ty, DWORD64 addr, bool is_top_leve
         m_counts[enum_key] ++;
     }
 
+    // TODO: For certain types, check if de-duplication is needed
+    if( true && ty.is_udt("HIR::SimplePath") )
+    {
+        static std::set<std::string>    s_names;
+        auto dbg_name = virt_types::fmt_simplepath(ty, addr);
+
+        auto& list = m_duplicates_SimplePath;
+        bool found = false;
+        for(auto& e : list)
+        {
+            auto xn = virt_types::fmt_simplepath(ty, e.first);
+            if(addr == e.first) {
+                found = true;
+                //std::cout << "SimplePath SameAddr "  << dbg_name << std::endl;
+                break;
+            }
+            //else if( this->are_equal(ty, e.first, addr) ) {
+            else if( xn == dbg_name ) {//this->are_equal(ty, e.first, addr) ) {
+                found = true;
+                e.second += 1;
+                //std::cout << "SimplePath Duplicate "  << dbg_name << " = " << xn << std::endl;
+                //assert(dbg_name == xn);
+                break;
+            }
+            else {
+                //assert(dbg_name != xn);
+                continue;
+            }
+        }
+        if(!found)
+        {
+            list[addr] = 1;
+            //std::cout << "SimplePath NEW " << dbg_name << std::endl;
+            //assert(s_names.count(dbg_name) == 0);
+            //s_names.insert(dbg_name);
+        }
+        else
+        {
+        }
+    }
+    if( false && ty.is_udt("HIR::TypeRef") )
+    {
+        auto& list = m_duplicates_TypeRef;
+        bool found = false;
+        for(auto& e : list)
+        {
+            if(addr == e.first) {
+                found = true;
+                break;
+            }
+            else if( this->are_equal(ty, e.first, addr) ) {
+                found = true;
+                e.second += 1;
+                break;
+            }
+            else {
+                continue;
+            }
+        }
+        if(!found)
+        {
+            list[addr] = 1;
+        }
+        else
+        {
+        }
+    }
+    if( ty.is_udt("HIR::TypeRef") )
+    {
+        m_counts[FMT_STRING("~TOTAL " << ty << " [" << ty.size() << "]")] ++;
+    }
+
     // IDEA: If top-level (either pointed-to or part of a vector), then count raw type
     if( is_top_level )
     {
         m_counts[FMT_STRING(ty << " [" << ty.size() << "]")] ++;
+        m_counts["~TOTAL"] += ty.size();
     }
 
     // 2. Recurse (using special handlers if required)
@@ -1259,7 +1609,7 @@ void MemoryStats::enum_type_at(const TypeRef& ty, DWORD64 addr, bool is_top_leve
         DO_DEBUG("enum_type_at: " << ty << " @ " << (void*)addr << " = " << (void*)v);
     }
     else if( !ty.wrappers.empty() ) {
-        // What should happen with pointers?
+        // What should happen with arrays?
     }
     else if( is_tagged_union(ty) ) {
         const auto* udt = ty.any_udt();
@@ -1509,7 +1859,7 @@ void MemoryStats::enum_type_at(const TypeRef& ty, DWORD64 addr, bool is_top_leve
     }
     catch(const std::exception& e)
     {
-        DO_DEBUG("enum_type_at: << " << ty << ", " << (void*)addr << " == EXCEPTION: " << e.what());
+        DO_DEBUG("enum_type_at: << " << val_ty << ", " << (void*)addr << " == EXCEPTION: " << e.what());
     }
 #undef DO_DEBUG
 }
