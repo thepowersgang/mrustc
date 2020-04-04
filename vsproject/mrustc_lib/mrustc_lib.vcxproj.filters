@@ -198,9 +198,6 @@
     <ClCompile Include="..\..\src\macro_rules\mod.cpp">
       <Filter>Source Files\macro_rules</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\src\expand\macro_rules.cpp">
-      <Filter>Source Files\macro_rules</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\src\mir\mir_ptr.cpp">
       <Filter>Source Files\mir</Filter>
     </ClCompile>
@@ -410,6 +407,9 @@
     </ClCompile>
     <ClCompile Include="..\..\src\macro_rules\parse.cpp">
       <Filter>Source Files\macro_rules</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\expand\macro_rules.cpp">
+      <Filter>Source Files\expand</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

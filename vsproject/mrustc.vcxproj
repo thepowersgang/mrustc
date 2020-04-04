@@ -176,6 +176,7 @@
     <ClCompile Include="..\src\main.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <Natvis Include="mrustc_lib\NatvisFile.natvis" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

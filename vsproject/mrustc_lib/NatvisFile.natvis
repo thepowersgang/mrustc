@@ -11,6 +11,8 @@
   </Type>
   <Type Name="HIR::TypeRef::Data">
     <DisplayString Condition="m_tag == TAG_Generic">Generic {m_data.Generic}</DisplayString>
+    <DisplayString Condition="m_tag == TAG_Borrow">Borrow {m_data.Borrow}</DisplayString>
+    <DisplayString Condition="m_tag == TAG_Path">Path {m_data.Path}</DisplayString>
   </Type>
   <Type Name="HIR::Path::Data">
     <DisplayString Condition="m_tag == TAG_Generic">Generic {m_data.Generic}</DisplayString>
