@@ -17,6 +17,7 @@
 /tools/bin
 
 /output
+/output-1.19.0
 /vsproject/Win32
 /vsproject/x64
 /vsproject/*/Win32
