@@ -5276,7 +5276,7 @@ namespace {
                 auto ordering = get_atomic_ordering(name, 7+4+1);
                 const auto& ty = params.m_types.at(0);
                 emit_lvalue(e.ret_val); m_of << " = __mrustc_atomicloop" << get_prim_size(ty) << "(";
-                    m_of << "(volatile "; emit_ctype(ty); m_of << "*)";
+                    m_of << "(volatile uint" << get_prim_size(ty) << "_t*)";
                     emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1));
                     if( m_compiler == Compiler::Gcc )
                     {
@@ -5299,7 +5299,7 @@ namespace {
                 const auto& ty = params.m_types.at(0);
                 const char* op = (name.c_str()[7+1] == 'a' ? "imax" : "imin");    // m'a'x vs m'i'n
                 emit_lvalue(e.ret_val); m_of << " = __mrustc_atomicloop" << get_prim_size(ty) << "(";
-                    m_of << "(volatile "; emit_ctype(ty); m_of << "*)";
+                    m_of << "(volatile uint" << get_prim_size(ty) << "_t*)";
                     emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1));
                     if( m_compiler == Compiler::Gcc )
                     {
@@ -5314,7 +5314,7 @@ namespace {
                 const auto& ty = params.m_types.at(0);
                 const char* op = (name.c_str()[7+2] == 'a' ? "umax" : "umin");    // m'a'x vs m'i'n
                 emit_lvalue(e.ret_val); m_of << " = __mrustc_atomicloop" << get_prim_size(ty) << "(";
-                    m_of << "(volatile "; emit_ctype(ty); m_of << "*)";
+                    m_of << "(volatile uint" << get_prim_size(ty) << "_t*)";
                     emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1));
                     if( m_compiler == Compiler::Gcc )
                     {
