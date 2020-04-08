@@ -1253,7 +1253,7 @@ void ProgramParams::show_help() const
         "OPTIONS:\n"
         "-L <dir>           : Search for crate files (.hir) in this directory\n"
         "-o <filename>      : Write compiler output (library or executable) to this file\n"
-        "-O                 : Enable optimistion\n"
+        "-O                 : Enable optimisation\n"
         "-g                 : Emit debugging information\n"
         "--out-dir <dir>    : Specify the output directory (alternative to `-o`)\n"
         "--extern <crate>=<path>\n"
@@ -1266,6 +1266,6 @@ void ProgramParams::show_help() const
         "--target <name>    : Compile code for the given target\n"
         "--test             : Generate a unit test executable\n"
         "-C <option>        : Code-generation options\n"
-        "-Z <option>        : Debugging/experiemental options\n"
+        "-Z <option>        : Debugging/experimental options\n"
         ;
 }
