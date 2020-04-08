@@ -2581,7 +2581,10 @@ namespace {
                 switch(m_compiler)
                 {
                 case Compiler::Gcc:
-                    m_of << " asm(\"" << item.m_linkage.name << "\")";
+                    if (Target_GetCurSpec().m_os_name == "macos") // Not macOS only, but all Apple platforms.
+                        m_of << " asm(\"_" << item.m_linkage.name << "\")";
+                    else
+                        m_of << " asm(\"" << item.m_linkage.name << "\")";
                     break;
                 case Compiler::Msvc:
                     break;

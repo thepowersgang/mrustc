@@ -560,6 +560,12 @@ void Target_SetCfg(const ::std::string& target_name)
         Cfg_SetValue("target_vendor", "gnu");
     }
 
+    if( g_target.m_os_name == "macos" )
+    {
+        Cfg_SetFlag("apple");
+        Cfg_SetValue("target_vendor", "apple");
+    }
+
     if( g_target.m_os_name == "freebsd" )
     {
         Cfg_SetFlag("freebsd");
