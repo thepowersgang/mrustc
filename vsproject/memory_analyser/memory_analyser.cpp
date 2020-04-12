@@ -284,8 +284,8 @@ struct TypeDefinition
 struct MemoryStats
 {
     std::map<std::string, unsigned>   m_counts;
-    std::map<DWORD64, unsigned>   m_duplicates_SimplePath;
-    std::map<DWORD64, unsigned>   m_duplicates_TypeRef;
+    std::map<std::string, std::pair<DWORD64, unsigned> >   m_duplicates_SimplePath;
+    std::map<std::string, std::pair<DWORD64, unsigned> >   m_duplicates_TypeRef;
 
     std::string get_enum_key(const TypeRef& ty, DWORD64 addr) const;
     const TypeRef& get_real_type(const TypeRef& ty, DWORD64 addr) const;
@@ -351,6 +351,9 @@ namespace virt_types {
         try
         {
             std::string s;
+            if( addr == 0 ) {
+                return "#NULL#";
+            }
             auto refcnt = ReadMemory::read_u32(addr + 0);
             auto len = ReadMemory::read_u32(addr + 4);
             //s += FMT_STRING("(@" << (void*)addr << " " << len << "/" << refcnt << ")");
@@ -388,9 +391,63 @@ namespace virt_types {
             return FMT_STRING("EXCEPTION(fmt_simplepath): " << e.what());
         }
     }
-    std::string fmt_typeref(const TypeRef& ty, DWORD64 addr) {
+    std::string fmt_typeref(const TypeRef& outer_ty, DWORD64 addr) {
         try
         {
+            assert(outer_ty.is_udt("HIR::TypeRef"));
+            const auto& ty = outer_ty.any_udt()->fields.at(0).ty;
+            assert(ty.is_udt("HIR::TypeData"));
+            const auto* udt = ty.any_udt();
+            const auto& flds = udt->fields;
+            const auto* data_udt = flds[1].ty.any_udt();
+            assert(data_udt);
+            auto tag = ReadMemory::read_u32(addr) - 1;
+            if( tag + 1 == 0 ) {
+                // Dead, just log
+                return FMT_STRING("TypeRef #DEAD");
+            }
+            else if( tag < data_udt->fields.size() ) {
+                const auto& name = data_udt->fields[tag].name;
+                const auto& ity = data_udt->fields[tag].ty;
+                const auto iaddr = addr + ty.get_field_ofs({"m_data", name.c_str()});
+                if( name == "Diverge" ) {
+                    return "!";
+                }
+                else if( name == "Infer" ) {
+                    auto idx = ReadMemory::read_u32( iaddr + ity.get_field_ofs({"index"}) );
+                    auto cls = ReadMemory::read_u32( iaddr + ity.get_field_ofs({"ty_class"}) );
+                    if( idx == 0xFFFFFFFFull ) {
+                        return FMT_STRING("_#?:" << cls);
+                    }
+                    else {
+                        return FMT_STRING("_#" << idx << ":" << cls);
+                    }
+                }
+                else if( name == "Generic" ) {
+                    auto binding = ReadMemory::read_u32( iaddr + ity.get_field_ofs({"binding"}) );
+                    //auto cls = ReadMemory::read_u32( iaddr + ity.get_field_ofs({"name"}) );
+                    if( binding == 0xFFFF ) {
+                        return FMT_STRING("Self");
+                    }
+                    else {
+                        switch(binding >> 8)
+                        {
+                        case 0:
+                            return FMT_STRING("I:" << (binding&0xFF));
+                        case 1:
+                            return FMT_STRING("F:" << (binding&0xFF));
+                        default:
+                            return FMT_STRING("?" << (binding>>8) << ":" << (binding&0xFF));
+                        }
+                    }
+                }
+                else {
+                    return FMT_STRING("TODO#TypeData::" << name);
+                }
+            }
+            else {
+                return FMT_STRING("TypeRef#BAD" << tag);
+            }
         }
         catch(const std::exception& e)
         {
@@ -406,8 +463,10 @@ int main(int argc, char* argv[])
 {
     std::map<std::string, std::set<std::string>>    variables;
     const char* infile = nullptr;
+    std::cout << argv[0];
     for(int i = 1; i < argc; i ++)
     {
+        std::cout << " " << argv[i];
         if(!infile) {
             infile = argv[i];
         }
@@ -415,6 +474,7 @@ int main(int argc, char* argv[])
             variables["main"].insert(argv[i]);
         }
     }
+    std::cout << std::endl;
     if( !infile || variables.empty() ) {
         std::cerr << "USAGE: " << argv[0] << " <dump> <main_var>+" << std::endl;
         return 1;
@@ -771,9 +831,9 @@ int main(int argc, char* argv[])
             unsigned unique = 0;
             for(const auto& e : list)
             {
-                if(e.second > 1)
+                if(e.second.second > 1)
                 {
-                    std::cout << "> " << (void*)e.first << " * " << e.second << " - " << virt_types::fmt_simplepath(ty, e.first) << std::endl;
+                    std::cout << "> SimplePath:" << (void*)e.second.first << " * " << e.second.second << " - " << e.first << std::endl;
                 }
                 else
                 {
@@ -789,9 +849,9 @@ int main(int argc, char* argv[])
             unsigned unique = 0;
             for(const auto& e : list)
             {
-                if(e.second > 1)
+                if(e.second.second > 1)
                 {
-                    std::cout << "> " << (void*)e.first << " * " << e.second << " - " << virt_types::fmt_typeref(ty, e.first) << std::endl;
+                    std::cout << "> TypeRef:" << (void*)e.second.first << " * " << e.second.second << " - " << e.first << std::endl;
                 }
                 else
                 {
@@ -1509,7 +1569,8 @@ bool MemoryStats::are_equal(const TypeRef& val_ty, DWORD64 addr1, DWORD64 addr2)
 void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_level/*=true*/)
 {
     static Indent s_indent = Indent(" ");
-#define DO_DEBUG(v) do { if(true && s_indent.level < 5) { std::cout << s_indent << v << std::endl; } } while(0)
+#define DO_DEBUG_F(force, v) do { if(force || (true && s_indent.level < 5)) { std::cout << s_indent << v << std::endl; } } while(0)
+#define DO_DEBUG(v) DO_DEBUG_F(false, v)
     auto _ = s_indent.inc();
     try {
     DO_DEBUG("enum_type_at: >> " << val_ty << ", " << (void*)addr);
@@ -1526,72 +1587,25 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
     // TODO: For certain types, check if de-duplication is needed
     if( true && ty.is_udt("HIR::SimplePath") )
     {
-        static std::set<std::string>    s_names;
         auto dbg_name = virt_types::fmt_simplepath(ty, addr);
 
         auto& list = m_duplicates_SimplePath;
-        bool found = false;
-        for(auto& e : list)
-        {
-            auto xn = virt_types::fmt_simplepath(ty, e.first);
-            if(addr == e.first) {
-                found = true;
-                //std::cout << "SimplePath SameAddr "  << dbg_name << std::endl;
-                break;
-            }
-            //else if( this->are_equal(ty, e.first, addr) ) {
-            else if( xn == dbg_name ) {//this->are_equal(ty, e.first, addr) ) {
-                found = true;
-                e.second += 1;
-                //std::cout << "SimplePath Duplicate "  << dbg_name << " = " << xn << std::endl;
-                //assert(dbg_name == xn);
-                break;
-            }
-            else {
-                //assert(dbg_name != xn);
-                continue;
-            }
-        }
-        if(!found)
-        {
-            list[addr] = 1;
-            //std::cout << "SimplePath NEW " << dbg_name << std::endl;
-            //assert(s_names.count(dbg_name) == 0);
-            //s_names.insert(dbg_name);
-        }
-        else
-        {
-        }
+        auto it = list.insert( ::std::make_pair(dbg_name, std::make_pair(addr, 0)) );
+        it.first->second.second += 1;
+
+        m_counts[FMT_STRING("~TOTAL " << ty << " [" << ty.size() << "]")] ++;
     }
-    if( false && ty.is_udt("HIR::TypeRef") )
+    if( true && ty.is_udt("HIR::TypeRef") )
     {
-        auto& list = m_duplicates_TypeRef;
-        bool found = false;
-        for(auto& e : list)
+        if(true)
         {
-            if(addr == e.first) {
-                found = true;
-                break;
-            }
-            else if( this->are_equal(ty, e.first, addr) ) {
-                found = true;
-                e.second += 1;
-                break;
-            }
-            else {
-                continue;
-            }
+            auto dbg_name = virt_types::fmt_typeref(ty, addr);
+
+            auto& list = m_duplicates_TypeRef;
+            auto it = list.insert( ::std::make_pair(dbg_name, std::make_pair(addr, 0)) );
+            it.first->second.second += 1;
         }
-        if(!found)
-        {
-            list[addr] = 1;
-        }
-        else
-        {
-        }
-    }
-    if( ty.is_udt("HIR::TypeRef") )
-    {
+
         m_counts[FMT_STRING("~TOTAL " << ty << " [" << ty.size() << "]")] ++;
     }
 
@@ -1859,7 +1873,7 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
     }
     catch(const std::exception& e)
     {
-        DO_DEBUG("enum_type_at: << " << val_ty << ", " << (void*)addr << " == EXCEPTION: " << e.what());
+        DO_DEBUG_F(true, "enum_type_at: << " << val_ty << ", " << (void*)addr << " == EXCEPTION: " << e.what());
     }
 #undef DO_DEBUG
 }
