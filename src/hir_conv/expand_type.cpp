@@ -16,11 +16,9 @@
     ::HIR::TypeRef  empty_type;
 
     const auto& ti = crate.get_typeitem_by_path(sp, path.m_path);
-    TU_MATCH_DEF( ::HIR::TypeItem, (ti), (e2),
-    (
-        // Anything else - leave it be
-        ),
-    (TypeAlias,
+    if(const auto* e = ti.opt_TypeAlias() )
+    {
+        const auto& e2 = *e;
         auto pp = path.m_params.clone();
         if( !is_expr ) {
             while( pp.m_types.size() < e2.m_params.m_types.size() && e2.m_params.m_types[pp.m_types.size()].m_default != ::HIR::TypeRef() ) {
@@ -54,8 +52,7 @@
         else {
             return e2.m_type.clone();
         }
-        )
-    )
+    }
     return ::HIR::TypeRef();
 }
 
@@ -216,6 +213,10 @@ public:
             {}
 
             // TODO: Use the other visitors.
+            void visit_type(::HIR::TypeRef& ty) override
+            {
+                upper_visitor.visit_type(ty);
+            }
             void visit_path(::HIR::Visitor::PathContext pc, ::HIR::Path& p) override
             {
                 upper_visitor.visit_path(p, pc);
@@ -229,11 +230,6 @@ public:
             {
                 upper_visitor.visit_type(node.m_type);
                 upper_visitor.visit_pattern(node.m_pattern);
-                ::HIR::ExprVisitorDef::visit(node);
-            }
-            void visit(::HIR::ExprNode_Cast& node) override
-            {
-                upper_visitor.visit_type(node.m_res_type);
                 ::HIR::ExprVisitorDef::visit(node);
             }
 
@@ -276,9 +272,22 @@ public:
                     {
                         node.m_type = upper_visitor.m_impl_type->clone();
                     }
+                    else
+                    {
+                    }
+                }
+                else
+                {
+                    // The type will be an enum variant.
                 }
 
-                ::HIR::ExprVisitorDef::visit(node);
+                // NOTE: Manual visit to avoid visiting the probably-invalid type
+                if( node.m_base_value )
+                    visit_node_ptr(node.m_base_value);
+                for(auto& val : node.m_values)
+                    visit_node_ptr(val.second);
+
+                visit_generic_path(::HIR::Visitor::PathContext::TYPE, node.m_real_path);
             }
 
             void visit(::HIR::ExprNode_Match& node) override

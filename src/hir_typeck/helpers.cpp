@@ -1755,73 +1755,80 @@ void TraitResolution::expand_associated_types_inplace(const Span& sp, ::HIR::Typ
         }
     }
     //TRACE_FUNCTION_F(input);
-    TU_MATCHA( (input.m_data), (e),
-    (Infer,
+    TU_MATCH_HDRA( (input.m_data), {)
+    TU_ARMA(Infer, e) {
         auto& ty = this->m_ivars.get_type(input);
         if( ty != input ) {
             input = ty.clone();
             expand_associated_types_inplace(sp, input, stack);
         }
-        ),
-    (Diverge,
-        ),
-    (Primitive,
-        ),
-    (Path,
-        TU_MATCH(::HIR::Path::Data, (e.path.m_data), (pe),
-        (Generic,
+        }
+    TU_ARMA(Diverge, e) {
+        }
+    TU_ARMA(Primitive, e) {
+        }
+    TU_ARMA(Path, e) {
+        TU_MATCH_HDRA( (e.path.m_data), {)
+        TU_ARMA(Generic, pe) {
             for(auto& arg : pe.m_params.m_types)
                 expand_associated_types_inplace(sp, arg, stack);
-            ),
-        (UfcsInherent,
+            }
+        TU_ARMA(UfcsInherent, pe) {
+            expand_associated_types_inplace(sp, *pe.type, stack);
+            for(auto& arg : pe.params.m_types)
+                expand_associated_types_inplace(sp, arg, stack);
+            // TODO: only valid for enum variants? (and only in some contexts)
+            if( TU_TEST1(pe.type->m_data, Path, .binding.is_Enum()) )
+            {
+                return ;
+            }
             TODO(sp, "Path - UfcsInherent - " << e.path);
-            ),
-        (UfcsKnown,
+            }
+        TU_ARMA(UfcsKnown, pe) {
             // - Only try resolving if the binding isn't known
             if( !e.binding.is_Unbound() )
                 return ;
             this->expand_associated_types_inplace__UfcsKnown(sp, input, stack);
-            ),
-        (UfcsUnknown,
+            }
+        TU_ARMA(UfcsUnknown, pe) {
             BUG(sp, "Encountered UfcsUnknown");
-            )
-        )
-        ),
-    (Generic,
-        ),
-    (TraitObject,
+            }
+        }
+        }
+    TU_ARMA(Generic, e) {
+        }
+    TU_ARMA(TraitObject, e) {
         // Recurse?
-        ),
-    (ErasedType,
+        }
+    TU_ARMA(ErasedType, e) {
         // Recurse?
-        ),
-    (Array,
+        }
+    TU_ARMA(Array, e) {
         expand_associated_types_inplace(sp, *e.inner, stack);
-        ),
-    (Slice,
+        }
+    TU_ARMA(Slice, e) {
         expand_associated_types_inplace(sp, *e.inner, stack);
-        ),
-    (Tuple,
+        }
+    TU_ARMA(Tuple, e) {
         for(auto& sub : e) {
             expand_associated_types_inplace(sp, sub , stack);
         }
-        ),
-    (Borrow,
+        }
+    TU_ARMA(Borrow, e) {
         expand_associated_types_inplace(sp, *e.inner, stack);
-        ),
-    (Pointer,
+        }
+    TU_ARMA(Pointer, e) {
         expand_associated_types_inplace(sp, *e.inner, stack);
-        ),
-    (Function,
-        // Recurse?
+        }
+    TU_ARMA(Function, e) {
         for(auto& ty : e.m_arg_types)
             expand_associated_types_inplace(sp, ty, stack);
         expand_associated_types_inplace(sp, *e.m_rettype, stack);
-        ),
-    (Closure,
+        }
+    TU_ARMA(Closure, e) {
         // Recurse?
-        )
-    )
+        }
+    }
 }
 
 

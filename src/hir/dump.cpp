@@ -488,12 +488,12 @@ namespace {
         void visit(::HIR::ExprNode_Cast& node) override
         {
             this->visit_node_ptr(node.m_value);
-            m_os << " as " << node.m_res_type;
+            m_os << " as " << node.m_dst_type;
         }
         void visit(::HIR::ExprNode_Unsize& node) override
         {
             this->visit_node_ptr(node.m_value);
-            m_os << " : " << node.m_res_type;
+            m_os << " : " << node.m_dst_type;
         }
         void visit(::HIR::ExprNode_Index& node) override
         {

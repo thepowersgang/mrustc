@@ -628,6 +628,10 @@ namespace {
                 {
                     upper_visitor.visit_generic_path(p, pc);
                 }
+                void visit_type(::HIR::TypeRef& ty) override
+                {
+                    upper_visitor.visit_type_inner(ty, true);
+                }
 
                 void visit_node_ptr(::HIR::ExprNodeP& node_ptr) override
                 {
@@ -647,11 +651,6 @@ namespace {
                         for(auto& pat : arm.m_patterns)
                             upper_visitor.visit_pattern(pat);
                     }
-                    ::HIR::ExprVisitorDef::visit(node);
-                }
-                void visit(::HIR::ExprNode_Cast& node) override
-                {
-                    upper_visitor.visit_type(node.m_res_type);
                     ::HIR::ExprVisitorDef::visit(node);
                 }
 

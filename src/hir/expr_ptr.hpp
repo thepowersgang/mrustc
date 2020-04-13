@@ -85,6 +85,7 @@ class ExprPtr
 
 
 public:
+    //::std::vector< ::HIR::TypeRef>  m_type_table;
     ::std::vector< ::HIR::TypeRef>  m_bindings;
     ::std::vector< ::HIR::TypeRef>  m_erased_types;
 

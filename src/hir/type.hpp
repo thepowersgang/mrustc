@@ -212,7 +212,7 @@ TAGGED_UNION(TypeData, Diverge,
         }),
     (Diverge, struct {}),
     (Primitive, ::HIR::CoreType),
-    (Path, struct {
+    (Path, struct {  // TODO: Pointer wrap
         ::HIR::Path path;
         TypePathBinding binding;
 
@@ -232,12 +232,12 @@ TAGGED_UNION(TypeData, Diverge,
             return (binding >> 8) == 2;
         }
         }),
-    (TraitObject, struct {
+    (TraitObject, struct {  // TODO: Pointer wrap
         ::HIR::TraitPath    m_trait;
         ::std::vector< ::HIR::GenericPath > m_markers;
         ::HIR::LifetimeRef  m_lifetime;
         }),
-    (ErasedType, struct {
+    (ErasedType, struct {  // TODO: Pointer wrap
         ::HIR::Path m_origin;
         unsigned int m_index;
         ::std::vector< ::HIR::TraitPath>    m_traits;
@@ -260,7 +260,7 @@ TAGGED_UNION(TypeData, Diverge,
         ::HIR::BorrowType   type;
         ::std::unique_ptr<TypeRef>  inner;
         }),
-    (Function, FunctionType),
+    (Function, FunctionType),   // TODO: Pointer wrap
     (Closure, struct {
         const ::HIR::ExprNode_Closure*  node;
         ::std::unique_ptr<TypeRef>  m_rettype;

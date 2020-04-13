@@ -372,14 +372,6 @@ struct LowerHIR_ExprNode_Visitor:
                     }
                 }
             };
-
-            auto& loop_node = dynamic_cast< ::HIR::ExprNode_Loop&>(*m_rv);;
-            LoopVisitor lv { loop_node.m_label };
-            loop_node.m_code->visit(lv);
-            if( ! lv.top_is_broken ) {
-                // If the loop never hit a 'break', the loop yields ! not ()
-                loop_node.m_res_type = ::HIR::TypeRef::new_diverge();
-            }
         }
     }
     virtual void visit(::AST::ExprNode_Match& v) override {
@@ -392,7 +384,7 @@ struct LowerHIR_ExprNode_Visitor:
                 LowerHIR_ExprNode_Inner_Opt(arm.m_cond.get()),
                 LowerHIR_ExprNode_Inner(*arm.m_code)
                 };
-
+            
             for(const auto& pat : arm.m_patterns)
                 new_arm.m_patterns.push_back( LowerHIR_Pattern(pat) );
 
@@ -539,8 +531,17 @@ struct LowerHIR_ExprNode_Visitor:
             ::HIR::ExprNode_StructLiteral::t_values values;
             for(const auto& val : v.m_values)
                 values.push_back( ::std::make_pair(val.name, LowerHIR_ExprNode_Inner(*val.value)) );
+            auto ty = LowerHIR_Type( ::TypeRef(v.span(), v.m_path) );
+            if( v.m_path.m_bindings.type.is_EnumVar() )
+            {
+                ASSERT_BUG(v.span(), TU_TEST1(ty.m_data, Path, .path.m_data.is_Generic()), "Enum variant path not GenericPath: " << ty );
+                auto& gp = ty.m_data.as_Path().path.m_data.as_Generic();
+                auto var_name = gp.m_path.m_components.back();
+                gp.m_path.m_components.pop_back();
+                ty = ::HIR::TypeRef::new_path( ::HIR::Path(mv$(ty), mv$(var_name)), {} );
+            }
             m_rv.reset( new ::HIR::ExprNode_StructLiteral( v.span(),
-                LowerHIR_Type( ::TypeRef(v.span(), v.m_path) ),
+                mv$(ty),
                 ! v.m_path.m_bindings.type.is_EnumVar(),
                 LowerHIR_ExprNode_Inner_Opt(v.m_base_value.get()),
                 mv$(values)

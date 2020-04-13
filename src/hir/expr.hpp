@@ -47,7 +47,8 @@ class ExprNode
 {
 public:
     Span    m_span;
-    ::HIR::TypeRef    m_res_type;
+    ::HIR::TypeRef    m_res_type;   // TODO: Replace this with an index into an ivar table
+    //unsigned m_res_type_idx;
     ValueUsage  m_usage = ValueUsage::Unknown;
 
     const Span& span() const { return m_span; }
@@ -314,17 +315,6 @@ struct ExprNode_BinOp:
         m_left( mv$(left) ),
         m_right( mv$(right) )
     {
-        switch(m_op)
-        {
-        case Op::BoolAnd:   case Op::BoolOr:
-        case Op::CmpEqu:    case Op::CmpNEqu:
-        case Op::CmpLt: case Op::CmpLtE:
-        case Op::CmpGt: case Op::CmpGtE:
-            m_res_type = ::HIR::TypeRef( ::HIR::CoreType::Bool );
-            break;
-        default:
-            break;
-        }
     }
 
     NODE_METHODS();
@@ -373,14 +363,13 @@ struct ExprNode_Cast:
     public ExprNode
 {
     ::HIR::ExprNodeP    m_value;
-    //::HIR::TypeRef  m_dst_type;
+    ::HIR::TypeRef  m_dst_type;
 
     ExprNode_Cast(Span sp, ::HIR::ExprNodeP value, ::HIR::TypeRef dst_type):
         ExprNode( mv$(sp) )
         ,m_value( mv$(value) )
-        //,m_dst_type( mv$(dst_type) )
+        ,m_dst_type( mv$(dst_type) )
     {
-        m_res_type = mv$(dst_type);
     }
 
     NODE_METHODS();
@@ -394,14 +383,13 @@ struct ExprNode_Unsize:
     public ExprNode
 {
     ::HIR::ExprNodeP    m_value;
-    //::HIR::TypeRef  m_dst_type;
+    ::HIR::TypeRef  m_dst_type;
 
     ExprNode_Unsize(Span sp, ::HIR::ExprNodeP value, ::HIR::TypeRef dst_type):
         ExprNode( mv$(sp) )
         ,m_value( mv$(value) )
-        //,m_dst_type( mv$(dst_type) )
+        ,m_dst_type( mv$(dst_type) )
     {
-        m_res_type = mv$(dst_type);
     }
 
     NODE_METHODS();
@@ -611,35 +599,6 @@ struct ExprNode_Literal:
         ExprNode( mv$(sp) ),
         m_data( mv$(data) )
     {
-        TU_MATCHA( (m_data), (e),
-        (Integer,
-            if( e.m_type != ::HIR::CoreType::Str ) {
-                m_res_type = ::HIR::TypeRef(e.m_type);
-            }
-            else {
-                m_res_type.m_data.as_Infer().ty_class = ::HIR::InferClass::Integer;
-            }
-            ),
-        (Float,
-            if( e.m_type != ::HIR::CoreType::Str ) {
-                m_res_type = ::HIR::TypeRef(e.m_type);
-            }
-            else {
-                m_res_type.m_data.as_Infer().ty_class = ::HIR::InferClass::Float;
-            }
-            ),
-        (Boolean,
-            m_res_type = ::HIR::TypeRef( ::HIR::CoreType::Bool );
-            ),
-        (String,
-            // TODO: &'static
-            m_res_type = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::TypeRef(::HIR::CoreType::Str) );
-            ),
-        (ByteString,
-            // TODO: &'static
-            m_res_type = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::TypeRef::new_array(::HIR::CoreType::U8, e.size()) );
-            )
-        )
     }
 
     NODE_METHODS();
@@ -732,8 +691,6 @@ struct ExprNode_StructLiteral:
         m_base_value( mv$(base_value) ),
         m_values( mv$(values) )
     {
-        // TODO: set m_res_type based on path?
-        // - Defer, because it requires binding ivars between m_path and m_res_type
     }
 
     NODE_METHODS();

@@ -155,17 +155,22 @@ namespace {
                     upper_visitor(uv)
                 {}
 
+                void visit_type(::HIR::TypeRef& ty) override
+                {
+                    upper_visitor.visit_type(ty);
+                }
+
                 void visit(::HIR::ExprNode_Let& node) override
                 {
                     upper_visitor.visit_pattern(node.m_pattern);
                     upper_visitor.visit_type(node.m_type);
                     ::HIR::ExprVisitorDef::visit(node);
                 }
-                void visit(::HIR::ExprNode_Cast& node) override
-                {
-                    upper_visitor.visit_type(node.m_res_type);
-                    ::HIR::ExprVisitorDef::visit(node);
-                }
+                //void visit(::HIR::ExprNode_Cast& node) override
+                //{
+                //    upper_visitor.visit_type(node.m_dst_type);
+                //    ::HIR::ExprVisitorDef::visit(node);
+                //}
 
                 void visit(::HIR::ExprNode_CallPath& node) override
                 {

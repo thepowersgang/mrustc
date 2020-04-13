@@ -1069,17 +1069,20 @@ namespace {
         void visit(::HIR::ExprNode_Cast& node) override
         {
             auto _ = this->push_inner_coerce_scoped(false);
+            this->context.add_ivars(node.m_dst_type);
 
-            TRACE_FUNCTION_F(&node << " ... as " << node.m_res_type);
-            this->context.add_ivars( node.m_value->m_res_type );
+            TRACE_FUNCTION_F(&node << " ... as " << node.m_dst_type);
 
             node.m_value->visit( *this );
 
+            this->context.equate_types( node.span(), node.m_res_type,  node.m_dst_type );
             // TODO: Only revisit if the cast type requires inferring.
             this->context.add_revisit(node);
         }
         void visit(::HIR::ExprNode_Unsize& node) override
         {
+            this->context.add_ivars(node.m_dst_type);
+            //this->context.equate_types( node.span(), node.m_res_type,  node.m_dst_type );
             BUG(node.span(), "Hit _Unsize");
         }
         void visit(::HIR::ExprNode_Index& node) override
@@ -1265,8 +1268,20 @@ namespace {
 
             auto t = this->context.m_resolve.expand_associated_types(sp, mv$(node.m_type));
             node.m_type = HIR::TypeRef();
-            ASSERT_BUG(sp, TU_TEST1(t.m_data, Path, .path.m_data.is_Generic()), "Struct literal with non-Generic path - " << t);
-            node.m_real_path = mv$(t.m_data.as_Path().path.m_data.as_Generic());
+            if( node.m_is_struct )
+            {
+                ASSERT_BUG(sp, TU_TEST1(t.m_data, Path, .path.m_data.is_Generic()), "Struct literal with non-Generic path - " << t);
+                node.m_real_path = mv$(t.m_data.as_Path().path.m_data.as_Generic());
+            }
+            else
+            {
+                ASSERT_BUG(sp, TU_TEST1(t.m_data, Path, .path.m_data.is_UfcsInherent()), "Enum struct literal with non-UfcsInherent path - " << t);
+                auto& it = *t.m_data.as_Path().path.m_data.as_UfcsInherent().type;
+                auto& name = t.m_data.as_Path().path.m_data.as_UfcsInherent().item;
+                ASSERT_BUG(sp, TU_TEST1(it.m_data, Path, .path.m_data.is_Generic()), "Struct literal with non-Generic path - " << t);
+                node.m_real_path = mv$(it.m_data.as_Path().path.m_data.as_Generic());
+                node.m_real_path.m_path.m_components.push_back( name );
+            }
             auto& ty_path = node.m_real_path;
 
             // - Create ivars in path, and set result type
@@ -1657,23 +1672,41 @@ namespace {
 
         void visit(::HIR::ExprNode_Literal& node) override
         {
-            TU_MATCH(::HIR::ExprNode_Literal::Data, (node.m_data), (e),
-            (Integer,
+            HIR::TypeRef    ty;
+            TU_MATCH_HDRA( (node.m_data), {)
+            TU_ARMA(Integer, e) {
                 DEBUG(" (: " << e.m_type << " = " << e.m_value << ")");
-                assert(node.m_res_type.m_data.is_Primitive() || node.m_res_type.m_data.as_Infer().ty_class == ::HIR::InferClass::Integer);
-                ),
-            (Float,
+                if( e.m_type != ::HIR::CoreType::Str ) {
+                    ty = ::HIR::TypeRef(e.m_type);
+                }
+                else {
+                    ty = ::HIR::TypeRef::new_infer(~0, ::HIR::InferClass::Integer);
+                }
+                }
+            TU_ARMA(Float, e) {
                 DEBUG(" (: " << node.m_res_type << " = " << e.m_value << ")");
-                assert(node.m_res_type.m_data.is_Primitive() || node.m_res_type.m_data.as_Infer().ty_class == ::HIR::InferClass::Float);
-                ),
-            (Boolean,
+                if( e.m_type != ::HIR::CoreType::Str ) {
+                    ty = ::HIR::TypeRef(e.m_type);
+                }
+                else {
+                    ty = ::HIR::TypeRef::new_infer(~0, ::HIR::InferClass::Float);
+                }
+                }
+            TU_ARMA(Boolean, e) {
                 DEBUG(" ( " << (e ? "true" : "false") << ")");
-                ),
-            (String,
-                ),
-            (ByteString,
-                )
-            )
+                ty = ::HIR::TypeRef( ::HIR::CoreType::Bool );
+                }
+            TU_ARMA(String, e) {
+                // TODO: &'static
+                ty = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::TypeRef(::HIR::CoreType::Str) );
+                }
+            TU_ARMA(ByteString, e) {
+                // TODO: &'static
+                ty = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::TypeRef::new_array(::HIR::CoreType::U8, e.size()) );
+                }
+            }
+            this->context.add_ivars(ty);
+            this->context.equate_types(node.span(), node.m_res_type, ty);
         }
         void visit(::HIR::ExprNode_PathValue& node) override
         {
