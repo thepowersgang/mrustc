@@ -398,181 +398,54 @@ const ::HIR::TypeRef* ::MIR::TypeResolve::is_type_owned_box(const ::HIR::TypeRef
 
 using namespace MIR::visit;
 
-// --------------------------------------------------------------------
-// MIR_Helper_GetLifetimes
-// --------------------------------------------------------------------
 namespace MIR {
+
 namespace visit {
+    struct LValueCbVisitor:
+        public Visitor
+    {
+        ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb;
+
+        LValueCbVisitor(::std::function<bool(const ::MIR::LValue& , ValUsage)> cb):
+            cb(std::move(cb))
+        {
+        }
+
+        bool visit_lvalue(const ::MIR::LValue& lv, ValUsage u) override {
+            if(cb(lv, u))
+                return true;
+            return Visitor::visit_lvalue(lv, u);
+        }
+    };
+
     bool visit_mir_lvalue(const ::MIR::LValue& lv, ValUsage u, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb)
     {
-        if( cb(lv, u) )
-            return true;
-#if 1
-        for(const auto& w : lv.m_wrappers)
-        {
-            if( w.is_Index() )
-            {
-                cb(LValue::new_Local(w.as_Index()), ValUsage::Read);
-            }
-        }
-#else
-        TU_MATCHA( (lv), (e),
-        (Return,
-            ),
-        (Argument,
-            ),
-        (Local,
-            ),
-        (Static,
-            ),
-        (Field,
-            return visit_mir_lvalue(*e.val, u, cb);
-            ),
-        (Deref,
-            return visit_mir_lvalue(*e.val, ValUsage::Read, cb);
-            ),
-        (Index,
-            bool rv = false;
-            rv |= visit_mir_lvalue(*e.val, u, cb);
-            rv |= visit_mir_lvalue(*e.idx, ValUsage::Read, cb);
-            return rv;
-            ),
-        (Downcast,
-            return visit_mir_lvalue(*e.val, u, cb);
-            )
-        )
-#endif
-        return false;
+        LValueCbVisitor v { mv$(cb) };
+        return v.visit_lvalue(lv, u);
     }
 
     bool visit_mir_lvalue(const ::MIR::Param& p, ValUsage u, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb)
     {
-        if( const auto* e = p.opt_LValue() )
-        {
-            if(cb(*e, ValUsage::Move))
-                return true;
-            return visit_mir_lvalue(*e, u, cb);
-        }
-        else
-        {
-            return false;
-        }
+        LValueCbVisitor v { mv$(cb) };
+        return v.visit_param(p, u);
     }
 
     bool visit_mir_lvalues(const ::MIR::RValue& rval, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb)
     {
-        bool rv = false;
-        TU_MATCHA( (rval), (se),
-        (Use,
-            if(cb(se, ValUsage::Move))
-                return true;
-            rv |= visit_mir_lvalue(se, ValUsage::Read, cb);
-            ),
-        (Constant,
-            ),
-        (SizedArray,
-            rv |= visit_mir_lvalue(se.val, ValUsage::Read, cb);
-            ),
-        (Borrow,
-            rv |= visit_mir_lvalue(se.val, ValUsage::Borrow, cb);
-            ),
-        (Cast,
-            rv |= visit_mir_lvalue(se.val, ValUsage::Read, cb);
-            ),
-        (BinOp,
-            rv |= visit_mir_lvalue(se.val_l, ValUsage::Read, cb);
-            rv |= visit_mir_lvalue(se.val_r, ValUsage::Read, cb);
-            ),
-        (UniOp,
-            rv |= visit_mir_lvalue(se.val, ValUsage::Read, cb);
-            ),
-        (DstMeta,
-            rv |= visit_mir_lvalue(se.val, ValUsage::Read, cb);
-            ),
-        (DstPtr,
-            rv |= visit_mir_lvalue(se.val, ValUsage::Read, cb);
-            ),
-        (MakeDst,
-            rv |= visit_mir_lvalue(se.ptr_val, ValUsage::Read, cb);
-            rv |= visit_mir_lvalue(se.meta_val, ValUsage::Read, cb);
-            ),
-        (Tuple,
-            for(auto& v : se.vals)
-                rv |= visit_mir_lvalue(v, ValUsage::Read, cb);
-            ),
-        (Array,
-            for(auto& v : se.vals)
-                rv |= visit_mir_lvalue(v, ValUsage::Read, cb);
-            ),
-        (Variant,
-            rv |= visit_mir_lvalue(se.val, ValUsage::Read, cb);
-            ),
-        (Struct,
-            for(auto& v : se.vals)
-                rv |= visit_mir_lvalue(v, ValUsage::Read, cb);
-            )
-        )
-        return rv;
+        LValueCbVisitor v { mv$(cb) };
+        return v.visit_rvalue(rval);
     }
 
     bool visit_mir_lvalues(const ::MIR::Statement& stmt, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb)
     {
-        bool rv = false;
-        TU_MATCHA( (stmt), (e),
-        (Assign,
-            rv |= visit_mir_lvalues(e.src, cb);
-            rv |= visit_mir_lvalue(e.dst, ValUsage::Write, cb);
-            ),
-        (Asm,
-            for(auto& v : e.inputs)
-                rv |= visit_mir_lvalue(v.second, ValUsage::Read, cb);
-            for(auto& v : e.outputs)
-                rv |= visit_mir_lvalue(v.second, ValUsage::Write, cb);
-            ),
-        (SetDropFlag,
-            ),
-        (Drop,
-            rv |= visit_mir_lvalue(e.slot, ValUsage::Move, cb);
-            ),
-        (ScopeEnd,
-            )
-        )
-        return rv;
+        LValueCbVisitor v { mv$(cb) };
+        return v.visit_stmt(stmt);
     }
 
     bool visit_mir_lvalues(const ::MIR::Terminator& term, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb)
     {
-        bool rv = false;
-        TU_MATCHA( (term), (e),
-        (Incomplete,
-            ),
-        (Return,
-            ),
-        (Diverge,
-            ),
-        (Goto,
-            ),
-        (Panic,
-            ),
-        (If,
-            rv |= visit_mir_lvalue(e.cond, ValUsage::Read, cb);
-            ),
-        (Switch,
-            rv |= visit_mir_lvalue(e.val, ValUsage::Read, cb);
-            ),
-        (SwitchValue,
-            rv |= visit_mir_lvalue(e.val, ValUsage::Read, cb);
-            ),
-        (Call,
-            if( e.fcn.is_Value() ) {
-                rv |= visit_mir_lvalue(e.fcn.as_Value(), ValUsage::Read, cb);
-            }
-            for(auto& v : e.args)
-                rv |= visit_mir_lvalue(v, ValUsage::Read, cb);
-            rv |= visit_mir_lvalue(e.ret_val, ValUsage::Write, cb);
-            )
-        )
-        return rv;
+        LValueCbVisitor v { mv$(cb) };
+        return v.visit_terminator(term);
     }
     /*
     void visit_mir_lvalues_mut(::MIR::TypeResolve& state, ::MIR::Function& fcn, ::std::function<bool(::MIR::LValue& , ValUsage)> cb)
@@ -598,43 +471,27 @@ namespace visit {
     */
 
     void visit_terminator_target_mut(::MIR::Terminator& term, ::std::function<void(::MIR::BasicBlockId&)> cb) {
-        TU_MATCH_HDRA( (term), {)
-        TU_ARMA(Incomplete, e) {
+        struct TermCbVisitorMut:
+            public VisitorMut
+        {
+            ::std::function<void(::MIR::BasicBlockId&)> cb;
+
+            bool visit_block_id(::MIR::BasicBlockId& x) override {
+                cb(x);
+                return false;
             }
-        TU_ARMA(Return, e) {
-            }
-        TU_ARMA(Diverge, e) {
-            }
-        TU_ARMA(Goto, e) {
-            cb(e);
-            }
-        TU_ARMA(Panic, e) {
-            cb(e.dst);
-            }
-        TU_ARMA(If, e) {
-            cb(e.bb0);
-            cb(e.bb1);
-            }
-        TU_ARMA(Switch, e) {
-            for(auto& target : e.targets)
-                cb(target);
-            }
-        TU_ARMA(SwitchValue, e) {
-            for(auto& target : e.targets)
-                cb(target);
-            cb(e.def_target);
-            }
-        TU_ARMA(Call, e) {
-            cb(e.ret_block);
-            cb(e.panic_block);
-            }
-        }
+        } v;
+        v.cb = std::move(cb);
+        v.visit_terminator(term);
     }
     void visit_terminator_target(const ::MIR::Terminator& term, ::std::function<void(const ::MIR::BasicBlockId&)> cb) {
         visit_terminator_target_mut(const_cast<::MIR::Terminator&>(term), cb);
     }
 }   // namespace visit
 }   // namespace MIR
+// --------------------------------------------------------------------
+// MIR_Helper_GetLifetimes
+// --------------------------------------------------------------------
 namespace
 {
     struct ValueLifetime

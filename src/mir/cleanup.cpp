@@ -1274,6 +1274,33 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
         mutator.cur_block += 1;
         mutator.cur_stmt = 0;
     }
+
+
+    // De-duplicate types
+    {
+        struct Visitor: MIR::visit::VisitorMut
+        {
+            std::set<HIR::TypeRef>  types;
+
+            void dedup_type(HIR::TypeRef& ty)
+            {
+                auto it = types.find(ty);
+                if( it != types.end() ) {
+                    ty = HIR::TypeRef(*it);
+                }
+                else {
+                    types.insert(HIR::TypeRef(ty));
+                }
+            }
+
+            void visit_type(HIR::TypeRef& ty) override
+            {
+                dedup_type(ty);
+            }
+        } v;
+        v.visit_function(state, fcn);
+    }
+
 }
 
 void MIR_CleanupCrate(::HIR::Crate& crate)

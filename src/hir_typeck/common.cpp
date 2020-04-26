@@ -8,131 +8,71 @@
 #include "common.hpp"
 #include <hir/path.hpp>
 
-bool visit_ty_with__path_params(const ::HIR::PathParams& tpl, t_cb_visit_ty callback)
+struct TyVisitorCbConst: TyVisitor<WConst>
 {
-    for(const auto& ty : tpl.m_types)
-        if( visit_ty_with(ty, callback) )
+    t_cb_visit_ty   callback;
+    bool visit_type(const ::HIR::TypeRef& ty) override
+    {
+        if(callback(ty)) {
             return true;
-    return false;
-}
-
-bool visit_ty_with__trait_path(const ::HIR::TraitPath& tpl, t_cb_visit_ty callback)
-{
-    if( visit_ty_with__path_params(tpl.m_path.m_params, callback) )
-        return true;
-    for(const auto& assoc : tpl.m_type_bounds)
-        if( visit_ty_with(assoc.second, callback) )
-            return true;
-    return false;
-}
-bool visit_ty_with__path(const ::HIR::Path& tpl, t_cb_visit_ty callback)
-{
-    TU_MATCH(::HIR::Path::Data, (tpl.m_data), (e),
-    (Generic,
-        return visit_ty_with__path_params(e.m_params, callback);
-        ),
-    (UfcsInherent,
-        return visit_ty_with(e.type, callback) || visit_ty_with__path_params(e.params, callback);
-        ),
-    (UfcsKnown,
-        return visit_ty_with(e.type, callback) || visit_ty_with__path_params(e.trait.m_params, callback) || visit_ty_with__path_params(e.params, callback);
-        ),
-    (UfcsUnknown,
-        return visit_ty_with(e.type, callback) || visit_ty_with__path_params(e.params, callback);
-        )
-    )
-    throw "";
-}
+        }
+        return TyVisitor::visit_type(ty);
+    }
+};
 bool visit_ty_with(const ::HIR::TypeRef& ty, t_cb_visit_ty callback)
 {
-    if( callback(ty) ) {
-        return true;
-    }
-
-    TU_MATCH_HDRA( (ty.data()), {)
-    TU_ARMA(Infer, e) {
-        }
-    TU_ARMA(Diverge, e) {
-        }
-    TU_ARMA(Primitive, e) {
-        }
-    TU_ARMA(Generic, e) {
-        }
-    TU_ARMA(Path, e) {
-        return visit_ty_with__path(e.path, callback);
-        }
-    TU_ARMA(TraitObject, e) {
-        if( visit_ty_with__trait_path(e.m_trait, callback) )
-            return true;
-        for(const auto& trait : e.m_markers)
-            if( visit_ty_with__path_params(trait.m_params, callback) )
-                return true;
-        return false;
-        }
-    TU_ARMA(ErasedType, e) {
-        if( visit_ty_with__path(e.m_origin, callback) )
-            return true;
-        for(const auto& trait : e.m_traits)
-            if( visit_ty_with__trait_path(trait, callback) )
-                return true;
-        return false;
-        }
-    TU_ARMA(Array, e) {
-        return visit_ty_with(e.inner, callback);
-        }
-    TU_ARMA(Slice, e) {
-        return visit_ty_with(e.inner, callback);
-        }
-    TU_ARMA(Tuple, e) {
-        for(const auto& ty : e) {
-            if( visit_ty_with(ty, callback) )
-                return true;
-        }
-        return false;
-        }
-    TU_ARMA(Borrow, e) {
-        return visit_ty_with(e.inner, callback);
-        }
-    TU_ARMA(Pointer, e) {
-        return visit_ty_with(e.inner, callback);
-        }
-    TU_ARMA(Function, e) {
-        for(const auto& ty : e.m_arg_types) {
-            if( visit_ty_with(ty, callback) )
-                return true;
-        }
-        return visit_ty_with(e.m_rettype, callback);
-        }
-    TU_ARMA(Closure, e) {
-        for(const auto& ty : e.m_arg_types) {
-            if( visit_ty_with(ty, callback) )
-                return true;
-        }
-        return visit_ty_with(e.m_rettype, callback);
-        }
-    }
-    return false;
+    TyVisitorCbConst v;
+    v.callback = callback;
+    return v.visit_type(ty);
 }
 bool visit_path_tys_with(const ::HIR::Path& path, t_cb_visit_ty callback)
 {
-    return visit_ty_with__path(path, callback);
+    TyVisitorCbConst v;
+    v.callback = callback;
+    return v.visit_path(path);
 }
+
+/*
+struct TyVisitorCbMut: TyVisitor<WMut>
+{
+    t_cb_visit_ty_mut   callback;
+    bool visit_type(::HIR::TypeRef& ty) override
+    {
+        if(callback(ty)) {
+            return true;
+        }
+        return TyVisitor::visit_type(ty);
+    }
+};
+bool visit_ty_with_mut(::HIR::TypeRef& ty, t_cb_visit_ty_mut callback)
+{
+    TyVisitorCbMut v;
+    v.callback = callback;
+    return v.visit_type(ty);
+}
+bool visit_path_tys_with_mut(::HIR::Path& path, t_cb_visit_ty_mut callback)
+{
+    TyVisitorCbMut v;
+    v.callback = callback;
+    return v.visit_path(path);
+}
+*/
 
 bool monomorphise_pathparams_needed(const ::HIR::PathParams& tpl)
 {
-    return visit_ty_with__path_params(tpl, [&](const auto& ty) {
-        return (ty.data().is_Generic() ? true : false);
-        });
+    TyVisitorCbConst v;
+    v.callback = [&](const auto& ty) { return (ty.data().is_Generic() ? true : false); };
+    return v.visit_path_params(tpl);
 }
 bool monomorphise_traitpath_needed(const ::HIR::TraitPath& tpl)
 {
-    return visit_ty_with__trait_path(tpl, [&](const auto& ty) {
-        return (ty.data().is_Generic() ? true : false);
-        });
+    TyVisitorCbConst v;
+    v.callback = [&](const auto& ty) { return (ty.data().is_Generic() ? true : false); };
+    return v.visit_trait_path(tpl);
 }
 bool monomorphise_path_needed(const ::HIR::Path& tpl)
 {
-    return visit_ty_with__path(tpl, [&](const auto& ty) {
+    return visit_path_tys_with(tpl, [&](const auto& ty) {
         return (ty.data().is_Generic() ? true : false);
         });
 }
@@ -172,34 +112,34 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
     return rv;
 }
 ::HIR::Path clone_ty_with__path(const Span& sp, const ::HIR::Path& tpl, t_cb_clone_ty callback) {
-    TU_MATCH(::HIR::Path::Data, (tpl.m_data), (e2),
-    (Generic,
+    TU_MATCH_HDRA( (tpl.m_data), {)
+    TU_ARMA(Generic, e2) {
         return ::HIR::Path( clone_ty_with__generic_path(sp, e2, callback) );
-        ),
-    (UfcsKnown,
+        }
+    TU_ARMA(UfcsKnown, e2) {
         return ::HIR::Path::Data::make_UfcsKnown({
             clone_ty_with(sp, e2.type, callback),
             clone_ty_with__generic_path(sp, e2.trait, callback),
             e2.item,
             clone_path_params_with(sp, e2.params, callback)
             });
-        ),
-    (UfcsUnknown,
+        }
+    TU_ARMA(UfcsUnknown, e2) {
         return ::HIR::Path::Data::make_UfcsUnknown({
             clone_ty_with(sp, e2.type, callback),
             e2.item,
             clone_path_params_with(sp, e2.params, callback)
             });
-        ),
-    (UfcsInherent,
+        }
+    TU_ARMA(UfcsInherent, e2) {
         return ::HIR::Path::Data::make_UfcsInherent({
             clone_ty_with(sp, e2.type, callback),
             e2.item,
             clone_path_params_with(sp, e2.params, callback),
             clone_path_params_with(sp, e2.impl_params, callback)
             });
-        )
-    )
+        }
+    }
     throw "";
 }
 ::HIR::TypeRef clone_ty_with(const Span& sp, const ::HIR::TypeRef& tpl, t_cb_clone_ty callback)
