@@ -171,9 +171,9 @@ namespace {
 
         void visit_type(::HIR::TypeRef& ty) override
         {
-            if(auto* e = ty.m_data.opt_Array())
+            if(auto* e = ty.data_mut().opt_Array())
             {
-                this->visit_type( *e->inner );
+                this->visit_type( e->inner );
                 DEBUG("Array size " << ty);
                 t_args  tmp;
                 if( auto* se = e->size.opt_Unevaluated() ) {

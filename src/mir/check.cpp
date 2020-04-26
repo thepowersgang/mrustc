@@ -16,7 +16,7 @@ namespace {
     ::HIR::TypeRef get_metadata_type(const ::MIR::TypeResolve& state, const ::HIR::TypeRef& unsized_ty)
     {
         static Span sp;
-        if( const auto* tep = unsized_ty.m_data.opt_TraitObject() )
+        if( const auto* tep = unsized_ty.data().opt_TraitObject() )
         {
             const auto& trait_path = tep->m_trait;
 
@@ -44,11 +44,11 @@ namespace {
                 return ::HIR::TypeRef::new_path( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref );
             }
         }
-        else if( unsized_ty.m_data.is_Slice() )
+        else if( unsized_ty.data().is_Slice() )
         {
             return ::HIR::CoreType::Usize;
         }
-        else if( const auto* tep = unsized_ty.m_data.opt_Path() )
+        else if( const auto* tep = unsized_ty.data().opt_Path() )
         {
             if( tep->binding.is_Struct() )
             {
@@ -630,18 +630,18 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                             MIR_BUG(state,  "Type mismatch, destination is " << dst_ty << ", source is " << src_ty);
                         }
                         };
-                    TU_MATCH(::MIR::RValue, (a.src), (e),
-                    (Use,
+                    TU_MATCH_HDRA( (a.src), {)
+                    TU_ARMA(Use, e) {
                         ::HIR::TypeRef  tmp;
                         check_types( dst_ty, state.get_lvalue_type(tmp, e) );
-                        ),
-                    (Constant,
+                        }
+                    TU_ARMA(Constant, e) {
                         // TODO: Check constant types.
-                        TU_MATCH( ::MIR::Constant, (e), (c),
-                        (Int,
+                        TU_MATCH_HDRA( (e), {)
+                        TU_ARMA(Int, c) {
                             bool good = false;
-                            if( dst_ty.m_data.is_Primitive() ) {
-                                switch( dst_ty.m_data.as_Primitive() ) {
+                            if( dst_ty.data().is_Primitive() ) {
+                                switch( dst_ty.data().as_Primitive() ) {
                                 case ::HIR::CoreType::I8:
                                 case ::HIR::CoreType::I16:
                                 case ::HIR::CoreType::I32:
@@ -657,11 +657,11 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                             if( !good ) {
                                 MIR_BUG(state,  "Type mismatch, destination is " << dst_ty << ", source is a signed integer");
                             }
-                            ),
-                        (Uint,
+                            }
+                        TU_ARMA(Uint, c) {
                             bool good = false;
-                            if( dst_ty.m_data.is_Primitive() ) {
-                                switch( dst_ty.m_data.as_Primitive() ) {
+                            if( dst_ty.data().is_Primitive() ) {
+                                switch( dst_ty.data().as_Primitive() ) {
                                 case ::HIR::CoreType::U8:
                                 case ::HIR::CoreType::U16:
                                 case ::HIR::CoreType::U32:
@@ -678,11 +678,11 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                             if( !good ) {
                                 MIR_BUG(state,  "Type mismatch, destination is " << dst_ty << ", source is an unsigned integer");
                             }
-                            ),
-                        (Float,
+                            }
+                        TU_ARMA(Float, c) {
                             bool good = false;
-                            if( dst_ty.m_data.is_Primitive() ) {
-                                switch( dst_ty.m_data.as_Primitive() ) {
+                            if( dst_ty.data().is_Primitive() ) {
+                                switch( dst_ty.data().as_Primitive() ) {
                                 case ::HIR::CoreType::F32:
                                 case ::HIR::CoreType::F64:
                                     good = true;
@@ -694,41 +694,41 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                             if( !good ) {
                                 MIR_BUG(state,  "Type mismatch, destination is " << dst_ty << ", source is a floating point value");
                             }
-                            ),
-                        (Bool,
+                            }
+                        TU_ARMA(Bool, c) {
                             check_types( dst_ty, ::HIR::TypeRef(::HIR::CoreType::Bool) );
-                            ),
-                        (Bytes,
+                            }
+                        TU_ARMA(Bytes, c) {
                             check_types( dst_ty, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, ::HIR::TypeRef::new_array(::HIR::CoreType::U8, c.size())) );
-                            ),
-                        (StaticString,
+                            }
+                        TU_ARMA(StaticString, c) {
                             check_types( dst_ty, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, ::HIR::CoreType::Str) );
-                            ),
-                        (Const,
+                            }
+                        TU_ARMA(Const, c) {
                             // TODO: Check result type against type of const
-                            ),
-                        (Generic,
+                            }
+                        TU_ARMA(Generic, c) {
                             // TODO: Check result type against type of const
-                            ),
-                        (ItemAddr,
+                            }
+                        TU_ARMA(ItemAddr, c) {
                             // TODO: Check result type against pointer to item type
-                            )
-                        )
-                        ),
-                    (SizedArray,
+                            }
+                        }
+                        }
+                    TU_ARMA(SizedArray, e) {
                         // TODO: Check that return type is an array
                         // TODO: Check that the input type is Copy
-                        ),
-                    (Borrow,
+                        }
+                    TU_ARMA(Borrow, e){
                         ::HIR::TypeRef  tmp;
                         check_types( dst_ty, ::HIR::TypeRef::new_borrow(e.type, state.get_lvalue_type(tmp, e.val).clone()) );
-                        ),
-                    (Cast,
+                        }
+                    TU_ARMA(Cast, e) {
                         // Check return type
                         check_types( dst_ty, e.type );
                         // TODO: Check suitability of source type (COMPLEX)
-                        ),
-                    (BinOp,
+                        }
+                    TU_ARMA(BinOp, e) {
                         /*
                         ::HIR::TypeRef  tmp_l, tmp_r;
                         const auto& ty_l = state.get_lvalue_type(tmp_l, e.val_l);
@@ -746,36 +746,36 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                         }
                         */
                         // TODO: Check return type
-                        ),
-                    (UniOp,
+                        }
+                    TU_ARMA(UniOp, e) {
                         // TODO: Check that operation is valid on this type
                         // TODO: Check return type
-                        ),
-                    (DstMeta,
+                        }
+                    TU_ARMA(DstMeta, e) {
                         ::HIR::TypeRef  tmp;
                         const auto& ty = state.get_lvalue_type(tmp, e.val);
                         const ::HIR::TypeRef*   ity_p = nullptr;
                         if( (ity_p = state.is_type_owned_box(ty)) )
                             ;
-                        else if( ty.m_data.is_Borrow() )
-                            ity_p = &*ty.m_data.as_Borrow().inner;
-                        else if( ty.m_data.is_Pointer() )
-                            ity_p = &*ty.m_data.as_Pointer().inner;
+                        else if( ty.data().is_Borrow() )
+                            ity_p = &ty.data().as_Borrow().inner;
+                        else if( ty.data().is_Pointer() )
+                            ity_p = &ty.data().as_Pointer().inner;
                         else {
                             MIR_BUG(state, "DstMeta requires a &-ptr as input, got " << ty);
                         }
                         const auto& ity = *ity_p;
-                        if( ity.m_data.is_Generic() )
+                        if( ity.data().is_Generic() )
                             ;
-                        else if( ity.m_data.is_Path() && ity.m_data.as_Path().binding.is_Opaque() )
+                        else if( ity.data().is_Path() && ity.data().as_Path().binding.is_Opaque() )
                             ;
-                        else if( ity.m_data.is_Array() )
+                        else if( ity.data().is_Array() )
                             ;
-                        else if( ity.m_data.is_Slice() )
+                        else if( ity.data().is_Slice() )
                             ;
-                        else if( ity.m_data.is_TraitObject() )
+                        else if( ity.data().is_TraitObject() )
                             ;
-                        else if( ity.m_data.is_Path() )
+                        else if( ity.data().is_Path() )
                         {
                             // TODO: Check DST type of this path
                         }
@@ -784,28 +784,28 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                             MIR_BUG(state, "DstMeta on invalid type - " << ty);
                         }
                         // TODO: Check return type
-                        ),
-                    (DstPtr,
+                        }
+                    TU_ARMA(DstPtr, e) {
                         ::HIR::TypeRef  tmp;
                         const auto& ty = state.get_lvalue_type(tmp, e.val);
                         const ::HIR::TypeRef*   ity_p = nullptr;
                         if( (ity_p = state.is_type_owned_box(ty)) )
                             ;
-                        else if( ty.m_data.is_Borrow() )
-                            ity_p = &*ty.m_data.as_Borrow().inner;
-                        else if( ty.m_data.is_Pointer() )
-                            ity_p = &*ty.m_data.as_Pointer().inner;
+                        else if( ty.data().is_Borrow() )
+                            ity_p = &ty.data().as_Borrow().inner;
+                        else if( ty.data().is_Pointer() )
+                            ity_p = &ty.data().as_Pointer().inner;
                         else {
                             MIR_BUG(state, "DstPtr requires a &-ptr as input, got " << ty);
                         }
                         const auto& ity = *ity_p;
-                        if( ity.m_data.is_Slice() )
+                        if( ity.data().is_Slice() )
                             ;
-                        else if( ity.m_data.is_TraitObject() )
+                        else if( ity.data().is_TraitObject() )
                             ;
-                        else if( ity.m_data.is_Path() && ity.m_data.as_Path().binding.is_Opaque() )
+                        else if( ity.data().is_Path() && ity.data().as_Path().binding.is_Opaque() )
                             ;
-                        else if( ity.m_data.is_Path() )
+                        else if( ity.data().is_Path() )
                         {
                             // TODO: Check DST type of this path
                         }
@@ -814,13 +814,13 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                             MIR_BUG(state, "DstPtr on invalid type - " << ty);
                         }
                         // TODO: Check return type
-                        ),
-                    (MakeDst,
+                        }
+                    TU_ARMA(MakeDst, e) {
                         const ::HIR::TypeRef*   ity_p = nullptr;
-                        if( const auto* te = dst_ty.m_data.opt_Borrow() )
-                            ity_p = &*te->inner;
-                        else if( const auto* te = dst_ty.m_data.opt_Pointer() )
-                            ity_p = &*te->inner;
+                        if( const auto* te = dst_ty.data().opt_Borrow() )
+                            ity_p = &te->inner;
+                        else if( const auto* te = dst_ty.data().opt_Pointer() )
+                            ity_p = &te->inner;
                         else {
                             MIR_BUG(state, "DstMeta requires a pointer as output, got " << dst_ty);
                         }
@@ -833,11 +833,11 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                         // TODO: Check metadata type?
 
                         // NOTE: Output type checked above.
-                        ),
-                    (Tuple,
-                        if( !dst_ty.m_data.is_Tuple() )
+                        }
+                    TU_ARMA(Tuple, e) {
+                        if( !dst_ty.data().is_Tuple() )
                             MIR_BUG(state, "Tuple assigned slot of invalid type, " << dst_ty);
-                        const auto& dst_itys = dst_ty.m_data.as_Tuple();
+                        const auto& dst_itys = dst_ty.data().as_Tuple();
                         if( dst_itys.size() != e.vals.size() )
                             MIR_BUG(state, "Tuple assigned slot of invalid type, " << dst_ty << " - expected " << e.vals.size() << " elements");
                         for(size_t i = 0; i < e.vals.size(); i++)
@@ -845,17 +845,17 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                             ::HIR::TypeRef  tmp2;
                             check_types( dst_itys[i], state.get_param_type(tmp2, e.vals[i]) );
                         }
-                        ),
-                    (Array,
+                        }
+                    TU_ARMA(Array, e) {
                         // TODO: Check return type
-                        ),
-                    (Variant,
+                        }
+                    TU_ARMA(Variant, e) {
                         // TODO: Check return type
-                        ),
-                    (Struct,
+                        }
+                    TU_ARMA(Struct, e) {
                         // TODO: Check return type
-                        )
-                    )
+                        }
+                    }
                     } break;
                 case ::MIR::Statement::TAG_Asm:
                     // TODO: Ensure that values are all thin pointers or integers?
@@ -902,7 +902,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 {
                     ::HIR::TypeRef  tmp;
                     const auto& ty = state.get_lvalue_type(tmp, e.fcn.as_Value());
-                    if( ! ty.m_data.is_Function() )
+                    if( ! ty.data().is_Function() )
                     {
                         MIR_BUG(state, "Call Fcn::Value with non-function type - " << ty);
                     }

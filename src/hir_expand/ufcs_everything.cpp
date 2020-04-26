@@ -75,7 +75,7 @@ namespace {
             const auto& ty_val = node.m_value->m_res_type;
 
             // Calling a `fn` type should be kept as a _CallValue
-            if( ty_val.m_data.is_Function() ) {
+            if( ty_val.data().is_Function() ) {
                 return ;
             }
 
@@ -85,7 +85,7 @@ namespace {
                 ::std::vector< ::HIR::TypeRef>  arg_types;
                 for(unsigned int i = 0; i < node.m_args.size(); i ++)
                     arg_types.push_back( node.m_args[i]->m_res_type.clone() );
-                arg_tup_type = ::HIR::TypeRef( mv$(arg_types) );
+                arg_tup_type = ::HIR::TypeRef::new_tuple( mv$(arg_types) );
             }
             // - Make the trait arguments.
             ::HIR::PathParams   trait_args;
@@ -93,7 +93,7 @@ namespace {
 
             // - If the called value is a local closure, figure out how it's being used.
             // TODO: You can call via &-ptrs, but that currently isn't handled in typeck
-            if(const auto* e = node.m_value->m_res_type.m_data.opt_Closure() )
+            if(const auto* e = node.m_value->m_res_type.data().opt_Closure() )
             {
                 if( node.m_trait_used == ::HIR::ExprNode_CallValue::TraitUsed::Unknown )
                 {
@@ -203,8 +203,8 @@ namespace {
         static bool is_op_valid_shift(const ::HIR::TypeRef& ty_l, const ::HIR::TypeRef& ty_r)
         {
             // Integer with any other integer is valid, others go to overload resolution
-            if( ty_l.m_data.is_Primitive() && ty_r.m_data.is_Primitive() ) {
-                switch(ty_l.m_data.as_Primitive())
+            if( ty_l.data().is_Primitive() && ty_r.data().is_Primitive() ) {
+                switch(ty_l.data().as_Primitive())
                 {
                 case ::HIR::CoreType::Char:
                 case ::HIR::CoreType::Str:
@@ -213,7 +213,7 @@ namespace {
                 case ::HIR::CoreType::F64:
                     break;
                 default:
-                    switch(ty_r.m_data.as_Primitive())
+                    switch(ty_r.data().as_Primitive())
                     {
                     case ::HIR::CoreType::Char:
                     case ::HIR::CoreType::Str:
@@ -235,7 +235,7 @@ namespace {
         {
             // Equal integers and bool are valid
             if( ty_l == ty_r ) {
-                if(const auto* e = ty_l.m_data.opt_Primitive())
+                if(const auto* e = ty_l.data().opt_Primitive())
                 {
                     switch(*e)
                     {
@@ -254,7 +254,7 @@ namespace {
         {
             // Equal floats/integers are valid, others go to overload
             if( ty_l == ty_r ) {
-                if(const auto* e = ty_l.m_data.opt_Primitive())
+                if(const auto* e = ty_l.data().opt_Primitive())
                 {
                     switch(*e)
                     {
@@ -363,7 +363,7 @@ namespace {
                 {
                 // 1. Check if the types are valid for primitive comparison
                 if( ty_l == ty_r ) {
-                    TU_MATCH_DEF(::HIR::TypeData, (ty_l.m_data), (e),
+                    TU_MATCH_DEF(::HIR::TypeData, (ty_l.data()), (e),
                     (
                         // Unknown - Overload
                         ),
@@ -474,8 +474,8 @@ namespace {
             {
             case ::HIR::ExprNode_UniOp::Op::Invert:
                 // Check if the operation is valid in the MIR.
-                if( ty_val.m_data.is_Primitive() ) {
-                    switch( ty_val.m_data.as_Primitive() )
+                if( ty_val.data().is_Primitive() ) {
+                    switch( ty_val.data().as_Primitive() )
                     {
                     case ::HIR::CoreType::Str:
                     case ::HIR::CoreType::Char:
@@ -492,8 +492,8 @@ namespace {
                 langitem = method = "not";
                 break;
             case ::HIR::ExprNode_UniOp::Op::Negate:
-                if( ty_val.m_data.is_Primitive() ) {
-                    switch( ty_val.m_data.as_Primitive() )
+                if( ty_val.data().is_Primitive() ) {
+                    switch( ty_val.data().as_Primitive() )
                     {
                     case ::HIR::CoreType::Str:
                     case ::HIR::CoreType::Char:
@@ -546,7 +546,7 @@ namespace {
             const auto& ty_idx = node.m_index->m_res_type;
             const auto& ty_val = node.m_value->m_res_type;
 
-            TU_MATCH_DEF( ::HIR::TypeData, (ty_val.m_data), (val_te),
+            TU_MATCH_DEF( ::HIR::TypeData, (ty_val.data()), (val_te),
             (
                 // Unknown? fall down to the method call
                 ),
@@ -704,7 +704,7 @@ namespace {
 
             // HACK: The autoderef code has to run before usage information is avaliable, so emits "invalid" _Unsize nodes
             // - Fix that.
-            if( node.m_value->m_res_type.m_data.is_Array() )
+            if( node.m_value->m_res_type.data().is_Array() )
             {
                 const Span& sp = node.span();
 
@@ -754,9 +754,9 @@ namespace {
 
         void visit_type(::HIR::TypeRef& ty) override
         {
-            if(auto* e = ty.m_data.opt_Array())
+            if(auto* e = ty.data_mut().opt_Array())
             {
-                this->visit_type( *e->inner );
+                this->visit_type( e->inner );
                 DEBUG("Array size " << ty);
                 if( e->size.is_Unevaluated() ) {
                     ExprVisitor_Mutate  ev(m_crate);

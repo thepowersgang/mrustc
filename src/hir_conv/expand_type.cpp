@@ -22,7 +22,7 @@
         auto pp = path.m_params.clone();
         if( !is_expr ) {
             while( pp.m_types.size() < e2.m_params.m_types.size() && e2.m_params.m_types[pp.m_types.size()].m_default != ::HIR::TypeRef() ) {
-                pp.m_types.push_back( e2.m_params.m_types[pp.m_types.size()].m_default.clone() );
+                pp.m_types.push_back( e2.m_params.m_types[pp.m_types.size()].m_default.clone_shallow() );
             }
             if( pp.m_types.size() != e2.m_params.m_types.size() ) {
                 ERROR(sp, E0000, "Mismatched parameter count in " << path << ", expected " << e2.m_params.m_types.size() << " got " << pp.m_types.size());
@@ -31,7 +31,7 @@
         if( e2.m_params.m_types.size() > 0 ) {
             // TODO: Better `monomorphise_type`
             return monomorphise_type_with(sp, e2.m_type, [&](const auto& gt)->const ::HIR::TypeRef& {
-                const auto& ge = gt.m_data.as_Generic();
+                const auto& ge = gt.data().as_Generic();
                 if( ge.binding == GENERIC_Self ) {
                     BUG(sp, "Self encountered in expansion for " << path << " - " << e2.m_type);
                 }
@@ -92,7 +92,7 @@ public:
     {
         ::HIR::Visitor::visit_type(ty);
 
-        if(const auto* te = ty.m_data.opt_Generic() )
+        if(const auto* te = ty.data().opt_Generic() )
         {
             if( te->binding == GENERIC_Self )
             {
@@ -109,7 +109,7 @@ public:
             }
         }
 
-        if( const auto* e = ty.m_data.opt_Path() ) 
+        if( const auto* e = ty.data().opt_Path() ) 
         {
             ::HIR::TypeRef  new_type = ConvertHIR_ExpandAliases_GetExpansion(m_crate, e->path, m_in_expr);
             // Keep trying to expand down the chain
@@ -118,7 +118,7 @@ public:
             while(num_exp < MAX_RECURSIVE_TYPE_EXPANSIONS)
             {
                 ::HIR::Visitor::visit_type(new_type);
-                if( const auto* e = new_type.m_data.opt_Path() )
+                if( const auto* e = new_type.data().opt_Path() )
                 {
                     auto nt = ConvertHIR_ExpandAliases_GetExpansion(m_crate, e->path, m_in_expr);
                     if( nt == ::HIR::TypeRef() )
@@ -131,7 +131,7 @@ public:
                 }
             }
             ASSERT_BUG(Span(), num_exp < MAX_RECURSIVE_TYPE_EXPANSIONS, "Recursion limit hit expanding " << ty << " (currently on " << new_type << ")");
-            if( ! new_type.m_data.is_Infer() ) {
+            if( ! new_type.data().is_Infer() ) {
                 DEBUG("Replacing " << ty << " with " << new_type << " (" << num_exp << " expansions)");
                 ty = mv$(new_type);
             }
@@ -151,9 +151,9 @@ public:
             auto ty = ConvertHIR_ExpandAliases_GetExpansion_GP(sp, m_crate, *cur, m_in_expr);
             if( ty == ::HIR::TypeRef() )
                 break ;
-            if( !ty.m_data.is_Path() )
+            if( !ty.data().is_Path() )
                 ERROR(sp, E0000, "Type alias referenced in generic path doesn't point to a path");
-            auto& ty_p = ty.m_data.as_Path().path;
+            auto& ty_p = ty.get_unique().as_Path().path;
             if( !ty_p.m_data.is_Generic() )
                 ERROR(sp, E0000, "Type alias referenced in generic path doesn't point to a generic path");
             rv = mv$( ty_p.m_data.as_Generic() );
@@ -259,9 +259,9 @@ public:
             {
                 if( node.m_is_struct )
                 {
-                    if(node.m_type.m_data.is_Path() )
+                    if(node.m_type.data().is_Path() )
                     {
-                        auto new_type = ConvertHIR_ExpandAliases_GetExpansion(upper_visitor.m_crate, node.m_type.m_data.as_Path().path, /*in_expr=*/true);
+                        auto new_type = ConvertHIR_ExpandAliases_GetExpansion(upper_visitor.m_crate, node.m_type.data().as_Path().path, /*in_expr=*/true);
                         if( new_type != ::HIR::TypeRef() )
                         {
                             DEBUG("Replacing " << node.m_type << " with " << new_type);

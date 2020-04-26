@@ -258,7 +258,7 @@ namespace {
                         auto t = get_core_type(ty_tok.istr());
                         if(t == HIR::TypeRef())
                             throw ParseError::Unexpected(lex, ty_tok);
-                        auto ct = t.m_data.as_Primitive();
+                        auto ct = t.data().as_Primitive();
                         switch(tok.type())
                         {
                         case TOK_INTEGER: {
@@ -299,7 +299,7 @@ namespace {
                         auto t = get_core_type(tok.istr());
                         if(t == HIR::TypeRef())
                             throw ParseError::Unexpected(lex, tok);
-                        auto ct = t.m_data.as_Primitive();
+                        auto ct = t.data().as_Primitive();
                         switch(ct)
                         {
                         case HIR::CoreType::U8:

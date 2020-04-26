@@ -129,16 +129,16 @@ namespace {
     }
     EntPtr get_ent_fullpath(const Span& sp, const ::HIR::Crate& crate, const ::HIR::Path& path, EntNS ns, MonomorphState& out_ms)
     {
-        TU_MATCH(::HIR::Path::Data, (path.m_data), (e),
-        (Generic,
+        TU_MATCH_HDRA( (path.m_data), {)
+        TU_ARMA(Generic, e) {
             out_ms = MonomorphState {};
             out_ms.pp_method = &e.m_params;
             return get_ent_simplepath(sp, crate, e.m_path, ns);
-            ),
-        (UfcsInherent,
+            }
+        TU_ARMA(UfcsInherent, e) {
             // Easy (ish)
             EntPtr rv;
-            crate.find_type_impls(*e.type, [](const auto&x)->const auto& { return x; }, [&](const auto& impl) {
+            crate.find_type_impls(e.type, [](const auto&x)->const auto& { return x; }, [&](const auto& impl) {
                 switch( ns )
                 {
                 case EntNS::Value:
@@ -169,10 +169,10 @@ namespace {
             out_ms.pp_method = &e.params;
             out_ms.pp_impl = &e.impl_params;
             return rv;
-            ),
-        (UfcsKnown,
+            }
+        TU_ARMA(UfcsKnown, e) {
             EntPtr rv;
-            crate.find_trait_impls(e.trait.m_path, *e.type, [](const auto&x)->const auto& { return x; }, [&](const auto& impl) {
+            crate.find_trait_impls(e.trait.m_path, e.type, [](const auto&x)->const auto& { return x; }, [&](const auto& impl) {
                 // Hacky selection of impl.
                 // - TODO: Specialisation
                 // - TODO: Inference? (requires full typeck)
@@ -206,12 +206,12 @@ namespace {
             out_ms.pp_method = &e.params;
             // TODO: How to get pp_impl here? Needs specialisation magic.
             return rv;
-            ),
-        (UfcsUnknown,
+            }
+        TU_ARMA(UfcsUnknown, e) {
             // TODO: Are these valid at this point in compilation?
             TODO(sp, "get_ent_fullpath(path = " << path << ")");
-            )
-        )
+            }
+        }
         throw "";
     }
     const ::HIR::Function& get_function(const Span& sp, const ::HIR::Crate& crate, const ::HIR::Path& path, MonomorphState& out_ms)
@@ -359,7 +359,7 @@ namespace HIR {
             TU_ARM(c, Const, e2) {
                 auto p = ms.monomorph(state.sp, *e2.p);
                 // If there's any mention of generics in this path, then return Literal::Defer
-                if( visit_path_tys_with(p, [&](const auto& ty)->bool { return ty.m_data.is_Generic(); }) )
+                if( visit_path_tys_with(p, [&](const auto& ty)->bool { return ty.data().is_Generic(); }) )
                 {
                     DEBUG("Return Literal::Defer for constant " << *e2.p << " which references a generic parameter");
                     return ::HIR::Literal::make_Defer({});
@@ -476,7 +476,7 @@ namespace HIR {
                         val = ::HIR::Literal::make_Defer({});
                     }
                     else
-                    TU_MATCH_HDRA( (e.type.m_data), {)
+                    TU_MATCH_HDRA( (e.type.data()), {)
                     default:
                         // NOTE: Can be an unsizing!
                         MIR_TODO(state, "RValue::Cast to " << e.type << ", val = " << inval);
@@ -726,9 +726,9 @@ namespace HIR {
                 {
                     // 
                 }
-                else if( exp.m_data.is_Primitive() )
+                else if( exp.data().is_Primitive() )
                 {
-                    switch( exp.m_data.as_Primitive() )
+                    switch( exp.data().as_Primitive() )
                     {
                     case ::HIR::CoreType::I8:
                     case ::HIR::CoreType::I16:
@@ -843,7 +843,7 @@ namespace {
         if( lit.is_Defer() )
             return ;
         // TODO: Mask down limited size integers
-        TU_MATCHA( (type.m_data), (te),
+        TU_MATCHA( (type.data()), (te),
         (Infer,
             ),
         (Diverge,
@@ -1067,7 +1067,7 @@ namespace {
         {
             ::HIR::Visitor::visit_type(ty);
 
-            if(auto* e = ty.m_data.opt_Array())
+            if(auto* e = ty.data_mut().opt_Array())
             {
                 TRACE_FUNCTION_FR(ty, ty);
                 if( e->size.is_Unevaluated() )
@@ -1097,7 +1097,7 @@ namespace {
             if( m_recurse_types )
             {
                 m_recurse_types = false;
-                if( const auto* te = ty.m_data.opt_Path() )
+                if( const auto* te = ty.data().opt_Path() )
                 {
                     TU_MATCH_HDRA( (te->binding), {)
                     TU_ARMA(Unbound, _) {

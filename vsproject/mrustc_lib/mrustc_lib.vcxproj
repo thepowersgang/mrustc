@@ -296,6 +296,7 @@
     <ClInclude Include="..\..\src\hir\path.hpp" />
     <ClInclude Include="..\..\src\hir\pattern.hpp" />
     <ClInclude Include="..\..\src\hir\type.hpp" />
+    <ClInclude Include="..\..\src\hir\type_ref.hpp" />
     <ClInclude Include="..\..\src\hir\visitor.hpp" />
     <ClInclude Include="..\..\src\hir_conv\main_bindings.hpp" />
     <ClInclude Include="..\..\src\hir_expand\main_bindings.hpp" />

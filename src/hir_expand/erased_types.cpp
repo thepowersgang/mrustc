@@ -33,7 +33,7 @@ const ::HIR::Function& HIR_Expand_ErasedType_GetFunction(const Span& sp, const S
         const auto& pe = origin_path.m_data.as_UfcsInherent();
         // 1. Find correct impl block for the path
         const ::HIR::TypeImpl* impl_ptr = nullptr;
-        resolve.m_crate.find_type_impls(*pe.type, [&](const auto& ty)->const auto& { return ty; },
+        resolve.m_crate.find_type_impls(pe.type, [&](const auto& ty)->const auto& { return ty; },
             [&](const auto& impl) {
                 DEBUG("- impl" << impl.m_params.fmt_args() << " " << impl.m_type);
                 auto it = impl.m_methods.find(pe.item);
@@ -48,7 +48,7 @@ const ::HIR::Function& HIR_Expand_ErasedType_GetFunction(const Span& sp, const S
 
         // 2. Obtain monomorph_cb (including impl params)
         impl_params.m_types.resize(impl_ptr->m_params.m_types.size());
-        impl_ptr->m_type .match_test_generics(sp, *pe.type, [](const auto& x)->const auto&{return x;}, [&](auto idx, const auto& /*name*/, const auto& ty) {
+        impl_ptr->m_type .match_test_generics(sp, pe.type, [](const auto& x)->const auto&{return x;}, [&](auto idx, const auto& /*name*/, const auto& ty) {
             assert( idx < impl_params.m_types.size() );
             impl_params.m_types[idx] = ty.clone();
             return ::HIR::Compare::Equal;
@@ -61,7 +61,7 @@ const ::HIR::Function& HIR_Expand_ErasedType_GetFunction(const Span& sp, const S
             }
         }
 
-        monomorph_cb = monomorphise_type_get_cb(sp, &*pe.type, &impl_params, &pe.params);
+        monomorph_cb = monomorphise_type_get_cb(sp, &pe.type, &impl_params, &pe.params);
         } break;
     }
     assert(fcn_ptr);
@@ -102,11 +102,11 @@ namespace {
         {
             static Span sp;
 
-            if( ty.m_data.is_ErasedType() )
+            if( ty.data().is_ErasedType() )
             {
                 TRACE_FUNCTION_FR(ty, ty);
 
-                const auto& e = ty.m_data.as_ErasedType();
+                const auto& e = ty.data().as_ErasedType();
 
                 ::HIR::PathParams   impl_params;    // cache.
                 t_cb_generic    monomorph_cb;
@@ -167,9 +167,9 @@ namespace {
         void visit_type(::HIR::TypeRef& ty) override
         {
             static const Span   sp;
-            if( ty.m_data.is_ErasedType() )
+            if( ty.data().is_ErasedType() )
             {
-                const auto& e = ty.m_data.as_ErasedType();
+                const auto& e = ty.data().as_ErasedType();
 
                 TRACE_FUNCTION_FR(ty, ty);
 

@@ -236,7 +236,7 @@ namespace
             ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "type " << ty;), ::HIR::TypeRef(), {}, empty_fcn };
             m_mir_res = &top_mir_res;
 
-            if( const auto* te = ty.m_data.opt_Tuple() )
+            if( const auto* te = ty.data().opt_Tuple() )
             {
                 if( te->size() > 0 )
                 {
@@ -289,15 +289,15 @@ namespace
         // TODO: Move this to a more common location
         MetadataType metadata_type(const ::HIR::TypeRef& ty) const
         {
-            if( ty == ::HIR::CoreType::Str || ty.m_data.is_Slice() ) {
+            if( ty == ::HIR::CoreType::Str || ty.data().is_Slice() ) {
                 return MetadataType::Slice;
             }
-            else if( ty.m_data.is_TraitObject() ) {
+            else if( ty.data().is_TraitObject() ) {
                 return MetadataType::TraitObject;
             }
-            else if( ty.m_data.is_Path() )
+            else if( ty.data().is_Path() )
             {
-                const auto& te = ty.m_data.as_Path();
+                const auto& te = ty.data().as_Path();
                 switch( te.binding.tag() )
                 {
                 TU_ARM(te.binding, Struct, tpb) {
@@ -307,8 +307,8 @@ namespace
                         return MetadataType::None;
                     case ::HIR::StructMarkings::DstType::Possible: {
                         // TODO: How to figure out? Lazy way is to check the monomorpised type of the last field (structs only)
-                        const auto& path = ty.m_data.as_Path().path.m_data.as_Generic();
-                        const auto& str = *ty.m_data.as_Path().binding.as_Struct();
+                        const auto& path = ty.data().as_Path().path.m_data.as_Generic();
+                        const auto& str = *ty.data().as_Path().binding.as_Struct();
                         auto monomorph = [&](const auto& tpl) {
                             auto rv = monomorphise_type(sp, str.m_params, path.m_params, tpl);
                             m_resolve.expand_associated_types(sp, rv);
@@ -362,11 +362,11 @@ namespace
                     if( t == ::HIR::CoreType::Str ) {
                         return ::HIR::CoreType::Usize;
                     }
-                    else if( t.m_data.is_Slice() ) {
+                    else if( t.data().is_Slice() ) {
                         return ::HIR::CoreType::Usize;
                     }
-                    else if( t.m_data.is_TraitObject() ) {
-                        const auto& te = t.m_data.as_TraitObject();
+                    else if( t.data().is_TraitObject() ) {
+                        const auto& te = t.data().as_TraitObject();
                         //auto vtp = t.m_data.as_TraitObject().m_trait.m_path;
 
                         const auto& trait = resolve.m_crate.get_trait_by_path(sp, te.m_trait.m_path.m_path);
@@ -385,7 +385,7 @@ namespace
                         const auto& vtable_ref = resolve.m_crate.get_struct_by_path(sp, vtable_gp.m_path);
                         return ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, ::HIR::TypeRef::new_path( ::std::move(vtable_gp), &vtable_ref ));
                     }
-                    else if( t.m_data.is_Path() ) {
+                    else if( t.data().is_Path() ) {
                         auto* repr = Target_GetTypeRepr(sp, resolve, t);
                         ASSERT_BUG(sp, repr, "No repr for " << t);
                         return get_metadata_type(sp, resolve, *repr);
@@ -502,7 +502,7 @@ namespace
 
             // Create constructor function
             const auto& var_ty = item.m_data.as_Data().at(var_idx).type;
-            const auto& e = var_ty.m_data.as_Path().binding.as_Struct()->m_data.as_Tuple();
+            const auto& e = var_ty.data().as_Path().binding.as_Struct()->m_data.as_Tuple();
             m_of << "fn " << var_path << "(";
             for(unsigned int i = 0; i < e.size(); i ++)
             {
@@ -797,7 +797,7 @@ namespace
             auto putb = [&](uint8_t b) { emit_str_byte(b); };
             auto putu32 = [&](uint32_t v) { emit_str_u32(v); };
             auto putsize = [&](uint64_t v) { emit_str_usize(v); };
-            switch(ty.m_data.tag())
+            switch(ty.data().tag())
             {
             case ::HIR::TypeData::TAGDEAD: throw "";
             case ::HIR::TypeData::TAG_Generic:
@@ -808,7 +808,7 @@ namespace
             case ::HIR::TypeData::TAG_Slice:
             case ::HIR::TypeData::TAG_Closure:
                 BUG(sp, "Unexpected " << ty << " in decoding literal");
-            TU_ARM(ty.m_data, Primitive, te) {
+            TU_ARM(ty.data(), Primitive, te) {
                 switch(te)
                 {
                 case ::HIR::CoreType::U8:
@@ -937,7 +937,7 @@ namespace
                 }
                 } break;
             case ::HIR::TypeData::TAG_Borrow:
-                if( *ty.m_data.as_Borrow().inner == ::HIR::CoreType::Str )
+                if( ty.data().as_Borrow().inner == ::HIR::CoreType::Str )
                 {
                     ASSERT_BUG(sp, lit.is_String(), ty << " not Literal::String - " << lit);
                     const auto& s = lit.as_String();
@@ -948,7 +948,7 @@ namespace
                 }
                 // fall
             case ::HIR::TypeData::TAG_Pointer: {
-                const auto& ity = (ty.m_data.is_Borrow() ? *ty.m_data.as_Borrow().inner : *ty.m_data.as_Pointer().inner);
+                const auto& ity = (ty.data().is_Borrow() ? ty.data().as_Borrow().inner : ty.data().as_Pointer().inner);
                 size_t ity_size, ity_align;
                 Target_GetSizeAndAlignOf(sp, m_resolve, ity, ity_size, ity_align);
                 bool is_unsized = (ity_size == SIZE_MAX);
@@ -966,7 +966,7 @@ namespace
                     }
                 TU_ARMA(Integer, le) {
                     ASSERT_BUG(sp, le == 0, "Pointer from integer not 0");
-                    ASSERT_BUG(sp, ty.m_data.is_Pointer(), "Borrow from integer");
+                    ASSERT_BUG(sp, ty.data().is_Pointer(), "Borrow from integer");
                     putsize(le);
                     if( is_unsized )
                     {
@@ -988,14 +988,14 @@ namespace
                 putsize(PTR_BASE);
                 out_relocations.push_back(Reloc::new_named(base_ofs, 8,  &lit.as_BorrowPath()));
                 break;
-            TU_ARM(ty.m_data, Array, te) {
+            TU_ARM(ty.data(), Array, te) {
                 // What about byte strings?
                 // TODO: Assert size
                 ASSERT_BUG(sp, lit.is_List(), "not Literal::List - " << lit);
                 for(const auto& v : lit.as_List())
                 {
-                    emit_literal_as_bytes(v, *te.inner, out_relocations, base_ofs);
-                    size_t size = Target_GetSizeOf_Required(sp, m_resolve, *te.inner);
+                    emit_literal_as_bytes(v, te.inner, out_relocations, base_ofs);
+                    size_t size = Target_GetSizeOf_Required(sp, m_resolve, te.inner);
                     base_ofs += size;
                 }
                 } break;
@@ -1037,7 +1037,7 @@ namespace
 
             const size_t ptr_size = Target_GetCurSpec().m_arch.m_pointer_bits / 8;
             const auto& trait_path = p.m_data.as_UfcsKnown().trait;
-            const auto& type = *p.m_data.as_UfcsKnown().type;
+            const auto& type = p.m_data.as_UfcsKnown().type;
             bool has_drop_glue =  m_resolve.type_needs_drop_glue(sp, type);
 
             ::HIR::TypeRef  vtable_ty;
@@ -1416,15 +1416,15 @@ namespace
     private:
         const ::HIR::TypeRef& monomorphise_fcn_return(::HIR::TypeRef& tmp, const ::HIR::Function& item, const Trans_Params& params)
         {
-            if( visit_ty_with(item.m_return, [&](const auto& x){ return x.m_data.is_ErasedType() || x.m_data.is_Generic(); }) )
+            if( visit_ty_with(item.m_return, [&](const auto& x){ return x.data().is_ErasedType() || x.data().is_Generic(); }) )
             {
                 tmp = clone_ty_with(Span(), item.m_return, [&](const auto& tpl, auto& out) {
-                    if( const auto* e = tpl.m_data.opt_ErasedType() )
+                    if( const auto* e = tpl.data().opt_ErasedType() )
                     {
                         out = params.monomorph(m_resolve, item.m_code.m_erased_types.at(e->m_index));
                         return true;
                     }
-                    else if( tpl.m_data.is_Generic() ) {
+                    else if( tpl.data().is_Generic() ) {
                         out = params.get_cb()(tpl).clone();
                         return true;
                     }

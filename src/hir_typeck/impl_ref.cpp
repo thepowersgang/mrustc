@@ -85,11 +85,12 @@ bool ImplRef::overlaps_with(const ::HIR::Crate& crate, const ImplRef& other) con
 }
 bool ImplRef::has_magic_params() const
 {
-    TU_IFLET(Data, m_data, TraitImpl, e,
-        for(const auto& t : e.params_ph)
-            if( visit_ty_with(t, [](const ::HIR::TypeRef& t){ return t.m_data.is_Generic() && (t.m_data.as_Generic().binding >> 8) == 2; }) )
+    if(const auto* e = m_data.opt_TraitImpl())
+    {
+        for(const auto& t : e->params_ph)
+            if( visit_ty_with(t, [](const ::HIR::TypeRef& t){ return t.data().is_Generic() && (t.data().as_Generic().binding >> 8) == 2; }) )
                 return true;
-    )
+    }
     return false;
 }
 bool ImplRef::type_is_specialisable(const char* name) const
@@ -123,7 +124,7 @@ bool ImplRef::type_is_specialisable(const char* name) const
 {
     const auto& e = this->m_data.as_TraitImpl();
     return [this,&e,&sp](const auto& gt)->const ::HIR::TypeRef& {
-        const auto& ge = gt.m_data.as_Generic();
+        const auto& ge = gt.data().as_Generic();
         if( ge.binding == 0xFFFF ) {
             // Store (or cache) a monomorphisation of Self, and error if this recurses
             if( e.self_cache == ::HIR::TypeRef() ) {

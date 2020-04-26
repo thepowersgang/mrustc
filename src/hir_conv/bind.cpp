@@ -337,9 +337,9 @@ namespace {
                         }
                         else if( !var.is_struct )
                         {
-                            ASSERT_BUG(sp, var.type.m_data.is_Path(), "");
-                            ASSERT_BUG(sp, var.type.m_data.as_Path().binding.is_Struct(), "EnumStruct pattern on unexpected variant " << e.path << " with " << var.type.m_data.as_Path().binding.tag_str());
-                            const auto& str = *var.type.m_data.as_Path().binding.as_Struct();
+                            ASSERT_BUG(sp, var.type.data().is_Path(), "");
+                            ASSERT_BUG(sp, var.type.data().as_Path().binding.is_Struct(), "EnumStruct pattern on unexpected variant " << e.path << " with " << var.type.data().as_Path().binding.tag_str());
+                            const auto& str = *var.type.data().as_Path().binding.as_Struct();
                             ASSERT_BUG(sp, str.m_data.is_Tuple(), "");
                             const auto& flds = str.m_data.as_Tuple();
                             ::std::vector<HIR::Pattern> subpats;
@@ -394,13 +394,13 @@ namespace {
             else {
                 while( params.m_types.size() < param_defs.m_types.size() ) {
                     const auto& typ = param_defs.m_types[params.m_types.size()];
-                    if( typ.m_default.m_data.is_Infer() ) {
+                    if( typ.m_default.data().is_Infer() ) {
                         ERROR(sp, E0000, "Omitted type parameter with no default in " << path);
                     }
                     else {
                         // Clone, replacing `self` if a replacement was provided.
                         auto ty = clone_ty_with(sp, typ.m_default, [&](const auto& ty, auto& out){
-                            if(const auto* te = ty.m_data.opt_Generic() )
+                            if(const auto* te = ty.data().opt_Generic() )
                             {
                                 if( te->binding == GENERIC_Self ) {
                                     if( !self_ty )
@@ -448,7 +448,7 @@ namespace {
             //TRACE_FUNCTION_F(ty);
             static Span sp;
 
-            if(auto* e = ty.m_data.opt_Path())
+            if(auto* e = ty.data_mut().opt_Path())
             {
                 TU_MATCH_HDRA( (e->path.m_data), {)
                 TU_ARMA(Generic, pe) {
@@ -483,7 +483,7 @@ namespace {
                         ),
                     (Trait,
                         // TODO: Should this reassign instead?
-                        ty.m_data = ::HIR::TypeData::make_TraitObject({ ::HIR::TraitPath { mv$(pe), {}, {} }, {}, {} });
+                        ty.data_mut() = ::HIR::TypeData::make_TraitObject({ ::HIR::TraitPath { mv$(pe), {}, {} }, {}, {} });
                         )
                     )
                     }
@@ -495,13 +495,13 @@ namespace {
                 TU_ARMA(UfcsKnown, pe) {
 
                     const auto& trait = m_crate.get_trait_by_path(sp, pe.trait.m_path);
-                    fix_param_count(sp, pe.trait, trait.m_params, pe.trait.m_params, /*fill_infer=*/false, &*pe.type);
+                    fix_param_count(sp, pe.trait, trait.m_params, pe.trait.m_params, /*fill_infer=*/false, &pe.type);
 
-                    if( pe.type->m_data.is_Path() && pe.type->m_data.as_Path().binding.is_Opaque() ) {
+                    if( pe.type.data().is_Path() && pe.type.data().as_Path().binding.is_Opaque() ) {
                         // - Opaque type, opaque result
                         e->binding = ::HIR::TypePathBinding::make_Opaque({});
                     }
-                    else if( pe.type->m_data.is_Generic() ) {
+                    else if( pe.type.data().is_Generic() ) {
                         // - Generic type, opaque resut. (TODO: Sometimes these are known - via generic bounds)
                         e->binding = ::HIR::TypePathBinding::make_Opaque({});
                     }

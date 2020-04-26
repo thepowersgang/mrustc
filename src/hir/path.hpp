@@ -12,20 +12,12 @@
 #include <common.hpp>
 #include <tagged_union.hpp>
 #include <span.hpp>
+#include "type_ref.hpp"
 
 namespace HIR {
 
 class TypeRef;
 class Trait;
-
-enum Compare {
-    Equal,
-    Fuzzy,
-    Unequal,
-};
-
-typedef ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> t_cb_resolve_type;
-typedef ::std::function< ::HIR::Compare(unsigned int, const RcString&, const ::HIR::TypeRef&) > t_cb_match_generics;
 
 static inline ::std::ostream& operator<<(::std::ostream& os, const Compare& x) {
     switch(x)
@@ -191,19 +183,19 @@ public:
     TAGGED_UNION(Data, Generic,
     (Generic, GenericPath),
     (UfcsInherent, struct {
-        ::std::unique_ptr<TypeRef>  type;
+        TypeRef type;
         RcString   item;
         PathParams  params;
         PathParams  impl_params;
         }),
     (UfcsKnown, struct {
-        ::std::unique_ptr<TypeRef>  type;
+        TypeRef type;
         GenericPath trait;
         RcString   item;
         PathParams  params;
         }),
     (UfcsUnknown, struct {
-        ::std::unique_ptr<TypeRef>  type;
+        TypeRef type;
         //GenericPath ??;
         RcString   item;
         PathParams  params;

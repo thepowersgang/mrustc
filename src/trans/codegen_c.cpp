@@ -1232,7 +1232,7 @@ namespace {
         void emit_type_proto(const ::HIR::TypeRef& ty) override
         {
             TRACE_FUNCTION_F(ty);
-            TU_MATCH_HDRA( (ty.m_data), {)
+            TU_MATCH_HDRA( (ty.data()), {)
             default:
                 // No prototype required
             TU_ARMA(Tuple, te) {
@@ -1278,14 +1278,14 @@ namespace {
             }
             m_emitted_fn_types.insert(ty.clone());
 
-            const auto& te = ty.m_data.as_Function();
+            const auto& te = ty.data().as_Function();
             m_of << "typedef ";
             // TODO: ABI marker, need an ABI enum?
-            if( *te.m_rettype == ::HIR::TypeRef::new_unit() )
+            if( te.m_rettype == ::HIR::TypeRef::new_unit() )
                 m_of << "void";
             else
                 // TODO: Better emit_ctype call for return type?
-                emit_ctype(*te.m_rettype);
+                emit_ctype(te.m_rettype);
             m_of << " (";
             if( m_compiler == Compiler::Msvc )
             {
@@ -1324,7 +1324,7 @@ namespace {
             m_mir_res = &top_mir_res;
 
             TRACE_FUNCTION_F(ty);
-            TU_MATCH_HDRA( (ty.m_data), { )
+            TU_MATCH_HDRA( (ty.data()), { )
             default:
                 // Nothing to emit
                 break;
@@ -1386,7 +1386,7 @@ namespace {
                 }
                 else
                 {
-                    emit_ctype(*te.inner); m_of << " DATA[" << te.size.as_Known() << "];";
+                    emit_ctype(te.inner); m_of << " DATA[" << te.size.as_Known() << "];";
                 }
                 m_of << " } "; emit_ctype(ty); m_of << ";";
                 m_of << " // " << ty << "\n";
@@ -1428,7 +1428,7 @@ namespace {
             for(unsigned fld : fields )
             {
                 const auto& ty = repr->fields[fld].ty;
-                if( ty.m_data.is_Array() && ty.m_data.as_Array().size.as_Known() == 0 ) {
+                if( TU_TEST1(ty.data(), Array, .size.as_Known() == 0) ) {
                     has_manual_align = true;
                 }
             }
@@ -1465,11 +1465,11 @@ namespace {
                 m_of << "\t";
                 const auto& ty = repr->fields[fld].ty;
 
-                if( const auto* te = ty.m_data.opt_Slice() ) {
-                    emit_ctype( *te->inner, FMT_CB(ss, ss << "_" << fld << "[0]";) );
+                if( const auto* te = ty.data().opt_Slice() ) {
+                    emit_ctype( te->inner, FMT_CB(ss, ss << "_" << fld << "[0]";) );
                     has_unsized = true;
                 }
-                else if( ty.m_data.is_TraitObject() ) {
+                else if( ty.data().is_TraitObject() ) {
                     m_of << "unsigned char _" << fld << "[0]";
                     has_unsized = true;
                 }
@@ -1477,7 +1477,7 @@ namespace {
                     m_of << "uint8_t _" << fld << "[0]";
                     has_unsized = true;
                 }
-                else if( TU_TEST1(ty.m_data, Path, .binding.is_ExternType()) ) {
+                else if( TU_TEST1(ty.data(), Path, .binding.is_ExternType()) ) {
                     m_of << "// External";
                     has_unsized = true;
                 }
@@ -1545,7 +1545,7 @@ namespace {
             // - TODO: This override/definition should be done by the caller
             if( m_resolve.is_type_owned_box(struct_ty) )
             {
-                m_box_glue_todo.push_back( ::std::make_pair( mv$(struct_ty.m_data.as_Path().path.m_data.as_Generic()), &item ) );
+                m_box_glue_todo.push_back( ::std::make_pair( struct_ty.data().as_Path().path.m_data.as_Generic().clone(), &item ) );
                 m_of << "static void " << Trans_Mangle(drop_glue_path) << "("; emit_ctype(struct_ty_ptr, FMT_CB(ss, ss << "rv";)); m_of << ");\n";
                 return ;
             }
@@ -1647,15 +1647,15 @@ namespace {
                 ty = &repr->fields[fld].ty;
                 m_of << "._" << fld;
             }
-            if( const auto* te = ty->m_data.opt_Borrow() )
+            if( const auto* te = ty->data().opt_Borrow() )
             {
-                if( metadata_type(*te->inner) != MetadataType::None ) {
+                if( metadata_type(te->inner) != MetadataType::None ) {
                     m_of << ".PTR";
                 }
             }
-            else if( const auto* te = ty->m_data.opt_Pointer() )
+            else if( const auto* te = ty->data().opt_Pointer() )
             {
-                if( metadata_type(*te->inner) != MetadataType::None ) {
+                if( metadata_type(te->inner) != MetadataType::None ) {
                     m_of << ".PTR";
                 }
             }
@@ -1878,8 +1878,8 @@ namespace {
 
             ASSERT_BUG(sp, item.m_data.is_Data(), "");
             const auto& var = item.m_data.as_Data().at(var_idx);
-            ASSERT_BUG(sp, var.type.m_data.is_Path(), "");
-            const auto& str = *var.type.m_data.as_Path().binding.as_Struct();
+            ASSERT_BUG(sp, var.type.data().is_Path(), "");
+            const auto& str = *var.type.data().as_Path().binding.as_Struct();
             ASSERT_BUG(sp, str.m_data.is_Tuple(), "");
             const auto& e = str.m_data.as_Tuple();
 
@@ -2085,11 +2085,11 @@ namespace {
                 }
                 };
             auto get_inner_type = [&](unsigned int var, unsigned int idx)->const ::HIR::TypeRef& {
-                TU_MATCH_HDRA( (ty.m_data), { )
+                TU_MATCH_HDRA( (ty.data()), { )
                 default:
                     MIR_TODO(*m_mir_res, "Unknown type in list literal - " << ty);
                 TU_ARMA(Array, te) {
-                    return *te.inner;
+                    return te.inner;
                     }
                 TU_ARMA(Path, te) {
                     const auto& pp = te.path.m_data.as_Generic().m_params;
@@ -2131,6 +2131,7 @@ namespace {
                     return te.at(idx);
                     }
                 }
+                throw "";
                 };
             TU_MATCH_HDRA( (lit), {)
             TU_ARMA(Invalid, e) { m_of << "/* INVALID */"; }
@@ -2139,9 +2140,9 @@ namespace {
                 }
             TU_ARMA(List, e) {
                 m_of << "{";
-                if( ty.m_data.is_Array() )
+                if( ty.data().is_Array() )
                 {
-                    if( ty.m_data.as_Array().size.as_Known() == 0 && m_options.disallow_empty_structs)
+                    if( ty.data().as_Array().size.as_Known() == 0 && m_options.disallow_empty_structs)
                     {
                         m_of << "0";
                     }
@@ -2161,17 +2162,17 @@ namespace {
                     m_of << " ";
                     emit_literal(ity, e[i], params);
                 }
-                if( (ty.m_data.is_Path() || ty.m_data.is_Tuple()) && !emitted_field && m_options.disallow_empty_structs )
+                if( (ty.data().is_Path() || ty.data().is_Tuple()) && !emitted_field && m_options.disallow_empty_structs )
                     m_of << "0";
-                if( ty.m_data.is_Array() && !(ty.m_data.as_Array().size.as_Known() == 0 && m_options.disallow_empty_structs) )
+                if( ty.data().is_Array() && !(ty.data().as_Array().size.as_Known() == 0 && m_options.disallow_empty_structs) )
                     m_of << "}";
                 m_of << " }";
                 }
             TU_ARMA(Variant, e) {
-                MIR_ASSERT(*m_mir_res, ty.m_data.is_Path(), "");
-                MIR_ASSERT(*m_mir_res, ty.m_data.as_Path().binding.is_Enum(), "");
+                MIR_ASSERT(*m_mir_res, ty.data().is_Path(), "");
+                MIR_ASSERT(*m_mir_res, ty.data().as_Path().binding.is_Enum(), "");
                 const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
-                const auto& enm = *ty.m_data.as_Path().binding.as_Enum();
+                const auto& enm = *ty.data().as_Path().binding.as_Enum();
                 if( repr->variants.is_None() )
                 {
                     m_of << "{}";
@@ -2211,9 +2212,9 @@ namespace {
                 }
                 }
             TU_ARMA(Integer, e) {
-                if( ty.m_data.is_Primitive() )
+                if( ty.data().is_Primitive() )
                 {
-                    switch(ty.m_data.as_Primitive())
+                    switch(ty.data().as_Primitive())
                     {
                     case ::HIR::CoreType::Bool:
                         m_of << (e ? "true" : "false");
@@ -2280,7 +2281,7 @@ namespace {
                         MIR_TODO(*m_mir_res, "Handle integer literal of type " << ty);
                     }
                 }
-                else if( ty.m_data.is_Pointer() )
+                else if( ty.data().is_Pointer() )
                 {
                     m_of << ::std::hex << "(void*)0x" << e << ::std::dec;
                 }
@@ -2298,26 +2299,26 @@ namespace {
                     const auto& vi = m_crate.get_valitem_by_path(sp, pe.m_path);
                     if( vi.is_Function() )
                     {
-                        if( !ty.m_data.is_Function() ) // TODO: Ensure that the type is `*const ()` or similar.
+                        if( !ty.data().is_Function() ) // TODO: Ensure that the type is `*const ()` or similar.
                             m_of << "(void*)";
                         else
                             ;
                     }
                     else
                     {
-                        if( TU_TEST1(ty.m_data, Borrow, .inner->m_data.is_Slice()) )
+                        if( TU_TEST1(ty.data(), Borrow, .inner.data().is_Slice()) )
                         {
                             // Since this is a borrow, it must be of an array.
                             MIR_ASSERT(*m_mir_res, vi.is_Static(), "BorrowOf returning &[T] not of a static - " << pe.m_path << " is " << vi.tag_str());
                             const auto& stat = vi.as_Static();
-                            MIR_ASSERT(*m_mir_res, stat.m_type.m_data.is_Array(), "BorrowOf : &[T] of non-array static, " << pe.m_path << " - " << stat.m_type);
-                            auto size = stat.m_type.m_data.as_Array().size.as_Known();
+                            MIR_ASSERT(*m_mir_res, stat.m_type.data().is_Array(), "BorrowOf : &[T] of non-array static, " << pe.m_path << " - " << stat.m_type);
+                            auto size = stat.m_type.data().as_Array().size.as_Known();
                             m_of << "{ &" << Trans_Mangle( params.monomorph(m_resolve, e)) << ", " << size << "}";
                             return ;
                         }
-                        else if( TU_TEST1(ty.m_data, Borrow, .inner->m_data.is_TraitObject()) || TU_TEST1(ty.m_data, Pointer, .inner->m_data.is_TraitObject()) )
+                        else if( TU_TEST1(ty.data(), Borrow, .inner.data().is_TraitObject()) || TU_TEST1(ty.data(), Pointer, .inner.data().is_TraitObject()) )
                         {
-                            const auto& to = (ty.m_data.is_Borrow() ? ty.m_data.as_Borrow().inner : ty.m_data.as_Pointer().inner)->m_data.as_TraitObject();
+                            const auto& to = (ty.data().is_Borrow() ? ty.data().as_Borrow().inner : ty.data().as_Pointer().inner).data().as_TraitObject();
                             const auto& trait_path = to.m_trait.m_path;
                             MIR_ASSERT(*m_mir_res, vi.is_Static(), "BorrowOf returning &TraitObject not of a static - " << pe.m_path << " is " << vi.tag_str());
                             const auto& stat = vi.as_Static();
@@ -2348,11 +2349,11 @@ namespace {
                 }
             TU_ARMA(String, e) {
                 bool is_slice
-                    = TU_TEST2(ty.m_data, Borrow, .inner->m_data, Primitive, == HIR::CoreType::Str)
-                    || TU_TEST1(ty.m_data, Borrow, .inner->m_data.is_Slice())
+                    = TU_TEST2(ty.data(), Borrow, .inner.data(), Primitive, == HIR::CoreType::Str)
+                    || TU_TEST1(ty.data(), Borrow, .inner.data().is_Slice())
                     ;
                 bool is_wrapped = is_slice
-                    || ty.m_data.is_Array()
+                    || ty.data().is_Array()
                     ;
                 if( is_wrapped )
                     m_of << "{ ";
@@ -2420,10 +2421,10 @@ namespace {
 
             TRACE_FUNCTION_F(p);
             const auto& trait_path = p.m_data.as_UfcsKnown().trait;
-            const auto& type = *p.m_data.as_UfcsKnown().type;
+            const auto& type = p.m_data.as_UfcsKnown().type;
 
             // TODO: Hack in fn pointer VTable handling
-            if( const auto* te = type.m_data.opt_Function() )
+            if( const auto* te = type.data().opt_Function() )
             {
                 const char* names[] = { "call", "call_mut" };
                 const ::HIR::SimplePath* traits[] = { &m_resolve.m_lang_Fn, &m_resolve.m_lang_FnMut };
@@ -2445,18 +2446,19 @@ namespace {
                     fcn_p.m_data.as_UfcsKnown().item = call_fcn_name;
                     fcn_p.m_data.as_UfcsKnown().trait.m_path = trait_name.clone();
 
-                    auto  arg_ty = ::HIR::TypeRef::new_unit();
+                    ::std::vector<HIR::TypeRef> arg_tys;
                     for(const auto& ty : te->m_arg_types)
-                        arg_ty.m_data.as_Tuple().push_back( ty.clone() );
+                        arg_tys.push_back( ty.clone() );
+                    auto arg_ty = ::HIR::TypeRef(mv$(arg_tys));
 
                     m_of << "static ";
-                    if( *te->m_rettype == ::HIR::TypeRef::new_unit() )
+                    if( te->m_rettype == ::HIR::TypeRef::new_unit() )
                         m_of << "void ";
                     else
-                        emit_ctype(*te->m_rettype);
+                        emit_ctype(te->m_rettype);
                     m_of << " " << Trans_Mangle(fcn_p) << "("; emit_ctype(type, FMT_CB(ss, ss << "*ptr";)); m_of << ", "; emit_ctype(arg_ty, FMT_CB(ss, ss << "args";)); m_of << ") {\n";
                     m_of << "\t";
-                    if( *te->m_rettype == ::HIR::TypeRef::new_unit() )
+                    if( te->m_rettype == ::HIR::TypeRef::new_unit() )
                         ;
                     else
                         m_of << "return ";
@@ -2500,7 +2502,7 @@ namespace {
             auto monomorph_cb_trait = monomorphise_type_get_cb(sp, &type, &trait_path.m_params, nullptr);
 
             // Size, Alignment, and destructor
-            if( type.m_data.is_Borrow() || m_resolve.type_is_copy(sp, type) )
+            if( type.data().is_Borrow() || m_resolve.type_is_copy(sp, type) )
             {
                 m_of << "\t""noop_drop,\n";
             }
@@ -3256,7 +3258,7 @@ namespace {
                     ::HIR::TypeRef  tmp, tmp_r;
                     const auto& ty = mir_res.get_param_type(tmp, ve.val_l);
                     const auto& ty_r = mir_res.get_param_type(tmp_r, ve.val_r);
-                    if( ty.m_data.is_Borrow() ) {
+                    if( ty.data().is_Borrow() ) {
                         m_of << "(slice_cmp("; emit_param(ve.val_l); m_of << ", "; emit_param(ve.val_r); m_of << ")";
                         switch(ve.op)
                         {
@@ -3272,8 +3274,8 @@ namespace {
                         m_of << ")";
                         break;
                     }
-                    else if( const auto* te = ty.m_data.opt_Pointer() ) {
-                        if( metadata_type(*te->inner) != MetadataType::None )
+                    else if( const auto* te = ty.data().opt_Pointer() ) {
+                        if( metadata_type(te->inner) != MetadataType::None )
                         {
                             switch(ve.op)
                             {
@@ -3601,8 +3603,8 @@ namespace {
             const auto& ty = mir_res.get_lvalue_type(tmp, ve.val);
 
             // A cast to a fat pointer doesn't actually change the C type.
-            if ((ve.type.m_data.is_Pointer() && is_dst(*ve.type.m_data.as_Pointer().inner))
-                || (ve.type.m_data.is_Borrow() && is_dst(*ve.type.m_data.as_Borrow().inner))
+            if ((ve.type.data().is_Pointer() && is_dst(ve.type.data().as_Pointer().inner))
+                || (ve.type.data().is_Borrow() && is_dst(ve.type.data().as_Borrow().inner))
                 // OR: If it's a no-op cast
                 || ve.type == ty
                 )
@@ -3620,9 +3622,9 @@ namespace {
                 ))
             {
                 // Destination
-                MIR_ASSERT(mir_res, ve.type.m_data.is_Primitive(), "i128/u128 cast to non-primitive");
-                MIR_ASSERT(mir_res, ty.m_data.is_Primitive(), "i128/u128 cast from non-primitive");
-                switch (ve.type.m_data.as_Primitive())
+                MIR_ASSERT(mir_res, ve.type.data().is_Primitive(), "i128/u128 cast to non-primitive");
+                MIR_ASSERT(mir_res, ty.data().is_Primitive(), "i128/u128 cast from non-primitive");
+                switch (ve.type.data().as_Primitive())
                 {
                 case ::HIR::CoreType::I128:
                 case ::HIR::CoreType::U128:
@@ -3661,7 +3663,7 @@ namespace {
                 case ::HIR::CoreType::Usize:
                     emit_lvalue(dst);
                     m_of << " = ";
-                    switch (ty.m_data.as_Primitive())
+                    switch (ty.data().as_Primitive())
                     {
                     case ::HIR::CoreType::U128:
                     case ::HIR::CoreType::I128:
@@ -3675,7 +3677,7 @@ namespace {
                 case ::HIR::CoreType::F32:
                     emit_lvalue(dst);
                     m_of << " = ";
-                    switch (ty.m_data.as_Primitive())
+                    switch (ty.data().as_Primitive())
                     {
                     case ::HIR::CoreType::U128:
                         m_of << "cast128_float("; emit_lvalue(ve.val); m_of << ")";
@@ -3690,7 +3692,7 @@ namespace {
                 case ::HIR::CoreType::F64:
                     emit_lvalue(dst);
                     m_of << " = ";
-                    switch (ty.m_data.as_Primitive())
+                    switch (ty.data().as_Primitive())
                     {
                     case ::HIR::CoreType::U128:
                         m_of << "cast128_double("; emit_lvalue(ve.val); m_of << ")";
@@ -3715,11 +3717,11 @@ namespace {
             // TODO: If the source is an unsized borrow, then extract the pointer
             bool special = false;
             // If the destination is a thin pointer
-            if (ve.type.m_data.is_Pointer() && !is_dst(*ve.type.m_data.as_Pointer().inner))
+            if (ve.type.data().is_Pointer() && !is_dst(ve.type.data().as_Pointer().inner))
             {
                 // NOTE: Checks the result of the deref
-                if ((ty.m_data.is_Borrow() && is_dst(*ty.m_data.as_Borrow().inner))
-                    || (ty.m_data.is_Pointer() && is_dst(*ty.m_data.as_Pointer().inner))
+                if ((ty.data().is_Borrow() && is_dst(ty.data().as_Borrow().inner))
+                    || (ty.data().is_Pointer() && is_dst(ty.data().as_Pointer().inner))
                     )
                 {
                     emit_lvalue(ve.val);
@@ -3727,7 +3729,7 @@ namespace {
                     special = true;
                 }
             }
-            if (ve.type.m_data.is_Primitive() && ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Enum())
+            if (ve.type.data().is_Primitive() && ty.data().is_Path() && ty.data().as_Path().binding.is_Enum())
             {
                 emit_lvalue(ve.val);
                 m_of << ".TAG";
@@ -3744,8 +3746,8 @@ namespace {
 
             ::HIR::TypeRef  tmp;
             const auto& ty = mir_res.get_lvalue_type(tmp, val);
-            MIR_ASSERT(mir_res, ty.m_data.is_Path(), "Switch over non-Path type");
-            MIR_ASSERT(mir_res, ty.m_data.as_Path().binding.is_Enum(), "Switch over non-enum");
+            MIR_ASSERT(mir_res, ty.data().is_Path(), "Switch over non-Path type");
+            MIR_ASSERT(mir_res, ty.data().as_Path().binding.is_Enum(), "Switch over non-enum");
             const auto* repr = Target_GetTypeRepr(mir_res.sp, m_resolve, ty);
             MIR_ASSERT(mir_res, repr, "No repr for " << ty);
 
@@ -3765,7 +3767,7 @@ namespace {
             {
                 const auto& tag_ty = Target_GetInnerType(sp, m_resolve, *repr, e->field.index, e->field.sub_fields);
                 bool is_signed = false;
-                switch(tag_ty.m_data.as_Primitive())
+                switch(tag_ty.data().as_Primitive())
                 {
                 case ::HIR::CoreType::I8:
                 case ::HIR::CoreType::I16:
@@ -3923,10 +3925,10 @@ namespace {
                 {
                     ::HIR::TypeRef  tmp;
                     const auto& ty = mir_res.get_lvalue_type(tmp, e2);
-                    MIR_ASSERT(mir_res, ty.m_data.is_Function(), "Call::Value on non-function - " << ty);
+                    MIR_ASSERT(mir_res, ty.data().is_Function(), "Call::Value on non-function - " << ty);
 
-                    const auto& ret_ty = *ty.m_data.as_Function().m_rettype;
-                    omit_assign |= ret_ty.m_data.is_Diverge();
+                    const auto& ret_ty = ty.data().as_Function().m_rettype;
+                    omit_assign |= ret_ty.data().is_Diverge();
                     if( !omit_assign )
                     {
                         emit_lvalue(e.ret_val); m_of << " = ";
@@ -3939,20 +3941,20 @@ namespace {
                     TU_MATCH_HDRA( (e2.m_data), {)
                     TU_ARMA(Generic, pe) {
                         const auto& fcn = m_crate.get_function_by_path(sp, pe.m_path);
-                        omit_assign |= fcn.m_return.m_data.is_Diverge();
+                        omit_assign |= fcn.m_return.data().is_Diverge();
                         // TODO: Monomorph.
                         }
                     TU_ARMA(UfcsUnknown, pe) {
                         }
                     TU_ARMA(UfcsInherent, pe) {
                         // Check if the return type is !
-                        omit_assign |= m_resolve.m_crate.find_type_impls(*pe.type, [&](const auto& ty)->const auto& { return ty; },
+                        omit_assign |= m_resolve.m_crate.find_type_impls(pe.type, [&](const auto& ty)->const auto& { return ty; },
                             [&](const auto& impl) {
                                 // Associated functions
                                 {
                                     auto it = impl.m_methods.find(pe.item);
                                     if( it != impl.m_methods.end() ) {
-                                        return it->second.data.m_return.m_data.is_Diverge();
+                                        return it->second.data.m_return.data().is_Diverge();
                                     }
                                 }
                                 // Associated static (undef)
@@ -3964,16 +3966,16 @@ namespace {
                         const auto& tr = m_resolve.m_crate.get_trait_by_path(sp, pe.trait.m_path);
                         const auto& fcn = tr.m_values.find(pe.item)->second.as_Function();
                         const auto& rv_tpl = fcn.m_return;
-                        if( rv_tpl.m_data.is_Diverge() || rv_tpl == ::HIR::TypeRef::new_unit() )
+                        if( rv_tpl.data().is_Diverge() || rv_tpl == ::HIR::TypeRef::new_unit() )
                         {
                             omit_assign |= true;
                         }
-                        else if( const auto* te = rv_tpl.m_data.opt_Generic() )
+                        else if( const auto* te = rv_tpl.data().opt_Generic() )
                         {
                             (void)te;
                             // TODO: Generic lookup
                         }
-                        else if( const auto* te = rv_tpl.m_data.opt_Path() )
+                        else if( const auto* te = rv_tpl.data().opt_Path() )
                         {
                             if( te->binding.is_Opaque() ) {
                                 // TODO: Associated type lookup
@@ -4288,14 +4290,14 @@ namespace {
     private:
         const ::HIR::TypeRef& monomorphise_fcn_return(::HIR::TypeRef& tmp, const ::HIR::Function& item, const Trans_Params& params)
         {
-            if( visit_ty_with(item.m_return, [&](const auto& x){ return x.m_data.is_ErasedType() || x.m_data.is_Generic(); }) )
+            if( visit_ty_with(item.m_return, [&](const auto& x){ return x.data().is_ErasedType() || x.data().is_Generic(); }) )
             {
                 tmp = clone_ty_with(Span(), item.m_return, [&](const auto& tpl, auto& out){
-                    if( const auto* e = tpl.m_data.opt_ErasedType() ) {
+                    if( const auto* e = tpl.data().opt_ErasedType() ) {
                         out = params.monomorph(m_resolve, item.m_code.m_erased_types.at(e->m_index));
                         return true;
                     }
-                    else if( tpl.m_data.is_Generic() ) {
+                    else if( tpl.data().is_Generic() ) {
                         out = params.get_cb()(tpl).clone();
                         return true;
                     }
@@ -4409,9 +4411,9 @@ namespace {
                     throw "";
                 };
             auto get_prim_size = [&mir_res](const ::HIR::TypeRef& ty)->unsigned {
-                    if( !ty.m_data.is_Primitive() )
+                    if( !ty.data().is_Primitive() )
                         MIR_BUG(mir_res, "Unknown type for getting primitive size - " << ty);
-                    switch( ty.m_data.as_Primitive() )
+                    switch( ty.data().as_Primitive() )
                     {
                     case ::HIR::CoreType::U8:
                     case ::HIR::CoreType::I8:
@@ -4438,7 +4440,7 @@ namespace {
                 };
             auto emit_msvc_atomic_op = [&](const char* name, Ordering ordering) {
                 m_of << name;
-                switch (params.m_types.at(0).m_data.as_Primitive())
+                switch (params.m_types.at(0).data().as_Primitive())
                 {
                 case ::HIR::CoreType::U8:
                 case ::HIR::CoreType::I8:
@@ -4547,23 +4549,23 @@ namespace {
                     // TODO: Target_GetSizeOf
                     m_of << "sizeof("; emit_ctype(ty); m_of << ")";
                 }
-                else if( const auto* te = inner_ty.m_data.opt_Slice() ) {
-                    if( ! ty.m_data.is_Slice() ) {
+                else if( const auto* te = inner_ty.data().opt_Slice() ) {
+                    if( ! ty.data().is_Slice() ) {
                         m_of << "sizeof("; emit_ctype(ty); m_of << ") + ";
                     }
-                    emit_param(e.args.at(0)); m_of << ".META * sizeof("; emit_ctype(*te->inner); m_of << ")";
+                    emit_param(e.args.at(0)); m_of << ".META * sizeof("; emit_ctype(te->inner); m_of << ")";
                 }
                 else if( inner_ty == ::HIR::CoreType::Str ) {
-                    if( ! ty.m_data.is_Primitive() ) {
+                    if( ! ty.data().is_Primitive() ) {
                         m_of << "sizeof("; emit_ctype(ty); m_of << ") + ";
                     }
                     emit_param(e.args.at(0)); m_of << ".META";
                 }
-                else if( inner_ty.m_data.is_TraitObject() ) {
-                    if( ! ty.m_data.is_TraitObject() ) {
+                else if( inner_ty.data().is_TraitObject() ) {
+                    if( ! ty.data().is_TraitObject() ) {
                         m_of << "sizeof("; emit_ctype(ty); m_of << ") + ";
                     }
-                    //auto vtable_path = inner_ty.m_data.as_TraitObject().m_trait.m_path.clone();
+                    //auto vtable_path = inner_ty.data().as_TraitObject().m_trait.m_path.clone();
                     //vtable_path.m_path.m_components.back() += "#vtable";
                     //auto vtable_ty = ::HIR::TypeRef
                     m_of << "((VTABLE_HDR*)"; emit_param(e.args.at(0)); m_of << ".META)->size";
@@ -4580,29 +4582,29 @@ namespace {
                 if( inner_ty == ::HIR::TypeRef() ) {
                     m_of << "ALIGNOF("; emit_ctype(ty); m_of << ")";
                 }
-                else if( const auto* te = inner_ty.m_data.opt_Slice() ) {
-                    if( ! ty.m_data.is_Slice() ) {
+                else if( const auto* te = inner_ty.data().opt_Slice() ) {
+                    if( ! ty.data().is_Slice() ) {
                         m_of << "mrustc_max( ALIGNOF("; emit_ctype(ty); m_of << "), ";
                     }
-                    m_of << "ALIGNOF("; emit_ctype(*te->inner); m_of << ")";
-                    if( ! ty.m_data.is_Slice() ) {
+                    m_of << "ALIGNOF("; emit_ctype(te->inner); m_of << ")";
+                    if( ! ty.data().is_Slice() ) {
                         m_of << " )";
                     }
                 }
                 else if( inner_ty == ::HIR::CoreType::Str ) {
-                    if( ! ty.m_data.is_Primitive() ) {
+                    if( ! ty.data().is_Primitive() ) {
                         m_of << "ALIGNOF("; emit_ctype(ty); m_of << ")";
                     }
                     else {
                         m_of << "1";
                     }
                 }
-                else if( inner_ty.m_data.is_TraitObject() ) {
-                    if( ! ty.m_data.is_TraitObject() ) {
+                else if( inner_ty.data().is_TraitObject() ) {
+                    if( ! ty.data().is_TraitObject() ) {
                         m_of << "mrustc_max( ALIGNOF("; emit_ctype(ty); m_of << "), ";
                     }
                     m_of << "((VTABLE_HDR*)"; emit_param(e.args.at(0)); m_of << ".META)->align";
-                    if( ! ty.m_data.is_TraitObject() ) {
+                    if( ! ty.data().is_TraitObject() ) {
                         m_of << " )";
                     }
                 }
@@ -4617,7 +4619,7 @@ namespace {
                     break;
                 case MetadataType::Slice: {
                     // TODO: Have a function that fetches the inner type for types like `Path` or `str`
-                    const auto& ity = *ty.m_data.as_Slice().inner;
+                    const auto& ity = *ty.data().as_Slice().inner;
                     m_of << "ALIGNOF("; emit_ctype(ity); m_of << ")";
                     break; }
                 case MetadataType::TraitObject:
@@ -4639,7 +4641,7 @@ namespace {
             else if( name == "transmute" ) {
                 const auto& ty_src = params.m_types.at(0);
                 const auto& ty_dst = params.m_types.at(1);
-                auto is_ptr = [](const ::HIR::TypeRef& ty){ return ty.m_data.is_Borrow() || ty.m_data.is_Pointer(); };
+                auto is_ptr = [](const ::HIR::TypeRef& ty){ return ty.data().is_Borrow() || ty.data().is_Pointer(); };
                 if( this->type_is_bad_zst(ty_dst) )
                 {
                     m_of << "/* zst */";
@@ -4652,8 +4654,8 @@ namespace {
                 }
                 else if( is_ptr(ty_dst) && is_ptr(ty_src) )
                 {
-                    auto src_meta = metadata_type(ty_src.m_data.is_Pointer() ? *ty_src.m_data.as_Pointer().inner : *ty_src.m_data.as_Borrow().inner);
-                    auto dst_meta = metadata_type(ty_dst.m_data.is_Pointer() ? *ty_dst.m_data.as_Pointer().inner : *ty_dst.m_data.as_Borrow().inner);
+                    auto src_meta = metadata_type(ty_src.data().is_Pointer() ? ty_src.data().as_Pointer().inner : ty_src.data().as_Borrow().inner);
+                    auto dst_meta = metadata_type(ty_dst.data().is_Pointer() ? ty_dst.data().as_Pointer().inner : ty_dst.data().as_Borrow().inner);
                     if( src_meta == MetadataType::None )
                     {
                         assert(dst_meta == MetadataType::None);
@@ -4787,7 +4789,7 @@ namespace {
             }
             else if( name == "bswap" ) {
                 const auto& ty = params.m_types.at(0);
-                MIR_ASSERT(mir_res, ty.m_data.is_Primitive(), "Invalid type passed to bwsap, must be a primitive, got " << ty);
+                MIR_ASSERT(mir_res, ty.data().is_Primitive(), "Invalid type passed to bwsap, must be a primitive, got " << ty);
                 if( ty == ::HIR::CoreType::U8 || ty == ::HIR::CoreType::I8 ) {
                     // Nop.
                     emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0));
@@ -4816,7 +4818,7 @@ namespace {
                         }
                         break;
                     case Compiler::Msvc:
-                        switch( ty.m_data.as_Primitive() )
+                        switch( ty.data().as_Primitive() )
                         {
                         case ::HIR::CoreType::U16:
                         case ::HIR::CoreType::I16:
@@ -4844,7 +4846,7 @@ namespace {
             }
             else if( name == "bitreverse" ) {
                 const auto& ty = params.m_types.at(0);
-                MIR_ASSERT(mir_res, ty.m_data.is_Primitive(), "Invalid type passed to bitreverse. Must be a primitive, got " << ty);
+                MIR_ASSERT(mir_res, ty.data().is_Primitive(), "Invalid type passed to bitreverse. Must be a primitive, got " << ty);
                 emit_lvalue(e.ret_val); m_of << " = ";
                 switch(get_prim_size(ty))
                 {
@@ -4926,7 +4928,7 @@ namespace {
                         m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
                         break;
                     case Compiler::Msvc:
-                        emit_lvalue(e.ret_val); m_of << "._1 = __builtin_add_overflow_" << params.m_types.at(0);
+                        emit_lvalue(e.ret_val); m_of << "._1 = __builtin_add_overflow_" << params.m_types.at(0).data().as_Primitive();
                         m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
                         break;
                     }
@@ -4952,7 +4954,7 @@ namespace {
                         m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
                         break;
                     case Compiler::Msvc:
-                        emit_lvalue(e.ret_val); m_of << "._1 = __builtin_sub_overflow_" << params.m_types.at(0);
+                        emit_lvalue(e.ret_val); m_of << "._1 = __builtin_sub_overflow_" << params.m_types.at(0).data().as_Primitive();
                         m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
                         break;
                     }
@@ -4979,7 +4981,7 @@ namespace {
                             m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
                         break;
                     case Compiler::Msvc:
-                        emit_lvalue(e.ret_val); m_of << "._1 = __builtin_mul_overflow_" << params.m_types.at(0);
+                        emit_lvalue(e.ret_val); m_of << "._1 = __builtin_mul_overflow_" << params.m_types.at(0).data().as_Primitive();
                         m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
                         break;
                     }
@@ -5005,7 +5007,7 @@ namespace {
                         m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
                         break;
                     case Compiler::Msvc:
-                        m_of << "__builtin_add_overflow_" << params.m_types.at(0);
+                        m_of << "__builtin_add_overflow_" << params.m_types.at(0).data().as_Primitive();
                         m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
                         break;
                     }
@@ -5031,7 +5033,7 @@ namespace {
                         m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
                         break;
                     case Compiler::Msvc:
-                        m_of << "__builtin_sub_overflow_" << params.m_types.at(0);
+                        m_of << "__builtin_sub_overflow_" << params.m_types.at(0).data().as_Primitive();
                         m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
                         break;
                     }
@@ -5057,7 +5059,7 @@ namespace {
                         m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
                         break;
                     case Compiler::Msvc:
-                        m_of << "__builtin_mul_overflow_" << params.m_types.at(0);
+                        m_of << "__builtin_mul_overflow_" << params.m_types.at(0).data().as_Primitive();
                         m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
                         break;
                     }
@@ -5448,7 +5450,7 @@ namespace {
                 return ;
             }
             auto indent = RepeatLitStr { "\t", static_cast<int>(indent_level) };
-            TU_MATCH_HDRA( (ty.m_data), {)
+            TU_MATCH_HDRA( (ty.data()), {)
             // Impossible
             TU_ARMA(Diverge, te) {}
             TU_ARMA(Infer, te) {}
@@ -5468,7 +5470,7 @@ namespace {
                 if( te.type == ::HIR::BorrowType::Owned )
                 {
                     // Call drop glue on inner.
-                    emit_destructor_call( ::MIR::LValue::new_Deref(slot.clone()), *te.inner, true, indent_level );
+                    emit_destructor_call( ::MIR::LValue::new_Deref(slot.clone()), te.inner, true, indent_level );
                 }
                 }
             TU_ARMA(Path, te) {
@@ -5521,7 +5523,7 @@ namespace {
                 if( te.size.as_Known() > 0 )
                 {
                     m_of << indent << "for(unsigned i = 0; i < " << te.size.as_Known() << "; i++) {\n";
-                    emit_destructor_call(::MIR::LValue::new_Index(slot.clone(), ::MIR::LValue::Storage::MAX_ARG), *te.inner, false, indent_level+1);
+                    emit_destructor_call(::MIR::LValue::new_Index(slot.clone(), ::MIR::LValue::Storage::MAX_ARG), te.inner, false, indent_level+1);
                     m_of << "\n" << indent << "}";
                 }
                 }
@@ -5561,7 +5563,7 @@ namespace {
                 MIR_ASSERT(*m_mir_res, lvr.is_Deref(), "Access to unized type without a deref - " << lvr << " (part of " << slot << ")");
                 // Call destructor on all entries
                 m_of << indent << "for(unsigned i = 0; i < "; emit_lvalue(lvr.inner_ref()); m_of << ".META; i++) {\n";
-                emit_destructor_call(::MIR::LValue::new_Index(slot.clone(), ::MIR::LValue::Storage::MAX_ARG), *te.inner, false, indent_level+1);
+                emit_destructor_call(::MIR::LValue::new_Index(slot.clone(), ::MIR::LValue::Storage::MAX_ARG), te.inner, false, indent_level+1);
                 m_of << "\n" << indent << "}";
                 }
             }
@@ -5600,7 +5602,7 @@ namespace {
         {
             const auto& ve = repr->variants.as_Values();
             const auto& tag_ty = Target_GetInnerType(sp, m_resolve, *repr, ve.field.index, ve.field.sub_fields);
-            switch(tag_ty.m_data.as_Primitive())
+            switch(tag_ty.data().as_Primitive())
             {
             case ::HIR::CoreType::I8:
             case ::HIR::CoreType::I16:
@@ -5645,11 +5647,11 @@ namespace {
                 }
             };
             auto get_inner_type = [&](unsigned int var, unsigned int idx)->const ::HIR::TypeRef& {
-                TU_MATCH_HDRA((ty.m_data), { )
+                TU_MATCH_HDRA((ty.data()), { )
                 default:
                     MIR_TODO(*m_mir_res, "Unknown type in list literal - " << ty);
                 TU_ARMA(Array, te) {
-                    return *te.inner;
+                    return te.inner;
                     }
                 TU_ARMA(Path, te) {
                     const auto& pp = te.path.m_data.as_Generic().m_params;
@@ -5687,6 +5689,7 @@ namespace {
                     return te.at(idx);
                     }
                 }
+                throw "";
             };
 
             TU_MATCH_HDRA( (lit), {)
@@ -5699,10 +5702,10 @@ namespace {
                 return all_zero;
                 }
             TU_ARMA(Variant, e) {
-                MIR_ASSERT(*m_mir_res, ty.m_data.is_Path(), "");
-                MIR_ASSERT(*m_mir_res, ty.m_data.as_Path().binding.is_Enum(), "");
+                MIR_ASSERT(*m_mir_res, ty.data().is_Path(), "");
+                MIR_ASSERT(*m_mir_res, ty.data().as_Path().binding.is_Enum(), "");
                 const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
-                const auto& enm = *ty.m_data.as_Path().binding.as_Enum();
+                const auto& enm = *ty.data().as_Path().binding.as_Enum();
                 if( repr->variants.is_None() ) {
                     return true;
                 } else if( const auto* ve = repr->variants.opt_NonZero() ) {
@@ -5749,11 +5752,11 @@ namespace {
                 ::HIR::TypeRef  tmp;
                 auto inner = val.inner_ref();
                 const auto& ty = m_mir_res->get_lvalue_type(tmp, inner);
-                if( ty.m_data.is_Slice() )
+                if( ty.data().is_Slice() )
                 {
                     if( inner.is_Deref() )
                     {
-                        m_of << "(("; emit_ctype(*ty.m_data.as_Slice().inner); m_of << "*)";
+                        m_of << "(("; emit_ctype(ty.data().as_Slice().inner); m_of << "*)";
                         emit_lvalue(inner.inner_ref());
                         m_of << ".PTR)";
                     }
@@ -5763,7 +5766,7 @@ namespace {
                     }
                     m_of << "[" << field_index << "]";
                 }
-                else if( ty.m_data.is_Array() ) {
+                else if( ty.data().is_Array() ) {
                     emit_lvalue(inner);
                     m_of << ".DATA[" << field_index << "]";
                 }
@@ -5808,10 +5811,10 @@ namespace {
                 ::HIR::TypeRef  tmp;
                 const auto& ty = m_mir_res->get_lvalue_type(tmp, inner);
                 m_of << "(";
-                if( ty.m_data.is_Slice() ) {
+                if( ty.data().is_Slice() ) {
                     if( inner.is_Deref() )
                     {
-                        m_of << "("; emit_ctype(*ty.m_data.as_Slice().inner); m_of << "*)";
+                        m_of << "("; emit_ctype(ty.data().as_Slice().inner); m_of << "*)";
                         emit_lvalue(inner.inner_ref());
                         m_of << ".PTR";
                     }
@@ -5819,7 +5822,7 @@ namespace {
                         emit_lvalue(inner);
                     }
                 }
-                else if( ty.m_data.is_Array() ) {
+                else if( ty.data().is_Array() ) {
                     emit_lvalue(inner);
                     m_of << ".DATA";
                 }
@@ -5835,8 +5838,8 @@ namespace {
                 ::HIR::TypeRef  tmp;
                 const auto& ty = m_mir_res->get_lvalue_type(tmp, inner);
                 emit_lvalue(inner);
-                MIR_ASSERT(*m_mir_res, ty.m_data.is_Path(), "Downcast on non-Path type - " << ty);
-                if( ty.m_data.as_Path().binding.is_Enum() )
+                MIR_ASSERT(*m_mir_res, ty.data().is_Path(), "Downcast on non-Path type - " << ty);
+                if( ty.data().as_Path().binding.is_Enum() )
                 {
                     m_of << ".DATA";
                 }
@@ -6023,7 +6026,7 @@ namespace {
             emit_ctype(ty, FMT_CB(_,));
         }
         void emit_ctype(const ::HIR::TypeRef& ty, ::FmtLambda inner, bool is_extern_c=false) {
-            TU_MATCH_HDRA( (ty.m_data), {)
+            TU_MATCH_HDRA( (ty.data()), {)
             TU_ARMA(Infer, te) {
                 m_of << "@" << ty << "@" << inner;
                 }
@@ -6095,7 +6098,7 @@ namespace {
                 }
             TU_ARMA(Array, te) {
                 m_of << "t_" << Trans_Mangle(ty) << " " << inner;
-                //emit_ctype(*te.inner, inner);
+                //emit_ctype(te.inner, inner);
                 //m_of << "[" << te.size.as_Known() << "]";
                 }
             TU_ARMA(Slice, te) {
@@ -6114,10 +6117,10 @@ namespace {
                 m_of << " " << inner;
                 }
             TU_ARMA(Borrow, te) {
-                emit_ctype_ptr(*te.inner, inner);
+                emit_ctype_ptr(te.inner, inner);
                 }
             TU_ARMA(Pointer, te) {
-                emit_ctype_ptr(*te.inner, inner);
+                emit_ctype_ptr(te.inner, inner);
                 }
             TU_ARMA(Function, te) {
                 m_of << "t_" << Trans_Mangle(ty) << " " << inner;
@@ -6130,15 +6133,15 @@ namespace {
 
         ::HIR::TypeRef get_inner_unsized_type(const ::HIR::TypeRef& ty)
         {
-            if( ty == ::HIR::CoreType::Str || ty.m_data.is_Slice() ) {
+            if( ty == ::HIR::CoreType::Str || ty.data().is_Slice() ) {
                 return ty.clone();
             }
-            else if( ty.m_data.is_TraitObject() ) {
+            else if( ty.data().is_TraitObject() ) {
                 return ty.clone();
             }
-            else if( ty.m_data.is_Path() )
+            else if( ty.data().is_Path() )
             {
-                TU_MATCH_HDRA( (ty.m_data.as_Path().binding), {)
+                TU_MATCH_HDRA( (ty.data().as_Path().binding), {)
                 default:
                     MIR_BUG(*m_mir_res, "Unbound/opaque path in trans - " << ty);
                     throw "";
@@ -6151,8 +6154,8 @@ namespace {
                     case ::HIR::StructMarkings::DstType::TraitObject:
                     case ::HIR::StructMarkings::DstType::Possible: {
                         // TODO: How to figure out? Lazy way is to check the monomorpised type of the last field (structs only)
-                        const auto& path = ty.m_data.as_Path().path.m_data.as_Generic();
-                        const auto& str = *ty.m_data.as_Path().binding.as_Struct();
+                        const auto& path = ty.data().as_Path().path.m_data.as_Generic();
+                        const auto& str = *ty.data().as_Path().binding.as_Struct();
                         auto monomorph = [&](const auto& tpl) {
                             // TODO: expand_associated_types
                             auto rv = monomorphise_type(sp, str.m_params, path.m_params, tpl);
@@ -6188,7 +6191,7 @@ namespace {
         }
 
         void emit_ctype_ptr(const ::HIR::TypeRef& inner_ty, ::FmtLambda inner) {
-            //if( inner_ty.m_data.is_Array() ) {
+            //if( inner_ty.data().is_Array() ) {
             //    emit_ctype(inner_ty, FMT_CB(ss, ss << "(*" << inner << ")";));
             //}
             //else

@@ -534,8 +534,8 @@ struct LowerHIR_ExprNode_Visitor:
             auto ty = LowerHIR_Type( ::TypeRef(v.span(), v.m_path) );
             if( v.m_path.m_bindings.type.is_EnumVar() )
             {
-                ASSERT_BUG(v.span(), TU_TEST1(ty.m_data, Path, .path.m_data.is_Generic()), "Enum variant path not GenericPath: " << ty );
-                auto& gp = ty.m_data.as_Path().path.m_data.as_Generic();
+                ASSERT_BUG(v.span(), TU_TEST1(ty.data(), Path, .path.m_data.is_Generic()), "Enum variant path not GenericPath: " << ty );
+                auto& gp = ty.get_unique().as_Path().path.m_data.as_Generic();
                 auto var_name = gp.m_path.m_components.back();
                 gp.m_path.m_components.pop_back();
                 ty = ::HIR::TypeRef::new_path( ::HIR::Path(mv$(ty), mv$(var_name)), {} );

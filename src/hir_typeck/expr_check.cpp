@@ -45,9 +45,9 @@ namespace {
 
             // Monomorphise erased type
             ::HIR::TypeRef  new_ret_type = clone_ty_with(sp, ret_type, [&](const auto& tpl, auto& rv)->bool {
-                if( tpl.m_data.is_ErasedType() )
+                if( tpl.data().is_ErasedType() )
                 {
-                    const auto& e = tpl.m_data.as_ErasedType();
+                    const auto& e = tpl.data().as_ErasedType();
                     ASSERT_BUG(sp, e.m_index < node_ptr.m_erased_types.size(), "Erased type index OOB - " << e.m_origin << " " << e.m_index << " >= " << node_ptr.m_erased_types.size());
                     // TODO: Emit checks on bounds
                     rv = node_ptr.m_erased_types[e.m_index].clone();
@@ -317,11 +317,11 @@ namespace {
             }
 
             // Check castability
-            TU_MATCH_HDRA( (dst_ty.m_data), {)
+            TU_MATCH_HDRA( (dst_ty.data()), {)
             default:
                 ERROR(sp, E0000, "Invalid cast to\n " << dst_ty << "\n from\n " << src_ty);
             TU_ARMA(Pointer, de) {
-                TU_MATCH_HDRA( (src_ty.m_data), {)
+                TU_MATCH_HDRA( (src_ty.data()), {)
                 default:
                     ERROR(sp, E0000, "Invalid cast to " << dst_ty << " from " << src_ty);
                 TU_ARMA(Pointer, se) {
@@ -347,12 +347,12 @@ namespace {
                     //}
                     }
                 TU_ARMA(Function, se) {
-                    if( *de.inner != ::HIR::TypeRef::new_unit() && *de.inner != ::HIR::CoreType::U8 && *de.inner != ::HIR::CoreType::I8 ) {
+                    if( de.inner != ::HIR::TypeRef::new_unit() && de.inner != ::HIR::CoreType::U8 && de.inner != ::HIR::CoreType::I8 ) {
                         ERROR(sp, E0000, "Invalid cast to " << dst_ty << " from " << src_ty);
                     }
                     }
                 TU_ARMA(Borrow, se) {
-                    this->check_types_equal(sp, *de.inner, *se.inner);
+                    this->check_types_equal(sp, de.inner, se.inner);
                     }
                 }
                 }
@@ -360,7 +360,7 @@ namespace {
                 // NOTE: cast fn() only valid from:
                 // - the same function pointer (already checked, but eventually could be a stripping of the path tag)
                 // - A capture-less closure
-                TU_MATCH_HDRA( (src_ty.m_data), {)
+                TU_MATCH_HDRA( (src_ty.data()), {)
                 default:
                     ERROR(sp, E0000, "Invalid cast to " << dst_ty << " from " << src_ty);
                     break;
@@ -369,7 +369,7 @@ namespace {
                         ERROR(sp, E0000, "Invalid cast to " << dst_ty << " from " << src_ty << " - removing unsafe");
                     if( se.m_abi != de.m_abi )
                         ERROR(sp, E0000, "Invalid cast to " << dst_ty << " from " << src_ty << " - different ABI");
-                    if( *se.m_rettype != *de.m_rettype )
+                    if( se.m_rettype != de.m_rettype )
                         ERROR(sp, E0000, "Invalid cast to " << dst_ty << " from " << src_ty << " - return type different");
                     if( se.m_arg_types.size() != de.m_arg_types.size() )
                         ERROR(sp, E0000, "Invalid cast to " << dst_ty << " from " << src_ty << " - argument count different");
@@ -400,29 +400,29 @@ namespace {
             const auto& src_ty = node.m_value->m_res_type;
             const auto& dst_ty = node.m_res_type;
 
-            if( src_ty.m_data.is_Array() )
+            if( src_ty.data().is_Array() )
             {
-                ASSERT_BUG(sp, dst_ty.m_data.is_Slice(), "");
+                ASSERT_BUG(sp, dst_ty.data().is_Slice(), "");
                 ASSERT_BUG(sp, node.m_usage == ::HIR::ValueUsage::Unknown, "");
             }
             else if( src_ty == dst_ty )
             {
             }
-            else if( src_ty.m_data.is_Borrow() && dst_ty.m_data.is_Borrow() )
+            else if( src_ty.data().is_Borrow() && dst_ty.data().is_Borrow() )
             {
-                const auto& se = src_ty.m_data.as_Borrow();
-                const auto& de = dst_ty.m_data.as_Borrow();
+                const auto& se = src_ty.data().as_Borrow();
+                const auto& de = dst_ty.data().as_Borrow();
                 if( se.type != de.type ) {
                     ERROR(sp, E0000, "Invalid unsizing operation to " << dst_ty << " from " << src_ty << " - Borrow class mismatch");
                 }
-                const auto& src_ty = *se.inner;
-                const auto& dst_ty = *de.inner;
+                const auto& src_ty = se.inner;
+                const auto& dst_ty = de.inner;
 
                 const auto& lang_Unsize = this->get_lang_item_path(node.span(), "unsize");
                 // _ == < `src_ty` as Unsize< `dst_ty` >::""
                 check_associated_type(sp, ::HIR::TypeRef(), lang_Unsize, { dst_ty.clone() }, src_ty, "");
             }
-            else if( src_ty.m_data.is_Borrow() || dst_ty.m_data.is_Borrow() )
+            else if( src_ty.data().is_Borrow() || dst_ty.data().is_Borrow() )
             {
                 ERROR(sp, E0000, "Invalid unsizing operation to " << dst_ty << " from " << src_ty);
             }
@@ -440,11 +440,11 @@ namespace {
             TRACE_FUNCTION_F(&node << " *...");
             const auto& ty = node.m_value->m_res_type;
 
-            if( ty.m_data.is_Pointer() ) {
-                check_types_equal(node.span(), node.m_res_type, *ty.m_data.as_Pointer().inner);
+            if( ty.data().is_Pointer() ) {
+                check_types_equal(node.span(), node.m_res_type, ty.data().as_Pointer().inner);
             }
-            else if( ty.m_data.is_Borrow() ) {
-                check_types_equal(node.span(), node.m_res_type, *ty.m_data.as_Borrow().inner);
+            else if( ty.data().is_Borrow() ) {
+                check_types_equal(node.span(), node.m_res_type, ty.data().as_Borrow().inner);
             }
             else {
                 check_associated_type(node.span(),
@@ -485,8 +485,8 @@ namespace {
             const auto& ty = node.m_res_type;
 
             const ::HIR::t_tuple_fields* fields_ptr = nullptr;
-            ASSERT_BUG(sp, ty.m_data.is_Path(), "Result type of _TupleVariant isn't Path");
-            TU_MATCH(::HIR::TypePathBinding, (ty.m_data.as_Path().binding), (e),
+            ASSERT_BUG(sp, ty.data().is_Path(), "Result type of _TupleVariant isn't Path");
+            TU_MATCH(::HIR::TypePathBinding, (ty.data().as_Path().binding), (e),
             (Unbound,
                 BUG(sp, "Unbound type in _TupleVariant - " << ty);
                 ),
@@ -498,7 +498,7 @@ namespace {
                 const auto& enm = *e;
                 size_t idx = enm.find_variant(var_name);
                 const auto& var_ty = enm.m_data.as_Data()[idx].type;
-                const auto& str = *var_ty.m_data.as_Path().binding.as_Struct();
+                const auto& str = *var_ty.data().as_Path().binding.as_Struct();
                 ASSERT_BUG(sp, str.m_data.is_Tuple(), "Pointed variant of TupleVariant (" << node.m_path << ") isn't a Tuple");
                 fields_ptr = &str.m_data.as_Tuple();
                 ),
@@ -546,10 +546,10 @@ namespace {
 
             // - Create ivars in path, and set result type
             const auto& ty = node.m_res_type;
-            ASSERT_BUG(sp, ty.m_data.is_Path(), "Result type of _StructLiteral isn't Path");
+            ASSERT_BUG(sp, ty.data().is_Path(), "Result type of _StructLiteral isn't Path");
 
             const ::HIR::t_struct_fields* fields_ptr = nullptr;
-            TU_MATCH(::HIR::TypePathBinding, (ty.m_data.as_Path().binding), (e),
+            TU_MATCH(::HIR::TypePathBinding, (ty.data().as_Path().binding), (e),
             (Unbound, ),
             (Opaque, ),
             (Enum,
@@ -560,7 +560,7 @@ namespace {
                 ASSERT_BUG(sp, enm.m_data.is_Data(), "");
                 const auto& var = enm.m_data.as_Data()[idx];
 
-                const auto& str = *var.type.m_data.as_Path().binding.as_Struct();
+                const auto& str = *var.type.data().as_Path().binding.as_Struct();
                 ASSERT_BUG(sp, var.is_struct, "Struct literal for enum on non-struct variant");
                 fields_ptr = &str.m_data.as_Named();
                 ),
@@ -588,7 +588,7 @@ namespace {
             #if 1
             const auto& ty_params = ty_path.m_params.m_types;
             auto monomorph_cb = [&](const auto& gt)->const ::HIR::TypeRef& {
-                const auto& ge = gt.m_data.as_Generic();
+                const auto& ge = gt.data().as_Generic();
                 if( ge.binding == 0xFFFF ) {
                     return ty;
                 }
@@ -641,9 +641,9 @@ namespace {
             TRACE_FUNCTION_F(&node << " " << node.m_path << " [" << (node.m_is_struct ? "struct" : "enum") << "]");
             const auto& sp = node.span();
             const auto& ty = node.m_res_type;
-            ASSERT_BUG(sp, ty.m_data.is_Path(), "Result type of _UnitVariant isn't Path");
+            ASSERT_BUG(sp, ty.data().is_Path(), "Result type of _UnitVariant isn't Path");
 
-            TU_MATCH(::HIR::TypePathBinding, (ty.m_data.as_Path().binding), (e),
+            TU_MATCH(::HIR::TypePathBinding, (ty.data().as_Path().binding), (e),
             (Unbound, ),
             (Opaque, ),
             (Enum,
@@ -693,7 +693,7 @@ namespace {
                 cache.m_fcn_params = &fcn.m_params;
 
                 monomorph_cb = [&](const auto& gt)->const ::HIR::TypeRef& {
-                        const auto& e = gt.m_data.as_Generic();
+                        const auto& e = gt.data().as_Generic();
                         if( e.name == "Self" || e.binding == 0xFFFF )
                             TODO(sp, "Handle 'Self' when monomorphising");
                         if( e.binding < 256 ) {
@@ -725,11 +725,11 @@ namespace {
                 cache.m_top_params = &trait.m_params;
 
                 // Add a bound requiring the Self type impl the trait
-                check_associated_type(sp, ::HIR::TypeRef(), e.trait.m_path, e.trait.m_params, *e.type, "");
+                check_associated_type(sp, ::HIR::TypeRef(), e.trait.m_path, e.trait.m_params, e.type, "");
 
                 fcn_ptr = &fcn;
 
-                monomorph_cb = monomorphise_type_get_cb(sp, &*e.type, &trait_params, &path_params);
+                monomorph_cb = monomorphise_type_get_cb(sp, &e.type, &trait_params, &path_params);
                 }
             TU_ARMA(UfcsUnknown, e) {
                 TODO(sp, "Hit a UfcsUnknown (" << path << ") - Is this an error?");
@@ -737,7 +737,7 @@ namespace {
             TU_ARMA(UfcsInherent, e) {
                 // - Locate function (and impl block)
                 const ::HIR::TypeImpl* impl_ptr = nullptr;
-                m_resolve.m_crate.find_type_impls(*e.type, [&](const auto& ty)->const ::HIR::TypeRef& { return ty; },
+                m_resolve.m_crate.find_type_impls(e.type, [&](const auto& ty)->const ::HIR::TypeRef& { return ty; },
                     [&](const auto& impl) {
                         DEBUG("- impl" << impl.m_params.fmt_args() << " " << impl.m_type);
                         auto it = impl.m_methods.find(e.item);
@@ -762,7 +762,7 @@ namespace {
 
                 // Create monomorphise callback
                 const auto& fcn_params = e.params;
-                monomorph_cb = monomorphise_type_get_cb(sp, &*e.type, &impl_params, &fcn_params);
+                monomorph_cb = monomorphise_type_get_cb(sp, &e.type, &impl_params, &fcn_params);
                 }
             }
 
@@ -780,15 +780,15 @@ namespace {
             DEBUG("Ret " << fcn.m_return);
             // Replace ErasedType and monomorphise
             cache.m_arg_types.push_back( clone_ty_with(sp, fcn.m_return, [&](const auto& tpl, auto& rv)->bool {
-                if( tpl.m_data.is_Infer() ) {
+                if( tpl.data().is_Infer() ) {
                     BUG(sp, "");
                 }
-                else if( tpl.m_data.is_Generic() ) {
+                else if( tpl.data().is_Generic() ) {
                     rv = monomorph_cb(tpl).clone();
                     return true;
                 }
-                else if( this->expand_erased_types && tpl.m_data.is_ErasedType() ) {
-                    const auto& e = tpl.m_data.as_ErasedType();
+                else if( this->expand_erased_types && tpl.data().is_ErasedType() ) {
+                    const auto& e = tpl.data().as_ErasedType();
 
                     ASSERT_BUG(sp, e.m_index < fcn_ptr->m_code.m_erased_types.size(), "");
                     const auto& erased_type_replacement = fcn_ptr->m_code.m_erased_types.at(e.m_index);
@@ -868,7 +868,7 @@ namespace {
 
             const auto& val_ty = node.m_value->m_res_type;
 
-            if( const auto* e = val_ty.m_data.opt_Function() )
+            if( const auto* e = val_ty.data().opt_Function() )
             {
                 DEBUG("- Function pointer: " << val_ty);
                 if( node.m_args.size() != e->m_arg_types.size() ) {
@@ -878,7 +878,7 @@ namespace {
                 {
                     check_types_equal(node.m_args[i]->span(), e->m_arg_types[i], node.m_args[i]->m_res_type);
                 }
-                check_types_equal(node.span(), node.m_res_type, *e->m_rettype);
+                check_types_equal(node.span(), node.m_res_type, e->m_rettype);
             }
             else if( node.m_trait_used == ::HIR::ExprNode_CallValue::TraitUsed::Unknown )
             {
@@ -951,18 +951,18 @@ namespace {
             const auto& str_ty = node.m_value->m_res_type;
 
             bool is_index = ( '0' <= node.m_field.c_str()[0] && node.m_field.c_str()[0] <= '9' );
-            if( str_ty.m_data.is_Tuple() )
+            if( str_ty.data().is_Tuple() )
             {
                 ASSERT_BUG(sp, is_index, "Non-index _Field on tuple");
             }
-            else if( str_ty.m_data.is_Closure() )
+            else if( str_ty.data().is_Closure() )
             {
                 ASSERT_BUG(sp, is_index, "Non-index _Field on closure");
             }
             else
             {
-                ASSERT_BUG(sp, str_ty.m_data.is_Path(), "Value type of _Field isn't Path - " << str_ty);
-                const auto& ty_e = str_ty.m_data.as_Path();
+                ASSERT_BUG(sp, str_ty.data().is_Path(), "Value type of _Field isn't Path - " << str_ty);
+                const auto& ty_e = str_ty.data().as_Path();
                 if( ty_e.binding.is_Struct() )
                 {
                     //const auto& str = *ty_e.binding.as_Struct();
@@ -982,7 +982,7 @@ namespace {
         void visit(::HIR::ExprNode_Tuple& node) override
         {
             TRACE_FUNCTION_F(&node << " (...,)");
-            const auto& tys = node.m_res_type.m_data.as_Tuple();
+            const auto& tys = node.m_res_type.data().as_Tuple();
 
             ASSERT_BUG(node.span(), tys.size() == node.m_vals.size(), "Bad element count in tuple literal - " << tys.size() << " != " << node.m_vals.size());
             for(unsigned int i = 0; i < node.m_vals.size(); i ++)
@@ -998,7 +998,7 @@ namespace {
         {
             TRACE_FUNCTION_F(&node << " [...,]");
             // Cleanly equate into array (with coercions)
-            const auto& inner_ty = *node.m_res_type.m_data.as_Array().inner;
+            const auto& inner_ty = node.m_res_type.data().as_Array().inner;
             for( auto& val : node.m_vals ) {
                 check_types_equal(val->span(), inner_ty, val->m_res_type);
             }
@@ -1012,7 +1012,7 @@ namespace {
             TRACE_FUNCTION_F(&node << " [...; "<<node.m_size_val<<"]");
 
             //check_types_equal(node.m_size->span(), ::HIR::TypeRef(::HIR::Primitive::Usize), node.m_size->m_res_type);
-            const auto& inner_ty = *node.m_res_type.m_data.as_Array().inner;
+            const auto& inner_ty = node.m_res_type.data().as_Array().inner;
             check_types_equal(node.m_val->span(), inner_ty, node.m_val->m_res_type);
 
             node.m_val->visit( *this );
@@ -1028,15 +1028,15 @@ namespace {
             TRACE_FUNCTION_F(&node << " " << node.m_path);
             const auto& sp = node.span();
 
-            TU_MATCH(::HIR::Path::Data, (node.m_path.m_data), (e),
-            (Generic,
+            TU_MATCH_HDRA( (node.m_path.m_data), {)
+            TU_ARMA(Generic, e) {
                 switch(node.m_target)
                 {
                 case ::HIR::ExprNode_PathValue::UNKNOWN:
                     BUG(sp, "Unknown target PathValue encountered with Generic path");
                 case ::HIR::ExprNode_PathValue::FUNCTION:
                     // TODO: Is validate needed?
-                    assert( node.m_res_type.m_data.is_Function() );
+                    assert( node.m_res_type.data().is_Function() );
                     break;
                 case ::HIR::ExprNode_PathValue::STRUCT_CONSTR: {
                     } break;
@@ -1047,12 +1047,12 @@ namespace {
                 case ::HIR::ExprNode_PathValue::CONSTANT: {
                     } break;
                 }
-                ),
-            (UfcsUnknown,
+                }
+            TU_ARMA(UfcsUnknown, e) {
                 BUG(sp, "Encountered UfcsUnknown");
-                ),
-            (UfcsKnown,
-                check_associated_type(sp, ::HIR::TypeRef(),  e.trait.m_path, e.trait.m_params, e.type->clone(), "");
+                }
+            TU_ARMA(UfcsKnown, e) {
+                check_associated_type(sp, ::HIR::TypeRef(),  e.trait.m_path, e.trait.m_params, e.type.clone(), "");
 
                 const auto& trait = this->m_resolve.m_crate.get_trait_by_path(sp, e.trait.m_path);
                 auto it = trait.m_values.find( e.item );
@@ -1061,7 +1061,7 @@ namespace {
                 }
                 TU_MATCH( ::HIR::TraitValueItem, (it->second), (ie),
                 (Constant,
-                    auto cb = monomorphise_type_get_cb(sp, &*e.type, &e.trait.m_params, nullptr);
+                    auto cb = monomorphise_type_get_cb(sp, &e.type, &e.trait.m_params, nullptr);
                     ::HIR::TypeRef  tmp;
                     const ::HIR::TypeRef* typ;
                     if(monomorphise_type_needed(ie.m_type)) {
@@ -1078,13 +1078,13 @@ namespace {
                     TODO(sp, "Monomorpise associated static type - " << ie.m_type);
                     ),
                 (Function,
-                    assert( node.m_res_type.m_data.is_Function() );
+                    assert( node.m_res_type.data().is_Function() );
                     )
                 )
-                ),
-            (UfcsInherent,
-                )
-            )
+                }
+            TU_ARMA(UfcsInherent, e) {
+                }
+            }
         }
 
         void visit(::HIR::ExprNode_Variable& node) override
@@ -1117,16 +1117,16 @@ namespace {
         void check_types_equal(const Span& sp, const ::HIR::TypeRef& l, const ::HIR::TypeRef& r) const
         {
             // TODO: Recurse when an erased type is encountered
-            //if( const auto* e = l.m_data.opt_ErasedType() )
+            //if( const auto* e = l.data().opt_ErasedType() )
             //{
             //    return check_types_equal(sp, m_cur_expr->m_erased_types.at(e->m_index), r);
             //}
-            //if( const auto* e = r.m_data.opt_ErasedType() )
+            //if( const auto* e = r.data().opt_ErasedType() )
             //{
             //    return check_types_equal(sp, l, m_cur_expr->m_erased_types.at(e->m_index));
             //}
             DEBUG(sp << " - " << l << " == " << r);
-            if( /*l.m_data.is_Diverge() ||*/ r.m_data.is_Diverge() ) {
+            if( /*l.data().is_Diverge() ||*/ r.data().is_Diverge() ) {
                 // Diverge, matches everything.
                 // TODO: Is this always true?
             }
@@ -1142,11 +1142,11 @@ namespace {
                 const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& ity, const char* name
             ) const
         {
-            if( trait == m_lang_Index && ity.m_data.is_Array() ) {
+            if( trait == m_lang_Index && ity.data().is_Array() ) {
                 if(name)
                 {
-                    if( res != *ity.m_data.as_Array().inner ) {
-                        ERROR(sp, E0000, "Associated type on " << trait << params << " for " << ity << " doesn't match - " << res << " != " << *ity.m_data.as_Array().inner);
+                    if( res != ity.data().as_Array().inner ) {
+                        ERROR(sp, E0000, "Associated type on " << trait << params << " for " << ity << " doesn't match - " << res << " != " << ity.data().as_Array().inner);
                     }
                 }
                 return ;
@@ -1280,9 +1280,9 @@ namespace {
 
         void visit_type(::HIR::TypeRef& ty) override
         {
-            if(auto* e = ty.m_data.opt_Array())
+            if(auto* e = ty.data_mut().opt_Array())
             {
-                this->visit_type( *e->inner );
+                this->visit_type( e->inner );
                 DEBUG("Array size " << ty);
                 if( auto* se = e->size.opt_Unevaluated() ) {
                     t_args  tmp;

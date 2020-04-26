@@ -108,7 +108,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
                         }
 
                         auto cb = [&](const HIR::TypeRef& t) {
-                            return path.m_params.m_types.at(t.m_data.as_Generic().binding).clone();
+                            return path.m_params.m_types.at(t.data().as_Generic().binding).clone();
                             };
                         for( const auto& st : trait.supertraits() )
                         {
@@ -148,9 +148,9 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
             }
         TU_ARMA(MaybeTrait, e) {
             auto type = LowerHIR_Type(e.type);
-            if( ! type.m_data.is_Generic() )
+            if( ! type.data().is_Generic() )
                 BUG(bound.span, "MaybeTrait on non-param - " << type);
-            const auto& ge = type.m_data.as_Generic();
+            const auto& ge = type.data().as_Generic();
             const auto& param_name = ge.name;
             unsigned param_idx;
             if( ge.binding == 0xFFFF ) {
@@ -291,7 +291,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
                 const auto& var = pb.hir->m_data.as_Data().at(pb.idx);
                 // Need to be able to look up the type's actual definition
                 // - Either a name lookup, or have binding be done before this pass.
-                const auto& str = g_crate_ptr->get_struct_by_path(pat.span(), var.type.m_data.as_Path().path.m_data.as_Generic().m_path);
+                const auto& str = g_crate_ptr->get_struct_by_path(pat.span(), var.type.data().as_Path().path.m_data.as_Generic().m_path);
                 field_count = str.m_data.as_Tuple().size();
                 //field_count = var.type.m_data.as_Path().binding.as_Struct()->m_data.as_Tuple().size();
             }
@@ -716,8 +716,8 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
             if( e.trait->is_valid() )
                 TODO(sp, "Handle UFCS w/ trait and no nodes - " << path);
             auto type = LowerHIR_Type(*e.type);
-            ASSERT_BUG(sp, type.m_data.is_Path(), "No nodes and non-Path type - " << path);
-            return mv$(type.m_data.as_Path().path);
+            ASSERT_BUG(sp, type.data().is_Path(), "No nodes and non-Path type - " << path);
+            return mv$(type.get_unique().as_Path().path);
         }
         if( e.nodes.size() > 1 )
             TODO(sp, "Handle UFCS with multiple nodes - " << path);
@@ -725,8 +725,8 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
         auto params = LowerHIR_PathParams(sp, e.nodes.front().args(), false);
         if( ! e.trait )
         {
-            auto type = box$( LowerHIR_Type(*e.type) );
-            if( type->m_data.is_Generic() ) {
+            auto type = LowerHIR_Type(*e.type);
+            if( type.data().is_Generic() ) {
                 BUG(sp, "Generics can't be used with UfcsInherent - " << path);
             }
             return ::HIR::Path(::HIR::Path::Data::make_UfcsInherent({
@@ -738,7 +738,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
         else if( ! e.trait->is_valid() )
         {
             return ::HIR::Path(::HIR::Path::Data::make_UfcsUnknown({
-                box$( LowerHIR_Type(*e.type) ),
+                LowerHIR_Type(*e.type),
                 e.nodes[0].name(),
                 mv$(params)
                 }));
@@ -746,7 +746,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
         else
         {
             return ::HIR::Path(::HIR::Path::Data::make_UfcsKnown({
-                box$(LowerHIR_Type(*e.type)),
+                LowerHIR_Type(*e.type),
                 LowerHIR_GenericPath(sp, *e.trait),
                 e.nodes[0].name(),
                 mv$(params)
@@ -764,14 +764,13 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
         BUG(ty.span(), "TypeData::None");
         }
     TU_ARMA(Bang, e) {
-        // Aka diverging
-        return ::HIR::TypeRef( ::HIR::TypeData::make_Diverge({}) );
+        return ::HIR::TypeRef::new_diverge();
         }
     TU_ARMA(Any, e) {
         return ::HIR::TypeRef();
         }
     TU_ARMA(Unit, e) {
-        return ::HIR::TypeRef( ::HIR::TypeData::make_Tuple({}) );
+        return ::HIR::TypeRef::new_unit();
         }
     TU_ARMA(Macro, e) {
         BUG(ty.span(), "TypeData::Macro");
@@ -811,7 +810,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
         {
             v.push_back( LowerHIR_Type(st) );
         }
-        return ::HIR::TypeRef( ::HIR::TypeData::make_Tuple(mv$(v)) );
+        return ::HIR::TypeRef::new_tuple(mv$(v));
         }
     TU_ARMA(Borrow, e) {
         auto cl = (e.is_mut ? ::HIR::BorrowType::Unique : ::HIR::BorrowType::Shared);
@@ -922,16 +921,16 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
         ::HIR::FunctionType f {
             e.info.is_unsafe,
             e.info.m_abi,
-            box$( LowerHIR_Type(*e.info.m_rettype) ),
+            LowerHIR_Type(*e.info.m_rettype),
             mv$(args)   // TODO: e.info.is_variadic
             };
         if( f.m_abi == "" )
             f.m_abi = ABI_RUST;
-        return ::HIR::TypeRef( ::HIR::TypeData::make_Function( mv$(f) ) );
+        return ::HIR::TypeRef( mv$(f) );
         }
     TU_ARMA(Generic, e) {
         assert(e.index < 0x10000);
-        return ::HIR::TypeRef( ::HIR::TypeData::make_Generic({ e.name, e.index }) );
+        return ::HIR::TypeRef(e.name, e.index);
         }
     }
     throw "BUGCHECK: Reached end of LowerHIR_Type";
@@ -1366,8 +1365,8 @@ namespace {
         if( arg_self_ty == explicit_self_type || arg_self_ty == real_self_type ) {
             receiver = ::HIR::Function::Receiver::Value;
         }
-        else if(const auto* e = arg_self_ty.m_data.opt_Borrow() ) {
-            if( *e->inner == explicit_self_type || *e->inner == real_self_type )
+        else if(const auto* e = arg_self_ty.data().opt_Borrow() ) {
+            if( e->inner == explicit_self_type || e->inner == real_self_type )
             {
                 switch(e->type)
                 {
@@ -1377,7 +1376,7 @@ namespace {
                 }
             }
         }
-        else if(const auto* e = arg_self_ty.m_data.opt_Path()) {
+        else if(const auto* e = arg_self_ty.data().opt_Path()) {
             // Box - Compare with `owned_box` lang item
             if(const auto* pe = e->path.m_data.opt_Generic()) {
                 auto p = g_crate_ptr->get_lang_item_path_opt("owned_box");
@@ -1402,9 +1401,9 @@ namespace {
                     // - In general, it's valid if there's a deref chain from this type to `self` (maybe could check that in a later pass, instead of erroring here)
                     if( pe->m_params.m_types[0] == explicit_self_type || pe->m_params.m_types[0] == real_self_type ) {
                     }
-                    else if( TU_TEST1(pe->m_params.m_types[0].m_data, Borrow, .inner->operator==(explicit_self_type)) ) {
+                    else if( TU_TEST1(pe->m_params.m_types[0].data(), Borrow, .inner.operator==(explicit_self_type)) ) {
                     }
-                    else if( TU_TEST1(pe->m_params.m_types[0].m_data, Borrow, .inner->operator==(real_self_type)) ) {
+                    else if( TU_TEST1(pe->m_params.m_types[0].data(), Borrow, .inner.operator==(real_self_type)) ) {
                     }
                     else {
                         ERROR(sp, E0000, "Unsupported receiver type - " << arg_self_ty);

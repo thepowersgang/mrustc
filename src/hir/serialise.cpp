@@ -14,11 +14,16 @@
 //namespace {
     class HirSerialiser
     {
+        ::std::map<HIR::TypeRef, size_t>    m_types;
         ::HIR::serialise::Writer&   m_out;
     public:
         HirSerialiser(::HIR::serialise::Writer& out):
             m_out( out )
         {}
+
+        void clear() {
+            m_types.clear();
+        }
 
         template<typename V>
         void serialise_strmap(const ::std::map<RcString,V>& map)
@@ -145,8 +150,17 @@
         }
         void serialise_type(const ::HIR::TypeRef& ty)
         {
-            m_out.write_tag( ty.m_data.tag() );
-            TU_MATCHA( (ty.m_data), (e),
+            auto it = m_types.find(ty);
+            if( it != m_types.end() ) {
+                DEBUG("Cached " << it->second);
+                m_out.write_count(it->second);
+                return ;
+            }
+            m_out.write_count(~0u);
+            DEBUG("Fresh " << m_types.size());
+
+            m_out.write_tag( ty.data().tag() );
+            TU_MATCHA( (ty.data()), (e),
             (Infer,
                 // BAAD
                 ),
@@ -179,11 +193,11 @@
                 serialise(e.m_lifetime);
                 ),
             (Array,
-                serialise_type(*e.inner);
+                serialise_type(e.inner);
                 m_out.write_u64c(e.size.as_Known());
                 ),
             (Slice,
-                serialise_type(*e.inner);
+                serialise_type(e.inner);
                 ),
             (Tuple,
                 m_out.write_count(e.size());
@@ -193,16 +207,16 @@
             (Borrow,
                 serialise(e.lifetime);
                 m_out.write_tag(static_cast<int>(e.type));
-                serialise_type(*e.inner);
+                serialise_type(e.inner);
                 ),
             (Pointer,
                 m_out.write_tag(static_cast<int>(e.type));
-                serialise_type(*e.inner);
+                serialise_type(e.inner);
                 ),
             (Function,
                 m_out.write_bool(e.is_unsafe);
                 m_out.write_string(e.m_abi);
-                serialise_type(*e.m_rettype);
+                serialise_type(e.m_rettype);
                 serialise_vec(e.m_arg_types);
                 ),
             (Closure,
@@ -210,6 +224,8 @@
                 BUG(Span(), "Encountered closure type when serialising - " << ty);
                 )
             )
+
+            m_types.insert(std::make_pair( ty.clone(), m_types.size() ));
         }
         void serialise_simplepath(const ::HIR::SimplePath& path)
         {
@@ -246,14 +262,14 @@
                 ),
             (UfcsInherent,
                 m_out.write_tag(1);
-                serialise_type(*e.type);
+                serialise_type(e.type);
                 m_out.write_string(e.item);
                 serialise_pathparams(e.params);
                 serialise_pathparams(e.impl_params);
                 ),
             (UfcsKnown,
                 m_out.write_tag(2);
-                serialise_type(*e.type);
+                serialise_type(e.type);
                 serialise_genericpath(e.trait);
                 m_out.write_string(e.item);
                 serialise_pathparams(e.params);
@@ -1135,6 +1151,7 @@ void HIR_Serialise(const ::std::string& filename, const ::HIR::Crate& crate)
     ::HIR::serialise::Writer    out;
     HirSerialiser  s { out };
     s.serialise_crate(crate);
+    s.clear();
     out.open(filename);
     s.serialise_crate(crate);
 }

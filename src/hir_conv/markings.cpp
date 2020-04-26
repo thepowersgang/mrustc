@@ -95,7 +95,7 @@ public:
                     for(unsigned int i = path.m_params.m_types.size(); i < tr.m_params.m_types.size(); i ++)
                     {
                         const auto& def = tr.m_params.m_types[i];
-                        path.m_params.m_types.push_back( def.m_default.clone() );
+                        path.m_params.m_types.push_back( def.m_default.clone_shallow() );
                     }
                 }
 
@@ -242,7 +242,7 @@ public:
     {
         TRACE_FUNCTION_F("ty=" << ty);
         // If the type is generic, and the pointed-to parameters is ?Sized, record as needing unsize
-        if( const auto* te = ty.m_data.opt_Generic() )
+        if( const auto* te = ty.data().opt_Generic() )
         {
             if( inner_def.m_types.at(te->binding).m_is_sized == true )
             {
@@ -258,15 +258,15 @@ public:
                 return ::HIR::StructMarkings::DstType::Possible;
             }
         }
-        else if( ty.m_data.is_Slice() )
+        else if( ty.data().is_Slice() )
         {
             return ::HIR::StructMarkings::DstType::Slice;
         }
-        else if( ty.m_data.is_TraitObject() )
+        else if( ty.data().is_TraitObject() )
         {
             return ::HIR::StructMarkings::DstType::TraitObject;
         }
-        else if( const auto* te = ty.m_data.opt_Path() )
+        else if( const auto* te = ty.data().opt_Path() )
         {
             // If the type is a struct, check it (recursively)
             if( ! te->path.m_data.is_Generic() ) {
@@ -328,9 +328,9 @@ public:
 
         ::HIR::Visitor::visit_trait_impl(trait_path, impl);
 
-        if( impl.m_type.m_data.is_Path() )
+        if( impl.m_type.data().is_Path() )
         {
-            const auto& te = impl.m_type.m_data.as_Path();
+            const auto& te = impl.m_type.data().as_Path();
             const ::HIR::TraitMarkings* markings_ptr = te.binding.get_trait_markings();
             if( markings_ptr )
             {
@@ -356,9 +356,9 @@ public:
                     // Determine which field is the one that does the coerce
                     if( !te.binding.is_Struct() )
                         ERROR(sp, E0000, "Cannot implement CoerceUnsized on non-structs");
-                    if( !dst_ty.m_data.is_Path() )
+                    if( !dst_ty.data().is_Path() )
                         ERROR(sp, E0000, "Cannot implement CoerceUnsized from non-structs");
-                    const auto& dst_te = dst_ty.m_data.as_Path();
+                    const auto& dst_te = dst_ty.data().as_Path();
                     if( !dst_te.binding.is_Struct() )
                         ERROR(sp, E0000, "Cannot implement CoerceUnsized from non-structs");
                     if( dst_te.binding.as_Struct() != te.binding.as_Struct() )
@@ -382,7 +382,7 @@ public:
                         for(unsigned int i = 0; i < se.size(); i ++)
                         {
                             // If the data is PhantomData, ignore it.
-                            if( TU_TEST2(se[i].ent.m_data, Path, .path.m_data, Generic, .m_path == m_lang_PhantomData) )
+                            if( TU_TEST2(se[i].ent.data(), Path, .path.m_data, Generic, .m_path == m_lang_PhantomData) )
                             {
                                 continue ;
                             }
@@ -401,7 +401,7 @@ public:
                         for(unsigned int i = 0; i < se.size(); i ++)
                         {
                             // If the data is PhantomData, ignore it.
-                            if( TU_TEST2(se[i].second.ent.m_data, Path, .path.m_data, Generic, .m_path == m_lang_PhantomData) )
+                            if( TU_TEST2(se[i].second.ent.data(), Path, .path.m_data, Generic, .m_path == m_lang_PhantomData) )
                             {
                                 continue ;
                             }
@@ -447,11 +447,11 @@ public:
 
     size_t get_unsize_param_idx(const Span& sp, const ::HIR::TypeRef& pointee) const
     {
-        if( const auto* te = pointee.m_data.opt_Generic() )
+        if( const auto* te = pointee.data().opt_Generic() )
         {
             return te->binding;
         }
-        else if( const auto* te = pointee.m_data.opt_Path() )
+        else if( const auto* te = pointee.data().opt_Path() )
         {
             ASSERT_BUG(sp, te->binding.is_Struct(), "Pointer to non-Unsize type - " << pointee);
             const auto& ism = te->binding.as_Struct()->m_struct_markings;
@@ -489,7 +489,7 @@ public:
     try_again:
         DEBUG("field_ty = " << *field_ty);
 
-        if( const auto* te = field_ty->m_data.opt_Path() )
+        if( const auto* te = field_ty->data().opt_Path() )
         {
             ASSERT_BUG(sp, te->binding.is_Struct(), "CoerceUnsized impl differs on Path that isn't a struct - " << ip << " fld=" << *field_ty);
             const auto* istr = te->binding.as_Struct();
@@ -513,19 +513,19 @@ public:
                 return ::HIR::StructMarkings::Coerce::Pointer;
             }
         }
-        else if( const auto* te = field_ty->m_data.opt_Generic() )
+        else if( const auto* te = field_ty->data().opt_Generic() )
         {
             out_param_idx = te->binding;
             return ::HIR::StructMarkings::Coerce::Passthrough;
         }
-        else if( const auto* te = field_ty->m_data.opt_Pointer() )
+        else if( const auto* te = field_ty->data().opt_Pointer() )
         {
-            out_param_idx = get_unsize_param_idx(sp, *te->inner);
+            out_param_idx = get_unsize_param_idx(sp, te->inner);
             return ::HIR::StructMarkings::Coerce::Pointer;
         }
-        else if( const auto* te = field_ty->m_data.opt_Borrow() )
+        else if( const auto* te = field_ty->data().opt_Borrow() )
         {
-            out_param_idx = get_unsize_param_idx(sp, *te->inner);
+            out_param_idx = get_unsize_param_idx(sp, te->inner);
             return ::HIR::StructMarkings::Coerce::Pointer;
         }
         else

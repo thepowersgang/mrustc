@@ -270,7 +270,7 @@ void ::HIR::ExprVisitorDef::visit_pattern(const Span& sp, ::HIR::Pattern& pat)
 }
 void ::HIR::ExprVisitorDef::visit_type(::HIR::TypeRef& ty)
 {
-    TU_MATCH(::HIR::TypeData, (ty.m_data), (e),
+    TU_MATCH(::HIR::TypeData, (ty.data_mut()), (e),
     (Infer,
         ),
     (Diverge,
@@ -295,11 +295,11 @@ void ::HIR::ExprVisitorDef::visit_type(::HIR::TypeRef& ty)
         }
         ),
     (Array,
-        this->visit_type( *e.inner );
+        this->visit_type( e.inner );
         //this->visit_expr( e.size );
         ),
     (Slice,
-        this->visit_type( *e.inner );
+        this->visit_type( e.inner );
         ),
     (Tuple,
         for(auto& t : e) {
@@ -307,22 +307,22 @@ void ::HIR::ExprVisitorDef::visit_type(::HIR::TypeRef& ty)
         }
         ),
     (Borrow,
-        this->visit_type( *e.inner );
+        this->visit_type( e.inner );
         ),
     (Pointer,
-        this->visit_type( *e.inner );
+        this->visit_type( e.inner );
         ),
     (Function,
         for(auto& t : e.m_arg_types) {
             this->visit_type(t);
         }
-        this->visit_type(*e.m_rettype);
+        this->visit_type(e.m_rettype);
         ),
     (Closure,
         for(auto& t : e.m_arg_types) {
             this->visit_type(t);
         }
-        this->visit_type(*e.m_rettype);
+        this->visit_type(e.m_rettype);
         )
     )
 }
@@ -346,16 +346,16 @@ void ::HIR::ExprVisitorDef::visit_path(::HIR::Visitor::PathContext pc, ::HIR::Pa
         visit_generic_path(pc, e);
         ),
     (UfcsKnown,
-        visit_type(*e.type);
+        visit_type(e.type);
         visit_generic_path(pc, e.trait);
         visit_path_params(e.params);
         ),
     (UfcsUnknown,
-        visit_type(*e.type);
+        visit_type(e.type);
         visit_path_params(e.params);
         ),
     (UfcsInherent,
-        visit_type(*e.type);
+        visit_type(e.type);
         visit_path_params(e.params);
         visit_path_params(e.impl_params);
         )

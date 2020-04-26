@@ -69,7 +69,7 @@ t_cb_generic Trans_Params::get_cb() const
             resolve.expand_associated_types(sp, arg);
         ),
     (UfcsInherent,
-        resolve.expand_associated_types(sp, *e2.type);
+        resolve.expand_associated_types(sp, e2.type);
         for(auto& arg : e2.params.m_types)
             resolve.expand_associated_types(sp, arg);
         // TODO: impl params too?
@@ -77,7 +77,7 @@ t_cb_generic Trans_Params::get_cb() const
             resolve.expand_associated_types(sp, arg);
         ),
     (UfcsKnown,
-        resolve.expand_associated_types(sp, *e2.type);
+        resolve.expand_associated_types(sp, e2.type);
         for(auto& arg : e2.trait.m_params.m_types)
             resolve.expand_associated_types(sp, arg);
         for(auto& arg : e2.params.m_types)
@@ -105,7 +105,12 @@ t_cb_generic Trans_Params::get_cb() const
 
 ::HIR::TypeRef Trans_Params::monomorph(const ::StaticTraitResolve& resolve, const ::HIR::TypeRef& ty) const
 {
+    //auto it = this->m_cache.find(ty);
+    //if(it != this->m_cache.end()) {
+    //    return it->second;
+    //}
     auto rv = monomorphise_type_with(sp, ty, this->get_cb(), false);
     resolve.expand_associated_types(sp, rv);
+    //this->m_cache.insert(std::make_pair( HIR::TypeRef(ty), HIR::TypeRef(rv) ));
     return rv;
 }

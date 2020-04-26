@@ -96,9 +96,9 @@ namespace {
                 {
                     TRACE_FUNCTION_F(trait_path);
                     auto clone_cb = [&](const auto& t, auto& o) {
-                        if(t.m_data.is_Path() && t.m_data.as_Path().path.m_data.is_UfcsKnown()) {
-                            const auto& pe = t.m_data.as_Path().path.m_data.as_UfcsKnown();
-                            bool is_self = (*pe.type == ::HIR::TypeRef(RcString::new_interned("Self"), 0xFFFF));
+                        if(t.data().is_Path() && t.data().as_Path().path.m_data.is_UfcsKnown()) {
+                            const auto& pe = t.data().as_Path().path.m_data.as_UfcsKnown();
+                            bool is_self = (pe.type == ::HIR::TypeRef(RcString::new_interned("Self"), 0xFFFF));
                             auto it = trait_ptr->m_type_indexes.find(pe.item);
                             bool has_item = (it != trait_ptr->m_type_indexes.end());
                             // TODO: Check the trait against m_type_indexes
@@ -123,8 +123,8 @@ namespace {
                         };
                     for(auto& vi : tr.m_values)
                     {
-                        TU_MATCHA( (vi.second), (ve),
-                        (Function,
+                        TU_MATCH_HDRA( (vi.second), {)
+                        TU_ARMA(Function, ve) {
                             if( ve.m_receiver == ::HIR::Function::Receiver::Free ) {
                                 DEBUG("- '" << vi.first << "' Skip free function");  // ?
                                 continue ;
@@ -150,7 +150,7 @@ namespace {
                             ::HIR::FunctionType ft;
                             ft.is_unsafe = ve.m_unsafe;
                             ft.m_abi = ve.m_abi;
-                            ft.m_rettype = box$( clone_ty_with(sp, ve.m_return, clone_cb) );
+                            ft.m_rettype = clone_ty_with(sp, ve.m_return, clone_cb);
                             ft.m_arg_types.reserve( ve.m_args.size() );
                             ft.m_arg_types.push_back( clone_ty_with(sp, ve.m_args[0].second, clone_self_cb) );
                             for(unsigned int i = 1; i < ve.m_args.size(); i ++)
@@ -175,17 +175,17 @@ namespace {
                                 vi.first,
                                 ::HIR::VisEnt< ::HIR::TypeRef> { ::HIR::Publicity::new_global(), mv$(fcn_type) }
                                 ) );
-                            ),
-                        (Static,
+                            }
+                        TU_ARMA(Static, ve) {
                             if( vi.first != "vtable#" )
                             {
                                 TODO(Span(), "Associated static in vtable");
                             }
-                            ),
-                        (Constant,
+                            }
+                        TU_ARMA(Constant, ve) {
                             //TODO(Span(), "Associated const in vtable");
-                            )
-                        )
+                            }
+                        }
                     }
                     for(const auto& st : tr.m_all_parent_traits) {
                         ::HIR::TypeRef  self("Self", 0xFFFF);
@@ -202,7 +202,7 @@ namespace {
             ::HIR::FunctionType ft;
             ft.is_unsafe = false;
             ft.m_abi = ABI_RUST;
-            ft.m_rettype.reset( new ::HIR::TypeRef(::HIR::TypeRef::new_unit()) );
+            ft.m_rettype = ::HIR::TypeRef::new_unit();
             ft.m_arg_types.push_back( ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Owned, ::HIR::TypeRef::new_unit()) );
             vtc.fields.push_back(::std::make_pair( "#drop_glue", ::HIR::VisEnt<::HIR::TypeRef> { ::HIR::Publicity::new_none(), ::HIR::TypeRef(mv$(ft)) } ));
             // - Size of data

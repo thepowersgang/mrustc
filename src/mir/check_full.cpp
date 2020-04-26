@@ -556,14 +556,14 @@ namespace
                         ::HIR::TypeRef    tmp;
                         const auto& ty = mir_res.get_lvalue_type(tmp, lv, /*wrapper_skip_count=*/(1 + &lv.m_wrappers.back() - &w));
                         unsigned int n_fields = 0;
-                        if( const auto* e = ty.m_data.opt_Tuple() )
+                        if( const auto* e = ty.data().opt_Tuple() )
                         {
                             n_fields = e->size();
                         }
                         // TODO: Fixed-size arrays
-                        else if( ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Struct() )
+                        else if( ty.data().is_Path() && ty.data().as_Path().binding.is_Struct() )
                         {
-                            const auto& e = ty.m_data.as_Path().binding.as_Struct();
+                            const auto& e = ty.data().as_Path().binding.as_Struct();
                             TU_MATCHA( (e->m_data), (se),
                             (Unit,
                                 n_fields = 0;

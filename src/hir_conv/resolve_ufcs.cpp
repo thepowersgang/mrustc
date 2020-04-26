@@ -295,7 +295,7 @@ namespace {
             for(unsigned int i = 0; i < trait.m_params.m_types.size(); i ++ ) {
                 //trait_path_g.m_params.m_types.push_back( ::HIR::TypeRef(trait.m_params.m_types[i].m_name, i) );
                 //trait_path_g.m_params.m_types.push_back( ::HIR::TypeRef() );
-                trait_path_g.m_params.m_types.push_back( trait.m_params.m_types[i].m_default.clone() );
+                trait_path_g.m_params.m_types.push_back( trait.m_params.m_types[i].m_default.clone_shallow() );
             }
             return trait_path_g;
         }
@@ -311,10 +311,10 @@ namespace {
             }
 
             auto monomorph_cb = [&](const auto& ty)->const ::HIR::TypeRef& {
-                const auto& ge = ty.m_data.as_Generic();
+                const auto& ge = ty.data().as_Generic();
                 if( ge.binding == 0xFFFF ) {
                     // TODO: This has to be the _exact_ same type, including future ivars.
-                    return *pd.as_UfcsUnknown().type;
+                    return pd.as_UfcsUnknown().type;
                 }
                 else if( (ge.binding >> 8) == 0 ) {
                     auto idx = ge.binding & 0xFF;
@@ -328,7 +328,7 @@ namespace {
                             return def;
                         if( def == ::HIR::TypeRef("Self", 0xFFFF) )
                             // TODO: This has to be the _exact_ same type, including future ivars.
-                            return *pd.as_UfcsUnknown().type;
+                            return pd.as_UfcsUnknown().type;
                         TODO(sp, "Monomorphise default arg " << def << " for trait path " << trait_path);
                     }
                     else
@@ -375,7 +375,7 @@ namespace {
         bool set_from_trait_impl(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait, ::HIR::Path::Data& pd)
         {
             auto& e = pd.as_UfcsUnknown();
-            const auto& type = *e.type;
+            const auto& type = e.type;
             TRACE_FUNCTION_F("trait_path=" << trait_path << ", p=<" << type << " as _>::" << e.item);
 
             // TODO: This is VERY arbitary and possibly nowhere near what rustc does.
@@ -383,7 +383,7 @@ namespace {
                 auto pp = impl.get_trait_params();
                 // Replace all placeholder parameters (group 2) with ivars (empty types)
                 pp = monomorphise_path_params_with(sp, pp, [](const auto& gt)->const ::HIR::TypeRef& {
-                    const auto& ge = gt.m_data.as_Generic();
+                    const auto& ge = gt.data().as_Generic();
                     if( (ge.binding >> 8) == 2 ) {
                         static ::HIR::TypeRef   empty_type;
                         return empty_type;
@@ -455,7 +455,7 @@ namespace {
         bool resolve_UfcsUnknown_inherent(const ::HIR::Path& p, ::HIR::Visitor::PathContext pc, ::HIR::Path::Data& pd)
         {
             auto& e = pd.as_UfcsUnknown();
-            return m_crate.find_type_impls(*e.type, [&](const auto& t)->const auto& { return t; }, [&](const auto& impl) {
+            return m_crate.find_type_impls(e.type, [&](const auto& t)->const auto& { return t; }, [&](const auto& impl) {
                 DEBUG("- matched inherent impl" << impl.m_params.fmt_args() << " " << impl.m_type);
                 // Search for item in this block
                 switch( pc )
@@ -566,12 +566,12 @@ namespace {
                 auto& e = *pe;
                 TRACE_FUNCTION_FR("UfcsUnknown - p=" << p, p);
 
-                this->visit_type( *e.type );
+                this->visit_type( e.type );
                 this->visit_path_params( e.params );
 
                 // If processing a trait, and the type is 'Self', search for the type/method on the trait
                 // - Explicitly encoded because `Self::Type` has a different meaning to `MyType::Type` (the latter will search bounds first)
-                if( *e.type == ::HIR::TypeRef("Self", 0xFFFF) )
+                if( e.type == ::HIR::TypeRef("Self", 0xFFFF) )
                 {
                     ::HIR::GenericPath  trait_path;
                     if( m_current_trait_path->trait_path() )
@@ -595,15 +595,15 @@ namespace {
                         DEBUG("Found in Self, p = " << p);
                         return ;
                     }
-                    DEBUG("- Item " << e.item << " not found in Self - ty=" << *e.type);
+                    DEBUG("- Item " << e.item << " not found in Self - ty=" << e.type);
                 }
 
                 // Search for matching impls in current generic blocks
-                if( m_resolve.m_item_generics != nullptr && locate_trait_item_in_bounds(pc, *e.type, *m_resolve.m_item_generics,  p.m_data) ) {
+                if( m_resolve.m_item_generics != nullptr && locate_trait_item_in_bounds(pc, e.type, *m_resolve.m_item_generics,  p.m_data) ) {
                     DEBUG("Found in item params, p = " << p);
                     return ;
                 }
-                if( m_resolve.m_impl_generics != nullptr && locate_trait_item_in_bounds(pc, *e.type, *m_resolve.m_impl_generics,  p.m_data) ) {
+                if( m_resolve.m_impl_generics != nullptr && locate_trait_item_in_bounds(pc, e.type, *m_resolve.m_impl_generics,  p.m_data) ) {
                     DEBUG("Found in impl params, p = " << p);
                     return ;
                 }
@@ -617,7 +617,7 @@ namespace {
 
                 // If the type is the impl type, look for items AFTER generic lookup
                 // TODO: Should this look up in-scope traits instead of hard-coding this hack?
-                if( m_current_type && *e.type == *m_current_type )
+                if( m_current_type && e.type == *m_current_type )
                 {
                     ::HIR::GenericPath  trait_path;
                     if( m_current_trait_path->trait_path() )
@@ -641,7 +641,7 @@ namespace {
                         DEBUG("Found in Self, p = " << p);
                         return ;
                     }
-                    DEBUG("- Item " << e.item << " not found in Self - ty=" << *e.type);
+                    DEBUG("- Item " << e.item << " not found in Self - ty=" << e.type);
                 }
 
                 // 2. Search all impls of in-scope traits for this method on this type
@@ -651,7 +651,7 @@ namespace {
                 assert(p.m_data.is_UfcsUnknown());
 
                 // Couldn't find it
-                ERROR(sp, E0000, "Failed to find impl with '" << e.item << "' for " << *e.type << " (in " << p << ")");
+                ERROR(sp, E0000, "Failed to find impl with '" << e.item << "' for " << e.type << " (in " << p << ")");
             }
             else
             {
@@ -681,17 +681,19 @@ namespace {
         void visit_pattern_Value(const Span& sp, const ::HIR::Pattern& pat, ::HIR::Pattern::Value& val)
         {
             TRACE_FUNCTION_F("pat=" << pat << ", val=" << val);
-            TU_IFLET( ::HIR::Pattern::Value, val, Named, ve,
+            if(auto* vep = val.opt_Named())
+            {
+                auto& ve = *vep;
                 TRACE_FUNCTION_F(ve.path);
-                TU_MATCH( ::HIR::Path::Data, (ve.path.m_data), (pe),
-                (Generic,
+                TU_MATCH_HDRA( (ve.path.m_data), {)
+                TU_ARMA(Generic, pe) {
                     // Already done
-                    ),
-                (UfcsUnknown,
+                    }
+                TU_ARMA(UfcsUnknown, pe) {
                     BUG(sp, "UfcsUnknown still in pattern value - " << pat);
-                    ),
-                (UfcsInherent,
-                    bool rv = m_crate.find_type_impls(*pe.type, [&](const auto& t)->const auto& { return t; }, [&](const auto& impl) {
+                    }
+                TU_ARMA(UfcsInherent, pe) {
+                    bool rv = m_crate.find_type_impls(pe.type, [&](const auto& t)->const auto& { return t; }, [&](const auto& impl) {
                         DEBUG("- matched inherent impl" << impl.m_params.fmt_args() << " " << impl.m_type);
                         // Search for item in this block
                         auto it = impl.m_constants.find(pe.item);
@@ -704,9 +706,9 @@ namespace {
                     if( !rv ) {
                         ERROR(sp, E0000, "Constant " << ve.path << " couldn't be found");
                     }
-                    ),
-                (UfcsKnown,
-                    bool rv = this->m_resolve.find_impl(sp,  pe.trait.m_path, &pe.trait.m_params, *pe.type, [&](const auto& impl, bool) {
+                    }
+                TU_ARMA(UfcsKnown, pe) {
+                    bool rv = this->m_resolve.find_impl(sp,  pe.trait.m_path, &pe.trait.m_params, pe.type, [&](const auto& impl, bool) {
                         if( !impl.m_data.is_TraitImpl() ) {
                             return true;
                         }
@@ -716,9 +718,9 @@ namespace {
                     if( !rv ) {
                         ERROR(sp, E0000, "Constant " << ve.path << " couldn't be found");
                     }
-                    )
-                )
-            )
+                    }
+                }
+            }
         }
     };
 
@@ -733,7 +735,7 @@ namespace {
             {
                 ig.named[*path].push_back(mv$(ty_impl));
             }
-            else if( type.m_data.is_Path() || type.m_data.is_Generic() )
+            else if( type.data().is_Path() || type.data().is_Generic() )
             {
                 return false;
             }

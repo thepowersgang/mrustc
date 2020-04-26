@@ -668,16 +668,16 @@ namespace
             }
         }
 
-        TU_MATCHA( (path.m_data), (pe),
-        (Generic,
+        TU_MATCH_HDRA( (path.m_data), {)
+        TU_ARMA(Generic, pe) {
             const auto& fcn = state.m_crate.get_function_by_path(state.sp, pe.m_path);
             if( const auto* mir = fcn.m_code.get_mir_opt() )
             {
                 params.fcn_params = &pe.m_params;
                 return mir;
             }
-            ),
-        (UfcsKnown,
+            }
+        TU_ARMA(UfcsKnown, pe) {
             TRACE_FUNCTION_F(path);
 
             // Obtain trait pointer (for default impl and to know what the item type is)
@@ -692,7 +692,7 @@ namespace
             bool is_spec = false;
             ::std::vector<::HIR::TypeRef>    best_impl_params;
             const ::HIR::TraitImpl* best_impl = nullptr;
-            state.m_resolve.find_impl(state.sp, pe.trait.m_path, pe.trait.m_params, *pe.type, [&](auto impl_ref, auto is_fuzz) {
+            state.m_resolve.find_impl(state.sp, pe.trait.m_path, pe.trait.m_params, pe.type, [&](auto impl_ref, auto is_fuzz) {
                 DEBUG("[get_called_mir] Found " << impl_ref);
                 if( ! impl_ref.m_data.is_TraitImpl() ) {
                     MIR_ASSERT(state, best_impl == nullptr, "Generic impl and `impl` block collided");
@@ -708,7 +708,7 @@ namespace
 
                     auto fit = impl.m_methods.find(pe.item);
                     if( fit == impl.m_methods.end() ) {
-                        DEBUG("[get_called_mir] Method " << pe.item << " missing in impl " << pe.trait << " for " << *pe.type);
+                        DEBUG("[get_called_mir] Method " << pe.item << " missing in impl " << pe.trait << " for " << pe.type);
                         return false;
                     }
                     best_impl_params.clear();
@@ -716,7 +716,7 @@ namespace
                     {
                         if( impl_ref_e.params[i] )
                             best_impl_params.push_back( impl_ref_e.params[i]->clone() );
-                        else if( ! impl_ref_e.params_ph[i].m_data.is_Generic() || impl_ref_e.params_ph[i].m_data.as_Generic().binding >> 8 != 2 )
+                        else if( !TU_TEST1(impl_ref_e.params_ph[i].data(), Generic, .binding >> 8 == 2) )
                             best_impl_params.push_back( impl_ref_e.params_ph[i].clone() );
                         else
                             MIR_BUG(state, "[get_called_mir] Parameter " << i << " unset");
@@ -738,7 +738,7 @@ namespace
             }
             const auto& impl = *best_impl;
 
-            params.self_ty = &*pe.type;
+            params.self_ty = &pe.type;
             params.fcn_params = &pe.params;
             // Search for the method in the impl
             auto fit = impl.m_methods.find(pe.item);
@@ -756,10 +756,10 @@ namespace
                     return mir;
             }
             return nullptr;
-            ),
-        (UfcsInherent,
+            }
+        TU_ARMA(UfcsInherent, pe) {
             const ::HIR::TypeImpl* best_impl;
-            state.m_resolve.m_crate.find_type_impls(*pe.type, [](const auto&x)->const auto& { return x; }, [&](const auto& impl) {
+            state.m_resolve.m_crate.find_type_impls(pe.type, [](const auto&x)->const auto& { return x; }, [&](const auto& impl) {
                 DEBUG("Found impl" << impl.m_params.fmt_args() << " " << impl.m_type);
                 // TODO: Specialisation.
                 auto fit = impl.m_methods.find(pe.item);
@@ -775,17 +775,17 @@ namespace
             MIR_ASSERT(state, fit != best_impl->m_methods.end(), "Couldn't find method in best inherent impl");
             if( const auto* mir = fit->second.data.m_code.get_mir_opt() )
             {
-                params.self_ty = &*pe.type;
+                params.self_ty = &pe.type;
                 params.fcn_params = &pe.params;
                 params.impl_params = pe.impl_params.clone();
                 return mir;
             }
             return nullptr;
-            ),
-        (UfcsUnknown,
+            }
+        TU_ARMA(UfcsUnknown, pe) {
             MIR_BUG(state, "UfcsUnknown hit - " << path);
-            )
-        )
+            }
+        }
         return nullptr;
     }
 
@@ -1172,7 +1172,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
                     resolve.expand_associated_types(sp, arg);
                 ),
             (UfcsInherent,
-                resolve.expand_associated_types(sp, *e2.type);
+                resolve.expand_associated_types(sp, e2.type);
                 for(auto& arg : e2.params.m_types)
                     resolve.expand_associated_types(sp, arg);
                 // TODO: impl params too?
@@ -1180,7 +1180,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
                     resolve.expand_associated_types(sp, arg);
                 ),
             (UfcsKnown,
-                resolve.expand_associated_types(sp, *e2.type);
+                resolve.expand_associated_types(sp, e2.type);
                 for(auto& arg : e2.trait.m_params.m_types)
                     resolve.expand_associated_types(sp, arg);
                 for(auto& arg : e2.params.m_types)
@@ -2034,7 +2034,7 @@ bool MIR_Optimise_DeTemporary_Borrows(::MIR::TypeResolve& state, ::MIR::Function
                 // > Inner-most wrapper is Deref - it's a deref of this variable
                 if( !lv.m_wrappers.empty() && lv.m_wrappers.front().is_Deref() ) {
                     slot.n_deref_read ++;
-                    if( fcn.locals[lv.m_root.as_Local()].m_data.is_Borrow() ) {
+                    if( fcn.locals[lv.m_root.as_Local()].data().is_Borrow() ) {
                         DEBUG(lv << " deref use " << cur_loc);
                     }
                 }
@@ -2109,7 +2109,7 @@ bool MIR_Optimise_DeTemporary_Borrows(::MIR::TypeResolve& state, ::MIR::Function
             DEBUG(this_var << " - Source is too complex - " << src_lv);
             continue;
         }
-        if( slot.n_deref_read > 1 && fcn.locals[var_idx].m_data.as_Borrow().type != ::HIR::BorrowType::Shared )
+        if( slot.n_deref_read > 1 && fcn.locals[var_idx].data().as_Borrow().type != ::HIR::BorrowType::Shared )
         {
             DEBUG(this_var << " - Multi-use non-shared borrow, too complex to do");
             continue;
@@ -3079,7 +3079,7 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
             const auto& ty = tef.params.m_types.at(0);
             // - Only expand at this stage if there's no generics, and no unbound paths
             if( !visit_ty_with(ty, [](const ::HIR::TypeRef& ty)->bool{
-                    return ty.m_data.is_Generic() || TU_TEST1(ty.m_data, Path, .binding.is_Unbound());
+                    return ty.data().is_Generic() || TU_TEST1(ty.data(), Path, .binding.is_Unbound());
                 }) )
             {
                 bool needs_drop = state.m_resolve.type_needs_drop_glue(state.sp, ty);
@@ -3243,7 +3243,7 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                     auto nv = check_lv(se.val);
                     if( !nv.is_ItemAddr() )
                     {
-                        if(const auto* te = se.type.m_data.opt_Primitive())
+                        if(const auto* te = se.type.data().opt_Primitive())
                         {
                             switch(*te)
                             {
@@ -3326,15 +3326,15 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                     else if( known_values_var.count(se.val) )
                     {
                         auto variant_idx = known_values_var.at(se.val);
-                        MIR_ASSERT(state, se.type.m_data.is_Primitive(), "Casting enum to non-primitive - " << se.type);
+                        MIR_ASSERT(state, se.type.data().is_Primitive(), "Casting enum to non-primitive - " << se.type);
 
                         HIR::TypeRef    tmp;
                         const auto& src_ty = state.get_lvalue_type(tmp, se.val);
-                        const HIR::Enum& enm = *src_ty.m_data.as_Path().binding.as_Enum();
+                        const HIR::Enum& enm = *src_ty.data().as_Path().binding.as_Enum();
                         MIR_ASSERT(state, enm.is_value(), "Casting non-value enum to value");
                         uint32_t v = enm.get_value(variant_idx);
 
-                        auto ct = se.type.m_data.as_Primitive();
+                        auto ct = se.type.data().as_Primitive();
                         switch(ct)
                         {
                         case ::HIR::CoreType::U8:

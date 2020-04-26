@@ -105,7 +105,7 @@ public:
         write_u8( static_cast<uint8_t>(t) );
     }
     void write_count(size_t c) {
-        //DEBUG("c = " << c);
+        DEBUG(c);
         if(c < 0xFE) {
             write_u8( static_cast<uint8_t>(c) );
         }
@@ -120,6 +120,7 @@ public:
     }
     void write_string(const RcString& v);
     void write_string(size_t len, const char* s) {
+        //DEBUG(FMT_CB(os, for(size_t i = 0; i < ));
         if(len < 128) {
             write_u8( static_cast<uint8_t>(len) );
         }
@@ -249,16 +250,19 @@ public:
         return static_cast<unsigned int>( read_u8() );
     }
     size_t read_count() {
+        size_t rv;
         auto v = read_u8();
         if( v < 0xFE ) {
-            return v;
+            rv = v;
         }
         else if( v == 0xFE ) {
-            return read_u16( );
+            rv = read_u16( );
         }
         else /*if( v == 0xFF )*/ {
-            return ~0u;
+            rv = ~0u;
         }
+        DEBUG(rv);
+        return rv;
     }
     RcString read_istring() {
         size_t idx = read_count();

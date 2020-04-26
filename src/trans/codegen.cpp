@@ -43,7 +43,7 @@ void Trans_Codegen(const ::std::string& outfile, CodegenOutput out_ty, const Tra
         }
         else
         {
-            if( const auto* te = ty.first.m_data.opt_Path() )
+            if( const auto* te = ty.first.data().opt_Path() )
             {
                 TU_MATCHA( (te->binding), (tpb),
                 (Unbound,  throw ""; ),
@@ -132,7 +132,7 @@ void Trans_Codegen(const ::std::string& outfile, CodegenOutput out_ty, const Tra
     for(const auto& ent : list.m_vtables)
     {
         const auto& trait = ent.first.m_data.as_UfcsKnown().trait;
-        const auto& type = *ent.first.m_data.as_UfcsKnown().type;
+        const auto& type = ent.first.m_data.as_UfcsKnown().type;
         DEBUG("VTABLE " << trait << " for " << type);
 
         codegen->emit_vtable(ent.first, crate.get_trait_by_path(Span(), trait.m_path));

@@ -32,13 +32,13 @@ bool visit_ty_with__path(const ::HIR::Path& tpl, t_cb_visit_ty callback)
         return visit_ty_with__path_params(e.m_params, callback);
         ),
     (UfcsInherent,
-        return visit_ty_with(*e.type, callback) || visit_ty_with__path_params(e.params, callback);
+        return visit_ty_with(e.type, callback) || visit_ty_with__path_params(e.params, callback);
         ),
     (UfcsKnown,
-        return visit_ty_with(*e.type, callback) || visit_ty_with__path_params(e.trait.m_params, callback) || visit_ty_with__path_params(e.params, callback);
+        return visit_ty_with(e.type, callback) || visit_ty_with__path_params(e.trait.m_params, callback) || visit_ty_with__path_params(e.params, callback);
         ),
     (UfcsUnknown,
-        return visit_ty_with(*e.type, callback) || visit_ty_with__path_params(e.params, callback);
+        return visit_ty_with(e.type, callback) || visit_ty_with__path_params(e.params, callback);
         )
     )
     throw "";
@@ -49,7 +49,7 @@ bool visit_ty_with(const ::HIR::TypeRef& ty, t_cb_visit_ty callback)
         return true;
     }
 
-    TU_MATCH_HDRA( (ty.m_data), {)
+    TU_MATCH_HDRA( (ty.data()), {)
     TU_ARMA(Infer, e) {
         }
     TU_ARMA(Diverge, e) {
@@ -78,10 +78,10 @@ bool visit_ty_with(const ::HIR::TypeRef& ty, t_cb_visit_ty callback)
         return false;
         }
     TU_ARMA(Array, e) {
-        return visit_ty_with(*e.inner, callback);
+        return visit_ty_with(e.inner, callback);
         }
     TU_ARMA(Slice, e) {
-        return visit_ty_with(*e.inner, callback);
+        return visit_ty_with(e.inner, callback);
         }
     TU_ARMA(Tuple, e) {
         for(const auto& ty : e) {
@@ -91,24 +91,24 @@ bool visit_ty_with(const ::HIR::TypeRef& ty, t_cb_visit_ty callback)
         return false;
         }
     TU_ARMA(Borrow, e) {
-        return visit_ty_with(*e.inner, callback);
+        return visit_ty_with(e.inner, callback);
         }
     TU_ARMA(Pointer, e) {
-        return visit_ty_with(*e.inner, callback);
+        return visit_ty_with(e.inner, callback);
         }
     TU_ARMA(Function, e) {
         for(const auto& ty : e.m_arg_types) {
             if( visit_ty_with(ty, callback) )
                 return true;
         }
-        return visit_ty_with(*e.m_rettype, callback);
+        return visit_ty_with(e.m_rettype, callback);
         }
     TU_ARMA(Closure, e) {
         for(const auto& ty : e.m_arg_types) {
             if( visit_ty_with(ty, callback) )
                 return true;
         }
-        return visit_ty_with(*e.m_rettype, callback);
+        return visit_ty_with(e.m_rettype, callback);
         }
     }
     return false;
@@ -121,25 +121,25 @@ bool visit_path_tys_with(const ::HIR::Path& path, t_cb_visit_ty callback)
 bool monomorphise_pathparams_needed(const ::HIR::PathParams& tpl)
 {
     return visit_ty_with__path_params(tpl, [&](const auto& ty) {
-        return (ty.m_data.is_Generic() ? true : false);
+        return (ty.data().is_Generic() ? true : false);
         });
 }
 bool monomorphise_traitpath_needed(const ::HIR::TraitPath& tpl)
 {
     return visit_ty_with__trait_path(tpl, [&](const auto& ty) {
-        return (ty.m_data.is_Generic() ? true : false);
+        return (ty.data().is_Generic() ? true : false);
         });
 }
 bool monomorphise_path_needed(const ::HIR::Path& tpl)
 {
     return visit_ty_with__path(tpl, [&](const auto& ty) {
-        return (ty.m_data.is_Generic() ? true : false);
+        return (ty.data().is_Generic() ? true : false);
         });
 }
 bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
 {
     return visit_ty_with(tpl, [&](const auto& ty) {
-        return (ty.m_data.is_Generic() ? true : false);
+        return (ty.data().is_Generic() ? true : false);
         });
 }
 
@@ -178,7 +178,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
         ),
     (UfcsKnown,
         return ::HIR::Path::Data::make_UfcsKnown({
-            box$( clone_ty_with(sp, *e2.type, callback) ),
+            clone_ty_with(sp, e2.type, callback),
             clone_ty_with__generic_path(sp, e2.trait, callback),
             e2.item,
             clone_path_params_with(sp, e2.params, callback)
@@ -186,14 +186,14 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
         ),
     (UfcsUnknown,
         return ::HIR::Path::Data::make_UfcsUnknown({
-            box$( clone_ty_with(sp, *e2.type, callback) ),
+            clone_ty_with(sp, e2.type, callback),
             e2.item,
             clone_path_params_with(sp, e2.params, callback)
             });
         ),
     (UfcsInherent,
         return ::HIR::Path::Data::make_UfcsInherent({
-            box$( clone_ty_with(sp, *e2.type, callback) ),
+            clone_ty_with(sp, e2.type, callback),
             e2.item,
             clone_path_params_with(sp, e2.params, callback),
             clone_path_params_with(sp, e2.impl_params, callback)
@@ -211,7 +211,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
         return rv;
     }
 
-    TU_MATCH_HDRA( (tpl.m_data), {)
+    TU_MATCH_HDRA( (tpl.data()), {)
     TU_ARMA(Infer, e) {
         rv = ::HIR::TypeRef(e);
         }
@@ -229,7 +229,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
         // If the input binding was Opaque, AND the type changed, clear it back to Unbound
         if( e.binding.is_Opaque() /*&& rv != tpl*/ ) {
             // NOTE: The replacement can be Self=Self, which should trigger a binding clear.
-            rv.m_data.as_Path().binding = ::HIR::TypePathBinding();
+            rv.get_unique().as_Path().binding = ::HIR::TypePathBinding();
         }
         }
     TU_ARMA(Generic, e) {
@@ -260,10 +260,10 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
             } );
         }
     TU_ARMA(Array, e) {
-        rv = ::HIR::TypeRef( ::HIR::TypeData::make_Array({ box$(clone_ty_with(sp, *e.inner, callback)), e.size.clone() }) );
+        rv = ::HIR::TypeRef( ::HIR::TypeData::make_Array({ clone_ty_with(sp, e.inner, callback), e.size.clone() }) );
         }
     TU_ARMA(Slice, e) {
-        rv = ::HIR::TypeRef::new_slice( clone_ty_with(sp, *e.inner, callback) );
+        rv = ::HIR::TypeRef::new_slice( clone_ty_with(sp, e.inner, callback) );
         }
     TU_ARMA(Tuple, e) {
         ::std::vector< ::HIR::TypeRef>  types;
@@ -273,16 +273,16 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
         rv = ::HIR::TypeRef( mv$(types) );
         }
     TU_ARMA(Borrow, e) {
-        rv = ::HIR::TypeRef::new_borrow (e.type, clone_ty_with(sp, *e.inner, callback));
+        rv = ::HIR::TypeRef::new_borrow (e.type, clone_ty_with(sp, e.inner, callback));
         }
     TU_ARMA(Pointer, e) {
-        rv = ::HIR::TypeRef::new_pointer(e.type, clone_ty_with(sp, *e.inner, callback));
+        rv = ::HIR::TypeRef::new_pointer(e.type, clone_ty_with(sp, e.inner, callback));
         }
     TU_ARMA(Function, e) {
         ::HIR::FunctionType ft;
         ft.is_unsafe = e.is_unsafe;
         ft.m_abi = e.m_abi;
-        ft.m_rettype = box$( clone_ty_with(sp, *e.m_rettype, callback) );
+        ft.m_rettype = clone_ty_with(sp, e.m_rettype, callback);
         for( const auto& arg : e.m_arg_types )
             ft.m_arg_types.push_back( clone_ty_with(sp, arg, callback) );
         rv = ::HIR::TypeRef( mv$(ft) );
@@ -290,7 +290,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
     TU_ARMA(Closure, e) {
         ::HIR::TypeData::Data_Closure  oe;
         oe.node = e.node;
-        oe.m_rettype = box$( clone_ty_with(sp, *e.m_rettype, callback) );
+        oe.m_rettype = clone_ty_with(sp, e.m_rettype, callback);
         for(const auto& a : e.m_arg_types)
             oe.m_arg_types.push_back( clone_ty_with(sp, a, callback) );
         rv = ::HIR::TypeRef( mv$(oe) );
@@ -304,10 +304,10 @@ namespace {
     t_cb_clone_ty monomorphise_type_with__closure(const Span& sp, const T& outer_tpl, t_cb_generic& callback, bool allow_infer)
     {
         return [&sp,&outer_tpl,callback,allow_infer](const auto& tpl, auto& rv) {
-            if( tpl.m_data.is_Infer() && !allow_infer )
+            if( tpl.data().is_Infer() && !allow_infer )
                BUG(sp, "_ type found in " << outer_tpl);
 
-            if( tpl.m_data.is_Generic() ) {
+            if( tpl.data().is_Generic() ) {
                 rv = callback(tpl).clone();
                 return true;
             }
@@ -353,7 +353,7 @@ namespace {
     ASSERT_BUG(sp, params.m_types.size() == params_def.m_types.size(),
         "Parameter count mismatch - exp " << params_def.m_types.size() << ", got " << params.m_types.size() << " for " << params << " and " << params_def.fmt_args());
     return monomorphise_type_with(sp, tpl, [&](const auto& gt)->const auto& {
-        const auto& e = gt.m_data.as_Generic();
+        const auto& e = gt.data().as_Generic();
         if( e.binding == 0xFFFF ) {
             TODO(sp, "Handle 'Self' in `monomorphise_type`");
         }

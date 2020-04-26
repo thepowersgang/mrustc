@@ -603,16 +603,16 @@ void Target_SetCfg(const ::std::string& target_name)
 bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty, size_t& out_size, size_t& out_align)
 {
     TRACE_FUNCTION_FR(ty, "size=" << out_size << ", align=" << out_align);
-    TU_MATCHA( (ty.m_data), (te),
-    (Infer,
+    TU_MATCH_HDRA( (ty.data()), {)
+    TU_ARMA(Infer, te) {
         BUG(sp, "sizeof on _ type");
-        ),
-    (Diverge,
+        }
+    TU_ARMA(Diverge, te) {
         out_size = 0;
         out_align = 0;
         return true;
-        ),
-    (Primitive,
+        }
+    TU_ARMA(Primitive, te) {
         switch(te)
         {
         case ::HIR::CoreType::Bool:
@@ -665,8 +665,8 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve,
             out_align = 1;
             return true;
         }
-        ),
-    (Path,
+        }
+    TU_ARMA(Path, te) {
         if( te.binding.is_Opaque() )
             return false;
         if( te.binding.is_ExternType() )
@@ -685,23 +685,23 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve,
         out_size  = repr->size;
         out_align = repr->align;
         return true;
-        ),
-    (Generic,
+        }
+    TU_ARMA(Generic, te) {
         // Unknown - return false
         DEBUG("No repr for Generic - " << ty);
         return false;
-        ),
-    (TraitObject,
+        }
+    TU_ARMA(TraitObject, te) {
         out_align = 0;
         out_size = SIZE_MAX;
         DEBUG("sizeof on a trait object - unsized");
         return true;
-        ),
-    (ErasedType,
+        }
+    TU_ARMA(ErasedType, te) {
         BUG(sp, "sizeof on an erased type - shouldn't exist");
-        ),
-    (Array,
-        if( !Target_GetSizeAndAlignOf(sp, resolve, *te.inner, out_size,out_align) )
+        }
+    TU_ARMA(Array, te) {
+        if( !Target_GetSizeAndAlignOf(sp, resolve, te.inner, out_size,out_align) )
             return false;
         if( out_size == SIZE_MAX )
             BUG(sp, "Unsized type in array - " << ty);
@@ -716,15 +716,15 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve,
             out_size *= te.size.as_Known();
         }
         return true;
-        ),
-    (Slice,
-        if( !Target_GetAlignOf(sp, resolve, *te.inner, out_align) )
+        }
+    TU_ARMA(Slice, te) {
+        if( !Target_GetAlignOf(sp, resolve, te.inner, out_align) )
             return false;
         out_size = SIZE_MAX;
         DEBUG("sizeof on a slice - unsized");
         return true;
-        ),
-    (Tuple,
+        }
+    TU_ARMA(Tuple, te) {
         const auto* repr = Target_GetTypeRepr(sp, resolve, ty);
         if( !repr )
         {
@@ -734,13 +734,13 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve,
         out_size  = repr->size;
         out_align = repr->align;
         return true;
-        ),
-    (Borrow,
+        }
+    TU_ARMA(Borrow, te) {
         // - Alignment is machine native
         out_align = g_target.m_arch.m_pointer_bits / 8;
         // - Size depends on Sized-nes of the parameter
         // TODO: Handle different types of Unsized (ones with different pointer sizes)
-        switch(resolve.metadata_type(sp, *te.inner))
+        switch(resolve.metadata_type(sp, te.inner))
         {
         case MetadataType::Unknown:
             return false;
@@ -754,12 +754,12 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve,
             break;
         }
         return true;
-        ),
-    (Pointer,
+        }
+    TU_ARMA(Pointer, te) {
         // - Alignment is machine native
         out_align = g_target.m_arch.m_pointer_bits / 8;
         // - Size depends on Sized-nes of the parameter
-        switch(resolve.metadata_type(sp, *te.inner))
+        switch(resolve.metadata_type(sp, te.inner))
         {
         case MetadataType::Unknown:
             return false;
@@ -773,17 +773,17 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve,
             break;
         }
         return true;
-        ),
-    (Function,
+        }
+    TU_ARMA(Function, te) {
         // Pointer size
         out_size = g_target.m_arch.m_pointer_bits / 8;
         out_align = g_target.m_arch.m_pointer_bits / 8;
         return true;
-        ),
-    (Closure,
+        }
+    TU_ARMA(Closure, te) {
         BUG(sp, "Encountered closure type at trans stage - " << ty);
-        )
-    )
+        }
+    }
     return false;
 }
 bool Target_GetSizeOf(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty, size_t& out_size)
@@ -818,9 +818,9 @@ namespace {
         ::std::vector<Ent>  ents;
         bool packed = false;
         bool allow_sort = false;
-        if( ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Struct() )
+        if( ty.data().is_Path() && ty.data().as_Path().binding.is_Struct() )
         {
-            const auto& te = ty.m_data.as_Path();
+            const auto& te = ty.data().as_Path();
             const auto& str = *te.binding.as_Struct();
             auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr, &te.path.m_data.as_Generic().m_params, nullptr);
             auto monomorph = [&](const auto& tpl) {
@@ -881,7 +881,7 @@ namespace {
                 break;
             }
         }
-        else if( const auto* te = ty.m_data.opt_Tuple() )
+        else if( const auto* te = ty.data().opt_Tuple() )
         {
             DEBUG("Tuple " << ty);
             unsigned int idx = 0;
@@ -958,9 +958,9 @@ namespace {
 
     bool get_nonzero_path(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty, TypeRepr::FieldPath& out_path)
     {
-        switch(ty.m_data.tag())
+        switch(ty.data().tag())
         {
-        TU_ARM(ty.m_data, Path, te) {
+        TU_ARM(ty.data(), Path, te) {
             if( te.binding.is_Struct() )
             {
                 const TypeRepr* r = Target_GetTypeRepr(sp, resolve, ty);
@@ -985,12 +985,12 @@ namespace {
                 }
             }
             } break;
-        TU_ARM(ty.m_data, Borrow, _te) { (void)_te;
+        TU_ARM(ty.data(), Borrow, _te) { (void)_te;
             //out_path.sub_fields.push_back(0);
             Target_GetSizeOf(sp, resolve, ty, out_path.size);
             return true;
             } break;
-        TU_ARM(ty.m_data, Function, _te) (void)_te;
+        TU_ARM(ty.data(), Function, _te) (void)_te;
             //out_path.sub_fields.push_back(0);
             Target_GetSizeOf(sp, resolve, ty, out_path.size);
             return true;
@@ -1001,7 +1001,7 @@ namespace {
     }
     ::std::unique_ptr<TypeRepr> make_type_repr_enum(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty)
     {
-        const auto& te = ty.m_data.as_Path();
+        const auto& te = ty.data().as_Path();
         const auto& enm = *te.binding.as_Enum();
 
         auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr, &te.path.m_data.as_Generic().m_params, nullptr);
@@ -1219,13 +1219,13 @@ namespace {
     ::std::unique_ptr<TypeRepr> make_type_repr(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty)
     {
         TRACE_FUNCTION_F(ty);
-        if( TU_TEST1(ty.m_data, Path, .binding.is_Struct()) || ty.m_data.is_Tuple() )
+        if( TU_TEST1(ty.data(), Path, .binding.is_Struct()) || ty.data().is_Tuple() )
         {
             return make_type_repr_struct(sp, resolve, ty);
         }
-        else if( TU_TEST1(ty.m_data, Path, .binding.is_Union()) )
+        else if( TU_TEST1(ty.data(), Path, .binding.is_Union()) )
         {
-            const auto& te = ty.m_data.as_Path();
+            const auto& te = ty.data().as_Path();
             const auto& unn = *te.binding.as_Union();
 
             auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr, &te.path.m_data.as_Generic().m_params, nullptr);
@@ -1254,20 +1254,20 @@ namespace {
             }
             return box$(rv);
         }
-        else if( TU_TEST1(ty.m_data, Path, .binding.is_Enum()) )
+        else if( TU_TEST1(ty.data(), Path, .binding.is_Enum()) )
         {
             return make_type_repr_enum(sp, resolve, ty);
         }
-        else if( TU_TEST1(ty.m_data, Path, .binding.is_ExternType()) )
+        else if( TU_TEST1(ty.data(), Path, .binding.is_ExternType()) )
         {
             // TODO: Do extern types need anything?
             return nullptr;
         }
-        else if( ty.m_data.is_Primitive() )
+        else if( ty.data().is_Primitive() )
         {
             return nullptr;
         }
-        else if( ty.m_data.is_Borrow() || ty.m_data.is_Pointer() )
+        else if( ty.data().is_Borrow() || ty.data().is_Pointer() )
         {
             return nullptr;
         }

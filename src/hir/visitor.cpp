@@ -318,7 +318,7 @@ void ::HIR::Visitor::visit_params(::HIR::GenericParams& params)
 }
 void ::HIR::Visitor::visit_type(::HIR::TypeRef& ty)
 {
-    TU_MATCH(::HIR::TypeData, (ty.m_data), (e),
+    TU_MATCH(::HIR::TypeData, (ty.data_mut()), (e),
     (Infer,
         ),
     (Diverge,
@@ -347,12 +347,12 @@ void ::HIR::Visitor::visit_type(::HIR::TypeRef& ty)
         }
         ),
     (Array,
-        this->visit_type( *e.inner );
+        this->visit_type( e.inner );
         if( auto* se = e.size.opt_Unevaluated() )
             this->visit_expr( **se );
         ),
     (Slice,
-        this->visit_type( *e.inner );
+        this->visit_type( e.inner );
         ),
     (Tuple,
         for(auto& t : e) {
@@ -360,22 +360,22 @@ void ::HIR::Visitor::visit_type(::HIR::TypeRef& ty)
         }
         ),
     (Borrow,
-        this->visit_type( *e.inner );
+        this->visit_type( e.inner );
         ),
     (Pointer,
-        this->visit_type( *e.inner );
+        this->visit_type( e.inner );
         ),
     (Function,
         for(auto& t : e.m_arg_types) {
             this->visit_type(t);
         }
-        this->visit_type(*e.m_rettype);
+        this->visit_type(e.m_rettype);
         ),
     (Closure,
         for(auto& t : e.m_arg_types) {
             this->visit_type(t);
         }
-        this->visit_type(*e.m_rettype);
+        this->visit_type(e.m_rettype);
         )
     )
 }
@@ -470,25 +470,25 @@ void ::HIR::Visitor::visit_trait_path(::HIR::TraitPath& p)
 }
 void ::HIR::Visitor::visit_path(::HIR::Path& p, ::HIR::Visitor::PathContext pc)
 {
-    TU_MATCH(::HIR::Path::Data, (p.m_data), (e),
-    (Generic,
+    TU_MATCH_HDRA( (p.m_data), {)
+    TU_ARMA(Generic, e) {
         this->visit_generic_path(e, pc);
-        ),
-    (UfcsInherent,
-        this->visit_type(*e.type);
+        }
+    TU_ARMA(UfcsInherent, e) {
+        this->visit_type(e.type);
         this->visit_path_params(e.params);
         this->visit_path_params(e.impl_params);
-        ),
-    (UfcsKnown,
-        this->visit_type(*e.type);
+        }
+    TU_ARMA(UfcsKnown, e) {
+        this->visit_type(e.type);
         this->visit_generic_path(e.trait, ::HIR::Visitor::PathContext::TYPE);
         this->visit_path_params(e.params);
-        ),
-    (UfcsUnknown,
-        this->visit_type(*e.type);
+        }
+    TU_ARMA(UfcsUnknown, e) {
+        this->visit_type(e.type);
         this->visit_path_params(e.params);
-        )
-    )
+        }
+    }
 }
 void ::HIR::Visitor::visit_path_params(::HIR::PathParams& p)
 {

@@ -620,6 +620,9 @@
     <ClInclude Include="..\..\src\ast\edition.hpp">
       <Filter>Header Files\ast</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\src\hir\type_ref.hpp">
+      <Filter>Header Files\hir</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="../packages.config" />

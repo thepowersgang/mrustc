@@ -105,7 +105,7 @@ void Trans_AutoImpl_Clone(State& state, ::HIR::TypeRef ty)
     }
     else
     {
-        TU_MATCH_HDRA( (ty.m_data), {)
+        TU_MATCH_HDRA( (ty.data()), {)
         default:
             TODO(sp, "auto Clone for " << ty << " - Unknown and not Copy");
         TU_ARMA(Path, te) {
@@ -142,7 +142,7 @@ void Trans_AutoImpl_Clone(State& state, ::HIR::TypeRef ty)
             for(size_t i = 0; i < te.size.as_Known(); i ++)
             {
                 auto fld_lvalue = ::MIR::LValue::new_Field( ::MIR::LValue::new_Deref(::MIR::LValue::new_Argument(0)), static_cast<unsigned>(values.size()) );
-                values.push_back( clone_field(state, sp, mir_fcn, *te.inner, mv$(fld_lvalue)) );
+                values.push_back( clone_field(state, sp, mir_fcn, te.inner, mv$(fld_lvalue)) );
             }
             // Construct the result
             ::MIR::BasicBlock   bb;

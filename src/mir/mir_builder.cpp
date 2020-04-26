@@ -57,7 +57,7 @@ MirBuilder::~MirBuilder()
     const auto& sp = m_root_span;
     if( block_active() )
     {
-        if( m_ret_ty.m_data.is_Diverge() )
+        if( m_ret_ty.data().is_Diverge() )
         {
             terminate_scope_early(sp, fcn_scope());
             // Validation fails if this is reachable.
@@ -87,10 +87,10 @@ const ::HIR::TypeRef* MirBuilder::is_type_owned_box(const ::HIR::TypeRef& ty) co
 {
     if( m_lang_Box )
     {
-        if( ! ty.m_data.is_Path() ) {
+        if( ! ty.data().is_Path() ) {
             return nullptr;
         }
-        const auto& te = ty.m_data.as_Path();
+        const auto& te = ty.data().as_Path();
 
         if( ! te.path.m_data.is_Generic() ) {
             return nullptr;
@@ -1036,7 +1036,7 @@ namespace
                 const auto& nse = new_state.as_Partial();
                 bool is_enum = false;
                 builder.with_val_type(sp, lv, [&](const auto& ty){
-                        is_enum = ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Enum();
+                        is_enum = ty.data().is_Path() && ty.data().as_Path().binding.is_Enum();
                         });
 
                 // Create a partial filled with Invalid
@@ -1144,7 +1144,7 @@ namespace
                 const auto& nse = new_state.as_Partial();
                 bool is_enum = false;
                 builder.with_val_type(sp, lv, [&](const auto& ty){
-                        is_enum = ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Enum();
+                        is_enum = ty.data().is_Path() && ty.data().as_Path().binding.is_Enum();
                         });
 
                 // Create a partial filled with Valid
@@ -1202,7 +1202,7 @@ namespace
                 bool is_enum = false;
                 builder.with_val_type(sp, lv, [&](const auto& ty){
                         assert( !builder.is_type_owned_box(ty) );
-                        is_enum = ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Enum();
+                        is_enum = ty.data().is_Path() && ty.data().as_Path().binding.is_Enum();
                         });
                 // Create a Partial filled with copies of the Optional
                 // TODO: This can lead to contradictions when one field is moved and another not.
@@ -1317,7 +1317,7 @@ namespace
             bool is_enum = false;
             builder.with_val_type(sp, lv, [&](const auto& ty){
                     assert( !builder.is_type_owned_box(ty) );
-                    is_enum = ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Enum();
+                    is_enum = ty.data().is_Path() && ty.data().as_Path().binding.is_Enum();
                     });
             // Need to tag for conditional shallow drop? Or just do that at the end of the split?
             // - End of the split means that the only optional state is outer drop.
@@ -1649,14 +1649,14 @@ void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::
             };
         TU_MATCH_HDRA( (w), {)
         TU_ARMA(Field, field_index) {
-            TU_MATCH_HDRA( (ty.m_data), {)
+            TU_MATCH_HDRA( (ty.data()), {)
             default:
                 BUG(sp, "Field access on unexpected type - " << ty);
             TU_ARMA(Array, te) {
-                ty_p = &*te.inner;
+                ty_p = &te.inner;
                 }
             TU_ARMA(Slice, te) {
-                ty_p = &*te.inner;
+                ty_p = &te.inner;
                 }
             TU_ARMA(Path, te) {
                 if( const auto* tep = te.binding.opt_Struct() )
@@ -1696,7 +1696,7 @@ void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::
             }
             }
         TU_ARMA(Deref, _e) {
-            TU_MATCH_HDRA( (ty.m_data), { )
+            TU_MATCH_HDRA( (ty.data()), { )
             default:
                 BUG(sp, "Deref on unexpected type - " << ty);
             TU_ARMA(Path, te) {
@@ -1709,28 +1709,28 @@ void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::
                 }
                 }
             TU_ARMA(Pointer, te) {
-                ty_p = &*te.inner;
+                ty_p = &te.inner;
                 }
             TU_ARMA(Borrow, te) {
-                ty_p = &*te.inner;
+                ty_p = &te.inner;
                 }
             }
             }
         TU_ARMA(Index, _index_val) {
-            TU_MATCH_DEF( ::HIR::TypeData, (ty.m_data), (te),
+            TU_MATCH_DEF( ::HIR::TypeData, (ty.data()), (te),
             (
                 BUG(sp, "Index on unexpected type - " << ty);
                 ),
             (Slice,
-                ty_p = &*te.inner;
+                ty_p = &te.inner;
                 ),
             (Array,
-                ty_p = &*te.inner;
+                ty_p = &te.inner;
                 )
             )
             }
         TU_ARMA(Downcast, variant_index) {
-            TU_MATCH_HDRA( (ty.m_data), { )
+            TU_MATCH_HDRA( (ty.data()), { )
             default:
                 BUG(sp, "Downcast on unexpected type - " << ty);
             TU_ARMA(Path, te) {
@@ -1997,7 +1997,7 @@ VarState* MirBuilder::get_val_state_mut_p(const Span& sp, const ::MIR::LValue& l
                 size_t n_flds = 0;
                 with_val_type(sp, lv, [&](const auto& ty) {
                     DEBUG("ty = " << ty);
-                    if(const auto* e = ty.m_data.opt_Path()) {
+                    if(const auto* e = ty.data().opt_Path()) {
                         ASSERT_BUG(sp, e->binding.is_Struct(), "");
                         const auto& str = *e->binding.as_Struct();
                         TU_MATCHA( (str.m_data), (se),
@@ -2012,10 +2012,10 @@ VarState* MirBuilder::get_val_state_mut_p(const Span& sp, const ::MIR::LValue& l
                             )
                         )
                     }
-                    else if(const auto* e = ty.m_data.opt_Tuple()) {
+                    else if(const auto* e = ty.data().opt_Tuple()) {
                         n_flds = e->size();
                     }
-                    else if(const auto* e = ty.m_data.opt_Array()) {
+                    else if(const auto* e = ty.data().opt_Array()) {
                         ASSERT_BUG(sp, e->size.is_Known(), "Array size not known");
                         n_flds = e->size.as_Known();
                     }
@@ -2069,8 +2069,8 @@ VarState* MirBuilder::get_val_state_mut_p(const Span& sp, const ::MIR::LValue& l
                 size_t var_count = 0;
                 with_val_type(sp, lv, [&](const auto& ty){
                     DEBUG("ty = " << ty);
-                    ASSERT_BUG(sp, ty.m_data.is_Path(), "Downcast on non-Path type - " << ty);
-                    const auto& pb = ty.m_data.as_Path().binding;
+                    ASSERT_BUG(sp, ty.data().is_Path(), "Downcast on non-Path type - " << ty);
+                    const auto& pb = ty.data().as_Path().binding;
                     // TODO: What about unions?
                     // - Iirc, you can't move out of them so they will never have state mutated
                     if( pb.is_Enum() )
@@ -2133,8 +2133,8 @@ void MirBuilder::drop_value_from_state(const Span& sp, const VarState& vs, ::MIR
         bool is_enum = false;
         bool is_union = false;
         with_val_type(sp, lv, [&](const auto& ty){
-            is_enum = ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Enum();
-            is_union = ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Union();
+            is_enum = ty.data().is_Path() && ty.data().as_Path().binding.is_Enum();
+            is_union = ty.data().is_Path() && ty.data().as_Path().binding.is_Union();
             });
         if(is_enum)
         {

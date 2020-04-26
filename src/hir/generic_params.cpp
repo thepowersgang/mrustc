@@ -39,7 +39,7 @@ namespace HIR {
                 os << typ.m_name;
                 if( ! typ.m_is_sized )
                     os << ": ?Sized";
-                if( !typ.m_default.m_data.is_Infer() )
+                if( !typ.m_default.data().is_Infer() )
                     os << " = " << typ.m_default;
                 os << ",";
             }

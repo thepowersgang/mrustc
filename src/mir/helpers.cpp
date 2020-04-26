@@ -103,15 +103,15 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_unwrapped_type(::HIR::TypeRef& tmp
 {
     TU_MATCH_HDRA( (w), {)
     TU_ARMA(Field, field_index) {
-        TU_MATCH_HDRA( (ty.m_data), {)
+        TU_MATCH_HDRA( (ty.data()), {)
         default:
             MIR_BUG(*this, "Field access on unexpected type - " << ty);
         // Array and Slice use LValue::Field when the index is constant and known-good
         TU_ARMA(Array, te) {
-            return *te.inner;
+            return te.inner;
             }
         TU_ARMA(Slice, te) {
-            return *te.inner;
+            return te.inner;
             }
         TU_ARMA(Tuple, te) {
             MIR_ASSERT(*this, field_index < te.size(), "Field index out of range in tuple " << field_index << " >= " << te.size());
@@ -170,7 +170,7 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_unwrapped_type(::HIR::TypeRef& tmp
         }
         }
     TU_ARMA(Deref, _e) {
-        TU_MATCH_HDRA( (ty.m_data), {)
+        TU_MATCH_HDRA( (ty.data()), {)
         default:
             MIR_BUG(*this, "Deref on unexpected type - " << ty);
         TU_ARMA(Path, te) {
@@ -183,27 +183,27 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_unwrapped_type(::HIR::TypeRef& tmp
             }
             }
         TU_ARMA(Pointer, te) {
-            return *te.inner;
+            return te.inner;
             }
         TU_ARMA(Borrow, te) {
-            return *te.inner;
+            return te.inner;
             }
         }
         }
     TU_ARMA(Index, index_local) {
-        TU_MATCH_HDRA( (ty.m_data), { )
+        TU_MATCH_HDRA( (ty.data()), { )
         default:
             MIR_BUG(*this, "Index on unexpected type - " << ty);
         TU_ARMA(Slice, te) {
-            return *te.inner;
+            return te.inner;
             }
         TU_ARMA(Array, te) {
-            return *te.inner;
+            return te.inner;
             }
         }
         }
     TU_ARMA(Downcast, variant_index) {
-        TU_MATCH_HDRA( (ty.m_data), {)
+        TU_MATCH_HDRA( (ty.data()), {)
         default:
             MIR_BUG(*this, "Downcast on unexpected type - " << ty);
         TU_ARMA(Path, te) {
@@ -261,26 +261,26 @@ const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, cons
 
 ::HIR::TypeRef MIR::TypeResolve::get_const_type(const ::MIR::Constant& c) const
 {
-    TU_MATCHA( (c), (e),
-    (Int,
+    TU_MATCH_HDRA( (c), {)
+    TU_ARMA(Int, e) {
         return e.t;
-        ),
-    (Uint,
+        }
+    TU_ARMA(Uint, e) {
         return e.t;
-        ),
-    (Float,
+        }
+    TU_ARMA(Float, e) {
         return e.t;
-        ),
-    (Bool,
+        }
+    TU_ARMA(Bool, e) {
         return ::HIR::CoreType::Bool;
-        ),
-    (Bytes,
+        }
+    TU_ARMA(Bytes, e) {
         return ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::TypeRef::new_array( ::HIR::CoreType::U8, e.size() ) );
-        ),
-    (StaticString,
+        }
+    TU_ARMA(StaticString, e) {
         return ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::CoreType::Str );
-        ),
-    (Const,
+        }
+    TU_ARMA(Const, e) {
         MonomorphState  p;
         auto v = m_resolve.get_value(this->sp, *e.p, p, /*signature_only=*/true);
         if( const auto* ve = v.opt_Constant() ) {
@@ -296,21 +296,21 @@ const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, cons
         else {
             MIR_BUG(*this, "get_const_type - Not a constant " << *e.p);
         }
-        ),
-    (Generic,
+        }
+    TU_ARMA(Generic, e) {
         return m_resolve.get_const_param_type(this->sp, e.binding).clone();
-        ),
-    (ItemAddr,
+        }
+    TU_ARMA(ItemAddr, e) {
         MonomorphState  p;
         auto v = m_resolve.get_value(this->sp, *e, p, /*signature_only=*/true);
-        TU_MATCHA( (v), (ve),
-        (NotFound,
+        TU_MATCH_HDRA( (v), {)
+        TU_ARMA(NotFound, ve) {
             MIR_BUG(*this, "get_const_type - ItemAddr points to unknown value - " << c);
-            ),
-        (Constant,
+            }
+        TU_ARMA(Constant, ve) {
             MIR_TODO(*this, "get_const_type - Get type for constant borrow `" << c << "`");
-            ),
-        (Static,
+            }
+        TU_ARMA(Static, ve) {
             const auto& ty = ve->m_type;
             HIR::TypeRef    rv;
             if( monomorphise_type_needed(ty) ) {
@@ -321,26 +321,26 @@ const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, cons
                 rv = ty.clone();
             }
             return HIR::TypeRef::new_borrow(HIR::BorrowType::Shared, mv$(rv));
-            ),
-        (Function,
+            }
+        TU_ARMA(Function, ve) {
             ::HIR::FunctionType ft;
             ft.is_unsafe = ve->m_unsafe;
             ft.m_abi = ve->m_abi;
-            ft.m_rettype = box$( p.monomorph(this->sp, ve->m_return) );
+            ft.m_rettype = p.monomorph(this->sp, ve->m_return);
             ft.m_arg_types.reserve(ve->m_args.size());
             for(const auto& arg : ve->m_args)
                 ft.m_arg_types.push_back( p.monomorph(this->sp, arg.second) );
             auto rv = ::HIR::TypeRef( mv$(ft) );
             m_resolve.expand_associated_types(this->sp, rv);
             return rv;
-            ),
-        (EnumValue,
+            }
+        TU_ARMA(EnumValue, ve) {
             MIR_BUG(*this, "get_const_type - ItemAddr points to an enum value - " << c);
-            ),
-        (EnumConstructor,
+            }
+        TU_ARMA(EnumConstructor, ve) {
             const auto& data_variant = ve.e->m_data.as_Data()[ve.v];
-            MIR_ASSERT(*this, data_variant.type.m_data.is_Path(), c << " enum variant type must be Path - " << data_variant.type);
-            const auto& dvt_path = data_variant.type.m_data.as_Path();
+            MIR_ASSERT(*this, data_variant.type.data().is_Path(), c << " enum variant type must be Path - " << data_variant.type);
+            const auto& dvt_path = data_variant.type.data().as_Path();
             MIR_ASSERT(*this, dvt_path.binding.is_Struct(), c << " enum variant type path binding must be Struct - " << data_variant.type);
             const auto& str = *dvt_path.binding.as_Struct();
             MIR_ASSERT(*this, str.m_data.is_Tuple(), c << " must point to a tuple-like variant");
@@ -351,7 +351,7 @@ const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, cons
             ft.m_abi = ABI_RUST;
             auto enum_path = e->clone();
             enum_path.m_data.as_Generic().m_path.m_components.pop_back();
-            ft.m_rettype = box$( ::HIR::TypeRef::new_path(mv$(enum_path), ve.e) );
+            ft.m_rettype = ::HIR::TypeRef::new_path(mv$(enum_path), ve.e);
             ft.m_arg_types.reserve(str_data.size());
             for(const auto& fld : str_data)
                 ft.m_arg_types.push_back( p.monomorph(this->sp, fld.ent) );
@@ -359,11 +359,11 @@ const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, cons
             auto rv = ::HIR::TypeRef( mv$(ft) );
             m_resolve.expand_associated_types(this->sp, rv);
             return rv;
-            ),
-        (StructConstant,
+            }
+        TU_ARMA(StructConstant, ve) {
             MIR_BUG(*this, c << " pointing to a struct constant");
-            ),
-        (StructConstructor,
+            }
+        TU_ARMA(StructConstructor, ve) {
             // TODO: Move this to a method on the struct?
             const auto& str = *ve.s;
             MIR_ASSERT(*this, str.m_data.is_Tuple(), c << " must point to a tuple-like struct");
@@ -372,7 +372,7 @@ const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, cons
             ::HIR::FunctionType ft;
             ft.is_unsafe = false;
             ft.m_abi = ABI_RUST;
-            ft.m_rettype = box$( ::HIR::TypeRef::new_path( ::HIR::GenericPath(*ve.p, e->m_data.as_Generic().m_params.clone()), &str) );
+            ft.m_rettype = ::HIR::TypeRef::new_path( ::HIR::GenericPath(*ve.p, e->m_data.as_Generic().m_params.clone()), &str);
             ft.m_arg_types.reserve(str_data.size());
             for(const auto& fld : str_data)
                 ft.m_arg_types.push_back( p.monomorph(this->sp, fld.ent) );
@@ -380,10 +380,10 @@ const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, cons
             auto rv = ::HIR::TypeRef( mv$(ft) );
             m_resolve.expand_associated_types(this->sp, rv);
             return rv;
-            )
-        )
-        )
-    )
+            }
+        }
+        }
+    }
     throw "";
 }
 bool ::MIR::TypeResolve::lvalue_is_copy(const ::MIR::LValue& val) const

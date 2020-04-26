@@ -6,7 +6,7 @@
  * - HIR (De)Serialisation for crate metadata
  */
 // TODO: Have an environment variable that controls if debug is enabled here.
-#define DEBUG_EXTRA_ENABLE && false
+#define DEBUG_EXTRA_ENABLE //&& false
 //#define DISABLE_DEBUG   //  Disable debug for this function - too hot
 #include "hir.hpp"
 #include "main_bindings.hpp"
@@ -25,6 +25,7 @@
     class HirDeserialiser
     {
         RcString m_crate_name;
+        ::std::vector<HIR::TypeRef> m_types;
         ::HIR::serialise::Reader&   m_in;
     public:
         HirDeserialiser(::HIR::serialise::Reader& in):
@@ -875,6 +876,17 @@
     {
         ::HIR::TypeRef  rv;
         TRACE_FUNCTION_FR("", rv);
+
+        auto idx = m_in.read_count();
+        if( idx != ~0u ) {
+            DEBUG("#" << idx << "");
+            rv = m_types.at(idx).clone();
+            return rv;
+        }
+        else {
+            DEBUG("Fresh (=" << m_types.size() << ")");
+        }
+
         switch( auto tag = m_in.read_tag() )
         {
         #define _(x, ...)    case ::HIR::TypeData::TAG_##x: DEBUG("- "#x); rv = ::HIR::TypeRef( ::HIR::TypeData::make_##x( __VA_ARGS__ ) ); break;
@@ -903,11 +915,11 @@
             deserialise_lifetimeref()
             })
         _(Array, {
-            deserialise_ptr< ::HIR::TypeRef>(),
+            deserialise_type(),
             m_in.read_u64c()
             })
         _(Slice, {
-            deserialise_ptr< ::HIR::TypeRef>()
+            deserialise_type()
             })
         _(Tuple,
             deserialise_vec< ::HIR::TypeRef>()
@@ -915,22 +927,23 @@
         _(Borrow, {
             deserialise_lifetimeref(),
             static_cast< ::HIR::BorrowType>( m_in.read_tag() ),
-            deserialise_ptr< ::HIR::TypeRef>()
+            deserialise_type()
             })
         _(Pointer, {
             static_cast< ::HIR::BorrowType>( m_in.read_tag() ),
-            deserialise_ptr< ::HIR::TypeRef>()
+            deserialise_type()
             })
         _(Function, {
             m_in.read_bool(),
             m_in.read_string(),
-            deserialise_ptr< ::HIR::TypeRef>(),
+            deserialise_type(),
             deserialise_vec< ::HIR::TypeRef>()
             })
         #undef _
         default:
             BUG(Span(), "Bad tag for HIR::TypeRef - " << tag);
         }
+        m_types.push_back(rv.clone());
         return rv;
     }
 
@@ -982,7 +995,7 @@
         case 1:
             DEBUG("Inherent");
             return ::HIR::Path( ::HIR::Path::Data::Data_UfcsInherent {
-                box$( deserialise_type() ),
+                deserialise_type(),
                 m_in.read_istring(),
                 deserialise_pathparams(),
                 deserialise_pathparams()
@@ -990,7 +1003,7 @@
         case 2:
             DEBUG("Known");
             return ::HIR::Path( ::HIR::Path::Data::Data_UfcsKnown {
-                box$( deserialise_type() ),
+                deserialise_type(),
                 deserialise_genericpath(),
                 m_in.read_istring(),
                 deserialise_pathparams()

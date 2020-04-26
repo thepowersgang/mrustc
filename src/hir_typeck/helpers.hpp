@@ -14,7 +14,7 @@
 
 static inline bool type_is_unbounded_infer(const ::HIR::TypeRef& ty)
 {
-    if( const auto* te = ty.m_data.opt_Infer() ) {
+    if( const auto* te = ty.data().opt_Infer() ) {
         switch( te->ty_class )
         {
         case ::HIR::InferClass::Integer:    return false;
@@ -113,7 +113,7 @@ public:
 
     ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> callback_resolve_infer() const {
         return [&](const auto& ty)->const auto& {
-                if( ty.m_data.is_Infer() )
+                if( ty.data().is_Infer() )
                     return this->get_type(ty);
                 else
                     return ty;
@@ -121,14 +121,16 @@ public:
     }
 
     // Mutation
-    unsigned int new_ivar();
-    ::HIR::TypeRef new_ivar_tr();
+    unsigned int new_ivar(HIR::InferClass ic = HIR::InferClass::None);
+    ::HIR::TypeRef new_ivar_tr(HIR::InferClass ic = HIR::InferClass::None);
     void set_ivar_to(unsigned int slot, ::HIR::TypeRef type);
     void ivar_unify(unsigned int left_slot, unsigned int right_slot);
 
     // Lookup
     ::HIR::TypeRef& get_type(::HIR::TypeRef& type);
     const ::HIR::TypeRef& get_type(const ::HIR::TypeRef& type) const;
+          ::HIR::TypeRef& get_type(unsigned idx);
+    const ::HIR::TypeRef& get_type(unsigned idx) const;
 
     void check_for_loops();
     void expand_ivars(::HIR::TypeRef& type);

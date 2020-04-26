@@ -87,13 +87,13 @@ namespace HIR {
             return os << e;
             ),
         (UfcsInherent,
-            return os << "<" << *e.type << " /*- " << e.impl_params << "*/>::" << e.item << e.params;
+            return os << "<" << e.type << " /*- " << e.impl_params << "*/>::" << e.item << e.params;
             ),
         (UfcsKnown,
-            return os << "<" << *e.type << " as " << e.trait << ">::" << e.item << e.params;
+            return os << "<" << e.type << " as " << e.trait << ">::" << e.item << e.params;
             ),
         (UfcsUnknown,
-            return os << "<" << *e.type << " as _>::" << e.item << e.params;
+            return os << "<" << e.type << " as _>::" << e.item << e.params;
             )
         )
         return os;
@@ -194,43 +194,43 @@ bool ::HIR::TraitPath::operator==(const ::HIR::TraitPath& x) const
 {
 }
 ::HIR::Path::Path(TypeRef ty, RcString item, PathParams item_params):
-    m_data(Data::make_UfcsInherent({ box$(ty), mv$(item), mv$(item_params) }))
+    m_data(Data::make_UfcsInherent({ mv$(ty), mv$(item), mv$(item_params) }))
 {
 }
 ::HIR::Path::Path(TypeRef ty, GenericPath trait, RcString item, PathParams item_params):
-    m_data( Data::make_UfcsKnown({ box$(mv$(ty)), mv$(trait), mv$(item), mv$(item_params) }) )
+    m_data( Data::make_UfcsKnown({ mv$(ty), mv$(trait), mv$(item), mv$(item_params) }) )
 {
 }
 ::HIR::Path HIR::Path::clone() const
 {
-    TU_MATCH(Data, (m_data), (e),
-    (Generic,
+    TU_MATCH_HDRA((m_data), {)
+    TU_ARMA(Generic, e) {
         return Path( Data::make_Generic(e.clone()) );
-        ),
-    (UfcsInherent,
+        }
+    TU_ARMA(UfcsInherent, e) {
         return Path(Data::make_UfcsInherent({
-            box$( e.type->clone() ),
+            e.type.clone(),
             e.item,
             e.params.clone(),
             e.impl_params.clone()
             }));
-        ),
-    (UfcsKnown,
+        }
+    TU_ARMA(UfcsKnown, e) {
         return Path(Data::make_UfcsKnown({
-            box$( e.type->clone() ),
+            e.type.clone(),
             e.trait.clone(),
             e.item,
             e.params.clone()
             }));
-        ),
-    (UfcsUnknown,
+        }
+    TU_ARMA(UfcsUnknown, e) {
         return Path(Data::make_UfcsUnknown({
-            box$( e.type->clone() ),
+            e.type.clone(),
             e.item,
             e.params.clone()
             }));
-        )
-    )
+        }
+    }
     throw "";
 }
 
@@ -346,35 +346,35 @@ namespace {
 {
     if( this->m_data.tag() != x.m_data.tag() )
         return Compare::Unequal;
-    TU_MATCH(::HIR::Path::Data, (this->m_data, x.m_data), (ple, pre),
-    (Generic,
+    TU_MATCH_HDRA( (this->m_data, x.m_data), {)
+    TU_ARMA(Generic, ple, pre) {
         return ::compare_with_placeholders(sp, ple, pre, resolve_placeholder);
-        ),
-    (UfcsUnknown,
+        }
+    TU_ARMA(UfcsUnknown, ple, pre) {
         if( ple.item != pre.item)
             return Compare::Unequal;
 
         TODO(sp, "Path::compare_with_placeholders - UfcsUnknown");
-        ),
-    (UfcsInherent,
+        }
+    TU_ARMA(UfcsInherent, ple, pre) {
         if( ple.item != pre.item)
             return Compare::Unequal;
         ::HIR::Compare  rv = ::HIR::Compare::Equal;
-        CMP(rv, ple.type->compare_with_placeholders(sp, *pre.type, resolve_placeholder));
+        CMP(rv, ple.type.compare_with_placeholders(sp, pre.type, resolve_placeholder));
         CMP(rv, ::compare_with_placeholders(sp, ple.params, pre.params, resolve_placeholder));
         return rv;
-        ),
-    (UfcsKnown,
+        }
+    TU_ARMA(UfcsKnown, ple, pre) {
         if( ple.item != pre.item)
             return Compare::Unequal;
 
         ::HIR::Compare  rv = ::HIR::Compare::Equal;
-        CMP(rv, ple.type->compare_with_placeholders(sp, *pre.type, resolve_placeholder));
+        CMP(rv, ple.type.compare_with_placeholders(sp, pre.type, resolve_placeholder));
         CMP(rv, ::compare_with_placeholders(sp, ple.trait, pre.trait, resolve_placeholder));
         CMP(rv, ::compare_with_placeholders(sp, ple.params, pre.params, resolve_placeholder));
         return rv;
-        )
-    )
+        }
+    }
     throw "";
 }
 
@@ -386,18 +386,18 @@ Ordering HIR::Path::ord(const ::HIR::Path& x) const
         return ::ord(tpe, xpe);
         ),
     (UfcsInherent,
-        ORD(*tpe.type, *xpe.type);
+        ORD(tpe.type, xpe.type);
         ORD(tpe.item, xpe.item);
         return ::ord(tpe.params, xpe.params);
         ),
     (UfcsKnown,
-        ORD(*tpe.type, *xpe.type);
+        ORD(tpe.type, xpe.type);
         ORD(tpe.trait, xpe.trait);
         ORD(tpe.item, xpe.item);
         return ::ord(tpe.params, xpe.params);
         ),
     (UfcsUnknown,
-        ORD(*tpe.type, *xpe.type);
+        ORD(tpe.type, xpe.type);
         ORD(tpe.item, xpe.item);
         return ::ord(tpe.params, xpe.params);
         )

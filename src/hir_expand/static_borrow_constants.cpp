@@ -349,9 +349,9 @@ namespace {
 
         void visit_type(::HIR::TypeRef& ty) override
         {
-            if( auto* ep = ty.m_data.opt_Array() )
+            if( auto* ep = ty.data_mut().opt_Array() )
             {
-                this->visit_type( *ep->inner );
+                this->visit_type( ep->inner );
                 DEBUG("Array size " << ty);
                 if( ep->size.is_Unevaluated() ) {
                     ExprVisitor_Mutate  ev(m_crate, this->get_new_ty_cb());

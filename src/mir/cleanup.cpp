@@ -116,7 +116,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
         const auto& trait = resolve.m_crate.get_trait_by_path(sp, pe.trait.m_path);
         const auto& trait_cdef = trait.m_values.at(pe.item).as_Constant();
 
-        bool rv = resolve.find_impl(sp, pe.trait.m_path, pe.trait.m_params, *pe.type, [&](auto impl_ref, auto is_fuzz) {
+        bool rv = resolve.find_impl(sp, pe.trait.m_path, pe.trait.m_params, pe.type, [&](auto impl_ref, auto is_fuzz) {
             DEBUG("Found " << impl_ref);
             if( !impl_ref.m_data.is_TraitImpl() )
                 return true;
@@ -125,7 +125,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
             ASSERT_BUG(sp, impl.m_trait_args.m_types.size() == pe.trait.m_params.m_types.size(), "Trait parameter count mismatch " << impl.m_trait_args << " vs " << pe.trait.m_params);
             auto it = impl.m_constants.find(pe.item);
             if( it == impl.m_constants.end() ) {
-                DEBUG("Constant " << pe.item << " missing in trait impl " << pe.trait << " for " << *pe.type);
+                DEBUG("Constant " << pe.item << " missing in trait impl " << pe.trait << " for " << pe.type);
                 return false;
             }
 
@@ -138,7 +138,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
                 {
                     if( impl_ref_e.params[i] )
                         best_impl_params.push_back( impl_ref_e.params[i]->clone() );
-                    else if( ! impl_ref_e.params_ph[i].m_data.is_Generic() )
+                    else if( ! impl_ref_e.params_ph[i].data().is_Generic() )
                         best_impl_params.push_back( impl_ref_e.params_ph[i].clone() );
                     else
                         BUG(sp, "Parameter " << i << " unset");
@@ -156,7 +156,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
         else
         {
             // Obtain `out_ty` by monomorphising the type in the trait.
-            auto monomorph_cb = monomorphise_type_get_cb(sp, &*pe.type, &pe.trait.m_params, nullptr);
+            auto monomorph_cb = monomorphise_type_get_cb(sp, &pe.type, &pe.trait.m_params, nullptr);
             out_ty = monomorphise_type_with(sp, trait_cdef.m_type, monomorph_cb);
             resolve.expand_associated_types(sp, out_ty);
             if( best_impl )
@@ -186,7 +186,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
     TU_ARMA(UfcsInherent, pe) {
         const ::HIR::TypeImpl* best_impl = nullptr;
         // Associated constants (inherent)
-        resolve.m_crate.find_type_impls(*pe.type, [&](const auto& ty)->const auto& { return ty; },
+        resolve.m_crate.find_type_impls(pe.type, [&](const auto& ty)->const auto& { return ty; },
             [&](const auto& impl) {
                 auto it = impl.m_constants.find(pe.item);
                 if( it == impl.m_constants.end() )
@@ -211,7 +211,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
 
 ::MIR::RValue MIR_Cleanup_LiteralToRValue(const ::MIR::TypeResolve& state, MirMutator& mutator, const ::HIR::Literal& lit, ::HIR::TypeRef ty, ::HIR::Path path)
 {
-    TU_MATCH_HDRA( (ty.m_data), {)
+    TU_MATCH_HDRA( (ty.data()), {)
     default:
         if( path == ::HIR::GenericPath() )
             MIR_TODO(state, "Literal of type " << ty << " - " << lit);
@@ -228,7 +228,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
         for(size_t i = 0; i < vals.size(); i ++)
         {
             auto rval = MIR_Cleanup_LiteralToRValue(state, mutator, vals[i], te[i].clone(), ::HIR::GenericPath());
-            lvals.push_back( mutator.in_temporary( mv$(te[i]), mv$(rval)) );
+            lvals.push_back( mutator.in_temporary( HIR::TypeRef(te[i]), mv$(rval)) );
         }
 
         return ::MIR::RValue::make_Tuple({ mv$(lvals) });
@@ -255,8 +255,8 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
         // If all of the literals are the same value, then optimise into a count-based initialisation
         if( is_all_same )
         {
-            auto rval = MIR_Cleanup_LiteralToRValue(state, mutator, vals[0], te.inner->clone(), ::HIR::GenericPath());
-            auto data_lval = mutator.in_temporary(te.inner->clone(), mv$(rval));
+            auto rval = MIR_Cleanup_LiteralToRValue(state, mutator, vals[0], te.inner.clone(), ::HIR::GenericPath());
+            auto data_lval = mutator.in_temporary(te.inner.clone(), mv$(rval));
             return ::MIR::RValue::make_SizedArray({ mv$(data_lval), static_cast<unsigned int>(vals.size()) });
         }
         else
@@ -266,8 +266,8 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
 
             for(const auto& val: vals)
             {
-                auto rval = MIR_Cleanup_LiteralToRValue(state, mutator, val, te.inner->clone(), ::HIR::GenericPath());
-                lvals.push_back( mutator.in_temporary(te.inner->clone(), mv$(rval)) );
+                auto rval = MIR_Cleanup_LiteralToRValue(state, mutator, val, te.inner.clone(), ::HIR::GenericPath());
+                lvals.push_back( mutator.in_temporary(te.inner.clone(), mv$(rval)) );
             }
 
             return ::MIR::RValue::make_Array({ mv$(lvals) });
@@ -380,19 +380,19 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
             const auto& path = *pp;
             auto ptr_val = ::MIR::Constant::make_ItemAddr(box$(path.clone()));
             // TODO: Get the metadata type (for !Sized wrapper types)
-            if( te.inner->m_data.is_Slice() )
+            if( te.inner.data().is_Slice() )
             {
                 ::HIR::TypeRef tmp;
                 const auto& ty = state.get_static_type(tmp, path);
-                MIR_ASSERT(state, ty.m_data.is_Array(), "BorrowOf returning slice not of an array, instead " << ty);
-                const auto& te = ty.m_data.as_Array();
+                MIR_ASSERT(state, ty.data().is_Array(), "BorrowOf returning slice not of an array, instead " << ty);
+                const auto& te = ty.data().as_Array();
                 MIR_ASSERT(state, te.size.is_Known(), "BorrowOf returning slice of unknown-sized array - " << ty);
                 unsigned int size = te.size.as_Known();
 
                 auto size_val = ::MIR::Param( ::MIR::Constant::make_Uint({ size, ::HIR::CoreType::Usize }) );
                 return ::MIR::RValue::make_MakeDst({ ::MIR::Param(mv$(ptr_val)), mv$(size_val) });
             }
-            else if( const auto* tep = te.inner->m_data.opt_TraitObject() )
+            else if( const auto* tep = te.inner.data().opt_TraitObject() )
             {
                 ::HIR::TypeRef tmp;
                 const auto& ty = state.get_static_type(tmp, path);
@@ -412,11 +412,11 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
             const auto& inner_lit = **e;
             // 1. Make a new lvalue for the inner data
             // 2. Borrow that slot
-            if( const auto* tie = te.inner->m_data.opt_Slice() )
+            if( const auto* tie = te.inner.data().opt_Slice() )
             {
                 MIR_ASSERT(state, inner_lit.is_List(), "BorrowData of non-list resulting in &[T]");
                 auto size = inner_lit.as_List().size();
-                auto inner_ty = ::HIR::TypeRef::new_array(tie->inner->clone(), size);
+                auto inner_ty = ::HIR::TypeRef::new_array(tie->inner.clone(), size);
                 auto size_val = ::MIR::Param( ::MIR::Constant::make_Uint({ size, ::HIR::CoreType::Usize }) );
                 auto ptr_ty = ::HIR::TypeRef::new_borrow(te.type, inner_ty.clone());
 
@@ -426,31 +426,31 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
                 auto ptr_val = mutator.in_temporary( mv$(ptr_ty), ::MIR::RValue::make_Borrow({ 0, te.type, mv$(lval) }));
                 return ::MIR::RValue::make_MakeDst({ ::MIR::Param(mv$(ptr_val)), mv$(size_val) });
             }
-            else if( te.inner->m_data.is_TraitObject() )
+            else if( te.inner.data().is_TraitObject() )
             {
                 MIR_BUG(state, "BorrowData returning TraitObject shouldn't be allowed - " << ty << " from " << inner_lit);
             }
             else
             {
-                auto rval = MIR_Cleanup_LiteralToRValue(state, mutator, inner_lit, te.inner->clone(), ::HIR::GenericPath());
-                auto lval = mutator.in_temporary( te.inner->clone(), mv$(rval) );
+                auto rval = MIR_Cleanup_LiteralToRValue(state, mutator, inner_lit, te.inner.clone(), ::HIR::GenericPath());
+                auto lval = mutator.in_temporary( te.inner.clone(), mv$(rval) );
                 return ::MIR::RValue::make_Borrow({ 0, te.type, mv$(lval) });
             }
         }
-        else if( te.inner->m_data.is_Slice() && *te.inner->m_data.as_Slice().inner == ::HIR::CoreType::U8 ) {
+        else if( te.inner.data().is_Slice() && te.inner.data().as_Slice().inner == ::HIR::CoreType::U8 ) {
             ::std::vector<uint8_t>  bytestr;
             for(auto v : lit.as_String())
                 bytestr.push_back( static_cast<uint8_t>(v) );
             return ::MIR::RValue::make_MakeDst({ ::MIR::Constant(mv$(bytestr)), ::MIR::Constant::make_Uint({ lit.as_String().size(), ::HIR::CoreType::Usize }) });
         }
-        else if( te.inner->m_data.is_Array() && *te.inner->m_data.as_Array().inner == ::HIR::CoreType::U8 ) {
+        else if( te.inner.data().is_Array() && te.inner.data().as_Array().inner == ::HIR::CoreType::U8 ) {
             // TODO: How does this differ at codegen to the above?
             ::std::vector<uint8_t>  bytestr;
             for(auto v : lit.as_String())
                 bytestr.push_back( static_cast<uint8_t>(v) );
             return ::MIR::Constant::make_Bytes( mv$(bytestr) );
         }
-        else if( *te.inner == ::HIR::CoreType::Str ) {
+        else if( te.inner == ::HIR::CoreType::Str ) {
             return ::MIR::Constant::make_StaticString( lit.as_String() );
         }
         else {
@@ -507,7 +507,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
 
     ::HIR::TypeRef  tmp;
     const auto& ty = state.get_lvalue_type(tmp, fcn_lval);
-    const auto& receiver = ty.m_data.as_Function().m_arg_types.at(0);
+    const auto& receiver = ty.data().as_Function().m_arg_types.at(0);
     if( state.is_type_owned_box(receiver) )
     {
         // TODO: If the receiver is Box, create a Box<()> as the value.
@@ -517,9 +517,9 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
         struct H {
             static ::MIR::LValue get_unit_ptr(const ::MIR::TypeResolve& state, MirMutator& mutator, ::HIR::TypeRef ty, ::MIR::LValue lv)
             {
-                if( ty.m_data.is_Path() )
+                if( ty.data().is_Path() )
                 {
-                    const auto& te = ty.m_data.as_Path();
+                    const auto& te = ty.data().as_Path();
                     MIR_ASSERT(state, te.binding.is_Struct(), "");
                     const auto& ty_path = te.path.m_data.as_Generic();
                     const auto& str = *te.binding.as_Struct();
@@ -556,7 +556,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
                     auto new_path = ty_path.clone();
                     return mutator.in_temporary( mv$(ty), ::MIR::RValue::make_Struct({ mv$(new_path), mv$(vals) }) );
                 }
-                else if( ty.m_data.is_Pointer() )
+                else if( ty.data().is_Pointer() )
                 {
                     return mutator.in_temporary(
                         ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, ::HIR::TypeRef::new_unit()),
@@ -590,7 +590,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
         ::MIR::Param& out_meta_val, ::HIR::TypeRef& out_meta_ty, bool& out_src_is_dst
         )
 {
-    TU_MATCH_HDRA( (dst_ty.m_data), { )
+    TU_MATCH_HDRA( (dst_ty.data()), { )
     default:
         MIR_TODO(state, "Obtain metadata converting to " << dst_ty);
     TU_ARMA(Generic, de) {
@@ -602,8 +602,8 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
         if( de.binding.is_Opaque() )
             return false;
 
-        MIR_ASSERT(state, src_ty.m_data.is_Path(), "Unsize to path from non-path - " << src_ty);
-        const auto& se = src_ty.m_data.as_Path();
+        MIR_ASSERT(state, src_ty.data().is_Path(), "Unsize to path from non-path - " << src_ty);
+        const auto& se = src_ty.data().as_Path();
         MIR_ASSERT(state, de.binding.tag() == se.binding.tag(), "Unsize between mismatched types - " << dst_ty << " and " << src_ty);
         MIR_ASSERT(state, de.binding.is_Struct(), "Unsize to non-struct - " << dst_ty);
         MIR_ASSERT(state, de.binding.as_Struct() == se.binding.as_Struct(), "Unsize between mismatched types - " << dst_ty << " and " << src_ty);
@@ -637,14 +637,14 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
         }
     TU_ARMA(Slice, de) {
         // Source must be an array (or generic)
-        if( src_ty.m_data.is_Array() )
+        if( src_ty.data().is_Array() )
         {
-            const auto& in_array = src_ty.m_data.as_Array();
+            const auto& in_array = src_ty.data().as_Array();
             out_meta_ty = ::HIR::CoreType::Usize;
             out_meta_val = ::MIR::Constant::make_Uint({ in_array.size.as_Known(), ::HIR::CoreType::Usize });
             return true;
         }
-        else if( src_ty.m_data.is_Generic() || (src_ty.m_data.is_Path() && src_ty.m_data.as_Path().binding.is_Opaque()) )
+        else if( src_ty.data().is_Generic() || (src_ty.data().is_Path() && src_ty.data().as_Path().binding.is_Opaque()) )
         {
             // HACK: FixedSizeArray uses `A: Unsize<[T]>` which will lead to the above code not working (as the size isn't known).
             // - Maybe _Meta on the `&A` would work as a stopgap (since A: Sized, it won't collide with &[T] or similar)
@@ -695,7 +695,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
             out_meta_ty = ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, mv$(vtable_type));
 
             // If the data trait hasn't changed, return the vtable pointer
-            if( src_ty.m_data.is_TraitObject() )
+            if( src_ty.data().is_TraitObject() )
             {
                 out_src_is_dst = true;
                 out_meta_val = mutator.in_temporary( out_meta_ty.clone(), ::MIR::RValue::make_DstMeta({ ptr_value.clone() }) );
@@ -716,7 +716,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
 
 ::MIR::RValue MIR_Cleanup_Unsize(const ::MIR::TypeResolve& state, MirMutator& mutator, const ::HIR::TypeRef& dst_ty, const ::HIR::TypeRef& src_ty_inner, ::MIR::LValue ptr_value)
 {
-    const auto& dst_ty_inner = (dst_ty.m_data.is_Borrow() ? *dst_ty.m_data.as_Borrow().inner : *dst_ty.m_data.as_Pointer().inner);
+    const auto& dst_ty_inner = (dst_ty.data().is_Borrow() ? dst_ty.data().as_Borrow().inner : dst_ty.data().as_Pointer().inner);
 
     ::HIR::TypeRef  meta_type;
     ::MIR::Param   meta_value;
@@ -748,11 +748,11 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
     TRACE_FUNCTION_F(dst_ty << " <- " << src_ty << " ( " << value << " )");
     //  > Path -> Path = Unsize
     // (path being destination is otherwise invalid)
-    if( dst_ty.m_data.is_Path() )
+    if( dst_ty.data().is_Path() )
     {
-        MIR_ASSERT(state, src_ty.m_data.is_Path(), "CoerceUnsized to Path must have a Path source - " << src_ty << " to " << dst_ty);
-        const auto& dte = dst_ty.m_data.as_Path();
-        const auto& ste = src_ty.m_data.as_Path();
+        MIR_ASSERT(state, src_ty.data().is_Path(), "CoerceUnsized to Path must have a Path source - " << src_ty << " to " << dst_ty);
+        const auto& dte = dst_ty.data().as_Path();
+        const auto& ste = src_ty.data().as_Path();
 
         // - Types must differ only by a single field, and be from the same definition
         MIR_ASSERT(state, dte.binding.is_Struct(), "Note, can't CoerceUnsized non-structs");
@@ -791,7 +791,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
                 {
                     auto ty_d = monomorphise_type_with(state.sp, se[i].ent, monomorph_cb_d, false);
 
-                    auto new_rval = ::MIR::RValue::make_Struct({ ty_d.m_data.as_Path().path.m_data.as_Generic().clone(), {} });
+                    auto new_rval = ::MIR::RValue::make_Struct({ ty_d.data().as_Path().path.m_data.as_Generic().clone(), {} });
                     auto new_lval = mutator.in_temporary( mv$(ty_d), mv$(new_rval) );
 
                     ents.push_back( mv$(new_lval) );
@@ -821,7 +821,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
                 {
                     auto ty_d = monomorphise_type_with(state.sp, se[i].second.ent, monomorph_cb_d, false);
 
-                    auto new_rval = ::MIR::RValue::make_Struct({ ty_d.m_data.as_Path().path.m_data.as_Generic().clone(), {} });
+                    auto new_rval = ::MIR::RValue::make_Struct({ ty_d.data().as_Path().path.m_data.as_Generic().clone(), {} });
                     auto new_lval = mutator.in_temporary( mv$(ty_d), mv$(new_rval) );
 
                     ents.push_back( mv$(new_lval) );
@@ -836,28 +836,28 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
         return ::MIR::RValue::make_Struct({ dte.path.m_data.as_Generic().clone(), mv$(ents) });
     }
 
-    if( dst_ty.m_data.is_Borrow() )
+    if( dst_ty.data().is_Borrow() )
     {
-        MIR_ASSERT(state, src_ty.m_data.is_Borrow(), "CoerceUnsized to Borrow must have a Borrow source - " << src_ty << " to " << dst_ty);
-        const auto& ste = src_ty.m_data.as_Borrow();
+        MIR_ASSERT(state, src_ty.data().is_Borrow(), "CoerceUnsized to Borrow must have a Borrow source - " << src_ty << " to " << dst_ty);
+        const auto& ste = src_ty.data().as_Borrow();
 
-        return MIR_Cleanup_Unsize(state, mutator, dst_ty, *ste.inner, mv$(value));
+        return MIR_Cleanup_Unsize(state, mutator, dst_ty, ste.inner, mv$(value));
     }
 
     // Pointer Coercion - Downcast and unsize
-    if( dst_ty.m_data.is_Pointer() )
+    if( dst_ty.data().is_Pointer() )
     {
-        MIR_ASSERT(state, src_ty.m_data.is_Pointer(), "CoerceUnsized to Pointer must have a Pointer source - " << src_ty << " to " << dst_ty);
-        const auto& dte = dst_ty.m_data.as_Pointer();
-        const auto& ste = src_ty.m_data.as_Pointer();
+        MIR_ASSERT(state, src_ty.data().is_Pointer(), "CoerceUnsized to Pointer must have a Pointer source - " << src_ty << " to " << dst_ty);
+        const auto& dte = dst_ty.data().as_Pointer();
+        const auto& ste = src_ty.data().as_Pointer();
 
         if( dte.type == ste.type )
         {
-            return MIR_Cleanup_Unsize(state, mutator, dst_ty, *ste.inner, mv$(value));
+            return MIR_Cleanup_Unsize(state, mutator, dst_ty, ste.inner, mv$(value));
         }
         else
         {
-            MIR_ASSERT(state, *dte.inner == *ste.inner, "TODO: Can pointer CoerceUnsized unsize? " << src_ty << " to " << dst_ty);
+            MIR_ASSERT(state, dte.inner == ste.inner, "TODO: Can pointer CoerceUnsized unsize? " << src_ty << " to " << dst_ty);
             MIR_ASSERT(state, dte.type < ste.type, "CoerceUnsize attempting to raise pointer type");
 
             return ::MIR::RValue::make_Cast({ mv$(value), dst_ty.clone() });
@@ -899,9 +899,9 @@ void MIR_Cleanup_LValue(const ::MIR::TypeResolve& state, MirMutator& mutator, ::
             // > Dumb idea, assume it's always the first field. Keep accessing until located.
 
             const auto* typ = &ty;
-            while( typ->m_data.is_Path() )
+            while( typ->data().is_Path() )
             {
-                const auto& te = typ->m_data.as_Path();
+                const auto& te = typ->data().as_Path();
                 MIR_ASSERT(state, te.binding.is_Struct(), "Box contained a non-struct");
                 const auto& str = *te.binding.as_Struct();
                 const ::HIR::TypeRef* ty_tpl = nullptr;
@@ -923,7 +923,7 @@ void MIR_Cleanup_LValue(const ::MIR::TypeResolve& state, MirMutator& mutator, ::
 
                 num_injected_fld_zeros ++;
             }
-            MIR_ASSERT(state, typ->m_data.is_Pointer(), "First non-path field in Box wasn't a pointer - " << *typ);
+            MIR_ASSERT(state, typ->data().is_Pointer(), "First non-path field in Box wasn't a pointer - " << *typ);
             // We have reached the pointer. Good.
 
             // Inject all of the field zero accesses (before the deref)
@@ -1006,11 +1006,13 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
 
             // >> Detect use of `!` as a value
             ::HIR::TypeRef  tmp;
-            if( TU_TEST1(stmt, Assign, .src.is_Borrow()) && state.get_lvalue_type(tmp, stmt.as_Assign().src.as_Borrow().val).m_data.is_Diverge() )
+            if( TU_TEST1(stmt, Assign, .src.is_Borrow()) && state.get_lvalue_type(tmp, stmt.as_Assign().src.as_Borrow().val).data().is_Diverge() )
+            {
                 DEBUG(state << "Not killing block due to use of `!`, it's being borrowed");
+            }
             else
             {
-                if( ::MIR::visit::visit_mir_lvalues(stmt, [&](const auto& lv, auto /*vu*/){ return state.get_lvalue_type(tmp, lv).m_data.is_Diverge();}) )
+                if( ::MIR::visit::visit_mir_lvalues(stmt, [&](const auto& lv, auto /*vu*/){ return state.get_lvalue_type(tmp, lv).data().is_Diverge();}) )
                 {
                     DEBUG(state << "Truncate entire block due to use of `!` as a value - " << stmt);
                     block.statements.erase(it, block.statements.end());
@@ -1068,16 +1070,16 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                     ::HIR::TypeRef  tmp;
                     const auto& ty = state.get_lvalue_type(tmp, re.val);
                     const ::HIR::TypeRef* ity_p;
-                    if( const auto* te = ty.m_data.opt_Borrow() ) {
-                        ity_p = &*te->inner;
+                    if( const auto* te = ty.data().opt_Borrow() ) {
+                        ity_p = &te->inner;
                     }
-                    else if( const auto* te = ty.m_data.opt_Pointer() ) {
-                        ity_p = &*te->inner;
+                    else if( const auto* te = ty.data().opt_Pointer() ) {
+                        ity_p = &te->inner;
                     }
                     else {
                         BUG(Span(), "Unexpected input type for DstMeta - " << ty);
                     }
-                    if( const auto* te = ity_p->m_data.opt_Array() ) {
+                    if( const auto* te = ity_p->data().opt_Array() ) {
                         se.src = ::MIR::Constant::make_Uint({ te->size.as_Known(), ::HIR::CoreType::Usize });
                     }
                     }
@@ -1145,7 +1147,7 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                     const auto& src_ty = state.get_lvalue_type(tmp, e->val);
                     // TODO: Unsize and CoerceUnsized operations
                     // - Unsize should create a fat pointer if the pointer class is known (vtable or len)
-                    if( auto* te = e->type.m_data.opt_Borrow() )
+                    if( auto* te = e->type.data().opt_Borrow() )
                     {
                         //  > & -> & = Unsize, create DST based on the pointer class of the destination.
                         // (&-ptr being destination is otherwise invalid)
@@ -1153,9 +1155,9 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                         se.src = MIR_Cleanup_CoerceUnsized(state, mutator, e->type, src_ty, mv$(e->val));
                     }
                     // - CoerceUnsized should re-create the inner type if known.
-                    else if(const auto* dte = e->type.m_data.opt_Path())
+                    else if(const auto* dte = e->type.data().opt_Path())
                     {
-                        if(const auto* ste = src_ty.m_data.opt_Path())
+                        if(const auto* ste = src_ty.data().opt_Path())
                         {
                             ASSERT_BUG( sp, !dte->binding.is_Unbound(), "" );
                             ASSERT_BUG( sp, !ste->binding.is_Unbound(), "" );
@@ -1167,7 +1169,7 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                             }
                         }
                         else {
-                            ASSERT_BUG( sp, src_ty.m_data.is_Generic(), "Cast to Path from " << src_ty );
+                            ASSERT_BUG( sp, src_ty.data().is_Generic(), "Cast to Path from " << src_ty );
                         }
                     }
                     else {
@@ -1221,16 +1223,16 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
             {
                 auto& path = *path_p;
                 // Detect calling `<Trait as Trait>::method()` and replace with vtable call
-                if( path.m_data.is_UfcsKnown() && path.m_data.as_UfcsKnown().type->m_data.is_TraitObject() )
+                if( path.m_data.is_UfcsKnown() && path.m_data.as_UfcsKnown().type.data().is_TraitObject() )
                 {
                     const auto& pe = path.m_data.as_UfcsKnown();
-                    const auto& te = pe.type->m_data.as_TraitObject();
+                    const auto& te = pe.type.data().as_TraitObject();
                     // TODO: What if the method is from a supertrait?
 
                     if( te.m_trait.m_path == pe.trait || resolve.find_named_trait_in_trait(
                             sp, pe.trait.m_path, pe.trait.m_params,
                             *te.m_trait.m_trait_ptr, te.m_trait.m_path.m_path, te.m_trait.m_path.m_params,
-                            *pe.type,
+                            pe.type,
                             [](const auto&, auto){}
                             )
                         )
@@ -1240,10 +1242,10 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                     }
                 }
 
-                if( path.m_data.is_UfcsKnown() && path.m_data.as_UfcsKnown().type->m_data.is_Function() )
+                if( path.m_data.is_UfcsKnown() && path.m_data.as_UfcsKnown().type.data().is_Function() )
                 {
                     const auto& pe = path.m_data.as_UfcsKnown();
-                    const auto& fcn_ty = pe.type->m_data.as_Function();
+                    const auto& fcn_ty = pe.type.data().as_Function();
                     if( pe.trait.m_path == resolve.m_lang_Fn || pe.trait.m_path == resolve.m_lang_FnMut || pe.trait.m_path == resolve.m_lang_FnOnce )
                     {
                         MIR_ASSERT(state, e.args.size() == 2, "Fn* call requires two arguments");

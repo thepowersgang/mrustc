@@ -13,6 +13,7 @@
 #include <hir/path.hpp>
 #include <hir/expr_ptr.hpp>
 #include <span.hpp>
+#include "type_ref.hpp"
 
 /// Binding index for a Generic that indicates "Self"
 #define GENERIC_Self    0xFFFF
@@ -29,14 +30,6 @@ class Enum;
 struct ExprNode_Closure;
 
 class TypeRef;
-
-enum class InferClass
-{
-    None,
-    Diverge,
-    Integer,
-    Float,
-};
 
 enum class CoreType
 {
@@ -145,14 +138,6 @@ struct LifetimeRef
     }
 };
 
-struct FunctionType
-{
-    bool    is_unsafe;
-    ::std::string   m_abi;
-    ::std::unique_ptr<TypeRef>  m_rettype;
-    ::std::vector<TypeRef>  m_arg_types;
-};
-
 /// Array size used for types AND array literals
 TAGGED_UNION_EX(ArraySize, (), Unevaluated, (
     /// Un-evaluated size (still an expression)
@@ -190,6 +175,15 @@ TAGGED_UNION_EX(TypePathBinding, (), Unbound, (
         bool operator!=(const TypePathBinding& x) const { return !(*this == x); }
     )
     );
+
+
+struct FunctionType
+{
+    bool    is_unsafe;
+    ::std::string   m_abi;
+    TypeRef m_rettype;
+    ::std::vector<TypeRef>  m_arg_types;
+};
 
 TAGGED_UNION(TypeData, Diverge,
     (Infer, struct {
@@ -244,106 +238,31 @@ TAGGED_UNION(TypeData, Diverge,
         ::HIR::LifetimeRef  m_lifetime;
         }),
     (Array, struct {
-        ::std::unique_ptr<TypeRef>  inner;
+        TypeRef inner;
         ArraySize  size;
         }),
     (Slice, struct {
-        ::std::unique_ptr<TypeRef>  inner;
+        TypeRef inner;
         }),
     (Tuple, ::std::vector<TypeRef>),
     (Borrow, struct {
         ::HIR::LifetimeRef  lifetime;
         ::HIR::BorrowType   type;
-        ::std::unique_ptr<TypeRef>  inner;
+        TypeRef inner;
         }),
     (Pointer, struct {
         ::HIR::BorrowType   type;
-        ::std::unique_ptr<TypeRef>  inner;
+        TypeRef inner;
         }),
     (Function, FunctionType),   // TODO: Pointer wrap
     (Closure, struct {
         const ::HIR::ExprNode_Closure*  node;
-        ::std::unique_ptr<TypeRef>  m_rettype;
+        TypeRef m_rettype;
         ::std::vector<TypeRef>  m_arg_types;
         })
     );
 
-#if 0
-class Type;
-class TypeRef
-{
-    const Type* m_ptr;
-    TypeRef(Type::Data d):
-        m_ptr(new Type(d))
-    {
-    }
-public:
-    TypeRef():
-        TypeRef(Type::Data::make_Infer({ ~0u, InferClass::None }))
-    {
-    }
-    explicit TypeRef(const TypeRef& x):
-        m_ptr(x.m_ptr)
-    {
-        x.m_ptr.m_refcount += 1;
-    }
-    TypeRef(TypeRef&& x):
-        m_ptr(x.m_ptr)
-    {
-        x.m_ptr = nullptr;
-    }
-    ~TypeRef()
-    {
-        if(x.m_ptr)
-        {
-            x.m_ptr.m_refcount -= 1;
-            if(x.m_ptr.m_refcount == 0)
-            {
-                delete x.m_ptr;
-                x.m_ptr = nullptr;
-            }
-        }
-    }
-
-    const Type::Data& operator*() const { return m_ptr->m_data; }
-    const Type::Data* operator->() const { return &m_ptr->m_data; }
-
-    static TypeRef new_unit() {
-        return TypeRef(Type::Data::make_Tuple({}));
-    }
-    static TypeRef new_diverge() {
-        return TypeRef(Type::Data::make_Diverge({}));
-    }
-    static TypeRef new_infer(unsigned int idx = ~0u, InferClass ty_class = InferClass::None) {
-        return TypeRef(Data::make_Infer({idx, ty_class}));
-    }
-    static TypeRef new_borrow(BorrowType bt, TypeRef inner) {
-        return TypeRef(Data::make_Borrow({ ::HIR::LifetimeRef(), bt, mv$(inner) }));
-    }
-    static TypeRef new_pointer(BorrowType bt, TypeRef inner) {
-        return TypeRef(Data::make_Pointer({bt, mv$(inner)}));
-    }
-    static TypeRef new_slice(TypeRef inner) {
-        return TypeRef(Data::make_Slice({mv$(inner)}));
-    }
-    static TypeRef new_array(TypeRef inner, uint64_t size) {
-        assert(size != ~0u);
-        return TypeRef(Data::make_Array({mv$(inner), size}));
-    }
-    static TypeRef new_array(TypeRef inner, ::HIR::ExprPtr size_expr) {
-        return TypeRef(Data::make_Array({mv$(inner), std::make_shared<HIR::ExprPtr>(mv$(size_expr)) }));
-    }
-    static TypeRef new_path(::HIR::Path path, TypePathBinding binding) {
-        return TypeRef(Data::make_Path({ mv$(path), mv$(binding) }));
-    }
-    static TypeRef new_closure(::HIR::ExprNode_Closure* node_ptr, ::std::vector< ::HIR::TypeRef> args, ::HIR::TypeRef rv) {
-        return TypeRef(Data::make_Closure({ node_ptr, mv$(rv), mv$(args) }));
-    }
-
-    TypeRef clone() const;
-    void fmt(::std::ostream& os) const;
-};
-class Type
+class TypeInner
 {
     friend class TypeRef;
 public:
@@ -352,16 +271,109 @@ public:
 private:
     unsigned    m_refcount;
 public:
-    Data   m_data;
+    TypeData   m_data;
 private:
-    Type(Data d):
+    TypeInner(TypeData d):
         m_refcount(1),
-        m_data(d)
+        m_data(mv$(d))
     {
     }
 };
-#endif
 
+inline TypeRef::TypeRef():
+    TypeRef(TypeData::make_Infer({ ~0u, InferClass::None }))
+{
+}
+inline TypeRef::TypeRef(TypeData d):
+    m_ptr(new TypeInner(mv$(d)))
+{
+}
+inline TypeRef::TypeRef(const TypeRef& x):
+    m_ptr(x.m_ptr)
+{
+    x.m_ptr->m_refcount += 1;
+}
+inline TypeRef::~TypeRef()
+{
+    if(m_ptr)
+    {
+        m_ptr->m_refcount -= 1;
+        if(m_ptr->m_refcount == 0)
+        {
+            delete m_ptr;
+            m_ptr = nullptr;
+        }
+    }
+}
+inline const TypeData& TypeRef::data() const { assert(m_ptr); return m_ptr->m_data; }
+inline TypeData& TypeRef::data_mut() { assert(m_ptr); return m_ptr->m_data; }
+inline TypeData& TypeRef::get_unique() { assert(m_ptr); if(m_ptr->m_refcount != 1) *this = this->clone_shallow(); return m_ptr->m_data; }
+
+
+inline TypeRef::TypeRef(::HIR::CoreType ct):
+    TypeRef( TypeData::make_Primitive(mv$(ct)) )
+{}
+inline TypeRef::TypeRef(RcString name, unsigned int slot):
+    TypeRef( TypeData::make_Generic({ mv$(name), slot }) )
+{}
+inline TypeRef::TypeRef(::std::vector< ::HIR::TypeRef> sts):
+    TypeRef( TypeData::make_Tuple(mv$(sts)) )
+{}
+inline TypeRef::TypeRef(FunctionType ft):
+    TypeRef( TypeData::make_Function(mv$(ft)) )
+{
+}
+
+inline TypeRef TypeRef::new_unit() {
+    return TypeRef(TypeData::make_Tuple({}));
+}
+inline TypeRef TypeRef::new_diverge() {
+    return TypeRef(TypeData::make_Diverge({}));
+}
+inline TypeRef TypeRef::new_infer(unsigned int idx /*= ~0u*/, InferClass ty_class /*= InferClass::None*/) {
+    return TypeRef(TypeData::make_Infer({idx, ty_class}));
+}
+inline TypeRef TypeRef::new_borrow(BorrowType bt, TypeRef inner) {
+    return TypeRef(TypeData::make_Borrow({ ::HIR::LifetimeRef(), bt, mv$(inner) }));
+}
+inline TypeRef TypeRef::new_pointer(BorrowType bt, TypeRef inner) {
+    return TypeRef(TypeData::make_Pointer({bt, mv$(inner)}));
+}
+inline TypeRef TypeRef::new_slice(TypeRef inner) {
+    return TypeRef(TypeData::make_Slice({mv$(inner)}));
+}
+inline TypeRef TypeRef::new_array(TypeRef inner, uint64_t size) {
+    assert(size != ~0u);
+    return TypeRef(TypeData::make_Array({mv$(inner), size}));
+}
+inline TypeRef TypeRef::new_array(TypeRef inner, ::HIR::ExprPtr size_expr) {
+    return TypeRef(TypeData::make_Array({mv$(inner), std::make_shared<HIR::ExprPtr>(mv$(size_expr)) }));
+}
+inline TypeRef TypeRef::new_path(::HIR::Path path, TypePathBinding binding) {
+    return TypeRef(TypeData::make_Path({ mv$(path), mv$(binding) }));
+}
+inline TypeRef TypeRef::new_closure(::HIR::ExprNode_Closure* node_ptr, ::std::vector< ::HIR::TypeRef> args, ::HIR::TypeRef rv) {
+    return TypeRef(TypeData::make_Closure({ node_ptr, mv$(rv), mv$(args) }));
+}
+inline const ::HIR::SimplePath* TypeRef::get_sort_path() const {
+    // - Generic paths get sorted
+    if( TU_TEST1(this->data(), Path, .path.m_data.is_Generic()) )
+    {
+        return &this->data().as_Path().path.m_data.as_Generic().m_path;
+    }
+    // - So do trait objects
+    else if( this->data().is_TraitObject() )
+    {
+        return &this->data().as_TraitObject().m_trait.m_path.m_path;
+    }
+    else
+    {
+        // Keep as nullptr, will search primitive list
+        return nullptr;
+    }
+}
+
+#if 0
 // TODO: Convert to a shared_ptr (or interior RC)
 // - How to handle resolution actions? (Replacing generics)
 class TypeRef
@@ -464,6 +476,7 @@ public:
         }
     }
 };
+#endif
 
 extern ::std::ostream& operator<<(::std::ostream& os, const ::HIR::TypeRef& ty);
 

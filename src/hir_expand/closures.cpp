@@ -68,7 +68,7 @@ namespace {
                 assert(impl.second.m_types.empty());
                 assert(impl.second.m_constants.empty());
                 // NOTE: This should always have a name
-                const auto& path = impl.second.m_type.m_data.as_Path().path.m_data.as_Generic().m_path;
+                const auto& path = impl.second.m_type.data().as_Path().path.m_data.as_Generic().m_path;
                 DEBUG("Adding type impl " << path);
                 auto* list_it = &crate.m_type_impls.named[path];
                 list_it->push_back(box$(::HIR::TypeImpl {
@@ -137,7 +137,9 @@ namespace {
         }
 
         void visit_type(::HIR::TypeRef& ty) override {
-            if( ty.m_data.is_Generic() ) {
+            ty = monomorphise_type_with(Span(), ty, m_monomorph_cb, true);
+#if 0
+            if( ty.data().is_Generic() ) {
                 auto n = m_monomorph_cb(ty).clone();
                 DEBUG(ty << " -> " << n);
                 ty = mv$(n);
@@ -145,6 +147,7 @@ namespace {
             else {
                 ::HIR::ExprVisitorDef::visit_type(ty);
             }
+#endif
         }
 
         void visit_node_ptr(::HIR::ExprNodeP& node_ptr) override {
@@ -214,7 +217,7 @@ namespace {
         ::HIR::ExprNodeP get_self(const Span& sp) const
         {
             ::HIR::ExprNodeP    self;
-            switch( m_closure_type.m_data.as_Closure().node->m_class )
+            switch( m_closure_type.data().as_Closure().node->m_class )
             {
             case ::HIR::ExprNode_Closure::Class::Unknown:
                 // Assume it's NoCapture
@@ -259,7 +262,7 @@ namespace {
         }
 
         static void fix_type(const ::HIR::Crate& crate, const Span& sp, t_cb_generic monomorph_cb, ::HIR::TypeRef& ty) {
-            if( const auto* e = ty.m_data.opt_Closure() )
+            if( const auto* e = ty.data().opt_Closure() )
             {
                 DEBUG("Closure: " << e->node->m_obj_path_base);
                 auto path = monomorphise_genericpath_with(sp, e->node->m_obj_path_base, monomorph_cb, false);
@@ -268,7 +271,7 @@ namespace {
                 ty = ::HIR::TypeRef::new_path( mv$(path), ::HIR::TypePathBinding::make_Struct(&str) );
             }
 
-            if( auto* e = ty.m_data.opt_Path() )
+            if( auto* e = ty.data_mut().opt_Path() )
             {
                 if( e->binding.is_Unbound() && e->path.m_data.is_UfcsKnown() )
                 {
@@ -302,17 +305,17 @@ namespace {
         {
             const Span& sp = node.span();
             // Handle casts from closures to function pointers
-            if( node.m_value->m_res_type.m_data.is_Closure() )
+            if( node.m_value->m_res_type.data().is_Closure() )
             {
-                const auto& src_te = node.m_value->m_res_type.m_data.as_Closure();
-                ASSERT_BUG(sp, node.m_res_type.m_data.is_Function(), "Cannot convert closure to non-fn type");
+                const auto& src_te = node.m_value->m_res_type.data().as_Closure();
+                ASSERT_BUG(sp, node.m_res_type.data().is_Function(), "Cannot convert closure to non-fn type");
                 //const auto& dte = node.m_res_type.m_data.as_Function();
                 if( src_te.node->m_class != ::HIR::ExprNode_Closure::Class::NoCapture )
                 {
                     ERROR(sp, E0000, "Cannot cast a closure with captures to a fn() type");
                 }
 
-                ::HIR::FunctionType    fcn_ty_inner { /*is_unsafe=*/false, ABI_RUST, box$(src_te.node->m_return.clone()), {} };
+                ::HIR::FunctionType    fcn_ty_inner { /*is_unsafe=*/false, ABI_RUST, src_te.node->m_return.clone(), {} };
                 ::std::vector<::HIR::TypeRef>   arg_types;
                 fcn_ty_inner.m_arg_types.reserve(src_te.node->m_args.size());
                 arg_types.reserve(src_te.node->m_args.size());
@@ -336,7 +339,7 @@ namespace {
 
         void visit(::HIR::ExprNode_CallValue& node) override
         {
-            if( const auto* e = node.m_value->m_res_type.m_data.opt_Closure() )
+            if( const auto* e = node.m_value->m_res_type.data().opt_Closure() )
             {
                 switch(e->node->m_class)
                 {
@@ -654,19 +657,19 @@ namespace {
             DEBUG("params_placeholders = " << params_placeholders << ", ofs_item = " << ofs_item << ", ofs_impl = " << ofs_impl);
 
             auto monomorph_cb = [&](const auto& ty)->const ::HIR::TypeRef& {
-                const auto& ge = ty.m_data.as_Generic();
+                const auto& ge = ty.data().as_Generic();
                 if( ge.binding == 0xFFFF ) {
                     return params_placeholders.at(0);
                 }
                 else if( ge.binding < 256 ) {
-                    auto idx = ge.binding;
-                    ASSERT_BUG(sp, ofs_impl + idx < params_placeholders.size(), "Impl generic binding OOR - " << ty << " (" << ofs_impl + idx << " !< " << params_placeholders.size() << ")");
-                    return params_placeholders.at(ofs_impl + idx);
+                    auto idx = ofs_impl + ge.binding;
+                    ASSERT_BUG(sp, idx < params_placeholders.size(), "Impl generic binding OOR - " << ty << " (" << idx << " !< " << params_placeholders.size() << ")");
+                    return params_placeholders.at(idx);
                 }
                 else if( ge.binding < 2*256 ) {
-                    auto idx = ge.binding - 256;
-                    ASSERT_BUG(sp, ofs_item + idx < params_placeholders.size(), "Item generic binding OOR - " << ty << " (" << ofs_item + idx << " !< " << params_placeholders.size() << ")");
-                    return params_placeholders.at(ofs_item + idx);
+                    auto idx = ofs_item + (ge.binding - 256);
+                    ASSERT_BUG(sp, idx < params_placeholders.size(), "Item generic binding OOR - " << ty << " (" << idx << " !< " << params_placeholders.size() << ")");
+                    return params_placeholders.at(idx);
                 }
                 else {
                     BUG(sp, "Generic type " << ty << " unknown");
@@ -674,10 +677,10 @@ namespace {
                 };
             auto monomorph = [&](const auto& ty){ return monomorphise_type_with(sp, ty, monomorph_cb); };
             auto cb_replace = [&](const auto& tpl, auto& rv)->bool {
-                if( tpl.m_data.is_Infer() ) {
+                if( tpl.data().is_Infer() ) {
                     BUG(sp, "");
                 }
-                else if( tpl.m_data.is_Generic() ) {
+                else if( tpl.data().is_Generic() ) {
                     rv = monomorph_cb(tpl).clone();
                     return true;
                 }
@@ -875,7 +878,7 @@ namespace {
                             const ::HIR::TypeRef& ret_type
                             )
                     {
-                        const auto& args_tup_inner = args_ty.m_data.as_Tuple();
+                        const auto& args_tup_inner = args_ty.data().as_Tuple();
                         // 1. Create a list of `arg.0, arg.1, arg.2, ...` for the dispatch methods
                         ::std::vector<HIR::ExprNodeP> dispatch_args;
                         ::std::vector<HIR::TypeRef> dispatch_node_args_cache;
@@ -889,7 +892,7 @@ namespace {
                         }
                         dispatch_node_args_cache.push_back( ret_type.clone() );
                         auto path = ::HIR::Path(closure_type.clone(), RcString::new_interned("call_free"));
-                        path.m_data.as_UfcsInherent().impl_params = closure_type.m_data.as_Path().path.m_data.as_Generic().m_params.clone();
+                        path.m_data.as_UfcsInherent().impl_params = closure_type.data().as_Path().path.m_data.as_Generic().m_params.clone();
                         HIR::ExprNodeP  dispatch_node = NEWNODE(ret_type.clone(), CallPath, sp,
                                 mv$(path),
                                 mv$(dispatch_args)
@@ -929,7 +932,7 @@ namespace {
                 {
                     args_split.push_back(::std::make_pair(
                             mv$( args_pat.m_data.as_Tuple().sub_patterns[i] ),
-                            mv$( args_ty.m_data.as_Tuple()[i] )
+                            mv$( args_ty.data().as_Tuple()[i] )
                             ));
                 }
                 // - Create fn_free free method
@@ -1055,9 +1058,9 @@ namespace {
                 TRACE_FUNCTION_F("_CallValue");
                 if( node.m_trait_used == ::HIR::ExprNode_CallValue::TraitUsed::Unknown )
                 {
-                    if( fcn_ty.m_data.is_Closure() )
+                    if( fcn_ty.data().is_Closure() )
                     {
-                        const auto& cn = *fcn_ty.m_data.as_Closure().node;
+                        const auto& cn = *fcn_ty.data().as_Closure().node;
                         // Use the closure's class to determine if & or &mut should be taken (and which function to use)
                         ::HIR::ValueUsage   vu = ::HIR::ValueUsage::Unknown;
                         switch(cn.m_class)
@@ -1087,7 +1090,7 @@ namespace {
                 }
                 ::HIR::ExprVisitorDef::visit(node);
             }
-            else if( fcn_ty.m_data.is_Closure() )
+            else if( fcn_ty.data().is_Closure() )
             {
                 //TODO(node.span(), "Determine how value in CallValue is used on a closure");
                 ::HIR::ExprVisitorDef::visit(node);
@@ -1197,7 +1200,7 @@ namespace {
                 }
                 // Wait, is this valid?
                 // - Maybe it's needed becuase reborrow is after this pass?
-                else if( m_variable_types.at(slot).m_data.is_Borrow() && m_variable_types.at(slot).m_data.as_Borrow().type == ::HIR::BorrowType::Unique ) {
+                else if( m_variable_types.at(slot).data().is_Borrow() && m_variable_types.at(slot).data().as_Borrow().type == ::HIR::BorrowType::Unique ) {
                     usage = ::HIR::ValueUsage::Mutate;
                 }
                 else {
@@ -1317,9 +1320,9 @@ namespace {
 
         void visit_type(::HIR::TypeRef& ty) override
         {
-            if(auto* e = ty.m_data.opt_Array())
+            if(auto* e = ty.data_mut().opt_Array())
             {
-                this->visit_type( *e->inner );
+                this->visit_type( e->inner );
                 DEBUG("Array size " << ty);
                 if( e->size.is_Unevaluated() ) {
                     //::std::vector< ::HIR::TypeRef>  tmp;

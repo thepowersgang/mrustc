@@ -123,13 +123,13 @@ public:
             }
         TU_ARMA(UfcsInherent, e) {
             m_os << "I";
-            this->fmt_type(*e.type);
+            this->fmt_type(e.type);
             this->fmt_name(e.item);
             this->fmt_path_params(e.params);
             }
         TU_ARMA(UfcsKnown, e) {
             m_os << "Q";
-            this->fmt_type(*e.type);
+            this->fmt_type(e.type);
             this->fmt_generic_path(e.trait);
             this->fmt_name(e.item);
             this->fmt_path_params(e.params);
@@ -171,7 +171,7 @@ public:
     // - Diverge: 'C' 'z'
     void fmt_type(const ::HIR::TypeRef& ty)
     {
-        TU_MATCH_HDRA( (ty.m_data), { )
+        TU_MATCH_HDRA( (ty.data()), { )
         case ::HIR::TypeData::TAG_Infer:
         case ::HIR::TypeData::TAG_Generic:
         case ::HIR::TypeData::TAG_ErasedType:
@@ -184,11 +184,11 @@ public:
             }
         TU_ARMA(Slice, e) {
             m_os << "S";
-            this->fmt_type(*e.inner);
+            this->fmt_type(e.inner);
             }
         TU_ARMA(Array, e) {
             m_os << "A" << e.size.as_Known();
-            this->fmt_type(*e.inner);
+            this->fmt_type(e.inner);
             }
         TU_ARMA(Path, e) {
             m_os << "N";
@@ -218,7 +218,7 @@ public:
             m_os << e.m_arg_types.size();
             for(const auto& t : e.m_arg_types)
                 this->fmt_type(t);
-            this->fmt_type(*e.m_rettype);
+            this->fmt_type(e.m_rettype);
             }
         TU_ARMA(Borrow, e) {
             m_os << "B";
@@ -228,7 +228,7 @@ public:
             case ::HIR::BorrowType::Unique: m_os << "u"; break;
             case ::HIR::BorrowType::Owned:  m_os << "o"; break;
             }
-            this->fmt_type(*e.inner);
+            this->fmt_type(e.inner);
             }
         TU_ARMA(Pointer, e) {
             m_os << "P";
@@ -238,7 +238,7 @@ public:
             case ::HIR::BorrowType::Unique: m_os << "u"; break;
             case ::HIR::BorrowType::Owned:  m_os << "o"; break;
             }
-            this->fmt_type(*e.inner);
+            this->fmt_type(e.inner);
             }
         TU_ARMA(Primitive, e) {
             switch(e)
