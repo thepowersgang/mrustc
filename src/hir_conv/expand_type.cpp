@@ -259,6 +259,8 @@ public:
             {
                 if( node.m_is_struct )
                 {
+                    visit_type(node.m_type);
+
                     if(node.m_type.data().is_Path() )
                     {
                         auto new_type = ConvertHIR_ExpandAliases_GetExpansion(upper_visitor.m_crate, node.m_type.data().as_Path().path, /*in_expr=*/true);
