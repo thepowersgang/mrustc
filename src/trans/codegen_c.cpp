@@ -2643,7 +2643,12 @@ namespace {
             m_of << "\t"; emit_ctype(ret_type, FMT_CB(ss, ss << "rv";)); m_of << ";\n";
             for(unsigned int i = 0; i < code->locals.size(); i ++) {
                 DEBUG("var" << i << " : " << code->locals[i]);
-                m_of << "\t"; emit_ctype(code->locals[i], FMT_CB(ss, ss << "var" << i;)); m_of << ";";
+                m_of << "\t"; emit_ctype(code->locals[i], FMT_CB(ss, ss << "var" << i;));
+                // If the type is a ZST, initialise it (to avoid warnings)
+                if( this->type_is_bad_zst(code->locals[i]) ) {
+                    m_of << " = {0}";
+                }
+                m_of << ";";
                 m_of << "\t// " << code->locals[i];
                 m_of << "\n";
             }
@@ -2853,9 +2858,43 @@ namespace {
                     m_of << "\tif("; emit_lvalue(e.cond); m_of << ") goto bb" << e.bb0 << "; else goto bb" << e.bb1 << ";\n";
                     }
                 TU_ARMA(Switch, e) {
+
+                    // If all arms except one are the same, then emit an `if` instead
+                    size_t odd_arm = -1;
+                    if( e.targets.size() >= 2 )
+                    {
+                        int n_unique = 0;
+                        struct {
+                            size_t  first_idx;
+                            MIR::BasicBlockId   id;
+                            unsigned    count;
+                            bool operator==(MIR::BasicBlockId x) const { return id == x; }
+                        } uniques[2];
+                        for(size_t i = 0; i < e.targets.size(); i ++)
+                        {
+                            auto t = e.targets[i];
+                            auto it = std::find(uniques, uniques+n_unique, t);
+                            if( it != uniques+n_unique ) {
+                                it->count += 1;
+                                continue ;
+                            }
+                            n_unique += 1;
+                            if( n_unique > 2 ) {
+                                break;
+                            }
+                            uniques[n_unique-1].first_idx = i;
+                            uniques[n_unique-1].id = t;
+                            uniques[n_unique-1].count = 1;
+                        }
+                        if( n_unique == 2 && (uniques[0].count == 1 || uniques[1].count == 1) )
+                        {
+                            odd_arm = uniques[(uniques[0].count == 1 ? 0 : 1)].first_idx;
+                            DEBUG("Odd arm " << odd_arm);
+                        }
+                    }
                     emit_term_switch(mir_res, e.val, e.targets.size(), 1, [&](size_t idx) {
                         m_of << "goto bb" << e.targets[idx] << ";";
-                        });
+                        }, odd_arm);
                     }
                 TU_ARMA(SwitchValue, e) {
                     emit_term_switchvalue(mir_res, e.val, e.values, 1, [&](size_t idx) {
@@ -3740,7 +3779,7 @@ namespace {
                 emit_lvalue(ve.val);
             }
         }
-        void emit_term_switch(const ::MIR::TypeResolve& mir_res, const ::MIR::LValue& val, size_t n_arms, unsigned indent_level, ::std::function<void(size_t)> cb)
+        void emit_term_switch(const ::MIR::TypeResolve& mir_res, const ::MIR::LValue& val, size_t n_arms, unsigned indent_level, ::std::function<void(size_t)> cb, size_t odd_arm=-1)
         {
             auto indent = RepeatLitStr { "\t", static_cast<int>(indent_level) };
 
@@ -3795,10 +3834,25 @@ namespace {
                 case ::HIR::CoreType::Str:
                     MIR_BUG(mir_res, "Unsized tag?!");
                 }
+
+                if( odd_arm != static_cast<size_t>(-1) )
+                {
+                    m_of << indent << "if("; emit_lvalue(val); m_of << ".TAG == ";
+                    // Handle signed values
+                    if( is_signed ) {
+                        m_of << static_cast<int64_t>(e->values[odd_arm]);
+                    }
+                    else {
+                        m_of << e->values[odd_arm];
+                    }
+                    m_of << ") {"; cb(odd_arm); m_of << "} else {"; cb(odd_arm == 0 ? 1 : 0); m_of << "}\n";
+                    return ;
+                }
+
                 m_of << indent << "switch("; emit_lvalue(val); m_of << ".TAG) {\n";
                 for(size_t j = 0; j < n_arms; j ++)
                 {
-                    // TODO: Get type of this field and check if it's signed.
+                    // Handle signed values
                     if( is_signed ) {
                         m_of << indent << "case " << static_cast<int64_t>(e->values[j]) << ": ";
                     }
