@@ -20,6 +20,7 @@
 
 ::HIR::Module LowerHIR_Module(const ::AST::Module& module, ::HIR::ItemPath path, ::std::vector< ::HIR::SimplePath> traits = {});
 ::HIR::Function LowerHIR_Function(::HIR::ItemPath path, const ::AST::AttributeList& attrs, const ::AST::Function& f, const ::HIR::TypeRef& self_type);
+::HIR::ValueItem LowerHIR_Static(::HIR::ItemPath p, const ::AST::AttributeList& attrs, const ::AST::Static& e, const Span& sp, const RcString& name);
 ::HIR::PathParams LowerHIR_PathParams(const Span& sp, const ::AST::PathParams& src_params, bool allow_assoc);
 ::HIR::TraitPath LowerHIR_TraitPath(const Span& sp, const ::AST::Path& path, bool allow_bounds=false);
 
@@ -1491,6 +1492,38 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
     mod.m_macro_items.insert( ::std::make_pair( mv$(name), ::make_unique_ptr(::HIR::VisEnt< ::HIR::MacroItem> { is_pub, mv$(ti) }) ) );
 }
 
+::HIR::ValueItem LowerHIR_Static(::HIR::ItemPath p, const ::AST::AttributeList& attrs, const ::AST::Static& e, const Span& sp, const RcString& name)
+{
+    TRACE_FUNCTION_F(p);
+
+    if( e.s_class() == ::AST::Static::CONST )
+        return ::HIR::ValueItem::make_Constant(::HIR::Constant{
+            ::HIR::GenericParams {},
+            LowerHIR_Type(e.type()),
+            LowerHIR_Expr(e.value())
+            });
+    else {
+        ::HIR::Linkage  linkage;
+
+        if( const auto* a = attrs.get("link_name") ) {
+            if ( !a->has_string() )
+                ERROR(sp, E0000, "#[link_name] requires a string");
+            linkage.name = a->string();
+        }
+        // If there's no code, demangle the name (TODO: By ABI) and set linkage.
+        else if( linkage.name == "" && !e.value().is_valid() ) {
+            linkage.name = name.c_str();
+        }
+
+        return ::HIR::ValueItem::make_Static(::HIR::Static{
+            mv$(linkage),
+            (e.s_class() == ::AST::Static::MUT),
+            LowerHIR_Type(e.type()),
+            LowerHIR_Expr(e.value())
+            });
+    }
+}
+
 ::HIR::Module LowerHIR_Module(const ::AST::Module& ast_mod, ::HIR::ItemPath path, ::std::vector< ::HIR::SimplePath> traits)
 {
     TRACE_FUNCTION_F("path = " << path);
@@ -1621,28 +1654,7 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
             _add_mod_val_item(mod, item.name, get_pub(item.is_pub),  LowerHIR_Function(item_path, item.attrs, e, ::HIR::TypeRef{}));
             }
         TU_ARMA(Static, e) {
-            if( e.s_class() == ::AST::Static::CONST )
-                _add_mod_val_item(mod, item.name, get_pub(item.is_pub),  ::HIR::ValueItem::make_Constant(::HIR::Constant {
-                    ::HIR::GenericParams {},
-                    LowerHIR_Type( e.type() ),
-                    LowerHIR_Expr( e.value() )
-                    }));
-            else {
-                ::HIR::Linkage  linkage;
-
-                // If there's no code, demangle the name (TODO: By ABI) and set linkage.
-                if( linkage.name == "" && ! e.value().is_valid() )
-                {
-                    linkage.name = item.name.c_str();
-                }
-
-                _add_mod_val_item(mod, item.name, get_pub(item.is_pub),  ::HIR::ValueItem::make_Static(::HIR::Static {
-                    mv$(linkage),
-                    (e.s_class() == ::AST::Static::MUT),
-                    LowerHIR_Type( e.type() ),
-                    LowerHIR_Expr( e.value() )
-                    }));
-            }
+            _add_mod_val_item(mod, item.name, get_pub(item.is_pub),  LowerHIR_Static(item_path, item.attrs, e, sp, item.name));
             }
         }
     }

@@ -1993,7 +1993,14 @@ namespace {
             m_mir_res = &top_mir_res;
             TRACE_FUNCTION_F(p);
 
-            if( item.m_linkage.name != "" && m_compiler != Compiler::Gcc )
+            // LLVM supports prepending a symbol name with \1 to prevent further mangling.
+            // Since we're targeting C, not LLVM, strip off this prefix.
+            std::string linkage_name = item.m_linkage.name;
+            if( !linkage_name.empty() && linkage_name[0] == '\1' ) {
+                linkage_name = linkage_name.substr(1);
+            }
+
+            if( linkage_name != "" )
             {
                 switch(m_compiler)
                 {
@@ -2001,11 +2008,10 @@ namespace {
                     // Handled with asm() later
                     break;
                 case Compiler::Msvc:
-                    //m_of << "#pragma comment(linker, \"/alternatename:" << Trans_Mangle(p) << "=" << item.m_linkage.name << "\")\n";
-                    m_of << "#define " << Trans_Mangle(p) << " " << item.m_linkage.name << "\n";
+                    m_of << "#pragma comment(linker, \"/alternatename:" << Trans_Mangle(p) << "=" << linkage_name << "\")\n";
                     break;
                 //case Compiler::Std11:
-                //    m_of << "#define " << Trans_Mangle(p) << " " << item.m_linkage.name << "\n";
+                //    m_of << "#define " << Trans_Mangle(p) << " " << linkage_name << "\n";
                 //    break;
                 }
             }
@@ -2013,9 +2019,9 @@ namespace {
             auto type = params.monomorph(m_resolve, item.m_type);
             m_of << "extern ";
             emit_ctype( type, FMT_CB(ss, ss << Trans_Mangle(p);) );
-            if( item.m_linkage.name != "" && m_compiler == Compiler::Gcc)
+            if( linkage_name != "" && m_compiler == Compiler::Gcc)
             {
-                m_of << " asm(\"" << item.m_linkage.name << "\")";
+                m_of << " asm(\"" << linkage_name << "\")";
             }
             m_of << ";";
             m_of << "\t// static " << p << " : " << type;
