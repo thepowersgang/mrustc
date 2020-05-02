@@ -2,7 +2,7 @@ V ?= @
 
 OBJDIR := .obj/
 
-BIN := ../bin/testrunner
+BIN := ../../bin/testrunner
 OBJS := main.o path.o
 
 LINKFLAGS := -g

@@ -10,7 +10,7 @@ V ?= @
 
 OBJDIR := .obj/
 
-BIN := ../bin/standalone_miri$(EXESUF)
+BIN := ../../bin/standalone_miri$(EXESUF)
 OBJS := main.o debug.o mir.o lex.o value.o module_tree.o hir_sim.o miri.o rc_string.o
 
 LINKFLAGS := -g -lpthread
@@ -20,6 +20,8 @@ CXXFLAGS += -Wno-misleading-indentation	# Gets REALLY confused by the TU_ARM mac
 
 OBJS := $(OBJS:%=$(OBJDIR)%)
 
+COMMON_LIB := ../../bin/common_lib.a
+
 .PHONY: all clean
 
 all: $(BIN)
@@ -27,10 +29,10 @@ all: $(BIN)
 clean:
 	rm $(BIN) $(OBJS)
 
-$(BIN): $(OBJS) ../bin/common_lib.a
+$(BIN): $(OBJS) $(COMMON_LIB)
 	@mkdir -p $(dir $@)
 	@echo [CXX] -o $@
-	$V$(CXX) -o $@ $(OBJS) ../bin/common_lib.a $(LINKFLAGS)
+	$V$(CXX) -o $@ $(OBJS) $(COMMON_LIB) $(LINKFLAGS)
 
 $(OBJDIR)%.o: %.cpp
 	@mkdir -p $(dir $@)
@@ -42,7 +44,7 @@ $(OBJDIR)%.o: ../../src/%.cpp
 	@echo [CXX] $<
 	$V$(CXX) -o $@ -c $< $(CXXFLAGS) -MMD -MP -MF $@.dep
 
-../bin/common_lib.a:
+$(COMMON_LIB):
 	make -C ../common
 
 -include $(OBJS:%.o=%.o.dep)

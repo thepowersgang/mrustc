@@ -8,7 +8,7 @@ V ?= @
 
 OBJDIR := .obj/
 
-BIN := ../bin/common_lib.a
+BIN := ../../bin/common_lib.a
 OBJS = toml.o path.o debug.o
 
 CXXFLAGS := -Wall -std=c++14 -g -O2

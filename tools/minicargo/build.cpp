@@ -1159,12 +1159,8 @@ const helpers::path& get_mrustc_path()
 
         ::helpers::path minicargo_path { buf };
         minicargo_path.pop_component();
-# ifdef __MINGW32__
-        s_compiler_path = (minicargo_path / "..\\..\\bin\\mrustc.exe").normalise();
-# else
         // MSVC, minicargo and mrustc are in the same dir
         s_compiler_path = minicargo_path / "mrustc.exe";
-# endif
 #else
         char buf[1024];
 # ifdef __linux__
@@ -1200,7 +1196,7 @@ const helpers::path& get_mrustc_path()
 
         ::helpers::path minicargo_path { buf };
         minicargo_path.pop_component();
-        s_compiler_path = (minicargo_path / "../../bin/mrustc").normalise();
+        s_compiler_path = (minicargo_path / "mrustc").normalise();
 #endif
     }
     return s_compiler_path;

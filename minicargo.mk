@@ -29,7 +29,7 @@ endif
 OUTDIR := output$(OUTDIR_SUF)/
 
 MRUSTC ?= bin/mrustc$(EXESUF)
-MINICARGO := tools/bin/minicargo$(EXESUF)
+MINICARGO := bin/minicargo$(EXESUF)
 RUSTC_OUT_BIN := rustc
 ifeq ($(RUSTC_VERSION),1.29.0)
   RUSTC_OUT_BIN := rustc_binary
@@ -45,7 +45,7 @@ RUSTC_TARGET ?= x86_64-unknown-linux-gnu
 LLVM_TARGETS ?= X86;ARM;AArch64#;Mips;PowerPC;SystemZ;JSBackend;MSP430;Sparc;NVPTX
 OVERRIDE_DIR := script-overrides/$(RUSTC_CHANNEL)-$(RUSTC_VERSION)$(OVERRIDE_SUFFIX)/
 
-.PHONY: bin/mrustc tools/bin/minicargo
+.PHONY: bin/mrustc bin/minicargo
 .PHONY: $(OUTDIR)libstd.rlib $(OUTDIR)libtest.rlib $(OUTDIR)libpanic_unwind.rlib $(OUTDIR)libproc_macro.rlib
 .PHONY: $(OUTDIR)rustc $(OUTDIR)cargo
 

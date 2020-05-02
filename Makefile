@@ -220,7 +220,7 @@ endif
 local_tests:
 	@$(MAKE) -C tools/testrunner
 	@mkdir -p output$(OUTDIR_SUF)/local_tests
-	./tools/bin/testrunner -o output$(OUTDIR_SUF)/local_tests -L output samples/test
+	./bin/testrunner -o output$(OUTDIR_SUF)/local_tests -L output samples/test
 
 # 
 # RUSTC TESTS
@@ -237,7 +237,7 @@ RUST_TESTS_run-pass: output$(OUTDIR_SUF)/test/librust_test_helpers.a
 	@$(MAKE) -C tools/testrunner
 	@mkdir -p output$(OUTDIR_SUF)/rust_tests/run-pass
 	make -f minicargo.mk output$(OUTDIR_SUF)/test/libtest.so
-	./tools/bin/testrunner -L output$(OUTDIR_SUF)/test -o output$(OUTDIR_SUF)/rust_tests/run-pass $(RUST_TESTS_DIR)run-pass --exceptions disabled_tests_run-pass.txt
+	./bin/testrunner -L output$(OUTDIR_SUF)/test -o output$(OUTDIR_SUF)/rust_tests/run-pass $(RUST_TESTS_DIR)run-pass --exceptions disabled_tests_run-pass.txt
 output$(OUTDIR_SUF)/test/librust_test_helpers.a: output$(OUTDIR_SUF)/test/rust_test_helpers.o
 	@mkdir -p $(dir $@)
 	ar cur $@ $<
@@ -281,10 +281,10 @@ bin/mrustc.a: $(filter-out $(OBJDIR)main.o, $(OBJ))
 	@mkdir -p $(dir $@)
 	@echo [AR] -o $@
 	$Var rcD $@ $(filter-out $(OBJDIR)main.o, $(OBJ))
-$(BIN): $(OBJDIR)main.o bin/mrustc.a tools/bin/common_lib.a
+$(BIN): $(OBJDIR)main.o bin/mrustc.a bin/common_lib.a
 	@mkdir -p $(dir $@)
 	@echo [CXX] -o $@
-	$V$(CXX) -o $@ $(LINKFLAGS) $(OBJDIR)main.o -Wl,--whole-archive bin/mrustc.a -Wl,--no-whole-archive tools/bin/common_lib.a $(LIBS)
+	$V$(CXX) -o $@ $(LINKFLAGS) $(OBJDIR)main.o -Wl,--whole-archive bin/mrustc.a -Wl,--no-whole-archive bin/common_lib.a $(LIBS)
 ifeq ($(OS),Windows_NT)
 else ifeq ($(shell uname -s || echo not),Darwin)
 else
@@ -308,7 +308,7 @@ src/main.cpp: $(PCHS:%=src/%.gch)
 	@echo [CXX] -o $@
 	$V$(CXX) -std=c++14 -o $@ $< $(CPPFLAGS) -MMD -MP -MF $@.dep
 
-tools/bin/common_lib.a:
+bin/common_lib.a:
 	$(MAKE) -C tools/common
 	
 -include $(OBJ:%=%.dep)

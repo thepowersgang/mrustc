@@ -12,7 +12,7 @@ OBJDIR := .obj/
 
 BIN := ../../bin/mir_opt_test$(EXESUF)
 OBJS := main.o parser.o
-LIBS := ../../bin/mrustc.a ../bin/common_lib.a
+LIBS := ../../bin/mrustc.a ../../bin/common_lib.a
 
 LINKFLAGS := -g -lpthread -lz
 CXXFLAGS := -Wall -std=c++14 -g -O2
@@ -43,7 +43,7 @@ $(OBJDIR)%.o: %.cpp
 	$V$(CXX) -o $@ -c $< $(CXXFLAGS) -MMD -MP -MF $@.dep
 ../../bin/mrustc.a:
 	make -C ../../ bin/mrustc.a
-../bin/common_lib.a:
+../../bin/common_lib.a:
 	make -C ../common
 
 -include $(OBJS:%.o=%.o.dep)
