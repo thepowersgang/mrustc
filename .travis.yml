@@ -39,6 +39,8 @@ script:
  - set +e
  - make local_tests -k
 # - CC=gcc-6 make rust_tests -k
+ - set -e
+ - RUST_CHECK=1 make -f minicargo.mk output/rustc-build/librustc_driver.rlib
 # rustc (DISABLED: llvm build)
 # - make -f minicargo.mk output/rustc
 # cargo (DISABLED: why?)
