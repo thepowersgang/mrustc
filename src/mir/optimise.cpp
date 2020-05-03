@@ -2102,9 +2102,8 @@ bool MIR_Optimise_DeTemporary_Borrows(::MIR::TypeResolve& state, ::MIR::Function
             continue;
         }
         const auto& src_lv = src_bb.statements[slot.set_loc.stmt_idx].as_Assign().src.as_Borrow().val;
-        // Check that the borrow isn't too complex
-        // TODO: If there's only one use, then no complexity limit?
-        if( src_lv.m_wrappers.size() >= 2 )
+        // Check that the borrow isn't too complex (if it's used multiple times)
+        if( slot.n_deref_read > 1 && src_lv.m_wrappers.size() >= 2 )
         {
             DEBUG(this_var << " - Source is too complex - " << src_lv);
             continue;
