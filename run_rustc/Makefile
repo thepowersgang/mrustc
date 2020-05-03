@@ -103,7 +103,7 @@ ifeq ($(RUSTC_VERSION),1.19.0)
 else
 	cp $(OUTDIR)build-rustc/release/rustc_binary $(BINDIR)rustc_binary
 endif
-	echo '#!/bin/sh\nd=$$(dirname $$0)\nLD_LIBRARY_PATH="$(abspath $(LIBDIR))" $$d/rustc_binary $$@' >$@
+	printf '#!/bin/sh\nd=$$(dirname $$0)\nLD_LIBRARY_PATH="$(abspath $(LIBDIR))" $$d/rustc_binary $$@' >$@
 	chmod +x $@
 
 $(BINDIR)hello_world: $(RUST_SRC)test/run-pass/hello.rs $(LIBDIR)libstd.rlib $(BINDIR)rustc
