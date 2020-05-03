@@ -914,6 +914,28 @@ bool MIR_Optimise_BlockSimplify(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                 }
             }
             });
+
+        // Handle chained switches of the same value
+        // - Happens in libcore's atomics
+        if( auto* te = block.terminator.opt_Switch() )
+        {
+            for(auto& t : te->targets)
+            {
+                auto idx = &t - &te->targets.front();
+                // The block must be a terminator only, and be a switch over the same value.
+                if( fcn.blocks[t].statements.empty() && fcn.blocks[t].terminator.is_Switch() )
+                {
+                    const auto& n_te = fcn.blocks[t].terminator.as_Switch();
+                    if( n_te.val == te->val )
+                    {
+                        // If that's the case, then update this target with the equivalent from the new switch.
+                        DEBUG("BB" << &block - fcn.blocks.data() << "/TERM: Update switch from BB" << t << " to BB" << n_te.targets[idx]);
+                        t = n_te.targets[idx];
+                        changed = true;
+                    }
+                }
+            }
+        }
     }
 
     // >> Unify sequential `ScopeEnd` statements
