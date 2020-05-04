@@ -203,15 +203,18 @@ struct PrimitiveI32: public PrimitiveSInt<int32_t>
 
 class PrimitiveValueVirt
 {
-    uint64_t    buf[3]; // Allows i128 plus a vtable pointer
+    union {
+        uint64_t    u64[3]; // Allows i128 plus a vtable pointer
+        uint8_t     u8[3*8];
+    } buf;
     PrimitiveValueVirt() {}
 public:
     // HACK: No copy/move constructors, assumes that contained data is always POD
     ~PrimitiveValueVirt() {
         reinterpret_cast<PrimitiveValue*>(&this->buf)->~PrimitiveValue();
     }
-    PrimitiveValue& get() { return *reinterpret_cast<PrimitiveValue*>(&this->buf); }
-    const PrimitiveValue& get() const { return *reinterpret_cast<const PrimitiveValue*>(&this->buf); }
+    PrimitiveValue& get() { return *reinterpret_cast<PrimitiveValue*>(&this->buf.u8); }
+    const PrimitiveValue& get() const { return *reinterpret_cast<const PrimitiveValue*>(&this->buf.u8); }
 
     static PrimitiveValueVirt from_value(const ::HIR::TypeRef& t, const ValueRef& v) {
         PrimitiveValueVirt  rv;

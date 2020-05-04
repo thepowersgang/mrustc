@@ -626,7 +626,6 @@ void Allocation::set_reloc(size_t ofs, size_t len, RelocationPtr reloc)
 
 Value::Value()
 {
-    memset(&m_inner, 0, sizeof(m_inner));
 }
 Value::Value(::HIR::TypeRef ty)
 {

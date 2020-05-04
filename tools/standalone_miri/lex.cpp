@@ -319,9 +319,13 @@ void Lexer::advance()
                         ::std::cerr << *this << "Invalid hex float literal, fractional component is more than 52 bits" << ::std::endl;
                         throw "ERROR";
                     }
-                    uint64_t vi = (static_cast<uint64_t>(exp) << 52) | frac;
+                    union {
+                        double  f64;
+                        uint64_t    u64;
+                    } val;
+                    val.u64 = (static_cast<uint64_t>(exp) << 52) | frac;
                     m_cur = Token { TokenClass::Real, "" };
-                    m_cur.numbers.real_val = *reinterpret_cast<const double*>(&vi);
+                    m_cur.numbers.real_val = val.f64;
                     return ;
                 }
                 m_if.unget();
