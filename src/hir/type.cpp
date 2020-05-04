@@ -126,7 +126,7 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         os << "NULL";
         return ;
     }
-    os << "{" << m_ptr << "}";
+    //os << "{" << m_ptr << "}";
     TU_MATCH_HDRA( (data()), { )
     TU_ARMA(Infer, e) {
         os << "_";
