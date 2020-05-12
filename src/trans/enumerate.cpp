@@ -1164,7 +1164,7 @@ namespace {
 
             bool is_dynamic = false;
             bool any_impl = false;
-            ::std::vector<::HIR::TypeRef>    best_impl_params;
+            ::HIR::PathParams   best_impl_params;
             const ::HIR::TraitImpl* best_impl = nullptr;
             resolve.find_impl(sp, pe->trait.m_path, pe->trait.m_params, pe->type, [&](auto impl_ref, auto is_fuzz) {
                 DEBUG("[get_ent_fullpath] Found " << impl_ref);
@@ -1214,16 +1214,7 @@ namespace {
                         )
                     )
                     best_impl = &impl;
-                    best_impl_params.clear();
-                    for(unsigned int i = 0; i < impl_ref_e.params.size(); i ++)
-                    {
-                        if( impl_ref_e.params[i] )
-                            best_impl_params.push_back( impl_ref_e.params[i]->clone() );
-                        else if( ! impl_ref_e.params_ph[i].data().is_Generic() )
-                            best_impl_params.push_back( impl_ref_e.params_ph[i].clone() );
-                        else
-                            BUG(sp, "Parameter " << i << " unset");
-                    }
+                    best_impl_params = impl_ref_e.impl_params.clone();
                     if( is_spec )
                         DEBUG("- Specialisable");
                     return !is_spec;
@@ -1238,7 +1229,7 @@ namespace {
             {
                 const auto& impl = *best_impl;
 
-                impl_pp.m_types = mv$(best_impl_params);
+                impl_pp = mv$(best_impl_params);
 
                 // Fallback on default/provided items
                 TU_MATCH_HDRA( (trait_vi), {)
@@ -1677,6 +1668,9 @@ void Trans_Enumerate_FillFrom_Literal(EnumState& state, const ::HIR::Literal& li
     (Invalid,
         ),
     (Defer,
+        // TODO: Bug?
+        ),
+    (Generic,
         // TODO: Bug?
         ),
     (List,

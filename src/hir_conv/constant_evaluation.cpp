@@ -1079,6 +1079,10 @@ namespace {
                     auto eval = ::HIR::Evaluator { expr_ptr->span(), m_crate, nvs };
                     auto val = eval.evaluate_constant(::HIR::ItemPath(*m_mod_path, ty_name.c_str()), expr_ptr, ::HIR::CoreType::Usize);
                     if( val.is_Defer() ) {
+                        const auto* tn = dynamic_cast<const HIR::ExprNode_ConstParam*>(&*expr_ptr);
+                        if(tn) {
+                            e->size = HIR::GenericRef(tn->m_name, tn->m_binding);
+                        }
                         //TODO(expr_ptr->span(), "Handle defer for array sizes");
                     }
                     else if( val.is_Integer() ) {

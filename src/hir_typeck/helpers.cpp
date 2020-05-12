@@ -2578,23 +2578,14 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 DEBUG("[find_trait_impls_crate] - Auto Pos Found impl" << impl.m_params.fmt_args() << " " << trait << impl.m_trait_args << " for " << impl.m_type << " " << impl.m_params.fmt_bounds());
 
                 // Compare with `params`
-                ::std::vector< const ::HIR::TypeRef*> impl_params;
-                ::std::vector< ::HIR::TypeRef>  placeholders;
-                auto match = this->ftic_check_params(sp, trait,  params_ptr, type,  impl.m_params, impl.m_trait_args, impl.m_type,  impl_params, placeholders);
+                HIR::PathParams impl_params;
+                auto match = this->ftic_check_params(sp, trait,  params_ptr, type,  impl.m_params, impl.m_trait_args, impl.m_type,  impl_params);
                 if( match == ::HIR::Compare::Unequal ) {
                     // If any bound failed, return false (continue searching)
                     return false;
                 }
 
-                auto monomorph = [&](const auto& gt)->const ::HIR::TypeRef& {
-                        const auto& ge = gt.data().as_Generic();
-                        ASSERT_BUG(sp, ge.binding >> 8 != 2, "");
-                        assert( ge.binding < impl_params.size() );
-                        if( !impl_params[ge.binding] ) {
-                            return placeholders[ge.binding];
-                        }
-                        return *impl_params[ge.binding];
-                        };
+                auto monomorph = monomorphise_type_get_cb(sp, nullptr, &impl_params, nullptr);
                 // TODO: Ensure that there are no-longer any magic params?
 
                 auto ty_mono = monomorphise_type_with(sp, impl.m_type, monomorph, false);
@@ -2620,9 +2611,8 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 DEBUG("[find_trait_impls_crate] - Found auto neg impl" << impl.m_params.fmt_args() << " " << trait << impl.m_trait_args << " for " << impl.m_type << " " << impl.m_params.fmt_bounds());
 
                 // Compare with `params`
-                ::std::vector< const ::HIR::TypeRef*> impl_params;
-                ::std::vector< ::HIR::TypeRef>  placeholders;
-                auto match = this->ftic_check_params(sp, trait,  params_ptr, type,  impl.m_params, impl.m_trait_args, impl.m_type,  impl_params, placeholders);
+                HIR::PathParams impl_params;
+                auto match = this->ftic_check_params(sp, trait,  params_ptr, type,  impl.m_params, impl.m_trait_args, impl.m_type,  impl_params);
                 if( match == ::HIR::Compare::Unequal ) {
                     // If any bound failed, return false (continue searching)
                     return false;
@@ -2658,16 +2648,15 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         [&](const auto& impl) {
             DEBUG("[find_trait_impls_crate] Found impl" << impl.m_params.fmt_args() << " " << trait << impl.m_trait_args << " for " << impl.m_type << " " << impl.m_params.fmt_bounds());
             // Compare with `params`
-            ::std::vector< const ::HIR::TypeRef*> impl_params;
-            ::std::vector< ::HIR::TypeRef>  placeholders;
-            auto match = this->ftic_check_params(sp, trait,  params_ptr, type,  impl.m_params, impl.m_trait_args, impl.m_type,  impl_params, placeholders);
+            HIR::PathParams impl_params;
+            auto match = this->ftic_check_params(sp, trait,  params_ptr, type,  impl.m_params, impl.m_trait_args, impl.m_type,  impl_params);
             if( match == ::HIR::Compare::Unequal ) {
                 // If any bound failed, return false (continue searching)
                 DEBUG("[find_trait_impls_crate] - Params mismatch");
                 return false;
             }
 
-            return callback(ImplRef(mv$(impl_params), trait, impl, mv$(placeholders)), match);
+            return callback(ImplRef(mv$(impl_params), trait, impl), match);
         }
         );
 }
@@ -2826,41 +2815,70 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
 ::HIR::Compare TraitResolution::ftic_check_params(const Span& sp, const ::HIR::SimplePath& trait,
     const ::HIR::PathParams* params_ptr, const ::HIR::TypeRef& type,
     const ::HIR::GenericParams& impl_params_def, const ::HIR::PathParams& impl_trait_args, const ::HIR::TypeRef& impl_ty,
-    /*Out->*/ ::std::vector< const ::HIR::TypeRef*>& impl_params, ::std::vector< ::HIR::TypeRef>& placeholders
+    /*Out->*/ HIR::PathParams& out_impl_params
     ) const
 {
-    impl_params.resize( impl_params_def.m_types.size() );
-    auto cb_get_impl_params = [&](auto idx, const auto&, const auto& ty)->::HIR::Compare{
-        assert( idx < impl_params.size() );
-        if( ! impl_params[idx] ) {
-            DEBUG("[ftic_check_params] Param " << idx << " = " << ty);
-            impl_params[idx] = &ty;
-            return ::HIR::Compare::Equal;
-        }
-        else {
-            DEBUG("[ftic_check_params] Param " << idx << " " << *impl_params[idx] << " == " << ty);
-            auto rv = impl_params[idx]->compare_with_placeholders(sp, ty, this->m_ivars.callback_resolve_infer());
-            // If the existing is an ivar, replace with this.
-            // - TODO: Store the least fuzzy option, or store all fuzzy options?
-            if( rv == ::HIR::Compare::Fuzzy && impl_params[idx]->data().is_Infer() )
-            {
-                DEBUG("[ftic_check_params] Param " << idx << " fuzzy, use " << ty);
-                impl_params[idx] = &ty;
+
+    class GetParams:
+        public ::HIR::MatchGenerics
+    {
+        Span    sp;
+        HIR::PathParams& out_impl_params;
+    public:
+        GetParams(Span sp, HIR::PathParams& out_impl_params):
+            sp(sp),
+            out_impl_params(out_impl_params)
+        {}
+
+        ::HIR::Compare match_ty(const ::HIR::GenericRef& g, const ::HIR::TypeRef& ty, ::HIR::t_cb_resolve_type resolve_cb) override {
+            assert( g.binding < out_impl_params.m_types.size() );
+            if( out_impl_params.m_types[g.binding] == HIR::TypeRef() ) {
+                DEBUG("[ftic_check_params] Param " << g.binding << " = " << ty);
+                out_impl_params.m_types[g.binding] = ty.clone();
+                return ::HIR::Compare::Equal;
             }
-            return rv;
+            else {
+                DEBUG("[ftic_check_params] Param " << g.binding << " " << out_impl_params.m_types[g.binding] << " == " << ty);
+                auto rv = out_impl_params.m_types[g.binding].compare_with_placeholders(sp, ty, resolve_cb);
+                // If the existing is an ivar, replace with this.
+                // - TODO: Store the least fuzzy option, or store all fuzzy options?
+                if( rv == ::HIR::Compare::Fuzzy && out_impl_params.m_types[g.binding].data().is_Infer() )
+                {
+                    DEBUG("[ftic_check_params] Param " << g.binding << " fuzzy, use " << ty);
+                    out_impl_params.m_types[g.binding] = ty.clone();
+                }
+                return rv;
+            }
         }
-        };
+        ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::Literal& sz) override
+        {
+            ASSERT_BUG(sp, g.binding < out_impl_params.m_values.size(), "Type generic " << g << " out of range (" << out_impl_params.m_values.size() << ")");
+            if( out_impl_params.m_values[g.binding].is_Invalid() )
+            {
+                out_impl_params.m_values[g.binding] = sz.clone();
+                return ::HIR::Compare::Equal;
+            }
+            else
+            {
+                TODO(Span(), "PtrImplMatcher::match_val " << g << "(" << out_impl_params.m_values[g.binding] << ") with " << sz);
+            }
+        }
+    };
+    GetParams get_params { sp, out_impl_params };
+
+    out_impl_params.m_types.resize( impl_params_def.m_types.size() );
+    out_impl_params.m_values.resize( impl_params_def.m_values.size() );
 
     // NOTE: If this type references an associated type, the match will incorrectly fail.
     // - HACK: match_test_generics_fuzz has been changed to return Fuzzy if there's a tag mismatch and the LHS is an Opaque path
     auto    match = ::HIR::Compare::Equal;
-    match &= impl_ty.match_test_generics_fuzz(sp, type , this->m_ivars.callback_resolve_infer(), cb_get_impl_params);
+    match &= impl_ty.match_test_generics_fuzz(sp, type , this->m_ivars.callback_resolve_infer(), get_params);
     if( params_ptr )
     {
         const auto& params = *params_ptr;
         ASSERT_BUG(sp, impl_trait_args.m_types.size() == params.m_types.size(), "Param count mismatch between `" << impl_trait_args << "` and `" << params << "` for " << trait );
         for(unsigned int i = 0; i < impl_trait_args.m_types.size(); i ++)
-            match &= impl_trait_args.m_types[i] .match_test_generics_fuzz(sp, params.m_types[i], this->m_ivars.callback_resolve_infer(), cb_get_impl_params);
+            match &= impl_trait_args.m_types[i] .match_test_generics_fuzz(sp, params.m_types[i], this->m_ivars.callback_resolve_infer(), get_params);
         if( match == ::HIR::Compare::Unequal ) {
             DEBUG("- Failed to match parameters - " << impl_trait_args << "+" << impl_ty << " != " << params << "+" << type);
             return ::HIR::Compare::Unequal;
@@ -2877,14 +2895,17 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
     // TODO: Some impl blocks have type params used as part of type bounds.
     // - A rough idea is to have monomorph return a third class of generic for params that are not yet bound.
     //  - compare_with_placeholders gets called on both ivars and generics, so that can be used to replace it once known.
-    auto placeholder_name = RcString::new_interned(FMT("impl_?_" << &impl_params));
-    for(unsigned int i = 0; i < impl_params.size(); i ++ ) {
-        if( !impl_params[i] ) {
-            if( placeholders.size() == 0 )
-                placeholders.resize(impl_params.size());
+    ::HIR::PathParams   placeholders;
+    auto placeholder_name = RcString::new_interned(FMT("impl_?_" << &impl_params_def));
+    for(unsigned int i = 0; i < out_impl_params.m_types.size(); i ++ )
+    {
+        if( out_impl_params.m_types[i] == HIR::TypeRef() )
+        {
+            if( placeholders.m_types.size() == 0 )
+                placeholders.m_types.resize(out_impl_params.m_types.size());
             // TODO: Tag placeholders to indicate this frame
-            placeholders[i] = ::HIR::TypeRef(placeholder_name, 2*256 + i);
-            DEBUG("Create placeholder for " << i << " = " << placeholders[i]);
+            placeholders.m_types[i] = ::HIR::TypeRef(placeholder_name, 2*256 + i);
+            DEBUG("Create placeholder for " << i << " = " << placeholders.m_types[i]);
         }
     }
     auto cb_infer = [&](const auto& ty)->const ::HIR::TypeRef& {
@@ -2912,58 +2933,84 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         else
             return ty;
         };
-    auto cb_match = [&](unsigned idx, const auto& name, const auto& ty)->::HIR::Compare {
-        if( const auto* e = ty.data().opt_Generic() )
+    struct Matcher:
+        public ::HIR::MatchGenerics
+    {
+        Span    sp;
+        RcString    placeholder_name;
+        const HIR::PathParams& impl_params;
+        ::HIR::PathParams& placeholders;
+        Matcher(Span sp, const HIR::PathParams& impl_params, RcString placeholder_name, ::HIR::PathParams& placeholders):
+            sp(sp),
+            impl_params(impl_params),
+            placeholder_name(placeholder_name),
+            placeholders(placeholders)
         {
-            if( e->binding == idx && e->name == name )
-            {
-                return ::HIR::Compare::Equal;
-            }
         }
-        if( idx >> 8 == 2 && name == placeholder_name ) {
-            auto i = idx % 256;
-            ASSERT_BUG(sp, !impl_params[i], "Placeholder to populated type returned - " << *impl_params[i] << " vs " << ty);
-            auto& ph = placeholders[i];
-            // TODO: Only want to do this if ... what?
-            // - Problem: This can poison the output if the result was fuzzy
-            // - E.g. `Q: Borrow<V>` can equate Q and V
-            if( ph.data().is_Generic() && ph.data().as_Generic().binding == idx ) {
-                DEBUG("[ftic_check_params:cb_match] Bind placeholder " << i << " to " << ty);
-                ph = ty.clone();
-                return ::HIR::Compare::Equal;
+
+        ::HIR::Compare match_ty(const ::HIR::GenericRef& g, const ::HIR::TypeRef& ty, ::HIR::t_cb_resolve_type resolve_cb) override
+        {
+            if( const auto* e = ty.data().opt_Generic() )
+            {
+                if( e->binding == g.binding && e->name == g.name )
+                {
+                    return ::HIR::Compare::Equal;
+                }
+            }
+            if( g.is_placeholder() && g.name == placeholder_name ) {
+                auto i = g.idx();
+                ASSERT_BUG(sp, impl_params.m_types[i] == HIR::TypeRef(), "Placeholder to populated type returned - " << impl_params.m_types[i] << " vs " << ty);
+                auto& ph = placeholders.m_types[i];
+                // TODO: Only want to do this if ... what?
+                // - Problem: This can poison the output if the result was fuzzy
+                // - E.g. `Q: Borrow<V>` can equate Q and V
+                if( ph.data().is_Generic() && ph.data().as_Generic().binding == g.binding ) {
+                    DEBUG("[ftic_check_params:cb_match] Bind placeholder " << i << " to " << ty);
+                    ph = ty.clone();
+                    return ::HIR::Compare::Equal;
+                }
+                else {
+                    DEBUG("[ftic_check_params:cb_match] Compare placeholder " << i << " " << ph << " == " << ty);
+                    return ph.compare_with_placeholders(sp, ty, resolve_cb);
+                }
             }
             else {
-                DEBUG("[ftic_check_params:cb_match] Compare placeholder " << i << " " << ph << " == " << ty);
-                return ph.compare_with_placeholders(sp, ty, cb_infer);
+                if( g.is_placeholder() ) {
+                    DEBUG("[ftic_check_params:cb_match] External impl param " << g);
+                    return ::HIR::Compare::Fuzzy;
+                }
+                // If the RHS is a non-literal ivar, return fuzzy
+                if( ty.data().is_Infer() && !ty.data().as_Infer().is_lit() ) {
+                    return ::HIR::Compare::Fuzzy;
+                }
+                // If the RHS is an unbound UfcsKnown, also fuzzy
+                if( ty.data().is_Path() && ty.data().as_Path().binding.is_Unbound() ) {
+                    return ::HIR::Compare::Fuzzy;
+                }
+                return ::HIR::Compare::Unequal;
             }
         }
-        else {
-            if( idx >> 8 == 2 ) {
-                DEBUG("[ftic_check_params:cb_match] External impl param " << idx << " " << name);
-                return ::HIR::Compare::Fuzzy;
-            }
-            // If the RHS is a non-literal ivar, return fuzzy
-            if( ty.data().is_Infer() && !ty.data().as_Infer().is_lit() ) {
-                return ::HIR::Compare::Fuzzy;
-            }
-            // If the RHS is an unbound UfcsKnown, also fuzzy
-            if( ty.data().is_Path() && ty.data().as_Path().binding.is_Unbound() ) {
-                return ::HIR::Compare::Fuzzy;
-            }
-            return ::HIR::Compare::Unequal;
+        ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::Literal& sz) override
+        {
+            TODO(Span(), "Matcher::match_val " << g << " with " << sz);
         }
-        };
+    };
+    Matcher matcher { sp, out_impl_params, placeholder_name, placeholders };
+    // Callback that returns monomorpisation results
     auto monomorph = [&](const auto& gt)->const ::HIR::TypeRef& {
-            const auto& ge = gt.data().as_Generic();
-            ASSERT_BUG(sp, ge.binding >> 8 != 2, "");
-            ASSERT_BUG(sp, ge.binding != GENERIC_Self, "Unexpected Self");
-            ASSERT_BUG(sp, ge.binding < impl_params.size(), "OOB param in impl - " << gt );
-            if( !impl_params[ge.binding] ) {
-                //BUG(sp, "Param " << ge.binding << " for `impl" << impl.m_params.fmt_args() << " " << trait << impl.m_trait_args << " for " << impl.m_type << "` wasn't constrained");
-                return placeholders[ge.binding];
-            }
-            return *impl_params[ge.binding];
-            };
+        const auto& ge = gt.data().as_Generic();
+        //if( ge.is_self() ) {
+        //    // TODO: `impl_type` or `des_type`
+        //    DEBUG("[find_impl__check_crate_raw] Self - " << impl_type << " or " << des_type);
+        //    //TODO(sp, "[find_impl__check_crate_raw] Self - " << impl_type << " or " << des_type);
+        //    return impl_type;
+        //}
+        ASSERT_BUG(sp, !ge.is_placeholder(), "[find_impl__check_crate_raw] Placeholder param seen - " << gt);
+        if( out_impl_params.m_types.at(ge.binding) != HIR::TypeRef() ) {
+            return out_impl_params.m_types.at(ge.binding);
+        }
+        return placeholders.m_types.at(ge.binding);
+    };
     //::std::vector<::HIR::TypeRef> saved_ph;
     //for(const auto& t : placeholders)
     //    saved_ph.push_back(t.clone());
@@ -3002,11 +3049,9 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 DEBUG("- Bounded type is an ivar, assuming fuzzy match");
                 found_fuzzy_match = true;
             }
-            // TODO: Save the placeholder state and restore if the result was Fuzzy
-            ::std::vector<::HIR::TypeRef> saved_ph;
-            for(const auto& t : placeholders)
-                saved_ph.push_back(t.clone());
-            ::std::vector<::HIR::TypeRef> fuzzy_ph;
+            // NOTE: Save the placeholder state and restore if the result was Fuzzy
+            ::HIR::PathParams saved_ph = placeholders.clone();
+            ::HIR::PathParams fuzzy_ph;
             unsigned num_fuzzy = 0;
             // TODO: Pass the `match_test_generics` callback? Or another one that handles the impl placeholders.
             auto rv = this->find_trait_impls(sp, real_trait_path.m_path, real_trait_path.m_params, real_type, [&](auto impl, auto impl_cmp) {
@@ -3022,9 +3067,9 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                     for(auto& t : i_tp.m_types)
                         this->expand_associated_types_inplace( sp, t, {} );
                     DEBUG("[ftic_check_params] " << real_type << " ?= " << i_ty);
-                    cmp &= real_type .match_test_generics_fuzz(sp, i_ty, cb_infer, cb_match);
+                    cmp &= real_type .match_test_generics_fuzz(sp, i_ty, cb_infer, matcher);
                     DEBUG("[ftic_check_params] " << real_trait_path.m_params << " ?= " << i_tp);
-                    cmp &= real_trait_path.m_params .match_test_generics_fuzz(sp, i_tp, cb_infer, cb_match);
+                    cmp &= real_trait_path.m_params .match_test_generics_fuzz(sp, i_tp, cb_infer, matcher);
                     DEBUG("[ftic_check_params] - Re-check result: " << cmp);
                 }
                 for(const auto& assoc_bound : real_trait.m_type_bounds) {
@@ -3049,7 +3094,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                     DEBUG("[ftic_check_params] - Compare " << ty << " and " << assoc_bound.second << ", matching generics");
                     // `ty` = Monomorphised actual type (< `be.type` as `be.trait` >::`assoc_bound.first`)
                     // `assoc_bound.second` = Desired type (monomorphised too)
-                    auto cmp_i = assoc_bound.second .match_test_generics_fuzz(sp, ty, cb_infer, cb_match);
+                    auto cmp_i = assoc_bound.second .match_test_generics_fuzz(sp, ty, cb_infer, matcher);
                     switch(cmp_i)
                     {
                     case ::HIR::Compare::Equal:
@@ -3078,7 +3123,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                     if( num_fuzzy )
                     {
                         fuzzy_ph = ::std::move(placeholders);
-                        placeholders.resize(fuzzy_ph.size());
+                        placeholders.m_types.resize(fuzzy_ph.m_types.size());
                     }
                 }
                 if( cmp != ::HIR::Compare::Equal )
@@ -3087,8 +3132,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                     // - Maybe save the results for later?
                     DEBUG("[ftic_check_params] Restore placeholders: " << saved_ph);
                     DEBUG("[ftic_check_params] OVERWRITTEN placeholders: " << placeholders);
-                    for(size_t i = 0; i < placeholders.size(); i ++)
-                        placeholders[i] = saved_ph[i].clone();
+                    placeholders = saved_ph.clone();
                 }
                 // If the match isn't a concrete equal, return false (to keep searching)
                 return (cmp == ::HIR::Compare::Equal);
@@ -3132,12 +3176,22 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         }
     }
 
+    for(size_t i = 0; i < out_impl_params.m_types.size(); i ++)
+    {
+        if( out_impl_params.m_types[i] == HIR::TypeRef() )
+        {
+            out_impl_params.m_types[i] = std::move(placeholders.m_types[i]);
+        }
+        ASSERT_BUG(sp, out_impl_params.m_types[i] != HIR::TypeRef(), "");
+    }
+
     for(size_t i = 0; i < impl_params_def.m_types.size(); i ++)
     {
         if( impl_params_def.m_types.at(i).m_is_sized )
         {
-            if( impl_params[i] ) {
-                auto cmp = type_is_sized(sp, *impl_params[i]);
+            if( out_impl_params.m_types[i] != HIR::TypeRef() )
+            {
+                auto cmp = type_is_sized(sp, out_impl_params.m_types[i]);
                 if( cmp == ::HIR::Compare::Unequal )
                 {
                     return ::HIR::Compare::Unequal;
@@ -3149,8 +3203,9 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         }
     }
 
+
     //if( match == ::HIR::Compare::Fuzzy ) {
-    //    placeholders = ::std::move(saved_ph);
+    //    out_impl_params.placeholder_types = ::std::move(fuzzy_ph);
     //}
 
     return match;
@@ -3974,17 +4029,24 @@ const ::HIR::TypeRef* TraitResolution::check_method_receiver(const Span& sp, con
         // TODO: Handle custom-receiver functions
         // - match_test_generics, if it succeeds return the matched Self
         {
-            const ::HIR::TypeRef*   detected_self_ty = nullptr;
-            auto cb_getself = [&](auto idx, const auto& /*name*/, const auto& ty)->::HIR::Compare{
-                if( idx == GENERIC_Self )
-                {
-                    detected_self_ty = &ty;
+            struct GetSelf:
+                public ::HIR::MatchGenerics
+            {
+                const ::HIR::TypeRef*   detected_self_ty = nullptr;
+                ::HIR::Compare match_ty(const ::HIR::GenericRef& g, const ::HIR::TypeRef& ty, ::HIR::t_cb_resolve_type _resolve_cb) override {
+                    if( g.is_self() )
+                    {
+                        detected_self_ty = &ty;
+                    }
+                    return ::HIR::Compare::Equal;
                 }
-                return ::HIR::Compare::Equal;
-                };
-            if( fcn.m_args.front().second .match_test_generics(sp, ty, this->m_ivars.callback_resolve_infer(), cb_getself) ) {
-                assert(detected_self_ty);
-                return &this->m_ivars.get_type(*detected_self_ty);
+                ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::Literal& sz) override {
+                    TODO(Span(), "GetSelf::match_val " << g << " with " << sz);
+                }
+            }   getself;
+            if( fcn.m_args.front().second .match_test_generics(sp, ty, this->m_ivars.callback_resolve_infer(), getself) ) {
+                assert(getself.detected_self_ty);
+                return &this->m_ivars.get_type(*getself.detected_self_ty);
             }
         }
         return nullptr;

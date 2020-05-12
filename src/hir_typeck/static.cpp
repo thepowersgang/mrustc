@@ -431,7 +431,7 @@ bool StaticTraitResolve::find_impl(
                 if (impl.is_positive)
                 {
                     return self.find_impl__check_crate_raw(sp, trait_path, trait_params, type, impl.m_params, impl.m_trait_args, impl.m_type,
-                        [&](auto impl_params, auto placeholders, auto cmp)->bool {
+                        [&](auto impl_params, auto cmp)->bool {
                             //rv = found_cb( ImplRef(impl_params, trait_path, impl, mv$(placeholders)), (cmp == ::HIR::Compare::Fuzzy) );
                             out_rv = found_cb(ImplRef(&type, trait_params, &null_assoc), cmp == ::HIR::Compare::Fuzzy);
                             return out_rv;
@@ -440,7 +440,7 @@ bool StaticTraitResolve::find_impl(
                 else
                 {
                     return self.find_impl__check_crate_raw(sp, trait_path, trait_params, type, impl.m_params, impl.m_trait_args, impl.m_type,
-                        [&](auto impl_params, auto placeholders, auto cmp)->bool {
+                        [&](auto impl_params, auto cmp)->bool {
                             out_rv = false;
                             return true;
                         });
@@ -604,7 +604,7 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
         const Span& sp,
         const ::HIR::SimplePath& des_trait_path, const ::HIR::PathParams* des_trait_params, const ::HIR::TypeRef& des_type,
         const ::HIR::GenericParams& impl_params_def, const ::HIR::PathParams& impl_trait_params, const ::HIR::TypeRef& impl_type,
-        ::std::function<bool(::std::vector<const ::HIR::TypeRef*>, ::std::vector<::HIR::TypeRef>, ::HIR::Compare)> found_cb
+        ::std::function<bool(HIR::PathParams, ::HIR::Compare)> found_cb
     ) const
 {
     auto cb_ident = [](const auto&ty)->const ::HIR::TypeRef&{return ty;};
@@ -612,21 +612,49 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
 
     // TODO: What if `des_trait_params` already has impl placeholders?
 
-    ::std::vector< const ::HIR::TypeRef*> impl_params;
-    impl_params.resize( impl_params_def.m_types.size() );
+    HIR::PathParams impl_params;
+    impl_params.m_types.resize( impl_params_def.m_types.size() );
+    impl_params.m_values.resize( impl_params_def.m_values.size() );
 
-    auto cb = [&impl_params,&sp,cb_ident](auto idx, const auto& /*name*/, const auto& ty) {
-        assert( idx < impl_params.size() );
-        if( ! impl_params[idx] ) {
-            impl_params[idx] = &ty;
-            DEBUG("[find_impl__check_crate_raw:cb] Set placeholder " << idx << " to " << ty);
-            return ::HIR::Compare::Equal;
+    class GetParams:
+        public ::HIR::MatchGenerics
+    {
+        Span    sp;
+        HIR::PathParams& impl_params;
+    public:
+        GetParams(Span sp, HIR::PathParams& impl_params):
+            sp(sp),
+            impl_params(impl_params)
+        {}
+
+        ::HIR::Compare match_ty(const ::HIR::GenericRef& g, const ::HIR::TypeRef& ty, ::HIR::t_cb_resolve_type resolve_cb) override {
+            ASSERT_BUG(sp, g.binding < impl_params.m_types.size(), "");
+            if( impl_params.m_types[g.binding] == HIR::TypeRef() )
+            {
+                impl_params.m_types[g.binding] = ty.clone();
+                DEBUG("[find_impl__check_crate_raw:GetParams] Set impl param " << g << " to " << ty);
+                return ::HIR::Compare::Equal;
+            }
+            else {
+                return impl_params.m_types[g.binding].compare_with_placeholders(sp, ty, resolve_cb);
+            }
         }
-        else {
-            return impl_params[idx]->compare_with_placeholders(sp, ty, cb_ident);
+        ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::Literal& sz) override {
+            ASSERT_BUG(sp, g.binding < impl_params.m_values.size(), "Type generic " << g << " out of range (" << impl_params.m_values.size() << ")");
+            if( impl_params.m_values[g.binding].is_Invalid() )
+            {
+                impl_params.m_values[g.binding] = sz.clone();
+                return ::HIR::Compare::Equal;
+            }
+            else
+            {
+                TODO(Span(), "GetParams::match_val " << g << "(" << impl_params.m_values[g.binding] << ") with " << sz);
+            }
         }
-        };
-    auto match = impl_type.match_test_generics_fuzz(sp, des_type, cb_ident, cb);
+    };
+    GetParams get_params { sp, impl_params };
+
+    auto match = impl_type.match_test_generics_fuzz(sp, des_type, cb_ident, get_params);
     unsigned base_impl_placeholder_idx = 0;
     if( des_trait_params )
     {
@@ -636,7 +664,7 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
         {
             const auto& l = impl_trait_params.m_types[i];
             const auto& r = des_trait_params->m_types[i];
-            match &= l.match_test_generics_fuzz(sp, r, cb_ident, cb);
+            match &= l.match_test_generics_fuzz(sp, r, cb_ident, get_params);
 
             visit_ty_with(r, [&](const ::HIR::TypeRef& t)->bool {
                 if( t.data().is_Generic() && (t.data().as_Generic().binding >> 8) == 2 ) {
@@ -649,8 +677,8 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
         base_impl_placeholder_idx = max_impl_idx;
 
         size_t n_placeholders_needed = 0;
-        for(unsigned int i = 0; i < impl_params.size(); i ++ ) {
-            if( !impl_params[i] ) {
+        for(unsigned int i = 0; i < impl_params.m_types.size(); i ++ ) {
+            if( impl_params.m_types[i] == HIR::TypeRef() ) {
                 n_placeholders_needed ++;
             }
         }
@@ -661,63 +689,90 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
         return false;
     }
 
-    ::std::vector< ::HIR::TypeRef>  placeholders;
-    for(unsigned int i = 0; i < impl_params.size(); i ++ ) {
-        if( !impl_params[i] ) {
+    auto placeholder_name = RcString::new_interned(FMT("impl_?_" << &impl_params_def));
+    std::vector<HIR::TypeRef>   placeholders;
+    for(unsigned int i = 0; i < impl_params.m_types.size(); i ++ ) {
+        if( impl_params.m_types[i] == HIR::TypeRef() )
+        {
             if( placeholders.size() == 0 )
-                placeholders.resize(impl_params.size());
-            placeholders[i] = ::HIR::TypeRef("impl_?", 2*256 + i + base_impl_placeholder_idx);
-            DEBUG("Placeholder " << placeholders[i] << " for " << impl_params_def.m_types[i].m_name);
+                placeholders.resize(impl_params.m_types.size());
+            placeholders[i] = ::HIR::TypeRef(placeholder_name, 2*256 + i + base_impl_placeholder_idx);
+            DEBUG("Placeholder " << placeholders[i] << " for I:" << i << " " << impl_params_def.m_types[i].m_name);
         }
     }
-    // Callback that matches placeholders to concrete types
-    auto cb_match = [&](unsigned int idx, const auto& /*name*/, const auto& ty)->::HIR::Compare {
-        if( ty.data().is_Generic() && ty.data().as_Generic().binding == idx )
-            return ::HIR::Compare::Equal;
-        if( idx >> 8 == 2 ) {
-            if( (idx % 256) >= base_impl_placeholder_idx ) {
-                auto i = idx % 256 - base_impl_placeholder_idx;
-                ASSERT_BUG(sp, !impl_params[i], "Placeholder to populated type returned. new " << ty << ", existing " << *impl_params[i]);
-                auto& ph = placeholders[i];
-                if( ph.data().is_Generic() && ph.data().as_Generic().binding == idx ) {
-                    DEBUG("[find_impl__check_crate_raw:cb_match] Bind placeholder " << i << " to " << ty);
-                    ph = ty.clone();
-                    return ::HIR::Compare::Equal;
-                }
-                else if( ph == ty ) {
-                    return ::HIR::Compare::Equal;
+
+    struct Matcher:
+        public ::HIR::MatchGenerics
+    {
+        Span    sp;
+        const HIR::PathParams& impl_params;
+        unsigned    base_impl_placeholder_idx;
+        RcString    placeholder_name;
+        std::vector<HIR::TypeRef>&  placeholders;
+        Matcher(Span sp, const HIR::PathParams& impl_params, RcString placeholder_name, unsigned base_impl_placeholder_idx, std::vector<HIR::TypeRef>& placeholders):
+            sp(sp),
+            impl_params(impl_params),
+            base_impl_placeholder_idx(base_impl_placeholder_idx),
+            placeholder_name(placeholder_name),
+            placeholders(placeholders)
+        {
+        }
+
+        ::HIR::Compare match_ty(const ::HIR::GenericRef& g, const ::HIR::TypeRef& ty, ::HIR::t_cb_resolve_type resolve_cb) override {
+            if( ty.data().is_Generic() && ty.data().as_Generic().binding == g.binding)
+                return ::HIR::Compare::Equal;
+            if( g.is_placeholder() )
+            {
+                if( g.idx() >= base_impl_placeholder_idx )
+                {
+                    auto i = g.idx() - base_impl_placeholder_idx;
+                    ASSERT_BUG(sp, impl_params.m_types[i] == HIR::TypeRef(), "Placeholder to populated type returned. new " << ty << ", existing " << impl_params.m_types[i]);
+                    auto& ph = placeholders[i];
+                    if( ph.data().is_Generic() && ph.data().as_Generic() == g ) {
+                        DEBUG("[find_impl__check_crate_raw] Bind placeholder " << i << " to " << ty);
+                        ph = ty.clone();
+                        return ::HIR::Compare::Equal;
+                    }
+                    else if( ph == ty ) {
+                        return ::HIR::Compare::Equal;
+                    }
+                    else {
+                        TODO(sp, "[find_impl__check_crate_raw] Compare placeholder " << i << " " << ph << " == " << ty);
+                    }
                 }
                 else {
-                    TODO(sp, "[find_impl__check_crate_raw:cb_match] Compare placeholder " << i << " " << ph << " == " << ty);
+                    return ::HIR::Compare::Fuzzy;
                 }
             }
             else {
-                return ::HIR::Compare::Fuzzy;
+                return ::HIR::Compare::Unequal;
             }
         }
-        else {
-            return ::HIR::Compare::Unequal;
+        ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::Literal& sz) override {
+            TODO(Span(), "Matcher::match_val " << g << " with " << sz);
         }
-        };
+    };
+    Matcher matcher { sp, impl_params, placeholder_name, base_impl_placeholder_idx, placeholders };
+
     // Callback that returns monomorpisation results
     auto cb_monomorph = [&](const auto& gt)->const ::HIR::TypeRef& {
             const auto& ge = gt.data().as_Generic();
-            if( ge.binding == GENERIC_Self ) {
+            if( ge.is_self() ) {
                 // TODO: `impl_type` or `des_type`
                 DEBUG("[find_impl__check_crate_raw] Self - " << impl_type << " or " << des_type);
                 //TODO(sp, "[find_impl__check_crate_raw] Self - " << impl_type << " or " << des_type);
                 return impl_type;
             }
-            ASSERT_BUG(sp, ge.binding >> 8 != 2, "[find_impl__check_crate_raw] Placeholder param seen - " << gt);
-            ASSERT_BUG(sp, ge.binding < impl_params.size(), "[find_impl__check_crate_raw] Binding out of range - " << gt);
-            if( !impl_params[ge.binding] ) {
-                return placeholders[ge.binding];
+            ASSERT_BUG(sp, !ge.is_placeholder(), "[find_impl__check_crate_raw] Placeholder param seen - " << gt);
+            if( impl_params.m_types.at(ge.binding) != HIR::TypeRef() ) {
+                return impl_params.m_types.at(ge.binding);
             }
-            return *impl_params[ge.binding];
+            return placeholders.at(ge.binding);
             };
 
     // Bounds
-    for(const auto& bound : impl_params_def.m_bounds) {
+    for(const auto& bound : impl_params_def.m_bounds)
+    {
         if( const auto* ep = bound.opt_TraitBound() )
         {
             const auto& e = *ep;
@@ -751,7 +806,7 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
                     trait_contains_type(sp, b_tp_mono.m_path, *e.trait.m_trait_ptr, aty_name.c_str(), aty_src_trait);
 
                     bool rv = false;
-                    if( b_ty_mono.data().is_Generic() && (b_ty_mono.data().as_Generic().binding >> 8) == 2 ) {
+                    if( b_ty_mono.data().is_Generic() && b_ty_mono.data().as_Generic().is_placeholder() ) {
                         DEBUG("- Placeholder param " << b_ty_mono << ", magic success");
                         rv = true;
                     }
@@ -761,8 +816,8 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
                             this->expand_associated_types(sp, have);
 
                             DEBUG("::" << aty_name << " - " << have << " ?= " << exp);
-                            //auto cmp = have .match_test_generics_fuzz(sp, exp, cb_ident, cb_match);
-                            auto cmp = exp .match_test_generics_fuzz(sp, have, cb_ident, cb_match);
+                            //auto cmp = have .match_test_generics_fuzz(sp, exp, cb_ident, matcher);
+                            auto cmp = exp .match_test_generics_fuzz(sp, have, cb_ident, matcher);
                             if( cmp == ::HIR::Compare::Unequal )
                                 DEBUG("Assoc ty " << aty_name << " mismatch, " << have << " != des " << exp);
                             return cmp != ::HIR::Compare::Unequal;
@@ -779,7 +834,7 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
             //else
             {
                 bool rv = false;
-                if( b_ty_mono.data().is_Generic() && (b_ty_mono.data().as_Generic().binding >> 8) == 2 ) {
+                if( b_ty_mono.data().is_Generic() && b_ty_mono.data().as_Generic().is_placeholder() ) {
                     DEBUG("- Placeholder param " << b_ty_mono << ", magic success");
                     rv = true;
                 }
@@ -800,7 +855,16 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
         }
     }
 
-    return found_cb( mv$(impl_params), mv$(placeholders), match );
+    for(size_t i = 0; i < impl_params.m_types.size(); i ++)
+    {
+        if( impl_params.m_types[i] == HIR::TypeRef() )
+        {
+            impl_params.m_types[i] = std::move(placeholders[i]);
+        }
+        ASSERT_BUG(sp, impl_params.m_types[i] != HIR::TypeRef(), "");
+    }
+
+    return found_cb( mv$(impl_params), match );
 }
 
 bool StaticTraitResolve::find_impl__check_crate(
@@ -816,8 +880,8 @@ bool StaticTraitResolve::find_impl__check_crate(
         sp,
         trait_path, trait_params, type,
         impl.m_params, impl.m_trait_args, impl.m_type,
-        [&](auto impl_params, auto placeholders, auto match) {
-            return found_cb( ImplRef(impl_params, trait_path, impl, mv$(placeholders)), (match == ::HIR::Compare::Fuzzy) );
+        [&](auto impl_params, auto match) {
+            return found_cb( ImplRef(mv$(impl_params), trait_path, impl), (match == ::HIR::Compare::Fuzzy) );
         });
 }
 
@@ -2457,11 +2521,7 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
                 TODO(sp, "Use bounded constant values for " << p);
             auto& ie = best_impl.m_data.as_TraitImpl();
             out_params.pp_impl = &out_params.pp_impl_data;
-            for(auto ptr : ie.params)
-            {
-                // TODO: Avoid cloning when the params are in the placeholder array
-                out_params.pp_impl_data.m_types.push_back( ptr->clone() );
-            }
+            out_params.pp_impl_data = ie.impl_params.clone();
 
             const auto& ti = *ie.impl;
             const auto& c = ti.m_constants.at(pe.item);

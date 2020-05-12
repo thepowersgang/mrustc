@@ -53,6 +53,7 @@ namespace {
 
         ::HIR::ExprNodeP do_reborrow(::HIR::ExprNodeP node_ptr)
         {
+            assert(node_ptr);
             if(const auto* e = node_ptr->m_res_type.data().opt_Borrow())
             {
                 if( e->type == ::HIR::BorrowType::Unique )

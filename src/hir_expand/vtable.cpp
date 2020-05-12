@@ -84,7 +84,10 @@ namespace {
             }
             visitor.add_types_from_trait(tr);
             for(const auto& st : tr.m_all_parent_traits)
+            {
+                assert(st.m_trait_ptr);
                 visitor.add_types_from_trait(*st.m_trait_ptr);
+            }
             auto args = mv$(visitor.params);
 
             struct VtableConstruct {

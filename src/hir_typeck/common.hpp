@@ -11,9 +11,6 @@
 #include <hir/generic_params.hpp>
 #include <hir/type.hpp>
 
-// TODO/NOTE - This is identical to ::HIR::t_cb_resolve_type
-typedef ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)>   t_cb_generic;
-
 extern bool monomorphise_type_needed(const ::HIR::TypeRef& tpl);
 extern bool monomorphise_pathparams_needed(const ::HIR::PathParams& tpl);
 static inline bool monomorphise_genericpath_needed(const ::HIR::GenericPath& tpl) {

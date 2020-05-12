@@ -37,6 +37,25 @@ namespace {
             return false;
             });
     }
+
+    class OwnedImplMatcher:
+        public ::HIR::MatchGenerics
+    {
+        ::HIR::PathParams& impl_params;
+    public:
+        OwnedImplMatcher(::HIR::PathParams& impl_params):
+            impl_params(impl_params)
+        {}
+
+        ::HIR::Compare match_ty(const ::HIR::GenericRef& g, const ::HIR::TypeRef& ty, ::HIR::t_cb_resolve_type _resolve_cb) override {
+            assert( g.binding < impl_params.m_types.size() );
+            impl_params.m_types[g.binding] = ty.clone();
+            return ::HIR::Compare::Equal;
+        }
+        ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::Literal& sz) override {
+            TODO(Span(), "OwnedImplMatcher::match_val " << g << " with " << sz);
+        }
+    };
 }
 #define NEWNODE(TY, SP, CLASS, ...)  mk_exprnodep(new HIR::ExprNode##CLASS(SP ,## __VA_ARGS__), TY)
 
@@ -484,12 +503,9 @@ namespace {
         {
             // Default-construct entires in the `impl_params` array
             impl_params.m_types.resize( impl_ptr->m_params.m_types.size() );
+            OwnedImplMatcher matcher(impl_params);
 
-            auto cmp = impl_ptr->m_type.match_test_generics_fuzz(sp, e.type, context.m_ivars.callback_resolve_infer(), [&](auto idx, const auto& /*name*/, const auto& ty) {
-                assert( idx < impl_params.m_types.size() );
-                impl_params.m_types[idx] = ty.clone();
-                return ::HIR::Compare::Equal;
-                });
+            auto cmp = impl_ptr->m_type.match_test_generics_fuzz(sp, e.type, context.m_ivars.callback_resolve_infer(), matcher);
             if( cmp == ::HIR::Compare::Fuzzy )
             {
                 // If the match was fuzzy, it could be due to a compound being matched against an ivar
@@ -1909,12 +1925,9 @@ namespace {
                 if( impl_ptr->m_params.m_types.size() > 0 )
                 {
                     impl_params.m_types.resize( impl_ptr->m_params.m_types.size() );
+                    OwnedImplMatcher    matcher(impl_params);
                     // NOTE: Could be fuzzy.
-                    bool r = impl_ptr->m_type.match_test_generics(sp, e.type, this->context.m_ivars.callback_resolve_infer(), [&](auto idx, const auto& /*name*/, const auto& ty) {
-                        assert( idx < impl_params.m_types.size() );
-                        impl_params.m_types[idx] = ty.clone();
-                        return ::HIR::Compare::Equal;
-                        });
+                    bool r = impl_ptr->m_type.match_test_generics(sp, e.type, this->context.m_ivars.callback_resolve_infer(), matcher);
                     if(!r)
                     {
                         auto cb = monomorphise_type_get_cb(sp, nullptr, &impl_params, nullptr);

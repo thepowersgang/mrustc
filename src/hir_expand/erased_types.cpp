@@ -48,11 +48,22 @@ const ::HIR::Function& HIR_Expand_ErasedType_GetFunction(const Span& sp, const S
 
         // 2. Obtain monomorph_cb (including impl params)
         impl_params.m_types.resize(impl_ptr->m_params.m_types.size());
-        impl_ptr->m_type .match_test_generics(sp, pe.type, [](const auto& x)->const auto&{return x;}, [&](auto idx, const auto& /*name*/, const auto& ty) {
-            assert( idx < impl_params.m_types.size() );
-            impl_params.m_types[idx] = ty.clone();
-            return ::HIR::Compare::Equal;
-            });
+        class Matcher: public ::HIR::MatchGenerics
+        {
+            ::HIR::PathParams& impl_params;
+        public:
+            Matcher(::HIR::PathParams& impl_params): impl_params(impl_params) {}
+
+            ::HIR::Compare match_ty(const ::HIR::GenericRef& g, const ::HIR::TypeRef& ty, ::HIR::t_cb_resolve_type _resolve_cb) override {
+                assert( g.binding < impl_params.m_types.size() );
+                impl_params.m_types[g.binding] = ty.clone();
+                return ::HIR::Compare::Equal;
+            }
+            ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::Literal& sz) override {
+                TODO(Span(), "HIR_Expand_ErasedType_GetFunction::Matcher::match_val " << g << " with " << sz);
+            }
+        } matcher(impl_params);
+        impl_ptr->m_type .match_test_generics(sp, pe.type, [](const auto& x)->const auto&{return x;}, matcher);
         for(const auto& t : impl_params.m_types)
         {
             if( t == ::HIR::TypeRef() )

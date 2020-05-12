@@ -623,6 +623,12 @@
     <ClInclude Include="..\..\src\hir\type_ref.hpp">
       <Filter>Header Files\hir</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\src\hir\literal.hpp">
+      <Filter>Source Files\hir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\hir\generic_ref.hpp">
+      <Filter>Source Files\hir</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="../packages.config" />

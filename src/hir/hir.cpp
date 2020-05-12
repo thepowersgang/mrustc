@@ -40,6 +40,9 @@ namespace HIR {
         (Defer,
             os << "?";
             ),
+        (Generic,
+            os << e;
+            ),
         (List,
             os << "[";
             for(const auto& val : e)
@@ -76,6 +79,9 @@ namespace HIR {
         (Invalid,
             ),
         (Defer,
+            ),
+        (Generic,
+            return le == re;
             ),
         (List,
             if( le.size() != re.size() )
@@ -132,6 +138,9 @@ HIR::Literal HIR::Literal::clone() const
         ),
     (Defer,
         return ::HIR::Literal::make_Defer({});
+        ),
+    (Generic,
+        return ::HIR::Literal(e);
         ),
     (List,
         ::std::vector< ::HIR::Literal>  vals;

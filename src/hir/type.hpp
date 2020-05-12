@@ -14,9 +14,8 @@
 #include <hir/expr_ptr.hpp>
 #include <span.hpp>
 #include "type_ref.hpp"
-
-/// Binding index for a Generic that indicates "Self"
-#define GENERIC_Self    0xFFFF
+#include "literal.hpp"
+#include "generic_ref.hpp"
 
 constexpr const char* CLOSURE_PATH_PREFIX = "closure#";
 
@@ -79,71 +78,13 @@ enum class BorrowType
 };
 extern ::std::ostream& operator<<(::std::ostream& os, const BorrowType& bt);
 
-struct LifetimeRef
-{
-    static const uint32_t UNKNOWN = 0;
-    static const uint32_t STATIC = 0xFFFF;
-
-    //RcString  name;
-    // Values below 2^16 are parameters/static, values above are per-function region IDs allocated during region inferrence.
-    uint32_t  binding = UNKNOWN;
-
-    LifetimeRef()
-        :binding(UNKNOWN)
-    {
-    }
-    LifetimeRef(uint32_t binding)
-        :binding(binding)
-    {
-    }
-
-    static LifetimeRef new_static() {
-        LifetimeRef rv;
-        rv.binding = STATIC;
-        return rv;
-    }
-
-    Ordering ord(const LifetimeRef& x) const {
-        return ::ord(binding, x.binding);
-    }
-    bool operator==(const LifetimeRef& x) const {
-        return binding == x.binding;
-    }
-    bool operator!=(const LifetimeRef& x) const {
-        return !(*this == x);
-    }
-    friend ::std::ostream& operator<<(::std::ostream& os, const LifetimeRef& x) {
-        if( x.binding == UNKNOWN )
-        {
-            os << "'_";
-        }
-        else if( x.binding == STATIC )
-        {
-            os << "'static";
-        }
-        else if( x.binding < 0xFFFF )
-        {
-            switch( x.binding & 0xFF00 )
-            {
-            case 0: os << "'I" << (x.binding & 0xFF);   break;
-            case 1: os << "'M" << (x.binding & 0xFF);   break;
-            default: os << "'unk" << x.binding;   break;
-            }
-        }
-        else
-        {
-            os << "'_" << (x.binding - 0x1000);
-        }
-        return os;
-    }
-};
 
 /// Array size used for types AND array literals
 TAGGED_UNION_EX(ArraySize, (), Unevaluated, (
     /// Un-evaluated size (still an expression)
     (Unevaluated, ::std::shared_ptr<::HIR::ExprPtr>),
     /// Compiled and partially evaluated
-    //(LiteralExpr, ::HIR::LiteralExpr),
+    (Generic, GenericRef),  // TODO: HIR::Literal
     /// Fully known
     (Known, uint64_t)
     ),
@@ -217,15 +158,7 @@ TAGGED_UNION(TypeData, Diverge,
                 ;
         }
         }),
-    (Generic, struct {
-        RcString    name;
-        // 0xFFFF = Self, 0-255 = Type/Trait, 256-511 = Method, 512-767 = Placeholder
-        unsigned int    binding;
-
-        bool is_placeholder() const {
-            return (binding >> 8) == 2;
-        }
-        }),
+    (Generic, GenericRef),
     (TraitObject, struct {  // TODO: Pointer wrap
         ::HIR::TraitPath    m_trait;
         ::std::vector< ::HIR::GenericPath > m_markers;

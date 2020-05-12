@@ -61,11 +61,33 @@ namespace HIR {
             os << "/*expr:*/";
             HIR_DumpExpr(os, *se);
             }
+        TU_ARMA(Generic, se) {
+            os << se.name << "/*" << se.binding << "*/";
+            }
         TU_ARMA(Known, se)
             os << se;
         }
         return os;
     }
+}
+
+void HIR::GenericRef::fmt(std::ostream& os) const
+{
+    os << this->name << "/*";
+    if( this->binding == GENERIC_Self )
+        os << "";
+    else {
+        switch(this->group())
+        {
+        case 0: os << "I:" << this->idx();  break;
+        case 1: os << "M:" << this->idx();  break;
+        case 2: os << "P:" << this->idx();  break;
+        default:
+            os << this->binding;
+            break;
+        }
+    }
+    os << "*/";
 }
 
 Ordering HIR::ArraySize::ord(const HIR::ArraySize& x) const
@@ -83,6 +105,17 @@ Ordering HIR::ArraySize::ord(const HIR::ArraySize& x) const
         if( !tse->m_mir != !xse->m_mir ) {
             return (tse->m_mir ? OrdGreater : OrdLess);
         }
+
+        // HACK: If the inner is a const param on both, sort based on that.
+        // - Very similar to the ordering of TypeRef::Generic
+        const auto* tn = dynamic_cast<const HIR::ExprNode_ConstParam*>(&**tse);
+        const auto& xn = dynamic_cast<const HIR::ExprNode_ConstParam*>(&**xse);
+        if( tn && xn )
+        {
+            // Is this valid? What if they're from different scopes?
+            return ::ord(tn->m_binding, xn->m_binding);
+        }
+
         if( tse->m_mir )
         {
             assert(xse->m_mir);
@@ -91,17 +124,11 @@ Ordering HIR::ArraySize::ord(const HIR::ArraySize& x) const
         }
         else
         {
-            // HACK: If the inner is a const param on both, sort based on that.
-            // - Very similar to the ordering of TypeRef::Generic
-            const auto* tn = dynamic_cast<const HIR::ExprNode_ConstParam*>(&**tse);
-            const auto& xn = dynamic_cast<const HIR::ExprNode_ConstParam*>(&**xse);
-            if( tn && xn )
-            {
-                // Is this valid? What if they're from different scopes?
-                return ::ord(tn->m_binding, xn->m_binding);
-            }
             TODO(Span(), "Compare non-expanded array sizes - (wo/ MIR) " << *this << " and " << x);
         }
+        }
+    TU_ARMA(Generic, tse, xse) {
+        return ::ord(tse.binding, xse.binding);
         }
     TU_ARMA(Known, tse, xse)
         return ::ord(tse, xse);
@@ -113,6 +140,8 @@ HIR::ArraySize HIR::ArraySize::clone() const
 {
     TU_MATCH_HDRA( (*this), {)
     TU_ARMA(Unevaluated, se)
+        return se;
+    TU_ARMA(Generic, se)
         return se;
     TU_ARMA(Known, se)
         return se;
@@ -161,18 +190,7 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         )
         }
     TU_ARMA(Generic, e) {
-        os << e.name << "/*";
-        if( e.binding == 0xFFFF )
-            os << "";
-        else if( e.binding < 1*256 )
-            os << "I:" << e.binding;
-        else if( e.binding < 2*256 )
-            os << "M:" << (e.binding % 256);
-        else if( e.binding < 3*256 )
-            os << "P:" << (e.binding % 256);
-        else
-            os << e.binding;
-        os << "*/";
+        os << e;
         }
     TU_ARMA(TraitObject, e) {
         os << "dyn (";
@@ -487,7 +505,7 @@ bool ::HIR::TypeRef::contains_generics() const
 
 
 namespace {
-    ::HIR::Compare match_generics_pp(const Span& sp, const ::HIR::PathParams& t, const ::HIR::PathParams& x, ::HIR::t_cb_resolve_type resolve_placeholder, ::HIR::t_cb_match_generics callback)
+    ::HIR::Compare match_generics_pp(const Span& sp, const ::HIR::PathParams& t, const ::HIR::PathParams& x, ::HIR::t_cb_resolve_type resolve_placeholder, ::HIR::MatchGenerics& callback)
     {
         if( t.m_types.size() != x.m_types.size() ) {
             return ::HIR::Compare::Unequal;
@@ -506,7 +524,7 @@ namespace {
 }
 
 #if 0
-void ::HIR::TypeRef::match_generics(const Span& sp, const ::HIR::TypeRef& x_in, t_cb_resolve_type resolve_placeholder, t_cb_match_generics callback) const {
+void ::HIR::TypeRef::match_generics(const Span& sp, const ::HIR::TypeRef& x_in, t_cb_resolve_type resolve_placeholder, ::HIR::MatchGenerics& callback) const {
     if( match_test_generics(sp, x_in, resolve_placeholder, callback) ) {
     }
     else {
@@ -514,14 +532,14 @@ void ::HIR::TypeRef::match_generics(const Span& sp, const ::HIR::TypeRef& x_in, 
     }
 }
 #endif
-bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x_in, t_cb_resolve_type resolve_placeholder, t_cb_match_generics callback) const
+bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x_in, t_cb_resolve_type resolve_placeholder, ::HIR::MatchGenerics& callback) const
 {
     return this->match_test_generics_fuzz(sp, x_in, resolve_placeholder, callback) == ::HIR::Compare::Equal;
 }
-::HIR::Compare HIR::TypeRef::match_test_generics_fuzz(const Span& sp, const ::HIR::TypeRef& x_in, t_cb_resolve_type resolve_placeholder, t_cb_match_generics callback) const
+::HIR::Compare HIR::TypeRef::match_test_generics_fuzz(const Span& sp, const ::HIR::TypeRef& x_in, t_cb_resolve_type resolve_placeholder, ::HIR::MatchGenerics& callback) const
 {
     if( const auto* e = data().opt_Generic() ) {
-        return callback(e->binding, e->name, x_in);
+        return callback.match_ty(*e, x_in, resolve_placeholder);
     }
     const auto& v = (this->data().is_Infer() ? resolve_placeholder(*this) : *this);
     const auto& x = (x_in.data().is_Infer() || x_in.data().is_Generic() ? resolve_placeholder(x_in) : x_in);
@@ -766,8 +784,15 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         return Compare::Equal;
         }
     TU_ARMA(Array, te, xe) {
-        // TODO: May need to match generic sizes
-        if( te.size != xe.size ) {
+        auto rv = Compare::Equal;
+        if( const auto* tse = te.size.opt_Generic() )
+        {
+            auto v = xe.size.opt_Known() ? HIR::Literal(xe.size.as_Known())
+                : HIR::Literal(xe.size.as_Generic())
+                ;
+            rv &= callback.match_val(*tse, v);
+        }
+        else if( te.size != xe.size ) {
             return Compare::Unequal;
         }
         return te.inner.match_test_generics_fuzz( sp, xe.inner, resolve_placeholder, callback );

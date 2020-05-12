@@ -143,6 +143,8 @@ namespace {
             (Defer,
                 // Shouldn't happen here, but ...
                 ),
+            (Generic,
+                ),
             (List,
                 for(auto& val : e) {
                     visit_literal(sp, val);

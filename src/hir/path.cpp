@@ -254,7 +254,7 @@ bool ::HIR::TraitPath::operator==(const ::HIR::TraitPath& x) const
     }
     return rv;
 }
-::HIR::Compare HIR::PathParams::match_test_generics_fuzz(const Span& sp, const PathParams& x, t_cb_resolve_type resolve_placeholder, t_cb_match_generics match) const
+::HIR::Compare HIR::PathParams::match_test_generics_fuzz(const Span& sp, const PathParams& x, t_cb_resolve_type resolve_placeholder, ::HIR::MatchGenerics& match) const
 {
     using ::HIR::Compare;
     auto rv = Compare::Equal;

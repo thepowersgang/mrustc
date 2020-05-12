@@ -2144,6 +2144,9 @@ namespace {
             TU_ARMA(Defer, e) {
                 MIR_BUG(*m_mir_res, "Defer literal encountered");
                 }
+            TU_ARMA(Generic, e) {
+                MIR_BUG(*m_mir_res, "Generic literal encountered");
+                }
             TU_ARMA(List, e) {
                 m_of << "{";
                 if( ty.data().is_Array() )
@@ -5785,6 +5788,9 @@ namespace {
             TU_ARMA(String, e) { return false; }
             TU_ARMA(Invalid, e) { return false; }
             TU_ARMA(Defer, e) { return false; }
+            TU_ARMA(Generic, e) {
+                MIR_BUG(*m_mir_res, "Generic literal encountered");
+            }
             TU_ARMA(BorrowPath, e) { return false; }
             TU_ARMA(BorrowData, e) { return false; }
             }

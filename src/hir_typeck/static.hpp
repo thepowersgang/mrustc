@@ -158,7 +158,7 @@ private:
         const Span& sp,
         const ::HIR::SimplePath& des_trait_path, const ::HIR::PathParams* des_trait_params, const ::HIR::TypeRef& des_type,
         const ::HIR::GenericParams& impl_params_def, const ::HIR::PathParams& impl_trait_params, const ::HIR::TypeRef& impl_type,
-        ::std::function<bool(::std::vector<const ::HIR::TypeRef*>, ::std::vector<::HIR::TypeRef>, ::HIR::Compare)>
+        ::std::function<bool(HIR::PathParams, ::HIR::Compare)>
         ) const;
     ::HIR::Compare check_auto_trait_impl_destructure(
         const Span& sp,

@@ -10,16 +10,20 @@
 #include <hir/type.hpp>
 #include <hir/hir.hpp>
 
+
+ // TODO/NOTE - This is identical to ::HIR::t_cb_resolve_type
+typedef ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)>   t_cb_generic;
+
 namespace HIR {
     class TraitImpl;
 }
+
 
 struct ImplRef
 {
     TAGGED_UNION(Data, TraitImpl,
     (TraitImpl, struct {
-        ::std::vector<const ::HIR::TypeRef*>   params;
-        ::std::vector<::HIR::TypeRef>   params_ph;
+        HIR::PathParams impl_params;
         const ::HIR::SimplePath*    trait_path;
         const ::HIR::TraitImpl* impl;
         mutable ::HIR::TypeRef  self_cache;
@@ -39,10 +43,10 @@ struct ImplRef
     Data    m_data;
 
     ImplRef():
-        m_data(Data::make_TraitImpl({ {}, {}, nullptr, nullptr }))
+        m_data(Data::make_TraitImpl({ {}, nullptr, nullptr }))
     {}
-    ImplRef(::std::vector<const ::HIR::TypeRef*> params, const ::HIR::SimplePath& trait, const ::HIR::TraitImpl& impl, ::std::vector< ::HIR::TypeRef> params_ph={}):
-        m_data(Data::make_TraitImpl({ mv$(params), mv$(params_ph), &trait, &impl }))
+    ImplRef(HIR::PathParams impl_params, const ::HIR::SimplePath& trait, const ::HIR::TraitImpl& impl):
+        m_data(Data::make_TraitImpl({ mv$(impl_params), &trait, &impl }))
 
     {}
     ImplRef(const ::HIR::TypeRef* type, const ::HIR::PathParams* args, const ::std::map< RcString, ::HIR::TypeRef>* assoc):

@@ -14,6 +14,14 @@ namespace HIR {
 
 class TypeRef;
 
+struct GenericRef;
+struct SimplePath;
+class Path;
+class Literal;
+
+class ExprPtr;
+struct ExprNode_Closure;
+
 enum Compare {
     Equal,
     Fuzzy,
@@ -23,11 +31,15 @@ enum Compare {
 typedef ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> t_cb_resolve_type;
 typedef ::std::function< ::HIR::Compare(unsigned int, const RcString&, const ::HIR::TypeRef&) > t_cb_match_generics;
 
-struct SimplePath;
-class Path;
+class MatchGenerics
+{
+public:
+    //virtual const HIR::TypeRef& resolve_infer(const HIR::TypeRef& ty) const { return ty; }
+    //virtual const HIR::TypeRef& resolve_generic(const HIR::TypeRef& ty) const { return ty; }
+    virtual ::HIR::Compare match_ty(const ::HIR::GenericRef& g, const ::HIR::TypeRef& ty, t_cb_resolve_type resolve_cb) = 0;
+    virtual ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::Literal& sz) = 0;
+};
 
-class ExprPtr;
-struct ExprNode_Closure;
 
 enum class InferClass
 {
@@ -98,10 +110,10 @@ public:
     Ordering ord(const ::HIR::TypeRef& x) const;
 
 
-    //void match_generics(const Span& sp, const ::HIR::TypeRef& x_in, t_cb_resolve_type resolve_placeholder, t_cb_match_generics callback) const;
-    bool match_test_generics(const Span& sp, const ::HIR::TypeRef& x, t_cb_resolve_type resolve_placeholder, t_cb_match_generics) const;
+    //void match_generics(const Span& sp, const ::HIR::TypeRef& x_in, t_cb_resolve_type resolve_placeholder, MatchGenerics& callback) const;
+    bool match_test_generics(const Span& sp, const ::HIR::TypeRef& x, t_cb_resolve_type resolve_placeholder, MatchGenerics& callback) const;
     // Compares this type with another, calling the first callback to resolve placeholders in the other type, and the second callback for generics in this type
-    ::HIR::Compare match_test_generics_fuzz(const Span& sp, const ::HIR::TypeRef& x_in, t_cb_resolve_type resolve_placeholder, t_cb_match_generics callback) const;
+    ::HIR::Compare match_test_generics_fuzz(const Span& sp, const ::HIR::TypeRef& x_in, t_cb_resolve_type resolve_placeholder, MatchGenerics& callback) const;
 
     // Compares this type with another, using `resolve_placeholder` to get replacements for generics/infers in `x`
     Compare compare_with_placeholders(const Span& sp, const ::HIR::TypeRef& x, t_cb_resolve_type resolve_placeholder) const;

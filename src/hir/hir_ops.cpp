@@ -125,8 +125,14 @@ namespace {
         TU_ARMA(Array, le, re) {
             if( ! matches_type_int(le.inner, re.inner, ty_res, expand_generic) )
                 return false;
-            if( le.size != re.size )
-                return false;
+            if(le.size.is_Generic()) {
+                // If the left is a generic, allow it.
+            }
+            else {
+                // TODO: Other unresolved sizes?
+                if( le.size != re.size )
+                    return false;
+            }
             return true;
             }
         TU_ARMA(Slice, le, re) {
@@ -562,6 +568,38 @@ bool ::HIR::TraitImpl::more_specific_than(const ::HIR::TraitImpl& other) const
     }
 }
 
+namespace {
+
+    struct ImplTyMatcher:
+        public ::HIR::MatchGenerics
+    {
+        ::std::vector<const ::HIR::TypeRef*>    impl_tys;
+
+
+        ::HIR::Compare match_ty(const ::HIR::GenericRef& g, const ::HIR::TypeRef& ty, ::HIR::t_cb_resolve_type _resolve_cb) override {
+            assert(g.binding < impl_tys.size());
+            if( impl_tys.at(g.binding) )
+            {
+                DEBUG("Compare " << ty << " and " << *impl_tys.at(g.binding));
+                return (ty == *impl_tys.at(g.binding) ? ::HIR::Compare::Equal : ::HIR::Compare::Unequal);
+            }
+            else
+            {
+                impl_tys.at(g.binding) = &ty;
+                return ::HIR::Compare::Equal;
+            }
+        }
+        ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::Literal& sz) override {
+            TODO(Span(), "Matcher::match_val " << g << " with " << sz);
+        }
+
+        void reinit(const HIR::GenericParams& params) {
+            this->impl_tys.clear();
+            this->impl_tys.resize(params.m_types.size());
+        }
+    };
+}
+
 // Returns `true` if the two impls overlap in the types they will accept
 bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl& other) const
 {
@@ -716,49 +754,36 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
     // > Requires two lists, and telling which one to use by the end
     auto cb_ident = [](const ::HIR::TypeRef& x)->const ::HIR::TypeRef& { return x; };
     bool is_reversed = false;
-    ::std::vector<const ::HIR::TypeRef*>    impl_tys;
-    auto cb_match = [&](unsigned int idx, const auto& /*name*/, const ::HIR::TypeRef& x)->::HIR::Compare {
-        assert(idx < impl_tys.size());
-        if( impl_tys.at(idx) )
-        {
-            DEBUG("Compare " << x << " and " << *impl_tys.at(idx));
-            return (x == *impl_tys.at(idx) ? ::HIR::Compare::Equal : ::HIR::Compare::Unequal);
-        }
-        else
-        {
-            impl_tys.at(idx) = &x;
-            return ::HIR::Compare::Equal;
-        }
-        };
-    impl_tys.resize( this->m_params.m_types.size() );
-    if( ! this->m_type.match_test_generics(sp, other.m_type, cb_ident, cb_match) )
+    ImplTyMatcher matcher;
+    matcher.reinit(this->m_params);
+    if( ! this->m_type.match_test_generics(sp, other.m_type, cb_ident, matcher) )
     {
         DEBUG("- Type mismatch, try other ordering");
         is_reversed = true;
-        impl_tys.clear(); impl_tys.resize( other.m_params.m_types.size() );
-        if( !other.m_type.match_test_generics(sp, this->m_type, cb_ident, cb_match) )
+        matcher.reinit( other.m_params );
+        if( !other.m_type.match_test_generics(sp, this->m_type, cb_ident, matcher) )
         {
             DEBUG("- Type mismatch in both orderings");
             return false;
         }
-        if( other.m_trait_args.match_test_generics_fuzz(sp, this->m_trait_args, cb_ident, cb_match) != ::HIR::Compare::Equal )
+        if( other.m_trait_args.match_test_generics_fuzz(sp, this->m_trait_args, cb_ident, matcher) != ::HIR::Compare::Equal )
         {
             DEBUG("- Params mismatch");
             return false;
         }
         // Matched with second ording
     }
-    else if( this->m_trait_args.match_test_generics_fuzz(sp, other.m_trait_args, cb_ident, cb_match) != ::HIR::Compare::Equal )
+    else if( this->m_trait_args.match_test_generics_fuzz(sp, other.m_trait_args, cb_ident, matcher) != ::HIR::Compare::Equal )
     {
         DEBUG("- Param mismatch, try other ordering");
         is_reversed = true;
-        impl_tys.clear(); impl_tys.resize( other.m_params.m_types.size() );
-        if( !other.m_type.match_test_generics(sp, this->m_type, cb_ident, cb_match) )
+        matcher.reinit(other.m_params);
+        if( !other.m_type.match_test_generics(sp, this->m_type, cb_ident, matcher) )
         {
             DEBUG("- Type mismatch in alt ordering");
             return false;
         }
-        if( other.m_trait_args.match_test_generics_fuzz(sp, this->m_trait_args, cb_ident, cb_match) != ::HIR::Compare::Equal )
+        if( other.m_trait_args.match_test_generics_fuzz(sp, this->m_trait_args, cb_ident, matcher) != ::HIR::Compare::Equal )
         {
             DEBUG("- Params mismatch in alt ordering");
             return false;
@@ -852,33 +877,21 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
                         bool rv = crate.find_trait_impls(trait.m_path.m_path, ty, [](const auto&t)->const auto&{ return t; }, [&](const ::HIR::TraitImpl& ti)->bool {
                                 DEBUG("impl" << ti.m_params.fmt_args() << " " << trait.m_path.m_path << ti.m_trait_args << " for " << ti.m_type << ti.m_params.fmt_bounds());
 
-                                ::std::vector<const ::HIR::TypeRef*>   impl_tys { ti.m_params.m_types.size() };
                                 auto cb_ident = [](const ::HIR::TypeRef& x)->const ::HIR::TypeRef& { return x; };
-                                auto cb_match = [&](unsigned int idx, const auto& /*name*/, const ::HIR::TypeRef& x)->::HIR::Compare {
-                                    assert(idx < impl_tys.size());
-                                    if( impl_tys.at(idx) )
-                                    {
-                                        DEBUG("Compare " << x << " and " << *impl_tys.at(idx));
-                                        return (x == *impl_tys.at(idx) ? ::HIR::Compare::Equal : ::HIR::Compare::Unequal);
-                                    }
-                                    else
-                                    {
-                                        impl_tys.at(idx) = &x;
-                                        return ::HIR::Compare::Equal;
-                                    }
-                                    };
+                                ImplTyMatcher   matcher;
+                                matcher.reinit(ti.m_params);
                                 // 1. Triple-check the type matches (and get generics)
-                                if( ! ti.m_type.match_test_generics(sp, ty, cb_ident, cb_match) )
+                                if( ! ti.m_type.match_test_generics(sp, ty, cb_ident, matcher) )
                                     return false;
                                 // 2. Check trait params
                                 assert(trait.m_path.m_params.m_types.size() == ti.m_trait_args.m_types.size());
                                 for(size_t i = 0; i < trait.m_path.m_params.m_types.size(); i ++)
                                 {
-                                    if( !ti.m_trait_args.m_types[i].match_test_generics(sp, trait.m_path.m_params.m_types[i], cb_ident, cb_match) )
+                                    if( !ti.m_trait_args.m_types[i].match_test_generics(sp, trait.m_path.m_params.m_types[i], cb_ident, matcher) )
                                         return false;
                                 }
                                 // 3. Check bounds on the impl
-                                if( !H2::check_bounds(crate, ti, impl_tys, g_src) )
+                                if( !H2::check_bounds(crate, ti, matcher.impl_tys, g_src) )
                                     return false;
                                 // 4. Check ATY bounds on the trait path
                                 for(const auto& atyb : trait.m_type_bounds)
@@ -888,7 +901,7 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
                                     }
                                     else {
                                         const auto& aty = ti.m_types.at(atyb.first);
-                                        if( !aty.data.match_test_generics(sp, atyb.second, cb_ident, cb_match) )
+                                        if( !aty.data.match_test_generics(sp, atyb.second, cb_ident, matcher) )
                                             return false;
                                     }
                                 }
@@ -915,7 +928,7 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
     if(is_reversed)
     {
         DEBUG("(reversed) impl params " << FMT_CB(os,
-                for(auto* p : impl_tys)
+                for(auto* p : matcher.impl_tys)
                 {
                     if(p)
                         os << *p;
@@ -926,12 +939,12 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
                 ));
         // Check bounds on `other` using these params
         // TODO: Take a callback that does the checks. Or somehow return a "maybe overlaps" result?
-        return H2::check_bounds(crate, other, impl_tys, *this);
+        return H2::check_bounds(crate, other, matcher.impl_tys, *this);
     }
     else
     {
         DEBUG("impl params " << FMT_CB(os,
-                for(auto* p : impl_tys)
+                for(auto* p : matcher.impl_tys)
                 {
                     if(p)
                         os << *p;
@@ -941,7 +954,7 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
                 }
                 ));
         // Check bounds on `*this`
-        return H2::check_bounds(crate, *this, impl_tys, other);
+        return H2::check_bounds(crate, *this, matcher.impl_tys, other);
     }
 }
 

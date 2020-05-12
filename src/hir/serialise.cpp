@@ -598,6 +598,9 @@
                 ),
             (Defer,
                 ),
+            (Generic,
+                TODO(Span(), "Serialise generic literals");
+                ),
             (List,
                 serialise_vec(e);
                 ),

@@ -87,7 +87,7 @@ bool ImplRef::has_magic_params() const
 {
     if(const auto* e = m_data.opt_TraitImpl())
     {
-        for(const auto& t : e->params_ph)
+        for(const auto& t : e->impl_params.m_types)
             if( visit_ty_with(t, [](const ::HIR::TypeRef& t){ return t.data().is_Generic() && (t.data().as_Generic().binding >> 8) == 2; }) )
                 return true;
     }
@@ -125,7 +125,7 @@ bool ImplRef::type_is_specialisable(const char* name) const
     const auto& e = this->m_data.as_TraitImpl();
     return [this,&e,&sp](const auto& gt)->const ::HIR::TypeRef& {
         const auto& ge = gt.data().as_Generic();
-        if( ge.binding == 0xFFFF ) {
+        if( ge.is_self() ) {
             // Store (or cache) a monomorphisation of Self, and error if this recurses
             if( e.self_cache == ::HIR::TypeRef() ) {
                 e.self_cache = ::HIR::TypeRef::new_diverge();
@@ -140,16 +140,8 @@ bool ImplRef::type_is_specialisable(const char* name) const
             return e.self_cache;
         }
         ASSERT_BUG(sp, ge.binding < 256, "Binding in " << gt << " out of range (>=256)");
-        ASSERT_BUG(sp, ge.binding < e.params.size(), "Binding in " << gt << " out of range (>= " << e.params.size() << ")");
-        if( e.params[ge.binding] ) {
-            return *e.params[ge.binding];
-        }
-        else if( e.params_ph.size() && e.params_ph[ge.binding] != ::HIR::TypeRef() ) {
-            return e.params_ph[ge.binding];
-        }
-        else {
-            BUG(sp, "Param #" << ge.binding << " " << ge.name << " isn't constrained for " << *this);
-        }
+        ASSERT_BUG(sp, ge.binding < e.impl_params.m_types.size(), "Binding in " << gt << " out of range (>= " << e.impl_params.m_types.size() << ")");
+        return e.impl_params.m_types.at(ge.binding);
         };
 }
 
@@ -281,8 +273,8 @@ bool ImplRef::type_is_specialisable(const char* name) const
             {
                 const auto& ty_d = e.impl->m_params.m_types[i];
                 os << ty_d.m_name << " = ";
-                if( e.params[i] ) {
-                    os << *e.params[i];
+                if( e.impl_params.m_types[i] != HIR::TypeRef() ) {
+                    os << e.impl_params.m_types[i];
                 }
                 else {
                     os << "?";

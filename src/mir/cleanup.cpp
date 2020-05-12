@@ -111,7 +111,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
         }
     TU_ARMA(UfcsKnown, pe) {
         const ::HIR::TraitImpl* best_impl = nullptr;
-        ::std::vector<::HIR::TypeRef>    best_impl_params;
+        HIR::PathParams best_impl_params;
 
         const auto& trait = resolve.m_crate.get_trait_by_path(sp, pe.trait.m_path);
         const auto& trait_cdef = trait.m_values.at(pe.item).as_Constant();
@@ -133,16 +133,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
                 best_impl = &impl;
                 bool is_spec = false;
                 is_spec = it->second.is_specialisable;
-                best_impl_params.clear();
-                for(unsigned int i = 0; i < impl_ref_e.params.size(); i ++)
-                {
-                    if( impl_ref_e.params[i] )
-                        best_impl_params.push_back( impl_ref_e.params[i]->clone() );
-                    else if( ! impl_ref_e.params_ph[i].data().is_Generic() )
-                        best_impl_params.push_back( impl_ref_e.params_ph[i].clone() );
-                    else
-                        BUG(sp, "Parameter " << i << " unset");
-                }
+                best_impl_params = impl_ref_e.impl_params.clone();
                 return !is_spec;
             }
             return false;

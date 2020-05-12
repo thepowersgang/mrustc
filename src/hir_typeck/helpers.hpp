@@ -237,7 +237,7 @@ private:
     ::HIR::Compare ftic_check_params(const Span& sp, const ::HIR::SimplePath& trait,
         const ::HIR::PathParams* params, const ::HIR::TypeRef& type,
         const ::HIR::GenericParams& impl_params_def, const ::HIR::PathParams& impl_trait_args, const ::HIR::TypeRef& impl_ty,
-        /*Out->*/ ::std::vector< const ::HIR::TypeRef*>& impl_params, ::std::vector< ::HIR::TypeRef>& placeholders
+        /*Out->*/ HIR::PathParams& out_impl_params
         ) const ;
 public:
 

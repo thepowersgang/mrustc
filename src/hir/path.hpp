@@ -93,6 +93,7 @@ struct PathParams
 {
     //::std::vector<LifetimeRef>  m_lifetimes;
     ::std::vector<TypeRef>  m_types;
+    ::std::vector<HIR::Literal>  m_values;
 
     PathParams();
     PathParams(::HIR::TypeRef );
@@ -103,7 +104,7 @@ struct PathParams
     PathParams& operator=(PathParams&&) = default;
 
     Compare compare_with_placeholders(const Span& sp, const PathParams& x, t_cb_resolve_type resolve_placeholder) const;
-    Compare match_test_generics_fuzz(const Span& sp, const PathParams& x, t_cb_resolve_type resolve_placeholder, t_cb_match_generics) const;
+    Compare match_test_generics_fuzz(const Span& sp, const PathParams& x, t_cb_resolve_type resolve_placeholder, ::HIR::MatchGenerics& match) const;
 
     /// Indicates that params exist (and thus the target requires monomorphisation)
     /// - Ignores lifetime params

@@ -292,7 +292,9 @@
     <ClInclude Include="..\..\src\hir\expr_ptr.hpp" />
     <ClInclude Include="..\..\src\hir\from_ast.hpp" />
     <ClInclude Include="..\..\src\hir\generic_params.hpp" />
+    <ClInclude Include="..\..\src\hir\generic_ref.hpp" />
     <ClInclude Include="..\..\src\hir\hir.hpp" />
+    <ClInclude Include="..\..\src\hir\literal.hpp" />
     <ClInclude Include="..\..\src\hir\path.hpp" />
     <ClInclude Include="..\..\src\hir\pattern.hpp" />
     <ClInclude Include="..\..\src\hir\type.hpp" />
