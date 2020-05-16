@@ -87,7 +87,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
                 static ::HIR::GenericPath find_source_trait(
                     const Span& sp,
                     const ::HIR::GenericPath& path, const AST::PathBinding_Type::Data_Trait& pbe, const RcString& name,
-                    t_cb_generic monomorph_cb
+                    const Monomorphiser& ms
                     )
                 {
                     if(pbe.hir)
@@ -104,13 +104,11 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
                         {
                             if( i.data.is_Type() && i.name == name ) {
                                 // Return current path.
-                                return monomorphise_genericpath_with(sp, path, monomorph_cb, /*allow_infer=*/false);
+                                return ms.monomorph_genericpath(sp, path, /*allow_infer=*/false);
                             }
                         }
 
-                        auto cb = [&](const HIR::TypeRef& t) {
-                            return path.m_params.m_types.at(t.data().as_Generic().binding).clone();
-                            };
+                        auto cb = MonomorphStatePtr(nullptr, &path.m_params, nullptr);
                         for( const auto& st : trait.supertraits() )
                         {
                             auto b = LowerHIR_TraitPath(sp, st.ent.path, true);
@@ -130,7 +128,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
             auto bound_trait_path = LowerHIR_TraitPath(bound.span, e.trait, /*allow_bounds=*/true);
             for(const auto& b : e.trait.nodes().back().args().m_assoc_bound)
             {
-                auto src_trait = H::find_source_trait(sp, bound_trait_path.m_path, e.trait.m_bindings.type.as_Trait(), b.first, [&](const auto& t){ return t.clone(); });
+                auto src_trait = H::find_source_trait(sp, bound_trait_path.m_path, e.trait.m_bindings.type.as_Trait(), b.first, MonomorphiserNop());
                 if(src_trait == ::HIR::GenericPath())
                     ERROR(sp, E0000, "Unable to find source trait for " << b.first << " in " << bound_trait_path.m_path);
                 rv.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({

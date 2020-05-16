@@ -147,8 +147,8 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
         else
         {
             // Obtain `out_ty` by monomorphising the type in the trait.
-            auto monomorph_cb = monomorphise_type_get_cb(sp, &pe.type, &pe.trait.m_params, nullptr);
-            out_ty = monomorphise_type_with(sp, trait_cdef.m_type, monomorph_cb);
+            auto monomorph_cb = MonomorphStatePtr(&pe.type, &pe.trait.m_params, nullptr);
+            out_ty = monomorph_cb.monomorph_type(sp, trait_cdef.m_type);
             resolve.expand_associated_types(sp, out_ty);
             if( best_impl )
             {
@@ -270,7 +270,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
             const auto& str = *te.binding.as_Struct();
             const auto& vals = lit.as_List();
 
-            auto monomorph = [&](const auto& tpl) { return monomorphise_type(state.sp, str.m_params, te.path.m_data.as_Generic().m_params, tpl); };
+            auto monomorph = [&](const auto& tpl) { return MonomorphStatePtr(nullptr, &te.path.m_data.as_Generic().m_params, nullptr).monomorph_type(state.sp, tpl); };
 
             ::std::vector< ::MIR::Param>   lvals;
             TU_MATCH_HDRA( (str.m_data), { )
@@ -303,7 +303,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
             const auto& enm = *te.binding.as_Enum();
             const auto& lit_var = lit.as_Variant();
 
-            auto monomorph = [&](const auto& tpl) { return monomorphise_type(state.sp, enm.m_params, te.path.m_data.as_Generic().m_params, tpl); };
+            auto monomorph = [&](const auto& tpl) { return MonomorphStatePtr(nullptr, &te.path.m_data.as_Generic().m_params, nullptr).monomorph_type(state.sp, tpl); };
 
             MIR_ASSERT(state, lit_var.idx < enm.num_variants(), "Variant index out of range");
             ::MIR::Param    p;
@@ -515,7 +515,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
                     const auto& ty_path = te.path.m_data.as_Generic();
                     const auto& str = *te.binding.as_Struct();
                     ::HIR::TypeRef  tmp;
-                    auto monomorph = [&](const auto& t) { return monomorphise_type(Span(), str.m_params, ty_path.m_params, t); };
+                    auto monomorph = [&](const auto& t) { return MonomorphStatePtr(nullptr, &ty_path.m_params, nullptr).monomorph_type(state.sp, t); };
                     ::std::vector< ::MIR::Param>   vals;
                     TU_MATCH_HDRA( (str.m_data), {)
                     TU_ARMA(Unit, se) {
@@ -601,8 +601,8 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
         const auto& str = *de.binding.as_Struct();
         MIR_ASSERT(state, str.m_struct_markings.unsized_field != ~0u, "Unsize on type that doesn't implement have a ?Sized field - " << dst_ty);
 
-        auto monomorph_cb_d = monomorphise_type_get_cb(state.sp, nullptr, &de.path.m_data.as_Generic().m_params, nullptr);
-        auto monomorph_cb_s = monomorphise_type_get_cb(state.sp, nullptr, &se.path.m_data.as_Generic().m_params, nullptr);
+        auto monomorph_cb_d = MonomorphStatePtr(nullptr, &de.path.m_data.as_Generic().m_params, nullptr);
+        auto monomorph_cb_s = MonomorphStatePtr(nullptr, &se.path.m_data.as_Generic().m_params, nullptr);
 
         // Return GetMetadata on the inner type
         TU_MATCH_HDRA( (str.m_data), {)
@@ -611,15 +611,15 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
             }
         TU_ARMA(Tuple, se) {
             const auto& ty_tpl = se.at( str.m_struct_markings.unsized_field ).ent;
-            auto ty_d = monomorphise_type_with(state.sp, ty_tpl, monomorph_cb_d, false);
-            auto ty_s = monomorphise_type_with(state.sp, ty_tpl, monomorph_cb_s, false);
+            auto ty_d = monomorph_cb_d.monomorph_type(state.sp, ty_tpl, false);
+            auto ty_s = monomorph_cb_s.monomorph_type(state.sp, ty_tpl, false);
 
             return MIR_Cleanup_Unsize_GetMetadata(state, mutator,  ty_d, ty_s, ptr_value,  out_meta_val,out_meta_ty,out_src_is_dst);
             }
         TU_ARMA(Named, se) {
             const auto& ty_tpl = se.at( str.m_struct_markings.unsized_field ).second.ent;
-            auto ty_d = monomorphise_type_with(state.sp, ty_tpl, monomorph_cb_d, false);
-            auto ty_s = monomorphise_type_with(state.sp, ty_tpl, monomorph_cb_s, false);
+            auto ty_d = monomorph_cb_d.monomorph_type(state.sp, ty_tpl, false);
+            auto ty_s = monomorph_cb_s.monomorph_type(state.sp, ty_tpl, false);
 
             return MIR_Cleanup_Unsize_GetMetadata(state, mutator,  ty_d, ty_s, ptr_value,  out_meta_val,out_meta_ty,out_src_is_dst);
             }
@@ -755,8 +755,9 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
         MIR_ASSERT(state, str.m_struct_markings.coerce_unsized_index != ~0u,
             "Struct " << src_ty << " doesn't impl CoerceUnsized");
 
-        auto monomorph_cb_d = monomorphise_type_get_cb(state.sp, nullptr, &dte.path.m_data.as_Generic().m_params, nullptr);
-        auto monomorph_cb_s = monomorphise_type_get_cb(state.sp, nullptr, &ste.path.m_data.as_Generic().m_params, nullptr);
+
+        auto monomorph_cb_d = MonomorphStatePtr(nullptr, &dte.path.m_data.as_Generic().m_params, nullptr);
+        auto monomorph_cb_s = MonomorphStatePtr(nullptr, &ste.path.m_data.as_Generic().m_params, nullptr);
 
         // - Destructure and restrucure with the unsized fields
         ::std::vector<::MIR::Param>    ents;
@@ -770,8 +771,8 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
             {
                 if( i == str.m_struct_markings.coerce_unsized_index )
                 {
-                    auto ty_d = monomorphise_type_with(state.sp, se[i].ent, monomorph_cb_d, false);
-                    auto ty_s = monomorphise_type_with(state.sp, se[i].ent, monomorph_cb_s, false);
+                    auto ty_d = monomorph_cb_d.monomorph_type(state.sp, se[i].ent, false);
+                    auto ty_s = monomorph_cb_s.monomorph_type(state.sp, se[i].ent, false);
 
                     auto new_rval = MIR_Cleanup_CoerceUnsized(state, mutator, ty_d, ty_s,  ::MIR::LValue::new_Field(value.clone(), i));
                     auto new_lval = mutator.in_temporary( mv$(ty_d), mv$(new_rval) );
@@ -780,7 +781,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
                 }
                 else if( state.m_resolve.is_type_phantom_data( se[i].ent ) )
                 {
-                    auto ty_d = monomorphise_type_with(state.sp, se[i].ent, monomorph_cb_d, false);
+                    auto ty_d = monomorph_cb_d.monomorph_type(state.sp, se[i].ent, false);
 
                     auto new_rval = ::MIR::RValue::make_Struct({ ty_d.data().as_Path().path.m_data.as_Generic().clone(), {} });
                     auto new_lval = mutator.in_temporary( mv$(ty_d), mv$(new_rval) );
@@ -799,8 +800,8 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
             {
                 if( i == str.m_struct_markings.coerce_unsized_index )
                 {
-                    auto ty_d = monomorphise_type_with(state.sp, se[i].second.ent, monomorph_cb_d, false);
-                    auto ty_s = monomorphise_type_with(state.sp, se[i].second.ent, monomorph_cb_s, false);
+                    auto ty_d = monomorph_cb_d.monomorph_type(state.sp, se[i].second.ent, false);
+                    auto ty_s = monomorph_cb_s.monomorph_type(state.sp, se[i].second.ent, false);
 
                     auto new_rval = MIR_Cleanup_CoerceUnsized(state, mutator, ty_d, ty_s,  ::MIR::LValue::new_Field(value.clone(), i));
                     auto new_lval = mutator.new_temporary( mv$(ty_d) );
@@ -810,7 +811,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
                 }
                 else if( state.m_resolve.is_type_phantom_data( se[i].second.ent ) )
                 {
-                    auto ty_d = monomorphise_type_with(state.sp, se[i].second.ent, monomorph_cb_d, false);
+                    auto ty_d = monomorph_cb_d.monomorph_type(state.sp, se[i].second.ent, false);
 
                     auto new_rval = ::MIR::RValue::make_Struct({ ty_d.data().as_Path().path.m_data.as_Generic().clone(), {} });
                     auto new_lval = mutator.in_temporary( mv$(ty_d), mv$(new_rval) );
@@ -909,7 +910,7 @@ void MIR_Cleanup_LValue(const ::MIR::TypeResolve& state, MirMutator& mutator, ::
                     ty_tpl = &se[0].second.ent;
                     }
                 }
-                tmp = monomorphise_type(state.sp, str.m_params, te.path.m_data.as_Generic().m_params, *ty_tpl);
+                tmp = MonomorphStatePtr(nullptr, &te.path.m_data.as_Generic().m_params, nullptr).monomorph_type(state.sp, *ty_tpl);
                 typ = &tmp;
 
                 num_injected_fld_zeros ++;

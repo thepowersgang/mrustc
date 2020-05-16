@@ -60,7 +60,7 @@ namespace {
                     const auto& path = tep->path.m_data.as_Generic();
                     const auto& str = *tep->binding.as_Struct();
                     auto monomorph = [&](const auto& tpl) {
-                        auto rv = monomorphise_type(state.sp, str.m_params, path.m_params, tpl);
+                        auto rv = MonomorphStatePtr(nullptr, &path.m_params, nullptr).monomorph_type(sp, tpl);
                         state.m_resolve.expand_associated_types(sp, rv);
                         return rv;
                         };

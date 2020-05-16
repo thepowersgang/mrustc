@@ -120,29 +120,36 @@ bool ImplRef::type_is_specialisable(const char* name) const
 }
 
 // Returns a closure to monomorphise including placeholders (if present)
-::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> ImplRef::get_cb_monomorph_traitimpl(const Span& sp) const
+ImplRef::Monomorph ImplRef::get_cb_monomorph_traitimpl(const Span& sp) const
 {
     const auto& e = this->m_data.as_TraitImpl();
-    return [this,&e,&sp](const auto& gt)->const ::HIR::TypeRef& {
-        const auto& ge = gt.data().as_Generic();
-        if( ge.is_self() ) {
-            // Store (or cache) a monomorphisation of Self, and error if this recurses
-            if( e.self_cache == ::HIR::TypeRef() ) {
-                e.self_cache = ::HIR::TypeRef::new_diverge();
-                e.self_cache = monomorphise_type_with(sp, e.impl->m_type, this->get_cb_monomorph_traitimpl(sp));
-            }
-            else if( e.self_cache == ::HIR::TypeRef::new_diverge() ) {
-                // BUG!
-                BUG(sp, "Use of `Self` in expansion of `Self`");
-            }
-            else {
-            }
-            return e.self_cache;
+    return Monomorph(e);
+}
+
+::HIR::TypeRef ImplRef::Monomorph::get_type(const Span& sp, const ::HIR::GenericRef& ge) const /*override*/
+{
+    if( ge.is_self() )
+    {
+        // Store (or cache) a monomorphisation of Self, and error if this recurses
+        if( this->ti.self_cache == ::HIR::TypeRef() ) {
+            this->ti.self_cache = ::HIR::TypeRef::new_diverge();
+            this->ti.self_cache = this->monomorph_type(sp, this->ti.impl->m_type);
         }
-        ASSERT_BUG(sp, ge.binding < 256, "Binding in " << gt << " out of range (>=256)");
-        ASSERT_BUG(sp, ge.binding < e.impl_params.m_types.size(), "Binding in " << gt << " out of range (>= " << e.impl_params.m_types.size() << ")");
-        return e.impl_params.m_types.at(ge.binding);
-        };
+        else if( this->ti.self_cache == ::HIR::TypeRef::new_diverge() ) {
+            // BUG!
+            BUG(sp, "Use of `Self` in expansion of `Self`");
+        }
+        else {
+        }
+        return this->ti.self_cache.clone();
+    }
+    ASSERT_BUG(sp, ge.binding < 256, "Binding in " << ge << " out of range (>=256)");
+    ASSERT_BUG(sp, ge.binding < this->ti.impl_params.m_types.size(), "Binding in " << ge << " out of range (>= " << this->ti.impl_params.m_types.size() << ")");
+    return this->ti.impl_params.m_types.at(ge.binding).clone();
+}
+::HIR::Literal ImplRef::Monomorph::get_value(const Span& sp, const ::HIR::GenericRef& val) const /*override*/
+{
+    BUG(sp, "");
 }
 
 ::HIR::TypeRef ImplRef::get_impl_type() const
@@ -153,7 +160,7 @@ bool ImplRef::type_is_specialisable(const char* name) const
         if( e.impl == nullptr ) {
             BUG(Span(), "nullptr");
         }
-        return monomorphise_type_with(sp, e.impl->m_type, this->get_cb_monomorph_traitimpl(sp));
+        return this->get_cb_monomorph_traitimpl(sp).monomorph_type(sp, e.impl->m_type);
         ),
     (BoundedPtr,
         return e.type->clone();
@@ -173,7 +180,7 @@ bool ImplRef::type_is_specialisable(const char* name) const
             BUG(Span(), "nullptr");
         }
 
-        return monomorphise_path_params_with(sp, e.impl->m_trait_args, this->get_cb_monomorph_traitimpl(sp), true);
+        return this->get_cb_monomorph_traitimpl(sp).monomorph_path_params(sp, e.impl->m_trait_args, true);
         ),
     (BoundedPtr,
         return e.trait_args->clone();
@@ -194,7 +201,7 @@ bool ImplRef::type_is_specialisable(const char* name) const
         }
         if( idx >= e.impl->m_trait_args.m_types.size() )
             return ::HIR::TypeRef();
-        return monomorphise_type_with(sp, e.impl->m_trait_args.m_types[idx], this->get_cb_monomorph_traitimpl(sp), true);
+        return this->get_cb_monomorph_traitimpl(sp).monomorph_type(sp, e.impl->m_trait_args.m_types[idx]);
         ),
     (BoundedPtr,
         if( idx >= e.trait_args->m_types.size() )
@@ -224,7 +231,7 @@ bool ImplRef::type_is_specialisable(const char* name) const
         const ::HIR::TypeRef& tpl_ty = it->second.data;
         DEBUG("name=" << name << " tpl_ty=" << tpl_ty << " " << *this);
         if( monomorphise_type_needed(tpl_ty) ) {
-            return monomorphise_type_with(sp, tpl_ty, this->get_cb_monomorph_traitimpl(sp));
+            return this->get_cb_monomorph_traitimpl(sp).monomorph_type(sp, tpl_ty);
         }
         else {
             return tpl_ty.clone();

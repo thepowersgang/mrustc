@@ -357,7 +357,7 @@ namespace HIR {
             TU_ARM(c, StaticString, e2)
                 return ::HIR::Literal(e2);
             TU_ARM(c, Const, e2) {
-                auto p = ms.monomorph(state.sp, *e2.p);
+                auto p = ms.monomorph_path(state.sp, *e2.p);
                 // If there's any mention of generics in this path, then return Literal::Defer
                 if( visit_path_tys_with(p, [&](const auto& ty)->bool { return ty.data().is_Generic(); }) )
                 {
@@ -393,7 +393,7 @@ namespace HIR {
                 return ::HIR::Literal::make_Defer({});
                 }
             TU_ARM(c, ItemAddr, e2)
-                return ::HIR::Literal::make_BorrowPath( ms.monomorph(state.sp, *e2) );
+                return ::HIR::Literal::make_BorrowPath( ms.monomorph_path(state.sp, *e2) );
             }
             throw "";
             };
@@ -773,7 +773,7 @@ namespace HIR {
                 if( const auto* te = e.fcn.opt_Intrinsic() )
                 {
                     if( te->name == "size_of" ) {
-                        auto ty = ms.monomorph(state.sp, te->params.m_types.at(0));
+                        auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
                         size_t  size_val;
                         Target_GetSizeOf(state.sp, this->resolve, ty, size_val);
                         dst = ::HIR::Literal::make_Integer( size_val );
@@ -785,7 +785,7 @@ namespace HIR {
                 else if( const auto* te = e.fcn.opt_Path() )
                 {
                     const auto& fcnp_raw = *te;
-                    auto fcnp = ms.monomorph(state.sp, fcnp_raw);
+                    auto fcnp = ms.monomorph_path(state.sp, fcnp_raw);
 
                     MonomorphState  fcn_ms;
                     auto& fcn = get_function(this->root_span, this->resolve.m_crate, fcnp, fcn_ms);
@@ -826,7 +826,7 @@ namespace HIR {
             // HACK: Generate a roughly-correct one
             const auto& top_ip = ip.get_top_ip();
             if( top_ip.trait && !top_ip.ty ) {
-                ms.self_ty = &ty_self;
+                ms.self_ty = ty_self.clone();
             }
             return evaluate_constant_mir(ip, *mir, mv$(ms), mv$(exp), {});
         }
@@ -979,7 +979,7 @@ namespace {
                     // This trait impl doesn't have this constant, need to find the provided version that applies
 
                     MonomorphState  ms;
-                    ms.self_ty = &impl.m_type;
+                    ms.self_ty = impl.m_type.clone();
                     ms.pp_impl = &impl.m_trait_args;
 
                     resolve.find_impl(sp, trait_path, impl.m_trait_args, impl.m_type, [&](ImplRef found_impl, bool is_fuzzed)->bool {
@@ -995,9 +995,7 @@ namespace {
                         auto nvs = NewvalState { *m_mod, *m_mod_path, FMT("impl" << &impl << "_" << vi.first << "#") };
                         auto eval = ::HIR::Evaluator { sp, m_crate, nvs };
                         ::HIR::ExprPtr  ep;
-                        Trans_Params    tp(sp);
-                        tp.self_type = ms.self_ty->clone();
-                        tp.pp_impl = ms.pp_impl->clone();
+                        auto tp = Trans_Params::new_impl(sp, ms.self_ty.clone(), ms.pp_impl->clone());
                         ep.m_mir = Trans_Monomorphise(resolve, mv$(tp), template_const.m_value.m_mir);
                         ep.m_state = ::HIR::ExprStatePtr( ::HIR::ExprState(*m_mod, m_mod_path->get_simple_path()) );
                         DEBUG("TMP TMP " << trait_path << " - " << ep.m_state->m_mod_path);
@@ -1008,7 +1006,7 @@ namespace {
                                 /*is_specialisable=*/false,
                                 ::HIR::Constant {
                                     template_const.m_params.clone(),
-                                    /*m_type=*/ms.monomorph(sp, template_const.m_type),
+                                    /*m_type=*/ms.monomorph_type(sp, template_const.m_type),
                                     /*m_value=*/mv$(ep),
                                     ::HIR::Literal()
                                     }
@@ -1023,7 +1021,7 @@ namespace {
                                 /*is_specialisable=*/false,
                                 ::HIR::Constant {
                                     template_const.m_params.clone(),
-                                    /*m_type=*/ms.monomorph(sp, template_const.m_type),
+                                    /*m_type=*/ms.monomorph_type(sp, template_const.m_type),
                                     /*m_value=*/::HIR::ExprPtr(),
                                     template_const.m_value_res.clone()
                                     }

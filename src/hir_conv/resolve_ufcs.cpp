@@ -310,40 +310,59 @@ namespace {
                 return true;
             }
 
-            auto monomorph_cb = [&](const auto& ty)->const ::HIR::TypeRef& {
-                const auto& ge = ty.data().as_Generic();
-                if( ge.binding == 0xFFFF ) {
+            auto pp = trait_path.m_params.clone();
+            while( pp.m_types.size() < trait.m_params.m_types.size() )
+            {
+                auto idx = pp.m_types.size();
+                const auto& def = trait.m_params.m_types[idx].m_default;
+                if( def == HIR::TypeRef() ) {
+                    ERROR(sp, E0000, "");
+                }
+                if( def == ::HIR::TypeRef("Self", 0xFFFF) )
+                {
                     // TODO: This has to be the _exact_ same type, including future ivars.
-                    return pd.as_UfcsUnknown().type;
+                    pp.m_types.push_back( pd.as_UfcsUnknown().type.clone() );
+                    continue ;
                 }
-                else if( (ge.binding >> 8) == 0 ) {
-                    auto idx = ge.binding & 0xFF;
-                    ASSERT_BUG(sp, idx < trait.m_params.m_types.size(), "");
-                    if( idx < trait_path.m_params.m_types.size() )
-                        return trait_path.m_params.m_types[idx];
-                    // If the param is omitted, but has a default, use the default.
-                    else if( trait.m_params.m_types[idx].m_default != ::HIR::TypeRef() ) {
-                        const auto& def = trait.m_params.m_types[idx].m_default;
-                        if( ! monomorphise_type_needed(def) )
-                            return def;
-                        if( def == ::HIR::TypeRef("Self", 0xFFFF) )
-                            // TODO: This has to be the _exact_ same type, including future ivars.
-                            return pd.as_UfcsUnknown().type;
-                        TODO(sp, "Monomorphise default arg " << def << " for trait path " << trait_path);
-                    }
-                    else
-                        BUG(sp, "Binding out of range in " << ty << " for trait path " << trait_path);
-                }
-                else {
-                    ERROR(sp, E0000, "Unexpected generic binding " << ty);
-                }
-                };
+                TODO(sp, "Monomorphise default arg " << def << " for trait path " << trait_path);
+                //pp.m_types.push_back( def.
+            }
+
+            auto monomorph_cb = MonomorphStatePtr(&pd.as_UfcsUnknown().type, &pp, nullptr);
+            //auto monomorph_cb = [&](const auto& ty)->const ::HIR::TypeRef& {
+            //    const auto& ge = ty.data().as_Generic();
+            //    if( ge.binding == 0xFFFF ) {
+            //        // TODO: This has to be the _exact_ same type, including future ivars.
+            //        return pd.as_UfcsUnknown().type;
+            //    }
+            //    else if( (ge.binding >> 8) == 0 ) {
+            //        auto idx = ge.binding & 0xFF;
+            //        ASSERT_BUG(sp, idx < trait.m_params.m_types.size(), "");
+            //        if( idx < trait_path.m_params.m_types.size() )
+            //            return trait_path.m_params.m_types[idx];
+            //        // If the param is omitted, but has a default, use the default.
+            //        else if( trait.m_params.m_types[idx].m_default != ::HIR::TypeRef() ) {
+            //            const auto& def = trait.m_params.m_types[idx].m_default;
+            //            if( ! monomorphise_type_needed(def) )
+            //                return def;
+            //            if( def == ::HIR::TypeRef("Self", 0xFFFF) )
+            //                // TODO: This has to be the _exact_ same type, including future ivars.
+            //                return pd.as_UfcsUnknown().type;
+            //            TODO(sp, "Monomorphise default arg " << def << " for trait path " << trait_path);
+            //        }
+            //        else
+            //            BUG(sp, "Binding out of range in " << ty << " for trait path " << trait_path);
+            //    }
+            //    else {
+            //        ERROR(sp, E0000, "Unexpected generic binding " << ty);
+            //    }
+            //    };
             ::HIR::GenericPath  par_trait_path_tmp;
             auto monomorph_gp_if_needed = [&](const ::HIR::GenericPath& tpl)->const ::HIR::GenericPath& {
                 // NOTE: This doesn't monomorph if the parameter set is the same
                 if( monomorphise_genericpath_needed(tpl) && tpl.m_params != trait_path.m_params ) {
                     DEBUG("- Monomorph " << tpl);
-                    return par_trait_path_tmp = monomorphise_genericpath_with(sp, tpl, monomorph_cb, false /*no infer*/);
+                    return par_trait_path_tmp = monomorph_cb.monomorph_genericpath(sp, tpl, false /*no infer*/);
                 }
                 else {
                     return tpl;
@@ -382,14 +401,21 @@ namespace {
             this->m_resolve.find_impl(sp,  trait_path.m_path, nullptr, type, [&](const auto& impl, bool fuzzy)->bool{
                 auto pp = impl.get_trait_params();
                 // Replace all placeholder parameters (group 2) with ivars (empty types)
-                pp = monomorphise_path_params_with(sp, pp, [](const auto& gt)->const ::HIR::TypeRef& {
-                    const auto& ge = gt.data().as_Generic();
-                    if( (ge.binding >> 8) == 2 ) {
-                        static ::HIR::TypeRef   empty_type;
-                        return empty_type;
+                struct KillPlaceholders:
+                    public Monomorphiser
+                {
+                    ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& ty) const override {
+                        if( ty.is_placeholder() ) {
+                            return HIR::TypeRef();
+                        }
+                        return HIR::TypeRef(ty);
                     }
-                    return gt;
-                    }, true);
+                    ::HIR::Literal get_value(const Span& sp, const ::HIR::GenericRef& val) const override {
+                        return HIR::Literal(val);
+                    }
+                };
+
+                pp = KillPlaceholders().monomorph_path_params(sp, pp, true);
                 DEBUG("FOUND impl from " << impl);
                 // If this has already found an option...
                 TU_IFLET( ::HIR::Path::Data, pd, UfcsKnown, e,

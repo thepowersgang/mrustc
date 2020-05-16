@@ -411,6 +411,9 @@
     <ClCompile Include="..\..\src\expand\macro_rules.cpp">
       <Filter>Source Files\expand</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\src\hir_typeck\monomorph.hpp">
+      <Filter>Header Files\hir_typeck</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\src\common.hpp">
@@ -628,6 +631,12 @@
     </ClInclude>
     <ClInclude Include="..\..\src\hir\generic_ref.hpp">
       <Filter>Source Files\hir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\hir_typeck\monomorph_state.hpp">
+      <Filter>Header Files\hir_typeck</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\hir_typeck\common.hpp">
+      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

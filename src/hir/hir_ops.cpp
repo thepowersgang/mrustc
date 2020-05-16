@@ -420,12 +420,12 @@ namespace {
         static Span sp;
         assert( cur_trait.m_trait_ptr );
         const auto& tr = *cur_trait.m_trait_ptr;
-        auto monomorph_cb = monomorphise_type_get_cb(sp, &type, &cur_trait.m_path.m_params, nullptr);
+        auto monomorph_cb = MonomorphStatePtr(&type, &cur_trait.m_path.m_params, nullptr);
 
         for(const auto& trait_path_raw : tr.m_all_parent_traits)
         {
             // 1. Monomorph
-            auto trait_path_mono = monomorphise_traitpath_with(sp, trait_path_raw, monomorph_cb, false);
+            auto trait_path_mono = monomorph_cb.monomorph_traitpath(sp, trait_path_raw, false);
             // 2. Add
             rv.push_back( ::HIR::GenericBound::make_TraitBound({ type.clone(), mv$(trait_path_mono) }) );
         }
@@ -571,7 +571,8 @@ bool ::HIR::TraitImpl::more_specific_than(const ::HIR::TraitImpl& other) const
 namespace {
 
     struct ImplTyMatcher:
-        public ::HIR::MatchGenerics
+        public ::HIR::MatchGenerics,
+        public Monomorphiser
     {
         ::std::vector<const ::HIR::TypeRef*>    impl_tys;
 
@@ -592,6 +593,17 @@ namespace {
         ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::Literal& sz) override {
             TODO(Span(), "Matcher::match_val " << g << " with " << sz);
         }
+
+        ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& g) const override {
+            ASSERT_BUG(sp, g.group() == 0, "");
+            ASSERT_BUG(sp, g.idx() < impl_tys.size(), "");
+            ASSERT_BUG(sp, impl_tys[g.idx()], "");
+            return impl_tys[g.idx()]->clone();
+        }
+        ::HIR::Literal get_value(const Span& sp, const ::HIR::GenericRef& g) const override {
+            TODO(Span(), "Matcher::get_value " << g);
+        }
+
 
         void reinit(const HIR::GenericParams& params) {
             this->impl_tys.clear();
@@ -796,48 +808,29 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
     }
 
     struct H2 {
-        static const ::HIR::TypeRef& monomorph(const Span& sp, const ::HIR::TypeRef& in_ty, const ::std::vector<const ::HIR::TypeRef*>& args, ::HIR::TypeRef& tmp)
+        static const ::HIR::TypeRef& monomorph(const Span& sp, const ::HIR::TypeRef& in_ty, const Monomorphiser& ms, ::HIR::TypeRef& tmp)
         {
             if( ! monomorphise_type_needed(in_ty) ) {
                 return in_ty;
             }
-            else if( const auto* tep = in_ty.data().opt_Generic() ) {
-                ASSERT_BUG(sp, tep->binding < args.size(), "");
-                ASSERT_BUG(sp, args[tep->binding], "");
-                return *args[tep->binding];
-            }
             else {
-                auto monomorph_cb = [&](const auto& t)->const auto& {
-                    const auto& te = t.data().as_Generic();
-                    assert(te.binding < args.size());
-                    ASSERT_BUG(sp, te.binding < args.size(), "");
-                    ASSERT_BUG(sp, args[te.binding], "");
-                    return *args[te.binding];
-                    };
-                tmp = monomorphise_type_with(sp, in_ty, monomorph_cb);
+                tmp = ms.monomorph_type(sp, in_ty);
                 // TODO: EAT?
                 return tmp;
             }
         }
-        static const ::HIR::TraitPath& monomorph(const Span& sp, const ::HIR::TraitPath& in, const ::std::vector<const ::HIR::TypeRef*>& args, ::HIR::TraitPath& tmp)
+        static const ::HIR::TraitPath& monomorph(const Span& sp, const ::HIR::TraitPath& in, const Monomorphiser& ms, ::HIR::TraitPath& tmp)
         {
             if( ! monomorphise_traitpath_needed(in) ) {
                 return in;
             }
             else {
-                auto monomorph_cb = [&](const auto& t)->const auto& {
-                    const auto& te = t.data().as_Generic();
-                    assert(te.binding < args.size());
-                    ASSERT_BUG(sp, te.binding < args.size(), "");
-                    ASSERT_BUG(sp, args[te.binding], "");
-                    return *args[te.binding];
-                    };
-                tmp = monomorphise_traitpath_with(sp, in, monomorph_cb, true);
+                tmp = ms.monomorph_traitpath(sp, in, true);
                 // TODO: EAT?
                 return tmp;
             }
         }
-        static bool check_bounds(const ::HIR::Crate& crate, const ::HIR::TraitImpl& id, const ::std::vector<const ::HIR::TypeRef*>& args, const ::HIR::TraitImpl& g_src)
+        static bool check_bounds(const ::HIR::Crate& crate, const ::HIR::TraitImpl& id, const Monomorphiser& ms, const ::HIR::TraitImpl& g_src)
         {
             TRACE_FUNCTION;
             static Span sp;
@@ -848,8 +841,8 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
                 {
                     ::HIR::TypeRef  tmp_ty;
                     ::HIR::TraitPath    tmp_tp;
-                    const auto& ty = H2::monomorph(sp, tb.as_TraitBound().type, args, tmp_ty);
-                    const auto& trait = H2::monomorph(sp, tb.as_TraitBound().trait, args, tmp_tp);;
+                    const auto& ty = H2::monomorph(sp, tb.as_TraitBound().type, ms, tmp_ty);
+                    const auto& trait = H2::monomorph(sp, tb.as_TraitBound().trait, ms, tmp_tp);;
 
                     // Determine if `ty` would be bounded (it's an ATY or generic)
                     if( ty.data().is_Generic() ) {
@@ -891,7 +884,7 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
                                         return false;
                                 }
                                 // 3. Check bounds on the impl
-                                if( !H2::check_bounds(crate, ti, matcher.impl_tys, g_src) )
+                                if( !H2::check_bounds(crate, ti, matcher, g_src) )
                                     return false;
                                 // 4. Check ATY bounds on the trait path
                                 for(const auto& atyb : trait.m_type_bounds)
@@ -939,7 +932,7 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
                 ));
         // Check bounds on `other` using these params
         // TODO: Take a callback that does the checks. Or somehow return a "maybe overlaps" result?
-        return H2::check_bounds(crate, other, matcher.impl_tys, *this);
+        return H2::check_bounds(crate, other, matcher, *this);
     }
     else
     {
@@ -954,7 +947,7 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
                 }
                 ));
         // Check bounds on `*this`
-        return H2::check_bounds(crate, *this, matcher.impl_tys, other);
+        return H2::check_bounds(crate, *this, matcher, other);
     }
 }
 

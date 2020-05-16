@@ -11,7 +11,7 @@
 #include <algorithm>
 #include "main_bindings.hpp"
 
-const ::HIR::Function& HIR_Expand_ErasedType_GetFunction(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::Path& origin_path, t_cb_generic& monomorph_cb, ::HIR::PathParams& impl_params)
+const ::HIR::Function& HIR_Expand_ErasedType_GetFunction(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::Path& origin_path, MonomorphStatePtr& monomorph_cb, ::HIR::PathParams& impl_params)
 {
     const ::HIR::Function*  fcn_ptr = nullptr;
     switch(origin_path.m_data.tag())
@@ -22,7 +22,7 @@ const ::HIR::Function& HIR_Expand_ErasedType_GetFunction(const Span& sp, const S
         BUG(Span(), "UfcsUnknown in ErasedType - " << origin_path);
     case ::HIR::Path::Data::TAG_Generic: {
         const auto& pe = origin_path.m_data.as_Generic();
-        monomorph_cb = monomorphise_type_get_cb(sp, nullptr, nullptr, &pe.m_params);
+        monomorph_cb = MonomorphStatePtr(nullptr, nullptr, &pe.m_params);
         fcn_ptr = &resolve.m_crate.get_function_by_path(sp, pe.m_path);
         } break;
     case ::HIR::Path::Data::TAG_UfcsKnown:
@@ -72,7 +72,7 @@ const ::HIR::Function& HIR_Expand_ErasedType_GetFunction(const Span& sp, const S
             }
         }
 
-        monomorph_cb = monomorphise_type_get_cb(sp, &pe.type, &impl_params, &pe.params);
+        monomorph_cb = MonomorphStatePtr(&pe.type, &impl_params, &pe.params);
         } break;
     }
     assert(fcn_ptr);
@@ -120,14 +120,14 @@ namespace {
                 const auto& e = ty.data().as_ErasedType();
 
                 ::HIR::PathParams   impl_params;    // cache.
-                t_cb_generic    monomorph_cb;
+                MonomorphStatePtr    monomorph_cb;
                 const auto& fcn = HIR_Expand_ErasedType_GetFunction(sp, m_resolve, e.m_origin, monomorph_cb, impl_params);
                 const auto& erased_types = fcn.m_code.m_erased_types;
 
                 ASSERT_BUG(sp, e.m_index < erased_types.size(), "Erased type index out of range for " << e.m_origin << " - " << e.m_index << " >= " << erased_types.size());
                 const auto& tpl = erased_types[e.m_index];
 
-                auto new_ty = monomorphise_type_with(sp, tpl, monomorph_cb);
+                auto new_ty = monomorph_cb.monomorph_type(sp, tpl);
                 DEBUG("> " << ty << " => " << new_ty);
                 ty = mv$(new_ty);
                 // Recurse (TODO: Cleanly prevent infinite recursion - TRACE_FUNCTION does crude prevention)
@@ -185,14 +185,14 @@ namespace {
                 TRACE_FUNCTION_FR(ty, ty);
 
                 ::HIR::PathParams   impl_params;
-                t_cb_generic    monomorph_cb;
+                MonomorphStatePtr    monomorph_cb;
                 const auto& fcn = HIR_Expand_ErasedType_GetFunction(sp, m_resolve, e.m_origin, monomorph_cb, impl_params);
                 const auto& erased_types = fcn.m_code.m_erased_types;
 
                 ASSERT_BUG(sp, e.m_index < erased_types.size(), "Erased type index out of range for " << e.m_origin << " - " << e.m_index << " >= " << erased_types.size());
                 const auto& tpl = erased_types[e.m_index];
 
-                auto new_ty = monomorphise_type_with(sp, tpl, monomorph_cb);
+                auto new_ty = monomorph_cb.monomorph_type(sp, tpl);
                 DEBUG("> " << ty << " => " << new_ty);
                 ty = mv$(new_ty);
                 // Recurse (TODO: Cleanly prevent infinite recursion - TRACE_FUNCTION does crude prevention)

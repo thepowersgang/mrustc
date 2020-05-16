@@ -822,11 +822,9 @@ namespace {
         {
             const auto& te = ty.data().as_Path();
             const auto& str = *te.binding.as_Struct();
-            auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr, &te.path.m_data.as_Generic().m_params, nullptr);
+            auto monomorph_cb = MonomorphStatePtr(nullptr, &te.path.m_data.as_Generic().m_params, nullptr);
             auto monomorph = [&](const auto& tpl) {
-                auto rv = monomorphise_type_with(sp, tpl, monomorph_cb);
-                resolve.expand_associated_types(sp, rv);
-                return rv;
+                return resolve.monomorph_expand(sp, tpl, monomorph_cb);
                 };
             TU_MATCHA( (str.m_data), (se),
             (Unit,
@@ -1004,11 +1002,9 @@ namespace {
         const auto& te = ty.data().as_Path();
         const auto& enm = *te.binding.as_Enum();
 
-        auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr, &te.path.m_data.as_Generic().m_params, nullptr);
+        auto monomorph_cb = MonomorphStatePtr(nullptr, &te.path.m_data.as_Generic().m_params, nullptr);
         auto monomorph = [&](const auto& tpl) {
-            auto rv = monomorphise_type_with(sp, tpl, monomorph_cb);
-            resolve.expand_associated_types(sp, rv);
-            return rv;
+            return resolve.monomorph_expand(sp, tpl, monomorph_cb);
         };
 
         TypeRepr  rv;
@@ -1228,11 +1224,9 @@ namespace {
             const auto& te = ty.data().as_Path();
             const auto& unn = *te.binding.as_Union();
 
-            auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr, &te.path.m_data.as_Generic().m_params, nullptr);
+            auto monomorph_cb = MonomorphStatePtr(nullptr, &te.path.m_data.as_Generic().m_params, nullptr);
             auto monomorph = [&](const auto& tpl) {
-                auto rv = monomorphise_type_with(sp, tpl, monomorph_cb);
-                resolve.expand_associated_types(sp, rv);
-                return rv;
+                return resolve.monomorph_expand(sp, tpl, monomorph_cb);
             };
 
             TypeRepr  rv;

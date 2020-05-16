@@ -112,9 +112,7 @@ void Trans_AutoImpl_Clone(State& state, ::HIR::TypeRef ty)
             if( te.is_closure() ) {
                 const auto& gp = te.path.m_data.as_Generic();
                 const auto& str = state.resolve.m_crate.get_struct_by_path(sp, gp.m_path);
-                Trans_Params p;
-                p.sp = sp;
-                p.pp_impl = gp.m_params.clone();
+                auto p = Trans_Params::new_impl(sp, ty.clone(), gp.m_params.clone());
                 ::std::vector< ::MIR::Param>   values; values.reserve( str.m_data.as_Tuple().size() );
                 for(const auto& fld : str.m_data.as_Tuple())
                 {

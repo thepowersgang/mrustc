@@ -13,8 +13,6 @@
 
 ::HIR::TypeRef ConvertHIR_ExpandAliases_GetExpansion_GP(const Span& sp, const ::HIR::Crate& crate, const ::HIR::GenericPath& path, bool is_expr)
 {
-    ::HIR::TypeRef  empty_type;
-
     const auto& ti = crate.get_typeitem_by_path(sp, path.m_path);
     if(const auto* e = ti.opt_TypeAlias() )
     {
@@ -28,26 +26,15 @@
                 ERROR(sp, E0000, "Mismatched parameter count in " << path << ", expected " << e2.m_params.m_types.size() << " got " << pp.m_types.size());
             }
         }
+        else {
+            while( pp.m_types.size() < e2.m_params.m_types.size() )
+            {
+                pp.m_types.push_back( ::HIR::TypeRef() );
+            }
+        }
         if( e2.m_params.m_types.size() > 0 ) {
-            // TODO: Better `monomorphise_type`
-            return monomorphise_type_with(sp, e2.m_type, [&](const auto& gt)->const ::HIR::TypeRef& {
-                const auto& ge = gt.data().as_Generic();
-                if( ge.binding == GENERIC_Self ) {
-                    BUG(sp, "Self encountered in expansion for " << path << " - " << e2.m_type);
-                }
-                else if( (ge.binding >> 8) == 0 ) {
-                    auto idx = ge.binding & 0xFF;
-                    if( idx < pp.m_types.size() )
-                        return pp.m_types[idx];
-                    else if( is_expr )
-                        return empty_type;
-                    else
-                        BUG(sp, "Referenced parameter missing from input");
-                }
-                else {
-                    BUG(sp, "Bad index " << ge.binding << " encountered in expansion for " << path << " - " << e2.m_type);
-                }
-                });
+            auto ms = MonomorphStatePtr(nullptr, &pp, nullptr);
+            return ms.monomorph_type(sp, e2.m_type);
         }
         else {
             return e2.m_type.clone();
@@ -329,12 +316,12 @@ public:
         // HACK: Expand defaults for parameters in trait names here.
         {
             const auto& trait = m_crate.get_trait_by_path(sp, trait_path);
-            auto monomorph_cb = monomorphise_type_get_cb(sp, &impl.m_type, &impl.m_trait_args, nullptr);
+            auto ms = MonomorphStatePtr(&impl.m_type, &impl.m_trait_args, nullptr);
 
             while( impl.m_trait_args.m_types.size() < trait.m_params.m_types.size() )
             {
                 const auto& def = trait.m_params.m_types[ impl.m_trait_args.m_types.size() ];
-                auto ty = monomorphise_type_with(sp, def.m_default, monomorph_cb);
+                auto ty = ms.monomorph_type(sp, def.m_default);
                 DEBUG("Add default trait arg " << ty << " from " << def.m_default);
                 impl.m_trait_args.m_types.push_back( mv$(ty) );
             }

@@ -310,14 +310,12 @@ namespace
                         const auto& path = ty.data().as_Path().path.m_data.as_Generic();
                         const auto& str = *ty.data().as_Path().binding.as_Struct();
                         auto monomorph = [&](const auto& tpl) {
-                            auto rv = monomorphise_type(sp, str.m_params, path.m_params, tpl);
-                            m_resolve.expand_associated_types(sp, rv);
-                            return rv;
+                            return m_resolve.monomorph_expand(sp, tpl, MonomorphStatePtr(nullptr, &path.m_params, nullptr));
                         };
                         TU_MATCHA( (str.m_data), (se),
-                            (Unit,  MIR_BUG(*m_mir_res, "Unit-like struct with DstType::Possible"); ),
-                            (Tuple, return metadata_type( monomorph(se.back().ent) ); ),
-                            (Named, return metadata_type( monomorph(se.back().second.ent) ); )
+                        (Unit,  MIR_BUG(*m_mir_res, "Unit-like struct with DstType::Possible"); ),
+                        (Tuple, return metadata_type( monomorph(se.back().ent) ); ),
+                        (Named, return metadata_type( monomorph(se.back().second.ent) ); )
                         )
                         //MIR_TODO(*m_mir_res, "Determine DST type when ::Possible - " << ty);
                         return MetadataType::None;
@@ -486,16 +484,8 @@ namespace
             TRACE_FUNCTION_F(var_path);
 
             ::HIR::TypeRef  tmp;
-            auto monomorph = [&](const auto& x)->const auto& {
-                if( monomorphise_type_needed(x) ) {
-                    tmp = monomorphise_type(sp, item.m_params, var_path.m_params, x);
-                    m_resolve.expand_associated_types(sp, tmp);
-                    return tmp;
-                }
-                else {
-                    return x;
-                }
-                };
+            MonomorphStatePtr   ms(nullptr, &var_path.m_params, nullptr);
+            auto monomorph = [&](const auto& x)->const auto& { return m_resolve.monomorph_expand_opt(sp, tmp, x, ms); };
 
             auto enum_path = var_path.clone();
             enum_path.m_path.m_components.pop_back();
@@ -530,16 +520,8 @@ namespace
         {
             TRACE_FUNCTION_F(p);
             ::HIR::TypeRef  tmp;
-            auto monomorph = [&](const auto& x)->const auto& {
-                if( monomorphise_type_needed(x) ) {
-                    tmp = monomorphise_type(sp, item.m_params, p.m_params, x);
-                    m_resolve.expand_associated_types(sp, tmp);
-                    return tmp;
-                }
-                else {
-                    return x;
-                }
-                };
+            MonomorphStatePtr   ms(nullptr, &p.m_params, nullptr);
+            auto monomorph = [&](const auto& x)->const auto& { return m_resolve.monomorph_expand_opt(sp, tmp, x, ms); };
             // Create constructor function
             const auto& e = item.m_data.as_Tuple();
             m_of << "fn " << p << "(";
@@ -1072,7 +1054,7 @@ namespace
             m_of << "\" {";
 
             // - Relocations
-            auto monomorph_cb_trait = monomorphise_type_get_cb(sp, &type, &trait_path.m_params, nullptr);
+            auto monomorph_cb_trait = MonomorphStatePtr(&type, &trait_path.m_params, nullptr);
             // Drop
             if( has_drop_glue )
             {
@@ -1090,7 +1072,7 @@ namespace
                     //MIR_ASSERT(*m_mir_res, tr.m_values.at(m.first).is_Function(), "TODO: Handle generating vtables with non-function items");
                     DEBUG("- " << m.second.first << " = " << m.second.second << " :: " << m.first);
 
-                    auto gpath = monomorphise_genericpath_with(sp, m.second.second, monomorph_cb_trait, false);
+                    auto gpath = monomorph_cb_trait.monomorph_genericpath(sp, m.second.second, false);
                     m_of << "@" << (3 + i) * ptr_size << "+" << ptr_size << " = " << ::HIR::Path(type.clone(), mv$(gpath), m.first) << ", ";
                 }
             }
@@ -1425,14 +1407,14 @@ namespace
                         return true;
                     }
                     else if( tpl.data().is_Generic() ) {
-                        out = params.get_cb()(tpl).clone();
+                        out = params.monomorph_type(sp, tpl).clone();
                         return true;
                     }
                     else {
                         return false;
                     }
                 });
-                m_resolve.expand_associated_types(Span(), tmp);
+                m_resolve.expand_associated_types(sp, tmp);
                 return tmp;
             }
             else

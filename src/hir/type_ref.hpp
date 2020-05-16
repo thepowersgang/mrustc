@@ -29,7 +29,6 @@ enum Compare {
 };
 
 typedef ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> t_cb_resolve_type;
-typedef ::std::function< ::HIR::Compare(unsigned int, const RcString&, const ::HIR::TypeRef&) > t_cb_match_generics;
 
 class MatchGenerics
 {

@@ -9,10 +9,8 @@
 
 #include <hir/type.hpp>
 #include <hir/hir.hpp>
+#include <hir_typeck/monomorph.hpp>
 
-
- // TODO/NOTE - This is identical to ::HIR::t_cb_resolve_type
-typedef ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)>   t_cb_generic;
 
 namespace HIR {
     class TraitImpl;
@@ -66,7 +64,20 @@ struct ImplRef
     bool has_magic_params() const;
 
     /// HELPER: Returns callback to monomorphise a type using parameters from Data::TraitImpl
-    ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> get_cb_monomorph_traitimpl(const Span& sp) const;
+    class Monomorph:
+        public Monomorphiser
+    {
+        friend struct ImplRef;
+        const ImplRef::Data::Data_TraitImpl& ti;
+
+        Monomorph(const ImplRef::Data::Data_TraitImpl& ti):
+            ti(ti)
+        {
+        }
+
+        ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& ty) const override;
+        ::HIR::Literal get_value(const Span& sp, const ::HIR::GenericRef& val) const override;
+    } get_cb_monomorph_traitimpl(const Span& sp) const;
 
     ::HIR::TypeRef get_impl_type() const;
     ::HIR::PathParams get_trait_params() const;

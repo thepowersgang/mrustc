@@ -12,6 +12,7 @@
 #include <hir/type.hpp>
 #include <span.hpp>
 #include <hir/visitor.hpp>
+#include <hir_typeck/common.hpp>
 
 namespace HIR {
 
@@ -479,7 +480,7 @@ struct ExprCallCache
     const ::HIR::GenericParams* m_top_params;
     const ::HIR::Function*  m_fcn;
 
-    ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)>   m_monomorph_cb;
+    ::std::unique_ptr<Monomorphiser>    m_monomorph;
 };
 
 struct ExprNode_CallPath:

@@ -18,8 +18,9 @@ class Function;
 class Static;
 }
 
-// TODO: This is very similar to "hir_typeck/common.hpp" MonomorphState
-struct Trans_Params
+// TODO: This is very similar to "hir_typeck/common.hpp" MonomorphState, except it owns its data
+struct Trans_Params:
+    public MonomorphiserPP
 {
     Span    sp;
     ::HIR::PathParams   pp_method;
@@ -31,7 +32,13 @@ struct Trans_Params
         sp(sp)
     {}
 
-    t_cb_generic get_cb() const;
+    static Trans_Params new_impl(Span sp, HIR::TypeRef ty, HIR::PathParams impl_params) {
+        Trans_Params    tp(sp);
+        tp.self_type = std::move(ty);
+        tp.pp_impl = std::move(impl_params);
+        return tp;
+    }
+
     ::HIR::TypeRef monomorph(const ::StaticTraitResolve& resolve, const ::HIR::TypeRef& p) const;
     ::HIR::Path monomorph(const ::StaticTraitResolve& resolve, const ::HIR::Path& p) const;
     ::HIR::GenericPath monomorph(const ::StaticTraitResolve& resolve, const ::HIR::GenericPath& p) const;
@@ -39,6 +46,17 @@ struct Trans_Params
 
     bool has_types() const {
         return pp_method.m_types.size() > 0 || pp_impl.m_types.size() > 0;
+    }
+
+
+    const ::HIR::TypeRef* get_self_type() const override {
+        return &self_type;
+    }
+    const ::HIR::PathParams* get_impl_params() const override {
+        return &pp_impl;
+    }
+    const ::HIR::PathParams* get_method_params() const override {
+        return &pp_method;
     }
 };
 

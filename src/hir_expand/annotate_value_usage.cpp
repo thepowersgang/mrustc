@@ -410,12 +410,12 @@ namespace {
                     provided_mask[idx] = true;
                 }
 
-                const auto monomorph_cb = monomorphise_type_get_cb(node.span(), nullptr, &ty_path.m_params, nullptr);
+                const auto monomorph_cb = MonomorphStatePtr(nullptr, &ty_path.m_params, nullptr);
                 for( unsigned int i = 0; i < fields.size(); i ++ ) {
                     if( ! provided_mask[i] ) {
                         const auto& ty_o = fields[i].second.ent;
                         ::HIR::TypeRef  tmp;
-                        const auto& ty_m = (monomorphise_type_needed(ty_o) ? tmp = monomorphise_type_with(node.span(), ty_o, monomorph_cb) : ty_o);
+                        const auto& ty_m = monomorphise_type_with_opt(node.span(), tmp, ty_o, monomorph_cb);
                         bool is_copy = m_resolve.type_is_copy(node.span(), ty_m);
                         if( !is_copy ) {
                             DEBUG("- Field " << i << " " << fields[i].first << ": " << ty_m << " moved");
@@ -538,11 +538,11 @@ namespace {
                 ASSERT_BUG(sp, str.m_data.is_Tuple(), "StructTuple pattern with non-tuple struct - " << str.m_data.tag_str());
                 const auto& flds = str.m_data.as_Tuple();
                 assert(pe.sub_patterns.size() == flds.size());
-                auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr,  &pe.path.m_params, nullptr);
+                auto monomorph_state = MonomorphStatePtr(nullptr,  &pe.path.m_params, nullptr);
 
                 auto rv = ::HIR::ValueUsage::Borrow;
                 for(unsigned int i = 0; i < flds.size(); i ++) {
-                    auto sty = monomorphise_type_with(sp, flds[i].ent, monomorph_cb);
+                    auto sty = monomorph_state.monomorph_type(sp, flds[i].ent);
                     rv = ::std::max(rv, get_usage_for_pattern(sp, pe.sub_patterns[i], sty));
                 }
                 return rv;
@@ -556,7 +556,7 @@ namespace {
                 }
                 ASSERT_BUG(sp, str.m_data.is_Named(), "Struct pattern on non-brace struct");
                 const auto& flds = str.m_data.as_Named();
-                auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr,  &pe.path.m_params, nullptr);
+                auto monomorph_state = MonomorphStatePtr(nullptr,  &pe.path.m_params, nullptr);
 
                 auto rv = ::HIR::ValueUsage::Borrow;
                 for(const auto& fld_pat : pe.sub_patterns)
@@ -564,7 +564,7 @@ namespace {
                     auto fld_it = ::std::find_if(flds.begin(), flds.end(), [&](const auto& x){return x.first == fld_pat.first;});
                     ASSERT_BUG(sp, fld_it != flds.end(), "");
 
-                    auto sty = monomorphise_type_with(sp, fld_it->second.ent, monomorph_cb);
+                    auto sty = monomorph_state.monomorph_type(sp, fld_it->second.ent);
                     rv = ::std::max(rv, get_usage_for_pattern(sp, fld_pat.second, sty));
                 }
                 return rv;
@@ -586,11 +586,11 @@ namespace {
                 ASSERT_BUG(sp, str.m_data.is_Tuple(), "");
                 const auto& flds = str.m_data.as_Tuple();
                 assert(pe.sub_patterns.size() == flds.size());
-                auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr,  &pe.path.m_params, nullptr);
+                auto monomorph_state = MonomorphStatePtr(nullptr,  &pe.path.m_params, nullptr);
 
                 auto rv = ::HIR::ValueUsage::Borrow;
                 for(unsigned int i = 0; i < flds.size(); i ++) {
-                    auto sty = monomorphise_type_with(sp, flds[i].ent, monomorph_cb);
+                    auto sty = monomorph_state.monomorph_type(sp, flds[i].ent);
                     rv = ::std::max(rv, get_usage_for_pattern(sp, pe.sub_patterns[i], sty));
                 }
                 return rv;
@@ -602,7 +602,7 @@ namespace {
                 const auto& str = *var.type.data().as_Path().binding.as_Struct();
                 ASSERT_BUG(sp, str.m_data.is_Named(), "EnumStruct pattern on non-struct variant - " << pe.path);
                 const auto& flds = str.m_data.as_Named();
-                auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr,  &pe.path.m_params, nullptr);
+                auto monomorph_state = MonomorphStatePtr(nullptr,  &pe.path.m_params, nullptr);
 
                 auto rv = ::HIR::ValueUsage::Borrow;
                 for(const auto& fld_pat : pe.sub_patterns)
@@ -610,7 +610,7 @@ namespace {
                     auto fld_it = ::std::find_if(flds.begin(), flds.end(), [&](const auto& x){return x.first == fld_pat.first;});
                     ASSERT_BUG(sp, fld_it != flds.end(), "");
 
-                    auto sty = monomorphise_type_with(sp, fld_it->second.ent, monomorph_cb);
+                    auto sty = monomorph_state.monomorph_type(sp, fld_it->second.ent);
                     rv = ::std::max(rv, get_usage_for_pattern(sp, fld_pat.second, sty));
                 }
                 return rv;

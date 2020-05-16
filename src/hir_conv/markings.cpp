@@ -100,12 +100,12 @@ public:
                 }
 
                 ::HIR::TypeRef  ty_self { "Self", 0xFFFF };
-                auto monomorph_cb = monomorphise_type_get_cb(sp, &ty_self, &path.m_params, nullptr);
+                auto monomorph_cb = MonomorphStatePtr(&ty_self, &path.m_params, nullptr);
                 if( tr.m_all_parent_traits.size() > 0 )
                 {
                     for(const auto& pt : tr.m_all_parent_traits)
                     {
-                        supertraits.push_back( monomorphise_traitpath_with(sp, pt, monomorph_cb, false) );
+                        supertraits.push_back( monomorph_cb.monomorph_traitpath(sp, pt, false) );
                     }
                 }
                 else
@@ -116,10 +116,10 @@ public:
                         auto get_aty_this = [&](const char* name) {
                             auto it = pt.m_type_bounds.find(name);
                             if( it != pt.m_type_bounds.end() )
-                                return monomorphise_type_with(sp, it->second, monomorph_cb);
+                                return monomorph_cb.monomorph_type(sp, it->second);
                             return get_aty(name);
                             };
-                        enum_supertraits_in(*pt.m_trait_ptr, monomorphise_genericpath_with(sp, pt.m_path, monomorph_cb, false), get_aty_this);
+                        enum_supertraits_in(*pt.m_trait_ptr, monomorph_cb.monomorph_genericpath(sp, pt.m_path, false), get_aty_this);
                     }
                     // - Bound parent traits
                     for(const auto& b : tr.m_params.m_bounds)
@@ -136,11 +136,11 @@ public:
                         auto get_aty_this = [&](const char* name) {
                             auto it = pt.m_type_bounds.find(name);
                             if( it != pt.m_type_bounds.end() )
-                                return monomorphise_type_with(sp, it->second, monomorph_cb);
+                                return monomorph_cb.monomorph_type(sp, it->second);
                             return get_aty(name);
                             };
 
-                        enum_supertraits_in(*pt.m_trait_ptr, monomorphise_genericpath_with(sp, pt.m_path, monomorph_cb, false), get_aty_this);
+                        enum_supertraits_in(*pt.m_trait_ptr, monomorph_cb.monomorph_genericpath(sp, pt.m_path, false), get_aty_this);
                     }
                 }
 
@@ -277,8 +277,8 @@ public:
                 const auto& params_tpl = te->path.m_data.as_Generic().m_params;
                 if( params && monomorphise_pathparams_needed(params_tpl) ) {
                     static Span sp;
-                    auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr, params, nullptr);
-                    auto params_mono = monomorphise_path_params_with(sp, params_tpl, monomorph_cb, false);
+                    auto monomorph_cb = MonomorphStatePtr(nullptr, params, nullptr);
+                    auto params_mono = monomorph_cb.monomorph_path_params(sp, params_tpl, false);
                     return get_struct_dst_type(*te->binding.as_Struct(), params_def, &params_mono);
                 }
                 else {
@@ -372,8 +372,8 @@ public:
                     unsigned int field = ~0u;
                     const auto& str = te.binding.as_Struct();
 
-                    auto monomorph_cb_l = monomorphise_type_get_cb(sp, nullptr, &dst_te.path.m_data.as_Generic().m_params, nullptr);
-                    auto monomorph_cb_r = monomorphise_type_get_cb(sp, nullptr, &te.path.m_data.as_Generic().m_params, nullptr);
+                    auto monomorph_cb_l = MonomorphStatePtr(nullptr, &dst_te.path.m_data.as_Generic().m_params, nullptr);
+                    auto monomorph_cb_r = MonomorphStatePtr(nullptr, &te.path.m_data.as_Generic().m_params, nullptr);
 
                     TU_MATCH_HDRA( (str->m_data), {)
                     TU_ARMA(Unit, se) {
@@ -387,8 +387,8 @@ public:
                                 continue ;
                             }
                             if( monomorphise_type_needed(se[i].ent) ) {
-                                auto ty_l = monomorphise_type_with(sp, se[i].ent, monomorph_cb_l, false);
-                                auto ty_r = monomorphise_type_with(sp, se[i].ent, monomorph_cb_r, false);
+                                auto ty_l = monomorph_cb_l.monomorph_type(sp, se[i].ent, false);
+                                auto ty_r = monomorph_cb_r.monomorph_type(sp, se[i].ent, false);
                                 if( ty_l != ty_r ) {
                                     if( field != ~0u )
                                         ERROR(sp, E0000, "CoerceUnsized impls can only differ by one field");
@@ -406,8 +406,8 @@ public:
                                 continue ;
                             }
                             if( monomorphise_type_needed(se[i].second.ent) ) {
-                                auto ty_l = monomorphise_type_with(sp, se[i].second.ent, monomorph_cb_l, false);
-                                auto ty_r = monomorphise_type_with(sp, se[i].second.ent, monomorph_cb_r, false);
+                                auto ty_l = monomorph_cb_l.monomorph_type(sp, se[i].second.ent, false);
+                                auto ty_r = monomorph_cb_r.monomorph_type(sp, se[i].second.ent, false);
                                 if( ty_l != ty_r ) {
                                     if( field != ~0u )
                                         ERROR(sp, E0000, "CoerceUnsized impls can only differ by one field");

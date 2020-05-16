@@ -296,19 +296,19 @@ static void fix_param_count(const Span& sp, Context& context, const ::HIR::TypeR
 
 namespace {
 
-    void apply_bounds_as_rules(Context& context, const Span& sp, const ::HIR::GenericParams& params_def, t_cb_generic monomorph_cb, bool is_impl_level)
+    void apply_bounds_as_rules(Context& context, const Span& sp, const ::HIR::GenericParams& params_def, const Monomorphiser& ms, bool is_impl_level)
     {
         TRACE_FUNCTION;
         for(const auto& bound : params_def.m_bounds)
         {
-            TU_MATCH(::HIR::GenericBound, (bound), (be),
-            (Lifetime,
-                ),
-            (TypeLifetime,
-                ),
-            (TraitBound,
-                auto real_type = monomorphise_type_with(sp, be.type, monomorph_cb);
-                auto real_trait = monomorphise_genericpath_with(sp, be.trait.m_path, monomorph_cb, false);
+            TU_MATCH_HDRA( (bound), {)
+            TU_ARMA(Lifetime, be) {
+                }
+            TU_ARMA(TypeLifetime, be) {
+                }
+            TU_ARMA(TraitBound, be) {
+                auto real_type = ms.monomorph_type(sp, be.type);
+                auto real_trait = ms.monomorph_genericpath(sp, be.trait.m_path, false);
                 DEBUG("Bound " << be.type << ":  " << be.trait);
                 DEBUG("= (" << real_type << ": " << real_trait << ")");
                 const auto& trait_params = real_trait.m_params;
@@ -328,17 +328,17 @@ namespace {
                     if( !context.m_resolve.trait_contains_type(sp, real_trait, *be.trait.m_trait_ptr, assoc.first.c_str(),  type_trait_path) )
                         BUG(sp, "Couldn't find associated type " << assoc.first << " in trait " << real_trait);
 
-                    auto other_ty = monomorphise_type_with(sp, assoc.second, monomorph_cb, true);
+                    auto other_ty = ms.monomorph_type(sp, assoc.second, true);
 
                     context.equate_types_assoc(sp, other_ty,  type_trait_path.m_path, mv$(type_trait_path.m_params.m_types), real_type, assoc.first.c_str());
                 }
-                ),
-            (TypeEquality,
-                auto real_type_left = context.m_resolve.expand_associated_types(sp, monomorphise_type_with(sp, be.type, monomorph_cb));
-                auto real_type_right = context.m_resolve.expand_associated_types(sp, monomorphise_type_with(sp, be.other_type, monomorph_cb));
+                }
+            TU_ARMA(TypeEquality, be) {
+                auto real_type_left = context.m_resolve.expand_associated_types(sp, ms.monomorph_type(sp, be.type));
+                auto real_type_right = context.m_resolve.expand_associated_types(sp, ms.monomorph_type(sp, be.other_type));
                 context.equate_types(sp, real_type_left, real_type_right);
-                )
-            )
+                }
+            }
         }
 
         for(size_t i = 0; i < params_def.m_types.size(); i++)
@@ -346,7 +346,7 @@ namespace {
             if( params_def.m_types[i].m_is_sized )
             {
                 ::HIR::TypeRef  ty("", (is_impl_level ? 0 : 256) + i);
-                context.require_sized(sp, monomorph_cb(ty));
+                context.require_sized(sp, ms.get_type(Span(), ty.data().as_Generic()));
             }
         }
     }
@@ -363,6 +363,64 @@ namespace {
 
         const ::HIR::Function*  fcn_ptr = nullptr;
 
+        struct Monomorph:
+            public Monomorphiser
+        {
+            Context& context;
+            const HIR::TypeRef* self_ty;
+            const HIR::PathParams* impl_params;
+            const HIR::PathParams& fcn_params;
+            Monomorph(Context& context, const HIR::TypeRef* self_ty, const HIR::PathParams* impl_params, const HIR::PathParams& fcn_params)
+                : context(context)
+                , self_ty(self_ty)
+                , impl_params(impl_params)
+                , fcn_params(fcn_params)
+            {
+            }
+
+            ::HIR::TypeRef get_type(const Span& sp, const HIR::GenericRef& e) const override
+            {
+                if( e.name == "Self" || e.is_self() )
+                {
+                    if( self_ty )
+                    {
+                        return self_ty->clone();
+                    }
+                    else
+                    {
+                        TODO(sp, "Handle 'Self' when monomorphising");
+                    }
+                }
+                else if( e.binding < 256 )
+                {
+                    if( impl_params )
+                    {
+                        auto idx = e.idx();
+                        ASSERT_BUG(sp, idx < impl_params->m_types.size(), "Generic param (impl) out of input range - " << e << " >= " << impl_params->m_types.size());
+                        return context.get_type(impl_params->m_types[idx]).clone();
+                    }
+                    else
+                    {
+                        BUG(sp, "Impl-level parameter on free function (" << e << ")");
+                    }
+                }
+                else if( e.binding < 512 )
+                {
+                    auto idx = e.idx();
+                    ASSERT_BUG(sp, idx < fcn_params.m_types.size(), "Generic param out of input range - " << e << " >= " << fcn_params.m_types.size());
+                    return context.get_type(fcn_params.m_types[idx]).clone();
+                }
+                else {
+                    BUG(sp, "Generic bounding out of total range (" << e << ")");
+                }
+            }
+
+            ::HIR::Literal get_value(const Span& sp, const HIR::GenericRef& e) const override
+            {
+                TODO(sp, "");
+            }
+        };
+
         TU_MATCH_HDRA( (path.m_data), {)
         TU_ARMA(Generic, e) {
             const auto& fcn = context.m_crate.get_function_by_path(sp, e.m_path);
@@ -372,24 +430,7 @@ namespace {
 
             //const auto& params_def = fcn.m_params;
             const auto& path_params = e.m_params;
-            cache.m_monomorph_cb = [&](const ::HIR::TypeRef& gt)->const ::HIR::TypeRef& {
-                    const auto& e = gt.data().as_Generic();
-                    if( e.name == "Self" || e.binding == 0xFFFF )
-                        TODO(sp, "Handle 'Self' when monomorphising");
-                    if( e.binding < 256 ) {
-                        BUG(sp, "Impl-level parameter on free function (#" << e.binding << " " << e.name << ")");
-                    }
-                    else if( e.binding < 512 ) {
-                        auto idx = e.binding - 256;
-                        if( idx >= path_params.m_types.size() ) {
-                            BUG(sp, "Generic param out of input range - " << idx << " '"<<e.name<<"' >= " << path_params.m_types.size());
-                        }
-                        return context.get_type(path_params.m_types[idx]);
-                    }
-                    else {
-                        BUG(sp, "Generic bounding out of total range");
-                    }
-                };
+            cache.m_monomorph.reset(new Monomorph(context, nullptr, nullptr, path_params));
             }
         TU_ARMA(UfcsKnown, e) {
             const auto& trait = context.m_crate.get_trait_by_path(sp, e.trait.m_path);
@@ -409,29 +450,7 @@ namespace {
 
             const auto& trait_params = e.trait.m_params;
             const auto& path_params = e.params;
-            cache.m_monomorph_cb = [&](const ::HIR::TypeRef& gt)->const ::HIR::TypeRef& {
-                    const auto& ge = gt.data().as_Generic();
-                    if( ge.binding == 0xFFFF ) {
-                        return e.type;
-                    }
-                    else if( ge.binding < 256 ) {
-                        auto idx = ge.binding;
-                        if( idx >= trait_params.m_types.size() ) {
-                            BUG(sp, "Generic param (impl) out of input range - " << idx << " '"<<ge.name<<"' >= " << trait_params.m_types.size());
-                        }
-                        return context.get_type(trait_params.m_types[idx]);
-                    }
-                    else if( ge.binding < 512 ) {
-                        auto idx = ge.binding - 256;
-                        if( idx >= path_params.m_types.size() ) {
-                            BUG(sp, "Generic param out of input range - " << idx << " '"<<ge.name<<"' >= " << path_params.m_types.size());
-                        }
-                        return context.get_type(path_params.m_types[idx]);
-                    }
-                    else {
-                        BUG(sp, "Generic bounding out of total range");
-                    }
-                };
+            cache.m_monomorph.reset(new Monomorph(context, &e.type, &e.trait.m_params, e.params));
             }
         TU_ARMA(UfcsUnknown, e) {
             // TODO: Eventually, the HIR `Resolve UFCS` pass will be removed, leaving this code responsible for locating the item.
@@ -448,20 +467,20 @@ namespace {
         assert( fcn_ptr );
         cache.m_fcn = fcn_ptr;
         const auto& fcn = *fcn_ptr;
-        const auto& monomorph_cb = cache.m_monomorph_cb;
+        const auto& monomorph = *cache.m_monomorph;
 
         // --- Monomorphise the argument/return types (into current context)
         for(const auto& arg : fcn.m_args) {
             TRACE_FUNCTION_FR(path << " - Arg " << arg.first << ": " << arg.second, "Arg " << arg.first << " : " << cache.m_arg_types.back());
-            cache.m_arg_types.push_back( monomorphise_type_with(sp, arg.second,  monomorph_cb, false) );
+            cache.m_arg_types.push_back( monomorph.monomorph_type(sp, arg.second, false) );
         }
         {
             TRACE_FUNCTION_FR(path << " - Ret " << fcn.m_return, "Ret " << cache.m_arg_types.back());
-            cache.m_arg_types.push_back( monomorphise_type_with(sp, fcn.m_return,  monomorph_cb, false) );
+            cache.m_arg_types.push_back( monomorph.monomorph_type(sp, fcn.m_return, false) );
         }
 
         // --- Apply bounds by adding them to the associated type ruleset
-        apply_bounds_as_rules(context, sp, *cache.m_fcn_params, cache.m_monomorph_cb, /*is_impl_level=*/false);
+        apply_bounds_as_rules(context, sp, *cache.m_fcn_params, monomorph, /*is_impl_level=*/false);
 
         return true;
     }
@@ -519,23 +538,9 @@ namespace {
 
 
                 // Monomorphise the impl type with the new ivars, and equate to e.type
-                auto impl_monomorph_cb = [&](const auto& gt)->const ::HIR::TypeRef& {
-                    const auto& ge = gt.data().as_Generic();
-                    if( ge.binding == 0xFFFF ) {
-                        return context.get_type(e.type);
-                    }
-                    else if( ge.binding < 256 ) {
-                        auto idx = ge.binding;
-                        if( idx >= impl_params.m_types.size() ) {
-                            BUG(sp, "Generic param out of input range - " << idx << " '" << ge.name << "' >= " << impl_params.m_types.size());
-                        }
-                        return context.get_type(impl_params.m_types[idx]);
-                    }
-                    else {
-                        BUG(sp, "Generic bounding out of total range - " << ge.binding);
-                    }
-                    };
-                auto impl_ty_mono = monomorphise_type_with(sp, impl_ptr->m_type, impl_monomorph_cb, false);
+                // TODO: Use a copy of `MonomorphStatePtr` that calls `context.get_type`
+                auto impl_monomorph_cb = MonomorphStatePtr(&e.type, &impl_params, nullptr);
+                auto impl_ty_mono = impl_monomorph_cb.monomorph_type(sp, impl_ptr->m_type, false);
                 DEBUG("- impl_ty_mono = " << impl_ty_mono);
 
                 context.equate_types(sp, impl_ty_mono, e.type);
@@ -552,41 +557,16 @@ namespace {
 
         // Create monomorphise callback
         const auto& fcn_params = e.params;
-        cache.m_monomorph_cb = [&](const auto& gt)->const ::HIR::TypeRef& {
-                const auto& ge = gt.data().as_Generic();
-                if( ge.binding == 0xFFFF ) {
-                    return context.get_type(e.type);
-                }
-                else if( ge.binding < 256 ) {
-                    auto idx = ge.binding;
-                    if( idx >= impl_params.m_types.size() ) {
-                        BUG(sp, "Generic param out of input range - " << idx << " '" << ge.name << "' >= " << impl_params.m_types.size());
-                    }
-                    return context.get_type(impl_params.m_types[idx]);
-                }
-                else if( ge.binding < 512 ) {
-                    auto idx = ge.binding - 256;
-                    if( idx >= fcn_params.m_types.size() ) {
-                        BUG(sp, "Generic param out of input range - " << idx << " '" << ge.name << "' >= " << fcn_params.m_types.size());
-                    }
-                    return context.get_type(fcn_params.m_types[idx]);
-                }
-                else if( ge.binding < 256*3 ) {
-                    auto idx = ge.binding - 256*2;
-                    TODO(sp, "Placeholder generics - " << idx);
-                }
-                else {
-                    BUG(sp, "Generic bounding out of total range - " << ge.binding);
-                }
-            };
+        // TODO: Use a copy of `MonomorphStatePtr` that calls `context.get_type`
+        cache.m_monomorph.reset( new MonomorphStatePtr(&e.type, &impl_params, &fcn_params) );
 
         // Add trait bounds for all impl and function bounds
-        apply_bounds_as_rules(context, sp, impl_ptr->m_params, cache.m_monomorph_cb, /*is_impl_level=*/true);
+        apply_bounds_as_rules(context, sp, impl_ptr->m_params, *cache.m_monomorph, /*is_impl_level=*/true);
 
         // Equate `Self` and `impl_ptr->m_type` (after monomorph)
         {
             ::HIR::TypeRef tmp;
-            const auto& impl_ty_m = (monomorphise_type_needed(impl_ptr->m_type) ? tmp = monomorphise_type_with(sp, impl_ptr->m_type, cache.m_monomorph_cb) : impl_ptr->m_type);
+            const auto& impl_ty_m = cache.m_monomorph->maybe_monomorph_type(sp, tmp, impl_ptr->m_type);
 
             context.equate_types(sp, e.type, impl_ty_m);
         }
@@ -1230,22 +1210,7 @@ namespace {
                 ERROR(node.span(), E0000, "Tuple variant constructor argument count doesn't match type - " << node.m_path);
             }
 
-            const auto& ty_params = node.m_path.m_params.m_types;
-            auto monomorph_cb = [&](const auto& gt)->const ::HIR::TypeRef& {
-                const auto& ge = gt.data().as_Generic();
-                if( ge.binding == 0xFFFF ) {
-                    return ty;
-                }
-                else if( ge.binding < 256 ) {
-                    if( ge.binding >= ty_params.size() ) {
-                        BUG(sp, "Type parameter index out of range (#" << ge.binding << " " << ge.name << ")");
-                    }
-                    return ty_params[ge.binding];
-                }
-                else {
-                    BUG(sp, "Method-level parameter on struct (#" << ge.binding << " " << ge.name << ")");
-                }
-                };
+            auto monomorph_cb = MonomorphStatePtr(&ty, &node.m_path.m_params, nullptr);
 
             // Bind fields with type params (coercable)
             node.m_arg_types.resize( node.m_args.size() );
@@ -1254,7 +1219,7 @@ namespace {
                 const auto& des_ty_r = fields[i].ent;
                 const auto* des_ty = &des_ty_r;
                 if( monomorphise_type_needed(des_ty_r) ) {
-                    node.m_arg_types[i] = monomorphise_type_with(sp, des_ty_r, monomorph_cb);
+                    node.m_arg_types[i] = monomorph_cb.monomorph_type(sp, des_ty_r);
                     des_ty = &node.m_arg_types[i];
                 }
 
@@ -1358,22 +1323,7 @@ namespace {
             assert(generics);
             const ::HIR::t_struct_fields& fields = *fields_ptr;
 
-            const auto& ty_params = ty_path.m_params.m_types;
-            auto monomorph_cb = [&](const auto& gt)->const ::HIR::TypeRef& {
-                const auto& ge = gt.data().as_Generic();
-                if( ge.binding == 0xFFFF ) {
-                    return ty;
-                }
-                else if( ge.binding < 256 ) {
-                    if( ge.binding >= ty_params.size() ) {
-                        BUG(node.span(), "Type parameter index out of range (#" << ge.binding << " " << ge.name << ")");
-                    }
-                    return ty_params[ge.binding];
-                }
-                else {
-                    BUG(node.span(), "Method-level parameter on struct (#" << ge.binding << " " << ge.name << ")");
-                }
-                };
+            auto monomorph_cb = MonomorphStatePtr(&ty, &ty_path.m_params, nullptr);
 
             node.m_value_types.resize( fields.size() );
 
@@ -1390,7 +1340,7 @@ namespace {
                 DEBUG(name << " : " << des_ty_r);
                 if( monomorphise_type_needed(des_ty_r) ) {
                     if( des_ty_cache == ::HIR::TypeRef() ) {
-                        des_ty_cache = monomorphise_type_with(node.span(), des_ty_r, monomorph_cb);
+                        des_ty_cache = monomorph_cb.monomorph_type(node.span(), des_ty_r);
                     }
                     else {
                         // TODO: Is it an error when it's already populated?
@@ -1424,7 +1374,7 @@ namespace {
 
             this->context.equate_types(node.span(), node.m_res_type, ty);
 
-            auto monomorph_cb = monomorphise_type_get_cb(node.span(), &ty, &node.m_path.m_params, nullptr);
+            auto monomorph_cb = MonomorphStatePtr(&ty, &node.m_path.m_params, nullptr);
 
             // Convert bounds on the type into rules
             apply_bounds_as_rules(context, node.span(), unm.m_params, monomorph_cb, /*is_impl_level=*/true);
@@ -1436,7 +1386,7 @@ namespace {
             const auto* des_ty = &des_ty_r;
             if( monomorphise_type_needed(des_ty_r) ) {
                 if( des_ty_cache == ::HIR::TypeRef() ) {
-                    des_ty_cache = monomorphise_type_with(node.span(), des_ty_r, monomorph_cb);
+                    des_ty_cache = monomorph_cb.monomorph_type(node.span(), des_ty_r);
                 }
                 else {
                     // TODO: Is it an error when it's already populated?
@@ -1743,21 +1693,21 @@ namespace {
                     const auto& f = this->context.m_crate.get_function_by_path(sp, e.m_path);
                     fix_param_count(sp, this->context, ::HIR::TypeRef(), false, e, f.m_params, e.m_params);
 
-                    auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr, nullptr, &e.m_params);
+                    auto ms = MonomorphStatePtr(nullptr, nullptr, &e.m_params);
 
                     ::HIR::FunctionType ft {
                         f.m_unsafe,
                         f.m_abi,
-                        monomorphise_type_with(sp, f.m_return, monomorph_cb),
+                        ms.monomorph_type(sp, f.m_return),
                         {}
                         };
                     for( const auto& arg : f.m_args )
                     {
-                        ft.m_arg_types.push_back( monomorphise_type_with(sp, arg.second, monomorph_cb) );
+                        ft.m_arg_types.push_back( ms.monomorph_type(sp, arg.second) );
                     }
 
                     // Apply bounds
-                    apply_bounds_as_rules(this->context, sp, f.m_params, monomorph_cb, /*is_impl_level=*/false);
+                    apply_bounds_as_rules(this->context, sp, f.m_params, ms, /*is_impl_level=*/false);
 
                     auto ty = ::HIR::TypeRef( ::HIR::TypeData::make_Function(mv$(ft)) );
                     DEBUG("> " << node.m_path << " = " << ty);
@@ -1768,6 +1718,8 @@ namespace {
                     const auto& se = s.m_data.as_Tuple();
                     fix_param_count(sp, this->context, ::HIR::TypeRef(), false, e, s.m_params, e.m_params);
 
+                    auto ms = MonomorphStatePtr(nullptr, &e.m_params, nullptr);
+
                     ::HIR::FunctionType ft {
                         false,
                         ABI_RUST,
@@ -1776,7 +1728,7 @@ namespace {
                         };
                     for( const auto& arg : se )
                     {
-                        ft.m_arg_types.push_back( monomorphise_type(sp, s.m_params, e.m_params, arg.ent) );
+                        ft.m_arg_types.push_back( ms.monomorph_type(sp, arg.ent) );
                     }
                     //apply_bounds_as_rules(this->context, sp, s.m_params, monomorph_cb, /*is_impl_level=*/true);
 
@@ -1795,6 +1747,7 @@ namespace {
                     const auto& str = *var_ty.data().as_Path().binding.as_Struct();
                     const auto& var_data = str.m_data.as_Tuple();
 
+                    auto ms = MonomorphStatePtr(nullptr, &e.m_params, nullptr);
                     ::HIR::FunctionType ft {
                         false,
                         ABI_RUST,
@@ -1803,7 +1756,7 @@ namespace {
                         };
                     for( const auto& arg : var_data )
                     {
-                        ft.m_arg_types.push_back( monomorphise_type(sp, enm.m_params, e.m_params, arg.ent) );
+                        ft.m_arg_types.push_back( ms.monomorph_type(sp, arg.ent) );
                     }
                     //apply_bounds_as_rules(this->context, sp, enm.m_params, monomorph_cb, /*is_impl_level=*/true);
 
@@ -1841,33 +1794,33 @@ namespace {
                 if( it == trait.m_values.end() ) {
                     ERROR(sp, E0000, "`" << e.item << "` is not a value member of trait " << e.trait.m_path);
                 }
-                TU_MATCH( ::HIR::TraitValueItem, (it->second), (ie),
-                (Constant,
-                    auto cb = monomorphise_type_get_cb(sp, &e.type, &e.trait.m_params, nullptr);
+                TU_MATCH_HDRA( (it->second), {)
+                TU_ARMA(Constant, ie) {
+                    auto ms = MonomorphStatePtr(&e.type, &e.trait.m_params, nullptr);
                     ::HIR::TypeRef  tmp;
-                    const auto& ty = ( monomorphise_type_needed(ie.m_type) ? tmp = monomorphise_type_with(sp, ie.m_type, cb) : ie.m_type );
+                    const auto& ty = ms.maybe_monomorph_type(sp, tmp, ie.m_type);
                     this->context.equate_types(sp, node.m_res_type, ty);
-                    ),
-                (Static,
+                    }
+                TU_ARMA(Static, ie) {
                     TODO(sp, "Monomorpise associated static type - " << ie.m_type);
-                    ),
-                (Function,
+                    }
+                TU_ARMA(Function, ie) {
                     fix_param_count(sp, this->context, e.type, false, node.m_path, ie.m_params,  e.params);
 
-                    auto monomorph_cb = monomorphise_type_get_cb(sp, &e.type, &e.trait.m_params, &e.params);
+                    auto ms = MonomorphStatePtr(&e.type, &e.trait.m_params, &e.params);
                     ::HIR::FunctionType ft {
                         ie.m_unsafe, ie.m_abi,
-                        monomorphise_type_with(sp, ie.m_return,  monomorph_cb) ,
+                        ms.monomorph_type(sp, ie.m_return) ,
                         {}
                         };
                     for(const auto& arg : ie.m_args)
-                        ft.m_arg_types.push_back( monomorphise_type_with(sp, arg.second,  monomorph_cb) );
-                    apply_bounds_as_rules(this->context, sp, ie.m_params, monomorph_cb, /*is_impl_level=*/false);
+                        ft.m_arg_types.push_back( ms.monomorph_type(sp, arg.second) );
+                    apply_bounds_as_rules(this->context, sp, ie.m_params, ms, /*is_impl_level=*/false);
                     auto ty = ::HIR::TypeRef(mv$(ft));
 
                     this->context.equate_types(node.span(), node.m_res_type, ty);
-                    )
-                )
+                    }
+                }
                 }
             TU_ARMA(UfcsInherent, e) {
                 // TODO: Share code with visit_call_populate_cache
@@ -1930,8 +1883,7 @@ namespace {
                     bool r = impl_ptr->m_type.match_test_generics(sp, e.type, this->context.m_ivars.callback_resolve_infer(), matcher);
                     if(!r)
                     {
-                        auto cb = monomorphise_type_get_cb(sp, nullptr, &impl_params, nullptr);
-                        auto t = monomorphise_type_with(sp, impl_ptr->m_type, cb);
+                        auto t = MonomorphStatePtr(nullptr, &impl_params, nullptr).monomorph_type(sp, impl_ptr->m_type);
                         this->context.equate_types(node.span(), t, e.type);
                     }
                     for(const auto& ty : impl_params.m_types)
@@ -1943,41 +1895,20 @@ namespace {
                 {
                     // Create monomorphise callback
                     const auto& fcn_params = e.params;
-                    auto monomorph_cb = [&](const auto& gt)->const ::HIR::TypeRef& {
-                            const auto& ge = gt.data().as_Generic();
-                            if( ge.binding == 0xFFFF ) {
-                                return this->context.get_type(e.type);
-                            }
-                            else if( ge.binding < 256 ) {
-                                auto idx = ge.binding;
-                                if( idx >= impl_params.m_types.size() ) {
-                                    BUG(sp, "Generic param out of input range - " << idx << " '" << ge.name << "' >= " << impl_params.m_types.size());
-                                }
-                                return this->context.get_type(impl_params.m_types[idx]);
-                            }
-                            else if( ge.binding < 512 ) {
-                                auto idx = ge.binding - 256;
-                                if( idx >= fcn_params.m_types.size() ) {
-                                    BUG(sp, "Generic param out of input range - " << idx << " '" << ge.name << "' >= " << fcn_params.m_types.size());
-                                }
-                                return this->context.get_type(fcn_params.m_types[idx]);
-                            }
-                            else {
-                                BUG(sp, "Generic bounding out of total range");
-                            }
-                        };
+                    // TODO: call `context.get_type` in this?
+                    auto ms = MonomorphStatePtr(&e.type, &impl_params, &fcn_params);
 
                     // Bounds (both impl and fn)
-                    apply_bounds_as_rules(this->context, sp, impl_ptr->m_params, monomorph_cb, /*is_impl_level=*/true);
-                    apply_bounds_as_rules(this->context, sp, fcn_ptr->m_params, monomorph_cb, /*is_impl_level=*/false);
+                    apply_bounds_as_rules(this->context, sp, impl_ptr->m_params, ms, /*is_impl_level=*/true);
+                    apply_bounds_as_rules(this->context, sp, fcn_ptr->m_params, ms, /*is_impl_level=*/false);
 
                     ::HIR::FunctionType ft {
                         fcn_ptr->m_unsafe, fcn_ptr->m_abi,
-                        monomorphise_type_with(sp, fcn_ptr->m_return,  monomorph_cb),
+                        ms.monomorph_type(sp, fcn_ptr->m_return),
                         {}
                         };
                     for(const auto& arg : fcn_ptr->m_args)
-                        ft.m_arg_types.push_back( monomorphise_type_with(sp, arg.second,  monomorph_cb) );
+                        ft.m_arg_types.push_back( ms.monomorph_type(sp, arg.second) );
                     auto ty = ::HIR::TypeRef(mv$(ft));
 
                     this->context.equate_types(node.span(), node.m_res_type, ty);
@@ -1985,10 +1916,10 @@ namespace {
                 else    // !fcn_ptr, ergo const_ptr
                 {
                     assert(const_ptr);
-                    auto monomorph_cb = monomorphise_type_get_cb(sp, &e.type, &impl_params,  &e.params);
+                    auto monomorph_cb = MonomorphStatePtr(&e.type, &impl_params,  &e.params);
 
                     ::HIR::TypeRef  tmp;
-                    const auto& ty = ( monomorphise_type_needed(const_ptr->m_type) ? tmp = monomorphise_type_with(sp, const_ptr->m_type, monomorph_cb) : const_ptr->m_type );
+                    const auto& ty = monomorph_cb.maybe_monomorph_type(sp, tmp, const_ptr->m_type);
 
                     apply_bounds_as_rules(this->context, sp, impl_ptr->m_params, monomorph_cb, /*is_impl_level=*/true);
                     this->context.equate_types(node.span(), node.m_res_type, ty);
@@ -4496,11 +4427,11 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                     // - assert check from earlier pass
                     ASSERT_BUG(sp, str.m_data.is_Tuple(), "Struct-tuple pattern on non-Tuple struct");
                     const auto& sd = str.m_data.as_Tuple();
-                    const auto& params = e.path.m_params;
+                    auto ms = MonomorphStatePtr(nullptr, &e.path.m_params, nullptr);
                     ::HIR::TypeRef  tmp;
                     auto maybe_monomorph = [&](const ::HIR::TypeRef& field_type)->const ::HIR::TypeRef& {
                         return (monomorphise_type_needed(field_type)
-                                ? (tmp = context.m_resolve.expand_associated_types(sp, monomorphise_type(sp, str.m_params, params,  field_type)))
+                                ? (tmp = context.m_resolve.expand_associated_types(sp, ms.monomorph_type(sp, field_type)))
                                 : field_type
                                 );
                         };
@@ -4533,10 +4464,11 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                         const auto& sd = str.m_data.as_Named();
                         const auto& params = e.path.m_params;
 
+                        auto ms = MonomorphStatePtr(nullptr, &e.path.m_params, nullptr);
                         ::HIR::TypeRef  tmp;
                         auto maybe_monomorph = [&](const ::HIR::TypeRef& field_type)->const ::HIR::TypeRef& {
                             return (monomorphise_type_needed(field_type)
-                                    ? (tmp = context.m_resolve.expand_associated_types(sp, monomorphise_type(sp, str.m_params, params,  field_type)))
+                                    ? (tmp = context.m_resolve.expand_associated_types(sp, ms.monomorph_type(sp, field_type)))
                                     : field_type
                                     );
                             };
@@ -4566,12 +4498,12 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                     const auto& str = *enm.m_data.as_Data()[e.binding_idx].type.data().as_Path().binding.as_Struct();
                     const auto& tup_var = str.m_data.as_Tuple();
 
-                    const auto& params = e.path.m_params;
+                    auto ms = MonomorphStatePtr(nullptr, &e.path.m_params, nullptr);
 
                     ::HIR::TypeRef  tmp;
                     auto maybe_monomorph = [&](const ::HIR::TypeRef& field_type)->const ::HIR::TypeRef& {
                         return (monomorphise_type_needed(field_type)
-                                ? (tmp = context.m_resolve.expand_associated_types(sp, monomorphise_type(sp, str.m_params, params,  field_type)))
+                                ? (tmp = context.m_resolve.expand_associated_types(sp, ms.monomorph_type(sp, field_type)))
                                 : field_type
                                 );
                         };
@@ -4595,12 +4527,12 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                     const auto& enm = *e.binding_ptr;
                     const auto& str = *enm.m_data.as_Data()[e.binding_idx].type.data().as_Path().binding.as_Struct();
                     const auto& tup_var = str.m_data.as_Named();
-                    const auto& params = e.path.m_params;
 
+                    auto ms = MonomorphStatePtr(nullptr, &e.path.m_params, nullptr);
                     ::HIR::TypeRef  tmp;
                     auto maybe_monomorph = [&](const ::HIR::TypeRef& field_type)->const ::HIR::TypeRef& {
                         return (monomorphise_type_needed(field_type)
-                                ? (tmp = context.m_resolve.expand_associated_types(sp, monomorphise_type(sp, str.m_params, params,  field_type)))
+                                ? (tmp = context.m_resolve.expand_associated_types(sp, ms.monomorph_type(sp, field_type)))
                                 : field_type
                                 );
                         };
@@ -5141,16 +5073,16 @@ void Context::handle_pattern_direct_inner(const Span& sp, ::HIR::Pattern& pat, c
         assert( str.m_data.is_Tuple() );
         const auto& sd = str.m_data.as_Tuple();
 
-        const auto& params = e.path.m_params;
         assert(e.binding);
         this->equate_types( sp, type, ::HIR::TypeRef::new_path(e.path.clone(), ::HIR::TypePathBinding(e.binding)) );
 
+        auto ms = MonomorphStatePtr(nullptr, &e.path.m_params, nullptr);
         for( unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
         {
             /*const*/ auto& sub_pat = e.sub_patterns[i];
             const auto& field_type = sd[i].ent;
             if( monomorphise_type_needed(field_type) ) {
-                auto var_ty = monomorphise_type(sp, str.m_params, params,  field_type);
+                auto var_ty = ms.monomorph_type(sp, field_type);
                 this->handle_pattern_direct_inner(sp, sub_pat, var_ty);
             }
             else {
@@ -5171,7 +5103,8 @@ void Context::handle_pattern_direct_inner(const Span& sp, ::HIR::Pattern& pat, c
         // - assert check from earlier pass
         ASSERT_BUG(sp, str.m_data.is_Named(), "Struct pattern on non-Named struct");
         const auto& sd = str.m_data.as_Named();
-        const auto& params = e.path.m_params;
+
+        auto ms = MonomorphStatePtr(nullptr, &e.path.m_params, nullptr);
 
         for( auto& field_pat : e.sub_patterns )
         {
@@ -5181,7 +5114,7 @@ void Context::handle_pattern_direct_inner(const Span& sp, ::HIR::Pattern& pat, c
             }
             const ::HIR::TypeRef& field_type = sd[f_idx].second.ent;
             if( monomorphise_type_needed(field_type) ) {
-                auto field_type_mono = monomorphise_type(sp, str.m_params, params,  field_type);
+                auto field_type_mono = ms.monomorph_type(sp, field_type);
                 this->handle_pattern_direct_inner(sp, field_pat.second, field_type_mono);
             }
             else {
@@ -5209,7 +5142,7 @@ void Context::handle_pattern_direct_inner(const Span& sp, ::HIR::Pattern& pat, c
         const auto& str = *enm.m_data.as_Data()[e.binding_idx].type.data().as_Path().binding.as_Struct();
         const auto& tup_var = str.m_data.as_Tuple();
 
-        const auto& params = e.path.m_params;
+        auto ms = MonomorphStatePtr(nullptr, &e.path.m_params, nullptr);
 
         ASSERT_BUG(sp, e.sub_patterns.size() == tup_var.size(),
             "Enum pattern with an incorrect number of fields - " << e.path << " - expected " << tup_var.size() << ", got " << e.sub_patterns.size()
@@ -5218,7 +5151,7 @@ void Context::handle_pattern_direct_inner(const Span& sp, ::HIR::Pattern& pat, c
         for( unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
         {
             if( monomorphise_type_needed(tup_var[i].ent) ) {
-                auto var_ty = monomorphise_type(sp, enm.m_params, params,  tup_var[i].ent);
+                auto var_ty = ms.monomorph_type(sp, tup_var[i].ent);
                 this->handle_pattern_direct_inner(sp, e.sub_patterns[i], var_ty);
             }
             else {
@@ -5237,7 +5170,8 @@ void Context::handle_pattern_direct_inner(const Span& sp, ::HIR::Pattern& pat, c
         const auto& enm = *e.binding_ptr;
         const auto& str = *enm.m_data.as_Data()[e.binding_idx].type.data().as_Path().binding.as_Struct();
         const auto& tup_var = str.m_data.as_Named();
-        const auto& params = e.path.m_params;
+
+        auto ms = MonomorphStatePtr(nullptr, &e.path.m_params, nullptr);
 
         for( auto& field_pat : e.sub_patterns )
         {
@@ -5247,7 +5181,7 @@ void Context::handle_pattern_direct_inner(const Span& sp, ::HIR::Pattern& pat, c
             }
             const ::HIR::TypeRef& field_type = tup_var[f_idx].second.ent;
             if( monomorphise_type_needed(field_type) ) {
-                auto field_type_mono = monomorphise_type(sp, enm.m_params, params,  field_type);
+                auto field_type_mono = ms.monomorph_type(sp, field_type);
                 this->handle_pattern_direct_inner(sp, field_pat.second, field_type_mono);
             }
             else {
@@ -5616,18 +5550,18 @@ void fix_param_count_(const Span& sp, Context& context, const ::HIR::TypeRef& se
                     ERROR(sp, E0000, "Omitted type parameter with no default in " << path);
                 }
                 else if( monomorphise_type_needed(typ.m_default) ) {
-                    auto cb = [&](const auto& ty)->const ::HIR::TypeRef& {
-                        const auto& ge = ty.data().as_Generic();
-                        if( ge.binding == 0xFFFF ) {
-                            ASSERT_BUG(sp, self_ty != ::HIR::TypeRef(), "Self not allowed in this context");
-                            return self_ty;
-                        }
-                        else {
-                            TODO(sp, "Monomorphise default param - " << typ.m_default << " - " << ty);
-                        }
-                        };
-                    auto ty = monomorphise_type_with(sp, typ.m_default, cb);
-                    params.m_types.push_back( mv$(ty) );
+                    auto cb = MonomorphStatePtr(&self_ty, nullptr, nullptr);
+                    //[&](const auto& ty)->const ::HIR::TypeRef& {
+                    //    const auto& ge = ty.data().as_Generic();
+                    //    if( ge.binding == 0xFFFF ) {
+                    //        ASSERT_BUG(sp, self_ty != ::HIR::TypeRef(), "Self not allowed in this context");
+                    //        return self_ty;
+                    //    }
+                    //    else {
+                    //        TODO(sp, "Monomorphise default param - " << typ.m_default << " - " << ty);
+                    //    }
+                    //    };
+                    params.m_types.push_back( cb.monomorph_type(sp, typ.m_default) );
                 }
                 else {
                     params.m_types.push_back( typ.m_default.clone_shallow() );
@@ -6987,8 +6921,9 @@ namespace {
                         break;
                     TU_ARMA(TraitBound, be) {
                         DEBUG("New bound (pre-mono) " << bound);
-                        auto b_ty_mono = monomorphise_type_with(sp, be.type, best_impl.get_cb_monomorph_traitimpl(sp));
-                        auto b_tp_mono = monomorphise_traitpath_with(sp, be.trait, best_impl.get_cb_monomorph_traitimpl(sp), true);
+                        auto ms = best_impl.get_cb_monomorph_traitimpl(sp);
+                        auto b_ty_mono = ms.monomorph_type(sp, be.type);
+                        auto b_tp_mono = ms.monomorph_traitpath(sp, be.trait, true);
                         DEBUG("- " << b_ty_mono << " : " << b_tp_mono);
                         if( b_tp_mono.m_type_bounds.size() > 0 )
                         {

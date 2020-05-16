@@ -98,8 +98,7 @@ namespace {
         const ::std::vector<unsigned int>&  m_local_vars;
         const ::std::vector< ::std::pair<unsigned int, ::HIR::ValueUsage> >&  m_captures;
 
-        typedef ::std::function< const ::HIR::TypeRef&(const ::HIR::TypeRef&)>  t_monomorph_cb;
-        t_monomorph_cb m_monomorph_cb;
+        const Monomorphiser& m_monomorphiser;
 
         ::HIR::ExprNodeP    m_replacement;
     public:
@@ -107,13 +106,13 @@ namespace {
             const ::HIR::TypeRef& closure_type,
             const ::std::vector<unsigned int>& local_vars,
             const ::std::vector< ::std::pair<unsigned int, ::HIR::ValueUsage>>& captures,
-            t_monomorph_cb mcb
+            const Monomorphiser& mcb
             )
             :
             m_closure_type(closure_type),
             m_local_vars(local_vars),
             m_captures(captures),
-            m_monomorph_cb(mcb)
+            m_monomorphiser(mcb)
         {
         }
 
@@ -137,7 +136,7 @@ namespace {
         }
 
         void visit_type(::HIR::TypeRef& ty) override {
-            ty = monomorphise_type_with(Span(), ty, m_monomorph_cb, true);
+            ty = m_monomorphiser.monomorph_type(Span(), ty, /*allow_infer=*/true);
 #if 0
             if( ty.data().is_Generic() ) {
                 auto n = m_monomorph_cb(ty).clone();
@@ -246,13 +245,13 @@ namespace {
     {
         const ::HIR::Crate& m_crate;
         StaticTraitResolve  m_resolve;
-        t_cb_generic    m_monomorph_cb;
+        const Monomorphiser&    m_monomorphiser;
         bool    m_run_eat;
     public:
-        ExprVisitor_Fixup(const ::HIR::Crate& crate, const ::HIR::GenericParams* params, t_cb_generic monomorph_cb):
+        ExprVisitor_Fixup(const ::HIR::Crate& crate, const ::HIR::GenericParams* params, const Monomorphiser& monomorphiser):
             m_crate(crate),
             m_resolve(crate),
-            m_monomorph_cb( mv$(monomorph_cb) ),
+            m_monomorphiser( monomorphiser ),
             m_run_eat(false)
         {
             if( params ) {
@@ -261,11 +260,11 @@ namespace {
             }
         }
 
-        static void fix_type(const ::HIR::Crate& crate, const Span& sp, t_cb_generic monomorph_cb, ::HIR::TypeRef& ty) {
+        static void fix_type(const ::HIR::Crate& crate, const Span& sp, const Monomorphiser& monomorphiser, ::HIR::TypeRef& ty) {
             if( const auto* e = ty.data().opt_Closure() )
             {
                 DEBUG("Closure: " << e->node->m_obj_path_base);
-                auto path = monomorphise_genericpath_with(sp, e->node->m_obj_path_base, monomorph_cb, false);
+                auto path = monomorphiser.monomorph_genericpath(sp, e->node->m_obj_path_base, false);
                 const auto& str = *e->node->m_obj_ptr;
                 DEBUG(ty << " -> " << path);
                 ty = ::HIR::TypeRef::new_path( mv$(path), ::HIR::TypePathBinding::make_Struct(&str) );
@@ -365,7 +364,7 @@ namespace {
         {
             bool run_eat = m_run_eat;
             m_run_eat = false;
-            fix_type(m_crate, Span(), m_monomorph_cb, ty);
+            fix_type(m_crate, Span(), m_monomorphiser, ty);
             ::HIR::ExprVisitorDef::visit_type(ty);
             if( run_eat ) {
                 // TODO: Instead of running EAT, just mark any Unbound UfcsKnown types as Opaque
@@ -656,32 +655,46 @@ namespace {
             }
             DEBUG("params_placeholders = " << params_placeholders << ", ofs_item = " << ofs_item << ", ofs_impl = " << ofs_impl);
 
-            auto monomorph_cb = [&](const auto& ty)->const ::HIR::TypeRef& {
-                const auto& ge = ty.data().as_Generic();
-                if( ge.binding == 0xFFFF ) {
-                    return params_placeholders.at(0);
+            struct Monomorph: public Monomorphiser
+            {
+                const ::HIR::GenericParams& params;
+                unsigned ofs_impl;
+                unsigned ofs_item;
+                Monomorph(const ::HIR::GenericParams& params, unsigned ofs_impl, unsigned ofs_item)
+                    : params(params)
+                    , ofs_impl(ofs_impl)
+                    , ofs_item(ofs_item)
+                {
                 }
-                else if( ge.binding < 256 ) {
-                    auto idx = ofs_impl + ge.binding;
-                    ASSERT_BUG(sp, idx < params_placeholders.size(), "Impl generic binding OOR - " << ty << " (" << idx << " !< " << params_placeholders.size() << ")");
-                    return params_placeholders.at(idx);
+                ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& ge) const override
+                {
+                    unsigned i;
+                    if( ge.binding == 0xFFFF ) {
+                        i = 0;
+                    }
+                    else if( ge.binding < 256 ) {
+                        i = ofs_impl + ge.binding;
+                    }
+                    else if( ge.binding < 2*256 ) {
+                        i = ofs_item + (ge.binding - 256);
+                    }
+                    else {
+                        BUG(sp, "Generic type " << ge << " unknown");
+                    }
+                    ASSERT_BUG(sp, i < params.m_types.size(), "Item generic binding OOR - " << ge << " (" << i << " !< " << params.m_types.size() << ")");
+                    return ::HIR::TypeRef(params.m_types[i].m_name, i);
                 }
-                else if( ge.binding < 2*256 ) {
-                    auto idx = ofs_item + (ge.binding - 256);
-                    ASSERT_BUG(sp, idx < params_placeholders.size(), "Item generic binding OOR - " << ty << " (" << idx << " !< " << params_placeholders.size() << ")");
-                    return params_placeholders.at(idx);
+                ::HIR::Literal get_value(const Span& sp, const ::HIR::GenericRef& ge) const {
+                    TODO(sp, ge);
                 }
-                else {
-                    BUG(sp, "Generic type " << ty << " unknown");
-                }
-                };
-            auto monomorph = [&](const auto& ty){ return monomorphise_type_with(sp, ty, monomorph_cb); };
+            } monomorph_cb(params, ofs_impl, ofs_item);
+            auto monomorph = [&](const auto& ty){ return monomorph_cb.monomorph_type(sp, ty); };
             auto cb_replace = [&](const auto& tpl, auto& rv)->bool {
                 if( tpl.data().is_Infer() ) {
                     BUG(sp, "");
                 }
                 else if( tpl.data().is_Generic() ) {
-                    rv = monomorph_cb(tpl).clone();
+                    rv = monomorph_cb.get_type(sp, tpl.data().as_Generic());
                     return true;
                 }
                 //else if( tpl.m_data.is_ErasedType() ) {
@@ -701,16 +714,16 @@ namespace {
 
             // - Clone the bounds (from both levels)
             auto monomorph_bound = [&](const ::HIR::GenericBound& b)->::HIR::GenericBound {
-                TU_MATCHA( (b), (e),
-                (Lifetime,
-                    return ::HIR::GenericBound(e); ),
-                (TypeLifetime,
-                    return ::HIR::GenericBound::make_TypeLifetime({ monomorph(e.type), e.valid_for }); ),
-                (TraitBound,
-                    return ::HIR::GenericBound::make_TraitBound({ monomorph(e.type), monomorphise_traitpath_with(sp, e.trait, monomorph_cb, false) }); ),
-                (TypeEquality,
-                    return ::HIR::GenericBound::make_TypeEquality({ monomorph(e.type), monomorph(e.other_type) }); )
-                )
+                TU_MATCH_HDRA( (b), {)
+                TU_ARMA(Lifetime, e)
+                    return ::HIR::GenericBound(e);
+                TU_ARMA(TypeLifetime, e)
+                    return ::HIR::GenericBound::make_TypeLifetime({ monomorph(e.type), e.valid_for });
+                TU_ARMA(TraitBound, e)
+                    return ::HIR::GenericBound::make_TraitBound({ monomorph(e.type), monomorph_cb.monomorph_traitpath(sp, e.trait, false) });
+                TU_ARMA(TypeEquality, e)
+                    return ::HIR::GenericBound::make_TypeEquality({ monomorph(e.type), monomorph(e.other_type) });
+                }
                 throw "";
                 };
             for(const auto& bound : m_resolve.impl_generics().m_bounds ) {
@@ -731,8 +744,7 @@ namespace {
             ::std::vector< ::HIR::TypeRef>  local_types;
             local_types.push_back( ::HIR::TypeRef() );  // self - filled by make_fn*
             for(const auto binding_idx : ent.local_vars) {
-                auto ty_mono = monomorphise_type_with(sp, m_variable_types.at(binding_idx).clone(), monomorph_cb);
-                local_types.push_back( mv$(ty_mono) );
+                local_types.push_back( monomorph( m_variable_types.at(binding_idx).clone() ) );
             }
             // - Generate types of captures, and construct the actual capture values
             //  > Capture types (with borrows and using closure's type params)
@@ -748,7 +760,7 @@ namespace {
                 auto binding_type = binding.second;
 
                 const auto& cap_ty = m_variable_types.at(binding_idx);
-                auto ty_mono = monomorphise_type_with(sp, cap_ty, monomorph_cb);
+                auto ty_mono = monomorph(cap_ty);
 
                 auto val_node = NEWNODE(cap_ty.clone(), Variable,  sp, "", binding_idx);
                 ::HIR::BorrowType   bt;
@@ -1351,7 +1363,8 @@ namespace {
                 }
 
                 {
-                    ExprVisitor_Fixup   fixup(m_resolve.m_crate, nullptr, [](const auto& x)->const auto&{ return x; });
+                    MonomorphiserNop    mm;
+                    ExprVisitor_Fixup   fixup(m_resolve.m_crate, nullptr, mm);
                     fixup.visit_root( item.m_code );
                 }
             }
@@ -1459,7 +1472,8 @@ void HIR_Expand_Closures_Expr(const ::HIR::Crate& crate_ro, ::HIR::ExprPtr& exp)
     }
 
     {
-        ExprVisitor_Fixup   fixup(crate, nullptr, [](const auto& x)->const auto&{ return x; });
+        MonomorphiserNop    mm;
+        ExprVisitor_Fixup   fixup(crate, nullptr, mm);
         fixup.visit_root( exp );
     }
 

@@ -767,7 +767,7 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, const ::HIR::Literal
             const auto& list = lit.as_List();
 
             auto monomorph = [&](const auto& ty) {
-                auto rv = monomorphise_type(sp, pbe->m_params, e.path.m_data.as_Generic().m_params, ty);
+                auto rv = MonomorphStatePtr(nullptr, &e.path.m_data.as_Generic().m_params, nullptr).monomorph_type(sp, ty);
                 this->m_resolve.expand_associated_types(sp, rv);
                 return rv;
                 };
@@ -816,7 +816,7 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, const ::HIR::Literal
             auto var_idx = lit.as_Variant().idx;
             const auto& subval = *lit.as_Variant().val;
             auto monomorph = [&](const auto& ty) {
-                auto rv = monomorphise_type(sp, pbe->m_params, e.path.m_data.as_Generic().m_params, ty);
+                auto rv = MonomorphStatePtr(nullptr, &e.path.m_data.as_Generic().m_params, nullptr).monomorph_type(sp, ty);
                 this->m_resolve.expand_associated_types(sp, rv);
                 return rv;
                 };
@@ -1111,7 +1111,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             }
         TU_ARMA(Struct, pbe) {
             auto monomorph = [&](const auto& ty) {
-                auto rv = monomorphise_type(sp, pbe->m_params, e.path.m_data.as_Generic().m_params, ty);
+                auto rv = MonomorphStatePtr(nullptr, &e.path.m_data.as_Generic().m_params, nullptr).monomorph_type(sp, ty);
                 this->m_resolve.expand_associated_types(sp, rv);
                 return rv;
                 };
@@ -1238,7 +1238,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             }
         TU_ARMA(Enum, pbe) {
             auto monomorph = [&](const auto& ty) {
-                auto rv = monomorphise_type(sp, pbe->m_params, e.path.m_data.as_Generic().m_params, ty);
+                auto rv = MonomorphStatePtr(nullptr, &e.path.m_data.as_Generic().m_params, nullptr).monomorph_type(sp, ty);
                 this->m_resolve.expand_associated_types(sp, rv);
                 return rv;
                 };
@@ -1749,20 +1749,20 @@ namespace {
                     cur_ty = &e.path.m_data.as_Generic().m_params.m_types.at(0);
                     break;
                 }
-                TU_MATCHA( (e.binding), (pbe),
-                (Unbound,
+                TU_MATCH_HDRA( (e.binding), {)
+                TU_ARMA(Unbound, pbe) {
                     BUG(sp, "Encounterd unbound path - " << e.path);
-                    ),
-                (Opaque,
+                    }
+                TU_ARMA(Opaque, pbe) {
                     BUG(sp, "Destructuring an opaque type - " << *cur_ty);
-                    ),
-                (ExternType,
+                    }
+                TU_ARMA(ExternType, pbe) {
                     BUG(sp, "Destructuring an extern type - " << *cur_ty);
-                    ),
-                (Struct,
+                    }
+                TU_ARMA(Struct, pbe) {
                     // TODO: Should this do a call to expand_associated_types?
                     auto monomorph = [&](const auto& ty) {
-                        auto rv = monomorphise_type(sp, pbe->m_params, e.path.m_data.as_Generic().m_params, ty);
+                        auto rv = MonomorphStatePtr(nullptr, &e.path.m_data.as_Generic().m_params, nullptr).monomorph_type(sp, ty);
                         resolve.expand_associated_types(sp, rv);
                         return rv;
                         };
@@ -1795,10 +1795,10 @@ namespace {
                         lval = ::MIR::LValue::new_Field(mv$(lval), idx);
                         )
                     )
-                    ),
-                (Union,
+                    }
+                TU_ARMA(Union, pbe) {
                     auto monomorph = [&](const auto& ty) {
-                        auto rv = monomorphise_type(sp, pbe->m_params, e.path.m_data.as_Generic().m_params, ty);
+                        auto rv = MonomorphStatePtr(nullptr, &e.path.m_data.as_Generic().m_params, nullptr).monomorph_type(sp, ty);
                         resolve.expand_associated_types(sp, rv);
                         return rv;
                         };
@@ -1812,11 +1812,11 @@ namespace {
                         cur_ty = &fld.second.ent;
                     }
                     lval = ::MIR::LValue::new_Downcast(mv$(lval), idx);
-                    ),
-                (Enum,
+                    }
+                TU_ARMA(Enum, pbe) {
                     auto monomorph_to_ptr = [&](const auto& ty)->const auto* {
                         if( monomorphise_type_needed(ty) ) {
-                            auto rv = monomorphise_type(sp, pbe->m_params, e.path.m_data.as_Generic().m_params, ty);
+                            auto rv = MonomorphStatePtr(nullptr, &e.path.m_data.as_Generic().m_params, nullptr).monomorph_type(sp, ty);
                             resolve.expand_associated_types(sp, rv);
                             tmp_ty = mv$(rv);
                             return &tmp_ty;
@@ -1832,8 +1832,8 @@ namespace {
 
                     cur_ty = monomorph_to_ptr(var.type);
                     lval = ::MIR::LValue::new_Downcast(mv$(lval), idx);
-                    )
-                )
+                    }
+                }
                 }
             TU_ARMA(Generic, e) {
                 BUG(sp, "Destructuring a generic - " << *cur_ty);
@@ -2172,14 +2172,14 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
             }
             }
         TU_ARMA(Path, te) {
-            TU_MATCHA( (te.binding), (pbe),
-            (Unbound,
+            TU_MATCH_HDRA( (te.binding), {)
+            TU_ARMA(Unbound, pbe) {
                 BUG(sp, "Encounterd unbound path - " << te.path);
-                ),
-            (Opaque,
+                }
+            TU_ARMA(Opaque, pbe) {
                 BUG(sp, "Attempting to match over opaque type - " << ty);
-                ),
-            (Struct,
+                }
+            TU_ARMA(Struct, pbe) {
                 const auto& str_data = pbe->m_data;
                 TU_MATCHA( (str_data), (sd),
                 (Unit,
@@ -2192,16 +2192,16 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                     TODO(sp, "Matching on struct?");
                     )
                 )
-                ),
-            (Union,
+                }
+            TU_ARMA(Union, pbe) {
                 TODO(sp, "Match over Union");
-                ),
-            (ExternType,
+                }
+            TU_ARMA(ExternType, pbe) {
                 TODO(sp, "Match over ExternType");
-                ),
-            (Enum,
+                }
+            TU_ARMA(Enum, pbe) {
                 auto monomorph = [&](const auto& ty) {
-                    auto rv = monomorphise_type(sp, pbe->m_params, te.path.m_data.as_Generic().m_params, ty);
+                    auto rv = MonomorphStatePtr(nullptr, &te.path.m_data.as_Generic().m_params, nullptr).monomorph_type(sp, ty);
                     builder.resolve().expand_associated_types(sp, rv);
                     return rv;
                     };
@@ -2234,8 +2234,8 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                         fail_bb
                         );
                 }
-                )   // TypePathBinding::Enum
-            )
+                }   // TypePathBinding::Enum
+            }
             }  // Type::Data::Path
         TU_ARMA(Generic, _te) {
             BUG(sp, "Attempting to match a generic");

@@ -296,7 +296,7 @@ namespace {
                             continue;
                         }
                         ::HIR::TypeRef  tmp;
-                        const auto& ty = (monomorphise_type_needed(var_ty) ? tmp = monomorphise_type_with(sp, var_ty, monomorphise_type_get_cb(sp, nullptr, &e.path.m_params, nullptr)) : var_ty);
+                        const auto& ty = monomorphise_type_with_opt(sp, tmp, var_ty, MonomorphStatePtr(nullptr, &e.path.m_params, nullptr));
                         if( m_builder.resolve().type_is_impossible(sp, ty) ) {
                             continue;
                         }
@@ -2227,38 +2227,19 @@ namespace {
                     }
                 TU_ARMA(Function, e) {
                     // TODO: Why not use the result type?
-                    //auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr, nullptr, &pe.m_params);
-                    auto monomorph_cb = [&](const auto& gt)->const ::HIR::TypeRef& {
-                        const auto& e = gt.data().as_Generic();
-                        if( e.binding == 0xFFFF ) {
-                            BUG(sp, "Reference to Self in free function - " << gt);
-                        }
-                        else if( (e.binding >> 8) == 0 ) {
-                            BUG(sp, "Reference to impl-level param in free function - " << gt);
-                        }
-                        else if( (e.binding >> 8) == 1 ) {
-                            auto idx = e.binding & 0xFF;
-                            if( idx >= pe.m_params.m_types.size() ) {
-                                BUG(sp, "Generic param out of input range - " << gt << " >= " << pe.m_params.m_types.size());
-                            }
-                            return pe.m_params.m_types[idx];
-                        }
-                        else {
-                            BUG(sp, "Unknown param in free function - " << gt);
-                        }
-                        };
+                    auto monomorph_cb = MonomorphStatePtr(nullptr, nullptr, &pe.m_params);
 
                     // TODO: Obtain function type for this function (i.e. a type that is specifically for this function)
                     auto fcn_ty_data = ::HIR::FunctionType {
                         e.m_unsafe,
                         e.m_abi,
-                        monomorphise_type_with(sp, e.m_return, monomorph_cb),
+                        monomorph_cb.monomorph_type(sp, e.m_return),
                         {}
                         };
                     fcn_ty_data.m_arg_types.reserve( e.m_args.size() );
                     for(const auto& arg : e.m_args)
                     {
-                        fcn_ty_data.m_arg_types.push_back( monomorphise_type_with(sp, arg.second, monomorph_cb) );
+                        fcn_ty_data.m_arg_types.push_back( monomorph_cb.monomorph_type(sp, arg.second) );
                     }
                     auto tmp = m_builder.new_temporary( ::HIR::TypeRef( mv$(fcn_ty_data) ) );
                     m_builder.push_stmt_assign( sp, tmp.clone(), ::MIR::Constant::make_ItemAddr(box$(node.m_path.clone())) );

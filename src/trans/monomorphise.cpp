@@ -372,7 +372,7 @@ void Trans_Monomorphise_List(const ::HIR::Crate& crate, TransList& list)
         } nvs;
         auto eval = ::HIR::Evaluator { pp.sp, crate, nvs };
         MonomorphState   ms;
-        ms.self_ty = &pp.self_type;
+        ms.self_ty = pp.self_type.clone();
         ms.pp_impl = &pp.pp_impl;
         ms.pp_method = &pp.pp_method;
         auto new_lit = eval.evaluate_constant(path, c.m_value, ::std::move(ty), ::std::move(ms));

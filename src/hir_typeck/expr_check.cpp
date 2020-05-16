@@ -586,22 +586,7 @@ namespace {
             const ::HIR::t_struct_fields& fields = *fields_ptr;
 
             #if 1
-            const auto& ty_params = ty_path.m_params.m_types;
-            auto monomorph_cb = [&](const auto& gt)->const ::HIR::TypeRef& {
-                const auto& ge = gt.data().as_Generic();
-                if( ge.binding == 0xFFFF ) {
-                    return ty;
-                }
-                else if( ge.binding < 256 ) {
-                    if( ge.binding >= ty_params.size() ) {
-                        BUG(node.span(), "Type parameter index out of range (#" << ge.binding << " " << ge.name << ")");
-                    }
-                    return ty_params[ge.binding];
-                }
-                else {
-                    BUG(node.span(), "Method-level parameter on struct (#" << ge.binding << " " << ge.name << ")");
-                }
-                };
+            auto ms = MonomorphStatePtr(&ty, &ty_path.m_params, nullptr);
             #endif
 
             // Bind fields with type params (coercable)
@@ -616,7 +601,7 @@ namespace {
 
                 if( monomorphise_type_needed(des_ty_r) ) {
                     assert( des_ty_cache != ::HIR::TypeRef() );
-                    des_ty_cache = monomorphise_type_with(node.span(), des_ty_r, monomorph_cb);
+                    des_ty_cache = ms.monomorph_type(node.span(), des_ty_r);
                     m_resolve.expand_associated_types(node.span(), des_ty_cache);
                     des_ty = &des_ty_cache;
                 }
@@ -682,7 +667,7 @@ namespace {
             /*const*/ auto& cache = node.m_cache;
 
             const ::HIR::Function*  fcn_ptr = nullptr;
-            ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)>    monomorph_cb;
+            MonomorphStatePtr   monomorph_cb;
 
             TU_MATCH_HDRA( (path.m_data), {)
             TU_ARMA(Generic, e) {
@@ -692,24 +677,7 @@ namespace {
                 fcn_ptr = &fcn;
                 cache.m_fcn_params = &fcn.m_params;
 
-                monomorph_cb = [&](const auto& gt)->const ::HIR::TypeRef& {
-                        const auto& e = gt.data().as_Generic();
-                        if( e.name == "Self" || e.binding == 0xFFFF )
-                            TODO(sp, "Handle 'Self' when monomorphising");
-                        if( e.binding < 256 ) {
-                            BUG(sp, "Impl-level parameter on free function (#" << e.binding << " " << e.name << ")");
-                        }
-                        else if( e.binding < 512 ) {
-                            auto idx = e.binding - 256;
-                            if( idx >= path_params.m_types.size() ) {
-                                BUG(sp, "Generic param out of input range - " << idx << " '"<<e.name<<"' >= " << path_params.m_types.size());
-                            }
-                            return path_params.m_types[idx];
-                        }
-                        else {
-                            BUG(sp, "Generic bounding out of total range");
-                        }
-                    };
+                monomorph_cb = MonomorphStatePtr(nullptr, nullptr, &path_params);
                 }
             TU_ARMA(UfcsKnown, e) {
                 const auto& trait_params = e.trait.m_params;
@@ -729,7 +697,7 @@ namespace {
 
                 fcn_ptr = &fcn;
 
-                monomorph_cb = monomorphise_type_get_cb(sp, &e.type, &trait_params, &path_params);
+                monomorph_cb = MonomorphStatePtr(&e.type, &trait_params, &path_params);
                 }
             TU_ARMA(UfcsUnknown, e) {
                 TODO(sp, "Hit a UfcsUnknown (" << path << ") - Is this an error?");
@@ -762,7 +730,7 @@ namespace {
 
                 // Create monomorphise callback
                 const auto& fcn_params = e.params;
-                monomorph_cb = monomorphise_type_get_cb(sp, &e.type, &impl_params, &fcn_params);
+                monomorph_cb = MonomorphStatePtr(&e.type, &impl_params, &fcn_params);
                 }
             }
 
@@ -773,7 +741,7 @@ namespace {
             cache.m_arg_types.clear();
             for(const auto& arg : fcn.m_args) {
                 DEBUG("Arg " << arg.first << ": " << arg.second);
-                cache.m_arg_types.push_back( monomorphise_type_with(sp, arg.second,  monomorph_cb, false) );
+                cache.m_arg_types.push_back( monomorph_cb.monomorph_type(sp, arg.second, false) );
                 m_resolve.expand_associated_types(sp, cache.m_arg_types.back());
                 DEBUG("= " << cache.m_arg_types.back());
             }
@@ -784,7 +752,7 @@ namespace {
                     BUG(sp, "");
                 }
                 else if( tpl.data().is_Generic() ) {
-                    rv = monomorph_cb(tpl).clone();
+                    rv = monomorph_cb.get_type(sp, tpl.data().as_Generic()).clone();
                     return true;
                 }
                 else if( this->expand_erased_types && tpl.data().is_ErasedType() ) {
@@ -792,7 +760,7 @@ namespace {
 
                     ASSERT_BUG(sp, e.m_index < fcn_ptr->m_code.m_erased_types.size(), "");
                     const auto& erased_type_replacement = fcn_ptr->m_code.m_erased_types.at(e.m_index);
-                    rv = monomorphise_type_with(sp, erased_type_replacement,  monomorph_cb, false);
+                    rv = monomorph_cb.monomorph_type(sp, erased_type_replacement, false);
                     return true;
                 }
                 else {
@@ -814,7 +782,7 @@ namespace {
             DEBUG("CHECK RV " << node.m_res_type << " == " << node.m_cache.m_arg_types.back());
             check_types_equal(node.span(), node.m_res_type,  node.m_cache.m_arg_types.back());
 
-            cache.m_monomorph_cb = mv$(monomorph_cb);
+            cache.m_monomorph.reset( new MonomorphStatePtr(monomorph_cb) );
 
             // Bounds
             for(size_t i = 0; i < cache.m_fcn_params->m_types.size(); i ++)
@@ -822,15 +790,15 @@ namespace {
             }
             for(const auto& bound : cache.m_fcn_params->m_bounds)
             {
-                TU_MATCH(::HIR::GenericBound, (bound), (be),
-                (Lifetime,
-                    ),
-                (TypeLifetime,
-                    ),
-                (TraitBound,
-                    auto real_type = monomorphise_type_with(sp, be.type, cache.m_monomorph_cb);
+                TU_MATCH_HDRA( (bound), {)
+                TU_ARMA(Lifetime, be) {
+                    }
+                TU_ARMA(TypeLifetime, be) {
+                    }
+                TU_ARMA(TraitBound, be) {
+                    auto real_type = cache.m_monomorph->monomorph_type(sp, be.type);
                     m_resolve.expand_associated_types(sp, real_type);
-                    auto real_trait = monomorphise_genericpath_with(sp, be.trait.m_path, cache.m_monomorph_cb, false);
+                    auto real_trait = cache.m_monomorph->monomorph_genericpath(sp, be.trait.m_path, false);
                     for(auto& t : real_trait.m_params.m_types)
                         m_resolve.expand_associated_types(sp, t);
                     DEBUG("Bound " << be.type << ":  " << be.trait);
@@ -846,20 +814,20 @@ namespace {
                         bool has_ty = m_resolve.trait_contains_type(sp, real_trait, *be.trait.m_trait_ptr, assoc.first.c_str(),  type_trait_path);
                         ASSERT_BUG(sp, has_ty, "Type " << assoc.first << " not found in chain of " << real_trait);
 
-                        auto other_ty = monomorphise_type_with(sp, assoc.second, cache.m_monomorph_cb, true);
+                        auto other_ty = cache.m_monomorph->monomorph_type(sp, assoc.second, true);
                         m_resolve.expand_associated_types(sp, other_ty);
 
                         check_associated_type(sp, other_ty,  type_trait_path.m_path, type_trait_path.m_params, real_type, assoc.first.c_str());
                     }
-                    ),
-                (TypeEquality,
-                    auto real_type_left = monomorphise_type_with(sp, be.type, cache.m_monomorph_cb);
-                    auto real_type_right = monomorphise_type_with(sp, be.other_type, cache.m_monomorph_cb);
+                    }
+                TU_ARMA(TypeEquality, be) {
+                    auto real_type_left = cache.m_monomorph->monomorph_type(sp, be.type);
+                    auto real_type_right = cache.m_monomorph->monomorph_type(sp, be.other_type);
                     m_resolve.expand_associated_types(sp, real_type_left);
                     m_resolve.expand_associated_types(sp, real_type_right);
                     check_types_equal(sp, real_type_left, real_type_right);
-                    )
-                )
+                    }
+                }
             }
         }
         void visit(::HIR::ExprNode_CallValue& node) override
@@ -1059,28 +1027,19 @@ namespace {
                 if( it == trait.m_values.end() ) {
                     ERROR(sp, E0000, "`" << e.item << "` is not a value member of trait " << e.trait.m_path);
                 }
-                TU_MATCH( ::HIR::TraitValueItem, (it->second), (ie),
-                (Constant,
-                    auto cb = monomorphise_type_get_cb(sp, &e.type, &e.trait.m_params, nullptr);
+                TU_MATCH_HDRA( (it->second), {)
+                TU_ARMA(Constant, ie) {
                     ::HIR::TypeRef  tmp;
-                    const ::HIR::TypeRef* typ;
-                    if(monomorphise_type_needed(ie.m_type)) {
-                        tmp = monomorphise_type_with(sp, ie.m_type, cb);
-                        m_resolve.expand_associated_types(sp, tmp);
-                        typ = &tmp;
+                    const ::HIR::TypeRef& ty = m_resolve.monomorph_expand_opt(sp, tmp, ie.m_type, MonomorphStatePtr(&e.type, &e.trait.m_params, nullptr));
+                    check_types_equal(sp, node.m_res_type, ty);
                     }
-                    else {
-                        typ = &ie.m_type;
-                    }
-                    check_types_equal(sp, node.m_res_type, *typ);
-                    ),
-                (Static,
+                TU_ARMA(Static, ie) {
                     TODO(sp, "Monomorpise associated static type - " << ie.m_type);
-                    ),
-                (Function,
+                    }
+                TU_ARMA(Function, ie) {
                     assert( node.m_res_type.data().is_Function() );
-                    )
-                )
+                    }
+                }
                 }
             TU_ARMA(UfcsInherent, e) {
                 }

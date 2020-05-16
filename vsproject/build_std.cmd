@@ -1,4 +1,5 @@
 @set RUSTC_VERSION=1.29.0
+@set MRUSTC_TARGET_VER=1.29
 @set OUTDIR=output-%RUSTC_VERSION%
 @set STD_ARGS=--output-dir %OUTDIR%
 @set STD_ARGS=%STD_ARGS% --vendor-dir ..\rustc-%RUSTC_VERSION%-src\src\vendor

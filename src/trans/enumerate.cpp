@@ -173,7 +173,7 @@ namespace {
         TRACE_FUNCTION_F("Impl " << trait_path << impl.m_trait_args << " for " << impl_ty);
         if( impl.m_params.m_types.size() == 0 )
         {
-            auto cb_monomorph = monomorphise_type_get_cb(sp, &impl_ty, &impl.m_trait_args, nullptr);
+            auto cb_monomorph = MonomorphStatePtr(&impl_ty, &impl.m_trait_args, nullptr);
 
             // Emit each method/static (in the trait itself)
             const auto& trait = resolve.m_crate.get_trait_by_path(sp, trait_path);
@@ -200,8 +200,8 @@ namespace {
                             if( !b.is_TraitBound() )    continue;
                             const auto& be = b.as_TraitBound();
 
-                            auto b_ty_mono = monomorphise_type_with(sp, be.type, cb_monomorph); resolve.expand_associated_types(sp, b_ty_mono);
-                            auto b_tp_mono = monomorphise_traitpath_with(sp, be.trait, cb_monomorph, false);
+                            auto b_ty_mono = resolve.monomorph_expand(sp, be.type, cb_monomorph);
+                            auto b_tp_mono = cb_monomorph.monomorph_traitpath(sp, be.trait, false);
                             for(auto& ty : b_tp_mono.m_path.m_params.m_types) {
                                 resolve.expand_associated_types(sp, ty);
                             }
@@ -482,16 +482,8 @@ namespace
         void visit_struct(const ::HIR::GenericPath& path, const ::HIR::Struct& item) {
             static Span sp;
             ::HIR::TypeRef  tmp;
-            auto monomorph = [&](const auto& x)->const auto& {
-                if( monomorphise_type_needed(x) ) {
-                    tmp = monomorphise_type(sp, item.m_params, path.m_params, x);
-                    m_resolve.expand_associated_types(sp, tmp);
-                    return tmp;
-                }
-                else {
-                    return x;
-                }
-                };
+            MonomorphStatePtr   ms(nullptr, &path.m_params, nullptr);
+            auto monomorph = [&](const auto& x)->const auto& { return m_resolve.monomorph_expand_opt(sp, tmp, x, ms); };
             TU_MATCHA( (item.m_data), (e),
             (Unit,
                 ),
@@ -509,16 +501,8 @@ namespace
         void visit_union(const ::HIR::GenericPath& path, const ::HIR::Union& item) {
             static Span sp;
             ::HIR::TypeRef  tmp;
-            auto monomorph = [&](const auto& x)->const auto& {
-                if( monomorphise_type_needed(x) ) {
-                    tmp = monomorphise_type(sp, item.m_params, path.m_params, x);
-                    m_resolve.expand_associated_types(sp, tmp);
-                    return tmp;
-                }
-                else {
-                    return x;
-                }
-                };
+            MonomorphStatePtr   ms(nullptr, &path.m_params, nullptr);
+            auto monomorph = [&](const auto& x)->const auto& { return m_resolve.monomorph_expand_opt(sp, tmp, x, ms); };
             for(const auto& variant : item.m_variants)
             {
                 visit_type( monomorph(variant.second.ent) );
@@ -527,16 +511,8 @@ namespace
         void visit_enum(const ::HIR::GenericPath& path, const ::HIR::Enum& item) {
             static Span sp;
             ::HIR::TypeRef  tmp;
-            auto monomorph = [&](const auto& x)->const auto& {
-                if( monomorphise_type_needed(x) ) {
-                    tmp = monomorphise_type(sp, item.m_params, path.m_params, x);
-                    m_resolve.expand_associated_types(sp, tmp);
-                    return tmp;
-                }
-                else {
-                    return x;
-                }
-                };
+            MonomorphStatePtr   ms(nullptr, &path.m_params, nullptr);
+            auto monomorph = [&](const auto& x)->const auto& { return m_resolve.monomorph_expand_opt(sp, tmp, x, ms); };
             if( const auto* e = item.m_data.opt_Data() )
             {
                 for(const auto& variant : *e)
@@ -1359,23 +1335,23 @@ void Trans_Enumerate_FillFrom_PathMono(EnumState& state, ::HIR::Path path_mono)
     }
 
     Trans_Params  sub_pp(sp);
-    TU_MATCHA( (path_mono.m_data), (pe),
-    (Generic,
+    TU_MATCH_HDRA( (path_mono.m_data), { )
+    TU_ARMA(Generic, pe) {
         sub_pp.pp_method = pe.m_params.clone();
-        ),
-    (UfcsKnown,
+        }
+    TU_ARMA(UfcsKnown, pe) {
         sub_pp.pp_method = pe.params.clone();
         sub_pp.self_type = pe.type.clone();
-        ),
-    (UfcsInherent,
+        }
+    TU_ARMA(UfcsInherent, pe) {
         sub_pp.pp_method = pe.params.clone();
         sub_pp.pp_impl = pe.impl_params.clone();
         sub_pp.self_type = pe.type.clone();
-        ),
-    (UfcsUnknown,
+        }
+    TU_ARMA(UfcsUnknown, pe) {
         BUG(sp, "UfcsUnknown - " << path_mono);
-        )
-    )
+        }
+    }
     // Get the item type
     // - Valid types are Function and Static
     auto item_ref = get_ent_fullpath(sp, state.crate, path_mono, sub_pp.pp_impl);
@@ -1441,9 +1417,7 @@ void Trans_Enumerate_FillFrom_PathMono(EnumState& state, ::HIR::Path path_mono)
                 else if( TU_TEST1(inner_ty.data(), Path, .is_closure()) ) {
                     const auto& gp = inner_ty.data().as_Path().path.m_data.as_Generic();
                     const auto& str = state.crate.get_struct_by_path(sp, gp.m_path);
-                    Trans_Params p;
-                    p.sp = sp;
-                    p.pp_impl = gp.m_params.clone();
+                    auto p = Trans_Params::new_impl(sp, {}, gp.m_params.clone());
                     for(const auto& fld : str.m_data.as_Tuple())
                     {
                         ::HIR::TypeRef  tmp;
@@ -1653,11 +1627,11 @@ void Trans_Enumerate_FillFrom_VTable(EnumState& state, ::HIR::Path vtable_path, 
 
     ASSERT_BUG(sp, !type.data().is_Slice(), "Getting vtable for unsized type - " << vtable_path);
 
-    auto monomorph_cb_trait = monomorphise_type_get_cb(sp, &type, &trait_path.m_params, nullptr);
+    auto monomorph_cb_trait = MonomorphStatePtr(&type, &trait_path.m_params, nullptr);
     for(const auto& m : tr.m_value_indexes)
     {
         DEBUG("- " << m.second.first << " = " << m.second.second << " :: " << m.first);
-        auto gpath = monomorphise_genericpath_with(sp, m.second.second, monomorph_cb_trait, false);
+        auto gpath = monomorph_cb_trait.monomorph_genericpath(sp, m.second.second, false);
         Trans_Enumerate_FillFrom_PathMono(state, ::HIR::Path(type.clone(), mv$(gpath), m.first));
     }
 }
@@ -1737,7 +1711,7 @@ namespace {
 
 void Trans_Enumerate_FillFrom(EnumState& state, const ::HIR::Function& function, const Trans_Params& pp)
 {
-    TRACE_FUNCTION_F("Function pp=" << pp.pp_method<<"+"<<pp.pp_impl);
+    TRACE_FUNCTION_F("Function pp=" << pp.pp_impl << " + " << pp.pp_method);
     if( function.m_code.m_mir )
     {
         const auto& mir_fcn = *function.m_code.m_mir;

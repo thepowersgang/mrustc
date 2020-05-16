@@ -1639,7 +1639,7 @@ void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::
         ty_p = nullptr;
         auto maybe_monomorph = [&](const ::HIR::GenericParams& params_def, const ::HIR::Path& p, const ::HIR::TypeRef& t)->const ::HIR::TypeRef& {
             if( monomorphise_type_needed(t) ) {
-                tmp = monomorphise_type(sp, params_def, p.m_data.as_Generic().m_params, t);
+                tmp = MonomorphStatePtr(nullptr, &p.m_data.as_Generic().m_params, nullptr).monomorph_type(sp, t);
                 m_resolve.expand_associated_types(sp, tmp);
                 return tmp;
             }

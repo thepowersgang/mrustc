@@ -1861,16 +1861,8 @@ namespace {
             TRACE_FUNCTION_F(path << " var_idx=" << var_idx);
 
             ::HIR::TypeRef  tmp;
-            auto monomorph = [&](const auto& x)->const auto& {
-                if( monomorphise_type_needed(x) ) {
-                    tmp = monomorphise_type(sp, item.m_params, path.m_params, x);
-                    m_resolve.expand_associated_types(sp, tmp);
-                    return tmp;
-                }
-                else {
-                    return x;
-                }
-                };
+            MonomorphStatePtr   ms(nullptr, &path.m_params, nullptr);
+            auto monomorph = [&](const auto& x)->const auto& { return m_resolve.monomorph_expand_opt(sp, tmp, x, ms); };
 
             auto p = path.clone();
             p.m_path.m_components.pop_back();
@@ -1945,16 +1937,9 @@ namespace {
         {
             TRACE_FUNCTION_F(p);
             ::HIR::TypeRef  tmp;
-            auto monomorph = [&](const auto& x)->const auto& {
-                if( monomorphise_type_needed(x) ) {
-                    tmp = monomorphise_type(sp, item.m_params, p.m_params, x);
-                    m_resolve.expand_associated_types(sp, tmp);
-                    return tmp;
-                }
-                else {
-                    return x;
-                }
-                };
+            MonomorphStatePtr   ms(nullptr, &p.m_params, nullptr);
+            auto monomorph = [&](const auto& x)->const auto& { return m_resolve.monomorph_expand_opt(sp, tmp, x, ms); };
+
             // Crate constructor function
             const auto& e = item.m_data.as_Tuple();
             m_of << "static struct s_" << Trans_Mangle(p) << " " << Trans_Mangle(p) << "(";
@@ -2081,14 +2066,7 @@ namespace {
             TRACE_FUNCTION_F("ty=" << ty << ", lit=" << lit);
             ::HIR::TypeRef  tmp;
             auto monomorph_with = [&](const ::HIR::PathParams& pp, const ::HIR::TypeRef& ty)->const ::HIR::TypeRef& {
-                if( monomorphise_type_needed(ty) ) {
-                    tmp = monomorphise_type_with(sp, ty, monomorphise_type_get_cb(sp, nullptr, &pp, nullptr), false);
-                    m_resolve.expand_associated_types(sp, tmp);
-                    return tmp;
-                }
-                else {
-                    return ty;
-                }
+                return m_resolve.monomorph_expand_opt(m_mir_res->sp, tmp, ty, MonomorphStatePtr(nullptr, &pp, nullptr));
                 };
             auto get_inner_type = [&](unsigned int var, unsigned int idx)->const ::HIR::TypeRef& {
                 TU_MATCH_HDRA( (ty.data()), { )
@@ -2508,7 +2486,7 @@ namespace {
                 m_of << " " << Trans_Mangle(p) << " = {\n";
             }
 
-            auto monomorph_cb_trait = monomorphise_type_get_cb(sp, &type, &trait_path.m_params, nullptr);
+            auto monomorph_cb_trait = MonomorphStatePtr(&type, &trait_path.m_params, nullptr);
 
             // Size, Alignment, and destructor
             if( type.data().is_Borrow() || m_resolve.type_is_copy(sp, type) )
@@ -2539,7 +2517,7 @@ namespace {
                     //MIR_ASSERT(*m_mir_res, tr.m_values.at(m.first).is_Function(), "TODO: Handle generating vtables with non-function items");
                     DEBUG("- " << m.second.first << " = " << m.second.second << " :: " << m.first);
 
-                    auto gpath = monomorphise_genericpath_with(sp, m.second.second, monomorph_cb_trait, false);
+                    auto gpath = monomorph_cb_trait.monomorph_genericpath(sp, m.second.second, false);
                     // NOTE: `void*` cast avoids mismatched pointer type errors due to the receiver being &mut()/&() in the vtable
                     m_of << "\t(void*)" << Trans_Mangle( ::HIR::Path(type.clone(), mv$(gpath), m.first) ) << ",\n";
                 }
@@ -4361,7 +4339,7 @@ namespace {
                         return true;
                     }
                     else if( tpl.data().is_Generic() ) {
-                        out = params.get_cb()(tpl).clone();
+                        out = params.monomorph_type(sp, tpl).clone();
                         return true;
                     }
                     else {
@@ -5639,7 +5617,7 @@ namespace {
             if( const auto* e = v.opt_Constant() )
             {
                 const auto& hir_const = **e;
-                ty = params.monomorph(m_mir_res->sp, hir_const.m_type);
+                ty = params.monomorph_type(m_mir_res->sp, hir_const.m_type);
                 if( hir_const.m_value_res.is_Defer() )
                 {
                     // Do some form of lookup of a pre-cached evaluated monomorphised constant
@@ -5700,14 +5678,7 @@ namespace {
         bool is_zero_literal(const ::HIR::TypeRef& ty, const ::HIR::Literal& lit, const Trans_Params& params) {
             ::HIR::TypeRef  tmp;
             auto monomorph_with = [&](const ::HIR::PathParams& pp, const ::HIR::TypeRef& ty)->const ::HIR::TypeRef& {
-                if (monomorphise_type_needed(ty)) {
-                    tmp = monomorphise_type_with(sp, ty, monomorphise_type_get_cb(sp, nullptr, &pp, nullptr), false);
-                    m_resolve.expand_associated_types(sp, tmp);
-                    return tmp;
-                }
-                else {
-                    return ty;
-                }
+                return m_resolve.monomorph_expand_opt(m_mir_res->sp, tmp, ty, MonomorphStatePtr(nullptr, &pp, nullptr));
             };
             auto get_inner_type = [&](unsigned int var, unsigned int idx)->const ::HIR::TypeRef& {
                 TU_MATCH_HDRA((ty.data()), { )
@@ -6223,10 +6194,7 @@ namespace {
                         const auto& path = ty.data().as_Path().path.m_data.as_Generic();
                         const auto& str = *ty.data().as_Path().binding.as_Struct();
                         auto monomorph = [&](const auto& tpl) {
-                            // TODO: expand_associated_types
-                            auto rv = monomorphise_type(sp, str.m_params, path.m_params, tpl);
-                            m_resolve.expand_associated_types(sp, rv);
-                            return rv;
+                            return m_resolve.monomorph_expand(sp, tpl, MonomorphStatePtr(nullptr, &path.m_params, nullptr));
                             };
                         TU_MATCH_HDRA( (str.m_data), { )
                         TU_ARMA(Unit, se) MIR_BUG(*m_mir_res, "Unit-like struct with DstType::Possible");

@@ -628,7 +628,9 @@ namespace
         visit_mir_lvalues_mut(state, const_cast<::MIR::Function&>(fcn), [&](auto& lv, auto im){ return cb(lv, im); });
     }
 
-    struct ParamsSet {
+    struct ParamsSet:
+        public MonomorphiserPP
+    {
         ::HIR::PathParams   impl_params;
         const ::HIR::PathParams*  fcn_params;
         const ::HIR::TypeRef*   self_ty;
@@ -638,8 +640,14 @@ namespace
             self_ty(nullptr)
         {}
 
-        t_cb_generic get_cb(const Span& sp) const {
-            return monomorphise_type_get_cb(sp, self_ty, &impl_params, fcn_params, nullptr);
+        const ::HIR::TypeRef* get_self_type() const override {
+            return self_ty;
+        }
+        const ::HIR::PathParams* get_impl_params() const override {
+            return &impl_params;
+        }
+        const ::HIR::PathParams* get_method_params() const override {
+            return fcn_params;
         }
     };
     const ::MIR::Function* get_called_mir(const ::MIR::TypeResolve& state, const TransList* list, const ::HIR::Path& path, ParamsSet& params)
@@ -1165,20 +1173,20 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
 
         ::HIR::TypeRef monomorph(const ::HIR::TypeRef& ty) const {
             TRACE_FUNCTION_F(ty);
-            auto rv = monomorphise_type_with(sp, ty, params.get_cb(sp));
+            auto rv = params.monomorph_type(sp, ty);
             resolve.expand_associated_types(sp, rv);
             return rv;
         }
         ::HIR::GenericPath monomorph(const ::HIR::GenericPath& ty) const {
             TRACE_FUNCTION_F(ty);
-            auto rv = monomorphise_genericpath_with(sp, ty, params.get_cb(sp), false);
+            auto rv = params.monomorph_genericpath(sp, ty, false);
             for(auto& arg : rv.m_params.m_types)
                 resolve.expand_associated_types(sp, arg);
             return rv;
         }
         ::HIR::Path monomorph(const ::HIR::Path& ty) const {
             TRACE_FUNCTION_F(ty);
-            auto rv = monomorphise_path_with(sp, ty, params.get_cb(sp), false);
+            auto rv = params.monomorph_path(sp, ty, false);
             TU_MATCH(::HIR::Path::Data, (rv.m_data), (e2),
             (Generic,
                 for(auto& arg : e2.m_params.m_types)
@@ -1207,7 +1215,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
         }
         ::HIR::PathParams monomorph(const ::HIR::PathParams& ty) const {
             TRACE_FUNCTION_F(ty);
-            auto rv = monomorphise_path_params_with(sp, ty, params.get_cb(sp), false);
+            auto rv = params.monomorph_path_params(sp, ty, false);
             for(auto& arg : rv.m_types)
                 resolve.expand_associated_types(sp, arg);
             return rv;

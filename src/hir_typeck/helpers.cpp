@@ -1000,20 +1000,7 @@ void TraitResolution::prep_indexes()
             }
 
             const auto& trait_params = be.trait.m_path.m_params;
-            auto cb_mono = [&](const auto& ty)->const ::HIR::TypeRef& {
-                const auto& ge = ty.data().as_Generic();
-                if( ge.binding == GENERIC_Self ) {
-                    return be.type;
-                }
-                else if( ge.binding < 256 ) {
-                    unsigned idx = ge.binding % 256;
-                    ASSERT_BUG(sp, idx < trait_params.m_types.size(), "Generic binding out of range in trait " << be.trait);
-                    return trait_params.m_types[idx];
-                }
-                else {
-                    BUG(sp, "Unknown generic binding " << ty);
-                }
-                };
+            auto monomorph = MonomorphStatePtr(&be.type, &trait_params, nullptr);
 
             const auto& trait = m_crate.get_trait_by_path(sp, be.trait.m_path.m_path);
             // Bounds implied by associated trait bounds on the parent trait
@@ -1024,7 +1011,7 @@ void TraitResolution::prep_indexes()
                 {
                     DEBUG("[prep_indexes] (Assoc) " << a_ty_b);
                     const auto& itrait = m_crate.get_trait_by_path(sp, a_ty_b.m_path.m_path);
-                    auto trait_mono = monomorphise_traitpath_with(sp, a_ty_b, cb_mono, false);
+                    auto trait_mono = monomorph.monomorph_traitpath(sp, a_ty_b, false);
                     for( auto& tb : trait_mono.m_type_bounds )
                     {
                         if( ty_a == ::HIR::TypeRef() ) {
@@ -1539,17 +1526,17 @@ bool TraitResolution::find_trait_impls(const Span& sp,
 
             // TODO: Should Self here be `type` or `pe.type`
             // - Depends... if implicit it should be `type` (as it relates to the associated type), but if explicit it's referring to the trait
-            auto monomorph_cb = monomorphise_type_get_cb(sp, &pe.type, &pe.trait.m_params, nullptr, nullptr);
+            auto monomorph_cb = MonomorphStatePtr(&pe.type, &pe.trait.m_params, nullptr);
 
             auto rv = this->iterate_aty_bounds(sp, pe, [&](const auto& bound) {
                 DEBUG("Bound on ATY: " << bound);
                 const auto& b_params = bound.m_path.m_params;
                 ::HIR::PathParams   params_mono_o;
-                const auto& b_params_mono = (monomorphise_pathparams_needed(b_params) ? params_mono_o = monomorphise_path_params_with(sp, b_params, monomorph_cb, false) : b_params);
+                const auto& b_params_mono = (monomorphise_pathparams_needed(b_params) ? params_mono_o = monomorph_cb.monomorph_path_params(sp, b_params, false) : b_params);
                 // TODO: Monormophise and EAT associated types
                 ::std::map<RcString, ::HIR::TypeRef>    b_atys;
                 for(const auto& aty : bound.m_type_bounds)
-                    b_atys.insert(::std::make_pair( aty.first, monomorphise_type_with(sp, aty.second, monomorph_cb) ));
+                    b_atys.insert(::std::make_pair( aty.first, monomorph_cb.monomorph_type(sp, aty.second) ));
 
                 if( bound.m_path.m_path == trait )
                 {
@@ -1561,7 +1548,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
                             // TODO: assoc bounds
                             if( callback( ImplRef(type.clone(), mv$(params_mono_o), mv$(b_atys)), cmp ) )
                                 return true;
-                            params_mono_o = monomorphise_path_params_with(sp, b_params, monomorph_cb, false);
+                            params_mono_o = monomorph_cb.monomorph_path_params(sp, b_params, false);
                         }
                         else
                         {
@@ -2149,22 +2136,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
             const auto& assoc_ty = trait_ptr.m_types.at(pe_inner.item);
 
             // Resolve where Self=pe_inner.type (i.e. for the trait this inner UFCS is on)
-            auto cb_placeholders_trait = [&](const auto& ty)->const ::HIR::TypeRef&{
-                if(const auto* e = ty.data().opt_Generic()) {
-                    if( e->binding == GENERIC_Self )
-                        return pe_inner.type;
-                    else if( e->binding >> 8 == 0 ) {
-                        ASSERT_BUG(sp, e->binding < pe_inner.trait.m_params.m_types.size(), "");
-                        return pe_inner.trait.m_params.m_types.at(e->binding);
-                    }
-                    else {
-                        TODO(sp, "Handle type params when expanding associated bound (#" << e->binding << " " << e->name << ")");
-                    }
-                }
-                else {
-                    return ty;
-                }
-                };
+            auto cb_placeholders_trait = MonomorphStatePtr(&pe_inner.type, &pe_inner.trait.m_params, nullptr);
             for(const auto& bound : assoc_ty.m_trait_bounds)
             {
                 // If the bound is for Self and the outer trait
@@ -2176,7 +2148,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
                     auto it = bound.m_type_bounds.find( pe.item );
                     if( it != bound.m_type_bounds.end() ) {
                         if( monomorphise_type_needed(it->second) ) {
-                            input = monomorphise_type_with(sp, it->second, cb_placeholders_trait);
+                            input = cb_placeholders_trait.monomorph_type(sp, it->second);
                         }
                         else {
                             input = it->second.clone();
@@ -2325,21 +2297,11 @@ bool TraitResolution::find_named_trait_in_trait(const Span& sp,
         BUG(sp, "Incorrect number of parameters for trait");
     }
 
-    const auto monomorph_cb = [&](const auto& gt)->const ::HIR::TypeRef& {
-        const auto& ge = gt.data().as_Generic();
-        if( ge.binding == GENERIC_Self ) {
-            return target_type;
-        }
-        else {
-            if( ge.binding >= pp.m_types.size() )
-                BUG(sp, "find_named_trait_in_trait - Generic #" << ge.binding << " " << ge.name << " out of range");
-            return pp.m_types[ge.binding];
-        }
-        };
+    const auto monomorph_cb = MonomorphStatePtr(&target_type, &pp, nullptr);
 
     for( const auto& pt : trait_ptr.m_all_parent_traits )
     {
-        auto pt_mono = monomorphise_traitpath_with(sp, pt, monomorph_cb, false);
+        auto pt_mono = monomorph_cb.monomorph_traitpath(sp, pt, false);
 
         //DEBUG(pt << " => " << pt_mono);
         if( pt.m_path.m_path == des ) {
@@ -2455,23 +2417,13 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
             for(const auto& bound : at.m_trait_bounds) {
                 if( bound.m_path.m_path == trait )
                 {
-                    auto monomorph_cb = [&](const auto& gt)->const ::HIR::TypeRef& {
-                        const auto& ge = gt.data().as_Generic();
-                        if( ge.binding == GENERIC_Self ) {
-                            return assoc_info->type;
-                        }
-                        else {
-                            if( ge.binding >= assoc_info->trait.m_params.m_types.size() )
-                                BUG(sp, "find_trait_impls_bound - Generic #" << ge.binding << " " << ge.name << " out of range");
-                            return assoc_info->trait.m_params.m_types[ge.binding];
-                        }
-                        };
+                    auto monomorph_cb = MonomorphStatePtr(&assoc_info->type, &assoc_info->trait.m_params, nullptr);
 
                     DEBUG("- Found an associated type bound for this trait via another bound");
                     ::HIR::Compare  ord = outer_ord;
                     if( monomorphise_pathparams_needed(bound.m_path.m_params) ) {
                         // TODO: Use a compare+callback method instead
-                        auto b_params_mono = monomorphise_path_params_with(sp, bound.m_path.m_params, monomorph_cb, false);
+                        auto b_params_mono = monomorph_cb.monomorph_path_params(sp, bound.m_path.m_params, false);
                         ord &= this->compare_pp(sp, b_params_mono, params);
                     }
                     else {
@@ -2483,7 +2435,7 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
                         DEBUG("Fuzzy match");
                     }
 
-                    auto tp_mono = monomorphise_traitpath_with(sp, bound, monomorph_cb, false);
+                    auto tp_mono = monomorph_cb.monomorph_traitpath(sp, bound, false);
                     // - Expand associated types
                     for(auto& ty : tp_mono.m_type_bounds) {
                         ty.second = this->expand_associated_types(sp, mv$(ty.second));
@@ -2585,11 +2537,11 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                     return false;
                 }
 
-                auto monomorph = monomorphise_type_get_cb(sp, nullptr, &impl_params, nullptr);
+                auto monomorph = MonomorphStatePtr(nullptr, &impl_params, nullptr);
                 // TODO: Ensure that there are no-longer any magic params?
 
-                auto ty_mono = monomorphise_type_with(sp, impl.m_type, monomorph, false);
-                auto args_mono = monomorphise_path_params_with(sp, impl.m_trait_args, monomorph, false);
+                auto ty_mono = monomorph.monomorph_type(sp, impl.m_type, false);
+                auto args_mono = monomorph.monomorph_path_params(sp, impl.m_trait_args, false);
                 // NOTE: Auto traits can't have items, so no associated types
 
                 positive_found = true;
@@ -2682,24 +2634,11 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         TU_MATCH_HDRA( (e.path.m_data), {)
         TU_ARMA(Generic, pe) { //(
             ::HIR::TypeRef  tmp;
-            auto monomorph_cb = [&](const auto& gt)->const ::HIR::TypeRef& {
-                const auto& ge = gt.data().as_Generic();
-                if( ge.binding == GENERIC_Self ) {
-                    BUG(sp, "Self type in struct/enum generics");
-                }
-                else if( ge.binding >> 8 == 0 ) {
-                    auto idx = ge.binding & 0xFF;
-                    ASSERT_BUG(sp, idx < pe.m_params.m_types.size(), "Type parameter out of range - " << gt);
-                    return pe.m_params.m_types[idx];
-                }
-                else {
-                    BUG(sp, "Unexpected type parameter - " << gt << " in content of " << type);
-                }
-                };
+            auto monomorph = MonomorphStatePtr(nullptr, &pe.m_params, nullptr);
             // HELPER: Get a possibily monomorphised version of the input type (stored in `tmp` if needed)
             auto monomorph_get = [&](const auto& ty)->const ::HIR::TypeRef& {
                 if( monomorphise_type_needed(ty) ) {
-                    return (tmp = this->expand_associated_types(sp, monomorphise_type_with(sp, ty,  monomorph_cb)));
+                    return (tmp = this->expand_associated_types(sp, monomorph.monomorph_type(sp, ty)));
                 }
                 else {
                     return ty;
@@ -2934,7 +2873,8 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             return ty;
         };
     struct Matcher:
-        public ::HIR::MatchGenerics
+        public ::HIR::MatchGenerics,
+        public Monomorphiser
     {
         Span    sp;
         RcString    placeholder_name;
@@ -2994,23 +2934,26 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         {
             TODO(Span(), "Matcher::match_val " << g << " with " << sz);
         }
+
+        ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& ge) const override {
+            //if( ge.is_self() ) {
+            //    // TODO: `impl_type` or `des_type`
+            //    DEBUG("[find_impl__check_crate_raw] Self - " << impl_type << " or " << des_type);
+            //    //TODO(sp, "[find_impl__check_crate_raw] Self - " << impl_type << " or " << des_type);
+            //    return impl_type;
+            //}
+            ASSERT_BUG(sp, !ge.is_placeholder(), "[find_impl__check_crate_raw] Placeholder param seen - " << ge);
+            if( impl_params.m_types.at(ge.binding) != HIR::TypeRef() ) {
+                return impl_params.m_types.at(ge.binding).clone();
+            }
+            return placeholders.m_types.at(ge.binding).clone();
+        }
+        ::HIR::Literal get_value(const Span& sp, const ::HIR::GenericRef& val) const override {
+            return HIR::Literal(val);
+        }
     };
     Matcher matcher { sp, out_impl_params, placeholder_name, placeholders };
-    // Callback that returns monomorpisation results
-    auto monomorph = [&](const auto& gt)->const ::HIR::TypeRef& {
-        const auto& ge = gt.data().as_Generic();
-        //if( ge.is_self() ) {
-        //    // TODO: `impl_type` or `des_type`
-        //    DEBUG("[find_impl__check_crate_raw] Self - " << impl_type << " or " << des_type);
-        //    //TODO(sp, "[find_impl__check_crate_raw] Self - " << impl_type << " or " << des_type);
-        //    return impl_type;
-        //}
-        ASSERT_BUG(sp, !ge.is_placeholder(), "[find_impl__check_crate_raw] Placeholder param seen - " << gt);
-        if( out_impl_params.m_types.at(ge.binding) != HIR::TypeRef() ) {
-            return out_impl_params.m_types.at(ge.binding);
-        }
-        return placeholders.m_types.at(ge.binding);
-    };
+
     //::std::vector<::HIR::TypeRef> saved_ph;
     //for(const auto& t : placeholders)
     //    saved_ph.push_back(t.clone());
@@ -3027,8 +2970,8 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         TU_ARMA(TraitBound, be) {
 
             DEBUG("Check bound " << be.type << " : " << be.trait);
-            auto real_type = monomorphise_type_with(sp, be.type, monomorph, false);
-            auto real_trait = monomorphise_traitpath_with(sp, be.trait, monomorph, false);
+            auto real_type = matcher.monomorph_type(sp, be.type, false);
+            auto real_trait = matcher.monomorph_traitpath(sp, be.trait, false);
             real_type = this->expand_associated_types(sp, mv$(real_type));
             for(auto& p : real_trait.m_path.m_params.m_types) {
                 p = this->expand_associated_types(sp, mv$(p));
@@ -3239,14 +3182,14 @@ const ::HIR::Function* TraitResolution::trait_contains_method(const Span& sp, co
         return rv;
     }
 
-    auto monomorph_cb = monomorphise_type_get_cb(sp, &self, &trait_path.m_params, nullptr);
+    auto monomorph_cb = MonomorphStatePtr(&self, &trait_path.m_params, nullptr);
     for(const auto& st : trait_ptr.m_all_parent_traits)
     {
         if( trait_contains_method_inner(*st.m_trait_ptr, name, rv) )
         {
             assert(rv);
             out_path.m_path = st.m_path.m_path;
-            out_path.m_params = monomorphise_path_params_with(sp, st.m_path.m_params, monomorph_cb, false);
+            out_path.m_params = monomorph_cb.monomorph_path_params(sp, st.m_path.m_params, false);
             return rv;
         }
     }
@@ -3263,19 +3206,14 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
         return true;
     }
 
-    auto monomorph_cb = [&](const auto& gt)->const ::HIR::TypeRef& {
-            const auto& ge = gt.data().as_Generic();
-            assert(ge.binding < 256);
-            assert(ge.binding < trait_path.m_params.m_types.size());
-            return trait_path.m_params.m_types[ge.binding];
-            };
+    auto monomorph_cb = MonomorphStatePtr(nullptr, &trait_path.m_params, nullptr);
     for(const auto& st : trait_ptr.m_all_parent_traits)
     {
         if( st.m_trait_ptr->m_types.count(name) )
         {
             DEBUG("- Found in " << st);
             out_path.m_path = st.m_path.m_path;
-            out_path.m_params = monomorphise_path_params_with(sp, st.m_path.m_params, monomorph_cb, false);
+            out_path.m_params = monomorph_cb.monomorph_path_params(sp, st.m_path.m_params, false);
             return true;
         }
     }
@@ -3603,13 +3541,13 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
     {
         ::HIR::Compare  rv = ::HIR::Compare::Equal;
         const auto& pe = src_ty.data().as_Path().path.m_data.as_UfcsKnown();
-        auto monomorph_cb = monomorphise_type_get_cb(sp, &pe.type, &pe.trait.m_params, nullptr, nullptr);
+        auto monomorph_cb = MonomorphStatePtr(&pe.type, &pe.trait.m_params, nullptr);
         auto found_bound = this->iterate_aty_bounds(sp, pe, [&](const ::HIR::TraitPath& bound) {
             if( bound.m_path.m_path != lang_Unsize )
                 return false;
             const auto& be_dst_tpl = bound.m_path.m_params.m_types.at(0);
             ::HIR::TypeRef  tmp_ty;
-            const auto& be_dst = (monomorphise_type_needed(be_dst_tpl) ? tmp_ty = monomorphise_type_with(sp, be_dst_tpl, monomorph_cb) : be_dst_tpl);
+            const auto& be_dst = monomorph_cb.maybe_monomorph_type(sp, tmp_ty, be_dst_tpl);
 
             auto cmp = dst_ty.compare_with_placeholders(sp, be_dst, m_ivars.callback_resolve_infer());
             if(cmp == ::HIR::Compare::Unequal)  return false;
@@ -4237,25 +4175,9 @@ bool TraitResolution::find_method(const Span& sp,
 
         // UFCS known - Assuming that it's reached the maximum resolvable level (i.e. a type within is generic), search for trait bounds on the type
 
-        // `Self` = `*e.type`
+        // `Self` = `*.type`
         // `/*I:#*/` := `e.trait.m_params`
-        auto monomorph_cb = [&](const auto& gt)->const ::HIR::TypeRef& {
-            const auto& ge = gt.data().as_Generic();
-            if( ge.binding == GENERIC_Self ) {
-                return e.type;
-            }
-            else if( ge.binding >> 8 == 0 ) {
-                auto idx = ge.binding & 0xFF;
-                ASSERT_BUG(sp, idx < e.trait.m_params.m_types.size(), "Type parameter out of range - " << gt);
-                return e.trait.m_params.m_types[idx];
-            }
-            else {
-                BUG(sp, "Unexpected type parameter - " << ty);
-            }
-            };
-        // `Self` = `*e.type`
-        // `/*I:#*/` := `e.trait.m_params`
-        //auto monomorph_cb = monomorphise_type_get_cb(sp, &*e.type, &e.trait.m_params, nullptr);
+        auto monomorph_cb = MonomorphStatePtr(&e.type, &e.trait.m_params, nullptr);
 
         const auto& trait = this->m_crate.get_trait_by_path(sp, e.trait.m_path);
         const auto& assoc_ty = trait.m_types.at( e.item );
@@ -4272,7 +4194,7 @@ bool TraitResolution::find_method(const Span& sp,
                 if(const auto* self_ty_p = check_method_receiver(sp, *fcn_ptr, ty, access))
                 {
                     if( monomorphise_pathparams_needed(final_trait_path.m_params) ) {
-                        final_trait_path.m_params = monomorphise_path_params_with(sp, final_trait_path.m_params, monomorph_cb, false);
+                        final_trait_path.m_params = monomorph_cb.monomorph_path_params(sp, final_trait_path.m_params, false);
                         DEBUG("- Monomorph to " << final_trait_path);
                     }
 
@@ -4311,7 +4233,7 @@ bool TraitResolution::find_method(const Span& sp,
                 if(const auto* self_ty_p = check_method_receiver(sp, *fcn_ptr, ty, access))
                 {
                     if( monomorphise_pathparams_needed(final_trait_path.m_params) ) {
-                        final_trait_path.m_params = monomorphise_path_params_with(sp, final_trait_path.m_params, monomorph_cb, false);
+                        final_trait_path.m_params = monomorph_cb.monomorph_path_params(sp, final_trait_path.m_params, false);
                         DEBUG("- Monomorph to " << final_trait_path);
                     }
 
@@ -4484,44 +4406,32 @@ bool TraitResolution::find_field(const Span& sp, const ::HIR::TypeRef& ty, const
             // Has fields!
             const auto& str = *be;
             const auto& params = e->path.m_data.as_Generic().m_params;
-            auto monomorph = [&](const auto& gt)->const ::HIR::TypeRef& {
-                const auto& ge = gt.data().as_Generic();
-                if( ge.binding == GENERIC_Self )
-                    TODO(sp, "Monomorphise struct field types (Self) - " << gt);
-                else if( ge.binding < 256 ) {
-                    assert(ge.binding < params.m_types.size());
-                    return params.m_types[ge.binding];
-                }
-                else {
-                    BUG(sp, "function-level param encountered in struct field");
-                }
-                return gt;
-                };
-            TU_MATCH(::HIR::Struct::Data, (str.m_data), (se),
-            (Unit,
+            auto monomorph = MonomorphStatePtr(nullptr, &params, nullptr);
+            TU_MATCH_HDRA( (str.m_data), {)
+            TU_ARMA(Unit, se) {
                 // No fields on a unit struct
-                ),
-            (Tuple,
+                }
+            TU_ARMA(Tuple, se) {
                 for( unsigned int i = 0; i < se.size(); i ++ )
                 {
                     DEBUG(i << ": " << se[i].publicity);
                     if( se[i].publicity.is_visible(this->m_vis_path) && FMT(i) == name ) {
-                        field_ty = monomorphise_type_with(sp, se[i].ent, monomorph);
+                        field_ty = monomorph.monomorph_type(sp, se[i].ent);
                         return true;
                     }
                 }
-                ),
-            (Named,
+                }
+            TU_ARMA(Named, se) {
                 for( const auto& fld : se )
                 {
                     DEBUG(fld.first << ": " << fld.second.publicity << ", " << this->m_vis_path);
                     if( fld.second.publicity.is_visible(this->m_vis_path) && fld.first == name ) {
-                        field_ty = monomorphise_type_with(sp, fld.second.ent, monomorph);
+                        field_ty = monomorph.monomorph_type(sp, fld.second.ent);
                         return true;
                     }
                 }
-                )
-            )
+                }
+            }
             }
         TU_ARMA(Enum, be) {
             // No fields on enums either
@@ -4532,25 +4442,13 @@ bool TraitResolution::find_field(const Span& sp, const ::HIR::TypeRef& ty, const
         TU_ARMA(Union, be) {
             const auto& unm = *be;
             const auto& params = e->path.m_data.as_Generic().m_params;
-            auto monomorph = [&](const auto& gt)->const ::HIR::TypeRef& {
-                const auto& ge = gt.data().as_Generic();
-                if( ge.binding == GENERIC_Self )
-                    TODO(sp, "Monomorphise union field types (Self) - " << gt);
-                else if( ge.binding < 256 ) {
-                    assert(ge.binding < params.m_types.size());
-                    return params.m_types[ge.binding];
-                }
-                else {
-                    BUG(sp, "function-level param encountered in union field");
-                }
-                return gt;
-                };
+            auto monomorph = MonomorphStatePtr(nullptr, &params, nullptr);
 
             for( const auto& fld : unm.m_variants )
             {
                 // TODO: Privacy
                 if( fld.second.publicity.is_visible(this->m_vis_path) && fld.first == name ) {
-                    field_ty = monomorphise_type_with(sp, fld.second.ent, monomorph);
+                    field_ty = monomorph.monomorph_type(sp, fld.second.ent);
                     return true;
                 }
             }

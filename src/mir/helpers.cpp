@@ -123,14 +123,7 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_unwrapped_type(::HIR::TypeRef& tmp
             {
                 const auto& str = **tep;
                 auto maybe_monomorph = [&](const auto& ty)->const auto& {
-                    if( monomorphise_type_needed(ty) ) {
-                        tmp = monomorphise_type(sp, str.m_params, te.path.m_data.as_Generic().m_params, ty);
-                        m_resolve.expand_associated_types(sp, tmp);
-                        return tmp;
-                    }
-                    else {
-                        return ty;
-                    }
+                    return m_resolve.monomorph_expand_opt(sp, tmp, ty, MonomorphStatePtr(nullptr, &te.path.m_data.as_Generic().m_params, nullptr));
                     };
                 TU_MATCHA( (str.m_data), (se),
                 (Unit,
@@ -150,14 +143,7 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_unwrapped_type(::HIR::TypeRef& tmp
             {
                 const auto& unm = **tep;
                 auto maybe_monomorph = [&](const ::HIR::TypeRef& t)->const ::HIR::TypeRef& {
-                    if( monomorphise_type_needed(t) ) {
-                        tmp = monomorphise_type(sp, unm.m_params, te.path.m_data.as_Generic().m_params, t);
-                        m_resolve.expand_associated_types(sp, tmp);
-                        return tmp;
-                    }
-                    else {
-                        return t;
-                    }
+                    return m_resolve.monomorph_expand_opt(sp, tmp, t, MonomorphStatePtr(nullptr, &te.path.m_data.as_Generic().m_params, nullptr));
                     };
                 MIR_ASSERT(*this, field_index < unm.m_variants.size(), "Field index out of range for union");
                 return maybe_monomorph(unm.m_variants.at(field_index).second.ent);
@@ -217,14 +203,7 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_unwrapped_type(::HIR::TypeRef& tmp
                 const auto& variant = variants[variant_index];
 
                 const auto& var_ty = variant.type;
-                if( monomorphise_type_needed(var_ty) ) {
-                    tmp = monomorphise_type(sp, enm.m_params, te.path.m_data.as_Generic().m_params, var_ty);
-                    m_resolve.expand_associated_types(sp, tmp);
-                    return tmp;
-                }
-                else {
-                    return var_ty;
-                }
+                return m_resolve.monomorph_expand_opt(sp, tmp, var_ty, MonomorphStatePtr(nullptr, &te.path.m_data.as_Generic().m_params, nullptr));
             }
             else
             {
@@ -233,15 +212,7 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_unwrapped_type(::HIR::TypeRef& tmp
                 const auto& variant = unm.m_variants[variant_index];
                 const auto& var_ty = variant.second.ent;
 
-                //return m_resolve.maybe_monomorph(sp, tmp, unm.m_params, te.path.m_data.as_Generic().m_params, var_ty);
-                if( monomorphise_type_needed(var_ty) ) {
-                    tmp = monomorphise_type(sp, unm.m_params, te.path.m_data.as_Generic().m_params, var_ty);
-                    m_resolve.expand_associated_types(sp, tmp);
-                    return tmp;
-                }
-                else {
-                    return var_ty;
-                }
+                return m_resolve.monomorph_expand_opt(sp, tmp, var_ty, MonomorphStatePtr(nullptr, &te.path.m_data.as_Generic().m_params, nullptr));
             }
             }
         }
@@ -286,7 +257,7 @@ const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, cons
         if( const auto* ve = v.opt_Constant() ) {
             const auto& ty = (*ve)->m_type;
             if( monomorphise_type_needed(ty) ) {
-                auto rv = p.monomorph(this->sp, ty);
+                auto rv = p.monomorph_type(this->sp, ty);
                 m_resolve.expand_associated_types(this->sp, rv);
                 return rv;
             }
@@ -314,7 +285,7 @@ const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, cons
             const auto& ty = ve->m_type;
             HIR::TypeRef    rv;
             if( monomorphise_type_needed(ty) ) {
-                rv = p.monomorph(this->sp, ty);
+                rv = p.monomorph_type(this->sp, ty);
                 m_resolve.expand_associated_types(this->sp, rv);
             }
             else {
@@ -326,10 +297,10 @@ const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, cons
             ::HIR::FunctionType ft;
             ft.is_unsafe = ve->m_unsafe;
             ft.m_abi = ve->m_abi;
-            ft.m_rettype = p.monomorph(this->sp, ve->m_return);
+            ft.m_rettype = p.monomorph_type(this->sp, ve->m_return);
             ft.m_arg_types.reserve(ve->m_args.size());
             for(const auto& arg : ve->m_args)
-                ft.m_arg_types.push_back( p.monomorph(this->sp, arg.second) );
+                ft.m_arg_types.push_back( p.monomorph_type(this->sp, arg.second) );
             auto rv = ::HIR::TypeRef( mv$(ft) );
             m_resolve.expand_associated_types(this->sp, rv);
             return rv;
@@ -354,7 +325,7 @@ const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, cons
             ft.m_rettype = ::HIR::TypeRef::new_path(mv$(enum_path), ve.e);
             ft.m_arg_types.reserve(str_data.size());
             for(const auto& fld : str_data)
-                ft.m_arg_types.push_back( p.monomorph(this->sp, fld.ent) );
+                ft.m_arg_types.push_back( p.monomorph_type(this->sp, fld.ent) );
 
             auto rv = ::HIR::TypeRef( mv$(ft) );
             m_resolve.expand_associated_types(this->sp, rv);
@@ -375,7 +346,7 @@ const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, cons
             ft.m_rettype = ::HIR::TypeRef::new_path( ::HIR::GenericPath(*ve.p, e->m_data.as_Generic().m_params.clone()), &str);
             ft.m_arg_types.reserve(str_data.size());
             for(const auto& fld : str_data)
-                ft.m_arg_types.push_back( p.monomorph(this->sp, fld.ent) );
+                ft.m_arg_types.push_back( p.monomorph_type(this->sp, fld.ent) );
 
             auto rv = ::HIR::TypeRef( mv$(ft) );
             m_resolve.expand_associated_types(this->sp, rv);

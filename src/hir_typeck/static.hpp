@@ -171,6 +171,21 @@ public:
     void expand_associated_types(const Span& sp, ::HIR::TypeRef& input) const;
     bool expand_associated_types_single(const Span& sp, ::HIR::TypeRef& input) const;
 
+    // Helper: Run monomorphise+EAT if the type contains generics
+    const ::HIR::TypeRef& monomorph_expand_opt(const Span& sp, ::HIR::TypeRef& tmp, const ::HIR::TypeRef& input, const Monomorphiser& m) const {
+        if( monomorphise_type_needed(input) ) {
+            return tmp = monomorph_expand(sp, input, m);
+        }
+        else {
+            return input;
+        }
+    }
+    ::HIR::TypeRef monomorph_expand(const Span& sp, const ::HIR::TypeRef& input, const Monomorphiser& m) const {
+        auto rv = m.monomorph_type(sp, input);
+        expand_associated_types(sp, rv);
+        return rv;
+    }
+
 private:
     void expand_associated_types_inner(const Span& sp, ::HIR::TypeRef& input) const;
     bool expand_associated_types__UfcsKnown(const Span& sp, ::HIR::TypeRef& input, bool recurse=true) const;

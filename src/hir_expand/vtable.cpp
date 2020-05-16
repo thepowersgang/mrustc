@@ -192,7 +192,7 @@ namespace {
                     }
                     for(const auto& st : tr.m_all_parent_traits) {
                         ::HIR::TypeRef  self("Self", 0xFFFF);
-                        auto st_gp = monomorphise_genericpath_with(sp, st.m_path, monomorphise_type_get_cb(sp, &self, &trait_path.m_params, nullptr), false);
+                        auto st_gp = MonomorphStatePtr(&self, &trait_path.m_params, nullptr).monomorph_genericpath(sp, st.m_path, false);
                         // NOTE: Doesn't trigger non-object-safe
                         add_ents_from_trait(*st.m_trait_ptr, st_gp);
                     }
