@@ -149,7 +149,7 @@ ImplRef::Monomorph ImplRef::get_cb_monomorph_traitimpl(const Span& sp) const
 }
 ::HIR::Literal ImplRef::Monomorph::get_value(const Span& sp, const ::HIR::GenericRef& val) const /*override*/
 {
-    BUG(sp, "");
+    TODO(sp, "ImplRef::Monomorph::get_value - " << val);
 }
 
 ::HIR::TypeRef ImplRef::get_impl_type() const

@@ -887,14 +887,7 @@ bool StaticTraitResolve::find_impl__check_crate(
             auto monomorph = MonomorphStatePtr(nullptr, &pe.m_params, nullptr);
             // HELPER: Get a possibily monomorphised version of the input type (stored in `tmp` if needed)
             auto monomorph_get = [&](const auto& ty)->const ::HIR::TypeRef& {
-                if( monomorphise_type_needed(ty) ) {
-                    tmp = monomorph.monomorph_type(sp, ty);
-                    this->expand_associated_types(sp, tmp);
-                    return tmp;
-                }
-                else {
-                    return ty;
-                }
+                return this->monomorph_expand_opt(sp, tmp, ty, monomorph);
                 };
 
             TU_MATCH( ::HIR::TypePathBinding, (e.binding), (tpb),
@@ -1741,7 +1734,7 @@ bool StaticTraitResolve::type_is_impossible(const Span& sp, const ::HIR::TypeRef
                 {
                     const auto& tpl = fld.ent;
                     ::HIR::TypeRef  tmp;
-                    const auto& ty = (monomorphise_type_needed(tpl) ? tmp = MonomorphStatePtr(nullptr, &params, nullptr).monomorph_type(sp, tpl) : tpl);
+                    const auto& ty = this->monomorph_expand_opt(sp, tmp, tpl, MonomorphStatePtr(nullptr, &params, nullptr));
                     if( type_is_impossible(sp, ty) )
                         return true;
                 }
