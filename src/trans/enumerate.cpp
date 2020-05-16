@@ -55,6 +55,50 @@ void Trans_Enumerate_FillFrom_VTable (EnumState& state, ::HIR::Path vtable_path,
 void Trans_Enumerate_FillFrom_Literal(EnumState& state, const ::HIR::Literal& lit, const Trans_Params& pp);
 void Trans_Enumerate_FillFrom_MIR(MIR::EnumCache& state, const ::MIR::Function& code);
 
+
+namespace MIR {
+    struct EnumCache
+    {
+        ::std::vector<const ::HIR::Path*>  paths;
+        ::std::vector<const ::HIR::TypeRef*>  typeids;
+        EnumCache()
+        {
+        }
+        void insert_path(const ::HIR::Path& new_path)
+        {
+            for(const auto* p : this->paths)
+                if( *p == new_path )
+                    return ;
+            this->paths.push_back(&new_path);
+        }
+        void insert_typeid(const ::HIR::TypeRef& new_ty)
+        {
+            for(const auto* p : this->typeids)
+                if( *p == new_ty )
+                    return ;
+            this->typeids.push_back(&new_ty);
+        }
+
+        void apply(EnumState& state, const Trans_Params& pp) const
+        {
+            for(const auto* ty_p : this->typeids)
+            {
+                state.rv.m_typeids.insert( pp.monomorph(state.crate, *ty_p) );
+            }
+            for(const auto& path : this->paths)
+            {
+                Trans_Enumerate_FillFrom_Path(state, *path, pp);
+            }
+        }
+    };
+    EnumCachePtr::~EnumCachePtr()
+    {
+        delete this->p;
+        this->p = nullptr;
+    }
+}
+
+
 /// Enumerate trans items starting from `::main` (binary crate)
 TransList Trans_Enumerate_Main(const ::HIR::Crate& crate)
 {
@@ -380,26 +424,44 @@ TransList Trans_Enumerate_Public(::HIR::Crate& crate)
     return rv;
 }
 
-#if 0
 void Trans_Enumerate_Cleanup(const ::HIR::Crate& crate, TransList& list)
 {
+    // NOTE: Disabled, as full filtering is nigh-on impossible
+    // - Could do partial filtering of unused locally generated versions of trait impls and inlines
+#if 0
     EnumState   state { crate };
 
-    // TODO: Get a list of "root" functions (e.g. main, public functions, things used by public generics) and re-enumerate based on that.
 
-    // Visit every function used
+    // Visit every function used and determine the items it uses
+    // - This doesn't consider the function itself as used, so unused functions will be pruned
+    Trans_Params    tp;
     for(const auto& ent : list.m_functions)
     {
+        const MIR::Function* mir;
         if( ent.second->monomorphised.code )
         {
-            Trans_Enumerate_FillFrom_MIR(state, *ent.second->monomorphised.code, {});
+            mir = &*ent.second->monomorphised.code;
         }
         else if( ent.second->ptr->m_code.m_mir )
         {
-            Trans_Enumerate_FillFrom_MIR(state, *ent.second->ptr->m_code.m_mir, {});
+            mir = &*ent.second->ptr->m_code.m_mir;
         }
         else
         {
+            continue;
+        }
+
+        MIR::EnumCache  ec;
+        Trans_Enumerate_FillFrom_MIR(ec, *mir);
+        ec.apply(state, tp);
+    }
+    for(const auto& ent : list.m_statics)
+    {
+        const auto& pp = ent.second->pp;
+        const auto& item = *ent.second->ptr;
+        if( ! item.m_value_res.is_Invalid() )
+        {
+            Trans_Enumerate_FillFrom_Literal(state, item.m_value_res, pp);
         }
     }
 
@@ -407,7 +469,11 @@ void Trans_Enumerate_Cleanup(const ::HIR::Crate& crate, TransList& list)
     for(auto it = list.m_functions.begin(); it != list.m_functions.end();)
     {
         auto it2 = state.rv.m_functions.find(it->first);
-        if( it2 == state.rv.m_functions.end() )
+        // TODO: Only remove if it is not exported
+        // - externally reachable
+        // - used by exported generic
+        // - part of a local trait impl
+        if( it2 == state.rv.m_functions.end() && false )
         {
             DEBUG("Remove " << it->first);
             it = list.m_functions.erase(it);
@@ -425,8 +491,8 @@ void Trans_Enumerate_Cleanup(const ::HIR::Crate& crate, TransList& list)
         auto it = list.m_functions.find(e.first);
         ASSERT_BUG(Span(), it != list.m_functions.end(), "Enumerate Error - New function appeared after monomorphisation - " << e.first);
     }
-}
 #endif
+}
 
 /// Common post-processing
 void Trans_Enumerate_CommonPost_Run(EnumState& state)
@@ -1265,47 +1331,6 @@ namespace {
     }
 }
 
-namespace MIR {
-    struct EnumCache
-    {
-        ::std::vector<const ::HIR::Path*>  paths;
-        ::std::vector<const ::HIR::TypeRef*>  typeids;
-        EnumCache()
-        {
-        }
-        void insert_path(const ::HIR::Path& new_path)
-        {
-            for(const auto* p : this->paths)
-                if( *p == new_path )
-                    return ;
-            this->paths.push_back(&new_path);
-        }
-        void insert_typeid(const ::HIR::TypeRef& new_ty)
-        {
-            for(const auto* p : this->typeids)
-                if( *p == new_ty )
-                    return ;
-            this->typeids.push_back(&new_ty);
-        }
-
-        void apply(EnumState& state, const Trans_Params& pp) const
-        {
-            for(const auto* ty_p : this->typeids)
-            {
-                state.rv.m_typeids.insert( pp.monomorph(state.crate, *ty_p) );
-            }
-            for(const auto& path : this->paths)
-            {
-                Trans_Enumerate_FillFrom_Path(state, *path, pp);
-            }
-        }
-    };
-    EnumCachePtr::~EnumCachePtr()
-    {
-        delete this->p;
-        this->p = nullptr;
-    }
-}
 
 void Trans_Enumerate_FillFrom_Path(EnumState& state, const ::HIR::Path& path, const Trans_Params& pp)
 {

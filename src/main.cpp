@@ -161,6 +161,7 @@ void init_debug_list()
         "Trans Auto Impls",
         "Trans Monomorph",
         "MIR Optimise Inline",
+        "Trans Enumerate Cleanup",
         "Trans Codegen"
         });
 }
@@ -751,7 +752,7 @@ int main(int argc, char *argv[])
         // - Do post-monomorph inlining
         CompilePhaseV("MIR Optimise Inline", [&]() { MIR_OptimiseCrate_Inlining(*hir_crate, items); });
         // - Clean up no-unused functions
-        //CompilePhaseV("Trans Enumerate Cleanup", [&]() { Trans_Enumerate_Cleanup(*hir_crate, items); });
+        CompilePhaseV("Trans Enumerate Cleanup", [&]() { Trans_Enumerate_Cleanup(*hir_crate, items); });
 
         memory_dump("Trans");
 
