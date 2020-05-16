@@ -142,7 +142,10 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
             auto sz_val = this->get_value(sp, e.size.as_Generic());
             TU_MATCH_HDRA( (sz_val), {)
             default:
-                BUG(sp, "Unexpected value type - " << sz_val);
+                BUG(sp, "Unexpected value type - " << sz_val << " in replacement for " << e.size);
+            //TU_ARMA(Invalid, ve) {
+            //    sz = HIR::ArraySize::make_Unevaluated({});
+            //    }
             TU_ARMA(Generic, ve) {
                 sz = ve;
                 }

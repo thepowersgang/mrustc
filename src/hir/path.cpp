@@ -37,13 +37,16 @@ namespace HIR {
 
     ::std::ostream& operator<<(::std::ostream& os, const PathParams& x)
     {
-        bool has_args = ( x.m_types.size() > 0 );
+        bool has_args = ( x.m_types.size() > 0 || x.m_values.size() > 0 );
 
         if(has_args) {
             os << "<";
         }
         for(const auto& ty : x.m_types) {
             os << ty << ",";
+        }
+        for(const auto& v : x.m_values) {
+            os << "{" << v << "},";
         }
         if(has_args) {
             os << ">";

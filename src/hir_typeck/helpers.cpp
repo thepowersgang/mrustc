@@ -2757,7 +2757,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
     /*Out->*/ HIR::PathParams& out_impl_params
     ) const
 {
-
+    TRACE_FUNCTION_FR("impl" << impl_params_def.fmt_args() << " " << trait << impl_trait_args << " for " << impl_ty, out_impl_params);
     class GetParams:
         public ::HIR::MatchGenerics
     {
@@ -2791,9 +2791,10 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         }
         ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::Literal& sz) override
         {
-            ASSERT_BUG(sp, g.binding < out_impl_params.m_values.size(), "Type generic " << g << " out of range (" << out_impl_params.m_values.size() << ")");
+            ASSERT_BUG(sp, g.binding < out_impl_params.m_values.size(), "Value generic " << g << " out of range (" << out_impl_params.m_values.size() << ")");
             if( out_impl_params.m_values[g.binding].is_Invalid() )
             {
+                DEBUG("[ftic_check_params] Value param " << g.binding << " = " << sz);
                 out_impl_params.m_values[g.binding] = sz.clone();
                 return ::HIR::Compare::Equal;
             }
@@ -2830,6 +2831,8 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             return ::HIR::Compare::Unequal;
         }
     }
+
+    DEBUG("Matched params: " << out_impl_params);
 
     // TODO: Some impl blocks have type params used as part of type bounds.
     // - A rough idea is to have monomorph return a third class of generic for params that are not yet bound.
@@ -2949,7 +2952,9 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             return placeholders.m_types.at(ge.binding).clone();
         }
         ::HIR::Literal get_value(const Span& sp, const ::HIR::GenericRef& val) const override {
-            return HIR::Literal(val);
+            ASSERT_BUG(sp, val.binding < 256, "Generic value binding in " << val << " out of range (>=256)");
+            ASSERT_BUG(sp, val.binding < impl_params.m_values.size(), "Generic value binding in " << val << " out of range (>= " << impl_params.m_values.size() << ")");
+            return impl_params.m_values.at(val.binding).clone();
         }
     };
     Matcher matcher { sp, out_impl_params, placeholder_name, placeholders };
