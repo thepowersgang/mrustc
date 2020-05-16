@@ -36,6 +36,8 @@
 /vsproject/*.pdb
 /vsproject/smiri.log
 /vsproject/*.dmp
+/vsproject/*/*.dmp
+/vsproject/*.txt
 
 
 /run_rustc/output
