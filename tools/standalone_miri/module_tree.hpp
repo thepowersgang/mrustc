@@ -18,7 +18,7 @@
 
 struct Function
 {
-    ::HIR::Path my_path;
+    RcString    my_path;
     ::std::vector<::HIR::TypeRef>   args;
     ::HIR::TypeRef   ret_ty;
 
@@ -43,29 +43,27 @@ class ModuleTree
 
     ::std::set<::std::string>   loaded_files;
 
-    ::std::map<::HIR::Path, Function>    functions;
-    ::std::map<::HIR::Path, Static>    statics;
+    ::std::map<RcString, Function>    functions;
+    ::std::map<RcString, Static>    statics;
 
-    // Hack: Tuples are stored as `::""::<A,B,C,...>`
-    ::std::map<::HIR::GenericPath, ::std::unique_ptr<DataType>>  data_types;
+    ::std::map<RcString, ::std::unique_ptr<DataType>>  data_types;
 
     ::std::set<FunctionType>    function_types; // note: insertion doesn't invaliate pointers.
 
-    ::std::map<::std::string, const Function*> ext_functions;
+    ::std::map<RcString, const Function*> ext_functions;
 public:
     ModuleTree();
 
     void load_file(const ::std::string& path);
     void validate();
 
-    ::HIR::SimplePath find_lang_item(const char* name) const;
-    const Function& get_function(const ::HIR::Path& p) const;
-    const Function* get_function_opt(const ::HIR::Path& p) const;
+    const Function& get_function(const HIR::Path& p) const;
+    const Function* get_function_opt(const HIR::Path& p) const;
     const Function* get_ext_function(const char* name) const;
-    Static& get_static(const ::HIR::Path& p);
-    Static* get_static_opt(const ::HIR::Path& p);
+    Static& get_static(const HIR::Path& p);
+    Static* get_static_opt(const HIR::Path& p);
 
-    const DataType& get_composite(const ::HIR::GenericPath& p) const {
+    const DataType& get_composite(const RcString& p) const {
         return *data_types.at(p);
     }
 };
@@ -74,7 +72,7 @@ public:
 struct DataType
 {
     bool   populated;
-    ::HIR::GenericPath my_path;
+    RcString    my_path;
 
     size_t  alignment;
     size_t  size;

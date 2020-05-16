@@ -30,15 +30,11 @@ struct Parser
     bool parse_one();
 
     ::MIR::Function parse_body();
-    ::HIR::Path parse_path();
     ::HIR::PathParams parse_pathparams();
-    ::HIR::GenericPath parse_genericpath();
-    ::HIR::SimplePath parse_simplepath();
     RawType parse_core_type();
     ::HIR::TypeRef parse_type();
-    ::HIR::GenericPath parse_tuple();
 
-    const DataType* get_composite(::HIR::GenericPath gp);
+    const DataType* get_composite(RcString gp);
 };
 
 void ModuleTree::load_file(const ::std::string& path)
@@ -99,7 +95,7 @@ bool Parser::parse_one()
     }
     else if( lex.consume_if("fn") )
     {
-        auto p = parse_path();
+        auto p = RcString::new_interned(lex.check_consume(TokenClass::Ident).strval.c_str());
         //LOG_TRACE(lex << "fn " << p);
 
         lex.check_consume('(');
@@ -140,7 +136,7 @@ bool Parser::parse_one()
     }
     else if( lex.consume_if("static") )
     {
-        auto p = parse_path();
+        auto p = RcString::new_interned(lex.check_consume(TokenClass::Ident).strval.c_str());
         //LOG_TRACE(lex << "static " << p);
         lex.check_consume(':');
         auto ty = parse_type();
@@ -175,9 +171,9 @@ bool Parser::parse_one()
                     a->write_bytes(0, reloc_str.data(), reloc_str.size());
                     s.val.set_reloc( ofs, size, RelocationPtr::new_alloc(::std::move(a)) );
                 }
-                else if( lex.next() == "::" || lex.next() == "<" )
+                else if( lex.next() == TokenClass::Ident )
                 {
-                    auto reloc_path = parse_path();
+                    auto reloc_path = HIR::Path { RcString(lex.check_consume(TokenClass::Ident).strval.c_str()) };
                     s.val.set_reloc( ofs, size, RelocationPtr::new_fcn(reloc_path) );
                 }
                 else
@@ -198,12 +194,12 @@ bool Parser::parse_one()
     }
     else if( lex.consume_if("type") )
     {
-        auto p = (lex.consume_if('(')) ? parse_tuple() : parse_genericpath();
+        RcString p = lex.check_consume(TokenClass::Ident).strval.c_str();
         //LOG_TRACE("type " << p);
 
         auto rv = DataType {};
         rv.populated = true;
-        rv.my_path = p;
+        rv.my_path = p.c_str();
 
         lex.check_consume('{');
         lex.check_consume("SIZE");
@@ -216,7 +212,7 @@ bool Parser::parse_one()
         // Drop glue (if present)
         if( lex.consume_if("DROP") )
         {
-            rv.drop_glue = parse_path();
+            rv.drop_glue = HIR::Path { lex.check_consume(TokenClass::Ident).strval.c_str() };
             lex.check_consume(';');
         }
         else
@@ -385,16 +381,13 @@ bool Parser::parse_one()
                 // Otherwise, look up variable names
                 else {
                     auto it = ::std::find(var_names.begin(), var_names.end(), name);
-                    if( it == var_names.end() ) {
-                        LOG_ERROR(lex << "Cannot find variable named '" << name << "'");
+                    if( it != var_names.end() ) {
+                        lv = ::MIR::LValue::new_Local(static_cast<unsigned>(it - var_names.begin()));
                     }
-                    lv = ::MIR::LValue::new_Local(static_cast<unsigned>(it - var_names.begin()));
+                    else {
+                        lv = ::MIR::LValue::new_Static( HIR::Path { RcString(name.c_str()) } );
+                    }
                 }
-            }
-            else if( lex.next() == "::" || lex.next() == '<' )
-            {
-                auto path = p.parse_path();
-                lv = ::MIR::LValue::new_Static( ::std::move(path) );
             }
             else {
                 LOG_ERROR(lex << "Unexpected token in LValue - " << lex.next());
@@ -477,9 +470,9 @@ bool Parser::parse_one()
                 return ::MIR::Constant::make_Bool({ false });
             }
             else if( p.lex.consume_if("ADDROF") ) {
-                auto path = p.parse_path();
+                auto path = RcString(p.lex.check_consume(TokenClass::Ident).strval.c_str());
 
-                return ::MIR::Constant::make_ItemAddr({ ::std::make_unique<HIR::Path>(::std::move(path)) });
+                return ::MIR::Constant::make_ItemAddr({ ::std::make_unique<HIR::Path>(HIR::Path { ::std::move(path) }) });
             }
             else {
                 LOG_BUG(p.lex << "BUG? " << p.lex.next());
@@ -632,12 +625,12 @@ bool Parser::parse_one()
                     }
                     lex.check_consume('}');
                     lex.check_consume(':');
-                    auto p = parse_genericpath();
+                    auto p = HIR::GenericPath { RcString( lex.check_consume(TokenClass::Ident).strval.c_str() ) };
 
                     src_rval = ::MIR::RValue::make_Struct({ ::std::move(p), ::std::move(vals) });
                 }
                 else if( lex.consume_if("VARIANT") ) {
-                    auto path = parse_genericpath();
+                    auto path = HIR::GenericPath { RcString( lex.check_consume(TokenClass::Ident).strval.c_str() ) };
                     //auto idx = static_cast<unsigned>(lex.consume_integer());
                     lex.check(TokenClass::Integer);
                     auto idx = static_cast<unsigned>(lex.consume().integer());
@@ -960,7 +953,7 @@ bool Parser::parse_one()
                 ct = ::MIR::CallTarget::make_Intrinsic({ ::std::move(name), ::std::move(params) });
             }
             else {
-                ct = parse_path();
+                ct = HIR::Path { RcString(lex.check_consume(TokenClass::Ident).strval.c_str()) };
             }
             lex.check_consume('(');
             ::std::vector<::MIR::Param> args;
@@ -994,30 +987,6 @@ bool Parser::parse_one()
     lex.check_consume('}');
     return rv;
 }
-::HIR::Path Parser::parse_path()
-{
-    if( lex.consume_if('<') )
-    {
-        auto ty = parse_type();
-        ::HIR::GenericPath  trait;
-        if( lex.consume_if("as") )
-        {
-            trait = parse_genericpath();
-        }
-        lex.check_consume('>');
-        lex.check_consume("::");
-        lex.check(TokenClass::Ident);
-        auto item_name = ::std::move(lex.consume().strval);
-
-        ::HIR::PathParams   params = parse_pathparams();
-
-        return ::HIR::Path( ::std::move(ty), ::std::move(trait), ::std::move(item_name), ::std::move(params) );
-    }
-    else
-    {
-        return parse_genericpath();
-    }
-}
 ::HIR::PathParams Parser::parse_pathparams()
 {
     ::HIR::PathParams   params;
@@ -1033,119 +1002,50 @@ bool Parser::parse_one()
     }
     return params;
 }
-::HIR::GenericPath Parser::parse_genericpath()
-{
-    ::HIR::GenericPath  rv;
-    rv.m_simplepath = parse_simplepath();
-    rv.m_params = parse_pathparams();
-    return rv;
-}
-::HIR::SimplePath Parser::parse_simplepath()
-{
-    lex.check_consume("::");
-    ::std::string   crate;
-    if( lex.next() == TokenClass::String )
-    {
-        crate = lex.consume().strval;
-        lex.check_consume("::");
-    }
-    ::std::vector<::std::string>    ents;
-    do
-    {
-        lex.check(TokenClass::Ident);
-        ents.push_back( lex.consume().strval );
-    } while(lex.consume_if("::"));
-
-    return ::HIR::SimplePath { ::std::move(crate), ::std::move(ents) };
-}
-::HIR::GenericPath Parser::parse_tuple()
-{
-    // Tuples! Should point to a composite
-    ::HIR::GenericPath  gp;
-    do
-    {
-        gp.m_params.tys.push_back(parse_type());
-        if( !lex.consume_if(',') )
-            break;
-    } while( lex.next() != ')' );
-    lex.check_consume(')');
-
-    return gp;
+namespace {
+    const struct CtMapping {
+        RcString    tok;
+        RawType val;
+    } S_RAWTPYE_MAPPINGS[] = {
+        { RcString("u8"  ), RawType::U8   },
+        { RcString("u16" ), RawType::U16  },
+        { RcString("u32" ), RawType::U32  },
+        { RcString("u64" ), RawType::U64  },
+        { RcString("u128"), RawType::U128 },
+        { RcString("i8"  ), RawType::I8   },
+        { RcString("i16" ), RawType::I16  },
+        { RcString("i32" ), RawType::I32  },
+        { RcString("i64" ), RawType::I64  },
+        { RcString("i128"), RawType::I128 },
+        { RcString("usize"), RawType::USize },
+        { RcString("isize"), RawType::ISize },
+        { RcString("f32"), RawType::F32  },
+        { RcString("f64"), RawType::F64  },
+        { RcString("bool"), RawType::Bool },
+        { RcString("char"), RawType::Char },
+        { RcString("str" ), RawType::Str },
+        };
 }
 RawType Parser::parse_core_type()
 {
-    //LOG_TRACE(lex.next());
     lex.check(TokenClass::Ident);
-    auto tok = lex.consume();
-    // Primitive type.
-    if( tok == "u8" ) {
-        return RawType::U8;
+    auto tok = RcString( lex.consume().strval.c_str() );
+    for(size_t i = 0; i < sizeof(S_RAWTPYE_MAPPINGS)/sizeof(S_RAWTPYE_MAPPINGS[0]); i ++)
+    {
+        const auto& m = S_RAWTPYE_MAPPINGS[i];
+        if( tok == m.tok ) {
+            return m.val;
+        }
     }
-    else if( tok == "u16" ) {
-        return RawType::U16;
-    }
-    else if( tok == "u32" ) {
-        return RawType::U32;
-    }
-    else if( tok == "u64" ) {
-        return RawType::U64;
-    }
-    else if( tok == "u128" ) {
-        return RawType::U128;
-    }
-    else if( tok == "usize" ) {
-        return RawType::USize;
-    }
-    else if( tok == "i8" ) {
-        return RawType::I8;
-    }
-    else if( tok == "i16" ) {
-        return RawType::I16;
-    }
-    else if( tok == "i32" ) {
-        return RawType::I32;
-    }
-    else if( tok == "i64" ) {
-        return RawType::I64;
-    }
-    else if( tok == "i128" ) {
-        return RawType::I128;
-    }
-    else if( tok == "isize" ) {
-        return RawType::ISize;
-    }
-    else if( tok == "f32" ) {
-        return RawType::F32;
-    }
-    else if( tok == "f64" ) {
-        return RawType::F64;
-    }
-    else if( tok == "bool" ) {
-        return RawType::Bool;
-    }
-    else if( tok == "char" ) {
-        return RawType::Char;
-    }
-    else if( tok == "str" ) {
-        return RawType::Str;
-    }
-    else {
-        LOG_ERROR(lex << "Unknown core type " << tok << "'");
-    }
+    LOG_ERROR(lex << "Unknown core type " << tok << "'");
 }
 ::HIR::TypeRef Parser::parse_type()
 {
     if( lex.consume_if('(') )
     {
-        if( lex.consume_if(')') ) {
-            // Unit!
-            return ::HIR::TypeRef::unit();
-        }
-        // Tuples! Should point to a composite
-        ::HIR::GenericPath  gp = parse_tuple();
-
-        // Good.
-        return ::HIR::TypeRef( this->get_composite(::std::move(gp)) );
+        lex.check_consume(')');
+        // Unit!
+        return ::HIR::TypeRef::unit();
     }
     else if( lex.consume_if('[') )
     {
@@ -1196,11 +1096,6 @@ RawType Parser::parse_core_type()
             throw "ERROR";
         return parse_type().wrap( TypeWrapper::Ty::Pointer, static_cast<size_t>(bt) );
     }
-    else if( lex.next() == "::" )
-    {
-        auto path = parse_genericpath();
-        return ::HIR::TypeRef( this->get_composite(::std::move(path)));
-    }
     else if( lex.next() == "extern" || lex.next() == "fn" || lex.next() == "unsafe" )
     {
         bool is_unsafe = false;
@@ -1245,84 +1140,39 @@ RawType Parser::parse_core_type()
     }
     else if( lex.consume_if("dyn") )
     {
-        lex.consume_if('(');
-        ::HIR::GenericPath  base_trait;
-        ::std::vector<::std::pair<::std::string, ::HIR::TypeRef>>   atys;
-        if( lex.next() != '+' )
-        {
-            // Custom TraitPath parsing.
-            base_trait.m_simplepath = parse_simplepath();
-            if( lex.consume_if('<') )
-            {
-                while(lex.next() != '>')
-                {
-                    if( lex.next() == TokenClass::Ident && lex.lookahead() == '=' )
-                    {
-                        auto name = ::std::move(lex.consume().strval);
-                        lex.check_consume('=');
-                        auto ty = parse_type();
-                        atys.push_back(::std::make_pair( ::std::move(name), ::std::move(ty) ));
-                    }
-                    else
-                    {
-                        base_trait.m_params.tys.push_back( parse_type() );
-                    }
-                    if( !lex.consume_if(',') )
-                        break ;
-                }
-                lex.check_consume('>');
-            }
-        }
-        ::std::vector<::HIR::GenericPath>   markers;
-        while(lex.consume_if('+'))
-        {
-            if( lex.next() == TokenClass::Lifetime )
-            {
-                // TODO: Include lifetimes in output?
-                lex.consume();
-            }
-            else
-            {
-                markers.push_back(parse_genericpath());
-            }
-        }
-        lex.consume_if(')');
-
-        // Ignore marker traits.
+        RcString vtable_ty = lex.check_consume(TokenClass::Ident).strval.c_str();
 
         auto rv = ::HIR::TypeRef(RawType::TraitObject);
-        if( base_trait != ::HIR::GenericPath() )
+        //if( base_trait != ::HIR::GenericPath() )
         {
             // Generate vtable path
-            auto vtable_path = base_trait;
-            vtable_path.m_simplepath.ents.back() += "#vtable";
-            if( atys.size() > 1 )
-            {
-                LOG_TODO("Handle multiple ATYs in vtable path");
-            }
-            else if( atys.size() == 1 )
-            {
-                vtable_path.m_params.tys.push_back( ::std::move(atys[0].second) );
-            }
             // - TODO: Associated types? (Need to ensure ordering is correct)
-            rv.ptr.composite_type = this->get_composite( ::std::move(vtable_path) );
+            rv.ptr.composite_type = this->get_composite(vtable_ty);
         }
-        else
-        {
-            // TODO: vtable for empty trait?
-        }
+        //else
+        //{
+        //    // TODO: vtable for empty trait?
+        //}
         return rv;
     }
     else if( lex.next() == TokenClass::Ident )
     {
-        return ::HIR::TypeRef(parse_core_type());
+        auto name = RcString( lex.consume().strval.c_str() );
+        for(size_t i = 0; i < sizeof(S_RAWTPYE_MAPPINGS)/sizeof(S_RAWTPYE_MAPPINGS[0]); i ++)
+        {
+            const auto& m = S_RAWTPYE_MAPPINGS[i];
+            if( name == m.tok ) {
+                return ::HIR::TypeRef(m.val);
+            }
+        }
+        return ::HIR::TypeRef( this->get_composite(::std::move(name)));
     }
     else
     {
         LOG_ERROR(lex << "Unexpected token in type - " << lex.next());
     }
 }
-const DataType* Parser::get_composite(::HIR::GenericPath gp)
+const DataType* Parser::get_composite(RcString gp)
 {
     auto it = tree.data_types.find(gp);
     if( it == tree.data_types.end() )
@@ -1337,22 +1187,18 @@ const DataType* Parser::get_composite(::HIR::GenericPath gp)
     return it->second.get();
 }
 
-::HIR::SimplePath ModuleTree::find_lang_item(const char* name) const
+const Function& ModuleTree::get_function(const HIR::Path& p) const
 {
-    return ::HIR::SimplePath({ "", { "main#" } });
-}
-const Function& ModuleTree::get_function(const ::HIR::Path& p) const
-{
-    auto it = functions.find(p);
+    auto it = functions.find(p.n);
     if(it == functions.end())
     {
         LOG_ERROR("Unable to find function " << p << " for invoke");
     }
     return it->second;
 }
-const Function* ModuleTree::get_function_opt(const ::HIR::Path& p) const
+const Function* ModuleTree::get_function_opt(const HIR::Path& p) const
 {
-    auto it = functions.find(p);
+    auto it = functions.find(p.n);
     if(it == functions.end())
     {
         return nullptr;
@@ -1368,18 +1214,18 @@ const Function* ModuleTree::get_ext_function(const char* name) const
     }
     return it->second;
 }
-Static& ModuleTree::get_static(const ::HIR::Path& p)
+Static& ModuleTree::get_static(const HIR::Path& p)
 {
-    auto it = statics.find(p);
+    auto it = statics.find(p.n);
     if(it == statics.end())
     {
         LOG_ERROR("Unable to find static " << p << " for invoke");
     }
     return it->second;
 }
-Static* ModuleTree::get_static_opt(const ::HIR::Path& p)
+Static* ModuleTree::get_static_opt(const HIR::Path& p)
 {
-    auto it = statics.find(p);
+    auto it = statics.find(p.n);
     if(it == statics.end())
     {
         return nullptr;

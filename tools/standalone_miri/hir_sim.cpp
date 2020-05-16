@@ -459,15 +459,6 @@ namespace HIR {
         }
         return os;
     }
-    ::std::ostream& operator<<(::std::ostream& os, const SimplePath& x)
-    {
-        os << "::\"" << x.crate_name << "\"";
-        for(const auto& e : x.ents)
-        {
-            os << "::" << e;
-        }
-        return os;
-    }
     ::std::ostream& operator<<(::std::ostream& os, const ::HIR::PathParams& x)
     {
         if( !x.tys.empty() )
@@ -476,29 +467,6 @@ namespace HIR {
             for(const auto& t : x.tys)
                 os << t << ",";
             os << ">";
-        }
-        return os;
-    }
-    ::std::ostream& operator<<(::std::ostream& os, const GenericPath& x)
-    {
-        os << x.m_simplepath;
-        os << x.m_params;
-        return os;
-    }
-    ::std::ostream& operator<<(::std::ostream& os, const ::HIR::Path& x)
-    {
-        if( x.m_name == "" )
-        {
-            os << x.m_trait;
-        }
-        else
-        {
-            os << "<" << x.m_type;
-            if( x.m_trait != ::HIR::GenericPath() )
-            {
-                os << " as " << x.m_trait;
-            }
-            os << ">::" << x.m_name << x.m_params;
         }
         return os;
     }

@@ -76,7 +76,7 @@ public:
     }
     ~InterpreterThread();
 
-    void start(const ::HIR::Path& p, ::std::vector<Value> args);
+    void start(const RcString& p, ::std::vector<Value> args);
     // Returns `true` if the call stack empties
     bool step_one(Value& out_thread_result);
 
@@ -84,11 +84,11 @@ private:
     bool pop_stack(Value& out_thread_result);
 
     // Returns true if the call was resolved instantly
-    bool call_path(Value& ret_val, const ::HIR::Path& p, ::std::vector<Value> args);
+    bool call_path(Value& ret_val, const HIR::Path& p, ::std::vector<Value> args);
     // Returns true if the call was resolved instantly
     bool call_extern(Value& ret_val, const ::std::string& name, const ::std::string& abi, ::std::vector<Value> args);
     // Returns true if the call was resolved instantly
-    bool call_intrinsic(Value& ret_val, const RcString& name, const ::HIR::PathParams& pp, ::std::vector<Value> args);
+    bool call_intrinsic(Value& ret_val, const ::HIR::TypeRef& ret_ty, const RcString& name, const ::HIR::PathParams& pp, ::std::vector<Value> args);
 
     // Returns true if the call was resolved instantly
     bool drop_value(Value ptr, const ::HIR::TypeRef& ty, bool is_shallow=false);

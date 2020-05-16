@@ -650,11 +650,11 @@ InterpreterThread::~InterpreterThread()
         ::std::cout << ::std::endl;
     }
 }
-void InterpreterThread::start(const ::HIR::Path& p, ::std::vector<Value> args)
+void InterpreterThread::start(const RcString& p, ::std::vector<Value> args)
 {
     assert( this->m_stack.empty() );
     Value   v;
-    if( this->call_path(v, p, ::std::move(args)) )
+    if( this->call_path(v, HIR::Path { p }, ::std::move(args)) )
     {
         LOG_TODO("Handle immediate return thread entry");
     }
@@ -1488,7 +1488,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                 } break;
             TU_ARM(se.src, Variant, re) {
                 // 1. Get the composite by path.
-                const auto& data_ty = this->m_modtree.get_composite(re.path);
+                const auto& data_ty = this->m_modtree.get_composite(re.path.n);
                 auto dst_ty = ::HIR::TypeRef(&data_ty);
                 new_val = Value(dst_ty);
                 // Three cases:
@@ -1516,7 +1516,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                 LOG_DEBUG("Variant " << new_val);
                 } break;
             TU_ARM(se.src, Struct, re) {
-                const auto& data_ty = m_modtree.get_composite(re.path);
+                const auto& data_ty = m_modtree.get_composite(re.path.n);
 
                 ::HIR::TypeRef  dst_ty;
                 state.get_value_and_type(se.dst, dst_ty);
@@ -1752,7 +1752,8 @@ bool InterpreterThread::step_one(Value& out_thread_result)
             if( te.fcn.is_Intrinsic() )
             {
                 const auto& fe = te.fcn.as_Intrinsic();
-                if( !this->call_intrinsic(rv, fe.name, fe.params, ::std::move(sub_args)) )
+                auto ret_ty = state.get_lvalue_ty(te.ret_val);
+                if( !this->call_intrinsic(rv, ret_ty, fe.name, fe.params, ::std::move(sub_args)) )
                 {
                     // Early return, don't want to update stmt_idx yet
                     return false;
@@ -1928,13 +1929,14 @@ bool InterpreterThread::call_path(Value& ret, const ::HIR::Path& path, ::std::ve
 {
     // TODO: Support overriding certain functions
     {
-        if( path == ::HIR::SimplePath { "std", { "sys", "imp", "c", "SetThreadStackGuarantee" } } 
-         || path == ::HIR::SimplePath { "std", { "sys", "windows", "c", "SetThreadStackGuarantee" } }
+        if( path.n == "ZRG3std""3imp"    "1c""23SetThreadStackGuarantee0g"
+         || path.n == "ZRG3std""7windows""1c""23SetThreadStackGuarantee0g"
          )
         {
             ret = Value::new_i32(120);  //ERROR_CALL_NOT_IMPLEMENTED
             return true;
         }
+#if 0
         // Win32 Shared RW locks (no-op)
         if( path == ::HIR::SimplePath { "std", { "sys", "windows", "c", "AcquireSRWLockExclusive" } }
          || path == ::HIR::SimplePath { "std", { "sys", "windows", "c", "ReleaseSRWLockExclusive" } }
@@ -1945,7 +1947,7 @@ bool InterpreterThread::call_path(Value& ret, const ::HIR::Path& path, ::std::ve
 
         // - No guard page needed
         if( path == ::HIR::SimplePath { "std",  {"sys", "imp", "thread", "guard", "init" } }
-         || path == ::HIR::SimplePath { "std",  {"sys", "unix", "thread", "guard", "init" } }
+         || path.n == "ZRG5c3std3sys4unix6thread5guard4init0g" }
          )
         {
             ret = Value::with_size(16, false);
@@ -1959,14 +1961,15 @@ bool InterpreterThread::call_path(Value& ret, const ::HIR::Path& path, ::std::ve
         {
             return true;
         }
+#endif
     }
 
-    if( path.m_name == "" && path.m_trait.m_simplepath.crate_name == "#FFI" )
-    {
-        const auto& link_abi  = path.m_trait.m_simplepath.ents.at(0);
-        const auto& link_name = path.m_trait.m_simplepath.ents.at(1);
-        return this->call_extern(ret, link_name, link_abi, ::std::move(args));
-    }
+    //if( path.n.c_str()[0] == ':' m_name == "" && path.m_trait.m_simplepath.crate_name == "#FFI" )
+    //{
+    //    const auto& link_abi  = path.m_trait.m_simplepath.ents.at(0);
+    //    const auto& link_name = path.m_trait.m_simplepath.ents.at(1);
+    //    return this->call_extern(ret, link_name, link_abi, ::std::move(args));
+    //}
 
     const auto& fcn = m_modtree.get_function(path);
 
@@ -2745,7 +2748,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     return true;
 }
 
-bool InterpreterThread::call_intrinsic(Value& rv, const RcString& name, const ::HIR::PathParams& ty_params, ::std::vector<Value> args)
+bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, const RcString& name, const ::HIR::PathParams& ty_params, ::std::vector<Value> args)
 {
     TRACE_FUNCTION_R(name, rv);
     for(const auto& a : args)
@@ -3150,10 +3153,7 @@ bool InterpreterThread::call_intrinsic(Value& rv, const RcString& name, const ::
         bool didnt_overflow = lhs.get().add( rhs.get() );
 
         // Get return type - a tuple of `(T, bool,)`
-        ::HIR::GenericPath  gp;
-        gp.m_params.tys.push_back(ty);
-        gp.m_params.tys.push_back(::HIR::TypeRef { RawType::Bool });
-        const auto& dty = m_modtree.get_composite(gp);
+        const auto& dty = ret_ty.composite_type();
 
         rv = Value(::HIR::TypeRef(&dty));
         lhs.get().write_to_value(rv, dty.fields[0].first);
@@ -3168,10 +3168,7 @@ bool InterpreterThread::call_intrinsic(Value& rv, const RcString& name, const ::
         bool didnt_overflow = lhs.get().subtract( rhs.get() );
 
         // Get return type - a tuple of `(T, bool,)`
-        ::HIR::GenericPath  gp;
-        gp.m_params.tys.push_back(ty);
-        gp.m_params.tys.push_back(::HIR::TypeRef { RawType::Bool });
-        const auto& dty = m_modtree.get_composite(gp);
+        const auto& dty = ret_ty.composite_type();
 
         rv = Value(::HIR::TypeRef(&dty));
         lhs.get().write_to_value(rv, dty.fields[0].first);
@@ -3186,10 +3183,7 @@ bool InterpreterThread::call_intrinsic(Value& rv, const RcString& name, const ::
         bool didnt_overflow = lhs.get().multiply( rhs.get() );
 
         // Get return type - a tuple of `(T, bool,)`
-        ::HIR::GenericPath  gp;
-        gp.m_params.tys.push_back(ty);
-        gp.m_params.tys.push_back(::HIR::TypeRef { RawType::Bool });
-        const auto& dty = m_modtree.get_composite(gp);
+        const auto& dty = ret_ty.composite_type();
 
         rv = Value(::HIR::TypeRef(&dty));
         lhs.get().write_to_value(rv, dty.fields[0].first);
@@ -3378,7 +3372,7 @@ bool InterpreterThread::drop_value(Value ptr, const ::HIR::TypeRef& ty, bool is_
     {
         if( ty.inner_type == RawType::Composite )
         {
-            if( ty.composite_type().drop_glue != ::HIR::Path() )
+            if( ty.composite_type().drop_glue.n != RcString() )
             {
                 LOG_DEBUG("Drop - " << ty);
 

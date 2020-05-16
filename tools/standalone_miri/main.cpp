@@ -98,7 +98,7 @@ int main(int argc, const char* argv[])
         args.push_back(::std::move(val_argc));
         args.push_back(::std::move(val_argv));
         Value   rv;
-        root_thread.start(tree.find_lang_item("start"), ::std::move(args));
+        root_thread.start("main#", ::std::move(args));
         while( !root_thread.step_one(rv) )
         {
         }

@@ -69,20 +69,20 @@ $(MINICARGO):
 # - libproc_macro (mrustc)
 $(OUTDIR)libstd.rlib: $(MRUSTC) $(MINICARGO)
 	$(MINICARGO) $(RUSTCSRC)src/libstd --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
-	test -e $@
+	@test -e $@
 $(OUTDIR)libpanic_unwind.rlib: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.rlib
 	$(MINICARGO) $(RUSTCSRC)src/libpanic_unwind --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
-	test -e $@
+	@test -e $@
 $(OUTDIR)libtest.rlib: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.rlib $(OUTDIR)libpanic_unwind.rlib
 	$(MINICARGO) $(RUSTCSRC)src/libtest --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
-	test -e $@
+	@test -e $@
 $(OUTDIR)libgetopts.rlib: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.rlib
 	$(MINICARGO) $(RUSTCSRC)src/libgetopts --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
-	test -e $@
+	@test -e $@
 # MRustC custom version of libproc_macro
 $(OUTDIR)libproc_macro.rlib: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.rlib
 	$(MINICARGO) lib/libproc_macro --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
-	test -e $@
+	@test -e $@
 
 $(OUTDIR)test/libtest.so: $(MRUSTC) $(MINICARGO)
 	mkdir -p $(dir $@)

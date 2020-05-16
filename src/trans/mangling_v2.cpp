@@ -191,8 +191,9 @@ public:
             this->fmt_type(e.inner);
             }
         TU_ARMA(Path, e) {
-            m_os << "N";
-            this->fmt_path(e.path);
+            m_os << "G";
+            ASSERT_BUG(Span(), e.path.m_data.is_Generic(), "Type path not Generic - " << ty);
+            this->fmt_generic_path(e.path.m_data.as_Generic());
             }
         TU_ARMA(TraitObject, e) {
             // - TraitObject: 'D' <data:GenericPath> <naty> [<TypeRef> ...] <nmarker> [markers: <GenericPath> ...]
