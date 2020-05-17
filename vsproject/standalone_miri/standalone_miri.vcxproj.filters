@@ -36,6 +36,9 @@
     <ClInclude Include="..\..\tools\standalone_miri\debug.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\tools\standalone_miri\miri.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\..\tools\standalone_miri\main.cpp">

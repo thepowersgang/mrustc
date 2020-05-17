@@ -321,7 +321,7 @@ struct MirHelpers
             return ValueRef(this->frame.args.at(e));
             } break;
         TU_ARM(lv_root, Static, e) {
-            /*const*/ auto& s = this->thread.m_modtree.get_static(e);
+            /*const*/ auto& s = this->thread.m_global.m_modtree.get_static(e);
             ty = s.ty;
             return ValueRef(s.val);
             } break;
@@ -606,11 +606,11 @@ struct MirHelpers
         // --> Accessor
         TU_ARM(c, ItemAddr, ce) {
             // Create a value with a special backing allocation of zero size that references the specified item.
-            if( /*const auto* fn =*/ this->thread.m_modtree.get_function_opt(*ce) ) {
+            if( /*const auto* fn =*/ this->thread.m_global.m_modtree.get_function_opt(*ce) ) {
                 ty = ::HIR::TypeRef(RawType::Function);
                 return Value::new_fnptr(*ce);
             }
-            if( const auto* s = this->thread.m_modtree.get_static_opt(*ce) ) {
+            if( const auto* s = this->thread.m_global.m_modtree.get_static_opt(*ce) ) {
                 ty = s->ty.wrapped(TypeWrapper::Ty::Borrow, 0);
                 LOG_ASSERT(s->val.m_inner.is_alloc, "Statics should already have an allocation assigned");
                 return Value::new_pointer(ty, Allocation::PTR_BASE + 0, RelocationPtr::new_alloc(s->val.m_inner.alloc.alloc));
@@ -661,6 +661,56 @@ struct MirHelpers
         throw "";
     }
 };
+
+GlobalState::GlobalState(ModuleTree& modtree):
+    m_modtree(modtree)
+{
+    //
+    // Register overrides for functions that are hard to emulate
+    //
+
+    // Hacky implementation of the mangling rules (doesn't support generics)
+    auto make_simplepath = [](const char* crate, std::initializer_list<const char*> il) -> RcString {
+        std::stringstream   ss;
+        ss << "ZRG" << (end(il)-begin(il)) << "c" << strlen(crate) << crate;
+        for(const auto* e : il) {
+            ss << strlen(e);
+            ss << e;
+        }
+        ss << "0g";
+        return RcString::new_interned(ss.str().c_str());
+        };
+
+    override_handler_t* cb_nop = [](auto& state, auto& ret, const auto& path, auto args){
+        return true;
+    };
+    // SetThreadStackGuarantee
+    // - Calls GetProcAddress
+    override_handler_t* cb_SetThreadStackGuarantee = [](auto& state, auto& ret, const auto& path, auto args){
+        ret = Value::new_i32(120);  //ERROR_CALL_NOT_IMPLEMENTED
+        return true;
+    };
+    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std", {"sys", "imp", "c", "SetThreadStackGuarantee"}), cb_SetThreadStackGuarantee));
+    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std", {"sys", "windows", "c", "SetThreadStackGuarantee"}), cb_SetThreadStackGuarantee));
+
+    // Win32 Shared RW locks (no-op)
+    // TODO: Emulate fully for inter-thread locks
+    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std", { "sys", "windows", "c", "AcquireSRWLockExclusive" }), cb_nop));
+    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std", { "sys", "windows", "c", "ReleaseSRWLockExclusive" }), cb_nop));
+
+    // - No guard page needed
+    override_handler_t* cb_guardpage_init = [](auto& state, auto& ret, const auto& path, auto args){
+        ret = Value::with_size(16, false);
+        ret.write_u64(0, 0);
+        ret.write_u64(8, 0);
+        return true;
+    };
+    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std", {"sys", "imp", "thread", "guard", "init" }), cb_guardpage_init));
+    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std", {"sys", "unix", "thread", "guard", "init" }), cb_guardpage_init));
+
+    // - No stack overflow handling needed
+    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std", {"sys", "imp", "stack_overflow", "imp", "init"}), cb_nop));
+}
 
 // ====================================================================
 //
@@ -1499,7 +1549,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                 } break;
             TU_ARM(se.src, Variant, re) {
                 // 1. Get the composite by path.
-                const auto& data_ty = this->m_modtree.get_composite(re.path.n);
+                const auto& data_ty = this->m_global.m_modtree.get_composite(re.path.n);
                 auto dst_ty = ::HIR::TypeRef(&data_ty);
                 new_val = Value(dst_ty);
                 // Three cases:
@@ -1527,7 +1577,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                 LOG_DEBUG("Variant " << new_val);
                 } break;
             TU_ARM(se.src, Struct, re) {
-                const auto& data_ty = m_modtree.get_composite(re.path.n);
+                const auto& data_ty = m_global.m_modtree.get_composite(re.path.n);
 
                 ::HIR::TypeRef  dst_ty;
                 state.get_value_and_type(se.dst, dst_ty);
@@ -1938,43 +1988,16 @@ InterpreterThread::StackFrame::StackFrame(const Function& fcn, ::std::vector<Val
 }
 bool InterpreterThread::call_path(Value& ret, const ::HIR::Path& path, ::std::vector<Value> args)
 {
-    // TODO: Support overriding certain functions
+    // Support overriding certain functions
     {
-        if( path.n == "ZRG3std""3imp"    "1c""23SetThreadStackGuarantee0g"
-         || path.n == "ZRG3std""7windows""1c""23SetThreadStackGuarantee0g"
-         )
+        auto it = m_global.m_fcn_overrides.find(path.n);
+        if( it != m_global.m_fcn_overrides.end() )
         {
-            ret = Value::new_i32(120);  //ERROR_CALL_NOT_IMPLEMENTED
-            return true;
+            return it->second(*this, ret, path, args);
         }
-#if 0
-        // Win32 Shared RW locks (no-op)
-        if( path == ::HIR::SimplePath { "std", { "sys", "windows", "c", "AcquireSRWLockExclusive" } }
-         || path == ::HIR::SimplePath { "std", { "sys", "windows", "c", "ReleaseSRWLockExclusive" } }
-            )
-        {
-            return true;
-        }
-
-        // - No guard page needed
-        if( path == ::HIR::SimplePath { "std",  {"sys", "imp", "thread", "guard", "init" } }
-         || path.n == "ZRG5c3std3sys4unix6thread5guard4init0g" }
-         )
-        {
-            ret = Value::with_size(16, false);
-            ret.write_u64(0, 0);
-            ret.write_u64(8, 0);
-            return true;
-        }
-
-        // - No stack overflow handling needed
-        if( path == ::HIR::SimplePath { "std", { "sys", "imp", "stack_overflow", "imp", "init" } } )
-        {
-            return true;
-        }
-#endif
     }
 
+    // TODO: Support paths that reference extern functions directly (instead of needing `link_name` set)
     //if( path.n.c_str()[0] == ':' m_name == "" && path.m_trait.m_simplepath.crate_name == "#FFI" )
     //{
     //    const auto& link_abi  = path.m_trait.m_simplepath.ents.at(0);
@@ -1982,12 +2005,12 @@ bool InterpreterThread::call_path(Value& ret, const ::HIR::Path& path, ::std::ve
     //    return this->call_extern(ret, link_name, link_abi, ::std::move(args));
     //}
 
-    const auto& fcn = m_modtree.get_function(path);
+    const auto& fcn = m_global.m_modtree.get_function(path);
 
     if( fcn.external.link_name != "" )
     {
-        // TODO: Search for a function with both code and this link name
-        if(const auto* ext_fcn = m_modtree.get_ext_function(fcn.external.link_name.c_str()))
+        // Search for a function with both code and this link name
+        if(const auto* ext_fcn = m_global.m_modtree.get_ext_function(fcn.external.link_name.c_str()))
         {
             this->m_stack.push_back(StackFrame(*ext_fcn, ::std::move(args)));
             return false;

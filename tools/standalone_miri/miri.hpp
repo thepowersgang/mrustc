@@ -36,9 +36,22 @@ struct ThreadState
     }
 };
 
+class InterpreterThread;
+
+struct GlobalState
+{
+    typedef bool    override_handler_t(InterpreterThread& thread, Value& ret, const ::HIR::Path& path, ::std::vector<Value> args);
+
+    ModuleTree& m_modtree;
+    std::map<RcString, override_handler_t*>  m_fcn_overrides;
+
+    GlobalState(ModuleTree& modtree);
+};
+
 class InterpreterThread
 {
     friend struct MirHelpers;
+
     struct StackFrame
     {
         static unsigned s_next_frame_index;
@@ -63,14 +76,14 @@ class InterpreterThread
         }
     };
 
-    ModuleTree& m_modtree;
+    GlobalState&    m_global;
     ThreadState m_thread;
     size_t  m_instruction_count;
     ::std::vector<StackFrame>   m_stack;
 
 public:
-    InterpreterThread(ModuleTree& modtree):
-        m_modtree(modtree),
+    InterpreterThread(GlobalState& m_global):
+        m_global(m_global),
         m_instruction_count(0)
     {
     }

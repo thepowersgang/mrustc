@@ -164,6 +164,7 @@
     <ClInclude Include="..\..\tools\standalone_miri\debug.hpp" />
     <ClInclude Include="..\..\tools\standalone_miri\hir_sim.hpp" />
     <ClInclude Include="..\..\tools\standalone_miri\lex.hpp" />
+    <ClInclude Include="..\..\tools\standalone_miri\miri.hpp" />
     <ClInclude Include="..\..\tools\standalone_miri\module_tree.hpp" />
     <ClInclude Include="..\..\tools\standalone_miri\value.hpp" />
     <ClInclude Include="targetver.h" />

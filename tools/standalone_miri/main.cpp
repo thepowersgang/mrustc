@@ -92,7 +92,8 @@ int main(int argc, const char* argv[])
     // Catch various exceptions from the interpreter
     try
     {
-        InterpreterThread   root_thread(tree);
+        GlobalState global(tree);
+        InterpreterThread   root_thread(global);
 
         ::std::vector<Value>    args;
         args.push_back(::std::move(val_argc));

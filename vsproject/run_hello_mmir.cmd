@@ -1,4 +1,5 @@
 @echo off
+@set MRUSTC_TARGET_VER=1.29
 @set RUSTC_VERSION=1.29.0
 @set OUTDIR=output-%RUSTC_VERSION%-mmir
 @mkdir %OUTDIR%
