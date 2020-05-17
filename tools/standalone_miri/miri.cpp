@@ -505,6 +505,38 @@ struct MirHelpers
         }
     }
 
+    Value borrow_value(const ::MIR::LValue& lv, ::HIR::BorrowType bt, ::HIR::TypeRef& dst_ty)
+    {
+        ::HIR::TypeRef  src_ty;
+        ValueRef src_base_value = this->get_value_and_type(lv, src_ty);
+        auto alloc = src_base_value.m_alloc;
+        // If the source doesn't yet have a relocation, give it a backing allocation so we can borrow
+        if( !alloc && src_base_value.m_value )
+        {
+            LOG_DEBUG("Borrow - Creating allocation for " << src_base_value);
+            alloc = RelocationPtr::new_alloc( src_base_value.m_value->borrow("Borrow") );
+        }
+        if( alloc.is_alloc() )
+            LOG_DEBUG("Borrow - alloc=" << alloc << " (" << alloc.alloc() << ")");
+        else
+            LOG_DEBUG("Borrow - alloc=" << alloc);
+        size_t ofs = src_base_value.m_offset;
+        const auto meta = src_ty.get_meta_type();
+        dst_ty = src_ty.wrapped(TypeWrapper::Ty::Borrow, static_cast<size_t>(bt));
+        LOG_DEBUG("Borrow - ofs=" << ofs << ", meta_ty=" << meta);
+
+        // Create the pointer (can this just store into the target?)
+        auto new_val = Value(dst_ty);
+        new_val.write_ptr(0, Allocation::PTR_BASE + ofs, ::std::move(alloc));
+        // - Add metadata if required
+        if( meta != RawType::Unreachable )
+        {
+            LOG_ASSERT(src_base_value.m_metadata, "Borrow of an unsized value, but no metadata avaliable");
+            new_val.write_value(POINTER_SIZE, *src_base_value.m_metadata);
+        }
+        return new_val;
+    }
+
     Value const_to_value(const ::MIR::Constant& c, ::HIR::TypeRef& ty)
     {
         switch(c.tag())
@@ -600,6 +632,8 @@ struct MirHelpers
         case ::MIR::Param::TAGDEAD: throw "";
         TU_ARM(p, Constant, pe)
             return const_to_value(pe, ty);
+        TU_ARM(p, Borrow, pe)
+            return borrow_value(pe.val, pe.type, ty);
         TU_ARM(p, LValue, pe)
             return read_lvalue_with_ty(pe, ty);
         }
@@ -619,6 +653,8 @@ struct MirHelpers
         TU_ARM(p, Constant, pe)
             tmp = const_to_value(pe, ty);
             return ValueRef(tmp, 0, ty.get_size());
+        TU_ARM(p, Borrow, pe)
+            LOG_TODO("");
         TU_ARM(p, LValue, pe)
             return get_value_and_type(pe, ty);
         }
@@ -695,33 +731,8 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                 new_val = state.const_to_value(re);
                 } break;
             TU_ARM(se.src, Borrow, re) {
-                ::HIR::TypeRef  src_ty;
-                ValueRef src_base_value = state.get_value_and_type(re.val, src_ty);
-                auto alloc = src_base_value.m_alloc;
-                // If the source doesn't yet have a relocation, give it a backing allocation so we can borrow
-                if( !alloc && src_base_value.m_value )
-                {
-                    LOG_DEBUG("Borrow - Creating allocation for " << src_base_value);
-                    alloc = RelocationPtr::new_alloc( src_base_value.m_value->borrow("Borrow") );
-                }
-                if( alloc.is_alloc() )
-                    LOG_DEBUG("Borrow - alloc=" << alloc << " (" << alloc.alloc() << ")");
-                else
-                    LOG_DEBUG("Borrow - alloc=" << alloc);
-                size_t ofs = src_base_value.m_offset;
-                const auto meta = src_ty.get_meta_type();
-                auto dst_ty = src_ty.wrapped(TypeWrapper::Ty::Borrow, static_cast<size_t>(re.type));
-                LOG_DEBUG("Borrow - ofs=" << ofs << ", meta_ty=" << meta);
-
-                // Create the pointer (can this just store into the target?)
-                new_val = Value(dst_ty);
-                new_val.write_ptr(0, Allocation::PTR_BASE + ofs, ::std::move(alloc));
-                // - Add metadata if required
-                if( meta != RawType::Unreachable )
-                {
-                    LOG_ASSERT(src_base_value.m_metadata, "Borrow of an unsized value, but no metadata avaliable");
-                    new_val.write_value(POINTER_SIZE, *src_base_value.m_metadata);
-                }
+                HIR::TypeRef    dst_ty;
+                new_val = state.borrow_value(re.val, re.type, dst_ty);
                 } break;
             TU_ARM(se.src, Cast, re) {
                 // Determine the type of cast, is it a reinterpret or is it a value transform?

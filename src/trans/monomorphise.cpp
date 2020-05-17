@@ -69,6 +69,9 @@ namespace {
         (LValue,
             return monomorph_LValue(resolve, params, e);
             ),
+        (Borrow,
+            return ::MIR::Param::make_Borrow({ e.type, monomorph_LValue(resolve, params, e.val) });
+            ),
         (Constant,
             return monomorph_Constant(resolve, params, e);
             )
@@ -158,7 +161,7 @@ namespace {
                     ),
                 (Borrow,
                     rval = ::MIR::RValue::make_Borrow({
-                        se.region, se.type,
+                        se.type,
                         monomorph_LValue(resolve, params, se.val)
                         });
                     ),

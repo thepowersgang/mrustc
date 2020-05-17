@@ -64,7 +64,7 @@ namespace {
             ::MIR::BasicBlock   bb;
             bb.statements.push_back(::MIR::Statement::make_Assign({
                     borrow_lv.clone(),
-                    ::MIR::RValue::make_Borrow({ 0, ::HIR::BorrowType::Shared, mv$(fld_lvalue) })
+                    ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Shared, mv$(fld_lvalue) })
                     }));
             bb.terminator = ::MIR::Terminator::make_Call({
                     static_cast<unsigned>(mir_fcn.blocks.size() + 2),  // return block (after the panic block below)

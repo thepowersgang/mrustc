@@ -414,7 +414,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
                 auto rval = MIR_Cleanup_LiteralToRValue(state, mutator, inner_lit, inner_ty.clone(), ::HIR::GenericPath());
 
                 auto lval = mutator.in_temporary( mv$(inner_ty), mv$(rval) );
-                auto ptr_val = mutator.in_temporary( mv$(ptr_ty), ::MIR::RValue::make_Borrow({ 0, te.type, mv$(lval) }));
+                auto ptr_val = mutator.in_temporary( mv$(ptr_ty), ::MIR::RValue::make_Borrow({ te.type, mv$(lval) }));
                 return ::MIR::RValue::make_MakeDst({ ::MIR::Param(mv$(ptr_val)), mv$(size_val) });
             }
             else if( te.inner.data().is_TraitObject() )
@@ -425,7 +425,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
             {
                 auto rval = MIR_Cleanup_LiteralToRValue(state, mutator, inner_lit, te.inner.clone(), ::HIR::GenericPath());
                 auto lval = mutator.in_temporary( te.inner.clone(), mv$(rval) );
-                return ::MIR::RValue::make_Borrow({ 0, te.type, mv$(lval) });
+                return ::MIR::RValue::make_Borrow({ te.type, mv$(lval) });
             }
         }
         else if( te.inner.data().is_Slice() && te.inner.data().as_Slice().inner == ::HIR::CoreType::U8 ) {
@@ -947,6 +947,9 @@ void MIR_Cleanup_Param(const ::MIR::TypeResolve& state, MirMutator& mutator, ::M
     TU_MATCH_HDRA( (p), { )
     TU_ARMA(LValue, e) {
         MIR_Cleanup_LValue(state, mutator, e);
+        }
+    TU_ARMA(Borrow, e) {
+        MIR_Cleanup_LValue(state, mutator, e.val);
         }
     TU_ARMA(Constant, e) {
         MIR_Cleanup_Constant(state, mutator, e);

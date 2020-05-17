@@ -166,6 +166,9 @@ namespace MIR {
         (LValue,
             os << e;
             ),
+        (Borrow,
+            os << "Borrow(" << e.type << ", " << e.val << ")";
+            ),
         (Constant,
             os << e;
             )
@@ -185,7 +188,7 @@ namespace MIR {
             os << "SizedArray(" << e.val << "; " << e.count << ")";
             ),
         (Borrow,
-            os << "Borrow(" << e.region << ", " << e.type << ", " << e.val << ")";
+            os << "Borrow(" << e.type << ", " << e.val << ")";
             ),
         (Cast,
             os << "Cast(" << e.val << " as " << e.type << ")";

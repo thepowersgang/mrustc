@@ -491,6 +491,11 @@ TAGGED_UNION_EX(Constant, (), Int, (
 /// Can be either a lvalue (memory address), or a constant
 TAGGED_UNION_EX(Param, (), Constant, (
     (LValue, LValue),
+    // TODO: Add `Borrow` here (makes some MIR manipulation more complex, but simplifies emitted code)
+    (Borrow, struct {
+        ::HIR::BorrowType   type;
+        LValue  val;
+        }),
     (Constant, Constant)
     ), (), (), (
         Param clone() const;
@@ -503,16 +508,16 @@ TAGGED_UNION_EX(Param, (), Constant, (
 );
 
 TAGGED_UNION_EX(RValue, (), Tuple, (
+    // TODO: Split "Use" into "Copy" and "Move" (Where 'move' indicates that the source is unused)
     (Use, LValue),
+    (Borrow, struct {
+        ::HIR::BorrowType   type;
+        LValue  val;
+        }),
     (Constant, Constant),
     (SizedArray, struct {
         Param   val;
         unsigned int    count;
-        }),
-    (Borrow, struct {
-        RegionId    region;
-        ::HIR::BorrowType   type;
-        LValue  val;
         }),
     // Cast on primitives
     (Cast, struct {

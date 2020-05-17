@@ -470,6 +470,11 @@
             switch(auto tag = m_in.read_tag())
             {
             case ::MIR::Param::TAG_LValue:  return deserialise_mir_lvalue();
+            case ::MIR::Param::TAG_Borrow:
+                return ::MIR::Param::make_Borrow({
+                    static_cast< ::HIR::BorrowType>( m_in.read_tag() ),
+                    deserialise_mir_lvalue()
+                    });
             case ::MIR::Param::TAG_Constant: return deserialise_mir_constant();
             default:
                 BUG(Span(), "Bad tag for MIR::Param - " << tag);
@@ -505,7 +510,6 @@
                 static_cast<unsigned int>(m_in.read_u64c())
                 })
             _(Borrow, {
-                0, // TODO: Region?
                 static_cast< ::HIR::BorrowType>( m_in.read_tag() ),
                 deserialise_mir_lvalue()
                 })

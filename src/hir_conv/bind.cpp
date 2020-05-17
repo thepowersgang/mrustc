@@ -742,7 +742,12 @@ namespace {
                     static void visit_param(Visitor& upper_visitor, ::MIR::Param& p)
                     {
                         TU_MATCHA( (p), (e),
-                        (LValue, H::visit_lvalue(upper_visitor, e);),
+                        (LValue,
+                            H::visit_lvalue(upper_visitor, e);
+                            ),
+                        (Borrow,
+                            H::visit_lvalue(upper_visitor, e.val);
+                            ),
                         (Constant,
                             H::visit_constant(upper_visitor, e);
                             )

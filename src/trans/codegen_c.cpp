@@ -3057,6 +3057,119 @@ namespace {
             }
         }
 
+        void emit_borrow(const ::MIR::TypeResolve& mir_res, HIR::BorrowType bt, const MIR::LValue& val)
+        {
+            ::HIR::TypeRef  tmp;
+            const auto& ty = mir_res.get_lvalue_type(tmp, val);
+            bool special = false;
+            // If the inner value was a deref, just copy the pointer verbatim
+            if( val.is_Deref() )
+            {
+                emit_lvalue( ::MIR::LValue::CRef(val).inner_ref() );
+                special = true;
+            }
+            // Magic for taking a &-ptr to unsized field of a struct.
+            // - Needs to get metadata from bottom-level pointer.
+            else if( val.is_Field() )
+            {
+                auto meta_ty = metadata_type(ty);
+                if( meta_ty != MetadataType::None ) {
+                    auto base_val = ::MIR::LValue::CRef(val).inner_ref();
+                    while(base_val.is_Field())
+                        base_val.try_unwrap();
+                    MIR_ASSERT(mir_res, base_val.is_Deref(), "DST access must be via a deref");
+                    const auto base_ptr = base_val.inner_ref();
+
+                    // Construct the new DST
+                    switch(meta_ty)
+                    {
+                    case MetadataType::None:
+                        throw "";
+                    case MetadataType::Unknown:
+                        MIR_BUG(mir_res, "");
+                    case MetadataType::Zero:
+                        MIR_BUG(mir_res, "");
+                    case MetadataType::Slice:
+                        m_of << "make_sliceptr";
+                        break;
+                    case MetadataType::TraitObject:
+                        m_of << "make_traitobjptr";
+                        break;
+                    }
+                    m_of << "(&"; emit_lvalue(val); m_of << ", "; emit_lvalue(base_ptr); m_of << ".META)";
+                    special = true;
+                }
+            }
+            else {
+            }
+
+            // NOTE: If disallow_empty_structs is set, structs don't include ZST fields
+            // In this case, we need to avoid mentioning the removed fields
+            if( !special && m_options.disallow_empty_structs && val.is_Field() && this->type_is_bad_zst(ty) )
+            {
+                // Work backwards to the first non-ZST field
+                auto val_fp = ::MIR::LValue::CRef(val);
+                assert(val_fp.is_Field());
+                while( val_fp.inner_ref().is_Field() )
+                {
+                    ::HIR::TypeRef  tmp;
+                    const auto& ty = mir_res.get_lvalue_type(tmp, val_fp.inner_ref());
+                    if( !this->type_is_bad_zst(ty) )
+                        break;
+                    val_fp.try_unwrap();
+                }
+                assert(val_fp.is_Field());
+                // Here, we have `val_fp` be a LValue::Field that refers to a ZST, but the inner of the field points to a non-ZST or a local
+
+                // If the index is zero, then the best option is to borrow the source
+                auto field_inner = val_fp.inner_ref();
+                if( field_inner.is_Downcast() )
+                {
+                    m_of << "(void*)& "; emit_lvalue(field_inner.inner_ref());
+                }
+                else if( val_fp.as_Field() == 0 )
+                {
+                    m_of << "(void*)& "; emit_lvalue(field_inner);
+                }
+                else
+                {
+                    ::HIR::TypeRef  tmp;
+                    auto tmp_lv = ::MIR::LValue::new_Field( field_inner.clone(), val_fp.as_Field() - 1 );
+                    bool use_parent = false;
+                    for(;;)
+                    {
+                        const auto& ty = mir_res.get_lvalue_type(tmp, tmp_lv);
+                        if( !this->type_is_bad_zst(ty) )
+                            break;
+                        auto idx = tmp_lv.as_Field();
+                        if( idx == 0 )
+                        {
+                            use_parent = true;
+                            break;
+                        }
+                        tmp_lv.m_wrappers.back() = ::MIR::LValue::Wrapper::new_Field(idx - 1);
+                    }
+
+                    // Reached index zero, with still ZST
+                    if( use_parent )
+                    {
+                        m_of << "(void*)& "; emit_lvalue(field_inner);
+                    }
+                    // Use the address after the previous item
+                    else
+                    {
+                        m_of << "(void*)( & "; emit_lvalue(tmp_lv); m_of << " + 1 )";
+                    }
+                }
+                special = true;
+            }
+
+            if( !special )
+            {
+                m_of << "& "; emit_lvalue(val);
+            }
+        }
+
         void emit_statement(const ::MIR::TypeResolve& mir_res, const ::MIR::Statement& stmt, unsigned indent_level=1)
         {
             DEBUG(stmt);
@@ -3174,106 +3287,9 @@ namespace {
                     }
                     }
                 TU_ARMA(Borrow, ve) {
-                    ::HIR::TypeRef  tmp;
-                    const auto& ty = mir_res.get_lvalue_type(tmp, ve.val);
-                    bool special = false;
-                    // If the inner value was a deref, just copy the pointer verbatim
-                    if( ve.val.is_Deref() )
-                    {
-                        emit_lvalue(e.dst);
-                        m_of << " = ";
-                        emit_lvalue( ::MIR::LValue::CRef(ve.val).inner_ref() );
-                        special = true;
-                    }
-                    // Magic for taking a &-ptr to unsized field of a struct.
-                    // - Needs to get metadata from bottom-level pointer.
-                    else if( ve.val.is_Field() ) {
-                        if( metadata_type(ty) != MetadataType::None ) {
-                            auto base_val = ::MIR::LValue::CRef(ve.val).inner_ref();
-                            while(base_val.is_Field())
-                                base_val.try_unwrap();
-                            MIR_ASSERT(mir_res, base_val.is_Deref(), "DST access must be via a deref");
-                            const auto base_ptr = base_val.inner_ref();
-
-                            // Construct the new DST
-                            emit_lvalue(e.dst); m_of << ".META = "; emit_lvalue(base_ptr); m_of << ".META;\n" << indent;
-                            emit_lvalue(e.dst); m_of << ".PTR = &"; emit_lvalue(ve.val);
-                            special = true;
-                        }
-                    }
-                    else {
-                    }
-
-                    // NOTE: If disallow_empty_structs is set, structs don't include ZST fields
-                    // In this case, we need to avoid mentioning the removed fields
-                    if( !special && m_options.disallow_empty_structs && ve.val.is_Field() && this->type_is_bad_zst(ty) )
-                    {
-                        // Work backwards to the first non-ZST field
-                        auto val_fp = ::MIR::LValue::CRef(ve.val);
-                        assert(val_fp.is_Field());
-                        while( val_fp.inner_ref().is_Field() )
-                        {
-                            ::HIR::TypeRef  tmp;
-                            const auto& ty = mir_res.get_lvalue_type(tmp, val_fp.inner_ref());
-                            if( !this->type_is_bad_zst(ty) )
-                                break;
-                            val_fp.try_unwrap();
-                        }
-                        assert(val_fp.is_Field());
-                        // Here, we have `val_fp` be a LValue::Field that refers to a ZST, but the inner of the field points to a non-ZST or a local
-
-                        emit_lvalue(e.dst);
-                        m_of << " = ";
-
-                        // If the index is zero, then the best option is to borrow the source
-                        auto field_inner = val_fp.inner_ref();
-                        if( field_inner.is_Downcast() )
-                        {
-                            m_of << "(void*)& "; emit_lvalue(field_inner.inner_ref());
-                        }
-                        else if( val_fp.as_Field() == 0 )
-                        {
-                            m_of << "(void*)& "; emit_lvalue(field_inner);
-                        }
-                        else
-                        {
-                            ::HIR::TypeRef  tmp;
-                            auto tmp_lv = ::MIR::LValue::new_Field( field_inner.clone(), val_fp.as_Field() - 1 );
-                            bool use_parent = false;
-                            for(;;)
-                            {
-                                const auto& ty = mir_res.get_lvalue_type(tmp, tmp_lv);
-                                if( !this->type_is_bad_zst(ty) )
-                                    break;
-                                auto idx = tmp_lv.as_Field();
-                                if( idx == 0 )
-                                {
-                                    use_parent = true;
-                                    break;
-                                }
-                                tmp_lv.m_wrappers.back() = ::MIR::LValue::Wrapper::new_Field(idx - 1);
-                            }
-
-                            // Reached index zero, with still ZST
-                            if( use_parent )
-                            {
-                                m_of << "(void*)& "; emit_lvalue(field_inner);
-                            }
-                            // Use the address after the previous item
-                            else
-                            {
-                                m_of << "(void*)( & "; emit_lvalue(tmp_lv); m_of << " + 1 )";
-                            }
-                        }
-                        special = true;
-                    }
-
-                    if( !special )
-                    {
-                        emit_lvalue(e.dst);
-                        m_of << " = ";
-                        m_of << "& "; emit_lvalue(ve.val);
-                    }
+                    emit_lvalue(e.dst);
+                    m_of << " = ";
+                    emit_borrow(mir_res, ve.type, ve.val);
                     }
                 TU_ARMA(Cast, ve) {
                     emit_rvalue_cast(mir_res, e.dst, ve);
@@ -6053,6 +6069,9 @@ namespace {
             TU_MATCH_HDRA( (p), {)
             TU_ARMA(LValue, e) {
                 emit_lvalue(e);
+                }
+            TU_ARMA(Borrow, e) {
+                emit_borrow(*m_mir_res, e.type, e.val);
                 }
             TU_ARMA(Constant, e) {
                 emit_constant(e);

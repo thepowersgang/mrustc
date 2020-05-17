@@ -317,11 +317,11 @@ namespace {
 
                     case TOK_AMP:
                         if( consume_if(lex, TOK_RWORD_MOVE) )
-                            src = MIR::RValue::make_Borrow({ 0, HIR::BorrowType::Owned, parse_lvalue(lex, val_name_map) });
+                            src = MIR::RValue::make_Borrow({ HIR::BorrowType::Owned, parse_lvalue(lex, val_name_map) });
                         else if( consume_if(lex, TOK_RWORD_MUT) )
-                            src = MIR::RValue::make_Borrow({ 0, HIR::BorrowType::Unique, parse_lvalue(lex, val_name_map) });
+                            src = MIR::RValue::make_Borrow({ HIR::BorrowType::Unique, parse_lvalue(lex, val_name_map) });
                         else
-                            src = MIR::RValue::make_Borrow({ 0, HIR::BorrowType::Shared, parse_lvalue(lex, val_name_map) });
+                            src = MIR::RValue::make_Borrow({ HIR::BorrowType::Shared, parse_lvalue(lex, val_name_map) });
                         break;
 
                     // Operator (e.g. `ADD(...)`) or an lvalue

@@ -880,6 +880,9 @@ namespace
                             (LValue,
                                 this->visit_lvalue(e);
                                 ),
+                            (Borrow,
+                                this->visit_lvalue(e.val);
+                                ),
                             (Constant,
                                 this->visit_const(e);
                                 )
@@ -1523,6 +1526,7 @@ void Trans_Enumerate_FillFrom_MIR_Param(MIR::EnumCache& state, const ::MIR::Para
 {
     TU_MATCHA( (p), (e),
     (LValue, Trans_Enumerate_FillFrom_MIR_LValue(state, e); ),
+    (Borrow, Trans_Enumerate_FillFrom_MIR_LValue(state, e.val); ),
     (Constant, Trans_Enumerate_FillFrom_MIR_Constant(state, e); )
     )
 }

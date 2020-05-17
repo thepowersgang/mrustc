@@ -186,6 +186,17 @@ namespace {
             (LValue,
                 fmt_val(os, e);
                 ),
+            (Borrow,
+                os << "&";
+                switch(e.type) {
+                case ::HIR::BorrowType::Shared: break;
+                case ::HIR::BorrowType::Unique: os << "mut "; break;
+                case ::HIR::BorrowType::Owned: os << "move "; break;
+                }
+                os << "(";
+                fmt_val(os, e.val);
+                os << ")";
+                ),
             (Constant,
                 fmt_val(os, e);
                 )

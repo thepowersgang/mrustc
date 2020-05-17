@@ -188,6 +188,9 @@ namespace MIR {
         (LValue,
             os << e;
             ),
+        (Borrow,
+            os << "Borrow(" << e.type << ", " << e.val << ")";
+            ),
         (Constant,
             os << e;
             )
@@ -201,6 +204,9 @@ namespace MIR {
         TU_MATCHA( (*this, x), (ea, eb),
         (LValue,
             return ea == eb;
+            ),
+        (Borrow,
+            return ea.type == eb.type && ea.val == eb.val;
             ),
         (Constant,
             return ea == eb;
@@ -222,7 +228,7 @@ namespace MIR {
             os << "SizedArray(" << e.val << "; " << e.count << ")";
             ),
         (Borrow,
-            os << "Borrow(" << e.region << ", " << e.type << ", " << e.val << ")";
+            os << "Borrow(" << e.type << ", " << e.val << ")";
             ),
         (Cast,
             os << "Cast(" << e.val << " as " << e.type << ")";
@@ -302,8 +308,6 @@ namespace MIR {
             return true;
             ),
         (Borrow,
-            if( are.region != bre.region )
-                return false;
             if( are.type != bre.type )
                 return false;
             if( are.val != bre.val )
@@ -627,6 +631,9 @@ namespace MIR {
     (LValue,
         return e.clone();
         ),
+    (Borrow,
+        return ::MIR::Param::make_Borrow({ e.type, e.val.clone() });
+        ),
     (Constant,
         return e.clone();
         )
@@ -647,7 +654,7 @@ namespace MIR {
         return ::MIR::RValue::make_SizedArray({ e.val.clone(), e.count });
         ),
     (Borrow,
-        return ::MIR::RValue::make_Borrow({ e.region, e.type, e.val.clone() });
+        return ::MIR::RValue::make_Borrow({ e.type, e.val.clone() });
         ),
     (Cast,
         return ::MIR::RValue::make_Cast({ e.val.clone(), e.type.clone() });

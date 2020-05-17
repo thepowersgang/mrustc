@@ -763,6 +763,10 @@
             m_out.write_tag( static_cast<int>(p.tag()) );
             TU_MATCHA( (p), (e),
             (LValue, serialise(e);),
+            (Borrow,
+                m_out.write_tag( static_cast<int>(e.type) );
+                serialise(e.val);
+                ),
             (Constant, serialise(e);)
             )
         }
@@ -798,7 +802,6 @@
                 m_out.write_u64c(e.count);
                 ),
             (Borrow,
-                // TODO: Region?
                 m_out.write_tag( static_cast<int>(e.type) );
                 serialise(e.val);
                 ),

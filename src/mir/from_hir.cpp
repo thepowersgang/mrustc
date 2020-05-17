@@ -194,7 +194,7 @@ namespace {
                     }
 
                     m_builder.push_stmt_assign( sp, m_builder.get_variable(sp, pat.m_binding.m_slot), ::MIR::RValue::make_Borrow({
-                        0, ::HIR::BorrowType::Shared, mv$(lval)
+                        ::HIR::BorrowType::Shared, mv$(lval)
                         }) );
                     break;
                 case ::HIR::PatternBinding::Type::MutRef:
@@ -204,7 +204,7 @@ namespace {
                         m_builder.raise_temporaries(sp, lval, *m_borrow_raise_target);
                     }
                     m_builder.push_stmt_assign( sp, m_builder.get_variable(sp, pat.m_binding.m_slot), ::MIR::RValue::make_Borrow({
-                        0, ::HIR::BorrowType::Unique, mv$(lval)
+                        ::HIR::BorrowType::Unique, mv$(lval)
                         }) );
                     break;
                 }
@@ -428,7 +428,7 @@ namespace {
                         ::HIR::BorrowType   bt = H::get_borrow_type(sp, e.extra_bind);
                         ::MIR::LValue ptr_val = m_builder.lvalue_or_temp(sp,
                             ::HIR::TypeRef::new_borrow( bt, inner_type.clone() ),
-                            ::MIR::RValue::make_Borrow({ 0, bt, ::MIR::LValue::new_Field( lval.clone(), static_cast<unsigned int>(e.leading.size()) ) })
+                            ::MIR::RValue::make_Borrow({ bt, ::MIR::LValue::new_Field( lval.clone(), static_cast<unsigned int>(e.leading.size()) ) })
                             );
                         // TODO: Cast to raw pointer? Or keep as a borrow?
 
@@ -1258,7 +1258,7 @@ namespace {
                 m_builder.raise_temporaries(node.span(), val, *m_borrow_raise_target);
             }
 
-            m_builder.set_result( node.span(), ::MIR::RValue::make_Borrow({ 0, node.m_type, mv$(val) }) );
+            m_builder.set_result( node.span(), ::MIR::RValue::make_Borrow({ node.m_type, mv$(val) }) );
         }
         void visit(::HIR::ExprNode_Cast& node) override
         {
@@ -1584,7 +1584,7 @@ namespace {
                     ::std::vector<::MIR::Param>    args;
                     args.push_back( m_builder.lvalue_or_temp(sp,
                                 ::HIR::TypeRef::new_borrow(bt, node.m_value->m_res_type.clone()),
-                                ::MIR::RValue::make_Borrow({0, bt, mv$(val)})
+                                ::MIR::RValue::make_Borrow({ bt, mv$(val) })
                                 ) );
                     m_builder.moved_lvalue(node.span(), args[0].as_LValue());
                     val = m_builder.new_temporary(::HIR::TypeRef::new_borrow(bt, node.m_res_type.clone()));
@@ -1696,7 +1696,7 @@ namespace {
             auto place_raw__ok = m_builder.new_bb_unlinked();
             {
                 auto place_refmut__type = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, place_type.clone());
-                auto place_refmut = m_builder.lvalue_or_temp(node.span(), place_refmut__type,  ::MIR::RValue::make_Borrow({ 0, ::HIR::BorrowType::Unique, place.clone() }));
+                auto place_refmut = m_builder.lvalue_or_temp(node.span(), place_refmut__type,  ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Unique, place.clone() }));
                 // <typeof(place) as ops::Place<T>>::pointer (T = inner)
                 auto fcn_path = ::HIR::Path(place_type.clone(), ::HIR::GenericPath(path_Place, ::HIR::PathParams(data_ty.clone())), "pointer");
                 m_builder.moved_lvalue(node.span(), place_refmut);

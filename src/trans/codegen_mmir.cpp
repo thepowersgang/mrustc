@@ -221,6 +221,16 @@ namespace
         TU_ARM(x.e, LValue, e)
             os << fmt(e);
             break;
+        TU_ARM(x.e, Borrow, e) {
+            os << "&";
+            switch(e.type)
+            {
+            case ::HIR::BorrowType::Shared: break;
+            case ::HIR::BorrowType::Unique: os << "mut "; break;
+            case ::HIR::BorrowType::Owned:  os << "move "; break;
+            }
+            os << fmt(e.val);
+            } break;
         TU_ARM(x.e, Constant, e)
             os << fmt(e);
             break;

@@ -397,10 +397,40 @@ namespace HIR {
             }
             throw "";
             };
+        auto do_borrow = [&](::HIR::BorrowType bt, const ::MIR::LValue& val) -> :: HIR::Literal {
+            if( bt != ::HIR::BorrowType::Shared ) {
+                MIR_BUG(state, "Only shared borrows are allowed in constants");
+            }
+
+            if( !val.m_wrappers.empty() && val.m_wrappers.back().is_Deref() ) {
+                //if( p->val->is_Deref() )
+                //    MIR_TODO(state, "Undo nested deref coercion - " << *p->val);
+                return local_state.read_lval(val.clone_unwrapped());
+            }
+            else if( val.m_wrappers.empty() && val.m_root.is_Static() ){
+                // Borrow of a static, emit BorrowPath with the same path
+                return ::HIR::Literal::make_BorrowPath( val.m_root.as_Static().clone() );
+            }
+            else {
+                auto inner_val = local_state.read_lval(val);
+
+                ::HIR::TypeRef  inner_ty;
+                const auto& inner_ty_r = state.get_lvalue_type(inner_ty, val);
+                if( &inner_ty_r != &inner_ty )
+                    inner_ty = inner_ty_r.clone();
+
+                // Create new static containing borrowed data
+                // NOTE: Doesn't use BorrowData
+                auto item_path = this->nvs.new_static( mv$(inner_ty), mv$(inner_val) );
+                return ::HIR::Literal::make_BorrowPath( mv$(item_path) );
+            }
+            };
         auto read_param = [&](const ::MIR::Param& p) -> ::HIR::Literal {
             TU_MATCH_HDRA( (p), { )
             TU_ARMA(LValue, e)
                 return local_state.read_lval(e);
+            TU_ARMA(Borrow, e)
+                return do_borrow(e.type, e.val);
             TU_ARMA(Constant, e)
                 return const_to_lit(e);
             }
@@ -443,32 +473,7 @@ namespace HIR {
                     val = ::HIR::Literal::make_List( mv$(vals) );
                     }
                 TU_ARMA(Borrow, e) {
-                    if( e.type != ::HIR::BorrowType::Shared ) {
-                        MIR_BUG(state, "Only shared borrows are allowed in constants");
-                    }
-
-                    if( !e.val.m_wrappers.empty() && e.val.m_wrappers.back().is_Deref() ) {
-                        //if( p->val->is_Deref() )
-                        //    MIR_TODO(state, "Undo nested deref coercion - " << *p->val);
-                        val = local_state.read_lval(e.val.clone_unwrapped());
-                    }
-                    else if( e.val.m_wrappers.empty() && e.val.m_root.is_Static() ){
-                        // Borrow of a static, emit BorrowPath with the same path
-                        val = ::HIR::Literal::make_BorrowPath( e.val.m_root.as_Static().clone() );
-                    }
-                    else {
-                        auto inner_val = local_state.read_lval(e.val);
-
-                        ::HIR::TypeRef  inner_ty;
-                        const auto& inner_ty_r = state.get_lvalue_type(inner_ty, e.val);
-                        if( &inner_ty_r != &inner_ty )
-                            inner_ty = inner_ty_r.clone();
-
-                        // Create new static containing borrowed data
-                        // NOTE: Doesn't use BorrowData
-                        auto item_path = this->nvs.new_static( mv$(inner_ty), mv$(inner_val) );
-                        val = ::HIR::Literal::make_BorrowPath( mv$(item_path) );
-                    }
+                    val = do_borrow(e.type, e.val);
                     }
                 TU_ARMA(Cast, e) {
                     auto inval = local_state.read_lval(e.val);

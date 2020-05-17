@@ -285,6 +285,9 @@ namespace visit {
             TU_ARMA(LValue, e) {
                 return visit_lvalue(e, u);
             }
+            TU_ARMA(Borrow, e) {
+                return visit_lvalue(e.val, ValUsage::Borrow);
+            }
             TU_ARMA(Constant, e) {
                 return visit_const(e);
             }

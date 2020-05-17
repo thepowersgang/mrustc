@@ -858,6 +858,9 @@ namespace
         TU_ARMA(LValue, lv) {
             return mv$(lv);
             }
+        TU_ARMA(Borrow, e) {
+            return ::MIR::RValue::make_Borrow({ e.type, mv$(e.val) });
+            }
         TU_ARMA(Constant, c) {
             return mv$(c);
             }
@@ -1428,7 +1431,13 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
                 //    return this->te.args.at(ae->idx).clone();
                 return clone_lval(se);
                 ),
-            (Constant, return clone_constant(se); )
+            (Borrow,
+                // TODO: Region IDs
+                return ::MIR::Param::make_Borrow({ se.type, this->clone_lval(se.val) });
+                ),
+            (Constant,
+                return clone_constant(se);
+                )
             )
             throw "";
         }
@@ -1449,7 +1458,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
                 ),
             (Borrow,
                 // TODO: Region IDs
-                return ::MIR::RValue::make_Borrow({ se.region, se.type, this->clone_lval(se.val) });
+                return ::MIR::RValue::make_Borrow({ se.type, this->clone_lval(se.val) });
                 ),
             (Cast,
                 return ::MIR::RValue::make_Cast({ this->clone_lval(se.val), this->monomorph(se.type) });
