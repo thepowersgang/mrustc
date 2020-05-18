@@ -5282,7 +5282,6 @@ void Context::equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const
 {
     for(const auto& a : this->link_assoc)
     {
-        DEBUG(a);
         if( a.left_ty != l )
             continue ;
         if( a.trait != trait )
