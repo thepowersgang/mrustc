@@ -120,6 +120,8 @@ namespace HIR {
     PathParams  rv;
     for( const auto& t : m_types )
         rv.m_types.push_back( t.clone() );
+    for( const auto& t : m_values )
+        rv.m_values.push_back( t.clone() );
     return rv;
 }
 bool ::HIR::PathParams::operator==(const ::HIR::PathParams& x) const
@@ -129,6 +131,13 @@ bool ::HIR::PathParams::operator==(const ::HIR::PathParams& x) const
     for( unsigned int i = 0; i < m_types.size(); i ++ )
         if( !(m_types[i] == x.m_types[i]) )
             return false;
+
+    if( m_values.size() != x.m_values.size() )
+        return false;
+    for( unsigned int i = 0; i < m_values.size(); i ++ )
+        if( !(m_values[i] == x.m_values[i]) )
+            return false;
+
     return true;
 }
 

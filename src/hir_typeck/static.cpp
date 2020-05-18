@@ -609,7 +609,7 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
             if( impl_params.m_types[g.binding] == HIR::TypeRef() )
             {
                 impl_params.m_types[g.binding] = ty.clone();
-                DEBUG("[find_impl__check_crate_raw:GetParams] Set impl param " << g << " to " << ty);
+                DEBUG("[find_impl__check_crate_raw:GetParams] Set impl ty param " << g << " to " << ty);
                 return ::HIR::Compare::Equal;
             }
             else {
@@ -621,6 +621,7 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
             if( impl_params.m_values[g.binding].is_Invalid() )
             {
                 impl_params.m_values[g.binding] = sz.clone();
+                DEBUG("[find_impl__check_crate_raw:GetParams] Set impl val param " << g << " to " << sz);
                 return ::HIR::Compare::Equal;
             }
             else
@@ -745,7 +746,14 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
             return placeholders.at(ge.binding).clone();
         }
         ::HIR::Literal get_value(const Span& sp, const ::HIR::GenericRef& val) const override {
-            return HIR::Literal(val);
+            ASSERT_BUG(sp, val.binding < 256, "Generic value binding in " << val << " out of range (>=256)");
+            ASSERT_BUG(sp, val.binding < impl_params.m_values.size(), "Generic value binding in " << val << " out of range (>= " << impl_params.m_values.size() << ")");
+            if( !impl_params.m_values.at(val.binding).is_Invalid() ) {
+                return impl_params.m_values.at(val.binding).clone();
+            }
+            //ASSERT_BUG(sp, placeholders.m_values.size() == impl_params.m_values.size(), "Placeholder size mismatch: " << placeholders.m_values.size() << " != " << impl_params.m_values.size());
+            //return placeholders.m_values.at(val.binding).clone();
+            TODO(sp, "Value placeholders");
         }
     };
     Matcher matcher { sp, impl_params, placeholder_name, base_impl_placeholder_idx, placeholders };
