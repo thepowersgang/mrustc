@@ -1390,6 +1390,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
     // Magic index and unsize impls for Arrays
     // NOTE: The index impl for [T] is in libcore.
     TU_ARMA(Array, e) {
+#if 0
         if( trait == trait_index || trait == trait_indexmut ) {
             if( params.m_types.size() != 1 )
                 BUG(sp, "Index* traits require a single argument");
@@ -1403,6 +1404,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             cmp = ty_usize.compare_with_placeholders(sp, index_ty, this->m_ivars.callback_resolve_infer());
             if( cmp != ::HIR::Compare::Unequal )
             {
+                DEBUG("- Magic impl of Index<usize> for " << type);
                 ::HIR::PathParams   pp;
                 pp.m_types.push_back( mv$(ty_usize) );
                 ::std::map<RcString, ::HIR::TypeRef>  types;
@@ -1424,8 +1426,9 @@ bool TraitResolution::find_trait_impls(const Span& sp,
                 return callback( ImplRef(type.clone(), mv$(pp), mv$(types)), cmp );
             )
             */
-            return false;
+            //return false;
         }
+#endif
         }
     // Trait objects automatically implement their own traits
     // - IF object safe (TODO)
@@ -2607,6 +2610,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 DEBUG("[find_trait_impls_crate] - Params mismatch");
                 return false;
             }
+            DEBUG("[find_trait_impls_crate] - Found with " << impl_params);
 
             return callback(ImplRef(mv$(impl_params), trait, impl), match);
         }
@@ -2845,11 +2849,21 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         {
             if( placeholders.m_types.size() == 0 )
                 placeholders.m_types.resize(out_impl_params.m_types.size());
-            // TODO: Tag placeholders to indicate this frame
             placeholders.m_types[i] = ::HIR::TypeRef(placeholder_name, 2*256 + i);
-            DEBUG("Create placeholder for " << i << " = " << placeholders.m_types[i]);
+            DEBUG("Create placeholder type for " << i << " = " << placeholders.m_types[i]);
         }
     }
+    for(unsigned int i = 0; i < out_impl_params.m_values.size(); i ++ )
+    {
+        if( out_impl_params.m_values[i].is_Invalid() )
+        {
+            if( placeholders.m_values.size() == 0 )
+                placeholders.m_values.resize(out_impl_params.m_values.size());
+            placeholders.m_values[i] = ::HIR::GenericRef(placeholder_name, 2*256 + i);
+            DEBUG("Create placeholder value for " << i << " = " << placeholders.m_values[i]);
+        }
+    }
+    DEBUG("Placeholders: " << placeholders);
     auto cb_infer = [&](const auto& ty)->const ::HIR::TypeRef& {
         if( ty.data().is_Infer() )
             return this->m_ivars.get_type(ty);
@@ -2949,12 +2963,17 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             if( impl_params.m_types.at(ge.binding) != HIR::TypeRef() ) {
                 return impl_params.m_types.at(ge.binding).clone();
             }
+            ASSERT_BUG(sp, placeholders.m_types.size() == impl_params.m_types.size(), "Placeholder size mismatch: " << placeholders.m_types.size() << " != " << impl_params.m_types.size());
             return placeholders.m_types.at(ge.binding).clone();
         }
         ::HIR::Literal get_value(const Span& sp, const ::HIR::GenericRef& val) const override {
             ASSERT_BUG(sp, val.binding < 256, "Generic value binding in " << val << " out of range (>=256)");
             ASSERT_BUG(sp, val.binding < impl_params.m_values.size(), "Generic value binding in " << val << " out of range (>= " << impl_params.m_values.size() << ")");
-            return impl_params.m_values.at(val.binding).clone();
+            if( !impl_params.m_values.at(val.binding).is_Invalid() ) {
+                return impl_params.m_values.at(val.binding).clone();
+            }
+            ASSERT_BUG(sp, placeholders.m_values.size() == impl_params.m_values.size(), "Placeholder size mismatch: " << placeholders.m_values.size() << " != " << impl_params.m_values.size());
+            return placeholders.m_values.at(val.binding).clone();
         }
     };
     Matcher matcher { sp, out_impl_params, placeholder_name, placeholders };
@@ -3071,7 +3090,9 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                     if( num_fuzzy )
                     {
                         fuzzy_ph = ::std::move(placeholders);
+                        // TODO: Should this do some form of reset?
                         placeholders.m_types.resize(fuzzy_ph.m_types.size());
+                        placeholders.m_values.resize(fuzzy_ph.m_values.size());
                     }
                 }
                 if( cmp != ::HIR::Compare::Equal )
@@ -3781,6 +3802,10 @@ const ::HIR::TypeRef* TraitResolution::autoderef(const Span& sp, const ::HIR::Ty
                     ::HIR::Path( ty.clone(), this->m_crate.get_lang_item_path(sp, "deref"), "Target" ),
                     ::HIR::TypePathBinding::make_Opaque({})
                     );
+            }
+            else
+            {
+                this->expand_associated_types_inplace(sp, tmp_type, {});
             }
             DEBUG("Deref " << ty << " into " << tmp_type);
             return true;
