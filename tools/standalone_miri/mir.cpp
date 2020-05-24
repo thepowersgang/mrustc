@@ -71,7 +71,7 @@ namespace MIR {
             os << *e.p;
             ),
         (Generic,
-            os << e.name << "/*" << e.binding << "*/";
+            os << e;
             ),
         (ItemAddr,
             os << "addr " << *e;

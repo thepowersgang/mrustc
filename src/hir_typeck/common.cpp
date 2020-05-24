@@ -254,6 +254,20 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
     rv.m_types.reserve( tpl.m_types.size() );
     for( const auto& ty : tpl.m_types)
         rv.m_types.push_back( this->monomorph_type(sp, ty, allow_infer) );
+
+    rv.m_values.reserve( tpl.m_values.size() );
+    for( const auto& val : tpl.m_values)
+    {
+        if(const auto* ge = val.opt_Generic())
+        {
+            rv.m_values.push_back( this->get_value(sp, *ge) );
+        }
+        else
+        {
+            rv.m_values.push_back( val.clone() );
+        }
+    }
+
     return rv;
 }
 ::HIR::GenericPath Monomorphiser::monomorph_genericpath(const Span& sp, const ::HIR::GenericPath& tpl, bool allow_infer) const
@@ -464,7 +478,33 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
 }
 ::HIR::Literal MonomorphiserPP::get_value(const Span& sp, const ::HIR::GenericRef& val) const /*override*/
 {
-    TODO(sp, "MonomorphiserPP::get_value");
+    switch(val.group())
+    {
+    case 0:
+        if( const auto* p = this->get_impl_params() )
+        {
+            ASSERT_BUG(sp, val.idx() < p->m_values.size(), "Value param " << val << " out of range for (max " << p->m_values.size() << ")");
+            return p->m_values[val.idx()].clone();
+        }
+        else
+        {
+            BUG(sp, "Impl parameters were not expected (got " << val << ")");
+        }
+        break;
+    case 1:
+        if( const auto* p = this->get_method_params() )
+        {
+            ASSERT_BUG(sp, val.idx() < p->m_values.size(), "Value param " << val << " out of range for (max " << p->m_values.size() << ")");
+            return p->m_values[val.idx()].clone();
+        }
+        else
+        {
+            BUG(sp, "Method parameters were not expected (got " << val << ")");
+        }
+        break;
+    default:
+        BUG(sp, "Unexpected value param " << val);
+    }
 }
 
 //t_cb_generic MonomorphState::get_cb(const Span& sp) const

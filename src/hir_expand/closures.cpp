@@ -627,7 +627,6 @@ namespace {
             // 1. Construct closure type (saving path/index in the node)
             ::HIR::GenericParams    params;
             ::HIR::PathParams   constructor_path_params;
-            ::HIR::PathParams   impl_path_params;
             // - 0xFFFF "Self" -> 0 "Super" (if present)
             if( m_resolve.has_self() )
             {
@@ -636,34 +635,57 @@ namespace {
                 params.m_types.push_back( ::HIR::TypeParamDef { "Super", {}, false } );  // TODO: Determine if parent Self is Sized
             }
             // - Top-level params come first
-            unsigned ofs_impl = params.m_types.size();
+            unsigned ofs_impl_t = params.m_types.size();
             for(const auto& ty_def : m_resolve.impl_generics().m_types) {
-                constructor_path_params.m_types.push_back( ::HIR::TypeRef( ty_def.m_name, 0*256 + params.m_types.size() - ofs_impl ) );
+                unsigned i = &ty_def - &m_resolve.impl_generics().m_types.front();
+                constructor_path_params.m_types.push_back( ::HIR::TypeRef( ty_def.m_name, 0*256 + i ) );
                 params.m_types.push_back( ::HIR::TypeParamDef { ty_def.m_name, {}, ty_def.m_is_sized } );
+            }
+            unsigned ofs_impl_v = params.m_values.size();
+            for(const auto& v_def : m_resolve.impl_generics().m_values) {
+                unsigned i = &v_def - &m_resolve.impl_generics().m_values.front();
+                constructor_path_params.m_values.push_back( ::HIR::GenericRef( v_def.m_name, 0*256 + i ) );
+                params.m_values.push_back( ::HIR::ValueParamDef { v_def.m_name, v_def.m_type.clone() } );
             }
             // - Item-level params come second
-            unsigned ofs_item = params.m_types.size();
+            unsigned ofs_item_t = params.m_types.size();
             for(const auto& ty_def : m_resolve.item_generics().m_types) {
-                constructor_path_params.m_types.push_back( ::HIR::TypeRef( ty_def.m_name, 1*256 + params.m_types.size() - ofs_item ) );
+                unsigned i = &ty_def - &m_resolve.item_generics().m_types.front();
+                constructor_path_params.m_types.push_back( ::HIR::TypeRef( ty_def.m_name, 1*256 + i ) );
                 params.m_types.push_back( ::HIR::TypeParamDef { ty_def.m_name, {}, ty_def.m_is_sized } );
             }
-            // Create placeholders for `monomorph_cb` to use
-            ::std::vector<::HIR::TypeRef>   params_placeholders;
+            unsigned ofs_item_v = params.m_values.size();
+            for(const auto& v_def : m_resolve.item_generics().m_values) {
+                unsigned i = &v_def - &m_resolve.item_generics().m_values.front();
+                constructor_path_params.m_values.push_back( ::HIR::GenericRef( v_def.m_name, 1*256 + i ) );
+                params.m_values.push_back( ::HIR::ValueParamDef { v_def.m_name, v_def.m_type.clone() } );
+            }
+            // Create the params used for the type on the impl block
+            ::HIR::PathParams   impl_path_params;
             for(unsigned int i = 0; i < params.m_types.size(); i ++) {
-                params_placeholders.push_back( ::HIR::TypeRef(params.m_types[i].m_name, i) );
                 impl_path_params.m_types.push_back( ::HIR::TypeRef(params.m_types[i].m_name, i) );
             }
-            DEBUG("params_placeholders = " << params_placeholders << ", ofs_item = " << ofs_item << ", ofs_impl = " << ofs_impl);
+            for(unsigned int i = 0; i < params.m_values.size(); i ++) {
+                impl_path_params.m_values.push_back( ::HIR::GenericRef(params.m_values[i].m_name, i) );
+            }
+            DEBUG("impl_path_params = " << impl_path_params << ", ofs_*_t=" << ofs_item_t << "," << ofs_impl_t << " ofs_*_v=" << ofs_item_v << "," << ofs_impl_v);
 
             struct Monomorph: public Monomorphiser
             {
                 const ::HIR::GenericParams& params;
-                unsigned ofs_impl;
-                unsigned ofs_item;
-                Monomorph(const ::HIR::GenericParams& params, unsigned ofs_impl, unsigned ofs_item)
+                unsigned ofs_impl_t;
+                unsigned ofs_item_t;
+                unsigned ofs_impl_v;
+                unsigned ofs_item_v;
+                Monomorph(const ::HIR::GenericParams& params,
+                    unsigned ofs_impl_t, unsigned ofs_item_t,
+                    unsigned ofs_impl_v, unsigned ofs_item_v
+                    )
                     : params(params)
-                    , ofs_impl(ofs_impl)
-                    , ofs_item(ofs_item)
+                    , ofs_impl_t(ofs_impl_t)
+                    , ofs_item_t(ofs_item_t)
+                    , ofs_impl_v(ofs_impl_v)
+                    , ofs_item_v(ofs_item_v)
                 {
                 }
                 ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& ge) const override
@@ -673,10 +695,10 @@ namespace {
                         i = 0;
                     }
                     else if( ge.binding < 256 ) {
-                        i = ofs_impl + ge.binding;
+                        i = ofs_impl_t + ge.binding;
                     }
                     else if( ge.binding < 2*256 ) {
-                        i = ofs_item + (ge.binding - 256);
+                        i = ofs_item_t + (ge.binding - 256);
                     }
                     else {
                         BUG(sp, "Generic type " << ge << " unknown");
@@ -685,9 +707,23 @@ namespace {
                     return ::HIR::TypeRef(params.m_types[i].m_name, i);
                 }
                 ::HIR::Literal get_value(const Span& sp, const ::HIR::GenericRef& ge) const {
-                    TODO(sp, ge);
+                    unsigned i;
+                    if( ge.binding == 0xFFFF ) {
+                        BUG(sp, "Binding 0xFFFF isn't valid for values");
+                    }
+                    else if( ge.binding < 256 ) {
+                        i = ofs_impl_v + ge.binding;
+                    }
+                    else if( ge.binding < 2*256 ) {
+                        i = ofs_item_v + (ge.binding - 256);
+                    }
+                    else {
+                        BUG(sp, "Generic value " << ge << " unknown");
+                    }
+                    ASSERT_BUG(sp, i < params.m_values.size(), "Item generic value binding OOR - " << ge << " (" << i << " !< " << params.m_values.size() << ")");
+                    return ::HIR::GenericRef(params.m_values[i].m_name, i);
                 }
-            } monomorph_cb(params, ofs_impl, ofs_item);
+            } monomorph_cb(params, ofs_impl_t, ofs_item_t, ofs_impl_v, ofs_impl_v);
             auto monomorph = [&](const auto& ty){ return monomorph_cb.monomorph_type(sp, ty); };
             auto cb_replace = [&](const auto& tpl, auto& rv)->bool {
                 if( tpl.data().is_Infer() ) {

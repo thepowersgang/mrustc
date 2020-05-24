@@ -507,31 +507,10 @@ bool ::HIR::TypeRef::contains_generics() const
 namespace {
     ::HIR::Compare match_generics_pp(const Span& sp, const ::HIR::PathParams& t, const ::HIR::PathParams& x, ::HIR::t_cb_resolve_type resolve_placeholder, ::HIR::MatchGenerics& callback)
     {
-        if( t.m_types.size() != x.m_types.size() ) {
-            return ::HIR::Compare::Unequal;
-        }
-
-        auto rv = ::HIR::Compare::Equal;
-        for(unsigned int i = 0; i < t.m_types.size(); i ++ )
-        {
-            rv &= t.m_types[i].match_test_generics_fuzz( sp, x.m_types[i], resolve_placeholder, callback );
-            if( rv == ::HIR::Compare::Unequal )
-                return rv;
-        }
-
-        return rv;
+        return t.match_test_generics_fuzz(sp, x, resolve_placeholder, callback);
     }
 }
 
-#if 0
-void ::HIR::TypeRef::match_generics(const Span& sp, const ::HIR::TypeRef& x_in, t_cb_resolve_type resolve_placeholder, ::HIR::MatchGenerics& callback) const {
-    if( match_test_generics(sp, x_in, resolve_placeholder, callback) ) {
-    }
-    else {
-        BUG(sp, "TypeRef::match_generics with mismatched parameters - " << *this << " and " << x_in);
-    }
-}
-#endif
 bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x_in, t_cb_resolve_type resolve_placeholder, ::HIR::MatchGenerics& callback) const
 {
     return this->match_test_generics_fuzz(sp, x_in, resolve_placeholder, callback) == ::HIR::Compare::Equal;

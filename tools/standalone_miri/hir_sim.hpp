@@ -91,6 +91,15 @@ namespace HIR {
     {
         RawType raw_type;
     };
+
+    struct GenericRef
+    {
+        // Should never be needed!
+        friend ::std::ostream& operator<<(::std::ostream& os, const GenericRef& x) {
+            return os << "GenericRef";
+        }
+    };
+
     /// Definition of a type
     struct TypeRef
     {

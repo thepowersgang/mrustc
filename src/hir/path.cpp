@@ -270,6 +270,7 @@ bool ::HIR::TraitPath::operator==(const ::HIR::TraitPath& x) const
 {
     using ::HIR::Compare;
     auto rv = Compare::Equal;
+    TRACE_FUNCTION_F(*this << " with " << x);
 
     if( this->m_types.size() != x.m_types.size() ) {
         return Compare::Unequal;
@@ -280,6 +281,24 @@ bool ::HIR::TraitPath::operator==(const ::HIR::TraitPath& x) const
         if( rv == Compare::Unequal )
             return Compare::Unequal;
     }
+
+    if( this->m_values.size() != x.m_values.size() ) {
+        return Compare::Unequal;
+    }
+    for( unsigned int i = 0; i < x.m_values.size(); i ++ )
+    {
+        if( const auto* ge = this->m_values[i].opt_Generic() ) {
+            auto rv = match.match_val(*ge, x.m_values[i]);
+            if(rv == Compare::Unequal)
+                return Compare::Unequal;
+        }
+        else {
+            if( this->m_values[i] != x.m_values[i] ) {
+                return Compare::Unequal;
+            }
+        }
+    }
+
     return rv;
 }
 ::HIR::Compare HIR::GenericPath::compare_with_placeholders(const Span& sp, const ::HIR::GenericPath& x, ::HIR::t_cb_resolve_type resolve_placeholder) const

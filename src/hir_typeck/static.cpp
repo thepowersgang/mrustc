@@ -626,7 +626,13 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
             }
             else
             {
-                TODO(Span(), "GetParams::match_val " << g << "(" << impl_params.m_values[g.binding] << ") with " << sz);
+                if( impl_params.m_values[g.binding] != sz ) {
+                    return HIR::Compare::Unequal;
+                }
+                else {
+                    return HIR::Compare::Equal;
+                }
+                //TODO(Span(), "GetParams::match_val " << g << " : " << impl_params.m_values[g.binding] << " ?== " << sz);
             }
         }
     };
@@ -1574,7 +1580,10 @@ bool StaticTraitResolve::type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) 
         return e != ::HIR::CoreType::Str;
         }
     TU_ARMA(Array, e) {
-        return e.size.as_Known() == 0 || type_is_copy(sp, e.inner);
+        // TODO: Why is `[T; 0]` treated as `Copy`?
+        if( TU_TEST1(e.size, Known, == 0) )
+            return true;
+        return type_is_copy(sp, e.inner);
         }
     TU_ARMA(Slice, e) {
         // [T] isn't Sized, so isn't Copy ether

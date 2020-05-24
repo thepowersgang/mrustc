@@ -1438,7 +1438,17 @@ namespace {
                     if( ty_in.data().is_Array() )
                     {
                         const auto& in_array = ty_in.data().as_Array();
-                        auto size_val = ::MIR::Constant::make_Uint({ in_array.size.as_Known(), ::HIR::CoreType::Usize });
+                        ::MIR::Constant size_val;
+                        TU_MATCH_HDRA( (in_array.size), {)
+                        default:
+                            BUG(node.span(), "Unsize Array with unknown size " << ty_in);
+                        TU_ARMA(Generic, se) {
+                            size_val = se;
+                            }
+                        TU_ARMA(Known, se) {
+                            size_val = ::MIR::Constant::make_Uint({ se, ::HIR::CoreType::Usize });
+                            }
+                        }
                         m_builder.set_result( node.span(), ::MIR::RValue::make_MakeDst({ mv$(ptr_lval), mv$(size_val) }) );
                     }
                     else if( ty_in.data().is_Generic() || (ty_in.data().is_Path() && ty_in.data().as_Path().binding.is_Opaque()) )
@@ -1487,7 +1497,13 @@ namespace {
             default:
                 BUG(node.span(), "Indexing unsupported type " << ty_val);
             TU_ARMA(Array, e) {
-                limit_val = ::MIR::Constant::make_Uint({ e.size.as_Known(), ::HIR::CoreType::Usize });
+                TU_MATCH_HDRA( (e.size), {)
+                default:
+                    BUG(node.span(), "Indexing with unknown size" << ty_val);
+                TU_ARMA(Known, se) {
+                    limit_val = ::MIR::Constant::make_Uint({ se, ::HIR::CoreType::Usize });
+                    }
+                }
                 }
             TU_ARMA(Slice, e) {
                 limit_val = ::MIR::RValue::make_DstMeta({ m_builder.get_ptr_to_dst(node.m_value->span(), value) });
