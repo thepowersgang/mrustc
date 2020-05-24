@@ -5645,11 +5645,11 @@ namespace {
     };
 
     // TODO: Add a (two?) callback(s) that handle type equalities (and possible equalities) so this function doesn't have to mutate the context
-    CoerceResult check_unsize_tys(Context& context_mut_r, const Span& sp, const ::HIR::TypeRef& dst_raw, const ::HIR::TypeRef& src_raw, ::HIR::ExprNodeP* node_ptr_ptr=nullptr, bool allow_mutate=true)
+    CoerceResult check_unsize_tys(
+        const Context& context, const Span& sp, const ::HIR::TypeRef& dst_raw, const ::HIR::TypeRef& src_raw,
+        Context* context_mut, ::HIR::ExprNodeP* node_ptr_ptr=nullptr
+        )
     {
-        Context* context_mut = (allow_mutate ? &context_mut_r : nullptr);
-        const Context& context = context_mut_r;
-
         const auto& dst = context.m_ivars.get_type(dst_raw);
         const auto& src = context.m_ivars.get_type(src_raw);
         TRACE_FUNCTION_F("dst=" << dst << ", src=" << src);
@@ -5792,7 +5792,7 @@ namespace {
 
         // Deref coercions
         // - If right can be dereferenced to left
-        if(node_ptr_ptr || !allow_mutate)
+        if(node_ptr_ptr)
         {
             DEBUG("-- Deref coercions");
             ::HIR::TypeRef  tmp_ty;
@@ -6088,7 +6088,7 @@ namespace {
                             {
                                 const auto& isrc = se.path.m_data.as_Generic().m_params.m_types.at(sm.unsized_param);
                                 const auto& idst = de.path.m_data.as_Generic().m_params.m_types.at(sm.unsized_param);
-                                return check_unsize_tys(context_mut_r, sp, idst, isrc, nullptr, allow_mutate);
+                                return check_unsize_tys(context, sp, idst, isrc, context_mut, nullptr);
                             }
                             else
                             {
@@ -6124,7 +6124,10 @@ namespace {
     // - No other path can implement CoerceUnsized
     // - Pointers do unsizing (and maybe casting)
     // - All other types equate
-    CoerceResult check_coerce_tys(Context& context, const Span& sp, const ::HIR::TypeRef& dst, const ::HIR::TypeRef& src, ::HIR::ExprNodeP* node_ptr_ptr=nullptr)
+    CoerceResult check_coerce_tys(
+        const Context& context, const Span& sp, const ::HIR::TypeRef& dst, const ::HIR::TypeRef& src,
+        Context* context_mut=nullptr, ::HIR::ExprNodeP* node_ptr_ptr=nullptr
+        )
     {
         TRACE_FUNCTION_F(dst << " := " << src);
         // If the types are equal, then return equality
@@ -6143,8 +6146,11 @@ namespace {
         // If both sides are `_`, then can't know about coerce yet
         if( dst.data().is_Infer() && src.data().is_Infer() ) {
             // Add possibilities both ways
-            context.possible_equate_type_coerce_to(src.data().as_Infer().index, dst);
-            context.possible_equate_type_coerce_from(dst.data().as_Infer().index, src);
+            if(context_mut)
+            {
+                context_mut->possible_equate_type_coerce_to(src.data().as_Infer().index, dst);
+                context_mut->possible_equate_type_coerce_from(dst.data().as_Infer().index, src);
+            }
             return CoerceResult::Unknown;
         }
 
@@ -6220,23 +6226,29 @@ namespace {
         // - Recurse/unsize inner value
         if( src.data().is_Infer() && TU_TEST2(dst.data(), Path, .binding, Struct, ->m_struct_markings.coerce_unsized != ::HIR::StructMarkings::Coerce::None) )
         {
+            if(context_mut)
+            {
 #if 0
-            auto new_src = H::make_pruned(context, dst);
-            context.equate_types(sp, src, new_src);
+                auto new_src = H::make_pruned(context, dst);
+                context_mut->equate_types(sp, src, new_src);
 #else
-            context.possible_equate_type_coerce_to(src.data().as_Infer().index, dst);
+                context_mut->possible_equate_type_coerce_to(src.data().as_Infer().index, dst);
+            }
 #endif
             // TODO: Avoid needless loop return
             return CoerceResult::Unknown;
         }
         if( dst.data().is_Infer() && TU_TEST2(src.data(), Path, .binding, Struct, ->m_struct_markings.coerce_unsized != ::HIR::StructMarkings::Coerce::None) )
         {
+            if(context_mut)
+            {
 #if 0
-            auto new_dst = H::make_pruned(context, src);
-            context.equate_types(sp, dst, new_dst);
+                auto new_dst = H::make_pruned(context, src);
+                context_mut->equate_types(sp, dst, new_dst);
 #else
-            context.possible_equate_type_coerce_from(dst.data().as_Infer().index, src);
+                context_mut->possible_equate_type_coerce_from(dst.data().as_Infer().index, src);
 #endif
+            }
             // TODO: Avoid needless loop return
             return CoerceResult::Unknown;
         }
@@ -6262,10 +6274,10 @@ namespace {
             case ::HIR::StructMarkings::Coerce::Passthrough:
                 DEBUG("Passthough CoerceUnsized");
                 // TODO: Force emitting `_Unsize` instead of anything else
-                return check_coerce_tys(context, sp, idst, isrc, nullptr);
+                return check_coerce_tys(context, sp, idst, isrc, context_mut, nullptr);
             case ::HIR::StructMarkings::Coerce::Pointer:
                 DEBUG("Pointer CoerceUnsized");
-                return check_unsize_tys(context, sp, idst, isrc, nullptr);
+                return check_unsize_tys(context, sp, idst, isrc, context_mut, nullptr);
             }
         }
 
@@ -6285,7 +6297,10 @@ namespace {
             // If the other side isn't a pointer, equate
             if( dst.data().is_Pointer() || dst.data().is_Borrow() )
             {
-                context.possible_equate_type_coerce_to(se.index, dst);
+                if(context_mut)
+                {
+                    context_mut->possible_equate_type_coerce_to(se.index, dst);
+                }
                 return CoerceResult::Unknown;
             }
             else
@@ -6298,7 +6313,10 @@ namespace {
             const auto& se = *sep;
             if( const auto* dep = dst.data().opt_Infer() )
             {
-                context.possible_equate_type_coerce_from(dep->index, src);
+                if(context_mut)
+                {
+                    context_mut->possible_equate_type_coerce_from(dep->index, src);
+                }
                 return CoerceResult::Unknown;
             }
             if( ! dst.data().is_Pointer() )
@@ -6317,16 +6335,22 @@ namespace {
             // If using `*mut T` where `*const T` is expected - add cast
             if( dep->type == ::HIR::BorrowType::Shared && se.type == ::HIR::BorrowType::Unique )
             {
-                context.equate_types(sp, dep->inner, se.inner);
+                if(context_mut)
+                {
+                    context_mut->equate_types(sp, dep->inner, se.inner);
+                }
 
                 if( node_ptr_ptr )
                 {
-                    auto& node_ptr = *node_ptr_ptr;
-                    // Add cast down
-                    auto span = node_ptr->span();
-                    //node_ptr->m_res_type = src.clone();
-                    node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Cast( mv$(span), mv$(node_ptr), dst.clone() ));
-                    node_ptr->m_res_type = dst.clone();
+                    if(context_mut)
+                    {
+                        auto& node_ptr = *node_ptr_ptr;
+                        // Add cast down
+                        auto span = node_ptr->span();
+                        //node_ptr->m_res_type = src.clone();
+                        node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Cast( mv$(span), mv$(node_ptr), dst.clone() ));
+                        node_ptr->m_res_type = dst.clone();
+                    }
 
                     return CoerceResult::Custom;
                 }
@@ -6346,7 +6370,10 @@ namespace {
             const auto& se = *sep;
             if( const auto* dep = dst.data().opt_Infer() )
             {
-                context.possible_equate_type_coerce_from(dep->index, src);
+                if(context_mut)
+                {
+                    context_mut->possible_equate_type_coerce_from(dep->index, src);
+                }
                 return CoerceResult::Unknown;
             }
             else if( const auto* dep = dst.data().opt_Pointer() )
@@ -6361,27 +6388,33 @@ namespace {
                 }
 
                 // Add downcast
-                if( node_ptr_ptr )
+                switch( check_unsize_tys(context, sp, dep->inner, se.inner, context_mut, node_ptr_ptr) )
                 {
-                    auto& node_ptr = *node_ptr_ptr;
-
-                    switch( check_unsize_tys(context, sp, dep->inner, se.inner, node_ptr_ptr) )
+                case CoerceResult::Unknown:
+                    return CoerceResult::Unknown;
+                case CoerceResult::Custom:
+                    return CoerceResult::Custom;
+                case CoerceResult::Equality:
+                    if(node_ptr_ptr && context_mut)
                     {
-                    case CoerceResult::Unknown:
-                        return CoerceResult::Unknown;
-                    case CoerceResult::Custom:
-                        return CoerceResult::Custom;
-                    case CoerceResult::Equality:
-                        DEBUG("- NEWNODE _Cast " << &*node_ptr << " -> " << dst);
+                        auto& node_ptr = *node_ptr_ptr;
                         {
+                            DEBUG("- NEWNODE _Cast " << &*node_ptr << " -> " << dst);
                             auto span = node_ptr->span();
                             node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Cast( mv$(span), mv$(node_ptr), dst.clone() ));
                             node_ptr->m_res_type = dst.clone();
                         }
+                    }
 
-                        context.equate_types(sp, dep->inner, se.inner);
-                        return CoerceResult::Custom;
-                    case CoerceResult::Unsize:
+                    if(context_mut)
+                    {
+                        context_mut->equate_types(sp, dep->inner, se.inner);
+                    }
+                    return CoerceResult::Custom;
+                case CoerceResult::Unsize:
+                    if(node_ptr_ptr && context_mut)
+                    {
+                        auto& node_ptr = *node_ptr_ptr;
                         auto dst_b = ::HIR::TypeRef::new_borrow(se.type, dep->inner.clone());
                         DEBUG("- NEWNODE _Unsize " << &*node_ptr << " -> " << dst_b);
                         {
@@ -6395,15 +6428,10 @@ namespace {
                             node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Cast( mv$(span), mv$(node_ptr), dst.clone() ));
                             node_ptr->m_res_type = dst.clone();
                         }
-                        return CoerceResult::Custom;
                     }
-                    throw "";
-                }
-                else
-                {
-                    TODO(sp, "Inner coercion of borrow to pointer");
                     return CoerceResult::Custom;
                 }
+                throw "";
             }
             else if( const auto* dep = dst.data().opt_Borrow() )
             {
@@ -6429,33 +6457,42 @@ namespace {
                             ASSERT_BUG( p->span(), context.m_ivars.types_equal(p->m_res_type, src),
                                 "Block and result mismatch - " << context.m_ivars.fmt_type(p->m_res_type) << " != " << context.m_ivars.fmt_type(src)
                                 );
-                            p->m_res_type = dst.clone();
+                            if(context_mut)
+                            {
+                                p->m_res_type = dst.clone();
+                            }
                             npp = &p->m_value_node;
                         }
                         ::HIR::ExprNodeP& node_ptr = *npp;
 
-                        // Add cast down
-                        auto span = node_ptr->span();
-                        // *<inner>
-                        DEBUG("- Deref -> " << inner_ty);
-                        node_ptr = NEWNODE( inner_ty.clone(), span, _Deref,  mv$(node_ptr) );
-                        context.m_ivars.get_type(node_ptr->m_res_type);
-                        // &*<inner>
-                        DEBUG("- Borrow -> " << new_type);
-                        node_ptr = NEWNODE( mv$(new_type) , span, _Borrow,  dst_bt, mv$(node_ptr) );
-                        context.m_ivars.get_type(node_ptr->m_res_type);
+                        if(context_mut)
+                        {
+                            // Add cast down
+                            auto span = node_ptr->span();
+                            // *<inner>
+                            DEBUG("- Deref -> " << inner_ty);
+                            node_ptr = NEWNODE( inner_ty.clone(), span, _Deref,  mv$(node_ptr) );
+                            context.m_ivars.get_type(node_ptr->m_res_type);
+                            // &*<inner>
+                            DEBUG("- Borrow -> " << new_type);
+                            node_ptr = NEWNODE( mv$(new_type) , span, _Borrow,  dst_bt, mv$(node_ptr) );
+                            context.m_ivars.get_type(node_ptr->m_res_type);
 
-                        context.m_ivars.mark_change();
+                            context_mut->m_ivars.mark_change();
+                        }
 
                         // Continue on with coercion (now that node_ptr is updated)
-                        switch( check_unsize_tys(context, sp, dep->inner, se.inner, &node_ptr) )
+                        switch( check_unsize_tys(context, sp, dep->inner, se.inner, context_mut, &node_ptr) )
                         {
                         case CoerceResult::Unknown:
                             // Add new coercion at the new inner point
                             if( &node_ptr != node_ptr_ptr )
                             {
                                 DEBUG("Unknown check_unsize_tys after autoderef - " << dst << " := " << node_ptr->m_res_type);
-                                context.equate_types_coerce(sp, dst, node_ptr);
+                                if(context_mut)
+                                {
+                                    context_mut->equate_types_coerce(sp, dst, node_ptr);
+                                }
                                 return CoerceResult::Custom;
                             }
                             else
@@ -6465,12 +6502,18 @@ namespace {
                         case CoerceResult::Custom:
                             return CoerceResult::Custom;
                         case CoerceResult::Equality:
-                            context.equate_types(sp, dep->inner, se.inner);
+                            if(context_mut)
+                            {
+                                context_mut->equate_types(sp, dep->inner, se.inner);
+                            }
                             return CoerceResult::Custom;
                         case CoerceResult::Unsize:
-                            DEBUG("- NEWNODE _Unsize " << &node_ptr << " " << &*node_ptr << " -> " << dst);
-                            auto span = node_ptr->span();
-                            node_ptr = NEWNODE( dst.clone(), span, _Unsize,  mv$(node_ptr), dst.clone() );
+                            if(context_mut)
+                            {
+                                DEBUG("- NEWNODE _Unsize " << &node_ptr << " " << &*node_ptr << " -> " << dst);
+                                auto span = node_ptr->span();
+                                node_ptr = NEWNODE( dst.clone(), span, _Unsize,  mv$(node_ptr), dst.clone() );
+                            }
                             return CoerceResult::Custom;
                         }
                         throw "";
@@ -6486,12 +6529,14 @@ namespace {
                     // Valid.
                 }
                 else {
-                    ERROR(sp, E0000, "Type mismatch between " << dst << " and " << src << " - Borrow classes differ");
+                    //ERROR(sp, E0000, "Type mismatch between " << dst << " and " << src << " - Borrow classes differ");
+                    // TODO: return CoerceResult::Failed? (indicating that it failed outright, don't even try)
+                    return CoerceResult::Equality;
                 }
                 ASSERT_BUG(sp, dep->type == se.type, "Borrow strength mismatch");
 
                 // Call unsizing code
-                return check_unsize_tys(context, sp, dep->inner, se.inner, node_ptr_ptr);
+                return check_unsize_tys(context, sp, dep->inner, se.inner, context_mut, node_ptr_ptr);
             }
             else
             {
@@ -6505,30 +6550,39 @@ namespace {
             if( dst.data().is_Function() )
             {
                 const auto& de = dst.data().as_Function();
-                auto& node_ptr = *node_ptr_ptr;
-                auto span = node_ptr->span();
-                if( de.m_abi != ABI_RUST ) {
-                    ERROR(span, E0000, "Cannot use closure for extern function pointer");
-                }
-                if( de.m_arg_types.size() != se.m_arg_types.size() ) {
-                    ERROR(span, E0000, "Mismatched argument count coercing closure to fn(...)");
-                }
-                for(size_t i = 0; i < de.m_arg_types.size(); i++)
+                if(node_ptr_ptr)
                 {
-                    context.equate_types(sp, de.m_arg_types[i], se.m_arg_types[i]);
+                    auto& node_ptr = *node_ptr_ptr;
+                    auto span = node_ptr->span();
+                    if( de.m_abi != ABI_RUST ) {
+                        ERROR(span, E0000, "Cannot use closure for extern function pointer");
+                    }
+                    if( de.m_arg_types.size() != se.m_arg_types.size() ) {
+                        ERROR(span, E0000, "Mismatched argument count coercing closure to fn(...)");
+                    }
+                    if(context_mut)
+                    {
+                        for(size_t i = 0; i < de.m_arg_types.size(); i++)
+                        {
+                            context_mut->equate_types(sp, de.m_arg_types[i], se.m_arg_types[i]);
+                        }
+                        context_mut->equate_types(sp, de.m_rettype, se.m_rettype);
+                        node_ptr = NEWNODE( dst.clone(), span, _Cast,  mv$(node_ptr), dst.clone() );
+                    }
                 }
-                context.equate_types(sp, de.m_rettype, se.m_rettype);
-                node_ptr = NEWNODE( dst.clone(), span, _Cast,  mv$(node_ptr), dst.clone() );
                 return CoerceResult::Custom;
             }
             else if( const auto* dep = dst.data().opt_Infer() )
             {
-                // Prevent inferrence of argument/return types
-                for(const auto& at : se.m_arg_types)
-                    context.equate_types_to_shadow(sp, at);
-                context.equate_types_to_shadow(sp, se.m_rettype);
-                // Add as a possiblity
-                context.possible_equate_type_coerce_from(dep->index, src);
+                if(context_mut)
+                {
+                    // Prevent inferrence of argument/return types
+                    for(const auto& at : se.m_arg_types)
+                        context_mut->equate_types_to_shadow(sp, at);
+                    context_mut->equate_types_to_shadow(sp, se.m_rettype);
+                    // Add as a possiblity
+                    context_mut->possible_equate_type_coerce_from(dep->index, src);
+                }
                 return CoerceResult::Unknown;
             }
             else
@@ -6555,12 +6609,15 @@ namespace {
                 // argument/return types must match
                 if( de->m_arg_types.size() != se->m_arg_types.size() )
                     return CoerceResult::Equality;
-                for(size_t i = 0; i < de->m_arg_types.size(); i++)
+                if(context_mut)
                 {
-                    context.equate_types(sp, de->m_arg_types[i], se->m_arg_types[i]);
+                    for(size_t i = 0; i < de->m_arg_types.size(); i++)
+                    {
+                        context_mut->equate_types(sp, de->m_arg_types[i], se->m_arg_types[i]);
+                    }
+                    context_mut->equate_types(sp, de->m_rettype, se->m_rettype);
+                    node_ptr = NEWNODE( dst.clone(), span, _Cast,  mv$(node_ptr), dst.clone() );
                 }
-                context.equate_types(sp, de->m_rettype, se->m_rettype);
-                node_ptr = NEWNODE( dst.clone(), span, _Cast,  mv$(node_ptr), dst.clone() );
                 return CoerceResult::Custom;
             }
             else
@@ -6584,7 +6641,7 @@ namespace {
 
         // NOTE: Coercions can happen on comparisons, which means that checking for Sized isn't valid (because you can compare unsized types)
 
-        switch( check_coerce_tys(context, sp, ty_dst, ty_src, &node_ptr) )
+        switch( check_coerce_tys(context, sp, ty_dst, ty_src, &context, &node_ptr) )
         {
         case CoerceResult::Unknown:
             DEBUG("Unknown - keep");
@@ -6969,10 +7026,76 @@ namespace {
 
     bool check_ivar_poss__fails_bounds(const Span& sp, Context& context, const ::HIR::TypeRef& ty_l, const ::HIR::TypeRef& new_ty)
     {
+        TRACE_FUNCTION_F(ty_l << " <- " << new_ty);
+        bool used_ty;
+        struct Cb {
+            bool& used_ty;
+            const Span& sp;
+            const Context& context;
+            const HIR::TypeRef& ty_l;
+            const HIR::TypeRef& new_ty;
+            Cb( bool& used_ty, const Span& sp, const Context& context, const HIR::TypeRef& ty_l, const HIR::TypeRef& new_ty)
+                : used_ty(used_ty)
+                , sp(sp)
+                , context(context)
+                , ty_l(ty_l)
+                , new_ty(new_ty)
+            {
+            }
+            bool operator()(const ::HIR::TypeRef& ty, ::HIR::TypeRef& out_ty) {
+                if( ty == ty_l ) {
+                    out_ty = new_ty.clone();
+                    used_ty = true;
+                    return true;
+                }
+                else {
+                    const auto& rty = context.get_type(ty);
+                    if(rty != ty) {
+                        out_ty = clone_ty_with(sp, rty, *this);
+                        return true;
+                    }
+                    else {
+                        return false;
+                    }
+                }
+            }
+        };
+        Cb  cb { used_ty, sp, context, ty_l, new_ty };
+        for(const auto& bound : context.link_coerce)
+        {
+            used_ty = false;
+            auto t_l = clone_ty_with(sp, bound->left_ty, cb);
+            auto t_r = clone_ty_with(sp, (*bound->right_node_ptr)->m_res_type, cb);
+            if(!used_ty) {
+                DEBUG("[" << ty_l << "] Skip R" << bound->rule_idx << " - " << bound->left_ty << " := " << (*bound->right_node_ptr)->m_res_type);
+                continue ;
+            }
+            t_l = context.m_resolve.expand_associated_types( sp, mv$(t_l) );
+            t_r = context.m_resolve.expand_associated_types( sp, mv$(t_r) );
+            DEBUG("[" << ty_l << "] Check R" << bound->rule_idx << " - " << bound->left_ty << " := " << (*bound->right_node_ptr)->m_res_type);
+            DEBUG("Mutated " << t_l << " := " << t_r);
+
+            switch(check_coerce_tys(context, sp, t_l, t_r, nullptr, bound->right_node_ptr))
+            {
+            case CoerceResult::Unsize:
+            case CoerceResult::Unknown:
+            case CoerceResult::Custom:
+                break;
+            case CoerceResult::Equality:
+                // TODO: Check equality
+                DEBUG("Check " << t_l << " == " << t_r);
+                if( t_l.compare_with_placeholders(sp, t_r, context.m_ivars.callback_resolve_infer()) == HIR::Compare::Unequal )
+                {
+                    DEBUG("- Bound failed");
+                    return true;
+                }
+                break;
+            }
+        }
+
         for(const auto& bound : context.link_assoc)
         {
-            bool used_ty = false;
-            auto cb = [&](const ::HIR::TypeRef& ty, ::HIR::TypeRef& out_ty){ if( ty == ty_l ) { out_ty = new_ty.clone(); used_ty = true; return true; } else { return false; }};
+            used_ty = false;
             auto t = clone_ty_with(sp, bound.impl_ty, cb);
             auto p = clone_path_params_with(sp, bound.params, cb);
             if(!used_ty)
@@ -7954,12 +8077,12 @@ namespace {
                         CoerceResult    res;
                         if( opt.can_deref ) {
                             DEBUG(" > " << new_ty << " =? " << *opt.ty);
-                            res = check_unsize_tys(context, sp, new_ty, *opt.ty, nullptr, false);
+                            res = check_unsize_tys(context, sp, new_ty, *opt.ty, nullptr);
                         }
                         else {
                             // Destination type, this option must deref to it
                             DEBUG(" > " << *opt.ty << " =? " << new_ty);
-                            res = check_unsize_tys(context, sp, *opt.ty, new_ty, nullptr, false);
+                            res = check_unsize_tys(context, sp, *opt.ty, new_ty, nullptr);
                         }
                         DEBUG(" = " << res);
                         if( res == CoerceResult::Equality ) {
@@ -8111,7 +8234,7 @@ namespace {
                             if( oty )
                             {
                                 DEBUG(" > " << *dty << " =? " << *oty);
-                                auto cmp = check_unsize_tys(context, sp, *oty, *dty, nullptr, false);
+                                auto cmp = check_unsize_tys(context, sp, *oty, *dty, nullptr);
                                 DEBUG(" = " << cmp);
                                 if( cmp == CoerceResult::Equality )
                                 {
@@ -8275,7 +8398,7 @@ namespace {
                             const auto* dty = opt.ty;
 
                             DEBUG(" > " << new_ty << " =? " << *dty);
-                            auto cmp = check_unsize_tys(context, sp, new_ty, *dty, nullptr, false);
+                            auto cmp = check_unsize_tys(context, sp, new_ty, *dty, nullptr);
                             DEBUG(" = " << cmp);
                             if( cmp == CoerceResult::Equality ) {
                                 failed_a_bound = true;
@@ -8285,7 +8408,7 @@ namespace {
                         else {
                             // Destination type, this option must deref to it
                             DEBUG(" > " << *opt.ty << " =? " << new_ty);
-                            auto cmp = check_unsize_tys(context, sp, *opt.ty, new_ty, nullptr, false);
+                            auto cmp = check_unsize_tys(context, sp, *opt.ty, new_ty, nullptr);
                             DEBUG(" = " << cmp);
                             if( cmp == CoerceResult::Equality ) {
                                 failed_a_bound = true;
