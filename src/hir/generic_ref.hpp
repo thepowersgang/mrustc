@@ -21,8 +21,8 @@ struct GenericRef
     uint32_t binding;
 
     GenericRef(RcString name, uint32_t binding)
-        : binding(binding)
-        , name(::std::move(name))
+        : name(::std::move(name))
+        , binding(binding)
     {
     }
     static GenericRef new_self() {
