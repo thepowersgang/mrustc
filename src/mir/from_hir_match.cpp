@@ -80,13 +80,16 @@ struct PatternRuleset
 };
 /// Generated code for an arm
 struct ArmCode {
-    ::MIR::BasicBlockId   code = 0;
     bool has_condition = false;
-    ::MIR::BasicBlockId   cond_start;
-    ::MIR::BasicBlockId   cond_false;
-    ::std::vector< ::MIR::BasicBlockId> destructures;   // NOTE: Incomplete
+    // TODO: Each pattern can have its own condition w/ false
+    struct Pattern {
+        ::MIR::BasicBlockId   code = 0;
+        ::MIR::BasicBlockId   cond_false = ~0u;
 
-    mutable ::MIR::BasicBlockId cond_fail_tgt = 0;
+        mutable ::MIR::BasicBlockId cond_fail_tgt = 0;
+    };
+    std::vector<Pattern> patterns;
+
 };
 
 typedef ::std::vector<PatternRuleset>  t_arm_rules;
@@ -328,10 +331,16 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
         // - Define variables from the first pattern
         conv.define_vars_from(node.span(), arm.m_patterns.front());
 
+        ac.patterns.resize(arm.m_patterns.size());
+
+        auto arm_body_block = builder.new_bb_unlinked();
+
         auto pat_scope = builder.new_scope_split(node.span());
         for( unsigned int pat_idx = 0; pat_idx < arm.m_patterns.size(); pat_idx ++ )
         {
             const auto& pat = arm.m_patterns[pat_idx];
+            auto& ap = ac.patterns[pat_idx];
+
             // - Convert HIR pattern into ruleset
             auto pat_builder = PatternRulesetBuilder { builder.resolve() };
             pat_builder.append_from(node.span(), pat, node.m_value->m_res_type);
@@ -344,19 +353,36 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
                 DEBUG("ARM PAT (" << arm_idx << "," << pat_idx << ") " << pat << " ==> [" << pat_builder.m_rules << "]");
                 arm_rules.push_back( PatternRuleset { arm_idx, pat_idx, mv$(pat_builder.m_rules) } );
             }
-            ac.destructures.push_back( builder.new_bb_unlinked() );
+            ap.code = builder.new_bb_unlinked();
+            builder.set_cur_block( ap.code );
+
+            // Duplicate the condition for each arm
+            // - Needed, because the order has to be: match, condition, destructure, code
+            if(arm.m_cond)
+            {
+                auto freeze_scope = builder.new_scope_freeze(arm.m_cond->span());
+                conv.destructure_aliases_from(sp, arm.m_patterns[0], match_val.clone(), /*allow_refutable=*/true);
+
+                auto tmp_scope = builder.new_scope_temp(arm.m_cond->span());
+                conv.visit_node_ptr( arm.m_cond );
+                auto cond_lval = builder.get_result_in_if_cond(arm.m_cond->span());
+                builder.terminate_scope( arm.m_code->span(), mv$(tmp_scope) );
+                builder.terminate_scope( arm.m_code->span(), mv$(freeze_scope) );
+
+                ap.cond_false = builder.new_bb_unlinked();
+
+                auto destructure_block = builder.new_bb_unlinked();
+                builder.end_block(::MIR::Terminator::make_If({ mv$(cond_lval), destructure_block, ap.cond_false }));
+                builder.set_cur_block( destructure_block );
+            }
 
             // - Emit code to destructure the matched pattern
-            builder.set_cur_block( ac.destructures.back() );
             conv.destructure_from( arm.m_code->span(), pat, match_val.clone(), true );
             // TODO: Previous versions had reachable=false here (causing a use-after-free), would having `true` lead to leaks?
             builder.end_split_arm( arm.m_code->span(), pat_scope, /*reachable=*/true );
-            builder.pause_cur_block();
-            // NOTE: Paused block resumed upon successful match
+            builder.end_block(::MIR::Terminator::make_Goto(arm_body_block));
         }
         builder.terminate_scope( sp, mv$(pat_scope) );
-
-        ac.code = builder.new_bb_unlinked();
 
         // Condition
         // NOTE: Lack of drop due to early exit from this arm isn't an issue. All captures must be Copy
@@ -364,28 +390,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
         // TODO: Create a special wrapping scope for the conditions that forces any moves to use a drop flag
         if(arm.m_cond)
         {
-            if( H::is_pattern_move(sp, builder, arm.m_patterns[0]) )
-                ERROR(sp, E0000, "cannot bind by-move into a pattern guard");
             ac.has_condition = true;
-            ac.cond_start = builder.new_bb_unlinked();
-
-            DEBUG("-- Condition Code");
-            ac.has_condition = true;
-            ac.cond_start = builder.new_bb_unlinked();
-            builder.set_cur_block( ac.cond_start );
-
-            auto freeze_scope = builder.new_scope_freeze(arm.m_cond->span());
-            auto tmp_scope = builder.new_scope_temp(arm.m_cond->span());
-            conv.visit_node_ptr( arm.m_cond );
-            auto cond_lval = builder.get_result_in_if_cond(arm.m_cond->span());
-            builder.terminate_scope( arm.m_code->span(), mv$(tmp_scope) );
-            ac.cond_false = builder.new_bb_unlinked();
-            builder.end_block(::MIR::Terminator::make_If({ mv$(cond_lval), ac.code, ac.cond_false }));
-
-            builder.set_cur_block(ac.cond_false);
-            builder.end_split_arm(arm.m_cond->span(), match_scope, true, true);
-            builder.pause_cur_block();
-            builder.terminate_scope( arm.m_code->span(), mv$(freeze_scope) );
 
             // NOTE: Paused so that later code (which knows what the false branch will be) can end it correctly
 
@@ -396,15 +401,13 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
         else
         {
             ac.has_condition = false;
-            ac.cond_start = ~0u;
-            ac.cond_false = ~0u;
         }
 
         // Code
         DEBUG("-- Body Code");
 
         auto tmp_scope = builder.new_scope_temp(arm.m_code->span());
-        builder.set_cur_block( ac.code );
+        builder.set_cur_block( arm_body_block );
         conv.visit_node_ptr( arm.m_code );
 
         if( !builder.block_active() && !builder.has_result() ) {
@@ -506,6 +509,10 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             }
         }
     }
+
+    // TODO: Combine identical-pattern arms, allowing potential use of condtionals
+    // - 
+    // If there's a conditional that isn't grouped with an unconditional pattern - then force fallback
 
     // TODO: SplitSlice is buggy, make it fall back to simple?
 
@@ -1919,9 +1926,6 @@ void MIR_LowerHIR_Match_Simple( MirBuilder& builder, MirConverter& conv, ::HIR::
 
         for( unsigned int i = 0; i < arm.m_patterns.size(); i ++ )
         {
-            if( arm_code.destructures[i] == 0 )
-                continue ;
-
             size_t rule_idx = 0;
             for(; rule_idx < arm_rules.size(); rule_idx++)
                 if( arm_rules[rule_idx].arm_idx == arm_idx && arm_rules[rule_idx].pat_idx == i )
@@ -1936,28 +1940,19 @@ void MIR_LowerHIR_Match_Simple( MirBuilder& builder, MirConverter& conv, ::HIR::
             {
                 MIR_LowerHIR_Match_Simple__GeneratePattern(builder, arm.m_code->span(), pat_rule.m_rules.data(), pat_rule.m_rules.size(), node.m_value->m_res_type, match_val, 0, next_pattern_bb);
             }
-            builder.end_block( ::MIR::Terminator::make_Goto(arm_code.destructures[i]) );
-            builder.set_cur_block( arm_code.destructures[i] );
+            builder.end_block( ::MIR::Terminator::make_Goto(arm_code.patterns[i].code) );
 
             // - Go to code/condition check
             if( arm_code.has_condition )
             {
-                builder.end_block( ::MIR::Terminator::make_Goto(arm_code.cond_start) );
-            }
-            else
-            {
-                builder.end_block( ::MIR::Terminator::make_Goto(arm_code.code) );
+                builder.set_cur_block( arm_code.patterns[i].cond_false );
+                builder.end_block( ::MIR::Terminator::make_Goto(next_arm_bb) );
             }
 
             if( !is_last_pat )
             {
                 builder.set_cur_block( next_pattern_bb );
             }
-        }
-        if( arm_code.has_condition )
-        {
-            builder.set_cur_block( arm_code.cond_false );
-            builder.end_block( ::MIR::Terminator::make_Goto(next_arm_bb) );
         }
         builder.set_cur_block( next_arm_bb );
     }
@@ -2618,9 +2613,9 @@ void MatchGenGrouped::gen_for_slice(t_rules_subset arm_rules, size_t ofs, ::MIR:
                 auto ai = arm_rules.arm_idx(idx);
                 ASSERT_BUG(sp, m_arms_code.size() > 0, "Bottom-level ruleset with no arm code information");
                 const auto& ac = m_arms_code[ai.first];
+                const auto& ap = ac.patterns[ai.second];
 
-                m_builder.end_block( ::MIR::Terminator::make_Goto(ac.destructures[ai.second]) );
-                m_builder.set_cur_block( ac.destructures[ai.second] );
+                m_builder.end_block( ::MIR::Terminator::make_Goto(ap.code) );
 
                 if( ac.has_condition )
                 {
@@ -2631,20 +2626,19 @@ void MatchGenGrouped::gen_for_slice(t_rules_subset arm_rules, size_t ofs, ::MIR:
                     // TODO: What if there's multiple patterns on this condition?
                     // - For now, only the first pattern gets edited.
                     // - Maybe clone the blocks used for the condition?
-                    m_builder.end_block( ::MIR::Terminator::make_Goto(ac.cond_start) );
 
                     // Check for marking in `ac` that the block has already been terminated, assert that target is `next`
                     if( ai.second == 0 )
                     {
-                        if( ac.cond_fail_tgt != 0)
+                        if( ap.cond_fail_tgt != 0 )
                         {
-                            ASSERT_BUG(sp, ac.cond_fail_tgt == next, "Condition fail target already set with mismatching arm, set to bb" << ac.cond_fail_tgt << " cur is bb" << next);
+                            ASSERT_BUG(sp, ap.cond_fail_tgt == next, "Condition fail target already set with mismatching arm, set to bb" << ap.cond_fail_tgt << " cur is bb" << next);
                         }
                         else
                         {
-                            ac.cond_fail_tgt = next;
+                            ap.cond_fail_tgt = next;
 
-                            m_builder.set_cur_block( ac.cond_false );
+                            m_builder.set_cur_block( ap.cond_false );
                             m_builder.end_block( ::MIR::Terminator::make_Goto(next) );
                         }
                     }
@@ -2654,7 +2648,6 @@ void MatchGenGrouped::gen_for_slice(t_rules_subset arm_rules, size_t ofs, ::MIR:
                 }
                 else
                 {
-                    m_builder.end_block( ::MIR::Terminator::make_Goto(ac.code) );
                     ASSERT_BUG(sp, idx+1 == arm_rules.size(), "Ended arm with other arms present");
                 }
             }

@@ -112,6 +112,7 @@ TAGGED_UNION(ScopeType, Owning,
     (Freeze, struct {
         ::std::map<unsigned int,VarState>    changed_slots;
         //::std::map<unsigned int,VarState>    changed_args;
+        std::vector<bool>   original_aliases;
         })
     );
 
@@ -171,6 +172,9 @@ class MirBuilder
     ::std::vector<unsigned int> m_scope_stack;
     ScopeHandle m_fcn_scope;
 
+    typedef std::pair<HIR::PatternBinding::Type, MIR::LValue>   var_alias_t;
+    ::std::vector<var_alias_t>  m_variable_aliases;
+
     // LValue used only for the condition of `if`
     // - Using a fixed temporary simplifies parts of lowering (scope related) and reduces load on
     //   the optimiser.
@@ -185,6 +189,23 @@ public:
 
     /// Check if the passed type is Box<T> and returns a pointer to the T type if so, otherwise nullptr
     const ::HIR::TypeRef* is_type_owned_box(const ::HIR::TypeRef& ty) const;
+
+    // Variable aliases (used for match guards)
+    void add_variable_alias(const Span& sp, unsigned idx, HIR::PatternBinding::Type ty, MIR::LValue lv) {
+        DEBUG("#" << idx << " = " << int(ty) << " " << lv);
+        ASSERT_BUG(sp, idx < m_variable_aliases.size(), "");
+        ASSERT_BUG(sp, m_variable_aliases[idx].second == MIR::LValue(), "");
+        m_variable_aliases[idx] = std::make_pair(ty, mv$(lv));
+    }
+    const var_alias_t* get_variable_alias(const Span& sp, unsigned idx) const {
+        ASSERT_BUG(sp, idx < m_variable_aliases.size(), "");
+        if(m_variable_aliases[idx].second == MIR::LValue()) {
+            return nullptr;
+        }
+        else {
+            return &m_variable_aliases[idx];
+        }
+    }
 
     // - Values
     ::MIR::LValue get_variable(const Span& sp, unsigned idx) const {
@@ -314,6 +335,7 @@ class MirConverter:
 {
 public:
     virtual void destructure_from(const Span& sp, const ::HIR::Pattern& pat, ::MIR::LValue lval, bool allow_refutable=false) = 0;
+    virtual void destructure_aliases_from(const Span& sp, const ::HIR::Pattern& pat, ::MIR::LValue lval, bool allow_refutable=false) = 0;
     virtual void define_vars_from(const Span& sp, const ::HIR::Pattern& pat) = 0;
 };
 

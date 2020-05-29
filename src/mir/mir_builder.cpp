@@ -51,6 +51,8 @@ MirBuilder::MirBuilder(const Span& sp, const StaticTraitResolve& resolve, const 
             m_var_arg_mappings[pat.m_binding.m_slot] = i;
         }
     }
+
+    m_variable_aliases.resize( output.locals.size() );
 }
 MirBuilder::~MirBuilder()
 {
@@ -740,6 +742,11 @@ ScopeHandle MirBuilder::new_scope_freeze(const Span& sp)
 {
     unsigned int idx = m_scopes.size();
     m_scopes.push_back( ScopeDef {sp, ScopeType::make_Freeze({})} );
+    m_scopes.back().data.as_Freeze().original_aliases.resize( m_variable_aliases.size() );
+    for(size_t i = 0; i < m_variable_aliases.size(); i ++)
+    {
+        m_scopes.back().data.as_Freeze().original_aliases[i] = (m_variable_aliases[i].second != MIR::LValue());
+    }
     m_scope_stack.push_back( idx );
     DEBUG("START (freeze) scope " << idx);
     return ScopeHandle { *this, idx };
@@ -1546,34 +1553,33 @@ void MirBuilder::complete_scope(ScopeDef& sd)
     };
 
     // No macro for better debug output.
-    if( auto* e = sd.data.opt_Loop() )
-    {
+    TU_MATCH_HDRA( (sd.data), { )
+    TU_ARMA(Owning, e) {
+        }
+    TU_ARMA(Loop, e) {
         TRACE_FUNCTION_F("Loop");
-        if( e->exit_state_valid )
+        if( e.exit_state_valid )
         {
-            H::apply_end_state(sd.span, *this, e->exit_state);
+            H::apply_end_state(sd.span, *this, e.exit_state);
         }
 
         // Insert sets of drop flags to the first block (at the start of that block)
-        auto& stmts = m_output.blocks.at(e->entry_bb).statements;
-        for(auto idx : e->drop_flags)
+        auto& stmts = m_output.blocks.at(e.entry_bb).statements;
+        for(auto idx : e.drop_flags)
         {
             DEBUG("Reset df$" << idx);
             stmts.insert( stmts.begin(), ::MIR::Statement::make_SetDropFlag({ idx, m_output.drop_flags.at(idx), ~0u }) );
         }
-    }
-    else if( sd.data.is_Split() )
-    {
-        auto& e = sd.data.as_Split();
+        }
+    TU_ARMA(Split, e) {
         TRACE_FUNCTION_F("Split - " << (e.arms.size() - 1) << " arms");
 
         ASSERT_BUG(sd.span, e.end_state_valid, "");
         H::apply_end_state(sd.span, *this, e.end_state);
-    }
-    else if( const auto* e = sd.data.opt_Freeze() )
-    {
+        }
+    TU_ARMA(Freeze, e) {
         TRACE_FUNCTION_F("Freeze");
-        for(auto& ent : e->changed_slots)
+        for(auto& ent : e.changed_slots)
         {
             auto& vs = this->get_slot_state_mut(sd.span, ent.first, SlotType::Local);
             auto lv = ::MIR::LValue::new_Local(ent.first);
@@ -1590,6 +1596,16 @@ void MirBuilder::complete_scope(ScopeDef& sd)
                     // It's a Copy value, and it wasn't originally fully Valid - allowable
                 }
             }
+        }
+
+        for(size_t i = 0; i < e.original_aliases.size(); i ++)
+        {
+            if( !e.original_aliases[i] && this->m_variable_aliases[i].second != MIR::LValue() )
+            {
+                DEBUG("Reset alias on #" << i);
+                this->m_variable_aliases[i].second = MIR::LValue();
+            }
+        }
         }
     }
 }

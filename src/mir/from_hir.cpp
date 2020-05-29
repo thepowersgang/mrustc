@@ -73,7 +73,41 @@ namespace {
 
         void destructure_from(const Span& sp, const ::HIR::Pattern& pat, ::MIR::LValue lval, bool allow_refutable=false) override
         {
-            destructure_from_ex(sp, pat, mv$(lval), (allow_refutable ? 1 : 0));
+            auto cb = [&](const HIR::PatternBinding& binding, ::MIR::LValue lval) {
+                MIR::RValue rv;
+                switch( binding.m_type )
+                {
+                case ::HIR::PatternBinding::Type::Move:
+                    rv = mv$(lval);
+                    break;
+                case ::HIR::PatternBinding::Type::Ref:
+                    if(m_borrow_raise_target)
+                    {
+                        DEBUG("- Raising destructure borrow of " << lval << " to scope " << *m_borrow_raise_target);
+                        m_builder.raise_temporaries(sp, lval, *m_borrow_raise_target);
+                    }
+
+                    rv = ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Shared, mv$(lval) });
+                    break;
+                case ::HIR::PatternBinding::Type::MutRef:
+                    if(m_borrow_raise_target)
+                    {
+                        DEBUG("- Raising destructure borrow of " << lval << " to scope " << *m_borrow_raise_target);
+                        m_builder.raise_temporaries(sp, lval, *m_borrow_raise_target);
+                    }
+                    rv = ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Unique, mv$(lval) });
+                    break;
+                }
+                m_builder.push_stmt_assign( sp, m_builder.get_variable(sp, binding.m_slot), mv$(rv) );
+                };
+            destructure_from_ex(sp, pat, mv$(lval), cb, (allow_refutable ? AllowRefutable::Yes : AllowRefutable::No));
+        }
+        void destructure_aliases_from(const Span& sp, const ::HIR::Pattern& pat, ::MIR::LValue lval, bool allow_refutable=false) override
+        {
+            auto cb = [&](const HIR::PatternBinding& binding, ::MIR::LValue lv) {
+                m_builder.add_variable_alias(sp, binding.m_slot, binding.m_type, mv$(lv));
+            };
+            destructure_from_ex(sp, pat, mv$(lval), cb, (allow_refutable ? AllowRefutable::Yes : AllowRefutable::No));
         }
 
         // Brings variables defined in `pat` into scope
@@ -161,19 +195,27 @@ namespace {
             )
         }
 
-        void destructure_from_ex(const Span& sp, const ::HIR::Pattern& pat, ::MIR::LValue lval, int allow_refutable=0) // 1 : yes, 2 : disallow binding
+        enum class AllowRefutable
         {
-            TRACE_FUNCTION_F(pat << ", allow_refutable=" << allow_refutable);
-            if( allow_refutable != 3 && pat.m_binding.is_valid() ) {
-                if( allow_refutable == 2 ) {
+            No,
+            Yes,
+            NoBindings,
+            IgnoreBindings,
+        };
+
+        void destructure_from_ex(const Span& sp, const ::HIR::Pattern& pat, ::MIR::LValue lval, std::function<void (const HIR::PatternBinding& binding, MIR::LValue lval)> cb, AllowRefutable allow_refutable = AllowRefutable::No) // 1 : yes, 2 : disallow binding
+        {
+            TRACE_FUNCTION_F(pat << " := " << lval << ", allow_refutable=" << static_cast<int>(allow_refutable));
+            if( allow_refutable != AllowRefutable::IgnoreBindings && pat.m_binding.is_valid() ) {
+                if( allow_refutable == AllowRefutable::NoBindings ) {
                     BUG(sp, "Binding when not expected");
                 }
-                else if( allow_refutable == 0 ) {
+                else if( allow_refutable == AllowRefutable::No ) {
                     ASSERT_BUG(sp, pat.m_data.is_Any(), "Destructure patterns can't bind and match");
                 }
                 else {
                     // Refutable and binding allowed
-                    destructure_from_ex(sp, pat, lval.clone(), 3);
+                    destructure_from_ex(sp, pat, lval.clone(), cb, AllowRefutable::IgnoreBindings);
                 }
 
                 for(size_t i = 0; i < pat.m_binding.m_implicit_deref_count; i ++)
@@ -181,37 +223,11 @@ namespace {
                     lval = ::MIR::LValue::new_Deref(mv$(lval));
                 }
 
-                switch( pat.m_binding.m_type )
-                {
-                case ::HIR::PatternBinding::Type::Move:
-                    m_builder.push_stmt_assign( sp, m_builder.get_variable(sp, pat.m_binding.m_slot), mv$(lval) );
-                    break;
-                case ::HIR::PatternBinding::Type::Ref:
-                    if(m_borrow_raise_target)
-                    {
-                        DEBUG("- Raising destructure borrow of " << lval << " to scope " << *m_borrow_raise_target);
-                        m_builder.raise_temporaries(sp, lval, *m_borrow_raise_target);
-                    }
-
-                    m_builder.push_stmt_assign( sp, m_builder.get_variable(sp, pat.m_binding.m_slot), ::MIR::RValue::make_Borrow({
-                        ::HIR::BorrowType::Shared, mv$(lval)
-                        }) );
-                    break;
-                case ::HIR::PatternBinding::Type::MutRef:
-                    if(m_borrow_raise_target)
-                    {
-                        DEBUG("- Raising destructure borrow of " << lval << " to scope " << *m_borrow_raise_target);
-                        m_builder.raise_temporaries(sp, lval, *m_borrow_raise_target);
-                    }
-                    m_builder.push_stmt_assign( sp, m_builder.get_variable(sp, pat.m_binding.m_slot), ::MIR::RValue::make_Borrow({
-                        ::HIR::BorrowType::Unique, mv$(lval)
-                        }) );
-                    break;
-                }
+                cb(pat.m_binding, std::move(lval));
                 return;
             }
-            if( allow_refutable == 3 ) {
-                allow_refutable = 2;
+            if( allow_refutable == AllowRefutable::IgnoreBindings ) {
+                allow_refutable = AllowRefutable::NoBindings;
             }
 
             for(size_t i = 0; i < pat.m_implicit_deref_count; i ++)
@@ -223,28 +239,28 @@ namespace {
             TU_ARMA(Any, e) {
                 }
             TU_ARMA(Box, e) {
-                destructure_from_ex(sp, *e.sub, ::MIR::LValue::new_Deref(mv$(lval)), allow_refutable);
+                destructure_from_ex(sp, *e.sub, ::MIR::LValue::new_Deref(mv$(lval)), cb, allow_refutable);
                 }
             TU_ARMA(Ref, e) {
-                destructure_from_ex(sp, *e.sub, ::MIR::LValue::new_Deref(mv$(lval)), allow_refutable);
+                destructure_from_ex(sp, *e.sub, ::MIR::LValue::new_Deref(mv$(lval)), cb, allow_refutable);
                 }
             TU_ARMA(Tuple, e) {
                 for(unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
                 {
-                    destructure_from_ex(sp, e.sub_patterns[i], ::MIR::LValue::new_Field(lval.clone(), i), allow_refutable);
+                    destructure_from_ex(sp, e.sub_patterns[i], ::MIR::LValue::new_Field(lval.clone(), i), cb, allow_refutable);
                 }
                 }
             TU_ARMA(SplitTuple, e) {
                 assert(e.total_size >= e.leading.size() + e.trailing.size());
                 for(unsigned int i = 0; i < e.leading.size(); i ++ )
                 {
-                    destructure_from_ex(sp, e.leading[i], ::MIR::LValue::new_Field(lval.clone(), i), allow_refutable);
+                    destructure_from_ex(sp, e.leading[i], ::MIR::LValue::new_Field(lval.clone(), i), cb, allow_refutable);
                 }
                 // TODO: Is there a binding in the middle?
                 unsigned int ofs = e.total_size - e.trailing.size();
                 for(unsigned int i = 0; i < e.trailing.size(); i ++ )
                 {
-                    destructure_from_ex(sp, e.trailing[i], ::MIR::LValue::new_Field(lval.clone(), ofs+i), allow_refutable);
+                    destructure_from_ex(sp, e.trailing[i], ::MIR::LValue::new_Field(lval.clone(), ofs+i), cb, allow_refutable);
                 }
                 }
             TU_ARMA(StructValue, e) {
@@ -253,7 +269,7 @@ namespace {
             TU_ARMA(StructTuple, e) {
                 for(unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
                 {
-                    destructure_from_ex(sp, e.sub_patterns[i], ::MIR::LValue::new_Field(lval.clone(), i), allow_refutable);
+                    destructure_from_ex(sp, e.sub_patterns[i], ::MIR::LValue::new_Field(lval.clone(), i), cb, allow_refutable);
                 }
                 }
             TU_ARMA(Struct, e) {
@@ -265,29 +281,29 @@ namespace {
                     for(const auto& fld_pat : e.sub_patterns)
                     {
                         unsigned idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto&x){ return x.first == fld_pat.first; } ) - fields.begin();
-                        destructure_from_ex(sp, fld_pat.second, ::MIR::LValue::new_Field(lval.clone(), idx), allow_refutable);
+                        destructure_from_ex(sp, fld_pat.second, ::MIR::LValue::new_Field(lval.clone(), idx), cb, allow_refutable);
                     }
                 }
                 }
             // Refutable
             TU_ARMA(Value, e) {
-                ASSERT_BUG(sp, allow_refutable, "Refutable pattern not expected - " << pat);
+                ASSERT_BUG(sp, allow_refutable != AllowRefutable::No, "Refutable pattern not expected - " << pat);
                 }
             TU_ARMA(Range, e) {
-                ASSERT_BUG(sp, allow_refutable, "Refutable pattern not expected - " << pat);
+                ASSERT_BUG(sp, allow_refutable != AllowRefutable::No, "Refutable pattern not expected - " << pat);
                 }
             TU_ARMA(EnumValue, e) {
                 const auto& enm = *e.binding_ptr;
                 if( enm.num_variants() > 1 )
                 {
-                    ASSERT_BUG(sp, allow_refutable, "Refutable pattern not expected - " << pat);
+                    ASSERT_BUG(sp, allow_refutable != AllowRefutable::No, "Refutable pattern not expected - " << pat);
                 }
                 }
             TU_ARMA(EnumTuple, e) {
                 const auto& enm = *e.binding_ptr;
                 const auto& variants = enm.m_data.as_Data();
                 // TODO: Check that this is the only non-impossible arm
-                if( !allow_refutable )
+                if( allow_refutable == AllowRefutable::No )
                 {
                     for(size_t i = 0; i < variants.size(); i ++)
                     {
@@ -306,12 +322,12 @@ namespace {
                 auto lval_var = ::MIR::LValue::new_Downcast(mv$(lval), e.binding_idx);
                 for(unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
                 {
-                    destructure_from_ex(sp, e.sub_patterns[i], ::MIR::LValue::new_Field(lval_var.clone(), i), allow_refutable);
+                    destructure_from_ex(sp, e.sub_patterns[i], ::MIR::LValue::new_Field(lval_var.clone(), i), cb, allow_refutable);
                 }
                 }
             TU_ARMA(EnumStruct, e) {
                 const auto& enm = *e.binding_ptr;
-                ASSERT_BUG(sp, enm.num_variants() == 1 || allow_refutable, "Refutable pattern not expected - " << pat);
+                ASSERT_BUG(sp, enm.num_variants() == 1 || allow_refutable != AllowRefutable::No, "Refutable pattern not expected - " << pat);
                 ASSERT_BUG(sp, enm.m_data.is_Data(), "Expected struct variant - " << pat);
                 const auto& var = enm.m_data.as_Data()[e.binding_idx];;
                 const auto& str = *var.type.data().as_Path().binding.as_Struct();
@@ -321,7 +337,7 @@ namespace {
                 for(const auto& fld_pat : e.sub_patterns)
                 {
                     unsigned idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto&x){ return x.first == fld_pat.first; } ) - fields.begin();
-                    destructure_from_ex(sp, fld_pat.second, ::MIR::LValue::new_Field(lval_var.clone(), idx), allow_refutable);
+                    destructure_from_ex(sp, fld_pat.second, ::MIR::LValue::new_Field(lval_var.clone(), idx), cb, allow_refutable);
                 }
                 }
             TU_ARMA(Slice, e) {
@@ -336,18 +352,18 @@ namespace {
                     for(unsigned int i = 0; i < e.sub_patterns.size(); i ++)
                     {
                         const auto& subpat = e.sub_patterns[i];
-                        destructure_from_ex(sp, subpat, ::MIR::LValue::new_Field(lval.clone(), i), allow_refutable );
+                        destructure_from_ex(sp, subpat, ::MIR::LValue::new_Field(lval.clone(), i), cb, allow_refutable );
                     }
                 }
                 else
                 {
-                    ASSERT_BUG(sp, allow_refutable, "Refutable pattern not expected - " << pat);
+                    ASSERT_BUG(sp, allow_refutable != AllowRefutable::No, "Refutable pattern not expected - " << pat);
 
                     // TODO: Emit code to triple-check the size? Or just assume that match did that correctly.
                     for(unsigned int i = 0; i < e.sub_patterns.size(); i ++)
                     {
                         const auto& subpat = e.sub_patterns[i];
-                        destructure_from_ex(sp, subpat, ::MIR::LValue::new_Field(lval.clone(), i), allow_refutable );
+                        destructure_from_ex(sp, subpat, ::MIR::LValue::new_Field(lval.clone(), i), cb, allow_refutable );
                     }
                 }
                 }
@@ -375,7 +391,7 @@ namespace {
                     for(unsigned int i = 0; i < e.leading.size(); i ++)
                     {
                         unsigned int idx = 0 + i;
-                        destructure_from_ex(sp, e.leading[i], ::MIR::LValue::new_Field(lval.clone(), idx), allow_refutable );
+                        destructure_from_ex(sp, e.leading[i], ::MIR::LValue::new_Field(lval.clone(), idx), cb, allow_refutable );
                     }
                     if( e.extra_bind.is_valid() )
                     {
@@ -384,12 +400,12 @@ namespace {
                     for(unsigned int i = 0; i < e.trailing.size(); i ++)
                     {
                         unsigned int idx = array_size - e.trailing.size() + i;
-                        destructure_from_ex(sp, e.trailing[i], ::MIR::LValue::new_Field(lval.clone(), idx), allow_refutable );
+                        destructure_from_ex(sp, e.trailing[i], ::MIR::LValue::new_Field(lval.clone(), idx), cb, allow_refutable );
                     }
                 }
                 else
                 {
-                    ASSERT_BUG(sp, allow_refutable, "Refutable pattern not expected - " << pat);
+                    ASSERT_BUG(sp, allow_refutable != AllowRefutable::No, "Refutable pattern not expected - " << pat);
 
                     struct H {
                         static ::HIR::BorrowType get_borrow_type(const Span& sp, const ::HIR::PatternBinding& pb) {
@@ -416,7 +432,7 @@ namespace {
                     for(unsigned int i = 0; i < e.leading.size(); i ++)
                     {
                         unsigned int idx = i;
-                        destructure_from_ex(sp, e.leading[i], ::MIR::LValue::new_Field(lval.clone(), idx), allow_refutable );
+                        destructure_from_ex(sp, e.leading[i], ::MIR::LValue::new_Field(lval.clone(), idx), cb, allow_refutable );
                     }
                     if( e.extra_bind.is_valid() )
                     {
@@ -443,7 +459,7 @@ namespace {
                             auto sub_val = ::MIR::Param(::MIR::Constant::make_Uint({ e.trailing.size() - i, ::HIR::CoreType::Usize }));
                             ::MIR::LValue ofs_val = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_BinOp({ len_lval.clone(), ::MIR::eBinOp::SUB, mv$(sub_val) }) );
                             // Recurse with the indexed value
-                            destructure_from_ex(sp, e.trailing[i], ::MIR::LValue::new_Index( lval.clone(), ofs_val.m_root.as_Local() ), allow_refutable);
+                            destructure_from_ex(sp, e.trailing[i], ::MIR::LValue::new_Index( lval.clone(), ofs_val.m_root.as_Local() ), cb, allow_refutable);
                         }
                     }
                 }
@@ -2322,6 +2338,25 @@ namespace {
         void visit(::HIR::ExprNode_Variable& node) override
         {
             TRACE_FUNCTION_F("_Variable - " << node.m_name << " #" << node.m_slot);
+#if 1
+            // If there's an alias active, emit that
+            if( const auto* a = m_builder.get_variable_alias(node.span(), node.m_slot) )
+            {
+                switch( a->first )
+                {
+                case ::HIR::PatternBinding::Type::Move:
+                    m_builder.set_result( node.span(), a->second.clone() );
+                    break;
+                case ::HIR::PatternBinding::Type::Ref:
+                    m_builder.set_result( node.span(), ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Shared, a->second.clone() }) );
+                    break;
+                case ::HIR::PatternBinding::Type::MutRef:
+                    m_builder.set_result( node.span(), ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Unique, a->second.clone() }) );
+                    break;
+                }
+                return ;
+            }
+#endif
             m_builder.set_result( node.span(), m_builder.get_variable(node.span(), node.m_slot) );
         }
         void visit(::HIR::ExprNode_ConstParam& node) override
