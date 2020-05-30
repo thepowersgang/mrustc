@@ -361,7 +361,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             if(arm.m_cond)
             {
                 auto freeze_scope = builder.new_scope_freeze(arm.m_cond->span());
-                conv.destructure_aliases_from(sp, arm.m_patterns[0], match_val.clone(), /*allow_refutable=*/true);
+                conv.destructure_aliases_from(sp, pat, match_val.clone(), /*allow_refutable=*/true);
 
                 auto tmp_scope = builder.new_scope_temp(arm.m_cond->span());
                 conv.visit_node_ptr( arm.m_cond );
