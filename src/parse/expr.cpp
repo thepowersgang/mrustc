@@ -726,7 +726,7 @@ ExprNodeP Parse_Expr1_1(TokenStream& lex)
     ExprNodeP   left, right;
 
     // Inclusive range to a value
-    if( GET_TOK(tok, lex) == TOK_TRIPLE_DOT || (TARGETVER_1_29 && tok.type() == TOK_DOUBLE_DOT_EQUAL) ) {
+    if( GET_TOK(tok, lex) == TOK_TRIPLE_DOT || (TARGETVER_LEAST_1_29 && tok.type() == TOK_DOUBLE_DOT_EQUAL) ) {
         right = next(lex);
         return NEWNODE( AST::ExprNode_BinOp, AST::ExprNode_BinOp::RANGE_INC, nullptr, mv$(right) );
     }
@@ -767,7 +767,7 @@ LEFTASSOC(Parse_Expr1_2, Parse_Expr1_5,
         rv = NEWNODE( AST::ExprNode_BinOp, AST::ExprNode_BinOp::RANGE_INC, mv$(rv), next(lex) );
         break;
     case TOK_DOUBLE_DOT_EQUAL:
-        if( TARGETVER_1_29 )
+        if( TARGETVER_LEAST_1_29 )
         {
             rv = NEWNODE( AST::ExprNode_BinOp, AST::ExprNode_BinOp::RANGE_INC, mv$(rv), next(lex) );
             break;
@@ -1139,7 +1139,7 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
     case TOK_RWORD_FOR:
         return Parse_ForStmt(lex, "");
     case TOK_RWORD_DO:
-        if( TARGETVER_1_29 )
+        if( TARGETVER_LEAST_1_29 )
         {
             // `do catch` - stabilised later as `try`
             if( GET_TOK(tok, lex) == TOK_IDENT && tok.istr() == "catch" )

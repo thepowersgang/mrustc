@@ -976,10 +976,10 @@ namespace {
                 {
                 case ::HIR::ExprNode_BinOp::Op::CmpEqu:  item_name = "eq";  break;
                 case ::HIR::ExprNode_BinOp::Op::CmpNEqu: item_name = "eq";  break;
-                case ::HIR::ExprNode_BinOp::Op::CmpLt:   item_name = TARGETVER_1_29 ? "partial_ord" : "ord"; break;
-                case ::HIR::ExprNode_BinOp::Op::CmpLtE:  item_name = TARGETVER_1_29 ? "partial_ord" : "ord"; break;
-                case ::HIR::ExprNode_BinOp::Op::CmpGt:   item_name = TARGETVER_1_29 ? "partial_ord" : "ord"; break;
-                case ::HIR::ExprNode_BinOp::Op::CmpGtE:  item_name = TARGETVER_1_29 ? "partial_ord" : "ord"; break;
+                case ::HIR::ExprNode_BinOp::Op::CmpLt:   item_name = TARGETVER_LEAST_1_29 ? "partial_ord" : "ord"; break;
+                case ::HIR::ExprNode_BinOp::Op::CmpLtE:  item_name = TARGETVER_LEAST_1_29 ? "partial_ord" : "ord"; break;
+                case ::HIR::ExprNode_BinOp::Op::CmpGt:   item_name = TARGETVER_LEAST_1_29 ? "partial_ord" : "ord"; break;
+                case ::HIR::ExprNode_BinOp::Op::CmpGtE:  item_name = TARGETVER_LEAST_1_29 ? "partial_ord" : "ord"; break;
                 default: break;
                 }
                 assert(item_name);
@@ -2573,6 +2573,7 @@ namespace {
             case TargetVersion::Rustc1_19:
                 return visit_emplace_119(node);
             case TargetVersion::Rustc1_29:
+            case TargetVersion::Rustc1_39:
                 return visit_emplace_129(node);
             }
             throw "BUG: Unhandled target version";
@@ -4002,7 +4003,7 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
 
     // NOTE: Even if the top-level is a binding, and even if the top-level type is fully known, match ergonomics
     // still applies.
-    if( TARGETVER_1_29 ) { //&& ! H2::has_ref_or_borrow(sp, pat) ) {
+    if( TARGETVER_LEAST_1_29 ) { //&& ! H2::has_ref_or_borrow(sp, pat) ) {
         // There's not a `&` or `ref` in the pattern, and we're targeting 1.29
         // - Run the match ergonomics handler
         // TODO: Default binding mode can be overridden back to "move" with `mut`

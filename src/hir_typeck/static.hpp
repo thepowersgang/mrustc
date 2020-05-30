@@ -53,7 +53,7 @@ public:
         m_item_generics(nullptr)
     {
         m_lang_Copy = m_crate.get_lang_item_path_opt("copy");
-        if( TARGETVER_1_29 )
+        if( TARGETVER_LEAST_1_29 )
             m_lang_Clone = m_crate.get_lang_item_path_opt("clone");
         m_lang_Drop = m_crate.get_lang_item_path_opt("drop");
         m_lang_Sized = m_crate.get_lang_item_path_opt("sized");

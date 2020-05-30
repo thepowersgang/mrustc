@@ -85,7 +85,7 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
             // TODO: path macros
             return TypeRef(TypeRef::TagMacro(), Parse_MacroInvocation(ps, tok.istr(), lex));
         }
-        if( TARGETVER_1_29 && tok.istr() == "dyn" )
+        if( TARGETVER_LEAST_1_29 && tok.istr() == "dyn" )
         {
             if( lex.lookahead(0) == TOK_PAREN_OPEN ) {
                 GET_TOK(tok, lex);

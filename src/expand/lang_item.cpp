@@ -30,7 +30,7 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
     else if( name == "copy" ) {
         DEBUG("Bind 'copy' to " << path);
     }
-    else if( TARGETVER_1_29 && name == "clone" ) {}   // - Trait
+    else if( TARGETVER_LEAST_1_29 && name == "clone" ) {}   // - Trait
     // ops traits
     else if( name == "drop" ) { DEBUG("Bind '"<<name<<"' to " << path); }
     else if( name == "add" ) { DEBUG("Bind '"<<name<<"' to " << path); }
@@ -69,7 +69,7 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
 
     else if( name == "eq"  ) { DEBUG("Bind '"<<name<<"' to " << path); }
     else if( name == "ord" ) { DEBUG("Bind '"<<name<<"' to " << path); }	// In 1.29 this is Ord, before it was PartialOrd
-    else if( TARGETVER_1_29 && name == "partial_ord" ) { DEBUG("Bind '"<<name<<"' to " << path); }    // New name for v1.29
+    else if( TARGETVER_LEAST_1_29 && name == "partial_ord" ) { DEBUG("Bind '"<<name<<"' to " << path); }    // New name for v1.29
     else if( name == "unsize" ) { DEBUG("Bind '"<<name<<"' to " << path); }
     else if( name == "coerce_unsized" ) { DEBUG("Bind '"<<name<<"' to " << path); }
     else if( name == "freeze" ) { DEBUG("Bind '"<<name<<"' to " << path); }
@@ -78,7 +78,7 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
 
     else if( name == "debug_trait" ) { /* TODO: Poke derive() with this */ }
 
-    else if( TARGETVER_1_29 && name == "termination" ) { }    // 1.29 - trait used for non-() main
+    else if( TARGETVER_LEAST_1_29 && name == "termination" ) { }    // 1.29 - trait used for non-() main
 
     // Structs
     else if( name == "non_zero" ) { }
@@ -88,9 +88,9 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
     else if( name == "range_from" ) { }
     else if( name == "range_to" ) { }
     else if( name == "unsafe_cell" ) { }
-    else if( TARGETVER_1_29 && name == "alloc_layout") { }
-    else if( TARGETVER_1_29 && name == "panic_info" ) {}    // Struct
-    else if( TARGETVER_1_29 && name == "manually_drop" ) {}    // Struct
+    else if( TARGETVER_LEAST_1_29 && name == "alloc_layout") { }
+    else if( TARGETVER_LEAST_1_29 && name == "panic_info" ) {}    // Struct
+    else if( TARGETVER_LEAST_1_29 && name == "manually_drop" ) {}    // Struct
 
     else if( /*TARGETVER_1_39 &&*/ name == "maybe_uninit" ) {}    // Union
 
@@ -107,8 +107,8 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
     else if( /*TARGETVER_1_39 &&*/ name == "dispatch_from_dyn" ) {}    // Trait
 
     // Generators
-    else if( TARGETVER_1_29 && name == "generator" ) {}   // - Trait
-    else if( TARGETVER_1_29 && name == "generator_state" ) {}   // - State enum
+    else if( TARGETVER_LEAST_1_29 && name == "generator" ) {}   // - Trait
+    else if( TARGETVER_LEAST_1_29 && name == "generator_state" ) {}   // - State enum
 
     // Statics
     else if( name == "msvc_try_filter" ) { }
@@ -245,15 +245,15 @@ public:
         // collections
         else if( name == "str" ) {}
         else if( name == "slice" ) {}
-        else if( TARGETVER_1_29 && name == "slice_u8" ) {}  // libcore now, `impl [u8]`
-        else if( TARGETVER_1_29 && name == "slice_alloc" ) {}   // liballoc's impls on [T]
-        else if( TARGETVER_1_29 && name == "slice_u8_alloc" ) {}   // liballoc's impls on [u8]
-        else if( TARGETVER_1_29 && name == "str_alloc" ) {}   // liballoc's impls on str
+        else if( TARGETVER_LEAST_1_29 && name == "slice_u8" ) {}  // libcore now, `impl [u8]`
+        else if( TARGETVER_LEAST_1_29 && name == "slice_alloc" ) {}   // liballoc's impls on [T]
+        else if( TARGETVER_LEAST_1_29 && name == "slice_u8_alloc" ) {}   // liballoc's impls on [u8]
+        else if( TARGETVER_LEAST_1_29 && name == "str_alloc" ) {}   // liballoc's impls on str
         // std - interestingly
         else if( name == "f32" ) {}
         else if( name == "f64" ) {}
-        else if( TARGETVER_1_29 && name == "f32_runtime" ) {}
-        else if( TARGETVER_1_29 && name == "f64_runtime" ) {}
+        else if( TARGETVER_LEAST_1_29 && name == "f32_runtime" ) {}
+        else if( TARGETVER_LEAST_1_29 && name == "f64_runtime" ) {}
         else {
             ERROR(sp, E0000, "Unknown lang item '" << name << "' on impl");
         }

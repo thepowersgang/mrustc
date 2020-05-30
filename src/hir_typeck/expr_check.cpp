@@ -219,10 +219,10 @@ namespace {
                 {
                 case ::HIR::ExprNode_BinOp::Op::CmpEqu:  item_name = "eq";  break;
                 case ::HIR::ExprNode_BinOp::Op::CmpNEqu: item_name = "eq";  break;
-                case ::HIR::ExprNode_BinOp::Op::CmpLt:   item_name = TARGETVER_1_29 ? "partial_ord" : "ord"; break;
-                case ::HIR::ExprNode_BinOp::Op::CmpLtE:  item_name = TARGETVER_1_29 ? "partial_ord" : "ord"; break;
-                case ::HIR::ExprNode_BinOp::Op::CmpGt:   item_name = TARGETVER_1_29 ? "partial_ord" : "ord"; break;
-                case ::HIR::ExprNode_BinOp::Op::CmpGtE:  item_name = TARGETVER_1_29 ? "partial_ord" : "ord"; break;
+                case ::HIR::ExprNode_BinOp::Op::CmpLt:   item_name = TARGETVER_LEAST_1_29 ? "partial_ord" : "ord"; break;
+                case ::HIR::ExprNode_BinOp::Op::CmpLtE:  item_name = TARGETVER_LEAST_1_29 ? "partial_ord" : "ord"; break;
+                case ::HIR::ExprNode_BinOp::Op::CmpGt:   item_name = TARGETVER_LEAST_1_29 ? "partial_ord" : "ord"; break;
+                case ::HIR::ExprNode_BinOp::Op::CmpGtE:  item_name = TARGETVER_LEAST_1_29 ? "partial_ord" : "ord"; break;
                 default: break;
                 }
                 assert(item_name);

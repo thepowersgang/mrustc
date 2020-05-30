@@ -961,6 +961,7 @@ namespace {
         TU_ARM(ty.data(), Path, te) {
             if( te.binding.is_Struct() )
             {
+                const auto* str = te.binding.as_Struct();
                 const TypeRepr* r = Target_GetTypeRepr(sp, resolve, ty);
                 if( !r )
                 {
@@ -974,12 +975,23 @@ namespace {
                         return true;
                     }
                 }
-                // Handle the NonZero lang item (Note: Checks just the simplepath part)
-                if( te.path.m_data.as_Generic().m_path == resolve.m_crate.get_lang_item_path(sp, "non_zero") )
+                // TODO: 1.39 marks these with #[rustc_nonnull_optimization_guaranteed] instead
+                if(str->m_struct_markings.is_nonzero)
                 {
                     out_path.sub_fields.push_back(0);
                     out_path.size = r->size;
                     return true;
+                }
+
+                if( gTargetVersion <= TargetVersion::Rustc1_29 )
+                {
+                    // Handle the NonZero lang item (Note: Checks just the simplepath part)
+                    if( te.path.m_data.as_Generic().m_path == resolve.m_crate.get_lang_item_path(sp, "non_zero") )
+                    {
+                        out_path.sub_fields.push_back(0);
+                        out_path.size = r->size;
+                        return true;
+                    }
                 }
             }
             } break;

@@ -115,7 +115,7 @@ bool StaticTraitResolve::find_impl(
                 return found_cb( ImplRef(&type, &null_params, &null_assoc), false );
             }
         }
-        else if( TARGETVER_1_29 && trait_path == m_lang_Clone ) {
+        else if( TARGETVER_LEAST_1_29 && trait_path == m_lang_Clone ) {
             // NOTE: Duplicated check for enumerate
             if( type.data().is_Tuple() || type.data().is_Array() || type.data().is_Function() || type.data().is_Closure()
                     || TU_TEST1(type.data(), Path, .is_closure()) )
@@ -1552,7 +1552,7 @@ bool StaticTraitResolve::type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) 
         return true;
         }
     TU_ARMA(Closure, e) {
-        if( TARGETVER_1_29 )
+        if( TARGETVER_LEAST_1_29 )
         {
             // TODO: Auto-gerated impls
             return e.node->m_is_copy;
@@ -1613,7 +1613,7 @@ bool StaticTraitResolve::type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) 
 }
 bool StaticTraitResolve::type_is_clone(const Span& sp, const ::HIR::TypeRef& ty) const
 {
-    if( !TARGETVER_1_29 )   BUG(sp, "Calling type_is_clone when not in 1.29 mode");
+    if( !TARGETVER_LEAST_1_29 )   BUG(sp, "Calling type_is_clone when not in >=1.29 mode");
     
     TU_MATCH_HDRA( (ty.data()), {)
     TU_ARMA(Generic, e) {
@@ -1654,7 +1654,7 @@ bool StaticTraitResolve::type_is_clone(const Span& sp, const ::HIR::TypeRef& ty)
         return true;
         }
     TU_ARMA(Closure, e) {
-        if( TARGETVER_1_29 )
+        if( TARGETVER_LEAST_1_29 )
         {
             // TODO: Auto-gerated impls
             return e.node->m_is_copy;
@@ -2190,7 +2190,7 @@ bool StaticTraitResolve::type_needs_drop_glue(const Span& sp, const ::HIR::TypeR
             return true;
 
         // In 1.29, "manually_drop" is a struct with special behaviour (instead of being a union)
-        if( TARGETVER_1_29 && e.path.m_data.as_Generic().m_path == m_crate.get_lang_item_path_opt("manually_drop") )
+        if( TARGETVER_LEAST_1_29 && e.path.m_data.as_Generic().m_path == m_crate.get_lang_item_path_opt("manually_drop") )
         {
             return false;
         }

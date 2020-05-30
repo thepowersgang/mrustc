@@ -81,7 +81,7 @@ class CExpander_assert:
 
 void Expand_init_assert()
 {
-    if( TARGETVER_1_29 )
+    if( TARGETVER_LEAST_1_29 )
     {
         Register_Synext_Macro("assert", ::std::unique_ptr<ExpandProcMacro>(new CExpander_assert));
     }

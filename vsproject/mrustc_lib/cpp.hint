@@ -12,3 +12,11 @@
 // such as names of functions and macros.
 // For more information see https://go.microsoft.com/fwlink/?linkid=865984
 #define ASSERT_BUG(span, cnd, msg) do { if( !(cnd) ) { ::Span(span).bug([&](::std::ostream& os) { os << "ASSERT FAIL: " << __FILE__ << ":" << __LINE__ << ":" #cnd << ": " << msg; }); throw ::std::runtime_error("Bug fell through"); } } while(0)
+// Hint files help the Visual Studio IDE interpret Visual C++ identifiers
+// such as names of functions and macros.
+// For more information see https://go.microsoft.com/fwlink/?linkid=865984
+#define box$(__VA_ARGS__) ::make_unique_ptr(::std::move(__VA_ARGS__))
+// Hint files help the Visual Studio IDE interpret Visual C++ identifiers
+// such as names of functions and macros.
+// For more information see https://go.microsoft.com/fwlink/?linkid=865984
+#define mv$(x) ::std::move(x)

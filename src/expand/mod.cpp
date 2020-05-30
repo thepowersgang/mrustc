@@ -1105,7 +1105,7 @@ struct CExpandExpr:
                 ::AST::ExprNode_StructLiteral::t_values values;
                 values.push_back({ {}, "start", mv$(node.m_left)  });
                 values.push_back({ {}, "end"  , mv$(node.m_right) });
-                if( TARGETVER_1_29 )
+                if( gTargetVersion >= TargetVersion::Rustc1_29 )
                     values.push_back({ {}, "is_empty", ::AST::ExprNodeP(new ::AST::ExprNode_NamedValue(mv$(path_None))) });
                 replacement.reset( new ::AST::ExprNode_StructLiteral(mv$(path_RangeInclusive_NonEmpty), nullptr, mv$(values)) );
             }

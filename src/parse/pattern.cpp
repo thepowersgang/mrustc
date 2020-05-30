@@ -158,7 +158,7 @@ AST::Pattern Parse_PatternReal(TokenStream& lex, bool is_refutable)
     auto ps = lex.start_span();
     AST::Pattern    ret = Parse_PatternReal1(lex, is_refutable);
     if( (GET_TOK(tok, lex) == TOK_TRIPLE_DOT)
-     || (TARGETVER_1_29 && tok.type() == TOK_DOUBLE_DOT_EQUAL)
+     || (TARGETVER_LEAST_1_29 && tok.type() == TOK_DOUBLE_DOT_EQUAL)
       )
     {
         if( !ret.data().is_Value() )

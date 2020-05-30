@@ -1649,6 +1649,7 @@ namespace {
             case TargetVersion::Rustc1_19:
                 return visit_emplace_119(node);
             case TargetVersion::Rustc1_29:
+            case TargetVersion::Rustc1_39:
                 return visit_emplace_129(node);
             }
             throw "BUG: Unhandled target version";

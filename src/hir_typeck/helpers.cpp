@@ -1205,7 +1205,7 @@ bool TraitResolution::find_trait_impls_magic(const Span& sp,
         }
     }
 
-    if( TARGETVER_1_29 && trait == this->m_crate.get_lang_item_path(sp, "clone") )
+    if( TARGETVER_LEAST_1_29 && trait == this->m_crate.get_lang_item_path(sp, "clone") )
     {
         auto cmp = this->type_is_clone(sp, type);
         if( cmp != ::HIR::Compare::Unequal ) {

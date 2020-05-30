@@ -559,7 +559,7 @@ namespace
             }
 
             // #![feature(extern_prelude)] - 2018-style extern paths
-            if( mode == LookupMode::Namespace && TARGETVER_1_29 && true /*m_crate.has_feature("extern_prelude")*/ )
+            if( mode == LookupMode::Namespace && TARGETVER_LEAST_1_29 && true /*m_crate.has_feature("extern_prelude")*/ )
             {
                 DEBUG("Extern crates - " << FMT_CB(os, for(const auto& v: m_crate.m_extern_crates) os << v.first << ":" << v.second.m_short_name <<",";));
                 auto it = ::std::find_if(m_crate.m_extern_crates.begin(), m_crate.m_extern_crates.end(), [&](const auto& x){ return x.second.m_short_name == name; });
@@ -1620,7 +1620,7 @@ void Resolve_Absolute_Lifetime(Context& context, const Span& sp, AST::LifetimeRe
 
         if( lft.name() == "_" )
         {
-            if( TARGETVER_1_19 )
+            if( TARGETVER_MOST_1_19 )
             {
                 ERROR(sp, E0000, "'_ is not a valid lifetime name in 1.19 mode");
             }
@@ -1645,7 +1645,7 @@ void Resolve_Absolute_Lifetime(Context& context, const Span& sp, AST::LifetimeRe
             }
         }
 
-        if( TARGETVER_1_29 )
+        if( TARGETVER_LEAST_1_29 )
         {
             // If parsing a function header, add a new lifetime param to the function
             // - Does the same apply to impl headers? Yes it does.

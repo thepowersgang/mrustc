@@ -81,7 +81,7 @@ void Expand_TestHarness(::AST::Crate& crate)
             }
             desc_vals.push_back({ {}, "should_panic", mv$(should_panic_val) });
         }
-        if( TARGETVER_1_29 )
+        if( TARGETVER_LEAST_1_29 )
         {
             // TODO: Get this from attributes
             desc_vals.push_back({ {}, "allow_fail", NEWNODE(_Bool, false) });

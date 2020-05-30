@@ -122,7 +122,7 @@ TransList Trans_Enumerate_Main(const ::HIR::Crate& crate)
             const auto& fcn = crate.get_function_by_path(sp, start_path);
 
             Trans_Params    lang_start_pp;
-            if( TARGETVER_1_29 )
+            if( TARGETVER_LEAST_1_29 )
             {
                 // With 1.29, this now takes main's return type as a type parameter
                 lang_start_pp.pp_method.m_types.push_back( main_fcn.m_return.clone() );
@@ -1418,7 +1418,7 @@ void Trans_Enumerate_FillFrom_PathMono(EnumState& state, ::HIR::Path path_mono)
             // Must have been a dynamic dispatch request, just leave as-is
         }
         // <* as Clone>::clone
-        else if( TARGETVER_1_29 && path_mono.m_data.is_UfcsKnown() && path_mono.m_data.as_UfcsKnown().trait == state.crate.get_lang_item_path_opt("clone") )
+        else if( TARGETVER_LEAST_1_29 && path_mono.m_data.is_UfcsKnown() && path_mono.m_data.as_UfcsKnown().trait == state.crate.get_lang_item_path_opt("clone") )
         {
             const auto& pe = path_mono.m_data.as_UfcsKnown();
             ASSERT_BUG(sp, pe.item == "clone" || pe.item == "clone_from", "Unexpected Clone method called, " << path_mono);

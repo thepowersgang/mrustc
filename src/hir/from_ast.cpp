@@ -1043,6 +1043,13 @@ namespace {
         }
     }
 
+    // #[rustc_nonnull_optimization_guaranteed]
+    // TODO: OR, it's equal to the `non_zero` lang item
+    if(attrs.get("rustc_nonnull_optimization_guaranteed"))
+    {
+        rv.m_struct_markings.is_nonzero = true;
+    }
+
     return rv;
 }
 
@@ -2147,7 +2154,7 @@ public:
             }
         };
         // Check for existing defintions of lang items before adding magic ones
-        if( TARGETVER_1_19 )
+        if( TARGETVER_MOST_1_19 )
         {
             if( rv.m_lang_items.count("boxed_trait") == 0 )
             {

@@ -774,7 +774,7 @@ namespace {
                 }
 
                 // Allocator/panic shims
-                if( TARGETVER_1_29 )
+                if( TARGETVER_LEAST_1_29 )
                 {
                     const char* alloc_prefix = "__rdl_";
                     for(size_t i = 0; i < NUM_ALLOCATOR_METHODS; i++)
@@ -1184,7 +1184,7 @@ namespace {
             }
             // TODO: This is specific to the official liballoc's owned_box
             ::HIR::GenericPath  box_free { m_crate.get_lang_item_path(sp, "box_free"), { inner_type.clone() } };
-            if( TARGETVER_1_29 ) {
+            if( TARGETVER_LEAST_1_29 ) {
                 // In 1.29, `box_free` takes Unique, so pass the Unique within the Box
                 m_of << indent << Trans_Mangle(box_free) << "("; emit_lvalue(slot); m_of << "._0);\n";
             }

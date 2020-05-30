@@ -1037,7 +1037,7 @@ AST::Attribute Parse_MetaItem(TokenStream& lex)
     
     AST::AttributeName  name;
     // NOTE: After 1.19 mode, values can be present with no name
-    if( !TARGETVER_1_19 && lex.lookahead(0) != TOK_IDENT )
+    if( TARGETVER_LEAST_1_29 && lex.lookahead(0) != TOK_IDENT )
     {
         // Put a fake equals token in the queue
         tok = Token(TOK_EQUAL);
@@ -1081,13 +1081,13 @@ AST::Attribute Parse_MetaItem(TokenStream& lex)
             }
             break; }
         case TOK_INTEGER:
-            if( TARGETVER_1_29 )
+            if( TARGETVER_LEAST_1_29 )
             {
                 attr_data = AST::AttributeData::make_String({ tok.to_str() });
                 break;
             }
         case TOK_IDENT:
-            if( TARGETVER_1_29 )
+            if( TARGETVER_LEAST_1_29 )
             {
                 auto s = tok.to_str();
                 while(lex.lookahead(0) == TOK_DOUBLE_COLON)
@@ -1888,7 +1888,8 @@ namespace {
             }
         // `unsafe auto trait`
         case TOK_IDENT:
-            if( TARGETVER_1_29 && tok.istr() == "auto" ) {
+            if( TARGETVER_LEAST_1_29 && tok.istr() == "auto" )
+            {
                 GET_CHECK_TOK(tok, lex, TOK_RWORD_TRAIT);
                 GET_CHECK_TOK(tok, lex, TOK_IDENT);
                 item_name = tok.istr();
@@ -1936,7 +1937,7 @@ namespace {
             item_data = ::AST::Item( Parse_Union(lex, meta_items) );
         }
         // `auto trait`
-        else if( TARGETVER_1_29 && tok.istr() == "auto" ) {
+        else if( TARGETVER_LEAST_1_29 && tok.istr() == "auto" ) {
             GET_CHECK_TOK(tok, lex, TOK_RWORD_TRAIT);
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             item_name = tok.istr();
@@ -1959,7 +1960,7 @@ namespace {
         break;
 
     case TOK_RWORD_MACRO:
-        if( TARGETVER_1_29 )
+        if( TARGETVER_LEAST_1_29 )
         {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             auto name = tok.istr();

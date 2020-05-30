@@ -205,7 +205,7 @@ void Trans_AutoImpl_Clone(State& state, ::HIR::TypeRef ty)
 
 void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
 {
-    if( TARGETVER_1_19 )
+    if( !TARGETVER_LEAST_1_29 )
         return ;
 
     State   state { crate, trans_list };

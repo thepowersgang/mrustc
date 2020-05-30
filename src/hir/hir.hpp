@@ -227,6 +227,9 @@ struct StructMarkings
     unsigned int coerce_unsized_index = ~0u;
     // Index of the parameter that controls the CoerceUnsized (either a T: ?Sized, or a T: CoerceUnsized)
     unsigned int coerce_param = ~0u;
+
+    // #[rustc_nonnull_optimization_guaranteed]
+    bool is_nonzero = false;
 };
 
 class ExternType

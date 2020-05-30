@@ -860,7 +860,7 @@ namespace
         case TOK_SQUARE_OPEN:
             return consume_tt(lex);
         case TOK_IDENT:
-            if( TARGETVER_1_29 && lex.next_tok().istr() == "dyn" )
+            if( TARGETVER_LEAST_1_29 && lex.next_tok().istr() == "dyn" )
                 lex.consume();
         case TOK_RWORD_SUPER:
         case TOK_RWORD_SELF:

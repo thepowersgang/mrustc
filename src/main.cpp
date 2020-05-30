@@ -1041,6 +1041,7 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 {
                 case TargetVersion::Rustc1_19:  rustc_target = "1.19";  break;
                 case TargetVersion::Rustc1_29:  rustc_target = "1.29";  break;
+                case TargetVersion::Rustc1_39:  rustc_target = "1.39";  break;
                 }
                 // NOTE: Starts the version with "rustc 1.29.100" so build scripts don't get confused
                 ::std::cout << "rustc " << rustc_target << ".100 (mrustc " << Version_GetString() << ")" << ::std::endl;
@@ -1205,6 +1206,9 @@ ProgramParams::ProgramParams(int argc, char *argv[])
         }
         else if( strcmp(a, "1.29") == 0 ) {
             gTargetVersion = TargetVersion::Rustc1_29;
+        }
+        else if( strcmp(a, "1.39") == 0 ) {
+            gTargetVersion = TargetVersion::Rustc1_39;
         }
         else {
         }
