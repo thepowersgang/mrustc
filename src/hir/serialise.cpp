@@ -148,6 +148,26 @@
         {
             m_out.write_count(lr.binding);
         }
+        void serialise(const ::HIR::GenericRef& ge)
+        {
+            m_out.write_string(ge.name);
+            m_out.write_u16(ge.binding);
+        }
+        void serialise_arraysize(const ::HIR::ArraySize& as)
+        {
+            m_out.write_tag(static_cast<int>(as.tag()));
+            TU_MATCH_HDRA( (as), { )
+            TU_ARMA(Unevaluated, se) {
+                BUG(Span(), "Unepxected ArraySize::Unevaluated - " << as);
+                }
+            TU_ARMA(Known, se) {
+                m_out.write_u64c(se);
+                }
+            TU_ARMA(Generic, se) {
+                serialise(se);
+                }
+            }
+        }
         void serialise_type(const ::HIR::TypeRef& ty)
         {
             auto it = m_types.find(ty);
@@ -160,30 +180,29 @@
             DEBUG("Fresh " << m_types.size());
 
             m_out.write_tag( ty.data().tag() );
-            TU_MATCHA( (ty.data()), (e),
-            (Infer,
+            TU_MATCH_HDRA( (ty.data()), {)
+            TU_ARMA(Infer, e) {
                 // BAAD
-                ),
-            (Diverge,
-                ),
-            (Primitive,
+                }
+            TU_ARMA(Diverge, e) {
+                }
+            TU_ARMA(Primitive, e) {
                 m_out.write_tag( static_cast<int>(e) );
-                ),
-            (Path,
+                }
+            TU_ARMA(Path, e) {
                 serialise_path(e.path);
-                ),
-            (Generic,
-                m_out.write_string(e.name);
-                m_out.write_u16(e.binding);
-                ),
-            (TraitObject,
+                }
+            TU_ARMA(Generic, e) {
+                serialise(e);
+                }
+            TU_ARMA(TraitObject, e) {
                 serialise_traitpath(e.m_trait);
                 m_out.write_count(e.m_markers.size());
                 for(const auto& m : e.m_markers)
                     serialise_genericpath(m);
                 serialise(e.m_lifetime);
-                ),
-            (ErasedType,
+                }
+            TU_ARMA(ErasedType, e) {
                 serialise_path(e.m_origin);
                 m_out.write_count(e.m_index);
 
@@ -191,39 +210,39 @@
                 for(const auto& t : e.m_traits)
                     serialise_traitpath(t);
                 serialise(e.m_lifetime);
-                ),
-            (Array,
+                }
+            TU_ARMA(Array, e) {
                 serialise_type(e.inner);
-                m_out.write_u64c(e.size.as_Known());
-                ),
-            (Slice,
+                serialise_arraysize(e.size);
+                }
+            TU_ARMA(Slice, e) {
                 serialise_type(e.inner);
-                ),
-            (Tuple,
+                }
+            TU_ARMA(Tuple, e) {
                 m_out.write_count(e.size());
                 for(const auto& st : e)
                     serialise_type(st);
-                ),
-            (Borrow,
+                }
+            TU_ARMA(Borrow, e) {
                 serialise(e.lifetime);
                 m_out.write_tag(static_cast<int>(e.type));
                 serialise_type(e.inner);
-                ),
-            (Pointer,
+                }
+            TU_ARMA(Pointer, e) {
                 m_out.write_tag(static_cast<int>(e.type));
                 serialise_type(e.inner);
-                ),
-            (Function,
+                }
+            TU_ARMA(Function, e) {
                 m_out.write_bool(e.is_unsafe);
                 m_out.write_string(e.m_abi);
                 serialise_type(e.m_rettype);
                 serialise_vec(e.m_arg_types);
-                ),
-            (Closure,
+                }
+            TU_ARMA(Closure, e) {
                 DEBUG("-- Closure - " << ty);
                 BUG(Span(), "Encountered closure type when serialising - " << ty);
-                )
-            )
+                }
+            }
 
             m_types.insert(std::make_pair( ty.clone(), m_types.size() ));
         }
