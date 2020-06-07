@@ -584,6 +584,7 @@ void Target_SetCfg(const ::std::string& target_name)
         Cfg_SetValue("target_vendor", "unknown");
     }
 
+    Cfg_SetValue("target_vendor", "");  // NOTE: Doesn't override a pre-set value
     Cfg_SetValue("target_env", g_target.m_env_name);
     Cfg_SetValue("target_os", g_target.m_os_name);
     Cfg_SetValue("target_pointer_width", FMT(g_target.m_arch.m_pointer_bits));
