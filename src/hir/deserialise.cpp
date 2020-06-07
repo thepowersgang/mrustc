@@ -6,7 +6,7 @@
  * - HIR (De)Serialisation for crate metadata
  */
 // TODO: Have an environment variable that controls if debug is enabled here.
-#define DEBUG_EXTRA_ENABLE && false
+//#define DEBUG_EXTRA_ENABLE && false
 //#define DISABLE_DEBUG   //  Disable debug for this function - too hot
 #include "hir.hpp"
 #include "main_bindings.hpp"
@@ -182,6 +182,7 @@
 
         ::HIR::LifetimeDef deserialise_lifetimedef();
         ::HIR::LifetimeRef deserialise_lifetimeref();
+        ::HIR::ArraySize deserialise_arraysize();
         ::HIR::TypeRef deserialise_type();
         ::HIR::SimplePath deserialise_simplepath();
         ::HIR::PathParams deserialise_pathparams();
@@ -450,6 +451,7 @@
         ::HIR::ExprPtr deserialise_exprptr()
         {
             ::HIR::ExprPtr  rv;
+            auto _ = m_in.open_object("HIR::ExprPtr");
             if( m_in.read_bool() )
             {
                 rv.m_mir = deserialise_mir();
@@ -664,6 +666,7 @@
         ::HIR::Function deserialise_function()
         {
             TRACE_FUNCTION;
+            auto _ = m_in.open_object("HIR::Function");
 
             ::HIR::Function rv {
                 false,
@@ -876,6 +879,18 @@
         return rv;
     }
 
+    ::HIR::ArraySize HirDeserialiser::deserialise_arraysize()
+    {
+        switch(auto tag = m_in.read_tag())
+        {
+        #define _(x, ...)   case ::HIR::ArraySize::TAG_##x: DEBUG("- "#x); return HIR::ArraySize::make_##x(__VA_ARGS__);
+        _(Known, m_in.read_u64c())
+        default:
+            BUG(Span(), "Bad tag for HIR::ArraySize - " << tag);
+        #undef _
+        }
+    }
+
     ::HIR::TypeRef HirDeserialiser::deserialise_type()
     {
         ::HIR::TypeRef  rv;
@@ -890,6 +905,7 @@
         else {
             DEBUG("Fresh (=" << m_types.size() << ")");
         }
+        auto _ = m_in.open_object("HIR::TypeData");
 
         switch( auto tag = m_in.read_tag() )
         {
@@ -920,7 +936,7 @@
             })
         _(Array, {
             deserialise_type(),
-            m_in.read_u64c()
+            deserialise_arraysize()
             })
         _(Slice, {
             deserialise_type()
@@ -1154,6 +1170,7 @@
     ::HIR::Trait HirDeserialiser::deserialise_trait()
     {
         TRACE_FUNCTION;
+        auto _ = m_in.open_object("HIR::Trait");
 
         ::HIR::Trait rv {
             deserialise_genericparams(),
@@ -1217,43 +1234,52 @@
     }
     ::MIR::Statement HirDeserialiser::deserialise_mir_statement()
     {
-        TRACE_FUNCTION;
+        MIR::Statement  rv;
+        TRACE_FUNCTION_FR("", rv);
+
+        //assert(m_in.read_string() == "MIR::Statement");
 
         switch( auto tag = m_in.read_tag() )
         {
         case 0:
-            return ::MIR::Statement::make_Assign({
+            rv = ::MIR::Statement::make_Assign({
                 deserialise_mir_lvalue(),
                 deserialise_mir_rvalue()
                 });
+            break;
         case 1:
-            return ::MIR::Statement::make_Drop({
+            rv = ::MIR::Statement::make_Drop({
                 m_in.read_bool() ? ::MIR::eDropKind::DEEP : ::MIR::eDropKind::SHALLOW,
                 deserialise_mir_lvalue(),
                 static_cast<unsigned int>(m_in.read_count())
                 });
+            break;
         case 2:
-            return ::MIR::Statement::make_Asm({
+            rv = ::MIR::Statement::make_Asm({
                 m_in.read_string(),
                 deserialise_vec< ::std::pair< ::std::string, ::MIR::LValue> >(),
                 deserialise_vec< ::std::pair< ::std::string, ::MIR::LValue> >(),
                 deserialise_vec< ::std::string>(),
                 deserialise_vec< ::std::string>()
                 });
+            break;
         case 3: {
             ::MIR::Statement::Data_SetDropFlag  sdf;
             sdf.idx = static_cast<unsigned int>(m_in.read_count());
             sdf.new_val = m_in.read_bool();
             sdf.other = static_cast<unsigned int>(m_in.read_count());
-            return ::MIR::Statement::make_SetDropFlag(sdf);
+            rv = ::MIR::Statement::make_SetDropFlag(sdf);
             }
+            break;
         case 4:
-            return ::MIR::Statement::make_ScopeEnd({
+            rv = ::MIR::Statement::make_ScopeEnd({
                 deserialise_vec<unsigned int>()
                 });
+            break;
         default:
             BUG(Span(), "Bad tag for MIR::Statement - " << tag);
         }
+        return rv;
     }
     ::MIR::Terminator HirDeserialiser::deserialise_mir_terminator()
     {
@@ -1267,6 +1293,8 @@
         switch( auto tag = m_in.read_tag() )
         {
         #define _(x, ...)    case ::MIR::Terminator::TAG_##x: return ::MIR::Terminator::make_##x( __VA_ARGS__ );
+        case MIR::Terminator::TAGDEAD:
+            BUG(Span(), "MIR::Terminator::TAGDEAD found");
         _(Incomplete, {})
         _(Return, {})
         _(Diverge, {})

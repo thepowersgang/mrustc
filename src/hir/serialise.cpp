@@ -179,6 +179,7 @@
             m_out.write_count(~0u);
             DEBUG("Fresh " << m_types.size());
 
+            auto _ = m_out.open_object("HIR::TypeData");
             m_out.write_tag( ty.data().tag() );
             TU_MATCH_HDRA( (ty.data()), {)
             TU_ARMA(Infer, e) {
@@ -647,8 +648,10 @@
 
         void serialise(const ::HIR::ExprPtr& exp, bool save_mir=true)
         {
-            m_out.write_bool( (bool)exp.m_mir && save_mir );
-            if( exp.m_mir && save_mir ) {
+            auto _ = m_out.open_object("HIR::ExprPtr");
+            save_mir &= static_cast<bool>(exp.m_mir);
+            m_out.write_bool( save_mir );
+            if( save_mir ) {
                 serialise(*exp.m_mir);
             }
             serialise_vec( exp.m_erased_types );
@@ -668,6 +671,7 @@
         }
         void serialise(const ::MIR::Statement& stmt)
         {
+            //m_out.write_string(5+9, "MIR::Statement");
             TU_MATCHA( (stmt), (e),
             (Assign,
                 m_out.write_tag(0);
@@ -984,6 +988,7 @@
         void serialise(const ::HIR::Function& fcn)
         {
             TRACE_FUNCTION_F("_function:");
+            auto _ = m_out.open_object("HIR::Function");
 
             serialise(fcn.m_linkage);
 
@@ -1133,6 +1138,8 @@
         void serialise(const ::HIR::Trait& item)
         {
             TRACE_FUNCTION_F("_trait:");
+            auto _ = m_out.open_object("HIR::Trait");
+
             serialise_generics(item.m_params);
             //m_out.write_string(item.m_lifetime);    // TODO: Better type for lifetime
             m_out.write_bool( item.m_is_marker );
