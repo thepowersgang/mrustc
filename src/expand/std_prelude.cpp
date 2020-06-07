@@ -16,7 +16,8 @@ public:
 
     void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate) const override {
         if( crate.m_load_std != AST::Crate::LOAD_STD && crate.m_load_std != AST::Crate::LOAD_CORE ) {
-            ERROR(sp, E0000, "Invalid use of #![no_std] with itself or #![no_core]");
+            WARNING(sp, W0000, "Use of #![no_std] with itself or #![no_core]");
+            return ;
         }
         crate.m_load_std = AST::Crate::LOAD_CORE;
     }
@@ -29,7 +30,7 @@ public:
 
     void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate) const override {
         if( crate.m_load_std != AST::Crate::LOAD_STD && crate.m_load_std != AST::Crate::LOAD_NONE ) {
-            ERROR(sp, E0000, "Invalid use of #![no_core] with itself or #![no_std]");
+            WARNING(sp, W0000, "Use of #![no_core] with itself or #![no_std]");
         }
         crate.m_load_std = AST::Crate::LOAD_NONE;
     }
