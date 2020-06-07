@@ -1149,6 +1149,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
             }
         }
     };
+    // TODO: Can this use the code in `monomorphise.cpp`?
     struct Cloner
     {
         const Span& sp;
@@ -1405,21 +1406,31 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
         }
         ::MIR::Constant clone_constant(const ::MIR::Constant& src) const
         {
-            TU_MATCHA( (src), (ce),
-            (Int  , return ::MIR::Constant(ce);),
-            (Uint , return ::MIR::Constant(ce);),
-            (Float, return ::MIR::Constant(ce);),
-            (Bool , return ::MIR::Constant(ce);),
-            (Bytes, return ::MIR::Constant(ce);),
-            (StaticString, return ::MIR::Constant(ce);),
-            (Const,
+            TU_MATCH_HDRA( (src), {)
+            TU_ARMA(Int  , ce) return ::MIR::Constant(ce);
+            TU_ARMA(Uint , ce) return ::MIR::Constant(ce);
+            TU_ARMA(Float, ce) return ::MIR::Constant(ce);
+            TU_ARMA(Bool , ce) return ::MIR::Constant(ce);
+            TU_ARMA(Bytes, ce) return ::MIR::Constant(ce);
+            TU_ARMA(StaticString, ce) return ::MIR::Constant(ce);
+            TU_ARMA(Const, ce) {
                 return ::MIR::Constant::make_Const({ box$(this->monomorph(*ce.p)) });
-                ),
-            (Generic, return ::MIR::Constant(ce);),
-            (ItemAddr,
+                }
+            TU_ARMA(Generic, ce) {
+                auto val = params.get_value(sp, ce);
+                TU_MATCH_HDRA( (val), {)
+                default:
+                    TODO(sp, "Monomorphise MIR generic constant " << ce << " = " << val);
+                TU_ARMA(Integer, ve) {
+                        // TODO: Need to know the expected type of this.
+                        return ::MIR::Constant::make_Uint({ve, HIR::CoreType::Usize});
+                    }
+                }
+                }
+            TU_ARMA(ItemAddr, ce) {
                 return ::MIR::Constant::make_ItemAddr(box$(this->monomorph(*ce)));
-                )
-            )
+                }
+            }
             throw "";
         }
         ::MIR::Param clone_param(const ::MIR::Param& src) const
@@ -1432,7 +1443,6 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
                 return clone_lval(se);
                 ),
             (Borrow,
-                // TODO: Region IDs
                 return ::MIR::Param::make_Borrow({ se.type, this->clone_lval(se.val) });
                 ),
             (Constant,
