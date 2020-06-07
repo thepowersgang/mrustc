@@ -768,7 +768,7 @@ void PackageManifest::set_features(const ::std::vector<::std::string>& features,
                     ::std::string depname = sub_feat.substr(0, slash_pos);
                     ::std::string depfeat = sub_feat.substr(slash_pos+1);
                     DEBUG("Activate feature '" << depfeat << "' from dependency '" << depname << "'");
-                    auto it2 = ::std::find_if(m_dependencies.begin(), m_dependencies.end(), [&](const auto& x){ return x.m_name == depname; });
+                    auto it2 = ::std::find_if(m_dependencies.begin(), m_dependencies.end(), [&](const auto& x){ return x.m_key == depname; });
                     if(it2 != m_dependencies.end())
                     {
                         it2->m_features.push_back(depfeat);
@@ -782,7 +782,7 @@ void PackageManifest::set_features(const ::std::vector<::std::string>& features,
         }
 
         {
-            auto it2 = ::std::find_if(m_dependencies.begin(), m_dependencies.end(), [&](const auto& x){ return x.m_name == featname; });
+            auto it2 = ::std::find_if(m_dependencies.begin(), m_dependencies.end(), [&](const auto& x){ return x.m_key == featname; });
             if(it2 != m_dependencies.end())
             {
                 it2->m_optional_enabled = true;
@@ -790,14 +790,14 @@ void PackageManifest::set_features(const ::std::vector<::std::string>& features,
         }
 
         {
-            auto it2 = ::std::find_if(m_build_dependencies.begin(), m_build_dependencies.end(), [&](const auto& x){ return x.m_name == featname; });
+            auto it2 = ::std::find_if(m_build_dependencies.begin(), m_build_dependencies.end(), [&](const auto& x){ return x.m_key == featname; });
             if(it2 != m_build_dependencies.end())
             {
                 it2->m_optional_enabled = true;
             }
         }
         {
-            auto it2 = ::std::find_if(m_dev_dependencies.begin(), m_dev_dependencies.end(), [&](const auto& x){ return x.m_name == featname; });
+            auto it2 = ::std::find_if(m_dev_dependencies.begin(), m_dev_dependencies.end(), [&](const auto& x){ return x.m_key == featname; });
             if(it2 != m_dev_dependencies.end())
             {
                 it2->m_optional_enabled = true;
