@@ -1607,6 +1607,11 @@ namespace
             {
                 if( !lex.consume_if(TOK_IDENT) )
                     return false;
+                if( lex.consume_if(TOK_RWORD_AS) )
+                {
+                    if( !lex.consume_if(TOK_IDENT) )
+                        return false;
+                }
                 if( !lex.consume_if(TOK_SEMICOLON) )
                     return false;
                 break;
