@@ -113,6 +113,12 @@ void Crate::load_externs()
         auto n = this->load_extern_crate(Span(), "std");
         ASSERT_BUG(Span(), n == "std", "libstd wasn't loaded as `std`, instead `" << n << "`");
     }
+
+    // Ensure that all crates passed on the command line are loaded
+    for(const auto& c : g_crate_overrides)
+    {
+        this->load_extern_crate(Span(), c.first.c_str());
+    }
 }
 // TODO: Handle disambiguating crates with the same name (e.g. libc in std and crates.io libc)
 // - Crates recorded in rlibs should specify a hash/tag that's passed in to this function.

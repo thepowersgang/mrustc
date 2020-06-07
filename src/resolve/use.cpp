@@ -36,24 +36,35 @@ void Resolve_Use(::AST::Crate& crate)
 }
 
 // - Convert self::/super:: paths into non-canonical absolute forms
-::AST::Path Resolve_Use_AbsolutisePath(const Span& span, const ::AST::Path& base_path, ::AST::Path path)
+::AST::Path Resolve_Use_AbsolutisePath(const Span& span, const AST::Crate& crate, const ::AST::Path& base_path, ::AST::Path path)
 {
-    TU_MATCH(::AST::Path::Class, (path.m_class), (e),
-    (Invalid,
+    TU_MATCH_HDRA( (path.m_class), {)
+    TU_ARMA(Invalid, e) {
         // Should never happen
         BUG(span, "Invalid path class encountered");
-        ),
-    (Local,
+        }
+    TU_ARMA(Local, e) {
         // Wait, how is this already known?
         BUG(span, "Local path class in use statement");
-        ),
-    (UFCS,
+        }
+    TU_ARMA(UFCS, e) {
         // Wait, how is this already known?
         BUG(span, "UFCS path class in use statement");
-        ),
-    (Relative,
+        }
+    TU_ARMA(Relative, e) {
         // How can this happen?
         DEBUG("Relative " << path);
+
+        // 2018 edition and later: all extern crates are implicitly in the namespace.
+        if( crate.m_edition >= AST::Edition::Rust2018 ) {
+            auto it = crate.m_extern_crates.find(e.nodes.at(0).name());
+            if( it != crate.m_extern_crates.end() )
+            {
+                e.nodes.erase(e.nodes.begin());
+                return AST::Path( it->second.m_name, e.nodes);
+            }
+        }
+
         // EVIL HACK: If the current module is an anon module, refer to the parent
         if( base_path.nodes().size() > 0 && base_path.nodes().back().name().c_str()[0] == '#' ) {
             AST::Path   np("", {});
@@ -65,8 +76,8 @@ void Resolve_Use(::AST::Crate& crate)
         else {
             return base_path + path;
         }
-        ),
-    (Self,
+        }
+    TU_ARMA(Self, e) {
         DEBUG("Self " << path);
         // EVIL HACK: If the current module is an anon module, refer to the parent
         if( base_path.nodes().size() > 0 && base_path.nodes().back().name().c_str()[0] == '#' ) {
@@ -79,8 +90,8 @@ void Resolve_Use(::AST::Crate& crate)
         else {
             return base_path + path;
         }
-        ),
-    (Super,
+        }
+    TU_ARMA(Super, e) {
         DEBUG("Super " << path);
         assert(e.count >= 1);
         AST::Path   np("", {});
@@ -96,13 +107,13 @@ void Resolve_Use(::AST::Crate& crate)
             np.nodes().push_back( base_path.nodes()[i] );
         np += path;
         return np;
-        ),
-    (Absolute,
+        }
+    TU_ARMA(Absolute, e) {
         DEBUG("Absolute " << path);
         // Leave as is
         return path;
-        )
-    )
+        }
+    }
     throw "BUG: Reached end of Resolve_Use_AbsolutisePath";
 }
 
@@ -119,7 +130,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         const Span& span = use_stmt_data.sp;
         for(auto& use_ent : use_stmt_data.entries)
         {
-            use_ent.path = Resolve_Use_AbsolutisePath(span, path, mv$(use_ent.path));
+            use_ent.path = Resolve_Use_AbsolutisePath(span, crate, path, mv$(use_ent.path));
             if( !use_ent.path.m_class.is_Absolute() )
                 BUG(span, "Use path is not absolute after absolutisation");
 
@@ -378,7 +389,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                     if( ::std::find(s_mods.begin(), s_mods.end(), &imp_e.path) == s_mods.end() )
                     {
                         s_mods.push_back(&imp_e.path);
-                        rv.merge_from( Resolve_Use_GetBinding(sp2, crate, mod.path(), Resolve_Use_AbsolutisePath(sp2, mod.path(), imp_e.path), parent_modules) );
+                        rv.merge_from( Resolve_Use_GetBinding(sp2, crate, mod.path(), Resolve_Use_AbsolutisePath(sp2, crate, mod.path(), imp_e.path), parent_modules) );
                         s_mods.pop_back();
                     }
                     else
@@ -407,7 +418,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                     if( ::std::find(resolve_stack_ptrs.begin(), resolve_stack_ptrs.end(), &imp_data) == resolve_stack_ptrs.end() )
                     {
                         resolve_stack_ptrs.push_back( &imp_data );
-                        bindings_ = Resolve_Use_GetBinding(sp2, crate, mod.path(), Resolve_Use_AbsolutisePath(sp2, mod.path(), imp_e.path), parent_modules, /*type_only=*/true);
+                        bindings_ = Resolve_Use_GetBinding(sp2, crate, mod.path(), Resolve_Use_AbsolutisePath(sp2, crate, mod.path(), imp_e.path), parent_modules, /*type_only=*/true);
                         if( bindings_.type.is_Unbound() ) {
                             DEBUG("Recursion detected, skipping " << imp_e.path);
                             continue ;
@@ -567,6 +578,10 @@ namespace {
     TRACE_FUNCTION_F(path << " offset " << start);
     const auto& nodes = path.nodes();
     const ::HIR::Module* hmod = &hmodr;
+    if(nodes.size() == 0 ) {
+        rv.type = ::AST::PathBinding_Type::make_Module({nullptr, hmod});
+        return rv;
+    }
     for(unsigned int i = start; i < nodes.size() - 1; i ++)
     {
         DEBUG("m_mod_items = {" << FMT_CB(ss, for(const auto& e : hmod->m_mod_items) ss << e.first << ", ";) << "}");
@@ -807,6 +822,7 @@ namespace {
         rv.type = ::AST::PathBinding_Type::make_Module({ mod, nullptr });
         return rv;
     }
+
     for( unsigned int i = 0; i < nodes.size()-1; i ++ )
     {
         // TODO: If this came from an import, return the real path?
