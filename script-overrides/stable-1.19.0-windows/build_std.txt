@@ -1,0 +1,5 @@
+# TODO: THis is the windows set
+cargo:rustc-link-lib=advapi32
+cargo:rustc-link-lib=ws2_32
+cargo:rustc-link-lib=userenv
+cargo:rustc-link-lib=shell32
