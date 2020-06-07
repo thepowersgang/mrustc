@@ -667,11 +667,12 @@ AST::Named<AST::Item> Parse_Trait_Item(TokenStream& lex)
     SET_ATTRS(lex, item_attrs);
 
     auto ps = lex.start_span();
+
     {
         ::AST::MacroInvocation  inv;
         if( Parse_MacroInvocation_Opt(lex, inv) )
         {
-            return AST::Named<AST::Item>( lex.end_span(ps), mv$(item_attrs), false, "", AST::Item(mv$(inv)) );
+            return ::AST::Named< ::AST::Item> { lex.end_span(ps), mv$(item_attrs), false, "", ::AST::Item( mv$(inv) ) };
         }
     }
 
@@ -1518,7 +1519,7 @@ void Parse_Use_Inner(TokenStream& lex, ::std::vector<AST::UseItem::Ent>& entries
 }
 
 
-::AST::MacroInvocation Parse_MacroInvocation(ProtoSpan span_start, RcString name, TokenStream& lex)
+::AST::MacroInvocation Parse_MacroInvocation(ProtoSpan span_start, AST::Path name, TokenStream& lex)
 {
     Token   tok;
     RcString ident;
@@ -1536,30 +1537,30 @@ void Parse_Use_Inner(TokenStream& lex, ::std::vector<AST::UseItem::Ent>& entries
 bool Parse_MacroInvocation_Opt(TokenStream& lex,  AST::MacroInvocation& out_inv)
 {
     Token   tok;
-    if( lex.lookahead(0) == TOK_IDENT && lex.lookahead(1) == TOK_EXCLAM )
+
+    switch(lex.lookahead(0))
     {
-        // Good
-    }
-    else if( lex.lookahead(0) == TOK_INTERPOLATED_PATH && lex.lookahead(1) == TOK_EXCLAM )
-    {
-        // Also good.
-    }
-    else
-    {
+    case TOK_IDENT:
+        if( !(lex.lookahead(1) == TOK_DOUBLE_COLON || lex.lookahead(1) == TOK_EXCLAM) )
+            return false;
+    case TOK_RWORD_CRATE:
+    case TOK_RWORD_SUPER:
+    case TOK_RWORD_SELF:
+    case TOK_INTERPOLATED_PATH:
+        break;
+    default:
         return false;
     }
 
     auto ps = lex.start_span();
     auto name_path = Parse_Path(lex, PATH_GENERIC_NONE);
-    ASSERT_BUG(lex.point_span(), name_path.nodes().size() == 1, "TODO: Support multi-component paths in macro invocations");
-    auto name = name_path.nodes()[0].name();
     GET_CHECK_TOK(tok, lex, TOK_EXCLAM);
 
     bool is_braced = (lex.lookahead(0) == TOK_BRACE_OPEN || (lex.lookahead(0) == TOK_IDENT && lex.lookahead(1) == TOK_BRACE_OPEN));
 
-    out_inv = Parse_MacroInvocation(ps, name, lex);
+    out_inv = Parse_MacroInvocation(ps, name_path, lex);
 
-    if(!is_braced )
+    if( !is_braced )
     {
         GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
     }
@@ -1688,9 +1689,6 @@ namespace {
 
     auto ps = lex.start_span();
 
-    RcString item_name;
-    ::AST::Item item_data;
-
     {
         ::AST::MacroInvocation  inv;
         if( Parse_MacroInvocation_Opt(lex, inv) )
@@ -1698,6 +1696,9 @@ namespace {
             return ::AST::Named< ::AST::Item> { lex.end_span(ps), mv$(meta_items), false, "", ::AST::Item( mv$(inv) ) };
         }
     }
+
+    RcString item_name;
+    ::AST::Item item_data;
 
     bool    is_public = Parse_Publicity(lex);
 
@@ -1929,6 +1930,7 @@ namespace {
         item_name = tok.istr();
         item_data = ::AST::Item( Parse_EnumDef(lex, meta_items) );
         break;
+
     // Contextual keywords
     case TOK_IDENT:
         if( tok.istr() == "union" ) {
@@ -1949,6 +1951,7 @@ namespace {
             throw ParseError::Unexpected(lex, tok);
         }
         break;
+
     // `impl`
     case TOK_RWORD_IMPL:
         return ::AST::Named< ::AST::Item> { Span(), {}, false, "", Parse_Impl(lex, mv$(meta_items)) };
