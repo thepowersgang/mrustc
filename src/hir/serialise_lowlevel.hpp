@@ -192,7 +192,7 @@ public:
     };
     CloseOnDrop open_object(const char* name) {
         write_u8(0xFD);
-        auto iv = m_objname_cache.insert(std::make_pair( name, m_objname_cache.size() ));
+        auto iv = m_objname_cache.insert(std::make_pair( name, static_cast<unsigned>(m_objname_cache.size()) ));
         raw_write_uint(iv.first->second);
         if(iv.second)
         {
@@ -411,12 +411,12 @@ public:
     CloseOnDrop open_object(const char* name) {
         assert(read_u8() == 0xFD);
         auto key = raw_read_uint();
-        std::cout << key << " = " << "..." << std::endl;
+        //std::cout << key << " = " << "..." << std::endl;
         if(key == m_objname_cache.size()) {
             m_objname_cache.push_back( raw_read_bytes_stdstring() );
         }
         assert(key < m_objname_cache.size());
-        std::cout << key << " = " << m_objname_cache[key] << std::endl;
+        //std::cout << key << " = " << m_objname_cache[key] << std::endl;
         assert(m_objname_cache[key] == name);
         return CloseOnDrop(*this);
     }
