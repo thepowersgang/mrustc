@@ -409,7 +409,11 @@ public:
     };
 
     CloseOnDrop open_object(const char* name) {
-        assert(read_u8() == 0xFD);
+        auto v = read_u8();
+        if( v != 0xFD ) {
+            std::cerr << "Expected OpenNamed(" << name << "), got " << unsigned(v) << ::std::endl;
+            abort();
+        }
         auto key = raw_read_uint();
         //std::cout << key << " = " << "..." << std::endl;
         if(key == m_objname_cache.size()) {
@@ -421,7 +425,11 @@ public:
         return CloseOnDrop(*this);
     }
     CloseOnDrop open_anon_object() {
-        assert(read_u8() == 0xFE);
+        auto v = read_u8();
+        if( v != 0xFE ) {
+            std::cerr << "Expected OpenAnon, got " << unsigned(v) << ::std::endl;
+            abort();
+        }
         return CloseOnDrop(*this);
     }
     void close_object() {

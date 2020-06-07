@@ -145,6 +145,7 @@
         ::std::vector<T> deserialise_vec()
         {
             TRACE_FUNCTION_FR("<" << typeid(T).name() << ">", m_in.get_pos());
+            auto _ = m_in.open_object(typeid(::std::vector<T>).name());
             size_t n = m_in.read_count();
             DEBUG("n = " << n);
             ::std::vector<T>    rv;
@@ -157,6 +158,7 @@
         ::std::vector<T> deserialise_vec_c(::std::function<T()> cb)
         {
             TRACE_FUNCTION_F("<" << typeid(T).name() << ">");
+            auto _ = m_in.open_object(typeid(::std::vector<T>).name());
             size_t n = m_in.read_count();
             ::std::vector<T>    rv;
             rv.reserve(n);
@@ -183,6 +185,7 @@
         ::HIR::LifetimeDef deserialise_lifetimedef();
         ::HIR::LifetimeRef deserialise_lifetimeref();
         ::HIR::ArraySize deserialise_arraysize();
+        ::HIR::GenericRef deserialise_genericref();
         ::HIR::TypeRef deserialise_type();
         ::HIR::SimplePath deserialise_simplepath();
         ::HIR::PathParams deserialise_pathparams();
@@ -588,7 +591,7 @@
                 }
             _(StaticString, m_in.read_string() )
             _(Const,  { box$(deserialise_path()) } )
-            _(Generic,  { m_in.read_istring(), static_cast<unsigned>(m_in.read_count()) })
+            _(Generic,  deserialise_genericref())
             _(ItemAddr, box$(deserialise_path()) )
             #undef _
             default:
@@ -879,12 +882,23 @@
         return rv;
     }
 
+    ::HIR::GenericRef HirDeserialiser::deserialise_genericref()
+    {
+        return HIR::GenericRef {
+            m_in.read_istring(),
+            m_in.read_u16()
+        };
+    }
+
     ::HIR::ArraySize HirDeserialiser::deserialise_arraysize()
     {
         switch(auto tag = m_in.read_tag())
         {
         #define _(x, ...)   case ::HIR::ArraySize::TAG_##x: DEBUG("- "#x); return HIR::ArraySize::make_##x(__VA_ARGS__);
         _(Known, m_in.read_u64c())
+        _(Generic,
+            deserialise_genericref()
+            )
         default:
             BUG(Span(), "Bad tag for HIR::ArraySize - " << tag);
         #undef _
@@ -919,10 +933,7 @@
             deserialise_path(),
             {}
             })
-        _(Generic, {
-            m_in.read_istring(),
-            m_in.read_u16()
-            })
+        _(Generic, deserialise_genericref())
         _(TraitObject, {
             deserialise_traitpath(),
             deserialise_vec< ::HIR::GenericPath>(),
@@ -988,6 +999,7 @@
         ::HIR::PathParams   rv;
         TRACE_FUNCTION_FR("", rv);
         rv.m_types = deserialise_vec< ::HIR::TypeRef>();
+        rv.m_values = deserialise_vec< ::HIR::Literal>();
         return rv;
     }
     ::HIR::GenericPath HirDeserialiser::deserialise_genericpath()
@@ -1194,6 +1206,9 @@
         #define _(x, ...)    case ::HIR::Literal::TAG_##x:   return ::HIR::Literal::make_##x(__VA_ARGS__);
         _(Invalid, {})
         _(Defer, {})
+        _(Generic,
+            deserialise_genericref()
+            )
         _(List,   deserialise_vec< ::HIR::Literal>() )
         _(Variant, {
             static_cast<unsigned int>(m_in.read_count()),
@@ -1236,8 +1251,7 @@
     {
         MIR::Statement  rv;
         TRACE_FUNCTION_FR("", rv);
-
-        //assert(m_in.read_string() == "MIR::Statement");
+        auto _ = m_in.open_object("MIR::Statement");
 
         switch( auto tag = m_in.read_tag() )
         {

@@ -97,6 +97,7 @@
         void serialise_vec(const ::std::vector<T>& vec)
         {
             TRACE_FUNCTION_F("size=" << vec.size());
+            auto _ = m_out.open_object(typeid(::std::vector<T>).name());
             m_out.write_count(vec.size());
             for(const auto& i : vec)
                 serialise(i);
@@ -198,18 +199,14 @@
                 }
             TU_ARMA(TraitObject, e) {
                 serialise_traitpath(e.m_trait);
-                m_out.write_count(e.m_markers.size());
-                for(const auto& m : e.m_markers)
-                    serialise_genericpath(m);
+                serialise_vec(e.m_markers);
                 serialise(e.m_lifetime);
                 }
             TU_ARMA(ErasedType, e) {
                 serialise_path(e.m_origin);
                 m_out.write_count(e.m_index);
 
-                m_out.write_count(e.m_traits.size());
-                for(const auto& t : e.m_traits)
-                    serialise_traitpath(t);
+                serialise_vec(e.m_traits);
                 serialise(e.m_lifetime);
                 }
             TU_ARMA(Array, e) {
@@ -220,9 +217,7 @@
                 serialise_type(e.inner);
                 }
             TU_ARMA(Tuple, e) {
-                m_out.write_count(e.size());
-                for(const auto& st : e)
-                    serialise_type(st);
+                serialise_vec(e);
                 }
             TU_ARMA(Borrow, e) {
                 serialise(e.lifetime);
@@ -255,9 +250,8 @@
         }
         void serialise_pathparams(const ::HIR::PathParams& pp)
         {
-            m_out.write_count(pp.m_types.size());
-            for(const auto& t : pp.m_types)
-                serialise_type(t);
+            serialise_vec(pp.m_types);
+            serialise_vec(pp.m_values);
         }
         void serialise_genericpath(const ::HIR::GenericPath& path)
         {
@@ -612,38 +606,38 @@
         void serialise(const ::HIR::Literal& lit)
         {
             m_out.write_tag(lit.tag());
-            TU_MATCHA( (lit), (e),
-            (Invalid,
+            TU_MATCH_HDRA( (lit), {)
+            TU_ARMA(Invalid,e) {
                 //BUG(Span(), "Literal::Invalid encountered in HIR");
-                ),
-            (Defer,
-                ),
-            (Generic,
-                TODO(Span(), "Serialise generic literals");
-                ),
-            (List,
+                }
+            TU_ARMA(Defer, e) {
+                }
+            TU_ARMA(Generic, e) {
+                serialise(e);
+                }
+            TU_ARMA(List, e) {
                 serialise_vec(e);
-                ),
-            (Variant,
+                }
+            TU_ARMA(Variant, e) {
                 m_out.write_count(e.idx);
                 serialise(*e.val);
-                ),
-            (Integer,
+                }
+            TU_ARMA(Integer, e) {
                 m_out.write_u64(e);
-                ),
-            (Float,
+                }
+            TU_ARMA(Float, e) {
                 m_out.write_double(e);
-                ),
-            (BorrowPath,
+                }
+            TU_ARMA(BorrowPath, e) {
                 serialise_path(e);
-                ),
-            (BorrowData,
+                }
+            TU_ARMA(BorrowData, e) {
                 serialise(*e);
-                ),
-            (String,
+                }
+            TU_ARMA(String, e) {
                 m_out.write_string(e);
-                )
-            )
+                }
+            }
         }
 
         void serialise(const ::HIR::ExprPtr& exp, bool save_mir=true)
@@ -671,7 +665,7 @@
         }
         void serialise(const ::MIR::Statement& stmt)
         {
-            //m_out.write_string(5+9, "MIR::Statement");
+            auto _ = m_out.open_object("MIR::Statement");
             TU_MATCHA( (stmt), (e),
             (Assign,
                 m_out.write_tag(0);
@@ -730,9 +724,7 @@
                 ),
             (Switch,
                 serialise(e.val);
-                m_out.write_count(e.targets.size());
-                for(auto t : e.targets)
-                    m_out.write_count(t);
+                serialise_vec(e.targets);
                 ),
             (SwitchValue,
                 serialise(e.val);
@@ -898,8 +890,7 @@
                 serialise_path(*e.p);
                 ),
             (Generic,
-                m_out.write_string(e.name);
-                m_out.write_count(e.binding);
+                serialise(e);
                 ),
             (ItemAddr,
                 serialise_path(*e);
