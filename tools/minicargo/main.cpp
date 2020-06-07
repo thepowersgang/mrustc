@@ -99,6 +99,11 @@ int main(int argc, const char* argv[])
         auto m = PackageManifest::load_from_toml( dir / "Cargo.toml" );
         m.set_features(opts.features, opts.features.empty());
 
+        if(false)
+        {
+            m.dump(std::cout);
+        }
+
         Debug_SetPhase("Load Workspace");
         auto workspace_manifest_path = m.workspace_path();
         if( !workspace_manifest_path.is_valid() )

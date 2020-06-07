@@ -141,6 +141,7 @@ struct PackageVersionSpec
 class PackageRef
 {
     friend class PackageManifest;
+    ::std::string   m_key;
     ::std::string   m_name;
     PackageVersionSpec  m_version;
 
@@ -155,6 +156,7 @@ class PackageRef
     ::std::shared_ptr<PackageManifest> m_manifest;
 
     PackageRef(const ::std::string& n) :
+        m_key(n),
         m_name(n)
     {
     }
@@ -178,6 +180,8 @@ public:
     }
 
     void load_manifest(Repository& repo, const ::helpers::path& base_path, bool include_build_deps);
+
+    friend std::ostream& operator<<(std::ostream& os, const PackageRef& pr);
 };
 
 enum class Edition
@@ -292,6 +296,8 @@ public:
     const PackageVersion& version() const { return m_version; }
     bool has_library() const;
     const PackageTarget& get_library() const;
+
+    void dump(std::ostream& os) const;
 
     bool foreach_ty(PackageTarget::Type ty, ::std::function<bool(const PackageTarget&)> cb) const {
         for(const auto& t : m_targets ) {

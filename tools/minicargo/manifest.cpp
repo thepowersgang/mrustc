@@ -140,6 +140,10 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
             {
                 //rv.m_create_auto_bench = key_val.value.as_bool();
             }
+            else if( key == "autoexamples" )
+            {
+                //rv.m_create_auto_example = key_val.value.as_bool();
+            }
             else if( key == "workspace" )
             {
                 if( rv.m_workspace_manifest.is_valid() )
@@ -192,7 +196,7 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
 
             target_edit_from_kv(toml_file.lexer(), *it, key_val, 2);
         }
-        else if (section == "test")
+        else if( section == "test" )
         {
             assert(key_val.path.size() > 1);
             unsigned idx = ::std::stoi(key_val.path[1]);
@@ -203,7 +207,7 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
 
             target_edit_from_kv(toml_file.lexer(), *it, key_val, 2);
         }
-        else if (section == "bench")
+        else if( section == "bench" )
         {
             assert(key_val.path.size() > 1);
             unsigned idx = ::std::stoi(key_val.path[1]);
@@ -211,6 +215,17 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
             auto it = ::std::find_if(rv.m_targets.begin(), rv.m_targets.end(), [&idx](const auto& x) { return x.m_type == PackageTarget::Type::Bench && idx-- == 0; });
             if (it == rv.m_targets.end())
                 it = rv.m_targets.insert(it, PackageTarget{ PackageTarget::Type::Bench });
+
+            target_edit_from_kv(toml_file.lexer(), *it, key_val, 2);
+        }
+        else if( section == "example")
+        {
+            assert(key_val.path.size() > 1);
+            unsigned idx = ::std::stoi(key_val.path[1]);
+
+            auto it = ::std::find_if(rv.m_targets.begin(), rv.m_targets.end(), [&idx](const auto& x) { return x.m_type == PackageTarget::Type::Example && idx-- == 0; });
+            if (it == rv.m_targets.end())
+                it = rv.m_targets.insert(it, PackageTarget{ PackageTarget::Type::Example });
 
             target_edit_from_kv(toml_file.lexer(), *it, key_val, 2);
         }
@@ -227,7 +242,7 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
             const auto& depname = key_val.path[1];
 
             // Find/create dependency descriptor
-            auto it = ::std::find_if(dep_list.begin(), dep_list.end(), [&](const auto& x) { return x.m_name == depname; });
+            auto it = ::std::find_if(dep_list.begin(), dep_list.end(), [&](const auto& x) { return x.m_key == depname; });
             bool was_added = (it == dep_list.end());
             if( was_added )
             {
@@ -407,7 +422,10 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
                 // no defaults
                 break;
             case PackageTarget::Type::Example:
-                TODO("Default/implicit path for examples");
+                tgt.m_path = ::helpers::path("src") / "examples" / tgt.m_name.c_str() + ".rs";
+                if( !::std::ifstream(package_dir / tgt.m_path).good() )
+                    tgt.m_path = ::helpers::path("src") / "examples" / tgt.m_name.c_str() / "main.rs";
+                break;
             }
         }
         if(tgt.m_name == "")
@@ -650,6 +668,41 @@ void PackageRef::fill_from_kv(bool was_added, const TomlKeyValue& key_val, size_
             throw ::std::runtime_error(::format("ERROR: Unkown dependency attribute `", attr, "` on dependency `", this->m_name, "`"));
         }
     }
+}
+
+void PackageManifest::dump(std::ostream& os) const
+{
+    os
+        << "PackageManifest {\n"
+        << "  '" << m_name << "' v" << m_version << (m_links != "" ? " links=" : "") << m_links << "\n"
+        << "  m_manifest_path = " << m_manifest_path << "\n"
+        << "  m_workspace_manifest = " << m_workspace_manifest << "\n"
+        << "  m_edition = " << (int)m_edition << "\n"
+        << "  m_dependencies = [\n";
+    for(const auto& dep : m_dependencies)
+    {
+        os << "    " << dep << "\n";
+    }
+    os
+        << "  ]\n"
+        << "  m_build_dependencies = [\n"
+        ;
+    for(const auto& dep : m_build_dependencies)
+    {
+        os << "    " << dep << "\n";
+    }
+    os
+        << "  ]\n"
+        << "  m_dev_dependencies = [\n"
+        ;
+    for(const auto& dep : m_dev_dependencies)
+    {
+        os << "    " << dep << "\n";
+    }
+    os
+        << "  ]\n"
+        << "}\n"
+        ;
 }
 
 bool PackageManifest::has_library() const
@@ -969,6 +1022,39 @@ void PackageRef::load_manifest(Repository& repo, const ::helpers::path& base_pat
 
     m_manifest->set_features(this->m_features, this->m_use_default_features);
     m_manifest->load_dependencies(repo, include_build_deps);
+}
+
+
+std::ostream& operator<<(std::ostream& os, const PackageRef& pr)
+{
+    os << "PackageRef {";
+    os << " '" << pr.m_name << "'";
+    if( pr.m_key != pr.m_key) {
+        os << " key='" << pr.m_key << "'";
+    }
+    if(!pr.m_version.m_bounds.empty()) {
+        os << " " << pr.m_version;
+    }
+    if(pr.m_optional) {
+        os << " optional";
+    }
+    if(pr.has_path()) {
+        os << " path='" << pr.m_path << "'";
+    }
+    os << " }";
+    //::std::string   m_name;
+    //PackageVersionSpec  m_version;
+    //
+    //bool m_optional = false;
+    //::std::string   m_path;
+    //
+    //// Features requested by this reference
+    //bool    m_use_default_features = true;
+    //::std::vector<::std::string>    m_features;
+    //bool    m_optional_enabled = false;
+    //
+    //::std::shared_ptr<PackageManifest> m_manifest;
+    return os;
 }
 
 PackageVersion PackageVersion::from_string(const ::std::string& s)

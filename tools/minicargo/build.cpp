@@ -136,7 +136,9 @@ public:
     }
 };
 
+#ifndef DISABLE_MULTITHREAD
 static ::std::mutex s_cout_mutex;
+#endif
 
 BuildList::BuildList(const PackageManifest& manifest, const BuildOptions& opts):
     m_root_manifest(manifest)
@@ -801,7 +803,9 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     }
 
     {
+#ifndef DISABLE_MULTITHREAD
         ::std::lock_guard<::std::mutex> lh { s_cout_mutex };
+#endif
         // TODO: Determine what number and total targets there are
         if( index != ~0u ) {
             //::std::cout << "(" << index << "/" << m_total_targets << ") ";
@@ -1213,7 +1217,9 @@ bool spawn_process(const char* exe_name, const StringList& args, const StringLis
     auto cmdline_str = cmdline.str();
     if(true)
     {
+#ifndef DISABLE_MULTITHREAD
         ::std::lock_guard<::std::mutex> lh { s_cout_mutex };
+#endif
         ::std::cout << "> " << cmdline_str << ::std::endl;
     }
     else
