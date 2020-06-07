@@ -2174,11 +2174,15 @@ namespace {
                     if(this->m_is_fallback)
                     {
                         this->context.equate_types(sp, src_ty, ::HIR::CoreType::U8);
+                        this->m_completed = true;
                     }
-
-                    if( !this->context.get_type(src_ty).data().is_Infer() )
+                    else if( !this->context.get_type(src_ty).data().is_Infer() )
                     {
                         this->m_completed = true;
+                    }
+                    else
+                    {
+                        // Not fallback, and still infer - not complete
                     }
                 }
                 else
