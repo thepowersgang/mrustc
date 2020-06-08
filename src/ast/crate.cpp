@@ -115,9 +115,13 @@ void Crate::load_externs()
     }
 
     // Ensure that all crates passed on the command line are loaded
-    for(const auto& c : g_crate_overrides)
+    if( this->m_edition >= Edition::Rust2018 )
     {
-        this->load_extern_crate(Span(), c.first.c_str());
+        DEBUG("Load from --crate");
+        for(const auto& c : g_crate_overrides)
+        {
+            this->load_extern_crate(Span(), c.first.c_str());
+        }
     }
 }
 // TODO: Handle disambiguating crates with the same name (e.g. libc in std and crates.io libc)
