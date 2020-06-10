@@ -1543,7 +1543,11 @@ bool Parse_MacroInvocation_Opt(TokenStream& lex,  AST::MacroInvocation& out_inv)
     case TOK_IDENT:
         if( !(lex.lookahead(1) == TOK_DOUBLE_COLON || lex.lookahead(1) == TOK_EXCLAM) )
             return false;
+        break;
     case TOK_RWORD_CRATE:
+        if( !(lex.lookahead(1) == TOK_DOUBLE_COLON) )
+            return false;
+        break;
     case TOK_RWORD_SUPER:
     case TOK_RWORD_SELF:
     case TOK_INTERPOLATED_PATH:
