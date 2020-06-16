@@ -23,6 +23,12 @@ const TargetArch ARCH_X86_64 = {
     TargetArch::Alignments(2, 4, 8, 16, 4, 8, 8)
     //TargetArch::Alignments(2, 4, 8, 8, 4, 8, 8) // TODO: Alignment of u128 is 8 with rustc, but gcc uses 16
     };
+const TargetArch ARCH_X32 = {
+    "x86_64",
+    32, false,
+    ARCH_X86_64.m_atomics,
+    TargetArch::Alignments(2, 4, 8, 16, 4, 8, 4)    // x86_64 w/4-byte ptr
+};
 const TargetArch ARCH_X86 = {
     "x86",
     32, false,
@@ -405,6 +411,13 @@ namespace
             return TargetSpec {
                 "unix", "linux", "gnu", {CodegenMode::Gnu11, true /*false*/, "x86_64-linux-gnu", BACKEND_C_OPTS_GNU},
                 ARCH_X86_64
+                };
+        }
+        else if(target_name == "x86_64-unknown-linux-gnux32")
+        {
+            return TargetSpec {
+                "unix", "linux", "gnu", {CodegenMode::Gnu11, true, "x86_64-unknown-linux-gnux32", BACKEND_C_OPTS_GNU},
+                ARCH_X32
                 };
         }
         else if(target_name == "arm-linux-gnu")
