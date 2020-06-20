@@ -44,6 +44,18 @@ const TargetArch ARCH_M68K = {
     { /*atomic(u8)=*/true, false, true, false,  true },
     TargetArch::Alignments(2, 2, 2, 2, 2, 2, 2)
 };
+const TargetArch ARCH_POWERPC64 = {
+    "powerpc64",
+    64, true,
+    { /*atomic(u8)=*/true, true, true, true,  true },
+    TargetArch::Alignments(2, 4, 8, 16, 4, 8, 8)
+};
+const TargetArch ARCH_POWERPC64LE = {
+    "powerpc64",
+    64, false,
+    { /*atomic(u8)=*/true, true, true, true,  true },
+    TargetArch::Alignments(2, 4, 8, 16, 4, 8, 8)
+};
 TargetSpec  g_target;
 
 
@@ -402,6 +414,20 @@ namespace
             return TargetSpec {
                 "unix", "linux", "gnu", {CodegenMode::Gnu11, true, "m68k-linux-gnu", BACKEND_C_OPTS_GNU},
                 ARCH_M68K
+                };
+        }
+        else if(target_name == "powerpc64-unknown-linux-gnu")
+        {
+            return TargetSpec {
+                "unix", "linux", "gnu", {CodegenMode::Gnu11, false, "powerpc64-unknown-linux-gnu", BACKEND_C_OPTS_GNU},
+                ARCH_POWERPC64
+                };
+        }
+        else if(target_name == "powerpc64le-unknown-linux-gnu")
+        {
+            return TargetSpec {
+                "unix", "linux", "gnu", {CodegenMode::Gnu11, false, "powerpc64le-unknown-linux-gnu", BACKEND_C_OPTS_GNU},
+                ARCH_POWERPC64LE
                 };
         }
         else if(target_name == "i586-pc-windows-gnu")
