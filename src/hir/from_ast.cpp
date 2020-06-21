@@ -1706,7 +1706,82 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
         //const auto& sp = mod_span;
         if( ie.is_pub )
         {
-            auto mi = ::HIR::MacroItem::make_Import({ ::HIR::SimplePath(ie.path.front(), ::std::vector<RcString>(ie.path.begin()+1, ie.path.end())) });
+            // This needs to be the canonical path, not just an equivalent path (no imports)
+            HIR::SimplePath p;
+            struct H {
+                static void from_hir(HIR::SimplePath& p, const Span& sp, const HIR::Module* mod_p, const std::vector<RcString>& inpath, size_t start_i)
+                {
+                    for(size_t i = start_i; i < inpath.size() - 1; i ++)
+                    {
+                        const auto& mod_i = mod_p->m_mod_items.at(inpath[i])->ent;
+                        TU_MATCH_HDRA( (mod_i), {)
+                        default:
+                            BUG(sp, "");
+                        TU_ARMA(Import, imp) {
+                            mod_p = &g_crate_ptr->get_mod_by_path(Span(), imp.path);
+                            p = imp.path;
+                            }
+                        TU_ARMA(Module, m) {
+                            mod_p = &m;
+                            p.m_components.push_back( inpath[i] );
+                            }
+                        }
+                    }
+
+                    const auto& mod_i = mod_p->m_macro_items.at(inpath.back())->ent;
+                    TU_MATCH_HDRA( (mod_i), {)
+                    default:
+                        p.m_components.push_back( inpath.back() );
+                        return;
+                    TU_ARMA(Import, imp) {
+                        p = imp.path;
+                        }
+                    }
+                }
+                static void from_ast(HIR::SimplePath& p, const Span& sp, const AST::Module* mod_p, const std::vector<RcString>& inpath, size_t start_i)
+                {
+                    for(size_t i = start_i; i < inpath.size() - 1; i ++)
+                    {
+                        bool found = false;
+                        for(const auto& item : mod_p->items())
+                        {
+                            if( item.name == inpath[i] )
+                            {
+                                TU_MATCH_HDRA( (item.data), {)
+                                default:
+                                    break;
+                                TU_ARMA(Module, m) {
+                                    mod_p = &m;
+                                    found = true;
+                                    p.m_components.push_back( inpath[i] );
+                                    }
+                                TU_ARMA(Crate, c) {
+                                    p.m_crate_name = c.name;
+                                    p.m_components.clear();
+                                    H::from_hir(p, sp, &g_crate_ptr->m_ext_crates.at(c.name).m_data->m_root_module, inpath, i+1);
+                                    return ;
+                                    }
+                                }
+                            }
+                        }
+                        if(!found)
+                            BUG(sp, "");
+                    }
+
+                    // TODO: what if it's an import?
+                    p.m_components.push_back( inpath.back() );
+                }
+            };
+
+            if( ie.path.front() == "" )
+            {
+                H::from_ast(p, Span(), &g_ast_crate_ptr->m_root_module, ie.path, 1);
+            }
+            else
+            {
+                H::from_hir(p, Span(), &g_crate_ptr->m_ext_crates.at(ie.path.front()).m_data->m_root_module, ie.path, 1);
+            }
+            auto mi = ::HIR::MacroItem::make_Import({ mv$(p) });
             _add_mod_mac_item( mod, ie.name, get_pub(true), mv$(mi) );
         }
     }
@@ -1950,7 +2025,8 @@ public:
     g_ast_crate_ptr = &crate;
     g_crate_name = rv.m_crate_name;
     g_core_crate = (crate.m_load_std == ::AST::Crate::LOAD_NONE ? rv.m_crate_name : RcString::new_interned("core"));
-    auto& macros = rv.m_exported_macros;
+    auto macros = std::map<RcString, HIR::MacroItem>();
+    //auto& macros = rv.m_exported_macros;
 
     // - Extract exported macros
     {
@@ -1965,7 +2041,10 @@ public:
                 if( mac.data->m_exported ) {
                     auto res = macros.insert( ::std::make_pair( mac.name, mv$(mac.data) ) );
                     if( res.second )
+                    {
                         DEBUG("- Define " << mac.name << "!");
+                        rv.m_exported_macro_names.push_back(mac.name);
+                    }
                 }
                 else {
                     DEBUG("- Non-exported " << mac.name << "!");
@@ -1980,19 +2059,20 @@ public:
 
         for( auto& mac : crate.m_root_module.macro_imports_res() ) {
             if( mac.data->m_exported && mac.name != "" ) {
-                auto v = ::std::make_pair( mac.name, MacroRulesPtr(new MacroRules( mv$(*const_cast<MacroRules*>(mac.data)) )) );
+                auto mp = MacroRulesPtr(new MacroRules( mv$(*const_cast<MacroRules*>(mac.data)) ));
                 auto it = macros.find(mac.name);
                 if( it == macros.end() )
                 {
-                    auto res = macros.insert( mv$(v) );
-                    DEBUG("- Import " << mac.name << "! (from \"" << res.first->second->m_source_crate << "\")");
+                    rv.m_exported_macro_names.push_back(mac.name);
+                    auto res = macros.insert( ::std::make_pair( mac.name, mv$(mp) ) );
+                    DEBUG("- Import " << mac.name << "! (from \"" << res.first->second.as_MacroRules()->m_source_crate << "\")");
                 }
-                else if( v.second->m_rules.empty() ) {
+                else if( mp->m_rules.empty() ) {
                     // Skip
                 }
                 else {
-                    DEBUG("- Replace " << mac.name << "! (from \"" << it->second->m_source_crate << "\") with one from \"" << v.second->m_source_crate << "\"");
-                    it->second = mv$( v.second );
+                    DEBUG("- Replace " << mac.name << "! "/*"(from \"" << it->second->m_source_crate << "\") "*/"with one from \"" << mp->m_source_crate << "\"");
+                    it->second = mv$(mp);
                 }
             }
         }
@@ -2004,20 +2084,21 @@ public:
                     continue ;
                 }
                 // TODO: Why does this to such a move?
-                auto v = ::std::make_pair( mac.name, MacroRulesPtr(new MacroRules( mv$(*const_cast<MacroRules*>(mac.macro_ptr)) )) );
+                auto mp = MacroRulesPtr(new MacroRules( mv$(*const_cast<MacroRules*>(mac.macro_ptr)) ));
 
                 auto it = macros.find(mac.name);
                 if( it == macros.end() )
                 {
-                    auto res = macros.insert( mv$(v) );
-                    DEBUG("- Import " << mac.name << "! (from \"" << res.first->second->m_source_crate << "\")");
+                    rv.m_exported_macro_names.push_back(mac.name);
+                    auto res = macros.insert( ::std::make_pair( mac.name, mv$(mp)) );
+                    DEBUG("- Import " << mac.name << "! (from \"" << res.first->second.as_MacroRules()->m_source_crate << "\")");
                 }
-                else if( v.second->m_rules.empty() ) {
+                else if( mp->m_rules.empty() ) {
                     // Skip
                 }
                 else {
-                    DEBUG("- Replace " << mac.name << "! (from \"" << it->second->m_source_crate << "\") with one from \"" << v.second->m_source_crate << "\"");
-                    it->second = mv$( v.second );
+                    DEBUG("- Replace " << mac.name << "! "/*"(from \"" << it->second->m_source_crate << "\") "*/"with one from \"" << mp->m_source_crate << "\"");
+                    it->second = mv$( mp );
                 }
             }
         }
@@ -2027,8 +2108,8 @@ public:
         {
             if( mac.is_pub && !mac.macro_ptr ) {
                 // Add to the re-export list
-                auto path = ::HIR::SimplePath(mac.path.front(), ::std::vector<RcString>(mac.path.begin()+1, mac.path.end()));;
-                rv.m_proc_macro_reexports.insert( ::std::make_pair( mac.name, ::HIR::Crate::MacroImport { path } ));
+                auto path = ::HIR::SimplePath(mac.path.front(), ::std::vector<RcString>(mac.path.begin()+1, mac.path.end()));
+                macros.insert( std::make_pair(mac.name, HIR::MacroItem::make_Import({path})) );
             }
         }
     }
@@ -2038,7 +2119,7 @@ public:
         for(const auto& ent : crate.m_proc_macros)
         {
             // Register under an invalid simplepath
-            rv.m_proc_macros.push_back( ::HIR::ProcMacro { ent.name, ::HIR::SimplePath(RcString(""), { ent.name }), ent.attributes } );
+            macros.insert( std::make_pair(ent.name, ::HIR::ProcMacro { ent.name, ::HIR::SimplePath(RcString(""), { ent.name }), ent.attributes }) );
         }
     }
     else
@@ -2086,6 +2167,10 @@ public:
     path_Sized = rv.get_lang_item_path(sp, "sized");
 
     rv.m_root_module = LowerHIR_Module( crate.m_root_module, ::HIR::ItemPath(rv.m_crate_name) );
+    for(auto& e : macros)
+    {
+        rv.m_root_module.m_macro_items.insert( ::std::make_pair(e.first, box$(HIR::VisEnt<HIR::MacroItem> { HIR::Publicity::new_global(), mv$(e.second) })) );
+    }
 
     LowerHIR_Module_Impls(crate.m_root_module,  rv);
 

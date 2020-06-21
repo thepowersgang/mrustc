@@ -344,10 +344,6 @@
             serialise_vec(ig.non_named);
             serialise_vec(ig.generic);
         }
-        void serialise(const ::HIR::Crate::MacroImport& e)
-        {
-            serialise(e.path);
-        }
 
         void serialise_crate(const ::HIR::Crate& crate)
         {
@@ -358,8 +354,8 @@
             serialise_pathmap(crate.m_trait_impls);
             serialise_pathmap(crate.m_marker_impls);
 
-            serialise_strmap(crate.m_exported_macros);
-            serialise_strmap(crate.m_proc_macro_reexports);
+            serialise_vec(crate.m_exported_macro_names);
+
             {
                 decltype(crate.m_lang_items)    lang_items_filtered;
                 for(const auto& ent : crate.m_lang_items)
@@ -381,8 +377,6 @@
             }
             serialise_vec(crate.m_ext_libs);
             serialise_vec(crate.m_link_paths);
-
-            serialise_vec(crate.m_proc_macros);
         }
         void serialise(const ::HIR::ExternLibrary& lib)
         {
@@ -396,6 +390,7 @@
 
             serialise_strmap(mod.m_value_items);
             serialise_strmap(mod.m_mod_items);
+            serialise_strmap(mod.m_macro_items);
         }
         void serialise_typeimpl(const ::HIR::TypeImpl& impl)
         {
@@ -936,6 +931,22 @@
                 serialise(e);
                 )
             )
+        }
+        void serialise(const ::HIR::MacroItem& item)
+        {
+            auto _ = m_out.open_object("HIR::MacroItem");
+            m_out.write_tag(item.tag());
+            TU_MATCH_HDRA( (item), {)
+            TU_ARMA(Import, e) {
+                serialise(e.path);
+                }
+            TU_ARMA(MacroRules, e) {
+                serialise(e);
+                }
+            TU_ARMA(ProcMacro, e) {
+                serialise(e);
+                }
+            }
         }
         void serialise(const ::HIR::ValueItem& item)
         {

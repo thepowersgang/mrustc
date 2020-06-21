@@ -285,21 +285,5 @@ ExternCrate::ExternCrate(const RcString& name, const ::std::string& path):
     m_name = m_hir->m_crate_name;
 }
 
-void ExternCrate::with_all_macros(::std::function<void(const RcString& , const MacroRules&)> cb) const
-{
-    for(const auto& m : m_hir->m_exported_macros)
-    {
-        cb(m.first, *m.second);
-    }
-}
-const MacroRules* ExternCrate::find_macro_rules(const RcString& name) const
-{
-    auto i = m_hir->m_exported_macros.find(name);
-    if(i != m_hir->m_exported_macros.end())
-        return &*i->second;
-    return nullptr;
-}
-
-
 }   // namespace AST
 

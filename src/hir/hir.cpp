@@ -306,7 +306,7 @@ const ::HIR::TypeItem& ::HIR::Crate::get_typeitem_by_path(const Span& sp, const 
     return it->second->ent;
 }
 
-const ::HIR::Module& ::HIR::Crate::get_mod_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_last_node/*=false*/) const
+const ::HIR::Module& ::HIR::Crate::get_mod_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_last_node/*=false*/, bool ignore_crate_name/*=false*/) const
 {
     if( ignore_last_node )
     {
@@ -314,7 +314,7 @@ const ::HIR::Module& ::HIR::Crate::get_mod_by_path(const Span& sp, const ::HIR::
     }
     if( path.m_components.size() == (ignore_last_node ? 1 : 0) )
     {
-        if( path.m_crate_name != m_crate_name )
+        if( !ignore_crate_name && path.m_crate_name != m_crate_name )
         {
             ASSERT_BUG(sp, m_ext_crates.count(path.m_crate_name) > 0, "Crate '" << path.m_crate_name << "' not loaded");
             return m_ext_crates.at(path.m_crate_name).m_data->m_root_module;
@@ -326,7 +326,7 @@ const ::HIR::Module& ::HIR::Crate::get_mod_by_path(const Span& sp, const ::HIR::
     }
     else
     {
-        const auto& ti = this->get_typeitem_by_path(sp, path, false, ignore_last_node);
+        const auto& ti = this->get_typeitem_by_path(sp, path, ignore_crate_name, ignore_last_node);
         TU_IFLET(::HIR::TypeItem, ti, Module, e,
             return e;
         )

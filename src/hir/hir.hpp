@@ -584,16 +584,8 @@ public:
     ::std::map< ::HIR::SimplePath, ImplGroup<::HIR::TraitImpl> > m_trait_impls;
     ::std::map< ::HIR::SimplePath, ImplGroup<::HIR::MarkerImpl> > m_marker_impls;
 
-    /// Macros exported by this crate
-    ::std::unordered_map< RcString, ::MacroRulesPtr >  m_exported_macros;
-    /// Macros re-exported by this crate
-    struct MacroImport {
-        ::HIR::SimplePath   path;
-        //bool    is_proc_macro;
-    };
-    ::std::unordered_map< RcString, MacroImport >  m_proc_macro_reexports;
-    /// Procedural macros presented
-    ::std::vector< ::HIR::ProcMacro>    m_proc_macros;
+    /// List of legacy-exported macros
+    std::vector<RcString> m_exported_macro_names;
 
     /// Language items avaliable through this crate (includes ones from loaded externs)
     ::std::unordered_map< ::std::string, ::HIR::SimplePath> m_lang_items;
@@ -617,7 +609,7 @@ public:
     const ::HIR::Struct& get_struct_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
     const ::HIR::Union& get_union_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
     const ::HIR::Enum& get_enum_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
-    const ::HIR::Module& get_mod_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_last_node=false) const;
+    const ::HIR::Module& get_mod_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_last_node=false, bool ignore_crate_name=false) const;
 
     const ::HIR::ValueItem& get_valitem_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_crate_name=false) const;
     const ::HIR::Function& get_function_by_path(const Span& sp, const ::HIR::SimplePath& path) const;

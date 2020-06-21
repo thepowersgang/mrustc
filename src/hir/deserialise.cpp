@@ -657,6 +657,24 @@
             }
         }
 
+        ::HIR::MacroItem deserialise_macroitem()
+        {
+            auto _ = m_in.open_object("HIR::MacroItem");
+            switch(auto tag = m_in.read_tag())
+            {
+            case HIR::MacroItem::TAG_Import:
+                return HIR::MacroItem::Data_Import { 
+                    deserialise_simplepath()
+                    };
+            case HIR::MacroItem::TAG_MacroRules:
+                return deserialise_macrorulesptr();
+            case HIR::MacroItem::TAG_ProcMacro:
+                return deserialise_procmacro();
+            }
+
+            TODO(Span(), "");
+        }
+
         ::HIR::Linkage deserialise_linkage()
         {
             ::HIR::Linkage  l;
@@ -832,6 +850,7 @@
 
     template<> DEF_D( ::HIR::ValueItem, return d.deserialise_valueitem(); )
     template<> DEF_D( ::HIR::TypeItem, return d.deserialise_typeitem(); )
+    template<> DEF_D( ::HIR::MacroItem, return d.deserialise_macroitem(); )
 
     template<> DEF_D( ::HIR::Enum::ValueVariant, return d.deserialise_enumvaluevariant(); )
     template<> DEF_D( ::HIR::Enum::DataVariant, return d.deserialise_enumdatavariant(); )
@@ -859,12 +878,6 @@
         rv.named = d.deserialise_pathmap< ::std::vector<::std::unique_ptr<T> > >();
         rv.non_named = d.deserialise_vec< ::std::unique_ptr<T> >();
         rv.generic = d.deserialise_vec< ::std::unique_ptr<T> >();
-        return rv;
-        )
-    template<>
-    DEF_D( ::HIR::Crate::MacroImport,
-        ::HIR::Crate::MacroImport   rv;
-        rv.path = d.deserialise_simplepath();
         return rv;
         )
     template<> DEF_D( ::HIR::ExternLibrary, return d.deserialise_extlib(); )
@@ -1382,6 +1395,7 @@
         // m_traits doesn't need to be serialised
         rv.m_value_items = deserialise_istrumap< ::std::unique_ptr< ::HIR::VisEnt< ::HIR::ValueItem> > >();
         rv.m_mod_items = deserialise_istrumap< ::std::unique_ptr< ::HIR::VisEnt< ::HIR::TypeItem> > >();
+        rv.m_macro_items = deserialise_istrumap< ::std::unique_ptr< ::HIR::VisEnt< ::HIR::MacroItem> > >();
 
         return rv;
     }
@@ -1404,8 +1418,9 @@
         rv.m_trait_impls = deserialise_pathmap< ::HIR::Crate::ImplGroup<::HIR::TraitImpl>>();
         rv.m_marker_impls = deserialise_pathmap< ::HIR::Crate::ImplGroup<::HIR::MarkerImpl>>();
 
-        rv.m_exported_macros = deserialise_istrumap< ::MacroRulesPtr>();
-        rv.m_proc_macro_reexports = deserialise_istrumap< ::HIR::Crate::MacroImport>();
+        rv.m_exported_macro_names = deserialise_vec< ::RcString>();
+        //rv.m_exported_macros = deserialise_istrumap< ::MacroRulesPtr>();
+        //rv.m_proc_macro_reexports = deserialise_istrumap< ::HIR::Crate::MacroImport>();
         rv.m_lang_items = deserialise_strumap< ::HIR::SimplePath>();
 
         {
@@ -1424,7 +1439,7 @@
         rv.m_ext_libs = deserialise_vec< ::HIR::ExternLibrary>();
         rv.m_link_paths = deserialise_vec< ::std::string>();
 
-        rv.m_proc_macros = deserialise_vec< ::HIR::ProcMacro>();
+        //rv.m_proc_macros = deserialise_vec< ::HIR::ProcMacro>();
 
         return rv;
     }

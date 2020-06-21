@@ -31,7 +31,7 @@ namespace {
     {
         if( t == Target::EnumVariant )
         {
-            return &crate.get_typeitem_by_path(sp, path, false, true).as_Enum();
+            return &crate.get_typeitem_by_path(sp, path, /*ignore_crate_name=*/false, /*ignore_last_node=*/true).as_Enum();
         }
         else
         {
@@ -183,7 +183,7 @@ namespace {
                     }
                     else
                     {
-                        const auto& ti = m_crate.get_typeitem_by_path(sp, path, false, true);
+                        const auto& ti = m_crate.get_typeitem_by_path(sp, path, /*ignore_crate_name=*/false, /*ignore_last_node=*/true);
                         if( const auto& enm = ti.opt_Enum() )
                         {
                             if( !is_single_value ) {

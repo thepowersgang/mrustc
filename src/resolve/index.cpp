@@ -239,6 +239,7 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
                 DEBUG(i_data.name << " - Not a macro");
                 }
             TU_ARMA(MacroRules, e) {
+                // TODO: Get the real path to the macro (fully absolute, include resolved)
                 ::std::vector<RcString>    path;
                 path.push_back( i_data.path.m_class.as_Absolute().crate );
                 for(const auto& node : i_data.path.m_class.as_Absolute().nodes )
@@ -454,31 +455,33 @@ void Resolve_Index_Module_Wildcard__use_stmt(AST::Crate& crate, AST::Module& dst
     const auto& sp = i_data.sp;
     const auto& b = i_data.path.m_bindings.type;
 
-    TU_IFLET(::AST::PathBinding_Type, b, Crate, e,
+    if(const auto* e = b.opt_Crate())
+    {
         DEBUG("Glob crate " << i_data.path);
-        const auto& hmod = e.crate_->m_hir->m_root_module;
+        const auto& hmod = e->crate_->m_hir->m_root_module;
         Resolve_Index_Module_Wildcard__glob_in_hir_mod(sp, crate, dst_mod, hmod, i_data.path, is_pub);
         // TODO: Macros too
-        for(const auto& pm : e.crate_->m_hir->m_proc_macros)
-        {
-            dst_mod.m_macro_imports.push_back({
-                is_pub, pm.name, make_vec2(e.crate_->m_hir->m_crate_name, pm.name), nullptr
-                });
-        }
-    )
-    else TU_IFLET(::AST::PathBinding_Type, b, Module, e,
+        //for(const auto& pm : e->crate_->m_hir->m_proc_macros)
+        //{
+        //    dst_mod.m_macro_imports.push_back({
+        //        is_pub, pm.name, make_vec2(e.crate_->m_hir->m_crate_name, pm.name), nullptr
+        //        });
+        //}
+    }
+    else if(const auto* e = b.opt_Module() )
+    {
         DEBUG("Glob mod " << i_data.path);
-        if( !e.module_ )
+        if( !e->module_ )
         {
-            ASSERT_BUG(sp, e.hir, "Glob import where HIR module pointer not set - " << i_data.path);
-            const auto& hmod = *e.hir;
+            ASSERT_BUG(sp, e->hir, "Glob import where HIR module pointer not set - " << i_data.path);
+            const auto& hmod = *e->hir;
             Resolve_Index_Module_Wildcard__glob_in_hir_mod(sp, crate, dst_mod, hmod, i_data.path, is_pub);
         }
         else
         {
-            Resolve_Index_Module_Wildcard__submod(crate, dst_mod, *e.module_, is_pub);
+            Resolve_Index_Module_Wildcard__submod(crate, dst_mod, *e->module_, is_pub);
         }
-    )
+    }
     else if( const auto* ep = b.opt_Enum() )
     {
         const auto& e = *ep;
@@ -780,6 +783,15 @@ void Resolve_Index_Module_Normalise(const ::AST::Crate& crate, const Span& mod_s
         Resolve_Index_Module_Normalise_Path(crate, mod_span, ent.second.path, IndexName::Value);
         DEBUG("Val " << ent.first << " = " << ent.second.path);
     }
+    //for( auto& ent : mod.m_macro_imports ) {
+    //    auto p = AST::Path(ent.path.front(), {});
+    //    for(size_t i = 1; i < ent.path.size(); i ++)
+    //    {
+    //        p.nodes().push_back(AST::PathNode(ent.path[i]));
+    //    }
+    //    Resolve_Index_Module_Normalise_Path(crate, mod_span, p, IndexName::Macro);
+    //    DEBUG("Val " << ent.name << " = " << p);
+    //}
 }
 
 void Resolve_Index(AST::Crate& crate)

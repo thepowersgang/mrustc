@@ -15,6 +15,7 @@
 #include <ast/expr.hpp>
 #include <hir/hir.hpp>  // For macro lookup
 #include "cfg.hpp"
+#include "../resolve/common.hpp"
 
 DecoratorDef*   g_decorators_list = nullptr;
 MacroDef*   g_macros_list = nullptr;
@@ -124,6 +125,8 @@ void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::AST::Cr
         return ::std::unique_ptr<TokenStream>();
     }
 
+    TRACE_FUNCTION_F("Searching for macro " << path);
+
     // Find the macro
     /*const*/ ExpandProcMacro*  proc_mac = nullptr;
     const MacroRules*   mr_ptr = nullptr;
@@ -136,6 +139,7 @@ void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::AST::Cr
         {
             if( name == m.first )
             {
+                DEBUG("Found builtin");
                 proc_mac = &*m.second;
                 break;
             }
@@ -175,7 +179,9 @@ void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::AST::Cr
             }
         }
     }
-    else
+
+    //else
+    if( !mr_ptr && !proc_mac )
     {
         // HACK: If the crate name is empty, look up builtins
         if( path.is_absolute() && path.nodes().size() == 1 && path.m_class.as_Absolute().crate == "" )
@@ -195,224 +201,39 @@ void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::AST::Cr
         {
             // Resolve the path, following use statements (if required)
             // - Only mr_ptr matters, as proc_mac is about builtins
-
-            TAGGED_UNION(ModuleRef, None,
-                (None, struct {}),
-                (Ast, const AST::Module*),
-                (Hir, const HIR::Module*)
-                );
-            struct H {
-                static bool find_in_ast(const AST::Module& mod, const RcString& name, std::function<bool(const AST::Item& i)> cb)
-                {
-                    for(const auto& i : mod.items())
-                    {
-                        if(i.name == name)
-                        {
-                            if( cb(i.data) )
-                                return true;
-                        }
-                        if(const auto* use_stmt = i.data.opt_Use())
-                        {
-                            for(const auto& e : use_stmt->entries)
-                            {
-                                if( e.name == name )
-                                {
-                                    TODO(Span(), "Look through use statements - " << e.path);
-                                }
-                            }
-                        }
-                    }
-                    for(const auto& i : mod.items())
-                    {
-                        if(const auto* use_stmt = i.data.opt_Use())
-                        {
-                            for(const auto& e : use_stmt->entries)
-                            {
-                                if( e.name == "" )
-                                {
-                                    TODO(Span(), "Look through glob use statements (" << e.path << ")");
-                                }
-                            }
-                        }
-                    }
-                    return false;
+            const auto& final_name = path.nodes().back().name();
+            auto macro_mod = Resolve_Lookup_GetModuleForName(mi_span, crate, mod.path(), path, ResolveNamespace::Macro, nullptr);
+            TU_MATCH_HDRA( (macro_mod), {)
+            TU_ARMA(None, e) {
+                // Fall trhough and error later
                 }
-                static ModuleRef get_root(const AST::Crate& crate, const RcString& crate_name)
-                {
-                    if(crate_name == "")
-                    {
-                        return ModuleRef::make_Ast(&crate.m_root_module);
-                    }
-                    else
-                    {
-                        return ModuleRef::make_Hir(&crate.m_extern_crates.at(crate_name).m_hir->m_root_module);
-                    }
-                }
-                static ModuleRef get_submod_in_ast(const Span& sp, const AST::Crate& crate, const AST::Module& mod, const RcString& name)
-                {
-                    ModuleRef   rv;
-                    H::find_in_ast(mod, name, [&](const AST::Item& i_data)->bool {
-                        switch(i_data.tag())
-                        {
-                        case AST::Item::TAG_Crate:
-                            rv = ModuleRef::make_Hir(&crate.m_extern_crates.at(i_data.as_Crate().name).m_hir->m_root_module);
-                            return true;
-                        case AST::Item::TAG_Module:
-                            rv = ModuleRef::make_Ast(&i_data.as_Module());
-                            return true;
-                        case AST::Item::TAG_Struct:
-                        case AST::Item::TAG_Union:
-                        case AST::Item::TAG_Enum:
-                        case AST::Item::TAG_Type:
-                            ERROR(sp, E0000, "Macro path component points at a type");
-                            break;
-                        default:
-                            break;
-                        }
-                        return false;
-                        });
-                    return rv;
-                }
-                static ModuleRef get_submod_in_hir(const Span& sp, const AST::Crate& crate, const HIR::Module& mod, const RcString& name)
-                {
-                    ModuleRef   rv;
-                    TODO(sp, "Search HIR");
-                }
-                static ModuleRef get_submod(const Span& sp, const AST::Crate& crate, const ModuleRef& mod_ref, const RcString& name)
-                {
-                    TU_MATCH_HDRA( (mod_ref), {)
-                    TU_ARMA(None, e)
-                        BUG(sp, "");
-                    TU_ARMA(Ast, ast_ptr)
-                        return get_submod_in_ast(sp, crate, *ast_ptr, name);
-                    TU_ARMA(Hir, hir_ptr)
-                        return get_submod_in_hir(sp, crate, *hir_ptr, name);
-                    }
-                    BUG(sp, "");
-                }
-            };
-
-            // 1. Convert to absolute (but not canonical)
-            AST::Path   real_path;
-            TU_MATCH_HDRA( (path.m_class), {)
-            TU_ARMA(Invalid,  e) {
-                throw ::std::runtime_error("Path::nodes() on Invalid");
-                }
-            TU_ARMA(Local, e)
-                BUG(mi_span, "Local path should have been handled (trivial)");
-            TU_ARMA(Relative, e) {
-                ASSERT_BUG(mi_span, e.nodes.size() > 1, "Too few nodes (should have been trivial?) - " << path);
-                // 1. Search current scope (current module), seeking up anon modules
-                const LList<const AST::Module*>* cur_mod = &modstack;
-                do {
-                    // Search for a matching module/crate
-                    if( H::find_in_ast(*cur_mod->m_item, e.nodes[0].name(), [&](const AST::Item& i_data)->bool {
-                        switch(i_data.tag())
-                        {
-                        case AST::Item::TAG_Crate:
-                            real_path = AST::Path(i_data.as_Crate().name, {});
-                            return true;
-                        case AST::Item::TAG_Module:
-                            real_path = AST::Path(i_data.as_Module().path());
-                            return true;
-                        case AST::Item::TAG_Struct:
-                        case AST::Item::TAG_Union:
-                        case AST::Item::TAG_Enum:
-                        case AST::Item::TAG_Type:
-                            ERROR(mi_span, E0000, "Macro path component points at a type - " << path);
-                            break;
-                        default:
-                            break;
-                        }
-                        return false;
-                        }) )
-                    {
-                        break;
-                    }
-                } while(cur_mod->m_item->is_anon());
-                // 2. If not found, look for a matching crate name
-                if( !real_path.is_valid() )
-                {
-                    TODO(mi_span, "Seach for extern crates");
-                }
-                // 3. Error if not found
-                if( !real_path.is_valid() )
-                {
-                    ERROR(mi_span, E0000, "Cannot find module for " << path);
-                }
-                for(size_t i = 1; i < e.nodes.size(); i ++)
-                    real_path.nodes().push_back(e.nodes[i]);
-                }
-            TU_ARMA(Self, e) {
-                auto new_path = mod.path();
-                if(new_path.nodes().back().name().c_str()[0] == '#')
-                    TODO(mi_span, "Handle self paths in anon");
-                for(size_t i = 0; i < e.nodes.size(); i ++)
-                    new_path.nodes().push_back(e.nodes[i]);
-                real_path = mv$(new_path);
-                }
-            TU_ARMA(Super, e) {
-                auto new_path = mod.path();
-                if(new_path.nodes().back().name().c_str()[0] == '#')
-                    TODO(mi_span, "Handle super paths in anon");
-                for(auto i = e.count; i--; )
-                {
-                    if(new_path.nodes().empty())
-                        ERROR(mi_span, E0000, "Invalid path (too many `super`) - " << path);
-                    new_path.nodes().pop_back();
-                }
-                for(size_t i = 0; i < e.nodes.size(); i ++)
-                    new_path.nodes().push_back(e.nodes[i]);
-                real_path = mv$(new_path);
-                }
-            TU_ARMA(Absolute, e) {
-                // No change
-                real_path = AST::Path(path);
-                }
-            TU_ARMA(UFCS, e) {
-                BUG(mi_span, "UFCS path to macro - " << path);
-                }
-            }
-            // 2. Walk path to find item
-            auto& real_path_abs = real_path.m_class.as_Absolute();
-            auto cur_mod = H::get_root(crate, real_path_abs.crate);
-            for(size_t i = 0; i < real_path_abs.nodes.size() - 1; i ++)
-            {
-                cur_mod = H::get_submod(mi_span, crate, cur_mod, real_path_abs.nodes[i].name());
-                if(cur_mod.is_None())
-                    ERROR(mi_span, E0000, "Unable to locate component " << i << " of " << real_path);
-            }
-            const auto& final_name = real_path_abs.nodes.back().name();
-            TU_MATCH_HDRA( (cur_mod), {)
-            TU_ARMA(None, e)
-                BUG(mi_span, "Should have errored earlier");
-            TU_ARMA(Ast, e) {
+            TU_ARMA(Ast, mod_ptr) {
                 // Look in the pre-calculated macro list (TODO: Should really be using the main resolve machinery)
-                for(const auto& mac : e->macro_imports_res())
+                for(const auto& mac : mod_ptr->macro_imports_res())
                 {
                     if(mac.name == final_name) {
                         mr_ptr = mac.data;
                         break;
                     }
                 }
-                //if( !mr_ptr )
-                //{
-                //    H::find_in_ast(*e, real_path_abs.nodes.back().name(), [&](const AST::Item& i)->bool {
-                //        if(const auto* e = i.opt_Macro())
-                //        {
-                //            mr_ptr = &**e;
-                //            return true;
-                //        }
-                //        return false;
-                //        });
-                //}
                 }
-            TU_ARMA(Hir, e) {
-                TODO(mi_span, "Look up macros in HIR modules");
+            TU_ARMA(Hir, mod_ptr) {
+                ASSERT_BUG(mi_span, mod_ptr->m_macro_items.count(final_name) == 1, "Resolve_Lookup_GetModuleForName returned a module without `" << final_name << "`");
+                const auto& i = mod_ptr->m_macro_items.at(final_name);
+                TU_MATCH_HDRA( (i->ent), {)
+                TU_ARMA(Import, m) {
+                    BUG(mi_span, "Resolve_Lookup_GetModuleForName returned an import");
+                    }
+                TU_ARMA(MacroRules, m) {
+                    mr_ptr = &*m;
+                    }
+                TU_ARMA(ProcMacro, m) {
+                    //proc_mac = &m;
+                    TODO(mi_span, "Macro resolved to HIR proc macro");
+                    }
+                }
                 }
             }
-            if(!mr_ptr)
-                ERROR(mi_span, E0000, "");
         }
     }
 
@@ -1410,6 +1231,17 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
         Expand_Attrs_CfgAttr(attrs);
         Expand_Attrs(attrs, AttrStage::Pre,  crate, path, mod, i.data);
 
+        // Do modules without moving the definition (so the module path is always valid)
+        if( i.data.is_Module() )
+        {
+            auto& e = i.data.as_Module();
+            LList<const AST::Module*>   sub_modstack(&modstack, &e);
+            Expand_Mod(crate, sub_modstack, path, e);
+            Expand_Attrs(attrs, AttrStage::Post,  crate, path, mod, i.data);
+            i.attrs = mv$(attrs);
+            continue ;
+        }
+
         auto dat = mv$(i.data);
 
         TU_MATCH_HDRA( (dat), {)
@@ -1463,8 +1295,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             }
             }
         TU_ARMA(Module, e) {
-            LList<const AST::Module*>   sub_modstack(&modstack, &e);
-            Expand_Mod(crate, sub_modstack, path, e);
+            throw "";
             }
         TU_ARMA(Crate, e) {
             // Can't recurse into an `extern crate`
@@ -1476,10 +1307,10 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
 
         TU_ARMA(Struct, e) {
             Expand_GenericParams(crate, modstack, mod,  e.params());
-            TU_MATCH(AST::StructData, (e.m_data), (sd),
-            (Unit,
-                ),
-            (Struct,
+            TU_MATCH_HDRA( (e.m_data), {)
+            TU_ARMA(Unit, sd) {
+                }
+            TU_ARMA(Struct, sd) {
                 for(auto it = sd.ents.begin(); it != sd.ents.end(); ) {
                     auto& si = *it;
                     Expand_Attrs_CfgAttr(si.m_attrs);
@@ -1492,8 +1323,8 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                     else
                         ++it;
                 }
-                ),
-            (Tuple,
+                }
+            TU_ARMA(Tuple, sd) {
                 for(auto it = sd.ents.begin(); it != sd.ents.end(); ) {
                     auto& si = *it;
                     Expand_Attrs_CfgAttr(si.m_attrs);
@@ -1506,8 +1337,8 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                     else
                         ++it;
                 }
-                )
-            )
+                }
+            }
             }
         TU_ARMA(Enum, e) {
             Expand_GenericParams(crate, modstack, mod,  e.params());
@@ -1725,26 +1556,32 @@ void Expand(::AST::Crate& crate)
 
     // Insert magic for libstd/libcore
     // NOTE: The actual crates are loaded in "LoadCrates" using magic in AST::Crate::load_externs
+    RcString std_crate_name;
     switch( crate.m_load_std )
     {
     case ::AST::Crate::LOAD_STD:
-        if( crate.m_prelude_path == AST::Path() )
-            crate.m_prelude_path = AST::Path("std", {AST::PathNode("prelude"), AST::PathNode("v1")});
-        crate.m_extern_crates.at("std").with_all_macros([&](const auto& name, const auto& mac) {
-            crate.m_root_module.add_macro_import( name, mac );
-            });
-        crate.m_root_module.add_ext_crate(Span(), /*is_pub=*/false, "std", "std", /*attrs=*/{});
+        std_crate_name = "std";
         break;
     case ::AST::Crate::LOAD_CORE:
-        if( crate.m_prelude_path == AST::Path() )
-            crate.m_prelude_path = AST::Path("core", {AST::PathNode("prelude"), AST::PathNode("v1")});
-        crate.m_extern_crates.at("core").with_all_macros([&](const auto& name, const auto& mac) {
-            crate.m_root_module.add_macro_import( name, mac );
-            });
-        crate.m_root_module.add_ext_crate(Span(), /*is_pub=*/false, "core", "core", /*attrs=*/{});
+        std_crate_name = "core";
         break;
     case ::AST::Crate::LOAD_NONE:
         break;
+    }
+    if(std_crate_name != "")
+    {
+        if( crate.m_prelude_path == AST::Path() )
+        {
+            crate.m_prelude_path = AST::Path(std_crate_name, {AST::PathNode("prelude"), AST::PathNode("v1")});
+        }
+        AST::AttributeList  attrs;
+        AST::AttributeName  name;
+        name.elems.push_back("macro_use");
+        attrs.push_back( AST::Attribute(Span(), mv$(name), {}) );
+        crate.m_root_module.items().insert(
+            crate.m_root_module.items().begin(),
+            AST::Named<AST::Item>(Span(), mv$(attrs), false, std_crate_name, AST::Item::make_Crate({std_crate_name}) )
+            );
     }
 
     // 2. Module attributes

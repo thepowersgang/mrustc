@@ -234,8 +234,11 @@ public:
     Class   m_class;
 
     struct Bindings {
+        //std::vector<RcString> value_path;
         PathBinding_Value value;
+        //std::vector<RcString> type_path;
         PathBinding_Type type;
+        //std::vector<RcString> macro_path;
         PathBinding_Macro macro;
 
         Bindings clone() const {

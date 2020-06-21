@@ -109,9 +109,6 @@ public:
     ExternCrate& operator=(ExternCrate&&) = default;
     ExternCrate(const ExternCrate&) = delete;
     ExternCrate& operator=(const ExternCrate& ) = delete;
-
-    void with_all_macros(::std::function<void(const RcString& , const MacroRules&)> cb) const;
-    const MacroRules* find_macro_rules(const RcString& name) const;
 };
 
 extern ::std::vector<::std::string>    g_crate_load_dirs;
