@@ -6,6 +6,7 @@
  * - Common core to the resolve phase
  */
 #pragma once
+#include <stdexcept>
 #include <tagged_union.hpp>
 
 struct Span;
