@@ -1353,6 +1353,26 @@ namespace
             return true;
         }
     }
+    bool consume_vis(TokenStreamRO& lex)
+    {
+        TRACE_FUNCTION;
+        if( lex.consume_if(TOK_INTERPOLATED_VIS) || lex.consume_if(TOK_RWORD_CRATE) )
+        {
+            return true;
+        }
+        else if( lex.consume_if(TOK_RWORD_PUB) )
+        {
+            if( lex.next() == TOK_PAREN_OPEN )
+            {
+                return consume_tt(lex);
+            }
+            return true;
+        }
+        else
+        {
+            return true;
+        }
+    }
     bool consume_item(TokenStreamRO& lex)
     {
         TRACE_FUNCTION;
@@ -1407,8 +1427,8 @@ namespace
             return true;
         }
         // Normal items
-        if(lex.next() == TOK_RWORD_PUB)
-            lex.consume();
+        if( !consume_vis(lex) )
+            return false;
         if(lex.next() == TOK_RWORD_UNSAFE)
             lex.consume();
         DEBUG("Check item: " << lex.next_tok());
@@ -1666,26 +1686,6 @@ namespace
             return false;
         }
         return true;
-    }
-    bool consume_vis(TokenStreamRO& lex)
-    {
-        TRACE_FUNCTION;
-        if( lex.consume_if(TOK_INTERPOLATED_VIS) || lex.consume_if(TOK_RWORD_CRATE) )
-        {
-            return true;
-        }
-        else if( lex.consume_if(TOK_RWORD_PUB) )
-        {
-            if( lex.next() == TOK_PAREN_OPEN )
-            {
-                return consume_tt(lex);
-            }
-            return true;
-        }
-        else
-        {
-            return true;
-        }
     }
 
     bool consume_from_frag(TokenStreamRO& lex, MacroPatEnt::Type type)
