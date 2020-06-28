@@ -793,7 +793,10 @@ namespace {
             {
                 TU_MATCH_HDRA( (*item_ptr), {)
                 TU_ARMA(Import, e)
-                    BUG(span, "Recursive import in " << path << " - " << it2->second->ent.as_Import().path << " -> " << e.path);
+                    if( e.path.m_crate_name == CRATE_BUILTINS )
+                        ;
+                    else
+                        BUG(span, "Recursive import in " << path << " - " << it2->second->ent.as_Import().path << " -> " << e.path);
                 TU_ARMA(ProcMacro, e) {
                     //rv.macro = ::AST::PathBinding_Macro::make_ProcMacro({ path.,  e.name });
                     TODO(span, "");

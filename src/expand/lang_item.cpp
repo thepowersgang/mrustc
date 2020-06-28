@@ -92,6 +92,9 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
     else if( TARGETVER_LEAST_1_29 && name == "panic_info" ) {}    // Struct
     else if( TARGETVER_LEAST_1_29 && name == "manually_drop" ) {}    // Struct
 
+    else if( TARGETVER_LEAST_1_39 && name == "arc" ) {}    // Struct
+    else if( TARGETVER_LEAST_1_39 && name == "rc" ) {}    // Struct
+
     else if( /*TARGETVER_1_39 &&*/ name == "maybe_uninit" ) {}    // Union
 
     // Futures

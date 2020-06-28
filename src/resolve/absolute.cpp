@@ -576,12 +576,12 @@ namespace
         unsigned int lookup_local(const Span& sp, const RcString name, LookupMode mode) {
             for(auto it = m_name_context.rbegin(); it != m_name_context.rend(); ++ it)
             {
-                TU_MATCH(Ent, (*it), (e),
-                (Module,
-                    ),
-                (ConcreteSelf,
-                    ),
-                (VarBlock,
+                TU_MATCH_HDRA( (*it), {)
+                TU_ARMA(Module, e) {
+                    }
+                TU_ARMA(ConcreteSelf, e) {
+                    }
+                TU_ARMA(VarBlock, e) {
                     if( mode == LookupMode::Variable ) {
                         for( auto it2 = e.variables.rbegin(); it2 != e.variables.rend(); ++ it2 )
                         {
@@ -591,22 +591,35 @@ namespace
                             }
                         }
                     }
-                    ),
-                (Generic,
-                    if( mode == LookupMode::Type ) {
+                    }
+                TU_ARMA(Generic, e) {
+                    switch(mode)
+                    {
+                    case LookupMode::Type:
                         for( auto it2 = e.types.rbegin(); it2 != e.types.rend(); ++ it2 )
                         {
                             if( it2->name == name ) {
                                 return it2->value.to_binding();
                             }
                         }
-                    }
-                    else {
+                        break;
+                    case LookupMode::Variable:
+                        for( auto it2 = e.constants.rbegin(); it2 != e.constants.rend(); ++ it2 )
+                        {
+                            if( it2->name == name ) {
+                                //TODO(sp, "Return a reference to a constant generic '" << name << "'");
+                                // Need to disambiguate it... could set a high bit
+                                return it2->value.to_binding() | (1u << 31);
+                            }
+                        }
+                        break;
+                    default:
                         // ignore.
                         // TODO: Integer generics
+                        break;
                     }
-                    )
-                )
+                    }
+                }
             }
 
             ERROR(sp, E0000, "Unable to find local " << (mode == LookupMode::Variable ? "variable" : "type") << " '" << name << "'");
@@ -615,10 +628,12 @@ namespace
         /// Clones the context, including only the module-level items (i.e. just the Module entries)
         Context clone_mod() const {
             auto rv = Context(this->m_crate, this->m_mod);
-            for(const auto& v : m_name_context) {
-                TU_IFLET(Ent, v, Module, e,
-                    rv.m_name_context.push_back( Ent::make_Module(e) );
-                )
+            for(const auto& v : m_name_context)
+            {
+                if(const auto* e = v.opt_Module())
+                {
+                    rv.m_name_context.push_back( Ent::make_Module(*e) );
+                }
             }
             return rv;
         }
@@ -1397,22 +1412,30 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
 {
     TRACE_FUNCTION_FR("mode = " << mode << ", path = " << path, path);
 
-    TU_MATCH(::AST::Path::Class, (path.m_class), (e),
-    (Invalid,
+    TU_MATCH_HDRA( (path.m_class), {)
+    TU_ARMA(Invalid, e) {
         BUG(sp, "Attempted resolution of invalid path");
-        ),
-    (Local,
+        }
+    TU_ARMA(Local, e) {
         // Nothing to do (TODO: Check that it's valid?)
         if( mode == Context::LookupMode::Variable ) {
-            path.bind_variable( context.lookup_local(sp, e.name, mode) );
+            auto idx = context.lookup_local(sp, e.name, mode);
+            if( idx >= (1u << 31) )
+            {
+                path.m_bindings.value = ::AST::PathBinding_Value::make_Generic({idx - (1u << 31)});
+            }
+            else
+            {
+                path.m_bindings.value = ::AST::PathBinding_Value::make_Variable({idx});
+            }
         }
         else if( mode == Context::LookupMode::Type ) {
             path.bind_variable( context.lookup_local(sp, e.name, mode) );
         }
         else {
         }
-        ),
-    (Relative,
+        }
+    TU_ARMA(Relative, e) {
         DEBUG("- Relative");
         if(e.nodes.size() == 0)
             BUG(sp, "Resolve_Absolute_Path - Relative path with no nodes");
@@ -1518,8 +1541,8 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
 
         if( !path.is_trivial() )
             Resolve_Absolute_PathNodes(context, sp,  path.nodes());
-        ),
-    (Self,
+        }
+    TU_ARMA(Self, e) {
         DEBUG("- Self");
         const auto& mp_nodes = context.m_mod.path().nodes();
         // Ignore any leading anon modules
@@ -1540,8 +1563,8 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
             Resolve_Absolute_PathNodes(context, sp,  np_nodes);
 
         path = mv$(np);
-        ),
-    (Super,
+        }
+    TU_ARMA(Super, e) {
         DEBUG("- Super");
         // - Determine how many components of the `self` path to use
         const auto& mp_nodes = context.m_mod.path().nodes();
@@ -1564,13 +1587,13 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
             Resolve_Absolute_PathNodes(context, sp,  np_nodes);
 
         path = mv$(np);
-        ),
-    (Absolute,
+        }
+    TU_ARMA(Absolute, e) {
         DEBUG("- Absolute");
         // Nothing to do (TODO: Bind?)
         Resolve_Absolute_PathNodes(context, sp,  e.nodes);
-        ),
-    (UFCS,
+        }
+    TU_ARMA(UFCS, e) {
         DEBUG("- UFCS");
         Resolve_Absolute_Type(context, *e.type);
         if( e.trait && *e.trait != ::AST::Path() ) {
@@ -1578,30 +1601,29 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
         }
 
         Resolve_Absolute_PathNodes(context, sp,  e.nodes);
-        )
-    )
+        }
+    }
 
     DEBUG("path = " << path);
     // TODO: Should this be deferred until the HIR?
     // - Doing it here so the HIR lowering has a bit more information
     // - Also handles splitting "absolute" paths into UFCS
-    TU_MATCH_DEF(::AST::Path::Class, (path.m_class), (e),
-    (
+    TU_MATCH_HDRA((path.m_class), {)
+    default:
         BUG(sp, "Path wasn't absolutised correctly");
-        ),
-    (Local,
+    TU_ARMA(Local, e) {
         if( !path.m_bindings.has_binding() )
         {
             TODO(sp, "Bind unbound local path - " << path);
         }
-        ),
-    (Absolute,
+        }
+    TU_ARMA(Absolute, e) {
         Resolve_Absolute_Path_BindAbsolute(context, sp, mode,  path);
-        ),
-    (UFCS,
+        }
+    TU_ARMA(UFCS, e) {
         Resolve_Absolute_Path_BindUFCS(context, sp, mode,  path);
-        )
-    )
+        }
+    }
 
     // TODO: Expand default type parameters?
     // - Helps with cases like PartialOrd<Self>, but hinders when the default is a hint (in expressions)
