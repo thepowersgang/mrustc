@@ -221,8 +221,27 @@ void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::AST::Cr
                 ASSERT_BUG(mi_span, mod_ptr->m_macro_items.count(final_name) == 1, "Resolve_Lookup_GetModuleForName returned a module without `" << final_name << "`");
                 const auto& i = mod_ptr->m_macro_items.at(final_name);
                 TU_MATCH_HDRA( (i->ent), {)
-                TU_ARMA(Import, m) {
-                    BUG(mi_span, "Resolve_Lookup_GetModuleForName returned an import - " << m.path);
+                TU_ARMA(Import, imp) {
+                    if( imp.path.m_crate_name == CRATE_BUILTINS )
+                    {
+                        for( const auto& m : g_macros )
+                        {
+                            if( imp.path.m_components.front() == m.first )
+                            {
+                                DEBUG("Found builtin (import)");
+                                proc_mac = &*m.second;
+                                break;
+                            }
+                        }
+                        if(!proc_mac)
+                        {
+                            ERROR(mi_span, E0000, "Import references unknown builtin");
+                        }
+                    }
+                    else
+                    {
+                        BUG(mi_span, "Resolve_Lookup_GetModuleForName returned an module with import - " << imp.path);
+                    }
                     }
                 TU_ARMA(MacroRules, m) {
                     mr_ptr = &*m;

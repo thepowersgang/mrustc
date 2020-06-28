@@ -59,15 +59,23 @@ namespace {
                     auto real_mod = this->get_source_module_for_name(start_mod, name, ResolveNamespace::Namespace);
                     TU_MATCH_HDRA( (real_mod), {)
                     TU_ARMA(Ast, mod_ptr) {
-                        for(const auto& i : mod_ptr->m_items)
+                        if( e.nodes.size() > 1 )
                         {
-                            // What about `cfg()`?
-                            if( i->name == name )
+                            for(const auto& i : mod_ptr->m_items)
                             {
-                                return get_module_ast(i->data.as_Module(), path, 1, ignore_last, out_path);
+                                // What about `cfg()`?
+                                if( i->name == name )
+                                {
+                                    ASSERT_BUG(sp, i->data.is_Module(), "Front of " << path << " not a module");
+                                    return get_module_ast(i->data.as_Module(), path, 1, ignore_last, out_path);
+                                }
                             }
+                            BUG(sp, "get_source_module_for_name returned true (AST) but not found");
                         }
-                        BUG(sp, "get_source_module_for_name returned true (AST) but not found");
+                        else
+                        {
+                            return ResolveModuleRef::make_Ast(mod_ptr);
+                        }
                         }
                     TU_ARMA(Hir, mod_ptr) {
                         for(const auto& i : mod_ptr->m_mod_items)
