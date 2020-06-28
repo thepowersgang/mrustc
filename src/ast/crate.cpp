@@ -35,11 +35,11 @@ namespace {
     void iterate_module(::AST::Module& mod, ::std::function<void(::AST::Module& mod)> fcn)
     {
         fcn(mod);
-        for( auto& sm : mod.items() )
+        for( auto& sm : mod.m_items )
         {
-            if( auto* e = sm.data.opt_Module() )
+            if( auto* e = sm->data.opt_Module() )
             {
-                if( check_item_cfg(sm.attrs) )
+                if( check_item_cfg(sm->attrs) )
                 {
                     iterate_module(*e, fcn);
                 }
@@ -65,13 +65,13 @@ Crate::Crate():
 void Crate::load_externs()
 {
     auto cb = [this](Module& mod) {
-        for( /*const*/ auto& it : mod.items() )
+        for( /*const*/ auto& it : mod.m_items )
         {
-            if( auto* c = it.data.opt_Crate() )
+            if( auto* c = it->data.opt_Crate() )
             {
-                if( check_item_cfg(it.attrs) )
+                if( check_item_cfg(it->attrs) )
                 {
-                    c->name = load_extern_crate( it.span, c->name.c_str() );
+                    c->name = load_extern_crate( it->span, c->name.c_str() );
                 }
             }
         }

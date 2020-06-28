@@ -444,10 +444,10 @@ namespace
                 for(const auto& node : src_context.mod_path().ents)
                 {
                     const AST::Module* next = nullptr;
-                    for(const auto& i : mod->items())
+                    for(const auto& i : mod->m_items)
                     {
-                        if( i.name == node ) {
-                            next = &i.data.as_Module();
+                        if( i->name == node ) {
+                            next = &i->data.as_Module();
                             break;
                         }
                     }
@@ -2302,9 +2302,9 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
 {
     TRACE_FUNCTION_F("mod="<<mod.path());
 
-    for( auto& i : mod.items() )
+    for( auto& i : mod.m_items )
     {
-        TU_MATCH(AST::Item, (i.data), (e),
+        TU_MATCH(AST::Item, (i->data), (e),
         (None,
             ),
         (MacroInv,
@@ -2318,7 +2318,7 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
             {
                 TU_MATCH_DEF(AST::Item, (i2.data), (e2),
                 (
-                    BUG(i.span, "Unexpected item in ExternBlock - " << i2.data.tag_str());
+                    BUG(i->span, "Unexpected item in ExternBlock - " << i2.data.tag_str());
                     ),
                 (None,
                     ),
@@ -2346,7 +2346,7 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
                 Resolve_Absolute_Generic(item_context,  def.params());
 
                 if( e.items().size() != 0 ) {
-                    ERROR(i.span, E0000, "impl Trait for .. with methods");
+                    ERROR(i->span, E0000, "impl Trait for .. with methods");
                 }
 
                 item_context.pop(def.params());
@@ -2383,7 +2383,7 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
             item_context.m_ibl_target_generics = &impl_def.params();
             Resolve_Absolute_Type(item_context, impl_def.type());
             if( !impl_def.trait().ent.is_valid() )
-                BUG(i.span, "Encountered negative impl with no trait");
+                BUG(i->span, "Encountered negative impl with no trait");
             Resolve_Absolute_Path(item_context, impl_def.trait().sp, Context::LookupMode::Type, impl_def.trait().ent);
             item_context.m_ibl_target_generics = nullptr;
 
@@ -2395,22 +2395,22 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
             item_context.pop_self( impl_def.type() );
             ),
         (Module,
-            DEBUG("Module - " << i.name);
+            DEBUG("Module - " << i->name);
             Resolve_Absolute_Mod(item_context.m_crate, e);
             ),
         (Crate,
             // - Nothing
             ),
         (Enum,
-            DEBUG("Enum - " << i.name);
+            DEBUG("Enum - " << i->name);
             Resolve_Absolute_Enum(item_context, e);
             ),
         (Trait,
-            DEBUG("Trait - " << i.name);
+            DEBUG("Trait - " << i->name);
             Resolve_Absolute_Trait(item_context, e);
             ),
         (Type,
-            DEBUG("Type - " << i.name);
+            DEBUG("Type - " << i->name);
             item_context.push( e.params(), GenericSlot::Level::Top, true );
             Resolve_Absolute_Generic(item_context,  e.params());
 
@@ -2419,19 +2419,19 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
             item_context.pop( e.params(), true );
             ),
         (Struct,
-            DEBUG("Struct - " << i.name);
+            DEBUG("Struct - " << i->name);
             Resolve_Absolute_Struct(item_context, e);
             ),
         (Union,
-            DEBUG("Union - " << i.name);
+            DEBUG("Union - " << i->name);
             Resolve_Absolute_Union(item_context, e);
             ),
         (Function,
-            DEBUG("Function - " << i.name);
+            DEBUG("Function - " << i->name);
             Resolve_Absolute_Function(item_context, e);
             ),
         (Static,
-            DEBUG("Static - " << i.name);
+            DEBUG("Static - " << i->name);
             Resolve_Absolute_Static(item_context, e);
             )
         )

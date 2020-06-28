@@ -129,7 +129,8 @@ class CCfgHandler:
         if( check_cfg(sp, mi) ) {
         }
         else {
-            crate.m_root_module.items().clear();
+            // Remove all items (can't remove the module)
+            crate.m_root_module.m_items.clear();
         }
     }
     void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {

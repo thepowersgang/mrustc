@@ -103,12 +103,12 @@ void _add_item_value(const Span& sp, AST::Module& mod, const RcString& name, boo
 void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
 {
     TRACE_FUNCTION_F("mod = " << mod.path());
-    for( const auto& i : mod.items() )
+    for( const auto& i : mod.m_items )
     {
-        ::AST::Path p = mod.path() + i.name;
+        ::AST::Path p = mod.path() + i->name;
         //DEBUG("- p = " << p << " : " << ::AST::Item::tag_to_str(i.data.tag()));
 
-        TU_MATCH(AST::Item, (i.data), (e),
+        TU_MATCH(AST::Item, (i->data), (e),
         (None,
             ),
         (MacroInv,
@@ -131,28 +131,28 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
         // - Types/modules only
         (Module,
             p.m_bindings.type = ::AST::PathBinding_Type::make_Module({&e});
-            _add_item(i.span, mod, IndexName::Namespace, i.name, i.is_pub,  mv$(p));
+            _add_item(i->span, mod, IndexName::Namespace, i->name, i->is_pub,  mv$(p));
             ),
         (Crate,
-            ASSERT_BUG(i.span, crate.m_extern_crates.count(e.name) > 0, "Referenced crate '" << e.name << "' isn't loaded for `extern crate`");
+            ASSERT_BUG(i->span, crate.m_extern_crates.count(e.name) > 0, "Referenced crate '" << e.name << "' isn't loaded for `extern crate`");
             p.m_bindings.type = ::AST::PathBinding_Type::make_Crate({ &crate.m_extern_crates.at(e.name) });
-            _add_item(i.span, mod, IndexName::Namespace, i.name, i.is_pub,  mv$(p));
+            _add_item(i->span, mod, IndexName::Namespace, i->name, i->is_pub,  mv$(p));
             ),
         (Enum,
             p.m_bindings.type = ::AST::PathBinding_Type::make_Enum({&e});
-            _add_item_type(i.span, mod, i.name, i.is_pub,  mv$(p));
+            _add_item_type(i->span, mod, i->name, i->is_pub,  mv$(p));
             ),
         (Union,
             p.m_bindings.type = ::AST::PathBinding_Type::make_Union({&e});
-            _add_item_type(i.span, mod, i.name, i.is_pub,  mv$(p));
+            _add_item_type(i->span, mod, i->name, i->is_pub,  mv$(p));
             ),
         (Trait,
             p.m_bindings.type = ::AST::PathBinding_Type::make_Trait({&e});
-            _add_item_type(i.span, mod, i.name, i.is_pub,  mv$(p));
+            _add_item_type(i->span, mod, i->name, i->is_pub,  mv$(p));
             ),
         (Type,
             p.m_bindings.type = ::AST::PathBinding_Type::make_TypeAlias({&e});
-            _add_item_type(i.span, mod, i.name, i.is_pub,  mv$(p));
+            _add_item_type(i->span, mod, i->name, i->is_pub,  mv$(p));
             ),
         // - Mixed
         (Struct,
@@ -160,26 +160,27 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
             // - If the struct is a tuple-like struct (or unit-like), it presents in the value namespace
             if( ! e.m_data.is_Struct() ) {
                 p.m_bindings.value = ::AST::PathBinding_Value::make_Struct({&e});
-                _add_item_value(i.span, mod, i.name, i.is_pub,  p);
+                _add_item_value(i->span, mod, i->name, i->is_pub,  p);
             }
-            _add_item_type(i.span, mod, i.name, i.is_pub,  mv$(p));
+            _add_item_type(i->span, mod, i->name, i->is_pub,  mv$(p));
             ),
         // - Values only
         (Function,
             p.m_bindings.value = ::AST::PathBinding_Value::make_Function({&e});
-            _add_item_value(i.span, mod, i.name, i.is_pub,  mv$(p));
+            _add_item_value(i->span, mod, i->name, i->is_pub,  mv$(p));
             ),
         (Static,
             p.m_bindings.value = ::AST::PathBinding_Value::make_Static({&e});
-            _add_item_value(i.span, mod, i.name, i.is_pub,  mv$(p));
+            _add_item_value(i->span, mod, i->name, i->is_pub,  mv$(p));
             )
         )
     }
 
     bool has_pub_wildcard = false;
     // Named imports
-    for( const auto& i : mod.items() )
+    for( const auto& ip : mod.m_items )
     {
+        const auto& i = *ip;
         if( ! i.data.is_Use() )
             continue ;
         for(const auto& i_data : i.data.as_Use().entries)
@@ -271,15 +272,12 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
     mod.m_index_populated = (has_pub_wildcard ? 1 : 2);
 
     // Handle child modules
-    for( auto& i : mod.items() )
+    for( auto& i : mod.m_items )
     {
-        TU_MATCH_DEF(AST::Item, (i.data), (e),
-        (
-            ),
-        (Module,
-            Resolve_Index_Module_Base(crate, e);
-            )
-        )
+        if(auto* e = i->data.opt_Module())
+        {
+            Resolve_Index_Module_Base(crate, *e);
+        }
     }
     for(auto& mp : mod.anon_mods())
     {
@@ -434,11 +432,11 @@ void Resolve_Index_Module_Wildcard__submod(AST::Crate& crate, AST::Module& dst_m
 
     if( src_mod.m_index_populated != 2 )
     {
-        for( const auto& i : src_mod.items() )
+        for( const auto& i : src_mod.m_items )
         {
-            if( ! i.data.is_Use() )
+            if( ! i->data.is_Use() )
                 continue ;
-            for(const auto& e : i.data.as_Use().entries)
+            for(const auto& e : i->data.as_Use().entries)
             {
                 if( e.name != "" )
                     continue ;
@@ -559,15 +557,15 @@ void Resolve_Index_Module_Wildcard__use_stmt(AST::Crate& crate, AST::Module& dst
 void Resolve_Index_Module_Wildcard(AST::Crate& crate, AST::Module& mod)
 {
     TRACE_FUNCTION_F("mod = " << mod.path());
-    for( const auto& i : mod.items() )
+    for( const auto& i : mod.m_items )
     {
-        if( ! i.data.is_Use() )
+        if( ! i->data.is_Use() )
             continue ;
-        for(const auto& e : i.data.as_Use().entries )
+        for(const auto& e : i->data.as_Use().entries )
         {
             if( e.name != "" )
                 continue ;
-            Resolve_Index_Module_Wildcard__use_stmt(crate, mod, e, i.is_pub);
+            Resolve_Index_Module_Wildcard__use_stmt(crate, mod, e, i->is_pub);
         }
     }
 
@@ -575,9 +573,9 @@ void Resolve_Index_Module_Wildcard(AST::Crate& crate, AST::Module& mod)
     mod.m_index_populated = 2;
 
     // Handle child modules
-    for( auto& i : mod.items() )
+    for( auto& i : mod.m_items )
     {
-        if( auto* e = i.data.opt_Module() )
+        if( auto* e = i->data.opt_Module() )
         {
             Resolve_Index_Module_Wildcard(crate, *e);
         }
@@ -763,11 +761,12 @@ bool Resolve_Index_Module_Normalise_Path(const ::AST::Crate& crate, const Span& 
 void Resolve_Index_Module_Normalise(const ::AST::Crate& crate, const Span& mod_span, ::AST::Module& mod)
 {
     TRACE_FUNCTION_F("mod = " << mod.path());
-    for( auto& item : mod.items() )
+    for( auto& item : mod.m_items )
     {
-        TU_IFLET(AST::Item, item.data, Module, e,
-            Resolve_Index_Module_Normalise(crate, item.span, e);
-        )
+        if(auto* e = item->data.opt_Module())
+        {
+            Resolve_Index_Module_Normalise(crate, item->span, *e);
+        }
     }
 
     DEBUG("Index for " << mod.path());

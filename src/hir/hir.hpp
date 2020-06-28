@@ -27,6 +27,7 @@
 #include <hir/crate_ptr.hpp>
 
 #define ABI_RUST    "Rust"
+#define CRATE_BUILTINS  "#builtins" // used for macro re-exports of builtins
 
 namespace HIR {
 

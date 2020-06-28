@@ -620,8 +620,9 @@ void RustPrinter::handle_module(const AST::Module& mod)
 {
     bool need_nl = true;
 
-    for( const auto& i : mod.items() )
+    for( const auto& ip : mod.m_items )
     {
+        const auto& i = *ip;
         if( !i.data.is_Use() )  continue ;
         const auto& i_data = i.data.as_Use();
         //if(need_nl) {
@@ -656,8 +657,9 @@ void RustPrinter::handle_module(const AST::Module& mod)
     }
     need_nl = true;
 
-    for( const auto& item : mod.items() )
+    for( const auto& ip : mod.m_items )
     {
+        const auto& item = *ip;
         if( !item.data.is_Crate() )    continue ;
         const auto& e = item.data.as_Crate();
 
@@ -665,17 +667,19 @@ void RustPrinter::handle_module(const AST::Module& mod)
         m_os << indent() << "extern crate \"" << e.name << "\" as " << item.name << ";\n";
     }
 
-    for( const auto& item : mod.items() )
+    for( const auto& ip : mod.m_items )
     {
+        const auto& item = *ip;
         if( !item.data.is_ExternBlock() )    continue ;
         const auto& e = item.data.as_ExternBlock();
 
         print_attrs(item.attrs);
         m_os << indent() << "extern \"" << e.abi() << "\" {}\n";
     }
-
-    for( const auto& item : mod.items() )
+    
+    for( const auto& ip : mod.m_items )
     {
+        const auto& item = *ip;
         if( !item.data.is_Module() )    continue ;
         const auto& e = item.data.as_Module();
 
@@ -689,8 +693,9 @@ void RustPrinter::handle_module(const AST::Module& mod)
         m_os << "\n";
     }
 
-    for( const auto& item : mod.items() )
+    for( const auto& ip : mod.m_items )
     {
+        const auto& item = *ip;
         if( !item.data.is_Type() )    continue ;
         const auto& e = item.data.as_Type();
 
@@ -707,8 +712,9 @@ void RustPrinter::handle_module(const AST::Module& mod)
     }
     need_nl = true;
 
-    for( const auto& item : mod.items() )
+    for( const auto& ip : mod.m_items )
     {
+        const auto& item = *ip;
         if( !item.data.is_Struct() )    continue ;
         const auto& e = item.data.as_Struct();
 
@@ -718,8 +724,9 @@ void RustPrinter::handle_module(const AST::Module& mod)
         handle_struct(e);
     }
 
-    for( const auto& item : mod.items() )
+    for( const auto& ip : mod.m_items )
     {
+        const auto& item = *ip;
         if( !item.data.is_Enum() )    continue ;
         const auto& e = item.data.as_Enum();
 
@@ -729,8 +736,9 @@ void RustPrinter::handle_module(const AST::Module& mod)
         handle_enum(e);
     }
 
-    for( const auto& item : mod.items() )
+    for( const auto& ip : mod.m_items )
     {
+        const auto& item = *ip;
         if( !item.data.is_Trait() )    continue ;
         const auto& e = item.data.as_Trait();
 
@@ -740,8 +748,9 @@ void RustPrinter::handle_module(const AST::Module& mod)
         handle_trait(e);
     }
 
-    for( const auto& item : mod.items() )
+    for( const auto& ip : mod.m_items )
     {
+        const auto& item = *ip;
         if( !item.data.is_Static() )    continue ;
         const auto& e = item.data.as_Static();
 
@@ -762,8 +771,9 @@ void RustPrinter::handle_module(const AST::Module& mod)
         m_os << ";\n";
     }
 
-    for( const auto& item : mod.items() )
+    for( const auto& ip : mod.m_items )
     {
+        const auto& item = *ip;
         if( !item.data.is_Function() )    continue ;
         const auto& e = item.data.as_Function();
 
@@ -772,8 +782,9 @@ void RustPrinter::handle_module(const AST::Module& mod)
         handle_function(item.is_pub, item.name, e);
     }
 
-    for( const auto& item : mod.items() )
+    for( const auto& ip : mod.m_items )
     {
+        const auto& item = *ip;
         if( !item.data.is_Impl() )    continue ;
         const auto& i = item.data.as_Impl();
 

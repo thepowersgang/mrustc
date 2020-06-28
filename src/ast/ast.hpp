@@ -506,8 +506,10 @@ class Module
 
     // Module-level items
     /// General items
-    ::std::vector<Named<Item>>  m_items;
+public:
+    ::std::vector<std::unique_ptr<Named<Item>>>  m_items;
 
+private:
     // --- Runtime caches and state ---
     ::std::vector< ::std::shared_ptr<Module> >  m_anon_modules;
 
@@ -583,8 +585,8 @@ public:
 
     const ::AST::Path& path() const { return m_my_path; }
 
-          ::std::vector<Named<Item>>& items()       { return m_items; }
-    const ::std::vector<Named<Item>>& items() const { return m_items; }
+    //      ::std::vector<Named<Item>>& items()       { return m_items; }
+    //const ::std::vector<Named<Item>>& items() const { return m_items; }
 
           ::std::vector< ::std::shared_ptr<Module> >&   anon_mods()       { return m_anon_modules; }
     const ::std::vector< ::std::shared_ptr<Module> >&   anon_mods() const { return m_anon_modules; }

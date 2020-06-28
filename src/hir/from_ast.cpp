@@ -1561,8 +1561,9 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
         }
     }
 
-    for( const auto& item : ast_mod.items() )
+    for( const auto& ip : ast_mod.m_items )
     {
+        const auto& item = *ip;
         const auto& sp = item.span;
         auto item_path = ::HIR::ItemPath(path, item.name.c_str());
         DEBUG(item_path << " " << item.data.tag_str());
@@ -1743,11 +1744,11 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
                     for(size_t i = start_i; i < inpath.size() - 1; i ++)
                     {
                         bool found = false;
-                        for(const auto& item : mod_p->items())
+                        for(const auto& item : mod_p->m_items)
                         {
-                            if( item.name == inpath[i] )
+                            if( item->name == inpath[i] )
                             {
-                                TU_MATCH_HDRA( (item.data), {)
+                                TU_MATCH_HDRA( (item->data), {)
                                 default:
                                     break;
                                 TU_ARMA(Module, m) {
@@ -1777,9 +1778,18 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
             {
                 H::from_ast(p, Span(), &g_ast_crate_ptr->m_root_module, ie.path, 1);
             }
+            else if( ie.path.front() == CRATE_BUILTINS )
+            {
+                assert(ie.path.size() == 2);
+                //TODO(Span(), "Handle " << CRATE_BUILTINS);
+                p.m_crate_name = ie.path.front();
+                p.m_components.push_back(ie.path.back());
+            }
             else
             {
-                H::from_hir(p, Span(), &g_crate_ptr->m_ext_crates.at(ie.path.front()).m_data->m_root_module, ie.path, 1);
+                auto crate_it = g_crate_ptr->m_ext_crates.find(ie.path.front());
+                ASSERT_BUG(Span(), crate_it != g_crate_ptr->m_ext_crates.end(), "Unable to find crate '" << ie.path.front() << "'");
+                H::from_hir(p, Span(), &crate_it->second.m_data->m_root_module, ie.path, 1);
             }
             auto mi = ::HIR::MacroItem::make_Import({ mv$(p) });
             _add_mod_mac_item( mod, ie.name, get_pub(true), mv$(mi) );
@@ -1794,9 +1804,9 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
     DEBUG(ast_mod.path());
 
     // Sub-modules
-    for( const auto& item : ast_mod.items() )
+    for( const auto& item : ast_mod.m_items )
     {
-        if(const auto* e = item.data.opt_Module()) {
+        if(const auto* e = item->data.opt_Module()) {
             LowerHIR_Module_Impls(*e,  hir_crate);
         }
     }
@@ -1808,10 +1818,10 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
     }
 
     //
-    for( const auto& i : ast_mod.items() )
+    for( const auto& i : ast_mod.m_items )
     {
-        if( !i.data.is_Impl() ) continue;
-        const auto& impl = i.data.as_Impl();
+        if( !i->data.is_Impl() ) continue;
+        const auto& impl = i->data.as_Impl();
         const Span  impl_span;
         auto params = LowerHIR_GenericParams(impl.def().params(), nullptr);
 
@@ -1956,10 +1966,10 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                 }) );
         }
     }
-    for( const auto& i : ast_mod.items() )
+    for( const auto& i : ast_mod.m_items )
     {
-        if( !i.data.is_NegImpl() ) continue;
-        const auto& impl = i.data.as_NegImpl();
+        if( !i->data.is_NegImpl() ) continue;
+        const auto& impl = i->data.as_NegImpl();
 
         auto params = LowerHIR_GenericParams(impl.params(), nullptr);
         auto type = LowerHIR_Type(impl.type());
@@ -2051,9 +2061,9 @@ public:
                 }
             }
 
-            for(auto& i : mod.items()) {
-                if( i.data.is_Module() )
-                    mods.push_back( &i.data.as_Module() );
+            for(auto& i : mod.m_items) {
+                if( i->data.is_Module() )
+                    mods.push_back( &i->data.as_Module() );
             }
         } while( mods.size() > 0 );
 

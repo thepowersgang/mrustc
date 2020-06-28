@@ -465,9 +465,9 @@ int main(int argc, char *argv[])
                     //for(auto& amod : mod.anon_mods()) {
                     //    this->visit_module(*amod);
                     //}
-                    for(auto& i : mod.items()) {
-                        if(i.data.is_Module()) {
-                            this->visit_module(i.data.as_Module());
+                    for(auto& i : mod.m_items) {
+                        if(i->data.is_Module()) {
+                            this->visit_module(i->data.as_Module());
                         }
                     }
                 }

@@ -306,12 +306,12 @@ ExternBlock ExternBlock::clone() const
 }
 
 void Module::add_item( Named<Item> named_item ) {
-    m_items.push_back( mv$(named_item) );
+    m_items.push_back( box$(named_item) );
     const auto& i = m_items.back();
-    if( i.name == "" ) {
+    if( i->name == "" ) {
     }
     else {
-        DEBUG(m_my_path << "::" << i.name << " = " << i.data.tag_str() << ", attrs = " << i.attrs);
+        DEBUG(m_my_path << "::" << i->name << " = " << i->data.tag_str() << ", attrs = " << i->attrs);
     }
 }
 void Module::add_item(Span sp, bool is_pub, RcString name, Item it, AttributeList attrs) {

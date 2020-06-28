@@ -59,12 +59,12 @@ namespace {
                     auto real_mod = this->get_source_module_for_name(start_mod, name, ResolveNamespace::Namespace);
                     TU_MATCH_HDRA( (real_mod), {)
                     TU_ARMA(Ast, mod_ptr) {
-                        for(const auto& i : mod_ptr->items())
+                        for(const auto& i : mod_ptr->m_items)
                         {
                             // What about `cfg()`?
-                            if( i.name == name )
+                            if( i->name == name )
                             {
-                                return get_module_ast(i.data.as_Module(), path, 1, ignore_last, out_path);
+                                return get_module_ast(i->data.as_Module(), path, 1, ignore_last, out_path);
                             }
                         }
                         BUG(sp, "get_source_module_for_name returned true (AST) but not found");
@@ -185,12 +185,12 @@ namespace {
             {
                 const auto& tgt_name = base_nodes[i].name();
                 const AST::Module* next_mod = nullptr;
-                for(const auto& i : mod->items())
+                for(const auto& i : mod->m_items)
                 {
-                    if( const auto* m = i.data.opt_Module() )
+                    if( const auto* m = i->data.opt_Module() )
                     {
                         //DEBUG(i.name);
-                        if( i.name == tgt_name )
+                        if( i->name == tgt_name )
                         {
                             next_mod = m;
                             break;
@@ -258,16 +258,16 @@ namespace {
             }
 
             bool pushed = false;
-            for(const auto& i : mod.items())
+            for(const auto& i : mod.m_items)
             {
                 //DEBUG(i.name << " " << i.data.tag_str());
                 // What about `cfg()`?
-                if( matching_namespace(i.data, ns) && i.name == name )
+                if( matching_namespace(i->data, ns) && i->name == name )
                 {
                     return ResolveModuleRef(&mod);
                 }
 
-                if(const auto* use_stmt = i.data.opt_Use())
+                if(const auto* use_stmt = i->data.opt_Use())
                 {
                     for(const auto& e : use_stmt->entries)
                     {
@@ -282,9 +282,9 @@ namespace {
                     }
                 }
             }
-            for(const auto& i : mod.items())
+            for(const auto& i : mod.m_items)
             {
-                if(const auto* use_stmt = i.data.opt_Use())
+                if(const auto* use_stmt = i->data.opt_Use())
                 {
                     for(const auto& e : use_stmt->entries)
                     {
@@ -391,4 +391,5 @@ ResolveModuleRef Resolve_Lookup_GetModuleForName(const Span& sp, const AST::Crat
         BUG(sp, "Unable to find " << path << " (starting from " << base_path << ")");
         }
     }
+    throw "";
 }

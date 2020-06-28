@@ -127,11 +127,11 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
 {
     TRACE_FUNCTION_F("path = " << path);
 
-    for(auto& use_stmt : mod.items())
+    for(auto& use_stmt : mod.m_items)
     {
-        if( ! use_stmt.data.is_Use() )
+        if( ! use_stmt->data.is_Use() )
             continue ;
-        auto& use_stmt_data = use_stmt.data.as_Use();
+        auto& use_stmt_data = use_stmt->data.as_Use();
 
         const Span& span = use_stmt_data.sp;
         for(auto& use_ent : use_stmt_data.entries)
@@ -201,8 +201,9 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
 
     // TODO: Check that all code blocks are covered by these
     // - NOTE: Handle anon modules by iterating code (allowing correct item mappings)
-    for(auto& i : mod.items())
+    for(auto& ip : mod.m_items)
     {
+        auto& i = *ip;
         TU_MATCH_DEF( AST::Item, (i.data), (e),
         (
             ),
@@ -292,8 +293,9 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
     }
 
     // Seach for the name defined in the module.
-    for( const auto& item : mod.items() )
+    for( const auto& ip : mod.m_items )
     {
+        const auto& item = *ip;
         if( item.data.is_None() )
             continue ;
 
@@ -379,11 +381,11 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
     }
 
     // Imports
-    for( const auto& imp : mod.items() )
+    for( const auto& imp : mod.m_items )
     {
-        if( ! imp.data.is_Use() )
+        if( ! imp->data.is_Use() )
             continue ;
-        const auto& imp_data = imp.data.as_Use();
+        const auto& imp_data = imp->data.as_Use();
         for( const auto& imp_e : imp_data.entries )
         {
             const Span& sp2 = imp_e.sp;
@@ -412,7 +414,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             }
 
             // TODO: Correct privacy rules (if the origin of this lookup can see this item)
-            if( (imp.is_pub || mod.path().is_parent_of(source_mod_path)) && imp_e.name == "" )
+            if( (imp->is_pub || mod.path().is_parent_of(source_mod_path)) && imp_e.name == "" )
             {
                 DEBUG("- Search glob of " << imp_e.path << " in " << mod.path());
                 // INEFFICIENT! Resolves and throws away the result (because we can't/shouldn't mutate here)
@@ -776,7 +778,13 @@ namespace {
             DEBUG("E : Macro " << nodes.back().name() << " = " << item_ptr->tag_str());
 
             if( const auto* imp = item_ptr->opt_Import() ) {
-                const auto& c = *crate.m_extern_crates.at(imp->path.m_crate_name).m_hir;
+                if( imp->path.m_crate_name == CRATE_BUILTINS )
+                {
+                    rv.macro = AST::PathBinding_Macro::make_MacroRules({ nullptr });
+                    return rv;
+                }
+                ASSERT_BUG(span, crate.m_extern_crates.count(imp->path.m_crate_name) > 0, "Unable to find crate for " << imp->path);
+                const auto& c = *crate.m_extern_crates.at(imp->path.m_crate_name).m_hir;    // Have to manually look up, AST doesn't have a `get_mod_by_path`
                 const auto& mod = c.get_mod_by_path(span, imp->path, /*ignore_last=*/true, /*ignore_crate=*/true);
                 item_ptr = &mod.m_macro_items.at(imp->path.m_components.back())->ent;
             }
@@ -834,6 +842,13 @@ namespace {
     // If the path is directly referring to an external crate - call __ext
     if( path.m_class.is_Absolute() && path.m_class.as_Absolute().crate != "" ) {
         const auto& path_abs = path.m_class.as_Absolute();
+        // Builtin macro imports
+        if(path_abs.crate == CRATE_BUILTINS)
+        {
+            ::AST::Path::Bindings   rv;
+            rv.macro = AST::PathBinding_Macro::make_MacroRules({ nullptr });
+            return rv;
+        }
 
         ASSERT_BUG(span, crate.m_extern_crates.count(path_abs.crate.c_str()), "Crate '" << path_abs.crate << "' not loaded");
         return Resolve_Use_GetBinding__ext(span, crate, path,  crate.m_extern_crates.at( path_abs.crate.c_str() ), 0);

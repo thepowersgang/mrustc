@@ -222,7 +222,7 @@ void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::AST::Cr
                 const auto& i = mod_ptr->m_macro_items.at(final_name);
                 TU_MATCH_HDRA( (i->ent), {)
                 TU_ARMA(Import, m) {
-                    BUG(mi_span, "Resolve_Lookup_GetModuleForName returned an import");
+                    BUG(mi_span, "Resolve_Lookup_GetModuleForName returned an import - " << m.path);
                     }
                 TU_ARMA(MacroRules, m) {
                     mr_ptr = &*m;
@@ -621,7 +621,7 @@ struct CExpandExpr:
         // > Solution: Defer creation of the local module until during expand.
         if( node.m_local_mod ) {
             Expand_Mod(crate, modstack, node.m_local_mod->path(), *node.m_local_mod);
-            mod_item_count = node.m_local_mod->items().size();
+            mod_item_count = node.m_local_mod->m_items.size();
         }
 
         auto saved = this->current_block;
@@ -1220,12 +1220,20 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
     }
 
     DEBUG("Items");
-    for( unsigned int idx = first_item; idx < mod.items().size(); idx ++ )
+    for( unsigned int idx = first_item; idx < mod.m_items.size(); idx ++ )
     {
-        auto& i = mod.items()[idx];
+        auto& i = *mod.m_items[idx];
 
         DEBUG("- " << modpath << "::" << i.name << " (" << ::AST::Item::tag_to_str(i.data.tag()) << ") :: " << i.attrs);
         ::AST::Path path = modpath + i.name;
+
+        if(const auto* mi = i.data.opt_MacroInv() )
+        {
+            if( mi->path().is_trivial() && mi->path().as_trivial() == "macro_rules" ) {
+                i.is_pub = true;
+                DEBUG("macro_rules made pub");
+            }
+        }
 
         auto attrs = mv$(i.attrs);
         Expand_Attrs_CfgAttr(attrs);
@@ -1279,7 +1287,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             auto items = mv$( e.items() );
             for(auto& i2 : items)
             {
-                mod.items().push_back( mv$(i2) );
+                mod.m_items.push_back( box$(i2) );
             }
             }
         TU_ARMA(Impl, e) {
@@ -1486,7 +1494,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
 
         {
 
-            auto& i = mod.items()[idx];
+            auto& i = *mod.m_items[idx];
             if( i.data.tag() == ::AST::Item::TAGDEAD ) {
                 i.data = mv$(dat);
             }
@@ -1505,14 +1513,15 @@ void Expand_Mod_IndexAnon(::AST::Crate& crate, ::AST::Module& mod)
 {
     TRACE_FUNCTION_F("mod=" << mod.path());
 
-    for(auto& i : mod.items())
+    for(auto& i : mod.m_items)
     {
-        DEBUG("- " << i.data.tag_str() << " '" << i.name << "'");
-        TU_IFLET(::AST::Item, (i.data), Module, e,
-            Expand_Mod_IndexAnon(crate, e);
+        DEBUG("- " << i->data.tag_str() << " '" << i->name << "'");
+        if(auto* e = i->data.opt_Module())
+        {
+            Expand_Mod_IndexAnon(crate, *e);
 
             // TODO: Also ensure that all #[macro_export] macros end up in parent
-        )
+        }
     }
 
     for( auto& mp : mod.anon_mods() )
@@ -1578,9 +1587,9 @@ void Expand(::AST::Crate& crate)
         AST::AttributeName  name;
         name.elems.push_back("macro_use");
         attrs.push_back( AST::Attribute(Span(), mv$(name), {}) );
-        crate.m_root_module.items().insert(
-            crate.m_root_module.items().begin(),
-            AST::Named<AST::Item>(Span(), mv$(attrs), false, std_crate_name, AST::Item::make_Crate({std_crate_name}) )
+        crate.m_root_module.m_items.insert(
+            crate.m_root_module.m_items.begin(),
+            box$( AST::Named<AST::Item>(Span(), mv$(attrs), false, std_crate_name, AST::Item::make_Crate({std_crate_name}) ) )
             );
     }
 
@@ -1625,9 +1634,9 @@ void Expand(::AST::Crate& crate)
                 }
             }
 
-            for(auto& i : mod.items()) {
-                if( i.data.is_Module() )
-                    mods.push_back( &i.data.as_Module() );
+            for(auto& i : mod.m_items) {
+                if( i->data.is_Module() )
+                    mods.push_back( &i->data.as_Module() );
             }
         } while( mods.size() > 0 );
 

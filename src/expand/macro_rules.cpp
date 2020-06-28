@@ -173,6 +173,29 @@ class CMacroExportHandler:
     {
         if( i.is_None() ) {
         }
+        // If on a `use` it's for a #[rustc_builtin_macro]
+        else if( const auto* u = i.opt_Use() )
+        {
+            if( u->entries.size() == 1
+                && u->entries.back().path.is_absolute()
+                && u->entries.back().path.m_class.as_Absolute().crate == CRATE_BUILTINS
+                && u->entries.back().path.m_class.as_Absolute().nodes.size() == 1
+                )
+                ;
+            else
+                ERROR(sp, E0000, "Use of #[macro_export] on non-macro - " << i.tag_str());
+            const auto& p = u->entries.back().path.m_class.as_Absolute();
+            const auto& name = p.nodes.front().name();
+            AST::Module::MacroImport    mi;
+            mi.is_pub = true;
+            mi.macro_ptr = nullptr;
+            mi.name = u->entries.front().name;
+            mi.path.push_back(p.crate);
+            mi.path.push_back(name);
+            crate.m_root_module.m_macro_imports.push_back(mv$(mi));
+
+            crate.m_root_module.add_item(sp, true, name, i.clone(), {});
+        }
         else if( i.is_MacroInv() ) {
             const auto& mac = i.as_MacroInv();
             if( !(mac.path().is_trivial() && mac.path().as_trivial() == "macro_rules") ) {
@@ -226,9 +249,39 @@ class CMacroReexportHandler:
     }
 };
 
+class CBuiltinMacroHandler:
+    public ExpandDecorator
+{
+    AttrStage stage() const override { return AttrStage::Pre; }
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    {
+        RcString    name;
+        if(i.is_MacroInv()) {
+            const auto& e = i.as_MacroInv();
+            if( !(e.path().is_trivial() && e.path().as_trivial() == "macro_rules") ) {
+                ERROR(sp, E0000, "Use of #[rustc_builtin_macro] on macro other than macro_rules! - " << i.tag_str());
+            }
+            name = e.input_ident();
+        }
+        else if(i.is_Macro()) {
+            name = path.nodes().back().name();
+        }
+        else {
+            ERROR(sp, E0000, "Use of #[rustc_builtin_macro] on non-macro - " << i.tag_str());
+        }
+
+        AST::UseItem    ui;
+        ui.entries.push_back(AST::UseItem::Ent { });
+        ui.entries.back().name = name;
+        ui.entries.back().path = AST::Path(CRATE_BUILTINS, { name });
+        DEBUG("Convert macro_rules tagged #[rustc_builtin_macro] with use");
+        i = AST::Item::make_Use(mv$(ui));
+    }
+};
 
 STATIC_MACRO("macro_rules", CMacroRulesExpander);
 STATIC_DECORATOR("macro_use", CMacroUseHandler);
 STATIC_DECORATOR("macro_export", CMacroExportHandler);
 STATIC_DECORATOR("macro_reexport", CMacroReexportHandler);
+STATIC_DECORATOR("rustc_builtin_macro", CBuiltinMacroHandler);
 
