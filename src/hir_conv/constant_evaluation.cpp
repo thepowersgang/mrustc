@@ -783,6 +783,12 @@ namespace HIR {
                         Target_GetSizeOf(state.sp, this->resolve, ty, size_val);
                         dst = ::HIR::Literal::make_Integer( size_val );
                     }
+                    else if( te->name == "min_align_of" ) {
+                        auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                        size_t  align_val;
+                        Target_GetAlignOf(state.sp, this->resolve, ty, align_val);
+                        dst = ::HIR::Literal::make_Integer( align_val );
+                    }
                     else {
                         MIR_TODO(state, "Call intrinsic \"" << te->name << "\" - " << block.terminator);
                     }
