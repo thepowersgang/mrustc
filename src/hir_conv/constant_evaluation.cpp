@@ -285,19 +285,30 @@ namespace HIR {
                         lit_ptr = &vals[ e ];
                         }
                     TU_ARMA(Deref, e) {
-                        TU_MATCH_DEF( ::HIR::Literal, (val), (ve),
-                        (
-                            MIR_TODO(state, "LValue::Deref - " << lv << " { " << val << " }");
-                            ),
-                        (BorrowData,
+                        TU_MATCH_HDRA( (val), {)
+                        default:
+                            MIR_TODO(state, "LValue::Deref - " << lv << " " << val.tag_str() << " { " << val << " }");
+                        TU_ARMA(BorrowData, ve) {
                             lit_ptr = &*ve;
-                            ),
-                        (String,
+                            }
+                        TU_ARMA(BorrowPath, ve) {
+                            // TODO: Get the referenced path (if possible), and return the static's value as a pointer
+                            // - May need to ensure that there's no mutation...
+                            if( ve.m_data.is_Generic() ) {
+                                const auto& s = state.m_crate.get_static_by_path(state.sp, ve.m_data.as_Generic().m_path);
+                                MIR_ASSERT(state, !s.m_value_res.is_Invalid(), "Reference to non-valid static in BorrowPath");
+                                lit_ptr = const_cast<HIR::Literal*>(&s.m_value_res);
+                            }
+                            else {
+                                MIR_TODO(state, "LValue::Deref - BorrowPath " << val);
+                            }
+                            }
+                        TU_ARMA(String, ve) {
                             // Just clone the string (hack)
                             // - TODO: Create a list?
                             lit_ptr = &val;
-                            )
-                        )
+                            }
+                        }
                         }
                     TU_ARMA(Index, e) {
                         MIR_ASSERT(state, val.is_List(), "LValue::Index on non-list literal - " << val.tag_str() << " - " << lv);

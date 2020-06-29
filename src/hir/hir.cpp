@@ -424,3 +424,22 @@ const ::HIR::Function& ::HIR::Crate::get_function_by_path(const Span& sp, const 
     }
 }
 
+
+const ::HIR::Static& ::HIR::Crate::get_static_by_path(const Span& sp, const ::HIR::SimplePath& path) const
+{
+    const auto& m = this->get_mod_by_path(sp, path, /*ignore_last*/true);
+    auto it = m.m_value_items.find(path.m_components.back());
+    if(it != m.m_value_items.end())
+    {
+        ASSERT_BUG(sp, it->second->ent.is_Static(), "`static` path " << path << " didn't point to a static");
+        return it->second->ent.as_Static();
+    }
+    for(const auto& e : m.m_inline_statics)
+    {
+        if(e.first == path.m_components.back())
+        {
+            return e.second;
+        }
+    }
+    BUG(sp, "`static` path " << path << " can't be found");
+}
