@@ -299,6 +299,7 @@
         {
             DEBUG("params = " << params.fmt_args() << ", " << params.fmt_bounds());
             serialise_vec(params.m_types);
+            serialise_vec(params.m_values);
             serialise_vec(params.m_lifetimes);
             serialise_vec(params.m_bounds);
         }
@@ -306,6 +307,10 @@
             m_out.write_string(pd.m_name);
             serialise_type(pd.m_default);
             m_out.write_bool(pd.m_is_sized);
+        }
+        void serialise(const ::HIR::ValueParamDef& pd) {
+            m_out.write_string(pd.m_name);
+            serialise_type(pd.m_type);
         }
         void serialise(const ::HIR::GenericBound& b) {
             TRACE_FUNCTION_F(b);

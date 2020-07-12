@@ -195,6 +195,7 @@
 
         ::HIR::GenericParams deserialise_genericparams();
         ::HIR::TypeParamDef deserialise_typaramdef();
+        ::HIR::ValueParamDef deserialise_valueparamdef();
         ::HIR::GenericBound deserialise_genericbound();
 
         ::HIR::Crate deserialise_crate();
@@ -846,6 +847,7 @@
     template<> DEF_D( ::HIR::TraitPath, return d.deserialise_traitpath(); )
 
     template<> DEF_D( ::HIR::TypeParamDef, return d.deserialise_typaramdef(); )
+    template<> DEF_D( ::HIR::ValueParamDef, return d.deserialise_valueparamdef(); )
     template<> DEF_D( ::HIR::GenericBound, return d.deserialise_genericbound(); )
 
     template<> DEF_D( ::HIR::ValueItem, return d.deserialise_valueitem(); )
@@ -1063,6 +1065,7 @@
         TRACE_FUNCTION;
         ::HIR::GenericParams    params;
         params.m_types = deserialise_vec< ::HIR::TypeParamDef>();
+        params.m_values = deserialise_vec< ::HIR::ValueParamDef>();
         params.m_lifetimes = deserialise_vec< ::HIR::LifetimeDef>();
         params.m_bounds = deserialise_vec< ::HIR::GenericBound>();
         DEBUG("params = " << params.fmt_args() << ", " << params.fmt_bounds());
@@ -1076,6 +1079,15 @@
             m_in.read_bool()
             };
         DEBUG("::HIR::TypeParamDef { " << rv.m_name << ", " << rv.m_default << ", " << rv.m_is_sized << "}");
+        return rv;
+    }
+    ::HIR::ValueParamDef HirDeserialiser::deserialise_valueparamdef()
+    {
+        auto rv = ::HIR::ValueParamDef {
+            m_in.read_istring(),
+            deserialise_type()
+            };
+        DEBUG("::HIR::ValueParamDef { " << rv.m_name << ", " << rv.m_type << "}");
         return rv;
     }
     ::HIR::GenericBound HirDeserialiser::deserialise_genericbound()
