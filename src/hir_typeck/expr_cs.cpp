@@ -2309,6 +2309,10 @@ namespace {
                     const auto& dst_inner = this->context.get_type(e.inner);
                     if( dst_inner.data().is_Infer() )
                     {
+#if 1
+                        this->context.possible_equate_type_bound(sp, dst_inner.data().as_Infer().index, s_e.inner);
+                        return ;
+#else
                         if(this->m_is_fallback)
                         {
                             DEBUG("- Fallback mode, assume inner types are equal");
@@ -2318,6 +2322,7 @@ namespace {
                         {
                             return ;
                         }
+#endif
                     }
                     else
                     {
