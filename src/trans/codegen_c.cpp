@@ -2165,45 +2165,59 @@ namespace {
                 }
             TU_ARMA(Variant, e) {
                 MIR_ASSERT(*m_mir_res, ty.data().is_Path(), "");
-                MIR_ASSERT(*m_mir_res, ty.data().as_Path().binding.is_Enum(), "");
+                const auto& ty_binding = ty.data().as_Path().binding;
                 const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
-                const auto& enm = *ty.data().as_Path().binding.as_Enum();
-                if( repr->variants.is_None() )
+                if(ty_binding.is_Union())
                 {
-                    m_of << "{}";
+                    const auto& un = *ty_binding.as_Union();
+                    m_of << "{ .var_" << e.idx << " = ";
+                    emit_literal(un.m_variants[e.idx].second.ent, *e.val, params);
+                    m_of << "}";
                 }
-                else if( const auto* ve = repr->variants.opt_NonZero() )
+                else if( ty_binding.is_Enum() )
                 {
-                    if( e.idx == ve->zero_variant )
+                    const auto& enm = *ty_binding.as_Enum();
+                    if( repr->variants.is_None() )
                     {
-                        m_of << "{0}";
+                        m_of << "{}";
+                    }
+                    else if( const auto* ve = repr->variants.opt_NonZero() )
+                    {
+                        if( e.idx == ve->zero_variant )
+                        {
+                            m_of << "{0}";
+                        }
+                        else
+                        {
+                            m_of << "{ { .var_" << e.idx << " = ";
+                            emit_literal(get_inner_type(e.idx, 0), *e.val, params);
+                            m_of << " } }";
+                        }
+                    }
+                    else if( enm.is_value() )
+                    {
+                        MIR_ASSERT(*m_mir_res, TU_TEST1((*e.val), List, .empty()), "Value-only enum with fields");
+                        m_of << "{" << enm.get_value(e.idx) << "}";
                     }
                     else
                     {
-                        m_of << "{ { .var_" << e.idx << " = ";
-                        emit_literal(get_inner_type(e.idx, 0), *e.val, params);
-                        m_of << " } }";
+                        m_of << "{";
+                        const auto& ity = get_inner_type(e.idx, 0);
+                        if( this->type_is_bad_zst(ity) ) {
+                            //m_of << " {}";
+                        }
+                        else {
+                            m_of << " { .var_" << e.idx << " = ";
+                            emit_literal(ity, *e.val, params);
+                            m_of << " }, ";
+                        }
+                        m_of << ".TAG = "; emit_enum_variant_val(repr, e.idx);
+                        m_of << "}";
                     }
-                }
-                else if( enm.is_value() )
-                {
-                    MIR_ASSERT(*m_mir_res, TU_TEST1((*e.val), List, .empty()), "Value-only enum with fields");
-                    m_of << "{" << enm.get_value(e.idx) << "}";
                 }
                 else
                 {
-                    m_of << "{";
-                    const auto& ity = get_inner_type(e.idx, 0);
-                    if( this->type_is_bad_zst(ity) ) {
-                        //m_of << " {}";
-                    }
-                    else {
-                        m_of << " { .var_" << e.idx << " = ";
-                        emit_literal(ity, *e.val, params);
-                        m_of << " }, ";
-                    }
-                    m_of << ".TAG = "; emit_enum_variant_val(repr, e.idx);
-                    m_of << "}";
+                    MIR_BUG(*m_mir_res, "Literal " << lit << " type not enum/union, " << ty);
                 }
                 }
             TU_ARMA(Integer, e) {
@@ -6111,23 +6125,34 @@ namespace {
                 }
             TU_ARMA(Variant, e) {
                 MIR_ASSERT(*m_mir_res, ty.data().is_Path(), "");
-                MIR_ASSERT(*m_mir_res, ty.data().as_Path().binding.is_Enum(), "");
                 const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
-                const auto& enm = *ty.data().as_Path().binding.as_Enum();
-                if( repr->variants.is_None() ) {
-                    return true;
-                } else if( const auto* ve = repr->variants.opt_NonZero() ) {
-                    if( e.idx == ve->zero_variant ) {
+                if( const auto* enm_p = ty.data().as_Path().binding.opt_Enum() )
+                {
+                    const ::HIR::Enum& enm = **enm_p;
+                    if( repr->variants.is_None() ) {
                         return true;
+                    } else if( const auto* ve = repr->variants.opt_NonZero() ) {
+                        if( e.idx == ve->zero_variant ) {
+                            return true;
+                        } else {
+                            return is_zero_literal(get_inner_type(e.idx, 0), *e.val, params);
+                        }
+                    } else if( enm.is_value() ) {
+                        return false;
                     } else {
-                        return is_zero_literal(get_inner_type(e.idx, 0), *e.val, params);
+                        return repr->variants.as_Values().values[e.idx] == 0 && is_zero_literal(get_inner_type(e.idx, 0), *e.val, params);
                     }
-                } else if( enm.is_value() ) {
-                    return false;
-                } else {
-                    return repr->variants.as_Values().values[e.idx] == 0 && is_zero_literal(get_inner_type(e.idx, 0), *e.val, params);
                 }
-            }
+                else if( ty.data().as_Path().binding.is_Union() )
+                {
+                    // Maybe? If all internal fields match?
+                    return false;
+                }
+                else
+                {
+                    MIR_BUG(*m_mir_res, "Literal::Variant for non-enum/union");
+                }
+                }
             TU_ARMA(Integer, e) { return e == 0; }
             TU_ARMA(Float, e) { return e == 0; }
             TU_ARMA(String, e) { return false; }
