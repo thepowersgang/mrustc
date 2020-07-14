@@ -190,9 +190,42 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
         if( best_impl )
         {
             const auto& val = best_impl->m_constants.find(pe.item)->second.data;
-            if( monomorphise_type_needed(val.m_type) )
-                TODO(sp, "Monomorphise constant type - " << val.m_type << " for " << path);
-            out_ty = val.m_type.clone();
+            if( monomorphise_type_needed(val.m_type) ) {
+                ::HIR::PathParams impl_params;
+
+                // 2. Obtain monomorph_cb (including impl params)
+                impl_params.m_types.resize(best_impl->m_params.m_types.size());
+                class Matcher: public ::HIR::MatchGenerics
+                {
+                    ::HIR::PathParams& impl_params;
+                public:
+                    Matcher(::HIR::PathParams& impl_params): impl_params(impl_params) {}
+
+                    ::HIR::Compare match_ty(const ::HIR::GenericRef& g, const ::HIR::TypeRef& ty, ::HIR::t_cb_resolve_type _resolve_cb) override {
+                        assert( g.binding < impl_params.m_types.size() );
+                        impl_params.m_types[g.binding] = ty.clone();
+                        return ::HIR::Compare::Equal;
+                    }
+                    ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::Literal& sz) override {
+                        TODO(Span(), "HIR_Expand_ErasedType_GetFunction::Matcher::match_val " << g << " with " << sz);
+                    }
+                } matcher(impl_params);
+                best_impl->m_type .match_test_generics(sp, pe.type, [](const auto& x)->const auto&{return x;}, matcher);
+                for(const auto& t : impl_params.m_types)
+                {
+                    if( t == ::HIR::TypeRef() )
+                    {
+                        TODO(sp, "Handle ErasedType where an impl parameter comes from a bound");
+                    }
+                }
+
+                MonomorphStatePtr monomorph_cb = MonomorphStatePtr(&pe.type, &impl_params, &pe.params);
+
+                out_ty = monomorph_cb.monomorph_type(sp, val.m_type);
+            }
+            else {
+                out_ty = val.m_type.clone();
+            }
             return &val.m_value_res;
         }
         }
@@ -317,6 +350,19 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
             {
                 p = mutator.in_temporary(::HIR::TypeRef::new_unit(), ::MIR::RValue::make_Tuple({}));
             }
+            return ::MIR::RValue::make_Variant({ te.path.m_data.as_Generic().clone(), lit_var.idx, mv$(p) });
+        }
+        else if( te.binding.is_Union() )
+        {
+            const auto& un = *te.binding.as_Union();
+            const auto& lit_var = lit.as_Variant();
+
+            auto monomorph = [&](const auto& tpl) { return MonomorphStatePtr(nullptr, &te.path.m_data.as_Generic().m_params, nullptr).monomorph_type(state.sp, tpl); };
+
+            ::MIR::Param    p;
+            auto ty = monomorph( un.m_variants.at(lit_var.idx).second.ent );
+            auto rval = MIR_Cleanup_LiteralToRValue(state, mutator, *lit_var.val, ty.clone(), ::HIR::GenericPath());
+            p = mutator.in_temporary(mv$(ty), mv$(rval));
             return ::MIR::RValue::make_Variant({ te.path.m_data.as_Generic().clone(), lit_var.idx, mv$(p) });
         }
         else
