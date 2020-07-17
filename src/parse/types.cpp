@@ -87,16 +87,8 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
         }
         if( TARGETVER_LEAST_1_29 && tok.istr() == "dyn" )
         {
-            if( lex.lookahead(0) == TOK_PAREN_OPEN ) {
-                GET_TOK(tok, lex);
-                auto rv = Parse_Type_TraitObject(lex, {});
-                GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
-                return rv;
-            }
-            else {
-                ::AST::HigherRankedBounds hrbs = Parse_HRB_Opt(lex);
-                return Parse_Type_TraitObject(lex, mv$(hrbs));
-            }
+            ::AST::HigherRankedBounds hrbs = Parse_HRB_Opt(lex);
+            return Parse_Type_TraitObject(lex, mv$(hrbs));
         }
         // or a primitive
         //if( auto ct = coretype_fromstring(tok.str()) )
@@ -337,7 +329,16 @@ TypeRef Parse_Type_TraitObject(TokenStream& lex, ::AST::HigherRankedBounds hrbs)
     ::std::vector<Type_TraitPath>   traits;
     ::std::vector<AST::LifetimeRef> lifetimes;
 
+    bool is_paren = false;
+    if( lex.lookahead(0) == TOK_PAREN_OPEN ) {
+        lex.getToken();
+        is_paren = true;
+    }
+
     traits.push_back(Type_TraitPath { mv$(hrbs), Parse_Path(lex, PATH_GENERIC_TYPE) });
+    if( is_paren ) {
+        GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
+    }
 
     while( lex.lookahead(0) == TOK_PLUS )
     {
