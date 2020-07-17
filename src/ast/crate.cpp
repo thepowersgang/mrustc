@@ -21,6 +21,7 @@
 
 ::std::vector<::std::string>    AST::g_crate_load_dirs = { };
 ::std::map<::std::string, ::std::string>    AST::g_crate_overrides;
+::std::map<RcString, RcString>    AST::g_implicit_crates;
 
 namespace {
     bool check_item_cfg(const ::AST::AttributeList& attrs)
@@ -120,7 +121,8 @@ void Crate::load_externs()
         DEBUG("Load from --crate");
         for(const auto& c : g_crate_overrides)
         {
-            this->load_extern_crate(Span(), c.first.c_str());
+            auto real_name = this->load_extern_crate(Span(), c.first.c_str());
+            g_implicit_crates.insert( std::make_pair(RcString::new_interned(c.first), real_name) );
         }
     }
 }
@@ -280,6 +282,10 @@ ExternCrate::ExternCrate(const RcString& name, const ::std::string& path):
 {
     TRACE_FUNCTION_F("name=" << name << ", path='" << path << "'");
     m_hir = HIR_Deserialise(path);
+    //if(const auto* e = strchr(m_short_name.c_str(), '-'))
+    //{
+    //    m_short_name = RcString(m_short_name.c_str(), e - m_short_name.c_str());
+    //}
 
     m_hir->post_load_update(name);
     m_name = m_hir->m_crate_name;

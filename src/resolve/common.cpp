@@ -12,6 +12,7 @@
 #include <ast/expr.hpp>
 #include <hir/hir.hpp>
 #include <stdspan.hpp>  // std::span
+#include <expand/cfg.hpp>
 
 namespace {
     struct ResolveState
@@ -100,11 +101,12 @@ namespace {
                 {
                     DEBUG("Trying implicit externs for " << name);
                     DEBUG(FmtLambda([&](std::ostream& os) { for(const auto& v : crate.m_extern_crates) os << " " << v.first;})); 
-                    auto ec_it = ::std::find_if( crate.m_extern_crates.begin(), crate.m_extern_crates.end(), [&](const auto& e)->bool { return e.second.m_short_name == name; });
-                    if(ec_it != crate.m_extern_crates.end() )
+                    auto ec_it = AST::g_implicit_crates.find(name);
+                    if(ec_it != AST::g_implicit_crates.end())
                     {
+                        const auto& ec = crate.m_extern_crates.at(ec_it->second);
                         DEBUG("Implicitly imported crate");
-                        return get_module_hir(ec_it->second.m_hir->m_root_module, path, 1, ignore_last, out_path);
+                        return get_module_hir(ec.m_hir->m_root_module, path, 1, ignore_last, out_path);
                     }
                 }
                 DEBUG("Not found");
@@ -151,8 +153,41 @@ namespace {
             for(size_t i = start_offset; i < path.nodes().size() - (ignore_last ? 1 : 0); i ++)
             {
                 const auto& name = path.nodes()[i].name();
-                TODO(sp, "Find " << name << " in module " << mod->path() << " for " << path);
                 // Find the module for this node
+                bool found = false;
+                for(const auto& i : mod->m_items)
+                {
+                    if( i->name == name )
+                    {
+                        bool ignore = false;
+                        for(const auto& a : i->attrs.m_items)
+                        {
+                            if( a.name() == "cfg" )
+                            {
+                                if( !check_cfg(sp, a) )
+                                {
+                                    ignore = true;
+                                }
+                            }
+                        }
+                        if(ignore)
+                            continue;
+
+                        if(i->data.is_Module())
+                        {
+                            mod = &i->data.as_Module();
+                            found = true;
+                            break;
+                        }
+
+                        TODO(sp, "Unexpected item type for " << name << " in module " << mod->path() << " for " << path);
+                    }
+                }
+                if(found)
+                {
+                    break;
+                }
+                BUG(sp, "Unable to find " << name << " in module " << mod->path() << " for " << path);
             }
             if(out_path)
             {

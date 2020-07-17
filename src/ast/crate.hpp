@@ -113,5 +113,6 @@ public:
 
 extern ::std::vector<::std::string>    g_crate_load_dirs;
 extern ::std::map<::std::string, ::std::string>    g_crate_overrides;
+extern ::std::map<RcString, RcString>    g_implicit_crates;
 
 }   // namespace AST
