@@ -360,16 +360,17 @@ MacroRulesPtr Parse_MacroRules(TokenStream& lex)
 
     // Parse the patterns and replacements
     ::std::vector<MacroRule>    rules;
-    while( GET_TOK(tok, lex) != TOK_EOF )
+    while( lex.lookahead(0) != TOK_EOF && lex.lookahead(0) != TOK_BRACE_CLOSE )
     {
-        lex.putback(tok);
-
         rules.push_back( Parse_MacroRules_Var(lex) );
         if(GET_TOK(tok, lex) != TOK_SEMICOLON) {
-            CHECK_TOK(tok, TOK_EOF);
+            PUTBACK(tok,lex);
             break;
         }
     }
+    GET_TOK(tok, lex);
+    if(tok.type() != TOK_EOF && tok.type() != TOK_BRACE_CLOSE)
+        throw ParseError::Unexpected(lex, tok, { TOK_EOF, TOK_BRACE_CLOSE });
     DEBUG("- " << rules.size() << " rules");
 
     auto rv = MacroRulesPtr(new MacroRules( ));

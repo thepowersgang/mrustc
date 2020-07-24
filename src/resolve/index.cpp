@@ -600,6 +600,9 @@ void Resolve_Index_Module_Normalise_Path_ext(const ::AST::Crate& crate, const Sp
     //    path.nodes().erase( path.nodes().begin() + i );
     //} while( --i > 0 );
 
+    if(info.nodes.empty()) {
+        return ;
+    }
 
     for(unsigned int i = start; i < info.nodes.size() - 1; i ++)
     {

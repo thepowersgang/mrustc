@@ -1453,17 +1453,10 @@ void Parse_Use_Inner(TokenStream& lex, ::std::vector<AST::UseItem::Ent>& entries
     // TODO: Get a span covering the final node.
     entries.push_back({ lex.point_span(), AST::Path(path), ::std::move(name) });
 }
-::AST::UseItem Parse_Use(TokenStream& lex)
+void Parse_Use_Root(TokenStream& lex, ::std::vector<AST::UseItem::Ent>& entries)
 {
-    TRACE_FUNCTION;
-
-    Token   tok;
     AST::Path   path = AST::Path("", {});
-    ::std::vector<AST::PathNode>    nodes;
-    ProtoSpan   span_start = lex.start_span();
-
-    ::std::vector<AST::UseItem::Ent>    entries;
-
+    Token   tok;
     switch( GET_TOK(tok, lex) )
     {
     case TOK_RWORD_SELF:
@@ -1484,7 +1477,7 @@ void Parse_Use_Inner(TokenStream& lex, ::std::vector<AST::UseItem::Ent>& entries
         // 1.29 absolute path
         GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
         break;
-    // Leading :: is allowed and ignored for the $crate feature
+        // Leading :: is allowed and ignored for the $crate feature
     case TOK_DOUBLE_COLON:
         // Absolute path
         // HACK! mrustc emits $crate as `::"crate-name"`
@@ -1514,6 +1507,32 @@ void Parse_Use_Inner(TokenStream& lex, ::std::vector<AST::UseItem::Ent>& entries
     }
 
     Parse_Use_Inner(lex, entries, path);
+}
+::AST::UseItem Parse_Use(TokenStream& lex)
+{
+    TRACE_FUNCTION;
+
+    Token   tok;
+    ProtoSpan   span_start = lex.start_span();
+
+    ::std::vector<AST::UseItem::Ent>    entries;
+
+    if(lex.lookahead(0) == TOK_BRACE_OPEN)
+    {
+        GET_TOK(tok, lex);
+        do {
+            if( lex.lookahead(0) == TOK_BRACE_CLOSE ) {
+                GET_TOK(tok, lex);
+                break;
+            }
+            Parse_Use_Root(lex, entries);
+        } while(GET_TOK(tok, lex) == TOK_COMMA);
+        CHECK_TOK(tok, TOK_BRACE_CLOSE);
+    }
+    else
+    {
+        Parse_Use_Root(lex, entries);
+    }
 
     return AST::UseItem { lex.end_span(span_start), mv$(entries) };
 }
@@ -1972,36 +1991,46 @@ namespace {
         {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             auto name = tok.istr();
-            if( lex.lookahead(0) != TOK_PAREN_OPEN )
+            MacroRulesPtr mrp;
+            if( lex.lookahead(0) == TOK_BRACE_OPEN )
+            {
+                GET_TOK(tok, lex);
+                mrp = Parse_MacroRules(lex);
+            }
+            else if( lex.lookahead(0) == TOK_PAREN_OPEN )
+            {
+                DEBUG("name = " << name);
+
+                ::std::vector<RcString>   names;
+                auto ps = lex.start_span();
+                GET_CHECK_TOK(tok, lex, TOK_PAREN_OPEN);
+                auto arm_pat = Parse_MacroRules_Pat(lex, TOK_PAREN_OPEN, TOK_PAREN_CLOSE, names);
+                auto pat_span = lex.end_span(ps);
+                GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
+                // TODO: Pass a flag that annotates all idents with the current module?
+                auto body = Parse_MacroRules_Cont(lex, TOK_BRACE_OPEN, TOK_BRACE_CLOSE, names);
+
+                auto mr = new MacroRules( );
+                mr->m_hygiene = lex.getHygiene();
+                {
+                    Ident::ModPath  mp;
+                    for(const auto& node : mod_path.nodes())
+                    {
+                        mp.ents.push_back(node.name());
+                    }
+                    mr->m_hygiene.set_mod_path(::std::move(mp));
+                }
+                mr->m_rules.push_back(Parse_MacroRules_MakeArm(pat_span, ::std::move(arm_pat), ::std::move(body)));
+                mrp = MacroRulesPtr(mr);
+            }
+            else
             {
                 GET_TOK(tok, lex);
                 throw ParseError::Unexpected(lex, tok);
             }
-            DEBUG("name = " << name);
-
-            ::std::vector<RcString>   names;
-            auto ps = lex.start_span();
-            GET_CHECK_TOK(tok, lex, TOK_PAREN_OPEN);
-            auto arm_pat = Parse_MacroRules_Pat(lex, TOK_PAREN_OPEN, TOK_PAREN_CLOSE, names);
-            auto pat_span = lex.end_span(ps);
-            GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
-            // TODO: Pass a flag that annotates all idents with the current module?
-            auto body = Parse_MacroRules_Cont(lex, TOK_BRACE_OPEN, TOK_BRACE_CLOSE, names);
-
-            auto mr = new MacroRules( );
-            mr->m_hygiene = lex.getHygiene();
-            {
-                Ident::ModPath  mp;
-                for(const auto& node : mod_path.nodes())
-                {
-                    mp.ents.push_back(node.name());
-                }
-                mr->m_hygiene.set_mod_path(::std::move(mp));
-            }
-            mr->m_rules.push_back(Parse_MacroRules_MakeArm(pat_span, ::std::move(arm_pat), ::std::move(body)));
 
             item_name = name;
-            item_data = ::AST::Item( MacroRulesPtr(mr) );
+            item_data = ::AST::Item( mv$(mrp) );
         }
         else
         {

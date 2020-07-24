@@ -58,12 +58,12 @@ void Resolve_Use(::AST::Crate& crate)
         // 2018 edition and later: all extern crates are implicitly in the namespace.
         if( crate.m_edition >= AST::Edition::Rust2018 ) {
             const auto& name = e.nodes.at(0).name();
-            auto ec_it = ::std::find_if( crate.m_extern_crates.begin(), crate.m_extern_crates.end(), [&](const auto& e)->bool { return e.second.m_short_name == name; });
-            if(ec_it != crate.m_extern_crates.end() )
+            auto ec_it = AST::g_implicit_crates.find(name);
+            if(ec_it != AST::g_implicit_crates.end())
             {
                 DEBUG("Found implict crate " << name);
                 e.nodes.erase(e.nodes.begin());
-                return AST::Path( ec_it->second.m_name, e.nodes);
+                return AST::Path( ec_it->second, e.nodes);
             }
             else
             {
@@ -792,11 +792,13 @@ namespace {
             if( rv.macro.is_Unbound() )
             {
                 TU_MATCH_HDRA( (*item_ptr), {)
-                TU_ARMA(Import, e)
+                TU_ARMA(Import, e) {
                     if( e.path.m_crate_name == CRATE_BUILTINS )
                         ;
                     else
                         BUG(span, "Recursive import in " << path << " - " << it2->second->ent.as_Import().path << " -> " << e.path);
+                    rv.macro = ::AST::PathBinding_Macro::make_MacroRules({ nullptr, nullptr });
+                    }
                 TU_ARMA(ProcMacro, e) {
                     //rv.macro = ::AST::PathBinding_Macro::make_ProcMacro({ path.,  e.name });
                     TODO(span, "");

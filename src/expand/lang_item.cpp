@@ -129,6 +129,7 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
     else if( name == "str_eq" ) { }
     else if( name == "drop_in_place" ) { }
     else if( name == "align_offset" ) { }
+    else if( TARGETVER_LEAST_1_39 && name == "begin_panic" ) {}    // Function
     // - builtin `box` support
     else if( name == "exchange_malloc" ) { }
     else if( name == "exchange_free" ) { }

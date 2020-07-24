@@ -108,7 +108,9 @@ void Crate::load_externs()
     }
     else if( no_std ) {
         auto n = this->load_extern_crate(Span(), "core");
-        ASSERT_BUG(Span(), n == "core", "libcore wasn't loaded as `core`, instead `" << n << "`");
+        if( n != "core" ) {
+            WARNING(Span(), W0000, "libcore wasn't loaded as `core`, instead `" << n << "`");
+        }
     }
     else {
         auto n = this->load_extern_crate(Span(), "std");
@@ -124,6 +126,7 @@ void Crate::load_externs()
             auto real_name = this->load_extern_crate(Span(), c.first.c_str());
             g_implicit_crates.insert( std::make_pair(RcString::new_interned(c.first), real_name) );
         }
+        g_implicit_crates.insert( std::make_pair( RcString::new_interned("core"), RcString::new_interned("core") ) );
     }
 }
 // TODO: Handle disambiguating crates with the same name (e.g. libc in std and crates.io libc)

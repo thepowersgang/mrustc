@@ -1330,6 +1330,11 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             {
                 e.name = crate.load_extern_crate( i.span, e.name );
             }
+            // Crates imported in root are added to the implicit list
+            if( modpath.nodes().empty() )
+            {
+                AST::g_implicit_crates.insert( std::make_pair(i.name, e.name) );
+            }
             }
 
         TU_ARMA(Struct, e) {

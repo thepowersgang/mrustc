@@ -100,7 +100,7 @@ namespace {
                 if( crate.m_edition >= AST::Edition::Rust2018 )
                 {
                     DEBUG("Trying implicit externs for " << name);
-                    DEBUG(FmtLambda([&](std::ostream& os) { for(const auto& v : crate.m_extern_crates) os << " " << v.first;})); 
+                    DEBUG(FmtLambda([&](std::ostream& os) { for(const auto& v : crate.m_extern_crates) os << " " << v.first;}));
                     auto ec_it = AST::g_implicit_crates.find(name);
                     if(ec_it != AST::g_implicit_crates.end())
                     {
@@ -118,13 +118,19 @@ namespace {
                 DEBUG("Self " << path);
                 ASSERT_BUG(sp, !e.nodes.empty(), "");
                 // Look up within the non-anon module
-                TODO(sp, "");
+                size_t i = 0;
+                while( i < base_nodes.size() && base_nodes[base_nodes.size() - i - 1].name().c_str()[0] == '#' )
+                {
+                    i += 1;
+                }
+                const auto& start_mod = this->get_mod_by_true_path(base_nodes, base_nodes.size() - i);
+                return get_module_ast(start_mod, path, 0, ignore_last, out_path);
                 }
             TU_ARMA(Super, e) {
                 DEBUG("Super " << path);
                 ASSERT_BUG(sp, !e.nodes.empty(), "");
                 // Pop current non-anon module, then look up in anon modules
-                TODO(sp, "");
+                TODO(sp, "Super " << path);
                 }
             TU_ARMA(Absolute, e) {
                 DEBUG("Absolute " << path);
@@ -173,14 +179,55 @@ namespace {
                         if(ignore)
                             continue;
 
-                        if(i->data.is_Module())
-                        {
-                            mod = &i->data.as_Module();
+                        TU_MATCH_HDRA( (i->data), { )
+                        TU_ARMA(None, _e) {
+                            }
+                        TU_ARMA(Impl, _e) {
+                            }
+                        TU_ARMA(NegImpl, _e) {
+                            }
+                        TU_ARMA(ExternBlock, _e) {
+                            }
+                        TU_ARMA(MacroInv, _e) {
+                            }
+                        TU_ARMA(Use, _e) {
+                            // Ignore for now
+                            }
+                        // Values - ignore
+                        TU_ARMA(Static, _e) { }
+                        TU_ARMA(Function, _e) { }
+                        // Macro
+                        TU_ARMA(Macro, _e) {
+                            }
+                        // Types - Return no module
+                        TU_ARMA(Union, _e) {
+                            return ResolveModuleRef();
+                            }
+                        TU_ARMA(Struct, _e) {
+                            return ResolveModuleRef();
+                            }
+                        TU_ARMA(Trait, _e) {
+                            return ResolveModuleRef();
+                            }
+                        TU_ARMA(Type, _e) {
+                            return ResolveModuleRef();
+                            }
+                        TU_ARMA(Enum, _e) {
+                            return ResolveModuleRef();
+                            }
+                        // Modules (and module-likes)
+                        TU_ARMA(Module, e) {
+                            mod = &e;
                             found = true;
+                            }
+                        TU_ARMA(Crate, e) {
+                            TODO(sp, "Crate");
+                            }
+                        }
+                        if(found) {
                             break;
                         }
 
-                        TODO(sp, "Unexpected item type for " << name << " in module " << mod->path() << " for " << path);
                     }
                 }
                 if(found)
