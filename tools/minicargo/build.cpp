@@ -897,6 +897,14 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     {
         args.push_back("--test");
     }
+    struct H {
+        static std::string escape_dashes(const std::string& s) {
+            std::string rv;
+            for(char c : s)
+                rv += (c == '-' ? '_' : c);
+            return rv;
+        }
+    };
     for(const auto& dep : manifest.dependencies())
     {
         if( ! dep.is_disabled() )
@@ -904,7 +912,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
             const auto& m = dep.get_package();
             auto path = this->get_crate_path(m, m.get_library(), is_for_host, nullptr, nullptr);
             args.push_back("--extern");
-            args.push_back(::format(m.get_library().m_name, "=", path));
+            args.push_back(::format(H::escape_dashes(dep.key()), "=", path));
         }
     }
     if( target.m_type == PackageTarget::Type::Test )
@@ -916,7 +924,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
                 const auto& m = dep.get_package();
                 auto path = this->get_crate_path(m, m.get_library(), is_for_host, nullptr, nullptr);
                 args.push_back("--extern");
-                args.push_back(::format(m.get_library().m_name, "=", path));
+                args.push_back(::format(H::escape_dashes(dep.key()), "=", path));
             }
         }
     }

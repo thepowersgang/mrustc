@@ -164,6 +164,7 @@ class PackageRef
     void fill_from_kv(bool was_created, const TomlKeyValue& kv, size_t ofs);
 
 public:
+    const ::std::string& key() const { return m_key; }
     const ::std::string& name() const { return m_name; }
     //const ::std::string& get_repo_name() const  { return m_repo; }
     const PackageVersionSpec& get_version() const { return m_version; }
