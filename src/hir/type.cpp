@@ -212,7 +212,7 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
             os << tr;
         }
         if( e.m_lifetime != LifetimeRef::new_static() )
-            os << "+ '" << e.m_lifetime;
+            os << "+" << e.m_lifetime;
         os << "/*" << e.m_origin << "#" << e.m_index << "*/";
         }
     TU_ARMA(Array, e) {

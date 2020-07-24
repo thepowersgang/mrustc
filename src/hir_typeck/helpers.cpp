@@ -319,8 +319,8 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr) 
             os << tr;
         }
         if( e.m_lifetime != ::HIR::LifetimeRef::new_static() )
-            os << "+ '" << e.m_lifetime;
-        os << "/*" << e.m_origin << "*/";
+            os << "+" << e.m_lifetime;
+        os << "/*" << e.m_origin << "#" << e.m_index << "*/";
         }
     TU_ARMA(Tuple, e) {
         os << "(";
@@ -2804,6 +2804,9 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             }
             else
             {
+                if( out_impl_params.m_values[g.binding] == sz ) {
+                    return ::HIR::Compare::Equal;
+                }
                 TODO(Span(), "PtrImplMatcher::match_val " << g << "(" << out_impl_params.m_values[g.binding] << ") with " << sz);
             }
         }

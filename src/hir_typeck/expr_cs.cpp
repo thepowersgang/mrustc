@@ -8529,6 +8529,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
             if( const auto* e = tpl.data().opt_ErasedType() )
             {
                 rv = context.m_ivars.new_ivar_tr();
+                assert(e->m_index == expr.m_erased_types.size());
                 expr.m_erased_types.push_back( rv.clone() );
                 for(const auto& trait : e->m_traits)
                 {
@@ -8556,7 +8557,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
             root_ptr->visit(visitor);
         }
 
-        ExprVisitor_Enum    visitor(context, ms.m_traits, result_type);
+        ExprVisitor_Enum    visitor(context, ms.m_traits, new_res_ty);
         context.add_ivars(root_ptr->m_res_type);
         root_ptr->visit(visitor);
 
@@ -9018,6 +9019,15 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
     }
 
     {
+        DEBUG("==== FINAL VALIDATE ====");
+        ::HIR::TypeRef  new_res_ty = clone_ty_with(expr->span(), result_type, [&](const auto& tpl, auto& rv) {
+            if( const auto* e = tpl.data().opt_ErasedType() )
+            {
+                rv = expr.m_erased_types[e->m_index].clone();
+                return true;
+            }
+            return false;
+            });
         StaticTraitResolve  static_resolve(ms.m_crate);
         if( ms.m_impl_generics )
         {
@@ -9027,7 +9037,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         {
             static_resolve.set_item_generics_raw(*ms.m_item_generics);
         }
-        Typecheck_Expressions_ValidateOne(static_resolve, args, result_type, expr);
+        Typecheck_Expressions_ValidateOne(static_resolve, args, new_res_ty, expr);
     }
 }
 
