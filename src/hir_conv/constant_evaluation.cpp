@@ -800,6 +800,47 @@ namespace HIR {
                         Target_GetAlignOf(state.sp, this->resolve, ty, align_val);
                         dst = ::HIR::Literal::make_Integer( align_val );
                     }
+                    else if( te->name == "bswap" ) {
+                        auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                        MIR_ASSERT(state, ty.data().is_Primitive(), "bswap with non-primitive " << ty);
+                        auto val_l = read_param(e.args.at(0));
+                        MIR_ASSERT(state, val_l.is_Integer(), "bswap with non-integer");
+                        auto val = val_l.as_Integer();
+                        uint64_t rv;
+                        struct H {
+                            static uint16_t bswap16(uint16_t v) {
+                                return (v >> 8) | (v << 8);
+                            }
+                            static uint32_t bswap32(uint32_t v) {
+                                return bswap16(v >> 16) | (static_cast<uint32_t>(bswap16(static_cast<uint16_t>(v))) << 16);
+                            }
+                            static uint64_t bswap64(uint64_t v) {
+                                return bswap32(v >> 32) | (static_cast<uint64_t>(bswap32(static_cast<uint32_t>(v))) << 32);
+                            }
+                        };
+                        switch(ty.data().as_Primitive())
+                        {
+                        case ::HIR::CoreType::I8:
+                        case ::HIR::CoreType::U8:
+                            rv = val;
+                            break;
+                        case ::HIR::CoreType::I16:
+                        case ::HIR::CoreType::U16:
+                            rv = H::bswap16(val);
+                            break;
+                        case ::HIR::CoreType::I32:
+                        case ::HIR::CoreType::U32:
+                            rv = H::bswap32(val);
+                            break;
+                        case ::HIR::CoreType::I64:
+                        case ::HIR::CoreType::U64:
+                            rv = H::bswap64(val);
+                            break;
+                        default:
+                            MIR_TODO(state, "Handle bswap with " << ty);
+                        }
+                        dst = ::HIR::Literal::make_Integer( rv );
+                    }
                     else {
                         MIR_TODO(state, "Call intrinsic \"" << te->name << "\" - " << block.terminator);
                     }
