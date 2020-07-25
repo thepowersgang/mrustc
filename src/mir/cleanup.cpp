@@ -717,6 +717,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
 
             // Obtain vtable type `::"path"::to::Trait#vtable`
             const auto& vtable_ty_spath = trait.m_vtable_path;
+            MIR_ASSERT(state, vtable_ty_spath != HIR::SimplePath(), "Trait " << de.m_trait.m_path << " does not have a vtable");
             const auto& vtable_ref = state.m_crate.get_struct_by_path(state.sp, vtable_ty_spath);
             // Copy the param set from the trait in the trait object
             ::HIR::PathParams   vtable_params = trait_path.m_path.m_params.clone();
