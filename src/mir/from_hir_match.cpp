@@ -442,7 +442,8 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
         ::std::vector<unsigned> column_weights( arm_rules[0].m_rules.size() );
         for(const auto& arm_rule : arm_rules)
         {
-            assert( column_weights.size() == arm_rule.m_rules.size() );
+            ASSERT_BUG(node.span(), column_weights.size() == arm_rule.m_rules.size(),
+                "Arm " << (&arm_rule - &arm_rules.front()) << " size doesn't match first (" << arm_rule.m_rules.size() << " != " << column_weights.size() << ")" );
             for(unsigned int i = 0; i < arm_rule.m_rules.size(); i++)
             {
                 if( !arm_rule.m_rules[i].is_Any() ) {
@@ -1377,7 +1378,24 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             }
             }
         TU_ARMA(SplitSlice, pe) {
-            TODO(sp, "Match over array with SplitSlice pattern - " << pat);
+            ASSERT_BUG(sp, pe.leading.size() < FIELD_INDEX_MAX, "Too many leading slice rules to fit encodng");
+            ASSERT_BUG(sp, pe.leading.size() < e.size.as_Known(), "Too many leading slice rules for array type");
+            ASSERT_BUG(sp, pe.trailing.size() < e.size.as_Known(), "Too many leading slice rules for array type");
+            for(const auto& subpat : pe.leading)
+            {
+                this->append_from( sp, subpat, e.inner );
+                m_field_path.back() ++;
+            }
+            while(m_field_path.back() < e.size.as_Known() - pe.trailing.size())
+            {
+                this->append_from(sp, empty_pattern, e.inner);
+                m_field_path.back() ++;
+            }
+            for(const auto& subpat : pe.trailing)
+            {
+                this->append_from( sp, subpat, e.inner );
+                m_field_path.back() ++;
+            }
             }
         }
         m_field_path.pop_back();
