@@ -129,14 +129,7 @@ void Trans_Codegen(const ::std::string& outfile, CodegenOutput out_ty, const Tra
         }
     }
     // VTables (may be needed by statics)
-    for(const auto& ent : list.m_vtables)
-    {
-        const auto& trait = ent.first.m_data.as_UfcsKnown().trait;
-        const auto& type = ent.first.m_data.as_UfcsKnown().type;
-        DEBUG("VTABLE " << trait << " for " << type);
-
-        codegen->emit_vtable(ent.first, crate.get_trait_by_path(Span(), trait.m_path));
-    }
+    assert(list.m_vtables.empty());
     // 3. Emit statics
     for(const auto& ent : list.m_statics)
     {

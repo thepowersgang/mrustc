@@ -105,10 +105,15 @@ public:
     ::std::map< ::HIR::Path, Trans_Params> m_vtables;
     /// Required type_id values
     ::std::set< ::HIR::TypeRef> m_typeids;
+    // Required drop glue
+    ::std::set< ::HIR::TypeRef>  m_drop_glue;
     /// Required struct/enum constructor impls
     ::std::set< ::HIR::GenericPath> m_constructors;
     // Automatic Clone impls
     ::std::set< ::HIR::TypeRef>  auto_clone_impls;
+
+    ::std::vector< ::std::unique_ptr< ::HIR::Static>>   m_auto_statics;
+    ::std::vector< ::std::unique_ptr< ::HIR::Function>> m_auto_functions;
 
     // .second is `true` if this is a from a reference to the type
     ::std::vector< ::std::pair<::HIR::TypeRef, bool> >  m_types;

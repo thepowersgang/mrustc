@@ -1183,7 +1183,7 @@ namespace {
                             ,0)
                         ,0)
                     ;
-                emit_destructor_call( ::MIR::LValue::new_Deref(mv$(inner_ptr)), inner_type, true, indent_level );
+                emit_destructor_call( ::MIR::LValue::new_Deref(mv$(inner_ptr)), inner_type, /*unsized_valid=*/true, indent_level );
             }
             // TODO: This is specific to the official liballoc's owned_box
             ::HIR::GenericPath  box_free { m_crate.get_lang_item_path(sp, "box_free"), { inner_type.clone() } };
@@ -1357,25 +1357,6 @@ namespace {
                     }
                     m_of << "} "; emit_ctype(ty); m_of << ";\n";
                 }
-
-                auto drop_glue_path = ::HIR::Path(ty.clone(), "#drop_glue");
-                auto args = ::std::vector< ::std::pair<::HIR::Pattern,::HIR::TypeRef> >();
-                auto ty_ptr = ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Owned, ty.clone());
-                ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), ty_ptr, args, empty_fcn };
-                m_mir_res = &mir_res;
-                m_of << "static void " << Trans_Mangle(drop_glue_path) << "("; emit_ctype(ty); m_of << "* rv) {\n";
-                if( m_resolve.type_needs_drop_glue(sp, ty) )
-                {
-                    auto self = ::MIR::LValue::new_Deref(::MIR::LValue::new_Return());
-                    auto fld_lv = ::MIR::LValue::new_Field(mv$(self), 0);
-                    for(const auto& ity : te)
-                    {
-                        // TODO: What if it's a ZST?
-                        emit_destructor_call(fld_lv, ity, /*unsized_valid=*/false, 1);
-                        fld_lv.inc_Field();
-                    }
-                }
-                m_of << "}\n";
                 }
             TU_ARMA(Function, te) {
                 emit_type_fn(ty);
@@ -1538,56 +1519,6 @@ namespace {
                 //m_of << "typedef char alignof_assert_" << Trans_Mangle(p) << "[ (ALIGNOF(struct s_" << Trans_Mangle(p) << ") == " << repr->align << ") ? 1 : -1 ];\n";
             }
 
-            auto struct_ty = ::HIR::TypeRef::new_path(p.clone(), &item);
-            auto drop_glue_path = ::HIR::Path(struct_ty.clone(), "#drop_glue");
-            auto struct_ty_ptr = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Owned, struct_ty.clone());
-            // - Drop Glue
-
-            ::std::vector< ::std::pair<::HIR::Pattern,::HIR::TypeRef> > args;
-            // NOTE: 1.29 has Box impl Drop, but as a no-op - override that here.
-            // - TODO: This override/definition should be done by the caller
-            if( m_resolve.is_type_owned_box(struct_ty) )
-            {
-                m_box_glue_todo.push_back( ::std::make_pair( struct_ty.data().as_Path().path.m_data.as_Generic().clone(), &item ) );
-                m_of << "static void " << Trans_Mangle(drop_glue_path) << "("; emit_ctype(struct_ty_ptr, FMT_CB(ss, ss << "rv";)); m_of << ");\n";
-                return ;
-            }
-            else if( item.m_markings.has_drop_impl ) {
-                // If the type is defined outside the current crate, define as static (to avoid conflicts when we define it)
-                if( p.m_path.m_crate_name != m_crate.m_crate_name )
-                {
-                    if( item.m_params.m_types.size() > 0 ) {
-                        m_of << "static ";
-                    }
-                    else {
-                        m_of << "extern ";
-                    }
-                }
-                m_of << "void " << Trans_Mangle( ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") ) << "("; emit_ctype(struct_ty_ptr, FMT_CB(ss, ss << "rv";)); m_of << ");\n";
-            }
-            else {
-                // No drop impl (magic or no)
-            }
-
-            ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), struct_ty_ptr, args, empty_fcn };
-            m_mir_res = &mir_res;
-            m_of << "static void " << Trans_Mangle(drop_glue_path) << "("; emit_ctype(struct_ty_ptr, FMT_CB(ss, ss << "rv";)); m_of << ") {\n";
-            if( m_resolve.type_needs_drop_glue(sp, item_ty) )
-            {
-                // If this type has an impl of Drop, call that impl
-                if( item.m_markings.has_drop_impl ) {
-                    m_of << "\t" << Trans_Mangle( ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") ) << "(rv);\n";
-                }
-
-                auto self = ::MIR::LValue::new_Deref(::MIR::LValue::new_Return());
-                auto fld_lv = ::MIR::LValue::new_Field(mv$(self), 0);
-                for(size_t i = 0; i < repr->fields.size(); i++)
-                {
-                    emit_destructor_call(fld_lv, repr->fields[i].ty, /*unsized_valid=*/true, /*indent=*/1);
-                    fld_lv.inc_Field();
-                }
-            }
-            m_of << "}\n";
             m_mir_res = nullptr;
         }
         void emit_union(const Span& sp, const ::HIR::GenericPath& p, const ::HIR::Union& item) override
@@ -1613,24 +1544,7 @@ namespace {
                 m_of << "typedef char sizeof_assert_" << Trans_Mangle(p) << "[ (sizeof(union u_" << Trans_Mangle(p) << ") == " << repr->size << ") ? 1 : -1 ];\n";
             }
 
-            // Drop glue (calls destructor if there is one)
-            auto drop_glue_path = ::HIR::Path(item_ty.clone(), "#drop_glue");
-            auto item_ptr_ty = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Owned, item_ty.clone());
-            auto drop_impl_path = (item.m_markings.has_drop_impl ? ::HIR::Path(item_ty.clone(), m_resolve.m_lang_Drop, "drop") : ::HIR::Path(::HIR::SimplePath()));
-            ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), item_ptr_ty, {}, empty_fcn };
-            m_mir_res = &mir_res;
-
-            if( item.m_markings.has_drop_impl )
-            {
-                m_of << "void " << Trans_Mangle(drop_impl_path) << "(union u_" << Trans_Mangle(p) << "*rv);\n";
-            }
-
-            m_of << "static void " << Trans_Mangle(drop_glue_path) << "(union u_" << Trans_Mangle(p) << "* rv) {\n";
-            if( item.m_markings.has_drop_impl )
-            {
-                m_of << "\t" << Trans_Mangle(drop_impl_path) << "(rv);\n";
-            }
-            m_of << "}\n";
+            m_mir_res = nullptr;
         }
 
         const HIR::TypeRef& emit_enum_path(const TypeRepr* repr, const TypeRepr::FieldPath& path)
@@ -1800,64 +1714,6 @@ namespace {
                 m_of << "typedef char sizeof_assert_" << Trans_Mangle(p) << "[ (sizeof(struct e_" << Trans_Mangle(p) << ") == " << repr->size << ") ? 1 : -1 ];\n";
             }
 
-            // ---
-            // - Drop Glue
-            // ---
-            auto struct_ty = ::HIR::TypeRef::new_path(p.clone(), &item);
-            auto drop_glue_path = ::HIR::Path(struct_ty.clone(), "#drop_glue");
-            auto struct_ty_ptr = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Owned, struct_ty.clone());
-            auto drop_impl_path = (item.m_markings.has_drop_impl ? ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") : ::HIR::Path(::HIR::SimplePath()));
-            ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), struct_ty_ptr, {}, empty_fcn };
-            m_mir_res = &mir_res;
-
-            if( item.m_markings.has_drop_impl )
-            {
-                m_of << "void " << Trans_Mangle(drop_impl_path) << "(struct e_" << Trans_Mangle(p) << "*rv);\n";
-            }
-
-            m_of << "static void " << Trans_Mangle(drop_glue_path) << "(struct e_" << Trans_Mangle(p) << "* rv) {\n";
-            if( m_resolve.type_needs_drop_glue(sp, item_ty) )
-            {
-                // If this type has an impl of Drop, call that impl
-                if( item.m_markings.has_drop_impl )
-                {
-                    m_of << "\t" << Trans_Mangle(drop_impl_path) << "(rv);\n";
-                }
-                auto self = ::MIR::LValue::new_Deref(::MIR::LValue::new_Return());
-
-                if( const auto* e = repr->variants.opt_NonZero() )
-                {
-                    unsigned idx = 1 - e->zero_variant;
-                    // TODO: Fat pointers?
-                    m_of << "\tif( !( (*rv)";
-                    if( type_is_emulated_i128(emit_enum_path(repr, e->field)) ) {
-                        m_of << " == 0 && (*rv)"; emit_enum_path(repr, e->field);
-                    }
-                    m_of << " == 0) ) {\n";
-                    emit_destructor_call( ::MIR::LValue::new_Downcast(mv$(self), idx), repr->fields[idx].ty, false, 2 );
-                    m_of << "\t}\n";
-                }
-                else if( repr->fields.size() <= 1 )
-                {
-                    // Value enum
-                    // Glue does nothing (except call the destructor, if there is one)
-                }
-                else if( const auto* e = repr->variants.opt_Values() )
-                {
-                    auto var_lv =::MIR::LValue::new_Downcast(mv$(self), 0);
-
-                    m_of << "\tswitch(rv->TAG) {\n";
-                    for(unsigned int var_idx = 0; var_idx < e->values.size(); var_idx ++)
-                    {
-                        m_of << "\tcase " << e->values[var_idx] << ":\n";
-                        emit_destructor_call(var_lv, repr->fields[var_idx].ty, /*unsized_valid=*/false, /*indent=*/2);
-                        m_of << "\t\tbreak;\n";
-                        var_lv.inc_Downcast();
-                    }
-                    m_of << "\t}\n";
-                }
-            }
-            m_of << "}\n";
             m_mir_res = nullptr;
         }
 
@@ -2030,6 +1886,24 @@ namespace {
 
             TRACE_FUNCTION_F(p);
             auto type = params.monomorph(m_resolve, item.m_type);
+            switch(item.m_linkage.type)
+            {
+            case HIR::Linkage::Type::External:
+                break;
+            case HIR::Linkage::Type::Auto:
+                break;
+            case HIR::Linkage::Type::Weak:
+                switch(m_compiler)
+                {
+                case Compiler::Gcc:
+                    m_of << "__attribute__((weak)) ";
+                    break;
+                case Compiler::Msvc:
+                    m_of << "__declspec(selectany) ";
+                    break;
+                }
+                break;
+            }
             emit_ctype( type, FMT_CB(ss, ss << Trans_Mangle(p);) );
             m_of << ";";
             m_of << "\t// static " << p << " : " << type;
@@ -2420,133 +2294,6 @@ namespace {
                 }
             }
             m_of << "\"" << ::std::dec;
-        }
-
-        void emit_vtable(const ::HIR::Path& p, const ::HIR::Trait& trait) override
-        {
-            ::MIR::Function empty_fcn;
-            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "vtable " << p;), ::HIR::TypeRef(), {}, empty_fcn };
-            m_mir_res = &top_mir_res;
-
-            TRACE_FUNCTION_F(p);
-            const auto& trait_path = p.m_data.as_UfcsKnown().trait;
-            const auto& type = p.m_data.as_UfcsKnown().type;
-
-            // TODO: Hack in fn pointer VTable handling
-            if( const auto* te = type.data().opt_Function() )
-            {
-                const char* names[] = { "call", "call_mut" };
-                const ::HIR::SimplePath* traits[] = { &m_resolve.m_lang_Fn, &m_resolve.m_lang_FnMut };
-                size_t  offset;
-                if( trait_path.m_path == m_resolve.m_lang_Fn )
-                    offset = 0;
-                else if( trait_path.m_path == m_resolve.m_lang_FnMut )
-                    offset = 1;
-                //else if( trait_path.m_path == m_resolve.m_lang_FnOnce )
-                //    call_fcn_name = "call_once";
-                else
-                    offset = 2;
-
-                while(offset < sizeof(names)/sizeof(names[0]))
-                {
-                    const auto& trait_name = *traits[offset];
-                    const char* call_fcn_name = names[offset++];
-                    auto fcn_p = p.clone();
-                    fcn_p.m_data.as_UfcsKnown().item = call_fcn_name;
-                    fcn_p.m_data.as_UfcsKnown().trait.m_path = trait_name.clone();
-
-                    ::std::vector<HIR::TypeRef> arg_tys;
-                    for(const auto& ty : te->m_arg_types)
-                        arg_tys.push_back( ty.clone() );
-                    auto arg_ty = ::HIR::TypeRef(mv$(arg_tys));
-
-                    m_of << "static ";
-                    if( te->m_rettype == ::HIR::TypeRef::new_unit() )
-                        m_of << "void ";
-                    else
-                        emit_ctype(te->m_rettype);
-                    m_of << " " << Trans_Mangle(fcn_p) << "("; emit_ctype(type, FMT_CB(ss, ss << "*ptr";)); m_of << ", "; emit_ctype(arg_ty, FMT_CB(ss, ss << "args";)); m_of << ") {\n";
-                    m_of << "\t";
-                    if( te->m_rettype == ::HIR::TypeRef::new_unit() )
-                        ;
-                    else
-                        m_of << "return ";
-                    m_of << "(*ptr)(";
-                        for(unsigned int i = 0; i < te->m_arg_types.size(); i++)
-                        {
-                            if(i != 0)  m_of << ", ";
-                            m_of << "args._" << i;
-                        }
-                        m_of << ");\n";
-                    m_of << "}\n";
-                }
-            }
-
-            {
-                const auto& vtable_sp = trait.m_vtable_path;
-                auto vtable_params = trait_path.m_params.clone();
-                for(const auto& ty : trait.m_type_indexes) {
-                    auto aty = ::HIR::TypeRef::new_path( ::HIR::Path( type.clone(), trait_path.clone(), ty.first ), {} );
-                    m_resolve.expand_associated_types(sp, aty);
-                    vtable_params.m_types.push_back( mv$(aty) );
-                }
-                const auto& vtable_ref = m_crate.get_struct_by_path(sp, vtable_sp);
-                auto vtable_ty = ::HIR::TypeRef::new_path( ::HIR::GenericPath(mv$(vtable_sp), mv$(vtable_params)), &vtable_ref );
-
-                // Weak link for vtables
-                switch(m_compiler)
-                {
-                case Compiler::Gcc:
-                    m_of << "__attribute__((weak)) ";
-                    break;
-                case Compiler::Msvc:
-                    m_of << "__declspec(selectany) ";
-                    break;
-                }
-
-                emit_ctype(vtable_ty);
-                m_of << " " << Trans_Mangle(p) << " = {\n";
-            }
-
-            auto monomorph_cb_trait = MonomorphStatePtr(&type, &trait_path.m_params, nullptr);
-
-            // Size, Alignment, and destructor
-            if( type.data().is_Borrow() || m_resolve.type_is_copy(sp, type) )
-            {
-                m_of << "\t""noop_drop,\n";
-            }
-            else
-            {
-                m_of << "\t""(void*)" << Trans_Mangle(::HIR::Path(type.clone(), "#drop_glue")) << ",\n";
-            }
-
-            {
-                size_t  size, align;
-                // NOTE: Uses the Size+Align version because that doesn't panic on unsized
-                MIR_ASSERT(*m_mir_res, Target_GetSizeAndAlignOf(sp, m_resolve, type, size, align), "Unexpected generic? " << type);
-                m_of << "\t" << size << ", " << align << ",\n";
-            }
-
-            for(unsigned int i = 0; i < trait.m_value_indexes.size(); i ++ )
-            {
-                // Find the corresponding vtable entry
-                for(const auto& m : trait.m_value_indexes)
-                {
-                    // NOTE: The "3" is the number of non-method vtable entries
-                    if( m.second.first != 3+i )
-                        continue ;
-
-                    //MIR_ASSERT(*m_mir_res, tr.m_values.at(m.first).is_Function(), "TODO: Handle generating vtables with non-function items");
-                    DEBUG("- " << m.second.first << " = " << m.second.second << " :: " << m.first);
-
-                    auto gpath = monomorph_cb_trait.monomorph_genericpath(sp, m.second.second, false);
-                    // NOTE: `void*` cast avoids mismatched pointer type errors due to the receiver being &mut()/&() in the vtable
-                    m_of << "\t(void*)" << Trans_Mangle( ::HIR::Path(type.clone(), mv$(gpath), m.first) ) << ",\n";
-                }
-            }
-            m_of << "\t};\n";
-
-            m_mir_res = nullptr;
         }
 
         void emit_function_ext(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params) override
@@ -3232,9 +2979,12 @@ namespace {
                         MIR_BUG(mir_res, "Shallow drop on non-Box - " << ty);
                     }
                     break;
-                case ::MIR::eDropKind::DEEP:
-                    emit_destructor_call(e.slot, ty, false, indent_level + (e.flag_idx != ~0u ? 1 : 0));
-                    break;
+                case ::MIR::eDropKind::DEEP: {
+                    // TODO: Determine if the lvalue is an owned pointer (i.e. it's via a `&move`)
+                    bool unsized_valid = false;
+                    unsized_valid = true;
+                    emit_destructor_call(e.slot, ty, unsized_valid, indent_level + (e.flag_idx != ~0u ? 1 : 0));
+                    break; }
                 }
                 if( e.flag_idx != ~0u )
                     m_of << indent << "}\n";
@@ -5871,6 +5621,10 @@ namespace {
             m_of << ";\n";
         }
 
+        /// slot :: The value to drop
+        /// ty :: Type of value to be dropped
+        /// unsized_valid :: 
+        /// indent_level :: (formatting) Current amount of indenting
         void emit_destructor_call(const ::MIR::LValue& slot, const ::HIR::TypeRef& ty, bool unsized_valid, unsigned indent_level)
         {
             // If the type doesn't need dropping, don't try.
@@ -5969,7 +5723,7 @@ namespace {
                 }
                 }
             TU_ARMA(TraitObject, te) {
-                MIR_ASSERT(*m_mir_res, unsized_valid, "Dropping TraitObject without a pointer");
+                MIR_ASSERT(*m_mir_res, unsized_valid, "Dropping TraitObject without an owned pointer");
                 // Call destructor in vtable
                 auto lvr = ::MIR::LValue::CRef(slot);
                 while(lvr.is_Field())   lvr.try_unwrap();
@@ -5986,7 +5740,7 @@ namespace {
                 m_of << ");";
                 }
             TU_ARMA(Slice, te) {
-                MIR_ASSERT(*m_mir_res, unsized_valid, "Dropping Slice without a pointer");
+                MIR_ASSERT(*m_mir_res, unsized_valid, "Dropping Slice without an owned pointer");
                 auto lvr = ::MIR::LValue::CRef(slot);
                 while(lvr.is_Field())   lvr.try_unwrap();
                 MIR_ASSERT(*m_mir_res, lvr.is_Deref(), "Access to unized type without a deref - " << lvr << " (part of " << slot << ")");

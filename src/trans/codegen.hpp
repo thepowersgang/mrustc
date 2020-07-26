@@ -43,8 +43,6 @@ public:
     virtual void emit_constructor_enum(const Span& sp, const ::HIR::GenericPath& path, const ::HIR::Enum& item, size_t var_idx) {}
     virtual void emit_constructor_struct(const Span& sp, const ::HIR::GenericPath& path, const ::HIR::Struct& item) {}
 
-    virtual void emit_vtable(const ::HIR::Path& p, const ::HIR::Trait& trait) {}
-
     virtual void emit_static_ext(const ::HIR::Path& p, const ::HIR::Static& item, const Trans_Params& params) {}
     virtual void emit_static_proto(const ::HIR::Path& p, const ::HIR::Static& item, const Trans_Params& params) {}
     virtual void emit_static_local(const ::HIR::Path& p, const ::HIR::Static& item, const Trans_Params& params) {}

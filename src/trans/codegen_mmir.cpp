@@ -1106,72 +1106,7 @@ namespace
 
             m_mir_res = nullptr;
         }
-        void emit_vtable(const ::HIR::Path& p, const ::HIR::Trait& trait) override
-        {
-            ::MIR::Function empty_fcn;
-            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "vtable " << p;), ::HIR::TypeRef(), {}, empty_fcn };
 
-            const size_t ptr_size = Target_GetCurSpec().m_arch.m_pointer_bits / 8;
-            const auto& trait_path = p.m_data.as_UfcsKnown().trait;
-            const auto& type = p.m_data.as_UfcsKnown().type;
-            bool has_drop_glue =  m_resolve.type_needs_drop_glue(sp, type);
-
-            ::HIR::TypeRef  vtable_ty;
-            {
-                const auto& vtable_sp = trait.m_vtable_path;
-                auto vtable_params = trait_path.m_params.clone();
-                for(const auto& ty : trait.m_type_indexes) {
-                    auto aty = ::HIR::TypeRef::new_path( ::HIR::Path( type.clone(), trait_path.clone(), ty.first ), {} );
-                    m_resolve.expand_associated_types(sp, aty);
-                    vtable_params.m_types.push_back( mv$(aty) );
-                    //vtable_params.m_types.at(ty.second) = ::std::move(aty);
-                }
-                const auto& vtable_ref = m_crate.get_struct_by_path(sp, vtable_sp);
-                vtable_ty = ::HIR::TypeRef::new_path( ::HIR::GenericPath(mv$(vtable_sp), mv$(vtable_params)), &vtable_ref );
-            }
-
-            size_t  size, align;
-            MIR_ASSERT(*m_mir_res, Target_GetSizeAndAlignOf(sp, m_resolve, type, size, align), "Unexpected generic? " << type);
-            m_of << "static " << fmt(p) << ": " << fmt(vtable_ty) << " = \"";
-            // - Data
-            // Drop
-            emit_str_usize(has_drop_glue ? PTR_BASE : 0);
-            // Align
-            emit_str_usize(align);
-            // Size
-            emit_str_usize(size);
-            // Methods
-            for(unsigned int i = 0; i < trait.m_value_indexes.size(); i ++ )
-            {
-                emit_str_usize(PTR_BASE);
-            }
-            m_of << "\" {";
-
-            // - Relocations
-            auto monomorph_cb_trait = MonomorphStatePtr(&type, &trait_path.m_params, nullptr);
-            // Drop
-            if( has_drop_glue )
-            {
-                m_of << "@0+" << ptr_size << " = " << fmt(::HIR::Path(type.clone(), "drop_glue#")) << ", ";
-            }
-            // Methods
-            for(unsigned int i = 0; i < trait.m_value_indexes.size(); i ++ )
-            {
-                // Find the corresponding vtable entry
-                for(const auto& m : trait.m_value_indexes)
-                {
-                    if( m.second.first != 3+i )
-                        continue ;
-
-                    //MIR_ASSERT(*m_mir_res, tr.m_values.at(m.first).is_Function(), "TODO: Handle generating vtables with non-function items");
-                    DEBUG("- " << m.second.first << " = " << m.second.second << " :: " << m.first);
-
-                    auto gpath = monomorph_cb_trait.monomorph_genericpath(sp, m.second.second, false);
-                    m_of << "@" << (3 + i) * ptr_size << "+" << ptr_size << " = " << fmt(::HIR::Path(type.clone(), mv$(gpath), m.first)) << ", ";
-                }
-            }
-            m_of << "};\n";
-        }
         void emit_function_ext(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params) override
         {
             ::MIR::Function empty_fcn;

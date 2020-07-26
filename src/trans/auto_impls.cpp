@@ -15,6 +15,8 @@
 #include <hir_typeck/static.hpp>    // StaticTraitResolve
 #include <deque>
 #include <algorithm>    // find_if
+#include <trans/target.hpp>
+#include <mir/operations.hpp>
 
 namespace {
     struct State
@@ -32,7 +34,7 @@ namespace {
             resolve( crate ),
             trans_list(trans_list)
         {
-            lang_Clone = crate.get_lang_item_path(Span(), "clone");
+            lang_Clone = crate.get_lang_item_path_opt("clone");
         }
 
         void enqueue_type(const ::HIR::TypeRef& ty) {
@@ -203,43 +205,455 @@ void Trans_AutoImpl_Clone(State& state, ::HIR::TypeRef ty)
     list.push_back( box$(impl) );
 }
 
+namespace {
+
+    struct Builder
+    {
+        const State&    state;
+        MIR::Function&  mir;
+        const MIR::LValue   self;
+
+        Builder(const State& state, MIR::Function& mir)
+            : state(state)
+            , mir(mir)
+            , self(MIR::LValue::new_Argument(0))
+        {
+            mir.blocks.push_back(MIR::BasicBlock());
+        }
+
+        MIR::LValue add_local(HIR::TypeRef ty) {
+            auto rv = mir.locals.size();
+            mir.locals.push_back(mv$(ty));
+            return MIR::LValue::new_Local(rv);
+        }
+
+        void ensure_open() {
+            if(!mir.blocks.back().terminator.is_Incomplete()) {
+                mir.blocks.push_back(MIR::BasicBlock());
+            }
+        }
+        void push_stmt(MIR::Statement s) {
+            ensure_open();
+            mir.blocks.back().statements.push_back(mv$(s));
+        }
+        void push_stmt_assign(MIR::LValue lv, MIR::RValue rv) {
+            this->push_stmt(MIR::Statement::make_Assign({ mv$(lv), mv$(rv) }));
+        }
+        void push_stmt_drop(MIR::LValue lv) {
+            this->push_stmt(MIR::Statement::make_Drop({ MIR::eDropKind::DEEP, mv$(lv), ~0u }));
+        }
+
+        void terminate_block(MIR::Terminator term) {
+            assert(mir.blocks.back().terminator.is_Incomplete());
+            mir.blocks.back().terminator = mv$(term);
+        }
+        void terminate_Call(MIR::LValue rv, MIR::CallTarget tgt, std::vector<MIR::Param> args, MIR::BasicBlockId bb_ret, MIR::BasicBlockId bb_panic)
+        {
+            this->terminate_block( MIR::Terminator::make_Call({
+                bb_ret, bb_panic,
+                mv$(rv),
+                mv$(tgt),
+                mv$(args)
+                }) );
+        }
+
+        void push_CallDrop(const HIR::TypeRef& ty) {
+            // Get a `&mut *self`
+            auto borrow_lv = this->add_local( HIR::TypeRef::new_borrow(HIR::BorrowType::Unique, ty.clone()) );
+            this->push_stmt_assign( borrow_lv.clone(), MIR::RValue::make_Borrow({ HIR::BorrowType::Unique, ::MIR::LValue::new_Deref(this->self.clone()) }) );
+
+            this->terminate_Call(
+                MIR::LValue::new_Return(), ::HIR::Path(ty.clone(), state.resolve.m_lang_Drop, "drop"), make_vec1<MIR::Param>(mv$(borrow_lv)),
+                /*bb_ret=*/mir.blocks.size()+1,
+                /*bb_panic=*/mir.blocks.size()
+            );
+            // In panic block
+            this->ensure_open();
+            this->terminate_block( MIR::Terminator::make_Diverge({}) );
+            // In continue block
+            this->ensure_open();
+        }
+    };
+}
+
 void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
 {
-    if( !TARGETVER_LEAST_1_29 )
-        return ;
 
     State   state { crate, trans_list };
 
-    // Generate for all 
-    for(const auto& ty : trans_list.auto_clone_impls)
+    if( TARGETVER_LEAST_1_29 )
     {
-        state.done_list.insert( ty.clone() );
-        Trans_AutoImpl_Clone(state, ty.clone());
+        // Generate for all 
+        for(const auto& ty : trans_list.auto_clone_impls)
+        {
+            state.done_list.insert( ty.clone() );
+            Trans_AutoImpl_Clone(state, ty.clone());
+        }
+
+        while( !state.todo_list.empty() )
+        {
+            auto ty = ::std::move(state.todo_list.front());
+            state.todo_list.pop_back();
+
+            Trans_AutoImpl_Clone(state, mv$(ty));
+        }
+
+        auto impl_list_it = crate.m_trait_impls.find(state.lang_Clone);
+        for(const auto& ty : state.done_list)
+        {
+            assert(impl_list_it != crate.m_trait_impls.end());
+            // TODO: Find a way of turning a set into a vector so items can be erased.
+
+            auto p = ::HIR::Path(ty.clone(), ::HIR::GenericPath(state.lang_Clone), "clone");
+            //DEBUG("add_function(" << p << ")");
+            auto e = trans_list.add_function(::std::move(p));
+
+            const auto* impl_list = impl_list_it->second.get_list_for_type(ty);
+            ASSERT_BUG(Span(), impl_list, "No impl list of Clone for " << ty);
+            auto& impl = **::std::find_if( impl_list->begin(), impl_list->end(), [&](const auto& i){ return i->m_type == ty; });
+            assert( impl.m_methods.size() == 1 );
+            e->ptr = &impl.m_methods.begin()->second.data;
+        }
     }
 
-    while( !state.todo_list.empty() )
+    // Create VTable instances
     {
-        auto ty = ::std::move(state.todo_list.front());
-        state.todo_list.pop_back();
+        TRACE_FUNCTION_F("VTables");
+        trans_list.m_auto_statics.reserve( trans_list.m_vtables.size() );
+        for(const auto& ent : trans_list.m_vtables)
+        {
+            const auto& path = ent.first;
+            const auto& trait_path = path.m_data.as_UfcsKnown().trait;
+            const auto& type = path.m_data.as_UfcsKnown().type;
 
-        Trans_AutoImpl_Clone(state, mv$(ty));
+            if( const auto* te = type.data().opt_Function() )
+            {
+                const char* names[] = { "call", "call_mut" };
+                const ::HIR::SimplePath* const traits[] = { &state.resolve.m_lang_Fn, &state.resolve.m_lang_FnMut };
+                HIR::BorrowType const borrpw_types[] = { HIR::BorrowType::Shared, HIR::BorrowType::Unique };
+                size_t  offset;
+                if( trait_path.m_path == state.resolve.m_lang_Fn )
+                    offset = 0;
+                else if( trait_path.m_path == state.resolve.m_lang_FnMut )
+                    offset = 1;
+                //else if( trait_path.m_path == m_resolve.m_lang_FnOnce )
+                //    call_fcn_name = "call_once";
+                else
+                    offset = 2;
+
+                while(offset < sizeof(names)/sizeof(names[0]))
+                {
+                    const auto& trait_name = *traits[offset];
+                    const char* call_fcn_name = names[offset];
+                    HIR::BorrowType bt = borrpw_types[offset];
+                    offset ++;
+
+                    auto fcn_p = path.clone();
+                    fcn_p.m_data.as_UfcsKnown().item = call_fcn_name;
+                    fcn_p.m_data.as_UfcsKnown().trait.m_path = trait_name.clone();
+
+                    ::std::vector<HIR::TypeRef> arg_tys;
+                    for(const auto& ty : te->m_arg_types)
+                        arg_tys.push_back( ty.clone() );
+                    auto arg_ty = ::HIR::TypeRef(mv$(arg_tys));
+
+
+                    HIR::Function   fcn;
+                    fcn.m_return = te->m_rettype.clone();
+                    fcn.m_args.push_back(std::make_pair( HIR::Pattern(), HIR::TypeRef::new_borrow(bt, type.clone()) ));
+                    fcn.m_args.push_back(std::make_pair( HIR::Pattern(), mv$(arg_ty) ));
+
+                    fcn.m_code.m_mir = MIR::FunctionPointer(new MIR::Function());
+                    Builder builder(state, *fcn.m_code.m_mir);
+
+                    std::vector<MIR::Param> arg_params;
+                    for(size_t i = 0; i < te->m_arg_types.size(); i ++)
+                    {
+                        arg_params.push_back(MIR::LValue::new_Field(MIR::LValue::new_Argument(1), i));
+                    }
+                    builder.terminate_Call(MIR::LValue::new_Return(),
+                        MIR::LValue::new_Deref(MIR::LValue::new_Argument(0)), mv$(arg_params),
+                        1, 2
+                        );
+                    // BB1: Return
+                    builder.ensure_open();
+                    builder.terminate_block(MIR::Terminator::make_Return({}));
+                    // BB1: Diverge
+                    builder.ensure_open();
+                    builder.terminate_block(MIR::Terminator::make_Diverge({}));
+
+                    MIR_Validate(state.resolve, HIR::ItemPath(path), *fcn.m_code.m_mir, fcn.m_args, fcn.m_return);
+                    trans_list.m_auto_functions.push_back(box$(fcn));
+                    auto* e = trans_list.add_function(mv$(fcn_p));
+                    e->ptr = trans_list.m_auto_functions.back().get();
+                }
+            }
+        }
+        for(const auto& ent : trans_list.m_vtables)
+        {
+            Span    sp;
+            const auto& trait_path = ent.first.m_data.as_UfcsKnown().trait;
+            const auto& type = ent.first.m_data.as_UfcsKnown().type;
+            DEBUG("VTABLE " << trait_path << " for " << type);
+            // TODO: What's the use of `ent.second` here? (it's a `Trans_Params`)
+
+            // Get the vtable type
+            const auto& trait = crate.get_trait_by_path(sp, trait_path.m_path);
+            const auto& vtable_sp = trait.m_vtable_path;
+            ASSERT_BUG(sp, vtable_sp != HIR::SimplePath(), "Trait " << trait_path.m_path << " doesn't have a vtable");
+            auto vtable_params = trait_path.m_params.clone();
+            for(const auto& ty : trait.m_type_indexes) {
+                auto aty = ::HIR::TypeRef::new_path( ::HIR::Path( type.clone(), trait_path.clone(), ty.first ), {} );
+                state.resolve.expand_associated_types(sp, aty);
+                vtable_params.m_types.push_back( mv$(aty) );
+            }
+            const auto& vtable_ref = crate.get_struct_by_path(sp, vtable_sp);
+            auto vtable_ty = ::HIR::TypeRef::new_path( ::HIR::GenericPath(mv$(vtable_sp), mv$(vtable_params)), &vtable_ref );
+
+            // Create vtable contents
+            auto monomorph_cb_trait = MonomorphStatePtr(&type, &trait_path.m_params, nullptr);
+
+            ::std::vector<HIR::Literal> vtable_contents;
+            vtable_contents.reserve( 3 + trait.m_value_indexes.size() );
+            // Drop glue
+            trans_list.m_drop_glue.insert( type.clone() );
+            vtable_contents.push_back( HIR::Literal::make_BorrowPath(::HIR::Path(type.clone(), "#drop_glue")) );
+            // Size & align
+            {
+                size_t  size, align;
+                // NOTE: Uses the Size+Align version because that doesn't panic on unsized
+                ASSERT_BUG(sp, Target_GetSizeAndAlignOf(sp, state.resolve, type, size, align), "Unexpected generic? " << type);
+                vtable_contents.push_back( HIR::Literal::make_Integer(size) );
+                vtable_contents.push_back( HIR::Literal::make_Integer(align) );
+            }
+            // Methods
+            // - The `m_value_indexes` list isn't sorted (well, it's sorted differently) so we need an `O(n^2)` search
+            for(unsigned int i = 0; i < trait.m_value_indexes.size(); i ++ )
+            {
+                // Find the corresponding vtable entry
+                for(const auto& m : trait.m_value_indexes)
+                {
+                    // NOTE: The "3" is the number of non-method vtable entries
+                    if( m.second.first != 3+i )
+                        continue ;
+
+                    //MIR_ASSERT(*m_mir_res, tr.m_values.at(m.first).is_Function(), "TODO: Handle generating vtables with non-function items");
+                    DEBUG("- " << m.second.first << " = " << m.second.second << " :: " << m.first);
+
+                    auto gpath = monomorph_cb_trait.monomorph_genericpath(sp, m.second.second, false);
+                    vtable_contents.push_back( HIR::Literal::make_BorrowPath(::HIR::Path(type.clone(), mv$(gpath), m.first)) );
+                }
+                assert(vtable_contents.size() == 3+i+1);
+            }
+
+            HIR::Static vtable_static;
+            vtable_static.m_type = mv$(vtable_ty);
+            vtable_static.m_is_mut = false;
+            vtable_static.m_linkage.type = HIR::Linkage::Type::Weak;
+            vtable_static.m_value_res = HIR::Literal::make_List(mv$(vtable_contents));
+
+            // Add to list
+            trans_list.m_auto_statics.push_back( box$(vtable_static) );
+            auto* e = trans_list.add_static(ent.first.clone());
+            e->ptr = trans_list.m_auto_statics.back().get();
+        }
+        trans_list.m_vtables.clear();
     }
 
-    auto impl_list_it = crate.m_trait_impls.find(state.lang_Clone);
-    for(const auto& ty : state.done_list)
+    // Create drop glue implementations
     {
-        assert(impl_list_it != crate.m_trait_impls.end());
-        // TODO: Find a way of turning a set into a vector so items can be erased.
+        TRACE_FUNCTION_F("Drop Glue");
+        for(const auto& ty : trans_list.m_types)
+        {
+            Span    sp;
+            if( ty.second )
+                continue;
+            if(!state.resolve.type_needs_drop_glue(sp, ty.first))
+                continue ;
 
-        auto p = ::HIR::Path(ty.clone(), ::HIR::GenericPath(state.lang_Clone), "clone");
-        //DEBUG("add_function(" << p << ")");
-        auto e = trans_list.add_function(::std::move(p));
+            if(ty.first.data().is_TraitObject()) {
+                continue ;
+            }
+            if(ty.first.data().is_Slice()) {
+                continue ;
+            }
+            trans_list.m_drop_glue.insert( ty.first.clone() );
+        }
 
-        const auto* impl_list = impl_list_it->second.get_list_for_type(ty);
-        ASSERT_BUG(Span(), impl_list, "No impl list of Clone for " << ty);
-        auto& impl = **::std::find_if( impl_list->begin(), impl_list->end(), [&](const auto& i){ return i->m_type == ty; });
-        assert( impl.m_methods.size() == 1 );
-        e->ptr = &impl.m_methods.begin()->second.data;
+        for(const auto& ty : trans_list.m_drop_glue)
+        {
+            Span    sp;
+            auto path = ::HIR::Path(ty.clone(), "#drop_glue");
+
+            HIR::Function   fcn;
+            fcn.m_return = HIR::TypeRef::new_unit();
+            fcn.m_args.push_back(std::make_pair( HIR::Pattern(), HIR::TypeRef::new_borrow(HIR::BorrowType::Owned, ty.clone()) ));
+
+            fcn.m_code.m_mir = MIR::FunctionPointer(new MIR::Function());
+            Builder builder(state, *fcn.m_code.m_mir);
+            builder.push_stmt_assign( MIR::LValue::new_Return(), MIR::RValue::make_Tuple({}) );
+            if( state.resolve.type_needs_drop_glue(sp, ty) )
+            {
+                TU_MATCH_HDRA( (ty.data()), {)
+                TU_ARMA(Infer, _te)
+                    throw "";
+                TU_ARMA(Generic, _te)
+                    throw "";
+                TU_ARMA(ErasedType, _te)
+                    throw "";
+                TU_ARMA(TraitObject, _te)
+                    TODO(sp, "Drop glue for TraitObject? " << ty);
+                TU_ARMA(Slice, _te)
+                    TODO(sp, "Drop glue for Slice? " << ty);
+                TU_ARMA(Closure, _te)
+                    TODO(sp, "Drop glue for Closure? " << ty);  // Should this be dead already?
+                TU_ARMA(Diverge, te) {
+                    // Exists for reasons...
+                    builder.terminate_block( MIR::Terminator::make_Diverge({}) );
+                    }
+                TU_ARMA(Primitive, te) {
+                    // Nothing to do
+                    }
+                TU_ARMA(Function, te) {
+                    // Nothing to do
+                    }
+                TU_ARMA(Pointer, te) {
+                    // Nothing to do
+                    }
+                TU_ARMA(Borrow, te) {
+                    if(te.type == HIR::BorrowType::Owned)
+                    {
+                        // `drop a0**`
+                        builder.push_stmt_drop(
+                            ::MIR::LValue::new_Deref(
+                                ::MIR::LValue::new_Deref(builder.self.clone())
+                                )
+                            );
+                    }
+                    }
+                TU_ARMA(Tuple, te) {
+                    auto self = ::MIR::LValue::new_Deref(builder.self.clone());
+                    auto fld_lv = ::MIR::LValue::new_Field(mv$(self), 0);
+                    for(size_t i = 0; i < te.size(); i++)
+                    {
+                        if( state.resolve.type_needs_drop_glue(sp, te[i]) )
+                        {
+                            builder.push_stmt_drop(fld_lv.clone());
+                        }
+                        fld_lv.inc_Field();
+                    }
+                    }
+                TU_ARMA(Array, te) {
+                    auto size = te.size.as_Known();
+                    auto self = ::MIR::LValue::new_Deref(builder.self.clone());
+                    if( size > 0 && state.resolve.type_needs_drop_glue(sp, te.inner) )
+                    {
+                        if(size <= 6)
+                        {
+                            auto fld_lv = ::MIR::LValue::new_Field(mv$(self), 0);
+                            for(size_t i = 0; i < size; i ++)
+                            {
+                                builder.push_stmt_drop(fld_lv.clone());
+                                fld_lv.inc_Field();
+                            }
+                        }
+                        else
+                        {
+                            auto idx = builder.add_local(HIR::CoreType::Usize);
+                            auto fld_lv = ::MIR::LValue::new_Index(mv$(self), idx.as_Local());
+                            auto cmp = builder.add_local(HIR::CoreType::Bool);
+                            builder.push_stmt_assign(idx.clone(), MIR::Constant::make_Uint({0, HIR::CoreType::Usize}));
+                            builder.terminate_block(MIR::Terminator::make_Goto(1));
+                            builder.push_stmt_drop(fld_lv.clone());
+                            builder.push_stmt_assign(idx.clone(), MIR::RValue::make_BinOp({ idx.clone(), MIR::eBinOp::ADD, MIR::Constant::make_Uint({1, HIR::CoreType::Usize}) }));
+                            builder.push_stmt_assign(cmp.clone(), MIR::RValue::make_BinOp({ idx.clone(), MIR::eBinOp::EQ, MIR::Constant::make_Uint({size, HIR::CoreType::Usize}) }));
+                            builder.terminate_block(MIR::Terminator::make_If({ cmp.clone(), 1, 2 }));
+                            builder.ensure_open();
+                        }
+                    }
+                    }
+                TU_ARMA(Path, te) {
+                    TU_MATCH_HDRA( (te.binding), {)
+                    TU_ARMA(Unbound, pbe) throw "";
+                    TU_ARMA(Opaque, pbe) throw "";
+                    TU_ARMA(ExternType, pbe) {
+                        // Why is this trying to be dropped?
+                        }
+
+                    TU_ARMA(Struct, pbe) {
+                        if( pbe->m_markings.has_drop_impl ) {
+                            builder.push_CallDrop(ty);
+                        }
+
+                        // NOTE: Lazy option of monomorphising and handling the two classes
+                        const auto* repr = Target_GetTypeRepr(sp, state.resolve, ty);
+                        ASSERT_BUG(sp, repr, "No repr for struct " << ty);
+
+                        auto self = ::MIR::LValue::new_Deref(builder.self.clone());
+                        auto fld_lv = ::MIR::LValue::new_Field(mv$(self), 0);
+                        for(size_t i = 0; i < repr->fields.size(); i++)
+                        {
+                            if( state.resolve.type_needs_drop_glue(sp, repr->fields[i].ty) )
+                            {
+                                builder.push_stmt_drop(fld_lv.clone());
+                            }
+                            fld_lv.inc_Field();
+                        }
+                        }
+                    TU_ARMA(Union, pbe) {
+                        if( pbe->m_markings.has_drop_impl ) {
+                            builder.push_CallDrop(ty);
+                        }
+                        // Union requires no internal drop glue
+                        }
+                    TU_ARMA(Enum, pbe) {
+                        if( pbe->m_markings.has_drop_impl ) {
+                            builder.push_CallDrop(ty);
+                        }
+                        const HIR::Enum& enm = *pbe;
+                        TU_MATCH_HDRA( (enm.m_data), {)
+                        TU_ARMA(Value, ee) {
+                            builder.terminate_block( MIR::Terminator::make_Return({}) );
+                            }
+                        TU_ARMA(Data, variants) {
+                            auto self = ::MIR::LValue::new_Deref(builder.self.clone());
+                            MIR::Terminator::Data_Switch sw;
+                            sw.val = self.clone();
+                            for(size_t idx = 0; idx < variants.size(); idx ++) {
+                                sw.targets.push_back(builder.mir.blocks.size() + idx);
+                            }
+                            builder.terminate_block(MIR::Terminator::make_Switch(mv$(sw)));
+
+                            auto fld_lv = ::MIR::LValue::new_Downcast(mv$(self), 0);
+                            for(size_t idx = 0; idx < variants.size(); idx ++)
+                            {
+                                // TODO: Monomorphise and check
+                                //if( state.resolve.type_needs_drop_glue(sp, repr->fields[i].ty) )
+                                {
+                                    builder.push_stmt_drop(fld_lv.clone());
+                                }
+                                fld_lv.inc_Downcast();
+                                builder.ensure_open();
+                                builder.terminate_block( MIR::Terminator::make_Return({}) );
+                            }
+                            }
+                        }
+                        }
+                    }
+                    }
+                }
+            }
+            if(builder.mir.blocks.back().terminator.is_Incomplete())
+            {
+                builder.terminate_block( MIR::Terminator::make_Return({}) );
+            }
+
+            MIR_Validate(state.resolve, HIR::ItemPath(path), *fcn.m_code.m_mir, fcn.m_args, fcn.m_return);
+            trans_list.m_auto_functions.push_back(box$(fcn));
+            auto* e = trans_list.add_function(mv$(path));
+            e->ptr = trans_list.m_auto_functions.back().get();
+
+        }
     }
 }
 
