@@ -19,7 +19,8 @@ namespace {
     {
         const StaticTraitResolve&  m_resolve;
         //const t_args&   m_args;
-        const ::HIR::TypeRef&   ret_type;
+        const ::HIR::TypeRef&   real_ret_type;
+        ::HIR::TypeRef ret_type;
         ::std::vector< const ::HIR::TypeRef*>   closure_ret_types;
         ::std::vector<const ::HIR::ExprNode_Loop*>  m_loops;
         //const ::HIR::ExprPtr* m_cur_expr;
@@ -32,7 +33,7 @@ namespace {
         ExprVisitor_Validate(const StaticTraitResolve& res, const t_args& args, const ::HIR::TypeRef& ret_type):
             m_resolve(res),
             //m_args(args),
-            ret_type(ret_type)
+            real_ret_type(ret_type)
             ,expand_erased_types(true)
         {
             m_lang_Index = m_resolve.m_crate.get_lang_item_path_opt("index");
@@ -41,23 +42,24 @@ namespace {
         void visit_root(::HIR::ExprPtr& node_ptr)
         {
             const auto& sp = node_ptr->span();
-            node_ptr->visit(*this);
 
             // Monomorphise erased type
-            ::HIR::TypeRef  new_ret_type = clone_ty_with(sp, ret_type, [&](const auto& tpl, auto& rv)->bool {
-                if( tpl.data().is_ErasedType() )
+            ret_type = clone_ty_with(sp, real_ret_type, [&](const auto& tpl, auto& rv)->bool {
+                if( const auto* e = tpl.data().opt_ErasedType() )
                 {
-                    const auto& e = tpl.data().as_ErasedType();
-                    ASSERT_BUG(sp, e.m_index < node_ptr.m_erased_types.size(), "Erased type index OOB - " << e.m_origin << " " << e.m_index << " >= " << node_ptr.m_erased_types.size());
-                    // TODO: Emit checks on bounds
-                    rv = node_ptr.m_erased_types[e.m_index].clone();
+                    ASSERT_BUG(sp, e->m_index < node_ptr.m_erased_types.size(),
+                        "Erased type index OOB - " << e->m_origin << " " << e->m_index << " >= " << node_ptr.m_erased_types.size());
+                    // TODO: Check that erased type bounds are still met
+                    rv = node_ptr.m_erased_types[e->m_index].clone();
                     return true;
                 }
                 return false;
                 });
-            m_resolve.expand_associated_types(sp, new_ret_type);
+            m_resolve.expand_associated_types(sp, ret_type);
 
-            check_types_equal(sp, new_ret_type, node_ptr->m_res_type);
+            node_ptr->visit(*this);
+
+            check_types_equal(sp, ret_type, node_ptr->m_res_type);
         }
 
         void visit(::HIR::ExprNode_Block& node) override
