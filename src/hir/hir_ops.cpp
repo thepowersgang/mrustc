@@ -220,6 +220,10 @@ bool ::HIR::TraitImpl::matches_type(const ::HIR::TypeRef& type, ::HIR::t_cb_reso
     // TODO: For `Unbound`, it could be valid, if the target is a generic.
     // - Pure infer could also be useful (for knowing if there's any other potential impls)
 
+    // HACK: Assume an unbounded matches
+    if( is_unbounded_infer(type) ) {
+        return true;
+    }
     // TODO: Allow unbounded types iff there's some non-unbounded parameters?
     if( is_unbounded_infer(type) || TU_TEST1(type.data(), Path, .binding.is_Unbound()) ) {
         return false;
@@ -984,6 +988,16 @@ namespace
             {
                 if( find_impls_list(*impl_list, type, ty_res, callback) )
                     return true;
+            }
+            // - If the type is an ivar, search all types
+            if( type.data().is_Infer() && !type.data().as_Infer().is_lit() )
+            {
+                DEBUG("Search all lists");
+                for(const auto& list : it->second.named)
+                {
+                    if( find_impls_list(list.second, type, ty_res, callback) )
+                        return true;
+                }
             }
 
             // 2. Search fully generic list.

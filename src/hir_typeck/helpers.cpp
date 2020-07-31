@@ -1855,7 +1855,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
 
     // TODO: If there are impl params present, return early
     {
-        auto cb = [](const ::HIR::TypeRef& ty){ return !( ty.data().is_Generic() && (ty.data().as_Generic().binding >> 8) == 2 ); };
+        auto cb = [](const ::HIR::TypeRef& ty){ return !( ty.data().is_Generic() && ty.data().as_Generic().is_placeholder() ); };
         bool has_impl_placeholders = false;
         if( !visit_ty_with(pe.type, cb) )
             has_impl_placeholders = true;
@@ -2598,6 +2598,18 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             return false;
         }
     }
+
+    if( type.data().is_Infer() && !type.data().as_Infer().is_lit() ) {
+        return false;
+    }
+    //if( type.data().is_Infer() && !type.data().as_Infer().is_lit() ) {
+    //    return this->m_crate.find_trait_impls(trait, type, this->m_ivars.callback_resolve_infer(),
+    //        [&](const auto& impl) {
+    //            HIR::PathParams impl_params;
+    //            // Fill all params with placeholders?
+    //            return callback(ImplRef(mv$(impl_params), trait, impl), HIR::Compare::Fuzzy);
+    //        });
+    //}
 
     return this->m_crate.find_trait_impls(trait, type, this->m_ivars.callback_resolve_infer(),
         [&](const auto& impl) {
