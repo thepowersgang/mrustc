@@ -1869,6 +1869,12 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
         }
     }
 
+    // Ignore unbounder infer literals
+    if( pe.type.data().is_Infer() && !pe.type.data().as_Infer().is_lit() )
+    {
+        return ;
+    }
+
     // Special type-specific rules
     TU_MATCH_HDRA( (pe.type.data()), {)
     default:
@@ -2033,10 +2039,11 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
     bool rv;
     bool assume_opaque = true;
     rv = this->iterate_bounds([&](const auto& b)->bool {
-        TU_MATCH_DEF(::HIR::GenericBound, (b), (be),
-        (
-            ),
-        (TraitBound,
+        TU_MATCH_HDRA( (b), {)
+        default:
+            // Not type information, ignore
+            break;
+        TU_ARMA(TraitBound, be) {
             DEBUG("[expand_associated_types_inplace__UfcsKnown] Trait bound - " << be.type << " : " << be.trait);
             // 1. Check if the type matches
             //  - TODO: This should be a fuzzier match?
@@ -2088,16 +2095,16 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
             }
 
             // - Didn't match
-            ),
-        (TypeEquality,
+            }
+        TU_ARMA(TypeEquality, be) {
             DEBUG("Equality - " << be.type << " = " << be.other_type);
             if( input == be.type ) {
                 assume_opaque = false;
                 input = be.other_type.clone();
                 return true;
             }
-            )
-        )
+            }
+        }
         return false;
         });
     if( rv ) {
@@ -2599,17 +2606,22 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         }
     }
 
+    // TODO: Don't search if ALL types are unbounded ivar (what about a tuple of unbounded?)
+    // If the type is an unbounded ivar, don't search.
+#if 1
     if( type.data().is_Infer() && !type.data().as_Infer().is_lit() ) {
         return false;
     }
-    //if( type.data().is_Infer() && !type.data().as_Infer().is_lit() ) {
-    //    return this->m_crate.find_trait_impls(trait, type, this->m_ivars.callback_resolve_infer(),
-    //        [&](const auto& impl) {
-    //            HIR::PathParams impl_params;
-    //            // Fill all params with placeholders?
-    //            return callback(ImplRef(mv$(impl_params), trait, impl), HIR::Compare::Fuzzy);
-    //        });
-    //}
+#elif 0
+    if( type.data().is_Infer() && !type.data().as_Infer().is_lit() ) {
+        return this->m_crate.find_trait_impls(trait, type, this->m_ivars.callback_resolve_infer(),
+            [&](const auto& impl) {
+                HIR::PathParams impl_params;
+                // Fill all params with placeholders?
+                return callback(ImplRef(mv$(impl_params), trait, impl), HIR::Compare::Fuzzy);
+            });
+    }
+#endif
 
     return this->m_crate.find_trait_impls(trait, type, this->m_ivars.callback_resolve_infer(),
         [&](const auto& impl) {
