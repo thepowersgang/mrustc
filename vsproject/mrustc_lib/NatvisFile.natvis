@@ -9,7 +9,7 @@
       <Item Name="data">m_ptr+2,s</Item>
     </Expand>
   </Type>
-  <Type Name="HIR::TypeRef::Data">
+  <Type Name="HIR::TypeData">
     <DisplayString Condition="m_tag == TAG_Generic">Generic {m_data.Generic}</DisplayString>
     <DisplayString Condition="m_tag == TAG_Borrow">Borrow {m_data.Borrow}</DisplayString>
     <DisplayString Condition="m_tag == TAG_Path">Path {m_data.Path}</DisplayString>
