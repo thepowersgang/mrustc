@@ -911,7 +911,7 @@ namespace {
                     if( getenv(varname.c_str()) ) {
                         args.push_back( getenv(varname.c_str()) );
                     }
-                    else if (system(("which " + Target_GetCurSpec().m_backend_c.m_c_compiler + "-gcc" + " >/dev/null 2>&1").c_str()) == 0) {
+                    else if (system(("command -v " + Target_GetCurSpec().m_backend_c.m_c_compiler + "-gcc" + " >/dev/null 2>&1").c_str()) == 0) {
                         args.push_back( Target_GetCurSpec().m_backend_c.m_c_compiler + "-gcc" );
                     }
                     else if( getenv("CC") ) {
