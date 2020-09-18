@@ -109,7 +109,7 @@ Ordering HIR::ArraySize::ord(const HIR::ArraySize& x) const
         // HACK: If the inner is a const param on both, sort based on that.
         // - Very similar to the ordering of TypeRef::Generic
         const auto* tn = dynamic_cast<const HIR::ExprNode_ConstParam*>(&**tse);
-        const auto& xn = dynamic_cast<const HIR::ExprNode_ConstParam*>(&**xse);
+        const auto* xn = dynamic_cast<const HIR::ExprNode_ConstParam*>(&**xse);
         if( tn && xn )
         {
             // Is this valid? What if they're from different scopes?

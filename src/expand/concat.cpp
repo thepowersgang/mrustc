@@ -34,6 +34,7 @@ class CConcatExpander:
             DEBUG("concat - v=" << *v);
             Expand_BareExpr(crate, mod,  v);
             DEBUG("concat[pe] - v=" << *v);
+            // TODO: Visitor instead
             if( auto* vp = dynamic_cast<AST::ExprNode_String*>(v.get()) )
             {
                 rv += vp->m_value;

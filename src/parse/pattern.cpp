@@ -248,6 +248,7 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable)
         return AST::Pattern( AST::Pattern::TagValue(), lex.end_span(ps), AST::Pattern::Value::make_ByteString({ mv$(tok.str()) }) );
     case TOK_INTERPOLATED_EXPR: {
         auto e = tok.take_frag_node();
+        // TODO: Visitor?
         if( auto* n = dynamic_cast<AST::ExprNode_String*>(e.get()) ) {
             return AST::Pattern( AST::Pattern::TagValue(), lex.end_span(ps), AST::Pattern::Value::make_String( mv$(n->m_value) ) );
         }
