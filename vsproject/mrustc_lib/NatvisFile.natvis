@@ -9,15 +9,41 @@
       <Item Name="data">m_ptr+2,s</Item>
     </Expand>
   </Type>
+  <Type Name="HIR::TypeRef">
+    <DisplayString Condition="m_ptr != 0">{*m_ptr}</DisplayString>
+    <Expand>
+      <Item Name="m_ptr->m_refcount" Condition="m_ptr != 0">m_ptr->m_refcount</Item>
+      <Item Name="m_ptr->m_data" Condition="m_ptr != 0">m_ptr->m_data</Item>
+    </Expand>
+  </Type>
   <Type Name="HIR::TypeData">
+    <DisplayString Condition="m_tag == TAG_Infer">Infer #{m_data.Infer.index,i} {m_data.Infer.ty_class}</DisplayString>
     <DisplayString Condition="m_tag == TAG_Generic">Generic {m_data.Generic}</DisplayString>
     <DisplayString Condition="m_tag == TAG_Borrow">Borrow {m_data.Borrow}</DisplayString>
     <DisplayString Condition="m_tag == TAG_Path">Path {m_data.Path}</DisplayString>
+    <Expand>
+      <Item Name="Infer" Condition="m_tag == TAG_Infer">m_data.Infer</Item>
+      <Item Name="Generic" Condition="m_tag == TAG_Generic">m_data.Generic</Item>
+      <Item Name="Path" Condition="m_tag == TAG_Path">m_data.Path</Item>
+    </Expand>
+  </Type>
+  <Type Name="HIR::Path">
+    <DisplayString>{m_data}</DisplayString>
   </Type>
   <Type Name="HIR::Path::Data">
     <DisplayString Condition="m_tag == TAG_Generic">Generic {m_data.Generic}</DisplayString>
+    <DisplayString Condition="m_tag == TAG_UfcsKnown">UfcsKnown {m_data.UfcsKnown}</DisplayString>
     <Expand>
       <Item Name="Generic" Condition="m_tag == TAG_Generic">m_data.Generic</Item>
+      <Item Name="UfcsKnown" Condition="m_tag == TAG_UfcsKnown">m_data.UfcsKnown</Item>
+    </Expand>
+  </Type>
+  <Type Name="HIR::TypePathBinding">
+    <DisplayString Condition="m_tag == TAG_Unbound">Unbound</DisplayString>
+    <DisplayString Condition="m_tag == TAG_Struct">Struct {m_data.Struct,p}</DisplayString>
+    <Expand>
+      <Item Name="Unbound" Condition="m_tag == TAG_Unbound">m_data.Unbound</Item>
+      <Item Name="Struct" Condition="m_tag == TAG_Struct">m_data.Struct</Item>
     </Expand>
   </Type>
 </AutoVisualizer>
