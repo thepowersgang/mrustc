@@ -5866,12 +5866,17 @@ namespace {
                             ::HIR::TypeRef  tmp_ty2;
                             const ::HIR::TypeRef* d_ty_p = &dst;
                             //context_mut->possible_equate_ivar(sp, sep->index, dst, Context::PossibleTypeSource::UnsizeTo);
-                            for(unsigned int i = 0; i < count && (d_ty_p = context.m_resolve.autoderef(sp, *d_ty_p, tmp_ty2)); i ++)
+                            for(unsigned int i = 0; (d_ty_p = context.m_resolve.autoderef(sp, *d_ty_p, tmp_ty2)) && i < count - 1; i ++)
                             {
-                                if( i == count - 1 )
-                                {
-                                    context_mut->possible_equate_ivar(sp, sep->index, *d_ty_p, Context::PossibleTypeSource::UnsizeTo);
-                                }
+                            }
+                            if( d_ty_p )
+                            {
+                                // TODO: This should be a `DerefTo` (can't do other unsizings?)
+                                context_mut->possible_equate_ivar(sp, sep->index, *d_ty_p, Context::PossibleTypeSource::UnsizeTo);
+                            }
+                            else
+                            {
+                                // No type available, why?
                             }
                         }
                         DEBUG("Src derefs to ivar (" << src << "), return Unknown");
