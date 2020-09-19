@@ -39,6 +39,15 @@ struct Trans_Params:
         return tp;
     }
 
+    const ::HIR::TypeRef& maybe_monomorph(const ::StaticTraitResolve& resolve, ::HIR::TypeRef& tmp, const ::HIR::TypeRef& p) const {
+        if(monomorphise_type_needed(p)) {
+            return tmp = this->monomorph(resolve, p);
+        }
+        else {
+            return p;
+        }
+    }
+
     ::HIR::TypeRef monomorph(const ::StaticTraitResolve& resolve, const ::HIR::TypeRef& p) const;
     ::HIR::Path monomorph(const ::StaticTraitResolve& resolve, const ::HIR::Path& p) const;
     ::HIR::GenericPath monomorph(const ::StaticTraitResolve& resolve, const ::HIR::GenericPath& p) const;

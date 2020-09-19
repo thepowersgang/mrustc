@@ -754,7 +754,7 @@ namespace
 
             ::HIR::TypeRef   tmp;
             auto monomorph = [&](const auto& ty)->const auto& {
-                return monomorphise_type_needed(ty) ? tmp = pp.monomorph(tv.m_resolve, ty) : ty;
+                return pp.maybe_monomorph(m_resolve, tmp, ty);
                 };
             // Handle erased types in the return type.
             if( visit_ty_with(fcn.m_return, [](const auto& x) { return x.data().is_ErasedType()||x.data().is_Generic(); }) )
@@ -795,36 +795,33 @@ namespace
                 for(const auto& block : mir.blocks)
                 {
                     struct MirVisitor
-                        //:public ::MIR::Visitor
+                        :public ::MIR::visit::Visitor
                     {
+                        const Span& sp;
                         TypeVisitor&    tv;
                         const Trans_Params& pp;
                         const ::HIR::Function&  fcn;
                         const ::MIR::TypeResolve& mir_res;
 
-                        MirVisitor(TypeVisitor& tv, const Trans_Params& pp, const ::HIR::Function& fcn, const ::MIR::TypeResolve& mir_res)
-                            :tv(tv)
+                        MirVisitor(const Span& sp, TypeVisitor& tv, const Trans_Params& pp, const ::HIR::Function& fcn, const ::MIR::TypeResolve& mir_res)
+                            :sp(sp)
+                            ,tv(tv)
                             ,pp(pp)
                             ,fcn(fcn)
                             ,mir_res(mir_res)
                         {
                         }
 
-                        void visit_lvalue(const ::MIR::LValue& lv)  //override
+                        bool visit_lvalue(const ::MIR::LValue& lv, MIR::visit::ValUsage /*vu*/) override
                         {
                             TRACE_FUNCTION_F(lv);
                             if( ::std::none_of(lv.m_wrappers.begin(), lv.m_wrappers.end(), [](const auto& w){ return w.is_Deref(); }) )
                             {
-                                return ;
+                                return false;
                             }
                             ::HIR::TypeRef  tmp;
                             auto monomorph_outer = [&](const auto& tpl)->const auto& {
-                                if( monomorphise_type_needed(tpl) ) {
-                                    return tmp = pp.monomorph(tv.m_resolve, tpl);
-                                }
-                                else {
-                                    return tpl;
-                                }
+                                return pp.maybe_monomorph(tv.m_resolve, tmp, tpl);
                                 };
                             const ::HIR::TypeRef*   ty_p = nullptr;;
                             // Recurse, if Deref get the type and add it to the visitor
@@ -868,132 +865,25 @@ namespace
                                    tv.visit_type(*ty_p);
                                 }
                             }
+                            return false;
                         }
 
-                        void visit_const(const ::MIR::Constant& p)
-                        {
-                        }
-
-                        void visit_param(const ::MIR::Param& p)
-                        {
-                            TU_MATCHA( (p), (e),
-                            (LValue,
-                                this->visit_lvalue(e);
-                                ),
-                            (Borrow,
-                                this->visit_lvalue(e.val);
-                                ),
-                            (Constant,
-                                this->visit_const(e);
-                                )
-                            )
-                        }
-                    };
-                    MirVisitor  mir_visit(tv, pp, fcn, mir_res);
-                    for(const auto& stmt : block.statements)
-                    {
-                        TU_MATCHA( (stmt), (se),
-                        (Drop,
-                            mir_visit.visit_lvalue(se.slot);
-                            ),
-                        (SetDropFlag,
-                            ),
-                        (Asm,
-                            for(const auto& v : se.outputs)
-                                mir_visit.visit_lvalue(v.second);
-                            for(const auto& v : se.inputs)
-                                mir_visit.visit_lvalue(v.second);
-                            ),
-                        (ScopeEnd,
-                            ),
-                        (Assign,
-                            mir_visit.visit_lvalue(se.dst);
-                            TU_MATCHA( (se.src), (re),
-                            (Use,
-                                mir_visit.visit_lvalue(re);
-                                ),
-                            (Constant,
-                                mir_visit.visit_const(re);
-                                ),
-                            (SizedArray,
-                                mir_visit.visit_param(re.val);
-                                ),
-                            (Borrow,
-                                mir_visit.visit_lvalue(re.val);
-                                ),
-                            (Cast,
-                                mir_visit.visit_lvalue(re.val);
-                                ),
-                            (BinOp,
-                                mir_visit.visit_param(re.val_l);
-                                mir_visit.visit_param(re.val_r);
-                                ),
-                            (UniOp,
-                                mir_visit.visit_lvalue(re.val);
-                                ),
-                            (DstMeta,
-                                mir_visit.visit_lvalue(re.val);
-                                ),
-                            (DstPtr,
-                                mir_visit.visit_lvalue(re.val);
-                                ),
-                            (MakeDst,
-                                mir_visit.visit_param(re.ptr_val);
-                                mir_visit.visit_param(re.meta_val);
-                                ),
-                            (Tuple,
-                                for(const auto& v : re.vals)
-                                    mir_visit.visit_param(v);
-                                ),
-                            (Array,
-                                for(const auto& v : re.vals)
-                                    mir_visit.visit_param(v);
-                                ),
-                            (Variant,
-                                mir_visit.visit_param(re.val);
-                                ),
-                            (Struct,
-                                for(const auto& v : re.vals)
-                                    mir_visit.visit_param(v);
-                                )
-                            )
-                            )
-                        )
-                    }
-                    TU_MATCHA( (block.terminator), (te),
-                    (Incomplete, ),
-                    (Return, ),
-                    (Diverge, ),
-                    (Goto, ),
-                    (Panic, ),
-                    (If,
-                        mir_visit.visit_lvalue(te.cond);
-                        ),
-                    (Switch,
-                        mir_visit.visit_lvalue(te.val);
-                        ),
-                    (SwitchValue,
-                        mir_visit.visit_lvalue(te.val);
-                        ),
-                    (Call,
-                        if(const auto* e = te.fcn.opt_Value() )
-                        {
-                            mir_visit.visit_lvalue(*e);
-                        }
-                        else if(const auto* e = te.fcn.opt_Intrinsic())
-                        {
-                            for(const auto& ty : e->params.m_types)
-                                tv.visit_type(monomorph(ty));
-                        }
-                        else
+                        void visit_path(const HIR::Path& /*p*/) override
                         {
                             // Paths don't need visiting?
                         }
-                        mir_visit.visit_lvalue(te.ret_val);
-                        for(const auto& arg : te.args)
-                            mir_visit.visit_param(arg);
-                        )
-                    )
+                        void visit_type(const HIR::TypeRef& ty) override
+                        {
+                            HIR::TypeRef    tmp;
+                            tv.visit_type(pp.maybe_monomorph(tv.m_resolve, tmp, ty));
+                        }
+                    };
+                    MirVisitor  mir_visit(sp, tv, pp, fcn, mir_res);
+                    for(const auto& stmt : block.statements)
+                    {
+                        mir_visit.visit_stmt(stmt);
+                    }
+                    mir_visit.visit_terminator(block.terminator);
                 }
             }
         }
