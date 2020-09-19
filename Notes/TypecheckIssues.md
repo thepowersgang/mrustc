@@ -75,3 +75,5 @@ Solution:
 - In `check_unsize_tys` auto-deref, add the final deref option instead of all options
   > So here, that's `str`
 
+Notes:
+- `_#7` could be `&&&&str` (but only a &-chain)
