@@ -77,3 +77,32 @@ Solution:
 
 Notes:
 - `_#7` could be `&&&&str` (but only a &-chain)
+
+
+# 
+Problem:
+- None of the bounded types fit requirements
+- `:0: BUG:..\..\src\hir_typeck\expr_cs.cpp:7535: TODO: check_ivar_poss - No none of the bounded types (*const ::"git2-0_7_3"::diff::ForeachCallbacks/*S*/, *mut ::"git2-0_7_3"::diff::ForeachCallbacks/*S*/) fit other bounds`
+
+```
+Typecheck Expressions-     check_ivar_poss: >> (70)
+Typecheck Expressions-      `anonymous-namespace'::check_ivar_poss: 70: possible_tys = C- *mut ::"libc-0_2_42"::c_void/*E*/
+Typecheck Expressions-      `anonymous-namespace'::check_ivar_poss: 70: bounds = *const _/*66*/, *mut _/*66*/
+```
+
+```
+Typecheck Expressions-     check_coerce: >> (R19 *mut ::"libc-0_2_42"::c_void/*E*/ := 0000020F4EEF1298 0000020F5046C590 (_/*70*/) - *mut ::"libc-0_2_42"::c_void := _/*70*/)
+Typecheck Expressions-       Context::possible_equate_ivar: 70 CoerceTo *mut ::"libc-0_2_42"::c_void/*E*/ *mut ::"libc-0_2_42"::c_void/*E*/
+
+Typecheck Expressions-     check_ivar_poss: >> (66)
+Typecheck Expressions-      `anonymous-namespace'::check_ivar_poss: 66: possible_tys =
+Typecheck Expressions-      `anonymous-namespace'::check_ivar_poss: 66: bounds = +, ::"git2-0_7_3"::diff::ForeachCallbacks/*S*/
+...
+Typecheck Expressions-      `anonymous-namespace'::check_ivar_poss: Only ::"git2-0_7_3"::diff::ForeachCallbacks/*S*/ is an option
+Typecheck Expressions-       HMTypeInferrence::set_ivar_to: Set IVar 66 = ::"git2-0_7_3"::diff::ForeachCallbacks/*S*/
+
+```
+
+Solution:
+- Treat a `+` bound as increasing `n_ivars`
+- Gate the `Only <Foo> is an option` to `n_ivars == 0 || fallback`

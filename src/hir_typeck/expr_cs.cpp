@@ -7683,6 +7683,10 @@ namespace {
             DEBUG(n_ivars << " ivars (" << n_src_ivars << " src, " << n_dst_ivars << " dst)");
             (void)n_ivars;
 
+            if( ivar_ent.has_bounded && ivar_ent.bounds_include_self )
+            {
+                n_ivars += 1;
+            }
 
             // Rules:
             // - If bounds_include_self
@@ -8470,8 +8474,7 @@ namespace {
             }
 
             // If there's only one option (or one real option w/ ivars, if in fallback mode) - equate it
-            //if( possible_tys.size() == 1 && (n_ivars == 0 || !honour_disable) )
-            if( possible_tys.size() == 1 && n_ivars == 0 )
+            if( possible_tys.size() == 1 && (n_ivars == 0 || !honour_disable) )
             {
                 const auto& new_ty = *possible_tys[0].ty;
                 DEBUG("Only " << new_ty << " is an option");
