@@ -1173,3 +1173,38 @@ const ::MIR::Function* HIR::Crate::get_or_gen_mir(const ::HIR::ItemPath& ip, con
         return &*ep.m_mir;
     }
 }
+
+
+::HIR::TypeRef HIR::Trait::get_vtable_type(const Span& sp, const ::HIR::Crate& crate, const ::HIR::TypeData::Data_TraitObject& te) const
+{
+    assert(te.m_trait.m_trait_ptr == this);
+
+    const auto& vtable_ty_spath = this->m_vtable_path;
+    const auto& vtable_ref = crate.get_struct_by_path(sp, vtable_ty_spath);
+    // Copy the param set from the trait in the trait object
+    ::HIR::PathParams   vtable_params = te.m_trait.m_path.m_params.clone();
+    // - Include associated types on bound
+    for(const auto& ty_b : te.m_trait.m_type_bounds) {
+        auto idx = this->m_type_indexes.at(ty_b.first);
+        if(vtable_params.m_types.size() <= idx)
+            vtable_params.m_types.resize(idx+1);
+        vtable_params.m_types[idx] = ty_b.second.clone();
+    }
+    return ::HIR::TypeRef::new_path( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref );
+}
+
+unsigned HIR::Trait::get_vtable_value_index(const HIR::GenericPath& trait_path, const RcString& name) const
+{
+    auto its = this->m_value_indexes.equal_range(name);
+    for(auto it = its.first; it != its.second; ++it)
+    {
+        DEBUG(trait_path << " :: " << name << " - " << it->second.second);
+        if( it->second.second.m_path == trait_path.m_path )
+        {
+            // TODO: Match generics using match_test_generics comparing to the trait args
+            assert(it->second.first > 0);
+            return it->second.first;
+        }
+    }
+    return 0;
+}

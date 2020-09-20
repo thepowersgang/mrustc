@@ -145,9 +145,13 @@ namespace {
                                 DEBUG("- '" << vi.first << "' NOT object safe (generic), not creating vtable");
                                 return false;
                             }
-                            if( ve.m_receiver == ::HIR::Function::Receiver::Value ) {
-                                DEBUG("- '" << vi.first << "' NOT object safe (by-value), not creating vtable");
-                                return false;
+                            // NOTE: by-value methods are valid in 1.39 (Added for FnOnce)
+                            if( !TARGETVER_LEAST_1_39 )
+                            {
+                                if( ve.m_receiver == ::HIR::Function::Receiver::Value ) {
+                                    DEBUG("- '" << vi.first << "' NOT object safe (by-value), not creating vtable");
+                                    return false;
+                                }
                             }
 
                             ::HIR::FunctionType ft;
@@ -156,6 +160,9 @@ namespace {
                             ft.m_rettype = clone_ty_with(sp, ve.m_return, clone_cb);
                             ft.m_arg_types.reserve( ve.m_args.size() );
                             ft.m_arg_types.push_back( clone_ty_with(sp, ve.m_args[0].second, clone_self_cb) );
+                            if( ve.m_receiver == ::HIR::Function::Receiver::Value ) {
+                                ft.m_arg_types[0] = HIR::TypeRef::new_borrow(HIR::BorrowType::Owned, mv$(ft.m_arg_types[0]));
+                            }
                             for(unsigned int i = 1; i < ve.m_args.size(); i ++)
                                 ft.m_arg_types.push_back( clone_ty_with(sp, ve.m_args[i].second, clone_cb) );
                             // Clear the first argument (the receiver)

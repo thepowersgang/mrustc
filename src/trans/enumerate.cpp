@@ -1296,7 +1296,7 @@ void Trans_Enumerate_FillFrom_PathMono(EnumState& state, ::HIR::Path path_mono)
         // - <(Trait) as Trait>::method
         else if( path_mono.m_data.is_UfcsKnown() && path_mono.m_data.as_UfcsKnown().type.data().is_TraitObject() )
         {
-            // Must have been a dynamic dispatch request, just leave as-is
+            state.rv.trait_object_methods.insert( mv$(path_mono) );
         }
         // - <fn(...) as Fn*>::call*
         else if( path_mono.m_data.is_UfcsKnown() && path_mono.m_data.as_UfcsKnown().type.data().is_Function() && (

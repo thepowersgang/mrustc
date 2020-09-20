@@ -373,6 +373,7 @@ public:
     ::std::unordered_map< RcString, TraitValueItem >   m_values;
 
     // Indexes into the vtable for each present method and value
+    // - TODO: Find an easier way of having this be `(GenericPath,RcString) -> unsigned`
     ::std::unordered_multimap< RcString, ::std::pair<unsigned int,::HIR::GenericPath> > m_value_indexes;
     // Indexes in the vtable parameter list for each associated type
     ::std::unordered_map< RcString, unsigned int > m_type_indexes;
@@ -388,6 +389,9 @@ public:
         m_parent_traits( mv$(parents) ),
         m_is_marker( false )
     {}
+
+    ::HIR::TypeRef get_vtable_type(const Span& sp, const ::HIR::Crate& crate, const ::HIR::TypeData::Data_TraitObject& te) const;
+    unsigned get_vtable_value_index(const HIR::GenericPath& trait_path, const RcString& name) const;
 };
 
 class ProcMacro

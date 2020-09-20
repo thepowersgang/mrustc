@@ -120,6 +120,8 @@ public:
     ::std::set< ::HIR::GenericPath> m_constructors;
     // Automatic Clone impls
     ::std::set< ::HIR::TypeRef>  auto_clone_impls;
+    // Trait methods
+    ::std::set< ::HIR::Path>    trait_object_methods;
 
     ::std::vector< ::std::unique_ptr< ::HIR::Static>>   m_auto_statics;
     ::std::vector< ::std::unique_ptr< ::HIR::Function>> m_auto_functions;

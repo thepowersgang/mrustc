@@ -73,20 +73,7 @@ void MIR_Cleanup_LValue(const ::MIR::TypeResolve& state, MirMutator& mutator, ::
 namespace {
     ::HIR::TypeRef get_vtable_type(const Span& sp, const ::StaticTraitResolve& resolve, const ::HIR::TypeData::Data_TraitObject& te)
     {
-        const auto& trait = *te.m_trait.m_trait_ptr;
-
-        const auto& vtable_ty_spath = trait.m_vtable_path;
-        const auto& vtable_ref = resolve.m_crate.get_struct_by_path(sp, vtable_ty_spath);
-        // Copy the param set from the trait in the trait object
-        ::HIR::PathParams   vtable_params = te.m_trait.m_path.m_params.clone();
-        // - Include associated types on bound
-        for(const auto& ty_b : te.m_trait.m_type_bounds) {
-            auto idx = trait.m_type_indexes.at(ty_b.first);
-            if(vtable_params.m_types.size() <= idx)
-                vtable_params.m_types.resize(idx+1);
-            vtable_params.m_types[idx] = ty_b.second.clone();
-        }
-        return ::HIR::TypeRef::new_path( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref );
+        return te.m_trait.m_trait_ptr->get_vtable_type(sp, resolve.m_crate, te);
     }
 }
 
@@ -510,26 +497,27 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
     )
 {
     assert( te.m_trait.m_trait_ptr );
+    assert( pe.type.data().is_TraitObject() );
+    assert( &te == &pe.type.data().as_TraitObject() );
     const auto& trait = *te.m_trait.m_trait_ptr;
 
     // 1. Get the vtable index for this function
-    auto it = trait.m_value_indexes.find( pe.item );
-    while( it != trait.m_value_indexes.end() )
-    {
-        DEBUG("- " << it->second.second);
-        if( it->second.second.m_path == pe.trait.m_path )
-        {
-            // TODO: Match generics using match_test_generics comparing to the trait args
-            break ;
-        }
-        ++ it;
-    }
-    if( it == trait.m_value_indexes.end() || it->first != pe.item )
+    unsigned int vtable_idx = trait.get_vtable_value_index(pe.trait.m_path, pe.item);
+    if( vtable_idx == 0 )
         BUG(sp, "Calling method '" << pe.item << "' from " << pe.trait << " through " << te.m_trait.m_path << " which isn't in the vtable");
-    unsigned int vtable_idx = it->second.first;
 
     // 2. Load from the vtable
     auto vtable_ty = ::HIR::TypeRef::new_pointer( ::HIR::BorrowType::Shared, get_vtable_type(sp, state.m_resolve, te) );
+
+    // If the method is a by-value method, add a `&move`
+    const auto& fn_def = state.m_crate.get_trait_by_path(sp, pe.trait.m_path).m_values.at(pe.item).as_Function();
+    if( fn_def.m_receiver == HIR::Function::Receiver::Value )
+    {
+        receiver_lvp = mutator.in_temporary(
+            HIR::TypeRef::new_borrow(HIR::BorrowType::Owned, pe.type.clone()),
+            MIR::RValue::make_Borrow({ HIR::BorrowType::Owned, mv$(receiver_lvp) })
+            );
+    }
 
     // Allocate a temporary for the vtable pointer itself
     auto vtable_lv = mutator.new_temporary( mv$(vtable_ty) );

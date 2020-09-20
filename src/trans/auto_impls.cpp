@@ -316,6 +316,85 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
         }
     }
 
+    // Trait object methods
+    {
+        TRACE_FUNCTION_F("Trait object methods");
+        trans_list.m_auto_functions.reserve(trans_list.m_auto_functions.size() + trans_list.trait_object_methods.size());
+        for(const auto& path : trans_list.trait_object_methods)
+        {
+            DEBUG(path);
+            static Span sp;
+            const auto& pe = path.m_data.as_UfcsKnown();
+            const auto& trait_path = pe.trait;
+            const auto& name = pe.item;
+            const auto& ty_dyn = pe.type.data().as_TraitObject();
+
+            const auto& trait = crate.get_trait_by_path(sp, trait_path.m_path);
+            const auto& fcn_def = trait.m_values.at(name).as_Function();
+
+            // Get the vtable index for this function
+            unsigned vtable_idx = ty_dyn.m_trait.m_trait_ptr->get_vtable_value_index(trait_path, name);
+            ASSERT_BUG(sp, vtable_idx > 0, "Calling method '" << name << "' from " << trait_path << " through " << pe.type << " which isn't in the vtable");
+
+            MonomorphStatePtr   ms(&pe.type, &trait_path.m_params, nullptr);
+
+            HIR::Function   new_fcn;
+            new_fcn.m_return = ms.monomorph_type(sp, fcn_def.m_return);
+            state.resolve.expand_associated_types(sp, new_fcn.m_return);
+            for(const auto& arg : fcn_def.m_args)
+            {
+                new_fcn.m_args.push_back(std::make_pair( HIR::Pattern(), ms.monomorph_type(sp, arg.second) ));
+                state.resolve.expand_associated_types(sp, new_fcn.m_args.back().second);
+            }
+            if( fcn_def.m_receiver == HIR::Function::Receiver::Value )
+            {
+                TODO(sp, "<dyn " << trait_path << ">::" << name << " - By-Value");
+            }
+            const auto bt = new_fcn.m_args.front().second.data().as_Borrow().type;
+
+            new_fcn.m_code.m_mir = MIR::FunctionPointer(new MIR::Function());
+            Builder builder(state, *new_fcn.m_code.m_mir);
+
+            // ---
+            // bb0:
+            //   _1 = DstPtr a1
+            auto lv_ptr = builder.add_local(::HIR::TypeRef::new_borrow(bt, ::HIR::TypeRef::new_unit()));
+            builder.push_stmt_assign(lv_ptr.clone(), MIR::RValue::make_DstPtr({ MIR::LValue::new_Argument(0) }));
+            //   _2 = DstMeta a1
+            auto lv_vtable = builder.add_local(::HIR::TypeRef::new_borrow(
+                HIR::BorrowType::Shared, ty_dyn.m_trait.m_trait_ptr->get_vtable_type(sp, crate, ty_dyn)
+                ));
+            builder.push_stmt_assign(lv_vtable.clone(), MIR::RValue::make_DstMeta({ MIR::LValue::new_Argument(0) }));
+            //   rv = _2*.{idx}(a2, ...) goto bb2 else bb3
+            std::vector<MIR::Param> call_args;
+            call_args.push_back(mv$(lv_ptr));
+            for(size_t i = 1; i < fcn_def.m_args.size(); i ++)
+            {
+                call_args.push_back(MIR::LValue::new_Argument(i));
+            }
+            builder.terminate_Call(
+                MIR::LValue::new_Return(),
+                MIR::LValue::new_Field( MIR::LValue::new_Deref(mv$(lv_vtable)), vtable_idx ),
+                mv$(call_args),
+                1, 2
+                );
+            // bb1:
+            //   RETURN
+            builder.ensure_open();
+            builder.terminate_block(MIR::Terminator::make_Return({}));
+            // bb2:
+            //   UNWIND
+            builder.ensure_open();
+            builder.terminate_block(MIR::Terminator::make_Diverge({}));
+            // ---
+
+            MIR_Validate(state.resolve, HIR::ItemPath(path), *new_fcn.m_code.m_mir, new_fcn.m_args, new_fcn.m_return);
+            trans_list.m_auto_functions.push_back(box$(new_fcn));
+            auto* e = trans_list.add_function(path.clone());
+            e->ptr = trans_list.m_auto_functions.back().get();
+        }
+    }
+
     // Create VTable instances
     {
         TRACE_FUNCTION_F("VTables");
@@ -328,29 +407,33 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
 
             if( const auto* te = type.data().opt_Function() )
             {
-                const char* names[] = { "call", "call_mut" };
-                const ::HIR::SimplePath* const traits[] = { &state.resolve.m_lang_Fn, &state.resolve.m_lang_FnMut };
-                HIR::BorrowType const borrpw_types[] = { HIR::BorrowType::Shared, HIR::BorrowType::Unique };
+                struct {
+                    const char* fcn_name;
+                    const HIR::SimplePath* trait_path;
+                    HIR::BorrowType bt;
+                } const entries[3] = {
+                    { "call", &state.resolve.m_lang_Fn, HIR::BorrowType::Shared },
+                    { "call_mut", &state.resolve.m_lang_FnMut, HIR::BorrowType::Unique },
+                    { "call_once", &state.resolve.m_lang_FnOnce, HIR::BorrowType::Owned }
+                };
+
                 size_t  offset;
                 if( trait_path.m_path == state.resolve.m_lang_Fn )
                     offset = 0;
                 else if( trait_path.m_path == state.resolve.m_lang_FnMut )
                     offset = 1;
-                //else if( trait_path.m_path == m_resolve.m_lang_FnOnce )
-                //    call_fcn_name = "call_once";
-                else
+                else if( TARGETVER_LEAST_1_39 && trait_path.m_path == state.resolve.m_lang_FnOnce )
                     offset = 2;
+                else
+                    offset = 3;
 
-                while(offset < sizeof(names)/sizeof(names[0]))
+                for(; offset < sizeof(entries)/sizeof(entries[0]); offset ++)
                 {
-                    const auto& trait_name = *traits[offset];
-                    const char* call_fcn_name = names[offset];
-                    HIR::BorrowType bt = borrpw_types[offset];
-                    offset ++;
+                    const auto& ent = entries[offset];
 
                     auto fcn_p = path.clone();
-                    fcn_p.m_data.as_UfcsKnown().item = call_fcn_name;
-                    fcn_p.m_data.as_UfcsKnown().trait.m_path = trait_name.clone();
+                    fcn_p.m_data.as_UfcsKnown().item = ent.fcn_name;
+                    fcn_p.m_data.as_UfcsKnown().trait.m_path = ent.trait_path->clone();
 
                     ::std::vector<HIR::TypeRef> arg_tys;
                     for(const auto& ty : te->m_arg_types)
@@ -360,7 +443,7 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
 
                     HIR::Function   fcn;
                     fcn.m_return = te->m_rettype.clone();
-                    fcn.m_args.push_back(std::make_pair( HIR::Pattern(), HIR::TypeRef::new_borrow(bt, type.clone()) ));
+                    fcn.m_args.push_back(std::make_pair( HIR::Pattern(), HIR::TypeRef::new_borrow(ent.bt, type.clone()) ));
                     fcn.m_args.push_back(std::make_pair( HIR::Pattern(), mv$(arg_ty) ));
 
                     fcn.m_code.m_mir = MIR::FunctionPointer(new MIR::Function());

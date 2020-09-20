@@ -5,6 +5,7 @@
  * mir/check.cpp
  * - MIR Correctness validation
  */
+#include <algorithm>
 #include "main_bindings.hpp"
 #include "mir.hpp"
 #include <hir/visitor.hpp>
@@ -28,20 +29,10 @@ namespace {
             {
                 const auto& trait = *tep->m_trait.m_trait_ptr;
 
-                const auto& vtable_ty_spath = trait.m_vtable_path;
-                MIR_ASSERT(state, vtable_ty_spath != ::HIR::SimplePath(), "Trait with no vtable - " << trait_path);
-                const auto& vtable_ref = state.m_resolve.m_crate.get_struct_by_path(state.sp, vtable_ty_spath);
-                // Copy the param set from the trait in the trait object
-                ::HIR::PathParams   vtable_params = trait_path.m_path.m_params.clone();
-                // - Include associated types
-                for(const auto& ty_b : trait_path.m_type_bounds) {
-                    auto idx = trait.m_type_indexes.at(ty_b.first);
-                    if(vtable_params.m_types.size() <= idx)
-                        vtable_params.m_types.resize(idx+1);
-                    vtable_params.m_types[idx] = ty_b.second.clone();
-                }
+                auto vtable_ty = trait.get_vtable_type(state.sp, state.m_resolve.m_crate, *tep);
+
                 // TODO: This should be a pointer
-                return ::HIR::TypeRef::new_path( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref );
+                return vtable_ty;
             }
         }
         else if( unsized_ty.data().is_Slice() )
@@ -765,14 +756,15 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                             MIR_BUG(state, "DstMeta requires a &-ptr as input, got " << ty);
                         }
                         const auto& ity = *ity_p;
-                        if( ity.data().is_Generic() )
+                        HIR::TypeRef    res_ty;
+                        if( ity.data().is_Generic() || (ity.data().is_Path() && ity.data().as_Path().binding.is_Opaque()) )
                             ;
-                        else if( ity.data().is_Path() && ity.data().as_Path().binding.is_Opaque() )
-                            ;
-                        else if( ity.data().is_Array() )
-                            ;
-                        else if( ity.data().is_Slice() )
-                            ;
+                        else if( ity.data().is_Array() ) {
+                            res_ty = HIR::CoreType::Usize;
+                        }
+                        else if( ity.data().is_Slice() ) {
+                            res_ty = HIR::CoreType::Usize;
+                        }
                         else if( ity.data().is_TraitObject() )
                             ;
                         else if( ity.data().is_Path() )
@@ -781,7 +773,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                         }
                         else
                         {
-                            MIR_BUG(state, "DstMeta on invalid type - " << ty);
+                            MIR_BUG(state, "DstMeta on invalid type - " << ity);
                         }
                         // TODO: Check return type
                         }
@@ -803,7 +795,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                             ;
                         else if( ity.data().is_TraitObject() )
                             ;
-                        else if( ity.data().is_Path() && ity.data().as_Path().binding.is_Opaque() )
+                        else if( ity.data().is_Generic() || (ity.data().is_Path() && ity.data().as_Path().binding.is_Opaque()) )
                             ;
                         else if( ity.data().is_Path() )
                         {
@@ -811,7 +803,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                         }
                         else
                         {
-                            MIR_BUG(state, "DstPtr on invalid type - " << ty);
+                            MIR_BUG(state, "DstPtr on invalid type - " << ity);
                         }
                         // TODO: Check return type
                         }
