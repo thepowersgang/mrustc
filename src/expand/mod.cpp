@@ -15,6 +15,7 @@
 #include <ast/expr.hpp>
 #include <hir/hir.hpp>  // For macro lookup
 #include "cfg.hpp"
+#include "common.hpp"
 #include "../resolve/common.hpp"
 
 DecoratorDef*   g_decorators_list = nullptr;
@@ -116,20 +117,9 @@ void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::AST::Cr
     Expand_Attrs(attrs, stage,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, mod, impl); });
 }
 
-::std::unique_ptr<TokenStream> Expand_Macro_Inner(
-    const ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod,
-    Span mi_span, const AST::Path& path, const RcString& input_ident, TokenTree& input_tt
-    )
+MacroRef Expand_LookupMacro(const Span& mi_span, const ::AST::Crate& crate, LList<const AST::Module*> modstack, const AST::Path& path)
 {
-    if( !path.is_valid() ) {
-        return ::std::unique_ptr<TokenStream>();
-    }
-
-    TRACE_FUNCTION_F("Searching for macro " << path);
-
-    // Find the macro
-    /*const*/ ExpandProcMacro*  proc_mac = nullptr;
-    const MacroRules*   mr_ptr = nullptr;
+    assert(path.size() > 0);
 
     if( path.is_trivial() )
     {
@@ -140,10 +130,10 @@ void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::AST::Cr
             if( name == m.first )
             {
                 DEBUG("Found builtin");
-                proc_mac = &*m.second;
-                break;
+                return MacroRef(&*m.second);
             }
         }
+
         // Iterate up the module tree, using the first located macro
         for(const auto* ll = &modstack; ll; ll = ll->m_prev)
         {
@@ -153,12 +143,9 @@ void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::AST::Cr
                 if( mr.name == name )
                 {
                     DEBUG(mac_mod.path() << "::" << mr.name << " - Defined");
-                    mr_ptr = &*mr.data;
-                    break;
+                    return MacroRef(&*mr.data);
                 }
             }
-            if( mr_ptr )
-                break;
 
             // Find the last macro of this name (allows later #[macro_use] definitions to override)
             const MacroRules* last_mac = nullptr;
@@ -174,103 +161,112 @@ void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::AST::Cr
             }
             if( last_mac )
             {
-                mr_ptr = last_mac;
-                break;
+                return MacroRef(last_mac);
             }
         }
     }
 
-    //else
-    if( !mr_ptr && !proc_mac )
+    // HACK: If the crate name is empty, look up builtins
+    if( path.is_absolute() && path.nodes().size() == 1 && path.m_class.as_Absolute().crate == "" )
     {
-        // HACK: If the crate name is empty, look up builtins
-        if( path.is_absolute() && path.nodes().size() == 1 && path.m_class.as_Absolute().crate == "" )
+        const auto& name = path.nodes()[0].name();
+        for( const auto& m : g_macros )
         {
-            const auto& name = path.nodes()[0].name();
-            for( const auto& m : g_macros )
+            if( name == m.first )
             {
-                if( name == m.first )
-                {
-                    proc_mac = &*m.second;
-                    break;
-                }
-            }
-        }
-
-        if( !proc_mac && !mr_ptr )
-        {
-            // Resolve the path, following use statements (if required)
-            // - Only mr_ptr matters, as proc_mac is about builtins
-            const auto& final_name = path.nodes().back().name();
-            auto macro_mod = Resolve_Lookup_GetModuleForName(mi_span, crate, mod.path(), path, ResolveNamespace::Macro, nullptr);
-            TU_MATCH_HDRA( (macro_mod), {)
-            TU_ARMA(None, e) {
-                // Fall trhough and error later
-                }
-            TU_ARMA(Ast, mod_ptr) {
-                // Look in the pre-calculated macro list (TODO: Should really be using the main resolve machinery)
-                for(const auto& mac : mod_ptr->macro_imports_res())
-                {
-                    if(mac.name == final_name) {
-                        mr_ptr = mac.data;
-                        break;
-                    }
-                }
-                }
-            TU_ARMA(Hir, mod_ptr) {
-                ASSERT_BUG(mi_span, mod_ptr->m_macro_items.count(final_name) == 1, "Resolve_Lookup_GetModuleForName returned a module without `" << final_name << "`");
-                const auto& i = mod_ptr->m_macro_items.at(final_name);
-                TU_MATCH_HDRA( (i->ent), {)
-                TU_ARMA(Import, imp) {
-                    if( imp.path.m_crate_name == CRATE_BUILTINS )
-                    {
-                        for( const auto& m : g_macros )
-                        {
-                            if( imp.path.m_components.front() == m.first )
-                            {
-                                DEBUG("Found builtin (import)");
-                                proc_mac = &*m.second;
-                                break;
-                            }
-                        }
-                        if(!proc_mac)
-                        {
-                            ERROR(mi_span, E0000, "Import references unknown builtin");
-                        }
-                    }
-                    else
-                    {
-                        BUG(mi_span, "Resolve_Lookup_GetModuleForName returned an module with import - " << imp.path);
-                    }
-                    }
-                TU_ARMA(MacroRules, m) {
-                    mr_ptr = &*m;
-                    }
-                TU_ARMA(ProcMacro, m) {
-                    //proc_mac = &m;
-                    TODO(mi_span, "Macro resolved to HIR proc macro");
-                    }
-                }
-                }
+                return MacroRef(&*m.second);
             }
         }
     }
 
-    if( mr_ptr )
+    // Resolve the path, following use statements (if required)
+    // - Only mr_ptr matters, as proc_mac is about builtins
+    const auto& final_name = path.nodes().back().name();
+    auto macro_mod = Resolve_Lookup_GetModuleForName(mi_span, crate, modstack.m_item->path(), path, ResolveNamespace::Macro, nullptr);
+    TU_MATCH_HDRA( (macro_mod), {)
+    TU_ARMA(None, e) {
+        // Fall trhough and error later
+        }
+    TU_ARMA(Ast, mod_ptr) {
+        // Look in the pre-calculated macro list (TODO: Should really be using the main resolve machinery)
+        for(const auto& mac : mod_ptr->macro_imports_res())
+        {
+            if(mac.name == final_name) {
+                return MacroRef(mac.data);
+            }
+        }
+        }
+    TU_ARMA(Hir, mod_ptr) {
+        ASSERT_BUG(mi_span, mod_ptr->m_macro_items.count(final_name) == 1, "Resolve_Lookup_GetModuleForName returned a HIR module without `" << final_name << "`");
+        const auto& i = mod_ptr->m_macro_items.at(final_name);
+        TU_MATCH_HDRA( (i->ent), {)
+        TU_ARMA(Import, imp) {
+            if( imp.path.m_crate_name == CRATE_BUILTINS )
+            {
+                for( const auto& m : g_macros )
+                {
+                    if( imp.path.m_components.front() == m.first )
+                    {
+                        DEBUG("Found builtin (import)");
+                        return MacroRef(&*m.second);
+                    }
+                }
+                ERROR(mi_span, E0000, "Import references unknown builtin");
+            }
+            else
+            {
+                BUG(mi_span, "Resolve_Lookup_GetModuleForName returned an module with import - " << imp.path);
+            }
+            }
+        TU_ARMA(MacroRules, m) {
+            return MacroRef(&*m);
+            }
+        TU_ARMA(ProcMacro, m) {
+            //proc_mac = &m;
+            TODO(mi_span, "Macro resolved to HIR proc macro");
+            }
+        }
+        }
+    }
+    return MacroRef();
+}
+
+::std::unique_ptr<TokenStream> Expand_Macro_Inner(
+    const ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod,
+    Span mi_span, const AST::Path& path, const RcString& input_ident, TokenTree& input_tt
+    )
+{
+    if( !path.is_valid() ) {
+        return ::std::unique_ptr<TokenStream>();
+    }
+
+    TRACE_FUNCTION_F("Searching for macro " << path);
+
+    // Find the macro
+    auto mac = Expand_LookupMacro(mi_span, crate, modstack, path);
+    /*const*/ ExpandProcMacro*  proc_mac = nullptr;
+    const MacroRules*   mr_ptr = nullptr;
+
+    if( mac.is_MacroRules() )
     {
         // TODO: If `mr_ptr` is tagged with #[rustc_builtin_macro], look for a matching entry in `g_macros`
     }
 
-    if( proc_mac )
-    {
+    TU_MATCH_HDRA( (mac), {)
+    TU_ARMA(None, e) {
+        ERROR(mi_span, E0000, "Unknown macro " << path);
+        }
+    TU_ARMA(ExternalProcMacro, proc_mac) {
+        TODO(mi_span, "Handle external proc macro");
+        }
+    TU_ARMA(BuiltinProcMacro, proc_mac) {
         auto e = input_ident == ""
             ? proc_mac->expand(mi_span, crate, input_tt, mod)
             : proc_mac->expand_ident(mi_span, crate, input_ident, input_tt, mod)
             ;
         return e;
-    }
-    else if( mr_ptr )
-    {
+        }
+    TU_ARMA(MacroRules, mr_ptr) {
         if( input_ident != "" )
             ERROR(mi_span, E0000, "macro_rules! macros can't take an ident");
 
@@ -278,12 +274,9 @@ void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::AST::Cr
         auto e = Macro_InvokeRules(path.is_trivial() ? path.as_trivial().c_str() : "", *mr_ptr, mi_span, mv$(input_tt), crate, mod);
         e->parse_state().crate = &crate;
         return e;
+        }
     }
-    else
-    {
-    }
-    // Error - Unknown macro name
-    ERROR(mi_span, E0000, "Unknown macro " << path);
+    throw "";
 }
 ::std::unique_ptr<TokenStream> Expand_Macro(
     const ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod,

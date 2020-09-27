@@ -80,16 +80,19 @@ class CMacroUseHandler:
         {
             const auto& ec = crate.m_extern_crates.at(ec_item->name.c_str());
 
+            DEBUG(ec.m_hir->m_exported_macro_names.size() << " exported macros");
             for(const auto& name : ec.m_hir->m_exported_macro_names)
             {
                 if( !filter_valid(name) )
                 {
+                    DEBUG("Skip " << name);
                     continue;
                 }
                 ASSERT_BUG(sp, ec.m_hir->m_root_module.m_macro_items.count(name) == 1, "Macro `" << name << "` missing from crate " << ec.m_name);
                 const auto* e = &*ec.m_hir->m_root_module.m_macro_items.at(name);
                 if( !e->publicity.is_global() )
                 {
+                    DEBUG("Not public: " << name);
                     continue ;
                 }
 
@@ -107,7 +110,8 @@ class CMacroUseHandler:
                         mod = &se.as_Module();
                     }
 
-                    e = &*mod->m_macro_items.at(name);
+                    ASSERT_BUG(sp, mod->m_macro_items.count(imp->path.m_components.back()), "Failed to find final component of " << imp->path);
+                    e = &*mod->m_macro_items.at(imp->path.m_components.back());
                     ASSERT_BUG(sp, !e->ent.is_Import(), "Recursive import");
                 }
 
@@ -206,8 +210,13 @@ class CMacroExportHandler:
             // Tag the macro in the module for crate export
             auto it = ::std::find_if( mod.macros().begin(), mod.macros().end(), [&](const auto& x){ return x.name == name; } );
             ASSERT_BUG(sp, it != mod.macros().end(), "Macro '" << name << "' not defined in this module");
-            it->data->m_exported = true;
+            auto e = mv$(*it);
+            mod.macros().erase(it);
+            e.data->m_exported = true;
             DEBUG("- Export macro " << name << "!");
+
+            // TODO: Move the macro to the root?
+            crate.m_root_module.macros().push_back( mv$(e) );
         }
         else {
             ERROR(sp, E0000, "Use of #[macro_export] on non-macro - " << i.tag_str());

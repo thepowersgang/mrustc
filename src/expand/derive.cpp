@@ -13,6 +13,7 @@
 #include <hir/hir.hpp>  // ABI_RUST
 #include <parse/common.hpp>    // Parse_ModRoot_Items
 #include "proc_macro.hpp"
+#include "common.hpp"   // Expand_LookupMacro
 
 template<typename T>
 static inline ::std::vector<T> vec$(T v1) {
@@ -2142,6 +2143,8 @@ static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mo
         DEBUG("- " << trait.name());
 
         std::vector<RcString>   mac_path;
+        //auto mac_name = RcString::new_interned( FMT("derive#" << trait.name().elems.back()) );
+        auto mac_name = RcString::new_interned( FMT(trait.name().elems.back()) );
 
         if( trait.name().elems.size() == 1 )
         {
@@ -2151,7 +2154,6 @@ static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mo
                 continue ;
             }
 
-            auto mac_name = FMT("derive#" << trait.name().elems[0]);
             for(const auto& mac_import : mod.m_macro_imports)
             {
                 if( mac_import.name == mac_name )
@@ -2168,10 +2170,29 @@ static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mo
                     }
                 }
             }
+
+            if(mac_path.empty())
+            {
+                auto p = AST::Path(AST::Path::TagRelative{}, Ident::Hygiene(), {trait.name().elems[0]});
+                auto mac = Expand_LookupMacro(sp, crate, LList<const AST::Module*>(nullptr, &mod), p);
+                
+                TU_MATCH_HDRA( (mac), {)
+                TU_ARMA(None, e) {
+                    }
+                TU_ARMA(ExternalProcMacro, ext_proc_mac) {
+                    mac_path = ext_proc_mac.path;
+                    }
+                TU_ARMA(BuiltinProcMacro, proc_mac) {
+                    TODO(sp, "Handle builtin proc macro");
+                    }
+                TU_ARMA(MacroRules, mr_ptr) {
+                    TODO(sp, "Custom derive using macro_rules?");
+                    }
+                }
+            }
         }
         else
         {
-            auto mac_name = RcString::new_interned( FMT("derive#" << trait.name().elems.back()) );
             mac_path = trait.name().elems;
             mac_path.back() = mac_name;
         }

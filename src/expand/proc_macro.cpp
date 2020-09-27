@@ -55,7 +55,8 @@ public:
         }
 
         // TODO: Store attributes for later use.
-        crate.m_proc_macros.push_back(AST::ProcMacroDef { RcString::new_interned(FMT("derive#" << trait_name)), path, mv$(attributes) });
+        crate.m_proc_macros.push_back(AST::ProcMacroDef { RcString::new_interned(FMT(trait_name)), path, mv$(attributes) });
+        //crate.m_proc_macros.push_back(AST::ProcMacroDef { RcString::new_interned(FMT("derive#" << trait_name)), path, mv$(attributes) });
     }
 };
 

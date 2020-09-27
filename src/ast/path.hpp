@@ -88,7 +88,10 @@ TAGGED_UNION_EX(PathBinding_Type, (), Unbound, (
         }),
     (Module, struct {
         const Module* module_;
-        const ::HIR::Module* hir;
+        struct Hir {
+            const ::AST::ExternCrate* crate;
+            const ::HIR::Module* mod;
+        } hir;
         }),
     (Struct, struct {
         const Struct* struct_;

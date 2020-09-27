@@ -27,7 +27,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
     const ::AST::Path& path, ::std::span< const ::AST::Module* > parent_modules,
     bool types_only=false
     );
-::AST::Path::Bindings Resolve_Use_GetBinding__ext(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path,  const ::HIR::Module& hmodr, unsigned int start);
+::AST::Path::Bindings Resolve_Use_GetBinding__ext(const Span& span, const ::AST::Crate& crate, const AST::ExternCrate& ec, const ::HIR::Module& hmodr, const ::AST::Path& path, unsigned int start);
 ::AST::Path::Bindings Resolve_Use_GetBinding__ext(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path,  const AST::ExternCrate& ec, unsigned int start);
 
 void Resolve_Use(::AST::Crate& crate)
@@ -466,9 +466,8 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                             DEBUG("Recursion prevented of " << e.module_->path());
                         }
                     }
-                    else if( e.hir ) {
-                        const ::HIR::Module& hmod = *e.hir;
-                        rv.merge_from( Resolve_Use_GetBinding__ext(sp2, crate, AST::Path("", { AST::PathNode(des_item_name,{}) }), hmod, 0) );
+                    else if( e.hir.mod ) {
+                        rv.merge_from( Resolve_Use_GetBinding__ext(sp2, crate, *e.hir.crate, *e.hir.mod, AST::Path("", { AST::PathNode(des_item_name,{}) }), 0) );
                     }
                     else {
                         BUG(span, "NULL module for binding on glob of " << imp_e.path);
@@ -578,14 +577,18 @@ namespace {
     }
 }
 
-::AST::Path::Bindings Resolve_Use_GetBinding__ext(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path,  const ::HIR::Module& hmodr, unsigned int start)
+::AST::Path::Bindings Resolve_Use_GetBinding__ext(
+    const Span& span, const ::AST::Crate& crate,
+    const AST::ExternCrate& hcrate, const ::HIR::Module& hmodr,
+    const ::AST::Path& path, unsigned int start
+    )
 {
     ::AST::Path::Bindings   rv;
     TRACE_FUNCTION_F(path << " offset " << start);
     const auto& nodes = path.nodes();
     const ::HIR::Module* hmod = &hmodr;
     if(nodes.size() == 0 ) {
-        rv.type = ::AST::PathBinding_Type::make_Module({nullptr, hmod});
+        rv.type = ::AST::PathBinding_Type::make_Module({nullptr, { &hcrate, hmod} });
         return rv;
     }
     for(unsigned int i = start; i < nodes.size() - 1; i ++)
@@ -673,7 +676,7 @@ namespace {
                 }
                 else if( e.path.m_components.empty() )
                 {
-                    rv.type = ::AST::PathBinding_Type::make_Module({nullptr, &ec.m_hir->m_root_module});
+                    rv.type = ::AST::PathBinding_Type::make_Module({nullptr, {&ec, &ec.m_hir->m_root_module}});
                 }
                 else
                 {
@@ -687,7 +690,7 @@ namespace {
                     BUG(span, "Recursive import in " << path << " - " << it->second->ent.as_Import().path << " -> " << e.path);
                     ),
                 (Module,
-                    rv.type = ::AST::PathBinding_Type::make_Module({nullptr, &e});
+                    rv.type = ::AST::PathBinding_Type::make_Module({nullptr, {&hcrate, &e}});
                     ),
                 (TypeAlias,
                     rv.type = ::AST::PathBinding_Type::make_TypeAlias({nullptr});
@@ -800,8 +803,7 @@ namespace {
                     rv.macro = ::AST::PathBinding_Macro::make_MacroRules({ nullptr, nullptr });
                     }
                 TU_ARMA(ProcMacro, e) {
-                    //rv.macro = ::AST::PathBinding_Macro::make_ProcMacro({ path.,  e.name });
-                    TODO(span, "");
+                    rv.macro = ::AST::PathBinding_Macro::make_ProcMacro({ &hcrate, e.name });
                     }
                 TU_ARMA(MacroRules, e) {
                     rv.macro = ::AST::PathBinding_Macro::make_MacroRules({ nullptr, &*e } );
@@ -824,7 +826,7 @@ namespace {
 ::AST::Path::Bindings Resolve_Use_GetBinding__ext(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path,  const AST::ExternCrate& ec, unsigned int start)
 {
     DEBUG("Crate " << ec.m_name);
-    auto rv = Resolve_Use_GetBinding__ext(span, crate, path, ec.m_hir->m_root_module, start);
+    auto rv = Resolve_Use_GetBinding__ext(span, crate, ec, ec.m_hir->m_root_module, path, start);
     if( auto* e = rv.macro.opt_MacroRules() )
     {
         if( e->crate_ == nullptr )
@@ -945,12 +947,13 @@ namespace {
             return rv;
             }
         TU_ARMA(Module, e) {
-            ASSERT_BUG(span, e.module_ || e.hir, "nullptr module pointer in node " << i << " of " << path);
+            ASSERT_BUG(span, e.module_ || e.hir.mod, "nullptr module pointer in node " << i << " of " << path);
             if( !e.module_ )
             {
-                assert(e.hir);
+                assert(e.hir.crate);
+                assert(e.hir.mod);
                 // TODO: Mangle the original path (or return a new path somehow)
-                return Resolve_Use_GetBinding__ext(span, crate, path,  *e.hir, i+1);
+                return Resolve_Use_GetBinding__ext(span, crate, *e.hir.crate, *e.hir.mod, path, i+1);
             }
             mod = e.module_;
             }

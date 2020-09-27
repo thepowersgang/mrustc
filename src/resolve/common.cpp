@@ -49,6 +49,10 @@ namespace {
             TU_ARMA(Relative, e) {
                 DEBUG("Relative " << path);
                 ASSERT_BUG(sp, !e.nodes.empty(), "");
+                if(e.nodes.size() == 1 && ignore_last )
+                {
+                    return ResolveModuleRef(&this->get_mod_by_true_path(base_nodes, base_nodes.size()));
+                }
                 const auto& name = e.nodes.front().name();
                 // Look up in stack of anon modules
                 size_t i = 0;
@@ -221,7 +225,11 @@ namespace {
                             found = true;
                             }
                         TU_ARMA(Crate, e) {
-                            TODO(sp, "Crate");
+                            if(out_path)
+                            {
+                                *out_path = AST::Path(e.name, {});
+                            }
+                            return ResolveModuleRef(&crate.m_extern_crates.at(e.name).m_hir->m_root_module);
                             }
                         }
                         if(found) {
@@ -365,9 +373,52 @@ namespace {
                         {
                             // TODO:
                             // - Push module to a stack
-                            // - Outer recurse
-                            // NOTE: Should update `out_path`
-                            TODO(sp, "Look through use statements - " << e.path);
+
+                            const auto& item_name = e.path.nodes().back().name();
+                            auto tgt_mod = this->get_module(mod.path(), e.path, true, out_path);
+                            
+                            TU_MATCH_HDRA( (tgt_mod), {)
+                            TU_ARMA(Ast, mod_ptr) {
+                                return this->get_source_module_for_name(*mod_ptr, item_name, ns, out_path);
+                                }
+                            TU_ARMA(Hir, mod_ptr) {
+                                // If `get_module` provided a HIR module, then this is right?
+                                // - What if it's an alias? (not critical)
+                                switch(ns)
+                                {
+                                case ResolveNamespace::Namespace: {
+                                    auto it = mod_ptr->m_mod_items.find(item_name);
+                                    if( it != mod_ptr->m_mod_items.end() ) {
+                                        if(it->second->ent.is_Import()) {
+                                            TODO(sp, "Resolve use of an import (mod)");
+                                        }
+                                        return tgt_mod;
+                                    }
+                                    } break;
+                                case ResolveNamespace::Value: {
+                                    auto it = mod_ptr->m_value_items.find(item_name);
+                                    if( it != mod_ptr->m_value_items.end() ) {
+                                        if(it->second->ent.is_Import()) {
+                                            TODO(sp, "Resolve use of an import (value)");
+                                        }
+                                        return tgt_mod;
+                                    }
+                                    } break;
+                                case ResolveNamespace::Macro: {
+                                    auto it = mod_ptr->m_macro_items.find(item_name);
+                                    if( it != mod_ptr->m_macro_items.end() ) {
+                                        if(it->second->ent.is_Import()) {
+                                            TODO(sp, "Resolve use of an import (macro)");
+                                        }
+                                        return tgt_mod;
+                                    }
+                                    } break;
+                                }
+                                }
+                            TU_ARMA(None, _e) {
+                                BUG(sp, "Unable to find " << e.path << " (starting from " << mod.path() << ")");
+                                }
+                            }
                         }
                     }
                 }

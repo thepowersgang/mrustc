@@ -541,6 +541,7 @@ public:
     ::std::unordered_map< RcString, IndexEnt >    m_namespace_items;
     ::std::unordered_map< RcString, IndexEnt >    m_type_items;
     ::std::unordered_map< RcString, IndexEnt >    m_value_items;
+    ::std::unordered_map< RcString, IndexEnt >    m_macro_items;
 
     // List of macros imported from other modules (via #[macro_use], includes proc macros)
     // - First value is an absolute path to the macro (including crate name)

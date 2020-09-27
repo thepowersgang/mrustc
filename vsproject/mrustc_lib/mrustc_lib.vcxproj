@@ -289,6 +289,7 @@
     <ClInclude Include="..\..\src\common.hpp" />
     <ClInclude Include="..\..\src\coretypes.hpp" />
     <ClInclude Include="..\..\src\expand\cfg.hpp" />
+    <ClInclude Include="..\..\src\expand\common.hpp" />
     <ClInclude Include="..\..\src\hir\crate_ptr.hpp" />
     <ClInclude Include="..\..\src\hir\expr.hpp" />
     <ClInclude Include="..\..\src\hir\expr_ptr.hpp" />

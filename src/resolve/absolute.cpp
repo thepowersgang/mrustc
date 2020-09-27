@@ -914,7 +914,7 @@ namespace {
                 BUG(sp, "HIR Import item pointed to an import");
                 ),
             (Module,
-                pb.type = ::AST::PathBinding_Type::make_Module({nullptr, &e});
+                pb.type = ::AST::PathBinding_Type::make_Module({nullptr, {&ext_crate, &e}});
                 ),
             (Trait,
                 pb.type = ::AST::PathBinding_Type::make_Trait({nullptr, &e});
@@ -957,7 +957,7 @@ namespace {
             switch(mode)
             {
             case Context::LookupMode::Namespace:
-                path.m_bindings.type = ::AST::PathBinding_Type::make_Module({nullptr, &crate.m_hir->m_root_module});
+                path.m_bindings.type = ::AST::PathBinding_Type::make_Module({nullptr, {&crate, &crate.m_hir->m_root_module}});
                 return ;
             default:
                 TODO(sp, "Looking up a non-namespace, but pointed to crate root");
@@ -1097,7 +1097,7 @@ namespace {
                         path.m_bindings.type = ::AST::PathBinding_Type::make_Trait({nullptr, &e});
                         ),
                     (Module,
-                        path.m_bindings.type = ::AST::PathBinding_Type::make_Module({nullptr, &e});
+                        path.m_bindings.type = ::AST::PathBinding_Type::make_Module({nullptr, {&crate, &e}});
                         ),
                     (ExternType,
                         path.m_bindings.type = ::AST::PathBinding_Type::make_TypeAlias({nullptr/*, &e*/});
@@ -1453,8 +1453,8 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
                     bool found = false;
                     const auto& name = e.nodes[1].name();
                     if( !pe.module_ ) {
-                        assert( pe.hir );
-                        const auto& mod = *pe.hir;
+                        assert( pe.hir.mod );
+                        const auto& mod = *pe.hir.mod;
 
                         switch( e.nodes.size() == 2 ? mode : Context::LookupMode::Namespace )
                         {

@@ -644,6 +644,9 @@
     <ClInclude Include="..\..\src\resolve\common.hpp">
       <Filter>Header Files\resolve</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\src\expand\common.hpp">
+      <Filter>Header Files\expand</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="../packages.config" />

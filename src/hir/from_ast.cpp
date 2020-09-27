@@ -1663,7 +1663,9 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
             }
         }
     }
+    // Ignore macros (exported macros are in the root, and handled differently)
 
+    // Imports
     Span    mod_span;
     for( const auto& ie : ast_mod.m_namespace_items )
     {
@@ -1702,97 +1704,16 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
         }
     }
 
-    for( const auto& ie : ast_mod.m_macro_imports )
+    for( const auto& ie : ast_mod.m_macro_items )
     {
-        //const auto& sp = mod_span;
-        if( ie.is_pub )
+        const auto& sp = mod_span;
+        if( ie.second.is_import )
         {
-            // This needs to be the canonical path, not just an equivalent path (no imports)
-            HIR::SimplePath p;
-            struct H {
-                static void from_hir(HIR::SimplePath& p, const Span& sp, const HIR::Module* mod_p, const std::vector<RcString>& inpath, size_t start_i)
-                {
-                    for(size_t i = start_i; i < inpath.size() - 1; i ++)
-                    {
-                        const auto& mod_i = mod_p->m_mod_items.at(inpath[i])->ent;
-                        TU_MATCH_HDRA( (mod_i), {)
-                        default:
-                            BUG(sp, "");
-                        TU_ARMA(Import, imp) {
-                            mod_p = &g_crate_ptr->get_mod_by_path(Span(), imp.path);
-                            p = imp.path;
-                            }
-                        TU_ARMA(Module, m) {
-                            mod_p = &m;
-                            p.m_components.push_back( inpath[i] );
-                            }
-                        }
-                    }
+            auto hir_path = LowerHIR_SimplePath( sp, ie.second.path );
 
-                    const auto& mod_i = mod_p->m_macro_items.at(inpath.back())->ent;
-                    TU_MATCH_HDRA( (mod_i), {)
-                    default:
-                        p.m_components.push_back( inpath.back() );
-                        return;
-                    TU_ARMA(Import, imp) {
-                        p = imp.path;
-                        }
-                    }
-                }
-                static void from_ast(HIR::SimplePath& p, const Span& sp, const AST::Module* mod_p, const std::vector<RcString>& inpath, size_t start_i)
-                {
-                    for(size_t i = start_i; i < inpath.size() - 1; i ++)
-                    {
-                        bool found = false;
-                        for(const auto& item : mod_p->m_items)
-                        {
-                            if( item->name == inpath[i] )
-                            {
-                                TU_MATCH_HDRA( (item->data), {)
-                                default:
-                                    break;
-                                TU_ARMA(Module, m) {
-                                    mod_p = &m;
-                                    found = true;
-                                    p.m_components.push_back( inpath[i] );
-                                    }
-                                TU_ARMA(Crate, c) {
-                                    p.m_crate_name = c.name;
-                                    p.m_components.clear();
-                                    H::from_hir(p, sp, &g_crate_ptr->m_ext_crates.at(c.name).m_data->m_root_module, inpath, i+1);
-                                    return ;
-                                    }
-                                }
-                            }
-                        }
-                        if(!found)
-                            BUG(sp, "");
-                    }
-
-                    // TODO: what if it's an import?
-                    p.m_components.push_back( inpath.back() );
-                }
-            };
-
-            if( ie.path.front() == "" )
-            {
-                H::from_ast(p, Span(), &g_ast_crate_ptr->m_root_module, ie.path, 1);
-            }
-            else if( ie.path.front() == CRATE_BUILTINS )
-            {
-                assert(ie.path.size() == 2);
-                //TODO(Span(), "Handle " << CRATE_BUILTINS);
-                p.m_crate_name = ie.path.front();
-                p.m_components.push_back(ie.path.back());
-            }
-            else
-            {
-                auto crate_it = g_crate_ptr->m_ext_crates.find(ie.path.front());
-                ASSERT_BUG(Span(), crate_it != g_crate_ptr->m_ext_crates.end(), "Unable to find crate '" << ie.path.front() << "'");
-                H::from_hir(p, Span(), &crate_it->second.m_data->m_root_module, ie.path, 1);
-            }
-            auto mi = ::HIR::MacroItem::make_Import({ mv$(p) });
-            _add_mod_mac_item( mod, ie.name, get_pub(true), mv$(mi) );
+            DEBUG("Import MACRO " << ie.first << " = " << hir_path);
+            auto mi = ::HIR::MacroItem::make_Import({ mv$(hir_path) });
+            _add_mod_mac_item( mod, ie.first, get_pub(ie.second.is_pub), mv$(mi) );
         }
     }
 
@@ -2122,6 +2043,14 @@ public:
                 macros.insert( std::make_pair(mac.name, HIR::MacroItem::make_Import({path})) );
             }
         }
+
+        for(const auto& i : crate.m_root_module.m_macro_items)
+        {
+            if(i.second.is_pub)
+            {
+                rv.m_exported_macro_names.push_back(i.first);
+            }
+        }
     }
     // - Proc Macros
     if( crate.m_crate_type == ::AST::Crate::Type::ProcMacro )
@@ -2130,6 +2059,8 @@ public:
         {
             // Register under an invalid simplepath
             macros.insert( std::make_pair(ent.name, ::HIR::ProcMacro { ent.name, ::HIR::SimplePath(RcString(""), { ent.name }), ent.attributes }) );
+            rv.m_exported_macro_names.push_back(ent.name);
+            DEBUG("Export proc_macro " << ent.name);
         }
     }
     else
