@@ -68,5 +68,8 @@
     <ClCompile Include="..\..\src\rc_string.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\tools\standalone_miri\miri_extern.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

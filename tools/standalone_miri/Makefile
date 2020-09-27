@@ -11,7 +11,8 @@ V ?= @
 OBJDIR := .obj/
 
 BIN := ../../bin/standalone_miri$(EXESUF)
-OBJS := main.o debug.o mir.o lex.o value.o module_tree.o hir_sim.o miri.o rc_string.o
+OBJS := main.o debug.o mir.o lex.o value.o module_tree.o hir_sim.o rc_string.o
+OBJS += miri.o miri_extern.o
 
 LINKFLAGS := -g -lpthread
 CXXFLAGS := -Wall -std=c++14 -g -O2
