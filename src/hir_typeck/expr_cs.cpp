@@ -7287,9 +7287,13 @@ namespace {
     }
 
     enum class IvarPossFallbackType {
-        None,   // No fallback, only make safe decisions
-        Assume, // Picks an option, even if there's non source/destination types
-        IgnoreWeakDisable,  // Ignores the weaker disable flags
+        // No fallback, only make safe/definitive decisions
+        None,
+        // Picks an option, even if there's ivars present?
+        Assume,
+        // Ignores the weaker disable flags (`force_no_to` and `force_no_from`)
+        IgnoreWeakDisable,
+        // Just picks an option (even if it might be wrong)
         FinalOption,
     };
     ::std::ostream& operator<<(::std::ostream& os, IvarPossFallbackType t) {
@@ -8474,12 +8478,29 @@ namespace {
             }
 
             // If there's only one option (or one real option w/ ivars, if in fallback mode) - equate it
-            if( possible_tys.size() == 1 && (n_ivars == 0 || !honour_disable) )
+            if( possible_tys.size() == 1 )
             {
-                const auto& new_ty = *possible_tys[0].ty;
-                DEBUG("Only " << new_ty << " is an option");
-                context.equate_types(sp, ty_l, new_ty);
-                return true;
+                bool active = false;
+                switch(fallback_ty)
+                {
+                case IvarPossFallbackType::None:
+                    active = (n_ivars == 0 && ivar_ent.bounded.size() == 0);
+                    break;
+                case IvarPossFallbackType::Assume:
+                case IvarPossFallbackType::IgnoreWeakDisable:
+                    active = (ivar_ent.bounded.size() == 0);
+                    break;
+                case IvarPossFallbackType::FinalOption:
+                    active = true;
+                    break;
+                }
+                if(active)
+                {
+                    const auto& new_ty = *possible_tys[0].ty;
+                    DEBUG("Only " << new_ty << " is an option");
+                    context.equate_types(sp, ty_l, new_ty);
+                    return true;
+                }
             }
             // If there's only one non-deref in the list OR there's only one deref in the list
             if( !honour_disable && n_src_ivars == 0 && ::std::count_if(possible_tys.begin(), possible_tys.end(), PossibleType::is_source_s) == 1 )

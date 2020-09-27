@@ -106,3 +106,34 @@ Typecheck Expressions-       HMTypeInferrence::set_ivar_to: Set IVar 66 = ::"git
 Solution:
 - Treat a `+` bound as increasing `n_ivars`
 - Gate the `Only <Foo> is an option` to `n_ivars == 0 || fallback`
+
+
+# `::"cargo-0_30_0"::ops::fix::rustfix_crate`
+`:0: error:0:Failed to find an impl of ::"core"::str::FromStr for ::"std"::net::addr::SocketAddr with Err = ::"failure-0_1_2"::error::Error`
+
+```
+Typecheck Expressions-                Context::equate_types_coerce: ++ R26 _/*36*/ := 000001BE2865AFD0 000001BE5E44DC20 (_/*37*/)
+Typecheck Expressions-        Context::equate_types_assoc: ++ R138 _/*37*/ = < `_/*272*/` as `::"core"::str::FromStr` >::Err
+Typecheck Expressions-        HMTypeInferrence::ivar_unify: IVar 272 = @286
+Typecheck Expressions-        HMTypeInferrence::ivar_unify: IVar 286 = @33
+Typecheck Expressions-      check_ivar_poss: >> (36 unblock)
+Typecheck Expressions-       `anonymous-namespace'::check_ivar_poss: 36: possible_tys = CD _/*37*/
+Typecheck Expressions-       `anonymous-namespace'::check_ivar_poss: 36: bounds = +, ::"failure-0_1_2"::error::Error/*S*/
+Typecheck Expressions-       `anonymous-namespace'::check_ivar_poss: Only ::"failure-0_1_2"::error::Error/*S*/ is an option
+Typecheck Expressions-        HMTypeInferrence::set_ivar_to: Set IVar 36 = ::"failure-0_1_2"::error::Error/*S*/
+Typecheck Expressions-        HMTypeInferrence::set_ivar_to: Set IVar 37 = ::"failure-0_1_2"::error::Error/*S*/
+Typecheck Expressions-      Typecheck_Code_CS: - Consumed coercion R26 ::"failure-0_1_2"::error::Error/*S*/ := _/*37*/
+Typecheck Expressions-        HMTypeInferrence::set_ivar_to: Set IVar 33 = ::"std"::net::addr::SocketAddr/*E*/
+Typecheck Expressions-      Typecheck_Code_CS: - R138 ::"failure-0_1_2"::error::Error/*S*/ = < `_/*33*/` as `::"core"::str::FromStr` >::Err
+Typecheck Expressions-       `anonymous-namespace'::check_associated: No impl of ::"core"::str::FromStr for ::"std"::net::addr::SocketAddr with Err = ::"failure-0_1_2"::error::Error
+```
+Problem: Picked `_36` too early.
+
+Solution?: Remove the bounds from the possible type list?
+- That causes other issues
+Solution?: Gate the "Only foo is an option" check on that option not being from the bounds list?
+- Basic gating doesn't work (same reason as the above)
+- Could defer the rule?
+Soltution?: Fine-grained gate (only allow fully when in later fallback modes)
+- Still fails with a basic version
+- Works if deferred until `::Final`
