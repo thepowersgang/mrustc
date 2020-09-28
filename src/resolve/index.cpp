@@ -188,7 +188,8 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
     {
         ::AST::Path p = mod.path() + item.name;
         p.m_bindings.macro = ::AST::PathBinding_Macro::make_MacroRules({nullptr, &*item.data});
-        _add_item(item.span, mod, IndexName::Macro, item.name, item.is_pub, mv$(p));
+        // NOTE: Macros can be freely duplicated, BUT the last entry takes precedence (TODO)
+        _add_item(item.span, mod, IndexName::Macro, item.name, item.is_pub, mv$(p), /*error_on_collision=*/false);
     }
 
     bool has_pub_wildcard = false;
@@ -736,7 +737,8 @@ bool Resolve_Index_Module_Normalise_Path(const ::AST::Crate& crate, const Span& 
     {
         if( info.crate == CRATE_BUILTINS )
         {
-            TODO(sp, "");
+            //TODO(sp, "Normalise builtin paths");
+            return false;
         }
         Resolve_Index_Module_Normalise_Path_ext(crate, sp, path, loc,  crate.m_extern_crates.at(info.crate), 0);
         return false;

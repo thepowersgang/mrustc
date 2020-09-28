@@ -299,6 +299,26 @@
             return ::HIR::MarkerImpl { mv$(generics), mv$(params), is_neg, mv$(ty) };
         }
 
+        Ident::Hygiene deserialise_hygine()
+        {
+            Ident::Hygiene  rv;
+            bool has_mod_path = m_in.read_bool();
+            if(has_mod_path)
+            {
+                Ident::ModPath  mp;
+                mp.crate = m_in.read_istring();
+                mp.ents = deserialise_vec<RcString>();
+
+                if(mp.crate == "")
+                {
+                    assert(m_crate_name != "");
+                    mp.crate = m_crate_name;
+                }
+                rv.set_mod_path(mv$(mp));
+            }
+            return rv;
+        }
+
         ::MacroRulesPtr deserialise_macrorulesptr()
         {
             return ::MacroRulesPtr( new MacroRules(deserialise_macrorules()) );
@@ -310,6 +330,7 @@
             //rv.m_exported = true;
             rv.m_rules = deserialise_vec_c< ::MacroRulesArm>( [&](){ return deserialise_macrorulesarm(); });
             rv.m_source_crate = m_in.read_istring();
+            rv.m_hygiene = deserialise_hygine();
             if(rv.m_source_crate == "")
             {
                 assert(m_crate_name != "");

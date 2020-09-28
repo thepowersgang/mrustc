@@ -2014,6 +2014,7 @@ namespace {
                 mr->m_hygiene = lex.getHygiene();
                 {
                     Ident::ModPath  mp;
+                    mp.crate = "";
                     for(const auto& node : mod_path.nodes())
                     {
                         mp.ents.push_back(node.name());

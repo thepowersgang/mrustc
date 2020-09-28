@@ -491,6 +491,16 @@
         void serialise(const RcString& v) {
             m_out.write_string(v);
         }
+        
+        void serialise(const Ident::Hygiene& h)
+        {
+            m_out.write_bool(h.has_mod_path());
+            if(h.has_mod_path())
+            {
+                m_out.write_string(h.mod_path().crate);
+                serialise_vec(h.mod_path().ents);
+            }
+        }
 
         void serialise(const ::MacroRulesPtr& mac)
         {
@@ -502,6 +512,7 @@
             assert(mac.m_rules.size() > 0);
             serialise_vec(mac.m_rules);
             m_out.write_string(mac.m_source_crate);
+            serialise(mac.m_hygiene);
         }
         void serialise(const ::MacroPatEnt& pe) {
             m_out.write_string(pe.name);

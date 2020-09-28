@@ -98,6 +98,11 @@ class CMacroUseHandler:
 
                 if( const auto* imp = e->ent.opt_Import() )
                 {
+                    if( imp->path.m_crate_name == CRATE_BUILTINS ) {
+                        DEBUG("Importing builtin (skip): " << name);
+                        continue ;
+                    }
+                    ASSERT_BUG(sp, crate.m_extern_crates.count(imp->path.m_crate_name), "Crate `" << imp->path.m_crate_name << "` not loaded");
                     const ::HIR::Module* mod = &crate.m_extern_crates.at(imp->path.m_crate_name).m_hir->m_root_module;
                     assert(imp->path.m_components.size() > 0);
                     for(size_t i = 0; i < imp->path.m_components.size() - 1; i ++)
@@ -175,6 +180,22 @@ class CMacroExportHandler:
 
     void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
+        // TODO: Flags on the attribute
+        // - `local_inner_macros`: Forces macro lookups within the expansion to search within the source crate
+        //   > Strictly speaking, not the same as `macro`-style macros?
+        bool local_inner_macros = false;
+        if(mi.has_sub_items())
+        {
+            for(const auto& a : mi.items())
+            {
+                if( a.name() == "local_inner_macros" ) {
+                    local_inner_macros = true;
+                }
+                else {
+                    ERROR(sp, E0000, "Unknown option for #[macro_export] - " << a.name());
+                }
+            }
+        }
         if( i.is_None() ) {
         }
         // If on a `use` it's for a #[rustc_builtin_macro]
@@ -208,14 +229,23 @@ class CMacroExportHandler:
             const auto& name = mac.input_ident();
 
             // Tag the macro in the module for crate export
+            // AND move it to the root module
             auto it = ::std::find_if( mod.macros().begin(), mod.macros().end(), [&](const auto& x){ return x.name == name; } );
             ASSERT_BUG(sp, it != mod.macros().end(), "Macro '" << name << "' not defined in this module");
             auto e = mv$(*it);
             mod.macros().erase(it);
+
+            if( local_inner_macros ) {
+                Ident::ModPath  mp;
+                mp.crate = "";
+                // Empty node list, will search the crate root
+                // TODO: Strictly speaking, this shouldn't apply to non-macro paths
+                DEBUG("#[macro_export(local_inner_macros)] mp=" << mp);
+                e.data->m_hygiene.set_mod_path(mv$(mp));
+            }
+
             e.data->m_exported = true;
             DEBUG("- Export macro " << name << "!");
-
-            // TODO: Move the macro to the root?
             crate.m_root_module.macros().push_back( mv$(e) );
         }
         else {

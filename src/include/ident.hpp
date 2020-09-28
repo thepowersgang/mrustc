@@ -15,7 +15,9 @@ struct Ident
 {
     struct ModPath
     {
+        RcString    crate;
         ::std::vector<RcString> ents;
+        friend std::ostream& operator<<(std::ostream& os, const ModPath& x);
     };
     class Hygiene
     {
@@ -57,6 +59,7 @@ struct Ident
             return this->search_module != 0;
         }
         const ModPath& mod_path() const {
+            assert(this->search_module);
             return *this->search_module;
         }
         void set_mod_path(ModPath p) {

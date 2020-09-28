@@ -437,26 +437,65 @@ namespace
         AST::Path lookup_opt(const RcString& name, const Ident::Hygiene& src_context, LookupMode mode) const {
             DEBUG("name=" << name <<", src_context=" << src_context);
             // NOTE: src_context may provide a module to search
+            // TODO: This should be checked AFTER locals
             if( src_context.has_mod_path() )
             {
-                DEBUG(src_context.mod_path().ents);
-                const AST::Module*  mod = &m_crate.root_module();
-                for(const auto& node : src_context.mod_path().ents)
+                const auto& mp = src_context.mod_path();
+                DEBUG(mp);
+                if(mp.crate != "")
                 {
-                    const AST::Module* next = nullptr;
-                    for(const auto& i : mod->m_items)
+                    static Span sp;
+                    // External crate path
+                    ASSERT_BUG(sp, m_crate.m_extern_crates.count(mp.crate), "Crate not loaded for " << mp);
+                    const auto& crate = m_crate.m_extern_crates.at(mp.crate);
+                    const HIR::Module*  mod = &crate.m_hir->m_root_module;
+                    for(const auto& n : mp.ents)
                     {
-                        if( i->name == node ) {
-                            next = &i->data.as_Module();
-                            break;
-                        }
+                        ASSERT_BUG(sp, mod->m_mod_items.count(n), "Node `" << n << "` missing in path " << mp);
+                        const auto& i = *mod->m_mod_items.at(n);
+                        ASSERT_BUG(sp, i.ent.is_Module(), "Node `" << n << "` not a module in path " << mp);
+                        mod = &i.ent.as_Module();
                     }
-                    assert(next);
-                    mod = next;
+                    switch(mode)
+                    {
+                    case LookupMode::Constant:
+                    case LookupMode::PatternValue:
+                    case LookupMode::Variable: {
+                        auto it = mod->m_value_items.find(name);
+                        if(it != mod->m_value_items.end()) {
+                            TODO(sp, "");
+                        }
+                        } break;
+                    case LookupMode::Namespace:
+                    case LookupMode::Type: {
+                        auto it = mod->m_mod_items.find(name);
+                        if(it != mod->m_mod_items.end()) {
+                            TODO(sp, "");
+                        }
+                        } break;
+                    }
+                    // Fall through
                 }
-                ::AST::Path rv;
-                if( this->lookup_in_mod(*mod, name, mode, rv) ) {
-                    return rv;
+                else
+                {
+                    const AST::Module*  mod = &m_crate.root_module();
+                    for(const auto& node : mp.ents)
+                    {
+                        const AST::Module* next = nullptr;
+                        for(const auto& i : mod->m_items)
+                        {
+                            if( i->name == node ) {
+                                next = &i->data.as_Module();
+                                break;
+                            }
+                        }
+                        assert(next);
+                        mod = next;
+                    }
+                    ::AST::Path rv;
+                    if( this->lookup_in_mod(*mod, name, mode, rv) ) {
+                        return rv;
+                    }
                 }
             }
             for(auto it = m_name_context.rbegin(); it != m_name_context.rend(); ++ it)

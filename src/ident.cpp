@@ -36,8 +36,18 @@ bool Ident::Hygiene::is_visible(const Hygiene& src) const
 ::std::ostream& operator<<(::std::ostream& os, const Ident::Hygiene& x) {
     os << "{" << x.contexts;
     if( x.search_module )
-        os << " " << x.search_module->ents;
+        os << " " << *x.search_module;
     os << "}";
     return os;
 }
+
+std::ostream& operator<<(std::ostream& os, const Ident::ModPath& x) {
+    os << "::\"" << x.crate << "\"";
+    for(const auto& e : x.ents)
+    {
+        os << "::" << e;
+    }
+    return os;
+}
+
 

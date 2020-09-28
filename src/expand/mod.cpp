@@ -167,7 +167,7 @@ MacroRef Expand_LookupMacro(const Span& mi_span, const ::AST::Crate& crate, LLis
     }
 
     // HACK: If the crate name is empty, look up builtins
-    if( path.is_absolute() && path.nodes().size() == 1 && path.m_class.as_Absolute().crate == "" )
+    if( path.is_absolute() && path.m_class.as_Absolute().crate == "" && path.nodes().size() == 1 )
     {
         const auto& name = path.nodes()[0].name();
         for( const auto& m : g_macros )
@@ -193,6 +193,12 @@ MacroRef Expand_LookupMacro(const Span& mi_span, const ::AST::Crate& crate, LLis
         {
             if(mac.name == final_name) {
                 return MacroRef(mac.data);
+            }
+        }
+        for(const auto& mac : mod_ptr->macros())
+        {
+            if(mac.name == final_name) {
+                return MacroRef(&*mac.data);
             }
         }
         }

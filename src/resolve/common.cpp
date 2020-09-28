@@ -27,7 +27,7 @@ namespace {
         {
         }
 
-        ResolveModuleRef get_module(const ::AST::Path& base_path, const AST::Path& path, bool ignore_last, ::AST::Path* out_path)
+        ResolveModuleRef get_module(const ::AST::Path& base_path, const AST::Path& path, bool ignore_last, ::AST::Path* out_path, bool ignore_hygiene=false)
         {
             const auto& base_nodes = base_path.nodes();
             int node_offset = 0;
@@ -49,6 +49,31 @@ namespace {
             TU_ARMA(Relative, e) {
                 DEBUG("Relative " << path);
                 ASSERT_BUG(sp, !e.nodes.empty(), "");
+                if(!ignore_hygiene && e.hygiene.has_mod_path())
+                {
+                    const auto& mp = e.hygiene.mod_path();
+                    if(mp.crate != "")
+                    {
+                        ASSERT_BUG(sp, this->crate.m_extern_crates.count(mp.crate), "Crate not loaded for " << mp);
+                        const auto& crate = this->crate.m_extern_crates.at(mp.crate);
+                        const HIR::Module*  mod = &crate.m_hir->m_root_module;
+                        for(const auto& n : mp.ents)
+                        {
+                            ASSERT_BUG(sp, mod->m_mod_items.count(n), "Node `" << n << "` missing in path " << mp);
+                            const auto& i = *mod->m_mod_items.at(n);
+                            ASSERT_BUG(sp, i.ent.is_Module(), "Node `" << n << "` not a module in path " << mp);
+                            mod = &i.ent.as_Module();
+                        }
+                        return get_module_hir(*mod, path, 1, ignore_last, out_path);
+                    }
+                    else
+                    {
+                        AST::Path   p("", {});
+                        for(const auto& n : mp.ents)
+                            p.nodes().push_back(n);
+                        return get_module(p, path, ignore_last, out_path, /*ignore_hygiene=*/true);
+                    }
+                }
                 if(e.nodes.size() == 1 && ignore_last )
                 {
                     return ResolveModuleRef(&this->get_mod_by_true_path(base_nodes, base_nodes.size()));
@@ -353,9 +378,15 @@ namespace {
                         return ResolveModuleRef(&mod);
                     }
                 }
+                for(const auto& i : mod.macros())
+                {
+                    if(i.name == name)
+                    {
+                        return ResolveModuleRef(&mod);
+                    }
+                }
             }
 
-            bool pushed = false;
             for(const auto& i : mod.m_items)
             {
                 //DEBUG(i.name << " " << i.data.tag_str());
