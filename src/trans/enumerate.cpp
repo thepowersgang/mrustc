@@ -716,10 +716,9 @@ namespace
                         visit_type(sty, mode);
                     }
                 TU_ARMA(Function, te) {
-                    // TODO: Should shallow=true for these too?
-                    visit_type(te.m_rettype, mode);
+                    visit_type(te.m_rettype, mode != Mode::Deep ? Mode::Shallow : Mode::Deep);
                     for(const auto& sty : te.m_arg_types)
-                        visit_type(sty, mode);
+                        visit_type(sty, mode != Mode::Deep ? Mode::Shallow : Mode::Deep);
                     }
                 }
                 active_set.erase( active_set.find(&ty) );
@@ -946,9 +945,26 @@ void Trans_Enumerate_Types(EnumState& state)
                 vtable_params.m_types[idx] = ::HIR::TypeRef::new_path( mv$(p), {} );
                 tv.m_resolve.expand_associated_types( sp, vtable_params.m_types[idx] );
             }
+            DEBUG("VTable: " << vtable_ty_spath << vtable_params);
 
-            tv.visit_type( ent.first.m_data.as_UfcsKnown().type );
+            const auto& ty = ent.first.m_data.as_UfcsKnown().type;
+            tv.visit_type( ty );
             tv.visit_type( ::HIR::TypeRef::new_path( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref ) );
+
+            // If this is for a function pointer, visit all arguments
+            // - `auto_impls.cpp` will generate a vtable shim for it (which requires argument types to be fully known)
+            // NOTE: Assumes that the trait is one of the Fn* traits (doesn't matter if it isn't here)
+            if(const auto* te = ty.data().opt_Function())
+            {
+                for(const auto& t : te->m_arg_types)
+                    tv.visit_type(t);
+                tv.visit_type(te->m_rettype);
+
+                if( gpath.m_params.m_types.size() >= 1 )
+                {
+                    tv.visit_type(gpath.m_params.m_types[0]);
+                }
+            }
         }
 
         constructors_added = false;
@@ -1306,6 +1322,10 @@ void Trans_Enumerate_FillFrom_PathMono(EnumState& state, ::HIR::Path path_mono)
             ) )
         {
             // Must have been a dynamic dispatch request, just leave as-is
+            // - However, ensure that all arguments are visited?
+            //const auto& fcn_ty = path_mono.m_data.as_UfcsKnown().type.data().as_Function();
+            //for(const auto& ty : fcn_ty.m_arg_types)
+            //    state.rv.vi
         }
         // <* as Clone>::clone
         else if( TARGETVER_LEAST_1_29 && path_mono.m_data.is_UfcsKnown() && path_mono.m_data.as_UfcsKnown().trait == state.crate.get_lang_item_path_opt("clone") )
