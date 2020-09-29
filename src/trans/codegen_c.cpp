@@ -6268,8 +6268,7 @@ namespace {
                     m_of << "struct e_" << Trans_Mangle(te.path);
                     }
                 TU_ARMA(ExternType, tpb) {
-                    //m_of << "struct x_" << Trans_Mangle(te.path);
-                    return ;
+                    m_of << "struct x_" << Trans_Mangle(te.path);
                     }
                 TU_ARMA(Unbound, tpb) {
                     MIR_BUG(*m_mir_res, "Unbound type path in trans - " << ty);
