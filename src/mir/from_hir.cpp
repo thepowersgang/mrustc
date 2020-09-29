@@ -2064,7 +2064,10 @@ namespace {
             // _CallValue is ONLY valid on function pointers (all others must be desugared)
             ASSERT_BUG(node.span(), node.m_value->m_res_type.data().is_Function(), "Leftover _CallValue on a non-fn()");
             this->visit_node_ptr(node.m_value);
-            auto fcn_val = m_builder.get_result_in_lvalue( node.m_value->span(), node.m_value->m_res_type );
+
+            // Get the function pointer in a temporary BEFORE getting arguments
+            auto fcn_val = m_builder.new_temporary(node.m_value->m_res_type);
+            m_builder.push_stmt_assign( node.m_value->span(), fcn_val.clone(), m_builder.get_result(node.m_value->span()) );
 
             auto values = get_args(node.m_args);
 
