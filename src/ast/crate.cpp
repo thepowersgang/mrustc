@@ -114,7 +114,9 @@ void Crate::load_externs()
     }
     else {
         auto n = this->load_extern_crate(Span(), "std");
-        ASSERT_BUG(Span(), n == "std", "libstd wasn't loaded as `std`, instead `" << n << "`");
+        if( n != "std" ) {
+            WARNING(Span(), W0000, "libstd wasn't loaded as `std`, instead `" << n << "`");
+        }
     }
 
     // Ensure that all crates passed on the command line are loaded
