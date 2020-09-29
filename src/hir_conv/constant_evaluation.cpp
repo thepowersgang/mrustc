@@ -521,12 +521,22 @@ namespace HIR {
                         case ::HIR::CoreType::Isize:
                             mask = 0xFFFFFFFFFFFFFFFF;
 
-                            TU_IFLET( ::HIR::Literal, inval, Integer, i,
-                                val = ::HIR::Literal(i & mask);
-                            )
-                            else TU_IFLET( ::HIR::Literal, inval, Float, i,
-                                val = ::HIR::Literal( static_cast<uint64_t>(i) & mask);
-                            )
+                            if(const auto* ve = inval.opt_Integer()) {
+                                val = ::HIR::Literal(*ve & mask);
+                            }
+                            else if(const auto* ve = inval.opt_Float()){
+                                val = ::HIR::Literal( static_cast<uint64_t>(*ve) & mask);
+                            }
+                            else if( const auto* ve = inval.opt_Variant() ) {
+                                HIR::TypeRef    tmp;
+                                const auto& src_ty = state.get_lvalue_type(tmp, e.val);
+                                MIR_ASSERT(state, TU_TEST1(src_ty.data(), Path, .binding.is_Enum()), "Constant cast Variant to integer with invalid type - " << src_ty);
+                                MIR_ASSERT(state, src_ty.data().as_Path().binding.as_Enum(), "Enum binding pointer not set! - " << src_ty);
+                                const HIR::Enum& enm = *src_ty.data().as_Path().binding.as_Enum();
+                                MIR_ASSERT(state, enm.is_value(), "Constant cast Variant to integer with non-value enum - " << src_ty);
+                                auto enum_value = enm.get_value(ve->idx);
+                                val = ::HIR::Literal( static_cast<uint64_t>(enum_value) & mask );
+                            }
                             else {
                                 MIR_BUG(state, "Invalid cast of " << inval.tag_str() << " to " << e.type);
                             }
