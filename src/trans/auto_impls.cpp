@@ -346,11 +346,21 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
                 new_fcn.m_args.push_back(std::make_pair( HIR::Pattern(), ms.monomorph_type(sp, arg.second) ));
                 state.resolve.expand_associated_types(sp, new_fcn.m_args.back().second);
             }
+            HIR::BorrowType bt;
             if( fcn_def.m_receiver == HIR::Function::Receiver::Value )
             {
-                TODO(sp, "<dyn " << trait_path << ">::" << name << " - By-Value");
+                // By-value trait object dispatch
+                // - Receiver should be a `&move` (BUT, does the caller know this?)
+                // - MIR Cleanup should fix that (after monomoprh)
+                auto& self_ty = new_fcn.m_args.front().second;
+                bt = HIR::BorrowType::Owned;
+                self_ty = ::HIR::TypeRef::new_borrow(bt, mv$(self_ty));
+                DEBUG("<dyn " << trait_path << ">::" << name << " - By-Value");
             }
-            const auto bt = new_fcn.m_args.front().second.data().as_Borrow().type;
+            else
+            {
+                bt = new_fcn.m_args.front().second.data().as_Borrow().type;
+            }
 
             new_fcn.m_code.m_mir = MIR::FunctionPointer(new MIR::Function());
             Builder builder(state, *new_fcn.m_code.m_mir);
