@@ -1043,6 +1043,7 @@ namespace {
                 args.push_back("&");
                 args.push_back("cl.exe");
                 args.push_back("/nologo");
+                args.push_back("/wd4700");  // Ignore C4700 ("uninitialized local variable 'var14' used")
                 args.push_back("/F8388608"); // Set max stack size to 8 MB.
                 args.push_back(m_outfile_path_c.c_str());
                 switch(opt.opt_level)
@@ -3272,8 +3273,23 @@ namespace {
                     m_of << ".PTR";
                     }
                 TU_ARMA(MakeDst, ve) {
-                    emit_lvalue(e.dst);  m_of << ".PTR = ";  emit_param(ve.ptr_val);  m_of << ";\n" << indent;
-                    emit_lvalue(e.dst);  m_of << ".META = "; emit_param(ve.meta_val);
+                    emit_lvalue(e.dst);
+                    m_of << " = ";
+                    auto meta = metadata_type(ty.data().is_Pointer() ? ty.data().as_Pointer().inner : ty.data().as_Borrow().inner);
+                    switch(meta)
+                    {
+                    case MetadataType::Slice:
+                        m_of << "make_sliceptr";
+                        break;
+                    case MetadataType::TraitObject:
+                        m_of << "make_traitobjptr";
+                        break;
+                    case MetadataType::Zero:
+                    case MetadataType::Unknown:
+                    case MetadataType::None:
+                        MIR_BUG(mir_res, "MakeDst on type without metadata");
+                    }
+                    m_of << "("; emit_param(ve.ptr_val); m_of << ", "; emit_param(ve.meta_val); m_of << ")";
                     }
                 TU_ARMA(Tuple, ve) {
                     bool has_emitted = false;
@@ -4669,6 +4685,7 @@ namespace {
             }
             else if( name == "uninit" ) {
                 // Do nothing, leaves the destination undefined
+                // TODO: This makes the C compiler warn
             }
             else if( name == "init" ) {
                 m_of << "memset( &"; emit_lvalue(e.ret_val); m_of << ", 0, sizeof("; emit_ctype(params.m_types.at(0)); m_of << "))";
