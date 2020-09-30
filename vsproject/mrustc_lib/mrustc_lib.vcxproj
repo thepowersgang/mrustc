@@ -162,6 +162,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\..\src\hir_expand\static_borrow_constants.cpp" />
+    <ClCompile Include="..\..\src\hir_typeck\expr_cs__enum.cpp" />
     <ClCompile Include="..\..\src\hir_typeck\monomorph.hpp" />
     <ClCompile Include="..\..\src\mir\borrow_check.cpp" />
     <ClCompile Include="..\..\src\resolve\common.cpp" />
@@ -306,6 +307,7 @@
     <ClInclude Include="..\..\src\hir_conv\main_bindings.hpp" />
     <ClInclude Include="..\..\src\hir_expand\main_bindings.hpp" />
     <ClInclude Include="..\..\src\hir_typeck\common.hpp" />
+    <ClInclude Include="..\..\src\hir_typeck\expr_cs.hpp" />
     <ClInclude Include="..\..\src\hir_typeck\expr_visit.hpp" />
     <ClInclude Include="..\..\src\hir_typeck\helpers.hpp" />
     <ClInclude Include="..\..\src\hir_typeck\impl_ref.hpp" />

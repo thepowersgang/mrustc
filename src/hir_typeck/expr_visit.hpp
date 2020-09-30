@@ -5,6 +5,7 @@
  * hir_typeck/expr_visit.hpp
  * - Helpers for the HIR typecheck expression visiting
  */
+#pragma once
 #include <hir/item_path.hpp>
 
 namespace typeck {

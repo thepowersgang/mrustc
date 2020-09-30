@@ -417,6 +417,9 @@
     <ClCompile Include="..\..\src\resolve\common.cpp">
       <Filter>Source Files\resolve</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\src\hir_typeck\expr_cs__enum.cpp">
+      <Filter>Source Files\hir_typeck</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\src\common.hpp">
@@ -646,6 +649,9 @@
     </ClInclude>
     <ClInclude Include="..\..\src\expand\common.hpp">
       <Filter>Header Files\expand</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\hir_typeck\expr_cs.hpp">
+      <Filter>Header Files\hir_typeck</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
