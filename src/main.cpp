@@ -434,6 +434,11 @@ int main(int argc, char *argv[])
                         panic_runtime_needed = true;
                     }
                 }
+                if( TARGETVER_LEAST_1_39 )
+                {
+                    // 1.39 has the default (system) allocator in liballoc
+                    allocator_crate_loaded = true;
+                }
                 if( !allocator_crate_loaded )
                 {
                     crate.load_extern_crate(Span(), "alloc_system");

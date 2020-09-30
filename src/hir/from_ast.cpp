@@ -1451,9 +1451,8 @@ namespace {
             ERROR(sp, E0000, "#[link_name] requires a string");
         linkage.name = a->string();
     }
-    else if( const auto* a = attrs.get("no_mangle") )
+    else if( attrs.get("no_mangle") || attrs.get("rustc_std_internal_symbol") )
     {
-        (void)a;
         linkage.name = p.get_name();
     }
     else if( const auto* a = attrs.get("lang") )

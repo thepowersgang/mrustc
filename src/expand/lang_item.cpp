@@ -333,9 +333,44 @@ public:
     }
 };
 
+class Decorator_PanicHandler:
+    public ExpandDecorator
+{
+public:
+    AttrStage stage() const override { return AttrStage::Post; }
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    {
+        if(const auto* _e = i.opt_Function())
+        {
+            auto rv = crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-panic_implementation"), ::AST::Path(path) ));
+            if( !rv.second )
+            {
+                const auto& other_path = rv.first->second;
+                ERROR(sp, E0000, "Duplicate definition of #[panic_handler] - " << other_path << " and " << path);
+            }
+        }
+        else {
+            ERROR(sp, E0000, "#[panic_handler] on non-function " << path);
+        }
+    }
+};
+
+class Decorator_RustcStdInternalSymbol:
+    public ExpandDecorator
+{
+public:
+    AttrStage stage() const override { return AttrStage::Post; }
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    {
+        // Attribute that acts as like `#[no_mangle]` `#[linkage="external"]`
+    }
+};
+
 STATIC_DECORATOR("lang", Decorator_LangItem)
 STATIC_DECORATOR("main", Decorator_Main);
 STATIC_DECORATOR("start", Decorator_Start);
 STATIC_DECORATOR("panic_implementation", Decorator_PanicImplementation);
+STATIC_DECORATOR("panic_handler", Decorator_PanicHandler);
+STATIC_DECORATOR("rustc_std_internal_symbol", Decorator_RustcStdInternalSymbol);
 
 

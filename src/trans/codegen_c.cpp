@@ -779,6 +779,7 @@ namespace {
                 // Allocator/panic shims
                 if( TARGETVER_LEAST_1_29 )
                 {
+                    // If #[global_allocator]  present, use `__rg_`
                     const char* alloc_prefix = "__rdl_";
                     for(size_t i = 0; i < NUM_ALLOCATOR_METHODS; i++)
                     {
@@ -848,13 +849,6 @@ namespace {
                         m_of << "}\n";
                     }
 
-                    // Bind `panic_impl` lang item to the item tagged with `panic_implementation`
-                    m_of << "uint32_t panic_impl(uintptr_t payload) {";
-                    const auto& panic_impl_path = m_crate.get_lang_item_path(Span(), "mrustc-panic_implementation");
-                    m_of << "extern uint32_t " << Trans_Mangle(panic_impl_path) << "(uintptr_t payload);";
-                    m_of << "return " << Trans_Mangle(panic_impl_path) << "(payload);";
-                    m_of << "}\n";
-
                     // TODO: Bind `oom` lang item to the item tagged with `alloc_error_handler`
                     // - Can do this in enumerate/auto_impls instead, for better iteraction with enum
                     // XXX: HACK HACK HACK - This only works with libcore/libstd's current layout
@@ -866,6 +860,17 @@ namespace {
                         << " " << Trans_Mangle(oom_method) << "(l);"
                         << " }\n"
                         ;
+                }
+
+
+                if(TARGETVER_LEAST_1_29)
+                {
+                    // Bind `panic_impl` lang item to the item tagged with `panic_implementation`
+                    m_of << "uint32_t panic_impl(uintptr_t payload) {";
+                    const auto& panic_impl_path = m_crate.get_lang_item_path(Span(), "mrustc-panic_implementation");
+                    m_of << "extern uint32_t " << Trans_Mangle(panic_impl_path) << "(uintptr_t payload);";
+                    m_of << "return " << Trans_Mangle(panic_impl_path) << "(payload);";
+                    m_of << "}\n";
                 }
             }
 
