@@ -1947,80 +1947,6 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
     // - Detect if the pattern uses & or ref. If it does, then invoke the existing code
     // - Otherwise, register a revisit for the pattern
 
-    // TODO: Remove this, it's unused
-    struct H2 {
-        static bool has_ref_or_borrow(const Span& sp, const ::HIR::Pattern& pat) {
-            // TODO: Turns out that this isn't valid. See libsyntax 1.29
-            // - ref `rustc-1.29.0-src/src/libsyntax/print/pprust.rs` 2911, `&Option` matched with `Some(ref foo)`
-            //if( pat.m_binding.is_valid() && pat.m_binding.m_type != ::HIR::PatternBinding::Type::Move ) {
-            //    return true;
-            //}
-            if( pat.m_data.is_Ref() ) {
-                return true;
-            }
-            bool rv = false;
-            TU_MATCHA( (pat.m_data), (e),
-            (Any,
-                ),
-            (Value,
-                ),
-            (Range,
-                ),
-            (Box,
-                rv |= H2::has_ref_or_borrow(sp, *e.sub);
-                ),
-            (Ref,
-                rv |= H2::has_ref_or_borrow(sp, *e.sub);
-                ),
-            (Tuple,
-                for(const auto& subpat : e.sub_patterns)
-                    rv |= H2::has_ref_or_borrow(sp, subpat);
-                ),
-            (SplitTuple,
-                for(auto& subpat : e.leading) {
-                    rv |= H2::has_ref_or_borrow(sp, subpat);
-                }
-                for(auto& subpat : e.trailing) {
-                    rv |= H2::has_ref_or_borrow(sp, subpat);
-                }
-                ),
-            (Slice,
-                for(auto& sub : e.sub_patterns)
-                    rv |= H2::has_ref_or_borrow(sp, sub);
-                ),
-            (SplitSlice,
-                for(auto& sub : e.leading)
-                    rv |= H2::has_ref_or_borrow(sp, sub);
-                for(auto& sub : e.trailing)
-                    rv |= H2::has_ref_or_borrow(sp, sub);
-                ),
-
-            // - Enums/Structs
-            (StructValue,
-                ),
-            (StructTuple,
-                for(const auto& subpat : e.sub_patterns)
-                    rv |= H2::has_ref_or_borrow(sp, subpat);
-                ),
-            (Struct,
-                for( auto& field_pat : e.sub_patterns )
-                    rv |= H2::has_ref_or_borrow(sp, field_pat.second);
-                ),
-            (EnumValue,
-                ),
-            (EnumTuple,
-                for(const auto& subpat : e.sub_patterns)
-                    rv |= H2::has_ref_or_borrow(sp, subpat);
-                ),
-            (EnumStruct,
-                for( auto& field_pat : e.sub_patterns )
-                    rv |= H2::has_ref_or_borrow(sp, field_pat.second);
-                )
-            )
-            return rv;
-        }
-    };
-
     // 1. Determine if this pattern can apply auto-ref/deref
     if( pat.m_data.is_Any() ) {
         // `_` pattern, no destructure/match, so no auto-ref/deref
@@ -2033,7 +1959,7 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
 
     // NOTE: Even if the top-level is a binding, and even if the top-level type is fully known, match ergonomics
     // still applies.
-    if( TARGETVER_LEAST_1_29 ) { //&& ! H2::has_ref_or_borrow(sp, pat) ) {
+    if( TARGETVER_LEAST_1_29 ) {
         // There's not a `&` or `ref` in the pattern, and we're targeting 1.29
         // - Run the match ergonomics handler
         // TODO: Default binding mode can be overridden back to "move" with `mut`
@@ -3660,16 +3586,6 @@ namespace {
             DEBUG("Slice can't unsize");
             return CoerceResult::Equality;
         }
-
-        // Can't Unsize to a known-Sized type.
-        // BUT! Can do a Deref coercion to a Sized type.
-        #if 0
-        if( dst.m_data.is_Infer() && dst.m_data.as_Infer().index < context.m_ivars_sized.size() && context.m_ivars_sized.at( dst.m_data.as_Infer().index ) )
-        {
-            DEBUG("Can't unsize to known-Sized type");
-            return CoerceResult::Equality;
-        }
-        #endif
 
         // Handle ivars specially
         if(dst.data().is_Infer() && src.data().is_Infer())
@@ -5306,54 +5222,7 @@ namespace {
 
     struct TypeRestrictiveOrdering
     {
-        static Ordering ord_accepting_ptr(const ::HIR::TypeRef& ty_l, const ::HIR::TypeRef& ty_r)
-        {
-            static const ::HIR::TypeData::Tag tag_ordering[] = {
-                //::HIR::TypeData::TAG_Generic,
-                ::HIR::TypeData::TAG_Path, // Strictly speaking, Path == Generic?
-                ::HIR::TypeData::TAG_Borrow,
-                ::HIR::TypeData::TAG_Pointer,
-            };
-            // Ordering in increasing acceptiveness:
-            // - Paths, Borrows, Raw Pointers
-            if( ty_l.data().tag() != ty_r.data().tag() )
-            {
-                const auto* tag_ordering_end = tag_ordering+sizeof(tag_ordering)/sizeof(tag_ordering[0]);
-                auto it_l = ::std::find(tag_ordering, tag_ordering_end, ty_l.data().tag());
-                auto it_r = ::std::find(tag_ordering, tag_ordering_end, ty_r.data().tag());
-                if( it_l == tag_ordering_end || it_r == tag_ordering_end ) {
-                    // Huh?
-                    return OrdEqual;
-                }
-                if( it_l < it_r )
-                    return OrdLess;
-                else if( it_l > it_r )
-                    return OrdGreater;
-                else
-                    throw "Impossible";
-            }
-
-            switch(ty_l.data().tag())
-            {
-            case ::HIR::TypeData::TAG_Borrow:
-                // Reverse order - Shared is numerically lower than Unique, but is MORE accepting
-                return ::ord( static_cast<int>(ty_r.data().as_Borrow().type), static_cast<int>(ty_l.data().as_Borrow().type) );
-            case ::HIR::TypeData::TAG_Pointer:
-                // Reverse order - Shared is numerically lower than Unique, but is MORE accepting
-                return ::ord( static_cast<int>(ty_r.data().as_Pointer().type), static_cast<int>(ty_l.data().as_Pointer().type) );
-            case ::HIR::TypeData::TAG_Path:
-                return OrdEqual;
-            case ::HIR::TypeData::TAG_Generic:
-                return OrdEqual;
-            default:
-                // Technically a bug/error
-                return OrdEqual;
-            }
-        }
-
-        /// <summary>
         /// Get the inner type of a pointer (if it matches a template)
-        /// </summary>
         static const ::HIR::TypeRef* match_and_extract_ptr_ty(const ::HIR::TypeRef& ptr_tpl, const ::HIR::TypeRef& ty)
         {
             if( ty.data().tag() != ptr_tpl.data().tag() )
@@ -5404,7 +5273,8 @@ namespace {
             }
             throw "";
         }
-        /// Ordering of `l` relative to `r`, OrdLess means that the LHS is less restrictive
+        /// Ordering of `l` relative to `r` for ?unsizing
+        /// - OrdLess means that the LHS is less restrictive
         static Ordering get_ordering_ty(const Span& sp, const Context& context, const ::HIR::TypeRef& l, const ::HIR::TypeRef& r)
         {
             if( l == r ) {
@@ -5435,6 +5305,7 @@ namespace {
                         return OrdLess;
                     TODO(sp, l << " with " << r << " - LHS is Path, RHS is ?");
                 TU_ARMA(Path, te_r) {
+                    // If both are unbound, assume equal (effectively an ivar)
                     if( te_l.binding.is_Unbound() && te_r.binding.is_Unbound() )
                     {
                         return OrdEqual;
@@ -5485,11 +5356,15 @@ namespace {
             }
         }
 
-        // Returns the restrictiveness ordering of `l` relative to `r`
-        // - &T is more restrictive than *const T
-        // - &mut T is more restrictive than &T
-        // Restrictive means that left can't be coerced from right
-        static Ordering get_ordering_ptr(const Span& sp, const Context& context, const ::HIR::TypeRef& l, const ::HIR::TypeRef& r)
+        /// Returns the restrictiveness ordering of `l` relative to `r`
+        /// - &T is more restrictive than *const T
+        /// - &mut T is more restrictive than &T
+        /// Restrictive means that left can't be coerced from right
+        static Ordering get_ordering_ptr(
+            const Span& sp, const Context& context,
+            const ::HIR::TypeRef& l, const ::HIR::TypeRef& r,
+            bool deep=true
+            )
         {
             Ordering cmp;
             TRACE_FUNCTION_FR(l << " , " << r, cmp);
@@ -5532,7 +5407,7 @@ namespace {
                 TU_ARMA(Borrow, te_l) {
                     const auto& te_r = r.data().as_Borrow();
                     cmp = ord( (int)te_l.type, (int)te_r.type );   // Unique>Shared in the listing, and Unique is more restrictive than Shared
-                    if( cmp == OrdEqual )
+                    if( cmp == OrdEqual && deep )
                     {
                         cmp = get_ordering_ty(sp, context, context.m_ivars.get_type(te_l.inner), context.m_ivars.get_type(te_r.inner));
                     }
@@ -5540,7 +5415,7 @@ namespace {
                 TU_ARMA(Pointer, te_l) {
                     const auto& te_r = r.data().as_Pointer();
                     cmp = ord( (int)te_r.type, (int)te_l.type );   // Note, reversed ordering because we want Unique>Shared
-                    if( cmp == OrdEqual )
+                    if( cmp == OrdEqual && deep )
                     {
                         cmp = get_ordering_ty(sp, context, context.m_ivars.get_type(te_l.inner), context.m_ivars.get_type(te_r.inner));
                     }
@@ -5550,9 +5425,13 @@ namespace {
             return cmp;
         }
     };
+
+    /// Ordering of types based on the amount of type information they provide
+    /// - E.g. `(_, i32)` will sort higher than `(_,_)`
+    /// If types don't match (e.g. `i32` with `(_,_)`) then `Incompatible` is returned
     struct InfoOrdering
     {
-        enum Ordering {
+        enum eInfoOrdering {
             Incompatible,   // The types are incompatible
             Less,   // The LHS type provides less information (e.g. has more ivars)
             Same,   // Same number of ivars
@@ -5565,7 +5444,7 @@ namespace {
                 return true;
             return false;
         }
-        static Ordering compare(const ::HIR::TypeRef& ty_l, const ::HIR::TypeRef& ty_r) {
+        static eInfoOrdering compare(const ::HIR::TypeRef& ty_l, const ::HIR::TypeRef& ty_r) {
             if( is_infer(ty_l) ) {
                 if( is_infer(ty_r) )
                     return Same;
@@ -5606,7 +5485,7 @@ namespace {
             }
             throw "unreachable";
         }
-        static Ordering compare_top(const Context& context, const ::HIR::TypeRef& ty_l, const ::HIR::TypeRef& ty_r, bool should_deref) {
+        static eInfoOrdering compare_top(const Context& context, const ::HIR::TypeRef& ty_l, const ::HIR::TypeRef& ty_r, bool should_deref) {
             if( context.m_ivars.types_equal(ty_l, ty_r) )
                 return Same;
             if( is_infer(ty_l) )
@@ -5664,27 +5543,6 @@ namespace {
                 throw "";
             }
             return Incompatible;
-        }
-        static const ::HIR::TypeRef& get_pointer_inner(const Context& context, const ::HIR::TypeRef& t_raw) {
-            const auto& t = context.m_ivars.get_type(t_raw);
-            if( const auto* te = t.data().opt_Borrow() ) {
-                return context.m_ivars.get_type(te->inner);
-            }
-            else if( const auto* te = t.data().opt_Pointer() ) {
-                return context.m_ivars.get_type(te->inner);
-            }
-            else if( TU_TEST2(t.data(), Path, .binding, Struct, ->m_struct_markings.coerce_unsized != ::HIR::StructMarkings::Coerce::None) )
-            {
-                const auto& te = t.data().as_Path();
-                auto param_idx = te.binding.as_Struct()->m_struct_markings.coerce_param;
-                assert(param_idx != ~0u);
-                const auto& path = te.path.m_data.as_Generic();
-                return context.m_ivars.get_type(path.m_params.m_types.at(param_idx));
-            }
-            else {
-                throw "";
-                //return t;
-            }
         }
     };
 
@@ -5950,11 +5808,6 @@ namespace {
                 context.equate_types(sp, ty_l, *possible_tys[0].ty);
                 return true;
             }
-            //if( possible_tys.size() == 1 && possible_tys[0].is_dest() && !ivar_ent.force_no_to ) {
-            //    DEBUG("One possibility (before ivar removal), setting to " << *possible_tys[0].ty);
-            //    context.equate_types(sp, ty_l, *possible_tys[0].ty);
-            //    return true;
-            //}
 
             // TODO: This shouldn't just return, instead the above null placeholders should be tested
             if( ivar_ent.force_no_to || ivar_ent.force_no_from )
@@ -5969,18 +5822,6 @@ namespace {
                     return false;
                 }
             }
-
-            // TODO: Single destination, and all sources are coerce-able
-            // - Pick the single destination
-            #if 0
-            if( !ivar_ent.force_no_to && ::std::count_if(possible_tys.begin(), possible_tys.end(), PossibleType::is_dest_s) == 1 )
-            {
-                auto ent = *::std::find_if(possible_tys.begin(), possible_tys.end(), PossibleType::is_dest_s);
-                DEBUG("One destination, setting to " << *ent.ty);
-                context.equate_types(sp, ty_l, *ent.ty);
-                return true;
-            }
-            #endif
 
             // Filter out ivars
             // - TODO: Should this also remove &_ types? (maybe not, as they give information about borrow classes)
@@ -6046,7 +5887,7 @@ namespace {
                         {
                             ptr_ty = ent.ty;
                         }
-                        else if( TypeRestrictiveOrdering::ord_accepting_ptr(*ent.ty, *ptr_ty) == OrdGreater )
+                        else if( TypeRestrictiveOrdering::get_ordering_ptr(sp, context, *ent.ty, *ptr_ty, /*deep=*/false) == OrdLess )
                         {
                             ptr_ty = ent.ty;
                         }
@@ -6638,18 +6479,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
             {
                 DEBUG("- Consumed coercion R" << ent->rule_idx << " " << ent->left_ty << " := " << src_ty);
 
-#if 0
-                // If this isn't the last item in the list
-                if( i != context.link_coerce.size() - 1 )
-                {
-                    // Swap with the last item
-                    context.link_coerce[i] = mv$(context.link_coerce.back());
-                }
-                // Remove the last item.
-                context.link_coerce.pop_back();
-#else
                 context.link_coerce.erase( context.link_coerce.begin() + i );
-#endif
             }
             else
             {
@@ -6776,25 +6606,6 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
             }
         } // `if peek_changed` (ivar possibilities)
 
-#if 0
-        if( !context.m_ivars.peek_changed() )
-        {
-            DEBUG("--- Coercion consume");
-            if( ! context.link_coerce.empty() )
-            {
-                auto ent = mv$(context.link_coerce.front());
-                context.link_coerce.erase( context.link_coerce.begin() );
-
-                const auto& sp = (*ent->right_node_ptr)->span();
-                auto& src_ty = (*ent->right_node_ptr)->m_res_type;
-                //src_ty = context.m_resolve.expand_associated_types( sp, mv$(src_ty) );
-                ent->left_ty = context.m_resolve.expand_associated_types( sp, mv$(ent->left_ty) );
-                DEBUG("- Equate coercion R" << ent->rule_idx << " " << ent->left_ty << " := " << src_ty);
-
-                context.equate_types(sp, ent->left_ty, src_ty);
-            }
-        }
-#endif
         // If nothing has changed, run check_ivar_poss again but allow it to assume is has all the options
         if( !context.m_ivars.peek_changed() )
         {
@@ -6808,25 +6619,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
                 }
             }
         }
-#if 0
-        if( !context.m_ivars.peek_changed() )
-        {
-            DEBUG("--- Coercion consume");
-            if( ! context.link_coerce.empty() )
-            {
-                auto ent = mv$(context.link_coerce.front());
-                context.link_coerce.erase( context.link_coerce.begin() );
 
-                const auto& sp = (*ent->right_node_ptr)->span();
-                auto& src_ty = (*ent->right_node_ptr)->m_res_type;
-                //src_ty = context.m_resolve.expand_associated_types( sp, mv$(src_ty) );
-                ent->left_ty = context.m_resolve.expand_associated_types( sp, mv$(ent->left_ty) );
-                DEBUG("- Equate coercion R" << ent->rule_idx << " " << ent->left_ty << " := " << src_ty);
-
-                context.equate_types(sp, ent->left_ty, src_ty);
-            }
-        }
-#endif
         // If nothing has changed, run check_ivar_poss again but ignoring the 'disable' flag
 #if 1
         if( !context.m_ivars.peek_changed() )
@@ -6837,44 +6630,14 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
             for(unsigned int i = 0; i < context.possible_ivar_vals.size(); i ++ )
             {
                 if( check_ivar_poss(context, i, context.possible_ivar_vals[i], IvarPossFallbackType::IgnoreWeakDisable) ) {
-# if 1
                     break;
-# else
-                    static Span sp;
-                    assert( context.possible_ivar_vals[i].has_rules() );
-                    // Disable all metioned ivars in the possibilities
-                    for(const auto& ty : context.possible_ivar_vals[i].types_coerce_to)
-                        context.possible_equate_type_unknown(sp, ty.ty, Context::IvarUnknownType::From);
-                    for(const auto& ty : context.possible_ivar_vals[i].types_coerce_from)
-                        context.possible_equate_type_unknown(sp, ty.ty, Context::IvarUnknownType::To);
-
-                    // Also disable inferrence (for this pass) for all ivars in affected bounds
-                    for(const auto& la : context.link_assoc)
-                    {
-                        bool found = false;
-                        auto cb = [&](const auto& t) { return TU_TEST1(t.m_data, Infer, .index == i); };
-                        if( la.left_ty != ::HIR::TypeRef() )
-                            found |= visit_ty_with( la.left_ty, cb );
-                        found |= visit_ty_with( la.impl_ty, cb );
-                        for(const auto& t : la.params.m_types)
-                            found |= visit_ty_with( t, cb );
-                        if( found )
-                        {
-                            if(la.left_ty != ::HIR::TypeRef())
-                                context.equate_types_shadow(sp, la.left_ty, false);
-                            context.equate_types_shadow(sp, la.impl_ty, false);
-                            for(const auto& t : la.params.m_types)
-                                context.equate_types_shadow(sp, t, false);
-                        }
-                    }
-# endif
                 }
                 else {
                     //assert( !context.m_ivars.peek_changed() );
                 }
             }
-#endif
         } // `if peek_changed` (ivar possibilities #2)
+#endif
 
         if( !context.m_ivars.peek_changed() )
         {
@@ -6894,18 +6657,6 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
                     ++ it;
                 }
             }
-            #if 0
-            for( auto it = context.adv_revisits.begin(); it != context.adv_revisits.end(); )
-            {
-                auto& ent = **it;
-                if( ent.revisit(context, true) ) {
-                    it = context.adv_revisits.erase(it);
-                }
-                else {
-                    ++ it;
-                }
-            }
-            #endif
         } // `if peek_changed` (node revisits)
 
         if( !context.m_ivars.peek_changed() )
@@ -7064,14 +6815,6 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
 
     {
         DEBUG("==== FINAL VALIDATE ====");
-        //::HIR::TypeRef  new_res_ty = clone_ty_with(expr->span(), result_type, [&](const auto& tpl, auto& rv) {
-        //    if( const auto* e = tpl.data().opt_ErasedType() )
-        //    {
-        //        rv = expr.m_erased_types[e->m_index].clone();
-        //        return true;
-        //    }
-        //    return false;
-        //    });
         StaticTraitResolve  static_resolve(ms.m_crate);
         if( ms.m_impl_generics )
         {
