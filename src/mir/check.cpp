@@ -91,14 +91,102 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
     TRACE_FUNCTION;
     // > Iterate through code, creating state maps. Save map at the start of each bb.
     struct ValStates {
-        enum class State {
-            Invalid,
-            Either,
-            Valid,
+
+        // Wrapper for an enum that fits in a `uint8_t`
+        // TODO: A u2 would be even better (packed into a custom vector)
+        // - But, there's the `runs` iterator wrapper below
+        struct State {
+            enum Values {
+                Invalid,
+                Either,
+                Valid,
+            };
+
+            uint8_t v;
+            State(): v(0) {}
+            State(uint8_t v): v(v) {}
+
+            bool operator==(const State& x) const { return v == x.v; }
+            bool operator!=(const State& x) const { return v != x.v; }
+
+            bool operator==(uint8_t x) const { return v == x; }
+            bool operator!=(uint8_t x) const { return v != x; }
         };
+
+        /// Collection of `State`s 
+        struct StateVec {
+            std::vector<uint8_t> v;
+
+            StateVec(size_t n=0, State init={})
+                : v( (n + 3) / 4, init.v | (init.v << 2) | (init.v << 4) | (init.v << 6))
+            {
+                switch(n % 4)
+                {
+                case 0: break;
+                case 1: v.back() |= 0xFC; break;
+                case 2: v.back() |= 0xF0; break;
+                case 3: v.back() |= 0xC0; break;
+                }
+            }
+
+            bool operator==(const StateVec& x) const { return v == x.v; }
+            bool operator!=(const StateVec& x) const { return v != x.v; }
+
+            bool empty() const { return v.empty(); }
+            size_t size() const {
+                if(v.empty())
+                {
+                    return 0;
+                }
+                else
+                {
+                    size_t extra 
+                        = v.back() >= 0xFC ? 1
+                        : v.back() >= 0xF0 ? 2
+                        : v.back() >= 0xC0 ? 3
+                        : 4
+                        ;
+                    return (v.size() - 1) * 4 + extra;
+                }
+            }
+
+            class reference {
+                uint8_t& slot;
+                uint8_t bit_ofs;
+                State   v;
+            
+                friend StateVec;
+                reference(uint8_t& slot, uint8_t bit_ofs)
+                    : slot(slot)
+                    , bit_ofs(bit_ofs)
+                    , v( (slot >> bit_ofs) & 3 )
+                {
+                }
+
+            public:
+                ~reference() {
+                    slot = (slot & ~(3 << bit_ofs)) | (v.v << bit_ofs);
+                }
+
+                State& get() { return v; }
+
+                operator State() const { return v; }
+                reference& operator=(State v) { this->v = v; return *this; }
+
+                bool operator==(State v) const { return (State)*this == v; }
+                bool operator!=(State v) const { return (State)*this != v; }
+            };
+            State operator[](size_t idx) const {
+                return (v[idx / 4] >> (idx % 4 * 2)) & 3;
+            }
+            reference operator[](size_t idx) {
+                return reference(v[idx / 4], idx % 4 * 2);
+            }
+        };
+
         State ret_state = State::Invalid;
-        ::std::vector<State> args;
-        ::std::vector<State> locals;
+        StateVec args;
+        StateVec locals;
 
         ValStates() {}
         ValStates(size_t n_args, size_t n_locals):
@@ -114,7 +202,7 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
 
         void fmt(::std::ostream& os) {
             os << "ValStates { ";
-            switch(ret_state)
+            switch(ret_state.v)
             {
             case State::Invalid:    break;
             case State::Either:
@@ -123,9 +211,9 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
                 os << "rv, ";
                 break;
             }
-            auto fmt_val_range = [&](const char* prefix, const auto& list) {
+            auto fmt_val_range = [&](const char* prefix, const StateVec& list) {
                 for(auto range : runs(list)) {
-                    switch(list[range.first])
+                    switch(list[range.first].v)
                     {
                     case State::Invalid:    continue;
                     case State::Either: os << "?";  break;
@@ -184,44 +272,44 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
             {
                 return ;
             }
-            TU_MATCHA( (lv.m_root), (e),
-            (Return,
+            TU_MATCH_HDRA( (lv.m_root), {)
+            TU_ARMA(Return, e) {
                 ret_state = is_valid ? State::Valid : State::Invalid;
-                ),
-            (Argument,
+                }
+            TU_ARMA(Argument, e) {
                 MIR_ASSERT(state, e < this->args.size(), "Argument index out of range " << lv);
                 DEBUG("arg$" << e << " = " << (is_valid ? "Valid" : "Invalid"));
                 this->args[e] = is_valid ? State::Valid : State::Invalid;
-                ),
-            (Local,
+                }
+            TU_ARMA(Local, e) {
                 MIR_ASSERT(state, e < this->locals.size(), "Local index out of range - " << lv);
                 DEBUG("_" << e << " = " << (is_valid ? "Valid" : "Invalid"));
                 this->locals[e] = is_valid ? State::Valid : State::Invalid;
-                ),
-            (Static,
-                )
-            )
+                }
+            TU_ARMA(Static, e) {
+                }
+            }
         }
         void ensure_valid(const ::MIR::TypeResolve& state, const ::MIR::LValue& lv)
         {
-            TU_MATCHA( (lv.m_root), (e),
-            (Return,
+            TU_MATCH_HDRA( (lv.m_root), {)
+            TU_ARMA(Return, e) {
                 if( this->ret_state != State::Valid )
                     MIR_BUG(state, "Use of non-valid lvalue - " << lv);
-                ),
-            (Argument,
+                }
+            TU_ARMA(Argument, e) {
                 MIR_ASSERT(state, e < this->args.size(), "Arg index out of range");
                 if( this->args[e] != State::Valid )
                     MIR_BUG(state, "Use of non-valid lvalue - " << lv);
-                ),
-            (Local,
+                }
+            TU_ARMA(Local, e) {
                 MIR_ASSERT(state, e < this->locals.size(), "Local index out of range");
                 if( this->locals[e] != State::Valid )
                     MIR_BUG(state, "Use of non-valid lvalue - " << lv);
-                ),
-            (Static,
-                )
-            )
+                }
+            TU_ARMA(Static, e) {
+                }
+            }
 
             for(const auto& w : lv.m_wrappers)
             {
@@ -264,14 +352,14 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
             }
             return rv;
         }
-        static bool merge_lists(::std::vector<State>& a, ::std::vector<State>& b)
+        static bool merge_lists(StateVec& a, StateVec& b)
         {
             bool rv = false;
             assert( a.size() == b.size() );
             // TODO: This is a really hot bit of code (according to valgrind), need to find a way of cooling it
             for(unsigned int i = 0; i < a.size(); i++)
             {
-                rv |= merge_state(a[i], b[i]);
+                rv |= merge_state(a[i].get(), b[i].get());
             }
             return rv;
         }
