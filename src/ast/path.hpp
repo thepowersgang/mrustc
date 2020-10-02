@@ -163,6 +163,7 @@ extern ::std::ostream& operator<<(::std::ostream& os, const PathBinding_Macro& x
 
 struct PathParams
 {
+    // TODO: Unified list? (lower memory footprint, and can exactly encode the source code structure)
     ::std::vector< LifetimeRef >  m_lifetimes;
     ::std::vector< TypeRef >    m_types;
     ::std::vector< ::std::pair< RcString, TypeRef> >   m_assoc_equal;
@@ -202,6 +203,24 @@ public:
     bool operator==(const PathNode& x) const { return ord(x) == OrdEqual; }
     friend ::std::ostream& operator<<(::std::ostream& os, const PathNode& pn);
 };
+
+/*
+* TODO: New Path structure:
+* - Local(Ident): a resolved local name (variable, generic, ...)
+* - Relative(Ident, vector<RcString>, Generics): `foo::bar<...>`
+* - ModRelative(unsigned, vector<RcString>, Generics): `super::foo::bar<...>` or `self::foo`
+* - Absolute(RcString, vector<RcString>, Generics): `::foocrate::bar<...>`
+* - FullyQualified(Type, Path, Ident, Generics): `<Foo as Bar>::baz<...>`
+* - TypeQualified(Type, Ident, Generics): `<FooType>::baz<...>`
+* - UnknownQualified(Path, Ident, Generics): `FooTrait<...>::baz<...>` 
+* 
+* Goal:
+* - Reduce memory usage of AST (avoids `PathParams` everywhere)
+* - Simplify manipulation?
+* 
+* Downsides:
+* - Resolve uses append methods etc
+*/
 
 class Path
 {

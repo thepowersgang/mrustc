@@ -4959,6 +4959,11 @@ namespace {
         }
     }
 
+}   // namespace "" - check_associated and check_coerce
+
+// check_ivar_poss (and helpers)
+namespace
+{
     bool check_ivar_poss__fails_bounds(const Span& sp, Context& context, const ::HIR::TypeRef& ty_l, const ::HIR::TypeRef& new_ty)
     {
         TRACE_FUNCTION_F(ty_l << " <- " << new_ty);
