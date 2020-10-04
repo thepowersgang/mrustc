@@ -91,6 +91,10 @@ public:
     const Static& get_static(const HIR::Path& p) const;
     const Static* get_static_opt(const HIR::Path& p) const;
 
+    const DataType& get_composite(const RcString& p) const {
+        return *data_types.at(p);
+    }
+
     void iterate_statics(std::function<void(RcString name, const Static& s)> cb) const {
         for(const auto& e : this->statics)
         {
@@ -103,9 +107,11 @@ public:
             cb(e.first, e.second);
         }
     }
-
-    const DataType& get_composite(const RcString& p) const {
-        return *data_types.at(p);
+    void iterate_composites(std::function<void(RcString name, const DataType& s)> cb) const {
+        for(const auto& e : this->data_types)
+        {
+            cb(e.first, *e.second);
+        }
     }
 };
 
