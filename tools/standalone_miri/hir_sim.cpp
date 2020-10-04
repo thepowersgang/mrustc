@@ -300,8 +300,10 @@ HIR::TypeRef HIR::TypeRef::get_field(size_t idx, size_t& ofs) const
     {
         if( w->type == TypeWrapper::Ty::Slice )
         {
-            // TODO
-            LOG_TODO("Field on slice - " << *this << " #" << idx);
+            // NOTE: Treated as an unchecked index
+            auto ity = this->get_inner();
+            ofs = ity.get_size() * idx;
+            return ity;
         }
         else if( w->type == TypeWrapper::Ty::Array )
         {

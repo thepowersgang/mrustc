@@ -32,8 +32,35 @@ struct Function
 struct Static
 {
     ::HIR::TypeRef  ty;
-    // TODO: Should this value be stored in the program state (making the entire `ModuleTree` const)
-    Value   val;
+
+    struct InitValue {
+        struct Relocation {
+            size_t  ofs;
+            size_t  len;
+
+            std::string string;
+            HIR::Path   fcn_path;
+
+            static Relocation new_string(size_t ofs, size_t len, std::string data) {
+                Relocation  rv;
+                rv.ofs = ofs;
+                rv.len = len;
+                rv.string = std::move(data);
+                return rv;
+            }
+            static Relocation new_item(size_t ofs, size_t len, HIR::Path path) {
+                Relocation  rv;
+                rv.ofs = ofs;
+                rv.len = len;
+                rv.fcn_path = std::move(path);
+                return rv;
+            }
+        };
+
+        std::vector<uint8_t>    bytes;
+        std::vector<Relocation> relocs;
+    };
+    InitValue   init;
 };
 
 /// Container for loaded code and structures 
@@ -60,8 +87,22 @@ public:
     const Function& get_function(const HIR::Path& p) const;
     const Function* get_function_opt(const HIR::Path& p) const;
     const Function* get_ext_function(const char* name) const;
-    Static& get_static(const HIR::Path& p);
-    Static* get_static_opt(const HIR::Path& p);
+
+    const Static& get_static(const HIR::Path& p) const;
+    const Static* get_static_opt(const HIR::Path& p) const;
+
+    void iterate_statics(std::function<void(RcString name, const Static& s)> cb) const {
+        for(const auto& e : this->statics)
+        {
+            cb(e.first, e.second);
+        }
+    }
+    void iterate_functions(std::function<void(RcString name, const Function& s)> cb) const {
+        for(const auto& e : this->functions)
+        {
+            cb(e.first, e.second);
+        }
+    }
 
     const DataType& get_composite(const RcString& p) const {
         return *data_types.at(p);

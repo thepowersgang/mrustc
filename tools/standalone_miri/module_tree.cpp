@@ -146,11 +146,8 @@ bool Parser::parse_one()
         auto data = ::std::move(lex.consume().strval);
 
         Static s;
-        s.val = Value(ty);
-        // - Statics need to always have an allocation (for references)
-        s.val.ensure_allocation();
-        s.val.write_bytes(0, data.data(), data.size());
         s.ty = ty;
+        s.init.bytes.insert(s.init.bytes.begin(), data.begin(), data.end());
 
         if( lex.consume_if('{') )
         {
@@ -166,15 +163,12 @@ bool Parser::parse_one()
                 if( lex.next() == TokenClass::String )
                 {
                     auto reloc_str = ::std::move(lex.consume().strval);
-
-                    auto a = Allocation::new_alloc( reloc_str.size(), FMT_STRING("static " << p) );
-                    a->write_bytes(0, reloc_str.data(), reloc_str.size());
-                    s.val.set_reloc( ofs, size, RelocationPtr::new_alloc(::std::move(a)) );
+                    s.init.relocs.push_back( Static::InitValue::Relocation::new_string(ofs, size, std::move(reloc_str)) );
                 }
                 else if( lex.next() == TokenClass::Ident )
                 {
                     auto reloc_path = HIR::Path { RcString(lex.check_consume(TokenClass::Ident).strval.c_str()) };
-                    s.val.set_reloc( ofs, size, RelocationPtr::new_fcn(reloc_path) );
+                    s.init.relocs.push_back( Static::InitValue::Relocation::new_item(ofs, size, std::move(reloc_path)) );
                 }
                 else
                 {
@@ -1214,7 +1208,7 @@ const Function* ModuleTree::get_ext_function(const char* name) const
     }
     return it->second;
 }
-Static& ModuleTree::get_static(const HIR::Path& p)
+const Static& ModuleTree::get_static(const HIR::Path& p) const
 {
     auto it = statics.find(p.n);
     if(it == statics.end())
@@ -1223,7 +1217,7 @@ Static& ModuleTree::get_static(const HIR::Path& p)
     }
     return it->second;
 }
-Static* ModuleTree::get_static_opt(const HIR::Path& p)
+const Static* ModuleTree::get_static_opt(const HIR::Path& p) const
 {
     auto it = statics.find(p.n);
     if(it == statics.end())

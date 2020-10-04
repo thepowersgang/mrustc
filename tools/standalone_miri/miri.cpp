@@ -313,7 +313,7 @@ struct MirHelpers
         TU_ARM(lv_root, Static, e) {
             /*const*/ auto& s = this->thread.m_global.m_modtree.get_static(e);
             ty = s.ty;
-            return ValueRef(s.val);
+            return ValueRef( this->thread.m_global.m_statics.at(&s) );
             } break;
         }
         throw "";
@@ -602,8 +602,9 @@ struct MirHelpers
             }
             if( const auto* s = this->thread.m_global.m_modtree.get_static_opt(*ce) ) {
                 ty = s->ty.wrapped(TypeWrapper::Ty::Borrow, 0);
-                LOG_ASSERT(s->val.m_inner.is_alloc, "Statics should already have an allocation assigned");
-                return Value::new_pointer(ty, Allocation::PTR_BASE + 0, RelocationPtr::new_alloc(s->val.m_inner.alloc.alloc));
+                auto& val = this->thread.m_global.m_statics.at(s);
+                LOG_ASSERT(val.m_inner.is_alloc, "Statics should already have an allocation assigned");
+                return Value::new_pointer(ty, Allocation::PTR_BASE + 0, RelocationPtr::new_alloc(val.m_inner.alloc.alloc));
             }
             LOG_ERROR("Constant::ItemAddr - " << *ce << " - not found");
             } break;
@@ -652,9 +653,34 @@ struct MirHelpers
     }
 };
 
-GlobalState::GlobalState(ModuleTree& modtree):
+GlobalState::GlobalState(const ModuleTree& modtree):
     m_modtree(modtree)
 {
+    // Generate statics
+    m_modtree.iterate_statics([this](RcString name, const Static& s) {
+        auto val = Value(s.ty);
+        // - Statics need to always have an allocation (for references)
+        val.ensure_allocation();
+        val.write_bytes(0, s.init.bytes.data(), s.init.bytes.size());
+        for(const auto& r : s.init.relocs)
+        {
+            RelocationPtr   ptr;
+            if( r.fcn_path.n == "" )
+            {
+                auto a = Allocation::new_alloc( r.string.size(), FMT_STRING("static " << name) );
+                a->write_bytes(0, r.string.data(), r.string.size());
+                ptr = RelocationPtr::new_alloc(::std::move(a));
+            }
+            else
+            {
+                ptr = RelocationPtr::new_fcn(r.fcn_path);
+            }
+            val.set_reloc( r.ofs, r.len, std::move(ptr) );
+        }
+
+        this->m_statics.insert(std::make_pair(&s, std::move(val)));
+        });
+
     //
     // Register overrides for functions that are hard to emulate
     //

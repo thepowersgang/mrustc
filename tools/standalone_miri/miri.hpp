@@ -42,10 +42,13 @@ struct GlobalState
 {
     typedef bool    override_handler_t(InterpreterThread& thread, Value& ret, const ::HIR::Path& path, ::std::vector<Value> args);
 
-    ModuleTree& m_modtree;
+    const ModuleTree& m_modtree;
+
+    std::map<const Static*, Value>  m_statics;
+
     std::map<RcString, override_handler_t*>  m_fcn_overrides;
 
-    GlobalState(ModuleTree& modtree);
+    GlobalState(const ModuleTree& modtree);
 };
 
 class InterpreterThread
