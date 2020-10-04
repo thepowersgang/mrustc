@@ -23,8 +23,6 @@
 
 #define DUMP_BEFORE_ALL 1
 #define DUMP_BEFORE_CONSTPROPAGATE 0
-#define CHECK_AFTER_PASS    1
-#define CHECK_AFTER_ALL     1
 #define DUMP_AFTER_PASS 1
 #define DUMP_AFTER_ALL  0
 
@@ -52,6 +50,48 @@ bool MIR_Optimise_UselessReborrows(::MIR::TypeResolve& state, ::MIR::Function& f
 bool MIR_Optimise_GarbageCollect_Partial(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 
+enum {
+    CHECKMODE_UNKNOWN,
+    CHECKMODE_NONE,
+    CHECKMODE_FINAL,
+    CHECKMODE_PASS,
+    CHECKMODE_ALL,
+};
+static int check_mode() {
+    static int mode = CHECKMODE_UNKNOWN;
+    if( mode == CHECKMODE_UNKNOWN ) {
+        const auto* n = getenv("MRUSTC_MIR_CHECK");
+        if(n)
+        {
+            if( strcmp(n, "none") == 0 ) {
+                mode = CHECKMODE_NONE;
+            }
+            else if( strcmp(n, "final") == 0 ) {
+                mode = CHECKMODE_FINAL;
+            }
+            else if( strcmp(n, "pass") == 0 ) {
+                mode = CHECKMODE_PASS;
+            }
+            else if( strcmp(n, "all") == 0 ) {
+                mode = CHECKMODE_ALL;
+            }
+            else {
+                WARNING(Span(), W0000,
+                    "Unknown value for $MRUSTC_MIR_CHECK - '" << n << "'"
+                    << ": options are 'none','final','pass','all'"
+                    );
+            }
+        }
+
+        if( mode == CHECKMODE_UNKNOWN ) {
+            mode = CHECKMODE_FINAL;
+        }
+    }
+    return mode;
+}
+static bool check_after_all() {
+    return check_mode() >= CHECKMODE_ALL;
+}
 
 /// A minimum set of optimisations:
 /// - Inlines `#[inline(always)]` functions
@@ -67,9 +107,9 @@ void MIR_OptimiseMin(const StaticTraitResolve& resolve, const ::HIR::ItemPath& p
     {
         MIR_Cleanup(resolve, path, fcn, args, ret_type);
         //MIR_Dump_Fcn(::std::cout, fcn);
-        #if CHECK_AFTER_ALL
-        MIR_Validate(resolve, path, fcn, args, ret_type);
-        #endif
+        if(check_after_all()) {
+            MIR_Validate(resolve, path, fcn, args, ret_type);
+        }
     }
 
     MIR_Optimise_BlockSimplify(state, fcn);
@@ -77,12 +117,18 @@ void MIR_OptimiseMin(const StaticTraitResolve& resolve, const ::HIR::ItemPath& p
 
     //MIR_Optimise_GarbageCollect_Partial(state, fcn);
 
+    // NOTE: No check here, this version of optimise is pretty reliable
+    //if( check_mode() >= CHECKMODE_FINAL ) {
+    //    MIR_Validate(resolve, path, fcn, args, ret_type);
+    //}
     MIR_Optimise_GarbageCollect(state, fcn);
     //MIR_Validate_Full(resolve, path, fcn, args, ret_type);
     MIR_SortBlocks(resolve, path, fcn);
 
 #if CHECK_AFTER_DONE > 1
-    MIR_Validate(resolve, path, fcn, args, ret_type);
+    if( check_mode() >= CHECKMODE_FINAL ) {
+        MIR_Validate(resolve, path, fcn, args, ret_type);
+    }
 #endif
     return ;
 }
@@ -99,9 +145,9 @@ bool MIR_OptimiseInline(const StaticTraitResolve& resolve, const ::HIR::ItemPath
     while( MIR_Optimise_Inlining(state, fcn, false, &list) )
     {
         MIR_Cleanup(resolve, path, fcn, args, ret_type);
-#if CHECK_AFTER_ALL
-        MIR_Validate(resolve, path, fcn, args, ret_type);
-#endif
+        if( check_after_all() ) {
+            MIR_Validate(resolve, path, fcn, args, ret_type);
+        }
         rv = true;
     }
 
@@ -133,9 +179,9 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
 #if DUMP_AFTER_ALL
             if( debug_enabled() ) MIR_Dump_Fcn(::std::cout, fcn);
 #endif
-#if CHECK_AFTER_ALL
-            MIR_Validate(resolve, path, fcn, args, ret_type);
-#endif
+            if( check_after_all() ) {
+                MIR_Validate(resolve, path, fcn, args, ret_type);
+            }
             // NOTE: Don't set `change_happened`, as this is the first pass
         }
         //else { MIR_Validate(resolve, path, fcn, args, ret_type); }
@@ -146,9 +192,9 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
 #if DUMP_AFTER_ALL
             if( debug_enabled() ) MIR_Dump_Fcn(::std::cout, fcn);
 #endif
-#if CHECK_AFTER_ALL
-            MIR_Validate(resolve, path, fcn, args, ret_type);
-#endif
+            if( check_after_all() ) {
+                MIR_Validate(resolve, path, fcn, args, ret_type);
+            }
             change_happened = true;
         }
 
@@ -162,9 +208,9 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
 #if DUMP_AFTER_ALL
             if( debug_enabled() ) MIR_Dump_Fcn(::std::cout, fcn);
 #endif
-#if CHECK_AFTER_ALL
-            MIR_Validate(resolve, path, fcn, args, ret_type);
-#endif
+            if( check_after_all() ) {
+                MIR_Validate(resolve, path, fcn, args, ret_type);
+            }
             change_happened = true;
         }
         //else { MIR_Validate(resolve, path, fcn, args, ret_type); }
@@ -175,9 +221,9 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
 #if DUMP_AFTER_ALL
             if( debug_enabled() ) MIR_Dump_Fcn(::std::cout, fcn);
 #endif
-#if CHECK_AFTER_ALL
-            MIR_Validate(resolve, path, fcn, args, ret_type);
-#endif
+            if( check_after_all() ) {
+                MIR_Validate(resolve, path, fcn, args, ret_type);
+            }
             change_happened = true;
         }
         //else { MIR_Validate(resolve, path, fcn, args, ret_type); }
@@ -189,9 +235,9 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
 #if DUMP_AFTER_ALL
             if( debug_enabled() ) MIR_Dump_Fcn(::std::cout, fcn);
 #endif
-#if CHECK_AFTER_ALL
-            MIR_Validate(resolve, path, fcn, args, ret_type);
-#endif
+            if( check_after_all() ) {
+                MIR_Validate(resolve, path, fcn, args, ret_type);
+            }
             change_happened = true;
         }
         //else { MIR_Validate(resolve, path, fcn, args, ret_type); }
@@ -208,9 +254,9 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
 #if DUMP_AFTER_ALL
             if( debug_enabled() ) MIR_Dump_Fcn(::std::cout, fcn);
 #endif
-#if CHECK_AFTER_ALL
-            MIR_Validate(resolve, path, fcn, args, ret_type);
-#endif
+            if( check_after_all() ) {
+                MIR_Validate(resolve, path, fcn, args, ret_type);
+            }
             change_happened = true;
         }
         //else { MIR_Validate(resolve, path, fcn, args, ret_type); }
@@ -218,9 +264,9 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
         // >> Move common statements (assignments) across gotos.
         //if( MIR_Optimise_CommonStatements(state, fcn) )
         //{
-        //    #if CHECK_AFTER_ALL
-        //    MIR_Validate(resolve, path, fcn, args, ret_type);
-        //    #endif
+        //    if( check_after_all() ) {
+        //        MIR_Validate(resolve, path, fcn, args, ret_type);
+        //    }
         //    change_happened = true;
         //}
 
@@ -230,9 +276,9 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
 #if DUMP_AFTER_ALL
             if( debug_enabled() ) MIR_Dump_Fcn(::std::cout, fcn);
 #endif
-#if CHECK_AFTER_ALL
-            MIR_Validate(resolve, path, fcn, args, ret_type);
-#endif
+            if( check_after_all() ) {
+                MIR_Validate(resolve, path, fcn, args, ret_type);
+            }
             change_happened = true;
         }
         // >> Remove assignments of unsed drop flags
@@ -241,9 +287,9 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
 #if DUMP_AFTER_ALL
             if( debug_enabled() ) MIR_Dump_Fcn(::std::cout, fcn);
 #endif
-#if CHECK_AFTER_ALL
-            MIR_Validate(resolve, path, fcn, args, ret_type);
-#endif
+            if( check_after_all() ) {
+                MIR_Validate(resolve, path, fcn, args, ret_type);
+            }
             change_happened = true;
         }
         // >> Remove assignments that are never read
@@ -252,9 +298,9 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
 #if DUMP_AFTER_ALL
             if( debug_enabled() ) MIR_Dump_Fcn(::std::cout, fcn);
 #endif
-#if CHECK_AFTER_ALL
-            MIR_Validate(resolve, path, fcn, args, ret_type);
-#endif
+            if( check_after_all() ) {
+                MIR_Validate(resolve, path, fcn, args, ret_type);
+            }
             change_happened = true;
         }
         // >> Remove no-op assignments
@@ -263,9 +309,9 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
 #if DUMP_AFTER_ALL
             if( debug_enabled() ) MIR_Dump_Fcn(::std::cout, fcn);
 #endif
-#if CHECK_AFTER_ALL
-            MIR_Validate(resolve, path, fcn, args, ret_type);
-#endif
+            if( check_after_all() ) {
+                MIR_Validate(resolve, path, fcn, args, ret_type);
+            }
             change_happened = true;
         }
 
@@ -275,9 +321,9 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
             #if DUMP_AFTER_ALL
             if( debug_enabled() ) MIR_Dump_Fcn(::std::cout, fcn);
             #endif
-            #if CHECK_AFTER_ALL
-            MIR_Validate(resolve, path, fcn, args, ret_type);
-            #endif
+            if( check_after_all() ) {
+                MIR_Validate(resolve, path, fcn, args, ret_type);
+            }
             change_happened = true;
         }
 
@@ -287,9 +333,9 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
             #if DUMP_AFTER_ALL
             if( debug_enabled() ) MIR_Dump_Fcn(::std::cout, fcn);
             #endif
-            #if CHECK_AFTER_ALL
-            MIR_Validate(resolve, path, fcn, args, ret_type);
-            #endif
+            if( check_after_all() ) {
+                MIR_Validate(resolve, path, fcn, args, ret_type);
+            }
             change_happened = true;
         }
 
@@ -304,9 +350,9 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
 #if DUMP_AFTER_ALL
                 if( debug_enabled() ) MIR_Dump_Fcn(::std::cout, fcn);
 #endif
-#if CHECK_AFTER_ALL
-                MIR_Validate(resolve, path, fcn, args, ret_type);
-#endif
+                if( check_after_all() ) {
+                    MIR_Validate(resolve, path, fcn, args, ret_type);
+                }
                 change_happened = true;
             }
         }
@@ -318,9 +364,9 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 MIR_Dump_Fcn(::std::cout, fcn);
             }
             #endif
-            #if CHECK_AFTER_PASS && !CHECK_AFTER_ALL
-            MIR_Validate(resolve, path, fcn, args, ret_type);
-            #endif
+            if( check_mode() == CHECKMODE_PASS ) {  // NOTE: Skipped if CHECKMODE_ALL
+                MIR_Validate(resolve, path, fcn, args, ret_type);
+            }
         }
         //else { MIR_Validate(resolve, path, fcn, args, ret_type); }
 
@@ -330,9 +376,9 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
 #if DUMP_AFTER_ALL
             if( debug_enabled() ) MIR_Dump_Fcn(::std::cout, fcn);
 #endif
-#if CHECK_AFTER_ALL
-            MIR_Validate(resolve, path, fcn, args, ret_type);
-#endif
+            if( check_after_all() ) {
+                MIR_Validate(resolve, path, fcn, args, ret_type);
+            }
         }
         //else { MIR_Validate(resolve, path, fcn, args, ret_type); }
 
@@ -350,9 +396,9 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
 #if 0
     if(MIR_Optimise_UnifyTemporaries(state, fcn))
     {
-#if CHECK_AFTER_ALL
-        MIR_Validate(resolve, path, fcn, args, ret_type);
-#endif
+        if( check_after_all() ) {
+            MIR_Validate(resolve, path, fcn, args, ret_type);
+        }
         MIR_Optimise_UnifyBlocks(state, fcn);
         //MIR_Optimise_ConstPropagate(state, fcn);
         MIR_Optimise_NoopRemoval(state, fcn);
@@ -365,10 +411,11 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
         MIR_Dump_Fcn(::std::cout, fcn);
     }
     #endif
-    #if CHECK_AFTER_DONE
-    // DEFENCE: Run validation _before_ GC (so validation errors refer to the pre-gc numbers)
-    MIR_Validate(resolve, path, fcn, args, ret_type);
-    #endif
+    if( check_mode() >= CHECKMODE_FINAL )
+    {
+        // DEFENCE: Run validation _before_ GC (so validation errors refer to the pre-gc numbers)
+        MIR_Validate(resolve, path, fcn, args, ret_type);
+    }
     // GC pass on blocks and variables
     // - Find unused blocks, then delete and rewrite all references.
     MIR_Optimise_GarbageCollect(state, fcn);
@@ -376,9 +423,10 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
     //MIR_Validate_Full(resolve, path, fcn, args, ret_type);
 
     MIR_SortBlocks(resolve, path, fcn);
-#if CHECK_AFTER_DONE > 1
-    MIR_Validate(resolve, path, fcn, args, ret_type);
-#endif
+    if( check_mode() >= CHECKMODE_FINAL )
+    {
+        MIR_Validate(resolve, path, fcn, args, ret_type);
+    }
 }
 
 namespace
