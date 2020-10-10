@@ -645,7 +645,7 @@ void PackageRef::fill_from_kv(bool was_added, const TomlKeyValue& key_val, size_
             assert(key_val.path.size() == base_idx+1);
             this->m_optional = key_val.value.as_bool();
         }
-        else if( attr == "default-features" )
+        else if( attr == "default-features" || attr == "default_features" ) // Huh, either is valid?
         {
             assert(key_val.path.size() == base_idx+1);
             this->m_use_default_features = key_val.value.as_bool();
