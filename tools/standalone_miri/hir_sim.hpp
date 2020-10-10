@@ -51,6 +51,9 @@ enum class RawType
     Composite,  // Struct, Enum, Union, tuple, ...
     TraitObject,    // Data pointer is `*const ()`, vtable type stored in `composite_type`
 };
+static inline Ordering ord(RawType a, RawType b) {
+    return ord( int(a), int(b) );
+}
 struct TypeWrapper
 {
     enum class Ty
