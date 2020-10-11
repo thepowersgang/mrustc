@@ -137,3 +137,61 @@ Solution?: Gate the "Only foo is an option" check on that option not being from 
 Soltution?: Fine-grained gate (only allow fully when in later fallback modes)
 - Still fails with a basic version
 - Works if deferred until `::Final`
+
+
+# `<::"datafrog-2_0_1"::treefrog::extend_anti::ExtendAnti<Key/*I:0*/,Val/*I:1*/,Tuple/*I:2*/,Func/*I:3*/,>/*S*/ as ::"datafrog-2_0_1"::treefrog::Leaper<Tuple/*I:2*/,Val/*I:1*/,>>::intersect`
+`..\rustc-1.39.0-src\vendor\datafrog\src\treefrog.rs:464: error:0:Failed to find an impl of ::"core"::cmp::PartialOrd<&&Val/*I:1*/,> for &Val/*I:1*/`
+
+```rustc
+	// pub(crate) fn gallop<T>(mut slice: &[T], mut cmp: impl FnMut(&T) -> bool) -> &[T] {
+	
+	// relation: &'leap Relation<(Key, Val)>,
+	
+    impl<'leap, Key: Ord, Val: Ord + 'leap, Tuple: Ord, Func> Leaper<'leap, Tuple, Val>
+        for ExtendAnti<'leap, Key, Val, Tuple, Func>
+    where
+        Key: Ord + 'leap,
+        Val: Ord + 'leap,
+        Tuple: Ord,
+        Func: Fn(&Tuple) -> Key,
+    {
+		...
+        fn intersect(&mut self, prefix: &Tuple, values: &mut Vec<&'leap Val>) {
+            let key = (self.key_func)(prefix);
+            let start = binary_search(&self.relation[..], |x| &x.0 < &key);
+            let slice1 = &self.relation[start..];
+            let slice2 = gallop(slice1, |x| &x.0 <= &key);
+            let mut slice = &slice1[..(slice1.len() - slice2.len())];
+            if !slice.is_empty() {
+                values.retain(|v| {
+                    slice = gallop(slice, |kv| &kv.1 < v);	/* Line 464 */
+                    slice.get(0).map(|kv| &kv.1) != Some(v)
+                });
+            }
+		}
+	}
+```
+
+```rust
+            let mut slice/*: &[(Key, Val)]*/ = &slice1[..(slice1.len() - slice2.len())];
+            if !slice.is_empty() {
+                values/*: &mut Vec<&'leap Val>*/.retain(|v/*: &&'leap Val*/| {
+                    slice = gallop(slice, |kv/*: &(Key, Val)*/| &kv.1/*: &Val*/ < v/*: &&'leap Val*/);
+				});
+			}
+```
+
+Issue: Types as annotated above are likely incorrect, the reference count for the comparison should match.
+
+Theory: Maybe the closure type should turn `&&T` into `&T` (part of pattern ergonmics)
+Experiment:
+- Ran `rustc -Z unpretty=hir,typed`, result was `(&((kv as &(Key, Val)).1 as Val) as &Val)  <  (v as &&Val)`
+  - Confirmined that mrustc's type inferrence is correct : `&Val < &&Val`
+- Emitted rustc MIR, it `for<'r, 's> fn(&'r &Val, &'s &Val) -> bool {<&Val as std::cmp::PartialOrd>::lt}`
+  - This looks like it's either added an auto-deref of the RHS before expanding the `<`, OR has omitted the `&` when doing the expansion
+  - `let _ = &1i32 < &DerefI32(1);` compiles with `rustc` - there's hidden deref coercion happening
+  - The reverse does not, so it's RHS coercing to LHS?
+
+Cause: There's a coercion point at the RHS of the comparison, but trait lookup isn't propagating the type.
+- The trait lookup failed due to it being a fuzzy match, and two copies of `Val: Ord` in the bounds list.
+Fix: Check the fuzzy placeholder list for equality when a new fuzzy is seen, and use it if the list is always the same.

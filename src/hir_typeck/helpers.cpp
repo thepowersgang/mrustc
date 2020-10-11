@@ -3046,8 +3046,8 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             // NOTE: Save the placeholder state and restore if the result was Fuzzy
             ::HIR::PathParams saved_ph = placeholders.clone();
             ::HIR::PathParams fuzzy_ph;
-            unsigned num_fuzzy = 0;
-            // TODO: Pass the `match_test_generics` callback? Or another one that handles the impl placeholders.
+            unsigned num_fuzzy = 0;     //!< Number of detected fuzzy impls
+            bool fuzzy_compatible = true;   //!< Indicates that the `fuzzy_ph` applies to all detected fuzzy impls
             auto rv = this->find_trait_impls(sp, real_trait_path.m_path, real_trait_path.m_params, real_type, [&](auto impl, auto impl_cmp) {
                 // TODO: Save and restore placeholders if this isn't a full match
                 DEBUG("[ftic_check_params] impl_cmp = " << impl_cmp << ", impl = " << impl);
@@ -3113,14 +3113,17 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 if( cmp == ::HIR::Compare::Fuzzy )
                 {
                     found_fuzzy_match |= true;
-                    num_fuzzy += 1;
-                    if( num_fuzzy )
-                    {
-                        fuzzy_ph = ::std::move(placeholders);
-                        // TODO: Should this do some form of reset?
-                        placeholders.m_types.resize(fuzzy_ph.m_types.size());
-                        placeholders.m_values.resize(fuzzy_ph.m_values.size());
+                    // `fuzzy_ph` is set (num_fuzzy > 0) then check if the PH set is equal, if not then flag not equal
+                    if( num_fuzzy > 0 && fuzzy_ph != placeholders ) {
+                        DEBUG("Multiple fuzzy matches, placeholders mismatch: " << fuzzy_ph << " != " << placeholders);
+                        fuzzy_compatible = false;
                     }
+                    num_fuzzy += 1;
+
+                    fuzzy_ph = ::std::move(placeholders);
+                    // TODO: Should this do some form of reset?
+                    placeholders.m_types.resize(fuzzy_ph.m_types.size());
+                    placeholders.m_values.resize(fuzzy_ph.m_values.size());
                 }
                 if( cmp != ::HIR::Compare::Equal )
                 {
@@ -3138,13 +3141,23 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             }
             else if( found_fuzzy_match ) {
                 DEBUG("- Bound " << real_type << " : " << real_trait_path << " fuzzed");
-                if( num_fuzzy == 1 )
+                if( num_fuzzy == 0 )
+                {
+                    DEBUG("No placeholders");   // `real_type` was infer
+                }
+                else if( num_fuzzy == 1 )
                 {
                     DEBUG("Use placeholders " << fuzzy_ph);
                     placeholders = ::std::move(fuzzy_ph);
                 }
+                else if( fuzzy_compatible ) 
+                {
+                    DEBUG("Multiple placeholders (" << num_fuzzy << "), but all equal " << fuzzy_ph);
+                    placeholders = ::std::move(fuzzy_ph);
+                }
                 else
                 {
+                    // 
                     DEBUG("TODO: Multiple fuzzy matches, which placeholder set to use?");
                 }
                 match = ::HIR::Compare::Fuzzy;
