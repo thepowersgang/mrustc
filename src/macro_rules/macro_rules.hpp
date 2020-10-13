@@ -41,6 +41,7 @@ extern ::std::ostream& operator<<(::std::ostream& os, const MacroExpansionEnt& x
 /// Matching pattern entry
 struct MacroPatEnt
 {
+    Span    sp;
     RcString    name;
     unsigned int    name_index = 0;
     // TODO: Include a point span for the token?
@@ -72,13 +73,15 @@ struct MacroPatEnt
         type(PAT_TOKEN)
     {
     }
-    MacroPatEnt(Token tok):
+    MacroPatEnt(Span sp, Token tok):
+        sp(mv$(sp)),
         tok( mv$(tok) ),
         type(PAT_TOKEN)
     {
     }
 
-    MacroPatEnt(RcString name, unsigned int name_index, Type type):
+    MacroPatEnt(Span sp, RcString name, unsigned int name_index, Type type):
+        sp(mv$(sp)),
         name( mv$(name) ),
         name_index( name_index ),
         tok(),
@@ -86,7 +89,8 @@ struct MacroPatEnt
     {
     }
 
-    MacroPatEnt(Token sep, const char* op, ::std::vector<MacroPatEnt> ents):
+    MacroPatEnt(Span sp, Token sep, const char* op, ::std::vector<MacroPatEnt> ents):
+        sp(mv$(sp)),
         name( op ),
         tok( mv$(sep) ),
         subpats( move(ents) ),
@@ -102,6 +106,14 @@ struct SimplePatIfCheck
 {
     MacroPatEnt::Type   ty; // If PAT_TOKEN, token is checked
     Token   tok;
+    bool operator==(const SimplePatIfCheck& x) const { return this->ty == x.ty && this->tok == x.tok; }
+
+    friend ::std::ostream& operator<<(::std::ostream& os, const SimplePatIfCheck& x) {
+        os << x.ty;
+        if(x.ty == MacroPatEnt::PAT_TOKEN)
+            os << ":" << x.tok;
+        return os;
+    }
 };
 
 /// Simple pattern entry for macro_rules! arm patterns

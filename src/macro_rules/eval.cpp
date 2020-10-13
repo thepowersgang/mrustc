@@ -1826,7 +1826,8 @@ unsigned int Macro_InvokeRules_MatchPattern(const Span& sp, const MacroRules& ru
                             rv = false;
                             break;
                         }
-                        lc.consume();
+                        if( lc.next_tok() != TOK_EOF )
+                            lc.consume();
                     }
                 }
                 if( rv == e->is_equal )

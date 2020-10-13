@@ -104,6 +104,11 @@ public:
     {
         t.m_type = TOK_NULL;
     }
+    Token& operator=(const Token& t) {
+        this->~Token();
+        new (this) Token(t);
+        return *this;
+    }
     Token(const Token& t);
     Token clone() const;
 

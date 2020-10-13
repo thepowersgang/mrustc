@@ -381,7 +381,7 @@
             auto s = m_in.read_istring();
             auto n = static_cast<unsigned int>(m_in.read_count());
             auto type = static_cast< ::MacroPatEnt::Type>(m_in.read_tag());
-            ::MacroPatEnt   rv { mv$(s), mv$(n), mv$(type) };
+            ::MacroPatEnt   rv(Span(), mv$(s), mv$(n), mv$(type));
             switch(rv.type)
             {
             case ::MacroPatEnt::PAT_TOKEN:
