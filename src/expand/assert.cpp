@@ -43,7 +43,16 @@ class CExpander_assert:
             toks.push_back( Token(TOK_PAREN_OPEN) );
             while(lex.lookahead(0) != TOK_EOF )
             {
-                toks.push_back( Token(InterpolatedFragment(InterpolatedFragment::EXPR, Parse_Expr0(lex).release())) );
+                if( lex.lookahead(0) == TOK_IDENT && lex.lookahead(1) == TOK_EQUAL )
+                {
+                    toks.push_back( lex.getToken() );
+                    toks.push_back( lex.getToken() );
+                    toks.push_back( Token(InterpolatedFragment(InterpolatedFragment::EXPR, Parse_Expr0(lex).release())) );
+                }
+                else
+                {
+                    toks.push_back( Token(InterpolatedFragment(InterpolatedFragment::EXPR, Parse_Expr0(lex).release())) );
+                }
                 if( lex.lookahead(0) != TOK_COMMA )
                     break;
                 GET_CHECK_TOK(tok, lex, TOK_COMMA);
