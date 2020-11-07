@@ -64,6 +64,10 @@ namespace {
             ::HIR::Visitor::visit_module(p, mod);
         }
 
+        void visit_union(::HIR::ItemPath p, ::HIR::Union& item) override {
+            auto _ = m_resolve.set_item_generics(item.m_params);
+            ::HIR::Visitor::visit_union(p, item);
+        }
         void visit_struct(::HIR::ItemPath p, ::HIR::Struct& item) override {
             auto _ = m_resolve.set_item_generics(item.m_params);
             ::HIR::Visitor::visit_struct(p, item);
