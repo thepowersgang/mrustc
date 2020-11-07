@@ -195,3 +195,19 @@ Experiment:
 Cause: There's a coercion point at the RHS of the comparison, but trait lookup isn't propagating the type.
 - The trait lookup failed due to it being a fuzzy match, and two copies of `Val: Ord` in the bounds list.
 Fix: Check the fuzzy placeholder list for equality when a new fuzzy is seen, and use it if the list is always the same.
+
+# `::"rustc_apfloat"::ieee::sig::olsb`
+`..\rustc-1.39.0-src\src\librustc_apfloat\ieee.rs:2300: error:0:Failed to find an impl of ::"core"::cmp::PartialEq<_/*26:i*/,> for &u128`
+
+```rust
+    pub(super) fn olsb(limbs: &[Limb]) -> usize {
+        limbs.iter().enumerate().find(|(_, &limb)| limb != 0).map_or(0,
+            |(i, limb)| i * LIMB_BITS + limb.trailing_zeros() as usize + 1)
+    }
+```
+
+Looks like the `&limb` isn't dereferencing properly
+
+Theory: Recursion for match-ergonomics `&` patterns doesn't reset binding mode
+Fix: Do that.
+

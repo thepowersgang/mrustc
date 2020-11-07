@@ -2165,7 +2165,7 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                     auto new_ty = ::HIR::TypeRef::new_borrow( pe->type, inner_ty.clone() );
                     context.equate_types(sp, type, new_ty);
 
-                    return this->revisit_inner( context, *pe->sub, inner_ty, binding_mode );
+                    return this->revisit_inner( context, *pe->sub, inner_ty, ::HIR::PatternBinding::Type::Move );
                 }
 
                 // If the type is a borrow, then count derefs required for the borrow
