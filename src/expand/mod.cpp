@@ -1323,6 +1323,12 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                             TU_MATCH_HDRA( (*mac), {)
                             default:
                                 TODO(ue.sp, "Import macro '" << ue.name << "' (" << mac->tag_str() << ") with a `use` statement");
+                            TU_ARMA(ProcMacro, p) {
+                                //DEBUG("Imported " << ue.name << "! (proc macro)");
+                                auto mi = AST::Module::MacroImport{ false, ue.name, p.path.m_components, nullptr };
+                                mi.path.insert(mi.path.begin(), p.path.m_crate_name);
+                                mod.m_macro_imports.push_back(mv$(mi));
+                                }
                             TU_ARMA(MacroRules, me) {
                                 mod.add_macro_import(ue.name, *me);
                                 }
