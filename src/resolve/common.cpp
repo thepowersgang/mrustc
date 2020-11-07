@@ -76,6 +76,7 @@ namespace {
                 }
                 if(e.nodes.size() == 1 && ignore_last )
                 {
+                    DEBUG("Ignore last");
                     return ResolveModuleRef(&this->get_mod_by_true_path(base_nodes, base_nodes.size()));
                 }
                 const auto& name = e.nodes.front().name();
@@ -96,8 +97,19 @@ namespace {
                                 // What about `cfg()`?
                                 if( i->name == name )
                                 {
-                                    ASSERT_BUG(sp, i->data.is_Module(), "Front of " << path << " not a module");
-                                    return get_module_ast(i->data.as_Module(), path, 1, ignore_last, out_path);
+                                    // TODO: What about an enum?
+                                    TU_MATCH_HDRA( (i->data), {)
+                                    default: {
+                                        //ASSERT_BUG(sp, i->data.is_Module(), "Front of " << path << " not a module-alike (" << i->data.tag_str() << ")");
+                                        // Ignore, keep going
+                                        }
+                                    TU_ARMA(Crate, c) {
+                                        return get_module_hir(crate.m_extern_crates.at(c.name).m_hir->m_root_module, path, 1, ignore_last, out_path);
+                                        }
+                                    TU_ARMA(Module, m) {
+                                        return get_module_ast(m, path, 1, ignore_last, out_path);
+                                        }
+                                    }
                                 }
                             }
                             BUG(sp, "get_source_module_for_name returned true (AST) but not found");
@@ -119,6 +131,7 @@ namespace {
                         }
                     TU_ARMA(None, e) {
                         // Not found in this module, keep searching
+                        DEBUG("Keep searching (" << i << "/" << base_nodes.size() << ")");
                         }
                     }
 
@@ -145,7 +158,7 @@ namespace {
             // Simple logic
             TU_ARMA(Self, e) {
                 DEBUG("Self " << path);
-                ASSERT_BUG(sp, !e.nodes.empty(), "");
+                //ASSERT_BUG(sp, !base_nodes.empty(), "");
                 // Look up within the non-anon module
                 size_t i = 0;
                 while( i < base_nodes.size() && base_nodes[base_nodes.size() - i - 1].name().c_str()[0] == '#' )
@@ -157,9 +170,17 @@ namespace {
                 }
             TU_ARMA(Super, e) {
                 DEBUG("Super " << path);
-                ASSERT_BUG(sp, !e.nodes.empty(), "");
+                //ASSERT_BUG(sp, !base_nodes.empty(), "Super in empty path");
                 // Pop current non-anon module, then look up in anon modules
-                TODO(sp, "Super " << path);
+                size_t i = 0;
+                while( i < base_nodes.size() && base_nodes[base_nodes.size() - i - 1].name().c_str()[0] == '#' )
+                {
+                    i += 1;
+                }
+                i += 1;
+                ASSERT_BUG(sp, i <= base_nodes.size(), "");
+                const auto& start_mod = this->get_mod_by_true_path(base_nodes, base_nodes.size() - i);
+                return get_module_ast(start_mod, path, 0, ignore_last, out_path);
                 }
             TU_ARMA(Absolute, e) {
                 DEBUG("Absolute " << path);
@@ -267,7 +288,8 @@ namespace {
                 {
                     break;
                 }
-                BUG(sp, "Unable to find " << name << " in module " << mod->path() << " for " << path);
+                //BUG(sp, "Unable to find " << name << " in module " << mod->path() << " for " << path);
+                return ResolveModuleRef();
             }
             if(out_path)
             {
@@ -307,6 +329,11 @@ namespace {
             for(size_t i = 0; i < len; i++)
             {
                 const auto& tgt_name = base_nodes[i].name();
+                if( tgt_name.c_str()[0] == '#' ) {
+                    auto idx = strtol(tgt_name.c_str()+1, nullptr, 10);
+                    mod = &*mod->anon_mods()[idx];
+                    continue ;
+                }
                 const AST::Module* next_mod = nullptr;
                 for(const auto& i : mod->m_items)
                 {
@@ -322,7 +349,7 @@ namespace {
                 }
                 if( !next_mod )
                 {
-                    BUG(sp, "Unable to find component " << tgt_name << " of " << base_nodes << " in module " << mod->path());
+                    BUG(sp, "Unable to find component `" << tgt_name << "` of [" << base_nodes << "] in module " << mod->path());
                 }
                 mod = next_mod;
             }
@@ -375,6 +402,7 @@ namespace {
                 {
                     if(mac.name == name) {
                         // TODO: What about macro re-exports a builtin?
+                        DEBUG("Found in ast (macro import)");
                         return ResolveModuleRef(&mod);
                     }
                 }
@@ -382,6 +410,7 @@ namespace {
                 {
                     if(i.name == name)
                     {
+                        DEBUG("Found in ast (macro)");
                         return ResolveModuleRef(&mod);
                     }
                 }
@@ -393,6 +422,7 @@ namespace {
                 // What about `cfg()`?
                 if( matching_namespace(i->data, ns) && i->name == name )
                 {
+                    DEBUG("Found in ast");
                     return ResolveModuleRef(&mod);
                 }
 
@@ -402,6 +432,7 @@ namespace {
                     {
                         if( e.name == name )
                         {
+                            DEBUG("Use " << e.path);
                             // TODO:
                             // - Push module to a stack
 
@@ -462,6 +493,7 @@ namespace {
                     {
                         if( e.name == "" )
                         {
+                            DEBUG("Glob use " << e.path);
                             // TODO:
                             // - Push module to a stack
                             if( std::find(antirecurse_stack.begin(), antirecurse_stack.end(), &mod) != antirecurse_stack.end() ) {
@@ -526,6 +558,7 @@ namespace {
                     }
                 }
             }
+            DEBUG("Not found");
             return ResolveModuleRef();
         }
     };

@@ -456,6 +456,8 @@ namespace
                         ASSERT_BUG(sp, i.ent.is_Module(), "Node `" << n << "` not a module in path " << mp);
                         mod = &i.ent.as_Module();
                     }
+                    AST::Path::Bindings bindings;
+                    const HIR::SimplePath* true_path = nullptr;
                     switch(mode)
                     {
                     case LookupMode::Constant:
@@ -463,16 +465,57 @@ namespace
                     case LookupMode::Variable: {
                         auto it = mod->m_value_items.find(name);
                         if(it != mod->m_value_items.end()) {
-                            TODO(sp, "");
+                            const auto* item = &it->second->ent;
+                            if( item->is_Import() ) {
+                                const auto& imp = item->as_Import();
+                                // Set the true path (so the returned path is canonical)
+                                true_path = &imp.path;
+                                if(imp.is_variant) {
+                                    const auto& enm = m_crate.m_extern_crates.at(imp.path.m_crate_name).m_hir
+                                        ->get_enum_by_path(sp, imp.path, /*ignore_crate_name*/true, /*ignore_last*/true);
+                                    bindings.value = AST::PathBinding_Value::make_EnumVar({nullptr, imp.idx, &enm});
+                                    break;  // Break out of the switch
+                                }
+                                else {
+                                    item = &m_crate.m_extern_crates.at(imp.path.m_crate_name).m_hir->get_valitem_by_path(sp, imp.path, true);
+                                }
+                            }
+                            TU_MATCH_HDRA( (*item), {)
+                            TU_ARMA(Function, e) {
+                                bindings.value = AST::PathBinding_Value::make_Function({nullptr});
+                                }
+                            TU_ARMA(Static, e) {
+                                bindings.value = AST::PathBinding_Value::make_Static({nullptr});
+                                }
+                            default:
+                                TODO(sp, "Found value '" << name << "' for module path " << mp << " : " << it->second->ent.tag_str());
+                            }
                         }
                         } break;
                     case LookupMode::Namespace:
                     case LookupMode::Type: {
                         auto it = mod->m_mod_items.find(name);
                         if(it != mod->m_mod_items.end()) {
-                            TODO(sp, "");
+                            TODO(sp, "Found type/mod '" << name << "' for module path " << mp);
                         }
                         } break;
+                    }
+                    // If any bindings were populated, then generate a path
+                    if(bindings.has_binding()) {
+                        auto rv = AST::Path(mp.crate, {});
+                        if( true_path ) {
+                            rv.m_class.as_Absolute().crate = true_path->m_crate_name;
+                            for(const auto& e : true_path->m_components) {
+                                rv.nodes().push_back( e );
+                            }
+                        }
+                        else {
+                            for(const auto& e : mp.ents) {
+                                rv.nodes().push_back( e );
+                            }
+                        }
+                        rv.m_bindings = std::move(bindings);
+                        return rv;
                     }
                     // Fall through
                 }

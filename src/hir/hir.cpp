@@ -368,9 +368,9 @@ const ::HIR::Union& ::HIR::Crate::get_union_by_path(const Span& sp, const ::HIR:
         BUG(sp, "Path " << path << " didn't point to a union");
     }
 }
-const ::HIR::Enum& ::HIR::Crate::get_enum_by_path(const Span& sp, const ::HIR::SimplePath& path) const
+const ::HIR::Enum& ::HIR::Crate::get_enum_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_crate_name, bool ignore_last_node) const
 {
-    const auto& ti = this->get_typeitem_by_path(sp, path);
+    const auto& ti = this->get_typeitem_by_path(sp, path, ignore_crate_name, ignore_last_node);
     TU_IFLET(::HIR::TypeItem, ti, Enum, e,
         return e;
     )

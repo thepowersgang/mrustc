@@ -1297,7 +1297,40 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             mod.add_macro(i.is_pub, i.name, mv$(e));
             }
         TU_ARMA(Use, e) {
-            // No inner expand.
+            // Determine if the `use` refers to a macro, and import into the current scope
+            for(const auto& ue : e.entries)
+            {
+                // Get module ref, if it's to a HIR module then grab the macro
+                if(ue.name != "")
+                {
+                    auto m = Resolve_Lookup_GetModule(ue.sp, crate, mod.path(), ue.path, /*ignore_last*/true, nullptr);
+                    // Only worry if the module resolves to a HIR module
+                    if(m.is_Hir())
+                    {
+                        const HIR::Module& hir_mod = *m.as_Hir();
+                        auto it = hir_mod.m_macro_items.find(ue.path.nodes().back().name());
+                        if(it != hir_mod.m_macro_items.end()) {
+                            const auto* mac = &it->second->ent;
+                            if(mac->is_Import() ) {
+                                const auto& p = mac->as_Import().path;
+                                if(p.m_crate_name == CRATE_BUILTINS)
+                                    continue ;
+                                const auto& hir_mod = crate.m_extern_crates.at(p.m_crate_name).m_hir->m_root_module;
+                                // NOTE: Macro imports should always be from the root
+                                ASSERT_BUG(ue.sp, p.m_components.size() == 1, "Macro import not from root");
+                                mac = &hir_mod.m_macro_items.at(p.m_components[0])->ent;
+                            }
+                            TU_MATCH_HDRA( (*mac), {)
+                            default:
+                                TODO(ue.sp, "Import macro '" << ue.name << "' (" << mac->tag_str() << ") with a `use` statement");
+                            TU_ARMA(MacroRules, me) {
+                                mod.add_macro_import(ue.name, *me);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             }
         TU_ARMA(ExternBlock, e) {
             // TODO: Run expand on inner items?
