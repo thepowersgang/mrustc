@@ -283,6 +283,12 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence)
             }
             return ret;
             }
+        // TODO: if this expression captures a block, then treat it as a statement.
+        // Otherwise, interpret as normal expression
+        // HACK: Just treat a leading `:expr` as a statement (rust-lang/rust #78829) (ref: rustc-1.39.0-src\vendor\indexmap\src\map.rs:1139)
+        case TOK_INTERPOLATED_EXPR:
+            PUTBACK(tok, lex);
+            return Parse_Stmt(lex);
 
         case TOK_IDENT:
             if( lex.lookahead(0) == TOK_EXCLAM )
