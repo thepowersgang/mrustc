@@ -94,7 +94,20 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
                     {
                         assert(pbe.hir);
                         const auto& trait = *pbe.hir;
-                        TODO(sp, "");
+
+                        auto it = trait.m_types.find(name);
+                        if(it != trait.m_types.end()) {
+                            return ms.monomorph_genericpath(sp, path, /*allow_infer=*/false);
+                        }
+                        //auto cb = MonomorphStatePtr(nullptr, &path.m_params, nullptr);
+                        for(const auto& st : trait.m_parent_traits)
+                        {
+                            TODO(sp, "HIR Source trait for `" << name << "` (path=" << path << ") - Search supertraits");
+                            //const auto& t = 
+                            //auto rv = H::find_source_trait(sp, st.m_path, st.path.m_bindings.type.as_Trait(), name, cb);
+                            //if(rv != HIR::GenericPath())
+                            //    return rv;
+                        }
                     }
                     else if( pbe.trait_ )
                     {
