@@ -4852,8 +4852,10 @@ namespace {
                 // I don't assume :)
             }
             else if( name == "likely" ) {
+                emit_lvalue(e.ret_val); m_of << "= ("; emit_param(e.args.at(0)); m_of << ")";
             }
             else if( name == "unlikely" ) {
+                emit_lvalue(e.ret_val); m_of << "= ("; emit_param(e.args.at(0)); m_of << ")";
             }
             // Overflowing Arithmetic
             // HACK: Uses GCC intrinsics
