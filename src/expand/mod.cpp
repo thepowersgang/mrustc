@@ -434,17 +434,21 @@ void Expand_Type(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST:
         )
     )
 }
+void Expand_PathParams(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod, ::AST::PathParams& params)
+{
+    for(auto& typ : params.m_types)
+        Expand_Type(crate, modstack, mod, typ);
+    for(auto& aty : params.m_assoc_equal)
+        Expand_Type(crate, modstack, mod, aty.second);
+    for(auto& aty : params.m_assoc_bound)
+        Expand_Path(crate, modstack, mod, aty.second);
+}
 void Expand_Path(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod, ::AST::Path& p)
 {
     auto expand_nodes = [&](::std::vector<::AST::PathNode>& nodes) {
         for(auto& node : nodes)
         {
-            for(auto& typ : node.args().m_types)
-                Expand_Type(crate, modstack, mod, typ);
-            for(auto& aty : node.args().m_assoc_equal)
-                Expand_Type(crate, modstack, mod, aty.second);
-            for(auto& aty : node.args().m_assoc_bound)
-                Expand_Path(crate, modstack, mod, aty.second);
+            Expand_PathParams(crate, modstack, mod, node.args());
         }
         };
 
@@ -730,7 +734,7 @@ struct CExpandExpr:
         this->visit_vector(node.m_args);
     }
     void visit(::AST::ExprNode_CallMethod& node) override {
-        // TODO: Path params.
+        Expand_PathParams(crate, modstack, this->cur_mod(), node.m_method.args());
         this->visit_nodelete(node, node.m_val);
         this->visit_vector(node.m_args);
     }
