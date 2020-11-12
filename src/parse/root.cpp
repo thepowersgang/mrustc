@@ -622,9 +622,15 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::AttributeList& meta_items)
         //    WARNING( , W000, "Use 'struct Name;' instead of 'struct Name();' ... ning-nong");
         return AST::Struct(mv$(params), mv$(refs));
     }
-    else if(tok.type() == TOK_SEMICOLON)
+    else if(tok.type() == TOK_RWORD_WHERE || tok.type() == TOK_SEMICOLON)
     {
         // Unit-like struct
+        if(tok.type() == TOK_RWORD_WHERE)
+        {
+            Parse_WhereClause(lex, params);
+            tok = lex.getToken();
+        }
+        CHECK_TOK(tok, TOK_SEMICOLON);
         return AST::Struct(mv$(params));
     }
     else if(tok.type() == TOK_BRACE_OPEN)
