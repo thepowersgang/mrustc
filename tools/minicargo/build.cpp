@@ -1001,6 +1001,10 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
             args.push_back(::format(m.get_library().m_name, "=", path));
         }
     }
+    for(const auto& feat : manifest.active_features())
+    {
+        args.push_back("--cfg"); args.push_back(::format("feature=", feat));
+    }
     // - Build scripts are built for the host (not the target)
     //args.push_back("--target"); args.push_back(HOST_TARGET);
 
