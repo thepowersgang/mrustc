@@ -211,3 +211,21 @@ Looks like the `&limb` isn't dereferencing properly
 Theory: Recursion for match-ergonomics `&` patterns doesn't reset binding mode
 Fix: Do that.
 
+
+# `<I/*I:1*/ as ::"syn-0_15_35"::punctuated::IterTrait<T/*I:0*/,>>::clone_box`
+`..\rustc-1.39.0-src\vendor\syn-0.15.35\src\punctuated.rs:658: error:0:Failed to find an impl of ::"syn-0_15_35"::punctuated::IterTrait<T/*I:0*/,> for I/*I:1*/ with Item = &T/*I:0*/`
+
+```
+Typecheck Expressions-     check_coerce: >> (R1 ::"alloc"::boxed::Box<dyn (::"syn-0_15_35"::punctuated::IterTrait<T/*I:0*/,Item=&T/*I:0*/,>+'_),>/*S*/ := 000000A226B4E470 0000028A127C0460 (_/*0*/) - ::"alloc"::boxed::Box<(::"syn-0_15_35"::punctuated::IterTrait<T/*I:0*/,>+ ''_),> := ::"alloc"::boxed::Box<I/*I:1*/,>)
+Typecheck Expressions-        Context::equate_types_assoc: ++ R3 &T/*I:0*/ = < `I/*I:1*/` as `::"syn-0_15_35"::punctuated::IterTrait<T/*I:0*/,>` >::Item
+Typecheck Expressions-     Typecheck_Code_CS: - R3 &T/*I:0*/ = < `I/*I:1*/` as `::"syn-0_15_35"::punctuated::IterTrait<T/*I:0*/,>` >::Item
+Typecheck Expressions-     check_associated: >> (R3 &T/*I:0*/ = < `I/*I:1*/` as `::"syn-0_15_35"::punctuated::IterTrait<T/*I:0*/,>` >::Item)
+Typecheck Expressions-        ftic_check_params: >> (impl<'a,T,I,> ::"syn-0_15_35"::punctuated::IterTrait<T/*I:0*/,> for I/*I:1*/)
+Typecheck Expressions-         find_trait_impls: >> (trait = ::"core"::iter::traits::exact_size::ExactSizeIterator, type = I/*I:1*/)
+Typecheck Expressions-        `anonymous-namespace'::check_associated::<lambda_ec0a0cf4bb4ae9fc7de4b523e49adcc6>::operator (): [check_associated] - (fail) known result can't match (&T/*I:0*/ and <I/*I:1*/ as ::"syn-0_15_35"::punctuated::IterTrait<T/*I:0*/,>>::Item)
+Typecheck Expressions-      `anonymous-namespace'::check_associated: No impl of ::"syn-0_15_35"::punctuated::IterTrait<T/*I:0*/,> for I/*I:1*/ with Item = &T/*I:0*/
+```
+
+Cause: ExpandAssociatedTypes doesn't check bounds after figuring out which trait the type was from.
+
+Fix: Move `find_type_in_trait` call to above the bounded lookup

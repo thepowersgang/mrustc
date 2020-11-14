@@ -2035,10 +2035,16 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
         }
     }
 
+    // Search for the actual trait containing this associated type
+    ::HIR::GenericPath  trait_path;
+    if( !this->trait_contains_type(sp, pe.trait, this->m_crate.get_trait_by_path(sp, pe.trait.m_path), pe.item.c_str(), trait_path) )
+        BUG(sp, "Cannot find associated type " << pe.item << " anywhere in trait " << pe.trait);
+    //pe.trait = mv$(trait_path);
+
     // 1. Bounds
     bool rv;
     bool assume_opaque = true;
-    rv = this->iterate_bounds([&](const auto& b)->bool {
+    rv = this->iterate_bounds([&](const HIR::GenericBound& b)->bool {
         TU_MATCH_HDRA( (b), {)
         default:
             // Not type information, ignore
@@ -2050,7 +2056,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
             if( be.type != pe.type )
                 return false;
             // 2. Check if the trait (or any supertrait) includes pe.trait
-            if( be.trait.m_path == pe.trait ) {
+            if( be.trait.m_path == trait_path ) {
                 auto it = be.trait.m_type_bounds.find(pe.item);
                 // 1. Check if the bounds include the desired item
                 if( it == be.trait.m_type_bounds.end() ) {
@@ -2066,7 +2072,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
             }
 
             bool found_supertrait = this->find_named_trait_in_trait(sp,
-                pe.trait.m_path, pe.trait.m_params,
+                trait_path.m_path, trait_path.m_params,
                 *be.trait.m_trait_ptr, be.trait.m_path.m_path, be.trait.m_path.m_params, pe.type,
                 [&pe,&input,&assume_opaque](const auto&, const auto& x, const auto& assoc){
                     auto it = assoc.find(pe.item);
@@ -2192,12 +2198,6 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
     }
 
     // 2. Crate-level impls
-    // TODO: Search for the actual trait containing this associated type
-    ::HIR::GenericPath  trait_path;
-    //if( !this->trait_contains_type(sp, pe.trait, this->m_crate.get_trait_by_path(sp, pe.trait.m_path), pe.type, pe.item, trait_path) )
-    if( !this->trait_contains_type(sp, pe.trait, this->m_crate.get_trait_by_path(sp, pe.trait.m_path), pe.item.c_str(), trait_path) )
-        BUG(sp, "Cannot find associated type " << pe.item << " anywhere in trait " << pe.trait);
-    //pe.trait = mv$(trait_path);
 
     DEBUG("Searching for impl");
     bool    can_fuzz = true;
