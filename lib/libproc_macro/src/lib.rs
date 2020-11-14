@@ -114,7 +114,7 @@ impl FromStr for TokenStream {
         fn get_ident<T: Iterator<Item=char>>(it: &mut CharStream<T>, mut s: String) -> String
         {
             let mut c = it.cur();
-            while c.is_xid_continue() || c.is_digit(10)
+            while c == '_' || c.is_alphanumeric() || c.is_digit(10)
             {
                 s.push(c);
                 c = some_else!(it.consume() => break);
@@ -167,7 +167,7 @@ impl FromStr for TokenStream {
             {
                 it.consume();
                 c = it.cur();
-                if (c.is_xid_start() || c == '_') && it.next().map(|x| x != '\'').unwrap_or(true) {
+                if (c.is_alphabetic() || c == '_') && it.next().map(|x| x != '\'').unwrap_or(true) {
                     // Lifetime
                     let ident = get_ident(&mut it, String::new());
                     rv.push(Token::Lifetime(ident))
@@ -316,7 +316,7 @@ impl FromStr for TokenStream {
                 }
 
                 // Identifier.
-                if c.is_xid_start() || c == '_'
+                if c.is_alphabetic() || c == '_'
                 {
                     let ident = get_ident(&mut it, String::new());
                     if ident == "_" {
