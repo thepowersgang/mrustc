@@ -395,6 +395,25 @@ namespace {
             {
                 TODO(sp, "Look up in index");
             }
+
+            // TODO:
+            // - Push module to a stack
+            if( std::find(antirecurse_stack.begin(), antirecurse_stack.end(), &mod) != antirecurse_stack.end() ) {
+                DEBUG("Recursion detected, not looking at `use` statements in " << mod.path());
+                return ResolveModuleRef();
+            }
+            struct Guard {
+                std::vector<const AST::Module*>* s;
+                Guard(std::vector<const AST::Module*>* s, const AST::Module* m):
+                    s(s)
+                {
+                    s->push_back(m);
+                }
+                ~Guard()
+                {
+                    s->pop_back();
+                }
+            } guard(&antirecurse_stack, &mod);
             
             if(ns == ResolveNamespace::Macro )
             {
@@ -494,24 +513,6 @@ namespace {
                         if( e.name == "" )
                         {
                             DEBUG("Glob use " << e.path);
-                            // TODO:
-                            // - Push module to a stack
-                            if( std::find(antirecurse_stack.begin(), antirecurse_stack.end(), &mod) != antirecurse_stack.end() ) {
-                                DEBUG("Recursion detected, not looking at `use` statements in " << mod.path());
-                                continue ;
-                            }
-                            struct Guard {
-                                std::vector<const AST::Module*>* s;
-                                Guard(std::vector<const AST::Module*>* s, const AST::Module* m):
-                                    s(s)
-                                {
-                                    s->push_back(m);
-                                }
-                                ~Guard()
-                                {
-                                    s->pop_back();
-                                }
-                            } guard(&antirecurse_stack, &mod);
 
                             // - Outer recurse
                             //  > Get the module for this path
