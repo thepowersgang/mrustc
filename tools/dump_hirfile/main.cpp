@@ -68,6 +68,7 @@ namespace {
 void Dumper::dump_crate(const char* name, const ::HIR::Crate& crate) const
 {
     // Dump macros
+#if 0
     for(const auto& mac : crate.m_exported_macros)
     {
         ::std::cout << "macro_rules! " << mac.first << "{" << std::endl;
@@ -110,6 +111,7 @@ void Dumper::dump_crate(const char* name, const ::HIR::Crate& crate) const
         ::std::cout << "}\n";
         ::std::cout << ::std::endl;
     }
+#endif
 
     this->dump_module(::HIR::ItemPath(name), ::HIR::Publicity::new_global(), crate.m_root_module);
 
