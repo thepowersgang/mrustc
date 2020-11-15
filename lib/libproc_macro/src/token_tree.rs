@@ -141,7 +141,9 @@ impl ::std::fmt::Display for Ident
         if self.is_raw {
             f.write_str("r#")?;
         }
-        f.write_str(&self.val)
+        f.write_str(&self.val)?;
+        f.write_str(" ")?;
+        Ok( () )
     }
 }
 

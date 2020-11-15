@@ -350,16 +350,16 @@ impl ::std::str::FromStr for TokenStream {
                     loop
                     {
                         let syms = &SYMS[start..end];
-                        assert_eq!(ofs, syms[0].len(), "{:?}", SYMS[0]);
+                        assert_eq!(ofs, syms[0].len(), "{:?}", syms[0]);
                         c = some_else!(it.consume() => break);
-                        let step = match SYMS[1..].iter().position(|v| v[ofs] == (c as u8))
+                        let step = match syms[1..].iter().position(|v| v[ofs] == (c as u8))
                             {
                             Some(s) => s+1,
                             None => break,
                             };
                         start += step;
                         end = start+1;
-                        while end < SYMS.len() && SYMS[end][ofs] == c as u8 {
+                        while end < syms.len() && syms[end][ofs] == c as u8 {
                             end += 1;
                         }
                         ofs += 1;
@@ -411,11 +411,17 @@ mod tests {
     #[test]
     fn lifetime()
     {
-        let rv = TokenStream::from_str("'a").expect("Failed to parse");
+        let rv = TokenStream::from_str("foo::bar<'a>").expect("Failed to parse");
 
         let mut it = rv.inner.into_iter();
+        assert_tt_matches!(it.next(), Ident::new("foo", Span::call_site()).into());
+        assert_tt_matches!(it.next(), Punct::new(':', Spacing::Joint).into());
+        assert_tt_matches!(it.next(), Punct::new(':', Spacing::Alone).into());
+        assert_tt_matches!(it.next(), Ident::new("bar", Span::call_site()).into());
+        assert_tt_matches!(it.next(), Punct::new('<', Spacing::Alone).into());
         assert_tt_matches!(it.next(), Punct::new('\'', Spacing::Joint).into());
         assert_tt_matches!(it.next(), Ident::new("a", Span::call_site()).into());
+        assert_tt_matches!(it.next(), Punct::new('>', Spacing::Alone).into());
         assert_tt_matches!(it.next());
     }
 }
