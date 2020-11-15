@@ -333,7 +333,7 @@ public:
         else /*if( v == 0xFF )*/ {
             rv = ~0u;
         }
-        DEBUG(rv);
+        //DEBUG(rv);
         return rv;
     }
     RcString read_istring() {
