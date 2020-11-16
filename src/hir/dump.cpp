@@ -678,12 +678,6 @@ namespace {
             m_os << indent() << "}";
             dec_indent();
         }
-        void visit(::HIR::ExprNode_UnionLiteral& node) override
-        {
-            m_os << node.m_path << " { " << node.m_variant_name << ": ";
-            this->visit_node_ptr( node.m_value );
-            m_os << " }";
-        }
         void visit(::HIR::ExprNode_Tuple& node) override
         {
             m_os << "(";

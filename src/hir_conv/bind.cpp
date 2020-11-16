@@ -676,6 +676,7 @@ namespace {
                 void visit(::HIR::ExprNode_StructLiteral& node) override
                 {
                     upper_visitor.visit_type_inner(node.m_type, false);
+
                     ::HIR::ExprVisitorDef::visit(node);
                 }
                 void visit(::HIR::ExprNode_ArraySized& node) override

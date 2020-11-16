@@ -519,34 +519,26 @@ struct LowerHIR_ExprNode_Visitor:
                 ERROR(v.span(), E0000, "Union constructors can only specify a single field");
             if( v.m_base_value )
                 ERROR(v.span(), E0000, "Union constructors can't take a base value");
+        }
 
-            m_rv.reset( new ::HIR::ExprNode_UnionLiteral( v.span(),
-                LowerHIR_GenericPath(v.span(), v.m_path),
-                v.m_values[0].name,
-                LowerHIR_ExprNode_Inner(*v.m_values[0].value)
-                ) );
-        }
-        else
+        ::HIR::ExprNode_StructLiteral::t_values values;
+        for(const auto& val : v.m_values)
+            values.push_back( ::std::make_pair(val.name, LowerHIR_ExprNode_Inner(*val.value)) );
+        auto ty = LowerHIR_Type( ::TypeRef(v.span(), v.m_path) );
+        if( v.m_path.m_bindings.type.is_EnumVar() )
         {
-            ::HIR::ExprNode_StructLiteral::t_values values;
-            for(const auto& val : v.m_values)
-                values.push_back( ::std::make_pair(val.name, LowerHIR_ExprNode_Inner(*val.value)) );
-            auto ty = LowerHIR_Type( ::TypeRef(v.span(), v.m_path) );
-            if( v.m_path.m_bindings.type.is_EnumVar() )
-            {
-                ASSERT_BUG(v.span(), TU_TEST1(ty.data(), Path, .path.m_data.is_Generic()), "Enum variant path not GenericPath: " << ty );
-                auto& gp = ty.get_unique().as_Path().path.m_data.as_Generic();
-                auto var_name = gp.m_path.m_components.back();
-                gp.m_path.m_components.pop_back();
-                ty = ::HIR::TypeRef::new_path( ::HIR::Path(mv$(ty), mv$(var_name)), {} );
-            }
-            m_rv.reset( new ::HIR::ExprNode_StructLiteral( v.span(),
-                mv$(ty),
-                ! v.m_path.m_bindings.type.is_EnumVar(),
-                LowerHIR_ExprNode_Inner_Opt(v.m_base_value.get()),
-                mv$(values)
-                ) );
+            ASSERT_BUG(v.span(), TU_TEST1(ty.data(), Path, .path.m_data.is_Generic()), "Enum variant path not GenericPath: " << ty );
+            auto& gp = ty.get_unique().as_Path().path.m_data.as_Generic();
+            auto var_name = gp.m_path.m_components.back();
+            gp.m_path.m_components.pop_back();
+            ty = ::HIR::TypeRef::new_path( ::HIR::Path(mv$(ty), mv$(var_name)), {} );
         }
+        m_rv.reset( new ::HIR::ExprNode_StructLiteral( v.span(),
+            mv$(ty),
+            ! v.m_path.m_bindings.type.is_EnumVar(),
+            LowerHIR_ExprNode_Inner_Opt(v.m_base_value.get()),
+            mv$(values)
+            ) );
     }
     virtual void visit(::AST::ExprNode_Array& v) override {
         if( v.m_size )

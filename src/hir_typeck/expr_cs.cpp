@@ -1150,9 +1150,6 @@ namespace {
         void visit(::HIR::ExprNode_StructLiteral& node) override {
             no_revisit(node);
         }
-        void visit(::HIR::ExprNode_UnionLiteral& node) override {
-            no_revisit(node);
-        }
         void visit(::HIR::ExprNode_Tuple& node) override {
             no_revisit(node);
         }
@@ -1319,10 +1316,6 @@ namespace {
                 }
             }
 
-            ::HIR::ExprVisitorDef::visit(node);
-        }
-        void visit(::HIR::ExprNode_UnionLiteral& node) override {
-            this->check_type_resolved_pp(node.span(), node.m_path.m_params, ::HIR::TypeRef());
             ::HIR::ExprVisitorDef::visit(node);
         }
         void visit(::HIR::ExprNode_TupleVariant& node) override {
@@ -1574,9 +1567,6 @@ namespace {
         }
 
         void visit(::HIR::ExprNode_StructLiteral& node) override {
-            no_revisit(node);
-        }
-        void visit(::HIR::ExprNode_UnionLiteral& node) override {
             no_revisit(node);
         }
         void visit(::HIR::ExprNode_Tuple& node) override {

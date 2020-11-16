@@ -960,10 +960,22 @@ namespace typecheck
         {
             if( is_struct )
             {
-                const auto& str = this->context.m_crate.get_struct_by_path(sp, gp.m_path);
-                fix_param_count(sp, this->context, ::HIR::TypeRef(), false, gp, str.m_params, gp.m_params);
+                const auto& e = this->context.m_crate.get_typeitem_by_path(sp, gp.m_path);
+                if( e.is_Struct() ) {
+                    const auto& str = e.as_Struct();
+                    fix_param_count(sp, this->context, ::HIR::TypeRef(), false, gp, str.m_params, gp.m_params);
 
-                return ::HIR::TypeRef::new_path( gp.clone(), ::HIR::TypePathBinding::make_Struct(&str) );
+                    return ::HIR::TypeRef::new_path( gp.clone(), ::HIR::TypePathBinding::make_Struct(&str) );
+                }
+                else if( e.is_Union() ) {
+                    const auto& u = e.as_Union();
+                    fix_param_count(sp, this->context, ::HIR::TypeRef(), false, gp, u.m_params, gp.m_params);
+
+                    return ::HIR::TypeRef::new_path( gp.clone(), ::HIR::TypePathBinding::make_Union(&u) );
+                }
+                else {
+                    BUG(sp, "Path " << gp << " doesn't refer to a struct/union");
+                }
             }
             else
             {
@@ -1109,7 +1121,13 @@ namespace typecheck
                 generics = &enm.m_params;
                 }
             TU_ARMA(Union, e) {
-                TODO(node.span(), "StructLiteral of a union - " << ty);
+                fields_ptr = &e->m_variants;
+                generics = &e->m_params;
+                // Errors are done here, as from_ast may not know yet
+                if(node.m_base_value)
+                    ERROR(node.span(), E0000, "Union can't have a base value");
+                ASSERT_BUG(node.span(), node.m_values.size() > 0, "Union literal with no values");
+                ASSERT_BUG(node.span(), node.m_values.size() == 1, "Union literal with multiple values");
                 }
             TU_ARMA(Struct, e) {
                 if( e->m_data.is_Unit() || e->m_data.is_Tuple() )
@@ -1170,42 +1188,6 @@ namespace typecheck
                 auto _ = this->push_inner_coerce_scoped(false);
                 node.m_base_value->visit( *this );
             }
-        }
-        void visit(::HIR::ExprNode_UnionLiteral& node) override
-        {
-            const Span& sp = node.span();
-            TRACE_FUNCTION_F(&node << " " << node.m_path << "{ " << node.m_variant_name << ": ... }");
-            this->context.add_ivars( node.m_value->m_res_type );
-
-            const auto& unm = this->context.m_crate.get_union_by_path(sp, node.m_path.m_path);
-            fix_param_count(sp, this->context, ::HIR::TypeRef(), false, node.m_path, unm.m_params, node.m_path.m_params);
-            const auto ty = ::HIR::TypeRef::new_path( node.m_path.clone(), &unm );
-
-            this->context.equate_types(node.span(), node.m_res_type, ty);
-
-            auto monomorph_cb = MonomorphStatePtr(&ty, &node.m_path.m_params, nullptr);
-
-            // Convert bounds on the type into rules
-            apply_bounds_as_rules(context, node.span(), unm.m_params, monomorph_cb, /*is_impl_level=*/true);
-
-            auto it = ::std::find_if(unm.m_variants.begin(), unm.m_variants.end(), [&](const auto& v)->bool{ return v.first == node.m_variant_name; });
-            assert(it != unm.m_variants.end());
-            const auto& des_ty_r = it->second.ent;
-            ::HIR::TypeRef  des_ty_cache;
-            const auto* des_ty = &des_ty_r;
-            if( monomorphise_type_needed(des_ty_r) ) {
-                if( des_ty_cache == ::HIR::TypeRef() ) {
-                    des_ty_cache = monomorph_cb.monomorph_type(node.span(), des_ty_r);
-                }
-                else {
-                    // TODO: Is it an error when it's already populated?
-                }
-                des_ty = &des_ty_cache;
-            }
-            //this->equate_types_inner_coerce(node.span(), *des_ty,  node.m_value);
-            this->context.equate_types_coerce(node.span(), *des_ty,  node.m_value);
-
-            node.m_value->visit(*this);
         }
         void visit(::HIR::ExprNode_UnitVariant& node) override
         {

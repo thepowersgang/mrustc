@@ -551,10 +551,10 @@ namespace {
             ASSERT_BUG(sp, ty.data().is_Path(), "Result type of _StructLiteral isn't Path");
 
             const ::HIR::t_struct_fields* fields_ptr = nullptr;
-            TU_MATCH(::HIR::TypePathBinding, (ty.data().as_Path().binding), (e),
-            (Unbound, ),
-            (Opaque, ),
-            (Enum,
+            TU_MATCH_HDRA( (ty.data().as_Path().binding), {)
+            TU_ARMA(Unbound, e) {}
+            TU_ARMA(Opaque, e) {}
+            TU_ARMA(Enum, e) {
                 const auto& var_name = ty_path.m_path.m_components.back();
                 const auto& enm = *e;
                 auto idx = enm.find_variant(var_name);
@@ -565,14 +565,17 @@ namespace {
                 const auto& str = *var.type.data().as_Path().binding.as_Struct();
                 ASSERT_BUG(sp, var.is_struct, "Struct literal for enum on non-struct variant");
                 fields_ptr = &str.m_data.as_Named();
-                ),
-            (Union,
-                TODO(sp, "Union in StructLiteral");
-                ),
-            (ExternType,
+                }
+            TU_ARMA(Union, e) {
+                fields_ptr = &e->m_variants;
+                ASSERT_BUG(node.span(), node.m_values.size() > 0, "Union with no values");
+                ASSERT_BUG(node.span(), node.m_values.size() == 1, "Union with multiple values");
+                ASSERT_BUG(node.span(), !node.m_base_value, "Union can't have a base value");
+                }
+            TU_ARMA(ExternType, e) {
                 BUG(sp, "ExternType in StructLiteral");
-                ),
-            (Struct,
+                }
+            TU_ARMA(Struct, e) {
                 if( e->m_data.is_Unit() )
                 {
                     ASSERT_BUG(node.span(), node.m_values.size() == 0, "Values provided for unit-like struct");
@@ -582,8 +585,8 @@ namespace {
 
                 ASSERT_BUG(node.span(), e->m_data.is_Named(), "StructLiteral not pointing to a braced struct, instead " << e->m_data.tag_str() << " - " << ty);
                 fields_ptr = &e->m_data.as_Named();
-                )
-            )
+                }
+            }
             ASSERT_BUG(node.span(), fields_ptr, "Didn't get field for path in _StructLiteral - " << ty);
             const ::HIR::t_struct_fields& fields = *fields_ptr;
 
@@ -617,11 +620,6 @@ namespace {
             if( node.m_base_value ) {
                 node.m_base_value->visit( *this );
             }
-        }
-        void visit(::HIR::ExprNode_UnionLiteral& node) override
-        {
-            // TODO: Check.
-            node.m_value->visit(*this);
         }
         void visit(::HIR::ExprNode_UnitVariant& node) override
         {

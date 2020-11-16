@@ -390,19 +390,25 @@ namespace {
             if( node.m_base_value ) {
                 bool is_moved = false;
                 const auto& tpb = node.m_base_value->m_res_type.data().as_Path().binding;
-                const ::HIR::Struct* str;
+                const ::HIR::t_struct_fields* fields_ptr;
                 if( tpb.is_Enum() ) {
                     const auto& enm = *tpb.as_Enum();
                     auto idx = enm.find_variant(ty_path.m_path.m_components.back());
                     ASSERT_BUG(sp, idx != SIZE_MAX, "");
                     const auto& var_ty = enm.m_data.as_Data()[idx].type;
-                    str = var_ty.data().as_Path().binding.as_Struct();
+                    const auto& str = *var_ty.data().as_Path().binding.as_Struct();
+                    ASSERT_BUG(sp, str.m_data.is_Named(), "");
+                    fields_ptr = &str.m_data.as_Named();
+                }
+                else if( tpb.is_Union() ) {
+                    fields_ptr = &tpb.as_Union()->m_variants;
                 }
                 else {
-                    str = tpb.as_Struct();
+                    const auto& str = *tpb.as_Struct();
+                    ASSERT_BUG(sp, str.m_data.is_Named(), "");
+                    fields_ptr = &str.m_data.as_Named();
                 }
-                ASSERT_BUG(sp, str->m_data.is_Named(), "");
-                const auto& fields = str->m_data.as_Named();
+                const auto& fields = *fields_ptr;
 
                 ::std::vector<bool> provided_mask( fields.size() );
                 for( const auto& fld : node.m_values ) {
@@ -433,11 +439,6 @@ namespace {
             for( auto& fld_val : node.m_values ) {
                 this->visit_node_ptr(fld_val.second);
             }
-        }
-        void visit(::HIR::ExprNode_UnionLiteral& node) override
-        {
-            auto _ = push_usage( ::HIR::ValueUsage::Move );
-            this->visit_node_ptr(node.m_value);
         }
         void visit(::HIR::ExprNode_Tuple& node) override
         {

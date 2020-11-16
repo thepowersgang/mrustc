@@ -2471,7 +2471,21 @@ namespace {
                     }) );
                 }
             TU_ARMA(Union, e) {
-                BUG(node.span(), "_StructLiteral Union isn't valid?");
+                const auto& variant_name = node.m_values.front().first;
+                auto& value_node =  node.m_values.front().second;
+                this->visit_node_ptr(value_node);
+                auto val = m_builder.get_result_in_lvalue(value_node->span(), value_node->m_res_type);
+
+                const auto& unm = *e;
+                auto it = ::std::find_if(unm.m_variants.begin(), unm.m_variants.end(), [&](const auto&v)->auto{ return v.first == variant_name; });
+                assert(it != unm.m_variants.end());
+                unsigned int idx = it - unm.m_variants.begin();
+
+                m_builder.set_result( node.span(), ::MIR::RValue::make_Variant({
+                    node.m_real_path.clone(),
+                    idx,
+                    mv$(val)
+                    }) );
                 }
             TU_ARMA(ExternType, e) {
                 BUG(node.span(), "_StructLiteral ExternType isn't valid?");
@@ -2488,24 +2502,6 @@ namespace {
                 this->visit_sl_inner(node, *e, ty_path);
                 }
             }
-        }
-        void visit(::HIR::ExprNode_UnionLiteral& node) override
-        {
-            TRACE_FUNCTION_F("_UnionLiteral " << node.m_path);
-
-            this->visit_node_ptr(node.m_value);
-            auto val = m_builder.get_result_in_lvalue(node.m_value->span(), node.m_value->m_res_type);
-
-            const auto& unm = *node.m_res_type.data().as_Path().binding.as_Union();
-            auto it = ::std::find_if(unm.m_variants.begin(), unm.m_variants.end(), [&](const auto&v)->auto{ return v.first == node.m_variant_name; });
-            assert(it != unm.m_variants.end());
-            unsigned int idx = it - unm.m_variants.begin();
-
-            m_builder.set_result( node.span(), ::MIR::RValue::make_Variant({
-                node.m_path.clone(),
-                idx,
-                mv$(val)
-                }) );
         }
 
         void visit(::HIR::ExprNode_Tuple& node) override
