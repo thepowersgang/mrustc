@@ -537,7 +537,14 @@ AST::Function Parse_FunctionDefWithCode(TokenStream& lex, ::std::string abi, boo
 {
     Token   tok;
     auto ret = Parse_FunctionDef(lex, abi, allow_self, false,  is_unsafe, is_const);
-    GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
+    GET_TOK(tok, lex);
+    if( tok == TOK_BRACE_OPEN ) {
+    }
+    else if( tok.type() == TOK_INTERPOLATED_BLOCK ) {
+    }
+    else {
+        throw ParseError::Unexpected(lex, tok, { TOK_BRACE_OPEN, TOK_INTERPOLATED_BLOCK });
+    }
     // Enter a new hygine scope for the function (TODO: Should this be in Parse_ExprBlock?)
     lex.push_hygine();
     PUTBACK(tok, lex);
