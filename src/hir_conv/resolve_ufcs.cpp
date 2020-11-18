@@ -402,6 +402,7 @@ namespace {
             TRACE_FUNCTION_F("trait_path=" << trait_path << ", p=<" << type << " as _>::" << e.item);
 
             // TODO: This is VERY arbitary and possibly nowhere near what rustc does.
+            // NOTE: `nullptr` passed for param count, as defaults are not yet expanded
             this->m_resolve.find_impl(sp,  trait_path.m_path, nullptr, type, [&](const auto& impl, bool fuzzy)->bool{
                 auto pp = impl.get_trait_params();
                 // Replace all placeholder parameters (group 2) with ivars (empty types)
@@ -422,12 +423,13 @@ namespace {
                 pp = KillPlaceholders().monomorph_path_params(sp, pp, true);
                 DEBUG("FOUND impl from " << impl);
                 // If this has already found an option...
-                TU_IFLET( ::HIR::Path::Data, pd, UfcsKnown, e,
+                if(auto* inner_e = pd.opt_UfcsKnown())
+                {
                     // Compare all path params, and set different params to _
-                    assert( pp.m_types.size() == e.trait.m_params.m_types.size() );
+                    assert( pp.m_types.size() == inner_e->trait.m_params.m_types.size() );
                     for(unsigned int i = 0; i < pp.m_types.size(); i ++ )
                     {
-                        auto& e_ty = e.trait.m_params.m_types[i];
+                        auto& e_ty = inner_e->trait.m_params.m_types[i];
                         const auto& this_ty = pp.m_types[i];
                         if( e_ty == ::HIR::TypeRef() ) {
                             // Already _, leave as is
@@ -439,7 +441,7 @@ namespace {
                             // Equal, good
                         }
                     }
-                )
+                }
                 else {
                     DEBUG("pp = " << pp);
                     // Otherwise, set to the current result.
@@ -672,6 +674,26 @@ namespace {
                         return ;
                     }
                     DEBUG("- Item " << e.item << " not found in Self - ty=" << e.type);
+                }
+
+                // If the inner type is a UFCS of a known trait, then search traits on that type
+                if( e.type.data().is_Path() && e.type.data().as_Path().path.m_data.is_UfcsKnown() )
+                {
+                    auto& inner_pe = e.type.data().as_Path().path.m_data.as_UfcsKnown();
+                    const auto& trait = m_crate.get_trait_by_path(sp, inner_pe.trait.m_path);
+                    const auto& aty_def = trait.m_types.at(inner_pe.item);
+                    auto mstate = MonomorphStatePtr(&inner_pe.type, &inner_pe.trait.m_params, nullptr);
+                    for(const auto& t : aty_def.m_trait_bounds)
+                    {
+                        auto trait_path = mstate.monomorph_genericpath(sp, t.m_path, /*allow_infer*/true);
+                        DEBUG("Searching ATY bound: " << trait_path);
+                        // Search within this (bounded) trait for the outer item
+                        if( this->locate_in_trait_impl_and_set(sp, pc, mv$(trait_path), *t.m_trait_ptr,  p.m_data) ) {
+                            return ;
+                        }
+                    }
+                    DEBUG("- Item " << e.item << " not found in ATY bounds");
+                    // TODO: Search bounds with `where`?
                 }
 
                 // 2. Search all impls of in-scope traits for this method on this type

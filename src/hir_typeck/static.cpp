@@ -347,14 +347,36 @@ bool StaticTraitResolve::find_impl(
                     }
                 }
 
-                bool ret = trait_params && this->find_named_trait_in_trait(sp,  trait_path, *trait_params,  *bound.m_trait_ptr,  bound.m_path.m_path, b_params_mono, type,
-                    [&](const auto& i_params, const auto& i_assoc) {
-                        if( i_params != *trait_params )
-                            return false;
-                        DEBUG("impl " << trait_path << i_params << " for " << type << " -- desired " << trait_path << *trait_params);
-                        return found_cb( ImplRef(type.clone(), i_params.clone(), {}), false );
-                    });
-                return ret;
+                if(trait_params)
+                {
+                    return this->find_named_trait_in_trait(sp,  trait_path, *trait_params,  *bound.m_trait_ptr,  bound.m_path.m_path, b_params_mono, type,
+                        [&](const auto& i_params, const auto& i_assoc) {
+                            if( i_params != *trait_params )
+                                return false;
+                            DEBUG("impl " << trait_path << i_params << " for " << type << " -- desired " << trait_path << *trait_params);
+                            return found_cb( ImplRef(type.clone(), i_params.clone(), {}), false );
+                        });
+                }
+                else
+                {
+                    auto monomorph = MonomorphStatePtr(&type, &b_params_mono, nullptr);
+
+                    for( const auto& pt : bound.m_trait_ptr->m_all_parent_traits )
+                    {
+                        auto pt_mono = monomorph.monomorph_traitpath(sp, pt, false);
+
+                        //DEBUG(pt << " => " << pt_mono);
+                        // TODO: When in pre-typecheck mode, this needs to be a fuzzy match (because there might be a UfcsUnknown in the
+                        // monomorphed version) OR, there may be placeholders
+                        if( pt.m_path.m_path == trait_path )
+                        {
+                            // TODO: Monomorphse trait params
+                            //DEBUG("impl " << trait_path << i_params << " for " << type << " -- desired " << trait_path << *trait_params);
+                            return found_cb( ImplRef(type.clone(), mv$(pt_mono.m_path.m_params), {}), false );
+                        }
+                    }
+                    return false;
+                }
                 };
 
             for(const auto& bound : aty_def.m_trait_bounds)
