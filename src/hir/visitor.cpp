@@ -55,64 +55,64 @@ void ::HIR::Visitor::visit_module(::HIR::ItemPath p, ::HIR::Module& mod)
     {
         const auto& name = named.first;
         auto& item = named.second->ent;
-        TU_MATCH(::HIR::TypeItem, (item), (e),
-        (Import, ),
-        (Module,
-            DEBUG("mod " << name);
+        TU_MATCH_HDRA( (item), {)
+        TU_ARMA(Import, e) {}
+        TU_ARMA(Module, e) {
+            TRACE_FUNCTION_F("mod " << name);
             this->visit_module(p + name, e);
-            ),
-        (TypeAlias,
-            DEBUG("type " << name);
+            }
+        TU_ARMA(TypeAlias, e) {
+            TRACE_FUNCTION_F("type " << name);
             this->visit_type_alias(p + name, e);
-            ),
-        (ExternType,
-            DEBUG("extern type " << name);
-            ),
-        (Enum,
-            DEBUG("enum " << name);
+            }
+        TU_ARMA(ExternType, e) {
+            TRACE_FUNCTION_F("extern type " << name);
+            }
+        TU_ARMA(Enum, e) {
+            TRACE_FUNCTION_F("enum " << name);
             this->visit_enum(p + name, e);
-            ),
-        (Struct,
-            DEBUG("struct " << name);
+            }
+        TU_ARMA(Struct, e) {
+            TRACE_FUNCTION_F("struct " << name);
             this->visit_struct(p + name, e);
-            ),
-        (Union,
-            DEBUG("union " << name);
+            }
+        TU_ARMA(Union, e) {
+            TRACE_FUNCTION_F("union " << name);
             this->visit_union(p + name, e);
-            ),
-        (Trait,
-            DEBUG("trait " << name);
+            }
+        TU_ARMA(Trait, e) {
+            TRACE_FUNCTION_F("trait " << name);
             this->visit_trait(p + name, e);
-            )
-        )
+            }
+        }
     }
     for( auto& named : mod.m_value_items )
     {
         const auto& name = named.first;
         auto& item = named.second->ent;
-        TU_MATCH(::HIR::ValueItem, (item), (e),
-        (Import,
+        TU_MATCH_HDRA( (item), {)
+        TU_ARMA(Import, e) {
             // SimplePath - no visitor
-            ),
-        (Constant,
+            }
+        TU_ARMA(Constant, e) {
             DEBUG("const " << name);
             this->visit_constant(p + name, e);
-            ),
-        (Static,
+            }
+        TU_ARMA(Static, e) {
             DEBUG("static " << name);
             this->visit_static(p + name, e);
-            ),
-        (StructConstant,
+            }
+        TU_ARMA(StructConstant, e) {
             // Just a path
-            ),
-        (Function,
+            }
+        TU_ARMA(Function, e) {
             DEBUG("fn " << name);
             this->visit_function(p + name, e);
-            ),
-        (StructConstructor,
+            }
+        TU_ARMA(StructConstructor, e) {
             // Just a path
-            )
-        )
+            }
+        }
     }
 }
 
@@ -215,20 +215,20 @@ void ::HIR::Visitor::visit_trait(::HIR::ItemPath p, ::HIR::Trait& item)
 void ::HIR::Visitor::visit_struct(::HIR::ItemPath p, ::HIR::Struct& item)
 {
     this->visit_params(item.m_params);
-    TU_MATCH(::HIR::Struct::Data, (item.m_data), (e),
-    (Unit,
-        ),
-    (Tuple,
+    TU_MATCH_HDRA( (item.m_data), {)
+    TU_ARMA(Unit, e) {
+        }
+    TU_ARMA(Tuple, e) {
         for(auto& ty : e) {
             this->visit_type(ty.ent);
         }
-        ),
-    (Named,
+        }
+    TU_ARMA(Named, e) {
         for(auto& field : e) {
             this->visit_type(field.second.ent);
         }
-        )
-    )
+        }
+    }
 }
 void ::HIR::Visitor::visit_enum(::HIR::ItemPath p, ::HIR::Enum& item)
 {

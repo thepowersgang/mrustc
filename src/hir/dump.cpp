@@ -135,8 +135,8 @@ namespace {
         void visit_struct(::HIR::ItemPath p, ::HIR::Struct& item) override
         {
             m_os << indent() << "struct " << p.get_name() << item.m_params.fmt_args();
-            TU_MATCHA( (item.m_data), (flds),
-            (Unit,
+            TU_MATCH_HDRA( (item.m_data), {)
+            TU_ARMA(Unit, flds) {
                 if( item.m_params.m_bounds.empty() )
                 {
                     m_os << ";\n";
@@ -147,8 +147,8 @@ namespace {
                     m_os << indent() << " " << item.m_params.fmt_bounds() << "\n";
                     m_os << indent() << "    ;\n";
                 }
-                ),
-            (Tuple,
+                }
+            TU_ARMA(Tuple, flds) {
                 m_os << "(";
                 for(const auto& fld : flds)
                 {
@@ -164,8 +164,8 @@ namespace {
                     m_os << indent() << " " << item.m_params.fmt_bounds() << "\n";
                     m_os << indent() << "    ;\n";
                 }
-                ),
-            (Named,
+                }
+            TU_ARMA(Named, flds) {
                 m_os << "\n";
                 if( ! item.m_params.m_bounds.empty() )
                 {
@@ -179,8 +179,8 @@ namespace {
                 }
                 dec_indent();
                 m_os << indent() << "}\n";
-                )
-            )
+                }
+            }
         }
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override
         {
