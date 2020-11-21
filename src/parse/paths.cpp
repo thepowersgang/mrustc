@@ -45,6 +45,20 @@ AST::Path Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode)
         GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
         return Parse_Path(lex, true, generic_mode);
     case TOK_DOUBLE_COLON:
+        if( lex.parse_state().edition_after(AST::Edition::Rust2018) )
+        {
+            // The first component is a crate name
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            // HACK: if the crate name starts with `=` it's a 2018 absolute path (references a crate loaded with `--extern`)
+            auto crate_name = RcString(std::string("=") + tok.istr().c_str());
+            std::vector<AST::PathNode>  nodes;
+            if(lex.lookahead(0) == TOK_DOUBLE_COLON)
+            {
+                GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
+                nodes = Parse_PathNodes(lex, generic_mode);
+            }
+            return AST::Path(crate_name, ::std::move(nodes));
+        }
         return Parse_Path(lex, true, generic_mode);
 
     case TOK_DOUBLE_LT:

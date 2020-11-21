@@ -1499,6 +1499,31 @@ void Parse_Use_Root(TokenStream& lex, ::std::vector<AST::UseItem::Ent>& entries)
             GET_CHECK_TOK(tok, lex, TOK_STRING);
             path = ::AST::Path(RcString::new_interned(tok.str()), {});
         }
+        else if( lex.parse_state().edition_after(AST::Edition::Rust2018) )
+        {
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            // HACK: if the crate name starts with `=` it's a 2018 absolute path (references a crate loaded with `--extern`)
+            path = ::AST::Path(RcString(std::string("=") + tok.istr().c_str()), {});
+            // TODO: Is `use ::foo as bar` valid?
+            if(lex.lookahead(0) != TOK_DOUBLE_COLON)
+            {
+                RcString    name;
+                if( lex.lookahead(0) == TOK_RWORD_AS )
+                {
+                    GET_CHECK_TOK(tok, lex, TOK_RWORD_AS);
+                    GET_CHECK_TOK(tok, lex, TOK_IDENT);
+                    name = tok.istr();
+                }
+                else
+                {
+                    name = path.m_class.as_Absolute().crate;
+                }
+
+                // TODO: Get a span covering the final node.
+                entries.push_back({ lex.point_span(), AST::Path(path), ::std::move(name) });
+                return ;
+            }
+        }
         else
         {
             PUTBACK(tok, lex);

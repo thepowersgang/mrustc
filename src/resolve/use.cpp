@@ -116,6 +116,14 @@ void Resolve_Use(::AST::Crate& crate)
         }
     TU_ARMA(Absolute, e) {
         DEBUG("Absolute " << path);
+        // HACK: if the crate name starts with `=` it's a 2018 absolute path (references a crate loaded with `--extern`)
+        if( crate.m_edition >= AST::Edition::Rust2018 && e.crate.c_str()[0] == '=' ) {
+            // Absolute paths in 2018 edition are crate-prefixed?
+            auto ec_it = AST::g_implicit_crates.find(e.crate.c_str() + 1);
+            if(ec_it == AST::g_implicit_crates.end())
+                ERROR(span, E0000, "Unable to find external crate for path " << path);
+            e.crate = ec_it->second;
+        }
         // Leave as is
         return path;
         }
