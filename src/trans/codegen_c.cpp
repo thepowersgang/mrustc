@@ -4106,6 +4106,16 @@ namespace {
                 m_of << ");\n";
                 return ;
             }
+            else if( matches_template("xrelease; lock; xaddq $2, $1", /*input=*/{"0"}, /*output=*/{"=r", "+*m"}) )
+            {
+                m_of << indent;
+                emit_lvalue(e.outputs[0].second); m_of << " = "; 
+                m_of << "InterlockedExchangeAddRelease64(";
+                emit_lvalue(e.outputs[1].second); m_of << ",";
+                emit_lvalue(e.inputs[0].second);
+                m_of << ");\n";
+                return ;
+            }
             else if( matches_template("btl $2, $1\n\tsetc ${0:b}", /*input=*/{"*m", "r"}, /*output=*/{"=r"}) )
             {
                 m_of << indent; emit_lvalue(e.outputs[0].second); m_of << " = _bittest(";
