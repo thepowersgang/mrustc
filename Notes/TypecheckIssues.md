@@ -229,3 +229,21 @@ Typecheck Expressions-      `anonymous-namespace'::check_associated: No impl of 
 Cause: ExpandAssociatedTypes doesn't check bounds after figuring out which trait the type was from.
 
 Fix: Move `find_type_in_trait` call to above the bounded lookup
+
+# `<::"rand_core-0_5_0_H23"::block::BlockRng64<R/*I:0*/,>/*S*/ as ::"rand_core-0_5_0_H23"::RngCore>::next_u32`
+```
+..\rustc-1.39.0-src\vendor\rand_core\src\block.rs:367: warn:0:Spare Rule - <R/*I:0*/ as ::"rand_core-0_5_0_H23"::block::BlockRngCore>::Results : ::"core"::convert::AsRef<_/*83*/,>
+..\rustc-1.39.0-src\vendor\rand_core\src\block.rs:367: warn:0:Spare rule - _Cast {&_/*83*/} -> *const [u64]
+..\rustc-1.39.0-src\vendor\rand_core\src\block.rs:375: BUG:..\..\src\hir_typeck\expr_cs.cpp:6760: Spare rules left after typecheck stabilised
+```
+
+```
+Typecheck Expressions-      Context::possible_equate_ivar_bounds: 83 bounded as [[<R/*I:0*/ as ::"rand_core-0_5_0_H23"::block::BlockRngCore>::Item/*?*/], [u64]]
+```
+
+Notes:
+- Trait definition of `BlockRngCore` adds `Result: AsRef<[Self::Item]>`
+- Impl block adds `R::Result: AsRef<[u64]>` and bounds `R::Item = u64`
+
+Solution:
+- Run EAT when adding to ivar bounds (to de-duplicate this pair)

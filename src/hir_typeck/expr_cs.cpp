@@ -4709,9 +4709,15 @@ namespace {
                     count += 1;
                     DEBUG("[check_associated] - (possible) " << impl);
 
+                    auto impl_ty = impl.get_impl_type();
+                    auto impl_params = impl.get_trait_params();
+                    for(auto& t : impl_params.m_types) {
+                        t = context.m_resolve.expand_associated_types(sp, mv$(t));
+                    }
+
                     if( possible_impls.empty() ) {
                         DEBUG("[check_associated] First - " << impl);
-                        possible_impls.push_back({ impl.get_impl_type(), impl.get_trait_params(), mv$(impl) });
+                        possible_impls.push_back({ std::move(impl_ty), std::move(impl_params), std::move(impl) });
                     }
                     // If there is an existing impl, determine if this is part of the same specialisation tree
                     // - If more specific, replace. If less, ignore.
@@ -4731,9 +4737,9 @@ namespace {
                                 {
                                     DEBUG("[check_associated] - Less specific than existing");
                                     // NOTE: This picks the _least_ specific impl
-                                    possible_impl.impl_ty = impl.get_impl_type();
-                                    possible_impl.params = impl.get_trait_params();
-                                    possible_impl.impl_ref = mv$(impl);
+                                    possible_impl.impl_ty = ::std::move(impl_ty);
+                                    possible_impl.params = ::std::move(impl_params);
+                                    possible_impl.impl_ref = ::std::move(impl);
                                     count -= 1;
                                 }
                                 // If the existing best is not more specific than the new one, use the new one
@@ -4757,7 +4763,7 @@ namespace {
                             }
 
                             // Edge case: Might be just outright identical
-                            if( v.name == "" && possible_impl.impl_ty == impl.get_impl_type() && possible_impl.params == impl.get_trait_params() )
+                            if( v.name == "" && possible_impl.impl_ty == impl_ty && possible_impl.params == impl_params )
                             {
                                 DEBUG("[check_associated] HACK: Same type and params, and don't care about ATYs");
                                 was_used = true;
@@ -4768,7 +4774,7 @@ namespace {
                         if( !was_used )
                         {
                             DEBUG("[check_associated] Add new possible: " << impl);
-                            possible_impls.push_back({ impl.get_impl_type(), impl.get_trait_params(), mv$(impl) });
+                            possible_impls.push_back({ ::std::move(impl_ty), ::std::move(impl_params), ::std::move(impl) });
                         }
                     }
 
@@ -4929,6 +4935,7 @@ namespace {
                         const auto& pi_t = pi.params.m_types[i];
                         if( !type_contains_impl_placeholder(pi_t) )
                         {
+                            //ivar_possibilities[e->index].push_back( context.m_resolve.expand_associated_types(sp, pi_t.clone()) );
                             ivar_possibilities[e->index].push_back( pi_t.clone() );
                         }
                         else
