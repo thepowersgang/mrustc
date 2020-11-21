@@ -325,6 +325,9 @@ public:
     const ::std::string& name() const {
         return m_name;
     }
+    Edition edition() const {
+        return m_edition;
+    }
     const ::std::string& build_script() const {
         return m_build_script;
     }

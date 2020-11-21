@@ -1034,6 +1034,19 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     {
         args.push_back("--cfg"); args.push_back(::format("feature=", feat));
     }
+    switch(manifest.edition())
+    {
+    case Edition::Unspec:
+        break;
+    case Edition::Rust2015:
+        args.push_back("--edition");
+        args.push_back("2015");
+        break;
+    case Edition::Rust2018:
+        args.push_back("--edition");
+        args.push_back("2018");
+        break;
+    }
     // - Build scripts are built for the host (not the target)
     //args.push_back("--target"); args.push_back(HOST_TARGET);
 
