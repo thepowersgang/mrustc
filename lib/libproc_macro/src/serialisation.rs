@@ -187,7 +187,11 @@ mod protocol
     {
         pub fn read_ent(&mut self) -> Option<Token>
         {
-            let hdr_b = self.getb()?;
+            let hdr_b = match self.getb()
+                {
+                Some(b) => b,
+                None => return None,
+                };
             // TODO: leading span
             Some(match hdr_b
             {

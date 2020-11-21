@@ -222,7 +222,7 @@ impl ::std::fmt::Display for Literal
             '\'' => f.write_str("'\\''")?,
             '\0' => f.write_str("'\\0'")?,
             '\n' => f.write_str("'\\n'")?,
-            ' ' ..= 'z' => write!(f, "'{}'", v)?,
+            ' ' ... 'z' => write!(f, "'{}'", v)?,
             _ => write!(f, "'\\u{:x}'", v as u32)?,
             },
         LiteralValue::UnsignedInt(v,sz) => {
