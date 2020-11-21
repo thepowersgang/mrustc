@@ -56,6 +56,7 @@ void Resolve_Use(::AST::Crate& crate)
         DEBUG("Relative " << path);
 
         // 2018 edition and later: all extern crates are implicitly in the namespace.
+        // - Fun fact: The equivalent logic for non-use is gated on TARGETVER_LEAST_1_29 (but use is still special until 2018)
         if( crate.m_edition >= AST::Edition::Rust2018 ) {
             const auto& name = e.nodes.at(0).name();
             auto ec_it = AST::g_implicit_crates.find(name);

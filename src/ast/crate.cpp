@@ -120,7 +120,8 @@ void Crate::load_externs()
     }
 
     // Ensure that all crates passed on the command line are loaded
-    if( this->m_edition >= Edition::Rust2018 )
+    //if( this->m_edition >= Edition::Rust2018 )
+    if( TARGETVER_LEAST_1_29 )
     {
         DEBUG("Load from --crate");
         for(const auto& c : g_crate_overrides)
