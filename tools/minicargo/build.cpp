@@ -578,16 +578,45 @@ Builder::Builder(const BuildOptions& opts, size_t total_targets):
 ::helpers::path Builder::get_crate_path(const PackageManifest& manifest, const PackageTarget& target, bool is_for_host, const char** crate_type, ::std::string* out_crate_suffix) const
 {
     auto outfile = this->get_output_dir(is_for_host);
-    // HACK: If there's no version, don't emit a version tag
     ::std::string   crate_suffix;
-#if 1
+    // HACK: If there's no version, don't emit a version tag
     if( manifest.version() != PackageVersion() ) {
+#if 1
         crate_suffix = ::format("-", manifest.version());
         for(auto& v : crate_suffix)
             if(v == '.')
                 v = '_';
-    }
+        // TODO: Hash/encode the following:
+        // - Manifest path
+        // - Feature set
+        if( manifest.active_features().size() > 0 )
+        {
+            uint64_t mask = 0;
+            size_t i = 0;
+            for(auto it = manifest.all_features().begin(); it != manifest.all_features().end(); ++it, i ++)
+            {
+                if( std::count(manifest.active_features().begin(), manifest.active_features().end(), it->first) )
+                {
+                    mask |= (1ull << i);
+                }
+                if(i == 63)
+                    break;
+            }
+            std::stringstream   ss;
+            ss << crate_suffix;
+            ss << "_H";
+            ss << std::hex;
+            ss << mask;
+
+            crate_suffix = std::move(ss.str());
+        }
+#else
+        crate_suffix = ::format("-", manifest.version());
+        for(auto& v : crate_suffix)
+            if(v == '.')
+                v = '_';
 #endif
+    }
 
     switch(target.m_type)
     {
