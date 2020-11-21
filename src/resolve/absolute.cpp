@@ -553,15 +553,31 @@ namespace
                     }
                 TU_ARMA(ConcreteSelf, e) {
                     DEBUG("- ConcreteSelf");
-                    if( ( mode == LookupMode::Type || mode == LookupMode::Namespace ) && name == "Self" ) {
-                        // TODO: Want to return the type if handling a struct literal
-                        if( false ) {
-                            return ::AST::Path( ::AST::Path::TagUfcs(), e->clone(), ::AST::Path(), ::std::vector< ::AST::PathNode>() );
-                        }
-                        else {
-                            ::AST::Path rv(name);
-                            rv.bind_variable(0xFFFF);
-                            return rv;
+                    if( name == "Self" )
+                    {
+                        switch(mode)
+                        {
+                        case LookupMode::Type:
+                        case LookupMode::Namespace:
+                            // TODO: Want to return the type if handling a struct literal
+                            if( false ) {
+                                return ::AST::Path( ::AST::Path::TagUfcs(), e->clone(), ::AST::Path(), ::std::vector< ::AST::PathNode>() );
+                            }
+                            else {
+                                ::AST::Path rv(name);
+                                rv.bind_variable(0xFFFF);
+                                return rv;
+                            }
+                            break;
+                        case LookupMode::Constant:
+                        case LookupMode::Variable:
+                            // TODO: Ensure validity? (I.e. that `Self` is a unit or tuple struct
+                            if( e->m_data.is_Path() )
+                            {
+                                return e->m_data.as_Path().path;
+                            }
+                        default:
+                            break;
                         }
                     }
                     }
