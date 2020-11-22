@@ -1397,6 +1397,7 @@ AST::ExternBlock Parse_ExternBlock(TokenStream& lex, ::std::string abi, ::AST::A
 /// Parse multiple items from a use "statement"
 void Parse_Use_Inner(TokenStream& lex, ::std::vector<AST::UseItem::Ent>& entries, AST::Path& path)
 {
+    TRACE_FUNCTION_FR(path, entries);
     Token   tok;
 
     do

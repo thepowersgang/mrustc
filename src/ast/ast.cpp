@@ -266,6 +266,10 @@ bool Impl::has_named_item(const RcString& name) const
     return os << impl.m_def;
 }
 
+::std::ostream& operator<<(::std::ostream& os, const UseItem::Ent& x)
+{
+    return os << x.name << "=" << x.path;
+}
 
 MacroInvocation MacroInvocation::clone() const
 {
