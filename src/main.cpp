@@ -424,10 +424,13 @@ int main(int argc, char *argv[])
                     if(ec.second.m_hir->m_lang_items.count("mrustc-panic_runtime"))
                     {
                         if( panic_runtime_loaded ) {
-                            ERROR(Span(), E0000, "Multiple panic_runtime crates loaded - " << panic_crate_name << " and " << ec.first);
+                            //ERROR(Span(), E0000, "Multiple panic_runtime crates loaded - " << panic_crate_name << " and " << ec.first);
+                            WARNING(Span(), W0000, "Multiple panic_runtime crates loaded - " << panic_crate_name << " and " << ec.first);
                         }
-                        panic_crate_name = ec.first;
-                        panic_runtime_loaded = true;
+                        else {
+                            panic_crate_name = ec.first;
+                            panic_runtime_loaded = true;
+                        }
                     }
                     if(ec.second.m_hir->m_lang_items.count("mrustc-needs_panic_runtime"))
                     {

@@ -1464,7 +1464,12 @@ namespace {
             ERROR(sp, E0000, "#[link_name] requires a string");
         linkage.name = a->string();
     }
-    else if( attrs.get("no_mangle") || attrs.get("rustc_std_internal_symbol") )
+    else if( attrs.get("rustc_std_internal_symbol") )
+    {
+        linkage.name = p.get_name();
+        linkage.type = ::HIR::Linkage::Type::Weak;
+    }
+    else if( attrs.get("no_mangle") )
     {
         linkage.name = p.get_name();
     }

@@ -2368,8 +2368,16 @@ namespace {
             m_of << "// PROTO extern \"" << item.m_abi << "\" " << p << "\n";
             if( item.m_linkage.name != "" )
             {
-                // If this function is implementing an external ABI, just rename it (don't bother with per-compiler trickery).
-                m_of << "#define " << Trans_Mangle(p) << " " << item.m_linkage.name << "\n";
+                if( item.m_linkage.type == ::HIR::Linkage::Type::Weak && m_compiler == Compiler::Msvc )
+                {
+                    // If this function is implementing an external ABI, just rename it (don't bother with per-compiler trickery).
+                    m_of << "#pragma comment(linker, \"/alternatename:" << item.m_linkage.name << "=" << Trans_Mangle(p) << "\")\n";
+                }
+                else
+                {
+                    // If this function is implementing an external ABI, just rename it (don't bother with per-compiler trickery).
+                    m_of << "#define " << Trans_Mangle(p) << " " << item.m_linkage.name << "\n";
+                }
             }
             if( is_extern_def )
             {
@@ -4013,7 +4021,12 @@ namespace {
                     return false;
                 };
 
-            if( matches_template("fnstcw $0", /*input=*/{}, /*output=*/{"*m"}) )
+            if( e.tpl == "" )
+            {
+                // Empty template, so nothing to do
+                return ;
+            }
+            else if( matches_template("fnstcw $0", /*input=*/{}, /*output=*/{"*m"}) )
             {
                 // HARD CODE: `fnstcw` -> _control87
                 m_of << indent << "*("; emit_lvalue(e.outputs[0].second); m_of << ") = _control87(0,0);\n";
