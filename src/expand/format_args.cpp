@@ -496,6 +496,7 @@ namespace {
         switch(crate.m_load_std)
         {
         case ::AST::Crate::LOAD_NONE:
+            toks.push_back( TokenTree(TOK_RWORD_CRATE) );
             break;
         case ::AST::Crate::LOAD_CORE:
             toks.push_back( TokenTree(TOK_DOUBLE_COLON) );
