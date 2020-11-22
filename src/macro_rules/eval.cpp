@@ -421,7 +421,7 @@ public:
     MacroExpander(const MacroExpander& x) = delete;
 
     MacroExpander(const ::std::string& macro_name, const Span& sp, AST::Edition edition, const Ident::Hygiene& parent_hygiene, const ::std::vector<MacroExpansionEnt>& contents, ParameterMappings mappings, RcString crate_name):
-        TokenStream(ParseState(AST::Edition::Rust2015)),    // TODO: Get from the source crate
+        TokenStream(ParseState(crate_name == "" ? edition : AST::Edition::Rust2015)),    // TODO: Get from the source crate
         m_macro_filename( FMT("Macro:" << macro_name) ),
         m_crate_name( mv$(crate_name) ),
         m_invocation_span( sp ),
@@ -2016,7 +2016,14 @@ Token MacroExpander::realGetToken()
                 // - XXX: Hack for $crate special name
                 case 0:
                     DEBUG("Crate name hack");
-                    if( m_crate_name != "" )
+                    if( m_crate_name == "" )
+                    {
+                        if( parse_state().edition_after(AST::Edition::Rust2018) )
+                        {
+                            return Token(TOK_RWORD_CRATE);
+                        }
+                    }
+                    else
                     {
                         m_next_token = Token(TOK_STRING, ::std::string(m_crate_name.c_str()));
                         return Token(TOK_DOUBLE_COLON);

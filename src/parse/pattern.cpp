@@ -208,6 +208,7 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable)
             PUTBACK(tok, lex);
         return AST::Pattern( AST::Pattern::TagReference(), lex.end_span(ps), is_mut, Parse_Pattern(lex, is_refutable) );
         }
+    case TOK_RWORD_CRATE:
     case TOK_RWORD_SELF:
     case TOK_RWORD_SUPER:
     case TOK_IDENT:

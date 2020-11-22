@@ -119,7 +119,7 @@ void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::AST::Cr
 
 MacroRef Expand_LookupMacro(const Span& mi_span, const ::AST::Crate& crate, LList<const AST::Module*> modstack, const AST::Path& path)
 {
-    assert(path.size() > 0);
+    ASSERT_BUG(mi_span, path.size() > 0, "Path should have nodes: " << path);
 
     if( path.is_trivial() )
     {
@@ -278,7 +278,6 @@ MacroRef Expand_LookupMacro(const Span& mi_span, const ::AST::Crate& crate, LLis
 
         DEBUG("Invoking macro_rules " << path << " " << mr_ptr);
         auto e = Macro_InvokeRules(path.is_trivial() ? path.as_trivial().c_str() : "", *mr_ptr, mi_span, mv$(input_tt), crate, mod);
-        e->parse_state().crate = &crate;
         return e;
         }
     }
@@ -291,6 +290,7 @@ MacroRef Expand_LookupMacro(const Span& mi_span, const ::AST::Crate& crate, LLis
 {
     auto rv = Expand_Macro_Inner(crate, modstack, mod, mi_span, name, input_ident, input_tt);
     assert(rv);
+    rv->parse_state().crate = &crate;
     rv->parse_state().module = &mod;
     return rv;
 }
