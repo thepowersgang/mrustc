@@ -45,7 +45,15 @@ AST::Path Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode)
         GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
         return Parse_Path(lex, true, generic_mode);
     case TOK_DOUBLE_COLON:
-        if( lex.parse_state().edition_after(AST::Edition::Rust2018) )
+        if( lex.lookahead(0) == TOK_STRING )
+        {
+        }
+        // QUIRK: `::crate::foo` is valid (semi-surprisingly)
+        // TODO: Reference?
+        else if( lex.lookahead(0) == TOK_RWORD_CRATE )
+        {
+        }
+        else if( lex.parse_state().edition_after(AST::Edition::Rust2018) )
         {
             // The first component is a crate name
             GET_CHECK_TOK(tok, lex, TOK_IDENT);

@@ -1168,48 +1168,24 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
     case TOK_RWORD_UNSAFE:
         return Parse_ExprBlockNode(lex, true);
 
-    // UFCS
+    // Paths
+    // `self` can be a value, or start a path
+    case TOK_RWORD_SELF:
+        if( LOOK_AHEAD(lex) != TOK_DOUBLE_COLON ) {
+            return NEWNODE( AST::ExprNode_NamedValue, AST::Path(AST::Path::TagLocal(), "self") );
+        }
+        // Fall through to normal paths
     case TOK_DOUBLE_LT:
     case TOK_LT:
-        PUTBACK(tok, lex);
-        path = Parse_Path(lex, PATH_GENERIC_EXPR);
-        // Skip down to method
-        if(0)
-    case TOK_RWORD_SELF:
-        {
-            if( LOOK_AHEAD(lex) != TOK_DOUBLE_COLON ) {
-                return NEWNODE( AST::ExprNode_NamedValue, AST::Path(AST::Path::TagLocal(), "self") );
-            }
-            else
-            {
-                PUTBACK(tok, lex);
-                path = Parse_Path(lex, PATH_GENERIC_EXPR);
-            }
-        }
-        if(0)
     case TOK_RWORD_CRATE:
     case TOK_RWORD_SUPER:
-        {
-            PUTBACK(tok, lex);
-            path = Parse_Path(lex, PATH_GENERIC_EXPR);
-        }
-        if(0)
-    case TOK_IDENT:
-        // Get path
-        {
-            PUTBACK(tok, lex);
-            path = Parse_Path(lex, false, PATH_GENERIC_EXPR);
-        }
-        if(0)
-    case TOK_INTERPOLATED_PATH:
-        {
-            path = mv$(tok.frag_path());
-        }
-        if(0)
     case TOK_DOUBLE_COLON:
-        path = Parse_Path(lex, true, PATH_GENERIC_EXPR);
+    case TOK_IDENT:
+    case TOK_INTERPOLATED_PATH:
+        PUTBACK(tok, lex);
+        path = Parse_Path(lex, PATH_GENERIC_EXPR);
+
         DEBUG("path = " << path << ", lookahead=" << Token::typestr(lex.lookahead(0)));
-        // SKIP TARGET
         switch( GET_TOK(tok, lex) )
         {
         case TOK_EXCLAM:
