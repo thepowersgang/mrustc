@@ -217,7 +217,7 @@ endif
 
 # MRUSTC-specific tests
 .PHONY: local_tests
-local_tests:
+local_tests: $(TEST_DEPS)
 	@$(MAKE) -C tools/testrunner
 	@mkdir -p output$(OUTDIR_SUF)/local_tests
 	./bin/testrunner -o output$(OUTDIR_SUF)/local_tests -L output samples/test
