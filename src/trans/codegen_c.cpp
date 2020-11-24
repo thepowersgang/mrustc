@@ -45,6 +45,9 @@ namespace {
             return m_strings;
         }
 
+        std::vector<const char*>::const_iterator begin() const { return m_strings.begin(); }
+        std::vector<const char*>::const_iterator end() const { return m_strings.end(); }
+
         void push_back(::std::string s)
         {
             // If the cache list is about to move, update the pointers
@@ -896,6 +899,86 @@ namespace {
                 }
             }
 
+            StringList  libraries;
+            StringList  ext_crates;
+            StringList  ext_crates_dylib;
+            switch(out_ty)
+            {
+            case CodegenOutput::Executable:
+            case CodegenOutput::DynamicLibrary:
+                for( const auto& crate : m_crate.m_ext_crates )
+                {
+
+                    auto is_dylib = [](const ::HIR::ExternCrate& c) {
+                        bool rv = false;
+                        // TODO: Better rule than this
+                        rv |= (c.m_path.compare(c.m_path.size() - 3, 3, ".so") == 0);
+                        rv |= (c.m_path.compare(c.m_path.size() - 4, 4, ".dll") == 0);
+                        return rv;
+                        };
+                    // If this crate is included in a dylib crate, ignore it
+                    bool is_in_dylib = false;
+                    for( const auto& crate2 : m_crate.m_ext_crates )
+                    {
+                        if( is_dylib(crate2.second) )
+                        {
+                            for(const auto& subcrate : crate2.second.m_data->m_ext_crates)
+                            {
+                                if( subcrate.second.m_path == crate.second.m_path ) {
+                                    DEBUG(crate.first << " referenced by dylib " << crate2.first);
+                                    is_in_dylib = true;
+                                }
+                            }
+                        }
+                        if( is_in_dylib )
+                            break;
+                    }
+                    // NOTE: Only exclude non-dylibs referenced by other dylibs
+                    if( is_in_dylib && !is_dylib(crate.second) )
+                        continue ;
+
+                    // Ignore panic crates unless they're the selected crate (and add in the selected panic crate)
+                    if( crate.second.m_data->m_lang_items.count("mrustc-panic_runtime") )
+                    {
+                        // TODO: Check if this is the requested panic crate (for now hard-code panic_abort)
+                        if( crate.first != "panic_abort" )
+                        {
+                            continue ;
+                        }
+                    }
+
+                    if( crate.second.m_path.compare(crate.second.m_path.size() - 5, 5, ".rlib") == 0)
+                    {
+                        ext_crates.push_back(crate.second.m_path.c_str());
+                    }
+                    else if( is_dylib(crate.second) )
+                    {
+                        ext_crates_dylib.push_back(crate.second.m_path.c_str());
+                    }
+                    else
+                    {
+                        // Probably a procedural macro, ignore it
+                    }
+                }
+
+                for(const auto& lib : m_crate.m_ext_libs) {
+                    ASSERT_BUG(Span(), lib.name != "", "");
+                    libraries.push_back(lib.name.c_str());
+                }
+                for( const auto& crate : m_crate.m_ext_crates )
+                {
+                    for(const auto& lib : crate.second.m_data->m_ext_libs) {
+                        ASSERT_BUG(Span(), lib.name != "", "Empty lib from " << crate.first);
+                        libraries.push_back(lib.name.c_str());
+                    }
+                }
+                for(const auto& path : opt.libraries )
+                {
+                    libraries.push_back(path.c_str());
+                }
+                break;
+            }
+
             // Execute $CC with the required libraries
             StringList  args;
 #ifdef _WIN32
@@ -963,65 +1046,22 @@ namespace {
                 case CodegenOutput::DynamicLibrary:
                     args.push_back("-shared");
                 case CodegenOutput::Executable:
-                    for( const auto& crate : m_crate.m_ext_crates )
+                    for(const auto& c : ext_crates)
                     {
-                        auto is_dylib = [](const ::HIR::ExternCrate& c) {
-                            bool rv = false;
-                            // TODO: Better rule than this
-                            rv |= (c.m_path.compare(c.m_path.size() - 3, 3, ".so") == 0);
-                            rv |= (c.m_path.compare(c.m_path.size() - 4, 4, ".dll") == 0);
-                            return rv;
-                            };
-                        // If this crate is included in a dylib crate, ignore it
-                        bool is_in_dylib = false;
-                        for( const auto& crate2 : m_crate.m_ext_crates )
-                        {
-                            if( is_dylib(crate2.second) )
-                            {
-                                for(const auto& subcrate : crate2.second.m_data->m_ext_crates)
-                                {
-                                    if( subcrate.second.m_path == crate.second.m_path ) {
-                                        DEBUG(crate.first << " referenced by dylib " << crate2.first);
-                                        is_in_dylib = true;
-                                    }
-                                }
-                            }
-                            if( is_in_dylib )
-                                break;
-                        }
-                        // NOTE: Only exclude non-dylibs referenced by other dylibs
-                        if( is_in_dylib && !is_dylib(crate.second) ) {
-                        }
-                        else if( crate.second.m_path.compare(crate.second.m_path.size() - 5, 5, ".rlib") == 0 ) {
-                            args.push_back(crate.second.m_path + ".o");
-                        }
-                        else if( is_dylib(crate.second) ) {
-                            // TODO: Get the dir and base name (strip `lib` and `.so` off)
-                            // and emit -L/-Wl,-rpath if that path isn't already emitted.
-                            args.push_back(crate.second.m_path);
-                        }
-                        else {
-                            // Proc macro.
-                        }
+                        args.push_back(std::string(c) + ".o");
+                    }
+                    for(const auto& c : ext_crates_dylib)
+                    {
+                        args.push_back(c);
                     }
                     for(const auto& path : link_dirs )
                     {
                         args.push_back("-L"); args.push_back(path);
                     }
-                    for(const auto& lib : m_crate.m_ext_libs) {
-                        ASSERT_BUG(Span(), lib.name != "", "");
-                        args.push_back("-l"); args.push_back(lib.name.c_str());
-                    }
-                    for( const auto& crate : m_crate.m_ext_crates )
+                    for(const auto& l : libraries)
                     {
-                        for(const auto& lib : crate.second.m_data->m_ext_libs) {
-                            ASSERT_BUG(Span(), lib.name != "", "Empty lib from " << crate.first);
-                            args.push_back("-l"); args.push_back(lib.name.c_str());
-                        }
-                    }
-                    for(const auto& path : opt.libraries )
-                    {
-                        args.push_back("-l"); args.push_back(path.c_str());
+                        args.push_back("-l");
+                        args.push_back(l);
                     }
                     for( const auto& a : Target_GetCurSpec().m_backend_c.m_linker_opts )
                     {
@@ -1080,27 +1120,18 @@ namespace {
                         throw "bug";
                     }
 
-                    for( const auto& crate : m_crate.m_ext_crates )
+                    for(const auto& c : ext_crates)
                     {
-                        if (crate.second.m_path.compare(crate.second.m_path.size() - 5, 5, ".rlib") == 0) {
-                            args.push_back(crate.second.m_path + ".obj");
-                        }
+                        args.push_back(std::string(c) + ".obj");
+                    }
+                    for(const auto& c : ext_crates_dylib)
+                    {
+                        TODO(Span(), "Windows dylibs");
                     }
                     // Crate-specified libraries
-                    for(const auto& lib : m_crate.m_ext_libs) {
-                        ASSERT_BUG(Span(), lib.name != "", "");
-                        args.push_back(lib.name + ".lib");
-                    }
-                    for( const auto& crate : m_crate.m_ext_crates )
+                    for(const char* lib : libraries)
                     {
-                        for(const auto& lib : crate.second.m_data->m_ext_libs) {
-                            ASSERT_BUG(Span(), lib.name != "", "Empty lib from " << crate.first);
-                            args.push_back(lib.name + ".lib");
-                        }
-                    }
-                    for(const auto& path : opt.libraries )
-                    {
-                        args.push_back(path + ".lib");
+                        args.push_back(std::string(lib) + ".lib");
                     }
                     args.push_back("kernel32.lib"); // Needed for Interlocked*
 
@@ -2382,6 +2413,24 @@ namespace {
             if( is_extern_def )
             {
                 m_of << "static ";
+            }
+            switch(item.m_linkage.type)
+            {
+            case HIR::Linkage::Type::External:
+                break;
+            case HIR::Linkage::Type::Auto:
+                break;
+            case HIR::Linkage::Type::Weak:
+                switch(m_compiler)
+                {
+                case Compiler::Gcc:
+                    m_of << "__attribute__((weak)) ";
+                    break;
+                case Compiler::Msvc:
+		    // handled above
+                    break;
+                }
+                break;
             }
             emit_function_header(p, item, params);
             m_of << ";\n";
