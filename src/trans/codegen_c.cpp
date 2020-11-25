@@ -977,6 +977,9 @@ namespace {
                     libraries.push_back(path.c_str());
                 }
                 break;
+            case CodegenOutput::Object:
+            case CodegenOutput::StaticLibrary:
+                break;
             }
 
             // Execute $CC with the required libraries
