@@ -78,7 +78,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
                 }));
             }
         TU_ARMA(IsTrait, e) {
-            const auto sp = Span();
+            const auto& sp = e.span;
             auto type = LowerHIR_Type(e.type);
 
             // TODO: Check if this trait is `Sized` and ignore if it is? (It's a useless bound)

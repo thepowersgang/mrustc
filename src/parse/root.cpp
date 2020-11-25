@@ -193,6 +193,7 @@ void Parse_TypeBound(TokenStream& lex, AST::GenericParams& ret, TypeRef checked_
 
     do
     {
+        auto ps = lex.start_span();
         // If an item terminator is seen (end of item, start of body, list separator), return early.
         //if( LOOK_AHEAD(lex) == TOK_SEMICOLON || LOOK_AHEAD(lex) == TOK_COMMA )
         //{
@@ -224,6 +225,7 @@ void Parse_TypeBound(TokenStream& lex, AST::GenericParams& ret, TypeRef checked_
 
             auto this_outer_hrbs = (lex.lookahead(0) == TOK_PLUS ? AST::HigherRankedBounds(outer_hrbs) : mv$(outer_hrbs));
             ret.add_bound( AST::GenericBound::make_IsTrait({
+                lex.end_span(ps),
                 mv$(this_outer_hrbs), checked_type.clone(), mv$(inner_hrls), mv$(trait_path)
                 }) );
         }

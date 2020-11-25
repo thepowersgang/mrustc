@@ -1689,7 +1689,7 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
     TU_ARMA(Absolute, e) {
         DEBUG("- Absolute");
         // HACK: if the crate name starts with `=` it's a 2018 absolute path (references a crate loaded with `--extern`)
-        if( context.m_crate.m_edition >= AST::Edition::Rust2018 && e.crate.c_str()[0] == '=' ) {
+        if( /*context.m_crate.m_edition >= AST::Edition::Rust2018 &&*/ e.crate.c_str()[0] == '=' ) {
             // Absolute paths in 2018 edition are crate-prefixed?
             auto ec_it = AST::g_implicit_crates.find(e.crate.c_str() + 1);
             if(ec_it == AST::g_implicit_crates.end())

@@ -180,7 +180,7 @@ struct Deriver
             if(const auto* e = arg.opt_Type())
             {
                 params.add_bound( ::AST::GenericBound::make_IsTrait({
-                    {}, TypeRef(sp, e->name(), i), {}, trait_path
+                    sp, {}, TypeRef(sp, e->name(), i), {}, trait_path
                     }) );
                 i ++;
             }
@@ -191,7 +191,7 @@ struct Deriver
         for(auto& ty : additional_bounded_types)
         {
             params.add_bound( ::AST::GenericBound::make_IsTrait({
-                {}, mv$(ty), {}, trait_path
+                sp, {}, mv$(ty), {}, trait_path
                 }) );
         }
 
@@ -1508,6 +1508,7 @@ class Deriver_Hash:
             );
         fcn.params().add_ty_param( AST::TypeParam(sp, {}, "H") );
         fcn.params().add_bound( AST::GenericBound::make_IsTrait({
+            sp,
             {}, TypeRef(sp, "H", 0x100|0),
             {}, this->get_trait_path_Hasher(core_name)
             }) );
@@ -1625,10 +1626,10 @@ class Deriver_RustcEncodable:
 {
     // NOTE: This emits paths like `::rustc_serialize::Encodable` - rustc and crates.io have subtly different crate names
     AST::Path get_trait_path() const {
-        return get_path("", "rustc_serialize", "Encodable");
+        return AST::Path("=rustc_serialize", { AST::PathNode(RcString::new_interned("Encodable"), {}) });
     }
     AST::Path get_trait_path_Encoder() const {
-        return get_path("", "rustc_serialize", "Encoder");
+        return AST::Path("=rustc_serialize", { AST::PathNode(RcString::new_interned("Encoder"), {}) });
     }
     AST::Path get_method_path() const {
         return get_trait_path() + "encode";
@@ -1654,6 +1655,7 @@ class Deriver_RustcEncodable:
             );
         fcn.params().add_ty_param( AST::TypeParam(sp, {}, "S") );
         fcn.params().add_bound( AST::GenericBound::make_IsTrait({
+            sp,
             {}, TypeRef(sp, "S", 0x100|0),
             {}, this->get_trait_path_Encoder()
             }) );
@@ -1855,10 +1857,10 @@ class Deriver_RustcDecodable:
 {
     // NOTE: This emits paths like `::rustc_serialize::Encodable` - rustc and crates.io have subtly different crate names
     AST::Path get_trait_path() const {
-        return get_path("", "rustc_serialize", "Decodable");
+        return AST::Path("=rustc_serialize", { AST::PathNode(RcString::new_interned("Decodable"), {}) });
     }
     AST::Path get_trait_path_Decoder() const {
-        return get_path("", "rustc_serialize", "Decoder");
+        return AST::Path("=rustc_serialize", { AST::PathNode(RcString::new_interned("Decoder"), {}) });
     }
     AST::Path get_method_path() const {
         return get_trait_path() + "decode";
@@ -1884,6 +1886,7 @@ class Deriver_RustcDecodable:
             );
         fcn.params().add_ty_param( AST::TypeParam(sp, {}, "D") );
         fcn.params().add_bound( AST::GenericBound::make_IsTrait({
+            sp,
             {}, TypeRef(sp, "D", 0x100|0),
             {}, this->get_trait_path_Decoder()
             }) );
