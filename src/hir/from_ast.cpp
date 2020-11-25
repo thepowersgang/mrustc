@@ -99,14 +99,18 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
                         if(it != trait.m_types.end()) {
                             return ms.monomorph_genericpath(sp, path, /*allow_infer=*/false);
                         }
-                        //auto cb = MonomorphStatePtr(nullptr, &path.m_params, nullptr);
-                        for(const auto& st : trait.m_parent_traits)
+                        auto cb = MonomorphStatePtr(nullptr, &path.m_params, nullptr);
+                        for(const auto& st : trait.m_all_parent_traits)
                         {
-                            TODO(sp, "HIR Source trait for `" << name << "` (path=" << path << ") - Search supertraits");
-                            //const auto& t = 
-                            //auto rv = H::find_source_trait(sp, st.m_path, st.path.m_bindings.type.as_Trait(), name, cb);
-                            //if(rv != HIR::GenericPath())
-                            //    return rv;
+                            // NOTE: st.m_trait_ptr isn't populated yet
+                            const auto& t = g_crate_ptr->get_trait_by_path(sp, st.m_path.m_path);
+
+                            auto it = t.m_types.find(name);
+                            if(it != t.m_types.end()) {
+                                // Monomorphse into outer scope, then run the outer monomorph
+                                auto p = cb.monomorph_genericpath(sp, st.m_path, /*allow_infer=*/false);
+                                return ms.monomorph_genericpath(sp, p, /*allow_infer=*/false);
+                            }
                         }
                     }
                     else if( pbe.trait_ )
