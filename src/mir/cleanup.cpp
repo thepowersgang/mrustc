@@ -554,90 +554,104 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
 
     // Allocate a temporary for the vtable pointer itself
     auto vtable_lv = mutator.new_temporary( mv$(vtable_ty) );
-    // - Load the vtable and store it
-    auto ptr_lv = ::MIR::LValue::new_Deref( receiver_lvp.clone() );
-    MIR_Cleanup_LValue(state, mutator,  ptr_lv);
-    ptr_lv.m_wrappers.pop_back();
-    auto vtable_rval = ::MIR::RValue::make_DstMeta({ mv$(ptr_lv) });
-    mutator.push_statement( ::MIR::Statement::make_Assign({ vtable_lv.clone(), mv$(vtable_rval) }) );
-
-    auto fcn_lval = ::MIR::LValue::new_Field( ::MIR::LValue::new_Deref( mv$(vtable_lv) ), vtable_idx );
-
+    auto fcn_lval = ::MIR::LValue::new_Field( ::MIR::LValue::new_Deref( vtable_lv.clone() ), vtable_idx );
     ::HIR::TypeRef  tmp;
     const auto& ty = state.get_lvalue_type(tmp, fcn_lval);
     const auto& receiver = ty.data().as_Function().m_arg_types.at(0);
-    if( state.is_type_owned_box(receiver) )
-    {
-        // TODO: If the receiver is Box, create a Box<()> as the value.
-        // - Requires de/restructuring the Box same as CoerceUnsized
-        // - Can use the `coerce_unsized_index` field too
-
-        struct H {
-            static ::MIR::LValue get_unit_ptr(const ::MIR::TypeResolve& state, MirMutator& mutator, ::HIR::TypeRef ty, ::MIR::LValue lv)
+    
+    struct H {
+        static ::MIR::LValue get_unit_ptr(
+            const ::MIR::TypeResolve& state, MirMutator& mutator,
+            ::HIR::TypeRef ty, ::MIR::LValue lv,
+            ::MIR::LValue& out_inner_ptr
+            )
+        {
+            if( ty.data().is_Path() )
             {
-                if( ty.data().is_Path() )
-                {
-                    const auto& te = ty.data().as_Path();
-                    MIR_ASSERT(state, te.binding.is_Struct(), "");
-                    const auto& ty_path = te.path.m_data.as_Generic();
-                    const auto& str = *te.binding.as_Struct();
-                    ::HIR::TypeRef  tmp;
-                    auto monomorph = [&](const auto& t) { return MonomorphStatePtr(nullptr, &ty_path.m_params, nullptr).monomorph_type(state.sp, t); };
-                    ::std::vector< ::MIR::Param>   vals;
-                    TU_MATCH_HDRA( (str.m_data), {)
-                    TU_ARMA(Unit, se) {
+                const auto& te = ty.data().as_Path();
+                MIR_ASSERT(state, te.binding.is_Struct(), "");
+                const auto& ty_path = te.path.m_data.as_Generic();
+                const auto& str = *te.binding.as_Struct();
+                ::HIR::TypeRef  tmp;
+                auto monomorph = [&](const auto& t) { return MonomorphStatePtr(nullptr, &ty_path.m_params, nullptr).monomorph_type(state.sp, t); };
+                ::std::vector< ::MIR::Param>   vals;
+                TU_MATCH_HDRA( (str.m_data), {)
+                TU_ARMA(Unit, se) {
+                    }
+                TU_ARMA(Tuple, se) {
+                    for(unsigned int i = 0; i < se.size(); i ++ ) {
+                        auto val = ::MIR::LValue::new_Field( (i == se.size() - 1 ? mv$(lv) : lv.clone()), i );
+                        if( i == str.m_struct_markings.coerce_unsized_index ) {
+                            vals.push_back( H::get_unit_ptr(state, mutator, monomorph(se[i].ent), mv$(val), out_inner_ptr) );
                         }
-                    TU_ARMA(Tuple, se) {
-                        for(unsigned int i = 0; i < se.size(); i ++ ) {
-                            auto val = ::MIR::LValue::new_Field( (i == se.size() - 1 ? mv$(lv) : lv.clone()), i );
-                            if( i == str.m_struct_markings.coerce_unsized_index ) {
-                                vals.push_back( H::get_unit_ptr(state, mutator, monomorph(se[i].ent), mv$(val)) );
-                            }
-                            else {
-                                vals.push_back( mv$(val) );
-                            }
-                        }
-                        }
-                    TU_ARMA(Named, se) {
-                        for(unsigned int i = 0; i < se.size(); i ++ ) {
-                            auto val = ::MIR::LValue::new_Field( (i == se.size() - 1 ? mv$(lv) : lv.clone()), i );
-                            if( i == str.m_struct_markings.coerce_unsized_index ) {
-                                vals.push_back( H::get_unit_ptr(state, mutator, monomorph(se[i].second.ent), mv$(val) ) );
-                            }
-                            else {
-                                vals.push_back( mv$(val) );
-                            }
-                        }
+                        else {
+                            vals.push_back( mv$(val) );
                         }
                     }
+                    }
+                TU_ARMA(Named, se) {
+                    for(unsigned int i = 0; i < se.size(); i ++ ) {
+                        auto val = ::MIR::LValue::new_Field( (i == se.size() - 1 ? mv$(lv) : lv.clone()), i );
+                        if( i == str.m_struct_markings.coerce_unsized_index ) {
+                            vals.push_back( H::get_unit_ptr(state, mutator, monomorph(se[i].second.ent), mv$(val), out_inner_ptr ) );
+                        }
+                        else {
+                            vals.push_back( mv$(val) );
+                        }
+                    }
+                    }
+                }
 
-                    auto new_path = ty_path.clone();
-                    return mutator.in_temporary( mv$(ty), ::MIR::RValue::make_Struct({ mv$(new_path), mv$(vals) }) );
-                }
-                else if( ty.data().is_Pointer() )
-                {
-                    return mutator.in_temporary(
-                        ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, ::HIR::TypeRef::new_unit()),
-                        ::MIR::RValue::make_DstPtr({ mv$(lv) })
-                        );
-                }
-                else
-                {
-                    MIR_BUG(state, "Unexpected type coerce_unsize in Box - " << ty);
-                }
+                auto new_path = ty_path.clone();
+                return mutator.in_temporary( mv$(ty), ::MIR::RValue::make_Struct({ mv$(new_path), mv$(vals) }) );
             }
-        };
+            else if( ty.data().is_Borrow() || ty.data().is_Pointer() )
+            {
+                out_inner_ptr = lv.clone();
+                return mutator.in_temporary(
+                    ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, ::HIR::TypeRef::new_unit()),
+                    ::MIR::RValue::make_DstPtr({ mv$(lv) })
+                    );
+            }
+            else
+            {
+                MIR_BUG(state, "Unexpected type coerce_unsize in receiver - " << ty);
+            }
+        }
+    };
 
-        receiver_lvp = H::get_unit_ptr(state,mutator, receiver.clone(), receiver_lvp.clone());
-    }
-    else
+    ::MIR::LValue   receiver_ptr;
+    ::MIR::LValue   inner_dyn_ptr;
+
+    if( receiver.data().is_Path()
+        && receiver.data().as_Path().binding.is_Struct()
+        && receiver.data().as_Path().binding.as_Struct()->m_struct_markings.coerce_unsized != ::HIR::StructMarkings::Coerce::None
+        )
     {
+        // If the receiver is Box (or anything that implements CoerceUnsized), create a Foo<()> as the value.
+        // - Requires de/restructuring the Box same as CoerceUnsized
+        // - Can use the `coerce_unsized_index` field too
+        receiver_lvp = H::get_unit_ptr(state,mutator, receiver.clone(), receiver_lvp.clone(), inner_dyn_ptr);
+    }
+    else if( receiver.data().is_Borrow() || receiver.data().is_Pointer() )
+    {
+        inner_dyn_ptr = receiver_lvp.clone();
         auto ptr_rval = ::MIR::RValue::make_DstPtr({ receiver_lvp.clone() });
 
         auto ptr_lv = mutator.new_temporary( ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, ::HIR::TypeRef::new_unit()) );
         mutator.push_statement( ::MIR::Statement::make_Assign({ ptr_lv.clone(), mv$(ptr_rval) }) );
         receiver_lvp = mv$(ptr_lv);
     }
+    else
+    {
+        // TODO: How to handle `Pin`?
+        // - Locate the pointer (similar to unsized path?)
+        MIR_TODO(state, "Handle virtual call through " << receiver);
+    }
+
+    // - Load the vtable and store it
+    auto vtable_rval = ::MIR::RValue::make_DstMeta({ mv$(inner_dyn_ptr) });
+    mutator.push_statement( ::MIR::Statement::make_Assign({ vtable_lv.clone(), mv$(vtable_rval) }) );
 
     // Update the terminator with the new information.
     return fcn_lval;
@@ -991,6 +1005,10 @@ void MIR_Cleanup_LValue(const ::MIR::TypeResolve& state, MirMutator& mutator, ::
             {
                 lval.m_wrappers.insert( lval.m_wrappers.begin() + i, ::MIR::LValue::Wrapper::new_Field(0) );
             }
+        }
+        else
+        {
+            // What about other types?
         }
     }
 }
