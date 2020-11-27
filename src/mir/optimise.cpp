@@ -531,54 +531,54 @@ namespace
     bool visit_mir_lvalues_mut(::MIR::RValue& rval, ::std::function<bool(::MIR::LValue& , ValUsage)> cb)
     {
         bool rv = false;
-        TU_MATCHA( (rval), (se),
-        (Use,
+        TU_MATCH_HDRA( (rval), {)
+        TU_ARMA(Use, se) {
             rv |= visit_mir_lvalue_raw_mut(se, ValUsage::Move, cb); // Can move
-            ),
-        (Constant,
-            ),
-        (SizedArray,
+            }
+        TU_ARMA(Constant, se) {
+            }
+        TU_ARMA(SizedArray, se) {
             rv |= visit_mir_lvalue_mut(se.val, ValUsage::Read, cb); // Has to be Read
-            ),
-        (Borrow,
+            }
+        TU_ARMA(Borrow, se) {
             rv |= visit_mir_lvalue_raw_mut(se.val, ValUsage::Borrow, cb);
-            ),
-        (Cast,
+            }
+        TU_ARMA(Cast, se) {
             rv |= visit_mir_lvalue_raw_mut(se.val, ValUsage::Read, cb); // Also has to be read
-            ),
-        (BinOp,
+            }
+        TU_ARMA(BinOp, se) {
             rv |= visit_mir_lvalue_mut(se.val_l, ValUsage::Read, cb);   // Same
             rv |= visit_mir_lvalue_mut(se.val_r, ValUsage::Read, cb);
-            ),
-        (UniOp,
+            }
+        TU_ARMA(UniOp, se) {
             rv |= visit_mir_lvalue_raw_mut(se.val, ValUsage::Read, cb);
-            ),
-        (DstMeta,
+            }
+        TU_ARMA(DstMeta, se) {
             rv |= visit_mir_lvalue_raw_mut(se.val, ValUsage::Read, cb); // Reads
-            ),
-        (DstPtr,
+            }
+        TU_ARMA(DstPtr, se) {
             rv |= visit_mir_lvalue_raw_mut(se.val, ValUsage::Read, cb);
-            ),
-        (MakeDst,
+            }
+        TU_ARMA(MakeDst, se) {
             rv |= visit_mir_lvalue_mut(se.ptr_val, ValUsage::Move, cb);
             rv |= visit_mir_lvalue_mut(se.meta_val, ValUsage::Read, cb);    // Note, metadata has to be Copy
-            ),
-        (Tuple,
+            }
+        TU_ARMA(Tuple, se) {
             for(auto& v : se.vals)
                 rv |= visit_mir_lvalue_mut(v, ValUsage::Move, cb);
-            ),
-        (Array,
+            }
+        TU_ARMA(Array, se) {
             for(auto& v : se.vals)
                 rv |= visit_mir_lvalue_mut(v, ValUsage::Move, cb);
-            ),
-        (Variant,
+            }
+        TU_ARMA(Variant, se) {
             rv |= visit_mir_lvalue_mut(se.val, ValUsage::Move, cb);
-            ),
-        (Struct,
+            }
+        TU_ARMA(Struct, se) {
             for(auto& v : se.vals)
                 rv |= visit_mir_lvalue_mut(v, ValUsage::Move, cb);
-            )
-        )
+            }
+        }
         return rv;
     }
     bool visit_mir_lvalues(const ::MIR::RValue& rval, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb)
@@ -589,26 +589,26 @@ namespace
     bool visit_mir_lvalues_mut(::MIR::Statement& stmt, ::std::function<bool(::MIR::LValue& , ValUsage)> cb)
     {
         bool rv = false;
-        TU_MATCHA( (stmt), (e),
-        (Assign,
+        TU_MATCH_HDRA( (stmt), {)
+        TU_ARMA(Assign, e) {
             rv |= visit_mir_lvalues_mut(e.src, cb);
             rv |= visit_mir_lvalue_raw_mut(e.dst, ValUsage::Write, cb);
-            ),
-        (Asm,
+            }
+        TU_ARMA(Asm, e) {
             for(auto& v : e.inputs)
                 rv |= visit_mir_lvalue_raw_mut(v.second, ValUsage::Read, cb);
             for(auto& v : e.outputs)
                 rv |= visit_mir_lvalue_raw_mut(v.second, ValUsage::Write, cb);
-            ),
-        (SetDropFlag,
-            ),
-        (Drop,
+            }
+        TU_ARMA(SetDropFlag, e) {
+            }
+        TU_ARMA(Drop, e) {
             // Well, it mutates...
             rv |= visit_mir_lvalue_raw_mut(e.slot, ValUsage::Write, cb);
-            ),
-        (ScopeEnd,
-            )
-        )
+            }
+        TU_ARMA(ScopeEnd, e) {
+            }
+        }
         return rv;
     }
     bool visit_mir_lvalues(const ::MIR::Statement& stmt, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb)
@@ -619,35 +619,35 @@ namespace
     bool visit_mir_lvalues_mut(::MIR::Terminator& term, ::std::function<bool(::MIR::LValue& , ValUsage)> cb)
     {
         bool rv = false;
-        TU_MATCHA( (term), (e),
-        (Incomplete,
-            ),
-        (Return,
-            ),
-        (Diverge,
-            ),
-        (Goto,
-            ),
-        (Panic,
-            ),
-        (If,
+        TU_MATCH_HDRA( (term), {)
+        TU_ARMA(Incomplete, e) {
+            }
+        TU_ARMA(Return, e) {
+            }
+        TU_ARMA(Diverge, e) {
+            }
+        TU_ARMA(Goto, e) {
+            }
+        TU_ARMA(Panic, e) {
+            }
+        TU_ARMA(If, e) {
             rv |= visit_mir_lvalue_raw_mut(e.cond, ValUsage::Read, cb);
-            ),
-        (Switch,
+            }
+        TU_ARMA(Switch, e) {
             rv |= visit_mir_lvalue_raw_mut(e.val, ValUsage::Read, cb);
-            ),
-        (SwitchValue,
+            }
+        TU_ARMA(SwitchValue, e) {
             rv |= visit_mir_lvalue_raw_mut(e.val, ValUsage::Read, cb);
-            ),
-        (Call,
+            }
+        TU_ARMA(Call, e) {
             if( e.fcn.is_Value() ) {
                 rv |= visit_mir_lvalue_raw_mut(e.fcn.as_Value(), ValUsage::Read, cb);
             }
             for(auto& v : e.args)
                 rv |= visit_mir_lvalue_mut(v, ValUsage::Move, cb);
             rv |= visit_mir_lvalue_raw_mut(e.ret_val, ValUsage::Write, cb);
-            )
-        )
+            }
+        }
         return rv;
     }
     bool visit_mir_lvalues(const ::MIR::Terminator& term, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb)
