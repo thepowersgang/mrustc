@@ -18,17 +18,30 @@
 #include <mir/visit_crate_mir.hpp>
 #include <trans/target.hpp>
 
-struct MirMutator
+class MirMutator
 {
     ::MIR::Function& m_fcn;
     unsigned int    cur_block;
     unsigned int    cur_stmt;
     mutable ::std::vector< ::MIR::Statement>    new_statements;
 
+public:
     MirMutator(::MIR::Function& fcn, unsigned int bb, unsigned int stmt):
         m_fcn(fcn),
         cur_block(bb), cur_stmt(stmt)
     {
+    }
+
+    void update_state(::MIR::TypeResolve& state)
+    {
+        if( this->cur_stmt == m_fcn.blocks[this->cur_block].statements.size() )
+        {
+            state.set_cur_stmt_term(this->cur_block);
+        }
+        else
+        {
+            state.set_cur_stmt( this->cur_block, this->cur_stmt );
+        }
     }
 
     ::MIR::LValue new_temporary(::HIR::TypeRef ty)
@@ -50,20 +63,38 @@ struct MirMutator
         return rv;
     }
 
+    decltype(new_statements.begin()) flush_stmt()
+    {
+        auto rv = flush();
+        this->cur_stmt += 1;
+        return rv;
+    }
+
+    void flush_block()
+    {
+        auto rv = flush();
+        this->cur_stmt = 0;
+        this->cur_block += 1;
+    }
+
+private:
     decltype(new_statements.begin()) flush()
     {
-        DEBUG("flush - " << cur_block << "/" << cur_stmt);
         auto& block = m_fcn.blocks.at(cur_block);
         assert( cur_stmt <= block.statements.size() );
         auto it = block.statements.begin() + cur_stmt;
-        for(auto& stmt : new_statements)
+        if( new_statements.size() > 0 )
         {
-            DEBUG("- Push stmt @" << cur_stmt << " (size=" << block.statements.size() + 1 << ")");
-            it = block.statements.insert(it, mv$(stmt));
-            ++ it;
-            cur_stmt += 1;
+            DEBUG("flush - BB" << cur_block << "/" << cur_stmt);
+            for(auto& stmt : new_statements)
+            {
+                DEBUG("- Push stmt @" << cur_stmt << ": " << stmt);
+                it = block.statements.insert(it, mv$(stmt));
+                ++ it;
+                cur_stmt += 1;
+            }
+            new_statements.clear();
         }
-        new_statements.clear();
         return it;
     }
 };
@@ -496,6 +527,8 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
     const ::HIR::TypeData::Data_TraitObject& te, const ::HIR::Path::Data::Data_UfcsKnown& pe
     )
 {
+    TRACE_FUNCTION_F("<" << pe.type << " as " << pe.trait << ">::" << pe.item << pe.params);
+
     assert( te.m_trait.m_trait_ptr );
     assert( pe.type.data().is_TraitObject() );
     assert( &te == &pe.type.data().as_TraitObject() );
@@ -1031,7 +1064,7 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
     {
         for(auto it = block.statements.begin(); it != block.statements.end(); ++ it)
         {
-            state.set_cur_stmt( mutator.cur_block, mutator.cur_stmt );
+            mutator.update_state(state);
             auto& stmt = *it;
 
             // >> Detect use of `!` as a value
@@ -1207,13 +1240,13 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                 }
             }
 
-            DEBUG(it - block.statements.begin());
-            it = mutator.flush();
-            DEBUG(it - block.statements.begin());
-            mutator.cur_stmt += 1;
+            //DEBUG(it - block.statements.begin());
+            it = mutator.flush_stmt();
+            //DEBUG(it - block.statements.begin());
         }
 
-        state.set_cur_stmt_term( mutator.cur_block );
+        mutator.update_state(state);
+        //state.set_cur_stmt_term( mutator.cur_block );
 
         TU_MATCH_HDRA( (block.terminator), {)
         TU_ARMA(Incomplete, e) {
@@ -1300,9 +1333,7 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
             }
         }
 
-        mutator.flush();
-        mutator.cur_block += 1;
-        mutator.cur_stmt = 0;
+        mutator.flush_block();
     }
 
 
