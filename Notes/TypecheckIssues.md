@@ -247,3 +247,38 @@ Notes:
 
 Solution:
 - Run EAT when adding to ivar bounds (to de-duplicate this pair)
+
+
+# 1.39 `<::"rustc_data_structures"::bit_set::BitMatrix<R/*I:0*/,C/*I:1*/,>/*S*/>::from_row_n`
+```
+..\rustc-1.39.0-src\src\librustc_data_structures\bit_set.rs:718: error:0:No applicable methods for {::"core"::iter::adapters::Cloned<::"core"::iter::adapters::flatten::Flatten<::"core"::iter::adapters::Take<::"core"::iter::sources::Repeat<_/*91*/,>,>,>,>}.collect
+```
+
+```
+Typecheck Expressions-       find_method: >> (ty=::"core"::iter::adapters::Cloned<::"core"::iter::adapters::flatten::Flatten<::"core"::iter::adapters::Take<::"core"::iter::sources::Repeat<_/*91*/,>/*S*/,>/*S*/,>/*S*/,>/*S*/, name=collect, access=Move)
+Typecheck Expressions-        find_trait_impls_crate: >> (::"core"::iter::traits::iterator::Iterator for ::"core"::iter::adapters::Cloned<::"core"::iter::adapters::flatten::Flatten<::"core"::iter::adapters::Take<::"core"::iter::sources::Repeat<_/*91*/,>/*S*/,>/*S*/,>/*S*/,>/*S*/)
+Typecheck Expressions-           find_trait_impls_crate: >> (::"core"::iter::traits::iterator::Iterator for ::"core"::iter::adapters::flatten::Flatten<::"core"::iter::adapters::Take<::"core"::iter::sources::Repeat<_/*91*/,>/*S*/,>/*S*/,>/*S*/)
+Typecheck Expressions-              find_trait_impls_crate: >> (::"core"::iter::traits::iterator::Iterator for ::"core"::iter::adapters::Take<::"core"::iter::sources::Repeat<_/*91*/,>/*S*/,>/*S*/)
+Typecheck Expressions-                 find_trait_impls_crate: >> (::"core"::iter::traits::iterator::Iterator for ::"core"::iter::sources::Repeat<_/*91*/,>/*S*/)
+Typecheck Expressions-                   find_trait_impls: >> (trait = ::"core"::clone::Clone, type = _/*91*/)
+Typecheck Expressions-                      TraitResolution::type_is_clone: Fuzzy Clone impl for ivar?
+Typecheck Expressions-                   TraitResolution::ftic_check_params: - Bound _/*91*/ : ::"core"::clone::Clone fuzzed
+Typecheck Expressions-                TraitResolution::ftic_check_params: - Bound ::"core"::iter::sources::Repeat<_/*91*/,>/*S*/ : ::"core"::iter::traits::iterator::Iterator fuzzed
+Typecheck Expressions-              ImplRef::get_type: name=Item tpl_ty=<I/*I:0*/ as ::"core"::iter::traits::iterator::Iterator>::Item/*O*/ impl(00000212B6B842F0)<I,> ::"core"::iter::traits::iterator::Iterator for ::"core"::iter::adapters::Take<I/*I:0*/,>/*S*/ where I/*I:0*/: ::"core"::iter::traits::iterator::Iterator {I = ::"core"::iter::sources::Repeat<_/*91*/,>/*S*/,Self::Item = <I/*I:0*/ as ::"core"::iter::traits::iterator::Iterator>::Item/*O*/,}
+Typecheck Expressions-              expand_associated_types_inplace__UfcsKnown: >> (input=<::"core"::iter::sources::Repeat<_/*91*/,>/*S*/ as ::"core"::iter::traits::iterator::Iterator>::Item/*?*/)
+Typecheck Expressions-             TraitResolution::ftic_check_params: - Bound _/*91*/ : ::"core"::iter::traits::collect::IntoIterator fuzzed
+Typecheck Expressions-             TraitResolution::ftic_check_params: - Bound impl_?_00000212B6B85EF0/*P:1*/ : ::"core"::iter::traits::iterator::Iterator fuzzed
+Typecheck Expressions-            TraitResolution::ftic_check_params::<lambda_6b008489904a9b32483bac7b2dde67f5>::operator (): Assoc `Item` didn't match - <impl_?_00000212B6B85EF0/*P:1*/ as ::"core"::iter::traits::iterator::Iterator>::Item/*O*/ != &impl_?_00000212B6B80DF0/*P:1*/
+Typecheck Expressions-         TraitResolution::find_trait_impls_crate::<lambda_a7e5a3053faa3aa2cf85154a2a37986e>::operator (): [find_trait_impls_crate] - Params mismatch
+Typecheck Expressions-       find_method: << ()
+```
+
+Look up failed at the comparison of these two types:
+- `<impl_?_00000212B6B85EF0/*P:1*/ as ::"core"::iter::traits::iterator::Iterator>::Item/*O*/`
+- `&impl_?_00000212B6B80DF0/*P:1*/`
+
+But ATYs of placeholders shouldn't be opaque, they should stay as unknown (same as ivars).
+
+Solution:
+- Add check in EAT to not attempt to resolve if the type is a placeholder
+  - HOWEVER: A placeholder ties to a given impl block, so could have a ATY bound

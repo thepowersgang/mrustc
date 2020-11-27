@@ -1853,7 +1853,19 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
     for(auto& ty : pe.trait.m_params.m_types)
         expand_associated_types_inplace(sp, ty, stack);
 
-    // TODO: If there are impl params present, return early
+    // Ignore unbounder infer literals
+    if( pe.type.data().is_Infer() && !pe.type.data().as_Infer().is_lit() )
+    {
+        return ;
+    }
+    // ATYs of placeholders are kept as unknown
+    if( pe.type.data().is_Generic() && pe.type.data().as_Generic().is_placeholder() )
+    {
+        return ;
+    }
+
+    // If there are impl params present, return early
+    // TODO: There is still information available for placeholders (if the impl block is available)
     {
         auto cb = [](const ::HIR::TypeRef& ty){ return !( ty.data().is_Generic() && ty.data().as_Generic().is_placeholder() ); };
         bool has_impl_placeholders = false;
@@ -1864,15 +1876,10 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
                 has_impl_placeholders = true;
         if( has_impl_placeholders )
         {
+            // TODO: Why opaque? Like ivars, these could resolve in the future.
             e.binding = ::HIR::TypePathBinding::make_Opaque({});
             return ;
         }
-    }
-
-    // Ignore unbounder infer literals
-    if( pe.type.data().is_Infer() && !pe.type.data().as_Infer().is_lit() )
-    {
-        return ;
     }
 
     // Special type-specific rules
