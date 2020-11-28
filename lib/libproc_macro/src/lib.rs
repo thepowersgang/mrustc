@@ -87,6 +87,12 @@ mod token_stream {
             for v in &self.inner
             {
                 write!(f, "{}", v)?;
+                // Put a space after every token that isn't punctuation
+                if let crate::TokenTree::Punct(_) = v {
+                }
+                else {
+                    write!(f, " ")?;
+                }
             }
             Ok(())
         }

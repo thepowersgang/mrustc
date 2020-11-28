@@ -142,7 +142,6 @@ impl ::std::fmt::Display for Ident
             f.write_str("r#")?;
         }
         f.write_str(&self.val)?;
-        f.write_str(" ")?;
         Ok( () )
     }
 }
