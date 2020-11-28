@@ -1259,6 +1259,11 @@ namespace {
                 rv.size  = ::std::max(rv.size , size );
                 rv.align = ::std::max(rv.align, align);
             }
+            // Round the size to be a multiple of align
+            if( rv.size % rv.align != 0 )
+            {
+                rv.size += rv.align - rv.size % rv.align;
+            }
             return box$(rv);
         }
         else if( TU_TEST1(ty.data(), Path, .binding.is_Enum()) )

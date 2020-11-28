@@ -1396,6 +1396,12 @@ namespace {
                         m_of << "\tchar _d;\n";
                     }
                     m_of << "} "; emit_ctype(ty); m_of << ";\n";
+
+                    const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
+                    if( repr->size > 0 )
+                    {
+                        m_of << "typedef char sizeof_assert_"; emit_ctype(ty); m_of << "[ (sizeof("; emit_ctype(ty); m_of << ") == " << repr->size << ") ? 1 : -1 ];\n";
+                    }
                 }
                 }
             TU_ARMA(Function, te) {
