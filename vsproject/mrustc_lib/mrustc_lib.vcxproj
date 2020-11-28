@@ -162,6 +162,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\..\src\expand\codegen.cpp" />
+    <ClCompile Include="..\..\src\expand\compile_error.cpp" />
     <ClCompile Include="..\..\src\expand\doc.cpp" />
     <ClCompile Include="..\..\src\expand\lints.cpp" />
     <ClCompile Include="..\..\src\expand\misc_attrs.cpp" />

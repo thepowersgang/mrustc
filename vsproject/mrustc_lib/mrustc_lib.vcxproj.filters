@@ -435,6 +435,9 @@
     <ClCompile Include="..\..\src\expand\lints.cpp">
       <Filter>Source Files\expand</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\src\expand\compile_error.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\src\common.hpp">
