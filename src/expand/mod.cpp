@@ -17,6 +17,7 @@
 #include "cfg.hpp"
 #include "common.hpp"
 #include "../resolve/common.hpp"
+#include "proc_macro.hpp"
 
 DecoratorDef*   g_decorators_list = nullptr;
 MacroDef*   g_macros_list = nullptr;
@@ -218,7 +219,7 @@ MacroRef Expand_LookupMacro(const Span& mi_span, const ::AST::Crate& crate, LLis
                         return MacroRef(&*m.second);
                     }
                 }
-                ERROR(mi_span, E0000, "Import references unknown builtin");
+                ERROR(mi_span, E0000, "Import references unknown builtin macro: `" << imp.path.m_components.front() << "`");
             }
             else
             {
@@ -229,8 +230,7 @@ MacroRef Expand_LookupMacro(const Span& mi_span, const ::AST::Crate& crate, LLis
             return MacroRef(&*m);
             }
         TU_ARMA(ProcMacro, m) {
-            //proc_mac = &m;
-            TODO(mi_span, "Macro resolved to HIR proc macro");
+            return MacroRef(&m);
             }
         }
         }
@@ -264,7 +264,10 @@ MacroRef Expand_LookupMacro(const Span& mi_span, const ::AST::Crate& crate, LLis
         ERROR(mi_span, E0000, "Unknown macro " << path);
         }
     TU_ARMA(ExternalProcMacro, proc_mac) {
-        TODO(mi_span, "Handle external proc macro");
+        ::std::vector<RcString> mac_path;
+        mac_path.push_back(proc_mac->path.m_crate_name);
+        mac_path.insert(mac_path.end(), proc_mac->path.m_components.begin(), proc_mac->path.m_components.end());
+        return ProcMacro_Invoke(mi_span, crate, mac_path, input_tt);
         }
     TU_ARMA(BuiltinProcMacro, proc_mac) {
         auto e = input_ident == ""
@@ -1294,7 +1297,14 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                 // TODO: All new items should be placed just after this?
                 assert(ttl.get());
                 DEBUG("-- Parsing as mod items");
+                // Move the item list out
+                auto old_items = std::move(mod.m_items);
+                // Parse module items
                 Parse_ModRoot_Items(*ttl, mod);
+                // Then insert the newly created items
+                old_items.insert(old_items.begin() + idx + 1, std::make_move_iterator(mod.m_items.begin()), std::make_move_iterator(mod.m_items.end()));
+                // and move the (updated) item list back in
+                mod.m_items = std::move(old_items);
             }
             dat.as_MacroInv() = mv$(mi_owned);
             }

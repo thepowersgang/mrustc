@@ -9,8 +9,6 @@ TAGGED_UNION(MacroRef, None,
     (None, struct {}),
     (MacroRules, const MacroRules*),
     (BuiltinProcMacro, ExpandProcMacro*),
-    (ExternalProcMacro, struct {
-        std::vector<RcString>   path;
-        })
+    (ExternalProcMacro, HIR::ProcMacro*)
     );
 extern MacroRef Expand_LookupMacro(const Span& mi_span, const ::AST::Crate& crate, LList<const AST::Module*> modstack, const AST::Path& path);

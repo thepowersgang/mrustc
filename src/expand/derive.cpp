@@ -2183,7 +2183,8 @@ static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mo
                 TU_ARMA(None, e) {
                     }
                 TU_ARMA(ExternalProcMacro, ext_proc_mac) {
-                    mac_path = ext_proc_mac.path;
+                    mac_path.push_back(ext_proc_mac->path.m_crate_name);
+                    mac_path.insert(mac_path.end(), ext_proc_mac->path.m_components.begin(), ext_proc_mac->path.m_components.end());
                     }
                 TU_ARMA(BuiltinProcMacro, proc_mac) {
                     TODO(sp, "Handle builtin proc macro");
