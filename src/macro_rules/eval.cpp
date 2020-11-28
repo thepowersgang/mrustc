@@ -15,6 +15,7 @@
 #include <parse/interpolated_fragment.hpp>
 #include <ast/expr.hpp>
 #include <ast/crate.hpp>
+#include <hir/hir.hpp>  // HIR::Crate
 
 class ParameterMappings
 {
@@ -420,8 +421,17 @@ class MacroExpander:
 public:
     MacroExpander(const MacroExpander& x) = delete;
 
-    MacroExpander(const ::std::string& macro_name, const Span& sp, AST::Edition edition, const Ident::Hygiene& parent_hygiene, const ::std::vector<MacroExpansionEnt>& contents, ParameterMappings mappings, RcString crate_name):
-        TokenStream(ParseState(crate_name == "" ? edition : AST::Edition::Rust2015)),    // TODO: Get from the source crate
+    MacroExpander(
+        const ::std::string& macro_name,
+        const Span& sp,
+        AST::Edition edition,
+        const Ident::Hygiene& parent_hygiene,
+        const ::std::vector<MacroExpansionEnt>& contents,
+        ParameterMappings mappings,
+        RcString crate_name,
+        AST::Edition source_edition
+    ):
+        TokenStream(ParseState(source_edition)),    // TODO: Get from the source crate
         m_macro_filename( FMT("Macro:" << macro_name) ),
         m_crate_name( mv$(crate_name) ),
         m_invocation_span( sp ),
@@ -538,7 +548,10 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
     // Run through the expansion counting the number of times each fragment is used
     Macro_InvokeRules_CountSubstUses(bound_tts, rule.m_contents);
 
-    TokenStream* ret_ptr = new MacroExpander(name, sp, crate.m_edition, rules.m_hygiene, rule.m_contents, mv$(bound_tts), rules.m_source_crate);
+    TokenStream* ret_ptr = new MacroExpander(
+        name, sp, crate.m_edition, rules.m_hygiene, rule.m_contents, mv$(bound_tts), rules.m_source_crate,
+        rules.m_source_crate == "" ? crate.m_edition : crate.m_extern_crates.at(rules.m_source_crate).m_hir->m_edition
+        );
 
     return ::std::unique_ptr<TokenStream>( ret_ptr );
 }

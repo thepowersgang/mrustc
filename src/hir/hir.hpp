@@ -17,6 +17,7 @@
 
 #include <tagged_union.hpp>
 
+#include <ast/edition.hpp>
 #include <macro_rules/macro_rules_ptr.hpp>
 
 #include <hir/type.hpp>
@@ -544,6 +545,7 @@ class Crate
 {
 public:
     RcString   m_crate_name;
+    AST::Edition    m_edition;
 
     Module  m_root_module;
 

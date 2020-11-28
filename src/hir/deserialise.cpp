@@ -1445,6 +1445,7 @@
         this->m_crate_name = m_in.read_istring();
         assert(this->m_crate_name != "" && "Empty crate name loaded from metadata");
         rv.m_crate_name = this->m_crate_name;
+        rv.m_edition = static_cast<AST::Edition>(m_in.read_tag());
         rv.m_root_module = deserialise_module();
 
         rv.m_type_impls = D< ::HIR::Crate::ImplGroup<::HIR::TypeImpl> >::des(*this);

@@ -353,6 +353,7 @@
         void serialise_crate(const ::HIR::Crate& crate)
         {
             m_out.write_string(crate.m_crate_name);
+            m_out.write_tag(static_cast<int>(crate.m_edition));
             serialise_module(crate.m_root_module);
 
             serialise(crate.m_type_impls);

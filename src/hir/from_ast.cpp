@@ -1972,6 +1972,7 @@ public:
             rv.m_crate_name = RcString::new_interned(crate.m_crate_name);
         }
     }
+    rv.m_edition = crate.m_edition;
 
     g_crate_ptr = &rv;
     g_ast_crate_ptr = &crate;
