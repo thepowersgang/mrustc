@@ -32,6 +32,8 @@ struct Dumper
     void dump_module(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Module& mod) const;
     void dump_function(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Function& fcn, int indent=0) const;
     void dump_trait(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Trait& trait, int indent=0) const;
+
+    void dump_macrorules(const RcString& name, const MacroRules& rules) const;
 };
 
 int main(int argc, const char* argv[])
@@ -71,45 +73,7 @@ void Dumper::dump_crate(const char* name, const ::HIR::Crate& crate) const
 #if 0
     for(const auto& mac : crate.m_exported_macros)
     {
-        ::std::cout << "macro_rules! " << mac.first << "{" << std::endl;
-        for(const auto& arm : mac.second->m_rules)
-        {
-            ::std::cout << "    (";
-            for(const auto& pat : arm.m_pattern)
-            {
-                TU_MATCH_HDRA( (pat), {)
-                TU_ARMA(End, e)
-                    ::std::cout << " EOS";
-                TU_ARMA(LoopStart, e)
-                    ::std::cout << " (";
-                TU_ARMA(LoopNext, e)
-                    ::std::cout << " ^";
-                TU_ARMA(LoopEnd, e)
-                    ::std::cout << " )";
-                TU_ARMA(Jump, e)
-                    ::std::cout << " <" << e.jump_target;
-                TU_ARMA(ExpectTok, e)
-                    ::std::cout << " =" << e;
-                TU_ARMA(ExpectPat, e)
-                    ::std::cout << " " << e.idx << "=" << e.type;
-                TU_ARMA(If, e) {
-                    ::std::cout << " ?" << (e.is_equal ? "" : "!") << "{";
-                    for(const auto& ent : e.ents) {
-                        if(ent.ty == MacroPatEnt::PAT_TOKEN)
-                            ::std::cout << " =" << ent.tok;
-                        else
-                            ::std::cout << " " << ent.ty;
-                    }
-                    ::std::cout << "}->" << e.jump_target;
-                    }
-                }
-            }
-            ::std::cout << " ) => {\n";
-            // TODO: Macro expansion
-            ::std::cout << "    }\n";
-        }
-        ::std::cout << "}\n";
-        ::std::cout << ::std::endl;
+        dump_macrorules(mac.first, *mac.second);
     }
 #endif
 
@@ -155,6 +119,22 @@ void Dumper::dump_module(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const 
         return ;
     }
     ::std::cout << "// mod " << ip << ::std::endl;
+    for(const auto& i : mod.m_macro_items)
+    {
+        auto sub_ip = ip + i.first;
+        TU_MATCH_HDRA( (i.second->ent), {)
+        TU_ARMA(Import, e) {
+            ::std::cout << "macro " << sub_ip << " = " << e.path << "\n";
+            }
+        TU_ARMA(MacroRules, mac) {
+            dump_macrorules(i.first, *mac);
+            }
+        TU_ARMA(ProcMacro, mac) {
+            // TODO: Attribute list
+            ::std::cout << "proc macro " << sub_ip << " = " << mac.path << "\n";
+            }
+        }
+    }
     for(const auto& i : mod.m_mod_items)
     {
         auto sub_ip = ip + i.first;
@@ -255,6 +235,49 @@ void Dumper::dump_trait(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const :
     auto indent2 = RepeatLitStr { "   ", nindent+1 };
     // ...
     ::std::cout << indent << "}\n";
+    ::std::cout << ::std::endl;
+}
+
+void Dumper::dump_macrorules(const RcString& name, const MacroRules& rules) const
+{
+    ::std::cout << "macro_rules! " << name << "{" << std::endl;
+    for(const auto& arm : rules.m_rules)
+    {
+        ::std::cout << "    (";
+        for(const auto& pat : arm.m_pattern)
+        {
+            TU_MATCH_HDRA( (pat), {)
+                TU_ARMA(End, e)
+                ::std::cout << " EOS";
+            TU_ARMA(LoopStart, e)
+                ::std::cout << " (";
+            TU_ARMA(LoopNext, e)
+                ::std::cout << " ^";
+            TU_ARMA(LoopEnd, e)
+                ::std::cout << " )";
+            TU_ARMA(Jump, e)
+                ::std::cout << " <" << e.jump_target;
+            TU_ARMA(ExpectTok, e)
+                ::std::cout << " =" << e;
+            TU_ARMA(ExpectPat, e)
+                ::std::cout << " " << e.idx << "=" << e.type;
+            TU_ARMA(If, e) {
+                ::std::cout << " ?" << (e.is_equal ? "" : "!") << "{";
+                for(const auto& ent : e.ents) {
+                    if(ent.ty == MacroPatEnt::PAT_TOKEN)
+                        ::std::cout << " =" << ent.tok;
+                    else
+                        ::std::cout << " " << ent.ty;
+                }
+                ::std::cout << "}->" << e.jump_target;
+            }
+            }
+        }
+        ::std::cout << " ) => {\n";
+        // TODO: Macro expansion
+        ::std::cout << "    }\n";
+    }
+    ::std::cout << "}\n";
     ::std::cout << ::std::endl;
 }
 
