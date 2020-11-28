@@ -54,13 +54,28 @@ public:
             }
         }
 
-        // TODO: Store attributes for later use.
         crate.m_proc_macros.push_back(AST::ProcMacroDef { RcString::new_interned(FMT(trait_name)), path, mv$(attributes) });
-        //crate.m_proc_macros.push_back(AST::ProcMacroDef { RcString::new_interned(FMT("derive#" << trait_name)), path, mv$(attributes) });
     }
 };
-
 STATIC_DECORATOR("proc_macro_derive", Decorator_ProcMacroDerive)
+class Decorator_ProcMacro:
+    public ExpandDecorator
+{
+public:
+    AttrStage stage() const override { return AttrStage::Post; }
+    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    {
+        if( i.is_None() )
+            return;
+
+        if( !i.is_Function() )
+            TODO(sp, "Error for #[proc_macro] on non-Function");
+
+        TODO(sp, "Handle #[proc_macro]");
+        //crate.m_proc_macros.push_back(AST::ProcMacroDef { RcString::new_interned(FMT(trait_name)), path, mv$(attributes) });
+    }
+};
+STATIC_DECORATOR("proc_macro", Decorator_ProcMacro)
 
 
 

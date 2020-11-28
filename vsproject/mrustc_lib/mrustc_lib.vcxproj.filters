@@ -420,6 +420,21 @@
     <ClCompile Include="..\..\src\hir_typeck\expr_cs__enum.cpp">
       <Filter>Source Files\hir_typeck</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\src\expand\doc.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\expand\stability.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\expand\codegen.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\expand\misc_attrs.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\expand\lints.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\src\common.hpp">

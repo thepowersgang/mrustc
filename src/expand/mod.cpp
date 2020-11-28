@@ -73,7 +73,8 @@ void Expand_Attr(const Span& sp, const ::AST::Attribute& a, AttrStage stage,  ::
     }
     if( !found ) {
         // TODO: Create no-op handlers for a whole heap of attributes
-        //WARNING(sp, W0000, "Unknown attribute " << a.name());
+        // - There's a LOT
+        //WARNING(sp, W0000, "Unknown attribute #[" << a.name() << "]");
     }
 }
 void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::std::function<void(const Span& sp, const ExpandDecorator& d,const ::AST::Attribute& a)> f)

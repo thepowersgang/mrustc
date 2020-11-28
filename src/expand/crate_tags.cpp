@@ -52,6 +52,18 @@ public:
     }
 };
 
+class Decorator_Feature:
+    public ExpandDecorator
+{
+public:
+    AttrStage stage() const override { return AttrStage::Pre; }
+
+    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate) const override {
+    }
+};
+STATIC_DECORATOR("feature", Decorator_Feature)
+
+
 class Decorator_Allocator:
     public ExpandDecorator
 {
