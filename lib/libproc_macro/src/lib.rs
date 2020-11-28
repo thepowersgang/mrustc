@@ -23,7 +23,11 @@ macro_rules! note {
 
 mod span;
 mod token_tree;
+/// Parse a TokenStream from a string
 mod lex;
+/// Raw IPC protocol
+mod protocol;
+/// Converts to/from TokenStream and IPC
 mod serialisation;
 
 mod token_stream {
