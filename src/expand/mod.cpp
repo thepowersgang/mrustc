@@ -1307,6 +1307,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                 // Get module ref, if it's to a HIR module then grab the macro
                 if(ue.name != "")
                 {
+                    DEBUG("Use " << ue.path);
                     auto m = Resolve_Lookup_GetModule(ue.sp, crate, mod.path(), ue.path, /*ignore_last*/true, nullptr);
                     // Only worry if the module resolves to a HIR module
                     if(m.is_Hir())
@@ -1314,6 +1315,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                         const HIR::Module& hir_mod = *m.as_Hir();
                         auto it = hir_mod.m_macro_items.find(ue.path.nodes().back().name());
                         if(it != hir_mod.m_macro_items.end()) {
+                            DEBUG("Found macro for " << ue.path);
                             const auto* mac = &it->second->ent;
                             if(mac->is_Import() ) {
                                 const auto& p = mac->as_Import().path;
