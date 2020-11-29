@@ -308,14 +308,27 @@ AST::Pattern Parse_PatternReal_Slice(TokenStream& lex, bool is_refutable)
     {
         bool has_binding = true;
         ::AST::PatternBinding  binding;
-        if( tok.type() == TOK_RWORD_REF && lex.lookahead(0) == TOK_IDENT && lex.lookahead(1) == TOK_DOUBLE_DOT ) {
+        // `ref foo ..` or `ref foo @ ..`
+        if( tok.type() == TOK_RWORD_REF && lex.lookahead(0) == TOK_IDENT
+            && (
+                lex.lookahead(1) == TOK_DOUBLE_DOT
+                || (lex.lookahead(1) == TOK_AT && lex.lookahead(2) == TOK_DOUBLE_DOT)
+                ) ) {
             GET_TOK(tok, lex);
             binding = ::AST::PatternBinding( lex.get_ident(mv$(tok)), ::AST::PatternBinding::Type::REF, false );
         }
-        else if( tok.type() == TOK_IDENT && lex.lookahead(0) == TOK_DOUBLE_DOT) {
+        // `foo ..` or `foo @ ..`
+        else if( tok.type() == TOK_IDENT && (
+            lex.lookahead(0) == TOK_DOUBLE_DOT
+            || (lex.lookahead(0) == TOK_AT && lex.lookahead(1) == TOK_DOUBLE_DOT)
+            ) ) {
             binding = ::AST::PatternBinding( lex.get_ident(mv$(tok)), ::AST::PatternBinding::Type::MOVE, false );
         }
-        else if( tok.type() == TOK_UNDERSCORE && lex.lookahead(0) == TOK_DOUBLE_DOT) {
+        // `_ ..` or `_ @ ..`
+        else if( tok.type() == TOK_UNDERSCORE && (
+            lex.lookahead(0) == TOK_DOUBLE_DOT
+            || (lex.lookahead(0) == TOK_AT && lex.lookahead(1) == TOK_DOUBLE_DOT)
+            ) ) {
             // No binding, but switching to trailing
         }
         else if( tok.type() == TOK_DOUBLE_DOT ) {
@@ -332,7 +345,9 @@ AST::Pattern Parse_PatternReal_Slice(TokenStream& lex, bool is_refutable)
 
             inner_binding = mv$(binding);
             is_split = true;
-            GET_TOK(tok, lex);  // TOK_DOUBLE_DOT
+            if(lex.lookahead(0) == TOK_AT)
+                GET_CHECK_TOK(tok, lex, TOK_AT);
+            GET_CHECK_TOK(tok, lex, TOK_DOUBLE_DOT);
         }
         else {
             PUTBACK(tok, lex);
