@@ -24,7 +24,7 @@ using AST::ExprNodeP;
 static inline ExprNodeP mk_exprnodep(const TokenStream& lex, AST::ExprNode* en){en->set_span(lex.point_span()); return ExprNodeP(en); }
 #define NEWNODE(type, ...)  mk_exprnodep(lex, new type(__VA_ARGS__))
 
-//ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe=false);    // common.hpp
+//ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe=false, RcString label=RcString());    // common.hpp
 //ExprNodeP Parse_ExprBlockLine_WithItems(TokenStream& lex, ::std::shared_ptr<AST::Module>& local_mod, bool& add_silence_if_end);
 //ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence);
 ExprNodeP Parse_ExprBlockLine_Stmt(TokenStream& lex, bool& has_semicolon);
@@ -48,7 +48,7 @@ AST::Expr Parse_ExprBlock(TokenStream& lex)
     return ::AST::Expr( Parse_ExprBlockNode(lex) );
 }
 
-ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe/*=false*/)
+ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe/*=false*/, RcString label/*=RcString()*/)
 {
     TRACE_FUNCTION;
     Token   tok;
@@ -201,13 +201,19 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence)
             return Parse_WhileStmt(lex, lifetime);
         case TOK_RWORD_FOR:
             return Parse_ForStmt(lex, lifetime);
+        // NOTE: 1.39's libsyntax uses labelled block
+        case TOK_BRACE_OPEN:
+            PUTBACK(tok, lex);
+            ret = Parse_ExprBlockNode(lex, /*is_unsafe*/false, lifetime);
+            return ret;
+        case TOK_RWORD_UNSAFE:
+            ret = Parse_ExprBlockNode(lex, /*is_unsafe*/true, lifetime);
+            return ret;
+        // TODO: Can these have labels?
         //case TOK_RWORD_IF:
         //    return Parse_IfStmt(lex);
         //case TOK_RWORD_MATCH:
         //    return Parse_Expr_Match(lex);
-        //case TOK_BRACE_OPEN:
-        //    PUTBACK(tok, lex);
-        //    return Parse_ExprBlockNode(lex);
 
         default:
             throw ParseError::Unexpected(lex, tok);
@@ -333,6 +339,7 @@ ExprNodeP Parse_WhileStmt(TokenStream& lex, RcString lifetime)
     Token   tok;
 
     if( GET_TOK(tok, lex) == TOK_RWORD_LET ) {
+        // TODO: Pattern list (same as match)?
         auto pat = Parse_Pattern(lex, true);    // Refutable pattern
         GET_CHECK_TOK(tok, lex, TOK_EQUAL);
         ExprNodeP val;
@@ -382,6 +389,9 @@ ExprNodeP Parse_IfStmt(TokenStream& lex)
     {
         SET_PARSE_FLAG(lex, disallow_struct_literal);
         if( GET_TOK(tok, lex) == TOK_RWORD_LET ) {
+            // Allow leading pipes (same as match)
+            if(lex.lookahead(0) == TOK_PIPE)
+                   GET_TOK(tok, lex);
             // Refutable pattern
             do {
                 paterns.push_back( Parse_Pattern(lex, true) );
@@ -1137,6 +1147,12 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
     case TOK_RWORD_BREAK:
         PUTBACK(tok, lex);
         return Parse_Stmt(lex);
+
+
+    case TOK_LIFETIME:
+        PUTBACK(tok, lex);
+        return Parse_ExprBlockLine(lex, nullptr);
+        break;
 
     case TOK_RWORD_LOOP:
         return NEWNODE( AST::ExprNode_Loop, "", Parse_ExprBlockNode(lex) );

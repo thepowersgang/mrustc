@@ -24,6 +24,7 @@ namespace HIR {
 
 TAGGED_UNION(ResolveModuleRef, None,
     (None, struct {}),
+    (ImplicitPrelude, struct {}),
     (Ast, const AST::Module*),
     (Hir, const HIR::Module*)
     );

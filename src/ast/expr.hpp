@@ -56,6 +56,7 @@ struct ExprNode_Block:
 {
     bool m_is_unsafe;
     bool m_yields_final_value;
+    RcString   m_label;
     ::std::shared_ptr<AST::Module> m_local_mod;
     ::std::vector<ExprNodeP>    m_nodes;
 

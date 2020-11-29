@@ -1855,8 +1855,9 @@ namespace {
     case TOK_RWORD_CONST:
         switch( GET_TOK(tok, lex) )
         {
+        case TOK_UNDERSCORE:    // 1.39?
         case TOK_IDENT: {
-            item_name = tok.istr();
+            item_name = (tok.type() == TOK_UNDERSCORE ? RcString() : tok.istr());
 
             GET_CHECK_TOK(tok, lex, TOK_COLON);
             TypeRef type = Parse_Type(lex);
@@ -1878,7 +1879,7 @@ namespace {
             item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, ABI_RUST, false,  false,true/*unsafe,const*/) );
             break;
         default:
-            throw ParseError::Unexpected(lex, tok, {TOK_IDENT, TOK_RWORD_FN});
+            throw ParseError::Unexpected(lex, tok, {TOK_IDENT, TOK_UNDERSCORE, TOK_RWORD_UNSAFE, TOK_RWORD_FN});
         }
         break;
     // `static NAME`
@@ -1889,8 +1890,9 @@ namespace {
             is_mut = true;
             GET_TOK(tok, lex);
         }
-        CHECK_TOK(tok, TOK_IDENT);
-        item_name = tok.istr();
+        if( tok.type() != TOK_IDENT && tok.type() != TOK_UNDERSCORE )
+            throw ParseError::Unexpected(lex, tok, {TOK_IDENT, TOK_UNDERSCORE});
+        item_name = (tok.type() == TOK_UNDERSCORE ? RcString() : tok.istr());
 
         GET_CHECK_TOK(tok, lex, TOK_COLON);
         TypeRef type = Parse_Type(lex);

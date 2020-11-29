@@ -187,7 +187,10 @@ MacroRef Expand_LookupMacro(const Span& mi_span, const ::AST::Crate& crate, LLis
     auto macro_mod = Resolve_Lookup_GetModuleForName(mi_span, crate, modstack.m_item->path(), path, ResolveNamespace::Macro, nullptr);
     TU_MATCH_HDRA( (macro_mod), {)
     TU_ARMA(None, e) {
-        // Fall trhough and error later
+        // Fall through and error later
+        }
+    TU_ARMA(ImplicitPrelude, e) {
+        BUG(mi_span, "Macro name points to a crate?");
         }
     TU_ARMA(Ast, mod_ptr) {
         // Look in the pre-calculated macro list (TODO: Should really be using the main resolve machinery)

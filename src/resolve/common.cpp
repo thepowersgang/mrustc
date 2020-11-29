@@ -27,8 +27,12 @@ namespace {
         {
         }
 
+        /// <summary>
+        /// 
+        /// </summary>
         ResolveModuleRef get_module(const ::AST::Path& base_path, const AST::Path& path, bool ignore_last, ::AST::Path* out_path, bool ignore_hygiene=false)
         {
+            TRACE_FUNCTION_F(path << " in " << base_path << (ignore_last ? " (ignore last)" : ""));
             const auto& base_nodes = base_path.nodes();
             int node_offset = 0;
             const AST::Module*  mod = nullptr;
@@ -89,6 +93,10 @@ namespace {
                     // Find the top of the path in that namespace
                     auto real_mod = this->get_source_module_for_name(start_mod, name, ResolveNamespace::Namespace);
                     TU_MATCH_HDRA( (real_mod), {)
+                    TU_ARMA(ImplicitPrelude, _e) {
+                        const auto& ec = crate.m_extern_crates.at( AST::g_implicit_crates.at(name) );
+                        return get_module_hir(ec.m_hir->m_root_module, path, 1, ignore_last, out_path);
+                        }
                     TU_ARMA(Ast, mod_ptr) {
                         if( e.nodes.size() > 1 )
                         {
@@ -120,14 +128,22 @@ namespace {
                         }
                         }
                     TU_ARMA(Hir, mod_ptr) {
-                        for(const auto& i : mod_ptr->m_mod_items)
+                        if( e.nodes.size() > 1 )
                         {
-                            if( i.first == name )
+                            for(const auto& i : mod_ptr->m_mod_items)
                             {
-                                return get_module_hir(i.second->ent.as_Module(), path, 1, ignore_last, out_path);
+                                if( i.second->publicity.is_visible({}) && i.first == name )
+                                {
+                                    ASSERT_BUG(sp, i.second->ent.is_Module(), "Expected Module, got " << i.second->ent.tag_str() << " for " << name << " in " << base_nodes);
+                                    return get_module_hir(i.second->ent.as_Module(), path, 1, ignore_last, out_path);
+                                }
                             }
+                            BUG(sp, "get_source_module_for_name returned true (HIR) but not found");
                         }
-                        BUG(sp, "get_source_module_for_name returned true (HIR) but not found");
+                        else
+                        {
+                            return ResolveModuleRef::make_Hir(mod_ptr);
+                        }
                         }
                     TU_ARMA(None, e) {
                         // Not found in this module, keep searching
@@ -148,7 +164,14 @@ namespace {
                     {
                         const auto& ec = crate.m_extern_crates.at(ec_it->second);
                         DEBUG("Implicitly imported crate");
-                        return get_module_hir(ec.m_hir->m_root_module, path, 1, ignore_last, out_path);
+                        //if( e.nodes.size() > 1 )
+                        //{
+                            return get_module_hir(ec.m_hir->m_root_module, path, 1, ignore_last, out_path);
+                        //}
+                        //else
+                        //{
+                        //    return ResolveModuleRef::make_ImplicitPrelude({});
+                        //}
                     }
                 }
                 DEBUG("Not found");
@@ -306,7 +329,7 @@ namespace {
                 const auto& name = path.nodes()[i].name();
                 // Find the module for this node
                 auto it = mod->m_mod_items.find(name);
-                if( it == mod->m_mod_items.end() ) {
+                if( it == mod->m_mod_items.end() || !it->second->publicity.is_global() ) {
                     DEBUG(name << " Not Found");
                     return ResolveModuleRef();
                 }
@@ -469,7 +492,7 @@ namespace {
                                 {
                                 case ResolveNamespace::Namespace: {
                                     auto it = mod_ptr->m_mod_items.find(item_name);
-                                    if( it != mod_ptr->m_mod_items.end() ) {
+                                    if( it != mod_ptr->m_mod_items.end() && it->second->publicity.is_global() ) {
                                         if(it->second->ent.is_Import()) {
                                             TODO(sp, "Resolve use of an import (mod)");
                                         }
@@ -478,7 +501,7 @@ namespace {
                                     } break;
                                 case ResolveNamespace::Value: {
                                     auto it = mod_ptr->m_value_items.find(item_name);
-                                    if( it != mod_ptr->m_value_items.end() ) {
+                                    if( it != mod_ptr->m_value_items.end() && it->second->publicity.is_global() ) {
                                         if(it->second->ent.is_Import()) {
                                             TODO(sp, "Resolve use of an import (value)");
                                         }
@@ -487,7 +510,7 @@ namespace {
                                     } break;
                                 case ResolveNamespace::Macro: {
                                     auto it = mod_ptr->m_macro_items.find(item_name);
-                                    if( it != mod_ptr->m_macro_items.end() ) {
+                                    if( it != mod_ptr->m_macro_items.end() && it->second->publicity.is_global() ) {
                                         if(it->second->ent.is_Import()) {
                                             TODO(sp, "Resolve use of an import (macro)");
                                         }
@@ -495,6 +518,9 @@ namespace {
                                     }
                                     } break;
                                 }
+                                }
+                            TU_ARMA(ImplicitPrelude, _e) {
+                                TODO(sp, "ImplicitPrelude?");
                                 }
                             TU_ARMA(None, _e) {
                                 BUG(sp, "Unable to find " << e.path << " (starting from " << mod.path() << ")");
@@ -522,6 +548,9 @@ namespace {
                                 //BUG(use_stmt->sp, "Unable to resolve use statement path " << e.path);
                                 continue ;
                                 }
+                            TU_ARMA(ImplicitPrelude, _e) {
+                                TODO(sp, "ImplicitPrelude? " << e.path);
+                                }
                             TU_ARMA(Ast, sm) {
                                 auto rv = get_source_module_for_name(*sm, name, ns, out_path);
                                 if( !rv.is_None() )
@@ -535,19 +564,19 @@ namespace {
                                 {
                                 case ResolveNamespace::Macro: {
                                     auto it = sm->m_macro_items.find(name);
-                                    if(it != sm->m_macro_items.end()) {
+                                    if(it != sm->m_macro_items.end() && it->second->publicity.is_global()) {
                                         return ResolveModuleRef(sm);
                                     }
                                     } break;
                                 case ResolveNamespace::Namespace: {
                                     auto it = sm->m_mod_items.find(name);
-                                    if(it != sm->m_mod_items.end()) {
+                                    if(it != sm->m_mod_items.end() && it->second->publicity.is_global() ) {
                                         return ResolveModuleRef(sm);
                                     }
                                     } break;
                                 case ResolveNamespace::Value: {
                                     auto it = sm->m_value_items.find(name);
-                                    if(it != sm->m_value_items.end()) {
+                                    if(it != sm->m_value_items.end() && it->second->publicity.is_global()) {
                                         return ResolveModuleRef(sm);
                                     }
                                     } break;
@@ -591,6 +620,9 @@ ResolveModuleRef Resolve_Lookup_GetModuleForName(const Span& sp, const AST::Crat
     TU_ARMA(Hir, mod_ptr) {
         // If `get_module` provided a HIR module, then this is right?
         // - What if it's an alias? (not critical)
+        return mod;
+        }
+    TU_ARMA(ImplicitPrelude, _e) {
         return mod;
         }
     TU_ARMA(None, e) {
