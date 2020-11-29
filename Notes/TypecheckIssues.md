@@ -256,7 +256,7 @@ Solution:
 
 ```
 Typecheck Expressions-       find_method: >> (ty=::"core"::iter::adapters::Cloned<::"core"::iter::adapters::flatten::Flatten<::"core"::iter::adapters::Take<::"core"::iter::sources::Repeat<_/*91*/,>/*S*/,>/*S*/,>/*S*/,>/*S*/, name=collect, access=Move)
-Typecheck Expressions-        find_trait_impls_crate: >> (::"core"::iter::traits::iterator::Iterator for ::"core"::iter::adapters::Cloned<::"core"::iter::adapters::flatten::Flatten<::"core"::iter::adapters::Take<::"core"::iter::sources::Repeat<_/*91*/,>/*S*/,>/*S*/,>/*S*/,>/*S*/)
+Typecheck Expressions-        find_trait_impls_crate: >> (::"core"::iter::traits::iterator::Iterator for ::"core"::iter::adaptersCloned<::"core"::iter::adapters::flatten::Flatten<::"core"::iter::adapters::Take<::"core"::iter::sources::Repeat<_/*91*/,>/*S*/,>/*S*/,>/*S*/,>/*S*/)
 Typecheck Expressions-           find_trait_impls_crate: >> (::"core"::iter::traits::iterator::Iterator for ::"core"::iter::adapters::flatten::Flatten<::"core"::iter::adapters::Take<::"core"::iter::sources::Repeat<_/*91*/,>/*S*/,>/*S*/,>/*S*/)
 Typecheck Expressions-              find_trait_impls_crate: >> (::"core"::iter::traits::iterator::Iterator for ::"core"::iter::adapters::Take<::"core"::iter::sources::Repeat<_/*91*/,>/*S*/,>/*S*/)
 Typecheck Expressions-                 find_trait_impls_crate: >> (::"core"::iter::traits::iterator::Iterator for ::"core"::iter::sources::Repeat<_/*91*/,>/*S*/)
@@ -282,3 +282,31 @@ But ATYs of placeholders shouldn't be opaque, they should stay as unknown (same 
 Solution:
 - Add check in EAT to not attempt to resolve if the type is a placeholder
   - HOWEVER: A placeholder ties to a given impl block, so could have a ATY bound
+
+
+# (1.39) `::"syntax_pos"::symbol::sym::integer`
+```
+..\rustc-1.39.0-src\src\libsyntax_pos\symbol.rs:1079: warn:0:Spare Rule - N/*M:0*/ : ::"core"::convert::TryInto<_/*23*/,>
+..\rustc-1.39.0-src\src\libsyntax_pos\symbol.rs:1080: warn:0:Spare Rule - _/*23*/ : ::"core"::slice::SliceIndex<[::"syntax_pos"::symbol::Symbol/*S*/],>
+..\rustc-1.39.0-src\src\libsyntax_pos\symbol.rs:1084: warn:0:Spare Rule - ::"syntax_pos"::symbol::Symbol = < _/*23*/ as ::"core"::slice::SliceIndex<[::"syntax_pos"::symbol::Symbol/*S*/],> >::Output
+..\rustc-1.39.0-src\src\libsyntax_pos\symbol.rs:1084: warn:0:Spare Rule - _/*25*/ = < _/*23*/ as ::"core"::convert::TryFrom<N/*M:0*/,> >::Error
+..\rustc-1.39.0-src\src\libsyntax_pos\symbol.rs:1086: BUG:..\..\src\hir_typeck\expr_cs.cpp:6767: Spare rules left after typecheck stabilised
+```
+
+The rule `_/*25*/ = < _/*23*/ as ::"core"::convert::TryFrom<N/*M:0*/,> >::Error` shouldn't exist, it should be `_/*25*/ = < N/*M:0*/ as ::"core"::convert::TryInto<_/*23*/,> >::Error`
+
+```
+Typecheck Expressions-          expand_associated_types_inplace__UfcsKnown: >> (input=<N/*M:0*/ as ::"core"::convert::TryInto<_/*19*/,>>::Error/*?*/)
+Typecheck Expressions-           trait_contains_type: >> (::"core"::convert::TryInto<_/*19*/,> has Error)
+Typecheck Expressions-            TraitResolution::trait_contains_type: - Found in cur
+Typecheck Expressions-           trait_contains_type: << (::"core"::convert::TryInto<_/*19*/,>)
+Typecheck Expressions-           TraitResolution::expand_associated_types_inplace__UfcsKnown::<lambda_822c87aaf355502ac7b99f073152996a>::operator (): [expand_associated_types_inplace__UfcsKnown] Trait bound - N/*M:0*/ : ::"core"::convert::TryInto<usize,>
+Typecheck Expressions-           find_named_trait_in_trait: >> (::"core"::convert::TryInto<_/*19*/,> in ::"core"::convert::TryInto<usize,>)
+Typecheck Expressions-           find_named_trait_in_trait: << ()
+Typecheck Expressions-           TraitResolution::expand_associated_types_inplace__UfcsKnown::<lambda_822c87aaf355502ac7b99f073152996a>::operator (): [expand_associated_types_inplace__UfcsKnown] Trait bound - N/*M:0*/ : ::"core"::marker::Copy
+```
+Looks like EAT didn't find the trait impl for `N: TryInto<usize>` to match with `N: TryInto<_23>`
+
+Reason: The matching of traits in generic bounds isn't fuzzy (requires exact match)
+
+Implementing a fuzzy match in EAT's bound lookup fixed the issue.

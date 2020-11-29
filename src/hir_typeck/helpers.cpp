@@ -2050,7 +2050,11 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
 
     // 1. Bounds
     bool rv;
-    bool assume_opaque = true;
+    enum class ResultType {
+        Opaque,
+        LeaveUnbound,
+        Recurse,
+    } result_type = ResultType::Opaque;
     rv = this->iterate_bounds([&](const HIR::GenericBound& b)->bool {
         TU_MATCH_HDRA( (b), {)
         default:
@@ -2063,7 +2067,13 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
             if( be.type != pe.type )
                 return false;
             // 2. Check if the trait (or any supertrait) includes pe.trait
-            if( be.trait.m_path == trait_path ) {
+            // TODO: If fuzzy, bail and leave unresolved?
+            auto cmp = be.trait.m_path.compare_with_placeholders(sp, trait_path, this->m_ivars.callback_resolve_infer());
+            if( cmp == HIR::Compare::Fuzzy ) {
+                result_type = ResultType::LeaveUnbound;
+                return true;
+            }
+            else if( cmp != HIR::Compare::Unequal ) {
                 auto it = be.trait.m_type_bounds.find(pe.item);
                 // 1. Check if the bounds include the desired item
                 if( it == be.trait.m_type_bounds.end() ) {
@@ -2072,7 +2082,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
                     DEBUG("[expand_associated_types_inplace__UfcsKnown] Found impl for " << input << " but no bound on item, assuming opaque");
                 }
                 else {
-                    assume_opaque = false;
+                    result_type = ResultType::Recurse;
                     input = it->second.clone();
                 }
                 return true;
@@ -2081,10 +2091,11 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
             bool found_supertrait = this->find_named_trait_in_trait(sp,
                 trait_path.m_path, trait_path.m_params,
                 *be.trait.m_trait_ptr, be.trait.m_path.m_path, be.trait.m_path.m_params, pe.type,
-                [&pe,&input,&assume_opaque](const auto&, const auto& x, const auto& assoc){
+                [&pe,&input,&result_type](const auto& ty, const auto& trait_pp, const auto& assoc){
+                    DEBUG("Found " << trait_pp << " for " << ty);
                     auto it = assoc.find(pe.item);
                     if( it != assoc.end() ) {
-                        assume_opaque = false;
+                        result_type = ResultType::Recurse;
                         DEBUG("Found associated type " << input << " = " << it->second);
                         input = it->second.clone();
                     }
@@ -2097,11 +2108,11 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
                 if( it == be.trait.m_type_bounds.end() ) {
                     // If not, assume it's opaque and return as such
                     // TODO: What happens if there's two bounds that overlap? 'F: FnMut<()>, F: FnOnce<(), Output=Bar>'
-                    if( assume_opaque )
+                    if( result_type != ResultType::Opaque )
                         DEBUG("Found impl for " << input << " but no bound on item, assuming opaque");
                 }
                 else {
-                    assume_opaque = false;
+                    result_type = ResultType::Recurse;
                     input = it->second.clone();
                 }
                 return true;
@@ -2112,7 +2123,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
         TU_ARMA(TypeEquality, be) {
             DEBUG("Equality - " << be.type << " = " << be.other_type);
             if( input == be.type ) {
-                assume_opaque = false;
+                result_type = ResultType::Recurse;
                 input = be.other_type.clone();
                 return true;
             }
@@ -2121,7 +2132,9 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
         return false;
         });
     if( rv ) {
-        if( assume_opaque ) {
+        switch(result_type)
+        {
+        case ResultType::Opaque: {
             DEBUG("Assuming that " << input << " is an opaque name");
             input.data_mut().as_Path().binding = ::HIR::TypePathBinding::make_Opaque({});
 
@@ -2133,11 +2146,16 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
             if( a != m_type_equalities.end() ) {
                 input = a->second.clone();
             }
-        }
-        else {
+            this->expand_associated_types_inplace(sp, input, stack);
+            } break;
+        case ResultType::Recurse:
             DEBUG("- Found replacement: " << input);
+            this->expand_associated_types_inplace(sp, input, stack);
+            break;
+        case ResultType::LeaveUnbound:
+            DEBUG("- Keep as unbound: " << input);
+            break;
         }
-        this->expand_associated_types_inplace(sp, input, stack);
         return ;
     }
 
