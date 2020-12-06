@@ -258,8 +258,22 @@ struct LowerHIR_ExprNode_Visitor:
 
         // TODO: Should this be abstracted?
         ::HIR::PathParams   params;
-        for(const auto& param : v.m_method.args().m_types)
-            params.m_types.push_back( LowerHIR_Type(param) );
+        for(const auto& param : v.m_method.args().m_entries)
+        {
+            TU_MATCH_HDRA( (param), { )
+            TU_ARMA(Null, _) {}
+            TU_ARMA(Lifetime, _) {}
+            TU_ARMA(Type, ty) {
+                params.m_types.push_back( LowerHIR_Type(ty) );
+                }
+            TU_ARMA(AssociatedTyEqual, _) {
+                ERROR(v.span(), E0000, "Unexpected associated type equality");
+                }
+            TU_ARMA(AssociatedTyBound, _) {
+                ERROR(v.span(), E0000, "Unexpected associated type bound");
+                }
+            }
+        }
 
         m_rv.reset( new ::HIR::ExprNode_CallMethod( v.span(),
             LowerHIR_ExprNode_Inner(*v.m_val),

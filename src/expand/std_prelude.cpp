@@ -68,6 +68,7 @@ public:
         if( const auto* e = i.opt_Use() ) {
             if(e->entries.size() != 1)
                 ERROR(sp, E0000, "#[prelude_import] should be on a single-entry use");
+            ASSERT_BUG(sp, path.nodes().size() > 0, path);
             ASSERT_BUG(sp, path.nodes().back().name() == "", path);
             if(e->entries.front().name != "")
                 ERROR(sp, E0000, "#[prelude_import] should be on a glob");

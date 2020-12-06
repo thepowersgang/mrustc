@@ -376,79 +376,91 @@ void Expand_Pattern(::AST::Crate& crate, LList<const AST::Module*> modstack, ::A
 
 void Expand_Type(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod, ::TypeRef& ty)
 {
-    TU_MATCH(::TypeData, (ty.m_data), (e),
-    (None,
-        ),
-    (Any,
-        ),
-    (Unit,
-        ),
-    (Bang,
-        ),
-    (Macro,
-        auto tt = Expand_Macro(crate, modstack, mod,  e.inv);
+    TU_MATCH_HDRA( (ty.m_data), {)
+    TU_ARMA(None, e) {
+        }
+    TU_ARMA(Any, e) {
+        }
+    TU_ARMA(Unit, e) {
+        }
+    TU_ARMA(Bang, e) {
+        }
+    TU_ARMA(Macro, e) {
+        auto tt = Expand_Macro(crate, modstack, mod,  *e.inv);
         if(!tt)
-            ERROR(e.inv.span(), E0000, "Macro invocation didn't yeild any data");
+            ERROR(e.inv->span(), E0000, "Macro invocation didn't yeild any data");
         auto new_ty = Parse_Type(*tt);
         if( tt->lookahead(0) != TOK_EOF )
-            ERROR(e.inv.span(), E0000, "Extra tokens after parsed type");
+            ERROR(e.inv->span(), E0000, "Extra tokens after parsed type");
         ty = mv$(new_ty);
 
         Expand_Type(crate, modstack, mod,  ty);
-        ),
-    (Primitive,
-        ),
-    (Function,
+        }
+    TU_ARMA(Primitive, e) {
+        }
+    TU_ARMA(Function, e) {
         Type_Function& tf = e.info;
         Expand_Type(crate, modstack, mod,  *tf.m_rettype);
         for(auto& st : tf.m_arg_types)
             Expand_Type(crate, modstack, mod,  st);
-        ),
-    (Tuple,
+        }
+    TU_ARMA(Tuple, e) {
         for(auto& st : e.inner_types)
             Expand_Type(crate, modstack, mod,  st);
-        ),
-    (Borrow,
+        }
+    TU_ARMA(Borrow, e) {
         Expand_Type(crate, modstack, mod,  *e.inner);
-        ),
-    (Pointer,
+        }
+    TU_ARMA(Pointer, e) {
         Expand_Type(crate, modstack, mod,  *e.inner);
-        ),
-    (Array,
+        }
+    TU_ARMA(Array, e) {
         Expand_Type(crate, modstack, mod,  *e.inner);
         if( e.size ) {
             Expand_Expr(crate, modstack,  e.size);
         }
-        ),
-    (Generic,
-        ),
-    (Path,
-        Expand_Path(crate, modstack, mod,  e.path);
-        ),
-    (TraitObject,
+        }
+    TU_ARMA(Generic, e) {
+        }
+    TU_ARMA(Path, e) {
+        Expand_Path(crate, modstack, mod,  *e);
+        }
+    TU_ARMA(TraitObject, e) {
         for(auto& p : e.traits)
         {
             // TODO: p.hrbs? Not needed until types are in those
-            Expand_Path(crate, modstack, mod,  p.path);
+            Expand_Path(crate, modstack, mod,  *p.path);
         }
-        ),
-    (ErasedType,
+        }
+    TU_ARMA(ErasedType, e) {
         for(auto& p : e.traits)
         {
             // TODO: p.hrbs?
-            Expand_Path(crate, modstack, mod,  p.path);
+            Expand_Path(crate, modstack, mod,  *p.path);
         }
-        )
-    )
+        }
+    }
 }
 void Expand_PathParams(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod, ::AST::PathParams& params)
 {
-    for(auto& typ : params.m_types)
-        Expand_Type(crate, modstack, mod, typ);
-    for(auto& aty : params.m_assoc_equal)
-        Expand_Type(crate, modstack, mod, aty.second);
-    for(auto& aty : params.m_assoc_bound)
-        Expand_Path(crate, modstack, mod, aty.second);
+    for(auto& e : params.m_entries)
+    {
+        TU_MATCH_HDRA( (e), {)
+        TU_ARMA(Null, _) {
+            }
+        TU_ARMA(Lifetime, _) {
+            }
+        TU_ARMA(Type, typ) {
+            Expand_Type(crate, modstack, mod, typ);
+            }
+        TU_ARMA(AssociatedTyEqual, aty) {
+            Expand_Type(crate, modstack, mod, aty.second);
+            }
+        TU_ARMA(AssociatedTyBound, aty) {
+            Expand_Path(crate, modstack, mod, aty.second);
+            }
+        }
+    }
 }
 void Expand_Path(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod, ::AST::Path& p)
 {
@@ -979,7 +991,7 @@ struct CExpandExpr:
             auto path_Ok  = ::AST::Path(core_crate, {::AST::PathNode("result"), ::AST::PathNode("Result"), ::AST::PathNode("Ok")});
             auto path_Err = ::AST::Path(core_crate, {::AST::PathNode("result"), ::AST::PathNode("Result"), ::AST::PathNode("Err")});
             auto path_From = ::AST::Path(core_crate, {::AST::PathNode("convert"), ::AST::PathNode("From")});
-            path_From.nodes().back().args().m_types.push_back( ::TypeRef(node.span()) );
+            path_From.nodes().back().args().m_entries.push_back( ::TypeRef(node.span()) );
             // TODO: Lang item (needs lang items enumerated earlier)
             //auto it = crate.m_lang_items.find("try");
             //ASSERT_BUG(node.span(), it != crate.m_lang_items.end(), "Can't find the `try` lang item");
@@ -1218,6 +1230,8 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
 {
     TRACE_FUNCTION_F("modpath = " << modpath << ", first_item=" << first_item);
 
+    // TODO: Pre-parse all macro_rules invocations into items?
+
     for( const auto& mi: mod.macro_imports_res() )
         DEBUG("- Imports '" << mi.name << "'");
     // Import all macros from parent module.
@@ -1353,6 +1367,23 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                                 mod.add_macro_import(ue.name, *me);
                                 }
                             }
+                        }
+                    }
+                    // Can also import exported macros from the crate root
+                    else if(m.is_Ast() && ue.path.m_class.is_Absolute() && ue.path.nodes().size() == 1)
+                    {
+                        const auto& name = ue.path.nodes().back().name();
+                        const MacroRules* mac = nullptr;
+                        for(const auto& e : crate.m_root_module.macros())
+                        {
+                            DEBUG(e.name);
+                            if( e.data->m_exported && e.name == name ) {
+                                mac = &*e.data;
+                            }
+                        }
+                        if(mac) {
+                            DEBUG("Found macro in crate root: " << ue.name << " = crate::" << name);
+                            mod.add_macro_import(ue.name, *mac);
                         }
                     }
                 }

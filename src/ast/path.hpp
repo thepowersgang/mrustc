@@ -18,8 +18,13 @@
 #include <string>
 #include "../include/span.hpp"
 #include "../include/ident.hpp"
+#include "lifetime_ref.hpp"
+#include "types.hpp"
 
-class TypeRef;
+#ifndef TYPES_HPP_COMPLETE
+# error "Expected TYPES_HPP_COMPLETE set"
+#endif
+
 class MacroRules;
 
 namespace HIR {
@@ -45,8 +50,6 @@ class Trait;
 class Static;
 class Function;
 class ExternCrate;
-
-class Path;
 
 TAGGED_UNION_EX(PathBinding_Value, (), Unbound, (
     (Unbound, struct {
@@ -161,13 +164,11 @@ extern ::std::ostream& operator<<(::std::ostream& os, const PathBinding_Value& x
 extern ::std::ostream& operator<<(::std::ostream& os, const PathBinding_Type& x);
 extern ::std::ostream& operator<<(::std::ostream& os, const PathBinding_Macro& x);
 
+class PathParamEnt;
+
 struct PathParams
 {
-    // TODO: Unified list? (lower memory footprint, and can exactly encode the source code structure)
-    ::std::vector< LifetimeRef >  m_lifetimes;
-    ::std::vector< TypeRef >    m_types;
-    ::std::vector< ::std::pair< RcString, TypeRef> >   m_assoc_equal;
-    ::std::vector< ::std::pair< RcString, Path> >   m_assoc_bound;
+    ::std::vector< PathParamEnt >  m_entries;
 
     PathParams(PathParams&& x) = default;
     PathParams(const PathParams& x);
@@ -177,7 +178,7 @@ struct PathParams
     PathParams& operator=(const PathParams& x) = delete;
 
     bool is_empty() const {
-        return m_lifetimes.empty() && m_types.empty() && m_assoc_equal.empty() && m_assoc_bound.empty();
+        return m_entries.empty();
     }
 
     Ordering ord(const PathParams& x) const;
@@ -443,6 +444,25 @@ public:
     }
 };
 
+TAGGED_UNION_EX(PathParamEnt, (), Null, (
+    (Null, struct {
+        }),
+    (Lifetime, LifetimeRef),
+    (Type, TypeRef),
+    (AssociatedTyEqual, ::std::pair<RcString, TypeRef>),
+    (AssociatedTyBound, ::std::pair<RcString, Path>)
+    ),
+    (), (),
+    (
+    public:
+        PathParamEnt clone() const;
+        Ordering ord(const PathParamEnt& x) const;
+        void fmt(::std::ostream& os) const;
+        )
+    );
+
 }   // namespace AST
+
+#define AST_PATH_HPP_COMPLETE
 
 #endif

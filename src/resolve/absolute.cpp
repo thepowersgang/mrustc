@@ -574,7 +574,7 @@ namespace
                             // TODO: Ensure validity? (I.e. that `Self` is a unit or tuple struct
                             if( e->m_data.is_Path() )
                             {
-                                return e->m_data.as_Path().path;
+                                return *e->m_data.as_Path();
                             }
                         default:
                             break;
@@ -766,21 +766,23 @@ void Resolve_Absolute_Function(Context& item_context, ::AST::Function& fcn);
 
 void Resolve_Absolute_PathParams(/*const*/ Context& context, const Span& sp, ::AST::PathParams& args)
 {
-    for(auto& arg : args.m_lifetimes)
+    for(auto& ent : args.m_entries)
     {
-        Resolve_Absolute_Lifetime(context, sp, arg);
-    }
-    for(auto& arg : args.m_types)
-    {
-        Resolve_Absolute_Type(context, arg);
-    }
-    for(auto& arg : args.m_assoc_equal)
-    {
-        Resolve_Absolute_Type(context, arg.second);
-    }
-    for(auto& arg : args.m_assoc_bound)
-    {
-        Resolve_Absolute_Path(context, sp, Context::LookupMode::Type, arg.second);
+        TU_MATCH_HDRA( (ent), {)
+        TU_ARMA(Null, _) {}
+        TU_ARMA(Lifetime, l) {
+            Resolve_Absolute_Lifetime(context, sp, l);
+            }
+        TU_ARMA(Type, t) {
+            Resolve_Absolute_Type(context, t);
+            }
+        TU_ARMA(AssociatedTyEqual, a) {
+            Resolve_Absolute_Type(context, a.second);
+            }
+        TU_ARMA(AssociatedTyBound, a) {
+            Resolve_Absolute_Path(context, sp, Context::LookupMode::Type, a.second);
+            }
+        }
     }
 }
 
@@ -1105,7 +1107,7 @@ namespace {
                     for(const auto& typ : e.m_params.m_types)
                     {
                         (void)typ;
-                        trait_path.nodes().back().args().m_types.push_back( ::TypeRef(sp) );
+                        trait_path.nodes().back().args().m_entries.push_back( ::TypeRef(sp) );
                     }
                 }
                 trait_path.m_bindings.type = ::AST::PathBinding_Type::make_Trait({nullptr, &e});
@@ -1366,10 +1368,10 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
                             TU_ARMA(Lifetime, e) {
                                 }
                             TU_ARMA(Type, typ) {
-                                trait_path.nodes().back().args().m_types.push_back( ::TypeRef(sp) );
+                                trait_path.nodes().back().args().m_entries.push_back( ::TypeRef(sp) );
                                 }
                             TU_ARMA(Value, val) {
-                                //trait_path.nodes().back().args().m_types.push_back( ::TypeRef(sp) );
+                                //trait_path.nodes().back().args().m_entries.push_back( ::TypeRef(sp) );
                                 }
                             }
                         }
@@ -1378,7 +1380,7 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
                         for(const auto& typ : e.hir->m_params.m_types)
                         {
                             (void)typ;
-                            trait_path.nodes().back().args().m_types.push_back( ::TypeRef(sp) );
+                            trait_path.nodes().back().args().m_entries.push_back( ::TypeRef(sp) );
                         }
                     }
                 }
@@ -1812,50 +1814,50 @@ void Resolve_Absolute_Type(Context& context,  TypeRef& type)
 {
     TRACE_FUNCTION_FR("type = " << type, "type = " << type);
     const auto& sp = type.span();
-    TU_MATCH(TypeData, (type.m_data), (e),
-    (None,
+    TU_MATCH_HDRA( (type.m_data), {)
+    TU_ARMA(None, e) {
         // invalid type
-        ),
-    (Any,
+        }
+    TU_ARMA(Any, e) {
         // _ type
-        ),
-    (Unit,
-        ),
-    (Bang,
+        }
+    TU_ARMA(Unit, e) {
+        }
+    TU_ARMA(Bang, e) {
         // ! type
-        ),
-    (Macro,
+        }
+    TU_ARMA(Macro, e) {
         BUG(sp, "Resolve_Absolute_Type - Encountered an unexpanded macro in type - " << type);
-        ),
-    (Primitive,
-        ),
-    (Function,
+        }
+    TU_ARMA(Primitive, e) {
+        }
+    TU_ARMA(Function, e) {
         context.push( e.info.hrbs );
         Resolve_Absolute_Type(context,  *e.info.m_rettype);
         for(auto& t : e.info.m_arg_types) {
             Resolve_Absolute_Type(context,  t);
         }
         context.pop( e.info.hrbs );
-        ),
-    (Tuple,
+        }
+    TU_ARMA(Tuple, e) {
         for(auto& t : e.inner_types)
             Resolve_Absolute_Type(context,  t);
-        ),
-    (Borrow,
+        }
+    TU_ARMA(Borrow, e) {
         Resolve_Absolute_Lifetime(context, type.span(), e.lifetime);
         Resolve_Absolute_Type(context,  *e.inner);
-        ),
-    (Pointer,
+        }
+    TU_ARMA(Pointer, e) {
         Resolve_Absolute_Type(context,  *e.inner);
-        ),
-    (Array,
+        }
+    TU_ARMA(Array, e) {
         Resolve_Absolute_Type(context,  *e.inner);
         if( e.size ) {
             auto _h = context.enter_rootblock();
             Resolve_Absolute_ExprNode(context,  *e.size);
         }
-        ),
-    (Generic,
+        }
+    TU_ARMA(Generic, e) {
         if( e.name == "Self" )
         {
             type = context.get_self();
@@ -1866,43 +1868,47 @@ void Resolve_Absolute_Type(Context& context,  TypeRef& type)
             // TODO: Should this be bound to the relevant index, or just leave as-is?
             e.index = idx;
         }
-        ),
-    (Path,
-        Resolve_Absolute_Path(context, type.span(), Context::LookupMode::Type, e.path);
-        TU_IFLET(::AST::Path::Class, e.path.m_class, UFCS, ufcs,
-            if( ufcs.nodes.size() == 0 /*&& ufcs.trait && *ufcs.trait == ::AST::Path()*/ ) {
-                auto ty = mv$(*ufcs.type);
+        }
+    TU_ARMA(Path, e) {
+        Resolve_Absolute_Path(context, type.span(), Context::LookupMode::Type, *e);
+        if(auto* ufcs = e->m_class.opt_UFCS())
+        {
+            if( ufcs->nodes.size() == 0 /*&& ufcs->trait && *ufcs->trait == ::AST::Path()*/ ) {
+                auto ty = mv$(*ufcs->type);
                 type = mv$(ty);
                 return ;
             }
-            assert( ufcs.nodes.size() == 1);
-        )
+            assert( ufcs->nodes.size() == 1);
+        }
 
-        TU_IFLET(::AST::PathBinding_Type, e.path.m_bindings.type, Trait, be,
-            auto ty = ::TypeRef( type.span(), ::make_vec1(Type_TraitPath { {}, mv$(e.path)}), {} );
+        if(auto* be = e->m_bindings.type.opt_Trait())
+        {
+            auto tp = Type_TraitPath();
+            tp.path = std::move(e);
+            auto ty = ::TypeRef( type.span(), ::make_vec1(mv$(tp)), {} );
             type = mv$(ty);
             return ;
-        )
-        ),
-    (TraitObject,
-        for(auto& trait : e.traits) {
-            context.push( trait.hrbs );
-            Resolve_Absolute_Path(context, type.span(), Context::LookupMode::Type, trait.path);
-            context.pop(trait.hrbs);
         }
-        for(auto& lft : e.lifetimes)
-            Resolve_Absolute_Lifetime(context, type.span(),lft);
-        ),
-    (ErasedType,
+        }
+    TU_ARMA(TraitObject, e) {
         for(auto& trait : e.traits) {
             context.push( trait.hrbs );
-            Resolve_Absolute_Path(context, type.span(), Context::LookupMode::Type, trait.path);
+            Resolve_Absolute_Path(context, type.span(), Context::LookupMode::Type, *trait.path);
             context.pop(trait.hrbs);
         }
         for(auto& lft : e.lifetimes)
             Resolve_Absolute_Lifetime(context, type.span(), lft);
-        )
-    )
+        }
+    TU_ARMA(ErasedType, e) {
+        for(auto& trait : e.traits) {
+            context.push( trait.hrbs );
+            Resolve_Absolute_Path(context, type.span(), Context::LookupMode::Type, *trait.path);
+            context.pop(trait.hrbs);
+        }
+        for(auto& lft : e.lifetimes)
+            Resolve_Absolute_Lifetime(context, type.span(), lft);
+        }
+    }
 }
 
 void Resolve_Absolute_Expr(Context& context,  ::AST::Expr& expr)
@@ -2380,13 +2386,13 @@ void Resolve_Absolute_Trait(Context& item_context, ::AST::Trait& e)
     Resolve_Absolute_Generic(item_context,  e.params());
 
     for(auto& st : e.supertraits()) {
-        if( !st.ent.path.is_valid() ) {
+        if( !st.ent.path->is_valid() ) {
             DEBUG("- ST 'static");
         }
         else {
-            DEBUG("- ST " << st.ent.hrbs << st.ent.path);
+            DEBUG("- ST " << st.ent.hrbs << *st.ent.path);
             item_context.push(st.ent.hrbs);
-            Resolve_Absolute_Path(item_context, st.sp, Context::LookupMode::Type,  st.ent.path);
+            Resolve_Absolute_Path(item_context, st.sp, Context::LookupMode::Type,  *st.ent.path);
             item_context.pop(st.ent.hrbs);
         }
     }

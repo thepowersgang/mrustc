@@ -578,14 +578,14 @@ namespace {
                 m_pmi.send_ident(te.name.c_str());
                 ),
             (Path,
-                this->visit_path(te.path);
+                this->visit_path(*te);
                 ),
             (TraitObject,
                 m_pmi.send_symbol("(");
                 for(const auto& t : te.traits)
                 {
                     this->visit_hrbs(t.hrbs);
-                    this->visit_path(t.path);
+                    this->visit_path(*t.path);
                     m_pmi.send_symbol("+");
                 }
                 // TODO: Lifetimes
@@ -596,7 +596,7 @@ namespace {
                 for(const auto& t : te.traits)
                 {
                     this->visit_hrbs(t.hrbs);
-                    this->visit_path(t.path);
+                    this->visit_path(*t.path);
                     m_pmi.send_symbol("+");
                 }
                 // TODO: Lifetimes
@@ -676,29 +676,31 @@ namespace {
                     if( is_expr )
                         m_pmi.send_symbol("::");
                     m_pmi.send_symbol("<");
-                    for(const auto& l : e.args().m_lifetimes)
+                    for(const auto& ent : e.args().m_entries)
                     {
-                        m_pmi.send_lifetime(l.name().name.c_str());
-                        m_pmi.send_symbol(",");
-                    }
-                    for(const auto& t : e.args().m_types)
-                    {
-                        this->visit_type(t);
-                        m_pmi.send_symbol(",");
-                    }
-                    for(const auto& a : e.args().m_assoc_equal)
-                    {
-                        m_pmi.send_ident(a.first.c_str());
-                        m_pmi.send_symbol("=");
-                        this->visit_type(a.second);
-                        m_pmi.send_symbol(",");
-                    }
-                    for(const auto& a : e.args().m_assoc_bound)
-                    {
-                        m_pmi.send_ident(a.first.c_str());
-                        m_pmi.send_symbol(":");
-                        this->visit_path(a.second);
-                        m_pmi.send_symbol(",");
+                        TU_MATCH_HDRA( (ent), {)
+                        TU_ARMA(Null, _) {}
+                        TU_ARMA(Lifetime, l) {
+                            m_pmi.send_lifetime(l.name().name.c_str());
+                            m_pmi.send_symbol(",");
+                            }
+                        TU_ARMA(Type, t) {
+                            this->visit_type(t);
+                            m_pmi.send_symbol(",");
+                            }
+                        TU_ARMA(AssociatedTyEqual, a) {
+                            m_pmi.send_ident(a.first.c_str());
+                            m_pmi.send_symbol("=");
+                            this->visit_type(a.second);
+                            m_pmi.send_symbol(",");
+                            }
+                        TU_ARMA(AssociatedTyBound, a) {
+                            m_pmi.send_ident(a.first.c_str());
+                            m_pmi.send_symbol(":");
+                            this->visit_path(a.second);
+                            m_pmi.send_symbol(",");
+                            }
+                        }
                     }
                     m_pmi.send_symbol(">");
                 }

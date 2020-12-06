@@ -108,56 +108,93 @@ PathBinding_Macro PathBinding_Macro::clone() const
 {
     bool needs_comma = false;
     os << "<";
-    for(const auto& v : x.m_lifetimes) {
+    for(const auto& e : x.m_entries)
+    {
+        if(e.is_Null())
+            continue;
         if(needs_comma) os << ", ";
         needs_comma = true;
-        os << v;
-    }
-    for(const auto& v : x.m_types) {
-        if(needs_comma) os << ", ";
-        needs_comma = true;
-        os << v;
-    }
-    for(const auto& v : x.m_assoc_equal) {
-        if(needs_comma) os << ", ";
-        needs_comma = true;
-        os << v.first << "=" << v.second;
-    }
-    for(const auto& v : x.m_assoc_bound) {
-        if(needs_comma) os << ", ";
-        needs_comma = true;
-        os << v.first << ": " << v.second;
+
+        e.fmt(os);
     }
     os << ">";
     return os;
 }
-PathParams::PathParams(const PathParams& x):
-    m_lifetimes( x.m_lifetimes )
+PathParams::PathParams(const PathParams& x)
 {
-    m_types.reserve( x.m_types.size() );
-    for(const auto& t : x.m_types)
-        m_types.push_back(t.clone());
-
-    m_assoc_equal.reserve( x.m_assoc_equal.size() );
-    for(const auto& t : x.m_assoc_equal)
-        m_assoc_equal.push_back( ::std::make_pair(t.first, t.second.clone()) );
-
-    m_assoc_bound.reserve( x.m_assoc_bound.size() );
-    for(const auto& t : x.m_assoc_bound)
-        m_assoc_bound.push_back( ::std::make_pair(t.first, AST::Path(t.second)) );
+    m_entries.reserve( x.m_entries.size() );
+    for(const auto& e : x.m_entries)
+        m_entries.push_back(e.clone());
 }
 Ordering PathParams::ord(const PathParams& x) const
 {
-    Ordering rv;
-    rv = ::ord(m_lifetimes, x.m_lifetimes);
-    if(rv != OrdEqual)  return rv;
-    rv = ::ord(m_types, x.m_types);
-    if(rv != OrdEqual)  return rv;
-    rv = ::ord(m_assoc_equal, x.m_assoc_equal);
-    if(rv != OrdEqual)  return rv;
-    rv = ::ord(m_assoc_bound, x.m_assoc_bound);
-    if(rv != OrdEqual)  return rv;
-    return rv;
+    return ::ord(m_entries, x.m_entries);
+}
+
+PathParamEnt PathParamEnt::clone() const
+{
+    TU_MATCH_HDRA( (*this), {)
+    TU_ARMA(Null, v) {
+        return v;
+        }
+    TU_ARMA(Lifetime, v) {
+        return v;
+        }
+    TU_ARMA(Type, v) {
+        return v.clone();
+        }
+    TU_ARMA(AssociatedTyEqual, v) {
+        return ::std::make_pair(v.first, v.second.clone());
+        }
+    TU_ARMA(AssociatedTyBound, v) {
+        return ::std::make_pair(v.first, v.second);
+        }
+    }
+    throw "";
+}
+Ordering PathParamEnt::ord(const PathParamEnt& x) const
+{
+    if(this->tag() != x.tag())
+        return ::ord( static_cast<int>(this->tag()), static_cast<int>(x.tag()) );
+    
+    TU_MATCH_HDRA( (*this, x), {)
+    TU_ARMA(Null, v1, v2) {
+        return ::OrdEqual;
+        }
+    TU_ARMA(Lifetime, v1, v2) {
+        return ::ord(v1, v2);
+        }
+    TU_ARMA(Type, v1, v2) {
+        return ::ord(v1, v2);
+        }
+    TU_ARMA(AssociatedTyEqual, v1, v2) {
+        return ::ord(v1, v2);
+        }
+    TU_ARMA(AssociatedTyBound, v1, v2) {
+        return ::ord(v1, v2);
+        }
+    }
+    throw "";
+}
+void PathParamEnt::fmt(::std::ostream& os) const
+{
+    TU_MATCH_HDRA( (*this), {)
+    TU_ARMA(Null, _) {
+        os << "/*removed*/";
+        }
+    TU_ARMA(Lifetime, v) {
+        os << v;
+        }
+    TU_ARMA(Type, v) {
+        os << v;
+        }
+    TU_ARMA(AssociatedTyEqual, v) {
+        os << v.first << "=" << v.second;
+        }
+    TU_ARMA(AssociatedTyBound, v) {
+        os << v.first << ": " << v.second;
+        }
+    }
 }
 
 // --- AST::PathNode

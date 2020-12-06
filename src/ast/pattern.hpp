@@ -15,6 +15,7 @@
 #include <tagged_union.hpp>
 #include <ident.hpp>
 #include "path.hpp"
+#include "macro.hpp"
 
 namespace AST {
 

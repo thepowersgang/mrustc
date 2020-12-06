@@ -261,11 +261,17 @@ struct Deriver
         struct H {
             static void visit_nodes(const Deriver& self, const AST::GenericParams& params, ::std::vector<TypeRef>& out_list, const ::std::vector<AST::PathNode>& nodes) {
                 for(const auto& node : nodes) {
-                    for(const auto& ty : node.args().m_types) {
-                        self.add_field_bound_from_ty(params, out_list, ty);
-                    }
-                    for(const auto& aty : node.args().m_assoc_equal) {
-                        self.add_field_bound_from_ty(params, out_list, aty.second);
+                    for(const auto& e : node.args().m_entries) {
+                        TU_MATCH_HDRA( (e), {)
+                        default:
+                            break;
+                        TU_ARMA(Type, ty) {
+                            self.add_field_bound_from_ty(params, out_list, ty);
+                            }
+                        TU_ARMA(AssociatedTyEqual, aty) {
+                            self.add_field_bound_from_ty(params, out_list, aty.second);
+                            }
+                        }
                     }
                 }
             }
@@ -308,13 +314,13 @@ struct Deriver
             // Although this is what we're looking for, it's already handled.
             }
         TU_ARMA(Path, e) {
-            TU_MATCH(AST::Path::Class, (e.path.m_class), (pe),
-            (Invalid,
+            TU_MATCH_HDRA( (e->m_class), {)
+            TU_ARMA(Invalid, pe) {
                 // wut.
-                ),
-            (Local,
-                ),
-            (Relative,
+                }
+            TU_ARMA(Local, pe) {
+                }
+            TU_ARMA(Relative, pe) {
                 if( pe.nodes.size() > 1 )
                 {
                     // Check if the first node of a relative is a generic param.
@@ -328,16 +334,16 @@ struct Deriver
                     }
                 }
                 H::visit_nodes(*this, params, out_list, pe.nodes);
-                ),
-            (Self,
-                ),
-            (Super,
-                ),
-            (Absolute,
-                ),
-            (UFCS,
-                )
-            )
+                }
+            TU_ARMA(Self, pe) {
+                }
+            TU_ARMA(Super, pe) {
+                }
+            TU_ARMA(Absolute, pe) {
+                }
+            TU_ARMA(UFCS, pe) {
+                }
+            }
             }
         TU_ARMA(TraitObject, e) {
             // TODO: Should this be recursed?
@@ -471,7 +477,7 @@ public:
     }
     AST::Impl handle_item(Span sp, const DeriveOpts& opts, const AST::GenericParams& p, const TypeRef& type, const AST::Enum& enm) const override
     {
-        AST::Path base_path = type.m_data.as_Path().path;
+        AST::Path base_path = *type.m_data.as_Path();
         base_path.nodes().back() = base_path.nodes().back().name();
 
         ::std::vector< AST::ExprNode_Match_Arm> arms;
@@ -617,7 +623,7 @@ public:
 
     AST::Impl handle_item(Span sp, const DeriveOpts& opts, const AST::GenericParams& p, const TypeRef& type, const AST::Enum& enm) const override
     {
-        AST::Path base_path = type.m_data.as_Path().path;
+        AST::Path base_path = *type.m_data.as_Path();
         base_path.nodes().back().args() = ::AST::PathParams();
         ::std::vector<AST::ExprNode_Match_Arm>   arms;
 
@@ -704,7 +710,7 @@ class Deriver_PartialOrd:
         const AST::Path path_ordering = get_path(core_name, "cmp", "Ordering");
 
         AST::Path path_option_ordering = get_path(core_name, "option", "Option");
-        path_option_ordering.nodes().back().args().m_types.push_back( TypeRef(sp, path_ordering) );
+        path_option_ordering.nodes().back().args().m_entries.push_back( TypeRef(sp, path_ordering) );
 
         AST::Function fcn(
             sp,
@@ -798,7 +804,7 @@ public:
 
     AST::Impl handle_item(Span sp, const DeriveOpts& opts, const AST::GenericParams& p, const TypeRef& type, const AST::Enum& enm) const override
     {
-        AST::Path base_path = type.m_data.as_Path().path;
+        AST::Path base_path = *type.m_data.as_Path();
         base_path.nodes().back().args() = ::AST::PathParams();
         ::std::vector<AST::ExprNode_Match_Arm>   arms;
 
@@ -959,7 +965,7 @@ public:
     {
         const AST::Path    assert_method_path = this->get_trait_path(opts.core_name) + "assert_receiver_is_total_eq";
 
-        AST::Path base_path = type.m_data.as_Path().path;
+        AST::Path base_path = *type.m_data.as_Path();
         base_path.nodes().back().args() = ::AST::PathParams();
         ::std::vector<AST::ExprNode_Match_Arm>   arms;
 
@@ -1116,7 +1122,7 @@ public:
 
     AST::Impl handle_item(Span sp, const DeriveOpts& opts, const AST::GenericParams& p, const TypeRef& type, const AST::Enum& enm) const override
     {
-        AST::Path base_path = type.m_data.as_Path().path;
+        AST::Path base_path = *type.m_data.as_Path();
         base_path.nodes().back().args() = ::AST::PathParams();
         ::std::vector<AST::ExprNode_Match_Arm>   arms;
 
@@ -1258,7 +1264,7 @@ public:
 
     AST::Impl handle_item(Span sp, const DeriveOpts& opts, const AST::GenericParams& p, const TypeRef& type, const AST::Struct& str) const override
     {
-        const AST::Path& ty_path = type.m_data.as_Path().path;
+        const AST::Path& ty_path = *type.m_data.as_Path();
         ::std::vector<AST::ExprNodeP>   nodes;
 
         TU_MATCH(AST::StructData, (str.m_data), (e),
@@ -1288,7 +1294,7 @@ public:
 
     AST::Impl handle_item(Span sp, const DeriveOpts& opts, const AST::GenericParams& p, const TypeRef& type, const AST::Enum& enm) const override
     {
-        AST::Path base_path = type.m_data.as_Path().path;
+        AST::Path base_path = *type.m_data.as_Path();
         base_path.nodes().back().args() = ::AST::PathParams();
         ::std::vector<AST::ExprNode_Match_Arm>   arms;
 
@@ -1445,7 +1451,7 @@ public:
 
     AST::Impl handle_item(Span sp, const DeriveOpts& opts, const AST::GenericParams& p, const TypeRef& type, const AST::Struct& str) const override
     {
-        const AST::Path& ty_path = type.m_data.as_Path().path;
+        const AST::Path& ty_path = *type.m_data.as_Path();
         ::std::vector<AST::ExprNodeP>   nodes;
 
         TU_MATCH(AST::StructData, (str.m_data), (e),
@@ -1565,7 +1571,7 @@ public:
 
     AST::Impl handle_item(Span sp, const DeriveOpts& opts, const AST::GenericParams& p, const TypeRef& type, const AST::Enum& enm) const override
     {
-        AST::Path base_path = type.m_data.as_Path().path;
+        AST::Path base_path = *type.m_data.as_Path();
         base_path.nodes().back().args() = ::AST::PathParams();
         ::std::vector<AST::ExprNode_Match_Arm>   arms;
 
@@ -1640,8 +1646,8 @@ class Deriver_RustcEncodable:
         const AST::Path    trait_path = this->get_trait_path();
 
         AST::Path result_path = get_path(core_name, "result", "Result");
-        result_path.nodes()[1].args().m_types.push_back( TypeRef(TypeRef::TagUnit(), sp) );
-        result_path.nodes()[1].args().m_types.push_back(TypeRef( sp, AST::Path(AST::Path::TagUfcs(), TypeRef(sp, "S", 0x100|0), this->get_trait_path_Encoder(), { AST::PathNode("Error",{}) }) ));
+        result_path.nodes()[1].args().m_entries.push_back( TypeRef(TypeRef::TagUnit(), sp) );
+        result_path.nodes()[1].args().m_entries.push_back(TypeRef( sp, AST::Path(AST::Path::TagUfcs(), TypeRef(sp, "S", 0x100|0), this->get_trait_path_Encoder(), { AST::PathNode("Error",{}) }) ));
 
         AST::Function fcn(
             sp,
@@ -1695,7 +1701,7 @@ public:
 
     AST::Impl handle_item(Span sp, const DeriveOpts& opts, const AST::GenericParams& p, const TypeRef& type, const AST::Struct& str) const override
     {
-        ::std::string struct_name = type.m_data.as_Path().path.nodes().back().name().c_str();
+        ::std::string struct_name = type.m_data.as_Path()->nodes().back().name().c_str();
 
         ::std::vector<AST::ExprNodeP>   nodes;
         TU_MATCH(AST::StructData, (str.m_data), (e),
@@ -1755,7 +1761,7 @@ public:
 
     AST::Impl handle_item(Span sp, const DeriveOpts& opts, const AST::GenericParams& p, const TypeRef& type, const AST::Enum& enm) const override
     {
-        AST::Path base_path = type.m_data.as_Path().path;
+        AST::Path base_path = *type.m_data.as_Path();
         base_path.nodes().back().args() = ::AST::PathParams();
         ::std::vector<AST::ExprNode_Match_Arm>   arms;
 
@@ -1843,7 +1849,7 @@ public:
 
         auto node_match = NEWNODE(Match, NEWNODE(NamedValue, AST::Path("self")), mv$(arms));
 
-        ::std::string enum_name = type.m_data.as_Path().path.nodes().back().name().c_str();
+        ::std::string enum_name = type.m_data.as_Path()->nodes().back().name().c_str();
         auto node = NEWNODE(CallPath, this->get_trait_path_Encoder() + "emit_enum",
             vec$( mv$(s_ent), NEWNODE(String, enum_name), this->enc_closure(sp, mv$(node_match)) )
             );
@@ -1871,8 +1877,8 @@ class Deriver_RustcDecodable:
         const AST::Path    trait_path = this->get_trait_path();
 
         AST::Path result_path = get_path(core_name, "result", "Result");
-        result_path.nodes()[1].args().m_types.push_back( TypeRef(sp, "Self", 0xFFFF) );
-        result_path.nodes()[1].args().m_types.push_back( TypeRef(sp, AST::Path(AST::Path::TagUfcs(), TypeRef(sp, "D", 0x100|0), this->get_trait_path_Decoder(), { AST::PathNode("Error",{}) })) );
+        result_path.nodes()[1].args().m_entries.push_back( TypeRef(sp, "Self", 0xFFFF) );
+        result_path.nodes()[1].args().m_entries.push_back( TypeRef(sp, AST::Path(AST::Path::TagUfcs(), TypeRef(sp, "D", 0x100|0), this->get_trait_path_Decoder(), { AST::PathNode("Error",{}) })) );
 
         AST::Function fcn(
             sp,
@@ -1932,8 +1938,8 @@ public:
 
     AST::Impl handle_item(Span sp, const DeriveOpts& opts, const AST::GenericParams& p, const TypeRef& type, const AST::Struct& str) const override
     {
-        AST::Path base_path = type.m_data.as_Path().path;
-        ::std::string struct_name = type.m_data.as_Path().path.nodes().back().name().c_str();
+        AST::Path base_path = *type.m_data.as_Path();
+        ::std::string struct_name = base_path.nodes().back().name().c_str();
 
         AST::ExprNodeP  node_v;
         TU_MATCH(AST::StructData, (str.m_data), (e),
@@ -1991,7 +1997,7 @@ public:
 
     AST::Impl handle_item(Span sp, const DeriveOpts& opts, const AST::GenericParams& p, const TypeRef& type, const AST::Enum& enm) const override
     {
-        AST::Path base_path = type.m_data.as_Path().path;
+        AST::Path base_path = *type.m_data.as_Path();
         base_path.nodes().back().args() = ::AST::PathParams();
         ::std::vector<AST::ExprNode_Match_Arm>   arms;
 
@@ -2074,7 +2080,7 @@ public:
             mv$(node_match),
             false
             );
-        ::std::string enum_name = type.m_data.as_Path().path.nodes().back().name().c_str();
+        ::std::string enum_name = type.m_data.as_Path()->nodes().back().name().c_str();
 
         auto node_rev = NEWNODE(CallPath, this->get_trait_path_Decoder() + "read_enum_variant",
             vec$(
@@ -2131,7 +2137,7 @@ static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mo
     for( const auto& param : params.m_params ) {
         if(const auto* pe = param.opt_Type())
         {
-            types_args.m_types.push_back( TypeRef(TypeRef::TagArg(), sp, pe->name()) );
+            types_args.m_entries.push_back( TypeRef(TypeRef::TagArg(), sp, pe->name()) );
         }
     }
 

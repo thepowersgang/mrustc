@@ -128,8 +128,8 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
                         auto cb = MonomorphStatePtr(nullptr, &path.m_params, nullptr);
                         for( const auto& st : trait.supertraits() )
                         {
-                            auto b = LowerHIR_TraitPath(sp, st.ent.path, true);
-                            auto rv = H::find_source_trait(sp, b.m_path, st.ent.path.m_bindings.type.as_Trait(), name, cb);
+                            auto b = LowerHIR_TraitPath(sp, *st.ent.path, true);
+                            auto rv = H::find_source_trait(sp, b.m_path, st.ent.path->m_bindings.type.as_Trait(), name, cb);
                             if(rv != HIR::GenericPath())
                                 return rv;
                         }
@@ -143,16 +143,19 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
             };
 
             auto bound_trait_path = LowerHIR_TraitPath(bound.span, e.trait, /*allow_bounds=*/true);
-            for(const auto& b : e.trait.nodes().back().args().m_assoc_bound)
+            for(const auto& pe : e.trait.nodes().back().args().m_entries)
             {
-                auto src_trait = H::find_source_trait(sp, bound_trait_path.m_path, e.trait.m_bindings.type.as_Trait(), b.first, MonomorphiserNop());
-                if(src_trait == ::HIR::GenericPath())
-                    ERROR(sp, E0000, "Unable to find source trait for " << b.first << " in " << bound_trait_path.m_path);
-                rv.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({
-                    ::HIR::TypeRef::new_path( ::HIR::Path(type.clone(), mv$(src_trait), b.first), {} ),
-                    // TODO: Recursively expand
-                    LowerHIR_TraitPath(bound.span, b.second)
-                    }));
+                if(const auto* b = pe.opt_AssociatedTyBound())
+                {
+                    auto src_trait = H::find_source_trait(sp, bound_trait_path.m_path, e.trait.m_bindings.type.as_Trait(), b->first, MonomorphiserNop());
+                    if(src_trait == ::HIR::GenericPath())
+                        ERROR(sp, E0000, "Unable to find source trait for " << b->first << " in " << bound_trait_path.m_path);
+                    rv.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({
+                        ::HIR::TypeRef::new_path( ::HIR::Path(type.clone(), mv$(src_trait), b->first), {} ),
+                        // TODO: Recursively expand
+                        LowerHIR_TraitPath(bound.span, b->second)
+                        }));
+                }
             }
 
             rv.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({
@@ -629,19 +632,25 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
 {
     ::HIR::PathParams   params;
 
-    // TODO: Lifetime params (not encoded in ::HIR::PathNode as yet)
-    //for(const auto& param : src_params.m_lifetimes) {
-    //}
-
-    for(const auto& param : src_params.m_types) {
-        params.m_types.push_back( LowerHIR_Type(param) );
-    }
-    // TODO: Constant params
-
-    // Leave 'm_assoc' alone?
-    if( !allow_assoc && !(src_params.m_assoc_bound.empty() && src_params.m_assoc_equal.empty()) )
-    {
-        BUG(sp, "Encountered path parameters with associated type bounds where they are not allowed");
+    for(const auto& param : src_params.m_entries) {
+        TU_MATCH_HDRA( (param), {)
+        TU_ARMA(Null, ty) {
+            }
+        TU_ARMA(Lifetime, ty) {
+            // TODO: Lifetime params (not encoded in ::HIR::PathNode as yet)
+            }
+        TU_ARMA(Type, ty) {
+            params.m_types.push_back( LowerHIR_Type(ty) );
+            }
+        TU_ARMA(AssociatedTyEqual, ty) {
+            if( !allow_assoc )
+                BUG(sp, "Encountered path parameters with associated type bounds where they are not allowed");
+            }
+        TU_ARMA(AssociatedTyBound, ty) {
+            if( !allow_assoc )
+                BUG(sp, "Encountered path parameters with associated type bounds where they are not allowed");
+            }
+        }
     }
 
     return params;
@@ -669,7 +678,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
             }
             else {
                 // HACK: `Self` replacement
-                return LowerHIR_GenericPath(sp, e->type->m_data.as_Path().path, false);
+                return LowerHIR_GenericPath(sp, *e->type->m_data.as_Path(), false);
             }
         }
 
@@ -684,20 +693,21 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
         {},
         nullptr
         };
-
-    for(const auto& assoc : path.nodes().back().args().m_assoc_equal)
+    for(const auto& e : path.nodes().back().args().m_entries)
     {
-        rv.m_type_bounds.insert(::std::make_pair( assoc.first, LowerHIR_Type(assoc.second) ));
-    }
-    
-    if( !path.nodes().back().args().m_assoc_bound.empty() )
-    {
-        if( ignore_bounds )
-        {
-        }
-        else
-        {
-            ERROR(sp, E0000, "Associated type trait bounds not allowed here - " << path);
+        TU_MATCH_HDRA( (e), {)
+        TU_ARMA(Null, _) {}
+        TU_ARMA(Lifetime, _) {}
+        TU_ARMA(Type, _) {}
+        TU_ARMA(AssociatedTyEqual, assoc) {
+            rv.m_type_bounds.insert(::std::make_pair( assoc.first, LowerHIR_Type(assoc.second) ));
+            }
+        TU_ARMA(AssociatedTyBound, assoc) {
+            if( !ignore_bounds )
+            {
+                ERROR(sp, E0000, "Associated type trait bounds not allowed here - " << path);
+            }
+            }
         }
     }
 
@@ -859,19 +869,19 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
         }
         }
     TU_ARMA(Path, e) {
-        if(const auto* l = e.path.m_class.opt_Local()) {
+        if(const auto* l = e->m_class.opt_Local()) {
             unsigned int slot;
             // NOTE: TypeParameter is unused
-            if( const auto* p = e.path.m_bindings.value.opt_Variable() ) {
+            if( const auto* p = e->m_bindings.value.opt_Variable() ) {
                 slot = p->slot;
             }
             else {
-                BUG(ty.span(), "Unbound local encountered in " << e.path);
+                BUG(ty.span(), "Unbound local encountered in " << *e);
             }
             return ::HIR::TypeRef( l->name, slot );
         }
         else {
-            return ::HIR::TypeRef::new_path( LowerHIR_Path(ty.span(), e.path), {} );
+            return ::HIR::TypeRef::new_path( LowerHIR_Path(ty.span(), *e), {} );
         }
         }
     TU_ARMA(TraitObject, e) {
@@ -879,8 +889,8 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
         // TODO: Lifetime
         for(const auto& t : e.traits)
         {
-            DEBUG("t = " << t.path);
-            const auto& tb = t.path.m_bindings.type.as_Trait();
+            DEBUG("t = " << *t.path);
+            const auto& tb = t.path->m_bindings.type.as_Trait();
             assert( tb.trait_ || tb.hir );
             if( (tb.trait_ ? tb.trait_->is_marker() : tb.hir->m_is_marker) )
             {
@@ -888,7 +898,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
                     DEBUG(tb.hir->m_values.size());
                 }
                 // TODO: If this has HRBs, what?
-                v.m_markers.push_back( LowerHIR_GenericPath(ty.span(), t.path) );
+                v.m_markers.push_back( LowerHIR_GenericPath(ty.span(), *t.path) );
             }
             else {
                 // TraitPath -> GenericPath -> SimplePath
@@ -896,7 +906,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
                     ERROR(ty.span(), E0000, "Multiple data traits in trait object - " << ty);
                 }
                 // TODO: Handle HRBs
-                v.m_trait = LowerHIR_TraitPath(ty.span(), t.path);
+                v.m_trait = LowerHIR_TraitPath(ty.span(), *t.path);
             }
         }
         return ::HIR::TypeRef( ::HIR::TypeData::make_TraitObject( mv$(v) ) );
@@ -907,9 +917,9 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
         ::std::vector< ::HIR::TraitPath>    traits;
         for(const auto& t : e.traits)
         {
-            DEBUG("t = " << t.path);
+            DEBUG("t = " << *t.path);
             // TODO: Pass the HRBs down
-            traits.push_back( LowerHIR_TraitPath(ty.span(), t.path) );
+            traits.push_back( LowerHIR_TraitPath(ty.span(), *t.path) );
         }
         ::HIR::LifetimeRef  lft;
         if( e.lifetimes.size() == 0 )
@@ -1269,8 +1279,8 @@ namespace {
     ::HIR::LifetimeRef  lifetime;
     ::std::vector< ::HIR::TraitPath>    supertraits;
     for(const auto& st : f.supertraits()) {
-        if( st.ent.path.is_valid() ) {
-            supertraits.push_back( LowerHIR_TraitPath(st.sp, st.ent.path) );
+        if( st.ent.path->is_valid() ) {
+            supertraits.push_back( LowerHIR_TraitPath(st.sp, *st.ent.path) );
         }
         else {
             lifetime = ::HIR::LifetimeRef::new_static();

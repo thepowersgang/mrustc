@@ -188,8 +188,8 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
 
                 // Encode into path, by converting Fn(A,B)->C into Fn<(A,B),Ret=C>
                 params = ::AST::PathParams();
-                params.m_types = ::make_vec1( TypeRef(TypeRef::TagTuple(), lex.end_span(ps), mv$(args)) );
-                params.m_assoc_equal = ::make_vec1( ::std::make_pair( RcString::new_interned("Output"), mv$(ret_type) ) );
+                params.m_entries.push_back( TypeRef(TypeRef::TagTuple(), lex.end_span(ps), mv$(args)) );
+                params.m_entries.push_back( ::std::make_pair( RcString::new_interned("Output"), mv$(ret_type) ) );
 
                 GET_TOK(tok, lex);
             }
@@ -240,26 +240,26 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
         switch(GET_TOK(tok, lex))
         {
         case TOK_LIFETIME:
-            rv.m_lifetimes.push_back(AST::LifetimeRef(/*lex.point_span(),*/ lex.get_ident(mv$(tok)) ));
+            rv.m_entries.push_back(AST::LifetimeRef(/*lex.point_span(),*/ lex.get_ident(mv$(tok)) ));
             break;
         case TOK_IDENT:
             if( LOOK_AHEAD(lex) == TOK_EQUAL )
             {
                 auto name = tok.istr();
                 GET_CHECK_TOK(tok, lex, TOK_EQUAL);
-                rv.m_assoc_equal.push_back( ::std::make_pair( mv$(name), Parse_Type(lex,false) ) );
+                rv.m_entries.push_back( ::std::make_pair( mv$(name), Parse_Type(lex,false) ) );
                 break;
             }
             if( LOOK_AHEAD(lex) == TOK_COLON )
             {
                 auto name = tok.istr();
                 GET_CHECK_TOK(tok, lex, TOK_COLON);
-                rv.m_assoc_bound.push_back( ::std::make_pair( mv$(name), Parse_Path(lex, PATH_GENERIC_TYPE) ) );
+                rv.m_entries.push_back( ::std::make_pair( mv$(name), Parse_Path(lex, PATH_GENERIC_TYPE) ) );
                 break;
             }
         default:
             PUTBACK(tok, lex);
-            rv.m_types.push_back( Parse_Type(lex) );
+            rv.m_entries.push_back( Parse_Type(lex) );
             break;
         }
     } while( GET_TOK(tok, lex) == TOK_COMMA );

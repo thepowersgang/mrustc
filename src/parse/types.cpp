@@ -21,7 +21,7 @@ TypeRef Parse_Type_ErasedType(TokenStream& lex, bool allow_trait_list);
 // === CODE ===
 TypeRef Parse_Type(TokenStream& lex, bool allow_trait_list)
 {
-    ProtoSpan ps = lex.start_span();
+    //ProtoSpan ps = lex.start_span();
     TypeRef rv = Parse_Type_Int(lex, allow_trait_list);
     //rv.set_span(lex.end_span(ps));
     return rv;
@@ -317,7 +317,7 @@ TypeRef Parse_Type_Path(TokenStream& lex, ::AST::HigherRankedBounds hrbs, bool a
         }
         else
         {
-            return TypeRef(TypeRef::TagPath(), lex.end_span(ps), mv$(traits.at(0).path));
+            return TypeRef(TypeRef::TagPath(), lex.end_span(ps), mv$(*traits.at(0).path));
         }
     }
 }

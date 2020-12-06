@@ -838,7 +838,7 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::AttributeList& meta_items
             else {
                 PUTBACK(tok, lex);
                 auto hrbs = Parse_HRB_Opt(lex);
-                supertraits.push_back( GET_SPANNED(Type_TraitPath, lex, (Type_TraitPath{ mv$(hrbs), Parse_Path(lex, PATH_GENERIC_TYPE) })) );
+                supertraits.push_back( GET_SPANNED(Type_TraitPath, lex, (Type_TraitPath(mv$(hrbs), Parse_Path(lex, PATH_GENERIC_TYPE)) )) );
             }
         } while( GET_TOK(tok, lex) == TOK_PLUS );
     }

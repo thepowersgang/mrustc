@@ -32,7 +32,12 @@ namespace {
     ::std::string get_path_relative_to(const ::std::string& base_path, ::std::string path)
     {
         DEBUG(base_path << ", " << path);
+        // Absolute
         if( path[0] == '/' || path[0] == '\\' ) {
+            return path;
+        }
+        // Windows absolute
+        else if( isalnum(path[0]) && path[1] == ':' && (path[2] == '/' || path[2] == '\\') ) {
             return path;
         }
         else if( base_path.size() == 0 ) {

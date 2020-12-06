@@ -671,6 +671,9 @@
     <ClInclude Include="..\..\src\hir_typeck\expr_cs.hpp">
       <Filter>Header Files\hir_typeck</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\src\ast\lifetime_ref.hpp">
+      <Filter>Header Files\ast</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="../packages.config" />

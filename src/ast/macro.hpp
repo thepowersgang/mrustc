@@ -11,6 +11,7 @@
 #include "../parse/tokentree.hpp"
 #include <span.hpp>
 #include "attrs.hpp"
+#include <ast/path.hpp>
 
 namespace AST {
 
