@@ -51,6 +51,66 @@ class Static;
 class Function;
 class ExternCrate;
 
+struct AbsolutePath
+{
+    RcString    crate;
+    ::std::vector<RcString>   nodes;
+
+    AbsolutePath()
+    {
+    }
+    AbsolutePath(RcString crate, ::std::vector<RcString> nodes)
+        : crate(::std::move(crate))
+        , nodes(::std::move(nodes))
+    {
+    }
+
+    AbsolutePath operator+(RcString n) const {
+        // Maybe being overly efficient here, but meh.
+        AbsolutePath    rv;
+        rv.crate = this->crate;
+        rv.nodes.reserve(this->nodes.size() + 1);
+        rv.nodes.insert(rv.nodes.end(), this->nodes.begin(), this->nodes.end());
+        rv.nodes.push_back(::std::move(n));
+        return rv;
+    }
+
+    bool operator==(const AbsolutePath& x) const {
+        if( this->crate != x.crate )
+            return false;
+        if( this->nodes != x.nodes )
+            return false;
+        return true;
+    }
+    bool operator!=(const AbsolutePath& x) const { return !(*this == x); }
+
+    friend ::std::ostream& operator<<(::std::ostream& os, const AbsolutePath& x) {
+        if(x.crate == "") {
+            os << "::\"" << x.crate << "\"";
+        }
+        else {
+            os << "crate";
+        }
+        for(const auto& n : x.nodes)
+            os << "::" << n;
+        return os;
+    }
+
+    bool is_parent_of(const AbsolutePath& other) const {
+        if(this->crate != other.crate)
+            return false;
+        if(this->nodes.size() >= other.nodes.size())
+            return false;
+        for(size_t i = 0; i < this->nodes.size(); i ++)
+        {
+            if(this->nodes[i] != other.nodes[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
+};
+
 TAGGED_UNION_EX(PathBinding_Value, (), Unbound, (
     (Unbound, struct {
         }),
@@ -123,8 +183,7 @@ TAGGED_UNION_EX(PathBinding_Type, (), Unbound, (
         }),
 
     (TypeParameter, struct {
-        unsigned int level;
-        unsigned int idx;
+        unsigned int slot;
         })
     ),
     (), (),
@@ -163,6 +222,38 @@ TAGGED_UNION_EX(PathBinding_Macro, (), Unbound, (
 extern ::std::ostream& operator<<(::std::ostream& os, const PathBinding_Value& x);
 extern ::std::ostream& operator<<(::std::ostream& os, const PathBinding_Type& x);
 extern ::std::ostream& operator<<(::std::ostream& os, const PathBinding_Macro& x);
+
+/// <summary>
+/// Wrapper for PathBinding_* that also includes an item path
+/// </summary>
+/// <typeparam name="T">PathBinding_*</typeparam>
+template<typename T>
+struct PathBinding
+{
+    AbsolutePath    path;
+    T   binding;
+
+    PathBinding()
+    {
+    }
+    PathBinding(AbsolutePath p, T b)
+        : path(::std::move(p))
+        , binding(::std::move(b))
+    {
+    }
+
+    void set(AbsolutePath p, T b) {
+        path = ::std::move(p);
+        binding = ::std::move(b);
+    }
+
+    bool is_Unbound() const {
+        return this->binding.is_Unbound();
+    }
+    PathBinding<T> clone() const {
+        return PathBinding(path, binding.clone());
+    }
+};
 
 class PathParamEnt;
 
@@ -257,12 +348,9 @@ public:
     Class   m_class;
 
     struct Bindings {
-        //std::vector<RcString> value_path;
-        PathBinding_Value value;
-        //std::vector<RcString> type_path;
-        PathBinding_Type type;
-        //std::vector<RcString> macro_path;
-        PathBinding_Macro macro;
+        PathBinding<PathBinding_Value> value;
+        PathBinding<PathBinding_Type> type;
+        PathBinding<PathBinding_Macro> macro;
 
         Bindings clone() const {
             return Bindings {
@@ -297,6 +385,36 @@ public:
     Path(RcString crate, ::std::vector<PathNode> nodes):
         m_class( Class::make_Absolute({ mv$(crate), mv$(nodes)}) )
     {}
+    Path(const AbsolutePath& p):
+        m_class(Class::make_Absolute({ p.crate, {} }))
+    {
+        auto& n = m_class.as_Absolute().nodes;
+        n.reserve(p.nodes.size());
+        for(const auto& v : p.nodes)
+            n.push_back(v);
+    }
+    Path(const PathBinding<PathBinding_Value>& pb):
+        Path(pb.path)
+    {
+        this->m_bindings.value = pb.clone();
+    }
+    Path(const PathBinding<PathBinding_Type>& pb):
+        Path(pb.path)
+    {
+        this->m_bindings.type = pb.clone();
+    }
+    Path(const PathBinding<PathBinding_Macro>& pb):
+        Path(pb.path)
+    {
+        this->m_bindings.macro = pb.clone();
+    }
+    Path(const AbsolutePath& p, ::AST::PathParams pp):
+        Path(p)
+    {
+        auto& n = m_class.as_Absolute().nodes;
+        assert(n.size() > 0);
+        n.back().args() = ::std::move(pp);
+    }
 
     // UFCS
     struct TagUfcs {};
@@ -438,10 +556,10 @@ private:
 
     void check_param_counts(const GenericParams& params, bool expect_params, PathNode& node);
 public:
-    void bind_enum_var(const Enum& ent, const RcString& name);
-    void bind_function(const Function& ent) {
-        m_bindings.value = PathBinding_Value::make_Function({&ent});
-    }
+    //void bind_enum_var(const Enum& ent, const RcString& name);
+    //void bind_function(const Function& ent) {
+    //    m_bindings.value = PathBinding_Value::make_Function({&ent});
+    //}
 };
 
 TAGGED_UNION_EX(PathParamEnt, (), Null, (

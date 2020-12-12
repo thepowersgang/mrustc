@@ -1728,7 +1728,7 @@ namespace {
 }
 #endif
 
-::AST::Named<::AST::Item> Parse_Mod_Item_S(TokenStream& lex, const AST::Module::FileInfo& mod_fileinfo, const ::AST::Path& mod_path, AST::AttributeList meta_items)
+::AST::Named<::AST::Item> Parse_Mod_Item_S(TokenStream& lex, const AST::Module::FileInfo& mod_fileinfo, const ::AST::AbsolutePath& mod_path, AST::AttributeList meta_items)
 {
     TRACE_FUNCTION_F("mod_path="<<mod_path<<", meta_items="<<meta_items);
     Token   tok;
@@ -2058,10 +2058,7 @@ namespace {
                 {
                     Ident::ModPath  mp;
                     mp.crate = "";
-                    for(const auto& node : mod_path.nodes())
-                    {
-                        mp.ents.push_back(node.name());
-                    }
+                    mp.ents = mod_path.nodes;
                     mr->m_hygiene.set_mod_path(::std::move(mp));
                 }
                 mr->m_rules.push_back(Parse_MacroRules_MakeArm(pat_span, ::std::move(arm_pat), ::std::move(body)));
@@ -2141,7 +2138,7 @@ namespace {
         }
         else
         {
-            sub_path = dirname(mod_fileinfo.path) / mod_path.nodes().back().name().c_str() / name.c_str();
+            sub_path = dirname(mod_fileinfo.path) / mod_path.nodes.back().c_str() / name.c_str();
             //sub_path = mod_fileinfo.path;
             sub_file_controls_dir = false;
         }
@@ -2172,8 +2169,7 @@ namespace {
             else if( path_attr.size() == 0 && ! mod_fileinfo.controls_dir )
             {
                 // TODO: Also search for curmod/submod.rs
-                //::std::string newpath_file = (mod_path.nodes().size() > 1 ? dirname(mod_fileinfo.path) + mod_path.nodes()[mod_path.nodes().size()-2].name() + "/" + name + ".rs" : "");
-                ::std::string newpath_file = (mod_path.nodes().size() >= 1 ? dirname(mod_fileinfo.path) / mod_path.nodes()[mod_path.nodes().size()-1].name().c_str() / name.c_str() + ".rs" : "");
+                ::std::string newpath_file = (mod_path.nodes.size() >= 1 ? dirname(mod_fileinfo.path) / mod_path.nodes[mod_path.nodes.size()-1].c_str() / name.c_str() + ".rs" : "");
                 DEBUG("newpath_file = '" << newpath_file << "' " << mod_fileinfo.path << " " << mod_path);
                 ::std::ifstream ifs_file(newpath_file);
                 if( ifs_file.is_open() )

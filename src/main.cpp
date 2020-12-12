@@ -455,7 +455,7 @@ int main(int argc, char *argv[])
                 }
 
                 // - `mrustc-main` lang item default
-                crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-main"), ::AST::Path("", {AST::PathNode("main")}) ));
+                crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-main"), ::AST::AbsolutePath("", {"main"}) ));
             }
             });
 

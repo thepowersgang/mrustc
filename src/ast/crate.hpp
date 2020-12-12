@@ -19,7 +19,7 @@ class ExternCrate;
 class TestDesc
 {
 public:
-    ::AST::Path path;
+    ::AST::AbsolutePath path;
     ::std::string   name;
     bool    ignore = false;
     bool    is_benchmark = false;
@@ -37,7 +37,7 @@ class ProcMacroDef
 {
 public:
     RcString    name;
-    ::AST::Path path;
+    ::AST::AbsolutePath path;
     ::std::vector<::std::string>    attributes;
 };
 
@@ -46,7 +46,7 @@ class Crate
 public:
     ::AST::AttributeList    m_attrs;
 
-    ::std::map< ::std::string, ::AST::Path> m_lang_items;
+    ::std::map< ::std::string, ::AST::AbsolutePath> m_lang_items;
 public:
     Module  m_root_module;
     ::std::map< RcString, ExternCrate> m_extern_crates;

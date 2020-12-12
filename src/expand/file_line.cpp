@@ -63,9 +63,9 @@ class CExpanderModulePath:
     {
         ::std::string   path_str;
         path_str += crate.m_crate_name;
-        for(const auto& comp : mod.path().nodes()) {
+        for(const auto& comp : mod.path().nodes) {
             path_str += "::";
-            path_str += comp.name().c_str();
+            path_str += comp.c_str();
         }
         return box$( TTStreamO(sp, ParseState(crate.m_edition), TokenTree( Token(TOK_STRING, mv$(path_str)) )) );
     }

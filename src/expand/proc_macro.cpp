@@ -35,7 +35,7 @@ class Decorator_ProcMacroDerive:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
         if( i.is_None() )
             return;
@@ -63,7 +63,7 @@ class Decorator_ProcMacro:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
         if( i.is_None() )
             return;
@@ -71,7 +71,7 @@ public:
         if( !i.is_Function() )
             TODO(sp, "Error for #[proc_macro] on non-Function");
 
-        crate.m_proc_macros.push_back(AST::ProcMacroDef { path.nodes().back().name(), path, {} });
+        crate.m_proc_macros.push_back(AST::ProcMacroDef { path.nodes.back(), path, {} });
     }
 };
 STATIC_DECORATOR("proc_macro", Decorator_ProcMacro)
@@ -133,7 +133,7 @@ void Expand_ProcMacro(::AST::Crate& crate)
         };
 
     // ---- module ----
-    auto newmod = ::AST::Module { ::AST::Path("", { ::AST::PathNode("proc_macro#") }) };
+    auto newmod = ::AST::Module { ::AST::AbsolutePath("", { "proc_macro#" }) };
     // - TODO: These need to be loaded too.
     //  > They don't actually need to exist here, just be loaded (and use absolute paths)
     newmod.add_ext_crate(Span(), false, "proc_macro", "proc_macro", {});
@@ -142,7 +142,7 @@ void Expand_ProcMacro(::AST::Crate& crate)
     newmod.add_item(Span(), false, "MACROS", mv$(tests_list), {});
 
     crate.m_root_module.add_item(Span(), false, "proc_macro#", mv$(newmod), {});
-    crate.m_lang_items["mrustc-main"] = ::AST::Path("", { AST::PathNode("proc_macro#"), AST::PathNode("main") });
+    crate.m_lang_items["mrustc-main"] = ::AST::AbsolutePath("", { "proc_macro#", "main" });
 }
 
 enum class TokenClass

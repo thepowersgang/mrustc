@@ -17,6 +17,8 @@
 #include <main_bindings.hpp>
 #include <hir/hir.hpp>
 
+#define FLAG_CONST_GENERIC  (1u << 31)
+
 namespace
 {
     struct GenericSlot
@@ -362,9 +364,9 @@ namespace
                     auto v = mod.m_value_items.find(name);
                     if( v != mod.m_value_items.end() ) {
                         const auto& b = v->second.path.m_bindings.value;
-                        if( /*const auto* be =*/ b.opt_EnumVar() ) {
-                            DEBUG("- TY: Enum variant " << v->second.path);
-                            path = ::AST::Path( v->second.path );
+                        if( /*const auto* be =*/ b.binding.opt_EnumVar() ) {
+                            DEBUG("- TY: Enum variant " << b.path);
+                            path = ::AST::Path(b);
                             return true;
                         }
                     }
@@ -394,26 +396,27 @@ namespace
                     auto v = mod.m_value_items.find(name);
                     if( v != mod.m_value_items.end() ) {
                         const auto& b = v->second.path.m_bindings.value;
-                        switch( b.tag() )
+                        switch( b.binding.tag() )
                         {
                         case ::AST::PathBinding_Value::TAG_EnumVar:
                         case ::AST::PathBinding_Value::TAG_Static:
                             DEBUG("- PV: Value " << v->second.path);
                             path = ::AST::Path( v->second.path );
                             return true;
-                        case ::AST::PathBinding_Value::TAG_Struct:
+                        case ::AST::PathBinding_Value::TAG_Struct: {
+                            const auto& be = b.binding.as_Struct();
                             // TODO: Restrict this to unit-like structs
-                            if( b.as_Struct().struct_ && !b.as_Struct().struct_->m_data.is_Unit() )
+                            if( be.struct_ && !be.struct_->m_data.is_Unit() )
                                 ;
-                            else if( b.as_Struct().hir && !b.as_Struct().hir->m_data.is_Unit() )
+                            else if( be.hir && !be.hir->m_data.is_Unit() )
                                 ;
                             else
                             {
-                                DEBUG("- PV: Value " << v->second.path);
-                                path = ::AST::Path( v->second.path );
+                                DEBUG("- PV: Value " << b.path);
+                                path = ::AST::Path(b);
                                 return true;
                             }
-                            break;
+                            break; }
                         default:
                             break;
                         }
@@ -466,14 +469,16 @@ namespace
                         auto it = mod->m_value_items.find(name);
                         if(it != mod->m_value_items.end()) {
                             const auto* item = &it->second->ent;
+                            auto item_path = AST::AbsolutePath(mp.crate, mp.ents) + name;
                             if( item->is_Import() ) {
                                 const auto& imp = item->as_Import();
                                 // Set the true path (so the returned path is canonical)
                                 true_path = &imp.path;
+                                auto item_path = AST::AbsolutePath(imp.path.m_crate_name, imp.path.m_components) + name;
                                 if(imp.is_variant) {
                                     const auto& enm = m_crate.m_extern_crates.at(imp.path.m_crate_name).m_hir
                                         ->get_enum_by_path(sp, imp.path, /*ignore_crate_name*/true, /*ignore_last*/true);
-                                    bindings.value = AST::PathBinding_Value::make_EnumVar({nullptr, imp.idx, &enm});
+                                    bindings.value.set( item_path, AST::PathBinding_Value::make_EnumVar({nullptr, imp.idx, &enm}) );
                                     break;  // Break out of the switch
                                 }
                                 else {
@@ -482,10 +487,10 @@ namespace
                             }
                             TU_MATCH_HDRA( (*item), {)
                             TU_ARMA(Function, e) {
-                                bindings.value = AST::PathBinding_Value::make_Function({nullptr});
+                                bindings.value.set( item_path, AST::PathBinding_Value::make_Function({nullptr}) );
                                 }
                             TU_ARMA(Static, e) {
-                                bindings.value = AST::PathBinding_Value::make_Static({nullptr});
+                                bindings.value.set( item_path, AST::PathBinding_Value::make_Static({nullptr}) );
                                 }
                             default:
                                 TODO(sp, "Found value '" << name << "' for module path " << mp << " : " << it->second->ent.tag_str());
@@ -565,7 +570,7 @@ namespace
                             }
                             else {
                                 ::AST::Path rv(name);
-                                rv.bind_variable(0xFFFF);
+                                rv.m_bindings.type.set(AST::AbsolutePath(), ::AST::PathBinding_Type::make_TypeParameter({ 0xFFFF }));
                                 return rv;
                             }
                             break;
@@ -608,7 +613,7 @@ namespace
                         {
                             if( it2->name == name ) {
                                 ::AST::Path rv(name);
-                                rv.bind_variable( it2->value.to_binding() );
+                                rv.m_bindings.type.set(AST::AbsolutePath(), AST::PathBinding_Type::make_TypeParameter({ it2->value.to_binding() }));
                                 return rv;
                             }
                         }
@@ -619,7 +624,7 @@ namespace
                         {
                             if( it2->name == name ) {
                                 ::AST::Path rv(name);
-                                rv.m_bindings.value = AST::PathBinding_Value::make_Generic({ it2->value.to_binding() });
+                                rv.m_bindings.value.set(AST::AbsolutePath(), AST::PathBinding_Value::make_Generic({ it2->value.to_binding() }));
                                 return rv;
                             }
                         }
@@ -707,7 +712,7 @@ namespace
                             if( it2->name == name ) {
                                 //TODO(sp, "Return a reference to a constant generic '" << name << "'");
                                 // Need to disambiguate it... could set a high bit
-                                return it2->value.to_binding() | (1u << 31);
+                                return it2->value.to_binding() | FLAG_CONST_GENERIC;
                             }
                         }
                         break;
@@ -809,6 +814,10 @@ void Resolve_Absolute_Path_BindUFCS(Context& context, const Span& sp, Context::L
         path = ::AST::Path( ::AST::Path::TagUfcs(), TypeRef(span, mv$(inner_path)), ::AST::Path(), mv$(nodes) );
     }
 
+    if(path.m_class.as_UFCS().type) {
+        Resolve_Absolute_Type(context, *path.m_class.as_UFCS().type);
+    }
+
     const auto& ufcs = path.m_class.as_UFCS();
     if( ufcs.nodes.size() == 0 ) {
 
@@ -824,7 +833,7 @@ void Resolve_Absolute_Path_BindUFCS(Context& context, const Span& sp, Context::L
     {
         // Trait is specified, definitely a trait item
         // - Must resolve here
-        const auto& pb = ufcs.trait->m_bindings.type;
+        const auto& pb = ufcs.trait->m_bindings.type.binding;
         if( ! pb.is_Trait() ) {
             ERROR(sp, E0000, "UFCS trait was not a trait - " << *ufcs.trait);
         }
@@ -862,18 +871,17 @@ void Resolve_Absolute_Path_BindUFCS(Context& context, const Span& sp, Context::L
                 if( item.name != node.name() ) {
                     continue;
                 }
-                TU_MATCH_DEF(::AST::Item, (item.data), (e),
-                (
+                TU_MATCH_HDRA( (item.data), {)
+                default:
                     // TODO: Error
-                    ),
-                (Function,
+                TU_ARMA(Function, e) {
                     // Bind as trait method
-                    path.bind_function(e);
-                    ),
-                (Static,
+                    path.m_bindings.value.set(ufcs.trait->m_bindings.type.path + item.name, AST::PathBinding_Value::make_Function({&e}));
+                    }
+                TU_ARMA(Static, e) {
                     // Resolve to asociated static
-                    )
-                )
+                    }
+                }
             }
             break;
         }
@@ -902,6 +910,7 @@ namespace {
         const auto& path_abs = path.m_class.as_Absolute();
         auto type_path = ::AST::Path( path );
         type_path.m_class.as_Absolute().nodes.resize( i+1 );
+        //Resolve_Absolute_Path(
 
         auto new_path = ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(sp, mv$(type_path)), ::AST::Path());
         for( unsigned int j = i+1; j < path_abs.nodes.size(); j ++ )
@@ -939,11 +948,10 @@ namespace {
             if( it == hmod->m_mod_items.end() )
                 ERROR(sp, E0000, "Couldn't find path component '" << name << "' of " << p);
 
-            TU_MATCH_DEF(::HIR::TypeItem, (it->second->ent), (e),
-            (
+            TU_MATCH_HDRA( (it->second->ent), {)
+            default:
                 TODO(sp, "Unknown item type in path - " << i << " " << p << " - " << it->second->ent.tag_str());
-                ),
-            (Enum,
+            TU_ARMA(Enum, e) {
                 if( i != p.m_components.size() - 2 ) {
                     ERROR(sp, E0000, "Enum as path component in unexpected location - " << p);
                 }
@@ -957,84 +965,90 @@ namespace {
                 for(const auto& c : p.m_components)
                     rv.nodes().push_back( AST::PathNode(c) );
                 rv.nodes().back().args() = mv$( path.nodes().back().args() );
+                auto ap = AST::AbsolutePath(p.m_crate_name, p.m_components);
                 if( e.m_data.is_Data() && e.m_data.as_Data()[var_idx].is_struct ) {
-                    rv.m_bindings.type = ::AST::PathBinding_Type::make_EnumVar({nullptr, static_cast<unsigned>(var_idx), &e});
+                    rv.m_bindings.type.set( ap, ::AST::PathBinding_Type::make_EnumVar({nullptr, static_cast<unsigned>(var_idx), &e}) );
                 }
                 else {
-                    rv.m_bindings.value = ::AST::PathBinding_Value::make_EnumVar({nullptr, static_cast<unsigned>(var_idx), &e});
+                    rv.m_bindings.value.set( ap, ::AST::PathBinding_Value::make_EnumVar({nullptr, static_cast<unsigned>(var_idx), &e}) );
                 }
                 path = mv$(rv);
 
                 return ;
-                ),
-            (Module,
+                }
+            TU_ARMA(Module, e) {
                 hmod = &e;
-                )
-            )
+                }
+            }
         }
 
         ::AST::Path::Bindings   pb;
 
         const auto& name = p.m_components.back();
+        auto ap = ::AST::AbsolutePath(p.m_crate_name, p.m_components);
         if( is_value )
         {
             auto it = hmod->m_value_items.find(name);
             if( it == hmod->m_value_items.end() )
                 ERROR(sp, E0000, "Couldn't find final component of " << p);
-            TU_MATCH(::HIR::ValueItem, (it->second->ent), (e),
-            (Import,
+            AST::PathBinding_Value  pbv;
+            TU_MATCH_HDRA( (it->second->ent), {)
+            TU_ARMA(Import, e) {
                 // Wait? is this even valid?
                 BUG(sp, "HIR Import item pointed to an import");
-                ),
-            (Constant,
-                pb.value = ::AST::PathBinding_Value::make_Static({nullptr, nullptr});
-                ),
-            (Static,
-                pb.value = ::AST::PathBinding_Value::make_Static({nullptr, &e});
-                ),
-            (StructConstant,
-                pb.value = ::AST::PathBinding_Value::make_Struct({nullptr, &ext_crate.m_hir->get_typeitem_by_path(sp, e.ty, true).as_Struct()});
-                ),
-            (Function,
-                pb.value = ::AST::PathBinding_Value::make_Function({nullptr/*, &e*/});
-                ),
-            (StructConstructor,
-                pb.value = ::AST::PathBinding_Value::make_Struct({nullptr, &ext_crate.m_hir->get_typeitem_by_path(sp, e.ty, true).as_Struct()});
-                )
-            )
+                }
+            TU_ARMA(Constant, e) {
+                pbv = ::AST::PathBinding_Value::make_Static({nullptr, nullptr});
+                }
+            TU_ARMA(Static, e) {
+                pbv = ::AST::PathBinding_Value::make_Static({nullptr, &e});
+                }
+            TU_ARMA(StructConstant, e) {
+                pbv = ::AST::PathBinding_Value::make_Struct({nullptr, &ext_crate.m_hir->get_typeitem_by_path(sp, e.ty, true).as_Struct()});
+                }
+            TU_ARMA(Function, e) {
+                pbv = ::AST::PathBinding_Value::make_Function({nullptr/*, &e*/});
+                }
+            TU_ARMA(StructConstructor, e) {
+                pbv = ::AST::PathBinding_Value::make_Struct({nullptr, &ext_crate.m_hir->get_typeitem_by_path(sp, e.ty, true).as_Struct()});
+                }
+            }
+            pb.value.set( ::std::move(ap), ::std::move(pbv) );
         }
         else
         {
             auto it = hmod->m_mod_items.find(name);
             if( it == hmod->m_mod_items.end() )
                 ERROR(sp, E0000, "Couldn't find final component of " << p);
-            TU_MATCH(::HIR::TypeItem, (it->second->ent), (e),
-            (Import,
+            AST::PathBinding_Type   pbt;
+            TU_MATCH_HDRA( (it->second->ent), {)
+            TU_ARMA(Import, e) {
                 // Wait? is this even valid?
                 BUG(sp, "HIR Import item pointed to an import");
-                ),
-            (Module,
-                pb.type = ::AST::PathBinding_Type::make_Module({nullptr, {&ext_crate, &e}});
-                ),
-            (Trait,
-                pb.type = ::AST::PathBinding_Type::make_Trait({nullptr, &e});
-                ),
-            (TypeAlias,
-                pb.type = ::AST::PathBinding_Type::make_TypeAlias({nullptr/*, &e*/});
-                ),
-            (ExternType,
-                pb.type = ::AST::PathBinding_Type::make_TypeAlias({nullptr/*, &e*/});
-                ),
-            (Struct,
-                pb.type = ::AST::PathBinding_Type::make_Struct({nullptr, &e});
-                ),
-            (Union,
-                pb.type = ::AST::PathBinding_Type::make_Union({nullptr, &e});
-                ),
-            (Enum,
-                pb.type = ::AST::PathBinding_Type::make_Enum({nullptr, &e});
-                )
-            )
+                }
+            TU_ARMA(Module, e) {
+                pbt = ::AST::PathBinding_Type::make_Module({nullptr, {&ext_crate, &e}});
+                }
+            TU_ARMA(Trait, e) {
+                pbt = ::AST::PathBinding_Type::make_Trait({nullptr, &e});
+                }
+            TU_ARMA(TypeAlias, e) {
+                pbt = ::AST::PathBinding_Type::make_TypeAlias({nullptr/*, &e*/});
+                }
+            TU_ARMA(ExternType, e) {
+                pbt = ::AST::PathBinding_Type::make_TypeAlias({nullptr/*, &e*/});
+                }
+            TU_ARMA(Struct, e) {
+                pbt = ::AST::PathBinding_Type::make_Struct({nullptr, &e});
+                }
+            TU_ARMA(Union, e) {
+                pbt = ::AST::PathBinding_Type::make_Union({nullptr, &e});
+                }
+            TU_ARMA(Enum, e) {
+                pbt = ::AST::PathBinding_Type::make_Enum({nullptr, &e});
+                }
+            }
+            pb.type.set( ::std::move(ap), ::std::move(pbt) );
         }
 
         // Construct output path (with same set of parameters)
@@ -1057,7 +1071,7 @@ namespace {
             switch(mode)
             {
             case Context::LookupMode::Namespace:
-                path.m_bindings.type = ::AST::PathBinding_Type::make_Module({nullptr, {&crate, &crate.m_hir->m_root_module}});
+                path.m_bindings.type.set( {crate.m_name, {}}, ::AST::PathBinding_Type::make_Module({nullptr, {&crate, &crate.m_hir->m_root_module}}) );
                 return ;
             default:
                 TODO(sp, "Looking up a non-namespace, but pointed to crate root");
@@ -1097,20 +1111,22 @@ namespace {
                 hmod = &e;
                 }
             TU_ARMA(Trait, e) {
-                auto trait_path = ::AST::Path( crate.m_name, {} );
+                AST::AbsolutePath   ap( crate.m_name, {} );
                 for(unsigned int j = start; j <= i; j ++)
-                    trait_path.nodes().push_back( path_abs.nodes[j].name() );
+                    ap.nodes.push_back( path_abs.nodes[j].name() );
+                AST::PathParams pp;
                 if( !n.args().is_empty() ) {
-                    trait_path.nodes().back().args() = mv$(n.args());
+                    pp = mv$(n.args());
                 }
                 else {
                     for(const auto& typ : e.m_params.m_types)
                     {
                         (void)typ;
-                        trait_path.nodes().back().args().m_entries.push_back( ::TypeRef(sp) );
+                        pp.m_entries.push_back( ::TypeRef(sp) );
                     }
                 }
-                trait_path.m_bindings.type = ::AST::PathBinding_Type::make_Trait({nullptr, &e});
+                AST::Path   trait_path(ap, std::move(pp));
+                trait_path.m_bindings.type.set( ::std::move(ap), ::AST::PathBinding_Type::make_Trait({nullptr, &e}) );
 
                 ::AST::Path new_path;
                 const auto& next_node = path_abs.nodes[i+1];
@@ -1149,27 +1165,37 @@ namespace {
                 path = split_into_ufcs_ty(sp, mv$(path), i-start);
                 return Resolve_Absolute_Path_BindUFCS(context, sp, mode,  path);
             TU_ARMA(Enum, e) {
-                const auto& last_node = path_abs.nodes.back();
-                // If this refers to an enum variant, return the full path
-                auto idx = e.find_variant(last_node.name());
-                if( idx != SIZE_MAX )
+                if( i+1 < path_abs.nodes.size() )
                 {
-                    if( i != path_abs.nodes.size() - 2 ) {
-                        ERROR(sp, E0000, "Unexpected enum in path " << path);
-                    }
-                    // NOTE: Type parameters for enums go after the _variant_
-                    if( ! n.args().is_empty() ) {
-                        ERROR(sp, E0000, "Type parameters were not expected here (enum params go on the variant)");
-                    }
+                    const auto& next_node = path_abs.nodes[i+1];
+                    // If this refers to an enum variant, return the full path
+                    // - Otherwise, assume it's an associated type?
+                    auto idx = e.find_variant(next_node.name());
+                    if( idx != SIZE_MAX )
+                    {
+                        if( i != path_abs.nodes.size() - 2 ) {
+                            ERROR(sp, E0000, "Unexpected enum in path " << path);
+                        }
 
-                    if( e.m_data.is_Data() && e.m_data.as_Data()[idx].is_struct ) {
-                        path.m_bindings.type = ::AST::PathBinding_Type::make_EnumVar({nullptr, static_cast<unsigned int>(idx), &e});
+                        AST::AbsolutePath   ap( crate.m_name, {} );
+                        auto trait_path = ::AST::Path( crate.m_name, {} );
+                        for(unsigned int j = start; j < path_abs.nodes.size(); j ++)
+                            ap.nodes.push_back( path_abs.nodes[j].name() );
+
+                        // NOTE: Type parameters for enums go after the _variant_
+                        if( ! n.args().is_empty() ) {
+                            ERROR(sp, E0000, "Type parameters were not expected here (enum params go on the variant)");
+                        }
+
+                        if( e.m_data.is_Data() && e.m_data.as_Data()[idx].is_struct ) {
+                            path.m_bindings.type.set(ap, ::AST::PathBinding_Type::make_EnumVar({nullptr, static_cast<unsigned int>(idx), &e}));
+                        }
+                        else {
+                            path.m_bindings.value.set(ap, ::AST::PathBinding_Value::make_EnumVar({nullptr, static_cast<unsigned int>(idx), &e}));
+                        }
+                        path = split_into_crate(sp, mv$(path), start,  crate.m_name);
+                        return;
                     }
-                    else {
-                        path.m_bindings.value = ::AST::PathBinding_Value::make_EnumVar({nullptr, static_cast<unsigned int>(idx), &e});
-                    }
-                    path = split_into_crate(sp, mv$(path), start,  crate.m_name);
-                    return;
                 }
                 path = split_into_crate(sp, mv$(path), start,  crate.m_name);
                 path = split_into_ufcs_ty(sp, mv$(path), i-start);
@@ -1177,6 +1203,11 @@ namespace {
                 }
             }
         }
+
+        AST::AbsolutePath   ap( crate.m_name, {} );
+        auto trait_path = ::AST::Path( crate.m_name, {} );
+        for(unsigned int j = start; j < path_abs.nodes.size(); j ++)
+            ap.nodes.push_back( path_abs.nodes[j].name() );
 
         const auto& name = path_abs.nodes.back().name();
         switch(mode)
@@ -1187,34 +1218,37 @@ namespace {
             {
                 auto v = hmod->m_mod_items.find(name);
                 if( v != hmod->m_mod_items.end() ) {
-                    TU_MATCH(::HIR::TypeItem, (v->second->ent), (e),
-                    (Import,
+
+                    ::AST::PathBinding_Type pbt;
+                    TU_MATCH_HDRA( (v->second->ent), {)
+                    TU_ARMA(Import, e) {
                         DEBUG("= Import " << e.path);
                         Resolve_Absolute_Path_BindAbsolute__hir_from_import(context, sp, false,  path, e.path);
                         return ;
-                        ),
-                    (Trait,
-                        path.m_bindings.type = ::AST::PathBinding_Type::make_Trait({nullptr, &e});
-                        ),
-                    (Module,
-                        path.m_bindings.type = ::AST::PathBinding_Type::make_Module({nullptr, {&crate, &e}});
-                        ),
-                    (ExternType,
-                        path.m_bindings.type = ::AST::PathBinding_Type::make_TypeAlias({nullptr/*, &e*/});
-                        ),
-                    (TypeAlias,
-                        path.m_bindings.type = ::AST::PathBinding_Type::make_TypeAlias({nullptr/*, &e*/});
-                        ),
-                    (Enum,
-                        path.m_bindings.type = ::AST::PathBinding_Type::make_Enum({nullptr, &e});
-                        ),
-                    (Struct,
-                        path.m_bindings.type = ::AST::PathBinding_Type::make_Struct({nullptr, &e});
-                        ),
-                    (Union,
-                        path.m_bindings.type = ::AST::PathBinding_Type::make_Union({nullptr, &e});
-                        )
-                    )
+                        }
+                    TU_ARMA(Trait, e) {
+                        pbt = ::AST::PathBinding_Type::make_Trait({nullptr, &e});
+                        }
+                    TU_ARMA(Module, e) {
+                        pbt = ::AST::PathBinding_Type::make_Module({nullptr, {&crate, &e}});
+                        }
+                    TU_ARMA(ExternType, e) {
+                        pbt = ::AST::PathBinding_Type::make_TypeAlias({nullptr/*, &e*/});
+                        }
+                    TU_ARMA(TypeAlias, e) {
+                        pbt = ::AST::PathBinding_Type::make_TypeAlias({nullptr/*, &e*/});
+                        }
+                    TU_ARMA(Enum, e) {
+                        pbt = ::AST::PathBinding_Type::make_Enum({nullptr, &e});
+                        }
+                    TU_ARMA(Struct, e) {
+                        pbt = ::AST::PathBinding_Type::make_Struct({nullptr, &e});
+                        }
+                    TU_ARMA(Union, e) {
+                        pbt = ::AST::PathBinding_Type::make_Union({nullptr, &e});
+                        }
+                    }
+                    path.m_bindings.type.set(::std::move(ap), ::std::move(pbt));
                     // Update path (trim down to `start` and set crate name)
                     path = split_into_crate(sp, mv$(path), start,  crate.m_name);
                     return ;
@@ -1226,27 +1260,26 @@ namespace {
             {
                 auto v = hmod->m_value_items.find(name);
                 if( v != hmod->m_value_items.end() ) {
-                    TU_MATCH_DEF(::HIR::ValueItem, (v->second->ent), (e),
-                    (
+                    TU_MATCH_HDRA( (v->second->ent), {)
+                    default:
                         DEBUG("Ignore - " << v->second->ent.tag_str());
-                        ),
-                    (StructConstant,
+                    TU_ARMA(StructConstant, e) {
                         auto ty_path = e.ty;
-                        path.m_bindings.value = ::AST::PathBinding_Value::make_Struct({nullptr, &crate.m_hir->get_struct_by_path(sp, ty_path)});
+                        path.m_bindings.value.set( ::std::move(ap), ::AST::PathBinding_Value::make_Struct({nullptr, &crate.m_hir->get_struct_by_path(sp, ty_path)}) );
                         path = split_into_crate(sp, mv$(path), start,  crate.m_name);
                         return ;
-                        ),
-                    (Import,
+                        }
+                    TU_ARMA(Import, e) {
                         Resolve_Absolute_Path_BindAbsolute__hir_from_import(context, sp, true,  path, e.path);
                         return ;
-                        ),
-                    (Constant,
+                        }
+                    TU_ARMA(Constant, e) {
                         // Bind and update path
-                        path.m_bindings.value = ::AST::PathBinding_Value::make_Static({nullptr, nullptr});
+                        path.m_bindings.value.set( ::std::move(ap), ::AST::PathBinding_Value::make_Static({nullptr, nullptr}) );
                         path = split_into_crate(sp, mv$(path), start,  crate.m_name);
                         return ;
-                        )
-                    )
+                        }
+                    }
                 }
                 else {
                     DEBUG("No value item for " << name);
@@ -1258,30 +1291,32 @@ namespace {
             {
                 auto v = hmod->m_value_items.find(name);
                 if( v != hmod->m_value_items.end() ) {
-                    TU_MATCH(::HIR::ValueItem, (v->second->ent), (e),
-                    (Import,
+                    ::AST::PathBinding_Value pbv;
+                    TU_MATCH_HDRA( (v->second->ent), {)
+                    TU_ARMA(Import, e) {
                         Resolve_Absolute_Path_BindAbsolute__hir_from_import(context, sp, true,  path, e.path);
                         return ;
-                        ),
-                    (Function,
-                        path.m_bindings.value = ::AST::PathBinding_Value::make_Function({nullptr/*, &e*/});
-                        ),
-                    (StructConstructor,
+                        }
+                    TU_ARMA(Function, e) {
+                        pbv = ::AST::PathBinding_Value::make_Function({nullptr/*, &e*/});
+                        }
+                    TU_ARMA(StructConstructor, e) {
                         auto ty_path = e.ty;
-                        path.m_bindings.value = ::AST::PathBinding_Value::make_Struct({nullptr, &crate.m_hir->get_struct_by_path(sp, ty_path)});
-                        ),
-                    (StructConstant,
+                        pbv = ::AST::PathBinding_Value::make_Struct({nullptr, &crate.m_hir->get_struct_by_path(sp, ty_path)});
+                        }
+                    TU_ARMA(StructConstant, e) {
                         auto ty_path = e.ty;
-                        path.m_bindings.value = ::AST::PathBinding_Value::make_Struct({nullptr, &crate.m_hir->get_struct_by_path(sp, ty_path)});
-                        ),
-                    (Static,
-                        path.m_bindings.value = ::AST::PathBinding_Value::make_Static({nullptr, &e});
-                        ),
-                    (Constant,
+                        pbv = ::AST::PathBinding_Value::make_Struct({nullptr, &crate.m_hir->get_struct_by_path(sp, ty_path)});
+                        }
+                    TU_ARMA(Static, e) {
+                        pbv = ::AST::PathBinding_Value::make_Static({nullptr, &e});
+                        }
+                    TU_ARMA(Constant, e) {
                         // Bind
-                        path.m_bindings.value = ::AST::PathBinding_Value::make_Static({nullptr, nullptr});
-                        )
-                    )
+                        pbv = ::AST::PathBinding_Value::make_Static({nullptr, nullptr});
+                        }
+                    }
+                    path.m_bindings.value.set(::std::move(ap), ::std::move(pbv));
                     path = split_into_crate(sp, mv$(path), start,  crate.m_name);
                     return ;
                 }
@@ -1336,7 +1371,7 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
             const auto& name_ref = it->second;
             DEBUG("#" << i << " \"" << n.name() << "\" = " << name_ref.path << (name_ref.is_import ? " (import)" : "") );
 
-            TU_MATCH_HDRA( (name_ref.path.m_bindings.type), {)
+            TU_MATCH_HDRA( (name_ref.path.m_bindings.type.binding), {)
             default:
                 ERROR(sp, E0000, "Encountered non-namespace item '" << n.name() << "' ("<<name_ref.path<<") in path " << path);
             TU_ARMA(TypeAlias, e) {
@@ -1450,7 +1485,16 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
                                 ERROR(sp, E0000, "Type parameters were not expected here (enum params go on the variant)");
                             }
 
-                            path.bind_enum_var(*e.enum_, var.m_name);
+                            unsigned int idx = &var - &e.enum_->variants().front();
+
+                            DEBUG("Bound to enum variant '" << var.m_name << "' (#" << idx << ")");
+                            auto ap = name_ref.path.m_bindings.type.path + var.m_name;
+                            if( var.m_data.is_Struct() ) {
+                                path.m_bindings.type.set( ap, AST::PathBinding_Type::make_EnumVar({ e.enum_, idx }) );
+                            }
+                            else {
+                                path.m_bindings.value.set( ap, AST::PathBinding_Value::make_EnumVar({ e.enum_, idx }) );
+                            }
                             return;
                         }
                     }
@@ -1520,13 +1564,13 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
         // Nothing to do (TODO: Check that it's valid?)
         if( mode == Context::LookupMode::Variable ) {
             auto idx = context.lookup_local(sp, e.name, mode);
-            if( idx >= (1u << 31) )
+            if( idx >= FLAG_CONST_GENERIC )
             {
-                path.m_bindings.value = ::AST::PathBinding_Value::make_Generic({idx - (1u << 31)});
+                path.m_bindings.value.set( {}, ::AST::PathBinding_Value::make_Generic({idx - FLAG_CONST_GENERIC}) );
             }
             else
             {
-                path.m_bindings.value = ::AST::PathBinding_Value::make_Variable({idx});
+                path.m_bindings.value.set( {}, ::AST::PathBinding_Value::make_Variable({idx}) );
             }
         }
         else if( mode == Context::LookupMode::Type ) {
@@ -1548,7 +1592,7 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
             // - If the next component isn't found in the located module
             //  > Instead use the type name.
             if( ! p.m_class.is_Local() && coretype_fromstring(e.nodes[0].name().c_str()) != CORETYPE_INVAL ) {
-                if( const auto* pep = p.m_bindings.type.opt_Module() ) {
+                if( const auto* pep = p.m_bindings.type.binding.opt_Module() ) {
                     const auto& pe = *pep;
                     bool found = false;
                     const auto& name = e.nodes[1].name();
@@ -1644,10 +1688,10 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
         }
     TU_ARMA(Self, e) {
         DEBUG("- Self");
-        const auto& mp_nodes = context.m_mod.path().nodes();
+        const auto& mp_nodes = context.m_mod.path().nodes;
         // Ignore any leading anon modules
         unsigned int start_len = mp_nodes.size();
-        while( start_len > 0 && mp_nodes[start_len-1].name().c_str()[0] == '#' )
+        while( start_len > 0 && mp_nodes[start_len-1].c_str()[0] == '#' )
             start_len --;
 
         // - Create a new path
@@ -1667,11 +1711,11 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
     TU_ARMA(Super, e) {
         DEBUG("- Super");
         // - Determine how many components of the `self` path to use
-        const auto& mp_nodes = context.m_mod.path().nodes();
+        const auto& mp_nodes = context.m_mod.path().nodes;
         assert( e.count >= 1 );
         // TODO: The first super should ignore any anon modules.
         unsigned int start_len = e.count > mp_nodes.size() ? 0 : mp_nodes.size() - e.count;
-        while( start_len > 0 && mp_nodes[start_len-1].name().c_str()[0] == '#' )
+        while( start_len > 0 && mp_nodes[start_len-1].c_str()[0] == '#' )
             start_len --;
 
         // - Create a new path
@@ -1814,6 +1858,12 @@ void Resolve_Absolute_Type(Context& context,  TypeRef& type)
 {
     TRACE_FUNCTION_FR("type = " << type, "type = " << type);
     const auto& sp = type.span();
+
+    if( type.m_data.is_Path() && type.m_data.as_Path()->m_bindings.type.binding.is_TypeParameter() ) {
+        auto& e = type.m_data.as_Path()->m_bindings.type.binding.as_TypeParameter();
+        type.m_data = TypeData::make_Generic({ type.m_data.as_Path()->as_trivial(), e.slot });
+    }
+
     TU_MATCH_HDRA( (type.m_data), {)
     TU_ARMA(None, e) {
         // invalid type
@@ -1881,7 +1931,7 @@ void Resolve_Absolute_Type(Context& context,  TypeRef& type)
             assert( ufcs->nodes.size() == 1);
         }
 
-        if(auto* be = e->m_bindings.type.opt_Trait())
+        if(auto* be = e->m_bindings.type.binding.opt_Trait())
         {
             auto tp = Type_TraitPath();
             tp.path = std::move(e);
@@ -1889,6 +1939,9 @@ void Resolve_Absolute_Type(Context& context,  TypeRef& type)
             type = mv$(ty);
             return ;
         }
+        //else if(auto* be = e->m_bindings.type.binding.opt_TypeParameter())
+        //{
+        //}
         }
     TU_ARMA(TraitObject, e) {
         for(auto& trait : e.traits) {
@@ -2438,16 +2491,16 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
 
     for( auto& i : mod.m_items )
     {
-        TU_MATCH(AST::Item, (i->data), (e),
-        (None,
-            ),
-        (MacroInv,
-            ),
-        (Use,
-            ),
-        (Macro,
-            ),
-        (ExternBlock,
+        TU_MATCH_HDRA( (i->data), {)
+        TU_ARMA(None, e) {
+            }
+        TU_ARMA(MacroInv, e) {
+            }
+        TU_ARMA(Use, e) {
+            }
+        TU_ARMA(Macro, e) {
+            }
+        TU_ARMA(ExternBlock, e) {
             for(auto& i2 : e.items())
             {
                 TU_MATCH_DEF(AST::Item, (i2.data), (e2),
@@ -2464,8 +2517,8 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
                     )
                 )
             }
-            ),
-        (Impl,
+            }
+        TU_ARMA(Impl, e) {
             auto& def = e.def();
             if( !def.type().is_valid() )
             {
@@ -2485,7 +2538,8 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
 
                 item_context.pop(def.params());
 
-                const_cast< ::AST::Trait*>(def.trait().ent.m_bindings.type.as_Trait().trait_)->set_is_marker();
+                // HACK: Mutate the source to indicate that it's an auto trait
+                const_cast< ::AST::Trait*>(def.trait().ent.m_bindings.type.binding.as_Trait().trait_)->set_is_marker();
             }
             else
             {
@@ -2507,8 +2561,8 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
                 item_context.pop(def.params());
                 item_context.pop_self( def.type() );
             }
-            ),
-        (NegImpl,
+            }
+        TU_ARMA(NegImpl, e) {
             auto& impl_def = e;
             TRACE_FUNCTION_F("impl ! " << impl_def.trait().ent << " for " << impl_def.type());
             item_context.push_self( impl_def.type() );
@@ -2527,23 +2581,23 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
 
             item_context.pop(impl_def.params());
             item_context.pop_self( impl_def.type() );
-            ),
-        (Module,
+            }
+        TU_ARMA(Module, e) {
             DEBUG("Module - " << i->name);
             Resolve_Absolute_Mod(item_context.m_crate, e);
-            ),
-        (Crate,
+            }
+        TU_ARMA(Crate, e) {
             // - Nothing
-            ),
-        (Enum,
+            }
+        TU_ARMA(Enum, e) {
             DEBUG("Enum - " << i->name);
             Resolve_Absolute_Enum(item_context, e);
-            ),
-        (Trait,
+            }
+        TU_ARMA(Trait, e) {
             DEBUG("Trait - " << i->name);
             Resolve_Absolute_Trait(item_context, e);
-            ),
-        (Type,
+            }
+        TU_ARMA(Type, e) {
             DEBUG("Type - " << i->name);
             item_context.push( e.params(), GenericSlot::Level::Top, true );
             Resolve_Absolute_Generic(item_context,  e.params());
@@ -2551,24 +2605,24 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
             Resolve_Absolute_Type( item_context, e.type() );
 
             item_context.pop( e.params(), true );
-            ),
-        (Struct,
+            }
+        TU_ARMA(Struct, e) {
             DEBUG("Struct - " << i->name);
             Resolve_Absolute_Struct(item_context, e);
-            ),
-        (Union,
+            }
+        TU_ARMA(Union, e) {
             DEBUG("Union - " << i->name);
             Resolve_Absolute_Union(item_context, e);
-            ),
-        (Function,
+            }
+        TU_ARMA(Function, e) {
             DEBUG("Function - " << i->name);
             Resolve_Absolute_Function(item_context, e);
-            ),
-        (Static,
+            }
+        TU_ARMA(Static, e) {
             DEBUG("Static - " << i->name);
             Resolve_Absolute_Static(item_context, e);
-            )
-        )
+            }
+        }
     }
 
     // - Run through the indexed items and fix up those paths

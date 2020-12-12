@@ -9,12 +9,19 @@
 
 #include <hir/expr_ptr.hpp>
 
+enum class FromAST_PathClass {
+    Type,
+    Value,
+    Macro,
+};
+
 extern ::HIR::ExprPtr LowerHIR_ExprNode(const ::AST::ExprNode& e);
-extern ::HIR::Path LowerHIR_Path(const Span& sp, const ::AST::Path& path);
-extern ::HIR::GenericPath   LowerHIR_GenericPath(const Span& sp, const ::AST::Path& path, bool allow_assoc=false);
-extern ::HIR::SimplePath    LowerHIR_SimplePath(const Span& sp, const ::AST::Path& path, bool allow_final_generic = false);
+extern ::HIR::Path LowerHIR_Path(const Span& sp, const ::AST::Path& path, FromAST_PathClass pc);
+extern ::HIR::GenericPath   LowerHIR_GenericPath(const Span& sp, const ::AST::Path& path, FromAST_PathClass pc, bool allow_assoc=false);
+extern ::HIR::SimplePath    LowerHIR_SimplePath(const Span& sp, const ::AST::Path& path, FromAST_PathClass pc, bool allow_final_generic = false);
 extern ::HIR::TypeRef LowerHIR_Type(const ::TypeRef& ty);
 extern ::HIR::Pattern LowerHIR_Pattern(const ::AST::Pattern& pat);
 
 extern RcString g_core_crate;
+extern RcString g_crate_name;
 extern ::HIR::Crate*   g_crate_ptr;

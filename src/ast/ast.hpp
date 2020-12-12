@@ -503,7 +503,7 @@ public:
 /// Representation of a parsed (and being converted) function
 class Module
 {
-    ::AST::Path m_my_path;
+    ::AST::AbsolutePath m_my_path;
 
     // Module-level items
     /// General items
@@ -539,6 +539,7 @@ public:
     };
 
     // TODO: Document difference between namespace and Type
+    // TODO: These should use IndexEnt<AST::PathBinding<AST::PathBinding_*>>` instead
     ::std::unordered_map< RcString, IndexEnt >    m_namespace_items;
     ::std::unordered_map< RcString, IndexEnt >    m_type_items;
     ::std::unordered_map< RcString, IndexEnt >    m_value_items;
@@ -563,13 +564,13 @@ public:
 
 public:
     Module() {}
-    Module(::AST::Path path):
+    Module(::AST::AbsolutePath path):
         m_my_path( mv$(path) )
     {
     }
 
     bool is_anon() const {
-        return m_my_path.nodes().size() > 0 && m_my_path.nodes().back().name().c_str()[0] == '#';
+        return m_my_path.nodes.size() > 0 && m_my_path.nodes.back().c_str()[0] == '#';
     }
 
     /// Create an anon module (for use inside expressions)
@@ -585,7 +586,7 @@ public:
 
 
 
-    const ::AST::Path& path() const { return m_my_path; }
+    const ::AST::AbsolutePath& path() const { return m_my_path; }
 
     //      ::std::vector<Named<Item>>& items()       { return m_items; }
     //const ::std::vector<Named<Item>>& items() const { return m_items; }

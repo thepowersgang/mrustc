@@ -25,7 +25,7 @@ MacroDef*   g_macros_list = nullptr;
 ::std::map< RcString, ::std::unique_ptr<ExpandProcMacro> >  g_macros;
 
 void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::std::function<void(const ExpandDecorator& d,const ::AST::Attribute& a)> f);
-void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Path modpath, ::AST::Module& mod, unsigned int first_item = 0);
+void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::AbsolutePath modpath, ::AST::Module& mod, unsigned int first_item = 0);
 void Expand_Expr(::AST::Crate& crate, LList<const AST::Module*> modstack, AST::Expr& node);
 void Expand_Expr(::AST::Crate& crate, LList<const AST::Module*> modstack, ::std::shared_ptr<AST::ExprNode>& node);
 void Expand_Path(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod, ::AST::Path& p);
@@ -105,7 +105,7 @@ void Expand_Attrs_CfgAttr(AST::AttributeList& attrs)
         }
     }
 }
-void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::AST::Crate& crate, const ::AST::Path& path, ::AST::Module& mod, ::AST::Item& item)
+void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::AST::Crate& crate, const ::AST::AbsolutePath& path, ::AST::Module& mod, ::AST::Item& item)
 {
     Expand_Attrs(attrs, stage,  [&](const auto& sp, const auto& d, const auto& a){
         if(!item.is_None()) {
@@ -1145,11 +1145,12 @@ void Expand_Impl(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST:
 
         // TODO: Make a path from the impl definition? Requires having the impl def resolved to be correct
         // - Does it? the namespace is essentially the same. There may be issues with wherever the path is used though
-        //::AST::Path path = modpath + i.name;
+        // TODO: UFCS path, or different method
+        AST::AbsolutePath   path("", {"", i.name});
 
         auto attrs = mv$(i.attrs);
         Expand_Attrs_CfgAttr(attrs);
-        Expand_Attrs(attrs, AttrStage::Pre,  crate, AST::Path(), mod, *i.data); // TODO: UFCS path
+        Expand_Attrs(attrs, AttrStage::Pre,  crate, path, mod, *i.data);
 
         TU_MATCH_HDRA( (*i.data), {)
         default:
@@ -1201,7 +1202,7 @@ void Expand_Impl(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST:
         // Run post-expansion decorators and restore attributes
         {
             auto& i = impl.items()[idx];
-            Expand_Attrs(attrs, AttrStage::Post,  crate, AST::Path(), mod, *i.data); // TODO: UFCS path
+            Expand_Attrs(attrs, AttrStage::Post,  crate, path, mod, *i.data); // TODO: UFCS path
             // TODO: How would this be populated? It got moved out?
             if( i.attrs.m_items.size() == 0 )
                 i.attrs = mv$(attrs);
@@ -1226,7 +1227,7 @@ void Expand_ImplDef(::AST::Crate& crate, LList<const AST::Module*> modstack, ::A
     Expand_Attrs(impl_def.attrs(), AttrStage::Post,  crate, mod, impl_def);
 }
 
-void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Path modpath, ::AST::Module& mod, unsigned int first_item)
+void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::AbsolutePath modpath, ::AST::Module& mod, unsigned int first_item)
 {
     TRACE_FUNCTION_F("modpath = " << modpath << ", first_item=" << first_item);
 
@@ -1268,7 +1269,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
         auto& i = *mod.m_items[idx];
 
         DEBUG("- " << modpath << "::" << i.name << " (" << ::AST::Item::tag_to_str(i.data.tag()) << ") :: " << i.attrs);
-        ::AST::Path path = modpath + i.name;
+        auto path = modpath + i.name;
 
         if(const auto* mi = i.data.opt_MacroInv() )
         {
@@ -1420,7 +1421,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                 e.name = crate.load_extern_crate( i.span, e.name );
             }
             // Crates imported in root are added to the implicit list
-            if( modpath.nodes().empty() )
+            if( modpath.nodes.empty() )
             {
                 AST::g_implicit_crates.insert( std::make_pair(i.name, e.name) );
             }
@@ -1526,8 +1527,9 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                 auto& ti = trait_items[idx];
                 DEBUG(" - " << ti.name << " " << ti.data.tag_str());
                 auto attrs = mv$(ti.attrs);
+                auto ti_path = path + ti.name;
                 Expand_Attrs_CfgAttr(attrs);
-                Expand_Attrs(attrs, AttrStage::Pre,  crate, AST::Path(), mod, ti.data);
+                Expand_Attrs(attrs, AttrStage::Pre,  crate, ti_path, mod, ti.data);
 
                 TU_MATCH_HDRA( (ti.data), {)
                 default:
@@ -1579,7 +1581,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                 {
                     auto& ti = trait_items[idx];
 
-                    Expand_Attrs(attrs, AttrStage::Post,  crate, AST::Path(), mod, ti.data);
+                    Expand_Attrs(attrs, AttrStage::Post,  crate, ti_path, mod, ti.data);
                     if( ti.attrs.m_items.size() == 0 )
                         ti.attrs = mv$(attrs);
                 }
@@ -1717,7 +1719,7 @@ void Expand(::AST::Crate& crate)
     }
 
     // 3. Module tree
-    Expand_Mod(crate, modstack, ::AST::Path("",{}), crate.m_root_module);
+    Expand_Mod(crate, modstack, ::AST::AbsolutePath(), crate.m_root_module);
 
     //Expand_Attrs(crate.m_attrs, AttrStage::Post,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate); });
 

@@ -28,7 +28,7 @@ namespace AST {
     (Union,     os << "Union";   ),
     (EnumVar,   os << "EnumVar(" << i.idx << ")"; ),
     (TypeAlias, os << "TypeAlias";),
-    (TypeParameter, os << "TyParam(" << i.level << " # " << i.idx << ")"; )
+    (TypeParameter, os << "TyParam(" << i.slot << ")"; )
     )
     return os;
 }
@@ -250,10 +250,8 @@ AST::Path::Path(TagUfcs, TypeRef type, Path trait, ::std::vector<AST::PathNode> 
 }
 AST::Path::Path(const Path& x):
     m_class()
-    //,m_bindings(x.m_bindings)
+    ,m_bindings(x.m_bindings.clone())
 {
-    memcpy(&m_bindings, &x.m_bindings, sizeof(Bindings));
-
     TU_MATCH(Class, (x.m_class), (ent),
     (Invalid, m_class = Class::make_Invalid({});),
     (Local,
@@ -304,8 +302,9 @@ bool Path::is_parent_of(const Path& x) const
 
 void Path::bind_variable(unsigned int slot)
 {
-    m_bindings.value = PathBinding_Value::make_Variable({slot});
+    m_bindings.value.set(AST::AbsolutePath(), PathBinding_Value::make_Variable({slot}));
 }
+#if 0
 void Path::bind_enum_var(const Enum& ent, const RcString& name)
 {
     auto it = ::std::find_if(ent.variants().begin(), ent.variants().end(), [&](const auto& x) { return x.m_name == name; });
@@ -319,6 +318,7 @@ void Path::bind_enum_var(const Enum& ent, const RcString& name)
     m_bindings.type = PathBinding_Type::make_EnumVar({ &ent, idx });
     m_bindings.value = PathBinding_Value::make_EnumVar({ &ent, idx });
 }
+#endif
 
 Path& Path::operator+=(const Path& other)
 {
@@ -386,7 +386,10 @@ void Path::print_pretty(::std::ostream& os, bool is_type_context, bool is_debug)
         }
         else
         {
-            assert( m_bindings.value.is_Variable() || m_bindings.value.is_Generic() || m_bindings.type.is_TypeParameter() );
+            assert(
+                m_bindings.value.binding.is_Variable() || m_bindings.value.binding.is_Generic()
+                || m_bindings.type.binding.is_TypeParameter()
+                );
         }
         os << ent.name;
         }
@@ -454,17 +457,17 @@ void Path::print_pretty(::std::ostream& os, bool is_type_context, bool is_debug)
         bool printed = false;
         if( !m_bindings.value.is_Unbound() ) {
             if(printed) os << ",";
-            os << "v:" << m_bindings.value;
+            os << "v:" << m_bindings.value.binding;
             printed = true;
         }
         if( !m_bindings.type.is_Unbound() ) {
             if(printed) os << ",";
-            os << "t:" << m_bindings.type;
+            os << "t:" << m_bindings.type.binding;
             printed = true;
         }
         if( !m_bindings.macro.is_Unbound() ) {
             if(printed) os << ",";
-            os << "m:" << m_bindings.macro;
+            os << "m:" << m_bindings.macro.binding;
             printed = true;
         }
         if( !printed ) {

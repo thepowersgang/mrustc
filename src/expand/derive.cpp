@@ -2121,7 +2121,7 @@ static const Deriver* find_impl(const RcString& trait_name)
 }
 
 template<typename T>
-static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mod, const AST::Attribute& attr, const AST::Path& path, slice<const AST::Attribute> attrs, const T& item)
+static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mod, const AST::Attribute& attr, const AST::AbsolutePath& path, slice<const AST::Attribute> attrs, const T& item)
 {
     if( !attr.has_sub_items() ) {
         //ERROR(sp, E0000, "#[derive()] requires a list of known traits to derive");
@@ -2210,7 +2210,7 @@ static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mo
         bool found = false;
         if( !mac_path.empty() )
         {
-            auto lex = ProcMacro_Invoke(sp, crate, mac_path, attrs, path.nodes().back().name().c_str(), item);
+            auto lex = ProcMacro_Invoke(sp, crate, mac_path, attrs, path.nodes.back().c_str(), item);
             if( lex )
             {
                 Parse_ModRoot_Items(*lex, mod);
@@ -2238,7 +2238,7 @@ class Decorator_Derive:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
         TU_MATCH_DEF(::AST::Item, (i), (e),
         (

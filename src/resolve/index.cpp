@@ -68,6 +68,11 @@ void _add_item(const Span& sp, AST::Module& mod, IndexName location, const RcStr
     ASSERT_BUG(sp, ir.m_bindings.has_binding(), "Adding item with no binding - " << ir);
     auto& list = get_mod_index(mod, location);
 
+    if(location != IndexName::Namespace)
+    {
+        ASSERT_BUG(sp, ir.m_class.as_Absolute().nodes.size() > 0, "Non-namespace path must have nodes");
+    }
+
     bool was_import = (ir != mod.path() + name);
     if( list.count(name) > 0 )
     {
@@ -81,16 +86,16 @@ void _add_item(const Span& sp, AST::Module& mod, IndexName location, const RcStr
         }
         else
         {
-            DEBUG(location << " name collision - '" << name << "' = " << ir << ", ignored (mod=" << mod.path() << ")");
+            DEBUG(location << " name collision - '" << name << "' = " << ir << ", ignored (mod=" << mod.path() << ", was " << list.at(name).path << ")");
         }
     }
     else
     {
         if( was_import ) {
-            DEBUG("### Import " << location << " item " << name << " = " << ir);
+            DEBUG("### Import " << location << " item " << mod.path() << " :: " << name << " = " << ir);
         }
         else {
-            DEBUG("### Add " << location << " item " << name << " = " << ir);
+            DEBUG("### Add " << location << " item " << mod.path() << " :: " << name << " = " << ir);
         }
         auto rec = list.insert(::std::make_pair(name, ::AST::Module::IndexEnt { is_pub, was_import, mv$(ir) } ));
         assert(rec.second);
@@ -111,7 +116,8 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
     TRACE_FUNCTION_F("mod = " << mod.path());
     for( const auto& i : mod.m_items )
     {
-        ::AST::Path p = mod.path() + i->name;
+        auto ap = mod.path() + i->name;
+        auto p = ::AST::Path(ap);
         //DEBUG("- p = " << p << " : " << ::AST::Item::tag_to_str(i.data.tag()));
 
         TU_MATCH_HDRA( (i->data), {)
@@ -138,47 +144,47 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
             }
         // - Types/modules only
         TU_ARMA(Module, e) {
-            p.m_bindings.type = ::AST::PathBinding_Type::make_Module({&e});
+            p.m_bindings.type.set( ap, ::AST::PathBinding_Type::make_Module({&e}) );
             _add_item(i->span, mod, IndexName::Namespace, i->name, i->is_pub,  mv$(p));
             }
         TU_ARMA(Crate, e) {
             ASSERT_BUG(i->span, crate.m_extern_crates.count(e.name) > 0, "Referenced crate '" << e.name << "' isn't loaded for `extern crate`");
-            p.m_bindings.type = ::AST::PathBinding_Type::make_Crate({ &crate.m_extern_crates.at(e.name) });
+            p.m_bindings.type.set( ap, ::AST::PathBinding_Type::make_Crate({ &crate.m_extern_crates.at(e.name) }) );
             _add_item(i->span, mod, IndexName::Namespace, i->name, i->is_pub,  mv$(p));
             }
         TU_ARMA(Enum, e) {
-            p.m_bindings.type = ::AST::PathBinding_Type::make_Enum({&e});
+            p.m_bindings.type.set( ap, ::AST::PathBinding_Type::make_Enum({&e}) );
             _add_item_type(i->span, mod, i->name, i->is_pub,  mv$(p));
             }
         TU_ARMA(Union, e) {
-            p.m_bindings.type = ::AST::PathBinding_Type::make_Union({&e});
+            p.m_bindings.type.set( ap, ::AST::PathBinding_Type::make_Union({&e}) );
             _add_item_type(i->span, mod, i->name, i->is_pub,  mv$(p));
             }
         TU_ARMA(Trait, e) {
-            p.m_bindings.type = ::AST::PathBinding_Type::make_Trait({&e});
+            p.m_bindings.type.set( ap, ::AST::PathBinding_Type::make_Trait({&e}) );
             _add_item_type(i->span, mod, i->name, i->is_pub,  mv$(p));
             }
         TU_ARMA(Type, e) {
-            p.m_bindings.type = ::AST::PathBinding_Type::make_TypeAlias({&e});
+            p.m_bindings.type.set( ap, ::AST::PathBinding_Type::make_TypeAlias({&e}) );
             _add_item_type(i->span, mod, i->name, i->is_pub,  mv$(p));
             }
         // - Mixed
         TU_ARMA(Struct, e) {
-            p.m_bindings.type = ::AST::PathBinding_Type::make_Struct({&e});
+            p.m_bindings.type.set( ap, ::AST::PathBinding_Type::make_Struct({&e}) );
             // - If the struct is a tuple-like struct (or unit-like), it presents in the value namespace
             if( ! e.m_data.is_Struct() ) {
-                p.m_bindings.value = ::AST::PathBinding_Value::make_Struct({&e});
+                p.m_bindings.value.set( ap, ::AST::PathBinding_Value::make_Struct({&e}) );
                 _add_item_value(i->span, mod, i->name, i->is_pub,  p);
             }
             _add_item_type(i->span, mod, i->name, i->is_pub,  mv$(p));
             }
         // - Values only
         TU_ARMA(Function, e) {
-            p.m_bindings.value = ::AST::PathBinding_Value::make_Function({&e});
+            p.m_bindings.value.set( ap, ::AST::PathBinding_Value::make_Function({&e}) );
             _add_item_value(i->span, mod, i->name, i->is_pub,  mv$(p));
             }
         TU_ARMA(Static, e) {
-            p.m_bindings.value = ::AST::PathBinding_Value::make_Static({&e});
+            p.m_bindings.value.set( ap, ::AST::PathBinding_Value::make_Static({&e}) );
             _add_item_value(i->span, mod, i->name, i->is_pub,  mv$(p));
             }
         }
@@ -187,7 +193,7 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
     for(const auto& item : mod.macros())
     {
         ::AST::Path p = mod.path() + item.name;
-        p.m_bindings.macro = ::AST::PathBinding_Macro::make_MacroRules({nullptr, &*item.data});
+        p.m_bindings.macro.set( mod.path() + item.name, ::AST::PathBinding_Macro::make_MacroRules({nullptr, &*item.data}) );
         // NOTE: Macros can be freely duplicated, BUT the last entry takes precedence (TODO)
         _add_item(item.span, mod, IndexName::Macro, item.name, item.is_pub, mv$(p), /*error_on_collision=*/false);
     }
@@ -202,38 +208,40 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
         for(const auto& i_data : i.data.as_Use().entries)
         if( i_data.name != "" )
         {
+            DEBUG("Use " << i_data.name << " = " << i_data.path);
             // TODO: Ensure that the path is canonical?
 
             const auto& sp = i_data.sp;
             ASSERT_BUG(sp, i_data.path.m_bindings.has_binding(), "`use " << i_data.path << "` left unbound in module " << mod.path());
+            const auto& pb = i_data.path.m_bindings;
 
             bool allow_collide = true;  // Allow collisions (`use` can import mutliple namespaces, local gets priority)
             // - Types
-            TU_MATCH_HDRA( (i_data.path.m_bindings.type), {)
+            TU_MATCH_HDRA( (pb.type.binding), {)
             TU_ARMA(Unbound, _e) {
                 DEBUG(i_data.name << " - Not a type/module");
                 }
             TU_ARMA(TypeParameter, e)
                 BUG(sp, "Import was bound to type parameter");
             TU_ARMA(Crate , e)
-                _add_item(sp, mod, IndexName::Namespace, i_data.name, i.is_pub,  i_data.path, !allow_collide);
+                _add_item(sp, mod, IndexName::Namespace, i_data.name, i.is_pub,  pb.type, !allow_collide);
             TU_ARMA(Module, e)
-                _add_item(sp, mod, IndexName::Namespace, i_data.name, i.is_pub,  i_data.path, !allow_collide);
+                _add_item(sp, mod, IndexName::Namespace, i_data.name, i.is_pub,  pb.type, !allow_collide);
             TU_ARMA(Enum, e)
-                _add_item_type(sp, mod, i_data.name, i.is_pub,  i_data.path, !allow_collide);
+                _add_item_type(sp, mod, i_data.name, i.is_pub,  pb.type, !allow_collide);
             TU_ARMA(Union, e)
-                _add_item_type(sp, mod, i_data.name, i.is_pub,  i_data.path, !allow_collide);
+                _add_item_type(sp, mod, i_data.name, i.is_pub,  pb.type, !allow_collide);
             TU_ARMA(Trait, e)
-                _add_item_type(sp, mod, i_data.name, i.is_pub,  i_data.path, !allow_collide);
+                _add_item_type(sp, mod, i_data.name, i.is_pub,  pb.type, !allow_collide);
             TU_ARMA(TypeAlias, e)
-                _add_item_type(sp, mod, i_data.name, i.is_pub,  i_data.path, !allow_collide);
+                _add_item_type(sp, mod, i_data.name, i.is_pub,  pb.type, !allow_collide);
             TU_ARMA(Struct, e)
-                _add_item_type(sp, mod, i_data.name, i.is_pub,  i_data.path, !allow_collide);
+                _add_item_type(sp, mod, i_data.name, i.is_pub,  pb.type, !allow_collide);
             TU_ARMA(EnumVar, e)
-                _add_item_type(sp, mod, i_data.name, i.is_pub,  i_data.path, !allow_collide);
+                _add_item_type(sp, mod, i_data.name, i.is_pub,  pb.type, !allow_collide);
             }
             // - Values
-            TU_MATCH_HDRA( (i_data.path.m_bindings.value), {)
+            TU_MATCH_HDRA( (pb.value.binding), {)
             TU_ARMA(Unbound, _e) {
                 DEBUG(i_data.name << " - Not a value");
                 }
@@ -242,24 +250,24 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
             TU_ARMA(Generic, e)
                 BUG(sp, "Import was bound to a generic value");
             TU_ARMA(Struct, e)
-                _add_item_value(sp, mod, i_data.name, i.is_pub,  i_data.path, !allow_collide);
+                _add_item_value(sp, mod, i_data.name, i.is_pub,  pb.value, !allow_collide);
             TU_ARMA(EnumVar, e)
-                _add_item_value(sp, mod, i_data.name, i.is_pub,  i_data.path, !allow_collide);
+                _add_item_value(sp, mod, i_data.name, i.is_pub,  pb.value, !allow_collide);
             TU_ARMA(Static  , e)
-                _add_item_value(sp, mod, i_data.name, i.is_pub,  i_data.path, !allow_collide);
+                _add_item_value(sp, mod, i_data.name, i.is_pub,  pb.value, !allow_collide);
             TU_ARMA(Function, e)
-                _add_item_value(sp, mod, i_data.name, i.is_pub,  i_data.path, !allow_collide);
+                _add_item_value(sp, mod, i_data.name, i.is_pub,  pb.value, !allow_collide);
             }
             // - Macros
-            TU_MATCH_HDRA( (i_data.path.m_bindings.macro), {)
+            TU_MATCH_HDRA( (pb.macro.binding), {)
             TU_ARMA(Unbound, _e) {
                 DEBUG(i_data.name << " - Not a macro");
                 }
             TU_ARMA(MacroRules, e) {
-                _add_item(sp, mod, IndexName::Macro, i_data.name, i.is_pub, i_data.path, !allow_collide);
+                _add_item(sp, mod, IndexName::Macro, i_data.name, i.is_pub, pb.macro, !allow_collide);
                 }
             TU_ARMA(ProcMacro, e) {
-                _add_item(sp, mod, IndexName::Macro, i_data.name, i.is_pub, i_data.path, !allow_collide);
+                _add_item(sp, mod, IndexName::Macro, i_data.name, i.is_pub, pb.macro, !allow_collide);
                 }
             TU_ARMA(ProcMacroAttribute, e) {
                 TODO(sp, "ProcMacroAttribute import");
@@ -306,10 +314,12 @@ void Resolve_Index_Module_Wildcard__glob_in_hir_mod(
         const auto& ve = *it.second;
         if( ve.publicity.is_global() ) {
             const auto* vep = &ve.ent;
-            AST::Path   p;
+
+            ::AST::PathBinding<::AST::PathBinding_Type> pb;
             if( vep->is_Import() ) {
                 const auto& spath = vep->as_Import().path;
-                p = hir_to_ast( spath );
+                pb.path.crate = spath.m_crate_name;
+                pb.path.nodes = spath.m_components;
 
                 ASSERT_BUG(sp, crate.m_extern_crates.count(spath.m_crate_name) == 1, "Crate " << spath.m_crate_name << " is not loaded");
                 const auto* hmod = &crate.m_extern_crates.at(spath.m_crate_name).m_hir->m_root_module;
@@ -317,8 +327,8 @@ void Resolve_Index_Module_Wildcard__glob_in_hir_mod(
                     const auto& hit = hmod->m_mod_items.at( spath.m_components[i] );
                     // Only support enums on the penultimate component
                     if( i == spath.m_components.size()-2 && hit->ent.is_Enum() ) {
-                        p.m_bindings.type = ::AST::PathBinding_Type::make_EnumVar({nullptr, 0});
-                        _add_item_type( sp, dst_mod, it.first, is_pub, mv$(p), false );
+                        pb.binding = ::AST::PathBinding_Type::make_EnumVar({nullptr, 0});
+                        _add_item_type( sp, dst_mod, it.first, is_pub, mv$(pb), false );
                         hmod = nullptr;
                         break ;
                     }
@@ -330,120 +340,129 @@ void Resolve_Index_Module_Wildcard__glob_in_hir_mod(
                 vep = &hmod->m_mod_items.at( spath.m_components.back() )->ent;
             }
             else {
-                p = path + it.first;
+                pb.path.crate = path.m_class.as_Absolute().crate;
+                for(auto& n : path.m_class.as_Absolute().nodes)
+                    pb.path.nodes.push_back(n.name());
+                pb.path.nodes.push_back( it.first );
             }
-            TU_MATCHA( (*vep), (e),
-            (Import,
+            TU_MATCH_HDRA( (*vep), {)
+            TU_ARMA(Import, e) {
                 //throw "";
                 TODO(sp, "Get binding for HIR import? " << e.path);
-                ),
-            (Module,
-                p.m_bindings.type = ::AST::PathBinding_Type::make_Module({nullptr, {nullptr, &e}});
-                ),
-            (Trait,
-                p.m_bindings.type = ::AST::PathBinding_Type::make_Trait({nullptr, &e});
-                ),
-            (Struct,
-                p.m_bindings.type = ::AST::PathBinding_Type::make_Struct({nullptr, &e});
-                ),
-            (Union,
-                p.m_bindings.type = ::AST::PathBinding_Type::make_Union({nullptr, &e});
-                ),
-            (Enum,
-                p.m_bindings.type = ::AST::PathBinding_Type::make_Enum({nullptr});
-                ),
-            (TypeAlias,
-                p.m_bindings.type = ::AST::PathBinding_Type::make_TypeAlias({nullptr});
-                ),
-            (ExternType,
-                p.m_bindings.type = ::AST::PathBinding_Type::make_TypeAlias({nullptr});
-                )
-            )
-            _add_item_type( sp, dst_mod, it.first, is_pub, mv$(p), false );
+                }
+            TU_ARMA(Module, e) {
+                pb.binding = ::AST::PathBinding_Type::make_Module({nullptr, {nullptr, &e}});
+                }
+            TU_ARMA(Trait, e) {
+                pb.binding = ::AST::PathBinding_Type::make_Trait({nullptr, &e});
+                }
+            TU_ARMA(Struct, e) {
+                pb.binding = ::AST::PathBinding_Type::make_Struct({nullptr, &e});
+                }
+            TU_ARMA(Union, e) {
+                pb.binding = ::AST::PathBinding_Type::make_Union({nullptr, &e});
+                }
+            TU_ARMA(Enum, e) {
+                pb.binding = ::AST::PathBinding_Type::make_Enum({nullptr});
+                }
+            TU_ARMA(TypeAlias, e) {
+                pb.binding = ::AST::PathBinding_Type::make_TypeAlias({nullptr});
+                }
+            TU_ARMA(ExternType, e) {
+                pb.binding = ::AST::PathBinding_Type::make_TypeAlias({nullptr});
+                }
+            }
+            _add_item_type( sp, dst_mod, it.first, is_pub, mv$(pb), false );
         }
     }
     for(const auto& it : hmod.m_value_items) {
         const auto& ve = *it.second;
         if( ve.publicity.is_global() ) {
-            AST::Path   p;
             const auto* vep = &ve.ent;
+
+            ::AST::PathBinding<::AST::PathBinding_Value> pb;
             if( ve.ent.is_Import() ) {
                 const auto& spath = ve.ent.as_Import().path;
-                p = hir_to_ast( spath );
+                pb.path.crate = spath.m_crate_name;
+                pb.path.nodes = spath.m_components;
 
                 ASSERT_BUG(sp, crate.m_extern_crates.count(spath.m_crate_name) == 1, "Crate " << spath.m_crate_name << " is not loaded");
                 const auto* hmod = &crate.m_extern_crates.at(spath.m_crate_name).m_hir->m_root_module;
                 for(unsigned int i = 0; i < spath.m_components.size()-1; i ++) {
-                    const auto& it = hmod->m_mod_items.at( spath.m_components[i] );
-                    if(it->ent.is_Enum()) {
+                    const auto& hit = hmod->m_mod_items.at( spath.m_components[i] );
+                    if(hit->ent.is_Enum()) {
                         ASSERT_BUG(sp, i + 1 == spath.m_components.size() - 1, "Found enum not at penultimate component of HIR import path");
-                        p.m_bindings.value = ::AST::PathBinding_Value::make_EnumVar({nullptr, 0});  // TODO: What's the index?
-                        vep = nullptr;
+                        pb.binding = ::AST::PathBinding_Value::make_EnumVar({nullptr, 0});  // TODO: What's the index?
+                        _add_item_value( sp, dst_mod, it.first, is_pub, mv$(pb), false );
                         hmod = nullptr;
                         break ;
                     }
-                    ASSERT_BUG(sp, it->ent.is_Module(), "");
-                    hmod = &it->ent.as_Module();
+                    ASSERT_BUG(sp, hit->ent.is_Module(), "Path component " << spath.m_components[i] << " of " << spath << " is not a module, instead " << hit->ent.tag_str());
+                    hmod = &hit->ent.as_Module();
                 }
-                if( hmod )
-                    vep = &hmod->m_value_items.at( spath.m_components.back() )->ent;
+                if( !hmod )
+                    continue ;
+                vep = &hmod->m_value_items.at( spath.m_components.back() )->ent;
             }
             else {
-                p = path + it.first;
+                pb.path.crate = path.m_class.as_Absolute().crate;
+                for(auto& n : path.m_class.as_Absolute().nodes)
+                    pb.path.nodes.push_back(n.name());
+                pb.path.nodes.push_back( it.first );
             }
-            if( vep )
-            {
-                TU_MATCHA( (*vep), (e),
-                (Import,
-                    throw "";
-                    ),
-                (Constant,
-                    p.m_bindings.value = ::AST::PathBinding_Value::make_Static({nullptr});
-                    ),
-                (Static,
-                    p.m_bindings.value = ::AST::PathBinding_Value::make_Static({nullptr});
-                    ),
-                // TODO: What if these refer to an enum variant?
-                (StructConstant,
-                    p.m_bindings.value = ::AST::PathBinding_Value::make_Struct({ nullptr, &crate.m_extern_crates.at(e.ty.m_crate_name).m_hir->get_typeitem_by_path(sp, e.ty, true).as_Struct() });
-                    ),
-                (StructConstructor,
-                    p.m_bindings.value = ::AST::PathBinding_Value::make_Struct({ nullptr, &crate.m_extern_crates.at(e.ty.m_crate_name).m_hir->get_typeitem_by_path(sp, e.ty, true).as_Struct() });
-                    ),
-                (Function,
-                    p.m_bindings.value = ::AST::PathBinding_Value::make_Function({nullptr});
-                    )
-                )
+            assert(vep);
+            TU_MATCH_HDRA( (*vep), {)
+            TU_ARMA(Import, e) {
+                throw "";
+                }
+            TU_ARMA(Constant, e) {
+                pb.binding = ::AST::PathBinding_Value::make_Static({nullptr});
+                }
+            TU_ARMA(Static, e) {
+                pb.binding = ::AST::PathBinding_Value::make_Static({nullptr});
+                }
+            // TODO: What if these refer to an enum variant?
+            TU_ARMA(StructConstant, e) {
+                pb.binding = ::AST::PathBinding_Value::make_Struct({ nullptr, &crate.m_extern_crates.at(e.ty.m_crate_name).m_hir->get_typeitem_by_path(sp, e.ty, true).as_Struct() });
+                }
+            TU_ARMA(StructConstructor, e) {
+                pb.binding = ::AST::PathBinding_Value::make_Struct({ nullptr, &crate.m_extern_crates.at(e.ty.m_crate_name).m_hir->get_typeitem_by_path(sp, e.ty, true).as_Struct() });
+                }
+            TU_ARMA(Function, e) {
+                pb.binding = ::AST::PathBinding_Value::make_Function({nullptr});
+                }
             }
-            _add_item_value( sp, dst_mod, it.first, is_pub, mv$(p), false );
+            _add_item_value( sp, dst_mod, it.first, is_pub, mv$(pb), false );
         }
     }
     for(const auto& it : hmod.m_macro_items) {
         const auto& e = *it.second;
         if( e.publicity.is_global() ) {
-            AST::Path   p;
-
+            ::AST::PathBinding<::AST::PathBinding_Macro>    pb;
             if(const auto* ep = e.ent.opt_Import()) {
-                p = hir_to_ast( ep->path );
+                pb.path.crate = ep->path.m_crate_name;
+                pb.path.nodes = ep->path.m_components;
+                // NOTE: This shouldn't ever be pointing at an import, and no other handling needed
             }
             else {
-                p = path + it.first;
+                pb.path.crate = path.m_class.as_Absolute().crate;
+                for(auto& n : path.m_class.as_Absolute().nodes)
+                    pb.path.nodes.push_back(n.name());
+                pb.path.nodes.push_back( it.first );
             }
 
             TU_MATCH_HDRA( (e.ent), {)
             TU_ARMA(Import, _) {
-                p.m_bindings.macro = ::AST::PathBinding_Macro::make_MacroRules({ nullptr, nullptr });
-                _add_item(sp, dst_mod, IndexName::Macro, it.first, is_pub, mv$(p), false );
+                pb.binding = ::AST::PathBinding_Macro::make_MacroRules({ nullptr, nullptr });
                 }
             TU_ARMA(ProcMacro, me) {
-                p.m_bindings.macro = ::AST::PathBinding_Macro::make_ProcMacro({ nullptr, me.name });
-                _add_item(sp, dst_mod, IndexName::Macro, it.first, is_pub, mv$(p), false );
+                pb.binding = ::AST::PathBinding_Macro::make_ProcMacro({ nullptr, me.name });
                 }
             TU_ARMA(MacroRules, me) {
-                p.m_bindings.macro = ::AST::PathBinding_Macro::make_MacroRules({ nullptr, &*me });
-                _add_item(sp, dst_mod, IndexName::Macro, it.first, is_pub, mv$(p), false );
+                pb.binding = ::AST::PathBinding_Macro::make_MacroRules({ nullptr, &*me });
                 }
             }
+            _add_item(sp, dst_mod, IndexName::Macro, it.first, is_pub, mv$(pb), false );
         }
     }
 }
@@ -494,13 +513,13 @@ void Resolve_Index_Module_Wildcard__use_stmt(AST::Crate& crate, AST::Module& dst
     const auto& sp = i_data.sp;
     const auto& b = i_data.path.m_bindings.type;
 
-    if(const auto* e = b.opt_Crate())
+    if(const auto* e = b.binding.opt_Crate())
     {
         DEBUG("Glob crate " << i_data.path);
         const auto& hmod = e->crate_->m_hir->m_root_module;
         Resolve_Index_Module_Wildcard__glob_in_hir_mod(sp, crate, dst_mod, hmod, i_data.path, is_pub);
     }
-    else if(const auto* e = b.opt_Module() )
+    else if(const auto* e = b.binding.opt_Module() )
     {
         DEBUG("Glob mod " << i_data.path);
         if( !e->module_ )
@@ -514,7 +533,7 @@ void Resolve_Index_Module_Wildcard__use_stmt(AST::Crate& crate, AST::Module& dst
             Resolve_Index_Module_Wildcard__submod(crate, dst_mod, *e->module_, is_pub);
         }
     }
-    else if( const auto* ep = b.opt_Enum() )
+    else if( const auto* ep = b.binding.opt_Enum() )
     {
         const auto& e = *ep;
         ASSERT_BUG(sp, e.enum_ || e.hir, "Glob import but enum pointer not set - " << i_data.path);
@@ -523,14 +542,17 @@ void Resolve_Index_Module_Wildcard__use_stmt(AST::Crate& crate, AST::Module& dst
             DEBUG("Glob enum " << i_data.path << " (AST)");
             unsigned int idx = 0;
             for( const auto& ev : e.enum_->variants() ) {
-                ::AST::Path p = i_data.path + ev.m_name;
                 if( ev.m_data.is_Struct() ) {
-                    p.m_bindings.type = ::AST::PathBinding_Type::make_EnumVar({e.enum_, idx});
-                    _add_item_type ( sp, dst_mod, ev.m_name, is_pub, mv$(p), false );
+                    AST::PathBinding<AST::PathBinding_Type>    pb;
+                    pb.path = b.path + ev.m_name;
+                    pb.binding = ::AST::PathBinding_Type::make_EnumVar({e.enum_, idx});
+                    _add_item_type( sp, dst_mod, ev.m_name, is_pub, mv$(pb), false );
                 }
                 else {
-                    p.m_bindings.value = ::AST::PathBinding_Value::make_EnumVar({e.enum_, idx});
-                    _add_item_value( sp, dst_mod, ev.m_name, is_pub, mv$(p), false );
+                    AST::PathBinding<AST::PathBinding_Value>    pb;
+                    pb.path = b.path + ev.m_name;
+                    pb.binding = ::AST::PathBinding_Value::make_EnumVar({e.enum_, idx});
+                    _add_item_value( sp, dst_mod, ev.m_name, is_pub, mv$(pb), false );
                 }
 
                 idx += 1;
@@ -545,10 +567,10 @@ void Resolve_Index_Module_Wildcard__use_stmt(AST::Crate& crate, AST::Module& dst
                 const auto* de = e.hir->m_data.opt_Value();
                 for(const auto& ev : de->variants)
                 {
-                    ::AST::Path p = i_data.path + ev.name;
-                    p.m_bindings.value = ::AST::PathBinding_Value::make_EnumVar({nullptr, idx, e.hir});
-
-                    _add_item_value( sp, dst_mod, ev.name, is_pub, mv$(p), false );
+                    AST::PathBinding<AST::PathBinding_Value>    pb;
+                    pb.path = b.path + ev.name;
+                    pb.binding = ::AST::PathBinding_Value::make_EnumVar({nullptr, idx, e.hir});
+                    _add_item_value( sp, dst_mod, ev.name, is_pub, mv$(pb), false );
 
                     idx += 1;
                 }
@@ -558,15 +580,17 @@ void Resolve_Index_Module_Wildcard__use_stmt(AST::Crate& crate, AST::Module& dst
                 const auto* de = &e.hir->m_data.as_Data();
                 for(const auto& ev : *de)
                 {
-                    ::AST::Path p = i_data.path + ev.name;
-
                     if( ev.is_struct ) {
-                        p.m_bindings.type = ::AST::PathBinding_Type::make_EnumVar({nullptr, idx, e.hir});
-                        _add_item_type ( sp, dst_mod, ev.name, is_pub, mv$(p), false );
+                        AST::PathBinding<AST::PathBinding_Type>    pb;
+                        pb.path = b.path + ev.name;
+                        pb.binding = ::AST::PathBinding_Type::make_EnumVar({nullptr, idx, e.hir});
+                        _add_item_type ( sp, dst_mod, ev.name, is_pub, mv$(pb), false );
                     }
                     else {
-                        p.m_bindings.value = ::AST::PathBinding_Value::make_EnumVar({nullptr, idx, e.hir});
-                        _add_item_value( sp, dst_mod, ev.name, is_pub, mv$(p), false );
+                        AST::PathBinding<AST::PathBinding_Value>    pb;
+                        pb.path = b.path + ev.name;
+                        pb.binding = ::AST::PathBinding_Value::make_EnumVar({nullptr, idx, e.hir});
+                        _add_item_value( sp, dst_mod, ev.name, is_pub, mv$(pb), false );
                     }
 
                     idx += 1;
@@ -576,7 +600,7 @@ void Resolve_Index_Module_Wildcard__use_stmt(AST::Crate& crate, AST::Module& dst
     }
     else
     {
-        BUG(sp, "Invalid path binding for glob import: " << b.tag_str() << " - "<<i_data.path);
+        BUG(sp, "Invalid path binding for glob import: " << b.binding.tag_str() << " - "<< i_data.path);
     }
 }
 
@@ -764,17 +788,17 @@ bool Resolve_Index_Module_Normalise_Path(const ::AST::Crate& crate, const Span& 
             return Resolve_Index_Module_Normalise_Path(crate, sp, path, loc);
         }
         else {
-            TU_MATCH_HDR( (ie.path.m_bindings.type), {)
+            TU_MATCH_HDRA( (ie.path.m_bindings.type.binding), {)
             default:
                 BUG(sp, "Path " << path << " pointed to non-module " << ie.path);
-            TU_ARM( ie.path.m_bindings.type, Module, e) {
+            TU_ARMA(Module, e) {
                 mod = e.module_;
                 }
-            TU_ARM( ie.path.m_bindings.type, Crate, e) {
+            TU_ARMA(Crate, e) {
                 Resolve_Index_Module_Normalise_Path_ext(crate, sp, path, loc, *e.crate_, i+1);
                 return false;
                 }
-            TU_ARM( ie.path.m_bindings.type, Enum, e) {
+            TU_ARMA(Enum, e) {
                 // NOTE: Just assuming that if an Enum is hit, it's sane
                 return false;
                 }

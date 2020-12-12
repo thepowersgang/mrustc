@@ -58,7 +58,7 @@ namespace {
 namespace AST {
 
 Crate::Crate():
-    m_root_module(::AST::Path("",{})),
+    m_root_module(AST::AbsolutePath()),
     m_load_std(LOAD_STD)
 {
 }

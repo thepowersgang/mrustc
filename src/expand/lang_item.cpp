@@ -11,7 +11,7 @@
 #include "../ast/crate.hpp"
 
 
-void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, const ::std::string& name, AST::eItemType type)
+void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::AbsolutePath& path, const ::std::string& name, AST::eItemType type)
 {
     if(name == "phantom_fn") {
         // - Just save path
@@ -176,7 +176,7 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
         return ;
     }
 
-    auto rv = crate.m_lang_items.insert( ::std::make_pair( name, ::AST::Path(path) ) );
+    auto rv = crate.m_lang_items.insert( ::std::make_pair(name, path) );
     if( !rv.second ) {
         const auto& other_path = rv.first->second;
         if( path != other_path ) {
@@ -191,7 +191,7 @@ class Decorator_LangItem:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
         TU_MATCH_DEF(::AST::Item, (i), (e),
         (
@@ -272,19 +272,19 @@ class Decorator_Main:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
         if( i.is_None() ) {
             // Ignore.
         }
-        else TU_IFLET(::AST::Item, i, Function, e,
-            auto rv = crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-main"), ::AST::Path(path) ));
+        else if( /*const auto* e =*/ i.opt_Function() ) {
+            auto rv = crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-main"), path ));
             if( !rv.second )
             {
                 const auto& other_path = rv.first->second;
                 ERROR(sp, E0000, "Duplicate definition of #[main] - " << other_path << " and " << path);
             }
-        )
+        }
         else {
             ERROR(sp, E0000, "#[main] on non-function " << path);
         }
@@ -296,16 +296,20 @@ class Decorator_Start:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
-        TU_IFLET(::AST::Item, i, Function, e,
-            auto rv = crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-start"), ::AST::Path(path) ));
+        if(i.is_None())
+        {
+        }
+        else if(i.is_Function())
+        {
+            auto rv = crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-start"), path ));
             if( !rv.second )
             {
                 const auto& other_path = rv.first->second;
                 ERROR(sp, E0000, "Duplicate definition of #[start] - " << other_path << " and " << path);
             }
-        )
+        }
         else {
             ERROR(sp, E0000, "#[start] on non-function " << path);
         }
@@ -317,16 +321,17 @@ class Decorator_PanicImplementation:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
-        TU_IFLET(::AST::Item, i, Function, e,
-            auto rv = crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-panic_implementation"), ::AST::Path(path) ));
+        if(i.is_Function())
+        {
+            auto rv = crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-panic_implementation"), path ));
             if( !rv.second )
             {
                 const auto& other_path = rv.first->second;
                 ERROR(sp, E0000, "Duplicate definition of #[panic_implementation] - " << other_path << " and " << path);
             }
-        )
+        }
         else {
             ERROR(sp, E0000, "#[panic_implementation] on non-function " << path);
         }
@@ -338,11 +343,11 @@ class Decorator_PanicHandler:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
         if(const auto* _e = i.opt_Function())
         {
-            auto rv = crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-panic_implementation"), ::AST::Path(path) ));
+            auto rv = crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-panic_implementation"), path ));
             if( !rv.second )
             {
                 const auto& other_path = rv.first->second;
@@ -360,7 +365,7 @@ class Decorator_RustcStdInternalSymbol:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
         // Attribute that acts as like `#[no_mangle]` `#[linkage="external"]`
     }

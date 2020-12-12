@@ -46,4 +46,12 @@
       <Item Name="Struct" Condition="m_tag == TAG_Struct">m_data.Struct</Item>
     </Expand>
   </Type>
+
+  <Type Name="AST::Path::Class">
+    <DisplayString Condition="m_tag == TAG_Absolute">Absolute {m_data.Absolute}</DisplayString>
+    <Expand>
+      <Item Name="Relative" Condition="m_tag == TAG_Relative">m_data.Relative</Item>
+      <Item Name="Absolute" Condition="m_tag == TAG_Absolute">m_data.Absolute</Item>
+    </Expand>
+  </Type>
 </AutoVisualizer>

@@ -42,7 +42,7 @@ class CMacroUseHandler:
 {
     AttrStage stage() const override { return AttrStage::Post; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
         TRACE_FUNCTION_F("[CMacroUseHandler] path=" << path);
 
@@ -178,7 +178,7 @@ class CMacroExportHandler:
 {
     AttrStage stage() const override { return AttrStage::Post; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
         // TODO: Flags on the attribute
         // - `local_inner_macros`: Forces macro lookups within the expansion to search within the source crate
@@ -258,7 +258,7 @@ class CMacroReexportHandler:
     public ExpandDecorator
 {
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
         if( !i.is_Crate() ) {
             ERROR(sp, E0000, "Use of #[macro_reexport] on non-crate - " << i.tag_str());
@@ -292,7 +292,7 @@ class CBuiltinMacroHandler:
     public ExpandDecorator
 {
     AttrStage stage() const override { return AttrStage::Pre; }
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
         RcString    name;
         if(i.is_MacroInv()) {
@@ -303,7 +303,7 @@ class CBuiltinMacroHandler:
             name = e.input_ident();
         }
         else if(i.is_Macro()) {
-            name = path.nodes().back().name();
+            name = path.nodes.back();
         }
         else {
             ERROR(sp, E0000, "Use of #[rustc_builtin_macro] on non-macro - " << i.tag_str());
