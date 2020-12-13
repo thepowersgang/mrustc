@@ -103,20 +103,10 @@ class CMacroUseHandler:
                         continue ;
                     }
                     ASSERT_BUG(sp, crate.m_extern_crates.count(imp->path.m_crate_name), "Crate `" << imp->path.m_crate_name << "` not loaded");
-                    const ::HIR::Module* mod = &crate.m_extern_crates.at(imp->path.m_crate_name).m_hir->m_root_module;
-                    assert(imp->path.m_components.size() > 0);
-                    for(size_t i = 0; i < imp->path.m_components.size() - 1; i ++)
-                    {
-                        const auto& cname = imp->path.m_components[i];
-                        auto it = mod->m_mod_items.find(cname);
-                        ASSERT_BUG(sp, it != mod->m_mod_items.end(), "Component " << i << " of " << imp->path << " not found");
-                        const auto& se = (*it).second->ent;
-                        ASSERT_BUG(sp, se.is_Module(), "Component " << i << " of " << imp->path << " not a module - " << se.tag_str());
-                        mod = &se.as_Module();
-                    }
+                    const ::HIR::Module& mod = crate.m_extern_crates.at(imp->path.m_crate_name).m_hir->get_mod_by_path(sp, imp->path, /*ignore_last_node*/true, /*ignore_crate_name*/true);
 
-                    ASSERT_BUG(sp, mod->m_macro_items.count(imp->path.m_components.back()), "Failed to find final component of " << imp->path);
-                    e = &*mod->m_macro_items.at(imp->path.m_components.back());
+                    ASSERT_BUG(sp, mod.m_macro_items.count(imp->path.m_components.back()), "Failed to find final component of " << imp->path);
+                    e = &*mod.m_macro_items.at(imp->path.m_components.back());
                     ASSERT_BUG(sp, !e->ent.is_Import(), "Recursive import");
                 }
 
