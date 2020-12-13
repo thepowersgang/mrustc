@@ -253,6 +253,15 @@ struct PathBinding
     PathBinding<T> clone() const {
         return PathBinding(path, binding.clone());
     }
+    friend ::std::ostream& operator<<(::std::ostream& os, const PathBinding<T>& x) {
+        if(!x.is_Unbound()) {
+            os << x.binding << "[" << x.path << "]";
+        }
+        else {
+            os << "Unbound";
+        }
+        return os;
+    }
 };
 
 class PathParamEnt;
