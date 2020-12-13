@@ -1669,6 +1669,7 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
                 {
                     p.nodes().push_back( mv$(e.nodes[i]) );
                 }
+                p.m_bindings = ::AST::Path::Bindings {};
             }
             path = mv$(p);
         }
@@ -2181,7 +2182,7 @@ void Resolve_Absolute_PatternValue(/*const*/ Context& context, const Span& sp, :
 }
 void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pattern& pat)
 {
-    TRACE_FUNCTION_F("allow_refutable = " << allow_refutable << ", pat = " << pat);
+    TRACE_FUNCTION_FR("allow_refutable = " << allow_refutable << ", pat = " << pat, pat);
     if( pat.binding().is_valid() ) {
         if( !pat.data().is_Any() && ! allow_refutable )
             TODO(pat.span(), "Resolve_Absolute_Pattern - Encountered bound destructuring pattern");

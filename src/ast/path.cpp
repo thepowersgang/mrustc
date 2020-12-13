@@ -457,17 +457,17 @@ void Path::print_pretty(::std::ostream& os, bool is_type_context, bool is_debug)
         bool printed = false;
         if( !m_bindings.value.is_Unbound() ) {
             if(printed) os << ",";
-            os << "v:" << m_bindings.value.binding;
+            os << "v:" << m_bindings.value;
             printed = true;
         }
         if( !m_bindings.type.is_Unbound() ) {
             if(printed) os << ",";
-            os << "t:" << m_bindings.type.binding;
+            os << "t:" << m_bindings.type;
             printed = true;
         }
         if( !m_bindings.macro.is_Unbound() ) {
             if(printed) os << ",";
-            os << "m:" << m_bindings.macro.binding;
+            os << "m:" << m_bindings.macro;
             printed = true;
         }
         if( !printed ) {

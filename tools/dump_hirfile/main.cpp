@@ -19,8 +19,11 @@ struct Dumper
     struct Filters {
         struct Types {
             bool    macros = true;
+
+            bool    imports = true;
             bool    functions = true;
-            bool    statics = true;
+            bool    values = true;
+
             bool    types = true;
             bool    traits = true;
         } types;
@@ -29,9 +32,13 @@ struct Dumper
     } filters;
 
     void dump_crate(const char* name, const ::HIR::Crate& crate) const;
-    void dump_module(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Module& mod) const;
-    void dump_function(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Function& fcn, int indent=0) const;
-    void dump_trait(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Trait& trait, int indent=0) const;
+    void dump_module(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Module& mod, int nindent=0) const;
+    void dump_mod_import(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::TypeItem::Data_Import& imp, int nindent=0) const;
+    void dump_struct(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Struct& item, int nindent=0) const;
+    void dump_trait(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Trait& trait, int nindent=0) const;
+
+    void dump_value_import(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::ValueItem::Data_Import& imp, int nindent=0) const;
+    void dump_function(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Function& fcn, int nindent=0) const;
 
     void dump_macrorules(const RcString& name, const MacroRules& rules) const;
 };
@@ -112,7 +119,7 @@ void Dumper::dump_crate(const char* name, const ::HIR::Crate& crate) const
         ::std::cout << "}" << ::std::endl;
     });
 }
-void Dumper::dump_module(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Module& mod) const
+void Dumper::dump_module(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Module& mod, int nindent/*=0*/) const
 {
     if( filters.public_only && !pub.is_global() )
     {
@@ -144,7 +151,7 @@ void Dumper::dump_module(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const 
             this->dump_module(sub_ip, i.second->publicity, e);
             }
         TU_ARMA(Import, e) {
-            //this->dump_mod_import(sub_ip, e);
+            this->dump_mod_import(sub_ip, i.second->publicity, e);
             }
         TU_ARMA(TypeAlias, e) {
             //this->dump_type_alias(sub_ip, e);
@@ -156,7 +163,7 @@ void Dumper::dump_module(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const 
             //this->dump_enum(sub_ip, e);
             }
         TU_ARMA(Struct, e) {
-            //this->dump_enum(sub_ip, e);
+            this->dump_struct(sub_ip, i.second->publicity, e);
             }
         TU_ARMA(Union, e) {
             //this->dump_trait(sub_ip, e);
@@ -172,13 +179,13 @@ void Dumper::dump_module(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const 
         //::std::cout << "// " << i.second->ent.tagstr() << " " << sub_ip << "\n";
         TU_MATCH_HDRA( (i.second->ent), {)
         TU_ARMA(Import, e) {
-            //this->dump_val_import(sub_ip, e);
+            this->dump_value_import(sub_ip, i.second->publicity, e);
             }
         TU_ARMA(Constant, e) {
             //this->dump_constant(sub_ip, e);
             }
         TU_ARMA(Static, e) {
-            //this->dump_constant(sub_ip, e);
+            //this->dump_static(sub_ip, e);
             }
         TU_ARMA(StructConstant, e) {
             //this->dump_constant(sub_ip, e);
@@ -191,6 +198,71 @@ void Dumper::dump_module(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const 
             }
         }
     }
+}
+void Dumper::dump_mod_import(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::TypeItem::Data_Import& imp, int nindent/*=0*/) const
+{
+    auto indent = RepeatLitStr { "   ", nindent };
+    if( !this->filters.types.imports  ) {
+        return ;
+    }
+    if( filters.public_only && !pub.is_global() ) {
+        return ;
+    }
+    ::std::cout << indent << pub << "use[type] " << ip << " = " << imp.path;
+    if(imp.is_variant)
+    {
+        ::std::cout << "#" << imp.idx;
+    }
+    ::std::cout << "\n";
+}
+void Dumper::dump_struct(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Struct& item, int nindent/*=0*/) const
+{
+    auto indent = RepeatLitStr { "   ", nindent };
+    if( !this->filters.types.types ) {
+        return ;
+    }
+    if( !filters.public_only && !pub.is_global() ) {
+        return ;
+    }
+    ::std::cout << indent << "struct " << ip << item.m_params.fmt_args() << "\n";
+    ::std::cout << indent << "{\n";
+    auto indent2 = RepeatLitStr { "   ", nindent+1 };
+    // ...
+    ::std::cout << indent << "}\n";
+    ::std::cout << ::std::endl;
+}
+void Dumper::dump_trait(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Trait& trait, int nindent/*=0*/) const
+{
+    auto indent = RepeatLitStr { "   ", nindent };
+    if( !this->filters.types.traits ) {
+        return ;
+    }
+    if( !filters.public_only && !pub.is_global() ) {
+        return ;
+    }
+    ::std::cout << indent << "trait " << ip << trait.m_params.fmt_args() << "\n";
+    ::std::cout << indent << "{\n";
+    auto indent2 = RepeatLitStr { "   ", nindent+1 };
+    // ...
+    ::std::cout << indent << "}\n";
+    ::std::cout << ::std::endl;
+}
+
+void Dumper::dump_value_import(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::ValueItem::Data_Import& imp, int nindent/*=0*/) const
+{
+    auto indent = RepeatLitStr { "   ", nindent };
+    if( !this->filters.types.imports ) {
+        return ;
+    }
+    if( filters.public_only && !pub.is_global() ) {
+        return ;
+    }
+    ::std::cout << indent << pub << "use[value] " << ip << " = " << imp.path;
+    if(imp.is_variant)
+    {
+        ::std::cout << "#" << imp.idx;
+    }
+    ::std::cout << "\n";
 }
 void Dumper::dump_function(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Function& fcn, int nindent/*=0*/) const
 {
@@ -221,22 +293,8 @@ void Dumper::dump_function(::HIR::ItemPath ip, const ::HIR::Publicity& pub, cons
         ::std::cout << ";" << ::std::endl;
     }
 }
-void Dumper::dump_trait(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Trait& trait, int nindent/*=0*/) const
-{
-    auto indent = RepeatLitStr { "   ", nindent };
-    if( !this->filters.types.functions ) {
-        return ;
-    }
-    if( !filters.public_only && !pub.is_global() ) {
-        return ;
-    }
-    ::std::cout << indent << "trait " << ip << trait.m_params.fmt_args() << "\n";
-    ::std::cout << indent << "{\n";
-    auto indent2 = RepeatLitStr { "   ", nindent+1 };
-    // ...
-    ::std::cout << indent << "}\n";
-    ::std::cout << ::std::endl;
-}
+
+
 
 void Dumper::dump_macrorules(const RcString& name, const MacroRules& rules) const
 {

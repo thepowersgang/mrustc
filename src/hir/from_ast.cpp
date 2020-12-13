@@ -412,12 +412,13 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
         for(const auto& sp : e.sub_patterns)
             sub_patterns.push_back( ::std::make_pair(sp.first, LowerHIR_Pattern(sp.second)) );
 
+        // No sub-patterns, no `..`, and the VALUE binding points to an enum variant
         if( e.sub_patterns.empty() && !e.is_exhaustive ) {
             if( e.path.m_bindings.value.binding.is_EnumVar() ) {
                 return ::HIR::Pattern {
                     mv$(binding),
                     ::HIR::Pattern::Data::make_EnumStruct({
-                        LowerHIR_GenericPath(pat.span(), e.path, FromAST_PathClass::Type),
+                        LowerHIR_GenericPath(pat.span(), e.path, FromAST_PathClass::Value),
                         nullptr, 0,
                         mv$(sub_patterns),
                         e.is_exhaustive

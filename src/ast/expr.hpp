@@ -689,8 +689,10 @@ class NodeVisitorDef:
 {
 public:
     inline void visit(const unique_ptr<ExprNode>& cnode) {
-        if(cnode.get())
+        if(cnode.get()) {
+            TRACE_FUNCTION_F(typeid(*cnode).name());
             cnode->visit(*this);
+        }
     }
     #define NT(nt) \
         virtual void visit(nt& node) override;/* \

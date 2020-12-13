@@ -76,26 +76,32 @@ void _add_item(const Span& sp, AST::Module& mod, IndexName location, const RcStr
     bool was_import = (ir != mod.path() + name);
     if( list.count(name) > 0 )
     {
+        auto& e = list.at(name);
         if( error_on_collision )
         {
-            ERROR(sp, E0000, "Duplicate definition of name '" << name << "' in " << location << " scope (" << mod.path() << ") " << ir << ", and " << list[name].path);
+            ERROR(sp, E0000, "Duplicate definition of name '" << name << "' in " << location << " scope (" << mod.path() << ") " << ir << ", and " << e.path);
         }
-        else if( list.at(name).path == ir )
+        else if( e.path == ir )
         {
             // Ignore, re-import of the same thing
+            if(!e.is_pub && is_pub)
+            {
+                e.is_pub = is_pub;
+                DEBUG("### Import " << location << " item " << mod.path() << " :: " << name << " = " << ir << " (update to pub)");
+            }
         }
         else
         {
-            DEBUG(location << " name collision - '" << name << "' = " << ir << ", ignored (mod=" << mod.path() << ", was " << list.at(name).path << ")");
+            DEBUG(location << " name collision - '" << name << "' = " << ir << ", ignored (mod=" << mod.path() << ", was " << e.path << ")");
         }
     }
     else
     {
         if( was_import ) {
-            DEBUG("### Import " << location << " item " << mod.path() << " :: " << name << " = " << ir);
+            DEBUG("### Import " << location << " item " << mod.path() << " :: " << name << " = " << ir << (is_pub ? " pub" : ""));
         }
         else {
-            DEBUG("### Add " << location << " item " << mod.path() << " :: " << name << " = " << ir);
+            DEBUG("### Add " << location << " item " << mod.path() << " :: " << name << " = " << ir << (is_pub ? " pub" : ""));
         }
         auto rec = list.insert(::std::make_pair(name, ::AST::Module::IndexEnt { is_pub, was_import, mv$(ir) } ));
         assert(rec.second);
@@ -307,7 +313,8 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
 void Resolve_Index_Module_Wildcard__glob_in_hir_mod(
     const Span& sp, const AST::Crate& crate, AST::Module& dst_mod,
     /*const AST::ExternCrate& hcrate,*/ const ::HIR::Module& hmod,
-    const ::AST::Path& path, bool is_pub
+    const ::AST::Path& path, bool is_pub,
+    AST::AbsolutePath mod_ap
     )
 {
     for(const auto& it : hmod.m_mod_items) {
@@ -340,10 +347,7 @@ void Resolve_Index_Module_Wildcard__glob_in_hir_mod(
                 vep = &hmod->m_mod_items.at( spath.m_components.back() )->ent;
             }
             else {
-                pb.path.crate = path.m_class.as_Absolute().crate;
-                for(auto& n : path.m_class.as_Absolute().nodes)
-                    pb.path.nodes.push_back(n.name());
-                pb.path.nodes.push_back( it.first );
+                pb.path = mod_ap + it.first;
             }
             TU_MATCH_HDRA( (*vep), {)
             TU_ARMA(Import, e) {
@@ -405,10 +409,7 @@ void Resolve_Index_Module_Wildcard__glob_in_hir_mod(
                 vep = &hmod->m_value_items.at( spath.m_components.back() )->ent;
             }
             else {
-                pb.path.crate = path.m_class.as_Absolute().crate;
-                for(auto& n : path.m_class.as_Absolute().nodes)
-                    pb.path.nodes.push_back(n.name());
-                pb.path.nodes.push_back( it.first );
+                pb.path = mod_ap + it.first;
             }
             assert(vep);
             TU_MATCH_HDRA( (*vep), {)
@@ -445,10 +446,7 @@ void Resolve_Index_Module_Wildcard__glob_in_hir_mod(
                 // NOTE: This shouldn't ever be pointing at an import, and no other handling needed
             }
             else {
-                pb.path.crate = path.m_class.as_Absolute().crate;
-                for(auto& n : path.m_class.as_Absolute().nodes)
-                    pb.path.nodes.push_back(n.name());
-                pb.path.nodes.push_back( it.first );
+                pb.path = mod_ap + it.first;
             }
 
             TU_MATCH_HDRA( (e.ent), {)
@@ -517,7 +515,7 @@ void Resolve_Index_Module_Wildcard__use_stmt(AST::Crate& crate, AST::Module& dst
     {
         DEBUG("Glob crate " << i_data.path);
         const auto& hmod = e->crate_->m_hir->m_root_module;
-        Resolve_Index_Module_Wildcard__glob_in_hir_mod(sp, crate, dst_mod, hmod, i_data.path, is_pub);
+        Resolve_Index_Module_Wildcard__glob_in_hir_mod(sp, crate, dst_mod, hmod, i_data.path, is_pub, b.path);
     }
     else if(const auto* e = b.binding.opt_Module() )
     {
@@ -526,7 +524,7 @@ void Resolve_Index_Module_Wildcard__use_stmt(AST::Crate& crate, AST::Module& dst
         {
             ASSERT_BUG(sp, e->hir.mod, "Glob import where HIR module pointer not set - " << i_data.path);
             const auto& hmod = *e->hir.mod;
-            Resolve_Index_Module_Wildcard__glob_in_hir_mod(sp, crate, dst_mod, hmod, i_data.path, is_pub);
+            Resolve_Index_Module_Wildcard__glob_in_hir_mod(sp, crate, dst_mod, hmod, i_data.path, is_pub, b.path);
         }
         else
         {

@@ -597,14 +597,15 @@ namespace {
     AST::AbsolutePath ap
     )
 {
+    if(ap.crate == "")
+        ap.crate = hcrate.m_name;
+
     ::AST::Path::Bindings   rv;
     //TRACE_FUNCTION_FR(path << " offset " << start, rv.value << rv.type << rv.macro);
-    TRACE_FUNCTION_F(path << " offset " << start);
+    TRACE_FUNCTION_F(path << " offset " << start << " [" << ap << "]");
     const auto& nodes = path.nodes();
     const ::HIR::Module* hmod = &hmodr;
 
-    if(ap.crate == "")
-        ap.crate = hcrate.m_name;
     for(unsigned int i = start; i < nodes.size(); i ++)
         ap.nodes.push_back( nodes[i].name() );
 
@@ -687,6 +688,7 @@ namespace {
         if( it != hmod->m_mod_items.end() )
         {
             const auto* item_ptr = &it->second->ent;
+            auto ap2 = ap; auto ap = ap2;
             DEBUG("E : Mod " << nodes.back().name() << " = " << item_ptr->tag_str());
             if( item_ptr->is_Import() ) {
                 const auto& e = item_ptr->as_Import();
@@ -751,6 +753,7 @@ namespace {
         auto it2 = hmod->m_value_items.find(nodes.back().name());
         if( it2 != hmod->m_value_items.end() ) {
             const auto* item_ptr = &it2->second->ent;
+            auto ap2 = ap; auto ap = ap2;
             DEBUG("E : Value " << nodes.back().name() << " = " << item_ptr->tag_str());
             if( item_ptr->is_Import() ) {
                 const auto& e = item_ptr->as_Import();
@@ -807,6 +810,7 @@ namespace {
         auto it2 = hmod->m_macro_items.find(nodes.back().name());
         if( it2 != hmod->m_macro_items.end() ) {
             const auto* item_ptr = &it2->second->ent;
+            auto ap2 = ap; auto ap = ap2;
             DEBUG("E : Macro " << nodes.back().name() << " = " << item_ptr->tag_str());
 
             if( const auto* imp = item_ptr->opt_Import() ) {
