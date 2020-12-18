@@ -1053,7 +1053,7 @@ ExprNodeP Parse_ExprVal_StructLiteral(TokenStream& lex, AST::Path path)
         ExprNodeP   val;
         if( lex.lookahead(0) != TOK_COLON )
         {
-            val = NEWNODE( AST::ExprNode_NamedValue, ::AST::Path(::AST::Path::TagRelative{}, h, { ::AST::PathNode(name) }) );
+            val = NEWNODE( AST::ExprNode_NamedValue, ::AST::Path::new_relative( h, { ::AST::PathNode(name) }) );
         }
         else
         {
@@ -1188,7 +1188,7 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
     // `self` can be a value, or start a path
     case TOK_RWORD_SELF:
         if( LOOK_AHEAD(lex) != TOK_DOUBLE_COLON ) {
-            return NEWNODE( AST::ExprNode_NamedValue, AST::Path(AST::Path::TagLocal(), "self") );
+            return NEWNODE( AST::ExprNode_NamedValue, AST::Path("self") );
         }
         // Fall through to normal paths
     case TOK_DOUBLE_LT:

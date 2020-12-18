@@ -240,20 +240,22 @@ typename ::std::vector<Named<T> >::const_iterator find_named(const ::std::vector
 AST::Path::~Path()
 {
 }
-AST::Path::Path(TagUfcs, TypeRef type, ::std::vector<AST::PathNode> nodes):
-    m_class( AST::Path::Class::make_UFCS({box$(type), nullptr, nodes}) )
+AST::Path AST::Path::new_ufcs_ty(TypeRef type, ::std::vector<AST::PathNode> nodes)
 {
+    return AST::Path( AST::Path::Class::make_UFCS({box$(type), nullptr, nodes}) );
 }
-AST::Path::Path(TagUfcs, TypeRef type, Path trait, ::std::vector<AST::PathNode> nodes):
-    m_class( AST::Path::Class::make_UFCS({box$(type), box$(trait), nodes}) )
+AST::Path AST::Path::new_ufcs_trait(TypeRef type, Path trait, ::std::vector<AST::PathNode> nodes)
 {
+    return AST::Path( AST::Path::Class::make_UFCS({box$(type), box$(trait), nodes}) );
 }
 AST::Path::Path(const Path& x):
     m_class()
     ,m_bindings(x.m_bindings.clone())
 {
     TU_MATCH(Class, (x.m_class), (ent),
-    (Invalid, m_class = Class::make_Invalid({});),
+    (Invalid,
+        m_class = Class::make_Invalid({});
+        ),
     (Local,
         m_class = Class::make_Local({ent.name});
         ),

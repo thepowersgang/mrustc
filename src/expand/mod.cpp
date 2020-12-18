@@ -471,31 +471,31 @@ void Expand_Path(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST:
         }
         };
 
-    TU_MATCHA( (p.m_class), (pe),
-    (Invalid,
-        ),
-    (Local,
-        ),
-    (Relative,
+    TU_MATCH_HDRA( (p.m_class), {)
+    TU_ARMA(Invalid, pe) {
+        }
+    TU_ARMA(Local, pe) {
+        }
+    TU_ARMA(Relative, pe) {
         expand_nodes(pe.nodes);
-        ),
-    (Self,
+        }
+    TU_ARMA(Self, pe) {
         expand_nodes(pe.nodes);
-        ),
-    (Super,
+        }
+    TU_ARMA(Super, pe) {
         expand_nodes(pe.nodes);
-        ),
-    (Absolute,
+        }
+    TU_ARMA(Absolute, pe) {
         expand_nodes(pe.nodes);
-        ),
-    (UFCS,
+        }
+    TU_ARMA(UFCS, pe) {
         Expand_Type(crate, modstack, mod, *pe.type);
         if( pe.trait ) {
             Expand_Path(crate, modstack, mod, *pe.trait);
         }
         expand_nodes(pe.nodes);
-        )
-    )
+        }
+    }
 }
 
 struct CExpandExpr:
@@ -800,7 +800,7 @@ struct CExpandExpr:
 
             replacement.reset(new ::AST::ExprNode_Match(
                 ::AST::ExprNodeP(new ::AST::ExprNode_CallPath(
-                    ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(node.span()), path_IntoIterator, { ::AST::PathNode("into_iter") } ),
+                    ::AST::Path::new_ufcs_trait( ::TypeRef(node.span()), path_IntoIterator, { ::AST::PathNode("into_iter") } ),
                     ::make_vec1( mv$(node.m_cond) )
                     )),
                 ::make_vec1(::AST::ExprNode_Match_Arm(
@@ -810,7 +810,7 @@ struct CExpandExpr:
                         node.m_label,
                         ::AST::ExprNodeP(new ::AST::ExprNode_Match(
                             ::AST::ExprNodeP(new ::AST::ExprNode_CallPath(
-                                ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(node.span()), path_Iterator, { ::AST::PathNode("next") } ),
+                                ::AST::Path::new_ufcs_trait( ::TypeRef(node.span()), path_Iterator, { ::AST::PathNode("next") } ),
                                 ::make_vec1( ::AST::ExprNodeP(new ::AST::ExprNode_UniOp(
                                     ::AST::ExprNode_UniOp::REFMUT,
                                     ::AST::ExprNodeP(new ::AST::ExprNode_NamedValue( ::AST::Path("it") ))
@@ -997,8 +997,8 @@ struct CExpandExpr:
             //ASSERT_BUG(node.span(), it != crate.m_lang_items.end(), "Can't find the `try` lang item");
             //auto path_Try = it->second;
             auto path_Try = ::AST::Path(core_crate, {::AST::PathNode("ops"), ::AST::PathNode("Try")});
-            auto path_Try_into_result = ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(node.span()), path_Try, { ::AST::PathNode("into_result") });
-            auto path_Try_from_error  = ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(node.span()), path_Try, { ::AST::PathNode("from_error") });
+            auto path_Try_into_result = ::AST::Path::new_ufcs_trait(::TypeRef(node.span()), path_Try, { ::AST::PathNode("into_result") });
+            auto path_Try_from_error  = ::AST::Path::new_ufcs_trait(::TypeRef(node.span()), path_Try, { ::AST::PathNode("from_error") });
 
             // Desugars into
             // ```
@@ -1013,7 +1013,7 @@ struct CExpandExpr:
             arms.push_back(::AST::ExprNode_Match_Arm(
                 ::make_vec1( ::AST::Pattern(::AST::Pattern::TagNamedTuple(), node.span(), path_Ok, ::make_vec1( ::AST::Pattern(::AST::Pattern::TagBind(), node.span(), "v") )) ),
                 nullptr,
-                ::AST::ExprNodeP( new ::AST::ExprNode_NamedValue( ::AST::Path(::AST::Path::TagLocal(), "v") ) )
+                ::AST::ExprNodeP( new ::AST::ExprNode_NamedValue( ::AST::Path("v") ) )
                 ));
             // `Err(e) => return Try::from_error(From::from(e)),`
             arms.push_back(::AST::ExprNode_Match_Arm(
@@ -1026,8 +1026,8 @@ struct CExpandExpr:
                         ::AST::Path(path_Try_from_error),
                         ::make_vec1(
                             ::AST::ExprNodeP(new ::AST::ExprNode_CallPath(
-                                ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(node.span()), mv$(path_From), { ::AST::PathNode("from") }),
-                                ::make_vec1( ::AST::ExprNodeP( new ::AST::ExprNode_NamedValue( ::AST::Path(::AST::Path::TagLocal(), "e") ) ) )
+                                ::AST::Path::new_ufcs_trait(::TypeRef(node.span()), mv$(path_From), { ::AST::PathNode("from") }),
+                                ::make_vec1( ::AST::ExprNodeP( new ::AST::ExprNode_NamedValue( ::AST::Path("e") ) ) )
                                 ))
                             )
                         ))

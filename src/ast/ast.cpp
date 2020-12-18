@@ -457,29 +457,29 @@ std::ostream& operator<<(std::ostream& os, const GenericParam& x)
 
 ::std::ostream& operator<<(::std::ostream& os, const GenericBound& x)
 {
-    TU_MATCH(GenericBound, (x), (ent),
-    (None,
+    TU_MATCH_HDRA( (x), {)
+    TU_ARMA(None, ent) {
         os << "/*-*/";
-        ),
-    (Lifetime,
+        }
+    TU_ARMA(Lifetime, ent) {
         os << "'" << ent.test << ": '" << ent.bound;
-        ),
-    (TypeLifetime,
+        }
+    TU_ARMA(TypeLifetime, ent) {
         os << ent.type << ": '" << ent.bound;
-        ),
-    (IsTrait,
+        }
+    TU_ARMA(IsTrait, ent) {
         os << ent.outer_hrbs << ent.type << ": " << ent.inner_hrbs << ent.trait;
-        ),
-    (MaybeTrait,
+        }
+    TU_ARMA(MaybeTrait, ent) {
         os << ent.type << ": ?" << ent.trait;
-        ),
-    (NotTrait,
+        }
+    TU_ARMA(NotTrait, ent) {
         os << ent.type << ": !" << ent.trait;
-        ),
-    (Equality,
+        }
+    TU_ARMA(Equality, ent) {
         os << ent.type << " = " << ent.replacement;
-        )
-    )
+        }
+    }
     return os;
 }
 

@@ -763,7 +763,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
             TODO(sp, "Handle UFCS with multiple nodes - " << path);
         // - No associated type bounds allowed in UFCS paths
         auto params = LowerHIR_PathParams(sp, e.nodes.front().args(), /*allow_assoc*/false);
-        if( ! e.trait )
+        /*if( ! e.trait )
         {
             auto type = LowerHIR_Type(*e.type);
             if( type.data().is_Generic() ) {
@@ -775,7 +775,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
                 mv$(params)
                 }));
         }
-        else if( ! e.trait->is_valid() )
+        else*/ if( !e.trait || !e.trait->is_valid() )
         {
             return ::HIR::Path(::HIR::Path::Data::make_UfcsUnknown({
                 LowerHIR_Type(*e.type),

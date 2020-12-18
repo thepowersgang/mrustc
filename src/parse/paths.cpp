@@ -26,7 +26,7 @@ AST::Path Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode)
 
     case TOK_RWORD_SELF:
         GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
-        return AST::Path(AST::Path::TagSelf(), Parse_PathNodes(lex, generic_mode));
+        return AST::Path::new_self(Parse_PathNodes(lex, generic_mode));
 
     case TOK_RWORD_SUPER: {
         GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
@@ -35,10 +35,10 @@ AST::Path Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode)
             count += 1;
             GET_TOK(tok, lex);
             if( lex.lookahead(0) != TOK_DOUBLE_COLON )
-                return AST::Path(AST::Path::TagSuper(), count, {});
+                return AST::Path::new_super(count, {});
             GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
         }
-        return AST::Path(AST::Path::TagSuper(), count, Parse_PathNodes(lex, generic_mode));
+        return AST::Path::new_super(count, Parse_PathNodes(lex, generic_mode));
         }
 
     case TOK_RWORD_CRATE:
@@ -84,7 +84,7 @@ AST::Path Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode)
             }
             GET_CHECK_TOK(tok, lex, TOK_GT);
             GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
-            return AST::Path(AST::Path::TagUfcs(), mv$(ty), mv$(trait), Parse_PathNodes(lex, generic_mode));
+            return AST::Path::new_ufcs_trait(mv$(ty), mv$(trait), Parse_PathNodes(lex, generic_mode));
         }
         else {
             PUTBACK(tok, lex);
@@ -93,7 +93,7 @@ AST::Path Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode)
             GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
             // NOTE: <Foo>::BAR is actually `<Foo as _>::BAR` (in mrustc parleance)
             //return AST::Path(AST::Path::TagUfcs(), mv$(ty), Parse_PathNodes(lex, generic_mode));
-            return AST::Path(AST::Path::TagUfcs(), mv$(ty), AST::Path(), Parse_PathNodes(lex, generic_mode));
+            return AST::Path::new_ufcs_ty(mv$(ty), Parse_PathNodes(lex, generic_mode));
         }
         throw ""; }
 
@@ -129,7 +129,7 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
         auto hygine = lex.getHygiene();
         DEBUG("hygine = " << hygine);
         PUTBACK(tok, lex);
-        return AST::Path(AST::Path::TagRelative(), mv$(hygine), Parse_PathNodes(lex, generic_mode));
+        return AST::Path::new_relative(mv$(hygine), Parse_PathNodes(lex, generic_mode));
     }
 }
 

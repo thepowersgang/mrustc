@@ -566,7 +566,7 @@ namespace
                         case LookupMode::Namespace:
                             // TODO: Want to return the type if handling a struct literal
                             if( false ) {
-                                return ::AST::Path( ::AST::Path::TagUfcs(), e->clone(), ::AST::Path(), ::std::vector< ::AST::PathNode>() );
+                                return ::AST::Path::new_ufcs_ty( e->clone(), ::std::vector< ::AST::PathNode>() );
                             }
                             else {
                                 ::AST::Path rv(name);
@@ -654,7 +654,7 @@ namespace
                 auto ct = coretype_fromstring(name.c_str());
                 if( ct != CORETYPE_INVAL )
                 {
-                    return ::AST::Path( ::AST::Path::TagUfcs(), TypeRef(Span(), ct), ::AST::Path(), ::std::vector< ::AST::PathNode>() );
+                    return ::AST::Path::new_ufcs_ty( TypeRef(Span(), ct), ::std::vector< ::AST::PathNode>() );
                 }
                 } break;
             default:
@@ -811,7 +811,7 @@ void Resolve_Absolute_Path_BindUFCS(Context& context, const Span& sp, Context::L
         auto inner_path = mv$(path);
         inner_path.m_class.as_UFCS().nodes.push_back( mv$(nodes.front()) );
         nodes.erase( nodes.begin() );
-        path = ::AST::Path( ::AST::Path::TagUfcs(), TypeRef(span, mv$(inner_path)), ::AST::Path(), mv$(nodes) );
+        path = ::AST::Path::new_ufcs_ty( TypeRef(span, mv$(inner_path)), mv$(nodes) );
     }
 
     if(path.m_class.as_UFCS().type) {
@@ -821,7 +821,7 @@ void Resolve_Absolute_Path_BindUFCS(Context& context, const Span& sp, Context::L
     const auto& ufcs = path.m_class.as_UFCS();
     if( ufcs.nodes.size() == 0 ) {
 
-        if( mode == Context::LookupMode::Type && ufcs.trait && *ufcs.trait == ::AST::Path() ) {
+        if( mode == Context::LookupMode::Type && (!ufcs.trait || *ufcs.trait == ::AST::Path()) ) {
             return ;
         }
 
@@ -912,7 +912,7 @@ namespace {
         type_path.m_class.as_Absolute().nodes.resize( i+1 );
         //Resolve_Absolute_Path(
 
-        auto new_path = ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(sp, mv$(type_path)), ::AST::Path());
+        auto new_path = ::AST::Path::new_ufcs_ty( ::TypeRef(sp, mv$(type_path)) );
         for( unsigned int j = i+1; j < path_abs.nodes.size(); j ++ )
             new_path.nodes().push_back( mv$(path_abs.nodes[j]) );
 
@@ -929,7 +929,7 @@ namespace {
         if( ! n.args().is_empty() ) {
             type_path.nodes().back().args() = mv$(n.args());
         }
-        auto new_path = ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(sp, mv$(type_path)), ::AST::Path());
+        auto new_path = ::AST::Path::new_ufcs_ty( ::TypeRef(sp, mv$(type_path)) );
         for( unsigned int j = i+1; j < path_abs.nodes.size(); j ++ )
             new_path.nodes().push_back( mv$(path_abs.nodes[j]) );
 
@@ -1146,10 +1146,10 @@ namespace {
                 }
 
                 if( !found ) {
-                    new_path = ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(sp, mv$(trait_path)));
+                    new_path = ::AST::Path::new_ufcs_ty( ::TypeRef(sp, mv$(trait_path)) );
                 }
                 else {
-                    new_path = ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(sp), mv$(trait_path));
+                    new_path = ::AST::Path::new_ufcs_trait( ::TypeRef(sp), mv$(trait_path) );
                 }
                 for( unsigned int j = i+1; j < path_abs.nodes.size(); j ++ )
                     new_path.nodes().push_back( mv$(path_abs.nodes[j]) );
@@ -1448,10 +1448,10 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
                     }
                 }
                 if( !found ) {
-                    new_path = ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(sp, mv$(trait_path)));
+                    new_path = ::AST::Path::new_ufcs_ty( ::TypeRef(sp, mv$(trait_path)) );
                 }
                 else {
-                    new_path = ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(sp), mv$(trait_path));
+                    new_path = ::AST::Path::new_ufcs_trait( ::TypeRef(sp), mv$(trait_path) );
                 }
                 for( unsigned int j = i+1; j < path_abs.nodes.size(); j ++ )
                     new_path.nodes().push_back( mv$(path_abs.nodes[j]) );
@@ -1646,7 +1646,7 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
                     if( !found )
                     {
                         auto ct = coretype_fromstring(e.nodes[0].name().c_str());
-                        p = ::AST::Path( ::AST::Path::TagUfcs(), TypeRef(Span(), ct), ::AST::Path(), ::std::vector< ::AST::PathNode>() );
+                        p = ::AST::Path::new_ufcs_ty( TypeRef(Span(), ct), ::std::vector< ::AST::PathNode>() );
                     }
 
                     DEBUG("Primitive module hack yeilded " << p);
@@ -1657,7 +1657,7 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
             {
                 // Only primitive types turn `Local` paths
                 if( p.m_class.is_Local() ) {
-                    p = ::AST::Path( ::AST::Path::TagUfcs(), TypeRef(sp, mv$(p)), ::AST::Path() );
+                    p = ::AST::Path::new_ufcs_ty( TypeRef(sp, mv$(p)) );
                 }
                 if( ! e.nodes[0].args().is_empty() )
                 {

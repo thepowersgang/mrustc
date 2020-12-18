@@ -1476,7 +1476,7 @@ void Parse_Use_Root(TokenStream& lex, ::std::vector<AST::UseItem::Ent>& entries)
     switch( GET_TOK(tok, lex) )
     {
     case TOK_RWORD_SELF:
-        path = AST::Path( AST::Path::TagSelf(), {} );    // relative path
+        path = AST::Path::new_self( {} );    // relative path
         GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
         break;
     case TOK_RWORD_SUPER: {
@@ -1486,7 +1486,7 @@ void Parse_Use_Root(TokenStream& lex, ::std::vector<AST::UseItem::Ent>& entries)
             GET_CHECK_TOK(tok, lex, TOK_RWORD_SUPER);
             count += 1;
         }
-        path = AST::Path( AST::Path::TagSuper(), count, {} );
+        path = AST::Path::new_super( count, {} );
         GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
         break; }
     case TOK_RWORD_CRATE:
@@ -1541,7 +1541,7 @@ void Parse_Use_Root(TokenStream& lex, ::std::vector<AST::UseItem::Ent>& entries)
         if(lex.parse_state().edition_after(AST::Edition::Rust2018))
         {
             //path = AST::Path(lex.parse_state().module->path());
-            path = AST::Path(AST::Path::TagRelative(), /*hygine=*/{}, {});
+            path = AST::Path::new_relative(/*hygine=*/{}, {});
         }
         PUTBACK(tok, lex);
         break;
