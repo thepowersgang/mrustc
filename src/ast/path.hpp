@@ -96,10 +96,11 @@ struct AbsolutePath
         return os;
     }
 
+    // Returns true if this path is a prefix of the other path (or equal)
     bool is_parent_of(const AbsolutePath& other) const {
         if(this->crate != other.crate)
             return false;
-        if(this->nodes.size() >= other.nodes.size())
+        if(this->nodes.size() > other.nodes.size())
             return false;
         for(size_t i = 0; i < this->nodes.size(); i ++)
         {

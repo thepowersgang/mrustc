@@ -145,6 +145,8 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         const Span& span = use_stmt_data.sp;
         for(auto& use_ent : use_stmt_data.entries)
         {
+            TRACE_FUNCTION_F(use_ent);
+
             use_ent.path = Resolve_Use_AbsolutisePath(span, crate, path, mv$(use_ent.path));
             if( !use_ent.path.m_class.is_Absolute() )
                 BUG(span, "Use path is not absolute after absolutisation");
@@ -289,7 +291,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
     )
 {
     ::AST::Path::Bindings   rv;
-    //TRACE_FUNCTION_F(mod.path());
+    TRACE_FUNCTION_F(mod.path() << ", des_item_name=" << des_item_name);
     // If the desired item is an anon module (starts with #) then parse and index
     if( des_item_name.size() > 0 && des_item_name.c_str()[0] == '#' ) {
         unsigned int idx = 0;
