@@ -52,6 +52,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "dump_hirfile", "dump_hirfil
 		{C2AE52D0-1EA5-4072-BE90-E4CEEB5002C4} = {C2AE52D0-1EA5-4072-BE90-E4CEEB5002C4}
 	EndProjectSection
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "minipatch", "minipatch\minipatch.vcxproj", "{21704A50-CBD1-43C4-B4E1-FB8D3E3CC365}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -156,6 +158,14 @@ Global
 		{37E4E408-2813-41EB-A6F2-1EF15CA6D896}.Release|x64.Build.0 = Release|x64
 		{37E4E408-2813-41EB-A6F2-1EF15CA6D896}.Release|x86.ActiveCfg = Release|Win32
 		{37E4E408-2813-41EB-A6F2-1EF15CA6D896}.Release|x86.Build.0 = Release|Win32
+		{21704A50-CBD1-43C4-B4E1-FB8D3E3CC365}.Debug|x64.ActiveCfg = Debug|x64
+		{21704A50-CBD1-43C4-B4E1-FB8D3E3CC365}.Debug|x64.Build.0 = Debug|x64
+		{21704A50-CBD1-43C4-B4E1-FB8D3E3CC365}.Debug|x86.ActiveCfg = Debug|Win32
+		{21704A50-CBD1-43C4-B4E1-FB8D3E3CC365}.Debug|x86.Build.0 = Debug|Win32
+		{21704A50-CBD1-43C4-B4E1-FB8D3E3CC365}.Release|x64.ActiveCfg = Release|x64
+		{21704A50-CBD1-43C4-B4E1-FB8D3E3CC365}.Release|x64.Build.0 = Release|x64
+		{21704A50-CBD1-43C4-B4E1-FB8D3E3CC365}.Release|x86.ActiveCfg = Release|Win32
+		{21704A50-CBD1-43C4-B4E1-FB8D3E3CC365}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
