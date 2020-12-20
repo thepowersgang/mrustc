@@ -335,7 +335,7 @@ namespace
                 {
                     auto v = mod.m_namespace_items.find(name);
                     if( v != mod.m_namespace_items.end() ) {
-                        DEBUG("- NS: Namespace " << v->second.path);
+                        DEBUG("- " << mod.path() << " NS: Namespace " << v->second.path);
                         path = ::AST::Path( v->second.path );
                         return true;
                     }
@@ -343,7 +343,7 @@ namespace
                 {
                     auto v = mod.m_type_items.find(name);
                     if( v != mod.m_type_items.end() ) {
-                        DEBUG("- NS: Type " << v->second.path);
+                        DEBUG("- " << mod.path() << " NS: Type " << v->second.path);
                         path = ::AST::Path( v->second.path );
                         return true;
                     }
@@ -354,7 +354,7 @@ namespace
                 {
                     auto v = mod.m_type_items.find(name);
                     if( v != mod.m_type_items.end() ) {
-                        DEBUG("- TY: Type " << v->second.path);
+                        DEBUG("- " << mod.path() << " TY: Type " << v->second.path);
                         path = ::AST::Path( v->second.path );
                         return true;
                     }
@@ -365,7 +365,7 @@ namespace
                     if( v != mod.m_value_items.end() ) {
                         const auto& b = v->second.path.m_bindings.value;
                         if( /*const auto* be =*/ b.binding.opt_EnumVar() ) {
-                            DEBUG("- TY: Enum variant " << b.path);
+                            DEBUG("- " << mod.path() << " TY: Enum variant " << b.path);
                             path = ::AST::Path(b);
                             return true;
                         }
@@ -412,7 +412,7 @@ namespace
                                 ;
                             else
                             {
-                                DEBUG("- PV: Value " << b.path);
+                                DEBUG("- " << mod.path() << " PV: Value " << b.path);
                                 path = ::AST::Path(b);
                                 return true;
                             }
@@ -428,7 +428,7 @@ namespace
                 {
                     auto v = mod.m_value_items.find(name);
                     if( v != mod.m_value_items.end() ) {
-                        DEBUG("- C/V: Value " << v->second.path);
+                        DEBUG("- " << mod.path() << " C/V: Value " << v->second.path);
                         path = ::AST::Path( v->second.path );
                         return true;
                     }
@@ -550,7 +550,7 @@ namespace
             {
                 TU_MATCH_HDRA( (*it), {)
                 TU_ARMA(Module, e) {
-                    DEBUG("- Module");
+                    DEBUG("- Module " << e.mod->path());
                     ::AST::Path rv;
                     if( this->lookup_in_mod(*e.mod, name, mode,  rv) ) {
                         return rv;
@@ -565,7 +565,7 @@ namespace
                         case LookupMode::Type:
                         case LookupMode::Namespace:
                             // TODO: Want to return the type if handling a struct literal
-                            if( false ) {
+                            if( true ) {
                                 return ::AST::Path::new_ufcs_ty( e->clone(), ::std::vector< ::AST::PathNode>() );
                             }
                             else {
@@ -1754,6 +1754,38 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
         }
 
         Resolve_Absolute_PathNodes(context, sp,  e.nodes);
+        }
+    }
+
+    // Convert UFCS nodes that actually point to an enum variant, into that variant as an item path
+    if(auto* e = path.m_class.opt_UFCS())
+    {
+        if( !e->nodes.empty() && (!e->trait || !e->trait->is_valid()) && e->type->m_data.is_Path() )
+        {
+            const auto& name = e->nodes.front().name();
+            auto& p = *e->type->m_data.as_Path();
+            if( p.m_bindings.type.binding.is_Enum() ) {
+                const auto* enm = p.m_bindings.type.binding.as_Enum().enum_;
+                if(enm)
+                {
+                    auto it = std::find_if(enm->variants().begin(), enm->variants().end(), [&](const AST::EnumVariant& v){ return v.m_name == name; });
+                    if( it != enm->variants().end() )
+                    {
+                        unsigned idx = it - enm->variants().begin();
+                        auto p2 = p.m_bindings.type.path + name;
+                        auto new_path = std::move(p);
+                        new_path.append(name);
+                        if( it->m_data.is_Struct() ) {
+                            new_path.m_bindings.type.set(p2, AST::PathBinding_Type::make_EnumVar({ enm, idx }));
+                        }
+                        else {
+                            new_path.m_bindings.value.set(p2, AST::PathBinding_Value::make_EnumVar({ enm, idx }));
+                        }
+                        DEBUG("UFCS of enum variant converted to Generic: " << new_path);
+                        path = std::move(new_path);
+                    }
+                }
+            }
         }
     }
 

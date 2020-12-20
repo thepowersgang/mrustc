@@ -751,9 +751,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
     TU_ARMA(UFCS, e) {
         if( e.nodes.size() == 0 )
         {
-            if( !e.trait )
-                TODO(sp, "Handle UFCS inherent and no nodes - " << path);
-            if( e.trait->is_valid() )
+            if( !(!e.trait || e.trait->is_valid()) )
                 TODO(sp, "Handle UFCS w/ trait and no nodes - " << path);
             auto type = LowerHIR_Type(*e.type);
             ASSERT_BUG(sp, type.data().is_Path(), "No nodes and non-Path type - " << path);
