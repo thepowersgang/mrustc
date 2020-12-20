@@ -18,6 +18,7 @@
 #include "common.hpp"
 #include "../resolve/common.hpp"
 #include "proc_macro.hpp"
+#include "../parse/ttstream.hpp"
 
 DecoratorDef*   g_decorators_list = nullptr;
 MacroDef*   g_macros_list = nullptr;
@@ -1358,6 +1359,14 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                             TU_MATCH_HDRA( (*mac), {)
                             default:
                                 TODO(ue.sp, "Import macro '" << ue.name << "' (" << mac->tag_str() << ") with a `use` statement");
+                            TU_ARMA(Import, p) {
+                                if(p.path.m_crate_name == CRATE_BUILTINS) {
+                                    // Just ignore it for now. Builtins are always in scope
+                                }
+                                else {
+                                    TODO(ue.sp, "Import macro '" << ue.name << "' (Import " << p.path << ") with a `use` statement");
+                                }
+                                }
                             TU_ARMA(ProcMacro, p) {
                                 //DEBUG("Imported " << ue.name << "! (proc macro)");
                                 auto mi = AST::Module::MacroImport{ false, ue.name, p.path.m_components, nullptr };
@@ -1650,6 +1659,61 @@ void Expand_Mod_IndexAnon(::AST::Crate& crate, ::AST::Module& mod)
         }
     }
 }
+
+
+//
+// Expand all `cfg` attributes... mostly to find #[macro_export]
+//
+void Expand_Mod_Early(::AST::Crate& crate, ::AST::Module& mod)
+{
+    for(auto& i : mod.m_items)
+    {
+        if(const auto* mi = i->data.opt_MacroInv() )
+        {
+            if( mi->path().is_trivial() && mi->path().as_trivial() == "macro_rules" ) {
+                i->is_pub = true;
+                DEBUG("macro_rules made pub");
+            }
+        }
+
+        Expand_Attrs_CfgAttr(i->attrs);
+        bool is_macro_export = false;
+        bool cfg_failed = false;
+        for(auto& a : i->attrs.m_items)
+        {
+            if( a.name() == "cfg" ) {
+                if( !check_cfg(i->span, a) ) {
+                    cfg_failed = true;
+                }
+            }
+            else if( a.name() == "macro_export" ) {
+                is_macro_export = true;
+            }
+            else {
+            }
+        }
+        if( cfg_failed ) {
+            i->data = ::AST::Item::make_None({});
+        }
+        else if( is_macro_export ) {
+            if( !(i->data.is_MacroInv() && i->data.as_MacroInv().path().is_trivial() && i->data.as_MacroInv().path().as_trivial() == "macro_rules") )
+                ERROR(i->span, E0000, "#[macro_export] on non-macro_rules");
+            const auto& mac_inv = i->data.as_MacroInv();
+
+            TTStream    lex(i->span, ParseState(crate.m_edition), mac_inv.input_tt());
+            auto mac = Parse_MacroRules(lex);
+            const auto* mac_ptr = &*mac;
+            crate.m_root_module.add_macro(true, mac_inv.input_ident(), std::move(mac));
+            crate.m_exported_macros[mac_inv.input_ident()] = mac_ptr;
+        }
+        else if( i->data.is_Module() ) {
+            Expand_Mod_Early(crate, i->data.as_Module());
+        }
+        else {
+        }
+    }
+}
+
 void Expand(::AST::Crate& crate)
 {
     // Fill macro/decorator map from init list
@@ -1674,9 +1738,12 @@ void Expand(::AST::Crate& crate)
 
     auto modstack = LList<const ::AST::Module*>(nullptr, &crate.m_root_module);
 
+
     // 1. Crate attributes
     Expand_Attrs_CfgAttr(crate.m_attrs);
     Expand_Attrs(crate.m_attrs, AttrStage::Pre,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate); });
+
+    Expand_Mod_Early(crate, crate.m_root_module);
 
     // Insert magic for libstd/libcore
     // NOTE: The actual crates are loaded in "LoadCrates" using magic in AST::Crate::load_externs

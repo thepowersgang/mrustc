@@ -107,7 +107,17 @@ class CMacroUseHandler:
 
                     ASSERT_BUG(sp, mod.m_macro_items.count(imp->path.m_components.back()), "Failed to find final component of " << imp->path);
                     e = &*mod.m_macro_items.at(imp->path.m_components.back());
-                    ASSERT_BUG(sp, !e->ent.is_Import(), "Recursive import");
+                    if( const auto& imp2 = e->ent.opt_Import() ) {
+                        if( imp2->path.m_crate_name == CRATE_BUILTINS ) {
+                            DEBUG("Importing builtin (skip): " << name);
+                            continue ;
+                        }
+                        else {
+                            ASSERT_BUG(sp, !e->ent.is_Import(), "Recursive import - " << imp->path << " pointed to " << imp2->path);
+                        }
+                    }
+                    else {
+                    }
                 }
 
                 TU_MATCH_HDRA( (e->ent), { )
