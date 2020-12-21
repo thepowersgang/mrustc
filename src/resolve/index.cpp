@@ -476,16 +476,24 @@ void Resolve_Index_Module_Wildcard__submod(AST::Crate& crate, AST::Module& dst_m
         return ;
     }
 
+    // Import everything if the source is a parent of the destination (i.e. the destination can see private items)
+    bool import_all = src_mod.path().is_parent_of(dst_mod.path());
     // TODO: Publicity of the source item shouldn't matter.
     // - Publicity should be a path, not a boolean.
     for(const auto& vi : src_mod.m_namespace_items) {
-        _add_item( sp, dst_mod, IndexName::Namespace, vi.first, vi.second.is_pub && import_as_pub, vi.second.path, false );
+        if( vi.second.is_pub || import_all ) {
+            _add_item( sp, dst_mod, IndexName::Namespace, vi.first, vi.second.is_pub && import_as_pub, vi.second.path, false );
+        }
     }
     for(const auto& vi : src_mod.m_type_items) {
-        _add_item( sp, dst_mod, IndexName::Type     , vi.first, vi.second.is_pub && import_as_pub, vi.second.path, false );
+        if( vi.second.is_pub || import_all ) {
+            _add_item( sp, dst_mod, IndexName::Type     , vi.first, vi.second.is_pub && import_as_pub, vi.second.path, false );
+        }
     }
     for(const auto& vi : src_mod.m_value_items) {
-        _add_item( sp, dst_mod, IndexName::Value    , vi.first, vi.second.is_pub && import_as_pub, vi.second.path, false );
+        if( vi.second.is_pub || import_all ) {
+            _add_item( sp, dst_mod, IndexName::Value    , vi.first, vi.second.is_pub && import_as_pub, vi.second.path, false );
+        }
     }
 
     if( src_mod.m_index_populated != 2 )
@@ -493,6 +501,8 @@ void Resolve_Index_Module_Wildcard__submod(AST::Crate& crate, AST::Module& dst_m
         for( const auto& i : src_mod.m_items )
         {
             if( ! i->data.is_Use() )
+                continue ;
+            if( !(i->is_pub || import_all) )
                 continue ;
             for(const auto& e : i->data.as_Use().entries)
             {
