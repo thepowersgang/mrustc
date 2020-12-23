@@ -786,6 +786,7 @@
             uint8_t bitflag_1 = m_in.read_u8();
             #define BIT(i,fld)  fld = (bitflag_1 & (1 << (i))) != 0;
             BIT(0, m.can_unsize)
+            BIT(1, m.is_nonzero)
             #undef BIT
             m.dst_type = static_cast< ::HIR::StructMarkings::DstType>( m_in.read_tag() );
             m.coerce_unsized = static_cast<::HIR::StructMarkings::Coerce>( m_in.read_tag() );

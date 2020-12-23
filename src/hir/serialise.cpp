@@ -1103,6 +1103,7 @@
             uint8_t bitflag_1 = 0;
             #define BIT(i,fld)  if(fld) bitflag_1 |= 1 << (i);
             BIT(0, m.can_unsize)
+            BIT(1, m.is_nonzero)
             #undef BIT
             m_out.write_u8(bitflag_1);
 

@@ -1001,7 +1001,7 @@ namespace {
     }
 }
 
-::HIR::Struct LowerHIR_Struct(::HIR::ItemPath path, const ::AST::Struct& ent, const ::AST::AttributeList& attrs)
+::HIR::Struct LowerHIR_Struct(const Span& sp, ::HIR::ItemPath path, const ::AST::Struct& ent, const ::AST::AttributeList& attrs)
 {
     TRACE_FUNCTION_F(path);
     ::HIR::Struct::Data data;
@@ -1087,6 +1087,15 @@ namespace {
     if(attrs.get("rustc_nonnull_optimization_guaranteed"))
     {
         rv.m_struct_markings.is_nonzero = true;
+    }
+    if(ent.m_markings.scalar_valid_start_set)
+    {
+        if( ent.m_markings.scalar_valid_start == 1 ) {
+            rv.m_struct_markings.is_nonzero = true;
+        }
+        else {
+            TODO(sp, "Handle #[rustc_layout_scalar_valid_range_start(" << ent.m_markings.scalar_valid_start << ")]");
+        }
     }
 
     return rv;
@@ -1544,12 +1553,15 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
     TRACE_FUNCTION_F(p);
 
     if( e.s_class() == ::AST::Static::CONST )
+        // Note: Empty names are allowed for `const _: ...`
         return ::HIR::ValueItem::make_Constant(::HIR::Constant{
             ::HIR::GenericParams {},
             LowerHIR_Type(e.type()),
             LowerHIR_Expr(e.value())
             });
     else {
+        // Note: Empty names are allowed for `const _: ...`
+        ASSERT_BUG(sp, name != "", "Empty constant name " << p);
         ::HIR::Linkage  linkage;
 
         if( const auto* a = attrs.get("link_name") ) {
@@ -1686,7 +1698,7 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
             }
             else {
             }
-            _add_mod_ns_item( mod,  item.name, get_pub(item.is_pub), LowerHIR_Struct(item_path, e, item.attrs) );
+            _add_mod_ns_item( mod,  item.name, get_pub(item.is_pub), LowerHIR_Struct(ip->span, item_path, e, item.attrs) );
             }
         TU_ARMA(Enum, e) {
             auto enm = LowerHIR_Enum(item_path, e, item.attrs, [&](auto name, auto str){ _add_mod_ns_item(mod, name, get_pub(item.is_pub), mv$(str)); });

@@ -344,6 +344,16 @@ class Struct
     GenericParams    m_params;
 public:
     StructData  m_data;
+    struct Markings {
+
+        Markings() {
+            memset(this, 0, sizeof(*this));
+        }
+
+        // 1.39 nonzero etc
+        bool    scalar_valid_start_set;
+        unsigned    scalar_valid_start;
+    }   m_markings;
 
     Struct() {}
     Struct(GenericParams params):

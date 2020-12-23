@@ -68,6 +68,13 @@ class CHandler_RustcLayoutScalarValidRangeStart:
 
     void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
         // TODO: Types only
+        if( auto* s = i.opt_Struct() ) {
+            s->m_markings.scalar_valid_start_set = true;
+            s->m_markings.scalar_valid_start = std::stoul( mi.data().as_List().sub_items.at(0).string() );
+        }
+        else {
+            TODO(sp, "#[rustc_layout_scalar_valid_range_start] on " << i.tag_str());
+        }
     }
 };
 STATIC_DECORATOR("rustc_layout_scalar_valid_range_start", CHandler_RustcLayoutScalarValidRangeStart);
