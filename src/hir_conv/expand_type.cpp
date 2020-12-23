@@ -278,6 +278,11 @@ public:
 
                 visit_generic_path(::HIR::Visitor::PathContext::TYPE, node.m_real_path);
             }
+            void visit(::HIR::ExprNode_ArraySized& node) override
+            {
+                upper_visitor.visit_expr(node.m_size);
+                ::HIR::ExprVisitorDef::visit(node);
+            }
 
             void visit(::HIR::ExprNode_Match& node) override
             {
