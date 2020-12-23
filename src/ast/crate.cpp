@@ -129,7 +129,11 @@ void Crate::load_externs()
             auto real_name = this->load_extern_crate(Span(), c.first.c_str());
             g_implicit_crates.insert( std::make_pair(RcString::new_interned(c.first), real_name) );
         }
-        g_implicit_crates.insert( std::make_pair( RcString::new_interned("core"), RcString::new_interned("core") ) );
+        // 
+        if(this->m_ext_cratename_core != "")
+        {
+            g_implicit_crates.insert( std::make_pair( RcString::new_interned("core"), this->m_ext_cratename_core) );
+        }
     }
 }
 // TODO: Handle disambiguating crates with the same name (e.g. libc in std and crates.io libc)
@@ -277,7 +281,23 @@ RcString Crate::load_extern_crate(Span sp, const RcString& name, const ::std::st
         }
     }
 
-    DEBUG("Loaded '" << name << "' from '" << basename << "' (actual name is '" << real_name << "')");
+    if( ext_crate.m_short_name == "core" ) {
+        if( this->m_ext_cratename_core == "" ) {
+            this->m_ext_cratename_core = ext_crate.m_name;
+        }
+    }
+    if( ext_crate.m_short_name == "std" ) {
+        if( this->m_ext_cratename_std == "" ) {
+            this->m_ext_cratename_std = ext_crate.m_name;
+        }
+    }
+    if( ext_crate.m_short_name == "proc_macro" ) {
+        if( this->m_ext_cratename_procmacro == "" ) {
+            this->m_ext_cratename_procmacro = ext_crate.m_name;
+        }
+    }
+
+    DEBUG("Loaded '" << name << "' from '" << basename << "' (actual name is '" << real_name << "' aka `" << ext_crate.m_short_name << "`)");
     return real_name;
 }
 
@@ -288,13 +308,16 @@ ExternCrate::ExternCrate(const RcString& name, const ::std::string& path):
 {
     TRACE_FUNCTION_F("name=" << name << ", path='" << path << "'");
     m_hir = HIR_Deserialise(path);
-    //if(const auto* e = strchr(m_short_name.c_str(), '-'))
-    //{
-    //    m_short_name = RcString(m_short_name.c_str(), e - m_short_name.c_str());
-    //}
 
     m_hir->post_load_update(name);
     m_name = m_hir->m_crate_name;
+    if(const auto* e = strchr(m_name.c_str(), '-'))
+    {
+        m_short_name = RcString(m_name.c_str(), e - m_name.c_str());
+    }
+    else
+    {
+    }
 }
 
 }   // namespace AST

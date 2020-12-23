@@ -589,7 +589,6 @@ namespace {
                 }
 
                 // Insert a trait bound on the result type to impl `Placer/Boxer`
-                //this->context.equate_types_assoc(sp, {}, ::HIR::SimplePath("core", { "ops", "Boxer" }), ::make_vec1(data_ty.clone()), *inner_ty, "");
                 this->context.equate_types_assoc(sp, data_ty, this->context.m_crate.get_lang_item_path(sp, "boxed_trait"), {}, *inner_ty, "Data");
                 break; }
             }

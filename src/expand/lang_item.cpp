@@ -371,11 +371,31 @@ public:
     }
 };
 
+class Decorator_AllocErrorHandler:
+    public ExpandDecorator
+{
+public:
+    AttrStage stage() const override { return AttrStage::Post; }
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    {
+        if(const auto* _e = i.opt_Function())
+        {
+            auto rv = crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-alloc_error_handler"), path ));
+            if( !rv.second )
+            {
+                const auto& other_path = rv.first->second;
+                ERROR(sp, E0000, "Duplicate definition of #[alloc_error_handler] - " << other_path << " and " << path);
+            }
+        }
+    }
+};
+
 STATIC_DECORATOR("lang", Decorator_LangItem)
 STATIC_DECORATOR("main", Decorator_Main);
 STATIC_DECORATOR("start", Decorator_Start);
 STATIC_DECORATOR("panic_implementation", Decorator_PanicImplementation);
 STATIC_DECORATOR("panic_handler", Decorator_PanicHandler);
 STATIC_DECORATOR("rustc_std_internal_symbol", Decorator_RustcStdInternalSymbol);
+STATIC_DECORATOR("alloc_error_handler", Decorator_AllocErrorHandler);
 
 

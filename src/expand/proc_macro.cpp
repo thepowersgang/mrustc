@@ -80,6 +80,8 @@ STATIC_DECORATOR("proc_macro", Decorator_ProcMacro)
 
 void Expand_ProcMacro(::AST::Crate& crate)
 {
+    crate.load_extern_crate(Span(), "proc_macro");
+
     // Create the following module:
     // ```
     // mod `proc_macro#` {
@@ -97,7 +99,7 @@ void Expand_ProcMacro(::AST::Crate& crate)
     auto main_fn = ::AST::Function { Span(), {}, ABI_RUST, false, false, false, TypeRef(TypeRef::TagUnit(), Span()), {} };
     {
         auto call_node = NEWNODE(_CallPath,
-                ::AST::Path("proc_macro", { ::AST::PathNode("main") }),
+                ::AST::Path(crate.m_ext_cratename_procmacro, { ::AST::PathNode("main") }),
                 ::make_vec1(
                     NEWNODE(_UniOp, ::AST::ExprNode_UniOp::REF,
                         NEWNODE(_NamedValue, ::AST::Path("", { ::AST::PathNode("proc_macro#"), ::AST::PathNode("MACROS") }))
@@ -119,14 +121,14 @@ void Expand_ProcMacro(::AST::Crate& crate)
         // `handler`: ::foo
         desc_vals.push_back({ {}, "handler", NEWNODE(_NamedValue, AST::Path(desc.path)) });
 
-        test_nodes.push_back( NEWNODE(_StructLiteral,  ::AST::Path("proc_macro", { ::AST::PathNode("MacroDesc")}), nullptr, mv$(desc_vals) ) );
+        test_nodes.push_back( NEWNODE(_StructLiteral,  ::AST::Path(crate.m_ext_cratename_procmacro, { ::AST::PathNode("MacroDesc")}), nullptr, mv$(desc_vals) ) );
     }
     auto* tests_array = new ::AST::ExprNode_Array(mv$(test_nodes));
 
     size_t test_count = tests_array->m_values.size();
     auto tests_list = ::AST::Static { ::AST::Static::Class::STATIC,
         TypeRef(TypeRef::TagSizedArray(), Span(),
-                TypeRef(Span(), ::AST::Path("proc_macro", { ::AST::PathNode("MacroDesc") })),
+                TypeRef(Span(), ::AST::Path(crate.m_ext_cratename_procmacro, { ::AST::PathNode("MacroDesc") })),
                 ::std::shared_ptr<::AST::ExprNode>( new ::AST::ExprNode_Integer(test_count, CORETYPE_UINT) )
                ),
         ::AST::Expr( mv$(tests_array) )
@@ -136,7 +138,7 @@ void Expand_ProcMacro(::AST::Crate& crate)
     auto newmod = ::AST::Module { ::AST::AbsolutePath("", { "proc_macro#" }) };
     // - TODO: These need to be loaded too.
     //  > They don't actually need to exist here, just be loaded (and use absolute paths)
-    newmod.add_ext_crate(Span(), false, "proc_macro", "proc_macro", {});
+    newmod.add_ext_crate(Span(), false, crate.m_ext_cratename_procmacro, "proc_macro", {});
 
     newmod.add_item(Span(), false, "main", mv$(main_fn), {});
     newmod.add_item(Span(), false, "MACROS", mv$(tests_list), {});

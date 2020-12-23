@@ -53,6 +53,10 @@ public:
     // Mapping filled by searching for (?visible) macros with is_pub=true
     ::std::map< RcString, const MacroRules*> m_exported_macros;
 
+    RcString    m_ext_cratename_core;
+    RcString    m_ext_cratename_std;
+    RcString    m_ext_cratename_procmacro;
+
     // List of tests (populated in expand if --test is passed)
     bool    m_test_harness = false;
     ::std::vector<TestDesc>   m_tests;

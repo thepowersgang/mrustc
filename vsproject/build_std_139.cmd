@@ -9,10 +9,10 @@ x64\Release\minicargo.exe ..\rustc-%RUSTC_VERSION%-src\src\libstd %STD_ARGS%
 @if %errorlevel% neq 0 exit /b %errorlevel%
 x64\Release\minicargo.exe ..\rustc-%RUSTC_VERSION%-src\src\libpanic_unwind %STD_ARGS%
 @if %errorlevel% neq 0 exit /b %errorlevel%
-rem Build libproc_macro BEFORE libtest (ensures that it's built instead of the rustc one)
+@rem Build libproc_macro BEFORE libtest (ensures that it's built instead of the rustc one)
 x64\Release\minicargo.exe ..\lib\libproc_macro --output-dir %OUTDIR%
 @if %errorlevel% neq 0 exit /b %errorlevel%
 x64\Release\minicargo.exe ..\rustc-%RUSTC_VERSION%-src\src\libtest %STD_ARGS%
 @if %errorlevel% neq 0 exit /b %errorlevel%
-rem x64\Release\minicargo.exe ..\rustc-%RUSTC_VERSION%-src\src\liballoc_system %STD_ARGS%
-rem @if %errorlevel% neq 0 exit /b %errorlevel%
+@rem x64\Release\minicargo.exe ..\rustc-%RUSTC_VERSION%-src\src\liballoc_system %STD_ARGS%
+@rem @if %errorlevel% neq 0 exit /b %errorlevel%

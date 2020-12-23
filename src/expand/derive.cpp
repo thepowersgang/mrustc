@@ -2149,7 +2149,7 @@ static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mo
     }
 
     DeriveOpts opts = {
-        (crate.m_load_std == ::AST::Crate::LOAD_NONE ? "" : "core"),
+        crate.m_ext_cratename_core,
         attr.items()
         };
 

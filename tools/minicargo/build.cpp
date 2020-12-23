@@ -580,7 +580,8 @@ Builder::Builder(const BuildOptions& opts, size_t total_targets):
     auto outfile = this->get_output_dir(is_for_host);
     ::std::string   crate_suffix;
     // HACK: If there's no version, don't emit a version tag
-    if( manifest.version() != PackageVersion() ) {
+    //if( manifest.version() != PackageVersion() ) 
+    {
 #if 1
         crate_suffix = ::format("-", manifest.version());
         for(auto& v : crate_suffix)
@@ -616,6 +617,14 @@ Builder::Builder(const BuildOptions& opts, size_t total_targets):
             if(v == '.')
                 v = '_';
 #endif
+    }
+
+    if(out_crate_suffix)
+        *out_crate_suffix = crate_suffix;
+
+    if( manifest.version() == PackageVersion() ) 
+    {
+        crate_suffix = "";
     }
 
     switch(target.m_type)
@@ -662,8 +671,6 @@ Builder::Builder(const BuildOptions& opts, size_t total_targets):
     default:
         throw ::std::runtime_error("Unknown target type being built");
     }
-    if(out_crate_suffix)
-        *out_crate_suffix = crate_suffix;
     return outfile;
 }
 

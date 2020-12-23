@@ -725,7 +725,7 @@ struct CExpandExpr:
         auto loop_name = mv$(m_try_stack.back());
         m_try_stack.pop_back();
 
-        auto core_crate = (crate.m_load_std == ::AST::Crate::LOAD_NONE ? "" : "core");
+        auto core_crate = crate.m_ext_cratename_core;
         auto path_Ok  = ::AST::Path(core_crate, {::AST::PathNode("result"), ::AST::PathNode("Result"), ::AST::PathNode("Ok")});
         auto ok_node = ::AST::ExprNodeP(new ::AST::ExprNode_CallPath( mv$(path_Ok), ::make_vec1(mv$(node.m_inner)) ));
         auto break_node = AST::ExprNodeP(new AST::ExprNode_Flow(AST::ExprNode_Flow::BREAK, loop_name, mv$(ok_node)));
@@ -768,7 +768,7 @@ struct CExpandExpr:
         Expand_Pattern(crate, modstack, this->cur_mod(),  node.m_pattern, (node.m_type == ::AST::ExprNode_Loop::WHILELET));
         if(node.m_type == ::AST::ExprNode_Loop::FOR)
         {
-            auto core_crate = (crate.m_load_std == ::AST::Crate::LOAD_NONE ? "" : "core");
+            auto core_crate = crate.m_ext_cratename_core;
             auto path_Some = ::AST::Path(core_crate, {::AST::PathNode("option"), ::AST::PathNode("Option"), ::AST::PathNode("Some")});
             auto path_None = ::AST::Path(core_crate, {::AST::PathNode("option"), ::AST::PathNode("Option"), ::AST::PathNode("None")});
             auto path_IntoIterator = ::AST::Path(core_crate, {::AST::PathNode("iter"), ::AST::PathNode("IntoIterator")});
@@ -927,7 +927,7 @@ struct CExpandExpr:
         {
         case ::AST::ExprNode_BinOp::RANGE: {
             // NOTE: Not language items
-            auto core_crate = (crate.m_load_std == ::AST::Crate::LOAD_NONE ? "" : "core");
+            auto core_crate = crate.m_ext_cratename_core;
             auto path_Range     = ::AST::Path(core_crate, {::AST::PathNode("ops"), ::AST::PathNode("Range") });
             auto path_RangeFrom = ::AST::Path(core_crate, {::AST::PathNode("ops"), ::AST::PathNode("RangeFrom") });
             auto path_RangeTo   = ::AST::Path(core_crate, {::AST::PathNode("ops"), ::AST::PathNode("RangeTo") });
@@ -958,7 +958,7 @@ struct CExpandExpr:
             break; }
         case ::AST::ExprNode_BinOp::RANGE_INC: {
             // NOTE: Not language items
-            auto core_crate = (crate.m_load_std == ::AST::Crate::LOAD_NONE ? "" : "core");
+            auto core_crate = crate.m_ext_cratename_core;
             auto path_None = ::AST::Path(core_crate, { ::AST::PathNode("option"), ::AST::PathNode("Option"), ::AST::PathNode("None") });
             auto path_RangeInclusive_NonEmpty = ::AST::Path(core_crate, { ::AST::PathNode("ops"), ::AST::PathNode("RangeInclusive") });
             auto path_RangeToInclusive        = ::AST::Path(core_crate, { ::AST::PathNode("ops"), ::AST::PathNode("RangeToInclusive") });
@@ -988,7 +988,7 @@ struct CExpandExpr:
         this->visit_nodelete(node, node.m_value);
         // - Desugar question mark operator before resolve so it can create names
         if( node.m_type == ::AST::ExprNode_UniOp::QMARK ) {
-            auto core_crate = (crate.m_load_std == ::AST::Crate::LOAD_NONE ? "" : "core");
+            auto core_crate = crate.m_ext_cratename_core;
             auto path_Ok  = ::AST::Path(core_crate, {::AST::PathNode("result"), ::AST::PathNode("Result"), ::AST::PathNode("Ok")});
             auto path_Err = ::AST::Path(core_crate, {::AST::PathNode("result"), ::AST::PathNode("Result"), ::AST::PathNode("Err")});
             auto path_From = ::AST::Path(core_crate, {::AST::PathNode("convert"), ::AST::PathNode("From")});
@@ -1747,20 +1747,24 @@ void Expand(::AST::Crate& crate)
 
     // Insert magic for libstd/libcore
     // NOTE: The actual crates are loaded in "LoadCrates" using magic in AST::Crate::load_externs
+    RcString std_crate_shortname;
     RcString std_crate_name;
     switch( crate.m_load_std )
     {
     case ::AST::Crate::LOAD_STD:
-        std_crate_name = "std";
+        std_crate_shortname = "std";
+        std_crate_name = crate.m_ext_cratename_std;
         break;
     case ::AST::Crate::LOAD_CORE:
-        std_crate_name = "core";
+        std_crate_shortname = "core";
+        std_crate_name = crate.m_ext_cratename_core;
         break;
     case ::AST::Crate::LOAD_NONE:
         break;
     }
-    if(std_crate_name != "")
+    if(std_crate_shortname != "")
     {
+        ASSERT_BUG(Span(), std_crate_name != "", "`" << std_crate_shortname << "` not loaded?");
         if( crate.m_prelude_path == AST::Path() )
         {
             crate.m_prelude_path = AST::Path(std_crate_name, {AST::PathNode("prelude"), AST::PathNode("v1")});
@@ -1771,7 +1775,7 @@ void Expand(::AST::Crate& crate)
         attrs.push_back( AST::Attribute(Span(), mv$(name), {}) );
         crate.m_root_module.m_items.insert(
             crate.m_root_module.m_items.begin(),
-            box$( AST::Named<AST::Item>(Span(), mv$(attrs), false, std_crate_name, AST::Item::make_Crate({std_crate_name}) ) )
+            box$( AST::Named<AST::Item>(Span(), mv$(attrs), false, std_crate_shortname, AST::Item::make_Crate({std_crate_name}) ) )
             );
     }
 

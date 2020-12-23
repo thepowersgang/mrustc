@@ -2005,7 +2005,7 @@ public:
     g_crate_ptr = &rv;
     g_ast_crate_ptr = &crate;
     g_crate_name = rv.m_crate_name;
-    g_core_crate = (crate.m_load_std == ::AST::Crate::LOAD_NONE ? rv.m_crate_name : RcString::new_interned("core"));
+    g_core_crate = crate.m_ext_cratename_core;
     auto macros = std::map<RcString, HIR::MacroItem>();
     //auto& macros = rv.m_exported_macros;
 

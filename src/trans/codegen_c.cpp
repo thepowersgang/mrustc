@@ -856,7 +856,8 @@ namespace {
                     // - Can do this in enumerate/auto_impls instead, for better iteraction with enum
                     // XXX: HACK HACK HACK - This only works with libcore/libstd's current layout
                     auto layout_path = ::HIR::SimplePath("core", {"alloc", "Layout"});
-                    auto oom_method = ::HIR::SimplePath("std", {"alloc", "rust_oom"});
+                    //auto oom_method = ::HIR::SimplePath("std", {"alloc", "rust_oom"});
+                    auto oom_method = m_crate.get_lang_item_path(Span(), "mrustc-alloc_error_handler");
                     m_of << "struct s_" << Trans_Mangle(layout_path) << "_A { uintptr_t a, b; };\n";
                     m_of << "void oom_impl(struct s_" << Trans_Mangle(layout_path) << "_A l) {"
                         << " extern void " << Trans_Mangle(oom_method) << "(struct s_" << Trans_Mangle(layout_path) << "_A l);"
@@ -941,7 +942,7 @@ namespace {
                     if( crate.second.m_data->m_lang_items.count("mrustc-panic_runtime") )
                     {
                         // TODO: Check if this is the requested panic crate (for now hard-code panic_abort)
-                        if( crate.first != "panic_abort" )
+                        if( strncmp(crate.first.c_str(), "panic_abort", 5+1+5) != 0 )
                         {
                             continue ;
                         }
