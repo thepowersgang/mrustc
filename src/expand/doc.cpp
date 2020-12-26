@@ -27,6 +27,9 @@ class CDocHandler:
     }
     void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, ::AST::EnumVariant& ev) const override {
     }
+
+    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, ::AST::ExprNode_Match_Arm& expr) const override {
+    }
 };
 
 STATIC_DECORATOR("doc", CDocHandler);

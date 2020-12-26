@@ -108,15 +108,15 @@ void Crate::load_externs()
     }
     else if( no_std ) {
         auto n = this->load_extern_crate(Span(), "core");
-        if( n != "core" ) {
-            WARNING(Span(), W0000, "libcore wasn't loaded as `core`, instead `" << n << "`");
-        }
+        //if( n != "core" ) {
+        //    WARNING(Span(), W0000, "libcore wasn't loaded as `core`, instead `" << n << "`");
+        //}
     }
     else {
         auto n = this->load_extern_crate(Span(), "std");
-        if( n != "std" ) {
-            WARNING(Span(), W0000, "libstd wasn't loaded as `std`, instead `" << n << "`");
-        }
+        //if( n != "std" ) {
+        //    WARNING(Span(), W0000, "libstd wasn't loaded as `std`, instead `" << n << "`");
+        //}
     }
 
     // Ensure that all crates passed on the command line are loaded
