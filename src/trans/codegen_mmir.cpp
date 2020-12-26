@@ -719,32 +719,58 @@ namespace
             {
                 m_of << "\t" << e.offset << " = " << fmt(e.ty) << ";\n";
             }
+
+            auto emit_tag = [&](const TypeRepr::FieldPath& field_path, uint64_t v) {
+                m_of << " @[" << field_path.index << ", " << field_path.sub_fields << "] = \"";
+                for(size_t i = 0; i < field_path.size; i ++)
+                {
+                    int val = (v >> (i*8)) & 0xFF;
+                    if(val < 16)
+                        m_of << ::std::hex << "\\x0" << val << ::std::dec;
+                    else
+                        m_of << ::std::hex << "\\x" << val << ::std::dec;
+                }
+                m_of << "\"";
+                };
+
             switch(repr->variants.tag())
             {
             case TypeRepr::VariantMode::TAGDEAD:    throw "";
             TU_ARM(repr->variants, None, _e) (void)_e;
                 break;
-            TU_ARM(repr->variants, Values, e)
-                for(const auto& v : e.values)
+            TU_ARM(repr->variants, Linear, e) {
+                for(size_t i = 0; i < e.num_variants; i ++ )
                 {
-                    // Variants require:
-                    m_of << "\t#" << (&v - e.values.data());
+                    m_of << "\t#" << i;
                     // - Data field number (optional)
                     if( !item.is_value() )
                     {
-                        m_of << " =" << (&v - e.values.data());
+                        m_of << " =" << i;
                     }
-                    // - Tag offsetr
-                    m_of << " @[" << e.field.index << ", " << e.field.sub_fields << "] = \"";
-                    for(size_t i = 0; i < e.field.size; i ++)
+
+                    if( !e.field.sub_fields.empty() && i == e.field.sub_fields.back() ) {
+                        // Niche option, don't emit
+                    }
+                    else {
+                        emit_tag(e.field, e.offset + i);
+                    }
+                    m_of << ";\n";
+                }
+                }
+            TU_ARM(repr->variants, Values, e)
+                for(const auto& v : e.values)
+                {
+                    size_t idx = (&v - e.values.data());
+                    // Variants require:
+                    m_of << "\t#" << idx;
+                    // - Data field number (optional)
+                    if( !item.is_value() )
                     {
-                        int val = (v >> (i*8)) & 0xFF;
-                        if(val < 16)
-                            m_of << ::std::hex << "\\x0" << val << ::std::dec;
-                        else
-                            m_of << ::std::hex << "\\x" << val << ::std::dec;
+                        m_of << " =" << idx;
                     }
-                    m_of << "\";\n";
+                    // - Tag value
+                    emit_tag(e.field, v);
+                    m_of << ";\n";
                 }
                 break;
             TU_ARM(repr->variants, NonZero, e) {

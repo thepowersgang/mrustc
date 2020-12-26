@@ -1010,6 +1010,126 @@ namespace {
         }
         return false;
     }
+
+    size_t get_size_or_zero(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty) {
+        size_t size = 0;
+        Target_GetSizeOf(sp, resolve, ty, size);
+        return size;
+    }
+
+    size_t get_offset(const Span& sp, const StaticTraitResolve& resolve, const TypeRepr* r, const TypeRepr::FieldPath& out_path)
+    {
+        size_t ofs = r->fields[out_path.index].offset;
+
+        r = Target_GetTypeRepr(sp, resolve, r->fields[out_path.index].ty);
+        for(const auto& f : out_path.sub_fields)
+        {
+            ofs += r->fields[f].offset;
+            r = Target_GetTypeRepr(sp, resolve, r->fields[f].ty);
+        }
+
+        return ofs;
+    }
+
+    /// <summary>
+    /// Locate a suitable niche location in the given path (an enum that has space in its tag)
+    /// </summary>
+    /// <param name="sp"></param>
+    /// <param name="resolve"></param>
+    /// <param name="ty"></param>
+    /// <param name="out_path">Path to the variant field</param>
+    /// <returns>zero for no niche found, or the number of entries already used in the niche</returns>
+    unsigned get_variant_niche_path(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty, size_t min_offset, TypeRepr::FieldPath& out_path)
+    {
+        TRACE_FUNCTION_F(ty << " min_offset=" << min_offset);
+        switch(ty.data().tag())
+        {
+        TU_ARM(ty.data(), Path, te) {
+            if( te.binding.is_Struct() )
+            {
+                const auto* str = te.binding.as_Struct();
+                const TypeRepr* r = Target_GetTypeRepr(sp, resolve, ty);
+                if( !r )
+                {
+                    return false;
+                }
+                for(size_t i = 0; i < r->fields.size(); i ++)
+                {
+                    const auto& f = r->fields[i];
+                    if( f.offset + get_size_or_zero(sp, resolve, f.ty) > min_offset )
+                    {
+                        if( auto rv = get_variant_niche_path(sp, resolve, f.ty, (f.offset < min_offset ? min_offset - f.offset : 0), out_path) )
+                        {
+                            out_path.sub_fields.push_back(i);
+                            return rv;
+                        }
+                    }
+                }
+            }
+            else if( te.binding.is_Enum() )
+            {
+                const TypeRepr* r = Target_GetTypeRepr(sp, resolve, ty);
+                if( !r )
+                {
+                    return 0;
+                }
+
+                TU_MATCH_HDRA( (r->variants), { )
+                TU_ARMA(None, ve) {
+                    // If there is no discriminator, recurse into the only field
+                    if( r->fields.empty() ) {
+                        return 0;
+                    }
+                    else {
+                        auto rv = get_variant_niche_path(sp, resolve, r->fields[0].ty, min_offset, out_path);
+                        if(rv) {
+                            out_path.sub_fields.push_back(0);
+                        }
+                        return rv;
+                    }
+                    }
+                TU_ARMA(Linear, ve) {
+                    // Check that the offset of this tag field is >= min_offset
+                    auto ofs = get_offset(sp, resolve, r, ve.field);
+                    DEBUG("Tag offset: " << ofs);
+                    if(ofs >= min_offset)
+                    {
+                        out_path.size = ve.field.size;
+                        out_path.sub_fields.clear();
+                        out_path.sub_fields.insert(out_path.sub_fields.begin(), ve.field.sub_fields.rbegin(), ve.field.sub_fields.rend());
+                        out_path.sub_fields.push_back(ve.field.index);
+                        return ve.offset + ve.num_variants; // NOTE: The niche variant leaves hole in the values.
+                    }
+                    }
+                TU_ARMA(Values, _ve) {
+                    return 0;
+                    }
+                TU_ARMA(NonZero, _ve) {
+                    return 0;
+                    }
+                }
+            }
+            } break;
+        TU_ARM(ty.data(), Primitive, te) {
+            switch(te)
+            {
+            case ::HIR::CoreType::Char:
+                // Only valid if the min offset is zero
+                if( min_offset == 0 )
+                {
+                    out_path.size = 4;
+                    return 0x10FFFF + 1;
+                }
+                break;
+            default:
+                break;
+            }
+            }
+        default:
+            break;
+        }
+        return 0;
+    }
     ::std::unique_ptr<TypeRepr> make_type_repr_enum(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty)
     {
         const auto& te = ty.data().as_Path();
@@ -1025,95 +1145,139 @@ namespace {
         {
         case ::HIR::Enum::Class::TAGDEAD:   throw "";
         TU_ARM(enm.m_data, Data, e) {
-            ::std::vector<::HIR::TypeRef>   mono_types;
+
+            size_t  max_size = 0;
+            size_t  max_align = 0;
             for(const auto& var : e)
             {
-                mono_types.push_back( monomorph(var.type) );
+                auto t = monomorph(var.type);
+                size_t  size, align;
+                if( !Target_GetSizeAndAlignOf(sp, resolve, t, size, align) )
+                {
+                    DEBUG("Generic type in enum - " << t);
+                    return nullptr;
+                }
+                if( size == SIZE_MAX ) {
+                    BUG(sp, "Unsized type in enum - " << t);
+                }
+                max_size  = ::std::max(max_size , size);
+                max_align = ::std::max(max_align, align);
+                rv.fields.push_back(TypeRepr::Field { 0, mv$(t) });
             }
+            DEBUG("max_size = " << max_size << ", max_align = " << max_align);
+
             TypeRepr::FieldPath nz_path;
-            if( e.size() == 2 && mono_types[0] == ::HIR::TypeRef::new_unit() && get_nonzero_path(sp, resolve, mono_types[1], nz_path) )
+            // Option Non-Zero optimisation
+            // - If enum is of form `enum { Foo, Bar(...) }` then non-zero optimise it
+            if( e.size() == 2 && rv.fields[0].ty == ::HIR::TypeRef::new_unit() && get_nonzero_path(sp, resolve, rv.fields[1].ty, nz_path) )
             {
                 nz_path.index = 1;
                 ::std::reverse(nz_path.sub_fields.begin(), nz_path.sub_fields.end());
                 DEBUG("nz_path = " << nz_path.sub_fields);
-                size_t  max_size = 0;
-                size_t  max_align = 0;
-                for(auto& t : mono_types)
-                {
-                    size_t  size, align;
-                    if( !Target_GetSizeAndAlignOf(sp, resolve, t, size, align) )
-                    {
-                        DEBUG("Generic type in enum - " << t);
-                        return nullptr;
-                    }
-                    if( size == SIZE_MAX ) {
-                        BUG(sp, "Unsized type in enum - " << t);
-                    }
-                    max_size  = ::std::max(max_size , size);
-                    max_align = ::std::max(max_align, align);
-                    rv.fields.push_back(TypeRepr::Field { 0, mv$(t) });
-                }
 
                 rv.size = max_size;
                 rv.align = max_align;
                 rv.variants = TypeRepr::VariantMode::make_NonZero({ nz_path, 0 });
             }
-            else
+
+            // HACK: This is required for the C backend, because the union that contains the enum variants is
+            // padded out to align.
+            if(max_size > 0)
             {
-                size_t  max_size = 0;
-                size_t  max_align = 0;
-                for(auto& t : mono_types)
-                {
+                while(max_size % max_align)
+                    max_size ++;
+            }
+
+            // Niche optimisation (DISABLED: Codegen might be buggy)
+#if 1
+            // Support offsetting the tag and putting it elsewhere
+            // - Find an inner enum or char, and use high values for the variant
+            if( rv.variants.is_None() && e.size() > 1 )
+            {
+                // Find the largest variant
+                // - Also get the next-largest size to use as the minimum tag offset
+                unsigned n_match = 0;
+                size_t biggest_var = rv.fields.size();
+                size_t min_offset = 0;
+                for(auto& f : rv.fields) {
                     size_t  size, align;
-                    if( !Target_GetSizeAndAlignOf(sp, resolve, t, size, align) )
-                    {
-                        DEBUG("Generic type in enum - " << t);
-                        return nullptr;
+                    Target_GetSizeOf(sp, resolve, f.ty, size);
+                    if( size == max_size ) {
+                        n_match += 1;
+                        biggest_var = &f - &rv.fields.front();
                     }
-                    if( size == SIZE_MAX ) {
-                        BUG(sp, "Unsized type in enum - " << t);
+                    else {
+                        min_offset = std::max(min_offset, size);
                     }
-                    max_size  = ::std::max(max_size , size);
-                    max_align = ::std::max(max_align, align);
-                    rv.fields.push_back(TypeRepr::Field { 0, mv$(t) });
                 }
-                DEBUG("max_size = " << max_size << ", max_align = " << max_align);
-                // HACK: This is required for the C backend, because the union that contains the enum variants is
-                // padded out to align.
-                if(max_size > 0)
+                DEBUG("Niche optimisation: n_match=" << n_match << " biggest_var=" << biggest_var << " min_offset=" << min_offset);
+
+                if( n_match == 1 )
                 {
-                    while(max_size % max_align)
-                        max_size ++;
+                    size_t tag_size = 0;
+                    if( auto offset = get_variant_niche_path(sp, resolve, rv.fields[biggest_var].ty, min_offset, nz_path) )
+                    {
+                        size_t max_var = 0;
+                        switch( nz_path.size )
+                        {
+                        case 1: max_var = 0xFF;  break;
+                        case 2: max_var = 0xFFFF;  break;
+                        case 4: max_var = 0xFFFFFFFF;  break;
+                        case 8: max_var = 0xFFFFFFFF;  break;   // Just assume 2^32 here
+                        }
+
+                        DEBUG("Niche optimisation: offset=" << offset);
+                        if( offset <= max_var && offset + e.size() <= max_var )
+                        {
+                            nz_path.index = biggest_var;
+                            ::std::reverse(nz_path.sub_fields.begin(), nz_path.sub_fields.end());
+                            assert( get_offset(sp, resolve, &rv, nz_path) >= min_offset );
+
+                            rv.size = max_size;
+                            rv.align = max_align;
+                            rv.variants = TypeRepr::VariantMode::make_Linear({ std::move(nz_path), offset, e.size() });
+                        }
+                        else
+                        {
+                            DEBUG("Out of space in this niche: " << (offset+e.size()) << " > " << max_var);
+                        }
+                    }
                 }
+            }
+#endif
+
+            if( rv.variants.is_None() )
+            {
                 size_t tag_size = 0;
                 // TODO: repr(C) enums - they have different rules
-                if( mono_types.size() == 0 ) {
+                if( e.size() == 0 ) {
                     // Unreachable
                 }
-                else if( mono_types.size() == 1 ) {
+                else if( e.size() == 1 ) {
                     // No need for a tag
                 }
-                else if( mono_types.size() <= 255 ) {
+                else if( e.size() <= 255 ) {
                     rv.fields.push_back(TypeRepr::Field { max_size, ::HIR::CoreType::U8 });
                     tag_size = 1;
                     DEBUG("u8 data tag");
                 }
                 else {
-                    ASSERT_BUG(sp, mono_types.size() <= 0xFFFF, "");
+                    ASSERT_BUG(sp, e.size() <= 0xFFFF, "");
                     while(max_size % 2) max_size ++;
                     rv.fields.push_back(TypeRepr::Field { max_size, ::HIR::CoreType::U16 });
                     tag_size = 2;
                     DEBUG("u16 data tag");
                 }
                 max_align = ::std::max(max_align, tag_size);
-                ::std::vector<uint64_t> vals;
-                for(size_t i = 0; i < e.size(); i++)
+                if( e.size() > 1 )
                 {
-                    vals.push_back(i);
-                }
-                if( vals.size() > 1 )
-                {
-                    rv.variants = TypeRepr::VariantMode::make_Values({ { mono_types.size(), tag_size, {} }, ::std::move(vals) });
+                    rv.variants = TypeRepr::VariantMode::make_Linear({ { e.size(), tag_size, {} }, 0, e.size() });
+                    //::std::vector<uint64_t> vals;
+                    //for(size_t i = 0; i < e.size(); i++)
+                    //{
+                    //    vals.push_back(i);
+                    //}
+                    //rv.variants = TypeRepr::VariantMode::make_Values({ { e.size(), tag_size, {} }, ::std::move(vals) });
                 }
                 else
                 {
@@ -1225,9 +1389,8 @@ namespace {
         DEBUG("rv.variants = " << rv.variants.tag_str());
         return box$(rv);
     }
-    ::std::unique_ptr<TypeRepr> make_type_repr(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty)
+    ::std::unique_ptr<TypeRepr> make_type_repr_(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty)
     {
-        TRACE_FUNCTION_F(ty);
         if( TU_TEST1(ty.data(), Path, .binding.is_Struct()) || ty.data().is_Tuple() )
         {
             return make_type_repr_struct(sp, resolve, ty);
@@ -1288,6 +1451,13 @@ namespace {
             TODO(sp, "Type repr for " << ty);
             return nullptr;
         }
+    }
+    ::std::unique_ptr<TypeRepr> make_type_repr(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty)
+    {
+        ::std::unique_ptr<TypeRepr> rv;
+        TRACE_FUNCTION_FR(ty, ty << " " << FMT_CB(ss, if(rv) { ss << "size=" << rv->size << ", align=" << rv->align; } else { ss << "NONE"; }));
+        rv = make_type_repr_(sp, resolve, ty);
+        return rv;
     }
 }
 const TypeRepr* Target_GetTypeRepr(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty)

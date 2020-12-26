@@ -1594,22 +1594,43 @@ namespace {
             m_mir_res = nullptr;
         }
 
+        bool is_enum_tag(const TypeRepr* repr, size_t idx)
+        {
+            if( const auto* ve = repr->variants.opt_Values() ) {
+                return ve->is_tag(idx);
+            }
+            if( const auto* ve = repr->variants.opt_Linear() ) {
+                return ve->is_tag(idx);
+            }
+            return false;
+        }
+
         const HIR::TypeRef& emit_enum_path(const TypeRepr* repr, const TypeRepr::FieldPath& path)
         {
-            if( TU_TEST1(repr->variants, Values, .field.index == path.index) )
+            if( is_enum_tag(repr, path.index) )
             {
                 m_of << ".TAG";
+                assert(path.sub_fields.empty());
             }
             else
             {
                 m_of << ".DATA.var_" << path.index;
             }
             const auto* ty = &repr->fields[path.index].ty;
-            for(auto fld : path.sub_fields)
+            for(const auto& fld : path.sub_fields)
             {
                 repr = Target_GetTypeRepr(sp, m_resolve, *ty);
                 ty = &repr->fields[fld].ty;
-                m_of << "._" << fld;
+                if( is_enum_tag(repr, fld) ) {
+                    m_of << ".TAG";
+                    assert(&fld == &path.sub_fields.back());
+                }
+                else if( !repr->variants.is_None() ) {
+                    m_of << ".DATA.var_" << fld;
+                }
+                else {
+                    m_of << "._" << fld;
+                }
             }
             if( const auto* te = ty->data().opt_Borrow() )
             {
@@ -1642,7 +1663,7 @@ namespace {
             for(size_t i = 1; i < repr->fields.size(); i ++)
             {
                 // Avoid placing the tag in the union
-                if( repr->variants.is_Values() && i == repr->variants.as_Values().field.index )
+                if( is_enum_tag(repr, i) )
                     continue ;
                 if( repr->fields[i].offset == repr->fields[0].offset )
                 {
@@ -1766,18 +1787,21 @@ namespace {
 
         void emit_constructor_enum(const Span& sp, const ::HIR::GenericPath& path, const ::HIR::Enum& item, size_t var_idx) override
         {
-            ::MIR::Function empty_fcn;
-            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "enum cons " << path;), ::HIR::TypeRef(), {}, empty_fcn };
-            m_mir_res = &top_mir_res;
             TRACE_FUNCTION_F(path << " var_idx=" << var_idx);
+
+            auto p = path.clone();
+            p.m_path.m_components.pop_back();
+            auto ty = ::HIR::TypeRef::new_path(p.clone(), &item);
+
+            ::MIR::Function empty_fcn;
+            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "enum cons " << path;), ty, {}, empty_fcn };
+            m_mir_res = &top_mir_res;
 
             ::HIR::TypeRef  tmp;
             MonomorphStatePtr   ms(nullptr, &path.m_params, nullptr);
             auto monomorph = [&](const auto& x)->const auto& { return m_resolve.monomorph_expand_opt(sp, tmp, x, ms); };
 
-            auto p = path.clone();
-            p.m_path.m_components.pop_back();
-            const auto* repr = Target_GetTypeRepr(sp, m_resolve, ::HIR::TypeRef::new_path(p.clone(), &item));
+            const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
 
             ASSERT_BUG(sp, item.m_data.is_Data(), "");
             const auto& var = item.m_data.as_Data().at(var_idx);
@@ -1792,54 +1816,36 @@ namespace {
             {
                 if(i != 0)
                     m_of << ", ";
-                emit_ctype( monomorph(e[i].ent), FMT_CB(ss, ss << "_" << i;) );
+                emit_ctype( monomorph(e[i].ent), FMT_CB(ss, ss << "arg" << i;) );
             }
             m_of << ") {\n";
 
-            //if( repr->variants.
-            m_of << "\tstruct e_" << Trans_Mangle(p) << " rv = {";
-            switch(repr->variants.tag())
-            {
-            case TypeRepr::VariantMode::TAGDEAD:    throw "";
-            TU_ARM(repr->variants, Values, ve) {
-                m_of << " .TAG = "; emit_enum_variant_val(repr, var_idx); m_of << ",";
-                } break;
-            TU_ARM(repr->variants, NonZero, ve) {
-                } break;
-            TU_ARM(repr->variants, None, ve) {
-                } break;
+            m_of << "\tstruct e_" << Trans_Mangle(p) << " rv;\n";
+            empty_fcn.locals.push_back( monomorph(var.type) );
+            m_of << "\t"; emit_ctype(empty_fcn.locals[0], FMT_CB(ss, ss << "var0";)); m_of << " = {";
+            if( this->type_is_bad_zst(empty_fcn.locals[0]) ) {
+                m_of << "0";
             }
+            else {
+                for(unsigned int i = 0; i < e.size(); i ++)
+                {
+                    if(i != 0)
+                        m_of << ", ";
+                    m_of << "arg" << i;
+                }
+            }
+            m_of << "};\n";
 
-            if( e.empty() )
-            {
-                if( m_options.disallow_empty_structs )
-                {
-                    m_of << " .DATA = { .var_" << var_idx << " = {0} }";
-                }
-                else
-                {
-                    // No fields, don't initialise
-                }
-            }
-            else
-            {
-                if( this->type_is_bad_zst(repr->fields[var_idx].ty) )
-                {
-                    //m_of << " .DATA = { /* ZST Variant */ }";
-                }
-                else
-                {
-                    m_of << " .DATA = { .var_" << var_idx << " = {";
-                    for(unsigned int i = 0; i < e.size(); i ++)
-                    {
-                        if(i != 0)
-                        m_of << ",";
-                        m_of << "\n\t\t_" << i;
-                    }
-                    m_of << "\n\t\t} }";
-                }
-            }
-            m_of << " };\n";
+            // Create the variant
+            // - Use `emit_statement` to avoid re-writing the enum tag handling
+            emit_statement(*m_mir_res, ::MIR::Statement::make_Assign({
+                ::MIR::LValue::new_Return(),
+                ::MIR::RValue::make_Variant({
+                    p.clone(),
+                    static_cast<unsigned>(var_idx),
+                    ::MIR::LValue::new_Local(0)
+                    })
+                }));
             m_of << "\treturn rv;\n";
             m_of << "}\n";
             m_mir_res = nullptr;
@@ -2098,13 +2104,12 @@ namespace {
                 else if( ty_binding.is_Enum() )
                 {
                     const auto& enm = *ty_binding.as_Enum();
-                    if( repr->variants.is_None() )
-                    {
+                    TU_MATCH_HDRA( (repr->variants), {)
+                    TU_ARMA(None, ve) {
                         m_of << "{}";
-                    }
-                    else if( const auto* ve = repr->variants.opt_NonZero() )
-                    {
-                        if( e.idx == ve->zero_variant )
+                        }
+                    TU_ARMA(NonZero, ve) {
+                        if( e.idx == ve.zero_variant )
                         {
                             m_of << "{0}";
                         }
@@ -2114,26 +2119,53 @@ namespace {
                             emit_literal(get_inner_type(e.idx, 0), *e.val, params);
                             m_of << " } }";
                         }
-                    }
-                    else if( enm.is_value() )
-                    {
-                        MIR_ASSERT(*m_mir_res, TU_TEST1((*e.val), List, .empty()), "Value-only enum with fields");
-                        m_of << "{" << enm.get_value(e.idx) << "}";
-                    }
-                    else
-                    {
-                        m_of << "{";
-                        const auto& ity = get_inner_type(e.idx, 0);
-                        if( this->type_is_bad_zst(ity) ) {
-                            //m_of << " {}";
                         }
-                        else {
-                            m_of << " { .var_" << e.idx << " = ";
-                            emit_literal(ity, *e.val, params);
-                            m_of << " }, ";
+                    TU_ARMA(Linear, ve) {
+                        if( enm.is_value() )
+                        {
+                            MIR_ASSERT(*m_mir_res, TU_TEST1((*e.val), List, .empty()), "Value-only enum with fields");
+                            m_of << "{" << e.idx << "}";
                         }
-                        m_of << ".TAG = "; emit_enum_variant_val(repr, e.idx);
-                        m_of << "}";
+                        else
+                        {
+                            m_of << "{";
+                            const auto& ity = get_inner_type(e.idx, 0);
+                            if( this->type_is_bad_zst(ity) ) {
+                                //m_of << " {}";
+                            }
+                            else {
+                                m_of << " { .var_" << e.idx << " = ";
+                                emit_literal(ity, *e.val, params);
+                                m_of << " }, ";
+                            }
+                            if( !ve.is_niche(e.idx) ) {
+                                m_of << ".TAG = " << (ve.offset + e.idx);
+                            }
+                            m_of << "}";
+                        }
+                        }
+                    TU_ARMA(Values, ve) {
+                        if( enm.is_value() )
+                        {
+                            MIR_ASSERT(*m_mir_res, TU_TEST1((*e.val), List, .empty()), "Value-only enum with fields");
+                            m_of << "{" << enm.get_value(e.idx) << "}";
+                        }
+                        else
+                        {
+                            m_of << "{";
+                            const auto& ity = get_inner_type(e.idx, 0);
+                            if( this->type_is_bad_zst(ity) ) {
+                                //m_of << " {}";
+                            }
+                            else {
+                                m_of << " { .var_" << e.idx << " = ";
+                                emit_literal(ity, *e.val, params);
+                                m_of << " }, ";
+                            }
+                            m_of << ".TAG = "; emit_enum_variant_val(repr, e.idx);
+                            m_of << "}";
+                        }
+                        }
                     }
                 }
                 else
@@ -3403,14 +3435,13 @@ namespace {
                         const auto& ty = mir_res.get_lvalue_type(tmp, e.dst);
                         auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
 
-                        if( repr->variants.is_None() )
-                        {
+                        TU_MATCH_HDRA( (repr->variants), {)
+                        TU_ARMA(None, re) {
                             emit_lvalue(e.dst); m_of << ".DATA.var_0 = "; emit_param(ve.val);
-                        }
-                        else if( const auto* re = repr->variants.opt_NonZero() )
-                        {
+                            }
+                        TU_ARMA(NonZero, re) {
                             MIR_ASSERT(*m_mir_res, ve.index < 2, "");
-                            if( ve.index == re->zero_variant ) {
+                            if( ve.index == re.zero_variant ) {
                                 // TODO: Use nonzero_path
                                 m_of << "memset(&"; emit_lvalue(e.dst); m_of << ", 0, sizeof("; emit_ctype(ty); m_of << "))";
                             }
@@ -3419,27 +3450,52 @@ namespace {
                                 m_of << ".DATA.var_" << ve.index << " = ";
                                 emit_param(ve.val);
                             }
-                            break;
-                        }
-                        else if( enm_p->is_value() )
-                        {
-                            emit_lvalue(e.dst); m_of << ".TAG = "; emit_enum_variant_val(repr, ve.index);
-                        }
-                        else
-                        {
-                            emit_lvalue(e.dst); m_of << ".TAG = "; emit_enum_variant_val(repr, ve.index);
-
-                            ::HIR::TypeRef  tmp;
-                            const auto& vty = mir_res.get_param_type(tmp, ve.val);
-                            if( this->type_is_bad_zst(vty) )
+                            }
+                        TU_ARMA(Linear, re) {
+                            if( !re.is_niche(ve.index) )
                             {
-                                m_of << "/* ZST field */";
+                                emit_lvalue(e.dst); emit_enum_path(repr, re.field); m_of << " = " << (re.offset + ve.index);
+                            }
+                            else {
+                                m_of << "/* Niche tag */";
+                            }
+                            if( enm_p->is_value() )
+                            {
+                                // Value enums have no data fields
                             }
                             else
                             {
-                                m_of << ";\n" << indent;
-                                emit_lvalue(e.dst); m_of << ".DATA";
-                                m_of << ".var_" << ve.index << " = "; emit_param(ve.val);
+                                ::HIR::TypeRef  tmp;
+                                const auto& vty = mir_res.get_param_type(tmp, ve.val);
+                                if( this->type_is_bad_zst(vty) )
+                                {
+                                    m_of << " /* ZST field */";
+                                }
+                                else
+                                {
+                                    m_of << ";\n" << indent;
+                                    emit_lvalue(e.dst); m_of << ".DATA";
+                                    m_of << ".var_" << ve.index << " = "; emit_param(ve.val);
+                                }
+                            }
+                            }
+                        TU_ARMA(Values, re) {
+                            emit_lvalue(e.dst); m_of << ".TAG = "; emit_enum_variant_val(repr, ve.index);
+                            if( !enm_p->is_value() )
+                            {
+                                ::HIR::TypeRef  tmp;
+                                const auto& vty = mir_res.get_param_type(tmp, ve.val);
+                                if( this->type_is_bad_zst(vty) )
+                                {
+                                    m_of << "/* ZST field */";
+                                }
+                                else
+                                {
+                                    m_of << ";\n" << indent;
+                                    emit_lvalue(e.dst); m_of << ".DATA";
+                                    m_of << ".var_" << ve.index << " = "; emit_param(ve.val);
+                                }
+                            }
                             }
                         }
                     }
@@ -3653,29 +3709,106 @@ namespace {
             const auto* repr = Target_GetTypeRepr(mir_res.sp, m_resolve, ty);
             MIR_ASSERT(mir_res, repr, "No repr for " << ty);
 
-            if( const auto* e = repr->variants.opt_NonZero() )
-            {
+            struct MaybeSigned64 {
+                uint64_t    v;
+                bool    is_signed;
+
+                MaybeSigned64(bool is_signed, uint64_t v)
+                    :is_signed(is_signed)
+                    ,v(v)
+                {
+                }
+
+                void fmt(std::ostream& os) const {
+                    if( is_signed ) {
+                        os << static_cast<int64_t>(v);
+                    }
+                    else {
+                        os << v;
+                    }
+                }
+                //friend std::ostream& operator<<(std::ostream& os, const MaybeSigned64& x) {
+                //    x.fmt(os);
+                //    return os;
+                //}
+            };
+
+            TU_MATCH_HDRA( (repr->variants), {)
+            TU_ARMA(NonZero, e) {
                 MIR_ASSERT(mir_res, n_arms == 2, "NonZero optimised switch without two arms");
                 // If this is an emulated i128, check both fields
                 m_of << indent << "if( "; emit_lvalue(val);
-                const auto& slot_ty = emit_enum_path(repr, e->field);
+                const auto& slot_ty = emit_enum_path(repr, e.field);
                 if(type_is_emulated_i128(slot_ty)) {
                     m_of << ".lo == 0 && ";
-                    emit_lvalue(val); emit_enum_path(repr, e->field);
+                    emit_lvalue(val); emit_enum_path(repr, e.field);
                     m_of << ".hi";
                 }
                 m_of << " != 0 )\n";
                 m_of << indent << "\t";
-                cb(1 - e->zero_variant);
+                cb(1 - e.zero_variant);
                 m_of << "\n";
                 m_of << indent << "else\n";
                 m_of << indent << "\t";
-                cb(e->zero_variant);
+                cb(e.zero_variant);
                 m_of << "\n";
-            }
-            else if( const auto* e = repr->variants.opt_Values() )
-            {
-                const auto& tag_ty = Target_GetInnerType(sp, m_resolve, *repr, e->field.index, e->field.sub_fields);
+                }
+            TU_ARMA(Linear, e) {
+                const auto& tag_ty = Target_GetInnerType(sp, m_resolve, *repr, e.field.index, e.field.sub_fields);
+                switch(tag_ty.data().as_Primitive())
+                {
+                case ::HIR::CoreType::Bool:
+                case ::HIR::CoreType::U8:
+                case ::HIR::CoreType::U16:
+                case ::HIR::CoreType::U32:
+                case ::HIR::CoreType::U64:
+                case ::HIR::CoreType::Usize:
+                case ::HIR::CoreType::Char:
+                    break;
+                default:
+                    MIR_BUG(mir_res, "Invalid tag type?! " << tag_ty);
+                }
+
+
+                // Optimisation: If there's only one arm with a different value, then emit an `if` isntead of a `switch`
+                if( odd_arm != static_cast<size_t>(-1) )
+                {
+                    m_of << indent << "if( "; emit_lvalue(val); emit_enum_path(repr, e.field);
+                    if( e.is_niche(odd_arm) ) {
+                        m_of << " < " << e.offset;
+                    }
+                    else {
+                        m_of << " == " << (e.offset + odd_arm);
+                    }
+                    m_of << ") {"; cb(odd_arm); m_of << "} else {"; cb(odd_arm == 0 ? 1 : 0); m_of << "}\n";
+                }
+                else
+                {
+                    m_of << indent << "switch("; emit_lvalue(val); emit_enum_path(repr, e.field); m_of << ") {\n";
+                    for(size_t j = 0; j < n_arms; j ++)
+                    {
+                        if( e.is_niche(j) ) {
+                            continue ;
+                        }
+                        // Handle signed values
+                        m_of << indent << "case " << (e.offset + j) << ": ";
+                        cb(j);
+                        m_of << "break;\n";
+                    }
+                    m_of << indent << "default: ";
+                    if( e.uses_niche() ) {
+                        cb( e.field.index );
+                        m_of << "break;";
+                    }
+                    else {
+                        m_of << "abort();";
+                    }
+                    m_of << "\n";
+                    m_of << indent << "}\n";
+                }
+                }
+            TU_ARMA(Values, e) {
+                const auto& tag_ty = Target_GetInnerType(sp, m_resolve, *repr, e.field.index, e.field.sub_fields);
                 bool is_signed = false;
                 switch(tag_ty.data().as_Primitive())
                 {
@@ -3706,15 +3839,16 @@ namespace {
                     MIR_BUG(mir_res, "Unsized tag?!");
                 }
 
+                // Optimisation: If there's only one arm with a different value, then emit an `if` isntead of a `switch`
                 if( odd_arm != static_cast<size_t>(-1) )
                 {
                     m_of << indent << "if("; emit_lvalue(val); m_of << ".TAG == ";
                     // Handle signed values
                     if( is_signed ) {
-                        m_of << static_cast<int64_t>(e->values[odd_arm]);
+                        m_of << static_cast<int64_t>(e.values[odd_arm]);
                     }
                     else {
-                        m_of << e->values[odd_arm];
+                        m_of << e.values[odd_arm];
                     }
                     m_of << ") {"; cb(odd_arm); m_of << "} else {"; cb(odd_arm == 0 ? 1 : 0); m_of << "}\n";
                     return ;
@@ -3725,24 +3859,20 @@ namespace {
                 {
                     // Handle signed values
                     if( is_signed ) {
-                        m_of << indent << "case " << static_cast<int64_t>(e->values[j]) << ": ";
+                        m_of << indent << "case " << static_cast<int64_t>(e.values[j]) << ": ";
                     }
                     else {
-                        m_of << indent << "case " << e->values[j] << ": ";
+                        m_of << indent << "case " << e.values[j] << ": ";
                     }
                     cb(j);
                     m_of << "break;\n";
                 }
                 m_of << indent << "default: abort();\n";
                 m_of << indent << "}\n";
-            }
-            else if( repr->variants.is_None() )
-            {
+                }
+            TU_ARMA(None, e) {
                 m_of << indent; cb(0); m_of << "\n";
-            }
-            else
-            {
-                BUG(sp, "Unexpected variant type - " << repr->variants.tag_str());
+                }
             }
         }
         void emit_term_switchvalue(const ::MIR::TypeResolve& mir_res, const ::MIR::LValue& val, const ::MIR::SwitchValues& values, unsigned indent_level, ::std::function<void(size_t)> cb)
@@ -4910,6 +5040,9 @@ namespace {
                     TU_ARM(repr->variants, Values, ve) {
                         m_of << "(*"; emit_param(e.args.at(0)); m_of << ")"; emit_enum_path(repr, ve.field);
                         } break;
+                    TU_ARM(repr->variants, Linear, ve) {
+                        m_of << "(*"; emit_param(e.args.at(0)); m_of << ")"; emit_enum_path(repr, ve.field);
+                        } break;
                     TU_ARM(repr->variants, NonZero, ve) {
                         m_of << "(*"; emit_param(e.args.at(0)); m_of << ")"; emit_enum_path(repr, ve.field); m_of << " ";
                         m_of << (ve.zero_variant ? "==" : "!=");
@@ -5960,7 +6093,7 @@ namespace {
                         MIR_TODO(*m_mir_res, "Union literals");
                         }
                     TU_ARMA(Enum, pbe) {
-                        MIR_ASSERT(*m_mir_res, pbe->m_data.is_Data(), "");
+                        MIR_ASSERT(*m_mir_res, pbe->m_data.is_Data(), "get_inner_type: Expected a data enum, got " << pbe->m_data.tag_str());
                         const auto& evar = pbe->m_data.as_Data().at(var);
                         return monomorph_with(pp, evar.type);
                         }
@@ -5989,18 +6122,32 @@ namespace {
                 if( const auto* enm_p = ty.data().as_Path().binding.opt_Enum() )
                 {
                     const ::HIR::Enum& enm = **enm_p;
-                    if( repr->variants.is_None() ) {
+                    if( enm.is_value() ) {
+                        return e.idx == 0;
+                    }
+                    TU_MATCH_HDRA( (repr->variants), {)
+                    TU_ARMA(None, ve) {
                         return true;
-                    } else if( const auto* ve = repr->variants.opt_NonZero() ) {
-                        if( e.idx == ve->zero_variant ) {
+                        }
+                    TU_ARMA(NonZero, ve) {
+                        if( e.idx == ve.zero_variant ) {
                             return true;
                         } else {
                             return is_zero_literal(get_inner_type(e.idx, 0), *e.val, params);
                         }
-                    } else if( enm.is_value() ) {
-                        return false;
-                    } else {
-                        return repr->variants.as_Values().values[e.idx] == 0 && is_zero_literal(get_inner_type(e.idx, 0), *e.val, params);
+                        }
+                    TU_ARMA(Linear, ve) {
+                        // TODO: If this is the niche, then recurse?
+                        if( ve.is_niche(e.idx) ) {
+                            return is_zero_literal(get_inner_type(e.idx, 0), *e.val, params);
+                        }
+                        else {
+                            return ve.offset == 0 && e.idx == 0 && is_zero_literal(get_inner_type(e.idx, 0), *e.val, params);
+                        }
+                        }
+                    TU_ARMA(Values, ve) {
+                        return ve.values[e.idx] == 0 && is_zero_literal(get_inner_type(e.idx, 0), *e.val, params);
+                        }
                     }
                 }
                 else if( ty.data().as_Path().binding.is_Union() )

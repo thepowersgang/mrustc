@@ -88,13 +88,38 @@ struct TypeRepr
         size_t  size;
         ::std::vector<size_t>   sub_fields;
     };
+
     TAGGED_UNION(VariantMode, None,
     (None, struct {
         }),
-    // Tag is a fixed set of values in an offset.
+    // Variants numbered 0 to N (potentially offset)
+    (Linear, struct {
+        // Note: If `field.sub_fields` has entries, then this is a niche optimisation.
+        // Path of the variant
+        FieldPath   field;
+        // Offset for variants (when in a niche)
+        size_t  offset;
+        size_t  num_variants;
+
+        bool uses_niche() const {
+            return !field.sub_fields.empty();
+        }
+        bool is_niche(unsigned var_idx) const { 
+            return uses_niche() && var_idx == field.index;
+        }
+        bool is_tag(unsigned var_idx) const {
+            return !uses_niche() && var_idx == field.index;
+        }
+        }),
+    // Tag is a fixed set of values in a field.
+    // TODO: Encode niche in here too?
     (Values, struct {
+        // NOTE: `field.sub_path` should always be empty?
         FieldPath   field;
         ::std::vector<uint64_t> values;
+        bool is_tag(unsigned var_idx) const {
+            return var_idx == field.index;
+        }
         }),
     // Tag is based on a range of values
     //(Ranges, struct {
@@ -106,7 +131,7 @@ struct TypeRepr
     // Only valid for two-element enums
     (NonZero, struct {
         FieldPath   field;
-        uint8_t zero_variant;
+        unsigned    zero_variant;
         })
     );
     VariantMode variants;
