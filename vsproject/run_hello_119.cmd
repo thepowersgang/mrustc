@@ -15,7 +15,7 @@ x64\Release\minicargo.exe ..\rustc-%RUSTC_VERSION%-src\src\libtest %STD_ARGS%
 x64\Release\minicargo.exe ..\lib\libproc_macro --output-dir %OUTDIR%
 @if %errorlevel% neq 0 exit /b %errorlevel%
 
-x64\Release\mrustc.exe ..\rustc-%RUSTC_VERSION%-src\src\test\run-pass\hello.rs -L %OUTDIR% -o %OUTDIR%\hello.exe -g
+x64\Release\mrustc.exe ..\rustc-%RUSTC_VERSION%-src\src\test\run-pass\hello.rs -L %OUTDIR% -o %OUTDIR%\hello.exe -g > %OUTDIR%\hello.exe_dbg.txt
 @if %errorlevel% neq 0 exit /b %errorlevel%
 %OUTDIR%\hello.exe
 @if %errorlevel% neq 0 exit /b %errorlevel%
