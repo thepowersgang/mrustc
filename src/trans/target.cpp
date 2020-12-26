@@ -1146,6 +1146,9 @@ namespace {
         case ::HIR::Enum::Class::TAGDEAD:   throw "";
         TU_ARM(enm.m_data, Data, e) {
 
+            // TODO: repr(C) enums - they have different rules
+            // - A data enum with `repr(C)` puts the tag before the data
+
             size_t  max_size = 0;
             size_t  max_align = 0;
             for(const auto& var : e)
@@ -1188,9 +1191,7 @@ namespace {
                     max_size ++;
             }
 
-            // Niche optimisation (DISABLED: Codegen might be buggy)
-#if 1
-            // Support offsetting the tag and putting it elsewhere
+            // Niche optimisation
             // - Find an inner enum or char, and use high values for the variant
             if( rv.variants.is_None() && e.size() > 1 )
             {
@@ -1244,12 +1245,11 @@ namespace {
                     }
                 }
             }
-#endif
 
+            // If there's no suitable niche, emit a new tag
             if( rv.variants.is_None() )
             {
                 size_t tag_size = 0;
-                // TODO: repr(C) enums - they have different rules
                 if( e.size() == 0 ) {
                     // Unreachable
                 }

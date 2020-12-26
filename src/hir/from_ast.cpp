@@ -1128,6 +1128,36 @@ namespace {
         ERROR(Span(), E0000, "Enum " << path << " has both value and data variants");
     }
 
+    auto repr = ::HIR::Enum::Repr::Rust;
+    if( const auto* attr_repr = attrs.get("repr") )
+    {
+        ASSERT_BUG(Span(), attr_repr->has_sub_items(), "#[repr] attribute malformed, " << *attr_repr);
+        ASSERT_BUG(Span(), attr_repr->items().size() == 1, "#[repr] attribute malformed, " << *attr_repr);
+        ASSERT_BUG(Span(), attr_repr->items()[0].has_noarg(), "#[repr] attribute malformed, " << *attr_repr);
+        const auto& repr_str = attr_repr->items()[0].name();
+        if( repr_str == "C" ) {
+            repr = ::HIR::Enum::Repr::C;
+        }
+        else if( repr_str == "u8") {
+            repr = ::HIR::Enum::Repr::U8;
+        }
+        else if( repr_str == "u16") {
+            repr = ::HIR::Enum::Repr::U16;
+        }
+        else if( repr_str == "u32") {
+            repr = ::HIR::Enum::Repr::U32;
+        }
+        else if( repr_str == "u64") {
+            repr = ::HIR::Enum::Repr::U64;
+        }
+        else if( repr_str == "usize") {
+            repr = ::HIR::Enum::Repr::Usize;
+        }
+        else {
+            ERROR(attrs.get("repr")->span(), E0000, "Unknown enum repr '" << repr_str << "'");
+        }
+    }
+
     ::HIR::Enum::Class  data;
     if( ent.variants().size() > 0 && !has_data )
     {
@@ -1141,35 +1171,6 @@ namespace {
                 });
         }
 
-        auto repr = ::HIR::Enum::Repr::Rust;
-        if( const auto* attr_repr = attrs.get("repr") )
-        {
-            ASSERT_BUG(Span(), attr_repr->has_sub_items(), "#[repr] attribute malformed, " << *attr_repr);
-            ASSERT_BUG(Span(), attr_repr->items().size() == 1, "#[repr] attribute malformed, " << *attr_repr);
-            ASSERT_BUG(Span(), attr_repr->items()[0].has_noarg(), "#[repr] attribute malformed, " << *attr_repr);
-            const auto& repr_str = attr_repr->items()[0].name();
-            if( repr_str == "C" ) {
-                repr = ::HIR::Enum::Repr::C;
-            }
-            else if( repr_str == "u8") {
-                repr = ::HIR::Enum::Repr::U8;
-            }
-            else if( repr_str == "u16") {
-                repr = ::HIR::Enum::Repr::U16;
-            }
-            else if( repr_str == "u32") {
-                repr = ::HIR::Enum::Repr::U32;
-            }
-            else if( repr_str == "u64") {
-                repr = ::HIR::Enum::Repr::U64;
-            }
-            else if( repr_str == "usize") {
-                repr = ::HIR::Enum::Repr::Usize;
-            }
-            else {
-                ERROR(Span(), E0000, "Unknown enum repr '" << repr_str << "'");
-            }
-        }
         data = ::HIR::Enum::Class::make_Value({ repr, mv$(variants) });
     }
     // NOTE: empty enums are encoded as empty Data enums
@@ -1242,11 +1243,23 @@ namespace {
             }
         }
 
-        if( /*const auto* attr_repr =*/ attrs.get("repr") )
+        switch(repr)
         {
-            // NOTE: librustc_llvm has `#[repr(C)] enum AttributePlace { Argument(u32), Function }`
+        case ::HIR::Enum::Repr::Rust:
+            break;
+        default:
+            // NOTE:
+            // - librustc_llvm has `#[repr(C)] enum AttributePlace { Argument(u32), Function }`
+            // - `rustc-1.19.0-src\src\vendor\idna\src\uts46.rs:33` has `#[repr(u16)]`
             //ERROR(Span(), E0000, "#[repr] not allowed on enums with data");
+
+            // TODO: Save the repr for use in `trans/target.cpp`
+            // https://github.com/rust-lang/rfcs/blob/master/text/2195-really-tagged-unions.md
+            // - `repr(int)` packs the tag into the variants (which can be more efficient for alignment, with `Variant(u8, u16)`)
+            // - `repr(C,int)` has the tag before variants (so will be less alignment efficient)
+            break;
         }
+
         data = ::HIR::Enum::Class::make_Data( mv$(variants) );
     }
 
