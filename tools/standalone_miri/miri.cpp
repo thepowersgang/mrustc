@@ -686,14 +686,24 @@ GlobalState::GlobalState(const ModuleTree& modtree):
     //
 
     // Hacky implementation of the mangling rules (doesn't support generics)
-    auto make_simplepath = [](const char* crate, std::initializer_list<const char*> il) -> RcString {
+    auto fmt_ident = [](::std::ostream& os, const char* i) {
+        if( const auto* hash = strchr(i, '#') ) {
+            os << "h" << (hash - i) << ::std::string(i, hash-i);
+            os << strlen(hash+1) << hash+1;
+        }
+        else {
+            os << strlen(i) << i;
+        }
+        };
+    auto make_simplepath = [fmt_ident](const char* crate, std::initializer_list<const char*> il) -> RcString {
         std::stringstream   ss;
-        ss << "ZRG" << (end(il)-begin(il)) << "c" << strlen(crate) << crate;
+        ss << "ZRG" << (end(il)-begin(il)) << "c"; fmt_ident(ss, crate);
         for(const auto* e : il) {
             ss << strlen(e);
             ss << e;
         }
         ss << "0g";
+        //std::cerr << ss.str() << std::endl;
         return RcString::new_interned(ss.str().c_str());
         };
 
@@ -706,13 +716,17 @@ GlobalState::GlobalState(const ModuleTree& modtree):
         ret = Value::new_i32(120);  //ERROR_CALL_NOT_IMPLEMENTED
         return true;
     };
-    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std", {"sys", "imp", "c", "SetThreadStackGuarantee"}), cb_SetThreadStackGuarantee));
-    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std", {"sys", "windows", "c", "SetThreadStackGuarantee"}), cb_SetThreadStackGuarantee));
+    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std"      , {"sys", "imp", "c", "SetThreadStackGuarantee"}), cb_SetThreadStackGuarantee));
+    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std#0_0_0", {"sys", "imp", "c", "SetThreadStackGuarantee"}), cb_SetThreadStackGuarantee));
+    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std"      , {"sys", "windows", "c", "SetThreadStackGuarantee"}), cb_SetThreadStackGuarantee));
+    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std#0_0_0", {"sys", "windows", "c", "SetThreadStackGuarantee"}), cb_SetThreadStackGuarantee));
 
     // Win32 Shared RW locks (no-op)
     // TODO: Emulate fully for inter-thread locks
-    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std", { "sys", "windows", "c", "AcquireSRWLockExclusive" }), cb_nop));
-    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std", { "sys", "windows", "c", "ReleaseSRWLockExclusive" }), cb_nop));
+    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std"      , { "sys", "windows", "c", "AcquireSRWLockExclusive" }), cb_nop));
+    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std"      , { "sys", "windows", "c", "ReleaseSRWLockExclusive" }), cb_nop));
+    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std#0_0_0", { "sys", "windows", "c", "AcquireSRWLockExclusive" }), cb_nop));
+    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std#0_0_0", { "sys", "windows", "c", "ReleaseSRWLockExclusive" }), cb_nop));
 
     // - No guard page needed
     override_handler_t* cb_guardpage_init = [](auto& state, auto& ret, const auto& path, auto args){
@@ -721,11 +735,14 @@ GlobalState::GlobalState(const ModuleTree& modtree):
         ret.write_u64(8, 0);
         return true;
     };
-    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std", {"sys", "imp", "thread", "guard", "init" }), cb_guardpage_init));
-    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std", {"sys", "unix", "thread", "guard", "init" }), cb_guardpage_init));
+    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std"      , {"sys", "imp", "thread", "guard", "init" }), cb_guardpage_init));
+    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std#0_0_0", {"sys", "imp", "thread", "guard", "init" }), cb_guardpage_init));
+    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std"      , {"sys", "unix", "thread", "guard", "init" }), cb_guardpage_init));
+    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std#0_0_0", {"sys", "unix", "thread", "guard", "init" }), cb_guardpage_init));
 
     // - No stack overflow handling needed
-    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std", {"sys", "imp", "stack_overflow", "imp", "init"}), cb_nop));
+    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std"      , {"sys", "imp", "stack_overflow", "imp", "init"}), cb_nop));
+    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std#0_0_0", {"sys", "imp", "stack_overflow", "imp", "init"}), cb_nop));
 }
 
 // ====================================================================
@@ -1008,13 +1025,12 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                             if( dt.variants.size() == 0 ) {
                                 LOG_FATAL("Cast of composite - " << src_ty);
                             }
-                            // TODO: Check that all variants have the same tag offset
+                            // NOTE: Ensure that this is a trivial enum (tag offset is zero, there are variants)
                             LOG_ASSERT(dt.fields.size() == 1, "");
                             LOG_ASSERT(dt.fields[0].first == 0, "");
-                            for(size_t i = 0; i < dt.variants.size(); i ++ ) {
-                                LOG_ASSERT(dt.variants[i].base_field == 0, "");
-                                LOG_ASSERT(dt.variants[i].field_path.empty(), "");
-                            }
+                            LOG_ASSERT(dt.variants.size() > 0, "");
+                            LOG_ASSERT(dt.tag_path.base_field == 0, "");
+                            LOG_ASSERT(dt.tag_path.other_indexes.empty(), "");
                             ::HIR::TypeRef  tag_ty = dt.fields[0].second;
                             LOG_ASSERT(tag_ty.get_wrapper() == nullptr, "");
                             switch(tag_ty.inner_type)
@@ -1572,23 +1588,31 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                 // - Unions (no tag)
                 // - Data enums (tag and data)
                 // - Value enums (no data)
-                const auto& var = data_ty.variants.at(re.index);
-                if( var.data_field != SIZE_MAX )
+                if( data_ty.variants.size() > 0 )
                 {
-                    const auto& fld = data_ty.fields.at(re.index);
+                    const auto& var = data_ty.variants.at(re.index);
+                    if( var.data_field != SIZE_MAX )
+                    {
+                        LOG_ASSERT(var.data_field < data_ty.fields.size(), "Data field (" << var.data_field << ") for " << re.path << " #" << re.index << " out of range");
+                        const auto& fld = data_ty.fields.at(var.data_field);
 
-                    new_val.write_value(fld.first, state.param_to_value(re.val));
-                }
-                if( var.base_field != SIZE_MAX )
-                {
-                    ::HIR::TypeRef  tag_ty;
-                    size_t tag_ofs = dst_ty.get_field_ofs(var.base_field, var.field_path, tag_ty);
-                    LOG_ASSERT(tag_ty.get_size() == var.tag_data.size(), "");
-                    new_val.write_bytes(tag_ofs, var.tag_data.data(), var.tag_data.size());
+                        new_val.write_value(fld.first, state.param_to_value(re.val));
+                    }
+
+                    if( !var.tag_data.empty() )
+                    {
+                        ::HIR::TypeRef  tag_ty;
+                        size_t tag_ofs = dst_ty.get_field_ofs(data_ty.tag_path.base_field, data_ty.tag_path.other_indexes, tag_ty);
+                        LOG_ASSERT(tag_ty.get_size() == var.tag_data.size(), "");
+                        new_val.write_bytes(tag_ofs, var.tag_data.data(), var.tag_data.size());
+                    }
                 }
                 else
                 {
                     // Union, no tag
+                    const auto& fld = data_ty.fields.at(re.index);
+
+                    new_val.write_value(fld.first, state.param_to_value(re.val));
                 }
                 LOG_DEBUG("Variant " << new_val);
                 } break;
@@ -1686,12 +1710,23 @@ bool InterpreterThread::step_one(Value& out_thread_result)
             LOG_ASSERT(ty.inner_type == RawType::Composite, "Matching on non-coposite - " << ty);
             LOG_DEBUG("Switch v = " << v);
 
+            const auto& dt = ty.composite_type();
+
+            // Get offset, read the value.
+            ::HIR::TypeRef  tag_ty;
+            size_t tag_ofs = ty.get_field_ofs(dt.tag_path.base_field, dt.tag_path.other_indexes, tag_ty);
+
+            ::std::vector<char> tag_data( tag_ty.get_size() );
+            v.read_bytes(tag_ofs, const_cast<char*>(tag_data.data()), tag_data.size());
+            // If there's a relocation, force down the default route
+            bool has_reloc = static_cast<bool>(v.get_relocation(tag_ofs));
+
             // TODO: Convert the variant list into something that makes it easier to switch on.
             size_t found_target = SIZE_MAX;
             size_t default_target = SIZE_MAX;
-            for(size_t i = 0; i < ty.composite_type().variants.size(); i ++)
+            for(size_t i = 0; i < dt.variants.size(); i ++)
             {
-                const auto& var = ty.composite_type().variants[i];
+                const auto& var = dt.variants[i];
                 if( var.tag_data.size() == 0 )
                 {
                     // Save as the default, error for multiple defaults
@@ -1703,15 +1738,9 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                 }
                 else
                 {
-                    // Get offset, read the value.
-                    ::HIR::TypeRef  tag_ty;
-                    size_t tag_ofs = ty.get_field_ofs(var.base_field, var.field_path, tag_ty);
                     // Read the value bytes
-                    ::std::vector<char> tmp( var.tag_data.size() );
-                    v.read_bytes(tag_ofs, const_cast<char*>(tmp.data()), tmp.size());
-                    if( v.get_relocation(tag_ofs) )
-                        continue ;
-                    if( ::std::memcmp(tmp.data(), var.tag_data.data(), tmp.size()) == 0 )
+                    LOG_ASSERT(var.tag_data.size() == tag_data.size(), "Mismatch in tag data size");
+                    if( ! has_reloc && ::std::memcmp(tag_data.data(), var.tag_data.data(), tag_data.size()) == 0 )
                     {
                         LOG_DEBUG("Explicit match " << i);
                         found_target = i;
@@ -1720,7 +1749,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                 }
             }
 
-            if( found_target == SIZE_MAX )
+            if( found_target == SIZE_MAX && default_target != SIZE_MAX )
             {
                 LOG_DEBUG("Default match " << default_target);
                 found_target = default_target;
@@ -2083,9 +2112,10 @@ bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, co
         size_t fallback = SIZE_MAX;
         size_t found_index = SIZE_MAX;
         LOG_ASSERT(ty.inner_type == RawType::Composite, "discriminant_value " << ty);
-        for(size_t i = 0; i < ty.composite_type().variants.size(); i ++)
+        const auto& dt = ty.composite_type();
+        for(size_t i = 0; i < dt.variants.size(); i ++)
         {
-            const auto& var = ty.composite_type().variants[i];
+            const auto& var = dt.variants[i];
             if( var.tag_data.size() == 0 )
             {
                 // Only seen in Option<NonNull>
@@ -2096,7 +2126,7 @@ bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, co
             {
                 // Get offset to the tag
                 ::HIR::TypeRef  tag_ty;
-                size_t tag_ofs = ty.get_field_ofs(var.base_field, var.field_path, tag_ty);
+                size_t tag_ofs = ty.get_field_ofs(dt.tag_path.base_field, dt.tag_path.other_indexes, tag_ty);
                 // Compare
                 if( val.compare(tag_ofs, var.tag_data.data(), var.tag_data.size()) == 0 )
                 {

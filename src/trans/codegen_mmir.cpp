@@ -663,10 +663,6 @@ namespace
             {
                 m_of << "\t" << e.offset << " = " << fmt(e.ty) << ";\n";
             }
-            for(const auto& e : repr->fields)
-            {
-                m_of << "\t" << "#" << (&e - repr->fields.data()) << " =" << (&e - repr->fields.data()) << ";\n";
-            }
             m_of << "}\n";
 
             if( has_drop_glue )
@@ -720,9 +716,9 @@ namespace
                 m_of << "\t" << e.offset << " = " << fmt(e.ty) << ";\n";
             }
 
-            auto emit_tag = [&](const TypeRepr::FieldPath& field_path, uint64_t v) {
-                m_of << " @[" << field_path.index << ", " << field_path.sub_fields << "] = \"";
-                for(size_t i = 0; i < field_path.size; i ++)
+            auto emit_value = [&](const TypeRepr::FieldPath& path, uint64_t v) {
+                m_of << "\"";
+                for(size_t i = 0; i < path.size; i ++)
                 {
                     int val = (v >> (i*8)) & 0xFF;
                     if(val < 16)
@@ -736,52 +732,67 @@ namespace
             switch(repr->variants.tag())
             {
             case TypeRepr::VariantMode::TAGDEAD:    throw "";
-            TU_ARM(repr->variants, None, _e) (void)_e;
-                break;
+            TU_ARM(repr->variants, None, _e) {
+                }
             TU_ARM(repr->variants, Linear, e) {
+                m_of << "\t@[" << e.field.index << ", " << e.field.sub_fields << "] = {\n";
                 for(size_t i = 0; i < e.num_variants; i ++ )
                 {
-                    m_of << "\t#" << i;
+                    m_of << "\t\t";
+
+                    if( e.is_niche(i) ) {
+                        m_of << "*";
+                    }
+                    else {
+                        emit_value(e.field, e.offset + i);
+                    }
                     // - Data field number (optional)
                     if( !item.is_value() )
                     {
                         m_of << " =" << i;
                     }
-
-                    if( !e.field.sub_fields.empty() && i == e.field.sub_fields.back() ) {
-                        // Niche option, don't emit
-                    }
-                    else {
-                        emit_tag(e.field, e.offset + i);
-                    }
-                    m_of << ";\n";
+                    m_of << ",\n";
                 }
+                m_of << "\t\t}\n";
                 }
-            TU_ARM(repr->variants, Values, e)
-                for(const auto& v : e.values)
+            TU_ARM(repr->variants, Values, e) {
+                m_of << "\t@[" << e.field.index << ", " << e.field.sub_fields << "] = {\n";
+                for(size_t idx = 0; idx < e.values.size(); idx ++)
                 {
-                    size_t idx = (&v - e.values.data());
-                    // Variants require:
-                    m_of << "\t#" << idx;
+                    m_of << "\t\t";
+                    // - Tag value
+                    emit_value(e.field, e.values[idx]);
                     // - Data field number (optional)
                     if( !item.is_value() )
                     {
                         m_of << " =" << idx;
                     }
-                    // - Tag value
-                    emit_tag(e.field, v);
-                    m_of << ";\n";
+                    m_of << ",\n";
                 }
-                break;
+                m_of << "\t}\n";
+                }
             TU_ARM(repr->variants, NonZero, e) {
-                m_of << "\t#" << int(e.zero_variant) << " @[" << e.field.index << ", " << e.field.sub_fields << "] = \"";
-                for(size_t i = 0; i < e.field.size; i ++)
+                m_of << "\t@[" << e.field.index << ", " << e.field.sub_fields << "] = { ";
+                for(int i = 0; i < 2; i ++)
                 {
-                    m_of << "\\0";
+                    if( i == 1 ) {
+                        m_of << ", ";
+                    }
+
+                    if( e.zero_variant == i ) {
+                        m_of << "\"";
+                        for(size_t i = 0; i < e.field.size; i ++)
+                        {
+                            m_of << "\\0";
+                        }
+                        m_of << "\"";
+                    }
+                    else {
+                        m_of << "* =" << i;
+                    }
                 }
-                m_of << "\";\n";
-                m_of << "\t#" << int(1 - e.zero_variant) << " =" << int(1 - e.zero_variant) << ";\n";
-                } break;
+                m_of << " }\n";
+                }
             }
             m_of << "}\n";
 

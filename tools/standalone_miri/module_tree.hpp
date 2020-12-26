@@ -131,15 +131,19 @@ struct DataType
 
     // Offset and datatype
     ::std::vector<::std::pair<size_t, ::HIR::TypeRef>> fields;
+
     // Values for variants
     struct VariantValue {
-        size_t data_field;
-        size_t base_field;
-        ::std::vector<size_t>   field_path;
-
-        //size_t tag_offset;  // Cached.
+        // If empty, this is the wildcard variant
         ::std::string tag_data;
+        // If SIZE_MAX, this has no associated data
+        size_t data_field;
     };
+
+    struct TagPath {
+        size_t  base_field;
+        std::vector<size_t> other_indexes;
+    } tag_path;
     ::std::vector<VariantValue> variants;
 };
 

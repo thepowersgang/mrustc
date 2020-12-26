@@ -240,57 +240,46 @@ bool Parser::parse_one()
                 rv.fields.push_back(::std::make_pair(ofs, ::std::move(ty)));
             }
             // Variants
-            else if(lex.next() == TokenClass::Ident && lex.next().strval[0] == '#' )
+            else if( lex.next() == '@' )
             {
-                size_t var_idx = ::std::stoi(lex.consume().strval.substr(1));
-
-                size_t data_fld = SIZE_MAX;
-                if( lex.consume_if('=') )
+                lex.check_consume('@');
+                lex.check_consume('[');
+                rv.tag_path.base_field = lex.consume().integer();
+                if( lex.consume_if(',') )
                 {
-                    data_fld = lex.consume().integer();
-                }
-
-                size_t tag_ofs = SIZE_MAX;
-
-                size_t base_idx = SIZE_MAX;
-                ::std::vector<size_t>   other_idx;
-                ::std::string tag_value;
-                if( lex.consume_if('@') )
-                {
-                    lex.check_consume('[');
-                    base_idx = lex.consume().integer();
-                    if( lex.consume_if(',') )
+                    while(lex.next() != ']')
                     {
-                        while(lex.next() != ']')
-                        {
-                            lex.check(TokenClass::Integer);
-                            other_idx.push_back( lex.consume().integer() );
-                            if( !lex.consume_if(',') )
-                                break;
-                        }
+                        lex.check(TokenClass::Integer);
+                        rv.tag_path.other_indexes.push_back( lex.consume().integer() );
+                        if( !lex.consume_if(',') )
+                            break;
                     }
-                    lex.check_consume(']');
-
-                    lex.check_consume('=');
-                    lex.check(TokenClass::String);
-                    tag_value = ::std::move(lex.consume().strval);
-
-                    //tag_ofs = rv.fields.at(base_idx).first;
-                    //const auto* tag_ty = &rv.fields.at(base_idx).second;
-                    //for(auto idx : other_idx)
-                    //{
-                    //    assert(tag_ty->get_wrapper() == nullptr);
-                    //    assert(tag_ty->inner_type == RawType::Composite);
-                    //    LOG_TODO(lex << "Calculate tag offset with nested tag - " << idx << " ty=" << *tag_ty);
-                    //}
                 }
-                lex.check_consume(';');
+                lex.check_consume(']');
+                lex.check_consume('=');
+                lex.check_consume('{');
 
-                if( rv.variants.size() <= var_idx )
+                while( lex.lookahead() != '}' )
                 {
-                    rv.variants.resize(var_idx+1);
+                    DataType::VariantValue  var;
+                    if( lex.consume_if('*') ) {
+                    }
+                    else {
+                        lex.check(TokenClass::String);
+                        var.tag_data = ::std::move(lex.consume().strval);
+                    }
+                    if(lex.consume_if('=')) {
+                        var.data_field = lex.check_consume(TokenClass::Integer).integer();
+                    }
+                    else {
+                        var.data_field = SIZE_MAX;
+                    }
+                    rv.variants.push_back(std::move(var));
+
+                    if( !lex.consume_if(',') )
+                        break;
                 }
-                rv.variants[var_idx] = { data_fld, base_idx, other_idx, tag_value };
+                lex.check_consume('}');
             }
             else
             {
