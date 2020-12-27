@@ -356,12 +356,22 @@ namespace {
                 TU_MATCH_HDRA( (src_ty.data()), {)
                 default:
                     ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty) << " to " << this->context.m_ivars.fmt_type(src_ty));
+                TU_ARMA(Closure, s_e) {
+                    // Valid cast here, downstream code will check if its a non-capturing closure
+                    if( s_e.m_arg_types.size() != e.m_arg_types.size() )
+                        ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty) << " to " << this->context.m_ivars.fmt_type(src_ty));
+                    this->context.equate_types(sp, e.m_rettype, s_e.m_rettype);
+                    for(size_t i = 0; i < e.m_arg_types.size(); i++)
+                        this->context.equate_types(sp, e.m_arg_types[i], s_e.m_arg_types[i]);
+                    this->m_completed = true;
+                    }
                 TU_ARMA(Function, s_e) {
                     // Check that the ABI and unsafety is correct
                     if( s_e.m_abi != e.m_abi || s_e.is_unsafe != e.is_unsafe || s_e.m_arg_types.size() != e.m_arg_types.size() )
                         ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty) << " to " << this->context.m_ivars.fmt_type(src_ty));
                     // TODO: Equate inner types
                     this->context.equate_types(sp, tgt_ty, src_ty);
+                    this->m_completed = true;
                     }
                 }
                 }
