@@ -12,6 +12,14 @@ struct Opts
 {
     const char* patchfile;
     const char* base_dir;
+    bool    dry_run;
+
+    Opts()
+        :patchfile(nullptr)
+        ,base_dir(nullptr)
+        ,dry_run(false)
+    {
+    }
 
     bool parse(int argc, char *argv[]);
     void usage(const char* name);
@@ -27,8 +35,8 @@ struct PatchFragment
     std::vector<std::string>    new_contents;
 
     PatchFragment(unsigned orig_line, unsigned orig_count, unsigned new_line, unsigned new_count)
-        : orig_line(orig_line)
-        , new_line(new_line)
+        : orig_line(orig_line-1)
+        , new_line(new_line-1)
     {
         orig_contents.reserve(orig_count);
         new_contents.reserve(new_count);
@@ -65,9 +73,14 @@ int main(int argc, char *argv[])
     try {
         // 1. Parse the patch file
         auto patch = load_patch(opts.patchfile);
+        // Sort fragments for easier processing
+        for(auto& f : patch)
+        {
+            std::sort(f.fragments.begin(), f.fragments.end(), [&](const PatchFragment& a, const PatchFragment& b){ return a.orig_line < b.orig_line; });
+        }
 
         // Iterate all files
-        for(auto& f : patch)
+        for(const auto& f : patch)
         {
             // Get the output path
             std::string new_path;
@@ -88,6 +101,7 @@ int main(int argc, char *argv[])
                 std::cerr << new_path << " aready patched" << std::endl;
                 continue;
             }
+            std::cerr << "   " << new_path << " not yet patched" << std::endl;
 
 
             // Get the input path
@@ -99,9 +113,19 @@ int main(int argc, char *argv[])
 
             auto orig_file = load_file(orig_path.c_str());
             bool is_clean = true;
-            for(const auto& frag : f.fragments)
             {
-                is_clean &= sublist_match(new_file, frag.orig_line, frag.orig_contents);
+                //size_t src_ofs = 0;
+                for(const auto& frag : f.fragments)
+                {
+                    //for(size_t i = src_ofs; i < frag.orig_line; i ++)
+                    //    std::cerr << i << "___ " << orig_file[i] << std::endl;
+                    is_clean &= sublist_match(orig_file, frag.orig_line, frag.orig_contents);
+                    //for(size_t i = 0; i < frag.orig_contents.size(); i ++)
+                    //    std::cerr << (frag.orig_line+i) << "--- " << frag.orig_contents[i] << std::endl;
+                    //src_ofs = frag.orig_line + frag.orig_contents.size();
+                }
+                //for(size_t i = src_ofs; i < orig_file.size(); i ++)
+                //    std::cerr << i << "___ " << orig_file[i] << std::endl;
             }
 
             if( !is_clean ) {
@@ -110,7 +134,6 @@ int main(int argc, char *argv[])
             }
 
             // Apply each patch
-            std::sort(f.fragments.begin(), f.fragments.end(), [&](const PatchFragment& a, const PatchFragment& b){ return a.orig_line < b.orig_line; });
             std::vector<std::string>    new_file2;
             size_t src_ofs = 0;
             for(const auto& frag : f.fragments)
@@ -119,16 +142,22 @@ int main(int argc, char *argv[])
                 new_file2.insert(new_file2.begin(), frag.new_contents.begin(), frag.new_contents.end());
                 src_ofs = frag.orig_line + frag.orig_contents.size();
             }
+            new_file2.insert(new_file2.end(), orig_file.begin() + src_ofs, orig_file.end());
 
             // Save the new contents
+            if( !opts.dry_run )
             {
                 std::ofstream   ofs(new_path);
                 for(const auto& line : new_file2)
                 {
                     ofs << line << std::endl;
                 }
+                std::cerr << "`" << new_path << "` PATCHED" << std::endl;
             }
-            std::cerr << new_path << " patched" << std::endl;
+            else
+            {
+                std::cerr << "`" << new_path << "` to be PATCHED" << std::endl;
+            }
         }
     }
     catch(const ::std::exception& e)
@@ -198,8 +227,8 @@ struct Parser {
 
     unsigned read_int() {
         const char* s = l;
-        if( !consume_while([](char c){ return std::isdigit(c) == 0; }) ) {
-            throw ::std::runtime_error("Expected digit, found TODO");
+        if( !consume_while([](char c){ return std::isdigit(c) != 0; }) ) {
+            throw ::std::runtime_error( std::string("Expected digit, found `") + *l + "`" );
         }
         const char* e = l;
         return std::stol( std::string(s, e) );
@@ -220,7 +249,10 @@ namespace {
         {
             std::getline(ifs, line);
 
-            while( !line.empty() && isblank(line.back()) ) {
+            if(!line.empty() && line.back() == '\n') {
+                line.pop_back();
+            }
+            if(!line.empty() && line.back() == '\r') {
                 line.pop_back();
             }
 
@@ -235,10 +267,10 @@ namespace {
             }
             else if( p.try_consume("+++") ) {
                 p.consume_whitespace();
-                if(!rv.empty())
-                    throw ::std::runtime_error("");
+                if(rv.empty())
+                    throw ::std::runtime_error("`+++` without preceding ---");
                 if(!(rv.back().new_path == ""))
-                    throw ::std::runtime_error("");
+                    throw ::std::runtime_error("`+++` without preceding ---");
                 rv.back().new_path = p.l;
             }
             else if( p.try_consume("@@") ) {
@@ -256,10 +288,10 @@ namespace {
                 p.expect_consume("@@");
                 p.expect_eof();
 
-                if(!rv.empty())
-                    throw ::std::runtime_error("");
+                if(rv.empty())
+                    throw ::std::runtime_error("@@ without preceding header");
                 if(rv.back().new_path == "")
-                    throw ::std::runtime_error("");
+                    throw ::std::runtime_error("@@ without preceding header");
 
                 rv.back().fragments.push_back(PatchFragment(orig_line, orig_len, new_line, new_len));
             }
@@ -284,6 +316,8 @@ namespace {
             }
 
         }
+
+        return rv;
     }
     std::vector<std::string> load_file(const char* path)
     {
@@ -323,6 +357,8 @@ namespace {
         {
             if( target[offset + i] != pattern[i] )
             {
+                std::cerr << "[" << (1+i+offset) << "] --- " << target[offset + i] << std::endl;
+                std::cerr << "[" << (1+i+offset) << "] +++ " << pattern[i] << std::endl;
                 return false;
             }
         }
@@ -337,7 +373,7 @@ bool Opts::parse(int argc, char *argv[])
     {
         const char* arg = argv[argi];
 
-        if(arg[0] != '-') {
+        if(arg[0] != '-' || rest_free) {
             if( !this->patchfile ) {
                 this->patchfile = arg;
             }
@@ -345,6 +381,7 @@ bool Opts::parse(int argc, char *argv[])
                 this->base_dir = arg;
             }
             else {
+                ::std::cerr << "Unexpected free argument `" << arg << "`" << ::std::endl;
                 this->usage(argv[0]);
                 return false;
             }
@@ -356,7 +393,11 @@ bool Opts::parse(int argc, char *argv[])
                 case 'h':
                     this->help(argv[0]);
                     std::exit(0);
+                case 'n':
+                    this->dry_run = true;
+                    break;
                 default:
+                    ::std::cerr << "Unknown short argument -" << *arg << "" << ::std::endl;
                     this->usage(argv[0]);
                     return false;
                 }
@@ -367,7 +408,11 @@ bool Opts::parse(int argc, char *argv[])
                 this->help(argv[0]);
                 std::exit(0);
             }
+            else if( std::strcmp(arg, "--dry-run") == 0 ) {
+                this->dry_run = true;
+            }
             else {
+                ::std::cerr << "Unknown option " << arg << "" << ::std::endl;
                 this->usage(argv[0]);
                 return false;
             }
@@ -381,18 +426,18 @@ bool Opts::parse(int argc, char *argv[])
         this->usage(argv[0]);
         return false;
     }
-    if( !this->base_dir ) {
-        this->usage(argv[0]);
-        return false;
-    }
 
     return true;
 }
 void Opts::usage(const char* name)
 {
-
+    ::std::cerr << "Usage: " << name << " file [base dir]" << ::std::endl;
 }
 void Opts::help(const char* name)
 {
     this->usage(name);
+
+    std::cerr << std::endl
+        << "-n, --dry-run  : Don't make any changes" << std::endl
+        ;
 }
