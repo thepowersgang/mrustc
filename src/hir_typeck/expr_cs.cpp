@@ -5029,6 +5029,16 @@ namespace
             }
         }
 
+        auto ivar_idx = ty_l.data().as_Infer().index;
+        if( ivar_idx < context.m_ivars_sized.size() && context.m_ivars_sized[ivar_idx] )
+        {
+            if( context.m_resolve.type_is_sized(sp, new_ty) == ::HIR::Compare::Unequal )
+            {
+                DEBUG("Unsized type not valid here");
+                return true;
+            }
+        }
+
         for(const auto& pty : context.possible_ivar_vals.at(ty_l.data().as_Infer().index).types_coerce_to)
         {
             HIR::ExprNodeP  stub_node;
@@ -5176,12 +5186,20 @@ namespace
         }   cls;
         const ::HIR::TypeRef* ty;
 
-        bool operator<(const PossibleType& o) const {
+        Ordering ord(const PossibleType& o) const {
+            if( static_cast<bool>(ty) != static_cast<bool>(o.ty) )
+                return ::ord(static_cast<bool>(ty), static_cast<bool>(o.ty));
             if( *ty != *o.ty )
-                return *ty < *o.ty;
+                return ::ord(*ty, *o.ty);
             if( cls != o.cls )
-                return cls < o.cls;
-            return false;
+                return ::ord( static_cast<int>(cls), static_cast<int>(o.cls) );
+            return OrdEqual;
+        }
+        bool operator<(const PossibleType& o) const {
+            return ord(o) == OrdLess;
+        }
+        bool operator==(const PossibleType& o) const {
+            return ord(o) == OrdEqual;
         }
         ::std::ostream& fmt(::std::ostream& os) const {
             switch(cls)
@@ -5695,6 +5713,25 @@ namespace
             DEBUG(i << ": possible_tys = " << possible_tys);
             DEBUG(i << ": bounds = " << (ivar_ent.has_bounded ? "" : "? ") << (ivar_ent.bounds_include_self ? "+, " : "") << ivar_ent.bounded);
 
+            // De-duplicate
+            // TODO: This [ideally] shouldn't happen?
+            {
+                for(size_t i = 0; i < possible_tys.size(); i ++)
+                {
+                    if( possible_tys[i].ty )
+                    {
+                        auto it = std::find(possible_tys.begin()+i+1, possible_tys.end(), possible_tys[i]);
+                        if( it != possible_tys.end() )
+                        {
+                            it->ty = nullptr;
+                        }
+                    }
+                }
+                auto new_end = std::remove_if(possible_tys.begin(), possible_tys.end(), [](const PossibleType& x){ return x.ty == nullptr; });
+                DEBUG(i << ": " << (possible_tys.end() - new_end) << " duplicates");
+                possible_tys.resize( new_end - possible_tys.begin() ); 
+            }
+
             // If the bound set is populated, and is fully restrictive
             if(ivar_ent.has_bounded && !ivar_ent.bounds_include_self)
             {
@@ -5751,11 +5788,10 @@ namespace
                 possible_tys.push_back(PossibleType { PossibleType::Equal, &new_ty });
             }
 
-
             // TODO: Rewrite ALL of the below (extract the helpers to somewhere useful)
             // Need FULLY codified rules
 
-#if 1
+            // If in fallback mode, pick the only source (if it's valid)
             if( fallback_ty != IvarPossFallbackType::None
                 && ::std::count_if(possible_tys.begin(), possible_tys.end(), PossibleType::is_source_s) == 1
                 && !ivar_ent.force_no_from
@@ -5775,7 +5811,61 @@ namespace
                     }
                 }
             }
-#endif
+
+            // If there's only one source, and one destination, and no possibility of unknown options, then pick whichever has no ivars (or whichever is valid)
+            if( ::std::count_if(possible_tys.begin(), possible_tys.end(), PossibleType::is_dest_s) == 1
+                && ::std::count_if(possible_tys.begin(), possible_tys.end(), PossibleType::is_source_s) == 1
+                && !ivar_ent.force_no_from
+                && !ivar_ent.force_no_to
+                && !ivar_ent.has_bounded
+                )
+            {
+                const auto& ent_s = *::std::find_if(possible_tys.begin(), possible_tys.end(), PossibleType::is_source_s);
+                const auto& ent_d = *::std::find_if(possible_tys.begin(), possible_tys.end(), PossibleType::is_dest_s);
+
+                // Only if both options are coerce?
+                // TODO: And this ivar isn't Sized bounded?
+                if( ent_s.is_coerce() && ent_d.is_coerce() )
+                {
+                    bool src_noivars = !context.m_ivars.type_contains_ivars(*ent_s.ty);
+                    bool dst_noivars = !context.m_ivars.type_contains_ivars(*ent_d.ty);
+                    bool src_valid = !check_ivar_poss__fails_bounds(sp, context, ty_l, *ent_s.ty);
+                    bool dst_valid = !check_ivar_poss__fails_bounds(sp, context, ty_l, *ent_d.ty);
+
+                    if( src_valid )
+                    {
+                        if( src_noivars )
+                        {
+                            DEBUG("Single each way, concrete source, " << *ent_s.ty);
+                            context.equate_types(sp, ty_l, *ent_s.ty);
+                            return true;
+                        }
+                    }
+                    if( dst_valid )
+                    {
+                        if( dst_noivars )
+                        {
+                            DEBUG("Single each way, concrete destination, " << *ent_d.ty);
+                            context.equate_types(sp, ty_l, *ent_d.ty);
+                            return true;
+                        }
+                    }
+
+                    if( src_valid )
+                    {
+                        DEBUG("Single each way, ivar source, " << *ent_s.ty);
+                        context.equate_types(sp, ty_l, *ent_s.ty);
+                        return true;
+                    }
+                    if( dst_valid )
+                    {
+                        DEBUG("Single each way, ivar destination, " << *ent_d.ty);
+                        context.equate_types(sp, ty_l, *ent_d.ty);
+                        return true;
+                    }
+                    // All of them failed bounds, what?
+                }
+            }
 
             if( ty_l.data().as_Infer().ty_class == ::HIR::InferClass::Diverge )
             {

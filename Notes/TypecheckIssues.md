@@ -310,3 +310,104 @@ Looks like EAT didn't find the trait impl for `N: TryInto<usize>` to match with 
 Reason: The matching of traits in generic bounds isn't fuzzy (requires exact match)
 
 Implementing a fuzzy match in EAT's bound lookup fixed the issue.
+
+# (1.19) `::"cargo-0_20_0"::ops::cargo_run::run`
+```
+:0: error:0:Type mismatch between ::"cargo-0_20_0"::core::package::Package and &::"cargo-0_20_0"::core::package::Package
+```
+
+`Typecheck Expressions-        check_coerce: >> (R28 ::"cargo-0_20_0"::core::package::Package/*S*/ := 0000022180786E80 0000022184AA1670 (_/*58*/) - ::"cargo-0_20_0"::core::package::Package := &::"cargo-0_20_0"::core::package::Package)`
+- `Typecheck Expressions-        Context::dump: R28 _/*66*/ := 0000022180786E80 0000022184AA1670 (_/*58*/)`
+- Chase `_/*66*/`
+- [31495] `Typecheck Expressions-          HMTypeInferrence::ivar_unify: IVar 66 = @65`
+- [ 2113] `Typecheck Expressions-                  HMTypeInferrence::set_ivar_to: Set IVar 65 = !`
+- [50745] `Typecheck Expressions-          HMTypeInferrence::set_ivar_to: Set IVar 65 = ::"cargo-0_20_0"::core::package::Package/*S*/`
+- Chase `_/*58*/`
+- [16971] `Typecheck Expressions-          HMTypeInferrence::set_ivar_to: Set IVar 58 = &::"cargo-0_20_0"::core::package::Package/*S*/`
+- From: ``` Typecheck Expressions-        check_associated: >> (R26 _/*58*/ = < `::"core-0_0_0"::result::Result<&::"cargo-0_20_0"::core::package::Package/*S*/,::"cargo-0_20_0"::util::errors::CargoError/*S*/,>/*E*/` as `::"core-0_0_0"::ops::Try` >::Ok) ````
+
+Note: `_/*58*/` is the type of the `pkg` variable, and should be a borrow
+- So, the `_/*66*/` is being set too early
+
+- [31495] `Typecheck Expressions-          HMTypeInferrence::ivar_unify: IVar 66 = @65`
+- [50745] `Typecheck Expressions-          HMTypeInferrence::set_ivar_to: Set IVar 65 = ::"cargo-0_20_0"::core::package::Package/*S*/`
+- [50738] `Typecheck Expressions-        check_coerce: >> (R23 ::"cargo-0_20_0"::core::package::Package/*S*/ := 000002218D99B190 0000022183663170 (_/*66*/) - ::"cargo-0_20_0"::core::package::Package := _/*65:!*/)`
+- [ 1932] `Typecheck Expressions-              Context::equate_types_coerce: ++ R23 _/*134*/ := 000002218D99B190 0000022183663170 (_/*66*/)`
+- [35058] `Typecheck Expressions-          HMTypeInferrence::ivar_unify: IVar 134 = @133`
+- [ 2703] `Typecheck Expressions-                   HMTypeInferrence::set_ivar_to: Set IVar 133 = !`
+- [50733] `Typecheck Expressions-          HMTypeInferrence::set_ivar_to: Set IVar 133 = ::"cargo-0_20_0"::core::package::Package/*S*/`
+- [50724] `Typecheck Expressions-        check_coerce: >> (R22 ::"cargo-0_20_0"::core::package::Package/*S*/ := 000002218D99B360 00000221836636C0 (_/*134*/) - ::"cargo-0_20_0"::core::package::Package := _/*133:!*/)`
+- [ 1897] `Typecheck Expressions-            Context::equate_types_coerce: ++ R22 _/*135*/ := 000002218D99B360 00000221836636C0 (_/*134*/)`
+- [ 1281] `Typecheck Expressions-           HMTypeInferrence::ivar_unify: IVar 135 = @5`
+- [ 2974] `Typecheck Expressions-                HMTypeInferrence::ivar_unify: IVar 5 = @138`
+- [ 5143] `Typecheck Expressions-                HMTypeInferrence::ivar_unify: IVar 138 = @326`
+- [31304] `Typecheck Expressions-          HMTypeInferrence::ivar_unify: IVar 326 = @29`
+- [ 1368] `Typecheck Expressions-                 HMTypeInferrence::set_ivar_to: Set IVar 29 = !`
+- [31484] `Typecheck Expressions-          HMTypeInferrence::ivar_unify: IVar 29 = @51`
+- [ 1658] `Typecheck Expressions-                 HMTypeInferrence::set_ivar_to: Set IVar 51 = !`
+- [49958] `Typecheck Expressions-          HMTypeInferrence::set_ivar_to: Set IVar 51 = ::"cargo-0_20_0"::core::package::Package/*S*/`
+- [49952] ```Typecheck Expressions-         `anonymous-namespace'::check_ivar_poss: Only ::"cargo-0_20_0"::core::package::Package/*S*/ is an option```
+- [49867]
+  ```
+Typecheck Expressions-        check_ivar_poss: >> (51 weak)
+Typecheck Expressions-         `anonymous-namespace'::check_ivar_poss: 51: possible_tys = CD _/*133:!*/, -- ::"cargo-0_20_0"::core::package::Package/*S*/
+Typecheck Expressions-         `anonymous-namespace'::check_ivar_poss: 51: bounds = ?
+```
+
+`&Package` should have been an option here... (but what is the path?)
+- Probably wasn't able to flow through the ivars
+
+Query: Why did weak end up being tried? What was the ruleset that lead to this stall?
+```
+Typecheck Expressions-        Context::dump: --- CS Context - 16 Coercions, 7 associated, 11 nodes, 0 callbacks
+Typecheck Expressions-        Context::dump: R19 &&str := 0000022188E36F60 0000022184AA1C30 (&&str)
+Typecheck Expressions-        Context::dump: R22 _/*51:!*/ := 000002218D99B360 00000221836636C0 (_/*133:!*/)
+Typecheck Expressions-        Context::dump: R23 _/*133:!*/ := 000002218D99B190 0000022183663170 (_/*65:!*/)
+Typecheck Expressions-        Context::dump: R28 _/*65:!*/ := 0000022180786E80 0000022184AA1670 (&::"cargo-0_20_0"::core::package::Package)
+Typecheck Expressions-        Context::dump: R37 _/*133:!*/ := 000002218D99B1B8 0000022183663670 (_/*110:!*/)
+Typecheck Expressions-        Context::dump: R48 _/*89*/ := 00000221E792A220 0000022184AA17B0 (&::"collections-0_0_0"::string::String)
+Typecheck Expressions-        Context::dump: R54 &_/*400*/ := 0000022188E36FC0 0000022184AA15B0 (_/*89*/)
+Typecheck Expressions-        Context::dump: R59 _/*110:!*/ := 0000022180786A60 0000022184AA20B0 (&::"cargo-0_20_0"::core::package::Package)
+Typecheck Expressions-        Context::dump: R71 _/*117*/ := 00000221E792A400 0000022184AA2670 (&&str)
+Typecheck Expressions-        Context::dump: R76 &_/*408*/ := 0000022188E37160 0000022184AA24B0 (_/*117*/)
+Typecheck Expressions-        Context::dump: R133 _/*268*/ := 0000022188E377A0 0000022184AA3870 (&&usize)
+Typecheck Expressions-        Context::dump: R134 _/*272*/ := 0000022188E377A8 0000022184AA3F30 (&&usize)
+Typecheck Expressions-        Context::dump: R140 &_/*437*/ := 0000022188E37600 0000022184AA3BF0 (_/*268*/)
+Typecheck Expressions-        Context::dump: R143 &_/*438*/ := 0000022188E37880 0000022184AA3CB0 (_/*272*/)
+Typecheck Expressions-        Context::dump: R197 &::"cargo-0_20_0"::core::manifest::Target := 00000221E7931EA0 0000022184AA25F0 (_/*160*/)
+Typecheck Expressions-        Context::dump: R211 &::"cargo-0_20_0"::core::package::Package := 0000022188E37C68 0000022184AA4F70 (&_/*51:!*/)
+Typecheck Expressions-        Context::dump: R83 bool = < `_/*148*/` as `::"core-0_0_0"::ops::Not` >::Output - op
+Typecheck Expressions-        Context::dump: R21 req ty _/*384*/ impl ::"core-0_0_0"::fmt::Display
+Typecheck Expressions-        Context::dump: R82 bool = < `_/*145*/` as `::"core-0_0_0"::ops::Not` >::Output - op
+Typecheck Expressions-        Context::dump: R142 req ty _/*437*/ impl ::"core-0_0_0"::fmt::Debug
+Typecheck Expressions-        Context::dump: R145 req ty _/*438*/ impl ::"core-0_0_0"::fmt::Debug
+Typecheck Expressions-        Context::dump: R56 req ty _/*400*/ impl ::"core-0_0_0"::fmt::Display
+Typecheck Expressions-        Context::dump: R78 req ty _/*408*/ impl ::"core-0_0_0"::fmt::Display
+Typecheck Expressions-        Context::dump: 00000221845532B0 _CallMethod {_/*51:!*/}.manifest() -> _/*139*/
+Typecheck Expressions-        Context::dump: 0000022184551C30 _CallMethod {_/*139*/}.targets() -> _/*140*/
+Typecheck Expressions-        Context::dump: 0000022184552FB0 _CallMethod {_/*140*/}.iter() -> _/*141*/
+Typecheck Expressions-        Context::dump: 0000022184554C30 _CallMethod {_/*160*/}.is_lib() -> _/*145*/
+Typecheck Expressions-        Context::dump: 0000022184550130 _CallMethod {_/*160*/}.is_custom_build() -> _/*148*/
+Typecheck Expressions-        Context::dump: 000002218454F230 _CallMethod {_/*160*/}.is_bin() -> bool
+Typecheck Expressions-        Context::dump: 0000022184554DB0 _CallMethod {_/*141*/}.filter({{000002218DA43410}(_/*160*/,)->bool}, ) -> _/*194*/
+Typecheck Expressions-        Context::dump: 0000022184550A30 _CallMethod {_/*194*/}.next() -> _/*170*/
+Typecheck Expressions-        Context::dump: 00000221845523B0 _CallMethod {_/*170*/}.is_none() -> bool
+Typecheck Expressions-        Context::dump: 0000022184551DB0 _CallMethod {_/*194*/}.next() -> _/*195*/
+Typecheck Expressions-        Context::dump: 000002218454F3B0 _CallMethod {_/*195*/}.is_some() -> bool
+Typecheck Expressions-        Context::dump: ---
+```
+
+Idea: Detect coercion chains
+- Above `_/*65*/` is in a chain (it's only ever used as a source/destionation of a coercion, not used in any other rules)
+- Sounds like `check_ivar_poss` with one source, one destination, and no bounds/restricts
+
+Implemented the above change, and added a bound check for Sized.
+- All this does is speed up the failure.
+
+Stricter version:
+- If both sides of an ivar are a single ivar coercion, pick the source.
+
+Final version:
+- If both sides are a single-option coercion (and no bounds/disables) - then pick one side (preferring no ivars, and preferring the source)
+  - This helps eliminate coercions that don't need to do anything.
+- This seems to have worked (reduces the chain, providing more useful information for fallbacks)
