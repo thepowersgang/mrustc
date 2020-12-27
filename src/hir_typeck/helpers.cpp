@@ -3378,8 +3378,8 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
 ::HIR::Compare TraitResolution::type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) const
 {
     const auto& type = this->m_ivars.get_type(ty);
-    TU_MATCH_DEF(::HIR::TypeData, (type.data()), (e),
-    (
+    TU_MATCH_HDRA( (type.data()), {)
+    default: {
         const auto& lang_Copy = this->m_crate.get_lang_item_path(sp, "copy");
         // NOTE: Don't use find_trait_impls, because that calls this
         bool is_fuzzy = false;
@@ -3404,8 +3404,8 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
         else {
             return ::HIR::Compare::Unequal;
         }
-        ),
-    (Infer,
+        }
+    TU_ARMA(Infer, e) {
         switch(e.ty_class)
         {
         case ::HIR::InferClass::Integer:
@@ -3415,8 +3415,8 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
             DEBUG("Fuzzy Copy impl for ivar?");
             return ::HIR::Compare::Fuzzy;
         }
-        ),
-    (Generic,
+        }
+    TU_ARMA(Generic, e) {
         // TODO: Store this result - or even pre-calculate it.
         const auto& lang_Copy = this->m_crate.get_lang_item_path(sp, "copy");
         return this->iterate_bounds([&](const auto& b)->bool {
@@ -3436,34 +3436,39 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
             )
             return false;
             }) ? ::HIR::Compare::Equal : ::HIR::Compare::Unequal ;
-        ),
-    (Primitive,
+        }
+    TU_ARMA(Primitive, e) {
         if( e == ::HIR::CoreType::Str )
             return ::HIR::Compare::Unequal;
         return ::HIR::Compare::Equal;
-        ),
-    (Borrow,
+        }
+    TU_ARMA(Borrow, e) {
         return e.type == ::HIR::BorrowType::Shared ? ::HIR::Compare::Equal : ::HIR::Compare::Unequal ;
-        ),
-    (Pointer,
+        }
+    TU_ARMA(Pointer, e) {
         return ::HIR::Compare::Equal;
-        ),
-    (Tuple,
+        }
+    TU_ARMA(Tuple, e) {
         auto rv = ::HIR::Compare::Equal;
         for(const auto& sty : e)
             rv &= type_is_copy(sp, sty);
         return rv;
-        ),
-    (Slice,
+        }
+    TU_ARMA(Slice, e) {
         return ::HIR::Compare::Unequal;
-        ),
-    (Function,
+        }
+    TU_ARMA(Function, e) {
         return ::HIR::Compare::Equal;
-        ),
-    (Array,
+        }
+    TU_ARMA(Closure, e) {
+        // NOTE: This isn't strictly true, we're leaving the actual checking up to the validate pass
+        return ::HIR::Compare::Equal;
+        }
+    TU_ARMA(Array, e) {
         return type_is_copy(sp, e.inner);
-        )
-    )
+        }
+    }
+    throw "";
 }
 ::HIR::Compare TraitResolution::type_is_clone(const Span& sp, const ::HIR::TypeRef& ty) const
 {
