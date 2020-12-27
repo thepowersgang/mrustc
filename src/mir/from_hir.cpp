@@ -53,6 +53,7 @@ namespace {
         struct LoopDesc {
             ScopeHandle scope;
             RcString   label;
+            bool    require_label;
             unsigned int    cur;
             unsigned int    next;
             ::MIR::LValue   res_value;
@@ -637,8 +638,7 @@ namespace {
             auto loop_tmp_scope = m_builder.new_scope_temp(node.span());
             auto _ = save_and_edit(m_stmt_scope, &loop_tmp_scope);
 
-            // TODO: `continue` in a loop should jump to the cleanup, not the top
-            m_loop_stack.push_back( LoopDesc { mv$(loop_body_scope), node.m_label, loop_block, loop_next, loop_result_lvaue.clone() } );
+            m_loop_stack.push_back( LoopDesc { mv$(loop_body_scope), node.m_label, node.m_require_label, loop_block, loop_next, loop_result_lvaue.clone() } );
             this->visit_node_ptr(node.m_code);
             auto loop_scope = mv$(m_loop_stack.back().scope);
             m_loop_stack.pop_back();
@@ -692,7 +692,7 @@ namespace {
                 BUG(node.span(), "Loop control outside of a loop");
             }
 
-            const auto* target_block = &m_loop_stack.back();
+            const LoopDesc* target_block;
             if( node.m_label != "" ) {
                 auto it = ::std::find_if(m_loop_stack.rbegin(), m_loop_stack.rend(), [&](const auto& x){ return x.label == node.m_label; });
                 if( it == m_loop_stack.rend() ) {
@@ -701,6 +701,15 @@ namespace {
                 target_block = &*it;
             }
             else {
+                target_block = nullptr;
+                for(auto it = m_loop_stack.rbegin(); it != m_loop_stack.rend(); ++it)
+                {
+                    if( !it->require_label )
+                    {
+                        target_block = &*it;
+                        break;
+                    }
+                }
                 if( target_block->label != "" && target_block->label.c_str()[0] == '#' ) {
                     TODO(node.span(), "Break within try block, want to break parent loop instead");
                 }

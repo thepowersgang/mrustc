@@ -574,10 +574,6 @@ namespace typecheck
             // Break types
             if( !node.m_continue )
             {
-                if( this->loop_blocks.empty() ) {
-                    ERROR(node.span(), E0000, "Break statement with no acive loop");
-                }
-
                 ::HIR::ExprNode_Loop*   loop_node_ptr;
                 if( node.m_label != "" )
                 {
@@ -589,8 +585,20 @@ namespace typecheck
                 }
                 else
                 {
-                    loop_node_ptr = this->loop_blocks.back();
+                    loop_node_ptr = nullptr;
+                    for(auto it = this->loop_blocks.rbegin(); it != this->loop_blocks.rend(); ++it)
+                    {
+                        if( !(*it)->m_require_label )
+                        {
+                            loop_node_ptr = *it;
+                            break;
+                        }
+                    }
+                    if( !loop_node_ptr ) {
+                        ERROR(node.span(), E0000, "Break statement with no acive loop");
+                    }
                 }
+
 
                 DEBUG("Break out of loop " << loop_node_ptr);
                 auto& loop_node = *loop_node_ptr;

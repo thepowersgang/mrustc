@@ -45,7 +45,22 @@ struct LowerHIR_ExprNode_Visitor:
             rv->m_local_mod = ::HIR::SimplePath(g_crate_name, v.m_local_mod->path().nodes);
         }
 
-        m_rv.reset( static_cast< ::HIR::ExprNode*>(rv) );
+        if( v.m_label != "" )
+        {
+            if(rv->m_value_node)
+            {
+                auto* break_node = new ::HIR::ExprNode_LoopControl(v.span(), v.m_label, /*cont=*/false, ::std::move(rv->m_value_node));
+                rv->m_nodes.push_back(HIR::ExprNodeP(break_node));
+                rv->m_value_node.reset();
+            }
+            auto* loop = new ::HIR::ExprNode_Loop(v.span(), v.m_label, HIR::ExprNodeP(rv));
+            loop->m_require_label = true;
+            m_rv.reset(loop);
+        }
+        else
+        {
+            m_rv.reset( static_cast< ::HIR::ExprNode*>(rv) );
+        }
     }
     virtual void visit(::AST::ExprNode_Try& v) override {
         TODO(v.span(), "Handle _Try");
@@ -362,9 +377,14 @@ struct LowerHIR_ExprNode_Visitor:
                 {}
 
                 void visit(::HIR::ExprNode_Loop& node) override {
-                    this->name_stack.push_back( &node.m_label );
+                    bool push = !node.m_require_label;  // Ignore any loops that require a targeted break
+                    if( push ) {
+                        this->name_stack.push_back( &node.m_label );
+                    }
                     ::HIR::ExprVisitorDef::visit(node);
-                    this->name_stack.pop_back( );
+                    if( push ) {
+                        this->name_stack.pop_back( );
+                    }
                 }
                 void visit(::HIR::ExprNode_LoopControl& node) override {
                     ::HIR::ExprVisitorDef::visit(node);

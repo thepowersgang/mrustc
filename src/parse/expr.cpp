@@ -91,7 +91,9 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe/*=false*/, RcStri
     }
     GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
 
-    auto rv = NEWNODE( AST::ExprNode_Block, is_unsafe, last_value_yielded, mv$(nodes), mv$(local_mod) );
+    auto* rv_blk = new ::AST::ExprNode_Block(is_unsafe, last_value_yielded, mv$(nodes), mv$(local_mod) );
+    rv_blk->m_label = label;
+    auto rv = ExprNodeP(rv_blk);
     rv->set_attrs( mv$(attrs) );
     return rv;
 }

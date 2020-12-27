@@ -134,6 +134,7 @@ struct ExprNode_Loop:
     RcString    m_label;
     ::HIR::ExprNodeP    m_code;
     bool    m_diverges = false;
+    bool    m_require_label = false;
 
     ExprNode_Loop(Span sp, RcString label, ::HIR::ExprNodeP code):
         ExprNode(mv$(sp)),
