@@ -2096,8 +2096,14 @@ void Resolve_Absolute_ExprNode(Context& context,  ::AST::ExprNode& node)
             node.m_value->visit( *this );
 
             this->context.push_block();
+
+            this->context.start_patbind();
             for(auto& pat : node.m_patterns)
+            {
                 Resolve_Absolute_Pattern(this->context, true, pat);
+                this->context.freeze_patbind();
+            }
+            this->context.end_patbind();
 
             assert( node.m_true );
             node.m_true->visit( *this );
