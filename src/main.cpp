@@ -296,6 +296,10 @@ int main(int argc, char *argv[])
                 AST::g_crate_load_dirs.push_back(ld);
             }
             crate.load_externs();
+            if( params.test_harness )
+            {
+                crate.load_extern_crate(Span(), "test");
+            }
             });
 
         if( params.crate_name != "" ) {
@@ -396,10 +400,6 @@ int main(int argc, char *argv[])
 
         // Allocator and panic strategies
         CompilePhaseV("Implicit Crates", [&]() {
-            if( params.test_harness )
-            {
-                crate.load_extern_crate(Span(), "test");
-            }
             if( crate.m_crate_type == ::AST::Crate::Type::Executable || params.test_harness || crate.m_crate_type == ::AST::Crate::Type::ProcMacro )
             {
                 bool allocator_crate_loaded = false;

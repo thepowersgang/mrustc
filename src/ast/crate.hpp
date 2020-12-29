@@ -56,6 +56,7 @@ public:
     RcString    m_ext_cratename_core;
     RcString    m_ext_cratename_std;
     RcString    m_ext_cratename_procmacro;
+    RcString    m_ext_cratename_test;
 
     // List of tests (populated in expand if --test is passed)
     bool    m_test_harness = false;

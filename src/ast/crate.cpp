@@ -296,6 +296,11 @@ RcString Crate::load_extern_crate(Span sp, const RcString& name, const ::std::st
             this->m_ext_cratename_procmacro = ext_crate.m_name;
         }
     }
+    if( ext_crate.m_short_name == "test" ) {
+        if( this->m_ext_cratename_test == "" ) {
+            this->m_ext_cratename_test = ext_crate.m_name;
+        }
+    }
 
     DEBUG("Loaded '" << name << "' from '" << basename << "' (actual name is '" << real_name << "' aka `" << ext_crate.m_short_name << "`)");
     return real_name;
