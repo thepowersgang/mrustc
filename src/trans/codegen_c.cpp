@@ -1104,7 +1104,17 @@ namespace {
                 if( opt.emit_debug_info )
                 {
                     args.push_back("/DEBUG");
-                    args.push_back("/Zi");
+                    switch(out_ty)
+                    {
+                    case CodegenOutput::Executable:
+                    case CodegenOutput::DynamicLibrary:
+                        args.push_back("/Zi");  // Emit a PDB
+                        break;
+                    case CodegenOutput::StaticLibrary:
+                    case CodegenOutput::Object:
+                        args.push_back("/Z7");  // Store the debug data in the .obj
+                        break;
+                    }
                 }
                 switch(out_ty)
                 {
