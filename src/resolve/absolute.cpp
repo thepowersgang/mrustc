@@ -530,14 +530,26 @@ namespace
                     for(const auto& node : mp.ents)
                     {
                         const AST::Module* next = nullptr;
-                        for(const auto& i : mod->m_items)
-                        {
-                            if( i->name == node ) {
-                                next = &i->data.as_Module();
-                                break;
+                        if( node.c_str()[0] == '#' ) {
+                            char c;
+                            unsigned int idx;
+                            ::std::stringstream ss( node.c_str() );
+                            ss >> c;
+                            ss >> idx;
+                            assert( idx < mod->anon_mods().size() );
+                            assert( mod->anon_mods()[idx] );
+                            next = mod->anon_mods()[idx].get();
+                        }
+                        else {
+                            for(const auto& i : mod->m_items)
+                            {
+                                if( i->name == node ) {
+                                    next = &i->data.as_Module();
+                                    break;
+                                }
                             }
                         }
-                        assert(next);
+                        ASSERT_BUG(Span(), next, "Failed to find module `" << node << "` in " << mod->path() << " for " << mp);
                         mod = next;
                     }
                     ::AST::Path rv;
