@@ -139,6 +139,7 @@ ExprNodeP Parse_ExprBlockLine_WithItems(TokenStream& lex, ::std::shared_ptr<AST:
     case TOK_RWORD_CONST:
     case TOK_RWORD_STATIC:
     case TOK_RWORD_STRUCT:
+    case TOK_RWORD_MACRO:
     case TOK_RWORD_ENUM:
     case TOK_RWORD_TRAIT:
     case TOK_RWORD_IMPL:
