@@ -3646,7 +3646,7 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                 uint64_t shift_len = 0;
                                 TU_MATCH_HDRA( (val_r), {)
                                 default:
-                                    MIR_BUG(state, "Mismatched types for eBinOp::BIT_SHL - " << val_l << " << " << val_r);
+                                    MIR_BUG(state, "Mismatched types for eBinOp::BIT_SHL - " << val_l << " << " << val_r << " - " << e->src);
                                     break;
                                 TU_ARMA(Int, re) {
                                     shift_len = re.v;
@@ -5773,6 +5773,8 @@ void MIR_OptimiseCrate_Inlining(const ::HIR::Crate& crate, TransList& list)
             if( mono_fcn.code )
             {
                 did_inline_on_pass |= MIR_OptimiseInline(resolve, ip, *mono_fcn.code, mono_fcn.arg_tys, mono_fcn.ret_ty, list);
+
+                MIR_Cleanup(resolve, ip, *mono_fcn.code, mono_fcn.arg_tys, mono_fcn.ret_ty);
             }
             else if( hir_fcn.m_code )
             {
@@ -5780,6 +5782,8 @@ void MIR_OptimiseCrate_Inlining(const ::HIR::Crate& crate, TransList& list)
                 bool did_opt = MIR_OptimiseInline(resolve, ip, mir, hir_fcn.m_args, hir_fcn.m_return, list);
                 mir.trans_enum_state = ::MIR::EnumCachePtr();   // Clear MIR enum cache
                 did_inline_on_pass |= did_opt;
+
+                MIR_Cleanup(resolve, ip, mir, hir_fcn.m_args, hir_fcn.m_return);
             }
             else
             {

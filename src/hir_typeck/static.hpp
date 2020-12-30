@@ -235,6 +235,7 @@ public:
 
     TAGGED_UNION(ValuePtr, NotFound,
     (NotFound, struct{}),
+    (NotYetKnown, struct{}),
     (Constant, const ::HIR::Constant*),
     (Static, const ::HIR::Static*),
     (Function, const ::HIR::Function*),

@@ -2474,7 +2474,7 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
                 });
             if( !best_impl.is_valid() )
             {
-                TODO(sp, "What should be done when an impl can't be found? " << p);
+                return ValuePtr::make_NotYetKnown({});
             }
 
             if( ! best_impl.m_data.is_TraitImpl() )

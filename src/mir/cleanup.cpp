@@ -110,145 +110,49 @@ namespace {
 
 const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, const ::HIR::Path& path,  ::HIR::TypeRef& out_ty)
 {
-    const Span& sp = state.sp;
-    const auto& resolve = state.m_resolve;
     TRACE_FUNCTION_F(path);
 
-    TU_MATCH_HDRA( (path.m_data), {)
-    TU_ARMA(Generic, pe) {
-        const auto& constant = resolve.m_crate.get_constant_by_path(sp, pe.m_path);
-        if( pe.m_params.m_types.size() != 0 )
-            TODO(sp, "Generic constants - " << path);
-        out_ty = constant.m_type.clone();
-        if( constant.m_value_res.is_Invalid() )
-            return nullptr;
-        return &constant.m_value_res;
-        }
-    TU_ARMA(UfcsUnknown, pe) {
-        BUG(sp, "UfcsUnknown in MIR - " << path);
-        }
-    TU_ARMA(UfcsKnown, pe) {
-        const ::HIR::TraitImpl* best_impl = nullptr;
-        HIR::PathParams best_impl_params;
-
-        const auto& trait = resolve.m_crate.get_trait_by_path(sp, pe.trait.m_path);
-        const auto& trait_cdef = trait.m_values.at(pe.item).as_Constant();
-
-        bool rv = resolve.find_impl(sp, pe.trait.m_path, pe.trait.m_params, pe.type, [&](auto impl_ref, auto is_fuzz) {
-            DEBUG("Found " << impl_ref);
-            if( !impl_ref.m_data.is_TraitImpl() )
-                return true;
-            const auto& impl_ref_e = impl_ref.m_data.as_TraitImpl();
-            const auto& impl = *impl_ref_e.impl;
-            ASSERT_BUG(sp, impl.m_trait_args.m_types.size() == pe.trait.m_params.m_types.size(), "Trait parameter count mismatch " << impl.m_trait_args << " vs " << pe.trait.m_params);
-            auto it = impl.m_constants.find(pe.item);
-            if( it == impl.m_constants.end() ) {
-                DEBUG("Constant " << pe.item << " missing in trait impl " << pe.trait << " for " << pe.type);
-                return false;
-            }
-
-            if( (best_impl == nullptr || impl.more_specific_than(*best_impl)) ) {
-                best_impl = &impl;
-                bool is_spec = false;
-                is_spec = it->second.is_specialisable;
-                best_impl_params = impl_ref_e.impl_params.clone();
-                return !is_spec;
-            }
-            return false;
-            });
-
-        if( rv && !best_impl )
+    MonomorphState  params;
+    auto v = state.m_resolve.get_value(state.sp, path, params);
+    if( const auto* e = v.opt_Constant() )
+    {
+        const auto& hir_const = **e;
+        out_ty = params.monomorph_type(state.sp, hir_const.m_type);
+        if( hir_const.m_value_res.is_Defer() )
         {
-            // Non-trait impl found, return none
-            DEBUG(path << " contains a generic");
+            // Do some form of lookup of a pre-cached evaluated monomorphised constant
+            // - Maybe on the `Constant` entry there can be a list of pre-monomorphised values
+            auto it = hir_const.m_monomorph_cache.find(path);
+            if( it == hir_const.m_monomorph_cache.end() )
+            {
+                // TODO: Emit a bug if the cache is empty? (or if this is in the post-monomorph pass)
+                //MIR_BUG(state, "Constant with Defer literal and no cached monomorphisation - " << path);
+                return nullptr;
+            }
+            MIR_ASSERT(state, !it->second.is_Defer(), "get_literal_for_const - Cached literal was Defer - " << path);
+            return &it->second;
+        }
+        return &hir_const.m_value_res;
+    }
+    else if( v.is_NotYetKnown() )
+    {
+        auto v = state.m_resolve.get_value(state.sp, path, params, /*signature_only=*/true);
+        if( const auto* e = v.opt_Constant() )
+        {
+            const auto& hir_const = **e;
+            out_ty = params.monomorph_type(state.sp, hir_const.m_type);
         }
         else
         {
-            // Obtain `out_ty` by monomorphising the type in the trait.
-            auto monomorph_cb = MonomorphStatePtr(&pe.type, &pe.trait.m_params, nullptr);
-            out_ty = monomorph_cb.monomorph_type(sp, trait_cdef.m_type);
-            resolve.expand_associated_types(sp, out_ty);
-            if( best_impl )
-            {
-                ASSERT_BUG(sp, best_impl->m_constants.find(pe.item) != best_impl->m_constants.end(), "Item '" << pe.item << "' missing in impl for " << path);
-                const auto& val = best_impl->m_constants.find(pe.item)->second.data;
-                return &val.m_value_res;
-            }
-            else
-            {
-                // No impl found at all, use the default in the trait
-                if( trait_cdef.m_value_res.is_Defer() )
-                {
-                    DEBUG(state << "Found deferred trait constant - " << path);
-                    // Return null to force the replacement to not happen (yet)
-                    // - Expansion and resolution of this constant happens after/in "Trans Monomorph"
-                    return nullptr;
-                }
-                else
-                {
-                    DEBUG("- Default " << trait_cdef.m_value_res);
-                    return &trait_cdef.m_value_res;
-                }
-            }
+            MIR_BUG(state, "get_literal_for_const - Not a constant - " << path);
         }
-        }
-    TU_ARMA(UfcsInherent, pe) {
-        const ::HIR::TypeImpl* best_impl = nullptr;
-        // Associated constants (inherent)
-        resolve.m_crate.find_type_impls(pe.type, [&](const auto& ty)->const auto& { return ty; },
-            [&](const auto& impl) {
-                auto it = impl.m_constants.find(pe.item);
-                if( it == impl.m_constants.end() )
-                    return false;
-                // TODO: Bounds checks.
-                // TODO: Impl specialisation?
-                best_impl = &impl;
-                return it->second.is_specialisable;
-            });
-        if( best_impl )
-        {
-            const auto& val = best_impl->m_constants.find(pe.item)->second.data;
-            if( monomorphise_type_needed(val.m_type) ) {
-                ::HIR::PathParams impl_params;
-
-                // 2. Obtain monomorph_cb (including impl params)
-                impl_params.m_types.resize(best_impl->m_params.m_types.size());
-                class Matcher: public ::HIR::MatchGenerics
-                {
-                    ::HIR::PathParams& impl_params;
-                public:
-                    Matcher(::HIR::PathParams& impl_params): impl_params(impl_params) {}
-
-                    ::HIR::Compare match_ty(const ::HIR::GenericRef& g, const ::HIR::TypeRef& ty, ::HIR::t_cb_resolve_type _resolve_cb) override {
-                        assert( g.binding < impl_params.m_types.size() );
-                        impl_params.m_types[g.binding] = ty.clone();
-                        return ::HIR::Compare::Equal;
-                    }
-                    ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::Literal& sz) override {
-                        TODO(Span(), "HIR_Expand_ErasedType_GetFunction::Matcher::match_val " << g << " with " << sz);
-                    }
-                } matcher(impl_params);
-                best_impl->m_type .match_test_generics(sp, pe.type, [](const auto& x)->const auto&{return x;}, matcher);
-                for(const auto& t : impl_params.m_types)
-                {
-                    if( t == ::HIR::TypeRef() )
-                    {
-                        TODO(sp, "Handle ErasedType where an impl parameter comes from a bound");
-                    }
-                }
-
-                MonomorphStatePtr monomorph_cb = MonomorphStatePtr(&pe.type, &impl_params, &pe.params);
-
-                out_ty = monomorph_cb.monomorph_type(sp, val.m_type);
-            }
-            else {
-                out_ty = val.m_type.clone();
-            }
-            return &val.m_value_res;
-        }
-        }
+        return nullptr;
     }
-    return nullptr;
+    else
+    {
+        MIR_BUG(state, "get_literal_for_const - Not a constant - " << path);
+        return nullptr;
+    }
 }
 
 ::MIR::RValue MIR_Cleanup_LiteralToRValue(const ::MIR::TypeResolve& state, MirMutator& mutator, const ::HIR::Literal& lit, ::HIR::TypeRef ty, ::HIR::Path path)

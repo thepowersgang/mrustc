@@ -17,6 +17,7 @@
 #include "codegen_c.hpp"
 #include "target.hpp"
 #include "allocator.hpp"
+#include <iomanip>
 
 namespace {
     struct FmtShell
@@ -1888,6 +1889,27 @@ namespace {
             m_of << "}\n";
         }
 
+        // Returns `true` if the type is pointer-aligned (i.e. it could contain a pointer)
+        bool emit_static_ty(const HIR::TypeRef& type, const ::HIR::Path& p, bool is_proto)
+        {
+            size_t size = 0, align = 0;
+            Target_GetSizeAndAlignOf(sp, m_resolve, type, size, align);
+            bool rv = ( align * 8 >= Target_GetCurSpec().m_arch.m_pointer_bits );
+            m_of << "union u_static_" << Trans_Mangle(p);
+            if(is_proto) {
+                m_of << "{ "; emit_ctype( type, FMT_CB(ss, ss << "val";) ); m_of << "; ";
+                if( rv ) {
+                    m_of << "uintptr_t raw[" << (size / (Target_GetCurSpec().m_arch.m_pointer_bits / 8)) << "];";
+                }
+                else {
+                    m_of << "uint8_t raw[" << size << "];";
+                }
+                m_of << " }";
+            }
+            m_of << " " << Trans_Mangle(p);
+            return rv;
+        }
+
         void emit_static_ext(const ::HIR::Path& p, const ::HIR::Static& item, const Trans_Params& params) override
         {
             ::MIR::Function empty_fcn;
@@ -1920,7 +1942,7 @@ namespace {
 
             auto type = params.monomorph(m_resolve, item.m_type);
             m_of << "extern ";
-            emit_ctype( type, FMT_CB(ss, ss << Trans_Mangle(p);) );
+            emit_static_ty(type, p, /*is_proto=*/true);
             if( linkage_name != "" && m_compiler == Compiler::Gcc)
             {
                 m_of << " asm(\"" << linkage_name << "\")";
@@ -1957,7 +1979,7 @@ namespace {
                 }
                 break;
             }
-            emit_ctype( type, FMT_CB(ss, ss << Trans_Mangle(p);) );
+            emit_static_ty(type, p, /*is_proto=*/true);
             m_of << ";";
             m_of << "\t// static " << p << " : " << type;
             m_of << "\n";
@@ -1975,9 +1997,65 @@ namespace {
             auto type = params.monomorph(m_resolve, item.m_type);
             // statics that are zero do not require initializers, since they will be initialized to zero on program startup.
             if (!is_zero_literal(type, item.m_value_res, params)) {
-                emit_ctype(type, FMT_CB(ss, ss << Trans_Mangle(p);));
+                bool is_packed = emit_static_ty(type, p, /*is_proto=*/false);
                 m_of << " = ";
-                emit_literal(type, item.m_value_res, params);
+
+                auto encoded = Trans_EncodeLiteralAsBytes(sp, m_resolve, item.m_value_res, type);
+                m_of << "{ .raw = {";
+                if( is_packed ) {
+                    DEBUG("encoded.bytes = `" << FMT_CB(ss, for(auto& b: encoded.bytes) ss << std::setw(2) << std::setfill('0') << std::hex << unsigned(b) << (int(&b - encoded.bytes.data()) % 8 == 7 ? " " : "");) << "`");
+                    DEBUG("encoded.relocations = " << encoded.relocations);
+                    auto reloc_it = encoded.relocations.begin();
+                    auto ptr_size = Target_GetCurSpec().m_arch.m_pointer_bits / 8;
+                    for(size_t i = 0; i < encoded.bytes.size(); i += ptr_size)
+                    {
+                        uint64_t v = 0;
+                        if(Target_GetCurSpec().m_arch.m_big_endian) {
+                            for(size_t o = 0, j = ptr_size; j--; o++)
+                                v |= static_cast<uint64_t>(encoded.bytes[i+o]) << (j*8);
+                        }
+                        else {
+                            for(size_t o = 0, j = 0; j < ptr_size; j++, o++)
+                                v |= static_cast<uint64_t>(encoded.bytes[i+o]) << (j*8);
+                        }
+
+                        if(i > 0) {
+                            m_of << ",";
+                        }
+
+                        if( reloc_it != encoded.relocations.end() && reloc_it->ofs <= i ) {
+                            MIR_ASSERT(*m_mir_res, reloc_it->ofs == i, "Relocation not aligned to a pointer - " << reloc_it->ofs << " != " << i);
+                            MIR_ASSERT(*m_mir_res, reloc_it->len == ptr_size, "Relocation size not pointer size - " << reloc_it->len << " != " << ptr_size);
+                            v -= EncodedLiteral::PTR_BASE;
+
+                            MIR_ASSERT(*m_mir_res, v == 0, "TODO: Relocation with non-zero offset " << i << ": v=0x" << std::hex << v << std::dec << " Literal=" << item.m_value_res << " Reloc=" << *reloc_it);
+                            m_of << "(uintptr_t)";
+                            if( reloc_it->p ) {
+                                m_of << "&" << Trans_Mangle(*reloc_it->p);
+                            }
+                            else {
+                                this->print_escaped_string(reloc_it->bytes);
+                            }
+
+                            ++ reloc_it;
+                        }
+                        else {
+                            m_of << "0x" << std::hex << v << "ull" << std::dec;
+                        }
+                    }
+                }
+                else {
+                    MIR_ASSERT(*m_mir_res, encoded.relocations.empty(), "Non-pointer-aligned data with relocations");
+                    bool e = false;
+                    m_of << std::dec;
+                    for(auto b : encoded.bytes) {
+                        if(e)
+                            m_of << ",";
+                        m_of << int(b); // Just leave it as decimal
+                        e = true;
+                    }
+                }
+                m_of << "} }";
                 m_of << ";";
                 m_of << "\t// static " << p << " : " << type;
                 m_of << "\n";
@@ -1995,336 +2073,6 @@ namespace {
             else {
                 m_of.precision(::std::numeric_limits<double>::max_digits10 + 1);
                 m_of << ::std::scientific << v;
-            }
-        }
-        void emit_literal(const ::HIR::TypeRef& ty, const ::HIR::Literal& lit, const Trans_Params& params) {
-            TRACE_FUNCTION_F("ty=" << ty << ", lit=" << lit);
-            ::HIR::TypeRef  tmp;
-            auto monomorph_with = [&](const ::HIR::PathParams& pp, const ::HIR::TypeRef& ty)->const ::HIR::TypeRef& {
-                return m_resolve.monomorph_expand_opt(m_mir_res->sp, tmp, ty, MonomorphStatePtr(nullptr, &pp, nullptr));
-                };
-            auto get_inner_type = [&](unsigned int var, unsigned int idx)->const ::HIR::TypeRef& {
-                TU_MATCH_HDRA( (ty.data()), { )
-                default:
-                    MIR_TODO(*m_mir_res, "Unknown type in list literal - " << ty);
-                TU_ARMA(Array, te) {
-                    return te.inner;
-                    }
-                TU_ARMA(Path, te) {
-                    const auto& pp = te.path.m_data.as_Generic().m_params;
-                    TU_MATCH_HDRA((te.binding), {)
-                    TU_ARMA(Unbound, pbe) {
-                        MIR_BUG(*m_mir_res, "Unbound type path " << ty);
-                        }
-                    TU_ARMA(Opaque, pbe) {
-                        MIR_BUG(*m_mir_res, "Opaque type path " << ty);
-                        }
-                    TU_ARMA(ExternType, pbe) {
-                        MIR_BUG(*m_mir_res, "Extern type literal " << ty);
-                        }
-                    TU_ARMA(Struct, pbe) {
-                        TU_MATCH_HDRA( (pbe->m_data), { )
-                        TU_ARMA(Unit, se) {
-                            MIR_BUG(*m_mir_res, "Unit struct " << ty);
-                            }
-                        TU_ARMA(Tuple, se) {
-                            return monomorph_with(pp, se.at(idx).ent);
-                            }
-                        TU_ARMA(Named, se) {
-                            return monomorph_with(pp, se.at(idx).second.ent);
-                            }
-                        }
-                        }
-                    TU_ARMA(Union, pbe) {
-                        MIR_TODO(*m_mir_res, "Union literals");
-                        }
-                    TU_ARMA(Enum, pbe) {
-                        MIR_ASSERT(*m_mir_res, pbe->m_data.is_Data(), "Getting inner type of a non-Data enum");
-                        const auto& evar = pbe->m_data.as_Data().at(var);
-                        return monomorph_with(pp, evar.type);
-                        }
-                    }
-                    throw "";
-                    }
-                TU_ARMA(Tuple, te) {
-                    return te.at(idx);
-                    }
-                }
-                throw "";
-                };
-            TU_MATCH_HDRA( (lit), {)
-            TU_ARMA(Invalid, e) { m_of << "/* INVALID */"; }
-            TU_ARMA(Defer, e) {
-                MIR_BUG(*m_mir_res, "Defer literal encountered");
-                }
-            TU_ARMA(Generic, e) {
-                MIR_BUG(*m_mir_res, "Generic literal encountered");
-                }
-            TU_ARMA(List, e) {
-                m_of << "{";
-                if( ty.data().is_Array() )
-                {
-                    if( ty.data().as_Array().size.as_Known() == 0 && m_options.disallow_empty_structs)
-                    {
-                        m_of << "0";
-                    }
-                    else
-                    {
-                        m_of << "{";
-                    }
-                }
-                bool emitted_field = false;
-                for(unsigned int i = 0; i < e.size(); i ++) {
-                    const auto& ity = get_inner_type(0, i);
-                    // Don't emit ZSTs if they're being omitted
-                    if( this->type_is_bad_zst(ity) )
-                        continue ;
-                    if(emitted_field)   m_of << ",";
-                    emitted_field = true;
-                    m_of << " ";
-                    emit_literal(ity, e[i], params);
-                }
-                if( (ty.data().is_Path() || ty.data().is_Tuple()) && !emitted_field && m_options.disallow_empty_structs )
-                    m_of << "0";
-                if( ty.data().is_Array() && !(ty.data().as_Array().size.as_Known() == 0 && m_options.disallow_empty_structs) )
-                    m_of << "}";
-                m_of << " }";
-                }
-            TU_ARMA(Variant, e) {
-                MIR_ASSERT(*m_mir_res, ty.data().is_Path(), "");
-                const auto& ty_binding = ty.data().as_Path().binding;
-                const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
-                if(ty_binding.is_Union())
-                {
-                    const auto& un = *ty_binding.as_Union();
-                    m_of << "{ .var_" << e.idx << " = ";
-                    emit_literal(un.m_variants[e.idx].second.ent, *e.val, params);
-                    m_of << "}";
-                }
-                else if( ty_binding.is_Enum() )
-                {
-                    const auto& enm = *ty_binding.as_Enum();
-                    TU_MATCH_HDRA( (repr->variants), {)
-                    TU_ARMA(None, ve) {
-                        m_of << "{}";
-                        }
-                    TU_ARMA(NonZero, ve) {
-                        if( e.idx == ve.zero_variant )
-                        {
-                            m_of << "{0}";
-                        }
-                        else
-                        {
-                            m_of << "{ { .var_" << e.idx << " = ";
-                            emit_literal(get_inner_type(e.idx, 0), *e.val, params);
-                            m_of << " } }";
-                        }
-                        }
-                    TU_ARMA(Linear, ve) {
-                        if( enm.is_value() )
-                        {
-                            MIR_ASSERT(*m_mir_res, TU_TEST1((*e.val), List, .empty()), "Value-only enum with fields");
-                            m_of << "{" << e.idx << "}";
-                        }
-                        else
-                        {
-                            m_of << "{";
-                            const auto& ity = get_inner_type(e.idx, 0);
-                            if( this->type_is_bad_zst(ity) ) {
-                                //m_of << " {}";
-                            }
-                            else {
-                                m_of << " { .var_" << e.idx << " = ";
-                                emit_literal(ity, *e.val, params);
-                                m_of << " }, ";
-                            }
-                            if( !ve.is_niche(e.idx) ) {
-                                m_of << ".TAG = " << (ve.offset + e.idx);
-                            }
-                            m_of << "}";
-                        }
-                        }
-                    TU_ARMA(Values, ve) {
-                        if( enm.is_value() )
-                        {
-                            MIR_ASSERT(*m_mir_res, TU_TEST1((*e.val), List, .empty()), "Value-only enum with fields");
-                            m_of << "{" << enm.get_value(e.idx) << "}";
-                        }
-                        else
-                        {
-                            m_of << "{";
-                            const auto& ity = get_inner_type(e.idx, 0);
-                            if( this->type_is_bad_zst(ity) ) {
-                                //m_of << " {}";
-                            }
-                            else {
-                                m_of << " { .var_" << e.idx << " = ";
-                                emit_literal(ity, *e.val, params);
-                                m_of << " }, ";
-                            }
-                            m_of << ".TAG = "; emit_enum_variant_val(repr, e.idx);
-                            m_of << "}";
-                        }
-                        }
-                    }
-                }
-                else
-                {
-                    MIR_BUG(*m_mir_res, "Literal " << lit << " type not enum/union, " << ty);
-                }
-                }
-            TU_ARMA(Integer, e) {
-                if( ty.data().is_Primitive() )
-                {
-                    switch(ty.data().as_Primitive())
-                    {
-                    case ::HIR::CoreType::Bool:
-                        m_of << (e ? "true" : "false");
-                        break;
-                    case ::HIR::CoreType::U8:
-                        m_of << ::std::hex << "0x" << (e & 0xFF) << ::std::dec;
-                        break;
-                    case ::HIR::CoreType::U16:
-                        m_of << ::std::hex << "0x" << (e & 0xFFFF) << ::std::dec;
-                        break;
-                    case ::HIR::CoreType::U32:
-                        m_of << ::std::hex << "0x" << (e & 0xFFFFFFFF) << ::std::dec;
-                        break;
-                    case ::HIR::CoreType::U64:
-                    case ::HIR::CoreType::Usize:
-                        m_of << ::std::hex << "0x" << e << "ull" << ::std::dec;
-                        break;
-                    case ::HIR::CoreType::U128:
-                        if (m_options.emulated_i128)
-                        {
-                            m_of << "{" << ::std::hex << "0x" << e << "ull, 0}" << ::std::dec;
-                        }
-                        else
-                        {
-                            m_of << "(uint128_t)";
-                            m_of << ::std::hex << "0x" << e << "ull" << ::std::dec;
-                        }
-                        break;
-                    case ::HIR::CoreType::I8:
-                        m_of << static_cast<uint16_t>( static_cast<int8_t>(e) );
-                        break;
-                    case ::HIR::CoreType::I16:
-                        m_of << static_cast<int16_t>(e);
-                        break;
-                    case ::HIR::CoreType::I32:
-                        m_of << static_cast<int32_t>(e);
-                        break;
-                    case ::HIR::CoreType::I64:
-                    case ::HIR::CoreType::Isize:
-                        m_of << static_cast<int64_t>(e) << "ll";
-                        break;
-                    case ::HIR::CoreType::I128:
-                        if (m_options.emulated_i128)
-                        {
-                            m_of << "{" << e << "ll, 0}";
-                        }
-                        else
-                        {
-                            m_of << "(int128_t)";
-                            m_of << e;
-                            m_of << "ll";
-                        }
-                        break;
-                    case ::HIR::CoreType::Char:
-                        assert(0 <= e && e <= 0x10FFFF);
-                        if( e < 256 ) {
-                            m_of << e;
-                        }
-                        else {
-                            m_of << ::std::hex << "0x" << e << ::std::dec;
-                        }
-                        break;
-                    default:
-                        MIR_TODO(*m_mir_res, "Handle integer literal of type " << ty);
-                    }
-                }
-                else if( ty.data().is_Pointer() )
-                {
-                    m_of << ::std::hex << "(void*)0x" << e << ::std::dec;
-                }
-                else
-                {
-                    MIR_BUG(*m_mir_res, "Integer literal for invalid type - " << ty);
-                }
-                }
-            TU_ARMA(Float, e) {
-                this->emit_float(e);
-                }
-            TU_ARMA(BorrowPath, e) {
-                TU_MATCH_HDRA( (e.m_data), {)
-                TU_ARMA(Generic, pe) {
-                    const auto& vi = m_crate.get_valitem_by_path(sp, pe.m_path);
-                    if( vi.is_Function() )
-                    {
-                        if( !ty.data().is_Function() ) // TODO: Ensure that the type is `*const ()` or similar.
-                            m_of << "(void*)";
-                        else
-                            ;
-                    }
-                    else
-                    {
-                        if( TU_TEST1(ty.data(), Borrow, .inner.data().is_Slice()) )
-                        {
-                            // Since this is a borrow, it must be of an array.
-                            MIR_ASSERT(*m_mir_res, vi.is_Static(), "BorrowOf returning &[T] not of a static - " << pe.m_path << " is " << vi.tag_str());
-                            const auto& stat = vi.as_Static();
-                            MIR_ASSERT(*m_mir_res, stat.m_type.data().is_Array(), "BorrowOf : &[T] of non-array static, " << pe.m_path << " - " << stat.m_type);
-                            auto size = stat.m_type.data().as_Array().size.as_Known();
-                            m_of << "{ &" << Trans_Mangle( params.monomorph(m_resolve, e)) << ", " << size << "}";
-                            return ;
-                        }
-                        else if( TU_TEST1(ty.data(), Borrow, .inner.data().is_TraitObject()) || TU_TEST1(ty.data(), Pointer, .inner.data().is_TraitObject()) )
-                        {
-                            const auto& to = (ty.data().is_Borrow() ? ty.data().as_Borrow().inner : ty.data().as_Pointer().inner).data().as_TraitObject();
-                            const auto& trait_path = to.m_trait.m_path;
-                            MIR_ASSERT(*m_mir_res, vi.is_Static(), "BorrowOf returning &TraitObject not of a static - " << pe.m_path << " is " << vi.tag_str());
-                            const auto& stat = vi.as_Static();
-                            auto vtable_path = ::HIR::Path(stat.m_type.clone(), trait_path.clone(), "vtable#");
-                            m_of << "{ &" << Trans_Mangle( params.monomorph(m_resolve, e)) << ", &" << Trans_Mangle(vtable_path) << "}";
-                            return ;
-                        }
-                        else
-                        {
-                            m_of << "&";
-                        }
-                    }
-                    }
-                TU_ARMA(UfcsUnknown, pe) {
-                    MIR_BUG(*m_mir_res, "UfcsUnknown in trans " << e);
-                    }
-                TU_ARMA(UfcsInherent, pe) {
-                    m_of << "&";
-                    }
-                TU_ARMA(UfcsKnown, pe) {
-                    m_of << "&";
-                    }
-                }
-                m_of << Trans_Mangle( params.monomorph(m_resolve, e));
-                }
-            TU_ARMA(BorrowData, e) {
-                MIR_TODO(*m_mir_res, "Handle BorrowData (emit_literal) - " << *e);
-                }
-            TU_ARMA(String, e) {
-                bool is_slice
-                    = TU_TEST2(ty.data(), Borrow, .inner.data(), Primitive, == HIR::CoreType::Str)
-                    || TU_TEST1(ty.data(), Borrow, .inner.data().is_Slice())
-                    ;
-                bool is_wrapped = is_slice
-                    || ty.data().is_Array()
-                    ;
-                if( is_wrapped )
-                    m_of << "{ ";
-                this->print_escaped_string(e);
-                if( is_slice )
-                    m_of << ", " << e.size();
-                if( is_wrapped )
-                    m_of << "}";
-                }
             }
         }
 
@@ -4393,14 +4141,6 @@ namespace {
             if( !e.inputs.empty() || !e.outputs.empty() )
             {
                 MIR_TODO(mir_res, "Inputs/outputs in msvc inline assembly - `" << FmtEscaped(e.tpl) << "` inputs=" << e.inputs << " outputs=" << e.outputs);
-#if 0
-                m_of << indent << "{\n";
-                for(size_t i = 0; i < e.inputs.size(); i ++)
-                {
-                    m_of << indent << "auto asm_i_" << i << " = ";
-                    emit_lvalue(e.inputs[i]);
-                }
-#endif
             }
 
             m_of << indent << "__asm {\n";
@@ -6190,6 +5930,7 @@ namespace {
                 }
             TU_ARMA(Static, e) {
                 m_of << Trans_Mangle(e);
+                m_of << ".val";
                 }
             TU_ARMA(Field, field_index) {
                 ::HIR::TypeRef  tmp;
@@ -6403,55 +6144,23 @@ namespace {
                 m_of << ", " << ::std::dec << c.size() << ")";
                 }
             TU_ARMA(Const, c) {
-                // TODO: This should have been eliminated? ("MIR Cleanup" should have removed all inline Const references)
-                ::HIR::TypeRef  ty;
-                const auto& lit = get_literal_for_const(*c.p, ty);
-                if( lit.is_String())
-                {
-                    m_of << "make_sliceptr(";
-                    this->print_escaped_string( lit.as_String() );
-                    m_of << ", " << ::std::dec << lit.as_String().size() << ")";
-                }
-                else
-                {
-                    m_of << "(("; emit_ctype(ty); m_of << ")";
-                    emit_literal(ty, lit, {});
-                    m_of << ")";
-                }
+                MIR_BUG(*m_mir_res, "Unexpected Constant::Const - " << ve);
                 }
             TU_ARMA(Generic, c) {
                 MIR_BUG(*m_mir_res, "Generic value present at codegen");
                 }
             TU_ARMA(ItemAddr, c) {
-                TU_MATCH_HDRA( (c->m_data), {)
-                TU_ARMA(Generic, pe) {
-                    if( pe.m_path.m_components.size() > 1 && m_crate.get_typeitem_by_path(sp, pe.m_path, false, true).is_Enum() )
-                        ;
-                    else
-                    {
-                        const auto& vi = m_crate.get_valitem_by_path(sp, pe.m_path);
-                        if( vi.is_Function() || vi.is_StructConstructor() )
-                        {
-                        }
-                        else
-                        {
-                            m_of << "&";
-                        }
-                    }
-                    }
-                TU_ARMA(UfcsUnknown, pe) {
-                    MIR_BUG(*m_mir_res, "UfcsUnknown in trans " << *c);
-                    }
-                TU_ARMA(UfcsInherent, pe) {
-                    // TODO: If the target is a function, don't emit the &
+                bool  is_fcn = false;
+                MonomorphState  ms_tmp;
+                auto v = m_resolve.get_value(sp, *c, ms_tmp, /*signature_only=*/true);
+                is_fcn = v.is_Function() || v.is_EnumConstructor() || v.is_StructConstructor();
+                if(!is_fcn) {
                     m_of << "&";
-                    }
-                TU_ARMA(UfcsKnown, pe) {
-                    // TODO: If the target is a function, don't emit the &
-                    m_of << "&";
-                    }
                 }
                 m_of << Trans_Mangle(*c);
+                if(!is_fcn) {
+                    m_of << ".val";
+                }
                 }
             }
         }
@@ -6658,7 +6367,18 @@ namespace {
 
         bool is_dst(const ::HIR::TypeRef& ty) const
         {
-            return this->metadata_type(ty) != MetadataType::None;
+            switch(this->metadata_type(ty))
+            {
+            case MetadataType::Unknown:
+                BUG(sp, ty << " unknown metadata type");
+            case MetadataType::None:
+            case MetadataType::Zero:
+                return false;
+            case MetadataType::Slice:
+            case MetadataType::TraitObject:
+                return true;
+            }
+            return false;
         }
     };
     Span CodeGenerator_C::sp;

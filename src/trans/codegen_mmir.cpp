@@ -853,19 +853,7 @@ namespace
 
             m_mir_res = nullptr;
         }
-        struct Reloc {
-            size_t  ofs;
-            size_t  len;
-            const ::HIR::Path* p;
-            ::std::string   bytes;
 
-            static Reloc new_named(size_t ofs, size_t len, const ::HIR::Path* p) {
-                return Reloc { ofs, len, p, "" };
-            }
-            static Reloc new_bytes(size_t ofs, size_t len, ::std::string bytes) {
-                return Reloc { ofs, len, nullptr, ::std::move(bytes) };
-            }
-        };
         void emit_str_byte(uint8_t b) {
             if( b == 0 ) {
                 m_of << "\\0";
@@ -886,234 +874,6 @@ namespace
                 m_of << "\\x" << ::std::hex << int(b) << ::std::dec;
             }
         }
-        void emit_str_u32(uint32_t v) {
-            emit_str_byte(v & 0xFF);
-            emit_str_byte(v >> 8);
-            emit_str_byte(v >> 16);
-            emit_str_byte(v >> 24);
-        }
-        void emit_str_usize(uint64_t v) {
-            if( Target_GetCurSpec().m_arch.m_pointer_bits == 64 ) {
-                emit_str_u32(v      );
-                emit_str_u32(v >> 32);
-            }
-            else if( Target_GetCurSpec().m_arch.m_pointer_bits == 64 ) {
-                emit_str_u32(v   );
-            }
-            else {
-                emit_str_u32(v   );
-            }
-        }
-        void emit_literal_as_bytes(const ::HIR::Literal& lit, const ::HIR::TypeRef& ty, ::std::vector<Reloc>& out_relocations, size_t base_ofs)
-        {
-            TRACE_FUNCTION_F(lit << ", " << ty);
-            auto putb = [&](uint8_t b) { emit_str_byte(b); };
-            auto putu32 = [&](uint32_t v) { emit_str_u32(v); };
-            auto putsize = [&](uint64_t v) { emit_str_usize(v); };
-            switch(ty.data().tag())
-            {
-            case ::HIR::TypeData::TAGDEAD: throw "";
-            case ::HIR::TypeData::TAG_Generic:
-            case ::HIR::TypeData::TAG_ErasedType:
-            case ::HIR::TypeData::TAG_Diverge:
-            case ::HIR::TypeData::TAG_Infer:
-            case ::HIR::TypeData::TAG_TraitObject:
-            case ::HIR::TypeData::TAG_Slice:
-            case ::HIR::TypeData::TAG_Closure:
-                BUG(sp, "Unexpected " << ty << " in decoding literal");
-            TU_ARM(ty.data(), Primitive, te) {
-                switch(te)
-                {
-                case ::HIR::CoreType::U8:
-                case ::HIR::CoreType::I8:
-                case ::HIR::CoreType::Bool:
-                    ASSERT_BUG(sp, lit.is_Integer(), ty << " not Literal::Integer - " << lit);
-                    putb(lit.as_Integer());
-                    break;
-                case ::HIR::CoreType::U16:
-                case ::HIR::CoreType::I16:
-                    ASSERT_BUG(sp, lit.is_Integer(), ty << " not Literal::Integer - " << lit);
-                    putb(lit.as_Integer() & 0xFF);
-                    putb(lit.as_Integer() >> 8);
-                    break;
-                case ::HIR::CoreType::U32:
-                case ::HIR::CoreType::I32:
-                case ::HIR::CoreType::Char:
-                    ASSERT_BUG(sp, lit.is_Integer(), ty << " not Literal::Integer - " << lit);
-                    putu32(lit.as_Integer()   );
-                    break;
-                case ::HIR::CoreType::U64:
-                case ::HIR::CoreType::I64:
-                    ASSERT_BUG(sp, lit.is_Integer(), ty << " not Literal::Integer - " << lit);
-                    putu32(lit.as_Integer()      );
-                    putu32(lit.as_Integer() >> 32);
-                    break;
-                case ::HIR::CoreType::U128:
-                case ::HIR::CoreType::I128:
-                    ASSERT_BUG(sp, lit.is_Integer(), ty << " not Literal::Integer - " << lit);
-                    putu32(lit.as_Integer()      );
-                    putu32(lit.as_Integer() >> 32);
-                    putu32(0);
-                    putu32(0);
-                    break;
-                case ::HIR::CoreType::Usize:
-                case ::HIR::CoreType::Isize:
-                    ASSERT_BUG(sp, lit.is_Integer(), ty << " not Literal::Integer - " << lit);
-                    putsize(lit.as_Integer());
-                    break;
-                case ::HIR::CoreType::F32: {
-                    ASSERT_BUG(sp, lit.is_Float(), "not Literal::Float - " << lit);
-                    uint32_t v;
-                    float v2 = lit.as_Float();
-                    memcpy(&v, &v2, 4);
-                    putu32(v);
-                    } break;
-                case ::HIR::CoreType::F64: {
-                    ASSERT_BUG(sp, lit.is_Float(), "not Literal::Float - " << lit);
-                    uint64_t v;
-                    memcpy(&v, &lit.as_Float(), 8);
-                    putu32(v);
-                    } break;
-                case ::HIR::CoreType::Str:
-                    BUG(sp, "Unexpected " << ty << " in decoding literal");
-                }
-                } break;
-            case ::HIR::TypeData::TAG_Path:
-            case ::HIR::TypeData::TAG_Tuple: {
-                const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
-                assert(repr);
-                size_t cur_ofs = 0;
-                if( lit.is_List() )
-                {
-                    const auto& le = lit.as_List();
-                    assert(le.size() == repr->fields.size());
-                    for(size_t i = 0; i < repr->fields.size(); i ++)
-                    {
-                        assert(cur_ofs <= repr->fields[i].offset);
-                        while(cur_ofs < repr->fields[i].offset)
-                        {
-                            putb(0);
-                            cur_ofs ++;
-                        }
-                        emit_literal_as_bytes(le[i], repr->fields[i].ty, out_relocations, base_ofs + cur_ofs);
-                        size_t size = Target_GetSizeOf_Required(sp, m_resolve, repr->fields[i].ty);
-                        cur_ofs += size;
-                    }
-                    while(cur_ofs < repr->size)
-                    {
-                        putb(0);
-                        cur_ofs ++;
-                    }
-                }
-                else if( lit.is_Variant() )
-                {
-                    const auto& le = lit.as_Variant();
-                    if( *le.val != ::HIR::Literal::make_List({}) )
-                    {
-                        assert(le.idx < repr->fields.size());
-                        while(cur_ofs < repr->fields[le.idx].offset)
-                        {
-                            putb(0);
-                            cur_ofs ++;
-                        }
-
-                        emit_literal_as_bytes(*le.val, repr->fields[le.idx].ty, out_relocations, base_ofs + cur_ofs);
-
-                        size_t size = Target_GetSizeOf_Required(sp, m_resolve, repr->fields[le.idx].ty);
-                        cur_ofs += size;
-                    }
-
-                    if(const auto* ve = repr->variants.opt_Values())
-                    {
-                        ASSERT_BUG(sp, cur_ofs <= repr->fields[ve->field.index].offset, "Bad offset before enum tag");
-                        while(cur_ofs < repr->fields[ve->field.index].offset)
-                        {
-                            putb(0);
-                            cur_ofs ++;
-                        }
-                        auto v = ::HIR::Literal::make_Integer(le.idx);
-                        emit_literal_as_bytes(v, repr->fields[ve->field.index].ty, out_relocations, base_ofs + cur_ofs);
-
-                        size_t size = Target_GetSizeOf_Required(sp, m_resolve, repr->fields[ve->field.index].ty);
-                        cur_ofs += size;
-                    }
-                    // TODO: Nonzero?
-                    while(cur_ofs < repr->size)
-                    {
-                        putb(0);
-                        cur_ofs ++;
-                    }
-                }
-                else
-                {
-                    TODO(sp, "Composites - " << ty << " w/ " << lit);
-                }
-                } break;
-            case ::HIR::TypeData::TAG_Borrow:
-                if( ty.data().as_Borrow().inner == ::HIR::CoreType::Str )
-                {
-                    ASSERT_BUG(sp, lit.is_String(), ty << " not Literal::String - " << lit);
-                    const auto& s = lit.as_String();
-                    putsize(PTR_BASE + 0);
-                    putsize(s.size());
-                    out_relocations.push_back(Reloc::new_bytes(base_ofs, 8,  s));
-                    break;
-                }
-                // fall
-            case ::HIR::TypeData::TAG_Pointer: {
-                const auto& ity = (ty.data().is_Borrow() ? ty.data().as_Borrow().inner : ty.data().as_Pointer().inner);
-                size_t ity_size, ity_align;
-                Target_GetSizeAndAlignOf(sp, m_resolve, ity, ity_size, ity_align);
-                bool is_unsized = (ity_size == SIZE_MAX);
-
-                TU_MATCH_HDRA( (lit), { )
-                TU_ARMA(BorrowPath, le) {
-                    putsize(PTR_BASE);
-                    out_relocations.push_back(Reloc::new_named(base_ofs, 8,  &le));
-                    if( is_unsized )
-                    {
-                        // TODO: Get the size of the pointed-to array
-                        // OR: Find out the source item type and the target trait.
-                        putsize(0);
-                    }
-                    }
-                TU_ARMA(Integer, le) {
-                    ASSERT_BUG(sp, le == 0, "Pointer from integer not 0");
-                    ASSERT_BUG(sp, ty.data().is_Pointer(), "Borrow from integer");
-                    putsize(le);
-                    if( is_unsized )
-                    {
-                        putsize(0);
-                    }
-                    }
-                TU_ARMA(String, le) {
-                    const auto& s = lit.as_String();
-                    putsize(PTR_BASE);
-                    putsize(s.size());
-                    out_relocations.push_back(Reloc::new_bytes(base_ofs, 8,  s));
-                    }
-                break; default:
-                    TODO(sp, "Emit a pointer - " << ty << " from literal " << lit);
-                }
-                } break;
-            case ::HIR::TypeData::TAG_Function:
-                ASSERT_BUG(sp, lit.is_BorrowPath(), ty << " not Literal::BorrowPath - " << lit);
-                putsize(PTR_BASE);
-                out_relocations.push_back(Reloc::new_named(base_ofs, 8,  &lit.as_BorrowPath()));
-                break;
-            TU_ARM(ty.data(), Array, te) {
-                // What about byte strings?
-                // TODO: Assert size
-                ASSERT_BUG(sp, lit.is_List(), "not Literal::List - " << lit);
-                for(const auto& v : lit.as_List())
-                {
-                    emit_literal_as_bytes(v, te.inner, out_relocations, base_ofs);
-                    size_t size = Target_GetSizeOf_Required(sp, m_resolve, te.inner);
-                    base_ofs += size;
-                }
-                } break;
-            }
-        }
         void emit_static_local(const ::HIR::Path& p, const ::HIR::Static& item, const Trans_Params& params) override
         {
             ::MIR::Function empty_fcn;
@@ -1122,14 +882,15 @@ namespace
 
             TRACE_FUNCTION_F(p);
 
-            ::std::vector<Reloc>    relocations;
-
             auto type = params.monomorph(m_resolve, item.m_type);
+            auto encoded = Trans_EncodeLiteralAsBytes(sp, m_resolve, item.m_value_res, type);
+
             m_of << "static " << fmt(p) << ": " << fmt(type) << " = \"";
-            emit_literal_as_bytes(item.m_value_res, type, relocations, 0);
+            for(auto b : encoded.bytes)
+                emit_str_byte(b);
             m_of << "\"";
             m_of << "{";
-            for(const auto& r : relocations)
+            for(const auto& r : encoded.relocations)
             {
                 m_of << "@" << r.ofs << "+" << r.len << " = ";
                 if( r.p )

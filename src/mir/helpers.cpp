@@ -278,8 +278,20 @@ const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, cons
         TU_ARMA(NotFound, ve) {
             MIR_BUG(*this, "get_const_type - ItemAddr points to unknown value - " << c);
             }
+        TU_ARMA(NotYetKnown, ve) {
+            MIR_BUG(*this, "get_const_type - get_value returned NotYetKnown with signature_only=true");
+            }
         TU_ARMA(Constant, ve) {
-            MIR_TODO(*this, "get_const_type - Get type for constant borrow `" << c << "`");
+            const auto& ty = ve->m_type;
+            HIR::TypeRef    rv;
+            if( monomorphise_type_needed(ty) ) {
+                rv = p.monomorph_type(this->sp, ty);
+                m_resolve.expand_associated_types(this->sp, rv);
+            }
+            else {
+                rv = ty.clone();
+            }
+            return HIR::TypeRef::new_borrow(HIR::BorrowType::Shared, mv$(rv));
             }
         TU_ARMA(Static, ve) {
             const auto& ty = ve->m_type;
