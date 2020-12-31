@@ -134,8 +134,14 @@ namespace {
                             {
                                 if( i.second->publicity.is_visible({}) && i.first == name )
                                 {
-                                    ASSERT_BUG(sp, i.second->ent.is_Module(), "Expected Module, got " << i.second->ent.tag_str() << " for " << name << " in " << base_nodes);
-                                    return get_module_hir(i.second->ent.as_Module(), path, 1, ignore_last, out_path);
+                                    if( const auto* imp = i.second->ent.opt_Import() ) {
+                                        ASSERT_BUG(sp, imp->path.m_components.empty(), "Expected crate path, got " << imp->path);
+                                        return get_module_hir(crate.m_extern_crates.at(imp->path.m_crate_name).m_hir->m_root_module, path, 1, ignore_last, out_path);
+                                    }
+                                    else {
+                                        ASSERT_BUG(sp, i.second->ent.is_Module(), "Expected Module, got " << i.second->ent.tag_str() << " for " << name << " in [" << base_nodes << "]");
+                                        return get_module_hir(i.second->ent.as_Module(), path, 1, ignore_last, out_path);
+                                    }
                                 }
                             }
                             BUG(sp, "get_source_module_for_name returned true (HIR) but not found");
@@ -481,6 +487,13 @@ namespace {
                             const auto& item_name = e.path.nodes().back().name();
                             auto tgt_mod = this->get_module(mod.path(), e.path, true, out_path);
                             
+                            struct H {
+                                static const HIR::Module& get_mod_for_hir_path(const Span& sp, const AST::Crate& crate, const HIR::SimplePath& p) {
+                                    const auto& hir_crate = *crate.m_extern_crates.at(p.m_crate_name).m_hir;
+                                    return hir_crate.get_mod_by_path(sp, p, /*ignore_last*/true, /*ingore_crate*/true);
+                                }
+                            };
+
                             TU_MATCH_HDRA( (tgt_mod), {)
                             TU_ARMA(Ast, mod_ptr) {
                                 return this->get_source_module_for_name(*mod_ptr, item_name, ns, out_path);
@@ -493,8 +506,13 @@ namespace {
                                 case ResolveNamespace::Namespace: {
                                     auto it = mod_ptr->m_mod_items.find(item_name);
                                     if( it != mod_ptr->m_mod_items.end() && it->second->publicity.is_global() ) {
-                                        if(it->second->ent.is_Import()) {
-                                            TODO(sp, "Resolve use of an import (mod)");
+                                        if(const auto* p = it->second->ent.opt_Import()) {
+                                            if( !p->path.m_components.empty() ) {
+                                                if( p->path.m_components.empty() || item_name != p->path.m_components.back() ) {
+                                                    TODO(sp, "Resolve use of an import (mod) with mismatching names, " << item_name << " != end of " << p->path);
+                                                }
+                                                return &H::get_mod_for_hir_path(sp, crate, p->path);
+                                            }
                                         }
                                         return tgt_mod;
                                     }
@@ -502,8 +520,11 @@ namespace {
                                 case ResolveNamespace::Value: {
                                     auto it = mod_ptr->m_value_items.find(item_name);
                                     if( it != mod_ptr->m_value_items.end() && it->second->publicity.is_global() ) {
-                                        if(it->second->ent.is_Import()) {
-                                            TODO(sp, "Resolve use of an import (value)");
+                                        if(const auto* p = it->second->ent.opt_Import()) {
+                                            if( p->path.m_components.empty() || item_name != p->path.m_components.back() ) {
+                                                TODO(sp, "Resolve use of an import (value) with mismatching names, " << item_name << " != end of " << p->path);
+                                            }
+                                            return &H::get_mod_for_hir_path(sp, crate, p->path);
                                         }
                                         return tgt_mod;
                                     }
@@ -511,8 +532,11 @@ namespace {
                                 case ResolveNamespace::Macro: {
                                     auto it = mod_ptr->m_macro_items.find(item_name);
                                     if( it != mod_ptr->m_macro_items.end() && it->second->publicity.is_global() ) {
-                                        if(it->second->ent.is_Import()) {
-                                            TODO(sp, "Resolve use of an import (macro)");
+                                        if(const auto* p = it->second->ent.opt_Import()) {
+                                            if( p->path.m_components.empty() || item_name != p->path.m_components.back() ) {
+                                                TODO(sp, "Resolve use of an import (macro) with mismatching names, " << item_name << " != end of " << p->path);
+                                            }
+                                            return &H::get_mod_for_hir_path(sp, crate, p->path);
                                         }
                                         return tgt_mod;
                                     }
