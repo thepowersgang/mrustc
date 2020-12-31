@@ -597,7 +597,7 @@ namespace {
                 if( ent.tok != TOK_NULL )
                 {
                     // NOTE: If the separator is also allowed after the list, then this can't just check for the separator
-                    if( ::std::find(skip_pats1.begin(), skip_pats1.end(), ExpTok(MacroPatEnt::PAT_TOKEN, &ent.tok)) != skip_pats1.end() )
+                    if( true || ::std::find(skip_pats1.begin(), skip_pats1.end(), ExpTok(MacroPatEnt::PAT_TOKEN, &ent.tok)) != skip_pats1.end() )
                     {
                         for(const auto& p : entry_conds)
                         {

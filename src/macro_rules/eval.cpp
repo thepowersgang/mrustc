@@ -538,7 +538,7 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
 
     const auto& rule = rules.m_rules.at(rule_index);
 
-    DEBUG( rule.m_contents.size() << " rule contents with " << bound_tts.mappings().size() << " bound values - " << name );
+    DEBUG( "Using macro '" << name << "' #" << rule_index << " - " << rule.m_contents.size() << " rule contents with " << bound_tts.mappings().size() << " bound values");
     for( unsigned int i = 0; i < ::std::min( bound_tts.mappings().size(), rule.m_param_names.size() ); i ++ )
     {
         DEBUG("- #" << i << " " << rule.m_param_names.at(i) << " = [" << bound_tts.mappings()[i] << "]");

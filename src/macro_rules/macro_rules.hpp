@@ -120,9 +120,13 @@ struct SimplePatIfCheck
 TAGGED_UNION( SimplePatEnt, End,
     // End of the pattern stream (expects EOF, and terminates the match process)
     (End, struct{}),
+    // Start a loop (pushes a zero count to the loop stack)
     (LoopStart, struct{}),
+    // Increment loop iteration counter
     (LoopNext, struct{}),
+    // Pop from the loop stack
     (LoopEnd, struct{}),
+    // Jump to a new point of execution
     (Jump, struct {
         size_t jump_target;
         }),
