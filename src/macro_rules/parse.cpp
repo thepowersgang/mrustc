@@ -597,17 +597,11 @@ namespace {
                 if( ent.tok != TOK_NULL )
                 {
                     // NOTE: If the separator is also allowed after the list, then this can't just check for the separator
-                    if( true || ::std::find(skip_pats1.begin(), skip_pats1.end(), ExpTok(MacroPatEnt::PAT_TOKEN, &ent.tok)) != skip_pats1.end() )
+                    for(const auto& p : entry_conds)
                     {
-                        for(const auto& p : entry_conds)
-                        {
-                            auto v = ::make_vec1<SimplePatIfCheck>( { MacroPatEnt::PAT_TOKEN, ent.tok} );
-                            v.insert(v.end(), p.begin(), p.end());
-                            repeat_conds.push_back(mv$(v));
-                        }
-                    }
-                    else {
-                        repeat_conds.push_back(::make_vec1<SimplePatIfCheck>({ MacroPatEnt::PAT_TOKEN, Token(ent.tok) }));
+                        auto v = ::make_vec1<SimplePatIfCheck>( { MacroPatEnt::PAT_TOKEN, ent.tok} );
+                        v.insert(v.end(), p.begin(), p.end());
+                        repeat_conds.push_back(mv$(v));
                     }
                 }
 
