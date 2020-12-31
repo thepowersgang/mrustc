@@ -138,6 +138,10 @@ public:
     ::AST::Named<AST::Item> take_frag_item();
     ::AST::Visibility take_frag_vis();
 
+    bool operator==(eTokenType tty) const {
+        return type() == tty;
+    }
+    bool operator!=(eTokenType tty) const { return !(*this == tty); }
     bool operator==(const Token& r) const {
         if(type() != r.type())
             return false;

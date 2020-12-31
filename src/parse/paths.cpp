@@ -151,6 +151,11 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
         GET_TOK(tok, lex);
         if( generic_mode == PATH_GENERIC_TYPE )
         {
+            // If `foo::<` is seen in type context, then consume the `::` and continue on.
+            if( tok == TOK_DOUBLE_COLON && (lex.lookahead(0) == TOK_LT || lex.lookahead(0) == TOK_DOUBLE_LT) )
+            {
+                GET_TOK(tok, lex);
+            }
             if( tok.type() == TOK_LT || tok.type() == TOK_DOUBLE_LT )
             {
                 // HACK! Handle breaking << into < <

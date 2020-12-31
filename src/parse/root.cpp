@@ -481,6 +481,12 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, bool allow_
         // Unbound method
     }
 
+    // In 2018, patterns must always be provided
+    if( lex.parse_state().edition_after(AST::Edition::Rust2018) )
+    {
+        can_be_prototype = false;
+    }
+
     bool    is_variadic = false;
     if( tok.type() != TOK_PAREN_CLOSE )
     {
@@ -783,7 +789,7 @@ AST::Named<AST::Item> Parse_Trait_Item(TokenStream& lex)
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
         name = tok.istr();
         // Self allowed, prototype-form allowed (optional names and no code)
-        auto fcn = Parse_FunctionDef(lex, abi, true, true,  fn_is_unsafe, fn_is_const);
+        auto fcn = Parse_FunctionDef(lex, abi, /*allow_self*/true, /*can_be_proto*/true,  fn_is_unsafe, fn_is_const);
         if( GET_TOK(tok, lex) == TOK_BRACE_OPEN )
         {
             PUTBACK(tok, lex);
@@ -1426,9 +1432,17 @@ void Parse_Use_Inner(TokenStream& lex, ::std::vector<AST::UseItem::Ent>& entries
                     GET_TOK(tok, lex);
                     auto name = path.nodes().back().name();
                     if( LOOK_AHEAD(lex) == TOK_RWORD_AS ) {
+                        GET_CHECK_TOK(tok, lex, TOK_RWORD_AS);
                         GET_TOK(tok, lex);
-                        GET_CHECK_TOK(tok, lex, TOK_IDENT);
-                        name = tok.istr();
+                        if( tok.type() == TOK_UNDERSCORE ) {
+                            name = "";
+                        }
+                        else if( tok.type() == TOK_IDENT ) {
+                            name = tok.istr();
+                        }
+                        else {
+                            throw ParseError::Unexpected(lex, tok, {TOK_UNDERSCORE, TOK_IDENT});
+                        }
                     }
                     entries.push_back({ lex.point_span(), AST::Path(path), ::std::move(name) });
                 }
@@ -1456,8 +1470,16 @@ void Parse_Use_Inner(TokenStream& lex, ::std::vector<AST::UseItem::Ent>& entries
     // NOTE: The above loop has to run once, so the last token HAS to have been an ident
     if( tok.type() == TOK_RWORD_AS )
     {
-        GET_CHECK_TOK(tok, lex, TOK_IDENT);
-        name = tok.istr();
+        GET_TOK(tok, lex);
+        if( tok.type() == TOK_UNDERSCORE ) {
+            name = "";
+        }
+        else if( tok.type() == TOK_IDENT ) {
+            name = tok.istr();
+        }
+        else {
+            throw ParseError::Unexpected(lex, tok, {TOK_UNDERSCORE, TOK_IDENT});
+        }
     }
     else
     {
@@ -1514,8 +1536,16 @@ void Parse_Use_Root(TokenStream& lex, ::std::vector<AST::UseItem::Ent>& entries)
                 if( lex.lookahead(0) == TOK_RWORD_AS )
                 {
                     GET_CHECK_TOK(tok, lex, TOK_RWORD_AS);
-                    GET_CHECK_TOK(tok, lex, TOK_IDENT);
-                    name = tok.istr();
+                    GET_TOK(tok, lex);
+                    if( tok == TOK_UNDERSCORE ) {
+                        name = "";
+                    }
+                    else if( tok == TOK_IDENT ) {
+                        name = tok.istr();
+                    }
+                    else {
+                        throw ParseError::Unexpected(lex, tok, {TOK_UNDERSCORE, TOK_IDENT});
+                    }
                 }
                 else
                 {
@@ -1817,6 +1847,12 @@ namespace {
         case TOK_RWORD_CRATE:
             switch( GET_TOK(tok, lex) )
             {
+            case TOK_RWORD_SELF:
+                item_data = ::AST::Item::make_Crate({ RcString::new_interned("") });
+                GET_CHECK_TOK(tok, lex, TOK_RWORD_AS);
+                GET_CHECK_TOK(tok, lex, TOK_IDENT);
+                item_name = tok.istr();
+                break;
             // `extern crate "crate-name" as crate_name;`
             // NOTE: rustc doesn't allow this, keep in mrustc for for reparse support
             case TOK_STRING:
@@ -1832,8 +1868,16 @@ namespace {
                 if(GET_TOK(tok, lex) == TOK_RWORD_AS) {
                     item_data = ::AST::Item::make_Crate({ mv$(item_name) });
 
-                    GET_CHECK_TOK(tok, lex, TOK_IDENT);
-                    item_name = tok.istr();
+                    GET_TOK(tok, lex);
+                    if( tok == TOK_UNDERSCORE ) {
+                        // Empty name
+                    }
+                    else if( tok == TOK_IDENT ) {
+                        item_name = tok.istr();
+                    }
+                    else {
+                        throw ParseError::Unexpected(lex, tok, {TOK_UNDERSCORE, TOK_IDENT});
+                    }
                 }
                 else {
                     PUTBACK(tok, lex);

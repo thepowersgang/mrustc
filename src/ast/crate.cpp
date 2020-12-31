@@ -72,7 +72,12 @@ void Crate::load_externs()
             {
                 if( check_item_cfg(it->attrs) )
                 {
-                    c->name = load_extern_crate( it->span, c->name.c_str() );
+                    if( c->name == "" ) {
+                        // Leave for now
+                    }
+                    else {
+                        c->name = load_extern_crate( it->span, c->name.c_str() );
+                    }
                 }
             }
         }
