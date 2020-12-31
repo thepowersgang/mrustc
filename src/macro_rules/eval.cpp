@@ -796,6 +796,10 @@ namespace
             if( lex.next() != TOK_DOUBLE_COLON )
                 return true;
             break;
+        case TOK_RWORD_CRATE:
+            lex.consume();
+            // Require `::` after `crate`
+            break;
         case TOK_RWORD_SUPER:
             lex.consume();
             if( lex.next() != TOK_DOUBLE_COLON )

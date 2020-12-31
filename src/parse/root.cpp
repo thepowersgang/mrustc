@@ -191,6 +191,11 @@ void Parse_TypeBound(TokenStream& lex, AST::GenericParams& ret, TypeRef checked_
     TRACE_FUNCTION;
     Token tok;
 
+    // Empty bound list
+    if( lex.lookahead(0) == TOK_COMMA || lex.lookahead(0) == TOK_BRACE_OPEN || lex.lookahead(0) == TOK_SEMICOLON ) {
+        return ;
+    }
+
     do
     {
         auto ps = lex.start_span();
