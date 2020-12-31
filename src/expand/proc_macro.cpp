@@ -258,7 +258,7 @@ public:
         default:
             BUG(m_parent_span, "Unknown integer type");
         }
-        assert(v > 0);
+        assert(v >= 0); // Integer literals can't be negative, and `send_v128u` is unsigned
         this->send_v128u(v);
     }
     void send_float(eCoreType ct, double v) {
@@ -271,7 +271,7 @@ public:
         default:
             BUG(m_parent_span, "Unknown float type");
         }
-        this->send_bytes(&v, sizeof(v));
+        this->send_bytes_raw(&v, sizeof(v));
     }
 
     bool attr_is_used(const RcString& n) const {
@@ -285,10 +285,12 @@ private:
     Token realGetToken_();
     void send_u8(uint8_t v);
     void send_bytes(const void* val, size_t size);
+    void send_bytes_raw(const void* val, size_t size);
     void send_v128u(uint64_t val);
 
     uint8_t recv_u8();
     ::std::string recv_bytes();
+    void recv_bytes_raw(void* out_void, size_t len);
     uint64_t recv_v128u();
 };
 
@@ -1295,7 +1297,10 @@ void ProcMacroInv::send_u8(uint8_t v)
 void ProcMacroInv::send_bytes(const void* val, size_t size)
 {
     this->send_v128u( static_cast<uint64_t>(size) );
-
+    this->send_bytes_raw(val, size);
+}
+void ProcMacroInv::send_bytes_raw(const void* val, size_t size)
+{
     if( m_dump_file.is_open() )
         m_dump_file.write( reinterpret_cast<const char*>(val), size);
 #ifdef _WIN32
@@ -1334,6 +1339,14 @@ uint8_t ProcMacroInv::recv_u8()
     ASSERT_BUG(this->m_parent_span, len < SIZE_MAX, "Oversized string from child process");
     ::std::string   val;
     val.resize(len);
+
+    recv_bytes_raw(&val[0], len);
+
+    return val;
+}
+void ProcMacroInv::recv_bytes_raw(void* out_void, size_t len)
+{
+    uint8_t* val = reinterpret_cast<uint8_t*>(out_void);
     size_t  ofs = 0, rem = len;
     while( rem > 0 )
     {
@@ -1353,8 +1366,6 @@ uint8_t ProcMacroInv::recv_u8()
         ofs += n;
         rem -= n;
     }
-
-    return val;
 }
 uint64_t ProcMacroInv::recv_v128u()
 {
@@ -1423,20 +1434,47 @@ Token ProcMacroInv::realGetToken_() {
         ::eCoreType ty;
         switch(this->recv_u8())
         {
-        case   0: ty = CORETYPE_ANY;  break;
-        case   1: ty = CORETYPE_UINT; break;
-        case   8: ty = CORETYPE_U8;  break;
-        case  16: ty = CORETYPE_U16; break;
-        case  32: ty = CORETYPE_U32; break;
-        case  64: ty = CORETYPE_U64; break;
-        case 128: ty = CORETYPE_U128; break;
+        case   0: ty = CORETYPE_ANY;    break;
+        case   1: ty = CORETYPE_UINT;   break;
+        case   8: ty = CORETYPE_U8;     break;
+        case  16: ty = CORETYPE_U16;    break;
+        case  32: ty = CORETYPE_U32;    break;
+        case  64: ty = CORETYPE_U64;    break;
+        case 128: ty = CORETYPE_U128;   break;
         default:    BUG(this->m_parent_span, "Invalid integer size from child process");
         }
         auto val = this->recv_v128u();
         return Token(static_cast<uint64_t>(val), ty);
         }
-    case TokenClass::SignedInt:
-    case TokenClass::Float:
+    case TokenClass::SignedInt: {
+        ::eCoreType ty;
+        switch(this->recv_u8())
+        {
+        case   0: ty = CORETYPE_ANY;    break;
+        case   1: ty = CORETYPE_INT;    break;
+        case   8: ty = CORETYPE_I8;     break;
+        case  16: ty = CORETYPE_I16;    break;
+        case  32: ty = CORETYPE_I32;    break;
+        case  64: ty = CORETYPE_I64;    break;
+        case 128: ty = CORETYPE_I128;   break;
+        default:    BUG(this->m_parent_span, "Invalid integer size from child process");
+        }
+        auto val = this->recv_v128u();
+        return Token(static_cast<uint64_t>(val), ty);
+        }
+    case TokenClass::Float: {
+        ::eCoreType ty;
+        switch(this->recv_u8())
+        {
+        case   0: ty = CORETYPE_ANY;    break;
+        case  32: ty = CORETYPE_F32;    break;
+        case  64: ty = CORETYPE_F64;    break;
+        default:    BUG(this->m_parent_span, "Invalid float size from child process");
+        }
+        double val;
+        this->recv_bytes_raw(&val, sizeof(val));
+        return Token(val, ty);
+        }
     case TokenClass::Fragment:
         TODO(this->m_parent_span, "Handle ints/floats/fragments from child process");
     }

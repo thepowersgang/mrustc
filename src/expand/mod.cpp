@@ -151,7 +151,7 @@ MacroRef Expand_LookupMacro(const Span& mi_span, const ::AST::Crate& crate, LLis
             }
 
             // Find the last macro of this name (allows later #[macro_use] definitions to override)
-            const MacroRules* last_mac = nullptr;
+            MacroRef    rv;
             for( const auto& mri : mac_mod.macro_imports_res() )
             {
                 //DEBUG("- " << mri.name);
@@ -159,12 +159,12 @@ MacroRef Expand_LookupMacro(const Span& mi_span, const ::AST::Crate& crate, LLis
                 {
                     DEBUG("?::" << mri.name << " - Imported");
 
-                    last_mac = mri.data;
+                    rv = mri.data.clone();
                 }
             }
-            if( last_mac )
+            if( !rv.is_None() )
             {
-                return MacroRef(last_mac);
+                return rv;
             }
         }
     }
@@ -198,7 +198,7 @@ MacroRef Expand_LookupMacro(const Span& mi_span, const ::AST::Crate& crate, LLis
         for(const auto& mac : mod_ptr->macro_imports_res())
         {
             if(mac.name == final_name) {
-                return MacroRef(mac.data);
+                return mac.data.clone();
             }
         }
         for(const auto& mac : mod_ptr->macros())
@@ -1372,9 +1372,11 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                                 auto mi = AST::Module::MacroImport{ false, ue.name, p.path.m_components, nullptr };
                                 mi.path.insert(mi.path.begin(), p.path.m_crate_name);
                                 mod.m_macro_imports.push_back(mv$(mi));
+
+                                mod.add_macro_import(ue.sp, ue.name, &p);
                                 }
                             TU_ARMA(MacroRules, me) {
-                                mod.add_macro_import(ue.name, *me);
+                                mod.add_macro_import(ue.sp, ue.name, &*me);
                                 }
                             }
                         }
@@ -1393,7 +1395,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                         }
                         if(mac) {
                             DEBUG("Found macro in crate root: " << ue.name << " = crate::" << name);
-                            mod.add_macro_import(ue.name, *mac);
+                            mod.add_macro_import(ue.sp, ue.name, &*mac);
                         }
                     }
                 }
@@ -1827,9 +1829,10 @@ void Expand(::AST::Crate& crate)
         } while( mods.size() > 0 );
 
         // - Exported macros imported by the root (is this needed?)
-        for( auto& mac : crate.m_root_module.macro_imports_res() ) {
-            if( mac.data->m_exported && mac.name != "" ) {
-                auto v = ::std::make_pair( mac.name, mac.data );
+        for( auto& mac : crate.m_root_module.macro_imports_res() )
+        {
+            if( mac.data.is_MacroRules() && mac.data.as_MacroRules()->m_exported && mac.name != "" ) {
+                auto v = ::std::make_pair( mac.name, mac.data.as_MacroRules() );
                 auto it = exported_macros.find(mac.name);
                 if( it == exported_macros.end() )
                 {

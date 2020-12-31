@@ -25,9 +25,9 @@ struct Named
     Named():
         is_pub(false)
     {}
-    Named(Named&&) = default;
-    Named(const Named&) = default;
-    Named& operator=(Named&&) = default;
+    //Named(Named&&) = default;
+    //Named(const Named&) = default;
+    //Named& operator=(Named&&) = default;
     Named(Span sp, AttributeList attrs, bool is_pub, RcString name, T data):
         span(sp),
         attrs( ::std::move(attrs) ),

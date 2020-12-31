@@ -330,9 +330,6 @@ void Module::add_macro_invocation(MacroInvocation item) {
 void Module::add_macro(bool is_exported, RcString name, MacroRulesPtr macro) {
     m_macros.push_back( Named<MacroRulesPtr>( Span(), {}, /*is_pub=*/is_exported, mv$(name), mv$(macro) ) );
 }
-void Module::add_macro_import(RcString name, const MacroRules& mr) {
-    m_macro_import_res.push_back( Named<const MacroRules*>( Span(), /*attrs=*/{}, /*is_pub=*/false, mv$(name), &mr) );
-}
 
 Item Item::clone() const
 {

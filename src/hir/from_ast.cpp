@@ -2064,8 +2064,8 @@ public:
         } while( mods.size() > 0 );
 
         for( auto& mac : crate.m_root_module.macro_imports_res() ) {
-            if( mac.data->m_exported && mac.name != "" ) {
-                auto mp = MacroRulesPtr(new MacroRules( mv$(*const_cast<MacroRules*>(mac.data)) ));
+            if( mac.data.is_MacroRules() && mac.data.as_MacroRules()->m_exported && mac.name != "" ) {
+                auto mp = MacroRulesPtr(new MacroRules( mv$(*const_cast<MacroRules*>(mac.data.as_MacroRules())) ));
                 auto it = macros.find(mac.name);
                 if( it == macros.end() )
                 {

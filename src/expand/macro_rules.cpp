@@ -126,13 +126,14 @@ class CMacroUseHandler:
                     }
                 TU_ARMA(MacroRules, mac_ptr) {
                     DEBUG("Imported " << name << "!");
-                    mod.add_macro_import( name, *mac_ptr );
+                    mod.add_macro_import( sp, name, &*mac_ptr );
                     }
                 TU_ARMA(ProcMacro, p) {
                     DEBUG("Imported " << name << "! (proc macro)");
                     auto mi = AST::Module::MacroImport{ false, p.path.m_components.back(), p.path.m_components, nullptr };
                     mi.path.insert(mi.path.begin(), p.path.m_crate_name);
                     mod.m_macro_imports.push_back(mv$(mi));
+                    mod.add_macro_import( sp, name, &p );
                     }
                 }
             }
@@ -147,7 +148,7 @@ class CMacroUseHandler:
                     continue;
                 }
                 DEBUG("Imported " << mr.name);
-                mod.add_macro_import( mr.name, *mr.data );
+                mod.add_macro_import( sp, mr.name, &*mr.data );
             }
             for( const auto& mri : submod.macro_imports_res() )
             {
@@ -156,7 +157,7 @@ class CMacroUseHandler:
                     continue;
                 }
                 DEBUG("Imported " << mri.name << " (propagate)");
-                mod.add_macro_import( mri.name, *mri.data );
+                mod.add_macro_import( sp, mri.name, mri.data.clone() );
             }
         }
         else {

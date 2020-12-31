@@ -31,6 +31,7 @@
 #include "generics.hpp"
 
 #include <macro_rules/macro_rules_ptr.hpp>
+#include <expand/common.hpp>
 
 namespace AST {
 
@@ -524,7 +525,7 @@ private:
     // --- Runtime caches and state ---
     ::std::vector< ::std::shared_ptr<Module> >  m_anon_modules;
 
-    ::std::vector< Named<const MacroRules*> >   m_macro_import_res;
+    ::std::vector< Named<MacroRef> >    m_macro_import_res;
     ::std::vector< Named<MacroRulesPtr> >  m_macros;
 
 public:
@@ -592,7 +593,10 @@ public:
     void add_macro_invocation(MacroInvocation item);
 
     void add_macro(bool is_exported, RcString name, MacroRulesPtr macro);
-    void add_macro_import(RcString name, const MacroRules& mr);
+    void add_macro_import(Span sp, RcString name, MacroRef ref) {
+        m_macro_import_res.push_back( Named<MacroRef>( sp, /*attrs=*/{}, /*is_pub=*/false, mv$(name), std::move(ref)) );
+    }
+    //void add_macro_import(RcString name, const MacroRules& mr);
 
 
 
@@ -607,7 +611,7 @@ public:
 
           NamedList<MacroRulesPtr>&    macros()        { return m_macros; }
     const NamedList<MacroRulesPtr>&    macros()  const { return m_macros; }
-    const ::std::vector<Named<const MacroRules*> >  macro_imports_res() const { return m_macro_import_res; }
+    const ::std::vector<Named<MacroRef> >&  macro_imports_res() const { return m_macro_import_res; }
 };
 
 TAGGED_UNION_EX(Item, (), None,
