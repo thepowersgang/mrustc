@@ -27,9 +27,31 @@ pub fn dump_token_stream<R: ::std::io::Read>(reader: R)
     }
 }
 
+pub fn dump_token_stream_pretty<R: ::std::io::Read>(reader: R)
+{
+    let mut s = protocol::Reader::new(reader);
+    while let Some(v) = s.read_ent()
+    {
+        match v
+        {
+        Token::Symbol(s) => print!("{} ", s),
+        Token::Ident(s) => print!("{} ", s),
+        Token::Lifetime(s) => print!("'{} ", s),
+        Token::String(s) => print!("{:?}", s),
+        Token::ByteString(s) => print!("{:x?}", s),
+        Token::Char(c) => print!("'{:?}'", c),
+        Token::Unsigned(val, ty) => print!("{val:?} /*ty={ty}*/", val=val, ty=ty),
+        Token::Signed(val, ty) => print!("{val:?} /*ty={ty}*/", val=val, ty=ty),
+        Token::Float(val, ty) => print!("{val:?} /*ty={ty}*/", val=val, ty=ty),
+        }
+    }
+    println!("");
+}
+
 fn main()
 {
     // Hacky argument parsing
+    let mut is_pretty = false;
     let mut is_output = false;
     for a in ::std::env::args().skip(1)
     {
@@ -37,6 +59,7 @@ fn main()
         {
             // Free
             // TODO: Error?
+            panic!("Unknown free argument {:?}", a);
         }
         else if !a.starts_with("--")
         {
@@ -45,7 +68,7 @@ fn main()
             {
                 match c
                 {
-                _ => {},
+                _ => panic!("Unknown short argument `-{}`", c),
                 }
             }
         }
@@ -55,7 +78,8 @@ fn main()
             match &a[..]
             {
             "--is-output" => is_output = true,
-            _ => {},
+            "--pretty" => is_pretty = true,
+            _ => panic!("Unknown argument `{}`", a),
             }
         }
         else
@@ -74,5 +98,10 @@ fn main()
         assert_eq!(b[0], 0);
     }
     // 
-    dump_token_stream(::std::io::stdin().lock());
+    if is_pretty {
+        dump_token_stream_pretty(::std::io::stdin().lock());
+    }
+    else {
+        dump_token_stream(::std::io::stdin().lock());
+    }
 }
