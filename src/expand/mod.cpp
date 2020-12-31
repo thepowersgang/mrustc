@@ -20,6 +20,8 @@
 #include "proc_macro.hpp"
 #include "../parse/ttstream.hpp"
 
+#define MAX_MACRO_RECURSION 200
+
 DecoratorDef*   g_decorators_list = nullptr;
 MacroDef*   g_macros_list = nullptr;
 ::std::map< RcString, ::std::unique_ptr<ExpandDecorator> >  g_decorators;
@@ -285,7 +287,7 @@ MacroRef Expand_LookupMacro(const Span& mi_span, const ::AST::Crate& crate, LLis
             ERROR(mi_span, E0000, "macro_rules! macros can't take an ident");
 
         DEBUG("Invoking macro_rules " << path << " " << mr_ptr);
-        auto e = Macro_InvokeRules(path.is_trivial() ? path.as_trivial().c_str() : "", *mr_ptr, mi_span, mv$(input_tt), crate, mod);
+        auto e = Macro_InvokeRules(path.is_trivial() ? path.as_trivial().c_str() : FMT(path).c_str(), *mr_ptr, mi_span, mv$(input_tt), crate, mod);
         return e;
         }
     }
@@ -1264,10 +1266,21 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
         }
     }
 
+    // Stack to prevent macro recursion
+    // - Items are popped if the item address matches
+    std::vector<const AST::Named<AST::Item>*>   macro_recursion_stack;
+
     DEBUG("Items");
     for( unsigned int idx = first_item; idx < mod.m_items.size(); idx ++ )
     {
         auto& i = *mod.m_items[idx];
+
+        // If this is the pop point for this entry, then pop
+        // - Note, can be `nullptr`, but that indicates that the macro invocation was the end
+        while( !macro_recursion_stack.empty() && macro_recursion_stack.back() == &i ) {
+            macro_recursion_stack.pop_back();
+            DEBUG("End macro recursion guard");
+        }
 
         DEBUG("- " << modpath << "::" << i.name << " (" << ::AST::Item::tag_to_str(i.data.tag()) << ") :: " << i.attrs);
         auto path = modpath + i.name;
@@ -1303,6 +1316,10 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             }
         TU_ARMA(MacroInv, e) {
             // Move out of the module to avoid invalidation if a new macro invocation is added
+
+            if( macro_recursion_stack.size() > MAX_MACRO_RECURSION ) {
+                ERROR(i.span, E0000, "Exceeded macro recusion limit of " << MAX_MACRO_RECURSION);
+            }
             auto mi_owned = mv$(e);
 
             TRACE_FUNCTION_F("Macro invoke " << mi_owned.path());
@@ -1320,10 +1337,14 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                 auto old_items = std::move(mod.m_items);
                 // Parse module items
                 Parse_ModRoot_Items(*ttl, mod);
+                auto new_item_count = mod.m_items.size();
                 // Then insert the newly created items
                 old_items.insert(old_items.begin() + idx + 1, std::make_move_iterator(mod.m_items.begin()), std::make_move_iterator(mod.m_items.end()));
                 // and move the (updated) item list back in
                 mod.m_items = std::move(old_items);
+
+                auto next_non_macro_item = idx + 1 + new_item_count;
+                macro_recursion_stack.push_back(next_non_macro_item == mod.m_items.size() ? nullptr : &*mod.m_items[next_non_macro_item]);
             }
             dat.as_MacroInv() = mv$(mi_owned);
             }
