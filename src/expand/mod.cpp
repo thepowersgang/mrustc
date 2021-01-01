@@ -149,6 +149,7 @@ MacroRef Expand_LookupMacro(const Span& mi_span, const ::AST::Crate& crate, LLis
         for(const auto* ll = &modstack; ll; ll = ll->m_prev)
         {
             const auto& mac_mod = *ll->m_item;
+            DEBUG("Searching in " << mac_mod.path());
             for( const auto& mr : reverse(mac_mod.macros()) )
             {
                 if( mr.name == name )
@@ -190,7 +191,7 @@ MacroRef Expand_LookupMacro(const Span& mi_span, const ::AST::Crate& crate, LLis
     // Resolve the path, following use statements (if required)
     // - Only mr_ptr matters, as proc_mac is about builtins
     const auto& final_name = path.nodes().back().name();
-#if 1
+
     auto rv = Resolve_Lookup_Macro(mi_span, crate, modstack.m_item->path(), path, /*out_path=*/nullptr);
     TU_MATCH_HDRA( (rv), { )
     TU_ARMA(None, _e)
@@ -202,60 +203,6 @@ MacroRef Expand_LookupMacro(const Span& mi_span, const ::AST::Crate& crate, LLis
     TU_ARMA(MacroRules, p)
         return p;
     }
-#else
-    auto macro_mod = Resolve_Lookup_GetModuleForName(mi_span, crate, modstack.m_item->path(), path, ResolveNamespace::Macro, nullptr);
-    TU_MATCH_HDRA( (macro_mod), {)
-    TU_ARMA(None, e) {
-        // Fall through and error later
-        }
-    TU_ARMA(ImplicitPrelude, e) {
-        BUG(mi_span, "Macro name points to a crate?");
-        }
-    TU_ARMA(Ast, mod_ptr) {
-        // Look in the pre-calculated macro list (TODO: Should really be using the main resolve machinery)
-        for(const auto& mac : mod_ptr->macro_imports_res())
-        {
-            if(mac.name == final_name) {
-                return mac.data.clone();
-            }
-        }
-        for(const auto& mac : mod_ptr->macros())
-        {
-            if(mac.name == final_name) {
-                return MacroRef(&*mac.data);
-            }
-        }
-        }
-    TU_ARMA(Hir, mod_ptr) {
-        ASSERT_BUG(mi_span, mod_ptr->m_macro_items.count(final_name) == 1, "Resolve_Lookup_GetModuleForName returned a HIR module without `" << final_name << "`");
-        const auto& i = mod_ptr->m_macro_items.at(final_name);
-        TU_MATCH_HDRA( (i->ent), {)
-        TU_ARMA(Import, imp) {
-            if( imp.path.m_crate_name == CRATE_BUILTINS )
-            {
-                if(auto* pm = Expand_FindProcMacro( imp.path.m_components.front() ))
-                for( const auto& m : g_macros )
-                {
-                    DEBUG("Found builtin (import)");
-                    return MacroRef(pm);
-                }
-                ERROR(mi_span, E0000, "Import references unknown builtin macro: `" << imp.path.m_components.front() << "`");
-            }
-            else
-            {
-                BUG(mi_span, "Resolve_Lookup_GetModuleForName returned an module with import - " << imp.path);
-            }
-            }
-        TU_ARMA(MacroRules, m) {
-            return MacroRef(&*m);
-            }
-        TU_ARMA(ProcMacro, m) {
-            return MacroRef(&m);
-            }
-        }
-        }
-    }
-#endif
     return MacroRef();
 }
 
@@ -1374,7 +1321,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                 if(ue.name != "")
                 {
                     DEBUG("Use " << ue.path);
-#if 1
+
                     auto m = Resolve_Lookup_Macro(ue.sp, crate, mod.path(), ue.path, /*out_path=*/nullptr);
                     TU_MATCH_HDRA( (m), { )
                     TU_ARMA(None, e) {
@@ -1394,68 +1341,6 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                         mod.add_macro_import(ue.sp, ue.name, mr);
                         }
                     }
-#else
-                    auto m = Resolve_Lookup_GetModule(ue.sp, crate, mod.path(), ue.path, /*ignore_last*/true, nullptr);
-                    // Only worry if the module resolves to a HIR module
-                    if(m.is_Hir())
-                    {
-                        const HIR::Module& hir_mod = *m.as_Hir();
-                        auto it = hir_mod.m_macro_items.find(ue.path.nodes().back().name());
-                        if(it != hir_mod.m_macro_items.end()) {
-                            DEBUG("Found macro for " << ue.path);
-                            const auto* mac = &it->second->ent;
-                            if(mac->is_Import() ) {
-                                const auto& p = mac->as_Import().path;
-                                if(p.m_crate_name == CRATE_BUILTINS)
-                                    continue ;
-                                const auto& hir_mod = crate.m_extern_crates.at(p.m_crate_name).m_hir->m_root_module;
-                                // NOTE: Macro imports should always be from the root
-                                ASSERT_BUG(ue.sp, p.m_components.size() == 1, "Macro import not from root");
-                                mac = &hir_mod.m_macro_items.at(p.m_components[0])->ent;
-                            }
-                            TU_MATCH_HDRA( (*mac), {)
-                            default:
-                                TODO(ue.sp, "Import macro '" << ue.name << "' (" << mac->tag_str() << ") with a `use` statement");
-                            TU_ARMA(Import, p) {
-                                if(p.path.m_crate_name == CRATE_BUILTINS) {
-                                    // Just ignore it for now. Builtins are always in scope
-                                }
-                                else {
-                                    TODO(ue.sp, "Import macro '" << ue.name << "' (Import " << p.path << ") with a `use` statement");
-                                }
-                                }
-                            TU_ARMA(ProcMacro, p) {
-                                //DEBUG("Imported " << ue.name << "! (proc macro)");
-                                auto mi = AST::Module::MacroImport{ false, ue.name, p.path.m_components, nullptr };
-                                mi.path.insert(mi.path.begin(), p.path.m_crate_name);
-                                mod.m_macro_imports.push_back(mv$(mi));
-
-                                mod.add_macro_import(ue.sp, ue.name, &p);
-                                }
-                            TU_ARMA(MacroRules, me) {
-                                mod.add_macro_import(ue.sp, ue.name, &*me);
-                                }
-                            }
-                        }
-                    }
-                    // Can also import exported macros from the crate root
-                    else if(m.is_Ast() && ue.path.m_class.is_Absolute() && ue.path.nodes().size() == 1)
-                    {
-                        const auto& name = ue.path.nodes().back().name();
-                        const MacroRules* mac = nullptr;
-                        for(const auto& e : crate.m_root_module.macros())
-                        {
-                            DEBUG(e.name);
-                            if( e.data->m_exported && e.name == name ) {
-                                mac = &*e.data;
-                            }
-                        }
-                        if(mac) {
-                            DEBUG("Found macro in crate root: " << ue.name << " = crate::" << name);
-                            mod.add_macro_import(ue.sp, ue.name, &*mac);
-                        }
-                    }
-#endif
                 }
             }
             }
@@ -1484,15 +1369,24 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             throw "";
             }
         TU_ARMA(Crate, e) {
-            // Can't recurse into an `extern crate`
-            if(crate.m_extern_crates.count(e.name) == 0)
+            if( e.name != "" )
             {
-                e.name = crate.load_extern_crate( i.span, e.name );
+                // Can't recurse into an `extern crate`
+                if(crate.m_extern_crates.count(e.name) == 0)
+                {
+                    e.name = crate.load_extern_crate( i.span, e.name );
+                }
+                // Crates imported in root are added to the implicit list
+                if( modpath.nodes.empty() )
+                {
+                    AST::g_implicit_crates.insert( std::make_pair(i.name, e.name) );
+                }
             }
-            // Crates imported in root are added to the implicit list
-            if( modpath.nodes.empty() )
-            {
-                AST::g_implicit_crates.insert( std::make_pair(i.name, e.name) );
+            else {
+                if( modpath.nodes.empty() )
+                {
+                    AST::g_implicit_crates.insert( std::make_pair(i.name, "") );
+                }
             }
             }
 

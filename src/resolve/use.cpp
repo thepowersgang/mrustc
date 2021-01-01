@@ -338,8 +338,15 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                 BUG(span, "Hit Extern in use resolution");
                 }
             TU_ARMA(Crate, e) {
-                ASSERT_BUG(span, crate.m_extern_crates.count(e.name), "Crate '" << e.name << "' not loaded");
-                rv.type.set( AST::AbsolutePath(e.name, {}), ::AST::PathBinding_Type::make_Crate({ &crate.m_extern_crates.at(e.name) }) );
+                if( e.name != "" )
+                {
+                    ASSERT_BUG(span, crate.m_extern_crates.count(e.name), "Crate '" << e.name << "' not loaded");
+                    rv.type.set( AST::AbsolutePath(e.name, {}), ::AST::PathBinding_Type::make_Crate({ &crate.m_extern_crates.at(e.name) }) );
+                }
+                else
+                {
+                    rv.type.set( AST::AbsolutePath(e.name, {}), ::AST::PathBinding_Type::make_Module({ &crate.m_root_module }) );
+                }
                 }
             TU_ARMA(Type, e) {
                 rv.type.set(p, ::AST::PathBinding_Type::make_TypeAlias({&e}));
