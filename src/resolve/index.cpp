@@ -154,8 +154,15 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
             _add_item(i->span, mod, IndexName::Namespace, i->name, i->is_pub,  mv$(p));
             }
         TU_ARMA(Crate, e) {
-            ASSERT_BUG(i->span, crate.m_extern_crates.count(e.name) > 0, "Referenced crate '" << e.name << "' isn't loaded for `extern crate`");
-            p.m_bindings.type.set( ap, ::AST::PathBinding_Type::make_Crate({ &crate.m_extern_crates.at(e.name) }) );
+            if( e.name != "" )
+            {
+                ASSERT_BUG(i->span, crate.m_extern_crates.count(e.name) > 0, "Referenced crate '" << e.name << "' isn't loaded for `extern crate`");
+                p.m_bindings.type.set( ap, ::AST::PathBinding_Type::make_Crate({ &crate.m_extern_crates.at(e.name) }) );
+            }
+            else
+            {
+                p.m_bindings.type.set( ap, ::AST::PathBinding_Type::make_Module({ &crate.m_root_module }) );
+            }
             _add_item(i->span, mod, IndexName::Namespace, i->name, i->is_pub,  mv$(p));
             }
         TU_ARMA(Enum, e) {
