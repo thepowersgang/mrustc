@@ -123,6 +123,8 @@ public:
     {
     }
 
+    size_t cur_pos() const { return m_cur_pos; }
+
     /// Get the next pattern entry
     const SimplePatEnt& next();
 
@@ -350,15 +352,13 @@ const SimplePatEnt& MacroPatternStream::next()
 void MacroPatternStream::if_succeeded()
 {
     assert(m_cur_pos > 0);
+    assert(m_cur_pos <= m_simple_ents.size());
     assert(m_last_was_cond);
-    TU_MATCH_HDRA( (m_simple_ents[m_cur_pos-1]), {)
-    default:
-        BUG(Span(), "Unexpected " << m_simple_ents[m_cur_pos-1]);
-    TU_ARMA(If, e) {
-        ASSERT_BUG(Span(), e.jump_target < m_simple_ents.size(), "Jump target " << e.jump_target << " out of range " << m_simple_ents.size());
-        m_cur_pos = e.jump_target;
-        }
-    }
+    const auto& ent = m_simple_ents[m_cur_pos-1];
+    ASSERT_BUG(Span(), ent.is_If(), "Expected If when calling `if_succeeded`, got " << ent);
+    const auto& e = ent.as_If();
+    ASSERT_BUG(Span(), e.jump_target < m_simple_ents.size(), "Jump target " << e.jump_target << " out of range " << m_simple_ents.size());
+    m_cur_pos = e.jump_target;
     m_condition_met = true;
 }
 
@@ -1816,8 +1816,10 @@ unsigned int Macro_InvokeRules_MatchPattern(const Span& sp, const MacroRules& ru
         bool fail = false;
         for(;;)
         {
+            const auto pos = arm_stream.cur_pos();
             const auto& pat = arm_stream.next();
-            DEBUG(i << " " << pat);
+            // NOTE: The positions seen by this aren't fully sequential, as `next` steps over jumps/loop control ops
+            DEBUG("Arm " << i << " @" << pos << " " << pat);
             if(pat.is_End())
             {
                 if( lex.next() != TOK_EOF )
@@ -1857,7 +1859,7 @@ unsigned int Macro_InvokeRules_MatchPattern(const Span& sp, const MacroRules& ru
             else if( const auto* e = pat.opt_ExpectTok() )
             {
                 const auto& tok = lex.next_tok();
-                DEBUG(i << " ExpectTok(" << *e << ") == " << tok);
+                DEBUG("Arm " << i << " @" << pos << " ExpectTok(" << *e << ") == " << tok);
                 if( tok != *e )
                 {
                     fail = true;
@@ -1867,7 +1869,7 @@ unsigned int Macro_InvokeRules_MatchPattern(const Span& sp, const MacroRules& ru
             }
             else if( const auto* e = pat.opt_ExpectPat() )
             {
-                DEBUG(i << " ExpectPat(" << e->type << " => $" << e->idx << ")");
+                DEBUG("Arm " << i << " @" << pos << " ExpectPat(" << e->type << " => $" << e->idx << ")");
                 if( !consume_from_frag(lex, e->type) )
                 {
                     fail = true;

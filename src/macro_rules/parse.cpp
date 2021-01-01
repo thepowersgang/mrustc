@@ -694,11 +694,27 @@ namespace {
                     {
                         if( ent.tok != TOK_NULL )
                         {
-                            // If not the joiner, jump to the end
-                            for(const auto& ee : repeat_conds) {
-                                push_ifv(/*is_equal*/false, ee, ~0u);
+                            if( repeat_conds.size() == 1 )
+                            {
+                                // If not a repeat, jump out
+                                for(const auto& ee : repeat_conds) {
+                                    push_ifv(/*is_equal*/false, ee, ~0u);
+                                }
+                                push( SimplePatEnt::make_ExpectTok(ent.tok) );
                             }
-                            push( SimplePatEnt::make_ExpectTok(ent.tok) );
+                            else
+                            {
+                                // Multiple repeat conditions
+                                // - If any repeat condition matches, then jump to a consume
+                                auto check_pos = rv.size() + repeat_conds.size() + 1;
+                                for(const auto& ee : repeat_conds) {
+                                    push_ifv(/*is_equal*/true, ee, check_pos);
+                                }
+                                // - If none of the above matched, then jump out of the loop
+                                push(SimplePatEnt::make_Jump({ ~0u }));
+                                assert(rv.size() == check_pos);
+                                push( SimplePatEnt::make_ExpectTok(ent.tok) );
+                            }
                         }
                         // Jump back to the entry check.
                         push(SimplePatEnt::make_Jump({ rewrite_start }));
