@@ -330,11 +330,25 @@ namespace {
                     DEBUG(name << " Not Found");
                     return ResolveModuleRef();
                 }
-                if( !it->second->ent.is_Module() ) {
-                    DEBUG(name << " Not Module");
-                    return ResolveModuleRef();
+                const auto* ti = &it->second->ent;
+                if(const auto* imp = ti->opt_Import())
+                {
+                    ASSERT_BUG(sp, crate.m_extern_crates.count(imp->path.m_crate_name), "Crate " << imp->path.m_crate_name << " not loaded");
+                    const auto& ext_crate = *crate.m_extern_crates.at(imp->path.m_crate_name).m_hir;
+                    if( imp->path.m_components.empty() ) {
+                        mod = &ext_crate.m_root_module;
+                        continue;
+                    }
+                    ti = &ext_crate.get_typeitem_by_path(sp, imp->path, /*ignore_crate*/true, /*ignore_last*/false);
                 }
-                mod = &it->second->ent.as_Module();
+                TU_MATCH_HDRA( (*ti), {)
+                default:
+                    DEBUG(name << " Not Module, instead " << ti->tag_str());
+                    return ResolveModuleRef();
+                TU_ARMA(Module, m) {
+                    mod = &m;
+                    }
+                }
             }
             if(out_path)
             {
@@ -583,6 +597,10 @@ namespace {
                 }
             }
             DEBUG("Not found");
+            if( mod.is_anon() )
+            {
+                // TODO: Search parent
+            }
             return ResolveItemRef::make_None({});
         }
 
@@ -715,6 +733,7 @@ ResolveModuleRef Resolve_Lookup_GetModule(const Span& sp, const AST::Crate& crat
 
 ResolveItemRef_Macro Resolve_Lookup_Macro(const Span& span, const AST::Crate& crate, const ::AST::Path& base_path, ::AST::Path path, ::AST::AbsolutePath* out_path)
 {
+    TRACE_FUNCTION_F("path=" << path << " in " << base_path);
     ResolveState    rs(span, crate);
 
     const auto& item_name = path.nodes().back().name();
