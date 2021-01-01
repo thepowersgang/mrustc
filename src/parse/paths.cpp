@@ -259,7 +259,13 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
             {
                 auto name = tok.istr();
                 GET_CHECK_TOK(tok, lex, TOK_COLON);
-                rv.m_entries.push_back( ::std::make_pair( mv$(name), Parse_Path(lex, PATH_GENERIC_TYPE) ) );
+                // TODO: Trait list instead of duplicating the name
+                do {
+                    rv.m_entries.push_back( ::std::make_pair( name, Parse_Path(lex, PATH_GENERIC_TYPE) ) );
+                    if(lex.lookahead(0) != TOK_PLUS)
+                        break;
+                    GET_CHECK_TOK(tok, lex, TOK_PLUS);
+                } while(true);
                 break;
             }
         default:
