@@ -816,7 +816,7 @@ namespace {
         }
 
         void visit(::AST::ExprNode_Integer& node) {
-            TODO(sp, "ExprNode_Integer");
+            m_pmi.send_int(node.m_datatype, node.m_value);
         }
         void visit(::AST::ExprNode_Float& node) {
             TODO(sp, "ExprNode_Float");
