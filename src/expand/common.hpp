@@ -34,3 +34,5 @@ TAGGED_UNION_EX(MacroRef, (), None, (
     )
     );
 extern MacroRef Expand_LookupMacro(const Span& mi_span, const ::AST::Crate& crate, LList<const AST::Module*> modstack, const AST::Path& path);
+
+extern ExpandProcMacro* Expand_FindProcMacro(const RcString& name);

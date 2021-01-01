@@ -271,35 +271,56 @@ const ::HIR::SimplePath& ::HIR::Crate::get_lang_item_path_opt(const char* name) 
     return it->second;
 }
 
+namespace {
+    const ::HIR::Module& get_containing_module(const ::HIR::Crate& crate, const Span& sp, const ::HIR::SimplePath& path, bool ignore_crate_name, bool ignore_last_node)
+    {
+        ASSERT_BUG(sp, path.m_components.size() > 0u, "Invalid path (no nodes) - " << path);
+        ASSERT_BUG(sp, path.m_components.size() > (ignore_last_node ? 1u : 0u), "Invalid path (only one node with `ignore_last_node` - " << path);
+
+        const ::HIR::Module* mod;
+        if( !ignore_crate_name && path.m_crate_name != crate.m_crate_name ) {
+            ASSERT_BUG(sp, crate.m_ext_crates.count(path.m_crate_name) > 0, "Crate '" << path.m_crate_name << "' not loaded for " << path);
+            mod = &crate.m_ext_crates.at(path.m_crate_name).m_data->m_root_module;
+        }
+        else {
+            mod =  &crate.m_root_module;
+        }
+        for( unsigned int i = 0; i < path.m_components.size() - (ignore_last_node ? 2 : 1); i ++ )
+        {
+            const auto& pc = path.m_components[i];
+            auto it = mod->m_mod_items.find( pc );
+            if( it == mod->m_mod_items.end() ) {
+                BUG(sp, "Couldn't find component " << i << " of " << path);
+            }
+            if(const auto* e = it->second->ent.opt_Module()) {
+                mod = e;
+            }
+            else {
+                BUG(sp, "Node " << i << " of path " << path << " wasn't a module");
+            }
+        }
+        return *mod;
+    }
+}
+
+const ::HIR::MacroItem& ::HIR::Crate::get_macroitem_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_crate_name, bool ignore_last_node) const
+{
+    const auto& mod = get_containing_module(*this, sp, path, ignore_crate_name, ignore_last_node);
+
+    auto it = mod.m_macro_items.find( ignore_last_node ? path.m_components[path.m_components.size()-2] : path.m_components.back() );
+    if( it == mod.m_macro_items.end() ) {
+        BUG(sp, "Could not find macro name in " << path);
+    }
+
+    return it->second->ent;
+}
+
 const ::HIR::TypeItem& ::HIR::Crate::get_typeitem_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_crate_name, bool ignore_last_node) const
 {
-    ASSERT_BUG(sp, path.m_components.size() > 0u, "get_typeitem_by_path received invalid path - " << path);
-    ASSERT_BUG(sp, path.m_components.size() > (ignore_last_node ? 1u : 0u), "get_typeitem_by_path received invalid path - " << path);
+    const auto& mod = get_containing_module(*this, sp, path, ignore_crate_name, ignore_last_node);
 
-    const ::HIR::Module* mod;
-    if( !ignore_crate_name && path.m_crate_name != m_crate_name ) {
-        ASSERT_BUG(sp, m_ext_crates.count(path.m_crate_name) > 0, "Crate '" << path.m_crate_name << "' not loaded for " << path);
-        mod = &m_ext_crates.at(path.m_crate_name).m_data->m_root_module;
-    }
-    else {
-        mod =  &this->m_root_module;
-    }
-    for( unsigned int i = 0; i < path.m_components.size() - (ignore_last_node ? 2 : 1); i ++ )
-    {
-        const auto& pc = path.m_components[i];
-        auto it = mod->m_mod_items.find( pc );
-        if( it == mod->m_mod_items.end() ) {
-            BUG(sp, "Couldn't find component " << i << " of " << path);
-        }
-        TU_IFLET(::HIR::TypeItem, it->second->ent, Module, e,
-            mod = &e;
-        )
-        else {
-            BUG(sp, "Node " << i << " of path " << path << " wasn't a module");
-        }
-    }
-    auto it = mod->m_mod_items.find( ignore_last_node ? path.m_components[path.m_components.size()-2] : path.m_components.back() );
-    if( it == mod->m_mod_items.end() ) {
+    auto it = mod.m_mod_items.find( ignore_last_node ? path.m_components[path.m_components.size()-2] : path.m_components.back() );
+    if( it == mod.m_mod_items.end() ) {
         BUG(sp, "Could not find type name in " << path);
     }
 
@@ -312,6 +333,7 @@ const ::HIR::Module& ::HIR::Crate::get_mod_by_path(const Span& sp, const ::HIR::
     {
         ASSERT_BUG(sp, path.m_components.size() > 0, "get_mod_by_path received invalid path with ignore_last_node=true - " << path);
     }
+    // Special handling for empty paths with `ignore_last_node`
     if( path.m_components.size() == (ignore_last_node ? 1 : 0) )
     {
         if( !ignore_crate_name && path.m_crate_name != m_crate_name )
@@ -327,9 +349,10 @@ const ::HIR::Module& ::HIR::Crate::get_mod_by_path(const Span& sp, const ::HIR::
     else
     {
         const auto& ti = this->get_typeitem_by_path(sp, path, ignore_crate_name, ignore_last_node);
-        TU_IFLET(::HIR::TypeItem, ti, Module, e,
-            return e;
-        )
+        if(auto* e = ti.opt_Module())
+        {
+            return *e;
+        }
         else {
             if( ignore_last_node )
                 BUG(sp, "Parent path of " << path << " didn't point to a module");
@@ -381,33 +404,10 @@ const ::HIR::Enum& ::HIR::Crate::get_enum_by_path(const Span& sp, const ::HIR::S
 
 const ::HIR::ValueItem& ::HIR::Crate::get_valitem_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_crate_name) const
 {
-    if( path.m_components.size() == 0) {
-        BUG(sp, "get_valitem_by_path received invalid path");
-    }
-    const ::HIR::Module* mod;
-    if( !ignore_crate_name && path.m_crate_name != m_crate_name ) {
-        ASSERT_BUG(sp, m_ext_crates.count(path.m_crate_name) > 0, "Crate '" << path.m_crate_name << "' not loaded");
-        mod = &m_ext_crates.at(path.m_crate_name).m_data->m_root_module;
-    }
-    else {
-        mod =  &this->m_root_module;
-    }
-    for( unsigned int i = 0; i < path.m_components.size() - 1; i ++ )
-    {
-        const auto& pc = path.m_components[i];
-        auto it = mod->m_mod_items.find( pc );
-        if( it == mod->m_mod_items.end() ) {
-            BUG(sp, "Couldn't find component " << i << " of " << path);
-        }
-        TU_IFLET(::HIR::TypeItem, it->second->ent, Module, e,
-            mod = &e;
-        )
-        else {
-            BUG(sp, "Node " << i << " of path " << path << " wasn't a module");
-        }
-    }
-    auto it = mod->m_value_items.find( path.m_components.back() );
-    if( it == mod->m_value_items.end() ) {
+    const auto& mod = get_containing_module(*this, sp, path, ignore_crate_name, /*ignore_last_node=*/false);
+
+    auto it = mod.m_value_items.find( path.m_components.back() );
+    if( it == mod.m_value_items.end() ) {
         BUG(sp, "Could not find value name " << path);
     }
 
