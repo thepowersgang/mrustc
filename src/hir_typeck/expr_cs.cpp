@@ -2438,6 +2438,14 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                 TU_ARM(pattern.m_data, EnumValue, e) {
                     context.add_ivars_params( e.path.m_params );
                     context.equate_types( sp, ty, ::HIR::TypeRef::new_path(get_parent_path(e.path), ::HIR::TypePathBinding(e.binding_ptr)) );
+                    assert(e.binding_ptr);
+                    const auto& enm = *e.binding_ptr;
+                    if( enm.m_data.is_Data() )
+                    {
+                        ASSERT_BUG(sp, e.binding_idx < enm.m_data.as_Data().size(), "");
+                        const auto& var = enm.m_data.as_Data()[e.binding_idx];
+                        ASSERT_BUG(sp, var.type == HIR::TypeRef::new_unit(), "EnumValue used on non-value enum variant");
+                    }
                     rv = true;
                     }
                 TU_ARM(pattern.m_data, EnumTuple, e) {

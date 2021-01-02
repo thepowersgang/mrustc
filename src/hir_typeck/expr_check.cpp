@@ -1135,6 +1135,9 @@ namespace {
         void check_pattern(const ::HIR::Pattern& pat, const ::HIR::TypeRef& ty) const
         {
             Span    sp;
+            if( pat.m_implicit_deref_count ) {
+                // TODO: Deref a few times
+            }
             TU_MATCH_HDRA( (pat.m_data), { )
             TU_ARMA(Any, pe) {
                 // Don't care
@@ -1170,6 +1173,9 @@ namespace {
                 }
             TU_ARMA(EnumValue, e) {
                 // TODO: Check type
+                //ASSERT_BUG(sp, ty.data().is_Path(), ty);
+                //ASSERT_BUG(sp, ty.data().as_Path().binding.is_Enum(), "");
+                //const auto& enm = *ty.data().as_Path().binding.as_Enum();
                 }
             TU_ARMA(EnumTuple, e) {
                 // TODO: Destructure
