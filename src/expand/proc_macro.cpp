@@ -178,7 +178,8 @@ struct ProcMacroInv:
 {
     Span    m_parent_span;
     const ::HIR::ProcMacro& m_proc_macro_desc;
-    ::std::ofstream m_dump_file;
+    ::std::ofstream m_dump_file_out;
+    ::std::ofstream m_dump_file_res;
 
 #ifdef _WIN32
     HANDLE  child_handle;
@@ -1095,7 +1096,14 @@ ProcMacroInv::ProcMacroInv(const Span& sp, const char* executable, const ::HIR::
     // TODO: Optionally dump the data sent to the client.
     if( getenv("MRUSTC_DUMP_PROCMACRO") )
     {
-        m_dump_file.open( getenv("MRUSTC_DUMP_PROCMACRO"), ::std::ios::out | ::std::ios::binary );
+        // TODO: Dump both input and output, AND (optionally) dump each invocation
+        static unsigned int dump_count = 0;
+        std::string name_prefix;
+        name_prefix = FMT(getenv("MRUSTC_DUMP_PROCMACRO") << "-" << dump_count);
+        DEBUG("Dumping to " << name_prefix);
+        m_dump_file_out.open( FMT(name_prefix << "-out.bin"), ::std::ios::out | ::std::ios::binary );
+        m_dump_file_res.open( FMT(name_prefix << "-res.bin"), ::std::ios::out | ::std::ios::binary );
+        dump_count ++;
     }
 #ifdef _WIN32
     std::string commandline = std::string{ executable } + " " + proc_macro_desc.name.c_str();
@@ -1192,6 +1200,8 @@ ProcMacroInv::ProcMacroInv(const Span& sp, const char* executable, const ::HIR::
 }
 ProcMacroInv::ProcMacroInv(ProcMacroInv&& x):
     TokenStream(x.parse_state()),
+    m_dump_file_out(std::move(m_dump_file_out)),
+    m_dump_file_res(std::move(m_dump_file_res)),
     m_parent_span(x.m_parent_span),
     m_proc_macro_desc(x.m_proc_macro_desc),
 #ifdef _WIN32
@@ -1283,16 +1293,7 @@ bool ProcMacroInv::check_good()
 }
 void ProcMacroInv::send_u8(uint8_t v)
 {
-    if( m_dump_file.is_open() )
-        m_dump_file.put(v);
-#ifdef _WIN32
-    DWORD bytesWritten = 0;
-    if( !WriteFile(this->child_stdin, &v, 1, &bytesWritten, nullptr) || bytesWritten != 1 )
-        BUG(m_parent_span, "Error writing to child, " << GetLastError());
-#else
-    if( write(this->child_stdin, &v, 1) != 1 )
-        BUG(m_parent_span, "Error writing to child, " << strerror(errno));
-#endif
+    this->send_bytes_raw(&v, 1);
 }
 void ProcMacroInv::send_bytes(const void* val, size_t size)
 {
@@ -1301,8 +1302,8 @@ void ProcMacroInv::send_bytes(const void* val, size_t size)
 }
 void ProcMacroInv::send_bytes_raw(const void* val, size_t size)
 {
-    if( m_dump_file.is_open() )
-        m_dump_file.write( reinterpret_cast<const char*>(val), size);
+    if( m_dump_file_out.is_open() )
+        m_dump_file_out.write( reinterpret_cast<const char*>(val), size);
 #ifdef _WIN32
     DWORD bytesWritten = 0;
     if( !WriteFile(this->child_stdin, val, size, &bytesWritten, nullptr) || bytesWritten != size )
@@ -1323,14 +1324,7 @@ void ProcMacroInv::send_v128u(uint64_t val)
 uint8_t ProcMacroInv::recv_u8()
 {
     uint8_t v;
-#ifdef _WIN32
-    DWORD n;
-    if( !ReadFile(this->child_stdout, &v, 1, &n, nullptr) )
-        BUG(this->m_parent_span, "Unexpected EOF while reading from child process");
-#else
-    if( read(this->child_stdout, &v, 1) != 1 )
-        BUG(this->m_parent_span, "Unexpected EOF while reading from child process");
-#endif
+    this->recv_bytes_raw(&v, 1);
     return v;
 }
 ::std::string ProcMacroInv::recv_bytes()
@@ -1366,6 +1360,9 @@ void ProcMacroInv::recv_bytes_raw(void* out_void, size_t len)
         ofs += n;
         rem -= n;
     }
+
+    if( m_dump_file_res.is_open() )
+        m_dump_file_res.write( reinterpret_cast<const char*>(out_void), len );
 }
 uint64_t ProcMacroInv::recv_v128u()
 {
