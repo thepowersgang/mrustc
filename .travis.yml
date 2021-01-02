@@ -37,8 +37,8 @@ script:
  - make test    # hello_world
 # Tests
  - set +e
- - make local_tests -k
-# - CC=gcc-6 make rust_tests -k
+ - make local_tests -k || (sh -c 'cat output/local_tests/*.out_failed'; false)
+# - make rust_tests -k
  - set -e
 # rustc_driver - Takes too long
 # - RUST_CHECK=1 make -f minicargo.mk output/rustc-build/librustc_driver.rlib
