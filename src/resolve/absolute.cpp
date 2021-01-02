@@ -219,6 +219,17 @@ namespace
             TODO(Span(), "Error when get_self called with no self");
         }
 
+        const ::TypeRef* get_self_opt() const {
+            for(auto it = m_name_context.rbegin(); it != m_name_context.rend(); ++ it)
+            {
+                if( const auto* e = it->opt_ConcreteSelf() )
+                {
+                    return *e;
+                }
+            }
+            return nullptr;
+        }
+
         void push_block() {
             m_block_level += 1;
             DEBUG("Push block to " << m_block_level);
@@ -577,7 +588,7 @@ namespace
                         case LookupMode::Type:
                         case LookupMode::Namespace:
                             // TODO: Want to return the type if handling a struct literal
-                            if( true ) {
+                            if( false ) {
                                 return ::AST::Path::new_ufcs_ty( e->clone(), ::std::vector< ::AST::PathNode>() );
                             }
                             else {
@@ -1769,38 +1780,6 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
         }
     }
 
-    // Convert UFCS nodes that actually point to an enum variant, into that variant as an item path
-    if(auto* e = path.m_class.opt_UFCS())
-    {
-        if( !e->nodes.empty() && (!e->trait || !e->trait->is_valid()) && e->type->m_data.is_Path() )
-        {
-            const auto& name = e->nodes.front().name();
-            auto& p = *e->type->m_data.as_Path();
-            if( p.m_bindings.type.binding.is_Enum() ) {
-                const auto* enm = p.m_bindings.type.binding.as_Enum().enum_;
-                if(enm)
-                {
-                    auto it = std::find_if(enm->variants().begin(), enm->variants().end(), [&](const AST::EnumVariant& v){ return v.m_name == name; });
-                    if( it != enm->variants().end() )
-                    {
-                        unsigned idx = it - enm->variants().begin();
-                        auto p2 = p.m_bindings.type.path + name;
-                        auto new_path = std::move(p);
-                        new_path.append(name);
-                        if( it->m_data.is_Struct() ) {
-                            new_path.m_bindings.type.set(p2, AST::PathBinding_Type::make_EnumVar({ enm, idx }));
-                        }
-                        else {
-                            new_path.m_bindings.value.set(p2, AST::PathBinding_Value::make_EnumVar({ enm, idx }));
-                        }
-                        DEBUG("UFCS of enum variant converted to Generic: " << new_path);
-                        path = std::move(new_path);
-                    }
-                }
-            }
-        }
-    }
-
     DEBUG("path = " << path);
     // TODO: Should this be deferred until the HIR?
     // - Doing it here so the HIR lowering has a bit more information
@@ -1824,6 +1803,54 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
 
     // TODO: Expand default type parameters?
     // - Helps with cases like PartialOrd<Self>, but hinders when the default is a hint (in expressions)
+
+    // 
+    if(const auto* e = path.m_class.opt_UFCS())
+    {
+        if( !e->nodes.empty() && (!e->trait || !e->trait->is_valid()) && e->type->m_data.is_Generic() && e->type->m_data.as_Generic().index == GENERIC_Self )
+        {
+            const auto& name = e->nodes.front().name();
+
+            if(const auto* self_ty = context.get_self_opt())
+            {
+                // Check if we're in an enum
+                if( const auto* ty_path = self_ty->m_data.opt_Path() )
+                {
+                    const auto& p = **ty_path;
+                    if( const auto* pbe = p.m_bindings.type.binding.opt_Enum() )
+                    {
+                        if(pbe->enum_)
+                        {
+                            const auto& enm = *pbe->enum_;
+                            auto it = std::find_if(enm.variants().begin(), enm.variants().end(), [&](const AST::EnumVariant& v){ return v.m_name == name; });
+                            if( it != enm.variants().end() )
+                            {
+                                unsigned idx = it - enm.variants().begin();
+                                auto p2 = p.m_bindings.type.path + name;
+                                auto new_path = std::move(p);
+                                new_path.append(name);
+                                if( it->m_data.is_Struct() ) {
+                                    new_path.m_bindings.type.set(p2, AST::PathBinding_Type::make_EnumVar({ &enm, idx }));
+                                }
+                                else {
+                                    new_path.m_bindings.value.set(p2, AST::PathBinding_Value::make_EnumVar({ &enm, idx }));
+                                }
+                                DEBUG("UFCS of enum variant converted to Generic: " << new_path);
+                                path = std::move(new_path);
+                            }
+                        }
+                        else if(pbe->hir)
+                        {
+                            // TODO: Could be in an `impl Trait for Foo`
+                        }
+                        else
+                        {
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 void Resolve_Absolute_Lifetime(Context& context, const Span& sp, AST::LifetimeRef& lft)
