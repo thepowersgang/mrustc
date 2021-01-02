@@ -188,7 +188,7 @@ MacroRulesPtr::~MacroRulesPtr()
     switch(x.type)
     {
     case MacroPatEnt::PAT_TOKEN: os << "=" << x.tok; break;
-    case MacroPatEnt::PAT_LOOP:  os << "loop" << x.name << " w/ "  << x.tok << " [" << x.subpats << "]";  break;
+    case MacroPatEnt::PAT_LOOP:  os << "loop #" << x.name_index << x.name << " w/ "  << x.tok << " [" << x.subpats << "]";  break;
     default:
         os << "$" << x.name << ":";
         switch(x.type)
@@ -240,7 +240,7 @@ MacroRulesPtr::~MacroRulesPtr()
 {
     TU_MATCH_HDRA( (x), { )
     TU_ARMA(End, _e) os << "End";
-    TU_ARMA(LoopStart, _e) os << "LoopStart";
+    TU_ARMA(LoopStart, e) os << "LoopStart(" << e.index << ")";
     TU_ARMA(LoopNext, _e) os << "LoopNext";
     TU_ARMA(LoopEnd, _e) os << "LoopEnd";
     TU_ARMA(Jump, e) {
@@ -269,22 +269,22 @@ MacroRulesPtr::~MacroRulesPtr()
 
 ::std::ostream& operator<<(::std::ostream& os, const MacroExpansionEnt& x)
 {
-    TU_MATCH( MacroExpansionEnt, (x), (e),
-    (Token,
+    TU_MATCH_HDRA( (x), {)
+    TU_ARMA(Token, e) {
         os << "=" << e;
-        ),
-    (NamedValue,
+        }
+    TU_ARMA(NamedValue, e) {
         if( e >> 30 ) {
             os << "$crate";
         }
         else {
             os << "$" << e;
         }
-        ),
-    (Loop,
-        os << "${" << *e.variables.begin() << "}(" << e.entries << ") " << e.joiner;
-        )
-    )
+        }
+    TU_ARMA(Loop, e) {
+        os << "${" << e.controlling_input_loops << "}(" << e.entries << ") " << e.joiner;
+        }
+    }
     return os;
 }
 

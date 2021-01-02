@@ -31,9 +31,8 @@ TAGGED_UNION(MacroExpansionEnt, Token,
         ::std::vector< MacroExpansionEnt>   entries;
         /// Token used to join iterations
         Token   joiner;
-        /// List of variables within this loop that control its iteration count
-        /// Boolean is true if the variable will be unconditionally expanded
-        ::std::map< unsigned int, bool>    variables;
+        /// List of loop indexes that control this loop
+        ::std::set<unsigned int>    controlling_input_loops;
         })
     );
 extern ::std::ostream& operator<<(::std::ostream& os, const MacroExpansionEnt& x);
@@ -73,6 +72,7 @@ struct MacroPatEnt
         type(PAT_TOKEN)
     {
     }
+    // Literal token
     MacroPatEnt(Span sp, Token tok):
         sp(mv$(sp)),
         tok( mv$(tok) ),
@@ -80,6 +80,7 @@ struct MacroPatEnt
     {
     }
 
+    // Variable reference
     MacroPatEnt(Span sp, RcString name, unsigned int name_index, Type type):
         sp(mv$(sp)),
         name( mv$(name) ),
@@ -89,9 +90,11 @@ struct MacroPatEnt
     {
     }
 
-    MacroPatEnt(Span sp, Token sep, const char* op, ::std::vector<MacroPatEnt> ents):
+    // Loop/optional
+    MacroPatEnt(Span sp, Token sep, const char* op, unsigned index, ::std::vector<MacroPatEnt> ents):
         sp(mv$(sp)),
         name( op ),
+        name_index(index),
         tok( mv$(sep) ),
         subpats( move(ents) ),
         type(PAT_LOOP)
@@ -121,11 +124,11 @@ TAGGED_UNION( SimplePatEnt, End,
     // End of the pattern stream (expects EOF, and terminates the match process)
     (End, struct{}),
     // Start a loop (pushes a zero count to the loop stack)
-    (LoopStart, struct{}),
+    (LoopStart, struct { unsigned index; }),
     // Increment loop iteration counter
-    (LoopNext, struct{}),
+    (LoopNext, struct { /*unsigned index;*/ }),
     // Pop from the loop stack
-    (LoopEnd, struct{}),
+    (LoopEnd, struct { /*unsigned index;*/ }),
     // Jump to a new point of execution
     (Jump, struct {
         size_t jump_target;
@@ -196,10 +199,10 @@ public:
 };
 
 extern ::std::unique_ptr<TokenStream>   Macro_InvokeRules(const char *name, const MacroRules& rules, const Span& sp, TokenTree input, const AST::Crate& crate, AST::Module& mod);
-extern MacroRulesPtr    Parse_MacroRules(TokenStream& lex);
 
-extern ::std::vector<MacroPatEnt> Parse_MacroRules_Pat(TokenStream& lex, enum eTokenType open, enum eTokenType close,  ::std::vector<RcString>& names);
-extern ::std::vector<MacroExpansionEnt> Parse_MacroRules_Cont(TokenStream& lex, enum eTokenType open, enum eTokenType close, const ::std::vector<RcString>& var_names, ::std::map<unsigned int,bool>* var_set_ptr=nullptr);
-extern MacroRulesArm Parse_MacroRules_MakeArm(Span pat_sp, ::std::vector<MacroPatEnt> pattern, ::std::vector<MacroExpansionEnt> contents);
+/// Parse a full `macro_rules` block
+extern MacroRulesPtr    Parse_MacroRules(TokenStream& lex);
+/// Parse a single-arm `macro` item ( `macro foo($name:ident) { $name }`)
+extern MacroRulesPtr    Parse_MacroRulesSingleArm(TokenStream& lex);
 
 #endif // MACROS_HPP_INCLUDED

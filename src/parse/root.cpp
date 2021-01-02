@@ -1407,6 +1407,23 @@ AST::ExternBlock Parse_ExternBlock(TokenStream& lex, ::std::string abi, ::AST::A
     return rv;
 }
 
+RcString get_optional_ident(TokenStream& lex)
+{
+    Token   tok;
+    GET_TOK(tok, lex);
+    if( tok.type() == TOK_UNDERSCORE ) {
+        static unsigned anon_index = 0;
+        return RcString::new_interned(FMT(" " << anon_index++));
+        //return RcString::new_interned(FMT(" " << lex.parse_state().module->m_anon_ident_index++));
+    }
+    else if( tok.type() == TOK_IDENT ) {
+        return tok.istr();
+    }
+    else {
+        throw ParseError::Unexpected(lex, tok, {TOK_UNDERSCORE, TOK_IDENT});
+    }
+}
+
 /// Parse multiple items from a use "statement"
 void Parse_Use_Inner(TokenStream& lex, ::std::vector<AST::UseItem::Ent>& entries, AST::Path& path)
 {
@@ -1438,16 +1455,7 @@ void Parse_Use_Inner(TokenStream& lex, ::std::vector<AST::UseItem::Ent>& entries
                     auto name = path.nodes().back().name();
                     if( LOOK_AHEAD(lex) == TOK_RWORD_AS ) {
                         GET_CHECK_TOK(tok, lex, TOK_RWORD_AS);
-                        GET_TOK(tok, lex);
-                        if( tok.type() == TOK_UNDERSCORE ) {
-                            name = "";
-                        }
-                        else if( tok.type() == TOK_IDENT ) {
-                            name = tok.istr();
-                        }
-                        else {
-                            throw ParseError::Unexpected(lex, tok, {TOK_UNDERSCORE, TOK_IDENT});
-                        }
+                        name = get_optional_ident(lex);
                     }
                     entries.push_back({ lex.point_span(), AST::Path(path), ::std::move(name) });
                 }
@@ -1475,16 +1483,7 @@ void Parse_Use_Inner(TokenStream& lex, ::std::vector<AST::UseItem::Ent>& entries
     // NOTE: The above loop has to run once, so the last token HAS to have been an ident
     if( tok.type() == TOK_RWORD_AS )
     {
-        GET_TOK(tok, lex);
-        if( tok.type() == TOK_UNDERSCORE ) {
-            name = "";
-        }
-        else if( tok.type() == TOK_IDENT ) {
-            name = tok.istr();
-        }
-        else {
-            throw ParseError::Unexpected(lex, tok, {TOK_UNDERSCORE, TOK_IDENT});
-        }
+        name = get_optional_ident(lex);
     }
     else
     {
@@ -1541,16 +1540,7 @@ void Parse_Use_Root(TokenStream& lex, ::std::vector<AST::UseItem::Ent>& entries)
                 if( lex.lookahead(0) == TOK_RWORD_AS )
                 {
                     GET_CHECK_TOK(tok, lex, TOK_RWORD_AS);
-                    GET_TOK(tok, lex);
-                    if( tok == TOK_UNDERSCORE ) {
-                        name = "";
-                    }
-                    else if( tok == TOK_IDENT ) {
-                        name = tok.istr();
-                    }
-                    else {
-                        throw ParseError::Unexpected(lex, tok, {TOK_UNDERSCORE, TOK_IDENT});
-                    }
+                    name = get_optional_ident(lex);
                 }
                 else
                 {
@@ -1873,16 +1863,7 @@ namespace {
                 if(GET_TOK(tok, lex) == TOK_RWORD_AS) {
                     item_data = ::AST::Item::make_Crate({ mv$(item_name) });
 
-                    GET_TOK(tok, lex);
-                    if( tok == TOK_UNDERSCORE ) {
-                        // Empty name
-                    }
-                    else if( tok == TOK_IDENT ) {
-                        item_name = tok.istr();
-                    }
-                    else {
-                        throw ParseError::Unexpected(lex, tok, {TOK_UNDERSCORE, TOK_IDENT});
-                    }
+                    item_name = get_optional_ident(lex);
                 }
                 else {
                     PUTBACK(tok, lex);
@@ -1906,7 +1887,8 @@ namespace {
         {
         case TOK_UNDERSCORE:    // 1.39?
         case TOK_IDENT: {
-            item_name = (tok.type() == TOK_UNDERSCORE ? RcString() : tok.istr());
+            PUTBACK(tok, lex);
+            item_name = get_optional_ident(lex);
 
             GET_CHECK_TOK(tok, lex, TOK_COLON);
             TypeRef type = Parse_Type(lex);
@@ -1939,9 +1921,8 @@ namespace {
             is_mut = true;
             GET_TOK(tok, lex);
         }
-        if( tok.type() != TOK_IDENT && tok.type() != TOK_UNDERSCORE )
-            throw ParseError::Unexpected(lex, tok, {TOK_IDENT, TOK_UNDERSCORE});
-        item_name = (tok.type() == TOK_UNDERSCORE ? RcString() : tok.istr());
+        PUTBACK(tok, lex);
+        item_name = get_optional_ident(lex);
 
         GET_CHECK_TOK(tok, lex, TOK_COLON);
         TypeRef type = Parse_Type(lex);
@@ -2083,6 +2064,7 @@ namespace {
         {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             auto name = tok.istr();
+            DEBUG("name = " << name);
             MacroRulesPtr mrp;
             if( lex.lookahead(0) == TOK_BRACE_OPEN )
             {
@@ -2091,32 +2073,19 @@ namespace {
             }
             else if( lex.lookahead(0) == TOK_PAREN_OPEN )
             {
-                DEBUG("name = " << name);
-
-                ::std::vector<RcString>   names;
-                auto ps = lex.start_span();
-                GET_CHECK_TOK(tok, lex, TOK_PAREN_OPEN);
-                auto arm_pat = Parse_MacroRules_Pat(lex, TOK_PAREN_OPEN, TOK_PAREN_CLOSE, names);
-                auto pat_span = lex.end_span(ps);
-                GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
-                // TODO: Pass a flag that annotates all idents with the current module?
-                auto body = Parse_MacroRules_Cont(lex, TOK_BRACE_OPEN, TOK_BRACE_CLOSE, names);
-
-                auto mr = new MacroRules( );
-                mr->m_hygiene = lex.getHygiene();
-                {
-                    Ident::ModPath  mp;
-                    mp.crate = "";
-                    mp.ents = mod_path.nodes;
-                    mr->m_hygiene.set_mod_path(::std::move(mp));
-                }
-                mr->m_rules.push_back(Parse_MacroRules_MakeArm(pat_span, ::std::move(arm_pat), ::std::move(body)));
-                mrp = MacroRulesPtr(mr);
+                mrp = Parse_MacroRulesSingleArm(lex);
             }
             else
             {
                 GET_TOK(tok, lex);
                 throw ParseError::Unexpected(lex, tok);
+            }
+
+            {
+                Ident::ModPath  mp;
+                mp.crate = "";
+                mp.ents = mod_path.nodes;
+                mrp->m_hygiene.set_mod_path(::std::move(mp));
             }
 
             item_name = name;

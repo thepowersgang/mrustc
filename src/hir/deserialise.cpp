@@ -166,6 +166,21 @@
                 rv.push_back( cb() );
             return rv;
         }
+        template<typename T>
+        ::std::set<T> deserialise_set()
+        {
+            TRACE_FUNCTION_FR("<" << typeid(T).name() << ">", m_in.get_pos());
+            auto _ = m_in.open_object(typeid(::std::set<T>).name());
+            size_t n = m_in.read_count();
+            DEBUG("n = " << n);
+            ::std::set<T>    rv;
+            //rv.reserve(n);
+            for(size_t i = 0; i < n; i ++)
+                rv.insert( D<T>::des(*this) );
+            return rv;
+        }
+
+
         ::HIR::Publicity deserialise_pub()
         {
             return (m_in.read_bool() ? ::HIR::Publicity::new_global() : ::HIR::Publicity::new_none());
@@ -351,7 +366,7 @@
             case ::SimplePatEnt::TAG_End:
                 return ::SimplePatEnt::make_End({});
             case ::SimplePatEnt::TAG_LoopStart:
-                return ::SimplePatEnt::make_LoopStart({});
+                return ::SimplePatEnt::make_LoopStart({ static_cast<unsigned>(m_in.read_count()) });
             case ::SimplePatEnt::TAG_LoopNext:
                 return ::SimplePatEnt::make_LoopNext({});
             case ::SimplePatEnt::TAG_LoopEnd:
@@ -427,15 +442,10 @@
             case 2: {
                 auto entries = deserialise_vec_c< ::MacroExpansionEnt>( [&](){ return deserialise_macroexpansionent(); } );
                 auto joiner = deserialise_token();
-                ::std::map<unsigned int, bool>    variables;
-                size_t n = m_in.read_count();
-                while(n--) {
-                    auto idx = static_cast<unsigned int>(m_in.read_count());
-                    bool flag = m_in.read_bool();
-                    variables.insert( ::std::make_pair(idx, flag) );
-                }
+                auto controllers = deserialise_set<unsigned int>();
+
                 return ::MacroExpansionEnt::make_Loop({
-                    mv$(entries), mv$(joiner), mv$(variables)
+                    mv$(entries), mv$(joiner), mv$(controllers)
                     });
                 }
             default:

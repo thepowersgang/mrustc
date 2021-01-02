@@ -17,7 +17,7 @@ namespace {
     ::std::vector<SimplePatEnt> macro_pattern_to_simple(const Span& sp, const ::std::vector<MacroPatEnt>& pattern);
 }
 
-/// A rule within a macro_rules! blcok
+/// A partially-parsed rule within a macro_rules! blcok
 class MacroRule
 {
 public:
@@ -30,8 +30,65 @@ public:
     MacroRule(const MacroRule&) = delete;
 };
 
+/// <summary>
+/// State used when parsing a rule pattern (passed to contents/expansion)
+/// </summary>
+struct RuleParseState
+{
+    struct NameState {
+        unsigned    idx;
+        std::vector<unsigned>   loops;
+    };
+
+private:
+    std::map<RcString, NameState>   m_names;
+
+    /// Next loop identifier
+    unsigned    next_loop_index;
+    // Stack of current loops (indexes)
+    std::vector<unsigned>   loop_stack;
+
+public:
+    RuleParseState()
+        :m_names()
+        ,next_loop_index(0)
+        ,loop_stack()
+    {
+    }
+
+    unsigned add_name(const RcString& name)
+    {
+        unsigned idx = this->m_names.size();
+        assert(this->m_names.count(name) == 0);
+        DEBUG(name << " #" << idx << " @ [" << loop_stack << "]");
+        auto& e = this->m_names[name];
+        e.idx = idx;
+        e.loops = this->loop_stack;
+        return idx;
+    }
+    const NameState* find_name(const RcString& name) const
+    {
+        auto it = this->m_names.find(name);
+        if(it == this->m_names.end())
+            return nullptr;
+        return &it->second;
+    }
+
+    unsigned open_loop()
+    {
+        auto rv = next_loop_index ++;
+        loop_stack.push_back(rv);
+        return rv;
+    }
+    void close_loop()
+    {
+        assert(!loop_stack.empty());    // Impossible given that `()` must be matched in a token tree
+        loop_stack.pop_back();
+    }
+};
+
 /// Parse the pattern of a macro_rules! arm
-::std::vector<MacroPatEnt> Parse_MacroRules_Pat(TokenStream& lex, enum eTokenType open, enum eTokenType close,  ::std::vector<RcString>& names)
+::std::vector<MacroPatEnt> Parse_MacroRules_Pat(TokenStream& lex, enum eTokenType open, enum eTokenType close,  RuleParseState& state)
 {
     TRACE_FUNCTION;
     Token tok;
@@ -59,9 +116,11 @@ public:
         case TOK_DOLLAR:
             switch( GET_TOK(tok, lex) )
             {
-            // TODO: Allow any reserved word
+            case TOK_RWORD_CRATE:   // Not valid, as `$crate` already has meaning
+                throw ParseError::Unexpected(lex, tok);
             default:
-                if( !(TOK_RWORD_PUB <= tok.type() && tok.type() <= TOK_RWORD_UNSIZED) )
+                // NOTE: Allow any reserved word
+                if( !Token::type_is_rword(tok.type()) )
                     throw ParseError::Unexpected(lex, tok);
             case TOK_IDENT: {
                 auto name = tok.type() == TOK_IDENT ? tok.istr() : RcString::new_interned(tok.to_str());
@@ -69,9 +128,7 @@ public:
                 GET_CHECK_TOK(tok, lex, TOK_IDENT);
                 RcString type = tok.istr();
 
-                unsigned int idx = ::std::find( names.begin(), names.end(), name ) - names.begin();
-                if( idx == names.size() )
-                    names.push_back( name );
+                auto idx = state.add_name(name);
 
                 auto sp = lex.end_span(ps);
                 MacroPatEnt::Type   ty;
@@ -108,9 +165,14 @@ public:
                 ret.push_back( MacroPatEnt(sp, name, idx, ty) );
                 break; }
             case TOK_PAREN_OPEN: {
-                auto subpat = Parse_MacroRules_Pat(lex, TOK_PAREN_OPEN, TOK_PAREN_CLOSE, names);
+                auto loop_idx = state.open_loop();
+                auto subpat = Parse_MacroRules_Pat(lex, TOK_PAREN_OPEN, TOK_PAREN_CLOSE, state);
+                state.close_loop();
+
                 enum eTokenType joiner = TOK_NULL;
-                GET_TOK(tok, lex);
+
+                GET_TOK(tok, lex);  // Joiner or loop type
+                // If the token is a loop type, then it can't be a joiner
                 if( lex.parse_state().edition_after(AST::Edition::Rust2018) && tok.type() == TOK_QMARK )
                 {
                     // 2018 added `?` repetition operator
@@ -122,28 +184,31 @@ public:
                 else
                 {
                     DEBUG("joiner = " << tok);
+                    if( tok.has_data() )
+                        ERROR(lex.point_span(), E0000, "Invalid macro joiner " << tok << ", must be punctuation");
                     joiner = tok.type();
                     GET_TOK(tok, lex);
                 }
-                DEBUG("tok = " << tok);
                 auto sp = lex.end_span(ps);
+
+                const char* sep_flag = nullptr;
                 switch(tok.type())
                 {
-                case TOK_PLUS:
-                    DEBUG("$()+ " << subpat);
-                    ret.push_back( MacroPatEnt(sp, Token(joiner), "+", ::std::move(subpat)) );
-                    break;
-                case TOK_STAR:
-                    DEBUG("$()* " << subpat);
-                    ret.push_back( MacroPatEnt(sp, Token(joiner), "*", ::std::move(subpat)) );
-                    break;
+                case TOK_PLUS:  sep_flag = "+"; break;
+                case TOK_STAR:  sep_flag = "*"; break;
                 case TOK_QMARK:
-                    DEBUG("$()? " << subpat);
-                    ret.push_back( MacroPatEnt(sp, Token(joiner), "?", ::std::move(subpat)) );
+                    sep_flag = "?";
+                    // TODO: Can a `$()?` have a joiner?
                     break;
                 default:
-                    throw ParseError::Unexpected(lex, tok, { TOK_PLUS, TOK_STAR });
+                    if( lex.parse_state().edition_after(AST::Edition::Rust2018) )
+                        throw ParseError::Unexpected(lex, tok, { TOK_PLUS, TOK_STAR, TOK_QMARK });
+                    else
+                        throw ParseError::Unexpected(lex, tok, { TOK_PLUS, TOK_STAR });
                 }
+                assert(sep_flag);
+                DEBUG("$()" << sep_flag << " " << subpat);
+                ret.push_back( MacroPatEnt(sp, Token(joiner), sep_flag, loop_idx, ::std::move(subpat)) );
                 break; }
             }
             break;
@@ -159,12 +224,30 @@ public:
     return ret;
 }
 
+struct ContentLoopVariableUse
+{
+    std::vector<unsigned>   loop_stack;
+    bool    is_optional;
+
+    // Constructor for when added as part of a variable
+    ContentLoopVariableUse(std::vector<unsigned> loop_stack)
+        : loop_stack(std::move(loop_stack))
+        , is_optional(true)
+    {
+    }
+
+    friend ::std::ostream& operator<<(::std::ostream& os, const ContentLoopVariableUse& x) {
+        return os << "[" << x.loop_stack << "] " << (x.is_optional ? "optional" : "required");
+    }
+};
+
 /// Parse the contents (replacement) of a macro_rules! arm
 ::std::vector<MacroExpansionEnt> Parse_MacroRules_Cont(
     TokenStream& lex,
     enum eTokenType open, enum eTokenType close,
-    const ::std::vector<RcString>& var_names,
-    ::std::map<unsigned int,bool>* var_set_ptr/*=nullptr*/
+    const RuleParseState& state,
+    unsigned loop_depth = 0,
+    ::std::map<unsigned int,ContentLoopVariableUse>* var_usage_ptr = nullptr
     )
 {
     TRACE_FUNCTION;
@@ -193,6 +276,11 @@ public:
                 ERROR(lex.point_span(), E0000, "Unmatched " << Token(close) << " in macro content");
             depth --;
         }
+        else
+        {
+            // Not a change to the depth
+            // NOTE: Not chained, still want to push open/close tokens to the output
+        }
 
         // `$` - Macro metavars
         if( tok.type() == TOK_DOLLAR )
@@ -202,13 +290,13 @@ public:
             // `$(`
             if( tok.type() == TOK_PAREN_OPEN )
             {
-                ::std::map<unsigned int, bool> var_set;
-                auto content = Parse_MacroRules_Cont(lex, TOK_PAREN_OPEN, TOK_PAREN_CLOSE, var_names, &var_set);
+                ::std::map<unsigned int, ContentLoopVariableUse> var_usage;
+                auto content = Parse_MacroRules_Cont(lex, TOK_PAREN_OPEN, TOK_PAREN_CLOSE, state, loop_depth+1, &var_usage);
                 // ^^ The above will eat the PAREN_CLOSE
+                DEBUG("var_usage = {" << var_usage << "}");
 
                 GET_TOK(tok, lex);
                 enum eTokenType joiner = TOK_NULL;
-                bool is_optional;
                 if( lex.parse_state().edition_after(AST::Edition::Rust2018) && tok.type() == TOK_QMARK )
                 {
                     // 2018 added `?` repetition operator
@@ -220,61 +308,107 @@ public:
                 else
                 {
                     joiner = tok.type();
-                    is_optional = false;
                     GET_TOK(tok, lex);
                 }
+
+                char loop_type;
                 switch(tok.type())
                 {
-                case TOK_PLUS:
-                    is_optional = false; if(0)
-                case TOK_STAR:
-                    is_optional = true; if(0)
-                case TOK_QMARK:
-                    is_optional = true;
-                    // TODO: Ensure that +/* match up?
-                    break;
+                case TOK_PLUS:  loop_type = '+';    break;
+                case TOK_STAR:  loop_type = '*';    break;
+                case TOK_QMARK: loop_type = '?';    break;
                 default:
-                    throw ParseError::Unexpected(lex, tok);
+                    if( lex.parse_state().edition_after(AST::Edition::Rust2018) )
+                        throw ParseError::Unexpected(lex, tok, { TOK_PLUS, TOK_STAR, TOK_QMARK });
+                    else
+                        throw ParseError::Unexpected(lex, tok, { TOK_PLUS, TOK_STAR });
                 }
-                if( var_set_ptr ) {
-                    for(const auto& v : var_set) {
-                        // If `is_optional`: Loop may not be expanded, so var_not_opt=false
-                        // Else, inherit
-                        bool var_not_opt = (is_optional ? false : v.second);
-                        var_set_ptr->insert( ::std::make_pair(v.first, var_not_opt) ).first->second |= var_not_opt;
+                bool is_optional = (loop_type != '+');  // Only '+' has to be entered
+
+                // Look up the variables used in `var_set` and determine the controlling loop(s) for this loop
+                // - Pull based on current depth
+                std::set<unsigned>  controlling_loops;
+                for(const auto& v : var_usage)
+                {
+                    // Empty stack: Doesn't control anything
+                    if( v.second.loop_stack.size() == 0 ) {
+                        DEBUG("Root variable");
+                    }
+                    // We're deeper than the variable's stack, take the deepest point?
+                    else if( loop_depth >= v.second.loop_stack.size() ) {
+                        DEBUG("Above this loop (" << loop_depth << " >= " << v.second.loop_stack.size() << ")");
+                        // Don't take anything
+                        //controlling_loops.insert( v.second.loop_stack.back() );
+                    }
+                    else {
+                        // Take the current point in the stack
+                        controlling_loops.insert( v.second.loop_stack[loop_depth] );
                     }
                 }
-                DEBUG("joiner = " << Token(joiner) << ", var_set = " << var_set << ", content = " << content);
-                ret.push_back( MacroExpansionEnt::make_Loop({mv$(content), joiner, mv$(var_set)}) );
+                if( controlling_loops.empty() )
+                {
+                    // quick_error 1.2.2 has a potential typo in the arm marked with "Flush buffer on meta after ident"
+                    // - This is the same as the the comment in `$foo` handling below
+                    WARNING(lex.point_span(), W0000, "Macro loop doesn't contain any variables at this depth, omitting as it'll not run");
+                    continue;
+                }
+                // TODO: Check that +/*/? matches for the controlling loops
+                for(const auto& loop_idx : controlling_loops)
+                {
+                }
+
+                if( var_usage_ptr )
+                {
+                    for(const auto& v : var_usage)
+                    {
+                        auto it = var_usage_ptr->insert( v ).first;
+                        // If `is_optional`: Loop might not be expanded, so propagate the non-optionality of the variable
+                        if( is_optional )
+                        {
+                            it->second.is_optional = true;
+                        }
+                    }
+                }
+
+                DEBUG("joiner = " << Token(joiner) << ", controlling_loops = {" << controlling_loops << "}, content = " << content);
+                ret.push_back( MacroExpansionEnt::make_Loop({ mv$(content), joiner, mv$(controlling_loops) }) );
             }
             else if( tok.type() == TOK_RWORD_CRATE )
             {
                 ret.push_back( MacroExpansionEnt( (1<<30) | 0 ) );
             }
-            //else if( tok.type() == TOK_IDENT || tok_is_rword(tok.type()) )
-            else if( tok.type() == TOK_IDENT || tok.type() >= TOK_RWORD_PUB )
+            else if( tok.type() == TOK_IDENT || Token::type_is_rword(tok.type()) )
             {
                 // Look up the named parameter in the list of param names for this arm
                 auto name = tok.type() == TOK_IDENT ? tok.istr() : RcString::new_interned(tok.to_str());
-                unsigned int idx = ::std::find(var_names.begin(), var_names.end(), name) - var_names.begin();
-                if( idx == var_names.size() ) {
-                    // TODO: `error-chain`'s quick_error macro has an arm which refers to an undefined metavar.
-                    // - Maybe emit a warning and use a marker index.
-                    // NOTE: No warning emitted, it's just noise...
-                    //WARNING(lex.point_span(), W0000, "Macro variable $" << name << " not found");
+                const auto* ns = state.find_name(name);
+                if( !ns )
+                {
+                    // NOTE: `error-chain`'s quick_error macro has an arm which refers to an undefined metavar.
+                    // - Would emit a warning and use a marker index, but that's FAR too noisy
 
                     // Emit the literal $ <name>
                     ret.push_back( MacroExpansionEnt(Token(TOK_DOLLAR)) );
                     ret.push_back( MacroExpansionEnt(mv$(tok)) );
-                    continue ;
                 }
-                if( var_set_ptr ) {
-                    var_set_ptr->insert( ::std::make_pair(idx,true) );
+                else
+                {
+                    DEBUG("$" << name << " #" << ns->idx << " [" << ns->loops << "]");
+
+                    // If the current loop depth is smaller than the stack for this variable, then error
+                    if( loop_depth < ns->loops.size() ) {
+                        ERROR(lex.point_span(), E0000, "Variable $" << name << " is still repeating at this depth (" << loop_depth << " < " << ns->loops.size() << ")");
+                    }
+
+                    if( var_usage_ptr ) {
+                        var_usage_ptr->insert( ::std::make_pair(ns->idx, ContentLoopVariableUse(ns->loops)) );
+                    }
+                    ret.push_back( MacroExpansionEnt(ns->idx) );
                 }
-                ret.push_back( MacroExpansionEnt(idx) );
             }
             else
             {
+                // Expected reserved word, ident, or `(`
                 throw ParseError::Unexpected(lex, tok);
             }
         }
@@ -306,10 +440,10 @@ MacroRule Parse_MacroRules_Var(TokenStream& lex)
         throw ParseError::Unexpected(lex, tok);
     }
     // - Pattern entries
-    ::std::vector<RcString>   names;
+    RuleParseState  state;
     {
         auto ps = lex.start_span();
-        rule.m_pattern = Parse_MacroRules_Pat(lex, tok.type(), close,  names);
+        rule.m_pattern = Parse_MacroRules_Pat(lex, tok.type(), close,  state);
         rule.m_pat_span = lex.end_span(ps);
     }
 
@@ -323,7 +457,7 @@ MacroRule Parse_MacroRules_Var(TokenStream& lex)
     default:
         throw ParseError::Unexpected(lex, tok);
     }
-    rule.m_contents = Parse_MacroRules_Cont(lex, tok.type(), close, names);
+    rule.m_contents = Parse_MacroRules_Cont(lex, tok.type(), close, state);
 
     DEBUG("Rule - ["<<rule.m_pattern<<"] => "<<rule.m_contents<<"");
 
@@ -381,7 +515,6 @@ MacroRulesPtr Parse_MacroRules(TokenStream& lex)
 
     auto rv = MacroRulesPtr(new MacroRules( ));
     rv->m_hygiene = lex.getHygiene();
-    //rv->m_rules = mv$(rule_arms);
 
     // Re-parse the patterns into a unified form
     for(auto& rule : rules)
@@ -390,6 +523,27 @@ MacroRulesPtr Parse_MacroRules(TokenStream& lex)
     }
 
     return rv;
+}
+
+MacroRulesPtr Parse_MacroRulesSingleArm(TokenStream& lex)
+{
+    TRACE_FUNCTION_F("");
+    Token tok;
+
+    RuleParseState  state;
+
+    auto ps = lex.start_span();
+    GET_CHECK_TOK(tok, lex, TOK_PAREN_OPEN);
+    auto arm_pat = Parse_MacroRules_Pat(lex, TOK_PAREN_OPEN, TOK_PAREN_CLOSE, state);
+    auto pat_span = lex.end_span(ps);
+    GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
+    // TODO: Pass a flag that annotates all idents with the current module?
+    auto body = Parse_MacroRules_Cont(lex, TOK_BRACE_OPEN, TOK_BRACE_CLOSE, state);
+
+    auto mr = new MacroRules( );
+    mr->m_hygiene = lex.getHygiene();
+    mr->m_rules.push_back(Parse_MacroRules_MakeArm(pat_span, ::std::move(arm_pat), ::std::move(body)));
+    return MacroRulesPtr(mr);
 }
 
 namespace {
@@ -610,10 +764,10 @@ namespace {
                 // If the loop is a $()+ loop, then just recurse into it
                 if( ent.name == "+" )
                 {
-                    push( SimplePatEnt::make_LoopStart({}) );
+                    push( SimplePatEnt::make_LoopStart({ ent.name_index }) );
                     size_t start = rv.size();
                     macro_pattern_to_simple_inner(sp, rv, ent.subpats);
-                    push( SimplePatEnt::make_LoopNext({}) );
+                    push( SimplePatEnt::make_LoopNext({ /*ent.name_index*/ }) );
                     size_t rewrite_start = rv.size();
                     if( ent.tok != TOK_NULL )
                     {
@@ -654,11 +808,11 @@ namespace {
                             }
                         }
                     }
-                    push( SimplePatEnt::make_LoopEnd({}) );
+                    push( SimplePatEnt::make_LoopEnd({ /*ent.name_index*/ }) );
                 }
                 else if( ent.name == "*" || ent.name == "?" )
                 {
-                    push( SimplePatEnt::make_LoopStart({}) );
+                    push( SimplePatEnt::make_LoopStart({ ent.name_index }) );
 
                     // Options:
                     // - Enter the loop (if the next token is one of the head set of the loop)
@@ -688,7 +842,7 @@ namespace {
                     }
 
                     macro_pattern_to_simple_inner(sp, rv, ent.subpats);
-                    push( SimplePatEnt::make_LoopNext({}) );
+                    push( SimplePatEnt::make_LoopNext({ /*ent.name_index*/ }) );
 
                     if( ent.name == "*" )
                     {
@@ -741,7 +895,7 @@ namespace {
                             }
                         }
                     }
-                    push( SimplePatEnt::make_LoopEnd({}) );
+                    push( SimplePatEnt::make_LoopEnd({ /*ent.name_index*/ }) );
                 }
                 else
                 {

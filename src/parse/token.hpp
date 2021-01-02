@@ -20,6 +20,7 @@ enum eTokenType
     #undef _
 };
 
+
 class Position
 {
 public:
@@ -122,6 +123,7 @@ public:
     Token(TagTakeIP, InterpolatedFragment );
 
     enum eTokenType type() const { return m_type; }
+    bool has_data() const { return !m_data.is_None(); }
     const RcString& istr() const { return m_data.as_IString(); }
     ::std::string& str() { return m_data.as_String(); }
     const ::std::string& str() const { return m_data.as_String(); }
@@ -162,6 +164,9 @@ public:
     void set_pos(Position pos) { m_pos = pos; }
     const Position& get_pos() const { return m_pos; }
 
+    static bool type_is_rword(enum eTokenType type) {
+        return type >= TOK_RWORD_PUB;
+    }
     static const char* typestr(enum eTokenType type);
     static eTokenType typefromstr(const ::std::string& s);
 

@@ -108,6 +108,15 @@
             serialise_vec(vec);
         }
         template<typename T>
+        void serialise(const ::std::set<T>& s)
+        {
+            TRACE_FUNCTION_F("size=" << s.size());
+            auto _ = m_out.open_object(typeid(::std::set<T>).name());
+            m_out.write_count(s.size());
+            for(const auto& i : s)
+                serialise(i);
+        }
+        template<typename T>
         void serialise(const ::HIR::VisEnt<T>& e)
         {
             m_out.write_bool(e.publicity.is_global());  // At this stage, we only care if the item is visible outside the crate or not
@@ -535,7 +544,9 @@
             m_out.write_tag( pe.tag() );
             TU_MATCH_HDRA( (pe), { )
             TU_ARMA(End, _e) {}
-            TU_ARMA(LoopStart, _e) {}
+            TU_ARMA(LoopStart, e) {
+                m_out.write_count(e.index);
+                }
             TU_ARMA(LoopNext, _e) {}
             TU_ARMA(LoopEnd, _e) {}
             TU_ARMA(Jump, e) {
@@ -561,28 +572,23 @@
             serialise_vec(arm.m_contents);
         }
         void serialise(const ::MacroExpansionEnt& ent) {
-            TU_MATCHA( (ent), (e),
-            (Token,
+            TU_MATCH_HDRA( (ent), {)
+            TU_ARMA(Token, e) {
                 m_out.write_tag(0);
                 serialise(e);
-                ),
-            (NamedValue,
+                }
+            TU_ARMA(NamedValue, e) {
                 m_out.write_tag(1);
                 m_out.write_u8(e >> 24);
                 m_out.write_count(e & 0x00FFFFFF);
-                ),
-            (Loop,
+                }
+            TU_ARMA(Loop, e) {
                 m_out.write_tag(2);
                 serialise_vec(e.entries);
                 serialise(e.joiner);
-                // ::std::map<unsigned int,bool>
-                m_out.write_count(e.variables.size());
-                for(const auto& var : e.variables) {
-                    m_out.write_count(var.first);
-                    m_out.write_bool(var.second);
+                serialise(e.controlling_input_loops);
                 }
-                )
-            )
+            }
         }
         void serialise(const ::Token& tok) {
             m_out.write_tag(tok.m_type);
