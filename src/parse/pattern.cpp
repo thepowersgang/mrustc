@@ -215,11 +215,9 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable)
     case TOK_LT:
     case TOK_DOUBLE_LT:
     case TOK_INTERPOLATED_PATH:
+    case TOK_DOUBLE_COLON:
         PUTBACK(tok, lex);
         return Parse_PatternReal_Path( lex, ps, Parse_Path(lex, PATH_GENERIC_EXPR), is_refutable );
-    case TOK_DOUBLE_COLON:
-        // 2. Paths are enum/struct names
-        return Parse_PatternReal_Path( lex, ps, Parse_Path(lex, true, PATH_GENERIC_EXPR), is_refutable );
     case TOK_DASH:
         if(GET_TOK(tok, lex) == TOK_INTEGER)
         {
