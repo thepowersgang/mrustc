@@ -24,7 +24,7 @@ using AST::ExprNodeP;
 static inline ExprNodeP mk_exprnodep(const TokenStream& lex, AST::ExprNode* en){en->set_span(lex.point_span()); return ExprNodeP(en); }
 #define NEWNODE(type, ...)  mk_exprnodep(lex, new type(__VA_ARGS__))
 
-//ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe=false, RcString label=RcString());    // common.hpp
+//ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe=false, Ident label=RcString());    // common.hpp
 //ExprNodeP Parse_ExprBlockLine_WithItems(TokenStream& lex, ::std::shared_ptr<AST::Module>& local_mod, bool& add_silence_if_end);
 //ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence);
 ExprNodeP Parse_ExprBlockLine_Stmt(TokenStream& lex, bool& has_semicolon);
@@ -32,8 +32,8 @@ ExprNodeP Parse_ExprBlockLine_Stmt(TokenStream& lex, bool& has_semicolon);
 ExprNodeP Parse_Stmt_Let(TokenStream& lex);
 ExprNodeP Parse_Expr0(TokenStream& lex);
 ExprNodeP Parse_IfStmt(TokenStream& lex);
-ExprNodeP Parse_WhileStmt(TokenStream& lex, RcString lifetime);
-ExprNodeP Parse_ForStmt(TokenStream& lex, RcString lifetime);
+ExprNodeP Parse_WhileStmt(TokenStream& lex, Ident lifetime);
+ExprNodeP Parse_ForStmt(TokenStream& lex, Ident lifetime);
 ExprNodeP Parse_Expr_Match(TokenStream& lex);
 ExprNodeP Parse_Expr1(TokenStream& lex);
 ExprNodeP Parse_ExprMacro(TokenStream& lex, AST::Path tok);
@@ -48,7 +48,7 @@ AST::Expr Parse_ExprBlock(TokenStream& lex)
     return ::AST::Expr( Parse_ExprBlockNode(lex) );
 }
 
-ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe/*=false*/, RcString label/*=RcString()*/)
+ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe/*=false*/, Ident label/*=RcString()*/)
 {
     TRACE_FUNCTION;
     Token   tok;
@@ -109,7 +109,7 @@ ExprNodeP Parse_ExprBlockLine_WithItems(TokenStream& lex, ::std::shared_ptr<AST:
     GET_TOK(tok, lex);
 
     // `union Ident` - contextual keyword
-    if( tok.type() == TOK_IDENT && tok.istr() == "union" && lex.lookahead(0) == TOK_IDENT ) {
+    if( tok.type() == TOK_IDENT && tok.ident().name == "union" && lex.lookahead(0) == TOK_IDENT ) {
         PUTBACK(tok, lex);
         if( !local_mod ) {
             local_mod = lex.parse_state().get_current_mod().add_anon();
@@ -118,7 +118,7 @@ ExprNodeP Parse_ExprBlockLine_WithItems(TokenStream& lex, ::std::shared_ptr<AST:
         return ExprNodeP();
     }
 
-    if( tok.type() == TOK_IDENT && tok.istr() == "macro_rules" && lex.lookahead(0) == TOK_EXCLAM )
+    if( tok.type() == TOK_IDENT && tok.ident().name == "macro_rules" && lex.lookahead(0) == TOK_EXCLAM )
     {
         // Special case - create a local module if macro_rules! is seen
         // - Allows correct scoping of defined macros
@@ -193,7 +193,7 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence)
     if( GET_TOK(tok, lex) == TOK_LIFETIME )
     {
         // Lifetimes can only precede loops... and blocks?
-        auto lifetime = tok.istr();
+        auto lifetime = tok.ident();
         GET_CHECK_TOK(tok, lex, TOK_COLON);
 
         switch( GET_TOK(tok, lex) )
@@ -245,10 +245,10 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence)
             ret = NEWNODE( AST::ExprNode_Loop, "", Parse_ExprBlockNode(lex) );
             if(0)
         case TOK_RWORD_WHILE:
-            ret = Parse_WhileStmt(lex, "");
+            ret = Parse_WhileStmt(lex, Ident(""));
             if(0)
         case TOK_RWORD_FOR:
-            ret = Parse_ForStmt(lex, "");
+            ret = Parse_ForStmt(lex, Ident(""));
             if(0)
         case TOK_RWORD_IF:
             ret = Parse_IfStmt(lex);
@@ -305,7 +305,8 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence)
                 // If a braced macro invocation is the first part of a statement, don't expect a semicolon
                 if( lex.lookahead(1) == TOK_BRACE_OPEN || (lex.lookahead(1) == TOK_IDENT && lex.lookahead(2) == TOK_BRACE_OPEN) ) {
                     lex.getToken();
-                    return Parse_ExprMacro(lex, tok.istr());
+                    // TODO: Support full paths here
+                    return Parse_ExprMacro(lex, tok.ident().name);
                 }
             }
         // Fall through to the statement code
@@ -337,7 +338,7 @@ ExprNodeP Parse_ExprBlockLine_Stmt(TokenStream& lex, bool& has_semicolon)
 }
 
 /// While loop (either as a statement, or as part of an expression)
-ExprNodeP Parse_WhileStmt(TokenStream& lex, RcString lifetime)
+ExprNodeP Parse_WhileStmt(TokenStream& lex, Ident lifetime)
 {
     Token   tok;
 
@@ -364,7 +365,7 @@ ExprNodeP Parse_WhileStmt(TokenStream& lex, RcString lifetime)
     }
 }
 /// For loop (either as a statement, or as part of an expression)
-ExprNodeP Parse_ForStmt(TokenStream& lex, RcString lifetime)
+ExprNodeP Parse_ForStmt(TokenStream& lex, Ident lifetime)
 {
     Token   tok;
 
@@ -542,10 +543,10 @@ ExprNodeP Parse_Stmt(TokenStream& lex)
         case TOK_RWORD_BREAK:    type = AST::ExprNode_Flow::BREAK;    break;
         default:    throw ParseError::BugCheck(/*lex,*/ "continue/break");
         }
-        RcString lifetime;
+        Ident lifetime = Ident("");;
         if( GET_TOK(tok, lex) == TOK_LIFETIME )
         {
-            lifetime = tok.istr();  // TODO: Hygine?
+            lifetime = tok.ident();  // TODO: Hygine?
             GET_TOK(tok, lex);
         }
         ExprNodeP   val;
@@ -966,7 +967,7 @@ ExprNodeP Parse_ExprFC(TokenStream& lex)
             switch(GET_TOK(tok, lex))
             {
             case TOK_IDENT: {
-                AST::PathNode   pn( tok.istr() , {});
+                AST::PathNode   pn( tok.ident().name , {});
                 switch( GET_TOK(tok, lex) )
                 {
                 case TOK_PAREN_OPEN:
@@ -1050,8 +1051,8 @@ ExprNodeP Parse_ExprVal_StructLiteral(TokenStream& lex, AST::Path path)
             GET_TOK(tok, lex);
         }
         CHECK_TOK(tok, TOK_IDENT);
-        auto h = lex.getHygiene();
-        auto name = tok.istr();
+        auto h = tok.ident().hygiene;
+        auto name = tok.ident().name;
 
         ExprNodeP   val;
         if( lex.lookahead(0) != TOK_COLON )
@@ -1160,14 +1161,14 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
     case TOK_RWORD_LOOP:
         return NEWNODE( AST::ExprNode_Loop, "", Parse_ExprBlockNode(lex) );
     case TOK_RWORD_WHILE:
-        return Parse_WhileStmt(lex, "");
+        return Parse_WhileStmt(lex, Ident(""));
     case TOK_RWORD_FOR:
-        return Parse_ForStmt(lex, "");
+        return Parse_ForStmt(lex, Ident(""));
     case TOK_RWORD_DO:
         if( TARGETVER_LEAST_1_29 )
         {
             // `do catch` - stabilised later as `try`
-            if( GET_TOK(tok, lex) == TOK_IDENT && tok.istr() == "catch" )
+            if( GET_TOK(tok, lex) == TOK_IDENT && tok.ident().name == "catch" )
             {
                 return Parse_Expr_Try(lex);
             }
@@ -1321,7 +1322,7 @@ ExprNodeP Parse_ExprMacro(TokenStream& lex, AST::Path path)
 
     RcString ident;
     if( GET_TOK(tok, lex) == TOK_IDENT ) {
-        ident = tok.istr();
+        ident = tok.ident().name;
     }
     else {
         PUTBACK(tok, lex);
@@ -1362,13 +1363,13 @@ TokenTree Parse_TT(TokenStream& lex, bool unwrapped)
     case TOK_BRACE_CLOSE:
         throw ParseError::Unexpected(lex, tok);
     default:
-        rv = TokenTree(lex.getHygiene(), mv$(tok) );
+        rv = TokenTree(lex.get_hygiene(), mv$(tok) );
         return rv;
     }
 
     ::std::vector<TokenTree>   items;
     if( !unwrapped )
-        items.push_back( TokenTree(lex.getHygiene(), mv$(tok)) );
+        items.push_back( TokenTree(lex.get_hygiene(), mv$(tok)) );
     while(GET_TOK(tok, lex) != closer && tok.type() != TOK_EOF)
     {
         if( tok.type() == TOK_NULL )
@@ -1377,7 +1378,7 @@ TokenTree Parse_TT(TokenStream& lex, bool unwrapped)
         items.push_back(Parse_TT(lex, false));
     }
     if( !unwrapped )
-        items.push_back( TokenTree(lex.getHygiene(), mv$(tok)) );
-    rv = TokenTree(lex.getHygiene(), mv$(items));
+        items.push_back( TokenTree(lex.get_hygiene(), mv$(tok)) );
+    rv = TokenTree(lex.get_hygiene(), mv$(items));
     return rv;
 }

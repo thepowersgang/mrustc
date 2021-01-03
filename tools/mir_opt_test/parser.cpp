@@ -47,7 +47,7 @@ MirOptTestFile  MirOptTestFile::load_from_file(const helpers::path& p)
             //bool is_outer = consume_if(lex, TOK_EXCLAM);
             GET_CHECK_TOK(tok, lex, TOK_SQUARE_OPEN);
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            auto name = tok.istr();
+            auto name = tok.ident().name;
             GET_CHECK_TOK(tok, lex, TOK_EQUAL);
             GET_CHECK_TOK(tok, lex, TOK_STRING);
             auto value = tok.str();
@@ -109,7 +109,7 @@ namespace {
             while( lex.lookahead(0) != TOK_GT )
             {
                 GET_CHECK_TOK(tok, lex, TOK_IDENT);
-                auto name = tok.istr();
+                auto name = tok.ident().name;
 
                 rv.m_types.push_back(HIR::TypeParamDef());
                 rv.m_types.back().m_name = name;
@@ -139,7 +139,7 @@ namespace {
 
         // Name
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
-        auto fcn_name = tok.istr();
+        auto fcn_name = tok.ident().name;
         DEBUG("fn " << fcn_name);
 
         fcn_decl.m_params = parse_genericdef(lex);
@@ -151,7 +151,7 @@ namespace {
         while( lex.lookahead(0) != TOK_PAREN_CLOSE )
         {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            auto name = tok.istr();
+            auto name = tok.ident().name;
             GET_CHECK_TOK(tok, lex, TOK_COLON);
             auto var_ty = parse_type(lex);
 
@@ -181,7 +181,7 @@ namespace {
         while( consume_if(lex, TOK_RWORD_LET) )
         {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            auto name = tok.istr();
+            auto name = tok.ident().name;
             if( consume_if(lex, TOK_EQUAL) ) {
                 GET_TOK(tok, lex);
                 bool v = tok.type() == TOK_RWORD_TRUE ? true
@@ -206,7 +206,7 @@ namespace {
         while( lex.lookahead(0) != TOK_BRACE_CLOSE )
         {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            auto name = tok.istr();
+            auto name = tok.ident().name;
             real_bb_name_map.insert( ::std::make_pair(name, static_cast<unsigned>(mir_fcn.blocks.size())) );
             mir_fcn.blocks.push_back(::MIR::BasicBlock());
             auto& bb = mir_fcn.blocks.back();
@@ -215,7 +215,7 @@ namespace {
             while( lex.lookahead(0) != TOK_BRACE_CLOSE )
             {
                 GET_CHECK_TOK(tok, lex, TOK_IDENT);
-                if( tok.istr() == "DROP" )
+                if( tok.ident().name == "DROP" )
                 {
                     auto slot = parse_lvalue(lex, val_name_map);
                     if( consume_if(lex, TOK_RWORD_IF) )
@@ -227,15 +227,15 @@ namespace {
                         bb.statements.push_back(::MIR::Statement::make_Drop({ MIR::eDropKind::DEEP, mv$(slot), ~0u }));
                     }
                 }
-                else if( tok.istr() == "ASM" )
+                else if( tok.ident().name == "ASM" )
                 {
                     TODO(lex.point_span(), "MIR statement - " << tok);
                 }
-                else if( tok.istr() == "SETDROP" )
+                else if( tok.ident().name == "SETDROP" )
                 {
                     TODO(lex.point_span(), "MIR statement - " << tok);
                 }
-                else if( tok.istr() == "ASSIGN" )
+                else if( tok.ident().name == "ASSIGN" )
                 {
                     // parse a lvalue
                     auto dst = parse_lvalue(lex, val_name_map);
@@ -255,7 +255,7 @@ namespace {
                         GET_TOK(tok, lex);
                         Token   ty_tok;
                         GET_CHECK_TOK(ty_tok, lex, TOK_IDENT);
-                        auto t = get_core_type(ty_tok.istr());
+                        auto t = get_core_type(ty_tok.ident().name);
                         if(t == HIR::TypeRef())
                             throw ParseError::Unexpected(lex, ty_tok);
                         auto ct = t.data().as_Primitive();
@@ -296,7 +296,7 @@ namespace {
                     case TOK_INTEGER: {
                         auto v = tok.intval();
                         GET_CHECK_TOK(tok, lex, TOK_IDENT);
-                        auto t = get_core_type(tok.istr());
+                        auto t = get_core_type(tok.ident().name);
                         if(t == HIR::TypeRef())
                             throw ParseError::Unexpected(lex, tok);
                         auto ct = t.data().as_Primitive();
@@ -326,7 +326,7 @@ namespace {
 
                     // Operator (e.g. `ADD(...)`) or an lvalue
                     case TOK_IDENT:
-                        if( tok.istr() == "CAST" )
+                        if( tok.ident().name == "CAST" )
                         {
                             auto v = parse_lvalue(lex, val_name_map);
                             GET_CHECK_TOK(tok, lex, TOK_RWORD_AS);
@@ -342,23 +342,23 @@ namespace {
                                 auto r = parse_param(lex, val_name_map);
                                 return MIR::RValue::make_BinOp({ mv$(l), op, mv$(r) });
                                 };
-                            if(tok.istr() == "ADD")
+                            if(tok.ident().name == "ADD")
                                 src = parse_binop(lex, MIR::eBinOp::ADD);
-                            else if(tok.istr() == "SUB")
+                            else if(tok.ident().name == "SUB")
                                 src = parse_binop(lex, MIR::eBinOp::SUB);
-                            else if(tok.istr() == "BIT_SHL")
+                            else if(tok.ident().name == "BIT_SHL")
                                 src = parse_binop(lex, MIR::eBinOp::BIT_SHL);
-                            else if(tok.istr() == "BIT_SHR")
+                            else if(tok.ident().name == "BIT_SHR")
                                 src = parse_binop(lex, MIR::eBinOp::BIT_SHR);
-                            else if(tok.istr() == "BIT_AND")
+                            else if(tok.ident().name == "BIT_AND")
                                 src = parse_binop(lex, MIR::eBinOp::BIT_AND);
-                            else if(tok.istr() == "BIT_OR")
+                            else if(tok.ident().name == "BIT_OR")
                                 src = parse_binop(lex, MIR::eBinOp::BIT_OR);
-                            else if(tok.istr() == "BIT_XOR")
+                            else if(tok.ident().name == "BIT_XOR")
                                 src = parse_binop(lex, MIR::eBinOp::BIT_XOR);
                             else
                             {
-                                TODO(lex.point_span(), "MIR assign operator - " << tok.istr());
+                                TODO(lex.point_span(), "MIR assign operator - " << tok.ident().name);
                             }
                             GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
                         }
@@ -404,7 +404,7 @@ namespace {
             auto parse_bb_name = [&](TokenStream& lex) {
                 Token   tok;
                 GET_CHECK_TOK(tok, lex, TOK_IDENT);
-                auto& bb_name = tok.istr();
+                auto& bb_name = tok.ident().name;
                 if( lookup_bb_name_map.count(bb_name) ) {
                     return lookup_bb_name_map[bb_name];
                 }
@@ -417,23 +417,23 @@ namespace {
                 };
 
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            if( tok.istr() == "RETURN" )
+            if( tok.ident().name == "RETURN" )
             {
                 bb.terminator = ::MIR::Terminator::make_Return({});
             }
-            else if( tok.istr() == "DIVERGE" )
+            else if( tok.ident().name == "DIVERGE" )
             {
                 bb.terminator = ::MIR::Terminator::make_Diverge({});
             }
-            else if( tok.istr() == "GOTO" )
+            else if( tok.ident().name == "GOTO" )
             {
                 bb.terminator = ::MIR::Terminator::make_Goto(parse_bb_name(lex));
             }
-            else if( tok.istr() == "PANIC" )
+            else if( tok.ident().name == "PANIC" )
             {
                 bb.terminator = ::MIR::Terminator::make_Panic({ parse_bb_name(lex) });
             }
-            else if( tok.istr() == "CALL" )
+            else if( tok.ident().name == "CALL" )
             {
                 auto dst = parse_lvalue(lex, val_name_map);
                 GET_CHECK_TOK(tok, lex, TOK_EQUAL);
@@ -476,7 +476,7 @@ namespace {
 
                 bb.terminator = ::MIR::Terminator::make_Call({ ret_bb, panic_bb, mv$(dst), mv$(target), mv$(args) });
             }
-            else if( tok.istr() == "IF" )
+            else if( tok.ident().name == "IF" )
             {
                 auto v = parse_lvalue(lex, val_name_map);
                 GET_CHECK_TOK(tok, lex, TOK_FATARROW);
@@ -486,7 +486,7 @@ namespace {
 
                 bb.terminator = ::MIR::Terminator::make_If({ mv$(v), bb0, bb1 });
             }
-            else if( tok.istr() == "SWITCH" )
+            else if( tok.ident().name == "SWITCH" )
             {
                 auto v = parse_lvalue(lex, val_name_map);
                 ::std::vector<unsigned> targets;
@@ -494,15 +494,15 @@ namespace {
                 if( lex.lookahead(0) == TOK_IDENT )
                 {
                     GET_CHECK_TOK(tok, lex, TOK_IDENT);
-                    if( tok.istr() == "str" )
+                    if( tok.ident().name == "str" )
                     {
                         TODO(lex.point_span(), "MIR terminator - SwitchValue - str");
                     }
-                    else if( tok.istr() == "sint" )
+                    else if( tok.ident().name == "sint" )
                     {
                         TODO(lex.point_span(), "MIR terminator - SwitchValue - signed");
                     }
-                    else if( tok.istr() == "uint" )
+                    else if( tok.ident().name == "uint" )
                     {
                         TODO(lex.point_span(), "MIR terminator - SwitchValue - unsigned");
                     }
@@ -527,7 +527,7 @@ namespace {
             }
             else
             {
-                TODO(lex.point_span(), "MIR terminator - " << tok.istr());
+                TODO(lex.point_span(), "MIR terminator - " << tok.ident().name);
             }
             GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
         }
@@ -628,7 +628,7 @@ namespace {
         while( consume_if(lex, TOK_DOUBLE_COLON) )
         {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            rv.m_components.push_back( tok.istr() );
+            rv.m_components.push_back( tok.ident().name );
         }
         return rv;
     }
@@ -704,13 +704,13 @@ namespace {
             }
             } break;
         case TOK_IDENT:
-            if( tok.istr() == "dyn" )
+            if( tok.ident().name == "dyn" )
             {
                 TODO(lex.point_span(), tok);
             }
             else
             {
-                auto t = get_core_type(tok.istr());
+                auto t = get_core_type(tok.ident().name);
                 if( t != HIR::TypeRef() )
                 {
                     return t;
@@ -719,9 +719,9 @@ namespace {
                 {
                     for(size_t i = 0; i < g_item_params->m_types.size(); i ++)
                     {
-                        if( g_item_params->m_types[i].m_name == tok.istr() )
+                        if( g_item_params->m_types[i].m_name == tok.ident().name )
                         {
-                            return HIR::TypeRef(tok.istr(), 256 + static_cast<unsigned>(i));
+                            return HIR::TypeRef(tok.ident().name, 256 + static_cast<unsigned>(i));
                         }
                     }
                 }
@@ -762,9 +762,9 @@ namespace {
             Token   tok;
             GET_TOK(tok, lex);
             CHECK_TOK(tok, TOK_IDENT);
-            auto it = name_map.find(tok.istr());
+            auto it = name_map.find(tok.ident().name);
             if( it == name_map.end() )
-                ERROR(lex.point_span(), E0000, "Unable to find value " << tok.istr());
+                ERROR(lex.point_span(), E0000, "Unable to find value " << tok.ident().name);
             return it->second.clone();
         }
     }

@@ -1738,6 +1738,8 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
     for( const auto& ie : ast_mod.m_namespace_items )
     {
         const auto& sp = mod_span;
+        if( ie.first.c_str()[0] == ' ' )
+            continue;
         if( ie.second.is_import && ie.second.is_pub ) {
             auto hir_path = LowerHIR_SimplePath( sp, ie.second.path, FromAST_PathClass::Type );
             assert(hir_path.m_components.empty() || hir_path.m_components.back() != "");
@@ -1756,6 +1758,8 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
     for( const auto& ie : ast_mod.m_value_items )
     {
         const auto& sp = mod_span;
+        if( ie.first.c_str()[0] == ' ' )
+            continue;
         if( ie.second.is_import && ie.second.is_pub ) {
             auto hir_path = LowerHIR_SimplePath( sp, ie.second.path, FromAST_PathClass::Value );
             assert(!hir_path.m_components.empty());
@@ -1778,6 +1782,8 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
     for( const auto& ie : ast_mod.m_macro_items )
     {
         const auto& sp = mod_span;
+        if( ie.first.c_str()[0] == ' ' )
+            continue;
         if( ie.second.is_import )
         {
             auto hir_path = LowerHIR_SimplePath( sp, ie.second.path, FromAST_PathClass::Macro );

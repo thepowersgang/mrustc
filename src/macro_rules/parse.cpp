@@ -123,10 +123,10 @@ public:
                 if( !Token::type_is_rword(tok.type()) )
                     throw ParseError::Unexpected(lex, tok);
             case TOK_IDENT: {
-                auto name = tok.type() == TOK_IDENT ? tok.istr() : RcString::new_interned(tok.to_str());
+                auto name = tok.type() == TOK_IDENT ? tok.ident().name : RcString::new_interned(tok.to_str());
                 GET_CHECK_TOK(tok, lex, TOK_COLON);
                 GET_CHECK_TOK(tok, lex, TOK_IDENT);
-                RcString type = tok.istr();
+                RcString type = tok.ident().name;
 
                 auto idx = state.add_name(name);
 
@@ -380,7 +380,7 @@ struct ContentLoopVariableUse
             else if( tok.type() == TOK_IDENT || Token::type_is_rword(tok.type()) )
             {
                 // Look up the named parameter in the list of param names for this arm
-                auto name = tok.type() == TOK_IDENT ? tok.istr() : RcString::new_interned(tok.to_str());
+                auto name = tok.type() == TOK_IDENT ? tok.ident().name : RcString::new_interned(tok.to_str());
                 const auto* ns = state.find_name(name);
                 if( !ns )
                 {
@@ -514,7 +514,7 @@ MacroRulesPtr Parse_MacroRules(TokenStream& lex)
     DEBUG("- " << rules.size() << " rules");
 
     auto rv = MacroRulesPtr(new MacroRules( ));
-    rv->m_hygiene = lex.getHygiene();
+    rv->m_hygiene = lex.get_hygiene();
 
     // Re-parse the patterns into a unified form
     for(auto& rule : rules)
@@ -541,7 +541,7 @@ MacroRulesPtr Parse_MacroRulesSingleArm(TokenStream& lex)
     auto body = Parse_MacroRules_Cont(lex, TOK_BRACE_OPEN, TOK_BRACE_CLOSE, state);
 
     auto mr = new MacroRules( );
-    mr->m_hygiene = lex.getHygiene();
+    mr->m_hygiene = lex.get_hygiene();
     mr->m_rules.push_back(Parse_MacroRules_MakeArm(pat_span, ::std::move(arm_pat), ::std::move(body)));
     return MacroRulesPtr(mr);
 }

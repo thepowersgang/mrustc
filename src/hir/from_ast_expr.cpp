@@ -49,11 +49,12 @@ struct LowerHIR_ExprNode_Visitor:
         {
             if(rv->m_value_node)
             {
-                auto* break_node = new ::HIR::ExprNode_LoopControl(v.span(), v.m_label, /*cont=*/false, ::std::move(rv->m_value_node));
+                // TODO: Hygine (resolve should turn loop labels into loop indexes)
+                auto* break_node = new ::HIR::ExprNode_LoopControl(v.span(), v.m_label.name, /*cont=*/false, ::std::move(rv->m_value_node));
                 rv->m_nodes.push_back(HIR::ExprNodeP(break_node));
                 rv->m_value_node.reset();
             }
-            auto* loop = new ::HIR::ExprNode_Loop(v.span(), v.m_label, HIR::ExprNodeP(rv));
+            auto* loop = new ::HIR::ExprNode_Loop(v.span(), v.m_label.name, HIR::ExprNodeP(rv));
             loop->m_require_label = true;
             m_rv.reset(loop);
         }
@@ -91,7 +92,7 @@ struct LowerHIR_ExprNode_Visitor:
         case ::AST::ExprNode_Flow::BREAK:
             auto val = v.m_value ? LowerHIR_ExprNode_Inner(*v.m_value) : ::HIR::ExprNodeP();
             ASSERT_BUG(v.span(), !(v.m_type == ::AST::ExprNode_Flow::CONTINUE && val), "Continue with a value isn't allowed");
-            m_rv.reset( new ::HIR::ExprNode_LoopControl( v.span(), v.m_target, (v.m_type == ::AST::ExprNode_Flow::CONTINUE), mv$(val) ) );
+            m_rv.reset( new ::HIR::ExprNode_LoopControl( v.span(), v.m_target.name, (v.m_type == ::AST::ExprNode_Flow::CONTINUE), mv$(val) ) );
             break;
         }
     }
@@ -312,7 +313,7 @@ struct LowerHIR_ExprNode_Visitor:
         {
         case ::AST::ExprNode_Loop::LOOP:
             m_rv.reset( new ::HIR::ExprNode_Loop( v.span(),
-                v.m_label,
+                v.m_label.name,
                 LowerHIR_ExprNode_Inner(*v.m_code)
                 ) );
             break;
@@ -322,12 +323,12 @@ struct LowerHIR_ExprNode_Visitor:
             code.push_back( ::HIR::ExprNodeP(new ::HIR::ExprNode_If( v.span(),
                 LowerHIR_ExprNode_Inner(*v.m_cond),
                 ::HIR::ExprNodeP( new ::HIR::ExprNode_Tuple(v.span(), {}) ),
-                ::HIR::ExprNodeP( new ::HIR::ExprNode_LoopControl(v.span(), v.m_label, false) )
+                ::HIR::ExprNodeP( new ::HIR::ExprNode_LoopControl(v.span(), v.m_label.name, false) )
                 )) );
             code.push_back( LowerHIR_ExprNode_Inner(*v.m_code) );
 
             m_rv.reset( new ::HIR::ExprNode_Loop( v.span(),
-                v.m_label,
+                v.m_label.name,
                 ::HIR::ExprNodeP(new ::HIR::ExprNode_Block( v.span(), false, mv$(code), {} ))
                 ) );
             break; }
@@ -344,11 +345,11 @@ struct LowerHIR_ExprNode_Visitor:
             arms.push_back(::HIR::ExprNode_Match::Arm {
                 ::make_vec1( ::HIR::Pattern() ),
                 ::HIR::ExprNodeP(),
-                ::HIR::ExprNodeP( new ::HIR::ExprNode_LoopControl( v.span(), v.m_label, false) )
+                ::HIR::ExprNodeP( new ::HIR::ExprNode_LoopControl( v.span(), v.m_label.name, false) )
                 });
 
             m_rv.reset( new ::HIR::ExprNode_Loop( v.span(),
-                v.m_label,
+                v.m_label.name,
                 ::HIR::ExprNodeP(new ::HIR::ExprNode_Match( v.span(),
                     LowerHIR_ExprNode_Inner(*v.m_cond),
                     mv$(arms)

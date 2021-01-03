@@ -58,7 +58,7 @@ AST::Path Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode)
             // The first component is a crate name
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             // HACK: if the crate name starts with `=` it's a 2018 absolute path (references a crate loaded with `--extern`)
-            auto crate_name = RcString(std::string("=") + tok.istr().c_str());
+            auto crate_name = RcString(std::string("=") + tok.ident().name.c_str());
             std::vector<AST::PathNode>  nodes;
             if(lex.lookahead(0) == TOK_DOUBLE_COLON)
             {
@@ -124,9 +124,8 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
         }
     }
     else {
-        // TODO: TOK_INTERPOLATED_IDENT?
-        GET_CHECK_TOK(tok, lex, TOK_IDENT);
-        auto hygine = lex.getHygiene();
+        GET_TOK(tok, lex);
+        auto hygine = tok.ident().hygiene;
         DEBUG("hygine = " << hygine);
         PUTBACK(tok, lex);
         return AST::Path::new_relative(mv$(hygine), Parse_PathNodes(lex, generic_mode));
@@ -146,7 +145,7 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
         ::AST::PathParams   params;
 
         CHECK_TOK(tok, TOK_IDENT);
-        auto component = mv$( tok.istr() );
+        auto component = mv$( tok.ident().name );
 
         GET_TOK(tok, lex);
         if( generic_mode == PATH_GENERIC_TYPE )
@@ -245,19 +244,19 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
         switch(GET_TOK(tok, lex))
         {
         case TOK_LIFETIME:
-            rv.m_entries.push_back(AST::LifetimeRef(/*lex.point_span(),*/ lex.get_ident(mv$(tok)) ));
+            rv.m_entries.push_back(AST::LifetimeRef(/*lex.point_span(),*/ tok.ident()));
             break;
         case TOK_IDENT:
             if( LOOK_AHEAD(lex) == TOK_EQUAL )
             {
-                auto name = tok.istr();
+                auto name = tok.ident().name;
                 GET_CHECK_TOK(tok, lex, TOK_EQUAL);
                 rv.m_entries.push_back( ::std::make_pair( mv$(name), Parse_Type(lex,false) ) );
                 break;
             }
             if( LOOK_AHEAD(lex) == TOK_COLON )
             {
-                auto name = tok.istr();
+                auto name = tok.ident().name;
                 GET_CHECK_TOK(tok, lex, TOK_COLON);
                 // TODO: Trait list instead of duplicating the name
                 do {

@@ -316,6 +316,7 @@
 
         Ident::Hygiene deserialise_hygine()
         {
+            auto _ = m_in.open_object(typeid(Ident::Hygiene).name());
             Ident::Hygiene  rv;
             bool has_mod_path = m_in.read_bool();
             if(has_mod_path)
@@ -466,8 +467,11 @@
                 return ::Token::Data::make_None({});
             case ::Token::Data::TAG_String:
                 return ::Token::Data::make_String( m_in.read_string() );
-            case ::Token::Data::TAG_IString:
-                return ::Token::Data::make_IString( m_in.read_istring() );
+            case ::Token::Data::TAG_Ident: {
+                auto hygine = deserialise_hygine();
+                auto name = m_in.read_istring();
+                return ::Token::Data::make_Ident( Ident(std::move(hygine), std::move(name)) );
+                }
             case ::Token::Data::TAG_Integer: {
                 auto dty = static_cast<eCoreType>(m_in.read_tag());
                 return ::Token::Data::make_Integer({ dty, m_in.read_u64c() });

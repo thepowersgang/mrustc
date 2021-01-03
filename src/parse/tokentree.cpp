@@ -33,7 +33,7 @@ TokenTree TokenTree::clone() const
             os << "/*" << tt.m_hygiene << "*/";
             break;
         default:
-            if( TOK_INTERPOLATED_IDENT <= tt.m_tok.type() && tt.m_tok.type() <= TOK_INTERPOLATED_ITEM ) {
+            if( TOK_INTERPOLATED_PATH <= tt.m_tok.type() && tt.m_tok.type() <= TOK_INTERPOLATED_VIS ) {
                 os << "/*int*/";
             }
             break;

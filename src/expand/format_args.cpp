@@ -563,7 +563,7 @@ namespace {
             if( lex.lookahead(0) == TOK_IDENT && lex.lookahead(1) == TOK_EQUAL )
             {
                 GET_CHECK_TOK(tok, lex, TOK_IDENT);
-                auto name = tok.istr();
+                auto name = tok.ident().name;
 
                 GET_CHECK_TOK(tok, lex, TOK_EQUAL);
 

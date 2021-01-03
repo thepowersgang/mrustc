@@ -618,6 +618,9 @@ namespace
                     else {
                         for( auto it2 = e.variables.rbegin(); it2 != e.variables.rend(); ++ it2 )
                         {
+                            if( it2->first.name == name ) {
+                                DEBUG("> Match: Hygiene " << it2->first.hygiene << " check against src_context");
+                            }
                             if( it2->first.name == name && it2->first.hygiene.is_visible(src_context) ) {
                                 ::AST::Path rv(name);
                                 rv.bind_variable( it2->second );

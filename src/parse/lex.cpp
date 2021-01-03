@@ -705,7 +705,7 @@ Token Lexer::getTokenInt()
                             ch = this->getc();
                         }
                         this->ungetc();
-                        return Token(TOK_LIFETIME, RcString::new_interned(str));
+                        return Token(TOK_LIFETIME, Ident(this->get_hygiene(), RcString::new_interned(str)));
                     }
                     else {
                         throw ParseError::Todo("Lex Fail - Expected ' after character constant");
@@ -837,7 +837,7 @@ Token Lexer::getTokenInt_Identifier(Codepoint leader, Codepoint leader2)
         if( str < RWORDS[i].chars ) break;
         if( str == RWORDS[i].chars )    return Token((enum eTokenType)RWORDS[i].type);
     }
-    return Token(TOK_IDENT, RcString::new_interned(str));
+    return Token(TOK_IDENT, Ident(this->get_hygiene(), RcString::new_interned(str)));
 }
 
 // Takes the VERY lazy way of reading the float into a string then passing to strtod

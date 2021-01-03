@@ -47,6 +47,10 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
     {
         assert(key_val.path.size() > 0);
         DEBUG(key_val.path << " = " << key_val.value);
+
+        // TODO: Check this key in a list of deleted keys
+        // - Note, this is only possible if the package and version are not yet set
+
         const auto& section = key_val.path[0];
         if( section == "package" )
         {

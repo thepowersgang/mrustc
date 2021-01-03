@@ -63,8 +63,10 @@ private:
 
     void push_hygine() override {
         m_hygiene = Ident::Hygiene::new_scope_chained(m_hygiene);
+        DEBUG(">> " << m_hygiene);
     }
     void pop_hygine() override {
+        DEBUG("<< " << m_hygiene);
         m_hygiene = m_hygiene.get_parent();
     }
 

@@ -378,12 +378,11 @@ namespace {
                     TODO(sp, "TOK_INTERPOLATED_{STMT/EXPR/BLOCK}");
                 case TOK_INTERPOLATED_META:
                 case TOK_INTERPOLATED_ITEM:
-                case TOK_INTERPOLATED_IDENT:
                 case TOK_INTERPOLATED_VIS:
                     TODO(sp, "TOK_INTERPOLATED_...");
                 // Value tokens
-                case TOK_IDENT:     m_pmi.send_ident(tok.istr().c_str());   break;  // TODO: Raw idents
-                case TOK_LIFETIME:  m_pmi.send_lifetime(tok.istr().c_str());    break;
+                case TOK_IDENT:     m_pmi.send_ident(tok.ident().name.c_str());   break;  // TODO: Raw idents
+                case TOK_LIFETIME:  m_pmi.send_lifetime(tok.ident().name.c_str());  break;  // TODO: Hygine?
                 case TOK_INTEGER:   m_pmi.send_int(tok.datatype(), tok.intval());   break;
                 case TOK_CHAR:      m_pmi.send_char(tok.intval());  break;
                 case TOK_FLOAT:     m_pmi.send_float(tok.datatype(), tok.floatval());   break;

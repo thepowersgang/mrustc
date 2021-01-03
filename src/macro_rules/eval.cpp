@@ -499,17 +499,17 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
     case MacroPatEnt::PAT_IDENT:
         // NOTE: Any reserved word is also valid as an ident
         GET_TOK(tok, lex);
-        if( tok.type() == TOK_IDENT || Token::type_is_rword(tok.type()) )
-            ;
-        else
+        if( Token::type_is_rword(tok.type()) )
+            return InterpolatedFragment( TokenTree(lex.get_hygiene(), tok) );
+        else {
             CHECK_TOK(tok, TOK_IDENT);
-        // TODO: TOK_INTERPOLATED_IDENT
-        return InterpolatedFragment( TokenTree(lex.getHygiene(), tok) );
+            return InterpolatedFragment( TokenTree(lex.get_hygiene(), tok) );
+        }
     case MacroPatEnt::PAT_VIS:
         return InterpolatedFragment( Parse_Publicity(lex, /*allow_restricted=*/true) );
     case MacroPatEnt::PAT_LIFETIME:
         GET_CHECK_TOK(tok, lex, TOK_LIFETIME);
-        return InterpolatedFragment( TokenTree(lex.getHygiene(), tok) );
+        return InterpolatedFragment( TokenTree(lex.get_hygiene(), tok) );
     case MacroPatEnt::PAT_LITERAL:
         GET_TOK(tok, lex);
         switch(tok.type())
@@ -524,7 +524,7 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
         default:
             throw ParseError::Unexpected(lex, tok, {TOK_INTEGER, TOK_FLOAT, TOK_STRING, TOK_BYTESTRING, TOK_RWORD_TRUE, TOK_RWORD_FALSE});
         }
-        return InterpolatedFragment( TokenTree(lex.getHygiene(), tok) );
+        return InterpolatedFragment( TokenTree(lex.get_hygiene(), tok) );
     }
     throw "";
 }
@@ -879,13 +879,12 @@ namespace
         case TOK_SQUARE_OPEN:
             return consume_tt(lex);
         case TOK_IDENT:
-            if( TARGETVER_LEAST_1_29 && lex.next_tok().istr() == "dyn" )
+            if( TARGETVER_LEAST_1_29 && lex.next_tok().ident().name == "dyn" )
                 lex.consume();
         case TOK_RWORD_CRATE:
         case TOK_RWORD_SUPER:
         case TOK_RWORD_SELF:
         case TOK_DOUBLE_COLON:
-        case TOK_INTERPOLATED_IDENT:
         case TOK_INTERPOLATED_PATH:
             if( !consume_path(lex, true) )
                 return false;
@@ -1115,7 +1114,6 @@ namespace
                 }
                 break;
             case TOK_IDENT:
-            case TOK_INTERPOLATED_IDENT:
             case TOK_INTERPOLATED_PATH:
             case TOK_DOUBLE_COLON:
             case TOK_RWORD_SELF:
@@ -1426,7 +1424,7 @@ namespace
             return true;
         // Macro invocation
         // TODO: What about `union!` as a macro? Needs to be handled below
-        if( (lex.next() == TOK_IDENT && lex.next_tok().istr() != "union")
+        if( (lex.next() == TOK_IDENT && lex.next_tok().ident().name != "union")
          || lex.next() == TOK_RWORD_SELF
          || lex.next() == TOK_RWORD_SUPER
          || lex.next() == TOK_DOUBLE_COLON
@@ -1562,7 +1560,7 @@ namespace
                 return false;
             return consume_tt(lex);
         case TOK_IDENT:
-            if( lex.next_tok().istr() == "union" )
+            if( lex.next_tok().ident().name == "union" )
             {
                 lex.consume();
                 if( lex.next() == TOK_EXCLAM )
@@ -1587,7 +1585,7 @@ namespace
                     return consume_tt(lex);
                 }
             }
-            else if( lex.next_tok().istr() == "auto" )
+            else if( lex.next_tok().ident().name == "auto" )
             {
                 lex.consume();
                 if( lex.consume_if(TOK_RWORD_TRAIT) )
@@ -1999,7 +1997,7 @@ Ident::Hygiene MacroExpander::realGetHygiene() const
 {
     if( m_ttstream )
     {
-        return m_ttstream->getHygiene();
+        return m_ttstream->get_hygiene();
     }
     else
     {
@@ -2030,7 +2028,19 @@ Token MacroExpander::realGetToken()
         const auto& ent = *next_ent_ptr;
         TU_MATCH_HDRA( (ent), {)
         TU_ARMA(Token, e) {
-            return e.clone();
+            switch(e.type())
+            {
+            case TOK_IDENT:
+            case TOK_LIFETIME: {
+                // Rewrite the hygiene of an ident such that idents in the macro explicitly are unique for each expansion
+                // - Appears to be a valid option.
+                auto ident = e.ident();
+                ident.hygiene = m_hygiene;
+                return Token(e.type(), std::move(ident));
+                break; }
+            default:
+                return e.clone();
+            }
             }
         TU_ARMA(NamedValue, e) {
             if( e >> 30 ) {

@@ -56,19 +56,21 @@ struct ExprNode_Block:
 {
     bool m_is_unsafe;
     bool m_yields_final_value;
-    RcString   m_label;
+    Ident   m_label;
     ::std::shared_ptr<AST::Module> m_local_mod;
     ::std::vector<ExprNodeP>    m_nodes;
 
     ExprNode_Block(::std::vector<ExprNodeP> nodes={}):
         m_is_unsafe(false),
         m_yields_final_value(true),
+        m_label(""),
         m_local_mod(),
         m_nodes( mv$(nodes) )
     {}
     ExprNode_Block(bool is_unsafe, bool yields_final_value, ::std::vector<ExprNodeP> nodes, ::std::shared_ptr<AST::Module> local_mod):
         m_is_unsafe(is_unsafe),
         m_yields_final_value(yields_final_value),
+        m_label(""),
         m_local_mod( move(local_mod) ),
         m_nodes( move(nodes) )
     {
@@ -143,10 +145,10 @@ struct ExprNode_Flow:
         CONTINUE,
         BREAK,
     } m_type;
-    RcString   m_target;
+    Ident   m_target;
     unique_ptr<ExprNode>    m_value;
 
-    ExprNode_Flow(Type type, RcString target, unique_ptr<ExprNode>&& value):
+    ExprNode_Flow(Type type, Ident target, unique_ptr<ExprNode>&& value):
         m_type(type),
         m_target( move(target) ),
         m_value( move(value) )
@@ -248,24 +250,28 @@ struct ExprNode_Loop:
         WHILELET,
         FOR,
     } m_type;
-    RcString   m_label;
+    Ident   m_label;
     AST::Pattern    m_pattern;
     unique_ptr<ExprNode>    m_cond; // if NULL, loop is a 'loop'
     unique_ptr<ExprNode>    m_code;
 
-    ExprNode_Loop(): m_type(LOOP) {}
-    ExprNode_Loop(RcString label, unique_ptr<ExprNode> code):
+    ExprNode_Loop():
+        m_type(LOOP),
+        m_label("")
+    {
+    }
+    ExprNode_Loop(Ident label, unique_ptr<ExprNode> code):
         m_type(LOOP),
         m_label( ::std::move(label) ),
         m_code( ::std::move(code) )
     {}
-    ExprNode_Loop(RcString label, unique_ptr<ExprNode> cond, unique_ptr<ExprNode> code):
+    ExprNode_Loop(Ident label, unique_ptr<ExprNode> cond, unique_ptr<ExprNode> code):
         m_type(WHILE),
         m_label( ::std::move(label) ),
         m_cond( ::std::move(cond) ),
         m_code( ::std::move(code) )
     {}
-    ExprNode_Loop(RcString label, Type type, AST::Pattern pattern, unique_ptr<ExprNode> val, unique_ptr<ExprNode> code):
+    ExprNode_Loop(Ident label, Type type, AST::Pattern pattern, unique_ptr<ExprNode> val, unique_ptr<ExprNode> code):
         m_type(type),
         m_label( ::std::move(label) ),
         m_pattern( ::std::move(pattern) ),

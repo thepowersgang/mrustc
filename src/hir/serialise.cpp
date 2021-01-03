@@ -504,6 +504,7 @@
         
         void serialise(const Ident::Hygiene& h)
         {
+            auto _ = m_out.open_object(typeid(Ident::Hygiene).name());
             m_out.write_bool(h.has_mod_path());
             if(h.has_mod_path())
             {
@@ -605,8 +606,9 @@
             TU_ARM(td, String, e) {
                 m_out.write_string(e);
                 } break;
-            TU_ARM(td, IString, e) {
-                m_out.write_string(e);
+            TU_ARM(td, Ident, e) {
+                serialise(e.hygiene);
+                m_out.write_string(e.name);
                 } break;
             TU_ARM(td, Integer, e) {
                 m_out.write_tag(e.m_datatype);

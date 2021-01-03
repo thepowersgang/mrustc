@@ -65,7 +65,7 @@ class Token
 
     TAGGED_UNION(Data, None,
     (None, struct {}),
-    (IString, RcString),
+    (Ident, Ident),
     (String, ::std::string),
     (Integer, struct {
         enum eCoreType  m_datatype;
@@ -115,7 +115,7 @@ public:
 
     Token(enum eTokenType type);
     Token(enum eTokenType type, ::std::string str);
-    Token(enum eTokenType type, RcString str);
+    Token(enum eTokenType type, Ident i);
     Token(uint64_t val, enum eCoreType datatype);
     Token(double val, enum eCoreType datatype);
     Token(const InterpolatedFragment& );
@@ -124,7 +124,8 @@ public:
 
     enum eTokenType type() const { return m_type; }
     bool has_data() const { return !m_data.is_None(); }
-    const RcString& istr() const { return m_data.as_IString(); }
+
+    const Ident& ident() const { return m_data.as_Ident(); }
     ::std::string& str() { return m_data.as_String(); }
     const ::std::string& str() const { return m_data.as_String(); }
     enum eCoreType  datatype() const { TU_MATCH_DEF(Data, (m_data), (e), (assert(!"Getting datatype of invalid token type");), (Integer, return e.m_datatype;), (Float, return e.m_datatype;)) throw ""; }
@@ -136,6 +137,7 @@ public:
     AST::Path& frag_path() { assert(m_type == TOK_INTERPOLATED_PATH); return *reinterpret_cast<AST::Path*>( m_data.as_Fragment() ); }
     AST::Pattern& frag_pattern() { assert(m_type == TOK_INTERPOLATED_PATTERN); return *reinterpret_cast<AST::Pattern*>( m_data.as_Fragment() ); }
     AST::Attribute& frag_meta() { assert(m_type == TOK_INTERPOLATED_META); return *reinterpret_cast<AST::Attribute*>( m_data.as_Fragment() ); }
+
     ::std::unique_ptr<AST::ExprNode> take_frag_node();
     ::AST::Named<AST::Item> take_frag_item();
     ::AST::Visibility take_frag_vis();
@@ -149,7 +151,7 @@ public:
             return false;
         TU_MATCH(Data, (m_data, r.m_data), (e, re),
         (None, return true;),
-        (IString, return e == re; ),
+        (Ident, return e == re; ),
         (String, return e == re; ),
         (Integer, return e.m_datatype == re.m_datatype && e.m_intval == re.m_intval;),
         (Float, return e.m_datatype == re.m_datatype && e.m_floatval == re.m_floatval;),

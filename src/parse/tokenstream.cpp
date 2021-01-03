@@ -111,7 +111,7 @@ eTokenType TokenStream::lookahead(unsigned int i)
     return m_lookahead[i].first.type();
 }
 
-Ident::Hygiene TokenStream::getHygiene() const
+Ident::Hygiene TokenStream::get_hygiene() const
 {
     return m_hygiene;
 }
@@ -132,20 +132,4 @@ Span TokenStream::end_span(ProtoSpan ps) const
 Span TokenStream::point_span() const
 {
     return Span( this->outerSpan(), this->getPosition() );
-}
-Ident TokenStream::get_ident(Token tok) const
-{
-    if(tok.type() == TOK_IDENT) {
-        return Ident(getHygiene(), tok.istr());
-    }
-    else if(tok.type() == TOK_LIFETIME) {
-        // TODO: Maybe only when it's explicitly asked for?
-        return Ident(getHygiene(), tok.istr());
-    }
-    else if( tok.type() == TOK_INTERPOLATED_IDENT ) {
-        TODO(point_span(), "get_ident from TOK_INTERPOLATED_IDENT");
-    }
-    else {
-        throw ParseError::Unexpected(*this, tok);
-    }
 }
