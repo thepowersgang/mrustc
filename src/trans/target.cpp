@@ -1051,8 +1051,29 @@ namespace {
                 const TypeRepr* r = Target_GetTypeRepr(sp, resolve, ty);
                 if( !r )
                 {
-                    return false;
+                    return 0;
                 }
+
+                // Handle bounded
+                if(str->m_struct_markings.bounded_max)
+                {
+                    if( str->m_struct_markings.bounded_max_value >= UINT_MAX )
+                    {
+                        return 0;
+                    }
+                    if( min_offset != 0 )
+                    {
+                        return 0;
+                    }
+                    DEBUG("Max bounded");
+                    assert(r->fields.size() >= 1);
+                    assert(r->fields[0].offset == 0);
+                    auto size = get_size_or_zero(sp, resolve, r->fields[0].ty);
+                    out_path.sub_fields.push_back(0);
+                    out_path.size = size;
+                    return str->m_struct_markings.bounded_max_value + 1;
+                }
+
                 for(size_t i = 0; i < r->fields.size(); i ++)
                 {
                     const auto& f = r->fields[i];
@@ -1185,6 +1206,7 @@ namespace {
 
             // HACK: This is required for the C backend, because the union that contains the enum variants is
             // padded out to align.
+            auto max_var_size = max_size;
             if(max_size > 0)
             {
                 while(max_size % max_align)
@@ -1203,7 +1225,7 @@ namespace {
                 for(auto& f : rv.fields) {
                     size_t  size, align;
                     Target_GetSizeOf(sp, resolve, f.ty, size);
-                    if( size == max_size ) {
+                    if( size == max_var_size ) {
                         n_match += 1;
                         biggest_var = &f - &rv.fields.front();
                     }
@@ -1211,7 +1233,7 @@ namespace {
                         min_offset = std::max(min_offset, size);
                     }
                 }
-                DEBUG("Niche optimisation: n_match=" << n_match << " biggest_var=" << biggest_var << " min_offset=" << min_offset);
+                DEBUG("Niche optimisation: max_var_size=" << max_var_size << " n_match=" << n_match << " biggest_var=" << biggest_var << " min_offset=" << min_offset);
 
                 if( n_match == 1 )
                 {

@@ -232,6 +232,10 @@ struct StructMarkings
 
     // #[rustc_nonnull_optimization_guaranteed]
     bool is_nonzero = false;
+
+    // #[rustc_layout_scalar_valid_range_end]
+    bool bounded_max = false;
+    uint64_t    bounded_max_value;
 };
 
 class ExternType

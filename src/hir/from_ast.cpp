@@ -1086,6 +1086,7 @@ namespace {
     // TODO: OR, it's equal to the `non_zero` lang item
     if(attrs.get("rustc_nonnull_optimization_guaranteed"))
     {
+        //ent.m_markings.scalar_valid_start_set = true;
         rv.m_struct_markings.is_nonzero = true;
     }
     if(ent.m_markings.scalar_valid_start_set)
@@ -1095,6 +1096,90 @@ namespace {
         }
         else {
             TODO(sp, "Handle #[rustc_layout_scalar_valid_range_start(" << ent.m_markings.scalar_valid_start << ")]");
+        }
+    }
+    // TODO: Store the scalar valid range information for downstream
+    if( ent.m_markings.scalar_valid_start_set || ent.m_markings.scalar_valid_end_set )
+    {
+        const HIR::TypeRef* ty = nullptr;
+        const HIR::TypeRef* ty2 = nullptr;
+        if( const auto* d = rv.m_data.opt_Named() ) {
+            switch(d->size())
+            {
+            case 2:
+                ty2 = &(*d)[1].second.ent;
+            case 1:
+                ty = &(*d)[0].second.ent;
+                break;
+            }
+        }
+        else if( const auto* d = rv.m_data.opt_Tuple() ) {
+            if( d->size() == 1 )
+                ty = &(*d)[0].ent;
+            //TODO: Ensure that the other fields are ZSTs
+        }
+        else {
+            // Invalid
+        }
+        if(!ty)
+            ERROR(sp, E0000, "Invalid use of #[rustc_layout_scalar_valid_range_start] or #[rustc_layout_scalar_valid_range_end] on invalid struct");
+        if(ty2)
+        {
+            //TODO: Ensure that this second field is PhantomData
+        }
+
+        uint64_t TGT_PTR_MAX = -1;
+        uint64_t    min = 0, max = -1;
+        bool ignore = false;
+        if( ty->data().is_Pointer() )
+        {
+            min = 0;
+            max = TGT_PTR_MAX;
+        }
+        else
+        {
+            // Check the type
+            ::HIR::CoreType ct = HIR::CoreType::Str;
+            if( ty->data().is_Primitive() )
+                ct = ty->data().as_Primitive();
+            switch(ct)
+            {
+            case ::HIR::CoreType::U8:   max = 0xFF;     break;
+            case ::HIR::CoreType::U16:  max = UINT16_MAX;   break;
+            case ::HIR::CoreType::U32:  max = UINT32_MAX;   break;
+            case ::HIR::CoreType::U64:  max = UINT64_MAX;   break;
+            case ::HIR::CoreType::U128: ignore = true;  break;
+            case ::HIR::CoreType::Usize:  max = TGT_PTR_MAX;   break;
+
+            case ::HIR::CoreType::I8:   //max = 0x7F;     break;
+            case ::HIR::CoreType::I16:  //max = INT16_MAX;   break;
+            case ::HIR::CoreType::I32:  //max = INT32_MAX; break;
+            case ::HIR::CoreType::I64:  //max = INT64_MAX;   break;
+            case ::HIR::CoreType::I128: //ignore = true;  break;
+            case ::HIR::CoreType::Isize:  //max = TGT_PTR_MAX/2+1;   break;
+                // Downstream treats this as unsigned
+                ignore = true;
+                break;
+
+            default:
+                ERROR(sp, E0000, "Invalid use of #[rustc_layout_scalar_valid_range_start] or #[rustc_layout_scalar_valid_range_end] on invalid type (must be an integer or pointer)");
+            }
+        }
+
+        if(!ignore)
+        {
+            if( ent.m_markings.scalar_valid_start_set ) {
+                if( ent.m_markings.scalar_valid_start < min ) {
+                }
+                //rv.m_struct_markings.bounded_min = true;
+                //rv.m_struct_markings.bounded_min_value = ent.m_markings.scalar_valid_start;
+            }
+            if( ent.m_markings.scalar_valid_end_set ) {
+                if( ent.m_markings.scalar_valid_end > max ) {
+                }
+                rv.m_struct_markings.bounded_max = true;
+                rv.m_struct_markings.bounded_max_value = ent.m_markings.scalar_valid_end;
+            }
         }
     }
 

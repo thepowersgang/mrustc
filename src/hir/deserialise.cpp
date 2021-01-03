@@ -801,6 +801,7 @@
             #define BIT(i,fld)  fld = (bitflag_1 & (1 << (i))) != 0;
             BIT(0, m.can_unsize)
             BIT(1, m.is_nonzero)
+            BIT(2, m.bounded_max)
             #undef BIT
             m.dst_type = static_cast< ::HIR::StructMarkings::DstType>( m_in.read_tag() );
             m.coerce_unsized = static_cast<::HIR::StructMarkings::Coerce>( m_in.read_tag() );
@@ -808,6 +809,8 @@
             m.coerce_param = m_in.read_count( );
             m.unsized_field = m_in.read_count( );
             m.unsized_param = m_in.read_count();
+            if(m.bounded_max)
+                m.bounded_max_value = m_in.read_u64();
             // TODO: auto_impls
             return m;
         }

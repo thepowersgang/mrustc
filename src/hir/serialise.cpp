@@ -1112,6 +1112,7 @@
             #define BIT(i,fld)  if(fld) bitflag_1 |= 1 << (i);
             BIT(0, m.can_unsize)
             BIT(1, m.is_nonzero)
+            BIT(2, m.bounded_max)
             #undef BIT
             m_out.write_u8(bitflag_1);
 
@@ -1121,6 +1122,8 @@
             m_out.write_count( m.coerce_param );
             m_out.write_count( m.unsized_field );
             m_out.write_count( m.unsized_param );
+            if(m.bounded_max)
+                m_out.write_u64(m.bounded_max_value);
             // TODO: auto_impls
         }
 

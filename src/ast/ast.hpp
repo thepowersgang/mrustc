@@ -353,7 +353,9 @@ public:
 
         // 1.39 nonzero etc
         bool    scalar_valid_start_set;
-        unsigned    scalar_valid_start;
+        uint64_t    scalar_valid_start;
+        bool    scalar_valid_end_set;
+        uint64_t    scalar_valid_end;
     }   m_markings;
 
     Struct() {}
