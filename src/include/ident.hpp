@@ -13,12 +13,15 @@
 
 struct Ident
 {
+    // TODO: Use AST::AbsolutePath instead
     struct ModPath
     {
         RcString    crate;
         ::std::vector<RcString> ents;
         friend std::ostream& operator<<(std::ostream& os, const ModPath& x);
     };
+
+    // TODO: make this a reference-counted pointer instead (so it's cheaper to copy)
     class Hygiene
     {
         static unsigned g_next_scope;
@@ -73,7 +76,7 @@ struct Ident
 
         // Returns true if an ident with hygine `source` can see an ident with this hygine
         bool is_visible(const Hygiene& source) const;
-        //bool operator==(const Hygiene& x) const { return scope_index == x.scope_index; }
+        bool operator==(const Hygiene& x) const { return contexts == x.contexts && search_module == x.search_module; }
         //bool operator!=(const Hygiene& x) const { return scope_index != x.scope_index; }
 
         friend ::std::ostream& operator<<(::std::ostream& os, const Hygiene& v);

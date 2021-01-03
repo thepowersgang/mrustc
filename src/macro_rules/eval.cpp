@@ -2035,7 +2035,10 @@ Token MacroExpander::realGetToken()
                 // Rewrite the hygiene of an ident such that idents in the macro explicitly are unique for each expansion
                 // - Appears to be a valid option.
                 auto ident = e.ident();
-                ident.hygiene = m_hygiene;
+                if( ident.hygiene == m_hygiene.get_parent() )
+                {
+                    ident.hygiene = m_hygiene;
+                }
                 return Token(e.type(), std::move(ident));
                 break; }
             default:
