@@ -652,7 +652,7 @@
                 serialise_path(e);
                 }
             TU_ARMA(BorrowData, e) {
-                serialise(*e);
+                BUG(Span(), "Unexpected attempt to serialise Literal::BorrowData");
                 }
             TU_ARMA(String, e) {
                 m_out.write_string(e);

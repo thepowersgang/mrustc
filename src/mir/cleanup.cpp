@@ -368,7 +368,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
             }
         }
         else if( const auto* e = lit.opt_BorrowData() ) {
-            const auto& inner_lit = **e;
+            const auto& inner_lit = *e->val;
             // 1. Make a new lvalue for the inner data
             // 2. Borrow that slot
             if( const auto* tie = te.inner.data().opt_Slice() )

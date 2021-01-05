@@ -163,7 +163,7 @@ namespace {
                 visit_path(e, ::HIR::Visitor::PathContext::VALUE);
                 ),
             (BorrowData,
-                visit_literal(sp, *e);
+                visit_literal(sp, *e.val);
                 ),
             (String,
                 )

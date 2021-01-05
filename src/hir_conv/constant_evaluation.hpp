@@ -26,7 +26,10 @@ struct Evaluator
 
     ::HIR::Literal evaluate_constant(const ::HIR::ItemPath& ip, const ::HIR::ExprPtr& expr, ::HIR::TypeRef exp, MonomorphState ms={});
 
+private:
     ::HIR::Literal evaluate_constant_mir(const ::HIR::ItemPath& ip, const ::MIR::Function& fcn, MonomorphState ms, ::HIR::TypeRef exp, ::std::vector< ::HIR::Literal> args);
+
+    void replace_borrow_data(const HIR::TypeRef& ty, HIR::Literal& lit);
 };
 
 } // namespace HIR

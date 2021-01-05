@@ -1281,7 +1281,7 @@
         _(Integer, m_in.read_u64() )
         _(Float,   m_in.read_double() )
         _(BorrowPath, deserialise_path() )
-        _(BorrowData, box$(deserialise_literal()) )
+        //_(BorrowData, { box$(deserialise_literal()), HIR::TypeRef() } )
         _(String,  m_in.read_string() )
         #undef _
         default:

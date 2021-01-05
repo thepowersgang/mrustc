@@ -393,7 +393,7 @@ namespace {
             TU_ARMA(Integer, le) {
                 // NOTE: Windows uses magic numbers in the upper range of pointers, so this can be non-zero
                 // - BUT, if it's unsized, then NUL is the only valid option
-                ASSERT_BUG(sp, !is_unsized || le == 0, "Cannot originate a non-NUL fat pointer from an integer");
+                //ASSERT_BUG(sp, !is_unsized || le == 0, "Cannot originate a non-NUL fat pointer from an integer");
                 ASSERT_BUG(sp, ty.data().is_Pointer(), "Originating a Borrow from an integer is invalid");
                 put_size(le);
                 if( is_unsized )

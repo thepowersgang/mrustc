@@ -18,6 +18,7 @@
 
 #include "constant_evaluation.hpp"
 #include <trans/monomorphise.hpp>   // For handling monomorph of MIR in provided associated constants
+#include <trans/codegen.hpp>    // For encoding as part of transmute
 
 #define CHECK_DEFER(var) do { if( var.is_Defer() ) { m_rv = ::HIR::Literal::make_Defer({}); return ; } } while(0)
 
@@ -289,7 +290,7 @@ namespace HIR {
                         default:
                             MIR_TODO(state, "LValue::Deref - " << lv << " " << val.tag_str() << " { " << val << " }");
                         TU_ARMA(BorrowData, ve) {
-                            lit_ptr = &*ve;
+                            lit_ptr = &*ve.val;
                             }
                         TU_ARMA(BorrowPath, ve) {
                             // TODO: Get the referenced path (if possible), and return the static's value as a pointer
@@ -430,10 +431,11 @@ namespace HIR {
                 if( &inner_ty_r != &inner_ty )
                     inner_ty = inner_ty_r.clone();
 
+                return ::HIR::Literal::make_BorrowData({ box$(inner_val), mv$(inner_ty) });
                 // Create new static containing borrowed data
                 // NOTE: Doesn't use BorrowData
-                auto item_path = this->nvs.new_static( mv$(inner_ty), mv$(inner_val) );
-                return ::HIR::Literal::make_BorrowPath( mv$(item_path) );
+                //auto item_path = this->nvs.new_static( mv$(inner_ty), mv$(inner_val) );
+                //return ::HIR::Literal::make_BorrowPath( mv$(item_path) );
             }
             };
         auto read_param = [&](const ::MIR::Param& p) -> ::HIR::Literal {
@@ -496,6 +498,27 @@ namespace HIR {
                     default:
                         // NOTE: Can be an unsizing!
                         MIR_TODO(state, "RValue::Cast to " << e.type << ", val = " << inval);
+                    TU_ARMA(Path, te) {
+                        bool done = false;
+                        if(te.binding.is_Struct())
+                        {
+                            const HIR::Struct& str = *te.binding.as_Struct();
+                            ::HIR::TypeRef  tmp;
+                            const auto& src_ty = state.get_lvalue_type(tmp, e.val);
+                            if( src_ty.data().is_Path() && src_ty.data().as_Path().binding.is_Struct() && src_ty.data().as_Path().binding.as_Struct() == &str )
+                            {
+                                if( str.m_struct_markings.coerce_unsized != HIR::StructMarkings::Coerce::None )
+                                {
+                                    val = std::move(inval);
+                                    done = true;
+                                }
+                            }
+                        }
+                        if(!done )
+                        {
+                            MIR_TODO(state, "RValue::Cast to " << e.type << ", val = " << inval);
+                        }
+                        }
                     TU_ARMA(Primitive, te) {
                         uint64_t mask;
                         switch(te)
@@ -801,14 +824,18 @@ namespace HIR {
                     if( te->name == "size_of" ) {
                         auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
                         size_t  size_val;
-                        Target_GetSizeOf(state.sp, this->resolve, ty, size_val);
-                        dst = ::HIR::Literal::make_Integer( size_val );
+                        if( Target_GetSizeOf(state.sp, this->resolve, ty, size_val) )
+                            dst = ::HIR::Literal::make_Integer( size_val );
+                        else
+                            dst = ::HIR::Literal::make_Defer({});
                     }
                     else if( te->name == "min_align_of" ) {
                         auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
                         size_t  align_val;
-                        Target_GetAlignOf(state.sp, this->resolve, ty, align_val);
-                        dst = ::HIR::Literal::make_Integer( align_val );
+                        if( Target_GetAlignOf(state.sp, this->resolve, ty, align_val) )
+                            dst = ::HIR::Literal::make_Integer( align_val );
+                        else
+                            dst = ::HIR::Literal::make_Defer({});
                     }
                     else if( te->name == "bswap" ) {
                         auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
@@ -851,6 +878,189 @@ namespace HIR {
                         }
                         dst = ::HIR::Literal::make_Integer( rv );
                     }
+                    else if( te->name == "transmute" ) {
+                        auto src_ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                        auto dst_ty = ms.monomorph_type(state.sp, te->params.m_types.at(1));
+                        auto val = read_param(e.args.at(0));
+                        if(val.is_Defer()) {
+                            dst = HIR::Literal::make_Defer({});
+                        }
+                        else {
+                            // Convert to bytes
+                            auto encoded = Trans_EncodeLiteralAsBytes(state.sp, resolve, val, src_ty);
+                            // Read the result back
+                            struct Decoder {
+                                const Span& sp;
+                                const StaticTraitResolve& resolve;
+                                const EncodedLiteral& lit;
+                                Decoder(const Span& sp, const StaticTraitResolve& resolve, const EncodedLiteral& lit)
+                                    : sp(sp)
+                                    , resolve(resolve)
+                                    , lit(lit)
+                                {
+                                }
+                                HIR::Literal decode_literal(const HIR::TypeRef& ty, size_t ofs) const
+                                {
+                                    auto getb = [&]()->uint8_t {
+                                        return lit.bytes[ofs++];
+                                        };
+                                    auto get_val = [&](int bsize)->uint64_t {
+                                        uint64_t rv = 0;
+                                        if(Target_GetCurSpec().m_arch.m_big_endian) {
+                                            // Big endian
+                                            for(int i = bsize; i--; ) {
+                                                if( i < 8 ) {
+                                                    rv |= static_cast<uint64_t>(getb()) << (8*i);
+                                                }
+                                            }
+                                        }
+                                        else {
+                                            // Little endian
+                                            for(int i = 0; i < bsize; i ++) {
+                                                if( i < 8 ) {
+                                                    rv |= static_cast<uint64_t>(getb()) << (8*i);
+                                                }
+                                            }
+                                        }
+                                        return rv;
+                                        };
+                                    auto ptr_size = Target_GetCurSpec().m_arch.m_pointer_bits / 8;
+                                    auto get_size = [&]() { return get_val(ptr_size); };
+                                    auto get_ptr = [&](uint64_t* out_v)->const Reloc* {
+                                        const Reloc* rv = nullptr;
+                                        for(const auto& r : lit.relocations) {
+                                            if( r.ofs == ofs ) {
+                                                rv = &r;
+                                                break;
+                                            }
+                                        }
+                                        *out_v = get_size();
+                                        return rv;
+                                        };
+                                    switch(ty.data().tag())
+                                    {
+                                    case ::HIR::TypeData::TAGDEAD: throw "";
+                                    case ::HIR::TypeData::TAG_Generic:
+                                    case ::HIR::TypeData::TAG_ErasedType:
+                                    case ::HIR::TypeData::TAG_Diverge:
+                                    case ::HIR::TypeData::TAG_Infer:
+                                    case ::HIR::TypeData::TAG_TraitObject:
+                                    case ::HIR::TypeData::TAG_Slice:
+                                    case ::HIR::TypeData::TAG_Closure:
+                                        BUG(sp, "Unexpected " << ty << " in decoding literal");
+                                    TU_ARM(ty.data(), Primitive, te) {
+                                        switch(te)
+                                        {
+                                        case ::HIR::CoreType::U8:
+                                        case ::HIR::CoreType::I8:
+                                        case ::HIR::CoreType::Bool:
+                                            return HIR::Literal::make_Integer(getb());
+                                        case ::HIR::CoreType::U16:
+                                        case ::HIR::CoreType::I16:
+                                            return HIR::Literal::make_Integer(get_val(2));
+                                        case ::HIR::CoreType::U32:
+                                        case ::HIR::CoreType::I32:
+                                        case ::HIR::CoreType::Char:
+                                            return HIR::Literal::make_Integer(get_val(4));
+                                        case ::HIR::CoreType::U64:
+                                        case ::HIR::CoreType::I64:
+                                            return HIR::Literal::make_Integer(get_val(8));
+                                        case ::HIR::CoreType::U128:
+                                        case ::HIR::CoreType::I128:
+                                            return HIR::Literal::make_Integer(get_val(16));
+                                        case ::HIR::CoreType::Usize:
+                                        case ::HIR::CoreType::Isize:
+                                            return HIR::Literal::make_Integer(get_size());
+                                        case ::HIR::CoreType::F32: {
+                                            float v;
+                                            uint32_t v2 = get_val(4);
+                                            memcpy(&v, &v2, 4);
+                                            return HIR::Literal::make_Float(v);
+                                            } break;
+                                        case ::HIR::CoreType::F64: {
+                                            double v;
+                                            uint64_t v2 = get_val(8);
+                                            memcpy(&v, &v2, 8);
+                                            return HIR::Literal::make_Float(v);
+                                            } break;
+                                        case ::HIR::CoreType::Str:
+                                            BUG(sp, "Unexpected " << ty << " in decoding literal");
+                                        }
+                                        } break;
+                                    case ::HIR::TypeData::TAG_Path:
+                                    case ::HIR::TypeData::TAG_Tuple: {
+                                        const auto* repr = Target_GetTypeRepr(sp, resolve, ty);
+                                        assert(repr);
+                                        size_t cur_ofs = 0;
+                                        unsigned var_idx = ~0u;
+                                        std::vector<HIR::Literal>   values;
+                                        TU_MATCH_HDRA( (repr->variants), {)
+                                        TU_ARMA(None, ve) {
+                                            // If the type is an enum, need to emit a Variant
+                                            for(size_t i = 0; i < repr->fields.size(); i ++)
+                                            {
+                                                values.push_back( this->decode_literal(repr->fields[i].ty, repr->fields[i].offset) );
+                                            }
+                                            }
+                                        TU_ARMA(NonZero, ve) {
+                                            TODO(sp, "");
+                                            }
+                                        TU_ARMA(Linear, ve) {
+                                            TODO(sp, "");
+                                            }
+                                        TU_ARMA(Values, ve) {
+                                            TODO(sp, "");
+                                            }
+                                        }
+
+                                        auto rv = HIR::Literal::make_List(std::move(values));
+                                        if( var_idx != ~0u ) {
+                                            return HIR::Literal::make_Variant({ var_idx, box$(rv) });
+                                        }
+                                        else {
+                                            return rv;
+                                        }
+                                        } break;
+                                    case ::HIR::TypeData::TAG_Borrow:
+                                    case ::HIR::TypeData::TAG_Pointer: {
+                                        const auto& ity = (ty.data().is_Borrow() ? ty.data().as_Borrow().inner : ty.data().as_Pointer().inner);
+                                        size_t ity_size, ity_align;
+                                        Target_GetSizeAndAlignOf(sp, resolve, ity, ity_size, ity_align);
+                                        bool is_unsized = (ity_size == SIZE_MAX);
+
+                                        uint64_t   v;
+                                        const auto* reloc = get_ptr(&v);
+
+                                        uint64_t    meta_v = 0;
+                                        const Reloc* meta_r = nullptr;
+                                        if(is_unsized)
+                                        {
+                                            meta_r = get_ptr(&meta_v);
+                                        }
+
+                                        if(reloc)
+                                        {
+                                            TODO(sp, "Pointer: w/ relocation");
+                                        }
+                                        else
+                                        {
+                                            if(meta_v != 0 || meta_r)
+                                                TODO(sp, "Pointer: w/o relocation but with meta - " << meta_v);
+                                            return HIR::Literal::make_Integer(v);
+                                        }
+                                        } break;
+                                    case ::HIR::TypeData::TAG_Function:
+                                        TODO(sp, "");
+                                    TU_ARM(ty.data(), Array, te) {
+                                        TODO(sp, "");
+                                        }
+                                    }
+                                    TODO(sp, "");
+                                }
+                            };
+                            dst = Decoder(state.sp, resolve, encoded).decode_literal(dst_ty, 0);
+                        }
+                    }
                     else {
                         MIR_TODO(state, "Call intrinsic \"" << te->name << "\" - " << block.terminator);
                     }
@@ -888,6 +1098,133 @@ namespace HIR {
         }
     }
 
+    void Evaluator::replace_borrow_data(const HIR::TypeRef& ty, HIR::Literal& lit)
+    {
+        const Span& sp = root_span;
+
+        TRACE_FUNCTION_FR(lit, lit);
+        TU_MATCH_HDRA( (lit), {)
+        TU_ARMA(BorrowData, e) {
+            // Create new static containing borrowed data
+            this->replace_borrow_data(e.ty, *e.val);
+            auto item_path = nvs.new_static( mv$(e.ty), mv$(*e.val) );
+            lit = ::HIR::Literal::make_BorrowPath(mv$(item_path));
+            }
+        TU_ARMA(Invalid, e) { }
+        TU_ARMA(Defer, e) { }
+        TU_ARMA(Generic, e) { }
+        TU_ARMA(BorrowPath, e) { }
+        TU_ARMA(Integer, e) { }
+        TU_ARMA(Float, e) { }
+        TU_ARMA(String, e) { }
+        TU_ARMA(List, e) {
+            if(e.size() == 0)
+            {
+            }
+            else if( const auto* te = ty.data().opt_Array() ) {
+                for(auto& i : e)
+                    replace_borrow_data(te->inner, i);
+            }
+            else if( const auto* te = ty.data().opt_Tuple() ) {
+                assert(e.size() == te->size());
+                for(size_t i = 0; i < e.size(); i ++)
+                {
+                    replace_borrow_data((*te)[i], e[i]);
+                }
+            }
+            else if( const auto* te = ty.data().opt_Path() ) {
+                ASSERT_BUG(sp, te->binding.is_Struct(), ty);
+                const auto& str = *te->binding.as_Struct();
+                
+                HIR::TypeRef    tmp;
+                auto maybe_monomorph = [&](const auto& ty)->const auto& {
+                    return resolve.monomorph_expand_opt(sp, tmp, ty, MonomorphStatePtr(nullptr, &te->path.m_data.as_Generic().m_params, nullptr));
+                    };
+                TU_MATCH_HDRA( (str.m_data), {)
+                TU_ARMA(Unit, se) {
+                    BUG(sp, "Field on unit-like struct - " << ty);
+                    }
+                TU_ARMA(Tuple, se) {
+                    ASSERT_BUG(sp, e.size() == se.size(), "Incorrect Literal::List size for tuple-struct " << te->path);
+                    for(size_t i = 0; i < e.size(); i ++)
+                        replace_borrow_data(maybe_monomorph(se[i].ent), e[i]);
+                    }
+                TU_ARMA(Named, se) {
+                    ASSERT_BUG(sp, e.size() == se.size(), "Incorrect Literal::List size for tuple-struct " << te->path);
+                    for(size_t i = 0; i < e.size(); i ++)
+                        replace_borrow_data(maybe_monomorph(se[i].second.ent), e[i]);
+                    }
+                }
+            }
+            else {
+                TODO(sp, "List " << ty << " =  " << lit);
+            }
+            }
+        TU_ARMA(Variant, e) {
+            if( !e.val->is_BorrowData() && !(e.val->is_List() && !e.val->as_List().empty()) ) {
+                // Doesn't need to recurse (not a BD and not a non-empty list)
+            }
+            else if( const auto* te = ty.data().opt_Path() ) {
+                if( te->binding.is_Union() ) {
+                    const auto& unm = *te->binding.as_Union();
+                    HIR::TypeRef    tmp;
+                    auto maybe_monomorph = [&](const auto& ty)->const auto& {
+                        return resolve.monomorph_expand_opt(sp, tmp, ty, MonomorphStatePtr(nullptr, &te->path.m_data.as_Generic().m_params, nullptr));
+                        };
+                    const auto& var = unm.m_variants[e.idx];
+                    replace_borrow_data(maybe_monomorph(var.second.ent), *e.val);
+                }
+                else if( te->binding.is_Enum() ) {
+                    const auto& enm = *te->binding.as_Enum();
+                    HIR::TypeRef    tmp;
+                    auto maybe_monomorph = [&](const auto& ty)->const auto& {
+                        return resolve.monomorph_expand_opt(sp, tmp, ty, MonomorphStatePtr(nullptr, &te->path.m_data.as_Generic().m_params, nullptr));
+                        };
+                    ASSERT_BUG(sp, enm.m_data.is_Data(), ty << " must be data enum");
+                    const auto& vars = enm.m_data.as_Data();
+                    ASSERT_BUG(sp, e.idx < vars.size(), "");
+                    const auto& var = vars[e.idx];
+                    replace_borrow_data(maybe_monomorph(var.type), *e.val);
+                }
+                else {
+                    // TODO: Get inner type
+                    TODO(Span(), "Variant " << ty << " =  " << lit);
+                }
+            }
+            else {
+                TODO(Span(), "Variant " << ty << " =  " << lit);
+            }
+            }
+        }
+    }
+
+    static bool has_borrow_data(const HIR::Literal& lit)
+    {
+        HIR::Literal    rv;
+        TRACE_FUNCTION_FR(lit, rv);
+        TU_MATCH_HDRA( (lit), {)
+            TU_ARMA(BorrowData, e) {
+            return true;
+        }
+        TU_ARMA(Invalid, e) {}
+        TU_ARMA(Defer, e) {}
+        TU_ARMA(Generic, e) {}
+        TU_ARMA(BorrowPath, e) {}
+        TU_ARMA(Integer, e) {}
+        TU_ARMA(Float, e) {}
+        TU_ARMA(String, e) {}
+        TU_ARMA(List, e) {
+            for(const auto& i : e)
+                if( has_borrow_data(i) )
+                    return true;
+        }
+        TU_ARMA(Variant, e) {
+            return has_borrow_data(*e.val);
+        }
+        }
+        return false;
+    }
+
     ::HIR::Literal Evaluator::evaluate_constant(const ::HIR::ItemPath& ip, const ::HIR::ExprPtr& expr, ::HIR::TypeRef exp, MonomorphState ms/*={}*/)
     {
         TRACE_FUNCTION_F(ip);
@@ -901,7 +1238,13 @@ namespace HIR {
             if( top_ip.trait && !top_ip.ty ) {
                 ms.self_ty = ty_self.clone();
             }
-            return evaluate_constant_mir(ip, *mir, mv$(ms), mv$(exp), {});
+            auto rv = evaluate_constant_mir(ip, *mir, mv$(ms), exp.clone(), {});
+            // TODO: Replace all BorrowData with BorrowPath
+            if(has_borrow_data(rv))
+            {
+                this->replace_borrow_data(exp, rv);
+            }
+            return rv;
         }
         else {
             BUG(this->root_span, "Attempting to evaluate constant expression with no associated code");
@@ -1165,7 +1508,7 @@ namespace {
                 }
                 else
                 {
-                    DEBUG("Array " << ty << " - size = " << e->size.as_Known());
+                    DEBUG("Array " << ty << " - size = " << e->size);
                 }
             }
 

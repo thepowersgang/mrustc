@@ -49,7 +49,10 @@ TAGGED_UNION_EX(Literal, (), Invalid, (
     // Borrow of a path (existing item)
     (BorrowPath, ::HIR::Path),
     // Borrow of inline data
-    (BorrowData, ::std::unique_ptr<Literal>),
+    (BorrowData, struct {
+        ::std::unique_ptr<Literal> val;
+        HIR::TypeRef    ty;
+        }),
     // String = &'static str or &[u8; N]
     (String, ::std::string)
     ),
@@ -64,7 +67,7 @@ TAGGED_UNION_EX(Literal, (), Invalid, (
         static Literal new_integer(uint64_t v) { return Literal::make_Integer(v); }
         static Literal new_integer(double v) { return Literal::make_Float(v); }
         static Literal new_borrow_path(::HIR::Path p) { return Literal::make_BorrowPath(mv$(p)); }
-        static Literal new_borrow_data(Literal inner) { return Literal::make_BorrowData(box$(inner)); }
+        static Literal new_borrow_data(TypeRef ty, Literal inner) { return Literal::make_BorrowData({ box$(inner), mv$(ty) }); }
         static Literal new_string(std::string v) { return Literal::make_String(mv$(v)); }
 
         Literal clone() const;

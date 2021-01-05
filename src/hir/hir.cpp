@@ -62,7 +62,7 @@ namespace HIR {
             os << "&" << e;
             ),
         (BorrowData,
-            os << "&" << *e;
+            os << "&" << *e.val;
             ),
         (String,
             os << "\"" << FmtEscaped(e) << "\"";
@@ -105,7 +105,7 @@ namespace HIR {
             return le == re;
             ),
         (BorrowData,
-            return *le == *re;
+            return *le.val == *re.val;
             ),
         (String,
             return le == re;
@@ -162,7 +162,7 @@ HIR::Literal HIR::Literal::clone() const
         return ::HIR::Literal(e.clone());
         ),
     (BorrowData,
-        return ::HIR::Literal(box$( e->clone() ));
+        return ::HIR::Literal::make_BorrowData({ box$(e.val->clone()), e.ty.clone() });
         ),
     (String,
         return ::HIR::Literal(e);
