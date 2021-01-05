@@ -22,20 +22,49 @@ struct Ident
     };
 
     // TODO: make this a reference-counted pointer instead (so it's cheaper to copy)
+    // - Presents challenges with setting the module path, and how this is used in macros.
     class Hygiene
     {
         static unsigned g_next_scope;
 
-        ::std::vector<unsigned int> contexts;
-        ::std::shared_ptr<ModPath> search_module;
+        struct Inner {
+            ::std::vector<unsigned int> contexts;
+            ::std::shared_ptr<ModPath> search_module;
+        };
+        // NOTE: Use a unique pointer to reduce the size to 1 pointer (instead of 5)
+        // - Used quite a bit, and parse sometimes runs out of stack.
+        ::std::unique_ptr<Inner>    m_inner;
 
         Hygiene(unsigned int index):
-            contexts({index})
-        {}
+            m_inner(new Inner())
+        {
+            m_inner->contexts.push_back(index);
+        }
+              Inner* operator->()       { return &*m_inner; }
+        const Inner* operator->() const { return &*m_inner; }
     public:
         Hygiene():
-            contexts({})
+            m_inner(new Inner())
         {}
+        Hygiene(const Hygiene& x):
+            m_inner(new Inner(*x.m_inner))
+        {
+        }
+        Hygiene& operator=(const Hygiene& x) {
+            *this = Hygiene(x);
+            assert(this->m_inner);
+            return *this;
+        }
+
+        //Hygiene(Hygiene&& x) = default;
+        Hygiene(Hygiene&& x): m_inner(std::move(x.m_inner)) {
+            //assert(m_inner);
+        }
+        Hygiene& operator=(Hygiene&& x) {
+            m_inner.reset(x.m_inner.release());
+            //assert(m_inner);
+            return *this;
+        }
 
         static Hygiene new_scope()
         {
@@ -44,39 +73,34 @@ struct Ident
         static Hygiene new_scope_chained(const Hygiene& parent)
         {
             Hygiene rv;
-            rv.search_module = parent.search_module;
-            rv.contexts.reserve( parent.contexts.size() + 1 );
-            rv.contexts.insert( rv.contexts.begin(),  parent.contexts.begin(), parent.contexts.end() );
-            rv.contexts.push_back( ++g_next_scope );
+            rv->search_module = parent->search_module;
+            rv->contexts.reserve( parent->contexts.size() + 1 );
+            rv->contexts.insert( rv->contexts.begin(),  parent->contexts.begin(), parent->contexts.end() );
+            rv->contexts.push_back( ++g_next_scope );
             return rv;
         }
         Hygiene get_parent() const
         {
             //assert(this->contexts.size() > 1);
             Hygiene rv;
-            rv.contexts.insert(rv.contexts.begin(),  this->contexts.begin(), this->contexts.end()-1);
+            rv->contexts.insert(rv->contexts.begin(),  m_inner->contexts.begin(), m_inner->contexts.end()-1);
             return rv;
         }
 
         bool has_mod_path() const {
-            return this->search_module != 0;
+            return m_inner->search_module != 0;
         }
         const ModPath& mod_path() const {
-            assert(this->search_module);
-            return *this->search_module;
+            assert(m_inner->search_module);
+            return *m_inner->search_module;
         }
         void set_mod_path(ModPath p) {
-            this->search_module.reset( new ModPath(::std::move(p)) );
+            m_inner->search_module.reset( new ModPath(::std::move(p)) );
         }
-
-        Hygiene(Hygiene&& x) = default;
-        Hygiene(const Hygiene& x) = default;
-        Hygiene& operator=(Hygiene&& x) = default;
-        Hygiene& operator=(const Hygiene& x) = default;
 
         // Returns true if an ident with hygine `source` can see an ident with this hygine
         bool is_visible(const Hygiene& source) const;
-        bool operator==(const Hygiene& x) const { return contexts == x.contexts && search_module == x.search_module; }
+        bool operator==(const Hygiene& x) const { return m_inner->contexts == x->contexts && m_inner->search_module == x->search_module; }
         //bool operator!=(const Hygiene& x) const { return scope_index != x.scope_index; }
 
         friend ::std::ostream& operator<<(::std::ostream& os, const Hygiene& v);

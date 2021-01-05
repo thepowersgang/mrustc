@@ -250,6 +250,7 @@ MacroRef Expand_LookupMacro(const Span& mi_span, const ::AST::Crate& crate, LLis
 
         DEBUG("Invoking macro_rules " << path << " " << mr_ptr);
         auto e = Macro_InvokeRules(path.is_trivial() ? path.as_trivial().c_str() : FMT(path).c_str(), *mr_ptr, mi_span, mv$(input_tt), crate, mod);
+        input_tt = TokenTree();
         return e;
         }
     }
