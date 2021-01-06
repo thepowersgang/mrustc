@@ -69,6 +69,7 @@ namespace {
         #if 1
         if( params.m_types.size() == 0 ) {
             params.m_types.resize( params_def.m_types.size() );
+            // TODO: Optionally fill in the defaults?
         }
         if( params.m_types.size() != params_def.m_types.size() ) {
             ERROR(sp, E0000, "Incorrect parameter count, expected " << params_def.m_types.size() << ", got " << params.m_types.size());
@@ -106,10 +107,13 @@ namespace {
             const ::HIR::ItemPath*  path;
         } m_cur_module;
 
+        unsigned m_in_expr;
+
     public:
         Visitor(const ::HIR::Crate& crate):
             m_crate(crate),
-            m_ms(crate)
+            m_ms(crate),
+            m_in_expr(0)
         {
             static ::HIR::ItemPath  root_path("");
             m_cur_module.ptr = &crate.m_root_module;
@@ -471,17 +475,17 @@ namespace {
                         DEBUG("- " << ty);
                         ),
                     (Struct,
-                        fix_param_count(sp, pe, e3.m_params,  pe.m_params);
+                        fix_param_count(sp, pe, e3.m_params,  pe.m_params, /*fill_infer=*/m_in_expr!=0);
                         e->binding = ::HIR::TypePathBinding::make_Struct(&e3);
                         DEBUG("- " << ty);
                         ),
                     (Union,
-                        fix_param_count(sp, pe, e3.m_params,  pe.m_params);
+                        fix_param_count(sp, pe, e3.m_params,  pe.m_params, /*fill_infer=*/m_in_expr!=0);
                         e->binding = ::HIR::TypePathBinding::make_Union(&e3);
                         DEBUG("- " << ty);
                         ),
                     (Enum,
-                        fix_param_count(sp, pe, e3.m_params,  pe.m_params);
+                        fix_param_count(sp, pe, e3.m_params,  pe.m_params, /*fill_infer=*/m_in_expr!=0);
                         e->binding = ::HIR::TypePathBinding::make_Enum(&e3);
                         DEBUG("- " << ty);
                         ),
@@ -710,8 +714,13 @@ namespace {
             // Local expression
             if( expr.get() != nullptr )
             {
+                // TODO: Disable type param defaults for this scope
+                this->m_in_expr ++;
+
                 ExprVisitor v { *this };
                 (*expr).visit(v);
+
+                this->m_in_expr --;
             }
             // External expression (has MIR)
             else if( auto* mir = expr.get_ext_mir_mut() )
