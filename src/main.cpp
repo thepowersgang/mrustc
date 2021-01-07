@@ -574,6 +574,8 @@ int main(int argc, char *argv[])
                 HIR_Dump( os, *hir_crate );
                 });
         }
+        // TODO: Expand vtables here?
+        // - Some parts of constant evaluate require it
         // Basic constant evalulation (intergers/floats only)
         CompilePhaseV("Constant Evaluate", [&]() {
             ConvertHIR_ConstantEvaluate(*hir_crate);
@@ -614,6 +616,8 @@ int main(int argc, char *argv[])
             });
         // - Construct VTables for all traits and impls.
         //  TODO: How early can this be done?
+        //  > Requires consteval completed for types to be fully valid?
+        //  TODO: Would prefer to have this done before consteval, as consteval might reference a vtable
         CompilePhaseV("Expand HIR VTables", [&]() {
             HIR_Expand_VTables(*hir_crate);
             });
