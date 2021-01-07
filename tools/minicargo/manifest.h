@@ -17,6 +17,9 @@
 class PackageManifest;
 class Repository;
 struct TomlKeyValue;
+struct ErrorHandler;
+
+void Manifest_LoadOverrides(const ::std::string& s);
 
 struct PackageVersion
 {
@@ -161,7 +164,7 @@ class PackageRef
     {
     }
 
-    void fill_from_kv(bool was_created, const TomlKeyValue& kv, size_t ofs);
+    void fill_from_kv(ErrorHandler& eh, bool was_created, const TomlKeyValue& kv, size_t ofs);
 
 public:
     const ::std::string& key() const { return m_key; }
@@ -293,7 +296,10 @@ class PackageManifest
 
 public:
     static PackageManifest load_from_toml(const ::std::string& path);
+private:
+    void fill_from_kv(ErrorHandler& eh, const TomlKeyValue& kv);
 
+public:
     const PackageVersion& version() const { return m_version; }
     bool has_library() const;
     const PackageTarget& get_library() const;

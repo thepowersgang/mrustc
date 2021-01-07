@@ -1,8 +1,8 @@
 @set RUSTC_VERSION=1.39.0
 @set MRUSTC_TARGET_VER=1.39
 @set OUTDIR=output-%RUSTC_VERSION%
-@set STD_ARGS=--output-dir %OUTDIR%
-@set STD_ARGS=%STD_ARGS% --vendor-dir ..\rustc-%RUSTC_VERSION%-src\vendor
+@set COMMON_ARGS=--vendor-dir ..\rustc-%RUSTC_VERSION%-src\vendor --manifest-overrides ..\rustc-%RUSTC_VERSION%-overrides.toml
+@set STD_ARGS=--output-dir %OUTDIR% %COMMON_ARGS%
 @set STD_ARGS=%STD_ARGS% --script-overrides ..\script-overrides\stable-%RUSTC_VERSION%-windows
 @mkdir %OUTDIR%
 x64\Release\minicargo.exe ..\rustc-%RUSTC_VERSION%-src\src\libstd %STD_ARGS%

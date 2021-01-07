@@ -176,9 +176,10 @@ struct TomlValue
 
 struct TomlKeyValue
 {
+    typedef ::std::vector<::std::string>    Path;
     // Path to the value (last node is the value name)
     // TODO: How are things like `[[bin]]` handled?
-    ::std::vector<::std::string>    path;
+    Path    path;
     // Relevant value
     TomlValue   value;
 };

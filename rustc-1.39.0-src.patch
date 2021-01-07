@@ -23,29 +23,3 @@
 +        const fn len_inner<T>(s: &[T]) -> usize { unsafe { ::intrinsics::mrustc_slice_len(s) } }
 +        len_inner(self)
      }
-
-# HACK HACK HACK
-# - This mangles the manifest, which will likely break non-mrustc building
-# - Solution: Add a override list to minicargo
-
-# Add libproc_macro as an explicit dependency for libsyntax (as it needs the rustc version, not the mrustc one)
---- src/libsyntax/Cargo.toml
-+++ src/libsyntax/Cargo.toml
-@@ -12,2 +12,3 @@
- [dependencies]
-+proc_macro = { path = "../libproc_macro" }
- bitflags = "1.0"
-# Add libproc_macro as an explicit dependency for libsyntax (as it needs the rustc version, not the mrustc one)
---- src/libsyntax_ext/Cargo.toml
-+++ src/libsyntax_ext/Cargo.toml
-@@ -12,2 +12,3 @@
- [dependencies]
-+proc_macro = { path = "../libproc_macro" }
- errors = { path = "../librustc_errors", package = "rustc_errors" }
-# Remove libstd from proc_macro's deps (as it's aready built)
---- src/libproc_macro/Cargo.toml
-+++ src/libproc_macro/Cargo.toml
-@@ -10,2 +10,2 @@
- [dependencies]
--std = { path = "../libstd" }
-+#std = { path = "../libstd" }
