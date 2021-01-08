@@ -393,12 +393,13 @@ namespace HIR {
 
                     //check_lit_type(item.m_value->span(), item.m_type, item.m_value_res);
                 }
-                auto it = c.m_monomorph_cache.find(*e2.p);
+                auto it = c.m_monomorph_cache.find(p);
                 if( it != c.m_monomorph_cache.end() )
                 {
-                    MIR_ASSERT(state, !it->second.is_Defer(), "Cached literal for " << *e2.p << " is Defer");
+                    MIR_ASSERT(state, !it->second.is_Defer(), "Cached literal for " << p << " is Defer");
                     return it->second.clone();
                 }
+                MIR_ASSERT(state, !c.m_value_res.is_Defer(), "Unexpected Defer const with no generics in its path - " << p);
                 return c.m_value_res.clone();
                 }
             TU_ARM(c, Generic, e2) {
