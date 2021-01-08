@@ -81,7 +81,7 @@ namespace {
             ::HIR::Visitor::visit_function(p, item);
         }
         void visit_type_alias(::HIR::ItemPath p, ::HIR::TypeAlias& item) override {
-            // NOTE: Disabled, becuase generics in type aliases are never checked
+            // NOTE: Disabled, because generics in type aliases are never checked
 #if 0
             auto _ = m_resolve.set_item_generics(item.m_params);
             ::HIR::Visitor::visit_type_alias(p, item);
@@ -99,7 +99,9 @@ namespace {
             TRACE_FUNCTION_F("impl" << impl.m_params.fmt_args() << " " << impl.m_type << " (mod=" << impl.m_src_module << ")");
             auto _t = this->push_mod_traits( this->m_crate.get_mod_by_path(Span(), impl.m_src_module) );
             auto _g = m_resolve.set_impl_generics(impl.m_params);
+            m_current_type = &impl.m_type;
             ::HIR::Visitor::visit_type_impl(impl);
+            m_current_type = nullptr;
         }
         void visit_marker_impl(const ::HIR::SimplePath& trait_path, ::HIR::MarkerImpl& impl) override {
             ::HIR::ItemPath    p( impl.m_type, trait_path, impl.m_trait_args );
@@ -125,6 +127,23 @@ namespace {
             TRACE_FUNCTION_F("impl" << impl.m_params.fmt_args() << " " << trait_path << impl.m_trait_args << " for " << impl.m_type << " (mod=" << impl.m_src_module << ")");
             auto _t = this->push_mod_traits( this->m_crate.get_mod_by_path(Span(), impl.m_src_module) );
             auto _g = m_resolve.set_impl_generics(impl.m_params);
+
+
+            // HACK: Expand defaults for parameters in trait names here.
+            {
+                Span    sp;
+                const auto& trait = m_crate.get_trait_by_path(sp, trait_path);
+                auto ms = MonomorphStatePtr(&impl.m_type, &impl.m_trait_args, nullptr);
+
+                while( impl.m_trait_args.m_types.size() < trait.m_params.m_types.size() )
+                {
+                    const auto& def = trait.m_params.m_types[ impl.m_trait_args.m_types.size() ];
+                    auto ty = ms.monomorph_type(sp, def.m_default);
+                    DEBUG("Add default trait arg " << ty << " from " << def.m_default);
+                    impl.m_trait_args.m_types.push_back( mv$(ty) );
+                }
+            }
+
             // TODO: Handle resolution of all items in m_resolve.m_type_equalities
             // - params might reference each other, so `set_item_generics` has to have been called
             // - But `m_type_equalities` can end up with non-resolved UFCS paths
@@ -149,7 +168,6 @@ namespace {
 
         void visit_expr(::HIR::ExprPtr& expr) override
         {
-#if 1
             struct ExprVisitor:
                 public ::HIR::ExprVisitorDef
             {
@@ -163,67 +181,23 @@ namespace {
                 {
                     upper_visitor.visit_type(ty);
                 }
-
-                void visit(::HIR::ExprNode_Let& node) override
+                void visit_path(::HIR::Visitor::PathContext pc, ::HIR::Path& path) override
                 {
-                    upper_visitor.visit_pattern(node.m_pattern);
-                    upper_visitor.visit_type(node.m_type);
-                    ::HIR::ExprVisitorDef::visit(node);
+                    upper_visitor.visit_path(path, pc);
                 }
-                //void visit(::HIR::ExprNode_Cast& node) override
-                //{
-                //    upper_visitor.visit_type(node.m_dst_type);
-                //    ::HIR::ExprVisitorDef::visit(node);
-                //}
-
-                void visit(::HIR::ExprNode_CallPath& node) override
+                void visit_pattern(const Span& sp, ::HIR::Pattern& pat) override
                 {
-                    upper_visitor.visit_path(node.m_path, ::HIR::Visitor::PathContext::VALUE);
-                    ::HIR::ExprVisitorDef::visit(node);
-                }
-                void visit(::HIR::ExprNode_CallMethod& node) override
-                {
-                    upper_visitor.visit_path_params(node.m_params);
-                    ::HIR::ExprVisitorDef::visit(node);
+                    upper_visitor.visit_pattern(pat);
                 }
 
+                // Custom to visit the inner expression
                 void visit(::HIR::ExprNode_ArraySized& node) override
                 {
                     upper_visitor.visit_expr(node.m_size);
                     ::HIR::ExprVisitorDef::visit(node);
                 }
 
-                void visit(::HIR::ExprNode_PathValue& node) override
-                {
-                    upper_visitor.visit_path(node.m_path, ::HIR::Visitor::PathContext::VALUE);
-                    ::HIR::ExprVisitorDef::visit(node);
-                }
-                void visit(::HIR::ExprNode_StructLiteral& node) override
-                {
-                    upper_visitor.visit_type(node.m_type);
-                    ::HIR::ExprVisitorDef::visit(node);
-                }
-
-                void visit(::HIR::ExprNode_Match& node) override
-                {
-                    for(auto& arm : node.m_arms)
-                    {
-                        for(auto& pat : arm.m_patterns)
-                            upper_visitor.visit_pattern(pat);
-                    }
-                    ::HIR::ExprVisitorDef::visit(node);
-                }
-
-                void visit(::HIR::ExprNode_Closure& node) override
-                {
-                    upper_visitor.visit_type(node.m_return);
-                    for(auto& arg : node.m_args) {
-                        upper_visitor.visit_pattern(arg.first);
-                        upper_visitor.visit_type(arg.second);
-                    }
-                    ::HIR::ExprVisitorDef::visit(node);
-                }
-
+                // NOTE: Custom needed for trait scoping
                 void visit(::HIR::ExprNode_Block& node) override
                 {
                     if( node.m_traits.size() == 0 && node.m_local_mod.m_components.size() > 0 ) {
@@ -234,20 +208,21 @@ namespace {
                     }
                     for( const auto& trait_ref : node.m_traits )
                         upper_visitor.m_traits.push_back( trait_ref );
+
                     ::HIR::ExprVisitorDef::visit(node);
+
                     for(unsigned int i = 0; i < node.m_traits.size(); i ++ )
                         upper_visitor.m_traits.pop_back();
                 }
             };
 
-            if( m_visit_exprs &&  expr.get() != nullptr )
+            if( m_visit_exprs && expr.get() != nullptr )
             {
                 m_in_expr = true;
                 ExprVisitor v { *this };
                 (*expr).visit(v);
                 m_in_expr = false;
             }
-#endif
         }
 
         bool locate_trait_item_in_bounds(::HIR::Visitor::PathContext pc,  const ::HIR::TypeRef& tr, const ::HIR::GenericParams& params,  ::HIR::Path::Data& pd) {
@@ -306,6 +281,7 @@ namespace {
         // Locate the item in `pd` and set `pd` to UfcsResolved if found
         // TODO: This code may end up generating paths without the type information they should contain
         bool locate_in_trait_and_set(::HIR::Visitor::PathContext pc, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait,  ::HIR::Path::Data& pd) {
+            TRACE_FUNCTION_F(trait_path);
             // TODO: Get the span from caller
             static Span _sp;
             const auto& sp = _sp;
@@ -588,7 +564,8 @@ namespace {
 
                 if(tp.m_params.m_types.size() < trait.m_params.m_types.size())
                 {
-                    //TODO(sp, "Defaults in UfcsKnown - " << p);
+                    //TODO(sp, "Defaults in UfcsKnown - " << p << " - " << tp.m_params << " vs " << trait.m_params.fmt_args());
+                    // TOOD: Where does this usually get expanded then?
                 }
             }
 
@@ -603,7 +580,8 @@ namespace {
 
                 // If processing a trait, and the type is 'Self', search for the type/method on the trait
                 // - Explicitly encoded because `Self::Type` has a different meaning to `MyType::Type` (the latter will search bounds first)
-                if( e.type == ::HIR::TypeRef("Self", 0xFFFF) )
+                // - NOTE: Could be in an inherent block, where there's no trait
+                if( /*m_current_type &&*/ m_current_trait && e.type == ::HIR::TypeRef("Self", 0xFFFF) )
                 {
                     ::HIR::GenericPath  trait_path;
                     if( m_current_trait_path->trait_path() )
@@ -619,6 +597,7 @@ namespace {
                         }
                     }
                     if( locate_in_trait_and_set(pc, trait_path, *m_current_trait,  p.m_data) ) {
+                        assert(!p.m_data.is_UfcsUnknown());
                         // Success!
                         if( m_in_expr ) {
                             for(auto& t : p.m_data.as_UfcsKnown().trait.m_params.m_types)
@@ -630,26 +609,41 @@ namespace {
                     DEBUG("- Item " << e.item << " not found in Self - ty=" << e.type);
                 }
 
+                // NOTE: Replace `Self` now
+                // - Now that the only `Self`-specific logic is done, replace so the lookup code works.
+                if(m_current_type)
+                {
+                    visit_path_tys_with_mut(p, [&](HIR::TypeRef& t)->bool{
+                        if(t.data().is_Generic() && t.data().as_Generic().binding == GENERIC_Self) {
+                            t = m_current_type->clone();
+                        }
+                        return false;
+                        });
+                }
+
                 // Search for matching impls in current generic blocks
                 if( m_resolve.m_item_generics != nullptr && locate_trait_item_in_bounds(pc, e.type, *m_resolve.m_item_generics,  p.m_data) ) {
                     DEBUG("Found in item params, p = " << p);
+                    assert(!p.m_data.is_UfcsUnknown());
                     return ;
                 }
                 if( m_resolve.m_impl_generics != nullptr && locate_trait_item_in_bounds(pc, e.type, *m_resolve.m_impl_generics,  p.m_data) ) {
                     DEBUG("Found in impl params, p = " << p);
+                    assert(!p.m_data.is_UfcsUnknown());
                     return ;
                 }
 
                 // TODO: Control ordering with a flag in UfcsUnknown
                 // 1. Search for applicable inherent methods (COMES FIRST!)
                 if( this->resolve_UfcsUnknown_inherent(p, pc, p.m_data) ) {
+                    assert(!p.m_data.is_UfcsUnknown());
                     return ;
                 }
                 assert(p.m_data.is_UfcsUnknown());
 
                 // If the type is the impl type, look for items AFTER generic lookup
                 // TODO: Should this look up in-scope traits instead of hard-coding this hack?
-                if( m_current_type && e.type == *m_current_type )
+                if( m_current_type && m_current_trait && e.type == *m_current_type )
                 {
                     ::HIR::GenericPath  trait_path;
                     if( m_current_trait_path->trait_path() )
@@ -665,6 +659,7 @@ namespace {
                         }
                     }
                     if( locate_in_trait_and_set(pc, trait_path, *m_current_trait,  p.m_data) ) {
+                        assert(!p.m_data.is_UfcsUnknown());
                         // Success!
                         if( m_in_expr ) {
                             for(auto& t : p.m_data.as_UfcsKnown().trait.m_params.m_types)
@@ -689,6 +684,7 @@ namespace {
                         DEBUG("Searching ATY bound: " << trait_path);
                         // Search within this (bounded) trait for the outer item
                         if( this->locate_in_trait_impl_and_set(sp, pc, mv$(trait_path), *t.m_trait_ptr,  p.m_data) ) {
+                            assert(!p.m_data.is_UfcsUnknown());
                             return ;
                         }
                     }
@@ -698,6 +694,7 @@ namespace {
 
                 // 2. Search all impls of in-scope traits for this method on this type
                 if( this->resolve_UfcsUnknown_trait(p, pc, p.m_data) ) {
+                    assert(!p.m_data.is_UfcsUnknown());
                     return ;
                 }
                 assert(p.m_data.is_UfcsUnknown());

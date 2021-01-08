@@ -67,7 +67,6 @@ class Expander:
     public ::HIR::Visitor
 {
     const ::HIR::Crate& m_crate;
-    const ::HIR::TypeRef*   m_impl_type = nullptr;
     bool m_in_expr = false;
 
 public:
@@ -77,24 +76,9 @@ public:
 
     void visit_type(::HIR::TypeRef& ty) override
     {
-        ::HIR::Visitor::visit_type(ty);
+        static Span sp;
 
-        if(const auto* te = ty.data().opt_Generic() )
-        {
-            if( te->binding == GENERIC_Self )
-            {
-                if( m_impl_type )
-                {
-                    DEBUG("Replace Self with " << *m_impl_type);
-                    ty = m_impl_type->clone();
-                }
-                else
-                {
-                    // NOTE: Valid for `trait` definitions.
-                    DEBUG("Self outside of an `impl` block");
-                }
-            }
-        }
+        ::HIR::Visitor::visit_type(ty);
 
         if( const auto* e = ty.data().opt_Path() ) 
         {
@@ -104,6 +88,7 @@ public:
             const unsigned int MAX_RECURSIVE_TYPE_EXPANSIONS = 100;
             while(num_exp < MAX_RECURSIVE_TYPE_EXPANSIONS)
             {
+                // NOTE: inner recurses
                 ::HIR::Visitor::visit_type(new_type);
                 if( const auto* e = new_type.data().opt_Path() )
                 {
@@ -117,7 +102,7 @@ public:
                     break;
                 }
             }
-            ASSERT_BUG(Span(), num_exp < MAX_RECURSIVE_TYPE_EXPANSIONS, "Recursion limit hit expanding " << ty << " (currently on " << new_type << ")");
+            ASSERT_BUG(sp, num_exp < MAX_RECURSIVE_TYPE_EXPANSIONS, "Recursion limit hit expanding " << ty << " (currently on " << new_type << ")");
             if( ! new_type.data().is_Infer() ) {
                 DEBUG("Replacing " << ty << " with " << new_type << " (" << num_exp << " expansions)");
                 ty = mv$(new_type);
@@ -156,36 +141,37 @@ public:
     void visit_pattern(::HIR::Pattern& pat) override
     {
         static Span sp;
+
         ::HIR::Visitor::visit_pattern(pat);
 
-        TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (e),
-        (
-            ),
-        (StructValue,
+        TU_MATCH_HDRA( (pat.m_data), {)
+        default:
+            break;
+        TU_ARMA(StructValue, e) {
             auto new_path = expand_alias_gp(sp, e.path);
             if( new_path.m_path.m_components.size() != 0 )
             {
                 DEBUG("Replacing " << e.path << " with " << new_path);
                 e.path = mv$(new_path);
             }
-            ),
-        (StructTuple,
+            }
+        TU_ARMA(StructTuple, e) {
             auto new_path = expand_alias_gp(sp, e.path);
             if( new_path.m_path.m_components.size() != 0 )
             {
                 DEBUG("Replacing " << e.path << " with " << new_path);
                 e.path = mv$(new_path);
             }
-            ),
-        (Struct,
+            }
+        TU_ARMA(Struct, e) {
             auto new_path = expand_alias_gp(sp, e.path);
             if( new_path.m_path.m_components.size() != 0 )
             {
                 DEBUG("Replacing " << e.path << " with " << new_path);
                 e.path = mv$(new_path);
             }
-            )
-        )
+            }
+        }
     }
 
     void visit_expr(::HIR::ExprPtr& expr) override
@@ -199,98 +185,92 @@ public:
                 upper_visitor(uv)
             {}
 
-            // TODO: Use the other visitors.
             void visit_type(::HIR::TypeRef& ty) override
             {
                 upper_visitor.visit_type(ty);
             }
-            void visit_path(::HIR::Visitor::PathContext pc, ::HIR::Path& p) override
+            void visit_pattern(const Span& sp, ::HIR::Pattern& pat) override
             {
-                upper_visitor.visit_path(p, pc);
-            }
-            void visit_generic_path(::HIR::Visitor::PathContext pc, ::HIR::GenericPath& p) override
-            {
-                upper_visitor.visit_generic_path(p, pc);
+                upper_visitor.visit_pattern(pat);
             }
 
-            void visit(::HIR::ExprNode_Let& node) override
-            {
-                upper_visitor.visit_type(node.m_type);
-                upper_visitor.visit_pattern(node.m_pattern);
-                ::HIR::ExprVisitorDef::visit(node);
-            }
-
-            void visit(::HIR::ExprNode_CallPath& node) override
-            {
-                //TRACE_FUNCTION_F(node.m_path);
-                upper_visitor.visit_path(node.m_path, ::HIR::Visitor::PathContext::VALUE);
-                ::HIR::ExprVisitorDef::visit(node);
-            }
-            void visit(::HIR::ExprNode_CallMethod& node) override
-            {
-                upper_visitor.visit_path_params(node.m_params);
-                ::HIR::ExprVisitorDef::visit(node);
-            }
-
-            void visit(::HIR::ExprNode_Closure& node) override
-            {
-                upper_visitor.visit_type(node.m_return);
-                for(auto& arg : node.m_args) {
-                    upper_visitor.visit_pattern(arg.first);
-                    upper_visitor.visit_type(arg.second);
-                }
-                ::HIR::ExprVisitorDef::visit(node);
-            }
-
-            void visit(::HIR::ExprNode_StructLiteral& node) override
-            {
-                if( node.m_is_struct )
-                {
-                    visit_type(node.m_type);
-
-                    if(node.m_type.data().is_Path() )
-                    {
-                        auto new_type = ConvertHIR_ExpandAliases_GetExpansion(upper_visitor.m_crate, node.m_type.data().as_Path().path, /*in_expr=*/true);
-                        if( new_type != ::HIR::TypeRef() )
-                        {
-                            DEBUG("Replacing " << node.m_type << " with " << new_type);
-                            node.m_type = mv$(new_type);
-                        }
-                    }
-                    else if( node.m_type == ::HIR::TypeRef("Self", GENERIC_Self) )
-                    {
-                        node.m_type = upper_visitor.m_impl_type->clone();
-                    }
-                    else
-                    {
-                    }
-                }
-                else
-                {
-                    // The type will be an enum variant.
-                }
-
-                // NOTE: Manual visit to avoid visiting the probably-invalid type
-                if( node.m_base_value )
-                    visit_node_ptr(node.m_base_value);
-                for(auto& val : node.m_values)
-                    visit_node_ptr(val.second);
-
-                visit_generic_path(::HIR::Visitor::PathContext::TYPE, node.m_real_path);
-            }
+            // Custom impl to visit the inner expression
             void visit(::HIR::ExprNode_ArraySized& node) override
             {
                 upper_visitor.visit_expr(node.m_size);
                 ::HIR::ExprVisitorDef::visit(node);
             }
+        };
 
-            void visit(::HIR::ExprNode_Match& node) override
+        if( expr.get() != nullptr )
+        {
+            auto old = m_in_expr;
+            m_in_expr = true;
+
+            Visitor v { *this };
+            (*expr).visit(v);
+
+            m_in_expr = old;
+        }
+    }
+};
+
+
+class Expander_Self:
+    public ::HIR::Visitor
+{
+    const ::HIR::Crate& m_crate;
+    const ::HIR::TypeRef*   m_impl_type = nullptr;
+    bool m_in_expr = false;
+
+public:
+    Expander_Self(const ::HIR::Crate& crate):
+        m_crate(crate)
+    {}
+
+    void visit_type(::HIR::TypeRef& ty) override
+    {
+        ::HIR::Visitor::visit_type(ty);
+
+        if(const auto* te = ty.data().opt_Generic() )
+        {
+            if( te->binding == GENERIC_Self )
             {
-                for(auto& arm : node.m_arms) {
-                    for(auto& pat : arm.m_patterns) {
-                        upper_visitor.visit_pattern(pat);
-                    }
+                if( m_impl_type )
+                {
+                    DEBUG("Replace Self with " << *m_impl_type);
+                    ty = m_impl_type->clone();
                 }
+                else
+                {
+                    // NOTE: Valid for `trait` definitions.
+                    DEBUG("Self outside of an `impl` block");
+                }
+            }
+        }
+    }
+
+
+    void visit_expr(::HIR::ExprPtr& expr) override
+    {
+        struct Visitor:
+            public ::HIR::ExprVisitorDef
+        {
+            Expander_Self& upper_visitor;
+
+            Visitor(Expander_Self& uv):
+                upper_visitor(uv)
+            {}
+
+            void visit_type(::HIR::TypeRef& ty) override
+            {
+                upper_visitor.visit_type(ty);
+            }
+
+            // Custom impl to visit the inner expression
+            void visit(::HIR::ExprNode_ArraySized& node) override
+            {
+                upper_visitor.visit_expr(node.m_size);
                 ::HIR::ExprVisitorDef::visit(node);
             }
         };
@@ -318,20 +298,6 @@ public:
         static Span sp;
         m_impl_type = &impl.m_type;
 
-        // HACK: Expand defaults for parameters in trait names here.
-        {
-            const auto& trait = m_crate.get_trait_by_path(sp, trait_path);
-            auto ms = MonomorphStatePtr(&impl.m_type, &impl.m_trait_args, nullptr);
-
-            while( impl.m_trait_args.m_types.size() < trait.m_params.m_types.size() )
-            {
-                const auto& def = trait.m_params.m_types[ impl.m_trait_args.m_types.size() ];
-                auto ty = ms.monomorph_type(sp, def.m_default);
-                DEBUG("Add default trait arg " << ty << " from " << def.m_default);
-                impl.m_trait_args.m_types.push_back( mv$(ty) );
-            }
-        }
-
         ::HIR::Visitor::visit_trait_impl(trait_path, impl);
         m_impl_type = nullptr;
     }
@@ -342,3 +308,10 @@ void ConvertHIR_ExpandAliases(::HIR::Crate& crate)
     Expander    exp { crate };
     exp.visit_crate( crate );
 }
+
+void ConvertHIR_ExpandAliases_Self(::HIR::Crate& crate)
+{
+    Expander_Self    exp { crate };
+    exp.visit_crate( crate );
+}
+

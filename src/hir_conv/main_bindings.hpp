@@ -14,6 +14,7 @@ namespace HIR {
 };
 
 extern void ConvertHIR_ExpandAliases(::HIR::Crate& crate);
+extern void ConvertHIR_ExpandAliases_Self(::HIR::Crate& crate);
 extern void ConvertHIR_Bind(::HIR::Crate& crate);
 extern void ConvertHIR_ResolveUFCS_SortImpls(::HIR::Crate& crate);
 extern void ConvertHIR_ResolveUFCS_Outer(::HIR::Crate& crate);

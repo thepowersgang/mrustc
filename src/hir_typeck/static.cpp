@@ -654,7 +654,6 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
                 else {
                     return HIR::Compare::Equal;
                 }
-                //TODO(Span(), "GetParams::match_val " << g << " : " << impl_params.m_values[g.binding] << " ?== " << sz);
             }
         }
     };
@@ -664,7 +663,7 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
     unsigned base_impl_placeholder_idx = 0;
     if( des_trait_params )
     {
-        assert( des_trait_params->m_types.size() == impl_trait_params.m_types.size() );
+        ASSERT_BUG( sp, des_trait_params->m_types.size() == impl_trait_params.m_types.size(), "Size mismatch in arguments for " << des_trait_path << " - " << *des_trait_params << " and " << impl_trait_params );
         unsigned max_impl_idx = 0;
         for( unsigned int i = 0; i < impl_trait_params.m_types.size(); i ++ )
         {

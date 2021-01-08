@@ -129,6 +129,7 @@ void init_debug_list()
         "Resolve Bind",
         "Resolve UFCS Outer",
         "Resolve UFCS paths",
+        "Resolve HIR Self Type",
         "Resolve HIR Markings",
         "Sort Impls",
         "Constant Evaluate",
@@ -545,7 +546,8 @@ int main(int argc, char *argv[])
         memory_dump("HIR");
 
         // Replace type aliases (`type`) into the actual type
-        // - Also inserts defaults in trait impls
+        // - Does simple replacements
+        // - Done before bind so type alises can be used in patterns?
         CompilePhaseV("Resolve Type Aliases", [&]() {
             ConvertHIR_ExpandAliases(*hir_crate);
             });
@@ -553,16 +555,23 @@ int main(int argc, char *argv[])
         CompilePhaseV("Resolve Bind", [&]() {
             ConvertHIR_Bind(*hir_crate);
             });
+
+        // Determine what trait to use for <T>::Foo in outer scope
+        // - Also inserts defaults in trait impls
+        CompilePhaseV("Resolve UFCS Outer", [&]() {
+            ConvertHIR_ResolveUFCS_Outer(*hir_crate);
+            });
+        // Expand `Self` into the true type
+        // - TODO: Move this later on, but that requires fixing some of the resolve logic around trait impl lookup
+        CompilePhaseV("Resolve HIR Self Type", [&]() {
+            ConvertHIR_ExpandAliases_Self(*hir_crate);
+            });
         // Enumerate marker impls on types and other useful metadata
         CompilePhaseV("Resolve HIR Markings", [&]() {
             ConvertHIR_Markings(*hir_crate);
             });
         CompilePhaseV("Sort Impls", [&]() {
             ConvertHIR_ResolveUFCS_SortImpls(*hir_crate);
-            });
-        // Determine what trait to use for <T>::Foo in outer scope
-        CompilePhaseV("Resolve UFCS Outer", [&]() {
-            ConvertHIR_ResolveUFCS_Outer(*hir_crate);
             });
         // Determine what trait to use for <T>::Foo (and does some associated type expansion)
         CompilePhaseV("Resolve UFCS paths", [&]() {

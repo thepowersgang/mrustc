@@ -469,6 +469,7 @@ namespace {
                         ),
                     (TypeAlias,
                         BUG(sp, "TypeAlias encountered after `Resolve Type Aliases` - " << ty);
+                        // Assume it'll be filled out, with the correct binding
                         ),
                     (ExternType,
                         e->binding = ::HIR::TypePathBinding::make_ExternType(&e3);
@@ -585,6 +586,7 @@ namespace {
             auto _ = this->m_ms.set_impl_generics(item.m_params);
             ::HIR::Visitor::visit_trait(p, item);
         }
+
         // TODO: Are generics for types "item" or "impl"?
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override
         {
@@ -762,6 +764,184 @@ namespace {
             }
         }
     };
+
+    class Visitor_EnumSuperTraits:
+        public ::HIR::Visitor
+    {
+        const ::HIR::Crate& m_crate;
+
+    public:
+        Visitor_EnumSuperTraits(const ::HIR::Crate& m_crate):
+            m_crate(m_crate)
+        {
+        }
+
+        void visit_trait(::HIR::ItemPath ip, ::HIR::Trait& tr) override
+        {
+            static Span sp;
+            TRACE_FUNCTION_F(ip);
+
+            // Enumerate supertraits and save for later stages
+            struct Enumerate
+            {
+                ::std::vector< ::HIR::TraitPath>    supertraits;
+
+                void enum_supertraits_in(const ::HIR::Trait& tr, ::HIR::GenericPath path, ::std::function<::HIR::TypeRef(const char*)> get_aty)
+                {
+                    TRACE_FUNCTION_F(path);
+
+                    // Fill defaulted parameters.
+                    // NOTE: Doesn't do much error checking.
+                    if( path.m_params.m_types.size() != tr.m_params.m_types.size() )
+                    {
+                        ASSERT_BUG(sp, path.m_params.m_types.size() < tr.m_params.m_types.size(), "");
+                        for(unsigned int i = path.m_params.m_types.size(); i < tr.m_params.m_types.size(); i ++)
+                        {
+                            const auto& def = tr.m_params.m_types[i];
+                            path.m_params.m_types.push_back( def.m_default.clone_shallow() );
+                        }
+                    }
+
+                    ::HIR::TypeRef  ty_self { "Self", 0xFFFF };
+                    auto monomorph_cb = MonomorphStatePtr(&ty_self, &path.m_params, nullptr);
+                    if( tr.m_all_parent_traits.size() > 0 )
+                    {
+                        for(const auto& pt : tr.m_all_parent_traits)
+                        {
+                            supertraits.push_back( monomorph_cb.monomorph_traitpath(sp, pt, false) );
+                        }
+                    }
+                    else
+                    {
+                        // Recurse into parent traits
+                        for(const auto& pt : tr.m_parent_traits)
+                        {
+                            auto get_aty_this = [&](const char* name) {
+                                auto it = pt.m_type_bounds.find(name);
+                                if( it != pt.m_type_bounds.end() )
+                                    return monomorph_cb.monomorph_type(sp, it->second);
+                                return get_aty(name);
+                            };
+                            enum_supertraits_in(*pt.m_trait_ptr, monomorph_cb.monomorph_genericpath(sp, pt.m_path, false), get_aty_this);
+                        }
+                        // - Bound parent traits
+                        for(const auto& b : tr.m_params.m_bounds)
+                        {
+                            if( !b.is_TraitBound() )
+                                continue;
+                            const auto& be = b.as_TraitBound();
+                            if( be.type != ::HIR::TypeRef("Self", 0xFFFF) )
+                                continue;
+                            const auto& pt = be.trait;
+                            if( pt.m_path.m_path == path.m_path )
+                                continue ;
+
+                            auto get_aty_this = [&](const char* name) {
+                                auto it = pt.m_type_bounds.find(name);
+                                if( it != pt.m_type_bounds.end() )
+                                    return monomorph_cb.monomorph_type(sp, it->second);
+                                return get_aty(name);
+                            };
+
+                            enum_supertraits_in(*pt.m_trait_ptr, monomorph_cb.monomorph_genericpath(sp, pt.m_path, false), get_aty_this);
+                        }
+                    }
+
+
+                    // Build output path.
+                    ::HIR::TraitPath    out_path;
+                    out_path.m_path = mv$(path);
+                    out_path.m_trait_ptr = &tr;
+                    // - Locate associated types for this trait
+                    for(const auto& ty : tr.m_types)
+                    {
+                        auto v = get_aty(ty.first.c_str());
+                        if( v != ::HIR::TypeRef() )
+                        {
+                            out_path.m_type_bounds.insert( ::std::make_pair(ty.first, mv$(v)) );
+                        }
+                    }
+                    // TODO: HRLs?
+                    supertraits.push_back( mv$(out_path) );
+                }
+            };
+
+            auto this_path = ip.get_simple_path();
+            this_path.m_crate_name = m_crate.m_crate_name;
+
+            Enumerate   e;
+            for(const auto& pt : tr.m_parent_traits)
+            {
+                auto get_aty = [&](const char* name) {
+                    auto it = pt.m_type_bounds.find(name);
+                    if( it != pt.m_type_bounds.end() )
+                        return it->second.clone();
+                    return ::HIR::TypeRef();
+                };
+                e.enum_supertraits_in(*pt.m_trait_ptr, pt.m_path.clone(), get_aty);
+            }
+            for(const auto& b : tr.m_params.m_bounds)
+            {
+                if( !b.is_TraitBound() )
+                    continue;
+                const auto& be = b.as_TraitBound();
+                if( be.type != ::HIR::TypeRef("Self", 0xFFFF) )
+                    continue;
+                const auto& pt = be.trait;
+
+                // TODO: Remove this along with the from_ast.cpp hack
+                if( pt.m_path.m_path == this_path )
+                {
+                    // TODO: Should this restrict based on the parameters
+                    continue ;
+                }
+
+                auto get_aty = [&](const char* name) {
+                    auto it = be.trait.m_type_bounds.find(name);
+                    if( it != be.trait.m_type_bounds.end() )
+                        return it->second.clone();
+                    return ::HIR::TypeRef();
+                };
+                e.enum_supertraits_in(*be.trait.m_trait_ptr, be.trait.m_path.clone(), get_aty);
+            }
+
+            ::std::sort(e.supertraits.begin(), e.supertraits.end());
+            DEBUG("supertraits = " << e.supertraits);
+            if( e.supertraits.size() > 0 )
+            {
+                bool dedeup_done = false;
+                auto prev = e.supertraits.begin();
+                for(auto it = e.supertraits.begin()+1; it != e.supertraits.end(); )
+                {
+                    if( prev->m_path == it->m_path )
+                    {
+                        if( *prev == *it ) {
+                        }
+                        else if( prev->m_type_bounds.size() == 0 ) {
+                            ::std::swap(*prev, *it);
+                        }
+                        else if( it->m_type_bounds.size() == 0 ) {
+                        }
+                        else {
+                            TODO(sp, "Merge associated types from " << *prev << " and " << *it);
+                        }
+                        it = e.supertraits.erase(it);
+                        dedeup_done = true;
+                    }
+                    else
+                    {
+                        ++ it;
+                        ++ prev;
+                    }
+                }
+                if( dedeup_done ) {
+                    DEBUG("supertraits dd = " << e.supertraits);
+                }
+            }
+            tr.m_all_parent_traits = mv$(e.supertraits);
+        }
+
+    };
 }
 
 void ConvertHIR_Bind(::HIR::Crate& crate)
@@ -775,4 +955,7 @@ void ConvertHIR_Bind(::HIR::Crate& crate)
     }
 
     exp.visit_crate( crate );
+
+    // Populate supertrait list
+    Visitor_EnumSuperTraits(crate).visit_crate(crate);
 }
