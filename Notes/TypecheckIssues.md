@@ -411,3 +411,45 @@ Final version:
 - If both sides are a single-option coercion (and no bounds/disables) - then pick one side (preferring no ivars, and preferring the source)
   - This helps eliminate coercions that don't need to do anything.
 - This seems to have worked (reduces the chain, providing more useful information for fallbacks)
+
+
+# (1.39) `<::"typenum-1_10_0"::uint::UInt<U/*I:0*/,B/*I:1*/,>/*S*/ as ::"typenum-1_10_0"::type_operators::Max<Ur/*I:2*/,>>::max`
+```
+..\rustc-1.39.0-src\vendor\typenum\src\uint.rs:1571: error:0:Failed to find an impl of ::"typenum-1_10_0"::private::PrivateMax<Ur/*I:2*/,<::"typenum-1_10_0"::uint::UInt<U/*I:0*/,B/*I:1*/,> as ::"typenum-1_10_0"::type_operators::Cmp<Ur/*I:2*/,>>::Output,> for ::"typenum-1_10_0"::uint::UInt<U/*I:0*/,B/*I:1*/,> with Output = <::"typenum-1_10_0"::uint::UInt<U/*I:0*/,B/*I:1*/,> as ::"typenum-1_10_0"::type_operators::Cmp<Ur/*I:2*/,>>::Output
+```
+
+```
+..\rustc-1.39.0-src\vendor\typenum\src\uint.rs:1571: error:0:
+  Failed to find an impl of 
+  ::"typenum-1_10_0"::private::PrivateMax<Ur/*I:2*/,<::"typenum-1_10_0"::uint::UInt<U/*I:0*/,B/*I:1*/,> as ::"typenum-1_10_0"::type_operators::Cmp<Ur/*I:2*/,>>::Output,>
+  for ::"typenum-1_10_0"::uint::UInt<U/*I:0*/,B/*I:1*/,>
+  with Output = <::"typenum-1_10_0"::uint::UInt<U/*I:0*/,B/*I:1*/,> as ::"typenum-1_10_0"::type_operators::Cmp<Ur/*I:2*/,>>::Output
+```
+
+Source:
+```
+impl<U, B, Ur> Max<Ur> for UInt<U, B>
+where
+    U: Unsigned,
+    B: Bit,
+    Ur: Unsigned,
+    UInt<U, B>: Cmp<Ur> + PrivateMax<Ur, Compare<UInt<U, B>, Ur>>,
+{
+    type Output = PrivateMaxOut<UInt<U, B>, Ur, Compare<UInt<U, B>, Ur>>;
+    fn max(self, rhs: Ur) -> Self::Output {
+        self.private_max(rhs)
+    }
+}
+```
+
+Looks like it's the impl required for the `private_max` method, but the associated type for output doesn't look right
+Should be `<UInt<U,B> as Max<Ur>>::Output`, instead it's `<Uint<U,B> as Cmp<Ur>>::Output`
+
+Return type is wrong, puts the problem in `Resolve UFCS Outer`
+
+`Resolve UFCS Outer-    visit_path: >> (UfcsUnknown - p=<::"typenum-1_10_0"::uint::UInt<U/*I:0*/,B/*I:1*/,>/*S*/ as _>::Output)`
+`Self` has already been replaced with the expanded type, which changes the resolution rules
+- Probably `Resolve Absolute` being a little too enthusiastic
+
+Huge chain of rewrites later, problem was `Self` being expanded before the logic that requires it.
+- Deferred that until aftter `Resolve UFCS Outer` (could be moved later, to after `Resolve UFCS paths`?)
