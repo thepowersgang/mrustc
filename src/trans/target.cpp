@@ -1411,67 +1411,72 @@ namespace {
         DEBUG("rv.variants = " << rv.variants.tag_str());
         return box$(rv);
     }
+    ::std::unique_ptr<TypeRepr> make_type_repr_union(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty)
+    {
+        const auto& te = ty.data().as_Path();
+        const auto& unn = *te.binding.as_Union();
+
+        auto monomorph_cb = MonomorphStatePtr(nullptr, &te.path.m_data.as_Generic().m_params, nullptr);
+        auto monomorph = [&](const auto& tpl) {
+            return resolve.monomorph_expand(sp, tpl, monomorph_cb);
+        };
+
+        TypeRepr  rv;
+        for(const auto& var : unn.m_variants)
+        {
+            rv.fields.push_back({ 0, monomorph(var.second.ent) });
+            size_t size, align;
+            if( !Target_GetSizeAndAlignOf(sp, resolve, rv.fields.back().ty, size, align) )
+            {
+                // Generic? - Not good.
+                DEBUG("Generic type encounterd after monomorphise in union - " << rv.fields.back().ty);
+                return nullptr;
+            }
+            if( size == SIZE_MAX ) {
+                BUG(sp, "Unsized type in union");
+            }
+            rv.size  = ::std::max(rv.size , size );
+            rv.align = ::std::max(rv.align, align);
+        }
+        // Round the size to be a multiple of align
+        if( rv.size % rv.align != 0 )
+        {
+            rv.size += rv.align - rv.size % rv.align;
+        }
+        return box$(rv);
+    }
     ::std::unique_ptr<TypeRepr> make_type_repr_(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty)
     {
-        if( TU_TEST1(ty.data(), Path, .binding.is_Struct()) || ty.data().is_Tuple() )
+        switch(ty.data().tag())
         {
+        case ::HIR::TypeData::TAGDEAD:  abort();
+        case ::HIR::TypeData::TAG_Tuple:
             return make_type_repr_struct(sp, resolve, ty);
-        }
-        else if( TU_TEST1(ty.data(), Path, .binding.is_Union()) )
-        {
-            const auto& te = ty.data().as_Path();
-            const auto& unn = *te.binding.as_Union();
-
-            auto monomorph_cb = MonomorphStatePtr(nullptr, &te.path.m_data.as_Generic().m_params, nullptr);
-            auto monomorph = [&](const auto& tpl) {
-                return resolve.monomorph_expand(sp, tpl, monomorph_cb);
-            };
-
-            TypeRepr  rv;
-            for(const auto& var : unn.m_variants)
+        case ::HIR::TypeData::TAG_Path:
+            switch( ty.data().as_Path().binding.tag() )
             {
-                rv.fields.push_back({ 0, monomorph(var.second.ent) });
-                size_t size, align;
-                if( !Target_GetSizeAndAlignOf(sp, resolve, rv.fields.back().ty, size, align) )
-                {
-                    // Generic? - Not good.
-                    DEBUG("Generic type encounterd after monomorphise in union - " << rv.fields.back().ty);
-                    return nullptr;
-                }
-                if( size == SIZE_MAX ) {
-                    BUG(sp, "Unsized type in union");
-                }
-                rv.size  = ::std::max(rv.size , size );
-                rv.align = ::std::max(rv.align, align);
+            case ::HIR::TypePathBinding::TAGDEAD:  abort();
+            case ::HIR::TypePathBinding::TAG_Struct:
+                return make_type_repr_struct(sp, resolve, ty);
+            case ::HIR::TypePathBinding::TAG_Union:
+                return make_type_repr_union(sp, resolve, ty);
+            case ::HIR::TypePathBinding::TAG_Enum:
+                return make_type_repr_enum(sp, resolve, ty);
+            case ::HIR::TypePathBinding::TAG_ExternType:
+                // TODO: Do extern types need anything?
+                return nullptr;
+            case ::HIR::TypePathBinding::TAG_Opaque:
+            case ::HIR::TypePathBinding::TAG_Unbound:
+                BUG(sp, "Encountered invalid type in make_type_repr - " << ty);
             }
-            // Round the size to be a multiple of align
-            if( rv.size % rv.align != 0 )
-            {
-                rv.size += rv.align - rv.size % rv.align;
-            }
-            return box$(rv);
-        }
-        else if( TU_TEST1(ty.data(), Path, .binding.is_Enum()) )
-        {
-            return make_type_repr_enum(sp, resolve, ty);
-        }
-        else if( TU_TEST1(ty.data(), Path, .binding.is_ExternType()) )
-        {
-            // TODO: Do extern types need anything?
+            break;
+        // TODO: Why is `make_type_repr` being called on these?
+        case ::HIR::TypeData::TAG_Primitive:
+        case ::HIR::TypeData::TAG_Borrow:
+        case ::HIR::TypeData::TAG_Pointer:
             return nullptr;
-        }
-        else if( ty.data().is_Primitive() )
-        {
-            return nullptr;
-        }
-        else if( ty.data().is_Borrow() || ty.data().is_Pointer() )
-        {
-            return nullptr;
-        }
-        else
-        {
+        default:
             TODO(sp, "Type repr for " << ty);
-            return nullptr;
         }
     }
     ::std::unique_ptr<TypeRepr> make_type_repr(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty)
