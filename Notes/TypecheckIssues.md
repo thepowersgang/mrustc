@@ -453,3 +453,24 @@ Return type is wrong, puts the problem in `Resolve UFCS Outer`
 
 Huge chain of rewrites later, problem was `Self` being expanded before the logic that requires it.
 - Deferred that until aftter `Resolve UFCS Outer` (could be moved later, to after `Resolve UFCS paths`?)
+
+# (1.39) `<* as ::"aho_corasick-0_7_3_H1"::automaton::Automaton>::standard_find_at_imp`
+```
+TTStream:0: error:0:Failed to find an impl of ::"aho_corasick-0_7_3_H1"::state_id::StateID for &mut <Self/**/ as ::"aho_corasick-0_7_3_H1"::automaton::Automaton>::ID
+..\rustc-1.39.0-src\vendor\aho-corasick\src\automaton.rs:173: note: From here
+```
+
+```
+Typecheck Expressions-        visit: >> ((CallMethod) {&mut <Self/**/ as ::"aho_corasick-0_7_3_H1"::automaton::Automaton>::ID}.to_usize() -> _/*7*/)
+Typecheck Expressions-          TraitResolution::autoderef_find_method: FOUND *{0}, fcn_path = <&mut <Self/**/ as ::"aho_corasick-0_7_3_H1"::automaton::Automaton>::ID/*O*/ as ::"aho_corasick-0_7_3_H1"::state_id::StateID>::to_usize
+Typecheck Expressions-          TraitResolution::autoderef_find_method: FOUND 1 options: (None, <&mut <Self/**/ as ::"aho_corasick-0_7_3_H1"::automaton::Automaton>::ID/*O*/ as ::"aho_corasick-0_7_3_H1"::state_id::StateID>::to_usize)
+Typecheck Expressions-         visit_call_populate_cache: >> (<&mut <Self/**/ as ::"aho_corasick-0_7_3_H1"::automaton::Automaton>::ID/*O*/ as ::"aho_corasick-0_7_3_H1"::state_id::StateID>::to_usize)
+Typecheck Expressions-          Context::equate_types_assoc: ++ R51 req ty &mut <Self/**/ as ::"aho_corasick-0_7_3_H1"::automaton::Automaton>::ID/*O*/ impl ::"aho_corasick-0_7_3_H1"::state_id::StateID
+Typecheck Expressions-        Typecheck_Code_CS: - R51 req ty &mut <Self/**/ as ::"aho_corasick-0_7_3_H1"::automaton::Automaton>::ID/*O*/ impl ::"aho_corasick-0_7_3_H1"::state_id::StateID
+Typecheck Expressions-         `anonymous-namespace'::check_associated: No impl of ::"aho_corasick-0_7_3_H1"::state_id::StateID for &mut <Self/**/ as ::"aho_corasick-0_7_3_H1"::automaton::Automaton>::ID
+```
+
+Looks like `autoderef_find_method` is finding a method on a trait that still requires dereferencing to be valid.
+
+Forgot to check the result of `check_method_receiver` against the expected type before returning success when processing ATY bounds
+Fix that, and all works
