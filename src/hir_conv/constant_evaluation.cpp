@@ -286,18 +286,18 @@ namespace {
         }
         throw "";
     }
-    EntPtr get_ent_fullpath(const Span& sp, const ::HIR::Crate& crate, const ::HIR::Path& path, EntNS ns, MonomorphState& out_ms)
+    EntPtr get_ent_fullpath(const Span& sp, const ::StaticTraitResolve& resolve, const ::HIR::Path& path, EntNS ns, MonomorphState& out_ms)
     {
         TU_MATCH_HDRA( (path.m_data), {)
         TU_ARMA(Generic, e) {
             out_ms = MonomorphState {};
             out_ms.pp_method = &e.m_params;
-            return get_ent_simplepath(sp, crate, e.m_path, ns);
+            return get_ent_simplepath(sp, resolve.m_crate, e.m_path, ns);
             }
         TU_ARMA(UfcsInherent, e) {
             // Easy (ish)
             EntPtr rv;
-            crate.find_type_impls(e.type, [](const auto&x)->const auto& { return x; }, [&](const auto& impl) {
+            resolve.m_crate.find_type_impls(e.type, [](const auto&x)->const auto& { return x; }, [&](const auto& impl) {
                 switch( ns )
                 {
                 case EntNS::Value:
@@ -305,7 +305,7 @@ namespace {
                         auto fit = impl.m_methods.find(e.item);
                         if( fit != impl.m_methods.end() )
                         {
-                            DEBUG("Found impl" << impl.m_params.fmt_args() << " " << impl.m_type);
+                            DEBUG("Found method: impl" << impl.m_params.fmt_args() << " " << impl.m_type);
                             rv = EntPtr { &fit->second.data };
                             return true;
                         }
@@ -314,6 +314,7 @@ namespace {
                         auto it = impl.m_constants.find(e.item);
                         if( it != impl.m_constants.end() )
                         {
+                            DEBUG("Found value: impl" << impl.m_params.fmt_args() << " " << impl.m_type);
                             rv = EntPtr { &it->second.data };
                             return true;
                         }
@@ -331,28 +332,45 @@ namespace {
             }
         TU_ARMA(UfcsKnown, e) {
             EntPtr rv;
-            crate.find_trait_impls(e.trait.m_path, e.type, [](const auto&x)->const auto& { return x; }, [&](const auto& impl) {
-                // Hacky selection of impl.
-                // - TODO: Specialisation
-                // - TODO: Inference? (requires full typeck)
+            ImplRef best_impl;
+            resolve.find_impl(sp, e.trait.m_path, e.trait.m_params, e.type, [&](ImplRef impl_ref, bool is_fuzzy) {
+                const auto& ie = impl_ref.m_data.as_TraitImpl();
+                const HIR::TraitImpl& impl = *ie.impl;
                 switch( ns )
                 {
                 case EntNS::Value:
                     {
-                        auto fit = impl.m_methods.find(e.item);
-                        if( fit != impl.m_methods.end() )
+                        auto it = impl.m_methods.find(e.item);
+                        if( it != impl.m_methods.end() )
                         {
-                            DEBUG("Found impl" << impl.m_params.fmt_args() << " " << impl.m_type);
-                            rv = EntPtr { &fit->second.data };
-                            return true;
+                            DEBUG("Found method: " << impl_ref);
+                            if(!it->second.is_specialisable) {
+                                best_impl = std::move(impl_ref);
+                                rv = EntPtr { &it->second.data };
+                                return true;
+                            }
+                            if(impl_ref.more_specific_than(best_impl) ) {
+                                best_impl = std::move(impl_ref);
+                                rv = EntPtr { &it->second.data };
+                                return false;
+                            }
                         }
                     }
                     {
                         auto it = impl.m_constants.find(e.item);
                         if( it != impl.m_constants.end() )
                         {
-                            rv = EntPtr { &it->second.data };
-                            return true;
+                            DEBUG("Found value: impl" << impl_ref);
+                            if(!it->second.is_specialisable) {
+                                best_impl = std::move(impl_ref);
+                                rv = EntPtr { &it->second.data };
+                                return true;
+                            }
+                            if(impl_ref.more_specific_than(best_impl) ) {
+                                best_impl = std::move(impl_ref);
+                                rv = EntPtr { &it->second.data };
+                                return false;
+                            }
                         }
                     }
                     break;
@@ -363,7 +381,8 @@ namespace {
                 });
             out_ms = MonomorphState {};
             out_ms.pp_method = &e.params;
-            // TODO: How to get pp_impl here? Needs specialisation magic.
+            out_ms.pp_impl_data = std::move(best_impl.m_data.as_TraitImpl().impl_params);
+            out_ms.pp_impl = &out_ms.pp_impl_data;
             return rv;
             }
         TU_ARMA(UfcsUnknown, e) {
@@ -373,12 +392,12 @@ namespace {
         }
         throw "";
     }
-    const ::HIR::Function& get_function(const Span& sp, const ::HIR::Crate& crate, const ::HIR::Path& path, MonomorphState& out_ms)
+    const ::HIR::Function& get_function(const Span& sp, const ::StaticTraitResolve& resolve, const ::HIR::Path& path, MonomorphState& out_ms)
     {
-        auto rv = get_ent_fullpath(sp, crate, path, EntNS::Value, out_ms);
-        TU_IFLET( EntPtr, rv, Function, e,
-            return *e;
-        )
+        auto rv = get_ent_fullpath(sp, resolve, path, EntNS::Value, out_ms);
+        if(rv.is_Function()) {
+            return *rv.as_Function();
+        }
         else {
             TODO(sp, "Could not find function for " << path << " - " << rv.tag_str());
         }
@@ -536,19 +555,38 @@ namespace HIR {
                     auto nvs = NewvalState { item.m_value.m_state->m_module, mod_ip, FMT("const" << &c << "#") };
                     auto eval = ::HIR::Evaluator { item.m_value.span(), resolve.m_crate, nvs };
                     DEBUG("- Evaluate " << p);
-                    DEBUG("- " << ::HIR::ItemPath(p));
                     item.m_value_res = eval.evaluate_constant(::HIR::ItemPath(p), item.m_value, item.m_type.clone());
+                    assert( !item.m_value_res.is_Invalid() );
 
                     //check_lit_type(item.m_value->span(), item.m_type, item.m_value_res);
                 }
-                auto it = c.m_monomorph_cache.find(p);
-                if( it != c.m_monomorph_cache.end() )
+                if( c.m_value_res.is_Defer() )
                 {
+                    auto it = c.m_monomorph_cache.find(p);
+                    if( it == c.m_monomorph_cache.end() )
+                    {
+                        auto& item = const_cast<::HIR::Constant&>(c);
+                        // Challenge: Adding items to the module might invalidate an iterator.
+                        ::HIR::ItemPath mod_ip { item.m_value.m_state->m_mod_path };
+                        auto nvs = NewvalState { item.m_value.m_state->m_module, mod_ip, FMT("const" << &c << "#") };
+                        auto eval = ::HIR::Evaluator { item.m_value.span(), resolve.m_crate, nvs };
+
+                        DEBUG("- Evaluate monomorphed " << p);
+                        DEBUG("> const_ms=" << const_ms);
+                        auto ty = const_ms.monomorph_type( item.m_value.span(), item.m_type );
+                        auto val = eval.evaluate_constant(::HIR::ItemPath(p), item.m_value, std::move(ty), std::move(const_ms));
+
+                        auto insert_res = item.m_monomorph_cache.insert(std::make_pair(p.clone(), std::move(val)));
+                        it = insert_res.first;
+                    }
+
                     MIR_ASSERT(state, !it->second.is_Defer(), "Cached literal for " << p << " is Defer");
                     return ValueRef::from_literal(it->second.clone());
                 }
-                MIR_ASSERT(state, !c.m_value_res.is_Defer(), "Unexpected Defer const with no generics in its path - " << p);
-                return ValueRef::from_literal(c.m_value_res.clone());
+                else
+                {
+                    return ValueRef::from_literal(c.m_value_res);
+                }
                 }
             TU_ARM(c, Generic, e2) {
                 return Value::make_Defer({});
