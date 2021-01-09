@@ -51,6 +51,28 @@ namespace typecheck
     };
 
 
+    void populate_defaults(const Span& sp, Context& context, const MonomorphStatePtr& ms, const ::HIR::GenericParams& param_defs,  ::HIR::PathParams& params)
+    {
+#if 1
+        for(size_t i = 0; i < param_defs.m_types.size(); i ++)
+        {
+            const auto& ty = params.m_types[i];
+            const auto& typ = param_defs.m_types[i];
+            if( const auto* te = ty.data().opt_Infer() )
+            {
+                if( !typ.m_default.data().is_Infer() )
+                {
+                    if(auto* ent = context.get_ivar_possibilities(sp, te->index))
+                    {
+                        auto def_ty = ms.monomorph_type(sp, typ.m_default);
+                        DEBUG("Added default for " << ty << ": " << def_ty);
+                        ent->types_default.insert(std::move(def_ty));
+                    }
+                }
+            }
+        }
+#endif
+    }
     template<typename T>
     void fix_param_count_(const Span& sp, Context& context, const ::HIR::TypeRef& self_ty, bool use_defaults, const T& path, const ::HIR::GenericParams& param_defs,  ::HIR::PathParams& params)
     {
@@ -70,16 +92,6 @@ namespace typecheck
                     }
                     else if( monomorphise_type_needed(typ.m_default) ) {
                         auto cb = MonomorphStatePtr(&self_ty, nullptr, nullptr);
-                        //[&](const auto& ty)->const ::HIR::TypeRef& {
-                        //    const auto& ge = ty.data().as_Generic();
-                        //    if( ge.binding == 0xFFFF ) {
-                        //        ASSERT_BUG(sp, self_ty != ::HIR::TypeRef(), "Self not allowed in this context");
-                        //        return self_ty;
-                        //    }
-                        //    else {
-                        //        TODO(sp, "Monomorphise default param - " << typ.m_default << " - " << ty);
-                        //    }
-                        //    };
                         params.m_types.push_back( cb.monomorph_type(sp, typ.m_default) );
                     }
                     else {
@@ -396,6 +408,26 @@ namespace typecheck
         void visit_type(::HIR::TypeRef& ty)
         {
             this->context.add_ivars(ty);
+            if(auto* te = ty.data_mut().opt_Path() )
+            {
+                if( te->path.m_data.is_Generic() )
+                {
+                    auto& params = te->path.m_data.as_Generic().m_params;
+                    const HIR::GenericParams* param_defs = nullptr;
+                    TU_MATCH_HDRA( (te->binding), { )
+                    TU_ARMA(Struct, pbe)    param_defs = &pbe->m_params;
+                    TU_ARMA(Enum, pbe)    param_defs = &pbe->m_params;
+                    TU_ARMA(Union, pbe)    param_defs = &pbe->m_params;
+                    TU_ARMA(ExternType, pbe) {}
+                    TU_ARMA(Opaque, pbe) {}
+                    TU_ARMA(Unbound, pbe) {}
+                    }
+                    if(param_defs)
+                    {
+                        populate_defaults(Span(), context, MonomorphStatePtr(nullptr, &params, nullptr), *param_defs, params);
+                    }
+                }
+            }
         }
     };
 

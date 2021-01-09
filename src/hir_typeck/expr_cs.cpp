@@ -3334,22 +3334,30 @@ std::ostream& operator<<(std::ostream& os, const Context::PossibleTypeSource& x)
     return os;
 }
 
-void Context::possible_equate_ivar(const Span& sp, unsigned int ivar_index, const ::HIR::TypeRef& t, PossibleTypeSource src)
+Context::IVarPossible* Context::get_ivar_possibilities(const Span& sp, unsigned int ivar_index)
 {
-    DEBUG(ivar_index << " " << src << " " << t << " " << this->m_ivars.get_type(t));
     {
         const auto& real_ty = m_ivars.get_type(ivar_index);
         if( !TU_TEST1(real_ty.data(), Infer, .index == ivar_index) )
         {
             DEBUG("IVar " << ivar_index << " is actually " << real_ty);
-            return ;
+            return nullptr;
         }
     }
 
     if( ivar_index >= possible_ivar_vals.size() ) {
         possible_ivar_vals.resize( ivar_index + 1 );
     }
-    auto& ent = possible_ivar_vals[ivar_index];
+    return &possible_ivar_vals[ivar_index];
+}
+void Context::possible_equate_ivar(const Span& sp, unsigned int ivar_index, const ::HIR::TypeRef& t, PossibleTypeSource src)
+{
+    DEBUG(ivar_index << " " << src << " " << t << " " << this->m_ivars.get_type(t));
+    auto* entp = get_ivar_possibilities(sp, ivar_index);
+    if(!entp)
+        return;
+    auto& ent = *entp;
+
     switch(src)
     {
     case PossibleTypeSource::UnsizeTo:  ent.types_coerce_to.push_back(IVarPossible::CoerceTy(t.clone(), false));   break;
@@ -3360,15 +3368,13 @@ void Context::possible_equate_ivar(const Span& sp, unsigned int ivar_index, cons
 }
 void Context::possible_equate_ivar_bounds(const Span& sp, unsigned int ivar_index, std::vector< ::HIR::TypeRef> types)
 {
-    {
-        const auto& real_ty = m_ivars.get_type(ivar_index);
-        if( !TU_TEST1(real_ty.data(), Infer, .index == ivar_index) )
-        {
-            DEBUG("IVar " << ivar_index << " is actually " << real_ty);
-            return ;
-        }
-    }
+    // Obtain the entry (and returning early if already known)
+    auto* entp = get_ivar_possibilities(sp, ivar_index);
+    if(!entp)
+        return ;
+    auto& ent = *entp;
 
+    // Determine if this ivar is in the list of possibilities
     bool has_self = false;
     for(auto it = types.begin(); it != types.end(); )
     {
@@ -3386,15 +3392,11 @@ void Context::possible_equate_ivar_bounds(const Span& sp, unsigned int ivar_inde
         }
     }
 
-    if( ivar_index >= possible_ivar_vals.size() ) {
-        possible_ivar_vals.resize( ivar_index + 1 );
-    }
-    auto& ent = possible_ivar_vals[ivar_index];
     if( ent.has_bounded )
     {
         // Get the union of the bound set and this
 
-        // TODO: If `ent.bounds_include_self` is set, then accept check if it's 
+        // TODO: If `ent.bounds_include_self` was set, then accept check if it's still set?
         ent.bounds_include_self |= has_self;
         if( ent.bounds_include_self )
         {
@@ -6822,6 +6824,32 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
             DEBUG("- Applying defaults");
             if( context.m_ivars.apply_defaults() ) {
                 context.m_ivars.mark_change();
+            }
+        }
+
+        // And after all that, apply custom defaults
+        if( !context.m_ivars.peek_changed() )
+        {
+            DEBUG("- Applying generic defaults");
+            for(unsigned int i = 0; i < context.possible_ivar_vals.size(); i ++ )
+            {
+                const auto& ent = context.possible_ivar_vals[i];
+                if( !ent.types_default.empty() )
+                {
+                    const auto& ty_l = context.m_ivars.get_type(i);
+
+                    if( TU_TEST1(ty_l.data(), Infer, .index == i) )
+                    {
+                        if( ent.types_default.size() != 1 )
+                        {
+                            // TODO: Error?
+                        }
+                        else
+                        {
+                            context.m_ivars.set_ivar_to(i, ent.types_default.begin()->clone());
+                        }
+                    }
+                }
             }
         }
 

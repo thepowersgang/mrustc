@@ -97,7 +97,7 @@ struct Context
         // Source types for coercion/unsizing (these types are known to exist in the function)
         ::std::vector<CoerceTy> types_coerce_from;
         // Possible default types (from generic defaults)
-        //::std::vector<::HIR::TypeRef>   types_default;
+        ::std::set<::HIR::TypeRef>   types_default;
 
         // Possible types from trait impls (may introduce new types)
         // - This is union of all input bounds
@@ -109,9 +109,9 @@ struct Context
         ::std::vector<::HIR::TypeRef>   bounded;
 
         void reset() {
-            //auto tmp = mv$(this->types_default);
+            auto tmp = mv$(this->types_default);
             *this = IVarPossible();
-            //this->types_default = mv$(tmp);
+            this->types_default = mv$(tmp);
         }
         bool has_rules() const {
             if( force_disable )
@@ -200,6 +200,10 @@ struct Context
     void add_trait_bound(const Span& sp, const ::HIR::TypeRef& impl_ty, const ::HIR::SimplePath& trait, ::HIR::PathParams params) {
         equate_types_assoc(sp, ::HIR::TypeRef(), trait, mv$(params), impl_ty, "", false);
     }
+
+    /// Get the `possible_ivar_vals` entry for the given ivar index
+    /// Returns `nullptr` if the ivar is already known
+    IVarPossible* get_ivar_possibilities(const Span& sp, unsigned int ivar_index);
 
     enum class IvarUnknownType {
         /// Coercion to an unknown type (disables 
