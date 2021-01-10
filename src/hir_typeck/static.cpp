@@ -924,15 +924,15 @@ bool StaticTraitResolve::find_impl__check_crate(
             auto monomorph_get = [&](const auto& ty)->const ::HIR::TypeRef& {
                 return this->monomorph_expand_opt(sp, tmp, ty, monomorph);
                 };
-
-            TU_MATCH( ::HIR::TypePathBinding, (e.binding), (tpb),
-            (Opaque,
+            
+            TU_MATCH_HDRA( (e.binding), {)
+            TU_ARMA(Opaque, tpb) {
                 BUG(sp, "Opaque binding on generic path - " << type);
-                ),
-            (Unbound,
+                }
+            TU_ARMA(Unbound, tpb) {
                 BUG(sp, "Unbound binding on generic path - " << type);
-                ),
-            (Struct,
+                }
+            TU_ARMA(Struct, tpb) {
                 const auto& str = *tpb;
 
                 // TODO: Somehow store a ruleset for auto traits on the type
@@ -963,27 +963,34 @@ bool StaticTraitResolve::find_impl__check_crate(
                     }
                     )
                 )
-                ),
-            (Enum,
+                }
+            TU_ARMA(Enum, tpb) {
                 if( const auto* e = tpb->m_data.opt_Data() )
                 {
-                    for(const auto& var : *e )
+                    for(const auto& var : *e)
                     {
                         const auto& fld_ty_mono = monomorph_get(var.type);
-                        DEBUG("Enum '" << var.name << "' " << fld_ty_mono);
+                        DEBUG("Enum '" << var.name << "'" << fld_ty_mono);
                         res &= type_impls_trait(fld_ty_mono);
                         if( res == ::HIR::Compare::Unequal )
                             return ::HIR::Compare::Unequal;
                     }
                 }
-                ),
-            (Union,
-                TODO(sp, "Check auto trait destructure on union " << type);
-                ),
-            (ExternType,
+                }
+            TU_ARMA(Union, tpb) {
+                for(const auto& fld : tpb->m_variants)
+                {
+                    const auto& fld_ty_mono = monomorph_get(fld.second.ent);
+                    DEBUG("Union '" << fld.first << "' " << fld_ty_mono);
+                    res &= type_impls_trait(fld_ty_mono);
+                    if( res == ::HIR::Compare::Unequal )
+                        return ::HIR::Compare::Unequal;
+                }
+                }
+            TU_ARMA(ExternType, tpb) {
                 TODO(sp, "Check auto trait destructure on extern type " << type);
-                )
-            )
+                }
+            }
             DEBUG("- Nothing failed, calling callback");
             }
         TU_ARMA(UfcsUnknown, pe) {
