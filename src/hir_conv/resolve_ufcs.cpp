@@ -774,14 +774,15 @@ namespace {
     };
 
     template<typename T>
-    void sort_impl_group(::HIR::Crate::ImplGroup<T>& ig)
+    void sort_impl_group(::HIR::Crate::ImplGroup<T>& ig, ::std::function<void(::std::ostream& os, const T&)> fmt)
     {
-        auto new_end = ::std::remove_if(ig.generic.begin(), ig.generic.end(), [&ig](::std::unique_ptr<T>& ty_impl) {
+        auto new_end = ::std::remove_if(ig.generic.begin(), ig.generic.end(), [&ig,&fmt](::std::unique_ptr<T>& ty_impl) {
             const auto& type = ty_impl->m_type;  // Using field accesses in templates feels so dirty
             const ::HIR::SimplePath*    path = type.get_sort_path();
 
             if( path )
             {
+                DEBUG(*path << " += " << FMT_CB(os, fmt(os, *ty_impl)));
                 ig.named[*path].push_back(mv$(ty_impl));
             }
             else if( type.data().is_Path() || type.data().is_Generic() )
@@ -812,14 +813,20 @@ void ConvertHIR_ResolveUFCS(::HIR::Crate& crate)
 void ConvertHIR_ResolveUFCS_SortImpls(::HIR::Crate& crate)
 {
     // Sort impls!
-    sort_impl_group(crate.m_type_impls);
+    sort_impl_group<HIR::TypeImpl>(crate.m_type_impls,
+        [](::std::ostream& os, const HIR::TypeImpl& i){ os << "impl" << i.m_params.fmt_args() << " " << i.m_type; }
+        );
     DEBUG("Type impl counts: " << crate.m_type_impls.named.size() << " path groups, " << crate.m_type_impls.non_named.size() << " primitive, " << crate.m_type_impls.generic.size() << " ungrouped");
     for(auto& impl_group : crate.m_trait_impls)
     {
-        sort_impl_group(impl_group.second);
+        sort_impl_group<HIR::TraitImpl>(impl_group.second,
+            [&](::std::ostream& os, const HIR::TraitImpl& i){ os << "impl" << i.m_params.fmt_args() << " " << impl_group.first << i.m_trait_args << " for " << i.m_type; }
+            );
     }
     for(auto& impl_group : crate.m_marker_impls)
     {
-        sort_impl_group(impl_group.second);
+        sort_impl_group<HIR::MarkerImpl>(impl_group.second,
+            [&](::std::ostream& os, const HIR::MarkerImpl& i){ os << "impl" << i.m_params.fmt_args() << " " << impl_group.first << i.m_trait_args << " for " << i.m_type << " {}"; }
+            );
     }
 }
