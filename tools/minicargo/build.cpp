@@ -970,6 +970,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     auto out_dir = this->get_output_dir(is_for_host).to_absolute() / "build_" + manifest.name().c_str();
     env.push_back("OUT_DIR", out_dir.str());
     env.push_back("CARGO_MANIFEST_DIR", manifest.directory().to_absolute());
+    env.push_back("CARGO_PKG_NAME", manifest.name());
     env.push_back("CARGO_PKG_VERSION", ::format(manifest.version()));
     env.push_back("CARGO_PKG_VERSION_MAJOR", ::format(manifest.version().major));
     env.push_back("CARGO_PKG_VERSION_MINOR", ::format(manifest.version().minor));
@@ -1059,6 +1060,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
 
     StringListKV    env;
     env.push_back("CARGO_MANIFEST_DIR", manifest.directory().to_absolute());
+    env.push_back("CARGO_PKG_NAME", manifest.name());
     env.push_back("CARGO_PKG_VERSION", ::format(manifest.version()));
     env.push_back("CARGO_PKG_VERSION_MAJOR", ::format(manifest.version().major));
     env.push_back("CARGO_PKG_VERSION_MINOR", ::format(manifest.version().minor));
