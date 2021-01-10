@@ -2233,6 +2233,10 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                     MatchErgonomicsRevisit::disable_possibilities_on_bindings(sp, context, pattern);
                     return false;
                 }
+                if( ty_p->data().is_Primitive() && ty_p->data().as_Primitive() == HIR::CoreType::Str ) {
+                    // Can't match on `str`, so unwrap it?
+                    // - Unwrapping happens in Pattern::Value handling
+                }
                 const auto& ty = *ty_p;
 
                 // Here we have a known type and binding mode for this pattern
@@ -2271,7 +2275,15 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                     }
                 TU_ARM(pattern.m_data, Value, pe) {
                     // no-op?
-                    if( pe.val.is_String() || pe.val.is_ByteString() ) {
+                    if( pe.val.is_Named() ) {
+                        // TODO: If the value is a borrow, then unwind borrows.
+                        const auto& cval = pe.val.as_Named().binding->m_value_res;
+                        if( cval.is_String() ) {
+                            ASSERT_BUG(sp, pattern.m_implicit_deref_count >= 1, "");
+                            pattern.m_implicit_deref_count -= 1;
+                        }
+                    }
+                    else if( pe.val.is_String() || pe.val.is_ByteString() ) {
                         ASSERT_BUG(sp, pattern.m_implicit_deref_count >= 1, "");
                         pattern.m_implicit_deref_count -= 1;
                     }

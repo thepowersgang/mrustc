@@ -1135,8 +1135,12 @@ namespace {
         void check_pattern(const ::HIR::Pattern& pat, const ::HIR::TypeRef& ty) const
         {
             Span    sp;
+            const ::HIR::TypeRef* typ = &ty;
             if( pat.m_implicit_deref_count ) {
                 // TODO: Deref a few times
+                for(unsigned i = pat.m_implicit_deref_count; i --;)
+                {
+                }
             }
             TU_MATCH_HDRA( (pat.m_data), { )
             TU_ARMA(Any, pe) {
@@ -1217,7 +1221,13 @@ namespace {
                 check_types_equal(sp, ty, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, ::HIR::TypeRef::new_slice(::HIR::CoreType::U8)));
                 }
             TU_ARMA(Named, e) {
-                // TODO: Get type of the value and check equality
+                MonomorphState  ms;
+                auto v = m_resolve.get_value(sp, e.path, ms, /*signature_only*/true);
+                if(!v.is_Constant())
+                    BUG(sp, "Pattern::Value::Named not a const - " << e.path);
+                HIR::TypeRef    tmp;
+                const auto& const_ty = ms.maybe_monomorph_type(sp, tmp, v.as_Constant()->m_type);
+                check_types_equal(sp, ty, const_ty);
                 }
             }
         }

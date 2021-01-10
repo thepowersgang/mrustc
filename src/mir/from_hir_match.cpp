@@ -886,10 +886,15 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, const ::HIR::Literal
         }
     TU_ARMA(Borrow, e) {
         m_field_path.push_back( FIELD_DEREF );
-        TODO(sp, "Match literal Borrow");
+        if( lit.is_String() ) {
+            this->push_rule( PatternRule::make_Value(lit.as_String()) );
+        }
+        else {
+            TODO(sp, "Match literal Borrow: ty=" << ty << " lit=" << lit);
+        }
         m_field_path.pop_back();
         }
-    TU_ARMA(Pointer,e ) {
+    TU_ARMA(Pointer, e) {
         TODO(sp, "Match literal with pointer?");
         }
     TU_ARMA(Function, e) {
