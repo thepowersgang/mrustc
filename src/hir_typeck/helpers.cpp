@@ -542,7 +542,7 @@ unsigned int HMTypeInferrence::new_ivar(HIR::InferClass ic/* = HIR::InferClass::
 const ::HIR::TypeRef& HMTypeInferrence::get_type(const ::HIR::TypeRef& type) const
 {
     if(const auto* e = type.data().opt_Infer()) {
-        assert(e->index != ~0u);
+        ASSERT_BUG(Span(), e->index != ~0u, "Encountered non-populated IVar");
         return *get_pointed_ivar(e->index).type;
     }
     else {

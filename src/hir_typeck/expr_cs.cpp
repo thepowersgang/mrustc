@@ -422,6 +422,13 @@ namespace {
                     return false;
                     });
                 if( rv ) {
+                    // If a non-fuzzy impl was found, but there was no result type - then the result must be opaque
+                    if( possible_res_type == HIR::TypeRef() ) {
+                        possible_res_type = ::HIR::TypeRef::new_path(
+                            ::HIR::Path(ty.clone(), HIR::GenericPath(lang_Index, mv$(trait_pp)), "Output"),
+                            HIR::TypePathBinding::make_Opaque({})
+                            );
+                    }
                     // TODO: Node's result type could be an &-ptr?
                     this->context.equate_types(node.span(), node.m_res_type,  possible_res_type);
                     break;
