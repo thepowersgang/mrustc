@@ -12,6 +12,7 @@
 #include <map>
 #include <hir/hir.hpp>
 #include <hir_typeck/helpers.hpp>
+#include <climits>  // UINT_MAX
 #include <toml.h>   // tools/common
 
 const TargetArch ARCH_X86_64 = {

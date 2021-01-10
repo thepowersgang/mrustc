@@ -15,12 +15,6 @@
 #include "repository.h"
 #include "cfg.hpp"
 
-#ifdef _MSVC_LANG
-# define NORETURN(fcn)  __declspec(noreturn) fcn
-#else
-# define NORETURN(fcn)  fcn __attribute__((noreturn))
-#endif
-
 // TODO: Extract this from the target at runtime (by invoking the compiler on the passed target)
 #ifdef _WIN32
 # define TARGET_NAME    "i586-windows-msvc"
@@ -36,12 +30,14 @@
 struct ErrorHandler
 {
     template<typename ...Args>
-    NORETURN(void todo(Args... args)) {
+    [[noreturn]] void todo(Args... args) {
         do_fatal("TODO", [&](std::ostream& os){ format_to_stream(os, args...); });
+        abort();
     }
     template<typename ...Args>
-    NORETURN(void error(Args... args)) {
+    [[noreturn]] void error(Args... args) {
         do_fatal("error", [&](std::ostream& os){ format_to_stream(os, args...); });
+        abort();
     }
     template<typename ...Args>
     void warning(Args... args) /*__attribute__((noreturn))*/ {
