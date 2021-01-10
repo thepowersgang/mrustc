@@ -411,7 +411,9 @@ void MirBuilder::mark_value_assigned(const Span& sp, const ::MIR::LValue& dst)
             ASSERT_BUG(sp, se != InvalidType::Descoped, "Assining of descoped variable - " << dst);
         )
         drop_value_from_state(sp, *state_p, dst.clone());
-        *state_p = VarState::make_Valid({});
+        auto new_state = VarState::make_Valid({});
+        DEBUG("State " << dst << " " << *state_p << " => " << new_state);
+        *state_p = std::move(new_state);
     }
     else
     {
@@ -1429,6 +1431,8 @@ void MirBuilder::end_split_arm(const Span& sp, const ScopeHandle& handle, bool r
     {
         if( reachable )
         {
+            DEBUG("Reachable w/ end state, merging");
+
             auto merge_list = [sp,this](const auto& states, auto& end_states, auto type) {
                 // Insert copies of the parent state
                 for(const auto& ent : states) {
@@ -1460,18 +1464,26 @@ void MirBuilder::end_split_arm(const Span& sp, const ScopeHandle& handle, bool r
     }
     else
     {
-        // Clone this arm's state
-        for(auto& ent : this_arm_state.states)
+        if( reachable )
         {
-            DEBUG("Slot(" << ent.first << ") = " << ent.second);
-            sd_split.end_state.states.insert(::std::make_pair( ent.first, ent.second.clone() ));
+            DEBUG("Reachable w/ no end state, setting");
+            // Clone this arm's state
+            for(auto& ent : this_arm_state.states)
+            {
+                DEBUG("Slot(" << ent.first << ") = " << ent.second);
+                sd_split.end_state.states.insert(::std::make_pair( ent.first, ent.second.clone() ));
+            }
+            for(auto& ent : this_arm_state.arg_states)
+            {
+                DEBUG("Argument(" << ent.first << ") = " << ent.second);
+                sd_split.end_state.arg_states.insert(::std::make_pair( ent.first, ent.second.clone() ));
+            }
+            sd_split.end_state_valid = true;
         }
-        for(auto& ent : this_arm_state.arg_states)
+        else
         {
-            DEBUG("Argument(" << ent.first << ") = " << ent.second);
-            sd_split.end_state.arg_states.insert(::std::make_pair( ent.first, ent.second.clone() ));
+            DEBUG("Unreachable, not setting");
         }
-        sd_split.end_state_valid = true;
     }
 
     if( reachable )
@@ -1574,8 +1586,12 @@ void MirBuilder::complete_scope(ScopeDef& sd)
     TU_ARMA(Split, e) {
         TRACE_FUNCTION_F("Split - " << (e.arms.size() - 1) << " arms");
 
-        ASSERT_BUG(sd.span, e.end_state_valid, "");
-        H::apply_end_state(sd.span, *this, e.end_state);
+        // TODO: if not set, then end the current state as unreachable?
+        //ASSERT_BUG(sd.span, e.end_state_valid, "Completing split scope with no end state set?");
+        if(e.end_state_valid)
+        {
+            H::apply_end_state(sd.span, *this, e.end_state);
+        }
         }
     TU_ARMA(Freeze, e) {
         TRACE_FUNCTION_F("Freeze");
@@ -2210,7 +2226,9 @@ void MirBuilder::moved_lvalue(const Span& sp, const ::MIR::LValue& lv)
         }
         auto& vs = *vs_p;
         // TODO: If the current state is Optional, set the drop flag to 0
-        vs = VarState::make_Invalid(InvalidType::Moved);
+        auto new_state = VarState::make_Invalid(InvalidType::Moved);
+        DEBUG("State " << lv << " " << vs << " => " << new_state);
+        vs = std::move(new_state);
     }
 }
 
