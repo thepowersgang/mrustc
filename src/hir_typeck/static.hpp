@@ -18,6 +18,17 @@ enum class MetadataType {
     Slice,  // usize metadata
     TraitObject,    // VTable pointer metadata
 };
+static inline std::ostream& operator<<(std::ostream& os, const MetadataType& x) {
+    switch(x)
+    {
+    case MetadataType::Unknown: return os << "Unknown";
+    case MetadataType::None:    return os << "None";
+    case MetadataType::Zero:    return os << "Zero";
+    case MetadataType::Slice:   return os << "Slice";
+    case MetadataType::TraitObject:    return os << "TraitObject";
+    }
+    return os << "?";
+}
 
 class StaticTraitResolve
 {

@@ -4569,8 +4569,12 @@ namespace {
                     auto dst_meta = metadata_type(ty_dst.data().is_Pointer() ? ty_dst.data().as_Pointer().inner : ty_dst.data().as_Borrow().inner);
                     if( src_meta == MetadataType::None )
                     {
-                        assert(dst_meta == MetadataType::None);
+                        MIR_ASSERT(*m_mir_res, dst_meta == MetadataType::None, "Transmuting to fat pointer from thin: " << ty_src << " -> " << ty_dst);
                         emit_lvalue(e.ret_val); m_of << " = (void*)"; emit_param(e.args.at(0));
+                    }
+                    else if(dst_meta == MetadataType::None)
+                    {
+                        MIR_BUG(*m_mir_res, "Transmuting from fat pointer to thin: (" << src_meta << "->" << dst_meta << ") " << ty_src << " -> " << ty_dst);
                     }
                     else if( src_meta != dst_meta )
                     {

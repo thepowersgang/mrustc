@@ -2129,19 +2129,19 @@ MetadataType StaticTraitResolve::metadata_type(const Span& sp, const ::HIR::Type
         }
         }
     TU_ARMA(Path, e) {
-        TU_MATCHA( (e.binding), (pbe),
-        (Unbound,
+        TU_MATCH_HDRA( (e.binding), { )
+        TU_ARMA(Unbound, pbe) {
             // TODO: Should this return something else?
             return MetadataType::Unknown;
-            ),
-        (Opaque,
+            }
+        TU_ARMA(Opaque, pbe) {
             //auto pp = ::HIR::PathParams();
             //return this->find_impl(sp, m_lang_Sized, &pp, ty, [&](auto , bool){ return true; }, true);
             // TODO: This can only be with UfcsKnown, so check if the trait specifies ?Sized
             //return MetadataType::Unknown;
             return MetadataType::None;
-            ),
-        (Struct,
+            }
+        TU_ARMA(Struct, pbe) {
             // TODO: Destructure?
             switch( pbe->m_struct_markings.dst_type )
             {
@@ -2154,16 +2154,16 @@ MetadataType StaticTraitResolve::metadata_type(const Span& sp, const ::HIR::Type
             case ::HIR::StructMarkings::DstType::TraitObject:
                 return MetadataType::TraitObject;
             }
-            ),
-        (ExternType,
+            }
+        TU_ARMA(ExternType, pbe) {
             // Extern types aren't Sized, but have no metadata
             return MetadataType::Zero;
-            ),
-        (Enum,
-            ),
-        (Union,
-            )
-        )
+            }
+        TU_ARMA(Enum, pbe) {
+            }
+        TU_ARMA(Union, pbe) {
+            }
+        }
         return MetadataType::None;
         }
     TU_ARMA(Infer, e) {

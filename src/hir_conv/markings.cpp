@@ -93,7 +93,7 @@ public:
                 return ::HIR::StructMarkings::DstType::Possible;
             }
         }
-        else if( ty.data().is_Slice() )
+        else if( ty.data().is_Slice() || TU_TEST1(ty.data(), Primitive, == HIR::CoreType::Str) )
         {
             return ::HIR::StructMarkings::DstType::Slice;
         }
@@ -131,17 +131,17 @@ public:
     }
     ::HIR::StructMarkings::DstType get_struct_dst_type(const ::HIR::Struct& str, const ::HIR::GenericParams& def, const ::HIR::PathParams* params)
     {
-        TU_MATCHA( (str.m_data), (se),
-        (Unit,
-            ),
-        (Tuple,
+        TU_MATCH_HDRA( (str.m_data), {)
+        TU_ARMA(Unit, se) {
+            }
+        TU_ARMA(Tuple, se) {
             // TODO: Ensure that only the last field is ?Sized
             if( se.size() > 0 )
             {
                 return get_field_dst_type(se.back().ent, str.m_params, def, params);
             }
-            ),
-        (Named,
+            }
+        TU_ARMA(Named, se) {
             // Check the last field in the struct.
             // - If it is Sized, leave as-is (struct is marked as Sized)
             // - If it is known unsized, record the type
@@ -152,8 +152,8 @@ public:
             {
                 return get_field_dst_type(se.back().second.ent, str.m_params, def, params);
             }
-            )
-        )
+            }
+        }
         return ::HIR::StructMarkings::DstType::None;
     }
 
