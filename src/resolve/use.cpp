@@ -691,10 +691,20 @@ namespace {
             }
         }
     }
+    // > Found the target module
+    
     // - namespace/type items
     {
         auto it = hmod->m_mod_items.find(nodes.back().name());
-        if( it != hmod->m_mod_items.end() )
+        if( it == hmod->m_mod_items.end() )
+        {
+            DEBUG("E: : Types = " << FMT_CB(ss, for(const auto& e : hmod->m_mod_items){ ss << e.first << ":" << e.second->ent.tag_str() << ","; }));
+        }
+        else if( !it->second->publicity.is_global() )
+        {
+            DEBUG("E : Mod " << nodes.back().name() << " = " << it->second->ent.tag_str() << " [private]");
+        }
+        else
         {
             const auto* item_ptr = &it->second->ent;
             auto ap2 = ap; auto ap = ap2;
@@ -752,16 +762,21 @@ namespace {
                 )
             }
         }
-        else
-        {
-            DEBUG("Types = " << FMT_CB(ss, for(const auto& e : hmod->m_mod_items){ ss << e.first << ":" << e.second->ent.tag_str() << ","; }));
-        }
     }
     // - Values
     {
-        auto it2 = hmod->m_value_items.find(nodes.back().name());
-        if( it2 != hmod->m_value_items.end() ) {
-            const auto* item_ptr = &it2->second->ent;
+        auto it = hmod->m_value_items.find(nodes.back().name());
+        if( it ==  hmod->m_value_items.end() )
+        {
+            DEBUG("E : Values = " << FMT_CB(ss, for(const auto& e : hmod->m_value_items){ ss << e.first << ":" << e.second->ent.tag_str() << ","; }));
+        }
+        else if( !it->second->publicity.is_global() )
+        {
+            DEBUG("E : Value " << nodes.back().name() << " = " << it->second->ent.tag_str() << " [private]");
+        }
+        else
+        {
+            const auto* item_ptr = &it->second->ent;
             auto ap2 = ap; auto ap = ap2;
             DEBUG("E : Value " << nodes.back().name() << " = " << item_ptr->tag_str());
             if( item_ptr->is_Import() ) {
@@ -786,7 +801,7 @@ namespace {
             {
                 TU_MATCH_HDRA( (*item_ptr), {)
                 TU_ARMA(Import, e) {
-                    BUG(span, "Recursive import in " << path << " - " << it2->second->ent.as_Import().path << " -> " << e.path);
+                    BUG(span, "Recursive import in " << path << " - " << it->second->ent.as_Import().path << " -> " << e.path);
                     }
                 TU_ARMA(Constant, e) {
                     rv.value.set( ap, ::AST::PathBinding_Value::make_Static({ nullptr }) );
@@ -809,16 +824,21 @@ namespace {
                 }
             }
         }
-        else
-        {
-            DEBUG("Values = " << FMT_CB(ss, for(const auto& e : hmod->m_value_items){ ss << e.first << ":" << e.second->ent.tag_str() << ","; }));
-        }
     }
     // - Macros
     {
-        auto it2 = hmod->m_macro_items.find(nodes.back().name());
-        if( it2 != hmod->m_macro_items.end() ) {
-            const auto* item_ptr = &it2->second->ent;
+        auto it = hmod->m_macro_items.find(nodes.back().name());
+        if( it == hmod->m_macro_items.end() )
+        {
+            DEBUG("E : Macros = " << FMT_CB(ss, for(const auto& e : hmod->m_macro_items){ ss << e.first << ":" << e.second->ent.tag_str() << ","; }));
+        }
+        else if( !it->second->publicity.is_global() )
+        {
+            DEBUG("E : Macro " << nodes.back().name() << " = " << it->second->ent.tag_str() << " [private]");
+        }
+        else
+        {
+            const auto* item_ptr = &it->second->ent;
             auto ap2 = ap; auto ap = ap2;
             DEBUG("E : Macro " << nodes.back().name() << " = " << item_ptr->tag_str());
 
@@ -844,7 +864,7 @@ namespace {
                     if( e.path.m_crate_name == CRATE_BUILTINS )
                         ;
                     else
-                        BUG(span, "Recursive import in " << path << " - " << it2->second->ent.as_Import().path << " -> " << e.path);
+                        BUG(span, "Recursive import in " << path << " - " << it->second->ent.as_Import().path << " -> " << e.path);
                     rv.macro.set( ap, ::AST::PathBinding_Macro::make_MacroRules({ nullptr, nullptr }) );
                     }
                 TU_ARMA(ProcMacro, e) {
@@ -855,10 +875,6 @@ namespace {
                     }
                 }
             }
-        }
-        else
-        {
-            DEBUG("Macros = " << FMT_CB(ss, for(const auto& e : hmod->m_macro_items){ ss << e.first << ":" << e.second->ent.tag_str() << ","; }));
         }
     }
 
