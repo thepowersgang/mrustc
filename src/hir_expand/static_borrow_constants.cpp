@@ -194,8 +194,8 @@ namespace {
 
         // Borrow (from an inner lift)
         void visit(::HIR::ExprNode_Borrow& node) override {
-            ASSERT_BUG(node.span(), node.m_type == HIR::BorrowType::Shared, "");
-            ASSERT_BUG(node.span(), dynamic_cast<::HIR::ExprNode_PathValue*>(&*node.m_value), "");
+            ASSERT_BUG(node.span(), node.m_type == HIR::BorrowType::Shared, "Borrow in ExprVisitor_Extract not Shared");
+            ASSERT_BUG(node.span(), dynamic_cast<::HIR::ExprNode_PathValue*>(&*node.m_value), "Inner node of Borrow in ExprVisitor_Extract not _PathValue: " << typeid(*node.m_value).name());
             auto& val_path_node = dynamic_cast<::HIR::ExprNode_PathValue&>(*node.m_value);
             m_out = HIR::Literal::new_borrow_path( val_path_node.m_path.clone() );
         }
@@ -245,6 +245,7 @@ namespace {
         }
 
         void visit(::HIR::ExprNode_Borrow& node) override {
+            auto saved_all_constant = m_all_constant;
             m_all_constant = true;
             ::HIR::ExprVisitorDef::visit(node);
             // If the inner is constant (Array, Struct, Literal, const)
@@ -273,6 +274,7 @@ namespace {
                     DEBUG("-- " << node.m_value->m_res_type << " could be interior mutable");
                 }
             }
+            m_all_constant = saved_all_constant;
         }
 
         // - Composites (set local constant if all inner are constant)
