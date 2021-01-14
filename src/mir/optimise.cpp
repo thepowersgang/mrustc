@@ -14,6 +14,7 @@
 #include <mir/operations.hpp>
 #include <mir/visit_crate_mir.hpp>
 #include <algorithm>
+#include <cmath>
 #include <iomanip>
 #include <trans/target.hpp>
 #include <trans/trans_list.hpp> // Note: This is included for inlining after enumeration and monomorph
@@ -3560,13 +3561,21 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                 // TU_ARMav(Int, (le, re)) {
                                 TU_ARMA(Int, le) { const auto& re = val_r.as_Int();
                                     MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::DIV - " << val_l << " / " << val_r);
-                                    MIR_ASSERT(state, re.v != 0, "Const eval error: Constant division by zero");
-                                    new_value = ::MIR::Constant::make_Int({ H::truncate_s(le.t, le.v / re.v), le.t });
+                                    if( re.v == 0 ) {
+                                        DEBUG(state << "Const eval error: Constant division by zero");
+                                    }
+                                    else {
+                                        new_value = ::MIR::Constant::make_Int({ H::truncate_s(le.t, le.v / re.v), le.t });
+                                    }
                                     }
                                 TU_ARMA(Uint, le) { const auto& re = val_r.as_Uint();
                                     MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::DIV - " << val_l << " / " << val_r);
-                                    MIR_ASSERT(state, re.v != 0, "Const eval error: Constant division by zero");
-                                    new_value = ::MIR::Constant::make_Uint({ H::truncate_u(le.t, le.v / re.v), le.t });
+                                    if( re.v == 0 ) {
+                                        DEBUG(state << "Const eval error: Constant division by zero");
+                                    }
+                                    else {
+                                        new_value = ::MIR::Constant::make_Uint({ H::truncate_u(le.t, le.v / re.v), le.t });
+                                    }
                                     }
                                 }}
                                 break;
@@ -3811,8 +3820,10 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                 replace = true;
                                 ),
                             (Float,
-                                new_value = ::MIR::Constant::make_Float({ -ve.v, ve.t });
-                                replace = true;
+                                if( !::std::isnan(ve.v) ) {
+                                    new_value = ::MIR::Constant::make_Float({ -ve.v, ve.t });
+                                    replace = true;
+                                }
                                 ),
                             (Bool,
                                 // Not valid?
