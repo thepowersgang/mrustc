@@ -70,7 +70,7 @@
 %type <Item*>	extern_item
 
 %debug
-%error-verbose
+%define parse.error verbose
 
 %{
 // TODO: Replace this with a C++-safe printf

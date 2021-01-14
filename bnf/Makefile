@@ -5,7 +5,7 @@ CXXFLAGS := -std=c++11 -x c++ -I . -g
 
 OBJS := main.o rust.tab.o rust.lex.o
 
-RUSTSRC := /home/tpg/Source/rust/rustc-nightly/src/
+RUSTSRC := ../rustc-1.29.0-src/src/
 
 TSTFILES := ../samples/1.rs
 TSTFILES += $(addprefix $(RUSTSRC), libcore/lib.rs libstd/lib.rs)
