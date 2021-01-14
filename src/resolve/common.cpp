@@ -452,6 +452,14 @@ namespace {
             
             if(ns == ResolveNamespace::Macro )
             {
+                for(const auto& i : mod.macros())
+                {
+                    if(i.name == name)
+                    {
+                        DEBUG("Found in ast (macro)");
+                        return ResolveItemRef::make_Macro( &*i.data );
+                    }
+                }
                 for(const auto& mac : mod.macro_imports_res())
                 {
                     if(mac.name == name) {
@@ -467,14 +475,6 @@ namespace {
                         TU_ARMA(ExternalProcMacro, me)
                             return ResolveItemRef_Macro(me);
                         }
-                    }
-                }
-                for(const auto& i : mod.macros())
-                {
-                    if(i.name == name)
-                    {
-                        DEBUG("Found in ast (macro)");
-                        return ResolveItemRef::make_Macro( &*i.data );
                     }
                 }
             }
