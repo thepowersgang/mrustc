@@ -91,6 +91,7 @@ struct ProgramParams
     struct {
         ::std::string   codegen_type;
         ::std::string   emit_build_command;
+        ::std::string   panic_type;
     } codegen;
 
     ProgramParams(int argc, char *argv[]);
@@ -369,6 +370,10 @@ int main(int argc, char *argv[])
         if( params.test_harness )
         {
             crate.m_crate_name += "$test";
+            if(params.codegen.panic_type == "")
+            {
+                params.codegen.panic_type = "unwind";
+            }
         }
 
         if( params.outfile == "" ) {
@@ -725,6 +730,7 @@ int main(int argc, char *argv[])
         trans_opt.mode = params.codegen.codegen_type == "" ? "c" : params.codegen.codegen_type;
         trans_opt.build_command_file = params.codegen.emit_build_command;
         trans_opt.opt_level = params.opt_level;
+        trans_opt.panic_crate = params.codegen.panic_type == "" ? "panic_abort" : "panic_"+params.codegen.panic_type;
         for(const char* libdir : params.lib_search_dirs ) {
             // Store these paths for use in final linking.
             hir_crate->m_link_paths.push_back( libdir );
@@ -955,6 +961,10 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 else if( optname == "emit-depfile" ) {
                     get_optval();
                     this->emit_depfile = optval;
+                }
+                else if( optname == "panic" ) {
+                    get_optval();
+                    this->codegen.panic_type = optval;
                 }
                 else {
                     ::std::cerr << "Unknown codegen option: '" << optname << "'" << ::std::endl;

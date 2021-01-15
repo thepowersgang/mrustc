@@ -942,8 +942,8 @@ namespace {
                     // Ignore panic crates unless they're the selected crate (and add in the selected panic crate)
                     if( crate.second.m_data->m_lang_items.count("mrustc-panic_runtime") )
                     {
-                        // TODO: Check if this is the requested panic crate (for now hard-code panic_abort)
-                        if( strncmp(crate.first.c_str(), "panic_abort", 5+1+5) != 0 )
+                        // Check if this is the requested panic crate
+                        if( strncmp(crate.first.c_str(), opt.panic_crate.c_str(), opt.panic_crate.size()) != 0 )
                         {
                             continue ;
                         }
