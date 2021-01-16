@@ -585,7 +585,23 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
             fcn.m_code.m_mir = MIR::FunctionPointer(new MIR::Function());
             Builder builder(state, *fcn.m_code.m_mir);
             builder.push_stmt_assign( MIR::LValue::new_Return(), MIR::RValue::make_Tuple({}) );
-            if( state.resolve.type_needs_drop_glue(sp, ty) )
+            if( const auto* ity = state.resolve.is_type_owned_box(ty) )
+            {
+                // Call inner destructor
+                auto inner_ptr =
+                    ::MIR::LValue::new_Field(
+                        ::MIR::LValue::new_Field(
+                            ::MIR::LValue::new_Field(
+                                ::MIR::LValue::new_Deref( builder.self.clone() )
+                                ,0)
+                            ,0)
+                        ,0)
+                    ;
+                builder.push_stmt_drop(::MIR::LValue::new_Deref(std::move(inner_ptr)));
+                // Shallow drop the box (triggering a free call in the backend)
+                builder.push_stmt(MIR::Statement::make_Drop({ MIR::eDropKind::SHALLOW, ::MIR::LValue::new_Deref(builder.self.clone()), ~0u }));
+            }
+            else if( state.resolve.type_needs_drop_glue(sp, ty) )
             {
                 TU_MATCH_HDRA( (ty.data()), {)
                 TU_ARMA(Infer, _te)

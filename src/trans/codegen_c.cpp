@@ -194,7 +194,6 @@ namespace {
             bool disallow_empty_structs = false;
         } m_options;
 
-        ::std::vector< ::std::pair< ::HIR::GenericPath, const ::HIR::Struct*> >   m_box_glue_todo;
         ::std::set< ::HIR::TypeRef> m_emitted_fn_types;
     public:
         CodeGenerator_C(const ::HIR::Crate& crate, const ::std::string& outfile):
@@ -740,12 +739,6 @@ namespace {
 
         void finalise(const TransOptions& opt, CodegenOutput out_ty, const ::std::string& hir_file) override
         {
-            // Emit box drop glue after everything else to avoid definition ordering issues
-            for(auto& e : m_box_glue_todo)
-            {
-                emit_box_drop_glue( mv$(e.first), *e.second );
-            }
-
             const bool create_shims = (out_ty == CodegenOutput::Executable);
 
             // TODO: Support dynamic libraries too
@@ -1246,30 +1239,6 @@ namespace {
             else {
                 m_of << indent << Trans_Mangle(box_free) << "("; emit_lvalue(slot); m_of << "._0._0._0);\n";
             }
-        }
-        void emit_box_drop_glue(::HIR::GenericPath p, const ::HIR::Struct& item)
-        {
-            auto struct_ty = ::HIR::TypeRef::new_path( p.clone(), &item );
-            auto drop_glue_path = ::HIR::Path(struct_ty.clone(), "#drop_glue");
-            auto struct_ty_ptr = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Owned, struct_ty.clone());
-            // - Drop Glue
-            const auto* ity = m_resolve.is_type_owned_box(struct_ty);
-
-            auto inner_ptr = ::HIR::TypeRef::new_pointer( ::HIR::BorrowType::Unique, ity->clone() );
-            auto box_free = ::HIR::GenericPath { m_crate.get_lang_item_path(sp, "box_free"), { ity->clone() } };
-
-            ::std::vector< ::std::pair<::HIR::Pattern,::HIR::TypeRef> > args;
-            args.push_back( ::std::make_pair( ::HIR::Pattern {}, mv$(inner_ptr) ) );
-
-            ::MIR::Function empty_fcn;
-            ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), struct_ty_ptr, args, empty_fcn };
-            m_mir_res = &mir_res;
-            m_of << "static void " << Trans_Mangle(drop_glue_path) << "(struct s_" << Trans_Mangle(p) << "* rv) {\n";
-
-            emit_box_drop(1, *ity, ::MIR::LValue::new_Deref(::MIR::LValue::new_Return()), /*run_destructor=*/true);
-
-            m_of << "}\n";
-            m_mir_res = nullptr;
         }
 
         void emit_type_id(const ::HIR::TypeRef& ty) override
