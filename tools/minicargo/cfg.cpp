@@ -18,6 +18,7 @@
 #include <fstream>
 #include <unordered_map>
 #include <unordered_set>
+#include <cctype>   // toupper
 
 class CfgParseLexer
 {
