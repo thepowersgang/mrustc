@@ -107,7 +107,7 @@ void Trans_Codegen(const ::std::string& outfile, CodegenOutput out_ty, const Tra
         const auto& fcn = *ent.second->ptr;
         // Extern if there isn't any HIR
         bool is_extern = ! static_cast<bool>(fcn.m_code);
-        if( fcn.m_code.m_mir ) {
+        if( fcn.m_code.m_mir && !ent.second->force_prototype ) {
             codegen->emit_function_proto(ent.first, fcn, ent.second->pp, is_extern);
         }
     }
@@ -117,7 +117,7 @@ void Trans_Codegen(const ::std::string& outfile, CodegenOutput out_ty, const Tra
         //DEBUG("FUNCTION " << ent.first);
         assert( ent.second->ptr );
         const auto& fcn = *ent.second->ptr;
-        if( fcn.m_code.m_mir ) {
+        if( fcn.m_code.m_mir && !ent.second->force_prototype ) {
         }
         else {
             // TODO: Why would an intrinsic be in the queue?
@@ -163,7 +163,7 @@ void Trans_Codegen(const ::std::string& outfile, CodegenOutput out_ty, const Tra
     // 4. Emit function code
     for(const auto& ent : list.m_functions)
     {
-        if( ent.second->ptr && ent.second->ptr->m_code.m_mir )
+        if( ent.second->ptr && ent.second->ptr->m_code.m_mir && !ent.second->force_prototype )
         {
             const auto& path = ent.first;
             const auto& fcn = *ent.second->ptr;

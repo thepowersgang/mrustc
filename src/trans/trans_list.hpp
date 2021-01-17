@@ -81,10 +81,13 @@ struct TransList_Function
     Trans_Params    pp;
     // If `pp.has_types` is true, the below is valid
     CachedFunction  monomorphised;
+    /// Forces the function to not be emited as code (just emit the signature)
+    bool    force_prototype;
 
     TransList_Function(const ::HIR::Path& path):
         path(&path),
-        ptr(nullptr)
+        ptr(nullptr),
+        force_prototype(false)
     {}
 };
 struct TransList_Static

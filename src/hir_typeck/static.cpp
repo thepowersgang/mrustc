@@ -2459,24 +2459,46 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
         else
         {
             ImplRef best_impl;
+            ValuePtr    rv;
             this->find_impl(sp, pe.trait.m_path, &pe.trait.m_params, pe.type, [&](auto impl, bool is_fuzz)->bool{
                 if( ! impl.m_data.is_TraitImpl() )
                     return false;
                 const auto& ti = *impl.m_data.as_TraitImpl().impl;
-                auto it = ti.m_constants.find(pe.item);
-                if(it == ti.m_constants.end()) {
-                    // An impl was found, but it did't have the value
-                    return false;
+                bool found = false;
+                bool is_spec = false;
+
+                if(!found)
+                {
+                    auto it = ti.m_constants.find(pe.item);
+                    if(it != ti.m_constants.end())
+                    {
+                        found = true;
+                        is_spec = it->second.is_specialisable;
+                        rv = &it->second.data;
+                    }
+                }
+                if(!found)
+                {
+                    auto it = ti.m_methods.find(pe.item);
+                    if(it != ti.m_methods.end())
+                    {
+                        found = true;
+                        is_spec = it->second.is_specialisable;
+                        rv = &it->second.data;
+                    }
                 }
 
-                if( impl.more_specific_than(best_impl) )
-                {
-                    best_impl = mv$(impl);
-                    // If this value is specialisable, keep searching (return false)
-                    return !it->second.is_specialisable;
+                if(!found) {
+                    return false;
                 }
-                // Keep searching
-                return false;
+                else if( !impl.more_specific_than(best_impl) ) {
+                    // Keep searching
+                    return false;
+                }
+                else {
+                    best_impl = mv$(impl);
+                    return !is_spec;
+                }
                 });
             if( !best_impl.is_valid() )
             {
@@ -2488,12 +2510,8 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
             auto& ie = best_impl.m_data.as_TraitImpl();
             out_params.pp_impl = &out_params.pp_impl_data;
             out_params.pp_impl_data = ie.impl_params.clone();
-
-            const auto& ti = *ie.impl;
-            const auto& c = ti.m_constants.at(pe.item);
-
-            // TODO: What if the type requires monomorphisation? Leave it up to the caller
-            return &c.data;
+            ASSERT_BUG(sp, !rv.is_NotFound(), "");
+            return rv;
         }
         throw "";
         }

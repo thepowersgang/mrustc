@@ -17,6 +17,7 @@
 #include <algorithm>    // find_if
 #include <trans/target.hpp>
 #include <mir/operations.hpp>
+#include <mir/helpers.hpp>
 
 namespace {
     struct State
@@ -583,6 +584,7 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
             fcn.m_args.push_back(std::make_pair( HIR::Pattern(), HIR::TypeRef::new_borrow(HIR::BorrowType::Owned, ty.clone()) ));
 
             fcn.m_code.m_mir = MIR::FunctionPointer(new MIR::Function());
+            ::MIR::TypeResolve  mir_res { sp, state.resolve, FMT_CB(ss, ss << path), fcn.m_return, fcn.m_args, *fcn.m_code.m_mir };
             Builder builder(state, *fcn.m_code.m_mir);
             builder.push_stmt_assign( MIR::LValue::new_Return(), MIR::RValue::make_Tuple({}) );
             if( const auto* ity = state.resolve.is_type_owned_box(ty) )
@@ -597,7 +599,10 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
                             ,0)
                         ,0)
                     ;
-                builder.push_stmt_drop(::MIR::LValue::new_Deref(std::move(inner_ptr)));
+                auto inner_val = ::MIR::LValue::new_Deref(std::move(inner_ptr));
+                HIR::TypeRef    tmp;
+                ASSERT_BUG(sp, mir_res.get_lvalue_type(tmp, inner_val) == *ity, "Hard-coded box pointer path didn't result in the inner type");
+                builder.push_stmt_drop(std::move(inner_val));
                 // Shallow drop the box (triggering a free call in the backend)
                 builder.push_stmt(MIR::Statement::make_Drop({ MIR::eDropKind::SHALLOW, ::MIR::LValue::new_Deref(builder.self.clone()), ~0u }));
             }
@@ -682,6 +687,7 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
                     }
                     }
                 TU_ARMA(Path, te) {
+                    bool has_drop = false;
                     TU_MATCH_HDRA( (te.binding), {)
                     TU_ARMA(Unbound, pbe) throw "";
                     TU_ARMA(Opaque, pbe) throw "";
@@ -692,6 +698,7 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
                     TU_ARMA(Struct, pbe) {
                         if( pbe->m_markings.has_drop_impl ) {
                             builder.push_CallDrop(ty);
+                            has_drop = true;
                         }
 
                         // NOTE: Lazy option of monomorphising and handling the two classes
@@ -712,12 +719,14 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
                     TU_ARMA(Union, pbe) {
                         if( pbe->m_markings.has_drop_impl ) {
                             builder.push_CallDrop(ty);
+                            has_drop = true;
                         }
                         // Union requires no internal drop glue
                         }
                     TU_ARMA(Enum, pbe) {
                         if( pbe->m_markings.has_drop_impl ) {
                             builder.push_CallDrop(ty);
+                            has_drop = true;
                         }
                         const HIR::Enum& enm = *pbe;
                         TU_MATCH_HDRA( (enm.m_data), {)
@@ -747,6 +756,19 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
                             }
                             }
                         }
+                        }
+                    }
+                    if( has_drop ) {
+                        if( auto* e = trans_list.add_function( ::HIR::Path(ty.clone(), state.resolve.m_lang_Drop, "drop") ) )
+                        {
+                            MonomorphState  params;
+                            auto p = ::HIR::Path(ty.clone(), state.resolve.m_lang_Drop, "drop");
+                            auto fcn_e = state.resolve.get_value(sp, p, /*out*/params, /*signature_only=*/false);
+                            ASSERT_BUG(sp, fcn_e.is_Function(), "Drop didn't point to a function! " << fcn_e.tag_str() << " " << p);
+                            ASSERT_BUG(sp, !params.has_types(), "Generic drop impl encountered during auto_impls (should have been populated during enum)");
+                            e->force_prototype = true;
+                            e->ptr = fcn_e.as_Function();
+                            //e->pp = mv$(params);
                         }
                     }
                     }

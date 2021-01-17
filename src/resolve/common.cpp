@@ -460,7 +460,7 @@ namespace {
                         return ResolveItemRef::make_Macro( &*i.data );
                     }
                 }
-                for(const auto& mac : mod.macro_imports_res())
+                for(const auto& mac : reverse(mod.macro_imports_res()))
                 {
                     if(mac.name == name) {
                         // TODO: What about macro re-exports a builtin?
