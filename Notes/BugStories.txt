@@ -44,5 +44,14 @@ librustc takes ~20mins to recompile, and that's just one crate out of ~80 in rus
 - Turns out that 1.29 added a no-op Drop impl for Box (1.19 didn't have one), which
   caused mrustc's magic Drop impl to not be created.
 
+2021-01-17: Crash on cleanup
+============================
+
+- Most applications crash at shutdown, but not all
+- Traced to an `at_exit` handler for `stdout`
+- Fruitless debugging with normal debugger
+- Used WinDbgX to reverse debug, located bad pointer coming between a virtual call and the target of the call
+- Cause: calling `call_once` via vtable used mismatched ABI.
+
 <!-- vim: ft=markdown
 -->

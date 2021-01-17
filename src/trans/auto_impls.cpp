@@ -531,11 +531,69 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
                     if( m.second.first != 3+i )
                         continue ;
 
-                    //MIR_ASSERT(*m_mir_res, tr.m_values.at(m.first).is_Function(), "TODO: Handle generating vtables with non-function items");
                     DEBUG("- " << m.second.first << " = " << m.second.second << " :: " << m.first);
 
-                    auto gpath = monomorph_cb_trait.monomorph_genericpath(sp, m.second.second, false);
-                    vtable_contents.push_back( HIR::Literal::make_BorrowPath(::HIR::Path(type.clone(), mv$(gpath), m.first)) );
+                    auto trait_gpath = monomorph_cb_trait.monomorph_genericpath(sp, m.second.second, false);
+                    auto item_path = ::HIR::Path(type.clone(), mv$(trait_gpath), m.first);
+
+                    auto src_trait_ms = MonomorphStatePtr(&type, &item_path.m_data.as_UfcsKnown().trait.m_params, nullptr);
+                    const auto& src_trait = state.resolve.m_crate.get_trait_by_path(sp, m.second.second.m_path);
+                    const auto& item = src_trait.m_values.at(m.first);
+                    // If the entry is a by-value function, then emit a reference to a shim
+                    if( item.is_Function() )
+                    {
+                        const auto& tpl_fcn = item.as_Function();
+                        if( tpl_fcn.m_receiver == HIR::Function::Receiver::Value )
+                        {
+                            auto call_path = item_path.clone();
+                            item_path.m_data.as_UfcsKnown().item = RcString::new_interned(FMT(m.first << "#ptr"));
+                            auto* e = trans_list.add_function(item_path.clone());
+                            if(e)
+                            {
+                                // Create the shim (forward to the true call, dereferencing the first argument)
+                                HIR::Function   new_fcn;
+                                new_fcn.m_return = src_trait_ms.monomorph_type(sp, tpl_fcn.m_return);
+                                state.resolve.expand_associated_types(sp, new_fcn.m_return);
+                                new_fcn.m_args.push_back(std::make_pair( HIR::Pattern(), HIR::TypeRef::new_borrow(HIR::BorrowType::Owned, type.clone()) ));
+                                for(size_t i = 1; i < tpl_fcn.m_args.size(); i ++ ) {
+                                    new_fcn.m_args.push_back(std::make_pair( HIR::Pattern(), src_trait_ms.monomorph_type(sp, tpl_fcn.m_args[i].second) ));
+                                }
+                                for(size_t i = 0; i < new_fcn.m_args.size(); i ++ ) {
+                                    state.resolve.expand_associated_types(sp, new_fcn.m_args[i].second);
+                                }
+
+                                DEBUG("> Generate shim: " << item_path);
+
+                                new_fcn.m_code.m_mir = MIR::FunctionPointer(new MIR::Function());
+                                ::MIR::TypeResolve  mir_res { sp, state.resolve, FMT_CB(ss, ss << item_path), new_fcn.m_return, new_fcn.m_args, *new_fcn.m_code.m_mir };
+                                Builder builder(state, *new_fcn.m_code.m_mir);
+                                // bb0:
+                                //   rv = CALL ...
+                                ::std::vector<::MIR::Param> call_args;
+                                call_args.push_back( ::MIR::LValue::new_Deref(::MIR::LValue::new_Argument(0)) );
+                                for(size_t i = 1; i < tpl_fcn.m_args.size(); i ++ ) {
+                                    call_args.push_back( ::MIR::LValue::new_Argument(i) );
+                                }
+                                builder.terminate_Call(::MIR::LValue::new_Return(), mv$(call_path), std::move(call_args), 1, 2);
+                                // bb1:
+                                //   RETURN
+                                builder.ensure_open();
+                                builder.terminate_block(MIR::Terminator::make_Return({}));
+                                // bb2:
+                                //   UNWIND
+                                builder.ensure_open();
+                                builder.terminate_block(MIR::Terminator::make_Diverge({}));
+                                // ---
+
+                                MIR_Validate(state.resolve, HIR::ItemPath(item_path), *new_fcn.m_code.m_mir, new_fcn.m_args, new_fcn.m_return);
+                                trans_list.m_auto_functions.push_back(box$(new_fcn));
+                                e->ptr = trans_list.m_auto_functions.back().get();
+                            }
+                        }
+                    }
+                    //MIR_ASSERT(*m_mir_res, tr.m_values.at(m.first).is_Function(), "TODO: Handle generating vtables with non-function items");
+
+                    vtable_contents.push_back( HIR::Literal::make_BorrowPath(mv$(item_path)) );
                 }
                 assert(vtable_contents.size() == 3+i+1);
             }
@@ -593,12 +651,13 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
                 auto inner_ptr =
                     ::MIR::LValue::new_Field(
                         ::MIR::LValue::new_Field(
-                            ::MIR::LValue::new_Field(
-                                ::MIR::LValue::new_Deref( builder.self.clone() )
-                                ,0)
+                            ::MIR::LValue::new_Deref( builder.self.clone() )
                             ,0)
                         ,0)
                     ;
+                if(TARGETVER_MOST_1_29) {
+                    inner_ptr = ::MIR::LValue::new_Field(std::move(inner_ptr), 0);
+                }
                 auto inner_val = ::MIR::LValue::new_Deref(std::move(inner_ptr));
                 HIR::TypeRef    tmp;
                 ASSERT_BUG(sp, mir_res.get_lvalue_type(tmp, inner_val) == *ity, "Hard-coded box pointer path didn't result in the inner type");
