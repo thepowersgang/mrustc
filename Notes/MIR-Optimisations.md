@@ -253,3 +253,20 @@ Overview
 - Locate assignment of input
   - Check if it was a struct/tuple literal
 - Remove assignment, replace transmute with at `MAKEDST` op
+
+
+
+Reborrow-Cast
+=============
+Eliminate code sequences of:
+```
+_2 = &mut *_1
+_3 = _2 as *mut T
+```
+where `_1: *mut T`
+
+
+
+Roundtrip Cast
+==============
+Eliminate casts from `*T` to `*U` to `*T` again (pointer casts are loss-less)

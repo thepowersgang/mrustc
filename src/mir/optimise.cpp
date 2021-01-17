@@ -4988,8 +4988,79 @@ bool MIR_Optimise_NoopRemoval(::MIR::TypeResolve& state, ::MIR::Function& fcn)
     // Remove useless operations
     for(auto& bb : fcn.blocks)
     {
+        // Multi-statement no-ops (round-trip casts, reboorrow+cast)
+        for(auto it = bb.statements.begin(); it != bb.statements.end(); ++it)
+        {
+            state.set_cur_stmt(&bb - fcn.blocks.data(), it - bb.statements.begin());
+            // `_0 = &mut *foo`, then `_1 = _0 as *mut T` where `foo: *mut T`
+            // - Note: Accepts `_0 = &*foo; _1 = _0 as T` where `foo: T`
+            if( it->is_Assign()
+                && it->as_Assign().dst.is_Local()
+                && it->as_Assign().src.is_Borrow()
+                && it->as_Assign().src.as_Borrow().val.is_Deref()
+                )
+            {
+                const auto& dst_lv = it->as_Assign().dst;
+                auto src_lv = it->as_Assign().src.as_Borrow().val.clone_unwrapped();
+                // Find the next use of this target lvalue
+                for(auto it2 = it+1; it2 != bb.statements.end(); ++it2)
+                {
+                    // If it's a cast back to the original type, then replace with a direct assignment of the original value
+                    if(it2->is_Assign()
+                        && it2->as_Assign().src.is_Cast()
+                        && it2->as_Assign().src.as_Cast().val == dst_lv
+                        )
+                    {
+                        const auto& dst_ty = it2->as_Assign().src.as_Cast().type;
+                        HIR::TypeRef    tmp;
+                        const auto& orig_ty = state.get_lvalue_type(tmp, src_lv);
+                        if( orig_ty == dst_ty )
+                        {
+                            DEBUG(state << "Reborrow and cast back - " << *it << " and " << *it2);
+                            it2->as_Assign().src = std::move(src_lv);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // `_0 = foo as *const T; _1 = _0 as *mut T` where `foo: *mut T`
+            // - Note: Accepts `_0 = foo as *const T; _1 = _0 as U` where `foo: U`
+            if( it->is_Assign()
+                && it->as_Assign().dst.is_Local()
+                && it->as_Assign().src.is_Cast()
+                && it->as_Assign().src.as_Cast().type.data().is_Pointer()
+                )
+            {
+                const auto& dst_lv = it->as_Assign().dst;
+                const auto& src_lv = it->as_Assign().src.as_Cast().val;
+                // Find the next use of this target lvalue
+                for(auto it2 = it+1; it2 != bb.statements.end(); ++it2)
+                {
+                    // If it's a cast back to the original type, then replace with a direct assignment of the original value
+                    if(it2->is_Assign()
+                        && it2->as_Assign().src.is_Cast()
+                        && it2->as_Assign().src.as_Cast().val == dst_lv
+                        )
+                    {
+                        const auto& dst_ty = it2->as_Assign().src.as_Cast().type;
+                        HIR::TypeRef    tmp;
+                        const auto& orig_ty = state.get_lvalue_type(tmp, src_lv);
+                        if( orig_ty == dst_ty )
+                        {
+                            DEBUG(state << "Round-trip pointer cast - " << *it << " and " << *it2);
+                            it2->as_Assign().src = src_lv.clone();
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
         for(auto it = bb.statements.begin(); it != bb.statements.end(); )
         {
+            state.set_cur_stmt(&bb - fcn.blocks.data(), it - bb.statements.begin());
+
             // Placeholder: Asm block with empty template and no inputs/outputs/flags
             if( *it == MIR::Statement::make_Asm({}) )
             {
