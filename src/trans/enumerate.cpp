@@ -617,6 +617,24 @@ namespace
                 TU_MATCH_HDRA( (ty.data()), {)
                 default:
                     break;
+                TU_ARMA(Path, te) {
+                    TU_MATCHA( (te.binding), (tpb),
+                    (Unbound,
+                        BUG(Span(), "Unbound type hit in enumeration - " << ty);
+                        ),
+                    (Opaque,
+                        BUG(Span(), "Opaque type hit in enumeration - " << ty);
+                        ),
+                    (ExternType,
+                        ),
+                    (Struct,
+                        ),
+                    (Union,
+                        ),
+                    (Enum,
+                        )
+                    )
+                    }
                 TU_ARMA(Function, te) {
                     visit_type(te.m_rettype, Mode::Shallow);
                     for(const auto& sty : te.m_arg_types)

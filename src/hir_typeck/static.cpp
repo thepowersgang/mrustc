@@ -1086,6 +1086,13 @@ void StaticTraitResolve::expand_associated_types_inner(const Span& sp, ::HIR::Ty
         ),
     (TraitObject,
         // Recurse?
+        for(auto& arg : e.m_trait.m_path.m_params.m_types)
+            this->expand_associated_types_inner(sp, arg);
+        for(auto& arg : e.m_trait.m_type_bounds)
+            this->expand_associated_types_inner(sp, arg.second);
+        for(auto& m : e.m_markers)
+            for(auto& arg : m.m_params.m_types)
+                this->expand_associated_types_inner(sp, arg);
         ),
     (ErasedType,
         // Recurse?
