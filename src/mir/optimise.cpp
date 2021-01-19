@@ -5021,6 +5021,10 @@ bool MIR_Optimise_NoopRemoval(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                             break;
                         }
                     }
+                    if( check_invalidates_lvalue(*it2, src_lv) )
+                    {
+                        break;
+                    }
                 }
             }
 
@@ -5052,6 +5056,10 @@ bool MIR_Optimise_NoopRemoval(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                             it2->as_Assign().src = src_lv.clone();
                             break;
                         }
+                    }
+                    if( check_invalidates_lvalue(*it2, src_lv) )
+                    {
+                        break;
                     }
                 }
             }
