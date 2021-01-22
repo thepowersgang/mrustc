@@ -69,7 +69,7 @@ namespace {
 
             const auto& node_ref = *node_ptr;
             const char* node_tyname = typeid(node_ref).name();
-            TRACE_FUNCTION_FR(&*node_ptr << " " << node_tyname, node_ptr->m_usage);
+            TRACE_FUNCTION_FR(&*node_ptr << " " << node_tyname << ": " << this->get_usage(), node_ptr->m_usage);
 
             node_ptr->m_usage = this->get_usage();
 
@@ -228,7 +228,8 @@ namespace {
         }
         void visit(::HIR::ExprNode_Unsize& node) override
         {
-            auto _ = push_usage( ::HIR::ValueUsage::Move );
+            // TODO: Why does Unsize have a usage of Move?
+            //auto _ = push_usage( ::HIR::ValueUsage::Move );
             this->visit_node_ptr(node.m_value);
         }
         void visit(::HIR::ExprNode_Index& node) override
