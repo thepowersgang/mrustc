@@ -453,11 +453,12 @@ int main(int argc, char *argv[])
                     crate.load_extern_crate(Span(), "alloc_system");
                 }
 
-                if( panic_runtime_needed && !panic_runtime_loaded )
+                if( panic_runtime_needed /*&& !panic_runtime_loaded*/ )
                 {
                     // TODO: Get a panic method from the command line
                     // - Fall back to abort by default, because mrustc doesn't do unwinding yet.
-                    crate.load_extern_crate(Span(), "panic_abort");
+                    auto panic_crate = params.codegen.panic_type == "" ? "panic_abort" : "panic_"+params.codegen.panic_type;
+                    crate.load_extern_crate(Span(), panic_crate.c_str());
                 }
 
                 // - `mrustc-main` lang item default

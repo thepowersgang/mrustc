@@ -938,7 +938,12 @@ namespace {
                         // Check if this is the requested panic crate
                         if( strncmp(crate.first.c_str(), opt.panic_crate.c_str(), opt.panic_crate.size()) != 0 )
                         {
+                            DEBUG("Ignore not-selected panic crate: " << crate.first);
                             continue ;
+                        }
+                        else
+                        {
+                            DEBUG("Keep panic crate: " << crate.first);
                         }
                     }
 
