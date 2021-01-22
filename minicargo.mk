@@ -2,7 +2,12 @@
 #
 #
 
-OUTDIR_SUF ?=
+ifeq ($(RUSTC_VERSION),)
+  OUTDIR_SUF_DEF :=
+else
+  OUTDIR_SUF_DEF := -$(RUSTC_VERSION)
+endif
+OUTDIR_SUF ?= $(OUTDIR_SUF_DEF)
 MMIR ?=
 RUSTC_CHANNEL ?= stable
 RUSTC_VERSION ?= $(shell cat rust-version)
@@ -157,9 +162,12 @@ $(OUTDIR)cargo-build/libfailure-0_1_2.rlib: $(MRUSTC) LIBS
 #
 .PHONY: rust_tests-libs
 
-LIB_TESTS := alloc std
+LIB_TESTS := 
+LIB_TESTS += alloc
+LIB_TESTS += std
 LIB_TESTS += rustc_data_structures
-rust_tests-libs: $(patsubst %,$(OUTDIR)stdtest/%-test_out.txt, $(LIB_TESTS)) $(OUTDIR)stdtest/collectionstests_out.txt
+rust_tests-libs: $(patsubst %,$(OUTDIR)stdtest/%-test_out.txt, $(LIB_TESTS))
+rust_tests-libs: $(OUTDIR)stdtest/collectionstests_out.txt
 .PRECIOUS: $(OUTDIR)stdtest/alloc-test
 .PRECIOUS: $(OUTDIR)stdtest/std-test
 .PRECIOUS: $(OUTDIR)stdtest/rustc_data_structures-test
@@ -168,6 +176,7 @@ RUNTIME_ARGS_$(OUTDIR)stdtest/alloc-test := --test-threads 1
 RUNTIME_ARGS_$(OUTdIR)stdtest/std-test := --test-threads 1
 # VVV Requires panic destructors (unwinding panics)
 RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::io::stdio::tests::panic_doesnt_poison
+RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::io::buffered::tests::panic_in_write_doesnt_flush_in_drop
 RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::sync::mutex::tests::test_arc_condvar_poison
 RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::sync::mutex::tests::test_mutex_arc_poison
 RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::sync::once::tests::poison_bad
@@ -184,13 +193,25 @@ RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::sync::mutex::tests::test_mute
 RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::sync::rwlock::tests::test_get_mut_poison
 RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::sync::rwlock::tests::test_into_inner_poison
 RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::sync::rwlock::tests::test_rw_arc_access_in_unwind
+#RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::sync::mpsc::sync_tests::oneshot_multi_task_recv_then_close
+#RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::sync::mpsc::sync_tests::oneshot_multi_thread_recv_close_stress
+#RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::sync::mpsc::sync_tests::oneshot_single_thread_recv_chan_close
+# VVV Requires u128 literals
+RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::net::ip::tests::test_ipv6_to_int
+RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::net::ip::tests::test_int_to_ipv6
 RUNTIME_ARGS_$(OUTDIR)stdtest/rustc_data_structures-test := --test-threads 1
+RUNTIME_ARGS_$(OUTDIR)stdtest/collectionstests := --test-threads 1
+# VVV Requires unwinding panics
+RUNTIME_ARGS_$(OUTDIR)stdtest/collectionstests += --skip ::slice::test_box_slice_clone_panics
+RUNTIME_ARGS_$(OUTDIR)stdtest/collectionstests += --skip ::slice::panic_safe
+# No support for custom alignment
+RUNTIME_ARGS_$(OUTDIR)stdtest/collectionstests += --skip ::vec::overaligned_allocations
 
 $(OUTDIR)stdtest/%-test: $(RUSTCSRC)src/lib%/lib.rs LIBS
 	$(MINICARGO) --test $(RUSTCSRC)src/lib$* --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(dir $@) -L $(OUTDIR)
 $(OUTDIR)stdtest/collectionstests: $(OUTDIR)stdtest/alloc-test
 	test -e $@
 $(OUTDIR)collectionstest_out.txt: $(OUTDIR)%
-$(OUTDIR)%_out.txt: $(OUTDIR)%
+$(OUTDIR)%_out.txt: $(OUTDIR)% minicargo.mk
 	@echo "--- [$<]"
 	$V./$< $(RUNTIME_ARGS_$<) > $@ 2>&1 || (tail -n 1 $@; mv $@ $@_fail; false)
