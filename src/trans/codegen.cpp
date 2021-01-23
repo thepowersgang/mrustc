@@ -138,7 +138,7 @@ void Trans_Codegen(const ::std::string& outfile, CodegenOutput out_ty, const Tra
         assert(ent.second->ptr);
         const auto& stat = *ent.second->ptr;
 
-        if( ! stat.m_value_res.is_Invalid() )
+        if( ! stat.m_value_res.is_Invalid() && !stat.m_no_emit_value )
         {
             codegen->emit_static_proto(ent.first, stat, ent.second->pp);
         }
@@ -153,7 +153,7 @@ void Trans_Codegen(const ::std::string& outfile, CodegenOutput out_ty, const Tra
         assert(ent.second->ptr);
         const auto& stat = *ent.second->ptr;
 
-        if( ! stat.m_value_res.is_Invalid() )
+        if( ! stat.m_value_res.is_Invalid() && !stat.m_no_emit_value )
         {
             codegen->emit_static_local(ent.first, stat, ent.second->pp);
         }

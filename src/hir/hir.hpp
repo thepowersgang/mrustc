@@ -116,6 +116,16 @@ public:
     ExprPtr m_value;
 
     Literal   m_value_res;
+    bool    m_save_literal = false;
+    bool    m_no_emit_value = false;
+
+    Static(Linkage linkage, bool is_mut, TypeRef type, ExprPtr value)
+        : m_linkage( std::move(linkage) )
+        , m_is_mut(is_mut)
+        , m_type( std::move(type) )
+        , m_value( std::move(value) )
+    {
+    }
 };
 class Constant
 {

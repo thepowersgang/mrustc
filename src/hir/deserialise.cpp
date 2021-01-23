@@ -765,13 +765,22 @@
         {
             TRACE_FUNCTION;
 
-            return ::HIR::Static {
-                deserialise_linkage(),
-                m_in.read_bool(),
-                deserialise_type(),
-                ::HIR::ExprPtr {},
-                {}
-                };
+            auto linkage = deserialise_linkage();
+            uint8_t bitflag_1 = m_in.read_u8();
+            #define BIT(i,fld)  fld = (bitflag_1 & (1 << (i))) != 0;
+            bool is_mut;
+            bool save_literal;
+            BIT(0, is_mut);
+            BIT(1, save_literal);
+            #undef BIT
+            auto ty = deserialise_type();
+            auto rv = ::HIR::Static(mv$(linkage), is_mut, mv$(ty), {});
+            if(save_literal)
+            {
+                rv.m_value_res = deserialise_literal();
+                rv.m_no_emit_value = true;
+            }
+            return rv;
         }
 
         // - Type items

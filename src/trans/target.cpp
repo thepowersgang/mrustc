@@ -1171,6 +1171,16 @@ namespace {
             // TODO: repr(C) enums - they have different rules
             // - A data enum with `repr(C)` puts the tag before the data
 
+            // TODO: Support rustc's enum reprs
+            // ```
+            // union {
+            //   struct {
+            //      TagType tag;
+            //      ...data
+            //   } var1;
+            // }
+            // ```
+
             size_t  max_size = 0;
             size_t  max_align = 0;
             for(const auto& var : e)

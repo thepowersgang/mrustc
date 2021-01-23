@@ -45,13 +45,10 @@ namespace {
             next_item_idx ++;
             DEBUG("mod_path = " << mod_path);
             auto rv = mod_path.get_simple_path() + name.c_str();
-            const_cast<::HIR::Module&>(mod).m_inline_statics.push_back( ::std::make_pair( mv$(name), ::HIR::Static {
-                ::HIR::Linkage {},
-                false,
-                mv$(type),
-                ::HIR::ExprPtr(),
-                mv$(value)
-                } ) );
+            auto s = ::HIR::Static( ::HIR::Linkage(), false, mv$(type), ::HIR::ExprPtr() );
+            s.m_value_res = ::std::move(value);
+            s.m_save_literal = true;
+            const_cast<::HIR::Module&>(mod).m_inline_statics.push_back( ::std::make_pair( mv$(name), mv$(s) ) );
             return rv;
         }
     };

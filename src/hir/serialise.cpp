@@ -1049,10 +1049,20 @@
 
             serialise(item.m_linkage);
 
-            m_out.write_bool(item.m_is_mut);
+            uint8_t bitflag_1 = 0;
+            #define BIT(i,fld)  if(fld) bitflag_1 |= 1 << (i);
+            BIT(0, item.m_is_mut);
+            BIT(1, item.m_save_literal)
+            #undef BIT
+            m_out.write_u8(bitflag_1);
             serialise(item.m_type);
 
             // NOTE: Value not stored (What if the static is generic? It can't be.)
+            // - Need to store if the item was from a const (special linkage?)
+            if(item.m_save_literal)
+            {
+                serialise(item.m_value_res);
+            }
         }
 
         // - Type items

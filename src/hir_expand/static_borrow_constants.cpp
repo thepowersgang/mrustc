@@ -343,13 +343,13 @@ namespace {
                 auto name = RcString::new_interned( FMT("lifted#" << idx) );
                 auto path = (*m_current_module_path + name).get_simple_path();
                 DEBUG(path << " = " << val);
-                auto new_static = HIR::Static {
+                auto new_static = HIR::Static(
                     HIR::Linkage(),
                     /*is_mut=*/false,
                     mv$(ty),
-                    /*m_value=*/HIR::ExprPtr(),
-                    /*m_value_res=*/mv$(val)
-                    };
+                    /*m_value=*/HIR::ExprPtr()
+                    );
+                new_static.m_value_res = mv$(val);
                 list.push_back(std::make_pair( name, mv$(new_static) ));
                 return path;
                 };

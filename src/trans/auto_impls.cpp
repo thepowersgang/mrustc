@@ -598,10 +598,9 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
                 assert(vtable_contents.size() == 3+i+1);
             }
 
-            HIR::Static vtable_static;
-            vtable_static.m_type = mv$(vtable_ty);
-            vtable_static.m_is_mut = false;
-            vtable_static.m_linkage.type = HIR::Linkage::Type::Weak;
+            HIR::Linkage linkage;
+            linkage.type = HIR::Linkage::Type::Weak;
+            HIR::Static vtable_static( ::std::move(linkage), /*is_mut*/false, mv$(vtable_ty), {} );
             vtable_static.m_value_res = HIR::Literal::make_List(mv$(vtable_contents));
 
             // Add to list

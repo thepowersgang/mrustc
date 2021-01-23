@@ -252,7 +252,7 @@ namespace {
 
             tr.m_values.insert( ::std::make_pair(
                 "vtable#",
-                ::HIR::TraitValueItem(::HIR::Static { ::HIR::Linkage(), false, ::HIR::TypeRef::new_path( mv$(path), {} ), {},{} })
+                ::HIR::TraitValueItem(::HIR::Static( ::HIR::Linkage(), false, ::HIR::TypeRef::new_path( mv$(path), {} ), {} ))
                 ) );
         }
 
