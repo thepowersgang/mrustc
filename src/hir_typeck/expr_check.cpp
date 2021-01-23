@@ -1308,7 +1308,7 @@ namespace {
 
             if( auto* e = item.m_data.opt_Value() )
             {
-                auto enum_type = ::HIR::Enum::get_repr_type(e->repr);
+                auto enum_type = ::HIR::Enum::get_repr_type(item.m_tag_repr);
                 for(auto& var : e->variants)
                 {
                     DEBUG("Enum value " << p << " - " << var.name);

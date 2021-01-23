@@ -9,6 +9,7 @@
 #include <string_view.hpp>
 #include <hir/hir.hpp>  // ABI_RUST
 #include <hir/type.hpp>
+#include <cctype>
 
 class Mangler
 {
@@ -65,12 +66,25 @@ public:
             m_os << ::stdx::string_view(s, s + pre_hash_len);
             m_os << hash_pos + 1;;
 #else
-            // 'h' <len1> <body1> <len2> <body2>
-            m_os << "h";
-            m_os << pre_hash_len;
-            m_os << ::stdx::string_view(s, s + pre_hash_len);
-            m_os << size - pre_hash_len - 1;
-            m_os << hash_pos + 1;;
+            // If the suffix is all digits, then print `H` and the literal contents
+            if( false && std::isdigit(hash_pos[1]) )
+            {
+                for(auto c = hash_pos+1; *c; c++)
+                    ASSERT_BUG(Span(), std::isdigit(*c), "'" << s << "'");
+                m_os << "H";
+                m_os << pre_hash_len;
+                m_os << ::stdx::string_view(s, s + pre_hash_len);
+                m_os << hash_pos + 1;
+            }
+            else
+            {
+                // 'h' <len1> <body1> <len2> <body2>
+                m_os << "h";
+                m_os << pre_hash_len;
+                m_os << ::stdx::string_view(s, s + pre_hash_len);
+                m_os << size - pre_hash_len - 1;
+                m_os << hash_pos + 1;
+            }
 #endif
         }
         else

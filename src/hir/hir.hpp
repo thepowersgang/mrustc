@@ -265,9 +265,9 @@ public:
     };
     enum class Repr
     {
-        Rust,
-        C,
+        Auto,
         Usize, U8, U16, U32, U64,
+        Isize, I8, I16, I32, I64,
     };
     struct ValueVariant {
         RcString   name;
@@ -278,12 +278,13 @@ public:
     TAGGED_UNION(Class, Data,
         (Data, ::std::vector<DataVariant>),
         (Value, struct {
-            Repr    repr;
             ::std::vector<ValueVariant> variants;
             })
         );
 
     GenericParams   m_params;
+    bool    m_is_c_repr;
+    Repr    m_tag_repr;
     Class   m_data;
 
     TraitMarkings   m_markings;

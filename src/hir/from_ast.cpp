@@ -1213,7 +1213,8 @@ namespace {
         ERROR(Span(), E0000, "Enum " << path << " has both value and data variants");
     }
 
-    auto repr = ::HIR::Enum::Repr::Rust;
+    bool is_repr_c = false;
+    auto repr = ::HIR::Enum::Repr::Auto;
     if( const auto* attr_repr = attrs.get("repr") )
     {
         ASSERT_BUG(Span(), attr_repr->has_sub_items(), "#[repr] attribute malformed, " << *attr_repr);
@@ -1221,23 +1222,18 @@ namespace {
         ASSERT_BUG(Span(), attr_repr->items()[0].has_noarg(), "#[repr] attribute malformed, " << *attr_repr);
         const auto& repr_str = attr_repr->items()[0].name();
         if( repr_str == "C" ) {
-            repr = ::HIR::Enum::Repr::C;
+            is_repr_c = true;
         }
-        else if( repr_str == "u8") {
-            repr = ::HIR::Enum::Repr::U8;
-        }
-        else if( repr_str == "u16") {
-            repr = ::HIR::Enum::Repr::U16;
-        }
-        else if( repr_str == "u32") {
-            repr = ::HIR::Enum::Repr::U32;
-        }
-        else if( repr_str == "u64") {
-            repr = ::HIR::Enum::Repr::U64;
-        }
-        else if( repr_str == "usize") {
-            repr = ::HIR::Enum::Repr::Usize;
-        }
+        else if( repr_str == "u8"   ) { repr = ::HIR::Enum::Repr::U8; }
+        else if( repr_str == "u16"  ) { repr = ::HIR::Enum::Repr::U16; }
+        else if( repr_str == "u32"  ) { repr = ::HIR::Enum::Repr::U32; }
+        else if( repr_str == "u64"  ) { repr = ::HIR::Enum::Repr::U64; }
+        else if( repr_str == "usize") { repr = ::HIR::Enum::Repr::Usize; }
+        else if( repr_str == "i8"   ) { repr = ::HIR::Enum::Repr::I8; }
+        else if( repr_str == "i16"  ) { repr = ::HIR::Enum::Repr::I16; }
+        else if( repr_str == "i32"  ) { repr = ::HIR::Enum::Repr::I32; }
+        else if( repr_str == "i64"  ) { repr = ::HIR::Enum::Repr::I64; }
+        else if( repr_str == "isize") { repr = ::HIR::Enum::Repr::Isize; }
         else {
             ERROR(attrs.get("repr")->span(), E0000, "Unknown enum repr '" << repr_str << "'");
         }
@@ -1256,7 +1252,7 @@ namespace {
                 });
         }
 
-        data = ::HIR::Enum::Class::make_Value({ repr, mv$(variants) });
+        data = ::HIR::Enum::Class::make_Value({ mv$(variants) });
     }
     // NOTE: empty enums are encoded as empty Data enums
     else
@@ -1330,7 +1326,7 @@ namespace {
 
         switch(repr)
         {
-        case ::HIR::Enum::Repr::Rust:
+        case ::HIR::Enum::Repr::Auto:
             break;
         default:
             // NOTE:
@@ -1350,6 +1346,8 @@ namespace {
 
     return ::HIR::Enum {
         LowerHIR_GenericParams(ent.params(), nullptr),
+        is_repr_c,
+        repr,
         mv$(data)
         };
 }

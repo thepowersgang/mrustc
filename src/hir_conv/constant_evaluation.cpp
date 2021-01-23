@@ -1768,7 +1768,7 @@ namespace {
             static Span sp;
             if( auto* e = item.m_data.opt_Value() )
             {
-                auto ty = ::HIR::Enum::get_repr_type(e->repr);
+                auto ty = ::HIR::Enum::get_repr_type(item.m_tag_repr);
                 uint64_t i = 0;
                 for(auto& var : e->variants)
                 {

@@ -1331,13 +1331,16 @@ namespace {
             }
             } break;
         TU_ARM(enm.m_data, Value, e) {
-            switch(e.repr)
+            switch(enm.m_tag_repr)
             {
-            case ::HIR::Enum::Repr::C:
-                // No auto-sizing, just i32?
-                rv.fields.push_back(TypeRepr::Field { 0, ::HIR::CoreType::U32 });
-                break;
-            case ::HIR::Enum::Repr::Rust: {
+            case ::HIR::Enum::Repr::Auto:
+                if(enm.m_is_c_repr)
+                {
+                    // No auto-sizing, just i32?
+                    rv.fields.push_back(TypeRepr::Field { 0, ::HIR::CoreType::U32 });
+                }
+                else
+                {
                 int pow8 = 0;
                 for( const auto& v : e.variants )
                 {
@@ -1378,18 +1381,7 @@ namespace {
                     break;
                 }
                 } break;
-            case ::HIR::Enum::Repr::U8:
-                rv.fields.push_back(TypeRepr::Field { 0, ::HIR::CoreType::U8 });
-                break;
-            case ::HIR::Enum::Repr::U16:
-                rv.fields.push_back(TypeRepr::Field { 0, ::HIR::CoreType::U16 });
-                break;
-            case ::HIR::Enum::Repr::U32:
-                rv.fields.push_back(TypeRepr::Field { 0, ::HIR::CoreType::U32 });
-                break;
-            case ::HIR::Enum::Repr::U64:
-                rv.fields.push_back(TypeRepr::Field { 0, ::HIR::CoreType::U64 });
-                break;
+#if 0
             case ::HIR::Enum::Repr::Usize:
                 if( g_target.m_arch.m_pointer_bits == 16 )
                 {
@@ -1403,6 +1395,10 @@ namespace {
                 {
                     rv.fields.push_back(TypeRepr::Field { 0, ::HIR::CoreType::U64 });
                 }
+                break;
+#endif
+            default:
+                rv.fields.push_back(TypeRepr::Field { 0, enm.get_repr_type(enm.m_tag_repr) });
                 break;
             }
             if( rv.fields.size() > 0 )

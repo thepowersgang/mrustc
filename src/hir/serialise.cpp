@@ -1074,6 +1074,8 @@
         void serialise(const ::HIR::Enum& item)
         {
             serialise_generics(item.m_params);
+            m_out.write_bool( item.m_is_c_repr );
+            m_out.write_tag( static_cast<int>(item.m_tag_repr) );
             serialise( item.m_data );
 
             serialise(item.m_markings);
@@ -1083,7 +1085,6 @@
             m_out.write_tag( v.tag() );
             TU_MATCHA( (v), (e),
             (Value,
-                m_out.write_tag( static_cast<int>(e.repr) );
                 serialise_vec(e.variants);
                 ),
             (Data,

@@ -1172,7 +1172,6 @@
                     return ::HIR::Enum::Class::make_Data( des.deserialise_vec<::HIR::Enum::DataVariant>() );
                 case ::HIR::Enum::Class::TAG_Value:
                     return ::HIR::Enum::Class::make_Value({
-                        static_cast< ::HIR::Enum::Repr>(des.m_in.read_tag()),
                         des.deserialise_vec<::HIR::Enum::ValueVariant>()
                         });
                 default:
@@ -1182,6 +1181,8 @@
         };
         return ::HIR::Enum {
             deserialise_genericparams(),
+            m_in.read_bool(),
+            static_cast< ::HIR::Enum::Repr>(m_in.read_tag()),
             H::deserialise_enumclass(*this),
             deserialise_markings()
             };

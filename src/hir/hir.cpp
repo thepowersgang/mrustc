@@ -239,8 +239,7 @@ uint32_t HIR::Enum::get_value(size_t idx) const
 {
     switch(r)
     {
-    case ::HIR::Enum::Repr::Rust:
-    case ::HIR::Enum::Repr::C:
+    case ::HIR::Enum::Repr::Auto:
         return ::HIR::CoreType::Isize;
         break;
     case ::HIR::Enum::Repr::Usize: return ::HIR::CoreType::Usize; break;
@@ -248,6 +247,11 @@ uint32_t HIR::Enum::get_value(size_t idx) const
     case ::HIR::Enum::Repr::U16: return ::HIR::CoreType::U16; break;
     case ::HIR::Enum::Repr::U32: return ::HIR::CoreType::U32; break;
     case ::HIR::Enum::Repr::U64: return ::HIR::CoreType::U64; break;
+    case ::HIR::Enum::Repr::Isize: return ::HIR::CoreType::Isize; break;
+    case ::HIR::Enum::Repr::I8 : return ::HIR::CoreType::I8 ; break;
+    case ::HIR::Enum::Repr::I16: return ::HIR::CoreType::I16; break;
+    case ::HIR::Enum::Repr::I32: return ::HIR::CoreType::I32; break;
+    case ::HIR::Enum::Repr::I64: return ::HIR::CoreType::I64; break;
     }
     throw "";
 }
