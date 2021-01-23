@@ -22,7 +22,7 @@ impl<T: Iterator<Item=char>> CharStream<T> {
         self.cur.is_none()
     }
     fn cur(&self) -> char {
-        self.cur.unwrap()
+        self.cur.expect("CharStream::cur called with no current")
     }
     fn next(&mut self) -> Option<char> {
         self.inner.peek().cloned()
@@ -288,6 +288,10 @@ impl ::std::str::FromStr for TokenStream {
                             Some('x') => { it.consume(); 16 },
                             Some('o') => { it.consume(); 8 },
                             Some('b') => { it.consume(); 2 },
+                            None => {
+                                rv.push(Literal::new_u(0, 0).into());
+                                continue 'outer;
+                                },
                             _ => 10,
                             }
                         }
@@ -423,5 +427,16 @@ mod tests {
         assert_tt_matches!(it.next(), Ident::new("a", Span::call_site()).into());
         assert_tt_matches!(it.next(), Punct::new('>', Spacing::Alone).into());
         assert_tt_matches!(it.next());
+    }
+
+    #[test]
+    fn numbers()
+    {
+        assert_eq!(
+            TokenStream::from_str("0").expect("Failed to parse").into_iter().collect::<Vec<_>>(),
+            &[
+                Literal::new_u(0,0).into(),
+            ]
+        );
     }
 }
