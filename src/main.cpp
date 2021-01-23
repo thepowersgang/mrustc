@@ -162,6 +162,9 @@ void init_debug_list()
         "Trans Enumerate",
         "Trans Auto Impls",
         "Trans Monomorph",
+        "Trans Auto Impls PM",
+        "Trans Monomorph PM",
+        "MIR Optimise Inline PM",
         "MIR Optimise Inline",
         "Trans Enumerate Cleanup",
         "Trans Codegen"
