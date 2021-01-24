@@ -2160,7 +2160,7 @@ static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mo
 
         std::vector<RcString>   mac_path;
         //auto mac_name = RcString::new_interned( FMT("derive#" << trait.name().elems.back()) );
-        auto mac_name = RcString::new_interned( FMT(trait.name().elems.back()) );
+        auto mac_name = trait.name().elems.back();
 
         if( trait.name().elems.size() == 1 )
         {
@@ -2210,8 +2210,34 @@ static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mo
         }
         else
         {
-            mac_path = trait.name().elems;
-            mac_path.back() = mac_name;
+            if( trait.name().elems.size() != 2 )
+                ERROR(sp, E0000, "Invalid macro path format (must be two items, got " << trait.name());
+            const auto& des_crate = trait.name().elems[0];
+            const auto& des_mac = trait.name().elems[1];
+            RcString    crate_name;
+            RcString    mac_name;
+            for(const auto& ec : crate.m_extern_crates)
+            {
+                if(ec.second.m_short_name == des_crate )
+                {
+                    auto it = ec.second.m_hir->m_root_module.m_macro_items.find(des_mac);
+                    if( it == ec.second.m_hir->m_root_module.m_macro_items.end() )
+                        ERROR(sp, E0000, "Cannot find macro `" << des_mac << "` in " << ec.first);
+                    if(const auto* imp = it->second->ent.opt_Import()) {
+                        crate_name = imp->path.m_crate_name;
+                        mac_name = imp->path.m_components[0];
+                    }
+                    else {
+                        crate_name  = ec.first;
+                        mac_name = des_mac;
+                    }
+                    break;
+                }
+            }
+            if( crate_name == RcString() ) {
+                ERROR(sp, E0000, "Cannot find crate `" << des_crate << "`");
+            }
+            mac_path = make_vec2(crate_name, mac_name);
         }
 
         bool found = false;
