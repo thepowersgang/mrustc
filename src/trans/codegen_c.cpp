@@ -2740,31 +2740,62 @@ namespace {
                 else
                 {
                     ::HIR::TypeRef  tmp;
-                    auto tmp_lv = ::MIR::LValue::new_Field( field_inner.clone(), val_fp.as_Field() - 1 );
-                    bool use_parent = false;
-                    for(;;)
+                    struct H {
+                        static size_t get_field_count(const ::MIR::TypeResolve& mir_res, const HIR::TypeRef& ty) {
+                            TU_MATCH_HDRA( (ty.data()), { )
+                            default:
+                                break;
+                            TU_ARMA(Path, te) {
+                                TU_MATCH_HDRA( (te.binding), {)
+                                default:
+                                    break;
+                                TU_ARMA(Struct, pbe) {
+                                    TU_MATCH_HDRA( (pbe->m_data), {)
+                                    TU_ARMA(Unit, sd)
+                                        return 0;
+                                    TU_ARMA(Tuple, sd)
+                                        return sd.size();
+                                    TU_ARMA(Named, sd)
+                                        return sd.size();
+                                    }
+                                    }
+                                }
+                                }
+                            TU_ARMA(Tuple, te)
+                                return te.size();
+                            TU_ARMA(Array, te)
+                                return 0;
+                            TU_ARMA(Slice, te)
+                                return 0;
+                            }
+                            MIR_BUG(mir_res, "Field access on unexpected type: " << ty);
+                        }
+                    };
+                    // Get the number of fields in parent
+                    size_t n_parent_fields = H::get_field_count(mir_res,  mir_res.get_lvalue_type(tmp, field_inner));
+                    // Find next non-zero field
+                    auto tmp_lv = ::MIR::LValue::new_Field( field_inner.clone(), val_fp.as_Field() + 1 );
+                    bool found = false;
+                    while(tmp_lv.as_Field() < n_parent_fields)
                     {
                         const auto& ty = mir_res.get_lvalue_type(tmp, tmp_lv);
-                        if( !this->type_is_bad_zst(ty) )
-                            break;
-                        auto idx = tmp_lv.as_Field();
-                        if( idx == 0 )
-                        {
-                            use_parent = true;
+                        if( !this->type_is_bad_zst(ty) ) {
+                            found = true;
                             break;
                         }
-                        tmp_lv.m_wrappers.back() = ::MIR::LValue::Wrapper::new_Field(idx - 1);
+                        auto idx = tmp_lv.as_Field();
+                        tmp_lv.m_wrappers.back() = ::MIR::LValue::Wrapper::new_Field(idx + 1);
                     }
 
-                    // Reached index zero, with still ZST
-                    if( use_parent )
+                    // If no non-zero fields were found before the end, then add one to the struct's address
+                    if( !found )
                     {
-                        m_of << "(void*)& "; emit_lvalue(field_inner);
+                        m_of << "(void*)(& "; emit_lvalue(field_inner); m_of << " + 1) /*ZST*/";
                     }
-                    // Use the address after the previous item
+                    // Otherwise, use the next non-zero field
                     else
                     {
-                        m_of << "(void*)( & "; emit_lvalue(tmp_lv); m_of << " + 1 )";
+                        m_of << "(void*)( &"; emit_lvalue(tmp_lv); m_of << ") /*ZST*/";
                     }
                 }
                 special = true;
