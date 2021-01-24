@@ -309,6 +309,7 @@ ProcMacroInv ProcMacro_Invoke_int(const Span& sp, const ::AST::Crate& crate, con
     TRACE_FUNCTION_F(mac_path);
     // 1. Locate macro in HIR list
     const auto& crate_name = mac_path.front();
+    ASSERT_BUG(sp, crate.m_extern_crates.count(crate_name), "Crate not loaded for macro: [" << mac_path << "]");
     const auto& ext_crate = crate.m_extern_crates.at(crate_name);
     // TODO: Ensure that this macro is in the listed crate.
     const ::HIR::ProcMacro* pmp = nullptr;
@@ -502,18 +503,13 @@ namespace {
                 case TOK_RWORD_TRUE:    m_pmi.send_ident("true");   break;
                 case TOK_RWORD_SELF:    m_pmi.send_ident("self");   break;
                 case TOK_RWORD_SUPER:   m_pmi.send_ident("super");  break;
-                case TOK_RWORD_PROC:    m_pmi.send_ident("proc");   break;
                 case TOK_RWORD_MOVE:    m_pmi.send_ident("move");   break;
                 case TOK_RWORD_ABSTRACT:m_pmi.send_ident("abstract"); break;
                 case TOK_RWORD_FINAL:   m_pmi.send_ident("final");  break;
-                case TOK_RWORD_PURE:    m_pmi.send_ident("pure");   break;
                 case TOK_RWORD_OVERRIDE:m_pmi.send_ident("override"); break;
                 case TOK_RWORD_VIRTUAL: m_pmi.send_ident("virtual"); break;
-                case TOK_RWORD_ALIGNOF: m_pmi.send_ident("alignof"); break;
-                case TOK_RWORD_OFFSETOF:m_pmi.send_ident("offsetof"); break;
-                case TOK_RWORD_SIZEOF:  m_pmi.send_ident("sizeof"); break;
                 case TOK_RWORD_TYPEOF:  m_pmi.send_ident("typeof"); break;
-                case TOK_RWORD_BE:      m_pmi.send_ident("be");     break;
+                case TOK_RWORD_BECOME:  m_pmi.send_ident("become"); break;
                 case TOK_RWORD_UNSIZED: m_pmi.send_ident("unsized"); break;
                 case TOK_RWORD_MACRO:   m_pmi.send_ident("macro");  break;
                 }
@@ -1416,7 +1412,7 @@ Token ProcMacroInv::realGetToken_() {
         }
     case TokenClass::Ident: {
         auto val = this->recv_bytes();
-        auto t = Lex_FindReservedWord(val);
+        auto t = Lex_FindReservedWord(val, AST::Edition::Rust2015);
         if( t != TOK_NULL )
             return t;
         return Token(TOK_IDENT, RcString::new_interned(val));

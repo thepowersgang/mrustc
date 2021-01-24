@@ -476,21 +476,16 @@ struct EscapedString {
     case TOK_RWORD_SELF:    return "self";
     case TOK_RWORD_SUPER:   return "super";
 
-    case TOK_RWORD_PROC:    return "proc";
     case TOK_RWORD_MOVE:    return "move";
 
     case TOK_RWORD_ABSTRACT:return "abstract";
     case TOK_RWORD_FINAL:   return "final";
-    case TOK_RWORD_PURE:    return "pure";
     case TOK_RWORD_OVERRIDE:return "override";
     case TOK_RWORD_VIRTUAL: return "virtual";
 
-    case TOK_RWORD_ALIGNOF: return "alignof";
-    case TOK_RWORD_OFFSETOF:return "offsetof";
-    case TOK_RWORD_SIZEOF:  return "sizeof";
     case TOK_RWORD_TYPEOF:  return "typeof";
 
-    case TOK_RWORD_BE:      return "be";
+    case TOK_RWORD_BECOME:  return "become";
     case TOK_RWORD_UNSIZED: return "unsized";
     case TOK_RWORD_MACRO:   return "macro";
     }

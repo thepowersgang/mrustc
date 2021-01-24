@@ -28,7 +28,7 @@ extern ::std::string& operator+=(::std::string& s, const Codepoint& cp);
 extern ::std::ostream& operator<<(::std::ostream& s, const Codepoint& cp);
 
 extern Token Lex_FindOperator(const ::std::string& s);
-extern Token Lex_FindReservedWord(const ::std::string& s);
+extern Token Lex_FindReservedWord(const ::std::string& s, AST::Edition edition);
 
 typedef Codepoint   uchar;
 

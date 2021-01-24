@@ -128,27 +128,27 @@ static const struct {
   TOKENT("~",  TOK_TILDE),
 };
 #define LEN(arr)    (sizeof(arr)/sizeof(arr[0]))
-static const struct {
+struct sRWORD {
     unsigned char len;
     const char* chars;
     signed int type;
-} RWORDS[] = {
+};
+static const sRWORD RWORDS_2015[] = {
   TOKENT("_", TOK_UNDERSCORE),
-  TOKENT("abstract",TOK_RWORD_ABSTRACT),
-  TOKENT("alignof", TOK_RWORD_ALIGNOF),
+  TOKENT("abstract",TOK_RWORD_ABSTRACT), // Reserved 2015+
   TOKENT("as",      TOK_RWORD_AS),
-  TOKENT("be",      TOK_RWORD_BE),
+  TOKENT("become",  TOK_RWORD_BECOME),  //  // Reserved 2015+
   TOKENT("box",     TOK_RWORD_BOX),
   TOKENT("break",   TOK_RWORD_BREAK),
   TOKENT("const",   TOK_RWORD_CONST),
   TOKENT("continue",TOK_RWORD_CONTINUE),
   TOKENT("crate",   TOK_RWORD_CRATE),
-  TOKENT("do",      TOK_RWORD_DO),
+  TOKENT("do",      TOK_RWORD_DO),  // Reserved 2015+
   TOKENT("else",    TOK_RWORD_ELSE),
   TOKENT("enum",    TOK_RWORD_ENUM),
   TOKENT("extern",  TOK_RWORD_EXTERN),
   TOKENT("false",   TOK_RWORD_FALSE),
-  TOKENT("final",   TOK_RWORD_FINAL),
+  TOKENT("final",   TOK_RWORD_FINAL), // Reserved 2015+
   TOKENT("fn",      TOK_RWORD_FN),
   TOKENT("for",     TOK_RWORD_FOR),
   TOKENT("if",      TOK_RWORD_IF),
@@ -161,30 +161,80 @@ static const struct {
   TOKENT("mod",     TOK_RWORD_MOD),
   TOKENT("move",    TOK_RWORD_MOVE),
   TOKENT("mut",     TOK_RWORD_MUT),
-  TOKENT("offsetof",TOK_RWORD_OFFSETOF),
-  TOKENT("override",TOK_RWORD_OVERRIDE),
+  TOKENT("override",TOK_RWORD_OVERRIDE),    // Reserved 2015+
   TOKENT("priv",    TOK_RWORD_PRIV),
-  TOKENT("proc",    TOK_RWORD_PROC),
   TOKENT("pub",     TOK_RWORD_PUB),
-  TOKENT("pure",    TOK_RWORD_PURE),
   TOKENT("ref",     TOK_RWORD_REF),
   TOKENT("return",  TOK_RWORD_RETURN),
   TOKENT("self",    TOK_RWORD_SELF),
-  TOKENT("sizeof",  TOK_RWORD_SIZEOF),
   TOKENT("static",  TOK_RWORD_STATIC),
   TOKENT("struct",  TOK_RWORD_STRUCT),
   TOKENT("super",   TOK_RWORD_SUPER),
   TOKENT("trait",   TOK_RWORD_TRAIT),
   TOKENT("true",    TOK_RWORD_TRUE),
   TOKENT("type",    TOK_RWORD_TYPE),
-  TOKENT("typeof",  TOK_RWORD_TYPEOF),
+  TOKENT("typeof",  TOK_RWORD_TYPEOF), // Reserved 2015+
   TOKENT("unsafe",  TOK_RWORD_UNSAFE),
-  TOKENT("unsized", TOK_RWORD_UNSIZED),
+  TOKENT("unsized", TOK_RWORD_UNSIZED), // Reserved 2015+
   TOKENT("use",     TOK_RWORD_USE),
-  TOKENT("virtual", TOK_RWORD_VIRTUAL),
+  TOKENT("virtual", TOK_RWORD_VIRTUAL), // Reserved 2015+
   TOKENT("where",   TOK_RWORD_WHERE),
   TOKENT("while",   TOK_RWORD_WHILE),
-  TOKENT("yield",   TOK_RWORD_YIELD),
+  TOKENT("yield",   TOK_RWORD_YIELD), // Reserved 2015+
+};
+
+static const sRWORD RWORDS_2018[] = {
+    TOKENT("_", TOK_UNDERSCORE),
+    TOKENT("abstract",TOK_RWORD_ABSTRACT), // Reserved 2015+
+    TOKENT("as",      TOK_RWORD_AS),
+    //TOKENT("async",   TOK_RWORD_ASYNC), // Added 2018
+    //TOKENT("await",   TOK_RWORD_AWAIT), // Added 2018
+    TOKENT("become",  TOK_RWORD_BECOME),  //  // Reserved 2015+
+    TOKENT("box",     TOK_RWORD_BOX),
+    TOKENT("break",   TOK_RWORD_BREAK),
+    TOKENT("const",   TOK_RWORD_CONST),
+    TOKENT("continue",TOK_RWORD_CONTINUE),
+    TOKENT("crate",   TOK_RWORD_CRATE),
+    TOKENT("do",      TOK_RWORD_DO),  // Reserved 2015+
+    //TOKENT("dyn",     TOK_RWORD_DYN), // Added 2018
+    TOKENT("else",    TOK_RWORD_ELSE),
+    TOKENT("enum",    TOK_RWORD_ENUM),
+    TOKENT("extern",  TOK_RWORD_EXTERN),
+    TOKENT("false",   TOK_RWORD_FALSE),
+    TOKENT("final",   TOK_RWORD_FINAL), // Reserved 2015+
+    TOKENT("fn",      TOK_RWORD_FN),
+    TOKENT("for",     TOK_RWORD_FOR),
+    TOKENT("if",      TOK_RWORD_IF),
+    TOKENT("impl",    TOK_RWORD_IMPL),
+    TOKENT("in",      TOK_RWORD_IN),
+    TOKENT("let",     TOK_RWORD_LET),
+    TOKENT("loop",    TOK_RWORD_LOOP),
+    TOKENT("macro",   TOK_RWORD_MACRO),
+    TOKENT("match",   TOK_RWORD_MATCH),
+    TOKENT("mod",     TOK_RWORD_MOD),
+    TOKENT("move",    TOK_RWORD_MOVE),
+    TOKENT("mut",     TOK_RWORD_MUT),
+    TOKENT("override",TOK_RWORD_OVERRIDE),    // Reserved 2015+
+    TOKENT("priv",    TOK_RWORD_PRIV),
+    TOKENT("pub",     TOK_RWORD_PUB),
+    TOKENT("ref",     TOK_RWORD_REF),
+    TOKENT("return",  TOK_RWORD_RETURN),
+    TOKENT("self",    TOK_RWORD_SELF),
+    TOKENT("static",  TOK_RWORD_STATIC),
+    TOKENT("struct",  TOK_RWORD_STRUCT),
+    TOKENT("super",   TOK_RWORD_SUPER),
+    TOKENT("trait",   TOK_RWORD_TRAIT),
+    TOKENT("true",    TOK_RWORD_TRUE),
+    //TOKENT("try",     TOK_RWORD_TRY), // Reserved 2018+
+    TOKENT("type",    TOK_RWORD_TYPE),
+    TOKENT("typeof",  TOK_RWORD_TYPEOF), // Reserved 2015+
+    TOKENT("unsafe",  TOK_RWORD_UNSAFE),
+    TOKENT("unsized", TOK_RWORD_UNSIZED), // Reserved 2015+
+    TOKENT("use",     TOK_RWORD_USE),
+    TOKENT("virtual", TOK_RWORD_VIRTUAL), // Reserved 2015+
+    TOKENT("where",   TOK_RWORD_WHERE),
+    TOKENT("while",   TOK_RWORD_WHILE),
+    TOKENT("yield",   TOK_RWORD_YIELD), // Reserved 2015+
 };
 
 signed int Lexer::getSymbol()
@@ -832,10 +882,10 @@ Token Lexer::getTokenInt_Identifier(Codepoint leader, Codepoint leader2)
     }
 
     this->ungetc();
-    for( unsigned int i = 0; i < LEN(RWORDS); i ++ )
+    auto v = Lex_FindReservedWord(str, this->parse_state().get_edition());
+    if( v != TOK_NULL)
     {
-        if( str < RWORDS[i].chars ) break;
-        if( str == RWORDS[i].chars )    return Token((enum eTokenType)RWORDS[i].type);
+        return Token(v);
     }
     return Token(TOK_IDENT, Ident(this->get_hygiene(), RcString::new_interned(str)));
 }
@@ -1168,11 +1218,24 @@ Token Lex_FindOperator(const ::std::string& s)
     }
     return TOK_NULL;
 }
-Token Lex_FindReservedWord(const ::std::string& s)
+Token Lex_FindReservedWord(const ::std::string& s, AST::Edition edition)
 {
-    for(size_t i = 0; i < LEN(RWORDS); i++)
+    size_t len = 0;
+    const sRWORD* RWORDS;
+    switch(edition)
     {
-        const auto& e = RWORDS[i];
+    case AST::Edition::Rust2015:
+        len = LEN(RWORDS_2015);
+        RWORDS = RWORDS_2015;
+        break;
+    case AST::Edition::Rust2018:
+        len = LEN(RWORDS_2018);
+        RWORDS = RWORDS_2018;
+        break;
+    }
+    for(size_t i = 0; i < len; i++)
+    {
+        const auto& e = RWORDS_2018[i];
         if( s < e.chars )
             break;
         if( s == e.chars )
