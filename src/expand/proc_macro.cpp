@@ -204,7 +204,7 @@ struct ProcMacroInv:
     bool    m_eof_hit = false;
 
 public:
-    ProcMacroInv(const Span& sp, const char* executable, const ::HIR::ProcMacro& proc_macro_desc);
+    ProcMacroInv(const Span& sp, AST::Edition edition, const char* executable, const ::HIR::ProcMacro& proc_macro_desc);
     ProcMacroInv(const ProcMacroInv&) = delete;
     ProcMacroInv(ProcMacroInv&&) = default;
     ProcMacroInv& operator=(const ProcMacroInv&) = delete;
@@ -343,7 +343,10 @@ ProcMacroInv ProcMacro_Invoke_int(const Span& sp, const ::AST::Crate& crate, con
     ::std::string   proc_macro_exe_name = ext_crate.m_filename;
 
     // 3. Create ProcMacroInv
-    return ProcMacroInv(sp, proc_macro_exe_name.c_str(), *pmp);
+    return ProcMacroInv(sp, crate.m_edition, proc_macro_exe_name.c_str(), *pmp);
+
+    // NOTE: 1.39 failure_derive (2015) emits `::failure::foo` but `libcargo` doesn't have `failure` in root (it's a 2018 crate)
+    //return ProcMacroInv(sp, ext_crate.m_hir->m_edition, proc_macro_exe_name.c_str(), *pmp);
 }
 
 
@@ -1092,8 +1095,8 @@ namespace {
     return box$(pmi);
 }
 
-ProcMacroInv::ProcMacroInv(const Span& sp, const char* executable, const ::HIR::ProcMacro& proc_macro_desc):
-    TokenStream(ParseState(AST::Edition::Rust2015)), // TODO: Pull edition from the macro
+ProcMacroInv::ProcMacroInv(const Span& sp, AST::Edition edition, const char* executable, const ::HIR::ProcMacro& proc_macro_desc):
+    TokenStream(ParseState(edition)),
     m_parent_span(sp),
     m_proc_macro_desc(proc_macro_desc)
 {
