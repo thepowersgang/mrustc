@@ -1579,42 +1579,51 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     ofs += stride;
                 }
                 } break;
-            TU_ARM(se.src, Variant, re) {
+            TU_ARM(se.src, UnionVariant, re) {
                 // 1. Get the composite by path.
                 const auto& data_ty = this->m_global.m_modtree.get_composite(re.path.n);
                 auto dst_ty = ::HIR::TypeRef(&data_ty);
                 new_val = Value(dst_ty);
-                // Three cases:
-                // - Unions (no tag)
+                LOG_ASSERT(data_ty.variants.size() == 0, "UnionVariant on non-union");
+
+                // Union, no tag
+                const auto& fld = data_ty.fields.at(re.index);
+
+                new_val.write_value(fld.first, state.param_to_value(re.val));
+                LOG_DEBUG("UnionVariant " << new_val);
+                }
+            TU_ARM(se.src, EnumVariant, re) {
+                // 1. Get the composite by path.
+                const auto& data_ty = this->m_global.m_modtree.get_composite(re.path.n);
+                auto dst_ty = ::HIR::TypeRef(&data_ty);
+                new_val = Value(dst_ty);
+                LOG_ASSERT(data_ty.variants.size() > 0, "");
+                // Two cases:
                 // - Data enums (tag and data)
                 // - Value enums (no data)
-                if( data_ty.variants.size() > 0 )
+                const auto& var = data_ty.variants.at(re.index);
+                if( var.data_field != SIZE_MAX )
                 {
-                    const auto& var = data_ty.variants.at(re.index);
-                    if( var.data_field != SIZE_MAX )
-                    {
-                        LOG_ASSERT(var.data_field < data_ty.fields.size(), "Data field (" << var.data_field << ") for " << re.path << " #" << re.index << " out of range");
-                        const auto& fld = data_ty.fields.at(var.data_field);
+                    LOG_ASSERT(var.data_field < data_ty.fields.size(), "Data field (" << var.data_field << ") for " << re.path << " #" << re.index << " out of range");
+                    const auto& fld = data_ty.fields.at(var.data_field);
 
-                        new_val.write_value(fld.first, state.param_to_value(re.val));
-                    }
-
-                    if( !var.tag_data.empty() )
+                    for(size_t i = 0; i < re.vals.size(); i++)
                     {
-                        ::HIR::TypeRef  tag_ty;
-                        size_t tag_ofs = dst_ty.get_field_ofs(data_ty.tag_path.base_field, data_ty.tag_path.other_indexes, tag_ty);
-                        LOG_ASSERT(tag_ty.get_size() == var.tag_data.size(), "");
-                        new_val.write_bytes(tag_ofs, var.tag_data.data(), var.tag_data.size());
+                        auto fld_ofs = fld.first + fld.second.composite_type().fields.at(i).first;
+                        auto v = state.param_to_value(re.vals[i]);
+                        LOG_DEBUG("EnumVariant - @" << fld_ofs << " = " << v);
+                        new_val.write_value(fld_ofs, ::std::move(v));
                     }
                 }
-                else
-                {
-                    // Union, no tag
-                    const auto& fld = data_ty.fields.at(re.index);
 
-                    new_val.write_value(fld.first, state.param_to_value(re.val));
+                if( !var.tag_data.empty() )
+                {
+                    ::HIR::TypeRef  tag_ty;
+                    size_t tag_ofs = dst_ty.get_field_ofs(data_ty.tag_path.base_field, data_ty.tag_path.other_indexes, tag_ty);
+                    LOG_ASSERT(tag_ty.get_size() == var.tag_data.size(), "");
+                    new_val.write_bytes(tag_ofs, var.tag_data.data(), var.tag_data.size());
                 }
-                LOG_DEBUG("Variant " << new_val);
+                LOG_DEBUG("EnumVariant " << new_val);
                 } break;
             TU_ARM(se.src, Struct, re) {
                 const auto& data_ty = m_global.m_modtree.get_composite(re.path.n);

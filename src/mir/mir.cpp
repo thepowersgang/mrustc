@@ -280,8 +280,11 @@ namespace MIR {
         (Array,
             os << "Array(" << e.vals << ")";
             ),
-        (Variant,
-            os << "Variant(" << e.path << " #" << e.index << ", " << e.val << ")";
+        (UnionVariant,
+            os << "UnionVariant(" << e.path << " #" << e.index << ", " << e.val << ")";
+            ),
+        (EnumVariant,
+            os << "Variant(" << e.path << " #" << e.index << ", {" << e.vals << "})";
             ),
         (Struct,
             os << "Struct(" << e.path << ", {" << e.vals << "})";
@@ -356,12 +359,19 @@ namespace MIR {
         (Array,
             return are.vals == bre.vals;
             ),
-        (Variant,
+        (UnionVariant,
             if( are.path != bre.path )
                 return false;
             if( are.index != bre.index )
                 return false;
             return are.val == bre.val;
+            ),
+        (EnumVariant,
+            if( are.path != bre.path )
+                return false;
+            if( are.index != bre.index )
+                return false;
+            return are.vals == bre.vals;
             ),
         (Struct,
             if( are.path != bre.path )
@@ -690,9 +700,17 @@ namespace MIR {
             ret.push_back( v.clone() );
         return ::MIR::RValue::make_Array({ mv$(ret) });
         ),
-    // Create a new instance of a union (and eventually enum)
-    (Variant,
-        return ::MIR::RValue::make_Variant({ e.path.clone(), e.index, e.val.clone() });
+    // Create a new instance of a union
+    (UnionVariant,
+        return ::MIR::RValue::make_UnionVariant({ e.path.clone(), e.index, e.val.clone() });
+        ),
+    // Create a new instance of an enum
+    (EnumVariant,
+        decltype(e.vals)    ret;
+        ret.reserve(e.vals.size());
+        for(const auto& v : e.vals)
+            ret.push_back( v.clone() );
+        return ::MIR::RValue::make_EnumVariant({ e.path.clone(), e.index, mv$(ret) });
         ),
     // Create a new instance of a struct
     (Struct,

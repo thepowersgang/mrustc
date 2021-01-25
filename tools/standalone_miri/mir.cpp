@@ -240,8 +240,11 @@ namespace MIR {
         (Array,
             os << "Array(" << e.vals << ")";
             ),
-        (Variant,
+        (UnionVariant,
             os << "Variant(" << e.path << " #" << e.index << ", " << e.val << ")";
+            ),
+        (EnumVariant,
+            os << "Variant(" << e.path << " #" << e.index << ", {" << e.vals << "})";
             ),
         (Struct,
             os << "Struct(" << e.path << ", {" << e.vals << "})";

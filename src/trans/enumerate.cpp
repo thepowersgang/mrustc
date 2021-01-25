@@ -1509,8 +1509,12 @@ void Trans_Enumerate_FillFrom_MIR(MIR::EnumCache& state, const ::MIR::Function& 
                     for(const auto& val : e.vals)
                         Trans_Enumerate_FillFrom_MIR_Param(state, val);
                     ),
-                (Variant,
+                (UnionVariant,
                     Trans_Enumerate_FillFrom_MIR_Param(state, e.val);
+                    ),
+                (EnumVariant,
+                    for(const auto& val : e.vals)
+                        Trans_Enumerate_FillFrom_MIR_Param(state, val);
                     ),
                 (Struct,
                     for(const auto& val : e.vals)

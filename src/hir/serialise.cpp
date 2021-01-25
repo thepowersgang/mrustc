@@ -869,10 +869,15 @@
             (Array,
                 serialise_vec(e.vals);
                 ),
-            (Variant,
+            (UnionVariant,
                 serialise_genericpath(e.path);
                 m_out.write_count(e.index);
                 serialise(e.val);
+                ),
+            (EnumVariant,
+                serialise_genericpath(e.path);
+                m_out.write_count(e.index);
+                serialise_vec(e.vals);
                 ),
             (Struct,
                 serialise_genericpath(e.path);

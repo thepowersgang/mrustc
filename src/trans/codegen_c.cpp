@@ -1778,15 +1778,10 @@ namespace {
             p.m_path.m_components.pop_back();
             auto ty = ::HIR::TypeRef::new_path(p.clone(), &item);
 
-            ::MIR::Function empty_fcn;
-            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "enum cons " << path;), ty, {}, empty_fcn };
-            m_mir_res = &top_mir_res;
-
-            ::HIR::TypeRef  tmp;
             MonomorphStatePtr   ms(nullptr, &path.m_params, nullptr);
+            ::HIR::TypeRef  tmp;
             auto monomorph = [&](const auto& x)->const auto& { return m_resolve.monomorph_expand_opt(sp, tmp, x, ms); };
 
-            const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
 
             ASSERT_BUG(sp, item.m_data.is_Data(), "");
             const auto& var = item.m_data.as_Data().at(var_idx);
@@ -1795,40 +1790,41 @@ namespace {
             ASSERT_BUG(sp, str.m_data.is_Tuple(), "");
             const auto& e = str.m_data.as_Tuple();
 
+            HIR::Function::args_t   args;
+            for(unsigned int i = 0; i < e.size(); i ++)
+            {
+                args.push_back(::std::make_pair(HIR::Pattern(), monomorph(e[i].ent)) );
+            }
+
+            ::MIR::Function empty_fcn;
+            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "enum cons " << path;), ty, args, empty_fcn };
+            m_mir_res = &top_mir_res;
 
             m_of << "static struct e_" << Trans_Mangle(p) << " " << Trans_Mangle(path) << "(";
             for(unsigned int i = 0; i < e.size(); i ++)
             {
                 if(i != 0)
                     m_of << ", ";
-                emit_ctype( monomorph(e[i].ent), FMT_CB(ss, ss << "arg" << i;) );
+                emit_ctype( args[i].second, FMT_CB(ss, ss << "arg" << i;) );
             }
             m_of << ") {\n";
 
             m_of << "\tstruct e_" << Trans_Mangle(p) << " rv;\n";
-            empty_fcn.locals.push_back( monomorph(var.type) );
-            m_of << "\t"; emit_ctype(empty_fcn.locals[0], FMT_CB(ss, ss << "var0";)); m_of << " = {";
-            if( this->type_is_bad_zst(empty_fcn.locals[0]) ) {
-                m_of << "0";
+
+            std::vector<MIR::Param> vals;
+            for(unsigned int i = 0; i < e.size(); i ++)
+            {
+                vals.push_back(MIR::LValue::new_Argument(i));
             }
-            else {
-                for(unsigned int i = 0; i < e.size(); i ++)
-                {
-                    if(i != 0)
-                        m_of << ", ";
-                    m_of << "arg" << i;
-                }
-            }
-            m_of << "};\n";
 
             // Create the variant
             // - Use `emit_statement` to avoid re-writing the enum tag handling
             emit_statement(*m_mir_res, ::MIR::Statement::make_Assign({
                 ::MIR::LValue::new_Return(),
-                ::MIR::RValue::make_Variant({
+                ::MIR::RValue::make_EnumVariant({
                     p.clone(),
                     static_cast<unsigned>(var_idx),
-                    ::MIR::LValue::new_Local(0)
+                    mv$(vals)
                     })
                 }));
             m_of << "\treturn rv;\n";
@@ -2814,6 +2810,45 @@ namespace {
             }
         }
 
+        void emit_composite_assign(
+            const ::MIR::TypeResolve& mir_res, ::std::function<void()> emit_slot,
+            const ::std::vector<::MIR::Param>& vals,
+            unsigned indent_level, bool prepend_newline=true
+            )
+        {
+            auto indent = RepeatLitStr { "\t", static_cast<int>(indent_level) };
+            bool has_emitted = prepend_newline;
+            for(unsigned int j = 0; j < vals.size(); j ++)
+            {
+                if( m_options.disallow_empty_structs )
+                {
+                    ::HIR::TypeRef  tmp;
+                    const auto& ty = mir_res.get_param_type(tmp, vals[j]);
+
+                    // Don't emit assignment of PhantomData
+                    if( vals[j].is_LValue() && m_resolve.is_type_phantom_data(ty) )
+                    {
+                        continue ;
+                    }
+
+                    // Or ZSTs
+                    if( this->type_is_bad_zst(ty) )
+                    {
+                        continue ;
+                    }
+                }
+
+                if(has_emitted) {
+                    m_of << ";\n" << indent;
+                }
+                has_emitted = true;
+
+                emit_slot();
+                m_of << "._" << j << " = ";
+                emit_param(vals[j]);
+            }
+        }
+
         void emit_statement(const ::MIR::TypeResolve& mir_res, const ::MIR::Statement& stmt, unsigned indent_level=1)
         {
             DEBUG(stmt);
@@ -3161,29 +3196,7 @@ namespace {
                     m_of << "("; emit_param(ve.ptr_val); m_of << ", "; emit_param(ve.meta_val); m_of << ")";
                     }
                 TU_ARMA(Tuple, ve) {
-                    bool has_emitted = false;
-                    for(unsigned int j = 0; j < ve.vals.size(); j ++)
-                    {
-                        if( m_options.disallow_empty_structs )
-                        {
-                            ::HIR::TypeRef  tmp;
-                            const auto& ty = mir_res.get_param_type(tmp, ve.vals[j]);
-
-                            if( this->type_is_bad_zst(ty) )
-                            {
-                                continue ;
-                            }
-                        }
-
-                        if(has_emitted) {
-                            m_of << ";\n" << indent;
-                        }
-                        has_emitted = true;
-
-                        emit_lvalue(e.dst);
-                        m_of << "._" << j << " = ";
-                        emit_param(ve.vals[j]);
-                    }
+                    emit_composite_assign(mir_res, [&](){  emit_lvalue(e.dst); }, ve.vals, indent_level);
                     }
                 TU_ARMA(Array, ve) {
                     for(unsigned int j = 0; j < ve.vals.size(); j ++) {
@@ -3192,86 +3205,60 @@ namespace {
                         emit_param(ve.vals[j]);
                     }
                     }
-                TU_ARMA(Variant, ve) {
+                TU_ARMA(UnionVariant, ve) {
+                    MIR_ASSERT(mir_res, m_crate.get_typeitem_by_path(sp, ve.path.m_path).is_Union(), "");
+                    emit_lvalue(e.dst);
+                    m_of << ".var_" << ve.index << " = "; emit_param(ve.val);
+                    }
+                TU_ARMA(EnumVariant, ve) {
                     const auto& tyi = m_crate.get_typeitem_by_path(sp, ve.path.m_path);
-                    if( tyi.is_Union() )
-                    {
-                        emit_lvalue(e.dst);
-                        m_of << ".var_" << ve.index << " = "; emit_param(ve.val);
-                    }
-                    else if( const auto* enm_p = tyi.opt_Enum() )
-                    {
-                        ::HIR::TypeRef  tmp;
-                        const auto& ty = mir_res.get_lvalue_type(tmp, e.dst);
-                        auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
+                    MIR_ASSERT(mir_res, tyi.is_Enum(), "");
+                    const auto* enm_p = &tyi.as_Enum();
 
-                        TU_MATCH_HDRA( (repr->variants), {)
-                        TU_ARMA(None, re) {
-                            emit_lvalue(e.dst); m_of << ".DATA.var_0 = "; emit_param(ve.val);
-                            }
-                        TU_ARMA(NonZero, re) {
-                            MIR_ASSERT(*m_mir_res, ve.index < 2, "");
-                            if( ve.index == re.zero_variant ) {
-                                // TODO: Use nonzero_path
-                                m_of << "memset(&"; emit_lvalue(e.dst); m_of << ", 0, sizeof("; emit_ctype(ty); m_of << "))";
-                            }
-                            else {
-                                emit_lvalue(e.dst);
-                                m_of << ".DATA.var_" << ve.index << " = ";
-                                emit_param(ve.val);
-                            }
-                            }
-                        TU_ARMA(Linear, re) {
-                            if( !re.is_niche(ve.index) )
-                            {
-                                emit_lvalue(e.dst); emit_enum_path(repr, re.field); m_of << " = " << (re.offset + ve.index);
-                            }
-                            else {
-                                m_of << "/* Niche tag */";
-                            }
-                            if( enm_p->is_value() )
-                            {
-                                // Value enums have no data fields
-                            }
-                            else
-                            {
-                                ::HIR::TypeRef  tmp;
-                                const auto& vty = mir_res.get_param_type(tmp, ve.val);
-                                if( this->type_is_bad_zst(vty) )
-                                {
-                                    m_of << " /* ZST field */";
-                                }
-                                else
-                                {
-                                    m_of << ";\n" << indent;
-                                    emit_lvalue(e.dst); m_of << ".DATA";
-                                    m_of << ".var_" << ve.index << " = "; emit_param(ve.val);
-                                }
-                            }
-                            }
-                        TU_ARMA(Values, re) {
-                            emit_lvalue(e.dst); m_of << ".TAG = "; emit_enum_variant_val(repr, ve.index);
-                            if( !enm_p->is_value() )
-                            {
-                                ::HIR::TypeRef  tmp;
-                                const auto& vty = mir_res.get_param_type(tmp, ve.val);
-                                if( this->type_is_bad_zst(vty) )
-                                {
-                                    m_of << "/* ZST field */";
-                                }
-                                else
-                                {
-                                    m_of << ";\n" << indent;
-                                    emit_lvalue(e.dst); m_of << ".DATA";
-                                    m_of << ".var_" << ve.index << " = "; emit_param(ve.val);
-                                }
-                            }
-                            }
+                    ::HIR::TypeRef  tmp;
+                    const auto& ty = mir_res.get_lvalue_type(tmp, e.dst);
+                    auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
+
+                    TU_MATCH_HDRA( (repr->variants), {)
+                    TU_ARMA(None, re) {
+                        emit_composite_assign(mir_res, [&](){ emit_lvalue(e.dst); m_of << ".DATA.var_0"; }, /*repr->fields[0].ty,*/ ve.vals, indent_level);
                         }
-                    }
-                    else
-                    {
-                        BUG(mir_res.sp, "Unexpected type in Variant");
+                    TU_ARMA(NonZero, re) {
+                        MIR_ASSERT(*m_mir_res, ve.index < 2, "");
+                        if( ve.index == re.zero_variant ) {
+                            // TODO: Use nonzero_path
+                            m_of << "memset(&"; emit_lvalue(e.dst); m_of << ", 0, sizeof("; emit_ctype(ty); m_of << "))";
+                        }
+                        else {
+                            emit_composite_assign(mir_res, [&](){ emit_lvalue(e.dst); m_of << ".DATA.var_" << ve.index; }, /*repr->fields[0].ty,*/ ve.vals, indent_level);
+                        }
+                        }
+                    TU_ARMA(Linear, re) {
+                        bool emit_newline = false;
+                        if( !re.is_niche(ve.index) )
+                        {
+                            emit_lvalue(e.dst); emit_enum_path(repr, re.field); m_of << " = " << (re.offset + ve.index);
+                            emit_newline = true;
+                        }
+                        else {
+                            m_of << "/* Niche tag */";
+                        }
+                        if( enm_p->is_value() )
+                        {
+                            // Value enums have no data fields
+                        }
+                        else
+                        {
+                            emit_composite_assign(mir_res, [&](){ emit_lvalue(e.dst); m_of << ".DATA.var_" << ve.index; }, ve.vals, indent_level, true);
+                        }
+                        }
+                    TU_ARMA(Values, re) {
+                        emit_lvalue(e.dst); m_of << ".TAG = "; emit_enum_variant_val(repr, ve.index);
+                        if( !enm_p->is_value() )
+                        {
+                            emit_composite_assign(mir_res, [&](){ emit_lvalue(e.dst); m_of << ".DATA.var_" << ve.index; }, ve.vals, indent_level, true);
+                        }
+                        }
                     }
                     }
                 TU_ARMA(Struct, ve) {
@@ -3285,32 +3272,7 @@ namespace {
                     }
                     else
                     {
-                        bool has_emitted = false;
-                        for(unsigned int j = 0; j < ve.vals.size(); j ++)
-                        {
-                            // HACK: Don't emit assignment of PhantomData
-                            ::HIR::TypeRef  tmp;
-                            if( ve.vals[j].is_LValue() )
-                            {
-                                const auto& ty = mir_res.get_param_type(tmp, ve.vals[j]);
-                                if( ve.vals[j].is_LValue() && m_resolve.is_type_phantom_data(ty) )
-                                    continue ;
-
-                                if( this->type_is_bad_zst(ty) )
-                                {
-                                    continue ;
-                                }
-                            }
-
-                            if(has_emitted) {
-                                m_of << ";\n" << indent;
-                            }
-                            has_emitted = true;
-
-                            emit_lvalue(e.dst);
-                            m_of << "._" << j << " = ";
-                            emit_param(ve.vals[j]);
-                        }
+                        emit_composite_assign(mir_res, [&](){ emit_lvalue(e.dst); }, ve.vals, indent_level);
                     }
                     }
                 }

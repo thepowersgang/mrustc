@@ -330,8 +330,12 @@ void MirBuilder::push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RVal
         for(const auto& val : e.vals)
             moved_param(val);
         ),
-    (Variant,
+    (UnionVariant,
         moved_param(e.val);
+        ),
+    (EnumVariant,
+        for(const auto& val : e.vals)
+            moved_param(val);
         ),
     (Struct,
         for(const auto& val : e.vals)
@@ -622,8 +626,12 @@ void MirBuilder::raise_temporaries(const Span& sp, const ::MIR::RValue& rval, co
         for(const auto& val : e.vals)
             raise_vars(val);
         ),
-    (Variant,
+    (UnionVariant,
         raise_vars(e.val);
+        ),
+    (EnumVariant,
+        for(const auto& val : e.vals)
+            raise_vars(val);
         ),
     (Struct,
         for(const auto& val : e.vals)

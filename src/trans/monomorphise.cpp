@@ -216,15 +216,20 @@ namespace {
                         monomorph_Param_list(resolve, params, se.vals)
                         });
                     ),
-                // Create a new instance of a union (and eventually enum)
-                (Variant,
-                    rval = ::MIR::RValue::make_Variant({
+                (UnionVariant,
+                    rval = ::MIR::RValue::make_UnionVariant({
                         params.monomorph(resolve, se.path),
                         se.index,
                         monomorph_Param(resolve, params, se.val)
                         });
                     ),
-                // Create a new instance of a struct (or enum)
+                (EnumVariant,
+                    rval = ::MIR::RValue::make_EnumVariant({
+                        params.monomorph(resolve, se.path),
+                        se.index,
+                        monomorph_Param_list(resolve, params, se.vals)
+                        });
+                    ),
                 (Struct,
                     rval = ::MIR::RValue::make_Struct({
                         params.monomorph(resolve, se.path),

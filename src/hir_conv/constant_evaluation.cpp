@@ -924,10 +924,21 @@ namespace HIR {
                     }
                     val = Value::make_List( mv$(vals) );
                     }
-                TU_ARMA(Variant, e) {
+                TU_ARMA(UnionVariant, e) {
                     auto ival = read_param(e.val);
                     if(ival->is_Defer()) return Value::make_Defer({});
                     val = Value::make_Variant({ e.index, std::move(ival) });
+                    }
+                TU_ARMA(EnumVariant, e) {
+                    ::std::vector<ValueRef>  vals;
+                    vals.reserve( e.vals.size() );
+                    for(const auto& v : e.vals) {
+                        vals.push_back( read_param(v) );
+                        if( vals.back()->is_Defer() ) {
+                            return Value::make_Defer({});
+                        }
+                    }
+                    val = Value::make_Variant({ e.index, Value::make_List( mv$(vals) ) });
                     }
                 TU_ARMA(Struct, e) {
                     ::std::vector<ValueRef>  vals;

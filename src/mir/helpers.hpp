@@ -339,9 +339,14 @@ namespace visit {
                 for(auto& v : se.vals)
                     rv |= visit_param(v, ValUsage::Move);
                 }
-            TU_ARMA(Variant, se) {
+            TU_ARMA(UnionVariant, se) {
                 visit_genericpath(se.path);
                 rv |= visit_param(se.val, ValUsage::Move);
+                }
+            TU_ARMA(EnumVariant, se) {
+                visit_genericpath(se.path);
+                for(auto& v : se.vals)
+                    rv |= visit_param(v, ValUsage::Move);
                 }
             TU_ARMA(Struct, se) {
                 visit_genericpath(se.path);

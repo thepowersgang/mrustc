@@ -309,10 +309,18 @@ namespace {
                 }
                 os << "]";
                 ),
-            (Variant,
+            (UnionVariant,
                 os << e.path << " #" << e.index << " (";
                 fmt_val(os, e.val);
                 os << ")";
+                ),
+            (EnumVariant,
+                os << e.path << " #" << e.index << " { ";
+                for(const auto& v : e.vals) {
+                    fmt_val(os, v);
+                    os << ", ";
+                }
+                os << "}";
                 ),
             (Struct,
                 os << e.path << " { ";

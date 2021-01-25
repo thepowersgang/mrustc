@@ -553,11 +553,18 @@ TAGGED_UNION_EX(RValue, (), Tuple, (
     (Array, struct {
         ::std::vector<Param>   vals;
         }),
-    // Create a new instance of a union (and eventually enum)
-    (Variant, struct {
+    // Create a new instance of a union
+    (UnionVariant, struct {
         ::HIR::GenericPath  path;
         unsigned int index;
         Param   val;
+        }),
+    // Create a new instance of an enum
+    // - Separate from UnionVariant, as the contents is needed when creating the body
+    (EnumVariant, struct {
+        ::HIR::GenericPath  path;
+        unsigned int index;
+        ::std::vector<Param>   vals;
         }),
     // Create a new instance of a struct
     (Struct, struct {

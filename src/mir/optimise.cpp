@@ -572,8 +572,12 @@ namespace
             for(auto& v : se.vals)
                 rv |= visit_mir_lvalue_mut(v, ValUsage::Move, cb);
             }
-        TU_ARMA(Variant, se) {
+        TU_ARMA(UnionVariant, se) {
             rv |= visit_mir_lvalue_mut(se.val, ValUsage::Move, cb);
+            }
+        TU_ARMA(EnumVariant, se) {
+            for(auto& v : se.vals)
+                rv |= visit_mir_lvalue_mut(v, ValUsage::Move, cb);
             }
         TU_ARMA(Struct, se) {
             for(auto& v : se.vals)
@@ -1543,8 +1547,11 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
             (Array,
                 return ::MIR::RValue::make_Array({ this->clone_param_vec(se.vals) });
                 ),
-            (Variant,
-                return ::MIR::RValue::make_Variant({ this->monomorph(se.path), se.index, this->clone_param(se.val) });
+            (UnionVariant,
+                return ::MIR::RValue::make_UnionVariant({ this->monomorph(se.path), se.index, this->clone_param(se.val) });
+                ),
+            (EnumVariant,
+                return ::MIR::RValue::make_EnumVariant({ this->monomorph(se.path), se.index, this->clone_param_vec(se.vals) });
                 ),
             (Struct,
                 return ::MIR::RValue::make_Struct({ this->monomorph(se.path), this->clone_param_vec(se.vals) });
@@ -3864,8 +3871,12 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                     for(auto& p : se.vals)
                         check_param(p);
                     }
-                TU_ARMA(Variant, se) {
+                TU_ARMA(UnionVariant, se) {
                     check_param(se.val);
+                    }
+                TU_ARMA(EnumVariant, se) {
+                    for(auto& p : se.vals)
+                        check_param(p);
                     }
                 TU_ARMA(Struct, se) {
                     for(auto& p : se.vals)
@@ -3925,7 +3936,7 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                         DEBUG(state << stmt);
                     }
                     // Known variant
-                    else if( const auto* ce = e->src.opt_Variant() )
+                    else if( const auto* ce = e->src.opt_EnumVariant() )
                     {
                         known_values_var.insert(::std::make_pair( e->dst.clone(), ce->index ));
                         DEBUG(state << stmt);
@@ -4121,11 +4132,14 @@ bool MIR_Optimise_SplitAggregates(::MIR::TypeResolve& state, ::MIR::Function& fc
                         continue ;
                 }
                 // Variants are allowed, they store the variant index for later checking
-                else if( auto* sse = se->src.opt_Variant() ) {
+                else if( auto* sse = se->src.opt_EnumVariant() ) {
+                    if( sse->vals.size() == 0 )
+                        continue ;
                     DEBUG("> BB" << bb_idx << "/" << i << ": POSSIBLE " << stmt);
                     potentials.insert( std::make_pair(se->dst.as_Local(), Potential(bb_idx, i, sse->index)) );
                     continue ;
                 }
+                // NOTE: Union variants need special handling in the replacement
                 else {
                     continue ;
                 }
@@ -4225,8 +4239,11 @@ bool MIR_Optimise_SplitAggregates(::MIR::TypeResolve& state, ::MIR::Function& fc
             else if( auto* se = src.opt_Array() ) {
                 vals = std::move(se->vals);
             }
-            else if( auto* sse = src.opt_Variant() ) {
-                vals.push_back( mv$(sse->val) );
+            else if( auto* se = src.opt_EnumVariant() ) {
+                vals = std::move(se->vals);
+            }
+            else if( auto* se = src.opt_UnionVariant() ) {
+                vals.push_back( mv$(se->val) );
             }
             else {
                 MIR_BUG(state, "Unexpected rvalue type in SplitAggregates - " << src);
@@ -4287,17 +4304,21 @@ bool MIR_Optimise_SplitAggregates(::MIR::TypeResolve& state, ::MIR::Function& fc
             auto it = potentials.find(lv.m_root.as_Local());
             if( it != potentials.end() )
             {
+                size_t ndel;
                 size_t field_idx;
                 if( it->second.variant_idx == ~0u )
                 {
                     field_idx = lv.m_wrappers.front().as_Field();
+                    ndel = 1;
                 }
                 else
                 {
-                    MIR_ASSERT(state, lv.m_wrappers.front().is_Downcast(), lv);
-                    field_idx = 0;
+                    MIR_ASSERT(state, lv.m_wrappers[0].is_Downcast(), lv);
+                    MIR_ASSERT(state, lv.m_wrappers[1].is_Field(), lv);
+                    field_idx = lv.m_wrappers[1].as_Field();
+                    ndel = 2;
                 }
-                auto new_wrappers = std::vector<MIR::LValue::Wrapper>(lv.m_wrappers.begin() + 1, lv.m_wrappers.end());
+                auto new_wrappers = std::vector<MIR::LValue::Wrapper>(lv.m_wrappers.begin() + ndel, lv.m_wrappers.end());
                 auto new_root = MIR::LValue::Storage::new_Local(it->second.replacements.at(field_idx));
                 auto new_lv = MIR::LValue(mv$(new_root), mv$(new_wrappers));
                 DEBUG(state << " " << lv << " -> " << new_lv);

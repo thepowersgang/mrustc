@@ -583,10 +583,15 @@
             _(Array, {
                 deserialise_vec< ::MIR::Param>()
                 })
-            _(Variant, {
+            _(UnionVariant, {
                 deserialise_genericpath(),
                 static_cast<unsigned int>( m_in.read_count() ),
                 deserialise_mir_param()
+                })
+            _(EnumVariant, {
+                deserialise_genericpath(),
+                static_cast<unsigned int>( m_in.read_count() ),
+                deserialise_vec< ::MIR::Param>()
                 })
             _(Struct, {
                 deserialise_genericpath(),

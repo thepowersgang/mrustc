@@ -1052,9 +1052,17 @@ namespace
                         TU_ARM(se.src, MakeDst, e)
                             m_of << "MAKEDST " << fmt(e.ptr_val) << ", " << fmt(e.meta_val);
                             break;
-                        TU_ARM(se.src, Variant, e)
-                            m_of << "VARIANT " << fmt(e.path) << " " << e.index << " " << fmt(e.val);
+                        TU_ARM(se.src, UnionVariant, e)
+                            m_of << "UNION " << fmt(e.path) << " " << e.index << " " << fmt(e.val);
                             break;
+                        TU_ARM(se.src, EnumVariant, e) {
+                            m_of << "ENUM " << fmt(e.path) << " " << e.index << " { ";
+                            for(const auto& v : e.vals)
+                            {
+                                m_of << fmt(v) << ", ";
+                            }
+                            m_of << "}";
+                            } break;
                         TU_ARM(se.src, Array, e) {
                             m_of << "[ ";
                             for(const auto& v : e.vals)

@@ -497,8 +497,12 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
                     for(const auto& v : se.vals)
                         val_state.move_val(state, v);
                     ),
-                (Variant,
+                (UnionVariant,
                     val_state.move_val(state, se.val);
+                    ),
+                (EnumVariant,
+                    for(const auto& v : se.vals)
+                        val_state.move_val(state, v);
                     ),
                 (Struct,
                     for(const auto& v : se.vals)
@@ -929,7 +933,10 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                     TU_ARMA(Array, e) {
                         // TODO: Check return type
                         }
-                    TU_ARMA(Variant, e) {
+                    TU_ARMA(UnionVariant, e) {
+                        // TODO: Check return type
+                        }
+                    TU_ARMA(EnumVariant, e) {
                         // TODO: Check return type
                         }
                     TU_ARMA(Struct, e) {

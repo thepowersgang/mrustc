@@ -612,14 +612,31 @@ bool Parser::parse_one()
 
                     src_rval = ::MIR::RValue::make_Struct({ ::std::move(p), ::std::move(vals) });
                 }
-                else if( lex.consume_if("VARIANT") ) {
+                else if( lex.consume_if("UNION") ) {
                     auto path = HIR::GenericPath { RcString( lex.check_consume(TokenClass::Ident).strval.c_str() ) };
                     //auto idx = static_cast<unsigned>(lex.consume_integer());
                     lex.check(TokenClass::Integer);
                     auto idx = static_cast<unsigned>(lex.consume().integer());
                     auto val = H::parse_param(*this, var_names);
 
-                    src_rval = ::MIR::RValue::make_Variant({ ::std::move(path), idx, ::std::move(val) });
+                    src_rval = ::MIR::RValue::make_UnionVariant({ ::std::move(path), idx, ::std::move(val) });
+                }
+                else if( lex.consume_if("ENUM") ) {
+                    auto path = HIR::GenericPath { RcString( lex.check_consume(TokenClass::Ident).strval.c_str() ) };
+                    //auto idx = static_cast<unsigned>(lex.consume_integer());
+                    lex.check(TokenClass::Integer);
+                    auto idx = static_cast<unsigned>(lex.consume().integer());
+
+                    ::std::vector<::MIR::Param> vals;
+                    while( lex.next() != '}' )
+                    {
+                        vals.push_back( H::parse_param(*this, var_names) );
+                        if( !lex.consume_if(',') )
+                            break ;
+                    }
+                    lex.check_consume('}');
+
+                    src_rval = ::MIR::RValue::make_EnumVariant({ ::std::move(path), idx, ::std::move(vals) });
                 }
                 // Operations
                 else if( lex.consume_if("CAST") ) {

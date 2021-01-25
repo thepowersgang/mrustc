@@ -261,18 +261,19 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
             auto monomorph = [&](const auto& tpl) { return MonomorphStatePtr(nullptr, &te.path.m_data.as_Generic().m_params, nullptr).monomorph_type(state.sp, tpl); };
 
             MIR_ASSERT(state, lit_var.idx < enm.num_variants(), "Variant index out of range");
-            ::MIR::Param    p;
+            std::vector<::MIR::Param>  vals;
             if( const auto* e = enm.m_data.opt_Data() )
             {
                 auto ty = monomorph( e->at(lit_var.idx).type );
+                MIR_ASSERT(state, lit_var.val->is_List(), "");
                 auto rval = MIR_Cleanup_LiteralToRValue(state, mutator, *lit_var.val, ty.clone(), ::HIR::GenericPath());
-                p = mutator.in_temporary(mv$(ty), mv$(rval));
+                vals = rval.is_Struct() ? std::move(rval.as_Struct().vals) : std::move(rval.as_Tuple().vals);
             }
             else
             {
-                p = mutator.in_temporary(::HIR::TypeRef::new_unit(), ::MIR::RValue::make_Tuple({}));
+                // Leave empty
             }
-            return ::MIR::RValue::make_Variant({ te.path.m_data.as_Generic().clone(), lit_var.idx, mv$(p) });
+            return ::MIR::RValue::make_EnumVariant({ te.path.m_data.as_Generic().clone(), lit_var.idx, mv$(vals) });
         }
         else if( te.binding.is_Union() )
         {
@@ -285,7 +286,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
             auto ty = monomorph( un.m_variants.at(lit_var.idx).second.ent );
             auto rval = MIR_Cleanup_LiteralToRValue(state, mutator, *lit_var.val, ty.clone(), ::HIR::GenericPath());
             p = mutator.in_temporary(mv$(ty), mv$(rval));
-            return ::MIR::RValue::make_Variant({ te.path.m_data.as_Generic().clone(), lit_var.idx, mv$(p) });
+            return ::MIR::RValue::make_UnionVariant({ te.path.m_data.as_Generic().clone(), lit_var.idx, mv$(p) });
         }
         else
         {
@@ -1086,8 +1087,12 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                     for(auto& lv : re.vals)
                         MIR_Cleanup_Param(state, mutator,  lv);
                     }
-                TU_ARMA(Variant, re) {
+                TU_ARMA(UnionVariant, re) {
                     MIR_Cleanup_Param(state, mutator,  re.val);
+                    }
+                TU_ARMA(EnumVariant, re) {
+                    for(auto& lv : re.vals)
+                        MIR_Cleanup_Param(state, mutator,  lv);
                     }
                 TU_ARMA(Struct, re) {
                     for(auto& lv : re.vals)

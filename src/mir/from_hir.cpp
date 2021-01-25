@@ -1916,25 +1916,22 @@ namespace {
 
                 // TODO: Validation?
                 ASSERT_BUG(sp, enm.m_data.is_Data(), "TupleVariant on non-data enum - " << node.m_path.m_path);
-                const auto& var_ty = enm.m_data.as_Data()[idx].type;
 
+#if 0
+                const auto& var_ty = enm.m_data.as_Data()[idx].type;
                 // Take advantage of the identical generics to cheaply clone/monomorph the path.
                 const auto& str = *var_ty.data().as_Path().binding.as_Struct();
                 ::HIR::GenericPath struct_path = node.m_path.clone();
                 struct_path.m_path = var_ty.data().as_Path().path.m_data.as_Generic().m_path;
 
-                // Create struct instance
-                m_builder.set_result( node.span(), ::MIR::RValue::make_Struct({
-                    struct_path.clone(),
-                    mv$(values)
-                    }) );
-
                 auto ty = ::HIR::TypeRef::new_path( mv$(struct_path), &str );
                 auto v = m_builder.get_result_in_param(node.span(), ty);
-                m_builder.set_result(node.span(), ::MIR::RValue::make_Variant({
+#endif
+
+                m_builder.set_result(node.span(), ::MIR::RValue::make_EnumVariant({
                     mv$(enum_path),
                     static_cast<unsigned>(idx),
-                    mv$(v)
+                    mv$(values)
                     }) );
             }
         }
@@ -2206,12 +2203,10 @@ namespace {
                     ASSERT_BUG(sp, !var.is_struct, "Variant " << node.m_path.m_path << " isn't a unit variant");
                 }
 
-                m_builder.set_result( node.span(), ::MIR::RValue::make_Tuple({}) );
-                auto v = m_builder.get_result_in_param(node.span(), ::HIR::TypeRef::new_unit());
-                m_builder.set_result( node.span(), ::MIR::RValue::make_Variant({
+                m_builder.set_result( node.span(), ::MIR::RValue::make_EnumVariant({
                     mv$(enum_path),
                     static_cast<unsigned>(idx),
-                    mv$(v)
+                    {}
                     }) );
             }
             else
@@ -2467,16 +2462,13 @@ namespace {
                 struct_path.m_path = var_ty.data().as_Path().path.m_data.as_Generic().m_path;
 
                 this->visit_sl_inner(node, str, struct_path);
+                auto vals = std::move(m_builder.get_result(node.span()).as_Struct().vals);
 
-                // Create type of result from the above path
-                auto ty = ::HIR::TypeRef::new_path( mv$(struct_path), &str );
-                // Obtain in a param
-                auto v = m_builder.get_result_in_param(node.span(), ty);
                 // And create Variant
-                m_builder.set_result( node.span(), ::MIR::RValue::make_Variant({
+                m_builder.set_result( node.span(), ::MIR::RValue::make_EnumVariant({
                     mv$(enum_path),
                     static_cast<unsigned>(idx),
-                    mv$(v)
+                    mv$(vals)
                     }) );
                 }
             TU_ARMA(Union, e) {
@@ -2490,7 +2482,7 @@ namespace {
                 assert(it != unm.m_variants.end());
                 unsigned int idx = it - unm.m_variants.begin();
 
-                m_builder.set_result( node.span(), ::MIR::RValue::make_Variant({
+                m_builder.set_result( node.span(), ::MIR::RValue::make_UnionVariant({
                     node.m_real_path.clone(),
                     idx,
                     mv$(val)
