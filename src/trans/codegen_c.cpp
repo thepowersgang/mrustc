@@ -2652,6 +2652,7 @@ namespace {
         {
             if( m_options.disallow_empty_structs )
             {
+                // TODO: Extern types are also ZSTs?
                 size_t  size, align;
                 // NOTE: Uses the Size+Align version because that doesn't panic on unsized
                 MIR_ASSERT(*m_mir_res, Target_GetSizeAndAlignOf(sp, m_resolve, ty, size, align), "Unexpected generic? " << ty);
@@ -2779,7 +2780,13 @@ namespace {
                     while(tmp_lv.as_Field() < n_parent_fields)
                     {
                         const auto& ty = mir_res.get_lvalue_type(tmp, tmp_lv);
-                        if( !this->type_is_bad_zst(ty) ) {
+                        if( ty.data().is_Path() && ty.data().as_Path().binding.is_ExternType() ) {
+                            // Extern types aren't emitted
+                        }
+                        else if( this->type_is_bad_zst(ty) ) {
+                            // ZSTs are't either
+                        }
+                        else {
                             found = true;
                             break;
                         }
