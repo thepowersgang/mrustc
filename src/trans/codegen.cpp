@@ -312,7 +312,24 @@ namespace {
                 const auto& le = lit.as_Variant();
                 if( *le.val != ::HIR::Literal::make_List({}) )
                 {
-                    encode_literal_as_bytes(sp, resolve, *le.val, repr->fields[le.idx].ty, out, base_ofs + repr->fields[le.idx].offset);
+                    ASSERT_BUG(sp, le.idx < repr->fields.size(), "");
+                    if( le.val->is_List() ) 
+                    {
+                        size_t inner_base_ofs = base_ofs + repr->fields[le.idx].offset;
+                        TRACE_FUNCTION_F("Enum @" << ::std::hex << base_ofs << ::std::dec << " " << *le.val << ", " << repr->fields[le.idx].ty);
+                        const auto* inner_repr = Target_GetTypeRepr(sp, resolve, repr->fields[le.idx].ty);
+                        const auto& inner_le = le.val->as_List();
+
+                        assert(inner_le.size() <= inner_repr->fields.size());
+                        for(size_t i = 0; i < inner_le.size(); i ++)
+                        {
+                            encode_literal_as_bytes(sp, resolve, inner_le[i], inner_repr->fields[i].ty, out, inner_base_ofs + inner_repr->fields[i].offset);
+                        }
+                    }
+                    else
+                    {
+                        encode_literal_as_bytes(sp, resolve, *le.val, repr->fields[le.idx].ty, out, base_ofs + repr->fields[le.idx].offset);
+                    }
                 }
 
                 TU_MATCH_HDRA( (repr->variants), {)
@@ -323,14 +340,31 @@ namespace {
                     }
                 TU_ARMA(Linear, ve) {
                     if( ve.is_niche(le.idx) ) {
-                        // No tag to write
-                    }
-                    else if( ve.uses_niche() ) {
-                        // Obtain the offset, write into it
+                        // No tag to write (this is the niche)
                     }
                     else {
-                        auto v = ::HIR::Literal::make_Integer(ve.offset + le.idx);
-                        encode_literal_as_bytes(sp, resolve, v, repr->fields[ve.field.index].ty, out, base_ofs + repr->fields[ve.field.index].offset);
+                        // Obtain the offset, write into it
+                        struct H {
+                            static size_t get_offset(const Span& sp, const StaticTraitResolve& resolve, const TypeRepr* r, const TypeRepr::FieldPath& out_path)
+                            {
+                                assert(out_path.index < r->fields.size());
+                                size_t ofs = r->fields[out_path.index].offset;
+
+                                r = Target_GetTypeRepr(sp, resolve, r->fields[out_path.index].ty);
+                                for(const auto& f : out_path.sub_fields)
+                                {
+                                    assert(f < r->fields.size());
+                                    ofs += r->fields[f].offset;
+                                    r = Target_GetTypeRepr(sp, resolve, r->fields[f].ty);
+                                }
+
+                                return ofs;
+                            }
+                        };
+                        auto ofs = H::get_offset(sp, resolve, repr, ve.field);
+                        base_ofs += ofs;
+                        //DEBUG("@
+                        put_val(ve.field.size, ve.offset + le.idx);
                     }
                     }
                 TU_ARMA(Values, ve) {
@@ -446,5 +480,6 @@ EncodedLiteral Trans_EncodeLiteralAsBytes(const Span& sp, const StaticTraitResol
     EncodedLiteral  rv;
     rv.bytes.resize( Target_GetSizeOf_Required(sp, resolve, ty) );
     encode_literal_as_bytes(sp, resolve, lit, ty, rv, 0);
+    std::sort(rv.relocations.begin(), rv.relocations.end(), [](const Reloc& a, const Reloc& b){ return a.ofs < b.ofs; });
     return rv;
 }

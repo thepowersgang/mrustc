@@ -17,6 +17,7 @@
 #include <hir/item_path.hpp>
 #include <deque>
 #include <algorithm>
+#include "target.hpp"
 
 namespace {
     struct EnumState
@@ -693,6 +694,8 @@ namespace
                         visit_union(te.path.m_data.as_Generic(), *tpb);
                         ),
                     (Enum,
+                        // NOTE: Force repr generation before recursing into enums (allows layout optimisation to be calculated)
+                        Target_GetTypeRepr(Span(), m_resolve, ty);
                         visit_enum(te.path.m_data.as_Generic(), *tpb);
                         )
                     )

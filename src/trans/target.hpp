@@ -142,6 +142,12 @@ struct TypeRepr
     };
     ::std::vector<Field>    fields;
 };
+static inline std::ostream& operator<<(std::ostream& os, const TypeRepr::FieldPath& x) {
+    os << x.size << "@" << x.index;
+    for(auto idx : x.sub_fields)
+        os << "." << idx;
+    return os;
+}
 
 extern const TargetSpec& Target_GetCurSpec();
 extern void Target_SetCfg(const ::std::string& target_name);

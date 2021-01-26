@@ -194,7 +194,9 @@ namespace {
             bool disallow_empty_structs = false;
         } m_options;
 
+
         ::std::set< ::HIR::TypeRef> m_emitted_fn_types;
+        ::std::set< const TypeRepr*>    m_embedded_tags;
     public:
         CodeGenerator_C(const ::HIR::Crate& crate, const ::std::string& outfile):
             m_crate(crate),
@@ -1346,6 +1348,165 @@ namespace {
             }
             m_of << ";";
         }
+
+        // Shared logic between `emit_struct` and `emit_type` (w/ Tuple)
+        void emit_struct_inner(const ::HIR::TypeRef& ty, const TypeRepr* repr, bool is_packed)
+        {
+            // Fill `fields` with ascending indexes (for sorting)
+            // AND: Determine if the type has an alignment hack (empty array)
+            bool has_manual_align = false;
+            ::std::vector<unsigned> fields;
+            for(const auto& ent : repr->fields)
+            {
+                fields.push_back(fields.size());
+
+                const auto& ty = ent.ty;
+                if( TU_TEST1(ty.data(), Array, .size.as_Known() == 0) ) {
+                    has_manual_align = true;
+                }
+            }
+            // - Sort the fields by offset
+            ::std::sort(fields.begin(), fields.end(), [&](auto a, auto b){ return repr->fields[a].offset < repr->fields[b].offset; });
+
+            // For repr(packed), mark as packed
+            if(is_packed)
+            {
+                switch(m_compiler)
+                {
+                case Compiler::Msvc:
+                    m_of << "#pragma pack(push, 1)\n";
+                    break;
+                case Compiler::Gcc:
+                    break;
+                }
+            }
+            if(has_manual_align)
+            {
+                switch(m_compiler)
+                {
+                case Compiler::Msvc:
+                    m_of << "__declspec(align(" << repr->align << "))\n";
+                    break;
+                case Compiler::Gcc:
+                    break;
+                }
+            }
+            if( ty.data().is_Tuple() )
+            {
+                m_of << "typedef ";
+                m_of << "struct ";
+            }
+            emit_ctype(ty); m_of << " {\n";
+
+            bool has_unsized = false;
+            size_t sized_fields = 0;
+            size_t  cur_ofs = 0;
+            for(unsigned fld : fields)
+            {
+                const auto& ty = repr->fields[fld].ty;
+                const auto offset = repr->fields[fld].offset;
+                size_t s = 0, a;
+                Target_GetSizeAndAlignOf(sp, m_resolve, ty, s, a);
+
+                // Check offset/alignment
+                if( s == SIZE_MAX )
+                {
+                }
+                else if( s == 0 )
+                {
+                }
+                else
+                {
+                    MIR_ASSERT(*m_mir_res, cur_ofs <= offset, "Current offset is already past expected (#" << fld << "): " << cur_ofs << " > " << offset);
+                    if(!is_packed)
+                    {
+                        while(cur_ofs % a != 0)
+                            cur_ofs ++;
+                    }
+                    MIR_ASSERT(*m_mir_res, cur_ofs == offset, "Current offset doesn't match expected (#" << fld << "): " << cur_ofs << " != " << offset);
+
+                    cur_ofs += s;
+                }
+
+                m_of << "\t";
+                if( const auto* te = ty.data().opt_Slice() ) {
+                    emit_ctype( te->inner, FMT_CB(ss, ss << "_" << fld << "[0]";) );
+                    has_unsized = true;
+                }
+                else if( ty.data().is_TraitObject() ) {
+                    m_of << "unsigned char _" << fld << "[0]";
+                    has_unsized = true;
+                }
+                else if( ty == ::HIR::CoreType::Str ) {
+                    m_of << "uint8_t _" << fld << "[0]";
+                    has_unsized = true;
+                }
+                else if( TU_TEST1(ty.data(), Path, .binding.is_ExternType()) ) {
+                    m_of << "// External";
+                    has_unsized = true;
+                }
+                else {
+                    if( s == 0 && m_options.disallow_empty_structs ) {
+                        m_of << "// ZST";
+                    }
+                    else {
+
+                        // TODO: Nested unsized?
+                        emit_ctype( ty, FMT_CB(ss, ss << "_" << fld) );
+                        sized_fields ++;
+
+                        has_unsized |= (s == SIZE_MAX);
+                    }
+                }
+                m_of << "; // " << ty << "\n";
+            }
+            if( sized_fields == 0 && !has_unsized && m_options.disallow_empty_structs )
+            {
+                m_of << "\tchar _d;\n";
+            }
+            m_of << "}";
+            if(is_packed || has_manual_align)
+            {
+                switch(m_compiler)
+                {
+                case Compiler::Msvc:
+                    m_of << " ";
+                    if( ty.data().is_Tuple() )
+                    {
+                        emit_ctype(ty);
+                    }
+                    m_of << ";";
+                    if( is_packed )
+                        m_of << "\n#pragma pack(pop)";
+                    m_of << "\n";
+                    break;
+                case Compiler::Gcc:
+                    m_of << " __attribute__((";
+                    if( is_packed )
+                        m_of << "packed,";
+                    if( has_manual_align )
+                        m_of << "__aligned__(" << repr->align << "),";
+                    m_of << "))";
+                    m_of << " ";
+                    if( ty.data().is_Tuple() )
+                    {
+                        emit_ctype(ty);
+                    }
+                    m_of << ";\n";
+                    break;
+                }
+            }
+            else
+            {
+                m_of << " ";
+                if( ty.data().is_Tuple() )
+                {
+                    emit_ctype(ty);
+                }
+                m_of << ";\n";
+            }
+        }
+
         void emit_type(const ::HIR::TypeRef& ty) override
         {
             ::MIR::Function empty_fcn;
@@ -1360,30 +1521,11 @@ namespace {
             TU_ARMA(Tuple, te) {
                 if( te.size() > 0 )
                 {
-                    m_of << "typedef struct "; emit_ctype(ty); m_of << " {\n";
-                    unsigned n_fields = 0;
-                    for(unsigned int i = 0; i < te.size(); i++)
-                    {
-                        m_of << "\t";
-                        size_t s, a;
-                        Target_GetSizeAndAlignOf(sp, m_resolve, te[i], s, a);
-                        if( s == 0 && m_options.disallow_empty_structs ) {
-                            m_of << "// ZST: " << te[i] << "\n";
-                            continue ;
-                        }
-                        else {
-                            emit_ctype(te[i], FMT_CB(ss, ss << "_" << i;));
-                            m_of << ";\n";
-                            n_fields += 1;
-                        }
-                    }
-                    if( n_fields == 0 && m_options.disallow_empty_structs )
-                    {
-                        m_of << "\tchar _d;\n";
-                    }
-                    m_of << "} "; emit_ctype(ty); m_of << ";\n";
-
+                    m_of << " // " << ty << "\n";
                     const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
+
+                    emit_struct_inner(ty, repr, /*is_packed=*/false);
+
                     if( repr->size > 0 )
                     {
                         m_of << "typedef char sizeof_assert_"; emit_ctype(ty); m_of << "[ (sizeof("; emit_ctype(ty); m_of << ") == " << repr->size << ") ? 1 : -1 ];\n";
@@ -1429,122 +1571,11 @@ namespace {
             const auto* repr = Target_GetTypeRepr(sp, m_resolve, item_ty);
             MIR_ASSERT(*m_mir_res, repr, "No repr for struct " << p);
 
-            ::std::vector<unsigned> fields;
-            for(const auto& ent : repr->fields)
-            {
-                (void)ent;
-                fields.push_back(fields.size());
-            }
-            ::std::sort(fields.begin(), fields.end(), [&](auto a, auto b){ return repr->fields[a].offset < repr->fields[b].offset; });
-
             m_of << "// struct " << p << "\n";
 
-            // Determine if the type has an alignment hack
-            bool has_manual_align = false;
-            for(unsigned fld : fields )
-            {
-                const auto& ty = repr->fields[fld].ty;
-                if( TU_TEST1(ty.data(), Array, .size.as_Known() == 0) ) {
-                    has_manual_align = true;
-                }
-            }
+            emit_struct_inner(item_ty, repr, is_packed);
 
-            // For repr(packed), mark as packed
-            if(is_packed)
-            {
-                switch(m_compiler)
-                {
-                case Compiler::Msvc:
-                    m_of << "#pragma pack(push, 1)\n";
-                    break;
-                case Compiler::Gcc:
-                    break;
-                }
-            }
-            if(has_manual_align)
-            {
-                switch(m_compiler)
-                {
-                case Compiler::Msvc:
-                    m_of << "__declspec(align(" << repr->align << "))\n";
-                    break;
-                case Compiler::Gcc:
-                    break;
-                }
-            }
-            m_of << "struct s_" << Trans_Mangle(p) << " {\n";
-
-            bool has_unsized = false;
-            size_t sized_fields = 0;
-            for(unsigned fld : fields)
-            {
-                m_of << "\t";
-                const auto& ty = repr->fields[fld].ty;
-
-                if( const auto* te = ty.data().opt_Slice() ) {
-                    emit_ctype( te->inner, FMT_CB(ss, ss << "_" << fld << "[0]";) );
-                    has_unsized = true;
-                }
-                else if( ty.data().is_TraitObject() ) {
-                    m_of << "unsigned char _" << fld << "[0]";
-                    has_unsized = true;
-                }
-                else if( ty == ::HIR::CoreType::Str ) {
-                    m_of << "uint8_t _" << fld << "[0]";
-                    has_unsized = true;
-                }
-                else if( TU_TEST1(ty.data(), Path, .binding.is_ExternType()) ) {
-                    m_of << "// External";
-                    has_unsized = true;
-                }
-                else {
-                    size_t s = 0, a;
-                    Target_GetSizeAndAlignOf(sp, m_resolve, ty, s, a);
-                    if( s == 0 && m_options.disallow_empty_structs ) {
-                        m_of << "// ZST";
-                    }
-                    else {
-
-                        // TODO: Nested unsized?
-                        emit_ctype( ty, FMT_CB(ss, ss << "_" << fld) );
-                        sized_fields ++;
-
-                        has_unsized |= (s == SIZE_MAX);
-                    }
-                }
-                m_of << "; // " << ty << "\n";
-            }
-            if( sized_fields == 0 && !has_unsized && m_options.disallow_empty_structs )
-            {
-                m_of << "\tchar _d;\n";
-            }
-            m_of << "}";
-            if(is_packed || has_manual_align)
-            {
-                switch(m_compiler)
-                {
-                case Compiler::Msvc:
-                    m_of << ";";
-                    if( is_packed )
-                        m_of << "\n#pragma pack(pop)";
-                    m_of << "\n";
-                    break;
-                case Compiler::Gcc:
-                    m_of << " __attribute__((";
-                    if( is_packed )
-                        m_of << "packed,";
-                    if( has_manual_align )
-                        m_of << "__aligned__(" << repr->align << "),";
-                    m_of << "));\n";
-                    break;
-                }
-            }
-            else
-            {
-                m_of << ";\n";
-            }
-            (void)has_unsized;
-            if( true && repr->size > 0 && !has_unsized )
+            if(repr->size > 0 && repr->size != SIZE_MAX )
             {
                 // TODO: Handle unsized (should check the size of the fixed-size region)
                 m_of << "typedef char sizeof_assert_" << Trans_Mangle(p) << "[ (sizeof(struct s_" << Trans_Mangle(p) << ") == " << repr->size << ") ? 1 : -1 ];\n";
@@ -1594,6 +1625,10 @@ namespace {
         {
             if( is_enum_tag(repr, path.index) )
             {
+                // Some enums have the tag outside, some inside
+                if( m_embedded_tags.count(repr) ) {
+                    m_of << ".DATA";
+                }
                 m_of << ".TAG";
                 assert(path.sub_fields.empty());
             }
@@ -1605,17 +1640,21 @@ namespace {
             for(const auto& fld : path.sub_fields)
             {
                 repr = Target_GetTypeRepr(sp, m_resolve, *ty);
-                ty = &repr->fields[fld].ty;
                 if( is_enum_tag(repr, fld) ) {
+                    if( m_embedded_tags.count(repr) ) {
+                        m_of << ".DATA";
+                    }
                     m_of << ".TAG";
                     assert(&fld == &path.sub_fields.back());
                 }
-                else if( !repr->variants.is_None() ) {
+                else if( /*!repr->variants.is_None() ||*/ TU_TEST1(ty->data(), Path, .binding.is_Enum()) ) {
                     m_of << ".DATA.var_" << fld;
                 }
                 else {
                     m_of << "._" << fld;
                 }
+
+                ty = &repr->fields[fld].ty;
             }
             if( const auto* te = ty->data().opt_Borrow() )
             {
@@ -1647,13 +1686,14 @@ namespace {
             ::std::vector<unsigned> union_fields;
             for(size_t i = 1; i < repr->fields.size(); i ++)
             {
-                // Avoid placing the tag in the union
-                if( is_enum_tag(repr, i) )
-                    continue ;
                 if( repr->fields[i].offset == repr->fields[0].offset )
                 {
                     union_fields.push_back(i);
                 }
+            }
+            if(union_fields.size() > 0 )
+            {
+                union_fields.insert( union_fields.begin(), 0 );
             }
 
             m_of << "// enum " << p << "\n";
@@ -1670,62 +1710,7 @@ namespace {
                 m_of << ";\n";
                 m_of << "\t} DATA;";
             }
-            // If there multiple fields with the same offset, they're the data variants
-            else if( union_fields.size() > 0 )
-            {
-                assert(1 + union_fields.size() + 1 >= repr->fields.size());
-                // Make the union!
-                // NOTE: The way the structure generation works is that enum variants are always first, so the field index = the variant index
-                // TODO:
-                if( !this->type_is_bad_zst(repr->fields[0].ty) || ::std::any_of(union_fields.begin(), union_fields.end(), [this,repr](auto x){ return !this->type_is_bad_zst(repr->fields[x].ty); }) )
-                {
-                    m_of << "\tunion {\n";
-                    // > First field
-                    {
-                        m_of << "\t\t";
-                        const auto& ty = repr->fields[0].ty;
-                        if( this->type_is_bad_zst(ty) ) {
-                            m_of << "// ZST: " << ty << "\n";
-                        }
-                        else {
-                            emit_ctype( ty, FMT_CB(ss, ss << "var_0") );
-                            m_of << ";\n";
-                            //sized_fields ++;
-                        }
-                    }
-                    // > All others
-                    for(auto idx : union_fields)
-                    {
-                        m_of << "\t\t";
-
-                        const auto& ty = repr->fields[idx].ty;
-                        if( this->type_is_bad_zst(ty) ) {
-                            m_of << "// ZST: " << ty << "\n";
-                        }
-                        else {
-                            emit_ctype( ty, FMT_CB(ss, ss << "var_" << idx) );
-                            m_of << ";\n";
-                            //sized_fields ++;
-                        }
-                    }
-                    m_of << "\t} DATA;\n";
-                }
-
-                if( repr->fields.size() == 1 + union_fields.size() )
-                {
-                    // No tag, the tag is in one of the fields.
-                    DEBUG("Untagged, nonzero or other");
-                }
-                else
-                {
-                    //assert(repr->fields.back().offset != repr->fields.front().offset);
-                    DEBUG("Tag present at offset " << repr->fields.back().offset << " - " << repr->fields.back().ty);
-
-                    m_of << "\t";
-                    emit_ctype(repr->fields.back().ty, FMT_CB(os, os << "TAG"));
-                    m_of << ";\n";
-                }
-            }
+            // If there's only one field - it's either a single variant, or a value enum
             else if( repr->fields.size() == 1 )
             {
                 if( repr->variants.is_Values() )
@@ -1746,6 +1731,61 @@ namespace {
                     // No tag
                 }
             }
+            // If there multiple fields with the same offset, they're the data variants
+            else if( union_fields.size() > 0 )
+            {
+                if( union_fields.size() == repr->fields.size() )
+                {
+                    // Embedded tag
+                    DEBUG("Untagged, nonzero or other");
+                }
+                else
+                {
+                    // Leading & external tag: repr(C)
+                    assert(union_fields.size() + 1 == repr->fields.size());
+                    assert( is_enum_tag(repr, repr->fields.size()-1) );
+                    
+                    assert( repr->fields.back().offset == 0 );
+                    DEBUG("Tag present at offset " << repr->fields.back().offset << " - " << repr->fields.back().ty);
+
+                    m_of << "\t";
+                    emit_ctype(repr->fields.back().ty, FMT_CB(os, os << "TAG"));
+                    m_of << ";\n";
+                }
+
+                // Options:
+                // - Leading tag (union fields have a non-zero offset, tag has zero)
+                // - Embedded (tag field shares offset with union fields, or there's no tag field)
+
+                // Make the union!
+                // NOTE: The way the structure generation works is that enum variants are always first, so the field index = the variant index
+                // NOTE: Only emit if there are non-empty fields
+                if( ::std::any_of(union_fields.begin(), union_fields.end(), [this,repr](auto x){ return !this->type_is_bad_zst(repr->fields[x].ty); }) )
+                {
+                    m_of << "\tunion {\n";
+                    for(auto idx : union_fields)
+                    {
+                        m_of << "\t\t";
+
+                        const auto& ty = repr->fields[idx].ty;
+                        if( this->type_is_bad_zst(ty) ) {
+                            m_of << "// ZST: " << ty << "\n";
+                        }
+                        else {
+                            if( is_enum_tag(repr, idx) ) {
+                                emit_ctype( ty, FMT_CB(ss, ss << "TAG") );
+                                m_embedded_tags.insert(repr);
+                            }
+                            else {
+                                emit_ctype( ty, FMT_CB(ss, ss << "var_" << idx) );
+                            }
+                            m_of << ";\n";
+                            //sized_fields ++;
+                        }
+                    }
+                    m_of << "\t} DATA;\n";
+                }
+            }
             else if( repr->fields.size() == 0 )
             {
                 // Empty/un-constructable
@@ -1762,10 +1802,9 @@ namespace {
             }
 
             m_of << "};\n";
-            if( true && repr->size > 0 )
-            {
-                m_of << "typedef char sizeof_assert_" << Trans_Mangle(p) << "[ (sizeof(struct e_" << Trans_Mangle(p) << ") == " << repr->size << ") ? 1 : -1 ];\n";
-            }
+
+            size_t exp_size = (repr->size > 0 ? repr->size : (m_options.disallow_empty_structs ? 1 : 0));
+            m_of << "typedef char sizeof_assert_" << Trans_Mangle(p) << "[ (sizeof(struct e_" << Trans_Mangle(p) << ") == " << exp_size << ") ? 1 : -1 ];\n";
 
             m_mir_res = nullptr;
         }
@@ -2037,7 +2076,7 @@ namespace {
                 }
                 m_of << "} }";
                 m_of << ";";
-                m_of << "\t// static " << p << " : " << type;
+                m_of << "\t// static " << p << " : " << type << " = " << item.m_value_res;
                 m_of << "\n";
             }
 
@@ -3422,6 +3461,7 @@ namespace {
             if (ve.type.data().is_Primitive() && ty.data().is_Path() && ty.data().as_Path().binding.is_Enum())
             {
                 emit_lvalue(ve.val);
+                // NOTE: Embedded tag enums can't be cast
                 m_of << ".TAG";
                 special = true;
             }
@@ -3490,11 +3530,11 @@ namespace {
                 switch(tag_ty.data().as_Primitive())
                 {
                 case ::HIR::CoreType::Bool:
-                case ::HIR::CoreType::U8:
-                case ::HIR::CoreType::U16:
-                case ::HIR::CoreType::U32:
-                case ::HIR::CoreType::U64:
-                case ::HIR::CoreType::Usize:
+                case ::HIR::CoreType::U8:   case ::HIR::CoreType::I8:
+                case ::HIR::CoreType::U16:  case ::HIR::CoreType::I16:
+                case ::HIR::CoreType::U32:  case ::HIR::CoreType::I32:
+                case ::HIR::CoreType::U64:  case ::HIR::CoreType::I64:
+                case ::HIR::CoreType::Usize:case ::HIR::CoreType::Isize:
                 case ::HIR::CoreType::Char:
                     break;
                 default:
