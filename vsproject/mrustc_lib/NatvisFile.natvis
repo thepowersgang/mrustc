@@ -18,13 +18,17 @@
   </Type>
   <Type Name="HIR::TypeData">
     <DisplayString Condition="m_tag == TAG_Infer">Infer #{m_data.Infer.index,i} {m_data.Infer.ty_class}</DisplayString>
+    <DisplayString Condition="m_tag == TAG_Primitive">Primitive {m_data.Primitive}</DisplayString>
     <DisplayString Condition="m_tag == TAG_Generic">Generic {m_data.Generic}</DisplayString>
     <DisplayString Condition="m_tag == TAG_Borrow">Borrow {m_data.Borrow}</DisplayString>
     <DisplayString Condition="m_tag == TAG_Path">Path {m_data.Path}</DisplayString>
+    <DisplayString Condition="m_tag == TAG_Tuple">Tuple {m_data.Tuple}</DisplayString>
     <Expand>
-      <Item Name="Infer" Condition="m_tag == TAG_Infer">m_data.Infer</Item>
+      <Item Name="Infer" Condition="m_tag == TAG_Infer" >m_data.Infer</Item>
       <Item Name="Generic" Condition="m_tag == TAG_Generic">m_data.Generic</Item>
-      <Item Name="Path" Condition="m_tag == TAG_Path">m_data.Path</Item>
+      <Item Name="Borrow" Condition="m_tag == TAG_Borrow">m_data.Borrow</Item>
+      <Item Name="Path"  Condition="m_tag == TAG_Path" >m_data.Path</Item>
+      <Item Name="Tuple" Condition="m_tag == TAG_Tuple">m_data.Tuple</Item>
     </Expand>
   </Type>
   <Type Name="HIR::Path">
