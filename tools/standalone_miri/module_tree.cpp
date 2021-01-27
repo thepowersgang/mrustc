@@ -627,6 +627,7 @@ bool Parser::parse_one()
                     lex.check(TokenClass::Integer);
                     auto idx = static_cast<unsigned>(lex.consume().integer());
 
+                    lex.check_consume('{');
                     ::std::vector<::MIR::Param> vals;
                     while( lex.next() != '}' )
                     {

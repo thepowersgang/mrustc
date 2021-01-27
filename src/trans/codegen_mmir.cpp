@@ -595,17 +595,15 @@ namespace
                 m_of << fmt(monomorph(e[i].ent));
             }
             m_of << "): " << fmt(enum_path) << " {\n";
-            m_of << "\tlet var0: " << fmt(monomorph(var_ty)) << ";\n";
             m_of << "\t0: {\n";
-            m_of << "\t\tASSIGN var0 = { ";
+            m_of << "\t\tASSIGN RETURN = ENUM " << fmt(enum_path) << " " << var_idx << " { ";
             for(unsigned int i = 0; i < e.size(); i ++)
             {
                 if(i != 0)
                     m_of << ", ";
                 m_of << "arg" << i;
             }
-            m_of << " }: " << fmt(monomorph(var_ty)) << ";\n";
-            m_of << "\t\tASSIGN RETURN = VARIANT " << fmt(enum_path) << " " << var_idx << " var0;\n";
+            m_of << " };\n";
             m_of << "\t\tRETURN\n";
             m_of << "\t}\n";
             m_of << "}";

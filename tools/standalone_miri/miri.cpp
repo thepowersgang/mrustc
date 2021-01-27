@@ -2111,7 +2111,7 @@ bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, co
 
         rv = Value::with_size(2*POINTER_SIZE, /*needs_alloc=*/true);
         rv.write_ptr(0*POINTER_SIZE, Allocation::PTR_BASE, RelocationPtr::new_string(&it->second));
-        rv.write_usize(1*POINTER_SIZE, 0);
+        rv.write_usize(1*POINTER_SIZE, it->second.size());
     }
     else if( name == "discriminant_value" )
     {
@@ -2241,20 +2241,22 @@ bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, co
     else if( name == "atomic_cxchg" )
     {
         const auto& ty_T = ty_params.tys.at(0);
+        const auto& ret_dt = ret_ty.composite_type();
+        LOG_ASSERT(ret_dt.fields.size() == 2, "Return type of `atomic_cxchg` invalid");
+        LOG_ASSERT(ret_dt.fields[0].second == ty_T, "Return type of `atomic_cxchg` invalid");
+        //LOG_ASSERT(ret_dt.fields[1].second == HIR::CoreType::Bool);
         // TODO: Get a ValueRef to the target location
         auto data_ref = args.at(0).read_pointer_valref_mut(0, ty_T.get_size());
         const auto& old_v = args.at(1);
         const auto& new_v = args.at(2);
-        rv = Value::with_size( ty_T.get_size() + 1, false );
-        rv.write_value(0, data_ref.read_value(0, old_v.size()));
+        rv = Value( ret_ty );
+        rv.write_value(ret_dt.fields.at(0).first, data_ref.read_value(0, old_v.size()));
         LOG_DEBUG("> *ptr = " << data_ref);
-        if( data_ref.compare(0, old_v.data_ptr(), old_v.size()) == true ) {
+        bool success = data_ref.compare(0, old_v.data_ptr(), old_v.size());
+        if( success == true ) {
             data_ref.m_alloc.alloc().write_value( data_ref.m_offset, new_v );
-            rv.write_u8( old_v.size(), 1 );
         }
-        else {
-            rv.write_u8( old_v.size(), 0 );
-        }
+        rv.write_u8( ret_dt.fields.at(1).first, success ? 1 : 0 );
     }
     else if( name == "transmute" )
     {
