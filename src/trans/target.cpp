@@ -364,7 +364,7 @@ namespace
     TargetSpec init_from_spec_name(const ::std::string& target_name)
     {
         // Options for all the fully-GNU environments
-        #define BACKEND_C_OPTS_GNU  {"-ffunction-sections", "-pthread"}, {"-Wl,--gc-sections"}
+        #define BACKEND_C_OPTS_GNU  {"-ffunction-sections", "-pthread"}, {"-Wl,--gc-sections", "-l", "atomic"}
         // If there's a '/' or a '\' in the filename, open it as a path, otherwise assume it's a triple.
         if( target_name.find('/') != ::std::string::npos || target_name.find('\\') != ::std::string::npos )
         {
