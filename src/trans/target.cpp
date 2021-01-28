@@ -1290,6 +1290,8 @@ namespace {
                 }
                 rv.size = data_ofs + max_size;
                 rv.align = std::max(tag_align, max_align);
+                while(rv.size % rv.align != 0)
+                    rv.size ++;
                 rv.variants = TypeRepr::VariantMode::make_Linear({ { e.size(), tag_size, {} }, 0, e.size() });
             }
             else if( enm.m_tag_repr == ::HIR::Enum::Repr::Auto && e.size() <= 1 )
