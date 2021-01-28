@@ -1,1 +1,4 @@
-# Linux gnu has nothing
+cargo:rustc-link-lib=dl
+cargo:rustc-link-lib=rt
+cargo:rustc-link-lib=pthread
+
