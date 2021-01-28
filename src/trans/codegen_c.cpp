@@ -3931,7 +3931,7 @@ namespace {
                     m_of << " : ";
                     m_of << "\"a\" ("; emit_lvalue(e.inputs[0].second); m_of << "), ";
                     m_of << "\"c\" ("; emit_lvalue(e.inputs[1].second); m_of << ")";
-                    m_of << " )\n";
+                    m_of << " );\n";
                     return ;
                 }
             }
@@ -5251,13 +5251,19 @@ namespace {
                     break;
                 case ::HIR::CoreType::I32:
                 case ::HIR::CoreType::U32:
-                    emit_lvalue(e.ret_val); m_of << " = ";
-                    m_of << "_rotl("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ")";
+                    m_of << "{";
+                    m_of << " uint32_t v = "; emit_param(e.args.at(0)); m_of << ";";
+                    m_of << " unsigned shift = "; emit_param(e.args.at(1)); m_of << ";";
+                    m_of << " "; emit_lvalue(e.ret_val); m_of << " = (v << shift) | (v >> (32 - shift));";
+                    m_of << "}";
                     break;
                 case ::HIR::CoreType::I64:
                 case ::HIR::CoreType::U64:
-                    emit_lvalue(e.ret_val); m_of << " = ";
-                    m_of << "_rotl64("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ")";
+                    m_of << "{";
+                    m_of << " uint64_t v = "; emit_param(e.args.at(0)); m_of << ";";
+                    m_of << " unsigned shift = "; emit_param(e.args.at(1)); m_of << ";";
+                    m_of << " "; emit_lvalue(e.ret_val); m_of << " = (v << shift) | (v >> (64 - shift));";
+                    m_of << "}";
                     break;
                 case ::HIR::CoreType::I128:
                 case ::HIR::CoreType::U128:
