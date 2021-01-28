@@ -3857,6 +3857,38 @@ namespace {
                 m_of << indent << "}\n";
             }
         }
+
+        bool asm_matches_template(const ::MIR::Statement::Data_Asm& e, const char* tpl, ::std::initializer_list<const char*> inputs, ::std::initializer_list<const char*> outputs)
+        {
+            struct H {
+                static bool check_list(const std::vector<std::pair<std::string, MIR::LValue>>& have, const ::std::initializer_list<const char*>& exp)
+                {
+                    if( have.size() != exp.size() )
+                        return false;
+                    auto h_it = have.begin();
+                    auto e_it = exp.begin();
+                    for(; h_it != have.end(); ++ h_it, ++e_it)
+                    {
+                        if( h_it->first != *e_it )
+                        {
+                            return false;
+                        }
+                    }
+                    return true;
+                }
+            };
+
+            if( e.tpl == tpl )
+            {
+                if( !H::check_list(e.inputs, inputs) || !H::check_list(e.outputs, outputs) )
+                {
+                    MIR_BUG(*m_mir_res, "Hard-coded asm translation doesn't apply - `" << e.tpl << "` inputs=" << e.inputs << " outputs=" << e.outputs);
+                }
+                return true;
+            }
+            return false;
+        }
+
         void emit_asm_gcc(const ::MIR::TypeResolve& mir_res, const ::MIR::Statement::Data_Asm& e, unsigned indent_level)
         {
             auto indent = RepeatLitStr{ "\t", static_cast<int>(indent_level) };
@@ -3885,12 +3917,29 @@ namespace {
             bool is_volatile = H::has_flag(e.flags, "volatile");
             bool is_intel = H::has_flag(e.flags, "intel");
 
+            // The following clobber overlaps with an output
+            // __asm__ ("cpuid": "=a" (var0), "=b" (var1), "=c" (var2), "=d" (var3): "a" (arg0), "c" (var4): "rbx");
+            if( asm_matches_template(e, "cpuid", {"{eax}","{ecx}"}, {"={eax}", "={ebx}", "={ecx}", "={edx}"}) )
+            {
+                if( e.clobbers.size() == 1 && e.clobbers[0] == "rbx" ) {
+                    m_of << indent << "__asm__(\"cpuid\"";
+                    m_of << " : ";
+                    m_of << "\"=a\" ("; emit_lvalue(e.outputs[0].second); m_of << "), ";
+                    m_of << "\"=b\" ("; emit_lvalue(e.outputs[1].second); m_of << "), ";
+                    m_of << "\"=c\" ("; emit_lvalue(e.outputs[2].second); m_of << "), ";
+                    m_of << "\"=d\" ("; emit_lvalue(e.outputs[3].second); m_of << ")";
+                    m_of << " : ";
+                    m_of << "\"a\" ("; emit_lvalue(e.inputs[0].second); m_of << "), ";
+                    m_of << "\"c\" ("; emit_lvalue(e.inputs[1].second); m_of << ")";
+                    m_of << " )\n";
+                    return ;
+                }
+            }
 
             m_of << indent << "__asm__ ";
             if (is_volatile) m_of << "__volatile__";
-            // TODO: Convert format string?
-            // TODO: Use a C-specific escaper here.
             m_of << "(\"" << (is_intel ? ".syntax intel; " : "");
+            // TODO: Use a more powerful parser
             for (auto it = e.tpl.begin(); it != e.tpl.end(); ++it)
             {
                 if (*it == '\n')
@@ -3911,6 +3960,12 @@ namespace {
                     m_of << "%%";
                 else if (*it == '$' && isdigit(*(it + 1)) && *(it + 2) != 'x')
                     m_of << "%";
+                // Hack for `${0:b}` seen with `setc`, just emit as `%0`
+                else if( *it == '$' && *(it + 1) == '{') {
+                    m_of << "%" << *(it + 2);
+                    while(it != e.tpl.end() && *it != '}')
+                        it ++;
+                }
                 else
                     m_of << *it;
             }
@@ -3953,33 +4008,8 @@ namespace {
         {
             auto indent = RepeatLitStr{ "\t", static_cast<int>(indent_level) };
 
-            struct H {
-                static bool check_list(const std::vector<std::pair<std::string, MIR::LValue>>& have, const ::std::initializer_list<const char*>& exp)
-                {
-                    if( have.size() != exp.size() )
-                        return false;
-                    auto h_it = have.begin();
-                    auto e_it = exp.begin();
-                    for(; h_it != have.end(); ++ h_it, ++e_it)
-                    {
-                        if( h_it->first != *e_it )
-                        {
-                            return false;
-                        }
-                    }
-                    return true;
-                }
-            };
-            auto matches_template = [&e,&mir_res](const char* tpl, ::std::initializer_list<const char*> inputs, ::std::initializer_list<const char*> outputs)->bool {
-                    if( e.tpl == tpl )
-                    {
-                        if( !H::check_list(e.inputs, inputs) || !H::check_list(e.outputs, outputs) )
-                        {
-                            MIR_BUG(mir_res, "Hard-coded asm translation doesn't apply - `" << e.tpl << "` inputs=" << e.inputs << " outputs=" << e.outputs);
-                        }
-                        return true;
-                    }
-                    return false;
+            auto matches_template = [this,&e](const char* tpl, ::std::initializer_list<const char*> inputs, ::std::initializer_list<const char*> outputs)->bool {
+                return this->asm_matches_template(e, tpl, inputs, outputs);
                 };
 
             if( e.tpl == "" )
