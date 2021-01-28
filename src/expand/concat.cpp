@@ -68,5 +68,33 @@ class CConcatExpander:
     }
 };
 
+class CConcatIdentsExpander:
+    public ExpandProcMacro
+{
+    ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
+    {
+        Token   tok;
+        auto lex = TTStream(sp, ParseState(crate.m_edition), tt);
+
+        ::std::string   rv;
+
+        do {
+            if( LOOK_AHEAD(lex) == TOK_EOF ) {
+                GET_TOK(tok, lex);
+                break ;
+            }
+
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            rv += tok.ident().name.c_str();
+
+        } while( GET_TOK(tok, lex) == TOK_COMMA );
+        if( tok.type() != TOK_EOF )
+            throw ParseError::Unexpected(lex, tok, {TOK_COMMA, TOK_EOF});
+
+        return box$( TTStreamO(sp, ParseState(crate.m_edition), TokenTree(Token(TOK_IDENT, Ident(lex.get_hygiene(), RcString::new_interned(rv)))) ) );
+    }
+};
+
 STATIC_MACRO("concat", CConcatExpander);
+STATIC_MACRO("concat_idents", CConcatIdentsExpander);
 
