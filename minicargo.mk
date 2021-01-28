@@ -44,6 +44,11 @@ ifeq ($(RUSTC_CHANNEL),nightly)
 else
   RUSTCSRC := rustc-$(RUSTC_VERSION)-src/
 endif
+ifeq ($(RUSTC_VERSION),1.39.0)
+  VENDOR_DIR := $(RUSTCSRC)vendor
+else
+  VENDOR_DIR := $(RUSTCSRC)src/vendor
+endif
 
 LLVM_CONFIG := $(RUSTCSRC)build/bin/llvm-config
 RUSTC_TARGET ?= x86_64-unknown-linux-gnu
@@ -73,16 +78,16 @@ $(MINICARGO):
 # - libstd, libpanic_unwind, libtest and libgetopts
 # - libproc_macro (mrustc)
 $(OUTDIR)libstd.rlib: $(MRUSTC) $(MINICARGO)
-	$(MINICARGO) $(RUSTCSRC)src/libstd --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
+	$(MINICARGO) $(RUSTCSRC)src/libstd --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
 	@test -e $@
 $(OUTDIR)libpanic_unwind.rlib: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.rlib
-	$(MINICARGO) $(RUSTCSRC)src/libpanic_unwind --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
+	$(MINICARGO) $(RUSTCSRC)src/libpanic_unwind --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
 	@test -e $@
 $(OUTDIR)libtest.rlib: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.rlib $(OUTDIR)libpanic_unwind.rlib
-	$(MINICARGO) $(RUSTCSRC)src/libtest --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
+	$(MINICARGO) $(RUSTCSRC)src/libtest --vendor-dir $(VENDOR_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
 	@test -e $@
 $(OUTDIR)libgetopts.rlib: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.rlib
-	$(MINICARGO) $(RUSTCSRC)src/libgetopts --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
+	$(MINICARGO) $(RUSTCSRC)src/libgetopts --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
 	@test -e $@
 # MRustC custom version of libproc_macro
 $(OUTDIR)libproc_macro.rlib: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.rlib
@@ -91,9 +96,9 @@ $(OUTDIR)libproc_macro.rlib: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.rlib
 
 $(OUTDIR)test/libtest.so: $(MRUSTC) $(MINICARGO)
 	mkdir -p $(dir $@)
-	MINICARGO_DYLIB=1 $(MINICARGO) $(RUSTCSRC)src/libstd --script-overrides $(OVERRIDE_DIR) --output-dir $(dir $@) $(MINICARGO_FLAGS)
-	MINICARGO_DYLIB=1 $(MINICARGO) $(RUSTCSRC)src/libpanic_unwind --script-overrides $(OVERRIDE_DIR) --output-dir $(dir $@) $(MINICARGO_FLAGS)
-	MINICARGO_DYLIB=1 $(MINICARGO) $(RUSTCSRC)src/libtest --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(dir $@) $(MINICARGO_FLAGS)
+	MINICARGO_DYLIB=1 $(MINICARGO) $(RUSTCSRC)src/libstd          --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(dir $@) $(MINICARGO_FLAGS)
+	MINICARGO_DYLIB=1 $(MINICARGO) $(RUSTCSRC)src/libpanic_unwind --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(dir $@) $(MINICARGO_FLAGS)
+	MINICARGO_DYLIB=1 $(MINICARGO) $(RUSTCSRC)src/libtest         --vendor-dir $(VENDOR_DIR) --output-dir $(dir $@) $(MINICARGO_FLAGS)
 	test -e $@
 
 RUSTC_ENV_VARS := CFG_COMPILER_HOST_TRIPLE=$(RUSTC_TARGET)
@@ -107,15 +112,15 @@ RUSTC_ENV_VARS += LD_LIBRARY_PATH=$(abspath output)
 
 $(OUTDIR)rustc: $(MRUSTC) $(MINICARGO) LIBS $(LLVM_CONFIG)
 	mkdir -p $(OUTDIR)rustc-build
-	$(RUSTC_ENV_VARS) $(MINICARGO) $(RUSTCSRC)src/rustc --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)rustc-build -L $(OUTDIR) $(MINICARGO_FLAGS)
-#	$(RUSTC_ENV_VARS) $(MINICARGO) $(RUSTCSRC)src/librustc_codegen_llvm --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)rustc-build -L $(OUTDIR) $(MINICARGO_FLAGS)
+	$(RUSTC_ENV_VARS) $(MINICARGO) $(RUSTCSRC)src/rustc --vendor-dir $(VENDOR_DIR) --output-dir $(OUTDIR)rustc-build -L $(OUTDIR) $(MINICARGO_FLAGS)
+#	$(RUSTC_ENV_VARS) $(MINICARGO) $(RUSTCSRC)src/librustc_codegen_llvm --vendor-dir $(VENDOR_DIR) --output-dir $(OUTDIR)rustc-build -L $(OUTDIR) $(MINICARGO_FLAGS)
 	cp $(OUTDIR)rustc-build/$(RUSTC_OUT_BIN) $@
 $(OUTDIR)rustc-build/librustc_driver.rlib: $(MRUSTC) $(MINICARGO) LIBS
 	mkdir -p $(OUTDIR)rustc-build
-	$(RUSTC_ENV_VARS) $(MINICARGO) $(RUSTCSRC)src/librustc_driver --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)rustc-build -L $(OUTDIR) $(MINICARGO_FLAGS)
+	$(RUSTC_ENV_VARS) $(MINICARGO) $(RUSTCSRC)src/librustc_driver --vendor-dir $(VENDOR_DIR) --output-dir $(OUTDIR)rustc-build -L $(OUTDIR) $(MINICARGO_FLAGS)
 $(OUTDIR)cargo: $(MRUSTC) LIBS
 	mkdir -p $(OUTDIR)cargo-build
-	$(MINICARGO) $(RUSTCSRC)src/tools/cargo --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)cargo-build -L $(OUTDIR) $(MINICARGO_FLAGS)
+	$(MINICARGO) $(RUSTCSRC)src/tools/cargo --vendor-dir $(VENDOR_DIR) --output-dir $(OUTDIR)cargo-build -L $(OUTDIR) $(MINICARGO_FLAGS)
 	cp $(OUTDIR)cargo-build/cargo $(OUTDIR)
 
 # Reference $(RUSTCSRC)src/bootstrap/native.rs for these values
@@ -143,19 +148,19 @@ $(OUTDIR)libcore.rlib: $(MRUSTC) $(MINICARGO)
 $(OUTDIR)liballoc.rlib: $(MRUSTC) $(MINICARGO)
 	$(MINICARGO) $(RUSTCSRC)src/liballoc --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
 $(OUTDIR)rustc-build/librustdoc.rlib: $(MRUSTC) LIBS
-	$(MINICARGO) $(RUSTCSRC)src/librustdoc --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(dir $@) -L $(OUTDIR) $(MINICARGO_FLAGS)
+	$(MINICARGO) $(RUSTCSRC)src/librustdoc --vendor-dir $(VENDOR_DIR) --output-dir $(dir $@) -L $(OUTDIR) $(MINICARGO_FLAGS)
 #$(OUTDIR)cargo-build/libserde-1_0_6.rlib: $(MRUSTC) LIBS
-#	$(MINICARGO) $(RUSTCSRC)src/vendor/serde --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(dir $@) -L $(OUTDIR) $(MINICARGO_FLAGS)
+#	$(MINICARGO) $(VENDOR_DIR)/serde --vendor-dir $(VENDOR_DIR) --output-dir $(dir $@) -L $(OUTDIR) $(MINICARGO_FLAGS)
 $(OUTDIR)cargo-build/libgit2-0_6_6.rlib: $(MRUSTC) LIBS
-	$(MINICARGO) $(RUSTCSRC)src/vendor/git2 --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(dir $@) -L $(OUTDIR) --features ssh,https,curl,openssl-sys,openssl-probe $(MINICARGO_FLAGS)
+	$(MINICARGO) $(VENDOR_DIR)/git2 --vendor-dir $(VENDOR_DIR) --output-dir $(dir $@) -L $(OUTDIR) --features ssh,https,curl,openssl-sys,openssl-probe $(MINICARGO_FLAGS)
 $(OUTDIR)cargo-build/libserde_json-1_0_2.rlib: $(MRUSTC) LIBS
-	$(MINICARGO) $(RUSTCSRC)src/vendor/serde_json --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(dir $@) -L $(OUTDIR) $(MINICARGO_FLAGS)
+	$(MINICARGO) $(VENDOR_DIR)/serde_json --vendor-dir $(VENDOR_DIR) --output-dir $(dir $@) -L $(OUTDIR) $(MINICARGO_FLAGS)
 $(OUTDIR)cargo-build/libcurl-0_4_6.rlib: $(MRUSTC) LIBS
-	$(MINICARGO) $(RUSTCSRC)src/vendor/curl --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(dir $@) -L $(OUTDIR) $(MINICARGO_FLAGS)
+	$(MINICARGO) $(VENDOR_DIR)/curl --vendor-dir $(VENDOR_DIR) --output-dir $(dir $@) -L $(OUTDIR) $(MINICARGO_FLAGS)
 $(OUTDIR)cargo-build/libterm-0_4_5.rlib: $(MRUSTC) LIBS
-	$(MINICARGO) $(RUSTCSRC)src/vendor/term --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(dir $@) -L $(OUTDIR) $(MINICARGO_FLAGS)
+	$(MINICARGO) $(VENDOR_DIR)/term --vendor-dir $(VENDOR_DIR) --output-dir $(dir $@) -L $(OUTDIR) $(MINICARGO_FLAGS)
 $(OUTDIR)cargo-build/libfailure-0_1_2.rlib: $(MRUSTC) LIBS
-	$(MINICARGO) $(RUSTCSRC)src/vendor/failure --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(dir $@) -L $(OUTDIR) --features std,derive,backtrace,failure_derive $(MINICARGO_FLAGS)
+	$(MINICARGO) $(VENDOR_DIR)/failure --vendor-dir $(VENDOR_DIR) --output-dir $(dir $@) -L $(OUTDIR) --features std,derive,backtrace,failure_derive $(MINICARGO_FLAGS)
 
 #
 # Testing
@@ -208,7 +213,7 @@ RUNTIME_ARGS_$(OUTDIR)stdtest/collectionstests += --skip ::slice::panic_safe
 RUNTIME_ARGS_$(OUTDIR)stdtest/collectionstests += --skip ::vec::overaligned_allocations
 
 $(OUTDIR)stdtest/%-test: $(RUSTCSRC)src/lib%/lib.rs LIBS
-	$(MINICARGO) --test $(RUSTCSRC)src/lib$* --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(dir $@) -L $(OUTDIR)
+	$(MINICARGO) --test $(RUSTCSRC)src/lib$* --vendor-dir $(VENDOR_DIR) --output-dir $(dir $@) -L $(OUTDIR)
 $(OUTDIR)stdtest/collectionstests: $(OUTDIR)stdtest/alloc-test
 	test -e $@
 $(OUTDIR)collectionstest_out.txt: $(OUTDIR)%

@@ -20,6 +20,6 @@
 +        #[cfg(not(rust_compiler="mrustc"))]
 +        const fn len_inner<T>(s: &[T]) -> usize { unsafe { crate::ptr::Repr { rust: self }.raw.len } };
 +        #[cfg(rust_compiler="mrustc")]
-+        const fn len_inner<T>(s: &[T]) -> usize { unsafe { ::intrinsics::mrustc_slice_len(s) } }
++        const fn len_inner<T>(s: &[T]) -> usize { unsafe { crate::intrinsics::mrustc_slice_len(s) } }
 +        len_inner(self)
      }

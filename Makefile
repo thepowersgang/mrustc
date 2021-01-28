@@ -265,8 +265,13 @@ rust_tests-libs: $(TEST_DEPS)
 #
 test: output$(OUTDIR_SUF)/rust/test_run-pass_hello_out.txt
 
+HELLO_TEST := run-pass/hello.rs
+ifeq ($(RUSTC_VERSION),1.39.0)
+  HELLO_TEST := ui/hello.rs
+endif
+
 # "hello, world" test - Invoked by the `make test` target
-output$(OUTDIR_SUF)/rust/test_run-pass_hello: $(RUST_TESTS_DIR)run-pass/hello.rs $(TEST_DEPS)
+output$(OUTDIR_SUF)/rust/test_run-pass_hello: $(RUST_TESTS_DIR)$(HELLO_TEST) $(TEST_DEPS)
 	@mkdir -p $(dir $@)
 	@echo "--- [MRUSTC] -o $@"
 	$(DBG) $(BIN) $< -o $@ $(RUST_FLAGS) $(PIPECMD)
