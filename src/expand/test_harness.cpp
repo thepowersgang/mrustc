@@ -101,13 +101,24 @@ void Expand_TestHarness(::AST::Crate& crate)
                         ) });
 
         test_nodes.push_back( NEWNODE(_StructLiteral,  ::AST::Path(c_test, { ::AST::PathNode("TestDescAndFn")}), nullptr, mv$(descandfn_vals) ) );
+        // NOTE: 1.39+ needs &TestDescAndFn here
+        if(TARGETVER_LEAST_1_39)
+        {
+            test_nodes.back() = NEWNODE(_UniOp, ::AST::ExprNode_UniOp::REF, mv$(test_nodes.back()));
+        }
     }
     auto* tests_array = new ::AST::ExprNode_Array(mv$(test_nodes));
 
     size_t test_count = tests_array->m_values.size();
+    auto list_item_ty = TypeRef(Span(), ::AST::Path(c_test, { ::AST::PathNode("TestDescAndFn") }));
+    // NOTE: 1.39+ needs &TestDescAndFn here
+    if(TARGETVER_LEAST_1_39)
+    {
+        list_item_ty = TypeRef(TypeRef::TagReference(), Span(), AST::LifetimeRef::new_static(), false, mv$(list_item_ty));
+    }
     auto tests_list = ::AST::Static { ::AST::Static::Class::STATIC,
         TypeRef(TypeRef::TagSizedArray(), Span(),
-                TypeRef(Span(), ::AST::Path(c_test, { ::AST::PathNode("TestDescAndFn") })),
+                mv$(list_item_ty),
                 ::std::shared_ptr<::AST::ExprNode>( new ::AST::ExprNode_Integer(test_count, CORETYPE_UINT) )
                ),
         ::AST::Expr( mv$(tests_array) )

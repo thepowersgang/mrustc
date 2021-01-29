@@ -221,7 +221,7 @@ endif
 local_tests: $(TEST_DEPS)
 	@$(MAKE) -C tools/testrunner
 	@mkdir -p output$(OUTDIR_SUF)/local_tests
-	./bin/testrunner -o output$(OUTDIR_SUF)/local_tests -L output samples/test
+	./bin/testrunner -o output$(OUTDIR_SUF)/local_tests -L output$(OUTDIR_SUF) samples/test
 
 # 
 # RUSTC TESTS
