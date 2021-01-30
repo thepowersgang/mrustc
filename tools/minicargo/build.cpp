@@ -778,6 +778,31 @@ namespace {
     }
 }
 
+namespace {
+    // Common environment variables for compiling (build scripts, 
+    void push_env_common(StringListKV& env, const PackageManifest& manifest)
+    {
+        env.push_back("CARGO_MANIFEST_DIR", manifest.directory().to_absolute());
+        env.push_back("CARGO_PKG_NAME", manifest.name());
+        env.push_back("CARGO_PKG_VERSION", ::format(manifest.version()));
+        env.push_back("CARGO_PKG_VERSION_MAJOR", ::format(manifest.version().major));
+        env.push_back("CARGO_PKG_VERSION_MINOR", ::format(manifest.version().minor));
+        env.push_back("CARGO_PKG_VERSION_PATCH", ::format(manifest.version().patch));
+        // - Downstream environment variables
+        for(const auto& dep : manifest.dependencies())
+        {
+            if( ! dep.is_disabled() )
+            {
+                const auto& m = dep.get_package();
+                for(const auto& p : m.build_script_output().downstream_env)
+                {
+                    env.push_back(p.first.c_str(), p.second.c_str());
+                }
+            }
+        }
+    }
+}
+
 bool Builder::build_target(const PackageManifest& manifest, const PackageTarget& target, bool is_for_host, size_t index) const
 {
     const char* crate_type;
@@ -966,27 +991,11 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         }
     }
 
-    // TODO: Environment variables (rustc_env)
+    // Environment variables (rustc_env)
     StringListKV    env;
     auto out_dir = this->get_output_dir(is_for_host).to_absolute() / "build_" + manifest.name().c_str();
     env.push_back("OUT_DIR", out_dir.str());
-    env.push_back("CARGO_MANIFEST_DIR", manifest.directory().to_absolute());
-    env.push_back("CARGO_PKG_NAME", manifest.name());
-    env.push_back("CARGO_PKG_VERSION", ::format(manifest.version()));
-    env.push_back("CARGO_PKG_VERSION_MAJOR", ::format(manifest.version().major));
-    env.push_back("CARGO_PKG_VERSION_MINOR", ::format(manifest.version().minor));
-    env.push_back("CARGO_PKG_VERSION_PATCH", ::format(manifest.version().patch));
-    for(const auto& dep : manifest.dependencies())
-    {
-        if( ! dep.is_disabled() )
-        {
-            const auto& m = dep.get_package();
-            for(const auto& p : m.build_script_output().downstream_env)
-            {
-                env.push_back(p.first.c_str(), p.second.c_str());
-            }
-        }
-    }
+    push_env_common(env, manifest);
 
     // TODO: If emitting command files (i.e. cross-compiling), concatenate the contents of `outfile + ".sh"` onto a
     // master file.
@@ -1060,12 +1069,8 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     //args.push_back("--target"); args.push_back(HOST_TARGET);
 
     StringListKV    env;
-    env.push_back("CARGO_MANIFEST_DIR", manifest.directory().to_absolute());
-    env.push_back("CARGO_PKG_NAME", manifest.name());
-    env.push_back("CARGO_PKG_VERSION", ::format(manifest.version()));
-    env.push_back("CARGO_PKG_VERSION_MAJOR", ::format(manifest.version().major));
-    env.push_back("CARGO_PKG_VERSION_MINOR", ::format(manifest.version().minor));
-    env.push_back("CARGO_PKG_VERSION_PATCH", ::format(manifest.version().patch));
+    push_env_common(env, manifest);
+
     // TODO: If there's any dependencies marked as `links = foo` then grab `DEP_FOO_<varname>` from its metadata
     // (build script output)
 
@@ -1109,7 +1114,6 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
 #endif
         // Environment variables (key-value list)
         StringListKV    env;
-        env.push_back("CARGO_MANIFEST_DIR", manifest.directory().to_absolute());
         //env.push_back("CARGO_MANIFEST_LINKS", manifest.m_links);
         for(const auto& feat : manifest.active_features())
         {
@@ -1120,31 +1124,21 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         }
         //env.push_back("CARGO_CFG_RELEASE", "");
         env.push_back("OUT_DIR", out_dir);
+
+        push_env_common(env, manifest);
+
         env.push_back("TARGET", m_opts.target_name ? m_opts.target_name : HOST_TARGET);
         env.push_back("HOST", HOST_TARGET);
         env.push_back("NUM_JOBS", "1");
         env.push_back("OPT_LEVEL", "2");
         env.push_back("DEBUG", "0");
         env.push_back("PROFILE", "release");
-        env.push_back("CARGO_CFG_TARGET_POINTER_WIDTH", "32");
         // - Needed for `regex`'s build script, make mrustc pretend to be rustc
         env.push_back("RUSTC", this->m_compiler_path);
+
         // NOTE: All cfg(foo_bar) become CARGO_CFG_FOO_BAR
-	Cfg_ToEnvironment(env);
+        Cfg_ToEnvironment(env);
 
-        for(const auto& dep : manifest.dependencies())
-        {
-            if( ! dep.is_disabled() )
-            {
-                const auto& m = dep.get_package();
-                for(const auto& p : m.build_script_output().downstream_env)
-                {
-                    env.push_back(p.first.c_str(), p.second.c_str());
-                }
-            }
-        }
-
-        //auto _ = ScopedChdir { manifest.directory() };
         if( !spawn_process(script_exe_abs.str().c_str(), {}, env, out_file, /*working_directory=*/manifest.directory()) )
         {
             auto failed_filename = out_file+"_failed.txt";
