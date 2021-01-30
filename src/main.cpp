@@ -854,6 +854,21 @@ int main(int argc, char *argv[])
 
 ProgramParams::ProgramParams(int argc, char *argv[])
 {
+    if( const auto* a = getenv("MRUSTC_TARGET_VER") )
+    {
+        if( strcmp(a, "1.19") == 0 ) {
+            gTargetVersion = TargetVersion::Rustc1_19;
+        }
+        else if( strcmp(a, "1.29") == 0 ) {
+            gTargetVersion = TargetVersion::Rustc1_29;
+        }
+        else if( strcmp(a, "1.39") == 0 ) {
+            gTargetVersion = TargetVersion::Rustc1_39;
+        }
+        else {
+        }
+    }
+
     // Hacky command-line parsing
     for( int i = 1; i < argc; i ++ )
     {
@@ -1255,21 +1270,6 @@ ProgramParams::ProgramParams(int argc, char *argv[])
         }
     }
 
-
-    if( const auto* a = getenv("MRUSTC_TARGET_VER") )
-    {
-        if( strcmp(a, "1.19") == 0 ) {
-            gTargetVersion = TargetVersion::Rustc1_19;
-        }
-        else if( strcmp(a, "1.29") == 0 ) {
-            gTargetVersion = TargetVersion::Rustc1_29;
-        }
-        else if( strcmp(a, "1.39") == 0 ) {
-            gTargetVersion = TargetVersion::Rustc1_39;
-        }
-        else {
-        }
-    }
 
     if( const auto* a = getenv("MRUSTC_DUMP") )
     {
