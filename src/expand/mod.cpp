@@ -176,6 +176,11 @@ MacroRef Expand_LookupMacro(const Span& mi_span, const ::AST::Crate& crate, LLis
                 return rv;
             }
         }
+        if( path.m_class.is_Local() )
+        {
+            DEBUG("Local path not resolved?");
+            return MacroRef();
+        }
     }
 
     // HACK: If the crate name is empty, look up builtins
