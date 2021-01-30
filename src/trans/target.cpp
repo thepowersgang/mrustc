@@ -18,7 +18,7 @@
 const TargetArch ARCH_X86_64 = {
     "x86_64",
     64, false,
-    TargetArch::Atomics(/*atomic(u8)=*/true, false, true, true,  true),
+    TargetArch::Atomics(/*atomic(u8)=*/true, /*atomic(u16)=*/true, /*atomic(u32)=*/true, true,  true),
     TargetArch::Alignments(2, 4, 8, 16, 4, 8, 8)
     };
 const TargetArch ARCH_X86 = {
