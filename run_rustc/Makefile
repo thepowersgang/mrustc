@@ -113,6 +113,7 @@ $(BINDIR)hello_world: $(RUST_SRC)test/run-pass/hello.rs $(LIBDIR)libstd.rlib $(B
 
 # 
 # - Build libstd in a hacky hard-coded way first, to allow build scripts to work
+#  > TODO: Tweak minicargo so it can call rustc (and then use minicargo to do this)
 # 
 $(LIBDIR_S)lib%.rlib: $(RUST_SRC)lib%/lib.rs $(BINDIR_S)rustc
 	@mkdir -p $(dir $@)
