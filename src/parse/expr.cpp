@@ -131,6 +131,7 @@ ExprNodeP Parse_ExprBlockLine_WithItems(TokenStream& lex, ::std::shared_ptr<AST:
     {
     // Items:
     case TOK_INTERPOLATED_VIS:
+    case TOK_INTERPOLATED_ITEM:
     case TOK_RWORD_PUB:
         // NOTE: Allowed, but doesn't do much
     case TOK_RWORD_TYPE:
@@ -306,7 +307,8 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence)
                 if( lex.lookahead(1) == TOK_BRACE_OPEN || (lex.lookahead(1) == TOK_IDENT && lex.lookahead(2) == TOK_BRACE_OPEN) ) {
                     lex.getToken();
                     // TODO: Support full paths here
-                    return Parse_ExprMacro(lex, tok.ident().name);
+                    auto p = AST::Path::new_relative(tok.ident().hygiene, { AST::PathNode(tok.ident().name) });
+                    return Parse_ExprMacro(lex, mv$(p));
                 }
             }
         // Fall through to the statement code

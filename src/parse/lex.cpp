@@ -1235,7 +1235,7 @@ Token Lex_FindReservedWord(const ::std::string& s, AST::Edition edition)
     }
     for(size_t i = 0; i < len; i++)
     {
-        const auto& e = RWORDS_2018[i];
+        const auto& e = RWORDS[i];
         if( s < e.chars )
             break;
         if( s == e.chars )
