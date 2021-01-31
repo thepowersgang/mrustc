@@ -1104,6 +1104,7 @@ namespace {
 #else
             bool is_windows = false;
 #endif
+            size_t  arg_file_start = 0;
             switch( m_compiler )
             {
             case Compiler::Gcc:
@@ -1127,6 +1128,7 @@ namespace {
                         args.push_back("gcc");
                     }
                 }
+                arg_file_start = args.get_vec().size();
                 for( const auto& a : Target_GetCurSpec().m_backend_c.m_compiler_opts )
                 {
                     args.push_back( a.c_str() );
@@ -1215,9 +1217,11 @@ namespace {
                 args.push_back("&");
                 args.push_back("cl.exe");
                 args.push_back("/nologo");
+                args.push_back(m_outfile_path_c.c_str());
+                arg_file_start = args.get_vec().size(); // Must be after the source file
+
                 args.push_back("/wd4700");  // Ignore C4700 ("uninitialized local variable 'var14' used")
                 args.push_back("/F8388608"); // Set max stack size to 8 MB.
-                args.push_back(m_outfile_path_c.c_str());
                 switch(opt.opt_level)
                 {
                 case 0: break;
@@ -1300,18 +1304,32 @@ namespace {
             {
                 cmd_ss << "echo \"\" & ";
             }
+            std::string command_file = m_outfile_path + "_cmd.txt";
+            std::ofstream   command_file_stream;
+            bool use_arg_file = arg_file_start > 0;
+            if(use_arg_file) {
+                command_file_stream.open(command_file);
+            }
+            size_t i = -1;
             for(const auto& arg : args.get_vec())
             {
+                i ++;
+                auto& out_ss = (use_arg_file && i >= arg_file_start ? static_cast<::std::ostream&>(command_file_stream) : cmd_ss);
                 if(strcmp(arg, "&") == 0 && is_windows) {
-                    cmd_ss << "&";
+                    out_ss << "&";
                 }
                 else {
                     if( is_windows && strchr(arg, ' ') == nullptr ) {
-                        cmd_ss << arg << " ";
-                        continue ;
+                        out_ss << arg << " ";
                     }
-                    cmd_ss << "\"" << FmtShell(arg, is_windows) << "\" ";
+                    else {
+                        out_ss << "\"" << FmtShell(arg, is_windows) << "\" ";
+                    }
                 }
+            }
+            if(use_arg_file) {
+                cmd_ss << "@\"" << FmtShell(command_file, is_windows) << "\"";
+                command_file_stream.close();
             }
             //DEBUG("- " << cmd_ss.str());
             ::std::cout << "Running command - " << cmd_ss.str() << ::std::endl;
