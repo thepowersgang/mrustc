@@ -1221,7 +1221,7 @@ Token Lex_FindOperator(const ::std::string& s)
 Token Lex_FindReservedWord(const ::std::string& s, AST::Edition edition)
 {
     size_t len = 0;
-    const sRWORD* RWORDS;
+    const sRWORD* RWORDS = nullptr;
     switch(edition)
     {
     case AST::Edition::Rust2015:
