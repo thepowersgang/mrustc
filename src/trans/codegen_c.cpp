@@ -877,26 +877,73 @@ namespace {
             m_of.flush();
             m_of.close();
 
-            ::std::vector<const char*> link_dirs;
-            auto add_link_dir = [&link_dirs](const char* d) {
-                auto it = ::std::find_if(link_dirs.begin(), link_dirs.end(), [&](const char* s){ return ::std::strcmp(s, d) == 0; });
-                if(it == link_dirs.end())
-                    link_dirs.push_back(d);
-                };
-            for(const auto& path : opt.library_search_dirs ) {
-                add_link_dir(path.c_str());
-            }
-            for(const auto& path : m_crate.m_link_paths ) {
-                add_link_dir(path.c_str());
-            }
-            for( const auto& crate : m_crate.m_ext_crates )
+            class LinkList: private StringList
             {
-                for(const auto& path : crate.second.m_data->m_link_paths ) {
-                    add_link_dir(path.c_str());
+            public:
+                enum class Ty {
+                    //Border,   // --{push,pop}-state
+                    Directory,  // -L <value>
+                    Explicit,   // <value>
+                    Implicit,   // -l <value>
+                };
+            private:
+                std::vector<Ty> m_ty;
+            public:
+                void push_dir(const char* s) {
+                    #if 1
+                    // Don't de-dup since there's the push/pop rules
+                    auto it = ::std::find_if(StringList::begin(), StringList::end(), [&](const char* es){ return ::std::strcmp(es, s) == 0; });
+                    if(it != StringList::end())
+                        return ;
+                    #endif
+                    m_ty.push_back(Ty::Directory);
+                    this->push_back(s);
                 }
-            }
+                void push_explicit(std::string s) {
+                    m_ty.push_back(Ty::Explicit);
+                    this->push_back(std::move(s));
+                }
+                void push_lib(const char* s) {
+                    m_ty.push_back(Ty::Implicit);
+                    this->push_back(s);
+                }
+                void push_lib(std::string s) {
+                    m_ty.push_back(Ty::Implicit);
+                    this->push_back(std::move(s));
+                }
+                void push_border() {
+                    // If the previous is also a marker, don't push
+                    #if 0
+                    if( this->get_vec().size() == 0 || this->get_vec().back()[0] == '\0' )
+                        return ;
+                    m_ty.push_back(Ty::Border);
+                    this->push_back("");
+                    #endif
+                }
 
-            StringList  libraries;
+                class iterator {
+                    const LinkList& parent;
+                    size_t idx;
+                public:
+                    iterator(const LinkList& parent, size_t idx): parent(parent), idx(idx) {}
+                    void operator++() {
+                        this->idx ++;
+                    }
+                    bool operator!=(const iterator& x) { return this->idx != x.idx; }
+                    std::pair<Ty, const char*> operator*() const {
+                        return std::make_pair(parent.m_ty[idx], parent.get_vec()[idx]);
+                    }
+                };
+                iterator begin() const {
+                    return iterator(*this, 0);
+                }
+                iterator end() const {
+                    return iterator(*this, this->get_vec().size());
+                }
+            };
+            // Combined list to ensure a sane resolution order?
+            LinkList    libraries_and_dirs;
+
             StringList  ext_crates;
             StringList  ext_crates_dylib;
             switch(out_ty)
@@ -963,20 +1010,86 @@ namespace {
                     }
                 }
 
+                struct H {
+                    static bool file_exists(const std::string& path)
+                    {
+                        return std::ifstream(path).is_open();
+                    }
+                    static std::string find_library_one(const std::string& path, const std::string& name, bool is_windows)
+                    {
+                        std::string lib_path;
+                        if( !is_windows ) {
+                            lib_path = FMT(path << "/lib" << name << ".so");
+                            if( file_exists(lib_path) )
+                                return lib_path;
+                            lib_path = FMT(path << "/lib" << name << ".a");
+                            if( file_exists(lib_path) )
+                                return lib_path;
+                        }
+                        else {
+                            lib_path = FMT(path << "/" << name << ".lib");
+                            if( file_exists(lib_path) )
+                                return lib_path;
+                        }
+                        return "";
+                    }
+                    static std::string find_library(const std::vector<std::string>& paths1, const std::vector<std::string>& paths2, const std::string& name, bool is_windows) {
+                        std::string rv;
+                        for(const auto& p : paths1)
+                        {
+                            if( (rv = find_library_one(p, name, is_windows)) != "" )
+                                return rv;
+                        }
+                        for(const auto& p : paths2)
+                        {
+                            if( (rv = find_library_one(p, name, is_windows)) != "" )
+                                return rv;
+                        }
+                        return "";
+                    }
+                };
+
+                for(const auto& path : opt.library_search_dirs ) {
+                    libraries_and_dirs.push_dir(path.c_str());
+                }
+                for(const auto& path : opt.libraries ) {
+                    libraries_and_dirs.push_lib(path.c_str());
+                }
+                libraries_and_dirs.push_border();
+
+                for(const auto& path : m_crate.m_link_paths ) {
+                    libraries_and_dirs.push_dir(path.c_str());
+                }
                 for(const auto& lib : m_crate.m_ext_libs) {
                     ASSERT_BUG(Span(), lib.name != "", "");
-                    libraries.push_back(lib.name.c_str());
+                    libraries_and_dirs.push_lib(lib.name.c_str());
                 }
+
                 for( const auto& crate : m_crate.m_ext_crates )
                 {
-                    for(const auto& lib : crate.second.m_data->m_ext_libs) {
-                        ASSERT_BUG(Span(), lib.name != "", "Empty lib from " << crate.first);
-                        libraries.push_back(lib.name.c_str());
+                    if( !crate.second.m_data->m_ext_libs.empty() )
+                    {
+                        if( !crate.second.m_data->m_link_paths.empty() ) {
+                            libraries_and_dirs.push_border();
+                        }
+                        for(const auto& path : crate.second.m_data->m_link_paths ) {
+                            libraries_and_dirs.push_dir(path.c_str());
+                        }
+                        // NOTE: Does explicit lookup, to provide scoped search directories
+                        // - Needed for 1.39 cargo on linux when libgit2 and libz exist on the system, butsystem libgit2 isn't new enough
+                        for(const auto& lib : crate.second.m_data->m_ext_libs) {
+                            ASSERT_BUG(Span(), lib.name != "", "Empty lib from " << crate.first);
+                            auto path = H::find_library(crate.second.m_data->m_link_paths, opt.library_search_dirs, lib.name, m_compiler == Compiler::Msvc);
+                            if( path != "" )
+                            {
+                                libraries_and_dirs.push_explicit(std::move(path));
+                            }
+                            else
+                            {
+                                libraries_and_dirs.push_lib(lib.name.c_str());
+                            }
+                        }
                     }
-                }
-                for(const auto& path : opt.libraries )
-                {
-                    libraries.push_back(path.c_str());
                 }
                 break;
             case CodegenOutput::Object:
@@ -1059,15 +1172,29 @@ namespace {
                     {
                         args.push_back(c);
                     }
-                    for(const auto& path : link_dirs )
+                    //args.push_back("-Wl,--push-state");
+                    for(auto l_d : libraries_and_dirs)
                     {
-                        args.push_back("-L"); args.push_back(path);
+                        switch(l_d.first)
+                        {
+                        //case LinkList::Ty::Border:
+                        //    args.push_back("-Wl,--pop-state");
+                        //    args.push_back("-Wl,--push-state");
+                        //    break;
+                        case LinkList::Ty::Directory:
+                            args.push_back("-L");
+                            args.push_back(l_d.second);
+                            break;
+                        case LinkList::Ty::Implicit:
+                            args.push_back("-l");
+                            args.push_back(l_d.second);
+                            break;
+                        case LinkList::Ty::Explicit:
+                            args.push_back(l_d.second);
+                            break;
+                        }
                     }
-                    for(const auto& l : libraries)
-                    {
-                        args.push_back("-l");
-                        args.push_back(l);
-                    }
+                    //args.push_back("-Wl,--pop-state");
                     for( const auto& a : Target_GetCurSpec().m_backend_c.m_linker_opts )
                     {
                         args.push_back( a.c_str() );
@@ -1141,19 +1268,19 @@ namespace {
                     }
                     for(const auto& c : ext_crates_dylib)
                     {
-                        TODO(Span(), "Windows dylibs");
-                    }
-                    // Crate-specified libraries
-                    for(const char* lib : libraries)
-                    {
-                        args.push_back(std::string(lib) + ".lib");
+                        TODO(Span(), "Windows dylibs: " << c);
                     }
                     args.push_back("kernel32.lib"); // Needed for Interlocked*
-
-                    // Command-line specified linker search directories
-                    for(const auto& path : link_dirs )
+                    // Crate-specified libraries
+                    for(auto l_d : libraries_and_dirs)
                     {
-                        args.push_back(FMT("/LIBPATH:" << path));
+                        switch(l_d.first)
+                        {
+                        //case LinkList::Ty::Border:      /* TODO: pop/push search path state */  break;
+                        case LinkList::Ty::Directory:   args.push_back(FMT("/LIBPATH:" << l_d.second));     break;
+                        case LinkList::Ty::Implicit:    args.push_back(std::string(l_d.second) + ".lib");   break;
+                        case LinkList::Ty::Explicit:    args.push_back(l_d.second); break;
+                        }
                     }
                     break;
                 case CodegenOutput::StaticLibrary:
@@ -3269,7 +3396,7 @@ namespace {
                             m_of << "memset(&"; emit_lvalue(e.dst); m_of << ", 0, sizeof("; emit_ctype(ty); m_of << "))";
                         }
                         else {
-                            emit_composite_assign(mir_res, [&](){ emit_lvalue(e.dst); m_of << ".DATA.var_" << ve.index; }, /*repr->fields[0].ty,*/ ve.vals, indent_level);
+                            emit_composite_assign(mir_res, [&](){ emit_lvalue(e.dst); m_of << ".DATA.var_" << ve.index; }, /*repr->fields[0].ty,*/ ve.vals, indent_level, /*prepend_newline=*/false);
                         }
                         }
                     TU_ARMA(Linear, re) {
@@ -3288,7 +3415,7 @@ namespace {
                         }
                         else
                         {
-                            emit_composite_assign(mir_res, [&](){ emit_lvalue(e.dst); m_of << ".DATA.var_" << ve.index; }, ve.vals, indent_level, true);
+                            emit_composite_assign(mir_res, [&](){ emit_lvalue(e.dst); m_of << ".DATA.var_" << ve.index; }, ve.vals, indent_level, emit_newline);
                         }
                         }
                     TU_ARMA(Values, re) {
@@ -3311,7 +3438,7 @@ namespace {
                     }
                     else
                     {
-                        emit_composite_assign(mir_res, [&](){ emit_lvalue(e.dst); }, ve.vals, indent_level);
+                        emit_composite_assign(mir_res, [&](){ emit_lvalue(e.dst); }, ve.vals, indent_level, /*emit_newline=*/false);
                     }
                     }
                 }
@@ -3482,8 +3609,8 @@ namespace {
             MIR_ASSERT(mir_res, repr, "No repr for " << ty);
 
             struct MaybeSigned64 {
-                uint64_t    v;
                 bool    is_signed;
+                uint64_t    v;
 
                 MaybeSigned64(bool is_signed, uint64_t v)
                     :is_signed(is_signed)
