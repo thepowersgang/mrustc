@@ -46,6 +46,7 @@ else
 endif
 ifeq ($(RUSTC_VERSION),1.39.0)
   VENDOR_DIR := $(RUSTCSRC)vendor
+  MINICARGO_FLAGS += --manifest-overrides rustc-1.39.0-overrides.toml
 else
   VENDOR_DIR := $(RUSTCSRC)src/vendor
 endif
