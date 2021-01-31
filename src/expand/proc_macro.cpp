@@ -1112,6 +1112,10 @@ ProcMacroInv::ProcMacroInv(const Span& sp, AST::Edition edition, const char* exe
         m_dump_file_res.open( FMT(name_prefix << "-res.bin"), ::std::ios::out | ::std::ios::binary );
         dump_count ++;
     }
+    else
+    {
+        DEBUG("Set MRUSTC_DUMP_PROCMACRO=dump_prefix to dump to `dump_prefix-NNN-{out,res}.bin`");
+    }
 #ifdef _WIN32
     std::string commandline = std::string{ executable } + " " + proc_macro_desc.name.c_str();
     DEBUG(commandline);
@@ -1466,6 +1470,13 @@ Token ProcMacroInv::realGetToken_() {
         default:    BUG(this->m_parent_span, "Invalid integer size from child process");
         }
         auto val = this->recv_v128u();
+        if(val & 1) {
+            val = ~(val >> 1) + 1;  // Negative (Is this even possible?)
+            TODO(this->m_parent_span, "Negative literal from proc macro, what?");
+        }
+        else {
+            val = (val >> 1);
+        }
         return Token(static_cast<uint64_t>(val), ty);
         }
     case TokenClass::Float: {
