@@ -128,6 +128,7 @@ namespace {
                 const auto& tpl = erased_types[e.m_index];
 
                 auto new_ty = monomorph_cb.monomorph_type(sp, tpl);
+                m_resolve.expand_associated_types(sp, new_ty);
                 DEBUG("> " << ty << " => " << new_ty);
                 ty = mv$(new_ty);
                 // Recurse (TODO: Cleanly prevent infinite recursion - TRACE_FUNCTION does crude prevention)
