@@ -430,13 +430,24 @@ mod tests {
     }
 
     #[test]
-    fn numbers()
+    fn trailing_zero()
     {
-        assert_eq!(
-            TokenStream::from_str("0").expect("Failed to parse").into_iter().collect::<Vec<_>>(),
-            &[
-                Literal::new_u(0,0).into(),
-            ]
-        );
+        let rv = TokenStream::from_str("0").expect("Failed to parse");
+
+        let mut it = rv.inner.into_iter();
+        assert_tt_matches!(it.next(), Literal::new_u(0,0).into());
+        assert_tt_matches!(it.next());
+    }
+    #[test]
+    fn tuple_index_method()
+    {
+        let rv = TokenStream::from_str("key . 1 . def_id").expect("Failed to parse");
+        let mut it = rv.inner.into_iter();
+        assert_tt_matches!(it.next(), Ident::new("key", Span::call_site()).into());
+        assert_tt_matches!(it.next(), Punct::new('.', Spacing::Alone).into());
+        assert_tt_matches!(it.next(), Literal::new_u(1,0).into());
+        assert_tt_matches!(it.next(), Punct::new('.', Spacing::Alone).into());
+        assert_tt_matches!(it.next(), Ident::new("def_id", Span::call_site()).into());
+        assert_tt_matches!(it.next());
     }
 }
