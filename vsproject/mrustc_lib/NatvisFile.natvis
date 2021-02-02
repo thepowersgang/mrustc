@@ -9,6 +9,12 @@
       <Item Name="data">m_ptr+2,s</Item>
     </Expand>
   </Type>
+  <Type Name="HIR::SimplePath">
+    <DisplayString Condition="m_components._Mypair._Myval2._Myfirst + 0 == m_components._Mypair._Myval2._Mylast">::{m_crate_name}::</DisplayString>
+    <DisplayString Condition="m_components._Mypair._Myval2._Myfirst + 1 == m_components._Mypair._Myval2._Mylast">::{m_crate_name}::{m_components,expand(2)}</DisplayString>
+    <DisplayString Condition="m_components._Mypair._Myval2._Myfirst + 2 == m_components._Mypair._Myval2._Mylast">::{m_crate_name}::{m_components,expand(2)}::{m_components,expand(3)}</DisplayString>
+    <DisplayString Condition="m_components._Mypair._Myval2._Myfirst + 3 == m_components._Mypair._Myval2._Mylast">::{m_crate_name}::{m_components,expand(2)}::{m_components,expand(3)}::{m_components,expand(4)}</DisplayString>
+  </Type>
   <Type Name="HIR::TypeRef">
     <DisplayString Condition="m_ptr != 0">{*m_ptr}</DisplayString>
     <Expand>
