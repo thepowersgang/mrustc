@@ -1252,7 +1252,7 @@ namespace {
                 });
         }
 
-        data = ::HIR::Enum::Class::make_Value({ mv$(variants) });
+        data = ::HIR::Enum::Class::make_Value({ mv$(variants), false });
     }
     // NOTE: empty enums are encoded as empty Data enums
     else

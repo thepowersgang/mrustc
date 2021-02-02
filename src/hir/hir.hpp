@@ -279,6 +279,8 @@ public:
         (Data, ::std::vector<DataVariant>),
         (Value, struct {
             ::std::vector<ValueVariant> variants;
+            // Flag indicating that constant evaluation has completed
+            bool    evaluated;
             })
         );
 

@@ -1177,7 +1177,8 @@
                     return ::HIR::Enum::Class::make_Data( des.deserialise_vec<::HIR::Enum::DataVariant>() );
                 case ::HIR::Enum::Class::TAG_Value:
                     return ::HIR::Enum::Class::make_Value({
-                        des.deserialise_vec<::HIR::Enum::ValueVariant>()
+                        des.deserialise_vec<::HIR::Enum::ValueVariant>(),
+                        true
                         });
                 default:
                     BUG(Span(), "Bad tag for HIR::Enum::Class - " << tag);

@@ -12,6 +12,7 @@
 #include <map>
 #include <hir/hir.hpp>
 #include <hir_typeck/helpers.hpp>
+#include <hir_conv/main_bindings.hpp>   // ConvertHIR_ConstantEvaluate_Enum
 #include <climits>  // UINT_MAX
 #include <toml.h>   // tools/common
 
@@ -1653,6 +1654,11 @@ namespace {
             }
             } break;
         TU_ARM(enm.m_data, Value, e) {
+            // TODO: If the values aren't yet populated, force const evaluation
+            if(!e.evaluated) {
+                ConvertHIR_ConstantEvaluate_Enum(resolve.m_crate, te.path.m_data.as_Generic().m_path, enm);
+                assert(e.evaluated);
+            }
             switch(enm.m_tag_repr)
             {
             case ::HIR::Enum::Repr::Auto:
@@ -1717,6 +1723,7 @@ namespace {
                 {
                     vals.push_back(v.val);
                 }
+                DEBUG("vals = " << vals);
                 rv.variants = TypeRepr::VariantMode::make_Values({ { 0, static_cast<uint8_t>(rv.size), {} }, ::std::move(vals) });
             }
             } break;

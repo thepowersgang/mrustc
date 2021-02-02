@@ -1777,24 +1777,7 @@ namespace {
         }
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override {
             static Span sp;
-            if( auto* e = item.m_data.opt_Value() )
-            {
-                auto ty = ::HIR::Enum::get_repr_type(item.m_tag_repr);
-                uint64_t i = 0;
-                for(auto& var : e->variants)
-                {
-                    if( var.expr )
-                    {
-                        auto nvs = NewvalState { *m_mod, *m_mod_path, FMT(p.get_name() << "_" << var.name << "#") }; 
-                        auto eval = ::HIR::Evaluator { var.expr->span(), m_crate, nvs };
-                        auto val = eval.evaluate_constant(p, var.expr, ty.clone());
-                        DEBUG("enum variant: " << p << "::" << var.name << " = " << val);
-                        i = val.as_Integer();
-                    }
-                    var.val = i;
-                    i ++;
-                }
-            }
+            visit_enum_inner(m_crate, p, *m_mod, *m_mod_path, p.get_name(), item);
             ::HIR::Visitor::visit_enum(p, item);
         }
         void visit_struct(::HIR::ItemPath p, ::HIR::Struct& item) override {
@@ -1849,6 +1832,35 @@ namespace {
                 //m_recurse_types = false;
             }
         }
+
+
+        static void visit_enum_inner(const ::HIR::Crate& crate, const ::HIR::ItemPath& p, const ::HIR::Module& mod, const ::HIR::ItemPath& mod_path, const char* name, ::HIR::Enum& item)
+        {
+            if( auto* e = item.m_data.opt_Value() )
+            {
+                auto ty = ::HIR::Enum::get_repr_type(item.m_tag_repr);
+                uint64_t i = 0;
+                for(auto& var : e->variants)
+                {
+
+                    if( var.expr )
+                    {
+                        auto nvs = NewvalState { mod, mod_path, FMT(name << "_" << var.name << "#") }; 
+                        auto eval = ::HIR::Evaluator { var.expr->span(), crate, nvs };
+                        auto val = eval.evaluate_constant(p, var.expr, ty.clone());
+                        DEBUG("enum variant: " << p << "::" << var.name << " = " << val);
+                        i = val.as_Integer();
+                    }
+                    var.val = i;
+                    if(!var.expr)
+                    {
+                        DEBUG("enum variant: " << p << "::" << var.name << " = " << var.val << " (auto)");
+                    }
+                    i ++;
+                }
+                e->evaluated = true;
+            }
+        }
     };
 
     class ExpanderApply:
@@ -1893,4 +1905,15 @@ void ConvertHIR_ConstantEvaluate_Expr(const ::HIR::Crate& crate, const ::HIR::It
     // Check innards but NOT the value
     Expander    exp { crate };
     exp.visit_expr( expr_ptr );
+}
+void ConvertHIR_ConstantEvaluate_Enum(const ::HIR::Crate& crate, const ::HIR::ItemPath& ip, const ::HIR::Enum& enm)
+{
+    auto mod_path = ip.get_simple_path();
+    auto item_name = mod_path.m_components.back();
+    mod_path.m_components.pop_back();
+    const auto& mod = crate.get_mod_by_path(Span(), mod_path);
+
+    auto& item = const_cast<::HIR::Enum&>(enm);
+
+    Expander::visit_enum_inner(crate, ip, mod, mod_path, item_name.c_str(), item);
 }
