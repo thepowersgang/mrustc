@@ -544,7 +544,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
     }
 
     if( mod.path().nodes.size() > 0 && mod.path().nodes.back().c_str()[0] == '#' ) {
-        assert( parent_modules.size() > 0 );
+        ASSERT_BUG(span, parent_modules.size() > 0, "Anon module with no parent modules - " << mod.path() );
         return Resolve_Use_GetBinding_Mod(span, crate, source_mod_path, *parent_modules.back(), des_item_name, parent_modules.subspan(0, parent_modules.size()-1));
     }
     else {
@@ -937,6 +937,7 @@ namespace {
         return rv;
     }
 
+    std::vector<const AST::Module*>   inner_parent_modules;
     for( unsigned int i = 0; i < nodes.size()-1; i ++ )
     {
         DEBUG("Component " << nodes.at(i).name());
@@ -945,7 +946,7 @@ namespace {
         //rv = Resolve_Use_CanoniseAndBind_Mod(span, crate, *mod, mv$(rv), nodes[i].name(), parent_modules, Lookup::Type);
         //const auto& b = rv.binding();
         assert(mod);
-        auto b = Resolve_Use_GetBinding_Mod(span, crate, source_mod_path, *mod, nodes.at(i).name(), parent_modules, /*types_only=*/true);
+        auto b = Resolve_Use_GetBinding_Mod(span, crate, source_mod_path, *mod, nodes.at(i).name(), inner_parent_modules, /*types_only=*/true);
         TU_MATCH_HDRA( (b.type.binding), {)
         default:
             ERROR(span, E0000, "Unexpected item type " << b.type.binding.tag_str() << " in import of " << path);
@@ -1020,6 +1021,7 @@ namespace {
                 assert(e.hir.mod);
                 return Resolve_Use_GetBinding__ext(span, crate, *e.hir.crate, *e.hir.mod, path, i+1, b.type.path);
             }
+            inner_parent_modules.push_back(mod);
             mod = e.module_;
             }
         }
