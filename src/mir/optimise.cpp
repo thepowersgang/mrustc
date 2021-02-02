@@ -3990,12 +3990,16 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
         TU_ARM(bb.terminator, If, te) {
             auto it = known_values.find(te.cond);
             if( it != known_values.end() ) {
-                MIR_ASSERT(state, it->second.is_Bool(), "Terminator::If with known value not Bool - " << it->second);
-                auto new_bb = (it->second.as_Bool().v ? te.bb0 : te.bb1);
-                DEBUG(state << "Convert " << bb.terminator << " into Goto(" << new_bb << ") because condition known to be " << it->second);
-                bb.terminator = ::MIR::Terminator::make_Goto(new_bb);
+                if( it->second.is_Const() ) {
+                }
+                else {
+                    MIR_ASSERT(state, it->second.is_Bool(), "Terminator::If with known value not Bool - " << it->second);
+                    auto new_bb = (it->second.as_Bool().v ? te.bb0 : te.bb1);
+                    DEBUG(state << "Convert " << bb.terminator << " into Goto(" << new_bb << ") because condition known to be " << it->second);
+                    bb.terminator = ::MIR::Terminator::make_Goto(new_bb);
 
-                changed = true;
+                    changed = true;
+                }
             }
             } break;
         TU_ARM(bb.terminator, Call, te) {
