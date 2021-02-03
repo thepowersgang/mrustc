@@ -785,7 +785,9 @@ namespace typecheck
                 assert(lang_item);
                 const auto& trait_path = this->context.m_crate.get_lang_item_path(node.span(), lang_item);
 
-                this->context.equate_types_assoc(node.span(), ::HIR::TypeRef(), trait_path, ::make_vec1(node.m_value->m_res_type.clone()),  node.m_slot->m_res_type.clone(), "");
+                auto ty = this->context.m_ivars.new_ivar_tr();
+                this->context.equate_types_coerce(node.span(), ty, node.m_value);
+                this->context.equate_types_assoc(node.span(), ::HIR::TypeRef(), trait_path, ::make_vec1(mv$(ty)),  node.m_slot->m_res_type.clone(), "");
             }
 
             node.m_slot->visit( *this );

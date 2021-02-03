@@ -474,3 +474,24 @@ Looks like `autoderef_find_method` is finding a method on a trait that still req
 
 Forgot to check the result of `check_method_receiver` against the expected type before returning success when processing ATY bounds
 Fix that, and all works
+
+# (1.39) `::"rustc_passes-0_0_0"::ast_validation::validate_generics_order`
+```
+..\rustc-1.39.0-src\src\librustc_passes\ast_validation.rs:396: error:0:Unsized type not valid here - str
+```
+
+```
+Typecheck Expressions-                Context::equate_types_assoc: ++ R32 req ty _/*120*/ impl ::"core-0_0_0"::ops::arith::AddAssign<_/*122*/,>
+Typecheck Expressions-                 visit: >> (000001A168BD63A0 ident{25})
+Typecheck Expressions-                   require_sized: >> (_/*121*/ -> _/*121*/)
+Typecheck Expressions-      check_associated: >> (R32 req ty ::"alloc-0_0_0"::string::String/*S*/ impl ::"core-0_0_0"::ops::arith::AddAssign<&_/*121*/,>)
+Typecheck Expressions-       equate_types: >> (&_/*121*/ == &str)
+```
+
+```
+ordered_params += &ident;
+```
+
+No type coercions in `<OP>=` assignments, leading to the above hard equality in the assignment.
+Attempt adding a coercion point to the RHS of op-assign.
+Required a new ivar for the coercion, worked.
