@@ -43,9 +43,298 @@ void Codegen_C::emit_static(const RcString& name, const Static& s)
 {
     TRACE_FUNCTION_R(name, name);
 }
-void Codegen_C::emit_function(const RcString& name, const Function& s)
+
+namespace {
+    struct Indent {
+        unsigned    indent;
+        Indent(unsigned indent): indent(indent) {}
+
+        friend std::ostream& operator<<(std::ostream& os, const Indent& x) {
+            for(unsigned i = x.indent; i --; )
+                os << "\t";
+            return os;
+        }
+    };
+}
+
+
+void Codegen_C::emit_function(const RcString& name, const ModuleTree& tree, const Function& s)
 {
+    class BodyEmitter
+    {
+        Codegen_C& m_parent;
+        ::std::ostream& m_of;
+        const ModuleTree& m_module_tree;
+        const Function& m_fcn;
+
+    public:
+        BodyEmitter(Codegen_C& parent, const ModuleTree& module_tree, const Function& fcn)
+            : m_parent(parent)
+            , m_of(parent.m_of)
+            , m_module_tree(module_tree)
+            , m_fcn(fcn)
+        {
+        }
+
+        void emit_ctype(const ::HIR::TypeRef& ty) {
+            m_parent.emit_ctype(ty);
+        }
+
+        const ::HIR::TypeRef& get_lvalue_type(const ::MIR::LValue::CRef& val) const
+        {
+            const ::HIR::TypeRef* ty_p = nullptr;
+            TU_MATCH_HDRA( (val.lv().m_root), {)
+            TU_ARMA(Static, ve) {
+                ty_p = &m_module_tree.get_static(ve).ty;
+                }
+            TU_ARMA(Return, _ve) {
+                ty_p = &m_fcn.ret_ty;
+                }
+            TU_ARMA(Argument, ve) {
+                ty_p = &m_fcn.args.at(ve);
+                }
+            TU_ARMA(Local, ve) {
+                ty_p = &m_fcn.m_mir.locals.at(ve);
+                }
+            }
+
+            LOG_ASSERT(val.wrapper_count() <= val.lv().m_wrappers.size(), "");
+            for(size_t i = 0; i < val.wrapper_count(); i ++)
+            {
+                const auto& ty = *ty_p;
+                ty_p = nullptr;
+                TU_MATCH_HDRA( (val.lv().m_wrappers[i]), {)
+                TU_ARMA(Index, we) { ty_p = &ty.get_inner(); }
+                TU_ARMA(Field, we) { size_t ofs; ty_p = &ty.get_field(we, ofs); }
+                TU_ARMA(Deref, we) { ty_p = &ty.get_inner(); }
+                TU_ARMA(Downcast, we) {
+                    size_t ofs;
+                    ty_p = &ty.get_field(we, ofs);
+                    }
+                }
+                assert(ty_p);
+            }
+            return *ty_p;
+        }
+
+        void emit_lvalue(const ::MIR::LValue::CRef& val)
+        {
+            TU_MATCH_HDRA( (val), {)
+            TU_ARMA(Return, _e) {
+                m_of << "rv";
+            }
+            TU_ARMA(Argument, e) {
+                m_of << "arg" << e;
+            }
+            TU_ARMA(Local, e) {
+                if( e == ::MIR::LValue::Storage::MAX_ARG )
+                    m_of << "i";
+                else
+                    m_of << "var" << e;
+            }
+            TU_ARMA(Static, e) {
+                m_of << e;
+                m_of << ".val";
+            }
+            TU_ARMA(Field, field_index) {
+                auto inner = val.inner_ref();
+
+                const auto& ty = this->get_lvalue_type(inner);
+                if( !ty.wrappers.empty() )
+                {
+                    switch(ty.wrappers.back().type)
+                    {
+                    case TypeWrapper::Ty::Slice:
+                        if( inner.is_Deref() )
+                        {
+                            m_of << "(("; emit_ctype(ty.get_inner()); m_of << "*)";
+                            emit_lvalue(inner.inner_ref());
+                            m_of << ".PTR)";
+                        }
+                        else
+                        {
+                            emit_lvalue(inner);
+                        }
+                        m_of << "[" << field_index << "]";
+                        break;
+                    case TypeWrapper::Ty::Array:
+                        emit_lvalue(inner);
+                        m_of << ".DATA[" << field_index << "]";
+                        break;
+                    case TypeWrapper::Ty::Pointer:
+                    case TypeWrapper::Ty::Borrow:
+                        LOG_ASSERT(inner.is_Deref(), "");
+                        auto dst_type = ty.get_meta_type();
+                        if( dst_type != HIR::TypeRef() )
+                        {
+                            m_of << "(("; emit_ctype(ty); m_of << "*)"; emit_lvalue(inner.inner_ref()); m_of << ".PTR)->_" << field_index;
+                        }
+                        else
+                        {
+                            emit_lvalue(inner.inner_ref());
+                            m_of << "->_" << field_index;
+                        }
+                        break;
+                    }
+                }
+                else
+                {
+                    emit_lvalue(inner);
+                    m_of << "._" << field_index;
+                }
+            }
+            TU_ARMA(Deref, _e) {
+                auto inner = val.inner_ref();
+                const auto& ty = this->get_lvalue_type(inner);
+                auto dst_type = ty.get_meta_type();
+                // If the type is unsized, then this pointer is a fat pointer, so we need to cast the data pointer.
+                if( dst_type != HIR::TypeRef() )
+                {
+                    m_of << "(*("; emit_ctype(ty); m_of << "*)";
+                    emit_lvalue(inner);
+                    m_of << ".PTR)";
+                }
+                else
+                {
+                    m_of << "(*";
+                    emit_lvalue(inner);
+                    m_of << ")";
+                }
+            }
+            TU_ARMA(Index, index_local) {
+                auto inner = val.inner_ref();
+                const auto& ty = this->get_lvalue_type(inner);
+                LOG_ASSERT( !ty.wrappers.empty(), "" );
+                m_of << "(";
+                switch(ty.wrappers.back().type)
+                {
+                case TypeWrapper::Ty::Slice:
+                    if( inner.is_Deref() )
+                    {
+                        m_of << "("; emit_ctype(ty.get_inner()); m_of << "*)";
+                        emit_lvalue(inner.inner_ref());
+                        m_of << ".PTR";
+                    }
+                    else {
+                        emit_lvalue(inner);
+                    }
+                    break;
+                case TypeWrapper::Ty::Array:
+                    emit_lvalue(inner);
+                    m_of << ".DATA";
+                    break;
+                case TypeWrapper::Ty::Pointer:
+                case TypeWrapper::Ty::Borrow:
+                    LOG_ASSERT(false, "");
+                }
+                m_of << ")[";
+                emit_lvalue(::MIR::LValue::new_Local(index_local));
+                m_of << "]";
+            }
+            TU_ARMA(Downcast, variant_index) {
+                auto inner = val.inner_ref();
+                const auto& ty = this->get_lvalue_type(inner);
+                emit_lvalue(inner);
+                LOG_ASSERT(ty.wrappers.empty(), "");
+                const auto& dt = ty.composite_type();
+                if(dt.variants.size() == 0)
+                {
+                    m_of << ".var_" << variant_index;
+                }
+                else
+                {
+                    LOG_ASSERT(variant_index < dt.variants.size(), "");
+                    m_of << ".DATA";
+                    m_of << ".var_" << variant_index;
+                }
+            }
+            }
+        }
+        void emit_lvalue(const ::MIR::LValue& lv)
+        {
+            emit_lvalue(::MIR::LValue::CRef(lv));
+        }
+
+        void emit_drop(unsigned indent, const ::HIR::TypeRef& ty, const ::MIR::LValue& lv)
+        {
+            if( ty.wrappers.size() == 0 )
+            {
+                switch(ty.inner_type)
+                {
+                case RawType::Composite:
+                    if( ty.composite_type().drop_glue != HIR::Path() )
+                    {
+                        m_of << ty.composite_type().drop_glue << "(&"; emit_lvalue(lv); m_of << ");";
+                    }
+                    break;
+                case RawType::TraitObject:
+                    // Call destructor
+                    break;
+
+                case RawType::I8:   case RawType::U8:
+                case RawType::I16:  case RawType::U16:
+                case RawType::I32:  case RawType::U32:
+                case RawType::I64:  case RawType::U64:
+                case RawType::I128: case RawType::U128:
+                case RawType::ISize:case RawType::USize:
+                case RawType::F32:  case RawType::F64:
+                case RawType::Bool:
+                case RawType::Str:
+                case RawType::Char:
+                    break;
+                case RawType::Function:
+                case RawType::Unit:
+                case RawType::Unreachable:
+                    break;
+                }
+            }
+            else
+            {
+                //switch(ty.wrappers.back().type)
+                //{
+                //}
+            }
+        }
+
+        void emit_block_statements(const ::MIR::BasicBlock& b, unsigned indent)
+        {
+            for(const auto& stmt : b.statements)
+            {
+                m_of << Indent(indent);
+                TU_MATCH_HDRA( (stmt), {)
+                TU_ARMA(Asm, se) {
+                    LOG_TODO(stmt);
+                    }
+                TU_ARMA(Assign, se) {
+                    emit_lvalue(se.dst);
+                    m_of << " = ";
+                    }
+                TU_ARMA(SetDropFlag, se) {
+                    LOG_TODO(stmt);
+                    }
+                TU_ARMA(Drop, se) {
+                    const auto& ty = this->get_lvalue_type(se.slot);
+                    if( se.flag_idx != ~0u ) {
+                    }
+                    switch(se.kind)
+                    {
+                    case ::MIR::eDropKind::DEEP:
+                        emit_drop(indent, ty, se.slot);
+                        break;
+                    case ::MIR::eDropKind::SHALLOW:
+                        break;
+                    }
+                    }
+                TU_ARMA(ScopeEnd, se) {
+                    }
+                }
+                m_of << "// BB?/" << (&stmt - &b.statements.front()) << " " << stmt << "\n";
+            }
+        }
+    };
+
     TRACE_FUNCTION_R(name, name);
+    BodyEmitter emitter(*this, tree, s);
 
     this->emit_ctype(s.ret_ty);
     m_of << " " << name;
@@ -63,9 +352,7 @@ void Codegen_C::emit_function(const RcString& name, const Function& s)
     for(const auto& b : s.m_mir.blocks)
     {
         m_of << "bb" << (&b - &s.m_mir.blocks.front()) << ":\n";
-        for(const auto& stmt : b.statements)
-        {
-        }
+        emitter.emit_block_statements(b, /*indent=*/1);
     }
     m_of << "}\n";
 }

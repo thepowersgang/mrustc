@@ -196,7 +196,7 @@ int main(int argc, const char* argv[])
         });
     //  - Emit functions
     tree.iterate_functions([&](RcString name, const Function& f) {
-        codegen.emit_function(name, f);
+        codegen.emit_function(name, tree, f);
         });
 
     return 0;

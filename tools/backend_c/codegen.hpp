@@ -20,7 +20,7 @@ public:
     void emit_composite(const RcString& name, const DataType& s);
 
     void emit_static(const RcString& name, const Static& s);
-    void emit_function(const RcString& name, const Function& s);
+    void emit_function(const RcString& name, const ModuleTree& tree, const Function& s);
 
 private:
     void emit_ctype(const HIR::TypeRef& ty, unsigned depth=0);

@@ -241,6 +241,8 @@ namespace HIR {
             return ::ord(n, x.n);
         }
 
+        bool operator==(const Path& p) const { return ord(p) == OrdEqual; }
+        bool operator!=(const Path& p) const { return ord(p) != OrdEqual; }
         friend ::std::ostream& operator<<(::std::ostream& os, const Path& x){
             return os << x.n;
         }
