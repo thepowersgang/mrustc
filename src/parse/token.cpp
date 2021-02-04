@@ -488,6 +488,12 @@ struct EscapedString {
     case TOK_RWORD_BECOME:  return "become";
     case TOK_RWORD_UNSIZED: return "unsized";
     case TOK_RWORD_MACRO:   return "macro";
+
+    // 2018
+    case TOK_RWORD_ASYNC:   return "async";
+    case TOK_RWORD_AWAIT:   return "await";
+    case TOK_RWORD_DYN:     return "dyn";
+    case TOK_RWORD_TRY:     return "try";
     }
     throw ParseError::BugCheck("Reached end of Token::to_str");
 }

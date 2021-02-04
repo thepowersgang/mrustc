@@ -187,8 +187,8 @@ static const sRWORD RWORDS_2018[] = {
     TOKENT("_", TOK_UNDERSCORE),
     TOKENT("abstract",TOK_RWORD_ABSTRACT), // Reserved 2015+
     TOKENT("as",      TOK_RWORD_AS),
-    //TOKENT("async",   TOK_RWORD_ASYNC), // Added 2018
-    //TOKENT("await",   TOK_RWORD_AWAIT), // Added 2018
+    TOKENT("async",   TOK_RWORD_ASYNC), // Added 2018
+    TOKENT("await",   TOK_RWORD_AWAIT), // Added 2018
     TOKENT("become",  TOK_RWORD_BECOME),  //  // Reserved 2015+
     TOKENT("box",     TOK_RWORD_BOX),
     TOKENT("break",   TOK_RWORD_BREAK),
@@ -196,7 +196,7 @@ static const sRWORD RWORDS_2018[] = {
     TOKENT("continue",TOK_RWORD_CONTINUE),
     TOKENT("crate",   TOK_RWORD_CRATE),
     TOKENT("do",      TOK_RWORD_DO),  // Reserved 2015+
-    //TOKENT("dyn",     TOK_RWORD_DYN), // Added 2018
+    TOKENT("dyn",     TOK_RWORD_DYN), // Added 2018
     TOKENT("else",    TOK_RWORD_ELSE),
     TOKENT("enum",    TOK_RWORD_ENUM),
     TOKENT("extern",  TOK_RWORD_EXTERN),
@@ -225,7 +225,7 @@ static const sRWORD RWORDS_2018[] = {
     TOKENT("super",   TOK_RWORD_SUPER),
     TOKENT("trait",   TOK_RWORD_TRAIT),
     TOKENT("true",    TOK_RWORD_TRUE),
-    //TOKENT("try",     TOK_RWORD_TRY), // Reserved 2018+
+    TOKENT("try",     TOK_RWORD_TRY), // Reserved 2018+
     TOKENT("type",    TOK_RWORD_TYPE),
     TOKENT("typeof",  TOK_RWORD_TYPEOF), // Reserved 2015+
     TOKENT("unsafe",  TOK_RWORD_UNSAFE),
@@ -814,7 +814,7 @@ Token Lexer::getTokenInt_RawString(bool is_byte)
         }
         // Raw identifier
         else if( hashes == 1 ) {
-            return this->getTokenInt_Identifier(ch);
+            return this->getTokenInt_Identifier(ch, Codepoint(), /*parse_reserved_word*/false);
         }
         else {
             throw ParseError::Generic(*this, "Expected '\"' after hashes following `r`");
@@ -869,7 +869,7 @@ Token Lexer::getTokenInt_RawString(bool is_byte)
     }
     return Token(is_byte ? TOK_BYTESTRING : TOK_STRING, mv$(val));
 }
-Token Lexer::getTokenInt_Identifier(Codepoint leader, Codepoint leader2)
+Token Lexer::getTokenInt_Identifier(Codepoint leader, Codepoint leader2, bool parse_reserved_word)
 {
     ::std::string   str;
     if( leader2 != '\0' )
@@ -882,10 +882,13 @@ Token Lexer::getTokenInt_Identifier(Codepoint leader, Codepoint leader2)
     }
 
     this->ungetc();
-    auto v = Lex_FindReservedWord(str, this->parse_state().get_edition());
-    if( v != TOK_NULL)
+    if(parse_reserved_word)
     {
-        return Token(v);
+        auto v = Lex_FindReservedWord(str, this->parse_state().get_edition());
+        if( v != TOK_NULL)
+        {
+            return Token(v);
+        }
     }
     return Token(TOK_IDENT, Ident(this->get_hygiene(), RcString::new_interned(str)));
 }

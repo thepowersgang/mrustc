@@ -515,6 +515,12 @@ namespace {
                 case TOK_RWORD_BECOME:  m_pmi.send_ident("become"); break;
                 case TOK_RWORD_UNSIZED: m_pmi.send_ident("unsized"); break;
                 case TOK_RWORD_MACRO:   m_pmi.send_ident("macro");  break;
+
+                // 2018
+                case TOK_RWORD_ASYNC:   m_pmi.send_ident("async");  break;
+                case TOK_RWORD_AWAIT:   m_pmi.send_ident("await");  break;
+                case TOK_RWORD_DYN:     m_pmi.send_ident("dyn");    break;
+                case TOK_RWORD_TRY:     m_pmi.send_ident("try");    break;
                 }
             }
             else

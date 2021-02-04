@@ -881,6 +881,9 @@ namespace
         case TOK_IDENT:
             if( TARGETVER_LEAST_1_29 && lex.next_tok().ident().name == "dyn" )
                 lex.consume();
+            if(0)
+        case TOK_RWORD_DYN:
+            lex.consume();
         case TOK_RWORD_CRATE:
         case TOK_RWORD_SUPER:
         case TOK_RWORD_SELF:

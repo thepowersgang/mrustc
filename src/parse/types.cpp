@@ -77,6 +77,10 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
             return Parse_Type_Path(lex, hrls, true);
         }
         }
+    case TOK_RWORD_DYN: {
+        ::AST::HigherRankedBounds hrbs = Parse_HRB_Opt(lex);
+        return Parse_Type_TraitObject(lex, mv$(hrbs));
+        }
     // <ident> - Either a primitive, or a path
     case TOK_IDENT:
         // TODO: Only allow if the next token isn't `::` or `!`
