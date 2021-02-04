@@ -259,7 +259,7 @@ bool Parser::parse_one()
                 lex.check_consume('=');
                 lex.check_consume('{');
 
-                while( lex.lookahead() != '}' )
+                while( lex.next() != '}' )
                 {
                     DataType::VariantValue  var;
                     if( lex.consume_if('*') ) {
