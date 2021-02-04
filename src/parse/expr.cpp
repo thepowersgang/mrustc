@@ -1166,6 +1166,8 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
         return Parse_WhileStmt(lex, Ident(""));
     case TOK_RWORD_FOR:
         return Parse_ForStmt(lex, Ident(""));
+    case TOK_RWORD_TRY: // Only emitted in 2018
+        return Parse_Expr_Try(lex);
     case TOK_RWORD_DO:
         if( TARGETVER_LEAST_1_29 )
         {
