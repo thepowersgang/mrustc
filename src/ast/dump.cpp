@@ -835,6 +835,15 @@ void RustPrinter::handle_module(const AST::Module& mod)
         dec_indent();
         m_os << indent() << "}\n";
     }
+
+    for(const auto& m : mod.anon_mods())
+    {
+        m_os << indent() << "mod " << m->path().nodes.back() << " {\n";
+        inc_indent();
+        handle_module(*m);
+        dec_indent();
+        m_os << indent() << "}\n";
+    }
 }
 
 void RustPrinter::print_params(const AST::GenericParams& params)
