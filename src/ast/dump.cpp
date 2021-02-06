@@ -961,7 +961,7 @@ void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
         m_os << "_";
         ),
     (MaybeBind,
-        m_os << "_ /*?*/";
+        m_os << v.name << " /*?*/";
         ),
     (Macro,
         m_os << *v.inv;
