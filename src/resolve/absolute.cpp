@@ -2178,6 +2178,11 @@ void Resolve_Absolute_ExprNode(Context& context,  ::AST::ExprNode& node)
             Resolve_Absolute_Type(this->context,  node.m_type);
             AST::NodeVisitorDef::visit(node);
         }
+        void visit(AST::ExprNode_TypeAnnotation& node) override {
+            DEBUG("ExprNode_TypeAnnotation");
+            Resolve_Absolute_Type(this->context,  node.m_type);
+            AST::NodeVisitorDef::visit(node);
+        }
         void visit(AST::ExprNode_Closure& node) override {
             DEBUG("ExprNode_Closure");
 
