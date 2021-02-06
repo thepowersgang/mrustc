@@ -1614,10 +1614,17 @@ void Parse_Use_Root(TokenStream& lex, ::std::vector<AST::UseItem::Ent>& entries)
     else {
         PUTBACK(tok, lex);
     }
-    DEBUG("name=" << name << ", ident=" << ident);
-    lex.push_hygine();
+    bool is_macro = (name.is_trivial() && name.as_trivial() == "macro_rules");
+
+    if(is_macro)
+        lex.push_hygine();
     TokenTree tt = Parse_TT(lex, true);
-    lex.pop_hygine();
+    if( tt.is_token() ) {
+        throw ParseError::Unexpected(lex, tt.tok());
+    }
+    if(is_macro)
+        lex.pop_hygine();
+    DEBUG("name=" << name << ", ident=" << ident << ", tt=" << tt);
     return ::AST::MacroInvocation( lex.end_span(span_start), mv$(name), mv$(ident), mv$(tt));
 }
 

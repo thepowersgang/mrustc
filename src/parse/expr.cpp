@@ -1332,11 +1332,18 @@ ExprNodeP Parse_ExprMacro(TokenStream& lex, AST::Path path)
         PUTBACK(tok, lex);
     }
 
+    bool is_macro = (path.is_trivial() && path.as_trivial() == "macro_rules");
+
+    if(is_macro)
+        lex.push_hygine();
     TokenTree tt = Parse_TT(lex, true);
     if( tt.is_token() ) {
         throw ParseError::Unexpected(lex, tt.tok());
     }
+    if(is_macro)
+        lex.pop_hygine();
 
+    DEBUG("name=" << path << ", ident=" << ident << ", tt=" << tt);
     return NEWNODE(AST::ExprNode_Macro, mv$(path), mv$(ident), mv$(tt));
 }
 
