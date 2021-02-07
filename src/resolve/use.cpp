@@ -402,6 +402,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
     }
 
     // Imports
+    // - Explicitly named imports first (they take priority over anon imports)
     for( const auto& imp : mod.m_items )
     {
         if( ! imp->data.is_Use() )
@@ -433,9 +434,22 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                 }
                 continue ;
             }
+        }
+    }
+
+    for( const auto& imp : mod.m_items )
+    {
+        if( ! imp->data.is_Use() )
+            continue ;
+        const auto& imp_data = imp->data.as_Use();
+        for( const auto& imp_e : imp_data.entries )
+        {
+            const Span& sp2 = imp_e.sp;
+            if( imp_e.name != "" )
+                continue ;
 
             // TODO: Correct privacy rules (if the origin of this lookup can see this item)
-            if( (imp->is_pub || mod.path().is_parent_of(source_mod_path)) && imp_e.name == "" )
+            if( (imp->is_pub || mod.path().is_parent_of(source_mod_path)) )
             {
                 DEBUG("- Search glob of " << imp_e.path << " in " << mod.path());
                 // INEFFICIENT! Resolves and throws away the result (because we can't/shouldn't mutate here)
