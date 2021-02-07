@@ -263,7 +263,13 @@ namespace MIR {
             os << " " << e.val_r << ")";
             ),
         (UniOp,
-            os << "UniOp(" << e.val << " " << static_cast<int>(e.op) << ")";
+            os << "UniOp(" << e.val << " ";
+            switch(e.op)
+            {
+            case ::MIR::eUniOp::INV:    os << "INV";    break;
+            case ::MIR::eUniOp::NEG:    os << "NEG";    break;
+            }
+            os << ")";
             ),
         (DstMeta,
             os << "DstMeta(" << e.val << ")";

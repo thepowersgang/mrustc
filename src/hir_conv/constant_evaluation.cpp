@@ -498,7 +498,7 @@ namespace HIR {
                         MIR_ASSERT(state, idx.is_Integer(), "LValue::Index with non-integer index literal - " << idx.tag_str() << " - " << lv);
                         auto& vals = val.as_List();
                         auto idx_v = static_cast<size_t>( idx.as_Integer() );
-                        MIR_ASSERT(state, idx_v < vals.size(), "LValue::Index index out of range");
+                        MIR_ASSERT(state, idx_v < vals.size(), "LValue::Index index out of range - " << idx_v << " >= " << vals.size());
                         lit_ptr = &vals[ idx_v ];
                         }
                     TU_ARMA(Downcast, e) {
@@ -633,6 +633,70 @@ namespace HIR {
             throw "";
             };
 
+        struct TypeInfo {
+            enum {
+                Other,
+                Float,
+                Signed,
+                Unsigned,
+            } ty;
+            int bits;
+
+            static TypeInfo for_primitive(::HIR::CoreType te) {
+                switch(te)
+                {
+                case ::HIR::CoreType::I8:   return TypeInfo { Signed  , 8 };
+                case ::HIR::CoreType::U8:   return TypeInfo { Unsigned, 8 };
+                case ::HIR::CoreType::I16:  return TypeInfo { Signed  , 16 };
+                case ::HIR::CoreType::U16:  return TypeInfo { Unsigned, 16 };
+                case ::HIR::CoreType::I32:  return TypeInfo { Signed  , 32 };
+                case ::HIR::CoreType::U32:  return TypeInfo { Unsigned, 32 };
+                case ::HIR::CoreType::I64:  return TypeInfo { Signed  , 64 };
+                case ::HIR::CoreType::U64:  return TypeInfo { Unsigned, 64 };
+                case ::HIR::CoreType::I128: return TypeInfo { Signed  , 128 };
+                case ::HIR::CoreType::U128: return TypeInfo { Unsigned, 128 };
+
+                case ::HIR::CoreType::Isize: return TypeInfo { Signed  , 64 };
+                case ::HIR::CoreType::Usize: return TypeInfo { Unsigned, 64 };
+                case ::HIR::CoreType::Char: return TypeInfo { Unsigned, 21 };
+                case ::HIR::CoreType::Bool: return TypeInfo { Unsigned, 1 };
+
+
+                case ::HIR::CoreType::F32:  return TypeInfo { Float, 32 };
+                case ::HIR::CoreType::F64:  return TypeInfo { Float, 64 };
+
+                case ::HIR::CoreType::Str:  return TypeInfo { Other, 0 };
+                }
+                return TypeInfo { Other, 0 };
+            }
+            static TypeInfo for_type(const ::HIR::TypeRef& ty) {
+                if(!ty.data().is_Primitive())
+                    return TypeInfo { Other, 0 };
+                return for_primitive(ty.data().as_Primitive());
+            }
+
+            uint64_t mask(uint64_t v) const {
+                if(bits < 64)
+                {
+                    uint64_t mask_val = (1ull << bits) - 1;
+                    return v & mask_val;
+                }
+                return v;
+            }
+            uint64_t mask(int64_t v) const {
+                if( v < 0 ) {
+                    // Negate, mask, and re-negate
+                    return static_cast<uint64_t>( -static_cast<int64_t>( mask(static_cast<uint64_t>(-v)) ));
+                }
+                else {
+                    return mask(static_cast<uint64_t>(v));
+                }
+            }
+            double mask(double v) const {
+                return v;
+            }
+        };
+
         unsigned int cur_block = 0;
         for(;;)
         {
@@ -703,35 +767,18 @@ namespace HIR {
                         }
                         }
                     TU_ARMA(Primitive, te) {
+                        auto ti = TypeInfo::for_primitive(te);
                         uint64_t mask;
-                        switch(te)
+                        switch(ti.ty)
                         {
                         // Integers mask down
-                        case ::HIR::CoreType::I8:
-                        case ::HIR::CoreType::U8:
-                            mask = 0xFF;
-                            if(0)
-                        case ::HIR::CoreType::I16:
-                        case ::HIR::CoreType::U16:
-                            mask = 0xFFFF;
-                            if(0)
-                        case ::HIR::CoreType::I32:
-                        case ::HIR::CoreType::U32:
-                            mask = 0xFFFFFFFF;
-                            if(0)
-                        case ::HIR::CoreType::I64:
-                        case ::HIR::CoreType::U64:
-                        case ::HIR::CoreType::I128: // TODO: Proper support for 128 bit integers in consteval
-                        case ::HIR::CoreType::U128:
-                        case ::HIR::CoreType::Usize:
-                        case ::HIR::CoreType::Isize:
-                            mask = 0xFFFFFFFFFFFFFFFF;
-
+                        case TypeInfo::Signed:
+                        case TypeInfo::Unsigned:
                             if(const auto* ve = inval->opt_Integer()) {
-                                val = Value(*ve & mask);
+                                val = Value( ti.mask(*ve) );
                             }
                             else if(const auto* ve = inval->opt_Float()){
-                                val = Value( static_cast<uint64_t>(*ve) & mask);
+                                val = Value( ti.mask(static_cast<int64_t>(*ve)) );
                             }
                             else if( const auto* ve = inval->opt_Variant() ) {
                                 HIR::TypeRef    tmp;
@@ -741,19 +788,18 @@ namespace HIR {
                                 const HIR::Enum& enm = *src_ty.data().as_Path().binding.as_Enum();
                                 MIR_ASSERT(state, enm.is_value(), "Constant cast Variant to integer with non-value enum - " << src_ty);
                                 auto enum_value = enm.get_value(ve->idx);
-                                val = Value( static_cast<uint64_t>(enum_value) & mask );
+                                val = Value( ti.mask(static_cast<uint64_t>(enum_value)) );
                             }
                             else {
                                 MIR_BUG(state, "Invalid cast of " << inval->tag_str() << " to " << e.type);
                             }
                             break;
-                        case ::HIR::CoreType::F32:
-                        case ::HIR::CoreType::F64:
+                        case TypeInfo::Float:
                             if(const auto* ve = inval->opt_Integer()) {
-                                val = Value( static_cast<double>(*ve) );
+                                val = Value( ti.mask(static_cast<double>(*ve)) );
                             }
                             else if(const auto* ve = inval->opt_Float()) {
-                                val = Value( *ve );
+                                val = Value( ti.mask(*ve) );
                             }
                             else {
                                 MIR_BUG(state, "Invalid cast of " << inval->tag_str() << " to " << e.type);
@@ -790,6 +836,9 @@ namespace HIR {
                     auto inval_r = read_param(e.val_r);
                     if( inval_l->is_Defer() || inval_r->is_Defer() )
                         return Value::make_Defer({});
+                    ::HIR::TypeRef tmp;
+                    const auto& ty_l = state.get_param_type(tmp, e.val_l);
+                    auto ti = TypeInfo::for_type(ty_l);
                     MIR_ASSERT(state, inval_l->tag() == inval_r->tag(), "Mismatched literal types in binop - " << inval_l << " and " << inval_r);
                     TU_MATCH_HDRA( (*inval_l, *inval_r), {)
                     default:
@@ -814,7 +863,6 @@ namespace HIR {
                         case ::MIR::eBinOp::BIT_SHL:
                         case ::MIR::eBinOp::BIT_SHR:
                             MIR_TODO(state, "RValue::BinOp - " << sa.src << ", val = " << inval_l << " , " << inval_r);
-                        // TODO: GT/LT are incorrect for signed integers
                         case ::MIR::eBinOp::EQ: val = Value( static_cast<uint64_t>(l == r) );  break;
                         case ::MIR::eBinOp::NE: val = Value( static_cast<uint64_t>(l != r) );  break;
                         case ::MIR::eBinOp::GT: val = Value( static_cast<uint64_t>(l >  r) );  break;
@@ -824,31 +872,67 @@ namespace HIR {
                         }
                         }
                     TU_ARMA(Integer, l, r) {
-                        switch(e.op)
+                        switch(ti.ty)
                         {
-                        case ::MIR::eBinOp::ADD:    val = Value( l + r );  break;
-                        case ::MIR::eBinOp::SUB:    val = Value( l - r );  break;
-                        case ::MIR::eBinOp::MUL:    val = Value( l * r );  break;
-                        case ::MIR::eBinOp::DIV:    val = Value( l / r );  break;
-                        case ::MIR::eBinOp::MOD:    val = Value( l % r );  break;
-                        case ::MIR::eBinOp::ADD_OV:
-                        case ::MIR::eBinOp::SUB_OV:
-                        case ::MIR::eBinOp::MUL_OV:
-                        case ::MIR::eBinOp::DIV_OV:
-                            MIR_TODO(state, "RValue::BinOp - " << sa.src << ", val = " << inval_l << " , " << inval_r);
+                        case TypeInfo::Unsigned:
+                            switch(e.op)
+                            {
+                            case ::MIR::eBinOp::ADD:    val = Value( ti.mask(l + r) );  break;
+                            case ::MIR::eBinOp::SUB:    val = Value( ti.mask(l - r) );  break;
+                            case ::MIR::eBinOp::MUL:    val = Value( ti.mask(l * r) );  break;
+                            case ::MIR::eBinOp::DIV:    val = Value( ti.mask(l / r) );  break;
+                            case ::MIR::eBinOp::MOD:    val = Value( ti.mask(l % r) );
+                                break;
+                            case ::MIR::eBinOp::ADD_OV:
+                            case ::MIR::eBinOp::SUB_OV:
+                            case ::MIR::eBinOp::MUL_OV:
+                            case ::MIR::eBinOp::DIV_OV:
+                                MIR_TODO(state, "RValue::BinOp - " << sa.src << ", val = " << inval_l << " , " << inval_r);
 
-                        case ::MIR::eBinOp::BIT_OR : val = Value( l | r );  break;
-                        case ::MIR::eBinOp::BIT_AND: val = Value( l & r );  break;
-                        case ::MIR::eBinOp::BIT_XOR: val = Value( l ^ r );  break;
-                        case ::MIR::eBinOp::BIT_SHL: val = Value( l << r );  break;
-                        case ::MIR::eBinOp::BIT_SHR: val = Value( l >> r );  break;
-                        // TODO: GT/LT are incorrect for signed integers
-                        case ::MIR::eBinOp::EQ: val = Value( static_cast<uint64_t>(l == r) );  break;
-                        case ::MIR::eBinOp::NE: val = Value( static_cast<uint64_t>(l != r) );  break;
-                        case ::MIR::eBinOp::GT: val = Value( static_cast<uint64_t>(l >  r) );  break;
-                        case ::MIR::eBinOp::GE: val = Value( static_cast<uint64_t>(l >= r) );  break;
-                        case ::MIR::eBinOp::LT: val = Value( static_cast<uint64_t>(l <  r) );  break;
-                        case ::MIR::eBinOp::LE: val = Value( static_cast<uint64_t>(l <= r) );  break;
+                            case ::MIR::eBinOp::BIT_OR : val = Value( l | r );  break;
+                            case ::MIR::eBinOp::BIT_AND: val = Value( l & r );  break;
+                            case ::MIR::eBinOp::BIT_XOR: val = Value( l ^ r );  break;
+                            case ::MIR::eBinOp::BIT_SHL: val = Value( ti.mask(l << r) );  break;
+                            case ::MIR::eBinOp::BIT_SHR: val = Value( ti.mask(l >> r) );  break;
+                            // TODO: GT/LT are incorrect for signed integers
+                            case ::MIR::eBinOp::EQ: val = Value( static_cast<uint64_t>(l == r) );  break;
+                            case ::MIR::eBinOp::NE: val = Value( static_cast<uint64_t>(l != r) );  break;
+                            case ::MIR::eBinOp::GT: val = Value( static_cast<uint64_t>(l >  r) );  break;
+                            case ::MIR::eBinOp::GE: val = Value( static_cast<uint64_t>(l >= r) );  break;
+                            case ::MIR::eBinOp::LT: val = Value( static_cast<uint64_t>(l <  r) );  break;
+                            case ::MIR::eBinOp::LE: val = Value( static_cast<uint64_t>(l <= r) );  break;
+                            }
+                            break;
+                        case TypeInfo::Signed:
+                            switch(e.op)
+                            {
+                            case ::MIR::eBinOp::ADD:    val = Value( ti.mask(l + r) );  break;
+                            case ::MIR::eBinOp::SUB:    val = Value( ti.mask(l - r) );  break;
+                            case ::MIR::eBinOp::MUL:    val = Value( ti.mask(static_cast<int64_t>(l) * static_cast<int64_t>(r)) );  break;
+                            case ::MIR::eBinOp::DIV:    val = Value( ti.mask(static_cast<int64_t>(l) / static_cast<int64_t>(r)) );  break;
+                            case ::MIR::eBinOp::MOD:    val = Value( ti.mask(static_cast<int64_t>(l) % static_cast<int64_t>(r)) );  break;
+                            case ::MIR::eBinOp::ADD_OV:
+                            case ::MIR::eBinOp::SUB_OV:
+                            case ::MIR::eBinOp::MUL_OV:
+                            case ::MIR::eBinOp::DIV_OV:
+                                MIR_TODO(state, "RValue::BinOp - " << sa.src << ", val = " << inval_l << " , " << inval_r);
+
+                            case ::MIR::eBinOp::BIT_OR : val = Value( l | r );  break;
+                            case ::MIR::eBinOp::BIT_AND: val = Value( l & r );  break;
+                            case ::MIR::eBinOp::BIT_XOR: val = Value( l ^ r );  break;
+                            case ::MIR::eBinOp::BIT_SHL: val = Value( ti.mask(l << r) );  break;
+                            case ::MIR::eBinOp::BIT_SHR: val = Value( ti.mask(l >> r) );  break;
+                                // TODO: GT/LT are incorrect for signed integers
+                            case ::MIR::eBinOp::EQ: val = Value( static_cast<uint64_t>(l == r) );  break;
+                            case ::MIR::eBinOp::NE: val = Value( static_cast<uint64_t>(l != r) );  break;
+                            case ::MIR::eBinOp::GT: val = Value( static_cast<uint64_t>(static_cast<int64_t>(l) >  static_cast<int64_t>(r)) );  break;
+                            case ::MIR::eBinOp::GE: val = Value( static_cast<uint64_t>(static_cast<int64_t>(l) >= static_cast<int64_t>(r)) );  break;
+                            case ::MIR::eBinOp::LT: val = Value( static_cast<uint64_t>(static_cast<int64_t>(l) <  static_cast<int64_t>(r)) );  break;
+                            case ::MIR::eBinOp::LE: val = Value( static_cast<uint64_t>(static_cast<int64_t>(l) <= static_cast<int64_t>(r)) );  break;
+                            }
+                            break;
+                        default:
+                            MIR_TODO(state, "RValue::BinOp - " << sa.src << ", val = " << inval_l << " , " << inval_r);
                         }
                         }
                     }
@@ -857,12 +941,15 @@ namespace HIR {
                     auto inval = local_state.read_lval(e.val);
                     if( inval->is_Defer() )
                         return Value::make_Defer({});
+                    ::HIR::TypeRef tmp;
+                    const auto& ty_l = state.get_lvalue_type(tmp, e.val);
+                    auto ti = TypeInfo::for_type(ty_l);
                     
                     if( const auto* i = inval->opt_Integer() ) {
                         switch( e.op )
                         {
                         case ::MIR::eUniOp::INV:
-                            val = Value( ~*i );
+                            val = Value( ti.mask(~*i) );
                             break;
                         case ::MIR::eUniOp::NEG:
                             val = Value( static_cast<uint64_t>(-static_cast<int64_t>(*i)) );
@@ -954,6 +1041,7 @@ namespace HIR {
                 }
 
                 auto& dst = local_state.get_lval(sa.dst);
+                DEBUG(sa.dst << " := " << val);
                 dst = mv$(val);
             }
             state.set_cur_stmt_term(cur_block);
