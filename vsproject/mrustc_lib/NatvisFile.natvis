@@ -18,7 +18,8 @@
     <DisplayString Condition="m_components._Mypair._Myval2._Myfirst + 5 == m_components._Mypair._Myval2._Mylast">::{m_crate_name}::{m_components,expand(2)}::{m_components,expand(3)}::{m_components,expand(4)}::{m_components,expand(5)}::{m_components,expand(6)}</DisplayString>
   </Type>
   <Type Name="HIR::TypeRef">
-    <DisplayString Condition="m_ptr != 0">{*m_ptr}</DisplayString>
+    <DisplayString Condition="m_ptr != 0">{m_ptr->m_data}</DisplayString>
+    <DisplayString Condition="m_ptr == 0">NULL</DisplayString>
     <Expand>
       <Item Name="m_ptr->m_refcount" Condition="m_ptr != 0">m_ptr->m_refcount</Item>
       <Item Name="m_ptr->m_data" Condition="m_ptr != 0">m_ptr->m_data</Item>
@@ -27,20 +28,20 @@
   <Type Name="HIR::TypeData">
     <DisplayString Condition="m_tag == TAG_Infer">Infer #{m_data.Infer.index,i} {m_data.Infer.ty_class}</DisplayString>
     <DisplayString Condition="m_tag == TAG_Primitive">Primitive {m_data.Primitive}</DisplayString>
-    <DisplayString Condition="m_tag == TAG_Generic">Generic {m_data.Generic}</DisplayString>
+    <DisplayString Condition="m_tag == TAG_Generic">Generic {m_data.Generic.name} #{m_data.Generic.binding}</DisplayString>
     <DisplayString Condition="m_tag == TAG_Borrow">Borrow {m_data.Borrow}</DisplayString>
     <DisplayString Condition="m_tag == TAG_Path">Path {m_data.Path}</DisplayString>
     <DisplayString Condition="m_tag == TAG_Tuple">Tuple {m_data.Tuple}</DisplayString>
     <DisplayString Condition="m_tag == TAG_ErasedType">ErasedType {m_data.ErasedType}</DisplayString>
     <DisplayString Condition="m_tag == TAG_TraitObject">TraitObject {m_data.TraitObject}</DisplayString>
     <Expand>
-      <Item Name="Infer" Condition="m_tag == TAG_Infer" >m_data.Infer</Item>
+      <Item Name="Infer"   Condition="m_tag == TAG_Infer" >m_data.Infer</Item>
       <Item Name="Generic" Condition="m_tag == TAG_Generic">m_data.Generic</Item>
-      <Item Name="Borrow" Condition="m_tag == TAG_Borrow">m_data.Borrow</Item>
-      <Item Name="Path"  Condition="m_tag == TAG_Path" >m_data.Path</Item>
-      <Item Name="Tuple" Condition="m_tag == TAG_Tuple">m_data.Tuple</Item>
-      <Item Name="ErasedType" Condition="m_tag == TAG_ErasedType">ErasedType {m_data.ErasedType}</Item>
-      <Item Name="TraitObject" Condition="m_tag == TAG_TraitObject">TraitObject {m_data.TraitObject}</Item>
+      <Item Name="Borrow"  Condition="m_tag == TAG_Borrow">m_data.Borrow</Item>
+      <Item Name="Path"    Condition="m_tag == TAG_Path" >m_data.Path</Item>
+      <Item Name="Tuple"   Condition="m_tag == TAG_Tuple">m_data.Tuple</Item>
+      <Item Name="ErasedType" Condition="m_tag == TAG_ErasedType">m_data.ErasedType</Item>
+      <Item Name="TraitObject" Condition="m_tag == TAG_TraitObject">m_data.TraitObject</Item>
     </Expand>
   </Type>
   <Type Name="HIR::Path">
@@ -60,6 +61,14 @@
     <Expand>
       <Item Name="Unbound" Condition="m_tag == TAG_Unbound">m_data.Unbound</Item>
       <Item Name="Struct" Condition="m_tag == TAG_Struct">m_data.Struct</Item>
+    </Expand>
+  </Type>
+  <Type Name="HIR::GenericBound">
+    <DisplayString Condition="m_tag == TAG_TraitBound">TraitBound {m_data.TraitBound.type}: {m_data.TraitBound.trait}</DisplayString>
+    <DisplayString Condition="m_tag == TAG_TypeLifetime">TypeLifetime {m_data.TypeLifetime.type}: {m_data.TypeLifetime.valid_for}</DisplayString>
+    <Expand>
+      <Item Name="TypeLifetime" Condition="m_tag == TAG_TypeLifetime">m_data.TypeLifetime</Item>
+      <Item Name="TraitBound" Condition="m_tag == TAG_TraitBound">m_data.TraitBound</Item>
     </Expand>
   </Type>
 
