@@ -898,7 +898,7 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
                                     }
                                     else {
                                         const auto& aty = ti.m_types.at(atyb.first);
-                                        if( !aty.data.match_test_generics(sp, atyb.second, cb_ident, matcher) )
+                                        if( !aty.data.match_test_generics(sp, atyb.second.type, cb_ident, matcher) )
                                             return false;
                                     }
                                 }
@@ -1188,7 +1188,7 @@ const ::MIR::Function* HIR::Crate::get_or_gen_mir(const ::HIR::ItemPath& ip, con
         auto idx = this->m_type_indexes.at(ty_b.first);
         if(vtable_params.m_types.size() <= idx)
             vtable_params.m_types.resize(idx+1);
-        vtable_params.m_types[idx] = ty_b.second.clone();
+        vtable_params.m_types[idx] = ty_b.second.type.clone();
     }
     return ::HIR::TypeRef::new_path( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref );
 }

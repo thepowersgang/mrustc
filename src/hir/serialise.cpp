@@ -274,6 +274,17 @@
             serialise_genericpath(path.m_path);
             // TODO: Lifetimes? (m_hrls)
             serialise_strmap(path.m_type_bounds);
+            serialise_strmap(path.m_trait_bounds);
+        }
+        void serialise(const ::HIR::TraitPath::AtyEqual& e)
+        {
+            serialise(e.source_trait);
+            serialise(e.type);
+        }
+        void serialise(const ::HIR::TraitPath::AtyBound& e)
+        {
+            serialise(e.source_trait);
+            serialise_vec(e.traits);
         }
         void serialise_path(const ::HIR::Path& path)
         {

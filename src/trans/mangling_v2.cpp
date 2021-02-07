@@ -216,7 +216,7 @@ public:
             m_os << e.m_trait.m_type_bounds.size();
             // HACK: Assume all TraitObject types have the same aty set (std::map is deterministic)
             for(const auto& aty : e.m_trait.m_type_bounds)
-                this->fmt_type(aty.second);
+                this->fmt_type(aty.second.type);
             m_os << e.m_markers.size();
             for(const auto& p : e.m_markers)
                 this->fmt_generic_path(p);

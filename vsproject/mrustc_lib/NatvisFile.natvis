@@ -14,6 +14,8 @@
     <DisplayString Condition="m_components._Mypair._Myval2._Myfirst + 1 == m_components._Mypair._Myval2._Mylast">::{m_crate_name}::{m_components,expand(2)}</DisplayString>
     <DisplayString Condition="m_components._Mypair._Myval2._Myfirst + 2 == m_components._Mypair._Myval2._Mylast">::{m_crate_name}::{m_components,expand(2)}::{m_components,expand(3)}</DisplayString>
     <DisplayString Condition="m_components._Mypair._Myval2._Myfirst + 3 == m_components._Mypair._Myval2._Mylast">::{m_crate_name}::{m_components,expand(2)}::{m_components,expand(3)}::{m_components,expand(4)}</DisplayString>
+    <DisplayString Condition="m_components._Mypair._Myval2._Myfirst + 4 == m_components._Mypair._Myval2._Mylast">::{m_crate_name}::{m_components,expand(2)}::{m_components,expand(3)}::{m_components,expand(4)}::{m_components,expand(5)}</DisplayString>
+    <DisplayString Condition="m_components._Mypair._Myval2._Myfirst + 5 == m_components._Mypair._Myval2._Mylast">::{m_crate_name}::{m_components,expand(2)}::{m_components,expand(3)}::{m_components,expand(4)}::{m_components,expand(5)}::{m_components,expand(6)}</DisplayString>
   </Type>
   <Type Name="HIR::TypeRef">
     <DisplayString Condition="m_ptr != 0">{*m_ptr}</DisplayString>
@@ -29,12 +31,16 @@
     <DisplayString Condition="m_tag == TAG_Borrow">Borrow {m_data.Borrow}</DisplayString>
     <DisplayString Condition="m_tag == TAG_Path">Path {m_data.Path}</DisplayString>
     <DisplayString Condition="m_tag == TAG_Tuple">Tuple {m_data.Tuple}</DisplayString>
+    <DisplayString Condition="m_tag == TAG_ErasedType">ErasedType {m_data.ErasedType}</DisplayString>
+    <DisplayString Condition="m_tag == TAG_TraitObject">TraitObject {m_data.TraitObject}</DisplayString>
     <Expand>
       <Item Name="Infer" Condition="m_tag == TAG_Infer" >m_data.Infer</Item>
       <Item Name="Generic" Condition="m_tag == TAG_Generic">m_data.Generic</Item>
       <Item Name="Borrow" Condition="m_tag == TAG_Borrow">m_data.Borrow</Item>
       <Item Name="Path"  Condition="m_tag == TAG_Path" >m_data.Path</Item>
       <Item Name="Tuple" Condition="m_tag == TAG_Tuple">m_data.Tuple</Item>
+      <Item Name="ErasedType" Condition="m_tag == TAG_ErasedType">ErasedType {m_data.ErasedType}</Item>
+      <Item Name="TraitObject" Condition="m_tag == TAG_TraitObject">TraitObject {m_data.TraitObject}</Item>
     </Expand>
   </Type>
   <Type Name="HIR::Path">

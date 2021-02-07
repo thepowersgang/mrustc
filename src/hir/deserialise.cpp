@@ -920,6 +920,19 @@
     template<> DEF_D( ::MIR::Statement, return d.deserialise_mir_statement(); )
     template<> DEF_D( ::MIR::BasicBlock, return d.deserialise_mir_basicblock(); )
 
+    template<> DEF_D( ::HIR::TraitPath::AtyEqual, 
+        return ::HIR::TraitPath::AtyEqual {
+            d.deserialise_genericpath(),
+            d.deserialise_type()
+        };
+    )
+    template<> DEF_D( ::HIR::TraitPath::AtyBound, 
+        return ::HIR::TraitPath::AtyBound {
+            d.deserialise_genericpath(),
+            d.deserialise_vec<HIR::TraitPath>()
+        };
+    );
+
     template<> DEF_D( ::HIR::ProcMacro, return d.deserialise_procmacro(); )
     template<> DEF_D( ::HIR::TypeImpl, return d.deserialise_typeimpl(); )
     template<> DEF_D( ::HIR::TraitImpl, return d.deserialise_traitimpl(); )
@@ -1081,8 +1094,9 @@
     ::HIR::TraitPath HirDeserialiser::deserialise_traitpath()
     {
         auto gpath = deserialise_genericpath();
-        auto tys = deserialise_istrmap< ::HIR::TypeRef>();
-        return ::HIR::TraitPath { mv$(gpath), {}, mv$(tys) };
+        auto tys = deserialise_istrmap< ::HIR::TraitPath::AtyEqual>();
+        auto bounds = deserialise_istrmap< ::HIR::TraitPath::AtyBound>();
+        return ::HIR::TraitPath { mv$(gpath), {}, mv$(tys), mv$(bounds) };
     }
     ::HIR::Path HirDeserialiser::deserialise_path()
     {

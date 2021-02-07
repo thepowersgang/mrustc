@@ -170,11 +170,14 @@ bool ::HIR::GenericPath::operator==(const GenericPath& x) const
         m_path.clone(),
         m_hrls,
         {},
+        {},
         m_trait_ptr
         };
 
     for( const auto& assoc : m_type_bounds )
         rv.m_type_bounds.insert(::std::make_pair( assoc.first, assoc.second.clone() ));
+    for( const auto& assoc : m_trait_bounds )
+        rv.m_trait_bounds.insert(::std::make_pair( assoc.first, assoc.second.clone() ));
 
     return rv;
 }
@@ -191,7 +194,7 @@ bool ::HIR::TraitPath::operator==(const ::HIR::TraitPath& x) const
     for(auto it_l = m_type_bounds.begin(), it_r = x.m_type_bounds.begin(); it_l != m_type_bounds.end(); it_l++, it_r++ ) {
         if( it_l->first != it_r->first )
             return false;
-        if( it_l->second != it_r->second )
+        if( it_l->second.ord( it_r->second ) != OrdEqual )
             return false;
     }
     return true;
@@ -360,7 +363,7 @@ namespace {
         if( it_l->first != it_r->first ) {
             return Compare::Unequal;
         }
-        CMP( rv, it_l->second .compare_with_placeholders( sp, it_r->second, resolve_placeholder ) );
+        CMP( rv, it_l->second.type .compare_with_placeholders( sp, it_r->second.type, resolve_placeholder ) );
         ++ it_l;
         ++ it_r;
     }

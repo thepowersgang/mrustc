@@ -109,7 +109,7 @@ void HMTypeInferrence::check_for_loops()
             TU_ARMA(TraitObject, e) {
                 this->check_pathparams(ivars, e.m_trait.m_path.m_params);
                 for(const auto& aty : e.m_trait.m_type_bounds)
-                    this->check_ty(ivars, aty.second);
+                    this->check_ty(ivars, aty.second.type);
                 for(const auto& marker : e.m_markers) {
                     this->check_pathparams(ivars, marker.m_params);
                 }
@@ -119,7 +119,7 @@ void HMTypeInferrence::check_for_loops()
                 for(const auto& trait : e.m_traits) {
                     this->check_pathparams(ivars, trait.m_path.m_params);
                     for(const auto& aty : trait.m_type_bounds)
-                        this->check_ty(ivars, aty.second);
+                        this->check_ty(ivars, aty.second.type);
                 }
                 }
             TU_ARMA(Tuple, e) {
@@ -475,7 +475,7 @@ void HMTypeInferrence::add_ivars(::HIR::TypeRef& type)
         // Iterate all paths
         this->add_ivars_params(e.m_trait.m_path.m_params);
         for(auto& aty : e.m_trait.m_type_bounds)
-            this->add_ivars(aty.second);
+            this->add_ivars(aty.second.type);
         for(auto& marker : e.m_markers)
             this->add_ivars_params(marker.m_params);
         }
@@ -984,7 +984,7 @@ void TraitResolution::prep_indexes()
             DEBUG("[prep_indexes] `" << be.type << " : " << be.trait);
             // Explicitly listed bounds
             for( const auto& tb : be.trait.m_type_bounds ) {
-                DEBUG("[prep_indexes] Equality (TB) - <" << be.type << " as " << be.trait.m_path << ">::" << tb.first << " = " << tb.second);
+                DEBUG("[prep_indexes] Equality (TB) - <" << be.type << " as " << be.trait.m_path << ">::" << tb.first << " = " << tb.second.type);
 
                 // Locate the source trait
                 ::HIR::GenericPath  source_trait_path;
@@ -996,7 +996,7 @@ void TraitResolution::prep_indexes()
                     ::HIR::TypePathBinding::make_Opaque({})
                     );
 
-                add_equality( mv$(ty_l), tb.second.clone() );
+                add_equality( mv$(ty_l), tb.second.type.clone() );
             }
 
             const auto& trait_params = be.trait.m_path.m_params;
@@ -1020,7 +1020,7 @@ void TraitResolution::prep_indexes()
                                 ::HIR::TypePathBinding::make_Opaque({})
                                 );
                         }
-                        DEBUG("[prep_indexes] Equality (ATB) - <" << ty_a << " as " << a_ty_b.m_path << ">::" << tb.first << " = " << tb.second);
+                        DEBUG("[prep_indexes] Equality (ATB) - <" << ty_a << " as " << a_ty_b.m_path << ">::" << tb.first << " = " << tb.second.type);
 
                         // Find the source trait for this associated type
                         ::HIR::GenericPath  source_trait_path;
@@ -1032,7 +1032,7 @@ void TraitResolution::prep_indexes()
                             ::HIR::TypePathBinding::make_Opaque({})
                             );
 
-                        add_equality( mv$(ty_l), mv$(tb.second) );
+                        add_equality( mv$(ty_l), mv$(tb.second.type) );
                     }
                 }
             }
@@ -1174,7 +1174,7 @@ bool TraitResolution::find_trait_impls_magic(const Span& sp,
         ) const
 {
     static ::HIR::PathParams    null_params;
-    static ::std::map<RcString, ::HIR::TypeRef>    null_assoc;
+    static ::HIR::TraitPath::assoc_list_t   null_assoc;
 
     const auto& lang_Sized = this->m_crate.get_lang_item_path(sp, "sized");
     const auto& lang_Copy = this->m_crate.get_lang_item_path(sp, "copy");
@@ -1278,7 +1278,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
         ) const
 {
     static ::HIR::PathParams    null_params;
-    static ::std::map<RcString, ::HIR::TypeRef>    null_assoc;
+    static ::HIR::TraitPath::assoc_list_t   null_assoc;
 
     const auto& type = this->m_ivars.get_type(ty);
     TRACE_FUNCTION_F("trait = " << trait << params  << ", type = " << type);
@@ -1341,8 +1341,8 @@ bool TraitResolution::find_trait_impls(const Span& sp,
 
                 ::HIR::PathParams   pp;
                 pp.m_types.push_back( ::HIR::TypeRef(mv$(args)) );
-                ::std::map<RcString, ::HIR::TypeRef>  types;
-                types.insert( ::std::make_pair( "Output", e.m_rettype.clone() ) );
+                ::HIR::TraitPath::assoc_list_t  types;
+                types.insert( ::std::make_pair( "Output", ::HIR::TraitPath::AtyEqual { ::HIR::GenericPath(trait_fn_once, pp.clone()), e.m_rettype.clone()} ) );
                 return callback( ImplRef(type.clone(), mv$(pp), mv$(types)), cmp );
             }
             else
@@ -1382,8 +1382,8 @@ bool TraitResolution::find_trait_impls(const Span& sp,
 
             ::HIR::PathParams   pp;
             pp.m_types.push_back( ::HIR::TypeRef(mv$(args)) );
-            ::std::map<RcString, ::HIR::TypeRef>  types;
-            types.insert( ::std::make_pair( "Output", e.m_rettype.clone() ) );
+            ::HIR::TraitPath::assoc_list_t  types;
+            types.insert( ::std::make_pair( "Output", ::HIR::TraitPath::AtyEqual { ::HIR::GenericPath(trait_fn_once, pp.clone()), e.m_rettype.clone()} ) );
             return callback( ImplRef(type.clone(), mv$(pp), mv$(types)), cmp );
         }
         }
@@ -1460,7 +1460,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
                 auto cmp = this->compare_pp(sp, i_params, params);
                 if( cmp != ::HIR::Compare::Unequal ) {
                     // Invoke callback with a proper ImplRef
-                    ::std::map<RcString, ::HIR::TypeRef> assoc_clone;
+                    ::HIR::TraitPath::assoc_list_t assoc_clone;
                     for(const auto& e : i_assoc)
                         assoc_clone.insert( ::std::make_pair(e.first, e.second.clone()) );
                     auto ir = ImplRef(i_ty.clone(), i_params.clone(), mv$(assoc_clone));
@@ -1495,7 +1495,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
                     auto cmp = this->compare_pp(sp, i_params, params);
                     if( cmp != ::HIR::Compare::Unequal ) {
                         // Invoke callback with a proper ImplRef
-                        ::std::map<RcString, ::HIR::TypeRef> assoc_clone;
+                        ::HIR::TraitPath::assoc_list_t assoc_clone;
                         for(const auto& e : i_assoc)
                             assoc_clone.insert( ::std::make_pair(e.first, e.second.clone()) );
                         auto ir = ImplRef(i_ty.clone(), i_params.clone(), mv$(assoc_clone));
@@ -1537,9 +1537,9 @@ bool TraitResolution::find_trait_impls(const Span& sp,
                 ::HIR::PathParams   params_mono_o;
                 const auto& b_params_mono = (monomorphise_pathparams_needed(b_params) ? params_mono_o = monomorph_cb.monomorph_path_params(sp, b_params, false) : b_params);
                 // TODO: Monormophise and EAT associated types
-                ::std::map<RcString, ::HIR::TypeRef>    b_atys;
+                ::HIR::TraitPath::assoc_list_t  b_atys;
                 for(const auto& aty : bound.m_type_bounds)
-                    b_atys.insert(::std::make_pair( aty.first, monomorph_cb.monomorph_type(sp, aty.second) ));
+                    b_atys.insert(::std::make_pair( aty.first, ::HIR::TraitPath::AtyEqual { monomorph_cb.monomorph_genericpath(sp, aty.second.source_trait, false), monomorph_cb.monomorph_type(sp, aty.second.type) } ));
 
                 if( bound.m_path.m_path == trait )
                 {
@@ -1946,7 +1946,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
                     TODO(sp, "Handle unconstrained associate type " << pe.item << " from " << pe.type);
                 }
 
-                input = it->second.clone();
+                input = it->second.type.clone();
                 return ;
             }
         }
@@ -1960,13 +1960,13 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
                 if( cmp != ::HIR::Compare::Unequal ) {
                     auto it = i_assoc.find( pe.item );
                     if( it != i_assoc.end() ) {
-                        input = it->second.clone();
+                        input = it->second.type.clone();
                         return true;
                     }
                     // NOTE: (currently) there can only be one trait with this name, so if we found this trait and the item is present - good.
                     it = te.m_trait.m_type_bounds.find( pe.item );
                     if( it != te.m_trait.m_type_bounds.end() ) {
-                        input = it->second.clone();
+                        input = it->second.type.clone();
                         return true;
                     }
                     return false;
@@ -2007,7 +2007,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
                         TODO(sp, "Handle unconstrained associate type " << pe.item << " from " << pe.type);
                     }
 
-                    input = it->second.clone();
+                    input = it->second.type.clone();
                     return ;
                 }
             }
@@ -2021,13 +2021,13 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
                     if( cmp != ::HIR::Compare::Unequal ) {
                         auto it = i_assoc.find( pe.item );
                         if( it != i_assoc.end() ) {
-                            input = it->second.clone();
+                            input = it->second.type.clone();
                             return true;
                         }
                         // NOTE: (currently) there can only be one trait with this name, so if we found this trait and the item is present - good.
                         it = trait.m_type_bounds.find( pe.item );
                         if( it != trait.m_type_bounds.end() ) {
-                            input = it->second.clone();
+                            input = it->second.type.clone();
                             return true;
                         }
                         return false;
@@ -2083,7 +2083,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
                 }
                 else {
                     result_type = ResultType::Recurse;
-                    input = it->second.clone();
+                    input = it->second.type.clone();
                 }
                 return true;
             }
@@ -2096,8 +2096,8 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
                     auto it = assoc.find(pe.item);
                     if( it != assoc.end() ) {
                         result_type = ResultType::Recurse;
-                        DEBUG("Found associated type " << input << " = " << it->second);
-                        input = it->second.clone();
+                        DEBUG("Found associated type " << input << " = " << it->second.type);
+                        input = it->second.type.clone();
                     }
                     return true;
                 }
@@ -2113,7 +2113,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
                 }
                 else {
                     result_type = ResultType::Recurse;
-                    input = it->second.clone();
+                    input = it->second.type.clone();
                 }
                 return true;
             }
@@ -2188,11 +2188,11 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
                 if( bound_tp == pe.trait ) {
                     auto it = bound.m_type_bounds.find( pe.item );
                     if( it != bound.m_type_bounds.end() ) {
-                        if( monomorphise_type_needed(it->second) ) {
-                            input = cb_placeholders_trait.monomorph_type(sp, it->second);
+                        if( monomorphise_type_needed(it->second.type) ) {
+                            input = cb_placeholders_trait.monomorph_type(sp, it->second.type);
                         }
                         else {
-                            input = it->second.clone();
+                            input = it->second.type.clone();
                         }
                         DEBUG("- Found replacement: " << input);
                         this->expand_associated_types_inplace(sp, input, stack);
@@ -2208,7 +2208,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
                         [&](const auto&, const auto& x, const auto& assoc){
                             auto it = assoc.find(pe.item);
                             if( it != assoc.end() ) {
-                                input = it->second.clone();
+                                input = it->second.type.clone();
                                 return true;
                             }
                             return false;
@@ -2408,7 +2408,7 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
                 type,
                 [&](const auto& ty, const auto& b_params, const auto& assoc) {
                     // TODO: Avoid duplicating this map every time
-                    ::std::map< RcString,::HIR::TypeRef>   assoc2;
+                    ::HIR::TraitPath::assoc_list_t  assoc2;
                     for(const auto& i : assoc) {
                         assoc2.insert( ::std::make_pair(i.first, i.second.clone())  );
                     }
@@ -2473,7 +2473,7 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
                     auto tp_mono = monomorph_cb.monomorph_traitpath(sp, bound, false);
                     // - Expand associated types
                     for(auto& ty : tp_mono.m_type_bounds) {
-                        ty.second = this->expand_associated_types(sp, mv$(ty.second));
+                        ty.second.type = this->expand_associated_types(sp, mv$(ty.second.type));
                     }
                     DEBUG("- tp_mono = " << tp_mono);
                     // TODO: Instead of using `type` here, build the real type
@@ -2495,7 +2495,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
 {
     // TODO: Have a global cache of impls that don't reference either generics or ivars
 
-    static ::std::map<RcString, ::HIR::TypeRef>    null_assoc;
+    static ::HIR::TraitPath::assoc_list_t   null_assoc;
     TRACE_FUNCTION_F(trait << FMT_CB(ss, if(params_ptr) { ss << *params_ptr; } else { ss << "<?>"; }) << " for " << type);
 
     // Handle auto traits (aka OIBITs)
@@ -3060,7 +3060,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 p = this->expand_associated_types(sp, mv$(p));
             }
             for(auto& ab : real_trait.m_type_bounds) {
-                ab.second = this->expand_associated_types(sp, mv$(ab.second));
+                ab.second.type = this->expand_associated_types(sp, mv$(ab.second.type));
             }
             const auto& real_trait_path = real_trait.m_path;
             DEBUG("- bound mono " << real_type << " : " << real_trait);
@@ -3117,23 +3117,23 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                         ty_p = &this->m_ivars.get_type(tmp);
                     }
                     const auto& ty = *ty_p;
-                    DEBUG("[ftic_check_params] - Compare " << ty << " and " << assoc_bound.second << ", matching generics");
+                    DEBUG("[ftic_check_params] - Compare " << ty << " and " << assoc_bound.second.type << ", matching generics");
                     // `ty` = Monomorphised actual type (< `be.type` as `be.trait` >::`assoc_bound.first`)
                     // `assoc_bound.second` = Desired type (monomorphised too)
-                    auto cmp_i = assoc_bound.second .match_test_generics_fuzz(sp, ty, cb_infer, matcher);
+                    auto cmp_i = assoc_bound.second.type .match_test_generics_fuzz(sp, ty, cb_infer, matcher);
                     switch(cmp_i)
                     {
                     case ::HIR::Compare::Equal:
                         DEBUG("Equal");
                         break;
                     case ::HIR::Compare::Unequal:
-                        DEBUG("Assoc `" << assoc_bound.first << "` didn't match - " << ty << " != " << assoc_bound.second);
+                        DEBUG("Assoc `" << assoc_bound.first << "` didn't match - " << ty << " != " << assoc_bound.second.type);
                         cmp = ::HIR::Compare::Unequal;
                         break;
                     case ::HIR::Compare::Fuzzy:
                         // TODO: When a fuzzy match is encountered on a conditional bound, returning `false` can lead to an false negative (and a compile error)
                         // BUT, returning `true` could lead to it being selected. (Is this a problem, should a later validation pass check?)
-                        DEBUG("[ftic_check_params] Fuzzy match assoc bound between " << ty << " and " << assoc_bound.second);
+                        DEBUG("[ftic_check_params] Fuzzy match assoc bound between " << ty << " and " << assoc_bound.second.type);
                         cmp = ::HIR::Compare::Fuzzy;
                         break ;
                     }
@@ -3788,7 +3788,11 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
                             // Run EAT
                             atyv = this->expand_associated_types( sp, ::HIR::TypeRef::new_path( mv$(p), {} ) );
                         }
-                        tmp_e.m_trait.m_type_bounds[aty.first] = mv$(atyv);
+                        TODO(sp, "Monomorph " << aty.second.source_trait << " from " << de->m_trait.m_path.m_params << " to " << tmp_e.m_trait.m_path.m_params);
+                        tmp_e.m_trait.m_type_bounds[aty.first] = ::HIR::TraitPath::AtyEqual {
+                            aty.second.source_trait.clone(),    // TODO: Monomorph from `de->m_trait.m_path.m_params` to `tmp_e.m_trait.m_path.m_params`
+                            mv$(atyv)
+                        };
                     }
                     return true;
                 });

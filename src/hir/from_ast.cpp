@@ -82,81 +82,22 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
             auto type = LowerHIR_Type(e.type);
 
             // TODO: Check if this trait is `Sized` and ignore if it is? (It's a useless bound)
-            
-            struct H {
-                static ::HIR::GenericPath find_source_trait(
-                    const Span& sp,
-                    const ::HIR::GenericPath& path, const AST::PathBinding_Type::Data_Trait& pbe, const RcString& name,
-                    const Monomorphiser& ms
-                    )
-                {
-                    if(pbe.hir)
-                    {
-                        assert(pbe.hir);
-                        const auto& trait = *pbe.hir;
-
-                        auto it = trait.m_types.find(name);
-                        if(it != trait.m_types.end()) {
-                            return ms.monomorph_genericpath(sp, path, /*allow_infer=*/false);
-                        }
-                        auto cb = MonomorphStatePtr(nullptr, &path.m_params, nullptr);
-                        for(const auto& st : trait.m_all_parent_traits)
-                        {
-                            // NOTE: st.m_trait_ptr isn't populated yet
-                            const auto& t = g_crate_ptr->get_trait_by_path(sp, st.m_path.m_path);
-
-                            auto it = t.m_types.find(name);
-                            if(it != t.m_types.end()) {
-                                // Monomorphse into outer scope, then run the outer monomorph
-                                auto p = cb.monomorph_genericpath(sp, st.m_path, /*allow_infer=*/false);
-                                return ms.monomorph_genericpath(sp, p, /*allow_infer=*/false);
-                            }
-                        }
-                    }
-                    else if( pbe.trait_ )
-                    {
-                        assert(pbe.trait_);
-                        const auto& trait = *pbe.trait_;
-                        for(const auto& i : trait.items())
-                        {
-                            if( i.data.is_Type() && i.name == name ) {
-                                // Return current path.
-                                return ms.monomorph_genericpath(sp, path, /*allow_infer=*/false);
-                            }
-                        }
-
-                        auto cb = MonomorphStatePtr(nullptr, &path.m_params, nullptr);
-                        for( const auto& st : trait.supertraits() )
-                        {
-                            auto b = LowerHIR_TraitPath(sp, *st.ent.path, true);
-                            auto rv = H::find_source_trait(sp, b.m_path, st.ent.path->m_bindings.type.binding.as_Trait(), name, cb);
-                            if(rv != HIR::GenericPath())
-                                return rv;
-                        }
-                    }
-                    else
-                    {
-                        BUG(sp, "Unbound path");
-                    }
-                    return ::HIR::GenericPath();
-                }
-            };
 
             auto bound_trait_path = LowerHIR_TraitPath(bound.span, e.trait, /*allow_bounds=*/true);
-            for(const auto& pe : e.trait.nodes().back().args().m_entries)
+            for(auto& bound : bound_trait_path.m_trait_bounds)
             {
-                if(const auto* b = pe.opt_AssociatedTyBound())
+                const auto& name = bound.first;
+                const auto& src_trait = bound.second.source_trait;
+                for(auto& trait : bound.second.traits)
                 {
-                    auto src_trait = H::find_source_trait(sp, bound_trait_path.m_path, e.trait.m_bindings.type.binding.as_Trait(), b->first, MonomorphiserNop());
-                    if(src_trait == ::HIR::GenericPath())
-                        ERROR(sp, E0000, "Unable to find source trait for " << b->first << " in " << bound_trait_path.m_path);
                     rv.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({
-                        ::HIR::TypeRef::new_path( ::HIR::Path(type.clone(), mv$(src_trait), b->first), {} ),
-                        // TODO: Recursively expand
-                        LowerHIR_TraitPath(bound.span, b->second)
+                        ::HIR::TypeRef::new_path( ::HIR::Path(type.clone(), src_trait.clone(), name), {} ),
+                        std::move(trait)
                         }));
                 }
+                bound.second.traits.clear();
             }
+            bound_trait_path.m_trait_bounds.clear();
 
             rv.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({
                 /*LowerHIR_HigherRankedBounds(e.outer_hrbs),*/
@@ -705,8 +646,71 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
         LowerHIR_GenericPath(sp, path, FromAST_PathClass::Type, /*allow_assoc=*/true),
         {},
         {},
+        {},
         nullptr
         };
+
+    struct H {
+        static ::HIR::GenericPath find_source_trait(
+            const Span& sp,
+            const ::HIR::GenericPath& path, const AST::PathBinding_Type::Data_Trait& pbe, const RcString& name,
+            const Monomorphiser& ms
+        )
+        {
+            TRACE_FUNCTION_F(path);
+            if(pbe.hir)
+            {
+                assert(pbe.hir);
+                const auto& trait = *pbe.hir;
+
+                auto it = trait.m_types.find(name);
+                if(it != trait.m_types.end()) {
+                    return ms.monomorph_genericpath(sp, path, /*allow_infer=*/false);
+                }
+                auto cb = MonomorphStatePtr(nullptr, &path.m_params, nullptr);
+                for(const auto& st : trait.m_all_parent_traits)
+                {
+                    // NOTE: st.m_trait_ptr isn't populated yet
+                    const auto& t = g_crate_ptr->get_trait_by_path(sp, st.m_path.m_path);
+
+                    auto it = t.m_types.find(name);
+                    if(it != t.m_types.end()) {
+                        // Monomorphse into outer scope, then run the outer monomorph
+                        auto p = cb.monomorph_genericpath(sp, st.m_path, /*allow_infer=*/false);
+                        return ms.monomorph_genericpath(sp, p, /*allow_infer=*/false);
+                    }
+                }
+            }
+            else if( pbe.trait_ )
+            {
+                assert(pbe.trait_);
+                const auto& trait = *pbe.trait_;
+                for(const auto& i : trait.items())
+                {
+                    if( i.data.is_Type() && i.name == name ) {
+                        // Return current path.
+                        return ms.monomorph_genericpath(sp, path, /*allow_infer=*/false);
+                    }
+                }
+
+                auto cb = MonomorphStatePtr(nullptr, &path.m_params, nullptr);
+                for( const auto& st : trait.supertraits() )
+                {
+                    auto b = LowerHIR_TraitPath(sp, *st.ent.path, true);
+                    auto p = ms.monomorph_genericpath(sp, b.m_path, /*allow_infer=*/false);
+                    auto rv = H::find_source_trait(sp, p, st.ent.path->m_bindings.type.binding.as_Trait(), name, cb);
+                    if(rv != HIR::GenericPath())
+                        return rv;
+                }
+            }
+            else
+            {
+                BUG(sp, "Unbound path");
+            }
+            return ::HIR::GenericPath();
+        }
+    };
+
     for(const auto& e : path.nodes().back().args().m_entries)
     {
         TU_MATCH_HDRA( (e), {)
@@ -714,12 +718,24 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
         TU_ARMA(Lifetime, _) {}
         TU_ARMA(Type, _) {}
         TU_ARMA(AssociatedTyEqual, assoc) {
-            rv.m_type_bounds.insert(::std::make_pair( assoc.first, LowerHIR_Type(assoc.second) ));
+            auto src_trait = H::find_source_trait(sp, rv.m_path, path.m_bindings.type.binding.as_Trait(), assoc.first, MonomorphiserNop());
+            DEBUG("src_trait = " << src_trait << " for " << assoc.first);
+            rv.m_type_bounds.insert(::std::make_pair( assoc.first, ::HIR::TraitPath::AtyEqual { std::move(src_trait), LowerHIR_Type(assoc.second) } ));
             }
         TU_ARMA(AssociatedTyBound, assoc) {
             if( !ignore_bounds )
             {
                 ERROR(sp, E0000, "Associated type trait bounds not allowed here - " << path);
+            }
+            else
+            {
+                auto src_trait = H::find_source_trait(sp, rv.m_path, path.m_bindings.type.binding.as_Trait(), assoc.first, MonomorphiserNop());
+                DEBUG("src_trait = " << src_trait << " for " << assoc.first);
+                //if(src_trait == ::HIR::GenericPath())
+                //    ERROR(sp, E0000, "Unable to find source trait for " << b->first << " in " << bound_trait_path.m_path);
+                auto it = rv.m_trait_bounds.insert(std::make_pair(assoc.first, ::HIR::TraitPath::AtyBound { std::move(src_trait), {} }));
+                it.first->second.traits.push_back( LowerHIR_TraitPath(sp, assoc.second, /*ignore_bounds*/false) );
+
             }
             }
         }
@@ -926,11 +942,14 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
     TU_ARMA(ErasedType, e) {
         ASSERT_BUG(ty.span(), e.traits.size() > 0, "ErasedType with no traits");
 
+        // TODO: There can be associated type bounds, those need to be propagated
+
         ::std::vector< ::HIR::TraitPath>    traits;
         for(const auto& t : e.traits)
         {
             DEBUG("t = " << *t.path);
             // TODO: Pass the HRBs down
+            // TODO: Handle ATY bounds
             traits.push_back( LowerHIR_TraitPath(ty.span(), *t.path) );
         }
         ::HIR::LifetimeRef  lft;
@@ -1397,6 +1416,7 @@ namespace {
     ::std::vector< ::HIR::TraitPath>    supertraits;
     for(const auto& st : f.supertraits()) {
         if( st.ent.path->is_valid() ) {
+            // TODO: ATY bounds?
             supertraits.push_back( LowerHIR_TraitPath(st.sp, *st.ent.path) );
         }
         else {

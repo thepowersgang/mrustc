@@ -35,7 +35,7 @@ struct TyVisitor
         if( visit_path_params(tpl.m_path.m_params) )
             return true;
         for(auto& assoc : tpl.m_type_bounds)
-            if( visit_type(assoc.second) )
+            if( visit_type(assoc.second.type) )
                 return true;
         return false;
     }
@@ -361,14 +361,24 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
         this->monomorph_genericpath(sp, tpl.m_path, allow_infer),
         tpl.m_hrls,
         {},
+        {},
         tpl.m_trait_ptr
         };
 
     for(const auto& assoc : tpl.m_type_bounds) {
         rv.m_type_bounds.insert(::std::make_pair(
             assoc.first,
-            this->monomorph_type(sp, assoc.second, allow_infer)
+            HIR::TraitPath::AtyEqual {
+                this->monomorph_genericpath(sp, assoc.second.source_trait, allow_infer),
+                this->monomorph_type(sp, assoc.second.type, allow_infer)
+                }
             ));
+    }
+    for(const auto& assoc : tpl.m_trait_bounds) {
+        auto v = HIR::TraitPath::AtyBound { this->monomorph_genericpath(sp, assoc.second.source_trait, allow_infer), {} };
+        for(const auto& trait : assoc.second.traits)
+            v.traits.push_back( monomorph_traitpath(sp, trait, allow_infer) );
+        rv.m_trait_bounds.insert(::std::make_pair( assoc.first, std::move(v) ));
     }
 
     return rv;
@@ -416,14 +426,26 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
         clone_ty_with__generic_path(sp, tpl.m_path, callback),
         tpl.m_hrls,
         {},
+        {},
         tpl.m_trait_ptr
         };
 
     for(const auto& assoc : tpl.m_type_bounds) {
         rv.m_type_bounds.insert(::std::make_pair(
             assoc.first,
-            clone_ty_with(sp, assoc.second, callback)
+            HIR::TraitPath::AtyEqual {
+                clone_ty_with__generic_path(sp, assoc.second.source_trait, callback),
+                clone_ty_with(sp, assoc.second.type, callback)
+            }
             ));
+    }
+    for(const auto& assoc : tpl.m_trait_bounds) {
+        auto& traits = rv.m_trait_bounds.insert(::std::make_pair( assoc.first,
+                HIR::TraitPath::AtyBound { clone_ty_with__generic_path(sp, assoc.second.source_trait, callback), {} }
+            ) ).first->second.traits;
+
+        for(const auto& t : assoc.second.traits)
+            traits.push_back(clone_ty_with__trait_path(sp, t, callback));
     }
 
     return rv;

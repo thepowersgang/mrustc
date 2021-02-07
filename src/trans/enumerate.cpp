@@ -247,12 +247,7 @@ namespace {
 
                             auto b_ty_mono = resolve.monomorph_expand(sp, be.type, cb_monomorph);
                             auto b_tp_mono = cb_monomorph.monomorph_traitpath(sp, be.trait, false);
-                            for(auto& ty : b_tp_mono.m_path.m_params.m_types) {
-                                resolve.expand_associated_types(sp, ty);
-                            }
-                            for(auto& assoc_bound : b_tp_mono.m_type_bounds) {
-                                resolve.expand_associated_types(sp, assoc_bound.second);
-                            }
+                            resolve.expand_associated_types_tp(sp, b_tp_mono);
 
                             rv = resolve.find_impl(sp, b_tp_mono.m_path.m_path, b_tp_mono.m_path.m_params, b_ty_mono, [&](const auto& impl, bool) {
                                 return true;
@@ -715,7 +710,7 @@ namespace
                         auto idx = trait.m_type_indexes.at(ty_b.first);
                         if(vtable_params.m_types.size() <= idx)
                             vtable_params.m_types.resize(idx+1);
-                        vtable_params.m_types[idx] = ty_b.second.clone();
+                        vtable_params.m_types[idx] = ty_b.second.type.clone();
                     }
 
                     visit_type( ::HIR::TypeRef::new_path( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref ) );

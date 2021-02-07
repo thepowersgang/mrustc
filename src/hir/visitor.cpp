@@ -466,7 +466,16 @@ void ::HIR::Visitor::visit_trait_path(::HIR::TraitPath& p)
 {
     this->visit_generic_path(p.m_path, ::HIR::Visitor::PathContext::TYPE);
     for(auto& assoc : p.m_type_bounds)
-        this->visit_type(assoc.second);
+    {
+        this->visit_generic_path(assoc.second.source_trait, ::HIR::Visitor::PathContext::TYPE);
+        this->visit_type(assoc.second.type);
+    }
+    for(auto& assoc : p.m_trait_bounds)
+    {
+        this->visit_generic_path(assoc.second.source_trait, ::HIR::Visitor::PathContext::TYPE);
+        for(auto& trait : assoc.second.traits)
+            this->visit_trait_path(trait);
+    }
 }
 void ::HIR::Visitor::visit_path(::HIR::Path& p, ::HIR::Visitor::PathContext pc)
 {

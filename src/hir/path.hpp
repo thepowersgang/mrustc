@@ -155,7 +155,51 @@ public:
     GenericPath m_path;
     ::std::vector< RcString>   m_hrls;
     // TODO: Each bound should list its origin trait
-    ::std::map< RcString, ::HIR::TypeRef>    m_type_bounds;
+    struct AtyEqual {
+        ::HIR::GenericPath  source_trait;
+        ::HIR::TypeRef  type;
+
+        Ordering ord(const AtyEqual& x) const {
+            ORD(source_trait, x.source_trait);
+            ORD(type, x.type);
+            return OrdEqual;
+        }
+        AtyEqual clone() const {
+            return AtyEqual {
+                source_trait.clone(),
+                type.clone()
+                };
+        }
+        friend ::std::ostream& operator<<(::std::ostream& os, const AtyEqual& x) {
+            os << x.type;
+            return os;
+        }
+
+    };
+    typedef ::std::map< RcString, AtyEqual> assoc_list_t;
+    assoc_list_t    m_type_bounds;
+    /// Associated type trait bounds (`Type: Trait`)
+    struct AtyBound {
+        ::HIR::GenericPath  source_trait;
+        std::vector<::HIR::TraitPath>   traits;
+
+        Ordering ord(const AtyBound& x) const {
+            ORD(source_trait, x.source_trait);
+            ORD(traits, x.traits);
+            return OrdEqual;
+        }
+        AtyBound clone() const {
+            std::vector<::HIR::TraitPath>   new_traits;
+            new_traits.reserve(traits.size());
+            for(const auto& t : traits)
+                new_traits.push_back(t.clone());
+            return AtyBound {
+                source_trait.clone(),
+                ::std::move(new_traits)
+            };
+        }
+    };
+    ::std::map< RcString, AtyBound>  m_trait_bounds;
 
     const ::HIR::Trait* m_trait_ptr;
 
@@ -169,6 +213,7 @@ public:
     Ordering ord(const TraitPath& x) const {
         ORD(m_path, x.m_path);
         ORD(m_hrls, x.m_hrls);
+        ORD(m_trait_bounds, x.m_trait_bounds);
         return ::ord(m_type_bounds, x.m_type_bounds);
     }
 

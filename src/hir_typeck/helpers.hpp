@@ -208,7 +208,7 @@ public:
     bool iterate_bounds_traits(const Span& sp, ::std::function<bool(const ::HIR::TypeRef&, const ::HIR::TraitPath& trait)> cb) const;
     bool iterate_aty_bounds(const Span& sp, const ::HIR::Path::Data::Data_UfcsKnown& pe, ::std::function<bool(const ::HIR::TraitPath&)> cb) const;
 
-    typedef ::std::function<bool(const ::HIR::TypeRef&, const ::HIR::PathParams&, const ::std::map< RcString,::HIR::TypeRef>&)> t_cb_trait_impl;
+    typedef ::std::function<bool(const ::HIR::TypeRef&, const ::HIR::PathParams&, const ::HIR::TraitPath::assoc_list_t&)> t_cb_trait_impl;
     typedef ::std::function<bool(ImplRef, ::HIR::Compare)> t_cb_trait_impl_r;
 
     /// Searches for a trait impl that matches the provided trait name and type

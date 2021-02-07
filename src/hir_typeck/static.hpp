@@ -197,7 +197,9 @@ public:
         return rv;
     }
 
+    void expand_associated_types_tp(const Span& sp, ::HIR::TraitPath& input) const;
 private:
+    void expand_associated_types_params(const Span& sp, ::HIR::PathParams& input) const;
     void expand_associated_types_inner(const Span& sp, ::HIR::TypeRef& input) const;
     bool expand_associated_types__UfcsKnown(const Span& sp, ::HIR::TypeRef& input, bool recurse=true) const;
     bool replace_equalities(::HIR::TypeRef& input) const;
@@ -213,7 +215,7 @@ public:
             const ::HIR::SimplePath& des, const ::HIR::PathParams& params,
             const ::HIR::Trait& trait_ptr, const ::HIR::SimplePath& trait_path, const ::HIR::PathParams& pp,
             const ::HIR::TypeRef& self_type,
-            ::std::function<void(const ::HIR::PathParams&, ::std::map< RcString, ::HIR::TypeRef>)> callback
+            ::std::function<void(const ::HIR::PathParams&, ::HIR::TraitPath::assoc_list_t)> callback
             ) const;
     ///
     bool trait_contains_type(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const char* name,  ::HIR::GenericPath& out_path) const;

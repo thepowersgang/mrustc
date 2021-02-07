@@ -1836,7 +1836,7 @@ void Context::equate_types_inner(const Span& sp, const ::HIR::TypeRef& li, const
                     if( it_l->first != it_r->first ) {
                         ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - associated bounds differ");
                     }
-                    this->equate_types_inner(sp, it_l->second, it_r->second);
+                    this->equate_types_inner(sp, it_l->second.type, it_r->second.type);
                 }
                 if( l_e.m_markers.size() != r_e.m_markers.size() ) {
                     ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - trait counts differ");
@@ -3892,7 +3892,7 @@ namespace {
                     {
                         for(const auto& tyb : dep->m_trait.m_type_bounds)
                         {
-                            context_mut->equate_types_assoc(sp, tyb.second,  trait.m_path, trait.m_params.clone(), src, tyb.first.c_str(), false);
+                            context_mut->equate_types_assoc(sp, tyb.second.type,  trait.m_path, trait.m_params.clone(), src, tyb.first.c_str(), false);
                         }
                         if( dep->m_trait.m_type_bounds.empty() )
                         {
@@ -4945,7 +4945,7 @@ namespace {
                         {
                             for(const auto& aty_bound : b_tp_mono.m_type_bounds)
                             {
-                                context.equate_types_assoc(sp, aty_bound.second,  b_tp_mono.m_path.m_path, b_tp_mono.m_path.m_params.clone(), b_ty_mono, aty_bound.first.c_str(), false);
+                                context.equate_types_assoc(sp, aty_bound.second.type,  b_tp_mono.m_path.m_path, b_tp_mono.m_path.m_params.clone(), b_ty_mono, aty_bound.first.c_str(), false);
                             }
                         }
                         else

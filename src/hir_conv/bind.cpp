@@ -819,7 +819,7 @@ namespace {
                             auto get_aty_this = [&](const char* name) {
                                 auto it = pt.m_type_bounds.find(name);
                                 if( it != pt.m_type_bounds.end() )
-                                    return monomorph_cb.monomorph_type(sp, it->second);
+                                    return monomorph_cb.monomorph_type(sp, it->second.type);
                                 return get_aty(name);
                             };
                             enum_supertraits_in(*pt.m_trait_ptr, monomorph_cb.monomorph_genericpath(sp, pt.m_path, false), get_aty_this);
@@ -839,7 +839,7 @@ namespace {
                             auto get_aty_this = [&](const char* name) {
                                 auto it = pt.m_type_bounds.find(name);
                                 if( it != pt.m_type_bounds.end() )
-                                    return monomorph_cb.monomorph_type(sp, it->second);
+                                    return monomorph_cb.monomorph_type(sp, it->second.type);
                                 return get_aty(name);
                             };
 
@@ -858,7 +858,7 @@ namespace {
                         auto v = get_aty(ty.first.c_str());
                         if( v != ::HIR::TypeRef() )
                         {
-                            out_path.m_type_bounds.insert( ::std::make_pair(ty.first, mv$(v)) );
+                            out_path.m_type_bounds.insert( ::std::make_pair(ty.first, ::HIR::TraitPath::AtyEqual { out_path.m_path.clone(), mv$(v) }) );
                         }
                     }
                     // TODO: HRLs?
@@ -872,10 +872,10 @@ namespace {
             Enumerate   e;
             for(const auto& pt : tr.m_parent_traits)
             {
-                auto get_aty = [&](const char* name) {
+                auto get_aty = [&](const char* name)->::HIR::TypeRef {
                     auto it = pt.m_type_bounds.find(name);
                     if( it != pt.m_type_bounds.end() )
-                        return it->second.clone();
+                        return it->second.type.clone();
                     return ::HIR::TypeRef();
                 };
                 e.enum_supertraits_in(*pt.m_trait_ptr, pt.m_path.clone(), get_aty);
@@ -896,10 +896,10 @@ namespace {
                     continue ;
                 }
 
-                auto get_aty = [&](const char* name) {
+                auto get_aty = [&](const char* name)->::HIR::TypeRef {
                     auto it = be.trait.m_type_bounds.find(name);
                     if( it != be.trait.m_type_bounds.end() )
-                        return it->second.clone();
+                        return it->second.type.clone();
                     return ::HIR::TypeRef();
                 };
                 e.enum_supertraits_in(*be.trait.m_trait_ptr, be.trait.m_path.clone(), get_aty);

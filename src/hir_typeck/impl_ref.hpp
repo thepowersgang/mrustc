@@ -29,12 +29,12 @@ struct ImplRef
     (BoundedPtr, struct {
         const ::HIR::TypeRef*    type;
         const ::HIR::PathParams* trait_args;
-        const ::std::map< RcString, ::HIR::TypeRef>*    assoc;
+        const ::HIR::TraitPath::assoc_list_t*    assoc;
         }),
     (Bounded, struct {
         ::HIR::TypeRef    type;
         ::HIR::PathParams trait_args;
-        ::std::map< RcString, ::HIR::TypeRef>    assoc;
+        ::HIR::TraitPath::assoc_list_t    assoc;
         })
     );
 
@@ -47,10 +47,10 @@ struct ImplRef
         m_data(Data::make_TraitImpl({ mv$(impl_params), &trait, &impl }))
 
     {}
-    ImplRef(const ::HIR::TypeRef* type, const ::HIR::PathParams* args, const ::std::map< RcString, ::HIR::TypeRef>* assoc):
-        m_data(Data::make_BoundedPtr({ type, mv$(args), mv$(assoc) }))
+    ImplRef(const ::HIR::TypeRef* type, const ::HIR::PathParams* args, const ::HIR::TraitPath::assoc_list_t* assoc):
+        m_data(Data::make_BoundedPtr({ type, args, assoc }))
     {}
-    ImplRef(::HIR::TypeRef type, ::HIR::PathParams args, ::std::map< RcString, ::HIR::TypeRef> assoc):
+    ImplRef(::HIR::TypeRef type, ::HIR::PathParams args, ::HIR::TraitPath::assoc_list_t assoc):
         m_data(Data::make_Bounded({ mv$(type), mv$(args), mv$(assoc) }))
     {}
 

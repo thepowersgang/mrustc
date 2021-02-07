@@ -666,7 +666,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
                 auto idx = trait.m_type_indexes.at(ty_b.first);
                 if(vtable_params.m_types.size() <= idx)
                     vtable_params.m_types.resize(idx+1);
-                vtable_params.m_types[idx] = ty_b.second.clone();
+                vtable_params.m_types[idx] = ty_b.second.type.clone();
             }
             auto vtable_type = ::HIR::TypeRef::new_path( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref );
 

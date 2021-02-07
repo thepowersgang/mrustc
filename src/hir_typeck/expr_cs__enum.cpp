@@ -139,13 +139,9 @@ namespace typecheck
                 }
 
                 for( const auto& assoc : be.trait.m_type_bounds ) {
-                    ::HIR::GenericPath  type_trait_path;
-                    ASSERT_BUG(sp, be.trait.m_trait_ptr, "Trait pointer not set in " << be.trait.m_path);
-                    // TODO: Store the source trait for this bound in the the bound list?
-                    if( !context.m_resolve.trait_contains_type(sp, real_trait, *be.trait.m_trait_ptr, assoc.first.c_str(),  type_trait_path) )
-                        BUG(sp, "Couldn't find associated type " << assoc.first << " in trait " << real_trait);
+                    ::HIR::GenericPath  type_trait_path = ms.monomorph_genericpath(sp, assoc.second.source_trait, true);
 
-                    auto other_ty = ms.monomorph_type(sp, assoc.second, true);
+                    auto other_ty = ms.monomorph_type(sp, assoc.second.type, true);
 
                     context.equate_types_assoc(sp, other_ty,  type_trait_path.m_path, mv$(type_trait_path.m_params.m_types), real_type, assoc.first.c_str());
                 }
@@ -1921,7 +1917,7 @@ void Typecheck_Code_CS__EnumerateRules(
                     {
                         for(const auto& aty : trait.m_type_bounds)
                         {
-                            auto aty_cloned = clone_ty_with(sp, aty.second, [&](const auto& tpl, auto& rv) { return H::clone_ty_cb(sp, context, expr, tpl, rv); });
+                            auto aty_cloned = clone_ty_with(sp, aty.second.type, [&](const auto& tpl, auto& rv) { return H::clone_ty_cb(sp, context, expr, tpl, rv); });
                             //auto params = clone_path_params_with(sp, trait.m_path.m_params, [&](const auto& tpl, auto& rv) { return clone_ty_cb(sp, context, expr, tpl, rv); });
                             auto params = trait.m_path.m_params.clone();
                             context.equate_types_assoc(sp, std::move(aty_cloned), trait.m_path.m_path, std::move(params), rv, aty.first.c_str(), false);

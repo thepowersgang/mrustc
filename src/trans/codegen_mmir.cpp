@@ -462,20 +462,8 @@ namespace
                         //auto vtp = t.m_data.as_TraitObject().m_trait.m_path;
 
                         const auto& trait = resolve.m_crate.get_trait_by_path(sp, te.m_trait.m_path.m_path);
-                        auto vtable_gp = ::HIR::GenericPath(trait.m_vtable_path);
-                        vtable_gp.m_params = te.m_trait.m_path.m_params.clone();
-                        vtable_gp.m_params.m_types.resize( vtable_gp.m_params.m_types.size() + trait.m_type_indexes.size() );
-                        for(const auto& ty : trait.m_type_indexes) {
-                            auto aty = te.m_trait.m_type_bounds.at(ty.first).clone();
-                            vtable_gp.m_params.m_types.at(ty.second) = ::std::move(aty);
-                        }
-                        for(auto& e : vtable_gp.m_params.m_types)
-                        {
-                            ASSERT_BUG(sp, e != ::HIR::TypeRef(), "");
-                        }
-
-                        const auto& vtable_ref = resolve.m_crate.get_struct_by_path(sp, vtable_gp.m_path);
-                        return ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, ::HIR::TypeRef::new_path( ::std::move(vtable_gp), &vtable_ref ));
+                        auto vtable_ty = trait.get_vtable_type(sp, resolve.m_crate, te);
+                        return ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, std::move(vtable_ty));
                     }
                     else if( t.data().is_Path() ) {
                         auto* repr = Target_GetTypeRepr(sp, resolve, t);

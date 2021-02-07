@@ -1789,7 +1789,7 @@ namespace {
             case ::HIR::TypePathBinding::TAG_Unbound:
                 BUG(sp, "Encountered invalid type in make_type_repr - " << ty);
             }
-            break;
+            throw "unreachable";
         // TODO: Why is `make_type_repr` being called on these?
         case ::HIR::TypeData::TAG_Primitive:
         case ::HIR::TypeData::TAG_Borrow:

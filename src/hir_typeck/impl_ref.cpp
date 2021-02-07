@@ -243,13 +243,13 @@ ImplRef::Monomorph ImplRef::get_cb_monomorph_traitimpl(const Span& sp) const
         auto it = e.assoc->find(name);
         if(it == e.assoc->end())
             return ::HIR::TypeRef();
-        return it->second.clone();
+        return it->second.type.clone();
         ),
     (Bounded,
         auto it = e.assoc.find(name);
         if(it == e.assoc.end())
             return ::HIR::TypeRef();
-        return it->second.clone();
+        return it->second.type.clone();
         )
     )
     return ::HIR::TypeRef();

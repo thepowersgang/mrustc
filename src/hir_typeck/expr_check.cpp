@@ -814,7 +814,7 @@ namespace {
                         bool has_ty = m_resolve.trait_contains_type(sp, real_trait, *be.trait.m_trait_ptr, assoc.first.c_str(),  type_trait_path);
                         ASSERT_BUG(sp, has_ty, "Type " << assoc.first << " not found in chain of " << real_trait);
 
-                        auto other_ty = cache.m_monomorph->monomorph_type(sp, assoc.second, true);
+                        auto other_ty = cache.m_monomorph->monomorph_type(sp, assoc.second.type, true);
                         m_resolve.expand_associated_types(sp, other_ty);
 
                         check_associated_type(sp, other_ty,  type_trait_path.m_path, type_trait_path.m_params, real_type, assoc.first.c_str());

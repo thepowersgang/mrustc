@@ -747,7 +747,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
             if( it_l->first != it_r->first ) {
                 return Compare::Unequal;
             }
-            cmp &= it_l->second .match_test_generics_fuzz( sp, it_r->second, resolve_placeholder, callback );
+            cmp &= it_l->second.type .match_test_generics_fuzz( sp, it_r->second.type, resolve_placeholder, callback );
             ++ it_l;
             ++ it_r;
         }
