@@ -346,8 +346,16 @@ namespace {
                         else if( !var.is_struct )
                         {
                             ASSERT_BUG(sp, var.type.data().is_Path(), "");
-                            ASSERT_BUG(sp, var.type.data().as_Path().binding.is_Struct(), "EnumStruct pattern on unexpected variant " << e.path << " with " << var.type.data().as_Path().binding.tag_str());
-                            const auto& str = *var.type.data().as_Path().binding.as_Struct();
+                            const auto& te = var.type.data().as_Path();
+                            const ::HIR::Struct* strp;
+                            if( te.binding.is_Unbound() ) {
+                                strp = &m_crate.get_struct_by_path(sp, te.path.m_data.as_Generic().m_path);
+                            }
+                            else {
+                                ASSERT_BUG(sp, te.binding.is_Struct(), "EnumStruct pattern on unexpected variant " << e.path << " with " << te.binding.tag_str());
+                                strp = te.binding.as_Struct();
+                            }
+                            const auto& str = *strp;
                             ASSERT_BUG(sp, str.m_data.is_Tuple(), "");
                             const auto& flds = str.m_data.as_Tuple();
                             ::std::vector<HIR::Pattern> subpats;
