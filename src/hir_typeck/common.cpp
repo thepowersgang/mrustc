@@ -35,8 +35,17 @@ struct TyVisitor
         if( visit_path_params(tpl.m_path.m_params) )
             return true;
         for(auto& assoc : tpl.m_type_bounds)
+        {
+            visit_path_params(assoc.second.source_trait.m_params);
             if( visit_type(assoc.second.type) )
                 return true;
+        }
+        for(auto& assoc : tpl.m_trait_bounds)
+        {
+            visit_path_params(assoc.second.source_trait.m_params);
+            for(auto& t : assoc.second.traits)
+                visit_trait_path(t);
+        }
         return false;
     }
     virtual bool visit_path(typename W<HIR::Path>::T& path)

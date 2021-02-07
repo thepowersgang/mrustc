@@ -604,27 +604,27 @@ namespace {
 
             for(auto& bound : params.m_bounds )
             {
-                TU_MATCH(::HIR::GenericBound, (bound), (e),
-                (Lifetime,
-                    ),
-                (TypeLifetime,
+                TU_MATCH_HDRA( (bound), {)
+                TU_ARMA(Lifetime, e) {
+                    }
+                TU_ARMA(TypeLifetime, e) {
                     this->visit_type(e.type);
-                    ),
-                (TraitBound,
+                    }
+                TU_ARMA(TraitBound, e) {
                     this->visit_type(e.type);
                     m_self_types.push_back(&e.type);
-                    this->visit_generic_path(e.trait.m_path, ::HIR::Visitor::PathContext::TYPE);
+                    this->visit_trait_path(e.trait);
                     m_self_types.pop_back();
-                    ),
-                //(NotTrait, struct {
+                    }
+                //(NotTrait, e) {
                 //    ::HIR::TypeRef  type;
                 //    ::HIR::GenricPath    trait;
                 //    }),
-                (TypeEquality,
+                TU_ARMA(TypeEquality, e) {
                     this->visit_type(e.type);
                     this->visit_type(e.other_type);
-                    )
-                )
+                    }
+                }
             }
         }
 

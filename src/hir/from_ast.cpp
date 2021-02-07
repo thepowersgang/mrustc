@@ -657,6 +657,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
             const Monomorphiser& ms
         )
         {
+            static ::HIR::TypeRef ty_self = HIR::TypeRef("Self", GENERIC_Self);
             TRACE_FUNCTION_F(path);
             if(pbe.hir)
             {
@@ -667,7 +668,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
                 if(it != trait.m_types.end()) {
                     return ms.monomorph_genericpath(sp, path, /*allow_infer=*/false);
                 }
-                auto cb = MonomorphStatePtr(nullptr, &path.m_params, nullptr);
+                auto cb = MonomorphStatePtr(&ty_self, &path.m_params, nullptr);
                 for(const auto& st : trait.m_all_parent_traits)
                 {
                     // NOTE: st.m_trait_ptr isn't populated yet
@@ -693,7 +694,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
                     }
                 }
 
-                auto cb = MonomorphStatePtr(nullptr, &path.m_params, nullptr);
+                auto cb = MonomorphStatePtr(&ty_self, &path.m_params, nullptr);
                 for( const auto& st : trait.supertraits() )
                 {
                     auto b = LowerHIR_TraitPath(sp, *st.ent.path, true);
