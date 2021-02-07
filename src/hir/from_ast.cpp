@@ -951,7 +951,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
             DEBUG("t = " << *t.path);
             // TODO: Pass the HRBs down
             // TODO: Handle ATY bounds
-            traits.push_back( LowerHIR_TraitPath(ty.span(), *t.path) );
+            traits.push_back( LowerHIR_TraitPath(ty.span(), *t.path, /*allow_aty_trait_bounds=*/true) );
         }
         ::HIR::LifetimeRef  lft;
         if( e.lifetimes.size() == 0 )
