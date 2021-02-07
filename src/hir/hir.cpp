@@ -372,7 +372,7 @@ const ::HIR::Trait& ::HIR::Crate::get_trait_by_path(const Span& sp, const ::HIR:
         return e;
     )
     else {
-        BUG(sp, "Trait path " << path << " didn't point to a trait");
+        BUG(sp, "Trait path " << path << " didn't point to a trait (" << ti.tag_str() << ")");
     }
 }
 const ::HIR::Struct& ::HIR::Crate::get_struct_by_path(const Span& sp, const ::HIR::SimplePath& path) const
@@ -382,7 +382,7 @@ const ::HIR::Struct& ::HIR::Crate::get_struct_by_path(const Span& sp, const ::HI
         return e;
     )
     else {
-        BUG(sp, "Struct path " << path << " didn't point to a struct");
+        BUG(sp, "Struct path " << path << " didn't point to a struct (" << ti.tag_str() << ")");
     }
 }
 const ::HIR::Union& ::HIR::Crate::get_union_by_path(const Span& sp, const ::HIR::SimplePath& path) const
@@ -392,7 +392,7 @@ const ::HIR::Union& ::HIR::Crate::get_union_by_path(const Span& sp, const ::HIR:
         return e;
     )
     else {
-        BUG(sp, "Path " << path << " didn't point to a union");
+        BUG(sp, "Path " << path << " didn't point to a union (" << ti.tag_str() << ")");
     }
 }
 const ::HIR::Enum& ::HIR::Crate::get_enum_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_crate_name, bool ignore_last_node) const
@@ -402,7 +402,7 @@ const ::HIR::Enum& ::HIR::Crate::get_enum_by_path(const Span& sp, const ::HIR::S
         return e;
     )
     else {
-        BUG(sp, "Enum path " << path << " didn't point to an enum");
+        BUG(sp, "Enum path " << path << " didn't point to an enum (" << ti.tag_str() << ")");
     }
 }
 
@@ -424,7 +424,7 @@ const ::HIR::Function& ::HIR::Crate::get_function_by_path(const Span& sp, const 
         return e;
     )
     else {
-        BUG(sp, "Function path " << path << " didn't point to an function");
+        BUG(sp, "Function path " << path << " didn't point to an function (" << ti.tag_str() << ")");
     }
 }
 
