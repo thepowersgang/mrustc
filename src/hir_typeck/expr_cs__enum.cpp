@@ -924,9 +924,12 @@ namespace typecheck
         }
         void visit(::HIR::ExprNode_Unsize& node) override
         {
+            // _Unsize is emitted for type annotations, and adds a coercion point to its inner
             this->context.add_ivars(node.m_dst_type);
-            //this->context.equate_types( node.span(), node.m_res_type,  node.m_dst_type );
-            BUG(node.span(), "Hit _Unsize");
+            node.m_value->visit( *this );
+
+            this->context.equate_types_coerce(node.m_value->span(), node.m_dst_type, node.m_value);
+            this->context.equate_types( node.span(), node.m_res_type,  node.m_dst_type );
         }
         void visit(::HIR::ExprNode_Index& node) override
         {
