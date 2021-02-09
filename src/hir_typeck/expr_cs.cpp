@@ -2377,7 +2377,32 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                     rv = true;
                     for(auto& sub : pe.leading)
                         rv |= this->revisit_inner(context, sub, *slice_inner, binding_mode);
-                    // TODO: Extra bind
+                    if(pe.extra_bind.is_valid())
+                    {
+                        // TODO: Do arrays get bound as arrays?
+                        ::HIR::TypeRef  binding_ty_inner = ::HIR::TypeRef::new_slice( slice_inner->clone() );
+                        if( ty.data().is_Array() )
+                            TODO(sp, "SplitSlice extra bind with array: " << pe.extra_bind << " on " << ty);
+                        ::HIR::TypeRef  binding_ty;
+                        if( pe.extra_bind.m_type == ::HIR::PatternBinding::Type::Move )
+                        {
+                            pe.extra_bind.m_type = binding_mode;
+                        }
+                        switch(pe.extra_bind.m_type)
+                        {
+                        case ::HIR::PatternBinding::Type::Move:
+                            // Only valid for an array?
+                            TODO(sp, "SplitSlice extra bind: " << pe.extra_bind);
+                            break;
+                        case ::HIR::PatternBinding::Type::Ref:
+                            binding_ty = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, mv$(binding_ty_inner));
+                            break;
+                        case ::HIR::PatternBinding::Type::MutRef:
+                            binding_ty = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, mv$(binding_ty_inner));
+                            break;
+                        }
+                        context.equate_types(sp, context.get_var(sp, pe.extra_bind.m_slot), binding_ty);
+                    }
                     for(auto& sub : pe.trailing)
                         rv |= this->revisit_inner(context, sub, *slice_inner, binding_mode);
                     }
@@ -2535,64 +2560,67 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                     const auto& pb = pat.m_binding;
                     context.possible_equate_type_unknown(sp, context.get_var(sp, pb.m_slot), Context::IvarUnknownType::Bound);
                 }
-                TU_MATCHA( (pat.m_data), (e),
-                (Any,
-                    ),
-                (Value,
-                    ),
-                (Range,
-                    ),
-                (Box,
+                TU_MATCH_HDRA( (pat.m_data), {)
+                TU_ARMA(Any, e) {
+                    }
+                TU_ARMA(Value, e) {
+                    }
+                TU_ARMA(Range, e) {
+                    }
+                TU_ARMA(Box, e) {
                     disable_possibilities_on_bindings(sp, context, *e.sub);
-                    ),
-                (Ref,
+                    }
+                TU_ARMA(Ref, e) {
                     disable_possibilities_on_bindings(sp, context, *e.sub);
-                    ),
-                (Tuple,
+                    }
+                TU_ARMA(Tuple, e) {
                     for(auto& subpat : e.sub_patterns)
                         disable_possibilities_on_bindings(sp, context, subpat);
-                    ),
-                (SplitTuple,
+                    }
+                TU_ARMA(SplitTuple, e) {
                     for(auto& subpat : e.leading) {
                         disable_possibilities_on_bindings(sp, context, subpat);
                     }
                     for(auto& subpat : e.trailing) {
                         disable_possibilities_on_bindings(sp, context, subpat);
                     }
-                    ),
-                (Slice,
+                    }
+                TU_ARMA(Slice, e) {
                     for(auto& sub : e.sub_patterns)
                         disable_possibilities_on_bindings(sp, context, sub);
-                    ),
-                (SplitSlice,
+                    }
+                TU_ARMA(SplitSlice, e) {
                     for(auto& sub : e.leading)
                         disable_possibilities_on_bindings(sp, context, sub);
+                    if( e.extra_bind.is_valid() ) {
+                        context.possible_equate_type_unknown(sp, context.get_var(sp, e.extra_bind.m_slot), Context::IvarUnknownType::Bound);
+                    }
                     for(auto& sub : e.trailing)
                         disable_possibilities_on_bindings(sp, context, sub);
-                    ),
+                    }
 
                 // - Enums/Structs
-                (StructValue,
-                    ),
-                (StructTuple,
+                TU_ARMA(StructValue, e) {
+                    }
+                TU_ARMA(StructTuple, e) {
                     for(auto& subpat : e.sub_patterns)
                         disable_possibilities_on_bindings(sp, context, subpat);
-                    ),
-                (Struct,
+                    }
+                TU_ARMA(Struct, e) {
                     for(auto& field_pat : e.sub_patterns)
                         disable_possibilities_on_bindings(sp, context, field_pat.second);
-                    ),
-                (EnumValue,
-                    ),
-                (EnumTuple,
+                    }
+                TU_ARMA(EnumValue, e) {
+                    }
+                TU_ARMA(EnumTuple, e) {
                     for(auto& subpat : e.sub_patterns)
                         disable_possibilities_on_bindings(sp, context, subpat);
-                    ),
-                (EnumStruct,
+                    }
+                TU_ARMA(EnumStruct, e) {
                     for(auto& field_pat : e.sub_patterns)
                         disable_possibilities_on_bindings(sp, context, field_pat.second);
-                    )
-                )
+                    }
+                }
             }
             static void create_bindings(const Span& sp, Context& context, ::HIR::Pattern& pat)
             {

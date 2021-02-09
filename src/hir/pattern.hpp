@@ -50,6 +50,8 @@ struct PatternBinding
         m_slot( slot ),
         m_implicit_deref_count(0)
     {}
+
+    friend ::std::ostream& operator<<(::std::ostream& os, const PatternBinding& x);
 };
 
 struct Pattern

@@ -512,9 +512,16 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
         for(const auto& sp : e.trailing)
             trailing.push_back( LowerHIR_Pattern(sp) );
 
+        ::HIR::PatternBinding::Type bt;
+        switch( e.extra_bind.m_type )
+        {
+        case ::AST::PatternBinding::Type::MOVE: bt = ::HIR::PatternBinding::Type::Move; break;
+        case ::AST::PatternBinding::Type::REF:  bt = ::HIR::PatternBinding::Type::Ref;  break;
+        case ::AST::PatternBinding::Type::MUTREF: bt = ::HIR::PatternBinding::Type::MutRef; break;
+        }
         auto extra_bind = e.extra_bind.is_valid()
             // TODO: Share code with the outer binding code
-            ? ::HIR::PatternBinding(false, ::HIR::PatternBinding::Type::Ref, e.extra_bind.m_name.name, e.extra_bind.m_slot)
+            ? ::HIR::PatternBinding(false, bt, e.extra_bind.m_name.name, e.extra_bind.m_slot)
             : ::HIR::PatternBinding()
             ;
 
