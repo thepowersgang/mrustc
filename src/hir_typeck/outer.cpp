@@ -312,12 +312,28 @@ namespace {
                             params.m_types.push_back(::HIR::TypeRef(m_fcn_ptr->m_params.m_types[i].m_name, 256+i));
                         // Populate with function path
                         e->m_origin = m_fcn_path->get_full_path();
-                        TU_MATCHA( (e->m_origin.m_data), (e2),
-                        (Generic, e2.m_params = mv$(params); ),
-                        (UfcsInherent, e2.params = mv$(params); ),
-                        (UfcsKnown, e2.params = mv$(params); ),
-                        (UfcsUnknown, throw ""; )
-                        )
+                        TU_MATCH_HDRA( (e->m_origin.m_data), {)
+                        TU_ARMA(Generic, e2) {
+                            e2.m_params = mv$(params);
+                            }
+                        TU_ARMA(UfcsInherent, e2) {
+                            e2.params = mv$(params);
+                            // Impl params, just directly references the parameters.
+                            // - Downstream monomorph will fix that
+                            for(const auto& ty : m_resolve.m_impl_generics->m_types) {
+                                e2.impl_params.m_types.push_back( ::HIR::TypeRef(ty.m_name, &ty - &m_resolve.m_impl_generics->m_types.front()) );
+                            }
+                            for(const auto& c : m_resolve.m_impl_generics->m_values) {
+                                e2.impl_params.m_values.push_back( ::HIR::Literal( ::HIR::GenericRef(c.m_name, &c - &m_resolve.m_impl_generics->m_values.front()) ) );
+                            }
+                            }
+                        TU_ARMA(UfcsKnown, e2) {
+                            e2.params = mv$(params);
+                            }
+                        TU_ARMA(UfcsUnknown, e2) {
+                            throw "";
+                            }
+                        }
                         e->m_index = m_fcn_erased_count++;
                     }
                     // If the function _pointer_ is set (but not the path), then we're in the function arguments
