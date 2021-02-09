@@ -124,13 +124,24 @@ namespace {
                     pat.m_binding.m_slot = 1 + binding_it - m_local_vars.begin();
                 }
                 else {
-                    BUG(sp, "Pattern binds to non-local");
+                    BUG(sp, "Pattern binds to non-local - " << pat.m_binding);
                 }
             }
 
-            TU_IFLET(::HIR::Pattern::Data, (pat.m_data), SplitSlice, e,
-                TODO(sp, "Fixup binding in split slice");
-            )
+            if(auto* e = pat.m_data.opt_SplitSlice())
+            {
+                if( e->extra_bind.is_valid() )
+                {
+                    auto binding_it = ::std::find(m_local_vars.begin(), m_local_vars.end(), e->extra_bind.m_slot);
+                    if( binding_it != m_local_vars.end() ) {
+                        // NOTE: Offset of 1 is for `self` (`args` is destructured)
+                        e->extra_bind.m_slot = 1 + binding_it - m_local_vars.begin();
+                    }
+                    else {
+                        BUG(sp, "Pattern (split slice extra) binds to non-local - " << e->extra_bind);
+                    }
+                }
+            }
 
             ::HIR::ExprVisitorDef::visit_pattern(sp, pat);
         }
