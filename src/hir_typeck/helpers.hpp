@@ -155,6 +155,8 @@ class TraitResolution
     const ::HIR::SimplePath&    m_vis_path;
 
     ::std::map< ::HIR::TypeRef, ::HIR::TypeRef> m_type_equalities;
+    // A pre-calculated list of trait bounds
+    ::std::vector< std::pair< ::HIR::TypeRef, ::HIR::TraitPath> > m_trait_bounds;
 
     ::HIR::SimplePath   m_lang_Box;
     mutable ::std::vector< ::HIR::TypeRef>  m_eat_active_stack;
@@ -182,6 +184,10 @@ public:
     const ::HIR::TypeRef& get_const_param_type(const Span& sp, unsigned binding) const;
 
     void prep_indexes();
+private:
+    void prep_indexes__add_equality(const Span& sp, ::HIR::TypeRef long_ty, ::HIR::TypeRef short_ty);
+    void prep_indexes__add_trait_bound(const Span& sp, const ::HIR::TypeRef& ty, const ::HIR::TraitPath& path);
+public:
 
     ::HIR::Compare compare_pp(const Span& sp, const ::HIR::PathParams& left, const ::HIR::PathParams& right) const;
 

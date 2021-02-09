@@ -67,7 +67,7 @@ namespace HIR {
             os << "> ";
         }
         os << x.m_path.m_path;
-        bool has_args = ( x.m_path.m_params.m_types.size() > 0 || x.m_type_bounds.size() > 0 );
+        bool has_args = ( x.m_path.m_params.m_types.size() > 0 || x.m_type_bounds.size() > 0 || x.m_trait_bounds.size() > 0 );
 
         if(has_args) {
             os << "<";
@@ -77,6 +77,11 @@ namespace HIR {
         }
         for(const auto& assoc : x.m_type_bounds) {
             os << assoc.first << "=" << assoc.second << ",";
+        }
+        for(const auto& assoc : x.m_trait_bounds) {
+            for(const auto& trait : assoc.second.traits) {
+                os << assoc.first << ": " << trait << ",";
+            }
         }
         if(has_args) {
             os << ">";

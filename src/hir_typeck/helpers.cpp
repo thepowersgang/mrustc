@@ -961,12 +961,6 @@ void TraitResolution::prep_indexes()
     // TODO: Create a list of all known type rules in this scope (recursively)
     // - What if there's recursive bounds (e.g. on ATYs)
 
-    auto add_equality = [&](::HIR::TypeRef long_ty, ::HIR::TypeRef short_ty){
-        DEBUG("[prep_indexes] ADD " << long_ty << " => " << short_ty);
-        // TODO: Sort the two types by "complexity" (most of the time long >= short)
-        this->m_type_equalities.insert(::std::make_pair( mv$(long_ty), mv$(short_ty) ));
-        };
-
     DEBUG("m_impl_params = " << m_impl_params << ", m_item_params = " << m_item_params);
     if( m_impl_params ) {
         DEBUG("- impl" << m_impl_params->fmt_args() << " " << m_impl_params->fmt_bounds());
@@ -977,77 +971,95 @@ void TraitResolution::prep_indexes()
     // Obtain type equality bounds.
     // TODO: Also flatten the bounds list into known trait bounds?
     this->iterate_bounds([&](const auto& b)->bool {
-        DEBUG("[prep_indexes] " << b);
         if(const auto* bep = b.opt_TraitBound())
         {
             const auto& be = *bep;
             DEBUG("[prep_indexes] `" << be.type << " : " << be.trait);
-            // Explicitly listed bounds
-            for( const auto& tb : be.trait.m_type_bounds ) {
-                DEBUG("[prep_indexes] Equality (TB) - <" << be.type << " as " << be.trait.m_path << ">::" << tb.first << " = " << tb.second.type);
-
-                // Locate the source trait
-                ::HIR::GenericPath  source_trait_path;
-                bool rv = this->trait_contains_type(sp, be.trait.m_path, m_crate.get_trait_by_path(sp, be.trait.m_path.m_path), tb.first.c_str(),  source_trait_path);
-                ASSERT_BUG(sp, rv, "Can't find `" << tb.first << "` in " << be.trait.m_path);
-
-                auto ty_l = ::HIR::TypeRef::new_path(
-                    ::HIR::Path( be.type.clone(), mv$(source_trait_path), tb.first ),
-                    ::HIR::TypePathBinding::make_Opaque({})
-                    );
-
-                add_equality( mv$(ty_l), tb.second.type.clone() );
-            }
-
-            const auto& trait_params = be.trait.m_path.m_params;
-            auto monomorph = MonomorphStatePtr(&be.type, &trait_params, nullptr);
-
-            const auto& trait = m_crate.get_trait_by_path(sp, be.trait.m_path.m_path);
-            // Bounds implied by associated trait bounds on the parent trait
-            for(const auto& a_ty : trait.m_types)
-            {
-                ::HIR::TypeRef ty_a;
-                for( const auto& a_ty_b : a_ty.second.m_trait_bounds )
-                {
-                    DEBUG("[prep_indexes] (Assoc) " << a_ty_b);
-                    const auto& itrait = m_crate.get_trait_by_path(sp, a_ty_b.m_path.m_path);
-                    auto trait_mono = monomorph.monomorph_traitpath(sp, a_ty_b, false);
-                    for( auto& tb : trait_mono.m_type_bounds )
-                    {
-                        if( ty_a == ::HIR::TypeRef() ) {
-                            ty_a = ::HIR::TypeRef::new_path(
-                                ::HIR::Path( be.type.clone(), be.trait.m_path.clone(), a_ty.first ),
-                                ::HIR::TypePathBinding::make_Opaque({})
-                                );
-                        }
-                        DEBUG("[prep_indexes] Equality (ATB) - <" << ty_a << " as " << a_ty_b.m_path << ">::" << tb.first << " = " << tb.second.type);
-
-                        // Find the source trait for this associated type
-                        ::HIR::GenericPath  source_trait_path;
-                        bool rv = this->trait_contains_type(sp, trait_mono.m_path, itrait, tb.first.c_str(),  source_trait_path);
-                        ASSERT_BUG(sp, rv, "Can't find `" << tb.first << "` in " << trait_mono.m_path);
-
-                        auto ty_l = ::HIR::TypeRef::new_path(
-                            ::HIR::Path( ty_a.clone(), mv$(source_trait_path), tb.first ),
-                            ::HIR::TypePathBinding::make_Opaque({})
-                            );
-
-                        add_equality( mv$(ty_l), mv$(tb.second.type) );
-                    }
-                }
-            }
+            prep_indexes__add_trait_bound(sp, be.type, be.trait);
         }
         else if(const auto* bep = b.opt_TypeEquality())
         {
             const auto& be = *bep;
             DEBUG("Equality - " << be.type << " = " << be.other_type);
-            add_equality( be.type.clone(), be.other_type.clone() );
+            prep_indexes__add_equality(sp, be.type.clone(), be.other_type.clone());
         }
         else
         {
+            DEBUG("[prep_indexes] " << b);
         }
         return false;
         });
+}
+void TraitResolution::prep_indexes__add_equality(const Span& sp, ::HIR::TypeRef long_ty, ::HIR::TypeRef short_ty)
+{
+    DEBUG("ADD " << long_ty << " => " << short_ty);
+    // TODO: Sort the two types by "complexity" (most of the time long >= short)
+    this->m_type_equalities.insert(::std::make_pair( mv$(long_ty), mv$(short_ty) ));
+}
+void TraitResolution::prep_indexes__add_trait_bound(const Span& sp, const ::HIR::TypeRef& ty, const ::HIR::TraitPath& trait_path)
+{
+    m_trait_bounds.push_back( std::make_pair(ty.clone(), trait_path.clone()) );
+
+    // Explicitly listed bounds
+    for( const auto& tb : trait_path.m_type_bounds ) {
+        DEBUG("[prep_indexes] Equality (TB) - <" << ty << " as " << tb.second.source_trait << ">::" << tb.first << " = " << tb.second.type);
+
+        auto ty_l = ::HIR::TypeRef::new_path(
+            ::HIR::Path( ty.clone(), tb.second.source_trait.clone(), tb.first ),
+            ::HIR::TypePathBinding::make_Opaque({})
+        );
+
+        prep_indexes__add_equality( sp, mv$(ty_l), tb.second.type.clone() );
+    }
+    // ATY Trait bounds
+    for( const auto& tb : trait_path.m_trait_bounds ) {
+        auto ty_l = ::HIR::TypeRef::new_path(
+            ::HIR::Path( ty.clone(), tb.second.source_trait.clone(), tb.first ),
+            ::HIR::TypePathBinding::make_Opaque({})
+        );
+        for(const auto& trait : tb.second.traits) {
+            DEBUG("[prep_indexes] Bound (TB) - <" << ty << " as " << tb.second.source_trait << ">::" << tb.first << " : " << trait);
+            prep_indexes__add_trait_bound(sp, ty_l, trait);
+        }
+    }
+
+    const auto& trait_params = trait_path.m_path.m_params;
+    auto monomorph = MonomorphStatePtr(&ty, &trait_params, nullptr);
+
+    const auto& trait = m_crate.get_trait_by_path(sp, trait_path.m_path.m_path);
+    // Bounds implied by associated trait bounds on the parent trait
+    for(const auto& a_ty : trait.m_types)
+    {
+        ::HIR::TypeRef ty_a;
+        for( const auto& a_ty_b : a_ty.second.m_trait_bounds )
+        {
+            DEBUG("[prep_indexes] (Assoc) " << a_ty_b);
+            const auto& itrait = m_crate.get_trait_by_path(sp, a_ty_b.m_path.m_path);
+            auto trait_mono = monomorph.monomorph_traitpath(sp, a_ty_b, false);
+            for( auto& tb : trait_mono.m_type_bounds )
+            {
+                if( ty_a == ::HIR::TypeRef() ) {
+                    ty_a = ::HIR::TypeRef::new_path(
+                        ::HIR::Path( ty.clone(), trait_path.m_path.clone(), a_ty.first ),
+                        ::HIR::TypePathBinding::make_Opaque({})
+                    );
+                }
+                DEBUG("[prep_indexes] Equality (ATB) - <" << ty_a << " as " << a_ty_b.m_path << ">::" << tb.first << " = " << tb.second.type);
+
+                // Find the source trait for this associated type
+                ::HIR::GenericPath  source_trait_path;
+                bool rv = this->trait_contains_type(sp, trait_mono.m_path, itrait, tb.first.c_str(),  source_trait_path);
+                ASSERT_BUG(sp, rv, "Can't find `" << tb.first << "` in " << trait_mono.m_path);
+
+                auto ty_l = ::HIR::TypeRef::new_path(
+                    ::HIR::Path( ty_a.clone(), mv$(source_trait_path), tb.first ),
+                    ::HIR::TypePathBinding::make_Opaque({})
+                );
+
+                prep_indexes__add_equality( sp, mv$(ty_l), mv$(tb.second.type) );
+            }
+        }
+    }
 }
 
 const ::HIR::TypeRef& TraitResolution::get_const_param_type(const Span& sp, unsigned binding) const
@@ -1101,32 +1113,12 @@ bool TraitResolution::iterate_bounds( ::std::function<bool(const ::HIR::GenericB
 }
 bool TraitResolution::iterate_bounds_traits(const Span& sp, ::std::function<bool(const ::HIR::TypeRef&, const ::HIR::TraitPath& trait)> cb) const
 {
-    // Iterate all bounds, finding trait
-    return this->iterate_bounds([&](const auto& gb) {
-        if( const auto* be = gb.opt_TraitBound() )
-        {
-            // TODO: Type filter (to avoid the cost of checking parent bounds)
-            if( cb(be->type, be->trait) )
-                return true;
-
-            // TODO: Remove, or fix places where `find_named_trait_in_trait` is used along with this function
-            // - Using both leads to duplicate detections, which can confuse callers
-#if 0
-            assert(be->trait.m_trait_ptr);
-            const auto& trait_ref = *be->trait.m_trait_ptr;
-            auto monomorph_cb = monomorphise_type_get_cb(sp, &be->type, &be->trait.m_path.m_params, nullptr, nullptr);
-            for(const auto& parent_tp : trait_ref.m_all_parent_traits)
-            {
-                ::HIR::TraitPath    tp_mono_o;
-                const auto& tp_mono = (monomorphise_traitpath_needed(parent_tp) ? tp_mono_o = monomorphise_traitpath_with(sp, parent_tp, monomorph_cb, false) : parent_tp);
-                // TODO: Monomorphise the bound
-                if( cb(be->type, tp_mono) )
-                    return true;
-            }
-#endif
-        }
-        return false;
-        });
+    for(const auto& b : m_trait_bounds)
+    {
+        if( cb(b.first, b.second) )
+            return true;
+    }
+    return false;
 }
 bool TraitResolution::iterate_aty_bounds(const Span& sp, const ::HIR::Path::Data::Data_UfcsKnown& pe, ::std::function<bool(const ::HIR::TraitPath&)> cb) const
 {

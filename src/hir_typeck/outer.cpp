@@ -325,7 +325,7 @@ namespace {
                     else if( m_fcn_ptr )
                     {
                         size_t idx = m_fcn_ptr->m_params.m_types.size();
-                        auto name = RcString::new_interned(FMT("impl$" << idx));
+                        auto name = RcString::new_interned(FMT("erased$" << idx));
                         auto new_ty = ::HIR::TypeRef( name, 256 + idx );
                         m_fcn_ptr->m_params.m_types.push_back({ name, ::HIR::TypeRef(), true });
                         for( const auto& trait : e->m_traits )
