@@ -156,7 +156,7 @@ class TraitResolution
 
     ::std::map< ::HIR::TypeRef, ::HIR::TypeRef> m_type_equalities;
     // A pre-calculated list of trait bounds
-    ::std::vector< std::pair< ::HIR::TypeRef, ::HIR::TraitPath> > m_trait_bounds;
+    ::std::set< std::pair< ::HIR::TypeRef, ::HIR::TraitPath> > m_trait_bounds;
 
     ::HIR::SimplePath   m_lang_Box;
     mutable ::std::vector< ::HIR::TypeRef>  m_eat_active_stack;

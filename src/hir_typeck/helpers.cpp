@@ -998,7 +998,7 @@ void TraitResolution::prep_indexes__add_equality(const Span& sp, ::HIR::TypeRef 
 }
 void TraitResolution::prep_indexes__add_trait_bound(const Span& sp, const ::HIR::TypeRef& ty, const ::HIR::TraitPath& trait_path)
 {
-    m_trait_bounds.push_back( std::make_pair(ty.clone(), trait_path.clone()) );
+    m_trait_bounds.insert( std::make_pair(ty.clone(), trait_path.clone()) );
 
     // Explicitly listed bounds
     for( const auto& tb : trait_path.m_type_bounds ) {
@@ -2041,34 +2041,42 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
     //pe.trait = mv$(trait_path);
 
     // 1. Bounds
-    bool rv;
+    bool rv = false;
     enum class ResultType {
         Opaque,
         LeaveUnbound,
         Recurse,
     } result_type = ResultType::Opaque;
-    rv = this->iterate_bounds([&](const HIR::GenericBound& b)->bool {
-        TU_MATCH_HDRA( (b), {)
-        default:
-            // Not type information, ignore
-            break;
-        TU_ARMA(TraitBound, be) {
-            DEBUG("[expand_associated_types_inplace__UfcsKnown] Trait bound - " << be.type << " : " << be.trait);
+
+    if(!rv)
+    {
+        auto it = m_type_equalities.find(input);
+        if( it != m_type_equalities.end() )
+        {
+            result_type = ResultType::Recurse;
+            input = it->second.clone();
+            rv = true;
+        }
+    }
+    if(!rv)
+    {
+        rv = this->iterate_bounds_traits(sp, [&](const ::HIR::TypeRef& bound_type, const ::HIR::TraitPath& bound_trait)->bool {
+            DEBUG("[expand_associated_types_inplace__UfcsKnown] Trait bound - " << bound_type << " : " << bound_trait);
             // 1. Check if the type matches
             //  - TODO: This should be a fuzzier match?
-            if( be.type != pe.type )
+            if( bound_type != pe.type )
                 return false;
             // 2. Check if the trait (or any supertrait) includes pe.trait
             // TODO: If fuzzy, bail and leave unresolved?
-            auto cmp = be.trait.m_path.compare_with_placeholders(sp, trait_path, this->m_ivars.callback_resolve_infer());
+            auto cmp = bound_trait.m_path.compare_with_placeholders(sp, trait_path, this->m_ivars.callback_resolve_infer());
             if( cmp == HIR::Compare::Fuzzy ) {
                 result_type = ResultType::LeaveUnbound;
                 return true;
             }
             else if( cmp != HIR::Compare::Unequal ) {
-                auto it = be.trait.m_type_bounds.find(pe.item);
+                auto it = bound_trait.m_type_bounds.find(pe.item);
                 // 1. Check if the bounds include the desired item
-                if( it == be.trait.m_type_bounds.end() ) {
+                if( it == bound_trait.m_type_bounds.end() ) {
                     // If not, assume it's opaque and return as such
                     // TODO: What happens if there's two bounds that overlap? 'F: FnMut<()>, F: FnOnce<(), Output=Bar>'
                     DEBUG("[expand_associated_types_inplace__UfcsKnown] Found impl for " << input << " but no bound on item, assuming opaque");
@@ -2082,7 +2090,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
 
             bool found_supertrait = this->find_named_trait_in_trait(sp,
                 trait_path.m_path, trait_path.m_params,
-                *be.trait.m_trait_ptr, be.trait.m_path.m_path, be.trait.m_path.m_params, pe.type,
+                *bound_trait.m_trait_ptr, bound_trait.m_path.m_path, bound_trait.m_path.m_params, pe.type,
                 [&pe,&input,&result_type](const auto& ty, const auto& trait_pp, const auto& assoc){
                     DEBUG("Found " << trait_pp << " for " << ty);
                     auto it = assoc.find(pe.item);
@@ -2095,9 +2103,9 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
                 }
                 );
             if( found_supertrait ) {
-                auto it = be.trait.m_type_bounds.find(pe.item);
+                auto it = bound_trait.m_type_bounds.find(pe.item);
                 // 1. Check if the bounds include the desired item
-                if( it == be.trait.m_type_bounds.end() ) {
+                if( it == bound_trait.m_type_bounds.end() ) {
                     // If not, assume it's opaque and return as such
                     // TODO: What happens if there's two bounds that overlap? 'F: FnMut<()>, F: FnOnce<(), Output=Bar>'
                     if( result_type != ResultType::Opaque )
@@ -2111,18 +2119,10 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
             }
 
             // - Didn't match
-            }
-        TU_ARMA(TypeEquality, be) {
-            DEBUG("Equality - " << be.type << " = " << be.other_type);
-            if( input == be.type ) {
-                result_type = ResultType::Recurse;
-                input = be.other_type.clone();
-                return true;
-            }
-            }
-        }
-        return false;
-        });
+            return false;
+            });
+    }
+
     if( rv ) {
         switch(result_type)
         {
@@ -3418,21 +3418,19 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
     TU_ARMA(Generic, e) {
         // TODO: Store this result - or even pre-calculate it.
         const auto& lang_Copy = this->m_crate.get_lang_item_path(sp, "copy");
-        return this->iterate_bounds([&](const auto& b)->bool {
-            TU_IFLET(::HIR::GenericBound, b, TraitBound, be,
-                if(be.type == ty)
-                {
-                    if(be.trait.m_path == lang_Copy)
-                        return true;
-                    ::HIR::PathParams   pp;
-                    bool rv = this->find_named_trait_in_trait(sp,
-                            lang_Copy,pp,  *be.trait.m_trait_ptr, be.trait.m_path.m_path, be.trait.m_path.m_params, type,
-                            [&](const auto& , const auto&, const auto&)->bool { return true; }
-                            );
-                    if(rv)
-                        return true;
-                }
-            )
+        return this->iterate_bounds_traits(sp, [&](const ::HIR::TypeRef& be_type, const ::HIR::TraitPath& be_trait)->bool {
+            if(be_type == ty)
+            {
+                if(be_trait.m_path == lang_Copy)
+                    return true;
+                ::HIR::PathParams   pp;
+                bool rv = this->find_named_trait_in_trait(sp,
+                        lang_Copy,pp,  *be_trait.m_trait_ptr, be_trait.m_path.m_path, be_trait.m_path.m_params, type,
+                        [&](const auto& , const auto&, const auto&)->bool { return true; }
+                        );
+                if(rv)
+                    return true;
+            }
             return false;
             }) ? ::HIR::Compare::Equal : ::HIR::Compare::Unequal ;
         }
@@ -3513,21 +3511,19 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
         }
     TU_ARMA(Generic, e) {
         // TODO: Store this result - or even pre-calculate it.
-        return this->iterate_bounds([&](const auto& b)->bool {
-            TU_IFLET(::HIR::GenericBound, b, TraitBound, be,
-                if(be.type == ty)
-                {
-                    if(be.trait.m_path == lang_Clone)
-                        return true;
-                    ::HIR::PathParams   pp;
-                    bool rv = this->find_named_trait_in_trait(sp,
-                            lang_Clone,pp,  *be.trait.m_trait_ptr, be.trait.m_path.m_path, be.trait.m_path.m_params, type,
-                            [&](const auto& , const auto&, const auto&)->bool { return true; }
-                            );
-                    if(rv)
-                        return true;
-                }
-            )
+        return this->iterate_bounds_traits(sp, [&](const ::HIR::TypeRef& be_type, const ::HIR::TraitPath& be_trait)->bool {
+            if(be_type == ty)
+            {
+                if(be_trait.m_path == lang_Clone)
+                    return true;
+                ::HIR::PathParams   pp;
+                bool rv = this->find_named_trait_in_trait(sp,
+                        lang_Clone,pp,  *be_trait.m_trait_ptr, be_trait.m_path.m_path, be_trait.m_path.m_params, type,
+                        [&](const auto& , const auto&, const auto&)->bool { return true; }
+                        );
+                if(rv)
+                    return true;
+            }
             return false;
             }) ? ::HIR::Compare::Equal : ::HIR::Compare::Unequal ;
         }
@@ -3605,15 +3601,12 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
     }
 
     {
-        bool found_bound = this->iterate_bounds([&](const auto& gb){
-            if(!gb.is_TraitBound())
+        bool found_bound = this->iterate_bounds_traits(sp, [&](const ::HIR::TypeRef& be_type, const ::HIR::TraitPath& be_trait)->bool {
+            if(be_trait.m_path.m_path != lang_Unsize)
                 return false;
-            const auto& be = gb.as_TraitBound();
-            if(be.trait.m_path.m_path != lang_Unsize)
-                return false;
-            const auto& be_dst = be.trait.m_path.m_params.m_types.at(0);
+            const auto& be_dst = be_trait.m_path.m_params.m_types.at(0);
 
-            auto cmp = src_ty.compare_with_placeholders(sp, be.type, m_ivars.callback_resolve_infer());
+            auto cmp = src_ty.compare_with_placeholders(sp, be_type, m_ivars.callback_resolve_infer());
             if(cmp == ::HIR::Compare::Unequal)  return false;
 
             cmp &= dst_ty.compare_with_placeholders(sp, be_dst, m_ivars.callback_resolve_infer());
@@ -3621,7 +3614,7 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
 
             if( cmp != ::HIR::Compare::Equal )
             {
-                TODO(sp, "Found bound " << dst_ty << "=" << be_dst << " <- " << src_ty << "=" << be.type);
+                TODO(sp, "Found bound " << dst_ty << "=" << be_dst << " <- " << src_ty << "=" << be_type);
             }
             return true;
             });

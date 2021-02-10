@@ -40,6 +40,8 @@ public:
 
 
     ::std::map< ::HIR::TypeRef, ::HIR::TypeRef> m_type_equalities;
+    // A pre-calculated list of trait bounds
+    ::std::set< std::pair< ::HIR::TypeRef, ::HIR::TraitPath> > m_trait_bounds;
 
     ::HIR::SimplePath   m_lang_Copy;
     ::HIR::SimplePath   m_lang_Clone;   // 1.29
@@ -79,6 +81,8 @@ public:
 
 private:
     void prep_indexes();
+    void prep_indexes__add_equality(const Span& sp, ::HIR::TypeRef long_ty, ::HIR::TypeRef short_ty);
+    void prep_indexes__add_trait_bound(const Span& sp, ::HIR::TypeRef type, ::HIR::TraitPath trait_path);
 
 public:
     bool has_self() const {
@@ -108,23 +112,19 @@ public:
     void set_impl_generics_raw(const ::HIR::GenericParams& gps) {
         assert( !m_impl_generics );
         m_impl_generics = &gps;
-        m_type_equalities.clear();
         prep_indexes();
     }
     void clear_impl_generics() {
         m_impl_generics = nullptr;
-        m_type_equalities.clear();
         prep_indexes();
     }
     void set_item_generics_raw(const ::HIR::GenericParams& gps) {
         assert( !m_item_generics );
         m_item_generics = &gps;
-        m_type_equalities.clear();
         prep_indexes();
     }
     void clear_item_generics() {
         m_item_generics = nullptr;
-        m_type_equalities.clear();
         prep_indexes();
     }
     /// \}
@@ -156,7 +156,8 @@ private:
         const ::HIR::SimplePath& trait_path, const ::HIR::PathParams* trait_params,
         const ::HIR::TypeRef& type,
         t_cb_find_impl found_cb,
-        const ::HIR::GenericBound& bound
+        //const ::HIR::GenericBound& bound
+        const ::std::pair< ::HIR::TypeRef, ::HIR::TraitPath>& bound
         ) const;
     bool find_impl__check_crate(
         const Span& sp,
