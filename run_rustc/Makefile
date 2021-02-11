@@ -52,9 +52,9 @@ RUSTFLAGS_alloc_system :=
 RUSTFLAGS_compiler_builtins := --cfg feature=\"compiler-builtins\"
 
 ../output$(OUTDIR_SUF)/rustc:
-	make -C ../ output$(OUTDIR_SUF)/rustc -j 3
+	$(MAKE) -C ../ output$(OUTDIR_SUF)/rustc -j 3
 ../output$(OUTDIR_SUF)/cargo:
-	make -C ../ output$(OUTDIR_SUF)/cargo -j 3
+	$(MAKE) -C ../ output$(OUTDIR_SUF)/cargo -j 3
 
 $(BINDIR)rustc_m: ../output$(OUTDIR_SUF)/rustc
 	@mkdir -p $(dir $@)

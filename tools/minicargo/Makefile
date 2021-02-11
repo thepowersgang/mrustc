@@ -46,7 +46,7 @@ $(OBJDIR)%.o: %.cpp
 	$V$(CXX) -o $@ -c $< $(CXXFLAGS) -MMD -MP -MF $@.dep
 
 ../../bin/common_lib.a: $(wildcard ../common/*.* ../common/Makefile)
-	make -C ../common
+	$(MAKE) -C ../common
 
 -include $(OBJS:%.o=%.o.dep)
 

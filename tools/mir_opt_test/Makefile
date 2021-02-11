@@ -42,9 +42,9 @@ $(OBJDIR)%.o: %.cpp
 	@echo [CXX] $<
 	$V$(CXX) -o $@ -c $< $(CXXFLAGS) -MMD -MP -MF $@.dep
 ../../bin/mrustc.a:
-	make -C ../../ bin/mrustc.a
+	$(MAKE) -C ../../ bin/mrustc.a
 ../../bin/common_lib.a:
-	make -C ../common
+	$(MAKE) -C ../common
 
 -include $(OBJS:%.o=%.o.dep)
 

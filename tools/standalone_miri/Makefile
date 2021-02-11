@@ -46,7 +46,7 @@ $(OBJDIR)%.o: ../../src/%.cpp
 	$V$(CXX) -o $@ -c $< $(CXXFLAGS) -MMD -MP -MF $@.dep
 
 $(COMMON_LIB):
-	make -C ../common
+	$(MAKE) -C ../common
 
 -include $(OBJS:%.o=%.o.dep)
 
