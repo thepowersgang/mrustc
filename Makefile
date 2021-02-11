@@ -237,7 +237,7 @@ RUST_TESTS: RUST_TESTS_run-pass
 RUST_TESTS_run-pass: output$(OUTDIR_SUF)/test/librust_test_helpers.a
 	@$(MAKE) -C tools/testrunner
 	@mkdir -p output$(OUTDIR_SUF)/rust_tests/run-pass
-	make -f minicargo.mk output$(OUTDIR_SUF)/test/libtest.so
+	$(MAKE) -f minicargo.mk output$(OUTDIR_SUF)/test/libtest.so
 	./bin/testrunner -L output$(OUTDIR_SUF)/test -o output$(OUTDIR_SUF)/rust_tests/run-pass $(RUST_TESTS_DIR)run-pass --exceptions disabled_tests_run-pass.txt
 output$(OUTDIR_SUF)/test/librust_test_helpers.a: output$(OUTDIR_SUF)/test/rust_test_helpers.o
 	@mkdir -p $(dir $@)
@@ -256,7 +256,7 @@ output$(OUTDIR_SUF)/test/rust_test_helpers.o: $(RUST_TEST_HELPERS_C)
 # 
 .PHONY: rust_tests-libs
 rust_tests-libs: $(TEST_DEPS)
-	make -f minicargo.mk $@
+	$(MAKE) -f minicargo.mk $@
 
 
 .PHONY: test
