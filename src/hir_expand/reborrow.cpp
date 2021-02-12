@@ -75,8 +75,15 @@ namespace {
                     // Recurse into blocks - Neater this way
                     else if( auto p = dynamic_cast< ::HIR::ExprNode_Block*>(node_ptr.get()) )
                     {
-                        ASSERT_BUG( node_ptr->span(), p->m_value_node, "reborrow into block that doesn't yield" );
-                        p->m_value_node = do_reborrow(mv$(p->m_value_node));
+                        if( p->m_value_node )
+                        {
+                            p->m_value_node = do_reborrow(mv$(p->m_value_node));
+                        }
+                        else
+                        {
+                            const auto* node = node_ptr.get();
+                            DEBUG("Node " << node << " is a non-yielding block");
+                        }
                     }
                     else
                     {
