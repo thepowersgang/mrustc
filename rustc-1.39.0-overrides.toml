@@ -7,6 +7,8 @@
 proc_macro = { path = "../libproc_macro" }
 [add.'src/libsyntax_ext'.dependencies]
 proc_macro = { path = "../libproc_macro" }
+[add.'src/librustc_metadata'.dependencies]
+proc_macro = { path = "../libproc_macro" }
 
 [delete]
 # Allow rustc's libproc_macro to build by removing the std dependency (it's built during rustc build, not during std build)
