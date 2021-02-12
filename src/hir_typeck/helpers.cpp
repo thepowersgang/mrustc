@@ -3474,6 +3474,11 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
     const auto& lang_Clone = this->m_crate.get_lang_item_path(sp, "clone");
     TU_MATCH_HDRA( (type.data()), {)
     default: {
+        if( type.data().is_Path() && type.data().as_Path().is_closure() )
+        {
+            // If it was a closure, assume true (later code can check)
+            return ::HIR::Compare::Equal;
+        }
         // NOTE: Don't use find_trait_impls, because that calls this
         bool is_fuzzy = false;
         bool has_eq = find_trait_impls(sp, lang_Clone, ::HIR::PathParams{}, ty,  [&](auto , auto c)->bool{
@@ -3552,6 +3557,7 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
         }
     TU_ARMA(Closure, e) {
         // NOTE: This isn't strictly true, we're leaving the actual checking up to the validate pass
+        // TODO: Determine captures earlier and check captures here
         return ::HIR::Compare::Equal;
         }
     TU_ARMA(Array, e) {
