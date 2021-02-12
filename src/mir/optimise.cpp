@@ -3253,7 +3253,7 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                 if( w.is_Index() )
                 {
                     auto it = known_values.find(MIR::LValue::new_Local(w.as_Index()));
-                    if( it != known_values.find(lv) )
+                    if( it != known_values.find(lv) && !it->second.is_Const() )
                     {
                         MIR_ASSERT(state, it->second.is_Uint(), "Indexing with non-Uint constant - " << it->second);
                         MIR_ASSERT(state, it->second.as_Uint().t == HIR::CoreType::Usize, "Indexing with non-usize constant - " << it->second);
