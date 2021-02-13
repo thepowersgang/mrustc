@@ -1052,6 +1052,10 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     {
         args.push_back("--cfg"); args.push_back(::format("feature=", feat));
     }
+    if( m_opts.emit_mmir )
+    {
+        args.push_back("-C"); args.push_back("codegen-type=monomir");
+    }
     switch(manifest.edition())
     {
     case Edition::Unspec:
@@ -1138,6 +1142,11 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
 
         // NOTE: All cfg(foo_bar) become CARGO_CFG_FOO_BAR
         Cfg_ToEnvironment(env);
+
+        if( m_opts.emit_mmir )
+        {
+            TODO("Invoke `standalone_miri` on build script when emitting MIR");
+        }
 
         if( !spawn_process(script_exe_abs.str().c_str(), {}, env, out_file, /*working_directory=*/manifest.directory()) )
         {
