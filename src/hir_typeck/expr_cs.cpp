@@ -323,26 +323,28 @@ namespace {
                     // TODO: In some rare cases, this ivar could be completely
                     // unrestricted. If in fallback mode
                     const auto& dst_inner = this->context.get_type(e.inner);
-                    // TODO: If the source inner is an ivar, record as a bound too?
+                    const auto& src_inner = this->context.get_type(s_e.inner);
                     if( dst_inner.data().is_Infer() )
                     {
-#if 1
+                        // NOTE: Don't equate on fallback, to avoid cast chains breaking
+                        // - Instead, leave the bounds present (which will hopefully get used by ivar_poss)
                         ::std::vector<HIR::TypeRef>   tys;
                         tys.push_back( dst_inner.clone() );
-                        tys.push_back( s_e.inner.clone() );
+                        tys.push_back( src_inner.clone() );
                         this->context.possible_equate_ivar_bounds(sp, dst_inner.data().as_Infer().index, std::move(tys));
                         return ;
-#else
-                        if(this->m_is_fallback)
+                    }
+                    else if( src_inner.data().is_Infer() )
+                    {
+                        if( !this->m_is_fallback )
                         {
-                            DEBUG("- Fallback mode, assume inner types are equal");
-                            this->context.equate_types(sp, e.inner, s_e.inner);
-                        }
-                        else
-                        {
+                            ::std::vector<HIR::TypeRef>   tys;
+                            tys.push_back( dst_inner.clone() );
+                            tys.push_back( src_inner.clone() );
+                            this->context.possible_equate_ivar_bounds(sp, src_inner.data().as_Infer().index, std::move(tys));
                             return ;
                         }
-#endif
+                        this->context.equate_types(sp, dst_inner, src_inner);
                     }
                     else
                     {
@@ -3397,9 +3399,10 @@ Context::IVarPossible* Context::get_ivar_possibilities(const Span& sp, unsigned 
     }
     return &possible_ivar_vals[ivar_index];
 }
-void Context::possible_equate_ivar(const Span& sp, unsigned int ivar_index, const ::HIR::TypeRef& t, PossibleTypeSource src)
+void Context::possible_equate_ivar(const Span& sp, unsigned int ivar_index, const ::HIR::TypeRef& raw_t, PossibleTypeSource src)
 {
-    DEBUG(ivar_index << " " << src << " " << t << " " << this->m_ivars.get_type(t));
+    const auto& t = this->m_ivars.get_type(raw_t);
+    DEBUG(ivar_index << " " << src << " " << raw_t << " " << t);
     auto* entp = get_ivar_possibilities(sp, ivar_index);
     if(!entp)
         return;
@@ -4427,9 +4430,10 @@ namespace {
                             DEBUG("- Propagate to the last node of a _Block");
                             ASSERT_BUG( p->span(), context.m_ivars.types_equal(p->m_res_type, p->m_value_node->m_res_type),
                                 "Block and result mismatch - " << context.m_ivars.fmt_type(p->m_res_type) << " != " << context.m_ivars.fmt_type(p->m_value_node->m_res_type));
-                            ASSERT_BUG( p->span(), context.m_ivars.types_equal(p->m_res_type, src),
-                                "Block and result mismatch - " << context.m_ivars.fmt_type(p->m_res_type) << " != " << context.m_ivars.fmt_type(src)
-                                );
+                            if( !context.m_ivars.types_equal(p->m_res_type, src) ) {
+                                DEBUG("Block and result mismatch - " << context.m_ivars.fmt_type(p->m_res_type) << " != " << context.m_ivars.fmt_type(src));
+                                return CoerceResult::Unknown;
+                            }
                             if(context_mut)
                             {
                                 p->m_res_type = dst.clone();
