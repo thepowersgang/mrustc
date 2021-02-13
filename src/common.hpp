@@ -63,7 +63,7 @@ template<typename T>
 
 enum Ordering
 {
-    OrdLess,
+    OrdLess = -1,
     OrdEqual,
     OrdGreater,
 };
