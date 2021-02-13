@@ -495,3 +495,112 @@ ordered_params += &ident;
 No type coercions in `<OP>=` assignments, leading to the above hard equality in the assignment.
 Attempt adding a coercion point to the RHS of op-assign.
 Required a new ivar for the coercion, worked.
+
+
+# (1.39) `<::"rustc_metadata-0_0_0"::cstore::CrateMetadata/*S*/>::get_implementations_for_trait`
+```
+:0: error:0:Type mismatch between &mut [::"rustc-0_0_0"::hir::def_id::DefId/*S*/] and &[_/*90*/; 0] - Borrow classes differ
+```
+
+`Typecheck Expressions-     check_coerce: >> (R12 &mut [::"rustc-0_0_0"::hir::def_id::DefId/*S*/] := 0000022E69C45458 0000022E63E38580 (_/*52*/) - &mut [::"rustc-0_0_0"::hir::def_id::DefId] := &[_/*90*/; 0])`
+`Typecheck Expressions-           Context::equate_types_coerce: ++ R12 _/*53*/ := 0000022E69C45458 0000022E63E38580 (_/*52*/)`
+
+Looking at the code, `_53` should be `&[DefId]`
+```
+Typecheck Expressions-          HMTypeInferrence::ivar_unify: IVar 53 = @54
+Typecheck Expressions-       HMTypeInferrence::set_ivar_to: Set IVar 54 = &mut [::"rustc-0_0_0"::hir::def_id::DefId/*S*/]
+Typecheck Expressions-      `anonymous-namespace'::check_ivar_poss: - Source/Destination type
+```
+Check usage of `_54`
+```
+Typecheck Expressions-     check_coerce: >> (R9 &mut [::"rustc-0_0_0"::hir::def_id::DefId/*S*/] := 0000022E69C454F0 0000022E63E37BF0 (_/*54*/) - &mut [::"rustc-0_0_0"::hir::def_id::DefId] := _/*54*/)
+Typecheck Expressions-       Context::possible_equate_ivar: 54 CoerceTo &mut [::"rustc-0_0_0"::hir::def_id::DefId/*S*/] &mut [::"rustc-0_0_0"::hir::def_id::DefId/*S*/]
+Typecheck Expressions-     check_coerce: >> (R10 _/*54*/ := 0000022E69C45430 0000022E63E37DA0 (_/*49*/) - _/*54*/ := &mut [::"rustc-0_0_0"::hir::def_id::DefId])
+Typecheck Expressions-       Context::possible_equate_ivar: 54 CoerceFrom &mut [::"rustc-0_0_0"::hir::def_id::DefId/*S*/] &mut [::"rustc-0_0_0"::hir::def_id::DefId/*S*/]
+Typecheck Expressions-     check_coerce: >> (R12 _/*54*/ := 0000022E69C45458 0000022E63E38580 (_/*52*/) - _/*54*/ := &[_/*90*/; 0])
+Typecheck Expressions-       Context::possible_equate_ivar: 54 CoerceFrom &[_/*90*/; 0] &[_/*90*/; 0]
+```
+R9 looks suspicious, the result should be `&[DefId]`
+```
+Typecheck Expressions-        Context::equate_types_coerce: ++ R9 _/*77*/ := 0000022E69C454F0 0000022E63E37BF0 (_/*54*/)
+```
+Chase `_77`
+```
+Typecheck Expressions-       HMTypeInferrence::ivar_unify: IVar 77 = @0
+```
+Chase `_0`
+```
+Typecheck Expressions-     check_ivar_poss: >> (0 weak)
+Typecheck Expressions-      `anonymous-namespace'::check_ivar_poss: 0: possible_tys = CD _/*54*/, CD &mut [::"rustc-0_0_0"::hir::def_id::DefId/*S*/], C- &[::"rustc-0_0_0"::hir::def_id::DefId/*S*/]
+Typecheck Expressions-      `anonymous-namespace'::check_ivar_poss: Most accepting pointer class, and most permissive inner type - &mut [::"rustc-0_0_0"::hir::def_id::DefId/*S*/]
+Typecheck Expressions-       HMTypeInferrence::set_ivar_to: Set IVar 0 = &mut [::"rustc-0_0_0"::hir::def_id::DefId/*S*/]
+```
+
+It's hitting the fallback case of least restrictive source (so picks `&mut` from the provided options).
+```
+Typecheck Expressions-     Context::dump: --- CS Context - 5 Coercions, 0 associated, 0 nodes, 0 callbacks
+Typecheck Expressions-     Context::dump: R9 _/*0*/ := 0000022E69C454F0 0000022E63E37BF0 (_/*54*/)
+Typecheck Expressions-     Context::dump: R10 _/*54*/ := 0000022E69C45430 0000022E63E37DA0 (&mut [::"rustc-0_0_0"::hir::def_id::DefId])
+Typecheck Expressions-     Context::dump: R12 _/*54*/ := 0000022E69C45458 0000022E63E38580 (&[_/*90*/; 0])
+Typecheck Expressions-     Context::dump: R13 _/*0*/ := 0000022E69C45518 0000022E63E39DB0 (&mut [::"rustc-0_0_0"::hir::def_id::DefId])
+Typecheck Expressions-     Context::dump: R16 &[::"rustc-0_0_0"::hir::def_id::DefId] := 000000793833EAB0 0000022E63E37410 (_/*0*/)
+```
+Looking at the available rules, `_54` should have triggered the non-fallback of the least-restrictive source rule (as it has both `&` and `&mut` options with no others.
+```
+Typecheck Expressions-     check_ivar_poss: >> (54)
+Typecheck Expressions-      `anonymous-namespace'::check_ivar_poss: 54: possible_tys = CD &mut [::"rustc-0_0_0"::hir::def_id::DefId/*S*/], CD &[_/*90*/; 0], C- _/*0*/
+Typecheck Expressions-      `anonymous-namespace'::check_ivar_poss: 54: bounds = ?
+Typecheck Expressions-      `anonymous-namespace'::check_ivar_poss: 54: 0 duplicates
+Typecheck Expressions-      `anonymous-namespace'::check_ivar_poss: 1 ivars (0 src, 1 dst)
+Typecheck Expressions-      get_ordering_ptr: >> (&[_/*90*/; 0] , &mut [::"rustc-0_0_0"::hir::def_id::DefId/*S*/])
+Typecheck Expressions-      get_ordering_ptr: << (0)
+```
+Note: Zero (in this version of the code) is OrdLess
+The above can't pick a single type, as it would need `&[DefId]` not `&[DefId; 0]`
+
+Only working chain for the available rules is for `_0` to be set to `&[DefId]` via its single destination... but isn't there a single-destination rule?
+It's gated by `honour_disable` - `if( !honour_disable && n_dst_ivars == 0 && ::std::count_if(possible_tys.begin(), possible_tys.end(), PossibleType::is_dest_s) == 1 )`
+This is OLD logic, try regression test with the gate removed.
+
+Got libgit2'd, ends up picking the wrong type in `git2 v0.7.3` (1.29)
+- libgit2's case has bounds present, the above does not - switch the gating to be no bounds (`ivar_ent.has_bounded`) OR fallback (`!honour_disable`)
+Also broke libcargo 1.29
+- The ivar bounds and usage implies anything can be picked, but it's also cloned with an expectation of `String`.
+- Add the above gating to single source too (higher priority)
+
+Success!
+
+## Final Fix
+Change gating of single source/destination to be either no bounds, OR fallback
+
+
+# (1.39) `<::"rustc_metadata-0_0_0"::schema::EntryKind/*E*/ as ::"core-0_0_0"::clone::Clone>::clone`
+```
+:0: warn:0:Spare Rule - ::"rustc_metadata-0_0_0"::schema::Lazy<::"rustc_metadata-0_0_0"::schema::TraitAliasData,(),> : ::"core-0_0_0"::clone::Clone
+:0: warn:0:Spare Rule - ::"rustc_metadata-0_0_0"::schema::Lazy<::"rustc_metadata-0_0_0"::schema::RenderedConst,(),> : ::"core-0_0_0"::clone::Clone
+:0: warn:0:Spare Rule - ::"rustc_metadata-0_0_0"::schema::Lazy<::"rustc_metadata-0_0_0"::schema::RenderedConst,(),> : ::"core-0_0_0"::clone::Clone
+:0: warn:0:Spare Rule - ::"rustc_metadata-0_0_0"::schema::Lazy<::"rustc_metadata-0_0_0"::schema::VariantData,(),> : ::"core-0_0_0"::clone::Clone
+:0: warn:0:Spare Rule - ::"rustc_metadata-0_0_0"::schema::Lazy<::"rustc_metadata-0_0_0"::schema::VariantData,(),> : ::"core-0_0_0"::clone::Clone
+:0: warn:0:Spare Rule - ::"rustc_metadata-0_0_0"::schema::Lazy<::"rustc_metadata-0_0_0"::schema::MethodData,(),> : ::"core-0_0_0"::clone::Clone
+:0: warn:0:Spare Rule - ::"rustc_metadata-0_0_0"::schema::Lazy<::"rustc_metadata-0_0_0"::schema::VariantData,(),> : ::"core-0_0_0"::clone::Clone
+:0: warn:0:Spare Rule - ::"rustc_metadata-0_0_0"::schema::Lazy<::"rustc_metadata-0_0_0"::schema::ImplData,(),> : ::"core-0_0_0"::clone::Clone
+:0: warn:0:Spare Rule - ::"rustc_metadata-0_0_0"::schema::Lazy<::"rustc_metadata-0_0_0"::schema::FnData,(),> : ::"core-0_0_0"::clone::Clone
+:0: warn:0:Spare Rule - ::"rustc_metadata-0_0_0"::schema::Lazy<::"rustc_metadata-0_0_0"::schema::FnData,(),> : ::"core-0_0_0"::clone::Clone
+:0: warn:0:Spare Rule - ::"rustc_metadata-0_0_0"::schema::Lazy<::"rustc_metadata-0_0_0"::schema::ModData,(),> : ::"core-0_0_0"::clone::Clone
+:0: warn:0:Spare Rule - ::"rustc_metadata-0_0_0"::schema::Lazy<::"rustc_metadata-0_0_0"::schema::MacroDef,(),> : ::"core-0_0_0"::clone::Clone
+:0: warn:0:Spare Rule - ::"rustc_metadata-0_0_0"::schema::Lazy<::"rustc_metadata-0_0_0"::schema::ClosureData,(),> : ::"core-0_0_0"::clone::Clone
+:0: warn:0:Spare Rule - ::"rustc_metadata-0_0_0"::schema::Lazy<::"rustc_metadata-0_0_0"::schema::GeneratorData,(),> : ::"core-0_0_0"::clone::Clone
+:0: warn:0:Spare Rule - ::"rustc_metadata-0_0_0"::schema::Lazy<::"rustc_metadata-0_0_0"::schema::TraitData,(),> : ::"core-0_0_0"::clone::Clone
+:0: BUG:..\..\src\hir_typeck\expr_cs.cpp:6958: Spare rules left after typecheck stabilised
+```
+
+All of these are fully known, why did they not resolve/remove?
+
+
+```
+Typecheck Expressions-      `anonymous-namespace'::check_associated: Multiple impls
+Typecheck Expressions-      `anonymous-namespace'::check_associated:  for ::"rustc_metadata-0_0_0"::schema::Lazy<::"rustc_metadata-0_0_0"::schema::TraitData/*S*/,(),>/*S*/
+Typecheck Expressions-      `anonymous-namespace'::check_associated:  for ::"rustc_metadata-0_0_0"::schema::Lazy<::"rustc_metadata-0_0_0"::schema::TraitData/*S*/,<::"rustc_metadata-0_0_0"::schema::TraitData/*S*/ as ::"rustc_metadata-0_0_0"::schema::LazyMeta>::Meta/*?*/,>/*S*/
+```
+
+Had forgotten to run EAT on the impl type (had already run it on trait params, but not on the type)

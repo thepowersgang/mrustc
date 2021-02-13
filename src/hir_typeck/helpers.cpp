@@ -1238,6 +1238,9 @@ bool TraitResolution::find_trait_impls_magic(const Span& sp,
 
     // Magical CoerceUnsized impls for various types
     if( trait == lang_CoerceUnsized ) {
+        if( find_trait_impls_bound(sp, trait, params, type, callback) )
+            return true;
+
         const auto& dst_ty = params.m_types.at(0);
         // - `*mut T => *const T`
         if( const auto* e = type.data().opt_Pointer() )
@@ -2651,7 +2654,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 DEBUG("[find_trait_impls_crate] - Params mismatch");
                 return false;
             }
-            DEBUG("[find_trait_impls_crate] - Found with " << impl_params);
+            DEBUG("[find_trait_impls_crate] - Found with impl_params=" << impl_params);
 
             return callback(ImplRef(mv$(impl_params), trait, impl), match);
         }

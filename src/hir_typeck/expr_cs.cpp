@@ -4781,6 +4781,8 @@ namespace {
 
                     auto impl_ty = impl.get_impl_type();
                     auto impl_params = impl.get_trait_params();
+
+                    impl_ty = context.m_resolve.expand_associated_types(sp, std::move(impl_ty));
                     for(auto& t : impl_params.m_types) {
                         t = context.m_resolve.expand_associated_types(sp, mv$(t));
                     }
@@ -4997,7 +4999,7 @@ namespace {
             std::map<unsigned, std::vector<HIR::TypeRef>>   ivar_possibilities;
             for(const auto& pi : possible_impls)
             {
-                DEBUG(pi.params << " for " << pi.impl_ty);
+                DEBUG("impl ?trait" << pi.params << " for " << pi.impl_ty);
                 for(size_t i = 0; i < pi.params.m_types.size(); i++)
                 {
                     const auto& t = context.get_type(v.params.m_types[i]);
@@ -6452,29 +6454,34 @@ namespace
                     return true;
                 }
             }
-            // If there's only one non-deref in the list OR there's only one deref in the list
-            if( !honour_disable && n_src_ivars == 0 && ::std::count_if(possible_tys.begin(), possible_tys.end(), PossibleType::is_source_s) == 1 )
+            // -- Single source/destination --
+            // Try if in first level fallback, or the bounded list is empty
+            if(  (!honour_disable || !ivar_ent.has_bounded) )
             {
-                auto it = ::std::find_if(possible_tys.begin(), possible_tys.end(), PossibleType::is_source_s);
-                const auto& new_ty = *it->ty;
-                DEBUG("Picking " << new_ty << " as the only source [" << possible_tys << "]");
-                context.equate_types(sp, ty_l, new_ty);
-                return true;
-            }
-            if( !honour_disable && n_dst_ivars == 0 && ::std::count_if(possible_tys.begin(), possible_tys.end(), PossibleType::is_dest_s) == 1 )
-            {
-                auto it = ::std::find_if(possible_tys.begin(), possible_tys.end(), PossibleType::is_dest_s);
-                const auto& new_ty = *it->ty;
-                if( it->is_coerce() )
+                // If there's only one non-deref in the list OR there's only one deref in the list
+                if( n_src_ivars == 0 && ::std::count_if(possible_tys.begin(), possible_tys.end(), PossibleType::is_source_s) == 1 )
                 {
-                    DEBUG("Picking " << new_ty << " as the only target [" << possible_tys << "]");
+                    auto it = ::std::find_if(possible_tys.begin(), possible_tys.end(), PossibleType::is_source_s);
+                    const auto& new_ty = *it->ty;
+                    DEBUG("Picking " << new_ty << " as the only source [" << possible_tys << "]");
                     context.equate_types(sp, ty_l, new_ty);
                     return true;
                 }
-                else
+                if( n_dst_ivars == 0 && ::std::count_if(possible_tys.begin(), possible_tys.end(), PossibleType::is_dest_s) == 1 )
                 {
-                    // HACK: Work around failure in librustc
-                    DEBUG("Would pick " << new_ty << " as the only target, but it's an unsize");
+                    auto it = ::std::find_if(possible_tys.begin(), possible_tys.end(), PossibleType::is_dest_s);
+                    const auto& new_ty = *it->ty;
+                    if( it->is_coerce() )
+                    {
+                        DEBUG("Picking " << new_ty << " as the only target [" << possible_tys << "]");
+                        context.equate_types(sp, ty_l, new_ty);
+                        return true;
+                    }
+                    else
+                    {
+                        // HACK: Work around failure in librustc
+                        DEBUG("Would pick " << new_ty << " as the only target, but it's an unsize");
+                    }
                 }
             }
             // If there's multiple possiblilties, we're in fallback mode, AND there's no ivars in the list
