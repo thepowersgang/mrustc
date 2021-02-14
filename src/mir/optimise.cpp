@@ -729,113 +729,40 @@ namespace
             }
         }
 
+        MonomorphState  out_params;
+        auto e = state.m_resolve.get_value(state.sp, path, out_params);
+        DEBUG(e.tag_str() << " " << out_params);
+        params.fcn_params = out_params.get_method_params();
+        params.impl_params = out_params.pp_impl == nullptr ? ::HIR::PathParams()
+            : out_params.pp_impl == &out_params.pp_impl_data ? std::move(out_params.pp_impl_data)
+            : out_params.pp_impl->clone()
+            ;
         TU_MATCH_HDRA( (path.m_data), {)
         TU_ARMA(Generic, pe) {
-            const auto& fcn = state.m_crate.get_function_by_path(state.sp, pe.m_path);
-            if( const auto* mir = fcn.m_code.get_mir_opt() )
-            {
-                params.fcn_params = &pe.m_params;
-                return mir;
-            }
+            params.self_ty = nullptr;
             }
         TU_ARMA(UfcsKnown, pe) {
-            TRACE_FUNCTION_F(path);
-
-            // Obtain trait pointer (for default impl and to know what the item type is)
-            const auto& trait_ref = state.m_resolve.m_crate.get_trait_by_path(state.sp, pe.trait.m_path);
-            auto trait_vi_it = trait_ref.m_values.find(pe.item);
-            MIR_ASSERT(state, trait_vi_it != trait_ref.m_values.end(), "Couldn't find item " << pe.item << " in trait " << pe.trait.m_path);
-            const auto& trait_vi = trait_vi_it->second;
-            MIR_ASSERT(state, trait_vi.is_Function(), "Item '" << pe.item << " in trait " << pe.trait.m_path << " isn't a function");
-            const auto& ve = trait_vi.as_Function();
-
-            bool bound_found = false;
-            bool is_spec = false;
-            HIR::PathParams  best_impl_params;
-            const ::HIR::TraitImpl* best_impl = nullptr;
-            state.m_resolve.find_impl(state.sp, pe.trait.m_path, pe.trait.m_params, pe.type, [&](auto impl_ref, auto is_fuzz) {
-                DEBUG("[get_called_mir] Found " << impl_ref);
-                if( ! impl_ref.m_data.is_TraitImpl() ) {
-                    MIR_ASSERT(state, best_impl == nullptr, "Generic impl and `impl` block collided");
-                    bound_found = true;
-                    return true;
-                }
-                const auto& impl_ref_e = impl_ref.m_data.as_TraitImpl();
-                const auto& impl = *impl_ref_e.impl;
-                MIR_ASSERT(state, impl.m_trait_args.m_types.size() == pe.trait.m_params.m_types.size(), "Trait parameter count mismatch " << impl.m_trait_args << " vs " << pe.trait.m_params);
-
-                if( best_impl == nullptr || impl.more_specific_than(*best_impl) ) {
-                    best_impl = &impl;
-
-                    auto fit = impl.m_methods.find(pe.item);
-                    if( fit == impl.m_methods.end() ) {
-                        DEBUG("[get_called_mir] Method " << pe.item << " missing in impl " << pe.trait << " for " << pe.type);
-                        return false;
-                    }
-                    best_impl_params = impl_ref_e.impl_params.clone();
-                    is_spec = fit->second.is_specialisable;
-                    return !is_spec;
-                }
-                return false;
-                });
-
-            if( bound_found ) {
-                return nullptr;
-            }
-            MIR_ASSERT(state, best_impl, "Couldn't find an impl for " << path);
-            if( is_spec )
-            {
-                DEBUG(path << " pointed to a specialisable impl, not inlining");
-                return nullptr;
-            }
-            const auto& impl = *best_impl;
-
             params.self_ty = &pe.type;
-            params.fcn_params = &pe.params;
-            // Search for the method in the impl
-            auto fit = impl.m_methods.find(pe.item);
-            if( fit != impl.m_methods.end() )
-            {
-                params.impl_params = mv$(best_impl_params);
-                DEBUG("Found impl" << impl.m_params.fmt_args() << " " << impl.m_type);
-                if( const auto* mir = fit->second.data.m_code.get_mir_opt() )
-                    return mir;
-            }
-            else
-            {
-                params.impl_params = pe.trait.m_params.clone();
-                if( const auto* mir = ve.m_code.get_mir_opt() )
-                    return mir;
-            }
-            return nullptr;
             }
         TU_ARMA(UfcsInherent, pe) {
-            const ::HIR::TypeImpl* best_impl;
-            state.m_resolve.m_crate.find_type_impls(pe.type, [](const auto&x)->const auto& { return x; }, [&](const auto& impl) {
-                DEBUG("Found impl" << impl.m_params.fmt_args() << " " << impl.m_type);
-                // TODO: Specialisation.
-                auto fit = impl.m_methods.find(pe.item);
-                if( fit != impl.m_methods.end() )
-                {
-                    best_impl = &impl;
-                    return true;
-                }
-                return false;
-                });
-            MIR_ASSERT(state, best_impl, "Couldn't find an impl for " << path);
-            auto fit = best_impl->m_methods.find(pe.item);
-            MIR_ASSERT(state, fit != best_impl->m_methods.end(), "Couldn't find method in best inherent impl");
-            if( const auto* mir = fit->second.data.m_code.get_mir_opt() )
-            {
-                params.self_ty = &pe.type;
-                params.fcn_params = &pe.params;
-                params.impl_params = pe.impl_params.clone();
-                return mir;
-            }
-            return nullptr;
+            params.self_ty = &pe.type;
             }
         TU_ARMA(UfcsUnknown, pe) {
             MIR_BUG(state, "UfcsUnknown hit - " << path);
+            }
+        }
+
+        TU_MATCH_HDRA( (e), { )
+        default:
+            MIR_BUG(state, "MIR Call of " << e.tag_str() << " - " << path);
+        TU_ARMA(NotFound, _) {
+            return nullptr;
+            }
+        TU_ARMA(NotYetKnown, _) {
+            return nullptr;
+            }
+        TU_ARMA(Function, f) {
+            return f->m_code.get_mir_opt();
             }
         }
         return nullptr;
