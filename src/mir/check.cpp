@@ -993,6 +993,68 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                     {
                         MIR_BUG(state, "Call Fcn::Value with non-function type - " << ty);
                     }
+                    // NOTE: VTable functions use this, and have a little bit of type shenanigans going on
+#if 0
+                    const auto& fcn = ty.data().as_Function();
+
+                    ::HIR::TypeRef  tmp1;
+                    // Check arguments
+                    MIR_ASSERT(state, e.args.size() == fcn.m_arg_types.size(), "");
+                    for(size_t i = 0; i < e.args.size(); i ++)
+                    {
+                        const auto& in_ty = state.get_param_type(tmp1, e.args[i]);
+                        const auto& exp_ty = fcn.m_arg_types[i];
+                        MIR_ASSERT(state, in_ty == exp_ty, "Argument (" << i << ") type mismatch: input is " << in_ty << ", but expected is " << exp_ty);
+                    }
+                    // Check return
+                    const auto& slot_ty = state.get_lvalue_type(tmp1, e.ret_val);
+                    const auto& exp_ty = fcn.m_rettype;
+                    MIR_ASSERT(state, slot_ty == exp_ty, "Return type mismatch: slot is " << slot_ty << ", but return is " << exp_ty);
+#endif
+                }
+                else if( e.fcn.is_Path() )
+                {
+                    const auto& p = e.fcn.as_Path();
+
+                    MonomorphState  out_params;
+                    const auto& sig = state.m_resolve.get_value(sp, p, out_params, /*sig_only=*/true);
+                    MIR_ASSERT(state, sig.is_Function(), "Call Fcn::Path with non-function value - " << p << " is " << sig.tag_str());
+                    const auto& fcn = *sig.as_Function();
+
+                    ::HIR::TypeRef  tmp1;
+                    ::HIR::TypeRef  tmp2;
+                    auto maybe_monomorph = [&](const ::HIR::TypeRef& ty)->const ::HIR::TypeRef& {
+                        if( monomorphise_type_needed(ty) ) {
+                            tmp2 = out_params.monomorph_type(sp, ty);
+                            state.m_resolve.expand_associated_types(sp, tmp2);
+                            return tmp2;
+                        }
+                        else {
+                            return ty;
+                        }
+                    };
+                    // Check arguments
+                    if( fcn.m_variadic ) {
+                        MIR_ASSERT(state, e.args.size() >= fcn.m_args.size(), "");
+                    }
+                    else {
+                        MIR_ASSERT(state, e.args.size() == fcn.m_args.size(), "");
+                    }
+                    for(size_t i = 0; i < fcn.m_args.size(); i ++)
+                    {
+                        const auto& in_ty = state.get_param_type(tmp1, e.args[i]);
+                        const auto& exp_ty = maybe_monomorph(fcn.m_args[i].second);
+                        DEBUG("Arg " << i << " " << in_ty << " ?= " << exp_ty);
+                        MIR_ASSERT(state, in_ty == exp_ty, "Argument (" << i << ") type mismatch: input is " << in_ty << ", but expected is " << exp_ty);
+                    }
+                    // Check return
+                    const auto& slot_ty = state.get_lvalue_type(tmp1, e.ret_val);
+                    const auto& exp_ty = maybe_monomorph(fcn.m_return);
+                    DEBUG("Ret " << slot_ty << " ?= " << exp_ty);
+                    if(!exp_ty.data().is_Diverge())
+                    {
+                        MIR_ASSERT(state, slot_ty == exp_ty, "Return type mismatch: slot is " << slot_ty << ", but return is " << exp_ty);
+                    }
                 }
                 // Typecheck arguments and return value
                 }
