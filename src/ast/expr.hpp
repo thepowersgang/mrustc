@@ -98,11 +98,13 @@ struct ExprNode_Macro:
     AST::Path   m_path;
     RcString   m_ident;
     ::TokenTree m_tokens;
+    bool    m_is_braced;
 
-    ExprNode_Macro(AST::Path name, RcString ident, ::TokenTree&& tokens):
+    ExprNode_Macro(AST::Path name, RcString ident, ::TokenTree&& tokens, bool is_braced=false):
         m_path( move(name) ),
         m_ident(ident),
         m_tokens( move(tokens) )
+        , m_is_braced(is_braced)
     {}
 
     NODE_METHODS();

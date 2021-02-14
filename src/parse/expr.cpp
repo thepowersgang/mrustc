@@ -300,18 +300,6 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence)
             PUTBACK(tok, lex);
             return Parse_Stmt(lex);
 
-        case TOK_IDENT:
-            if( lex.lookahead(0) == TOK_EXCLAM )
-            {
-                // If a braced macro invocation is the first part of a statement, don't expect a semicolon
-                if( lex.lookahead(1) == TOK_BRACE_OPEN || (lex.lookahead(1) == TOK_IDENT && lex.lookahead(2) == TOK_BRACE_OPEN) ) {
-                    lex.getToken();
-                    // TODO: Support full paths here
-                    auto p = AST::Path::new_relative(tok.ident().hygiene, { AST::PathNode(tok.ident().name) });
-                    return Parse_ExprMacro(lex, mv$(p));
-                }
-            }
-        // Fall through to the statement code
         default:
             PUTBACK(tok, lex);
             return Parse_ExprBlockLine_Stmt(lex, *add_silence);
@@ -322,7 +310,19 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence)
 ExprNodeP Parse_ExprBlockLine_Stmt(TokenStream& lex, bool& has_semicolon)
 {
     Token tok;
+
+    bool is_paren = lex.lookahead(0) == TOK_PAREN_OPEN;
+
     auto ret = Parse_Stmt(lex);
+
+    // If `ret` is a braced macro call, don't require the semicolon (to remove the hackiness above)
+    // - Don't trigger this when parens are present
+    if( const auto* mac = dynamic_cast<AST::ExprNode_Macro*>(&*ret) ) {
+        if( !is_paren && mac->m_is_braced ) {
+            return ret;
+        }
+    }
+
     // If this expression statement wasn't followed by a semicolon, then it's yielding its value out of the block.
     // - I.e. The block should be ending
     if( GET_TOK(tok, lex) != TOK_SEMICOLON ) {
@@ -1334,6 +1334,8 @@ ExprNodeP Parse_ExprMacro(TokenStream& lex, AST::Path path)
 
     bool is_macro = (path.is_trivial() && path.as_trivial() == "macro_rules");
 
+    bool is_braced = lex.lookahead(0) == TOK_BRACE_OPEN;
+
     if(is_macro)
         lex.push_hygine();
     TokenTree tt = Parse_TT(lex, true);
@@ -1344,7 +1346,7 @@ ExprNodeP Parse_ExprMacro(TokenStream& lex, AST::Path path)
         lex.pop_hygine();
 
     DEBUG("name=" << path << ", ident=" << ident << ", tt=" << tt);
-    return NEWNODE(AST::ExprNode_Macro, mv$(path), mv$(ident), mv$(tt));
+    return NEWNODE(AST::ExprNode_Macro, mv$(path), mv$(ident), mv$(tt), is_braced);
 }
 
 // Token Tree Parsing
