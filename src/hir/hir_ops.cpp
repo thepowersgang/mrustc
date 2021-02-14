@@ -475,16 +475,17 @@ bool ::HIR::TraitImpl::more_specific_than(const ::HIR::TraitImpl& other) const
     // 1. If this->m_type is less specific than other.m_type: return false
     try
     {
-        auto ord = type_ord_specific(sp, this->m_type, other.m_type);
+        // If any in te.impl->m_params is less specific than oe.impl->m_params: return false
+        auto ord = typelist_ord_specific(sp, this->m_trait_args.m_types, other.m_trait_args.m_types);
+        if( ord != ::OrdEqual ) {
+            DEBUG("- Trait arguments " << (ord == ::OrdLess ? "less" : "more") << " specific");
+            return ord == ::OrdGreater;
+        }
+
+        ord = type_ord_specific(sp, this->m_type, other.m_type);
         // If `*this` < `other` : false
         if( ord != ::OrdEqual ) {
             DEBUG("- Type " << this->m_type << " " << (ord == ::OrdLess ? "less" : "more") << " specific than " << other.m_type);
-            return ord == ::OrdGreater;
-        }
-        // 2. If any in te.impl->m_params is less specific than oe.impl->m_params: return false
-        ord = typelist_ord_specific(sp, this->m_trait_args.m_types, other.m_trait_args.m_types);
-        if( ord != ::OrdEqual ) {
-            DEBUG("- Trait arguments " << (ord == ::OrdLess ? "less" : "more") << " specific");
             return ord == ::OrdGreater;
         }
     }
