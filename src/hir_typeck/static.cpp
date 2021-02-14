@@ -2558,21 +2558,25 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
                 });
             if( !best_impl.is_valid() )
             {
-                // Look for provided bodies
-                TU_MATCH_HDRA( (v), {)
-                TU_ARMA(Constant, ve) {
-                    // Constants?
-                    }
-                TU_ARMA(Static, ve) {
-                    // Statics?
-                    }
-                TU_ARMA(Function, ve) {
-                    if( ve.m_code || ve.m_code.m_mir ) {
-                        DEBUG("Trait provided body");
-                        // NOTE: The parameters have already been set
-                        return &ve;
-                    }
-                    // Fall through if there's no provided body
+                // If the type and impl are fully known, then look for trait provided values/bodies
+                if( !monomorphise_type_needed(pe.type) && !monomorphise_pathparams_needed(pe.trait.m_params) )
+                {
+                    // Look for provided bodies
+                    TU_MATCH_HDRA( (v), {)
+                    TU_ARMA(Constant, ve) {
+                        // Constants?
+                        }
+                    TU_ARMA(Static, ve) {
+                        // Statics?
+                        }
+                    TU_ARMA(Function, ve) {
+                        if( ve.m_code || ve.m_code.m_mir ) {
+                            DEBUG("Trait provided body");
+                            // NOTE: The parameters have already been set
+                            return &ve;
+                        }
+                        // Fall through if there's no provided body
+                        }
                     }
                 }
                 return ValuePtr::make_NotYetKnown({});
