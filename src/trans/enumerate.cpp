@@ -82,6 +82,7 @@ namespace MIR {
 
         void apply(EnumState& state, const Trans_Params& pp) const
         {
+            TRACE_FUNCTION_F("");
             for(const auto* ty_p : this->typeids)
             {
                 state.rv.m_typeids.insert( pp.monomorph(state.crate, *ty_p) );
@@ -1031,226 +1032,77 @@ namespace {
         (Static, const ::HIR::Static*),
         (Constant, const ::HIR::Constant*)
         );
-    EntPtr get_ent_simplepath(const Span& sp, const ::HIR::Crate& crate, const ::HIR::SimplePath& path)
-    {
-
-        const ::HIR::ValueItem* vip;
-        if( path.m_components.size() > 1 )
-        {
-            const auto& mi = crate.get_typeitem_by_path(sp, path, /*ignore_crate_name=*/false, /*ignore_last_node=*/true);
-
-            TU_MATCH_DEF( ::HIR::TypeItem, (mi), (e),
-            (
-                BUG(sp, "Node " << path.m_components.size()-1 << " of path " << path << " wasn't a module");
-                ),
-            (Enum,
-                // TODO: Check that this is a tuple variant
-                return EntPtr::make_AutoGenerate({});
-                ),
-            (Module,
-                auto it = e.m_value_items.find( path.m_components.back() );
-                if( it == e.m_value_items.end() ) {
-                    return EntPtr {};
-                }
-                vip = &it->second->ent;
-                )
-            )
-        }
-        else
-        {
-            vip = &crate.get_valitem_by_path(sp, path);
-        }
-
-
-        TU_MATCH( ::HIR::ValueItem, (*vip), (e),
-        (Import,
-            ),
-        (StructConstant,
-            ),
-        (StructConstructor,
-            // TODO: What to do with these?
-            return EntPtr::make_AutoGenerate({});
-            ),
-        (Function,
-            return EntPtr { &e };
-            ),
-        (Constant,
-            return EntPtr { &e };
-            ),
-        (Static,
-            return EntPtr { &e };
-            )
-        )
-        BUG(sp, "Path " << path << " pointed to a invalid item - " << vip->tag_str());
-    }
     EntPtr get_ent_fullpath(const Span& sp, const ::HIR::Crate& crate, const ::HIR::Path& path, ::HIR::PathParams& impl_pp)
     {
         TRACE_FUNCTION_F(path);
         StaticTraitResolve  resolve { crate };
 
-        if( const auto* pe = path.m_data.opt_Generic() )
-        {
-            return get_ent_simplepath(sp, crate, pe->m_path);
+        MonomorphState  ms;
+        auto ent = resolve.get_value(sp, path, ms, /*signature_only=*/false);
+        if(ms.get_impl_params()) {
+            impl_pp = ms.get_impl_params()->clone();
         }
-        else if( const auto* pe = path.m_data.opt_UfcsInherent() )
-        {
-            // Easy (ish)
-            EntPtr rv;
-            crate.find_type_impls(pe->type, [](const auto&x)->const auto& { return x; }, [&](const auto& impl) {
-                DEBUG("Found impl" << impl.m_params.fmt_args() << " " << impl.m_type);
-                {
-                    auto fit = impl.m_methods.find(pe->item);
-                    if( fit != impl.m_methods.end() )
-                    {
-                        DEBUG("- Contains method, good");
-                        rv = EntPtr { &fit->second.data };
-                        return true;
-                    }
-                }
-                {
-                    auto it = impl.m_constants.find(pe->item);
-                    if( it != impl.m_constants.end() )
-                    {
-                        rv = EntPtr { &it->second.data };
-                        return true;
-                    }
-                }
-                return false;
-                });
-            return rv;
-        }
-        else if( const auto* pe = path.m_data.opt_UfcsKnown() )
-        {
-            EntPtr rv;
-
-            // Obtain trait pointer (for default impl and to know what the item type is)
-            const auto& trait_ref = crate.get_trait_by_path(sp, pe->trait.m_path);
-            auto trait_vi_it = trait_ref.m_values.find(pe->item);
-            ASSERT_BUG(sp, trait_vi_it != trait_ref.m_values.end(), "Couldn't find item " << pe->item << " in trait " << pe->trait.m_path);
-            const auto& trait_vi = trait_vi_it->second;
-
-            bool is_dynamic = false;
-            bool any_impl = false;
-            ::HIR::PathParams   best_impl_params;
-            const ::HIR::TraitImpl* best_impl = nullptr;
-            resolve.find_impl(sp, pe->trait.m_path, pe->trait.m_params, pe->type, [&](auto impl_ref, auto is_fuzz) {
-                DEBUG("[get_ent_fullpath] Found " << impl_ref);
-                //ASSERT_BUG(sp, !is_fuzz, "Fuzzy match not allowed here");
-                if( ! impl_ref.m_data.is_TraitImpl() ) {
-                    DEBUG("Trans impl search found an invalid impl type - " << impl_ref.m_data.tag_str());
-                    is_dynamic = true;
-                    // TODO: This can only really happen if it's a trait object magic impl, which should become a vtable lookup.
-                    return true;
-                }
-                any_impl = true;
-                const auto& impl_ref_e = impl_ref.m_data.as_TraitImpl();
-                const auto& impl = *impl_ref_e.impl;
-                ASSERT_BUG(sp, impl.m_trait_args.m_types.size() == pe->trait.m_params.m_types.size(), "Trait parameter count mismatch " << impl.m_trait_args << " vs " << pe->trait.m_params);
-
-                if( best_impl == nullptr || impl.more_specific_than(*best_impl) ) {
-                    bool is_spec = false;
-                    TU_MATCHA( (trait_vi), (ve),
-                    (Constant,
-                        auto it = impl.m_constants.find(pe->item);
-                        if( it == impl.m_constants.end() ) {
-                            DEBUG("Constant " << pe->item << " missing in trait " << pe->trait << " for " << pe->type);
-                            return false;
-                        }
-                        is_spec = it->second.is_specialisable;
-                        ),
-                    (Static,
-                        if( pe->item == "vtable#" ) {
-                            is_spec = true;
-                            DEBUG("VTable, quick return");
-                            return true;
-                        }
-                        auto it = impl.m_statics.find(pe->item);
-                        if( it == impl.m_statics.end() ) {
-                            DEBUG("Static " << pe->item << " missing in trait " << pe->trait << " for " << pe->type);
-                            return false;
-                        }
-                        is_spec = it->second.is_specialisable;
-                        ),
-                    (Function,
-                        auto fit = impl.m_methods.find(pe->item);
-                        if( fit == impl.m_methods.end() ) {
-                            DEBUG("Method " << pe->item << " missing in trait " << pe->trait << " for " << pe->type);
-                            return false;
-                        }
-                        is_spec = fit->second.is_specialisable;
-                        )
-                    )
-                    best_impl = &impl;
-                    best_impl_params = impl_ref_e.impl_params.clone();
-                    if( is_spec )
-                        DEBUG("- Specialisable");
-                    return !is_spec;
-                }
-                return false;
-                });
-            if( is_dynamic )
+        DEBUG(path << " = " << ent.tag_str() << " w/ impl" << impl_pp);
+        TU_MATCH_HDRA( (ent), {)
+        default:
+            TODO(sp, path << " was " << ent.tag_str());
+        TU_ARMA(NotYetKnown, _e) {
+            const auto* pe = &path.m_data.as_UfcsKnown();
+            // Options:
+            // - VTable
+            if( pe->item == "vtable#" ) {
+                DEBUG("VTable, quick return");
                 return EntPtr::make_AutoGenerate( {} );
-            if( !any_impl )
-                return EntPtr {};
-            if( best_impl )
-            {
-                const auto& impl = *best_impl;
-
-                impl_pp = mv$(best_impl_params);
-
-                // Fallback on default/provided items
-                TU_MATCH_HDRA( (trait_vi), {)
-                TU_ARMA(Constant, ve) {
-                    auto it = impl.m_constants.find(pe->item);
-                    ASSERT_BUG(sp, it != impl.m_constants.end(), "best_impl set, but item not found - " << path);
-                    DEBUG("Found impl" << impl.m_params.fmt_args() << " " << impl.m_type);
-                    return EntPtr { &it->second.data };
-                    }
-                TU_ARMA(Static, ve) {
-                    assert(pe->item != "vtable#");
-                    auto it = impl.m_statics.find(pe->item);
-                    ASSERT_BUG(sp, it != impl.m_statics.end(), "best_impl set, but item not found - " << path);
-                    DEBUG("Found impl" << impl.m_params.fmt_args() << " " << impl.m_type);
-                    return EntPtr { &it->second.data };
-                    }
-                TU_ARMA(Function, ve) {
-                    auto fit = impl.m_methods.find(pe->item);
-                    ASSERT_BUG(sp, fit != impl.m_methods.end(), "best_impl set, but item not found - " << path);
-                    DEBUG("Found impl" << impl.m_params.fmt_args() << " " << impl.m_type);
-                    return EntPtr { &fit->second.data };
-                    }
-                }
             }
-            else
+            // - Auto-generated impl (the only trait impl was a bound)
+            //  > Need to check if the trait is impled bounded
+            bool found_bound = false;
+            bool found_impl = false;
+            resolve.find_impl(sp, pe->trait.m_path, pe->trait.m_params, pe->type, [&](auto impl_ref, auto is_fuzz)->bool {
+                DEBUG("[get_ent_fullpath] Found " << impl_ref);
+                if(impl_ref.m_data.is_TraitImpl()) {
+                    found_impl = true;
+                }
+                else {
+                    found_bound = true;
+                }
+                return false;
+                });
+            if(found_bound) {
+                return EntPtr::make_AutoGenerate( {} );
+            }
+            DEBUG("NotYetKnown -> NotFound");
+            return EntPtr();
+            }
+        TU_ARMA(Function, f) {
+            // Check for trait provided bodies
+            // - They need a little hack to ensure that monomorph is run
+            if( const auto* pe = path.m_data.opt_UfcsKnown() )
             {
-                // Fallback on default/provided items
-                TU_MATCH_HDRA( (trait_vi), {)
-                TU_ARMA(Constant, ve) {
-                    TODO(sp, "Associated constant - " << path);
-                    }
-                TU_ARMA(Static, ve) {
-                    if( pe->item == "vtable#" )
-                    {
-                        DEBUG("VTable, autogen");
-                        return EntPtr::make_AutoGenerate( {} );
-                    }
-                    TODO(sp, "Associated static - " << path);
-                    }
-                TU_ARMA(Function, ve) {
-                    ASSERT_BUG(sp, ve.m_code.m_mir, "Attempting to use default method with no body MIR - " << path);
-                    impl_pp = pe->trait.m_params.clone();
+                const auto& trait_ref = crate.get_trait_by_path(sp, pe->trait.m_path);
+                const auto& trait_vi = trait_ref.m_values.at(pe->item);
+
+                if( f == &trait_vi.as_Function() )
+                {
+                    DEBUG("Default trait body");
                     // HACK! By adding a new parameter here, the MIR will always be monomorphised
                     impl_pp.m_types.push_back( ::HIR::TypeRef() );
-                    return EntPtr { &ve };
-                    }
                 }
             }
-            throw "unreachable";
-        }
-        else
-        {
-            // TODO: Are these valid at this point in compilation?
-            TODO(sp, "get_ent_fullpath(path = " << path << ")");
+            return EntPtr { f };
+            }
+        TU_ARMA(Static, f) {
+            return EntPtr { f };
+            }
+        TU_ARMA(Constant, f) {
+            return EntPtr { f };
+            }
+        TU_ARMA(StructConstructor, _) {
+            return EntPtr::make_AutoGenerate({});
+            }
+        TU_ARMA(EnumConstructor, _) {
+            return EntPtr::make_AutoGenerate({});
+            }
         }
         throw "";
     }
@@ -1458,6 +1310,7 @@ void Trans_Enumerate_FillFrom_MIR_Param(MIR::EnumCache& state, const ::MIR::Para
 }
 void Trans_Enumerate_FillFrom_MIR(MIR::EnumCache& state, const ::MIR::Function& code)
 {
+    TRACE_FUNCTION_F("");
     for(const auto& bb : code.blocks)
     {
         for(const auto& stmt : bb.statements)

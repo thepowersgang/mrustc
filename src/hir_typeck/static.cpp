@@ -2482,9 +2482,13 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
         out_params.pp_impl = &pe.trait.m_params;
         out_params.pp_method = &pe.params;
         const ::HIR::Trait& tr = m_crate.get_trait_by_path(sp, pe.trait.m_path);
+        if( !tr.m_values.count(pe.item) ) {
+            DEBUG("Value " << pe.item << " not found in trait " << pe.trait.m_path);
+            return ValuePtr();
+        }
+        const ::HIR::TraitValueItem& v = tr.m_values.at(pe.item);
         if( signature_only )
         {
-            const ::HIR::TraitValueItem& v = tr.m_values.at(pe.item);
             TU_MATCHA( (v), (ve),
             (Constant, return &ve; ),
             (Static,   return &ve; ),
@@ -2496,47 +2500,81 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
             ImplRef best_impl;
             ValuePtr    rv;
             this->find_impl(sp, pe.trait.m_path, &pe.trait.m_params, pe.type, [&](auto impl, bool is_fuzz)->bool{
+                DEBUG(impl);
                 if( ! impl.m_data.is_TraitImpl() )
                     return false;
-                const auto& ti = *impl.m_data.as_TraitImpl().impl;
-                bool found = false;
+                const ::HIR::TraitImpl& ti = *impl.m_data.as_TraitImpl().impl;
                 bool is_spec = false;
 
-                if(!found)
+                ValuePtr    this_rv;
+                // - Constants
+                if(this_rv.is_NotFound())
                 {
                     auto it = ti.m_constants.find(pe.item);
                     if(it != ti.m_constants.end())
                     {
-                        found = true;
                         is_spec = it->second.is_specialisable;
-                        rv = &it->second.data;
+                        this_rv = &it->second.data;
                     }
                 }
-                if(!found)
+                // - Statics
+                if(this_rv.is_NotFound())
+                {
+                    auto it = ti.m_statics.find(pe.item);
+                    if(it != ti.m_statics.end())
+                    {
+                        is_spec = it->second.is_specialisable;
+                        this_rv = &it->second.data;
+                    }
+                }
+                // - Functions
+                if(this_rv.is_NotFound())
                 {
                     auto it = ti.m_methods.find(pe.item);
                     if(it != ti.m_methods.end())
                     {
-                        found = true;
                         is_spec = it->second.is_specialisable;
-                        rv = &it->second.data;
+                        this_rv = &it->second.data;
                     }
                 }
 
-                if(!found) {
+                if(this_rv.is_NotFound()) {
+                    DEBUG("- Missing the target item");
                     return false;
                 }
                 else if( !impl.more_specific_than(best_impl) ) {
                     // Keep searching
+                    DEBUG("- Less specific");
                     return false;
                 }
                 else {
+                    DEBUG("- More specific (is_spec=" << is_spec << ")");
                     best_impl = mv$(impl);
-                    return !is_spec;
+                    rv = std::move(this_rv);
+                    // NOTE: There could be an overlapping and more-specific impl without `default` being involved
+                    //return !is_spec;
+                    return false;
                 }
                 });
             if( !best_impl.is_valid() )
             {
+                // Look for provided bodies
+                TU_MATCH_HDRA( (v), {)
+                TU_ARMA(Constant, ve) {
+                    // Constants?
+                    }
+                TU_ARMA(Static, ve) {
+                    // Statics?
+                    }
+                TU_ARMA(Function, ve) {
+                    if( ve.m_code || ve.m_code.m_mir ) {
+                        DEBUG("Trait provided body");
+                        // NOTE: The parameters have already been set
+                        return &ve;
+                    }
+                    // Fall through if there's no provided body
+                    }
+                }
                 return ValuePtr::make_NotYetKnown({});
             }
 
