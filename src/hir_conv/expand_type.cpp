@@ -147,8 +147,29 @@ public:
 
     ::HIR::Pattern::PathBinding visit_pattern_PathBinding(const Span& sp, ::HIR::Path& path)
     {
-        if( path.m_data.is_UfcsInherent() ) {
-            // TODO: Lookup enum variants?
+        if( path.m_data.is_UfcsUnknown() ) {
+            const auto& ty = path.m_data.as_UfcsUnknown().type;
+            const auto& name = path.m_data.as_UfcsUnknown().item;
+
+            if( !ty.data().is_Path() ) {
+                ERROR(sp, E0000, "Expeted path in pattern binding, got " << ty);
+            }
+            if( !ty.data().as_Path().path.m_data.is_Generic() ) {
+                ERROR(sp, E0000, "Expeted generic path in pattern binding, got " << ty);
+            }
+            const auto& gp = ty.data().as_Path().path.m_data.as_Generic();
+            const auto& ti = m_crate.get_typeitem_by_path(sp, gp.m_path);
+            if( !ti.is_Enum() ) {
+                ERROR(sp, E0000, "Expeted enum path in pattern binding, got " << ti.tag_str());
+            }
+            const auto& enm = ti.as_Enum();
+
+            auto gp2 = gp.clone();
+            gp2.m_path.m_components.push_back(name);
+            gp2.m_params.m_types.resize( enm.m_params.m_types.size() );
+
+            auto idx = enm.find_variant(gp.m_path.m_components.back());
+            return ::HIR::Pattern::PathBinding::make_Enum({ &enm, static_cast<unsigned>(idx) });
         }
 
         ASSERT_BUG(sp, path.m_data.is_Generic(), path);
