@@ -715,17 +715,17 @@ namespace {
 
             ::HIR::Visitor::visit_pattern(pat);
 
-            TU_MATCH_DEF(::HIR::Pattern::Data, (pat.m_data), (e),
-            (
-                ),
-            (Value,
+            TU_MATCH_HDRA( (pat.m_data), {)
+            default:
+                break;
+            TU_ARMA(Value, e) {
                 this->visit_pattern_Value(sp, pat, e.val);
-                ),
-            (Range,
+                }
+            TU_ARMA(Range, e) {
                 this->visit_pattern_Value(sp, pat, e.start);
                 this->visit_pattern_Value(sp, pat, e.end);
-                )
-            )
+                }
+            }
         }
         void visit_pattern_Value(const Span& sp, const ::HIR::Pattern& pat, ::HIR::Pattern::Value& val)
         {

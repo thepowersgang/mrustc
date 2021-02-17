@@ -1209,3 +1209,49 @@ unsigned HIR::Trait::get_vtable_value_index(const HIR::GenericPath& trait_path, 
     }
     return 0;
 }
+
+/// Helper for getting the struct associated with a pattern path
+const ::HIR::Struct& HIR::pattern_get_struct(const Span& sp, const ::HIR::Path& path, const ::HIR::Pattern::PathBinding& binding, bool is_tuple)
+{
+    const ::HIR::Struct* str_p = nullptr;
+    TU_MATCH_HDRA( (binding), { )
+    TU_ARMA(Unbound, be)
+        BUG(sp, "Unexpected unbound named pattern - " << path);
+    TU_ARMA(Struct, be) {
+        str_p = be;
+        }
+    TU_ARMA(Enum, be) {
+        const auto& enm = *be.ptr;
+        if(is_tuple) {
+            ASSERT_BUG(sp, enm.m_data.is_Data(), "PathTuple pattern with non-data enum - " << path);
+        }
+        else {
+            ASSERT_BUG(sp, enm.m_data.is_Data(), "PathNamed pattern with non-data enum - " << path);
+        }
+        const auto& enm_d = enm.m_data.as_Data();
+        ASSERT_BUG(sp, be.var_idx < enm_d.size(), "Variant index " << be.var_idx << " out of range - " << path);
+        if(is_tuple) {
+            ASSERT_BUG(sp, !enm_d[be.var_idx].is_struct, "PathTuple pattern with brace enum variant - " << path);
+        }
+        else {
+            ASSERT_BUG(sp, enm_d[be.var_idx].is_struct, "PathNamed pattern with non-brace enum variant - " << path);
+        }
+        str_p = enm_d[be.var_idx].type.data().as_Path().binding.as_Struct();
+        }
+    }
+    const auto& str = *str_p;
+
+    if(is_tuple) {
+        ASSERT_BUG(sp, str.m_data.is_Tuple(), "PathTuple pattern with non-tuple struct - " << str.m_data.tag_str());
+    }
+    else {
+        ASSERT_BUG(sp, str.m_data.is_Named(), "Struct pattern on non-brace struct");
+    }
+    return str;
+}
+const ::HIR::t_tuple_fields& HIR::pattern_get_tuple(const Span& sp, const ::HIR::Path& path, const ::HIR::Pattern::PathBinding& binding) {
+    return pattern_get_struct(sp, path, binding, true).m_data.as_Tuple();
+}
+const ::HIR::t_struct_fields& HIR::pattern_get_named(const Span& sp, const ::HIR::Path& path, const ::HIR::Pattern::PathBinding& binding) {
+    return pattern_get_struct(sp, path, binding, false).m_data.as_Named();
+}

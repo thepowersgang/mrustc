@@ -139,16 +139,16 @@ namespace {
                 for(unsigned int i = 0; i < e.trailing.size(); i ++ )
                     define_vars_from(sp, e.trailing[i]);
                 ),
-            (StructValue,
+            (PathValue,
                 // Nothing.
                 ),
-            (StructTuple,
-                for(unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
-                {
-                    define_vars_from(sp, e.sub_patterns[i]);
-                }
+            (PathTuple,
+                for(unsigned int i = 0; i < e.leading.size(); i ++ )
+                    define_vars_from(sp, e.leading[i]);
+                for(unsigned int i = 0; i < e.trailing.size(); i ++ )
+                    define_vars_from(sp, e.trailing[i]);
                 ),
-            (Struct,
+            (PathNamed,
                 for(const auto& fld_pat : e.sub_patterns)
                 {
                     define_vars_from(sp, fld_pat.second);
@@ -158,21 +158,6 @@ namespace {
             (Value,
                 ),
             (Range,
-                ),
-            (EnumValue,
-                ),
-
-            (EnumTuple,
-                for(unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
-                {
-                    define_vars_from(sp, e.sub_patterns[i]);
-                }
-                ),
-            (EnumStruct,
-                for(const auto& fld_pat : e.sub_patterns)
-                {
-                    define_vars_from(sp, fld_pat.second);
-                }
                 ),
             (Slice,
                 for(const auto& subpat : e.sub_patterns)
@@ -264,21 +249,77 @@ namespace {
                     destructure_from_ex(sp, e.trailing[i], ::MIR::LValue::new_Field(lval.clone(), ofs+i), cb, allow_refutable);
                 }
                 }
-            TU_ARMA(StructValue, e) {
+            TU_ARMA(PathValue, e) {
                 // Nothing.
+                if( e.binding.is_Enum() && e.binding.as_Enum().ptr->num_variants() > 1 ) {
+                    ASSERT_BUG(sp, allow_refutable != AllowRefutable::No, "Refutable pattern not expected - " << pat);
                 }
-            TU_ARMA(StructTuple, e) {
-                for(unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
+                }
+            TU_ARMA(PathTuple, e) {
+                if(const auto* be = e.binding.opt_Enum())
                 {
-                    destructure_from_ex(sp, e.sub_patterns[i], ::MIR::LValue::new_Field(lval.clone(), i), cb, allow_refutable);
+                    const auto& enm = *be->ptr;
+                    const auto& variants = enm.m_data.as_Data();
+                    // Check that this is the only non-impossible arm
+                    if( allow_refutable == AllowRefutable::No )
+                    {
+                        for(size_t i = 0; i < variants.size(); i ++)
+                        {
+                            const auto& var_ty = variants[i].type;
+                            // Skip this arm
+                            if( i == be->var_idx ) {
+                                continue;
+                            }
+                            ::HIR::TypeRef  tmp;
+                            const auto& ty = monomorphise_type_with_opt(sp, tmp, var_ty, MonomorphStatePtr(nullptr, &e.path.m_data.as_Generic().m_params, nullptr));
+                            if( m_builder.resolve().type_is_impossible(sp, ty) ) {
+                                continue;
+                            }
+                            ERROR(sp, E0000, "Variant " << variants[i].name << " not handled");
+                        }
+                    }
+                    lval = ::MIR::LValue::new_Downcast(mv$(lval), be->var_idx);
+                }
+                for(unsigned int i = 0; i < e.leading.size(); i ++ )
+                {
+                    destructure_from_ex(sp, e.leading[i], ::MIR::LValue::new_Field(lval.clone(), i), cb, allow_refutable);
+                }
+                for(unsigned int i = 0; i < e.trailing.size(); i ++ )
+                {
+                    destructure_from_ex(sp, e.trailing[i], ::MIR::LValue::new_Field(lval.clone(), e.total_size - e.trailing.size() + i), cb, allow_refutable);
                 }
                 }
-            TU_ARMA(Struct, e) {
-                const auto& str = *e.binding;
+            TU_ARMA(PathNamed, e) {
+                if(const auto* be = e.binding.opt_Enum())
+                {
+                    const auto& enm = *be->ptr;
+                    if(enm.m_data.is_Data())
+                    {
+                        const auto& variants = enm.m_data.as_Data();
+                        // Check that this is the only non-impossible arm
+                        if( allow_refutable == AllowRefutable::No )
+                        {
+                            for(size_t i = 0; i < variants.size(); i ++)
+                            {
+                                const auto& var_ty = variants[i].type;
+                                // Skip this arm
+                                if( i == be->var_idx ) {
+                                    continue;
+                                }
+                                ::HIR::TypeRef  tmp;
+                                const auto& ty = monomorphise_type_with_opt(sp, tmp, var_ty, MonomorphStatePtr(nullptr, &e.path.m_data.as_Generic().m_params, nullptr));
+                                if( m_builder.resolve().type_is_impossible(sp, ty) ) {
+                                    continue;
+                                }
+                                ERROR(sp, E0000, "Variant " << variants[i].name << " not handled");
+                            }
+                        }
+                    }
+                    lval = ::MIR::LValue::new_Downcast(mv$(lval), be->var_idx);
+                }
                 if( !e.sub_patterns.empty() )
                 {
-                    ASSERT_BUG(sp, str.m_data.is_Named(), "Struct pattern on non-Named struct - " << pat);
-                    const auto& fields = str.m_data.as_Named();
+                    const auto& fields = ::HIR::pattern_get_named(sp, e.path, e.binding);
                     for(const auto& fld_pat : e.sub_patterns)
                     {
                         unsigned idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto&x){ return x.first == fld_pat.first; } ) - fields.begin();
@@ -292,54 +333,6 @@ namespace {
                 }
             TU_ARMA(Range, e) {
                 ASSERT_BUG(sp, allow_refutable != AllowRefutable::No, "Refutable pattern not expected - " << pat);
-                }
-            TU_ARMA(EnumValue, e) {
-                const auto& enm = *e.binding_ptr;
-                if( enm.num_variants() > 1 )
-                {
-                    ASSERT_BUG(sp, allow_refutable != AllowRefutable::No, "Refutable pattern not expected - " << pat);
-                }
-                }
-            TU_ARMA(EnumTuple, e) {
-                const auto& enm = *e.binding_ptr;
-                const auto& variants = enm.m_data.as_Data();
-                // TODO: Check that this is the only non-impossible arm
-                if( allow_refutable == AllowRefutable::No )
-                {
-                    for(size_t i = 0; i < variants.size(); i ++)
-                    {
-                        const auto& var_ty = variants[i].type;
-                        if( i == e.binding_idx ) {
-                            continue;
-                        }
-                        ::HIR::TypeRef  tmp;
-                        const auto& ty = monomorphise_type_with_opt(sp, tmp, var_ty, MonomorphStatePtr(nullptr, &e.path.m_params, nullptr));
-                        if( m_builder.resolve().type_is_impossible(sp, ty) ) {
-                            continue;
-                        }
-                        ERROR(sp, E0000, "Variant " << variants[i].name << " not handled");
-                    }
-                }
-                auto lval_var = ::MIR::LValue::new_Downcast(mv$(lval), e.binding_idx);
-                for(unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
-                {
-                    destructure_from_ex(sp, e.sub_patterns[i], ::MIR::LValue::new_Field(lval_var.clone(), i), cb, allow_refutable);
-                }
-                }
-            TU_ARMA(EnumStruct, e) {
-                const auto& enm = *e.binding_ptr;
-                ASSERT_BUG(sp, enm.num_variants() == 1 || allow_refutable != AllowRefutable::No, "Refutable pattern not expected - " << pat);
-                ASSERT_BUG(sp, enm.m_data.is_Data(), "Expected struct variant - " << pat);
-                const auto& var = enm.m_data.as_Data()[e.binding_idx];;
-                const auto& str = *var.type.data().as_Path().binding.as_Struct();
-                ASSERT_BUG(sp, str.m_data.is_Named(), "Struct pattern on non-Named struct - " << e.path);
-                const auto& fields = str.m_data.as_Named();
-                auto lval_var = ::MIR::LValue::new_Downcast(mv$(lval), e.binding_idx);
-                for(const auto& fld_pat : e.sub_patterns)
-                {
-                    unsigned idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto&x){ return x.first == fld_pat.first; } ) - fields.begin();
-                    destructure_from_ex(sp, fld_pat.second, ::MIR::LValue::new_Field(lval_var.clone(), idx), cb, allow_refutable);
-                }
                 }
             TU_ARMA(Slice, e) {
                 // These are only refutable if T is [T]

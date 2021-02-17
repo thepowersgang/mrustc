@@ -1218,26 +1218,17 @@ namespace {
                 ),
 
             // - Enums/Structs
-            (StructValue,
+            (PathValue,
                 ),
-            (StructTuple,
-                for(const auto& field : e.sub_patterns) {
+            (PathTuple,
+                for(const auto& field : e.leading) {
+                    add_closure_def_from_pattern(sp, field);
+                }
+                for(const auto& field : e.trailing) {
                     add_closure_def_from_pattern(sp, field);
                 }
                 ),
-            (Struct,
-                for( auto& field_pat : e.sub_patterns ) {
-                    add_closure_def_from_pattern(sp, field_pat.second);
-                }
-                ),
-            (EnumValue,
-                ),
-            (EnumTuple,
-                for(const auto& field : e.sub_patterns) {
-                    add_closure_def_from_pattern(sp, field);
-                }
-                ),
-            (EnumStruct,
+            (PathNamed,
                 for( auto& field_pat : e.sub_patterns ) {
                     add_closure_def_from_pattern(sp, field_pat.second);
                 }

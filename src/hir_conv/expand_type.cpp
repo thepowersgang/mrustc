@@ -111,31 +111,70 @@ public:
     }
 
 
-    ::HIR::GenericPath expand_alias_gp(const Span& sp, const ::HIR::GenericPath& path)
+    ::HIR::Path expand_alias_path(const Span& sp, const ::HIR::Path& path)
     {
         const unsigned int MAX_RECURSIVE_TYPE_EXPANSIONS = 100;
 
-        ::HIR::GenericPath  rv;
+        // If the path is already generic and points at an enum variant, skip
+        if( path.m_data.is_Generic() )
+        {
+            const auto& gp = path.m_data.as_Generic();
+            if( gp.m_path.m_components.size() > 1 && m_crate.get_typeitem_by_path(sp, gp.m_path, /*igncrate*/false, /*ignlast*/true).is_Enum() )
+            {
+                return ::HIR::GenericPath();
+            }
+        }
+
+        ::HIR::Path  rv = ::HIR::GenericPath();
         const auto* cur = &path;
 
         unsigned int num_exp = 0;
         do {
-            auto ty = ConvertHIR_ExpandAliases_GetExpansion_GP(sp, m_crate, *cur, m_in_expr);
+            auto ty = ConvertHIR_ExpandAliases_GetExpansion(m_crate, *cur, m_in_expr);
             if( ty == ::HIR::TypeRef() )
                 break ;
             if( !ty.data().is_Path() )
                 ERROR(sp, E0000, "Type alias referenced in generic path doesn't point to a path");
-            auto& ty_p = ty.get_unique().as_Path().path;
-            if( !ty_p.m_data.is_Generic() )
-                ERROR(sp, E0000, "Type alias referenced in generic path doesn't point to a generic path");
-            rv = mv$( ty_p.m_data.as_Generic() );
+            rv = std::move(ty.get_unique().as_Path().path);
 
-            this->visit_generic_path(rv, ::HIR::Visitor::PathContext::TYPE);
+            this->visit_path(rv, ::HIR::Visitor::PathContext::TYPE);
 
             cur = &rv;
         } while( ++num_exp < MAX_RECURSIVE_TYPE_EXPANSIONS );
         ASSERT_BUG(sp, num_exp < MAX_RECURSIVE_TYPE_EXPANSIONS, "Recursion limit expanding " << path << " (currently on " << *cur << ")");
-        return rv;
+        return mv$( rv );
+    }
+
+    ::HIR::Pattern::PathBinding visit_pattern_PathBinding(const Span& sp, ::HIR::Path& path)
+    {
+        if( path.m_data.is_UfcsInherent() ) {
+            // TODO: Lookup enum variants?
+        }
+
+        ASSERT_BUG(sp, path.m_data.is_Generic(), path);
+        auto& gp = path.m_data.as_Generic();
+
+        // TODO: Better error messages?
+        if( gp.m_path.m_components.size() > 1 )
+        {
+            const auto& ti = m_crate.get_typeitem_by_path(sp, gp.m_path, false, /*ignore_last*/true);
+            if( ti.is_Enum() ) {
+                // Enum variant!
+                const auto& enm = ti.as_Enum();
+
+                gp.m_params.m_types.resize( enm.m_params.m_types.size() );
+
+                auto idx = ti.as_Enum().find_variant(gp.m_path.m_components.back());
+                return ::HIR::Pattern::PathBinding::make_Enum({ &enm, static_cast<unsigned>(idx) });
+            }
+        }
+
+        // Has to be a struct
+        const auto& str = m_crate.get_struct_by_path(sp, gp.m_path);
+
+        gp.m_params.m_types.resize( str.m_params.m_types.size() );
+
+        return ::HIR::Pattern::PathBinding::make_Struct(&str);
     }
 
     void visit_pattern(::HIR::Pattern& pat) override
@@ -147,29 +186,33 @@ public:
         TU_MATCH_HDRA( (pat.m_data), {)
         default:
             break;
-        TU_ARMA(StructValue, e) {
-            auto new_path = expand_alias_gp(sp, e.path);
-            if( new_path.m_path.m_components.size() != 0 )
+        TU_ARMA(PathValue, e) {
+            auto new_path = expand_alias_path(sp, e.path);
+            if( new_path != ::HIR::GenericPath() )
             {
                 DEBUG("Replacing " << e.path << " with " << new_path);
                 e.path = mv$(new_path);
             }
+            e.binding = visit_pattern_PathBinding(sp, e.path);
             }
-        TU_ARMA(StructTuple, e) {
-            auto new_path = expand_alias_gp(sp, e.path);
-            if( new_path.m_path.m_components.size() != 0 )
+        TU_ARMA(PathTuple, e) {
+            auto new_path = expand_alias_path(sp, e.path);
+            if( new_path != ::HIR::GenericPath() )
             {
                 DEBUG("Replacing " << e.path << " with " << new_path);
                 e.path = mv$(new_path);
             }
+            e.binding = visit_pattern_PathBinding(sp, e.path);
             }
-        TU_ARMA(Struct, e) {
-            auto new_path = expand_alias_gp(sp, e.path);
-            if( new_path.m_path.m_components.size() != 0 )
+        TU_ARMA(PathNamed, e) {
+            auto new_path = expand_alias_path(sp, e.path);
+            if( new_path != ::HIR::GenericPath() )
             {
                 DEBUG("Replacing " << e.path << " with " << new_path);
                 e.path = mv$(new_path);
             }
+            e.binding = visit_pattern_PathBinding(sp, e.path);
+            // TODO: If this is an empty/wildcard AND it's poiting at a value/tuple entry, change to PathValue/PathTuple
             }
         }
     }

@@ -178,9 +178,11 @@ namespace {
         {
             bool is_single_value = pat.m_data.is_Value();
 
-            TU_IFLET( ::HIR::Pattern::Value, val, Named, ve,
-                TU_IFLET( ::HIR::Path::Data, ve.path.m_data, Generic, pe,
-                    const auto& path = pe.m_path;
+            if( auto* ve = val.opt_Named() )
+            {
+                if(auto* pe = ve->path.m_data.opt_Generic())
+                {
+                    const auto& path = pe->m_path;
                     const auto& pc = path.m_components.back();
                     const ::HIR::Module*  mod = nullptr;
                     if( path.m_components.size() == 1 )
@@ -201,12 +203,11 @@ namespace {
                             if( idx == SIZE_MAX ) {
                                 BUG(sp, "'" << pc << "' isn't a variant in path " << path);
                             }
-                            auto path = mv$(pe);
+                            HIR::GenericPath path = std::move(*pe);
                             fix_type_params(sp, enm->m_params,  path.m_params);
-                            pat.m_data = ::HIR::Pattern::Data::make_EnumValue({
+                            pat.m_data = ::HIR::Pattern::Data::make_PathValue({
                                 mv$(path),
-                                enm,
-                                static_cast<unsigned>(idx)
+                                ::HIR::Pattern::PathBinding::make_Enum({ enm, static_cast<unsigned>(idx) })
                                 });
                         }
                         else if( (mod = ti.opt_Module()) )
@@ -215,7 +216,7 @@ namespace {
                         }
                         else
                         {
-                            BUG(sp, "Node " << path.m_components.size()-2 << " of path " << ve.path << " wasn't a module");
+                            BUG(sp, "Node " << path.m_components.size()-2 << " of path " << ve->path << " wasn't a module");
                         }
                     }
 
@@ -226,34 +227,33 @@ namespace {
                             BUG(sp, "Couldn't find final component of " << path);
                         }
                         // Unit-like struct match or a constant
-                        TU_MATCH_DEF( ::HIR::ValueItem, (it->second->ent), (e2),
-                        (
-                            ERROR(sp, E0000, "Value pattern " << pat << " pointing to unexpected item type - " << it->second->ent.tag_str())
-                            ),
-                        (Constant,
+                        TU_MATCH_HDRA( (it->second->ent), { )
+                        default:
+                            ERROR(sp, E0000, "Value pattern " << pat << " pointing to unexpected item type - " << it->second->ent.tag_str());
+                        TU_ARMA(Constant, e2) {
                             // Store reference to this item for later use
-                            ve.binding = &e2;
-                            ),
-                        (StructConstant,
+                            ve->binding = &e2;
+                            }
+                        TU_ARMA(StructConstant, e2) {
                             const auto& str = mod->m_mod_items.find(pc)->second->ent.as_Struct();
                             // Convert into a dedicated pattern type
                             if( !is_single_value ) {
                                 ERROR(sp, E0000, "Struct in range pattern - " << pat);
                             }
-                            auto path = mv$(pe);
+                            auto path = mv$(*pe);
                             fix_type_params(sp, str.m_params,  path.m_params);
-                            pat.m_data = ::HIR::Pattern::Data::make_StructValue({
+                            pat.m_data = ::HIR::Pattern::Data::make_PathValue({
                                 mv$(path),
                                 &str
                                 });
-                            )
-                        )
+                            }
+                        }
                     }
-                )
+                }
                 else {
                     // NOTE: Defer until Resolve UFCS (saves duplicating logic)
                 }
-            )
+            }
         }
 
 
@@ -274,7 +274,8 @@ namespace {
                 this->visit_pattern_Value(sp, pat, e.start);
                 this->visit_pattern_Value(sp, pat, e.end);
                 }
-            TU_ARMA(StructValue, e) {
+            TU_ARMA(PathValue, e) {
+#if 0
                 const auto& str = get_struct_ptr(sp, m_crate, e.path);
                 TU_IFLET(::HIR::Struct::Data, str.m_data, Unit, _,
                     e.binding = &str;
@@ -282,8 +283,10 @@ namespace {
                 else {
                     ERROR(sp, E0000, "Struct value pattern on non-unit struct " << e.path);
                 }
+#endif
                 }
-            TU_ARMA(StructTuple, e) {
+            TU_ARMA(PathTuple, e) {
+#if 0
                 const auto& str = get_struct_ptr(sp, m_crate, e.path);
                 TU_IFLET(::HIR::Struct::Data, str.m_data, Tuple, _,
                     e.binding = &str;
@@ -291,8 +294,10 @@ namespace {
                 else {
                     ERROR(sp, E0000, "Struct tuple pattern on non-tuple struct " << e.path);
                 }
+#endif
                 }
-            TU_ARMA(Struct, e) {
+            TU_ARMA(PathNamed, e) {
+#if 0
                 const auto& str = get_struct_ptr(sp, m_crate, e.path);
                 if(str.m_data.is_Named() ) {
                 }
@@ -304,7 +309,9 @@ namespace {
                     ERROR(sp, E0000, "Struct pattern `" << pat << "` on field-less struct " << e.path);
                 }
                 e.binding = &str;
+#endif
                 }
+#if 0
             TU_ARMA(EnumValue, e) {
                 auto p = get_enum_ptr(sp, m_crate, e.path);
                 if( p.first->m_data.is_Data() )
@@ -387,6 +394,7 @@ namespace {
                 e.binding_ptr = p.first;
                 e.binding_idx = p.second;
                 }
+#endif
             }
         }
         static void fix_param_count(const Span& sp, const ::HIR::GenericPath& path, const ::HIR::GenericParams& param_defs, ::HIR::PathParams& params, bool fill_infer=true, const ::HIR::TypeRef* self_ty=nullptr)

@@ -49,14 +49,14 @@ namespace HIR {
         if( x.m_implicit_deref_count > 0 ) {
             os << "&*" << x.m_implicit_deref_count;
         }
-        TU_MATCH(Pattern::Data, (x.m_data), (e),
-        (Any,
+        TU_MATCH_HDRA( (x.m_data), {)
+        TU_ARMA(Any, e) {
             os << "_";
-            ),
-        (Box,
+            }
+        TU_ARMA(Box, e) {
             os << "box " << *e.sub;
-            ),
-        (Ref,
+            }
+        TU_ARMA(Ref, e) {
             switch(e.type)
             {
             case BorrowType::Shared:    os << "&";  break;
@@ -64,14 +64,14 @@ namespace HIR {
             case BorrowType::Owned:     os << "&move ";   break;
             }
             os << *e.sub;
-            ),
-        (Tuple,
+            }
+        TU_ARMA(Tuple, e) {
             os << "(";
             for(const auto& s : e.sub_patterns)
                 os << s << ", ";
             os << ")";
-            ),
-        (SplitTuple,
+            }
+        TU_ARMA(SplitTuple, e) {
             os << "(";
             for(const auto& s : e.leading)
                 os << s << ", ";
@@ -79,56 +79,45 @@ namespace HIR {
             for(const auto& s : e.trailing)
                 os << s << ", ";
             os << ")";
-            ),
-        (StructValue,
+            }
+        TU_ARMA(PathValue, e) {
             os << e.path;
-            ),
-        (StructTuple,
+            }
+        TU_ARMA(PathTuple, e) {
             os << e.path;
             os << "(";
-            for(const auto& s : e.sub_patterns)
+            for(const auto& s : e.leading)
                 os << s << ", ";
+            if(e.is_split)
+            {
+                os << "..";
+                for(const auto& s : e.trailing)
+                    os << ", " << s;
+            }
             os << ")";
-            ),
-        (Struct,
+            }
+        TU_ARMA(PathNamed, e) {
             os << e.path;
             os << "{ ";
             for(const auto& ns : e.sub_patterns)
                 os << ns.first << ": " << ns.second << ", ";
             os << "}";
-            ),
+            }
 
-        (Value,
+        TU_ARMA(Value, e) {
             os << e.val;
-            ),
-        (Range,
+            }
+        TU_ARMA(Range, e) {
             os << e.start << " ... " << e.end;
-            ),
+            }
 
-        (EnumValue,
-            os << e.path;
-            ),
-        (EnumTuple,
-            os << e.path;
-            os << "(";
-            for(const auto& s : e.sub_patterns)
-                os << s << ", ";
-            os << ")";
-            ),
-        (EnumStruct,
-            os << e.path;
-            os << "{ ";
-            for(const auto& ns : e.sub_patterns)
-                os << ns.first << ": " << ns.second << ", ";
-            os << "}";
-            ),
-        (Slice,
+        TU_ARMA(Slice, e) {
             os << "[";
             for(const auto& s : e.sub_patterns)
                 os << s << ", ";
             os << "]";
-            ),
-        (SplitSlice,
+            }
+        TU_ARMA(SplitSlice, e) {
             os << "[ ";
             for(const auto& s : e.leading)
                 os << s << ", ";
@@ -139,8 +128,8 @@ namespace HIR {
             for(const auto& s : e.trailing)
                 os << ", " << s;
             os << " ]";
-            )
-        )
+            }
+        }
         return os;
     }
 }   // namespace HIR
@@ -187,98 +176,81 @@ namespace {
 
 namespace { ::HIR::Pattern::Data clone_pattern_data(const ::HIR::Pattern::Data& m_data)
 {
-    TU_MATCH(::HIR::Pattern::Data, (m_data), (e),
-    (Any,
+    TU_MATCH_HDRA( (m_data), {)
+    TU_ARMA(Any, e) {
         return ::HIR::Pattern::Data::make_Any({});
-        ),
-    (Box,
+        }
+    TU_ARMA(Box, e) {
         return ::HIR::Pattern::Data::make_Box({
             box$( e.sub->clone() )
             });
-        ),
-    (Ref,
+        }
+    TU_ARMA(Ref, e) {
         return ::HIR::Pattern::Data::make_Ref({
             e.type, box$(e.sub->clone())
             });
-        ),
-    (Tuple,
+        }
+    TU_ARMA(Tuple, e) {
         return ::HIR::Pattern::Data::make_Tuple({
             clone_pat_vec(e.sub_patterns)
             });
-        ),
-    (SplitTuple,
+        }
+    TU_ARMA(SplitTuple, e) {
         return ::HIR::Pattern::Data::make_SplitTuple({
             clone_pat_vec(e.leading),
             clone_pat_vec(e.trailing),
             e.total_size
             });
-        ),
-    (StructValue,
-        return ::HIR::Pattern::Data::make_StructValue({
-            e.path.clone(), e.binding
+        }
+    TU_ARMA(PathValue, e) {
+        return ::HIR::Pattern::Data::make_PathValue({
+            e.path.clone(), e.binding.clone()
             });
-        ),
-    (StructTuple,
-        return ::HIR::Pattern::Data::make_StructTuple({
+        }
+    TU_ARMA(PathTuple, e) {
+        return ::HIR::Pattern::Data::make_PathTuple({
             e.path.clone(),
-            e.binding,
-            clone_pat_vec(e.sub_patterns)
+            e.binding.clone(),
+            clone_pat_vec(e.leading),
+            e.is_split,
+            clone_pat_vec(e.trailing),
+            e.total_size
             });
-        ),
-    (Struct,
-        return ::HIR::Pattern::Data::make_Struct({
+        }
+    TU_ARMA(PathNamed, e) {
+        return ::HIR::Pattern::Data::make_PathNamed({
             e.path.clone(),
-            e.binding,
+            e.binding.clone(),
             clone_pat_fields(e.sub_patterns),
             e.is_exhaustive
             });
-        ),
+        }
 
-    (Value,
+    TU_ARMA(Value, e) {
         return ::HIR::Pattern::Data::make_Value({
             clone_patval(e.val)
             });
-        ),
-    (Range,
+        }
+    TU_ARMA(Range, e) {
         return ::HIR::Pattern::Data::make_Range({
             clone_patval(e.start),
             clone_patval(e.end)
             });
-        ),
+        }
 
-    (EnumValue,
-        return ::HIR::Pattern::Data::make_EnumValue({ e.path.clone(), e.binding_ptr, e.binding_idx });
-        ),
-    (EnumTuple,
-        return ::HIR::Pattern::Data::make_EnumTuple({
-            e.path.clone(),
-            e.binding_ptr,
-            e.binding_idx,
-            clone_pat_vec(e.sub_patterns)
-            });
-        ),
-    (EnumStruct,
-        return ::HIR::Pattern::Data::make_EnumStruct({
-            e.path.clone(),
-            e.binding_ptr,
-            e.binding_idx,
-            clone_pat_fields(e.sub_patterns),
-            e.is_exhaustive
-            });
-        ),
-    (Slice,
+    TU_ARMA(Slice, e) {
         return ::HIR::Pattern::Data::make_Slice({
             clone_pat_vec(e.sub_patterns)
             });
-        ),
-    (SplitSlice,
+        }
+    TU_ARMA(SplitSlice, e) {
         return ::HIR::Pattern::Data::make_SplitSlice({
             clone_pat_vec(e.leading),
             e.extra_bind,
             clone_pat_vec(e.trailing)
             });
-        )
-    )
+        }
+    }
 
     throw "";
 } }

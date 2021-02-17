@@ -216,134 +216,46 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
 
         if( e.has_wildcard )
         {
-            return ::HIR::Pattern {
+            return ::HIR::Pattern(
                 mv$(binding),
                 ::HIR::Pattern::Data::make_SplitTuple({
                     mv$(leading), mv$(trailing)
                     })
-                };
+                );
         }
         else
         {
             assert( trailing.size() == 0 );
-            return ::HIR::Pattern {
+            return ::HIR::Pattern(
                 mv$(binding),
                 ::HIR::Pattern::Data::make_Tuple({
                     mv$(leading)
                     })
-                };
+                );
         }
         }
     ///
     /// Named tuple pattern
     /// 
     TU_ARMA(StructTuple, e) {
-        unsigned int leading_count  = e.tup_pat.start.size();
-        unsigned int trailing_count = e.tup_pat.end  .size();
-        TU_MATCH_HDRA( (e.path.m_bindings.value.binding), {)
-        default:
-            BUG(pat.span(), "Encountered StructTuple pattern not pointing to a enum variant or a struct - " << e.path);
-        TU_ARMA(EnumVar, pb) {
-            assert( pb.enum_ || pb.hir );
-            unsigned int field_count;
-            if( pb.enum_ ) {
-                const auto& var = pb.enum_->variants()[pb.idx].m_data;
-                field_count = var.as_Tuple().m_sub_types.size();
-            }
-            else {
-                const auto& var = pb.hir->m_data.as_Data().at(pb.idx);
-                // Need to be able to look up the type's actual definition
-                // - Either a name lookup, or have binding be done before this pass.
-                const auto& str = g_crate_ptr->get_struct_by_path(pat.span(), var.type.data().as_Path().path.m_data.as_Generic().m_path);
-                field_count = str.m_data.as_Tuple().size();
-                //field_count = var.type.m_data.as_Path().binding.as_Struct()->m_data.as_Tuple().size();
-            }
-            ::std::vector<HIR::Pattern> sub_patterns;
+        auto leading  = H::lowerhir_patternvec( e.tup_pat.start );
+        auto trailing = H::lowerhir_patternvec( e.tup_pat.end   );
 
-            if( e.tup_pat.has_wildcard ) {
-                sub_patterns.reserve( field_count );
-                if( leading_count + trailing_count > field_count ) {
-                    ERROR(pat.span(), E0000, "Enum variant pattern has too many fields - " << field_count << " max, got " << leading_count + trailing_count);
-                }
-                unsigned int padding_count = field_count - leading_count - trailing_count;
-                for(const auto& subpat : e.tup_pat.start) {
-                    sub_patterns.push_back( LowerHIR_Pattern(subpat) );
-                }
-                for(unsigned int i = 0; i < padding_count; i ++) {
-                    sub_patterns.push_back( ::HIR::Pattern() );
-                }
-                for(const auto& subpat : e.tup_pat.end) {
-                    sub_patterns.push_back( LowerHIR_Pattern(subpat) );
-                }
-            }
-            else {
-                assert( trailing_count == 0 );
-
-                if( leading_count != field_count ) {
-                    ERROR(pat.span(), E0000, "Enum variant pattern has a mismatched field count - " << field_count << " exp, got " << leading_count);
-                }
-                sub_patterns = H::lowerhir_patternvec( e.tup_pat.start );
-            }
-
-            return ::HIR::Pattern {
-                mv$(binding),
-                ::HIR::Pattern::Data::make_EnumTuple({
-                    LowerHIR_GenericPath(pat.span(), e.path, FromAST_PathClass::Value),
-                    nullptr, 0,
-                    mv$(sub_patterns)
-                    })
-                };
-            }
-        TU_ARMA(Struct, pb) {
-            assert( pb.struct_ || pb.hir );
-            unsigned int field_count;
-            if( pb.struct_ ) {
-                if( !pb.struct_->m_data.is_Tuple() )
-                    ERROR(pat.span(), E0000, "Tuple struct pattern on non-tuple struct - " << e.path);
-                field_count = pb.struct_->m_data.as_Tuple().ents.size();
-            }
-            else {
-                if( !pb.hir->m_data.is_Tuple() )
-                    ERROR(pat.span(), E0000, "Tuple struct pattern on non-tuple struct - " << e.path);
-                field_count = pb.hir->m_data.as_Tuple().size();
-            }
-            ::std::vector<HIR::Pattern> sub_patterns;
-
-            if( e.tup_pat.has_wildcard ) {
-                sub_patterns.reserve( field_count );
-                if( leading_count + trailing_count > field_count ) {
-                    ERROR(pat.span(), E0000, "Struct pattern has too many fields - " << field_count << " max, got " << leading_count + trailing_count);
-                }
-                unsigned int padding_count = field_count - leading_count - trailing_count;
-                for(const auto& subpat : e.tup_pat.start) {
-                    sub_patterns.push_back( LowerHIR_Pattern(subpat) );
-                }
-                for(unsigned int i = 0; i < padding_count; i ++) {
-                    sub_patterns.push_back( ::HIR::Pattern() );
-                }
-                for(const auto& subpat : e.tup_pat.end) {
-                    sub_patterns.push_back( LowerHIR_Pattern(subpat) );
-                }
-            }
-            else {
-                assert( trailing_count == 0 );
-
-                if( leading_count != field_count ) {
-                    ERROR(pat.span(), E0000, "Struct pattern has a mismatched field count - " << field_count << " exp, got " << leading_count);
-                }
-                sub_patterns = H::lowerhir_patternvec( e.tup_pat.start );
-            }
-
-            return ::HIR::Pattern {
-                mv$(binding),
-                ::HIR::Pattern::Data::make_StructTuple({
-                    LowerHIR_GenericPath(pat.span(), e.path, FromAST_PathClass::Value),
-                    nullptr,
-                    mv$(sub_patterns)
-                    })
-                };
-            }
+        if( !e.tup_pat.has_wildcard ) {
+            assert( trailing.size() == 0 );
         }
+
+        return ::HIR::Pattern(
+            mv$(binding),
+            ::HIR::Pattern::Data::make_PathTuple({
+                LowerHIR_Path(pat.span(), e.path, FromAST_PathClass::Value),
+                ::HIR::Pattern::PathBinding(),
+                mv$(leading),
+                e.tup_pat.has_wildcard,
+                mv$(trailing),
+                0 // Total size unknown still
+                })
+            );
         }
     ///
     /// Struct pattern
@@ -355,56 +267,27 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
 
         // No sub-patterns, no `..`, and the VALUE binding points to an enum variant
         if( e.sub_patterns.empty() && !e.is_exhaustive ) {
-            if( e.path.m_bindings.value.binding.is_EnumVar() ) {
+            if( const auto* pbp = e.path.m_bindings.value.binding.opt_EnumVar() ) {
                 return ::HIR::Pattern {
                     mv$(binding),
-                    ::HIR::Pattern::Data::make_EnumStruct({
+                    ::HIR::Pattern::Data::make_PathNamed({
                         LowerHIR_GenericPath(pat.span(), e.path, FromAST_PathClass::Value),
-                        nullptr, 0,
+                        ::HIR::Pattern::PathBinding::make_Enum({ pbp->hir, pbp->idx }),
                         mv$(sub_patterns),
                         e.is_exhaustive
                         })
                     };
             }
         }
-
-        TU_MATCH_HDRA( (e.path.m_bindings.type.binding), {)
-        default:
-            BUG(pat.span(), "Encountered Struct pattern not pointing to a enum variant or a struct - " << e.path);
-        TU_ARMA(EnumVar, pb) {
-            return ::HIR::Pattern {
-                mv$(binding),
-                ::HIR::Pattern::Data::make_EnumStruct({
-                    LowerHIR_GenericPath(pat.span(), e.path, FromAST_PathClass::Type),
-                    nullptr, 0,
-                    mv$(sub_patterns),
-                    e.is_exhaustive
-                    })
-                };
-            }
-        TU_ARMA(TypeAlias, pb) {
-            return ::HIR::Pattern {
-                mv$(binding),
-                ::HIR::Pattern::Data::make_Struct({
-                    LowerHIR_GenericPath(pat.span(), e.path, FromAST_PathClass::Type),
-                    nullptr,
-                    mv$(sub_patterns),
-                    e.is_exhaustive
-                    })
-                };
-            }
-        TU_ARMA(Struct, pb) {
-            return ::HIR::Pattern {
-                mv$(binding),
-                ::HIR::Pattern::Data::make_Struct({
-                    LowerHIR_GenericPath(pat.span(), e.path, FromAST_PathClass::Type),
-                    nullptr,
-                    mv$(sub_patterns),
-                    e.is_exhaustive
-                    })
-                };
-            }
-        }
+        return ::HIR::Pattern(
+            mv$(binding),
+            ::HIR::Pattern::Data::make_PathNamed({
+                LowerHIR_Path(pat.span(), e.path, FromAST_PathClass::Type),
+                ::HIR::Pattern::PathBinding(),
+                mv$(sub_patterns),
+                e.is_exhaustive
+                })
+            );
         }
 
     TU_ARMA(Value, e) {

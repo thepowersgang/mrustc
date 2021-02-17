@@ -206,64 +206,53 @@ DEF_VISIT(ExprNode_Closure, node,
 // TODO: Merge this with the stuff in ::HIR::Visitor
 void ::HIR::ExprVisitorDef::visit_pattern(const Span& sp, ::HIR::Pattern& pat)
 {
-    TU_MATCH(::HIR::Pattern::Data, (pat.m_data), (e),
-    (Any,
-        ),
-    (Box,
+    TU_MATCH_HDRA( (pat.m_data), {)
+    TU_ARMA(Any, e) {
+        }
+    TU_ARMA(Box, e) {
         this->visit_pattern(sp, *e.sub);
-        ),
-    (Ref,
+        }
+    TU_ARMA(Ref, e) {
         this->visit_pattern(sp, *e.sub);
-        ),
-    (Tuple,
+        }
+    TU_ARMA(Tuple, e) {
         for(auto& subpat : e.sub_patterns)
             this->visit_pattern(sp, subpat);
-        ),
-    (SplitTuple,
+        }
+    TU_ARMA(SplitTuple, e) {
         for(auto& subpat : e.leading)
             this->visit_pattern(sp, subpat);
         for(auto& subpat : e.trailing)
             this->visit_pattern(sp, subpat);
-        ),
-    (StructValue,
+        }
+    TU_ARMA(PathValue, e) {
         // Nothing.
-        ),
-    (StructTuple,
-        for(auto& subpat : e.sub_patterns)
+        }
+    TU_ARMA(PathTuple, e) {
+        for(auto& subpat : e.leading)
             this->visit_pattern(sp, subpat);
-        ),
-    (Struct,
+        for(auto& subpat : e.trailing)
+            this->visit_pattern(sp, subpat);
+        }
+    TU_ARMA(PathNamed, e) {
         for(auto& fld_pat : e.sub_patterns)
-        {
             this->visit_pattern(sp, fld_pat.second);
         }
-        ),
-    // Refutable
-    (Value,
-        ),
-    (Range,
-        ),
-    (EnumValue,
-        ),
-    (EnumTuple,
+    TU_ARMA(Value, e) {
+        }
+    TU_ARMA(Range, e) {
+        }
+    TU_ARMA(Slice, e) {
         for(auto& subpat : e.sub_patterns)
             this->visit_pattern(sp, subpat);
-        ),
-    (EnumStruct,
-        for(auto& fld_pat : e.sub_patterns)
-            this->visit_pattern(sp, fld_pat.second);
-        ),
-    (Slice,
-        for(auto& subpat : e.sub_patterns)
-            this->visit_pattern(sp, subpat);
-        ),
-    (SplitSlice,
+        }
+    TU_ARMA(SplitSlice, e) {
         for(auto& subpat : e.leading)
             this->visit_pattern(sp, subpat);
         for(auto& subpat : e.trailing)
             this->visit_pattern(sp, subpat);
-        )
-    )
+        }
+    }
 }
 void ::HIR::ExprVisitorDef::visit_type(::HIR::TypeRef& ty)
 {

@@ -256,17 +256,22 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
                         return true;
                 }
                 }
-            TU_ARMA(StructValue, e) {
+            TU_ARMA(PathValue, e) {
                 // Nothing.
                 }
-            TU_ARMA(StructTuple, e) {
-                for(const auto& sub : e.sub_patterns)
+            TU_ARMA(PathTuple, e) {
+                for(const auto& sub : e.leading)
+                {
+                    if( is_pattern_move(sp, builder, sub) )
+                        return true;
+                }
+                for(const auto& sub : e.trailing)
                 {
                     if( is_pattern_move(sp, builder, sub) )
                         return true;
                 }
                 }
-            TU_ARMA(Struct, e) {
+            TU_ARMA(PathNamed, e) {
                 for(const auto& fld_pat : e.sub_patterns)
                 {
                     if( is_pattern_move(sp, builder, fld_pat.second) )
@@ -276,22 +281,6 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             TU_ARMA(Value, e) {
                 }
             TU_ARMA(Range, e) {
-                }
-            TU_ARMA(EnumValue, e) {
-                }
-            TU_ARMA(EnumTuple, e) {
-                for(const auto& sub : e.sub_patterns)
-                {
-                    if( is_pattern_move(sp, builder, sub) )
-                        return true;
-                }
-                }
-            TU_ARMA(EnumStruct, e) {
-                for(const auto& fld_pat : e.sub_patterns)
-                {
-                    if( is_pattern_move(sp, builder, fld_pat.second) )
-                        return true;
-                }
                 }
             TU_ARMA(Slice, e) {
                 for(const auto& sub : e.sub_patterns)
@@ -1113,7 +1102,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 if( i < pe.leading.size() )
                     this->append_from(sp, pe.leading[i], e[i]);
                 else if( i < trailing_start )
-                    this->append_from(sp, ::HIR::Pattern(), e[i]);
+                    this->append_from(sp, empty_pattern, e[i]);
                 else
                     this->append_from(sp, pe.trailing[i-trailing_start], e[i]);
                 m_field_path.back() ++;
@@ -1123,6 +1112,69 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
         m_field_path.pop_back();
         }
     TU_ARMA(Path, e) {
+        struct PH {
+            static void push_pattern_tuple(
+                PatternRulesetBuilder& builder, const Span& sp,const ::HIR::Pattern::Data::Data_PathTuple& pe,
+                std::function<const HIR::TypeRef&(const HIR::TypeRef&)> maybe_monomorph
+                )
+            {
+                const auto& sd = ::HIR::pattern_get_tuple(sp, pe.path, pe.binding);
+                assert( sd.size() >= pe.leading.size() + pe.trailing.size() );
+                size_t trailing_start = sd.size() - pe.trailing.size();
+                for(unsigned int i = 0; i < sd.size(); i ++)
+                {
+                    const auto& fld = sd[i];
+
+                    if( i < pe.leading.size() )
+                    {
+                        builder.append_from(sp, pe.leading[i], maybe_monomorph(fld.ent));
+                    }
+                    else if( i < trailing_start )
+                    {
+                        builder.append_from(sp, empty_pattern, maybe_monomorph(fld.ent));
+                    }
+                    else
+                    {
+                        builder.append_from(sp, pe.trailing[i - trailing_start], maybe_monomorph(fld.ent));
+                    }
+                    builder.m_field_path.back() ++;
+                }
+            }
+            static void push_pattern_struct(
+                PatternRulesetBuilder& builder, const Span& sp,const ::HIR::Pattern::Data::Data_PathNamed& pe,
+                std::function<const HIR::TypeRef&(const HIR::TypeRef&)> maybe_monomorph
+                )
+            {
+                const auto& sd = ::HIR::pattern_get_named(sp, pe.path, pe.binding);
+                // NOTE: Iterates in field order (not pattern order) to ensure that patterns are in order between arms
+                for(const auto& fld : sd)
+                {
+                    const auto& sty_mono = maybe_monomorph(fld.second.ent);
+
+                    auto it = ::std::find_if( pe.sub_patterns.begin(), pe.sub_patterns.end(), [&](const auto& x){ return x.first == fld.first; } );
+                    if( it == pe.sub_patterns.end() )
+                    {
+                        builder.append_from(sp, empty_pattern, sty_mono);
+                    }
+                    else
+                    {
+                        builder.append_from(sp, it->second, sty_mono);
+                    }
+                    builder.m_field_path.back() ++;
+                }
+            }
+        };
+        ::HIR::TypeRef  tmp;
+        auto maybe_monomorph = [&](const auto& ty)->const ::HIR::TypeRef& {
+            if(monomorphise_type_needed(ty)) {
+                tmp = MonomorphStatePtr(nullptr, &e.path.m_data.as_Generic().m_params, nullptr).monomorph_type(sp, ty);
+                this->m_resolve.expand_associated_types(sp, tmp);
+                return tmp;
+            }
+            else {
+                return ty;
+            }
+        };
         // This is either a struct destructure or an enum
         TU_MATCH_HDRA( (e.binding), {)
         TU_ARMA(Unbound, pbe) {
@@ -1137,11 +1189,6 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             )
             }
         TU_ARMA(Struct, pbe) {
-            auto monomorph = [&](const auto& ty) {
-                auto rv = MonomorphStatePtr(nullptr, &e.path.m_data.as_Generic().m_params, nullptr).monomorph_type(sp, ty);
-                this->m_resolve.expand_associated_types(sp, rv);
-                return rv;
-                };
             const auto& str_data = pbe->m_data;
 
             if( m_lang_Box && e.path.m_data.as_Generic().m_path == *m_lang_Box )
@@ -1165,110 +1212,82 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             }
             TU_MATCH_HDRA( (str_data), {)
             TU_ARMA(Unit, sd) {
-                TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
-                ( BUG(sp, "Match not allowed, " << ty <<  " with " << pat); ),
-                (Any,
+                TU_MATCH_HDRA( (pat.m_data), {)
+                default:
+                    BUG(sp, "Match not allowed, " << ty <<  " with " << pat);
+                TU_ARMA(Any, pe) {
                     // _ on a unit-like type, unconditional
-                    ),
-                (StructValue,
+                    }
+                TU_ARMA(PathValue, pe) {
                     // Unit-like struct value, nothing to match (it's unconditional)
-                    ),
-                (Value,
+                    }
+                TU_ARMA(Value, pe) {
                     // Unit-like struct value, nothing to match (it's unconditional)
-                    )
-                )
+                    }
+                }
                 }
             TU_ARMA(Tuple, sd) {
                 m_field_path.push_back(0);
-                TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
-                ( BUG(sp, "Match not allowed, " << ty <<  " with " << pat); ),
-                (Any,
+                TU_MATCH_HDRA( (pat.m_data), {)
+                default:
+                    BUG(sp, "Match not allowed, " << ty <<  " with " << pat);
+                TU_ARMA(Any, pe) {
                     // - Recurse into type using an empty pattern
                     for(const auto& fld : sd)
                     {
-                        ::HIR::TypeRef  tmp;
-                        const auto& sty_mono = (monomorphise_type_needed(fld.ent) ? tmp = monomorph(fld.ent) : fld.ent);
-                        this->append_from(sp, empty_pattern, sty_mono);
+                        this->append_from(sp, empty_pattern, maybe_monomorph(fld.ent));
                         m_field_path.back() ++;
                     }
-                    ),
-                (StructTuple,
-                    assert( sd.size() == pe.sub_patterns.size() );
-                    for(unsigned int i = 0; i < sd.size(); i ++)
-                    {
-                        const auto& fld = sd[i];
-                        const auto& fld_pat = pe.sub_patterns[i];
-
-                        ::HIR::TypeRef  tmp;
-                        const auto& sty_mono = (monomorphise_type_needed(fld.ent) ? tmp = monomorph(fld.ent) : fld.ent);
-                        this->append_from(sp, fld_pat, sty_mono);
-                        m_field_path.back() ++;
                     }
-                    )
-                )
+                TU_ARMA(PathTuple, pe) {
+                    assert( pe.binding.is_Struct() );
+                    PH::push_pattern_tuple(*this, sp, pe, maybe_monomorph);
+                    }
+                }
                 m_field_path.pop_back();
                 }
             TU_ARMA(Named, sd) {
-                TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
-                ( BUG(sp, "Match not allowed, " << ty <<  " with " << pat); ),
-                (Any,
+                TU_MATCH_HDRA( (pat.m_data), {)
+                default:
+                    BUG(sp, "Match not allowed, " << ty <<  " with " << pat);
+                TU_ARMA(Any, pe) {
                     m_field_path.push_back(0);
                     for(const auto& fld : sd)
                     {
-                        ::HIR::TypeRef  tmp;
-                        const auto& sty_mono = (monomorphise_type_needed(fld.second.ent) ? tmp = monomorph(fld.second.ent) : fld.second.ent);
-                        this->append_from(sp, empty_pattern, sty_mono);
+                        this->append_from(sp, empty_pattern, maybe_monomorph(fld.second.ent));
                         m_field_path.back() ++;
                     }
                     m_field_path.pop_back();
-                    ),
-                (Struct,
+                    }
+                TU_ARMA(PathNamed, pe) {
+                    assert( pe.binding.is_Struct() );
                     m_field_path.push_back(0);
-                    // NOTE: Sort field patterns to ensure that patterns are in order between arms
-                    for(const auto& fld : sd)
-                    {
-                        ::HIR::TypeRef  tmp;
-                        const auto& sty_mono = (monomorphise_type_needed(fld.second.ent) ? tmp = monomorph(fld.second.ent) : fld.second.ent);
-
-                        auto it = ::std::find_if( pe.sub_patterns.begin(), pe.sub_patterns.end(), [&](const auto& x){ return x.first == fld.first; } );
-                        if( it == pe.sub_patterns.end() )
-                        {
-                            this->append_from(sp, empty_pattern, sty_mono);
-                        }
-                        else
-                        {
-                            this->append_from(sp, it->second, sty_mono);
-                        }
-                        m_field_path.back() ++;
-                    }
+                    PH::push_pattern_struct(*this, sp, pe, maybe_monomorph);
                     m_field_path.pop_back();
-                    )
-                )
+                    }
+                }
                 }
             }
             }
         TU_ARMA(Union, pbe) {
-            TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
-            ( TODO(sp, "Match over union - " << ty << " with " << pat); ),
-            (Any,
+            TU_MATCH_HDRA( (pat.m_data), {)
+            default:
+                TODO(sp, "Match over union - " << ty << " with " << pat);
+            TU_ARMA(Any, pe) {
                 this->push_rule( PatternRule::make_Any({}) );
-                )
-            )
+                }
+            }
             }
         TU_ARMA(ExternType, pbe) {
-            TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
-            ( BUG(sp, "Matching extern type with invalid pattern - " << pat); ),
-            (Any,
+            TU_MATCH_HDRA( (pat.m_data), {)
+            default:
+                BUG(sp, "Match not allowed, " << ty <<  " with " << pat);
+            TU_ARMA(Any, pe) {
                 this->push_rule( PatternRule::make_Any({}) );
-                )
-            )
+                }
+            }
             }
         TU_ARMA(Enum, pbe) {
-            auto monomorph = [&](const auto& ty) {
-                auto rv = MonomorphStatePtr(nullptr, &e.path.m_data.as_Generic().m_params, nullptr).monomorph_type(sp, ty);
-                this->m_resolve.expand_associated_types(sp, rv);
-                return rv;
-                };
             TU_MATCH_HDRA( (pat.m_data), {)
             default:
                 BUG(sp, "Match not allowed, " << ty <<  " with " << pat);
@@ -1282,73 +1301,59 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 //       emit a special type of rule.
                 TODO(sp, "Match enum with const - " << pat);
                 }
-            TU_ARMA(EnumValue, pe) {
-                this->push_rule( PatternRule::make_Variant( {pe.binding_idx, {} } ) );
+            TU_ARMA(PathValue, pe) {
+                assert(pe.binding.is_Enum());
+                this->push_rule( PatternRule::make_Variant( {pe.binding.as_Enum().var_idx, {} } ) );
                 }
-            TU_ARMA(EnumTuple, pe) {
-                const auto& variants = pe.binding_ptr->m_data.as_Data();
-                const auto& var_def = variants.at(pe.binding_idx);
-                const auto& str = *var_def.type.data().as_Path().binding.as_Struct();
-                const auto& fields_def = str.m_data.as_Tuple();
+            TU_ARMA(PathTuple, pe) {
+                assert(pe.binding.is_Enum());
+                const auto& be = pe.binding.as_Enum();
 
-                // TODO: Unify with the struct pattern code?
                 PatternRulesetBuilder   sub_builder { this->m_resolve };
                 sub_builder.m_field_path = m_field_path;
-                sub_builder.m_field_path.push_back(pe.binding_idx);
+                sub_builder.m_field_path.push_back(be.var_idx);
                 sub_builder.m_field_path.push_back(0);
-                for( unsigned int i = 0; i < pe.sub_patterns.size(); i ++ )
-                {
-                    sub_builder.m_field_path.back() = i;
-                    const auto& subpat = pe.sub_patterns[i];
-                    const auto& ty_tpl = fields_def[i].ent;
 
-                    ::HIR::TypeRef  tmp;
-                    const auto& subty = (monomorphise_type_needed(ty_tpl) ? tmp = monomorph(ty_tpl) : ty_tpl);
+                PH::push_pattern_tuple(sub_builder, sp, pe, maybe_monomorph);
 
-                    sub_builder.append_from( sp, subpat, subty );
-                }
                 if( sub_builder.m_is_impossible )
                     this->m_is_impossible = true;
-                this->push_rule( PatternRule::make_Variant({ pe.binding_idx, mv$(sub_builder.m_rules) }) );
+                this->push_rule( PatternRule::make_Variant({ be.var_idx, mv$(sub_builder.m_rules) }) );
                 }
-            TU_ARMA(EnumStruct, pe) {
-                const auto& variants = pe.binding_ptr->m_data.as_Data();
-                const auto& var_def = variants.at(pe.binding_idx);
-                const auto& str = *var_def.type.data().as_Path().binding.as_Struct();
-                const auto& fields_def = str.m_data.as_Named();
+            TU_ARMA(PathNamed, pe) {
+                assert(pe.binding.is_Enum());
+                const auto& be = pe.binding.as_Enum();
 
-                // 1. Create a vector of pattern indexes for each field in the variant.
-                ::std::vector<unsigned int> tmp;
-                tmp.resize( fields_def.size(), ~0u );
-                for( unsigned int i = 0; i < pe.sub_patterns.size(); i ++ )
-                {
-                    const auto& fld_pat = pe.sub_patterns[i];
-                    unsigned idx = ::std::find_if( fields_def.begin(), fields_def.end(), [&](const auto& x){ return x.first == fld_pat.first; } ) - fields_def.begin();
-                    assert(idx < tmp.size());
-                    assert(tmp[idx] == ~0u);
-                    tmp[idx] = i;
-                }
-                // 2. Iterate this list and recurse on the patterns
                 PatternRulesetBuilder   sub_builder { this->m_resolve };
                 sub_builder.m_field_path = m_field_path;
-                sub_builder.m_field_path.push_back(pe.binding_idx);
+                sub_builder.m_field_path.push_back(be.var_idx);
                 sub_builder.m_field_path.push_back(0);
-                for( unsigned int i = 0; i < tmp.size(); i ++ )
-                {
-                    sub_builder.m_field_path.back() = i;
 
-                    auto subty = monomorph(fields_def[i].second.ent);
-                    if( tmp[i] == ~0u ) {
-                        sub_builder.append_from( sp, ::HIR::Pattern(), subty );
-                    }
-                    else {
-                        const auto& subpat = pe.sub_patterns[ tmp[i] ].second;
-                        sub_builder.append_from( sp, subpat, subty );
+                // Empty variants can be matched with `Var { [..] }` even if they're not struct-like
+                if( be.ptr->is_value() ) {
+                    assert( pe.sub_patterns.empty() );
+                }
+                else if( be.ptr->m_data.as_Data().at(be.var_idx).type == HIR::TypeRef::new_unit() ) {
+                    assert( pe.sub_patterns.empty() );
+                }
+                else if( !be.ptr->m_data.as_Data().at(be.var_idx).is_struct ) {
+                    assert( pe.sub_patterns.empty() );
+                    const auto& sd = ::HIR::pattern_get_tuple(sp, pe.path, pe.binding);
+                    for(unsigned int i = 0; i < sd.size(); i ++)
+                    {
+                        const auto& fld = sd[i];
+                        sub_builder.append_from(sp, empty_pattern, maybe_monomorph(fld.ent));
+                        sub_builder.m_field_path.back() ++;
                     }
                 }
+                else {
+                    PH::push_pattern_struct(sub_builder, sp, pe, maybe_monomorph);
+                }
+
                 if( sub_builder.m_is_impossible )
                     this->m_is_impossible = true;
-                this->push_rule( PatternRule::make_Variant({ pe.binding_idx, mv$(sub_builder.m_rules) }) );
+
+                this->push_rule( PatternRule::make_Variant({ be.var_idx, mv$(sub_builder.m_rules) }) );
                 }
             }
             }

@@ -1231,41 +1231,32 @@ namespace {
         }
 
         void visit_pattern(const Span& sp, ::HIR::Pattern& pat) override {
-            TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (e),
-            (
-                ),
-            (Value,
+            TU_MATCH_HDRA( (pat.m_data), { )
+            default:
+                break;
+            TU_ARMA(Value, e) {
                 TU_IFLET( ::HIR::Pattern::Value, (e.val), Named, ve,
                     this->check_type_resolved_path(sp, ve.path);
                 )
-                ),
-            (Range,
+                }
+            TU_ARMA(Range, e) {
                 TU_IFLET( ::HIR::Pattern::Value, e.start, Named, ve,
                     this->check_type_resolved_path(sp, ve.path);
                 )
                 TU_IFLET( ::HIR::Pattern::Value, e.end, Named, ve,
                     this->check_type_resolved_path(sp, ve.path);
                 )
-                ),
-            (StructValue,
-                this->check_type_resolved_genericpath(sp, e.path);
-                ),
-            (StructTuple,
-                this->check_type_resolved_genericpath(sp, e.path);
-                ),
-            (Struct,
-                this->check_type_resolved_genericpath(sp, e.path);
-                ),
-            (EnumValue,
-                this->check_type_resolved_genericpath(sp, e.path);
-                ),
-            (EnumTuple,
-                this->check_type_resolved_genericpath(sp, e.path);
-                ),
-            (EnumStruct,
-                this->check_type_resolved_genericpath(sp, e.path);
-                )
-            )
+                }
+            TU_ARMA(PathValue, e) {
+                this->check_type_resolved_path(sp, e.path);
+                }
+            TU_ARMA(PathTuple, e) {
+                this->check_type_resolved_path(sp, e.path);
+                }
+            TU_ARMA(PathNamed, e) {
+                this->check_type_resolved_path(sp, e.path);
+                }
+            }
             ::HIR::ExprVisitorDef::visit_pattern(sp, pat);
         }
 
@@ -2047,82 +2038,116 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                 }
                 throw "";
             }
+            ::HIR::TypeRef get_possible_type_inner(Context& context, ::HIR::Pattern& pattern) const
+            {
+                ::HIR::TypeRef  possible_type;
+                // Get a potential type from the pattern, and set as a possibility.
+                // - Note, this is only if no derefs were applied
+                TU_MATCH_HDR( (pattern.m_data), { )
+                TU_ARM(pattern.m_data, Any, pe) {
+                    // No type information.
+                    }
+                TU_ARM(pattern.m_data, Value, pe) {
+                    possible_type = get_possible_type_val(context, pe.val);
+                    }
+                TU_ARM(pattern.m_data, Range, pe) {
+                    possible_type = get_possible_type_val(context, pe.start);
+                    if( possible_type == ::HIR::TypeRef() ) {
+                        possible_type = get_possible_type_val(context, pe.end);
+                    }
+                    else {
+                        // TODO: Check that the type from .end matches .start
+                    }
+                    }
+                TU_ARM(pattern.m_data, Box, pe) {
+                    // TODO: Get type info (Box<_>) ?
+                    // - Is this possible? Shouldn't a box pattern disable ergonomics?
+                    }
+                TU_ARM(pattern.m_data, Ref, pe) {
+                    BUG(sp, "Match ergonomics - & pattern");
+                    }
+                TU_ARM(pattern.m_data, Tuple, e) {
+                    // Get type info `(T, U, ...)`
+                    if( m_temp_ivars.size() != e.sub_patterns.size() ) {
+                        for(size_t i = 0; i < e.sub_patterns.size(); i ++)
+                            m_temp_ivars.push_back( context.m_ivars.new_ivar_tr() );
+                    }
+                    decltype(m_temp_ivars)  tuple;
+                    for(const auto& ty : m_temp_ivars)
+                        tuple.push_back(ty.clone());
+                    possible_type = ::HIR::TypeRef( ::std::move(tuple) );
+                    }
+                TU_ARM(pattern.m_data, SplitTuple, pe) {
+                    // Can't get type information, tuple size is unkown
+                    }
+                TU_ARM(pattern.m_data, Slice, e) {
+                    // Can be either a [T] or [T; n]. Can't provide a hint
+                    }
+                TU_ARM(pattern.m_data, SplitSlice, pe) {
+                    // Can be either a [T] or [T; n]. Can't provide a hint
+                    }
+                TU_ARM(pattern.m_data, PathValue, e) {
+                    TU_MATCH_HDRA( (e.binding), {)
+                    TU_ARMA(Unbound, _)
+                        BUG(sp, "");
+                    TU_ARMA(Struct, be) {
+                        auto& p = e.path.m_data.as_Generic();
+                        assert(be);
+                        context.add_ivars_params( p.m_params );
+                        possible_type = ::HIR::TypeRef::new_path(p.clone(), ::HIR::TypePathBinding(be));
+                        }
+                    TU_ARMA(Enum, be) {
+                        auto& p = e.path.m_data.as_Generic();
+                        assert(be.ptr);
+                        context.add_ivars_params( p.m_params );
+                        possible_type = ::HIR::TypeRef::new_path(get_parent_path(p), ::HIR::TypePathBinding(be.ptr));
+                        }
+                    }
+                    }
+                TU_ARM(pattern.m_data, PathTuple, e) {
+                    TU_MATCH_HDRA( (e.binding), {)
+                    TU_ARMA(Unbound, _)
+                        BUG(sp, "");
+                    TU_ARMA(Struct, be) {
+                        auto& p = e.path.m_data.as_Generic();
+                        assert(be);
+                        context.add_ivars_params( p.m_params );
+                        possible_type = ::HIR::TypeRef::new_path(p.clone(), ::HIR::TypePathBinding(be));
+                        }
+                    TU_ARMA(Enum, be) {
+                        auto& p = e.path.m_data.as_Generic();
+                        assert(be.ptr);
+                        context.add_ivars_params( p.m_params );
+                        possible_type = ::HIR::TypeRef::new_path(get_parent_path(p), ::HIR::TypePathBinding(be.ptr));
+                        }
+                    }
+                    }
+                TU_ARM(pattern.m_data, PathNamed, e) {
+                    TU_MATCH_HDRA( (e.binding), {)
+                    TU_ARMA(Unbound, _)
+                        BUG(sp, "");
+                    TU_ARMA(Struct, be) {
+                        auto& p = e.path.m_data.as_Generic();
+                        assert(be);
+                        context.add_ivars_params( p.m_params );
+                        possible_type = ::HIR::TypeRef::new_path(p.clone(), ::HIR::TypePathBinding(be));
+                        }
+                    TU_ARMA(Enum, be) {
+                        auto& p = e.path.m_data.as_Generic();
+                        assert(be.ptr);
+                        context.add_ivars_params( p.m_params );
+                        possible_type = ::HIR::TypeRef::new_path(get_parent_path(p), ::HIR::TypePathBinding(be.ptr));
+                        }
+                    }
+                    }
+                }
+                return possible_type;
+            }
             const ::HIR::TypeRef& get_possible_type(Context& context, ::HIR::Pattern& pattern) const
             {
                 if( m_possible_type == ::HIR::TypeRef() )
                 {
-                    ::HIR::TypeRef  possible_type;
-                    // Get a potential type from the pattern, and set as a possibility.
-                    // - Note, this is only if no derefs were applied
-                    TU_MATCH_HDR( (pattern.m_data), { )
-                    TU_ARM(pattern.m_data, Any, pe) {
-                        // No type information.
-                        }
-                    TU_ARM(pattern.m_data, Value, pe) {
-                        possible_type = get_possible_type_val(context, pe.val);
-                        }
-                    TU_ARM(pattern.m_data, Range, pe) {
-                        possible_type = get_possible_type_val(context, pe.start);
-                        if( possible_type == ::HIR::TypeRef() ) {
-                            possible_type = get_possible_type_val(context, pe.end);
-                        }
-                        else {
-                            // TODO: Check that the type from .end matches .start
-                        }
-                        }
-                    TU_ARM(pattern.m_data, Box, pe) {
-                        // TODO: Get type info (Box<_>) ?
-                        // - Is this possible? Shouldn't a box pattern disable ergonomics?
-                        }
-                    TU_ARM(pattern.m_data, Ref, pe) {
-                        BUG(sp, "Match ergonomics - & pattern");
-                        }
-                    TU_ARM(pattern.m_data, Tuple, e) {
-                        // Get type info `(T, U, ...)`
-                        if( m_temp_ivars.size() != e.sub_patterns.size() ) {
-                            for(size_t i = 0; i < e.sub_patterns.size(); i ++)
-                                m_temp_ivars.push_back( context.m_ivars.new_ivar_tr() );
-                        }
-                        decltype(m_temp_ivars)  tuple;
-                        for(const auto& ty : m_temp_ivars)
-                            tuple.push_back(ty.clone());
-                        possible_type = ::HIR::TypeRef( ::std::move(tuple) );
-                        }
-                    TU_ARM(pattern.m_data, SplitTuple, pe) {
-                        // Can't get type information, tuple size is unkown
-                        }
-                    TU_ARM(pattern.m_data, Slice, e) {
-                        // Can be either a [T] or [T; n]. Can't provide a hint
-                        }
-                    TU_ARM(pattern.m_data, SplitSlice, pe) {
-                        // Can be either a [T] or [T; n]. Can't provide a hint
-                        }
-                    TU_ARM(pattern.m_data, StructValue, e) {
-                        context.add_ivars_params( e.path.m_params );
-                        possible_type = ::HIR::TypeRef::new_path(e.path.clone(), ::HIR::TypePathBinding(e.binding));
-                        }
-                    TU_ARM(pattern.m_data, StructTuple, e) {
-                        context.add_ivars_params( e.path.m_params );
-                        possible_type = ::HIR::TypeRef::new_path(e.path.clone(), ::HIR::TypePathBinding(e.binding));
-                        }
-                    TU_ARM(pattern.m_data, Struct, e) {
-                        context.add_ivars_params( e.path.m_params );
-                        possible_type = ::HIR::TypeRef::new_path(e.path.clone(), ::HIR::TypePathBinding(e.binding));
-                        }
-                    TU_ARM(pattern.m_data, EnumValue, e) {
-                        context.add_ivars_params( e.path.m_params );
-                        possible_type = ::HIR::TypeRef::new_path(get_parent_path(e.path), ::HIR::TypePathBinding(e.binding_ptr));
-                        }
-                    TU_ARM(pattern.m_data, EnumTuple, e) {
-                        context.add_ivars_params( e.path.m_params );
-                        possible_type = ::HIR::TypeRef::new_path(get_parent_path(e.path), ::HIR::TypePathBinding(e.binding_ptr));
-                        }
-                    TU_ARM(pattern.m_data, EnumStruct, e) {
-                        context.add_ivars_params( e.path.m_params );
-                        possible_type = ::HIR::TypeRef::new_path(get_parent_path(e.path), ::HIR::TypePathBinding(e.binding_ptr));
-                        }
-                    }
-                    m_possible_type = ::std::move(possible_type);
+                    m_possible_type = get_possible_type_inner(context, pattern);
                 }
                 return m_possible_type;
             }
@@ -2408,22 +2433,33 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                     for(auto& sub : pe.trailing)
                         rv |= this->revisit_inner(context, sub, *slice_inner, binding_mode);
                     }
-                TU_ARM(pattern.m_data, StructValue, e) {
-                    context.add_ivars_params( e.path.m_params );
-                    context.equate_types( sp, ty, ::HIR::TypeRef::new_path(e.path.clone(), ::HIR::TypePathBinding(e.binding)) );
+                TU_ARM(pattern.m_data, PathValue, e) {
+                    context.equate_types( sp, ty, get_possible_type_inner(context, pattern) );
+                    
+                    TU_MATCH_HDRA( (e.binding), { )
+                    TU_ARMA(Unbound, be)    throw "";
+                    TU_ARMA(Struct, be) {
+                        const auto& str = *be;
+                        ASSERT_BUG(sp, str.m_data.is_Unit(), "PathValue used on non-unit struct variant");
+                        }
+                    TU_ARMA(Enum, be) {
+                        const auto& enm = *be.ptr;
+                        if( const auto* ee = enm.m_data.opt_Data() )
+                        {
+                            ASSERT_BUG(sp, be.var_idx < ee->size(), "");
+                            const auto& var = (*ee)[be.var_idx];
+                            ASSERT_BUG(sp, var.type == HIR::TypeRef::new_unit(), "EnumValue used on non-value enum variant");
+                        }
+                        }
+                    }
                     rv = true;
                     }
-                TU_ARM(pattern.m_data, StructTuple, e) {
-                    context.add_ivars_params( e.path.m_params );
-                    context.equate_types( sp, ty, ::HIR::TypeRef::new_path(e.path.clone(), ::HIR::TypePathBinding(e.binding)) );
+                TU_ARM(pattern.m_data, PathTuple, e) {
+                    context.equate_types( sp, ty, get_possible_type_inner(context, pattern) );
+                    
+                    const auto& sd = ::HIR::pattern_get_tuple(sp, e.path, e.binding);
 
-                    assert(e.binding);
-                    const auto& str = *e.binding;
-
-                    // - assert check from earlier pass
-                    ASSERT_BUG(sp, str.m_data.is_Tuple(), "Struct-tuple pattern on non-Tuple struct");
-                    const auto& sd = str.m_data.as_Tuple();
-                    auto ms = MonomorphStatePtr(nullptr, &e.path.m_params, nullptr);
+                    auto ms = MonomorphStatePtr(nullptr, &e.path.m_data.as_Generic().m_params, nullptr);
                     ::HIR::TypeRef  tmp;
                     auto maybe_monomorph = [&](const ::HIR::TypeRef& field_type)->const ::HIR::TypeRef& {
                         return (monomorphise_type_needed(field_type)
@@ -2432,20 +2468,24 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                                 );
                         };
 
+                    e.total_size = sd.size();
+
                     rv = true;
-                    for( unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
+                    for( unsigned int i = 0; i < e.leading.size(); i ++ )
                     {
-                        /*const*/ auto& sub_pat = e.sub_patterns[i];
-                        const auto& field_type = sd[i].ent;
-                        const auto& var_ty = maybe_monomorph(field_type);
+                        /*const*/ auto& sub_pat = e.leading[i];
+                        const auto& var_ty = maybe_monomorph(sd[i].ent);
+                        rv &= this->revisit_inner(context, sub_pat, var_ty, binding_mode);
+                    }
+                    for( unsigned int i = 0; i < e.trailing.size(); i ++ )
+                    {
+                        /*const*/ auto& sub_pat = e.trailing[i];
+                        const auto& var_ty = maybe_monomorph(sd[sd.size() - e.trailing.size() + i].ent);
                         rv &= this->revisit_inner(context, sub_pat, var_ty, binding_mode);
                     }
                     }
-                TU_ARM(pattern.m_data, Struct, e) {
-                    context.add_ivars_params( e.path.m_params );
-                    context.equate_types( sp, ty, ::HIR::TypeRef::new_path(e.path.clone(), ::HIR::TypePathBinding(e.binding)) );
-                    assert(e.binding);
-                    const auto& str = *e.binding;
+                TU_ARM(pattern.m_data, PathNamed, e) {
+                    context.equate_types( sp, ty, get_possible_type_inner(context, pattern) );
 
                     //if( ! e.is_wildcard() )
                     if( e.sub_patterns.empty() )
@@ -2455,12 +2495,9 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                     }
                     else
                     {
-                        // - assert check from earlier pass
-                        ASSERT_BUG(sp, str.m_data.is_Named(), "Struct pattern on non-Named struct");
-                        const auto& sd = str.m_data.as_Named();
-                        const auto& params = e.path.m_params;
+                        const auto& sd = ::HIR::pattern_get_named(sp, e.path, e.binding);
 
-                        auto ms = MonomorphStatePtr(nullptr, &e.path.m_params, nullptr);
+                        auto ms = MonomorphStatePtr(nullptr, &e.path.m_data.as_Generic().m_params, nullptr);
                         ::HIR::TypeRef  tmp;
                         auto maybe_monomorph = [&](const ::HIR::TypeRef& field_type)->const ::HIR::TypeRef& {
                             return (monomorphise_type_needed(field_type)
@@ -2479,77 +2516,6 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                             const ::HIR::TypeRef& field_type = maybe_monomorph(sd[f_idx].second.ent);
                             rv &= this->revisit_inner(context, field_pat.second, field_type, binding_mode);
                         }
-                    }
-                    }
-                TU_ARM(pattern.m_data, EnumValue, e) {
-                    context.add_ivars_params( e.path.m_params );
-                    context.equate_types( sp, ty, ::HIR::TypeRef::new_path(get_parent_path(e.path), ::HIR::TypePathBinding(e.binding_ptr)) );
-                    assert(e.binding_ptr);
-                    const auto& enm = *e.binding_ptr;
-                    if( enm.m_data.is_Data() )
-                    {
-                        ASSERT_BUG(sp, e.binding_idx < enm.m_data.as_Data().size(), "");
-                        const auto& var = enm.m_data.as_Data()[e.binding_idx];
-                        ASSERT_BUG(sp, var.type == HIR::TypeRef::new_unit(), "EnumValue used on non-value enum variant");
-                    }
-                    rv = true;
-                    }
-                TU_ARM(pattern.m_data, EnumTuple, e) {
-                    context.add_ivars_params( e.path.m_params );
-                    context.equate_types( sp, ty, ::HIR::TypeRef::new_path(get_parent_path(e.path), ::HIR::TypePathBinding(e.binding_ptr)) );
-                    assert(e.binding_ptr);
-                    const auto& enm = *e.binding_ptr;
-                    const auto& str = *enm.m_data.as_Data()[e.binding_idx].type.data().as_Path().binding.as_Struct();
-                    const auto& tup_var = str.m_data.as_Tuple();
-
-                    auto ms = MonomorphStatePtr(nullptr, &e.path.m_params, nullptr);
-
-                    ::HIR::TypeRef  tmp;
-                    auto maybe_monomorph = [&](const ::HIR::TypeRef& field_type)->const ::HIR::TypeRef& {
-                        return (monomorphise_type_needed(field_type)
-                                ? (tmp = context.m_resolve.expand_associated_types(sp, ms.monomorph_type(sp, field_type)))
-                                : field_type
-                                );
-                        };
-
-                    if( e.sub_patterns.size() != tup_var.size() ) {
-                        ERROR(sp, E0000, "Enum pattern with an incorrect number of fields - " << e.path << " - expected " << tup_var.size() << ", got " << e.sub_patterns.size() );
-                    }
-
-                    rv = true;  // &= below ensures that all must be complete to return complete
-                    for( unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
-                    {
-                        const auto& var_ty = maybe_monomorph(tup_var[i].ent);
-                        rv &= this->revisit_inner(context, e.sub_patterns[i], var_ty, binding_mode);
-                    }
-                    }
-                TU_ARM(pattern.m_data, EnumStruct, e) {
-                    context.add_ivars_params( e.path.m_params );
-                    context.equate_types( sp, ty, ::HIR::TypeRef::new_path(get_parent_path(e.path), ::HIR::TypePathBinding(e.binding_ptr)) );
-                    assert(e.binding_ptr);
-
-                    const auto& enm = *e.binding_ptr;
-                    const auto& str = *enm.m_data.as_Data()[e.binding_idx].type.data().as_Path().binding.as_Struct();
-                    const auto& tup_var = str.m_data.as_Named();
-
-                    auto ms = MonomorphStatePtr(nullptr, &e.path.m_params, nullptr);
-                    ::HIR::TypeRef  tmp;
-                    auto maybe_monomorph = [&](const ::HIR::TypeRef& field_type)->const ::HIR::TypeRef& {
-                        return (monomorphise_type_needed(field_type)
-                                ? (tmp = context.m_resolve.expand_associated_types(sp, ms.monomorph_type(sp, field_type)))
-                                : field_type
-                                );
-                        };
-
-                    rv = true;  // &= below ensures that all must be complete to return complete
-                    for( auto& field_pat : e.sub_patterns )
-                    {
-                        unsigned int f_idx = ::std::find_if( tup_var.begin(), tup_var.end(), [&](const auto& x){ return x.first == field_pat.first; } ) - tup_var.begin();
-                        if( f_idx == tup_var.size() ) {
-                            ERROR(sp, E0000, "Enum variant " << e.path << " doesn't have a field " << field_pat.first);
-                        }
-                        const ::HIR::TypeRef& field_type = maybe_monomorph(tup_var[f_idx].second.ent);
-                        rv &= this->revisit_inner(context, field_pat.second, field_type, binding_mode);
                     }
                     }
                 }
@@ -2602,23 +2568,15 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                     }
 
                 // - Enums/Structs
-                TU_ARMA(StructValue, e) {
+                TU_ARMA(PathValue, e) {
                     }
-                TU_ARMA(StructTuple, e) {
-                    for(auto& subpat : e.sub_patterns)
+                TU_ARMA(PathTuple, e) {
+                    for(auto& subpat : e.leading)
+                        disable_possibilities_on_bindings(sp, context, subpat);
+                    for(auto& subpat : e.trailing)
                         disable_possibilities_on_bindings(sp, context, subpat);
                     }
-                TU_ARMA(Struct, e) {
-                    for(auto& field_pat : e.sub_patterns)
-                        disable_possibilities_on_bindings(sp, context, field_pat.second);
-                    }
-                TU_ARMA(EnumValue, e) {
-                    }
-                TU_ARMA(EnumTuple, e) {
-                    for(auto& subpat : e.sub_patterns)
-                        disable_possibilities_on_bindings(sp, context, subpat);
-                    }
-                TU_ARMA(EnumStruct, e) {
+                TU_ARMA(PathNamed, e) {
                     for(auto& field_pat : e.sub_patterns)
                         disable_possibilities_on_bindings(sp, context, field_pat.second);
                     }
@@ -2674,23 +2632,15 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                     }
 
                 // - Enums/Structs
-                TU_ARMA(StructValue, e) {
+                TU_ARMA(PathValue, e) {
                     }
-                TU_ARMA(StructTuple, e) {
-                    for(auto& subpat : e.sub_patterns)
+                TU_ARMA(PathTuple, e) {
+                    for(auto& subpat : e.leading)
+                        create_bindings(sp, context, subpat);
+                    for(auto& subpat : e.trailing)
                         create_bindings(sp, context, subpat);
                     }
-                TU_ARMA(Struct, e) {
-                    for(auto& field_pat : e.sub_patterns)
-                        create_bindings(sp, context, field_pat.second);
-                    }
-                TU_ARMA(EnumValue, e) {
-                    }
-                TU_ARMA(EnumTuple, e) {
-                    for(auto& subpat : e.sub_patterns)
-                        create_bindings(sp, context, subpat);
-                    }
-                TU_ARMA(EnumStruct, e) {
+                TU_ARMA(PathNamed, e) {
                     for(auto& field_pat : e.sub_patterns)
                         create_bindings(sp, context, field_pat.second);
                     }
@@ -2747,6 +2697,27 @@ void Context::handle_pattern_direct_inner(const Span& sp, ::HIR::Pattern& pat, c
                 // TODO: Get type of the value and equate it
                 )
             )
+        }
+
+        static ::HIR::TypeRef get_path_type(Context& context, const Span& sp, ::HIR::Path& path, const ::HIR::Pattern::PathBinding& binding)
+        {
+            TU_MATCH_HDRA( (binding), {)
+            TU_ARMA(Unbound, _)
+                BUG(sp, "");
+            TU_ARMA(Struct, be) {
+                auto& p = path.m_data.as_Generic();
+                assert(be);
+                context.add_ivars_params( p.m_params );
+                return ::HIR::TypeRef::new_path(p.clone(), ::HIR::TypePathBinding(be));
+                }
+            TU_ARMA(Enum, be) {
+                auto& p = path.m_data.as_Generic();
+                assert(be.ptr);
+                context.add_ivars_params( p.m_params );
+                return ::HIR::TypeRef::new_path(get_parent_path(p), ::HIR::TypePathBinding(be.ptr));
+                }
+            }
+            throw "";
         }
     };
 
@@ -3067,51 +3038,74 @@ void Context::handle_pattern_direct_inner(const Span& sp, ::HIR::Pattern& pat, c
         }
 
     // - Enums/Structs
-    TU_ARMA(StructValue, e) {
-        this->add_ivars_params( e.path.m_params );
-        const auto& str = *e.binding;
-        assert( str.m_data.is_Unit() );
-        this->equate_types( sp, type, ::HIR::TypeRef::new_path(e.path.clone(), ::HIR::TypePathBinding(e.binding)) );
+    TU_ARMA(PathValue, e) {
+        this->equate_types( sp, type, H::get_path_type(*this, sp, e.path, e.binding) );
+        TU_MATCH_HDRA( (e.binding), {)
+        TU_ARMA(Unbound, _)
+            BUG(sp, "");
+        TU_ARMA(Struct, str) {
+            assert( str->m_data.is_Unit() );
+            }
+        TU_ARMA(Enum, be) {
+            if( const auto* ee = be.ptr->m_data.opt_Data() )
+            {
+                ASSERT_BUG(sp, be.var_idx < ee->size(), "");
+                const auto& var = (*ee)[be.var_idx];
+                if( var.type.data().is_Tuple() && var.type.data().as_Tuple().size() == 0 ) {
+                    // All good
+                }
+                else {
+                    // TODO: Error here due to invalid variant type
+                }
+            }
+            }
         }
-    TU_ARMA(StructTuple, e) {
-        this->add_ivars_params( e.path.m_params );
-        const auto& str = *e.binding;
-        // - assert check from earlier pass
-        assert( str.m_data.is_Tuple() );
-        const auto& sd = str.m_data.as_Tuple();
+        }
+    TU_ARMA(PathTuple, e) {
+        this->equate_types( sp, type, H::get_path_type(*this, sp, e.path, e.binding) );
+        
+        const auto& sd = ::HIR::pattern_get_tuple(sp, e.path, e.binding);
 
-        assert(e.binding);
-        this->equate_types( sp, type, ::HIR::TypeRef::new_path(e.path.clone(), ::HIR::TypePathBinding(e.binding)) );
-
-        auto ms = MonomorphStatePtr(nullptr, &e.path.m_params, nullptr);
-        for( unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
-        {
-            /*const*/ auto& sub_pat = e.sub_patterns[i];
-            const auto& field_type = sd[i].ent;
-            if( monomorphise_type_needed(field_type) ) {
-                auto var_ty = ms.monomorph_type(sp, field_type);
-                this->handle_pattern_direct_inner(sp, sub_pat, var_ty);
+        auto ms = MonomorphStatePtr(nullptr, &e.path.m_data.as_Generic().m_params, nullptr);
+        ::HIR::TypeRef tmp;
+        auto maybe_monomorph = [&](const ::HIR::TypeRef& ty)->const ::HIR::TypeRef& {
+            if( monomorphise_type_needed(ty) ) {
+                return (tmp = ms.monomorph_type(sp, ty));
             }
             else {
-                this->handle_pattern_direct_inner(sp, sub_pat, field_type);
+                return ty;
             }
+            };
+        if( e.is_split ) {
+            ASSERT_BUG(sp, e.leading.size() + e.trailing.size() <= sd.size(),
+                "PathTuple size mismatch, expected at most " << sd.size() << " fields but got " << e.leading.size() + e.trailing.size());
+        }
+        else {
+            ASSERT_BUG(sp, e.leading.size() == sd.size(), "PathTuple size mismatch, expected " << sd.size() << " fields but got " << e.leading.size());
+            assert(e.trailing.size() == 0);
+        }
+        e.total_size = sd.size();
+
+        for( size_t i = 0; i < e.leading.size(); i ++ )
+        {
+            /*const*/ auto& sub_pat = e.leading[i];
+            this->handle_pattern_direct_inner(sp, sub_pat, maybe_monomorph(sd[i].ent));
+        }
+        for( size_t i = 0; i < e.trailing.size(); i ++ )
+        {
+            /*const*/ auto& sub_pat = e.trailing[i];
+            this->handle_pattern_direct_inner(sp, sub_pat, maybe_monomorph(sd[sd.size() - e.trailing.size() + i].ent));
         }
         }
-    TU_ARMA(Struct, e) {
-        this->add_ivars_params( e.path.m_params );
-        this->equate_types( sp, type, ::HIR::TypeRef::new_path(e.path.clone(), ::HIR::TypePathBinding(e.binding)) );
+    TU_ARMA(PathNamed, e) {
+        this->equate_types( sp, type, H::get_path_type(*this, sp, e.path, e.binding) );
 
         if( e.is_wildcard() )
             return ;
 
-        assert(e.binding);
-        const auto& str = *e.binding;
+        const auto& sd = ::HIR::pattern_get_named(sp, e.path, e.binding);
 
-        // - assert check from earlier pass
-        ASSERT_BUG(sp, str.m_data.is_Named(), "Struct pattern on non-Named struct");
-        const auto& sd = str.m_data.as_Named();
-
-        auto ms = MonomorphStatePtr(nullptr, &e.path.m_params, nullptr);
+        auto ms = MonomorphStatePtr(nullptr, &e.path.m_data.as_Generic().m_params, nullptr);
 
         for( auto& field_pat : e.sub_patterns )
         {
@@ -3120,73 +3114,6 @@ void Context::handle_pattern_direct_inner(const Span& sp, ::HIR::Pattern& pat, c
                 ERROR(sp, E0000, "Struct " << e.path << " doesn't have a field " << field_pat.first);
             }
             const ::HIR::TypeRef& field_type = sd[f_idx].second.ent;
-            if( monomorphise_type_needed(field_type) ) {
-                auto field_type_mono = ms.monomorph_type(sp, field_type);
-                this->handle_pattern_direct_inner(sp, field_pat.second, field_type_mono);
-            }
-            else {
-                this->handle_pattern_direct_inner(sp, field_pat.second, field_type);
-            }
-        }
-        }
-    TU_ARMA(EnumValue, e) {
-        this->add_ivars_params( e.path.m_params );
-        this->equate_types( sp, type, ::HIR::TypeRef::new_path(get_parent_path(e.path), ::HIR::TypePathBinding(e.binding_ptr)) );
-
-        assert(e.binding_ptr);
-        const auto& enm = *e.binding_ptr;
-        if( enm.m_data.is_Data() )
-        {
-            //const auto& var = enm.m_data.as_Data()[e.binding_idx];
-            //assert(var.is_Value() || var.is_Unit());
-        }
-        }
-    TU_ARMA(EnumTuple, e) {
-        this->add_ivars_params( e.path.m_params );
-        this->equate_types( sp, type, ::HIR::TypeRef::new_path(get_parent_path(e.path), ::HIR::TypePathBinding(e.binding_ptr)) );
-        assert(e.binding_ptr);
-        const auto& enm = *e.binding_ptr;
-        const auto& str = *enm.m_data.as_Data()[e.binding_idx].type.data().as_Path().binding.as_Struct();
-        const auto& tup_var = str.m_data.as_Tuple();
-
-        auto ms = MonomorphStatePtr(nullptr, &e.path.m_params, nullptr);
-
-        ASSERT_BUG(sp, e.sub_patterns.size() == tup_var.size(),
-            "Enum pattern with an incorrect number of fields - " << e.path << " - expected " << tup_var.size() << ", got " << e.sub_patterns.size()
-            );
-
-        for( unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
-        {
-            if( monomorphise_type_needed(tup_var[i].ent) ) {
-                auto var_ty = ms.monomorph_type(sp, tup_var[i].ent);
-                this->handle_pattern_direct_inner(sp, e.sub_patterns[i], var_ty);
-            }
-            else {
-                this->handle_pattern_direct_inner(sp, e.sub_patterns[i], tup_var[i].ent);
-            }
-        }
-        }
-    TU_ARMA(EnumStruct, e) {
-        this->add_ivars_params( e.path.m_params );
-        this->equate_types( sp, type, ::HIR::TypeRef::new_path(get_parent_path(e.path), ::HIR::TypePathBinding(e.binding_ptr)) );
-
-        if( e.sub_patterns.empty() )
-            return ;
-
-        assert(e.binding_ptr);
-        const auto& enm = *e.binding_ptr;
-        const auto& str = *enm.m_data.as_Data()[e.binding_idx].type.data().as_Path().binding.as_Struct();
-        const auto& tup_var = str.m_data.as_Named();
-
-        auto ms = MonomorphStatePtr(nullptr, &e.path.m_params, nullptr);
-
-        for( auto& field_pat : e.sub_patterns )
-        {
-            unsigned int f_idx = ::std::find_if( tup_var.begin(), tup_var.end(), [&](const auto& x){ return x.first == field_pat.first; } ) - tup_var.begin();
-            if( f_idx == tup_var.size() ) {
-                ERROR(sp, E0000, "Enum variant " << e.path << " doesn't have a field " << field_pat.first);
-            }
-            const ::HIR::TypeRef& field_type = tup_var[f_idx].second.ent;
             if( monomorphise_type_needed(field_type) ) {
                 auto field_type_mono = ms.monomorph_type(sp, field_type);
                 this->handle_pattern_direct_inner(sp, field_pat.second, field_type_mono);

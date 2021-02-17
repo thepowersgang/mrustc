@@ -1158,13 +1158,13 @@ namespace {
             TU_ARMA(SplitTuple, pe) {
                 // TODO: Check for a matching tuple size
                 }
-            TU_ARMA(StructValue, pe) {
+            TU_ARMA(PathValue, pe) {
                 // TODO: Check that the type matches the struct
                 }
-            TU_ARMA(StructTuple, pe) {
+            TU_ARMA(PathTuple, pe) {
                 // TODO: Destructure
                 }
-            TU_ARMA(Struct, pe) {
+            TU_ARMA(PathNamed, pe) {
                 // TODO: Destructure
                 }
 
@@ -1174,18 +1174,6 @@ namespace {
             TU_ARMA(Range, pe) {
                 this->check_pattern_value(sp, pe.start, ty);
                 this->check_pattern_value(sp, pe.end, ty);
-                }
-            TU_ARMA(EnumValue, e) {
-                // TODO: Check type
-                //ASSERT_BUG(sp, ty.data().is_Path(), ty);
-                //ASSERT_BUG(sp, ty.data().as_Path().binding.is_Enum(), "");
-                //const auto& enm = *ty.data().as_Path().binding.as_Enum();
-                }
-            TU_ARMA(EnumTuple, e) {
-                // TODO: Destructure
-                }
-            TU_ARMA(EnumStruct, e) {
-                // TODO: Destructure
                 }
             TU_ARMA(Slice, e) {
                 // TODO: Check that the type is a Slice or Array
