@@ -698,6 +698,36 @@ namespace {
                     return ;
                 }
                 assert(p.m_data.is_UfcsUnknown());
+                DEBUG(e.type);
+                DEBUG(e.type.data().is_Path());
+                DEBUG( static_cast<int>(pc) );
+                DEBUG( (e.type.data().is_Path() && e.type.data().as_Path().binding.is_Enum()) );
+
+                // If the inner is an enum, look for an enum variant? (check context)
+                if( (pc == HIR::Visitor::PathContext::VALUE /*|| pc == HIR::Visitor::PathContext::PATTERN*/)
+                    && e.type.data().is_Path()
+                    && e.type.data().as_Path().binding.is_Enum()
+                    )
+                {
+                    const auto& enm = *e.type.data().as_Path().binding.as_Enum();
+                    auto idx = enm.find_variant(e.item);
+                    DEBUG(idx);
+                    if( idx != ~0u )
+                    {
+                        DEBUG("Found variant " << e.type << " #" << idx);
+                        if( enm.m_data.is_Value() || !enm.m_data.as_Data()[idx].is_struct ) {
+                            auto gp = e.type.data().as_Path().path.m_data.as_Generic().clone();
+                            gp.m_path.m_components.push_back(e.item);
+                            if( e.params.has_params() ) {
+                                ERROR(sp, E0000, "Type parameters on UFCS enum variant - " << p);
+                            }
+                            p = std::move(gp);
+                            return ;
+                        }
+                        else {
+                        }
+                    }
+                }
 
                 // Couldn't find it
                 ERROR(sp, E0000, "Failed to find impl with '" << e.item << "' for " << e.type << " (in " << p << ")");

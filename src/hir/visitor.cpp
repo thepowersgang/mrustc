@@ -401,10 +401,10 @@ void ::HIR::Visitor::visit_pattern(::HIR::Pattern& pat)
             this->visit_pattern(subpat);
         }
     TU_ARMA(PathValue, e) {
-        this->visit_path(e.path, ::HIR::Visitor::PathContext::TYPE);
+        this->visit_path(e.path, ::HIR::Visitor::PathContext::VALUE);
         }
     TU_ARMA(PathTuple, e) {
-        this->visit_path(e.path, ::HIR::Visitor::PathContext::TYPE);
+        this->visit_path(e.path, ::HIR::Visitor::PathContext::VALUE);
         for(auto& subpat : e.leading)
             this->visit_pattern(subpat);
         for(auto& subpat : e.trailing)

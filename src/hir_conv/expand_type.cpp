@@ -169,6 +169,7 @@ public:
             gp2.m_params.m_types.resize( enm.m_params.m_types.size() );
 
             auto idx = enm.find_variant(gp.m_path.m_components.back());
+            path = std::move(gp2);
             return ::HIR::Pattern::PathBinding::make_Enum({ &enm, static_cast<unsigned>(idx) });
         }
 
