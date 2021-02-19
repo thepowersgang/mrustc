@@ -246,7 +246,17 @@ namespace {
                             const auto& ent = upper_visitor.m_crate.get_typeitem_by_path(sp, gp.m_path, /*ign_crate*/false, true);
                             if( ent.is_Enum() )
                             {
-                                m_replacement.reset(new ::HIR::ExprNode_UnitVariant(sp, mv$(gp), /*is_struct*/false));
+                                const auto& enm = ent.as_Enum();
+                                auto idx = enm.find_variant(gp.m_path.m_components.back());
+                                if( enm.m_data.is_Value() || enm.m_data.as_Data().at(idx).type == HIR::TypeRef::new_unit() )
+                                {
+                                    m_replacement.reset(new ::HIR::ExprNode_UnitVariant(sp, mv$(gp), /*is_struct*/false));
+                                    DEBUG(&node << ": Replacing with UnitVariant " << m_replacement.get());
+                                }
+                                else
+                                {
+                                    node.m_target = ::HIR::ExprNode_PathValue::ENUM_VAR_CONSTR;
+                                }
                                 return ;
                             }
                         }
@@ -808,6 +818,18 @@ namespace {
                 break;
             TU_ARMA(Value, e) {
                 this->visit_pattern_Value(sp, pat, e.val);
+                if( e.val.is_Named() && e.val.as_Named().path.m_data.is_Generic() && e.val.as_Named().path.m_data.as_Generic().m_path.m_components.size() > 1 )
+                {
+                    auto& gp = e.val.as_Named().path.m_data.as_Generic();
+                    if( const auto* enm_p = m_crate.get_typeitem_by_path(sp, gp.m_path, false, true).opt_Enum() )
+                    {
+                        unsigned idx = enm_p->find_variant(gp.m_path.m_components.back());
+                        pat.m_data = ::HIR::Pattern::Data::make_PathValue({
+                            mv$(gp),
+                            ::HIR::Pattern::PathBinding::make_Enum({enm_p, idx})
+                            });
+                    }
+                }
                 }
             TU_ARMA(Range, e) {
                 this->visit_pattern_Value(sp, pat, e.start);
