@@ -172,6 +172,8 @@ namespace {
                 public ::HIR::ExprVisitorDef
             {
                 Visitor& upper_visitor;
+                ::std::unique_ptr< ::HIR::ExprNode> m_replacement;
+
 
                 ExprVisitor(Visitor& uv):
                     upper_visitor(uv)
@@ -190,11 +192,67 @@ namespace {
                     upper_visitor.visit_pattern(pat);
                 }
 
+
+                void visit_node_ptr(::std::unique_ptr< ::HIR::ExprNode>& node_ptr) {
+                    ::HIR::ExprVisitorDef::visit_node_ptr(node_ptr);
+                    if(m_replacement) {
+                        m_replacement.swap(node_ptr);
+                        m_replacement.reset();
+                    }
+                }
+
+
+
                 // Custom to visit the inner expression
                 void visit(::HIR::ExprNode_ArraySized& node) override
                 {
                     upper_visitor.visit_expr(node.m_size);
                     ::HIR::ExprVisitorDef::visit(node);
+                }
+
+                // Custom visitor for enum/struct constructors
+                void visit(::HIR::ExprNode_CallPath& node) override
+                {
+                    ::HIR::ExprVisitorDef::visit(node);
+                    const Span& sp = node.span();
+                    if(node.m_path.m_data.is_Generic())
+                    {
+                        // If it points to an enum, rewrite
+                        auto& gp = node.m_path.m_data.as_Generic();
+                        if( gp.m_path.m_components.size() > 1 )
+                        {
+                            const auto& ent = upper_visitor.m_crate.get_typeitem_by_path(sp, gp.m_path, /*ign_crate*/false, true);
+                            if( ent.is_Enum() )
+                            {
+                                // Rewrite!
+                                m_replacement.reset(new ::HIR::ExprNode_TupleVariant(sp, mv$(gp), /*is_struct*/false, mv$(node.m_args)));
+                                DEBUG(&node << ": Replacing with TupleVariant " << m_replacement.get());
+                                return ;
+                            }
+                        }
+                    }
+                }
+                // Custom visitor for enum/struct constructors
+                void visit(::HIR::ExprNode_PathValue& node) override
+                {
+                    ::HIR::ExprVisitorDef::visit(node);
+                    const Span& sp = node.span();
+                    if(node.m_path.m_data.is_Generic())
+                    {
+                        // If it points to an enum, set binding
+                        auto& gp = node.m_path.m_data.as_Generic();
+                        if( gp.m_path.m_components.size() > 1 )
+                        {
+                            const auto& ent = upper_visitor.m_crate.get_typeitem_by_path(sp, gp.m_path, /*ign_crate*/false, true);
+                            if( ent.is_Enum() )
+                            {
+                                m_replacement.reset(new ::HIR::ExprNode_UnitVariant(sp, mv$(gp), /*is_struct*/false));
+                                return ;
+                            }
+                        }
+
+                        // TODO: Struct?
+                    }
                 }
 
                 // NOTE: Custom needed for trait scoping

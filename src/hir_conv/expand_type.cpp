@@ -168,7 +168,10 @@ public:
             gp2.m_path.m_components.push_back(name);
             gp2.m_params.m_types.resize( enm.m_params.m_types.size() );
 
-            auto idx = enm.find_variant(gp.m_path.m_components.back());
+            auto idx = enm.find_variant(name);
+            if(idx == ~0u) {
+                TODO(sp, "Variant " << name << " not found in " << gp);
+            }
             path = std::move(gp2);
             return ::HIR::Pattern::PathBinding::make_Enum({ &enm, static_cast<unsigned>(idx) });
         }
