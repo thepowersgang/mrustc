@@ -1132,16 +1132,18 @@ namespace {
                 ERROR(sp, E0000, "Cannot find an impl of " << trait << params << " for " << ity);
             }
         }
-        void check_pattern(const ::HIR::Pattern& pat, const ::HIR::TypeRef& ty) const
+        void check_pattern(const ::HIR::Pattern& pat, const ::HIR::TypeRef& top_ty) const
         {
             Span    sp;
-            const ::HIR::TypeRef* typ = &ty;
-            if( pat.m_implicit_deref_count ) {
-                // TODO: Deref a few times
-                for(unsigned i = pat.m_implicit_deref_count; i --;)
-                {
-                }
+            TRACE_FUNCTION_F("pat=" << pat << " ty=" << top_ty);
+            const ::HIR::TypeRef* typ = &top_ty;
+            // Implicit derefs
+            for(size_t i = 0; i < pat.m_implicit_deref_count; i ++)
+            {
+                typ = &typ->data().as_Borrow().inner;
             }
+            const ::HIR::TypeRef& ty = *typ;
+
             TU_MATCH_HDRA( (pat.m_data), { )
             TU_ARMA(Any, pe) {
                 // Don't care
