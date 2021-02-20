@@ -278,6 +278,7 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence)
 
         // Flow control
         case TOK_RWORD_RETURN:
+        case TOK_RWORD_YIELD:
         case TOK_RWORD_CONTINUE:
         case TOK_RWORD_BREAK: {
             PUTBACK(tok, lex);
@@ -518,7 +519,32 @@ ExprNodeP Parse_Stmt(TokenStream& lex)
     // Duplicated here for the :stmt pattern fragment.
     case TOK_RWORD_LET:
         return Parse_Stmt_Let(lex);
-    case TOK_RWORD_RETURN: {
+    case TOK_RWORD_YIELD:
+    case TOK_RWORD_CONTINUE:
+    case TOK_RWORD_BREAK:
+    case TOK_RWORD_RETURN:
+        {
+        AST::ExprNode_Flow::Type    type;
+        switch(tok.type())
+        {
+        case TOK_RWORD_RETURN:  type = AST::ExprNode_Flow::RETURN; break;
+        case TOK_RWORD_YIELD:   type = AST::ExprNode_Flow::YIELD;    break;
+        case TOK_RWORD_CONTINUE: type = AST::ExprNode_Flow::CONTINUE; break;
+        case TOK_RWORD_BREAK:    type = AST::ExprNode_Flow::BREAK;    break;
+        default:    throw ParseError::BugCheck(/*lex,*/ "return/yield/continue/break");
+        }
+        Ident lifetime = Ident("");
+        // continue/break can specify a target
+        if(tok.type() == TOK_RWORD_CONTINUE || tok.type() == TOK_RWORD_BREAK)
+        {
+            if( lex.lookahead(0) == TOK_LIFETIME )
+            {
+                GET_TOK(tok, lex);
+                lifetime = tok.ident();
+            }
+        }
+        // Return value
+        // TODO: Should this prevent `continue value;`?
         ExprNodeP   val;
         switch(LOOK_AHEAD(lex))
         {
@@ -533,42 +559,7 @@ ExprNodeP Parse_Stmt(TokenStream& lex)
             val = Parse_Expr0(lex);
             break;
         }
-        return NEWNODE( AST::ExprNode_Flow, AST::ExprNode_Flow::RETURN, "", ::std::move(val) );
-        }
-    case TOK_RWORD_CONTINUE:
-    case TOK_RWORD_BREAK:
-        {
-        AST::ExprNode_Flow::Type    type;
-        switch(tok.type())
-        {
-        case TOK_RWORD_CONTINUE: type = AST::ExprNode_Flow::CONTINUE; break;
-        case TOK_RWORD_BREAK:    type = AST::ExprNode_Flow::BREAK;    break;
-        default:    throw ParseError::BugCheck(/*lex,*/ "continue/break");
-        }
-        Ident lifetime = Ident("");;
-        if( GET_TOK(tok, lex) == TOK_LIFETIME )
-        {
-            lifetime = tok.ident();  // TODO: Hygine?
-            GET_TOK(tok, lex);
-        }
-        ExprNodeP   val;
-        switch(tok.type())
-        {
-        case TOK_EOF:
-        case TOK_SEMICOLON:
-        case TOK_COMMA:
-        case TOK_BRACE_OPEN:
-        case TOK_BRACE_CLOSE:
-        case TOK_PAREN_CLOSE:
-        case TOK_SQUARE_CLOSE:
-            PUTBACK(tok, lex);
-            break;
-        default:
-            PUTBACK(tok, lex);
-            val = Parse_Expr1(lex);
-            break;
-        }
-        return NEWNODE( AST::ExprNode_Flow, type, lifetime, ::std::move(val) );
+        return NEWNODE( AST::ExprNode_Flow, type, std::move(lifetime), ::std::move(val) );
         }
     case TOK_BRACE_OPEN:
         PUTBACK(tok, lex);
@@ -1084,31 +1075,59 @@ ExprNodeP Parse_ExprVal_StructLiteral(TokenStream& lex, AST::Path path)
     return NEWNODE( AST::ExprNode_StructLiteral, path, ::std::move(base_val), ::std::move(items) );
 }
 
-ExprNodeP Parse_ExprVal_Closure(TokenStream& lex, bool is_move)
+ExprNodeP Parse_ExprVal_Closure(TokenStream& lex)
 {
     TRACE_FUNCTION;
     Token   tok;
 
-    ::std::vector< ::std::pair<AST::Pattern, TypeRef> > args;
+    GET_TOK(tok, lex);
 
-    while( GET_TOK(tok, lex) != TOK_PIPE )
-    {
-        PUTBACK(tok, lex);
-        // Irrefutable pattern
-        AST::Pattern    pat = Parse_Pattern(lex, false);
-
-        TypeRef type { lex.point_span() };
-        if( GET_TOK(tok, lex) == TOK_COLON )
-            type = Parse_Type(lex);
-        else
-            PUTBACK(tok, lex);
-
-        args.push_back( ::std::make_pair( ::std::move(pat), ::std::move(type) ) );
-
-        if( GET_TOK(tok, lex) != TOK_COMMA )
-            break;
+    // [`static`]
+    bool is_immovable = false;
+    if(tok == TOK_RWORD_STATIC) {
+        GET_TOK(tok, lex);
+        is_immovable = true;
     }
-    CHECK_TOK(tok, TOK_PIPE);
+
+    // [`move`]
+    bool is_move = false;
+    if(tok == TOK_RWORD_MOVE) {
+        GET_TOK(tok, lex);
+        is_move = true;
+    }
+
+
+    ::std::vector< ::std::pair<AST::Pattern, TypeRef> > args;
+    if( tok == TOK_DOUBLE_PIPE )
+    {
+        // `||` - Empty argument list
+    }
+    else if( tok == TOK_PIPE )
+    {
+        // `|...|` - Arguments present
+        while( GET_TOK(tok, lex) != TOK_PIPE )
+        {
+            PUTBACK(tok, lex);
+            // Irrefutable pattern
+            AST::Pattern    pat = Parse_Pattern(lex, false);
+
+            TypeRef type { lex.point_span() };
+            if( GET_TOK(tok, lex) == TOK_COLON )
+                type = Parse_Type(lex);
+            else
+                PUTBACK(tok, lex);
+
+            args.push_back( ::std::make_pair( ::std::move(pat), ::std::move(type) ) );
+
+            if( GET_TOK(tok, lex) != TOK_COMMA )
+                break;
+        }
+        CHECK_TOK(tok, TOK_PIPE);
+    }
+    else
+    {
+        throw ParseError::Unexpected(lex, tok, {TOK_PIPE, TOK_DOUBLE_PIPE, TOK_RWORD_MOVE, TOK_RWORD_STATIC});
+    }
 
     auto rt = TypeRef(lex.point_span());
     if( GET_TOK(tok, lex) == TOK_THINARROW ) {
@@ -1127,7 +1146,7 @@ ExprNodeP Parse_ExprVal_Closure(TokenStream& lex, bool is_move)
 
     auto code = Parse_Expr0(lex);
 
-    return NEWNODE( AST::ExprNode_Closure, ::std::move(args), ::std::move(rt), ::std::move(code), is_move );
+    return NEWNODE( AST::ExprNode_Closure, ::std::move(args), ::std::move(rt), ::std::move(code), is_move, is_immovable );
 }
 
 ExprNodeP Parse_ExprVal(TokenStream& lex)
@@ -1149,6 +1168,7 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
 
     // Return/break/continue/... also parsed here (but recurses back up to actually handle them)
     case TOK_RWORD_RETURN:
+    case TOK_RWORD_YIELD:
     case TOK_RWORD_CONTINUE:
     case TOK_RWORD_BREAK:
         PUTBACK(tok, lex);
@@ -1228,21 +1248,14 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
             PUTBACK(tok, lex);
             return NEWNODE( AST::ExprNode_NamedValue, ::std::move(path) );
         }
+    // Closures
+    case TOK_RWORD_STATIC:
     case TOK_RWORD_MOVE:
-        GET_TOK(tok, lex);
-        if(tok.type() == TOK_PIPE)
-            return Parse_ExprVal_Closure(lex, true);
-        else if(tok.type() == TOK_DOUBLE_PIPE) {
-            lex.putback(Token(TOK_PIPE));
-            return Parse_ExprVal_Closure(lex, true);
-        }
-        else {
-            CHECK_TOK(tok, TOK_PIPE);
-        }
-    case TOK_DOUBLE_PIPE:
-        lex.putback(Token(TOK_PIPE));
     case TOK_PIPE:
-        return Parse_ExprVal_Closure(lex, false);
+    case TOK_DOUBLE_PIPE:
+        PUTBACK(tok, lex);
+        return Parse_ExprVal_Closure(lex);
+
     case TOK_INTEGER:
         return NEWNODE( AST::ExprNode_Integer, tok.intval(), tok.datatype() );
     case TOK_FLOAT:

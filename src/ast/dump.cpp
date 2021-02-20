@@ -108,6 +108,7 @@ public:
         switch(n.m_type)
         {
         case AST::ExprNode_Flow::RETURN:    m_os << "return ";  break;
+        case AST::ExprNode_Flow::YIELD:     m_os << "yield ";  break;
         case AST::ExprNode_Flow::BREAK:     m_os << "break ";  break;
         case AST::ExprNode_Flow::CONTINUE:  m_os << "continue ";  break;
         }
@@ -644,7 +645,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
             if( ent.name == "" ) {
                 m_os << "::*";
             }
-            else if( ent.name != ent.path.nodes().back().name() ) {
+            else if( ent.path.nodes().size() > 0 && ent.name != ent.path.nodes().back().name() ) {
                 m_os << " as " << ent.name;
             }
             else {
@@ -838,6 +839,10 @@ void RustPrinter::handle_module(const AST::Module& mod)
 
     for(const auto& m : mod.anon_mods())
     {
+        if(!m) {
+            m_os << indent() << "/* mod ? (delted anon) */\n";
+            continue ;
+        }
         m_os << indent() << "mod " << m->path().nodes.back() << " {\n";
         inc_indent();
         handle_module(*m);

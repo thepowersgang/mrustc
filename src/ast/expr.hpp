@@ -144,6 +144,7 @@ struct ExprNode_Flow:
 {
     enum Type {
         RETURN,
+        YIELD,
         CONTINUE,
         BREAK,
     } m_type;
@@ -424,13 +425,15 @@ struct ExprNode_Closure:
     args_t  m_args;
     TypeRef m_return;
     unique_ptr<ExprNode>    m_code;
-    bool m_is_move;
-
-    ExprNode_Closure(args_t args, TypeRef rv, unique_ptr<ExprNode> code, bool is_move):
+    bool m_is_move;     //< The closure takes ownership of all values
+    bool m_is_pinned;   //< The closure cannot be moved (this is for generators)
+    
+    ExprNode_Closure(args_t args, TypeRef rv, unique_ptr<ExprNode> code, bool is_move, bool is_pinned):
         m_args( ::std::move(args) ),
         m_return( ::std::move(rv) ),
         m_code( ::std::move(code) ),
-        m_is_move( is_move )
+        m_is_move( is_move ),
+        m_is_pinned( is_pinned )
     {}
 
     NODE_METHODS();

@@ -1696,7 +1696,8 @@ class Deriver_RustcEncodable:
     AST::ExprNodeP enc_closure(Span sp, AST::ExprNodeP code) const {
         return NEWNODE(Closure,
             vec$( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), sp, "s"), ::TypeRef(sp) ) ), ::TypeRef(sp),
-            mv$(code), false
+            mv$(code),
+            false, false
             );
     }
     AST::ExprNodeP get_val_ok(const RcString& core_name) const {
@@ -1921,7 +1922,7 @@ class Deriver_RustcDecodable:
     AST::ExprNodeP dec_closure(Span sp, AST::ExprNodeP code) const {
         return NEWNODE(Closure,
             vec$( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), sp, "d"), ::TypeRef(sp) ) ), ::TypeRef(sp),
-            mv$(code), false
+            mv$(code), false, false
             );
     }
     AST::ExprNodeP get_val_err_str(const RcString& core_name, ::std::string err_str) const {
@@ -2085,7 +2086,7 @@ public:
                 ),
             ::TypeRef(sp),
             mv$(node_match),
-            false
+            false, false
             );
         ::std::string enum_name = type.m_data.as_Path()->nodes().back().name().c_str();
 

@@ -26,6 +26,10 @@ struct LowerHIR_ExprNode_Visitor:
 {
     ::std::unique_ptr< ::HIR::ExprNode> m_rv;
 
+    // Used to track if a closure is a generator or a normal closure
+    // - They have different HIR node types
+    bool    m_has_yield = false;
+
     virtual void visit(::AST::ExprNode_Block& v) override {
         auto rv = new ::HIR::ExprNode_Block(v.span());
         for(const auto& n : v.m_nodes)
@@ -87,6 +91,11 @@ struct LowerHIR_ExprNode_Visitor:
                 m_rv.reset( new ::HIR::ExprNode_Return( v.span(), LowerHIR_ExprNode_Inner(*v.m_value) ) );
             else
                 m_rv.reset( new ::HIR::ExprNode_Return( v.span(), ::HIR::ExprNodeP(new ::HIR::ExprNode_Tuple(v.span(), {})) ) );
+            break;
+        case ::AST::ExprNode_Flow::YIELD:
+            m_has_yield = true;
+            //m_rv.reset( new ::HIR::ExprNode_Yield( v.span(), LowerHIR_ExprNode_Inner(*v.m_value) ) );
+            TODO(v.span(), "yield");
             break;
         case ::AST::ExprNode_Flow::CONTINUE:
         case ::AST::ExprNode_Flow::BREAK:
@@ -540,12 +549,27 @@ struct LowerHIR_ExprNode_Visitor:
                 LowerHIR_Type( arg.second )
                 ) );
         }
-        m_rv.reset( new ::HIR::ExprNode_Closure( v.span(),
-            mv$(args),
-            LowerHIR_Type(v.m_return),
-            LowerHIR_ExprNode_Inner(*v.m_code),
-            v.m_is_move
-            ) );
+
+        auto orig_has_yield = m_has_yield;
+        m_has_yield = false;
+        auto inner = LowerHIR_ExprNode_Inner(*v.m_code);
+        if(m_has_yield)
+        {
+            TODO(v.span(), "Convert closure to generator");
+        }
+        else
+        {
+            if( v.m_is_pinned ) {
+                ERROR(v.span(), E0000, "Invalid use of `static` on non-yielding closure");
+            }
+            m_rv.reset( new ::HIR::ExprNode_Closure( v.span(),
+                mv$(args),
+                LowerHIR_Type(v.m_return),
+                mv$(inner),
+                v.m_is_move
+                ) );
+        }
+        m_has_yield = orig_has_yield;
     }
     virtual void visit(::AST::ExprNode_StructLiteral& v) override {
         if( v.m_path.m_bindings.type.binding.is_Union() )

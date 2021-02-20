@@ -139,6 +139,7 @@ NODE(ExprNode_Flow, {
     switch(m_type)
     {
     case RETURN:    os << "return"; break;
+    case YIELD:     os << "yield"; break;
     case BREAK:     os << "break"; break;
     case CONTINUE:  os << "continue"; break;
     }
@@ -299,6 +300,8 @@ NODE(ExprNode_ByteString, {
 })
 
 NODE(ExprNode_Closure, {
+    if( m_is_pinned )
+        os << "static ";
     if( m_is_move )
         os << "move ";
     os << "|";
@@ -314,7 +317,7 @@ NODE(ExprNode_Closure, {
     for(const auto& a : m_args) {
         args.push_back( ::std::make_pair(a.first.clone(), a.second.clone()) );
     }
-    return NEWNODE(ExprNode_Closure, mv$(args), m_return.clone(), m_code->clone(), m_is_move);
+    return NEWNODE(ExprNode_Closure, mv$(args), m_return.clone(), m_code->clone(), m_is_move, m_is_pinned);
 });
 
 NODE(ExprNode_StructLiteral, {
