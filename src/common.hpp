@@ -22,7 +22,7 @@
 
 #define FMT(ss)    (static_cast<::std::ostringstream&&>(::std::ostringstream() << ss).str())
 // XXX: Evil hack - Define 'mv$' to be ::std::move
-#define mv$(x)    ::std::move(x)
+#define mv$ ::std::move
 #define box$(...) ::make_unique_ptr(::std::move(__VA_ARGS__))
 #define rc_new$(...) ::make_shared_ptr(::std::move(__VA_ARGS__))
 
