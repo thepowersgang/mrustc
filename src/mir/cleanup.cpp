@@ -1223,7 +1223,7 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                             sp, pe.trait.m_path, pe.trait.m_params,
                             *te.m_trait.m_trait_ptr, te.m_trait.m_path.m_path, te.m_trait.m_path.m_params,
                             pe.type,
-                            [](const auto&, auto){}
+                            [](const auto&, auto){ return true; }
                             )
                         )
                     {
