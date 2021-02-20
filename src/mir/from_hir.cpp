@@ -678,6 +678,29 @@ namespace {
 
             // TODO: Store the variable state on a break for restoration at the end of the loop.
         }
+
+        /// Locate a loop given a name
+        const LoopDesc& find_loop(const Span& sp, const RcString& target_label) const
+        {
+            if( target_label != "" ) {
+                auto it = ::std::find_if(m_loop_stack.rbegin(), m_loop_stack.rend(), [&](const auto& x){ return x.label == target_label; });
+                if( it == m_loop_stack.rend() ) {
+                    BUG(sp, "Named loop '" << target_label << " doesn't exist");
+                }
+                return *it;
+            }
+            else {
+                auto it = ::std::find_if(m_loop_stack.rbegin(), m_loop_stack.rend(), [](const auto& x){ return !x.require_label; });
+                if( it == m_loop_stack.rend() ) {
+                    BUG(sp, "Break outside of a breakable block");
+                }
+                if( it->label != "" && it->label.c_str()[0] == '#' ) {
+                    TODO(sp, "Break within try block, want to break parent loop instead");
+                }
+                return *it;
+            }
+        }
+
         void visit(::HIR::ExprNode_LoopControl& node) override
         {
             TRACE_FUNCTION_F("_LoopControl \"" << node.m_label << "\"");
@@ -685,48 +708,34 @@ namespace {
                 BUG(node.span(), "Loop control outside of a loop");
             }
 
-            const LoopDesc* target_block;
-            if( node.m_label != "" ) {
-                auto it = ::std::find_if(m_loop_stack.rbegin(), m_loop_stack.rend(), [&](const auto& x){ return x.label == node.m_label; });
-                if( it == m_loop_stack.rend() ) {
-                    BUG(node.span(), "Named loop '" << node.m_label << " doesn't exist");
-                }
-                target_block = &*it;
-            }
-            else {
-                target_block = nullptr;
-                for(auto it = m_loop_stack.rbegin(); it != m_loop_stack.rend(); ++it)
-                {
-                    if( !it->require_label )
-                    {
-                        target_block = &*it;
-                        break;
-                    }
-                }
-                if( target_block->label != "" && target_block->label.c_str()[0] == '#' ) {
-                    TODO(node.span(), "Break within try block, want to break parent loop instead");
-                }
+            // Visit value before looking up the loop
+            if( node.m_value )
+            {
+                ASSERT_BUG(node.span(), !node.m_continue, "Continue with a value isn't valid");
+                DEBUG("break value;");
+                this->visit_node_ptr(node.m_value);
             }
 
+            const LoopDesc& target_block = this->find_loop(node.span(), node.m_label);
+            assert(&m_loop_stack.front() <= &target_block && &target_block <= &m_loop_stack.back());
+
             if( node.m_continue ) {
-                ASSERT_BUG(node.span(), !node.m_value, "Continue with a value isn't valid");
-                m_builder.terminate_scope_early( node.span(), target_block->scope, /*loop_exit=*/false );
-                m_builder.end_block( ::MIR::Terminator::make_Goto(target_block->cur) );
+                m_builder.terminate_scope_early( node.span(), target_block.scope, /*loop_exit=*/false );
+                m_builder.end_block( ::MIR::Terminator::make_Goto(target_block.cur) );
             }
             else {
                 if( node.m_value )
                 {
-                    DEBUG("break value;");
-                    this->visit_node_ptr(node.m_value);
-                    m_builder.push_stmt_assign( node.span(), target_block->res_value.clone(),  m_builder.get_result(node.span()) );
+                    m_builder.push_stmt_assign( node.span(), target_block.res_value.clone(),  m_builder.get_result(node.span()) );
                 }
                 else
                 {
                     // Set result to ()
-                    m_builder.push_stmt_assign( node.span(), target_block->res_value.clone(), ::MIR::RValue::make_Tuple({{}}) );
+                    m_builder.push_stmt_assign( node.span(), target_block.res_value.clone(), ::MIR::RValue::make_Tuple({{}}) );
                 }
-                m_builder.terminate_scope_early( node.span(), target_block->scope, /*loop_exit=*/true );
-                m_builder.end_block( ::MIR::Terminator::make_Goto(target_block->next) );
+                assert(&m_loop_stack.front() <= &target_block && &target_block <= &m_loop_stack.back());
+                m_builder.terminate_scope_early( node.span(), target_block.scope, /*loop_exit=*/true );
+                m_builder.end_block( ::MIR::Terminator::make_Goto(target_block.next) );
             }
         }
 
