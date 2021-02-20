@@ -414,6 +414,10 @@ private:
 class MacroExpander:
     public TokenStream
 {
+    // Used to track a specific invocation for debugging
+    static unsigned s_next_log_index;
+    unsigned m_log_index;
+
     const RcString  m_macro_filename;
 
     const RcString  m_crate_name;
@@ -441,6 +445,7 @@ public:
         AST::Edition source_edition
     ):
         TokenStream(ParseState(source_edition)),    // TODO: Get from the source crate
+        m_log_index(s_next_log_index++),
         m_macro_filename( FMT("Macro:" << macro_name) ),
         m_crate_name( mv$(crate_name) ),
         m_invocation_span( sp ),
@@ -456,6 +461,7 @@ public:
     Ident::Hygiene realGetHygiene() const override;
     Token realGetToken() override;
 };
+unsigned MacroExpander::s_next_log_index = 0;
 
 void Macro_InitDefaults()
 {
@@ -2012,14 +2018,14 @@ Token MacroExpander::realGetToken()
     // Use m_next_token first
     if( m_next_token.type() != TOK_NULL )
     {
-        DEBUG("m_next_token = " << m_next_token);
+        DEBUG("[" << m_log_index << "] m_next_token = " << m_next_token);
         return mv$(m_next_token);
     }
     // Then try m_ttstream
     if( m_ttstream.get() )
     {
-        DEBUG("TTStream present");
         Token rv = m_ttstream->getToken();
+        DEBUG("[" << m_log_index << "] TTStream present: " << rv);
         if( rv.type() != TOK_EOF )
             return rv;
         m_ttstream.reset();
@@ -2042,9 +2048,12 @@ Token MacroExpander::realGetToken()
                 {
                     ident.hygiene = m_hygiene;
                 }
-                return Token(e.type(), std::move(ident));
+                auto rv = Token(e.type(), std::move(ident));
+                DEBUG("[" << m_log_index << "] Updated hygine: " << rv);
+                return rv;
                 break; }
             default:
+                DEBUG("[" << m_log_index << "] Raw token: " << e);
                 return e.clone();
             }
             }
@@ -2054,7 +2063,7 @@ Token MacroExpander::realGetToken()
                 {
                 // - XXX: Hack for $crate special name
                 case 0:
-                    DEBUG("Crate name hack");
+                    DEBUG("[" << m_log_index << "] Crate name hack");
                     if( m_crate_name == "" )
                     {
                         if( parse_state().edition_after(AST::Edition::Rust2018) )
@@ -2077,7 +2086,7 @@ Token MacroExpander::realGetToken()
                 ASSERT_BUG(this->point_span(), frag, "Cannot find '" << e << "' for " << m_state.iterations());
 
                 bool can_steal = ( m_mappings.dec_count(m_state.iterations(), e) == false );
-                DEBUG("Insert replacement #" << e << " = " << *frag);
+                DEBUG("[" << m_log_index << "] Insert replacement #" << e << " = " << *frag);
                 if( frag->m_type == InterpolatedFragment::TT )
                 {
                     auto res_tt = can_steal ? mv$(frag->as_tt()) : frag->as_tt().clone();
@@ -2100,6 +2109,7 @@ Token MacroExpander::realGetToken()
             }
         TU_ARMA(Loop, e) {
             //assert( e.joiner.tok() != TOK_NULL );
+            DEBUG("[" << m_log_index << "] Loop joiner " << e.joiner);
             return e.joiner;
             }
         }

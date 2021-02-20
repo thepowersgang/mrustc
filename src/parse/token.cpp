@@ -346,7 +346,11 @@ struct EscapedString {
         }
     case TOK_INTERPOLATED_META: return "/*:meta*/";
     case TOK_INTERPOLATED_ITEM: return "/*:item*/";
-    case TOK_INTERPOLATED_VIS: return "/*:vis*/";
+    case TOK_INTERPOLATED_VIS: {
+        ::std::stringstream ss;
+        ss << (*reinterpret_cast<const ::AST::Visibility*>(m_data.as_Fragment()) ? "pub" : "/*priv*/");
+        return ss.str();
+        }
     // Value tokens
     case TOK_IDENT:     return m_data.as_Ident().name.c_str();
     case TOK_LIFETIME:  return FMT("'" << m_data.as_Ident().name.c_str());
