@@ -30,6 +30,7 @@ TODO:
     - Challenge when variables are eliminated.
   - Also use field names
   - e.g. emit `_NNN_varname` as the field/variable name
+  - Downside: Emitted code will be larger still
 
 ## Smaller changes
 - Cache specialisation tree
@@ -46,6 +47,8 @@ TODO:
   - Alternative: Create a custom type instead of std::pair
     - Reduces typing
     - No memory gains though.
+- Full SMIRI support in `minicargo` (running `standalone_miri` on build scripts)
+- Rupport `rustc` in `minicargo` (for doing the pre-cargo build of libstd)
 
 ## Optimisations
 - Argument propagation: replace assignments from `Argument(_)` if target is only
