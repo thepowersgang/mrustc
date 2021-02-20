@@ -26,11 +26,11 @@ void StaticTraitResolve::prep_indexes()
             break;
         TU_ARMA(TraitBound, be) {
             DEBUG("[prep_indexes] `" << be.type << " : " << be.trait);
-            prep_indexes__add_trait_bound(sp, be.type.clone(), be.trait.clone());
+            this->prep_indexes__add_trait_bound(sp, be.type.clone(), be.trait.clone());
             }
         TU_ARMA(TypeEquality, be) {
             DEBUG("Equality - " << be.type << " = " << be.other_type);
-            prep_indexes__add_equality(sp, be.type.clone(), be.other_type.clone());
+            this->prep_indexes__add_equality(sp, be.type.clone(), be.other_type.clone());
             }
         }
         return false;

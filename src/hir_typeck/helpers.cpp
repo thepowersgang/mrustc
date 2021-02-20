@@ -975,13 +975,13 @@ void TraitResolution::prep_indexes()
         {
             const auto& be = *bep;
             DEBUG("[prep_indexes] `" << be.type << " : " << be.trait);
-            prep_indexes__add_trait_bound(sp, be.type, be.trait);
+            this->prep_indexes__add_trait_bound(sp, be.type, be.trait);
         }
         else if(const auto* bep = b.opt_TypeEquality())
         {
             const auto& be = *bep;
             DEBUG("Equality - " << be.type << " = " << be.other_type);
-            prep_indexes__add_equality(sp, be.type.clone(), be.other_type.clone());
+            this->prep_indexes__add_equality(sp, be.type.clone(), be.other_type.clone());
         }
         else
         {
