@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?> 
 <AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
   <Type Name="RcString">
-    <DisplayString>{(const char*)(m_ptr+2),s}</DisplayString>
-    <StringView>(const char*)(m_ptr+2),s</StringView>
+    <DisplayString Condition="m_ptr != 0">"{(const char*)(m_ptr+2),s}"</DisplayString>
+    <DisplayString Condition="m_ptr == 0">""</DisplayString>
+    <StringView Condition="m_ptr != 0">(const char*)(m_ptr+2),s</StringView>
     <Expand>
-      <Item Name="nRef">m_ptr[0]</Item>
-      <Item Name="len">m_ptr[1]</Item>
-      <Item Name="data">m_ptr+2,s</Item>
+      <Item Name="nRef" Condition="m_ptr != 0">m_ptr[0]</Item>
+      <Item Name="len" Condition="m_ptr != 0">m_ptr[1]</Item>
+      <Item Name="data" Condition="m_ptr != 0">m_ptr+2,s</Item>
     </Expand>
   </Type>
   <Type Name="HIR::SimplePath">
