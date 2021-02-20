@@ -41,6 +41,9 @@ DEF_VISIT(ExprNode_Asm, node,
 DEF_VISIT(ExprNode_Return, node,
     visit_node_ptr(node.m_value);
 )
+DEF_VISIT(ExprNode_Yield, node,
+    visit_node_ptr(node.m_value);
+)
 DEF_VISIT(ExprNode_Let, node,
     visit_pattern(node.span(), node.m_pattern);
     visit_type(node.m_type);

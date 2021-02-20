@@ -594,6 +594,10 @@ namespace {
             m_builder.terminate_scope_early( node.span(), m_builder.fcn_scope() );
             m_builder.end_block( ::MIR::Terminator::make_Return({}) );
         }
+        void visit(::HIR::ExprNode_Yield& node) override
+        {
+            BUG(node.span(), "Unexpected ExprNode_Yield (should have been re-written)");
+        }
         void visit(::HIR::ExprNode_Let& node) override
         {
             TRACE_FUNCTION_F("_Let " << node.m_pattern);

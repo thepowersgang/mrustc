@@ -97,6 +97,12 @@ namespace {
             check_types_equal(ret_ty, node.m_value);
             node.m_value->visit(*this);
         }
+        void visit(::HIR::ExprNode_Yield& node) override
+        {
+            TRACE_FUNCTION_F(&node << " yield ...");
+            TODO(node.span(), "yield");
+            node.m_value->visit(*this);
+        }
         void visit(::HIR::ExprNode_Loop& node) override
         {
             TRACE_FUNCTION_F(&node << " loop { ... }");

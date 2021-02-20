@@ -128,6 +128,19 @@ struct ExprNode_Return:
 
     NODE_METHODS();
 };
+struct ExprNode_Yield:
+    public ExprNode
+{
+    ::HIR::ExprNodeP    m_value;
+
+    ExprNode_Yield(Span sp, ::HIR::ExprNodeP value):
+        ExprNode(mv$(sp)),
+        m_value( mv$(value) )
+    {
+    }
+
+    NODE_METHODS();
+};
 struct ExprNode_Loop:
     public ExprNode
 {
@@ -788,6 +801,7 @@ public:
     NV(ExprNode_Block)
     NV(ExprNode_Asm)
     NV(ExprNode_Return)
+    NV(ExprNode_Yield)
     NV(ExprNode_Let)
     NV(ExprNode_Loop)
     NV(ExprNode_LoopControl)
@@ -836,6 +850,7 @@ public:
     NV(ExprNode_Block)
     NV(ExprNode_Asm)
     NV(ExprNode_Return)
+    NV(ExprNode_Yield)
     NV(ExprNode_Let)
     NV(ExprNode_Loop)
     NV(ExprNode_LoopControl)

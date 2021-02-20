@@ -106,6 +106,11 @@ namespace {
             auto _ = this->push_usage( ::HIR::ValueUsage::Move );
             this->visit_node_ptr( node.m_value );
         }
+        void visit(::HIR::ExprNode_Yield& node) override
+        {
+            auto _ = this->push_usage( ::HIR::ValueUsage::Move );
+            this->visit_node_ptr( node.m_value );
+        }
         void visit(::HIR::ExprNode_Let& node) override
         {
             if( node.m_value )

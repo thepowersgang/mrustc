@@ -561,6 +561,7 @@ namespace typecheck
             // TODO: Revisit to check that the input are integers, and the outputs are integer lvalues
             this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
         }
+
         void visit(::HIR::ExprNode_Return& node) override
         {
             TRACE_FUNCTION_F(&node << " return ...");
@@ -568,6 +569,20 @@ namespace typecheck
 
             const auto& ret_ty = ( this->closure_ret_types.size() > 0 ? *this->closure_ret_types.back() : this->ret_type );
             this->context.equate_types_coerce(node.span(), ret_ty, node.m_value);
+
+            this->push_inner_coerce( true );
+            node.m_value->visit( *this );
+            this->pop_inner_coerce();
+            this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_diverge());
+        }
+        void visit(::HIR::ExprNode_Yield& node) override
+        {
+            TRACE_FUNCTION_F(&node << " yield ...");
+            this->context.add_ivars( node.m_value->m_res_type );
+
+            //const auto& ret_ty = ( this->closure_ret_types.size() > 0 ? *this->closure_ret_types.back() : this->ret_type );
+            //this->context.equate_types_coerce(node.span(), ret_ty, node.m_value);
+            TODO(node.span(), "yield");
 
             this->push_inner_coerce( true );
             node.m_value->visit( *this );
