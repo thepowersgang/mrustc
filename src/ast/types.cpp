@@ -81,7 +81,9 @@ const char* coretype_name(const eCoreType ct ) {
 }
 
 Type_Function::Type_Function(const Type_Function& other):
+    hrbs(other.hrbs),
     is_unsafe(other.is_unsafe),
+    is_variadic(other.is_variadic),
     m_abi(other.m_abi),
     m_rettype( box$( other.m_rettype->clone() ) )
 {
@@ -242,6 +244,7 @@ void TypeRef::print(::std::ostream& os, bool is_debug/*=false*/) const
 {
     //os << "TypeRef(";
     #define _(VAR, ...) case TypeData::TAG_##VAR: { const auto &ent = this->m_data.as_##VAR(); (void)&ent; __VA_ARGS__ } break;
+    #define _2(VAR, brace) case TypeData::TAG_##VAR: { const auto &ent = this->m_data.as_##VAR(); (void)&ent;
     switch(this->m_data.tag())
     {
     case TypeData::TAGDEAD: throw "";
@@ -263,17 +266,23 @@ void TypeRef::print(::std::ostream& os, bool is_debug/*=false*/) const
     _(Primitive,
         os << ent.core_type;
         )
-    _(Function,
+    _2(Function, {)
+        os << ent.info.hrbs;
         if( ent.info.m_abi != "" )
             os << "extern \"" << ent.info.m_abi << "\" ";
-        os << "fn (";
+        if(ent.info.is_unsafe)
+            os << "unsafe ";
+        os << "fn(";
         for( const auto& arg : ent.info.m_arg_types )
         {
             arg.print(os, is_debug);
             os << ", ";
         }
-        os << ") -> " << *ent.info.m_rettype;
-        )
+        os << ")";
+        if( !ent.info.m_rettype->is_unit() ) {
+            os << " -> " << *ent.info.m_rettype;
+        }
+        } break;
     _(Tuple,
         os << "( ";
         for( const auto& it : ent.inner_types )
@@ -330,6 +339,7 @@ void TypeRef::print(::std::ostream& os, bool is_debug/*=false*/) const
         )
     }
     #undef _
+    #undef _2
 }
 
 ::std::ostream& operator<<(::std::ostream& os, const TypeRef& tr) {
