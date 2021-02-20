@@ -708,7 +708,7 @@ namespace {
                 BUG(node.span(), "Loop control outside of a loop");
             }
 
-            // Visit value before looking up the loop
+            // Visit value before looking up the loop (loop stack may be manipulated during the inner visit)
             if( node.m_value )
             {
                 ASSERT_BUG(node.span(), !node.m_continue, "Continue with a value isn't valid");
@@ -717,7 +717,6 @@ namespace {
             }
 
             const LoopDesc& target_block = this->find_loop(node.span(), node.m_label);
-            assert(&m_loop_stack.front() <= &target_block && &target_block <= &m_loop_stack.back());
 
             if( node.m_continue ) {
                 m_builder.terminate_scope_early( node.span(), target_block.scope, /*loop_exit=*/false );
@@ -733,7 +732,6 @@ namespace {
                     // Set result to ()
                     m_builder.push_stmt_assign( node.span(), target_block.res_value.clone(), ::MIR::RValue::make_Tuple({{}}) );
                 }
-                assert(&m_loop_stack.front() <= &target_block && &target_block <= &m_loop_stack.back());
                 m_builder.terminate_scope_early( node.span(), target_block.scope, /*loop_exit=*/true );
                 m_builder.end_block( ::MIR::Terminator::make_Goto(target_block.next) );
             }
