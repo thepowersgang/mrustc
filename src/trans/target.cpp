@@ -513,6 +513,14 @@ namespace
                 ARCH_X86_64
                 };
         }
+        else if(target_name == "aarch64-apple-macosx")
+        {
+            // NOTE: OSX uses Mach-O binaries, which don't fully support the defaults used for GNU targets
+            return TargetSpec {
+                "unix", "macos", "gnu", {CodegenMode::Gnu11, false, "aarch64-apple-darwin", {}, {}},
+                ARCH_ARM64
+                };
+        }
         else if(target_name == "arm-unknown-haiku")
         {
             return TargetSpec {
