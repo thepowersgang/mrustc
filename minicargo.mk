@@ -53,7 +53,11 @@ endif
 
 LLVM_CONFIG := $(RUSTCSRC)build/bin/llvm-config
 ifeq ($(shell uname -s || echo not),Darwin)
+ifeq ($(shell uname -m || echo not),arm64)
+  RUSTC_TARGET ?= aarch64-apple-darwin
+else
   RUSTC_TARGET ?= x86_64-apple-darwin
+endif
 else
   RUSTC_TARGET ?= x86_64-unknown-linux-gnu
 endif
