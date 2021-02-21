@@ -35,14 +35,14 @@ class Decorator_ProcMacroDerive:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
         if( i.is_None() )
             return;
 
         if( !i.is_Function() )
             TODO(sp, "Error for proc_macro_derive on non-Function");
-        //auto& fcn = i.as_Function();
+
         auto trait_name = attr.items().at(0).name();
         ::std::vector<::std::string>    attributes;
         for(size_t i = 1; i < attr.items().size(); i ++)
@@ -54,17 +54,34 @@ public:
             }
         }
 
-        // TODO: Store attributes for later use.
-        crate.m_proc_macros.push_back(AST::ProcMacroDef { RcString::new_interned(FMT("derive#" << trait_name)), path, mv$(attributes) });
+        crate.m_proc_macros.push_back(AST::ProcMacroDef { RcString::new_interned(FMT(trait_name)), path, mv$(attributes) });
     }
 };
-
 STATIC_DECORATOR("proc_macro_derive", Decorator_ProcMacroDerive)
+class Decorator_ProcMacro:
+    public ExpandDecorator
+{
+public:
+    AttrStage stage() const override { return AttrStage::Post; }
+    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    {
+        if( i.is_None() )
+            return;
+
+        if( !i.is_Function() )
+            TODO(sp, "Error for #[proc_macro] on non-Function");
+
+        crate.m_proc_macros.push_back(AST::ProcMacroDef { path.nodes.back(), path, {} });
+    }
+};
+STATIC_DECORATOR("proc_macro", Decorator_ProcMacro)
 
 
 
 void Expand_ProcMacro(::AST::Crate& crate)
 {
+    crate.load_extern_crate(Span(), "proc_macro");
+
     // Create the following module:
     // ```
     // mod `proc_macro#` {
@@ -82,7 +99,7 @@ void Expand_ProcMacro(::AST::Crate& crate)
     auto main_fn = ::AST::Function { Span(), {}, ABI_RUST, false, false, false, TypeRef(TypeRef::TagUnit(), Span()), {} };
     {
         auto call_node = NEWNODE(_CallPath,
-                ::AST::Path("proc_macro", { ::AST::PathNode("main") }),
+                ::AST::Path(crate.m_ext_cratename_procmacro, { ::AST::PathNode("main") }),
                 ::make_vec1(
                     NEWNODE(_UniOp, ::AST::ExprNode_UniOp::REF,
                         NEWNODE(_NamedValue, ::AST::Path("", { ::AST::PathNode("proc_macro#"), ::AST::PathNode("MACROS") }))
@@ -104,30 +121,30 @@ void Expand_ProcMacro(::AST::Crate& crate)
         // `handler`: ::foo
         desc_vals.push_back({ {}, "handler", NEWNODE(_NamedValue, AST::Path(desc.path)) });
 
-        test_nodes.push_back( NEWNODE(_StructLiteral,  ::AST::Path("proc_macro", { ::AST::PathNode("MacroDesc")}), nullptr, mv$(desc_vals) ) );
+        test_nodes.push_back( NEWNODE(_StructLiteral,  ::AST::Path(crate.m_ext_cratename_procmacro, { ::AST::PathNode("MacroDesc")}), nullptr, mv$(desc_vals) ) );
     }
     auto* tests_array = new ::AST::ExprNode_Array(mv$(test_nodes));
 
     size_t test_count = tests_array->m_values.size();
     auto tests_list = ::AST::Static { ::AST::Static::Class::STATIC,
         TypeRef(TypeRef::TagSizedArray(), Span(),
-                TypeRef(Span(), ::AST::Path("proc_macro", { ::AST::PathNode("MacroDesc") })),
+                TypeRef(Span(), ::AST::Path(crate.m_ext_cratename_procmacro, { ::AST::PathNode("MacroDesc") })),
                 ::std::shared_ptr<::AST::ExprNode>( new ::AST::ExprNode_Integer(test_count, CORETYPE_UINT) )
                ),
         ::AST::Expr( mv$(tests_array) )
         };
 
     // ---- module ----
-    auto newmod = ::AST::Module { ::AST::Path("", { ::AST::PathNode("proc_macro#") }) };
+    auto newmod = ::AST::Module { ::AST::AbsolutePath("", { "proc_macro#" }) };
     // - TODO: These need to be loaded too.
     //  > They don't actually need to exist here, just be loaded (and use absolute paths)
-    newmod.add_ext_crate(Span(), false, "proc_macro", "proc_macro", {});
+    newmod.add_ext_crate(Span(), false, crate.m_ext_cratename_procmacro, "proc_macro", {});
 
     newmod.add_item(Span(), false, "main", mv$(main_fn), {});
     newmod.add_item(Span(), false, "MACROS", mv$(tests_list), {});
 
     crate.m_root_module.add_item(Span(), false, "proc_macro#", mv$(newmod), {});
-    crate.m_lang_items["mrustc-main"] = ::AST::Path("", { AST::PathNode("proc_macro#"), AST::PathNode("main") });
+    crate.m_lang_items["mrustc-main"] = ::AST::AbsolutePath("", { "proc_macro#", "main" });
 }
 
 enum class TokenClass
@@ -161,28 +178,38 @@ struct ProcMacroInv:
 {
     Span    m_parent_span;
     const ::HIR::ProcMacro& m_proc_macro_desc;
-    ::std::ofstream m_dump_file;
+    ::std::ofstream m_dump_file_out;
+    ::std::ofstream m_dump_file_res;
 
+    struct Handles
+    {
+        //~Handles();
+        Handles() {}
+        Handles(Handles&&);
+        Handles(const Handles&) = delete;
+        Handles& operator=(Handles&&) = delete;
+        Handles& operator=(const Handles&) = delete;
 #ifdef _WIN32
-    HANDLE  child_handle;
-    HANDLE  child_stdin;
-    HANDLE  child_stdout;
+        HANDLE  child_handle;
+        HANDLE  child_stdin;
+        HANDLE  child_stdout;
 #else
-    // POSIX
-    pid_t   child_pid;  // Questionably needed
-     int    child_stdin;
-     int    child_stdout;
-    // NOTE: stderr stays as our stderr
+        // POSIX
+        pid_t   child_pid;  // Questionably needed
+         int    child_stdin;
+         int    child_stdout;
+        // NOTE: stderr stays as our stderr
 #endif
+    } handles;
     bool    m_eof_hit = false;
 
 public:
-    ProcMacroInv(const Span& sp, const char* executable, const ::HIR::ProcMacro& proc_macro_desc);
+    ProcMacroInv(const Span& sp, AST::Edition edition, const char* executable, const ::HIR::ProcMacro& proc_macro_desc);
     ProcMacroInv(const ProcMacroInv&) = delete;
-    ProcMacroInv(ProcMacroInv&&);
+    ProcMacroInv(ProcMacroInv&&) = default;
     ProcMacroInv& operator=(const ProcMacroInv&) = delete;
     ProcMacroInv& operator=(ProcMacroInv&&) = delete;
-    virtual ~ProcMacroInv();
+    ~ProcMacroInv();
 
     bool check_good();
     void send_done() {
@@ -205,11 +232,57 @@ public:
         this->send_u8(static_cast<uint8_t>(TokenClass::String));
         this->send_bytes(s.data(), s.size());
     }
-    void send_bytestring(const ::std::string& s);
-    void send_char(uint32_t ch);
-    void send_int(eCoreType ct, int64_t v);
-    void send_float(eCoreType ct, double v);
-    //void send_fragment();
+    void send_bytestring(const ::std::string& s) {
+        this->send_u8(static_cast<uint8_t>(TokenClass::ByteString));
+        this->send_bytes(s.data(), s.size());
+    }
+    void send_char(uint32_t ch) {
+        this->send_u8(static_cast<uint8_t>(TokenClass::CharLit));
+        this->send_v128u(ch);
+    }
+    void send_int(eCoreType ct, int64_t v) {
+        uint8_t size;
+        switch(ct)
+        {
+        case CORETYPE_ANY:  size = 0;   if(0)
+        case CORETYPE_UINT: size = 1;   if(0)
+        case CORETYPE_U8:   size = 8;   if(0)
+        case CORETYPE_U16:  size = 16;  if(0)
+        case CORETYPE_U32:  size = 32;  if(0)
+        case CORETYPE_U64:  size = 64;  if(0)
+        case CORETYPE_U128: size = 128; if(0)
+            ;
+            this->send_u8(static_cast<uint8_t>(TokenClass::UnsignedInt));
+            this->send_u8(size);
+            break;
+        case CORETYPE_INT:  size = 1;   if(0)
+        case CORETYPE_I8:   size = 8;   if(0)
+        case CORETYPE_I16:  size = 16;  if(0)
+        case CORETYPE_I32:  size = 32;  if(0)
+        case CORETYPE_I64:  size = 64;  if(0)
+        case CORETYPE_I128: size = 128; if(0)
+            ;
+            this->send_u8(static_cast<uint8_t>(TokenClass::SignedInt));
+            this->send_u8(size);
+            break;
+        default:
+            BUG(m_parent_span, "Unknown integer type");
+        }
+        assert(v >= 0); // Integer literals can't be negative, and `send_v128u` is unsigned
+        this->send_v128u(v);
+    }
+    void send_float(eCoreType ct, double v) {
+        this->send_u8(static_cast<uint8_t>(TokenClass::Float));
+        switch(ct)
+        {
+        case CORETYPE_ANY:  this->send_u8(0);  break;
+        case CORETYPE_F32:  this->send_u8(32);  break;
+        case CORETYPE_F64:  this->send_u8(64);  break;
+        default:
+            BUG(m_parent_span, "Unknown float type");
+        }
+        this->send_bytes_raw(&v, sizeof(v));
+    }
 
     bool attr_is_used(const RcString& n) const {
         return ::std::find(m_proc_macro_desc.attributes.begin(), m_proc_macro_desc.attributes.end(), n) != m_proc_macro_desc.attributes.end();
@@ -222,10 +295,12 @@ private:
     Token realGetToken_();
     void send_u8(uint8_t v);
     void send_bytes(const void* val, size_t size);
+    void send_bytes_raw(const void* val, size_t size);
     void send_v128u(uint64_t val);
 
     uint8_t recv_u8();
     ::std::string recv_bytes();
+    void recv_bytes_raw(void* out_void, size_t len);
     uint64_t recv_v128u();
 };
 
@@ -234,11 +309,15 @@ ProcMacroInv ProcMacro_Invoke_int(const Span& sp, const ::AST::Crate& crate, con
     TRACE_FUNCTION_F(mac_path);
     // 1. Locate macro in HIR list
     const auto& crate_name = mac_path.front();
+    ASSERT_BUG(sp, crate.m_extern_crates.count(crate_name), "Crate not loaded for macro: [" << mac_path << "]");
     const auto& ext_crate = crate.m_extern_crates.at(crate_name);
     // TODO: Ensure that this macro is in the listed crate.
     const ::HIR::ProcMacro* pmp = nullptr;
-    for(const auto& pm : ext_crate.m_hir->m_proc_macros)
+    for(const auto& mi : ext_crate.m_hir->m_root_module.m_macro_items)
     {
+        if( !mi.second->ent.is_ProcMacro() )
+            continue ;
+        const auto& pm = mi.second->ent.as_ProcMacro();
         bool good = true;
         for(size_t i = 0; i < ::std::min( mac_path.size()-1, pm.path.m_components.size() ); i++)
         {
@@ -264,7 +343,10 @@ ProcMacroInv ProcMacro_Invoke_int(const Span& sp, const ::AST::Crate& crate, con
     ::std::string   proc_macro_exe_name = ext_crate.m_filename;
 
     // 3. Create ProcMacroInv
-    return ProcMacroInv(sp, proc_macro_exe_name.c_str(), *pmp);
+    return ProcMacroInv(sp, crate.m_edition, proc_macro_exe_name.c_str(), *pmp);
+
+    // NOTE: 1.39 failure_derive (2015) emits `::failure::foo` but `libcargo` doesn't have `failure` in root (it's a 2018 crate)
+    //return ProcMacroInv(sp, ext_crate.m_hir->m_edition, proc_macro_exe_name.c_str(), *pmp);
 }
 
 
@@ -278,6 +360,176 @@ namespace {
             sp(sp),
             m_pmi(pmi)
         {
+        }
+
+        void visit_tokentree(const ::TokenTree& tt)
+        {
+            if( tt.is_token() )
+            {
+                const auto& tok = tt.tok();
+                switch(tok.type())
+                {
+                case TOK_NULL:
+                    BUG(sp, "Unexpected NUL in token stream");
+                case TOK_EOF:
+                    BUG(sp, "Unexpected EOF in token stream");
+
+                case TOK_NEWLINE:
+                case TOK_WHITESPACE:
+                case TOK_COMMENT:
+                    BUG(sp, "Unexpected whitepace in tokenstream");
+                    break;
+                case TOK_INTERPOLATED_TYPE:
+                    TODO(sp, "TOK_INTERPOLATED_TYPE");
+                case TOK_INTERPOLATED_PATH:
+                    TODO(sp, "TOK_INTERPOLATED_PATH");
+                case TOK_INTERPOLATED_PATTERN:
+                    TODO(sp, "TOK_INTERPOLATED_PATTERN");
+                case TOK_INTERPOLATED_STMT:
+                case TOK_INTERPOLATED_BLOCK:
+                case TOK_INTERPOLATED_EXPR:
+                    TODO(sp, "TOK_INTERPOLATED_{STMT/EXPR/BLOCK}");
+                case TOK_INTERPOLATED_META:
+                case TOK_INTERPOLATED_ITEM:
+                case TOK_INTERPOLATED_VIS:
+                    TODO(sp, "TOK_INTERPOLATED_...");
+                // Value tokens
+                case TOK_IDENT:     m_pmi.send_ident(tok.ident().name.c_str());   break;  // TODO: Raw idents
+                case TOK_LIFETIME:  m_pmi.send_lifetime(tok.ident().name.c_str());  break;  // TODO: Hygine?
+                case TOK_INTEGER:   m_pmi.send_int(tok.datatype(), tok.intval());   break;
+                case TOK_CHAR:      m_pmi.send_char(tok.intval());  break;
+                case TOK_FLOAT:     m_pmi.send_float(tok.datatype(), tok.floatval());   break;
+                case TOK_STRING:        m_pmi.send_string(tok.str());       break;
+                case TOK_BYTESTRING:    m_pmi.send_bytestring(tok.str());   break;
+
+                case TOK_HASH:      m_pmi.send_symbol("#"); break;
+                case TOK_UNDERSCORE:m_pmi.send_symbol("_"); break;
+
+                // Symbols
+                case TOK_PAREN_OPEN:    m_pmi.send_symbol("("); break;
+                case TOK_PAREN_CLOSE:   m_pmi.send_symbol(")"); break;
+                case TOK_BRACE_OPEN:    m_pmi.send_symbol("{"); break;
+                case TOK_BRACE_CLOSE:   m_pmi.send_symbol("}"); break;
+                case TOK_LT:    m_pmi.send_symbol("<"); break;
+                case TOK_GT:    m_pmi.send_symbol(">"); break;
+                case TOK_SQUARE_OPEN:   m_pmi.send_symbol("["); break;
+                case TOK_SQUARE_CLOSE:  m_pmi.send_symbol("]"); break;
+                case TOK_COMMA:     m_pmi.send_symbol(","); break;
+                case TOK_SEMICOLON: m_pmi.send_symbol(";"); break;
+                case TOK_COLON:     m_pmi.send_symbol(":"); break;
+                case TOK_DOUBLE_COLON:  m_pmi.send_symbol("::"); break;
+                case TOK_STAR:  m_pmi.send_symbol("*"); break;
+                case TOK_AMP:   m_pmi.send_symbol("&"); break;
+                case TOK_PIPE:  m_pmi.send_symbol("|"); break;
+
+                case TOK_FATARROW:  m_pmi.send_symbol("=>"); break;
+                case TOK_THINARROW: m_pmi.send_symbol("->"); break;
+                case TOK_THINARROW_LEFT: m_pmi.send_symbol("<-"); break;
+
+                case TOK_PLUS:  m_pmi.send_symbol("+"); break;
+                case TOK_DASH:  m_pmi.send_symbol("-"); break;
+                case TOK_EXCLAM:    m_pmi.send_symbol("!"); break;
+                case TOK_PERCENT:   m_pmi.send_symbol("%"); break;
+                case TOK_SLASH:     m_pmi.send_symbol("/"); break;
+
+                case TOK_DOT:       m_pmi.send_symbol("."); break;
+                case TOK_DOUBLE_DOT:    m_pmi.send_symbol(".."); break;
+                case TOK_DOUBLE_DOT_EQUAL:  m_pmi.send_symbol("..="); break;
+                case TOK_TRIPLE_DOT:    m_pmi.send_symbol("..."); break;
+
+                case TOK_EQUAL:     m_pmi.send_symbol("="); break;
+                case TOK_PLUS_EQUAL:    m_pmi.send_symbol("+="); break;
+                case TOK_DASH_EQUAL:    m_pmi.send_symbol("-"); break;
+                case TOK_PERCENT_EQUAL: m_pmi.send_symbol("%="); break;
+                case TOK_SLASH_EQUAL:   m_pmi.send_symbol("/="); break;
+                case TOK_STAR_EQUAL:    m_pmi.send_symbol("*="); break;
+                case TOK_AMP_EQUAL:     m_pmi.send_symbol("&="); break;
+                case TOK_PIPE_EQUAL:    m_pmi.send_symbol("|="); break;
+
+                case TOK_DOUBLE_EQUAL:  m_pmi.send_symbol("=="); break;
+                case TOK_EXCLAM_EQUAL:  m_pmi.send_symbol("!="); break;
+                case TOK_GTE:    m_pmi.send_symbol(">="); break;
+                case TOK_LTE:    m_pmi.send_symbol("<="); break;
+
+                case TOK_DOUBLE_AMP:    m_pmi.send_symbol("&&"); break;
+                case TOK_DOUBLE_PIPE:   m_pmi.send_symbol("||"); break;
+                case TOK_DOUBLE_LT:     m_pmi.send_symbol("<<"); break;
+                case TOK_DOUBLE_GT:     m_pmi.send_symbol(">>"); break;
+                case TOK_DOUBLE_LT_EQUAL:   m_pmi.send_symbol("<="); break;
+                case TOK_DOUBLE_GT_EQUAL:   m_pmi.send_symbol(">="); break;
+
+                case TOK_DOLLAR:    m_pmi.send_symbol("$"); break;
+
+                case TOK_QMARK:     m_pmi.send_symbol("?");     break;
+                case TOK_AT:        m_pmi.send_symbol("@");     break;
+                case TOK_TILDE:     m_pmi.send_symbol("~");     break;
+                case TOK_BACKSLASH: m_pmi.send_symbol("\\");    break;
+                case TOK_CARET:     m_pmi.send_symbol("^");     break;
+                case TOK_CARET_EQUAL:   m_pmi.send_symbol("^="); break;
+                case TOK_BACKTICK:  m_pmi.send_symbol("`");     break;
+
+                    // Reserved Words
+                case TOK_RWORD_PUB:     m_pmi.send_ident("pub");    break;
+                case TOK_RWORD_PRIV:    m_pmi.send_ident("priv");   break;
+                case TOK_RWORD_MUT:     m_pmi.send_ident("mut");    break;
+                case TOK_RWORD_CONST:   m_pmi.send_ident("const");  break;
+                case TOK_RWORD_STATIC:  m_pmi.send_ident("static"); break;
+                case TOK_RWORD_UNSAFE:  m_pmi.send_ident("unsafe"); break;
+                case TOK_RWORD_EXTERN:  m_pmi.send_ident("extern"); break;
+                case TOK_RWORD_CRATE:   m_pmi.send_ident("crate");  break;
+                case TOK_RWORD_MOD:     m_pmi.send_ident("mod");    break;
+                case TOK_RWORD_STRUCT:  m_pmi.send_ident("struct"); break;
+                case TOK_RWORD_ENUM:    m_pmi.send_ident("enum");   break;
+                case TOK_RWORD_TRAIT:   m_pmi.send_ident("trait");  break;
+                case TOK_RWORD_FN:      m_pmi.send_ident("fn");     break;
+                case TOK_RWORD_USE:     m_pmi.send_ident("use");    break;
+                case TOK_RWORD_IMPL:    m_pmi.send_ident("impl");   break;
+                case TOK_RWORD_TYPE:    m_pmi.send_ident("type");   break;
+                case TOK_RWORD_WHERE:   m_pmi.send_ident("where");  break;
+                case TOK_RWORD_AS:      m_pmi.send_ident("as");     break;
+                case TOK_RWORD_LET:     m_pmi.send_ident("let");    break;
+                case TOK_RWORD_MATCH:   m_pmi.send_ident("match");  break;
+                case TOK_RWORD_IF:      m_pmi.send_ident("if");     break;
+                case TOK_RWORD_ELSE:    m_pmi.send_ident("else");   break;
+                case TOK_RWORD_LOOP:    m_pmi.send_ident("loop");   break;
+                case TOK_RWORD_WHILE:   m_pmi.send_ident("while");  break;
+                case TOK_RWORD_FOR:     m_pmi.send_ident("for");    break;
+                case TOK_RWORD_IN:      m_pmi.send_ident("in");     break;
+                case TOK_RWORD_DO:      m_pmi.send_ident("do");     break;
+                case TOK_RWORD_CONTINUE:m_pmi.send_ident("continue"); break;
+                case TOK_RWORD_BREAK:   m_pmi.send_ident("break");  break;
+                case TOK_RWORD_RETURN:  m_pmi.send_ident("return"); break;
+                case TOK_RWORD_YIELD:   m_pmi.send_ident("yeild");  break;
+                case TOK_RWORD_BOX:     m_pmi.send_ident("box");    break;
+                case TOK_RWORD_REF:     m_pmi.send_ident("ref");    break;
+                case TOK_RWORD_FALSE:   m_pmi.send_ident("false"); break;
+                case TOK_RWORD_TRUE:    m_pmi.send_ident("true");   break;
+                case TOK_RWORD_SELF:    m_pmi.send_ident("self");   break;
+                case TOK_RWORD_SUPER:   m_pmi.send_ident("super");  break;
+                case TOK_RWORD_MOVE:    m_pmi.send_ident("move");   break;
+                case TOK_RWORD_ABSTRACT:m_pmi.send_ident("abstract"); break;
+                case TOK_RWORD_FINAL:   m_pmi.send_ident("final");  break;
+                case TOK_RWORD_OVERRIDE:m_pmi.send_ident("override"); break;
+                case TOK_RWORD_VIRTUAL: m_pmi.send_ident("virtual"); break;
+                case TOK_RWORD_TYPEOF:  m_pmi.send_ident("typeof"); break;
+                case TOK_RWORD_BECOME:  m_pmi.send_ident("become"); break;
+                case TOK_RWORD_UNSIZED: m_pmi.send_ident("unsized"); break;
+                case TOK_RWORD_MACRO:   m_pmi.send_ident("macro");  break;
+
+                // 2018
+                case TOK_RWORD_ASYNC:   m_pmi.send_ident("async");  break;
+                case TOK_RWORD_AWAIT:   m_pmi.send_ident("await");  break;
+                case TOK_RWORD_DYN:     m_pmi.send_ident("dyn");    break;
+                case TOK_RWORD_TRY:     m_pmi.send_ident("try");    break;
+                }
+            }
+            else
+            {
+                for(size_t i = 0; i < tt.size(); i ++)
+                {
+                    visit_tokentree(tt[i]);
+                }
+            }
         }
 
         void visit_type(const ::TypeRef& ty)
@@ -344,14 +596,14 @@ namespace {
                 m_pmi.send_ident(te.name.c_str());
                 ),
             (Path,
-                this->visit_path(te.path);
+                this->visit_path(*te);
                 ),
             (TraitObject,
                 m_pmi.send_symbol("(");
                 for(const auto& t : te.traits)
                 {
                     this->visit_hrbs(t.hrbs);
-                    this->visit_path(t.path);
+                    this->visit_path(*t.path);
                     m_pmi.send_symbol("+");
                 }
                 // TODO: Lifetimes
@@ -362,7 +614,7 @@ namespace {
                 for(const auto& t : te.traits)
                 {
                     this->visit_hrbs(t.hrbs);
-                    this->visit_path(t.path);
+                    this->visit_path(*t.path);
                     m_pmi.send_symbol("+");
                 }
                 // TODO: Lifetimes
@@ -442,29 +694,31 @@ namespace {
                     if( is_expr )
                         m_pmi.send_symbol("::");
                     m_pmi.send_symbol("<");
-                    for(const auto& l : e.args().m_lifetimes)
+                    for(const auto& ent : e.args().m_entries)
                     {
-                        m_pmi.send_lifetime(l.name().name.c_str());
-                        m_pmi.send_symbol(",");
-                    }
-                    for(const auto& t : e.args().m_types)
-                    {
-                        this->visit_type(t);
-                        m_pmi.send_symbol(",");
-                    }
-                    for(const auto& a : e.args().m_assoc_equal)
-                    {
-                        m_pmi.send_ident(a.first.c_str());
-                        m_pmi.send_symbol("=");
-                        this->visit_type(a.second);
-                        m_pmi.send_symbol(",");
-                    }
-                    for(const auto& a : e.args().m_assoc_bound)
-                    {
-                        m_pmi.send_ident(a.first.c_str());
-                        m_pmi.send_symbol(":");
-                        this->visit_path(a.second);
-                        m_pmi.send_symbol(",");
+                        TU_MATCH_HDRA( (ent), {)
+                        TU_ARMA(Null, _) {}
+                        TU_ARMA(Lifetime, l) {
+                            m_pmi.send_lifetime(l.name().name.c_str());
+                            m_pmi.send_symbol(",");
+                            }
+                        TU_ARMA(Type, t) {
+                            this->visit_type(t);
+                            m_pmi.send_symbol(",");
+                            }
+                        TU_ARMA(AssociatedTyEqual, a) {
+                            m_pmi.send_ident(a.first.c_str());
+                            m_pmi.send_symbol("=");
+                            this->visit_type(a.second);
+                            m_pmi.send_symbol(",");
+                            }
+                        TU_ARMA(AssociatedTyBound, a) {
+                            m_pmi.send_ident(a.first.c_str());
+                            m_pmi.send_symbol(":");
+                            this->visit_path(a.second);
+                            m_pmi.send_symbol(",");
+                            }
+                        }
                     }
                     m_pmi.send_symbol(">");
                 }
@@ -576,7 +830,7 @@ namespace {
         }
 
         void visit(::AST::ExprNode_Integer& node) {
-            TODO(sp, "ExprNode_Integer");
+            m_pmi.send_int(node.m_datatype, node.m_value);
         }
         void visit(::AST::ExprNode_Float& node) {
             TODO(sp, "ExprNode_Float");
@@ -831,16 +1085,42 @@ namespace {
     // 3. Return boxed invocation instance
     return box$(pmi);
 }
+::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, const TokenTree& tt)
+{
+    // 1. Create ProcMacroInv instance
+    auto pmi = ProcMacro_Invoke_int(sp, crate, mac_path);
+    if( !pmi.check_good() )
+        return ::std::unique_ptr<TokenStream>();
 
-ProcMacroInv::ProcMacroInv(const Span& sp, const char* executable, const ::HIR::ProcMacro& proc_macro_desc):
-    TokenStream(ParseState(AST::Edition::Rust2015)), // TODO: Pull edition from the macro
+    // 2. Feed the token stream
+    Visitor v(sp, pmi);
+    v.visit_tokentree(tt);
+    pmi.send_done();
+
+    // 3. Return boxed invocation instance
+    return box$(pmi);
+}
+
+ProcMacroInv::ProcMacroInv(const Span& sp, AST::Edition edition, const char* executable, const ::HIR::ProcMacro& proc_macro_desc):
+    TokenStream(ParseState(edition)),
     m_parent_span(sp),
     m_proc_macro_desc(proc_macro_desc)
 {
     // TODO: Optionally dump the data sent to the client.
     if( getenv("MRUSTC_DUMP_PROCMACRO") )
     {
-        m_dump_file.open( getenv("MRUSTC_DUMP_PROCMACRO"), ::std::ios::out | ::std::ios::binary );
+        // TODO: Dump both input and output, AND (optionally) dump each invocation
+        static unsigned int dump_count = 0;
+        std::string name_prefix;
+        name_prefix = FMT(getenv("MRUSTC_DUMP_PROCMACRO") << "-" << dump_count);
+        DEBUG("Dumping to " << name_prefix);
+        m_dump_file_out.open( FMT(name_prefix << "-out.bin"), ::std::ios::out | ::std::ios::binary );
+        m_dump_file_res.open( FMT(name_prefix << "-res.bin"), ::std::ios::out | ::std::ios::binary );
+        dump_count ++;
+    }
+    else
+    {
+        DEBUG("Set MRUSTC_DUMP_PROCMACRO=dump_prefix to dump to `dump_prefix-NNN-{out,res}.bin`");
     }
 #ifdef _WIN32
     std::string commandline = std::string{ executable } + " " + proc_macro_desc.name.c_str();
@@ -888,9 +1168,9 @@ ProcMacroInv::ProcMacroInv(const Span& sp, const char* executable, const ::HIR::
         BUG(sp, "Error in CreateProcessW - " << GetLastError() << " - can't start `" << executable << "`");
     }
 
-    this->child_stdin = stdin_write;
-    this->child_stdout = stdout_read;
-    this->child_handle = piProcInfo.hProcess;
+    this->handles.child_stdin = stdin_write;
+    this->handles.child_stdout = stdout_read;
+    this->handles.child_handle = piProcInfo.hProcess;
 
     // Close the handles we don't care about.
     CloseHandle(stdin_read);
@@ -902,13 +1182,13 @@ ProcMacroInv::ProcMacroInv(const Span& sp, const char* executable, const ::HIR::
     {
         BUG(sp, "Unable to create stdin pipe pair for proc macro, " << strerror(errno));
     }
-    this->child_stdin = stdin_pipes[1]; // Write end
+    this->handles.child_stdin = stdin_pipes[1]; // Write end
      int    stdout_pipes[2];
     if( pipe(stdout_pipes) != 0)
     {
         BUG(sp, "Unable to create stdout pipe pair for proc macro, " << strerror(errno));
     }
-    this->child_stdout = stdout_pipes[0]; // Read end
+    this->handles.child_stdout = stdout_pipes[0]; // Read end
 
     posix_spawn_file_actions_t  file_actions;
     posix_spawn_file_actions_init(&file_actions);
@@ -922,7 +1202,7 @@ ProcMacroInv::ProcMacroInv(const Span& sp, const char* executable, const ::HIR::
     char*   argv[3] = { const_cast<char*>(executable), const_cast<char*>(proc_macro_desc.name.c_str()), nullptr };
     DEBUG(argv[0] << " " << argv[1]);
     //char*   envp[] = { nullptr };
-    int rv = posix_spawn(&this->child_pid, executable, &file_actions, nullptr, argv, environ);
+    int rv = posix_spawn(&this->handles.child_pid, executable, &file_actions, nullptr, argv, environ);
     if( rv != 0 )
     {
         BUG(sp, "Error in posix_spawn - " << rv << " - can't start `" << executable << "`");
@@ -935,10 +1215,7 @@ ProcMacroInv::ProcMacroInv(const Span& sp, const char* executable, const ::HIR::
 
 #endif
 }
-ProcMacroInv::ProcMacroInv(ProcMacroInv&& x):
-    TokenStream(x.parse_state()),
-    m_parent_span(x.m_parent_span),
-    m_proc_macro_desc(x.m_proc_macro_desc),
+ProcMacroInv::Handles::Handles(Handles&& x):
 #ifdef _WIN32
     child_handle(x.child_handle),
     child_stdin(x.child_stdin),
@@ -955,14 +1232,21 @@ ProcMacroInv::ProcMacroInv(ProcMacroInv&& x):
     x.child_stdout = INVALID_HANDLE_VALUE;
 #else
     x.child_pid = 0;
+    x.child_stdin = -1;
+    x.child_stdout = -1;
 #endif
     DEBUG("");
 }
 #if 0
-ProcMacroInv& ProcMacroInv::operator=(ProcMacroInv&& x)
+ProcMacroInv::Handles& ProcMacroInv::Handles::operator=(Handles&& x)
 {
-    m_parent_span = x.m_parent_span;
 #ifdef _WIN32
+    child_handle = x.child_handle;
+    child_stdin  = x.child_stdin;
+    child_stdout = x.child_stdout;
+    x.child_handle = INVALID_HANDLE_VALUE;
+    x.child_stdin = INVALID_HANDLE_VALUE;
+    x.child_stdout = INVALID_HANDLE_VALUE;
 #else
     child_pid = x.child_pid;
     child_stdin = x.child_stdin;
@@ -977,22 +1261,22 @@ ProcMacroInv& ProcMacroInv::operator=(ProcMacroInv&& x)
 ProcMacroInv::~ProcMacroInv()
 {
 #ifdef _WIN32
-    if( this->child_handle != INVALID_HANDLE_VALUE )
+    if( this->handles.child_handle != INVALID_HANDLE_VALUE )
     {
         DEBUG("Waiting for child to terminate");
-        WaitForSingleObject(this->child_handle, INFINITE);
-        CloseHandle(this->child_stdout);
-        CloseHandle(this->child_stdin);
-        CloseHandle(this->child_handle);
+        WaitForSingleObject(this->handles.child_handle, INFINITE);
+        CloseHandle(this->handles.child_stdout);
+        CloseHandle(this->handles.child_stdin);
+        CloseHandle(this->handles.child_handle);
     }
 #else
-    if( this->child_pid != 0 )
+    if( this->handles.child_pid != 0 )
     {
-        DEBUG("Waiting for child " << this->child_pid << " to terminate");
+        DEBUG("Waiting for child " << this->handles.child_pid << " to terminate");
         int status;
-        waitpid(this->child_pid, &status, 0);
-        close(this->child_stdout);
-        close(this->child_stdin);
+        waitpid(this->handles.child_pid, &status, 0);
+        close(this->handles.child_stdout);
+        close(this->handles.child_stdin);
     }
 #endif
 }
@@ -1001,13 +1285,13 @@ bool ProcMacroInv::check_good()
     char    v;
 #ifdef _WIN32
     DWORD rv = 0;
-    if( !ReadFile(this->child_stdout, &v, 1, &rv, nullptr) )
+    if( !ReadFile(this->handles.child_stdout, &v, 1, &rv, nullptr) )
     {
         DEBUG("Error reading from child, " << GetLastError());
         return false;
     }
 #else
-    int rv = read(this->child_stdout, &v, 1);
+    int rv = read(this->handles.child_stdout, &v, 1);
 #endif
     if( rv == 0 )
     {
@@ -1028,29 +1312,23 @@ bool ProcMacroInv::check_good()
 }
 void ProcMacroInv::send_u8(uint8_t v)
 {
-    if( m_dump_file.is_open() )
-        m_dump_file.put(v);
-#ifdef _WIN32
-    DWORD bytesWritten = 0;
-    if( !WriteFile(this->child_stdin, &v, 1, &bytesWritten, nullptr) || bytesWritten != 1 )
-        BUG(m_parent_span, "Error writing to child, " << GetLastError());
-#else
-    if( write(this->child_stdin, &v, 1) != 1 )
-        BUG(m_parent_span, "Error writing to child, " << strerror(errno));
-#endif
+    this->send_bytes_raw(&v, 1);
 }
 void ProcMacroInv::send_bytes(const void* val, size_t size)
 {
     this->send_v128u( static_cast<uint64_t>(size) );
-
-    if( m_dump_file.is_open() )
-        m_dump_file.write( reinterpret_cast<const char*>(val), size);
+    this->send_bytes_raw(val, size);
+}
+void ProcMacroInv::send_bytes_raw(const void* val, size_t size)
+{
+    if( m_dump_file_out.is_open() )
+        m_dump_file_out.write( reinterpret_cast<const char*>(val), size);
 #ifdef _WIN32
     DWORD bytesWritten = 0;
-    if( !WriteFile(this->child_stdin, val, size, &bytesWritten, nullptr) || bytesWritten != size )
+    if( !WriteFile(this->handles.child_stdin, val, size, &bytesWritten, nullptr) || bytesWritten != size )
         BUG(m_parent_span, "Error writing to child, " << GetLastError());
 #else
-    if( write(this->child_stdin, val, size) != static_cast<ssize_t>(size) )
+    if( write(this->handles.child_stdin, val, size) != static_cast<ssize_t>(size) )
         BUG(m_parent_span, "Error writing to child, " << strerror(errno));
 #endif
 }
@@ -1065,14 +1343,7 @@ void ProcMacroInv::send_v128u(uint64_t val)
 uint8_t ProcMacroInv::recv_u8()
 {
     uint8_t v;
-#ifdef _WIN32
-    DWORD n;
-    if( !ReadFile(this->child_stdout, &v, 1, &n, nullptr) )
-        BUG(this->m_parent_span, "Unexpected EOF while reading from child process");
-#else
-    if( read(this->child_stdout, &v, 1) != 1 )
-        BUG(this->m_parent_span, "Unexpected EOF while reading from child process");
-#endif
+    this->recv_bytes_raw(&v, 1);
     return v;
 }
 ::std::string ProcMacroInv::recv_bytes()
@@ -1081,14 +1352,22 @@ uint8_t ProcMacroInv::recv_u8()
     ASSERT_BUG(this->m_parent_span, len < SIZE_MAX, "Oversized string from child process");
     ::std::string   val;
     val.resize(len);
+
+    recv_bytes_raw(&val[0], len);
+
+    return val;
+}
+void ProcMacroInv::recv_bytes_raw(void* out_void, size_t len)
+{
+    uint8_t* val = reinterpret_cast<uint8_t*>(out_void);
     size_t  ofs = 0, rem = len;
     while( rem > 0 )
     {
 #ifdef _WIN32
         DWORD n;
-        ReadFile(this->child_stdout, &val[ofs], rem, &n, nullptr);
+        ReadFile(this->handles.child_stdout, &val[ofs], rem, &n, nullptr);
 #else
-        auto n = read(this->child_stdout, &val[ofs], rem);
+        auto n = read(this->handles.child_stdout, &val[ofs], rem);
 #endif
         if( n == 0 ) {
             BUG(this->m_parent_span, "Unexpected EOF while reading from child process");
@@ -1101,7 +1380,8 @@ uint8_t ProcMacroInv::recv_u8()
         rem -= n;
     }
 
-    return val;
+    if( m_dump_file_res.is_open() )
+        m_dump_file_res.write( reinterpret_cast<const char*>(out_void), len );
 }
 uint64_t ProcMacroInv::recv_v128u()
 {
@@ -1145,7 +1425,7 @@ Token ProcMacroInv::realGetToken_() {
         }
     case TokenClass::Ident: {
         auto val = this->recv_bytes();
-        auto t = Lex_FindReservedWord(val);
+        auto t = Lex_FindReservedWord(val, AST::Edition::Rust2015);
         if( t != TOK_NULL )
             return t;
         return Token(TOK_IDENT, RcString::new_interned(val));
@@ -1170,20 +1450,54 @@ Token ProcMacroInv::realGetToken_() {
         ::eCoreType ty;
         switch(this->recv_u8())
         {
-        case   0: ty = CORETYPE_ANY;  break;
-        case   1: ty = CORETYPE_UINT; break;
-        case   8: ty = CORETYPE_U8;  break;
-        case  16: ty = CORETYPE_U16; break;
-        case  32: ty = CORETYPE_U32; break;
-        case  64: ty = CORETYPE_U64; break;
-        case 128: ty = CORETYPE_U128; break;
+        case   0: ty = CORETYPE_ANY;    break;
+        case   1: ty = CORETYPE_UINT;   break;
+        case   8: ty = CORETYPE_U8;     break;
+        case  16: ty = CORETYPE_U16;    break;
+        case  32: ty = CORETYPE_U32;    break;
+        case  64: ty = CORETYPE_U64;    break;
+        case 128: ty = CORETYPE_U128;   break;
         default:    BUG(this->m_parent_span, "Invalid integer size from child process");
         }
         auto val = this->recv_v128u();
         return Token(static_cast<uint64_t>(val), ty);
         }
-    case TokenClass::SignedInt:
-    case TokenClass::Float:
+    case TokenClass::SignedInt: {
+        ::eCoreType ty;
+        switch(this->recv_u8())
+        {
+        case   0: ty = CORETYPE_ANY;    break;
+        case   1: ty = CORETYPE_INT;    break;
+        case   8: ty = CORETYPE_I8;     break;
+        case  16: ty = CORETYPE_I16;    break;
+        case  32: ty = CORETYPE_I32;    break;
+        case  64: ty = CORETYPE_I64;    break;
+        case 128: ty = CORETYPE_I128;   break;
+        default:    BUG(this->m_parent_span, "Invalid integer size from child process");
+        }
+        auto val = this->recv_v128u();
+        if(val & 1) {
+            val = ~(val >> 1) + 1;  // Negative (Is this even possible?)
+            TODO(this->m_parent_span, "Negative literal from proc macro, what?");
+        }
+        else {
+            val = (val >> 1);
+        }
+        return Token(static_cast<uint64_t>(val), ty);
+        }
+    case TokenClass::Float: {
+        ::eCoreType ty;
+        switch(this->recv_u8())
+        {
+        case   0: ty = CORETYPE_ANY;    break;
+        case  32: ty = CORETYPE_F32;    break;
+        case  64: ty = CORETYPE_F64;    break;
+        default:    BUG(this->m_parent_span, "Invalid float size from child process");
+        }
+        double val;
+        this->recv_bytes_raw(&val, sizeof(val));
+        return Token(val, ty);
+        }
     case TokenClass::Fragment:
         TODO(this->m_parent_span, "Handle ints/floats/fragments from child process");
     }

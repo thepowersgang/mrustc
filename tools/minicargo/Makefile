@@ -12,7 +12,7 @@ V ?= @
 
 OBJDIR := .obj/
 
-BIN := ../bin/minicargo$(EXESUF)
+BIN := ../../bin/minicargo$(EXESUF)
 OBJS := main.o build.o manifest.o repository.o cfg.o
 
 LINKFLAGS := -g -lpthread
@@ -28,18 +28,25 @@ all: $(BIN)
 clean:
 	rm $(BIN) $(OBJS)
 
-$(BIN): $(OBJS) ../bin/common_lib.a
+$(BIN): $(OBJS) ../../bin/common_lib.a
 	@mkdir -p $(dir $@)
 	@echo [CXX] -o $@
-	$V$(CXX) -o $@ $(OBJS) ../bin/common_lib.a $(LINKFLAGS)
+	$V$(CXX) -o $@ $(OBJS) ../../bin/common_lib.a $(LINKFLAGS)
+ifeq ($(OS),Windows_NT)
+else ifeq ($(shell uname -s || echo not),Darwin)
+else
+	objcopy --only-keep-debug $(BIN) $(BIN).debug
+	objcopy --add-gnu-debuglink=$(BIN).debug $(BIN)
+	strip $(BIN)
+endif
 
 $(OBJDIR)%.o: %.cpp
 	@mkdir -p $(dir $@)
 	@echo [CXX] $<
 	$V$(CXX) -o $@ -c $< $(CXXFLAGS) -MMD -MP -MF $@.dep
 
-../bin/common_lib.a: $(wildcard ../common/*.* ../common/Makefile)
-	make -C ../common
+../../bin/common_lib.a: $(wildcard ../common/*.* ../common/Makefile)
+	$(MAKE) -C ../common
 
 -include $(OBJS:%.o=%.o.dep)
 

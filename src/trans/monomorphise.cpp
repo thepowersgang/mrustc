@@ -26,41 +26,49 @@ namespace {
     }
     ::MIR::Constant monomorph_Constant(const ::StaticTraitResolve& resolve, const Trans_Params& params, const ::MIR::Constant& tpl)
     {
-        TU_MATCHA( (tpl), (ce),
-        (Int,
+        TU_MATCH_HDRA( (tpl), {)
+        TU_ARMA(Int, ce) {
             return ::MIR::Constant::make_Int(ce);
-            ),
-        (Uint,
+            }
+        TU_ARMA(Uint, ce) {
             return ::MIR::Constant::make_Uint(ce);
-            ),
-        (Float,
+            }
+        TU_ARMA(Float, ce) {
             return ::MIR::Constant::make_Float(ce);
-            ),
-        (Bool,
+            }
+        TU_ARMA(Bool, ce) {
             return ::MIR::Constant::make_Bool(ce);
-            ),
-        (Bytes,
+            }
+        TU_ARMA(Bytes, ce) {
             return ::MIR::Constant(ce);
-            ),
-        (StaticString,
+            }
+        TU_ARMA(StaticString, ce) {
             return ::MIR::Constant(ce);
-            ),
-        (Const,
+            }
+        TU_ARMA(Const, ce) {
             return ::MIR::Constant::make_Const({
                 box$(params.monomorph(resolve, *ce.p))
                 });
-            ),
-        (Generic,
-            TODO(Span(), "Monomorphise MIR generic constant");
-            ),
-        (ItemAddr,
+            }
+        TU_ARMA(Generic, ce) {
+            auto val = params.get_value(params.sp, ce);
+            TU_MATCH_HDRA( (val), {)
+            default:
+                TODO(params.sp, "Monomorphise MIR generic constant " << ce << " = " << val);
+            TU_ARMA(Integer, ve) {
+                // TODO: Need to know the expected type of this.
+                return ::MIR::Constant::make_Uint({ve, HIR::CoreType::Usize});
+                }
+            }
+            }
+        TU_ARMA(ItemAddr, ce) {
             auto p = params.monomorph(resolve, *ce);
             // TODO: If this is a pointer to a function on a trait object, replace with the address loaded from the vtable.
             // - Requires creating a new temporary for the vtable pointer.
             // - Also requires knowing what the receiver is.
             return ::MIR::Constant( box$(p) );
-            )
-        )
+            }
+        }
         throw "";
     }
     ::MIR::Param monomorph_Param(const ::StaticTraitResolve& resolve, const Trans_Params& params, const ::MIR::Param& tpl)
@@ -68,6 +76,9 @@ namespace {
         TU_MATCHA( (tpl), (e),
         (LValue,
             return monomorph_LValue(resolve, params, e);
+            ),
+        (Borrow,
+            return ::MIR::Param::make_Borrow({ e.type, monomorph_LValue(resolve, params, e.val) });
             ),
         (Constant,
             return monomorph_Constant(resolve, params, e);
@@ -158,7 +169,7 @@ namespace {
                     ),
                 (Borrow,
                     rval = ::MIR::RValue::make_Borrow({
-                        se.region, se.type,
+                        se.type,
                         monomorph_LValue(resolve, params, se.val)
                         });
                     ),
@@ -205,15 +216,20 @@ namespace {
                         monomorph_Param_list(resolve, params, se.vals)
                         });
                     ),
-                // Create a new instance of a union (and eventually enum)
-                (Variant,
-                    rval = ::MIR::RValue::make_Variant({
+                (UnionVariant,
+                    rval = ::MIR::RValue::make_UnionVariant({
                         params.monomorph(resolve, se.path),
                         se.index,
                         monomorph_Param(resolve, params, se.val)
                         });
                     ),
-                // Create a new instance of a struct (or enum)
+                (EnumVariant,
+                    rval = ::MIR::RValue::make_EnumVariant({
+                        params.monomorph(resolve, se.path),
+                        se.index,
+                        monomorph_Param_list(resolve, params, se.vals)
+                        });
+                    ),
                 (Struct,
                     rval = ::MIR::RValue::make_Struct({
                         params.monomorph(resolve, se.path),
@@ -372,7 +388,7 @@ void Trans_Monomorphise_List(const ::HIR::Crate& crate, TransList& list)
         } nvs;
         auto eval = ::HIR::Evaluator { pp.sp, crate, nvs };
         MonomorphState   ms;
-        ms.self_ty = &pp.self_type;
+        ms.self_ty = pp.self_type.clone();
         ms.pp_impl = &pp.pp_impl;
         ms.pp_method = &pp.pp_method;
         auto new_lit = eval.evaluate_constant(path, c.m_value, ::std::move(ty), ::std::move(ms));

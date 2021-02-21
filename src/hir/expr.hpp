@@ -12,6 +12,7 @@
 #include <hir/type.hpp>
 #include <span.hpp>
 #include <hir/visitor.hpp>
+#include <hir_typeck/common.hpp>
 
 namespace HIR {
 
@@ -47,7 +48,8 @@ class ExprNode
 {
 public:
     Span    m_span;
-    ::HIR::TypeRef    m_res_type;
+    ::HIR::TypeRef    m_res_type;   // TODO: Replace this with an index into an ivar table
+    //unsigned m_res_type_idx;
     ValueUsage  m_usage = ValueUsage::Unknown;
 
     const Span& span() const { return m_span; }
@@ -126,12 +128,26 @@ struct ExprNode_Return:
 
     NODE_METHODS();
 };
+struct ExprNode_Yield:
+    public ExprNode
+{
+    ::HIR::ExprNodeP    m_value;
+
+    ExprNode_Yield(Span sp, ::HIR::ExprNodeP value):
+        ExprNode(mv$(sp)),
+        m_value( mv$(value) )
+    {
+    }
+
+    NODE_METHODS();
+};
 struct ExprNode_Loop:
     public ExprNode
 {
     RcString    m_label;
     ::HIR::ExprNodeP    m_code;
     bool    m_diverges = false;
+    bool    m_require_label = false;
 
     ExprNode_Loop(Span sp, RcString label, ::HIR::ExprNodeP code):
         ExprNode(mv$(sp)),
@@ -314,17 +330,6 @@ struct ExprNode_BinOp:
         m_left( mv$(left) ),
         m_right( mv$(right) )
     {
-        switch(m_op)
-        {
-        case Op::BoolAnd:   case Op::BoolOr:
-        case Op::CmpEqu:    case Op::CmpNEqu:
-        case Op::CmpLt: case Op::CmpLtE:
-        case Op::CmpGt: case Op::CmpGtE:
-            m_res_type = ::HIR::TypeRef( ::HIR::CoreType::Bool );
-            break;
-        default:
-            break;
-        }
     }
 
     NODE_METHODS();
@@ -373,14 +378,13 @@ struct ExprNode_Cast:
     public ExprNode
 {
     ::HIR::ExprNodeP    m_value;
-    //::HIR::TypeRef  m_dst_type;
+    ::HIR::TypeRef  m_dst_type;
 
     ExprNode_Cast(Span sp, ::HIR::ExprNodeP value, ::HIR::TypeRef dst_type):
         ExprNode( mv$(sp) )
         ,m_value( mv$(value) )
-        //,m_dst_type( mv$(dst_type) )
+        ,m_dst_type( mv$(dst_type) )
     {
-        m_res_type = mv$(dst_type);
     }
 
     NODE_METHODS();
@@ -394,14 +398,13 @@ struct ExprNode_Unsize:
     public ExprNode
 {
     ::HIR::ExprNodeP    m_value;
-    //::HIR::TypeRef  m_dst_type;
+    ::HIR::TypeRef  m_dst_type;
 
     ExprNode_Unsize(Span sp, ::HIR::ExprNodeP value, ::HIR::TypeRef dst_type):
         ExprNode( mv$(sp) )
         ,m_value( mv$(value) )
-        //,m_dst_type( mv$(dst_type) )
+        ,m_dst_type( mv$(dst_type) )
     {
-        m_res_type = mv$(dst_type);
     }
 
     NODE_METHODS();
@@ -491,7 +494,7 @@ struct ExprCallCache
     const ::HIR::GenericParams* m_top_params;
     const ::HIR::Function*  m_fcn;
 
-    ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)>   m_monomorph_cb;
+    ::std::unique_ptr<Monomorphiser>    m_monomorph;
 };
 
 struct ExprNode_CallPath:
@@ -611,35 +614,6 @@ struct ExprNode_Literal:
         ExprNode( mv$(sp) ),
         m_data( mv$(data) )
     {
-        TU_MATCHA( (m_data), (e),
-        (Integer,
-            if( e.m_type != ::HIR::CoreType::Str ) {
-                m_res_type = ::HIR::TypeRef(e.m_type);
-            }
-            else {
-                m_res_type.m_data.as_Infer().ty_class = ::HIR::InferClass::Integer;
-            }
-            ),
-        (Float,
-            if( e.m_type != ::HIR::CoreType::Str ) {
-                m_res_type = ::HIR::TypeRef(e.m_type);
-            }
-            else {
-                m_res_type.m_data.as_Infer().ty_class = ::HIR::InferClass::Float;
-            }
-            ),
-        (Boolean,
-            m_res_type = ::HIR::TypeRef( ::HIR::CoreType::Bool );
-            ),
-        (String,
-            // TODO: &'static
-            m_res_type = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::TypeRef(::HIR::CoreType::Str) );
-            ),
-        (ByteString,
-            // TODO: &'static
-            m_res_type = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::TypeRef::new_array(::HIR::CoreType::U8, e.size()) );
-            )
-        )
     }
 
     NODE_METHODS();
@@ -731,27 +705,6 @@ struct ExprNode_StructLiteral:
         m_is_struct( is_struct ),
         m_base_value( mv$(base_value) ),
         m_values( mv$(values) )
-    {
-        // TODO: set m_res_type based on path?
-        // - Defer, because it requires binding ivars between m_path and m_res_type
-    }
-
-    NODE_METHODS();
-};
-struct ExprNode_UnionLiteral:
-    public ExprNode
-{
-    ::HIR::GenericPath  m_path;
-    RcString   m_variant_name;
-    ::HIR::ExprNodeP    m_value;
-
-    unsigned int    m_variant_index = ~0;
-
-    ExprNode_UnionLiteral(Span sp, ::HIR::GenericPath path, RcString name, ::HIR::ExprNodeP value):
-        ExprNode( mv$(sp) ),
-        m_path( mv$(path) ),
-        m_variant_name( mv$(name) ),
-        m_value( mv$(value) )
     {
     }
 
@@ -848,6 +801,7 @@ public:
     NV(ExprNode_Block)
     NV(ExprNode_Asm)
     NV(ExprNode_Return)
+    NV(ExprNode_Yield)
     NV(ExprNode_Let)
     NV(ExprNode_Loop)
     NV(ExprNode_LoopControl)
@@ -877,7 +831,6 @@ public:
     NV(ExprNode_ConstParam);
 
     NV(ExprNode_StructLiteral);
-    NV(ExprNode_UnionLiteral);
     NV(ExprNode_Tuple);
     NV(ExprNode_ArrayList);
     NV(ExprNode_ArraySized);
@@ -897,6 +850,7 @@ public:
     NV(ExprNode_Block)
     NV(ExprNode_Asm)
     NV(ExprNode_Return)
+    NV(ExprNode_Yield)
     NV(ExprNode_Let)
     NV(ExprNode_Loop)
     NV(ExprNode_LoopControl)
@@ -926,7 +880,6 @@ public:
     NV(ExprNode_ConstParam);
 
     NV(ExprNode_StructLiteral);
-    NV(ExprNode_UnionLiteral);
     NV(ExprNode_Tuple);
     NV(ExprNode_ArrayList);
     NV(ExprNode_ArraySized);

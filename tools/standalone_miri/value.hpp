@@ -321,7 +321,7 @@ public:
 };
 extern ::std::ostream& operator<<(::std::ostream& os, const Allocation& x);
 
-// TODO: Rename to be `StackSlot`
+// TODO: Rename to be `StackSlot`?
 struct Value:
     public ValueCommonWrite
 {

@@ -31,6 +31,7 @@
 #include "generics.hpp"
 
 #include <macro_rules/macro_rules_ptr.hpp>
+#include <expand/common.hpp>
 
 namespace AST {
 
@@ -344,6 +345,18 @@ class Struct
     GenericParams    m_params;
 public:
     StructData  m_data;
+    struct Markings {
+
+        Markings() {
+            memset(this, 0, sizeof(*this));
+        }
+
+        // 1.39 nonzero etc
+        bool    scalar_valid_start_set;
+        uint64_t    scalar_valid_start;
+        bool    scalar_valid_end_set;
+        uint64_t    scalar_valid_end;
+    }   m_markings;
 
     Struct() {}
     Struct(GenericParams params):
@@ -472,6 +485,7 @@ struct UseItem
         Span    sp; // Span covering just the path (final component)
         ::AST::Path path;
         RcString   name;   // If "", this is a glob/wildcard use
+        friend ::std::ostream& operator<<(::std::ostream& os, const UseItem::Ent& x);
     };
     ::std::vector<Ent>  entries;
 
@@ -502,16 +516,18 @@ public:
 /// Representation of a parsed (and being converted) function
 class Module
 {
-    ::AST::Path m_my_path;
+    ::AST::AbsolutePath m_my_path;
 
     // Module-level items
     /// General items
-    ::std::vector<Named<Item>>  m_items;
+public:
+    ::std::vector<std::unique_ptr<Named<Item>>>  m_items;
 
+private:
     // --- Runtime caches and state ---
     ::std::vector< ::std::shared_ptr<Module> >  m_anon_modules;
 
-    ::std::vector< Named<const MacroRules*> >   m_macro_import_res;
+    ::std::vector< Named<MacroRef> >    m_macro_import_res;
     ::std::vector< Named<MacroRulesPtr> >  m_macros;
 
 public:
@@ -536,9 +552,11 @@ public:
     };
 
     // TODO: Document difference between namespace and Type
+    // TODO: These should use IndexEnt<AST::PathBinding<AST::PathBinding_*>>` instead
     ::std::unordered_map< RcString, IndexEnt >    m_namespace_items;
     ::std::unordered_map< RcString, IndexEnt >    m_type_items;
     ::std::unordered_map< RcString, IndexEnt >    m_value_items;
+    ::std::unordered_map< RcString, IndexEnt >    m_macro_items;
 
     // List of macros imported from other modules (via #[macro_use], includes proc macros)
     // - First value is an absolute path to the macro (including crate name)
@@ -559,13 +577,13 @@ public:
 
 public:
     Module() {}
-    Module(::AST::Path path):
+    Module(::AST::AbsolutePath path):
         m_my_path( mv$(path) )
     {
     }
 
     bool is_anon() const {
-        return m_my_path.nodes().size() > 0 && m_my_path.nodes().back().name().c_str()[0] == '#';
+        return m_my_path.nodes.size() > 0 && m_my_path.nodes.back().c_str()[0] == '#';
     }
 
     /// Create an anon module (for use inside expressions)
@@ -577,14 +595,17 @@ public:
     void add_macro_invocation(MacroInvocation item);
 
     void add_macro(bool is_exported, RcString name, MacroRulesPtr macro);
-    void add_macro_import(RcString name, const MacroRules& mr);
+    void add_macro_import(Span sp, RcString name, MacroRef ref) {
+        m_macro_import_res.push_back( Named<MacroRef>( sp, /*attrs=*/{}, /*is_pub=*/false, mv$(name), std::move(ref)) );
+    }
+    //void add_macro_import(RcString name, const MacroRules& mr);
 
 
 
-    const ::AST::Path& path() const { return m_my_path; }
+    const ::AST::AbsolutePath& path() const { return m_my_path; }
 
-          ::std::vector<Named<Item>>& items()       { return m_items; }
-    const ::std::vector<Named<Item>>& items() const { return m_items; }
+    //      ::std::vector<Named<Item>>& items()       { return m_items; }
+    //const ::std::vector<Named<Item>>& items() const { return m_items; }
 
           ::std::vector< ::std::shared_ptr<Module> >&   anon_mods()       { return m_anon_modules; }
     const ::std::vector< ::std::shared_ptr<Module> >&   anon_mods() const { return m_anon_modules; }
@@ -592,7 +613,7 @@ public:
 
           NamedList<MacroRulesPtr>&    macros()        { return m_macros; }
     const NamedList<MacroRulesPtr>&    macros()  const { return m_macros; }
-    const ::std::vector<Named<const MacroRules*> >  macro_imports_res() const { return m_macro_import_res; }
+    const ::std::vector<Named<MacroRef> >&  macro_imports_res() const { return m_macro_import_res; }
 };
 
 TAGGED_UNION_EX(Item, (), None,

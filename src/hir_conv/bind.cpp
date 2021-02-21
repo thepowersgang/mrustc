@@ -12,6 +12,8 @@
 #include <mir/mir.hpp>
 #include <algorithm>    // std::find_if
 
+#include <mir/helpers.hpp>
+
 #include <hir_typeck/static.hpp>
 #include <hir_typeck/expr_visit.hpp>    // For ModuleState
 #include <hir/expr_state.hpp>
@@ -31,7 +33,7 @@ namespace {
     {
         if( t == Target::EnumVariant )
         {
-            return &crate.get_typeitem_by_path(sp, path, false, true).as_Enum();
+            return &crate.get_typeitem_by_path(sp, path, /*ignore_crate_name=*/false, /*ignore_last_node=*/true).as_Enum();
         }
         else
         {
@@ -67,6 +69,7 @@ namespace {
         #if 1
         if( params.m_types.size() == 0 ) {
             params.m_types.resize( params_def.m_types.size() );
+            // TODO: Optionally fill in the defaults?
         }
         if( params.m_types.size() != params_def.m_types.size() ) {
             ERROR(sp, E0000, "Incorrect parameter count, expected " << params_def.m_types.size() << ", got " << params.m_types.size());
@@ -104,10 +107,13 @@ namespace {
             const ::HIR::ItemPath*  path;
         } m_cur_module;
 
+        unsigned m_in_expr;
+
     public:
         Visitor(const ::HIR::Crate& crate):
             m_crate(crate),
-            m_ms(crate)
+            m_ms(crate),
+            m_in_expr(0)
         {
             static ::HIR::ItemPath  root_path("");
             m_cur_module.ptr = &crate.m_root_module;
@@ -143,6 +149,8 @@ namespace {
             (Defer,
                 // Shouldn't happen here, but ...
                 ),
+            (Generic,
+                ),
             (List,
                 for(auto& val : e) {
                     visit_literal(sp, val);
@@ -159,7 +167,7 @@ namespace {
                 visit_path(e, ::HIR::Visitor::PathContext::VALUE);
                 ),
             (BorrowData,
-                visit_literal(sp, *e);
+                visit_literal(sp, *e.val);
                 ),
             (String,
                 )
@@ -170,9 +178,11 @@ namespace {
         {
             bool is_single_value = pat.m_data.is_Value();
 
-            TU_IFLET( ::HIR::Pattern::Value, val, Named, ve,
-                TU_IFLET( ::HIR::Path::Data, ve.path.m_data, Generic, pe,
-                    const auto& path = pe.m_path;
+            if( auto* ve = val.opt_Named() )
+            {
+                if(auto* pe = ve->path.m_data.opt_Generic())
+                {
+                    const auto& path = pe->m_path;
                     const auto& pc = path.m_components.back();
                     const ::HIR::Module*  mod = nullptr;
                     if( path.m_components.size() == 1 )
@@ -181,7 +191,7 @@ namespace {
                     }
                     else
                     {
-                        const auto& ti = m_crate.get_typeitem_by_path(sp, path, false, true);
+                        const auto& ti = m_crate.get_typeitem_by_path(sp, path, /*ignore_crate_name=*/false, /*ignore_last_node=*/true);
                         if( const auto& enm = ti.opt_Enum() )
                         {
                             if( !is_single_value ) {
@@ -193,12 +203,11 @@ namespace {
                             if( idx == SIZE_MAX ) {
                                 BUG(sp, "'" << pc << "' isn't a variant in path " << path);
                             }
-                            auto path = mv$(pe);
+                            HIR::GenericPath path = std::move(*pe);
                             fix_type_params(sp, enm->m_params,  path.m_params);
-                            pat.m_data = ::HIR::Pattern::Data::make_EnumValue({
+                            pat.m_data = ::HIR::Pattern::Data::make_PathValue({
                                 mv$(path),
-                                enm,
-                                static_cast<unsigned>(idx)
+                                ::HIR::Pattern::PathBinding::make_Enum({ enm, static_cast<unsigned>(idx) })
                                 });
                         }
                         else if( (mod = ti.opt_Module()) )
@@ -207,7 +216,7 @@ namespace {
                         }
                         else
                         {
-                            BUG(sp, "Node " << path.m_components.size()-2 << " of path " << ve.path << " wasn't a module");
+                            BUG(sp, "Node " << path.m_components.size()-2 << " of path " << ve->path << " wasn't a module");
                         }
                     }
 
@@ -218,34 +227,33 @@ namespace {
                             BUG(sp, "Couldn't find final component of " << path);
                         }
                         // Unit-like struct match or a constant
-                        TU_MATCH_DEF( ::HIR::ValueItem, (it->second->ent), (e2),
-                        (
-                            ERROR(sp, E0000, "Value pattern " << pat << " pointing to unexpected item type - " << it->second->ent.tag_str())
-                            ),
-                        (Constant,
+                        TU_MATCH_HDRA( (it->second->ent), { )
+                        default:
+                            ERROR(sp, E0000, "Value pattern " << pat << " pointing to unexpected item type - " << it->second->ent.tag_str());
+                        TU_ARMA(Constant, e2) {
                             // Store reference to this item for later use
-                            ve.binding = &e2;
-                            ),
-                        (StructConstant,
+                            ve->binding = &e2;
+                            }
+                        TU_ARMA(StructConstant, e2) {
                             const auto& str = mod->m_mod_items.find(pc)->second->ent.as_Struct();
                             // Convert into a dedicated pattern type
                             if( !is_single_value ) {
                                 ERROR(sp, E0000, "Struct in range pattern - " << pat);
                             }
-                            auto path = mv$(pe);
+                            auto path = mv$(*pe);
                             fix_type_params(sp, str.m_params,  path.m_params);
-                            pat.m_data = ::HIR::Pattern::Data::make_StructValue({
+                            pat.m_data = ::HIR::Pattern::Data::make_PathValue({
                                 mv$(path),
                                 &str
                                 });
-                            )
-                        )
+                            }
+                        }
                     }
-                )
+                }
                 else {
                     // NOTE: Defer until Resolve UFCS (saves duplicating logic)
                 }
-            )
+            }
         }
 
 
@@ -266,7 +274,8 @@ namespace {
                 this->visit_pattern_Value(sp, pat, e.start);
                 this->visit_pattern_Value(sp, pat, e.end);
                 }
-            TU_ARMA(StructValue, e) {
+            TU_ARMA(PathValue, e) {
+#if 0
                 const auto& str = get_struct_ptr(sp, m_crate, e.path);
                 TU_IFLET(::HIR::Struct::Data, str.m_data, Unit, _,
                     e.binding = &str;
@@ -274,8 +283,10 @@ namespace {
                 else {
                     ERROR(sp, E0000, "Struct value pattern on non-unit struct " << e.path);
                 }
+#endif
                 }
-            TU_ARMA(StructTuple, e) {
+            TU_ARMA(PathTuple, e) {
+#if 0
                 const auto& str = get_struct_ptr(sp, m_crate, e.path);
                 TU_IFLET(::HIR::Struct::Data, str.m_data, Tuple, _,
                     e.binding = &str;
@@ -283,8 +294,10 @@ namespace {
                 else {
                     ERROR(sp, E0000, "Struct tuple pattern on non-tuple struct " << e.path);
                 }
+#endif
                 }
-            TU_ARMA(Struct, e) {
+            TU_ARMA(PathNamed, e) {
+#if 0
                 const auto& str = get_struct_ptr(sp, m_crate, e.path);
                 if(str.m_data.is_Named() ) {
                 }
@@ -296,7 +309,9 @@ namespace {
                     ERROR(sp, E0000, "Struct pattern `" << pat << "` on field-less struct " << e.path);
                 }
                 e.binding = &str;
+#endif
                 }
+#if 0
             TU_ARMA(EnumValue, e) {
                 auto p = get_enum_ptr(sp, m_crate, e.path);
                 if( p.first->m_data.is_Data() )
@@ -337,9 +352,17 @@ namespace {
                         }
                         else if( !var.is_struct )
                         {
-                            ASSERT_BUG(sp, var.type.m_data.is_Path(), "");
-                            ASSERT_BUG(sp, var.type.m_data.as_Path().binding.is_Struct(), "EnumStruct pattern on unexpected variant " << e.path << " with " << var.type.m_data.as_Path().binding.tag_str());
-                            const auto& str = *var.type.m_data.as_Path().binding.as_Struct();
+                            ASSERT_BUG(sp, var.type.data().is_Path(), "");
+                            const auto& te = var.type.data().as_Path();
+                            const ::HIR::Struct* strp;
+                            if( te.binding.is_Unbound() ) {
+                                strp = &m_crate.get_struct_by_path(sp, te.path.m_data.as_Generic().m_path);
+                            }
+                            else {
+                                ASSERT_BUG(sp, te.binding.is_Struct(), "EnumStruct pattern on unexpected variant " << e.path << " with " << te.binding.tag_str());
+                                strp = te.binding.as_Struct();
+                            }
+                            const auto& str = *strp;
                             ASSERT_BUG(sp, str.m_data.is_Tuple(), "");
                             const auto& flds = str.m_data.as_Tuple();
                             ::std::vector<HIR::Pattern> subpats;
@@ -371,6 +394,7 @@ namespace {
                 e.binding_ptr = p.first;
                 e.binding_idx = p.second;
                 }
+#endif
             }
         }
         static void fix_param_count(const Span& sp, const ::HIR::GenericPath& path, const ::HIR::GenericParams& param_defs, ::HIR::PathParams& params, bool fill_infer=true, const ::HIR::TypeRef* self_ty=nullptr)
@@ -394,13 +418,13 @@ namespace {
             else {
                 while( params.m_types.size() < param_defs.m_types.size() ) {
                     const auto& typ = param_defs.m_types[params.m_types.size()];
-                    if( typ.m_default.m_data.is_Infer() ) {
+                    if( typ.m_default.data().is_Infer() ) {
                         ERROR(sp, E0000, "Omitted type parameter with no default in " << path);
                     }
                     else {
                         // Clone, replacing `self` if a replacement was provided.
                         auto ty = clone_ty_with(sp, typ.m_default, [&](const auto& ty, auto& out){
-                            if(const auto* te = ty.m_data.opt_Generic() )
+                            if(const auto* te = ty.data().opt_Generic() )
                             {
                                 if( te->binding == GENERIC_Self ) {
                                     if( !self_ty )
@@ -448,7 +472,7 @@ namespace {
             //TRACE_FUNCTION_F(ty);
             static Span sp;
 
-            if(auto* e = ty.m_data.opt_Path())
+            if(auto* e = ty.data_mut().opt_Path())
             {
                 TU_MATCH_HDRA( (e->path.m_data), {)
                 TU_ARMA(Generic, pe) {
@@ -461,29 +485,30 @@ namespace {
                         ),
                     (TypeAlias,
                         BUG(sp, "TypeAlias encountered after `Resolve Type Aliases` - " << ty);
+                        // Assume it'll be filled out, with the correct binding
                         ),
                     (ExternType,
                         e->binding = ::HIR::TypePathBinding::make_ExternType(&e3);
                         DEBUG("- " << ty);
                         ),
                     (Struct,
-                        fix_param_count(sp, pe, e3.m_params,  pe.m_params);
+                        fix_param_count(sp, pe, e3.m_params,  pe.m_params, /*fill_infer=*/m_in_expr!=0);
                         e->binding = ::HIR::TypePathBinding::make_Struct(&e3);
                         DEBUG("- " << ty);
                         ),
                     (Union,
-                        fix_param_count(sp, pe, e3.m_params,  pe.m_params);
+                        fix_param_count(sp, pe, e3.m_params,  pe.m_params, /*fill_infer=*/m_in_expr!=0);
                         e->binding = ::HIR::TypePathBinding::make_Union(&e3);
                         DEBUG("- " << ty);
                         ),
                     (Enum,
-                        fix_param_count(sp, pe, e3.m_params,  pe.m_params);
+                        fix_param_count(sp, pe, e3.m_params,  pe.m_params, /*fill_infer=*/m_in_expr!=0);
                         e->binding = ::HIR::TypePathBinding::make_Enum(&e3);
                         DEBUG("- " << ty);
                         ),
                     (Trait,
                         // TODO: Should this reassign instead?
-                        ty.m_data = ::HIR::TypeData::make_TraitObject({ ::HIR::TraitPath { mv$(pe), {}, {} }, {}, {} });
+                        ty.data_mut() = ::HIR::TypeData::make_TraitObject({ ::HIR::TraitPath { mv$(pe), {}, {} }, {}, {} });
                         )
                     )
                     }
@@ -495,13 +520,13 @@ namespace {
                 TU_ARMA(UfcsKnown, pe) {
 
                     const auto& trait = m_crate.get_trait_by_path(sp, pe.trait.m_path);
-                    fix_param_count(sp, pe.trait, trait.m_params, pe.trait.m_params, /*fill_infer=*/false, &*pe.type);
+                    fix_param_count(sp, pe.trait, trait.m_params, pe.trait.m_params, /*fill_infer=*/false, &pe.type);
 
-                    if( pe.type->m_data.is_Path() && pe.type->m_data.as_Path().binding.is_Opaque() ) {
+                    if( pe.type.data().is_Path() && pe.type.data().as_Path().binding.is_Opaque() ) {
                         // - Opaque type, opaque result
                         e->binding = ::HIR::TypePathBinding::make_Opaque({});
                     }
-                    else if( pe.type->m_data.is_Generic() ) {
+                    else if( pe.type.data().is_Generic() ) {
                         // - Generic type, opaque resut. (TODO: Sometimes these are known - via generic bounds)
                         e->binding = ::HIR::TypePathBinding::make_Opaque({});
                     }
@@ -577,6 +602,7 @@ namespace {
             auto _ = this->m_ms.set_impl_generics(item.m_params);
             ::HIR::Visitor::visit_trait(p, item);
         }
+
         // TODO: Are generics for types "item" or "impl"?
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override
         {
@@ -628,6 +654,10 @@ namespace {
                 {
                     upper_visitor.visit_generic_path(p, pc);
                 }
+                void visit_type(::HIR::TypeRef& ty) override
+                {
+                    upper_visitor.visit_type_inner(ty, true);
+                }
 
                 void visit_node_ptr(::HIR::ExprNodeP& node_ptr) override
                 {
@@ -649,11 +679,6 @@ namespace {
                     }
                     ::HIR::ExprVisitorDef::visit(node);
                 }
-                void visit(::HIR::ExprNode_Cast& node) override
-                {
-                    upper_visitor.visit_type(node.m_res_type);
-                    ::HIR::ExprVisitorDef::visit(node);
-                }
 
                 void visit(::HIR::ExprNode_PathValue& node) override
                 {
@@ -673,6 +698,7 @@ namespace {
                 void visit(::HIR::ExprNode_StructLiteral& node) override
                 {
                     upper_visitor.visit_type_inner(node.m_type, false);
+
                     ::HIR::ExprVisitorDef::visit(node);
                 }
                 void visit(::HIR::ExprNode_ArraySized& node) override
@@ -706,151 +732,231 @@ namespace {
             // Local expression
             if( expr.get() != nullptr )
             {
+                // TODO: Disable type param defaults for this scope
+                this->m_in_expr ++;
+
                 ExprVisitor v { *this };
                 (*expr).visit(v);
+
+                this->m_in_expr --;
             }
             // External expression (has MIR)
             else if( auto* mir = expr.get_ext_mir_mut() )
             {
-                struct H {
-                    static void visit_lvalue(Visitor& upper_visitor, ::MIR::LValue& lv)
+                for(auto& ty : mir->locals)
+                    this->visit_type(ty);
+                struct MirVisitor: public ::MIR::visit::VisitorMut
+                {
+                    Visitor& upper_visitor;
+                    MirVisitor(Visitor& upper_visitor):
+                        upper_visitor(upper_visitor)
                     {
+                    }
+                    void visit_type(::HIR::TypeRef& t) override {
+                        upper_visitor.visit_type(t);
+                    }
+                    void visit_path(::HIR::Path& p) override {
+                        upper_visitor.visit_path(p, ::HIR::Visitor::PathContext::VALUE);
+                    }
+                    bool visit_lvalue(::MIR::LValue& lv, ::MIR::visit::ValUsage u) override {
                         if( lv.m_root.is_Static() ) {
                             upper_visitor.visit_path(lv.m_root.as_Static(), ::HIR::Visitor::PathContext::VALUE);
                         }
-                    }
-                    static void visit_constant(Visitor& upper_visitor, ::MIR::Constant& e)
-                    {
-                        TU_MATCHA( (e), (ce),
-                        (Int, ),
-                        (Uint,),
-                        (Float, ),
-                        (Bool, ),
-                        (Bytes, ),
-                        (StaticString, ),  // String
-                        (Const,
-                            upper_visitor.visit_path(*ce.p, ::HIR::Visitor::PathContext::VALUE);
-                            ),
-                        (Generic,
-                            ),
-                        (ItemAddr,
-                            upper_visitor.visit_path(*ce, ::HIR::Visitor::PathContext::VALUE);
-                            )
-                        )
-                    }
-                    static void visit_param(Visitor& upper_visitor, ::MIR::Param& p)
-                    {
-                        TU_MATCHA( (p), (e),
-                        (LValue, H::visit_lvalue(upper_visitor, e);),
-                        (Constant,
-                            H::visit_constant(upper_visitor, e);
-                            )
-                        )
+                        return false;
                     }
                 };
-                for(auto& ty : mir->locals)
-                    this->visit_type(ty);
+                MirVisitor  mv(*this);
                 for(auto& block : mir->blocks)
                 {
                     for(auto& stmt : block.statements)
                     {
-                        TU_IFLET(::MIR::Statement, stmt, Assign, se,
-                            H::visit_lvalue(*this, se.dst);
-                            TU_MATCHA( (se.src), (e),
-                            (Use,
-                                H::visit_lvalue(*this, e);
-                                ),
-                            (Constant,
-                                H::visit_constant(*this, e);
-                                ),
-                            (SizedArray,
-                                H::visit_param(*this, e.val);
-                                ),
-                            (Borrow,
-                                H::visit_lvalue(*this, e.val);
-                                ),
-                            (Cast,
-                                H::visit_lvalue(*this, e.val);
-                                this->visit_type(e.type);
-                                ),
-                            (BinOp,
-                                H::visit_param(*this, e.val_l);
-                                H::visit_param(*this, e.val_r);
-                                ),
-                            (UniOp,
-                                H::visit_lvalue(*this, e.val);
-                                ),
-                            (DstMeta,
-                                H::visit_lvalue(*this, e.val);
-                                ),
-                            (DstPtr,
-                                H::visit_lvalue(*this, e.val);
-                                ),
-                            (MakeDst,
-                                H::visit_param(*this, e.ptr_val);
-                                H::visit_param(*this, e.meta_val);
-                                ),
-                            (Tuple,
-                                for(auto& val : e.vals)
-                                    H::visit_param(*this, val);
-                                ),
-                            (Array,
-                                for(auto& val : e.vals)
-                                    H::visit_param(*this, val);
-                                ),
-                            (Variant,
-                                H::visit_param(*this, e.val);
-                                ),
-                            (Struct,
-                                for(auto& val : e.vals)
-                                    H::visit_param(*this, val);
-                                )
-                            )
-                        )
-                        else TU_IFLET(::MIR::Statement, stmt, Drop, se,
-                            H::visit_lvalue(*this, se.slot);
-                        )
-                        else {
-                        }
+                        mv.visit_stmt(stmt);
                     }
-                    TU_MATCHA( (block.terminator), (te),
-                    (Incomplete, ),
-                    (Return, ),
-                    (Diverge, ),
-                    (Goto, ),
-                    (Panic, ),
-                    (If,
-                        H::visit_lvalue(*this, te.cond);
-                        ),
-                    (Switch,
-                        H::visit_lvalue(*this, te.val);
-                        ),
-                    (SwitchValue,
-                        H::visit_lvalue(*this, te.val);
-                        ),
-                    (Call,
-                        H::visit_lvalue(*this, te.ret_val);
-                        TU_MATCHA( (te.fcn), (e2),
-                        (Value,
-                            H::visit_lvalue(*this, e2);
-                            ),
-                        (Path,
-                            visit_path(e2, ::HIR::Visitor::PathContext::VALUE);
-                            ),
-                        (Intrinsic,
-                            visit_path_params(e2.params);
-                            )
-                        )
-                        for(auto& arg : te.args)
-                            H::visit_param(*this, arg);
-                        )
-                    )
+                    mv.visit_terminator(block.terminator);
                 }
             }
             else
             {
             }
         }
+    };
+
+    class Visitor_EnumSuperTraits:
+        public ::HIR::Visitor
+    {
+        const ::HIR::Crate& m_crate;
+
+    public:
+        Visitor_EnumSuperTraits(const ::HIR::Crate& m_crate):
+            m_crate(m_crate)
+        {
+        }
+
+        void visit_trait(::HIR::ItemPath ip, ::HIR::Trait& tr) override
+        {
+            static Span sp;
+            TRACE_FUNCTION_F(ip);
+
+            // Enumerate supertraits and save for later stages
+            struct Enumerate
+            {
+                ::std::vector< ::HIR::TraitPath>    supertraits;
+
+                void enum_supertraits_in(const ::HIR::Trait& tr, ::HIR::GenericPath path, ::std::function<::HIR::TypeRef(const char*)> get_aty)
+                {
+                    TRACE_FUNCTION_F(path);
+
+                    // Fill defaulted parameters.
+                    // NOTE: Doesn't do much error checking.
+                    if( path.m_params.m_types.size() != tr.m_params.m_types.size() )
+                    {
+                        ASSERT_BUG(sp, path.m_params.m_types.size() < tr.m_params.m_types.size(), "");
+                        for(unsigned int i = path.m_params.m_types.size(); i < tr.m_params.m_types.size(); i ++)
+                        {
+                            const auto& def = tr.m_params.m_types[i];
+                            path.m_params.m_types.push_back( def.m_default.clone_shallow() );
+                        }
+                    }
+
+                    ::HIR::TypeRef  ty_self { "Self", 0xFFFF };
+                    auto monomorph_cb = MonomorphStatePtr(&ty_self, &path.m_params, nullptr);
+                    if( tr.m_all_parent_traits.size() > 0 )
+                    {
+                        for(const auto& pt : tr.m_all_parent_traits)
+                        {
+                            supertraits.push_back( monomorph_cb.monomorph_traitpath(sp, pt, false) );
+                        }
+                    }
+                    else
+                    {
+                        // Recurse into parent traits
+                        for(const auto& pt : tr.m_parent_traits)
+                        {
+                            auto get_aty_this = [&](const char* name) {
+                                auto it = pt.m_type_bounds.find(name);
+                                if( it != pt.m_type_bounds.end() )
+                                    return monomorph_cb.monomorph_type(sp, it->second.type);
+                                return get_aty(name);
+                            };
+                            enum_supertraits_in(*pt.m_trait_ptr, monomorph_cb.monomorph_genericpath(sp, pt.m_path, false), get_aty_this);
+                        }
+                        // - Bound parent traits
+                        for(const auto& b : tr.m_params.m_bounds)
+                        {
+                            if( !b.is_TraitBound() )
+                                continue;
+                            const auto& be = b.as_TraitBound();
+                            if( be.type != ::HIR::TypeRef("Self", 0xFFFF) )
+                                continue;
+                            const auto& pt = be.trait;
+                            if( pt.m_path.m_path == path.m_path )
+                                continue ;
+
+                            auto get_aty_this = [&](const char* name) {
+                                auto it = pt.m_type_bounds.find(name);
+                                if( it != pt.m_type_bounds.end() )
+                                    return monomorph_cb.monomorph_type(sp, it->second.type);
+                                return get_aty(name);
+                            };
+
+                            enum_supertraits_in(*pt.m_trait_ptr, monomorph_cb.monomorph_genericpath(sp, pt.m_path, false), get_aty_this);
+                        }
+                    }
+
+
+                    // Build output path.
+                    ::HIR::TraitPath    out_path;
+                    out_path.m_path = mv$(path);
+                    out_path.m_trait_ptr = &tr;
+                    // - Locate associated types for this trait
+                    for(const auto& ty : tr.m_types)
+                    {
+                        auto v = get_aty(ty.first.c_str());
+                        if( v != ::HIR::TypeRef() )
+                        {
+                            out_path.m_type_bounds.insert( ::std::make_pair(ty.first, ::HIR::TraitPath::AtyEqual { out_path.m_path.clone(), mv$(v) }) );
+                        }
+                    }
+                    // TODO: HRLs?
+                    supertraits.push_back( mv$(out_path) );
+                }
+            };
+
+            auto this_path = ip.get_simple_path();
+            this_path.m_crate_name = m_crate.m_crate_name;
+
+            Enumerate   e;
+            for(const auto& pt : tr.m_parent_traits)
+            {
+                auto get_aty = [&](const char* name)->::HIR::TypeRef {
+                    auto it = pt.m_type_bounds.find(name);
+                    if( it != pt.m_type_bounds.end() )
+                        return it->second.type.clone();
+                    return ::HIR::TypeRef();
+                };
+                e.enum_supertraits_in(*pt.m_trait_ptr, pt.m_path.clone(), get_aty);
+            }
+            for(const auto& b : tr.m_params.m_bounds)
+            {
+                if( !b.is_TraitBound() )
+                    continue;
+                const auto& be = b.as_TraitBound();
+                if( be.type != ::HIR::TypeRef("Self", 0xFFFF) )
+                    continue;
+                const auto& pt = be.trait;
+
+                // TODO: Remove this along with the from_ast.cpp hack
+                if( pt.m_path.m_path == this_path )
+                {
+                    // TODO: Should this restrict based on the parameters
+                    continue ;
+                }
+
+                auto get_aty = [&](const char* name)->::HIR::TypeRef {
+                    auto it = be.trait.m_type_bounds.find(name);
+                    if( it != be.trait.m_type_bounds.end() )
+                        return it->second.type.clone();
+                    return ::HIR::TypeRef();
+                };
+                e.enum_supertraits_in(*be.trait.m_trait_ptr, be.trait.m_path.clone(), get_aty);
+            }
+
+            ::std::sort(e.supertraits.begin(), e.supertraits.end());
+            DEBUG("supertraits = " << e.supertraits);
+            if( e.supertraits.size() > 0 )
+            {
+                bool dedeup_done = false;
+                auto prev = e.supertraits.begin();
+                for(auto it = e.supertraits.begin()+1; it != e.supertraits.end(); )
+                {
+                    if( prev->m_path == it->m_path )
+                    {
+                        if( *prev == *it ) {
+                        }
+                        else if( prev->m_type_bounds.size() == 0 ) {
+                            ::std::swap(*prev, *it);
+                        }
+                        else if( it->m_type_bounds.size() == 0 ) {
+                        }
+                        else {
+                            TODO(sp, "Merge associated types from " << *prev << " and " << *it);
+                        }
+                        it = e.supertraits.erase(it);
+                        dedeup_done = true;
+                    }
+                    else
+                    {
+                        ++ it;
+                        ++ prev;
+                    }
+                }
+                if( dedeup_done ) {
+                    DEBUG("supertraits dd = " << e.supertraits);
+                }
+            }
+            tr.m_all_parent_traits = mv$(e.supertraits);
+        }
+
     };
 }
 
@@ -865,4 +971,7 @@ void ConvertHIR_Bind(::HIR::Crate& crate)
     }
 
     exp.visit_crate( crate );
+
+    // Populate supertrait list
+    Visitor_EnumSuperTraits(crate).visit_crate(crate);
 }

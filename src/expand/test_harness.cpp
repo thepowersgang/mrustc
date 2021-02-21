@@ -15,6 +15,9 @@
 
 void Expand_TestHarness(::AST::Crate& crate)
 {
+    ASSERT_BUG(Span(), crate.m_ext_cratename_test != "", "Crate `test` not loaded");
+    ASSERT_BUG(Span(), crate.m_ext_cratename_std != "", "Crate `std` not loaded");
+    auto c_test = crate.m_ext_cratename_test;
     // Create the following module:
     // ```
     // mod `#test` {
@@ -33,7 +36,7 @@ void Expand_TestHarness(::AST::Crate& crate)
     auto main_fn = ::AST::Function { Span(), {}, ABI_RUST, false, false, false, TypeRef(TypeRef::TagUnit(), Span()), {} };
     {
         auto call_node = NEWNODE(_CallPath,
-                ::AST::Path("test", { ::AST::PathNode("test_main_static") }),
+                ::AST::Path(c_test, { ::AST::PathNode("test_main_static") }),
                 ::make_vec1(
                     NEWNODE(_UniOp, ::AST::ExprNode_UniOp::REF,
                         NEWNODE(_NamedValue, ::AST::Path("", { ::AST::PathNode("test#"), ::AST::PathNode("TESTS") }))
@@ -56,7 +59,7 @@ void Expand_TestHarness(::AST::Crate& crate)
         ::AST::ExprNode_StructLiteral::t_values   desc_vals;
         // `name: "foo",`
         desc_vals.push_back({ {}, "name", NEWNODE(_CallPath,
-                        ::AST::Path("test", { ::AST::PathNode("StaticTestName") }),
+                        ::AST::Path(c_test, { ::AST::PathNode("StaticTestName") }),
                         ::make_vec1( NEWNODE(_String,  test.name) )
                         ) });
         // `ignore: false,`
@@ -67,59 +70,70 @@ void Expand_TestHarness(::AST::Crate& crate)
             switch(test.panic_type)
             {
             case ::AST::TestDesc::ShouldPanic::No:
-                should_panic_val = NEWNODE(_NamedValue,  ::AST::Path("test", { ::AST::PathNode("ShouldPanic"), ::AST::PathNode("No") }));
+                should_panic_val = NEWNODE(_NamedValue,  ::AST::Path(c_test, { ::AST::PathNode("ShouldPanic"), ::AST::PathNode("No") }));
                 break;
             case ::AST::TestDesc::ShouldPanic::Yes:
-                should_panic_val = NEWNODE(_NamedValue,  ::AST::Path("test", { ::AST::PathNode("ShouldPanic"), ::AST::PathNode("Yes") }));
+                should_panic_val = NEWNODE(_NamedValue,  ::AST::Path(c_test, { ::AST::PathNode("ShouldPanic"), ::AST::PathNode("Yes") }));
                 break;
             case ::AST::TestDesc::ShouldPanic::YesWithMessage:
                 should_panic_val = NEWNODE(_CallPath,
-                        ::AST::Path("test", { ::AST::PathNode("ShouldPanic"), ::AST::PathNode("YesWithMessage") }),
+                        ::AST::Path(c_test, { ::AST::PathNode("ShouldPanic"), ::AST::PathNode("YesWithMessage") }),
                         make_vec1( NEWNODE(_String, test.expected_panic_message) )
                         );
                 break;
             }
             desc_vals.push_back({ {}, "should_panic", mv$(should_panic_val) });
         }
-        if( TARGETVER_1_29 )
+        if( TARGETVER_LEAST_1_29 )
         {
             // TODO: Get this from attributes
             desc_vals.push_back({ {}, "allow_fail", NEWNODE(_Bool, false) });
         }
-        auto desc_expr = NEWNODE(_StructLiteral,  ::AST::Path("test", { ::AST::PathNode("TestDesc")}), nullptr, mv$(desc_vals));
+        auto desc_expr = NEWNODE(_StructLiteral,  ::AST::Path(c_test, { ::AST::PathNode("TestDesc")}), nullptr, mv$(desc_vals));
 
         ::AST::ExprNode_StructLiteral::t_values   descandfn_vals;
         descandfn_vals.push_back({ {}, RcString::new_interned("desc"), mv$(desc_expr) });
 
         auto test_type_var_name  = test.is_benchmark ? "StaticBenchFn" : "StaticTestFn";
         descandfn_vals.push_back({ {}, RcString::new_interned("testfn"), NEWNODE(_CallPath,
-                        ::AST::Path("test", { ::AST::PathNode(test_type_var_name) }),
+                        ::AST::Path(c_test, { ::AST::PathNode(test_type_var_name) }),
                         ::make_vec1( NEWNODE(_NamedValue, AST::Path(test.path)) )
                         ) });
 
-        test_nodes.push_back( NEWNODE(_StructLiteral,  ::AST::Path("test", { ::AST::PathNode("TestDescAndFn")}), nullptr, mv$(descandfn_vals) ) );
+        test_nodes.push_back( NEWNODE(_StructLiteral,  ::AST::Path(c_test, { ::AST::PathNode("TestDescAndFn")}), nullptr, mv$(descandfn_vals) ) );
+        // NOTE: 1.39+ needs &TestDescAndFn here
+        if(TARGETVER_LEAST_1_39)
+        {
+            test_nodes.back() = NEWNODE(_UniOp, ::AST::ExprNode_UniOp::REF, mv$(test_nodes.back()));
+        }
     }
     auto* tests_array = new ::AST::ExprNode_Array(mv$(test_nodes));
 
     size_t test_count = tests_array->m_values.size();
+    auto list_item_ty = TypeRef(Span(), ::AST::Path(c_test, { ::AST::PathNode("TestDescAndFn") }));
+    // NOTE: 1.39+ needs &TestDescAndFn here
+    if(TARGETVER_LEAST_1_39)
+    {
+        list_item_ty = TypeRef(TypeRef::TagReference(), Span(), AST::LifetimeRef::new_static(), false, mv$(list_item_ty));
+    }
     auto tests_list = ::AST::Static { ::AST::Static::Class::STATIC,
         TypeRef(TypeRef::TagSizedArray(), Span(),
-                TypeRef(Span(), ::AST::Path("test", { ::AST::PathNode("TestDescAndFn") })),
+                mv$(list_item_ty),
                 ::std::shared_ptr<::AST::ExprNode>( new ::AST::ExprNode_Integer(test_count, CORETYPE_UINT) )
                ),
         ::AST::Expr( mv$(tests_array) )
         };
 
     // ---- module ----
-    auto newmod = ::AST::Module { ::AST::Path("", { ::AST::PathNode("test#") }) };
+    auto newmod = ::AST::Module { ::AST::AbsolutePath("", { "test#" }) };
     // - TODO: These need to be loaded too.
     //  > They don't actually need to exist here, just be loaded (and use absolute paths)
-    newmod.add_ext_crate(Span(), false, "std", "std", {});
-    newmod.add_ext_crate(Span(), false, "test", "test", {});
+    //newmod.add_ext_crate(Span(), false, "std", "std", {});
+    //newmod.add_ext_crate(Span(), false, "test", "test", {});
 
     newmod.add_item(Span(), false, "main", mv$(main_fn), {});
     newmod.add_item(Span(), false, "TESTS", mv$(tests_list), {});
 
     crate.m_root_module.add_item(Span(), false, "test#", mv$(newmod), {});
-    crate.m_lang_items["mrustc-main"] = ::AST::Path("", { AST::PathNode("test#"), AST::PathNode("main") });
+    crate.m_lang_items["mrustc-main"] = ::AST::AbsolutePath("", { "test#", "main" });
 }

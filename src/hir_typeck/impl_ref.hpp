@@ -9,17 +9,19 @@
 
 #include <hir/type.hpp>
 #include <hir/hir.hpp>
+#include <hir_typeck/monomorph.hpp>
+
 
 namespace HIR {
     class TraitImpl;
 }
 
+
 struct ImplRef
 {
     TAGGED_UNION(Data, TraitImpl,
     (TraitImpl, struct {
-        ::std::vector<const ::HIR::TypeRef*>   params;
-        ::std::vector<::HIR::TypeRef>   params_ph;
+        HIR::PathParams impl_params;
         const ::HIR::SimplePath*    trait_path;
         const ::HIR::TraitImpl* impl;
         mutable ::HIR::TypeRef  self_cache;
@@ -27,28 +29,28 @@ struct ImplRef
     (BoundedPtr, struct {
         const ::HIR::TypeRef*    type;
         const ::HIR::PathParams* trait_args;
-        const ::std::map< RcString, ::HIR::TypeRef>*    assoc;
+        const ::HIR::TraitPath::assoc_list_t*    assoc;
         }),
     (Bounded, struct {
         ::HIR::TypeRef    type;
         ::HIR::PathParams trait_args;
-        ::std::map< RcString, ::HIR::TypeRef>    assoc;
+        ::HIR::TraitPath::assoc_list_t    assoc;
         })
     );
 
     Data    m_data;
 
     ImplRef():
-        m_data(Data::make_TraitImpl({ {}, {}, nullptr, nullptr }))
+        m_data(Data::make_TraitImpl({ {}, nullptr, nullptr }))
     {}
-    ImplRef(::std::vector<const ::HIR::TypeRef*> params, const ::HIR::SimplePath& trait, const ::HIR::TraitImpl& impl, ::std::vector< ::HIR::TypeRef> params_ph={}):
-        m_data(Data::make_TraitImpl({ mv$(params), mv$(params_ph), &trait, &impl }))
+    ImplRef(HIR::PathParams impl_params, const ::HIR::SimplePath& trait, const ::HIR::TraitImpl& impl):
+        m_data(Data::make_TraitImpl({ mv$(impl_params), &trait, &impl }))
 
     {}
-    ImplRef(const ::HIR::TypeRef* type, const ::HIR::PathParams* args, const ::std::map< RcString, ::HIR::TypeRef>* assoc):
-        m_data(Data::make_BoundedPtr({ type, mv$(args), mv$(assoc) }))
+    ImplRef(const ::HIR::TypeRef* type, const ::HIR::PathParams* args, const ::HIR::TraitPath::assoc_list_t* assoc):
+        m_data(Data::make_BoundedPtr({ type, args, assoc }))
     {}
-    ImplRef(::HIR::TypeRef type, ::HIR::PathParams args, ::std::map< RcString, ::HIR::TypeRef> assoc):
+    ImplRef(::HIR::TypeRef type, ::HIR::PathParams args, ::HIR::TraitPath::assoc_list_t assoc):
         m_data(Data::make_Bounded({ mv$(type), mv$(args), mv$(assoc) }))
     {}
 
@@ -62,7 +64,21 @@ struct ImplRef
     bool has_magic_params() const;
 
     /// HELPER: Returns callback to monomorphise a type using parameters from Data::TraitImpl
-    ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> get_cb_monomorph_traitimpl(const Span& sp) const;
+    class Monomorph:
+        public Monomorphiser
+    {
+        friend struct ImplRef;
+        const ImplRef::Data::Data_TraitImpl& ti;
+
+        Monomorph(const ImplRef::Data::Data_TraitImpl& ti):
+            ti(ti)
+        {
+        }
+
+        ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& ty) const override;
+        ::HIR::Literal get_value(const Span& sp, const ::HIR::GenericRef& val) const override;
+    };
+    Monomorph get_cb_monomorph_traitimpl(const Span& sp) const;
 
     ::HIR::TypeRef get_impl_type() const;
     ::HIR::PathParams get_trait_params() const;

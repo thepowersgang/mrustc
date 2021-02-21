@@ -73,176 +73,11 @@ public:
         }
     }
 
-    void visit_trait(::HIR::ItemPath ip, ::HIR::Trait& tr) override
-    {
-        static Span sp;
-        TRACE_FUNCTION_F(ip);
-
-        // Enumerate supertraits and save for later stages
-        struct Enumerate
-        {
-            ::std::vector< ::HIR::TraitPath>    supertraits;
-
-            void enum_supertraits_in(const ::HIR::Trait& tr, ::HIR::GenericPath path, ::std::function<::HIR::TypeRef(const char*)> get_aty)
-            {
-                TRACE_FUNCTION_F(path);
-
-                // Fill defaulted parameters.
-                // NOTE: Doesn't do much error checking.
-                if( path.m_params.m_types.size() != tr.m_params.m_types.size() )
-                {
-                    ASSERT_BUG(sp, path.m_params.m_types.size() < tr.m_params.m_types.size(), "");
-                    for(unsigned int i = path.m_params.m_types.size(); i < tr.m_params.m_types.size(); i ++)
-                    {
-                        const auto& def = tr.m_params.m_types[i];
-                        path.m_params.m_types.push_back( def.m_default.clone() );
-                    }
-                }
-
-                ::HIR::TypeRef  ty_self { "Self", 0xFFFF };
-                auto monomorph_cb = monomorphise_type_get_cb(sp, &ty_self, &path.m_params, nullptr);
-                if( tr.m_all_parent_traits.size() > 0 )
-                {
-                    for(const auto& pt : tr.m_all_parent_traits)
-                    {
-                        supertraits.push_back( monomorphise_traitpath_with(sp, pt, monomorph_cb, false) );
-                    }
-                }
-                else
-                {
-                    // Recurse into parent traits
-                    for(const auto& pt : tr.m_parent_traits)
-                    {
-                        auto get_aty_this = [&](const char* name) {
-                            auto it = pt.m_type_bounds.find(name);
-                            if( it != pt.m_type_bounds.end() )
-                                return monomorphise_type_with(sp, it->second, monomorph_cb);
-                            return get_aty(name);
-                            };
-                        enum_supertraits_in(*pt.m_trait_ptr, monomorphise_genericpath_with(sp, pt.m_path, monomorph_cb, false), get_aty_this);
-                    }
-                    // - Bound parent traits
-                    for(const auto& b : tr.m_params.m_bounds)
-                    {
-                        if( !b.is_TraitBound() )
-                            continue;
-                        const auto& be = b.as_TraitBound();
-                        if( be.type != ::HIR::TypeRef("Self", 0xFFFF) )
-                            continue;
-                        const auto& pt = be.trait;
-                        if( pt.m_path.m_path == path.m_path )
-                            continue ;
-
-                        auto get_aty_this = [&](const char* name) {
-                            auto it = pt.m_type_bounds.find(name);
-                            if( it != pt.m_type_bounds.end() )
-                                return monomorphise_type_with(sp, it->second, monomorph_cb);
-                            return get_aty(name);
-                            };
-
-                        enum_supertraits_in(*pt.m_trait_ptr, monomorphise_genericpath_with(sp, pt.m_path, monomorph_cb, false), get_aty_this);
-                    }
-                }
-
-
-                // Build output path.
-                ::HIR::TraitPath    out_path;
-                out_path.m_path = mv$(path);
-                out_path.m_trait_ptr = &tr;
-                // - Locate associated types for this trait
-                for(const auto& ty : tr.m_types)
-                {
-                    auto v = get_aty(ty.first.c_str());
-                    if( v != ::HIR::TypeRef() )
-                    {
-                        out_path.m_type_bounds.insert( ::std::make_pair(ty.first, mv$(v)) );
-                    }
-                }
-                // TODO: HRLs?
-                supertraits.push_back( mv$(out_path) );
-            }
-        };
-
-        auto this_path = ip.get_simple_path();
-        this_path.m_crate_name = m_crate.m_crate_name;
-
-        Enumerate   e;
-        for(const auto& pt : tr.m_parent_traits)
-        {
-            auto get_aty = [&](const char* name) {
-                auto it = pt.m_type_bounds.find(name);
-                if( it != pt.m_type_bounds.end() )
-                    return it->second.clone();
-                return ::HIR::TypeRef();
-                };
-            e.enum_supertraits_in(*pt.m_trait_ptr, pt.m_path.clone(), get_aty);
-        }
-        for(const auto& b : tr.m_params.m_bounds)
-        {
-            if( !b.is_TraitBound() )
-                continue;
-            const auto& be = b.as_TraitBound();
-            if( be.type != ::HIR::TypeRef("Self", 0xFFFF) )
-                continue;
-            const auto& pt = be.trait;
-
-            // TODO: Remove this along with the from_ast.cpp hack
-            if( pt.m_path.m_path == this_path )
-            {
-                // TODO: Should this restrict based on the parameters
-                continue ;
-            }
-
-            auto get_aty = [&](const char* name) {
-                auto it = be.trait.m_type_bounds.find(name);
-                if( it != be.trait.m_type_bounds.end() )
-                    return it->second.clone();
-                return ::HIR::TypeRef();
-                };
-            e.enum_supertraits_in(*be.trait.m_trait_ptr, be.trait.m_path.clone(), get_aty);
-        }
-
-        ::std::sort(e.supertraits.begin(), e.supertraits.end());
-        DEBUG("supertraits = " << e.supertraits);
-        if( e.supertraits.size() > 0 )
-        {
-            bool dedeup_done = false;
-            auto prev = e.supertraits.begin();
-            for(auto it = e.supertraits.begin()+1; it != e.supertraits.end(); )
-            {
-                if( prev->m_path == it->m_path )
-                {
-                    if( *prev == *it ) {
-                    }
-                    else if( prev->m_type_bounds.size() == 0 ) {
-                        ::std::swap(*prev, *it);
-                    }
-                    else if( it->m_type_bounds.size() == 0 ) {
-                    }
-                    else {
-                        TODO(sp, "Merge associated types from " << *prev << " and " << *it);
-                    }
-                    it = e.supertraits.erase(it);
-                    dedeup_done = true;
-                }
-                else
-                {
-                    ++ it;
-                    ++ prev;
-                }
-            }
-            if( dedeup_done ) {
-                DEBUG("supertraits dd = " << e.supertraits);
-            }
-        }
-        tr.m_all_parent_traits = mv$(e.supertraits);
-    }
-
     ::HIR::StructMarkings::DstType get_field_dst_type(const ::HIR::TypeRef& ty, const ::HIR::GenericParams& inner_def, const ::HIR::GenericParams& params_def, const ::HIR::PathParams* params)
     {
         TRACE_FUNCTION_F("ty=" << ty);
         // If the type is generic, and the pointed-to parameters is ?Sized, record as needing unsize
-        if( const auto* te = ty.m_data.opt_Generic() )
+        if( const auto* te = ty.data().opt_Generic() )
         {
             if( inner_def.m_types.at(te->binding).m_is_sized == true )
             {
@@ -258,15 +93,15 @@ public:
                 return ::HIR::StructMarkings::DstType::Possible;
             }
         }
-        else if( ty.m_data.is_Slice() )
+        else if( ty.data().is_Slice() || TU_TEST1(ty.data(), Primitive, == HIR::CoreType::Str) )
         {
             return ::HIR::StructMarkings::DstType::Slice;
         }
-        else if( ty.m_data.is_TraitObject() )
+        else if( ty.data().is_TraitObject() )
         {
             return ::HIR::StructMarkings::DstType::TraitObject;
         }
-        else if( const auto* te = ty.m_data.opt_Path() )
+        else if( const auto* te = ty.data().opt_Path() )
         {
             // If the type is a struct, check it (recursively)
             if( ! te->path.m_data.is_Generic() ) {
@@ -277,8 +112,8 @@ public:
                 const auto& params_tpl = te->path.m_data.as_Generic().m_params;
                 if( params && monomorphise_pathparams_needed(params_tpl) ) {
                     static Span sp;
-                    auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr, params, nullptr);
-                    auto params_mono = monomorphise_path_params_with(sp, params_tpl, monomorph_cb, false);
+                    auto monomorph_cb = MonomorphStatePtr(nullptr, params, nullptr);
+                    auto params_mono = monomorph_cb.monomorph_path_params(sp, params_tpl, false);
                     return get_struct_dst_type(*te->binding.as_Struct(), params_def, &params_mono);
                 }
                 else {
@@ -296,17 +131,17 @@ public:
     }
     ::HIR::StructMarkings::DstType get_struct_dst_type(const ::HIR::Struct& str, const ::HIR::GenericParams& def, const ::HIR::PathParams* params)
     {
-        TU_MATCHA( (str.m_data), (se),
-        (Unit,
-            ),
-        (Tuple,
+        TU_MATCH_HDRA( (str.m_data), {)
+        TU_ARMA(Unit, se) {
+            }
+        TU_ARMA(Tuple, se) {
             // TODO: Ensure that only the last field is ?Sized
             if( se.size() > 0 )
             {
                 return get_field_dst_type(se.back().ent, str.m_params, def, params);
             }
-            ),
-        (Named,
+            }
+        TU_ARMA(Named, se) {
             // Check the last field in the struct.
             // - If it is Sized, leave as-is (struct is marked as Sized)
             // - If it is known unsized, record the type
@@ -317,8 +152,8 @@ public:
             {
                 return get_field_dst_type(se.back().second.ent, str.m_params, def, params);
             }
-            )
-        )
+            }
+        }
         return ::HIR::StructMarkings::DstType::None;
     }
 
@@ -328,9 +163,9 @@ public:
 
         ::HIR::Visitor::visit_trait_impl(trait_path, impl);
 
-        if( impl.m_type.m_data.is_Path() )
+        if( impl.m_type.data().is_Path() )
         {
-            const auto& te = impl.m_type.m_data.as_Path();
+            const auto& te = impl.m_type.data().as_Path();
             const ::HIR::TraitMarkings* markings_ptr = te.binding.get_trait_markings();
             if( markings_ptr )
             {
@@ -356,9 +191,9 @@ public:
                     // Determine which field is the one that does the coerce
                     if( !te.binding.is_Struct() )
                         ERROR(sp, E0000, "Cannot implement CoerceUnsized on non-structs");
-                    if( !dst_ty.m_data.is_Path() )
+                    if( !dst_ty.data().is_Path() )
                         ERROR(sp, E0000, "Cannot implement CoerceUnsized from non-structs");
-                    const auto& dst_te = dst_ty.m_data.as_Path();
+                    const auto& dst_te = dst_ty.data().as_Path();
                     if( !dst_te.binding.is_Struct() )
                         ERROR(sp, E0000, "Cannot implement CoerceUnsized from non-structs");
                     if( dst_te.binding.as_Struct() != te.binding.as_Struct() )
@@ -372,8 +207,8 @@ public:
                     unsigned int field = ~0u;
                     const auto& str = te.binding.as_Struct();
 
-                    auto monomorph_cb_l = monomorphise_type_get_cb(sp, nullptr, &dst_te.path.m_data.as_Generic().m_params, nullptr);
-                    auto monomorph_cb_r = monomorphise_type_get_cb(sp, nullptr, &te.path.m_data.as_Generic().m_params, nullptr);
+                    auto monomorph_cb_l = MonomorphStatePtr(nullptr, &dst_te.path.m_data.as_Generic().m_params, nullptr);
+                    auto monomorph_cb_r = MonomorphStatePtr(nullptr, &te.path.m_data.as_Generic().m_params, nullptr);
 
                     TU_MATCH_HDRA( (str->m_data), {)
                     TU_ARMA(Unit, se) {
@@ -382,13 +217,13 @@ public:
                         for(unsigned int i = 0; i < se.size(); i ++)
                         {
                             // If the data is PhantomData, ignore it.
-                            if( TU_TEST2(se[i].ent.m_data, Path, .path.m_data, Generic, .m_path == m_lang_PhantomData) )
+                            if( TU_TEST2(se[i].ent.data(), Path, .path.m_data, Generic, .m_path == m_lang_PhantomData) )
                             {
                                 continue ;
                             }
                             if( monomorphise_type_needed(se[i].ent) ) {
-                                auto ty_l = monomorphise_type_with(sp, se[i].ent, monomorph_cb_l, false);
-                                auto ty_r = monomorphise_type_with(sp, se[i].ent, monomorph_cb_r, false);
+                                auto ty_l = monomorph_cb_l.monomorph_type(sp, se[i].ent, false);
+                                auto ty_r = monomorph_cb_r.monomorph_type(sp, se[i].ent, false);
                                 if( ty_l != ty_r ) {
                                     if( field != ~0u )
                                         ERROR(sp, E0000, "CoerceUnsized impls can only differ by one field");
@@ -401,13 +236,13 @@ public:
                         for(unsigned int i = 0; i < se.size(); i ++)
                         {
                             // If the data is PhantomData, ignore it.
-                            if( TU_TEST2(se[i].second.ent.m_data, Path, .path.m_data, Generic, .m_path == m_lang_PhantomData) )
+                            if( TU_TEST2(se[i].second.ent.data(), Path, .path.m_data, Generic, .m_path == m_lang_PhantomData) )
                             {
                                 continue ;
                             }
                             if( monomorphise_type_needed(se[i].second.ent) ) {
-                                auto ty_l = monomorphise_type_with(sp, se[i].second.ent, monomorph_cb_l, false);
-                                auto ty_r = monomorphise_type_with(sp, se[i].second.ent, monomorph_cb_r, false);
+                                auto ty_l = monomorph_cb_l.monomorph_type(sp, se[i].second.ent, false);
+                                auto ty_r = monomorph_cb_r.monomorph_type(sp, se[i].second.ent, false);
                                 if( ty_l != ty_r ) {
                                     if( field != ~0u )
                                         ERROR(sp, E0000, "CoerceUnsized impls can only differ by one field");
@@ -447,11 +282,11 @@ public:
 
     size_t get_unsize_param_idx(const Span& sp, const ::HIR::TypeRef& pointee) const
     {
-        if( const auto* te = pointee.m_data.opt_Generic() )
+        if( const auto* te = pointee.data().opt_Generic() )
         {
             return te->binding;
         }
-        else if( const auto* te = pointee.m_data.opt_Path() )
+        else if( const auto* te = pointee.data().opt_Path() )
         {
             ASSERT_BUG(sp, te->binding.is_Struct(), "Pointer to non-Unsize type - " << pointee);
             const auto& ism = te->binding.as_Struct()->m_struct_markings;
@@ -489,7 +324,7 @@ public:
     try_again:
         DEBUG("field_ty = " << *field_ty);
 
-        if( const auto* te = field_ty->m_data.opt_Path() )
+        if( const auto* te = field_ty->data().opt_Path() )
         {
             ASSERT_BUG(sp, te->binding.is_Struct(), "CoerceUnsized impl differs on Path that isn't a struct - " << ip << " fld=" << *field_ty);
             const auto* istr = te->binding.as_Struct();
@@ -513,19 +348,19 @@ public:
                 return ::HIR::StructMarkings::Coerce::Pointer;
             }
         }
-        else if( const auto* te = field_ty->m_data.opt_Generic() )
+        else if( const auto* te = field_ty->data().opt_Generic() )
         {
             out_param_idx = te->binding;
             return ::HIR::StructMarkings::Coerce::Passthrough;
         }
-        else if( const auto* te = field_ty->m_data.opt_Pointer() )
+        else if( const auto* te = field_ty->data().opt_Pointer() )
         {
-            out_param_idx = get_unsize_param_idx(sp, *te->inner);
+            out_param_idx = get_unsize_param_idx(sp, te->inner);
             return ::HIR::StructMarkings::Coerce::Pointer;
         }
-        else if( const auto* te = field_ty->m_data.opt_Borrow() )
+        else if( const auto* te = field_ty->data().opt_Borrow() )
         {
-            out_param_idx = get_unsize_param_idx(sp, *te->inner);
+            out_param_idx = get_unsize_param_idx(sp, te->inner);
             return ::HIR::StructMarkings::Coerce::Pointer;
         }
         else

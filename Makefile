@@ -100,10 +100,11 @@ OBJ +=  expand/env.o
 OBJ +=  expand/test.o
 OBJ +=  expand/rustc_diagnostics.o
 OBJ +=  expand/proc_macro.o
-OBJ +=  expand/assert.o
+OBJ +=  expand/assert.o expand/compile_error.o
+OBJ +=  expand/codegen.o expand/doc.o expand/lints.o expand/misc_attrs.o expand/stability.o
 OBJ += expand/test_harness.o
 OBJ += macro_rules/mod.o macro_rules/eval.o macro_rules/parse.o
-OBJ += resolve/use.o resolve/index.o resolve/absolute.o
+OBJ += resolve/use.o resolve/index.o resolve/absolute.o resolve/common.o
 OBJ += hir/from_ast.o hir/from_ast_expr.o
 OBJ +=  hir/dump.o
 OBJ +=  hir/hir.o hir/hir_ops.o hir/generic_params.o
@@ -113,7 +114,7 @@ OBJ +=  hir/visitor.o hir/crate_post_load.o
 OBJ += hir_conv/expand_type.o hir_conv/constant_evaluation.o hir_conv/resolve_ufcs.o hir_conv/bind.o hir_conv/markings.o
 OBJ += hir_typeck/outer.o hir_typeck/common.o hir_typeck/helpers.o hir_typeck/static.o hir_typeck/impl_ref.o
 OBJ += hir_typeck/expr_visit.o
-OBJ += hir_typeck/expr_cs.o
+OBJ += hir_typeck/expr_cs.o hir_typeck/expr_cs__enum.o
 OBJ += hir_typeck/expr_check.o
 OBJ += hir_expand/annotate_value_usage.o hir_expand/closures.o
 OBJ += hir_expand/ufcs_everything.o
@@ -217,10 +218,10 @@ endif
 
 # MRUSTC-specific tests
 .PHONY: local_tests
-local_tests:
+local_tests: $(TEST_DEPS)
 	@$(MAKE) -C tools/testrunner
 	@mkdir -p output$(OUTDIR_SUF)/local_tests
-	./tools/bin/testrunner -o output$(OUTDIR_SUF)/local_tests -L output samples/test
+	./bin/testrunner -o output$(OUTDIR_SUF)/local_tests -L output$(OUTDIR_SUF) samples/test
 
 # 
 # RUSTC TESTS
@@ -236,8 +237,8 @@ RUST_TESTS: RUST_TESTS_run-pass
 RUST_TESTS_run-pass: output$(OUTDIR_SUF)/test/librust_test_helpers.a
 	@$(MAKE) -C tools/testrunner
 	@mkdir -p output$(OUTDIR_SUF)/rust_tests/run-pass
-	make -f minicargo.mk output$(OUTDIR_SUF)/test/libtest.so
-	./tools/bin/testrunner -L output$(OUTDIR_SUF)/test -o output$(OUTDIR_SUF)/rust_tests/run-pass $(RUST_TESTS_DIR)run-pass --exceptions disabled_tests_run-pass.txt
+	$(MAKE) -f minicargo.mk output$(OUTDIR_SUF)/test/libtest.so
+	./bin/testrunner -L output$(OUTDIR_SUF)/test -o output$(OUTDIR_SUF)/rust_tests/run-pass $(RUST_TESTS_DIR)run-pass --exceptions disabled_tests_run-pass.txt
 output$(OUTDIR_SUF)/test/librust_test_helpers.a: output$(OUTDIR_SUF)/test/rust_test_helpers.o
 	@mkdir -p $(dir $@)
 	ar cur $@ $<
@@ -255,7 +256,7 @@ output$(OUTDIR_SUF)/test/rust_test_helpers.o: $(RUST_TEST_HELPERS_C)
 # 
 .PHONY: rust_tests-libs
 rust_tests-libs: $(TEST_DEPS)
-	make -f minicargo.mk $@
+	$(MAKE) -f minicargo.mk $@
 
 
 .PHONY: test
@@ -264,8 +265,13 @@ rust_tests-libs: $(TEST_DEPS)
 #
 test: output$(OUTDIR_SUF)/rust/test_run-pass_hello_out.txt
 
+HELLO_TEST := run-pass/hello.rs
+ifeq ($(RUSTC_VERSION),1.39.0)
+  HELLO_TEST := ui/hello.rs
+endif
+
 # "hello, world" test - Invoked by the `make test` target
-output$(OUTDIR_SUF)/rust/test_run-pass_hello: $(RUST_TESTS_DIR)run-pass/hello.rs $(TEST_DEPS)
+output$(OUTDIR_SUF)/rust/test_run-pass_hello: $(RUST_TESTS_DIR)$(HELLO_TEST) $(TEST_DEPS)
 	@mkdir -p $(dir $@)
 	@echo "--- [MRUSTC] -o $@"
 	$(DBG) $(BIN) $< -o $@ $(RUST_FLAGS) $(PIPECMD)
@@ -287,9 +293,11 @@ ifeq ($(shell uname -s || echo not),Darwin)
 else
 	$Var rcD $@ $(filter-out $(OBJDIR)main.o, $(OBJ))
 endif
-$(BIN): $(OBJDIR)main.o bin/mrustc.a tools/bin/common_lib.a
+
+$(BIN): $(OBJDIR)main.o bin/mrustc.a bin/common_lib.a
 	@mkdir -p $(dir $@)
 	@echo [CXX] -o $@
+	$V$(CXX) -o $@ $(LINKFLAGS) $(OBJDIR)main.o -Wl,--whole-archive bin/mrustc.a -Wl,--no-whole-archive bin/common_lib.a $(LIBS)
 ifeq ($(OS),Windows_NT)
 else ifeq ($(shell uname -s || echo not),Darwin)
 	$V$(CXX) -o $@ $(LINKFLAGS) $(OBJDIR)main.o -Wl,-all_load bin/mrustc.a tools/bin/common_lib.a $(LIBS)
@@ -315,7 +323,7 @@ src/main.cpp: $(PCHS:%=src/%.gch)
 	@echo [CXX] -o $@
 	$V$(CXX) -std=c++14 -o $@ $< $(CPPFLAGS) -MMD -MP -MF $@.dep
 
-tools/bin/common_lib.a:
+bin/common_lib.a:
 	$(MAKE) -C tools/common
 	
 -include $(OBJ:%=%.dep)

@@ -469,10 +469,7 @@ TAGGED_UNION_EX(Constant, (), Int, (
     // NOTE: These are behind pointers to save inline space (HIR::Path is ~11
     // words, compared to 4 for MIR::Constant without it)
     (Const, struct { ::std::unique_ptr<::HIR::Path> p; }),   // `const`
-    (Generic, struct {
-        RcString    name;
-        unsigned    binding;
-        }),
+    (Generic, ::HIR::GenericRef),
     (ItemAddr, ::std::unique_ptr<::HIR::Path>) // address of a value
     ), (), (), (
         friend ::std::ostream& operator<<(::std::ostream& os, const Constant& v);
@@ -491,6 +488,11 @@ TAGGED_UNION_EX(Constant, (), Int, (
 /// Can be either a lvalue (memory address), or a constant
 TAGGED_UNION_EX(Param, (), Constant, (
     (LValue, LValue),
+    // TODO: Add `Borrow` here (makes some MIR manipulation more complex, but simplifies emitted code)
+    (Borrow, struct {
+        ::HIR::BorrowType   type;
+        LValue  val;
+        }),
     (Constant, Constant)
     ), (), (), (
         Param clone() const;
@@ -503,16 +505,16 @@ TAGGED_UNION_EX(Param, (), Constant, (
 );
 
 TAGGED_UNION_EX(RValue, (), Tuple, (
+    // TODO: Split "Use" into "Copy" and "Move" (Where 'move' indicates that the source is unused)
     (Use, LValue),
+    (Borrow, struct {
+        ::HIR::BorrowType   type;
+        LValue  val;
+        }),
     (Constant, Constant),
     (SizedArray, struct {
         Param   val;
         unsigned int    count;
-        }),
-    (Borrow, struct {
-        RegionId    region;
-        ::HIR::BorrowType   type;
-        LValue  val;
         }),
     // Cast on primitives
     (Cast, struct {
@@ -551,11 +553,18 @@ TAGGED_UNION_EX(RValue, (), Tuple, (
     (Array, struct {
         ::std::vector<Param>   vals;
         }),
-    // Create a new instance of a union (and eventually enum)
-    (Variant, struct {
+    // Create a new instance of a union
+    (UnionVariant, struct {
         ::HIR::GenericPath  path;
         unsigned int index;
         Param   val;
+        }),
+    // Create a new instance of an enum
+    // - Separate from UnionVariant, as the contents is needed when creating the body
+    (EnumVariant, struct {
+        ::HIR::GenericPath  path;
+        unsigned int index;
+        ::std::vector<Param>   vals;
         }),
     // Create a new instance of a struct
     (Struct, struct {

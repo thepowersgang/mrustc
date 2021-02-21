@@ -46,7 +46,7 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
     if( tok.type() == TOK_IDENT && lex.lookahead(0) == TOK_EXCLAM )
     {
         lex.getToken();
-        return AST::Pattern( AST::Pattern::TagMacro(), lex.end_span(ps), box$(Parse_MacroInvocation(ps, tok.istr(), lex)));
+        return AST::Pattern( AST::Pattern::TagMacro(), lex.end_span(ps), box$(Parse_MacroInvocation(ps, tok.ident().name, lex)));
     }
     if( tok.type() == TOK_INTERPOLATED_PATTERN )
     {
@@ -87,7 +87,7 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
     if( expect_bind )
     {
         CHECK_TOK(tok, TOK_IDENT);
-        auto bind_name = lex.get_ident(mv$(tok));
+        auto bind_name = tok.ident();
         // If there's no '@' after it, it's a name binding only (_ pattern)
         if( GET_TOK(tok, lex) != TOK_AT )
         {
@@ -117,12 +117,12 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
             break;
         // Known binding `ident @`
         case TOK_AT:
-            binding = AST::PatternBinding( lex.get_ident(mv$(tok)), bind_type/*MOVE*/, is_mut/*false*/ );
+            binding = AST::PatternBinding( tok.ident(), bind_type/*MOVE*/, is_mut/*false*/ );
             GET_TOK(tok, lex);  // '@'
             GET_TOK(tok, lex);  // Match lex.putback() below
             break;
         default: {  // Maybe bind
-            auto name = lex.get_ident(mv$(tok));
+            auto name = tok.ident();
             // if the pattern can be refuted (i.e this could be an enum variant), return MaybeBind
             if( is_refutable ) {
                 assert(bind_type == ::AST::PatternBinding::Type::MOVE);
@@ -158,7 +158,7 @@ AST::Pattern Parse_PatternReal(TokenStream& lex, bool is_refutable)
     auto ps = lex.start_span();
     AST::Pattern    ret = Parse_PatternReal1(lex, is_refutable);
     if( (GET_TOK(tok, lex) == TOK_TRIPLE_DOT)
-     || (TARGETVER_1_29 && tok.type() == TOK_DOUBLE_DOT_EQUAL)
+     || (TARGETVER_LEAST_1_29 && tok.type() == TOK_DOUBLE_DOT_EQUAL)
       )
     {
         if( !ret.data().is_Value() )
@@ -208,17 +208,16 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable)
             PUTBACK(tok, lex);
         return AST::Pattern( AST::Pattern::TagReference(), lex.end_span(ps), is_mut, Parse_Pattern(lex, is_refutable) );
         }
+    case TOK_RWORD_CRATE:
     case TOK_RWORD_SELF:
     case TOK_RWORD_SUPER:
     case TOK_IDENT:
     case TOK_LT:
     case TOK_DOUBLE_LT:
     case TOK_INTERPOLATED_PATH:
+    case TOK_DOUBLE_COLON:
         PUTBACK(tok, lex);
         return Parse_PatternReal_Path( lex, ps, Parse_Path(lex, PATH_GENERIC_EXPR), is_refutable );
-    case TOK_DOUBLE_COLON:
-        // 2. Paths are enum/struct names
-        return Parse_PatternReal_Path( lex, ps, Parse_Path(lex, true, PATH_GENERIC_EXPR), is_refutable );
     case TOK_DASH:
         if(GET_TOK(tok, lex) == TOK_INTEGER)
         {
@@ -248,6 +247,7 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable)
         return AST::Pattern( AST::Pattern::TagValue(), lex.end_span(ps), AST::Pattern::Value::make_ByteString({ mv$(tok.str()) }) );
     case TOK_INTERPOLATED_EXPR: {
         auto e = tok.take_frag_node();
+        // TODO: Visitor?
         if( auto* n = dynamic_cast<AST::ExprNode_String*>(e.get()) ) {
             return AST::Pattern( AST::Pattern::TagValue(), lex.end_span(ps), AST::Pattern::Value::make_String( mv$(n->m_value) ) );
         }
@@ -306,14 +306,27 @@ AST::Pattern Parse_PatternReal_Slice(TokenStream& lex, bool is_refutable)
     {
         bool has_binding = true;
         ::AST::PatternBinding  binding;
-        if( tok.type() == TOK_RWORD_REF && lex.lookahead(0) == TOK_IDENT && lex.lookahead(1) == TOK_DOUBLE_DOT ) {
+        // `ref foo ..` or `ref foo @ ..`
+        if( tok.type() == TOK_RWORD_REF && lex.lookahead(0) == TOK_IDENT
+            && (
+                lex.lookahead(1) == TOK_DOUBLE_DOT
+                || (lex.lookahead(1) == TOK_AT && lex.lookahead(2) == TOK_DOUBLE_DOT)
+                ) ) {
             GET_TOK(tok, lex);
-            binding = ::AST::PatternBinding( lex.get_ident(mv$(tok)), ::AST::PatternBinding::Type::REF, false );
+            binding = ::AST::PatternBinding( tok.ident(), ::AST::PatternBinding::Type::REF, false );
         }
-        else if( tok.type() == TOK_IDENT && lex.lookahead(0) == TOK_DOUBLE_DOT) {
-            binding = ::AST::PatternBinding( lex.get_ident(mv$(tok)), ::AST::PatternBinding::Type::MOVE, false );
+        // `foo ..` or `foo @ ..`
+        else if( tok.type() == TOK_IDENT && (
+            lex.lookahead(0) == TOK_DOUBLE_DOT
+            || (lex.lookahead(0) == TOK_AT && lex.lookahead(1) == TOK_DOUBLE_DOT)
+            ) ) {
+            binding = ::AST::PatternBinding( tok.ident(), ::AST::PatternBinding::Type::MOVE, false );
         }
-        else if( tok.type() == TOK_UNDERSCORE && lex.lookahead(0) == TOK_DOUBLE_DOT) {
+        // `_ ..` or `_ @ ..`
+        else if( tok.type() == TOK_UNDERSCORE && (
+            lex.lookahead(0) == TOK_DOUBLE_DOT
+            || (lex.lookahead(0) == TOK_AT && lex.lookahead(1) == TOK_DOUBLE_DOT)
+            ) ) {
             // No binding, but switching to trailing
         }
         else if( tok.type() == TOK_DOUBLE_DOT ) {
@@ -330,7 +343,9 @@ AST::Pattern Parse_PatternReal_Slice(TokenStream& lex, bool is_refutable)
 
             inner_binding = mv$(binding);
             is_split = true;
-            GET_TOK(tok, lex);  // TOK_DOUBLE_DOT
+            if(lex.lookahead(0) == TOK_AT)
+                GET_CHECK_TOK(tok, lex, TOK_AT);
+            GET_CHECK_TOK(tok, lex, TOK_DOUBLE_DOT);
         }
         else {
             PUTBACK(tok, lex);
@@ -499,7 +514,7 @@ AST::Pattern Parse_PatternStruct(TokenStream& lex, ProtoSpan ps, AST::Path path,
         }
 
         CHECK_TOK(tok, TOK_IDENT);
-        auto field_ident = lex.get_ident(mv$(tok));
+        auto field_ident = tok.ident();
         RcString field_name;
         GET_TOK(tok, lex);
 

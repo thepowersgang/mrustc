@@ -135,8 +135,8 @@ namespace {
         void visit_struct(::HIR::ItemPath p, ::HIR::Struct& item) override
         {
             m_os << indent() << "struct " << p.get_name() << item.m_params.fmt_args();
-            TU_MATCHA( (item.m_data), (flds),
-            (Unit,
+            TU_MATCH_HDRA( (item.m_data), {)
+            TU_ARMA(Unit, flds) {
                 if( item.m_params.m_bounds.empty() )
                 {
                     m_os << ";\n";
@@ -147,8 +147,8 @@ namespace {
                     m_os << indent() << " " << item.m_params.fmt_bounds() << "\n";
                     m_os << indent() << "    ;\n";
                 }
-                ),
-            (Tuple,
+                }
+            TU_ARMA(Tuple, flds) {
                 m_os << "(";
                 for(const auto& fld : flds)
                 {
@@ -164,8 +164,8 @@ namespace {
                     m_os << indent() << " " << item.m_params.fmt_bounds() << "\n";
                     m_os << indent() << "    ;\n";
                 }
-                ),
-            (Named,
+                }
+            TU_ARMA(Named, flds) {
                 m_os << "\n";
                 if( ! item.m_params.m_bounds.empty() )
                 {
@@ -179,8 +179,8 @@ namespace {
                 }
                 dec_indent();
                 m_os << indent() << "}\n";
-                )
-            )
+                }
+            }
         }
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override
         {
@@ -361,6 +361,14 @@ namespace {
                 this->visit_node_ptr(node.m_value);
             }
         }
+        void visit(::HIR::ExprNode_Yield& node) override
+        {
+            m_os << "yield";
+            if( node.m_value ) {
+                m_os << " ";
+                this->visit_node_ptr(node.m_value);
+            }
+        }
         void visit(::HIR::ExprNode_Let& node) override
         {
             m_os << "let " << node.m_pattern << ": " << node.m_type;
@@ -488,12 +496,12 @@ namespace {
         void visit(::HIR::ExprNode_Cast& node) override
         {
             this->visit_node_ptr(node.m_value);
-            m_os << " as " << node.m_res_type;
+            m_os << " as " << node.m_dst_type;
         }
         void visit(::HIR::ExprNode_Unsize& node) override
         {
             this->visit_node_ptr(node.m_value);
-            m_os << " : " << node.m_res_type;
+            m_os << " : " << node.m_dst_type;
         }
         void visit(::HIR::ExprNode_Index& node) override
         {
@@ -678,12 +686,6 @@ namespace {
             m_os << indent() << "}";
             dec_indent();
         }
-        void visit(::HIR::ExprNode_UnionLiteral& node) override
-        {
-            m_os << node.m_path << " { " << node.m_variant_name << ": ";
-            this->visit_node_ptr( node.m_value );
-            m_os << " }";
-        }
         void visit(::HIR::ExprNode_Tuple& node) override
         {
             m_os << "(";
@@ -753,6 +755,11 @@ void HIR_Dump(::std::ostream& sink, const ::HIR::Crate& crate)
 }
 void HIR_DumpExpr(::std::ostream& sink, const ::HIR::ExprPtr& expr)
 {
+    if(!expr ) {
+        sink << "/*NULL*/";
+        return;
+    }
+
     TreeVisitor tv { sink };
 
     const_cast<HIR::ExprPtr&>(expr)->visit(tv);

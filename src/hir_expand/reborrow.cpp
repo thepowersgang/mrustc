@@ -53,7 +53,8 @@ namespace {
 
         ::HIR::ExprNodeP do_reborrow(::HIR::ExprNodeP node_ptr)
         {
-            if(const auto* e = node_ptr->m_res_type.m_data.opt_Borrow())
+            assert(node_ptr);
+            if(const auto* e = node_ptr->m_res_type.data().opt_Borrow())
             {
                 if( e->type == ::HIR::BorrowType::Unique )
                 {
@@ -66,7 +67,7 @@ namespace {
                         DEBUG("Insert reborrow - " << node_ptr->span() << " - type=" << node_ptr->m_res_type);
                         auto sp = node_ptr->span();
                         auto ty_mut = node_ptr->m_res_type.clone();
-                        auto ty = e->inner->clone();
+                        auto ty = e->inner.clone();
                         node_ptr = NEWNODE(mv$(ty_mut), Borrow, sp, ::HIR::BorrowType::Unique,
                             NEWNODE(mv$(ty), Deref, sp,  mv$(node_ptr))
                             );
@@ -74,8 +75,15 @@ namespace {
                     // Recurse into blocks - Neater this way
                     else if( auto p = dynamic_cast< ::HIR::ExprNode_Block*>(node_ptr.get()) )
                     {
-                        ASSERT_BUG( node_ptr->span(), p->m_value_node, "reborrow into block that doesn't yield" );
-                        p->m_value_node = do_reborrow(mv$(p->m_value_node));
+                        if( p->m_value_node )
+                        {
+                            p->m_value_node = do_reborrow(mv$(p->m_value_node));
+                        }
+                        else
+                        {
+                            const auto* node = node_ptr.get();
+                            DEBUG("Node " << node << " is a non-yielding block");
+                        }
                     }
                     else
                     {
@@ -171,9 +179,9 @@ namespace {
 
         void visit_type(::HIR::TypeRef& ty) override
         {
-            if(auto* e = ty.m_data.opt_Array())
+            if(auto* e = ty.data_mut().opt_Array())
             {
-                this->visit_type( *e->inner );
+                this->visit_type( e->inner );
                 DEBUG("Array size " << ty);
                 if( e->size.is_Unevaluated() ) {
                     ExprVisitor_Mutate  ev(m_crate);

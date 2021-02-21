@@ -20,6 +20,8 @@ struct TransOptions
     bool emit_debug_info = false;
     ::std::string   build_command_file;
 
+    ::std::string   panic_crate;
+
     ::std::vector< ::std::string>   library_search_dirs;
     ::std::vector< ::std::string>   libraries;
 };

@@ -411,6 +411,33 @@
     <ClCompile Include="..\..\src\expand\macro_rules.cpp">
       <Filter>Source Files\expand</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\src\hir_typeck\monomorph.hpp">
+      <Filter>Header Files\hir_typeck</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\resolve\common.cpp">
+      <Filter>Source Files\resolve</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir_typeck\expr_cs__enum.cpp">
+      <Filter>Source Files\hir_typeck</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\expand\doc.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\expand\stability.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\expand\codegen.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\expand\misc_attrs.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\expand\lints.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\expand\compile_error.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\src\common.hpp">
@@ -618,6 +645,33 @@
       <Filter>Header Files\macro_rules</Filter>
     </ClInclude>
     <ClInclude Include="..\..\src\ast\edition.hpp">
+      <Filter>Header Files\ast</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\hir\type_ref.hpp">
+      <Filter>Header Files\hir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\hir\literal.hpp">
+      <Filter>Source Files\hir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\hir\generic_ref.hpp">
+      <Filter>Source Files\hir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\hir_typeck\monomorph_state.hpp">
+      <Filter>Header Files\hir_typeck</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\hir_typeck\common.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\resolve\common.hpp">
+      <Filter>Header Files\resolve</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\expand\common.hpp">
+      <Filter>Header Files\expand</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\hir_typeck\expr_cs.hpp">
+      <Filter>Header Files\hir_typeck</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\ast\lifetime_ref.hpp">
       <Filter>Header Files\ast</Filter>
     </ClInclude>
   </ItemGroup>

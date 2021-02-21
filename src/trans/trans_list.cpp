@@ -54,39 +54,35 @@ TransList_Const* TransList::add_const(::HIR::Path p)
     }
 }
 
-t_cb_generic Trans_Params::get_cb() const
-{
-    return monomorphise_type_get_cb(sp, &self_type, &pp_impl, &pp_method);
-}
 ::HIR::Path Trans_Params::monomorph(const ::StaticTraitResolve& resolve, const ::HIR::Path& p) const
 {
     TRACE_FUNCTION_F(p);
-    auto rv = monomorphise_path_with(sp, p, this->get_cb(), false);
+    auto rv = this->monomorph_path(sp, p, false);
 
-    TU_MATCH(::HIR::Path::Data, (rv.m_data), (e2),
-    (Generic,
+    TU_MATCH_HDRA( (rv.m_data), {)
+    TU_ARMA(Generic, e2) {
         for(auto& arg : e2.m_params.m_types)
             resolve.expand_associated_types(sp, arg);
-        ),
-    (UfcsInherent,
-        resolve.expand_associated_types(sp, *e2.type);
+        }
+    TU_ARMA(UfcsInherent, e2) {
+        resolve.expand_associated_types(sp, e2.type);
         for(auto& arg : e2.params.m_types)
             resolve.expand_associated_types(sp, arg);
         // TODO: impl params too?
         for(auto& arg : e2.impl_params.m_types)
             resolve.expand_associated_types(sp, arg);
-        ),
-    (UfcsKnown,
-        resolve.expand_associated_types(sp, *e2.type);
+        }
+    TU_ARMA(UfcsKnown, e2) {
+        resolve.expand_associated_types(sp, e2.type);
         for(auto& arg : e2.trait.m_params.m_types)
             resolve.expand_associated_types(sp, arg);
         for(auto& arg : e2.params.m_types)
             resolve.expand_associated_types(sp, arg);
-        ),
-    (UfcsUnknown,
+        }
+    TU_ARMA(UfcsUnknown, e2) {
         BUG(sp, "Encountered UfcsUnknown");
-        )
-    )
+        }
+    }
     return rv;
 }
 
@@ -97,7 +93,7 @@ t_cb_generic Trans_Params::get_cb() const
 
 ::HIR::PathParams Trans_Params::monomorph(const ::StaticTraitResolve& resolve, const ::HIR::PathParams& p) const
 {
-    auto rv = monomorphise_path_params_with(sp, p, this->get_cb(), false);
+    auto rv = this->monomorph_path_params(sp, p, false);
     for(auto& arg : rv.m_types)
         resolve.expand_associated_types(sp, arg);
     return rv;
@@ -105,7 +101,5 @@ t_cb_generic Trans_Params::get_cb() const
 
 ::HIR::TypeRef Trans_Params::monomorph(const ::StaticTraitResolve& resolve, const ::HIR::TypeRef& ty) const
 {
-    auto rv = monomorphise_type_with(sp, ty, this->get_cb(), false);
-    resolve.expand_associated_types(sp, rv);
-    return rv;
+    return resolve.monomorph_expand(sp, ty, *this);
 }

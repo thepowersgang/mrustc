@@ -14,7 +14,7 @@
 
 static inline bool type_is_unbounded_infer(const ::HIR::TypeRef& ty)
 {
-    if( const auto* te = ty.m_data.opt_Infer() ) {
+    if( const auto* te = ty.data().opt_Infer() ) {
         switch( te->ty_class )
         {
         case ::HIR::InferClass::Integer:    return false;
@@ -113,7 +113,7 @@ public:
 
     ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> callback_resolve_infer() const {
         return [&](const auto& ty)->const auto& {
-                if( ty.m_data.is_Infer() )
+                if( ty.data().is_Infer() )
                     return this->get_type(ty);
                 else
                     return ty;
@@ -121,14 +121,16 @@ public:
     }
 
     // Mutation
-    unsigned int new_ivar();
-    ::HIR::TypeRef new_ivar_tr();
+    unsigned int new_ivar(HIR::InferClass ic = HIR::InferClass::None);
+    ::HIR::TypeRef new_ivar_tr(HIR::InferClass ic = HIR::InferClass::None);
     void set_ivar_to(unsigned int slot, ::HIR::TypeRef type);
     void ivar_unify(unsigned int left_slot, unsigned int right_slot);
 
     // Lookup
     ::HIR::TypeRef& get_type(::HIR::TypeRef& type);
     const ::HIR::TypeRef& get_type(const ::HIR::TypeRef& type) const;
+          ::HIR::TypeRef& get_type(unsigned idx);
+    const ::HIR::TypeRef& get_type(unsigned idx) const;
 
     void check_for_loops();
     void expand_ivars(::HIR::TypeRef& type);
@@ -153,6 +155,8 @@ class TraitResolution
     const ::HIR::SimplePath&    m_vis_path;
 
     ::std::map< ::HIR::TypeRef, ::HIR::TypeRef> m_type_equalities;
+    // A pre-calculated list of trait bounds
+    ::std::set< std::pair< ::HIR::TypeRef, ::HIR::TraitPath> > m_trait_bounds;
 
     ::HIR::SimplePath   m_lang_Box;
     mutable ::std::vector< ::HIR::TypeRef>  m_eat_active_stack;
@@ -180,6 +184,10 @@ public:
     const ::HIR::TypeRef& get_const_param_type(const Span& sp, unsigned binding) const;
 
     void prep_indexes();
+private:
+    void prep_indexes__add_equality(const Span& sp, ::HIR::TypeRef long_ty, ::HIR::TypeRef short_ty);
+    void prep_indexes__add_trait_bound(const Span& sp, const ::HIR::TypeRef& ty, const ::HIR::TraitPath& path);
+public:
 
     ::HIR::Compare compare_pp(const Span& sp, const ::HIR::PathParams& left, const ::HIR::PathParams& right) const;
 
@@ -206,7 +214,7 @@ public:
     bool iterate_bounds_traits(const Span& sp, ::std::function<bool(const ::HIR::TypeRef&, const ::HIR::TraitPath& trait)> cb) const;
     bool iterate_aty_bounds(const Span& sp, const ::HIR::Path::Data::Data_UfcsKnown& pe, ::std::function<bool(const ::HIR::TraitPath&)> cb) const;
 
-    typedef ::std::function<bool(const ::HIR::TypeRef&, const ::HIR::PathParams&, const ::std::map< RcString,::HIR::TypeRef>&)> t_cb_trait_impl;
+    typedef ::std::function<bool(const ::HIR::TypeRef&, const ::HIR::PathParams&, const ::HIR::TraitPath::assoc_list_t&)> t_cb_trait_impl;
     typedef ::std::function<bool(ImplRef, ::HIR::Compare)> t_cb_trait_impl_r;
 
     /// Searches for a trait impl that matches the provided trait name and type
@@ -235,7 +243,7 @@ private:
     ::HIR::Compare ftic_check_params(const Span& sp, const ::HIR::SimplePath& trait,
         const ::HIR::PathParams* params, const ::HIR::TypeRef& type,
         const ::HIR::GenericParams& impl_params_def, const ::HIR::PathParams& impl_trait_args, const ::HIR::TypeRef& impl_ty,
-        /*Out->*/ ::std::vector< const ::HIR::TypeRef*>& impl_params, ::std::vector< ::HIR::TypeRef>& placeholders
+        /*Out->*/ HIR::PathParams& out_impl_params
         ) const ;
 public:
 

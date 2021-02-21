@@ -171,9 +171,9 @@ namespace {
 
         void visit_type(::HIR::TypeRef& ty) override
         {
-            if(auto* e = ty.m_data.opt_Array())
+            if(auto* e = ty.data_mut().opt_Array())
             {
-                this->visit_type( *e->inner );
+                this->visit_type( e->inner );
                 DEBUG("Array size " << ty);
                 t_args  tmp;
                 if( auto* se = e->size.opt_Unevaluated() ) {
@@ -222,7 +222,7 @@ namespace {
 
             if( auto* e = item.m_data.opt_Value() )
             {
-                auto enum_type = ::HIR::Enum::get_repr_type(e->repr);
+                auto enum_type = ::HIR::Enum::get_repr_type(item.m_tag_repr);
 
                 for(auto& var : e->variants)
                 {

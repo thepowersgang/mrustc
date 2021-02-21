@@ -7,6 +7,17 @@
  */
 #pragma once
 
+// Encoding protocol ideas:
+// > Semi-typed data format (encode length in the format)
+// Purpose: Allows internal consistency checking and recovery (recovery not needed here)
+//
+// 0x00-0xBF are literal integer values.
+// 0xC0-0xFB <data>: Short encoded length prefixed data (lengths 0 to 59 bytes)
+// 0xFC <len+> <data>: Length prefixed literal data
+// 0xFD indicates start of a named object (string index follows)
+// 0xFE indicates start of an unnamed object
+// 0xFF indicates end of an object
+
 #include <vector>
 #include <string>
 #include <map>
@@ -24,6 +35,7 @@ class Writer
 {
     WriterInner*    m_inner;
     ::std::map<RcString, unsigned>  m_istring_cache;
+    ::std::map<const char*, unsigned>  m_objname_cache;
 public:
     Writer();
     Writer(const Writer&) = delete;
@@ -105,7 +117,7 @@ public:
         write_u8( static_cast<uint8_t>(t) );
     }
     void write_count(size_t c) {
-        //DEBUG("c = " << c);
+        DEBUG(c);
         if(c < 0xFE) {
             write_u8( static_cast<uint8_t>(c) );
         }
@@ -120,6 +132,7 @@ public:
     }
     void write_string(const RcString& v);
     void write_string(size_t len, const char* s) {
+        //DEBUG(FMT_CB(os, for(size_t i = 0; i < ));
         if(len < 128) {
             write_u8( static_cast<uint8_t>(len) );
         }
@@ -135,6 +148,64 @@ public:
     }
     void write_bool(bool v) {
         write_u8(v ? 0xFF : 0x00);
+    }
+
+
+    // Core protocol
+    void raw_write_uint(uint64_t val) {
+        if(val < 0xC0) {
+            write_u8(static_cast<uint8_t>(val));
+        }
+        else {
+            uint8_t bytes[8];
+            uint8_t len = 0;
+            while(val > 0) {
+                assert(len < 8); 
+                bytes[len] = static_cast<uint8_t>(val);
+                val >>= 8;
+                len += 1;
+            }
+            write_u8(0xC0 + len);
+            this->write(bytes, len);
+        }
+    }
+    void raw_write_len(size_t len) {
+        if(len < (0xFC - 0xC0)) {
+            write_u8(0xC0 + len);
+        }
+        else {
+            write_u8(0xFC);
+            raw_write_uint(len);
+        }
+    }
+    void raw_write_bytes(size_t len, const void* data) {
+        raw_write_len(len);
+        this->write(data, len);
+    }
+    class CloseOnDrop {
+        friend class Writer;
+        Writer* r;
+        CloseOnDrop(Writer& r): r(&r) {}
+    public:
+        CloseOnDrop(CloseOnDrop&& x): r(x.r) { x.r = nullptr; }
+        ~CloseOnDrop(){ if(r) r->close_object(); }
+    };
+    CloseOnDrop open_object(const char* name) {
+        write_u8(0xFD);
+        auto iv = m_objname_cache.insert(std::make_pair( name, static_cast<unsigned>(m_objname_cache.size()) ));
+        raw_write_uint(iv.first->second);
+        if(iv.second)
+        {
+            raw_write_bytes(strlen(name), name);
+        }
+        return CloseOnDrop(*this);
+    }
+    CloseOnDrop open_anon_object() {
+        write_u8(0xFE);
+        return CloseOnDrop(*this);
+    }
+    void close_object() {
+        write_u8(0xFF);
     }
 };
 
@@ -157,6 +228,8 @@ class Reader
     ReadBuffer  m_buffer;
     size_t  m_pos;
     ::std::vector<RcString> m_strings;
+
+    ::std::vector<std::string>  m_objname_cache;
 public:
     Reader(const ::std::string& path);
     Reader(const Writer&) = delete;
@@ -249,16 +322,19 @@ public:
         return static_cast<unsigned int>( read_u8() );
     }
     size_t read_count() {
+        size_t rv;
         auto v = read_u8();
         if( v < 0xFE ) {
-            return v;
+            rv = v;
         }
         else if( v == 0xFE ) {
-            return read_u16( );
+            rv = read_u16( );
         }
         else /*if( v == 0xFF )*/ {
-            return ~0u;
+            rv = ~0u;
         }
+        //DEBUG(rv);
+        return rv;
     }
     RcString read_istring() {
         size_t idx = read_count();
@@ -278,6 +354,86 @@ public:
     }
     bool read_bool() {
         return read_u8() != 0x00;
+    }
+
+
+    // Core protocol
+    uint64_t raw_read_uint() {
+        auto v = read_u8();
+        assert(v <= 0xC0 + 8);
+        if( v < 0xC0 ) {
+            return v;
+        }
+        else {
+            size_t len = v - 0xC0;
+            uint64_t rv = 0;
+            for(int p = 0; p < len; p ++)
+            {
+                rv |= static_cast<uint64_t>(read_u8()) << (8*p);
+            }
+            return rv;
+        }
+    }
+    size_t raw_read_len() {
+        auto v = read_u8();
+        if( v < 0xC0 ) {
+            std::cerr << "Expected length, got literal integer " << unsigned(v) << ::std::endl;
+            abort();
+        }
+        else if(v < 0xFC) {
+            return v - 0xC0;
+        }
+        else if( v == 0xFC) {
+            return raw_read_uint();
+        }
+        else {
+            std::cerr << "Expected length, got tag " << unsigned(v) << ::std::endl;
+            abort();
+        }
+    }
+    std::string raw_read_bytes_stdstring() {
+        auto len = raw_read_len();
+        std::string rv(len, '\0');
+        read( const_cast<char*>(rv.data()), len );
+        return rv;
+    }
+
+
+    class CloseOnDrop {
+        friend class Reader;
+        Reader* r;
+        CloseOnDrop(Reader& r): r(&r) {}
+    public:
+        CloseOnDrop(CloseOnDrop&& x): r(x.r) { x.r = nullptr; }
+        ~CloseOnDrop(){ if(r) r->close_object(); }
+    };
+
+    CloseOnDrop open_object(const char* name) {
+        auto v = read_u8();
+        if( v != 0xFD ) {
+            std::cerr << "Expected OpenNamed(" << name << "), got " << unsigned(v) << ::std::endl;
+            abort();
+        }
+        auto key = raw_read_uint();
+        //std::cout << key << " = " << "..." << std::endl;
+        if(key == m_objname_cache.size()) {
+            m_objname_cache.push_back( raw_read_bytes_stdstring() );
+        }
+        assert(key < m_objname_cache.size());
+        //std::cout << key << " = " << m_objname_cache[key] << std::endl;
+        assert(m_objname_cache[key] == name);
+        return CloseOnDrop(*this);
+    }
+    CloseOnDrop open_anon_object() {
+        auto v = read_u8();
+        if( v != 0xFE ) {
+            std::cerr << "Expected OpenAnon, got " << unsigned(v) << ::std::endl;
+            abort();
+        }
+        return CloseOnDrop(*this);
+    }
+    void close_object() {
+        assert(read_u8() == 0xFF);
     }
 };
 

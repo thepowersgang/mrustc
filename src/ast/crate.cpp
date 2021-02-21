@@ -21,6 +21,7 @@
 
 ::std::vector<::std::string>    AST::g_crate_load_dirs = { };
 ::std::map<::std::string, ::std::string>    AST::g_crate_overrides;
+::std::map<RcString, RcString>    AST::g_implicit_crates;
 
 namespace {
     bool check_item_cfg(const ::AST::AttributeList& attrs)
@@ -35,11 +36,11 @@ namespace {
     void iterate_module(::AST::Module& mod, ::std::function<void(::AST::Module& mod)> fcn)
     {
         fcn(mod);
-        for( auto& sm : mod.items() )
+        for( auto& sm : mod.m_items )
         {
-            if( auto* e = sm.data.opt_Module() )
+            if( auto* e = sm->data.opt_Module() )
             {
-                if( check_item_cfg(sm.attrs) )
+                if( check_item_cfg(sm->attrs) )
                 {
                     iterate_module(*e, fcn);
                 }
@@ -57,7 +58,7 @@ namespace {
 namespace AST {
 
 Crate::Crate():
-    m_root_module(::AST::Path("",{})),
+    m_root_module(AST::AbsolutePath()),
     m_load_std(LOAD_STD)
 {
 }
@@ -65,13 +66,18 @@ Crate::Crate():
 void Crate::load_externs()
 {
     auto cb = [this](Module& mod) {
-        for( /*const*/ auto& it : mod.items() )
+        for( /*const*/ auto& it : mod.m_items )
         {
-            if( auto* c = it.data.opt_Crate() )
+            if( auto* c = it->data.opt_Crate() )
             {
-                if( check_item_cfg(it.attrs) )
+                if( check_item_cfg(it->attrs) )
                 {
-                    c->name = load_extern_crate( it.span, c->name.c_str() );
+                    if( c->name == "" ) {
+                        // Leave for now
+                    }
+                    else {
+                        c->name = load_extern_crate( it->span, c->name.c_str() );
+                    }
                 }
             }
         }
@@ -107,11 +113,32 @@ void Crate::load_externs()
     }
     else if( no_std ) {
         auto n = this->load_extern_crate(Span(), "core");
-        ASSERT_BUG(Span(), n == "core", "libcore wasn't loaded as `core`, instead `" << n << "`");
+        //if( n != "core" ) {
+        //    WARNING(Span(), W0000, "libcore wasn't loaded as `core`, instead `" << n << "`");
+        //}
     }
     else {
         auto n = this->load_extern_crate(Span(), "std");
-        ASSERT_BUG(Span(), n == "std", "libstd wasn't loaded as `std`, instead `" << n << "`");
+        //if( n != "std" ) {
+        //    WARNING(Span(), W0000, "libstd wasn't loaded as `std`, instead `" << n << "`");
+        //}
+    }
+
+    // Ensure that all crates passed on the command line are loaded
+    //if( this->m_edition >= Edition::Rust2018 )
+    if( TARGETVER_LEAST_1_29 )
+    {
+        DEBUG("Load from --crate");
+        for(const auto& c : g_crate_overrides)
+        {
+            auto real_name = this->load_extern_crate(Span(), c.first.c_str());
+            g_implicit_crates.insert( std::make_pair(RcString::new_interned(c.first), real_name) );
+        }
+        // 
+        if(this->m_ext_cratename_core != "")
+        {
+            g_implicit_crates.insert( std::make_pair( RcString::new_interned("core"), this->m_ext_cratename_core) );
+        }
     }
 }
 // TODO: Handle disambiguating crates with the same name (e.g. libc in std and crates.io libc)
@@ -259,7 +286,28 @@ RcString Crate::load_extern_crate(Span sp, const RcString& name, const ::std::st
         }
     }
 
-    DEBUG("Loaded '" << name << "' from '" << basename << "' (actual name is '" << real_name << "')");
+    if( ext_crate.m_short_name == "core" ) {
+        if( this->m_ext_cratename_core == "" ) {
+            this->m_ext_cratename_core = ext_crate.m_name;
+        }
+    }
+    if( ext_crate.m_short_name == "std" ) {
+        if( this->m_ext_cratename_std == "" ) {
+            this->m_ext_cratename_std = ext_crate.m_name;
+        }
+    }
+    if( ext_crate.m_short_name == "proc_macro" ) {
+        if( this->m_ext_cratename_procmacro == "" ) {
+            this->m_ext_cratename_procmacro = ext_crate.m_name;
+        }
+    }
+    if( ext_crate.m_short_name == "test" ) {
+        if( this->m_ext_cratename_test == "" ) {
+            this->m_ext_cratename_test = ext_crate.m_name;
+        }
+    }
+
+    DEBUG("Loaded '" << name << "' from '" << basename << "' (actual name is '" << real_name << "' aka `" << ext_crate.m_short_name << "`)");
     return real_name;
 }
 
@@ -273,23 +321,14 @@ ExternCrate::ExternCrate(const RcString& name, const ::std::string& path):
 
     m_hir->post_load_update(name);
     m_name = m_hir->m_crate_name;
-}
-
-void ExternCrate::with_all_macros(::std::function<void(const RcString& , const MacroRules&)> cb) const
-{
-    for(const auto& m : m_hir->m_exported_macros)
+    if(const auto* e = strchr(m_name.c_str(), '-'))
     {
-        cb(m.first, *m.second);
+        m_short_name = RcString(m_name.c_str(), e - m_name.c_str());
+    }
+    else
+    {
     }
 }
-const MacroRules* ExternCrate::find_macro_rules(const RcString& name) const
-{
-    auto i = m_hir->m_exported_macros.find(name);
-    if(i != m_hir->m_exported_macros.end())
-        return &*i->second;
-    return nullptr;
-}
-
 
 }   // namespace AST
 

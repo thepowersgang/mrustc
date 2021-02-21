@@ -580,6 +580,26 @@ void Options::usage_full() const
 {
 }
 
+#ifdef _WIN32
+namespace {
+    class WinapiError {
+        DWORD   v;
+        WinapiError(DWORD v): v(v) {}
+    public:
+        static WinapiError get() {
+            return WinapiError(GetLastError());
+        }
+        friend std::ostream& operator<<(std::ostream& os, const WinapiError& x) {
+            char* buf;
+            FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER|FORMAT_MESSAGE_FROM_SYSTEM, NULL, x.v, 0, (LPSTR)&buf, 0, nullptr);
+            os << "0x" << std::hex << x.v << ": " << buf;
+            LocalFree(buf);
+            return os;
+        }
+    };
+}
+#endif
+
 ///
 bool run_executable(const ::helpers::path& exe_name, const ::std::vector<const char*>& args, const ::helpers::path& outfile, unsigned timeout_seconds)
 {
@@ -604,7 +624,10 @@ bool run_executable(const ::helpers::path& exe_name, const ::std::vector<const c
         //WriteFile(si.hStdOutput, cmdline_str.data(), static_cast<DWORD>(cmdline_str.size()), &tmp, NULL);
         //WriteFile(si.hStdOutput, "\n", 1, &tmp, NULL);
     }
-    DuplicateHandle(NULL, si.hStdOutput, NULL, &si.hStdError, GENERIC_WRITE, FALSE, FILE_SHARE_READ);
+    if( !DuplicateHandle(GetCurrentProcess(), si.hStdOutput, GetCurrentProcess(), &si.hStdError, /*dwDesiredAccess(unused)*/0, /*bInheritHandle*/TRUE, DUPLICATE_SAME_ACCESS) ) {
+        std::cerr << "DuplicateHandle failed: " << WinapiError::get() << std::endl;
+        return false;
+    }
     PROCESS_INFORMATION pi = { 0 };
     auto em = SetErrorMode(SEM_NOGPFAULTERRORBOX);
     CreateProcessA(exe_name.str().c_str(), (LPSTR)cmdline_str.c_str(), NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi);

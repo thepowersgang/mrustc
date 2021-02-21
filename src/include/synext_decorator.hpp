@@ -50,7 +50,7 @@ public:
     virtual AttrStage   stage() const = 0;
 
     virtual void    handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate) const { unexpected(sp, mi, "crate"); }
-    virtual void    handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const { unexpected(sp, mi, "item"); }
+    virtual void    handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const { unexpected(sp, mi, "item"); }
     // NOTE: To delete, set the type to `_`
     virtual void    handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, const AST::Module& mod, AST::ImplDef& impl) const { unexpected(sp, mi, "impl"); }
     // NOTE: To delete, clear the name

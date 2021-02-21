@@ -8,139 +8,415 @@
 #include "common.hpp"
 #include <hir/path.hpp>
 
-bool visit_ty_with__path_params(const ::HIR::PathParams& tpl, t_cb_visit_ty callback)
-{
-    for(const auto& ty : tpl.m_types)
-        if( visit_ty_with(ty, callback) )
-            return true;
-    return false;
-}
 
-bool visit_ty_with__trait_path(const ::HIR::TraitPath& tpl, t_cb_visit_ty callback)
+template<typename I>
+struct WConst {
+    typedef const I T;
+};
+template<typename I>
+struct WMut {
+    typedef I T;
+};
+template<template<typename> class W>
+struct TyVisitor
 {
-    if( visit_ty_with__path_params(tpl.m_path.m_params, callback) )
-        return true;
-    for(const auto& assoc : tpl.m_type_bounds)
-        if( visit_ty_with(assoc.second, callback) )
+    virtual typename W<HIR::TypeData>::T& get_ty_data(typename W<HIR::TypeRef>::T& ty) const = 0;
+
+    bool visit_path_params(typename W<::HIR::PathParams>::T& tpl)
+    {
+        for(auto& ty : tpl.m_types)
+            if( visit_type(ty) )
+                return true;
+        return false;
+    }
+
+    virtual bool visit_trait_path(typename W<::HIR::TraitPath>::T& tpl)
+    {
+        if( visit_path_params(tpl.m_path.m_params) )
             return true;
-    return false;
-}
-bool visit_ty_with__path(const ::HIR::Path& tpl, t_cb_visit_ty callback)
+        for(auto& assoc : tpl.m_type_bounds)
+        {
+            visit_path_params(assoc.second.source_trait.m_params);
+            if( visit_type(assoc.second.type) )
+                return true;
+        }
+        for(auto& assoc : tpl.m_trait_bounds)
+        {
+            visit_path_params(assoc.second.source_trait.m_params);
+            for(auto& t : assoc.second.traits)
+                visit_trait_path(t);
+        }
+        return false;
+    }
+    virtual bool visit_path(typename W<HIR::Path>::T& path)
+    {
+        TU_MATCH_HDRA((path.m_data), {)
+        TU_ARMA(Generic, e) {
+            return visit_path_params(e.m_params);
+            }
+        TU_ARMA(UfcsInherent, e) {
+            return visit_type(e.type) || visit_path_params(e.params);
+            }
+        TU_ARMA(UfcsKnown, e) {
+            return visit_type(e.type) || visit_path_params(e.trait.m_params) || visit_path_params(e.params);
+            }
+        TU_ARMA(UfcsUnknown, e) {
+            return visit_type(e.type) || visit_path_params(e.params);
+            }
+        }
+        throw "";
+    }
+    virtual bool visit_type(typename W<HIR::TypeRef>::T& ty)
+    {
+        TU_MATCH_HDRA( (this->get_ty_data(ty)), {)
+        TU_ARMA(Infer, e) {
+            }
+        TU_ARMA(Diverge, e) {
+            }
+        TU_ARMA(Primitive, e) {
+            }
+        TU_ARMA(Generic, e) {
+            }
+        TU_ARMA(Path, e) {
+            return visit_path(e.path);
+            }
+        TU_ARMA(TraitObject, e) {
+            if( visit_trait_path(e.m_trait) )
+                return true;
+            for(auto& trait : e.m_markers)
+                if( visit_path_params(trait.m_params) )
+                    return true;
+            return false;
+            }
+        TU_ARMA(ErasedType, e) {
+            if( visit_path(e.m_origin) )
+                return true;
+            for(auto& trait : e.m_traits)
+                if( visit_trait_path(trait) )
+                    return true;
+            return false;
+            }
+        TU_ARMA(Array, e) {
+            return visit_type(e.inner);
+            }
+        TU_ARMA(Slice, e) {
+            return visit_type(e.inner);
+            }
+        TU_ARMA(Tuple, e) {
+            for(auto& ty : e) {
+                if( visit_type(ty) )
+                    return true;
+            }
+            return false;
+            }
+        TU_ARMA(Borrow, e) {
+            return visit_type(e.inner);
+            }
+        TU_ARMA(Pointer, e) {
+            return visit_type(e.inner);
+            }
+        TU_ARMA(Function, e) {
+            for(auto& ty : e.m_arg_types) {
+                if( visit_type(ty) )
+                    return true;
+            }
+            return visit_type(e.m_rettype);
+            }
+        TU_ARMA(Closure, e) {
+            for(auto& ty : e.m_arg_types) {
+                if( visit_type(ty) )
+                    return true;
+            }
+            return visit_type(e.m_rettype);
+            }
+        }
+        return false;
+    }
+};
+
+
+
+struct TyVisitorCbConst: TyVisitor<WConst>
 {
-    TU_MATCH(::HIR::Path::Data, (tpl.m_data), (e),
-    (Generic,
-        return visit_ty_with__path_params(e.m_params, callback);
-        ),
-    (UfcsInherent,
-        return visit_ty_with(*e.type, callback) || visit_ty_with__path_params(e.params, callback);
-        ),
-    (UfcsKnown,
-        return visit_ty_with(*e.type, callback) || visit_ty_with__path_params(e.trait.m_params, callback) || visit_ty_with__path_params(e.params, callback);
-        ),
-    (UfcsUnknown,
-        return visit_ty_with(*e.type, callback) || visit_ty_with__path_params(e.params, callback);
-        )
-    )
-    throw "";
-}
+    t_cb_visit_ty   callback;
+    const HIR::TypeData& get_ty_data(const HIR::TypeRef& ty) const override{
+        return ty.data();
+    }
+    bool visit_type(const ::HIR::TypeRef& ty) override
+    {
+        if(callback(ty)) {
+            return true;
+        }
+        return TyVisitor::visit_type(ty);
+    }
+};
 bool visit_ty_with(const ::HIR::TypeRef& ty, t_cb_visit_ty callback)
 {
-    if( callback(ty) ) {
-        return true;
-    }
-
-    TU_MATCH_HDRA( (ty.m_data), {)
-    TU_ARMA(Infer, e) {
-        }
-    TU_ARMA(Diverge, e) {
-        }
-    TU_ARMA(Primitive, e) {
-        }
-    TU_ARMA(Generic, e) {
-        }
-    TU_ARMA(Path, e) {
-        return visit_ty_with__path(e.path, callback);
-        }
-    TU_ARMA(TraitObject, e) {
-        if( visit_ty_with__trait_path(e.m_trait, callback) )
-            return true;
-        for(const auto& trait : e.m_markers)
-            if( visit_ty_with__path_params(trait.m_params, callback) )
-                return true;
-        return false;
-        }
-    TU_ARMA(ErasedType, e) {
-        if( visit_ty_with__path(e.m_origin, callback) )
-            return true;
-        for(const auto& trait : e.m_traits)
-            if( visit_ty_with__trait_path(trait, callback) )
-                return true;
-        return false;
-        }
-    TU_ARMA(Array, e) {
-        return visit_ty_with(*e.inner, callback);
-        }
-    TU_ARMA(Slice, e) {
-        return visit_ty_with(*e.inner, callback);
-        }
-    TU_ARMA(Tuple, e) {
-        for(const auto& ty : e) {
-            if( visit_ty_with(ty, callback) )
-                return true;
-        }
-        return false;
-        }
-    TU_ARMA(Borrow, e) {
-        return visit_ty_with(*e.inner, callback);
-        }
-    TU_ARMA(Pointer, e) {
-        return visit_ty_with(*e.inner, callback);
-        }
-    TU_ARMA(Function, e) {
-        for(const auto& ty : e.m_arg_types) {
-            if( visit_ty_with(ty, callback) )
-                return true;
-        }
-        return visit_ty_with(*e.m_rettype, callback);
-        }
-    TU_ARMA(Closure, e) {
-        for(const auto& ty : e.m_arg_types) {
-            if( visit_ty_with(ty, callback) )
-                return true;
-        }
-        return visit_ty_with(*e.m_rettype, callback);
-        }
-    }
-    return false;
+    TyVisitorCbConst v;
+    v.callback = callback;
+    return v.visit_type(ty);
 }
 bool visit_path_tys_with(const ::HIR::Path& path, t_cb_visit_ty callback)
 {
-    return visit_ty_with__path(path, callback);
+    TyVisitorCbConst v;
+    v.callback = callback;
+    return v.visit_path(path);
 }
+
+// /*
+struct TyVisitorCbMut: TyVisitor<WMut>
+{
+    t_cb_visit_ty_mut   callback;
+    HIR::TypeData& get_ty_data(HIR::TypeRef& ty) const override {
+        return ty.data_mut();
+    }
+    bool visit_type(::HIR::TypeRef& ty) override
+    {
+        if(callback(ty)) {
+            return true;
+        }
+        return TyVisitor::visit_type(ty);
+    }
+};
+bool visit_ty_with_mut(::HIR::TypeRef& ty, t_cb_visit_ty_mut callback)
+{
+    TyVisitorCbMut v;
+    v.callback = callback;
+    return v.visit_type(ty);
+}
+bool visit_path_tys_with_mut(::HIR::Path& path, t_cb_visit_ty_mut callback)
+{
+    TyVisitorCbMut v;
+    v.callback = callback;
+    return v.visit_path(path);
+}
+// */
 
 bool monomorphise_pathparams_needed(const ::HIR::PathParams& tpl)
 {
-    return visit_ty_with__path_params(tpl, [&](const auto& ty) {
-        return (ty.m_data.is_Generic() ? true : false);
-        });
+    TyVisitorCbConst v;
+    v.callback = [&](const auto& ty) { return (ty.data().is_Generic() ? true : false); };
+    return v.visit_path_params(tpl);
 }
 bool monomorphise_traitpath_needed(const ::HIR::TraitPath& tpl)
 {
-    return visit_ty_with__trait_path(tpl, [&](const auto& ty) {
-        return (ty.m_data.is_Generic() ? true : false);
-        });
+    TyVisitorCbConst v;
+    v.callback = [&](const auto& ty) { return (ty.data().is_Generic() ? true : false); };
+    return v.visit_trait_path(tpl);
 }
 bool monomorphise_path_needed(const ::HIR::Path& tpl)
 {
-    return visit_ty_with__path(tpl, [&](const auto& ty) {
-        return (ty.m_data.is_Generic() ? true : false);
+    return visit_path_tys_with(tpl, [&](const auto& ty) {
+        return (ty.data().is_Generic() ? true : false);
         });
 }
 bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
 {
     return visit_ty_with(tpl, [&](const auto& ty) {
-        return (ty.m_data.is_Generic() ? true : false);
+        return (ty.data().is_Generic() ? true : false);
         });
+}
+
+
+::HIR::TypeRef Monomorphiser::monomorph_type(const Span& sp, const ::HIR::TypeRef& tpl, bool allow_infer/*=true*/) const
+{
+    TU_MATCH_HDRA( (tpl.data()), {)
+    TU_ARMA(Infer, e) {
+        ASSERT_BUG(sp, allow_infer, "Unexpected ivar seen - " << tpl);
+        return ::HIR::TypeRef(e);
+        }
+    TU_ARMA(Diverge, e) {
+        return ::HIR::TypeRef(e);
+        }
+    TU_ARMA(Primitive, e) {
+        return ::HIR::TypeRef(e);
+        }
+    TU_ARMA(Path, e) {
+        auto rv = ::HIR::TypeRef( ::HIR::TypeData::Data_Path {
+            this->monomorph_path(sp, e.path, allow_infer),
+            e.binding.clone()
+            } );
+        // If the input binding was Opaque
+        if( e.binding.is_Opaque() ) {
+            // NOTE: The replacement can be Self=Self, which should trigger a binding clear.
+            rv.get_unique().as_Path().binding = ::HIR::TypePathBinding();
+        }
+        return rv;
+        }
+    TU_ARMA(Generic, e) {
+        return this->get_type(sp, e);
+        }
+    TU_ARMA(TraitObject, e) {
+        ::HIR::TypeData::Data_TraitObject  to;
+        to.m_trait = this->monomorph_traitpath(sp, e.m_trait, allow_infer);
+        for(const auto& trait : e.m_markers)
+        {
+            to.m_markers.push_back( this->monomorph_genericpath(sp, trait, allow_infer) );
+        }
+        to.m_lifetime = e.m_lifetime;
+        return ::HIR::TypeRef( mv$(to) );
+        }
+    TU_ARMA(ErasedType, e) {
+        auto origin = this->monomorph_path(sp, e.m_origin, allow_infer);
+
+        ::std::vector< ::HIR::TraitPath>    traits;
+        traits.reserve( e.m_traits.size() );
+        for(const auto& trait : e.m_traits)
+            traits.push_back( this->monomorph_traitpath(sp, trait, allow_infer) );
+
+        return ::HIR::TypeRef( ::HIR::TypeData::Data_ErasedType {
+            mv$(origin), e.m_index,
+            mv$(traits),
+            e.m_lifetime
+            } );
+        }
+    TU_ARMA(Array, e) {
+        HIR::ArraySize  sz;
+        if( e.size.is_Generic() ) {
+            auto sz_val = this->get_value(sp, e.size.as_Generic());
+            TU_MATCH_HDRA( (sz_val), {)
+            default:
+                BUG(sp, "Unexpected value type - " << sz_val << " in replacement for " << e.size);
+            //TU_ARMA(Invalid, ve) {
+            //    sz = HIR::ArraySize::make_Unevaluated({});
+            //    }
+            TU_ARMA(Generic, ve) {
+                sz = ve;
+                }
+            TU_ARMA(Integer, ve) {
+                sz = ve;
+                }
+            }
+        }
+        else {
+            sz = e.size.clone();
+        }
+        return ::HIR::TypeRef( ::HIR::TypeData::make_Array({
+            this->monomorph_type(sp, e.inner, allow_infer),
+            mv$(sz)
+            }) );
+        }
+    TU_ARMA(Slice, e) {
+        return ::HIR::TypeRef::new_slice( this->monomorph_type(sp, e.inner, allow_infer) );
+        }
+    TU_ARMA(Tuple, e) {
+        ::std::vector< ::HIR::TypeRef>  types;
+        for(const auto& ty : e) {
+            types.push_back( this->monomorph_type(sp, ty, allow_infer) );
+        }
+        return ::HIR::TypeRef( mv$(types) );
+        }
+    TU_ARMA(Borrow, e) {
+        return ::HIR::TypeRef::new_borrow (e.type, this->monomorph_type(sp, e.inner, allow_infer));
+        }
+    TU_ARMA(Pointer, e) {
+        return ::HIR::TypeRef::new_pointer(e.type, this->monomorph_type(sp, e.inner, allow_infer));
+        }
+    TU_ARMA(Function, e) {
+        ::HIR::FunctionType ft;
+        ft.is_unsafe = e.is_unsafe;
+        ft.m_abi = e.m_abi;
+        ft.m_rettype = this->monomorph_type(sp, e.m_rettype, allow_infer);
+        for( const auto& arg : e.m_arg_types )
+            ft.m_arg_types.push_back( this->monomorph_type(sp, arg, allow_infer) );
+        return ::HIR::TypeRef( mv$(ft) );
+        }
+    TU_ARMA(Closure, e) {
+        ::HIR::TypeData::Data_Closure  oe;
+        oe.node = e.node;
+        oe.m_rettype = this->monomorph_type(sp, e.m_rettype, allow_infer);
+        for(const auto& arg : e.m_arg_types)
+            oe.m_arg_types.push_back( this->monomorph_type(sp, arg, allow_infer) );
+        return ::HIR::TypeRef( mv$(oe) );
+        }
+    }
+    throw "";
+}
+::HIR::Path Monomorphiser::monomorph_path(const Span& sp, const ::HIR::Path& tpl, bool allow_infer/*=true*/) const
+{
+    TU_MATCH_HDRA( (tpl.m_data), {)
+    TU_ARMA(Generic, e2) {
+        return ::HIR::Path( this->monomorph_genericpath(sp, e2, allow_infer) );
+        }
+    TU_ARMA(UfcsKnown, e2) {
+        return ::HIR::Path::Data::make_UfcsKnown({
+            this->monomorph_type(sp, e2.type, allow_infer),
+            this->monomorph_genericpath(sp, e2.trait, allow_infer),
+            e2.item,
+            this->monomorph_path_params(sp, e2.params, allow_infer)
+            });
+        }
+    TU_ARMA(UfcsUnknown, e2) {
+        return ::HIR::Path::Data::make_UfcsUnknown({
+            this->monomorph_type(sp, e2.type, allow_infer),
+            e2.item,
+            this->monomorph_path_params(sp, e2.params, allow_infer)
+            });
+        }
+    TU_ARMA(UfcsInherent, e2) {
+        return ::HIR::Path::Data::make_UfcsInherent({
+            this->monomorph_type(sp, e2.type, allow_infer),
+            e2.item,
+            this->monomorph_path_params(sp, e2.params, allow_infer),
+            this->monomorph_path_params(sp, e2.impl_params, allow_infer)
+            });
+        }
+    }
+    throw "";
+}
+::HIR::TraitPath Monomorphiser::monomorph_traitpath(const Span& sp, const ::HIR::TraitPath& tpl, bool allow_infer) const
+{
+    ::HIR::TraitPath    rv {
+        this->monomorph_genericpath(sp, tpl.m_path, allow_infer),
+        tpl.m_hrls,
+        {},
+        {},
+        tpl.m_trait_ptr
+        };
+
+    for(const auto& assoc : tpl.m_type_bounds) {
+        rv.m_type_bounds.insert(::std::make_pair(
+            assoc.first,
+            HIR::TraitPath::AtyEqual {
+                this->monomorph_genericpath(sp, assoc.second.source_trait, allow_infer),
+                this->monomorph_type(sp, assoc.second.type, allow_infer)
+                }
+            ));
+    }
+    for(const auto& assoc : tpl.m_trait_bounds) {
+        auto v = HIR::TraitPath::AtyBound { this->monomorph_genericpath(sp, assoc.second.source_trait, allow_infer), {} };
+        for(const auto& trait : assoc.second.traits)
+            v.traits.push_back( monomorph_traitpath(sp, trait, allow_infer) );
+        rv.m_trait_bounds.insert(::std::make_pair( assoc.first, std::move(v) ));
+    }
+
+    return rv;
+}
+::HIR::PathParams Monomorphiser::monomorph_path_params(const Span& sp, const ::HIR::PathParams& tpl, bool allow_infer) const
+{
+    ::HIR::PathParams   rv;
+    rv.m_types.reserve( tpl.m_types.size() );
+    for( const auto& ty : tpl.m_types)
+        rv.m_types.push_back( this->monomorph_type(sp, ty, allow_infer) );
+
+    rv.m_values.reserve( tpl.m_values.size() );
+    for( const auto& val : tpl.m_values)
+    {
+        if(const auto* ge = val.opt_Generic())
+        {
+            rv.m_values.push_back( this->get_value(sp, *ge) );
+        }
+        else
+        {
+            rv.m_values.push_back( val.clone() );
+        }
+    }
+
+    return rv;
+}
+::HIR::GenericPath Monomorphiser::monomorph_genericpath(const Span& sp, const ::HIR::GenericPath& tpl, bool allow_infer) const
+{
+    return ::HIR::GenericPath( tpl.m_path, this->monomorph_path_params(sp, tpl.m_params, allow_infer) );
 }
 
 
@@ -159,47 +435,59 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
         clone_ty_with__generic_path(sp, tpl.m_path, callback),
         tpl.m_hrls,
         {},
+        {},
         tpl.m_trait_ptr
         };
 
     for(const auto& assoc : tpl.m_type_bounds) {
         rv.m_type_bounds.insert(::std::make_pair(
             assoc.first,
-            clone_ty_with(sp, assoc.second, callback)
+            HIR::TraitPath::AtyEqual {
+                clone_ty_with__generic_path(sp, assoc.second.source_trait, callback),
+                clone_ty_with(sp, assoc.second.type, callback)
+            }
             ));
+    }
+    for(const auto& assoc : tpl.m_trait_bounds) {
+        auto& traits = rv.m_trait_bounds.insert(::std::make_pair( assoc.first,
+                HIR::TraitPath::AtyBound { clone_ty_with__generic_path(sp, assoc.second.source_trait, callback), {} }
+            ) ).first->second.traits;
+
+        for(const auto& t : assoc.second.traits)
+            traits.push_back(clone_ty_with__trait_path(sp, t, callback));
     }
 
     return rv;
 }
 ::HIR::Path clone_ty_with__path(const Span& sp, const ::HIR::Path& tpl, t_cb_clone_ty callback) {
-    TU_MATCH(::HIR::Path::Data, (tpl.m_data), (e2),
-    (Generic,
+    TU_MATCH_HDRA( (tpl.m_data), {)
+    TU_ARMA(Generic, e2) {
         return ::HIR::Path( clone_ty_with__generic_path(sp, e2, callback) );
-        ),
-    (UfcsKnown,
+        }
+    TU_ARMA(UfcsKnown, e2) {
         return ::HIR::Path::Data::make_UfcsKnown({
-            box$( clone_ty_with(sp, *e2.type, callback) ),
+            clone_ty_with(sp, e2.type, callback),
             clone_ty_with__generic_path(sp, e2.trait, callback),
             e2.item,
             clone_path_params_with(sp, e2.params, callback)
             });
-        ),
-    (UfcsUnknown,
+        }
+    TU_ARMA(UfcsUnknown, e2) {
         return ::HIR::Path::Data::make_UfcsUnknown({
-            box$( clone_ty_with(sp, *e2.type, callback) ),
+            clone_ty_with(sp, e2.type, callback),
             e2.item,
             clone_path_params_with(sp, e2.params, callback)
             });
-        ),
-    (UfcsInherent,
+        }
+    TU_ARMA(UfcsInherent, e2) {
         return ::HIR::Path::Data::make_UfcsInherent({
-            box$( clone_ty_with(sp, *e2.type, callback) ),
+            clone_ty_with(sp, e2.type, callback),
             e2.item,
             clone_path_params_with(sp, e2.params, callback),
             clone_path_params_with(sp, e2.impl_params, callback)
             });
-        )
-    )
+        }
+    }
     throw "";
 }
 ::HIR::TypeRef clone_ty_with(const Span& sp, const ::HIR::TypeRef& tpl, t_cb_clone_ty callback)
@@ -211,7 +499,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
         return rv;
     }
 
-    TU_MATCH_HDRA( (tpl.m_data), {)
+    TU_MATCH_HDRA( (tpl.data()), {)
     TU_ARMA(Infer, e) {
         rv = ::HIR::TypeRef(e);
         }
@@ -229,7 +517,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
         // If the input binding was Opaque, AND the type changed, clear it back to Unbound
         if( e.binding.is_Opaque() /*&& rv != tpl*/ ) {
             // NOTE: The replacement can be Self=Self, which should trigger a binding clear.
-            rv.m_data.as_Path().binding = ::HIR::TypePathBinding();
+            rv.get_unique().as_Path().binding = ::HIR::TypePathBinding();
         }
         }
     TU_ARMA(Generic, e) {
@@ -260,10 +548,10 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
             } );
         }
     TU_ARMA(Array, e) {
-        rv = ::HIR::TypeRef( ::HIR::TypeData::make_Array({ box$(clone_ty_with(sp, *e.inner, callback)), e.size.clone() }) );
+        rv = ::HIR::TypeRef( ::HIR::TypeData::make_Array({ clone_ty_with(sp, e.inner, callback), e.size.clone() }) );
         }
     TU_ARMA(Slice, e) {
-        rv = ::HIR::TypeRef::new_slice( clone_ty_with(sp, *e.inner, callback) );
+        rv = ::HIR::TypeRef::new_slice( clone_ty_with(sp, e.inner, callback) );
         }
     TU_ARMA(Tuple, e) {
         ::std::vector< ::HIR::TypeRef>  types;
@@ -273,16 +561,16 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
         rv = ::HIR::TypeRef( mv$(types) );
         }
     TU_ARMA(Borrow, e) {
-        rv = ::HIR::TypeRef::new_borrow (e.type, clone_ty_with(sp, *e.inner, callback));
+        rv = ::HIR::TypeRef::new_borrow (e.type, clone_ty_with(sp, e.inner, callback));
         }
     TU_ARMA(Pointer, e) {
-        rv = ::HIR::TypeRef::new_pointer(e.type, clone_ty_with(sp, *e.inner, callback));
+        rv = ::HIR::TypeRef::new_pointer(e.type, clone_ty_with(sp, e.inner, callback));
         }
     TU_ARMA(Function, e) {
         ::HIR::FunctionType ft;
         ft.is_unsafe = e.is_unsafe;
         ft.m_abi = e.m_abi;
-        ft.m_rettype = box$( clone_ty_with(sp, *e.m_rettype, callback) );
+        ft.m_rettype = clone_ty_with(sp, e.m_rettype, callback);
         for( const auto& arg : e.m_arg_types )
             ft.m_arg_types.push_back( clone_ty_with(sp, arg, callback) );
         rv = ::HIR::TypeRef( mv$(ft) );
@@ -290,7 +578,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
     TU_ARMA(Closure, e) {
         ::HIR::TypeData::Data_Closure  oe;
         oe.node = e.node;
-        oe.m_rettype = box$( clone_ty_with(sp, *e.m_rettype, callback) );
+        oe.m_rettype = clone_ty_with(sp, e.m_rettype, callback);
         for(const auto& a : e.m_arg_types)
             oe.m_arg_types.push_back( clone_ty_with(sp, a, callback) );
         rv = ::HIR::TypeRef( mv$(oe) );
@@ -299,89 +587,91 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
     return rv;
 }
 
-namespace {
-    template<typename T>
-    t_cb_clone_ty monomorphise_type_with__closure(const Span& sp, const T& outer_tpl, t_cb_generic& callback, bool allow_infer)
+
+::HIR::TypeRef MonomorphiserPP::get_type(const Span& sp, const ::HIR::GenericRef& ty) const /*override*/
+{
+    if(ty.is_self())
     {
-        return [&sp,&outer_tpl,callback,allow_infer](const auto& tpl, auto& rv) {
-            if( tpl.m_data.is_Infer() && !allow_infer )
-               BUG(sp, "_ type found in " << outer_tpl);
-
-            if( tpl.m_data.is_Generic() ) {
-                rv = callback(tpl).clone();
-                return true;
+        if( const auto* s = this->get_self_type() )
+        {
+            return s->clone();
+        }
+        else
+        {
+            BUG(sp, "Unexpected Self");
+        }
+    }
+    else
+    {
+        switch(ty.group())
+        {
+        case 0:
+            if( const auto* p = this->get_impl_params() )
+            {
+                ASSERT_BUG(sp, ty.idx() < p->m_types.size(), "Type param " << ty << " out of range for (max " << p->m_types.size() << ")");
+                return p->m_types[ty.idx()].clone();
             }
-
-            return false;
-            };
+            else
+            {
+                BUG(sp, "Impl parameters were not expected (got " << ty << ")");
+            }
+            break;
+        case 1:
+            if( const auto* p = this->get_method_params() )
+            {
+                ASSERT_BUG(sp, ty.idx() < p->m_types.size(), "Type param " << ty << " out of range for (max " << p->m_types.size() << ")");
+                return p->m_types[ty.idx()].clone();
+            }
+            else
+            {
+                BUG(sp, "Method parameters were not expected (got " << ty << ")");
+            }
+            break;
+        default:
+            BUG(sp, "Unexpected type param " << ty);
+        }
+    }
+}
+::HIR::Literal MonomorphiserPP::get_value(const Span& sp, const ::HIR::GenericRef& val) const /*override*/
+{
+    switch(val.group())
+    {
+    case 0:
+        if( const auto* p = this->get_impl_params() )
+        {
+            ASSERT_BUG(sp, val.idx() < p->m_values.size(), "Value param " << val << " out of range for (max " << p->m_values.size() << ")");
+            return p->m_values[val.idx()].clone();
+        }
+        else
+        {
+            BUG(sp, "Impl parameters were not expected (got " << val << ")");
+        }
+        break;
+    case 1:
+        if( const auto* p = this->get_method_params() )
+        {
+            ASSERT_BUG(sp, val.idx() < p->m_values.size(), "Value param " << val << " out of range for (max " << p->m_values.size() << ")");
+            return p->m_values[val.idx()].clone();
+        }
+        else
+        {
+            BUG(sp, "Method parameters were not expected (got " << val << ")");
+        }
+        break;
+    default:
+        BUG(sp, "Unexpected value param " << val);
     }
 }
 
-::HIR::PathParams monomorphise_path_params_with(const Span& sp, const ::HIR::PathParams& tpl, t_cb_generic callback, bool allow_infer)
-{
-    return clone_path_params_with(sp, tpl, monomorphise_type_with__closure(sp, tpl, callback, allow_infer));
-}
-::HIR::GenericPath monomorphise_genericpath_with(const Span& sp, const ::HIR::GenericPath& tpl, t_cb_generic callback, bool allow_infer)
-{
-    return clone_ty_with__generic_path(sp, tpl, monomorphise_type_with__closure(sp, tpl, callback, allow_infer));
-}
-::HIR::TraitPath monomorphise_traitpath_with(const Span& sp, const ::HIR::TraitPath& tpl, t_cb_generic callback, bool allow_infer)
-{
-    return clone_ty_with__trait_path(sp, tpl, monomorphise_type_with__closure(sp, tpl, callback, allow_infer));
-}
-::HIR::Path monomorphise_path_with(const Span& sp, const ::HIR::Path& tpl, t_cb_generic callback, bool allow_infer)
-{
-    return clone_ty_with__path(sp, tpl, monomorphise_type_with__closure(sp, tpl, callback, allow_infer));
-}
-::HIR::TypeRef monomorphise_type_with_inner(const Span& sp, const ::HIR::TypeRef& outer_tpl, t_cb_generic callback, bool allow_infer)
-{
-    return clone_ty_with(sp, outer_tpl, monomorphise_type_with__closure(sp, outer_tpl, callback, allow_infer));
-}
-::HIR::TypeRef monomorphise_type_with(const Span& sp, const ::HIR::TypeRef& tpl, t_cb_generic callback, bool allow_infer)
-{
-    ::HIR::TypeRef  rv;
-    TRACE_FUNCTION_FR("tpl = " << tpl, rv);
-    rv = monomorphise_type_with_inner(sp, tpl, callback, allow_infer);
-    return rv;
-}
-
-// TODO: Rework this function to support all three classes not just impl-level
-// NOTE: This is _just_ for impl-level parameters
-::HIR::TypeRef monomorphise_type(const Span& sp, const ::HIR::GenericParams& params_def, const ::HIR::PathParams& params,  const ::HIR::TypeRef& tpl)
-{
-    DEBUG("tpl = " << tpl);
-    ASSERT_BUG(sp, params.m_types.size() == params_def.m_types.size(),
-        "Parameter count mismatch - exp " << params_def.m_types.size() << ", got " << params.m_types.size() << " for " << params << " and " << params_def.fmt_args());
-    return monomorphise_type_with(sp, tpl, [&](const auto& gt)->const auto& {
-        const auto& e = gt.m_data.as_Generic();
-        if( e.binding == 0xFFFF ) {
-            TODO(sp, "Handle 'Self' in `monomorphise_type`");
-        }
-        else if( (e.binding >> 8) == 0 ) {
-            auto idx = e.binding & 0xFF;
-            if( idx >= params.m_types.size() ) {
-                BUG(sp, "Generic param out of input range - " << gt << " >= " << params.m_types.size());
-            }
-            return params.m_types[idx];
-        }
-        else if( (e.binding >> 8) == 1 ) {
-            TODO(sp, "Handle fn-level params in `monomorphise_type` - " << gt);
-        }
-        else {
-            BUG(sp, "Unknown param in `monomorphise_type` - " << gt);
-        }
-        }, false);
-}
-
-t_cb_generic MonomorphState::get_cb(const Span& sp) const
-{
-    return monomorphise_type_get_cb(sp, this->self_ty, this->pp_impl, this->pp_method);
-}
+//t_cb_generic MonomorphState::get_cb(const Span& sp) const
+//{
+//    return monomorphise_type_get_cb(sp, this->self_ty, this->pp_impl, this->pp_method);
+//}
 ::std::ostream& operator<<(::std::ostream& os, const MonomorphState& ms)
 {
     os << "MonomorphState {";
-    if(ms.self_ty)
-        os << " self=" << *ms.self_ty;
+    if(ms.self_ty != HIR::TypeRef())
+        os << " self=" << ms.self_ty;
     if(ms.pp_impl)
         os << " I=" << *ms.pp_impl;
     if(ms.pp_method)

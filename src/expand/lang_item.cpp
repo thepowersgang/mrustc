@@ -11,7 +11,7 @@
 #include "../ast/crate.hpp"
 
 
-void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, const ::std::string& name, AST::eItemType type)
+void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::AbsolutePath& path, const ::std::string& name, AST::eItemType type)
 {
     if(name == "phantom_fn") {
         // - Just save path
@@ -30,7 +30,7 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
     else if( name == "copy" ) {
         DEBUG("Bind 'copy' to " << path);
     }
-    else if( TARGETVER_1_29 && name == "clone" ) {}   // - Trait
+    else if( TARGETVER_LEAST_1_29 && name == "clone" ) {}   // - Trait
     // ops traits
     else if( name == "drop" ) { DEBUG("Bind '"<<name<<"' to " << path); }
     else if( name == "add" ) { DEBUG("Bind '"<<name<<"' to " << path); }
@@ -69,7 +69,7 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
 
     else if( name == "eq"  ) { DEBUG("Bind '"<<name<<"' to " << path); }
     else if( name == "ord" ) { DEBUG("Bind '"<<name<<"' to " << path); }	// In 1.29 this is Ord, before it was PartialOrd
-    else if( TARGETVER_1_29 && name == "partial_ord" ) { DEBUG("Bind '"<<name<<"' to " << path); }    // New name for v1.29
+    else if( TARGETVER_LEAST_1_29 && name == "partial_ord" ) { DEBUG("Bind '"<<name<<"' to " << path); }    // New name for v1.29
     else if( name == "unsize" ) { DEBUG("Bind '"<<name<<"' to " << path); }
     else if( name == "coerce_unsized" ) { DEBUG("Bind '"<<name<<"' to " << path); }
     else if( name == "freeze" ) { DEBUG("Bind '"<<name<<"' to " << path); }
@@ -78,7 +78,7 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
 
     else if( name == "debug_trait" ) { /* TODO: Poke derive() with this */ }
 
-    else if( TARGETVER_1_29 && name == "termination" ) { }    // 1.29 - trait used for non-() main
+    else if( TARGETVER_LEAST_1_29 && name == "termination" ) { }    // 1.29 - trait used for non-() main
 
     // Structs
     else if( name == "non_zero" ) { }
@@ -88,9 +88,12 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
     else if( name == "range_from" ) { }
     else if( name == "range_to" ) { }
     else if( name == "unsafe_cell" ) { }
-    else if( TARGETVER_1_29 && name == "alloc_layout") { }
-    else if( TARGETVER_1_29 && name == "panic_info" ) {}    // Struct
-    else if( TARGETVER_1_29 && name == "manually_drop" ) {}    // Struct
+    else if( TARGETVER_LEAST_1_29 && name == "alloc_layout") { }
+    else if( TARGETVER_LEAST_1_29 && name == "panic_info" ) {}    // Struct
+    else if( TARGETVER_LEAST_1_29 && name == "manually_drop" ) {}    // Struct
+
+    else if( TARGETVER_LEAST_1_39 && name == "arc" ) {}    // Struct
+    else if( TARGETVER_LEAST_1_39 && name == "rc" ) {}    // Struct
 
     else if( /*TARGETVER_1_39 &&*/ name == "maybe_uninit" ) {}    // Union
 
@@ -107,8 +110,8 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
     else if( /*TARGETVER_1_39 &&*/ name == "dispatch_from_dyn" ) {}    // Trait
 
     // Generators
-    else if( TARGETVER_1_29 && name == "generator" ) {}   // - Trait
-    else if( TARGETVER_1_29 && name == "generator_state" ) {}   // - State enum
+    else if( TARGETVER_LEAST_1_29 && name == "generator" ) {}   // - Trait
+    else if( TARGETVER_LEAST_1_29 && name == "generator_state" ) {}   // - State enum
 
     // Statics
     else if( name == "msvc_try_filter" ) { }
@@ -126,6 +129,7 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
     else if( name == "str_eq" ) { }
     else if( name == "drop_in_place" ) { }
     else if( name == "align_offset" ) { }
+    else if( TARGETVER_LEAST_1_39 && name == "begin_panic" ) {}    // Function
     // - builtin `box` support
     else if( name == "exchange_malloc" ) { }
     else if( name == "exchange_free" ) { }
@@ -172,7 +176,7 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
         return ;
     }
 
-    auto rv = crate.m_lang_items.insert( ::std::make_pair( name, ::AST::Path(path) ) );
+    auto rv = crate.m_lang_items.insert( ::std::make_pair(name, path) );
     if( !rv.second ) {
         const auto& other_path = rv.first->second;
         if( path != other_path ) {
@@ -187,7 +191,7 @@ class Decorator_LangItem:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
         TU_MATCH_DEF(::AST::Item, (i), (e),
         (
@@ -245,15 +249,15 @@ public:
         // collections
         else if( name == "str" ) {}
         else if( name == "slice" ) {}
-        else if( TARGETVER_1_29 && name == "slice_u8" ) {}  // libcore now, `impl [u8]`
-        else if( TARGETVER_1_29 && name == "slice_alloc" ) {}   // liballoc's impls on [T]
-        else if( TARGETVER_1_29 && name == "slice_u8_alloc" ) {}   // liballoc's impls on [u8]
-        else if( TARGETVER_1_29 && name == "str_alloc" ) {}   // liballoc's impls on str
+        else if( TARGETVER_LEAST_1_29 && name == "slice_u8" ) {}  // libcore now, `impl [u8]`
+        else if( TARGETVER_LEAST_1_29 && name == "slice_alloc" ) {}   // liballoc's impls on [T]
+        else if( TARGETVER_LEAST_1_29 && name == "slice_u8_alloc" ) {}   // liballoc's impls on [u8]
+        else if( TARGETVER_LEAST_1_29 && name == "str_alloc" ) {}   // liballoc's impls on str
         // std - interestingly
         else if( name == "f32" ) {}
         else if( name == "f64" ) {}
-        else if( TARGETVER_1_29 && name == "f32_runtime" ) {}
-        else if( TARGETVER_1_29 && name == "f64_runtime" ) {}
+        else if( TARGETVER_LEAST_1_29 && name == "f32_runtime" ) {}
+        else if( TARGETVER_LEAST_1_29 && name == "f64_runtime" ) {}
         else {
             ERROR(sp, E0000, "Unknown lang item '" << name << "' on impl");
         }
@@ -268,19 +272,19 @@ class Decorator_Main:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
         if( i.is_None() ) {
             // Ignore.
         }
-        else TU_IFLET(::AST::Item, i, Function, e,
-            auto rv = crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-main"), ::AST::Path(path) ));
+        else if( /*const auto* e =*/ i.opt_Function() ) {
+            auto rv = crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-main"), path ));
             if( !rv.second )
             {
                 const auto& other_path = rv.first->second;
                 ERROR(sp, E0000, "Duplicate definition of #[main] - " << other_path << " and " << path);
             }
-        )
+        }
         else {
             ERROR(sp, E0000, "#[main] on non-function " << path);
         }
@@ -292,16 +296,20 @@ class Decorator_Start:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
-        TU_IFLET(::AST::Item, i, Function, e,
-            auto rv = crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-start"), ::AST::Path(path) ));
+        if(i.is_None())
+        {
+        }
+        else if(i.is_Function())
+        {
+            auto rv = crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-start"), path ));
             if( !rv.second )
             {
                 const auto& other_path = rv.first->second;
                 ERROR(sp, E0000, "Duplicate definition of #[start] - " << other_path << " and " << path);
             }
-        )
+        }
         else {
             ERROR(sp, E0000, "#[start] on non-function " << path);
         }
@@ -313,18 +321,71 @@ class Decorator_PanicImplementation:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
-        TU_IFLET(::AST::Item, i, Function, e,
-            auto rv = crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-panic_implementation"), ::AST::Path(path) ));
+        if(i.is_Function())
+        {
+            auto rv = crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-panic_implementation"), path ));
             if( !rv.second )
             {
                 const auto& other_path = rv.first->second;
                 ERROR(sp, E0000, "Duplicate definition of #[panic_implementation] - " << other_path << " and " << path);
             }
-        )
+        }
         else {
             ERROR(sp, E0000, "#[panic_implementation] on non-function " << path);
+        }
+    }
+};
+
+class Decorator_PanicHandler:
+    public ExpandDecorator
+{
+public:
+    AttrStage stage() const override { return AttrStage::Post; }
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    {
+        if(const auto* _e = i.opt_Function())
+        {
+            auto rv = crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-panic_implementation"), path ));
+            if( !rv.second )
+            {
+                const auto& other_path = rv.first->second;
+                ERROR(sp, E0000, "Duplicate definition of #[panic_handler] - " << other_path << " and " << path);
+            }
+        }
+        else {
+            ERROR(sp, E0000, "#[panic_handler] on non-function " << path);
+        }
+    }
+};
+
+class Decorator_RustcStdInternalSymbol:
+    public ExpandDecorator
+{
+public:
+    AttrStage stage() const override { return AttrStage::Post; }
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    {
+        // Attribute that acts as like `#[no_mangle]` `#[linkage="external"]`
+    }
+};
+
+class Decorator_AllocErrorHandler:
+    public ExpandDecorator
+{
+public:
+    AttrStage stage() const override { return AttrStage::Post; }
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    {
+        if(const auto* _e = i.opt_Function())
+        {
+            auto rv = crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-alloc_error_handler"), path ));
+            if( !rv.second )
+            {
+                const auto& other_path = rv.first->second;
+                ERROR(sp, E0000, "Duplicate definition of #[alloc_error_handler] - " << other_path << " and " << path);
+            }
         }
     }
 };
@@ -333,5 +394,8 @@ STATIC_DECORATOR("lang", Decorator_LangItem)
 STATIC_DECORATOR("main", Decorator_Main);
 STATIC_DECORATOR("start", Decorator_Start);
 STATIC_DECORATOR("panic_implementation", Decorator_PanicImplementation);
+STATIC_DECORATOR("panic_handler", Decorator_PanicHandler);
+STATIC_DECORATOR("rustc_std_internal_symbol", Decorator_RustcStdInternalSymbol);
+STATIC_DECORATOR("alloc_error_handler", Decorator_AllocErrorHandler);
 
 

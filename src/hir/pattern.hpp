@@ -50,6 +50,8 @@ struct PatternBinding
         m_slot( slot ),
         m_implicit_deref_count(0)
     {}
+
+    friend ::std::ostream& operator<<(::std::ostream& os, const PatternBinding& x);
 };
 
 struct Pattern
@@ -78,6 +80,24 @@ struct Pattern
         End,
     };
 
+    TAGGED_UNION_EX(PathBinding, (), Unbound, (
+        (Unbound, struct {}),
+        (Struct, const Struct*),
+        (Enum, struct {
+            const Enum* ptr;
+            unsigned var_idx;
+            })
+        ), (), (), (
+            PathBinding clone() const {
+                TU_MATCH_HDRA( (*this), {)
+                TU_ARMA(Unbound, e) return e;
+                TU_ARMA(Struct, e) return e;
+                TU_ARMA(Enum, e) return e;
+                }
+                abort();
+            };
+        ));
+
     TAGGED_UNION(Data, Any,
         // Irrefutable / destructuring
         (Any,       struct { } ),
@@ -91,19 +111,27 @@ struct Pattern
             ::std::vector<Pattern> trailing;
             unsigned int total_size;
             }),
-        (StructValue, struct {
-            GenericPath path;
-            const Struct*   binding;
+        // Maybe refutable
+        // - Can be converted into `Value`, or resolved to be an enum/struct value
+        (PathValue, struct {
+            ::HIR::Path path;
+            PathBinding binding;
             }),
-        (StructTuple, struct {
-            // NOTE: Type paths in patterns _can_ have parameters
-            GenericPath path;
-            const Struct*   binding;
-            ::std::vector<Pattern> sub_patterns;
+        // - Tuple-like enum/struct value
+        (PathTuple, struct {
+            ::HIR::Path path;
+            PathBinding binding;
+            ::std::vector<Pattern> leading;
+            bool    is_split;
+            ::std::vector<Pattern> trailing;
+            // Cache making MIR gen easier for split patterns
+            unsigned int total_size;
             } ),
-        (Struct,    struct {
-            GenericPath path;
-            const Struct*   binding;
+        // - Struct-like enum/struct value
+        (PathNamed, struct {
+            ::HIR::Path path;
+            PathBinding binding;
+
             ::std::vector< ::std::pair<RcString, Pattern> > sub_patterns;
             bool is_exhaustive;
 
@@ -111,27 +139,9 @@ struct Pattern
                 return sub_patterns.empty() && !is_exhaustive;
             }
             } ),
-        // Refutable
+        // Always refutable
         (Value,     struct { Value val; } ),
         (Range,     struct { Value start; Value end; } ),
-        (EnumValue, struct {
-            GenericPath path;
-            const Enum* binding_ptr;
-            unsigned binding_idx;
-            } ),
-        (EnumTuple, struct {
-            GenericPath path;
-            const Enum* binding_ptr;
-            unsigned binding_idx;
-            ::std::vector<Pattern> sub_patterns;
-            } ),
-        (EnumStruct, struct {
-            GenericPath path;
-            const Enum* binding_ptr;
-            unsigned binding_idx;
-            ::std::vector< ::std::pair<RcString, Pattern> > sub_patterns;
-            bool is_exhaustive;
-            } ),
         (Slice,     struct {
             ::std::vector<Pattern> sub_patterns;
             } ),

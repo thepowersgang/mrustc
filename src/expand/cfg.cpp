@@ -2,7 +2,7 @@
  * MRustC - Rust Compiler
  * - By John Hodge (Mutabah/thePowersGang)
  *
- * expand/cfg.hpp
+ * expand/cfg.cpp
  * - cfg! and #[cfg] handling
  */
 #include <synext.hpp>
@@ -129,10 +129,11 @@ class CCfgHandler:
         if( check_cfg(sp, mi) ) {
         }
         else {
-            crate.m_root_module.items().clear();
+            // Remove all items (can't remove the module)
+            crate.m_root_module.m_items.clear();
         }
     }
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
         TRACE_FUNCTION_FR("#[cfg] item - " << mi, (i.is_None() ? "Deleted" : ""));
         if( check_cfg(sp, mi) ) {
             // Leave

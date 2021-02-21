@@ -103,15 +103,15 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_unwrapped_type(::HIR::TypeRef& tmp
 {
     TU_MATCH_HDRA( (w), {)
     TU_ARMA(Field, field_index) {
-        TU_MATCH_HDRA( (ty.m_data), {)
+        TU_MATCH_HDRA( (ty.data()), {)
         default:
             MIR_BUG(*this, "Field access on unexpected type - " << ty);
         // Array and Slice use LValue::Field when the index is constant and known-good
         TU_ARMA(Array, te) {
-            return *te.inner;
+            return te.inner;
             }
         TU_ARMA(Slice, te) {
-            return *te.inner;
+            return te.inner;
             }
         TU_ARMA(Tuple, te) {
             MIR_ASSERT(*this, field_index < te.size(), "Field index out of range in tuple " << field_index << " >= " << te.size());
@@ -123,14 +123,7 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_unwrapped_type(::HIR::TypeRef& tmp
             {
                 const auto& str = **tep;
                 auto maybe_monomorph = [&](const auto& ty)->const auto& {
-                    if( monomorphise_type_needed(ty) ) {
-                        tmp = monomorphise_type(sp, str.m_params, te.path.m_data.as_Generic().m_params, ty);
-                        m_resolve.expand_associated_types(sp, tmp);
-                        return tmp;
-                    }
-                    else {
-                        return ty;
-                    }
+                    return m_resolve.monomorph_expand_opt(sp, tmp, ty, MonomorphStatePtr(nullptr, &te.path.m_data.as_Generic().m_params, nullptr));
                     };
                 TU_MATCHA( (str.m_data), (se),
                 (Unit,
@@ -150,14 +143,7 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_unwrapped_type(::HIR::TypeRef& tmp
             {
                 const auto& unm = **tep;
                 auto maybe_monomorph = [&](const ::HIR::TypeRef& t)->const ::HIR::TypeRef& {
-                    if( monomorphise_type_needed(t) ) {
-                        tmp = monomorphise_type(sp, unm.m_params, te.path.m_data.as_Generic().m_params, t);
-                        m_resolve.expand_associated_types(sp, tmp);
-                        return tmp;
-                    }
-                    else {
-                        return t;
-                    }
+                    return m_resolve.monomorph_expand_opt(sp, tmp, t, MonomorphStatePtr(nullptr, &te.path.m_data.as_Generic().m_params, nullptr));
                     };
                 MIR_ASSERT(*this, field_index < unm.m_variants.size(), "Field index out of range for union");
                 return maybe_monomorph(unm.m_variants.at(field_index).second.ent);
@@ -170,7 +156,7 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_unwrapped_type(::HIR::TypeRef& tmp
         }
         }
     TU_ARMA(Deref, _e) {
-        TU_MATCH_HDRA( (ty.m_data), {)
+        TU_MATCH_HDRA( (ty.data()), {)
         default:
             MIR_BUG(*this, "Deref on unexpected type - " << ty);
         TU_ARMA(Path, te) {
@@ -183,27 +169,27 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_unwrapped_type(::HIR::TypeRef& tmp
             }
             }
         TU_ARMA(Pointer, te) {
-            return *te.inner;
+            return te.inner;
             }
         TU_ARMA(Borrow, te) {
-            return *te.inner;
+            return te.inner;
             }
         }
         }
     TU_ARMA(Index, index_local) {
-        TU_MATCH_HDRA( (ty.m_data), { )
+        TU_MATCH_HDRA( (ty.data()), { )
         default:
             MIR_BUG(*this, "Index on unexpected type - " << ty);
         TU_ARMA(Slice, te) {
-            return *te.inner;
+            return te.inner;
             }
         TU_ARMA(Array, te) {
-            return *te.inner;
+            return te.inner;
             }
         }
         }
     TU_ARMA(Downcast, variant_index) {
-        TU_MATCH_HDRA( (ty.m_data), {)
+        TU_MATCH_HDRA( (ty.data()), {)
         default:
             MIR_BUG(*this, "Downcast on unexpected type - " << ty);
         TU_ARMA(Path, te) {
@@ -217,14 +203,7 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_unwrapped_type(::HIR::TypeRef& tmp
                 const auto& variant = variants[variant_index];
 
                 const auto& var_ty = variant.type;
-                if( monomorphise_type_needed(var_ty) ) {
-                    tmp = monomorphise_type(sp, enm.m_params, te.path.m_data.as_Generic().m_params, var_ty);
-                    m_resolve.expand_associated_types(sp, tmp);
-                    return tmp;
-                }
-                else {
-                    return var_ty;
-                }
+                return m_resolve.monomorph_expand_opt(sp, tmp, var_ty, MonomorphStatePtr(nullptr, &te.path.m_data.as_Generic().m_params, nullptr));
             }
             else
             {
@@ -233,15 +212,7 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_unwrapped_type(::HIR::TypeRef& tmp
                 const auto& variant = unm.m_variants[variant_index];
                 const auto& var_ty = variant.second.ent;
 
-                //return m_resolve.maybe_monomorph(sp, tmp, unm.m_params, te.path.m_data.as_Generic().m_params, var_ty);
-                if( monomorphise_type_needed(var_ty) ) {
-                    tmp = monomorphise_type(sp, unm.m_params, te.path.m_data.as_Generic().m_params, var_ty);
-                    m_resolve.expand_associated_types(sp, tmp);
-                    return tmp;
-                }
-                else {
-                    return var_ty;
-                }
+                return m_resolve.monomorph_expand_opt(sp, tmp, var_ty, MonomorphStatePtr(nullptr, &te.path.m_data.as_Generic().m_params, nullptr));
             }
             }
         }
@@ -261,32 +232,32 @@ const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, cons
 
 ::HIR::TypeRef MIR::TypeResolve::get_const_type(const ::MIR::Constant& c) const
 {
-    TU_MATCHA( (c), (e),
-    (Int,
+    TU_MATCH_HDRA( (c), {)
+    TU_ARMA(Int, e) {
         return e.t;
-        ),
-    (Uint,
+        }
+    TU_ARMA(Uint, e) {
         return e.t;
-        ),
-    (Float,
+        }
+    TU_ARMA(Float, e) {
         return e.t;
-        ),
-    (Bool,
+        }
+    TU_ARMA(Bool, e) {
         return ::HIR::CoreType::Bool;
-        ),
-    (Bytes,
+        }
+    TU_ARMA(Bytes, e) {
         return ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::TypeRef::new_array( ::HIR::CoreType::U8, e.size() ) );
-        ),
-    (StaticString,
+        }
+    TU_ARMA(StaticString, e) {
         return ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::CoreType::Str );
-        ),
-    (Const,
+        }
+    TU_ARMA(Const, e) {
         MonomorphState  p;
         auto v = m_resolve.get_value(this->sp, *e.p, p, /*signature_only=*/true);
         if( const auto* ve = v.opt_Constant() ) {
             const auto& ty = (*ve)->m_type;
             if( monomorphise_type_needed(ty) ) {
-                auto rv = p.monomorph(this->sp, ty);
+                auto rv = p.monomorph_type(this->sp, ty);
                 m_resolve.expand_associated_types(this->sp, rv);
                 return rv;
             }
@@ -296,51 +267,63 @@ const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, cons
         else {
             MIR_BUG(*this, "get_const_type - Not a constant " << *e.p);
         }
-        ),
-    (Generic,
+        }
+    TU_ARMA(Generic, e) {
         return m_resolve.get_const_param_type(this->sp, e.binding).clone();
-        ),
-    (ItemAddr,
+        }
+    TU_ARMA(ItemAddr, e) {
         MonomorphState  p;
         auto v = m_resolve.get_value(this->sp, *e, p, /*signature_only=*/true);
-        TU_MATCHA( (v), (ve),
-        (NotFound,
+        TU_MATCH_HDRA( (v), {)
+        TU_ARMA(NotFound, ve) {
             MIR_BUG(*this, "get_const_type - ItemAddr points to unknown value - " << c);
-            ),
-        (Constant,
-            MIR_TODO(*this, "get_const_type - Get type for constant borrow `" << c << "`");
-            ),
-        (Static,
+            }
+        TU_ARMA(NotYetKnown, ve) {
+            MIR_BUG(*this, "get_const_type - get_value returned NotYetKnown with signature_only=true");
+            }
+        TU_ARMA(Constant, ve) {
             const auto& ty = ve->m_type;
             HIR::TypeRef    rv;
             if( monomorphise_type_needed(ty) ) {
-                rv = p.monomorph(this->sp, ty);
+                rv = p.monomorph_type(this->sp, ty);
                 m_resolve.expand_associated_types(this->sp, rv);
             }
             else {
                 rv = ty.clone();
             }
             return HIR::TypeRef::new_borrow(HIR::BorrowType::Shared, mv$(rv));
-            ),
-        (Function,
+            }
+        TU_ARMA(Static, ve) {
+            const auto& ty = ve->m_type;
+            HIR::TypeRef    rv;
+            if( monomorphise_type_needed(ty) ) {
+                rv = p.monomorph_type(this->sp, ty);
+                m_resolve.expand_associated_types(this->sp, rv);
+            }
+            else {
+                rv = ty.clone();
+            }
+            return HIR::TypeRef::new_borrow(HIR::BorrowType::Shared, mv$(rv));
+            }
+        TU_ARMA(Function, ve) {
             ::HIR::FunctionType ft;
             ft.is_unsafe = ve->m_unsafe;
             ft.m_abi = ve->m_abi;
-            ft.m_rettype = box$( p.monomorph(this->sp, ve->m_return) );
+            ft.m_rettype = p.monomorph_type(this->sp, ve->m_return);
             ft.m_arg_types.reserve(ve->m_args.size());
             for(const auto& arg : ve->m_args)
-                ft.m_arg_types.push_back( p.monomorph(this->sp, arg.second) );
+                ft.m_arg_types.push_back( p.monomorph_type(this->sp, arg.second) );
             auto rv = ::HIR::TypeRef( mv$(ft) );
             m_resolve.expand_associated_types(this->sp, rv);
             return rv;
-            ),
-        (EnumValue,
+            }
+        TU_ARMA(EnumValue, ve) {
             MIR_BUG(*this, "get_const_type - ItemAddr points to an enum value - " << c);
-            ),
-        (EnumConstructor,
+            }
+        TU_ARMA(EnumConstructor, ve) {
             const auto& data_variant = ve.e->m_data.as_Data()[ve.v];
-            MIR_ASSERT(*this, data_variant.type.m_data.is_Path(), c << " enum variant type must be Path - " << data_variant.type);
-            const auto& dvt_path = data_variant.type.m_data.as_Path();
+            MIR_ASSERT(*this, data_variant.type.data().is_Path(), c << " enum variant type must be Path - " << data_variant.type);
+            const auto& dvt_path = data_variant.type.data().as_Path();
             MIR_ASSERT(*this, dvt_path.binding.is_Struct(), c << " enum variant type path binding must be Struct - " << data_variant.type);
             const auto& str = *dvt_path.binding.as_Struct();
             MIR_ASSERT(*this, str.m_data.is_Tuple(), c << " must point to a tuple-like variant");
@@ -351,19 +334,19 @@ const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, cons
             ft.m_abi = ABI_RUST;
             auto enum_path = e->clone();
             enum_path.m_data.as_Generic().m_path.m_components.pop_back();
-            ft.m_rettype = box$( ::HIR::TypeRef::new_path(mv$(enum_path), ve.e) );
+            ft.m_rettype = ::HIR::TypeRef::new_path(mv$(enum_path), ve.e);
             ft.m_arg_types.reserve(str_data.size());
             for(const auto& fld : str_data)
-                ft.m_arg_types.push_back( p.monomorph(this->sp, fld.ent) );
+                ft.m_arg_types.push_back( p.monomorph_type(this->sp, fld.ent) );
 
             auto rv = ::HIR::TypeRef( mv$(ft) );
             m_resolve.expand_associated_types(this->sp, rv);
             return rv;
-            ),
-        (StructConstant,
+            }
+        TU_ARMA(StructConstant, ve) {
             MIR_BUG(*this, c << " pointing to a struct constant");
-            ),
-        (StructConstructor,
+            }
+        TU_ARMA(StructConstructor, ve) {
             // TODO: Move this to a method on the struct?
             const auto& str = *ve.s;
             MIR_ASSERT(*this, str.m_data.is_Tuple(), c << " must point to a tuple-like struct");
@@ -372,18 +355,18 @@ const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, cons
             ::HIR::FunctionType ft;
             ft.is_unsafe = false;
             ft.m_abi = ABI_RUST;
-            ft.m_rettype = box$( ::HIR::TypeRef::new_path( ::HIR::GenericPath(*ve.p, e->m_data.as_Generic().m_params.clone()), &str) );
+            ft.m_rettype = ::HIR::TypeRef::new_path( ::HIR::GenericPath(*ve.p, e->m_data.as_Generic().m_params.clone()), &str);
             ft.m_arg_types.reserve(str_data.size());
             for(const auto& fld : str_data)
-                ft.m_arg_types.push_back( p.monomorph(this->sp, fld.ent) );
+                ft.m_arg_types.push_back( p.monomorph_type(this->sp, fld.ent) );
 
             auto rv = ::HIR::TypeRef( mv$(ft) );
             m_resolve.expand_associated_types(this->sp, rv);
             return rv;
-            )
-        )
-        )
-    )
+            }
+        }
+        }
+    }
     throw "";
 }
 bool ::MIR::TypeResolve::lvalue_is_copy(const ::MIR::LValue& val) const
@@ -398,181 +381,54 @@ const ::HIR::TypeRef* ::MIR::TypeResolve::is_type_owned_box(const ::HIR::TypeRef
 
 using namespace MIR::visit;
 
-// --------------------------------------------------------------------
-// MIR_Helper_GetLifetimes
-// --------------------------------------------------------------------
 namespace MIR {
+
 namespace visit {
+    struct LValueCbVisitor:
+        public Visitor
+    {
+        ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb;
+
+        LValueCbVisitor(::std::function<bool(const ::MIR::LValue& , ValUsage)> cb):
+            cb(std::move(cb))
+        {
+        }
+
+        bool visit_lvalue(const ::MIR::LValue& lv, ValUsage u) override {
+            if(cb(lv, u))
+                return true;
+            return Visitor::visit_lvalue(lv, u);
+        }
+    };
+
     bool visit_mir_lvalue(const ::MIR::LValue& lv, ValUsage u, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb)
     {
-        if( cb(lv, u) )
-            return true;
-#if 1
-        for(const auto& w : lv.m_wrappers)
-        {
-            if( w.is_Index() )
-            {
-                cb(LValue::new_Local(w.as_Index()), ValUsage::Read);
-            }
-        }
-#else
-        TU_MATCHA( (lv), (e),
-        (Return,
-            ),
-        (Argument,
-            ),
-        (Local,
-            ),
-        (Static,
-            ),
-        (Field,
-            return visit_mir_lvalue(*e.val, u, cb);
-            ),
-        (Deref,
-            return visit_mir_lvalue(*e.val, ValUsage::Read, cb);
-            ),
-        (Index,
-            bool rv = false;
-            rv |= visit_mir_lvalue(*e.val, u, cb);
-            rv |= visit_mir_lvalue(*e.idx, ValUsage::Read, cb);
-            return rv;
-            ),
-        (Downcast,
-            return visit_mir_lvalue(*e.val, u, cb);
-            )
-        )
-#endif
-        return false;
+        LValueCbVisitor v { mv$(cb) };
+        return v.visit_lvalue(lv, u);
     }
 
     bool visit_mir_lvalue(const ::MIR::Param& p, ValUsage u, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb)
     {
-        if( const auto* e = p.opt_LValue() )
-        {
-            if(cb(*e, ValUsage::Move))
-                return true;
-            return visit_mir_lvalue(*e, u, cb);
-        }
-        else
-        {
-            return false;
-        }
+        LValueCbVisitor v { mv$(cb) };
+        return v.visit_param(p, u);
     }
 
     bool visit_mir_lvalues(const ::MIR::RValue& rval, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb)
     {
-        bool rv = false;
-        TU_MATCHA( (rval), (se),
-        (Use,
-            if(cb(se, ValUsage::Move))
-                return true;
-            rv |= visit_mir_lvalue(se, ValUsage::Read, cb);
-            ),
-        (Constant,
-            ),
-        (SizedArray,
-            rv |= visit_mir_lvalue(se.val, ValUsage::Read, cb);
-            ),
-        (Borrow,
-            rv |= visit_mir_lvalue(se.val, ValUsage::Borrow, cb);
-            ),
-        (Cast,
-            rv |= visit_mir_lvalue(se.val, ValUsage::Read, cb);
-            ),
-        (BinOp,
-            rv |= visit_mir_lvalue(se.val_l, ValUsage::Read, cb);
-            rv |= visit_mir_lvalue(se.val_r, ValUsage::Read, cb);
-            ),
-        (UniOp,
-            rv |= visit_mir_lvalue(se.val, ValUsage::Read, cb);
-            ),
-        (DstMeta,
-            rv |= visit_mir_lvalue(se.val, ValUsage::Read, cb);
-            ),
-        (DstPtr,
-            rv |= visit_mir_lvalue(se.val, ValUsage::Read, cb);
-            ),
-        (MakeDst,
-            rv |= visit_mir_lvalue(se.ptr_val, ValUsage::Read, cb);
-            rv |= visit_mir_lvalue(se.meta_val, ValUsage::Read, cb);
-            ),
-        (Tuple,
-            for(auto& v : se.vals)
-                rv |= visit_mir_lvalue(v, ValUsage::Read, cb);
-            ),
-        (Array,
-            for(auto& v : se.vals)
-                rv |= visit_mir_lvalue(v, ValUsage::Read, cb);
-            ),
-        (Variant,
-            rv |= visit_mir_lvalue(se.val, ValUsage::Read, cb);
-            ),
-        (Struct,
-            for(auto& v : se.vals)
-                rv |= visit_mir_lvalue(v, ValUsage::Read, cb);
-            )
-        )
-        return rv;
+        LValueCbVisitor v { mv$(cb) };
+        return v.visit_rvalue(rval);
     }
 
     bool visit_mir_lvalues(const ::MIR::Statement& stmt, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb)
     {
-        bool rv = false;
-        TU_MATCHA( (stmt), (e),
-        (Assign,
-            rv |= visit_mir_lvalues(e.src, cb);
-            rv |= visit_mir_lvalue(e.dst, ValUsage::Write, cb);
-            ),
-        (Asm,
-            for(auto& v : e.inputs)
-                rv |= visit_mir_lvalue(v.second, ValUsage::Read, cb);
-            for(auto& v : e.outputs)
-                rv |= visit_mir_lvalue(v.second, ValUsage::Write, cb);
-            ),
-        (SetDropFlag,
-            ),
-        (Drop,
-            rv |= visit_mir_lvalue(e.slot, ValUsage::Move, cb);
-            ),
-        (ScopeEnd,
-            )
-        )
-        return rv;
+        LValueCbVisitor v { mv$(cb) };
+        return v.visit_stmt(stmt);
     }
 
     bool visit_mir_lvalues(const ::MIR::Terminator& term, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb)
     {
-        bool rv = false;
-        TU_MATCHA( (term), (e),
-        (Incomplete,
-            ),
-        (Return,
-            ),
-        (Diverge,
-            ),
-        (Goto,
-            ),
-        (Panic,
-            ),
-        (If,
-            rv |= visit_mir_lvalue(e.cond, ValUsage::Read, cb);
-            ),
-        (Switch,
-            rv |= visit_mir_lvalue(e.val, ValUsage::Read, cb);
-            ),
-        (SwitchValue,
-            rv |= visit_mir_lvalue(e.val, ValUsage::Read, cb);
-            ),
-        (Call,
-            if( e.fcn.is_Value() ) {
-                rv |= visit_mir_lvalue(e.fcn.as_Value(), ValUsage::Read, cb);
-            }
-            for(auto& v : e.args)
-                rv |= visit_mir_lvalue(v, ValUsage::Read, cb);
-            rv |= visit_mir_lvalue(e.ret_val, ValUsage::Write, cb);
-            )
-        )
-        return rv;
+        LValueCbVisitor v { mv$(cb) };
+        return v.visit_terminator(term);
     }
     /*
     void visit_mir_lvalues_mut(::MIR::TypeResolve& state, ::MIR::Function& fcn, ::std::function<bool(::MIR::LValue& , ValUsage)> cb)
@@ -598,43 +454,27 @@ namespace visit {
     */
 
     void visit_terminator_target_mut(::MIR::Terminator& term, ::std::function<void(::MIR::BasicBlockId&)> cb) {
-        TU_MATCH_HDRA( (term), {)
-        TU_ARMA(Incomplete, e) {
+        struct TermCbVisitorMut:
+            public VisitorMut
+        {
+            ::std::function<void(::MIR::BasicBlockId&)> cb;
+
+            bool visit_block_id(::MIR::BasicBlockId& x) override {
+                cb(x);
+                return false;
             }
-        TU_ARMA(Return, e) {
-            }
-        TU_ARMA(Diverge, e) {
-            }
-        TU_ARMA(Goto, e) {
-            cb(e);
-            }
-        TU_ARMA(Panic, e) {
-            cb(e.dst);
-            }
-        TU_ARMA(If, e) {
-            cb(e.bb0);
-            cb(e.bb1);
-            }
-        TU_ARMA(Switch, e) {
-            for(auto& target : e.targets)
-                cb(target);
-            }
-        TU_ARMA(SwitchValue, e) {
-            for(auto& target : e.targets)
-                cb(target);
-            cb(e.def_target);
-            }
-        TU_ARMA(Call, e) {
-            cb(e.ret_block);
-            cb(e.panic_block);
-            }
-        }
+        } v;
+        v.cb = std::move(cb);
+        v.visit_terminator(term);
     }
     void visit_terminator_target(const ::MIR::Terminator& term, ::std::function<void(const ::MIR::BasicBlockId&)> cb) {
         visit_terminator_target_mut(const_cast<::MIR::Terminator&>(term), cb);
     }
 }   // namespace visit
 }   // namespace MIR
+// --------------------------------------------------------------------
+// MIR_Helper_GetLifetimes
+// --------------------------------------------------------------------
 namespace
 {
     struct ValueLifetime

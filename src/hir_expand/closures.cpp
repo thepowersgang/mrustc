@@ -68,7 +68,7 @@ namespace {
                 assert(impl.second.m_types.empty());
                 assert(impl.second.m_constants.empty());
                 // NOTE: This should always have a name
-                const auto& path = impl.second.m_type.m_data.as_Path().path.m_data.as_Generic().m_path;
+                const auto& path = impl.second.m_type.data().as_Path().path.m_data.as_Generic().m_path;
                 DEBUG("Adding type impl " << path);
                 auto* list_it = &crate.m_type_impls.named[path];
                 list_it->push_back(box$(::HIR::TypeImpl {
@@ -98,8 +98,7 @@ namespace {
         const ::std::vector<unsigned int>&  m_local_vars;
         const ::std::vector< ::std::pair<unsigned int, ::HIR::ValueUsage> >&  m_captures;
 
-        typedef ::std::function< const ::HIR::TypeRef&(const ::HIR::TypeRef&)>  t_monomorph_cb;
-        t_monomorph_cb m_monomorph_cb;
+        const Monomorphiser& m_monomorphiser;
 
         ::HIR::ExprNodeP    m_replacement;
     public:
@@ -107,13 +106,13 @@ namespace {
             const ::HIR::TypeRef& closure_type,
             const ::std::vector<unsigned int>& local_vars,
             const ::std::vector< ::std::pair<unsigned int, ::HIR::ValueUsage>>& captures,
-            t_monomorph_cb mcb
+            const Monomorphiser& mcb
             )
             :
             m_closure_type(closure_type),
             m_local_vars(local_vars),
             m_captures(captures),
-            m_monomorph_cb(mcb)
+            m_monomorphiser(mcb)
         {
         }
 
@@ -125,19 +124,32 @@ namespace {
                     pat.m_binding.m_slot = 1 + binding_it - m_local_vars.begin();
                 }
                 else {
-                    BUG(sp, "Pattern binds to non-local");
+                    BUG(sp, "Pattern binds to non-local - " << pat.m_binding);
                 }
             }
 
-            TU_IFLET(::HIR::Pattern::Data, (pat.m_data), SplitSlice, e,
-                TODO(sp, "Fixup binding in split slice");
-            )
+            if(auto* e = pat.m_data.opt_SplitSlice())
+            {
+                if( e->extra_bind.is_valid() )
+                {
+                    auto binding_it = ::std::find(m_local_vars.begin(), m_local_vars.end(), e->extra_bind.m_slot);
+                    if( binding_it != m_local_vars.end() ) {
+                        // NOTE: Offset of 1 is for `self` (`args` is destructured)
+                        e->extra_bind.m_slot = 1 + binding_it - m_local_vars.begin();
+                    }
+                    else {
+                        BUG(sp, "Pattern (split slice extra) binds to non-local - " << e->extra_bind);
+                    }
+                }
+            }
 
             ::HIR::ExprVisitorDef::visit_pattern(sp, pat);
         }
 
         void visit_type(::HIR::TypeRef& ty) override {
-            if( ty.m_data.is_Generic() ) {
+            ty = m_monomorphiser.monomorph_type(Span(), ty, /*allow_infer=*/true);
+#if 0
+            if( ty.data().is_Generic() ) {
                 auto n = m_monomorph_cb(ty).clone();
                 DEBUG(ty << " -> " << n);
                 ty = mv$(n);
@@ -145,6 +157,7 @@ namespace {
             else {
                 ::HIR::ExprVisitorDef::visit_type(ty);
             }
+#endif
         }
 
         void visit_node_ptr(::HIR::ExprNodeP& node_ptr) override {
@@ -214,7 +227,7 @@ namespace {
         ::HIR::ExprNodeP get_self(const Span& sp) const
         {
             ::HIR::ExprNodeP    self;
-            switch( m_closure_type.m_data.as_Closure().node->m_class )
+            switch( m_closure_type.data().as_Closure().node->m_class )
             {
             case ::HIR::ExprNode_Closure::Class::Unknown:
                 // Assume it's NoCapture
@@ -243,13 +256,13 @@ namespace {
     {
         const ::HIR::Crate& m_crate;
         StaticTraitResolve  m_resolve;
-        t_cb_generic    m_monomorph_cb;
+        const Monomorphiser&    m_monomorphiser;
         bool    m_run_eat;
     public:
-        ExprVisitor_Fixup(const ::HIR::Crate& crate, const ::HIR::GenericParams* params, t_cb_generic monomorph_cb):
+        ExprVisitor_Fixup(const ::HIR::Crate& crate, const ::HIR::GenericParams* params, const Monomorphiser& monomorphiser):
             m_crate(crate),
             m_resolve(crate),
-            m_monomorph_cb( mv$(monomorph_cb) ),
+            m_monomorphiser( monomorphiser ),
             m_run_eat(false)
         {
             if( params ) {
@@ -258,17 +271,17 @@ namespace {
             }
         }
 
-        static void fix_type(const ::HIR::Crate& crate, const Span& sp, t_cb_generic monomorph_cb, ::HIR::TypeRef& ty) {
-            if( const auto* e = ty.m_data.opt_Closure() )
+        static void fix_type(const ::HIR::Crate& crate, const Span& sp, const Monomorphiser& monomorphiser, ::HIR::TypeRef& ty) {
+            if( const auto* e = ty.data().opt_Closure() )
             {
                 DEBUG("Closure: " << e->node->m_obj_path_base);
-                auto path = monomorphise_genericpath_with(sp, e->node->m_obj_path_base, monomorph_cb, false);
+                auto path = monomorphiser.monomorph_genericpath(sp, e->node->m_obj_path_base, false);
                 const auto& str = *e->node->m_obj_ptr;
                 DEBUG(ty << " -> " << path);
                 ty = ::HIR::TypeRef::new_path( mv$(path), ::HIR::TypePathBinding::make_Struct(&str) );
             }
 
-            if( auto* e = ty.m_data.opt_Path() )
+            if( auto* e = ty.data_mut().opt_Path() )
             {
                 if( e->binding.is_Unbound() && e->path.m_data.is_UfcsKnown() )
                 {
@@ -302,17 +315,17 @@ namespace {
         {
             const Span& sp = node.span();
             // Handle casts from closures to function pointers
-            if( node.m_value->m_res_type.m_data.is_Closure() )
+            if( node.m_value->m_res_type.data().is_Closure() )
             {
-                const auto& src_te = node.m_value->m_res_type.m_data.as_Closure();
-                ASSERT_BUG(sp, node.m_res_type.m_data.is_Function(), "Cannot convert closure to non-fn type");
+                const auto& src_te = node.m_value->m_res_type.data().as_Closure();
+                ASSERT_BUG(sp, node.m_res_type.data().is_Function(), "Cannot convert closure to non-fn type");
                 //const auto& dte = node.m_res_type.m_data.as_Function();
                 if( src_te.node->m_class != ::HIR::ExprNode_Closure::Class::NoCapture )
                 {
                     ERROR(sp, E0000, "Cannot cast a closure with captures to a fn() type");
                 }
 
-                ::HIR::FunctionType    fcn_ty_inner { /*is_unsafe=*/false, ABI_RUST, box$(src_te.node->m_return.clone()), {} };
+                ::HIR::FunctionType    fcn_ty_inner { /*is_unsafe=*/false, ABI_RUST, src_te.node->m_return.clone(), {} };
                 ::std::vector<::HIR::TypeRef>   arg_types;
                 fcn_ty_inner.m_arg_types.reserve(src_te.node->m_args.size());
                 arg_types.reserve(src_te.node->m_args.size());
@@ -336,7 +349,7 @@ namespace {
 
         void visit(::HIR::ExprNode_CallValue& node) override
         {
-            if( const auto* e = node.m_value->m_res_type.m_data.opt_Closure() )
+            if( const auto* e = node.m_value->m_res_type.data().opt_Closure() )
             {
                 switch(e->node->m_class)
                 {
@@ -362,7 +375,7 @@ namespace {
         {
             bool run_eat = m_run_eat;
             m_run_eat = false;
-            fix_type(m_crate, Span(), m_monomorph_cb, ty);
+            fix_type(m_crate, Span(), m_monomorphiser, ty);
             ::HIR::ExprVisitorDef::visit_type(ty);
             if( run_eat ) {
                 // TODO: Instead of running EAT, just mark any Unbound UfcsKnown types as Opaque
@@ -625,7 +638,6 @@ namespace {
             // 1. Construct closure type (saving path/index in the node)
             ::HIR::GenericParams    params;
             ::HIR::PathParams   constructor_path_params;
-            ::HIR::PathParams   impl_path_params;
             // - 0xFFFF "Self" -> 0 "Super" (if present)
             if( m_resolve.has_self() )
             {
@@ -634,51 +646,102 @@ namespace {
                 params.m_types.push_back( ::HIR::TypeParamDef { "Super", {}, false } );  // TODO: Determine if parent Self is Sized
             }
             // - Top-level params come first
-            unsigned ofs_impl = params.m_types.size();
+            unsigned ofs_impl_t = params.m_types.size();
             for(const auto& ty_def : m_resolve.impl_generics().m_types) {
-                constructor_path_params.m_types.push_back( ::HIR::TypeRef( ty_def.m_name, 0*256 + params.m_types.size() - ofs_impl ) );
+                unsigned i = &ty_def - &m_resolve.impl_generics().m_types.front();
+                constructor_path_params.m_types.push_back( ::HIR::TypeRef( ty_def.m_name, 0*256 + i ) );
                 params.m_types.push_back( ::HIR::TypeParamDef { ty_def.m_name, {}, ty_def.m_is_sized } );
+            }
+            unsigned ofs_impl_v = params.m_values.size();
+            for(const auto& v_def : m_resolve.impl_generics().m_values) {
+                unsigned i = &v_def - &m_resolve.impl_generics().m_values.front();
+                constructor_path_params.m_values.push_back( ::HIR::GenericRef( v_def.m_name, 0*256 + i ) );
+                params.m_values.push_back( ::HIR::ValueParamDef { v_def.m_name, v_def.m_type.clone() } );
             }
             // - Item-level params come second
-            unsigned ofs_item = params.m_types.size();
+            unsigned ofs_item_t = params.m_types.size();
             for(const auto& ty_def : m_resolve.item_generics().m_types) {
-                constructor_path_params.m_types.push_back( ::HIR::TypeRef( ty_def.m_name, 1*256 + params.m_types.size() - ofs_item ) );
+                unsigned i = &ty_def - &m_resolve.item_generics().m_types.front();
+                constructor_path_params.m_types.push_back( ::HIR::TypeRef( ty_def.m_name, 1*256 + i ) );
                 params.m_types.push_back( ::HIR::TypeParamDef { ty_def.m_name, {}, ty_def.m_is_sized } );
             }
-            // Create placeholders for `monomorph_cb` to use
-            ::std::vector<::HIR::TypeRef>   params_placeholders;
+            unsigned ofs_item_v = params.m_values.size();
+            for(const auto& v_def : m_resolve.item_generics().m_values) {
+                unsigned i = &v_def - &m_resolve.item_generics().m_values.front();
+                constructor_path_params.m_values.push_back( ::HIR::GenericRef( v_def.m_name, 1*256 + i ) );
+                params.m_values.push_back( ::HIR::ValueParamDef { v_def.m_name, v_def.m_type.clone() } );
+            }
+            // Create the params used for the type on the impl block
+            ::HIR::PathParams   impl_path_params;
             for(unsigned int i = 0; i < params.m_types.size(); i ++) {
-                params_placeholders.push_back( ::HIR::TypeRef(params.m_types[i].m_name, i) );
                 impl_path_params.m_types.push_back( ::HIR::TypeRef(params.m_types[i].m_name, i) );
             }
-            DEBUG("params_placeholders = " << params_placeholders << ", ofs_item = " << ofs_item << ", ofs_impl = " << ofs_impl);
+            for(unsigned int i = 0; i < params.m_values.size(); i ++) {
+                impl_path_params.m_values.push_back( ::HIR::GenericRef(params.m_values[i].m_name, i) );
+            }
+            DEBUG("impl_path_params = " << impl_path_params << ", ofs_*_t=" << ofs_item_t << "," << ofs_impl_t << " ofs_*_v=" << ofs_item_v << "," << ofs_impl_v);
 
-            auto monomorph_cb = [&](const auto& ty)->const ::HIR::TypeRef& {
-                const auto& ge = ty.m_data.as_Generic();
-                if( ge.binding == 0xFFFF ) {
-                    return params_placeholders.at(0);
+            struct Monomorph: public Monomorphiser
+            {
+                const ::HIR::GenericParams& params;
+                unsigned ofs_impl_t;
+                unsigned ofs_item_t;
+                unsigned ofs_impl_v;
+                unsigned ofs_item_v;
+                Monomorph(const ::HIR::GenericParams& params,
+                    unsigned ofs_impl_t, unsigned ofs_item_t,
+                    unsigned ofs_impl_v, unsigned ofs_item_v
+                    )
+                    : params(params)
+                    , ofs_impl_t(ofs_impl_t)
+                    , ofs_item_t(ofs_item_t)
+                    , ofs_impl_v(ofs_impl_v)
+                    , ofs_item_v(ofs_item_v)
+                {
                 }
-                else if( ge.binding < 256 ) {
-                    auto idx = ge.binding;
-                    ASSERT_BUG(sp, ofs_impl + idx < params_placeholders.size(), "Impl generic binding OOR - " << ty << " (" << ofs_impl + idx << " !< " << params_placeholders.size() << ")");
-                    return params_placeholders.at(ofs_impl + idx);
+                ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& ge) const override
+                {
+                    unsigned i;
+                    if( ge.binding == 0xFFFF ) {
+                        i = 0;
+                    }
+                    else if( ge.binding < 256 ) {
+                        i = ofs_impl_t + ge.binding;
+                    }
+                    else if( ge.binding < 2*256 ) {
+                        i = ofs_item_t + (ge.binding - 256);
+                    }
+                    else {
+                        BUG(sp, "Generic type " << ge << " unknown");
+                    }
+                    ASSERT_BUG(sp, i < params.m_types.size(), "Item generic binding OOR - " << ge << " (" << i << " !< " << params.m_types.size() << ")");
+                    return ::HIR::TypeRef(params.m_types[i].m_name, i);
                 }
-                else if( ge.binding < 2*256 ) {
-                    auto idx = ge.binding - 256;
-                    ASSERT_BUG(sp, ofs_item + idx < params_placeholders.size(), "Item generic binding OOR - " << ty << " (" << ofs_item + idx << " !< " << params_placeholders.size() << ")");
-                    return params_placeholders.at(ofs_item + idx);
+                ::HIR::Literal get_value(const Span& sp, const ::HIR::GenericRef& ge) const {
+                    unsigned i;
+                    if( ge.binding == 0xFFFF ) {
+                        BUG(sp, "Binding 0xFFFF isn't valid for values");
+                    }
+                    else if( ge.binding < 256 ) {
+                        i = ofs_impl_v + ge.binding;
+                    }
+                    else if( ge.binding < 2*256 ) {
+                        i = ofs_item_v + (ge.binding - 256);
+                    }
+                    else {
+                        BUG(sp, "Generic value " << ge << " unknown");
+                    }
+                    ASSERT_BUG(sp, i < params.m_values.size(), "Item generic value binding OOR - " << ge << " (" << i << " !< " << params.m_values.size() << ")");
+                    return ::HIR::GenericRef(params.m_values[i].m_name, i);
                 }
-                else {
-                    BUG(sp, "Generic type " << ty << " unknown");
-                }
-                };
-            auto monomorph = [&](const auto& ty){ return monomorphise_type_with(sp, ty, monomorph_cb); };
+            } monomorph_cb(params, ofs_impl_t, ofs_item_t, ofs_impl_v, ofs_impl_v);
+            auto monomorph = [&](const auto& ty){ return monomorph_cb.monomorph_type(sp, ty); };
             auto cb_replace = [&](const auto& tpl, auto& rv)->bool {
-                if( tpl.m_data.is_Infer() ) {
+                if( tpl.data().is_Infer() ) {
                     BUG(sp, "");
                 }
-                else if( tpl.m_data.is_Generic() ) {
-                    rv = monomorph_cb(tpl).clone();
+                else if( tpl.data().is_Generic() ) {
+                    rv = monomorph_cb.get_type(sp, tpl.data().as_Generic());
                     return true;
                 }
                 //else if( tpl.m_data.is_ErasedType() ) {
@@ -698,16 +761,16 @@ namespace {
 
             // - Clone the bounds (from both levels)
             auto monomorph_bound = [&](const ::HIR::GenericBound& b)->::HIR::GenericBound {
-                TU_MATCHA( (b), (e),
-                (Lifetime,
-                    return ::HIR::GenericBound(e); ),
-                (TypeLifetime,
-                    return ::HIR::GenericBound::make_TypeLifetime({ monomorph(e.type), e.valid_for }); ),
-                (TraitBound,
-                    return ::HIR::GenericBound::make_TraitBound({ monomorph(e.type), monomorphise_traitpath_with(sp, e.trait, monomorph_cb, false) }); ),
-                (TypeEquality,
-                    return ::HIR::GenericBound::make_TypeEquality({ monomorph(e.type), monomorph(e.other_type) }); )
-                )
+                TU_MATCH_HDRA( (b), {)
+                TU_ARMA(Lifetime, e)
+                    return ::HIR::GenericBound(e);
+                TU_ARMA(TypeLifetime, e)
+                    return ::HIR::GenericBound::make_TypeLifetime({ monomorph(e.type), e.valid_for });
+                TU_ARMA(TraitBound, e)
+                    return ::HIR::GenericBound::make_TraitBound({ monomorph(e.type), monomorph_cb.monomorph_traitpath(sp, e.trait, false) });
+                TU_ARMA(TypeEquality, e)
+                    return ::HIR::GenericBound::make_TypeEquality({ monomorph(e.type), monomorph(e.other_type) });
+                }
                 throw "";
                 };
             for(const auto& bound : m_resolve.impl_generics().m_bounds ) {
@@ -728,8 +791,7 @@ namespace {
             ::std::vector< ::HIR::TypeRef>  local_types;
             local_types.push_back( ::HIR::TypeRef() );  // self - filled by make_fn*
             for(const auto binding_idx : ent.local_vars) {
-                auto ty_mono = monomorphise_type_with(sp, m_variable_types.at(binding_idx).clone(), monomorph_cb);
-                local_types.push_back( mv$(ty_mono) );
+                local_types.push_back( monomorph( m_variable_types.at(binding_idx).clone() ) );
             }
             // - Generate types of captures, and construct the actual capture values
             //  > Capture types (with borrows and using closure's type params)
@@ -745,7 +807,7 @@ namespace {
                 auto binding_type = binding.second;
 
                 const auto& cap_ty = m_variable_types.at(binding_idx);
-                auto ty_mono = monomorphise_type_with(sp, cap_ty, monomorph_cb);
+                auto ty_mono = monomorph(cap_ty);
 
                 auto val_node = NEWNODE(cap_ty.clone(), Variable,  sp, "", binding_idx);
                 ::HIR::BorrowType   bt;
@@ -875,7 +937,7 @@ namespace {
                             const ::HIR::TypeRef& ret_type
                             )
                     {
-                        const auto& args_tup_inner = args_ty.m_data.as_Tuple();
+                        const auto& args_tup_inner = args_ty.data().as_Tuple();
                         // 1. Create a list of `arg.0, arg.1, arg.2, ...` for the dispatch methods
                         ::std::vector<HIR::ExprNodeP> dispatch_args;
                         ::std::vector<HIR::TypeRef> dispatch_node_args_cache;
@@ -889,7 +951,7 @@ namespace {
                         }
                         dispatch_node_args_cache.push_back( ret_type.clone() );
                         auto path = ::HIR::Path(closure_type.clone(), RcString::new_interned("call_free"));
-                        path.m_data.as_UfcsInherent().impl_params = closure_type.m_data.as_Path().path.m_data.as_Generic().m_params.clone();
+                        path.m_data.as_UfcsInherent().impl_params = closure_type.data().as_Path().path.m_data.as_Generic().m_params.clone();
                         HIR::ExprNodeP  dispatch_node = NEWNODE(ret_type.clone(), CallPath, sp,
                                 mv$(path),
                                 mv$(dispatch_args)
@@ -929,7 +991,7 @@ namespace {
                 {
                     args_split.push_back(::std::make_pair(
                             mv$( args_pat.m_data.as_Tuple().sub_patterns[i] ),
-                            mv$( args_ty.m_data.as_Tuple()[i] )
+                            mv$( args_ty.data().as_Tuple()[i] )
                             ));
                 }
                 // - Create fn_free free method
@@ -1055,9 +1117,9 @@ namespace {
                 TRACE_FUNCTION_F("_CallValue");
                 if( node.m_trait_used == ::HIR::ExprNode_CallValue::TraitUsed::Unknown )
                 {
-                    if( fcn_ty.m_data.is_Closure() )
+                    if( fcn_ty.data().is_Closure() )
                     {
-                        const auto& cn = *fcn_ty.m_data.as_Closure().node;
+                        const auto& cn = *fcn_ty.data().as_Closure().node;
                         // Use the closure's class to determine if & or &mut should be taken (and which function to use)
                         ::HIR::ValueUsage   vu = ::HIR::ValueUsage::Unknown;
                         switch(cn.m_class)
@@ -1087,7 +1149,7 @@ namespace {
                 }
                 ::HIR::ExprVisitorDef::visit(node);
             }
-            else if( fcn_ty.m_data.is_Closure() )
+            else if( fcn_ty.data().is_Closure() )
             {
                 //TODO(node.span(), "Determine how value in CallValue is used on a closure");
                 ::HIR::ExprVisitorDef::visit(node);
@@ -1156,26 +1218,17 @@ namespace {
                 ),
 
             // - Enums/Structs
-            (StructValue,
+            (PathValue,
                 ),
-            (StructTuple,
-                for(const auto& field : e.sub_patterns) {
+            (PathTuple,
+                for(const auto& field : e.leading) {
+                    add_closure_def_from_pattern(sp, field);
+                }
+                for(const auto& field : e.trailing) {
                     add_closure_def_from_pattern(sp, field);
                 }
                 ),
-            (Struct,
-                for( auto& field_pat : e.sub_patterns ) {
-                    add_closure_def_from_pattern(sp, field_pat.second);
-                }
-                ),
-            (EnumValue,
-                ),
-            (EnumTuple,
-                for(const auto& field : e.sub_patterns) {
-                    add_closure_def_from_pattern(sp, field);
-                }
-                ),
-            (EnumStruct,
+            (PathNamed,
                 for( auto& field_pat : e.sub_patterns ) {
                     add_closure_def_from_pattern(sp, field_pat.second);
                 }
@@ -1197,7 +1250,7 @@ namespace {
                 }
                 // Wait, is this valid?
                 // - Maybe it's needed becuase reborrow is after this pass?
-                else if( m_variable_types.at(slot).m_data.is_Borrow() && m_variable_types.at(slot).m_data.as_Borrow().type == ::HIR::BorrowType::Unique ) {
+                else if( m_variable_types.at(slot).data().is_Borrow() && m_variable_types.at(slot).data().as_Borrow().type == ::HIR::BorrowType::Unique ) {
                     usage = ::HIR::ValueUsage::Mutate;
                 }
                 else {
@@ -1317,9 +1370,9 @@ namespace {
 
         void visit_type(::HIR::TypeRef& ty) override
         {
-            if(auto* e = ty.m_data.opt_Array())
+            if(auto* e = ty.data_mut().opt_Array())
             {
-                this->visit_type( *e->inner );
+                this->visit_type( e->inner );
                 DEBUG("Array size " << ty);
                 if( e->size.is_Unevaluated() ) {
                     //::std::vector< ::HIR::TypeRef>  tmp;
@@ -1348,7 +1401,8 @@ namespace {
                 }
 
                 {
-                    ExprVisitor_Fixup   fixup(m_resolve.m_crate, nullptr, [](const auto& x)->const auto&{ return x; });
+                    MonomorphiserNop    mm;
+                    ExprVisitor_Fixup   fixup(m_resolve.m_crate, nullptr, mm);
                     fixup.visit_root( item.m_code );
                 }
             }
@@ -1456,7 +1510,8 @@ void HIR_Expand_Closures_Expr(const ::HIR::Crate& crate_ro, ::HIR::ExprPtr& exp)
     }
 
     {
-        ExprVisitor_Fixup   fixup(crate, nullptr, [](const auto& x)->const auto&{ return x; });
+        MonomorphiserNop    mm;
+        ExprVisitor_Fixup   fixup(crate, nullptr, mm);
         fixup.visit_root( exp );
     }
 

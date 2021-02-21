@@ -25,6 +25,7 @@
     class HirDeserialiser
     {
         RcString m_crate_name;
+        ::std::vector<HIR::TypeRef> m_types;
         ::HIR::serialise::Reader&   m_in;
     public:
         HirDeserialiser(::HIR::serialise::Reader& in):
@@ -144,6 +145,7 @@
         ::std::vector<T> deserialise_vec()
         {
             TRACE_FUNCTION_FR("<" << typeid(T).name() << ">", m_in.get_pos());
+            auto _ = m_in.open_object(typeid(::std::vector<T>).name());
             size_t n = m_in.read_count();
             DEBUG("n = " << n);
             ::std::vector<T>    rv;
@@ -156,6 +158,7 @@
         ::std::vector<T> deserialise_vec_c(::std::function<T()> cb)
         {
             TRACE_FUNCTION_F("<" << typeid(T).name() << ">");
+            auto _ = m_in.open_object(typeid(::std::vector<T>).name());
             size_t n = m_in.read_count();
             ::std::vector<T>    rv;
             rv.reserve(n);
@@ -163,6 +166,21 @@
                 rv.push_back( cb() );
             return rv;
         }
+        template<typename T>
+        ::std::set<T> deserialise_set()
+        {
+            TRACE_FUNCTION_FR("<" << typeid(T).name() << ">", m_in.get_pos());
+            auto _ = m_in.open_object(typeid(::std::set<T>).name());
+            size_t n = m_in.read_count();
+            DEBUG("n = " << n);
+            ::std::set<T>    rv;
+            //rv.reserve(n);
+            for(size_t i = 0; i < n; i ++)
+                rv.insert( D<T>::des(*this) );
+            return rv;
+        }
+
+
         ::HIR::Publicity deserialise_pub()
         {
             return (m_in.read_bool() ? ::HIR::Publicity::new_global() : ::HIR::Publicity::new_none());
@@ -181,6 +199,8 @@
 
         ::HIR::LifetimeDef deserialise_lifetimedef();
         ::HIR::LifetimeRef deserialise_lifetimeref();
+        ::HIR::ArraySize deserialise_arraysize();
+        ::HIR::GenericRef deserialise_genericref();
         ::HIR::TypeRef deserialise_type();
         ::HIR::SimplePath deserialise_simplepath();
         ::HIR::PathParams deserialise_pathparams();
@@ -190,6 +210,7 @@
 
         ::HIR::GenericParams deserialise_genericparams();
         ::HIR::TypeParamDef deserialise_typaramdef();
+        ::HIR::ValueParamDef deserialise_valueparamdef();
         ::HIR::GenericBound deserialise_genericbound();
 
         ::HIR::Crate deserialise_crate();
@@ -293,6 +314,27 @@
             return ::HIR::MarkerImpl { mv$(generics), mv$(params), is_neg, mv$(ty) };
         }
 
+        Ident::Hygiene deserialise_hygine()
+        {
+            auto _ = m_in.open_object(typeid(Ident::Hygiene).name());
+            Ident::Hygiene  rv;
+            bool has_mod_path = m_in.read_bool();
+            if(has_mod_path)
+            {
+                Ident::ModPath  mp;
+                mp.crate = m_in.read_istring();
+                mp.ents = deserialise_vec<RcString>();
+
+                if(mp.crate == "")
+                {
+                    assert(m_crate_name != "");
+                    mp.crate = m_crate_name;
+                }
+                rv.set_mod_path(mv$(mp));
+            }
+            return rv;
+        }
+
         ::MacroRulesPtr deserialise_macrorulesptr()
         {
             return ::MacroRulesPtr( new MacroRules(deserialise_macrorules()) );
@@ -304,6 +346,7 @@
             //rv.m_exported = true;
             rv.m_rules = deserialise_vec_c< ::MacroRulesArm>( [&](){ return deserialise_macrorulesarm(); });
             rv.m_source_crate = m_in.read_istring();
+            rv.m_hygiene = deserialise_hygine();
             if(rv.m_source_crate == "")
             {
                 assert(m_crate_name != "");
@@ -324,7 +367,7 @@
             case ::SimplePatEnt::TAG_End:
                 return ::SimplePatEnt::make_End({});
             case ::SimplePatEnt::TAG_LoopStart:
-                return ::SimplePatEnt::make_LoopStart({});
+                return ::SimplePatEnt::make_LoopStart({ static_cast<unsigned>(m_in.read_count()) });
             case ::SimplePatEnt::TAG_LoopNext:
                 return ::SimplePatEnt::make_LoopNext({});
             case ::SimplePatEnt::TAG_LoopEnd:
@@ -354,7 +397,7 @@
             auto s = m_in.read_istring();
             auto n = static_cast<unsigned int>(m_in.read_count());
             auto type = static_cast< ::MacroPatEnt::Type>(m_in.read_tag());
-            ::MacroPatEnt   rv { mv$(s), mv$(n), mv$(type) };
+            ::MacroPatEnt   rv(Span(), mv$(s), mv$(n), mv$(type));
             switch(rv.type)
             {
             case ::MacroPatEnt::PAT_TOKEN:
@@ -400,15 +443,10 @@
             case 2: {
                 auto entries = deserialise_vec_c< ::MacroExpansionEnt>( [&](){ return deserialise_macroexpansionent(); } );
                 auto joiner = deserialise_token();
-                ::std::map<unsigned int, bool>    variables;
-                size_t n = m_in.read_count();
-                while(n--) {
-                    auto idx = static_cast<unsigned int>(m_in.read_count());
-                    bool flag = m_in.read_bool();
-                    variables.insert( ::std::make_pair(idx, flag) );
-                }
+                auto controllers = deserialise_set<unsigned int>();
+
                 return ::MacroExpansionEnt::make_Loop({
-                    mv$(entries), mv$(joiner), mv$(variables)
+                    mv$(entries), mv$(joiner), mv$(controllers)
                     });
                 }
             default:
@@ -429,8 +467,11 @@
                 return ::Token::Data::make_None({});
             case ::Token::Data::TAG_String:
                 return ::Token::Data::make_String( m_in.read_string() );
-            case ::Token::Data::TAG_IString:
-                return ::Token::Data::make_IString( m_in.read_istring() );
+            case ::Token::Data::TAG_Ident: {
+                auto hygine = deserialise_hygine();
+                auto name = m_in.read_istring();
+                return ::Token::Data::make_Ident( Ident(std::move(hygine), std::move(name)) );
+                }
             case ::Token::Data::TAG_Integer: {
                 auto dty = static_cast<eCoreType>(m_in.read_tag());
                 return ::Token::Data::make_Integer({ dty, m_in.read_u64c() });
@@ -449,6 +490,7 @@
         ::HIR::ExprPtr deserialise_exprptr()
         {
             ::HIR::ExprPtr  rv;
+            auto _ = m_in.open_object("HIR::ExprPtr");
             if( m_in.read_bool() )
             {
                 rv.m_mir = deserialise_mir();
@@ -469,6 +511,11 @@
             switch(auto tag = m_in.read_tag())
             {
             case ::MIR::Param::TAG_LValue:  return deserialise_mir_lvalue();
+            case ::MIR::Param::TAG_Borrow:
+                return ::MIR::Param::make_Borrow({
+                    static_cast< ::HIR::BorrowType>( m_in.read_tag() ),
+                    deserialise_mir_lvalue()
+                    });
             case ::MIR::Param::TAG_Constant: return deserialise_mir_constant();
             default:
                 BUG(Span(), "Bad tag for MIR::Param - " << tag);
@@ -504,7 +551,6 @@
                 static_cast<unsigned int>(m_in.read_u64c())
                 })
             _(Borrow, {
-                0, // TODO: Region?
                 static_cast< ::HIR::BorrowType>( m_in.read_tag() ),
                 deserialise_mir_lvalue()
                 })
@@ -537,10 +583,15 @@
             _(Array, {
                 deserialise_vec< ::MIR::Param>()
                 })
-            _(Variant, {
+            _(UnionVariant, {
                 deserialise_genericpath(),
                 static_cast<unsigned int>( m_in.read_count() ),
                 deserialise_mir_param()
+                })
+            _(EnumVariant, {
+                deserialise_genericpath(),
+                static_cast<unsigned int>( m_in.read_count() ),
+                deserialise_vec< ::MIR::Param>()
                 })
             _(Struct, {
                 deserialise_genericpath(),
@@ -581,7 +632,7 @@
                 }
             _(StaticString, m_in.read_string() )
             _(Const,  { box$(deserialise_path()) } )
-            _(Generic,  { m_in.read_istring(), static_cast<unsigned>(m_in.read_count()) })
+            _(Generic,  deserialise_genericref())
             _(ItemAddr, box$(deserialise_path()) )
             #undef _
             default:
@@ -647,6 +698,24 @@
             }
         }
 
+        ::HIR::MacroItem deserialise_macroitem()
+        {
+            auto _ = m_in.open_object("HIR::MacroItem");
+            switch(auto tag = m_in.read_tag())
+            {
+            case HIR::MacroItem::TAG_Import:
+                return HIR::MacroItem::Data_Import { 
+                    deserialise_simplepath()
+                    };
+            case HIR::MacroItem::TAG_MacroRules:
+                return deserialise_macrorulesptr();
+            case HIR::MacroItem::TAG_ProcMacro:
+                return deserialise_procmacro();
+            }
+
+            TODO(Span(), "");
+        }
+
         ::HIR::Linkage deserialise_linkage()
         {
             ::HIR::Linkage  l;
@@ -659,6 +728,7 @@
         ::HIR::Function deserialise_function()
         {
             TRACE_FUNCTION;
+            auto _ = m_in.open_object("HIR::Function");
 
             ::HIR::Function rv {
                 false,
@@ -700,13 +770,22 @@
         {
             TRACE_FUNCTION;
 
-            return ::HIR::Static {
-                deserialise_linkage(),
-                m_in.read_bool(),
-                deserialise_type(),
-                ::HIR::ExprPtr {},
-                {}
-                };
+            auto linkage = deserialise_linkage();
+            uint8_t bitflag_1 = m_in.read_u8();
+            #define BIT(i,fld)  fld = (bitflag_1 & (1 << (i))) != 0;
+            bool is_mut;
+            bool save_literal;
+            BIT(0, is_mut);
+            BIT(1, save_literal);
+            #undef BIT
+            auto ty = deserialise_type();
+            auto rv = ::HIR::Static(mv$(linkage), is_mut, mv$(ty), {});
+            if(save_literal)
+            {
+                rv.m_value_res = deserialise_literal();
+                rv.m_no_emit_value = true;
+            }
+            return rv;
         }
 
         // - Type items
@@ -735,6 +814,8 @@
             uint8_t bitflag_1 = m_in.read_u8();
             #define BIT(i,fld)  fld = (bitflag_1 & (1 << (i))) != 0;
             BIT(0, m.can_unsize)
+            BIT(1, m.is_nonzero)
+            BIT(2, m.bounded_max)
             #undef BIT
             m.dst_type = static_cast< ::HIR::StructMarkings::DstType>( m_in.read_tag() );
             m.coerce_unsized = static_cast<::HIR::StructMarkings::Coerce>( m_in.read_tag() );
@@ -742,6 +823,8 @@
             m.coerce_param = m_in.read_count( );
             m.unsized_field = m_in.read_count( );
             m.unsized_param = m_in.read_count();
+            if(m.bounded_max)
+                m.bounded_max_value = m_in.read_u64();
             // TODO: auto_impls
             return m;
         }
@@ -817,10 +900,12 @@
     template<> DEF_D( ::HIR::TraitPath, return d.deserialise_traitpath(); )
 
     template<> DEF_D( ::HIR::TypeParamDef, return d.deserialise_typaramdef(); )
+    template<> DEF_D( ::HIR::ValueParamDef, return d.deserialise_valueparamdef(); )
     template<> DEF_D( ::HIR::GenericBound, return d.deserialise_genericbound(); )
 
     template<> DEF_D( ::HIR::ValueItem, return d.deserialise_valueitem(); )
     template<> DEF_D( ::HIR::TypeItem, return d.deserialise_typeitem(); )
+    template<> DEF_D( ::HIR::MacroItem, return d.deserialise_macroitem(); )
 
     template<> DEF_D( ::HIR::Enum::ValueVariant, return d.deserialise_enumvaluevariant(); )
     template<> DEF_D( ::HIR::Enum::DataVariant, return d.deserialise_enumdatavariant(); )
@@ -835,6 +920,19 @@
     template<> DEF_D( ::MIR::Statement, return d.deserialise_mir_statement(); )
     template<> DEF_D( ::MIR::BasicBlock, return d.deserialise_mir_basicblock(); )
 
+    template<> DEF_D( ::HIR::TraitPath::AtyEqual, 
+        return ::HIR::TraitPath::AtyEqual {
+            d.deserialise_genericpath(),
+            d.deserialise_type()
+        };
+    )
+    template<> DEF_D( ::HIR::TraitPath::AtyBound, 
+        return ::HIR::TraitPath::AtyBound {
+            d.deserialise_genericpath(),
+            d.deserialise_vec<HIR::TraitPath>()
+        };
+    );
+
     template<> DEF_D( ::HIR::ProcMacro, return d.deserialise_procmacro(); )
     template<> DEF_D( ::HIR::TypeImpl, return d.deserialise_typeimpl(); )
     template<> DEF_D( ::HIR::TraitImpl, return d.deserialise_traitimpl(); )
@@ -848,12 +946,6 @@
         rv.named = d.deserialise_pathmap< ::std::vector<::std::unique_ptr<T> > >();
         rv.non_named = d.deserialise_vec< ::std::unique_ptr<T> >();
         rv.generic = d.deserialise_vec< ::std::unique_ptr<T> >();
-        return rv;
-        )
-    template<>
-    DEF_D( ::HIR::Crate::MacroImport,
-        ::HIR::Crate::MacroImport   rv;
-        rv.path = d.deserialise_simplepath();
         return rv;
         )
     template<> DEF_D( ::HIR::ExternLibrary, return d.deserialise_extlib(); )
@@ -871,10 +963,45 @@
         return rv;
     }
 
+    ::HIR::GenericRef HirDeserialiser::deserialise_genericref()
+    {
+        return HIR::GenericRef {
+            m_in.read_istring(),
+            m_in.read_u16()
+        };
+    }
+
+    ::HIR::ArraySize HirDeserialiser::deserialise_arraysize()
+    {
+        switch(auto tag = m_in.read_tag())
+        {
+        #define _(x, ...)   case ::HIR::ArraySize::TAG_##x: DEBUG("- "#x); return HIR::ArraySize::make_##x(__VA_ARGS__);
+        _(Known, m_in.read_u64c())
+        _(Generic,
+            deserialise_genericref()
+            )
+        default:
+            BUG(Span(), "Bad tag for HIR::ArraySize - " << tag);
+        #undef _
+        }
+    }
+
     ::HIR::TypeRef HirDeserialiser::deserialise_type()
     {
         ::HIR::TypeRef  rv;
         TRACE_FUNCTION_FR("", rv);
+
+        auto idx = m_in.read_count();
+        if( idx != ~0u ) {
+            DEBUG("#" << idx << "");
+            rv = m_types.at(idx).clone();
+            return rv;
+        }
+        else {
+            DEBUG("Fresh (=" << m_types.size() << ")");
+        }
+        auto _ = m_in.open_object("HIR::TypeData");
+
         switch( auto tag = m_in.read_tag() )
         {
         #define _(x, ...)    case ::HIR::TypeData::TAG_##x: DEBUG("- "#x); rv = ::HIR::TypeRef( ::HIR::TypeData::make_##x( __VA_ARGS__ ) ); break;
@@ -887,10 +1014,7 @@
             deserialise_path(),
             {}
             })
-        _(Generic, {
-            m_in.read_istring(),
-            m_in.read_u16()
-            })
+        _(Generic, deserialise_genericref())
         _(TraitObject, {
             deserialise_traitpath(),
             deserialise_vec< ::HIR::GenericPath>(),
@@ -903,11 +1027,11 @@
             deserialise_lifetimeref()
             })
         _(Array, {
-            deserialise_ptr< ::HIR::TypeRef>(),
-            m_in.read_u64c()
+            deserialise_type(),
+            deserialise_arraysize()
             })
         _(Slice, {
-            deserialise_ptr< ::HIR::TypeRef>()
+            deserialise_type()
             })
         _(Tuple,
             deserialise_vec< ::HIR::TypeRef>()
@@ -915,22 +1039,23 @@
         _(Borrow, {
             deserialise_lifetimeref(),
             static_cast< ::HIR::BorrowType>( m_in.read_tag() ),
-            deserialise_ptr< ::HIR::TypeRef>()
+            deserialise_type()
             })
         _(Pointer, {
             static_cast< ::HIR::BorrowType>( m_in.read_tag() ),
-            deserialise_ptr< ::HIR::TypeRef>()
+            deserialise_type()
             })
         _(Function, {
             m_in.read_bool(),
             m_in.read_string(),
-            deserialise_ptr< ::HIR::TypeRef>(),
+            deserialise_type(),
             deserialise_vec< ::HIR::TypeRef>()
             })
         #undef _
         default:
             BUG(Span(), "Bad tag for HIR::TypeRef - " << tag);
         }
+        m_types.push_back(rv.clone());
         return rv;
     }
 
@@ -955,6 +1080,7 @@
         ::HIR::PathParams   rv;
         TRACE_FUNCTION_FR("", rv);
         rv.m_types = deserialise_vec< ::HIR::TypeRef>();
+        rv.m_values = deserialise_vec< ::HIR::Literal>();
         return rv;
     }
     ::HIR::GenericPath HirDeserialiser::deserialise_genericpath()
@@ -968,8 +1094,9 @@
     ::HIR::TraitPath HirDeserialiser::deserialise_traitpath()
     {
         auto gpath = deserialise_genericpath();
-        auto tys = deserialise_istrmap< ::HIR::TypeRef>();
-        return ::HIR::TraitPath { mv$(gpath), {}, mv$(tys) };
+        auto tys = deserialise_istrmap< ::HIR::TraitPath::AtyEqual>();
+        auto bounds = deserialise_istrmap< ::HIR::TraitPath::AtyBound>();
+        return ::HIR::TraitPath { mv$(gpath), {}, mv$(tys), mv$(bounds) };
     }
     ::HIR::Path HirDeserialiser::deserialise_path()
     {
@@ -982,7 +1109,7 @@
         case 1:
             DEBUG("Inherent");
             return ::HIR::Path( ::HIR::Path::Data::Data_UfcsInherent {
-                box$( deserialise_type() ),
+                deserialise_type(),
                 m_in.read_istring(),
                 deserialise_pathparams(),
                 deserialise_pathparams()
@@ -990,7 +1117,7 @@
         case 2:
             DEBUG("Known");
             return ::HIR::Path( ::HIR::Path::Data::Data_UfcsKnown {
-                box$( deserialise_type() ),
+                deserialise_type(),
                 deserialise_genericpath(),
                 m_in.read_istring(),
                 deserialise_pathparams()
@@ -1005,6 +1132,7 @@
         TRACE_FUNCTION;
         ::HIR::GenericParams    params;
         params.m_types = deserialise_vec< ::HIR::TypeParamDef>();
+        params.m_values = deserialise_vec< ::HIR::ValueParamDef>();
         params.m_lifetimes = deserialise_vec< ::HIR::LifetimeDef>();
         params.m_bounds = deserialise_vec< ::HIR::GenericBound>();
         DEBUG("params = " << params.fmt_args() << ", " << params.fmt_bounds());
@@ -1018,6 +1146,15 @@
             m_in.read_bool()
             };
         DEBUG("::HIR::TypeParamDef { " << rv.m_name << ", " << rv.m_default << ", " << rv.m_is_sized << "}");
+        return rv;
+    }
+    ::HIR::ValueParamDef HirDeserialiser::deserialise_valueparamdef()
+    {
+        auto rv = ::HIR::ValueParamDef {
+            m_in.read_istring(),
+            deserialise_type()
+            };
+        DEBUG("::HIR::ValueParamDef { " << rv.m_name << ", " << rv.m_type << "}");
         return rv;
     }
     ::HIR::GenericBound HirDeserialiser::deserialise_genericbound()
@@ -1054,8 +1191,8 @@
                     return ::HIR::Enum::Class::make_Data( des.deserialise_vec<::HIR::Enum::DataVariant>() );
                 case ::HIR::Enum::Class::TAG_Value:
                     return ::HIR::Enum::Class::make_Value({
-                        static_cast< ::HIR::Enum::Repr>(des.m_in.read_tag()),
-                        des.deserialise_vec<::HIR::Enum::ValueVariant>()
+                        des.deserialise_vec<::HIR::Enum::ValueVariant>(),
+                        true
                         });
                 default:
                     BUG(Span(), "Bad tag for HIR::Enum::Class - " << tag);
@@ -1064,6 +1201,8 @@
         };
         return ::HIR::Enum {
             deserialise_genericparams(),
+            m_in.read_bool(),
+            static_cast< ::HIR::Enum::Repr>(m_in.read_tag()),
             H::deserialise_enumclass(*this),
             deserialise_markings()
             };
@@ -1137,6 +1276,7 @@
     ::HIR::Trait HirDeserialiser::deserialise_trait()
     {
         TRACE_FUNCTION;
+        auto _ = m_in.open_object("HIR::Trait");
 
         ::HIR::Trait rv {
             deserialise_genericparams(),
@@ -1160,6 +1300,9 @@
         #define _(x, ...)    case ::HIR::Literal::TAG_##x:   return ::HIR::Literal::make_##x(__VA_ARGS__);
         _(Invalid, {})
         _(Defer, {})
+        _(Generic,
+            deserialise_genericref()
+            )
         _(List,   deserialise_vec< ::HIR::Literal>() )
         _(Variant, {
             static_cast<unsigned int>(m_in.read_count()),
@@ -1168,7 +1311,7 @@
         _(Integer, m_in.read_u64() )
         _(Float,   m_in.read_double() )
         _(BorrowPath, deserialise_path() )
-        _(BorrowData, box$(deserialise_literal()) )
+        //_(BorrowData, { box$(deserialise_literal()), HIR::TypeRef() } )
         _(String,  m_in.read_string() )
         #undef _
         default:
@@ -1200,43 +1343,51 @@
     }
     ::MIR::Statement HirDeserialiser::deserialise_mir_statement()
     {
-        TRACE_FUNCTION;
+        MIR::Statement  rv;
+        TRACE_FUNCTION_FR("", rv);
+        auto _ = m_in.open_object("MIR::Statement");
 
         switch( auto tag = m_in.read_tag() )
         {
         case 0:
-            return ::MIR::Statement::make_Assign({
+            rv = ::MIR::Statement::make_Assign({
                 deserialise_mir_lvalue(),
                 deserialise_mir_rvalue()
                 });
+            break;
         case 1:
-            return ::MIR::Statement::make_Drop({
+            rv = ::MIR::Statement::make_Drop({
                 m_in.read_bool() ? ::MIR::eDropKind::DEEP : ::MIR::eDropKind::SHALLOW,
                 deserialise_mir_lvalue(),
                 static_cast<unsigned int>(m_in.read_count())
                 });
+            break;
         case 2:
-            return ::MIR::Statement::make_Asm({
+            rv = ::MIR::Statement::make_Asm({
                 m_in.read_string(),
                 deserialise_vec< ::std::pair< ::std::string, ::MIR::LValue> >(),
                 deserialise_vec< ::std::pair< ::std::string, ::MIR::LValue> >(),
                 deserialise_vec< ::std::string>(),
                 deserialise_vec< ::std::string>()
                 });
+            break;
         case 3: {
             ::MIR::Statement::Data_SetDropFlag  sdf;
             sdf.idx = static_cast<unsigned int>(m_in.read_count());
             sdf.new_val = m_in.read_bool();
             sdf.other = static_cast<unsigned int>(m_in.read_count());
-            return ::MIR::Statement::make_SetDropFlag(sdf);
+            rv = ::MIR::Statement::make_SetDropFlag(sdf);
             }
+            break;
         case 4:
-            return ::MIR::Statement::make_ScopeEnd({
+            rv = ::MIR::Statement::make_ScopeEnd({
                 deserialise_vec<unsigned int>()
                 });
+            break;
         default:
             BUG(Span(), "Bad tag for MIR::Statement - " << tag);
         }
+        return rv;
     }
     ::MIR::Terminator HirDeserialiser::deserialise_mir_terminator()
     {
@@ -1250,6 +1401,8 @@
         switch( auto tag = m_in.read_tag() )
         {
         #define _(x, ...)    case ::MIR::Terminator::TAG_##x: return ::MIR::Terminator::make_##x( __VA_ARGS__ );
+        case MIR::Terminator::TAGDEAD:
+            BUG(Span(), "MIR::Terminator::TAGDEAD found");
         _(Incomplete, {})
         _(Return, {})
         _(Diverge, {})
@@ -1323,6 +1476,7 @@
         // m_traits doesn't need to be serialised
         rv.m_value_items = deserialise_istrumap< ::std::unique_ptr< ::HIR::VisEnt< ::HIR::ValueItem> > >();
         rv.m_mod_items = deserialise_istrumap< ::std::unique_ptr< ::HIR::VisEnt< ::HIR::TypeItem> > >();
+        rv.m_macro_items = deserialise_istrumap< ::std::unique_ptr< ::HIR::VisEnt< ::HIR::MacroItem> > >();
 
         return rv;
     }
@@ -1339,14 +1493,16 @@
         this->m_crate_name = m_in.read_istring();
         assert(this->m_crate_name != "" && "Empty crate name loaded from metadata");
         rv.m_crate_name = this->m_crate_name;
+        rv.m_edition = static_cast<AST::Edition>(m_in.read_tag());
         rv.m_root_module = deserialise_module();
 
         rv.m_type_impls = D< ::HIR::Crate::ImplGroup<::HIR::TypeImpl> >::des(*this);
         rv.m_trait_impls = deserialise_pathmap< ::HIR::Crate::ImplGroup<::HIR::TraitImpl>>();
         rv.m_marker_impls = deserialise_pathmap< ::HIR::Crate::ImplGroup<::HIR::MarkerImpl>>();
 
-        rv.m_exported_macros = deserialise_istrumap< ::MacroRulesPtr>();
-        rv.m_proc_macro_reexports = deserialise_istrumap< ::HIR::Crate::MacroImport>();
+        rv.m_exported_macro_names = deserialise_vec< ::RcString>();
+        //rv.m_exported_macros = deserialise_istrumap< ::MacroRulesPtr>();
+        //rv.m_proc_macro_reexports = deserialise_istrumap< ::HIR::Crate::MacroImport>();
         rv.m_lang_items = deserialise_strumap< ::HIR::SimplePath>();
 
         {
@@ -1365,7 +1521,7 @@
         rv.m_ext_libs = deserialise_vec< ::HIR::ExternLibrary>();
         rv.m_link_paths = deserialise_vec< ::std::string>();
 
-        rv.m_proc_macros = deserialise_vec< ::HIR::ProcMacro>();
+        //rv.m_proc_macros = deserialise_vec< ::HIR::ProcMacro>();
 
         return rv;
     }

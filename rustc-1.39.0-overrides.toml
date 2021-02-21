@@ -1,0 +1,21 @@
+#
+# minicargo overrides file
+#
+
+# rustc's libsyntax needs rustc's libproc_macro (not mrustc's)
+[add.'src/libsyntax'.dependencies]
+proc_macro = { path = "../libproc_macro" }
+[add.'src/libsyntax_ext'.dependencies]
+proc_macro = { path = "../libproc_macro" }
+[add.'src/librustc_metadata'.dependencies]
+proc_macro = { path = "../libproc_macro" }
+
+[delete]
+# Allow rustc's libproc_macro to build by removing the std dependency (it's built during rustc build, not during std build)
+'src/libproc_macro' = [
+	"dependencies.std",
+	]
+# mrustc has already built a proc_macro, remove it from libtest's deps
+'src/libtest' = [
+	"dependencies.proc_macro",
+	]

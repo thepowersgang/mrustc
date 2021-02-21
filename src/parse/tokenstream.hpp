@@ -75,7 +75,7 @@ public:
     void    putback(Token tok);
     eTokenType  lookahead(unsigned int count);
 
-    Ident::Hygiene getHygiene() const;
+    Ident::Hygiene get_hygiene() const;
     virtual void push_hygine() {}
     virtual void pop_hygine() {}
 
@@ -88,8 +88,6 @@ public:
     Span    sub_span(const Position& p) const {
         return Span(outerSpan(), p);
     }
-
-    Ident get_ident(Token tok) const;
 
 protected:
     virtual Position getPosition() const = 0;

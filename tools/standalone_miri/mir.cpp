@@ -71,7 +71,7 @@ namespace MIR {
             os << *e.p;
             ),
         (Generic,
-            os << e.name << "/*" << e.binding << "*/";
+            os << e;
             ),
         (ItemAddr,
             os << "addr " << *e;
@@ -166,6 +166,9 @@ namespace MIR {
         (LValue,
             os << e;
             ),
+        (Borrow,
+            os << "Borrow(" << e.type << ", " << e.val << ")";
+            ),
         (Constant,
             os << e;
             )
@@ -185,7 +188,7 @@ namespace MIR {
             os << "SizedArray(" << e.val << "; " << e.count << ")";
             ),
         (Borrow,
-            os << "Borrow(" << e.region << ", " << e.type << ", " << e.val << ")";
+            os << "Borrow(" << e.type << ", " << e.val << ")";
             ),
         (Cast,
             os << "Cast(" << e.val << " as " << e.type << ")";
@@ -237,8 +240,11 @@ namespace MIR {
         (Array,
             os << "Array(" << e.vals << ")";
             ),
-        (Variant,
+        (UnionVariant,
             os << "Variant(" << e.path << " #" << e.index << ", " << e.val << ")";
+            ),
+        (EnumVariant,
+            os << "Variant(" << e.path << " #" << e.index << ", {" << e.vals << "})";
             ),
         (Struct,
             os << "Struct(" << e.path << ", {" << e.vals << "})";

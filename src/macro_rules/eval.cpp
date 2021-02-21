@@ -15,6 +15,10 @@
 #include <parse/interpolated_fragment.hpp>
 #include <ast/expr.hpp>
 #include <ast/crate.hpp>
+#include <hir/hir.hpp>  // HIR::Crate
+
+ // Map of: LoopIndex=>(Path=>Count)
+typedef std::map<unsigned, std::map< std::vector<unsigned>, unsigned > >    loop_counts_t;
 
 class ParameterMappings
 {
@@ -38,11 +42,13 @@ class ParameterMappings
         CaptureLayer    top_layer;
 
         friend ::std::ostream& operator<<(::std::ostream& os, const CapturedVar& x) {
-            os << "CapturedVar { top_layer: " << x.top_layer << " }";
+            os << "CapturedVar { " << x.top_layer << " }";
             return os;
         }
-
     };
+
+
+    loop_counts_t   m_loop_counts;
 
     ::std::vector<CapturedVar>  m_mappings;
     unsigned m_layer_count;
@@ -63,10 +69,17 @@ public:
         return m_layer_count+1;
     }
 
+    void set_loop_counts(loop_counts_t loop_counts) {
+        for(const auto& e : loop_counts) {
+            DEBUG(e.first << ": {" << e.second << "}");
+        }
+        m_loop_counts = std::move(loop_counts);
+    }
     void insert(unsigned int name_index, const ::std::vector<unsigned int>& iterations, InterpolatedFragment data);
 
     InterpolatedFragment* get(const ::std::vector<unsigned int>& iterations, unsigned int name_idx);
-    unsigned int count_in(const ::std::vector<unsigned int>& iterations, unsigned int name_idx) const;
+
+    unsigned int get_loop_repeats(const ::std::vector<unsigned int>& iterations, unsigned int loop_idx) const;
 
     /// Increment the number of times a particular fragment will be used
     void inc_count(const ::std::vector<unsigned int>& iterations, unsigned int name_idx);
@@ -106,8 +119,12 @@ class MacroPatternStream
     const ::std::vector<bool>* m_condition_replay;
     size_t  m_condition_replay_pos;
 
+    // Currently processed loop indexes
+    ::std::vector<unsigned int> m_current_loops;
     // Iteration index of each active loop level
     ::std::vector<unsigned int> m_loop_iterations;
+
+    loop_counts_t m_loop_counts;
 
     bool m_peek_cache_valid = false;
     const SimplePatEnt* m_peek_cache;
@@ -121,6 +138,8 @@ public:
         m_condition_replay_pos(0)
     {
     }
+
+    size_t cur_pos() const { return m_cur_pos; }
 
     /// Get the next pattern entry
     const SimplePatEnt& next();
@@ -142,6 +161,9 @@ public:
 
     ::std::vector<bool> take_history() {
         return ::std::move(m_condition_history);
+    }
+    loop_counts_t take_loop_counts() {
+        return ::std::move(m_loop_counts);
     }
 };
 
@@ -232,45 +254,23 @@ InterpolatedFragment* ParameterMappings::get(const ::std::vector<unsigned int>& 
 {
     return &get_cap(iterations, name_idx).frag;
 }
-unsigned int ParameterMappings::count_in(const ::std::vector<unsigned int>& iterations, unsigned int name_idx) const
+unsigned int ParameterMappings::get_loop_repeats(const ::std::vector<unsigned int>& iterations, unsigned int loop_idx) const
 {
-    DEBUG("(iterations=[" << iterations << "], name_idx=" << name_idx << ")");
-    if( name_idx >= m_mappings.size() ) {
-        DEBUG("- Missing");
-        return 0;
-    }
-    auto& e = m_mappings.at(name_idx);
-    if( e.top_layer.is_Vals() && e.top_layer.as_Vals().size() == 0 ) {
-        DEBUG("- Not populated");
-        return 0;
-    }
-    auto* layer = &e.top_layer;
-    for(const auto iter : iterations)
+    const auto& list = m_loop_counts.at(loop_idx);
+    // Iterate the list, find the first prefix match of `iterations`
+    // - `iterations` should always be longer or equal in length to every entry in `list`
+    //auto ranges = list.equal_range(iterations);
+    for(const auto& e : list)
     {
-        TU_MATCH(CaptureLayer, (*layer), (e),
-        (Vals,
-            // TODO: Returning zero here isn't correct, maybe 1 will be?
-            return 1;
-            ),
-        (Nested,
-            if( iter >= e.size() ) {
-                DEBUG("Counting value for an iteration index it doesn't have - " << iter << " >= " << e.size());
-                return 0;
-            }
-            layer = &e[iter];
-            )
-        )
+        ASSERT_BUG(Span(), e.first.size() <= iterations.size(), "Loop " << loop_idx << " iteration path [" << e.first << "] larger than query path [" << iterations << "]");
+        if( std::equal(e.first.begin(), e.first.end(), iterations.begin()) )
+        {
+            return e.second;
+        }
     }
-    TU_MATCH(CaptureLayer, (*layer), (e),
-    (Vals,
-        return e.size();
-        ),
-    (Nested,
-        return e.size();
-        )
-    )
-    return 0;
+    BUG(Span(), "Loop " << loop_idx << " cannot find an iteration count for path [" << iterations << "]");
 }
+
 void ParameterMappings::inc_count(const ::std::vector<unsigned int>& iterations, unsigned int name_idx)
 {
     auto& cap = get_cap(iterations, name_idx);
@@ -333,14 +333,26 @@ const SimplePatEnt& MacroPatternStream::next()
             BUG(Span(), "Unexpected End");
         TU_ARMA(Jump, e)
             m_cur_pos = e.jump_target;
-        TU_ARMA(LoopStart, _e) {
+        TU_ARMA(LoopStart, e) {
+            m_current_loops.push_back(e.index);
             m_loop_iterations.push_back(0);
             }
         TU_ARMA(LoopNext, _e) {
             m_loop_iterations.back() += 1;
             }
         TU_ARMA(LoopEnd, _e) {
+            assert(!m_loop_iterations.empty());
+            assert(!m_current_loops.empty());
+            auto loop_index = m_current_loops.back();
+            auto num_iter = m_loop_iterations.back();
             m_loop_iterations.pop_back();
+            m_current_loops.pop_back();
+
+            // Save this iteration count if replaying
+            if( m_condition_replay )
+            {
+                m_loop_counts[loop_index].insert( std::make_pair(m_loop_iterations, num_iter) );
+            }
             }
         }
     }
@@ -349,15 +361,13 @@ const SimplePatEnt& MacroPatternStream::next()
 void MacroPatternStream::if_succeeded()
 {
     assert(m_cur_pos > 0);
+    assert(m_cur_pos <= m_simple_ents.size());
     assert(m_last_was_cond);
-    TU_MATCH_HDRA( (m_simple_ents[m_cur_pos-1]), {)
-    default:
-        BUG(Span(), "Unexpected " << m_simple_ents[m_cur_pos-1]);
-    TU_ARMA(If, e) {
-        ASSERT_BUG(Span(), e.jump_target < m_simple_ents.size(), "Jump target " << e.jump_target << " out of range " << m_simple_ents.size());
-        m_cur_pos = e.jump_target;
-        }
-    }
+    const auto& ent = m_simple_ents[m_cur_pos-1];
+    ASSERT_BUG(Span(), ent.is_If(), "Expected If when calling `if_succeeded`, got " << ent);
+    const auto& e = ent.as_If();
+    ASSERT_BUG(Span(), e.jump_target < m_simple_ents.size(), "Jump target " << e.jump_target << " out of range " << m_simple_ents.size());
+    m_cur_pos = e.jump_target;
     m_condition_met = true;
 }
 
@@ -404,6 +414,10 @@ private:
 class MacroExpander:
     public TokenStream
 {
+    // Used to track a specific invocation for debugging
+    static unsigned s_next_log_index;
+    unsigned m_log_index;
+
     const RcString  m_macro_filename;
 
     const RcString  m_crate_name;
@@ -420,8 +434,18 @@ class MacroExpander:
 public:
     MacroExpander(const MacroExpander& x) = delete;
 
-    MacroExpander(const ::std::string& macro_name, const Span& sp, AST::Edition edition, const Ident::Hygiene& parent_hygiene, const ::std::vector<MacroExpansionEnt>& contents, ParameterMappings mappings, RcString crate_name):
-        TokenStream(ParseState(AST::Edition::Rust2015)),    // TODO: Get from the source crate
+    MacroExpander(
+        const ::std::string& macro_name,
+        const Span& sp,
+        AST::Edition edition,
+        const Ident::Hygiene& parent_hygiene,
+        const ::std::vector<MacroExpansionEnt>& contents,
+        ParameterMappings mappings,
+        RcString crate_name,
+        AST::Edition source_edition
+    ):
+        TokenStream(ParseState(source_edition)),    // TODO: Get from the source crate
+        m_log_index(s_next_log_index++),
         m_macro_filename( FMT("Macro:" << macro_name) ),
         m_crate_name( mv$(crate_name) ),
         m_invocation_span( sp ),
@@ -437,16 +461,10 @@ public:
     Ident::Hygiene realGetHygiene() const override;
     Token realGetToken() override;
 };
+unsigned MacroExpander::s_next_log_index = 0;
 
 void Macro_InitDefaults()
 {
-}
-
-namespace {
-    bool is_reserved_word(eTokenType tok)
-    {
-        return tok >= TOK_RWORD_PUB;
-    }
 }
 
 InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type type)
@@ -487,17 +505,17 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
     case MacroPatEnt::PAT_IDENT:
         // NOTE: Any reserved word is also valid as an ident
         GET_TOK(tok, lex);
-        if( tok.type() == TOK_IDENT || is_reserved_word(tok.type()) )
-            ;
-        else
+        if( Token::type_is_rword(tok.type()) )
+            return InterpolatedFragment( TokenTree(lex.get_hygiene(), tok) );
+        else {
             CHECK_TOK(tok, TOK_IDENT);
-        // TODO: TOK_INTERPOLATED_IDENT
-        return InterpolatedFragment( TokenTree(lex.getHygiene(), tok) );
+            return InterpolatedFragment( TokenTree(lex.get_hygiene(), tok) );
+        }
     case MacroPatEnt::PAT_VIS:
         return InterpolatedFragment( Parse_Publicity(lex, /*allow_restricted=*/true) );
     case MacroPatEnt::PAT_LIFETIME:
         GET_CHECK_TOK(tok, lex, TOK_LIFETIME);
-        return InterpolatedFragment( TokenTree(lex.getHygiene(), tok) );
+        return InterpolatedFragment( TokenTree(lex.get_hygiene(), tok) );
     case MacroPatEnt::PAT_LITERAL:
         GET_TOK(tok, lex);
         switch(tok.type())
@@ -512,7 +530,7 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
         default:
             throw ParseError::Unexpected(lex, tok, {TOK_INTEGER, TOK_FLOAT, TOK_STRING, TOK_BYTESTRING, TOK_RWORD_TRUE, TOK_RWORD_FALSE});
         }
-        return InterpolatedFragment( TokenTree(lex.getHygiene(), tok) );
+        return InterpolatedFragment( TokenTree(lex.get_hygiene(), tok) );
     }
     throw "";
 }
@@ -528,7 +546,7 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
 
     const auto& rule = rules.m_rules.at(rule_index);
 
-    DEBUG( rule.m_contents.size() << " rule contents with " << bound_tts.mappings().size() << " bound values - " << name );
+    DEBUG( "Using macro '" << name << "' #" << rule_index << " - " << rule.m_contents.size() << " rule contents with " << bound_tts.mappings().size() << " bound values");
     for( unsigned int i = 0; i < ::std::min( bound_tts.mappings().size(), rule.m_param_names.size() ); i ++ )
     {
         DEBUG("- #" << i << " " << rule.m_param_names.at(i) << " = [" << bound_tts.mappings()[i] << "]");
@@ -538,7 +556,10 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
     // Run through the expansion counting the number of times each fragment is used
     Macro_InvokeRules_CountSubstUses(bound_tts, rule.m_contents);
 
-    TokenStream* ret_ptr = new MacroExpander(name, sp, crate.m_edition, rules.m_hygiene, rule.m_contents, mv$(bound_tts), rules.m_source_crate);
+    TokenStream* ret_ptr = new MacroExpander(
+        name, sp, crate.m_edition, rules.m_hygiene, rule.m_contents, mv$(bound_tts), rules.m_source_crate,
+        rules.m_source_crate == "" ? crate.m_edition : crate.m_extern_crates.at(rules.m_source_crate).m_hir->m_edition
+        );
 
     return ::std::unique_ptr<TokenStream>( ret_ptr );
 }
@@ -783,6 +804,10 @@ namespace
             if( lex.next() != TOK_DOUBLE_COLON )
                 return true;
             break;
+        case TOK_RWORD_CRATE:
+            lex.consume();
+            // Require `::` after `crate`
+            break;
         case TOK_RWORD_SUPER:
             lex.consume();
             if( lex.next() != TOK_DOUBLE_COLON )
@@ -860,12 +885,15 @@ namespace
         case TOK_SQUARE_OPEN:
             return consume_tt(lex);
         case TOK_IDENT:
-            if( TARGETVER_1_29 && lex.next_tok().istr() == "dyn" )
+            if( TARGETVER_LEAST_1_29 && lex.next_tok().ident().name == "dyn" )
                 lex.consume();
+            if(0)
+        case TOK_RWORD_DYN:
+            lex.consume();
+        case TOK_RWORD_CRATE:
         case TOK_RWORD_SUPER:
         case TOK_RWORD_SELF:
         case TOK_DOUBLE_COLON:
-        case TOK_INTERPOLATED_IDENT:
         case TOK_INTERPOLATED_PATH:
             if( !consume_path(lex, true) )
                 return false;
@@ -1095,7 +1123,6 @@ namespace
                 }
                 break;
             case TOK_IDENT:
-            case TOK_INTERPOLATED_IDENT:
             case TOK_INTERPOLATED_PATH:
             case TOK_DOUBLE_COLON:
             case TOK_RWORD_SELF:
@@ -1353,6 +1380,26 @@ namespace
             return true;
         }
     }
+    bool consume_vis(TokenStreamRO& lex)
+    {
+        TRACE_FUNCTION;
+        if( lex.consume_if(TOK_INTERPOLATED_VIS) || lex.consume_if(TOK_RWORD_CRATE) )
+        {
+            return true;
+        }
+        else if( lex.consume_if(TOK_RWORD_PUB) )
+        {
+            if( lex.next() == TOK_PAREN_OPEN )
+            {
+                return consume_tt(lex);
+            }
+            return true;
+        }
+        else
+        {
+            return true;
+        }
+    }
     bool consume_item(TokenStreamRO& lex)
     {
         TRACE_FUNCTION;
@@ -1386,7 +1433,7 @@ namespace
             return true;
         // Macro invocation
         // TODO: What about `union!` as a macro? Needs to be handled below
-        if( (lex.next() == TOK_IDENT && lex.next_tok().istr() != "union")
+        if( (lex.next() == TOK_IDENT && lex.next_tok().ident().name != "union")
          || lex.next() == TOK_RWORD_SELF
          || lex.next() == TOK_RWORD_SUPER
          || lex.next() == TOK_DOUBLE_COLON
@@ -1407,8 +1454,8 @@ namespace
             return true;
         }
         // Normal items
-        if(lex.next() == TOK_RWORD_PUB)
-            lex.consume();
+        if( !consume_vis(lex) )
+            return false;
         if(lex.next() == TOK_RWORD_UNSAFE)
             lex.consume();
         DEBUG("Check item: " << lex.next_tok());
@@ -1522,7 +1569,7 @@ namespace
                 return false;
             return consume_tt(lex);
         case TOK_IDENT:
-            if( lex.next_tok().istr() == "union" )
+            if( lex.next_tok().ident().name == "union" )
             {
                 lex.consume();
                 if( lex.next() == TOK_EXCLAM )
@@ -1547,7 +1594,7 @@ namespace
                     return consume_tt(lex);
                 }
             }
-            else if( lex.next_tok().istr() == "auto" )
+            else if( lex.next_tok().ident().name == "auto" )
             {
                 lex.consume();
                 if( lex.consume_if(TOK_RWORD_TRAIT) )
@@ -1607,6 +1654,11 @@ namespace
             {
                 if( !lex.consume_if(TOK_IDENT) )
                     return false;
+                if( lex.consume_if(TOK_RWORD_AS) )
+                {
+                    if( !lex.consume_if(TOK_IDENT) )
+                        return false;
+                }
                 if( !lex.consume_if(TOK_SEMICOLON) )
                     return false;
                 break;
@@ -1662,26 +1714,6 @@ namespace
         }
         return true;
     }
-    bool consume_vis(TokenStreamRO& lex)
-    {
-        TRACE_FUNCTION;
-        if( lex.consume_if(TOK_INTERPOLATED_VIS) || lex.consume_if(TOK_RWORD_CRATE) )
-        {
-            return true;
-        }
-        else if( lex.consume_if(TOK_RWORD_PUB) )
-        {
-            if( lex.next() == TOK_PAREN_OPEN )
-            {
-                return consume_tt(lex);
-            }
-            return true;
-        }
-        else
-        {
-            return true;
-        }
-    }
 
     bool consume_from_frag(TokenStreamRO& lex, MacroPatEnt::Type type)
     {
@@ -1703,7 +1735,7 @@ namespace
             }
             break;
         case MacroPatEnt::PAT_IDENT:
-            if( lex.next() == TOK_IDENT || is_reserved_word(lex.next()) ) {
+            if( lex.next() == TOK_IDENT || Token::type_is_rword(lex.next()) ) {
                 lex.consume();
             }
             else {
@@ -1793,8 +1825,10 @@ unsigned int Macro_InvokeRules_MatchPattern(const Span& sp, const MacroRules& ru
         bool fail = false;
         for(;;)
         {
+            const auto pos = arm_stream.cur_pos();
             const auto& pat = arm_stream.next();
-            DEBUG(i << " " << pat);
+            // NOTE: The positions seen by this aren't fully sequential, as `next` steps over jumps/loop control ops
+            DEBUG("Arm " << i << " @" << pos << " " << pat);
             if(pat.is_End())
             {
                 if( lex.next() != TOK_EOF )
@@ -1821,7 +1855,8 @@ unsigned int Macro_InvokeRules_MatchPattern(const Span& sp, const MacroRules& ru
                             rv = false;
                             break;
                         }
-                        lc.consume();
+                        if( lc.next_tok() != TOK_EOF )
+                            lc.consume();
                     }
                 }
                 if( rv == e->is_equal )
@@ -1833,7 +1868,7 @@ unsigned int Macro_InvokeRules_MatchPattern(const Span& sp, const MacroRules& ru
             else if( const auto* e = pat.opt_ExpectTok() )
             {
                 const auto& tok = lex.next_tok();
-                DEBUG(i << " ExpectTok(" << *e << ") == " << tok);
+                DEBUG("Arm " << i << " @" << pos << " ExpectTok(" << *e << ") == " << tok);
                 if( tok != *e )
                 {
                     fail = true;
@@ -1843,7 +1878,7 @@ unsigned int Macro_InvokeRules_MatchPattern(const Span& sp, const MacroRules& ru
             }
             else if( const auto* e = pat.opt_ExpectPat() )
             {
-                DEBUG(i << " ExpectPat(" << e->type << " => $" << e->idx << ")");
+                DEBUG("Arm " << i << " @" << pos << " ExpectPat(" << e->type << " => $" << e->idx << ")");
                 if( !consume_from_frag(lex, e->type) )
                 {
                     fail = true;
@@ -1938,6 +1973,7 @@ unsigned int Macro_InvokeRules_MatchPattern(const Span& sp, const MacroRules& ru
         {
             bound_tts.insert( cap.binding_idx, cap.iterations, mv$(captures[cap.cap_idx]) );
         }
+        bound_tts.set_loop_counts(arm_stream.take_loop_counts());
         return i;
     }
 }
@@ -1970,7 +2006,7 @@ Ident::Hygiene MacroExpander::realGetHygiene() const
 {
     if( m_ttstream )
     {
-        return m_ttstream->getHygiene();
+        return m_ttstream->get_hygiene();
     }
     else
     {
@@ -1982,14 +2018,14 @@ Token MacroExpander::realGetToken()
     // Use m_next_token first
     if( m_next_token.type() != TOK_NULL )
     {
-        DEBUG("m_next_token = " << m_next_token);
+        DEBUG("[" << m_log_index << "] m_next_token = " << m_next_token);
         return mv$(m_next_token);
     }
     // Then try m_ttstream
     if( m_ttstream.get() )
     {
-        DEBUG("TTStream present");
         Token rv = m_ttstream->getToken();
+        DEBUG("[" << m_log_index << "] TTStream present: " << rv);
         if( rv.type() != TOK_EOF )
             return rv;
         m_ttstream.reset();
@@ -1999,18 +2035,43 @@ Token MacroExpander::realGetToken()
     while( const auto* next_ent_ptr = m_state.next_ent() )
     {
         const auto& ent = *next_ent_ptr;
-        TU_IFLET(MacroExpansionEnt, ent, Token, e,
-            return e.clone();
-        )
-        else if( ent.is_NamedValue() ) {
-            const auto& e = ent.as_NamedValue();
+        TU_MATCH_HDRA( (ent), {)
+        TU_ARMA(Token, e) {
+            switch(e.type())
+            {
+            case TOK_IDENT:
+            case TOK_LIFETIME: {
+                // Rewrite the hygiene of an ident such that idents in the macro explicitly are unique for each expansion
+                // - Appears to be a valid option.
+                auto ident = e.ident();
+                if( ident.hygiene == m_hygiene.get_parent() )
+                {
+                    ident.hygiene = m_hygiene;
+                }
+                auto rv = Token(e.type(), std::move(ident));
+                DEBUG("[" << m_log_index << "] Updated hygine: " << rv);
+                return rv;
+                break; }
+            default:
+                DEBUG("[" << m_log_index << "] Raw token: " << e);
+                return e.clone();
+            }
+            }
+        TU_ARMA(NamedValue, e) {
             if( e >> 30 ) {
                 switch( e & 0x3FFFFFFF )
                 {
                 // - XXX: Hack for $crate special name
                 case 0:
-                    DEBUG("Crate name hack");
-                    if( m_crate_name != "" )
+                    DEBUG("[" << m_log_index << "] Crate name hack");
+                    if( m_crate_name == "" )
+                    {
+                        if( parse_state().edition_after(AST::Edition::Rust2018) )
+                        {
+                            return Token(TOK_RWORD_CRATE);
+                        }
+                    }
+                    else
                     {
                         m_next_token = Token(TOK_STRING, ::std::string(m_crate_name.c_str()));
                         return Token(TOK_DOUBLE_COLON);
@@ -2025,7 +2086,7 @@ Token MacroExpander::realGetToken()
                 ASSERT_BUG(this->point_span(), frag, "Cannot find '" << e << "' for " << m_state.iterations());
 
                 bool can_steal = ( m_mappings.dec_count(m_state.iterations(), e) == false );
-                DEBUG("Insert replacement #" << e << " = " << *frag);
+                DEBUG("[" << m_log_index << "] Insert replacement #" << e << " = " << *frag);
                 if( frag->m_type == InterpolatedFragment::TT )
                 {
                     auto res_tt = can_steal ? mv$(frag->as_tt()) : frag->as_tt().clone();
@@ -2045,13 +2106,12 @@ Token MacroExpander::realGetToken()
                     }
                 }
             }
-        }
-        else TU_IFLET(MacroExpansionEnt, ent, Loop, e,
+            }
+        TU_ARMA(Loop, e) {
             //assert( e.joiner.tok() != TOK_NULL );
+            DEBUG("[" << m_log_index << "] Loop joiner " << e.joiner);
             return e.joiner;
-        )
-        else {
-            throw "";
+            }
         }
     }
 
@@ -2077,31 +2137,28 @@ const MacroExpansionEnt* MacroExpandState::next_ent()
         {
             // - If not, just handle the next entry
             const auto& ent = ents[idx];
-            TU_MATCH( MacroExpansionEnt, (ent), (e),
-            (Token,
+            TU_MATCH_HDRA( (ent), {)
+            TU_ARMA(Token, e) {
                 return &ent;
-                ),
-            (NamedValue,
-                return &ent;
-                ),
-            (Loop,
-                // 1. Get number of times this will repeat (based on the next iteration count)
-                unsigned int num_repeats = 0;
-                for(const auto& var : e.variables)
-                {
-                    unsigned int this_repeats = m_mappings.count_in(m_iterations, var.first);
-                    DEBUG("= " << this_repeats);
-                    // If a variable doesn't have data and it's a required controller, don't loop
-                    if( this_repeats == 0 && var.second ) {
-                        num_repeats = 0;
-                        break;
-                    }
-                    // TODO: Ideally, all variables would have the same repeat count.
-                    // Options: 0 (optional), 1 (higher), N (all equal)
-                    if( this_repeats > num_repeats )
-                        num_repeats = this_repeats;
                 }
-                DEBUG("Looping " << num_repeats << " times based on {" << e.variables << "}");
+            TU_ARMA(NamedValue, e) {
+                return &ent;
+                }
+            TU_ARMA(Loop, e) {
+                assert( !e.controlling_input_loops.empty() );
+                unsigned int num_repeats = m_mappings.get_loop_repeats(m_iterations, *e.controlling_input_loops.begin());
+                for(auto loop_ident : e.controlling_input_loops)
+                {
+                    if( loop_ident == *e.controlling_input_loops.begin() )
+                        continue ;
+
+                    unsigned int this_repeats = m_mappings.get_loop_repeats(m_iterations, loop_ident);
+                    if( this_repeats != num_repeats ) {
+                        // TODO: Get the variables involved, or the pattern+output spans
+                        ERROR(Span(), E0000, "Mismatch in loop iterations: " << this_repeats << " != " << num_repeats);
+                    }
+                }
+                DEBUG("Looping " << num_repeats << " times based on {" << e.controlling_input_loops << "}");
                 // 2. If it's going to repeat, start the loop
                 if( num_repeats > 0 )
                 {
@@ -2109,8 +2166,8 @@ const MacroExpansionEnt* MacroExpandState::next_ent()
                     m_iterations.push_back( 0 );
                     m_cur_ents = getCurLayer();
                 }
-                )
-            )
+                }
+            }
             // Fall through for loop
         }
         else if( layer > 0 )

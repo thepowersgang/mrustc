@@ -17,6 +17,9 @@
 class PackageManifest;
 class Repository;
 struct TomlKeyValue;
+struct ErrorHandler;
+
+void Manifest_LoadOverrides(const ::std::string& s);
 
 struct PackageVersion
 {
@@ -141,6 +144,7 @@ struct PackageVersionSpec
 class PackageRef
 {
     friend class PackageManifest;
+    ::std::string   m_key;
     ::std::string   m_name;
     PackageVersionSpec  m_version;
 
@@ -155,13 +159,15 @@ class PackageRef
     ::std::shared_ptr<PackageManifest> m_manifest;
 
     PackageRef(const ::std::string& n) :
+        m_key(n),
         m_name(n)
     {
     }
 
-    void fill_from_kv(bool was_created, const TomlKeyValue& kv, size_t ofs);
+    void fill_from_kv(ErrorHandler& eh, bool was_created, const TomlKeyValue& kv, size_t ofs);
 
 public:
+    const ::std::string& key() const { return m_key; }
     const ::std::string& name() const { return m_name; }
     //const ::std::string& get_repo_name() const  { return m_repo; }
     const PackageVersionSpec& get_version() const { return m_version; }
@@ -178,6 +184,8 @@ public:
     }
 
     void load_manifest(Repository& repo, const ::helpers::path& base_path, bool include_build_deps);
+
+    friend std::ostream& operator<<(std::ostream& os, const PackageRef& pr);
 };
 
 enum class Edition
@@ -288,10 +296,15 @@ class PackageManifest
 
 public:
     static PackageManifest load_from_toml(const ::std::string& path);
+private:
+    void fill_from_kv(ErrorHandler& eh, const TomlKeyValue& kv);
 
+public:
     const PackageVersion& version() const { return m_version; }
     bool has_library() const;
     const PackageTarget& get_library() const;
+
+    void dump(std::ostream& os) const;
 
     bool foreach_ty(PackageTarget::Type ty, ::std::function<bool(const PackageTarget&)> cb) const {
         for(const auto& t : m_targets ) {
@@ -318,6 +331,9 @@ public:
     const ::std::string& name() const {
         return m_name;
     }
+    Edition edition() const {
+        return m_edition;
+    }
     const ::std::string& build_script() const {
         return m_build_script;
     }
@@ -335,6 +351,9 @@ public:
     }
     const ::std::vector<::std::string>& active_features() const {
         return m_active_features;
+    }
+    const ::std::map<::std::string, ::std::vector<::std::string>>& all_features() const {
+        return m_features;
     }
 
     void set_features(const ::std::vector<::std::string>& features, bool enable_default);

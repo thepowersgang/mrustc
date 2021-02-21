@@ -40,6 +40,9 @@ namespace HIR {
         (Defer,
             os << "?";
             ),
+        (Generic,
+            os << e;
+            ),
         (List,
             os << "[";
             for(const auto& val : e)
@@ -59,7 +62,7 @@ namespace HIR {
             os << "&" << e;
             ),
         (BorrowData,
-            os << "&" << *e;
+            os << "&" << *e.val;
             ),
         (String,
             os << "\"" << FmtEscaped(e) << "\"";
@@ -76,6 +79,9 @@ namespace HIR {
         (Invalid,
             ),
         (Defer,
+            ),
+        (Generic,
+            return le == re;
             ),
         (List,
             if( le.size() != re.size() )
@@ -99,7 +105,7 @@ namespace HIR {
             return le == re;
             ),
         (BorrowData,
-            return *le == *re;
+            return *le.val == *re.val;
             ),
         (String,
             return le == re;
@@ -133,6 +139,9 @@ HIR::Literal HIR::Literal::clone() const
     (Defer,
         return ::HIR::Literal::make_Defer({});
         ),
+    (Generic,
+        return ::HIR::Literal(e);
+        ),
     (List,
         ::std::vector< ::HIR::Literal>  vals;
         for(const auto& val : e) {
@@ -153,7 +162,7 @@ HIR::Literal HIR::Literal::clone() const
         return ::HIR::Literal(e.clone());
         ),
     (BorrowData,
-        return ::HIR::Literal(box$( e->clone() ));
+        return ::HIR::Literal::make_BorrowData({ box$(e.val->clone()), e.ty.clone() });
         ),
     (String,
         return ::HIR::Literal(e);
@@ -230,8 +239,7 @@ uint32_t HIR::Enum::get_value(size_t idx) const
 {
     switch(r)
     {
-    case ::HIR::Enum::Repr::Rust:
-    case ::HIR::Enum::Repr::C:
+    case ::HIR::Enum::Repr::Auto:
         return ::HIR::CoreType::Isize;
         break;
     case ::HIR::Enum::Repr::Usize: return ::HIR::CoreType::Usize; break;
@@ -239,6 +247,11 @@ uint32_t HIR::Enum::get_value(size_t idx) const
     case ::HIR::Enum::Repr::U16: return ::HIR::CoreType::U16; break;
     case ::HIR::Enum::Repr::U32: return ::HIR::CoreType::U32; break;
     case ::HIR::Enum::Repr::U64: return ::HIR::CoreType::U64; break;
+    case ::HIR::Enum::Repr::Isize: return ::HIR::CoreType::Isize; break;
+    case ::HIR::Enum::Repr::I8 : return ::HIR::CoreType::I8 ; break;
+    case ::HIR::Enum::Repr::I16: return ::HIR::CoreType::I16; break;
+    case ::HIR::Enum::Repr::I32: return ::HIR::CoreType::I32; break;
+    case ::HIR::Enum::Repr::I64: return ::HIR::CoreType::I64; break;
     }
     throw "";
 }
@@ -262,50 +275,72 @@ const ::HIR::SimplePath& ::HIR::Crate::get_lang_item_path_opt(const char* name) 
     return it->second;
 }
 
+namespace {
+    const ::HIR::Module& get_containing_module(const ::HIR::Crate& crate, const Span& sp, const ::HIR::SimplePath& path, bool ignore_crate_name, bool ignore_last_node)
+    {
+        ASSERT_BUG(sp, path.m_components.size() > 0u, "Invalid path (no nodes) - " << path);
+        ASSERT_BUG(sp, path.m_components.size() > (ignore_last_node ? 1u : 0u), "Invalid path (only one node with `ignore_last_node` - " << path);
+
+        const ::HIR::Module* mod;
+        if( !ignore_crate_name && path.m_crate_name != crate.m_crate_name ) {
+            ASSERT_BUG(sp, crate.m_ext_crates.count(path.m_crate_name) > 0, "Crate '" << path.m_crate_name << "' not loaded for " << path);
+            mod = &crate.m_ext_crates.at(path.m_crate_name).m_data->m_root_module;
+        }
+        else {
+            mod =  &crate.m_root_module;
+        }
+        for( unsigned int i = 0; i < path.m_components.size() - (ignore_last_node ? 2 : 1); i ++ )
+        {
+            const auto& pc = path.m_components[i];
+            auto it = mod->m_mod_items.find( pc );
+            if( it == mod->m_mod_items.end() ) {
+                BUG(sp, "Couldn't find component " << i << " of " << path);
+            }
+            if(const auto* e = it->second->ent.opt_Module()) {
+                mod = e;
+            }
+            else {
+                BUG(sp, "Node " << i << " of path " << path << " wasn't a module");
+            }
+        }
+        return *mod;
+    }
+}
+
+const ::HIR::MacroItem& ::HIR::Crate::get_macroitem_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_crate_name, bool ignore_last_node) const
+{
+    const auto& mod = get_containing_module(*this, sp, path, ignore_crate_name, ignore_last_node);
+
+    auto it = mod.m_macro_items.find( ignore_last_node ? path.m_components[path.m_components.size()-2] : path.m_components.back() );
+    if( it == mod.m_macro_items.end() ) {
+        BUG(sp, "Could not find macro name in " << path);
+    }
+
+    return it->second->ent;
+}
+
 const ::HIR::TypeItem& ::HIR::Crate::get_typeitem_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_crate_name, bool ignore_last_node) const
 {
-    ASSERT_BUG(sp, path.m_components.size() > 0u, "get_typeitem_by_path received invalid path - " << path);
-    ASSERT_BUG(sp, path.m_components.size() > (ignore_last_node ? 1u : 0u), "get_typeitem_by_path received invalid path - " << path);
+    const auto& mod = get_containing_module(*this, sp, path, ignore_crate_name, ignore_last_node);
 
-    const ::HIR::Module* mod;
-    if( !ignore_crate_name && path.m_crate_name != m_crate_name ) {
-        ASSERT_BUG(sp, m_ext_crates.count(path.m_crate_name) > 0, "Crate '" << path.m_crate_name << "' not loaded for " << path);
-        mod = &m_ext_crates.at(path.m_crate_name).m_data->m_root_module;
-    }
-    else {
-        mod =  &this->m_root_module;
-    }
-    for( unsigned int i = 0; i < path.m_components.size() - (ignore_last_node ? 2 : 1); i ++ )
-    {
-        const auto& pc = path.m_components[i];
-        auto it = mod->m_mod_items.find( pc );
-        if( it == mod->m_mod_items.end() ) {
-            BUG(sp, "Couldn't find component " << i << " of " << path);
-        }
-        TU_IFLET(::HIR::TypeItem, it->second->ent, Module, e,
-            mod = &e;
-        )
-        else {
-            BUG(sp, "Node " << i << " of path " << path << " wasn't a module");
-        }
-    }
-    auto it = mod->m_mod_items.find( ignore_last_node ? path.m_components[path.m_components.size()-2] : path.m_components.back() );
-    if( it == mod->m_mod_items.end() ) {
+    auto it = mod.m_mod_items.find( ignore_last_node ? path.m_components[path.m_components.size()-2] : path.m_components.back() );
+    if( it == mod.m_mod_items.end() ) {
         BUG(sp, "Could not find type name in " << path);
     }
 
     return it->second->ent;
 }
 
-const ::HIR::Module& ::HIR::Crate::get_mod_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_last_node/*=false*/) const
+const ::HIR::Module& ::HIR::Crate::get_mod_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_last_node/*=false*/, bool ignore_crate_name/*=false*/) const
 {
     if( ignore_last_node )
     {
         ASSERT_BUG(sp, path.m_components.size() > 0, "get_mod_by_path received invalid path with ignore_last_node=true - " << path);
     }
+    // Special handling for empty paths with `ignore_last_node`
     if( path.m_components.size() == (ignore_last_node ? 1 : 0) )
     {
-        if( path.m_crate_name != m_crate_name )
+        if( !ignore_crate_name && path.m_crate_name != m_crate_name )
         {
             ASSERT_BUG(sp, m_ext_crates.count(path.m_crate_name) > 0, "Crate '" << path.m_crate_name << "' not loaded");
             return m_ext_crates.at(path.m_crate_name).m_data->m_root_module;
@@ -317,10 +352,11 @@ const ::HIR::Module& ::HIR::Crate::get_mod_by_path(const Span& sp, const ::HIR::
     }
     else
     {
-        const auto& ti = this->get_typeitem_by_path(sp, path, false, ignore_last_node);
-        TU_IFLET(::HIR::TypeItem, ti, Module, e,
-            return e;
-        )
+        const auto& ti = this->get_typeitem_by_path(sp, path, ignore_crate_name, ignore_last_node);
+        if(auto* e = ti.opt_Module())
+        {
+            return *e;
+        }
         else {
             if( ignore_last_node )
                 BUG(sp, "Parent path of " << path << " didn't point to a module");
@@ -336,7 +372,7 @@ const ::HIR::Trait& ::HIR::Crate::get_trait_by_path(const Span& sp, const ::HIR:
         return e;
     )
     else {
-        BUG(sp, "Trait path " << path << " didn't point to a trait");
+        BUG(sp, "Trait path " << path << " didn't point to a trait (" << ti.tag_str() << ")");
     }
 }
 const ::HIR::Struct& ::HIR::Crate::get_struct_by_path(const Span& sp, const ::HIR::SimplePath& path) const
@@ -346,7 +382,7 @@ const ::HIR::Struct& ::HIR::Crate::get_struct_by_path(const Span& sp, const ::HI
         return e;
     )
     else {
-        BUG(sp, "Struct path " << path << " didn't point to a struct");
+        BUG(sp, "Struct path " << path << " didn't point to a struct (" << ti.tag_str() << ")");
     }
 }
 const ::HIR::Union& ::HIR::Crate::get_union_by_path(const Span& sp, const ::HIR::SimplePath& path) const
@@ -356,49 +392,26 @@ const ::HIR::Union& ::HIR::Crate::get_union_by_path(const Span& sp, const ::HIR:
         return e;
     )
     else {
-        BUG(sp, "Path " << path << " didn't point to a union");
+        BUG(sp, "Path " << path << " didn't point to a union (" << ti.tag_str() << ")");
     }
 }
-const ::HIR::Enum& ::HIR::Crate::get_enum_by_path(const Span& sp, const ::HIR::SimplePath& path) const
+const ::HIR::Enum& ::HIR::Crate::get_enum_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_crate_name, bool ignore_last_node) const
 {
-    const auto& ti = this->get_typeitem_by_path(sp, path);
+    const auto& ti = this->get_typeitem_by_path(sp, path, ignore_crate_name, ignore_last_node);
     TU_IFLET(::HIR::TypeItem, ti, Enum, e,
         return e;
     )
     else {
-        BUG(sp, "Enum path " << path << " didn't point to an enum");
+        BUG(sp, "Enum path " << path << " didn't point to an enum (" << ti.tag_str() << ")");
     }
 }
 
 const ::HIR::ValueItem& ::HIR::Crate::get_valitem_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_crate_name) const
 {
-    if( path.m_components.size() == 0) {
-        BUG(sp, "get_valitem_by_path received invalid path");
-    }
-    const ::HIR::Module* mod;
-    if( !ignore_crate_name && path.m_crate_name != m_crate_name ) {
-        ASSERT_BUG(sp, m_ext_crates.count(path.m_crate_name) > 0, "Crate '" << path.m_crate_name << "' not loaded");
-        mod = &m_ext_crates.at(path.m_crate_name).m_data->m_root_module;
-    }
-    else {
-        mod =  &this->m_root_module;
-    }
-    for( unsigned int i = 0; i < path.m_components.size() - 1; i ++ )
-    {
-        const auto& pc = path.m_components[i];
-        auto it = mod->m_mod_items.find( pc );
-        if( it == mod->m_mod_items.end() ) {
-            BUG(sp, "Couldn't find component " << i << " of " << path);
-        }
-        TU_IFLET(::HIR::TypeItem, it->second->ent, Module, e,
-            mod = &e;
-        )
-        else {
-            BUG(sp, "Node " << i << " of path " << path << " wasn't a module");
-        }
-    }
-    auto it = mod->m_value_items.find( path.m_components.back() );
-    if( it == mod->m_value_items.end() ) {
+    const auto& mod = get_containing_module(*this, sp, path, ignore_crate_name, /*ignore_last_node=*/false);
+
+    auto it = mod.m_value_items.find( path.m_components.back() );
+    if( it == mod.m_value_items.end() ) {
         BUG(sp, "Could not find value name " << path);
     }
 
@@ -411,7 +424,26 @@ const ::HIR::Function& ::HIR::Crate::get_function_by_path(const Span& sp, const 
         return e;
     )
     else {
-        BUG(sp, "Function path " << path << " didn't point to an function");
+        BUG(sp, "Function path " << path << " didn't point to an function (" << ti.tag_str() << ")");
     }
 }
 
+
+const ::HIR::Static& ::HIR::Crate::get_static_by_path(const Span& sp, const ::HIR::SimplePath& path) const
+{
+    const auto& m = this->get_mod_by_path(sp, path, /*ignore_last*/true);
+    auto it = m.m_value_items.find(path.m_components.back());
+    if(it != m.m_value_items.end())
+    {
+        ASSERT_BUG(sp, it->second->ent.is_Static(), "`static` path " << path << " didn't point to a static");
+        return it->second->ent.as_Static();
+    }
+    for(const auto& e : m.m_inline_statics)
+    {
+        if(e.first == path.m_components.back())
+        {
+            return e.second;
+        }
+    }
+    BUG(sp, "`static` path " << path << " can't be found");
+}

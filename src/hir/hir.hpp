@@ -17,6 +17,7 @@
 
 #include <tagged_union.hpp>
 
+#include <ast/edition.hpp>
 #include <macro_rules/macro_rules_ptr.hpp>
 
 #include <hir/type.hpp>
@@ -27,6 +28,7 @@
 #include <hir/crate_ptr.hpp>
 
 #define ABI_RUST    "Rust"
+#define CRATE_BUILTINS  "#builtins" // used for macro re-exports of builtins
 
 namespace HIR {
 
@@ -85,65 +87,6 @@ struct VisEnt
     Ent ent;
 };
 
-//enum class LiteralExprOp
-//{
-//    // Two arguments: left, right
-//    Add, Sub, Div, Mul, Mod,
-//    // One argument: the value
-//    Neg, Not,
-//    // Takes a list of 1+ values (first is the function name, rest are arguments)
-//    Call,
-//    // First argument is the binding index, second is the name
-//    ConstGeneric,
-//};
-
-/// Literal type used for constant evaluation
-/// NOTE: Intentionally minimal, just covers the values (not the types)
-TAGGED_UNION_EX(Literal, (), Invalid, (
-    (Invalid, struct {}),
-    // Defer - The value isn't yet known (needs to be evaluated later)
-    (Defer, struct {}),
-    //(Expr, struct {
-    //    LiteralExprOp   op;
-    //    std::vector<Literal> args;
-    //    }),
-    // List = Array, Tuple, struct literal
-    (List, ::std::vector<Literal>), // TODO: Have a variant for repetition lists
-    // Variant = Enum variant
-    (Variant, struct {
-        unsigned int    idx;
-        ::std::unique_ptr<Literal> val;
-        }),
-    // Literal values
-    (Integer, uint64_t),
-    (Float, double),
-    // Borrow of a path (existing item)
-    (BorrowPath, ::HIR::Path),
-    // Borrow of inline data
-    (BorrowData, ::std::unique_ptr<Literal>),
-    // String = &'static str or &[u8; N]
-    (String, ::std::string)
-    ),
-    /*extra_move=*/(),
-    /*extra_assign=*/(),
-    /*extra=*/(
-        static Literal new_invalid() { return Literal::make_Invalid({}); }
-        static Literal new_defer() { return Literal::make_Defer({}); }
-        static Literal new_list(::std::vector<Literal> l) { return Literal::make_List(std::move(l)); }
-        static Literal new_variant(unsigned idx, Literal inner) { return Literal::make_Variant({ idx, box$(inner) }); }
-        static Literal new_integer(uint64_t v) { return Literal::make_Integer(v); }
-        static Literal new_integer(double v) { return Literal::make_Float(v); }
-        static Literal new_borrow_path(::HIR::Path p) { return Literal::make_BorrowPath(mv$(p)); }
-        static Literal new_borrow_data(Literal inner) { return Literal::make_BorrowData(box$(inner)); }
-        static Literal new_string(std::string v) { return Literal::make_String(mv$(v)); }
-
-        Literal clone() const;
-        )
-    );
-extern ::std::ostream& operator<<(::std::ostream& os, const Literal& v);
-extern bool operator==(const Literal& l, const Literal& r);
-static inline bool operator!=(const Literal& l, const Literal& r) { return !(l == r); }
-
 // --------------------------------------------------------------------
 // Value structures
 // --------------------------------------------------------------------
@@ -173,6 +116,16 @@ public:
     ExprPtr m_value;
 
     Literal   m_value_res;
+    bool    m_save_literal = false;
+    bool    m_no_emit_value = false;
+
+    Static(Linkage linkage, bool is_mut, TypeRef type, ExprPtr value)
+        : m_linkage( std::move(linkage) )
+        , m_is_mut(is_mut)
+        , m_type( std::move(type) )
+        , m_value( std::move(value) )
+    {
+    }
 };
 class Constant
 {
@@ -286,6 +239,13 @@ struct StructMarkings
     unsigned int coerce_unsized_index = ~0u;
     // Index of the parameter that controls the CoerceUnsized (either a T: ?Sized, or a T: CoerceUnsized)
     unsigned int coerce_param = ~0u;
+
+    // #[rustc_nonnull_optimization_guaranteed]
+    bool is_nonzero = false;
+
+    // #[rustc_layout_scalar_valid_range_end]
+    bool bounded_max = false;
+    uint64_t    bounded_max_value;
 };
 
 class ExternType
@@ -305,9 +265,9 @@ public:
     };
     enum class Repr
     {
-        Rust,
-        C,
+        Auto,
         Usize, U8, U16, U32, U64,
+        Isize, I8, I16, I32, I64,
     };
     struct ValueVariant {
         RcString   name;
@@ -318,12 +278,15 @@ public:
     TAGGED_UNION(Class, Data,
         (Data, ::std::vector<DataVariant>),
         (Value, struct {
-            Repr    repr;
             ::std::vector<ValueVariant> variants;
+            // Flag indicating that constant evaluation has completed
+            bool    evaluated;
             })
         );
 
     GenericParams   m_params;
+    bool    m_is_c_repr;
+    Repr    m_tag_repr;
     Class   m_data;
 
     TraitMarkings   m_markings;
@@ -428,6 +391,7 @@ public:
     ::std::unordered_map< RcString, TraitValueItem >   m_values;
 
     // Indexes into the vtable for each present method and value
+    // - TODO: Find an easier way of having this be `(GenericPath,RcString) -> unsigned`
     ::std::unordered_multimap< RcString, ::std::pair<unsigned int,::HIR::GenericPath> > m_value_indexes;
     // Indexes in the vtable parameter list for each associated type
     ::std::unordered_map< RcString, unsigned int > m_type_indexes;
@@ -443,6 +407,9 @@ public:
         m_parent_traits( mv$(parents) ),
         m_is_marker( false )
     {}
+
+    ::HIR::TypeRef get_vtable_type(const Span& sp, const ::HIR::Crate& crate, const ::HIR::TypeData::Data_TraitObject& te) const;
+    unsigned get_vtable_value_index(const HIR::GenericPath& trait_path, const RcString& name) const;
 };
 
 class ProcMacro
@@ -595,6 +562,7 @@ class Crate
 {
 public:
     RcString   m_crate_name;
+    AST::Edition    m_edition;
 
     Module  m_root_module;
 
@@ -640,16 +608,8 @@ public:
     ::std::map< ::HIR::SimplePath, ImplGroup<::HIR::TraitImpl> > m_trait_impls;
     ::std::map< ::HIR::SimplePath, ImplGroup<::HIR::MarkerImpl> > m_marker_impls;
 
-    /// Macros exported by this crate
-    ::std::unordered_map< RcString, ::MacroRulesPtr >  m_exported_macros;
-    /// Macros re-exported by this crate
-    struct MacroImport {
-        ::HIR::SimplePath   path;
-        //bool    is_proc_macro;
-    };
-    ::std::unordered_map< RcString, MacroImport >  m_proc_macro_reexports;
-    /// Procedural macros presented
-    ::std::vector< ::HIR::ProcMacro>    m_proc_macros;
+    /// List of legacy-exported macros
+    std::vector<RcString> m_exported_macro_names;
 
     /// Language items avaliable through this crate (includes ones from loaded externs)
     ::std::unordered_map< ::std::string, ::HIR::SimplePath> m_lang_items;
@@ -668,24 +628,21 @@ public:
     const ::HIR::SimplePath& get_lang_item_path(const Span& sp, const char* name) const;
     const ::HIR::SimplePath& get_lang_item_path_opt(const char* name) const;
 
+    const ::HIR::MacroItem& get_macroitem_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_crate_name=false, bool ignore_last_node=false) const;
+
     const ::HIR::TypeItem& get_typeitem_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_crate_name=false, bool ignore_last_node=false) const;
     const ::HIR::Trait& get_trait_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
     const ::HIR::Struct& get_struct_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
     const ::HIR::Union& get_union_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
-    const ::HIR::Enum& get_enum_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
-    const ::HIR::Module& get_mod_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_last_node=false) const;
+    const ::HIR::Enum& get_enum_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_crate_name=false, bool ignore_last_node=false) const;
+    const ::HIR::Module& get_mod_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_last_node=false, bool ignore_crate_name=false) const;
 
     const ::HIR::ValueItem& get_valitem_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_crate_name=false) const;
     const ::HIR::Function& get_function_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
-    const ::HIR::Static& get_static_by_path(const Span& sp, const ::HIR::SimplePath& path) const {
-        const auto& ti = this->get_valitem_by_path(sp, path);
-        TU_IFLET(::HIR::ValueItem, ti, Static, e,
-            return e;
-        )
-        else {
-            BUG(sp, "`static` path " << path << " didn't point to an enum");
-        }
-    }
+
+    // NOTE: Special implementation to handle `m_inline_statics`
+    const ::HIR::Static& get_static_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
+
     const ::HIR::Constant& get_constant_by_path(const Span& sp, const ::HIR::SimplePath& path) const {
         const auto& ti = this->get_valitem_by_path(sp, path);
         TU_IFLET(::HIR::ValueItem, ti, Constant, e,
@@ -709,5 +666,12 @@ public:
         return get_or_gen_mir(ip, ep, s_args, exp_ty);
     }
 };
+
+
+/// Helper for obtaining the matching target for PathTuple/PathNamed
+const ::HIR::Struct& pattern_get_struct(const Span& sp, const ::HIR::Path& path, const ::HIR::Pattern::PathBinding& binding, bool is_tuple);
+const ::HIR::t_tuple_fields& pattern_get_tuple(const Span& sp, const ::HIR::Path& path, const ::HIR::Pattern::PathBinding& binding);
+const ::HIR::t_struct_fields& pattern_get_named(const Span& sp, const ::HIR::Path& path, const ::HIR::Pattern::PathBinding& binding);
+
 
 }   // namespace HIR

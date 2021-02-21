@@ -48,6 +48,8 @@ void Writer::open(const ::std::string& filename)
     // 2. Write out string table
     ::std::sort(sorted.begin(), sorted.end(), [](const auto& a, const auto& b){ return a.second > b.second; });
 
+    m_objname_cache.clear();
+
     m_inner = new WriterInner(filename);
     // 3. Reset m_istring_cache to use the same value
     this->write_count(sorted.size());

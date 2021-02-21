@@ -16,7 +16,8 @@ public:
 
     void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate) const override {
         if( crate.m_load_std != AST::Crate::LOAD_STD && crate.m_load_std != AST::Crate::LOAD_CORE ) {
-            ERROR(sp, E0000, "Invalid use of #![no_std] with itself or #![no_core]");
+            WARNING(sp, W0000, "Use of #![no_std] with itself or #![no_core]");
+            return ;
         }
         crate.m_load_std = AST::Crate::LOAD_CORE;
     }
@@ -29,7 +30,7 @@ public:
 
     void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate) const override {
         if( crate.m_load_std != AST::Crate::LOAD_STD && crate.m_load_std != AST::Crate::LOAD_NONE ) {
-            ERROR(sp, E0000, "Invalid use of #![no_core] with itself or #![no_std]");
+            WARNING(sp, W0000, "Use of #![no_core] with itself or #![no_std]");
         }
         crate.m_load_std = AST::Crate::LOAD_NONE;
     }
@@ -47,7 +48,7 @@ class Decorator_NoPrelude:
 public:
     AttrStage stage() const override { return AttrStage::Pre; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
         if( i.is_Module() ) {
             i.as_Module().m_insert_prelude = false;
         }
@@ -63,11 +64,12 @@ class Decorator_PreludeImport:
 public:
     AttrStage stage() const override { return AttrStage::Post; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
         if( const auto* e = i.opt_Use() ) {
             if(e->entries.size() != 1)
                 ERROR(sp, E0000, "#[prelude_import] should be on a single-entry use");
-            ASSERT_BUG(sp, path.nodes().back().name() == "", path);
+            ASSERT_BUG(sp, path.nodes.size() > 0, path);
+            ASSERT_BUG(sp, path.nodes.back() == "", path);
             if(e->entries.front().name != "")
                 ERROR(sp, E0000, "#[prelude_import] should be on a glob");
             const auto& p = e->entries.front().path;

@@ -69,7 +69,7 @@ namespace {
 
             const auto& node_ref = *node_ptr;
             const char* node_tyname = typeid(node_ref).name();
-            TRACE_FUNCTION_FR(&*node_ptr << " " << node_tyname, node_ptr->m_usage);
+            TRACE_FUNCTION_FR(&*node_ptr << " " << node_tyname << ": " << this->get_usage(), node_ptr->m_usage);
 
             node_ptr->m_usage = this->get_usage();
 
@@ -102,6 +102,11 @@ namespace {
             }
         }
         void visit(::HIR::ExprNode_Return& node) override
+        {
+            auto _ = this->push_usage( ::HIR::ValueUsage::Move );
+            this->visit_node_ptr( node.m_value );
+        }
+        void visit(::HIR::ExprNode_Yield& node) override
         {
             auto _ = this->push_usage( ::HIR::ValueUsage::Move );
             this->visit_node_ptr( node.m_value );
@@ -228,7 +233,8 @@ namespace {
         }
         void visit(::HIR::ExprNode_Unsize& node) override
         {
-            auto _ = push_usage( ::HIR::ValueUsage::Move );
+            // TODO: Why does Unsize have a usage of Move?
+            //auto _ = push_usage( ::HIR::ValueUsage::Move );
             this->visit_node_ptr(node.m_value);
         }
         void visit(::HIR::ExprNode_Index& node) override
@@ -252,7 +258,7 @@ namespace {
                 this->visit_node_ptr(node.m_value);
             }
             // Pointers only need a borrow to be derefernced.
-            else if( node.m_res_type.m_data.is_Pointer() ) {
+            else if( node.m_value->m_res_type.data().is_Pointer() ) {
                 auto _ = push_usage( ::HIR::ValueUsage::Borrow );
                 this->visit_node_ptr(node.m_value);
             }
@@ -389,20 +395,26 @@ namespace {
             const auto& ty_path = node.m_real_path;
             if( node.m_base_value ) {
                 bool is_moved = false;
-                const auto& tpb = node.m_base_value->m_res_type.m_data.as_Path().binding;
-                const ::HIR::Struct* str;
+                const auto& tpb = node.m_base_value->m_res_type.data().as_Path().binding;
+                const ::HIR::t_struct_fields* fields_ptr;
                 if( tpb.is_Enum() ) {
                     const auto& enm = *tpb.as_Enum();
                     auto idx = enm.find_variant(ty_path.m_path.m_components.back());
                     ASSERT_BUG(sp, idx != SIZE_MAX, "");
                     const auto& var_ty = enm.m_data.as_Data()[idx].type;
-                    str = var_ty.m_data.as_Path().binding.as_Struct();
+                    const auto& str = *var_ty.data().as_Path().binding.as_Struct();
+                    ASSERT_BUG(sp, str.m_data.is_Named(), "");
+                    fields_ptr = &str.m_data.as_Named();
+                }
+                else if( tpb.is_Union() ) {
+                    fields_ptr = &tpb.as_Union()->m_variants;
                 }
                 else {
-                    str = tpb.as_Struct();
+                    const auto& str = *tpb.as_Struct();
+                    ASSERT_BUG(sp, str.m_data.is_Named(), "");
+                    fields_ptr = &str.m_data.as_Named();
                 }
-                ASSERT_BUG(sp, str->m_data.is_Named(), "");
-                const auto& fields = str->m_data.as_Named();
+                const auto& fields = *fields_ptr;
 
                 ::std::vector<bool> provided_mask( fields.size() );
                 for( const auto& fld : node.m_values ) {
@@ -410,12 +422,12 @@ namespace {
                     provided_mask[idx] = true;
                 }
 
-                const auto monomorph_cb = monomorphise_type_get_cb(node.span(), nullptr, &ty_path.m_params, nullptr);
+                const auto monomorph_cb = MonomorphStatePtr(nullptr, &ty_path.m_params, nullptr);
                 for( unsigned int i = 0; i < fields.size(); i ++ ) {
                     if( ! provided_mask[i] ) {
                         const auto& ty_o = fields[i].second.ent;
                         ::HIR::TypeRef  tmp;
-                        const auto& ty_m = (monomorphise_type_needed(ty_o) ? tmp = monomorphise_type_with(node.span(), ty_o, monomorph_cb) : ty_o);
+                        const auto& ty_m = monomorphise_type_with_opt(node.span(), tmp, ty_o, monomorph_cb);
                         bool is_copy = m_resolve.type_is_copy(node.span(), ty_m);
                         if( !is_copy ) {
                             DEBUG("- Field " << i << " " << fields[i].first << ": " << ty_m << " moved");
@@ -433,11 +445,6 @@ namespace {
             for( auto& fld_val : node.m_values ) {
                 this->visit_node_ptr(fld_val.second);
             }
-        }
-        void visit(::HIR::ExprNode_UnionLiteral& node) override
-        {
-            auto _ = push_usage( ::HIR::ValueUsage::Move );
-            this->visit_node_ptr(node.m_value);
         }
         void visit(::HIR::ExprNode_Tuple& node) override
         {
@@ -493,137 +500,111 @@ namespace {
             const ::HIR::TypeRef* typ = &outer_ty;
             for(size_t i = 0; i < pat.m_implicit_deref_count; i ++)
             {
-                typ = &*typ->m_data.as_Borrow().inner;
+                typ = &typ->data().as_Borrow().inner;
             }
             const ::HIR::TypeRef& ty = *typ;
 
-            TU_MATCHA( (pat.m_data), (pe),
-            (Any,
+            TU_MATCH_HDRA( (pat.m_data), {)
+            TU_ARMA(Any, pe) {
                 return ::HIR::ValueUsage::Borrow;
-                ),
-            (Box,
+                }
+            TU_ARMA(Box, pe) {
                 // NOTE: Specific to `owned_box`
-                const auto& sty = ty.m_data.as_Path().path.m_data.as_Generic().m_params.m_types.at(0);
+                const auto& sty = ty.data().as_Path().path.m_data.as_Generic().m_params.m_types.at(0);
                 return get_usage_for_pattern(sp, *pe.sub, sty);
-                ),
-            (Ref,
-                return get_usage_for_pattern(sp, *pe.sub, *ty.m_data.as_Borrow().inner);
-                ),
-            (Tuple,
-                ASSERT_BUG(sp, ty.m_data.is_Tuple(), "Tuple pattern with non-tuple type - " << ty);
-                const auto& subtys = ty.m_data.as_Tuple();
+                }
+            TU_ARMA(Ref, pe) {
+                return get_usage_for_pattern(sp, *pe.sub, ty.data().as_Borrow().inner);
+                }
+            TU_ARMA(Tuple, pe) {
+                ASSERT_BUG(sp, ty.data().is_Tuple(), "Tuple pattern with non-tuple type - " << ty);
+                const auto& subtys = ty.data().as_Tuple();
                 assert(pe.sub_patterns.size() == subtys.size());
                 auto rv = ::HIR::ValueUsage::Borrow;
                 for(unsigned int i = 0; i < subtys.size(); i ++)
                     rv = ::std::max(rv, get_usage_for_pattern(sp, pe.sub_patterns[i], subtys[i]));
                 return rv;
-                ),
-            (SplitTuple,
-                ASSERT_BUG(sp, ty.m_data.is_Tuple(), "SplitTuple pattern with non-tuple type - " << ty);
-                const auto& subtys = ty.m_data.as_Tuple();
+                }
+            TU_ARMA(SplitTuple, pe) {
+                ASSERT_BUG(sp, ty.data().is_Tuple(), "SplitTuple pattern with non-tuple type - " << ty);
+                const auto& subtys = ty.data().as_Tuple();
                 assert(pe.leading.size() + pe.trailing.size() <= subtys.size());
                 auto rv = ::HIR::ValueUsage::Borrow;
                 for(unsigned int i = 0; i < pe.leading.size(); i ++)
                     rv = ::std::max(rv, get_usage_for_pattern(sp, pe.leading[i], subtys[i]));
                 for(unsigned int i = 0; i < pe.trailing.size(); i ++)
-                    rv = ::std::max(rv, get_usage_for_pattern(sp, pe.trailing[pe.trailing.size() - 1 - i], subtys[subtys.size() - 1 - i]));
+                    rv = ::std::max(rv, get_usage_for_pattern(sp, pe.trailing[i], subtys[subtys.size() - pe.trailing.size() + i]));
                 return rv;
-                ),
-            (StructValue,
+                }
+            TU_ARMA(PathValue, pe) {
                 return ::HIR::ValueUsage::Borrow;
-                ),
-            (StructTuple,
-                // TODO: Avoid monomorphising all the time.
-                const auto& str = *pe.binding;
-                ASSERT_BUG(sp, str.m_data.is_Tuple(), "StructTuple pattern with non-tuple struct - " << str.m_data.tag_str());
-                const auto& flds = str.m_data.as_Tuple();
-                assert(pe.sub_patterns.size() == flds.size());
-                auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr,  &pe.path.m_params, nullptr);
+                }
+            TU_ARMA(PathTuple, pe) {
+                assert(!pe.binding.is_Unbound());
+
+                const auto& flds = ::HIR::pattern_get_tuple(sp, pe.path, pe.binding);
+                if(pe.is_split) {
+                    assert(pe.leading.size() + pe.trailing.size() <= flds.size());
+                }
+                else {
+                    assert(pe.leading.size() == flds.size());
+                    assert(pe.trailing.size() == 0);
+                }
+
+                // TODO: Is it possible to avoid monomorphising here?
+                assert(pe.path.m_data.is_Generic());
+                auto monomorph_state = MonomorphStatePtr(nullptr,  &pe.path.m_data.as_Generic().m_params, nullptr);
 
                 auto rv = ::HIR::ValueUsage::Borrow;
-                for(unsigned int i = 0; i < flds.size(); i ++) {
-                    auto sty = monomorphise_type_with(sp, flds[i].ent, monomorph_cb);
-                    rv = ::std::max(rv, get_usage_for_pattern(sp, pe.sub_patterns[i], sty));
+                for(unsigned int i = 0; i < pe.leading.size(); i ++)
+                {
+                    auto sty = monomorph_state.monomorph_type(sp, flds[i].ent);
+                    rv = ::std::max(rv, get_usage_for_pattern(sp, pe.leading[i], sty));
+                }
+                for(unsigned int i = 0; i < pe.trailing.size(); i ++)
+                {
+                    auto sty = monomorph_state.monomorph_type(sp, flds[flds.size() - pe.trailing.size() + i].ent);
+                    rv = ::std::max(rv, get_usage_for_pattern(sp, pe.trailing[i], sty));
                 }
                 return rv;
-                ),
-            (Struct,
-                const auto& str = *pe.binding;
+                }
+            TU_ARMA(PathNamed, pe) {
+                assert(!pe.binding.is_Unbound());
+
                 if( pe.is_wildcard() )
                     return ::HIR::ValueUsage::Borrow;
-                if( pe.sub_patterns.empty() && (TU_TEST1(str.m_data, Tuple, .empty()) || str.m_data.is_Unit()) ) {
+                if( pe.sub_patterns.empty() )
                     return ::HIR::ValueUsage::Borrow;
-                }
-                ASSERT_BUG(sp, str.m_data.is_Named(), "Struct pattern on non-brace struct");
-                const auto& flds = str.m_data.as_Named();
-                auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr,  &pe.path.m_params, nullptr);
+
+                const auto& flds = ::HIR::pattern_get_named(sp, pe.path, pe.binding);
+                auto monomorph_state = MonomorphStatePtr(nullptr,  &pe.path.m_data.as_Generic().m_params, nullptr);
 
                 auto rv = ::HIR::ValueUsage::Borrow;
                 for(const auto& fld_pat : pe.sub_patterns)
                 {
                     auto fld_it = ::std::find_if(flds.begin(), flds.end(), [&](const auto& x){return x.first == fld_pat.first;});
-                    ASSERT_BUG(sp, fld_it != flds.end(), "");
+                    ASSERT_BUG(sp, fld_it != flds.end(), "Unable to find field " << fld_pat.first);
 
-                    auto sty = monomorphise_type_with(sp, fld_it->second.ent, monomorph_cb);
+                    auto sty = monomorph_state.monomorph_type(sp, fld_it->second.ent);
                     rv = ::std::max(rv, get_usage_for_pattern(sp, fld_pat.second, sty));
                 }
                 return rv;
-                ),
-            (Value,
-                return ::HIR::ValueUsage::Borrow;
-                ),
-            (Range,
-                return ::HIR::ValueUsage::Borrow;
-                ),
-            (EnumValue,
-                return ::HIR::ValueUsage::Borrow;
-                ),
-            (EnumTuple,
-                const auto& enm = *pe.binding_ptr;
-                ASSERT_BUG(sp, enm.m_data.is_Data(), "");
-                const auto& var = enm.m_data.as_Data().at(pe.binding_idx);
-                const auto& str = *var.type.m_data.as_Path().binding.as_Struct();
-                ASSERT_BUG(sp, str.m_data.is_Tuple(), "");
-                const auto& flds = str.m_data.as_Tuple();
-                assert(pe.sub_patterns.size() == flds.size());
-                auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr,  &pe.path.m_params, nullptr);
-
-                auto rv = ::HIR::ValueUsage::Borrow;
-                for(unsigned int i = 0; i < flds.size(); i ++) {
-                    auto sty = monomorphise_type_with(sp, flds[i].ent, monomorph_cb);
-                    rv = ::std::max(rv, get_usage_for_pattern(sp, pe.sub_patterns[i], sty));
                 }
-                return rv;
-                ),
-            (EnumStruct,
-                const auto& enm = *pe.binding_ptr;
-                ASSERT_BUG(sp, enm.m_data.is_Data(), "EnumStruct pattern on non-data enum");
-                const auto& var = enm.m_data.as_Data().at(pe.binding_idx);
-                const auto& str = *var.type.m_data.as_Path().binding.as_Struct();
-                ASSERT_BUG(sp, str.m_data.is_Named(), "EnumStruct pattern on non-struct variant - " << pe.path);
-                const auto& flds = str.m_data.as_Named();
-                auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr,  &pe.path.m_params, nullptr);
-
-                auto rv = ::HIR::ValueUsage::Borrow;
-                for(const auto& fld_pat : pe.sub_patterns)
-                {
-                    auto fld_it = ::std::find_if(flds.begin(), flds.end(), [&](const auto& x){return x.first == fld_pat.first;});
-                    ASSERT_BUG(sp, fld_it != flds.end(), "");
-
-                    auto sty = monomorphise_type_with(sp, fld_it->second.ent, monomorph_cb);
-                    rv = ::std::max(rv, get_usage_for_pattern(sp, fld_pat.second, sty));
+            TU_ARMA(Value, pe) {
+                return ::HIR::ValueUsage::Borrow;
                 }
-                return rv;
-                ),
-            (Slice,
-                const auto& inner_ty = (ty.m_data.is_Array() ? *ty.m_data.as_Array().inner : *ty.m_data.as_Slice().inner);
+            TU_ARMA(Range, pe) {
+                return ::HIR::ValueUsage::Borrow;
+                }
+            TU_ARMA(Slice, pe) {
+                const auto& inner_ty = (ty.data().is_Array() ? ty.data().as_Array().inner : ty.data().as_Slice().inner);
                 auto rv = ::HIR::ValueUsage::Borrow;
                 for(const auto& pat : pe.sub_patterns)
                     rv = ::std::max(rv, get_usage_for_pattern(sp, pat, inner_ty));
                 return rv;
-                ),
-            (SplitSlice,
-                const auto& inner_ty = (ty.m_data.is_Array() ? *ty.m_data.as_Array().inner : *ty.m_data.as_Slice().inner);
+                }
+            TU_ARMA(SplitSlice, pe) {
+                const auto& inner_ty = (ty.data().is_Array() ? ty.data().as_Array().inner : ty.data().as_Slice().inner);
                 auto rv = ::HIR::ValueUsage::Borrow;
                 for(const auto& pat : pe.leading)
                     rv = ::std::max(rv, get_usage_for_pattern(sp, pat, inner_ty));
@@ -632,8 +613,8 @@ namespace {
                 if( pe.extra_bind.is_valid() )
                     rv = ::std::max(rv, get_usage_for_pattern_binding(sp, pe.extra_bind, inner_ty));
                 return rv;
-                )
-            )
+                }
+            }
             throw "";
         }
     };

@@ -37,13 +37,16 @@ namespace HIR {
 
     ::std::ostream& operator<<(::std::ostream& os, const PathParams& x)
     {
-        bool has_args = ( x.m_types.size() > 0 );
+        bool has_args = ( x.m_types.size() > 0 || x.m_values.size() > 0 );
 
         if(has_args) {
             os << "<";
         }
         for(const auto& ty : x.m_types) {
             os << ty << ",";
+        }
+        for(const auto& v : x.m_values) {
+            os << "{" << v << "},";
         }
         if(has_args) {
             os << ">";
@@ -64,7 +67,7 @@ namespace HIR {
             os << "> ";
         }
         os << x.m_path.m_path;
-        bool has_args = ( x.m_path.m_params.m_types.size() > 0 || x.m_type_bounds.size() > 0 );
+        bool has_args = ( x.m_path.m_params.m_types.size() > 0 || x.m_type_bounds.size() > 0 || x.m_trait_bounds.size() > 0 );
 
         if(has_args) {
             os << "<";
@@ -74,6 +77,11 @@ namespace HIR {
         }
         for(const auto& assoc : x.m_type_bounds) {
             os << assoc.first << "=" << assoc.second << ",";
+        }
+        for(const auto& assoc : x.m_trait_bounds) {
+            for(const auto& trait : assoc.second.traits) {
+                os << assoc.first << ": " << trait << ",";
+            }
         }
         if(has_args) {
             os << ">";
@@ -87,13 +95,13 @@ namespace HIR {
             return os << e;
             ),
         (UfcsInherent,
-            return os << "<" << *e.type << " /*- " << e.impl_params << "*/>::" << e.item << e.params;
+            return os << "<" << e.type << " /*- " << e.impl_params << "*/>::" << e.item << e.params;
             ),
         (UfcsKnown,
-            return os << "<" << *e.type << " as " << e.trait << ">::" << e.item << e.params;
+            return os << "<" << e.type << " as " << e.trait << ">::" << e.item << e.params;
             ),
         (UfcsUnknown,
-            return os << "<" << *e.type << " as _>::" << e.item << e.params;
+            return os << "<" << e.type << " as _>::" << e.item << e.params;
             )
         )
         return os;
@@ -117,6 +125,8 @@ namespace HIR {
     PathParams  rv;
     for( const auto& t : m_types )
         rv.m_types.push_back( t.clone() );
+    for( const auto& t : m_values )
+        rv.m_values.push_back( t.clone() );
     return rv;
 }
 bool ::HIR::PathParams::operator==(const ::HIR::PathParams& x) const
@@ -126,6 +136,13 @@ bool ::HIR::PathParams::operator==(const ::HIR::PathParams& x) const
     for( unsigned int i = 0; i < m_types.size(); i ++ )
         if( !(m_types[i] == x.m_types[i]) )
             return false;
+
+    if( m_values.size() != x.m_values.size() )
+        return false;
+    for( unsigned int i = 0; i < m_values.size(); i ++ )
+        if( !(m_values[i] == x.m_values[i]) )
+            return false;
+
     return true;
 }
 
@@ -158,11 +175,14 @@ bool ::HIR::GenericPath::operator==(const GenericPath& x) const
         m_path.clone(),
         m_hrls,
         {},
+        {},
         m_trait_ptr
         };
 
     for( const auto& assoc : m_type_bounds )
         rv.m_type_bounds.insert(::std::make_pair( assoc.first, assoc.second.clone() ));
+    for( const auto& assoc : m_trait_bounds )
+        rv.m_trait_bounds.insert(::std::make_pair( assoc.first, assoc.second.clone() ));
 
     return rv;
 }
@@ -179,7 +199,7 @@ bool ::HIR::TraitPath::operator==(const ::HIR::TraitPath& x) const
     for(auto it_l = m_type_bounds.begin(), it_r = x.m_type_bounds.begin(); it_l != m_type_bounds.end(); it_l++, it_r++ ) {
         if( it_l->first != it_r->first )
             return false;
-        if( it_l->second != it_r->second )
+        if( it_l->second.ord( it_r->second ) != OrdEqual )
             return false;
     }
     return true;
@@ -194,43 +214,43 @@ bool ::HIR::TraitPath::operator==(const ::HIR::TraitPath& x) const
 {
 }
 ::HIR::Path::Path(TypeRef ty, RcString item, PathParams item_params):
-    m_data(Data::make_UfcsInherent({ box$(ty), mv$(item), mv$(item_params) }))
+    m_data(Data::make_UfcsInherent({ mv$(ty), mv$(item), mv$(item_params) }))
 {
 }
 ::HIR::Path::Path(TypeRef ty, GenericPath trait, RcString item, PathParams item_params):
-    m_data( Data::make_UfcsKnown({ box$(mv$(ty)), mv$(trait), mv$(item), mv$(item_params) }) )
+    m_data( Data::make_UfcsKnown({ mv$(ty), mv$(trait), mv$(item), mv$(item_params) }) )
 {
 }
 ::HIR::Path HIR::Path::clone() const
 {
-    TU_MATCH(Data, (m_data), (e),
-    (Generic,
+    TU_MATCH_HDRA((m_data), {)
+    TU_ARMA(Generic, e) {
         return Path( Data::make_Generic(e.clone()) );
-        ),
-    (UfcsInherent,
+        }
+    TU_ARMA(UfcsInherent, e) {
         return Path(Data::make_UfcsInherent({
-            box$( e.type->clone() ),
+            e.type.clone(),
             e.item,
             e.params.clone(),
             e.impl_params.clone()
             }));
-        ),
-    (UfcsKnown,
+        }
+    TU_ARMA(UfcsKnown, e) {
         return Path(Data::make_UfcsKnown({
-            box$( e.type->clone() ),
+            e.type.clone(),
             e.trait.clone(),
             e.item,
             e.params.clone()
             }));
-        ),
-    (UfcsUnknown,
+        }
+    TU_ARMA(UfcsUnknown, e) {
         return Path(Data::make_UfcsUnknown({
-            box$( e.type->clone() ),
+            e.type.clone(),
             e.item,
             e.params.clone()
             }));
-        )
-    )
+        }
+    }
     throw "";
 }
 
@@ -254,10 +274,11 @@ bool ::HIR::TraitPath::operator==(const ::HIR::TraitPath& x) const
     }
     return rv;
 }
-::HIR::Compare HIR::PathParams::match_test_generics_fuzz(const Span& sp, const PathParams& x, t_cb_resolve_type resolve_placeholder, t_cb_match_generics match) const
+::HIR::Compare HIR::PathParams::match_test_generics_fuzz(const Span& sp, const PathParams& x, t_cb_resolve_type resolve_placeholder, ::HIR::MatchGenerics& match) const
 {
     using ::HIR::Compare;
     auto rv = Compare::Equal;
+    TRACE_FUNCTION_F(*this << " with " << x);
 
     if( this->m_types.size() != x.m_types.size() ) {
         return Compare::Unequal;
@@ -268,6 +289,24 @@ bool ::HIR::TraitPath::operator==(const ::HIR::TraitPath& x) const
         if( rv == Compare::Unequal )
             return Compare::Unequal;
     }
+
+    if( this->m_values.size() != x.m_values.size() ) {
+        return Compare::Unequal;
+    }
+    for( unsigned int i = 0; i < x.m_values.size(); i ++ )
+    {
+        if( const auto* ge = this->m_values[i].opt_Generic() ) {
+            auto rv = match.match_val(*ge, x.m_values[i]);
+            if(rv == Compare::Unequal)
+                return Compare::Unequal;
+        }
+        else {
+            if( this->m_values[i] != x.m_values[i] ) {
+                return Compare::Unequal;
+            }
+        }
+    }
+
     return rv;
 }
 ::HIR::Compare HIR::GenericPath::compare_with_placeholders(const Span& sp, const ::HIR::GenericPath& x, ::HIR::t_cb_resolve_type resolve_placeholder) const
@@ -329,7 +368,7 @@ namespace {
         if( it_l->first != it_r->first ) {
             return Compare::Unequal;
         }
-        CMP( rv, it_l->second .compare_with_placeholders( sp, it_r->second, resolve_placeholder ) );
+        CMP( rv, it_l->second.type .compare_with_placeholders( sp, it_r->second.type, resolve_placeholder ) );
         ++ it_l;
         ++ it_r;
     }
@@ -346,35 +385,35 @@ namespace {
 {
     if( this->m_data.tag() != x.m_data.tag() )
         return Compare::Unequal;
-    TU_MATCH(::HIR::Path::Data, (this->m_data, x.m_data), (ple, pre),
-    (Generic,
+    TU_MATCH_HDRA( (this->m_data, x.m_data), {)
+    TU_ARMA(Generic, ple, pre) {
         return ::compare_with_placeholders(sp, ple, pre, resolve_placeholder);
-        ),
-    (UfcsUnknown,
+        }
+    TU_ARMA(UfcsUnknown, ple, pre) {
         if( ple.item != pre.item)
             return Compare::Unequal;
 
         TODO(sp, "Path::compare_with_placeholders - UfcsUnknown");
-        ),
-    (UfcsInherent,
+        }
+    TU_ARMA(UfcsInherent, ple, pre) {
         if( ple.item != pre.item)
             return Compare::Unequal;
         ::HIR::Compare  rv = ::HIR::Compare::Equal;
-        CMP(rv, ple.type->compare_with_placeholders(sp, *pre.type, resolve_placeholder));
+        CMP(rv, ple.type.compare_with_placeholders(sp, pre.type, resolve_placeholder));
         CMP(rv, ::compare_with_placeholders(sp, ple.params, pre.params, resolve_placeholder));
         return rv;
-        ),
-    (UfcsKnown,
+        }
+    TU_ARMA(UfcsKnown, ple, pre) {
         if( ple.item != pre.item)
             return Compare::Unequal;
 
         ::HIR::Compare  rv = ::HIR::Compare::Equal;
-        CMP(rv, ple.type->compare_with_placeholders(sp, *pre.type, resolve_placeholder));
+        CMP(rv, ple.type.compare_with_placeholders(sp, pre.type, resolve_placeholder));
         CMP(rv, ::compare_with_placeholders(sp, ple.trait, pre.trait, resolve_placeholder));
         CMP(rv, ::compare_with_placeholders(sp, ple.params, pre.params, resolve_placeholder));
         return rv;
-        )
-    )
+        }
+    }
     throw "";
 }
 
@@ -386,18 +425,18 @@ Ordering HIR::Path::ord(const ::HIR::Path& x) const
         return ::ord(tpe, xpe);
         ),
     (UfcsInherent,
-        ORD(*tpe.type, *xpe.type);
+        ORD(tpe.type, xpe.type);
         ORD(tpe.item, xpe.item);
         return ::ord(tpe.params, xpe.params);
         ),
     (UfcsKnown,
-        ORD(*tpe.type, *xpe.type);
+        ORD(tpe.type, xpe.type);
         ORD(tpe.trait, xpe.trait);
         ORD(tpe.item, xpe.item);
         return ::ord(tpe.params, xpe.params);
         ),
     (UfcsUnknown,
-        ORD(*tpe.type, *xpe.type);
+        ORD(tpe.type, xpe.type);
         ORD(tpe.item, xpe.item);
         return ::ord(tpe.params, xpe.params);
         )

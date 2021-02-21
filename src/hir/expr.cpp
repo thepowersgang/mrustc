@@ -41,6 +41,9 @@ DEF_VISIT(ExprNode_Asm, node,
 DEF_VISIT(ExprNode_Return, node,
     visit_node_ptr(node.m_value);
 )
+DEF_VISIT(ExprNode_Yield, node,
+    visit_node_ptr(node.m_value);
+)
 DEF_VISIT(ExprNode_Let, node,
     visit_pattern(node.span(), node.m_pattern);
     visit_type(node.m_type);
@@ -89,10 +92,12 @@ DEF_VISIT(ExprNode_Borrow, node,
     visit_node_ptr(node.m_value);
 )
 DEF_VISIT(ExprNode_Cast, node,
-    TRACE_FUNCTION_F("_Cast " << node.m_res_type);
+    TRACE_FUNCTION_F("_Cast " << node.m_dst_type);
+    visit_type(node.m_dst_type);
     visit_node_ptr(node.m_value);
 )
 DEF_VISIT(ExprNode_Unsize, node,
+    visit_type(node.m_dst_type);
     visit_node_ptr(node.m_value);
 )
 DEF_VISIT(ExprNode_Index, node,
@@ -137,6 +142,7 @@ DEF_VISIT(ExprNode_CallValue, node,
 )
 DEF_VISIT(ExprNode_CallMethod, node,
     TRACE_FUNCTION_F("_CallMethod: " << node.m_method);
+    visit_path_params(node.m_params);
     for(auto& ty : node.m_cache.m_arg_types)
         visit_type(ty);
 
@@ -167,10 +173,6 @@ DEF_VISIT(ExprNode_StructLiteral, node,
         visit_node_ptr(val.second);
 
     visit_generic_path(::HIR::Visitor::PathContext::TYPE, node.m_real_path);
-)
-DEF_VISIT(ExprNode_UnionLiteral, node,
-    visit_generic_path(::HIR::Visitor::PathContext::TYPE, node.m_path);
-    visit_node_ptr(node.m_value);
 )
 DEF_VISIT(ExprNode_Tuple, node,
     for(auto& val : node.m_vals)
@@ -207,68 +209,57 @@ DEF_VISIT(ExprNode_Closure, node,
 // TODO: Merge this with the stuff in ::HIR::Visitor
 void ::HIR::ExprVisitorDef::visit_pattern(const Span& sp, ::HIR::Pattern& pat)
 {
-    TU_MATCH(::HIR::Pattern::Data, (pat.m_data), (e),
-    (Any,
-        ),
-    (Box,
+    TU_MATCH_HDRA( (pat.m_data), {)
+    TU_ARMA(Any, e) {
+        }
+    TU_ARMA(Box, e) {
         this->visit_pattern(sp, *e.sub);
-        ),
-    (Ref,
+        }
+    TU_ARMA(Ref, e) {
         this->visit_pattern(sp, *e.sub);
-        ),
-    (Tuple,
+        }
+    TU_ARMA(Tuple, e) {
         for(auto& subpat : e.sub_patterns)
             this->visit_pattern(sp, subpat);
-        ),
-    (SplitTuple,
+        }
+    TU_ARMA(SplitTuple, e) {
         for(auto& subpat : e.leading)
             this->visit_pattern(sp, subpat);
         for(auto& subpat : e.trailing)
             this->visit_pattern(sp, subpat);
-        ),
-    (StructValue,
+        }
+    TU_ARMA(PathValue, e) {
         // Nothing.
-        ),
-    (StructTuple,
-        for(auto& subpat : e.sub_patterns)
+        }
+    TU_ARMA(PathTuple, e) {
+        for(auto& subpat : e.leading)
             this->visit_pattern(sp, subpat);
-        ),
-    (Struct,
+        for(auto& subpat : e.trailing)
+            this->visit_pattern(sp, subpat);
+        }
+    TU_ARMA(PathNamed, e) {
         for(auto& fld_pat : e.sub_patterns)
-        {
             this->visit_pattern(sp, fld_pat.second);
         }
-        ),
-    // Refutable
-    (Value,
-        ),
-    (Range,
-        ),
-    (EnumValue,
-        ),
-    (EnumTuple,
+    TU_ARMA(Value, e) {
+        }
+    TU_ARMA(Range, e) {
+        }
+    TU_ARMA(Slice, e) {
         for(auto& subpat : e.sub_patterns)
             this->visit_pattern(sp, subpat);
-        ),
-    (EnumStruct,
-        for(auto& fld_pat : e.sub_patterns)
-            this->visit_pattern(sp, fld_pat.second);
-        ),
-    (Slice,
-        for(auto& subpat : e.sub_patterns)
-            this->visit_pattern(sp, subpat);
-        ),
-    (SplitSlice,
+        }
+    TU_ARMA(SplitSlice, e) {
         for(auto& subpat : e.leading)
             this->visit_pattern(sp, subpat);
         for(auto& subpat : e.trailing)
             this->visit_pattern(sp, subpat);
-        )
-    )
+        }
+    }
 }
 void ::HIR::ExprVisitorDef::visit_type(::HIR::TypeRef& ty)
 {
-    TU_MATCH(::HIR::TypeData, (ty.m_data), (e),
+    TU_MATCH(::HIR::TypeData, (ty.data_mut()), (e),
     (Infer,
         ),
     (Diverge,
@@ -293,11 +284,11 @@ void ::HIR::ExprVisitorDef::visit_type(::HIR::TypeRef& ty)
         }
         ),
     (Array,
-        this->visit_type( *e.inner );
+        this->visit_type( e.inner );
         //this->visit_expr( e.size );
         ),
     (Slice,
-        this->visit_type( *e.inner );
+        this->visit_type( e.inner );
         ),
     (Tuple,
         for(auto& t : e) {
@@ -305,22 +296,22 @@ void ::HIR::ExprVisitorDef::visit_type(::HIR::TypeRef& ty)
         }
         ),
     (Borrow,
-        this->visit_type( *e.inner );
+        this->visit_type( e.inner );
         ),
     (Pointer,
-        this->visit_type( *e.inner );
+        this->visit_type( e.inner );
         ),
     (Function,
         for(auto& t : e.m_arg_types) {
             this->visit_type(t);
         }
-        this->visit_type(*e.m_rettype);
+        this->visit_type(e.m_rettype);
         ),
     (Closure,
         for(auto& t : e.m_arg_types) {
             this->visit_type(t);
         }
-        this->visit_type(*e.m_rettype);
+        this->visit_type(e.m_rettype);
         )
     )
 }
@@ -335,7 +326,10 @@ void ::HIR::ExprVisitorDef::visit_trait_path(::HIR::TraitPath& p)
 {
     this->visit_generic_path(::HIR::Visitor::PathContext::TYPE, p.m_path);
     for(auto& assoc : p.m_type_bounds)
-        this->visit_type(assoc.second);
+        this->visit_type(assoc.second.type);
+    for(auto& assoc : p.m_trait_bounds)
+        for(auto& t : assoc.second.traits)
+            this->visit_trait_path(t);
 }
 void ::HIR::ExprVisitorDef::visit_path(::HIR::Visitor::PathContext pc, ::HIR::Path& path)
 {
@@ -344,16 +338,16 @@ void ::HIR::ExprVisitorDef::visit_path(::HIR::Visitor::PathContext pc, ::HIR::Pa
         visit_generic_path(pc, e);
         ),
     (UfcsKnown,
-        visit_type(*e.type);
+        visit_type(e.type);
         visit_generic_path(pc, e.trait);
         visit_path_params(e.params);
         ),
     (UfcsUnknown,
-        visit_type(*e.type);
+        visit_type(e.type);
         visit_path_params(e.params);
         ),
     (UfcsInherent,
-        visit_type(*e.type);
+        visit_type(e.type);
         visit_path_params(e.params);
         visit_path_params(e.impl_params);
         )

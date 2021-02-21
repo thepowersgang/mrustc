@@ -47,14 +47,14 @@ extern ::AST::HigherRankedBounds Parse_HRB_Opt(TokenStream& lex);
 extern AST::AttributeList  Parse_ItemAttrs(TokenStream& lex);
 extern void Parse_ParentAttrs(TokenStream& lex, AST::AttributeList& out);
 extern AST::Attribute   Parse_MetaItem(TokenStream& lex);
-extern ::AST::MacroInvocation Parse_MacroInvocation(ProtoSpan ps, RcString name, TokenStream& lex);
+extern ::AST::MacroInvocation Parse_MacroInvocation(ProtoSpan ps, AST::Path path, TokenStream& lex);
 extern TypeRef     Parse_Type(TokenStream& lex, bool allow_trait_list = true);
 extern AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable);
 
 extern void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl);
 extern AST::Named<AST::Item> Parse_Trait_Item(TokenStream& lex);
 extern void Parse_Mod_Item(TokenStream& lex, AST::Module& mod, AST::AttributeList meta_items);
-extern ::AST::Named<::AST::Item> Parse_Mod_Item_S(TokenStream& lex, const AST::Module::FileInfo& mod_fileinfo, const ::AST::Path& mod_path, AST::AttributeList meta_items);
+extern ::AST::Named<::AST::Item> Parse_Mod_Item_S(TokenStream& lex, const AST::Module::FileInfo& mod_fileinfo, const ::AST::AbsolutePath& mod_path, AST::AttributeList meta_items);
 extern void Parse_ModRoot_Items(TokenStream& lex, AST::Module& mod);
 
 
@@ -62,7 +62,7 @@ extern AST::Expr   Parse_Expr(TokenStream& lex);
 extern AST::Expr   Parse_ExprBlock(TokenStream& lex);
 extern AST::ExprNodeP   Parse_Expr0(TokenStream& lex);
 extern AST::ExprNodeP   Parse_ExprVal(TokenStream& lex);
-extern AST::ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe=false);
+extern AST::ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe=false, Ident label=Ident(""));
 extern AST::ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence);
 extern AST::ExprNodeP Parse_ExprBlockLine_WithItems(TokenStream& lex, ::std::shared_ptr<AST::Module>& local_mod, bool& add_silence_if_end);
 extern AST::ExprNodeP Parse_Stmt(TokenStream& lex);

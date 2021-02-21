@@ -186,6 +186,17 @@ namespace {
             (LValue,
                 fmt_val(os, e);
                 ),
+            (Borrow,
+                os << "&";
+                switch(e.type) {
+                case ::HIR::BorrowType::Shared: break;
+                case ::HIR::BorrowType::Unique: os << "mut "; break;
+                case ::HIR::BorrowType::Owned: os << "move "; break;
+                }
+                os << "(";
+                fmt_val(os, e.val);
+                os << ")";
+                ),
             (Constant,
                 fmt_val(os, e);
                 )
@@ -298,10 +309,18 @@ namespace {
                 }
                 os << "]";
                 ),
-            (Variant,
+            (UnionVariant,
                 os << e.path << " #" << e.index << " (";
                 fmt_val(os, e.val);
                 os << ")";
+                ),
+            (EnumVariant,
+                os << e.path << " #" << e.index << " { ";
+                for(const auto& v : e.vals) {
+                    fmt_val(os, v);
+                    os << ", ";
+                }
+                os << "}";
                 ),
             (Struct,
                 os << e.path << " { ";

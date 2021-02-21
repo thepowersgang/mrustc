@@ -1,0 +1,29 @@
+Summary: Switch HIR::TypeRef to be a smart pointer to a constant structure
+
+Justification:
+- De-duplicate excessive numbers of duplicate types
+  > TODO: Get solid numbers
+- Reduce size of TypeRef inline (large source of overhead)
+  > Won't this just move the overhead instead of removing it?
+  > Some elimination, when used in a TU.
+- Avoid repeated resolution of the same type
+  > Setting the binding of a path can happen once, instead of `n` times
+
+
+Alternatives:
+- Do the same for `SimplePath`. Saves 3 pointers per instance (plus deduplication)
+  > Rough profiling implies that it'd not be a huge saving
+  > Maybe 17MB in 231MB (7.5%)
+  > Simple to implement, as it doesn't have to worry about mutation.
+- Just do the conversion of TypeRef to a single pointer (no refcount)
+  > Reduces the size of RValue by (184{Cast}-112{Variant})
+  > HIR::ValueItem down by sizeof(TypeRef)-8 (~2% for typecheck libcore)
+- Replace TypeData::{Function,Path,TraitObject,ErasedType} with pointers (reducing peak size of TypeData from 136 to 32)
+  > Indirection may hurt for accessing Path (27% post typecheck, 23% post trans)
+  > Saving estimate of >20% total usage
+- Remove TypeRef from nodes, store a shared pointer (`shared_ptr` or a custom inline-count version) instead
+  > Index to ivar table? Pack this after checking a function.
+  > A simple de-duplication strategy, removes largest number of types.
+  > post-typecheck 938k types, trans 492k types
+  > No estimate, but wold guess a sizable reduction (~100k instances * 152b = 15MB / 231MB = 6%)
+  > Rough estmate: Halve number of HIR expr nodes. 343k /2 = 170k -> 25.8MB / 231MB -> 11%

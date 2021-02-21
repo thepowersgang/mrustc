@@ -81,7 +81,9 @@ const char* coretype_name(const eCoreType ct ) {
 }
 
 Type_Function::Type_Function(const Type_Function& other):
+    hrbs(other.hrbs),
     is_unsafe(other.is_unsafe),
+    is_variadic(other.is_variadic),
     m_abi(other.m_abi),
     m_rettype( box$( other.m_rettype->clone() ) )
 {
@@ -104,6 +106,21 @@ TypeRef::~TypeRef()
 {
 }
 
+TypeRef::TypeRef(TagMacro, ::AST::MacroInvocation inv):
+    m_span(inv.span()),
+    m_data(TypeData::make_Macro({box$(inv)}))
+{
+}
+TypeRef::TypeRef(TagPath, Span sp, AST::Path path):
+    m_span(mv$(sp)),
+    m_data(TypeData::make_Path( box$(path) ))
+{
+}
+TypeRef::TypeRef(Span sp, AST::Path path):
+    TypeRef(TagPath(), mv$(sp), mv$(path))
+{
+}
+
 TypeRef TypeRef::clone() const
 {
     struct H {
@@ -123,7 +140,7 @@ TypeRef TypeRef::clone() const
     _COPY(None)
     _COPY(Any)
     _COPY(Bang)
-    _CLONE(Macro, { old.inv.clone() })
+    _CLONE(Macro, { box$(old.inv->clone()) })
     //case TypeData::TAG_Macro:   assert( !"Copying an unexpanded type macro" );
     _COPY(Unit)
     _COPY(Primitive)
@@ -133,7 +150,7 @@ TypeRef TypeRef::clone() const
     _CLONE(Pointer, { old.is_mut, box$(old.inner->clone()) })
     _CLONE(Array, { box$(old.inner->clone()), old.size })
     _COPY(Generic)
-    _COPY(Path)
+    _CLONE(Path, std::make_unique<AST::Path>(*old))
     _COPY(TraitObject)
     _COPY(ErasedType)
     #undef _COPY
@@ -142,11 +159,22 @@ TypeRef TypeRef::clone() const
     throw "";
 }
 
+Type_TraitPath::Type_TraitPath(AST::HigherRankedBounds hrbs, AST::Path path)
+    : hrbs(mv$(hrbs))
+    , path(box$(path))
+{
+}
+Type_TraitPath::Type_TraitPath(const Type_TraitPath& x)
+    : hrbs(x.hrbs)
+    , path(std::make_unique<AST::Path>(*x.path))
+{
+}
+
 Ordering Type_TraitPath::ord(const Type_TraitPath& x) const
 {
     Ordering    rv;
 
-    rv = ::ord( this->path, x.path );
+    rv = ::ord( *this->path, *x.path );
     if(rv != OrdEqual)  return rv;
 
     return rv;
@@ -196,7 +224,7 @@ Ordering TypeRef::ord(const TypeRef& x) const
         return ::ord(ent.name, x_ent.name);
         ),
     (Path,
-        return ent.path.ord( x_ent.path );
+        return ent->ord( *x_ent );
         ),
     (TraitObject,
         return ::ord(ent.traits, x_ent.traits);
@@ -216,6 +244,7 @@ void TypeRef::print(::std::ostream& os, bool is_debug/*=false*/) const
 {
     //os << "TypeRef(";
     #define _(VAR, ...) case TypeData::TAG_##VAR: { const auto &ent = this->m_data.as_##VAR(); (void)&ent; __VA_ARGS__ } break;
+    #define _2(VAR, brace) case TypeData::TAG_##VAR: { const auto &ent = this->m_data.as_##VAR(); (void)&ent;
     switch(this->m_data.tag())
     {
     case TypeData::TAGDEAD: throw "";
@@ -229,7 +258,7 @@ void TypeRef::print(::std::ostream& os, bool is_debug/*=false*/) const
         os << "!";
         )
     _(Macro,
-        os << ent.inv;
+        os << *ent.inv;
         )
     _(Unit,
         os << "()";
@@ -237,17 +266,23 @@ void TypeRef::print(::std::ostream& os, bool is_debug/*=false*/) const
     _(Primitive,
         os << ent.core_type;
         )
-    _(Function,
+    _2(Function, {)
+        os << ent.info.hrbs;
         if( ent.info.m_abi != "" )
             os << "extern \"" << ent.info.m_abi << "\" ";
-        os << "fn (";
+        if(ent.info.is_unsafe)
+            os << "unsafe ";
+        os << "fn(";
         for( const auto& arg : ent.info.m_arg_types )
         {
             arg.print(os, is_debug);
             os << ", ";
         }
-        os << ") -> " << *ent.info.m_rettype;
-        )
+        os << ")";
+        if( !ent.info.m_rettype->is_unit() ) {
+            os << " -> " << *ent.info.m_rettype;
+        }
+        } break;
     _(Tuple,
         os << "( ";
         for( const auto& it : ent.inner_types )
@@ -280,7 +315,7 @@ void TypeRef::print(::std::ostream& os, bool is_debug/*=false*/) const
             os << "/*"<<ent.index<<"*/";
         )
     _(Path,
-        ent.path.print_pretty(os, true, is_debug);
+        ent->print_pretty(os, true, is_debug);
         )
     _(TraitObject,
         os << "(";
@@ -288,7 +323,7 @@ void TypeRef::print(::std::ostream& os, bool is_debug/*=false*/) const
             if( &it != &ent.traits.front() )
                 os << "+";
             os << it.hrbs;
-            it.path.print_pretty(os, true, is_debug);
+            it.path->print_pretty(os, true, is_debug);
         }
         os << ")";
         )
@@ -298,12 +333,13 @@ void TypeRef::print(::std::ostream& os, bool is_debug/*=false*/) const
             if( &it != &ent.traits.front() )
                 os << "+";
             os << it.hrbs;
-            it.path.print_pretty(os, true, is_debug);
+            it.path->print_pretty(os, true, is_debug);
         }
         os << "";
         )
     }
     #undef _
+    #undef _2
 }
 
 ::std::ostream& operator<<(::std::ostream& os, const TypeRef& tr) {

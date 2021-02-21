@@ -20,16 +20,16 @@ namespace {
 
     bool matches_type_int(const ::HIR::TypeRef& left,  const ::HIR::TypeRef& right_in, ::HIR::t_cb_resolve_type ty_res, bool expand_generic)
     {
-        assert(! left.m_data.is_Infer() );
-        const auto& right = (right_in.m_data.is_Infer() ? ty_res(right_in) : right_in);
-        if( right_in.m_data.is_Generic() )
+        assert(! left.data().is_Infer() );
+        const auto& right = (right_in.data().is_Infer() ? ty_res(right_in) : right_in);
+        if( right_in.data().is_Generic() )
             expand_generic = false;
 
         //DEBUG("left = " << left << ", right = " << right);
 
         // TODO: What indicates what out of ty_res?
 
-        if( const auto* re = right.m_data.opt_Infer() )
+        if( const auto* re = right.data().opt_Infer() )
         {
             //DEBUG("left = " << left << ", right = " << right);
             switch(re->ty_class)
@@ -39,19 +39,19 @@ namespace {
                 //return left.m_data.is_Generic();
                 return true;
             case ::HIR::InferClass::Integer:
-                if(const auto* le = left.m_data.opt_Primitive()) {
+                if(const auto* le = left.data().opt_Primitive()) {
                     return is_integer(*le);
                 }
                 else {
-                    return left.m_data.is_Generic();
+                    return left.data().is_Generic();
                 }
                 break;
             case ::HIR::InferClass::Float:
-                if(const auto* le = left.m_data.opt_Primitive()) {
+                if(const auto* le = left.data().opt_Primitive()) {
                     return is_float(*le);
                 }
                 else {
-                    return left.m_data.is_Generic();
+                    return left.data().is_Generic();
                 }
                 break;
             }
@@ -59,34 +59,34 @@ namespace {
         }
 
         // A local generic could match anything, leave that up to the caller
-        if( left.m_data.is_Generic() ) {
+        if( left.data().is_Generic() ) {
             DEBUG("> Generic left, success");
             return true;
         }
         // A local UfcsKnown can only be becuase it couldn't be expanded earlier, assume it could match
-        if( left.m_data.is_Path() && left.m_data.as_Path().path.m_data.is_UfcsKnown() ) {
+        if( left.data().is_Path() && left.data().as_Path().path.m_data.is_UfcsKnown() ) {
             // True?
             //DEBUG("> UFCS Unknown left, success");
             return true;
         }
 
         // If the RHS (provided) is generic, it can only match if it binds to a local type parameter
-        if( right.m_data.is_Generic() ) {
+        if( right.data().is_Generic() ) {
             // TODO: This is handled above?
             //DEBUG("> Generic right, only if left generic");
-            return left.m_data.is_Generic();
+            return left.data().is_Generic();
         }
         // If the RHS (provided) is generic, it can only match if it binds to a local type parameter
-        if( TU_TEST1(right.m_data, Path, .binding.is_Unbound()) ) {
+        if( TU_TEST1(right.data(), Path, .binding.is_Unbound()) ) {
             //DEBUG("> UFCS Unknown right, fuzzy");
             return true;
         }
 
-        if( left.m_data.tag() != right.m_data.tag() ) {
+        if( left.data().tag() != right.data().tag() ) {
             //DEBUG("> Tag mismatch, failure");
             return false;
         }
-        TU_MATCH_HDRA( (left.m_data, right.m_data), {)
+        TU_MATCH_HDRA( (left.data(), right.data()), {)
         TU_ARMA(Infer, le, re) throw "infer";
         TU_ARMA(Diverge, le, re) return true;
         TU_ARMA(Primitive, le, re) return le == re;
@@ -123,14 +123,20 @@ namespace {
             throw "Unexpected ErasedType in matches_type_int";
             }
         TU_ARMA(Array, le, re) {
-            if( ! matches_type_int(*le.inner, *re.inner, ty_res, expand_generic) )
+            if( ! matches_type_int(le.inner, re.inner, ty_res, expand_generic) )
                 return false;
-            if( le.size != re.size )
-                return false;
+            if(le.size.is_Generic()) {
+                // If the left is a generic, allow it.
+            }
+            else {
+                // TODO: Other unresolved sizes?
+                if( le.size != re.size )
+                    return false;
+            }
             return true;
             }
         TU_ARMA(Slice, le, re) {
-            return matches_type_int(*le.inner, *re.inner, ty_res, expand_generic);
+            return matches_type_int(le.inner, re.inner, ty_res, expand_generic);
             }
         TU_ARMA(Tuple, le, re) {
             if( le.size() != re.size() )
@@ -143,12 +149,12 @@ namespace {
         TU_ARMA(Borrow, le, re) {
             if( le.type != re.type )
                 return false;
-            return matches_type_int(*le.inner, *re.inner, ty_res, expand_generic);
+            return matches_type_int(le.inner, re.inner, ty_res, expand_generic);
             }
         TU_ARMA(Pointer, le, re) {
             if( le.type != re.type )
                 return false;
-            return matches_type_int(*le.inner, *re.inner, ty_res, expand_generic);
+            return matches_type_int(le.inner, re.inner, ty_res, expand_generic);
             }
         TU_ARMA(Function, le, re) {
             if( le.is_unsafe != re.is_unsafe )
@@ -160,7 +166,7 @@ namespace {
             for( unsigned int i = 0; i < le.m_arg_types.size(); i ++ )
                 if( !matches_type_int(le.m_arg_types[i], re.m_arg_types[i], ty_res, expand_generic) )
                     return false;
-            return matches_type_int(*le.m_rettype, *re.m_rettype, ty_res, expand_generic);
+            return matches_type_int(le.m_rettype, re.m_rettype, ty_res, expand_generic);
             }
         TU_ARMA(Closure, le, re) {
             return le.node == re.node;
@@ -199,7 +205,7 @@ namespace {
 
 namespace {
     bool is_unbounded_infer(const ::HIR::TypeRef& type) {
-        if( const auto* e = type.m_data.opt_Infer() ) {
+        if( const auto* e = type.data().opt_Infer() ) {
             return e->ty_class == ::HIR::InferClass::None || e->ty_class == ::HIR::InferClass::Diverge;
         }
         else {
@@ -214,22 +220,26 @@ bool ::HIR::TraitImpl::matches_type(const ::HIR::TypeRef& type, ::HIR::t_cb_reso
     // TODO: For `Unbound`, it could be valid, if the target is a generic.
     // - Pure infer could also be useful (for knowing if there's any other potential impls)
 
+    // HACK: Assume an unbounded matches
+    if( is_unbounded_infer(type) ) {
+        return true;
+    }
     // TODO: Allow unbounded types iff there's some non-unbounded parameters?
-    if( is_unbounded_infer(type) || TU_TEST1(type.m_data, Path, .binding.is_Unbound()) ) {
+    if( is_unbounded_infer(type) || TU_TEST1(type.data(), Path, .binding.is_Unbound()) ) {
         return false;
     }
     return matches_type_int(m_type, type, ty_res, true);
 }
 bool ::HIR::TypeImpl::matches_type(const ::HIR::TypeRef& type, ::HIR::t_cb_resolve_type ty_res) const
 {
-    if( is_unbounded_infer(type) || TU_TEST1(type.m_data, Path, .binding.is_Unbound()) ) {
+    if( is_unbounded_infer(type) || TU_TEST1(type.data(), Path, .binding.is_Unbound()) ) {
         return false;
     }
     return matches_type_int(m_type, type, ty_res, true);
 }
 bool ::HIR::MarkerImpl::matches_type(const ::HIR::TypeRef& type, ::HIR::t_cb_resolve_type ty_res) const
 {
-    if( is_unbounded_infer(type) || TU_TEST1(type.m_data, Path, .binding.is_Unbound()) ) {
+    if( is_unbounded_infer(type) || TU_TEST1(type.data(), Path, .binding.is_Unbound()) ) {
         return false;
     }
     return matches_type_int(m_type, type, ty_res, true);
@@ -249,11 +259,11 @@ namespace {
 
         // A generic can't be more specific than any other type we can see
         // - It's equally as specific as another Generic, so still false
-        if( left.m_data.is_Generic() ) {
-            return right.m_data.is_Generic() ? ::OrdEqual : ::OrdLess;
+        if( left.data().is_Generic() ) {
+            return right.data().is_Generic() ? ::OrdEqual : ::OrdLess;
         }
         // - A generic is always less specific than anything but itself (handled above)
-        if( right.m_data.is_Generic() ) {
+        if( right.data().is_Generic() ) {
             return ::OrdGreater;
         }
 
@@ -261,7 +271,7 @@ namespace {
             return ::OrdEqual;
         }
 
-        TU_MATCH_HDRA( (left.m_data), {)
+        TU_MATCH_HDRA( (left.data()), {)
         TU_ARMA(Generic, le)
             throw "";
         TU_ARMA(Infer, le) {
@@ -274,7 +284,7 @@ namespace {
             BUG(sp, "Hit closure");
             }
         TU_ARMA(Primitive, le) {
-            if(const auto* re = right.m_data.opt_Primitive() )
+            if(const auto* re = right.data().opt_Primitive() )
             {
                 if( le != *re )
                     BUG(sp, "Mismatched types - " << left << " and " << right);
@@ -285,9 +295,9 @@ namespace {
             }
             }
         TU_ARMA(Path, le) {
-            if( !right.m_data.is_Path() || le.path.m_data.tag() != right.m_data.as_Path().path.m_data.tag() )
+            if( !right.data().is_Path() || le.path.m_data.tag() != right.data().as_Path().path.m_data.tag() )
                 BUG(sp, "Mismatched types - " << left << " and " << right);
-            TU_MATCHA( (le.path.m_data, right.m_data.as_Path().path.m_data), (lpe, rpe),
+            TU_MATCHA( (le.path.m_data, right.data().as_Path().path.m_data), (lpe, rpe),
             (Generic,
                 if( lpe.m_path != rpe.m_path )
                     BUG(sp, "Mismatched types - " << left << " and " << right);
@@ -303,8 +313,8 @@ namespace {
             TODO(sp, "Path - " << le.path << " and " << right);
             }
         TU_ARMA(TraitObject, le) {
-            ASSERT_BUG(sp, right.m_data.is_TraitObject(), "Mismatched types - "<< left << " vs " << right);
-            const auto& re = right.m_data.as_TraitObject();
+            ASSERT_BUG(sp, right.data().is_TraitObject(), "Mismatched types - "<< left << " vs " << right);
+            const auto& re = right.data().as_TraitObject();
             ASSERT_BUG(sp, le.m_trait.m_path.m_path == re.m_trait.m_path.m_path, "Mismatched types - "<< left << " vs " << right);
             ASSERT_BUG(sp, le.m_markers.size() == re.m_markers.size(), "Mismatched types - "<< left << " vs " << right);
 
@@ -324,7 +334,7 @@ namespace {
             TODO(sp, "ErasedType - " << left);
             }
         TU_ARMA(Function, le) {
-            if(/*const auto* re =*/ right.m_data.opt_Function() ) {
+            if(/*const auto* re =*/ right.data().opt_Function() ) {
                 if( left == right )
                     return ::OrdEqual;
                 TODO(sp, "Function - " << left << " vs " << right);
@@ -335,7 +345,7 @@ namespace {
             }
             }
         TU_ARMA(Tuple, le) {
-            if(const auto* re = right.m_data.opt_Tuple())
+            if(const auto* re = right.data().opt_Tuple())
             {
                 return typelist_ord_specific(sp, le, *re);
             }
@@ -344,42 +354,42 @@ namespace {
             }
             }
         TU_ARMA(Slice, le) {
-            if(const auto* re = right.m_data.opt_Slice() )
+            if(const auto* re = right.data().opt_Slice() )
             {
-                return type_ord_specific(sp, *le.inner, *re->inner);
+                return type_ord_specific(sp, le.inner, re->inner);
             }
             else {
                 BUG(sp, "Mismatched types - " << left << " and " << right);
             }
             }
         TU_ARMA(Array, le) {
-            if(const auto* re = right.m_data.opt_Array() )
+            if(const auto* re = right.data().opt_Array() )
             {
                 if( le.size != re->size )
                     BUG(sp, "Mismatched types - " << left << " and " << right);
-                return type_ord_specific(sp, *le.inner, *re->inner);
+                return type_ord_specific(sp, le.inner, re->inner);
             }
             else {
                 BUG(sp, "Mismatched types - " << left << " and " << right);
             }
             }
         TU_ARMA(Pointer, le) {
-            if(const auto* re = right.m_data.opt_Pointer() )
+            if(const auto* re = right.data().opt_Pointer() )
             {
                 if( le.type != re->type )
                     BUG(sp, "Mismatched types - " << left << " and " << right);
-                return type_ord_specific(sp, *le.inner, *re->inner);
+                return type_ord_specific(sp, le.inner, re->inner);
             }
             else {
                 BUG(sp, "Mismatched types - " << left << " and " << right);
             }
             }
         TU_ARMA(Borrow, le) {
-            if(const auto* re = right.m_data.opt_Borrow())
+            if(const auto* re = right.data().opt_Borrow())
             {
                 if( le.type != re->type )
                     BUG(sp, "Mismatched types - " << left << " and " << right);
-                return type_ord_specific(sp, *le.inner, *re->inner);
+                return type_ord_specific(sp, le.inner, re->inner);
             }
             else {
                 BUG(sp, "Mismatched types - " << left << " and " << right);
@@ -414,12 +424,12 @@ namespace {
         static Span sp;
         assert( cur_trait.m_trait_ptr );
         const auto& tr = *cur_trait.m_trait_ptr;
-        auto monomorph_cb = monomorphise_type_get_cb(sp, &type, &cur_trait.m_path.m_params, nullptr);
+        auto monomorph_cb = MonomorphStatePtr(&type, &cur_trait.m_path.m_params, nullptr);
 
         for(const auto& trait_path_raw : tr.m_all_parent_traits)
         {
             // 1. Monomorph
-            auto trait_path_mono = monomorphise_traitpath_with(sp, trait_path_raw, monomorph_cb, false);
+            auto trait_path_mono = monomorph_cb.monomorph_traitpath(sp, trait_path_raw, false);
             // 2. Add
             rv.push_back( ::HIR::GenericBound::make_TraitBound({ type.clone(), mv$(trait_path_mono) }) );
         }
@@ -465,16 +475,17 @@ bool ::HIR::TraitImpl::more_specific_than(const ::HIR::TraitImpl& other) const
     // 1. If this->m_type is less specific than other.m_type: return false
     try
     {
-        auto ord = type_ord_specific(sp, this->m_type, other.m_type);
+        // If any in te.impl->m_params is less specific than oe.impl->m_params: return false
+        auto ord = typelist_ord_specific(sp, this->m_trait_args.m_types, other.m_trait_args.m_types);
+        if( ord != ::OrdEqual ) {
+            DEBUG("- Trait arguments " << (ord == ::OrdLess ? "less" : "more") << " specific");
+            return ord == ::OrdGreater;
+        }
+
+        ord = type_ord_specific(sp, this->m_type, other.m_type);
         // If `*this` < `other` : false
         if( ord != ::OrdEqual ) {
             DEBUG("- Type " << this->m_type << " " << (ord == ::OrdLess ? "less" : "more") << " specific than " << other.m_type);
-            return ord == ::OrdGreater;
-        }
-        // 2. If any in te.impl->m_params is less specific than oe.impl->m_params: return false
-        ord = typelist_ord_specific(sp, this->m_trait_args.m_types, other.m_trait_args.m_types);
-        if( ord != ::OrdEqual ) {
-            DEBUG("- Trait arguments " << (ord == ::OrdLess ? "less" : "more") << " specific");
             return ord == ::OrdGreater;
         }
     }
@@ -562,6 +573,50 @@ bool ::HIR::TraitImpl::more_specific_than(const ::HIR::TraitImpl& other) const
     }
 }
 
+namespace {
+
+    struct ImplTyMatcher:
+        public ::HIR::MatchGenerics,
+        public Monomorphiser
+    {
+        ::std::vector<const ::HIR::TypeRef*>    impl_tys;
+
+
+        ::HIR::Compare match_ty(const ::HIR::GenericRef& g, const ::HIR::TypeRef& ty, ::HIR::t_cb_resolve_type _resolve_cb) override {
+            assert(g.binding < impl_tys.size());
+            if( impl_tys.at(g.binding) )
+            {
+                DEBUG("Compare " << ty << " and " << *impl_tys.at(g.binding));
+                return (ty == *impl_tys.at(g.binding) ? ::HIR::Compare::Equal : ::HIR::Compare::Unequal);
+            }
+            else
+            {
+                impl_tys.at(g.binding) = &ty;
+                return ::HIR::Compare::Equal;
+            }
+        }
+        ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::Literal& sz) override {
+            TODO(Span(), "Matcher::match_val " << g << " with " << sz);
+        }
+
+        ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& g) const override {
+            ASSERT_BUG(sp, g.group() == 0, "");
+            ASSERT_BUG(sp, g.idx() < impl_tys.size(), "");
+            ASSERT_BUG(sp, impl_tys[g.idx()], "");
+            return impl_tys[g.idx()]->clone();
+        }
+        ::HIR::Literal get_value(const Span& sp, const ::HIR::GenericRef& g) const override {
+            TODO(Span(), "Matcher::get_value " << g);
+        }
+
+
+        void reinit(const HIR::GenericParams& params) {
+            this->impl_tys.clear();
+            this->impl_tys.resize(params.m_types.size());
+        }
+    };
+}
+
 // Returns `true` if the two impls overlap in the types they will accept
 bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl& other) const
 {
@@ -580,26 +635,26 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
         {
             static Span sp;
             //DEBUG("(" << a << "," << b << ")");
-            if( a.m_data.is_Generic() || b.m_data.is_Generic() )
+            if( a.data().is_Generic() || b.data().is_Generic() )
                 return true;
             // TODO: Unbound/Opaque paths?
-            if( a.m_data.tag() != b.m_data.tag() )
+            if( a.data().tag() != b.data().tag() )
                 return false;
-            TU_MATCHA( (a.m_data, b.m_data), (ae, be),
-            (Generic,
-                ),
-            (Infer,
-                ),
-            (Diverge,
-                ),
-            (Closure,
+            TU_MATCH_HDRA( (a.data(), b.data()), {)
+            TU_ARMA(Generic, ae, be) {
+                }
+            TU_ARMA(Infer, ae, be) {
+                }
+            TU_ARMA(Diverge, ae, be) {
+                }
+            TU_ARMA(Closure, ae, be) {
                 BUG(sp, "Hit closure");
-                ),
-            (Primitive,
+                }
+            TU_ARMA(Primitive, ae, be) {
                 if( ae != be )
                     return false;
-                ),
-            (Path,
+                }
+            TU_ARMA(Path, ae, be) {
                 if( ae.path.m_data.tag() != be.path.m_data.tag() )
                     return false;
                 TU_MATCHA( (ae.path.m_data, be.path.m_data), (ape, bpe),
@@ -616,8 +671,8 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
                     )
                 )
                 TODO(sp, "Path - " << ae.path << " and " << be.path);
-                ),
-            (TraitObject,
+                }
+            TU_ARMA(TraitObject, ae, be) {
                 if( ae.m_trait.m_path.m_path != be.m_trait.m_path.m_path )
                     return false;
                 if( !H::types_overlap(ae.m_trait.m_path.m_params, be.m_trait.m_path.m_params) )
@@ -633,11 +688,11 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
                         return false;
                 }
                 return true;
-                ),
-            (ErasedType,
+                }
+            TU_ARMA(ErasedType, ae, be) {
                 TODO(sp, "ErasedType - " << a);
-                ),
-            (Function,
+                }
+            TU_ARMA(Function, ae, be) {
                 if( ae.is_unsafe != be.is_unsafe )
                     return false;
                 if( ae.m_abi != be.m_abi )
@@ -649,8 +704,10 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
                     if( ! H::types_overlap(ae.m_arg_types[i], be.m_arg_types[i]) )
                         return false;
                 }
-                ),
-            (Tuple,
+                if( !H::types_overlap(ae.m_rettype, be.m_rettype) )
+                    return false;
+                }
+            TU_ARMA(Tuple, ae, be) {
                 if( ae.size() != be.size() )
                     return false;
                 for(unsigned int i = 0; i < ae.size(); i ++)
@@ -658,26 +715,26 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
                     if( ! H::types_overlap(ae[i], be[i]) )
                         return false;
                 }
-                ),
-            (Slice,
-                return H::types_overlap( *ae.inner, *be.inner );
-                ),
-            (Array,
+                }
+            TU_ARMA(Slice, ae, be) {
+                return H::types_overlap( ae.inner, be.inner );
+                }
+            TU_ARMA(Array, ae, be) {
                 if( ae.size != be.size )
                     return false;
-                return H::types_overlap( *ae.inner, *be.inner );
-                ),
-            (Pointer,
+                return H::types_overlap( ae.inner, be.inner );
+                }
+            TU_ARMA(Pointer, ae, be) {
                 if( ae.type != be.type )
                     return false;
-                return H::types_overlap( *ae.inner, *be.inner );
-                ),
-            (Borrow,
+                return H::types_overlap( ae.inner, be.inner );
+                }
+            TU_ARMA(Borrow, ae, be) {
                 if( ae.type != be.type )
                     return false;
-                return H::types_overlap( *ae.inner, *be.inner );
-                )
-            )
+                return H::types_overlap( ae.inner, be.inner );
+                }
+            }
             return true;
         }
     };
@@ -714,49 +771,36 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
     // > Requires two lists, and telling which one to use by the end
     auto cb_ident = [](const ::HIR::TypeRef& x)->const ::HIR::TypeRef& { return x; };
     bool is_reversed = false;
-    ::std::vector<const ::HIR::TypeRef*>    impl_tys;
-    auto cb_match = [&](unsigned int idx, const auto& /*name*/, const ::HIR::TypeRef& x)->::HIR::Compare {
-        assert(idx < impl_tys.size());
-        if( impl_tys.at(idx) )
-        {
-            DEBUG("Compare " << x << " and " << *impl_tys.at(idx));
-            return (x == *impl_tys.at(idx) ? ::HIR::Compare::Equal : ::HIR::Compare::Unequal);
-        }
-        else
-        {
-            impl_tys.at(idx) = &x;
-            return ::HIR::Compare::Equal;
-        }
-        };
-    impl_tys.resize( this->m_params.m_types.size() );
-    if( ! this->m_type.match_test_generics(sp, other.m_type, cb_ident, cb_match) )
+    ImplTyMatcher matcher;
+    matcher.reinit(this->m_params);
+    if( ! this->m_type.match_test_generics(sp, other.m_type, cb_ident, matcher) )
     {
         DEBUG("- Type mismatch, try other ordering");
         is_reversed = true;
-        impl_tys.clear(); impl_tys.resize( other.m_params.m_types.size() );
-        if( !other.m_type.match_test_generics(sp, this->m_type, cb_ident, cb_match) )
+        matcher.reinit( other.m_params );
+        if( !other.m_type.match_test_generics(sp, this->m_type, cb_ident, matcher) )
         {
             DEBUG("- Type mismatch in both orderings");
             return false;
         }
-        if( other.m_trait_args.match_test_generics_fuzz(sp, this->m_trait_args, cb_ident, cb_match) != ::HIR::Compare::Equal )
+        if( other.m_trait_args.match_test_generics_fuzz(sp, this->m_trait_args, cb_ident, matcher) != ::HIR::Compare::Equal )
         {
             DEBUG("- Params mismatch");
             return false;
         }
         // Matched with second ording
     }
-    else if( this->m_trait_args.match_test_generics_fuzz(sp, other.m_trait_args, cb_ident, cb_match) != ::HIR::Compare::Equal )
+    else if( this->m_trait_args.match_test_generics_fuzz(sp, other.m_trait_args, cb_ident, matcher) != ::HIR::Compare::Equal )
     {
         DEBUG("- Param mismatch, try other ordering");
         is_reversed = true;
-        impl_tys.clear(); impl_tys.resize( other.m_params.m_types.size() );
-        if( !other.m_type.match_test_generics(sp, this->m_type, cb_ident, cb_match) )
+        matcher.reinit(other.m_params);
+        if( !other.m_type.match_test_generics(sp, this->m_type, cb_ident, matcher) )
         {
             DEBUG("- Type mismatch in alt ordering");
             return false;
         }
-        if( other.m_trait_args.match_test_generics_fuzz(sp, this->m_trait_args, cb_ident, cb_match) != ::HIR::Compare::Equal )
+        if( other.m_trait_args.match_test_generics_fuzz(sp, this->m_trait_args, cb_ident, matcher) != ::HIR::Compare::Equal )
         {
             DEBUG("- Params mismatch in alt ordering");
             return false;
@@ -769,48 +813,29 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
     }
 
     struct H2 {
-        static const ::HIR::TypeRef& monomorph(const Span& sp, const ::HIR::TypeRef& in_ty, const ::std::vector<const ::HIR::TypeRef*>& args, ::HIR::TypeRef& tmp)
+        static const ::HIR::TypeRef& monomorph(const Span& sp, const ::HIR::TypeRef& in_ty, const Monomorphiser& ms, ::HIR::TypeRef& tmp)
         {
             if( ! monomorphise_type_needed(in_ty) ) {
                 return in_ty;
             }
-            else if( const auto* tep = in_ty.m_data.opt_Generic() ) {
-                ASSERT_BUG(sp, tep->binding < args.size(), "");
-                ASSERT_BUG(sp, args[tep->binding], "");
-                return *args[tep->binding];
-            }
             else {
-                auto monomorph_cb = [&](const auto& t)->const auto& {
-                    const auto& te = t.m_data.as_Generic();
-                    assert(te.binding < args.size());
-                    ASSERT_BUG(sp, te.binding < args.size(), "");
-                    ASSERT_BUG(sp, args[te.binding], "");
-                    return *args[te.binding];
-                    };
-                tmp = monomorphise_type_with(sp, in_ty, monomorph_cb);
+                tmp = ms.monomorph_type(sp, in_ty);
                 // TODO: EAT?
                 return tmp;
             }
         }
-        static const ::HIR::TraitPath& monomorph(const Span& sp, const ::HIR::TraitPath& in, const ::std::vector<const ::HIR::TypeRef*>& args, ::HIR::TraitPath& tmp)
+        static const ::HIR::TraitPath& monomorph(const Span& sp, const ::HIR::TraitPath& in, const Monomorphiser& ms, ::HIR::TraitPath& tmp)
         {
             if( ! monomorphise_traitpath_needed(in) ) {
                 return in;
             }
             else {
-                auto monomorph_cb = [&](const auto& t)->const auto& {
-                    const auto& te = t.m_data.as_Generic();
-                    assert(te.binding < args.size());
-                    ASSERT_BUG(sp, te.binding < args.size(), "");
-                    ASSERT_BUG(sp, args[te.binding], "");
-                    return *args[te.binding];
-                    };
-                tmp = monomorphise_traitpath_with(sp, in, monomorph_cb, true);
+                tmp = ms.monomorph_traitpath(sp, in, true);
                 // TODO: EAT?
                 return tmp;
             }
         }
-        static bool check_bounds(const ::HIR::Crate& crate, const ::HIR::TraitImpl& id, const ::std::vector<const ::HIR::TypeRef*>& args, const ::HIR::TraitImpl& g_src)
+        static bool check_bounds(const ::HIR::Crate& crate, const ::HIR::TraitImpl& id, const Monomorphiser& ms, const ::HIR::TraitImpl& g_src)
         {
             TRACE_FUNCTION;
             static Span sp;
@@ -821,11 +846,11 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
                 {
                     ::HIR::TypeRef  tmp_ty;
                     ::HIR::TraitPath    tmp_tp;
-                    const auto& ty = H2::monomorph(sp, tb.as_TraitBound().type, args, tmp_ty);
-                    const auto& trait = H2::monomorph(sp, tb.as_TraitBound().trait, args, tmp_tp);;
+                    const auto& ty = H2::monomorph(sp, tb.as_TraitBound().type, ms, tmp_ty);
+                    const auto& trait = H2::monomorph(sp, tb.as_TraitBound().trait, ms, tmp_tp);;
 
                     // Determine if `ty` would be bounded (it's an ATY or generic)
-                    if( ty.m_data.is_Generic() ) {
+                    if( ty.data().is_Generic() ) {
                         bool found = false;
                         for(const auto& bound : g_src.m_params.m_bounds)
                         {
@@ -842,7 +867,7 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
                             return false;
                         }
                     }
-                    else if( TU_TEST1(ty.m_data, Path, .binding.is_Opaque()) ) {
+                    else if( TU_TEST1(ty.data(), Path, .binding.is_Opaque()) ) {
                         TODO(sp, "Check bound " << ty << " : " << trait << " in source bounds or trait bounds");
                     }
                     else {
@@ -850,33 +875,21 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
                         bool rv = crate.find_trait_impls(trait.m_path.m_path, ty, [](const auto&t)->const auto&{ return t; }, [&](const ::HIR::TraitImpl& ti)->bool {
                                 DEBUG("impl" << ti.m_params.fmt_args() << " " << trait.m_path.m_path << ti.m_trait_args << " for " << ti.m_type << ti.m_params.fmt_bounds());
 
-                                ::std::vector<const ::HIR::TypeRef*>   impl_tys { ti.m_params.m_types.size() };
                                 auto cb_ident = [](const ::HIR::TypeRef& x)->const ::HIR::TypeRef& { return x; };
-                                auto cb_match = [&](unsigned int idx, const auto& /*name*/, const ::HIR::TypeRef& x)->::HIR::Compare {
-                                    assert(idx < impl_tys.size());
-                                    if( impl_tys.at(idx) )
-                                    {
-                                        DEBUG("Compare " << x << " and " << *impl_tys.at(idx));
-                                        return (x == *impl_tys.at(idx) ? ::HIR::Compare::Equal : ::HIR::Compare::Unequal);
-                                    }
-                                    else
-                                    {
-                                        impl_tys.at(idx) = &x;
-                                        return ::HIR::Compare::Equal;
-                                    }
-                                    };
+                                ImplTyMatcher   matcher;
+                                matcher.reinit(ti.m_params);
                                 // 1. Triple-check the type matches (and get generics)
-                                if( ! ti.m_type.match_test_generics(sp, ty, cb_ident, cb_match) )
+                                if( ! ti.m_type.match_test_generics(sp, ty, cb_ident, matcher) )
                                     return false;
                                 // 2. Check trait params
                                 assert(trait.m_path.m_params.m_types.size() == ti.m_trait_args.m_types.size());
                                 for(size_t i = 0; i < trait.m_path.m_params.m_types.size(); i ++)
                                 {
-                                    if( !ti.m_trait_args.m_types[i].match_test_generics(sp, trait.m_path.m_params.m_types[i], cb_ident, cb_match) )
+                                    if( !ti.m_trait_args.m_types[i].match_test_generics(sp, trait.m_path.m_params.m_types[i], cb_ident, matcher) )
                                         return false;
                                 }
                                 // 3. Check bounds on the impl
-                                if( !H2::check_bounds(crate, ti, impl_tys, g_src) )
+                                if( !H2::check_bounds(crate, ti, matcher, g_src) )
                                     return false;
                                 // 4. Check ATY bounds on the trait path
                                 for(const auto& atyb : trait.m_type_bounds)
@@ -886,7 +899,7 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
                                     }
                                     else {
                                         const auto& aty = ti.m_types.at(atyb.first);
-                                        if( !aty.data.match_test_generics(sp, atyb.second, cb_ident, cb_match) )
+                                        if( !aty.data.match_test_generics(sp, atyb.second.type, cb_ident, matcher) )
                                             return false;
                                     }
                                 }
@@ -913,7 +926,7 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
     if(is_reversed)
     {
         DEBUG("(reversed) impl params " << FMT_CB(os,
-                for(auto* p : impl_tys)
+                for(auto* p : matcher.impl_tys)
                 {
                     if(p)
                         os << *p;
@@ -924,12 +937,12 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
                 ));
         // Check bounds on `other` using these params
         // TODO: Take a callback that does the checks. Or somehow return a "maybe overlaps" result?
-        return H2::check_bounds(crate, other, impl_tys, *this);
+        return H2::check_bounds(crate, other, matcher, *this);
     }
     else
     {
         DEBUG("impl params " << FMT_CB(os,
-                for(auto* p : impl_tys)
+                for(auto* p : matcher.impl_tys)
                 {
                     if(p)
                         os << *p;
@@ -939,7 +952,7 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
                 }
                 ));
         // Check bounds on `*this`
-        return H2::check_bounds(crate, *this, impl_tys, other);
+        return H2::check_bounds(crate, *this, matcher, other);
     }
 }
 
@@ -976,6 +989,16 @@ namespace
             {
                 if( find_impls_list(*impl_list, type, ty_res, callback) )
                     return true;
+            }
+            // - If the type is an ivar, search all types
+            if( type.data().is_Infer() && !type.data().as_Infer().is_lit() )
+            {
+                DEBUG("Search all lists");
+                for(const auto& list : it->second.named)
+                {
+                    if( find_impls_list(list.second, type, ty_res, callback) )
+                        return true;
+                }
             }
 
             // 2. Search fully generic list.
@@ -1150,4 +1173,85 @@ const ::MIR::Function* HIR::Crate::get_or_gen_mir(const ::HIR::ItemPath& ip, con
         }
         return &*ep.m_mir;
     }
+}
+
+
+::HIR::TypeRef HIR::Trait::get_vtable_type(const Span& sp, const ::HIR::Crate& crate, const ::HIR::TypeData::Data_TraitObject& te) const
+{
+    assert(te.m_trait.m_trait_ptr == this);
+
+    const auto& vtable_ty_spath = this->m_vtable_path;
+    const auto& vtable_ref = crate.get_struct_by_path(sp, vtable_ty_spath);
+    // Copy the param set from the trait in the trait object
+    ::HIR::PathParams   vtable_params = te.m_trait.m_path.m_params.clone();
+    // - Include associated types on bound
+    for(const auto& ty_b : te.m_trait.m_type_bounds) {
+        auto idx = this->m_type_indexes.at(ty_b.first);
+        if(vtable_params.m_types.size() <= idx)
+            vtable_params.m_types.resize(idx+1);
+        vtable_params.m_types[idx] = ty_b.second.type.clone();
+    }
+    return ::HIR::TypeRef::new_path( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref );
+}
+
+unsigned HIR::Trait::get_vtable_value_index(const HIR::GenericPath& trait_path, const RcString& name) const
+{
+    auto its = this->m_value_indexes.equal_range(name);
+    for(auto it = its.first; it != its.second; ++it)
+    {
+        DEBUG(trait_path << " :: " << name << " - " << it->second.second);
+        if( it->second.second.m_path == trait_path.m_path )
+        {
+            // TODO: Match generics using match_test_generics comparing to the trait args
+            assert(it->second.first > 0);
+            return it->second.first;
+        }
+    }
+    return 0;
+}
+
+/// Helper for getting the struct associated with a pattern path
+const ::HIR::Struct& HIR::pattern_get_struct(const Span& sp, const ::HIR::Path& path, const ::HIR::Pattern::PathBinding& binding, bool is_tuple)
+{
+    const ::HIR::Struct* str_p = nullptr;
+    TU_MATCH_HDRA( (binding), { )
+    TU_ARMA(Unbound, be)
+        BUG(sp, "Unexpected unbound named pattern - " << path);
+    TU_ARMA(Struct, be) {
+        str_p = be;
+        }
+    TU_ARMA(Enum, be) {
+        const auto& enm = *be.ptr;
+        if(is_tuple) {
+            ASSERT_BUG(sp, enm.m_data.is_Data(), "PathTuple pattern with non-data enum - " << path);
+        }
+        else {
+            ASSERT_BUG(sp, enm.m_data.is_Data(), "PathNamed pattern with non-data enum - " << path);
+        }
+        const auto& enm_d = enm.m_data.as_Data();
+        ASSERT_BUG(sp, be.var_idx < enm_d.size(), "Variant index " << be.var_idx << " out of range - " << path);
+        if(is_tuple) {
+            ASSERT_BUG(sp, !enm_d[be.var_idx].is_struct, "PathTuple pattern with brace enum variant - " << path);
+        }
+        else {
+            ASSERT_BUG(sp, enm_d[be.var_idx].is_struct, "PathNamed pattern with non-brace enum variant - " << path);
+        }
+        str_p = enm_d[be.var_idx].type.data().as_Path().binding.as_Struct();
+        }
+    }
+    const auto& str = *str_p;
+
+    if(is_tuple) {
+        ASSERT_BUG(sp, str.m_data.is_Tuple(), "PathTuple pattern with non-tuple struct - " << str.m_data.tag_str());
+    }
+    else {
+        ASSERT_BUG(sp, str.m_data.is_Named(), "Struct pattern on non-brace struct");
+    }
+    return str;
+}
+const ::HIR::t_tuple_fields& HIR::pattern_get_tuple(const Span& sp, const ::HIR::Path& path, const ::HIR::Pattern::PathBinding& binding) {
+    return pattern_get_struct(sp, path, binding, true).m_data.as_Tuple();
+}
+const ::HIR::t_struct_fields& HIR::pattern_get_named(const Span& sp, const ::HIR::Path& path, const ::HIR::Pattern::PathBinding& binding) {
+    return pattern_get_struct(sp, path, binding, false).m_data.as_Named();
 }

@@ -28,6 +28,7 @@ public:
 
     ~MacroRulesPtr();
 
+    operator bool() const { return m_ptr != nullptr; }
     const MacroRules& operator*() const { assert(m_ptr); return *m_ptr; }
           MacroRules& operator*()       { assert(m_ptr); return *m_ptr; }
     const MacroRules* operator->() const { assert(m_ptr); return m_ptr; }

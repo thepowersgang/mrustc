@@ -52,9 +52,9 @@ RUSTFLAGS_alloc_system :=
 RUSTFLAGS_compiler_builtins := --cfg feature=\"compiler-builtins\"
 
 ../output$(OUTDIR_SUF)/rustc:
-	make -C ../ output$(OUTDIR_SUF)/rustc -j 3
+	$(MAKE) -C ../ output$(OUTDIR_SUF)/rustc -j 3
 ../output$(OUTDIR_SUF)/cargo:
-	make -C ../ output$(OUTDIR_SUF)/cargo -j 3
+	$(MAKE) -C ../ output$(OUTDIR_SUF)/cargo -j 3
 
 $(BINDIR)rustc_m: ../output$(OUTDIR_SUF)/rustc
 	@mkdir -p $(dir $@)
@@ -103,7 +103,7 @@ ifeq ($(RUSTC_VERSION),1.19.0)
 else
 	cp $(OUTDIR)build-rustc/release/rustc_binary $(BINDIR)rustc_binary
 endif
-	echo '#!/bin/sh\nd=$$(dirname $$0)\nLD_LIBRARY_PATH="$(abspath $(LIBDIR))" $$d/rustc_binary $$@' >$@
+	printf '#!/bin/sh\nd=$$(dirname $$0)\nLD_LIBRARY_PATH="$(abspath $(LIBDIR))" $$d/rustc_binary $$@' >$@
 	chmod +x $@
 
 $(BINDIR)hello_world: $(RUST_SRC)test/run-pass/hello.rs $(LIBDIR)libstd.rlib $(BINDIR)rustc
@@ -113,6 +113,7 @@ $(BINDIR)hello_world: $(RUST_SRC)test/run-pass/hello.rs $(LIBDIR)libstd.rlib $(B
 
 # 
 # - Build libstd in a hacky hard-coded way first, to allow build scripts to work
+#  > TODO: Tweak minicargo so it can call rustc (and then use minicargo to do this)
 # 
 $(LIBDIR_S)lib%.rlib: $(RUST_SRC)lib%/lib.rs $(BINDIR_S)rustc
 	@mkdir -p $(dir $@)

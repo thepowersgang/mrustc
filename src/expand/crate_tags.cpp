@@ -52,6 +52,18 @@ public:
     }
 };
 
+class Decorator_Feature:
+    public ExpandDecorator
+{
+public:
+    AttrStage stage() const override { return AttrStage::Pre; }
+
+    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate) const override {
+    }
+};
+STATIC_DECORATOR("feature", Decorator_Feature)
+
+
 class Decorator_Allocator:
     public ExpandDecorator
 {
@@ -60,10 +72,10 @@ public:
 
     void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate) const override {
         // TODO: Check for an existing allocator crate
-        crate.m_lang_items.insert(::std::make_pair( "mrustc-allocator", AST::Path("",{}) ));
+        crate.m_lang_items.insert(::std::make_pair( "mrustc-allocator", AST::AbsolutePath() ));
     }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
         if( ! i.is_Function() ) {
             ERROR(sp, E0000, "#[allocator] can only be put on functions and the crate - found on " << i.tag_str());
         }
@@ -79,7 +91,7 @@ public:
 
     void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate) const override {
         // TODO: Check for an existing panic_runtime crate
-        crate.m_lang_items.insert(::std::make_pair( "mrustc-panic_runtime", AST::Path("",{}) ));
+        crate.m_lang_items.insert(::std::make_pair( "mrustc-panic_runtime", AST::AbsolutePath() ));
     }
 };
 class Decorator_NeedsPanicRuntime:
@@ -89,7 +101,7 @@ public:
     AttrStage stage() const override { return AttrStage::Pre; }
 
     void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate) const override {
-        crate.m_lang_items.insert(::std::make_pair( "mrustc-needs_panic_runtime", AST::Path("",{}) ));
+        crate.m_lang_items.insert(::std::make_pair( "mrustc-needs_panic_runtime", AST::AbsolutePath() ));
     }
 };
 

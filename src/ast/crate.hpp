@@ -19,7 +19,7 @@ class ExternCrate;
 class TestDesc
 {
 public:
-    ::AST::Path path;
+    ::AST::AbsolutePath path;
     ::std::string   name;
     bool    ignore = false;
     bool    is_benchmark = false;
@@ -37,7 +37,7 @@ class ProcMacroDef
 {
 public:
     RcString    name;
-    ::AST::Path path;
+    ::AST::AbsolutePath path;
     ::std::vector<::std::string>    attributes;
 };
 
@@ -46,12 +46,17 @@ class Crate
 public:
     ::AST::AttributeList    m_attrs;
 
-    ::std::map< ::std::string, ::AST::Path> m_lang_items;
+    ::std::map< ::std::string, ::AST::AbsolutePath> m_lang_items;
 public:
     Module  m_root_module;
     ::std::map< RcString, ExternCrate> m_extern_crates;
     // Mapping filled by searching for (?visible) macros with is_pub=true
     ::std::map< RcString, const MacroRules*> m_exported_macros;
+
+    RcString    m_ext_cratename_core;
+    RcString    m_ext_cratename_std;
+    RcString    m_ext_cratename_procmacro;
+    RcString    m_ext_cratename_test;
 
     // List of tests (populated in expand if --test is passed)
     bool    m_test_harness = false;
@@ -109,12 +114,10 @@ public:
     ExternCrate& operator=(ExternCrate&&) = default;
     ExternCrate(const ExternCrate&) = delete;
     ExternCrate& operator=(const ExternCrate& ) = delete;
-
-    void with_all_macros(::std::function<void(const RcString& , const MacroRules&)> cb) const;
-    const MacroRules* find_macro_rules(const RcString& name) const;
 };
 
 extern ::std::vector<::std::string>    g_crate_load_dirs;
 extern ::std::map<::std::string, ::std::string>    g_crate_overrides;
+extern ::std::map<RcString, RcString>    g_implicit_crates;
 
 }   // namespace AST

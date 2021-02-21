@@ -36,9 +36,25 @@ struct ThreadState
     }
 };
 
+class InterpreterThread;
+
+struct GlobalState
+{
+    typedef bool    override_handler_t(InterpreterThread& thread, Value& ret, const ::HIR::Path& path, ::std::vector<Value> args);
+
+    const ModuleTree& m_modtree;
+
+    std::map<const Static*, Value>  m_statics;
+
+    std::map<RcString, override_handler_t*>  m_fcn_overrides;
+
+    GlobalState(const ModuleTree& modtree);
+};
+
 class InterpreterThread
 {
     friend struct MirHelpers;
+
     struct StackFrame
     {
         static unsigned s_next_frame_index;
@@ -63,20 +79,20 @@ class InterpreterThread
         }
     };
 
-    ModuleTree& m_modtree;
+    GlobalState&    m_global;
     ThreadState m_thread;
     size_t  m_instruction_count;
     ::std::vector<StackFrame>   m_stack;
 
 public:
-    InterpreterThread(ModuleTree& modtree):
-        m_modtree(modtree),
+    InterpreterThread(GlobalState& m_global):
+        m_global(m_global),
         m_instruction_count(0)
     {
     }
     ~InterpreterThread();
 
-    void start(const ::HIR::Path& p, ::std::vector<Value> args);
+    void start(const RcString& p, ::std::vector<Value> args);
     // Returns `true` if the call stack empties
     bool step_one(Value& out_thread_result);
 
@@ -84,11 +100,11 @@ private:
     bool pop_stack(Value& out_thread_result);
 
     // Returns true if the call was resolved instantly
-    bool call_path(Value& ret_val, const ::HIR::Path& p, ::std::vector<Value> args);
+    bool call_path(Value& ret_val, const HIR::Path& p, ::std::vector<Value> args);
     // Returns true if the call was resolved instantly
     bool call_extern(Value& ret_val, const ::std::string& name, const ::std::string& abi, ::std::vector<Value> args);
     // Returns true if the call was resolved instantly
-    bool call_intrinsic(Value& ret_val, const RcString& name, const ::HIR::PathParams& pp, ::std::vector<Value> args);
+    bool call_intrinsic(Value& ret_val, const ::HIR::TypeRef& ret_ty, const RcString& name, const ::HIR::PathParams& pp, ::std::vector<Value> args);
 
     // Returns true if the call was resolved instantly
     bool drop_value(Value ptr, const ::HIR::TypeRef& ty, bool is_shallow=false);

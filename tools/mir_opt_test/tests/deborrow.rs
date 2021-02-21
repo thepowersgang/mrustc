@@ -34,3 +34,25 @@ fn simple_mut_exp(a: (i32,)) -> i32
 		ASSIGN retval = a.0;
 	} RETURN;
 }
+
+// Structure borrows
+#[test="structures_exp"]
+fn structures(i: &((i32, ), )) -> (&i32,)
+{
+	let a: &(i32,);
+	let b: &i32;
+	bb0: {
+		ASSIGN a = &i*.0;
+		ASSIGN b = &a*.0;
+		ASSIGN retval = (b,);
+	} RETURN;
+}
+fn structures_exp(i: &((i32, ), )) -> (&i32,)
+{
+	let b: &i32;
+	bb0: {
+		ASSIGN b = &i*.0 .0;
+		ASSIGN retval = (b,);
+	} RETURN;
+}
+

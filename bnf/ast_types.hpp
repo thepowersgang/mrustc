@@ -168,6 +168,7 @@ public:
 		assert(x.m_name == "");
 		m_items = ::std::move(x.m_items);
 		this->add_attrs( ::std::move(x.m_attrs) );
+		return *this;
 	}
 
 	bool is_external() const { return m_is_extern; }

@@ -1,3 +1,8 @@
 [package]
 name = "proc_macro"
 version = "0.0.0"
+
+# - Populate features so the crate signature is different to rustc's
+[features]
+default = ["mrustc"]
+mrustc = []

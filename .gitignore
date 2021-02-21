@@ -17,7 +17,8 @@
 /tools/bin
 
 /output
-/output-1.19.0
+/output-*
+
 /vsproject/Win32
 /vsproject/x64
 /vsproject/*/Win32
@@ -37,6 +38,8 @@
 /vsproject/*.pdb
 /vsproject/smiri.log
 /vsproject/*.dmp
+/vsproject/*/*.dmp
+/vsproject/*.txt
 
 
 /run_rustc/output

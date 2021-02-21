@@ -40,7 +40,7 @@ class CExpanderBuildDiagnosticArray:
         //auto crate_name = mv$(tok.str());
         GET_CHECK_TOK(tok, lex, TOK_COMMA);
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
-        auto item_name = tok.istr();
+        auto item_name = tok.ident();
         GET_CHECK_TOK(tok, lex, TOK_EOF);
 
         ::std::vector<TokenTree>    toks;
@@ -63,7 +63,7 @@ class CExpanderBuildDiagnosticArray:
         toks.push_back( TOK_SQUARE_CLOSE );
         toks.push_back( TOK_SEMICOLON );
 
-        return box$( TTStreamO(sp, ParseState(crate.m_edition), TokenTree( lex.getHygiene(), mv$(toks) )) );
+        return box$( TTStreamO(sp, ParseState(crate.m_edition), TokenTree( lex.get_hygiene(), mv$(toks) )) );
     }
 };
 

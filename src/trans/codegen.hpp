@@ -43,8 +43,6 @@ public:
     virtual void emit_constructor_enum(const Span& sp, const ::HIR::GenericPath& path, const ::HIR::Enum& item, size_t var_idx) {}
     virtual void emit_constructor_struct(const Span& sp, const ::HIR::GenericPath& path, const ::HIR::Struct& item) {}
 
-    virtual void emit_vtable(const ::HIR::Path& p, const ::HIR::Trait& trait) {}
-
     virtual void emit_static_ext(const ::HIR::Path& p, const ::HIR::Static& item, const Trans_Params& params) {}
     virtual void emit_static_proto(const ::HIR::Path& p, const ::HIR::Static& item, const Trans_Params& params) {}
     virtual void emit_static_local(const ::HIR::Path& p, const ::HIR::Static& item, const Trans_Params& params) {}
@@ -54,6 +52,39 @@ public:
     virtual void emit_function_code(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params, bool is_extern_def, const ::MIR::FunctionPointer& code) {}
 };
 
+struct Reloc {
+    size_t  ofs;
+    size_t  len;
+    const ::HIR::Path* p;
+    ::std::string   bytes;
+
+    static Reloc new_named(size_t ofs, size_t len, const ::HIR::Path* p) {
+        return Reloc { ofs, len, p, "" };
+    }
+    static Reloc new_bytes(size_t ofs, size_t len, ::std::string bytes) {
+        return Reloc { ofs, len, nullptr, ::std::move(bytes) };
+    }
+
+    friend ::std::ostream& operator<<(::std::ostream& os, const Reloc& x) {
+        os << "@" << std::hex << "0x" << x.ofs << "+" << x.len << " = ";
+        if(x.p) {
+            os << "&" << *x.p;
+        }
+        else {
+            os << "\"" << FmtEscaped(x.bytes) << "\"";
+        }
+        return os;
+    }
+};
+struct EncodedLiteral {
+    static const unsigned PTR_BASE = 0x1000;
+
+    std::vector<uint8_t>    bytes;
+    std::vector<Reloc>  relocations;
+    // List of fabricated paths used in relocations
+    std::vector< std::unique_ptr<HIR::Path> >   paths;
+};
+EncodedLiteral Trans_EncodeLiteralAsBytes(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::Literal& lit, const ::HIR::TypeRef& ty);
 
 extern ::std::unique_ptr<CodeGenerator> Trans_Codegen_GetGeneratorC(const ::HIR::Crate& crate, const ::std::string& outfile);
 extern ::std::unique_ptr<CodeGenerator> Trans_Codegen_GetGenerator_MonoMir(const ::HIR::Crate& crate, const ::std::string& outfile);

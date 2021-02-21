@@ -9,6 +9,7 @@
 #include <string_view.hpp>
 #include <hir/hir.hpp>  // ABI_RUST
 #include <hir/type.hpp>
+#include <cctype>
 
 class Mangler
 {
@@ -65,12 +66,25 @@ public:
             m_os << ::stdx::string_view(s, s + pre_hash_len);
             m_os << hash_pos + 1;;
 #else
-            // 'h' <len1> <body1> <len2> <body2>
-            m_os << "h";
-            m_os << pre_hash_len;
-            m_os << ::stdx::string_view(s, s + pre_hash_len);
-            m_os << size - pre_hash_len - 1;
-            m_os << hash_pos + 1;;
+            // If the suffix is all digits, then print `H` and the literal contents
+            if( false && std::isdigit(hash_pos[1]) )
+            {
+                for(auto c = hash_pos+1; *c; c++)
+                    ASSERT_BUG(Span(), std::isdigit(*c), "'" << s << "'");
+                m_os << "H";
+                m_os << pre_hash_len;
+                m_os << ::stdx::string_view(s, s + pre_hash_len);
+                m_os << hash_pos + 1;
+            }
+            else
+            {
+                // 'h' <len1> <body1> <len2> <body2>
+                m_os << "h";
+                m_os << pre_hash_len;
+                m_os << ::stdx::string_view(s, s + pre_hash_len);
+                m_os << size - pre_hash_len - 1;
+                m_os << hash_pos + 1;
+            }
 #endif
         }
         else
@@ -123,13 +137,13 @@ public:
             }
         TU_ARMA(UfcsInherent, e) {
             m_os << "I";
-            this->fmt_type(*e.type);
+            this->fmt_type(e.type);
             this->fmt_name(e.item);
             this->fmt_path_params(e.params);
             }
         TU_ARMA(UfcsKnown, e) {
             m_os << "Q";
-            this->fmt_type(*e.type);
+            this->fmt_type(e.type);
             this->fmt_generic_path(e.trait);
             this->fmt_name(e.item);
             this->fmt_path_params(e.params);
@@ -171,7 +185,7 @@ public:
     // - Diverge: 'C' 'z'
     void fmt_type(const ::HIR::TypeRef& ty)
     {
-        TU_MATCH_HDRA( (ty.m_data), { )
+        TU_MATCH_HDRA( (ty.data()), { )
         case ::HIR::TypeData::TAG_Infer:
         case ::HIR::TypeData::TAG_Generic:
         case ::HIR::TypeData::TAG_ErasedType:
@@ -184,15 +198,16 @@ public:
             }
         TU_ARMA(Slice, e) {
             m_os << "S";
-            this->fmt_type(*e.inner);
+            this->fmt_type(e.inner);
             }
         TU_ARMA(Array, e) {
             m_os << "A" << e.size.as_Known();
-            this->fmt_type(*e.inner);
+            this->fmt_type(e.inner);
             }
         TU_ARMA(Path, e) {
-            m_os << "N";
-            this->fmt_path(e.path);
+            m_os << "G";
+            ASSERT_BUG(Span(), e.path.m_data.is_Generic(), "Type path not Generic - " << ty);
+            this->fmt_generic_path(e.path.m_data.as_Generic());
             }
         TU_ARMA(TraitObject, e) {
             // - TraitObject: 'D' <data:GenericPath> <naty> [<TypeRef> ...] <nmarker> [markers: <GenericPath> ...]
@@ -201,7 +216,7 @@ public:
             m_os << e.m_trait.m_type_bounds.size();
             // HACK: Assume all TraitObject types have the same aty set (std::map is deterministic)
             for(const auto& aty : e.m_trait.m_type_bounds)
-                this->fmt_type(aty.second);
+                this->fmt_type(aty.second.type);
             m_os << e.m_markers.size();
             for(const auto& p : e.m_markers)
                 this->fmt_generic_path(p);
@@ -218,7 +233,7 @@ public:
             m_os << e.m_arg_types.size();
             for(const auto& t : e.m_arg_types)
                 this->fmt_type(t);
-            this->fmt_type(*e.m_rettype);
+            this->fmt_type(e.m_rettype);
             }
         TU_ARMA(Borrow, e) {
             m_os << "B";
@@ -228,7 +243,7 @@ public:
             case ::HIR::BorrowType::Unique: m_os << "u"; break;
             case ::HIR::BorrowType::Owned:  m_os << "o"; break;
             }
-            this->fmt_type(*e.inner);
+            this->fmt_type(e.inner);
             }
         TU_ARMA(Pointer, e) {
             m_os << "P";
@@ -238,7 +253,7 @@ public:
             case ::HIR::BorrowType::Unique: m_os << "u"; break;
             case ::HIR::BorrowType::Owned:  m_os << "o"; break;
             }
-            this->fmt_type(*e.inner);
+            this->fmt_type(e.inner);
             }
         TU_ARMA(Primitive, e) {
             switch(e)

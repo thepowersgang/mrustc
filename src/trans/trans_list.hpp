@@ -18,8 +18,9 @@ class Function;
 class Static;
 }
 
-// TODO: This is very similar to "hir_typeck/common.hpp" MonomorphState
-struct Trans_Params
+// TODO: This is very similar to "hir_typeck/common.hpp" MonomorphState, except it owns its data
+struct Trans_Params:
+    public MonomorphiserPP
 {
     Span    sp;
     ::HIR::PathParams   pp_method;
@@ -31,7 +32,22 @@ struct Trans_Params
         sp(sp)
     {}
 
-    t_cb_generic get_cb() const;
+    static Trans_Params new_impl(Span sp, HIR::TypeRef ty, HIR::PathParams impl_params) {
+        Trans_Params    tp(sp);
+        tp.self_type = std::move(ty);
+        tp.pp_impl = std::move(impl_params);
+        return tp;
+    }
+
+    const ::HIR::TypeRef& maybe_monomorph(const ::StaticTraitResolve& resolve, ::HIR::TypeRef& tmp, const ::HIR::TypeRef& p) const {
+        if(monomorphise_type_needed(p)) {
+            return tmp = this->monomorph(resolve, p);
+        }
+        else {
+            return p;
+        }
+    }
+
     ::HIR::TypeRef monomorph(const ::StaticTraitResolve& resolve, const ::HIR::TypeRef& p) const;
     ::HIR::Path monomorph(const ::StaticTraitResolve& resolve, const ::HIR::Path& p) const;
     ::HIR::GenericPath monomorph(const ::StaticTraitResolve& resolve, const ::HIR::GenericPath& p) const;
@@ -39,6 +55,17 @@ struct Trans_Params
 
     bool has_types() const {
         return pp_method.m_types.size() > 0 || pp_impl.m_types.size() > 0;
+    }
+
+
+    const ::HIR::TypeRef* get_self_type() const override {
+        return &self_type;
+    }
+    const ::HIR::PathParams* get_impl_params() const override {
+        return &pp_impl;
+    }
+    const ::HIR::PathParams* get_method_params() const override {
+        return &pp_method;
     }
 };
 
@@ -54,10 +81,13 @@ struct TransList_Function
     Trans_Params    pp;
     // If `pp.has_types` is true, the below is valid
     CachedFunction  monomorphised;
+    /// Forces the function to not be emited as code (just emit the signature)
+    bool    force_prototype;
 
     TransList_Function(const ::HIR::Path& path):
         path(&path),
-        ptr(nullptr)
+        ptr(nullptr),
+        force_prototype(false)
     {}
 };
 struct TransList_Static
@@ -87,10 +117,17 @@ public:
     ::std::map< ::HIR::Path, Trans_Params> m_vtables;
     /// Required type_id values
     ::std::set< ::HIR::TypeRef> m_typeids;
+    // Required drop glue
+    ::std::set< ::HIR::TypeRef>  m_drop_glue;
     /// Required struct/enum constructor impls
     ::std::set< ::HIR::GenericPath> m_constructors;
     // Automatic Clone impls
     ::std::set< ::HIR::TypeRef>  auto_clone_impls;
+    // Trait methods
+    ::std::set< ::HIR::Path>    trait_object_methods;
+
+    ::std::vector< ::std::unique_ptr< ::HIR::Static>>   m_auto_statics;
+    ::std::vector< ::std::unique_ptr< ::HIR::Function>> m_auto_functions;
 
     // .second is `true` if this is a from a reference to the type
     ::std::vector< ::std::pair<::HIR::TypeRef, bool> >  m_types;

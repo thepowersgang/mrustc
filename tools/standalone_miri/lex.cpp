@@ -37,6 +37,33 @@ double Token::real() const
     return this->numbers.real_val;
 }
 
+namespace {
+    void dump_escaped(::std::ostream& os, const std::string& s) {
+        os << std::hex;
+        for(auto ch_s : s)
+        {
+            uint8_t ch = ch_s;
+            switch(ch)
+            {
+            case '\\':  os << "\\\\";   break;
+            case '\"':  os << "\\\"";   break;
+            case '\'':  os << "\\\'";   break;
+            default:
+                if(' ' <= ch && ch < 0x7F) {
+                    os << ch;
+                }
+                else if( ch < 16 ) {
+                    os << "\\x0" << int(ch);
+                }
+                else {
+                    os << "\\x" << int(ch);
+                }
+                break;
+            }
+        }
+        os << std::dec;
+    }
+}
 ::std::ostream& operator<<(::std::ostream& os, const Token& x)
 {
     switch(x.type)
@@ -57,7 +84,7 @@ double Token::real() const
         os << "Real(" << x.numbers.real_val << ")";
         break;
     case TokenClass::String:
-        os << "\"" << x.strval << "\"";
+        os << "\""; dump_escaped(os, x.strval); os << "\"";
         break;
     case TokenClass::ByteString:
         os << "b\"" << x.strval << "\"";
@@ -111,21 +138,21 @@ Token Lexer::consume()
 void Lexer::check(TokenClass tc)
 {
     if( next() != tc ) {
-        ::std::cerr << *this << "Syntax error: Expected token class #" << int(tc) << " - got '" << next().strval << "'" << ::std::endl;
+        ::std::cerr << *this << "Syntax error: Expected token class #" << int(tc) << " - got " << next() << ::std::endl;
         throw "ERROR";
     }
 }
 void Lexer::check(char ch)
 {
     if( next() != ch ) {
-        ::std::cerr << *this << "Syntax error: Expected '" << ch << "' - got '" << next().strval << "'" << ::std::endl;
+        ::std::cerr << *this << "Syntax error: Expected '" << ch << "' - got " << next() << ::std::endl;
         throw "ERROR";
     }
 }
 void Lexer::check(const char* s)
 {
     if( next() != s ) {
-        ::std::cerr << *this << "Syntax error: Expected '" << s << "' - got '" << next().strval << "'" << ::std::endl;
+        ::std::cerr << *this << "Syntax error: Expected '" << s << "' - got " << next() << ::std::endl;
         throw "ERROR";
     }
 }
@@ -319,9 +346,13 @@ void Lexer::advance()
                         ::std::cerr << *this << "Invalid hex float literal, fractional component is more than 52 bits" << ::std::endl;
                         throw "ERROR";
                     }
-                    uint64_t vi = (static_cast<uint64_t>(exp) << 52) | frac;
+                    union {
+                        double  f64;
+                        uint64_t    u64;
+                    } val;
+                    val.u64 = (static_cast<uint64_t>(exp) << 52) | frac;
                     m_cur = Token { TokenClass::Real, "" };
-                    m_cur.numbers.real_val = *reinterpret_cast<const double*>(&vi);
+                    m_cur.numbers.real_val = val.f64;
                     return ;
                 }
                 m_if.unget();

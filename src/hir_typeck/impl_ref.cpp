@@ -85,11 +85,12 @@ bool ImplRef::overlaps_with(const ::HIR::Crate& crate, const ImplRef& other) con
 }
 bool ImplRef::has_magic_params() const
 {
-    TU_IFLET(Data, m_data, TraitImpl, e,
-        for(const auto& t : e.params_ph)
-            if( visit_ty_with(t, [](const ::HIR::TypeRef& t){ return t.m_data.is_Generic() && (t.m_data.as_Generic().binding >> 8) == 2; }) )
+    if(const auto* e = m_data.opt_TraitImpl())
+    {
+        for(const auto& t : e->impl_params.m_types)
+            if( visit_ty_with(t, [](const ::HIR::TypeRef& t){ return t.data().is_Generic() && (t.data().as_Generic().binding >> 8) == 2; }) )
                 return true;
-    )
+    }
     return false;
 }
 bool ImplRef::type_is_specialisable(const char* name) const
@@ -119,37 +120,38 @@ bool ImplRef::type_is_specialisable(const char* name) const
 }
 
 // Returns a closure to monomorphise including placeholders (if present)
-::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> ImplRef::get_cb_monomorph_traitimpl(const Span& sp) const
+ImplRef::Monomorph ImplRef::get_cb_monomorph_traitimpl(const Span& sp) const
 {
     const auto& e = this->m_data.as_TraitImpl();
-    return [this,&e,&sp](const auto& gt)->const ::HIR::TypeRef& {
-        const auto& ge = gt.m_data.as_Generic();
-        if( ge.binding == 0xFFFF ) {
-            // Store (or cache) a monomorphisation of Self, and error if this recurses
-            if( e.self_cache == ::HIR::TypeRef() ) {
-                e.self_cache = ::HIR::TypeRef::new_diverge();
-                e.self_cache = monomorphise_type_with(sp, e.impl->m_type, this->get_cb_monomorph_traitimpl(sp));
-            }
-            else if( e.self_cache == ::HIR::TypeRef::new_diverge() ) {
-                // BUG!
-                BUG(sp, "Use of `Self` in expansion of `Self`");
-            }
-            else {
-            }
-            return e.self_cache;
+    return Monomorph(e);
+}
+
+::HIR::TypeRef ImplRef::Monomorph::get_type(const Span& sp, const ::HIR::GenericRef& ge) const /*override*/
+{
+    if( ge.is_self() )
+    {
+        // Store (or cache) a monomorphisation of Self, and error if this recurses
+        if( this->ti.self_cache == ::HIR::TypeRef() ) {
+            this->ti.self_cache = ::HIR::TypeRef::new_diverge();
+            this->ti.self_cache = this->monomorph_type(sp, this->ti.impl->m_type);
         }
-        ASSERT_BUG(sp, ge.binding < 256, "Binding in " << gt << " out of range (>=256)");
-        ASSERT_BUG(sp, ge.binding < e.params.size(), "Binding in " << gt << " out of range (>= " << e.params.size() << ")");
-        if( e.params[ge.binding] ) {
-            return *e.params[ge.binding];
-        }
-        else if( e.params_ph.size() && e.params_ph[ge.binding] != ::HIR::TypeRef() ) {
-            return e.params_ph[ge.binding];
+        else if( this->ti.self_cache == ::HIR::TypeRef::new_diverge() ) {
+            // BUG!
+            BUG(sp, "Use of `Self` in expansion of `Self`");
         }
         else {
-            BUG(sp, "Param #" << ge.binding << " " << ge.name << " isn't constrained for " << *this);
         }
-        };
+        return this->ti.self_cache.clone();
+    }
+    ASSERT_BUG(sp, ge.binding < 256, "Binding in " << ge << " out of range (>=256)");
+    ASSERT_BUG(sp, ge.binding < this->ti.impl_params.m_types.size(), "Binding in " << ge << " out of range (>= " << this->ti.impl_params.m_types.size() << ")");
+    return this->ti.impl_params.m_types.at(ge.binding).clone();
+}
+::HIR::Literal ImplRef::Monomorph::get_value(const Span& sp, const ::HIR::GenericRef& val) const /*override*/
+{
+    ASSERT_BUG(sp, val.binding < 256, "Generic value binding in " << val << " out of range (>=256)");
+    ASSERT_BUG(sp, val.binding < this->ti.impl_params.m_values.size(), "Generic value binding in " << val << " out of range (>= " << this->ti.impl_params.m_values.size() << ")");
+    return this->ti.impl_params.m_values.at(val.binding).clone();
 }
 
 ::HIR::TypeRef ImplRef::get_impl_type() const
@@ -160,7 +162,7 @@ bool ImplRef::type_is_specialisable(const char* name) const
         if( e.impl == nullptr ) {
             BUG(Span(), "nullptr");
         }
-        return monomorphise_type_with(sp, e.impl->m_type, this->get_cb_monomorph_traitimpl(sp));
+        return this->get_cb_monomorph_traitimpl(sp).monomorph_type(sp, e.impl->m_type);
         ),
     (BoundedPtr,
         return e.type->clone();
@@ -180,7 +182,7 @@ bool ImplRef::type_is_specialisable(const char* name) const
             BUG(Span(), "nullptr");
         }
 
-        return monomorphise_path_params_with(sp, e.impl->m_trait_args, this->get_cb_monomorph_traitimpl(sp), true);
+        return this->get_cb_monomorph_traitimpl(sp).monomorph_path_params(sp, e.impl->m_trait_args, true);
         ),
     (BoundedPtr,
         return e.trait_args->clone();
@@ -201,7 +203,7 @@ bool ImplRef::type_is_specialisable(const char* name) const
         }
         if( idx >= e.impl->m_trait_args.m_types.size() )
             return ::HIR::TypeRef();
-        return monomorphise_type_with(sp, e.impl->m_trait_args.m_types[idx], this->get_cb_monomorph_traitimpl(sp), true);
+        return this->get_cb_monomorph_traitimpl(sp).monomorph_type(sp, e.impl->m_trait_args.m_types[idx]);
         ),
     (BoundedPtr,
         if( idx >= e.trait_args->m_types.size() )
@@ -231,7 +233,7 @@ bool ImplRef::type_is_specialisable(const char* name) const
         const ::HIR::TypeRef& tpl_ty = it->second.data;
         DEBUG("name=" << name << " tpl_ty=" << tpl_ty << " " << *this);
         if( monomorphise_type_needed(tpl_ty) ) {
-            return monomorphise_type_with(sp, tpl_ty, this->get_cb_monomorph_traitimpl(sp));
+            return this->get_cb_monomorph_traitimpl(sp).monomorph_type(sp, tpl_ty);
         }
         else {
             return tpl_ty.clone();
@@ -241,13 +243,13 @@ bool ImplRef::type_is_specialisable(const char* name) const
         auto it = e.assoc->find(name);
         if(it == e.assoc->end())
             return ::HIR::TypeRef();
-        return it->second.clone();
+        return it->second.type.clone();
         ),
     (Bounded,
         auto it = e.assoc.find(name);
         if(it == e.assoc.end())
             return ::HIR::TypeRef();
-        return it->second.clone();
+        return it->second.type.clone();
         )
     )
     return ::HIR::TypeRef();
@@ -280,8 +282,8 @@ bool ImplRef::type_is_specialisable(const char* name) const
             {
                 const auto& ty_d = e.impl->m_params.m_types[i];
                 os << ty_d.m_name << " = ";
-                if( e.params[i] ) {
-                    os << *e.params[i];
+                if( e.impl_params.m_types[i] != HIR::TypeRef() ) {
+                    os << e.impl_params.m_types[i];
                 }
                 else {
                     os << "?";

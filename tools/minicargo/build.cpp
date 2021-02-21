@@ -18,6 +18,7 @@ extern int _putenv_s(const char*, const char*);
 #endif
 
 #include "manifest.h"
+#include "cfg.hpp"
 #include "build.h"
 #include "debug.h"
 #include "stringlist.h"
@@ -136,7 +137,9 @@ public:
     }
 };
 
+#ifndef DISABLE_MULTITHREAD
 static ::std::mutex s_cout_mutex;
+#endif
 
 BuildList::BuildList(const PackageManifest& manifest, const BuildOptions& opts):
     m_root_manifest(manifest)
@@ -576,16 +579,54 @@ Builder::Builder(const BuildOptions& opts, size_t total_targets):
 ::helpers::path Builder::get_crate_path(const PackageManifest& manifest, const PackageTarget& target, bool is_for_host, const char** crate_type, ::std::string* out_crate_suffix) const
 {
     auto outfile = this->get_output_dir(is_for_host);
-    // HACK: If there's no version, don't emit a version tag
     ::std::string   crate_suffix;
+    // HACK: If there's no version, don't emit a version tag
+    //if( manifest.version() != PackageVersion() ) 
+    {
 #if 1
-    if( manifest.version() != PackageVersion() ) {
         crate_suffix = ::format("-", manifest.version());
         for(auto& v : crate_suffix)
             if(v == '.')
                 v = '_';
-    }
+        // TODO: Hash/encode the following:
+        // - Manifest path
+        // - Feature set
+        if( manifest.active_features().size() > 0 )
+        {
+            uint64_t mask = 0;
+            size_t i = 0;
+            for(auto it = manifest.all_features().begin(); it != manifest.all_features().end(); ++it, i ++)
+            {
+                if( std::count(manifest.active_features().begin(), manifest.active_features().end(), it->first) )
+                {
+                    mask |= (1ull << i);
+                }
+                if(i == 63)
+                    break;
+            }
+            std::stringstream   ss;
+            ss << crate_suffix;
+            ss << "_H";
+            ss << std::hex;
+            ss << mask;
+
+            crate_suffix = std::move(ss.str());
+        }
+#else
+        crate_suffix = ::format("-", manifest.version());
+        for(auto& v : crate_suffix)
+            if(v == '.')
+                v = '_';
 #endif
+    }
+
+    if(out_crate_suffix)
+        *out_crate_suffix = crate_suffix;
+
+    if( manifest.version() == PackageVersion() ) 
+    {
+        crate_suffix = "";
+    }
 
     switch(target.m_type)
     {
@@ -631,8 +672,6 @@ Builder::Builder(const BuildOptions& opts, size_t total_targets):
     default:
         throw ::std::runtime_error("Unknown target type being built");
     }
-    if(out_crate_suffix)
-        *out_crate_suffix = crate_suffix;
     return outfile;
 }
 
@@ -739,6 +778,31 @@ namespace {
     }
 }
 
+namespace {
+    // Common environment variables for compiling (build scripts, 
+    void push_env_common(StringListKV& env, const PackageManifest& manifest)
+    {
+        env.push_back("CARGO_MANIFEST_DIR", manifest.directory().to_absolute());
+        env.push_back("CARGO_PKG_NAME", manifest.name());
+        env.push_back("CARGO_PKG_VERSION", ::format(manifest.version()));
+        env.push_back("CARGO_PKG_VERSION_MAJOR", ::format(manifest.version().major));
+        env.push_back("CARGO_PKG_VERSION_MINOR", ::format(manifest.version().minor));
+        env.push_back("CARGO_PKG_VERSION_PATCH", ::format(manifest.version().patch));
+        // - Downstream environment variables
+        for(const auto& dep : manifest.dependencies())
+        {
+            if( ! dep.is_disabled() )
+            {
+                const auto& m = dep.get_package();
+                for(const auto& p : m.build_script_output().downstream_env)
+                {
+                    env.push_back(p.first.c_str(), p.second.c_str());
+                }
+            }
+        }
+    }
+}
+
 bool Builder::build_target(const PackageManifest& manifest, const PackageTarget& target, bool is_for_host, size_t index) const
 {
     const char* crate_type;
@@ -801,7 +865,9 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     }
 
     {
+#ifndef DISABLE_MULTITHREAD
         ::std::lock_guard<::std::mutex> lh { s_cout_mutex };
+#endif
         // TODO: Determine what number and total targets there are
         if( index != ~0u ) {
             //::std::cout << "(" << index << "/" << m_total_targets << ") ";
@@ -893,6 +959,14 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     {
         args.push_back("--test");
     }
+    struct H {
+        static std::string escape_dashes(const std::string& s) {
+            std::string rv;
+            for(char c : s)
+                rv += (c == '-' ? '_' : c);
+            return rv;
+        }
+    };
     for(const auto& dep : manifest.dependencies())
     {
         if( ! dep.is_disabled() )
@@ -900,7 +974,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
             const auto& m = dep.get_package();
             auto path = this->get_crate_path(m, m.get_library(), is_for_host, nullptr, nullptr);
             args.push_back("--extern");
-            args.push_back(::format(m.get_library().m_name, "=", path));
+            args.push_back(::format(H::escape_dashes(dep.key()), "=", path));
         }
     }
     if( target.m_type == PackageTarget::Type::Test )
@@ -912,31 +986,16 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
                 const auto& m = dep.get_package();
                 auto path = this->get_crate_path(m, m.get_library(), is_for_host, nullptr, nullptr);
                 args.push_back("--extern");
-                args.push_back(::format(m.get_library().m_name, "=", path));
+                args.push_back(::format(H::escape_dashes(dep.key()), "=", path));
             }
         }
     }
 
-    // TODO: Environment variables (rustc_env)
+    // Environment variables (rustc_env)
     StringListKV    env;
     auto out_dir = this->get_output_dir(is_for_host).to_absolute() / "build_" + manifest.name().c_str();
     env.push_back("OUT_DIR", out_dir.str());
-    env.push_back("CARGO_MANIFEST_DIR", manifest.directory().to_absolute());
-    env.push_back("CARGO_PKG_VERSION", ::format(manifest.version()));
-    env.push_back("CARGO_PKG_VERSION_MAJOR", ::format(manifest.version().major));
-    env.push_back("CARGO_PKG_VERSION_MINOR", ::format(manifest.version().minor));
-    env.push_back("CARGO_PKG_VERSION_PATCH", ::format(manifest.version().patch));
-    for(const auto& dep : manifest.dependencies())
-    {
-        if( ! dep.is_disabled() )
-        {
-            const auto& m = dep.get_package();
-            for(const auto& p : m.build_script_output().downstream_env)
-            {
-                env.push_back(p.first.c_str(), p.second.c_str());
-            }
-        }
-    }
+    push_env_common(env, manifest);
 
     // TODO: If emitting command files (i.e. cross-compiling), concatenate the contents of `outfile + ".sh"` onto a
     // master file.
@@ -989,15 +1048,33 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
             args.push_back(::format(m.get_library().m_name, "=", path));
         }
     }
+    for(const auto& feat : manifest.active_features())
+    {
+        args.push_back("--cfg"); args.push_back(::format("feature=", feat));
+    }
+    if( m_opts.emit_mmir )
+    {
+        args.push_back("-C"); args.push_back("codegen-type=monomir");
+    }
+    switch(manifest.edition())
+    {
+    case Edition::Unspec:
+        break;
+    case Edition::Rust2015:
+        args.push_back("--edition");
+        args.push_back("2015");
+        break;
+    case Edition::Rust2018:
+        args.push_back("--edition");
+        args.push_back("2018");
+        break;
+    }
     // - Build scripts are built for the host (not the target)
     //args.push_back("--target"); args.push_back(HOST_TARGET);
 
     StringListKV    env;
-    env.push_back("CARGO_MANIFEST_DIR", manifest.directory().to_absolute());
-    env.push_back("CARGO_PKG_VERSION", ::format(manifest.version()));
-    env.push_back("CARGO_PKG_VERSION_MAJOR", ::format(manifest.version().major));
-    env.push_back("CARGO_PKG_VERSION_MINOR", ::format(manifest.version().minor));
-    env.push_back("CARGO_PKG_VERSION_PATCH", ::format(manifest.version().patch));
+    push_env_common(env, manifest);
+
     // TODO: If there's any dependencies marked as `links = foo` then grab `DEP_FOO_<varname>` from its metadata
     // (build script output)
 
@@ -1041,7 +1118,6 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
 #endif
         // Environment variables (key-value list)
         StringListKV    env;
-        env.push_back("CARGO_MANIFEST_DIR", manifest.directory().to_absolute());
         //env.push_back("CARGO_MANIFEST_LINKS", manifest.m_links);
         for(const auto& feat : manifest.active_features())
         {
@@ -1052,30 +1128,26 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         }
         //env.push_back("CARGO_CFG_RELEASE", "");
         env.push_back("OUT_DIR", out_dir);
+
+        push_env_common(env, manifest);
+
         env.push_back("TARGET", m_opts.target_name ? m_opts.target_name : HOST_TARGET);
         env.push_back("HOST", HOST_TARGET);
         env.push_back("NUM_JOBS", "1");
         env.push_back("OPT_LEVEL", "2");
         env.push_back("DEBUG", "0");
         env.push_back("PROFILE", "release");
-        // TODO: All cfg(foo_bar) become CARGO_CFG_FOO_BAR
-        env.push_back("CARGO_CFG_TARGET_POINTER_WIDTH", "32");
         // - Needed for `regex`'s build script, make mrustc pretend to be rustc
         env.push_back("RUSTC", this->m_compiler_path);
 
-        for(const auto& dep : manifest.dependencies())
+        // NOTE: All cfg(foo_bar) become CARGO_CFG_FOO_BAR
+        Cfg_ToEnvironment(env);
+
+        if( m_opts.emit_mmir )
         {
-            if( ! dep.is_disabled() )
-            {
-                const auto& m = dep.get_package();
-                for(const auto& p : m.build_script_output().downstream_env)
-                {
-                    env.push_back(p.first.c_str(), p.second.c_str());
-                }
-            }
+            TODO("Invoke `standalone_miri` on build script when emitting MIR");
         }
 
-        //auto _ = ScopedChdir { manifest.directory() };
         if( !spawn_process(script_exe_abs.str().c_str(), {}, env, out_file, /*working_directory=*/manifest.directory()) )
         {
             auto failed_filename = out_file+"_failed.txt";
@@ -1159,12 +1231,8 @@ const helpers::path& get_mrustc_path()
 
         ::helpers::path minicargo_path { buf };
         minicargo_path.pop_component();
-# ifdef __MINGW32__
-        s_compiler_path = (minicargo_path / "..\\..\\bin\\mrustc.exe").normalise();
-# else
         // MSVC, minicargo and mrustc are in the same dir
         s_compiler_path = minicargo_path / "mrustc.exe";
-# endif
 #else
         char buf[1024];
 # ifdef __linux__
@@ -1200,7 +1268,7 @@ const helpers::path& get_mrustc_path()
 
         ::helpers::path minicargo_path { buf };
         minicargo_path.pop_component();
-        s_compiler_path = (minicargo_path / "../../bin/mrustc").normalise();
+        s_compiler_path = (minicargo_path / "mrustc").normalise();
 #endif
     }
     return s_compiler_path;
@@ -1217,7 +1285,9 @@ bool spawn_process(const char* exe_name, const StringList& args, const StringLis
     auto cmdline_str = cmdline.str();
     if(true)
     {
+#ifndef DISABLE_MULTITHREAD
         ::std::lock_guard<::std::mutex> lh { s_cout_mutex };
+#endif
         ::std::cout << "> " << cmdline_str << ::std::endl;
     }
     else

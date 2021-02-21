@@ -1,0 +1,25 @@
+# Add mrustc slice length intrinsics
+--- src/libcore/intrinsics.rs
++++ src/libcore/intrinsics.rs
+@@ -685,4 +685,8 @@
+     pub fn min_align_of_val<T: ?Sized>(_: &T) -> usize;
+ 
++    /// Obtain the length of a slice pointer
++    #[cfg(rust_compiler="mrustc")]
++    pub fn mrustc_slice_len<T>(pointer: *const [T]) -> usize;
++
+     /// Gets a static string slice containing the name of a type.
+     pub fn type_name<T: ?Sized>() -> &'static str;
+--- src/libcore/slice/mod.rs
++++ src/libcore/slice/mod.rs
+@@ -68,5 +68,7 @@
+     pub const fn len(&self) -> usize {
+-        unsafe {
+-            crate::ptr::Repr { rust: self }.raw.len
+-        }
++        #[cfg(not(rust_compiler="mrustc"))]
++        const fn len_inner<T>(s: &[T]) -> usize { unsafe { crate::ptr::Repr { rust: self }.raw.len } };
++        #[cfg(rust_compiler="mrustc")]
++        const fn len_inner<T>(s: &[T]) -> usize { unsafe { crate::intrinsics::mrustc_slice_len(s) } }
++        len_inner(self)
+     }

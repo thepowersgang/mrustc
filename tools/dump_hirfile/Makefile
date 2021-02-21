@@ -8,7 +8,7 @@ V ?= @
 
 OBJDIR := .obj/
 
-BIN := ../bin/dump_hirfile$(EXESUF)
+BIN := ../../bin/dump_hirfile$(EXESUF)
 OBJS := main.o
 OBJS += debug.o rc_string.o span.o ident.o
 OBJS += parse/parseerror.o	# Why is this needed? ast/path.cpp uses it in binding
@@ -24,6 +24,8 @@ LINKFLAGS := -g -lpthread -lz
 CXXFLAGS := -Wall -std=c++14 -g -O2
 CXXFLAGS += -I ../common -I ../../src -I ../../src/include
 
+COMMON_LIB := ../../bin/common_lib.a
+
 OBJS := $(OBJS:%=$(OBJDIR)%)
 
 .PHONY: all clean
@@ -33,10 +35,10 @@ all: $(BIN)
 clean:
 	rm $(BIN) $(OBJS)
 
-$(BIN): $(OBJS) ../bin/common_lib.a
+$(BIN): $(OBJS) $(COMMON_LIB)
 	@mkdir -p $(dir $@)
 	@echo [CXX] -o $@
-	$V$(CXX) -o $@ $(OBJS) ../bin/common_lib.a $(LINKFLAGS)
+	$V$(CXX) -o $@ $(OBJS) $(COMMON_LIB) $(LINKFLAGS)
 
 $(OBJDIR)%.o: %.cpp
 	@mkdir -p $(dir $@)
@@ -48,8 +50,8 @@ $(OBJDIR)%.o: ../../src/%.cpp
 	@echo [CXX] $<
 	$V$(CXX) -o $@ -c $< $(CXXFLAGS) -MMD -MP -MF $@.dep
 
-../bin/common_lib.a: $(wildcard ../common/*.* ../common/Makefile)
-	make -C ../common
+$(COMMON_LIB): $(wildcard ../common/*.* ../common/Makefile)
+	$(MAKE) -C ../common
 
 -include $(OBJS:%.o=%.o.dep)
 

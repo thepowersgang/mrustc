@@ -52,9 +52,9 @@ Token::Token(enum eTokenType type):
     m_type(type)
 {
 }
-Token::Token(enum eTokenType type, RcString str):
+Token::Token(enum eTokenType type, Ident i):
     m_type(type),
-    m_data(Data::make_IString(mv$(str)))
+    m_data(mv$(i))
 {
 }
 Token::Token(enum eTokenType type, ::std::string str):
@@ -123,19 +123,23 @@ Token::Token(TagTakeIP, InterpolatedFragment frag)
         throw "";
     case InterpolatedFragment::VIS:
         m_type = TOK_INTERPOLATED_VIS;
-        m_data = new AST::Visibility( mv$(*reinterpret_cast<AST::Visibility*>(frag.m_ptr)) );
+        m_data = frag.m_ptr;
+        frag.m_ptr = nullptr;
         break;
     case InterpolatedFragment::TYPE:
         m_type = TOK_INTERPOLATED_TYPE;
-        m_data = new TypeRef( mv$(*reinterpret_cast<TypeRef*>(frag.m_ptr)) );
+        m_data = frag.m_ptr;
+        frag.m_ptr = nullptr;
         break;
     case InterpolatedFragment::PAT:
         m_type = TOK_INTERPOLATED_PATTERN;
-        m_data = new AST::Pattern( mv$(*reinterpret_cast<AST::Pattern*>(frag.m_ptr)) );
+        m_data = frag.m_ptr;
+        frag.m_ptr = nullptr;
         break;
     case InterpolatedFragment::PATH:
         m_type = TOK_INTERPOLATED_PATH;
-        m_data = new AST::Path( mv$(*reinterpret_cast<AST::Path*>(frag.m_ptr)) );
+        m_data = frag.m_ptr;
+        frag.m_ptr = nullptr;
         break;
     case InterpolatedFragment::EXPR:
         m_type = TOK_INTERPOLATED_EXPR; if(0)
@@ -166,14 +170,16 @@ Token::Token(const Token& t):
     m_pos( t.m_pos )
 {
     assert( t.m_data.tag() != Data::TAGDEAD );
-    TU_MATCH(Data, (t.m_data), (e),
-    (None,  ),
-    (IString,   m_data = Data::make_IString(e); ),
-    (String,    m_data = Data::make_String(e); ),
-    (Integer,   m_data = Data::make_Integer(e);),
-    (Float, m_data = Data::make_Float(e);),
-    (Fragment, BUG(Span(Span(),t.m_pos), "Attempted to copy a fragment - " << t);)
-    )
+    TU_MATCH_HDRA( (t.m_data), {)
+    TU_ARMA(None, e) {}
+    TU_ARMA(Ident,   e) { m_data = Data::make_Ident(e); }
+    TU_ARMA(String,  e) { m_data = Data::make_String(e);  }
+    TU_ARMA(Integer, e) { m_data = Data::make_Integer(e); }
+    TU_ARMA(Float,   e) { m_data = Data::make_Float(e);   }
+    TU_ARMA(Fragment, e) {
+        BUG(Span(Span(),t.m_pos), "Attempted to copy a fragment - " << t);
+        }
+    }
 }
 Token Token::clone() const
 {
@@ -184,8 +190,8 @@ Token Token::clone() const
     TU_MATCH(Data, (m_data), (e),
     (None,
         ),
-    (IString,
-        rv.m_data = Data::make_IString(e);
+    (Ident,
+        rv.m_data = Data::make_Ident(e);
         ),
     (String,
         rv.m_data = Data::make_String(e);
@@ -340,11 +346,14 @@ struct EscapedString {
         }
     case TOK_INTERPOLATED_META: return "/*:meta*/";
     case TOK_INTERPOLATED_ITEM: return "/*:item*/";
-    case TOK_INTERPOLATED_IDENT: return "/*:ident*/";
-    case TOK_INTERPOLATED_VIS: return "/*:vis*/";
+    case TOK_INTERPOLATED_VIS: {
+        ::std::stringstream ss;
+        ss << (*reinterpret_cast<const ::AST::Visibility*>(m_data.as_Fragment()) ? "pub" : "/*priv*/");
+        return ss.str();
+        }
     // Value tokens
-    case TOK_IDENT:     return m_data.as_IString().c_str();
-    case TOK_LIFETIME:  return FMT("'" << m_data.as_IString().c_str());
+    case TOK_IDENT:     return m_data.as_Ident().name.c_str();
+    case TOK_LIFETIME:  return FMT("'" << m_data.as_Ident().name.c_str());
     case TOK_INTEGER:
         if( m_data.as_Integer().m_datatype == CORETYPE_ANY ) {
             return FMT(m_data.as_Integer().m_intval);
@@ -471,23 +480,24 @@ struct EscapedString {
     case TOK_RWORD_SELF:    return "self";
     case TOK_RWORD_SUPER:   return "super";
 
-    case TOK_RWORD_PROC:    return "proc";
     case TOK_RWORD_MOVE:    return "move";
 
     case TOK_RWORD_ABSTRACT:return "abstract";
     case TOK_RWORD_FINAL:   return "final";
-    case TOK_RWORD_PURE:    return "pure";
     case TOK_RWORD_OVERRIDE:return "override";
     case TOK_RWORD_VIRTUAL: return "virtual";
 
-    case TOK_RWORD_ALIGNOF: return "alignof";
-    case TOK_RWORD_OFFSETOF:return "offsetof";
-    case TOK_RWORD_SIZEOF:  return "sizeof";
     case TOK_RWORD_TYPEOF:  return "typeof";
 
-    case TOK_RWORD_BE:      return "be";
+    case TOK_RWORD_BECOME:  return "become";
     case TOK_RWORD_UNSIZED: return "unsized";
     case TOK_RWORD_MACRO:   return "macro";
+
+    // 2018
+    case TOK_RWORD_ASYNC:   return "async";
+    case TOK_RWORD_AWAIT:   return "await";
+    case TOK_RWORD_DYN:     return "dyn";
+    case TOK_RWORD_TRY:     return "try";
     }
     throw ParseError::BugCheck("Reached end of Token::to_str");
 }
@@ -500,12 +510,16 @@ struct EscapedString {
     {
     case TOK_STRING:
     case TOK_BYTESTRING:
-    case TOK_IDENT:
-    case TOK_LIFETIME:
         if( tok.m_data.is_String() )
             os << "\"" << EscapedString(tok.str()) << "\"";
-        else if( tok.m_data.is_IString() )
-            os << "\"" << tok.istr() << "\"";
+        else if( tok.m_data.is_None() )
+            ;
+        else
+            os << "?inner?";
+    case TOK_IDENT:
+    case TOK_LIFETIME:
+        if( tok.m_data.is_Ident() )
+            os << "\"" << tok.m_data.as_Ident() << "\"";
         else if( tok.m_data.is_None() )
             ;
         else

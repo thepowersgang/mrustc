@@ -15,12 +15,5 @@ void HIR::Crate::post_load_update(const RcString& name)
     // 1. Updates all absolute paths with the crate name
     // 2. Sets binding pointers where required
     // 3. Updates macros with the crate name
-    for(auto& mac : m_exported_macros)
-    {
-        if( mac.second->m_source_crate == "" )
-        {
-            mac.second->m_source_crate = name;
-        }
-    }
 }
 

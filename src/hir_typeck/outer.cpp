@@ -132,7 +132,7 @@ namespace {
                 }
             };
 
-            TU_MATCH(::HIR::TypeData, (ty.m_data), (e),
+            TU_MATCH(::HIR::TypeData, (ty.data_mut()), (e),
             (Generic,
                 if(e.name == "Self") {
                     if( m_self_types.empty() )
@@ -156,16 +156,16 @@ namespace {
                     H::handle_pathparams(*this, sp, pe.m_params);
                     ),
                 (UfcsKnown,
-                    update_self_type(sp, *pe.type);
+                    update_self_type(sp, pe.type);
                     H::handle_pathparams(*this, sp, pe.trait.m_params);
                     H::handle_pathparams(*this, sp, pe.params);
                     ),
                 (UfcsInherent,
-                    update_self_type(sp, *pe.type);
+                    update_self_type(sp, pe.type);
                     H::handle_pathparams(*this, sp, pe.params);
                     ),
                 (UfcsUnknown,
-                    update_self_type(sp, *pe.type);
+                    update_self_type(sp, pe.type);
                     H::handle_pathparams(*this, sp, pe.params);
                     )
                 )
@@ -182,16 +182,16 @@ namespace {
                     update_self_type(sp, sty);
                 ),
             (Array,
-                update_self_type(sp, *e.inner);
+                update_self_type(sp, e.inner);
                 ),
             (Slice,
-                update_self_type(sp, *e.inner);
+                update_self_type(sp, e.inner);
                 ),
             (Borrow,
-                update_self_type(sp, *e.inner);
+                update_self_type(sp, e.inner);
                 ),
             (Pointer,
-                update_self_type(sp, *e.inner);
+                update_self_type(sp, e.inner);
                 ),
             (Function,
                 TODO(sp, "update_self_type - Function");
@@ -206,12 +206,12 @@ namespace {
             while( param_vals.m_types.size() < param_def.m_types.size() ) {
                 unsigned int i = param_vals.m_types.size();
                 const auto& ty_def = param_def.m_types[i];
-                if( ty_def.m_default.m_data.is_Infer() ) {
+                if( ty_def.m_default.data().is_Infer() ) {
                     ERROR(sp, E0000, "Unspecified parameter with no default - " << param_def.fmt_args() << " with " << param_vals);
                 }
 
                 // Replace and expand
-                param_vals.m_types.push_back( ty_def.m_default.clone() );
+                param_vals.m_types.push_back( ty_def.m_default.clone_shallow() );
                 auto& ty = param_vals.m_types.back();
                 // TODO: Monomorphise?
                 // Replace `Self` here with the real Self
@@ -228,7 +228,7 @@ namespace {
                     //if( param_def.m_types[i].m_default == ::HIR::TypeRef() )
                     //    ERROR(sp, E0000, "Unspecified parameter with no default");
                     // TODO: Monomorphise?
-                    param_vals.m_types[i] = param_def.m_types[i].m_default.clone();
+                    param_vals.m_types[i] = param_def.m_types[i].m_default.clone_shallow();
                     update_self_type(sp, param_vals.m_types[i]);
                 }
             }
@@ -274,7 +274,7 @@ namespace {
             }
             #endif
 
-            if(auto* e = ty.m_data.opt_Path())
+            if(auto* e = ty.data().opt_Path())
             {
                 TU_MATCH( ::HIR::Path::Data, (e->path.m_data), (pe),
                 (Generic,
@@ -287,13 +287,13 @@ namespace {
                     ),
                 (UfcsKnown,
                     TRACE_FUNCTION_FR("UfcsKnown - " << ty, ty);
-                    m_resolve.expand_associated_types(sp,ty);
+                    m_resolve.expand_associated_types(sp, ty);
                     )
                 )
             }
 
             // If an ErasedType is encountered, check if it has an origin set.
-            if(auto* e = ty.m_data.opt_ErasedType())
+            if(auto* e = ty.data_mut().opt_ErasedType())
             {
                 if( e->m_origin == ::HIR::SimplePath() )
                 {
@@ -312,12 +312,28 @@ namespace {
                             params.m_types.push_back(::HIR::TypeRef(m_fcn_ptr->m_params.m_types[i].m_name, 256+i));
                         // Populate with function path
                         e->m_origin = m_fcn_path->get_full_path();
-                        TU_MATCHA( (e->m_origin.m_data), (e2),
-                        (Generic, e2.m_params = mv$(params); ),
-                        (UfcsInherent, e2.params = mv$(params); ),
-                        (UfcsKnown, e2.params = mv$(params); ),
-                        (UfcsUnknown, throw ""; )
-                        )
+                        TU_MATCH_HDRA( (e->m_origin.m_data), {)
+                        TU_ARMA(Generic, e2) {
+                            e2.m_params = mv$(params);
+                            }
+                        TU_ARMA(UfcsInherent, e2) {
+                            e2.params = mv$(params);
+                            // Impl params, just directly references the parameters.
+                            // - Downstream monomorph will fix that
+                            for(const auto& ty : m_resolve.m_impl_generics->m_types) {
+                                e2.impl_params.m_types.push_back( ::HIR::TypeRef(ty.m_name, &ty - &m_resolve.m_impl_generics->m_types.front()) );
+                            }
+                            for(const auto& c : m_resolve.m_impl_generics->m_values) {
+                                e2.impl_params.m_values.push_back( ::HIR::Literal( ::HIR::GenericRef(c.m_name, &c - &m_resolve.m_impl_generics->m_values.front()) ) );
+                            }
+                            }
+                        TU_ARMA(UfcsKnown, e2) {
+                            e2.params = mv$(params);
+                            }
+                        TU_ARMA(UfcsUnknown, e2) {
+                            throw "";
+                            }
+                        }
                         e->m_index = m_fcn_erased_count++;
                     }
                     // If the function _pointer_ is set (but not the path), then we're in the function arguments
@@ -325,7 +341,7 @@ namespace {
                     else if( m_fcn_ptr )
                     {
                         size_t idx = m_fcn_ptr->m_params.m_types.size();
-                        auto name = RcString::new_interned(FMT("impl$" << idx));
+                        auto name = RcString::new_interned(FMT("erased$" << idx));
                         auto new_ty = ::HIR::TypeRef( name, 256 + idx );
                         m_fcn_ptr->m_params.m_types.push_back({ name, ::HIR::TypeRef(), true });
                         for( const auto& trait : e->m_traits )
@@ -424,7 +440,7 @@ namespace {
         bool set_from_impl(const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait,  ::HIR::Path::Data& pd)
         {
             auto& e = pd.as_UfcsUnknown();
-            const auto& type = *e.type;
+            const auto& type = e.type;
             return this->crate.find_trait_impls(trait_path.m_path, type, [](const auto& x)->const auto&{return x;}, [&](const auto& impl) {
                 DEBUG("FOUND impl" << impl.m_params.fmt_args() << " " << trait_path.m_path << impl.m_trait_args << " for " << impl.m_type);
                 // TODO: Check bounds
@@ -483,18 +499,18 @@ namespace {
             TRACE_FUNCTION_FR("UfcsUnknown - p=" << p, p);
             auto& e = p.m_data.as_UfcsUnknown();
 
-            this->visit_type( *e.type );
+            this->visit_type( e.type );
             this->visit_path_params( e.params );
 
             // Search for matching impls in current generic blocks
-            if( m_resolve.m_item_generics != nullptr && locate_trait_item_in_bounds(sp, pc, *e.type, *m_resolve.m_item_generics,  p.m_data) ) {
+            if( m_resolve.m_item_generics != nullptr && locate_trait_item_in_bounds(sp, pc, e.type, *m_resolve.m_item_generics,  p.m_data) ) {
                 return ;
             }
-            if( m_resolve.m_impl_generics != nullptr && locate_trait_item_in_bounds(sp, pc, *e.type, *m_resolve.m_impl_generics,  p.m_data) ) {
+            if( m_resolve.m_impl_generics != nullptr && locate_trait_item_in_bounds(sp, pc, e.type, *m_resolve.m_impl_generics,  p.m_data) ) {
                 return ;
             }
 
-            if(const auto* te = e.type->m_data.opt_Generic())
+            if(const auto* te = e.type.data().opt_Generic())
             {
                 // If processing a trait, and the type is 'Self', search for the type/method on the trait
                 // - TODO: This could be encoded by a `Self: Trait` bound in the generics, but that may have knock-on issues?
@@ -505,13 +521,13 @@ namespace {
                         return ;
                     }
                 }
-                ERROR(sp, E0000, "Failed to find impl with '" << e.item << "' for " << *e.type);
+                ERROR(sp, E0000, "Failed to find impl with '" << e.item << "' for " << e.type);
                 return ;
             }
             else {
                 // 1. Search for applicable inherent methods (COMES FIRST!)
-                if( this->crate.find_type_impls(*e.type, [](const auto& ty)->const auto&{return ty;}, [&](const auto& impl) {
-                    DEBUG("- matched inherent impl " << *e.type);
+                if( this->crate.find_type_impls(e.type, [](const auto& ty)->const auto&{return ty;}, [&](const auto& impl) {
+                    DEBUG("- matched inherent impl " << e.type);
                     // Search for item in this block
                     switch( pc )
                     {
@@ -568,7 +584,7 @@ namespace {
             }
 
             // Couldn't find it
-            ERROR(sp, E0000, "Failed to find impl with '" << e.item << "' for " << *e.type << " (in " << p << ")");
+            ERROR(sp, E0000, "Failed to find impl with '" << e.item << "' for " << e.type << " (in " << p << ")");
         }
 
     public:
@@ -580,14 +596,14 @@ namespace {
                 this->visit_generic_path(e, pc);
                 ),
             (UfcsKnown,
-                this->visit_type(*e.type);
-                m_self_types.push_back(&*e.type);
+                this->visit_type(e.type);
+                m_self_types.push_back(&e.type);
                 this->visit_generic_path(e.trait, pc);
                 m_self_types.pop_back();
                 // TODO: Locate impl block and check parameters
                 ),
             (UfcsInherent,
-                this->visit_type(*e.type);
+                this->visit_type(e.type);
                 // TODO: Locate impl block and check parameters
                 ),
             (UfcsUnknown,
@@ -604,27 +620,27 @@ namespace {
 
             for(auto& bound : params.m_bounds )
             {
-                TU_MATCH(::HIR::GenericBound, (bound), (e),
-                (Lifetime,
-                    ),
-                (TypeLifetime,
+                TU_MATCH_HDRA( (bound), {)
+                TU_ARMA(Lifetime, e) {
+                    }
+                TU_ARMA(TypeLifetime, e) {
                     this->visit_type(e.type);
-                    ),
-                (TraitBound,
+                    }
+                TU_ARMA(TraitBound, e) {
                     this->visit_type(e.type);
                     m_self_types.push_back(&e.type);
-                    this->visit_generic_path(e.trait.m_path, ::HIR::Visitor::PathContext::TYPE);
+                    this->visit_trait_path(e.trait);
                     m_self_types.pop_back();
-                    ),
-                //(NotTrait, struct {
+                    }
+                //(NotTrait, e) {
                 //    ::HIR::TypeRef  type;
                 //    ::HIR::GenricPath    trait;
                 //    }),
-                (TypeEquality,
+                TU_ARMA(TypeEquality, e) {
                     this->visit_type(e.type);
                     this->visit_type(e.other_type);
-                    )
-                )
+                    }
+                }
             }
         }
 

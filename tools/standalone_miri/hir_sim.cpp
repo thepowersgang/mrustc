@@ -300,8 +300,10 @@ HIR::TypeRef HIR::TypeRef::get_field(size_t idx, size_t& ofs) const
     {
         if( w->type == TypeWrapper::Ty::Slice )
         {
-            // TODO
-            LOG_TODO("Field on slice - " << *this << " #" << idx);
+            // NOTE: Treated as an unchecked index
+            auto ity = this->get_inner();
+            ofs = ity.get_size() * idx;
+            return ity;
         }
         else if( w->type == TypeWrapper::Ty::Array )
         {
@@ -459,15 +461,6 @@ namespace HIR {
         }
         return os;
     }
-    ::std::ostream& operator<<(::std::ostream& os, const SimplePath& x)
-    {
-        os << "::\"" << x.crate_name << "\"";
-        for(const auto& e : x.ents)
-        {
-            os << "::" << e;
-        }
-        return os;
-    }
     ::std::ostream& operator<<(::std::ostream& os, const ::HIR::PathParams& x)
     {
         if( !x.tys.empty() )
@@ -476,29 +469,6 @@ namespace HIR {
             for(const auto& t : x.tys)
                 os << t << ",";
             os << ">";
-        }
-        return os;
-    }
-    ::std::ostream& operator<<(::std::ostream& os, const GenericPath& x)
-    {
-        os << x.m_simplepath;
-        os << x.m_params;
-        return os;
-    }
-    ::std::ostream& operator<<(::std::ostream& os, const ::HIR::Path& x)
-    {
-        if( x.m_name == "" )
-        {
-            os << x.m_trait;
-        }
-        else
-        {
-            os << "<" << x.m_type;
-            if( x.m_trait != ::HIR::GenericPath() )
-            {
-                os << " as " << x.m_trait;
-            }
-            os << ">::" << x.m_name << x.m_params;
         }
         return os;
     }

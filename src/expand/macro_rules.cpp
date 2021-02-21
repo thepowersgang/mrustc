@@ -42,83 +42,133 @@ class CMacroUseHandler:
 {
     AttrStage stage() const override { return AttrStage::Post; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
-        TRACE_FUNCTION_F("path=" << path);
+        TRACE_FUNCTION_F("[CMacroUseHandler] path=" << path);
 
-        TU_IFLET( ::AST::Item, i, None, e,
+        std::vector<RcString>   filter;
+        std::vector<bool>   filters_used;
+        if( mi.has_sub_items() )
+        {
+            filter.reserve(mi.items().size());
+            filters_used.resize(mi.items().size());
+            for( const auto& si : mi.items() )
+            {
+                const auto& name = si.name().as_trivial();
+                filter.push_back(name);
+            }
+        }
+        auto filter_valid = [&](RcString name)->bool {
+            if( filter.empty() ) {
+                return true;
+            }
+            auto it = std::find(filter.begin(), filter.end(), name);
+            if(it != filter.end()) {
+                auto i = it - filter.begin();
+                filters_used[i] = true;
+                return true;
+            }
+            else {
+                return false;
+            }
+            };
+
+        if(i.is_None()) {
             // Just ignore
-        )
+        }
         else if(const auto* ec_item = i.opt_Crate())
         {
             const auto& ec = crate.m_extern_crates.at(ec_item->name.c_str());
-            if( mi.has_sub_items() )
+
+            DEBUG(ec.m_hir->m_exported_macro_names.size() << " exported macros");
+            for(const auto& name : ec.m_hir->m_exported_macro_names)
             {
-                TODO(sp, "Named import from extern crate");
-            }
-            else
-            {
-                ec.with_all_macros([&](const auto& name, const auto& mac) {
-                    DEBUG("Imported " << name << "!");
-                    mod.add_macro_import( name, mac );
-                    });
-                for(const auto& p : ec.m_hir->m_proc_macros)
+                if( !filter_valid(name) )
                 {
-                    mod.m_macro_imports.push_back(AST::Module::MacroImport{ false, p.path.m_components.back(), p.path.m_components, nullptr });
-                    mod.m_macro_imports.back().path.insert( mod.m_macro_imports.back().path.begin(), p.path.m_crate_name );
+                    DEBUG("Skip " << name);
+                    continue;
                 }
-                for(const auto& p : ec.m_hir->m_proc_macro_reexports)
+                ASSERT_BUG(sp, ec.m_hir->m_root_module.m_macro_items.count(name) == 1, "Macro `" << name << "` missing from crate " << ec.m_name);
+                const auto* e = &*ec.m_hir->m_root_module.m_macro_items.at(name);
+                if( !e->publicity.is_global() )
                 {
-                    mod.m_macro_imports.push_back(AST::Module::MacroImport{ /*is_pub=*/ false, p.first, p.second.path.m_components, nullptr });
-                    mod.m_macro_imports.back().path.insert( mod.m_macro_imports.back().path.begin(), p.second.path.m_crate_name );
+                    DEBUG("Not public: " << name);
+                    continue ;
+                }
+
+                if( const auto* imp = e->ent.opt_Import() )
+                {
+                    if( imp->path.m_crate_name == CRATE_BUILTINS ) {
+                        DEBUG("Importing builtin (skip): " << name);
+                        continue ;
+                    }
+                    ASSERT_BUG(sp, crate.m_extern_crates.count(imp->path.m_crate_name), "Crate `" << imp->path.m_crate_name << "` not loaded");
+                    const ::HIR::Module& mod = crate.m_extern_crates.at(imp->path.m_crate_name).m_hir->get_mod_by_path(sp, imp->path, /*ignore_last_node*/true, /*ignore_crate_name*/true);
+
+                    ASSERT_BUG(sp, mod.m_macro_items.count(imp->path.m_components.back()), "Failed to find final component of " << imp->path);
+                    e = &*mod.m_macro_items.at(imp->path.m_components.back());
+                    if( const auto& imp2 = e->ent.opt_Import() ) {
+                        if( imp2->path.m_crate_name == CRATE_BUILTINS ) {
+                            DEBUG("Importing builtin (skip): " << name);
+                            continue ;
+                        }
+                        else {
+                            ASSERT_BUG(sp, !e->ent.is_Import(), "Recursive import - " << imp->path << " pointed to " << imp2->path);
+                        }
+                    }
+                    else {
+                    }
+                }
+
+                TU_MATCH_HDRA( (e->ent), { )
+                TU_ARMA(Import, imp) {
+                    assert(false);
+                    }
+                TU_ARMA(MacroRules, mac_ptr) {
+                    DEBUG("Imported " << name << "!");
+                    mod.add_macro_import( sp, name, &*mac_ptr );
+                    }
+                TU_ARMA(ProcMacro, p) {
+                    DEBUG("Imported " << name << "! (proc macro)");
+                    auto mi = AST::Module::MacroImport{ false, p.path.m_components.back(), p.path.m_components, nullptr };
+                    mi.path.insert(mi.path.begin(), p.path.m_crate_name);
+                    mod.m_macro_imports.push_back(mv$(mi));
+                    mod.add_macro_import( sp, name, &p );
+                    }
                 }
             }
         }
         else if( const auto* submod_p = i.opt_Module() )
         {
             const auto& submod = *submod_p;
-            if( mi.has_sub_items() )
+            for( const auto& mr : submod.macros() )
             {
-                for( const auto& si : mi.items() )
+                if( !filter_valid(mr.name) )
                 {
-                    const auto& name = si.name().as_trivial();
-                    for( const auto& mr : submod.macros() )
-                    {
-                        if( mr.name == name ) {
-                            DEBUG("Imported " << mr.name);
-                            mod.add_macro_import( mr.name, *mr.data );
-                            goto _good;
-                        }
-                    }
-                    for( const auto& mri : submod.macro_imports_res() )
-                    {
-                        if( mri.name == name ) {
-                            DEBUG("Imported " << mri.name << " (propagate)");
-                            mod.add_macro_import( mri.name, *mri.data );
-                            goto _good;
-                        }
-                    }
-                    ERROR(sp, E0000, "Couldn't find macro " << name);
-                _good:
-                    (void)0;
+                    continue;
                 }
+                DEBUG("Imported " << mr.name);
+                mod.add_macro_import( sp, mr.name, &*mr.data );
             }
-            else
+            for( const auto& mri : submod.macro_imports_res() )
             {
-                for( const auto& mr : submod.macros() )
+                if( !filter_valid(mri.name) )
                 {
-                    DEBUG("Imported " << mr.name);
-                    mod.add_macro_import( mr.name, *mr.data );
+                    continue;
                 }
-                for( const auto& mri : submod.macro_imports_res() )
-                {
-                    DEBUG("Imported " << mri.name << " (propagate)");
-                    mod.add_macro_import( mri.name, *mri.data );
-                }
+                DEBUG("Imported " << mri.name << " (propagate)");
+                mod.add_macro_import( sp, mri.name, mri.data.clone() );
             }
         }
         else {
             ERROR(sp, E0000, "Use of #[macro_use] on non-module/crate - " << i.tag_str());
+        }
+
+        for(size_t i = 0; i < filter.size(); i ++)
+        {
+            if( !filters_used[i] ) {
+                ERROR(sp, E0000, "Couldn't find macro " << filter[i]);
+            }
         }
     }
 
@@ -129,9 +179,48 @@ class CMacroExportHandler:
 {
     AttrStage stage() const override { return AttrStage::Post; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
+        // TODO: Flags on the attribute
+        // - `local_inner_macros`: Forces macro lookups within the expansion to search within the source crate
+        //   > Strictly speaking, not the same as `macro`-style macros?
+        bool local_inner_macros = false;
+        if(mi.has_sub_items())
+        {
+            for(const auto& a : mi.items())
+            {
+                if( a.name() == "local_inner_macros" ) {
+                    local_inner_macros = true;
+                }
+                else {
+                    ERROR(sp, E0000, "Unknown option for #[macro_export] - " << a.name());
+                }
+            }
+        }
         if( i.is_None() ) {
+        }
+        // If on a `use` it's for a #[rustc_builtin_macro]
+        else if( const auto* u = i.opt_Use() )
+        {
+            if( u->entries.size() == 1
+                && u->entries.back().path.is_absolute()
+                && u->entries.back().path.m_class.as_Absolute().crate == CRATE_BUILTINS
+                && u->entries.back().path.m_class.as_Absolute().nodes.size() == 1
+                )
+                ;
+            else
+                ERROR(sp, E0000, "Use of #[macro_export] on non-macro - " << i.tag_str());
+            const auto& p = u->entries.back().path.m_class.as_Absolute();
+            const auto& name = p.nodes.front().name();
+            AST::Module::MacroImport    mi;
+            mi.is_pub = true;
+            mi.macro_ptr = nullptr;
+            mi.name = u->entries.front().name;
+            mi.path.push_back(p.crate);
+            mi.path.push_back(name);
+            crate.m_root_module.m_macro_imports.push_back(mv$(mi));
+
+            crate.m_root_module.add_item(sp, true, name, i.clone(), {});
         }
         else if( i.is_MacroInv() ) {
             const auto& mac = i.as_MacroInv();
@@ -141,10 +230,24 @@ class CMacroExportHandler:
             const auto& name = mac.input_ident();
 
             // Tag the macro in the module for crate export
+            // AND move it to the root module
             auto it = ::std::find_if( mod.macros().begin(), mod.macros().end(), [&](const auto& x){ return x.name == name; } );
             ASSERT_BUG(sp, it != mod.macros().end(), "Macro '" << name << "' not defined in this module");
-            it->data->m_exported = true;
+            auto e = mv$(*it);
+            mod.macros().erase(it);
+
+            if( local_inner_macros ) {
+                Ident::ModPath  mp;
+                mp.crate = "";
+                // Empty node list, will search the crate root
+                // TODO: Strictly speaking, this shouldn't apply to non-macro paths
+                DEBUG("#[macro_export(local_inner_macros)] mp=" << mp);
+                e.data->m_hygiene.set_mod_path(mv$(mp));
+            }
+
+            e.data->m_exported = true;
             DEBUG("- Export macro " << name << "!");
+            crate.m_root_module.macros().push_back( mv$(e) );
         }
         else {
             ERROR(sp, E0000, "Use of #[macro_export] on non-macro - " << i.tag_str());
@@ -156,7 +259,7 @@ class CMacroReexportHandler:
     public ExpandDecorator
 {
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
         if( !i.is_Crate() ) {
             ERROR(sp, E0000, "Use of #[macro_reexport] on non-crate - " << i.tag_str());
@@ -172,10 +275,11 @@ class CMacroReexportHandler:
                 if( !si.name().is_trivial() )
                     ERROR(sp, E0000, "macro_reexport of non-trivial name - " << si.name());
                 const auto& name = si.name().as_trivial();
-                auto it = ext_crate.m_exported_macros.find(name);
-                if( it == ext_crate.m_exported_macros.end() )
+                auto it = ::std::find(ext_crate.m_exported_macro_names.begin(), ext_crate.m_exported_macro_names.end(), name);
+                if( it == ext_crate.m_exported_macro_names.end() )
                     ERROR(sp, E0000, "Could not find macro " << name << "! in crate " << crate_name);
-                it->second->m_exported = true;
+                // TODO: Do this differently.
+                ext_crate.m_root_module.m_macro_items.at(name)->ent.as_MacroRules()->m_exported = true;
             }
         }
         else
@@ -185,9 +289,39 @@ class CMacroReexportHandler:
     }
 };
 
+class CBuiltinMacroHandler:
+    public ExpandDecorator
+{
+    AttrStage stage() const override { return AttrStage::Pre; }
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
+    {
+        RcString    name;
+        if(i.is_MacroInv()) {
+            const auto& e = i.as_MacroInv();
+            if( !(e.path().is_trivial() && e.path().as_trivial() == "macro_rules") ) {
+                ERROR(sp, E0000, "Use of #[rustc_builtin_macro] on macro other than macro_rules! - " << i.tag_str());
+            }
+            name = e.input_ident();
+        }
+        else if(i.is_Macro()) {
+            name = path.nodes.back();
+        }
+        else {
+            ERROR(sp, E0000, "Use of #[rustc_builtin_macro] on non-macro - " << i.tag_str());
+        }
+
+        AST::UseItem    ui;
+        ui.entries.push_back(AST::UseItem::Ent { });
+        ui.entries.back().name = name;
+        ui.entries.back().path = AST::Path(CRATE_BUILTINS, { name });
+        DEBUG("Convert macro_rules tagged #[rustc_builtin_macro] with use");
+        i = AST::Item::make_Use(mv$(ui));
+    }
+};
 
 STATIC_MACRO("macro_rules", CMacroRulesExpander);
 STATIC_DECORATOR("macro_use", CMacroUseHandler);
 STATIC_DECORATOR("macro_export", CMacroExportHandler);
 STATIC_DECORATOR("macro_reexport", CMacroReexportHandler);
+STATIC_DECORATOR("rustc_builtin_macro", CBuiltinMacroHandler);
 

@@ -12,20 +12,12 @@
 #include <common.hpp>
 #include <tagged_union.hpp>
 #include <span.hpp>
+#include "type_ref.hpp"
 
 namespace HIR {
 
 class TypeRef;
 class Trait;
-
-enum Compare {
-    Equal,
-    Fuzzy,
-    Unequal,
-};
-
-typedef ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> t_cb_resolve_type;
-typedef ::std::function< ::HIR::Compare(unsigned int, const RcString&, const ::HIR::TypeRef&) > t_cb_match_generics;
 
 static inline ::std::ostream& operator<<(::std::ostream& os, const Compare& x) {
     switch(x)
@@ -101,6 +93,7 @@ struct PathParams
 {
     //::std::vector<LifetimeRef>  m_lifetimes;
     ::std::vector<TypeRef>  m_types;
+    ::std::vector<HIR::Literal>  m_values;
 
     PathParams();
     PathParams(::HIR::TypeRef );
@@ -111,7 +104,7 @@ struct PathParams
     PathParams& operator=(PathParams&&) = default;
 
     Compare compare_with_placeholders(const Span& sp, const PathParams& x, t_cb_resolve_type resolve_placeholder) const;
-    Compare match_test_generics_fuzz(const Span& sp, const PathParams& x, t_cb_resolve_type resolve_placeholder, t_cb_match_generics) const;
+    Compare match_test_generics_fuzz(const Span& sp, const PathParams& x, t_cb_resolve_type resolve_placeholder, ::HIR::MatchGenerics& match) const;
 
     /// Indicates that params exist (and thus the target requires monomorphisation)
     /// - Ignores lifetime params
@@ -162,7 +155,51 @@ public:
     GenericPath m_path;
     ::std::vector< RcString>   m_hrls;
     // TODO: Each bound should list its origin trait
-    ::std::map< RcString, ::HIR::TypeRef>    m_type_bounds;
+    struct AtyEqual {
+        ::HIR::GenericPath  source_trait;
+        ::HIR::TypeRef  type;
+
+        Ordering ord(const AtyEqual& x) const {
+            ORD(source_trait, x.source_trait);
+            ORD(type, x.type);
+            return OrdEqual;
+        }
+        AtyEqual clone() const {
+            return AtyEqual {
+                source_trait.clone(),
+                type.clone()
+                };
+        }
+        friend ::std::ostream& operator<<(::std::ostream& os, const AtyEqual& x) {
+            os << x.type;
+            return os;
+        }
+
+    };
+    typedef ::std::map< RcString, AtyEqual> assoc_list_t;
+    assoc_list_t    m_type_bounds;
+    /// Associated type trait bounds (`Type: Trait`)
+    struct AtyBound {
+        ::HIR::GenericPath  source_trait;
+        std::vector<::HIR::TraitPath>   traits;
+
+        Ordering ord(const AtyBound& x) const {
+            ORD(source_trait, x.source_trait);
+            ORD(traits, x.traits);
+            return OrdEqual;
+        }
+        AtyBound clone() const {
+            std::vector<::HIR::TraitPath>   new_traits;
+            new_traits.reserve(traits.size());
+            for(const auto& t : traits)
+                new_traits.push_back(t.clone());
+            return AtyBound {
+                source_trait.clone(),
+                ::std::move(new_traits)
+            };
+        }
+    };
+    ::std::map< RcString, AtyBound>  m_trait_bounds;
 
     const ::HIR::Trait* m_trait_ptr;
 
@@ -176,6 +213,7 @@ public:
     Ordering ord(const TraitPath& x) const {
         ORD(m_path, x.m_path);
         ORD(m_hrls, x.m_hrls);
+        ORD(m_trait_bounds, x.m_trait_bounds);
         return ::ord(m_type_bounds, x.m_type_bounds);
     }
 
@@ -191,19 +229,19 @@ public:
     TAGGED_UNION(Data, Generic,
     (Generic, GenericPath),
     (UfcsInherent, struct {
-        ::std::unique_ptr<TypeRef>  type;
+        TypeRef type;
         RcString   item;
         PathParams  params;
         PathParams  impl_params;
         }),
     (UfcsKnown, struct {
-        ::std::unique_ptr<TypeRef>  type;
+        TypeRef type;
         GenericPath trait;
         RcString   item;
         PathParams  params;
         }),
     (UfcsUnknown, struct {
-        ::std::unique_ptr<TypeRef>  type;
+        TypeRef type;
         //GenericPath ??;
         RcString   item;
         PathParams  params;

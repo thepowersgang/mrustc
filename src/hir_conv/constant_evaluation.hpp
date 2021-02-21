@@ -2,8 +2,13 @@
  */
 #include <hir/hir.hpp>
 
-namespace HIR {
+namespace MIR {
+    namespace eval {
+        class ValueRef;
+    }
+}
 
+namespace HIR {
 
 struct Evaluator
 {
@@ -26,7 +31,13 @@ struct Evaluator
 
     ::HIR::Literal evaluate_constant(const ::HIR::ItemPath& ip, const ::HIR::ExprPtr& expr, ::HIR::TypeRef exp, MonomorphState ms={});
 
-    ::HIR::Literal evaluate_constant_mir(const ::HIR::ItemPath& ip, const ::MIR::Function& fcn, MonomorphState ms, ::HIR::TypeRef exp, ::std::vector< ::HIR::Literal> args);
+private:
+    ::MIR::eval::ValueRef evaluate_constant_mir(
+        const ::HIR::ItemPath& ip, const ::MIR::Function& fcn, MonomorphState ms,
+        ::HIR::TypeRef exp, const ::HIR::Function::args_t& arg_defs,
+        ::std::vector<::MIR::eval::ValueRef> args);
+
+    void replace_borrow_data(const HIR::TypeRef& ty, HIR::Literal& lit);
 };
 
 } // namespace HIR

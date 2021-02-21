@@ -24,12 +24,13 @@ TODO:
 - RTL/register-based SSA IR backend (LIR?)
   - Convert MIR into a form that can be handed over to LLVM or Cranelift (or GIMPLE)
   - Use alloca-s for non-pointer/integer/borrowed locals
-- Restructure HIR node type annotations into a type table (de-duplicated types)
-  - This will save memory (both inline, and by de-duplicating)
-  - This can share the ivar table
-  - Compact/dedup the table once done?
-  - Store a `shared_ptr` and index on each node (3 pointers instead of huge TypeRef instance)
 - Deferred constant evaluation (for generic array sizes)
+- Emit human-readable variable names in C backend
+  - Requires storing variable names in MIR
+    - Challenge when variables are eliminated.
+  - Also use field names
+  - e.g. emit `_NNN_varname` as the field/variable name
+  - Downside: Emitted code will be larger still
 
 ## Smaller changes
 - Cache specialisation tree
@@ -46,6 +47,8 @@ TODO:
   - Alternative: Create a custom type instead of std::pair
     - Reduces typing
     - No memory gains though.
+- Full SMIRI support in `minicargo` (running `standalone_miri` on build scripts)
+- Rupport `rustc` in `minicargo` (for doing the pre-cargo build of libstd)
 
 ## Optimisations
 - Argument propagation: replace assignments from `Argument(_)` if target is only

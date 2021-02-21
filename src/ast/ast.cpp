@@ -266,6 +266,10 @@ bool Impl::has_named_item(const RcString& name) const
     return os << impl.m_def;
 }
 
+::std::ostream& operator<<(::std::ostream& os, const UseItem::Ent& x)
+{
+    return os << x.name << "=" << x.path;
+}
 
 MacroInvocation MacroInvocation::clone() const
 {
@@ -306,12 +310,12 @@ ExternBlock ExternBlock::clone() const
 }
 
 void Module::add_item( Named<Item> named_item ) {
-    m_items.push_back( mv$(named_item) );
+    m_items.push_back( box$(named_item) );
     const auto& i = m_items.back();
-    if( i.name == "" ) {
+    if( i->name == "" ) {
     }
     else {
-        DEBUG(m_my_path << "::" << i.name << " = " << i.data.tag_str() << ", attrs = " << i.attrs);
+        DEBUG(m_my_path << "::" << i->name << " = " << i->data.tag_str() << ", attrs = " << i->attrs);
     }
 }
 void Module::add_item(Span sp, bool is_pub, RcString name, Item it, AttributeList attrs) {
@@ -325,9 +329,6 @@ void Module::add_macro_invocation(MacroInvocation item) {
 }
 void Module::add_macro(bool is_exported, RcString name, MacroRulesPtr macro) {
     m_macros.push_back( Named<MacroRulesPtr>( Span(), {}, /*is_pub=*/is_exported, mv$(name), mv$(macro) ) );
-}
-void Module::add_macro_import(RcString name, const MacroRules& mr) {
-    m_macro_import_res.push_back( Named<const MacroRules*>( Span(), /*attrs=*/{}, /*is_pub=*/false, mv$(name), &mr) );
 }
 
 Item Item::clone() const
@@ -453,29 +454,29 @@ std::ostream& operator<<(std::ostream& os, const GenericParam& x)
 
 ::std::ostream& operator<<(::std::ostream& os, const GenericBound& x)
 {
-    TU_MATCH(GenericBound, (x), (ent),
-    (None,
+    TU_MATCH_HDRA( (x), {)
+    TU_ARMA(None, ent) {
         os << "/*-*/";
-        ),
-    (Lifetime,
+        }
+    TU_ARMA(Lifetime, ent) {
         os << "'" << ent.test << ": '" << ent.bound;
-        ),
-    (TypeLifetime,
+        }
+    TU_ARMA(TypeLifetime, ent) {
         os << ent.type << ": '" << ent.bound;
-        ),
-    (IsTrait,
+        }
+    TU_ARMA(IsTrait, ent) {
         os << ent.outer_hrbs << ent.type << ": " << ent.inner_hrbs << ent.trait;
-        ),
-    (MaybeTrait,
+        }
+    TU_ARMA(MaybeTrait, ent) {
         os << ent.type << ": ?" << ent.trait;
-        ),
-    (NotTrait,
+        }
+    TU_ARMA(NotTrait, ent) {
         os << ent.type << ": !" << ent.trait;
-        ),
-    (Equality,
+        }
+    TU_ARMA(Equality, ent) {
         os << ent.type << " = " << ent.replacement;
-        )
-    )
+        }
+    }
     return os;
 }
 

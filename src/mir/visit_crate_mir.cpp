@@ -16,9 +16,9 @@ void MIR::OuterVisitor::visit_expr(::HIR::ExprPtr& exp)
 
 void MIR::OuterVisitor::visit_type(::HIR::TypeRef& ty)
 {
-    if(auto* e = ty.m_data.opt_Array())
+    if(auto* e = ty.data_mut().opt_Array())
     {
-        this->visit_type( *e->inner );
+        this->visit_type( e->inner );
         DEBUG("Array size " << ty);
         if( auto* se = e->size.opt_Unevaluated() ) {
             m_cb(m_resolve, ::HIR::ItemPath(""), **se, {}, ::HIR::TypeRef(::HIR::CoreType::Usize));
@@ -58,7 +58,7 @@ void MIR::OuterVisitor::visit_enum(::HIR::ItemPath p, ::HIR::Enum& item)
 
     if( auto* e = item.m_data.opt_Value() )
     {
-        auto enum_type = ::HIR::Enum::get_repr_type(e->repr);
+        auto enum_type = ::HIR::Enum::get_repr_type(item.m_tag_repr);
 
         for(auto& var : e->variants)
         {

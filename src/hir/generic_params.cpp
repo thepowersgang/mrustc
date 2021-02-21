@@ -39,8 +39,16 @@ namespace HIR {
                 os << typ.m_name;
                 if( ! typ.m_is_sized )
                     os << ": ?Sized";
-                if( !typ.m_default.m_data.is_Infer() )
+                if( !typ.m_default.data().is_Infer() )
                     os << " = " << typ.m_default;
+                os << ",";
+            }
+            if(!x.gp.m_values.empty())
+                os << "const ";
+            for(const auto& val_p : x.gp.m_values) {
+                os << val_p.m_name;
+                os << ": ";
+                os << val_p.m_type;
                 os << ",";
             }
             os << ">";
@@ -107,6 +115,14 @@ Ordering ord(const HIR::GenericBound& a, const HIR::GenericBound& b)
             type.m_name,
             type.m_default.clone(),
             type.m_is_sized
+            });
+    }
+    rv.m_values.reserve(m_values.size());
+    for(const auto& type : m_values)
+    {
+        rv.m_values.push_back(::HIR::ValueParamDef {
+            type.m_name,
+            type.m_type.clone()
             });
     }
     rv.m_lifetimes = m_lifetimes;

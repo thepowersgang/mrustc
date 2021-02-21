@@ -26,6 +26,9 @@ struct ProgramOptions
     // Directory containing build script outputs
     const char* override_directory = nullptr;
 
+    /// TOML file containing overrides/patches to the loaded manifests
+    const char* manifest_overrides = nullptr;
+
     // Directory containing "vendored" (packaged) copies of packages
     const char* vendor_dir = nullptr;
 
@@ -66,6 +69,7 @@ int main(int argc, const char* argv[])
 
     {
         Debug_DisablePhase("Load Repository");
+        Debug_DisablePhase("Load Overrides");
         Debug_DisablePhase("Load Root");
         Debug_DisablePhase("Load Workspace");
         Debug_DisablePhase("Load Dependencies");
@@ -93,11 +97,22 @@ int main(int argc, const char* argv[])
 
         Cfg_SetTarget(opts.target);
 
+        Debug_SetPhase("Load Overrides");
+        if( opts.manifest_overrides )
+        {
+            Manifest_LoadOverrides(opts.manifest_overrides);
+        }
+
         // 1. Load the Cargo.toml file from the passed directory
         Debug_SetPhase("Load Root");
         auto dir = ::helpers::path(opts.directory ? opts.directory : ".");
         auto m = PackageManifest::load_from_toml( dir / "Cargo.toml" );
         m.set_features(opts.features, opts.features.empty());
+
+        if(false)
+        {
+            m.dump(std::cout);
+        }
 
         Debug_SetPhase("Load Workspace");
         auto workspace_manifest_path = m.workspace_path();
@@ -331,6 +346,13 @@ int ProgramOptions::parse(int argc, const char* argv[])
                     return 1;
                 }
                 this->override_directory = argv[++i];
+            }
+            else if( ::std::strcmp(arg, "--manifest-overrides") == 0 ) {
+                if(i+1 == argc) {
+                    ::std::cerr << "Flag " << arg << " takes an argument" << ::std::endl;
+                    return 1;
+                }
+                this->manifest_overrides = argv[++i];
             }
             else if( ::std::strcmp(arg, "--vendor-dir") == 0 ) {
                 if(i+1 == argc) {

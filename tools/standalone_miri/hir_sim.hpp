@@ -51,6 +51,9 @@ enum class RawType
     Composite,  // Struct, Enum, Union, tuple, ...
     TraitObject,    // Data pointer is `*const ()`, vtable type stored in `composite_type`
 };
+static inline Ordering ord(RawType a, RawType b) {
+    return ord( int(a), int(b) );
+}
 struct TypeWrapper
 {
     enum class Ty
@@ -91,6 +94,15 @@ namespace HIR {
     {
         RawType raw_type;
     };
+
+    struct GenericRef
+    {
+        // Should never be needed!
+        friend ::std::ostream& operator<<(::std::ostream& os, const GenericRef& x) {
+            return os << "GenericRef";
+        }
+    };
+
     /// Definition of a type
     struct TypeRef
     {
@@ -214,26 +226,6 @@ namespace HIR {
         friend ::std::ostream& operator<<(::std::ostream& os, const TypeRef& x);
     };
 
-    struct SimplePath
-    {
-        ::std::string   crate_name;
-        ::std::vector<::std::string>    ents;
-        Ordering ord(const SimplePath& x) const {
-            __ORD(crate_name);
-            __ORD(ents);
-            return OrdEqual;
-        }
-        bool operator==(const SimplePath& x) const {
-            return this->ord(x) == OrdEqual;
-        }
-        bool operator!=(const SimplePath& x) const {
-            return this->ord(x) != OrdEqual;
-        }
-        bool operator<(const SimplePath& x) const {
-            return this->ord(x) == OrdLess;
-        }
-        friend ::std::ostream& operator<<(::std::ostream& os, const SimplePath& x);
-    };
 
     struct PathParams
     {
@@ -241,77 +233,26 @@ namespace HIR {
 
         friend ::std::ostream& operator<<(::std::ostream& os, const PathParams& x);
     };
-    struct GenericPath
-    {
-        SimplePath  m_simplepath;
-        PathParams  m_params;
 
-        GenericPath() {}
-        GenericPath(SimplePath sp):
-            m_simplepath(sp)
-        {
-        }
-        Ordering ord(const GenericPath& x) const {
-            __ORD(m_simplepath);
-            __ORD(m_params.tys);
-            return OrdEqual;
-        }
-        bool operator==(const GenericPath& x) const {
-            return this->ord(x) == OrdEqual;
-        }
-        bool operator!=(const GenericPath& x) const {
-            return this->ord(x) != OrdEqual;
-        }
-        bool operator<(const GenericPath& x) const {
-            return this->ord(x) == OrdLess;
-        }
-
-        friend ::std::ostream& operator<<(::std::ostream& os, const GenericPath& x);
-    };
-    struct Path
-    {
-        TypeRef m_type;
-        GenericPath m_trait;
-        ::std::string   m_name; // if empty, the path is Generic in m_trait
-        PathParams  m_params;
-
-        Path()
-        {
-        }
-        Path(SimplePath sp):
-            Path(GenericPath(sp))
-        {
-        }
-        Path(GenericPath gp):
-            m_trait(gp)
-        {
-        }
-        Path(TypeRef ty, GenericPath trait, ::std::string name, PathParams params):
-            m_type(ty),
-            m_trait(::std::move(trait)),
-            m_name(name),
-            m_params(params)
-        {
-        }
+    struct Path {
+        RcString    n;
 
         Ordering ord(const Path& x) const {
-            __ORD(m_type);
-            __ORD(m_trait);
-            __ORD(m_name);
-            __ORD(m_params.tys);
-            return OrdEqual;
-        }
-        bool operator==(const Path& x) const {
-            return this->ord(x) == OrdEqual;
-        }
-        bool operator!=(const Path& x) const {
-            return this->ord(x) != OrdEqual;
-        }
-        bool operator<(const Path& x) const {
-            return this->ord(x) == OrdLess;
+            return ::ord(n, x.n);
         }
 
-        friend ::std::ostream& operator<<(::std::ostream& os, const Path& x);
+        bool operator==(const Path& p) const { return ord(p) == OrdEqual; }
+        bool operator!=(const Path& p) const { return ord(p) != OrdEqual; }
+        friend ::std::ostream& operator<<(::std::ostream& os, const Path& x){
+            return os << x.n;
+        }
+    };
+    struct GenericPath {
+        RcString    n;
+
+        friend ::std::ostream& operator<<(::std::ostream& os, const GenericPath& x){
+            return os << x.n;
+        }
     };
 
 } // nameapce HIR

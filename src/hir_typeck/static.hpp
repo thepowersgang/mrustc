@@ -18,6 +18,17 @@ enum class MetadataType {
     Slice,  // usize metadata
     TraitObject,    // VTable pointer metadata
 };
+static inline std::ostream& operator<<(std::ostream& os, const MetadataType& x) {
+    switch(x)
+    {
+    case MetadataType::Unknown: return os << "Unknown";
+    case MetadataType::None:    return os << "None";
+    case MetadataType::Zero:    return os << "Zero";
+    case MetadataType::Slice:   return os << "Slice";
+    case MetadataType::TraitObject:    return os << "TraitObject";
+    }
+    return os << "?";
+}
 
 class StaticTraitResolve
 {
@@ -29,6 +40,8 @@ public:
 
 
     ::std::map< ::HIR::TypeRef, ::HIR::TypeRef> m_type_equalities;
+    // A pre-calculated list of trait bounds
+    ::std::set< std::pair< ::HIR::TypeRef, ::HIR::TraitPath> > m_trait_bounds;
 
     ::HIR::SimplePath   m_lang_Copy;
     ::HIR::SimplePath   m_lang_Clone;   // 1.29
@@ -53,7 +66,7 @@ public:
         m_item_generics(nullptr)
     {
         m_lang_Copy = m_crate.get_lang_item_path_opt("copy");
-        if( TARGETVER_1_29 )
+        if( TARGETVER_LEAST_1_29 )
             m_lang_Clone = m_crate.get_lang_item_path_opt("clone");
         m_lang_Drop = m_crate.get_lang_item_path_opt("drop");
         m_lang_Sized = m_crate.get_lang_item_path_opt("sized");
@@ -68,6 +81,8 @@ public:
 
 private:
     void prep_indexes();
+    void prep_indexes__add_equality(const Span& sp, ::HIR::TypeRef long_ty, ::HIR::TypeRef short_ty);
+    void prep_indexes__add_trait_bound(const Span& sp, ::HIR::TypeRef type, ::HIR::TraitPath trait_path);
 
 public:
     bool has_self() const {
@@ -97,23 +112,19 @@ public:
     void set_impl_generics_raw(const ::HIR::GenericParams& gps) {
         assert( !m_impl_generics );
         m_impl_generics = &gps;
-        m_type_equalities.clear();
         prep_indexes();
     }
     void clear_impl_generics() {
         m_impl_generics = nullptr;
-        m_type_equalities.clear();
         prep_indexes();
     }
     void set_item_generics_raw(const ::HIR::GenericParams& gps) {
         assert( !m_item_generics );
         m_item_generics = &gps;
-        m_type_equalities.clear();
         prep_indexes();
     }
     void clear_item_generics() {
         m_item_generics = nullptr;
-        m_type_equalities.clear();
         prep_indexes();
     }
     /// \}
@@ -145,7 +156,8 @@ private:
         const ::HIR::SimplePath& trait_path, const ::HIR::PathParams* trait_params,
         const ::HIR::TypeRef& type,
         t_cb_find_impl found_cb,
-        const ::HIR::GenericBound& bound
+        //const ::HIR::GenericBound& bound
+        const ::std::pair< ::HIR::TypeRef, ::HIR::TraitPath>& bound
         ) const;
     bool find_impl__check_crate(
         const Span& sp,
@@ -158,7 +170,7 @@ private:
         const Span& sp,
         const ::HIR::SimplePath& des_trait_path, const ::HIR::PathParams* des_trait_params, const ::HIR::TypeRef& des_type,
         const ::HIR::GenericParams& impl_params_def, const ::HIR::PathParams& impl_trait_params, const ::HIR::TypeRef& impl_type,
-        ::std::function<bool(::std::vector<const ::HIR::TypeRef*>, ::std::vector<::HIR::TypeRef>, ::HIR::Compare)>
+        ::std::function<bool(HIR::PathParams, ::HIR::Compare)>
         ) const;
     ::HIR::Compare check_auto_trait_impl_destructure(
         const Span& sp,
@@ -171,7 +183,24 @@ public:
     void expand_associated_types(const Span& sp, ::HIR::TypeRef& input) const;
     bool expand_associated_types_single(const Span& sp, ::HIR::TypeRef& input) const;
 
+    // Helper: Run monomorphise+EAT if the type contains generics
+    const ::HIR::TypeRef& monomorph_expand_opt(const Span& sp, ::HIR::TypeRef& tmp, const ::HIR::TypeRef& input, const Monomorphiser& m) const {
+        if( monomorphise_type_needed(input) ) {
+            return tmp = monomorph_expand(sp, input, m);
+        }
+        else {
+            return input;
+        }
+    }
+    ::HIR::TypeRef monomorph_expand(const Span& sp, const ::HIR::TypeRef& input, const Monomorphiser& m) const {
+        auto rv = m.monomorph_type(sp, input);
+        expand_associated_types(sp, rv);
+        return rv;
+    }
+
+    void expand_associated_types_tp(const Span& sp, ::HIR::TraitPath& input) const;
 private:
+    void expand_associated_types_params(const Span& sp, ::HIR::PathParams& input) const;
     void expand_associated_types_inner(const Span& sp, ::HIR::TypeRef& input) const;
     bool expand_associated_types__UfcsKnown(const Span& sp, ::HIR::TypeRef& input, bool recurse=true) const;
     bool replace_equalities(::HIR::TypeRef& input) const;
@@ -187,7 +216,7 @@ public:
             const ::HIR::SimplePath& des, const ::HIR::PathParams& params,
             const ::HIR::Trait& trait_ptr, const ::HIR::SimplePath& trait_path, const ::HIR::PathParams& pp,
             const ::HIR::TypeRef& self_type,
-            ::std::function<void(const ::HIR::PathParams&, ::std::map< RcString, ::HIR::TypeRef>)> callback
+            ::std::function<bool(const ::HIR::PathParams&, ::HIR::TraitPath::assoc_list_t)> callback
             ) const;
     ///
     bool trait_contains_type(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const char* name,  ::HIR::GenericPath& out_path) const;
@@ -220,6 +249,7 @@ public:
 
     TAGGED_UNION(ValuePtr, NotFound,
     (NotFound, struct{}),
+    (NotYetKnown, struct{}),
     (Constant, const ::HIR::Constant*),
     (Static, const ::HIR::Static*),
     (Function, const ::HIR::Function*),

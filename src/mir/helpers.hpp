@@ -191,6 +191,9 @@ struct ValueLifetimes
     }
 };
 
+
+
+
 namespace visit {
     enum class ValUsage {
         Move,
@@ -207,6 +210,302 @@ namespace visit {
 
     extern void visit_terminator_target_mut(::MIR::Terminator& term, ::std::function<void(::MIR::BasicBlockId&)> cb);
     extern void visit_terminator_target(const ::MIR::Terminator& term, ::std::function<void(const ::MIR::BasicBlockId&)> cb);
+
+    
+    template<typename Inner>
+    class DecMut
+    {
+    public:
+        typedef Inner Type;
+    };
+    template<typename Inner>
+    class DecConst
+    {
+    public:
+        typedef const Inner Type;
+    };
+
+    template<template<typename> class Dec>
+    class VisitorBase
+    {
+    public:
+        virtual void visit_type(typename Dec<::HIR::TypeRef>::Type& t)
+        {
+            // NOTE: Doesn't recurse
+        }
+        virtual void visit_path(typename Dec<::HIR::Path>::Type& path)
+        {
+            TU_MATCH_HDRA((path.m_data), {)
+            TU_ARMA(Generic, e) {
+                visit_path_params(e.m_params);
+                }
+            TU_ARMA(UfcsInherent, e) {
+                visit_type(e.type);
+                visit_path_params(e.params);
+                }
+            TU_ARMA(UfcsKnown, e) {
+                visit_type(e.type);
+                visit_path_params(e.trait.m_params);
+                visit_path_params(e.params);
+                }
+            TU_ARMA(UfcsUnknown, e) {
+                visit_type(e.type);
+                visit_path_params(e.params);
+                }
+            }
+        }
+        virtual void visit_genericpath(typename Dec<::HIR::GenericPath>::Type& p)
+        {
+            visit_path_params(p.m_params);
+        }
+        virtual void visit_path_params(typename Dec<::HIR::PathParams>::Type& p)
+        {
+            for(auto& e : p.m_types)
+                visit_type(e);
+        }
+
+        virtual bool visit_lvalue(typename Dec<::MIR::LValue>::Type& lv, ValUsage u) = 0;
+        virtual bool visit_const(typename Dec<::MIR::Constant>::Type& c)
+        {
+            TU_MATCH_HDRA( (c), {)
+            default:
+                break;
+            TU_ARMA(ItemAddr, e) {
+                visit_path(*e);
+                }
+            TU_ARMA(Const, e) {
+                visit_path(*e.p);
+                }
+            }
+            return false;
+        }
+        virtual bool visit_param(typename Dec<::MIR::Param>::Type& p, ValUsage u)
+        {
+            TU_MATCH_HDRA( (p), {)
+            TU_ARMA(LValue, e) {
+                return visit_lvalue(e, u);
+            }
+            TU_ARMA(Borrow, e) {
+                return visit_lvalue(e.val, ValUsage::Borrow);
+            }
+            TU_ARMA(Constant, e) {
+                return visit_const(e);
+            }
+            }
+            throw "";
+        }
+        virtual bool visit_rvalue(typename Dec<::MIR::RValue>::Type& rval)
+        {
+            bool rv = false;
+            TU_MATCH_HDRA( (rval), {)
+            TU_ARMA(Use, se) {
+                rv |= visit_lvalue(se, ValUsage::Move);
+                }
+            TU_ARMA(Constant, se) {
+                rv |= visit_const(se);
+                }
+            TU_ARMA(SizedArray, se) {
+                rv |= visit_param(se.val, ValUsage::Read);
+                }
+            TU_ARMA(Borrow, se) {
+                rv |= visit_lvalue(se.val, ValUsage::Borrow);
+                }
+            TU_ARMA(Cast, se) {
+                rv |= visit_lvalue(se.val, ValUsage::Move);
+                visit_type(se.type);
+                }
+            TU_ARMA(BinOp, se) {
+                rv |= visit_param(se.val_l, ValUsage::Read);
+                rv |= visit_param(se.val_r, ValUsage::Read);
+                }
+            TU_ARMA(UniOp, se) {
+                rv |= visit_lvalue(se.val, ValUsage::Read);
+                }
+            TU_ARMA(DstMeta, se) {
+                rv |= visit_lvalue(se.val, ValUsage::Read);
+                }
+            TU_ARMA(DstPtr, se) {
+                rv |= visit_lvalue(se.val, ValUsage::Read);
+                }
+            TU_ARMA (MakeDst, se) {
+                rv |= visit_param(se.ptr_val, ValUsage::Move);
+                rv |= visit_param(se.meta_val, ValUsage::Move);
+                }
+            TU_ARMA(Tuple, se) {
+                for(auto& v : se.vals)
+                    rv |= visit_param(v, ValUsage::Move);
+                }
+            TU_ARMA(Array, se) {
+                for(auto& v : se.vals)
+                    rv |= visit_param(v, ValUsage::Move);
+                }
+            TU_ARMA(UnionVariant, se) {
+                visit_genericpath(se.path);
+                rv |= visit_param(se.val, ValUsage::Move);
+                }
+            TU_ARMA(EnumVariant, se) {
+                visit_genericpath(se.path);
+                for(auto& v : se.vals)
+                    rv |= visit_param(v, ValUsage::Move);
+                }
+            TU_ARMA(Struct, se) {
+                visit_genericpath(se.path);
+                for(auto& v : se.vals)
+                    rv |= visit_param(v, ValUsage::Move);
+                }
+            }
+            return rv;
+        }
+        virtual bool visit_stmt(typename Dec<::MIR::Statement>::Type& stmt)
+        {
+            bool rv = false;
+            TU_MATCH_HDRA( (stmt), {)
+            TU_ARMA(Assign, e) {
+                rv |= visit_rvalue(e.src);
+                rv |= visit_lvalue(e.dst, ValUsage::Write);
+                }
+            TU_ARMA(Asm, e) {
+                for(auto& v : e.inputs)
+                    rv |= visit_lvalue(v.second, ValUsage::Read);
+                for(auto& v : e.outputs)
+                    rv |= visit_lvalue(v.second, ValUsage::Write);
+                }
+            TU_ARMA(SetDropFlag, e) {
+                }
+            TU_ARMA(Drop, e) {
+                rv |= visit_lvalue(e.slot, ValUsage::Move);
+                }
+            TU_ARMA(ScopeEnd, e) {
+                }
+            }
+            return rv;
+        }
+
+        virtual bool visit_block_id(typename Dec<::MIR::BasicBlockId>::Type& bb_id) {
+            return false;
+        }
+
+        virtual bool visit_terminator(typename Dec<::MIR::Terminator>::Type& term)
+        {
+            bool rv = false;
+            TU_MATCH_HDRA( (term), {)
+            TU_ARMA(Incomplete, e) {
+                }
+            TU_ARMA(Return, e) {
+                }
+            TU_ARMA(Diverge, e) {
+                }
+            TU_ARMA(Goto, e) {
+                visit_block_id(e);
+                }
+            TU_ARMA(Panic, e) {
+                visit_block_id(e.dst);
+                }
+            TU_ARMA(If, e) {
+                rv |= visit_lvalue(e.cond, ValUsage::Read);
+                rv |= visit_block_id(e.bb0);
+                rv |= visit_block_id(e.bb1);
+                }
+            TU_ARMA(Switch, e) {
+                rv |= visit_lvalue(e.val, ValUsage::Read);
+                for(auto& target : e.targets)
+                    rv |= visit_block_id(target);
+                }
+            TU_ARMA(SwitchValue, e) {
+                rv |= visit_lvalue(e.val, ValUsage::Read);
+                for(auto& target : e.targets)
+                    rv |= visit_block_id(target);
+                rv |= visit_block_id(e.def_target);
+                }
+            TU_ARMA(Call, e) {
+                TU_MATCH_HDRA( (e.fcn), {)
+                TU_ARMA(Value, ce) {
+                    rv |= visit_lvalue(ce, ValUsage::Read);
+                    }
+                TU_ARMA(Path, ce) {
+                    visit_path(ce);
+                    }
+                TU_ARMA(Intrinsic, ce) {
+                    visit_path_params(ce.params);
+                    }
+                }
+                for(auto& v : e.args)
+                    rv |= visit_param(v, ValUsage::Read);
+                rv |= visit_lvalue(e.ret_val, ValUsage::Write);
+                rv |= visit_block_id(e.ret_block);
+                rv |= visit_block_id(e.panic_block);
+                }
+            }
+            return rv;
+        }
+
+        virtual void visit_function(::MIR::TypeResolve& state, typename Dec<::MIR::Function>::Type& fcn)
+        {
+            for(auto& t : fcn.locals)
+            {
+                visit_type(t);
+            }
+
+            for(unsigned int block_idx = 0; block_idx < fcn.blocks.size(); block_idx ++)
+            {
+                auto& block = fcn.blocks[block_idx];
+                for(auto& stmt : block.statements)
+                {
+                    state.set_cur_stmt(block_idx, (&stmt - &block.statements.front()));
+                    visit_stmt(stmt);
+                }
+                if( block.terminator.tag() == ::MIR::Terminator::TAGDEAD )
+                    continue ;
+                state.set_cur_stmt_term(block_idx);
+                visit_terminator(block.terminator);
+            }
+        }
+    };
+
+    class Visitor: public VisitorBase<DecConst>
+    {
+    public:
+        virtual bool visit_lvalue(const ::MIR::LValue& lv, ValUsage u) override
+        {
+            if( lv.m_root.is_Static() ) {
+                visit_path(lv.m_root.as_Static());
+            }
+
+            for(auto& w : lv.m_wrappers)
+            {
+                if( w.is_Index() )
+                {
+                    if( visit_lvalue(LValue::new_Local(w.as_Index()), ValUsage::Read) )
+                        return true;
+                }
+            }
+            return false;
+        }
+    };
+    class VisitorMut: public VisitorBase<DecMut>
+    {
+    public:
+        virtual bool visit_lvalue(::MIR::LValue& lv, ValUsage u) override
+        {
+            if( lv.m_root.is_Static() ) {
+                visit_path(lv.m_root.as_Static());
+            }
+            for(auto& w : lv.m_wrappers)
+            {
+                if( w.is_Index() )
+                {
+                    auto lv = LValue::new_Local(w.as_Index());
+                    bool rv = visit_lvalue(lv, ValUsage::Read);
+                    ASSERT_BUG(Span(), lv.is_Local(), "visit_lvalue on Index mutated the index to a non-local");
+                    w = ::MIR::LValue::Wrapper::new_Index(lv.as_Local());
+                    if(rv) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+    };
 }   // namespace visit
 
 }   // namespace MIR

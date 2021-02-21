@@ -41,6 +41,12 @@ public:
 
     operator uint8_t() const { return static_cast<uint8_t>(lo); }
 
+    int operator&(int x) const {
+        return this->lo & x;
+    }
+    unsigned operator&(unsigned x) const {
+        return this->lo & x;
+    }
     U128 operator&(U128 x) const {
         U128    rv;
         rv.lo = this->lo & x.lo;

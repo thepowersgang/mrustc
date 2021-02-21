@@ -51,13 +51,15 @@ MirBuilder::MirBuilder(const Span& sp, const StaticTraitResolve& resolve, const 
             m_var_arg_mappings[pat.m_binding.m_slot] = i;
         }
     }
+
+    m_variable_aliases.resize( output.locals.size() );
 }
 MirBuilder::~MirBuilder()
 {
     const auto& sp = m_root_span;
     if( block_active() )
     {
-        if( m_ret_ty.m_data.is_Diverge() )
+        if( m_ret_ty.data().is_Diverge() )
         {
             terminate_scope_early(sp, fcn_scope());
             // Validation fails if this is reachable.
@@ -87,10 +89,10 @@ const ::HIR::TypeRef* MirBuilder::is_type_owned_box(const ::HIR::TypeRef& ty) co
 {
     if( m_lang_Box )
     {
-        if( ! ty.m_data.is_Path() ) {
+        if( ! ty.data().is_Path() ) {
             return nullptr;
         }
-        const auto& te = ty.m_data.as_Path();
+        const auto& te = ty.data().as_Path();
 
         if( ! te.path.m_data.is_Generic() ) {
             return nullptr;
@@ -328,8 +330,12 @@ void MirBuilder::push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RVal
         for(const auto& val : e.vals)
             moved_param(val);
         ),
-    (Variant,
+    (UnionVariant,
         moved_param(e.val);
+        ),
+    (EnumVariant,
+        for(const auto& val : e.vals)
+            moved_param(val);
         ),
     (Struct,
         for(const auto& val : e.vals)
@@ -409,7 +415,9 @@ void MirBuilder::mark_value_assigned(const Span& sp, const ::MIR::LValue& dst)
             ASSERT_BUG(sp, se != InvalidType::Descoped, "Assining of descoped variable - " << dst);
         )
         drop_value_from_state(sp, *state_p, dst.clone());
-        *state_p = VarState::make_Valid({});
+        auto new_state = VarState::make_Valid({});
+        DEBUG("State " << dst << " " << *state_p << " => " << new_state);
+        *state_p = std::move(new_state);
     }
     else
     {
@@ -618,8 +626,12 @@ void MirBuilder::raise_temporaries(const Span& sp, const ::MIR::RValue& rval, co
         for(const auto& val : e.vals)
             raise_vars(val);
         ),
-    (Variant,
+    (UnionVariant,
         raise_vars(e.val);
+        ),
+    (EnumVariant,
+        for(const auto& val : e.vals)
+            raise_vars(val);
         ),
     (Struct,
         for(const auto& val : e.vals)
@@ -740,6 +752,11 @@ ScopeHandle MirBuilder::new_scope_freeze(const Span& sp)
 {
     unsigned int idx = m_scopes.size();
     m_scopes.push_back( ScopeDef {sp, ScopeType::make_Freeze({})} );
+    m_scopes.back().data.as_Freeze().original_aliases.resize( m_variable_aliases.size() );
+    for(size_t i = 0; i < m_variable_aliases.size(); i ++)
+    {
+        m_scopes.back().data.as_Freeze().original_aliases[i] = (m_variable_aliases[i].second != MIR::LValue());
+    }
     m_scope_stack.push_back( idx );
     DEBUG("START (freeze) scope " << idx);
     return ScopeHandle { *this, idx };
@@ -1036,7 +1053,7 @@ namespace
                 const auto& nse = new_state.as_Partial();
                 bool is_enum = false;
                 builder.with_val_type(sp, lv, [&](const auto& ty){
-                        is_enum = ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Enum();
+                        is_enum = ty.data().is_Path() && ty.data().as_Path().binding.is_Enum();
                         });
 
                 // Create a partial filled with Invalid
@@ -1144,7 +1161,7 @@ namespace
                 const auto& nse = new_state.as_Partial();
                 bool is_enum = false;
                 builder.with_val_type(sp, lv, [&](const auto& ty){
-                        is_enum = ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Enum();
+                        is_enum = ty.data().is_Path() && ty.data().as_Path().binding.is_Enum();
                         });
 
                 // Create a partial filled with Valid
@@ -1202,7 +1219,7 @@ namespace
                 bool is_enum = false;
                 builder.with_val_type(sp, lv, [&](const auto& ty){
                         assert( !builder.is_type_owned_box(ty) );
-                        is_enum = ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Enum();
+                        is_enum = ty.data().is_Path() && ty.data().as_Path().binding.is_Enum();
                         });
                 // Create a Partial filled with copies of the Optional
                 // TODO: This can lead to contradictions when one field is moved and another not.
@@ -1317,7 +1334,7 @@ namespace
             bool is_enum = false;
             builder.with_val_type(sp, lv, [&](const auto& ty){
                     assert( !builder.is_type_owned_box(ty) );
-                    is_enum = ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Enum();
+                    is_enum = ty.data().is_Path() && ty.data().as_Path().binding.is_Enum();
                     });
             // Need to tag for conditional shallow drop? Or just do that at the end of the split?
             // - End of the split means that the only optional state is outer drop.
@@ -1422,6 +1439,8 @@ void MirBuilder::end_split_arm(const Span& sp, const ScopeHandle& handle, bool r
     {
         if( reachable )
         {
+            DEBUG("Reachable w/ end state, merging");
+
             auto merge_list = [sp,this](const auto& states, auto& end_states, auto type) {
                 // Insert copies of the parent state
                 for(const auto& ent : states) {
@@ -1453,18 +1472,26 @@ void MirBuilder::end_split_arm(const Span& sp, const ScopeHandle& handle, bool r
     }
     else
     {
-        // Clone this arm's state
-        for(auto& ent : this_arm_state.states)
+        if( reachable )
         {
-            DEBUG("Slot(" << ent.first << ") = " << ent.second);
-            sd_split.end_state.states.insert(::std::make_pair( ent.first, ent.second.clone() ));
+            DEBUG("Reachable w/ no end state, setting");
+            // Clone this arm's state
+            for(auto& ent : this_arm_state.states)
+            {
+                DEBUG("Slot(" << ent.first << ") = " << ent.second);
+                sd_split.end_state.states.insert(::std::make_pair( ent.first, ent.second.clone() ));
+            }
+            for(auto& ent : this_arm_state.arg_states)
+            {
+                DEBUG("Argument(" << ent.first << ") = " << ent.second);
+                sd_split.end_state.arg_states.insert(::std::make_pair( ent.first, ent.second.clone() ));
+            }
+            sd_split.end_state_valid = true;
         }
-        for(auto& ent : this_arm_state.arg_states)
+        else
         {
-            DEBUG("Argument(" << ent.first << ") = " << ent.second);
-            sd_split.end_state.arg_states.insert(::std::make_pair( ent.first, ent.second.clone() ));
+            DEBUG("Unreachable, not setting");
         }
-        sd_split.end_state_valid = true;
     }
 
     if( reachable )
@@ -1546,34 +1573,37 @@ void MirBuilder::complete_scope(ScopeDef& sd)
     };
 
     // No macro for better debug output.
-    if( auto* e = sd.data.opt_Loop() )
-    {
+    TU_MATCH_HDRA( (sd.data), { )
+    TU_ARMA(Owning, e) {
+        }
+    TU_ARMA(Loop, e) {
         TRACE_FUNCTION_F("Loop");
-        if( e->exit_state_valid )
+        if( e.exit_state_valid )
         {
-            H::apply_end_state(sd.span, *this, e->exit_state);
+            H::apply_end_state(sd.span, *this, e.exit_state);
         }
 
         // Insert sets of drop flags to the first block (at the start of that block)
-        auto& stmts = m_output.blocks.at(e->entry_bb).statements;
-        for(auto idx : e->drop_flags)
+        auto& stmts = m_output.blocks.at(e.entry_bb).statements;
+        for(auto idx : e.drop_flags)
         {
             DEBUG("Reset df$" << idx);
             stmts.insert( stmts.begin(), ::MIR::Statement::make_SetDropFlag({ idx, m_output.drop_flags.at(idx), ~0u }) );
         }
-    }
-    else if( sd.data.is_Split() )
-    {
-        auto& e = sd.data.as_Split();
+        }
+    TU_ARMA(Split, e) {
         TRACE_FUNCTION_F("Split - " << (e.arms.size() - 1) << " arms");
 
-        ASSERT_BUG(sd.span, e.end_state_valid, "");
-        H::apply_end_state(sd.span, *this, e.end_state);
-    }
-    else if( const auto* e = sd.data.opt_Freeze() )
-    {
+        // TODO: if not set, then end the current state as unreachable?
+        //ASSERT_BUG(sd.span, e.end_state_valid, "Completing split scope with no end state set?");
+        if(e.end_state_valid)
+        {
+            H::apply_end_state(sd.span, *this, e.end_state);
+        }
+        }
+    TU_ARMA(Freeze, e) {
         TRACE_FUNCTION_F("Freeze");
-        for(auto& ent : e->changed_slots)
+        for(auto& ent : e.changed_slots)
         {
             auto& vs = this->get_slot_state_mut(sd.span, ent.first, SlotType::Local);
             auto lv = ::MIR::LValue::new_Local(ent.first);
@@ -1590,6 +1620,16 @@ void MirBuilder::complete_scope(ScopeDef& sd)
                     // It's a Copy value, and it wasn't originally fully Valid - allowable
                 }
             }
+        }
+
+        for(size_t i = 0; i < e.original_aliases.size(); i ++)
+        {
+            if( !e.original_aliases[i] && this->m_variable_aliases[i].second != MIR::LValue() )
+            {
+                DEBUG("Reset alias on #" << i);
+                this->m_variable_aliases[i].second = MIR::LValue();
+            }
+        }
         }
     }
 }
@@ -1639,7 +1679,7 @@ void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::
         ty_p = nullptr;
         auto maybe_monomorph = [&](const ::HIR::GenericParams& params_def, const ::HIR::Path& p, const ::HIR::TypeRef& t)->const ::HIR::TypeRef& {
             if( monomorphise_type_needed(t) ) {
-                tmp = monomorphise_type(sp, params_def, p.m_data.as_Generic().m_params, t);
+                tmp = MonomorphStatePtr(nullptr, &p.m_data.as_Generic().m_params, nullptr).monomorph_type(sp, t);
                 m_resolve.expand_associated_types(sp, tmp);
                 return tmp;
             }
@@ -1649,14 +1689,14 @@ void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::
             };
         TU_MATCH_HDRA( (w), {)
         TU_ARMA(Field, field_index) {
-            TU_MATCH_HDRA( (ty.m_data), {)
+            TU_MATCH_HDRA( (ty.data()), {)
             default:
                 BUG(sp, "Field access on unexpected type - " << ty);
             TU_ARMA(Array, te) {
-                ty_p = &*te.inner;
+                ty_p = &te.inner;
                 }
             TU_ARMA(Slice, te) {
-                ty_p = &*te.inner;
+                ty_p = &te.inner;
                 }
             TU_ARMA(Path, te) {
                 if( const auto* tep = te.binding.opt_Struct() )
@@ -1696,7 +1736,7 @@ void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::
             }
             }
         TU_ARMA(Deref, _e) {
-            TU_MATCH_HDRA( (ty.m_data), { )
+            TU_MATCH_HDRA( (ty.data()), { )
             default:
                 BUG(sp, "Deref on unexpected type - " << ty);
             TU_ARMA(Path, te) {
@@ -1709,28 +1749,28 @@ void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::
                 }
                 }
             TU_ARMA(Pointer, te) {
-                ty_p = &*te.inner;
+                ty_p = &te.inner;
                 }
             TU_ARMA(Borrow, te) {
-                ty_p = &*te.inner;
+                ty_p = &te.inner;
                 }
             }
             }
         TU_ARMA(Index, _index_val) {
-            TU_MATCH_DEF( ::HIR::TypeData, (ty.m_data), (te),
+            TU_MATCH_DEF( ::HIR::TypeData, (ty.data()), (te),
             (
                 BUG(sp, "Index on unexpected type - " << ty);
                 ),
             (Slice,
-                ty_p = &*te.inner;
+                ty_p = &te.inner;
                 ),
             (Array,
-                ty_p = &*te.inner;
+                ty_p = &te.inner;
                 )
             )
             }
         TU_ARMA(Downcast, variant_index) {
-            TU_MATCH_HDRA( (ty.m_data), { )
+            TU_MATCH_HDRA( (ty.data()), { )
             default:
                 BUG(sp, "Downcast on unexpected type - " << ty);
             TU_ARMA(Path, te) {
@@ -1997,7 +2037,7 @@ VarState* MirBuilder::get_val_state_mut_p(const Span& sp, const ::MIR::LValue& l
                 size_t n_flds = 0;
                 with_val_type(sp, lv, [&](const auto& ty) {
                     DEBUG("ty = " << ty);
-                    if(const auto* e = ty.m_data.opt_Path()) {
+                    if(const auto* e = ty.data().opt_Path()) {
                         ASSERT_BUG(sp, e->binding.is_Struct(), "");
                         const auto& str = *e->binding.as_Struct();
                         TU_MATCHA( (str.m_data), (se),
@@ -2012,10 +2052,10 @@ VarState* MirBuilder::get_val_state_mut_p(const Span& sp, const ::MIR::LValue& l
                             )
                         )
                     }
-                    else if(const auto* e = ty.m_data.opt_Tuple()) {
+                    else if(const auto* e = ty.data().opt_Tuple()) {
                         n_flds = e->size();
                     }
-                    else if(const auto* e = ty.m_data.opt_Array()) {
+                    else if(const auto* e = ty.data().opt_Array()) {
                         ASSERT_BUG(sp, e->size.is_Known(), "Array size not known");
                         n_flds = e->size.as_Known();
                     }
@@ -2069,8 +2109,8 @@ VarState* MirBuilder::get_val_state_mut_p(const Span& sp, const ::MIR::LValue& l
                 size_t var_count = 0;
                 with_val_type(sp, lv, [&](const auto& ty){
                     DEBUG("ty = " << ty);
-                    ASSERT_BUG(sp, ty.m_data.is_Path(), "Downcast on non-Path type - " << ty);
-                    const auto& pb = ty.m_data.as_Path().binding;
+                    ASSERT_BUG(sp, ty.data().is_Path(), "Downcast on non-Path type - " << ty);
+                    const auto& pb = ty.data().as_Path().binding;
                     // TODO: What about unions?
                     // - Iirc, you can't move out of them so they will never have state mutated
                     if( pb.is_Enum() )
@@ -2133,8 +2173,8 @@ void MirBuilder::drop_value_from_state(const Span& sp, const VarState& vs, ::MIR
         bool is_enum = false;
         bool is_union = false;
         with_val_type(sp, lv, [&](const auto& ty){
-            is_enum = ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Enum();
-            is_union = ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Union();
+            is_enum = ty.data().is_Path() && ty.data().as_Path().binding.is_Enum();
+            is_union = ty.data().is_Path() && ty.data().as_Path().binding.is_Union();
             });
         if(is_enum)
         {
@@ -2194,7 +2234,9 @@ void MirBuilder::moved_lvalue(const Span& sp, const ::MIR::LValue& lv)
         }
         auto& vs = *vs_p;
         // TODO: If the current state is Optional, set the drop flag to 0
-        vs = VarState::make_Invalid(InvalidType::Moved);
+        auto new_state = VarState::make_Invalid(InvalidType::Moved);
+        DEBUG("State " << lv << " " << vs << " => " << new_state);
+        vs = std::move(new_state);
     }
 }
 

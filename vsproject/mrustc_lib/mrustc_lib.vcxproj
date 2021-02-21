@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -93,6 +93,7 @@
       <ConformanceMode>true</ConformanceMode>
       <WholeProgramOptimization>false</WholeProgramOptimization>
       <TreatSpecificWarningsAsErrors>4062;%(TreatSpecificWarningsAsErrors)</TreatSpecificWarningsAsErrors>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -113,6 +114,8 @@
       <PreprocessorDefinitions>WIN32;_DEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <TreatSpecificWarningsAsErrors>4062;%(TreatSpecificWarningsAsErrors)</TreatSpecificWarningsAsErrors>
+      <AdditionalOptions>/bigobj</AdditionalOptions>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -131,6 +134,8 @@
       <PreprocessorDefinitions>_DEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <TreatSpecificWarningsAsErrors>4062;%(TreatSpecificWarningsAsErrors)</TreatSpecificWarningsAsErrors>
+      <AdditionalOptions>/bigobj</AdditionalOptions>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -152,6 +157,7 @@
       <ConformanceMode>true</ConformanceMode>
       <WholeProgramOptimization>false</WholeProgramOptimization>
       <TreatSpecificWarningsAsErrors>4062;%(TreatSpecificWarningsAsErrors)</TreatSpecificWarningsAsErrors>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -161,8 +167,17 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\..\src\expand\codegen.cpp" />
+    <ClCompile Include="..\..\src\expand\compile_error.cpp" />
+    <ClCompile Include="..\..\src\expand\doc.cpp" />
+    <ClCompile Include="..\..\src\expand\lints.cpp" />
+    <ClCompile Include="..\..\src\expand\misc_attrs.cpp" />
+    <ClCompile Include="..\..\src\expand\stability.cpp" />
     <ClCompile Include="..\..\src\hir_expand\static_borrow_constants.cpp" />
+    <ClCompile Include="..\..\src\hir_typeck\expr_cs__enum.cpp" />
+    <ClCompile Include="..\..\src\hir_typeck\monomorph.hpp" />
     <ClCompile Include="..\..\src\mir\borrow_check.cpp" />
+    <ClCompile Include="..\..\src\resolve\common.cpp" />
     <ClCompile Include="..\..\src\trans\auto_impls.cpp" />
     <ClCompile Include="..\..\src\trans\mangling_v2.cpp" />
     <ClCompile Include="..\..\src\ast\ast.cpp" />
@@ -280,6 +295,7 @@
     <ClInclude Include="..\..\src\ast\expr.hpp" />
     <ClInclude Include="..\..\src\ast\generics.hpp" />
     <ClInclude Include="..\..\src\ast\item.hpp" />
+    <ClInclude Include="..\..\src\ast\lifetime_ref.hpp" />
     <ClInclude Include="..\..\src\ast\macro.hpp" />
     <ClInclude Include="..\..\src\ast\path.hpp" />
     <ClInclude Include="..\..\src\ast\pattern.hpp" />
@@ -287,22 +303,29 @@
     <ClInclude Include="..\..\src\common.hpp" />
     <ClInclude Include="..\..\src\coretypes.hpp" />
     <ClInclude Include="..\..\src\expand\cfg.hpp" />
+    <ClInclude Include="..\..\src\expand\common.hpp" />
     <ClInclude Include="..\..\src\hir\crate_ptr.hpp" />
     <ClInclude Include="..\..\src\hir\expr.hpp" />
     <ClInclude Include="..\..\src\hir\expr_ptr.hpp" />
     <ClInclude Include="..\..\src\hir\from_ast.hpp" />
     <ClInclude Include="..\..\src\hir\generic_params.hpp" />
+    <ClInclude Include="..\..\src\hir\generic_ref.hpp" />
     <ClInclude Include="..\..\src\hir\hir.hpp" />
+    <ClInclude Include="..\..\src\hir\literal.hpp" />
     <ClInclude Include="..\..\src\hir\path.hpp" />
     <ClInclude Include="..\..\src\hir\pattern.hpp" />
     <ClInclude Include="..\..\src\hir\type.hpp" />
+    <ClInclude Include="..\..\src\hir\type_ref.hpp" />
     <ClInclude Include="..\..\src\hir\visitor.hpp" />
     <ClInclude Include="..\..\src\hir_conv\main_bindings.hpp" />
     <ClInclude Include="..\..\src\hir_expand\main_bindings.hpp" />
+    <ClInclude Include="..\..\src\hir_typeck\common.hpp" />
+    <ClInclude Include="..\..\src\hir_typeck\expr_cs.hpp" />
     <ClInclude Include="..\..\src\hir_typeck\expr_visit.hpp" />
     <ClInclude Include="..\..\src\hir_typeck\helpers.hpp" />
     <ClInclude Include="..\..\src\hir_typeck\impl_ref.hpp" />
     <ClInclude Include="..\..\src\hir_typeck\main_bindings.hpp" />
+    <ClInclude Include="..\..\src\hir_typeck\monomorph_state.hpp" />
     <ClInclude Include="..\..\src\hir_typeck\static.hpp" />
     <ClInclude Include="..\..\src\include\compile_error.hpp" />
     <ClInclude Include="..\..\src\include\cpp_unpack.h" />
@@ -336,6 +359,7 @@
     <ClInclude Include="..\..\src\parse\tokenstream.hpp" />
     <ClInclude Include="..\..\src\parse\tokentree.hpp" />
     <ClInclude Include="..\..\src\parse\ttstream.hpp" />
+    <ClInclude Include="..\..\src\resolve\common.hpp" />
     <ClInclude Include="..\..\src\resolve\main_bindings.hpp" />
     <ClInclude Include="..\..\src\trans\codegen.hpp" />
     <ClInclude Include="..\..\src\trans\main_bindings.hpp" />

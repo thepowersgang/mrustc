@@ -32,6 +32,11 @@ namespace {
             Plus,
             Minus,
         };
+        enum class Debug {
+            Normal,
+            LowerHex,
+            UpperHex,
+        };
 
         Align   align = Align::Unspec;
         uint32_t align_char = ' ';
@@ -39,6 +44,8 @@ namespace {
         Sign    sign = Sign::Unspec;
         bool    alternate = false;
         bool    zero_pad = false;
+
+        Debug   debug_ty = Debug::Normal;
 
         bool width_is_arg = false;
         unsigned int width = 0;
@@ -415,25 +422,41 @@ namespace {
 
                     // Parse ident?
                     // - Lazy way is to just handle a single char and ensure that it is just a single char
-                    if( s[0] != '}' && s[1] != '}' ) {
-                        TODO(sp, "Parse formatting fragment at \"" << fmt_frag_str << "\" (long type) - s=...\"" << s << "\"");
-                    }
-
-                    switch(s[0])
+                    if( s[0] == '}' )
                     {
-                    default:
-                        ERROR(sp, E0000, "Unknown formatting type specifier '" << *s << "'");
-                    case '}':      trait_name = "Display"; break;
-                    case '?': s++; trait_name = "Debug"  ; break;
-                    case 'b': s++; trait_name = "Binary"; break;
-                    case 'o': s++; trait_name = "Octal" ; break;
-                    case 'x': s++; trait_name = "LowerHex"; break;
-                    case 'X': s++; trait_name = "UpperHex"; break;
-                    case 'p': s++; trait_name = "Pointer" ; break;
-                    case 'e': s++; trait_name = "LowerExp"; break;
-                    case 'E': s++; trait_name = "UpperExp"; break;
+                        trait_name = "Display";
                     }
-                    assert(*s == '}');
+                    else if( s[1] == '}' )
+                    {
+                        switch(s[0])
+                        {
+                        default:
+                            ERROR(sp, E0000, "Unknown formatting type specifier '" << *s << "'");
+                        case '?': s++; trait_name = "Debug" ; break;
+                        case 'b': s++; trait_name = "Binary"; break;
+                        case 'o': s++; trait_name = "Octal" ; break;
+                        case 'x': s++; trait_name = "LowerHex"; break;
+                        case 'X': s++; trait_name = "UpperHex"; break;
+                        case 'p': s++; trait_name = "Pointer" ; break;
+                        case 'e': s++; trait_name = "LowerExp"; break;
+                        case 'E': s++; trait_name = "UpperExp"; break;
+                        }
+                        assert(*s == '}');
+                    }
+                    else
+                    {
+                        if( strcmp(s, "x?}") == 0 ) {
+                            args.debug_ty = FmtArgs::Debug::LowerHex;
+                            trait_name = "Debug";
+                        }
+                        else if( strcmp(s, "X?}") == 0 ) {
+                            args.debug_ty = FmtArgs::Debug::UpperHex;
+                            trait_name = "Debug";
+                        }
+                        else {
+                            TODO(sp, "Parse formatting fragment at \"" << fmt_frag_str << "\" (long type) - s=...\"" << s << "\"");
+                        }
+                    }
                 }
                 else {
                     if( *s != '}' )
@@ -473,6 +496,7 @@ namespace {
         switch(crate.m_load_std)
         {
         case ::AST::Crate::LOAD_NONE:
+            toks.push_back( TokenTree(TOK_RWORD_CRATE) );
             break;
         case ::AST::Crate::LOAD_CORE:
             toks.push_back( TokenTree(TOK_DOUBLE_COLON) );
@@ -539,7 +563,7 @@ namespace {
             if( lex.lookahead(0) == TOK_IDENT && lex.lookahead(1) == TOK_EQUAL )
             {
                 GET_CHECK_TOK(tok, lex, TOK_IDENT);
-                auto name = tok.istr();
+                auto name = tok.ident().name;
 
                 GET_CHECK_TOK(tok, lex, TOK_EQUAL);
 
@@ -735,8 +759,21 @@ namespace {
 
                         push_toks(toks, ident("flags"), TOK_COLON);
                         uint64_t flags = 0;
+                        // ::core::fmt::FlagV1 (private)
+                        switch(frag.args.sign)
+                        {
+                        case FmtArgs::Sign::Unspec: break;
+                        case FmtArgs::Sign::Plus:   flags |= 1 << 0;    break;
+                        case FmtArgs::Sign::Minus:  flags |= 1 << 1;    break;
+                        }
                         if(frag.args.alternate)
                             flags |= 1 << 2;
+                        switch(frag.args.debug_ty)
+                        {
+                        case FmtArgs::Debug::Normal:    break;
+                        case FmtArgs::Debug::LowerHex:  flags |= 1 << 4;    break;
+                        case FmtArgs::Debug::UpperHex:  flags |= 1 << 5;    break;
+                        }
                         push_toks(toks, Token(uint64_t(flags), CORETYPE_U32));
                         push_toks(toks, TOK_COMMA);
 

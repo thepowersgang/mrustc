@@ -22,7 +22,7 @@
 
 #define FMT(ss)    (static_cast<::std::ostringstream&&>(::std::ostringstream() << ss).str())
 // XXX: Evil hack - Define 'mv$' to be ::std::move
-#define mv$(x)    ::std::move(x)
+#define mv$ ::std::move
 #define box$(...) ::make_unique_ptr(::std::move(__VA_ARGS__))
 #define rc_new$(...) ::make_shared_ptr(::std::move(__VA_ARGS__))
 
@@ -63,7 +63,7 @@ template<typename T>
 
 enum Ordering
 {
-    OrdLess,
+    OrdLess = -1,
     OrdEqual,
     OrdGreater,
 };
@@ -368,10 +368,10 @@ reversion_wrapper<T> reverse (T&& iterable) { return { iterable }; }
 
 template<typename T>
 struct RunIterable {
-    const ::std::vector<T>& list;
+    const T& list;
     unsigned int ofs;
     ::std::pair<size_t,size_t> cur;
-    RunIterable(const ::std::vector<T>& list):
+    RunIterable(const T& list):
         list(list), ofs(0)
     {
         advance();
@@ -408,7 +408,7 @@ struct RunIterable {
     }
 };
 template<typename T>
-RunIterable<T> runs(const ::std::vector<T>& x) {
+RunIterable<T> runs(const T& x) {
     return RunIterable<T>(x);
 }
 

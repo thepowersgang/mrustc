@@ -18,6 +18,7 @@
 #include <fstream>
 #include <unordered_map>
 #include <unordered_set>
+#include <cctype>   // toupper
 
 class CfgParseLexer
 {
@@ -176,6 +177,38 @@ bool Cfg_Check(const char* cfg_string)
 {
     return gCfgChecker.check_cfg(cfg_string);
 }
+/// Dump configuration as CARGO_CFG_<name>
+void Cfg_ToEnvironment(StringListKV& out)
+{
+    struct H {
+        static std::string make_name(const std::string& n) {
+            std::stringstream   ss;
+            ss << "CARGO_CFG_";
+            for(auto c : n)
+            {
+                if( isalnum(c) ) {
+                    ss << char(std::toupper(c));
+                }
+                else if( c == '-' || c == '_' ) {
+                    ss << "_";
+                }
+                else {
+                    throw std::runtime_error("Unexpected character");
+                }
+            }
+            return ss.str();
+        }
+    };
+    for(const auto& v : gCfgChecker.values)
+    {
+        out.push_back(H::make_name(v.first), v.second);
+    }
+    for(const auto& flag : gCfgChecker.flags)
+    {
+        out.push_back(H::make_name(flag), "1");
+    }
+}
+
 
 /*static*/ CfgChecker CfgChecker::for_target(const helpers::path& compiler_path, const char* target_spec)
 {
@@ -298,3 +331,4 @@ bool CfgChecker::check_cfg(CfgParseLexer& p) const
     }
     throw ::std::runtime_error("Hit end of check_cfg");
 }
+

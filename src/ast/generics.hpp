@@ -138,6 +138,7 @@ TAGGED_UNION_EX( GenericBound, (), None,
         }),
     // Standard trait bound: "Type: [for<'a>] Trait"
     (IsTrait, struct {
+        Span    span;
         HigherRankedBounds  outer_hrbs;
         TypeRef type;
         HigherRankedBounds  inner_hrbs;
@@ -171,7 +172,7 @@ TAGGED_UNION_EX( GenericBound, (), None,
             (None, return make_None({}); ),
             (Lifetime,     return make_Lifetime({ent.test, ent.bound});     ),
             (TypeLifetime, return make_TypeLifetime({ent.type.clone(), ent.bound}); ),
-            (IsTrait,    return make_IsTrait({ent.outer_hrbs, ent.type.clone(), ent.inner_hrbs, ent.trait}); ),
+            (IsTrait,    return make_IsTrait({ent.span, ent.outer_hrbs, ent.type.clone(), ent.inner_hrbs, ent.trait}); ),
             (MaybeTrait, return make_MaybeTrait({ent.type.clone(), ent.trait}); ),
             (NotTrait,   return make_NotTrait({ent.type.clone(), ent.trait}); ),
             (Equality,   return make_Equality({ent.type.clone(), ent.replacement.clone()}); )
