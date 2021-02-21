@@ -2574,24 +2574,39 @@ namespace {
         void visit(::HIR::ExprNode_Generator& node) override
         {
             TRACE_FUNCTION_F("_Generator - " << node.m_obj_path);
-            TODO(node.span(), "Generator");
-#if 0
-            ASSERT_BUG(node.span(), node.m_obj_path.m_path != ::HIR::SimplePath(), "Generator not created");
+            ASSERT_BUG(node.span(), node.m_obj_ptr, "Generator not created");
+            ASSERT_BUG(node.span(), !node.m_code, "Encountered outer generator wrapper");
             auto _ = save_and_edit(m_borrow_raise_target, nullptr);
 
             ::std::vector< ::MIR::Param>   vals;
-            vals.reserve( node.m_captures.size() );
+            vals.reserve( node.m_captures.size() + 1 );
             for(auto& arg : node.m_captures)
             {
                 this->visit_node_ptr(arg);
                 vals.push_back( m_builder.get_result_in_lvalue(arg->span(), arg->m_res_type) );
             }
 
+            // Zero the state
+            {
+                const ::HIR::TypeRef& state_type = node.m_state_type;
+
+                auto res_slot = m_builder.new_temporary( state_type.clone() );
+                auto size__panic = m_builder.new_bb_unlinked();
+                auto size__ok = m_builder.new_bb_unlinked();
+                m_builder.end_block(::MIR::Terminator::make_Call({
+                    size__ok, size__panic,
+                    res_slot.clone(), ::MIR::CallTarget::make_Intrinsic({ "zeroed", ::HIR::PathParams(state_type.clone()) }),
+                    {}
+                    }));
+                m_builder.set_cur_block(size__panic); m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );   // HACK
+                m_builder.set_cur_block(size__ok);
+                vals.push_back( std::move(res_slot) );
+            }
+
             m_builder.set_result( node.span(), ::MIR::RValue::make_Struct({
                 node.m_obj_path.clone(),
                 mv$(vals)
                 }) );
-#endif
         }
     };
 }
@@ -2605,6 +2620,23 @@ namespace {
     fcn.locals.reserve(ptr.m_bindings.size());
     for(const auto& t : ptr.m_bindings)
         fcn.locals.push_back( t.clone() );
+
+    {
+        struct V: public ::HIR::ExprVisitorDef {
+            bool has_yield = false;
+            void visit(::HIR::ExprNode_Yield& node) override {
+                has_yield = true;
+            }
+        } ev;
+        ::HIR::ExprNode& root_node = const_cast<::HIR::ExprNode&>(*ptr);
+        if(auto* node = dynamic_cast<::HIR::ExprNode_Generator*>(&root_node) ) 
+        {
+            if( node->m_obj_ptr && node->m_code )
+            {
+                TODO(root_node.span(), "Convert generators into state machines in LowerMIR");
+            }
+        }
+    }
 
     // Scope ensures that builder cleanup happens before `fcn` is moved
     {

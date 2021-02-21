@@ -1645,7 +1645,8 @@ bool StaticTraitResolve::type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) 
         return false;
         }
     TU_ARMA(Generator, e) {
-        TODO(sp, "type_is_copy - Generator");
+        // NOTE: Generators aren't Copy
+        return false;
         }
     TU_ARMA(Infer, e) {
         // Shouldn't be hit

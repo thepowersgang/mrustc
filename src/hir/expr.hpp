@@ -791,22 +791,24 @@ struct ExprNode_Closure:
 struct ExprNode_Generator:
     public ExprNode
 {
-    ExprNode_Closure::args_t    m_args;
+    //ExprNode_Closure::args_t    m_args;
     ::HIR::TypeRef  m_return;
     ::HIR::TypeRef  m_yield_ty;
     ::HIR::ExprNodeP    m_code;
     bool    m_is_move;
     bool    m_is_pinned;
 
-    // Path to the generated type
+    // Generated type information
     const ::HIR::Struct*    m_obj_ptr = nullptr;
-    ::HIR::GenericPath  m_obj_path_base;
     ::HIR::GenericPath  m_obj_path;
+
+    ::HIR::TypeRef  m_state_type;
+    // Captured variables (used for emitting the constructor)
     ::std::vector< ::HIR::ExprNodeP>    m_captures;
 
-    ExprNode_Generator(Span sp, ExprNode_Closure::args_t args, ::HIR::TypeRef rv, ::HIR::ExprNodeP code, bool is_move, bool is_pinned):
+    ExprNode_Generator(Span sp, /*ExprNode_Closure::args_t args,*/ ::HIR::TypeRef rv, ::HIR::ExprNodeP code, bool is_move, bool is_pinned):
         ExprNode(mv$(sp)),
-        m_args( ::std::move(args) ),
+        //m_args( ::std::move(args) ),
         m_return( ::std::move(rv) ),
         m_code( ::std::move(code) ),
         m_is_move(is_move),

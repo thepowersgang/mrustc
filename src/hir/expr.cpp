@@ -45,11 +45,12 @@ DEF_VISIT(ExprNode_Yield, node,
     visit_node_ptr(node.m_value);
 )
 DEF_VISIT(ExprNode_Let, node,
-    visit_pattern(node.span(), node.m_pattern);
-    visit_type(node.m_type);
+    // Visit the value FIRST as it's evaluated before the variable is defined
     if( node.m_value ) {
         visit_node_ptr(node.m_value);
     }
+    visit_pattern(node.span(), node.m_pattern);
+    visit_type(node.m_type);
 )
 DEF_VISIT(ExprNode_Loop, node,
     visit_node_ptr(node.m_code);
@@ -204,10 +205,10 @@ DEF_VISIT(ExprNode_Closure, node,
     }
 )
 DEF_VISIT(ExprNode_Generator, node,
-    for(auto& arg : node.m_args) {
-        visit_pattern(node.span(), arg.first);
-        visit_type(arg.second);
-    }
+    //for(auto& arg : node.m_args) {
+    //    visit_pattern(node.span(), arg.first);
+    //    visit_type(arg.second);
+    //}
     visit_type(node.m_return);
     if(node.m_code)
     {

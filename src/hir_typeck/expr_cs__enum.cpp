@@ -1831,11 +1831,11 @@ namespace typecheck
 
         void visit(::HIR::ExprNode_Generator& node) override
         {
-            TRACE_FUNCTION_F(&node << " /*gen*/ |...| ...");
-            for(auto& arg : node.m_args) {
-                this->context.add_ivars( arg.second );
-                this->context.handle_pattern( node.span(), arg.first, arg.second );
-            }
+            TRACE_FUNCTION_F(&node << " /*gen*/ || ...");
+            //for(auto& arg : node.m_args) {
+            //    this->context.add_ivars( arg.second );
+            //    this->context.handle_pattern( node.span(), arg.first, arg.second );
+            //}
             this->context.add_ivars( node.m_return );
             this->context.add_ivars( node.m_yield_ty );
             this->context.add_ivars( node.m_code->m_res_type );

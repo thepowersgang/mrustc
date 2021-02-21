@@ -1297,8 +1297,8 @@ namespace {
             ::HIR::ExprVisitorDef::visit(node);
         }
         void visit(::HIR::ExprNode_Generator& node) override {
-            for(auto& arg : node.m_args)
-                this->check_type_resolved_top(node.span(), arg.second);
+            //for(auto& arg : node.m_args)
+            //    this->check_type_resolved_top(node.span(), arg.second);
             this->check_type_resolved_top(node.span(), node.m_return);
             this->check_type_resolved_top(node.span(), node.m_yield_ty);
             ::HIR::ExprVisitorDef::visit(node);

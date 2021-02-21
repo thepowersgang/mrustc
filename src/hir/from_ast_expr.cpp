@@ -563,8 +563,12 @@ struct LowerHIR_ExprNode_Visitor:
 
         if(has_yield)
         {
+            // NOTE: One argument could be present with yielding arguments?
+            if(!args.empty()) {
+                ERROR(v.span(), E0000, "Generator closures don't take arguments.");
+            }
             m_rv.reset( new ::HIR::ExprNode_Generator( v.span(),
-                mv$(args),
+                //mv$(args),
                 LowerHIR_Type(v.m_return),
                 mv$(inner),
                 v.m_is_move,
