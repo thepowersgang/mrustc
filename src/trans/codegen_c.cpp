@@ -1188,8 +1188,14 @@ namespace {
                             args.push_back(l_d.second);
                             break;
                         case LinkList::Ty::Implicit:
-                            args.push_back("-l");
-                            args.push_back(l_d.second);
+                            if (!strncmp(l_d.second, "framework=", strlen("framework="))) {
+                                args.push_back("-framework");
+                                args.push_back(l_d.second + strlen("framework="));
+                            }
+                            else {
+                                args.push_back("-l");
+                                args.push_back(l_d.second);
+                            }
                             break;
                         case LinkList::Ty::Explicit:
                             args.push_back(l_d.second);
