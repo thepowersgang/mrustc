@@ -923,7 +923,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     }
     for(const auto& lib : manifest.build_script_output().rustc_link_lib) {
         if(!strcmp(lib.first, "framework")) {
-            args.push_back("-framework"); args.push_back(lib.second.c_str());
+            args.push_back("-l"); args.push_back(format("framework=",lib.second.c_str()));
         }
         else {
             args.push_back("-l"); args.push_back(lib.second.c_str());
