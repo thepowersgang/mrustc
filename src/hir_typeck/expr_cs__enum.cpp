@@ -1818,11 +1818,15 @@ namespace typecheck
 
             this->context.equate_types_coerce( node.span(), node.m_return, node.m_code );
 
-            // TODO: Save/clear/restore loop labels
+            // Save/clear/restore loop labels
+            auto saved_loops = ::std::move(this->loop_blocks);
+
             auto _ = this->push_inner_coerce_scoped(true);
             this->closure_ret_types.push_back( RetTarget(node.m_return) );
             node.m_code->visit( *this );
             this->closure_ret_types.pop_back( );
+
+            this->loop_blocks = ::std::move(saved_loops);
         }
 
         void visit(::HIR::ExprNode_Generator& node) override

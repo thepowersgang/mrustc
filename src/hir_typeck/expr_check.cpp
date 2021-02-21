@@ -122,7 +122,7 @@ namespace {
         void visit(::HIR::ExprNode_LoopControl& node) override
         {
             TRACE_FUNCTION_F(&node << " " << (node.m_continue ? "continue" : "break") << " '" << node.m_label);
-            // TODO: Validate `break` return value
+
             if( node.m_value )
             {
                 node.m_value->visit(*this);
@@ -1077,9 +1077,14 @@ namespace {
             if( node.m_code )
             {
                 check_types_equal(node.m_code->span(), node.m_return, node.m_code->m_res_type);
+
+                auto loops = ::std::move(this->m_loops);
+
                 this->closure_ret_types.push_back( RetTarget(node.m_return) );
                 node.m_code->visit( *this );
                 this->closure_ret_types.pop_back( );
+
+                this->m_loops = ::std::move(loops);
             }
         }
         void visit(::HIR::ExprNode_Generator& node) override
@@ -1088,10 +1093,14 @@ namespace {
 
             if( node.m_code )
             {
+                auto loops = ::std::move(this->m_loops);
+
                 check_types_equal(node.m_code->span(), node.m_return, node.m_code->m_res_type);
                 this->closure_ret_types.push_back( RetTarget(node.m_return, node.m_yield_ty) );
                 node.m_code->visit( *this );
                 this->closure_ret_types.pop_back( );
+
+                this->m_loops = ::std::move(loops);
             }
         }
 
