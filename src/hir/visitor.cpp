@@ -376,6 +376,8 @@ void ::HIR::Visitor::visit_type(::HIR::TypeRef& ty)
             this->visit_type(t);
         }
         this->visit_type(e.m_rettype);
+        ),
+    (Generator,
         )
     )
 }

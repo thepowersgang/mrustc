@@ -243,10 +243,11 @@
                 serialise_type(e.m_rettype);
                 serialise_vec(e.m_arg_types);
                 }
-            TU_ARMA(Closure, e) {
-                DEBUG("-- Closure - " << ty);
-                BUG(Span(), "Encountered closure type when serialising - " << ty);
-                }
+                break;
+            case ::HIR::TypeData::TAG_Closure:
+            case ::HIR::TypeData::TAG_Generator:
+                BUG(Span(), "Encountered invalid type when serialising - " << ty);
+                break;
             }
 
             m_types.insert(std::make_pair( ty.clone(), m_types.size() ));

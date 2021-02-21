@@ -240,6 +240,7 @@ namespace {
         case ::HIR::TypeData::TAG_TraitObject:
         case ::HIR::TypeData::TAG_Slice:
         case ::HIR::TypeData::TAG_Closure:
+        case ::HIR::TypeData::TAG_Generator:
             BUG(sp, "Unexpected " << ty << " in decoding literal");
         TU_ARM(ty.data(), Primitive, te) {
             switch(te)

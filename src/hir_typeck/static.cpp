@@ -240,6 +240,15 @@ bool StaticTraitResolve::find_impl(
             return found_cb( ImplRef(type.clone(), trait_params->clone(), mv$(assoc)), false );
         }
         }
+    TU_ARMA(Generator, e) {
+        if( TARGETVER_LEAST_1_39 && trait_path == m_crate.get_lang_item_path(sp, "generator") )
+        {
+            ::HIR::TraitPath::assoc_list_t   assoc;
+            assoc.insert(::std::make_pair("Yield" , ::HIR::TraitPath::AtyEqual { trait_path.clone(), e.node->m_yield_ty.clone() }));
+            assoc.insert(::std::make_pair("Return", ::HIR::TraitPath::AtyEqual { trait_path.clone(), e.node->m_return.clone() }));
+            return found_cb( ImplRef(type.clone(), HIR::PathParams(), mv$(assoc)), ::HIR::Compare::Equal );
+        }
+        }
     // ----
     // TraitObject traits and supertraits
     // ----
@@ -1148,6 +1157,10 @@ void StaticTraitResolve::expand_associated_types_inner(const Span& sp, ::HIR::Ty
             expand_associated_types_inner(sp, ty);
         expand_associated_types_inner(sp, e.m_rettype);
         }
+    TU_ARMA(Generator, e) {
+        // TODO: Call into the node?
+        // - This should never be monomorphed, so useless?
+        }
     }
 }
 bool StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HIR::TypeRef& input, bool recurse/*=true*/) const
@@ -1631,6 +1644,9 @@ bool StaticTraitResolve::type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) 
         }
         return false;
         }
+    TU_ARMA(Generator, e) {
+        TODO(sp, "type_is_copy - Generator");
+        }
     TU_ARMA(Infer, e) {
         // Shouldn't be hit
         return false;
@@ -1737,6 +1753,9 @@ bool StaticTraitResolve::type_is_clone(const Span& sp, const ::HIR::TypeRef& ty)
             return e.node->m_is_copy;
         }
         return false;
+        }
+    TU_ARMA(Generator, e) {
+        TODO(sp, "type_is_clone - Generator");
         }
     TU_ARMA(Infer, e) {
         // Shouldn't be hit
@@ -2121,6 +2140,9 @@ HIR::Compare StaticTraitResolve::type_is_interior_mutable(const Span& sp, const 
         // TODO: Closures could be known?
         return HIR::Compare::Fuzzy;
         }
+    TU_ARMA(Generator, e) {
+        return HIR::Compare::Unequal;
+        }
     // Borrow and pointer are not interior mutable (they might point to something, but that doesn't matter)
     TU_ARMA(Borrow, e) {
         return HIR::Compare::Unequal;
@@ -2350,7 +2372,10 @@ bool StaticTraitResolve::type_needs_drop_glue(const Span& sp, const ::HIR::TypeR
         return false;
         }
     TU_ARMA(Closure, e) {
-        // TODO: Destructure?
+        // Note: Copy already covered above
+        return true;
+        }
+    TU_ARMA(Generator, e) {
         return true;
         }
     TU_ARMA(Infer, e) {

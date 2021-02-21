@@ -437,7 +437,14 @@ namespace typecheck
     {
         Context& context;
         const ::HIR::TypeRef&   ret_type;
-        ::std::vector< const ::HIR::TypeRef*>   closure_ret_types;
+        struct RetTarget {
+            const ::HIR::TypeRef*   ret_type;
+            const ::HIR::TypeRef*   yield_type;
+
+            RetTarget(const ::HIR::TypeRef& ret_type): ret_type(&ret_type), yield_type(nullptr) {}
+            RetTarget(const ::HIR::TypeRef& ret_type, const ::HIR::TypeRef& yield_type): ret_type(&ret_type), yield_type(&yield_type) {}
+        };
+        ::std::vector<RetTarget>   closure_ret_types;
 
         ::std::vector<bool> inner_coerce_enabled_stack;
 
@@ -567,7 +574,7 @@ namespace typecheck
             TRACE_FUNCTION_F(&node << " return ...");
             this->context.add_ivars( node.m_value->m_res_type );
 
-            const auto& ret_ty = ( this->closure_ret_types.size() > 0 ? *this->closure_ret_types.back() : this->ret_type );
+            const auto& ret_ty = ( this->closure_ret_types.size() > 0 ? *this->closure_ret_types.back().ret_type : this->ret_type );
             this->context.equate_types_coerce(node.span(), ret_ty, node.m_value);
 
             this->push_inner_coerce( true );
@@ -580,9 +587,10 @@ namespace typecheck
             TRACE_FUNCTION_F(&node << " yield ...");
             this->context.add_ivars( node.m_value->m_res_type );
 
-            //const auto& ret_ty = ( this->closure_ret_types.size() > 0 ? *this->closure_ret_types.back() : this->ret_type );
-            //this->context.equate_types_coerce(node.span(), ret_ty, node.m_value);
-            TODO(node.span(), "yield");
+            if( this->closure_ret_types.empty() || this->closure_ret_types.back().yield_type == nullptr )
+                ERROR(node.span(), E0000, "`yield` outside a generator closure");
+            const auto& ret_ty = *this->closure_ret_types.back().yield_type;
+            this->context.equate_types_coerce(node.span(), ret_ty, node.m_value);
 
             this->push_inner_coerce( true );
             node.m_value->visit( *this );
@@ -1810,8 +1818,32 @@ namespace typecheck
 
             this->context.equate_types_coerce( node.span(), node.m_return, node.m_code );
 
+            // TODO: Save/clear/restore loop labels
             auto _ = this->push_inner_coerce_scoped(true);
-            this->closure_ret_types.push_back( &node.m_return );
+            this->closure_ret_types.push_back( RetTarget(node.m_return) );
+            node.m_code->visit( *this );
+            this->closure_ret_types.pop_back( );
+        }
+
+        void visit(::HIR::ExprNode_Generator& node) override
+        {
+            TRACE_FUNCTION_F(&node << " /*gen*/ |...| ...");
+            for(auto& arg : node.m_args) {
+                this->context.add_ivars( arg.second );
+                this->context.handle_pattern( node.span(), arg.first, arg.second );
+            }
+            this->context.add_ivars( node.m_return );
+            this->context.add_ivars( node.m_yield_ty );
+            this->context.add_ivars( node.m_code->m_res_type );
+
+            // Generator result type
+            this->context.equate_types( node.span(), node.m_res_type, ::HIR::TypeRef::new_generator(&node) );
+
+            this->context.equate_types_coerce( node.span(), node.m_return, node.m_code );
+
+            // TODO: Save/clear/restore loop labels
+            auto _ = this->push_inner_coerce_scoped(true);
+            this->closure_ret_types.push_back( RetTarget(node.m_return, node.m_yield_ty) );
             node.m_code->visit( *this );
             this->closure_ret_types.pop_back( );
         }

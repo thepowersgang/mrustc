@@ -264,6 +264,9 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
             os << t << ", ";
         os << ") -> " << e.m_rettype;
         }
+    TU_ARMA(Generator, e) {
+        os << "generator["<<e.node<<"]";
+        }
     }
 }
 
@@ -355,6 +358,9 @@ bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const
             return false;
         //assert( te.m_rettype == xe.m_rettype );
         return true;
+        ),
+    (Generator,
+        return te.node == xe.node;
         )
     )
     throw "";
@@ -424,6 +430,10 @@ Ordering HIR::TypeRef::ord(const ::HIR::TypeRef& x) const
     (Closure,
         ORD( reinterpret_cast<::std::uintptr_t>(te.node), reinterpret_cast<::std::uintptr_t>(xe.node) );
         //assert( te.m_rettype == xe.m_rettype );
+        return OrdEqual;
+        ),
+    (Generator,
+        ORD( reinterpret_cast<::std::uintptr_t>(te.node), reinterpret_cast<::std::uintptr_t>(xe.node) );
         return OrdEqual;
         )
     )
@@ -822,6 +832,11 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
             return Compare::Unequal;
         return Compare::Equal;
         }
+    TU_ARMA(Generator, te, xe) {
+        if( te.node != xe.node )
+            return Compare::Unequal;
+        return Compare::Equal;
+        }
     }
     throw "";
 }
@@ -947,6 +962,11 @@ const ::HIR::TraitMarkings* HIR::TypePathBinding::get_trait_markings() const
         for(const auto& a : e.m_arg_types)
             oe.m_arg_types.push_back( a.clone() );
         return ::HIR::TypeRef(TypeData::make_Closure( mv$(oe) ));
+        }
+    TU_ARMA(Generator, e) {
+        TypeData::Data_Generator    oe;
+        oe.node = e.node;
+        return ::HIR::TypeRef(TypeData::make_Generator( mv$(oe) ));
         }
     }
     throw "";
@@ -1218,6 +1238,11 @@ const ::HIR::TraitMarkings* HIR::TypePathBinding::get_trait_markings() const
         }
         rv &= le.m_rettype.compare_with_placeholders( sp, re.m_rettype, resolve_placeholder );
         return rv;
+        }
+    TU_ARMA(Generator, le, re) {
+        if( le.node != re.node )
+            return Compare::Unequal;
+        return Compare::Equal;
         }
     }
     throw "";

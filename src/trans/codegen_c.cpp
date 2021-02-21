@@ -5827,6 +5827,7 @@ namespace {
             TU_ARMA(Infer, te) {}
             TU_ARMA(ErasedType, te) {}
             TU_ARMA(Closure, te) {}
+            TU_ARMA(Generator, te) {}
             TU_ARMA(Generic, te) {}
 
             // Nothing
@@ -6488,9 +6489,11 @@ namespace {
             TU_ARMA(Function, te) {
                 m_of << "t_" << Trans_Mangle(ty) << " " << inner;
                 }
-            TU_ARMA(Closure, te) {
+                break;
+            case ::HIR::TypeData::TAG_Closure:
+            case ::HIR::TypeData::TAG_Generator:
                 MIR_BUG(*m_mir_res, "Closure during trans - " << ty);
-                }
+                break;
             }
         }
 

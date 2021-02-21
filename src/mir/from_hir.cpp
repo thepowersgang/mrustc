@@ -2571,6 +2571,28 @@ namespace {
                 mv$(vals)
                 }) );
         }
+        void visit(::HIR::ExprNode_Generator& node) override
+        {
+            TRACE_FUNCTION_F("_Generator - " << node.m_obj_path);
+            TODO(node.span(), "Generator");
+#if 0
+            ASSERT_BUG(node.span(), node.m_obj_path.m_path != ::HIR::SimplePath(), "Generator not created");
+            auto _ = save_and_edit(m_borrow_raise_target, nullptr);
+
+            ::std::vector< ::MIR::Param>   vals;
+            vals.reserve( node.m_captures.size() );
+            for(auto& arg : node.m_captures)
+            {
+                this->visit_node_ptr(arg);
+                vals.push_back( m_builder.get_result_in_lvalue(arg->span(), arg->m_res_type) );
+            }
+
+            m_builder.set_result( node.span(), ::MIR::RValue::make_Struct({
+                node.m_obj_path.clone(),
+                mv$(vals)
+                }) );
+#endif
+        }
     };
 }
 

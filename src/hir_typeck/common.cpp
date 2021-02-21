@@ -129,6 +129,9 @@ struct TyVisitor
             }
             return visit_type(e.m_rettype);
             }
+        TU_ARMA(Generator, e) {
+            // Visits?
+            }
         }
         return false;
     }
@@ -328,6 +331,9 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
         for(const auto& arg : e.m_arg_types)
             oe.m_arg_types.push_back( this->monomorph_type(sp, arg, allow_infer) );
         return ::HIR::TypeRef( mv$(oe) );
+        }
+    TU_ARMA(Generator, e) {
+        TODO(sp, "Monomorphising a generator type?");
         }
     }
     throw "";
@@ -582,6 +588,9 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
         for(const auto& a : e.m_arg_types)
             oe.m_arg_types.push_back( clone_ty_with(sp, a, callback) );
         rv = ::HIR::TypeRef( mv$(oe) );
+        }
+    TU_ARMA(Generator, e) {
+        TODO(sp, "Cloning a generator type?");
         }
     }
     return rv;

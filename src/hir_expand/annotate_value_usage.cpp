@@ -471,6 +471,11 @@ namespace {
             auto _ = push_usage( ::HIR::ValueUsage::Move );
             this->visit_node_ptr(node.m_code);
         }
+        void visit(::HIR::ExprNode_Generator& node) override
+        {
+            auto _ = push_usage( ::HIR::ValueUsage::Move );
+            this->visit_node_ptr(node.m_code);
+        }
 
     private:
         ::HIR::ValueUsage get_usage_for_pattern_binding(const Span& sp, const ::HIR::PatternBinding& pb, const ::HIR::TypeRef& ty) const

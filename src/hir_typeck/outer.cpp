@@ -198,6 +198,9 @@ namespace {
                 ),
             (Closure,
                 TODO(sp, "update_self_type - Closure");
+                ),
+            (Generator,
+                TODO(sp, "update_self_type - Generator?");
                 )
             )
         }

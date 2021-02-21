@@ -203,6 +203,22 @@ DEF_VISIT(ExprNode_Closure, node,
             visit_node_ptr(cap);
     }
 )
+DEF_VISIT(ExprNode_Generator, node,
+    for(auto& arg : node.m_args) {
+        visit_pattern(node.span(), arg.first);
+        visit_type(arg.second);
+    }
+    visit_type(node.m_return);
+    if(node.m_code)
+    {
+        visit_node_ptr(node.m_code);
+    }
+    else
+    {
+        for(auto& cap : node.m_captures)
+            visit_node_ptr(cap);
+    }
+)
 
 #undef DEF_VISIT
 
@@ -312,6 +328,8 @@ void ::HIR::ExprVisitorDef::visit_type(::HIR::TypeRef& ty)
             this->visit_type(t);
         }
         this->visit_type(e.m_rettype);
+        ),
+    (Generator,
         )
     )
 }

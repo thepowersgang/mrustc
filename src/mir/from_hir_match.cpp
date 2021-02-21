@@ -906,6 +906,9 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, const ::HIR::Literal
     TU_ARMA(Closure, e) {
         ERROR(sp, E0000, "Attempting to match over a closure");
         }
+    TU_ARMA(Generator, e) {
+        ERROR(sp, E0000, "Attempting to match over a generator");
+        }
     }
 }
 void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::TypeRef& top_ty)
@@ -1535,6 +1538,13 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             ERROR(sp, E0000, "Attempting to match over a closure");
         }
         }
+    TU_ARMA(Generator, e) {
+        if( pat.m_data.is_Any() ) {
+        }
+        else {
+            ERROR(sp, E0000, "Attempting to match over a generator");
+        }
+        }
     }
     for(size_t i = 0; i < pat.m_implicit_deref_count; i ++)
     {
@@ -1937,6 +1947,9 @@ namespace {
                 }
             TU_ARMA(Closure, e) {
                 ERROR(sp, E0000, "Attempting to match over a closure");
+                }
+            TU_ARMA(Generator, e) {
+                ERROR(sp, E0000, "Attempting to match over a generator");
                 }
             }
         }
@@ -2363,6 +2376,9 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
             }
         TU_ARMA(Closure, te) {
             BUG(sp, "Attempting to match a closure");
+            }
+        TU_ARMA(Generator, te) {
+            BUG(sp, "Attempting to match a generator");
             }
         }
     }
@@ -2932,6 +2948,9 @@ void MatchGenGrouped::gen_dispatch(const ::std::vector<t_rules_subset>& rules, s
         }
     TU_ARMA(Closure, te) {
         BUG(sp, "Attempting to match a closure");
+        }
+    TU_ARMA(Generator, te) {
+        BUG(sp, "Attempting to match a generator");
         }
     }
 }

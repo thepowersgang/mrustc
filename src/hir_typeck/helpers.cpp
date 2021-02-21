@@ -100,6 +100,8 @@ void HMTypeInferrence::check_for_loops()
                 }
             TU_ARMA(Closure, e) {
                 }
+            TU_ARMA(Generator, e) {
+                }
             TU_ARMA(Function, e) {
                 for(const auto& arg : e.m_arg_types) {
                     this->check_ty(ivars, arg);
@@ -286,6 +288,10 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr) 
         os << ")->";
         this->print_type(os, e.m_rettype);
         }
+    TU_ARMA(Generator, e) {
+        os << "{gen:" << e.node << "}";
+        // TODO: Print the types?
+        }
     TU_ARMA(Function, e) {
         if(e.is_unsafe)
             os << "unsafe ";
@@ -426,6 +432,8 @@ void HMTypeInferrence::expand_ivars(::HIR::TypeRef& type)
         for(auto& ty : e.m_arg_types)
             this->expand_ivars(ty);
         }
+    TU_ARMA(Generator, e) {
+        }
     }
 }
 void HMTypeInferrence::expand_ivars_params(::HIR::PathParams& params)
@@ -504,6 +512,9 @@ void HMTypeInferrence::add_ivars(::HIR::TypeRef& type)
             add_ivars(ty);
         }
     TU_ARMA(Closure, e) {
+        // Shouldn't be possible
+        }
+    TU_ARMA(Generator, e) {
         // Shouldn't be possible
         }
     }
@@ -784,6 +795,9 @@ bool HMTypeInferrence::type_contains_ivars(const ::HIR::TypeRef& ty) const {
                 return true;
         return type_contains_ivars(e.m_rettype);
         ),
+    (Generator,
+        TODO(Span(), "Generator");
+        ),
     (Function,
         for(const auto& arg : e.m_arg_types)
             if( type_contains_ivars(arg) )
@@ -916,6 +930,9 @@ bool HMTypeInferrence::types_equal(const ::HIR::TypeRef& rl, const ::HIR::TypeRe
         if( !type_list_equal(*this, le.m_arg_types, re.m_arg_types) )
             return false;
         return types_equal(le.m_rettype, re.m_rettype);
+        ),
+    (Generator,
+        return le.node == re.node;
         ),
     (Function,
         if( le.is_unsafe != re.is_unsafe || le.m_abi != re.m_abi )
@@ -1205,6 +1222,18 @@ bool TraitResolution::find_trait_impls_magic(const Span& sp,
         }
         else {
             return false;
+        }
+    }
+
+    // Generator
+    if( TARGETVER_LEAST_1_39 && trait == this->m_crate.get_lang_item_path(sp, "generator") )
+    {
+        if( const auto* ty_e = type.data().opt_Generator() )
+        {
+            ::HIR::TraitPath::assoc_list_t   assoc;
+            assoc.insert(::std::make_pair("Yield" , ::HIR::TraitPath::AtyEqual { trait.clone(), ty_e->node->m_yield_ty.clone() }));
+            assoc.insert(::std::make_pair("Return", ::HIR::TraitPath::AtyEqual { trait.clone(), ty_e->node->m_return.clone() }));
+            return callback( ImplRef(type.clone(), HIR::PathParams(), mv$(assoc)), ::HIR::Compare::Equal );
         }
     }
 
@@ -1735,6 +1764,10 @@ bool TraitResolution::has_associated_type(const ::HIR::TypeRef& input) const
         // Recurse?
         return false;
         }
+    TU_ARMA(Generator, e) {
+        // Recurse?
+        return false;
+        }
     }
     BUG(Span(), "Fell off the end of has_associated_type - input=" << input);
 }
@@ -1819,6 +1852,9 @@ void TraitResolution::expand_associated_types_inplace(const Span& sp, ::HIR::Typ
         expand_associated_types_inplace(sp, e.m_rettype, stack);
         }
     TU_ARMA(Closure, e) {
+        // Recurse?
+        }
+    TU_ARMA(Generator, e) {
         // Recurse?
         }
     }

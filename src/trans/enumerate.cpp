@@ -666,6 +666,9 @@ namespace
                 TU_ARMA(Closure, te) {
                     BUG(Span(), "Closure type hit in enumeration - " << ty);
                     }
+                TU_ARMA(Generator, te) {
+                    BUG(Span(), "Generator type hit in enumeration - " << ty);
+                    }
                 // Nothing to do
                 TU_ARMA(Diverge, te) {
                     }

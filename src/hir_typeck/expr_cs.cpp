@@ -383,6 +383,9 @@ namespace {
             TU_ARMA(Closure, e) {
                 BUG(sp, "Attempting to cast to a closure type - impossible");
                 }
+            TU_ARMA(Generator, e) {
+                BUG(sp, "Attempting to cast to a generator type - impossible");
+                }
             }
         }
         void visit(::HIR::ExprNode_Unsize& node) override {
@@ -1184,6 +1187,9 @@ namespace {
         void visit(::HIR::ExprNode_Closure& node) override {
             no_revisit(node);
         }
+        void visit(::HIR::ExprNode_Generator& node) override {
+            no_revisit(node);
+        }
     private:
         void no_revisit(::HIR::ExprNode& node) {
             BUG(node.span(), "Node revisit unexpected - " << typeid(node).name());
@@ -1288,6 +1294,13 @@ namespace {
             for(auto& arg : node.m_args)
                 this->check_type_resolved_top(node.span(), arg.second);
             this->check_type_resolved_top(node.span(), node.m_return);
+            ::HIR::ExprVisitorDef::visit(node);
+        }
+        void visit(::HIR::ExprNode_Generator& node) override {
+            for(auto& arg : node.m_args)
+                this->check_type_resolved_top(node.span(), arg.second);
+            this->check_type_resolved_top(node.span(), node.m_return);
+            this->check_type_resolved_top(node.span(), node.m_yield_ty);
             ::HIR::ExprVisitorDef::visit(node);
         }
 
@@ -1595,6 +1608,9 @@ namespace {
         }
 
         void visit(::HIR::ExprNode_Closure& node) override {
+            no_revisit(node);
+        }
+        void visit(::HIR::ExprNode_Generator& node) override {
             no_revisit(node);
         }
     private:
@@ -1912,6 +1928,10 @@ void Context::equate_types_inner(const Span& sp, const ::HIR::TypeRef& li, const
                 {
                     this->equate_types_inner(sp, l_e.m_arg_types[i], r_e.m_arg_types[i]);
                 }
+                }
+            TU_ARMA(Generator, l_e, r_e) {
+                if( l_e.node != r_e.node )
+                    ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
                 }
             }
         }

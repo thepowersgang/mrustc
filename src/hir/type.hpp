@@ -18,6 +18,7 @@
 #include "generic_ref.hpp"
 
 constexpr const char* CLOSURE_PATH_PREFIX = "closure#";
+constexpr const char* GENERATOR_PATH_PREFIX = "generator#";
 
 namespace HIR {
 
@@ -27,6 +28,7 @@ class Struct;
 class Union;
 class Enum;
 struct ExprNode_Closure;
+struct ExprNode_Generator;
 
 class TypeRef;
 
@@ -157,6 +159,12 @@ TAGGED_UNION(TypeData, Diverge,
                 && path.m_data.as_Generic().m_path.m_components.back().compare(0,strlen(CLOSURE_PATH_PREFIX), CLOSURE_PATH_PREFIX) == 0
                 ;
         }
+        bool is_generator() const {
+            return path.m_data.is_Generic()
+                && path.m_data.as_Generic().m_path.m_components.back().size() > 8
+                && path.m_data.as_Generic().m_path.m_components.back().compare(0,strlen(GENERATOR_PATH_PREFIX), GENERATOR_PATH_PREFIX) == 0
+                ;
+        }
         }),
     (Generic, GenericRef),
     (TraitObject, struct {  // TODO: Pointer wrap
@@ -187,11 +195,14 @@ TAGGED_UNION(TypeData, Diverge,
         ::HIR::BorrowType   type;
         TypeRef inner;
         }),
-    (Function, FunctionType),   // TODO: Pointer wrap
+    (Function, FunctionType),   // TODO: Pointer wrap, this is quite large
     (Closure, struct {
         const ::HIR::ExprNode_Closure*  node;
         TypeRef m_rettype;
         ::std::vector<TypeRef>  m_arg_types;
+        }),
+    (Generator, struct {
+        const ::HIR::ExprNode_Generator* node;
         })
     );
 
@@ -288,6 +299,10 @@ inline TypeRef TypeRef::new_path(::HIR::Path path, TypePathBinding binding) {
 inline TypeRef TypeRef::new_closure(::HIR::ExprNode_Closure* node_ptr, ::std::vector< ::HIR::TypeRef> args, ::HIR::TypeRef rv) {
     return TypeRef(TypeData::make_Closure({ node_ptr, mv$(rv), mv$(args) }));
 }
+inline TypeRef TypeRef::new_generator(::HIR::ExprNode_Generator* node_ptr) {
+    return TypeRef(TypeData::make_Generator({ node_ptr }));
+}
+
 inline const ::HIR::SimplePath* TypeRef::get_sort_path() const {
     // - Generic paths get sorted
     if( TU_TEST1(this->data(), Path, .path.m_data.is_Generic()) )

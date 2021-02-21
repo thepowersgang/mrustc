@@ -171,6 +171,9 @@ namespace {
         TU_ARMA(Closure, le, re) {
             return le.node == re.node;
             }
+        TU_ARMA(Generator, le, re) {
+            return le.node == re.node;
+            }
         }
         return false;
     }
@@ -282,6 +285,9 @@ namespace {
             }
         TU_ARMA(Closure, le) {
             BUG(sp, "Hit closure");
+            }
+        TU_ARMA(Generator, le) {
+            BUG(sp, "Hit generator");
             }
         TU_ARMA(Primitive, le) {
             if(const auto* re = right.data().opt_Primitive() )
@@ -649,6 +655,9 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
                 }
             TU_ARMA(Closure, ae, be) {
                 BUG(sp, "Hit closure");
+                }
+            TU_ARMA(Generator, ae, be) {
+                BUG(sp, "Hit generator");
                 }
             TU_ARMA(Primitive, ae, be) {
                 if( ae != be )

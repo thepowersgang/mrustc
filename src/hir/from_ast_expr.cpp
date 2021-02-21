@@ -563,7 +563,13 @@ struct LowerHIR_ExprNode_Visitor:
 
         if(has_yield)
         {
-            TODO(v.span(), "Convert closure to generator");
+            m_rv.reset( new ::HIR::ExprNode_Generator( v.span(),
+                mv$(args),
+                LowerHIR_Type(v.m_return),
+                mv$(inner),
+                v.m_is_move,
+                v.m_is_pinned
+                ) );
         }
         else
         {

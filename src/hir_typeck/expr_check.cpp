@@ -21,7 +21,14 @@ namespace {
         //const t_args&   m_args;
         const ::HIR::TypeRef&   real_ret_type;
         ::HIR::TypeRef ret_type;
-        ::std::vector< const ::HIR::TypeRef*>   closure_ret_types;
+        struct RetTarget {
+            const ::HIR::TypeRef*   ret_type;
+            const ::HIR::TypeRef*   yield_type;
+
+            RetTarget(const ::HIR::TypeRef& ret_type): ret_type(&ret_type), yield_type(nullptr) {}
+            RetTarget(const ::HIR::TypeRef& ret_type, const ::HIR::TypeRef& yield_type): ret_type(&ret_type), yield_type(&yield_type) {}
+        };
+        ::std::vector<RetTarget>   closure_ret_types;
         ::std::vector<const ::HIR::ExprNode_Loop*>  m_loops;
         //const ::HIR::ExprPtr* m_cur_expr;
 
@@ -93,14 +100,16 @@ namespace {
         {
             TRACE_FUNCTION_F(&node << " return ...");
             // Check against return type
-            const auto& ret_ty = ( this->closure_ret_types.size() > 0 ? *this->closure_ret_types.back() : this->ret_type );
+            const auto& ret_ty = ( this->closure_ret_types.size() > 0 ? *this->closure_ret_types.back().ret_type : this->ret_type );
             check_types_equal(ret_ty, node.m_value);
             node.m_value->visit(*this);
         }
         void visit(::HIR::ExprNode_Yield& node) override
         {
             TRACE_FUNCTION_F(&node << " yield ...");
-            TODO(node.span(), "yield");
+            ASSERT_BUG(node.span(), !this->closure_ret_types.empty(), "Yield outside a generator closure");
+            ASSERT_BUG(node.span(), this->closure_ret_types.back().yield_type, "Yield outside a generator closure");
+            check_types_equal(*this->closure_ret_types.back().yield_type, node.m_value);
             node.m_value->visit(*this);
         }
         void visit(::HIR::ExprNode_Loop& node) override
@@ -1068,7 +1077,19 @@ namespace {
             if( node.m_code )
             {
                 check_types_equal(node.m_code->span(), node.m_return, node.m_code->m_res_type);
-                this->closure_ret_types.push_back( &node.m_return );
+                this->closure_ret_types.push_back( RetTarget(node.m_return) );
+                node.m_code->visit( *this );
+                this->closure_ret_types.pop_back( );
+            }
+        }
+        void visit(::HIR::ExprNode_Generator& node) override
+        {
+            TRACE_FUNCTION_F(&node << " /*gen*/ |...| ...");
+
+            if( node.m_code )
+            {
+                check_types_equal(node.m_code->span(), node.m_return, node.m_code->m_res_type);
+                this->closure_ret_types.push_back( RetTarget(node.m_return, node.m_yield_ty) );
                 node.m_code->visit( *this );
                 this->closure_ret_types.pop_back( );
             }

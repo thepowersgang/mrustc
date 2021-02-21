@@ -190,6 +190,7 @@ public:
         case ::HIR::TypeData::TAG_Generic:
         case ::HIR::TypeData::TAG_ErasedType:
         case ::HIR::TypeData::TAG_Closure:
+        case ::HIR::TypeData::TAG_Generator:
             BUG(Span(), "Non-encodable type " << ty);
         TU_ARMA(Tuple, e) {
             m_os << "T" << e.size();

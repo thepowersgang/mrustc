@@ -115,10 +115,11 @@ namespace
             for(const auto& t : e.m_arg_types)
                 os << fmt(t) << ", ";
             os << ") -> " << fmt(e.m_rettype);
-            }
-        TU_ARMA(Closure, te) {
-            BUG(Span(), "" << x.e);
-            }
+            } break;
+        case ::HIR::TypeData::TAG_Closure:
+        case ::HIR::TypeData::TAG_Generator:
+            BUG(Span(), "Unexpected type in trans: " << x.e);
+            break;
         }
         return os;
     }

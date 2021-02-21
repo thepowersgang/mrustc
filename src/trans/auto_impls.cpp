@@ -679,6 +679,8 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
                     TODO(sp, "Drop glue for Slice? " << ty);
                 TU_ARMA(Closure, _te)
                     TODO(sp, "Drop glue for Closure? " << ty);  // Should this be dead already?
+                TU_ARMA(Generator, _te)
+                    TODO(sp, "Drop glue for Generator? " << ty);  // Should this be dead already?
                 TU_ARMA(Diverge, te) {
                     // Exists for reasons...
                     builder.terminate_block( MIR::Terminator::make_Diverge({}) );

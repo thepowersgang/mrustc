@@ -786,6 +786,9 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve,
     TU_ARMA(Closure, te) {
         BUG(sp, "Encountered closure type at trans stage - " << ty);
         }
+    TU_ARMA(Generator, te) {
+        BUG(sp, "Encountered generator type at trans stage - " << ty);
+        }
     }
     return false;
 }
