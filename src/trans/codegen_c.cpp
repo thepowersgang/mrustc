@@ -2115,7 +2115,10 @@ namespace {
             emit_static_ty(type, p, /*is_proto=*/true);
             if( linkage_name != "" && m_compiler == Compiler::Gcc)
             {
-                m_of << " asm(\"" << linkage_name << "\")";
+                if (Target_GetCurSpec().m_os_name == "macos") // Not macOS only, but all Apple platforms.
+                    m_of << " asm(\"_" << linkage_name << "\")";
+                else
+                    m_of << " asm(\"" << linkage_name << "\")";
             }
             m_of << ";";
             m_of << "\t// static " << p << " : " << type;
