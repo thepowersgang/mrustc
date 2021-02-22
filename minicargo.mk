@@ -53,12 +53,10 @@ endif
 
 LLVM_CONFIG := $(RUSTCSRC)build/bin/llvm-config
 ifeq ($(shell uname -s || echo not),Darwin)
-# /usr/bin/uname specifically used, because when
-# GNU tools are used, uname is compiled for a single
-# arch, which makes the arm64 uname called when
+# /usr/bin/uname because uname might call coreutils
+# which can make the arm64 uname called when
 # running under the Rosetta execution environment.
 ifeq ($(shell /usr/bin/uname -m || echo not),arm64)
-# Not ready yet for AArch64 support yet on Darwin.
   RUSTC_TARGET ?= aarch64-apple-darwin
 else
   RUSTC_TARGET ?= x86_64-apple-darwin
