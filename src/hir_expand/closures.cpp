@@ -584,7 +584,7 @@ namespace {
         /// Collates variable usage (for capture usage) and which variables need to be saved across yield
         struct GeneratorScope
         {
-            static const unsigned STACK_MARKER_LOOP = ~0u;
+            static const unsigned STACK_MARKER_LOOP;
 
             ::HIR::ExprNode_Generator&  node;
 
@@ -1276,9 +1276,9 @@ namespace {
                 public ::HIR::ExprVisitorDef
             {
                 const Monomorph& m_monomorph;
-                const std::map<unsigned, VarUsage>&   m_variable_rewrites;
                 const ::HIR::TypeRef&   m_self_arg_type;
-                
+                const std::map<unsigned, VarUsage>&   m_variable_rewrites;
+
                 ::HIR::ExprNodeP    m_replacement;
             public:
                 ExprVisitor_GeneratorRewrite(const Monomorph& monomorph, const ::HIR::TypeRef& self_arg_type, const std::map<unsigned, VarUsage>& rewrites)
@@ -1292,7 +1292,7 @@ namespace {
                 {
                     ty = m_monomorph.monomorph_type(Span(), ty, /*allow_infer=*/true);
                 }
-                
+
                 /// Support replacing nodes
                 void visit_node_ptr(::HIR::ExprNodeP& node_ptr) override
                 {
@@ -1766,6 +1766,7 @@ namespace {
             }
         }
     };
+    const unsigned ExprVisitor_Extract::GeneratorScope::STACK_MARKER_LOOP = ~0u;
 
     /// <summary>
     /// Top-level visitor
