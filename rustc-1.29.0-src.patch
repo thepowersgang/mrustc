@@ -229,4 +229,43 @@
      #[cfg_attr(target_os = "netbsd", link_name = "__lstat50")]
      #[cfg_attr(target_os = "freebsd", link_name = "lstat@FBSD_1.0")]
      pub fn lstat(path: *const c_char, buf: *mut stat) -> ::c_int;
+# Backport of https://github.com/servo/core-foundation-rs/commit/aa6d1cd4c15561b48c24322527e3d9e60f603db4
+--- src/vendor/core-foundation-sys/src/attributed_string.rs
++++ src/vendor/core-foundation-sys/src/attributed_string.rs
+@@ -52,5 +52,4 @@ extern {
+         value: CFTypeRef,
+     );
+ 
+-    pub fn CFMutableAttributedStringGetTypeID() -> CFTypeID;
+ }
+diff --git a/core-foundation/src/attributed_string.rs b/core-foundation/src/attributed_string.rs
+index e0fa576..c99775d 100644
+--- src/vendor/core-foundation/src/attributed_string.rs
++++ src/vendor/core-foundation/src/attributed_string.rs
+@@ -41,7 +41,7 @@ impl CFAttributedString {
+ declare_TCFType!{
+     CFMutableAttributedString, CFMutableAttributedStringRef
+ }
+-impl_TCFType!(CFMutableAttributedString, CFMutableAttributedStringRef, CFMutableAttributedStringGetTypeID);
++impl_TCFType!(CFMutableAttributedString, CFMutableAttributedStringRef, CFAttributedStringGetTypeID);
+ 
+ impl CFMutableAttributedString {
+     #[inline]
+@@ -83,3 +83,16 @@ impl Default for CFMutableAttributedString {
+         Self::new()
+     }
+ }
++
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn attributed_string_type_id_comparison() {
++        // CFMutableAttributedString TypeID must be equal to CFAttributedString TypeID.
++        // Compilation must not fail.
++        assert_eq!(<CFAttributedString as TCFType>::type_id(), <CFMutableAttributedString as TCFType>::type_id());
++    }
++}
 
