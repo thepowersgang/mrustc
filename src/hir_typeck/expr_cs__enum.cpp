@@ -595,7 +595,7 @@ namespace typecheck
             this->push_inner_coerce( true );
             node.m_value->visit( *this );
             this->pop_inner_coerce();
-            this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_diverge());
+            this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
         }
 
         void visit(::HIR::ExprNode_Loop& node) override
@@ -1850,6 +1850,10 @@ namespace typecheck
             this->closure_ret_types.push_back( RetTarget(node.m_return, node.m_yield_ty) );
             node.m_code->visit( *this );
             this->closure_ret_types.pop_back( );
+        }
+        void visit(::HIR::ExprNode_GeneratorWrapper& node) override
+        {
+            BUG(node.span(), "ExprNode_GeneratorWrapper unexpected at this time");
         }
 
     private:

@@ -1190,6 +1190,9 @@ namespace {
         void visit(::HIR::ExprNode_Generator& node) override {
             no_revisit(node);
         }
+        void visit(::HIR::ExprNode_GeneratorWrapper& node) override {
+            no_revisit(node);
+        }
     private:
         void no_revisit(::HIR::ExprNode& node) {
             BUG(node.span(), "Node revisit unexpected - " << typeid(node).name());
@@ -1302,6 +1305,9 @@ namespace {
             this->check_type_resolved_top(node.span(), node.m_return);
             this->check_type_resolved_top(node.span(), node.m_yield_ty);
             ::HIR::ExprVisitorDef::visit(node);
+        }
+        void visit(::HIR::ExprNode_GeneratorWrapper& node) override {
+            BUG(node.span(), "");
         }
 
         void visit_callcache(const Span&sp, ::HIR::ExprCallCache& cache)
@@ -1611,6 +1617,9 @@ namespace {
             no_revisit(node);
         }
         void visit(::HIR::ExprNode_Generator& node) override {
+            no_revisit(node);
+        }
+        void visit(::HIR::ExprNode_GeneratorWrapper& node) override {
             no_revisit(node);
         }
     private:

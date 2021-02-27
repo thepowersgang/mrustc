@@ -141,6 +141,24 @@ namespace MIR {
         LValue::CRef(x).fmt(os);
         return os;
     }
+    ::std::ostream& operator<<(::std::ostream& os, const LValue::Wrapper& w)
+    {
+        TU_MATCHA( (w), (e),
+        (Field,
+            os << "." << e;
+            ),
+        (Deref,
+            os << "*";
+            ),
+        (Index,
+            os << "[_" << e << "]";
+            ),
+        (Downcast,
+            os << "#" << e;
+            )
+        )
+        return os;
+    }
 
     Ordering LValue::Storage::ord(const LValue::Storage& x) const
     {

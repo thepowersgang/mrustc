@@ -614,6 +614,9 @@ namespace
                 TU_MATCH_HDRA( (ty.data()), {)
                 default:
                     break;
+                TU_ARMA(Infer, te) {
+                    BUG(Span(), "`_` type hit in enumeration");
+                    }
                 TU_ARMA(Path, te) {
                     TU_MATCHA( (te.binding), (tpb),
                     (Unbound,
@@ -656,6 +659,7 @@ namespace
                 TU_MATCH_HDRA( (ty.data()), {)
                 // Impossible
                 TU_ARMA(Infer, te) {
+                    BUG(Span(), "`_` type hit in enumeration");
                     }
                 TU_ARMA(Generic, te) {
                     BUG(Span(), "Generic type hit in enumeration - " << ty);

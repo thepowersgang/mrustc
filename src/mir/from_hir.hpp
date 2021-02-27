@@ -181,7 +181,8 @@ class MirBuilder
     ::MIR::LValue   m_if_cond_lval;
 public:
     MirBuilder(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ret_ty, const ::HIR::Function::args_t& args, ::MIR::Function& output);
-    ~MirBuilder();
+    
+    void final_cleanup();
 
     const ::HIR::SimplePath* lang_Box() const { return m_lang_Box; }
     const ::HIR::Crate& crate() const { return m_resolve.m_crate; }
@@ -328,6 +329,18 @@ public:
 
     // Obtain the base fat poiner for a dst reference. Errors if it wasn't via a fat pointer
     ::MIR::LValue get_ptr_to_dst(const Span& sp, const ::MIR::LValue& lv) const;
+
+    /// Get the set of currently valid (fully,optional,partial) variables
+    class SavedActiveLocal {
+        friend class MirBuilder;
+        VarState    state;
+        SavedActiveLocal(VarState vs): state(mv$(vs)) {}
+    public:
+    };
+    std::map<unsigned, SavedActiveLocal> get_active_locals() const;
+
+    // Calls `drop_value_from_state` on the value
+    void drop_actve_local(const Span& sp, ::MIR::LValue lv, const SavedActiveLocal& loc);
 };
 
 class MirConverter:

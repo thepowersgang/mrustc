@@ -965,6 +965,7 @@ namespace {
         void visit(::HIR::ExprNode_Tuple& node) override
         {
             TRACE_FUNCTION_F(&node << " (...,)");
+            ASSERT_BUG(node.span(), node.m_res_type.data().is_Tuple(), "Tuple literal didn't return tuple");
             const auto& tys = node.m_res_type.data().as_Tuple();
 
             ASSERT_BUG(node.span(), tys.size() == node.m_vals.size(), "Bad element count in tuple literal - " << tys.size() << " != " << node.m_vals.size());
@@ -1088,6 +1089,22 @@ namespace {
             }
         }
         void visit(::HIR::ExprNode_Generator& node) override
+        {
+            TRACE_FUNCTION_F(&node << " /*gen*/ |...| ...");
+
+            if( node.m_code )
+            {
+                auto loops = ::std::move(this->m_loops);
+
+                check_types_equal(node.m_code->span(), node.m_return, node.m_code->m_res_type);
+                this->closure_ret_types.push_back( RetTarget(node.m_return, node.m_yield_ty) );
+                node.m_code->visit( *this );
+                this->closure_ret_types.pop_back( );
+
+                this->m_loops = ::std::move(loops);
+            }
+        }
+        void visit(::HIR::ExprNode_GeneratorWrapper& node) override
         {
             TRACE_FUNCTION_F(&node << " /*gen*/ |...| ...");
 

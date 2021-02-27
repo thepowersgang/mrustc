@@ -761,19 +761,25 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
                             has_drop = true;
                         }
 
-                        // NOTE: Lazy option of monomorphising and handling the two classes
-                        const auto* repr = Target_GetTypeRepr(sp, state.resolve, ty);
-                        ASSERT_BUG(sp, repr, "No repr for struct " << ty);
+                        if( ty.data().is_Path() && ty.data().as_Path().is_generator() ) {
+                            ASSERT_BUG(sp, has_drop, "");
+                            // Generators use a custom Drop impl that handles dropping values
+                        }
+                        else {
+                            // NOTE: Lazy option of monomorphising and handling the two classes
+                            const auto* repr = Target_GetTypeRepr(sp, state.resolve, ty);
+                            ASSERT_BUG(sp, repr, "No repr for struct " << ty);
 
-                        auto self = ::MIR::LValue::new_Deref(builder.self.clone());
-                        auto fld_lv = ::MIR::LValue::new_Field(mv$(self), 0);
-                        for(size_t i = 0; i < repr->fields.size(); i++)
-                        {
-                            if( state.resolve.type_needs_drop_glue(sp, repr->fields[i].ty) )
+                            auto self = ::MIR::LValue::new_Deref(builder.self.clone());
+                            auto fld_lv = ::MIR::LValue::new_Field(mv$(self), 0);
+                            for(size_t i = 0; i < repr->fields.size(); i++)
                             {
-                                builder.push_stmt_drop(fld_lv.clone());
+                                if( state.resolve.type_needs_drop_glue(sp, repr->fields[i].ty) )
+                                {
+                                    builder.push_stmt_drop(fld_lv.clone());
+                                }
+                                fld_lv.inc_Field();
                             }
-                            fld_lv.inc_Field();
                         }
                         }
                     TU_ARMA(Union, pbe) {

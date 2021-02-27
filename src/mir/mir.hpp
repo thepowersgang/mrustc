@@ -400,6 +400,7 @@ struct LValue
     Ordering ord(const LValue::MRef& x) const;
 };
 extern ::std::ostream& operator<<(::std::ostream& os, const LValue& x);
+extern ::std::ostream& operator<<(::std::ostream& os, const LValue::Wrapper& x);
 static inline bool operator<(const LValue& a, const LValue::CRef& b) {
     return a.ord(b) == OrdLess;
 }

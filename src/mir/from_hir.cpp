@@ -20,6 +20,7 @@
 #include <hir/expr_state.hpp>
 #include <trans/target.hpp> // Target_GetSizeAndAlignOf - for `box`
 #include <cctype>   // isdigit
+#include "helpers.hpp"
 
 namespace {
 
@@ -50,6 +51,9 @@ namespace {
 
         const ::std::vector< ::HIR::TypeRef>&  m_variable_types;
 
+        /// Generators do some different codegen quirks
+        bool    m_is_generator;
+
         struct LoopDesc {
             ScopeHandle scope;
             RcString   label;
@@ -65,11 +69,137 @@ namespace {
         const ScopeHandle*  m_stmt_scope = nullptr;
         bool m_in_borrow = false;
 
+        struct GeneratorState {
+            struct State {
+                /// Entrypoint for the state
+                MIR::BasicBlockId   entrypoint;
+                /// List of saved variables when this state yields
+                std::map<unsigned, MirBuilder::SavedActiveLocal>  saved;
+
+                State(MIR::BasicBlockId entry): entrypoint(entry) {}
+            };
+            // Basic block to be terminated with the state switch
+            MIR::BasicBlockId   bb_open;
+            /// Yield points/states
+            std::vector<State>  states;
+
+            ::HIR::SimplePath   state_idx_enm_path;
+        } m_generator_state;
+
     public:
-        ExprVisitor_Conv(MirBuilder& builder, const ::std::vector< ::HIR::TypeRef>& var_types):
+        ExprVisitor_Conv(MirBuilder& builder, const ::std::vector< ::HIR::TypeRef>& var_types, const ::HIR::ExprNode_GeneratorWrapper* is_generator):
             m_builder(builder),
-            m_variable_types(var_types)
+            m_variable_types(var_types),
+            m_is_generator(is_generator != nullptr)
         {
+            if(m_is_generator)
+            {
+                m_generator_state.state_idx_enm_path = is_generator->m_state_idx_enum;
+                m_generator_state.bb_open = builder.pause_cur_block();
+                m_generator_state.states.push_back(GeneratorState::State(builder.new_bb_unlinked()));
+                builder.set_cur_block(m_generator_state.states.back().entrypoint);
+            }
+        }
+
+        // Get a LValue pointing at the state index
+        ::MIR::LValue generator_state_lv() const
+        {
+            // (*self.ptr(?0)).state(0).value(?#1).idx(0)
+            auto rv = ::MIR::LValue::new_Argument(0);
+            rv = ::MIR::LValue::new_Field(mv$(rv), 0);   // .ptr (From Pin)
+            rv = ::MIR::LValue::new_Deref(mv$(rv));     // .*
+            rv = ::MIR::LValue::new_Field(mv$(rv), 0);   // .state
+            rv = ::MIR::LValue::new_Downcast(mv$(rv), 1);   // .value (From MaybeUninit)
+            rv = ::MIR::LValue::new_Field(mv$(rv), 0);   // .value (From ManuallyDrop)
+            rv = ::MIR::LValue::new_Field(mv$(rv), 0);   // .idx
+            return rv;
+        }
+        std::set<unsigned> generator_finalise(const Span& sp, ::HIR::Enum& state_enm)
+        {
+            std::set<unsigned>   used_vars;
+            std::vector<MIR::BasicBlockId>  arm_targets; arm_targets.reserve(m_generator_state.states.size()+1);
+            ::std::vector<HIR::Enum::ValueVariant> enum_variants; enum_variants.reserve(m_generator_state.states.size()+1);
+            for(const auto& s : m_generator_state.states)
+            {
+                arm_targets.push_back(m_builder.new_bb_unlinked());
+
+                m_builder.set_cur_block(arm_targets.back());
+                m_builder.push_stmt_assign(sp, generator_state_lv(), ::MIR::RValue::make_EnumVariant({
+                    m_generator_state.state_idx_enm_path, static_cast<unsigned>(m_generator_state.states.size()), {}
+                    }));
+                m_builder.end_block( ::MIR::Terminator::make_Goto(s.entrypoint) );
+
+                enum_variants.push_back(HIR::Enum::ValueVariant {
+                    RcString(), ::HIR::ExprPtr(), arm_targets.size()-1
+                    });
+                for(const auto& e : s.saved)
+                {
+                    used_vars.insert(e.first);
+                }
+            }
+            // Final arm is the end/panic state - it's a bug to reach this
+            arm_targets.push_back(m_builder.new_bb_unlinked());
+            m_builder.set_cur_block(arm_targets.back());
+            m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
+
+            enum_variants.push_back(HIR::Enum::ValueVariant {
+                RcString::new_interned("END"), ::HIR::ExprPtr(), arm_targets.size()-1
+                });
+            state_enm.m_data = ::HIR::Enum::Class::make_Value({ mv$(enum_variants), true });
+
+            m_builder.set_cur_block(m_generator_state.bb_open);
+
+            // switch _n { ... }
+            m_builder.end_block( ::MIR::Terminator::make_Switch({ generator_state_lv(), mv$(arm_targets) }) );
+
+            return used_vars;
+        }
+        void generator_make_drop(const Span& sp, MirBuilder& out_builder, size_t n_captures, const ::std::map<unsigned, std::vector<MIR::LValue::Wrapper>>& mappings) const
+        {
+            ::MIR::LValue   self = ::MIR::LValue::new_Deref( ::MIR::LValue::new_Argument(0) );
+            auto get_lv = [&self,&mappings](unsigned idx) {
+                ::MIR::LValue rv = self.clone();
+                rv.m_wrappers.insert(rv.m_wrappers.end(), mappings.at(idx).begin(), mappings.at(idx).end());
+                return rv;
+                };
+
+            assert(m_generator_state.states.size() > 0);
+            std::vector<::MIR::BasicBlockId>    arms; arms.reserve(m_generator_state.states.size()+1);
+
+            auto entry_block = out_builder.pause_cur_block();
+            // if state is 0, then drop captures (this is the pre-run state)
+            arms.push_back(out_builder.new_bb_unlinked());
+            out_builder.set_cur_block(arms.back());
+            for(size_t i = 0; i < n_captures; i ++)
+            {
+                out_builder.push_stmt_drop(sp, get_lv(1+i));
+            }
+            out_builder.end_block(::MIR::Terminator::make_Return({}));
+
+            // Else, drop yield saves (Note: final state has no saves, so acts as the "completed" state)
+            for(size_t i = 0; i < m_generator_state.states.size(); i ++)
+            {
+                // 
+                arms.push_back(out_builder.new_bb_unlinked());
+                out_builder.set_cur_block(arms.back());
+                for(const auto& v : m_generator_state.states[i].saved)
+                {
+                    if( v.first == 0 ) {
+                        continue ;
+                    }
+                    out_builder.drop_actve_local(sp, get_lv(v.first), v.second);
+                }
+                out_builder.end_block(::MIR::Terminator::make_Return({}));
+            }
+            // Generate the dispatch switch
+            out_builder.set_cur_block(entry_block);
+            out_builder.push_stmt_assign( sp, ::MIR::LValue::new_Return(), ::MIR::RValue::make_Tuple({}) );
+            auto stmt_idx_lv = mv$(self);
+            stmt_idx_lv = ::MIR::LValue::new_Field(mv$(stmt_idx_lv), 0);   // .state
+            stmt_idx_lv = ::MIR::LValue::new_Downcast(mv$(stmt_idx_lv), 1);   // .value (From MaybeUninit)
+            stmt_idx_lv = ::MIR::LValue::new_Field(mv$(stmt_idx_lv), 0);   // .value (From ManuallyDrop)
+            stmt_idx_lv = ::MIR::LValue::new_Field(mv$(stmt_idx_lv), 0);   // .idx
+            out_builder.end_block( ::MIR::Terminator::make_Switch({ mv$(stmt_idx_lv), mv$(arms) }) );
         }
 
         void destructure_from(const Span& sp, const ::HIR::Pattern& pat, ::MIR::LValue lval, bool allow_refutable=false) override
@@ -590,13 +720,71 @@ namespace {
             TRACE_FUNCTION_F("_Return");
             this->visit_node_ptr(node.m_value);
 
-            m_builder.push_stmt_assign( node.span(), ::MIR::LValue::new_Return(),  m_builder.get_result(node.span()) );
+            if( m_is_generator )
+            {
+                ::HIR::GenericPath enm_path;
+                m_builder.with_val_type(node.span(), ::MIR::LValue::new_Return(), [&](const ::HIR::TypeRef& ty) {
+                    const auto& te = ty.data().as_Path();
+                    enm_path = te.path.m_data.as_Generic().clone();
+                    ASSERT_BUG(node.span(), te.binding.as_Enum()->find_variant("Complete") == 1, "");
+                    });
+
+                ::std::vector< ::MIR::Param>   values;
+                values.push_back( m_builder.get_result_in_param(node.span(), node.m_value->m_res_type) );
+                auto res = ::MIR::RValue::make_EnumVariant({
+                    mv$(enm_path),
+                    1,  // Complete is the second variant
+                    mv$(values)
+                    });
+                m_builder.push_stmt_assign( node.span(), ::MIR::LValue::new_Return(), mv$(res) );
+            }
+            else
+            {
+                m_builder.push_stmt_assign( node.span(), ::MIR::LValue::new_Return(),  m_builder.get_result(node.span()) );
+            }
             m_builder.terminate_scope_early( node.span(), m_builder.fcn_scope() );
             m_builder.end_block( ::MIR::Terminator::make_Return({}) );
         }
         void visit(::HIR::ExprNode_Yield& node) override
         {
-            BUG(node.span(), "Unexpected ExprNode_Yield (should have been re-written)");
+            TRACE_FUNCTION_F("_Yield");
+            if( m_is_generator )
+            {
+                ::HIR::GenericPath enm_path;
+                m_builder.with_val_type(node.span(), ::MIR::LValue::new_Return(), [&](const ::HIR::TypeRef& ty) {
+                    const auto& te = ty.data().as_Path();
+                    enm_path = te.path.m_data.as_Generic().clone();
+                    ASSERT_BUG(node.span(), te.binding.as_Enum()->find_variant("Yielded") == 0, "");
+                    });
+
+                this->visit_node_ptr(node.m_value);
+                // Emit return, wrapped in GeneratorState::Yielded
+                ::std::vector< ::MIR::Param>   values;
+                values.push_back( m_builder.get_result_in_param(node.span(), node.m_value->m_res_type) );
+                auto res = ::MIR::RValue::make_EnumVariant({
+                    mv$(enm_path),
+                    0,  // Yielded is the first variant
+                    mv$(values)
+                    });
+                m_builder.push_stmt_assign( node.span(), ::MIR::LValue::new_Return(), mv$(res) );
+                m_builder.push_stmt_assign( node.span(), generator_state_lv(), ::MIR::RValue::make_EnumVariant({
+                    m_generator_state.state_idx_enm_path.clone(),
+                    static_cast<unsigned>(m_generator_state.states.size()),
+                    {}
+                    }) );
+                // NOTE: No scope terminate
+                m_builder.end_block( ::MIR::Terminator::make_Return({}) );
+
+                m_generator_state.states.back().saved = m_builder.get_active_locals();
+                m_generator_state.states.push_back( m_builder.new_bb_unlinked() );
+                m_builder.set_cur_block( m_generator_state.states.back().entrypoint );
+
+                m_builder.set_result( node.span(), ::MIR::RValue::make_Tuple({}) );
+            }
+            else
+            {
+                BUG(node.span(), "Unexpected ExprNode_Yield (should have been re-written)");
+            }
         }
         void visit(::HIR::ExprNode_Let& node) override
         {
@@ -1604,7 +1792,7 @@ namespace {
                     switch( node.m_value->m_usage )
                     {
                     case ::HIR::ValueUsage::Unknown:
-                        BUG(sp, "Unknown usage type of deref value");
+                        BUG(sp, "Unknown usage type of deref value - " << ty_val);
                         break;
                     case ::HIR::ValueUsage::Borrow:
                         bt = ::HIR::BorrowType::Shared;
@@ -2579,34 +2767,42 @@ namespace {
             auto _ = save_and_edit(m_borrow_raise_target, nullptr);
 
             ::std::vector< ::MIR::Param>   vals;
-            vals.reserve( node.m_captures.size() + 1 );
-            for(auto& arg : node.m_captures)
-            {
-                this->visit_node_ptr(arg);
-                vals.push_back( m_builder.get_result_in_lvalue(arg->span(), arg->m_res_type) );
-            }
+            vals.reserve( 1 + node.m_captures.size() );
 
-            // Zero the state
+            // Zero the state index
             {
-                const ::HIR::TypeRef& state_type = node.m_state_type;
+                const ::HIR::TypeRef& state_type = node.m_state_data_type;
+                const auto& lang_MaybeUninit = m_builder.resolve().m_crate.get_lang_item_path(node.span(), "maybe_uninit");
+                const auto& unm_MaybeUninit = m_builder.resolve().m_crate.get_union_by_path(node.span(), lang_MaybeUninit);
+                auto slot_type = ::HIR::TypeRef::new_path( ::HIR::GenericPath(lang_MaybeUninit, ::HIR::PathParams(state_type.clone())), &unm_MaybeUninit );
 
-                auto res_slot = m_builder.new_temporary( state_type.clone() );
+                auto res_slot = m_builder.new_temporary( slot_type.clone() );
                 auto size__panic = m_builder.new_bb_unlinked();
                 auto size__ok = m_builder.new_bb_unlinked();
                 m_builder.end_block(::MIR::Terminator::make_Call({
                     size__ok, size__panic,
-                    res_slot.clone(), ::MIR::CallTarget::make_Intrinsic({ "zeroed", ::HIR::PathParams(state_type.clone()) }),
+                    res_slot.clone(), ::MIR::CallTarget::make_Intrinsic({ "init", ::HIR::PathParams(mv$(slot_type)) }), // I.e. `mem::zeroed`
                     {}
                     }));
                 m_builder.set_cur_block(size__panic); m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );   // HACK
                 m_builder.set_cur_block(size__ok);
                 vals.push_back( std::move(res_slot) );
             }
+            // Populate the rest
+            for(auto& arg : node.m_captures)
+            {
+                this->visit_node_ptr(arg);
+                vals.push_back( m_builder.get_result_in_lvalue(arg->span(), arg->m_res_type) );
+            }
 
             m_builder.set_result( node.span(), ::MIR::RValue::make_Struct({
                 node.m_obj_path.clone(),
                 mv$(vals)
                 }) );
+        }
+        void visit(::HIR::ExprNode_GeneratorWrapper& node) override
+        {
+            BUG(node.span(), "Unexpected");
         }
     };
 }
@@ -2621,35 +2817,23 @@ namespace {
     for(const auto& t : ptr.m_bindings)
         fcn.locals.push_back( t.clone() );
 
-    {
-        struct V: public ::HIR::ExprVisitorDef {
-            bool has_yield = false;
-            void visit(::HIR::ExprNode_Yield& node) override {
-                has_yield = true;
-            }
-        } ev;
-        ::HIR::ExprNode& root_node = const_cast<::HIR::ExprNode&>(*ptr);
-        if(auto* node = dynamic_cast<::HIR::ExprNode_Generator*>(&root_node) ) 
-        {
-            if( node->m_obj_ptr && node->m_code )
-            {
-                TODO(root_node.span(), "Convert generators into state machines in LowerMIR");
-            }
-        }
-    }
-
     // Scope ensures that builder cleanup happens before `fcn` is moved
     {
+        const Span& sp = ptr->span();
+
+        ::HIR::ExprNode& root_node = const_cast<::HIR::ExprNode&>(*ptr);
         MirBuilder  builder { ptr->span(), resolve, ret_ty, args, fcn };
-        ExprVisitor_Conv    ev { builder, ptr.m_bindings };
+        ExprVisitor_Conv    ev { builder, ptr.m_bindings, dynamic_cast<::HIR::ExprNode_GeneratorWrapper*>(&root_node) };
 
         // 1. Apply destructuring to arguments
         unsigned int i = 0;
         for( const auto& arg : args )
         {
             const auto& pat = arg.first;
+            // What's the idea of this check? How could it _not_ be true in most cases (and thus not prepare the input)
             if( pat.m_binding.is_valid() && pat.m_binding.m_type == ::HIR::PatternBinding::Type::Move )
             {
+                // Simple `var: Type` arguments are handled by `MirBuilder.m_var_arg_mappings`
             }
             else
             {
@@ -2660,8 +2844,166 @@ namespace {
         }
 
         // 2. Destructure code
-        ::HIR::ExprNode& root_node = const_cast<::HIR::ExprNode&>(*ptr);
-        root_node.visit( ev );
+        if(auto* gen_node = dynamic_cast<::HIR::ExprNode_GeneratorWrapper*>(&root_node) ) 
+        {
+            // Mark all capture locals as valid (for later rewrite into variable acesses)
+            ::std::map<unsigned, std::vector<MIR::LValue::Wrapper> >   mappings;
+            for(size_t i = 0; i < gen_node->m_capture_usages.size(); i ++)
+            {
+                unsigned idx = args.size() + i;
+                builder.mark_value_assigned(root_node.span(), ::MIR::LValue::new_Local(idx));
+                // self.IDX
+                mappings.insert(std::make_pair( idx, ::make_vec1(::MIR::LValue::Wrapper::new_Field(1+i)) ));
+                switch(gen_node->m_capture_usages[i])
+                {
+                case ::HIR::ValueUsage::Borrow:
+                case ::HIR::ValueUsage::Mutate:
+                    mappings[idx].push_back(::MIR::LValue::Wrapper::new_Deref());
+                    break;
+                case ::HIR::ValueUsage::Move:
+                case ::HIR::ValueUsage::Unknown:
+                    break;
+                }
+            }
+
+            // ------------
+
+            gen_node->m_code->visit(ev);
+            if( builder.block_active() && builder.has_result() )
+            {
+                ::std::vector< ::MIR::Param>   values;
+                values.push_back( builder.get_result_in_param(sp, gen_node->m_code->m_res_type) );
+
+                ::HIR::GenericPath enm_path;
+                builder.with_val_type(sp, ::MIR::LValue::new_Return(), [&](const ::HIR::TypeRef& ty) {
+                    const auto& te = ty.data().as_Path();
+                    enm_path = te.path.m_data.as_Generic().clone();
+                    ASSERT_BUG(sp, te.binding.as_Enum()->find_variant("Complete") == 1, "");
+                    });
+
+                builder.set_result(sp, ::MIR::RValue::make_EnumVariant({
+                    mv$(enm_path),
+                    1,  // Complete is the second variant
+                    mv$(values)
+                    }) );
+            }
+            builder.final_cleanup();
+
+            // ------------
+
+            // 1. Generate the state machine switch (and enumerate saved variables)
+            std::set<unsigned>  saved = ev.generator_finalise(gen_node->span(), const_cast<HIR::Enum&>(resolve.m_crate.get_enum_by_path(sp, gen_node->m_state_idx_enum)));
+            // 2. Populate state structure
+            auto& state_ty = const_cast<HIR::Struct&>(*gen_node->m_state_data_type.data().as_Path().binding.as_Struct());
+            unsigned value_var_idx; {
+                const auto& unm_MaybeUninit = resolve.m_crate.get_union_by_path(sp, resolve.m_crate.get_lang_item_path(gen_node->span(), "maybe_uninit"));
+                value_var_idx = std::find_if(unm_MaybeUninit.m_variants.begin(), unm_MaybeUninit.m_variants.end(), [&](const auto& e){ return e.first == "value";}) - unm_MaybeUninit.m_variants.begin();
+            }
+            ASSERT_BUG(sp, value_var_idx == 1, "Assumption on MaybeUninit.value's variant index failed");
+            // - Any variables that are saved twice need to have a static address, others can share?
+            // - Lazy option (doesn't require making sub-types): Toss everything together
+            auto& fields = state_ty.m_data.as_Tuple();
+            for(auto idx : saved)
+            {
+                if( idx < 1+gen_node->m_capture_usages.size()) {
+                }
+                else {
+                    auto field_idx = fields.size();
+                    ASSERT_BUG(sp, idx < fcn.locals.size(), idx << " >= " << fcn.locals.size());
+                    fields.push_back(::HIR::VisEnt<HIR::TypeRef> { HIR::Publicity::new_none(), fcn.locals.at(idx).clone() });
+                    // self.state(0).value(?#1).value(?0).IDX
+                    mappings.insert(std::make_pair( idx, std::vector<MIR::LValue::Wrapper> {
+                        ::MIR::LValue::Wrapper::new_Field(0),
+                        ::MIR::LValue::Wrapper::new_Downcast(value_var_idx),    // MaybeUninit.value
+                        ::MIR::LValue::Wrapper::new_Field(0),   // ManuallyDrop.value
+                        ::MIR::LValue::Wrapper::new_Field(field_idx)
+                        } ));
+                }
+            }
+            // 3. Rewrite usage of saved values
+            // - Note: Need to allocate new temporaries if indexing by an updated lvalue
+            class Rewriter: public ::MIR::visit::VisitorMut
+            {
+                ::std::map<unsigned, std::vector<MIR::LValue::Wrapper> >& m_mappings;
+                ::std::vector< ::MIR::Statement>    m_new_statements;
+            public:
+                Rewriter(::std::map<unsigned, std::vector<MIR::LValue::Wrapper> >& mappings)
+                    :m_mappings(mappings)
+                {
+                }
+
+                bool visit_lvalue(::MIR::LValue& lv, ::MIR::visit::ValUsage u) override
+                {
+                    if( lv.m_root.is_Local() ) {
+                        auto it = m_mappings.find(lv.m_root.as_Local());
+                        if( it != m_mappings.end() ) {
+                            lv.m_root = ::MIR::LValue::Storage::new_Argument(0);
+                            auto dit = lv.m_wrappers.begin();
+                            dit = lv.m_wrappers.insert(dit, ::MIR::LValue::Wrapper::new_Field(0)) + 1;  // Pin.ptr
+                            dit = lv.m_wrappers.insert(dit, ::MIR::LValue::Wrapper::new_Deref()) + 1;   // *
+                            dit = lv.m_wrappers.insert(dit, it->second.begin(), it->second.end()) + 1;
+                        }
+                    }
+                    for(auto& w : lv.m_wrappers)
+                    {
+                        if( w.is_Index() )
+                        {
+                            auto it = m_mappings.find(w.as_Index());
+                            if( it != m_mappings.end() ) {
+                                // Allocate a new temporary, assign it before this statement, use that
+                                TODO(Span(), "");
+                            }
+                        }
+                    }
+
+                    return true;
+                }
+
+                void push_statements(::MIR::BasicBlock& bb, size_t& ofs)
+                {
+                    for(auto& e : m_new_statements)
+                    {
+                        bb.statements.insert( bb.statements.begin() + ofs, std::move(e) );
+                        ofs += 1;
+                    }
+                    m_new_statements.clear();
+                }
+
+                void rewrite_fcn(::MIR::Function& f)
+                {
+                    for(auto& bb : f.blocks)
+                    {
+                        for(size_t stmt_idx = 0; stmt_idx < bb.statements.size(); stmt_idx ++)
+                        {
+                            this->visit_stmt(bb.statements[stmt_idx]);
+                            this->push_statements(bb, stmt_idx);
+                        }
+                        this->visit_terminator(bb.terminator);
+                        size_t stmt_idx = bb.statements.size();
+                        this->push_statements(bb, stmt_idx);
+                    }
+                }
+            };
+            Rewriter(mappings).rewrite_fcn(fcn);
+
+            // 4. Generate drop glue for the generator type and save for later
+            // - Make a builder
+            // - Insert the switch for each arm
+            // - Trigger drops
+            auto drop_impl_body = ::MIR::FunctionPointer(new ::MIR::Function());
+            {
+                TRACE_FUNCTION_F("Generating drop impl");
+                MirBuilder  drop_builder(sp, resolve, HIR::TypeRef::new_unit(), gen_node->m_drop_fcn_ptr->m_args, *drop_impl_body);
+                ev.generator_make_drop(sp, drop_builder, gen_node->m_capture_usages.size(), mappings);
+                drop_builder.final_cleanup();
+            }
+            gen_node->m_drop_fcn_ptr->m_code.m_mir = std::move(drop_impl_body);
+        }
+        else
+        {
+            root_node.visit( ev );
+            builder.final_cleanup();
+        }
     }
 
     // NOTE: Can't clean up yet, as consteval isn't done

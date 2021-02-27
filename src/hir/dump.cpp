@@ -756,6 +756,15 @@ namespace {
                 m_os << ")";
             }
         }
+        void visit(::HIR::ExprNode_GeneratorWrapper& node) override
+        {
+            m_os << "/*gen body*/";
+            m_os << "|";
+            //for(const auto& arg : node.m_args)
+            //    m_os << arg.first << ": " << arg.second << ", ";
+            m_os << "| -> " << node.m_return << " ";
+            this->visit_node_ptr( node.m_code );
+        }
 
     private:
         RepeatLitStr indent() const {

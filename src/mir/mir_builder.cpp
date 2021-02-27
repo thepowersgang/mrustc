@@ -54,7 +54,7 @@ MirBuilder::MirBuilder(const Span& sp, const StaticTraitResolve& resolve, const 
 
     m_variable_aliases.resize( output.locals.size() );
 }
-MirBuilder::~MirBuilder()
+void MirBuilder::final_cleanup()
 {
     const auto& sp = m_root_span;
     if( block_active() )
@@ -199,6 +199,7 @@ void MirBuilder::define_variable(unsigned int idx)
     }
     auto rv = mv$(m_result);
     m_result_valid = false;
+    DEBUG(rv);
     return rv;
 }
 
@@ -258,6 +259,7 @@ void MirBuilder::set_result(const Span& sp, ::MIR::RValue val)
     }
     m_result = mv$(val);
     m_result_valid = true;
+    DEBUG(m_result);
 }
 
 void MirBuilder::push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RValue val, bool drop_destination/*=true*/)
@@ -1640,7 +1642,7 @@ void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::
     const ::HIR::TypeRef*   ty_p = nullptr;
     TU_MATCHA( (val.m_root), (e),
     (Return,
-        TODO(sp, "Return");
+        ty_p = &m_ret_ty;
         ),
     (Argument,
         ty_p = &m_args.at(e).second;
@@ -1677,6 +1679,7 @@ void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::
         }
         const auto& ty = *ty_p;
         ty_p = nullptr;
+        //DEBUG(ty << " " << w);
         auto maybe_monomorph = [&](const ::HIR::GenericParams& params_def, const ::HIR::Path& p, const ::HIR::TypeRef& t)->const ::HIR::TypeRef& {
             if( monomorphise_type_needed(t) ) {
                 tmp = MonomorphStatePtr(nullptr, &p.m_data.as_Generic().m_params, nullptr).monomorph_type(sp, t);
@@ -2252,6 +2255,26 @@ void MirBuilder::moved_lvalue(const Span& sp, const ::MIR::LValue& lv)
     ASSERT_BUG(sp, count < lv.m_wrappers.size() && lv.m_wrappers[ lv.m_wrappers.size()-1 - count ].is_Deref(), "Access of an unsized field without a dereference - " << lv);
 
     return lv.clone_unwrapped(count+1);
+}
+
+std::map<unsigned, MirBuilder::SavedActiveLocal> MirBuilder::get_active_locals() const
+{
+    std::map<unsigned, MirBuilder::SavedActiveLocal>    rv;
+    for(size_t i = 0; i < m_slot_states.size(); i ++)
+    {
+        TU_MATCH_HDRA( (m_slot_states[i]), { )
+        default:
+            rv.insert( std::make_pair( static_cast<unsigned>(i), SavedActiveLocal(m_slot_states[i].clone()) ));
+            break;
+        TU_ARMA(Invalid, e) {}
+        TU_ARMA(MovedOut, e) {}
+        }
+    }
+    return rv;
+}
+void MirBuilder::drop_actve_local(const Span& sp, ::MIR::LValue lv, const SavedActiveLocal& loc)
+{
+    this->drop_value_from_state(sp, loc.state, mv$(lv));
 }
 
 // --------------------------------------------------------------------

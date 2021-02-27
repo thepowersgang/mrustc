@@ -210,6 +210,7 @@ DEF_VISIT(ExprNode_Generator, node,
     //    visit_type(arg.second);
     //}
     visit_type(node.m_return);
+    visit_type(node.m_yield_ty);
     if(node.m_code)
     {
         visit_node_ptr(node.m_code);
@@ -218,6 +219,18 @@ DEF_VISIT(ExprNode_Generator, node,
     {
         for(auto& cap : node.m_captures)
             visit_node_ptr(cap);
+    }
+)
+DEF_VISIT(ExprNode_GeneratorWrapper, node,
+    //for(auto& arg : node.m_args) {
+    //    visit_pattern(node.span(), arg.first);
+    //    visit_type(arg.second);
+    //}
+    visit_type(node.m_return);
+    visit_type(node.m_yield_ty);
+    if(node.m_code)
+    {
+        visit_node_ptr(node.m_code);
     }
 )
 
