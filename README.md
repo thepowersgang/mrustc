@@ -99,7 +99,7 @@ Current Features
 ================
 - Full compilation chain including HIR and MIR stages (outputting to C)
 - MIR optimisations (to take some load off the C compiler)
-- Optionally-enablable exhaustive MIR validation (set the `MRUSTC_FULL_VALIDATE` environment variable)
+- Optionally-enable exhaustive MIR validation (set the `MRUSTC_FULL_VALIDATE` environment variable)
 - Functional cargo clone (minicargo)
   - Includes build script support
 - Procedural macros (custom derive)
