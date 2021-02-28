@@ -1498,7 +1498,7 @@ namespace {
         void emit_struct_inner(const ::HIR::TypeRef& ty, const TypeRepr* repr, bool is_packed)
         {
             // Fill `fields` with ascending indexes (for sorting)
-            // AND: Determine if the type has an alignment hack (empty array)
+            // AND: Determine if the type has a a zero-sized item that has an alignment equal to the structure's alignment
             bool has_manual_align = false;
             ::std::vector<unsigned> fields;
             for(const auto& ent : repr->fields)
@@ -1506,7 +1506,10 @@ namespace {
                 fields.push_back(fields.size());
 
                 const auto& ty = ent.ty;
-                if( TU_TEST1(ty.data(), Array, .size.as_Known() == 0) ) {
+
+                size_t sz = -1, al = 0;
+                Target_GetSizeAndAlignOf(sp, m_resolve, ty, sz, al);
+                if( sz == 0 && al == repr->align && al > 0 ) {
                     has_manual_align = true;
                 }
             }
