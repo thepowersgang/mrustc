@@ -3209,17 +3209,23 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
             {
                 struct H {
                     static int64_t truncate_s(::HIR::CoreType ct, int64_t v) {
+                        // Truncate unsigned, then sign extend
                         return v;
                     }
                     static uint64_t truncate_u(::HIR::CoreType ct, uint64_t v) {
                         switch(ct)
                         {
-                        case ::HIR::CoreType::U8:   return v & 0xFF;
-                        case ::HIR::CoreType::U16:  return v & 0xFFFF;
-                        case ::HIR::CoreType::U32:  return v & 0xFFFFFFFF;
-                        case ::HIR::CoreType::U64:  return v;
-                        case ::HIR::CoreType::U128: return v;
-                        case ::HIR::CoreType::Usize:    return v;
+                        case ::HIR::CoreType::I8:   case ::HIR::CoreType::U8:   return v & 0xFF;
+                        case ::HIR::CoreType::I16:  case ::HIR::CoreType::U16:  return v & 0xFFFF;
+                        case ::HIR::CoreType::I32:  case ::HIR::CoreType::U32:  return v & 0xFFFFFFFF;
+                        case ::HIR::CoreType::I64:  case ::HIR::CoreType::U64:  return v;
+                        case ::HIR::CoreType::I128: case ::HIR::CoreType::U128: return v;
+                        // usize/size - need to handle <64 pointer bits
+                        case ::HIR::CoreType::Isize:
+                        case ::HIR::CoreType::Usize:
+                            if(Target_GetPointerBits() < 64)
+                                return v & (static_cast<uint64_t>(-1) >> (64 - Target_GetPointerBits()));
+                            return v;
                         case ::HIR::CoreType::Char:
                             //MIR_BUG(state, "Invalid use of operator on char");
                             break;
@@ -3675,18 +3681,18 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                         switch( se.op )
                         {
                         case ::MIR::eUniOp::INV:
-                            TU_MATCHA( (val), (ve),
-                            (Uint,
+                            TU_MATCH_HDRA( (val), {)
+                            TU_ARMA(Uint, ve) {
                                 auto val = ve.v;
                                 replace = true;
                                 switch(ve.t)
                                 {
-                                case ::HIR::CoreType::U8:   val = (~val) & 0xFF;  break;
-                                case ::HIR::CoreType::U16:  val = (~val) & 0xFFFF;  break;
-                                case ::HIR::CoreType::U32:  val = (~val) & 0xFFFFFFFF;  break;
+                                case ::HIR::CoreType::U8:
+                                case ::HIR::CoreType::U16:
+                                case ::HIR::CoreType::U32:
                                 case ::HIR::CoreType::Usize:
                                 case ::HIR::CoreType::U64:
-                                    val = ~val;
+                                    val = H::truncate_u(ve.t, ~val);
                                     break;
                                 case ::HIR::CoreType::U128:
                                     replace = false;
@@ -3700,18 +3706,18 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                     break;
                                 }
                                 new_value = ::MIR::Constant::make_Uint({ val, ve.t });
-                                ),
-                            (Int,
+                                }
+                            TU_ARMA(Int, ve) {
                                 // ! is valid on Int, it inverts bits the same way as an uint
                                 auto val = ve.v;
                                 switch(ve.t)
                                 {
-                                case ::HIR::CoreType::U8:   val = (~val) & 0xFF;  break;
-                                case ::HIR::CoreType::U16:  val = (~val) & 0xFFFF;  break;
-                                case ::HIR::CoreType::U32:  val = (~val) & 0xFFFFFFFF;  break;
-                                case ::HIR::CoreType::Usize:
-                                case ::HIR::CoreType::U64:
-                                    val = ~val;
+                                case ::HIR::CoreType::I8:
+                                case ::HIR::CoreType::I16:
+                                case ::HIR::CoreType::I32:
+                                case ::HIR::CoreType::Isize:
+                                case ::HIR::CoreType::I64:
+                                    val = H::truncate_s(ve.t, ~val);
                                     break;
                                 case ::HIR::CoreType::U128:
                                     replace = false;
@@ -3725,24 +3731,24 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                     break;
                                 }
                                 new_value = ::MIR::Constant::make_Int({ val, ve.t });
-                                ),
-                            (Float,
+                                }
+                            TU_ARMA(Float, ve) {
                                 // Not valid?
-                                ),
-                            (Bool,
+                                }
+                            TU_ARMA(Bool, ve) {
                                 new_value = ::MIR::Constant::make_Bool({ !ve.v });
                                 replace = true;
-                                ),
-                            (Bytes, ),
-                            (StaticString, ),
-                            (Const,
+                                }
+                            TU_ARMA(Bytes, ve) {}
+                            TU_ARMA(StaticString, ve) {}
+                            TU_ARMA(Const, ve) {
                                 // TODO:
-                                ),
-                            (Generic,
-                                ),
-                            (ItemAddr,
-                                )
-                            )
+                                }
+                            TU_ARMA(Generic, ve) {
+                                }
+                            TU_ARMA(ItemAddr, ve) {
+                                }
+                            }
                             break;
                         case ::MIR::eUniOp::NEG:
                             TU_MATCHA( (val), (ve),

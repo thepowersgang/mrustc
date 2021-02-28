@@ -640,7 +640,7 @@ namespace HIR {
                 Signed,
                 Unsigned,
             } ty;
-            int bits;
+            unsigned bits;
 
             static TypeInfo for_primitive(::HIR::CoreType te) {
                 switch(te)
@@ -656,8 +656,8 @@ namespace HIR {
                 case ::HIR::CoreType::I128: return TypeInfo { Signed  , 128 };
                 case ::HIR::CoreType::U128: return TypeInfo { Unsigned, 128 };
 
-                case ::HIR::CoreType::Isize: return TypeInfo { Signed  , 64 };
-                case ::HIR::CoreType::Usize: return TypeInfo { Unsigned, 64 };
+                case ::HIR::CoreType::Isize: return TypeInfo { Signed  , Target_GetPointerBits() };
+                case ::HIR::CoreType::Usize: return TypeInfo { Unsigned, Target_GetPointerBits() };
                 case ::HIR::CoreType::Char: return TypeInfo { Unsigned, 21 };
                 case ::HIR::CoreType::Bool: return TypeInfo { Unsigned, 1 };
 
@@ -1210,7 +1210,7 @@ namespace HIR {
                                         }
                                         return rv;
                                         };
-                                    auto ptr_size = Target_GetCurSpec().m_arch.m_pointer_bits / 8;
+                                    auto ptr_size = Target_GetPointerBits() / 8;
                                     auto get_size = [&]() { return get_val(ptr_size); };
                                     auto get_ptr = [&](uint64_t* out_v)->const Reloc* {
                                         const Reloc* rv = nullptr;
@@ -1612,7 +1612,7 @@ namespace {
 
                 case ::HIR::CoreType::Usize:
                 case ::HIR::CoreType::Isize:
-                    if( Target_GetCurSpec().m_arch.m_pointer_bits == 32 )
+                    if( Target_GetPointerBits() == 32 )
                         lit.as_Integer() &= (1ull<<32)-1;
                     break;
 
