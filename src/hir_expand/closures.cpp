@@ -1295,7 +1295,6 @@ namespace {
                     auto cap_ty = monomorph_cb.monomorph_type(sp, m_variable_types.at(cap.first));
                     struct_ents.push_back(HIR::VisEnt<HIR::TypeRef> { HIR::Publicity::new_none(), cap_ty.clone() });
                     capture_nodes.push_back(HIR::ExprNodeP(new ::HIR::ExprNode_Variable(sp, "", cap.first)));
-                    capture_nodes.back()->m_res_type = mv$(cap_ty);
                     switch(cap.second.usage)
                     {
                     case ::HIR::ValueUsage::Unknown:
@@ -1304,14 +1303,19 @@ namespace {
                         // No wrapping needed (drop handled by custom drop glue)
                         } break;
                     case ::HIR::ValueUsage::Borrow:
+                        capture_nodes.back()->m_res_type = cap_ty.clone();
+                        cap_ty = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, mv$(cap_ty));
                         struct_ents.back().ent = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, mv$(struct_ents.back().ent));
                         capture_nodes.back() = HIR::ExprNodeP(new ::HIR::ExprNode_Borrow(sp, ::HIR::BorrowType::Shared, mv$(capture_nodes.back())));
                         break;
                     case ::HIR::ValueUsage::Mutate:
+                        capture_nodes.back()->m_res_type = cap_ty.clone();
+                        cap_ty = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, mv$(cap_ty));
                         struct_ents.back().ent = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, mv$(struct_ents.back().ent));
                         capture_nodes.back() = HIR::ExprNodeP(new ::HIR::ExprNode_Borrow(sp, ::HIR::BorrowType::Unique, mv$(capture_nodes.back())));
                         break;
                     }
+                    capture_nodes.back()->m_res_type = mv$(cap_ty);
                 }
             }
             for(const auto& cap : ent.used_variables)

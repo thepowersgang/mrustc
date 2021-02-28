@@ -2851,6 +2851,7 @@ namespace {
             for(size_t i = 0; i < gen_node->m_capture_usages.size(); i ++)
             {
                 unsigned idx = args.size() + i;
+                builder.define_variable(idx);
                 builder.mark_value_assigned(root_node.span(), ::MIR::LValue::new_Local(idx));
                 // self.IDX
                 mappings.insert(std::make_pair( idx, ::make_vec1(::MIR::LValue::Wrapper::new_Field(1+i)) ));
@@ -2920,6 +2921,9 @@ namespace {
                         } ));
                 }
             }
+
+            DEBUG("mappings={" << mappings << "}");
+
             // 3. Rewrite usage of saved values
             // - Note: Need to allocate new temporaries if indexing by an updated lvalue
             class Rewriter: public ::MIR::visit::VisitorMut

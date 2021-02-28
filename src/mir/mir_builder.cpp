@@ -56,6 +56,7 @@ MirBuilder::MirBuilder(const Span& sp, const StaticTraitResolve& resolve, const 
 }
 void MirBuilder::final_cleanup()
 {
+    TRACE_FUNCTION_F("");
     const auto& sp = m_root_span;
     if( block_active() )
     {
@@ -2212,7 +2213,7 @@ void MirBuilder::drop_scope_values(const ScopeDef& sd)
         for(auto idx : ::reverse(e.slots))
         {
             const auto& vs = get_slot_state(sd.span, idx, SlotType::Local);
-            DEBUG("slot" << idx << " - " << vs);
+            DEBUG("_" << idx << " - " << vs);
             drop_value_from_state( sd.span, vs, ::MIR::LValue::new_Local(idx) );
         }
         ),

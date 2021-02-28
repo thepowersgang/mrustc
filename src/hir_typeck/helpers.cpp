@@ -796,7 +796,8 @@ bool HMTypeInferrence::type_contains_ivars(const ::HIR::TypeRef& ty) const {
         return type_contains_ivars(e.m_rettype);
         ),
     (Generator,
-        TODO(Span(), "Generator");
+        // Generator types don't contain their own ivars.
+        return false;
         ),
     (Function,
         for(const auto& arg : e.m_arg_types)
@@ -1932,6 +1933,24 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
             }
         }
         // TODO: Fall through? Maybe there's a generic impl that could match.
+        }
+    TU_ARMA(Generator, te) {
+        const auto lang_Generator = this->m_crate.get_lang_item_path(sp, "generator");
+        if( pe.trait.m_path == lang_Generator )
+        {
+            if( pe.item == "Return" ) {
+                input = te.node->m_return.clone();
+                return ;
+            }
+            else if( pe.item == "Yield" ) {
+                input = te.node->m_yield_ty.clone();
+                return ;
+            }
+            else {
+                ERROR(sp, E0000, "No associated type " << pe.item << " for trait " << pe.trait);
+            }
+        }
+        // Fall through for generic impls
         }
     TU_ARMA(Function, te) {
         if( te.m_abi == ABI_RUST && !te.is_unsafe )
