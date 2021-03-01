@@ -1,0 +1,3 @@
+# rustc-1.19.0-src/src/rustc/libc_shim/build.rs
+cargo:rustc-cfg=stdbuild
+cargo:rerun-if-changed=build.rs

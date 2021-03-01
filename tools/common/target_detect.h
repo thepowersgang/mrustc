@@ -74,7 +74,11 @@
 # define DEFAULT_TARGET_NAME "x86_64-unknown-dragonfly"
 // - Apple devices
 #elif defined(__APPLE__)
-# define DEFAULT_TARGET_NAME "x86_64-apple-macosx"
+# if defined(__aarch64__)
+#  define DEFAULT_TARGET_NAME "aarch64-apple-macosx"
+# else
+#  define DEFAULT_TARGET_NAME "x86_64-apple-macosx"
+#endif
 // - Haiku
 #elif defined(__HAIKU__)
 # if defined(__x86_64__)

@@ -52,7 +52,18 @@ else
 endif
 
 LLVM_CONFIG := $(RUSTCSRC)build/bin/llvm-config
-RUSTC_TARGET ?= x86_64-unknown-linux-gnu
+ifeq ($(shell uname -s || echo not),Darwin)
+# /usr/bin/uname because uname might call coreutils
+# which can make the arm64 uname called when
+# running under the Rosetta execution environment.
+ifeq ($(shell /usr/bin/uname -m || echo not),arm64)
+  RUSTC_TARGET ?= aarch64-apple-darwin
+else
+  RUSTC_TARGET ?= x86_64-apple-darwin
+endif
+else
+  RUSTC_TARGET ?= x86_64-unknown-linux-gnu
+endif
 LLVM_TARGETS ?= X86;ARM;AArch64#;Mips;PowerPC;SystemZ;JSBackend;MSP430;Sparc;NVPTX
 OVERRIDE_DIR := script-overrides/$(RUSTC_CHANNEL)-$(RUSTC_VERSION)$(OVERRIDE_SUFFIX)/
 

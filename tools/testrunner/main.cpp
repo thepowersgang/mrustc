@@ -27,6 +27,7 @@
 # include <spawn.h>
 # include <fcntl.h> // O_*
 # include <sys/wait.h>  // waitpid
+# include <signal.h>
 # define MRUSTC_PATH    "./bin/mrustc"
 #endif
 #include <algorithm>

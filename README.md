@@ -14,9 +14,10 @@ This project is an attempt at creating a simple rust compiler in C++, with the u
 Progress
 --------
 - Supported Targets:
-  - x86-64 linux
+  - x86_64 linux
+  - x86_64 macOS
   - (incomplete) x86 windows
-  - (incomplete) x86-64 windows
+  - (incomplete) x86_64 windows
 - Builds working copies of `rustc` and `cargo` from a release source tarball
   - Supports both rustc 1.19.0 and 1.29.0
 - `rustc` bootstrap tested and validated (1.19.0 validated once, 1.29.0 is repeatable)
@@ -36,8 +37,8 @@ Dependencies
 - `curl` (for downloading the rust source, linux only)
 - `cmake` (at least 3.4.3, required for building llvm in rustc)
 
-Linux
------
+Linux and macOS
+---------------
 - `make RUSTCSRC` - Downloads the rustc source tarball (1.29.0 by default)
 - `make -f minicargo.mk` - Builds `mrustc` and `minicargo`, then builds `libstd`, `libtest`, finally `rustc` and `cargo`
 - `make -C run_rustc` - Build `libstd` and a "hello, world" using the above-built rustc
@@ -64,7 +65,7 @@ Building non-rustc code
 =======================
 
 To build your own code with mrustc, first you need to build at least libcore (and probably the full standard library).
-This can be done on linux by running `make -f minicargo.mk LIBS`, or on windows with `build_std.cmd`.
+This can be done on Linux or macOS by running `make -f minicargo.mk LIBS`, or on windows with `build_std.cmd`.
 
 Next, run
 - `minicargo -L <path_to_libstd> <crate_path>` to build a cargo project.
