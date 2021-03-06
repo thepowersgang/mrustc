@@ -35,9 +35,9 @@ OUTDIR := output$(OUTDIR_SUF)/
 
 MRUSTC ?= bin/mrustc$(EXESUF)
 MINICARGO := bin/minicargo$(EXESUF)
-RUSTC_OUT_BIN := rustc
-ifeq ($(RUSTC_VERSION),1.29.0)
-  RUSTC_OUT_BIN := rustc_binary
+RUSTC_OUT_BIN := rustc_binary
+ifeq ($(RUSTC_VERSION),1.19.0)
+  RUSTC_OUT_BIN := rustc
 endif
 ifeq ($(RUSTC_CHANNEL),nightly)
   RUSTCSRC := rustc-nightly-src/
@@ -136,10 +136,15 @@ LLVM_CMAKE_OPTS += CMAKE_BUILD_TYPE=RelWithDebInfo
 
 $(LLVM_CONFIG): $(RUSTCSRC)build/Makefile
 	$Vcd $(RUSTCSRC)build && $(MAKE)
+ifeq ($(RUSTC_VERSION),1.39.0)
+$(RUSTCSRC)build/Makefile: $(RUSTCSRC)src/llvm-project/llvm/CMakeLists.txt
+	@mkdir -p $(RUSTCSRC)build
+	$Vcd $(RUSTCSRC)build && cmake $(addprefix -D , $(LLVM_CMAKE_OPTS)) ../src/llvm-project/llvm
+else
 $(RUSTCSRC)build/Makefile: $(RUSTCSRC)src/llvm/CMakeLists.txt
 	@mkdir -p $(RUSTCSRC)build
 	$Vcd $(RUSTCSRC)build && cmake $(addprefix -D , $(LLVM_CMAKE_OPTS)) ../src/llvm
-
+endif
 
 #
 # Developement-only targets
@@ -147,7 +152,7 @@ $(RUSTCSRC)build/Makefile: $(RUSTCSRC)src/llvm/CMakeLists.txt
 $(OUTDIR)libcore.rlib: $(MRUSTC) $(MINICARGO)
 	$(MINICARGO) $(RUSTCSRC)src/libcore --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
 $(OUTDIR)liballoc.rlib: $(MRUSTC) $(MINICARGO)
-	$(MINICARGO) $(RUSTCSRC)src/liballoc --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
+	$(MINICARGO) $(RUSTCSRC)src/liballoc --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
 $(OUTDIR)rustc-build/librustdoc.rlib: $(MRUSTC) LIBS
 	$(MINICARGO) $(RUSTCSRC)src/librustdoc --vendor-dir $(VENDOR_DIR) --output-dir $(dir $@) -L $(OUTDIR) $(MINICARGO_FLAGS)
 #$(OUTDIR)cargo-build/libserde-1_0_6.rlib: $(MRUSTC) LIBS
@@ -179,6 +184,7 @@ rust_tests-libs: $(OUTDIR)stdtest/collectionstests_out.txt
 .PRECIOUS: $(OUTDIR)stdtest/rustc_data_structures-test
 
 RUNTIME_ARGS_$(OUTDIR)stdtest/alloc-test := --test-threads 1
+RUNTIME_ARGS_$(OUTDIR)stdtest/alloc-test += --skip ::collections::linked_list::tests::test_fuzz
 RUNTIME_ARGS_$(OUTdIR)stdtest/std-test := --test-threads 1
 # VVV Requires panic destructors (unwinding panics)
 RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::io::stdio::tests::panic_doesnt_poison
@@ -210,6 +216,8 @@ RUNTIME_ARGS_$(OUTDIR)stdtest/collectionstests := --test-threads 1
 # VVV Requires unwinding panics
 RUNTIME_ARGS_$(OUTDIR)stdtest/collectionstests += --skip ::slice::test_box_slice_clone_panics
 RUNTIME_ARGS_$(OUTDIR)stdtest/collectionstests += --skip ::slice::panic_safe
+RUNTIME_ARGS_$(OUTDIR)stdtest/collectionstests += --skip ::vec::drain_filter_consumed_panic
+RUNTIME_ARGS_$(OUTDIR)stdtest/collectionstests += --skip ::vec::drain_filter_unconsumed_panic
 # No support for custom alignment
 RUNTIME_ARGS_$(OUTDIR)stdtest/collectionstests += --skip ::vec::overaligned_allocations
 

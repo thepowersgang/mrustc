@@ -40,6 +40,7 @@ CXXFLAGS := -g -Wall
 CXXFLAGS += -std=c++14
 #CXXFLAGS += -Wextra
 CXXFLAGS += -O2
+CXXFLAGS += $(CXXFLAGS_EXTRA)
 
 CPPFLAGS := -I src/include/ -I src/
 CPPFLAGS += -I tools/common/
