@@ -234,6 +234,7 @@ namespace {
                 << "#include <stdint.h>\n"
                 << "#include <stdbool.h>\n"
                 << "#include <stdarg.h>\n"
+                << "#include <assert.h>\n"
                 ;
             switch(m_compiler)
             {
@@ -2303,8 +2304,44 @@ namespace {
             {
                 m_of << "static ";
                 emit_function_header(p, item, params);
-                // TODO: Hand off to compiler-specific intrinsics
-                m_of << " { abort(); }\n";
+                m_of
+                    << "{\n"
+                    ;
+                m_of << "\t"; emit_ctype(item.m_return); m_of << " rv;\n";
+                // pshufb instruction w/ 128 bit operands
+                if( item.m_linkage.name == "llvm.x86.ssse3.pshuf.b.128" ) {
+                    m_of
+                        << "\tconst uint8_t* src = (const uint8_t*)&arg0;\n"
+                        << "\tconst uint8_t* mask = (const uint8_t*)&arg1;\n"
+                        << "\tuint8_t* dst = (uint8_t*)&rv;\n"
+                        << "\tfor(int i = 0; i < " << 128/8 << "; i ++) dst[i] = (mask[i] < 0x80 ? src[i] : 0);\n"
+                        << "\treturn rv;\n"
+                        ;
+                }
+                else if( item.m_linkage.name == "llvm.x86.sse2.psrli.d") {
+                    m_of
+                        << "\tconst uint32_t* src = (const uint32_t*)&arg0;\n"
+                        << "\tuint32_t* dst = (uint32_t*)&rv;\n"
+                        << "\tfor(int i = 0; i < " << 128/32 << "; i ++) dst[i] = src[i] >> arg1;\n"
+                        << "\treturn rv;\n"
+                        ;
+                }
+                else if( item.m_linkage.name == "llvm.x86.sse2.pslli.d") {
+                    m_of
+                        << "\tconst uint32_t* src = (const uint32_t*)&arg0;\n"
+                        << "\tuint32_t* dst = (uint32_t*)&rv;\n"
+                        << "\tfor(int i = 0; i < " << 128/32 << "; i ++) dst[i] = src[i] << arg1;\n"
+                        << "\treturn rv;\n"
+                        ;
+                }
+                else if( item.m_linkage.name == "llvm.x86.sse2.storeu.dq" ) {
+                    m_of << "\tmemcpy(arg0, &arg1, sizeof(arg1));\n";
+                }
+                else {
+                    // TODO: Hand off to compiler-specific intrinsics
+                    m_of << "\tassert(!\"" << item.m_linkage.name << "\"); abort();\n";
+                }
+                m_of << "}\n";
                 m_mir_res = nullptr;
                 return ;
             }
@@ -2384,7 +2421,7 @@ namespace {
                     m_of << "__attribute__((weak)) ";
                     break;
                 case Compiler::Msvc:
-		    // handled above
+                    // handled above
                     break;
                 }
                 break;
@@ -4371,19 +4408,24 @@ namespace {
         {
             if( visit_ty_with(item.m_return, [&](const auto& x){ return x.data().is_ErasedType() || x.data().is_Generic(); }) )
             {
-                tmp = clone_ty_with(Span(), item.m_return, [&](const auto& tpl, auto& out){
-                    if( const auto* e = tpl.data().opt_ErasedType() ) {
-                        out = params.monomorph(m_resolve, item.m_code.m_erased_types.at(e->m_index));
-                        return true;
-                    }
-                    else if( tpl.data().is_Generic() ) {
-                        out = params.monomorph_type(sp, tpl).clone();
-                        return true;
-                    }
-                    else {
-                        return false;
-                    }
-                    });
+                // If there's an erased type, make a copy with the erased type expanded
+                if( visit_ty_with(item.m_return, [&](const auto& x) { return x.data().is_ErasedType(); }) )
+                {
+                    tmp = clone_ty_with(sp, item.m_return, [&](const auto& x, auto& out) {
+                        if( const auto* te = x.data().opt_ErasedType() ) {
+                            out = item.m_code.m_erased_types.at(te->m_index).clone();
+                            return true;
+                        }
+                        else {
+                            return false;
+                        }
+                        });
+                    tmp = params.monomorph_type(Span(), tmp).clone();
+                }
+                else
+                {
+                    tmp = params.monomorph_type(Span(), item.m_return).clone();
+                }
                 m_resolve.expand_associated_types(Span(), tmp);
                 return tmp;
             }
@@ -5803,8 +5845,98 @@ namespace {
             }
             // -- Platform Intrinsics --
             else if( name.compare(0, 9, "platform:") == 0 ) {
-                // TODO: Platform intrinsics
-                m_of << "abort() /* TODO: Platform intrinsic \"" << name << "\" */";
+                // dst: T, index: usize, val: U
+                // Insert a value at position
+                if( name == "platform:simd_insert" ) {
+                    size_t size_slot = 0, size_val = 0;
+                    Target_GetSizeOf(sp, m_resolve, params.m_types.at(0), size_slot);
+                    Target_GetSizeOf(sp, m_resolve, params.m_types.at(1), size_val);
+                    MIR_ASSERT(mir_res, size_slot >= size_val, size_slot << " < " << size_val);
+                    MIR_ASSERT(mir_res, size_slot / size_val * size_val == size_slot, size_slot << " not a multiple of " << size_val);
+
+                    // Emulate!
+                    emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0)); m_of << "; ";
+                    m_of << "(( "; emit_ctype(params.m_types.at(1)); m_of << "*)&"; emit_lvalue(e.ret_val); m_of << ")["; emit_param(e.args.at(1)); m_of << "] = "; emit_param(e.args.at(2));
+                }
+                else if( name == "platform:simd_extract" ) {
+                    size_t size_slot = 0, size_val = 0;
+                    Target_GetSizeOf(sp, m_resolve, params.m_types.at(0), size_slot);
+                    Target_GetSizeOf(sp, m_resolve, params.m_types.at(1), size_val);
+                    MIR_ASSERT(mir_res, size_slot >= size_val, size_slot << " < " << size_val);
+                    MIR_ASSERT(mir_res, size_slot / size_val * size_val == size_slot, size_slot << " not a multiple of " << size_val);
+
+                    // Emulate!
+                    emit_lvalue(e.ret_val); m_of << " = (( "; emit_ctype(params.m_types.at(1)); m_of << "*)&"; emit_param(e.args.at(0)); m_of << ")["; emit_param(e.args.at(1)); m_of << "]";
+                }
+                else if(
+                        name == "platform:simd_shuffle128" ||
+                        name == "platform:simd_shuffle64" ||
+                        name == "platform:simd_shuffle32" ||
+                        name == "platform:simd_shuffle16" ||
+                        name == "platform:simd_shuffle8" ||
+                        name == "platform:simd_shuffle4" ||
+                        name == "platform:simd_shuffle2"
+                        ) {
+                    // Shuffle in 8 entries
+                    size_t size_slot = 0;
+                    Target_GetSizeOf(sp, m_resolve, params.m_types.at(1), size_slot);
+                    size_t div =
+                        name == "platform:simd_shuffle128" ? 128 :
+                        name == "platform:simd_shuffle64" ? 64 :
+                        name == "platform:simd_shuffle32" ? 32 :
+                        name == "platform:simd_shuffle16" ? 16 :
+                        name == "platform:simd_shuffle8" ? 8 :
+                        name == "platform:simd_shuffle4" ? 4 :
+                        name == "platform:simd_shuffle2" ? 2 :
+                        throw ""
+                        ;
+                    size_t size_val = size_slot / div;
+                    MIR_ASSERT(mir_res, size_val > 0, size_slot << " / " << div << " == 0?");
+                    MIR_ASSERT(mir_res, size_slot >= size_val, size_slot << " < " << size_val);
+                    MIR_ASSERT(mir_res, size_slot / size_val * size_val == size_slot, size_slot << " not a multiple of " << size_val);
+                    m_of << "for(int i = 0; i < " << div << "; i++) { int j = "; emit_param(e.args.at(2)); m_of << ".DATA[i];";
+                    m_of << "((uint" << (size_val*8) << "_t*)&"; emit_lvalue(e.ret_val); m_of << ")[i]";
+                    m_of << " = ((uint" << (size_val*8) << "_t*)(j < " << div << " ? &"; emit_param(e.args.at(1)); m_of << " : &"; emit_param(e.args.at(1)); m_of << "))[j % " << div << "];";
+                    m_of << "}";
+                }
+                else if( false
+                    || name == "platform:simd_add"
+                    || name == "platform:simd_sub"
+                    || name == "platform:simd_mul"
+                    || name == "platform:simd_div"
+                    || name == "platform:simd_and"
+                    || name == "platform:simd_or"
+                    || name == "platform:simd_xor"
+                    ) {
+                    size_t size_slot = 0, size_val = 0;
+                    Target_GetSizeOf(sp, m_resolve, params.m_types.at(0), size_slot);
+                    const auto& ty_val = params.m_types.at(0).data().as_Path().binding.as_Struct()->m_data.as_Tuple().at(0).ent;
+                    Target_GetSizeOf(sp, m_resolve, ty_val, size_val);
+                    MIR_ASSERT(mir_res, size_slot >= size_val, size_slot << " < " << size_val);
+                    MIR_ASSERT(mir_res, size_slot / size_val * size_val == size_slot, size_slot << " not a multiple of " << size_val);
+
+                    // Emulate!
+                    emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0)); m_of << "; ";
+                    m_of << "for(int i = 0; i < " << (size_slot/size_val) << "; i++)";
+                    m_of << "(("; emit_ctype(ty_val); m_of << "*)&"; emit_lvalue(e.ret_val); m_of << ")[i] ";
+                    if(false)
+                        ;
+                    else if(name == "platform:simd_add")    m_of << "+=";
+                    else if(name == "platform:simd_sub")    m_of << "-=";
+                    else if(name == "platform:simd_mul")    m_of << "*=";
+                    else if(name == "platform:simd_div")    m_of << "/=";
+                    else if(name == "platform:simd_and")    m_of << "&=";
+                    else if(name == "platform:simd_or" )    m_of << "|=";
+                    else if(name == "platform:simd_xor")    m_of << "^=";
+                    else
+                        MIR_BUG(mir_res, name);
+                    m_of << " (("; emit_ctype(ty_val); m_of << "*)&"; emit_param(e.args.at(1)); m_of << ")[i]";
+                }
+                else {
+                    // TODO: Platform intrinsics
+                    m_of << "assert(!\"TODO: Platform intrinsic \\\"" << name << "\\\"\")";
+                    //MIR_TODO(mir_res, "Platform intrinsic " << name);
+                }
             }
             else {
                 MIR_BUG(mir_res, "Unknown intrinsic '" << name << "'");

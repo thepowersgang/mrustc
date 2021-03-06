@@ -593,6 +593,7 @@ namespace
 
         void visit_type(const ::HIR::TypeRef& ty, Mode mode = Mode::Normal)
         {
+            Span    sp;
             // If the type has already been visited, AND either this is a shallow visit, or the previous wasn't
             {
                 auto idx_it = ::std::lower_bound(visited_map.begin(), visited_map.end(), ty, [&](size_t i, const ::HIR::TypeRef& t){ return out_list[i].first < t; });
@@ -615,15 +616,15 @@ namespace
                 default:
                     break;
                 TU_ARMA(Infer, te) {
-                    BUG(Span(), "`_` type hit in enumeration");
+                    BUG(sp, "`_` type hit in enumeration");
                     }
                 TU_ARMA(Path, te) {
                     TU_MATCHA( (te.binding), (tpb),
                     (Unbound,
-                        BUG(Span(), "Unbound type hit in enumeration - " << ty);
+                        BUG(sp, "Unbound type hit in enumeration - " << ty);
                         ),
                     (Opaque,
-                        BUG(Span(), "Opaque type hit in enumeration - " << ty);
+                        BUG(sp, "Opaque type hit in enumeration - " << ty);
                         ),
                     (ExternType,
                         ),
@@ -634,6 +635,9 @@ namespace
                     (Enum,
                         )
                     )
+                    }
+                TU_ARMA(Array, te) {
+                    ASSERT_BUG(sp, te.size.is_Known(), "Encountered unknown array size - " << ty);
                     }
                 TU_ARMA(Function, te) {
                     visit_type(te.m_rettype, Mode::Shallow);
@@ -652,26 +656,26 @@ namespace
             {
                 if( active_set.find(&ty) != active_set.end() ) {
                     // TODO: Handle recursion
-                    BUG(Span(), "- Type recursion on " << ty);
+                    BUG(sp, "- Type recursion on " << ty);
                 }
                 active_set.insert( &ty );
 
                 TU_MATCH_HDRA( (ty.data()), {)
                 // Impossible
                 TU_ARMA(Infer, te) {
-                    BUG(Span(), "`_` type hit in enumeration");
+                    BUG(sp, "`_` type hit in enumeration");
                     }
                 TU_ARMA(Generic, te) {
-                    BUG(Span(), "Generic type hit in enumeration - " << ty);
+                    BUG(sp, "Generic type hit in enumeration - " << ty);
                     }
                 TU_ARMA(ErasedType, te) {
-                    //BUG(Span(), "ErasedType hit in enumeration - " << ty);
+                    //BUG(sp, "ErasedType hit in enumeration - " << ty);
                     }
                 TU_ARMA(Closure, te) {
-                    BUG(Span(), "Closure type hit in enumeration - " << ty);
+                    BUG(sp, "Closure type hit in enumeration - " << ty);
                     }
                 TU_ARMA(Generator, te) {
-                    BUG(Span(), "Generator type hit in enumeration - " << ty);
+                    BUG(sp, "Generator type hit in enumeration - " << ty);
                     }
                 // Nothing to do
                 TU_ARMA(Diverge, te) {
@@ -682,10 +686,10 @@ namespace
                 TU_ARMA(Path, te) {
                     TU_MATCHA( (te.binding), (tpb),
                     (Unbound,
-                        BUG(Span(), "Unbound type hit in enumeration - " << ty);
+                        BUG(sp, "Unbound type hit in enumeration - " << ty);
                         ),
                     (Opaque,
-                        BUG(Span(), "Opaque type hit in enumeration - " << ty);
+                        BUG(sp, "Opaque type hit in enumeration - " << ty);
                         ),
                     (ExternType,
                         // No innards to visit
@@ -698,7 +702,7 @@ namespace
                         ),
                     (Enum,
                         // NOTE: Force repr generation before recursing into enums (allows layout optimisation to be calculated)
-                        Target_GetTypeRepr(Span(), m_resolve, ty);
+                        Target_GetTypeRepr(sp, m_resolve, ty);
                         visit_enum(te.path.m_data.as_Generic(), *tpb);
                         )
                     )
@@ -708,7 +712,7 @@ namespace
                     // Ensure that the data trait's vtable is present
                     const auto& trait = *te.m_trait.m_trait_ptr;
 
-                    ASSERT_BUG(Span(), ! te.m_trait.m_path.m_path.m_components.empty(), "TODO: Data trait is empty, what can be done?");
+                    ASSERT_BUG(sp, ! te.m_trait.m_path.m_path.m_components.empty(), "TODO: Data trait is empty, what can be done?");
                     const auto& vtable_ty_spath = trait.m_vtable_path;
                     const auto& vtable_ref = m_crate.get_struct_by_path(sp, vtable_ty_spath);
                     // Copy the param set from the trait in the trait object
@@ -724,6 +728,7 @@ namespace
                     visit_type( ::HIR::TypeRef::new_path( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref ) );
                     }
                 TU_ARMA(Array, te) {
+                    ASSERT_BUG(sp, te.size.is_Known(), "Encountered unknown array size - " << ty);
                     visit_type(te.inner, mode);
                     }
                 TU_ARMA(Slice, te) {
@@ -782,20 +787,25 @@ namespace
             // Handle erased types in the return type.
             if( visit_ty_with(fcn.m_return, [](const auto& x) { return x.data().is_ErasedType()||x.data().is_Generic(); }) )
             {
-                auto ret_ty = clone_ty_with(sp, fcn.m_return, [&](const auto& x, auto& out) {
-                    if( const auto* te = x.data().opt_ErasedType() ) {
-                        out = pp.monomorph(tv.m_resolve, fcn.m_code.m_erased_types.at(te->m_index));
-                        return true;
-                    }
-                    else if( x.data().is_Generic() ) {
-                        out = pp.monomorph(tv.m_resolve, x);
-                        return true;
-                    }
-                    else {
-                        return false;
-                    }
-                    });
-                tv.m_resolve.expand_associated_types(sp, ret_ty);
+                // If there's an erased type, make a copy with the erased type expanded
+                ::HIR::TypeRef  ret_ty;
+                if( visit_ty_with(fcn.m_return, [&](const auto& x) { return x.data().is_ErasedType(); }) )
+                {
+                    ret_ty = clone_ty_with(sp, fcn.m_return, [&](const auto& x, auto& out) {
+                        if( const auto* te = x.data().opt_ErasedType() ) {
+                            out = fcn.m_code.m_erased_types.at(te->m_index).clone();
+                            return true;
+                        }
+                        else {
+                            return false;
+                        }
+                        });
+                    ret_ty = pp.monomorph(tv.m_resolve, ret_ty);
+                }
+                else
+                {
+                    ret_ty = pp.monomorph(tv.m_resolve, fcn.m_return);
+                }
                 tv.visit_type(ret_ty);
             }
             else
@@ -916,6 +926,7 @@ namespace
 // Enumerate types required for the enumerated items
 void Trans_Enumerate_Types(EnumState& state)
 {
+    TRACE_FUNCTION;
     static Span sp;
     TypeVisitor tv { state.crate, state.rv.m_types };
 
