@@ -278,6 +278,7 @@ namespace {
                     ;
             }
             m_of
+                << "static inline size_t ALIGN_TO(size_t s, size_t a) { return (s + a-1) / a * a; }\n"
                 << "\n"
                 ;
             switch(m_compiler)
@@ -4685,25 +4686,47 @@ namespace {
             else if( name == "size_of_val" ) {
                 emit_lvalue(e.ret_val); m_of << " = ";
                 const auto& ty = params.m_types.at(0);
-                //TODO: Get the unsized type and use that in place of MetadataType
+                // Get the unsized type and use that in place of MetadataType
                 auto inner_ty = get_inner_unsized_type(ty);
                 if( inner_ty == ::HIR::TypeRef() ) {
-                    // TODO: Target_GetSizeOf
-                    m_of << "sizeof("; emit_ctype(ty); m_of << ")";
+                    size_t size = 0;
+                    MIR_ASSERT(mir_res, Target_GetSizeOf(sp, m_resolve, ty, size), "Can't get size of " << ty);
+                    m_of << size;
                 }
-                else if( const auto* te = inner_ty.data().opt_Slice() ) {
-                    if( ! ty.data().is_Slice() ) {
+                // slice metadata (`[T]` and `str`)
+                else if( inner_ty.data().is_Slice() || inner_ty == ::HIR::CoreType::Str ) {
+                    bool align_needed = false;
+                    size_t item_size = 0;
+                    size_t item_align = 0;
+                    if(const auto* te = inner_ty.data().opt_Slice() ) {
+                        MIR_ASSERT(mir_res, Target_GetSizeAndAlignOf(sp, m_resolve, te->inner, item_size, item_align), "Can't get size of " << te->inner);
+                    }
+                    else {
+                        assert(inner_ty == ::HIR::CoreType::Str);
+                        item_size = 1;
+                        item_align = 1;
+                    }
+                    if( ! ty.data().is_Slice() && !ty.data().is_Primitive() ) {
+                        // TODO: What if the wrapper has no other fields?
+                        // Get the alignment and check if it's higher than the item alignment
+                        size_t wrapper_align = 0, wrapper_size_ignore = 0;
+                        MIR_ASSERT(mir_res, Target_GetSizeAndAlignOf(sp, m_resolve, ty, wrapper_size_ignore, wrapper_align), "Can't get align of " << ty);
+                        if(wrapper_align > item_align) {
+                            item_align = wrapper_align;
+                            align_needed = true;
+                            m_of << "ALIGN_TO(";
+                        }
                         m_of << "sizeof("; emit_ctype(ty); m_of << ") + ";
                     }
-                    emit_param(e.args.at(0)); m_of << ".META * sizeof("; emit_ctype(te->inner); m_of << ")";
-                }
-                else if( inner_ty == ::HIR::CoreType::Str ) {
-                    if( ! ty.data().is_Primitive() ) {
-                        m_of << "sizeof("; emit_ctype(ty); m_of << ") + ";
+                    emit_param(e.args.at(0)); m_of << ".META * " << item_size;
+                    if(align_needed) {
+                        m_of << ", " << item_align << ")";
                     }
-                    emit_param(e.args.at(0)); m_of << ".META";
                 }
+                // Trait object metadata.
                 else if( inner_ty.data().is_TraitObject() ) {
+                    // TODO: Handle aligning the size if the wrapper's alignment is greater than the object
+                    // - Also, how is the final field aligned?
                     if( ! ty.data().is_TraitObject() ) {
                         m_of << "sizeof("; emit_ctype(ty); m_of << ") + ";
                     }
@@ -4715,6 +4738,7 @@ namespace {
                 else {
                     MIR_BUG(mir_res, "Unknown inner unsized type " << inner_ty << " for " << ty);
                 }
+                // TODO: Align up
             }
             else if( name == "min_align_of_val" ) {
                 emit_lvalue(e.ret_val); m_of << " = ";
