@@ -23,3 +23,19 @@
 +        const fn len_inner<T>(s: &[T]) -> usize { unsafe { crate::intrinsics::mrustc_slice_len(s) } }
 +        len_inner(self)
      }
+## gcc (used by mrustc) has 16-byte uint128_t alignment, while rustc uses 8
+#--- src/libsyntax/ast.rs
+#+++ src/libsyntax/ast.rs
+#@@ -986,2 +986,2 @@
+#-#[cfg(target_arch = "x86_64")]
+#-static_assert_size!(Expr, 96);
+#+//#[cfg(target_arch = "x86_64")]
+#+//static_assert_size!(Expr, 96);
+#--- src/librustc/ty/sty.rs
+#+++ src/librustc/ty/sty.rs
+#@@ -2258,2 +2258,2 @@
+#-#[cfg(target_arch = "x86_64")]
+#-static_assert_size!(Const<'_>, 40);
+#+//#[cfg(target_arch = "x86_64")]
+#+//static_assert_size!(Const<'_>, 40);
+
