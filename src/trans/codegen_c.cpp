@@ -2994,13 +2994,16 @@ namespace {
                         }
                     };
                     // Get the number of fields in parent
-                    size_t n_parent_fields = H::get_field_count(mir_res,  mir_res.get_lvalue_type(tmp, field_inner));
+                    auto* repr = Target_GetTypeRepr(sp, m_resolve, mir_res.get_lvalue_type(tmp, field_inner));
+                    assert(repr);
+                    size_t n_parent_fields = repr->fields.size();
                     // Find next non-zero field
                     auto tmp_lv = ::MIR::LValue::new_Field( field_inner.clone(), val_fp.as_Field() + 1 );
                     bool found = false;
                     while(tmp_lv.as_Field() < n_parent_fields)
                     {
-                        const auto& ty = mir_res.get_lvalue_type(tmp, tmp_lv);
+                        auto idx = tmp_lv.as_Field();
+                        const auto& ty = repr->fields[idx].ty;
                         if( ty.data().is_Path() && ty.data().as_Path().binding.is_ExternType() ) {
                             // Extern types aren't emitted
                         }
@@ -3011,14 +3014,13 @@ namespace {
                             found = true;
                             break;
                         }
-                        auto idx = tmp_lv.as_Field();
                         tmp_lv.m_wrappers.back() = ::MIR::LValue::Wrapper::new_Field(idx + 1);
                     }
 
-                    // If no non-zero fields were found before the end, then add one to the struct's address
+                    // If no non-zero fields were found before the end, then do pointer manipulation using the repr
                     if( !found )
                     {
-                        m_of << "(void*)(& "; emit_lvalue(field_inner); m_of << " + 1) /*ZST*/";
+                        m_of << "(void*)( (uint8_t*)& "; emit_lvalue(field_inner); m_of << " + " << repr->fields[val_fp.as_Field()].offset << ") /*ZST*/";
                     }
                     // Otherwise, use the next non-zero field
                     else
