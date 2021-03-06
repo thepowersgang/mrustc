@@ -521,9 +521,11 @@ bool ::HIR::TraitImpl::more_specific_than(const ::HIR::TraitImpl& other) const
 
     auto it_t = bounds_t.begin();
     auto it_o = bounds_o.begin();
+    bool is_equal = true;
     while( it_t != bounds_t.end() && it_o != bounds_o.end() )
     {
         auto cmp = ::ord(*it_t, *it_o);
+        // Equal bounds? advance both
         if( cmp == OrdEqual )
         {
             ++it_t;
@@ -561,21 +563,25 @@ bool ::HIR::TraitImpl::more_specific_than(const ::HIR::TraitImpl& other) const
 
         if( cmp == OrdLess )
         {
+            is_equal = false;
             ++ it_t;
         }
         else
         {
             //++ it_o;
+            DEBUG(*it_t << " ?= " << *it_o << " : " << cmp);
             return false;
         }
     }
     if( it_t != bounds_t.end() )
     {
+        DEBUG("Remaining local bounds - " << *it_t);
         return true;
     }
     else
     {
-        return false;
+        DEBUG("Out of local bounds, equal or less specific");
+        return !is_equal;
     }
 }
 
