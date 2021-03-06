@@ -2531,6 +2531,7 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
         }
         else
         {
+            bool best_is_spec = false;
             ImplRef best_impl;
             ValuePtr    rv;
             this->find_impl(sp, pe.trait.m_path, &pe.trait.m_params, pe.type, [&](auto impl, bool is_fuzz)->bool{
@@ -2583,6 +2584,7 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
                 }
                 else {
                     DEBUG("- More specific (is_spec=" << is_spec << ")");
+                    best_is_spec = is_spec;
                     best_impl = mv$(impl);
                     rv = std::move(this_rv);
                     // NOTE: There could be an overlapping and more-specific impl without `default` being involved
@@ -2614,6 +2616,15 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
                     }
                 }
                 return ValuePtr::make_NotYetKnown({});
+            }
+            if(best_is_spec)
+            {
+                // If there's generics present in the path, return NotYetKnown
+                if( monomorphise_type_needed(pe.type) || monomorphise_pathparams_needed(pe.trait.m_params) )
+                {
+                    DEBUG("Specialisable and still generic, return NotYetKnown");
+                    return ValuePtr::make_NotYetKnown({});
+                }
             }
 
             if( ! best_impl.m_data.is_TraitImpl() )
