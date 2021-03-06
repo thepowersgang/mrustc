@@ -1321,8 +1321,8 @@ bool TraitResolution::find_trait_impls(const Span& sp,
     const auto& trait_fn = this->m_crate.get_lang_item_path(sp, "fn");
     const auto& trait_fn_mut = this->m_crate.get_lang_item_path(sp, "fn_mut");
     const auto& trait_fn_once = this->m_crate.get_lang_item_path(sp, "fn_once");
-    const auto& trait_index = this->m_crate.get_lang_item_path(sp, "index");
-    const auto& trait_indexmut = this->m_crate.get_lang_item_path(sp, "index_mut");
+    //const auto& trait_index = this->m_crate.get_lang_item_path(sp, "index");
+    //const auto& trait_indexmut = this->m_crate.get_lang_item_path(sp, "index_mut");
 
     if( magic_trait_impls )
     {
@@ -3003,8 +3003,8 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         public Monomorphiser
     {
         Span    sp;
-        RcString    placeholder_name;
         const HIR::PathParams& impl_params;
+        RcString    placeholder_name;
         ::HIR::PathParams& placeholders;
         Matcher(Span sp, const HIR::PathParams& impl_params, RcString placeholder_name, ::HIR::PathParams& placeholders):
             sp(sp),
@@ -4177,20 +4177,16 @@ bool TraitResolution::find_method(const Span& sp,
     // - If there is a bound on the receiver, then that bound is usable no-matter what
     DEBUG("> Bounds");
     const ::HIR::GenericParams* v[2] = { m_item_params, m_impl_params };
-    for(auto p : v)
+    for(const auto& tb : m_trait_bounds)
     {
-        if( !p )    continue ;
-        for(const auto& b : p->m_bounds)
-        {
-            if(const auto* ep = b.opt_TraitBound())
-            {
-                const auto& e = *ep;
+                const auto& e_type = tb.first;
+                const auto& e_trait = tb.second;
 
-                assert(e.trait.m_trait_ptr);
+                assert(e_trait.m_trait_ptr);
                 // 1. Find the named method in the trait.
                 ::HIR::GenericPath final_trait_path;
                 const ::HIR::Function* fcn_ptr;
-                if( !(fcn_ptr = this->trait_contains_method(sp, e.trait.m_path, *e.trait.m_trait_ptr, e.type, method_name,  final_trait_path)) ) {
+                if( !(fcn_ptr = this->trait_contains_method(sp, e_trait.m_path, *e_trait.m_trait_ptr, e_type, method_name,  final_trait_path)) ) {
                     DEBUG("- Method '" << method_name << "' missing");
                     continue ;
                 }
@@ -4203,7 +4199,7 @@ bool TraitResolution::find_method(const Span& sp,
                     if( TU_TEST1(self_ty->data(), Infer, .is_lit() == false) )
                         return false;
                     // TODO: Do a fuzzy match here?
-                    auto cmp = self_ty->compare_with_placeholders(sp, e.type, cb_infer);
+                    auto cmp = self_ty->compare_with_placeholders(sp, e_type, cb_infer);
                     if( cmp == ::HIR::Compare::Equal )
                     {
                         // TODO: Re-monomorphise final trait using `ty`?
@@ -4222,7 +4218,7 @@ bool TraitResolution::find_method(const Span& sp,
                     }
                     else if( cmp == ::HIR::Compare::Fuzzy )
                     {
-                        DEBUG("Fuzzy match checking bounded method - " << *self_ty << " != " << e.type);
+                        DEBUG("Fuzzy match checking bounded method - " << *self_ty << " != " << e_type);
 
                         // Found the method, return the UFCS path for it
                         possibilities.push_back(::std::make_pair( borrow_type,
@@ -4237,15 +4233,13 @@ bool TraitResolution::find_method(const Span& sp,
                     }
                     else
                     {
-                        DEBUG("> Type mismatch - " << *self_ty << " != " << e.type);
+                        DEBUG("> Type mismatch - " << *self_ty << " != " << e_type);
                     }
                 }
                 else
                 {
                     DEBUG("> Receiver mismatch");
                 }
-            }
-        }
     }
 
     auto get_inner_type = [this,sp](const ::HIR::TypeRef& ty, ::std::function<bool(const ::HIR::TypeRef&)> cb)->const ::HIR::TypeRef* {
