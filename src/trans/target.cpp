@@ -21,6 +21,7 @@ const TargetArch ARCH_X86_64 = {
     64, false,
     TargetArch::Atomics(/*atomic(u8)=*/true, /*atomic(u16)=*/true, /*atomic(u32)=*/true, true,  true),
     TargetArch::Alignments(2, 4, 8, 16, 4, 8, 8)
+    //TargetArch::Alignments(2, 4, 8, 8, 4, 8, 8) // TODO: Alignment of u128 is 8 with rustc, but gcc uses 16
     };
 const TargetArch ARCH_X86 = {
     "x86",
@@ -381,7 +382,7 @@ namespace
         else if(target_name == "x86_64-linux-gnu")
         {
             return TargetSpec {
-                "unix", "linux", "gnu", {CodegenMode::Gnu11, false, "x86_64-linux-gnu", BACKEND_C_OPTS_GNU},
+                "unix", "linux", "gnu", {CodegenMode::Gnu11, true /*false*/, "x86_64-linux-gnu", BACKEND_C_OPTS_GNU},
                 ARCH_X86_64
                 };
         }
@@ -708,6 +709,10 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve,
             return false;
         if( out_size == SIZE_MAX )
             BUG(sp, "Unsized type in array - " << ty);
+        if( !te.size.is_Known() ) {
+            DEBUG("Size unknown - " << ty);
+            return false;
+        }
         if( te.size.as_Known() == 0 || out_size == 0 )
         {
             out_size = 0;
@@ -966,6 +971,7 @@ namespace {
             if( !struct_enumerate_fields(sp, resolve, ty, ents) )
                 return nullptr;
 
+            sorting = StructSorting::None;  // Defensive default for if repr is invalid
             switch(str.m_repr)
             {
             case ::HIR::Struct::Repr::Packed:
@@ -1241,6 +1247,7 @@ namespace {
     }
     ::std::unique_ptr<TypeRepr> make_type_repr_enum(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty)
     {
+        TRACE_FUNCTION_F(ty);
         const auto& te = ty.data().as_Path();
         const auto& enm = *te.binding.as_Enum();
 
@@ -1318,6 +1325,7 @@ namespace {
                 //rv.variants = TypeRepr::VariantMode::make_None({});
             }
             else {
+                TRACE_FUNCTION_F("repr(Rust)");
                 // repr(Rust) - allows interesting optimisations
                 struct Variant {
                     ::HIR::TypeRef  type;
@@ -1328,6 +1336,7 @@ namespace {
                 for(const auto& var : e)
                 {
                     variants.push_back({ monomorph(var.type), {} });
+                    TRACE_FUNCTION_F("");
                     if( var.type == ::HIR::TypeRef::new_unit() ) {
                         continue ;
                     }
@@ -1430,12 +1439,12 @@ namespace {
                                     case 8: max_var = 0xFFFFFFFF;  break;   // Just assume 2^32 here
                                     }
 
-                                    DEBUG("Niche optimisation (trailing): offset=" << offset << " path=" << nz_path);
                                     if( offset <= max_var && offset + e.size() <= max_var )
                                     {
                                         nz_path.sub_fields.push_back(i);
                                         nz_path.index = biggest_var;
                                         ::std::reverse(nz_path.sub_fields.begin(), nz_path.sub_fields.end());
+                                        DEBUG("Niche optimisation (trailing): offset=" << offset << " path=" << nz_path);
 
                                         assert(rv.variants.is_None());
                                         rv.variants = TypeRepr::VariantMode::make_Linear({ std::move(nz_path), offset, e.size() });
@@ -1443,7 +1452,11 @@ namespace {
                                     }
                                     else
                                     {
-                                        DEBUG("Out of space in this niche: " << (offset+e.size()) << " > " << max_var);
+                                        if(debug_enabled()) {
+                                            nz_path.sub_fields.push_back(i);
+                                            nz_path.index = biggest_var;
+                                        }
+                                        DEBUG("Out of space in this niche: " << (offset+e.size()) << " > " << max_var << " (path=" << nz_path << ")");
                                     }
                                 }
 
