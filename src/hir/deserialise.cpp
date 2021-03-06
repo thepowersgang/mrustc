@@ -920,15 +920,17 @@
     template<> DEF_D( ::MIR::Statement, return d.deserialise_mir_statement(); )
     template<> DEF_D( ::MIR::BasicBlock, return d.deserialise_mir_basicblock(); )
 
-    template<> DEF_D( ::HIR::TraitPath::AtyEqual, 
+    template<> DEF_D( ::HIR::TraitPath::AtyEqual,
+        auto src = d.deserialise_genericpath();
         return ::HIR::TraitPath::AtyEqual {
-            d.deserialise_genericpath(),
+            mv$(src),
             d.deserialise_type()
         };
     )
-    template<> DEF_D( ::HIR::TraitPath::AtyBound, 
+    template<> DEF_D( ::HIR::TraitPath::AtyBound,
+        auto src = d.deserialise_genericpath();
         return ::HIR::TraitPath::AtyBound {
-            d.deserialise_genericpath(),
+            mv$(src),
             d.deserialise_vec<HIR::TraitPath>()
         };
     );
@@ -1093,6 +1095,7 @@
 
     ::HIR::TraitPath HirDeserialiser::deserialise_traitpath()
     {
+        auto _ = m_in.open_object("HIR::TraitPath");
         auto gpath = deserialise_genericpath();
         auto tys = deserialise_istrmap< ::HIR::TraitPath::AtyEqual>();
         auto bounds = deserialise_istrmap< ::HIR::TraitPath::AtyBound>();
@@ -1183,6 +1186,7 @@
     ::HIR::Enum HirDeserialiser::deserialise_enum()
     {
         TRACE_FUNCTION;
+        auto _ = m_in.open_object("HIR::Enum");
         struct H {
             static ::HIR::Enum::Class deserialise_enumclass(HirDeserialiser& des) {
                 switch( auto tag = des.m_in.read_tag() )
@@ -1242,6 +1246,7 @@
     ::HIR::Struct HirDeserialiser::deserialise_struct()
     {
         TRACE_FUNCTION_FR("", m_in.get_pos());
+        auto _ = m_in.open_object("HIR::Struct");
         auto params = deserialise_genericparams();
         auto repr = static_cast< ::HIR::Struct::Repr>( m_in.read_tag() );
         DEBUG("params = " << params.fmt_args() << params.fmt_bounds());
@@ -1470,6 +1475,7 @@
     ::HIR::Module HirDeserialiser::deserialise_module()
     {
         TRACE_FUNCTION;
+        auto _ = m_in.open_object("HIR::Module");
 
         ::HIR::Module   rv;
 

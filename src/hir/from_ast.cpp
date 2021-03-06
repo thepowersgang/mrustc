@@ -395,10 +395,10 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
         for(const auto& sp : e.trailing)
             trailing.push_back( LowerHIR_Pattern(sp) );
 
-        ::HIR::PatternBinding::Type bt;
+        ::HIR::PatternBinding::Type bt = ::HIR::PatternBinding::Type::Move;
         switch( e.extra_bind.m_type )
         {
-        case ::AST::PatternBinding::Type::MOVE: bt = ::HIR::PatternBinding::Type::Move; break;
+        case ::AST::PatternBinding::Type::MOVE: break;
         case ::AST::PatternBinding::Type::REF:  bt = ::HIR::PatternBinding::Type::Ref;  break;
         case ::AST::PatternBinding::Type::MUTREF: bt = ::HIR::PatternBinding::Type::MutRef; break;
         }

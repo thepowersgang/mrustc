@@ -195,8 +195,6 @@ MacroRef Expand_LookupMacro(const Span& mi_span, const ::AST::Crate& crate, LLis
 
     // Resolve the path, following use statements (if required)
     // - Only mr_ptr matters, as proc_mac is about builtins
-    const auto& final_name = path.nodes().back().name();
-
     auto rv = Resolve_Lookup_Macro(mi_span, crate, modstack.m_item->path(), path, /*out_path=*/nullptr);
     TU_MATCH_HDRA( (rv), { )
     TU_ARMA(None, _e)
@@ -224,9 +222,6 @@ MacroRef Expand_LookupMacro(const Span& mi_span, const ::AST::Crate& crate, LLis
 
     // Find the macro
     auto mac = Expand_LookupMacro(mi_span, crate, modstack, path);
-    /*const*/ ExpandProcMacro*  proc_mac = nullptr;
-    const MacroRules*   mr_ptr = nullptr;
-
     if( mac.is_MacroRules() )
     {
         // TODO: If `mr_ptr` is tagged with #[rustc_builtin_macro], look for a matching entry in `g_macros`

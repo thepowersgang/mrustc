@@ -57,7 +57,7 @@ class CHandler_RustcNonnullOptimizationGuaranteed:
 
     void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
         // TODO: Types only
-        if( auto* s = i.opt_Struct() ) {
+        if( i.is_Struct() ) {
         }
         else {
         }

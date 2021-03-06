@@ -272,6 +272,7 @@
         void serialise(const ::HIR::GenericPath& path) { serialise_genericpath(path); }
         void serialise_traitpath(const ::HIR::TraitPath& path)
         {
+            auto _ = m_out.open_object("HIR::TraitPath");
             serialise_genericpath(path.m_path);
             // TODO: Lifetimes? (m_hrls)
             serialise_strmap(path.m_type_bounds);
@@ -412,6 +413,7 @@
         void serialise_module(const ::HIR::Module& mod)
         {
             TRACE_FUNCTION;
+            auto _ = m_out.open_object("HIR::Module");
 
             // m_traits doesn't need to be serialised
 
@@ -1090,6 +1092,7 @@
         }
         void serialise(const ::HIR::Enum& item)
         {
+            auto _ = m_out.open_object("HIR::Enum");
             serialise_generics(item.m_params);
             m_out.write_bool( item.m_is_c_repr );
             m_out.write_tag( static_cast<int>(item.m_tag_repr) );
@@ -1158,6 +1161,7 @@
         void serialise(const ::HIR::Struct& item)
         {
             TRACE_FUNCTION_F("Struct");
+            auto _ = m_out.open_object("HIR::Struct");
 
             serialise_generics(item.m_params);
             m_out.write_tag( static_cast<int>(item.m_repr) );

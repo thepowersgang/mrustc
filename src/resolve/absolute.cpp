@@ -2006,7 +2006,7 @@ void Resolve_Absolute_Type(Context& context,  TypeRef& type)
             assert( ufcs->nodes.size() == 1);
         }
 
-        if(auto* be = e->m_bindings.type.binding.opt_Trait())
+        if(e->m_bindings.type.binding.opt_Trait())
         {
             auto tp = Type_TraitPath();
             tp.path = std::move(e);

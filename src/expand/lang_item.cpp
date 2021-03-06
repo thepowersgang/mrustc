@@ -345,7 +345,7 @@ public:
     AttrStage stage() const override { return AttrStage::Post; }
     void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
-        if(const auto* _e = i.opt_Function())
+        if(i.is_Function())
         {
             auto rv = crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-panic_implementation"), path ));
             if( !rv.second )
@@ -378,7 +378,7 @@ public:
     AttrStage stage() const override { return AttrStage::Post; }
     void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
-        if(const auto* _e = i.opt_Function())
+        if(i.is_Function())
         {
             auto rv = crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-alloc_error_handler"), path ));
             if( !rv.second )

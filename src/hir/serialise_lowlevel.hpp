@@ -367,7 +367,7 @@ public:
         else {
             size_t len = v - 0xC0;
             uint64_t rv = 0;
-            for(int p = 0; p < len; p ++)
+            for(size_t p = 0; p < len; p ++)
             {
                 rv |= static_cast<uint64_t>(read_u8()) << (8*p);
             }
@@ -421,7 +421,10 @@ public:
         }
         assert(key < m_objname_cache.size());
         //std::cout << key << " = " << m_objname_cache[key] << std::endl;
-        assert(m_objname_cache[key] == name);
+        if( m_objname_cache[key] != name ) {
+            std::cerr << "Expecting OpenNamed(" << name << "), got OpenNamed(" << m_objname_cache[key] << ")" << std::endl;
+            abort();
+        }
         return CloseOnDrop(*this);
     }
     CloseOnDrop open_anon_object() {
