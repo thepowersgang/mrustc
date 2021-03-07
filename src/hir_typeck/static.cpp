@@ -885,6 +885,10 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
                         return true;
                         });
                 }
+                if(!rv && visit_ty_with(b_ty_mono, [](const HIR::TypeRef& ty){ return ty.data().is_Generic() && ty.data().as_Generic().is_placeholder(); }) ) {
+                    DEBUG("- Placeholder param within " << b_ty_mono << ", magic success");
+                    rv = true;
+                }
                 if( !rv ) {
                     DEBUG("> Fail - " << b_ty_mono << ": " << b_tp_mono);
                     return false;
@@ -1421,12 +1425,7 @@ bool StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
         }
         else {
             auto nt = impl.get_type( e2.item.c_str() );
-            if( nt == ::HIR::TypeRef() ) {
-                DEBUG("Mark  " << e.path << " as opaque");
-                e.binding = ::HIR::TypePathBinding::make_Opaque({});
-                replacement_happened = this->replace_equalities(input);
-            }
-            else {
+            if( nt != ::HIR::TypeRef() ) {
                 DEBUG("Converted UfcsKnown - " << e.path << " = " << nt);
                 if( input == nt ) {
                     replacement_happened = false;
@@ -1434,6 +1433,11 @@ bool StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
                 }
                 input = mv$(nt);
                 replacement_happened = true;
+            }
+            else {
+                DEBUG("Mark  " << e.path << " as opaque");
+                e.binding = ::HIR::TypePathBinding::make_Opaque({});
+                replacement_happened = this->replace_equalities(input);
             }
             return true;
         }
