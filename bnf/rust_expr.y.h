@@ -24,6 +24,7 @@ closure_ret
 #define _(v)	v##_NOSTRLIT
 #include "rust_expr.y_tree.h"
 #undef SUFFIX
+#undef SUFFIX_is__NOSTRLIT
 #undef _
 
 #define SUFFIX_is__NOBRACE

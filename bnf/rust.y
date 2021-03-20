@@ -17,13 +17,14 @@
 %define api.pure full
 %parse-param {ParserContext& context}
 %lex-param {*context}
+/* %glr-parser */
 
-%token <::std::string*> IDENT LIFETIME STRING MACRO
+%token <::std::string*> IDENT_ LIFETIME STRING
 %token <int> INTEGER CHARLIT
 %token <double> FLOAT
 %token <::std::string*> DOC_COMMENT SUPER_DOC_COMMENT
 %token HASHBANG
-%token DOUBLECOLON THINARROW FATARROW DOUBLEDOT TRIPLEDOT
+%token DOUBLECOLON THINARROW FATARROW DOUBLEDOT TRIPLEDOT DOUBLEDOTEQ
 %token DOUBLEEQUAL EXCLAMEQUAL DOUBLEPIPE DOUBLEAMP
 %token PIPEEQUAL AMPEQUAL CARETEQUAL
 %token GTEQUAL LTEQUAL
@@ -37,17 +38,24 @@
 %token RWD_return RWD_break RWD_continue
 %token RWD_extern RWD_crate
 
+%token RWD_dyn	/* 2018 */
+%token RWC_union
+%token RWC_default
+
+%type <std::string*>	IDENT
 %type <Module*>	module_root
 %type <int> tt_tok
 %type <TokenTreeList*> tt_list
 %type <TokenTree*> /* tt_item */ tt_paren tt_square tt_brace tt_subtree
-%type <bool>	opt_pub opt_mut
+%type <bool>	opt_vis vis opt_mut
 %type <::std::string*>	opt_lifetime
 %type <AttrList*>	super_attrs attrs attrs_p
 %type <MetaItem*>	super_attr attr
 %type <ItemList*>	module_body extern_items
 %type <MetaItem*>	meta_item
-%type <MetaItems*>	meta_items
+
+%type <ItemPath*>	use_path
+%type <MacroInv*>	macro_inv macro_braced macro_nonbrace
 
 %type <Item*>	item macro_item vis_item unsafe_item unsafe_vis_item
 %type <UseSet*>	use_def
@@ -56,15 +64,16 @@
 %type <Global*>	static_def const_def
 %type <Struct*>	struct_def
 %type <Enum*>	enum_def
+%type <Union*>	union_def
 %type <Trait*>	trait_def
 %type <Fn*>	fn_def fn_def_hdr fn_def_hdr_PROTO
 %type <ExternCrate*>	extern_crate
 %type <ExternBlock*>	extern_block
 %type <Impl*>	impl_def
 
-%type <UseItems*>	use_def_tail
-%type < ::std::vector<UseItem>* >	use_picks
-%type <UseItem*>	path_item
+%type < std::vector<UseEntry_Proto>* > use_inners
+%type < UseEntry_Proto* > use_inner_one
+%type < std::vector<std::string>* >	ident_chain
 
 %type <::std::string*>	extern_abi
 %type <Item*>	extern_item
@@ -94,6 +103,12 @@
 %start parse_root
 %%
 
+IDENT
+ : IDENT_	{ $$ = $1; }
+ | RWC_default	{ $$ = new std::string("default"); }
+ | RWC_union	{ $$ = new std::string("union"); }
+ ; 
+
 /*
 ==========================
 Root
@@ -114,16 +129,18 @@ tt_brace: '{' tt_list '}' { $$ = new TokenTree( consume($2) ); };
 tt_square: '[' tt_list ']' { $$ = new TokenTree( consume($2) ); };
 /* tt_tok: SEE rust_tts.y.h */
 
-tt_group_item: tt_paren ';' | tt_brace | tt_square ';';
-
 super_attrs
  :	{ $$ = new AttrList(); }
  | super_attrs super_attr	{ $$ = $1; $$->push_back( consume($2) ); }
  ;
 
-opt_pub
- : /* mt */	{ $$ = false; bnf_trace(context, "private"); }
- | RWD_pub	{ $$ = true; bnf_trace(context, "public"); }
+opt_vis
+ : /* mt */	{ $$ = false; }
+ | vis
+ ;
+vis
+ : RWD_pub	{ $$ = true; bnf_trace(context, "public"); }
+ | RWD_pub '(' use_path ')'	{ $$ = true; bnf_trace(context, "public"); }
  ;
 opt_comma: | ',';
 /*opt_semicolon: | ';';*/
@@ -153,23 +170,25 @@ attr
  : '#' '[' meta_item ']'	{ $$ = $3; }
  | DOC_COMMENT	{ $$ = new MetaItem("doc", consume($1)); }
  ;
-meta_items
- :	{ $$ = new MetaItems(); }
- | meta_item	{ $$ = new MetaItems(); $$->push_back( consume($1) ); }
- | meta_items ',' meta_item	{ $$ = $1; $$->push_back( consume($3) ); }
- ;
 meta_item
- : IDENT '(' meta_items ')'	{ $$ = new MetaItem(consume($1), consume($3)); }
+ : IDENT tt_paren	{ $$ = new MetaItem(consume($1), consume($2)); }
  | IDENT '=' STRING	{ $$ = new MetaItem(consume($1), consume($3)); }
  | IDENT	{ $$ = new MetaItem(consume($1)); }
  ;
 
-
+macro_braced
+ : use_path '!' IDENT tt_brace	{ $$ = new MacroInv(consume($1), consume($3), consume($4)); }
+ | use_path '!' tt_brace	{ $$ = new MacroInv(consume($1), consume($3)); }
+ ;
+macro_nonbrace
+ : use_path '!' IDENT tt_paren	{ $$ = new MacroInv(consume($1), consume($3), consume($4)); }
+ | use_path '!' IDENT tt_square	{ $$ = new MacroInv(consume($1), consume($3), consume($4)); }
+ | use_path '!' tt_paren	{ $$ = new MacroInv(consume($1), consume($3)); }
+ | use_path '!' tt_square	{ $$ = new MacroInv(consume($1), consume($3)); }
+ ;
+macro_inv : macro_braced | macro_nonbrace ';' { $$ = $1; }
 macro_item
- : MACRO IDENT tt_brace	{ $$ = new Macro(consume($1), consume($2), consume($3)); }
- | MACRO IDENT tt_paren ';'	{ $$ = new Macro(consume($1), consume($2), consume($3)); }
- | MACRO tt_brace	{ $$ = new Macro(consume($1), consume($2)); }
- | MACRO tt_paren ';'	{ $$ = new Macro(consume($1), consume($2)); }
+ : macro_inv	{ $$ = new Macro(consume($1)); }
  ;
 /*
 ==========================
@@ -177,14 +196,13 @@ Root Items
 ==========================
 */
 item
- : RWD_pub vis_item	{ $2->set_pub(); $$ = $2; }
- |         vis_item
- | RWD_pub RWD_unsafe unsafe_vis_item	{ $3->set_pub(); $$ = $3; }
- |         RWD_unsafe unsafe_item	{ $$ = $2; }
+ : opt_vis vis_item	{ $$ = $2; $$->set_pub($1); }
  | RWD_impl impl_def	{ $$ = $2; }
+ | vis RWD_unsafe unsafe_vis_item	{ $3->set_pub($1); $$ = $3; }
+ |     RWD_unsafe unsafe_item	{ $$ = $2; }
  | RWD_extern extern_block	{ $$ = $2; }
  | RWD_extern RWD_crate extern_crate	{ $$ = $3; }
- | RWD_pub RWD_extern RWD_crate extern_crate	{ $$ = $4; $$->set_pub(); }
+ | opt_vis RWD_extern RWD_crate extern_crate	{ $$ = $4; $$->set_pub($1); }
  ;
 /* Items for which visibility is valid */
 vis_item
@@ -194,6 +212,7 @@ vis_item
  | RWD_static static_def	{ $$ = $2; }
  | RWD_const const_def	{ $$ = $2; }
  | RWD_struct struct_def	{ $$ = $2; }
+ | RWC_union union_def	{ $$ = $2; }
  | RWD_enum enum_def	{ $$ = $2; }
  | unsafe_vis_item
  ;
@@ -202,6 +221,7 @@ unsafe_vis_item
  : RWD_fn fn_def	{ $$ = $2; }
  | fn_qualifiers RWD_fn fn_def	{ $$ = $3; }
  | RWD_trait trait_def	{ $$ = $2; }
+ | IDENT RWD_trait trait_def	{ if(*$1 != "auto") yyerror(context, "Expected 'auto' before `trait`"); $$ = $3; }
  ;
 unsafe_item
  : unsafe_vis_item
@@ -221,8 +241,8 @@ extern_items
  | extern_items extern_item	{ $$ = $1; $$->push_back( box_raw($2) ); }
  ;
 extern_item
- : attrs opt_pub RWD_fn fn_def_hdr ';'	{ $$ = $4; if($2) $$->set_pub(); $$->add_attrs( consume($1) ); }
- | attrs opt_pub RWD_static opt_mut IDENT ':' type ';'	{ $$ = new Global(); }
+ : attrs opt_vis RWD_fn fn_def_hdr ';'	{ $$ = $4; $$->set_pub($2); $$->add_attrs( consume($1) ); }
+ | attrs opt_vis RWD_static opt_mut IDENT ':' type ';'	{ $$ = new Global(); $$->set_pub($2); }
  ;
 
 module_def
@@ -290,31 +310,31 @@ type_def
  : IDENT generic_def '=' type ';'	{ $$ = new TypeAlias(); };
 
 /* --- Use --- */
+
 use_def
- : RWD_self use_def_tail	{ $$ = new UseSet( Path(Path::TagSelf()), consume($2) ); }
- | RWD_self DOUBLECOLON use_path use_def_tail	{ $$ = new UseSet(/* TODO */); }
- | RWD_super super_chain use_def_tail	{ $$ = new UseSet( Path(Path::TagSuper()), consume($3) ); }
- | RWD_super super_chain DOUBLECOLON use_path use_def_tail	{ $$ = new UseSet(/* TODO */); }
- | DOUBLECOLON use_path use_def_tail	{ $$ = new UseSet(/* TODO */); }
- | use_path use_def_tail	{ $$ = new UseSet(/* TODO */); }
- | '{' use_picks opt_comma '}' ';'	{ $$ = new UseSet( Path(Path::TagAbs()), consume($2) ); }
- | DOUBLECOLON '{' use_picks opt_comma '}' ';'	{ $$ = new UseSet( Path(Path::TagAbs()), consume($3) ); }
+ : use_path ';'	{ $$ = new UseSet(consume($1)); }
+ | use_path RWD_as IDENT ';'	{ $$ = new UseSet(consume($1), consume($3)); }
+ | use_path RWD_as '_' ';' 	{ $$ = new UseSet(consume($1), "_"); }
+ | use_path DOUBLECOLON '*' ';'	{ $$ = new UseSet(consume($1), ""); }
+ | use_path DOUBLECOLON '{' use_inners opt_comma '}' ';'	{ $$ = new UseSet(consume($1), consume($4)); }
+ | '{' use_inners opt_comma '}' ';'	{ $$ = new UseSet(ItemPath::new_self(), consume($2)); }	/* TODO: This depends on 2018 */
  ;
-super_chain: | super_chain DOUBLECOLON RWD_super;
-use_def_tail
- : RWD_as IDENT ';'	{ $$ = new UseItems(UseItems::TagRename(), consume($2) ); }
- | DOUBLECOLON '*' ';'	{ $$ = new UseItems(UseItems::TagWildcard()); }
- | DOUBLECOLON '{' use_picks opt_comma '}' ';'	{ $$ = new UseItems( consume($3) ); }
- | ';'	{ $$ = new UseItems(); }
-/* | RWD_use error ';' */
+use_inners
+ : use_inner_one	{ $$ = new ::std::vector<UseEntry_Proto>(); $$->push_back(consume($1)); }
+ | use_inners ',' use_inner_one	{ $$ = $1; $$->push_back(consume($3)); }
  ;
-use_picks
- : use_picks ',' path_item	{ $$ = $1; $$->push_back( consume($3) ); }
- | path_item	{ $$ = new ::std::vector<UseItem>(); $$->push_back( consume($1) ); }
+use_inner_one
+ : '*'	{ $$ = new UseEntry_Proto(); }
+ | RWD_self	{ $$ = new UseEntry_Proto(); }
+ | ident_chain	{ $$ = new UseEntry_Proto(); }
+ | ident_chain RWD_as IDENT	{ $$ = new UseEntry_Proto(consume($1), consume($3)); }
+ | ident_chain RWD_as '_'	{ $$ = new UseEntry_Proto(consume($1), "_"); }
+ | ident_chain DOUBLECOLON '*'	{ $$ = new UseEntry_Proto(consume($1), ""); }
+ | ident_chain DOUBLECOLON '{' use_inners opt_comma '}'	{ $$ = new UseEntry_Proto(consume($1), consume($4)); }
  ;
-path_item
- : IDENT	{ $$ = new UseItem( consume($1) ); }
- | RWD_self	{ $$ = new UseItem(UseItem::TagSelf()); }
+ident_chain
+ : IDENT	{ $$ = new ::std::vector<std::string>(); $$->push_back(consume($1)); }
+ | ident_chain DOUBLECOLON IDENT	{ $$ = $1; $$->push_back(consume($3)); }
  ;
 
 
@@ -338,13 +358,13 @@ tuple_struct_def_items
  : tuple_struct_def_items ',' tuple_struct_def_item
  | tuple_struct_def_item
  ;
-tuple_struct_def_item: attrs opt_pub type;
+tuple_struct_def_item: attrs opt_vis type;
 
 struct_def_items
  : struct_def_items ',' struct_def_item
  | struct_def_item { bnf_trace(context, "struct_def_item"); }
  ;
-struct_def_item: attrs opt_pub IDENT ':' type;
+struct_def_item: attrs opt_vis IDENT ':' type;
 
 /* --- Enum --- */
 enum_def: IDENT generic_def where_clause '{' enum_variants '}' { $$ = new Enum(); };
@@ -354,8 +374,18 @@ enum_variant: attrs enum_variant_;
 enum_variant_
  : IDENT
  | IDENT '=' expr
- | IDENT '(' type_list ')'
+ | IDENT '(' tuple_var_def_items opt_comma ')'
  | IDENT '{' struct_def_items opt_comma '}'
+ ;
+tuple_var_def_items
+ : tuple_var_def_items ',' tuple_var_def_item
+ | tuple_var_def_item
+ ;
+tuple_var_def_item: attrs type;
+
+/* --- Union --- */
+union_def
+ : IDENT generic_def where_clause '{' struct_def_items opt_comma '}' { $$ = new Union(); }
  ;
 
 /* --- Trait --- */
@@ -376,7 +406,7 @@ trait_item
 opt_assign_value: | '=' expr;
 
 /* --- Impl --- */
-impl_def: generic_def impl_def_line '{' impl_items '}' { $$ = new Impl(); };
+impl_def: generic_def impl_def_line '{' super_attrs impl_items '}' { $$ = new Impl(); };
 impl_def_line
  : trait_path RWD_for type where_clause	{ bnf_trace(context, "trait impl"); }
  | '!' trait_path RWD_for type where_clause	{ bnf_trace(context, "negative trait impl"); }
@@ -384,14 +414,20 @@ impl_def_line
  | type_noufcs where_clause	{ bnf_trace(context, "inherent impl"); }
  ;
 impl_items: | impl_items attrs impl_item;
+
 impl_item
- : opt_pub opt_unsafe fn_qualifiers RWD_fn fn_def
- | opt_pub opt_unsafe RWD_fn fn_def
- | opt_pub RWD_type generic_def IDENT '=' type ';'
- | opt_pub RWD_const const_def
- | opt_pub RWD_const RWD_fn fn_def
- | opt_pub RWD_const RWD_unsafe RWD_fn fn_def
- | MACRO tt_group_item
+ : macro_inv
+ | RWC_default impl_item_nomac
+ | opt_vis RWC_default impl_item_nomac
+ | opt_vis impl_item_nomac
+ ;
+impl_item_nomac
+ : opt_unsafe fn_qualifiers RWD_fn fn_def
+ | opt_unsafe RWD_fn fn_def
+ | RWD_type generic_def IDENT '=' type ';'
+ | RWD_const const_def
+ | RWD_const RWD_fn fn_def
+ | RWD_const RWD_unsafe RWD_fn fn_def
  ;
 
 
@@ -399,12 +435,12 @@ impl_item
 generic_def : /* mt */ | '<' generic_def_list '>' { bnf_trace(context, "generic_def_list"); };
 generic_def_list : generic_def_one | generic_def_list ',' generic_def_one | ;
 generic_def_one
- : IDENT ':' bounds '=' type
- | IDENT '=' type
- | IDENT ':' bounds { bnf_trace(context, "bounded ident"); }
- | IDENT
- | LIFETIME
- | LIFETIME ':' LIFETIME
+ : attrs IDENT ':' bounds '=' type
+ | attrs IDENT '=' type
+ | attrs IDENT ':' bounds { bnf_trace(context, "bounded ident"); }
+ | attrs IDENT
+ | attrs LIFETIME
+ | attrs LIFETIME ':' lifetime_bounds
  ;
 
 where_clause: | RWD_where where_clauses;
@@ -415,7 +451,9 @@ where_clauses
  ;
 where_clause_ent
  : hrlb_def type ':' bounds
+ | LIFETIME ':' lifetime_bounds
  ;
+lifetime_bounds: LIFETIME | lifetime_bounds '+' LIFETIME;
 hrlb_def: | RWD_for '<' lifetime_list '>';
 lifetime_list: LIFETIME | lifetime_list ',' LIFETIME
 bounds: bounds '+' bound | bound;
@@ -427,8 +465,13 @@ Paths
 =========================================
 */
 use_path
- : use_path DOUBLECOLON IDENT
- | IDENT;
+ : use_path DOUBLECOLON IDENT { $$ = $1; $$->push(consume($3)); }
+ | IDENT	{ $$ = new_(ItemPath::new_relative(consume($1))); }
+ | RWD_crate	{ $$ = new_(ItemPath::new_crate()); }
+ | RWD_super	{ $$ = new_(ItemPath::new_super()); }
+ | RWD_self	{ $$ = new_(ItemPath::new_self()); }
+ | DOUBLECOLON IDENT { $$ = new_(ItemPath::new_abs()); $$->push(consume($2)); }
+ ;
 
 dlt: DOUBLELT	{ context.pushback('<'); context.pushback('<'); }
 
@@ -494,15 +537,22 @@ Types
 */
 type
  : trait_list
+ | RWD_dyn trait_list
+ | RWD_impl trait_list
  | type_ele
  ;
 type_noufcs
  : trait_list
- | trait_path
+ | RWD_dyn trait_list
+ | RWD_impl trait_list
  | type_nopath
  ;
 type_ele
  : type_path
+ | RWD_dyn trait_path
+ | RWD_impl trait_path
+ | RWD_dyn '(' trait_list ')'
+ | RWD_impl '(' trait_list ')'
  | type_nopath
  ;
 type_nopath
@@ -525,8 +575,9 @@ type_nopath
  | '(' type ')'
  | '(' type ',' ')'
  | '(' type ',' type_list ')'
+ | '!'
  ;
-trait_list: type_path '+' trait_list_inner;
+trait_list: type_path | type_path '+' trait_list_inner;
 trait_list_inner: trait_list_ent | trait_list_inner '+' trait_list_ent;
 trait_list_ent: trait_path | LIFETIME;
 type_list: type_list ',' type | type;
@@ -576,6 +627,7 @@ nonbind_pattern
  | tuple_pattern
  | value_pattern
  | value_pattern TRIPLEDOT value_pattern
+ | value_pattern DOUBLEDOTEQ value_pattern
  | slice_pattern
  | '&' pattern
  | '&' RWD_mut pattern
@@ -621,7 +673,6 @@ flow_control
 block_lines
  :
  | attrs expr_na
- | attrs MACRO tt_paren
  | super_attr     block_lines
  | ';' block_lines
  | attrs expr_na ';' block_lines
@@ -629,9 +680,9 @@ block_lines
  | attrs block    block_lines
  | attrs item     block_lines
  | attrs RWD_let let_binding ';' block_lines
- | attrs MACRO IDENT tt_brace block_lines
- | attrs MACRO tt_brace block_lines
- | attrs MACRO tt_paren ';' block_lines
+ | attrs use_path '!' IDENT tt_brace block_lines
+ | attrs use_path '!' tt_brace block_lines
+ | attrs use_path '!' tt_paren ';' block_lines
  | LIFETIME ':' loop_block block_lines
  ;
 
@@ -642,7 +693,7 @@ let_binding
  ;
 
 expr_list: expr_list ',' expr | expr | /* mt */;
-expr_list_p: expr_list ',' expr | expr;
+/* expr_list_p: expr_list ',' expr | expr; */
 
 struct_literal_ent: IDENT | IDENT ':' expr;
 struct_literal_list
@@ -693,7 +744,7 @@ if_block_head
  : expr_NOSTRLIT code {}
  | RWD_let pattern '=' expr_NOSTRLIT code {}
  ;
-match_arms: match_arms_list match_arm_last;
+match_arms: | match_arms_list match_arm_last;
 match_arms_list
  :
  | match_arms_list attrs match_arm ','

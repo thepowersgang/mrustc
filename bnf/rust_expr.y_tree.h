@@ -13,6 +13,7 @@ _(expr_range)
  | _(expr_range_n) DOUBLEDOT _(expr_range_n)
  |                 DOUBLEDOT _(expr_range_n)
  | DOUBLEDOT
+ | _(expr_range_n) DOUBLEDOTEQ _(expr_range_n)
  ;
 _(expr_range_n): _(expr_bor);
 
@@ -80,7 +81,8 @@ _(expr_12)
  | '*' _(expr_12)
 /* | RWD_box expr_12 */
  | '&' _(expr_12)
- | '&' block /*HACK*/
+// | '&' block /*HACK*/
+// | '&' RWD_mut block
  | '&' RWD_mut _(expr_12)
  | DOUBLEAMP _(expr_12) { }
  | DOUBLEAMP RWD_mut _(expr_12) { }
@@ -94,6 +96,8 @@ _(expr_fc)
  | _(expr_fc) '.' INTEGER
  | _(expr_fc) '.' expr_path_seg '(' expr_list ')'
  | _(expr_fc) '.' expr_path_seg
+ | _(expr_fc) '?'
+ ;
 
 _(expr_value)
  : CHARLIT | INTEGER | FLOAT | STRING
@@ -108,17 +112,17 @@ _(expr_value)
  | RWD_self
  | '(' expr ')'
 #ifndef SUFFIX_is__NOBRACE
-//| block
+ | block
 #endif
  | '(' ')'
- | '(' expr ',' expr_list ')'
+ | '(' expr_list ',' ')'
+ | '(' expr ',' expr_list opt_comma ')'
  | '[' ']'
- | '[' expr ']'
- | '[' expr ',' ']'
- | '[' expr ',' expr_list_p opt_comma ']'
+ | '[' expr_list ']'
+ | '[' expr_list ',' ']'
  | '[' expr ';' expr ']'
- | MACRO tt_paren	{ bnf_trace(context, "Expr macro invocation"); }
- | MACRO tt_square	{ bnf_trace(context, "Expr macro invocation"); }
+ | macro_braced   { bnf_trace(context, "Expr macro invocation"); }
+ | macro_nonbrace { bnf_trace(context, "Expr macro invocation"); }
  | _(closure)
  | RWD_move _(closure)
  ;

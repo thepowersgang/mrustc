@@ -11,6 +11,11 @@ T consume(T* ptr) {
 	delete ptr;
 	return rv;
 }
+/// Stick `v` into a raw pointer
+template<typename T>
+T* new_(T v) {
+	return new T(std::move(v));
+}
 template<typename T>
 ::std::unique_ptr<T> box_raw(T *ptr) {
 	return ::std::unique_ptr<T>(ptr);
@@ -19,6 +24,34 @@ template<typename T>
 ::std::unique_ptr<T> box(T&& ptr) {
 	return ::std::unique_ptr<T>(new T(::std::move(ptr)));
 }
+
+class ItemPath
+{
+public:
+	static ItemPath new_relative(std::string base)
+	{
+		return ItemPath();
+	}
+	static ItemPath new_self()
+	{
+		return ItemPath();
+	}
+	static ItemPath new_super()
+	{
+		return ItemPath();
+	}
+	static ItemPath new_abs()
+	{
+		return ItemPath();
+	}
+	static ItemPath new_crate()
+	{
+		return ItemPath();
+	}
+
+	void push(std::string v) {
+	}
+};
 
 
 class Path
@@ -35,30 +68,57 @@ public:
 	{}
 };
 
+class TokenTree;
+typedef ::std::vector<TokenTree>	TokenTreeList;
+
+class TokenTree
+{
+	int	m_tok;
+	TokenTreeList	m_subtts;
+public:
+	TokenTree(TokenTreeList tts):
+		m_tok(0),
+		m_subtts(tts)
+	{}
+	TokenTree(int tok):
+		m_tok(tok)
+	{}
+};
+
 class MetaItem;
 typedef ::std::vector<MetaItem>	MetaItems;
 
 class MetaItem
 {
 	::std::string	m_key;
+	enum class Type {
+		Empty,
+		String,
+		Tree
+	} m_type;
 	::std::string	m_value;
-	MetaItems	m_sub_items;
+	TokenTree	m_sub_items;
 	// TODO: How to represent `#[attr()]` (i.e. empty paren set) as distinct from `#[attr=""]` and `#[attr]`
 public:
 	MetaItem(::std::string key):
-		m_key(key)
+		m_key(key),
+		m_type(Type::Empty),
+		m_sub_items(0)
 	{}
 	MetaItem(::std::string key, ::std::string value):
 		m_key(key),
-		m_value(value)
+		m_type(Type::String),
+		m_value(value),
+		m_sub_items(0)
 	{}
-	MetaItem(::std::string key, MetaItems sub_items):
+	MetaItem(::std::string key, TokenTree sub_items):
 		m_key(key),
-		m_sub_items(sub_items)
+		m_type(Type::Tree),
+		m_sub_items(std::move(sub_items))
 	{}
 
 	const ::std::string& key() const { return m_key; }
-	const ::std::string& string() const { assert(m_sub_items.size() == 0); return m_value; }
+	const ::std::string& string() const { assert(m_type == Type::String); return m_value; }
 };
 class AttrList
 {
@@ -94,23 +154,25 @@ public:
 };
 
 
-class TokenTree;
-typedef ::std::vector<TokenTree>	TokenTreeList;
 
-class TokenTree
+
+class MacroInv
 {
-	int	m_tok;
-	TokenTreeList	m_subtts;
+	ItemPath	m_name;
+	::std::string	m_ident;
+	TokenTree	m_args;
 public:
-	TokenTree(TokenTreeList tts):
-		m_tok(0),
-		m_subtts(tts)
+	MacroInv(ItemPath ip, TokenTree contents):
+		m_name(std::move(ip)),
+		m_ident(),
+		m_args(contents)
 	{}
-	TokenTree(int tok):
-		m_tok(tok)
+	MacroInv(ItemPath ip, ::std::string ident, TokenTree contents):
+		m_name( std::move(ip) ),
+		m_ident(ident),
+		m_args(contents)
 	{}
 };
-
 
 class Item
 {
@@ -127,8 +189,8 @@ public:
 	virtual ~Item() {
 	}
 
-	void set_pub() {
-		m_is_pub = true;
+	void set_pub(bool v) {
+		m_is_pub = v;
 	}
 	void add_attrs(AttrList a) {
 		m_attrs.append( ::std::move(a) );
@@ -197,20 +259,9 @@ public:
 class Macro:
 	public Item
 {
-	::std::string	m_name;
-	::std::string	m_ident;
-	TokenTree	m_args;
+	MacroInv	m_inner;
 public:
-	Macro(::std::string name, TokenTree contents):
-		m_name(name),
-		m_ident(),
-		m_args(contents)
-	{}
-	Macro(::std::string name, ::std::string ident, TokenTree contents):
-		m_name(name),
-		m_ident(ident),
-		m_args(contents)
-	{}
+	Macro(MacroInv mi): m_inner(std::move(mi)) {}
 };
 
 class ExternCrate:
@@ -229,46 +280,27 @@ public:
 	{}
 };
 
-class UseItem
+struct UseEntry_Proto
 {
-	::std::string	m_name;
-public:
-	struct TagSelf {};
-	UseItem(TagSelf):
-		m_name()
-	{}
-	UseItem(::std::string name):
-		m_name(name)
-	{}
-};
-class UseItems
-{
+	std::vector< std::string>	m_path;
 	::std::string	m_alias;
-	::std::vector<UseItem>	m_items;
-public:
-	UseItems():
-		m_alias()
-	{}
-	struct TagWildcard {};
-	UseItems(TagWildcard):
-		m_alias("*")
-	{}
-	struct TagRename {};
-	UseItems(TagRename, ::std::string name):
-		m_alias(name)
-	{}
-	UseItems(::std::vector<UseItem> items):
-		m_alias(),
-		m_items(items)
-	{}
+	std::vector<UseEntry_Proto>	m_inner;
+
+	UseEntry_Proto() {}
+	UseEntry_Proto(std::vector<std::string> path) {}
+	UseEntry_Proto(std::vector<std::string> path, std::string alias) {}
+	UseEntry_Proto(std::vector<std::string> path, std::vector<UseEntry_Proto> inners) {}
 };
 class UseSet:
 	public Item
 {
 public:
-	UseSet()
+	UseSet(ItemPath path)
+	{
+	}
+	UseSet(ItemPath path, std::string alias)
 	{}
-	UseSet(Path base, UseItems items)
+	UseSet(ItemPath base_path, std::vector<UseEntry_Proto> entries)
 	{}
 };
 
@@ -282,6 +314,10 @@ class Enum:
 {
 };
 class Struct:
+	public Item
+{
+};
+class Union:
 	public Item
 {
 };
