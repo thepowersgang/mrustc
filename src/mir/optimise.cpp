@@ -3416,6 +3416,8 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
 
                         if( val_l.is_Const() || val_r.is_Const() )
                         {
+                            // One of the arms is a named constant, can't check (they're not an actual value, just a
+                            // reference to one)
                         }
                         else
                         {
@@ -3538,13 +3540,16 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                     }
                                 }}
                                 break;
-                                
+
                             case ::MIR::eBinOp::BIT_AND:
                                 MIR_ASSERT(state, val_l.tag() == val_r.tag(), "Mismatched types for eBinOp::BIT_AND - " << val_l << " & " << val_r);
                                 //TU_MATCH_HDRA( (val_l, val_r), {)
                                 TU_MATCH_HDRA( (val_l), {)
                                 default:
                                     break;
+                                TU_ARMA(Bool, le) { const auto& re = val_r.as_Bool();
+                                    new_value = ::MIR::Constant::make_Bool({ le.v & re.v });
+                                    }
                                 // TU_ARMav(Int, (le, re)) {
                                 TU_ARMA(Int, le) { const auto& re = val_r.as_Int();
                                     MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::BIT_AND - " << val_l << " ^ " << val_r);
@@ -3562,7 +3567,9 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                 TU_MATCH_HDRA( (val_l), {)
                                 default:
                                     break;
-                                // TU_ARMav(Int, (le, re)) {
+                                TU_ARMA(Bool, le) { const auto& re = val_r.as_Bool();
+                                    new_value = ::MIR::Constant::make_Bool({ le.v | re.v });
+                                    }
                                 TU_ARMA(Int, le) { const auto& re = val_r.as_Int();
                                     MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::BIT_OR - " << val_l << " | " << val_r);
                                     new_value = ::MIR::Constant::make_Int({ H::truncate_s(le.t, le.v | re.v), le.t });
@@ -3579,6 +3586,9 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                 TU_MATCH_HDRA( (val_l), {)
                                 default:
                                     break;
+                                TU_ARMA(Bool, le) { const auto& re = val_r.as_Bool();
+                                    new_value = ::MIR::Constant::make_Bool({ le.v ^ re.v });
+                                    }
                                 // TU_ARMav(Int, (le, re)) {
                                 TU_ARMA(Int, le) { const auto& re = val_r.as_Int();
                                     MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::BIT_XOR - " << val_l << " ^ " << val_r);
