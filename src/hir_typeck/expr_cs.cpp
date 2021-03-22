@@ -2348,7 +2348,8 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                         // TODO: If the value is a borrow, then unwind borrows.
                         ASSERT_BUG(sp, pe.val.as_Named().binding, pattern);
                         const auto& cval = pe.val.as_Named().binding->m_value_res;
-                        if( cval.is_String() ) {
+                        const auto& ty = pe.val.as_Named().binding->m_type;
+                        if( ty.data().is_Borrow() ) {
                             ASSERT_BUG(sp, pattern.m_implicit_deref_count >= 1, "");
                             pattern.m_implicit_deref_count -= 1;
                         }

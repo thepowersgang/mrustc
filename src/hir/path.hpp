@@ -152,8 +152,6 @@ public:
 class TraitPath
 {
 public:
-    GenericPath m_path;
-    ::std::vector< RcString>   m_hrls;
     // TODO: Each bound should list its origin trait
     struct AtyEqual {
         ::HIR::GenericPath  source_trait;
@@ -176,8 +174,6 @@ public:
         }
 
     };
-    typedef ::std::map< RcString, AtyEqual> assoc_list_t;
-    assoc_list_t    m_type_bounds;
     /// Associated type trait bounds (`Type: Trait`)
     struct AtyBound {
         ::HIR::GenericPath  source_trait;
@@ -199,6 +195,12 @@ public:
             };
         }
     };
+
+    typedef ::std::map< RcString, AtyEqual> assoc_list_t;
+
+    GenericPath m_path;
+    ::std::vector< RcString>   m_hrls;
+    assoc_list_t    m_type_bounds;
     ::std::map< RcString, AtyBound>  m_trait_bounds;
 
     const ::HIR::Trait* m_trait_ptr;
@@ -206,15 +208,16 @@ public:
     TraitPath clone() const;
     Compare compare_with_placeholders(const Span& sp, const TraitPath& x, t_cb_resolve_type resolve_placeholder) const;
 
-    bool operator==(const TraitPath& x) const;
-    bool operator!=(const TraitPath& x) const { return !(*this == x); }
+    bool operator==(const TraitPath& x) const { return ord(x) == OrdEqual; }
+    bool operator!=(const TraitPath& x) const { return ord(x) != OrdEqual; }
     bool operator<(const TraitPath& x) const { return ord(x) == OrdLess; }
 
     Ordering ord(const TraitPath& x) const {
         ORD(m_path, x.m_path);
         ORD(m_hrls, x.m_hrls);
         ORD(m_trait_bounds, x.m_trait_bounds);
-        return ::ord(m_type_bounds, x.m_type_bounds);
+        ORD(m_type_bounds , x.m_type_bounds);
+        return OrdEqual;
     }
 
     friend ::std::ostream& operator<<(::std::ostream& os, const TraitPath& x);

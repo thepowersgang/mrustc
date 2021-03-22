@@ -141,6 +141,8 @@ struct TypeRepr
         ::HIR::TypeRef  ty;
     };
     ::std::vector<Field>    fields;
+
+    size_t get_offset(const Span& sp, const StaticTraitResolve& resolve, const FieldPath& path) const;
 };
 static inline std::ostream& operator<<(std::ostream& os, const TypeRepr::FieldPath& x) {
     os << x.size << "@" << x.index;

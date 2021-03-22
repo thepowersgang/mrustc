@@ -15,6 +15,8 @@ void StaticTraitResolve::prep_indexes()
     const Span& sp = sp_AAA;
 
     TRACE_FUNCTION_F("");
+    if(m_impl_generics) DEBUG("m_impl_generics = " << m_impl_generics->fmt_args());
+    if(m_item_generics) DEBUG("m_item_generics = " << m_item_generics->fmt_args());
 
     m_copy_cache.clear();
     m_type_equalities.clear();
@@ -1083,7 +1085,16 @@ void StaticTraitResolve::expand_associated_types_tp(const Span& sp, ::HIR::Trait
 {
     expand_associated_types_params(sp, input.m_path.m_params);
     for(auto& arg : input.m_type_bounds)
+    {
+        this->expand_associated_types_params(sp, arg.second.source_trait.m_params);
         this->expand_associated_types_inner(sp, arg.second.type);
+    }
+    for(auto& arg : input.m_trait_bounds)
+    {
+        this->expand_associated_types_params(sp, arg.second.source_trait.m_params);
+        for(auto& t : arg.second.traits)
+            this->expand_associated_types_tp(sp, t);
+    }
 }
 void StaticTraitResolve::expand_associated_types_inner(const Span& sp, ::HIR::TypeRef& input) const
 {
@@ -2174,8 +2185,8 @@ MetadataType StaticTraitResolve::metadata_type(const Span& sp, const ::HIR::Type
         }
         else if( (e.binding >> 8) == 0 ) {
             auto idx = e.binding & 0xFF;
-            assert( m_impl_generics );
-            assert( idx < m_impl_generics->m_types.size() );
+            ASSERT_BUG(sp, m_impl_generics, "Encountered generic " << ty << " without impl generics available");
+            ASSERT_BUG(sp, idx < m_impl_generics->m_types.size(), "Encountered generic " << ty << " out of range of impl generic spec");
             if( m_impl_generics->m_types[idx].m_is_sized ) {
                 return MetadataType::None;
             }
@@ -2185,8 +2196,8 @@ MetadataType StaticTraitResolve::metadata_type(const Span& sp, const ::HIR::Type
         }
         else if( (e.binding >> 8) == 1 ) {
             auto idx = e.binding & 0xFF;
-            assert( m_item_generics );
-            assert( idx < m_item_generics->m_types.size() );
+            ASSERT_BUG(sp, m_item_generics, "Encountered generic " << ty << " without item generics available");
+            ASSERT_BUG(sp, idx < m_item_generics->m_types.size(), "Encountered generic " << ty << " out of range of item generic spec");
             if( m_item_generics->m_types[idx].m_is_sized ) {
                 return MetadataType::None;
             }
@@ -2489,6 +2500,7 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
             }
         }
         const ::HIR::Module& mod = m_crate.get_mod_by_path(sp, pe.m_path, /*ignore_last_node=*/true);
+        ASSERT_BUG(sp, mod.m_value_items.count(pe.m_path.m_components.back()), "Missing item " << pe.m_path);
         const auto& v = mod.m_value_items.at(pe.m_path.m_components.back());
         TU_MATCHA( (v->ent), (ve),
         (Import, BUG(sp, "Module Import");),
@@ -2605,6 +2617,11 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
                     TU_MATCH_HDRA( (v), {)
                     TU_ARMA(Constant, ve) {
                         // Constants?
+                        if( ve.m_value_state != HIR::Constant::ValueState::Unknown ) {
+                            DEBUG("Trait provided value");
+                            // NOTE: The parameters have already been set
+                            return &ve;
+                        }
                         }
                     TU_ARMA(Static, ve) {
                         // Statics?

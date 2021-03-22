@@ -9,6 +9,7 @@
 #include <hir_typeck/common.hpp>   // monomorphise_type
 #include <algorithm>
 #include <numeric>
+#include <trans/target.hpp>
 
 void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val );
 
@@ -97,6 +98,7 @@ typedef ::std::vector<PatternRuleset>  t_arm_rules;
 void MIR_LowerHIR_Match_Simple( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val, t_arm_rules arm_rules, ::std::vector<ArmCode> arm_code, ::MIR::BasicBlockId first_cmp_block);
 void MIR_LowerHIR_Match_Grouped( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val, t_arm_rules arm_rules, ::std::vector<ArmCode> arms_code, ::MIR::BasicBlockId first_cmp_block );
 void MIR_LowerHIR_Match_DecisionTree( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val, t_arm_rules arm_rules, ::std::vector<ArmCode> arm_code , ::MIR::BasicBlockId first_cmp_block);
+
 /// Helper to construct rules from a passed pattern
 struct PatternRulesetBuilder
 {
@@ -115,7 +117,7 @@ struct PatternRulesetBuilder
         }
     }
 
-    void append_from_lit(const Span& sp, const ::HIR::Literal& lit, const ::HIR::TypeRef& ty);
+    void append_from_lit(const Span& sp, EncodedLiteralSlice lit, const ::HIR::TypeRef& ty);
     void append_from(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::TypeRef& ty);
     void push_rule(PatternRule r);
 };
@@ -699,7 +701,7 @@ void PatternRulesetBuilder::push_rule(PatternRule r)
     m_rules.back().field_path = m_field_path;
 }
 
-void PatternRulesetBuilder::append_from_lit(const Span& sp, const ::HIR::Literal& lit, const ::HIR::TypeRef& ty)
+void PatternRulesetBuilder::append_from_lit(const Span& sp, EncodedLiteralSlice lit, const ::HIR::TypeRef& ty)
 {
     TRACE_FUNCTION_F("lit="<<lit<<", ty="<<ty<<",   m_field_path=[" << m_field_path << "]");
 
@@ -709,55 +711,40 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, const ::HIR::Literal
     TU_ARMA(Primitive, e) {
         switch(e)
         {
-        case ::HIR::CoreType::F32:
-        case ::HIR::CoreType::F64: {
-            // Yes, this is valid.
-            ASSERT_BUG(sp, lit.is_Float(), "Matching floating point type with non-float literal - " << lit);
-            double val = lit.as_Float();
-            this->push_rule( PatternRule::make_Value( ::MIR::Constant::make_Float({ val, e }) ) );
-            } break;
-        case ::HIR::CoreType::U8:
-        case ::HIR::CoreType::U16:
-        case ::HIR::CoreType::U32:
-        case ::HIR::CoreType::U64:
-        case ::HIR::CoreType::U128:
-        case ::HIR::CoreType::Usize: {
-            ASSERT_BUG(sp, lit.is_Integer(), "Matching integer type with non-integer literal - " << lit);
-            uint64_t val = lit.as_Integer();
-            this->push_rule( PatternRule::make_Value( ::MIR::Constant::make_Uint({val, e}) ) );
-            } break;
-        case ::HIR::CoreType::I8:
-        case ::HIR::CoreType::I16:
-        case ::HIR::CoreType::I32:
-        case ::HIR::CoreType::I64:
-        case ::HIR::CoreType::I128:
-        case ::HIR::CoreType::Isize: {
-            ASSERT_BUG(sp, lit.is_Integer(), "Matching integer type with non-integer literal - " << lit);
-            int64_t val = static_cast<int64_t>( lit.as_Integer() );
-            this->push_rule( PatternRule::make_Value( ::MIR::Constant::make_Int({ val, e }) ) );
-            } break;
-        case ::HIR::CoreType::Bool:
-            ASSERT_BUG(sp, lit.is_Integer(), "Matching boolean with non-integer literal - " << lit);
-            this->push_rule( PatternRule::make_Bool( lit.as_Integer() != 0 ) );
-            break;
-        case ::HIR::CoreType::Char: {
-            // Char is just another name for 'u32'... but with a restricted range
-            ASSERT_BUG(sp, lit.is_Integer(), "Matching char with non-integer literal - " << lit);
-            uint64_t val = lit.as_Integer();
-            this->push_rule( PatternRule::make_Value( ::MIR::Constant::make_Uint({ val, e }) ) );
-            } break;
+        case ::HIR::CoreType::F32:  this->push_rule( PatternRule::make_Value( ::MIR::Constant::make_Float({ lit.read_float(4), e }) ) );    break;
+        case ::HIR::CoreType::F64:  this->push_rule( PatternRule::make_Value( ::MIR::Constant::make_Float({ lit.read_float(8), e }) ) );    break;
+
+        case ::HIR::CoreType::U8:   this->push_rule( PatternRule::make_Value( ::MIR::Constant::make_Uint({lit.read_uint(1), e}) ) );    break;
+        case ::HIR::CoreType::U16:  this->push_rule( PatternRule::make_Value( ::MIR::Constant::make_Uint({lit.read_uint(2), e}) ) );    break;
+        case ::HIR::CoreType::U32:  this->push_rule( PatternRule::make_Value( ::MIR::Constant::make_Uint({lit.read_uint(4), e}) ) );    break;
+        case ::HIR::CoreType::U64:  this->push_rule( PatternRule::make_Value( ::MIR::Constant::make_Uint({lit.read_uint(8), e}) ) );    break;
+        case ::HIR::CoreType::U128: this->push_rule( PatternRule::make_Value( ::MIR::Constant::make_Uint({lit.read_uint(16), e}) ) );    break;
+        case ::HIR::CoreType::Usize: this->push_rule( PatternRule::make_Value( ::MIR::Constant::make_Uint({lit.read_uint(Target_GetPointerBits()/8), e}) ) );    break;
+
+        case ::HIR::CoreType::I8:   this->push_rule( PatternRule::make_Value( ::MIR::Constant::make_Int({lit.read_sint(1), e}) ) );    break;
+        case ::HIR::CoreType::I16:  this->push_rule( PatternRule::make_Value( ::MIR::Constant::make_Int({lit.read_sint(2), e}) ) );    break;
+        case ::HIR::CoreType::I32:  this->push_rule( PatternRule::make_Value( ::MIR::Constant::make_Int({lit.read_sint(4), e}) ) );    break;
+        case ::HIR::CoreType::I64:  this->push_rule( PatternRule::make_Value( ::MIR::Constant::make_Int({lit.read_sint(8), e}) ) );    break;
+        case ::HIR::CoreType::I128: this->push_rule( PatternRule::make_Value( ::MIR::Constant::make_Int({lit.read_sint(16), e}) ) );    break;
+        case ::HIR::CoreType::Isize: this->push_rule( PatternRule::make_Value( ::MIR::Constant::make_Int({lit.read_sint(Target_GetPointerBits()/8), e}) ) );    break;
+
+        case ::HIR::CoreType::Bool: this->push_rule( PatternRule::make_Bool(lit.read_uint(1) != 0) );    break;
+        // Char is just another name for 'u32'... but with a restricted range
+        case ::HIR::CoreType::Char: this->push_rule( PatternRule::make_Value( ::MIR::Constant::make_Uint({lit.read_uint(4), e}) ) );    break;
         case ::HIR::CoreType::Str:
             BUG(sp, "Hit match over `str` - must be `&str`");
             break;
         }
         }
     TU_ARMA(Tuple, e) {
+        auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
+        ASSERT_BUG(sp, repr, "Matching with generic constant type not valid - " << ty);
+        ASSERT_BUG(sp, e.size() == repr->fields.size(), "Matching tuple with mismatched literal size - " << e.size() << " != " << repr->fields.size());
+
         m_field_path.push_back(0);
-        ASSERT_BUG(sp, lit.is_List(), "Matching tuple with non-list literal - " << lit);
-        const auto& list = lit.as_List();
-        ASSERT_BUG(sp, e.size() == list.size(), "Matching tuple with mismatched literal size - " << e.size() << " != " << list.size());
-        for(unsigned int i = 0; i < e.size(); i ++) {
-            this->append_from_lit(sp, list[i], e[i]);
+        for(unsigned int i = 0; i < e.size(); i ++)
+        {
+            this->append_from_lit(sp, lit.slice(repr->fields[i].offset), repr->fields[i].ty);
             m_field_path.back() ++;
         }
         m_field_path.pop_back();
@@ -774,47 +761,16 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, const ::HIR::Literal
             this->push_rule( PatternRule::make_Any({}) );
             }
         TU_ARMA(Struct, pbe) {
-            ASSERT_BUG(sp, lit.is_List(), "Matching struct non-list literal - " << ty << " with " << lit);
-            const auto& list = lit.as_List();
+            auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
+            ASSERT_BUG(sp, repr, "Matching with generic constant type not valid - " << ty);
 
-            auto monomorph = [&](const auto& ty) {
-                auto rv = MonomorphStatePtr(nullptr, &e.path.m_data.as_Generic().m_params, nullptr).monomorph_type(sp, ty);
-                this->m_resolve.expand_associated_types(sp, rv);
-                return rv;
-                };
-            const auto& str_data = pbe->m_data;
-            TU_MATCH_HDRA( (str_data), {)
-            TU_ARMA(Unit, sd) {
-                ASSERT_BUG(sp, list.size() == 0 , "Matching unit struct with non-empty list - " << lit);
-                // No rule
-                }
-            TU_ARMA(Tuple, sd) {
-                ASSERT_BUG(sp, sd.size() == list.size(), "");
-                m_field_path.push_back(0);
-                for(unsigned int i = 0; i < sd.size(); i ++ )
-                {
-                    ::HIR::TypeRef  tmp;
-                    const auto& sty_mono = (monomorphise_type_needed(sd[i].ent) ? tmp = monomorph(sd[i].ent) : sd[i].ent);
-
-                    this->append_from_lit(sp, list[i], sty_mono);
-                    m_field_path.back() ++;
-                }
-                m_field_path.pop_back();
-                }
-            TU_ARMA(Named, sd) {
-                ASSERT_BUG(sp, sd.size() == list.size(), "");
-                m_field_path.push_back(0);
-                for( unsigned int i = 0; i < sd.size(); i ++ )
-                {
-                    const auto& fld_ty = sd[i].second.ent;
-                    ::HIR::TypeRef  tmp;
-                    const auto& sty_mono = (monomorphise_type_needed(fld_ty) ? tmp = monomorph(fld_ty) : fld_ty);
-
-                    this->append_from_lit(sp, list[i], sty_mono);
-                    m_field_path.back() ++;
-                }
-                }
+            m_field_path.push_back(0);
+            for(size_t i = 0; i < repr->fields.size(); i ++)
+            {
+                this->append_from_lit(sp, lit.slice(repr->fields[i].offset), repr->fields[i].ty);
+                m_field_path.back() ++;
             }
+            m_field_path.pop_back();
             }
         TU_ARMA(ExternType, pbe) {
             TODO(sp, "Match extern type");
@@ -823,25 +779,52 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, const ::HIR::Literal
             TODO(sp, "Match union");
             }
         TU_ARMA(Enum, pbe) {
-            ASSERT_BUG(sp, lit.is_Variant(), "Matching enum non-variant literal - " << lit);
-            auto var_idx = lit.as_Variant().idx;
-            const auto& subval = *lit.as_Variant().val;
-            auto monomorph = [&](const auto& ty) {
-                auto rv = MonomorphStatePtr(nullptr, &e.path.m_data.as_Generic().m_params, nullptr).monomorph_type(sp, ty);
-                this->m_resolve.expand_associated_types(sp, rv);
-                return rv;
-                };
+            auto* enm_repr = Target_GetTypeRepr(sp, m_resolve, ty);
+            ASSERT_BUG(sp, enm_repr, "Matching with generic constant type not valid - " << ty);
 
-            ASSERT_BUG(sp, var_idx < pbe->num_variants(), "Literal refers to a variant out of range");
+            // TODO: Share code with `MIR_Cleanup_LiteralToRValue`
+            unsigned var_idx = 0;
+            TU_MATCH_HDRA( (enm_repr->variants), { )
+            TU_ARMA(None, e) {
+                }
+            TU_ARMA(Linear, ve) {
+                auto v = lit.slice( enm_repr->get_offset(sp, m_resolve, ve.field), ve.field.size).read_uint(ve.field.size);
+                if( v < ve.offset ) {
+                    var_idx = ve.field.index;
+                    DEBUG("VariantMode::Linear - Niche #" << var_idx);
+                }
+                else {
+                    var_idx = v - ve.offset;
+                    DEBUG("VariantMode::Linear - Other #" << var_idx);
+                }
+                }
+            TU_ARMA(Values, ve) {
+                auto v = lit.slice( enm_repr->get_offset(sp, m_resolve, ve.field), ve.field.size).read_uint(ve.field.size);
+                auto it = std::find(ve.values.begin(), ve.values.end(), v);
+                ASSERT_BUG(sp, it != ve.values.end(), "Invalid enum tag: " << v << " for " << ty);
+                var_idx = it - ve.values.begin();
+                }
+            TU_ARMA(NonZero, ve) {
+                size_t ofs = enm_repr->get_offset(sp, m_resolve, ve.field);
+                bool is_nonzero = false;
+                for(size_t i = 0; i < ve.field.size; i ++) {
+                    if( lit.slice(ofs+i, 1).read_uint(1) != 0 ) {
+                        is_nonzero = true;
+                        break;
+                    }
+                }
+
+                var_idx = (is_nonzero ? 1 - ve.zero_variant : ve.zero_variant);
+                }
+            }
+
             PatternRulesetBuilder   sub_builder { this->m_resolve };
-            if( const auto* e = pbe->m_data.opt_Data() )
+            if(enm_repr->fields.size() > 1 || enm_repr->variants.is_None())
             {
-                const auto& var_def = e->at(var_idx);
-
                 sub_builder.m_field_path = m_field_path;
                 sub_builder.m_field_path.push_back(var_idx);
 
-                sub_builder.append_from_lit(sp, subval, monomorph(var_def.type));
+                sub_builder.append_from_lit(sp, lit.slice(enm_repr->fields[var_idx].offset), enm_repr->fields[var_idx].ty);
             }
 
             this->push_rule( PatternRule::make_Variant({ var_idx, mv$(sub_builder.m_rules) }) );
@@ -860,19 +843,24 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, const ::HIR::Literal
         TODO(sp, "Match erased type with literal?");
         }
     TU_ARMA(Array, e) {
-        ASSERT_BUG(sp, lit.is_List(), "Matching array with non-list literal - " << lit);
-        const auto& list = lit.as_List();
-        ASSERT_BUG(sp, TU_TEST1(e.size, Known, == list.size()), "Matching array with mismatched literal size - " << ty << " != " << list.size());
+        size_t size = 0;
+        ASSERT_BUG(sp, Target_GetSizeOf(sp, m_resolve, e.inner, size), "Matching with generic constant type not valid - " << ty);
 
-        // Sequential match just like tuples.
         m_field_path.push_back(0);
-        for(unsigned int i = 0; i < list.size(); i ++) {
-            this->append_from_lit(sp, list[i], e.inner);
+        size_t ofs = 0;
+        for(unsigned int i = 0; i < e.size.as_Known(); i ++)
+        {
+            this->append_from_lit(sp, lit.slice(ofs, size), e.inner);
+            ofs += size;
             m_field_path.back() ++;
         }
         m_field_path.pop_back();
         }
     TU_ARMA(Slice, e) {
+#if 0
+        size_t size = 0;
+        ASSERT_BUG(sp, Target_GetSizeOf(sp, m_resolve, e.inner, size), "Matching with generic constant type not valid - " << ty);
+
         ASSERT_BUG(sp, lit.is_List(), "Matching array with non-list literal - " << lit);
         const auto& list = lit.as_List();
 
@@ -886,11 +874,27 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, const ::HIR::Literal
         }
         // Encodes length check and sub-pattern rules
         this->push_rule( PatternRule::make_Slice({ static_cast<unsigned int>(list.size()), mv$(sub_builder.m_rules) }) );
+#else
+        TODO(sp, "Match literal Slice");
+#endif
         }
     TU_ARMA(Borrow, e) {
         m_field_path.push_back( FIELD_DEREF );
-        if( lit.is_String() ) {
-            this->push_rule( PatternRule::make_Value(lit.as_String()) );
+        if( e.inner == ::HIR::CoreType::Str ) {
+            auto ptr_size = Target_GetPointerBits()/8;
+            auto ptr = lit.read_uint(ptr_size);
+            auto len = lit.slice(ptr_size, ptr_size).read_uint(ptr_size);
+            auto* r = lit.get_reloc();
+            ASSERT_BUG(sp, r, "Null relocation for string in pattern generation");
+            ASSERT_BUG(sp, ptr >= EncodedLiteral::PTR_BASE, "");
+            ptr -= EncodedLiteral::PTR_BASE;
+
+            ASSERT_BUG(sp, !r->p, "TODO: Handle &str match constant with non-string relocation - " << *r->p);
+            ASSERT_BUG(sp, ptr <= r->bytes.size(), "");
+            ASSERT_BUG(sp, len <= r->bytes.size(), "");
+            ASSERT_BUG(sp, ptr+len <= r->bytes.size(), "");
+
+            this->push_rule(PatternRule::make_Value( std::string(r->bytes.data() + ptr, r->bytes.data() + ptr + len) ));
         }
         else {
             TODO(sp, "Match literal Borrow: ty=" << ty << " lit=" << lit);
@@ -926,7 +930,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 ),
             (Named,
                 assert(e.binding);
-                return e.binding->m_value_res.as_Integer();
+                return EncodedLiteralSlice(e.binding->m_value_res).read_uint();
                 )
             )
             throw "";
@@ -941,7 +945,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 ),
             (Named,
                 assert(e.binding);
-                return e.binding->m_value_res.as_Float();
+                return EncodedLiteralSlice(e.binding->m_value_res).read_float();
                 )
             )
             throw "";

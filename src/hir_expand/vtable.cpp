@@ -244,7 +244,7 @@ namespace {
             auto item_path = m_new_type(
                 true,
                 RcString::new_interned(FMT(p.get_name() << "#vtable")),
-                ::HIR::Struct(mv$(args), ::HIR::Struct::Repr::Rust, ::HIR::Struct::Data(mv$(fields)))
+                ::HIR::Struct(mv$(args), ::HIR::Struct::Repr::C, ::HIR::Struct::Data(mv$(fields)))
                 );
             tr.m_vtable_path = item_path;
             DEBUG("Vtable structure created - " << item_path);

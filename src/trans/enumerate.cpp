@@ -53,7 +53,7 @@ void Trans_Enumerate_FillFrom_PathMono(EnumState& state, ::HIR::Path path);
 void Trans_Enumerate_FillFrom(EnumState& state, const ::HIR::Function& function, const Trans_Params& pp);
 void Trans_Enumerate_FillFrom(EnumState& state, const ::HIR::Static& stat, TransList_Static& stat_out, Trans_Params pp={});
 void Trans_Enumerate_FillFrom_VTable (EnumState& state, ::HIR::Path vtable_path, const Trans_Params& pp);
-void Trans_Enumerate_FillFrom_Literal(EnumState& state, const ::HIR::Literal& lit, const Trans_Params& pp);
+void Trans_Enumerate_FillFrom_Literal(EnumState& state, const EncodedLiteral& lit, const Trans_Params& pp);
 void Trans_Enumerate_FillFrom_MIR(MIR::EnumCache& state, const ::MIR::Function& code);
 
 
@@ -597,7 +597,7 @@ namespace
             // If the type has already been visited, AND either this is a shallow visit, or the previous wasn't
             {
                 auto idx_it = ::std::lower_bound(visited_map.begin(), visited_map.end(), ty, [&](size_t i, const ::HIR::TypeRef& t){ return out_list[i].first < t; });
-                if( idx_it != visited_map.end() && out_list[*idx_it].first == ty)
+                if( idx_it != visited_map.end() && out_list[*idx_it].first == ty )
                 {
                     auto it = &out_list[*idx_it];
                     if( it->second == false || mode == Mode::Shallow )
@@ -771,8 +771,9 @@ namespace
                     }
                 }
             }
+            auto i = out_list.size();
             out_list.push_back( ::std::make_pair(ty.clone(), shallow) );
-            DEBUG("Add type " << ty << (shallow ? " (Shallow)": ""));
+            DEBUG("Add type " << ty << (shallow ? " (Shallow)": "") << " " << i);
         }
 
         void __attribute__ ((noinline)) visit_function(const ::HIR::Path& path, const ::HIR::Function& fcn, const Trans_Params& pp)
@@ -1272,8 +1273,11 @@ void Trans_Enumerate_FillFrom_PathMono(EnumState& state, ::HIR::Path path_mono)
         }
         }
     TU_ARMA(Constant, e) {
-        if( e->m_value_res.is_Defer() )
+        switch(e->m_value_state)
         {
+        case HIR::Constant::ValueState::Unknown:
+            BUG(sp, "Unevaluated constant: " << path_mono);
+        case HIR::Constant::ValueState::Generic:
             if( auto* slot = state.rv.add_const(mv$(path_mono)) )
             {
                 MIR::EnumCache  es;
@@ -1282,10 +1286,10 @@ void Trans_Enumerate_FillFrom_PathMono(EnumState& state, ::HIR::Path path_mono)
                 slot->ptr = e;
                 slot->pp = ::std::move(sub_pp);
             }
-        }
-        else
-        {
+            break;
+        case HIR::Constant::ValueState::Known:
             Trans_Enumerate_FillFrom_Literal(state, e->m_value_res, sub_pp);
+            break;
         }
         }
     }
@@ -1466,37 +1470,14 @@ void Trans_Enumerate_FillFrom_VTable(EnumState& state, ::HIR::Path vtable_path, 
     }
 }
 
-void Trans_Enumerate_FillFrom_Literal(EnumState& state, const ::HIR::Literal& lit, const Trans_Params& pp)
+void Trans_Enumerate_FillFrom_Literal(EnumState& state, const EncodedLiteral& lit, const Trans_Params& pp)
 {
-    TU_MATCHA( (lit), (e),
-    (Invalid,
-        ),
-    (Defer,
-        // TODO: Bug?
-        ),
-    (Generic,
-        // TODO: Bug?
-        ),
-    (List,
-        for(const auto& v : e)
-            Trans_Enumerate_FillFrom_Literal(state, v, pp);
-        ),
-    (Variant,
-        Trans_Enumerate_FillFrom_Literal(state, *e.val, pp);
-        ),
-    (Integer,
-        ),
-    (Float,
-        ),
-    (BorrowPath,
-        Trans_Enumerate_FillFrom_Path(state, e, pp);
-        ),
-    (BorrowData,
-        Trans_Enumerate_FillFrom_Literal(state, *e.val, pp);
-        ),
-    (String,
-        )
-    )
+    for(const auto& r : lit.relocations)
+    {
+        if( r.p ) {
+            Trans_Enumerate_FillFrom_Path(state, *r.p, pp);
+        }
+    }
 }
 
 namespace {
@@ -1579,7 +1560,7 @@ void Trans_Enumerate_FillFrom(EnumState& state, const ::HIR::Static& item, Trans
     {
         BUG(Span(), "Enumerating static with no assigned type (unused elevated literal)");
     }
-    else if( ! item.m_value_res.is_Invalid() )
+    else if( item.m_value_generated )
     {
         Trans_Enumerate_FillFrom_Literal(state, item.m_value_res, pp);
     }

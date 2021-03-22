@@ -606,7 +606,7 @@ void Target_SetCfg(const ::std::string& target_name)
 
 bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty, size_t& out_size, size_t& out_align)
 {
-    TRACE_FUNCTION_FR(ty, "size=" << out_size << ", align=" << out_align);
+    //TRACE_FUNCTION_FR(ty, "size=" << out_size << ", align=" << out_align);
     TU_MATCH_HDRA( (ty.data()), {)
     TU_ARMA(Infer, te) {
         BUG(sp, "sizeof on _ type");
@@ -1859,3 +1859,23 @@ const ::HIR::TypeRef& Target_GetInnerType(const Span& sp, const StaticTraitResol
     ASSERT_BUG(sp, inner_repr, "No inner repr for " << ty);
     return Target_GetInnerType(sp, resolve, *inner_repr, sub_fields[ofs], sub_fields, ofs+1);
 }
+
+size_t TypeRepr::get_offset(const Span& sp, const StaticTraitResolve& resolve, const TypeRepr::FieldPath& path) const
+{
+    const auto* r = this;
+    assert(path.index < r->fields.size());
+    size_t ofs = r->fields[path.index].offset;
+
+    const auto* ty = &r->fields[path.index].ty;
+    for(const auto& f : path.sub_fields)
+    {
+        r = Target_GetTypeRepr(sp, resolve, *ty);
+        assert(r);  // We have an outer repr, so inner must exist
+        assert(f < r->fields.size());
+        ofs += r->fields[f].offset;
+        ty = &r->fields[f].ty;
+    }
+
+    return ofs;
+}
+

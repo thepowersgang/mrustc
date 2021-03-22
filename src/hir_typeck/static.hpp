@@ -76,7 +76,6 @@ public:
         m_lang_FnOnce = m_crate.get_lang_item_path_opt("fn_once");
         m_lang_Box = m_crate.get_lang_item_path_opt("owned_box");
         m_lang_PhantomData = m_crate.get_lang_item_path_opt("phantom_data");
-        prep_indexes();
     }
 
 private:

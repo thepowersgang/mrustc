@@ -337,6 +337,33 @@ namespace {
 void Trans_Monomorphise_List(const ::HIR::Crate& crate, TransList& list)
 {
     ::StaticTraitResolve    resolve { crate };
+
+    // Also do constants and statics (stored in where?)
+    // - NOTE: Done in reverse order, because consteval needs used constants to be evaluated
+    for(auto& ent : reverse(list.m_constants))
+    {
+        const auto& path = ent.first;
+        const auto& pp = ent.second->pp;
+        const auto& c = *ent.second->ptr;
+        TRACE_FUNCTION_FR("CONSTANT " << path, "CONSTANT " << path);
+        auto ty = pp.monomorph(resolve, c.m_type);
+        // 1. Evaluate the constant
+        struct Nvs: public ::HIR::Evaluator::Newval
+        {
+            ::HIR::Path new_static(::HIR::TypeRef type, EncodedLiteral value) override {
+                TODO(Span(), "Create new static in monomorph pass - " << value << " : " << type);
+            }
+        } nvs;
+        auto eval = ::HIR::Evaluator { pp.sp, crate, nvs };
+        MonomorphState   ms;
+        ms.self_ty = pp.self_type.clone();
+        ms.pp_impl = &pp.pp_impl;
+        ms.pp_method = &pp.pp_method;
+        auto new_lit = eval.evaluate_constant(path, c.m_value, ::std::move(ty), ::std::move(ms));
+        // 2. Store evaluated HIR::Literal in c.m_monomorph_cache
+        c.m_monomorph_cache.insert(::std::make_pair( path.clone(), ::std::move(new_lit) ));
+    }
+
     for(auto& fcn_ent : list.m_functions)
     {
         const auto& fcn = *fcn_ent.second->ptr;
@@ -368,33 +395,6 @@ void Trans_Monomorphise_List(const ::HIR::Crate& crate, TransList& list)
             fcn_ent.second->monomorphised.arg_tys = ::std::move(args);
             fcn_ent.second->monomorphised.code = ::std::move(mir);
         }
-    }
-
-    // Also do constants and statics (stored in where?)
-    // - NOTE: Done in reverse order, because consteval needs used constants to be evaluated
-    for(auto& ent : reverse(list.m_constants))
-    {
-        const auto& path = ent.first;
-        const auto& pp = ent.second->pp;
-        const auto& c = *ent.second->ptr;
-        TRACE_FUNCTION_FR(path, path);
-        auto ty = pp.monomorph(resolve, c.m_type);
-        // 1. Evaluate the constant
-        struct Nvs: public ::HIR::Evaluator::Newval
-        {
-            ::HIR::Path new_static(::HIR::TypeRef type, ::HIR::Literal value) override {
-                TODO(Span(), "Create new static in monomorph pass - " << value << " : " << type);
-            }
-        } nvs;
-        auto eval = ::HIR::Evaluator { pp.sp, crate, nvs };
-        MonomorphState   ms;
-        ms.self_ty = pp.self_type.clone();
-        ms.pp_impl = &pp.pp_impl;
-        ms.pp_method = &pp.pp_method;
-        auto new_lit = eval.evaluate_constant(path, c.m_value, ::std::move(ty), ::std::move(ms));
-        ASSERT_BUG(Span(), !new_lit.is_Defer(), "Result of evaluating " << path << " was still Defer");
-        // 2. Store evaluated HIR::Literal in c.m_monomorph_cache
-        c.m_monomorph_cache.insert(::std::make_pair( path.clone(), ::std::move(new_lit) ));
     }
 }
 

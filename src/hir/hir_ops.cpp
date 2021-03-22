@@ -14,6 +14,7 @@
 #include <hir_conv/main_bindings.hpp>
 #include <hir_expand/main_bindings.hpp>
 #include <mir/main_bindings.hpp>
+#include <trans/target.hpp>
 
 namespace {
     bool matches_genericpath(const ::HIR::GenericPath& left, const ::HIR::GenericPath& right, ::HIR::t_cb_resolve_type ty_res, bool expand_generic);
@@ -1162,6 +1163,8 @@ const ::MIR::Function* HIR::Crate::get_or_gen_mir(const ::HIR::ItemPath& ip, con
                 Typecheck_Code(ms, const_cast<::HIR::Function::args_t&>(args), ret_ty, ep_mut);
                 //Debug_SetStagePre("Expand HIR Annotate");
                 HIR_Expand_AnnotateUsage_Expr(*this, ep_mut);
+                // NOTE: Disabled due to challenges in making new statics at this stage
+                //HIR_Expand_StaticBorrowConstants_Expr(*this, ep_mut);
                 //Debug_SetStagePre("Expand HIR Closures");
                 HIR_Expand_Closures_Expr(*this, ep_mut);
                 //Debug_SetStagePre("Expand HIR Calls");
@@ -1270,3 +1273,128 @@ const ::HIR::t_tuple_fields& HIR::pattern_get_tuple(const Span& sp, const ::HIR:
 const ::HIR::t_struct_fields& HIR::pattern_get_named(const Span& sp, const ::HIR::Path& path, const ::HIR::Pattern::PathBinding& binding) {
     return pattern_get_struct(sp, path, binding, false).m_data.as_Named();
 }
+
+// ---
+EncodedLiteral EncodedLiteral::clone() const
+{
+    EncodedLiteral  rv;
+    rv.bytes = bytes;
+    rv.relocations.reserve( relocations.size() );
+    for(const auto& r : relocations) {
+        if( r.p ) {
+            rv.relocations.push_back(Reloc::new_named(r.ofs, r.len, r.p->clone()));
+        }
+        else {
+            rv.relocations.push_back(Reloc::new_bytes(r.ofs, r.len, r.bytes));
+        }
+    }
+    return rv;
+}
+
+void EncodedLiteral::write_uint(size_t ofs, size_t size,  uint64_t v)
+{
+    assert(ofs + size <= bytes.size());
+    for(size_t i = 0; i < size; i ++) {
+        size_t bit = (Target_GetCurSpec().m_arch.m_big_endian ? (size-1-i)*8 : i*8);
+        if(bit < 64)
+        {
+            auto b = static_cast<uint8_t>(v >> bit);
+            bytes[ofs + i] = b;
+        }
+    }
+}
+uint64_t EncodedLiteralSlice::read_uint(size_t size/*=0*/) const {
+    if(size == 0)   size = m_size;
+    assert(size <= m_size);
+    uint64_t v = 0;
+    for(size_t i = 0; i < size; i ++) {
+        size_t bit = (Target_GetCurSpec().m_arch.m_big_endian ? (size-1-i)*8 : i*8 );
+        if(bit < 64)
+            v |= static_cast<uint64_t>(m_base.bytes[m_ofs + i]) << bit;
+    }
+    DEBUG("("<<size<<") = " << v);
+    return v;
+}
+int64_t EncodedLiteralSlice::read_sint(size_t size/*=0*/) const {
+    auto v = read_uint(size);
+    if(size < 64/8 && v >> (8*size-1) ) {
+        // Sign extend
+        v |= INT64_MAX << (8*size);
+    }
+    DEBUG("("<<size<<") = " << v);
+    return v;
+}
+double EncodedLiteralSlice::read_float(size_t size/*=0*/) const {
+    if(size == 0)   size = m_size;
+    assert(size <= m_size);
+    switch(size)
+    {
+    case 4: { float v; memcpy(&v, &m_base.bytes[m_ofs], 4); return v; }
+    case 8: { double v; memcpy(&v, &m_base.bytes[m_ofs], 8); return v; }
+    default: abort();
+    }
+}
+const Reloc* EncodedLiteralSlice::get_reloc() const {
+    for(const auto& r : m_base.relocations) {
+        if(r.ofs == m_ofs)
+            return &r;
+    }
+    return nullptr;
+}
+
+bool EncodedLiteralSlice::operator==(const EncodedLiteralSlice& x) const
+{
+    if(m_size != x.m_size)
+        return false;
+    for(size_t i = 0; i < m_size; i ++)
+        if(m_base.bytes[m_ofs + i] != x.m_base.bytes[x.m_ofs + i])
+            return false;
+    auto it1 = std::find_if(  m_base.relocations.begin(),   m_base.relocations.end(), [&](const Reloc& r){ return r.ofs >=   m_ofs; });
+    auto it2 = std::find_if(x.m_base.relocations.begin(), x.m_base.relocations.end(), [&](const Reloc& r){ return r.ofs >= x.m_ofs; });
+    for(; it1 != m_base.relocations.end() && it2 != x.m_base.relocations.end(); ++it1, ++it2)
+    {
+        if( it1->ofs - m_ofs != it2->ofs - x.m_ofs )
+            return false;
+        if( it1->len != it2->len )
+            return false;
+        if( bool(it1->p) != bool(it2->p) )
+            return false;
+        if( it1->p )
+        {
+            if( *it1->p != *it2->p )
+                return false;
+        }
+        else
+        {
+            if(it1->bytes != it2->bytes)
+                return false;
+        }
+    }
+    return true;
+}
+
+::std::ostream& operator<<(std::ostream& os, const EncodedLiteralSlice& x) {
+    auto it = std::find_if(x.m_base.relocations.begin(), x.m_base.relocations.end(), [&](const Reloc& r){ return r.ofs >= x.m_ofs; });
+    for(size_t i = 0; i < x.m_size; i++)
+    {
+        const char* HEX = "0123456789ABCDEF";
+        auto o = x.m_ofs + i;
+        auto b = x.m_base.bytes[o];
+        if( it != x.m_base.relocations.end() && it->ofs == o ) {
+            auto& r = *it;
+            if(r.p) {
+                os << "&" << *r.p;
+            }
+            else {
+                os << "\"" << FmtEscaped(r.bytes) << "\"";
+            }
+            ++ it;
+        }
+        os << HEX[b>>4] << HEX[b&0xF];
+        if( (i+1)%8 == 0 && i + 1 < x.m_size ) {
+            os << " ";
+        }
+    }
+    return os;
+}
+

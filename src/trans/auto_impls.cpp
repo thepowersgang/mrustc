@@ -601,7 +601,22 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
             HIR::Linkage linkage;
             linkage.type = HIR::Linkage::Type::Weak;
             HIR::Static vtable_static( ::std::move(linkage), /*is_mut*/false, mv$(vtable_ty), {} );
-            vtable_static.m_value_res = HIR::Literal::make_List(mv$(vtable_contents));
+            auto& vtable_data = vtable_static.m_value_res;
+            vtable_data.bytes.resize( vtable_contents.size() * Target_GetPointerBits() / 8 );
+            for(auto& e : vtable_contents)
+            {
+                auto ofs = Target_GetPointerBits()/8 * (&e - &vtable_contents.front());
+                uint64_t v;
+                if( e.is_BorrowPath() ) {
+                    vtable_data.relocations.push_back(Reloc::new_named( ofs, Target_GetPointerBits()/8, mv$(e.as_BorrowPath()) ));
+                    v = EncodedLiteral::PTR_BASE;
+                }
+                else {
+                    v = e.as_Integer();
+                }
+                vtable_data.write_uint(ofs, Target_GetPointerBits()/8, v);
+            }
+            vtable_static.m_value_generated = true;
 
             // Add to list
             trans_list.m_auto_statics.push_back( box$(vtable_static) );

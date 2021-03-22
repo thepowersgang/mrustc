@@ -1808,13 +1808,13 @@ namespace {
             }
             if( const auto* te = ty->data().opt_Borrow() )
             {
-                if( metadata_type(te->inner) != MetadataType::None ) {
+                if( is_dst(te->inner) ) {
                     m_of << ".PTR";
                 }
             }
             else if( const auto* te = ty->data().opt_Pointer() )
             {
-                if( metadata_type(te->inner) != MetadataType::None ) {
+                if( is_dst(te->inner) ) {
                     m_of << ".PTR";
                 }
             }
@@ -2165,11 +2165,12 @@ namespace {
 
             auto type = params.monomorph(m_resolve, item.m_type);
             // statics that are zero do not require initializers, since they will be initialized to zero on program startup.
-            if (!is_zero_literal(type, item.m_value_res, params)) {
+            if( !is_zero_literal(type, item.m_value_res, params)) {
                 bool is_packed = emit_static_ty(type, p, /*is_proto=*/false);
                 m_of << " = ";
 
-                auto encoded = Trans_EncodeLiteralAsBytes(sp, m_resolve, item.m_value_res, type);
+                //auto encoded = Trans_EncodeLiteralAsBytes(sp, m_resolve, item.m_value_res, type);
+                const auto& encoded = item.m_value_res;
                 m_of << "{ .raw = {";
                 if( is_packed ) {
                     DEBUG("encoded.bytes = `" << FMT_CB(ss, for(auto& b: encoded.bytes) ss << std::setw(2) << std::setfill('0') << std::hex << unsigned(b) << (int(&b - encoded.bytes.data()) % 8 == 7 ? " " : "");) << "`");
@@ -3226,7 +3227,7 @@ namespace {
                         break;
                     }
                     else if( const auto* te = ty.data().opt_Pointer() ) {
-                        if( metadata_type(te->inner) != MetadataType::None )
+                        if( is_dst(te->inner) )
                         {
                             switch(ve.op)
                             {
@@ -6102,35 +6103,6 @@ namespace {
             }
         }
 
-        const ::HIR::Literal& get_literal_for_const(const ::HIR::Path& path, ::HIR::TypeRef& ty)
-        {
-            MonomorphState  params;
-            auto v = m_resolve.get_value(m_mir_res->sp, path, params);
-            if( const auto* e = v.opt_Constant() )
-            {
-                const auto& hir_const = **e;
-                ty = params.monomorph_type(m_mir_res->sp, hir_const.m_type);
-                if( hir_const.m_value_res.is_Defer() )
-                {
-                    // Do some form of lookup of a pre-cached evaluated monomorphised constant
-                    // - Maybe on the `Constant` entry there can be a list of pre-monomorphised values
-                    auto it = hir_const.m_monomorph_cache.find(path);
-                    if( it == hir_const.m_monomorph_cache.end() )
-                    {
-                        MIR_BUG(*m_mir_res, "Constant with Defer literal and no cached monomorphisation - " << path);
-                        // TODO: Can do the consteval here?
-                    }
-                    MIR_ASSERT(*m_mir_res, !it->second.is_Defer(), "get_literal_for_const - Cached literal was Defer - " << path);
-                    return it->second;
-                }
-                return hir_const.m_value_res;
-            }
-            else
-            {
-                MIR_BUG(*m_mir_res, "get_literal_for_const - Not a constant - " << path);
-            }
-        }
-
         void emit_enum_variant_val(const TypeRepr* repr, unsigned idx)
         {
             const auto& ve = repr->variants.as_Values();
@@ -6167,122 +6139,13 @@ namespace {
         }
 
         // returns whether a literal can be represented as zeroed memory.
-        bool is_zero_literal(const ::HIR::TypeRef& ty, const ::HIR::Literal& lit, const Trans_Params& params) {
-            ::HIR::TypeRef  tmp;
-            auto monomorph_with = [&](const ::HIR::PathParams& pp, const ::HIR::TypeRef& ty)->const ::HIR::TypeRef& {
-                return m_resolve.monomorph_expand_opt(m_mir_res->sp, tmp, ty, MonomorphStatePtr(nullptr, &pp, nullptr));
-            };
-            auto get_inner_type = [&](unsigned int var, unsigned int idx)->const ::HIR::TypeRef& {
-                TU_MATCH_HDRA((ty.data()), { )
-                default:
-                    MIR_TODO(*m_mir_res, "Unknown type in list literal - " << ty);
-                TU_ARMA(Array, te) {
-                    return te.inner;
-                    }
-                TU_ARMA(Path, te) {
-                    const auto& pp = te.path.m_data.as_Generic().m_params;
-                    TU_MATCH_HDRA((te.binding), {)
-                    TU_ARMA(Unbound, pbe)   MIR_BUG(*m_mir_res, "Unbound type path " << ty);
-                    TU_ARMA(Opaque, pbe)    MIR_BUG(*m_mir_res, "Opaque type path " << ty);
-                    TU_ARMA(ExternType, pbe) {
-                        MIR_BUG(*m_mir_res, "Extern type literal");
-                        }
-                    TU_ARMA(Struct, pbe) {
-                        TU_MATCH_HDRA((pbe->m_data), {)
-                        TU_ARMA(Unit, se) {
-                            MIR_BUG(*m_mir_res, "Unit struct " << ty);
-                            }
-                        TU_ARMA(Tuple, se) {
-                            return monomorph_with(pp, se.at(idx).ent);
-                            }
-                        TU_ARMA(Named, se) {
-                            return monomorph_with(pp, se.at(idx).second.ent);
-                            }
-                        }
-                        }
-                    TU_ARMA(Union, pbe) {
-                        MIR_TODO(*m_mir_res, "Union literals");
-                        }
-                    TU_ARMA(Enum, pbe) {
-                        MIR_ASSERT(*m_mir_res, pbe->m_data.is_Data(), "get_inner_type: Expected a data enum, got " << pbe->m_data.tag_str());
-                        const auto& evar = pbe->m_data.as_Data().at(var);
-                        return monomorph_with(pp, evar.type);
-                        }
-                    }
-                    throw "";
-                    }
-                TU_ARMA(Tuple, te) {
-                    return te.at(idx);
-                    }
-                }
-                throw "";
-            };
-
-            TU_MATCH_HDRA( (lit), {)
-            TU_ARMA(List, e) {
-                bool all_zero = true;
-                for(unsigned int i = 0; i < e.size(); i ++) {
-                    const auto& ity = get_inner_type(0, i);
-                    all_zero &= is_zero_literal(ity, e[i], params);
-                }
-                return all_zero;
-                }
-            TU_ARMA(Variant, e) {
-                MIR_ASSERT(*m_mir_res, ty.data().is_Path(), "");
-                const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
-                if( const auto* enm_p = ty.data().as_Path().binding.opt_Enum() )
-                {
-                    const ::HIR::Enum& enm = **enm_p;
-                    if( enm.is_value() ) {
-                        return e.idx == 0;
-                    }
-                    TU_MATCH_HDRA( (repr->variants), {)
-                    TU_ARMA(None, ve) {
-                        return true;
-                        }
-                    TU_ARMA(NonZero, ve) {
-                        if( e.idx == ve.zero_variant ) {
-                            return true;
-                        } else {
-                            return is_zero_literal(get_inner_type(e.idx, 0), *e.val, params);
-                        }
-                        }
-                    TU_ARMA(Linear, ve) {
-                        // TODO: If this is the niche, then recurse?
-                        if( ve.is_niche(e.idx) ) {
-                            return is_zero_literal(get_inner_type(e.idx, 0), *e.val, params);
-                        }
-                        else {
-                            return ve.offset == 0 && e.idx == 0 && is_zero_literal(get_inner_type(e.idx, 0), *e.val, params);
-                        }
-                        }
-                    TU_ARMA(Values, ve) {
-                        return ve.values[e.idx] == 0 && is_zero_literal(get_inner_type(e.idx, 0), *e.val, params);
-                        }
-                    }
-                }
-                else if( ty.data().as_Path().binding.is_Union() )
-                {
-                    // Maybe? If all internal fields match?
+        bool is_zero_literal(const ::HIR::TypeRef& ty, const EncodedLiteral& lit, const Trans_Params& params) {
+            for(auto v: lit.bytes)
+                if(v)
                     return false;
-                }
-                else
-                {
-                    MIR_BUG(*m_mir_res, "Literal::Variant for non-enum/union");
-                }
-                }
-            TU_ARMA(Integer, e) { return e == 0; }
-            TU_ARMA(Float, e) { return e == 0; }
-            TU_ARMA(String, e) { return false; }
-            TU_ARMA(Invalid, e) { return false; }
-            TU_ARMA(Defer, e) { return false; }
-            TU_ARMA(Generic, e) {
-                MIR_BUG(*m_mir_res, "Generic literal encountered");
-            }
-            TU_ARMA(BorrowPath, e) { return false; }
-            TU_ARMA(BorrowData, e) { return false; }
-            }
-            return false;
+            if(!lit.relocations.empty())
+                return false;
+            return true;
         }
         void emit_lvalue(const ::MIR::LValue::CRef& val)
         {

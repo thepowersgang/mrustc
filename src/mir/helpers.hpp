@@ -58,6 +58,10 @@ public:
     const ::HIR::TypeRef&   m_ret_type;
     const args_t&    m_args;
     const ::MIR::Function&  m_fcn;
+
+    // If set, these override the list in `m_fcn`
+    const ::HIR::TypeRef*   m_monomorphed_rettype;
+    const ::std::vector<::HIR::TypeRef>*    m_monomorphed_locals;
 private:
     const ::HIR::SimplePath*    m_lang_Box = nullptr;
 
@@ -73,6 +77,8 @@ public:
         m_ret_type(ret_type),
         m_args(args),
         m_fcn(fcn)
+        , m_monomorphed_rettype(nullptr)
+        , m_monomorphed_locals(nullptr)
     {
         if( m_crate.m_lang_items.count("owned_box") > 0 ) {
             m_lang_Box = &m_crate.m_lang_items.at("owned_box");

@@ -141,6 +141,14 @@ namespace {
             ::HIR::Visitor::visit_trait_path(p);
         }
 
+        void visit_literal(const Span& sp, EncodedLiteral& lit)
+        {
+            for(auto& r : lit.relocations)
+            {
+                if(r.p)
+                    visit_path(*r.p, ::HIR::Visitor::PathContext::VALUE);
+            }
+        }
         void visit_literal(const Span& sp, ::HIR::Literal& lit)
         {
             TU_MATCH(::HIR::Literal, (lit), (e),

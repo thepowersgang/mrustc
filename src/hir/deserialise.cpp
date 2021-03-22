@@ -486,6 +486,7 @@
         }
 
         ::HIR::Literal deserialise_literal();
+        EncodedLiteral deserialise_encodedliteral();
 
         ::HIR::ExprPtr deserialise_exprptr()
         {
@@ -759,12 +760,21 @@
         {
             TRACE_FUNCTION;
 
-            return ::HIR::Constant {
+            auto rv = ::HIR::Constant {
                 deserialise_genericparams(),
                 deserialise_type(),
                 deserialise_exprptr(),
-                deserialise_literal()
                 };
+            if(m_in.read_bool())
+            {
+                rv.m_value_res = deserialise_encodedliteral();
+                rv.m_value_state = ::HIR::Constant::ValueState::Known;
+            }
+            else
+            {
+                rv.m_value_state = ::HIR::Constant::ValueState::Generic;
+            }
+            return rv;
         }
         ::HIR::Static deserialise_static()
         {
@@ -782,7 +792,8 @@
             auto rv = ::HIR::Static(mv$(linkage), is_mut, mv$(ty), {});
             if(save_literal)
             {
-                rv.m_value_res = deserialise_literal();
+                rv.m_value_res = deserialise_encodedliteral();
+                rv.m_value_generated = true;
                 rv.m_no_emit_value = true;
             }
             return rv;
@@ -1322,6 +1333,28 @@
         default:
             BUG(Span(), "Unknown HIR::Literal tag when deserialising - " << tag);
         }
+    }
+    EncodedLiteral HirDeserialiser::deserialise_encodedliteral()
+    {
+        EncodedLiteral  rv;
+        auto nbytes = m_in.read_count();
+        rv.bytes.resize(nbytes);
+        m_in.read(rv.bytes.data(), nbytes);
+
+        auto nreloc = m_in.read_count();
+        rv.relocations.reserve(nreloc);
+        for(size_t i = 0; i < nreloc; i ++)
+        {
+            auto ofs = m_in.read_count();
+            auto len = m_in.read_count();
+            switch(m_in.read_tag())
+            {
+            case 0: rv.relocations.push_back( Reloc::new_named(ofs, len, deserialise_path()) ); break;
+            case 1: rv.relocations.push_back( Reloc::new_bytes(ofs, len, m_in.read_string()) ); break;
+            default:    abort();
+            }
+        }
+        return rv;
     }
 
     ::MIR::FunctionPointer HirDeserialiser::deserialise_mir()

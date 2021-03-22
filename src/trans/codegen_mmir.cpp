@@ -870,7 +870,7 @@ namespace
             TRACE_FUNCTION_F(p);
 
             auto type = params.monomorph(m_resolve, item.m_type);
-            auto encoded = Trans_EncodeLiteralAsBytes(sp, m_resolve, item.m_value_res, type);
+            const auto& encoded = item.m_value_res;
 
             m_of << "static " << fmt(p) << ": " << fmt(type) << " = \"";
             for(auto b : encoded.bytes)

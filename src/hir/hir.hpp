@@ -30,6 +30,97 @@
 #define ABI_RUST    "Rust"
 #define CRATE_BUILTINS  "#builtins" // used for macro re-exports of builtins
 
+
+struct Reloc {
+    size_t  ofs;
+    size_t  len;
+    ::std::unique_ptr<::HIR::Path>  p;
+    ::std::string   bytes;
+
+    static Reloc new_named(size_t ofs, size_t len, ::HIR::Path p) {
+        return Reloc { ofs, len, box$(p), "" };
+    }
+    static Reloc new_bytes(size_t ofs, size_t len, ::std::string bytes) {
+        return Reloc { ofs, len, nullptr, ::std::move(bytes) };
+    }
+
+    friend ::std::ostream& operator<<(::std::ostream& os, const Reloc& x) {
+        os << "@" << std::hex << "0x" << x.ofs << std::dec << "+" << x.len << " = ";
+        if(x.p) {
+            os << "&" << *x.p;
+        }
+        else {
+            os << "\"" << FmtEscaped(x.bytes) << "\"";
+        }
+        return os;
+    }
+};
+struct EncodedLiteral {
+    static const unsigned PTR_BASE = 0x1000;
+
+    std::vector<uint8_t>    bytes;
+    std::vector<Reloc>  relocations;
+
+    EncodedLiteral clone() const;
+
+    void write_uint(size_t ofs, size_t size,  uint64_t v);
+
+    friend ::std::ostream& operator<<(std::ostream& os, const EncodedLiteral& x) {
+        for(size_t i = 0; i < x.bytes.size(); i++)
+        {
+            const char* HEX = "0123456789ABCDEF";
+            os << HEX[x.bytes[i]>>4] << HEX[x.bytes[i]&0xF];
+            if( (i+1)%8 == 0 && i + 1 < x.bytes.size() ) {
+                os << " ";
+            }
+        }
+        os << "{" << x.relocations << "}";
+        return os;
+    }
+};
+
+struct EncodedLiteralSlice
+{
+    const EncodedLiteral& m_base;
+    size_t  m_ofs;
+    size_t  m_size;
+    //size_t  m_reloc_ofs;
+    //size_t  m_reloc_size;
+
+    EncodedLiteralSlice(const EncodedLiteral& base)
+        : m_base(base)
+        , m_ofs(0)
+        , m_size(base.bytes.size())
+        //, m_reloc_ofs(0)
+        //, m_reloc_size(base.relocations.size())
+    {
+    }
+
+    EncodedLiteralSlice slice(size_t ofs) const {
+        assert(ofs <= m_size);
+        return slice(ofs, m_size - ofs);
+    }
+    EncodedLiteralSlice slice(size_t ofs, size_t len) const {
+        assert(ofs <= m_size);
+        assert(len <= m_size);
+        assert(ofs+len <= m_size);
+        auto rv = EncodedLiteralSlice(m_base);
+        rv.m_ofs = m_ofs + ofs;
+        rv.m_size = len;
+        return rv;
+    }
+
+    uint64_t read_uint(size_t size=0) const;
+     int64_t read_sint(size_t size=0) const;
+    double read_float(size_t size=0) const;
+    const Reloc* get_reloc() const;
+
+    bool operator==(const EncodedLiteralSlice& x) const;
+    bool operator!=(const EncodedLiteralSlice& x) const { return !(*this == x); }
+
+    friend ::std::ostream& operator<<(std::ostream& os, const EncodedLiteralSlice& x);
+};
+
 namespace HIR {
 
 class Crate;
@@ -115,7 +206,8 @@ public:
 
     ExprPtr m_value;
 
-    Literal   m_value_res;
+    EncodedLiteral  m_value_res;
+    bool    m_value_generated = false;
     bool    m_save_literal = false;
     bool    m_no_emit_value = false;
 
@@ -135,10 +227,17 @@ public:
 
     TypeRef m_type;
     ExprPtr m_value;
-    Literal   m_value_res;
+
+    EncodedLiteral  m_value_res;
+    enum class ValueState {
+        Unknown,
+        Generic,
+        Known
+    } m_value_state = ValueState::Unknown;
 
     // A cache of monomorphised versions when the `const` depends on generics for its value
-    mutable ::std::map< ::HIR::Path, Literal>   m_monomorph_cache;
+    // TODO: Wait, how?
+    mutable ::std::map< ::HIR::Path, EncodedLiteral>   m_monomorph_cache;
 };
 class Function
 {
@@ -436,7 +535,7 @@ public:
     // Macros!
     ::std::unordered_map< RcString, ::std::unique_ptr<VisEnt<MacroItem>> > m_macro_items;
 
-    ::std::vector< ::std::pair<RcString, Static> >  m_inline_statics;
+    ::std::vector< ::std::pair<RcString, std::unique_ptr<Static>> >  m_inline_statics;
 
     Module() {}
     Module(const Module&) = delete;

@@ -637,6 +637,29 @@
             }
         }
 
+        void serialise(const ::std::vector<uint8_t>& e)
+        {
+            m_out.write_count(e.size());
+            m_out.write( e.data(), e.size() );
+        }
+        void serialise(const EncodedLiteral& lit)
+        {
+            serialise(lit.bytes);
+            m_out.write_count(lit.relocations.size());
+            for(const auto& reloc : lit.relocations)
+            {
+                m_out.write_count(reloc.ofs);
+                m_out.write_count(reloc.len);
+                if(reloc.p) {
+                    m_out.write_tag(0);
+                    serialise_path(*reloc.p);
+                }
+                else {
+                    m_out.write_tag(1);
+                    serialise(reloc.bytes);
+                }
+            }
+        }
         void serialise(const ::HIR::Literal& lit)
         {
             m_out.write_tag(lit.tag());
@@ -1060,7 +1083,12 @@
             serialise_generics(item.m_params);
             serialise(item.m_type);
             serialise(item.m_value);
-            serialise(item.m_value_res);
+            bool write_val = item.m_value_state == ::HIR::Constant::ValueState::Known;
+            m_out.write_bool(write_val);
+            if( write_val )
+            {
+                serialise(item.m_value_res);
+            }
         }
         void serialise(const ::HIR::Static& item)
         {

@@ -76,11 +76,11 @@ namespace HIR {
             os << ty << ",";
         }
         for(const auto& assoc : x.m_type_bounds) {
-            os << assoc.first << "=" << assoc.second << ",";
+            os << assoc.first << "{" << assoc.second.source_trait << "}=" << assoc.second << ",";
         }
         for(const auto& assoc : x.m_trait_bounds) {
             for(const auto& trait : assoc.second.traits) {
-                os << assoc.first << ": " << trait << ",";
+                os << assoc.first << "{" << assoc.second.source_trait << "}: " << trait << ",";
             }
         }
         if(has_args) {
@@ -185,24 +185,6 @@ bool ::HIR::GenericPath::operator==(const GenericPath& x) const
         rv.m_trait_bounds.insert(::std::make_pair( assoc.first, assoc.second.clone() ));
 
     return rv;
-}
-bool ::HIR::TraitPath::operator==(const ::HIR::TraitPath& x) const
-{
-    if( m_path != x.m_path )
-        return false;
-    if( m_hrls != x.m_hrls )
-        return false;
-
-    if( m_type_bounds.size() != x.m_type_bounds.size() )
-        return false;
-
-    for(auto it_l = m_type_bounds.begin(), it_r = x.m_type_bounds.begin(); it_l != m_type_bounds.end(); it_l++, it_r++ ) {
-        if( it_l->first != it_r->first )
-            return false;
-        if( it_l->second.ord( it_r->second ) != OrdEqual )
-            return false;
-    }
-    return true;
 }
 
 ::HIR::Path::Path(::HIR::GenericPath gp):

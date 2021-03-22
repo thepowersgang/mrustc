@@ -118,16 +118,20 @@ public:
     }
     void write_count(size_t c) {
         DEBUG(c);
-        if(c < 0xFE) {
+        if(c < 0xFD) {
             write_u8( static_cast<uint8_t>(c) );
         }
         else if( c == ~0u ) {
             write_u8( 0xFF );
         }
-        else {
-            assert(c < (1u<<16));
-            write_u8( 0xFE );
+        else if( c < (1u << 16) ) {
+            write_u8( 0xFD );
             write_u16( static_cast<uint16_t>(c) );
+        }
+        else {
+            assert(c < (1u<<31));
+            write_u8( 0xFE );
+            write_u32( static_cast<uint32_t>(c) );
         }
     }
     void write_string(const RcString& v);
@@ -324,11 +328,14 @@ public:
     size_t read_count() {
         size_t rv;
         auto v = read_u8();
-        if( v < 0xFE ) {
+        if( v < 0xFD ) {
             rv = v;
         }
-        else if( v == 0xFE ) {
+        else if( v == 0xFD ) {
             rv = read_u16( );
+        }
+        else if( v == 0xFE ) {
+            rv = read_u32( );
         }
         else /*if( v == 0xFF )*/ {
             rv = ~0u;
