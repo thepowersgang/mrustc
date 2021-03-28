@@ -884,7 +884,7 @@ namespace {
     };
 
     template<typename T>
-    void sort_impl_group(::HIR::Crate::ImplGroup<T>& ig, ::std::function<void(::std::ostream& os, const T&)> fmt)
+    void sort_impl_group(::HIR::Crate::ImplGroup<std::unique_ptr<T>>& ig, ::std::function<void(::std::ostream& os, const T&)> fmt)
     {
         auto new_end = ::std::remove_if(ig.generic.begin(), ig.generic.end(), [&ig,&fmt](::std::unique_ptr<T>& ty_impl) {
             const auto& type = ty_impl->m_type;  // Using field accesses in templates feels so dirty
@@ -906,6 +906,33 @@ namespace {
             return true;
             });
         ig.generic.erase(new_end, ig.generic.end());
+    }
+
+    template<typename T>
+    void push_index_impl_group_list(::std::vector<const T*>& dst, const ::std::vector<std::unique_ptr<T>>& src)
+    {
+        for(const auto& e : src) {
+            dst.push_back(&*e);
+        }
+    }
+    template<typename T>
+    void push_index_impl_group(::HIR::Crate::ImplGroup<const T*>& dst, const ::HIR::Crate::ImplGroup<std::unique_ptr<T>>& src)
+    {
+        for(const auto& e : src.named) {
+            push_index_impl_group_list(dst.named[e.first], e.second);
+        }
+        push_index_impl_group_list(dst.non_named, src.non_named);
+        push_index_impl_group_list(dst.generic  , src.generic  );
+    }
+    void push_index_impls(::HIR::Crate& dst, const ::HIR::Crate& src)
+    {
+        push_index_impl_group(dst.m_all_type_impls, src.m_type_impls);
+        for(const auto& ig : src.m_trait_impls) {
+            push_index_impl_group(dst.m_all_trait_impls[ig.first], ig.second);
+        }
+        for(const auto& ig : src.m_marker_impls) {
+            push_index_impl_group(dst.m_all_marker_impls[ig.first], ig.second);
+        }
     }
 }   // namespace ""
 
@@ -938,5 +965,12 @@ void ConvertHIR_ResolveUFCS_SortImpls(::HIR::Crate& crate)
         sort_impl_group<HIR::MarkerImpl>(impl_group.second,
             [&](::std::ostream& os, const HIR::MarkerImpl& i){ os << "impl" << i.m_params.fmt_args() << " " << impl_group.first << i.m_trait_args << " for " << i.m_type << " {}"; }
             );
+    }
+
+
+    // Create indexes
+    push_index_impls(crate, crate);
+    for(const auto& ec : crate.m_ext_crates) {
+        push_index_impls(crate, *ec.second.m_data);
     }
 }

@@ -1103,10 +1103,11 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
             else if( fcn.blocks.size() > 1 && fcn.blocks[0].terminator.is_Switch() )
             {
                 // Setup + Arms + Return + Panic
-                // - Handles the atomit wrappers
+                // - Handles the atomic wrappers
                 if( fcn.blocks.size() != fcn.blocks[0].terminator.as_Switch().targets.size()+3 )
                     return false;
-                // TODO: Check for the parameter being a Constant?
+                // TODO: Check for the switch value being an argument that is also a constant parameter being a Constant
+                // TODO: Check all arms of the switch are distinct
                 for(size_t i = 1; i < fcn.blocks.size(); i ++)
                 {
                     if( fcn.blocks[i].terminator.is_Call() )
@@ -1123,6 +1124,34 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
                 }
                 return true;
             }
+#if 0
+            else if( fcn.blocks.size() > 1 && fcn.blocks[0].terminator.is_SwitchValue() )
+            {
+                // Setup + Arms(+default) + Return + Panic
+                // - Handles some code in crc32-fast that emits a 256-arm SwitchValue
+                if( fcn.blocks.size() != fcn.blocks[0].terminator.as_SwitchValue().targets.size()+1+3 )
+                    return false;
+                // TODO: Check for the parameter being a Constant?
+                // TODO: Check all arms of the switch are distinct
+
+                // Avoid recursion
+                for(size_t i = 1; i < fcn.blocks.size(); i ++)
+                {
+                    if( fcn.blocks[i].terminator.is_Call() )
+                    {
+                        const auto& te = fcn.blocks[i].terminator.as_Call();
+                        // Recursion, don't inline.
+                        if( te.fcn.is_Path() && te.fcn.as_Path() == path )
+                            return false;
+                        // HACK: Only allow if the wrapped function is an intrinsic
+                        // - Works around the TODO about monomorphed paths above
+                        if(!te.fcn.is_Intrinsic())
+                            return false;
+                    }
+                }
+                return true;
+            }
+#endif
             else
             {
                 return false;

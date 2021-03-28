@@ -75,9 +75,7 @@ struct SimplePath
         return !(*this == x);
     }
     bool operator<(const SimplePath& x) const {
-        if( m_crate_name < x.m_crate_name ) return true;
-        if( m_crate_name > x.m_crate_name ) return false;
-        return ( m_components < x.m_components );
+        return ord(x) == OrdLess;
     }
     Ordering ord(const SimplePath& x) const {
         auto rv = ::ord(m_crate_name, x.m_crate_name);

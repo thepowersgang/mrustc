@@ -668,7 +668,7 @@ public:
     template<typename T>
     struct ImplGroup
     {
-        typedef ::std::vector<::std::unique_ptr<T>> list_t;
+        typedef ::std::vector<T> list_t;
         ::std::map<::HIR::SimplePath, list_t>   named;
         list_t  non_named; // TODO: use a map of HIR::TypeRef::Data::Tag
         list_t  generic;
@@ -701,11 +701,16 @@ public:
     // - Named type (sorted on the path)
     // - Primitive types
     // - Unsorted (generics, and everything before outer type resolution)
-    ImplGroup<::HIR::TypeImpl>  m_type_impls;
+    ImplGroup<::std::unique_ptr<::HIR::TypeImpl>>  m_type_impls;
 
     /// Impl blocks
-    ::std::map< ::HIR::SimplePath, ImplGroup<::HIR::TraitImpl> > m_trait_impls;
-    ::std::map< ::HIR::SimplePath, ImplGroup<::HIR::MarkerImpl> > m_marker_impls;
+    ::std::map< ::HIR::SimplePath, ImplGroup<::std::unique_ptr<::HIR::TraitImpl>> > m_trait_impls;
+    ::std::map< ::HIR::SimplePath, ImplGroup<::std::unique_ptr<::HIR::MarkerImpl>> > m_marker_impls;
+
+    // TODO: Merged index versions of the above
+    ImplGroup<const ::HIR::TypeImpl*>   m_all_type_impls;
+    ::std::map< ::HIR::SimplePath, ImplGroup<const ::HIR::TraitImpl*> > m_all_trait_impls;
+    ::std::map< ::HIR::SimplePath, ImplGroup<const ::HIR::MarkerImpl*> > m_all_marker_impls;
 
     /// List of legacy-exported macros
     std::vector<RcString> m_exported_macro_names;

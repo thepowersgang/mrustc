@@ -14,7 +14,7 @@
 
 namespace {
     template<typename T>
-    void visit_impls(::HIR::Crate::ImplGroup<T>& g, ::std::function<void(T&)> cb) {
+    void visit_impls(::HIR::Crate::ImplGroup<std::unique_ptr<T>>& g, ::std::function<void(T&)> cb) {
         for( auto& impl_group : g.named )
         {
             for( auto& impl : impl_group.second )

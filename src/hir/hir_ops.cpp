@@ -975,7 +975,22 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
 namespace
 {
     template<typename ImplType>
-    bool find_impls_list(const typename ::HIR::Crate::ImplGroup<ImplType>::list_t& impl_list, const ::HIR::TypeRef& type, ::HIR::t_cb_resolve_type ty_res, ::std::function<bool(const ImplType&)> callback)
+    bool find_impls_list(const typename ::HIR::Crate::ImplGroup<::std::unique_ptr<ImplType>>::list_t& impl_list, const ::HIR::TypeRef& type, ::HIR::t_cb_resolve_type ty_res, ::std::function<bool(const ImplType&)> callback)
+    {
+        for(const auto& impl : impl_list)
+        {
+            if( impl->matches_type(type, ty_res) )
+            {
+                if( callback(*impl) )
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+    template<typename ImplType>
+    bool find_impls_list(const typename ::HIR::Crate::ImplGroup<const ImplType*>::list_t& impl_list, const ::HIR::TypeRef& type, ::HIR::t_cb_resolve_type ty_res, ::std::function<bool(const ImplType&)> callback)
     {
         for(const auto& impl : impl_list)
         {
@@ -1024,10 +1039,92 @@ namespace
 
         return false;
     }
+
+    // Obtain the crate that defined the named type
+    // See https://github.com/rust-lang/rfcs/blob/master/text/2451-re-rebalancing-coherence.md
+    // - Catch: The above allows `impl ForeignTrait for ForeignType<LocalType>`
+    // Could return a list of crates to search
+    RcString get_type_crate(const ::HIR::Crate& crate, const ::HIR::TypeRef& ty)
+    {
+        TU_MATCH_HDRA( (ty.data()), { )
+        TU_ARMA(Infer, _)
+            return RcString();
+        TU_ARMA(Generic, _)
+            return RcString();
+        TU_ARMA(Diverge, _)
+            TODO(Span(), "Find the crate with " << ty << "'s inherent impl");
+        TU_ARMA(Primitive, _) {
+            TODO(Span(), "Find the crate with " << ty << "'s inherent impl");
+            }
+        TU_ARMA(Slice, _) {
+            TODO(Span(), "Find the crate with " << ty << "'s inherent impl");
+            }
+        TU_ARMA(Array, _)
+            TODO(Span(), "Find the crate with " << ty << "'s inherent impl");
+        // Paths: Unowned if unknown/generic, otherwise defining crate
+        TU_ARMA(Path, te) {
+            if( te.binding.is_Unbound() || te.binding.is_Opaque() )
+                return RcString();
+            assert( te.path.m_data.is_Generic() );
+            // TODO: If the type is marked as fundamental, then recurse into the first generic
+            return te.path.m_data.as_Generic().m_path.m_crate_name;
+            }
+        TU_ARMA(TraitObject, te) {
+            return te.m_trait.m_path.m_path.m_crate_name;
+            }
+        TU_ARMA(Closure, _)
+            return crate.m_crate_name;
+        TU_ARMA(Generator, _)
+            return crate.m_crate_name;
+        // Functions aren't owned
+        TU_ARMA(Function, _)
+            return RcString();
+        TU_ARMA(ErasedType, _)
+            return RcString();
+        TU_ARMA(Tuple, _)
+            return RcString();
+        // Recurse into pointers
+        TU_ARMA(Borrow, te)
+            return get_type_crate(crate, te.inner);
+        TU_ARMA(Pointer, te)
+            return get_type_crate(crate, te.inner);
+        }
+    }
 }
 
 bool ::HIR::Crate::find_trait_impls(const ::HIR::SimplePath& trait, const ::HIR::TypeRef& type, t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::TraitImpl&)> callback) const
 {
+    if( this->m_all_trait_impls.size() > 0 )
+    {
+        auto it = this->m_all_trait_impls.find( trait );
+        if( it != this->m_all_trait_impls.end() )
+        {
+            // 1. Find named impls (associated with named types)
+            if( const auto* impl_list = it->second.get_list_for_type(type) )
+            {
+                if( find_impls_list(*impl_list, type, ty_res, callback) )
+                    return true;
+            }
+            // - If the type is an ivar, search all types
+            if( type.data().is_Infer() && !type.data().as_Infer().is_lit() )
+            {
+                DEBUG("Search all lists");
+                for(const auto& list : it->second.named)
+                {
+                    if( find_impls_list(list.second, type, ty_res, callback) )
+                        return true;
+                }
+            }
+
+            // 2. Search fully generic list.
+            if( find_impls_list(it->second.generic, type, ty_res, callback) )
+                return true;
+        }
+
+        return false;
+    }
+
+    // TODO: Determine the source crates for this type and trait (coherence) and only search those
     if( find_trait_impls_int(*this, trait, type, ty_res, callback) )
     {
         return true;
@@ -1068,6 +1165,25 @@ namespace
 }
 bool ::HIR::Crate::find_auto_trait_impls(const ::HIR::SimplePath& trait, const ::HIR::TypeRef& type, t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::MarkerImpl&)> callback) const
 {
+    if( this->m_all_marker_impls.size() > 0 ) {
+        auto it = this->m_all_marker_impls.find( trait );
+        if( it != this->m_all_marker_impls.end() )
+        {
+            // 1. Find named impls (associated with named types)
+            if( const auto* impl_list = it->second.get_list_for_type(type) )
+            {
+                if( find_impls_list(*impl_list, type, ty_res, callback) )
+                    return true;
+            }
+
+            // 2. Search fully generic list.
+            if( find_impls_list(it->second.generic, type, ty_res, callback) )
+                return true;
+        }
+
+        return false;
+    }
+
     if( find_auto_trait_impls_int(*this, trait, type, ty_res, callback) )
     {
         return true;
@@ -1101,6 +1217,22 @@ namespace
 }
 bool ::HIR::Crate::find_type_impls(const ::HIR::TypeRef& type, t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::TypeImpl&)> callback) const
 {
+    if( m_all_trait_impls.size() > 0 ) {
+        // 1. Find named impls (associated with named types)
+        if( const auto* impl_list = this->m_all_type_impls.get_list_for_type(type) )
+        {
+            if( find_impls_list(*impl_list, type, ty_res, callback) )
+                return true;
+        }
+
+        // 2. Search fully generic list?
+        if( find_impls_list(this->m_all_type_impls.generic, type, ty_res, callback) )
+            return true;
+
+        return false;
+    }
+    // TODO: Determine the source crate for this type (coherence) and only search that
+
     // > Current crate
     if( find_type_impls_int(*this, type, ty_res, callback) )
     {
