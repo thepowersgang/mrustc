@@ -19,3 +19,26 @@ proc_macro = { path = "../libproc_macro" }
 'src/libtest' = [
 	"dependencies.proc_macro",
 	]
+
+# Add librustc_codegen_llvm as a dep to the main binary
+[add.'src/rustc'.dependencies]
+rustc_codecen_llvm = { path = "../librustc_codegen_llvm" }
+# And explicit dependencies for librustc_codegen_llvm's implicit deps
+[add.'src/librustc_codegen_llvm'.dependencies]
+rustc-demangle = "0.1"
+flate2 = "1.0"
+bitflags = "1.1"
+libc = "0.2"
+rustc = { path = "../librustc" }
+rustc_target = { path = "../librustc_target" }
+rustc_data_structures = { path = "../librustc_data_structures" }
+rustc_incremental = { path = "../librustc_incremental" }
+rustc_codegen_utils = { path = "../librustc_codegen_utils" }
+rustc_codegen_ssa = { path = "../librustc_codegen_ssa" }
+rustc_fs_util = { path = "../librustc_fs_util" }
+rustc_driver = { path = "../librustc_driver" }
+log = "0.4"
+syntax = { path = "../libsyntax" }
+syntax_pos = { path = "../libsyntax_pos" }
+rustc_errors = { path = "../librustc_errors" }
+

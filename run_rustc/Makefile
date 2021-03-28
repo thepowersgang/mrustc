@@ -50,6 +50,9 @@ RUSTFLAGS_unwind := -l gcc_s
 RUSTFLAGS_alloc := 
 RUSTFLAGS_alloc_system := 
 RUSTFLAGS_compiler_builtins := --cfg feature=\"compiler-builtins\"
+ifeq ($(RUSTC_VERSION),1.39.0)
+  RUSTFLAGS_core += --edition 2018
+endif
 
 ../output$(OUTDIR_SUF)/rustc:
 	$(MAKE) -C ../ output$(OUTDIR_SUF)/rustc -j 3
@@ -58,13 +61,16 @@ RUSTFLAGS_compiler_builtins := --cfg feature=\"compiler-builtins\"
 
 $(BINDIR)rustc_m: ../output$(OUTDIR_SUF)/rustc
 	@mkdir -p $(dir $@)
-	$Vcp $< $@
+	cp $< $@
 $(BINDIR_S)rustc: ../output$(OUTDIR_SUF)/rustc
 	@mkdir -p $(dir $@)
-	$Vcp $< $@
+	cp $< $@
+#$(PREFIX_S)lib/rustlib/$(RUSTC_TARGET)/codegen-backends/librustc_codegen_llvm-llvm.so: ../output$(OUTDIR_SUF)/rustc-build/librustc_codegen_llvm.so
+#	@mkdir -p $(dir $@)
+#	cp $< $@
 $(BINDIR)cargo: ../output$(OUTDIR_SUF)/cargo
 	@mkdir -p $(dir $@)
-	$Vcp $< $@
+	cp $< $@
 
 $(CARGO_HOME)config: Makefile
 	@mkdir -p $(dir $@)

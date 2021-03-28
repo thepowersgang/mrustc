@@ -110,11 +110,11 @@ RUSTC_ENV_VARS += CFG_VERSION=$(RUSTC_VERSION)-$(RUSTC_CHANNEL)-mrustc
 RUSTC_ENV_VARS += CFG_PREFIX=mrustc
 RUSTC_ENV_VARS += CFG_LIBDIR_RELATIVE=lib
 RUSTC_ENV_VARS += LD_LIBRARY_PATH=$(abspath output)
+RUSTC_ENV_VARS += REAL_LIBRARY_PATH_VAR=LD_LIBRARY_PATH
 
 $(OUTDIR)rustc: $(MRUSTC) $(MINICARGO) LIBS $(LLVM_CONFIG)
 	mkdir -p $(OUTDIR)rustc-build
 	$(RUSTC_ENV_VARS) $(MINICARGO) $(RUSTCSRC)src/rustc --vendor-dir $(VENDOR_DIR) --output-dir $(OUTDIR)rustc-build -L $(OUTDIR) $(MINICARGO_FLAGS)
-#	$(RUSTC_ENV_VARS) $(MINICARGO) $(RUSTCSRC)src/librustc_codegen_llvm --vendor-dir $(VENDOR_DIR) --output-dir $(OUTDIR)rustc-build -L $(OUTDIR) $(MINICARGO_FLAGS)
 	cp $(OUTDIR)rustc-build/$(RUSTC_OUT_BIN) $@
 $(OUTDIR)rustc-build/librustc_driver.rlib: $(MRUSTC) $(MINICARGO) LIBS
 	mkdir -p $(OUTDIR)rustc-build
@@ -185,7 +185,7 @@ rust_tests-libs: $(OUTDIR)stdtest/collectionstests_out.txt
 
 RUNTIME_ARGS_$(OUTDIR)stdtest/alloc-test := --test-threads 1
 RUNTIME_ARGS_$(OUTDIR)stdtest/alloc-test += --skip ::collections::linked_list::tests::test_fuzz
-RUNTIME_ARGS_$(OUTdIR)stdtest/std-test := --test-threads 1
+RUNTIME_ARGS_$(OUTDIR)stdtest/std-test := --test-threads 1
 # VVV Requires panic destructors (unwinding panics)
 RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::io::stdio::tests::panic_doesnt_poison
 RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::io::buffered::tests::panic_in_write_doesnt_flush_in_drop

@@ -2339,8 +2339,30 @@ namespace {
                 else if( item.m_linkage.name == "llvm.x86.sse2.storeu.dq" ) {
                     m_of << "\tmemcpy(arg0, &arg1, sizeof(arg1));\n";
                 }
+                // Add with carry
+                // `fn llvm_addcarry_u32(a: u8, b: u32, c: u32) -> (u8, u32)`
+                else if( item.m_linkage.name == "llvm.x86.addcarry.32") {
+                    m_of << "\trv._0 = __builtin_add_overflow_u32(arg1, arg2, &rv._1);\n";
+                    m_of << "\tif(arg0) rv._0 |= __builtin_add_overflow_u32(rv._1, 1, &rv._1);\n";
+                }
+                // `fn llvm_addcarryx_u32(a: u8, b: u32, c: u32, d: *mut u8) -> u32`
+                else if( item.m_linkage.name == "llvm.x86.addcarryx.u32") {
+                    m_of << "\t*arg3 = __builtin_add_overflow_u32(arg1, arg2, rv);\n";
+                    m_of << "\tif(*arg3) *arg3 |= __builtin_add_overflow_u32(rv, 1, &rv);\n";
+                }
+                // `fn llvm_subborrow_u32(a: u8, b: u32, c: u32) -> (u8, u32);`
+                else if( item.m_linkage.name == "llvm.x86.subborrow.32") {
+                    m_of << "\trv._0 = __builtin_sub_overflow_u32(arg1, arg2, &rv._1);\n";
+                    m_of << "\tif(arg0) rv._0 |= __builtin_sub_overflow_u32(rv._1, 1, &rv._1);\n";
+                }
+                // AES functions
+                else if( item.m_linkage.name.rfind("llvm.x86.aesni.", 0) == 0 )
+                {
+                    m_of << "\tassert(!\"Unsupprorted LLVM x86 intrinsic: " << item.m_linkage.name << "\"); abort();\n";
+                }
                 else {
                     // TODO: Hand off to compiler-specific intrinsics
+                    //MIR_TODO(*m_mir_res, "LLVM extern linkage: " << item.m_linkage.name);
                     m_of << "\tassert(!\"" << item.m_linkage.name << "\"); abort();\n";
                 }
                 m_of << "}\n";
@@ -5872,6 +5894,78 @@ namespace {
             }
             // -- Platform Intrinsics --
             else if( name.compare(0, 9, "platform:") == 0 ) {
+                struct SimdInfo {
+                    unsigned count;
+                    unsigned item_size;
+                    enum Ty {
+                        Float,
+                        Signed,
+                        Unsigned,
+                    } ty;
+
+                    static SimdInfo for_ty(const CodeGenerator_C& self, const HIR::TypeRef& ty) {
+                        size_t size_slot = 0, size_val = 0;;
+                        Target_GetSizeOf(self.sp, self.m_resolve, ty, size_slot);
+                        const auto& ty_val = ty.data().as_Path().binding.as_Struct()->m_data.as_Tuple().at(0).ent;
+                        Target_GetSizeOf(self.sp, self.m_resolve, ty_val, size_val);
+
+                        MIR_ASSERT(*self.m_mir_res, size_slot >= size_val, size_slot << " < " << size_val);
+                        MIR_ASSERT(*self.m_mir_res, size_slot / size_val * size_val == size_slot, size_slot << " not a multiple of " << size_val);
+
+                        SimdInfo    rv;
+                        rv.item_size = size_val;
+                        rv.count = size_slot / size_val;
+                        switch(ty_val.data().as_Primitive())
+                        {
+                        case ::HIR::CoreType::I8:   rv.ty = Signed; break;
+                        case ::HIR::CoreType::I16:  rv.ty = Signed; break;
+                        case ::HIR::CoreType::I32:  rv.ty = Signed; break;
+                        case ::HIR::CoreType::I64:  rv.ty = Signed; break;
+                        //case ::HIR::CoreType::I128: rv.ty = Signed; break;
+                        case ::HIR::CoreType::U8:   rv.ty = Unsigned; break;
+                        case ::HIR::CoreType::U16:  rv.ty = Unsigned; break;
+                        case ::HIR::CoreType::U32:  rv.ty = Unsigned; break;
+                        case ::HIR::CoreType::U64:  rv.ty = Unsigned; break;
+                        //case ::HIR::CoreType::U128: rv.ty = Unsigned; break;
+                        case ::HIR::CoreType::F32:  rv.ty = Float;  break;
+                        case ::HIR::CoreType::F64:  rv.ty = Float;  break;
+                        default:
+                            MIR_BUG(*self.m_mir_res, "Invalid SIMD type inner - " << ty_val);
+                        }
+                        return rv;
+                    }
+                    void emit_val_ty(CodeGenerator_C& self) {
+                        switch(ty)
+                        {
+                        case Float: self.m_of << (item_size == 4 ? "float" : "double"); break;
+                        case Signed:    self.m_of << "int" << (item_size*8) << "_t";    break;
+                        case Unsigned:  self.m_of << "uint" << (item_size*8) << "_t";   break;
+                        }
+                    }
+                };
+
+                auto simd_cmp = [&](const char* op) {
+                    auto src_info = SimdInfo::for_ty(*this, params.m_types.at(0));
+                    auto dst_info = SimdInfo::for_ty(*this, params.m_types.at(1));
+                    MIR_ASSERT(mir_res, src_info.count == dst_info.count, "Element counts must match for " << name);
+                    m_of << "for(int i = 0; i < " << dst_info.count << "; i++)";
+                    m_of << "(("; dst_info.emit_val_ty(*this); m_of << "*)&"; emit_lvalue(e.ret_val); m_of << ")[i] ";
+                    m_of << "= (";
+                    m_of << " (("; src_info.emit_val_ty(*this); m_of << "*)&"; emit_param(e.args.at(0)); m_of << ")[i]";
+                    m_of << op;
+                    m_of << " (("; src_info.emit_val_ty(*this); m_of << "*)&"; emit_param(e.args.at(1)); m_of << ")[i]";
+                    m_of << " )";
+                    };
+                auto simd_arith = [&](const char* op) {
+                    auto info = SimdInfo::for_ty(*this, params.m_types.at(0));
+                    // Emulate!
+                    emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0)); m_of << "; ";
+                    m_of << "for(int i = 0; i < " << info.count << "; i++)";
+                    m_of << "(("; info.emit_val_ty(*this); m_of << "*)&"; emit_lvalue(e.ret_val); m_of << ")[i] ";
+                    m_of << op << "=";
+                    m_of << " (("; info.emit_val_ty(*this); m_of << "*)&"; emit_param(e.args.at(1)); m_of << ")[i]";
+                    };
+
                 // dst: T, index: usize, val: U
                 // Insert a value at position
                 if( name == "platform:simd_insert" ) {
@@ -5926,39 +6020,51 @@ namespace {
                     m_of << " = ((uint" << (size_val*8) << "_t*)(j < " << div << " ? &"; emit_param(e.args.at(1)); m_of << " : &"; emit_param(e.args.at(1)); m_of << "))[j % " << div << "];";
                     m_of << "}";
                 }
-                else if( false
-                    || name == "platform:simd_add"
-                    || name == "platform:simd_sub"
-                    || name == "platform:simd_mul"
-                    || name == "platform:simd_div"
-                    || name == "platform:simd_and"
-                    || name == "platform:simd_or"
-                    || name == "platform:simd_xor"
-                    ) {
-                    size_t size_slot = 0, size_val = 0;
-                    Target_GetSizeOf(sp, m_resolve, params.m_types.at(0), size_slot);
-                    const auto& ty_val = params.m_types.at(0).data().as_Path().binding.as_Struct()->m_data.as_Tuple().at(0).ent;
-                    Target_GetSizeOf(sp, m_resolve, ty_val, size_val);
-                    MIR_ASSERT(mir_res, size_slot >= size_val, size_slot << " < " << size_val);
-                    MIR_ASSERT(mir_res, size_slot / size_val * size_val == size_slot, size_slot << " not a multiple of " << size_val);
-
-                    // Emulate!
-                    emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0)); m_of << "; ";
-                    m_of << "for(int i = 0; i < " << (size_slot/size_val) << "; i++)";
-                    m_of << "(("; emit_ctype(ty_val); m_of << "*)&"; emit_lvalue(e.ret_val); m_of << ")[i] ";
-                    if(false)
-                        ;
-                    else if(name == "platform:simd_add")    m_of << "+=";
-                    else if(name == "platform:simd_sub")    m_of << "-=";
-                    else if(name == "platform:simd_mul")    m_of << "*=";
-                    else if(name == "platform:simd_div")    m_of << "/=";
-                    else if(name == "platform:simd_and")    m_of << "&=";
-                    else if(name == "platform:simd_or" )    m_of << "|=";
-                    else if(name == "platform:simd_xor")    m_of << "^=";
-                    else
-                        MIR_BUG(mir_res, name);
-                    m_of << " (("; emit_ctype(ty_val); m_of << "*)&"; emit_param(e.args.at(1)); m_of << ")[i]";
+                else if( name == "platform:simd_cast" ) {
+                    auto src_info = SimdInfo::for_ty(*this, params.m_types.at(0));
+                    auto dst_info = SimdInfo::for_ty(*this, params.m_types.at(1));
+                    MIR_ASSERT(mir_res, src_info.count == dst_info.count, "Element counts must match for " << name);
+                    m_of << "for(int i = 0; i < " << dst_info.count << "; i++) ";
+                    m_of << "(("; dst_info.emit_val_ty(*this); m_of << "*)&"; emit_lvalue(e.ret_val); m_of << ")[i] ";
+                    m_of << "= (("; src_info.emit_val_ty(*this); m_of << "*)&"; emit_param(e.args.at(0)); m_of << ")[i];";
                 }
+                // Select between two values
+                else if(name == "platform:simd_select") {
+                    auto mask_info = SimdInfo::for_ty(*this, params.m_types.at(0));
+                    auto val_info = SimdInfo::for_ty(*this, params.m_types.at(1));
+                    MIR_ASSERT(mir_res, mask_info.count == val_info.count, "Element counts must match for " << name);
+                    m_of << "for(int i = 0; i < " << val_info.count << "; i++) ";
+                    m_of << "(("; val_info.emit_val_ty(*this); m_of << "*)&"; emit_lvalue(e.ret_val); m_of << ")[i] ";
+                    m_of << "= (("; mask_info.emit_val_ty(*this); m_of << "*)&"; emit_param(e.args.at(0)); m_of << ")[i]";
+                    m_of << "? (("; val_info.emit_val_ty(*this); m_of << "*)&"; emit_param(e.args.at(1)); m_of << ")[i]";
+                    m_of << ": (("; val_info.emit_val_ty(*this); m_of << "*)&"; emit_param(e.args.at(2)); m_of << ")[i]";
+                    m_of << ";";
+                }
+                else if(name == "platform:simd_select_bitmask") {
+                    auto val_info = SimdInfo::for_ty(*this, params.m_types.at(1));
+                    m_of << "for(int i = 0; i < " << val_info.count << "; i++) ";
+                    m_of << "(("; val_info.emit_val_ty(*this); m_of << "*)&"; emit_lvalue(e.ret_val); m_of << ")[i] ";
+                    m_of << "= (("; emit_param(e.args.at(0)); m_of << ") >> i) != 0";
+                    m_of << "? (("; val_info.emit_val_ty(*this); m_of << "*)&"; emit_param(e.args.at(1)); m_of << ")[i]";
+                    m_of << ": (("; val_info.emit_val_ty(*this); m_of << "*)&"; emit_param(e.args.at(2)); m_of << ")[i]";
+                    m_of << ";";
+                }
+                // Comparisons
+                else if(name == "platform:simd_eq")   simd_cmp("==");
+                else if(name == "platform:simd_ne")   simd_cmp("!=");
+                else if(name == "platform:simd_lt")   simd_cmp("<" );
+                else if(name == "platform:simd_le")   simd_cmp("<=");
+                else if(name == "platform:simd_gt")   simd_cmp(">" );
+                else if(name == "platform:simd_ge")   simd_cmp(">=");
+                // Arithmetic
+                else if(name == "platform:simd_add")    simd_arith("+");
+                else if(name == "platform:simd_sub")    simd_arith("-");
+                else if(name == "platform:simd_mul")    simd_arith("*");
+                else if(name == "platform:simd_div")    simd_arith("/");
+                else if(name == "platform:simd_and")    simd_arith("&");
+                else if(name == "platform:simd_or" )    simd_arith("|");
+                else if(name == "platform:simd_xor")    simd_arith("^");
+
                 else {
                     // TODO: Platform intrinsics
                     m_of << "assert(!\"TODO: Platform intrinsic \\\"" << name << "\\\"\")";

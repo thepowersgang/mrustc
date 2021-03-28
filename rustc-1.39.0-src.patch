@@ -23,7 +23,34 @@
 +        const fn len_inner<T>(s: &[T]) -> usize { unsafe { crate::intrinsics::mrustc_slice_len(s) } }
 +        len_inner(self)
      }
+#
+# Static-link rustc_codegen_llvm so the generated rustc is standalone
+# > Note: Interacts with `rustc-1.39.0-overrides.toml`
+#
+--- src/librustc_interface/util.rs
++++ src/librustc_interface/util.rs
+@@ -277,4 +277,6 @@
+             filename if filename.contains(".") => {
+                 load_backend_from_dylib(filename.as_ref())
+             }
++            #[cfg(rust_compiler="mrustc")]
++            "llvm" => { extern "Rust" { fn __rustc_codegen_backend() -> Box<dyn CodegenBackend>; } || unsafe { __rustc_codegen_backend() } },
+             codegen_name => get_codegen_sysroot(codegen_name),
+# Disable most architecture intrinsics
+--- src/stdarch/crates/std_detect/src/detect/mod.rs
++++ src/stdarch/crates/std_detect/src/detect/mod.rs
+@@ -74,4 +74,7 @@
+         // this run-time detection logic is never called.
+         #[path = "os/other.rs"]
+         mod os;
++    } else if #[cfg(rust_compiler="mrustc")] {
++        #[path = "os/other.rs"]
++        mod os;
+     } else if #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] {
+
+##
 ## gcc (used by mrustc) has 16-byte uint128_t alignment, while rustc uses 8
+##
 #--- src/libsyntax/ast.rs
 #+++ src/libsyntax/ast.rs
 #@@ -986,2 +986,2 @@
