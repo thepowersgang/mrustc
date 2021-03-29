@@ -170,7 +170,7 @@ impl<T: ::std::io::Write> Writer<T>
         self.inner.write(&buf).expect("");
     }
     fn put_u128v(&mut self, mut v: u128) {
-        while v > 128 {
+        while v >= 128 {
             self.putb( (v & 0x7F) as u8 | 0x80 );
             v >>= 7;
         }
