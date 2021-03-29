@@ -12,13 +12,14 @@
      pub fn type_name<T: ?Sized>() -> &'static str;
 --- src/libcore/slice/mod.rs
 +++ src/libcore/slice/mod.rs
-@@ -68,5 +68,7 @@
+@@ -68,5 +68,8 @@
      pub const fn len(&self) -> usize {
 -        unsafe {
 -            crate::ptr::Repr { rust: self }.raw.len
 -        }
 +        #[cfg(not(rust_compiler="mrustc"))]
-+        const fn len_inner<T>(s: &[T]) -> usize { unsafe { crate::ptr::Repr { rust: self }.raw.len } };
++        #[cfg_attr(not(bootstrap), allow_internal_unstable(const_fn_union))]
++        const fn len_inner<T>(s: &[T]) -> usize { unsafe { crate::ptr::Repr { rust: s }.raw.len } };
 +        #[cfg(rust_compiler="mrustc")]
 +        const fn len_inner<T>(s: &[T]) -> usize { unsafe { crate::intrinsics::mrustc_slice_len(s) } }
 +        len_inner(self)
