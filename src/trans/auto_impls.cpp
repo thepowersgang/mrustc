@@ -204,6 +204,7 @@ void Trans_AutoImpl_Clone(State& state, ::HIR::TypeRef ty)
     // Add impl to the crate
     auto& list = state.crate.m_trait_impls[state.lang_Clone].get_list_for_type_mut(impl.m_type);
     list.push_back( box$(impl) );
+    state.crate.m_all_trait_impls[state.lang_Clone].get_list_for_type_mut(list.back()->m_type).push_back( list.back().get() );
 }
 
 namespace {

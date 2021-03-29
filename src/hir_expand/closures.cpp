@@ -989,7 +989,8 @@ namespace {
 
             if( node.m_is_copy )
             {
-                auto& v = const_cast<::HIR::Crate&>(m_resolve.m_crate).m_trait_impls[m_resolve.m_crate.get_lang_item_path(sp, "copy")].get_list_for_type_mut(closure_type);
+                auto lang_Copy = m_resolve.m_crate.get_lang_item_path(sp, "copy");
+                auto& v = const_cast<::HIR::Crate&>(m_resolve.m_crate).m_trait_impls[lang_Copy].get_list_for_type_mut(closure_type);
                 v.push_back(box$(::HIR::TraitImpl {
                     params.clone(), {}, closure_type.clone(),
                     {},
@@ -998,6 +999,7 @@ namespace {
                     {},
                     /*source module*/::HIR::SimplePath(m_resolve.m_crate.m_crate_name, {})
                     }));
+                const_cast<::HIR::Crate&>(m_resolve.m_crate).m_all_trait_impls[lang_Copy].get_list_for_type_mut(closure_type).push_back( v.back().get() );
             }
 
             // ---
