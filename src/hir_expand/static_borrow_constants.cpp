@@ -103,6 +103,7 @@ namespace {
                     DEBUG("-- " << node.m_value->m_res_type << " could be interior mutable");
                 }
             }
+            // TODO: Special case for `&mut []` (or `&mut ZST` in general?)
             m_all_constant = saved_all_constant;
         }
 
