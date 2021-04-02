@@ -219,8 +219,15 @@ void Cfg_ToEnvironment(StringListKV& out)
         args.push_back("--target");
         args.push_back(target_spec);
     }
-    args.push_back("-Z");
-    args.push_back("print-cfgs");
+    bool is_mrustc = (compiler_path.basename() == "mrustc" || compiler_path.basename() == "mrustc.exe");
+    if(is_mrustc) {
+        args.push_back("-Z");
+        args.push_back("print-cfgs");
+    }
+    else {
+        args.push_back("--print");
+        args.push_back("cfg");
+    }
     if( !spawn_process(compiler_path.str().c_str(), args, StringListKV(), tmp_file_stdout) )
         throw std::runtime_error("Unable to invoke compiler to get config options");
 
@@ -244,7 +251,22 @@ void Cfg_ToEnvironment(StringListKV& out)
         if(line.empty())
             continue;
 
-        if(line[0] == '>')
+        if(!is_mrustc)
+        {
+            // Parse a cfg option (split on '=')
+            auto pos = line.find('=');
+            if(pos == std::string::npos)
+            {
+                rv.flags.insert(line.substr(0));
+            }
+            else
+            {
+                auto k = line.substr(0, pos);
+                auto v = line.substr(pos+2,  line.size() - (pos+2) - 1);
+                rv.values.insert(std::make_pair( std::move(k), std::move(v) ));
+            }
+        }
+        else if( line[0] == '>')
         {
             // Parse a cfg option (split on '=')
             auto pos = line.find('=');
@@ -260,6 +282,11 @@ void Cfg_ToEnvironment(StringListKV& out)
             }
         }
     }
+
+    //for(const auto& f : rv.flags)
+    //    std::cout << f << std::endl;
+    //for(const auto& kv : rv.values)
+    //    std::cout << kv.first << " = " << kv.second << std::endl;
 
     return rv;
 }

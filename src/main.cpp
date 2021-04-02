@@ -240,7 +240,7 @@ int main(int argc, char *argv[])
         Cfg_SetValueCb("feature", [&params](const ::std::string& s) {
             return params.features.count(s) != 0;
             });
-
+#if 0
         DEBUG("sizeof(AST::TypeRef) = " << sizeof(TypeRef));
         DEBUG("sizeof(AST::Item) = " << sizeof(AST::Item));
         DEBUG("sizeof(AST::Impl) = " << sizeof(AST::Impl));
@@ -248,6 +248,7 @@ int main(int argc, char *argv[])
         DEBUG("sizeof(AST::Module) = " << sizeof(AST::Module));
         DEBUG("sizeof(HIR::TypeRef) = " << sizeof(HIR::TypeRef));
         DEBUG("sizeof(HIR::Path) = " << sizeof(HIR::Path));
+#endif
         });
     CompilePhaseV("Target Load", [&]() {
         Target_SetCfg(params.target);
@@ -1205,22 +1206,21 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                     *p = '\0';
                     const char* opt = opt_and_val;
                     const char* val = p + 1;
+                    std::string s;
                     // TODO: Correctly parse the values.
                     // - Value should be a double-quoted string.
+                    if( val[0] == '"' ) {
+                        // TODO: Something cleaner than this.
+                        s = val+1;
+                        assert(s.back() == '"');
+                        s.pop_back();
+                        val = s.c_str();
+                    }
                     if( ::std::strcmp(opt, "feature") == 0 ) {
                         this->features.insert( ::std::string(val) );
                     }
                     else {
-                        if( val[0] == '"' ) {
-                            // TODO: Something cleaner than this.
-                            ::std::string   s = val+1;
-                            assert(s.back() == '"');
-                            s.pop_back();
-                            Cfg_SetValue(opt, s);
-                        }
-                        else {
-                            Cfg_SetValue(opt, val);
-                        }
+                        Cfg_SetValue(opt, val);
                     }
                 }
                 else {
