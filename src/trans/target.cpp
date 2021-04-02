@@ -600,6 +600,7 @@ void Target_SetCfg(const ::std::string& target_name)
     if(g_target.m_arch.m_atomics.ptr)   Cfg_SetValue("target_has_atomic", "ptr");
     if(g_target.m_arch.m_atomics.ptr)   Cfg_SetValue("target_has_atomic", "cas");   // TODO: Atomic compare-and-set option
     Cfg_SetValueCb("target_feature", [](const ::std::string& s) {
+        //if(g_target.m_arch.m_name == "x86_64" && s == "sse2") return true;    // 1.39 ppv-lite86 requires sse2 (x86_64 always has it)
         return false;
         });
 }
