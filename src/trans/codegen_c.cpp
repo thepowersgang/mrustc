@@ -1687,7 +1687,20 @@ namespace {
                 m_of << " // " << ty << "\n";
                 }
             TU_ARMA(Array, te) {
-                m_of << "typedef struct "; emit_ctype(ty); m_of << " { ";
+                m_of << "typedef ";
+                size_t align;
+                if( te.size.as_Known() == 0 ) {
+                    Target_GetAlignOf(sp, m_resolve, ty, align);
+                    switch(m_compiler)
+                    {
+                    case Compiler::Msvc:
+                        m_of << "__declspec(align(" << align << "))\n";
+                        break;
+                    case Compiler::Gcc:
+                        break;
+                    }
+                }
+                m_of << "struct "; emit_ctype(ty); m_of << " { ";
                 if( te.size.as_Known() == 0 && m_options.disallow_empty_structs )
                 {
                     m_of << "char _d;";
@@ -1696,7 +1709,20 @@ namespace {
                 {
                     emit_ctype(te.inner); m_of << " DATA[" << te.size.as_Known() << "];";
                 }
-                m_of << " } "; emit_ctype(ty); m_of << ";";
+                m_of << " } ";
+                if( te.size.as_Known() == 0 ) {
+                    switch(m_compiler)
+                    {
+                    case Compiler::Msvc:
+                        break;
+                    case Compiler::Gcc:
+                        m_of << " __attribute__((";
+                        m_of << "__aligned__(" << align << "),";
+                        m_of << "))";
+                        break;
+                    }
+                }
+                emit_ctype(ty); m_of << ";";
                 m_of << " // " << ty << "\n";
                 }
             TU_ARMA(ErasedType, te) {
@@ -2333,6 +2359,14 @@ namespace {
                         << "\tconst uint32_t* src = (const uint32_t*)&arg0;\n"
                         << "\tuint32_t* dst = (uint32_t*)&rv;\n"
                         << "\tfor(int i = 0; i < " << 128/32 << "; i ++) dst[i] = src[i] << arg1;\n"
+                        << "\treturn rv;\n"
+                        ;
+                }
+                else if( item.m_linkage.name == "llvm.x86.sse2.pmovmskb.128") {
+                    m_of
+                        << "\tconst uint8_t* src = (const uint32_t*)&arg0;\n"
+                        << "\tuint8_t* dst = (uint32_t*)&rv; *dst = 0;\n"
+                        << "\tfor(int i = 0; i < " << 128/8 << "; i ++) *dst |= (src[i] >> 7) << i;\n"
                         << "\treturn rv;\n"
                         ;
                 }
@@ -5554,13 +5588,21 @@ namespace {
                     break;
                 case ::HIR::CoreType::I32:
                 case ::HIR::CoreType::U32:
-                    emit_lvalue(e.ret_val); m_of << " = ";
-                    m_of << "_rotr("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ")";
+                    m_of << "{";
+                    m_of << " uint32_t v = "; emit_param(e.args.at(0)); m_of << ";";
+                    m_of << " unsigned shift = "; emit_param(e.args.at(1)); m_of << ";";
+                    m_of << " uint32_t rv = (v >> shift) | (v << (32 - shift));";
+                    m_of << " "; emit_lvalue(e.ret_val); m_of << " = rv;";
+                    m_of << "}";
                     break;
                 case ::HIR::CoreType::I64:
                 case ::HIR::CoreType::U64:
-                    emit_lvalue(e.ret_val); m_of << " = ";
-                    m_of << "_rotr64("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ")";
+                    m_of << "{";
+                    m_of << " uint64_t v = "; emit_param(e.args.at(0)); m_of << ";";
+                    m_of << " unsigned shift = "; emit_param(e.args.at(1)); m_of << ";";
+                    m_of << " uint64_t rv = (v >> shift) | (v << (64 - shift));";
+                    m_of << " "; emit_lvalue(e.ret_val); m_of << " = rv;";
+                    m_of << "}";
                     break;
                 case ::HIR::CoreType::I128:
                 case ::HIR::CoreType::U128:
