@@ -30,13 +30,11 @@
 #
 --- src/librustc_interface/util.rs
 +++ src/librustc_interface/util.rs
-@@ -277,4 +277,6 @@
-             filename if filename.contains(".") => {
-                 load_backend_from_dylib(filename.as_ref())
-             }
-+            #[cfg(rust_compiler="mrustc")]
-+            "llvm" => { extern "Rust" { fn __rustc_codegen_backend() -> Box<dyn CodegenBackend>; } || unsafe { __rustc_codegen_backend() } },
-             codegen_name => get_codegen_sysroot(codegen_name),
+@@ -421,2 +421,4 @@
+ pub fn get_codegen_sysroot(backend_name: &str) -> fn() -> Box<dyn CodegenBackend> {
++    #[cfg(rust_compiler="mrustc")]
++    if(backend_name == "llvm") { extern "Rust" { fn __rustc_codegen_backend() -> Box<dyn CodegenBackend>; } return || unsafe { __rustc_codegen_backend() } }
+     // For now we only allow this function to be called once as it'll dlopen a
 # Disable most architecture intrinsics
 --- src/stdarch/crates/std_detect/src/detect/mod.rs
 +++ src/stdarch/crates/std_detect/src/detect/mod.rs
