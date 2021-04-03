@@ -1,5 +1,5 @@
 #
-#
+# minicargo.mk - Makefile that handles invoking `minicargo` to build libstd, rustc, and cargo
 #
 
 ifeq ($(RUSTC_VERSION),)
