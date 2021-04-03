@@ -9,6 +9,14 @@ else
 OUTDIR_SUF ?= -$(RUSTC_VERSION)
 endif
 
+ifeq ($(RUSTC_VERSION),1.39.0)
+ RUST_SRC_HELLO = $(RUST_SRC)test/ui/hello.rs
+ VENDOR_DIR := $(RUST_SRC)../vendor
+else
+ RUST_SRC_HELLO = $(RUST_SRC)test/run-pass/hello.rs
+ VENDOR_DIR := $(RUST_SRC)vendor
+endif
+
 RUSTC_TARGET := x86_64-unknown-linux-gnu
 
 OUTDIR := output$(OUTDIR_SUF)/
@@ -40,6 +48,7 @@ CARGO_ENV += RUSTFLAGS="-Z force-unstable-if-unmarked"
 V ?= @
 
 
+all: $(BINDIR_S)hello_world
 all: $(BINDIR)rustc $(LIBDIR)libstd.rlib $(BINDIR)hello_world
 all: $(BINDIR)cargo
 
@@ -78,7 +87,7 @@ $(CARGO_HOME)config: Makefile
 	$Vecho "[source.crates-io]" > $@
 	$Vecho "replace-with = \"vendored-sources\"" >> $@
 	$Vecho "[source.vendored-sources]" >> $@
-	$Vecho "directory = \"$(abspath $(RUST_SRC)vendor)\"" >> $@
+	$Vecho "directory = \"$(abspath $(VENDOR_DIR))\"" >> $@
 
 # Actual libstd build (using cargo, and using manually-build libstd as deps)
 $(LIBDIR)libstd.rlib: $(BINDIR_S)rustc $(BINDIR)cargo $(LIBDIR_S)libstd.rlib $(CARGO_HOME)config
@@ -112,15 +121,24 @@ endif
 	printf '#!/bin/sh\nd=$$(dirname $$0)\nLD_LIBRARY_PATH="$(abspath $(LIBDIR))" $$d/rustc_binary $$@' >$@
 	chmod +x $@
 
-$(BINDIR)hello_world: $(RUST_SRC)test/run-pass/hello.rs $(LIBDIR)libstd.rlib $(BINDIR)rustc
+$(BINDIR)hello_world: $(RUST_SRC_HELLO) $(LIBDIR)libstd.rlib $(BINDIR)rustc
 	@mkdir -p $(dir $@)
 	@echo "[RUSTC] -o $@"
-	$Vtime $(DBG) $(BINDIR)rustc $(RUSTFLAGS_$@) -L $(LIBDIR) -L ../output/libs $< -o $@
+	$Vtime $(DBG) $(BINDIR)rustc $(RUSTFLAGS_$@) -L $(LIBDIR) $< -o $@
+$(BINDIR_S)hello_world: $(RUST_SRC_HELLO) $(LIBDIR_S)libstd.rlib $(BINDIR_S)rustc
+	@mkdir -p $(dir $@)
+	$Vtime $(DBG) $(BINDIR_S)rustc $(RUSTFLAGS_$@) -L $(LIBDIR_S) $< -o $@
 
 # 
 # - Build libstd in a hacky hard-coded way first, to allow build scripts to work
 #  > TODO: Tweak minicargo so it can call rustc (and then use minicargo to do this)
 # 
+ifeq ($(RUSTC_VERSION),1.39.0)
+$(LIBDIR_S)libstd.rlib: $(BINDIR_S)rustc ../bin/minicargo Makefile
+	@echo "[MINICARGO] $(RUST_SRC)libstd"
+	$VMRUSTC_PATH=$(BINDIR_S)rustc ../bin/minicargo $(RUST_SRC)libstd --vendor-dir $(VENDOR_DIR) --script-overrides ../script-overrides/stable-$(RUSTC_VERSION)-linux/ --output-dir $(LIBDIR_S)
+	$VMRUSTC_PATH=$(BINDIR_S)rustc ../bin/minicargo $(RUST_SRC)libpanic_unwind --vendor-dir $(VENDOR_DIR) --script-overrides ../script-overrides/stable-$(RUSTC_VERSION)-linux/ --output-dir $(LIBDIR_S)
+else
 $(LIBDIR_S)lib%.rlib: $(RUST_SRC)lib%/lib.rs $(BINDIR_S)rustc
 	@mkdir -p $(dir $@)
 	@echo "[RUSTC] -o $@"
@@ -134,7 +152,7 @@ fcn_extcrate = $(patsubst %,$(LIBDIR_S)lib%.rlib,$(1))
 
 $(LIBDIR_S)libarena.rlib: $(call fcn_extcrate, std)
 $(LIBDIR_S)liballoc.rlib: $(call fcn_extcrate, core compiler_builtins)
-ifeq ($(RUSTC_VERSION),1.29.0)
+ifneq ($(RUSTC_VERSION),1.29.0)
 $(LIBDIR_S)liballoc.rlib: $(call fcn_extcrate, alloc_system)
 endif
 $(LIBDIR_S)liballoc_system.rlib: $(call fcn_extcrate, core libc)
@@ -148,4 +166,5 @@ $(LIBDIR_S)libstd.rlib: $(call fcn_extcrate, core libc unwind compiler_builtins 
 ifeq ($(RUSTC_VERSION),1.19.0)
 $(LIBDIR_S)libstd.rlib: $(call fcn_extcrate, collections rand)
 endif
-$(LIBDIR_S)libunwind.rlib: $(call fcn_extcrate, core libc)
+$(LIBDIR_S)libunwind.rlib: $(call fcn_extcrate, core libc compiler_builtins)
+endif
