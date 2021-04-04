@@ -1054,7 +1054,63 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
 
     struct H
     {
-        static bool can_inline(const ::HIR::Path& path, const ::MIR::Function& fcn, bool minimal)
+        struct Source {
+            unsigned    bb_idx;
+            unsigned    stmt_idx;
+            const ::MIR::Statement* stmt;
+
+            Source( unsigned bb_idx, unsigned stmt_idx, const ::MIR::Statement* stmt = nullptr)
+                : bb_idx(bb_idx)
+                , stmt_idx(stmt_idx)
+                , stmt(stmt)
+            {
+            }
+        };
+        static Source find_source(const ::MIR::Function& fcn, unsigned bb_idx, unsigned stmt_idx, const ::MIR::LValue& val)
+        {
+            if(!val.m_wrappers.empty())
+                return Source(bb_idx, stmt_idx);
+            const auto& bb = fcn.blocks.at(bb_idx);
+            while(stmt_idx --)
+            {
+                const auto& stmt = bb.statements[stmt_idx];
+                if( stmt.is_Asm() )
+                    return Source(bb_idx, stmt_idx);
+                if( stmt.is_Assign() )
+                {
+                    const auto& se = stmt.as_Assign();
+                    if( se.dst == val )
+                    {
+                        return Source(bb_idx, stmt_idx, &stmt);
+                    }
+                }
+            }
+            return Source(bb_idx, 0);
+        }
+        /// Checks if the passed lvalue would optimise/expand to a constant value
+        static bool value_is_const(const ::MIR::Function& fcn, unsigned bb_idx, unsigned stmt_idx, const ::MIR::LValue& val, const std::vector<::MIR::Param>& params)
+        {
+            if(val.m_root.is_Argument())
+            {
+                auto a = val.m_root.as_Argument();
+                return params[a].is_Constant();
+            }
+
+            // Find the source of this lvalue, chase it backwards
+            auto src = H::find_source(fcn, bb_idx, stmt_idx, val);
+            if(src.stmt)
+            {
+                if( const auto* se = src.stmt->opt_Assign() )
+                {
+                    if( se->src.is_Use() ) {
+                        return value_is_const(fcn, src.bb_idx, src.stmt_idx, se->src.as_Use(), params);
+                    }
+                }
+            }
+
+            return false;
+        }
+        static bool can_inline(const ::HIR::Path& path, const ::MIR::Function& fcn, const std::vector<::MIR::Param>& params, bool minimal)
         {
             // TODO: If the function is marked as `inline(always)`, then inline it regardless of the contents
             // TODO: If the function is marked as `inline(never)`, then don't inline
@@ -1100,62 +1156,93 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
                     return false;
                 return true;
             }
-            else if( fcn.blocks.size() > 1 && fcn.blocks[0].terminator.is_Switch() )
-            {
-                // Setup + Arms + Return + Panic
-                // - Handles the atomic wrappers
-                if( fcn.blocks.size() != fcn.blocks[0].terminator.as_Switch().targets.size()+3 )
-                    return false;
-                // TODO: Check for the switch value being an argument that is also a constant parameter being a Constant
-                // TODO: Check all arms of the switch are distinct
-                for(size_t i = 1; i < fcn.blocks.size(); i ++)
-                {
-                    if( fcn.blocks[i].terminator.is_Call() )
-                    {
-                        const auto& te = fcn.blocks[i].terminator.as_Call();
-                        // Recursion, don't inline.
-                        if( te.fcn.is_Path() && te.fcn.as_Path() == path )
-                            return false;
-                        // HACK: Only allow if the wrapped function is an intrinsic
-                        // - Works around the TODO about monomorphed paths above
-                        if(!te.fcn.is_Intrinsic())
-                            return false;
-                    }
-                }
-                return true;
-            }
-#if 0
-            else if( fcn.blocks.size() > 1 && fcn.blocks[0].terminator.is_SwitchValue() )
-            {
-                // Setup + Arms(+default) + Return + Panic
-                // - Handles some code in crc32-fast that emits a 256-arm SwitchValue
-                if( fcn.blocks.size() != fcn.blocks[0].terminator.as_SwitchValue().targets.size()+1+3 )
-                    return false;
-                // TODO: Check for the parameter being a Constant?
-                // TODO: Check all arms of the switch are distinct
-
-                // Avoid recursion
-                for(size_t i = 1; i < fcn.blocks.size(); i ++)
-                {
-                    if( fcn.blocks[i].terminator.is_Call() )
-                    {
-                        const auto& te = fcn.blocks[i].terminator.as_Call();
-                        // Recursion, don't inline.
-                        if( te.fcn.is_Path() && te.fcn.as_Path() == path )
-                            return false;
-                        // HACK: Only allow if the wrapped function is an intrinsic
-                        // - Works around the TODO about monomorphed paths above
-                        if(!te.fcn.is_Intrinsic())
-                            return false;
-                    }
-                }
-                return true;
-            }
-#endif
             else
             {
-                return false;
             }
+
+            if( can_inline_Switch_wrapper(path, fcn, params) )
+                return true;
+            if( can_inline_SwitchValue_wrapper(path, fcn, params) )
+                return true;
+            return false;
+        }
+
+        /// Case: A Switch that has all distinct arms that just call a function AND the value is over (effectively) a literal
+        static bool can_inline_Switch_wrapper(const ::HIR::Path& path, const ::MIR::Function& fcn, const std::vector<::MIR::Param>& params)
+        {
+            if( fcn.blocks.size() <= 1)
+                return false;
+            if( !fcn.blocks[0].terminator.is_Switch() )
+                return false;
+            const auto& te_switch = fcn.blocks[0].terminator.as_Switch();
+            // Setup + Arms + Return + Panic
+            // - Handles the atomic wrappers
+            if( fcn.blocks.size() != te_switch.targets.size()+3 )
+                return false;
+            // Check for the switch value being an argument that is also a constant parameter being a Constant
+            if( !value_is_const(fcn, 0, fcn.blocks[0].statements.size(), te_switch.val, params) )
+                return false;
+            // Check all arms of the switch are distinct
+            for(const auto& tgt : te_switch.targets)
+                if( std::find(te_switch.targets.begin() + (1 + &tgt - te_switch.targets.data()), te_switch.targets.end(), tgt) != te_switch.targets.end() )
+                    return false;
+            // Check for recursion
+            for(size_t i = 1; i < fcn.blocks.size(); i ++)
+            {
+                if( fcn.blocks[i].terminator.is_Call() )
+                {
+                    const auto& te = fcn.blocks[i].terminator.as_Call();
+                    // Recursion, don't inline.
+                    if( te.fcn.is_Path() && te.fcn.as_Path() == path )
+                        return false;
+                    // HACK: Only allow if the wrapped function is an intrinsic
+                    // - Works around the TODO about monomorphed paths above
+                    if(!te.fcn.is_Intrinsic())
+                        return false;
+                }
+            }
+            return true;
+        }
+
+        /// Case: A SwitchValue that has all distinct arms that just call a function AND the value is over (effectively) a literal
+        static bool can_inline_SwitchValue_wrapper(const ::HIR::Path& path, const ::MIR::Function& fcn, const std::vector<::MIR::Param>& params)
+        {
+            if( fcn.blocks.size() <= 1)
+                return false;
+            if( !fcn.blocks[0].terminator.is_SwitchValue() )
+                return false;
+            const auto& te_switch = fcn.blocks[0].terminator.as_SwitchValue();
+            // Setup + Arms(+default) + Return + Panic
+            // - Handles some code in crc32-fast that emits a 256-arm SwitchValue
+            if( fcn.blocks.size() != te_switch.targets.size()+1+3 )
+                return false;
+            // Check for the switch value being an argument that is also a constant parameter being a Constant
+            if( !value_is_const(fcn, 0, fcn.blocks[0].statements.size(), te_switch.val, params) )
+                return false;
+
+            // Check all arms of the switch are distinct
+            if( std::find(te_switch.targets.begin(), te_switch.targets.end(), te_switch.def_target) != te_switch.targets.end() )
+                return false;
+            for(const auto& tgt : te_switch.targets)
+                if( std::find(te_switch.targets.begin() + (1 + &tgt - te_switch.targets.data()), te_switch.targets.end(), tgt) != te_switch.targets.end() )
+                    return false;
+
+            // Check for recursion
+            for(size_t i = 1; i < fcn.blocks.size(); i ++)
+            {
+                if( fcn.blocks[i].terminator.is_Call() )
+                {
+                    const auto& te = fcn.blocks[i].terminator.as_Call();
+                    // Recursion, don't inline.
+                    if( te.fcn.is_Path() && te.fcn.as_Path() == path )
+                        return false;
+                    // HACK: Only allow if the wrapped function is an intrinsic
+                    // - Works around the TODO about monomorphed paths above
+                    if(!te.fcn.is_Intrinsic())
+                        return false;
+                }
+            }
+            return true;
         }
     };
     // TODO: Can this use the code in `monomorphise.cpp`?
@@ -1529,7 +1616,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
 
             for(const auto& e : inlined_functions)
             {
-                if( path == e.path &&  e.has_bb(i) )
+                if( path == e.path && e.has_bb(i) )
                 {
                     MIR_BUG(state, "Recursive inline of " << path);
                 }
@@ -1549,7 +1636,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
             // Inline IF:
             // - First BB ends with a call and total count is 3
             // - Statement count smaller than 10
-            if( ! H::can_inline(path, *called_mir, minimal) )
+            if( ! H::can_inline(path, *called_mir, te->args, minimal) )
             {
                 DEBUG("Can't inline " << path);
                 continue ;
@@ -3577,7 +3664,7 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                 default:
                                     break;
                                 TU_ARMA(Bool, le) { const auto& re = val_r.as_Bool();
-                                    new_value = ::MIR::Constant::make_Bool({ le.v & re.v });
+                                    new_value = ::MIR::Constant::make_Bool({ le.v && re.v });
                                     }
                                 // TU_ARMav(Int, (le, re)) {
                                 TU_ARMA(Int, le) { const auto& re = val_r.as_Int();
@@ -3597,7 +3684,7 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                 default:
                                     break;
                                 TU_ARMA(Bool, le) { const auto& re = val_r.as_Bool();
-                                    new_value = ::MIR::Constant::make_Bool({ le.v | re.v });
+                                    new_value = ::MIR::Constant::make_Bool({ le.v || re.v });
                                     }
                                 TU_ARMA(Int, le) { const auto& re = val_r.as_Int();
                                     MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::BIT_OR - " << val_l << " | " << val_r);
@@ -3616,7 +3703,7 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                 default:
                                     break;
                                 TU_ARMA(Bool, le) { const auto& re = val_r.as_Bool();
-                                    new_value = ::MIR::Constant::make_Bool({ le.v ^ re.v });
+                                    new_value = ::MIR::Constant::make_Bool({ le.v != re.v });
                                     }
                                 // TU_ARMav(Int, (le, re)) {
                                 TU_ARMA(Int, le) { const auto& re = val_r.as_Int();

@@ -100,7 +100,6 @@ namespace MIR {
     }
 }
 
-
 /// Enumerate trans items starting from `::main` (binary crate)
 TransList Trans_Enumerate_Main(const ::HIR::Crate& crate)
 {

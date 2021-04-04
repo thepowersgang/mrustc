@@ -238,6 +238,14 @@ public:
     // A cache of monomorphised versions when the `const` depends on generics for its value
     // TODO: Wait, how?
     mutable ::std::map< ::HIR::Path, EncodedLiteral>   m_monomorph_cache;
+
+    Constant() {}
+    Constant(GenericParams params, TypeRef type, ExprPtr value)
+        :m_params(::std::move(params))
+        ,m_type(::std::move(type))
+        ,m_value(::std::move(value))
+    {
+    }
 };
 class Function
 {

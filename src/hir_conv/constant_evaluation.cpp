@@ -934,9 +934,14 @@ namespace HIR {
                 if(ent.is_Static())
                 {
                     const auto& s = *ent.as_Static();
+                    // If there's no MIR and no HIR then this is an external static (which can only be borrowed)
+                    if( !s.m_value && !s.m_value.m_mir )
+                        return StaticRefPtr::allocate(std::move(p), nullptr);
+
                     if( !s.m_value_generated )
                     {
                         auto& item = const_cast<::HIR::Static&>(s);
+
                         // Challenge: Adding items to the module might invalidate an iterator.
                         ::HIR::ItemPath mod_ip { item.m_value.m_state->m_mod_path };
                         auto nvs = NewvalState(item.m_value.m_state->m_module, mod_ip, FMT("static" << &item << "#"));

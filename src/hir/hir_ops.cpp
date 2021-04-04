@@ -1254,7 +1254,7 @@ const ::MIR::Function* HIR::Crate::get_or_gen_mir(const ::HIR::ItemPath& ip, con
     if( !ep )
     {
         // No HIR, so has to just have MIR - from a extern crate most likely
-        assert(ep.m_mir);
+        ASSERT_BUG(Span(), ep.m_mir, "No HIR (!ep) and no MIR (!ep.m_mir) for " << ip);
         return &*ep.m_mir;
     }
     else

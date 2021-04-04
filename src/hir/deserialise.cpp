@@ -760,11 +760,10 @@
         {
             TRACE_FUNCTION;
 
-            auto rv = ::HIR::Constant {
-                deserialise_genericparams(),
-                deserialise_type(),
-                deserialise_exprptr(),
-                };
+            ::HIR::Constant rv;
+            rv.m_params = deserialise_genericparams();
+            rv.m_type = deserialise_type();
+            rv.m_value = deserialise_exprptr();
             if(m_in.read_bool())
             {
                 rv.m_value_res = deserialise_encodedliteral();
