@@ -2364,8 +2364,8 @@ namespace {
                 }
                 else if( item.m_linkage.name == "llvm.x86.sse2.pmovmskb.128") {
                     m_of
-                        << "\tconst uint8_t* src = (const uint32_t*)&arg0;\n"
-                        << "\tuint8_t* dst = (uint32_t*)&rv; *dst = 0;\n"
+                        << "\tconst uint8_t* src = (const uint8_t*)&arg0;\n"
+                        << "\tuint8_t* dst = (uint8_t*)&rv; *dst = 0;\n"
                         << "\tfor(int i = 0; i < " << 128/8 << "; i ++) *dst |= (src[i] >> 7) << i;\n"
                         << "\treturn rv;\n"
                         ;
