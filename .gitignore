@@ -43,6 +43,7 @@
 
 
 /run_rustc/output
+/run_rustc/output-*
 
 /gitstats
 

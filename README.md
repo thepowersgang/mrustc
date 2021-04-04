@@ -1,13 +1,13 @@
 # Mutabah's Rust Compiler
 
-_In-progress_ alternative rust compiler. Capable of building a fully-working copy of rustc, but not yet suitable for everyday use.
+_In-progress_ alternative rust compiler. Capable of building a fully-working copy of rustc, but not suitable for everyday use (due to terrible error messages).
 
 [![Build Status: windows](https://ci.appveyor.com/api/projects/status/96y4ui20pl8xjm2h/branch/master?svg=true)](https://ci.appveyor.com/project/thepowersgang/mrustc/branch/master)
 [![Build Status: Linux/OSX](https://travis-ci.org/thepowersgang/mrustc.svg?branch=master)](https://travis-ci.org/thepowersgang/mrustc)
 
 Intro
 ===
-This project is an attempt at creating a simple rust compiler in C++, with the ultimate goal of being a separate re-implementation.
+This project is an attempt at creating a "simple" rust compiler in C++, with the ultimate goal of being a separate re-implementation.
 
 `mrustc`'s primary goal is bootstrapping `rustc`, and as such it tends to assume that the code it's compiling is valid (and any errors in the generated code are mrustc bugs). Code generation is done by emitting a high-level assembly (currently very ugly C, but LLVM/cretone/GIMPLE/... could work) and getting an external tool (i.e. `gcc`) to do the heavy-lifting of optimising and machine code generation.
 
@@ -18,7 +18,7 @@ Progress
   - (incomplete) x86 windows
   - x86-64 windows (runnable executables, no bootstrap yet)
 - Builds working copies of `rustc` and `cargo` from a release source tarball
-  - Supports both rustc 1.19.0 and 1.29.0
+  - Supports (and can bootstrap) rustc 1.19.0, 1.29.0, and 1.39.0
 - `rustc` bootstrap tested and validated (1.19.0 validated once, 1.29.0 is repeatable)
   - See the script `TestRustcBootstrap.sh` for how this was done.
 
@@ -28,7 +28,7 @@ Getting Started
 
 Dependencies
 ------------
-- C++14-compatible compiler (tested with gcc 5.4 and gcc 6)
+- C++14-compatible compiler (tested with gcc 5.4 and gcc 6, and MSVC 2015)
 - C11 compatible C compiler (for output, see above)
 - `make` (for the mrustc makefiles)
 - `patch` (For doing minor edits to the rustc source)
@@ -124,4 +124,4 @@ Medium-term
 
 
 
-Note: All progress is against the source of rustc 1.19.0 AND rustc 1.29.0
+Note: All progress is against the source of rustc 1.19.0, rustc 1.29.0, AND rustc 1.39.0
