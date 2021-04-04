@@ -1,6 +1,7 @@
 #!/bin/bash
 # Builds rustc with the mrustc stage0 and downloaded stage0
-set -e
+set -e  # Quit script on error
+set -u  # Error on unset variables
 
 WORKDIR=${WORKDIR:-rustc_bootstrap}/
 
@@ -11,6 +12,9 @@ if [[ "$RUSTC_VERSION" == "1.29.0" ]]; then
 elif [[ "$RUSTC_VERSION" == "1.19.0" ]]; then
     RUSTC_VERSION_NEXT=1.20.0
     RUN_RUSTC_SUF=-1.19.0
+elif [[ "$RUSTC_VERSION" == "1.39.0" ]]; then
+    RUSTC_VERSION_NEXT=1.40.0
+    RUN_RUSTC_SUF=-1.39.0
 else
     echo "Unknown rustc version"
 fi
