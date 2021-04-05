@@ -934,12 +934,13 @@ namespace HIR {
                 if(ent.is_Static())
                 {
                     const auto& s = *ent.as_Static();
-                    // If there's no MIR and no HIR then this is an external static (which can only be borrowed)
-                    if( !s.m_value && !s.m_value.m_mir )
-                        return StaticRefPtr::allocate(std::move(p), nullptr);
 
                     if( !s.m_value_generated )
                     {
+                        // If there's no MIR and no HIR then this is an external static (which can only be borrowed)
+                        if( !s.m_value && !s.m_value.m_mir )
+                            return StaticRefPtr::allocate(std::move(p), nullptr);
+
                         auto& item = const_cast<::HIR::Static&>(s);
 
                         // Challenge: Adding items to the module might invalidate an iterator.
@@ -1479,7 +1480,7 @@ namespace HIR {
                     // Allow casting any integer value to a pointer (TODO: Ensure that the pointer is sized?)
                     TU_ARMA(Pointer, te) {
                         // This might be a cast fat to thin, so restrict th input size
-                        dst.copy_from( state, inval.slice(0, dst.get_len()) );
+                        dst.copy_from( state, inval.slice(0, std::min(inval.get_len(), dst.get_len())) );
                         }
                     TU_ARMA(Borrow, te) {
                         // TODO: What can cast TO a borrow? - Non-converted dyn unsizes .. but they require vtables,
