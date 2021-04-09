@@ -19,6 +19,10 @@ void StaticTraitResolve::prep_indexes()
     if(m_item_generics) DEBUG("m_item_generics = " << m_item_generics->fmt_args());
 
     m_copy_cache.clear();
+    m_clone_cache.clear();
+    m_drop_cache.clear();
+    m_aty_cache.clear();
+
     m_type_equalities.clear();
     m_trait_bounds.clear();
 
@@ -1110,28 +1114,38 @@ void StaticTraitResolve::expand_associated_types_inner(const Span& sp, ::HIR::Ty
     TU_ARMA(Primitive, e) {
         }
     TU_ARMA(Path, e) {
-        TU_MATCH(::HIR::Path::Data, (e.path.m_data), (e2),
-        (Generic,
+        TU_MATCH_HDRA( (e.path.m_data), { )
+        TU_ARMA(Generic, e2) {
             expand_associated_types_params(sp, e2.m_params);
-            ),
-        (UfcsInherent,
+            }
+        TU_ARMA(UfcsInherent, e2) {
             this->expand_associated_types_inner(sp, e2.type);
             expand_associated_types_params(sp, e2.params);
             // TODO: impl params too?
             for(auto& arg : e2.impl_params.m_types)
                 this->expand_associated_types_inner(sp, arg);
-            ),
-        (UfcsKnown,
+            }
+        TU_ARMA(UfcsKnown, e2) {
             // - Only try resolving if the binding isn't known
             if( !e.binding.is_Unbound() )
                 return ;
-            this->expand_associated_types__UfcsKnown(sp, input);
+            auto it = m_aty_cache.find(e.path);
+            if( it != m_aty_cache.end() )
+            {
+                input = it->second.clone();
+            }
+            else
+            {
+                auto p = e.path.clone();
+                this->expand_associated_types__UfcsKnown(sp, input);
+                m_aty_cache.insert(std::make_pair( std::move(p), input.clone() ));
+            }
             return;
-            ),
-        (UfcsUnknown,
+            }
+        TU_ARMA(UfcsUnknown, e2) {
             BUG(sp, "Encountered UfcsUnknown in EAT - " << e.path);
-            )
-        )
+            }
+        }
         }
     TU_ARMA(Generic, e) {
         }

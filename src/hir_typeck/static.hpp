@@ -58,6 +58,7 @@ private:
     mutable ::std::map< ::HIR::TypeRef, bool >  m_copy_cache;
     mutable ::std::map< ::HIR::TypeRef, bool >  m_clone_cache;
     mutable ::std::map< ::HIR::TypeRef, bool >  m_drop_cache;
+    mutable ::std::map< ::HIR::Path, HIR::TypeRef>  m_aty_cache;
 
 public:
     StaticTraitResolve(const ::HIR::Crate& crate):

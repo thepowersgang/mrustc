@@ -388,7 +388,7 @@ void Trans_Monomorphise_List(const ::HIR::Crate& crate, TransList& list)
             ::HIR::ItemPath ip(path);
             MIR_Validate(resolve, ip, *mir, args, ret_type);
             MIR_Cleanup(resolve, ip, *mir, args, ret_type);
-            MIR_Optimise(resolve, ip, *mir, args, ret_type);
+            MIR_Optimise(resolve, ip, *mir, args, ret_type, /*do_inline*/false);
             MIR_Validate(resolve, ip, *mir, args, ret_type);
 
             fcn_ent.second->monomorphised.ret_ty = ::std::move(ret_type);
