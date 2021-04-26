@@ -64,6 +64,19 @@
  use self::generic as arch;
 
 
+diff --git a/llvm/include/llvm/Demangle/MicrosoftDemangleNodes.h b/llvm/include/llvm/Demangle/MicrosoftDemangleNodes.h
+index da9d9d5bfdc0..3d47471f0ef0 100644
+--- src/llvm-project/llvm/include/llvm/Demangle/MicrosoftDemangleNodes.h
++++ src/llvm-project/llvm/include/llvm/Demangle/MicrosoftDemangleNodes.h
+@@ -16,6 +16,8 @@
+ #include "llvm/Demangle/DemangleConfig.h"
+ #include "llvm/Demangle/StringView.h"
+ #include <array>
++#include <cstdint>
++#include <string>
+ 
+ namespace llvm {
+ namespace itanium_demangle {
 ##
 ## gcc (used by mrustc) has 16-byte uint128_t alignment, while rustc uses 8
 ##

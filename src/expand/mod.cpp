@@ -640,12 +640,14 @@ struct CExpandExpr:
 
             if( auto* node_mac = dynamic_cast<::AST::ExprNode_Macro*>(it->get()) )
             {
-                Expand_Attrs_CfgAttr( (*it)->attrs() );
-                Expand_Attrs((*it)->attrs(), AttrStage::Pre,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, this->crate, *it); });
+                auto attrs = std::move( (*it)->attrs() );
+                Expand_Attrs_CfgAttr( attrs );
+                Expand_Attrs(attrs, AttrStage::Pre,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, this->crate, *it); });
                 if( !it->get() ) {
                     it = node.m_nodes.erase( it );
                     continue ;
                 }
+                (*it)->attrs() = std::move(attrs);
 
                 assert(it->get() == node_mac);
 
