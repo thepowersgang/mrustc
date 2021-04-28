@@ -2161,6 +2161,7 @@ namespace {
         }
         void visit_constant(::HIR::ItemPath p, ::HIR::Constant& item) override
         {
+            TRACE_FUNCTION_F(p);
             m_item_params = &item.m_params;
 
             m_recurse_types = true;
@@ -2185,6 +2186,10 @@ namespace {
 
 
                 DEBUG("constant: " << item.m_type <<  " = " << item.m_value_res);
+            }
+            else
+            {
+                DEBUG("constant? " << item.m_value);
             }
 
             m_item_params = nullptr;
@@ -2362,6 +2367,10 @@ void ConvertHIR_ConstantEvaluate(::HIR::Crate& crate)
     exp.visit_crate( crate );
 
     ExpanderApply().visit_crate(crate);
+    for(auto& new_ty_pair : crate.m_new_types)
+    {
+        crate.m_root_module.m_mod_items.insert( mv$(new_ty_pair) );
+    }
 }
 void ConvertHIR_ConstantEvaluate_Expr(const ::HIR::Crate& crate, const ::HIR::ItemPath& ip, ::HIR::ExprPtr& expr_ptr)
 {

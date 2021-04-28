@@ -673,6 +673,9 @@ public:
 
     Module  m_root_module;
 
+    // Placeholder for types created during constant evaluation
+    std::vector<std::pair<RcString, std::unique_ptr<VisEnt<TypeItem>> >>  m_new_types;
+
     template<typename T>
     struct ImplGroup
     {

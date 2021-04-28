@@ -2038,7 +2038,7 @@ void HIR_Expand_Closures_Expr(const ::HIR::Crate& crate_ro, ::HIR::ExprPtr& exp)
         closure_count += 1;
         auto boxed = box$(( ::HIR::VisEnt< ::HIR::TypeItem> { ::HIR::Publicity::new_none(), ::HIR::TypeItem( mv$(s) ) } ));
         auto* ret_ptr = &boxed->ent;
-        crate.m_root_module.m_mod_items.insert( ::std::make_pair(name, mv$(boxed)) );
+        crate.m_new_types.push_back( ::std::make_pair(name, mv$(boxed)) );
         return ::std::make_pair( ::HIR::SimplePath(crate.m_crate_name, {}) + name, ret_ptr );
         };
 

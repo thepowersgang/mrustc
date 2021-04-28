@@ -1385,19 +1385,19 @@ namespace {
             }
         TU_ARMA(Static, i) {
             if( i.s_class() == ::AST::Static::CONST )
-                rv.m_values.insert( ::std::make_pair(item.name, ::HIR::TraitValueItem::make_Constant(::HIR::Constant {
+                rv.m_values.insert( ::std::make_pair(item.name, ::HIR::TraitValueItem::make_Constant(::HIR::Constant(
                     ::HIR::GenericParams {},
                     LowerHIR_Type( i.type() ),
                     LowerHIR_Expr( i.value() )
-                    })) );
+                    ))) );
             else {
                 ::HIR::Linkage  linkage;
-                rv.m_values.insert( ::std::make_pair(item.name, ::HIR::TraitValueItem::make_Static(::HIR::Static {
+                rv.m_values.insert( ::std::make_pair(item.name, ::HIR::TraitValueItem::make_Static(::HIR::Static(
                     mv$(linkage),
                     (i.s_class() == ::AST::Static::MUT),
                     LowerHIR_Type( i.type() ),
                     LowerHIR_Expr( i.value() )
-                    })) );
+                    ))) );
             }
             }
         }
@@ -1561,11 +1561,11 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
 
     if( e.s_class() == ::AST::Static::CONST )
         // Note: Empty names are allowed for `const _: ...`
-        return ::HIR::ValueItem::make_Constant(::HIR::Constant{
+        return ::HIR::ValueItem::make_Constant(::HIR::Constant(
             ::HIR::GenericParams {},
             LowerHIR_Type(e.type()),
             LowerHIR_Expr(e.value())
-            });
+            ));
     else {
         // Note: Empty names are allowed for `const _: ...`
         ASSERT_BUG(sp, name != "", "Empty constant name " << p);
@@ -1581,12 +1581,12 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
             linkage.name = name.c_str();
         }
 
-        return ::HIR::ValueItem::make_Static(::HIR::Static{
+        return ::HIR::ValueItem::make_Static(::HIR::Static(
             mv$(linkage),
             (e.s_class() == ::AST::Static::MUT),
             LowerHIR_Type(e.type()),
             LowerHIR_Expr(e.value())
-            });
+            ));
     }
 }
 
@@ -1856,11 +1856,11 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                     TU_ARMA(Static, e) {
                         if( e.s_class() == ::AST::Static::CONST ) {
                             // TODO: Check signature against the trait?
-                            constants.insert( ::std::make_pair(item.name, ::HIR::TraitImpl::ImplEnt< ::HIR::Constant> { item.is_specialisable, ::HIR::Constant {
+                            constants.insert( ::std::make_pair(item.name, ::HIR::TraitImpl::ImplEnt< ::HIR::Constant> { item.is_specialisable, ::HIR::Constant (
                                 ::HIR::GenericParams {},
                                 LowerHIR_Type( e.type() ),
                                 LowerHIR_Expr( e.value() )
-                                } }) );
+                                ) }) );
                         }
                         else {
                             TODO(item.sp, "Associated statics in trait impl");
@@ -1932,11 +1932,11 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                     }
                 TU_ARMA(Static, e) {
                     if( e.s_class() == ::AST::Static::CONST ) {
-                        constants.insert( ::std::make_pair(item.name, ::HIR::TypeImpl::VisImplEnt< ::HIR::Constant> { get_pub(item.is_pub), item.is_specialisable, ::HIR::Constant {
+                        constants.insert( ::std::make_pair(item.name, ::HIR::TypeImpl::VisImplEnt< ::HIR::Constant> { get_pub(item.is_pub), item.is_specialisable, ::HIR::Constant (
                             ::HIR::GenericParams {},
                             LowerHIR_Type( e.type() ),
                             LowerHIR_Expr( e.value() )
-                            } }) );
+                            ) }) );
                     }
                     else {
                         TODO(item.sp, "Associated statics in inherent impl");
