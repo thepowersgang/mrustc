@@ -400,8 +400,8 @@
             for(const auto& ext : crate.m_ext_crates)
             {
                 m_out.write_string(ext.first);
-                //m_out.write_string(ext.second.m_basename);
-                m_out.write_string(ext.second.m_path);
+                m_out.write_string(ext.second.m_basename);
+                //m_out.write_string(ext.second.m_path);
             }
             serialise_vec(crate.m_ext_libs);
             serialise_vec(crate.m_link_paths);

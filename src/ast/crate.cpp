@@ -149,6 +149,7 @@ RcString Crate::load_extern_crate(Span sp, const RcString& name, const ::std::st
 
     ::std::string   path;
     auto it = g_crate_overrides.find(name.c_str());
+    // If there's no filename, and this crate name is in the override list - use an the explicit path
     if(basename == "" && it != g_crate_overrides.end())
     {
         path = it->second;
@@ -157,21 +158,23 @@ RcString Crate::load_extern_crate(Span sp, const RcString& name, const ::std::st
         }
         DEBUG("path = " << path << " (--extern)");
     }
+    // If the filename is known, then search for that in the search directories
+    // - Checks the crate name of each to ensure a match
     else if( basename != "" )
     {
-#if 1
-        path = basename;
-#else
         // Search a list of load paths for the crate
         for(const auto& p : g_crate_load_dirs)
         {
             path = p + "/" + basename;
 
             if( ::std::ifstream(path).good() ) {
-                break ;
+                // Ensure that if this is loaded, it yields the right name (otherwise skip)
+                auto n = HIR_Deserialise_JustName(path);
+                if( n == name ) {
+                    break ;
+                }
             }
         }
-#endif
         if( !::std::ifstream(path).good() ) {
             ERROR(sp, E0000, "Unable to locate crate '" << name << "' with filename " << basename << " in search directories");
         }

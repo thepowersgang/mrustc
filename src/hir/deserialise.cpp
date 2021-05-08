@@ -1528,6 +1528,7 @@
     {
         ::HIR::Crate    rv;
 
+        // NOTE: This MUST be the first item
         this->m_crate_name = m_in.read_istring();
         assert(this->m_crate_name != "" && "Empty crate name loaded from metadata");
         rv.m_crate_name = this->m_crate_name;
@@ -1575,6 +1576,34 @@
         ::HIR::Crate    rv = s.deserialise_crate();
 
         return ::HIR::CratePtr( mv$(rv) );
+    }
+    catch(int)
+    { ::std::abort(); }
+    catch(const ::std::runtime_error& e)
+    {
+        ::std::cerr << "Unable to deserialise crate metadata from " << filename << ": " << e.what() << ::std::endl;
+        ::std::abort();
+    }
+    #if 0
+    catch(const char*)
+    {
+        ::std::cerr << "Unable to load crate from " << filename << ": Deserialisation failure" << ::std::endl;
+        ::std::abort();
+        //return ::HIR::CratePtr();
+    }
+    #endif
+}
+
+RcString HIR_Deserialise_JustName(const ::std::string& filename)
+{
+    try
+    {
+        ::HIR::serialise::Reader    in{ filename + ".hir" };    // HACK!
+
+        // NOTE: This is the first item loaded by deserialise_crate
+        auto crate_name = in.read_istring();
+        assert(crate_name != "" && "Empty crate name loaded from metadata");
+        return crate_name;
     }
     catch(int)
     { ::std::abort(); }
