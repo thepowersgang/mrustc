@@ -1112,8 +1112,8 @@ namespace {
             case Compiler::Gcc:
                 // Pick the compiler
                 // - from `CC_${TRIPLE}` environment variable, with all '-' in TRIPLE replaced by '_'
-                // - `${TRIPLE}-gcc` (if available)
                 // - from the `CC` environment variable
+                // - `${TRIPLE}-gcc` (if available)
                 // - `gcc` as fallback
                 {
                     std::string varname = "CC_" +  Target_GetCurSpec().m_backend_c.m_c_compiler;
@@ -1122,11 +1122,11 @@ namespace {
                     if( getenv(varname.c_str()) ) {
                         args.push_back( getenv(varname.c_str()) );
                     }
+                    else if( getenv("CC") ) {
+                            args.push_back( getenv("CC") );
+                    }
                     else if (system(("command -v " + Target_GetCurSpec().m_backend_c.m_c_compiler + "-gcc" + " >/dev/null 2>&1").c_str()) == 0) {
                         args.push_back( Target_GetCurSpec().m_backend_c.m_c_compiler + "-gcc" );
-                    }
-                    else if( getenv("CC") ) {
-                        args.push_back( getenv("CC") );
                     }
                     else {
                         args.push_back("gcc");
