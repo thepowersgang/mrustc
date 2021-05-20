@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cmath>
 #include <hir/hir.hpp>
+#include <limits>
 #include <mir/mir.hpp>
 #include <hir_typeck/static.hpp>
 #include <mir/helpers.hpp>
