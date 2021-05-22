@@ -136,6 +136,17 @@ public:
         return *this;
     }
 
+    bool operator==(const RelocationPtr& x) const {
+        return m_ptr == x.m_ptr;
+    }
+    bool operator!=(const RelocationPtr& x) const {
+        return !(*this == x);
+    }
+    bool operator<(const RelocationPtr& x) const {
+        // HACK: Just compare the pointers (won't be predictable... but should be stable)
+        return m_ptr < x.m_ptr;
+    }
+
     size_t get_size() const;
 
     operator bool() const { return m_ptr != 0; }

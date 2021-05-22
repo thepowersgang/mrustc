@@ -14,6 +14,7 @@
 #include <iomanip>
 #include "debug.hpp"
 #include "miri.hpp"
+#include <target_version.hpp>
 // VVV FFI
 #include <cstring>  // memrchr
 #include <sys/stat.h>
@@ -76,8 +77,11 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         auto size = args.at(0).read_usize(0);
         auto align = args.at(1).read_usize(0);
         LOG_DEBUG(link_name << "(size=" << size << ", align=" << align << "): name=" << alloc_name);
+        LOG_ASSERT( (align & (align-1)) == 0, "Allocation alignment isn't a power of two - " << align );
+        LOG_ASSERT( (size & (align-1)) == 0, "Allocation size isn't a multiple of alignment - s=" << size << ", a=" << align );
 
         // TODO: Use the alignment when making an allocation?
+        // - Could offset the returned pointer by the alignment (to catch misalign errors?)
         auto alloc = Allocation::new_alloc(size, ::std::move(alloc_name));
         LOG_TRACE("- alloc=" << alloc << " (" << alloc->size() << " bytes)");
         auto rty = ::HIR::TypeRef(RawType::Unit).wrap( TypeWrapper::Ty::Pointer, 0 );
@@ -95,17 +99,23 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         auto ptr_ofs = args.at(0).read_usize(0);
         auto oldsize = args.at(1).read_usize(0);
         // NOTE: The ordering here depends on the rust version (1.19 has: old, new, align - 1.29 has: old, align, new)
-        auto align = args.at(true /*1.29*/ ? 2 : 3).read_usize(0);
-        auto newsize = args.at(true /*1.29*/ ? 3 : 2).read_usize(0);
+        auto align = args.at(TARGETVER_LEAST_1_29 ? 2 : 3).read_usize(0);
+        auto newsize = args.at(TARGETVER_LEAST_1_29 ? 3 : 2).read_usize(0);
         LOG_DEBUG("__rust_reallocate(ptr=" << alloc_ptr << ", oldsize=" << oldsize << ", newsize=" << newsize << ", align=" << align << ")");
         LOG_ASSERT(ptr_ofs == Allocation::PTR_BASE, "__rust_reallocate with offset pointer");
+
+        LOG_ASSERT( (align & (align-1)) == 0, "Allocation alignment isn't a power of two - " << align );
+        LOG_ASSERT( (newsize & (align-1)) == 0, "Allocation size isn't a multiple of alignment - s=" << newsize << ", a=" << align );
 
         LOG_ASSERT(alloc_ptr, "__rust_reallocate with no backing allocation attached to pointer");
         LOG_ASSERT(alloc_ptr.is_alloc(), "__rust_reallocate with no backing allocation attached to pointer");
         auto& alloc = alloc_ptr.alloc();
         // TODO: Check old size and alignment against allocation.
-        alloc.resize(newsize);
+        LOG_ASSERT(oldsize == alloc.size(), "__rust_reallocate with different size");
+
         // TODO: Should this instead make a new allocation to catch use-after-free?
+        alloc.resize(newsize);
+
         rv = ::std::move(args.at(0));
     }
     else if( link_name == "__rust_deallocate" || link_name == "__rust_dealloc" )

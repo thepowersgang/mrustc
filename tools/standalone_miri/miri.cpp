@@ -18,15 +18,22 @@
 
 unsigned ThreadState::s_next_tls_key = 1;
 
+enum class OverflowType {
+    None,   // Result was within range
+    Max,    // Result overflowed the maximum value
+    Min,    // Result overflowed the minimum value
+};
 class PrimitiveValue
 {
 public:
     virtual ~PrimitiveValue() {}
 
     virtual bool is_zero() const = 0;
-    virtual bool add(const PrimitiveValue& v) = 0;
-    virtual bool subtract(const PrimitiveValue& v) = 0;
-    virtual bool multiply(const PrimitiveValue& v) = 0;
+    virtual bool is_negative() const = 0;
+    virtual void add_imm(int64_t v) = 0;
+    virtual OverflowType add(const PrimitiveValue& v) = 0;
+    virtual OverflowType subtract(const PrimitiveValue& v) = 0;
+    virtual OverflowType multiply(const PrimitiveValue& v) = 0;
     virtual bool divide(const PrimitiveValue& v) = 0;
     virtual bool modulo(const PrimitiveValue& v) = 0;
     virtual void write_to_value(ValueCommonWrite& tgt, size_t ofs) const = 0;
@@ -51,29 +58,35 @@ struct PrimitiveUInt:
     PrimitiveUInt(T v): v(v) {}
     ~PrimitiveUInt() override {}
 
-    virtual bool is_zero() const {
+    bool is_zero() const override {
         return this->v == 0;
     }
-    bool add(const PrimitiveValue& x) override {
+    bool is_negative() const override {
+        return false;
+    }
+    void add_imm(int64_t imm) override {
+        this->v += static_cast<T>(imm);
+    }
+    OverflowType add(const PrimitiveValue& x) override {
         const auto* xp = &x.check<Self>("add");
         T newv = this->v + xp->v;
         bool did_overflow = newv < this->v;
         this->v = newv;
-        return !did_overflow;
+        return did_overflow ? OverflowType::Max : OverflowType::None;
     }
-    bool subtract(const PrimitiveValue& x) override {
+    OverflowType subtract(const PrimitiveValue& x) override {
         const auto* xp = &x.check<Self>("subtract");
         T newv = this->v - xp->v;
         bool did_overflow = newv > this->v;
         this->v = newv;
-        return !did_overflow;
+        return did_overflow ? OverflowType::Min : OverflowType::None;
     }
-    bool multiply(const PrimitiveValue& x) override {
+    OverflowType multiply(const PrimitiveValue& x) override {
         const auto* xp = &x.check<Self>("multiply");
         T newv = this->v * xp->v;
         bool did_overflow = newv < this->v && newv < xp->v;
         this->v = newv;
-        return !did_overflow;
+        return did_overflow ? OverflowType::Max : OverflowType::None;
     }
     bool divide(const PrimitiveValue& x) override {
         const auto* xp = &x.check<Self>("divide");
@@ -132,34 +145,41 @@ struct PrimitiveSInt:
     PrimitiveSInt(T v): v(v) {}
     ~PrimitiveSInt() override {}
 
-    virtual bool is_zero() const {
+    bool is_zero() const override {
         return this->v == 0;
     }
+    bool is_negative() const override {
+        return this->v < 0;
+    }
+    void add_imm(int64_t imm) override {
+        this->v += static_cast<T>(imm);
+    }
     // TODO: Make this correct.
-    bool add(const PrimitiveValue& x) override {
+    OverflowType add(const PrimitiveValue& x) override {
         const auto* xp = &x.check<Self>("add");
         T newv = this->v + xp->v;
         bool did_overflow = newv < this->v;
         this->v = newv;
-        return !did_overflow;
+        return did_overflow ? (this->v < 0 ? OverflowType::Max : OverflowType::Min) : OverflowType::None;
     }
-    bool subtract(const PrimitiveValue& x) override {
+    OverflowType subtract(const PrimitiveValue& x) override {
         const auto* xp = &x.check<Self>("subtract");
         T newv = this->v - xp->v;
         bool did_overflow = newv > this->v;
         this->v = newv;
-        return !did_overflow;
+        return did_overflow ? (this->v < 0 ? OverflowType::Max : OverflowType::Min) : OverflowType::None;
     }
-    bool multiply(const PrimitiveValue& x) override {
+    OverflowType multiply(const PrimitiveValue& x) override {
         const auto* xp = &x.check<Self>("multiply");
         T newv = this->v * xp->v;
         bool did_overflow = newv < this->v && newv < xp->v;
         this->v = newv;
-        return !did_overflow;
+        return did_overflow ? (this->v < 0 ? OverflowType::Max : OverflowType::Min) : OverflowType::None;
     }
     bool divide(const PrimitiveValue& x) override {
         const auto* xp = &x.check<Self>("divide");
         if(xp->v == 0)  return false;
+        // TODO: INT_MIN * -1 == overflow
         T newv = this->v / xp->v;
         this->v = newv;
         return true;
@@ -706,6 +726,12 @@ GlobalState::GlobalState(const ModuleTree& modtree):
         //std::cerr << ss.str() << std::endl;
         return RcString::new_interned(ss.str().c_str());
         };
+    auto push_override_std = [&](std::initializer_list<const char*> il, override_handler_t* cb) {
+        m_fcn_overrides.insert(::std::make_pair( make_simplepath("std"      , il), cb));
+        m_fcn_overrides.insert(::std::make_pair( make_simplepath("std#0_0_0_H2", il), cb)); // 1.19
+        m_fcn_overrides.insert(::std::make_pair( make_simplepath("std#0_0_0", il), cb));
+        m_fcn_overrides.insert(::std::make_pair( make_simplepath("std#0_0_0_H300", il), cb));   // 1.39
+        };
 
     override_handler_t* cb_nop = [](auto& state, auto& ret, const auto& path, auto args){
         return true;
@@ -716,17 +742,13 @@ GlobalState::GlobalState(const ModuleTree& modtree):
         ret = Value::new_i32(120);  //ERROR_CALL_NOT_IMPLEMENTED
         return true;
     };
-    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std"      , {"sys", "imp", "c", "SetThreadStackGuarantee"}), cb_SetThreadStackGuarantee));
-    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std#0_0_0", {"sys", "imp", "c", "SetThreadStackGuarantee"}), cb_SetThreadStackGuarantee));
-    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std"      , {"sys", "windows", "c", "SetThreadStackGuarantee"}), cb_SetThreadStackGuarantee));
-    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std#0_0_0", {"sys", "windows", "c", "SetThreadStackGuarantee"}), cb_SetThreadStackGuarantee));
+    push_override_std( {"sys", "imp", "c", "SetThreadStackGuarantee"}, cb_SetThreadStackGuarantee );
+    push_override_std( {"sys", "windows", "c", "SetThreadStackGuarantee"}, cb_SetThreadStackGuarantee );
 
     // Win32 Shared RW locks (no-op)
     // TODO: Emulate fully for inter-thread locks
-    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std"      , { "sys", "windows", "c", "AcquireSRWLockExclusive" }), cb_nop));
-    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std"      , { "sys", "windows", "c", "ReleaseSRWLockExclusive" }), cb_nop));
-    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std#0_0_0", { "sys", "windows", "c", "AcquireSRWLockExclusive" }), cb_nop));
-    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std#0_0_0", { "sys", "windows", "c", "ReleaseSRWLockExclusive" }), cb_nop));
+    push_override_std( { "sys", "windows", "c", "AcquireSRWLockExclusive" }, cb_nop );
+    push_override_std( { "sys", "windows", "c", "ReleaseSRWLockExclusive" }, cb_nop );
 
     // - No guard page needed
     override_handler_t* cb_guardpage_init = [](auto& state, auto& ret, const auto& path, auto args){
@@ -735,14 +757,11 @@ GlobalState::GlobalState(const ModuleTree& modtree):
         ret.write_u64(8, 0);
         return true;
     };
-    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std"      , {"sys", "imp", "thread", "guard", "init" }), cb_guardpage_init));
-    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std#0_0_0", {"sys", "imp", "thread", "guard", "init" }), cb_guardpage_init));
-    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std"      , {"sys", "unix", "thread", "guard", "init" }), cb_guardpage_init));
-    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std#0_0_0", {"sys", "unix", "thread", "guard", "init" }), cb_guardpage_init));
+    push_override_std( {"sys", "imp", "thread", "guard", "init" }, cb_guardpage_init );
+    push_override_std( {"sys", "unix", "thread", "guard", "init" }, cb_guardpage_init );
 
     // - No stack overflow handling needed
-    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std"      , {"sys", "imp", "stack_overflow", "imp", "init"}), cb_nop));
-    m_fcn_overrides.insert(::std::make_pair( make_simplepath("std#0_0_0", {"sys", "imp", "stack_overflow", "imp", "init"}), cb_nop));
+    push_override_std( {"sys", "imp", "stack_overflow", "imp", "init"}, cb_nop );
 }
 
 // ====================================================================
@@ -1189,6 +1208,8 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     auto reloc_l = v_l.get_relocation(0);
                     auto reloc_r = v_r.get_relocation(0);
 
+                    // TODO: Stop treating the relocation as hidden information? Just use different pointers instead
+                    // - Each allocation has its own address range (track the ranges when an allocation is created/released)
 
                     // TODO: Handle comparison of the relocations too
                     // - If both sides have a relocation:
@@ -1202,17 +1223,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                         // Both have relocations, check if they're equal
                         if( reloc_l != reloc_r )
                         {
-                            switch(re.op)
-                            {
-                            case ::MIR::eBinOp::EQ:
-                            case ::MIR::eBinOp::NE:
-                                res = 1;
-                                break;
-                            default:
-                                LOG_FATAL("Unable to compare " << v_l << " and " << v_r << " - different relocations (" << reloc_l << " != " << reloc_r << ")");
-                            }
-                            // - Equality will always fail
-                            // - Ordering is a bug
+                            res = (reloc_l < reloc_r ? -1 : 1);
                         }
                         else
                         {
@@ -1388,6 +1399,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     // If the LHS had a relocation, propagate it over
                     if( auto r = v_l.get_relocation(0) )
                     {
+                        // TODO: Only propagate the allocation if the mask was of the high bits?
                         LOG_DEBUG("- Restore relocation " << r);
                         new_val.set_reloc(0, ::std::min(POINTER_SIZE, new_val.size()), r);
                     }
@@ -1406,22 +1418,39 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                         val_l.get().add( val_r.get() );
                         break;
                     case ::MIR::eBinOp::SUB:
-                        if( auto r = v_l.get_relocation(0) )
+                        val_l.get().subtract( val_r.get() );
+                        if( auto r_l = v_l.get_relocation(0) )
                         {
-                            if( v_r.get_relocation(0) )
+                            if( auto r_r = v_r.get_relocation(0) )
                             {
                                 // Pointer difference, no relocation in output
+                                if( r_l != r_r ) {
+                                    LOG_DEBUG("Different relocations: " << r_l << " and " << r_r);
+                                    if( r_l < r_r ) {
+                                        // Subtraction should result in a negative value (a large negative?)
+                                        // - Bias by `-r_r.size()`
+                                        auto ofs = (r_l.get_size() + 1 + 0x1000-1) & ~(0x1000-1);
+                                        val_l.get().add_imm(-static_cast<int64_t>(ofs));
+                                    }
+                                    else {
+                                        // - Bias by `r_r.size()`
+                                        auto ofs = (r_r.get_size() + 1 + 0x1000-1) & ~(0x1000-1);
+                                        val_l.get().add_imm(static_cast<int64_t>(ofs));
+                                    }
+                                }
+                                else {
+                                    LOG_DEBUG("Equal relocations: " << r_l << " and " << r_r);
+                                }
                             }
                             else
                             {
-                                new_val_reloc = ::std::move(r);
+                                new_val_reloc = ::std::move(r_l);
                             }
                         }
                         else
                         {
                             LOG_ASSERT(!v_r.get_relocation(0), "RHS of `-` has a relocation but LHS does not");
                         }
-                        val_l.get().subtract( val_r.get() );
                         break;
                     case ::MIR::eBinOp::MUL:    val_l.get().multiply( val_r.get() ); break;
                     case ::MIR::eBinOp::DIV:    val_l.get().divide( val_r.get() ); break;
@@ -1643,7 +1672,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                 }
                 } break;
             }
-            LOG_DEBUG("- new_val=" << new_val);
+            LOG_DEBUG("F" << cur_frame.frame_index << " " << se.dst << " = " << new_val);
             state.write_lvalue(se.dst, ::std::move(new_val));
             } break;
         case ::MIR::Statement::TAG_Asm:
@@ -2063,17 +2092,25 @@ bool InterpreterThread::call_path(Value& ret, const ::HIR::Path& path, ::std::ve
 
     if( fcn.external.link_name != "" )
     {
-        // Search for a function with both code and this link name
-        if(const auto* ext_fcn = m_global.m_modtree.get_ext_function(fcn.external.link_name.c_str()))
+        const auto& name = fcn.external.link_name;
+        if(name == "__rust_allocate"
+            || name == "__rust_reallocate"
+            )
         {
-            this->m_stack.push_back(StackFrame(*ext_fcn, ::std::move(args)));
-            return false;
+            // Force using the `call_extern` version
         }
         else
         {
-            // External function!
-            return this->call_extern(ret, fcn.external.link_name, fcn.external.link_abi, ::std::move(args));
+            // Search for a function with both code and this link name
+            if(const auto* ext_fcn = m_global.m_modtree.get_ext_function(name.c_str()))
+            {
+                LOG_DEBUG("Matched extern - `" << name << "`");
+                this->m_stack.push_back(StackFrame(*ext_fcn, ::std::move(args)));
+                return false;
+            }
         }
+        // External function!
+        return this->call_extern(ret, name, fcn.external.link_abi, ::std::move(args));
     }
 
     this->m_stack.push_back(StackFrame(fcn, ::std::move(args)));
@@ -2485,7 +2522,7 @@ bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, co
 
         auto lhs = PrimitiveValueVirt::from_value(ty, args.at(0));
         auto rhs = PrimitiveValueVirt::from_value(ty, args.at(1));
-        bool didnt_overflow = lhs.get().add( rhs.get() );
+        bool didnt_overflow = lhs.get().add( rhs.get() ) == OverflowType::None;
 
         // Get return type - a tuple of `(T, bool,)`
         const auto& dty = ret_ty.composite_type();
@@ -2500,7 +2537,7 @@ bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, co
 
         auto lhs = PrimitiveValueVirt::from_value(ty, args.at(0));
         auto rhs = PrimitiveValueVirt::from_value(ty, args.at(1));
-        bool didnt_overflow = lhs.get().subtract( rhs.get() );
+        bool didnt_overflow = lhs.get().subtract( rhs.get() ) == OverflowType::None;
 
         // Get return type - a tuple of `(T, bool,)`
         const auto& dty = ret_ty.composite_type();
@@ -2515,7 +2552,7 @@ bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, co
 
         auto lhs = PrimitiveValueVirt::from_value(ty, args.at(0));
         auto rhs = PrimitiveValueVirt::from_value(ty, args.at(1));
-        bool didnt_overflow = lhs.get().multiply( rhs.get() );
+        bool didnt_overflow = lhs.get().multiply( rhs.get() ) == OverflowType::None;
 
         // Get return type - a tuple of `(T, bool,)`
         const auto& dty = ret_ty.composite_type();
@@ -2543,7 +2580,7 @@ bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, co
         lhs.get().write_to_value(rv, 0);
     }
     // Overflowing artithmatic
-    else if( name == "overflowing_sub" )
+    else if( name == "overflowing_sub" || name == "wrapping_sub" )
     {
         const auto& ty = ty_params.tys.at(0);
 
@@ -2555,13 +2592,62 @@ bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, co
         rv = Value(ty);
         lhs.get().write_to_value(rv, 0);
     }
-    else if( name == "overflowing_add" )
+    else if( name == "overflowing_add" || name == "wrapping_add"  )
     {
         const auto& ty = ty_params.tys.at(0);
 
         auto lhs = PrimitiveValueVirt::from_value(ty, args.at(0));
         auto rhs = PrimitiveValueVirt::from_value(ty, args.at(1));
         lhs.get().add( rhs.get() );
+
+        rv = Value(ty);
+        lhs.get().write_to_value(rv, 0);
+    }
+    // Unchecked arithmatic
+    else if( name == "unchecked_sub" )
+    {
+        const auto& ty = ty_params.tys.at(0);
+
+        auto lhs = PrimitiveValueVirt::from_value(ty, args.at(0));
+        auto rhs = PrimitiveValueVirt::from_value(ty, args.at(1));
+        lhs.get().subtract( rhs.get() );
+
+        rv = Value(ty);
+        lhs.get().write_to_value(rv, 0);
+    }
+    // Saturating arithmatic
+    else if( name == "saturating_sub" || name == "saturating_add" )
+    {
+        const auto* suf = ::std::strchr(name.c_str(), '_')+1;
+        const auto& ty = ty_params.tys.at(0);
+
+        auto lhs = PrimitiveValueVirt::from_value(ty, args.at(0));
+        auto rhs = PrimitiveValueVirt::from_value(ty, args.at(1));
+
+        OverflowType res;
+        if(strcmp(suf, "sub") == 0) {
+            res = lhs.get().subtract( rhs.get() );
+        }
+        else if(strcmp(suf, "add") == 0) {
+            res = lhs.get().add( rhs.get() );
+        }
+        else if(strcmp(suf, "mul") == 0) {
+            res = lhs.get().multiply( rhs.get() );
+        }
+        else {
+            LOG_TODO("");
+        }
+
+        switch( res )
+        {
+        case OverflowType::None:
+            break;
+        //case OverflowType::Max: lhs = lhs.get_max();    break;
+        //case OverflowType::Min: lhs = lhs.get_min();    break;
+        case OverflowType::Max:
+        case OverflowType::Min:
+            LOG_TODO("Saturated operation");
+        }
 
         rv = Value(ty);
         lhs.get().write_to_value(rv, 0);
@@ -2613,9 +2699,13 @@ bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, co
         rv = Value( HIR::TypeRef(RawType::USize) );
         rv.write_usize(0, n);
     }
+    else if( name == "panic_if_uninhabited" )
+    {
+        //LOG_ASSERT(ty_params.tys.at(0).get_size(0) != SIZE_MAX, "");
+    }
     else
     {
-        LOG_TODO("Call intrinsic \"" << name << "\"");
+        LOG_TODO("Call intrinsic \"" << name << "\"" << ty_params);
     }
     return true;
 }

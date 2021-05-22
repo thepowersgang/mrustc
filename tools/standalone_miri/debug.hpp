@@ -110,7 +110,7 @@ struct DebugExceptionError:
 #define LOG_ERROR(strm) do { DebugSink::get(__FUNCTION__,__FILE__,__LINE__,DebugLevel::Error) << strm; throw DebugExceptionError{}; } while(0)
 #define LOG_FATAL(strm) do { DebugSink::get(__FUNCTION__,__FILE__,__LINE__,DebugLevel::Fatal) << strm; exit(1); } while(0)
 #define LOG_TODO(strm) do { DebugSink::get(__FUNCTION__,__FILE__,__LINE__,DebugLevel::Bug) << "TODO: " << strm; throw DebugExceptionTodo{}; } while(0)
-#define LOG_BUG(strm) do { DebugSink::get(__FUNCTION__,__FILE__,__LINE__,DebugLevel::Bug) << "BUG: " << strm; abort(); } while(0)
-#define LOG_ASSERT(cnd,strm) do { if( !(cnd) ) { LOG_ERROR("Assertion failure: " #cnd " - " << strm); } } while(0)
+#define LOG_BUG(strm) do { DebugSink::get(__FUNCTION__,__FILE__,__LINE__,DebugLevel::Bug) << strm; abort(); } while(0)
+#define LOG_ASSERT(cnd,strm) do { if( !(cnd) ) { LOG_ERROR(__FILE__ << ":" << __LINE__ << ": Assertion failure: " #cnd " - " << strm); } } while(0)
 
 #define FMT_STRING(...) (dynamic_cast<::std::stringstream&>(::std::stringstream() << __VA_ARGS__).str())

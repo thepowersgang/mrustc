@@ -5,6 +5,7 @@
  * main.cpp
  * - Program entrypoint
  */
+#define _CRT_SECURE_NO_WARNINGS
 #include <iostream>
 #include "module_tree.hpp"
 #include "value.hpp"
@@ -13,6 +14,7 @@
 #include "debug.hpp"
 #include "miri.hpp"
 #include "../../src/common.hpp"
+#include <target_version.hpp>
 
 struct ProgramOptions
 {
@@ -31,8 +33,27 @@ struct ProgramOptions
     void show_help(const char* prog) const;
 };
 
+TargetVersion	gTargetVersion = TargetVersion::Rustc1_29;
+
 int main(int argc, const char* argv[])
 {
+    if( const auto* a = getenv("MRUSTC_TARGET_VER") )
+    {
+        if( strcmp(a, "1.19") == 0 ) {
+            gTargetVersion = TargetVersion::Rustc1_19;
+        }
+        else if( strcmp(a, "1.29") == 0 ) {
+            gTargetVersion = TargetVersion::Rustc1_29;
+        }
+        else if( strcmp(a, "1.39") == 0 ) {
+            gTargetVersion = TargetVersion::Rustc1_39;
+        }
+        else {
+            std::cerr << "Unknown target version string: '" << a << "'" << std::endl;
+            exit(1);
+        }
+    }
+
     ProgramOptions  opts;
 
     if( opts.parse(argc, argv) )

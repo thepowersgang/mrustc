@@ -56,7 +56,7 @@ namespace {
 
 ::std::ostream& operator<<(::std::ostream& os, const Allocation* x)
 {
-    os << "A(#" << x->m_index << " " << x->tag() /*<< " +" << x->size()*/ << ")";
+    os << "A(#" << x->m_index << " " << x->tag() << " s=" << x->size() << ")";
     return os;
 }
 
@@ -610,7 +610,7 @@ void Allocation::set_reloc(size_t ofs, size_t len, RelocationPtr reloc)
             os << "--";
         }
     }
-    os.setf(flags);
+    os << ::std::dec;
 
     os << " {";
     for(const auto& r : x.relocations)
@@ -620,6 +620,7 @@ void Allocation::set_reloc(size_t ofs, size_t len, RelocationPtr reloc)
             os << " @" << r.slot_ofs << "=" << r.backing_alloc;
         }
     }
+    os.flags(flags);
     os << " }";
     return os;
 }
@@ -897,7 +898,7 @@ extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v)
                     os << "--";
                 }
             }
-            os.setf(flags);
+            os.flags(flags);
 
             os << " {";
             for(const auto& r : alloc.relocations)
@@ -921,7 +922,7 @@ extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v)
             {
                 os << ::std::setw(2) << ::std::setfill('0') << (int)s.data()[i];
             }
-            os.setf(flags);
+            os.flags(flags);
             } break;
         case RelocationPtr::Ty::FfiPointer:
             LOG_TODO("ValueRef to " << alloc_ptr);
@@ -950,7 +951,7 @@ extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v)
                 os << "--";
             }
         }
-        os.setf(flags);
+        os.flags(flags);
 
         os << " {";
         for(const auto& r : alloc.relocations)
@@ -981,7 +982,7 @@ extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v)
                 os << "--";
             }
         }
-        os.setf(flags);
+        os.flags(flags);
         if(direct.reloc_0)
         {
             os << " { " << direct.reloc_0 << " }";
