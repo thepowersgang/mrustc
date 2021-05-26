@@ -136,6 +136,8 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
 {
     TRACE_FUNCTION_F("path = " << path);
 
+    ::AST::Path abs_path, abs_mod_path;
+
     for(auto& use_stmt : mod.m_items)
     {
         if( ! use_stmt->data.is_Use() )
@@ -147,8 +149,13 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         {
             TRACE_FUNCTION_F(use_ent);
 
-            use_ent.path = Resolve_Use_AbsolutisePath(span, crate, path, mv$(use_ent.path));
-            if( !use_ent.path.m_class.is_Absolute() )
+            abs_path = ::AST::Path::new_self( {} );   // empty prefix
+            abs_mod_path = ::AST::Path(use_ent.path); // module prefix
+
+            abs_path = Resolve_Use_AbsolutisePath(span, crate, path, mv$(abs_path));
+            abs_mod_path = Resolve_Use_AbsolutisePath(span, crate, path, mv$(abs_mod_path));
+
+            if( !abs_path.m_class.is_Absolute() || !abs_mod_path.m_class.is_Absolute() )
                 BUG(span, "Use path is not absolute after absolutisation");
 
             // NOTE: Use statements can refer to _three_ different items
@@ -156,10 +163,19 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             // - values ("value namespace")
             // - macros ("macro namespace")
             // TODO: Have Resolve_Use_GetBinding return the actual path
-            use_ent.path.m_bindings = Resolve_Use_GetBinding(span, crate, mod.path(), use_ent.path, parent_modules);
-            if( !use_ent.path.m_bindings.has_binding() )
-            {
-                ERROR(span, E0000, "Unable to resolve `use` target " << use_ent.path);
+            // NOTE: module-prefixed path is first, unprefixed is fallback
+            abs_mod_path.m_bindings = Resolve_Use_GetBinding(span, crate, mod.path(), abs_mod_path, parent_modules);
+            if( abs_mod_path.m_bindings.has_binding() ) {
+                use_ent.path = mv$(abs_mod_path);
+            }
+            else {
+                abs_path.m_bindings = Resolve_Use_GetBinding(span, crate, mod.path(), abs_path, parent_modules);
+                if( abs_path.m_bindings.has_binding() ) {
+                    use_ent.path = mv$(abs_path);
+                }
+                else {
+                    ERROR(span, E0000, "Unable to resolve `use` target " << use_ent.path);
+                }
             }
             DEBUG("'" << use_ent.name << "' = " << use_ent.path);
 
@@ -965,7 +981,7 @@ namespace {
         default:
             ERROR(span, E0000, "Unexpected item type " << b.type.binding.tag_str() << " in import of " << path);
         TU_ARMA(Unbound, e) {
-            ERROR(span, E0000, "Cannot find component " << i << " of " << path << " (" << b.type.binding << ")");
+            DEBUG("Cannot find component " << i << " of " << path << " (" << b.type.binding << ")");
             }
         TU_ARMA(Crate, e) {
             // TODO: Mangle the original path (or return a new path somehow)
