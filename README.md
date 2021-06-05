@@ -7,19 +7,19 @@ _In-progress_ alternative rust compiler. Capable of building a fully-working cop
 
 Intro
 ===
-This project is an attempt at creating a "simple" rust compiler in C++, with the ultimate goal of being a separate re-implementation.
+This project is a "simple" rust compiler written in C++ that is able to bootstrap a "recent" rustc, but may eventually become a full separate re-implementation.
 
-`mrustc`'s primary goal is bootstrapping `rustc`, and as such it tends to assume that the code it's compiling is valid (and any errors in the generated code are mrustc bugs). Code generation is done by emitting a high-level assembly (currently very ugly C, but LLVM/cretone/GIMPLE/... could work) and getting an external tool (i.e. `gcc`) to do the heavy-lifting of optimising and machine code generation.
+As `mrustc`'s primary goal is bootstrapping `rustc`, and as such it tends to assume that the code it's compiling is valid (and any errors in the generated code are mrustc bugs). Code generation is done by emitting a high-level assembly (currently very ugly C, but LLVM/cretone/GIMPLE/... could work) and getting an external tool (i.e. `gcc`) to do the heavy-lifting of optimising and machine code generation.
 
 Progress
 --------
-- Supported Targets:
-  - x86-64 linux (fully bootstrap tested)
-  - (incomplete) x86 windows
-  - x86-64 windows (runnable executables, no bootstrap yet)
 - Builds working copies of `rustc` and `cargo` from a release source tarball
   - Supports (and can bootstrap) rustc 1.19.0, 1.29.0, and 1.39.0
-- `rustc` bootstrap tested and validated (1.19.0 validated once, 1.29.0 is repeatable)
+- Supported Targets:
+  - x86-64 linux (fully bootstrap tested)
+  - x86-64 windows (runnable executables, but bootstrap hasn't been fully tested)
+  - (incomplete) x86 windows
+- `rustc` bootstrap tested and validated (1.19.0 isn't fully repeatable, but later versions are)
   - See the script `TestRustcBootstrap.sh` for how this was done.
 
 
@@ -94,7 +94,7 @@ Please try to include the following when submitting a bug report:
 
 Support and Discussion
 ----------------------
-For problems that don't warrant opening an issue, join the IRC channel - `irc.freenode.net#mrustc`
+For problems that don't warrant opening an issue (e.g. help in running the compiler), join the IRC channel - `irc.libera.chat#mrustc`
 
 
 Current Features
