@@ -4,8 +4,8 @@ TODO:
 - Audit TODOs in codebase
 - Clean up AST
  - Almost done, just a few little niggles left
-- Optimise typecheck.
-  - Mostly done with trait resolve cleanup
+- Optimise typecheck runtime
+  - Mostly done with trait resolve optimisations
 
 
 ## Big change TODOs
@@ -15,7 +15,7 @@ TODO:
   - Spans are missing on HIR items, sub-par reporting in typecheck and later
   - Spans can be off by a line or two
 - Refactor parse to use a consume model lexer
-  - Will _probably_ improve speed and simplicity, but will need checking
+  - Will _probably_ improve speed and simplicity, but maybe not
 - Optimise optimise (and typecheck)
   - Partially down with trait resolution optimisation. Needs further profiling
 - Complete structed C codegen
@@ -24,13 +24,16 @@ TODO:
 - RTL/register-based SSA IR backend (LIR?)
   - Convert MIR into a form that can be handed over to LLVM or Cranelift (or GIMPLE)
   - Use alloca-s for non-pointer/integer/borrowed locals
-- Deferred constant evaluation (for generic array sizes)
 - Emit human-readable variable names in C backend
   - Requires storing variable names in MIR
     - Challenge when variables are eliminated.
   - Also use field names
   - e.g. emit `_NNN_varname` as the field/variable name
   - Downside: Emitted code will be larger still
+- Change path types to refer to items explicitly and have generics separate
+  - Instead of referring to items by a UFCS path
+  - Could allow moving the generic params to a shared model?
+  - Maybe just have types be shared?
 
 ## Smaller changes
 - Cache specialisation tree
@@ -50,7 +53,7 @@ TODO:
 - Full SMIRI support in `minicargo` (running `standalone_miri` on build scripts)
 - Rupport `rustc` in `minicargo` (for doing the pre-cargo build of libstd)
 
-## Optimisations
+## MIR Optimisations
 - Argument propagation: replace assignments from `Argument(_)` if target is only
   written once
 - Remove useless borrows (remove write-once &T lvalues if they're never used by
