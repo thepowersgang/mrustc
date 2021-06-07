@@ -493,15 +493,7 @@ namespace
         } while( lvr.try_unwrap() );
         return false;
     }
-    bool visit_mir_lvalue(const ::MIR::LValue& lv, ValUsage u, ::std::function<bool(const ::MIR::LValue::CRef& , ValUsage)> cb)
-    {
-        return visit_mir_lvalue_mut( const_cast<::MIR::LValue&>(lv), u, [&](auto& v, auto u) { return cb(v,u); } );
-    }
     bool visit_mir_lvalue_raw_mut(::MIR::LValue& lv, ValUsage u, ::std::function<bool(::MIR::LValue& , ValUsage)> cb)
-    {
-        return cb(lv, u);
-    }
-    bool visit_mir_lvalue_raw(const ::MIR::LValue& lv, ValUsage u, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb)
     {
         return cb(lv, u);
     }
@@ -511,17 +503,6 @@ namespace
         if( auto* e = p.opt_LValue() )
         {
             return visit_mir_lvalue_raw_mut(*e, u, cb);
-        }
-        else
-        {
-            return false;
-        }
-    }
-    bool visit_mir_lvalue(const ::MIR::Param& p, ValUsage u, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb)
-    {
-        if( const auto* e = p.opt_LValue() )
-        {
-            return visit_mir_lvalue_raw(*e, u, cb);
         }
         else
         {

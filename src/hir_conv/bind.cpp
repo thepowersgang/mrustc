@@ -77,24 +77,6 @@ namespace {
         #endif
     }
 
-    const ::HIR::Struct& get_struct_ptr(const Span& sp, const ::HIR::Crate& crate, ::HIR::GenericPath& path) {
-        const auto& str = *reinterpret_cast< const ::HIR::Struct*>( get_type_pointer(sp, crate, path.m_path, Target::Struct) );
-        fix_type_params(sp, str.m_params,  path.m_params);
-        return str;
-    }
-    ::std::pair< const ::HIR::Enum*, unsigned int> get_enum_ptr(const Span& sp, const ::HIR::Crate& crate, ::HIR::GenericPath& path) {
-        const auto& enm = *reinterpret_cast< const ::HIR::Enum*>( get_type_pointer(sp, crate, path.m_path, Target::EnumVariant) );
-        const auto& des_name = path.m_path.m_components.back();
-        auto idx = enm.find_variant(des_name);
-        if( idx == SIZE_MAX ) {
-            ERROR(sp, E0000, "Couldn't find enum variant " << path);
-        }
-
-        fix_type_params(sp, enm.m_params,  path.m_params);
-        return ::std::make_pair( &enm, static_cast<unsigned>(idx) );
-    }
-
-
     class Visitor:
         public ::HIR::Visitor
     {
@@ -283,126 +265,11 @@ namespace {
                 this->visit_pattern_Value(sp, pat, e.end);
                 }
             TU_ARMA(PathValue, e) {
-#if 0
-                const auto& str = get_struct_ptr(sp, m_crate, e.path);
-                TU_IFLET(::HIR::Struct::Data, str.m_data, Unit, _,
-                    e.binding = &str;
-                )
-                else {
-                    ERROR(sp, E0000, "Struct value pattern on non-unit struct " << e.path);
-                }
-#endif
                 }
             TU_ARMA(PathTuple, e) {
-#if 0
-                const auto& str = get_struct_ptr(sp, m_crate, e.path);
-                TU_IFLET(::HIR::Struct::Data, str.m_data, Tuple, _,
-                    e.binding = &str;
-                )
-                else {
-                    ERROR(sp, E0000, "Struct tuple pattern on non-tuple struct " << e.path);
-                }
-#endif
                 }
             TU_ARMA(PathNamed, e) {
-#if 0
-                const auto& str = get_struct_ptr(sp, m_crate, e.path);
-                if(str.m_data.is_Named() ) {
                 }
-                else if( str.m_data.is_Unit() && e.sub_patterns.size() == 0 ) {
-                }
-                else if( str.m_data.is_Tuple() && str.m_data.as_Tuple().empty() && e.sub_patterns.size() == 0 ) {
-                }
-                else {
-                    ERROR(sp, E0000, "Struct pattern `" << pat << "` on field-less struct " << e.path);
-                }
-                e.binding = &str;
-#endif
-                }
-#if 0
-            TU_ARMA(EnumValue, e) {
-                auto p = get_enum_ptr(sp, m_crate, e.path);
-                if( p.first->m_data.is_Data() )
-                {
-                    const auto& var = p.first->m_data.as_Data()[p.second];
-                    if( var.is_struct || var.type != ::HIR::TypeRef::new_unit() )
-                        ERROR(sp, E0000, "Enum value pattern on non-unit variant " << e.path);
-                }
-                e.binding_ptr = p.first;
-                e.binding_idx = p.second;
-                }
-            TU_ARMA(EnumTuple, e) {
-                auto p = get_enum_ptr(sp, m_crate, e.path);
-                if( !p.first->m_data.is_Data() )
-                    ERROR(sp, E0000, "Enum tuple pattern on non-tuple variant " << e.path);
-                const auto& var = p.first->m_data.as_Data()[p.second];
-                if( var.is_struct )
-                    ERROR(sp, E0000, "Enum tuple pattern on non-tuple variant " << e.path);
-                e.binding_ptr = p.first;
-                e.binding_idx = p.second;
-                }
-            TU_ARMA(EnumStruct, e) {
-                auto p = get_enum_ptr(sp, m_crate, e.path);
-                if( !e.is_exhaustive && e.sub_patterns.empty() )
-                {
-                    if( !p.first->m_data.is_Data() ) {
-                        pat.m_data = ::HIR::Pattern::Data::make_EnumValue({
-                                ::std::move(e.path), p.first, p.second
-                                });
-                    }
-                    else {
-                        const auto& var = p.first->m_data.as_Data()[p.second];
-                        if( var.type == ::HIR::TypeRef::new_unit() )
-                        {
-                            pat.m_data = ::HIR::Pattern::Data::make_EnumValue({
-                                    ::std::move(e.path), p.first, p.second
-                                    });
-                        }
-                        else if( !var.is_struct )
-                        {
-                            ASSERT_BUG(sp, var.type.data().is_Path(), "");
-                            const auto& te = var.type.data().as_Path();
-                            const ::HIR::Struct* strp;
-                            if( te.binding.is_Unbound() ) {
-                                strp = &m_crate.get_struct_by_path(sp, te.path.m_data.as_Generic().m_path);
-                            }
-                            else {
-                                ASSERT_BUG(sp, te.binding.is_Struct(), "EnumStruct pattern on unexpected variant " << e.path << " with " << te.binding.tag_str());
-                                strp = te.binding.as_Struct();
-                            }
-                            const auto& str = *strp;
-                            ASSERT_BUG(sp, str.m_data.is_Tuple(), "");
-                            const auto& flds = str.m_data.as_Tuple();
-                            ::std::vector<HIR::Pattern> subpats;
-                            for(size_t i = 0; i < flds.size(); i ++)
-                                subpats.push_back(::HIR::Pattern { });
-                            pat.m_data = ::HIR::Pattern::Data::make_EnumTuple({
-                                    ::std::move(e.path), p.first, p.second, mv$(subpats)
-                                    });
-                        }
-                        else
-                        {
-                            // Keep as a struct pattern
-                        }
-                    }
-                }
-                else
-                {
-                    if( !p.first->m_data.is_Data() )
-                    {
-                        ERROR(sp, E0000, "Enum struct pattern `" << pat << "` on non-struct variant " << e.path);
-                    }
-                    else
-                    {
-                        const auto& var = p.first->m_data.as_Data()[p.second];
-                        if( !var.is_struct )
-                            ERROR(sp, E0000, "Enum struct pattern `" << pat << "` on non-struct variant " << e.path);
-                    }
-                }
-                e.binding_ptr = p.first;
-                e.binding_idx = p.second;
-                }
-#endif
             }
         }
         static void fix_param_count(const Span& sp, const ::HIR::GenericPath& path, const ::HIR::GenericParams& param_defs, ::HIR::PathParams& params, bool fill_infer=true, const ::HIR::TypeRef* self_ty=nullptr)

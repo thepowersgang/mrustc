@@ -18,15 +18,6 @@
 
 namespace
 {
-    size_t PTR_BASE = 0x1000;   // See matching value in standalone_miri value.hpp
-
-    size_t Target_GetSizeOf_Required(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty)
-    {
-        size_t size;
-        bool type_has_size = Target_GetSizeOf(sp, resolve, ty, size);
-        ASSERT_BUG(sp, type_has_size, "Attempting to get the size of a unsized type");
-        return size;
-    }
 
     template<typename T>
     struct Fmt
@@ -656,7 +647,7 @@ namespace
                 }
             TU_ARM(repr->variants, NonZero, e) {
                 m_of << "\t@[" << e.field.index << ", " << e.field.sub_fields << "] = { ";
-                for(int i = 0; i < 2; i ++)
+                for(size_t i = 0; i < 2; i ++)
                 {
                     if( i == 1 ) {
                         m_of << ", ";

@@ -1524,7 +1524,7 @@ namespace {
                     }
                     // Valid
                 }
-                else if( const auto* se = ty_in.data().opt_Function() )
+                else if( /*const auto* se =*/ ty_in.data().opt_Function() )
                 {
                     if( de.inner != ::HIR::TypeRef::new_unit() && de.inner != ::HIR::CoreType::U8 && de.inner != ::HIR::CoreType::I8 ) {
                         BUG(node.span(), "Cannot cast to " << ty_out << " from " << ty_in);

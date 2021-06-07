@@ -259,8 +259,6 @@ namespace typecheck
 
             fcn_ptr = &fcn;
 
-            const auto& trait_params = e.trait.m_params;
-            const auto& path_params = e.params;
             cache.m_monomorph.reset(new Monomorph(context, &e.type, &e.trait.m_params, e.params));
         }
         TU_ARMA(UfcsUnknown, e) {

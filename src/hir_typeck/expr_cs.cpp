@@ -2347,7 +2347,7 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                     if( pe.val.is_Named() ) {
                         // TODO: If the value is a borrow, then unwind borrows.
                         ASSERT_BUG(sp, pe.val.as_Named().binding, pattern);
-                        const auto& cval = pe.val.as_Named().binding->m_value_res;
+                        //const auto& cval = pe.val.as_Named().binding->m_value_res;
                         const auto& ty = pe.val.as_Named().binding->m_type;
                         if( ty.data().is_Borrow() ) {
                             ASSERT_BUG(sp, pattern.m_implicit_deref_count >= 1, "");
@@ -5079,7 +5079,7 @@ namespace
         for(const auto& pty : context.possible_ivar_vals.at(ty_l.data().as_Infer().index).types_coerce_to)
         {
             HIR::ExprNodeP  stub_node;
-            CoerceResult    res;
+            CoerceResult    res = CoerceResult::Unknown;
             switch(pty.op)
             {
             case Context::IVarPossible::CoerceTy::Coercion:

@@ -353,9 +353,9 @@ struct ContentLoopVariableUse
                     continue;
                 }
                 // TODO: Check that +/*/? matches for the controlling loops
-                for(const auto& loop_idx : controlling_loops)
-                {
-                }
+                //for(const auto& loop_idx : controlling_loops)
+                //{
+                //}
 
                 if( var_usage_ptr )
                 {
@@ -669,9 +669,6 @@ namespace {
             };
         auto push_ifv = [&push](bool is_equal, ::std::vector<SimplePatIfCheck> ents, size_t tgt) {
             push(SimplePatEnt::make_If({ is_equal, tgt, mv$(ents) }));
-            };
-        auto push_if = [&push_ifv](bool is_equal, MacroPatEnt::Type ty, const Token& tok, size_t tgt) {
-            push_ifv(is_equal, make_vec1(SimplePatIfCheck { ty, tok }), tgt);
             };
         for(size_t idx = 0; idx < pattern.size(); idx ++)
         {

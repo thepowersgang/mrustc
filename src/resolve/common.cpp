@@ -44,8 +44,6 @@ namespace {
         {
             TRACE_FUNCTION_F(path << " in " << base_path << (ignore_last ? " (ignore last)" : ""));
             const auto& base_nodes = base_path.nodes();
-            int node_offset = 0;
-            const AST::Module*  mod = nullptr;
             TU_MATCH_HDRA( (path.m_class), {)
             TU_ARMA(Invalid, e) {
                 // Should never happen

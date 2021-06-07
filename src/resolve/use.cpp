@@ -484,7 +484,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                 TU_MATCH_HDRA( (bindings->type.binding), {)
                 TU_ARMA(Crate, e) {
                     assert(e.crate_);
-                    const ::HIR::Module& hmod = e.crate_->m_hir->m_root_module;
+                    //const ::HIR::Module& hmod = e.crate_->m_hir->m_root_module;
                     rv.merge_from( Resolve_Use_GetBinding__ext(sp2, crate, AST::Path("", { AST::PathNode(des_item_name,{}) }), *e.crate_, 0) );
                     }
                 TU_ARMA(Module, e) {

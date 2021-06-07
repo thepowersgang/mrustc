@@ -702,7 +702,8 @@
         ::HIR::MacroItem deserialise_macroitem()
         {
             auto _ = m_in.open_object("HIR::MacroItem");
-            switch(auto tag = m_in.read_tag())
+            auto tag = m_in.read_tag();
+            switch(tag)
             {
             case HIR::MacroItem::TAG_Import:
                 return HIR::MacroItem::Data_Import { 
@@ -714,7 +715,7 @@
                 return deserialise_procmacro();
             }
 
-            TODO(Span(), "");
+            TODO(Span(), "Bad tag for MacroItem - " << tag);
         }
 
         ::HIR::Linkage deserialise_linkage()

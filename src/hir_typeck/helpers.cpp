@@ -4176,7 +4176,6 @@ bool TraitResolution::find_method(const Span& sp,
     // 1. Search generic bounds for a match
     // - If there is a bound on the receiver, then that bound is usable no-matter what
     DEBUG("> Bounds");
-    const ::HIR::GenericParams* v[2] = { m_item_params, m_impl_params };
     for(const auto& tb : m_trait_bounds)
     {
                 const auto& e_type = tb.first;
@@ -4540,7 +4539,7 @@ unsigned int TraitResolution::autoderef_find_field(const Span& sp, const ::HIR::
         current_ty = this->autoderef(sp, ty,  tmp_type);
     } while( current_ty );
 
-    if(const auto* e = this->m_ivars.get_type(top_ty).data().opt_Borrow()) {
+    if(/*const auto* e =*/ this->m_ivars.get_type(top_ty).data().opt_Borrow()) {
         const auto& ty = this->m_ivars.get_type(top_ty);
 
         if( find_field(sp, ty, field_name, field_type) ) {
