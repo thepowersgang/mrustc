@@ -16,9 +16,9 @@ Progress
 - Builds working copies of `rustc` and `cargo` from a release source tarball
   - Supports (and can bootstrap) rustc 1.19.0, 1.29.0, and 1.39.0
 - Supported Targets:
-  - x86-64 linux (fully bootstrap tested)
-  - x86-64 windows (runnable executables, but bootstrap hasn't been fully tested)
-  - (incomplete) x86 windows
+  - x86-64 linux GNU (fully bootstrap tested using Debian 10.9)
+  - x86-64 windows MSVC (runnable executables on Windows 10, but bootstrap hasn't been fully tested)
+  - (incomplete) x86 windows MSVC
 - `rustc` bootstrap tested and validated (1.19.0 isn't fully repeatable, but later versions are)
   - See the script `TestRustcBootstrap.sh` for how this was done.
 
@@ -36,7 +36,7 @@ Dependencies
 - `curl` (for downloading the rust source, linux only)
 - `cmake` (at least 3.4.3, required for building llvm in rustc)
 
-Linux
+Linux GNU
 -----
 - `make RUSTCSRC` - Downloads the rustc source tarball (1.29.0 by default)
 - `make -f minicargo.mk` - Builds `mrustc` and `minicargo`, then builds `libstd`, `libtest`, finally `rustc` and `cargo`
