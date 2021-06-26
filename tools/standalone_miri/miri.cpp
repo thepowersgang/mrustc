@@ -410,8 +410,8 @@ struct MirHelpers
                 if( alloc )
                 {
                     // TODO: It's valid to dereference (but not read) a non-null invalid pointer.
-                    LOG_ASSERT(ofs >= Allocation::PTR_BASE, "Dereferencing invalid pointer - " << ofs << " into " << alloc);
-                    ofs -= Allocation::PTR_BASE;
+                    LOG_ASSERT(ofs >= alloc.get_base(), "Dereferencing invalid pointer - " << ofs << " into " << alloc);
+                    ofs -= alloc.get_base();
                 }
                 else
                 {
@@ -537,7 +537,7 @@ struct MirHelpers
 
         // Create the pointer (can this just store into the target?)
         auto new_val = Value(dst_ty);
-        new_val.write_ptr(0, Allocation::PTR_BASE + ofs, ::std::move(alloc));
+        new_val.write_ptr_ofs(0, ofs, ::std::move(alloc));
         // - Add metadata if required
         if( meta != RawType::Unreachable )
         {
@@ -600,7 +600,7 @@ struct MirHelpers
         TU_ARM(c, Bytes, ce) {
             ty = ::HIR::TypeRef(RawType::U8).wrap(TypeWrapper::Ty::Slice, 0).wrap(TypeWrapper::Ty::Borrow, 0);
             Value val = Value(ty);
-            val.write_ptr(0, Allocation::PTR_BASE + 0, RelocationPtr::new_ffi(FFIPointer::new_const_bytes("Constant::Bytes", ce.data(), ce.size())));
+            val.write_ptr_ofs(0, 0, RelocationPtr::new_ffi(FFIPointer::new_const_bytes("Constant::Bytes", ce.data(), ce.size())));
             val.write_usize(POINTER_SIZE, ce.size());
             LOG_DEBUG(c << " = " << val);
             return val;
@@ -608,7 +608,7 @@ struct MirHelpers
         TU_ARM(c, StaticString, ce) {
             ty = ::HIR::TypeRef(RawType::Str).wrap(TypeWrapper::Ty::Borrow, 0);
             Value val = Value(ty);
-            val.write_ptr(0, Allocation::PTR_BASE + 0, RelocationPtr::new_string(&ce));
+            val.write_ptr_ofs(0, 0, RelocationPtr::new_string(&ce));
             val.write_usize(POINTER_SIZE, ce.size());
             LOG_DEBUG(c << " = " << val);
             return val;
@@ -624,7 +624,7 @@ struct MirHelpers
                 ty = s->ty.wrapped(TypeWrapper::Ty::Borrow, 0);
                 auto& val = this->thread.m_global.m_statics.at(s);
                 LOG_ASSERT(val.m_inner.is_alloc, "Statics should already have an allocation assigned");
-                return Value::new_pointer(ty, Allocation::PTR_BASE + 0, RelocationPtr::new_alloc(val.m_inner.alloc.alloc));
+                return Value::new_pointer_ofs(ty, 0, RelocationPtr::new_alloc(val.m_inner.alloc.alloc));
             }
             LOG_ERROR("Constant::ItemAddr - " << *ce << " - not found");
             } break;
@@ -1691,7 +1691,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
 
                 auto ptr_ty = ty.wrapped(TypeWrapper::Ty::Borrow, /*BorrowTy::Unique*/2);
 
-                auto ptr_val = Value::new_pointer(ptr_ty, Allocation::PTR_BASE + ofs, ::std::move(alloc));
+                auto ptr_val = Value::new_pointer_ofs(ptr_ty, ofs, ::std::move(alloc));
                 if( v.m_metadata )
                 {
                     ptr_val.write_value(POINTER_SIZE, *v.m_metadata);
@@ -1917,9 +1917,9 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     LOG_DEBUG("> Indirect call " << v);
                     // TODO: Assert type
                     // TODO: Assert offset/content.
-                    LOG_ASSERT(v.read_usize(0) == Allocation::PTR_BASE, "Function pointer value invalid - " << v);
                     fcn_alloc_ptr = v.get_relocation(0);
                     LOG_ASSERT(fcn_alloc_ptr, "Calling value with no relocation - " << v);
+                    LOG_ASSERT(v.read_usize(0) == fcn_alloc_ptr.get_base(), "Function pointer value invalid - " << v);
                     switch(fcn_alloc_ptr.get_ty())
                     {
                     case RelocationPtr::Ty::Function:
@@ -2147,7 +2147,7 @@ bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, co
         }
 
         rv = Value::with_size(2*POINTER_SIZE, /*needs_alloc=*/true);
-        rv.write_ptr(0*POINTER_SIZE, Allocation::PTR_BASE, RelocationPtr::new_string(&it->second));
+        rv.write_ptr_ofs(0*POINTER_SIZE, 0, RelocationPtr::new_string(&it->second));
         rv.write_usize(1*POINTER_SIZE, it->second.size());
     }
     else if( name == "discriminant_value" )
@@ -2196,75 +2196,58 @@ bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, co
     }
     else if( name == "atomic_store" || name == "atomic_store_relaxed" || name == "atomic_store_rel" )
     {
-        auto& ptr_val = args.at(0);
+        const auto& ty_T = ty_params.tys.at(0);
+        auto data_ref = args.at(0).read_pointer_valref_mut(0, ty_T.get_size());
         auto& data_val = args.at(1);
-
-        LOG_ASSERT(ptr_val.size() == POINTER_SIZE, "atomic_store of a value that isn't a pointer-sized value");
-
-        // There MUST be a relocation at this point with a valid allocation.
-        auto alloc = ptr_val.get_relocation(0);
-        LOG_ASSERT(alloc, "Deref of a value with no relocation");
+        LOG_ASSERT(data_ref.m_alloc.is_alloc(), "Atomic operation with non-allocation pointer - " << data_ref);
 
         // TODO: Atomic side of this?
-        size_t ofs = ptr_val.read_usize(0) - Allocation::PTR_BASE;
-        alloc.alloc().write_value(ofs, ::std::move(data_val));
+        data_ref.m_alloc.alloc().write_value(data_ref.m_offset, ::std::move(data_val));
     }
     else if( name == "atomic_load" || name == "atomic_load_relaxed" || name == "atomic_load_acq" )
     {
-        auto& ptr_val = args.at(0);
-        LOG_ASSERT(ptr_val.size() == POINTER_SIZE, "atomic_load of a value that isn't a pointer-sized value");
+        const auto& ty_T = ty_params.tys.at(0);
+        auto data_ref = args.at(0).read_pointer_valref_mut(0, ty_T.get_size());
+        LOG_ASSERT(data_ref.m_alloc.is_alloc(), "Atomic operation with non-allocation pointer - " << data_ref);
 
-        // There MUST be a relocation at this point with a valid allocation.
-        auto alloc = ptr_val.get_relocation(0);
-        LOG_ASSERT(alloc, "Deref of a value with no relocation");
         // TODO: Atomic lock the allocation.
-
-        size_t ofs = ptr_val.read_usize(0) - Allocation::PTR_BASE;
-        const auto& ty = ty_params.tys.at(0);
-
-        rv = alloc.alloc().read_value(ofs, ty.get_size());
+        rv = data_ref.m_alloc.alloc().read_value(data_ref.m_offset, ty_T.get_size());
     }
     else if( name == "atomic_xadd" || name == "atomic_xadd_relaxed" )
     {
         const auto& ty_T = ty_params.tys.at(0);
-        auto ptr_ofs = args.at(0).read_usize(0) - Allocation::PTR_BASE;
-        auto ptr_alloc = args.at(0).get_relocation(0);
+        auto data_ref = args.at(0).read_pointer_valref_mut(0, ty_T.get_size());
         auto v = args.at(1).read_value(0, ty_T.get_size());
 
         // TODO: Atomic lock the allocation.
-        if( !ptr_alloc || !ptr_alloc.is_alloc() ) {
-            LOG_ERROR("atomic pointer has no allocation");
-        }
+        LOG_ASSERT(data_ref.m_alloc.is_alloc(), "Atomic operation with non-allocation pointer - " << data_ref);
 
         // - Result is the original value
-        rv = ptr_alloc.alloc().read_value(ptr_ofs, ty_T.get_size());
+        rv = data_ref.read_value(0, ty_T.get_size());
 
         auto val_l = PrimitiveValueVirt::from_value(ty_T, rv);
         const auto val_r = PrimitiveValueVirt::from_value(ty_T, v);
         val_l.get().add( val_r.get() );
 
-        val_l.get().write_to_value( ptr_alloc.alloc(), ptr_ofs );
+        val_l.get().write_to_value( data_ref.m_alloc.alloc(), data_ref.m_offset );
     }
     else if( name == "atomic_xsub" || name == "atomic_xsub_relaxed" || name == "atomic_xsub_rel" )
     {
         const auto& ty_T = ty_params.tys.at(0);
-        auto ptr_ofs = args.at(0).read_usize(0) - Allocation::PTR_BASE;
-        auto ptr_alloc = args.at(0).get_relocation(0);
+        auto data_ref = args.at(0).read_pointer_valref_mut(0, ty_T.get_size());
         auto v = args.at(1).read_value(0, ty_T.get_size());
 
         // TODO: Atomic lock the allocation.
-        if( !ptr_alloc || !ptr_alloc.is_alloc() ) {
-            LOG_ERROR("atomic pointer has no allocation");
-        }
+        LOG_ASSERT(data_ref.m_alloc.is_alloc(), "Atomic operation with non-allocation pointer - " << data_ref);
 
         // - Result is the original value
-        rv = ptr_alloc.alloc().read_value(ptr_ofs, ty_T.get_size());
+        rv = data_ref.read_value(0, ty_T.get_size());
 
         auto val_l = PrimitiveValueVirt::from_value(ty_T, rv);
         const auto val_r = PrimitiveValueVirt::from_value(ty_T, v);
         val_l.get().subtract( val_r.get() );
 
-        val_l.get().write_to_value( ptr_alloc.alloc(), ptr_ofs );
+        val_l.get().write_to_value( data_ref.m_alloc.alloc(), data_ref.m_offset );
     }
     else if( name == "atomic_xchg" || name == "atomic_xchg_acqrel" )
     {
@@ -2273,6 +2256,7 @@ bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, co
         const auto& new_v = args.at(1);
 
         rv = data_ref.read_value(0, new_v.size());
+        LOG_ASSERT(data_ref.m_alloc.is_alloc(), "Atomic operation with non-allocation pointer - " << data_ref);
         data_ref.m_alloc.alloc().write_value( data_ref.m_offset, new_v );
     }
     else if( name == "atomic_cxchg" )
@@ -2304,31 +2288,27 @@ bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, co
     {
         // Assume is a no-op which returns unit
     }
-    else if( name == "offset" )
+    else if( name == "offset" ) // Ensures pointer validity, pointer should never wrap around
     {
-        auto ptr_alloc = args.at(0).get_relocation(0);
-        auto ptr_ofs = args.at(0).read_usize(0);
-        LOG_ASSERT(ptr_ofs >= Allocation::PTR_BASE, "`offset` with invalid pointer - " << args.at(0));
+        auto data_ref = args.at(0).read_pointer_valref_mut(0, 0);
+
         auto& ofs_val = args.at(1);
 
         auto delta_counts = ofs_val.read_usize(0);
         auto ty_size = ty_params.tys.at(0).get_size();
-        LOG_DEBUG("\"offset\": 0x" << ::std::hex << ptr_ofs << " + 0x" << delta_counts << " * 0x" << ty_size);
-        ptr_ofs -= Allocation::PTR_BASE;
-        auto new_ofs = ptr_ofs + delta_counts * ty_size;
+        LOG_DEBUG("\"offset\": " << data_ref.m_alloc << " 0x" << ::std::hex << data_ref.m_offset << " + 0x" << delta_counts << " * 0x" << ty_size);
+        auto new_ofs = data_ref.m_offset + delta_counts * ty_size;
         if(POINTER_SIZE != 8) {
             new_ofs &= 0xFFFFFFFF;
         }
 
         rv = ::std::move(args.at(0));
-        rv.write_ptr(0, Allocation::PTR_BASE + new_ofs, ptr_alloc);
+        rv.write_ptr_ofs(0, new_ofs, data_ref.m_alloc);
     }
     else if( name == "arith_offset" )   // Doesn't check validity, and allows wrapping
     {
         auto ptr_alloc = args.at(0).get_relocation(0);
         auto ptr_ofs = args.at(0).read_usize(0);
-        //LOG_ASSERT(ptr_ofs >= Allocation::PTR_BASE, "`offset` with invalid pointer - " << args.at(0));
-        //ptr_ofs -= Allocation::PTR_BASE;
         auto& ofs_val = args.at(1);
 
         auto delta_counts = ofs_val.read_usize(0);
@@ -2336,7 +2316,6 @@ bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, co
         if(POINTER_SIZE != 8) {
             new_ofs &= 0xFFFFFFFF;
         }
-        //new_ofs += Allocation::PTR_BASE;
 
         rv = ::std::move(args.at(0));
         if( ptr_alloc )
@@ -2721,7 +2700,7 @@ bool InterpreterThread::drop_value(Value ptr, const ::HIR::TypeRef& ty, bool is_
         auto box_ptr_vr = ptr.read_pointer_valref_mut(0, POINTER_SIZE);
         auto ofs = box_ptr_vr.read_usize(0);
         auto alloc = box_ptr_vr.get_relocation(0);
-        if( ofs != Allocation::PTR_BASE || !alloc || !alloc.is_alloc() ) {
+        if( ofs != alloc.get_base() || !alloc || !alloc.is_alloc() ) {
             LOG_ERROR("Attempting to shallow drop with invalid pointer (no relocation or non-zero offset) - " << box_ptr_vr);
         }
 
@@ -2750,13 +2729,13 @@ bool InterpreterThread::drop_value(Value ptr, const ::HIR::TypeRef& ty, bool is_
             // No destructor
             break;
         case TypeWrapper::Ty::Slice: {
-            // - Get thin pointer and count
-            auto ofs = ptr.read_usize(0);
-            LOG_ASSERT(ofs >= Allocation::PTR_BASE, "");
-            auto ptr_reloc = ptr.get_relocation(0);
-            auto count = ptr.read_usize(POINTER_SIZE);
-
             auto ity = ty.get_inner();
+            // - Get thin pointer and count
+            auto count = ptr.read_usize(POINTER_SIZE);
+            auto ptr_vr = ptr.read_pointer_valref_mut(0, ity.get_size() * count);
+            auto ofs = ptr_vr.m_offset;
+            auto ptr_reloc = ptr_vr.m_alloc;
+
             auto pty = ity.wrapped(TypeWrapper::Ty::Borrow, static_cast<size_t>(::HIR::BorrowType::Move));
             for(uint64_t i = 0; i < count; i ++)
             {

@@ -91,25 +91,25 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
             alloc->mark_bytes_valid(0, size);
         }
 
-        rv = Value::new_pointer(rty, Allocation::PTR_BASE, RelocationPtr::new_alloc(::std::move(alloc)));
+        rv = Value::new_pointer_ofs(rty, 0, RelocationPtr::new_alloc(::std::move(alloc)));
     }
     else if( link_name == "__rust_reallocate" || link_name == "__rust_realloc" )
     {
-        auto alloc_ptr = args.at(0).get_relocation(0);
-        auto ptr_ofs = args.at(0).read_usize(0);
         auto oldsize = args.at(1).read_usize(0);
+        auto ptr = args.at(0).read_pointer_valref_mut(0, oldsize);
+
         // NOTE: The ordering here depends on the rust version (1.19 has: old, new, align - 1.29 has: old, align, new)
         auto align = args.at(TARGETVER_LEAST_1_29 ? 2 : 3).read_usize(0);
         auto newsize = args.at(TARGETVER_LEAST_1_29 ? 3 : 2).read_usize(0);
-        LOG_DEBUG("__rust_reallocate(ptr=" << alloc_ptr << ", oldsize=" << oldsize << ", newsize=" << newsize << ", align=" << align << ")");
-        LOG_ASSERT(ptr_ofs == Allocation::PTR_BASE, "__rust_reallocate with offset pointer");
+        LOG_DEBUG("__rust_reallocate(ptr=" << ptr.m_alloc << ", oldsize=" << oldsize << ", newsize=" << newsize << ", align=" << align << ")");
+        LOG_ASSERT(ptr.m_offset == 0, "__rust_reallocate with offset pointer");
 
         LOG_ASSERT( (align & (align-1)) == 0, "Allocation alignment isn't a power of two - " << align );
         LOG_ASSERT( (newsize & (align-1)) == 0, "Allocation size isn't a multiple of alignment - s=" << newsize << ", a=" << align );
 
-        LOG_ASSERT(alloc_ptr, "__rust_reallocate with no backing allocation attached to pointer");
-        LOG_ASSERT(alloc_ptr.is_alloc(), "__rust_reallocate with no backing allocation attached to pointer");
-        auto& alloc = alloc_ptr.alloc();
+        LOG_ASSERT(ptr.m_alloc, "__rust_reallocate with no backing allocation attached to pointer");
+        LOG_ASSERT(ptr.m_alloc.is_alloc(), "__rust_reallocate with no backing allocation attached to pointer");
+        auto& alloc = ptr.m_alloc.alloc();
         // TODO: Check old size and alignment against allocation.
         LOG_ASSERT(oldsize == alloc.size(), "__rust_reallocate with different size");
 
@@ -120,14 +120,13 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     }
     else if( link_name == "__rust_deallocate" || link_name == "__rust_dealloc" )
     {
-        auto alloc_ptr = args.at(0).get_relocation(0);
-        auto ptr_ofs = args.at(0).read_usize(0);
-        LOG_ASSERT(ptr_ofs == Allocation::PTR_BASE, "__rust_deallocate with offset pointer");
-        LOG_DEBUG("__rust_deallocate(ptr=" << alloc_ptr << ")");
+        auto ptr = args.at(0).read_pointer_valref_mut(0, 0);
+        LOG_ASSERT(ptr.m_offset == 0, "__rust_deallocate with offset pointer");
+        LOG_DEBUG("__rust_deallocate(ptr=" << ptr.m_alloc << ")");
 
-        LOG_ASSERT(alloc_ptr, "__rust_deallocate with no backing allocation attached to pointer");
-        LOG_ASSERT(alloc_ptr.is_alloc(), "__rust_deallocate with no backing allocation attached to pointer");
-        auto& alloc = alloc_ptr.alloc();
+        LOG_ASSERT(ptr.m_alloc, "__rust_deallocate with no backing allocation attached to pointer");
+        LOG_ASSERT(ptr.m_alloc.is_alloc(), "__rust_deallocate with no backing allocation attached to pointer");
+        auto& alloc = ptr.m_alloc.alloc();
         alloc.mark_as_freed();
         // Just let it drop.
         rv = Value();
