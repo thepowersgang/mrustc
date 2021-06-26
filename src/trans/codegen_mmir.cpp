@@ -486,6 +486,7 @@ namespace
             // Create constructor function
             const auto& var_ty = item.m_data.as_Data().at(var_idx).type;
             const auto& e = var_ty.data().as_Path().binding.as_Struct()->m_data.as_Tuple();
+            m_of << "/* " << var_path << " */\n";
             m_of << "fn " << fmt(var_path) << "(";
             for(unsigned int i = 0; i < e.size(); i ++)
             {
@@ -515,6 +516,7 @@ namespace
             auto monomorph = [&](const auto& x)->const auto& { return m_resolve.monomorph_expand_opt(sp, tmp, x, ms); };
             // Create constructor function
             const auto& e = item.m_data.as_Tuple();
+            m_of << "/* " << p << " */\n";
             m_of << "fn " << fmt(p) << "(";
             for(unsigned int i = 0; i < e.size(); i ++)
             {
@@ -737,6 +739,7 @@ namespace
                 ::HIR::TypeRef  ret_type_tmp;
                 const auto& ret_type = monomorphise_fcn_return(ret_type_tmp, item, params);
 
+                m_of << "/* " << p << " */\n";
                 m_of << "fn " << fmt(p) << "(";
                 for(unsigned int i = 0; i < item.m_args.size(); i ++)
                 {
@@ -763,6 +766,7 @@ namespace
             m_mir_res = &mir_res;
 
             // - Signature
+            m_of << "/* " << p << " */\n";
             m_of << "fn " << fmt(p) << "(";
             for(unsigned int i = 0; i < item.m_args.size(); i ++)
             {
