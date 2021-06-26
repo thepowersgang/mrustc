@@ -14,6 +14,7 @@
 class Mangler
 {
     ::std::ostream& m_os;
+    std::vector<RcString>    m_name_cache;
 public:
     Mangler(::std::ostream& os):
         m_os(os)
@@ -26,6 +27,24 @@ public:
     // - '-' (crate names)
     void fmt_name(const RcString& s)
     {
+        // Support back-references to names (if shorter than the literal name)
+        auto it = std::find(m_name_cache.begin(), m_name_cache.end(), s);
+        if(it != m_name_cache.end())
+        {
+            auto idx = it - m_name_cache.begin();
+            // Only emit this way if shorter than the formatted name would be.
+            auto len = 1 + static_cast<int>(std::ceil(std::log10(idx+1)));
+            if(len < s.size())
+            {
+                m_os << "b" << idx;
+                return ;
+            }
+        }
+        else
+        {
+            m_name_cache.push_back(s);
+        }
+
         this->fmt_name(s.c_str());
     }
     void fmt_name(const char* const s)
