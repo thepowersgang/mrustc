@@ -143,7 +143,14 @@ public:
 
     int compare(size_t o, size_t l, const char* s) const {
         assert(o <= this->size());
-        return memcmp(this->c_str() + o, s, l);
+        if(l <= this->size() - o) {
+            return memcmp(this->c_str() + o, s, l);
+        }
+        else {
+            if(int rv = memcmp(this->c_str() + o, s, this->size() - o))
+                return rv;
+            return -1;
+        }
     }
 };
 
