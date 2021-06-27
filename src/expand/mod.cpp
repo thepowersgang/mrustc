@@ -53,6 +53,18 @@ void Expand_Init()
     // TODO: Initialise all macros here.
     void Expand_init_assert(); Expand_init_assert();
     void Expand_init_std_prelude(); Expand_init_std_prelude();
+
+    // Fill macro/decorator map from init list
+    while(g_decorators_list)
+    {
+        g_decorators.insert(::std::make_pair( RcString::new_interned(g_decorators_list->name), mv$(g_decorators_list->def) ));
+        g_decorators_list = g_decorators_list->prev;
+    }
+    while(g_macros_list)
+    {
+        g_macros.insert(::std::make_pair(RcString::new_interned(g_macros_list->name), mv$(g_macros_list->def)));
+        g_macros_list = g_macros_list->prev;
+    }
 }
 
 void ExpandDecorator::unexpected(const Span& sp, const AST::Attribute& mi, const char* loc_str) const
@@ -1673,17 +1685,6 @@ void Expand_Mod_Early(::AST::Crate& crate, ::AST::Module& mod)
 
 void Expand(::AST::Crate& crate)
 {
-    // Fill macro/decorator map from init list
-    while(g_decorators_list)
-    {
-        g_decorators.insert(::std::make_pair( RcString::new_interned(g_decorators_list->name), mv$(g_decorators_list->def) ));
-        g_decorators_list = g_decorators_list->prev;
-    }
-    while(g_macros_list)
-    {
-        g_macros.insert(::std::make_pair(RcString::new_interned(g_macros_list->name), mv$(g_macros_list->def)));
-        g_macros_list = g_macros_list->prev;
-    }
     for(const auto& e : g_decorators)
     {
         DEBUG("Decorator: " << e.first);
