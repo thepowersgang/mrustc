@@ -70,25 +70,59 @@ const Attribute* AttributeList::get(const char *name) const
     return os;
 }
 
-Attribute Attribute::clone() const
+ExprNodeRaw::ExprNodeRaw(::std::unique_ptr<ExprNode> n)
+    : ptr(n.release())
+{
+}
+ExprNodeRaw::~ExprNodeRaw()
+{
+    if(ptr)
+        delete ptr;
+    ptr = nullptr;
+}
+
+Attribute::Attribute(const Attribute& x):
+    m_span(x.m_span),
+    m_name(x.m_name),
+    m_is_used(x.m_is_used)
 {
     struct H {
         static AttributeData clone_ad(const AttributeData& ad) {
-            TU_MATCHA( (ad), (e),
-            (None,
+            TU_MATCH_HDRA( (ad), {)
+            TU_ARMA(None, e)
                 return AttributeData::make_None({});
-                ),
-            (String,
+            TU_ARMA(ValueUnexpanded, e)
+                return AttributeData::make_ValueUnexpanded( e->clone() );
+            TU_ARMA(String, e)
                 return AttributeData::make_String({ e.val });
-                ),
-            (List,
+            TU_ARMA(List, e)
                 return AttributeData::make_List({ clone_mivec(e.sub_items) });
-                )
-            )
+            }
             throw ::std::runtime_error("Attribute::clone - Fell off end");
         }
     };
-    return Attribute(m_span, m_name, H::clone_ad(m_data));
+    m_data = H::clone_ad(x.m_data);
+}
+Attribute Attribute::clone() const
+{
+    return Attribute(*this);
+}
+void Attribute::fmt(std::ostream& os) const
+{
+    os << m_name;
+    TU_MATCH_HDRA( (m_data), {)
+    TU_ARMA(None, e) {
+        }
+    TU_ARMA(ValueUnexpanded, e) {
+        os << "=\"" << *e << "\"";
+        }
+    TU_ARMA(String, e) {
+        os << "=\"" << e.val << "\"";
+        }
+    TU_ARMA(List, e) {
+        os << "(" << e.sub_items << ")";
+        }
+    }
 }
 
 StructItem StructItem::clone() const
