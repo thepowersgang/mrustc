@@ -104,6 +104,8 @@ class CCfgExpander:
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const ::AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
         auto lex = TTStream(sp, ParseState(crate.m_edition), tt);
+        lex.parse_state().crate = &crate;
+        lex.parse_state().module = &mod;
         auto attrs = Parse_MetaItem(lex);
         DEBUG("cfg!() - " << attrs);
 

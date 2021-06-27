@@ -1920,6 +1920,7 @@ unsigned int Macro_InvokeRules_MatchPattern(const Span& sp, const MacroRules& ru
         DEBUG("Evalulating arm " << i);
 
         auto lex = TTStreamO(sp, ParseState(crate.m_edition), mv$(input));
+        lex.parse_state().crate = &crate;
         SET_MODULE(lex, mod);
         auto arm_stream = MacroPatternStream(rules.m_rules[i].m_pattern, &history);
 
