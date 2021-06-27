@@ -297,7 +297,7 @@ void Expand_Pattern(::AST::Crate& crate, LList<const AST::Module*> modstack, ::A
             ERROR(span, E0000, "Macro in pattern didn't expand to anything");
         }
         auto& lex = *tt;
-        auto newpat = Parse_Pattern(lex, is_refutable);
+        auto newpat = Parse_Pattern(lex);
         if( LOOK_AHEAD(lex) != TOK_EOF ) {
             ERROR(span, E0000, "Trailing tokens in macro expansion");
         }
@@ -347,6 +347,10 @@ void Expand_Pattern(::AST::Crate& crate, LList<const AST::Module*> modstack, ::A
         for(auto& sp : e.leading)
             Expand_Pattern(crate, modstack, mod, sp, is_refutable);
         for(auto& sp : e.trailing)
+            Expand_Pattern(crate, modstack, mod, sp, is_refutable);
+        ),
+    (Or,
+        for(auto& sp : e)
             Expand_Pattern(crate, modstack, mod, sp, is_refutable);
         )
     )

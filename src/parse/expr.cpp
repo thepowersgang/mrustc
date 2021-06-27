@@ -347,7 +347,7 @@ ExprNodeP Parse_WhileStmt(TokenStream& lex, Ident lifetime)
 
     if( GET_TOK(tok, lex) == TOK_RWORD_LET ) {
         // TODO: Pattern list (same as match)?
-        auto pat = Parse_Pattern(lex, true);    // Refutable pattern
+        auto pat = Parse_Pattern(lex, AllowOrPattern::Yes);    // Refutable pattern
         GET_CHECK_TOK(tok, lex, TOK_EQUAL);
         ExprNodeP val;
         {
@@ -373,7 +373,7 @@ ExprNodeP Parse_ForStmt(TokenStream& lex, Ident lifetime)
     Token   tok;
 
     // Irrefutable pattern
-    auto pat = Parse_Pattern(lex, false);
+    auto pat = Parse_Pattern(lex, AllowOrPattern::Yes);
     GET_CHECK_TOK(tok, lex, TOK_RWORD_IN);
     ExprNodeP val;
     {
@@ -401,7 +401,7 @@ ExprNodeP Parse_IfStmt(TokenStream& lex)
                    GET_TOK(tok, lex);
             // Refutable pattern
             do {
-                paterns.push_back( Parse_Pattern(lex, true) );
+                paterns.push_back( Parse_Pattern(lex, AllowOrPattern::No) );
             } while(GET_TOK(tok, lex) == TOK_PIPE);
             CHECK_TOK(tok, TOK_EQUAL);
             cond = Parse_Expr0(lex);
@@ -469,7 +469,7 @@ ExprNodeP Parse_Expr_Match(TokenStream& lex)
             GET_TOK(tok, lex);
         do {
             // Refutable pattern
-            arm.m_patterns.push_back( Parse_Pattern(lex, true) );
+            arm.m_patterns.push_back( Parse_Pattern(lex, AllowOrPattern::No) );
         } while( GET_TOK(tok, lex) == TOK_PIPE );
 
         if( tok.type() == TOK_RWORD_IF )
@@ -573,7 +573,7 @@ ExprNodeP Parse_Stmt(TokenStream& lex)
 ExprNodeP Parse_Stmt_Let(TokenStream& lex)
 {
     Token   tok;
-    AST::Pattern pat = Parse_Pattern(lex, false);   // irrefutable
+    AST::Pattern pat = Parse_Pattern(lex, AllowOrPattern::Yes);   // irrefutable
     TypeRef type { lex.point_span() };
     if( GET_TOK(tok, lex) == TOK_COLON ) {
         type = Parse_Type(lex);
@@ -1109,7 +1109,7 @@ ExprNodeP Parse_ExprVal_Closure(TokenStream& lex)
         {
             PUTBACK(tok, lex);
             // Irrefutable pattern
-            AST::Pattern    pat = Parse_Pattern(lex, false);
+            AST::Pattern    pat = Parse_Pattern(lex, AllowOrPattern::No);
 
             TypeRef type { lex.point_span() };
             if( GET_TOK(tok, lex) == TOK_COLON )

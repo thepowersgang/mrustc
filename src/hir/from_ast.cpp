@@ -417,6 +417,9 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
                 })
             };
         }
+    TU_ARMA(Or, e) {
+        TODO(pat.span(), "Expand or patterns into multiple root patterns");
+        }
     }
     throw "unreachable";
 }

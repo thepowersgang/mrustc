@@ -2357,6 +2357,10 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
         }
         for(auto& sp : e.trailing)
             Resolve_Absolute_Pattern(context, allow_refutable,  sp);
+        ),
+    (Or,
+        for(auto& sp : e)
+            Resolve_Absolute_Pattern(context, allow_refutable,  sp);
         )
     )
 }

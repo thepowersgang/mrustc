@@ -370,8 +370,7 @@ void Parse_WhereClause(TokenStream& lex, AST::GenericParams& params)
       || (LOOK_AHEAD(lex) == TOK_IDENT && lex.lookahead(1) == TOK_COLON)
       )
     {
-        // Function args can't be refuted
-        pat = Parse_Pattern(lex, false);
+        pat = Parse_Pattern(lex, AllowOrPattern::No);
         GET_CHECK_TOK(tok, lex, TOK_COLON);
     }
 

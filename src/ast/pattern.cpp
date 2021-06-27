@@ -151,6 +151,12 @@ namespace AST {
             os << ent.trailing;
         }
         os << "]";
+        ),
+    (Or,
+        os << "(";
+        for(const auto& e : ent)
+            os << (&e == &ent.front() ? "" : " | ") << e;
+        os << ")";
         )
     )
     return os;
@@ -233,6 +239,9 @@ AST::Pattern AST::Pattern::clone() const
         ),
     (SplitSlice,
         rv.m_data = Data::make_SplitSlice({ H::clone_list(e.leading), e.extra_bind, H::clone_list(e.trailing) });
+        ),
+    (Or,
+        rv.m_data = Data::make_Or( H::clone_list(e) );
         )
     )
 

@@ -1060,6 +1060,12 @@ void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
             m_os << v.trailing;
         }
         m_os << "]";
+        ),
+    (Or,
+        m_os << "(";
+        for(const auto& e : v)
+            m_os << (&e == &v.front() ? "" : " | ") << e;
+        m_os << ")";
         )
     )
 }

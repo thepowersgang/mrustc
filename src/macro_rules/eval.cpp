@@ -484,7 +484,7 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
             PUTBACK(tok, lex);
         return InterpolatedFragment( Parse_TT(lex, false) );
     case MacroPatEnt::PAT_PAT:
-        return InterpolatedFragment( Parse_Pattern(lex, true) );
+        return InterpolatedFragment( Parse_Pattern(lex, AllowOrPattern::No) );
     case MacroPatEnt::PAT_TYPE:
         return InterpolatedFragment( Parse_Type(lex) );
     case MacroPatEnt::PAT_EXPR:
