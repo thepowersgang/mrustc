@@ -48,13 +48,20 @@ namespace {
         }
         else {
 
-            auto slash = ::std::min( base_path.find_last_of('/'), base_path.find_last_of('\\') );
+            auto slash_fwd = base_path.find_last_of('/');
+            auto slash_back = base_path.find_last_of('\\');
+            auto slash =
+                slash_fwd == std::string::npos ? slash_back
+                : slash_back == std::string::npos ? slash_fwd
+                : std::max(slash_fwd, slash_back)
+                ;
             if( slash == ::std::string::npos )
             {
                 return path;
             }
             else
             {
+                DEBUG("> slash = " << slash);
                 slash += 1;
                 ::std::string   rv;
                 rv.reserve( slash + path.size() );
