@@ -1079,59 +1079,42 @@ AST::Attribute Parse_MetaItem(TokenStream& lex)
     ::AST::AttributeData  attr_data;
     switch(tok.type())
     {
-    case TOK_EQUAL:
-        //auto e = Parse_ExprVal(lex);
-        // TODO: Just store an expression (avoids needing to run expand here)
-        switch(GET_TOK(tok, lex))
+    case TOK_EQUAL: {
+        auto n = Parse_ExprVal(lex);
+#if 0
+        attr_data = AST::AttributeData::make_ValueUnexpanded(mv$(n));
+#else
+        void Expand_BareExpr(const AST::Crate& , const AST::Module&, ::std::unique_ptr<AST::ExprNode>& n);
+        ASSERT_BUG( lex.point_span(), lex.parse_state().crate, "Crate not set" );
+        ASSERT_BUG( lex.point_span(), lex.parse_state().module, "Module not set" );
+        Expand_BareExpr(*lex.parse_state().crate, *lex.parse_state().module, n);
+        if( auto* v = dynamic_cast<::AST::ExprNode_String*>(&*n) )
         {
-        case TOK_STRING:
-            attr_data = AST::AttributeData::make_String({tok.str()});
-            break;
-        case TOK_INTERPOLATED_EXPR: {
-            auto n = tok.take_frag_node();
-            void Expand_BareExpr(const AST::Crate& , const AST::Module&, ::std::unique_ptr<AST::ExprNode>& n);
-            ASSERT_BUG( lex.point_span(), lex.parse_state().crate, "Crate not set" );
-            ASSERT_BUG( lex.point_span(), lex.parse_state().module, "Module not set" );
-            Expand_BareExpr(*lex.parse_state().crate, *lex.parse_state().module, n);
-            if( auto* v = dynamic_cast<::AST::ExprNode_String*>(&*n) )
-            {
-                attr_data = AST::AttributeData::make_String({ mv$(v->m_value) });
-            }
-            else if( auto* v = dynamic_cast<::AST::ExprNode_Integer*>(&*n) )
+            attr_data = AST::AttributeData::make_String({ mv$(v->m_value) });
+        }
+        else if( TARGETVER_LEAST_1_29 )
+        {
+            if( auto* v = dynamic_cast<::AST::ExprNode_Integer*>(&*n) )
             {
                 attr_data = AST::AttributeData::make_String({ FMT(v->m_value) });
+            }
+            else if( auto* v = dynamic_cast<::AST::ExprNode_NamedValue*>(&*n) )
+            {
+                attr_data = AST::AttributeData::make_String({ FMT(v->m_path) });
             }
             else
             {
                 // - Force an error.
                 throw ParseError::Unexpected(lex, Token(InterpolatedFragment(InterpolatedFragment::EXPR, n.release())), TOK_STRING);
             }
-            break; }
-        case TOK_INTEGER:
-            if( TARGETVER_LEAST_1_29 )
-            {
-                attr_data = AST::AttributeData::make_String({ tok.to_str() });
-                break;
-            }
-        case TOK_IDENT:
-            if( TARGETVER_LEAST_1_29 )
-            {
-                auto s = tok.to_str();
-                while(lex.lookahead(0) == TOK_DOUBLE_COLON)
-                {
-                    GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
-                    s += "::";
-                    GET_CHECK_TOK(tok, lex, TOK_IDENT);
-                    s += tok.to_str();
-                }
-                attr_data = AST::AttributeData::make_String({ s });
-                break;
-            }
-        default:
-            // - Force an error.
-            throw ParseError::Unexpected(lex, tok, TOK_STRING);
         }
-        break;
+        else
+        {
+            // - Force an error.
+            throw ParseError::Unexpected(lex, Token(InterpolatedFragment(InterpolatedFragment::EXPR, n.release())), TOK_STRING);
+        }
+#endif
+        } break;
     case TOK_PAREN_OPEN: {
         ::std::vector<AST::Attribute>    items;
         do {
@@ -2303,10 +2286,13 @@ void Parse_ModRoot(TokenStream& lex, AST::Module& mod, AST::AttributeList& mod_a
 {
     TRACE_FUNCTION;
 
+    auto prev_mod = lex.parse_state().module;
+    lex.parse_state().module = &mod;
     // Attributes on module/crate (will continue loop)
     Parse_ParentAttrs(lex,  mod_attrs);
 
     Parse_ModRoot_Items(lex, mod);
+    lex.parse_state().module = prev_mod;
 }
 
 AST::Crate Parse_Crate(::std::string mainfile, AST::Edition edition)
