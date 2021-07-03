@@ -26,6 +26,10 @@
 #  define DEFAULT_TARGET_NAME "i586-linux-gnu"
 # elif defined(__m68k__)
 #  define DEFAULT_TARGET_NAME "m68k-linux-gnu"
+# elif defined(__powerpc64__) && defined(__BIG_ENDIAN__)
+#  define DEFAULT_TARGET_NAME "powerpc64-unknown-linux-gnu"
+# elif defined(__powerpc64__) && defined(__LITTLE_ENDIAN__)
+#  define DEFAULT_TARGET_NAME "powerpc64le-unknown-linux-gnu"
 # else
 #  warning "Unable to detect a suitable default target (linux-gnu)"
 # endif
