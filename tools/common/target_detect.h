@@ -17,7 +17,11 @@
 // - Linux
 #elif defined(__linux__)
 # if defined(__amd64__)
-#  define DEFAULT_TARGET_NAME "x86_64-linux-gnu"
+#  if defined(_ILP32)
+#   define DEFAULT_TARGET_NAME "x86_64-unknown-linux-gnux32"
+#  else
+#   define DEFAULT_TARGET_NAME "x86_64-linux-gnu"
+#  endif
 # elif defined(__aarch64__)
 #  define DEFAULT_TARGET_NAME "aarch64-linux-gnu"
 # elif defined(__arm__)
