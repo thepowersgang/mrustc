@@ -314,7 +314,7 @@ class CBuiltinMacroHandler:
         ui.entries.push_back(AST::UseItem::Ent { });
         ui.entries.back().name = name;
         ui.entries.back().path = AST::Path(CRATE_BUILTINS, { name });
-        DEBUG("Convert macro_rules tagged #[rustc_builtin_macro] with use");
+        DEBUG("Convert macro_rules tagged #[rustc_builtin_macro] with use - " << name);
         i = AST::Item::make_Use(mv$(ui));
     }
 };

@@ -13,7 +13,7 @@
 #include "synext_decorator.hpp"
 #include "synext_macro.hpp"
 
-extern void Expand_BareExpr(const ::AST::Crate& crate, const AST::Module& mod, ::std::unique_ptr<AST::ExprNode>& node);
+extern void Expand_BareExpr(const ::AST::Crate& crate, const AST::Module& mod, AST::ExprNodeP& node);
 
 #endif
 

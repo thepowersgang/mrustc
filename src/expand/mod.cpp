@@ -29,6 +29,7 @@ MacroDef*   g_macros_list = nullptr;
 
 void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::std::function<void(const ExpandDecorator& d,const ::AST::Attribute& a)> f);
 void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::AbsolutePath modpath, ::AST::Module& mod, unsigned int first_item = 0);
+void Expand_Expr(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::ExprNodeP& node);
 void Expand_Expr(::AST::Crate& crate, LList<const AST::Module*> modstack, AST::Expr& node);
 void Expand_Expr(::AST::Crate& crate, LList<const AST::Module*> modstack, ::std::shared_ptr<AST::ExprNode>& node);
 void Expand_Path(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod, ::AST::Path& p);
@@ -435,6 +436,9 @@ void Expand_PathParams(::AST::Crate& crate, LList<const AST::Module*> modstack, 
         TU_ARMA(Type, typ) {
             Expand_Type(crate, modstack, mod, typ);
             }
+        TU_ARMA(Value, node) {
+            Expand_Expr(crate, modstack, node);
+            }
         TU_ARMA(AssociatedTyEqual, aty) {
             Expand_Type(crate, modstack, mod, aty.second);
             }
@@ -485,7 +489,7 @@ struct CExpandExpr:
 {
     ::AST::Crate&    crate;
     LList<const AST::Module*>   modstack;
-    ::std::unique_ptr<::AST::ExprNode> replacement;
+    ::AST::ExprNodeP replacement;
 
     // Stack of `try { ... }` blocks (the string is the loop label for the desugaring)
     ::std::vector<RcString>   m_try_stack;
@@ -503,7 +507,7 @@ struct CExpandExpr:
         return *const_cast< ::AST::Module*>(modstack.m_item);
     }
 
-    void visit(::std::unique_ptr<AST::ExprNode>& cnode) {
+    void visit(::AST::ExprNodeP& cnode) {
         if(cnode.get())
         {
             auto attrs = mv$(cnode->attrs());
@@ -530,7 +534,7 @@ struct CExpandExpr:
             Expand_Attrs(cnode->attrs(), AttrStage::Post,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, this->crate, cnode); });
         assert( ! this->replacement );
     }
-    void visit_nodelete(const ::AST::ExprNode& parent, ::std::unique_ptr<AST::ExprNode>& cnode) {
+    void visit_nodelete(const ::AST::ExprNode& parent, ::AST::ExprNodeP& cnode) {
         if( cnode.get() != nullptr )
         {
             this->visit(cnode);
@@ -539,7 +543,7 @@ struct CExpandExpr:
         }
         assert( ! this->replacement );
     }
-    void visit_vector(::std::vector< ::std::unique_ptr<AST::ExprNode> >& cnodes) {
+    void visit_vector(::std::vector< ::AST::ExprNodeP >& cnodes) {
         for( auto it = cnodes.begin(); it != cnodes.end(); ) {
             assert( it->get() );
             this->visit(*it);
@@ -604,6 +608,11 @@ struct CExpandExpr:
                     }
                 }
             }
+        }
+
+        if( !nodes_out && !rv )
+        {
+            ERROR(node.span(), E0000, "Macro didn't expand to anything");
         }
 
         node.m_path = AST::Path();
@@ -1029,7 +1038,7 @@ struct CExpandExpr:
     }
 };
 
-void Expand_Expr(::AST::Crate& crate, LList<const AST::Module*> modstack, ::std::unique_ptr<AST::ExprNode>& node)
+void Expand_Expr(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::ExprNodeP& node)
 {
     TRACE_FUNCTION_F("unique_ptr");
     auto visitor = CExpandExpr(crate, modstack);
@@ -1102,7 +1111,7 @@ void Expand_GenericParams(::AST::Crate& crate, LList<const AST::Module*> modstac
     }
 }
 
-void Expand_BareExpr(const ::AST::Crate& crate, const AST::Module& mod, ::std::unique_ptr<AST::ExprNode>& node)
+void Expand_BareExpr(const ::AST::Crate& crate, const AST::Module& mod, ::AST::ExprNodeP& node)
 {
     Expand_Expr(const_cast< ::AST::Crate&>(crate), LList<const AST::Module*>(nullptr, &mod), node);
 }
@@ -1503,6 +1512,8 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             }
         TU_ARMA(Trait, e) {
             Expand_GenericParams(crate, modstack, mod,  e.params());
+            for(auto& p : e.supertraits())
+                Expand_Path(crate, modstack, mod, *p.ent.path);
             auto& trait_items = e.items();
             for(size_t idx = 0; idx < trait_items.size(); idx ++)
             {
@@ -1586,6 +1597,10 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             Expand_Expr(crate, modstack, e.value());
             Expand_Type(crate, modstack, mod,  e.type());
             }
+        TU_ARMA(TraitAlias, e) {
+            for(auto& p : e.traits)
+                Expand_Path(crate, modstack, mod, *p.ent.path);
+            }
         }
         Expand_Attrs(attrs, AttrStage::Post,  crate, path, mod, dat);
 
@@ -1637,7 +1652,7 @@ void Expand_Mod_IndexAnon(::AST::Crate& crate, ::AST::Module& mod)
 //
 // Expand all `cfg` attributes... mostly to find #[macro_export]
 //
-void Expand_Mod_Early(::AST::Crate& crate, ::AST::Module& mod)
+void Expand_Mod_Early(::AST::Crate& crate, ::AST::Module& mod, std::vector<std::unique_ptr<AST::Named<AST::Item>>>& new_root_items)
 {
     for(auto& i : mod.m_items)
     {
@@ -1672,15 +1687,21 @@ void Expand_Mod_Early(::AST::Crate& crate, ::AST::Module& mod)
             if( !(i->data.is_MacroInv() && i->data.as_MacroInv().path().is_trivial() && i->data.as_MacroInv().path().as_trivial() == "macro_rules") )
                 ERROR(i->span, E0000, "#[macro_export] on non-macro_rules");
             const auto& mac_inv = i->data.as_MacroInv();
+            DEBUG("macro_rules marked with #[macro_export] moved to the crate root - " << mac_inv.input_ident());
 
+#if 0
             TTStream    lex(i->span, ParseState(crate.m_edition), mac_inv.input_tt());
             auto mac = Parse_MacroRules(lex);
             const auto* mac_ptr = &*mac;
             crate.m_root_module.add_macro(true, mac_inv.input_ident(), std::move(mac));
             crate.m_exported_macros[mac_inv.input_ident()] = mac_ptr;
+#else
+            new_root_items.push_back(box$(*i));
+            i->data = AST::Item();
+#endif
         }
         else if( i->data.is_Module() ) {
-            Expand_Mod_Early(crate, i->data.as_Module());
+            Expand_Mod_Early(crate, i->data.as_Module(), new_root_items);
         }
         else {
         }
@@ -1705,7 +1726,10 @@ void Expand(::AST::Crate& crate)
     Expand_Attrs_CfgAttr(crate.m_attrs);
     Expand_Attrs(crate.m_attrs, AttrStage::Pre,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate); });
 
-    Expand_Mod_Early(crate, crate.m_root_module);
+    std::vector<std::unique_ptr<AST::Named<AST::Item>>> new_root_items;
+    Expand_Mod_Early(crate, crate.m_root_module, new_root_items);
+    crate.m_root_module.m_items.insert( crate.m_root_module.m_items.begin(),
+        std::make_move_iterator(new_root_items.begin()), std::make_move_iterator(new_root_items.end()) );
 
     // Insert magic for libstd/libcore
     // NOTE: The actual crates are loaded in "LoadCrates" using magic in AST::Crate::load_externs

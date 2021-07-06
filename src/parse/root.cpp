@@ -433,7 +433,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, bool allow_
             auto sp = lex.end_span(ps);
             args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), sp, "self"), TypeRef(TypeRef::TagReference(), sp, ::std::move(lifetime), is_mut, TypeRef(sp, "Self", 0xFFFF))) );
             if( allow_self == false )
-                throw ParseError::Generic(lex, "Self binding not expected");
+                ERROR(lex.point_span(), E0000, "Self binding not expected here");
 
             // Prime tok for next step
             GET_TOK(tok, lex);
@@ -1083,7 +1083,7 @@ AST::Attribute Parse_MetaItem(TokenStream& lex)
 #if 0
         attr_data = AST::AttributeData::make_ValueUnexpanded(mv$(n));
 #else
-        void Expand_BareExpr(const AST::Crate& , const AST::Module&, ::std::unique_ptr<AST::ExprNode>& n);
+        void Expand_BareExpr(const AST::Crate& , const AST::Module&, AST::ExprNodeP& n);
         ASSERT_BUG( lex.point_span(), lex.parse_state().crate, "Crate not set" );
         ASSERT_BUG( lex.point_span(), lex.parse_state().module, "Module not set" );
         Expand_BareExpr(*lex.parse_state().crate, *lex.parse_state().module, n);
@@ -2047,7 +2047,25 @@ namespace {
     case TOK_RWORD_TRAIT:
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
         item_name = tok.ident().name;
-        item_data = ::AST::Item( Parse_TraitDef(lex, meta_items) );
+        if( lex.lookahead(0) == TOK_EQUAL ) {
+            // Trait alias
+
+            AST::TraitAlias rv;
+            do {
+                lex.getToken();
+
+                auto ps = lex.start_span();
+                auto hrbs = Parse_HRB_Opt(lex);
+                rv.traits.push_back( GET_SPANNED(Type_TraitPath, lex, (Type_TraitPath(mv$(hrbs), Parse_Path(lex, PATH_GENERIC_TYPE)) )) );
+            } while( lex.lookahead(0) == TOK_PLUS );
+
+            GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+
+            item_data = ::AST::Item( std::move(rv) );
+        }
+        else {
+            item_data = ::AST::Item( Parse_TraitDef(lex, meta_items) );
+        }
         break;
 
     case TOK_RWORD_MACRO:

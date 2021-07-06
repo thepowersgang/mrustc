@@ -82,14 +82,14 @@ public:
     virtual void visit(AST::ExprNode_Asm& n) override {
         m_os << "asm!( \"" << n.m_text << "\"";
         m_os << " :";
-        for(const auto& v : n.m_output)
+        for(auto& v : n.m_output)
         {
             m_os << " \"" << v.name << "\" (";
             AST::NodeVisitor::visit(v.value);
             m_os << "),";
         }
         m_os << " :";
-        for(const auto& v : n.m_input)
+        for(auto& v : n.m_input)
         {
             m_os << " \"" << v.name << "\" (";
             AST::NodeVisitor::visit(v.value);
@@ -308,7 +308,7 @@ public:
 
         visit_if_common(expr_root, n.m_true, n.m_false);
     }
-    void visit_if_common(bool expr_root, const ::std::unique_ptr<AST::ExprNode>& tv, const ::std::unique_ptr<AST::ExprNode>& fv)
+    void visit_if_common(bool expr_root, ::AST::ExprNodeP& tv, ::AST::ExprNodeP& fv)
     {
         if( expr_root )
         {
@@ -432,7 +432,7 @@ public:
         m_expr_root = false;
         m_os << n.m_path << " {\n";
         inc_indent();
-        for( const auto& i : n.m_values )
+        for( auto& i : n.m_values )
         {
             // TODO: Attributes
             m_os << indent() << i.name << ": ";
@@ -584,7 +584,7 @@ public:
 
 
 private:
-    void paren_wrap(::std::unique_ptr<AST::ExprNode>& node) {
+    void paren_wrap(::AST::ExprNodeP& node) {
         m_os << "(";
         AST::NodeVisitor::visit(node);
         m_os << ")";

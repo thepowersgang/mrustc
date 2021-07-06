@@ -807,6 +807,9 @@ void Resolve_Absolute_PathParams(/*const*/ Context& context, const Span& sp, ::A
         TU_ARMA(Type, t) {
             Resolve_Absolute_Type(context, t);
             }
+        TU_ARMA(Value, n) {
+            Resolve_Absolute_ExprNode(context, *n);
+            }
         TU_ARMA(AssociatedTyEqual, a) {
             Resolve_Absolute_Type(context, a.second);
             }
@@ -2384,7 +2387,8 @@ void Resolve_Absolute_ImplItems(Context& item_context,  ::AST::NamedList< ::AST:
         (Module, BUG(i.span, "Resolve_Absolute_ImplItems - Module");),
         (Crate , BUG(i.span, "Resolve_Absolute_ImplItems - Crate");),
         (Enum  , BUG(i.span, "Resolve_Absolute_ImplItems - Enum");),
-        (Trait , BUG(i.span, "Resolve_Absolute_ImplItems - Trait");),
+        (Trait , BUG(i.span, "Resolve_Absolute_ImplItems - " << i.data.tag_str());),
+        (TraitAlias, BUG(i.span, "Resolve_Absolute_ImplItems - " << i.data.tag_str());),
         (Struct, BUG(i.span, "Resolve_Absolute_ImplItems - Struct");),
         (Union , BUG(i.span, "Resolve_Absolute_ImplItems - Union");),
         (Type,
@@ -2429,6 +2433,7 @@ void Resolve_Absolute_ImplItems(Context& item_context,  ::std::vector< ::AST::Im
         (Crate , BUG(i.sp, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
         (Enum  , BUG(i.sp, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
         (Trait , BUG(i.sp, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
+        (TraitAlias, BUG(i.sp, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
         (Struct, BUG(i.sp, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
         (Union , BUG(i.sp, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
         (Type,
@@ -2686,6 +2691,14 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
         TU_ARMA(Trait, e) {
             DEBUG("Trait - " << i->name);
             Resolve_Absolute_Trait(item_context, e);
+            }
+        TU_ARMA(TraitAlias, e) {
+            DEBUG("TraitAlias - " << i->name);
+            for(auto& st : e.traits) {
+                item_context.push(st.ent.hrbs);
+                Resolve_Absolute_Path(item_context, st.sp, Context::LookupMode::Type,  *st.ent.path);
+                item_context.pop(st.ent.hrbs);
+            }
             }
         TU_ARMA(Type, e) {
             DEBUG("Type - " << i->name);

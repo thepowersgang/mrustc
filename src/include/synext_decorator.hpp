@@ -60,7 +60,7 @@ public:
     // NOTE: To delete, clear the name
     virtual void    handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, ::AST::EnumVariant& ev) const { unexpected(sp, mi, "enum variant"); }
 
-    virtual void    handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, ::std::unique_ptr<AST::ExprNode>& expr) const { unexpected(sp, mi, "expression"); }
+    virtual void    handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, ::AST::ExprNodeP& expr) const { unexpected(sp, mi, "expression"); }
     // NOTE: To delete, clear the patterns vector
     virtual void    handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, ::AST::ExprNode_Match_Arm& expr) const { unexpected(sp, mi, "match arm"); }
     // NOTE: To delete, clear the value

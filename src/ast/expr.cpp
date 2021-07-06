@@ -10,8 +10,18 @@
 
 namespace AST {
 
+ExprNodeP::~ExprNodeP()
+{
+    if(m_ptr)
+        delete m_ptr;
+    m_ptr = nullptr;
+}
+ExprNodeP::ExprNodeP(std::unique_ptr<ExprNode> node)
+    : m_ptr(node.release())
+{
+}
 
-Expr::Expr(unique_ptr<ExprNode> node):
+Expr::Expr(ExprNodeP node):
     m_node(node.release())
 {
 }
@@ -70,7 +80,7 @@ ExprNode::~ExprNode() {
 #define NODE(class, _print, _clone)\
     void class::visit(NodeVisitor& nv) { nv.visit(*this); } \
     void class::print(::std::ostream& os) const _print \
-    ::std::unique_ptr<ExprNode> class::clone() const _clone
+    ExprNodeP class::clone() const _clone
 #define OPT_CLONE(node) (node.get() ? node->clone() : ::AST::ExprNodeP())
 
 namespace {

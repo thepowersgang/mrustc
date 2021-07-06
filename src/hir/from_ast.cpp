@@ -489,6 +489,9 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
         TU_ARMA(Type, ty) {
             params.m_types.push_back( LowerHIR_Type(ty) );
             }
+        TU_ARMA(Value, iv) {
+            TODO(iv->span(), "Constant params for methods");
+            }
         TU_ARMA(AssociatedTyEqual, ty) {
             if( !allow_assoc )
                 BUG(sp, "Encountered path parameters with associated type bounds where they are not allowed");
@@ -611,6 +614,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
         TU_ARMA(Null, _) {}
         TU_ARMA(Lifetime, _) {}
         TU_ARMA(Type, _) {}
+        TU_ARMA(Value, _) {}
         TU_ARMA(AssociatedTyEqual, assoc) {
             auto src_trait = H::find_source_trait(sp, rv.m_path, path.m_bindings.type.binding.as_Trait(), assoc.first, MonomorphiserNop());
             DEBUG("src_trait = " << src_trait << " for " << assoc.first);
@@ -1719,6 +1723,9 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
             }
         TU_ARMA(Trait, e) {
             _add_mod_ns_item( mod,  item.name, get_pub(item.is_pub), LowerHIR_Trait(item_path.get_simple_path(), e) );
+            }
+        TU_ARMA(TraitAlias, e) {
+            TODO(sp, "LowerHIR - TraitAlias");
             }
         TU_ARMA(Function, e) {
             _add_mod_val_item(mod, item.name, get_pub(item.is_pub),  LowerHIR_Function(item_path, item.attrs, e, ::HIR::TypeRef{}));

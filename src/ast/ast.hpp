@@ -121,6 +121,18 @@ public:
 
     TypeAlias clone() const;
 };
+class TraitAlias
+{
+public:
+    std::vector<Spanned<Type_TraitPath>>  traits;
+
+    TraitAlias clone() const {
+        TraitAlias  rv;
+        for(const auto& p : this->traits)
+            rv.traits.push_back(p);
+        return rv;
+    }
+};
 
 class Static
 {
@@ -639,6 +651,7 @@ TAGGED_UNION_EX(Item, (), None,
     (Enum, Enum),
     (Union, Union),
     (Trait, Trait),
+    (TraitAlias, TraitAlias),
 
     (Function, Function),
     (Static, Static)

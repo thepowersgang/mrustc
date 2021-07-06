@@ -1845,15 +1845,9 @@ namespace {
 
         void visit(::HIR::ExprNode_Emplace& node) override
         {
-            switch(gTargetVersion)
-            {
-            case TargetVersion::Rustc1_19:
+            if(TARGETVER_MOST_1_19)
                 return visit_emplace_119(node);
-            case TargetVersion::Rustc1_29:
-            case TargetVersion::Rustc1_39:
-                return visit_emplace_129(node);
-            }
-            throw "BUG: Unhandled target version";
+            return visit_emplace_129(node);
         }
         void visit_emplace_119(::HIR::ExprNode_Emplace& node)
         {

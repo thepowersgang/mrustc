@@ -20,6 +20,7 @@
 #include "../include/ident.hpp"
 #include "lifetime_ref.hpp"
 #include "types.hpp"
+#include "expr_ptr.hpp"
 
 #ifndef TYPES_HPP_COMPLETE
 # error "Expected TYPES_HPP_COMPLETE set"
@@ -47,6 +48,7 @@ class Enum;
 class Struct;
 class Union;
 class Trait;
+class TraitAlias;
 class Static;
 class Function;
 class ExternCrate;
@@ -172,6 +174,10 @@ TAGGED_UNION_EX(PathBinding_Type, (), Unbound, (
     (Trait,  struct {
         const Trait* trait_;
         const ::HIR::Trait* hir;
+        }),
+    (TraitAlias, struct {
+        const TraitAlias* trait_;
+        //const ::HIR::Trait* hir;
         }),
 
     (EnumVar, struct {
@@ -687,6 +693,7 @@ TAGGED_UNION_EX(PathParamEnt, (), Null, (
         }),
     (Lifetime, LifetimeRef),
     (Type, TypeRef),
+    (Value, AST::ExprNodeP),
     (AssociatedTyEqual, ::std::pair<RcString, TypeRef>),
     (AssociatedTyBound, ::std::pair<RcString, Path>)
     ),

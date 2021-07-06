@@ -706,6 +706,12 @@ namespace {
                             this->visit_type(t);
                             m_pmi.send_symbol(",");
                             }
+                        TU_ARMA(Value, n) {
+                            m_pmi.send_symbol("{");
+                            this->visit_node(*n);
+                            m_pmi.send_symbol("}");
+                            m_pmi.send_symbol(",");
+                            }
                         TU_ARMA(AssociatedTyEqual, a) {
                             m_pmi.send_ident(a.first.c_str());
                             m_pmi.send_symbol("=");

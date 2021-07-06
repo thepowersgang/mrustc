@@ -9,6 +9,7 @@
 #define _AST_ATTRS_HPP_
 
 #include <tagged_union.hpp>
+#include "expr_ptr.hpp"
 
 namespace AST {
 
@@ -50,23 +51,9 @@ public:
     friend ::std::ostream& operator<<(::std::ostream& os, const AttributeList& x);
 };
 
-class ExprNode;
-struct ExprNodeRaw {
-    ExprNode*   ptr;
-    ExprNodeRaw(::std::unique_ptr<ExprNode> n);
-    ~ExprNodeRaw();
-    ExprNodeRaw(ExprNodeRaw&& x): ptr(x.ptr) { x.ptr = nullptr; }
-    ExprNodeRaw& operator=(ExprNodeRaw&& x) { this->~ExprNodeRaw(); this->ptr = x.ptr; x.ptr = nullptr; }
-    ExprNodeRaw(const ExprNodeRaw& x) = delete;
-    ExprNodeRaw& operator=(const ExprNodeRaw&) = delete;
-
-    const ExprNode& operator*() const { assert(ptr); return *ptr; }
-    const ExprNode* operator->() const { assert(ptr); return ptr; }
-};
-
 TAGGED_UNION(AttributeData, None,
     (None, struct {}),
-    (ValueUnexpanded, ExprNodeRaw),
+    (ValueUnexpanded, AST::ExprNodeP),
     (String, struct { ::std::string val; }),
     (List,  struct { ::std::vector<Attribute> sub_items; })
     );

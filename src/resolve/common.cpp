@@ -268,6 +268,9 @@ namespace {
                         TU_ARMA(Trait, _e) {
                             return ResolveModuleRef();
                             }
+                        TU_ARMA(TraitAlias, _e) {
+                            return ResolveModuleRef();
+                            }
                         TU_ARMA(Type, _e) {
                             return ResolveModuleRef();
                             }
@@ -400,6 +403,7 @@ namespace {
             case AST::Item::TAG_Enum:
             case AST::Item::TAG_Union:
             case AST::Item::TAG_Trait:
+            case AST::Item::TAG_TraitAlias:
                 return ns == ResolveNamespace::Namespace;
             case AST::Item::TAG_Struct:
                 return ns == ResolveNamespace::Namespace || (ns == ResolveNamespace::Value && !i.as_Struct().m_data.is_Struct());

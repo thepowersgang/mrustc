@@ -70,17 +70,6 @@ const Attribute* AttributeList::get(const char *name) const
     return os;
 }
 
-ExprNodeRaw::ExprNodeRaw(::std::unique_ptr<ExprNode> n)
-    : ptr(n.release())
-{
-}
-ExprNodeRaw::~ExprNodeRaw()
-{
-    if(ptr)
-        delete ptr;
-    ptr = nullptr;
-}
-
 Attribute::Attribute(const Attribute& x):
     m_span(x.m_span),
     m_name(x.m_name),
@@ -408,6 +397,9 @@ Item Item::clone() const
         return AST::Item(e.clone());
         ),
     (Trait,
+        return AST::Item(e.clone());
+        ),
+    (TraitAlias,
         return AST::Item(e.clone());
         ),
 

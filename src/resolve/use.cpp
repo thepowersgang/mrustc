@@ -354,6 +354,9 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             TU_ARMA(Trait, e) {
                 rv.type.set(p, ::AST::PathBinding_Type::make_Trait({&e}));
                 }
+            TU_ARMA(TraitAlias, e) {
+                rv.type.set(p, ::AST::PathBinding_Type::make_TraitAlias({&e}));
+                }
 
             TU_ARMA(Function, e) {
                 rv.value.set(p, ::AST::PathBinding_Value::make_Function({&e}));

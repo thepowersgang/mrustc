@@ -136,7 +136,9 @@ public:
                     ;
                 else if( type == "tt" )
                     ty = MacroPatEnt::PAT_TT;
-                else if( type == "pat" )
+                else if( type == "pat" )    // 
+                    ty = MacroPatEnt::PAT_PAT;
+                else if( type == "pat_param" )  // Added between 39 and 54, explicitly excludes or-patterns
                     ty = MacroPatEnt::PAT_PAT;
                 else if( type == "ident" )
                     ty = MacroPatEnt::PAT_IDENT;
@@ -503,7 +505,9 @@ MacroRulesPtr Parse_MacroRules(TokenStream& lex)
     while( lex.lookahead(0) != TOK_EOF && lex.lookahead(0) != TOK_BRACE_CLOSE )
     {
         rules.push_back( Parse_MacroRules_Var(lex) );
-        if(GET_TOK(tok, lex) != TOK_SEMICOLON) {
+        GET_TOK(tok, lex);
+        // LAZY: `macro` allows comma (not `macro_rules!`) but this is strictly more permissive than rustc
+        if(tok.type() != TOK_SEMICOLON && tok.type() != TOK_COMMA ) {
             PUTBACK(tok,lex);
             break;
         }

@@ -144,7 +144,7 @@ class CCfgHandler:
             i = AST::Item::make_None({});
         }
     }
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, ::std::unique_ptr<AST::ExprNode>& expr) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, ::AST::ExprNodeP& expr) const override {
         DEBUG("#[cfg] expr - " << mi);
         if( check_cfg(sp, mi) ) {
             // Leave
