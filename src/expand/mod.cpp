@@ -937,7 +937,7 @@ struct CExpandExpr:
         switch(node.m_type)
         {
         case ::AST::ExprNode_BinOp::RANGE: {
-            // NOTE: Not language items
+            // NOTE: Not language items pre 1.39
             auto core_crate = crate.m_ext_cratename_core;
             auto path_Range     = ::AST::Path(core_crate, {::AST::PathNode("ops"), ::AST::PathNode("Range") });
             auto path_RangeFrom = ::AST::Path(core_crate, {::AST::PathNode("ops"), ::AST::PathNode("RangeFrom") });
@@ -968,7 +968,7 @@ struct CExpandExpr:
             replacement->set_span( node.span() );
             break; }
         case ::AST::ExprNode_BinOp::RANGE_INC: {
-            // NOTE: Not language items
+            // NOTE: Not language items pre 1.54
             auto core_crate = crate.m_ext_cratename_core;
             auto path_None = ::AST::Path(core_crate, { ::AST::PathNode("option"), ::AST::PathNode("Option"), ::AST::PathNode("None") });
             auto path_RangeInclusive_NonEmpty = ::AST::Path(core_crate, { ::AST::PathNode("ops"), ::AST::PathNode("RangeInclusive") });

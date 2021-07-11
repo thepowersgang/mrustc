@@ -24,6 +24,7 @@ enum eItemType
 
 void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::AbsolutePath& path, const ::std::string& name, eItemType type)
 {
+    const char* real_name = nullptr;    // For when lang items have their name changed
     if(name == "phantom_fn") {
         // - Just save path
     }
@@ -93,6 +94,9 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::AbsolutePath
 
     else if( TARGETVER_LEAST_1_54 && name == "pointee_trait") { }   // 1.54 - pointer metadata trait
     else if( TARGETVER_LEAST_1_54 && name == "dyn_metadata") { }    // 1.54 - `dyn Trait` metadata structure
+    else if( TARGETVER_LEAST_1_54 && name == "structural_peq") { }  // 1.54 - Structural equality trait (partial)
+    else if( TARGETVER_LEAST_1_54 && name == "structural_teq") { }  // 1.54 - Structural equality trait (total)
+    else if( TARGETVER_LEAST_1_54 && name == "discriminant_kind") { }  // 1.54 - trait: used for the `discriminant_kind` intrinsic
 
     // Structs
     else if( name == "non_zero" ) { }
@@ -101,9 +105,16 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::AbsolutePath
     else if( name == "range" ) { }
     else if( name == "range_from" ) { }
     else if( name == "range_to" ) { }
+    else if( TARGETVER_LEAST_1_54 && name == "RangeFull" ) { real_name = "range_full"; }
+    else if( TARGETVER_LEAST_1_54 && name == "Range" ) { real_name = "range"; }
+    else if( TARGETVER_LEAST_1_54 && name == "RangeFrom" ) { real_name = "range_from"; }
+    else if( TARGETVER_LEAST_1_54 && name == "RangeTo" ) { real_name = "range_to"; }
+    else if( TARGETVER_LEAST_1_54 && name == "RangeInclusive" ) { real_name = "range_inclusive"; }
+    else if( TARGETVER_LEAST_1_54 && name == "RangeToInclusive" ) { real_name = "range_to_inclusive"; }
     else if( name == "unsafe_cell" ) { }
     else if( TARGETVER_LEAST_1_29 && name == "alloc_layout") { }
     else if( TARGETVER_LEAST_1_29 && name == "panic_info" ) {}    // Struct
+    else if( TARGETVER_LEAST_1_54 && name == "panic_location" ) {}    // Struct
     else if( TARGETVER_LEAST_1_29 && name == "manually_drop" ) {}    // Struct
 
     else if( TARGETVER_LEAST_1_39 && name == "arc" ) {}    // Struct
@@ -127,6 +138,9 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::AbsolutePath
     else if( TARGETVER_LEAST_1_29 && name == "generator" ) {}   // - Trait
     else if( TARGETVER_LEAST_1_29 && name == "generator_state" ) {}   // - State enum
 
+    // Try
+    else if( TARGETVER_LEAST_1_54 && name == "Try" ) { real_name = "try"; }
+
     // Statics
     else if( name == "msvc_try_filter" ) { }
 
@@ -144,6 +158,7 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::AbsolutePath
     else if( name == "drop_in_place" ) { }
     else if( name == "align_offset" ) { }
     else if( TARGETVER_LEAST_1_39 && name == "begin_panic" ) {}    // Function
+    else if( TARGETVER_LEAST_1_54 && name == "panic_str") {}
     // - builtin `box` support
     else if( name == "exchange_malloc" ) { }
     else if( name == "exchange_free" ) { }
@@ -190,7 +205,7 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::AbsolutePath
         return ;
     }
 
-    auto rv = crate.m_lang_items.insert( ::std::make_pair(name, path) );
+    auto rv = crate.m_lang_items.insert( ::std::make_pair(real_name == nullptr ? name : real_name, path) );
     if( !rv.second ) {
         const auto& other_path = rv.first->second;
         if( path != other_path ) {
@@ -242,6 +257,15 @@ public:
             }
         }
     }
+    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, const AST::AbsolutePath& path, AST::Trait& trait, slice<const AST::Attribute> attrs, AST::Item&i) const override {
+        // TODO: Trait ATYs (a sub-item of others)
+    }
+    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, ::AST::EnumVariant& ev) const override {
+        // TODO: Enum variants (sub-item of other lang items)
+    }
+    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, AST::Impl& impl, const RcString& name, slice<const AST::Attribute> attrs, AST::Item&i) const override {
+        // TODO: lang items on associated items (e.g. functions - `RangeFull::new`)
+    }
 
     void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, const AST::Module& mod, AST::ImplDef& impl) const override {
         const ::std::string& name = mi.string();
@@ -262,6 +286,7 @@ public:
         else if( name == "mut_ptr" ) {}
         else if( TARGETVER_LEAST_1_54 && name == "const_slice_ptr" ) {}
         else if( TARGETVER_LEAST_1_54 && name == "mut_slice_ptr" ) {}
+        else if( TARGETVER_LEAST_1_54 && name == "array" ) {}
         else if( /*TARGETVER_1_39 &&*/ name == "bool" ) {}
         // rustc_unicode
         else if( name == "char" ) {}

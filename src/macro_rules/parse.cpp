@@ -122,8 +122,9 @@ public:
                 // NOTE: Allow any reserved word
                 if( !Token::type_is_rword(tok.type()) )
                     throw ParseError::Unexpected(lex, tok);
+            case TOK_UNDERSCORE:
             case TOK_IDENT: {
-                auto name = tok.type() == TOK_IDENT ? tok.ident().name : RcString::new_interned(tok.to_str());
+                auto name = tok.type() == TOK_IDENT ? tok.ident().name : (tok.type() == TOK_UNDERSCORE ? RcString() : RcString::new_interned(tok.to_str()));
                 GET_CHECK_TOK(tok, lex, TOK_COLON);
                 GET_CHECK_TOK(tok, lex, TOK_IDENT);
                 RcString type = tok.ident().name;

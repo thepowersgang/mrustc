@@ -1127,6 +1127,7 @@ namespace
             case TOK_DOUBLE_COLON:
             case TOK_RWORD_SELF:
             case TOK_RWORD_SUPER:
+            case TOK_RWORD_CRATE:
             case TOK_LT:
             case TOK_DOUBLE_LT:
                 if( !consume_path(lex) )
