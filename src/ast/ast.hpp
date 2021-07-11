@@ -45,17 +45,6 @@ using ::std::move;
 
 typedef bool    Visibility;
 
-enum eItemType
-{
-    ITEM_TRAIT,
-    ITEM_STRUCT,
-    ITEM_ENUM,
-    ITEM_UNION,
-    ITEM_FN,
-    ITEM_EXTERN_FN,
-    ITEM_STATIC,
-};
-
 struct StructItem
 {
     ::AST::AttributeList   m_attrs;

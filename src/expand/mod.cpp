@@ -54,6 +54,7 @@ void Expand_Init()
     // TODO: Initialise all macros here.
     void Expand_init_assert(); Expand_init_assert();
     void Expand_init_std_prelude(); Expand_init_std_prelude();
+    void Expand_init_panic(); Expand_init_panic();
 
     // Fill macro/decorator map from init list
     while(g_decorators_list)
@@ -136,6 +137,24 @@ void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::AST::Cr
         if(!item.is_None()) {
             // TODO: Pass attributes _after_ this attribute
             d.handle(sp, a, crate, path, mod, slice<const AST::Attribute>(&a, &attrs.m_items.back() - &a + 1), item);
+        }
+        });
+}
+void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::AST::Crate& crate, const ::AST::AbsolutePath& path, ::AST::Trait& trait, ::AST::Item& item)
+{
+    Expand_Attrs(attrs, stage,  [&](const auto& sp, const auto& d, const auto& a){
+        if(!item.is_None()) {
+            // TODO: Pass attributes _after_ this attribute
+            d.handle(sp, a, crate, path, trait, slice<const AST::Attribute>(&a, &attrs.m_items.back() - &a + 1), item);
+        }
+        });
+}
+void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::AST::Crate& crate, ::AST::Impl& impl, const RcString& name, ::AST::Item& item)
+{
+    Expand_Attrs(attrs, stage,  [&](const auto& sp, const auto& d, const auto& a){
+        if(!item.is_None()) {
+            // TODO: Pass attributes _after_ this attribute
+            d.handle(sp, a, crate, impl, name, slice<const AST::Attribute>(&a, &attrs.m_items.back() - &a + 1), item);
         }
         });
 }
@@ -1143,7 +1162,7 @@ void Expand_Impl(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST:
 
         auto attrs = mv$(i.attrs);
         Expand_Attrs_CfgAttr(attrs);
-        Expand_Attrs(attrs, AttrStage::Pre,  crate, path, mod, *i.data);
+        Expand_Attrs(attrs, AttrStage::Pre,  crate, impl, i.name, *i.data);
 
         TU_MATCH_HDRA( (*i.data), {)
         default:
@@ -1195,7 +1214,7 @@ void Expand_Impl(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST:
         // Run post-expansion decorators and restore attributes
         {
             auto& i = impl.items()[idx];
-            Expand_Attrs(attrs, AttrStage::Post,  crate, path, mod, *i.data); // TODO: UFCS path
+            Expand_Attrs(attrs, AttrStage::Post,  crate, impl, i.name, *i.data);
             // TODO: How would this be populated? It got moved out?
             if( i.attrs.m_items.size() == 0 )
                 i.attrs = mv$(attrs);
@@ -1522,7 +1541,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                 auto attrs = mv$(ti.attrs);
                 auto ti_path = path + ti.name;
                 Expand_Attrs_CfgAttr(attrs);
-                Expand_Attrs(attrs, AttrStage::Pre,  crate, ti_path, mod, ti.data);
+                Expand_Attrs(attrs, AttrStage::Pre,  crate, ti_path, e, ti.data);
 
                 TU_MATCH_HDRA( (ti.data), {)
                 default:
@@ -1574,7 +1593,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                 {
                     auto& ti = trait_items[idx];
 
-                    Expand_Attrs(attrs, AttrStage::Post,  crate, ti_path, mod, ti.data);
+                    Expand_Attrs(attrs, AttrStage::Post,  crate, ti_path, e, ti.data);
                     if( ti.attrs.m_items.size() == 0 )
                         ti.attrs = mv$(attrs);
                 }

@@ -491,6 +491,9 @@ namespace {
                     switch(ns)
                     {
                     case ResolveNamespace::Macro:
+                        if(const auto* mac = i->data.opt_Macro()) {
+                            return ResolveItemRef_Macro(&**mac);
+                        }
                         DEBUG("- Ignoring macro");
                         break;
                     case ResolveNamespace::Namespace:
@@ -745,12 +748,14 @@ ResolveItemRef_Macro Resolve_Lookup_Macro(const Span& span, const AST::Crate& cr
         auto rv = rs.find_item(*mod_ptr, item_name, ResolveNamespace::Macro, out_path);
         if( rv.is_None() )
             return ResolveItemRef_Macro::make_None({});
+        ASSERT_BUG(span, rv.is_Macro(), rv.tag_str());
         return std::move( rv.as_Macro() );
         }
     TU_ARMA(Hir, mod_ptr) {
         auto rv = rs.find_item_hir(*mod_ptr, item_name, ResolveNamespace::Macro, out_path);
         if( rv.is_None() )
             return ResolveItemRef_Macro::make_None({});
+        ASSERT_BUG(span, rv.is_Macro(), rv.tag_str());
         return std::move( rv.as_Macro() );
         }
     TU_ARMA(ImplicitPrelude, _e)

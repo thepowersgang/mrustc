@@ -33,9 +33,10 @@ namespace
     }
 }
 
-class CAsmExpander:
+class CLlvmAsmExpander:
     public ExpandProcMacro
 {
+public:
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const ::AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
         Token   tok;
@@ -192,4 +193,20 @@ class CAsmExpander:
     }
 };
 
+class CAsmExpander:
+    public ExpandProcMacro
+{
+public:
+    ::std::unique_ptr<TokenStream> expand(const Span& sp, const ::AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
+    {
+        if(TARGETVER_MOST_1_29)
+            return CLlvmAsmExpander().expand(sp, crate, tt, mod);
+
+        // Stabilisation-path `asm!`
+
+        TODO(sp, "asm!");
+    }
+};
+
+STATIC_MACRO("llvm_asm", CLlvmAsmExpander);
 STATIC_MACRO("asm", CAsmExpander);

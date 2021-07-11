@@ -10,8 +10,19 @@
 #include "../ast/ast.hpp"
 #include "../ast/crate.hpp"
 
+enum eItemType
+{
+    ITEM_TRAIT,
+    ITEM_STRUCT,
+    ITEM_ENUM,
+    ITEM_UNION,
+    ITEM_FN,
+    ITEM_EXTERN_FN,
+    ITEM_STATIC,
+    ITEM_TYPE_ALIAS,
+};
 
-void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::AbsolutePath& path, const ::std::string& name, AST::eItemType type)
+void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::AbsolutePath& path, const ::std::string& name, eItemType type)
 {
     if(name == "phantom_fn") {
         // - Just save path
@@ -79,6 +90,9 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::AbsolutePath
     else if( name == "debug_trait" ) { /* TODO: Poke derive() with this */ }
 
     else if( TARGETVER_LEAST_1_29 && name == "termination" ) { }    // 1.29 - trait used for non-() main
+
+    else if( TARGETVER_LEAST_1_54 && name == "pointee_trait") { }   // 1.54 - pointer metadata trait
+    else if( TARGETVER_LEAST_1_54 && name == "dyn_metadata") { }    // 1.54 - `dyn Trait` metadata structure
 
     // Structs
     else if( name == "non_zero" ) { }
@@ -170,7 +184,7 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::AbsolutePath
         ERROR(sp, E0000, "Unknown language item '" << name << "'");
     }
 
-    if( type == AST::ITEM_EXTERN_FN )
+    if( type == ITEM_EXTERN_FN )
     {
         // TODO: This should force a specific link name instead
         return ;
@@ -193,37 +207,40 @@ public:
     AttrStage stage() const override { return AttrStage::Post; }
     void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
-        TU_MATCH_DEF(::AST::Item, (i), (e),
-        (
+        TU_MATCH_HDRA( (i), {)
+        default:
             TODO(sp, "Unknown item type " << i.tag_str() << " with #["<<attr<<"] attached at " << path);
-            ),
-        (None,
+            break;
+        TU_ARMA(None, e) {
             // NOTE: Can happen when #[cfg] removed this
-            ),
-        (Function,
+            }
+        TU_ARMA(Function, e) {
             if( e.code().is_valid() ) {
-                handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_FN);
+                handle_lang_item(sp, crate, path, attr.string(), ITEM_FN);
             }
             else {
-                handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_EXTERN_FN);
+                handle_lang_item(sp, crate, path, attr.string(), ITEM_EXTERN_FN);
             }
-            ),
-        (Static,
-            handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_STATIC);
-            ),
-        (Struct,
-            handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_STRUCT);
-            ),
-        (Enum,
-            handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_ENUM);
-            ),
-        (Union,
-            handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_UNION);
-            ),
-        (Trait,
-            handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_TRAIT);
-            )
-        )
+            }
+        TU_ARMA(Type, e) {
+            handle_lang_item(sp, crate, path, attr.string(), ITEM_TYPE_ALIAS);
+            }
+        TU_ARMA(Static, e) {
+            handle_lang_item(sp, crate, path, attr.string(), ITEM_STATIC);
+            }
+        TU_ARMA(Struct, e) {
+            handle_lang_item(sp, crate, path, attr.string(), ITEM_STRUCT);
+            }
+        TU_ARMA(Enum, e) {
+            handle_lang_item(sp, crate, path, attr.string(), ITEM_ENUM);
+            }
+        TU_ARMA(Union, e) {
+            handle_lang_item(sp, crate, path, attr.string(), ITEM_UNION);
+            }
+        TU_ARMA(Trait, e) {
+            handle_lang_item(sp, crate, path, attr.string(), ITEM_TRAIT);
+            }
+        }
     }
 
     void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, const AST::Module& mod, AST::ImplDef& impl) const override {
@@ -243,6 +260,8 @@ public:
         else if( name == "usize" ) {}
         else if( name == "const_ptr" ) {}
         else if( name == "mut_ptr" ) {}
+        else if( TARGETVER_LEAST_1_54 && name == "const_slice_ptr" ) {}
+        else if( TARGETVER_LEAST_1_54 && name == "mut_slice_ptr" ) {}
         else if( /*TARGETVER_1_39 &&*/ name == "bool" ) {}
         // rustc_unicode
         else if( name == "char" ) {}
