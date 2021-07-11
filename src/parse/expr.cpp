@@ -921,6 +921,23 @@ ExprNodeP Parse_Expr13(TokenStream& lex)
         // HACK: Split && into & &
         lex.putback( Token(TOK_AMP) );
     case TOK_AMP:
+        if( lex.lookahead(0) == TOK_IDENT )
+        {
+            GET_TOK(tok, lex);
+            if(tok.ident() == "raw") {
+                if( lex.lookahead(0) == TOK_RWORD_MUT ) {
+                    GET_TOK(tok, lex);
+                    return NEWNODE( AST::ExprNode_UniOp, AST::ExprNode_UniOp::RawBorrowMut, Parse_Expr12(lex) );
+                }
+                else if( lex.lookahead(0) == TOK_RWORD_CONST ) {
+                    GET_TOK(tok, lex);
+                    return NEWNODE( AST::ExprNode_UniOp, AST::ExprNode_UniOp::RawBorrow, Parse_Expr12(lex) );
+                }
+                else {
+                }
+            }
+            PUTBACK(tok, lex);
+        }
         if( GET_TOK(tok, lex) == TOK_RWORD_MUT )
             return NEWNODE( AST::ExprNode_UniOp, AST::ExprNode_UniOp::REFMUT, Parse_Expr12(lex) );
         else {

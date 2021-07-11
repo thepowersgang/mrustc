@@ -567,6 +567,8 @@ public:
         case AST::ExprNode_UniOp::BOX:      m_os << "box ";    break;
         case AST::ExprNode_UniOp::REF:    m_os << "&";    break;
         case AST::ExprNode_UniOp::REFMUT: m_os << "&mut ";    break;
+        case AST::ExprNode_UniOp::RawBorrow:    m_os << "&raw const "; break;
+        case AST::ExprNode_UniOp::RawBorrowMut: m_os << "&raw mut "; break;
         case AST::ExprNode_UniOp::QMARK: break;
         }
 

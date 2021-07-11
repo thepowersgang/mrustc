@@ -625,6 +625,8 @@ struct ExprNode_UniOp:
     enum Type {
         REF,    // '& <expr>'
         REFMUT, // '&mut <expr>'
+        RawBorrow,
+        RawBorrowMut,
         BOX,    // 'box <expr>'
         INVERT, // '!<expr>'
         NEGATE, // '-<expr>'

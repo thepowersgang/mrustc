@@ -208,9 +208,12 @@ struct LowerHIR_ExprNode_Visitor:
             break;
 
         case ::AST::ExprNode_UniOp::REF:
+        case ::AST::ExprNode_UniOp::RawBorrow:
             m_rv.reset(new ::HIR::ExprNode_Borrow(v.span(), ::HIR::BorrowType::Shared, lower( v.m_value ) ));
             break;
         case ::AST::ExprNode_UniOp::REFMUT:
+        case ::AST::ExprNode_UniOp::RawBorrowMut:
+            // TODO: Encode raw borrows in HIR too
             m_rv.reset(new ::HIR::ExprNode_Borrow(v.span(), ::HIR::BorrowType::Unique, lower( v.m_value ) ));
             break;
 

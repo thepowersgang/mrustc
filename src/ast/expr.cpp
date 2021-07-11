@@ -482,6 +482,8 @@ NODE(ExprNode_UniOp, {
     case BOX: os << "(box "; break;
     case REF: os << "(&"; break;
     case REFMUT: os << "(&mut "; break;
+    case RawBorrow: os << "(&raw const "; break;
+    case RawBorrowMut: os << "(&raw mut "; break;
     case QMARK: os << "(" << *m_value << "?)"; return;
     }
     os << *m_value << ")";
