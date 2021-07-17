@@ -22,95 +22,143 @@ enum eItemType
     ITEM_TYPE_ALIAS,
 };
 
+struct Handler {
+    typedef void (*cb_t)(const Span& sp, AST::Crate& crate, const std::string&, AST::AbsolutePath);
+    eItemType type;
+    cb_t    cb;
+    Handler(eItemType type, cb_t cb): type(type), cb(cb) {}
+};
+struct StrcmpTy {
+    bool operator()(const char* a, const char* b) const { return std::strcmp(a,b) < 0; }
+};
+static std::map<const char*,Handler,StrcmpTy>   g_handlers;
+
+void handle_save(const Span& sp, AST::Crate& crate, const std::string& name, AST::AbsolutePath path)
+{
+    auto rv = crate.m_lang_items.insert( ::std::make_pair(name, path) );
+    if( !rv.second ) {
+        const auto& other_path = rv.first->second;
+        if( path != other_path ) {
+            // HACK: Anon modules get visited twice, so can lead to duplicate annotations
+            ERROR(sp, E0000, "Duplicate definition of language item '" << name << "' - " << other_path << " and " << path);
+        }
+    }
+    else {
+        DEBUG("Bind '"<<name<<"' to " << path);
+    }
+}
 void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::AbsolutePath& path, const ::std::string& name, eItemType type)
 {
+    // NOTE: MSVC has a limit to the number of if-else chains
+    if(g_handlers.empty())
+    {
+        struct H {
+            static void add(const char* n, Handler h) {
+                g_handlers.insert(std::make_pair(n, std::move(h)));
+            }
+        };
+        H::add("phantom_fn", Handler(ITEM_FN, handle_save));
+        H::add("send" , Handler(ITEM_TRAIT, handle_save));
+        H::add("sync" , Handler(ITEM_TRAIT, handle_save));
+        H::add("sized", Handler(ITEM_TRAIT, handle_save));
+        H::add("copy" , Handler(ITEM_TRAIT, handle_save));
+        if( TARGETVER_LEAST_1_29 )
+        {
+            H::add("clone", Handler(ITEM_TRAIT, handle_save));
+        }
+        // ops traits
+        H::add("drop", Handler(ITEM_TRAIT, handle_save));
+        H::add("add", Handler(ITEM_TRAIT, handle_save));
+        H::add("sub", Handler(ITEM_TRAIT, handle_save));
+        H::add("mul", Handler(ITEM_TRAIT, handle_save));
+        H::add("div", Handler(ITEM_TRAIT, handle_save));
+        H::add("rem", Handler(ITEM_TRAIT, handle_save));
+
+        H::add("neg", Handler(ITEM_TRAIT, handle_save));
+        H::add("not", Handler(ITEM_TRAIT, handle_save));
+
+        H::add("bitand", Handler(ITEM_TRAIT, handle_save));
+        H::add("bitor" , Handler(ITEM_TRAIT, handle_save));
+        H::add("bitxor", Handler(ITEM_TRAIT, handle_save));
+        H::add("shl", Handler(ITEM_TRAIT, handle_save));
+        H::add("shr", Handler(ITEM_TRAIT, handle_save));
+
+        H::add("add_assign", Handler(ITEM_TRAIT, handle_save));
+        H::add("sub_assign", Handler(ITEM_TRAIT, handle_save));
+        H::add("div_assign", Handler(ITEM_TRAIT, handle_save));
+        H::add("rem_assign", Handler(ITEM_TRAIT, handle_save));
+        H::add("mul_assign", Handler(ITEM_TRAIT, handle_save));
+        H::add("bitand_assign", Handler(ITEM_TRAIT, handle_save));
+        H::add("bitor_assign", Handler(ITEM_TRAIT, handle_save));
+        H::add("bitxor_assign", Handler(ITEM_TRAIT, handle_save));
+        H::add("shl_assign", Handler(ITEM_TRAIT, handle_save));
+        H::add("shr_assign", Handler(ITEM_TRAIT, handle_save));
+
+        H::add("index", Handler(ITEM_TRAIT, handle_save));
+        H::add("deref", Handler(ITEM_TRAIT, handle_save));
+        H::add("index_mut", Handler(ITEM_TRAIT, handle_save));
+        H::add("deref_mut", Handler(ITEM_TRAIT, handle_save));
+        H::add("fn"     , Handler(ITEM_TRAIT, handle_save));
+        H::add("fn_mut" , Handler(ITEM_TRAIT, handle_save));
+        H::add("fn_once", Handler(ITEM_TRAIT, handle_save));
+
+        H::add("eq" , Handler(ITEM_TRAIT, handle_save));
+        H::add("ord", Handler(ITEM_TRAIT, handle_save));	// In 1.29 this is Ord, before it was PartialOrd
+        if( TARGETVER_LEAST_1_29 )
+            H::add("partial_ord", Handler(ITEM_TRAIT, handle_save));    // New name for v1.29
+
+        H::add("unsize"        , Handler(ITEM_TRAIT, handle_save));
+        H::add("coerce_unsized", Handler(ITEM_TRAIT, handle_save));
+        H::add("freeze", Handler(ITEM_TRAIT, handle_save));    // TODO: What version?
+
+        H::add("iterator", Handler(ITEM_TRAIT, handle_save));  /* mrustc just desugars? */
+        H::add("debug_trait", Handler(ITEM_TRAIT, handle_save));   /* TODO: Poke derive() with this */
+
+        if( TARGETVER_LEAST_1_29 )
+            H::add("termination", Handler(ITEM_TRAIT, handle_save));   // 1.29 - trait used for non-() main
+
+        if(TARGETVER_LEAST_1_54)
+        {
+            H::add("pointee_trait", Handler(ITEM_TRAIT, handle_save));  // 1.54 - pointer metadata trait
+            H::add("dyn_metadata", Handler(ITEM_STRUCT, handle_save));  // 1.54 - `dyn Trait` metadata structure
+            H::add("structural_peq", Handler(ITEM_TRAIT, handle_save)); // 1.54 - Structural equality trait (partial)
+            H::add("structural_teq", Handler(ITEM_TRAIT, handle_save)); // 1.54 - Structural equality trait (total)
+            H::add("discriminant_kind", Handler(ITEM_TRAIT, handle_save));  // 1.54 - trait: used for the `discriminant_kind` intrinsic
+        }
+
+
+        H::add("non_zero", Handler(ITEM_STRUCT, handle_save));
+        H::add("phantom_data", Handler(ITEM_STRUCT, handle_save));
+
+        if(TARGETVER_LEAST_1_54)
+        {
+            H::add("RangeFull", Handler(ITEM_STRUCT, [](const auto& sp, auto& crate, const auto& , auto p){ handle_save(sp, crate, "range_full", p); }));
+            H::add("Range"    , Handler(ITEM_STRUCT, [](const auto& sp, auto& crate, const auto& , auto p){ handle_save(sp, crate, "range"     , p); }));
+            H::add("RangeFrom", Handler(ITEM_STRUCT, [](const auto& sp, auto& crate, const auto& , auto p){ handle_save(sp, crate, "range_from", p); }));
+            H::add("RangeTo"  , Handler(ITEM_STRUCT, [](const auto& sp, auto& crate, const auto& , auto p){ handle_save(sp, crate, "range_to"  , p); }));
+            H::add("RangeInclusive"  , Handler(ITEM_STRUCT, [](const auto& sp, auto& crate, const auto& , auto p){ handle_save(sp, crate, "range_inclusive"   , p); }));
+            H::add("RangeToInclusive", Handler(ITEM_STRUCT, [](const auto& sp, auto& crate, const auto& , auto p){ handle_save(sp, crate, "range_to_inclusive", p); }));
+        }
+        else
+        {
+            H::add("range_full", Handler(ITEM_STRUCT, handle_save));
+            H::add("range"     , Handler(ITEM_STRUCT, handle_save));
+            H::add("range_from", Handler(ITEM_STRUCT, handle_save));
+            H::add("range_to"  , Handler(ITEM_STRUCT, handle_save));
+        }
+    }
     const char* real_name = nullptr;    // For when lang items have their name changed
-    if(name == "phantom_fn") {
-        // - Just save path
+    auto it = g_handlers.find(name.c_str());
+    if( it != g_handlers.end() )
+    {
+        if(type != it->second.type) {
+            ERROR(sp, E0000, "Language item '" << name << "' " << path << " - on incorrect item type " << type << " != " << it->second.type);
+        }
+        it->second.cb(sp, crate, name, path);
+        return ;
     }
-    else if( name == "send" ) {
-        // Don't care, Send is fully library in mrustc
-        // - Needed for `static`
-    }
-    else if( name == "sync" ) {
-        // Don't care, Sync is fully library in mrustc
-        // - Needed for `static`
-    }
-    else if( name == "sized" ) {
-        DEBUG("Bind 'sized' to " << path);
-    }
-    else if( name == "copy" ) {
-        DEBUG("Bind 'copy' to " << path);
-    }
-    else if( TARGETVER_LEAST_1_29 && name == "clone" ) {}   // - Trait
-    // ops traits
-    else if( name == "drop" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "add" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "sub" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "mul" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "div" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "rem" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-
-    else if( name == "neg" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "not" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-
-    else if( name == "bitand" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "bitor"  ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "bitxor" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "shl" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "shr" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-
-    else if( name == "add_assign" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "sub_assign" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "div_assign" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "rem_assign" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "mul_assign" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "bitand_assign" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "bitor_assign" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "bitxor_assign" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "shl_assign" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "shr_assign" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-
-    else if( name == "index" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "deref" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "index_mut" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "deref_mut" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "fn"      ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "fn_mut"  ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "fn_once" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-
-    else if( name == "eq"  ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "ord" ) { DEBUG("Bind '"<<name<<"' to " << path); }	// In 1.29 this is Ord, before it was PartialOrd
-    else if( TARGETVER_LEAST_1_29 && name == "partial_ord" ) { DEBUG("Bind '"<<name<<"' to " << path); }    // New name for v1.29
-    else if( name == "unsize" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "coerce_unsized" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "freeze" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-
-    else if( name == "iterator" ) { /* mrustc just desugars? */ }
-
-    else if( name == "debug_trait" ) { /* TODO: Poke derive() with this */ }
-
-    else if( TARGETVER_LEAST_1_29 && name == "termination" ) { }    // 1.29 - trait used for non-() main
-
-    else if( TARGETVER_LEAST_1_54 && name == "pointee_trait") { }   // 1.54 - pointer metadata trait
-    else if( TARGETVER_LEAST_1_54 && name == "dyn_metadata") { }    // 1.54 - `dyn Trait` metadata structure
-    else if( TARGETVER_LEAST_1_54 && name == "structural_peq") { }  // 1.54 - Structural equality trait (partial)
-    else if( TARGETVER_LEAST_1_54 && name == "structural_teq") { }  // 1.54 - Structural equality trait (total)
-    else if( TARGETVER_LEAST_1_54 && name == "discriminant_kind") { }  // 1.54 - trait: used for the `discriminant_kind` intrinsic
 
     // Structs
-    else if( name == "non_zero" ) { }
-    else if( name == "phantom_data" ) { }
-    else if( name == "range_full" ) { }
-    else if( name == "range" ) { }
-    else if( name == "range_from" ) { }
-    else if( name == "range_to" ) { }
-    else if( TARGETVER_LEAST_1_54 && name == "RangeFull" ) { real_name = "range_full"; }
-    else if( TARGETVER_LEAST_1_54 && name == "Range" ) { real_name = "range"; }
-    else if( TARGETVER_LEAST_1_54 && name == "RangeFrom" ) { real_name = "range_from"; }
-    else if( TARGETVER_LEAST_1_54 && name == "RangeTo" ) { real_name = "range_to"; }
-    else if( TARGETVER_LEAST_1_54 && name == "RangeInclusive" ) { real_name = "range_inclusive"; }
-    else if( TARGETVER_LEAST_1_54 && name == "RangeToInclusive" ) { real_name = "range_to_inclusive"; }
     else if( name == "unsafe_cell" ) { }
     else if( TARGETVER_LEAST_1_29 && name == "alloc_layout") { }
     else if( TARGETVER_LEAST_1_29 && name == "panic_info" ) {}    // Struct
@@ -126,6 +174,8 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::AbsolutePath
     else if( /*TARGETVER_1_39 &&*/ name == "unpin" ) {}    // Trait
     else if( /*TARGETVER_1_39 &&*/ name == "pin" ) {}    // Struct
     else if( /*TARGETVER_1_39 &&*/ name == "future_trait" ) {}    // Trait
+    else if( TARGETVER_LEAST_1_54 && name == "from_generator" ) {}    // Function
+    else if( TARGETVER_LEAST_1_54 && name == "get_context" ) {}    // Function
 
     // Variable argument lists
     else if( /*TARGETVER_1_39 &&*/ name == "va_list" ) {}    // Struct
