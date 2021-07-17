@@ -17,6 +17,7 @@
 #include "pattern.hpp"
 #include "attrs.hpp"
 #include "expr_ptr.hpp"
+#include "../hir/asm.hpp"
 
 namespace AST {
 
@@ -108,7 +109,7 @@ struct ExprNode_Macro:
     NODE_METHODS();
 };
 
-// asm! macro
+// llvm_asm! macro
 struct ExprNode_Asm:
     public ExprNode
 {
@@ -130,6 +131,40 @@ struct ExprNode_Asm:
         m_input( move(input) ),
         m_clobbers( move(clobbers) ),
         m_flags( move(flags) )
+    {
+    }
+
+    NODE_METHODS();
+};
+
+// asm! macro
+struct ExprNode_Asm2:
+    public ExprNode
+{
+    TAGGED_UNION(Param, Const,
+        (Const, AST::ExprNodeP),
+        (Sym, AST::Path),
+        (RegSingle, struct {
+            AsmCommon::Direction    dir;
+            AsmCommon::RegisterSpec spec;
+            AST::ExprNodeP  val;
+            }),
+        (Reg, struct {
+            AsmCommon::Direction    dir;
+            AsmCommon::RegisterSpec spec;
+            AST::ExprNodeP  val_in;
+            AST::ExprNodeP  val_out;
+            })
+        );
+
+    AsmCommon::Options  m_options;
+    std::vector<AsmCommon::Line>   m_lines;
+    std::vector<Param>  m_params;
+
+    ExprNode_Asm2(AsmCommon::Options options, std::vector<AsmCommon::Line> lines, std::vector<Param> params)
+        : m_options(options)
+        , m_lines( move(lines) )
+        , m_params( move(params) )
     {
     }
 
@@ -664,6 +699,7 @@ public:
     NT(ExprNode_Try);
     NT(ExprNode_Macro);
     NT(ExprNode_Asm);
+    NT(ExprNode_Asm2);
     NT(ExprNode_Flow);
     NT(ExprNode_LetBinding);
     NT(ExprNode_Assign);
@@ -712,6 +748,7 @@ public:
     NT(ExprNode_Try);
     NT(ExprNode_Macro);
     NT(ExprNode_Asm);
+    NT(ExprNode_Asm2);
     NT(ExprNode_Flow);
     NT(ExprNode_LetBinding);
     NT(ExprNode_Assign);

@@ -7,6 +7,7 @@
  */
 #include "expr.hpp"
 #include "ast.hpp"
+#include <cctype>
 
 namespace AST {
 
@@ -121,7 +122,7 @@ NODE(ExprNode_Macro, {
 })
 
 NODE(ExprNode_Asm, {
-    os << "asm!( \"" << m_text << "\"";
+    os << "llvm_asm!( \"" << m_text << "\"";
     os << " :";
     for(const auto& v : m_output)
         os << " \"" << v.name << "\" (" << *v.value << "),";
@@ -143,6 +144,72 @@ NODE(ExprNode_Asm, {
     for(const auto& v : m_input)
         inputs.push_back( ExprNode_Asm::ValRef { v.name, v.value->clone() });
     return NEWNODE(ExprNode_Asm, m_text, mv$(outputs), mv$(inputs), m_clobbers, m_flags);
+})
+}
+
+namespace {
+    void print_fmt_string(std::ostream& os, const std::string& s) {
+        static const char* hex = "0123456789ABCDEF";
+        for(auto c : s) {
+            if( c == '{' )
+                os << "{{";
+            else if( c == '\\' )
+                os << "\\\\";
+            else if( std::isprint(c) )
+                os << c;
+            else
+                os << "\\x" << hex[c >> 4] << hex[c & 15];
+        }
+    }
+}
+void AsmCommon::Line::fmt(std::ostream& os) const {
+    os << "\"";
+    for(const auto& f : this->frags)
+    {
+        print_fmt_string(os, f.before);
+        os << "{" << f.index;
+        if(f.modifier)
+            os << ":" << f.modifier;
+        os << "}";
+    }
+    print_fmt_string(os, this->trailing);
+    os << "\"";
+}
+
+namespace AST {
+NODE(ExprNode_Asm2, {
+    os << "asm!( ";
+    for(const auto& l : m_lines)
+    {
+        l.fmt(os);
+        os << ", ";
+    }
+    for(const auto& p : m_params)
+    {
+    }
+    os << " )";
+},{
+    std::vector<Param>  params;
+
+    for(const auto& p : m_params)
+    {
+        TU_MATCH_HDRA( (p), { )
+        TU_ARMA(Const, e) {
+            params.push_back(Param::make_Const(e->clone()));
+            }
+        TU_ARMA(Sym, e) {
+            params.push_back(Param::make_Sym(e));
+            }
+        TU_ARMA(RegSingle, e) {
+            params.push_back(Param::make_RegSingle({ e.dir, e.spec.clone(), e.val->clone() }));
+            }
+        TU_ARMA(Reg, e) {
+            params.push_back(Param::make_Reg({ e.dir, e.spec.clone(), e.val_in ? e.val_in->clone() : nullptr, e.val_out ? e.val_out->clone() : nullptr }));
+            }
+        }
+    }
+
+    return NEWNODE(ExprNode_Asm2, m_options, m_lines, std::move(params));
 })
 
 NODE(ExprNode_Flow, {
@@ -515,6 +582,27 @@ NV(ExprNode_Asm,
         visit(v.value);
     for(auto& v : node.m_input)
         visit(v.value);
+})
+NV(ExprNode_Asm2,
+{
+    for(auto& v : node.m_params)
+    {
+        TU_MATCH_HDRA((v), {)
+        TU_ARMA(Const, e) {
+            visit(e);
+            }
+        TU_ARMA(Sym, e) {
+            //visit(e);
+            }
+        TU_ARMA(RegSingle, e) {
+            visit(e.val);
+            }
+        TU_ARMA(Reg, e) {
+            visit(e.val_in);
+            visit(e.val_out);
+            }
+        }
+    }
 })
 NV(ExprNode_Flow,
 {

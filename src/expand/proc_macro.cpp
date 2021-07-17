@@ -804,6 +804,9 @@ namespace {
         void visit(::AST::ExprNode_Asm& node) {
             TODO(sp, "ExprNode_Asm");
         }
+        void visit(::AST::ExprNode_Asm2& node) {
+            TODO(sp, "ExprNode_Asm");
+        }
         void visit(::AST::ExprNode_Flow& node) {
             TODO(sp, "ExprNode_Flow");
         }

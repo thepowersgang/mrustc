@@ -89,6 +89,9 @@ struct LowerHIR_ExprNode_Visitor:
 
         m_rv.reset( new ::HIR::ExprNode_Asm( v.span(), v.m_text, mv$(outputs), mv$(inputs), v.m_clobbers, v.m_flags ) );
     }
+    virtual void visit(::AST::ExprNode_Asm2& v) override {
+        TODO(v.span(), "Handle asm!");
+    }
     virtual void visit(::AST::ExprNode_Flow& v) override {
         switch( v.m_type )
         {

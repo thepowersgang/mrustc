@@ -748,6 +748,26 @@ struct CExpandExpr:
         for(auto& v : node.m_input)
             this->visit_nodelete(node, v.value);
     }
+    void visit(::AST::ExprNode_Asm2& node) override {
+        for(auto& v : node.m_params)
+        {
+            TU_MATCH_HDRA((v), {)
+            TU_ARMA(Const, e) {
+                this->visit_nodelete(node, e);
+                }
+            TU_ARMA(Sym, e) {
+                Expand_Path(crate, modstack, this->cur_mod(), e);
+                }
+            TU_ARMA(RegSingle, e) {
+                this->visit_nodelete(node, e.val);
+                }
+            TU_ARMA(Reg, e) {
+                this->visit_nodelete(node, e.val_in);
+                this->visit_nodelete(node, e.val_out);
+                }
+            }
+        }
+    }
     void visit(::AST::ExprNode_Flow& node) override {
         this->visit_nodelete(node, node.m_value);
     }

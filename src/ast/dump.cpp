@@ -103,6 +103,47 @@ public:
             m_os << " \"" << v << "\",";
         m_os << " )";
     }
+    virtual void visit(AST::ExprNode_Asm2& n) override {
+        m_os << "asm!( ";
+        for(const auto& l : n.m_lines)
+        {
+            l.fmt(m_os);
+            m_os << ", ";
+        }
+        for(auto& p : n.m_params)
+        {
+            TU_MATCH_HDRA((p), {)
+            TU_ARMA(Const, e) {
+                m_os << "const ";
+                AST::NodeVisitor::visit(e);
+                }
+            TU_ARMA(Sym, e) {
+                m_os << "sym " << e;
+                }
+            TU_ARMA(RegSingle, e) {
+                m_os << e.dir << "(" << e.spec << ") ";
+                AST::NodeVisitor::visit(e.val);
+                }
+            TU_ARMA(Reg, e) {
+                m_os << e.dir << "(" << e.spec << ") ";
+                if(e.val_in) {
+                    AST::NodeVisitor::visit(e.val_in);
+                    if(e.val_out)
+                        m_os << " => ";
+                }
+                if(e.val_out)
+                    AST::NodeVisitor::visit(e.val_out);
+                }
+            }
+            m_os << ", ";
+        }
+        if(n.m_options.any())
+        {
+            m_os << "options(";
+            m_os << ")";
+        }
+        m_os << ")";
+    }
     virtual void visit(AST::ExprNode_Flow& n) override {
         m_expr_root = false;
         switch(n.m_type)
