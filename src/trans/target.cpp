@@ -593,12 +593,13 @@ void Target_SetCfg(const ::std::string& target_name)
     Cfg_SetValue("target_pointer_width", FMT(g_target.m_arch.m_pointer_bits));
     Cfg_SetValue("target_endian", g_target.m_arch.m_big_endian ? "big" : "little");
     Cfg_SetValue("target_arch", g_target.m_arch.m_name);
-    if(g_target.m_arch.m_atomics.u8)    Cfg_SetValue("target_has_atomic", "8");
-    if(g_target.m_arch.m_atomics.u16)   Cfg_SetValue("target_has_atomic", "16");
-    if(g_target.m_arch.m_atomics.u32)   Cfg_SetValue("target_has_atomic", "32");
-    if(g_target.m_arch.m_atomics.u64)   Cfg_SetValue("target_has_atomic", "64");
-    if(g_target.m_arch.m_atomics.ptr)   Cfg_SetValue("target_has_atomic", "ptr");
-    if(g_target.m_arch.m_atomics.ptr)   Cfg_SetValue("target_has_atomic", "cas");   // TODO: Atomic compare-and-set option
+    if(g_target.m_arch.m_atomics.u8)    { Cfg_SetValue("target_has_atomic", "8"  ); Cfg_SetValue("target_has_atomic_load_store", "8"); }
+    if(g_target.m_arch.m_atomics.u16)   { Cfg_SetValue("target_has_atomic", "16" ); Cfg_SetValue("target_has_atomic_load_store", "16"); }
+    if(g_target.m_arch.m_atomics.u32)   { Cfg_SetValue("target_has_atomic", "32" ); Cfg_SetValue("target_has_atomic_load_store", "32"); }
+    if(g_target.m_arch.m_atomics.u64)   { Cfg_SetValue("target_has_atomic", "64" ); Cfg_SetValue("target_has_atomic_load_store", "64"); }
+    if(g_target.m_arch.m_atomics.ptr)   { Cfg_SetValue("target_has_atomic", "ptr"); Cfg_SetValue("target_has_atomic_load_store", "ptr"); }
+    // TODO: Atomic compare-and-set option
+    if(g_target.m_arch.m_atomics.ptr)   { Cfg_SetValue("target_has_atomic", "cas");  }
     Cfg_SetValueCb("target_feature", [](const ::std::string& s) {
         //if(g_target.m_arch.m_name == "x86_64" && s == "sse2") return true;    // 1.39 ppv-lite86 requires sse2 (x86_64 always has it)
         return false;
