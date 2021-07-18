@@ -805,7 +805,35 @@ void Resolve_Absolute_PathParams(/*const*/ Context& context, const Span& sp, ::A
             Resolve_Absolute_Lifetime(context, sp, l);
             }
         TU_ARMA(Type, t) {
-            Resolve_Absolute_Type(context, t);
+            // A trivial path type might be refering to a generic value (e.g. `Foo<T,N>` where `N` is a const generic)
+            if(t.m_data.is_Path() && t.m_data.as_Path()->is_trivial() )
+            {
+                auto p = t.m_data.as_Path()->m_class.as_Relative();
+                // If type lookup fails
+                auto new_path = context.lookup_opt(p.nodes[0].name(), p.hygiene, Context::LookupMode::Type);
+                if(new_path == AST::Path()) {
+                    // Try (constant) value lookup
+                    auto new_path = context.lookup_opt(p.nodes[0].name(), p.hygiene, Context::LookupMode::Constant);
+                    if(new_path != AST::Path()) {
+                        // If that lookup succeeds, then create a value (and visit it - just in case)
+                        ent = AST::PathParamEnt::make_Value(new AST::ExprNode_NamedValue(std::move(new_path)));
+                        Resolve_Absolute_ExprNode(context, *ent.as_Value());
+                    }
+                    else {
+                        // Otherwise, visit (which will most likely fail)
+                        Resolve_Absolute_Type(context, t);
+                    }
+                }
+                else {
+                    // Normal type, update it then visit
+                    *t.m_data.as_Path() = std::move(new_path);
+                    Resolve_Absolute_Type(context, t);
+                }
+            }
+            else
+            {
+                Resolve_Absolute_Type(context, t);
+            }
             }
         TU_ARMA(Value, n) {
             Resolve_Absolute_ExprNode(context, *n);
