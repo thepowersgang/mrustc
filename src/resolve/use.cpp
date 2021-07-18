@@ -72,6 +72,15 @@ void Resolve_Use(::AST::Crate& crate)
             }
         }
 
+        // If there's only one node, then check for primitives.
+        if(path.nodes().size() == 1) {
+            auto ct = coretype_fromstring(path.nodes()[0].name().c_str());
+            if( ct != CORETYPE_INVAL ) {
+                // TODO: only if the item doesn't already exist?
+                return AST::Path(CRATE_BUILTINS, path.nodes());
+            }
+        }
+
         // EVIL HACK: If the current module is an anon module, refer to the parent
         if( base_path.nodes().size() > 0 && base_path.nodes().back().name().c_str()[0] == '#' ) {
             AST::Path   np("", {});
