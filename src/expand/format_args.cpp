@@ -736,7 +736,12 @@ namespace {
                     toks.push_back( TokenTree(TOK_BRACE_OPEN) );
 
                     push_toks(toks, ident("position"), TOK_COLON );
-                    push_path(toks, crate, {"fmt", "rt", "v1", "Position", "Next"});
+                    if(TARGETVER_MOST_1_29) {
+                        push_path(toks, crate, {"fmt", "rt", "v1", "Position", "Next"});
+                    }
+                    else {
+                        push_toks(toks, Token(static_cast<uint64_t>(&frag - fragments.data()), CORETYPE_UINT));
+                    }
                     push_toks(toks, TOK_COMMA);
 
                     push_toks(toks, ident("format"), TOK_COLON );
