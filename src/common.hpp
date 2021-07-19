@@ -424,5 +424,42 @@ public:
     }
 };
 
+// Wrapper for T that has noexcept constructors. If an exception occurs during construction, the program will exit.
+// Avoids a compilation failure on Visual Studio 2017+ when storing a non-copyable type inside a std::map,
+// then storing the map in a std::vector.
+// https://stackoverflow.com/questions/47604029/move-constructors-of-stl-containers-in-msvc-2017-are-not-marked-as-noexcept
+template<typename T>
+class NoExceptWrap {
+private:
+    T m;
+public:
+    NoExceptWrap() noexcept :
+        m{}
+    {}
+
+    NoExceptWrap(NoExceptWrap<T>&& other) noexcept :
+        m{ std::move(other.m) }
+    {}
+
+    NoExceptWrap(const NoExceptWrap<T>& other) noexcept :
+        m{ other.m }
+    {}
+
+    NoExceptWrap(T&& other) noexcept :
+        m{ std::move(other) }
+    {}
+
+    NoExceptWrap(const T& other) noexcept :
+        m{ other }
+    {}
+
+    const T* operator ->() const noexcept {
+        return &m;
+    }
+
+    T* operator ->() noexcept {
+        return &m;
+    }
+};
 
 #endif

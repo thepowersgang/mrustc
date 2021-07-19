@@ -95,3 +95,21 @@ index da9d9d5bfdc0..3d47471f0ef0 100644
 #+//#[cfg(target_arch = "x86_64")]
 #+//static_assert_size!(Const<'_>, 40);
 
+
+#
+# Work around change in Visual Studio 2017+
+# See https://reviews.llvm.org/D86126 for details
+#
+diff --git a/llvm/include/llvm/Support/type_traits.h b/llvm/include/llvm/Support/type_traits.h
+index b7d48e8e1ade..d4e9160356cb 100644
+--- src/llvm-project/llvm/include/llvm/Support/type_traits.h
++++ src/llvm-project/llvm/include/llvm/Support/type_traits.h
+@@ -177,7 +177,7 @@ class is_trivially_copyable {
+       (has_deleted_copy_assign || has_trivial_copy_assign) &&
+       (has_deleted_copy_constructor || has_trivial_copy_constructor);
+
+-#ifdef HAVE_STD_IS_TRIVIALLY_COPYABLE
++#if 0
+   static_assert(value == std::is_trivially_copyable<T>::value,
+                 "inconsistent behavior between llvm:: and std:: implementation of is_trivially_copyable");
+ #endif

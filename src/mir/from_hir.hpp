@@ -96,7 +96,7 @@ TAGGED_UNION(ScopeType, Owning,
     (Split, struct {
         bool end_state_valid = false;
         SplitEnd    end_state;
-        ::std::vector<SplitArm> arms;
+        ::std::vector<NoExceptWrap<SplitArm>> arms;
         }),
     (Loop, struct {
         // NOTE: This contains the original state for variables changed after `exit_state_valid` is true

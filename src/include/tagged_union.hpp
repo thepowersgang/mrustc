@@ -18,6 +18,7 @@
 //#include "cpp_unpack.h"
 #include <cassert>
 #include <string>
+#include <stdexcept>
 
 #define TU_FIRST(a, ...)    a
 #define TU_EXP1(x)  x

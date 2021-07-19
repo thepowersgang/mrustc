@@ -138,23 +138,6 @@ namespace {
 }
 
 namespace {
-    struct MsvcDetection
-    {
-        ::std::string   path_vcvarsall;
-    };
-
-    MsvcDetection detect_msvc()
-    {
-        auto rv = MsvcDetection {
-            "C:\\Program Files (x86)\\Microsoft Visual Studio 14.0\\VC\\vcvarsall.bat"
-            };
-        if( ::std::ifstream("P:\\Program Files (x86)\\Microsoft Visual Studio\\VS2015\\VC\\vcvarsall.bat").is_open() )
-        {
-            rv.path_vcvarsall = "P:\\Program Files (x86)\\Microsoft Visual Studio\\VS2015\\VC\\vcvarsall.bat";
-        }
-        return rv;
-    }
-
     enum class AtomicOp
     {
         Add,
@@ -1215,11 +1198,6 @@ namespace {
                 }
                 break;
             case Compiler::Msvc:
-                // TODO: Look up these paths in the registry and use CreateProcess instead of system
-                // - OR, run `vcvarsall` and get the required environment variables and PATH from it?
-                args.push_back(detect_msvc().path_vcvarsall);
-                args.push_back( Target_GetCurSpec().m_backend_c.m_c_compiler );
-                args.push_back("&");
                 args.push_back("cl.exe");
                 args.push_back("/nologo");
                 args.push_back(m_outfile_path_c.c_str());

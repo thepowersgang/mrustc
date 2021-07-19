@@ -786,7 +786,8 @@ struct LowerHIR_ExprNode_Visitor:
     const_cast<::AST::ExprNode*>(&e)->visit( v );
 
     if( ! v.m_rv ) {
-        BUG(e.span(), typeid(e).name() << " - Yielded a nullptr HIR node");
+        auto name = typeid(e).name();
+        BUG(e.span(), name << " - Yielded a nullptr HIR node");
     }
 
     return ::HIR::ExprPtr( mv$( v.m_rv ) );

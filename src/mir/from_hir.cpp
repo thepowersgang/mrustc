@@ -81,7 +81,7 @@ namespace {
             // Basic block to be terminated with the state switch
             MIR::BasicBlockId   bb_open;
             /// Yield points/states
-            std::vector<State>  states;
+            std::vector<NoExceptWrap<State>>  states;
 
             ::HIR::SimplePath   state_idx_enm_path;
         } m_generator_state;
@@ -97,7 +97,7 @@ namespace {
                 m_generator_state.state_idx_enm_path = is_generator->m_state_idx_enum;
                 m_generator_state.bb_open = builder.pause_cur_block();
                 m_generator_state.states.push_back(GeneratorState::State(builder.new_bb_unlinked()));
-                builder.set_cur_block(m_generator_state.states.back().entrypoint);
+                builder.set_cur_block(m_generator_state.states.back()->entrypoint);
             }
         }
 
@@ -127,12 +127,12 @@ namespace {
                 m_builder.push_stmt_assign(sp, generator_state_lv(), ::MIR::RValue::make_EnumVariant({
                     m_generator_state.state_idx_enm_path, static_cast<unsigned>(m_generator_state.states.size()), {}
                     }));
-                m_builder.end_block( ::MIR::Terminator::make_Goto(s.entrypoint) );
+                m_builder.end_block( ::MIR::Terminator::make_Goto(s->entrypoint) );
 
                 enum_variants.push_back(HIR::Enum::ValueVariant {
                     RcString(), ::HIR::ExprPtr(), arm_targets.size()-1
                     });
-                for(const auto& e : s.saved)
+                for(const auto& e : s->saved)
                 {
                     used_vars.insert(e.first);
                 }
@@ -182,7 +182,7 @@ namespace {
                 // 
                 arms.push_back(out_builder.new_bb_unlinked());
                 out_builder.set_cur_block(arms.back());
-                for(const auto& v : m_generator_state.states[i].saved)
+                for(const auto& v : m_generator_state.states[i]->saved)
                 {
                     if( v.first == 0 ) {
                         continue ;
@@ -775,9 +775,9 @@ namespace {
                 // NOTE: No scope terminate
                 m_builder.end_block( ::MIR::Terminator::make_Return({}) );
 
-                m_generator_state.states.back().saved = m_builder.get_active_locals();
-                m_generator_state.states.push_back( m_builder.new_bb_unlinked() );
-                m_builder.set_cur_block( m_generator_state.states.back().entrypoint );
+                m_generator_state.states.back()->saved = m_builder.get_active_locals();
+                m_generator_state.states.push_back( GeneratorState::State(m_builder.new_bb_unlinked()) );
+                m_builder.set_cur_block( m_generator_state.states.back()->entrypoint );
 
                 m_builder.set_result( node.span(), ::MIR::RValue::make_Tuple({}) );
             }

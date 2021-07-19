@@ -572,7 +572,7 @@ void MirBuilder::raise_temporaries(const Span& sp, const ::MIR::LValue& val, con
 
             // TODO: This should update the outer state to unset.
             auto& arm = sd_split->arms.back();
-            arm.states.insert(::std::make_pair( idx, get_slot_state(sp, idx, SlotType::Local).clone() ));
+            arm->states.insert(::std::make_pair( idx, get_slot_state(sp, idx, SlotType::Local).clone() ));
             m_slot_states.at(idx) = VarState(InvalidType::Uninit);
         }
         else
@@ -885,7 +885,7 @@ void MirBuilder::raise_all(const Span& sp, ScopeHandle source, const ScopeHandle
             auto& arm = sd_split->arms.back();
             for(auto idx : src_list)
             {
-                arm.states.insert(::std::make_pair( idx, mv$(m_slot_states.at(idx)) ));
+                arm->states.insert(::std::make_pair( idx, mv$(m_slot_states.at(idx)) ));
                 m_slot_states.at(idx) = VarState(InvalidType::Uninit);
             }
         }
@@ -950,7 +950,7 @@ void MirBuilder::terminate_scope_early(const Span& sp, const ScopeHandle& scope,
             drop_scope_values(scope_def);
             // Inform the scope that it's been early-exited
             TU_IFLET( ScopeType, scope_def.data, Split, e,
-                e.arms.back().has_early_terminated = true;
+                e.arms.back()->has_early_terminated = true;
             )
         }
     }
@@ -1436,7 +1436,7 @@ void MirBuilder::end_split_arm(const Span& sp, const ScopeHandle& handle, bool r
         ASSERT_BUG(sp, m_block_active, "Block must be active when ending a reachable split arm");
 
     auto& this_arm_state = sd_split.arms.back();
-    this_arm_state.always_early_terminated = /*sd_split.arms.back().has_early_terminated &&*/ !reachable;
+    this_arm_state->always_early_terminated = /*sd_split.arms.back().has_early_terminated &&*/ !reachable;
 
     if( sd_split.end_state_valid )
     {
@@ -1465,8 +1465,8 @@ void MirBuilder::end_split_arm(const Span& sp, const ScopeHandle& handle, bool r
                     merge_state(sp, *this, mv$(lv), out_state, src_state);
                 }
                 };
-            merge_list(this_arm_state.states, sd_split.end_state.states, SlotType::Local);
-            merge_list(this_arm_state.arg_states, sd_split.end_state.arg_states, SlotType::Argument);
+            merge_list(this_arm_state->states, sd_split.end_state.states, SlotType::Local);
+            merge_list(this_arm_state->arg_states, sd_split.end_state.arg_states, SlotType::Argument);
         }
         else
         {
@@ -1479,12 +1479,12 @@ void MirBuilder::end_split_arm(const Span& sp, const ScopeHandle& handle, bool r
         {
             DEBUG("Reachable w/ no end state, setting");
             // Clone this arm's state
-            for(auto& ent : this_arm_state.states)
+            for(auto& ent : this_arm_state->states)
             {
                 DEBUG("Slot(" << ent.first << ") = " << ent.second);
                 sd_split.end_state.states.insert(::std::make_pair( ent.first, ent.second.clone() ));
             }
-            for(auto& ent : this_arm_state.arg_states)
+            for(auto& ent : this_arm_state->arg_states)
             {
                 DEBUG("Argument(" << ent.first << ") = " << ent.second);
                 sd_split.end_state.arg_states.insert(::std::make_pair( ent.first, ent.second.clone() ));
@@ -1527,7 +1527,7 @@ void MirBuilder::end_split_arm_early(const Span& sp)
             DEBUG("Early terminate split scope " << m_scope_stack.back());
             auto& sd = m_scopes[ m_scope_stack[i] ];
             auto& sd_split = sd.data.as_Split();
-            sd_split.arms.back().has_early_terminated = true;
+            sd_split.arms.back()->has_early_terminated = true;
 
             // TODO: Create drop flags if required?
         }
@@ -1842,7 +1842,7 @@ const VarState& MirBuilder::get_slot_state(const Span& sp, unsigned int idx, Slo
             ),
         (Split,
             const auto& cur_arm = e.arms.back();
-            const auto& list = (type == SlotType::Local ? cur_arm.states : cur_arm.arg_states);
+            const auto& list = (type == SlotType::Local ? cur_arm->states : cur_arm->arg_states);
             auto it = list.find(idx);
             if( it != list.end() )
             {
@@ -1897,7 +1897,7 @@ VarState& MirBuilder::get_slot_state_mut(const Span& sp, unsigned int idx, SlotT
                 if( idx == ~0u ) {
                 }
                 else {
-                    auto& states = (type == SlotType::Local ? cur_arm.states : cur_arm.arg_states);
+                    auto& states = (type == SlotType::Local ? cur_arm->states : cur_arm->arg_states);
                     auto it = states.find(idx);
                     if( it == states.end() )
                     {
