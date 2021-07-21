@@ -230,7 +230,7 @@ class CAsmExpander:
 public:
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const ::AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
-        if(TARGETVER_MOST_1_29)
+        if(TARGETVER_MOST_1_39)
             return CLlvmAsmExpander().expand(sp, crate, tt, mod);
 
         // Stabilisation-path `asm!`

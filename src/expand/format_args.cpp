@@ -736,7 +736,7 @@ namespace {
                     toks.push_back( TokenTree(TOK_BRACE_OPEN) );
 
                     push_toks(toks, ident("position"), TOK_COLON );
-                    if(TARGETVER_MOST_1_29) {
+                    if(TARGETVER_MOST_1_39) {
                         push_path(toks, crate, {"fmt", "rt", "v1", "Position", "Next"});
                     }
                     else {
