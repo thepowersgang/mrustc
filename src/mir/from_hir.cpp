@@ -268,11 +268,11 @@ namespace {
                 {
                     define_vars_from(sp, subpat);
                 }
-            //    ),
-            //(Split,
-            //    assert(e.size() > 0);
-            //    // TODO: Save variable state, visit in order (resetting/checking after each)
-            //    define_vars_from(sp, e[0]);
+                ),
+            (Or,
+                assert(e.size() > 0);
+                // TODO: Save variable state, visit in order (resetting/checking after each)
+                define_vars_from(sp, e[0]);
                 )
             )
         }

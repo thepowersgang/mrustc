@@ -1079,10 +1079,11 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
         )
     )
 
-    //if(pat.m_data.is_Or())
-    //{
-    //    // Multiply the current pattern (sub)set out, visit with sub-sets
-    //}
+    if(pat.m_data.is_Or())
+    {
+        // Multiply the current pattern (sub)set out, visit with sub-sets
+        TODO(sp, "Handle or patterns");
+    }
 
     TU_MATCH_HDRA( (ty.data()), {)
     TU_ARMA(Infer, e) {

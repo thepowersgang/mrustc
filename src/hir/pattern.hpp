@@ -139,6 +139,8 @@ struct Pattern
                 return sub_patterns.empty() && !is_exhaustive;
             }
             } ),
+        // Split/or patterns
+        (Or, std::vector<Pattern>),
         // Always refutable
         (Value,     struct { Value val; } ),
         (Range,     struct { Value start; Value end; } ),

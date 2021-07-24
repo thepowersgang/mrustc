@@ -285,6 +285,10 @@ void ::HIR::ExprVisitorDef::visit_pattern(const Span& sp, ::HIR::Pattern& pat)
         for(auto& subpat : e.trailing)
             this->visit_pattern(sp, subpat);
         }
+    TU_ARMA(Or, e) {
+        for(auto& subpat : e)
+            this->visit_pattern(sp, subpat);
+        }
     }
 }
 void ::HIR::ExprVisitorDef::visit_type(::HIR::TypeRef& ty)

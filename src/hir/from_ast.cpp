@@ -418,7 +418,13 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
             };
         }
     TU_ARMA(Or, e) {
-        TODO(pat.span(), "Expand or patterns into multiple root patterns");
+        ::std::vector< ::HIR::Pattern>  subpats;
+        for(const auto& sp : e)
+            subpats.push_back( LowerHIR_Pattern(sp) );
+        return ::HIR::Pattern {
+            mv$(binding),
+            ::HIR::Pattern::Data::make_Or(mv$(subpats))
+            };
         }
     }
     throw "unreachable";

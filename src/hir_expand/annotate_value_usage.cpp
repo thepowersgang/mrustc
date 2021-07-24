@@ -623,6 +623,10 @@ namespace {
                     rv = ::std::max(rv, get_usage_for_pattern_binding(sp, pe.extra_bind, inner_ty));
                 return rv;
                 }
+            
+            TU_ARMA(Or, pe) {
+                TODO(sp, "AVU - Split patterns");
+                }
             }
             throw "";
         }

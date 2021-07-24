@@ -1740,6 +1740,11 @@ namespace {
                     add_closure_def_from_pattern(sp, field_pat.second);
                 }
                 }
+            
+            TU_ARMA(Or, e) {
+                assert(e.size() > 0);
+                add_closure_def_from_pattern(sp, e.front());
+                }
             }
         }
         /// Update usage depending on the type

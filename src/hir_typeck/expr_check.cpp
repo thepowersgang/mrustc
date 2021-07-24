@@ -1238,6 +1238,11 @@ namespace {
                 // TODO: Check that the type is a Slice or Array
                 // - Array must have compatible size
                 }
+            
+            TU_ARMA(Or, e) {
+                for(auto& subpat : e)
+                    check_pattern(subpat, ty);
+                }
             }
         }
         void check_pattern_value(const Span& sp, const ::HIR::Pattern::Value& pv, const ::HIR::TypeRef& ty) const

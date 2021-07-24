@@ -434,6 +434,10 @@ void ::HIR::Visitor::visit_pattern(::HIR::Pattern& pat)
         for(auto& sp : e.trailing)
             this->visit_pattern(sp);
         }
+    TU_ARMA(Or, e) {
+        for(auto& sp : e)
+            this->visit_pattern(sp);
+        }
     }
 }
 void ::HIR::Visitor::visit_pattern_val(::HIR::Pattern::Value& val)

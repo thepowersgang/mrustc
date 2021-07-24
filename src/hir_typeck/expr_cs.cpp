@@ -2169,6 +2169,14 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                         }
                     }
                     }
+            
+                TU_ARM(pattern.m_data, Or, e) {
+                    for(auto& subpat : e) {
+                        possible_type = get_possible_type_inner(context, subpat);
+                        if( possible_type != HIR::TypeRef() )
+                            break ;
+                    }
+                    }
                 }
                 return possible_type;
             }
@@ -2549,6 +2557,10 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                         }
                     }
                     }
+            
+                TU_ARM(pattern.m_data, Or, e) {
+                    TODO(sp, "expr_cs:revisit_inner_real - Split patterns");
+                    }
                 }
                 return rv;
             }
@@ -2610,6 +2622,11 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                 TU_ARMA(PathNamed, e) {
                     for(auto& field_pat : e.sub_patterns)
                         disable_possibilities_on_bindings(sp, context, field_pat.second);
+                    }
+            
+                TU_ARMA(Or, e) {
+                    for(auto& subpat : e)
+                        disable_possibilities_on_bindings(sp, context, subpat);
                     }
                 }
             }
@@ -2674,6 +2691,12 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                 TU_ARMA(PathNamed, e) {
                     for(auto& field_pat : e.sub_patterns)
                         create_bindings(sp, context, field_pat.second);
+                    }
+            
+                TU_ARMA(Or, e) {
+                    assert(e.size() > 0);
+                    create_bindings(sp, context, e[0]);
+                    // TODO: Ensure that the other arms have the same binding set
                     }
                 }
             }
@@ -3153,6 +3176,11 @@ void Context::handle_pattern_direct_inner(const Span& sp, ::HIR::Pattern& pat, c
                 this->handle_pattern_direct_inner(sp, field_pat.second, field_type);
             }
         }
+        }
+            
+    TU_ARMA(Or, e) {
+        for(auto& subpat : e)
+            this->handle_pattern_direct_inner(sp, subpat, type);
         }
     }
 }
