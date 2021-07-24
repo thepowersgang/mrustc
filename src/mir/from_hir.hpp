@@ -116,12 +116,55 @@ TAGGED_UNION(ScopeType, Owning,
         })
     );
 
-enum class VarGroup
+#define FIELD_DEREF 255
+#define FIELD_INDEX_MAX 128
+
+struct field_path_t
 {
-    Return,
-    Argument,
-    Variable,
-    Temporary,
+    ::std::vector<uint8_t>  data;
+
+    size_t size() const { return data.size(); }
+    void push_back(uint8_t v) { data.push_back(v); }
+    void pop_back() { data.pop_back(); }
+    uint8_t& back() { return data.back(); }
+
+    bool operator==(const field_path_t& x) const { return data == x.data; }
+
+    friend ::std::ostream& operator<<(::std::ostream& os, const field_path_t& x) {
+        for(auto idx : x.data) {
+            os << ".";
+            if( idx == FIELD_DEREF ) {
+                os << "*";
+            }
+            else if( idx > FIELD_INDEX_MAX ) {
+                idx -= FIELD_INDEX_MAX;
+                idx = FIELD_INDEX_MAX - idx;
+                os << "-" << static_cast<unsigned int>(idx);
+            }
+            else {
+                os << static_cast<unsigned int>(idx);
+            }
+        }
+        return os;
+    }
+};
+/// Binding from an expanded pattern
+struct PatternBinding
+{
+    field_path_t    field;
+    const ::HIR::PatternBinding*    binding;
+    std::pair<size_t,size_t>    split_slice;
+
+    PatternBinding(field_path_t field, const ::HIR::PatternBinding& binding)
+        : field(std::move(field))
+        , binding(&binding)
+        , split_slice(SIZE_MAX,SIZE_MAX)
+    {
+    }
+
+    bool is_split_slice() const {
+        return split_slice.first != SIZE_MAX;
+    }
 };
 
 /// Helper class to construct MIR
@@ -343,13 +386,24 @@ public:
     void drop_actve_local(const Span& sp, ::MIR::LValue lv, const SavedActiveLocal& loc);
 };
 
+/// Wrapper interfae
 class MirConverter:
     public ::HIR::ExprVisitor
 {
 public:
-    virtual void destructure_from(const Span& sp, const ::HIR::Pattern& pat, ::MIR::LValue lval, bool allow_refutable=false) = 0;
-    virtual void destructure_aliases_from(const Span& sp, const ::HIR::Pattern& pat, ::MIR::LValue lval, bool allow_refutable=false) = 0;
+    //virtual void destructure_from(const Span& sp, const ::HIR::Pattern& pat, ::MIR::LValue lval, bool allow_refutable=false) = 0;
     virtual void define_vars_from(const Span& sp, const ::HIR::Pattern& pat) = 0;
+
+    virtual void destructure_from_list(const Span& sp, const ::HIR::TypeRef& ty, ::MIR::LValue lval, const ::std::vector<PatternBinding>& bindings) = 0;
+    virtual void destructure_aliases_from_list(const Span& sp, const ::HIR::TypeRef& ty, ::MIR::LValue lval, const ::std::vector<PatternBinding>& bindings) = 0;
 };
 
 extern void MIR_LowerHIR_Match(MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val);
+extern void MIR_LowerHIR_Let(MirBuilder& builder, MirConverter& conv, const Span& sp, const ::HIR::Pattern& pat, ::MIR::LValue val, const ::HIR::ExprNode* else_node);
+
+extern void MIR_LowerHIR_GetTypeValueForPath(
+    const Span& sp, MirBuilder& builder,
+    const ::HIR::TypeRef& top_ty, const ::MIR::LValue& top_val,
+    const field_path_t& field_path,// unsigned int field_path_ofs,
+    /*Out ->*/ ::HIR::TypeRef& out_ty, ::MIR::LValue& out_val
+);

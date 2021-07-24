@@ -202,45 +202,6 @@ namespace {
             out_builder.end_block( ::MIR::Terminator::make_Switch({ mv$(stmt_idx_lv), mv$(arms) }) );
         }
 
-        void destructure_from(const Span& sp, const ::HIR::Pattern& pat, ::MIR::LValue lval, bool allow_refutable=false) override
-        {
-            auto cb = [&](const HIR::PatternBinding& binding, ::MIR::LValue lval) {
-                MIR::RValue rv;
-                switch( binding.m_type )
-                {
-                case ::HIR::PatternBinding::Type::Move:
-                    rv = mv$(lval);
-                    break;
-                case ::HIR::PatternBinding::Type::Ref:
-                    if(m_borrow_raise_target)
-                    {
-                        DEBUG("- Raising destructure borrow of " << lval << " to scope " << *m_borrow_raise_target);
-                        m_builder.raise_temporaries(sp, lval, *m_borrow_raise_target);
-                    }
-
-                    rv = ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Shared, mv$(lval) });
-                    break;
-                case ::HIR::PatternBinding::Type::MutRef:
-                    if(m_borrow_raise_target)
-                    {
-                        DEBUG("- Raising destructure borrow of " << lval << " to scope " << *m_borrow_raise_target);
-                        m_builder.raise_temporaries(sp, lval, *m_borrow_raise_target);
-                    }
-                    rv = ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Unique, mv$(lval) });
-                    break;
-                }
-                m_builder.push_stmt_assign( sp, m_builder.get_variable(sp, binding.m_slot), mv$(rv) );
-                };
-            destructure_from_ex(sp, pat, mv$(lval), cb, (allow_refutable ? AllowRefutable::Yes : AllowRefutable::No));
-        }
-        void destructure_aliases_from(const Span& sp, const ::HIR::Pattern& pat, ::MIR::LValue lval, bool allow_refutable=false) override
-        {
-            auto cb = [&](const HIR::PatternBinding& binding, ::MIR::LValue lv) {
-                m_builder.add_variable_alias(sp, binding.m_slot, binding.m_type, mv$(lv));
-            };
-            destructure_from_ex(sp, pat, mv$(lval), cb, (allow_refutable ? AllowRefutable::Yes : AllowRefutable::No));
-        }
-
         // Brings variables defined in `pat` into scope
         void define_vars_from(const Span& sp, const ::HIR::Pattern& pat) override
         {
@@ -307,288 +268,114 @@ namespace {
                 {
                     define_vars_from(sp, subpat);
                 }
+            //    ),
+            //(Split,
+            //    assert(e.size() > 0);
+            //    // TODO: Save variable state, visit in order (resetting/checking after each)
+            //    define_vars_from(sp, e[0]);
                 )
             )
         }
 
-        enum class AllowRefutable
+        MIR::LValue get_value_for_binding_path(const Span& sp, const ::HIR::TypeRef& outer_ty, const ::MIR::LValue& outer_lval, const PatternBinding& b)
         {
-            No,
-            Yes,
-            NoBindings,
-            IgnoreBindings,
-        };
+            MIR::LValue lval;
+            HIR::TypeRef    ty;
 
-        void destructure_from_ex(const Span& sp, const ::HIR::Pattern& pat, ::MIR::LValue lval, std::function<void (const HIR::PatternBinding& binding, MIR::LValue lval)> cb, AllowRefutable allow_refutable = AllowRefutable::No) // 1 : yes, 2 : disallow binding
-        {
-            TRACE_FUNCTION_F(pat << " := " << lval << ", allow_refutable=" << static_cast<int>(allow_refutable));
-            if( allow_refutable != AllowRefutable::IgnoreBindings && pat.m_binding.is_valid() ) {
-                if( allow_refutable == AllowRefutable::NoBindings ) {
-                    BUG(sp, "Binding when not expected");
-                }
-                else if( allow_refutable == AllowRefutable::No ) {
-                    ASSERT_BUG(sp, pat.m_data.is_Any(), "Destructure patterns can't bind and match");
-                }
-                else {
-                    // Refutable and binding allowed
-                    destructure_from_ex(sp, pat, lval.clone(), cb, AllowRefutable::IgnoreBindings);
-                }
+            MIR_LowerHIR_GetTypeValueForPath(sp, m_builder, outer_ty, outer_lval, b.field, ty, lval);
 
-                for(size_t i = 0; i < pat.m_binding.m_implicit_deref_count; i ++)
-                {
-                    lval = ::MIR::LValue::new_Deref(mv$(lval));
-                }
-
-                cb(pat.m_binding, std::move(lval));
-                return;
-            }
-            if( allow_refutable == AllowRefutable::IgnoreBindings ) {
-                allow_refutable = AllowRefutable::NoBindings;
-            }
-
-            for(size_t i = 0; i < pat.m_implicit_deref_count; i ++)
+            if(b.is_split_slice())
             {
-                lval = ::MIR::LValue::new_Deref(mv$(lval));
+                struct H {
+                    static ::HIR::BorrowType get_borrow_type(const Span& sp, const ::HIR::PatternBinding& pb) {
+                        switch(pb.m_type)
+                        {
+                        case ::HIR::PatternBinding::Type::Move:
+                            BUG(sp, "By-value pattern binding of a slice");
+                        case ::HIR::PatternBinding::Type::Ref:
+                            return ::HIR::BorrowType::Shared;
+                        case ::HIR::PatternBinding::Type::MutRef:
+                            return ::HIR::BorrowType::Unique;
+                        }
+                        throw "";
+                    }
+                };
+
+                if( ty.data().is_Array() )
+                {
+                    TODO(sp, "SplitSlice binding: Array - " << b.split_slice);
+                }
+                else if( const auto* tep = ty.data().opt_Slice() )
+                {
+                    auto inner_type = tep->inner.clone_shallow();
+
+                    // 1. Obtain remaining length
+                    auto src_len_lval = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ m_builder.get_ptr_to_dst(sp, lval) }));
+                    unsigned sub_val_i = static_cast<unsigned>(b.split_slice.first + b.split_slice.second);
+                    auto sub_val = ::MIR::Param(::MIR::Constant::make_Uint({ sub_val_i, ::HIR::CoreType::Usize }));
+                    ::MIR::LValue len_val = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_BinOp({ mv$(src_len_lval), ::MIR::eBinOp::SUB, mv$(sub_val) }) );
+
+                    // 2. Obtain pointer to the first element
+                    ::HIR::BorrowType   bt = H::get_borrow_type(sp, *b.binding);
+                    ::MIR::LValue ptr_val = m_builder.lvalue_or_temp(sp,
+                        ::HIR::TypeRef::new_borrow( bt, std::move(inner_type) ),
+                        ::MIR::RValue::make_Borrow({ bt, ::MIR::LValue::new_Field( lval.clone(), static_cast<unsigned int>(b.split_slice.first) ) })
+                    );
+
+                    // 3. Create a slice pointer
+                    lval = m_builder.lvalue_or_temp(sp, ::HIR::TypeRef::new_borrow(bt, ty.clone()), ::MIR::RValue::make_MakeDst({ mv$(ptr_val), mv$(len_val) }) );
+                    // 4. And dereference it
+                    lval = ::MIR::LValue::new_Deref(std::move(lval));
+                }
+                else
+                {
+                    TODO(sp, "SplitSlice binding: " << b.split_slice << " - " << ty);
+                }
             }
 
-            TU_MATCH_HDRA( (pat.m_data), {)
-            TU_ARMA(Any, e) {
-                }
-            TU_ARMA(Box, e) {
-                destructure_from_ex(sp, *e.sub, ::MIR::LValue::new_Deref(mv$(lval)), cb, allow_refutable);
-                }
-            TU_ARMA(Ref, e) {
-                destructure_from_ex(sp, *e.sub, ::MIR::LValue::new_Deref(mv$(lval)), cb, allow_refutable);
-                }
-            TU_ARMA(Tuple, e) {
-                for(unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
-                {
-                    destructure_from_ex(sp, e.sub_patterns[i], ::MIR::LValue::new_Field(lval.clone(), i), cb, allow_refutable);
-                }
-                }
-            TU_ARMA(SplitTuple, e) {
-                assert(e.total_size >= e.leading.size() + e.trailing.size());
-                for(unsigned int i = 0; i < e.leading.size(); i ++ )
-                {
-                    destructure_from_ex(sp, e.leading[i], ::MIR::LValue::new_Field(lval.clone(), i), cb, allow_refutable);
-                }
-                // TODO: Is there a binding in the middle?
-                unsigned int ofs = e.total_size - e.trailing.size();
-                for(unsigned int i = 0; i < e.trailing.size(); i ++ )
-                {
-                    destructure_from_ex(sp, e.trailing[i], ::MIR::LValue::new_Field(lval.clone(), ofs+i), cb, allow_refutable);
-                }
-                }
-            TU_ARMA(PathValue, e) {
-                // Nothing.
-                if( e.binding.is_Enum() && e.binding.as_Enum().ptr->num_variants() > 1 ) {
-                    ASSERT_BUG(sp, allow_refutable != AllowRefutable::No, "Refutable pattern not expected - " << pat);
-                }
-                }
-            TU_ARMA(PathTuple, e) {
-                if(const auto* be = e.binding.opt_Enum())
-                {
-                    const auto& enm = *be->ptr;
-                    const auto& variants = enm.m_data.as_Data();
-                    // Check that this is the only non-impossible arm
-                    if( allow_refutable == AllowRefutable::No )
-                    {
-                        for(size_t i = 0; i < variants.size(); i ++)
-                        {
-                            const auto& var_ty = variants[i].type;
-                            // Skip this arm
-                            if( i == be->var_idx ) {
-                                continue;
-                            }
-                            ::HIR::TypeRef  tmp;
-                            const auto& ty = monomorphise_type_with_opt(sp, tmp, var_ty, MonomorphStatePtr(nullptr, &e.path.m_data.as_Generic().m_params, nullptr));
-                            if( m_builder.resolve().type_is_impossible(sp, ty) ) {
-                                continue;
-                            }
-                            ERROR(sp, E0000, "Variant " << variants[i].name << " not handled");
-                        }
-                    }
-                    lval = ::MIR::LValue::new_Downcast(mv$(lval), be->var_idx);
-                }
-                for(unsigned int i = 0; i < e.leading.size(); i ++ )
-                {
-                    destructure_from_ex(sp, e.leading[i], ::MIR::LValue::new_Field(lval.clone(), i), cb, allow_refutable);
-                }
-                for(unsigned int i = 0; i < e.trailing.size(); i ++ )
-                {
-                    destructure_from_ex(sp, e.trailing[i], ::MIR::LValue::new_Field(lval.clone(), e.total_size - e.trailing.size() + i), cb, allow_refutable);
-                }
-                }
-            TU_ARMA(PathNamed, e) {
-                if(const auto* be = e.binding.opt_Enum())
-                {
-                    const auto& enm = *be->ptr;
-                    if(enm.m_data.is_Data())
-                    {
-                        const auto& variants = enm.m_data.as_Data();
-                        // Check that this is the only non-impossible arm
-                        if( allow_refutable == AllowRefutable::No )
-                        {
-                            for(size_t i = 0; i < variants.size(); i ++)
-                            {
-                                const auto& var_ty = variants[i].type;
-                                // Skip this arm
-                                if( i == be->var_idx ) {
-                                    continue;
-                                }
-                                ::HIR::TypeRef  tmp;
-                                const auto& ty = monomorphise_type_with_opt(sp, tmp, var_ty, MonomorphStatePtr(nullptr, &e.path.m_data.as_Generic().m_params, nullptr));
-                                if( m_builder.resolve().type_is_impossible(sp, ty) ) {
-                                    continue;
-                                }
-                                ERROR(sp, E0000, "Variant " << variants[i].name << " not handled");
-                            }
-                        }
-                    }
-                    lval = ::MIR::LValue::new_Downcast(mv$(lval), be->var_idx);
-                }
-                if( !e.sub_patterns.empty() )
-                {
-                    const auto& fields = ::HIR::pattern_get_named(sp, e.path, e.binding);
-                    for(const auto& fld_pat : e.sub_patterns)
-                    {
-                        unsigned idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto&x){ return x.first == fld_pat.first; } ) - fields.begin();
-                        destructure_from_ex(sp, fld_pat.second, ::MIR::LValue::new_Field(lval.clone(), idx), cb, allow_refutable);
-                    }
-                }
-                }
-            // Refutable
-            TU_ARMA(Value, e) {
-                ASSERT_BUG(sp, allow_refutable != AllowRefutable::No, "Refutable pattern not expected - " << pat);
-                }
-            TU_ARMA(Range, e) {
-                ASSERT_BUG(sp, allow_refutable != AllowRefutable::No, "Refutable pattern not expected - " << pat);
-                }
-            TU_ARMA(Slice, e) {
-                // These are only refutable if T is [T]
-                bool ty_is_array = false;
-                m_builder.with_val_type(sp, lval, [&ty_is_array](const auto& ty){
-                    ty_is_array = ty.data().is_Array();
-                    });
-                if( ty_is_array )
-                {
-                    // TODO: Assert array size
-                    for(unsigned int i = 0; i < e.sub_patterns.size(); i ++)
-                    {
-                        const auto& subpat = e.sub_patterns[i];
-                        destructure_from_ex(sp, subpat, ::MIR::LValue::new_Field(lval.clone(), i), cb, allow_refutable );
-                    }
-                }
-                else
-                {
-                    ASSERT_BUG(sp, allow_refutable != AllowRefutable::No, "Refutable pattern not expected - " << pat);
+            return lval;
+        }
 
-                    // TODO: Emit code to triple-check the size? Or just assume that match did that correctly.
-                    for(unsigned int i = 0; i < e.sub_patterns.size(); i ++)
-                    {
-                        const auto& subpat = e.sub_patterns[i];
-                        destructure_from_ex(sp, subpat, ::MIR::LValue::new_Field(lval.clone(), i), cb, allow_refutable );
-                    }
-                }
-                }
-            TU_ARMA(SplitSlice, e) {
-                // These are only refutable if T is [T]
-                bool ty_is_array = false;
-                unsigned int array_size = 0;
-                ::HIR::TypeRef  inner_type;
-                m_builder.with_val_type(sp, lval, [&ty_is_array,&array_size,&e,&inner_type](const auto& ty){
-                    if( ty.data().is_Array() ) {
-                        array_size = ty.data().as_Array().size.as_Known();
-                        if( e.extra_bind.is_valid() )
-                            inner_type = ty.data().as_Array().inner.clone();
-                        ty_is_array = true;
-                    }
-                    else {
-                        if( e.extra_bind.is_valid() )
-                            inner_type = ty.data().as_Slice().inner.clone();
-                        ty_is_array = false;
-                    }
-                    });
-                if( ty_is_array )
-                {
-                    assert(array_size >= e.leading.size() + e.trailing.size());
-                    for(unsigned int i = 0; i < e.leading.size(); i ++)
-                    {
-                        unsigned int idx = 0 + i;
-                        destructure_from_ex(sp, e.leading[i], ::MIR::LValue::new_Field(lval.clone(), idx), cb, allow_refutable );
-                    }
-                    if( e.extra_bind.is_valid() )
-                    {
-                        TODO(sp, "Destructure array obtaining remainder");
-                    }
-                    for(unsigned int i = 0; i < e.trailing.size(); i ++)
-                    {
-                        unsigned int idx = array_size - e.trailing.size() + i;
-                        destructure_from_ex(sp, e.trailing[i], ::MIR::LValue::new_Field(lval.clone(), idx), cb, allow_refutable );
-                    }
-                }
-                else
-                {
-                    ASSERT_BUG(sp, allow_refutable != AllowRefutable::No, "Refutable pattern not expected - " << pat);
+        void destructure_from_list(const Span& sp, const ::HIR::TypeRef& outer_ty, ::MIR::LValue outer_lval, const ::std::vector<PatternBinding>& bindings) override
+        {
+            for(const auto& b : bindings)
+            {
+                auto lval = get_value_for_binding_path(sp, outer_ty, outer_lval, b);
 
-                    struct H {
-                        static ::HIR::BorrowType get_borrow_type(const Span& sp, const ::HIR::PatternBinding& pb) {
-                            switch(pb.m_type)
-                            {
-                            case ::HIR::PatternBinding::Type::Move:
-                                BUG(sp, "By-value pattern binding of a slice");
-                            case ::HIR::PatternBinding::Type::Ref:
-                                return ::HIR::BorrowType::Shared;
-                            case ::HIR::PatternBinding::Type::MutRef:
-                                return ::HIR::BorrowType::Unique;
-                            }
-                            throw "";
-                        }
-                    };
-
-                    // Acquire the slice size variable.
-                    ::MIR::LValue   len_lval;
-                    if( e.extra_bind.is_valid() || e.trailing.size() > 0 )
+                MIR::RValue rv;
+                switch( b.binding->m_type )
+                {
+                case ::HIR::PatternBinding::Type::Move:
+                    rv = mv$(lval);
+                    break;
+                case ::HIR::PatternBinding::Type::Ref:
+                    if(m_borrow_raise_target)
                     {
-                        len_lval = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ m_builder.get_ptr_to_dst(sp, lval) }));
+                        DEBUG("- Raising destructure borrow of " << lval << " to scope " << *m_borrow_raise_target);
+                        m_builder.raise_temporaries(sp, lval, *m_borrow_raise_target);
                     }
 
-                    for(unsigned int i = 0; i < e.leading.size(); i ++)
+                    rv = ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Shared, mv$(lval) });
+                    break;
+                case ::HIR::PatternBinding::Type::MutRef:
+                    if(m_borrow_raise_target)
                     {
-                        unsigned int idx = i;
-                        destructure_from_ex(sp, e.leading[i], ::MIR::LValue::new_Field(lval.clone(), idx), cb, allow_refutable );
+                        DEBUG("- Raising destructure borrow of " << lval << " to scope " << *m_borrow_raise_target);
+                        m_builder.raise_temporaries(sp, lval, *m_borrow_raise_target);
                     }
-                    if( e.extra_bind.is_valid() )
-                    {
-                        // 1. Obtain remaining length
-                        auto sub_val = ::MIR::Param(::MIR::Constant::make_Uint({ e.leading.size() + e.trailing.size(), ::HIR::CoreType::Usize }));
-                        ::MIR::LValue len_val = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_BinOp({ len_lval.clone(), ::MIR::eBinOp::SUB, mv$(sub_val) }) );
-
-                        // 2. Obtain pointer to element
-                        ::HIR::BorrowType   bt = H::get_borrow_type(sp, e.extra_bind);
-                        ::MIR::LValue ptr_val = m_builder.lvalue_or_temp(sp,
-                            ::HIR::TypeRef::new_borrow( bt, inner_type.clone() ),
-                            ::MIR::RValue::make_Borrow({ bt, ::MIR::LValue::new_Field( lval.clone(), static_cast<unsigned int>(e.leading.size()) ) })
-                            );
-                        // TODO: Cast to raw pointer? Or keep as a borrow?
-
-                        // Construct fat pointer
-                        m_builder.push_stmt_assign( sp, m_builder.get_variable(sp, e.extra_bind.m_slot), ::MIR::RValue::make_MakeDst({ mv$(ptr_val), mv$(len_val) }) );
-                    }
-                    if( e.trailing.size() > 0 )
-                    {
-                        for(size_t i = 0; i < e.trailing.size(); i ++)
-                        {
-                            // Dynamically create an index
-                            auto sub_val = ::MIR::Param(::MIR::Constant::make_Uint({ e.trailing.size() - i, ::HIR::CoreType::Usize }));
-                            ::MIR::LValue ofs_val = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_BinOp({ len_lval.clone(), ::MIR::eBinOp::SUB, mv$(sub_val) }) );
-                            // Recurse with the indexed value
-                            destructure_from_ex(sp, e.trailing[i], ::MIR::LValue::new_Index( lval.clone(), ofs_val.m_root.as_Local() ), cb, allow_refutable);
-                        }
-                    }
+                    rv = ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Unique, mv$(lval) });
+                    break;
                 }
-                }
-            } // TU_MATCH_HDRA
+                m_builder.push_stmt_assign( sp, m_builder.get_variable(sp, b.binding->m_slot), mv$(rv) );
+            }
+        }
+        void destructure_aliases_from_list(const Span& sp, const ::HIR::TypeRef& outer_ty, ::MIR::LValue outer_lval, const ::std::vector<PatternBinding>& bindings) override
+        {
+            for(const auto& b : bindings)
+            {
+                auto val = get_value_for_binding_path(sp, outer_ty, outer_lval, b);
+                m_builder.add_variable_alias(sp, b.binding->m_slot, b.binding->m_type, mv$(val));
+            }
         }
 
         // -- ExprVisitor
@@ -806,7 +593,11 @@ namespace {
                 }
                 else
                 {
-                    this->destructure_from(node.span(), node.m_pattern, m_builder.lvalue_or_temp(node.m_value->span(), node.m_type, mv$(res)));
+                    MIR_LowerHIR_Let(
+                        m_builder, *this, node.span(),
+                        node.m_pattern, m_builder.lvalue_or_temp(node.m_value->span(), node.m_type, mv$(res)),
+                        nullptr
+                        );
                 }
             }
             m_builder.set_result(node.span(), ::MIR::RValue::make_Tuple({}));
@@ -946,33 +737,6 @@ namespace {
                 // Push an "diverge" result
                 //m_builder.set_cur_block( m_builder.new_bb_unlinked() );
                 //m_builder.set_result(node.span(), ::MIR::LValue::make_Invalid({}) );
-            }
-            else if( node.m_arms.size() == 1 && node.m_arms[0].m_patterns.size() == 1 && ! node.m_arms[0].m_cond ) {
-                // - Shortcut: Single-arm match
-                auto& arm = node.m_arms[0];
-                const auto& pat = arm.m_patterns[0];
-
-                auto scope = m_builder.new_scope_var(arm.m_code->span());
-                auto tmp_scope = m_builder.new_scope_temp(arm.m_code->span());
-                this->define_vars_from(node.span(), pat);
-                // TODO: Do the same shortcut as _Let?
-                this->destructure_from(node.span(), pat, mv$(match_val));
-
-                // Temp scope.
-                this->visit_node_ptr(arm.m_code);
-
-                if( m_builder.block_active() ) {
-                    auto res = m_builder.get_result(arm.m_code->span());
-                    m_builder.raise_temporaries( arm.m_code->span(), res, scope, /*to_above=*/true);
-                    m_builder.set_result(arm.m_code->span(), mv$(res));
-
-                    m_builder.terminate_scope( node.span(), mv$(tmp_scope) );
-                    m_builder.terminate_scope( node.span(), mv$(scope) );
-                }
-                else {
-                    m_builder.terminate_scope( node.span(), mv$(tmp_scope), false );
-                    m_builder.terminate_scope( node.span(), mv$(scope), false );
-                }
             }
             else {
                 MIR_LowerHIR_Match(m_builder, *this, node, mv$(match_val));
@@ -2824,7 +2588,7 @@ namespace {
         for( const auto& arg : args )
         {
             const auto& pat = arg.first;
-            // What's the idea of this check? How could it _not_ be true in most cases (and thus not prepare the input)
+            // If the binding is set (i.e. this isn't destructuring) then the table populated by `MirBuilder::MirBuilder(...)` will be used
             if( pat.m_binding.is_valid() && pat.m_binding.m_type == ::HIR::PatternBinding::Type::Move )
             {
                 // Simple `var: Type` arguments are handled by `MirBuilder.m_var_arg_mappings`
@@ -2832,7 +2596,7 @@ namespace {
             else
             {
                 ev.define_vars_from(ptr->span(), arg.first);
-                ev.destructure_from(ptr->span(), arg.first, ::MIR::LValue::new_Argument(i));
+                MIR_LowerHIR_Let(builder, ev, ptr->span(), arg.first, ::MIR::LValue::new_Argument(i), /*else_node=*/nullptr);
             }
             i ++;
         }
