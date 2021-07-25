@@ -3198,6 +3198,9 @@ namespace {
                     break;
                 }
                 break;
+            case ::MIR::Statement::TAG_Asm2:
+                MIR_TODO(mir_res, "Asm2 " << stmt);
+                break;
             case ::MIR::Statement::TAG_Assign: {
                 const auto& e = stmt.as_Assign();
                 DEBUG("- " << e.dst << " = " << e.src);

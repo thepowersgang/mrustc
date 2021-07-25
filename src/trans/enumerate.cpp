@@ -1336,8 +1336,8 @@ void Trans_Enumerate_FillFrom_MIR(MIR::EnumCache& state, const ::MIR::Function& 
     {
         for(const auto& stmt : bb.statements)
         {
-            TU_MATCHA((stmt), (se),
-            (Assign,
+            TU_MATCH_HDRA((stmt), {)
+            TU_ARMA(Assign, se) {
                 DEBUG("- " << se.dst << " = " << se.src);
                 Trans_Enumerate_FillFrom_MIR_LValue(state, se.dst);
                 TU_MATCHA( (se.src), (e),
@@ -1393,24 +1393,39 @@ void Trans_Enumerate_FillFrom_MIR(MIR::EnumCache& state, const ::MIR::Function& 
                         Trans_Enumerate_FillFrom_MIR_Param(state, val);
                     )
                 )
-                ),
-            (Asm,
-                DEBUG("- asm! ...");
+                }
+            TU_ARMA(Asm2, e) {
+                for(auto& p : e.params)
+                {
+                    TU_MATCH_HDRA( (p), { )
+                    TU_ARMA(Const, v) Trans_Enumerate_FillFrom_MIR_Constant(state, v);
+                    TU_ARMA(Sym, v) state.insert_path(v);
+                    TU_ARMA(Reg, v) {
+                        if(v.input)
+                            Trans_Enumerate_FillFrom_MIR_Param(state, *v.input);
+                        if(v.output)
+                            Trans_Enumerate_FillFrom_MIR_LValue(state, *v.output);
+                        }
+                    }
+                }
+                }
+            TU_ARMA(Asm, se) {
+                DEBUG("- llvm_asm! ...");
                 for(const auto& v : se.inputs)
                     Trans_Enumerate_FillFrom_MIR_LValue(state, v.second);
                 for(const auto& v : se.outputs)
                     Trans_Enumerate_FillFrom_MIR_LValue(state, v.second);
-                ),
-            (SetDropFlag,
-                ),
-            (ScopeEnd,
-                ),
-            (Drop,
+                }
+            TU_ARMA(SetDropFlag, se) {
+                }
+            TU_ARMA(ScopeEnd, se) {
+                }
+            TU_ARMA(Drop, se) {
                 DEBUG("- DROP " << se.slot);
                 Trans_Enumerate_FillFrom_MIR_LValue(state, se.slot);
                 // TODO: Ensure that the drop glue for this type is generated
-                )
-            )
+                }
+            }
         }
         DEBUG("> " << bb.terminator);
         TU_MATCHA( (bb.terminator), (e),

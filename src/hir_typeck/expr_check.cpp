@@ -84,7 +84,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_Asm& node) override
         {
-            TRACE_FUNCTION_F(&node << " asm! ...");
+            TRACE_FUNCTION_F(&node << " llvm_asm! ...");
 
             // TODO: Check result types
             for(auto& v : node.m_outputs)
@@ -94,6 +94,29 @@ namespace {
             for(auto& v : node.m_inputs)
             {
                 v.value->visit(*this);
+            }
+        }
+        void visit(::HIR::ExprNode_Asm2& node) override
+        {
+            TRACE_FUNCTION_F(&node << " asm! ...");
+
+            // TODO: Check result types
+            for(auto& v : node.m_params)
+            {
+                TU_MATCH_HDRA( (v), { )
+                TU_ARMA(Const, e) {
+                    visit_node_ptr(e);
+                    }
+                TU_ARMA(Sym, e) {
+                    }
+                TU_ARMA(RegSingle, e) {
+                    visit_node_ptr(e.val);
+                    }
+                TU_ARMA(Reg, e) {
+                    if(e.val_in)    visit_node_ptr(e.val_in);
+                    if(e.val_out)   visit_node_ptr(e.val_out);
+                    }
+                }
             }
         }
         void visit(::HIR::ExprNode_Return& node) override

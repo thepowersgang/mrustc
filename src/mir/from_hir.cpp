@@ -502,6 +502,24 @@ namespace {
             m_builder.push_stmt_asm( node.span(), { node.m_template, mv$(outputs), mv$(inputs), node.m_clobbers, node.m_flags } );
             m_builder.set_result(node.span(), ::MIR::RValue::make_Tuple({}));
         }
+        void visit(::HIR::ExprNode_Asm2& node) override
+        {
+            TRACE_FUNCTION_F("_Asm2");
+
+            // TODO: How to represent inout in the MIR?
+            // - Potentially a register specifier that links to one of the inputs
+            // - OR: Just keep the parameter list as before - but now simplified to just one `Reg`
+
+            ::std::vector<MIR::AsmParam>  params;
+            for(auto& v : node.m_params)
+            {
+                //TU_MATCH_HDRA( (v), { )
+                //TU_ARMA(Const, e) {
+                //    }
+                //}
+            }
+            TODO(node.span(), "new asm!");
+        }
         void visit(::HIR::ExprNode_Return& node) override
         {
             TRACE_FUNCTION_F("_Return");

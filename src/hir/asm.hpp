@@ -77,6 +77,20 @@ namespace AsmCommon {
             }
         )
         );
+    static inline bool operator==(const RegisterSpec& a, const RegisterSpec& b) {
+        if(a.tag() != b.tag())
+            return false;
+        TU_MATCH_HDRA( (a,b), {)
+        TU_ARMA(Class, ae,be)
+            return ae == be;
+        TU_ARMA(Explicit, ae,be)
+            return ae == be;
+        }
+        return true;
+    }
+    static inline bool operator!=(const RegisterSpec& a, const RegisterSpec& b) {
+        return !(a == b);
+    }
     static inline std::ostream& operator<<(std::ostream& os, const RegisterSpec& s) {
         TU_MATCH_HDRA((s), {)
         TU_ARMA(Class, c) {
@@ -109,12 +123,21 @@ namespace AsmCommon {
             , modifier('\0')
         {
         }
+        bool operator==(const LineFragment& x) const {
+            return before == x.before
+                && index == x.index
+                && modifier == x.modifier
+                ;
+        }
     };
     struct Line {
         std::vector<LineFragment>   frags;
         std::string trailing;
 
         void fmt(std::ostream& os) const;
+        bool operator==(const Line& x) const {
+            return frags == x.frags && trailing == x.trailing;
+        }
     };
     struct Options {
         unsigned pure : 1;
@@ -135,14 +158,42 @@ namespace AsmCommon {
         {
         }
         bool any() const {
-            if(pure)    return true;
-            if(nomem)   return true;
-            if(readonly)    return true;
-            if(preserves_flags) return true;
-            if(noreturn)    return true;
-            if(nostack) return true;
-            if(att_syntax)  return true;
+            #define _(n)    if(n) return true
+            _(pure);
+            _(nomem);
+            _(readonly);
+            _(preserves_flags);
+            _(noreturn);
+            _(nostack);
+            _(att_syntax);
+            #undef _
             return false;
+        }
+
+        void fmt(std::ostream& os) const {
+            os << "options(";
+            #define _(n)    if(n) os << #n ","
+            _(pure);
+            _(nomem);
+            _(readonly);
+            _(preserves_flags);
+            _(noreturn);
+            _(nostack);
+            _(att_syntax);
+            #undef _
+            os << ")";
+        }
+        bool operator==(const Options& x) const {
+            #define _(n)    if(n != x.n)return false
+            _(pure);
+            _(nomem);
+            _(readonly);
+            _(preserves_flags);
+            _(noreturn);
+            _(nostack);
+            _(att_syntax);
+            #undef _
+            return true;
         }
     };
 }

@@ -438,6 +438,21 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
                 for(const auto& v : stmt.as_Asm().outputs)
                     val_state.mark_validity( state, v.second, true );
                 break;
+            TU_ARM(stmt, Asm2, e) {
+                for(const auto& p : e.params)
+                {
+                    TU_MATCH_HDRA( (p), { )
+                    TU_ARMA(Const, v) {}
+                    TU_ARMA(Sym, v) {}
+                    TU_ARMA(Reg, v) {
+                        if(v.input)
+                            val_state.move_val(state, *v.input);
+                        if(v.output)
+                            val_state.mark_validity(state, *v.output, true);
+                        }
+                    }
+                }
+                } break;
             case ::MIR::Statement::TAG_Assign:
                 // Destination must be valid
                 for(const auto& w : stmt.as_Assign().dst.m_wrappers)
@@ -972,6 +987,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                     }
                     } break;
                 case ::MIR::Statement::TAG_Asm:
+                case ::MIR::Statement::TAG_Asm2:
                     // TODO: Ensure that values are all thin pointers or integers?
                     break;
                 case ::MIR::Statement::TAG_Drop:

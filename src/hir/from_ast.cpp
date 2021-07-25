@@ -490,13 +490,30 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
         TU_ARMA(Null, ty) {
             }
         TU_ARMA(Lifetime, ty) {
-            // TODO: Lifetime params (not encoded in ::HIR::PathNode as yet)
+            // TODO: Lifetime params (not encoded in ::HIR::PathParams as yet)
             }
         TU_ARMA(Type, ty) {
             params.m_types.push_back( LowerHIR_Type(ty) );
             }
         TU_ARMA(Value, iv) {
-            TODO(iv->span(), "Constant params for methods");
+            // TODO: Explicitly handle each expected variant... or add a proper consteval expression
+            if( const auto* e = dynamic_cast<const AST::ExprNode_NamedValue*>(&*iv) ) {
+                if( e->m_path.is_trivial() ) {
+                    const auto& b = e->m_path.m_bindings.value.binding;
+                    ASSERT_BUG(sp, b.is_Generic(), "Trivial path not type parameter - " << e->m_path << " - " << b.tag_str());
+                    const auto& param = b.as_Generic();
+                    params.m_values.push_back( HIR::Literal::make_Generic(HIR::GenericRef(e->m_path.as_trivial(), param.index)) );
+                }
+                else {
+                    params.m_values.push_back( LowerHIR_Path(sp, e->m_path, FromAST_PathClass::Value) );
+                }
+            }
+            else if( const auto* e = dynamic_cast<const AST::ExprNode_Integer*>(&*iv) ) {
+                params.m_values.push_back(e->m_value);
+            }
+            else {
+                TODO(iv->span(), "Constant params into PathParams - " << *iv);
+            }
             }
         TU_ARMA(AssociatedTyEqual, ty) {
             if( !allow_assoc )
@@ -654,7 +671,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
         BUG(sp, "BUG: Encountered Invalid path in LowerHIR_Path");
         }
     TU_ARMA(Local, e) {
-        TODO(sp, "What to do wth Path::Class::Local in LowerHIR_Path - " << path);
+        TODO(sp, "What to do with Path::Class::Local in LowerHIR_Path - " << path);
         }
     TU_ARMA(Relative, e) {
         BUG(sp, "Encountered `Relative` path in LowerHIR_Path - " << path);
@@ -1420,6 +1437,20 @@ namespace {
 
     return rv;
 }
+::HIR::TraitAlias LowerHIR_TraitAlias(const Span& sp, ::HIR::ItemPath p, const ::AST::TraitAlias& f)
+{
+    bool trait_reqires_sized = false;
+
+    HIR::TraitAlias ta;
+    //ta.params = LowerHIR_GenericParams(f.params, &trait_reqires_sized);
+    ta.m_params = ::HIR::GenericParams();
+    for(const auto& t : f.traits)
+    {
+        ta.m_traits.push_back( LowerHIR_TraitPath(t.sp, *t.ent.path) );
+    }
+
+    return ta;
+}
 ::HIR::Function LowerHIR_Function(::HIR::ItemPath p, const ::AST::AttributeList& attrs, const ::AST::Function& f, const ::HIR::TypeRef& real_self_type)
 {
     static Span sp;
@@ -1731,7 +1762,7 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
             _add_mod_ns_item( mod,  item.name, get_pub(item.is_pub), LowerHIR_Trait(item_path.get_simple_path(), e) );
             }
         TU_ARMA(TraitAlias, e) {
-            TODO(sp, "LowerHIR - TraitAlias");
+            _add_mod_ns_item( mod,  item.name, get_pub(item.is_pub), LowerHIR_TraitAlias(sp, item_path, e) );
             }
         TU_ARMA(Function, e) {
             _add_mod_val_item(mod, item.name, get_pub(item.is_pub),  LowerHIR_Function(item_path, item.attrs, e, ::HIR::TypeRef{}));

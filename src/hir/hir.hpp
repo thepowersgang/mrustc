@@ -291,6 +291,11 @@ struct TypeAlias
     GenericParams   m_params;
     ::HIR::TypeRef  m_type;
 };
+struct TraitAlias
+{
+    GenericParams   m_params;
+    ::std::vector< ::HIR::TraitPath>    m_traits;
+};
 
 typedef ::std::vector< VisEnt<::HIR::TypeRef> > t_tuple_fields;
 typedef ::std::vector< ::std::pair< RcString, VisEnt<::HIR::TypeRef> > >   t_struct_fields;
@@ -558,6 +563,7 @@ TAGGED_UNION(TypeItem, Import,
     (Import, struct { ::HIR::SimplePath path; bool is_variant; unsigned int idx; }),
     (Module, Module),
     (TypeAlias, TypeAlias), // NOTE: These don't introduce new values
+    (TraitAlias, TraitAlias),
     (ExternType, ExternType),
     (Enum,      Enum),
     (Struct,    Struct),

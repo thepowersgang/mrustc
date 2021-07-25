@@ -376,6 +376,9 @@ void Resolve_Index_Module_Wildcard__glob_in_hir_mod(
             TU_ARMA(Struct, e) {
                 pb.binding = ::AST::PathBinding_Type::make_Struct({nullptr, &e});
                 }
+            TU_ARMA(TraitAlias, e) {
+                pb.binding = ::AST::PathBinding_Type::make_TraitAlias({nullptr, &e});
+                }
             TU_ARMA(Union, e) {
                 pb.binding = ::AST::PathBinding_Type::make_Union({nullptr, &e});
                 }

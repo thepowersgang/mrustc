@@ -52,6 +52,9 @@ namespace {
             (TypeAlias,
                 BUG(sp, "Type path pointed to type alias - " << path);
                 ),
+            (TraitAlias,
+                BUG(sp, "Type path pointed to trait alias - " << path);
+                ),
             (ExternType,
                 static ::HIR::GenericParams empty_params;
                 return empty_params;

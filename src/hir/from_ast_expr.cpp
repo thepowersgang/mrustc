@@ -90,7 +90,34 @@ struct LowerHIR_ExprNode_Visitor:
         m_rv.reset( new ::HIR::ExprNode_Asm( v.span(), v.m_text, mv$(outputs), mv$(inputs), v.m_clobbers, v.m_flags ) );
     }
     virtual void visit(::AST::ExprNode_Asm2& v) override {
-        TODO(v.span(), "Handle asm!");
+        std::vector< ::HIR::ExprNode_Asm2::Param>  params;
+        for(auto& p : v.m_params)
+        {
+            TU_MATCH_HDRA((p), {)
+            TU_ARMA(Const, e) {
+                params.push_back( lower(e) );
+                }
+            TU_ARMA(Sym, e) {
+                params.push_back( LowerHIR_Path(v.span(), e, FromAST_PathClass::Value) );
+                }
+            TU_ARMA(RegSingle, e) {
+                params.push_back(::HIR::ExprNode_Asm2::Param::make_RegSingle({
+                    e.dir,
+                    e.spec.clone(),
+                    lower(e.val)
+                    }));
+                }
+            TU_ARMA(Reg, e) {
+                params.push_back(::HIR::ExprNode_Asm2::Param::make_Reg({
+                    e.dir,
+                    e.spec.clone(),
+                    lower(e.val_in),
+                    lower(e.val_out)
+                    }));
+                }
+            }
+        }
+        m_rv.reset( new ::HIR::ExprNode_Asm2( v.span(), v.m_options, v.m_lines, mv$(params) ) );
     }
     virtual void visit(::AST::ExprNode_Flow& v) override {
         switch( v.m_type )

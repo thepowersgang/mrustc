@@ -350,6 +350,11 @@ namespace {
 
         void visit(::HIR::ExprNode_Asm& node) override
         {
+            m_os << "llvm_asm!(";
+            m_os << ")";
+        }
+        void visit(::HIR::ExprNode_Asm2& node) override
+        {
             m_os << "asm!(";
             m_os << ")";
         }

@@ -65,6 +65,10 @@ void ::HIR::Visitor::visit_module(::HIR::ItemPath p, ::HIR::Module& mod)
             TRACE_FUNCTION_F("type " << name);
             this->visit_type_alias(p + name, e);
             }
+        TU_ARMA(TraitAlias, e) {
+            TRACE_FUNCTION_F("trait (alias) " << name);
+            this->visit_trait_alias(p + name, e);
+            }
         TU_ARMA(ExternType, e) {
             TRACE_FUNCTION_F("extern type " << name);
             }
@@ -174,6 +178,12 @@ void ::HIR::Visitor::visit_type_alias(::HIR::ItemPath p, ::HIR::TypeAlias& item)
 {
     this->visit_params(item.m_params);
     this->visit_type(item.m_type);
+}
+void ::HIR::Visitor::visit_trait_alias(::HIR::ItemPath p, ::HIR::TraitAlias& item)
+{
+    this->visit_params(item.m_params);
+    for(auto& p : item.m_traits)
+        this->visit_trait_path(p);
 }
 void ::HIR::Visitor::visit_trait(::HIR::ItemPath p, ::HIR::Trait& item)
 {

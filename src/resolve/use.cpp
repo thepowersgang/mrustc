@@ -784,6 +784,9 @@ namespace {
                     ),
                 (Trait,
                     rv.type.set( ap, ::AST::PathBinding_Type::make_Trait({nullptr, &e}) );
+                    ),
+                (TraitAlias,
+                    rv.type.set( ap, ::AST::PathBinding_Type::make_TraitAlias({nullptr, &e}) );
                     )
                 )
             }

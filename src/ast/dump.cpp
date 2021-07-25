@@ -139,8 +139,9 @@ public:
         }
         if(n.m_options.any())
         {
-            m_os << "options(";
-            m_os << ")";
+            n.m_options.fmt(m_os);
+            //m_os << "options(";
+            //m_os << ")";
         }
         m_os << ")";
     }

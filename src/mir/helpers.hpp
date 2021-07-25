@@ -376,6 +376,23 @@ namespace visit {
                 for(auto& v : e.outputs)
                     rv |= visit_lvalue(v.second, ValUsage::Write);
                 }
+            TU_ARMA(Asm2, e) {
+                for(auto& p : e.params)
+                {
+                    TU_MATCH_HDRA( (p), { )
+                    TU_ARMA(Const, v)
+                        rv |= visit_const(v);
+                    TU_ARMA(Sym, v)
+                        /*rv |= */visit_path(v);
+                    TU_ARMA(Reg, v) {
+                        if(v.input)
+                            rv |= visit_param(*v.input, ValUsage::Read);
+                        if(v.output)
+                            rv |= visit_lvalue(*v.output, ValUsage::Write);
+                        }
+                    }
+                }
+                }
             TU_ARMA(SetDropFlag, e) {
                 }
             TU_ARMA(Drop, e) {

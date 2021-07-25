@@ -31,6 +31,7 @@ class MacroRules;
 namespace HIR {
 class Module;
 class Trait;
+struct TraitAlias;
 class Enum;
 class Struct;
 class Union;
@@ -177,7 +178,7 @@ TAGGED_UNION_EX(PathBinding_Type, (), Unbound, (
         }),
     (TraitAlias, struct {
         const TraitAlias* trait_;
-        //const ::HIR::Trait* hir;
+        const ::HIR::TraitAlias* hir;
         }),
 
     (EnumVar, struct {

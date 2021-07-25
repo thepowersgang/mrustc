@@ -942,6 +942,30 @@ namespace
                         }
                         m_of << ":" << se.flags << "]";
                         } break;
+                    TU_ARM(stmt, Asm2, se) {
+                        m_of << "ASM2 (";
+                        for(const auto& l : se.lines)
+                            m_of << l;
+                        for(const auto& p : se.params)
+                        {
+                            m_of << ", ";
+                            TU_MATCH_HDRA((p), {)
+                            TU_ARMA(Const, v)
+                                m_of << "const " << fmt(v);
+                            TU_ARMA(Sym, v)
+                                m_of << "sym " << fmt(v);
+                            TU_ARMA(Reg, v) {
+                                m_of << "reg(" << v.dir << " " << v.spec << ") ";
+                                if(v.input ) m_of << fmt(*v.input ); else m_of << "_";
+                                m_of << " => ";
+                                if(v.output) m_of << fmt(*v.output); else m_of << "_";
+                                }
+                            }
+                        }
+                        m_of << ", ";
+                        se.options.fmt(m_of);
+                        m_of << ")";
+                        } break;
                     TU_ARM(stmt, ScopeEnd, se) { (void)se;
                         continue ;
                         } break;

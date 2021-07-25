@@ -1089,6 +1089,9 @@ namespace {
             TU_ARMA(Trait, e) {
                 pbt = ::AST::PathBinding_Type::make_Trait({nullptr, &e});
                 }
+            TU_ARMA(TraitAlias, e) {
+                pbt = ::AST::PathBinding_Type::make_TraitAlias({nullptr, &e});
+                }
             TU_ARMA(TypeAlias, e) {
                 pbt = ::AST::PathBinding_Type::make_TypeAlias({nullptr/*, &e*/});
                 }
@@ -1166,6 +1169,12 @@ namespace {
                 }
             TU_ARMA(Module, e) {
                 hmod = &e;
+                }
+            TU_ARMA(TraitAlias, e) {
+                //for(const auto& trait_path_hir : e.m_traits)
+                //{
+                //}
+                TODO(sp, "Path referring to a trait alias - " << path);
                 }
             TU_ARMA(Trait, e) {
                 AST::AbsolutePath   ap( crate.m_name, {} );
@@ -1285,6 +1294,9 @@ namespace {
                         }
                     TU_ARMA(Trait, e) {
                         pbt = ::AST::PathBinding_Type::make_Trait({nullptr, &e});
+                        }
+                    TU_ARMA(TraitAlias, e) {
+                        pbt = ::AST::PathBinding_Type::make_TraitAlias({nullptr, &e});
                         }
                     TU_ARMA(Module, e) {
                         pbt = ::AST::PathBinding_Type::make_Module({nullptr, {&crate, &e}});

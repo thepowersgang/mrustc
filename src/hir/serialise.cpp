@@ -753,6 +753,10 @@
             (ScopeEnd,
                 m_out.write_tag(4);
                 serialise_vec(e.slots);
+                ),
+            (Asm2,
+                m_out.write_tag(5);
+                TODO(Span(), "Serialise Asm2");
                 )
             )
         }
@@ -996,6 +1000,10 @@
             (ExternType,
                 m_out.write_tag(7);
                 serialise(e);
+                ),
+            (TraitAlias,
+                m_out.write_tag(8);
+                serialise(e);
                 )
             )
         }
@@ -1117,6 +1125,11 @@
         {
             serialise_generics(ta.m_params);
             serialise_type(ta.m_type);
+        }
+        void serialise(const ::HIR::TraitAlias& ta)
+        {
+            serialise_generics(ta.m_params);
+            serialise_vec(ta.m_traits);
         }
         void serialise(const ::HIR::Enum& item)
         {

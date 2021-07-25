@@ -13,6 +13,7 @@
 #include <span.hpp>
 #include <hir/visitor.hpp>
 #include <hir_typeck/common.hpp>
+#include "asm.hpp"
 
 namespace HIR {
 
@@ -110,6 +111,39 @@ struct ExprNode_Asm:
         m_inputs( mv$(inputs) ),
         m_clobbers( mv$(clobbers) ),
         m_flags( mv$(flags) )
+    {
+    }
+
+    NODE_METHODS();
+};
+struct ExprNode_Asm2:
+    public ExprNode
+{
+    TAGGED_UNION(Param, Const,
+        (Const, HIR::ExprNodeP),
+        (Sym, HIR::Path),
+        (RegSingle, struct {
+            AsmCommon::Direction    dir;
+            AsmCommon::RegisterSpec spec;
+            HIR::ExprNodeP  val;
+            }),
+        (Reg, struct {
+            AsmCommon::Direction    dir;
+            AsmCommon::RegisterSpec spec;
+            HIR::ExprNodeP  val_in;
+            HIR::ExprNodeP  val_out;
+            })
+        );
+
+    AsmCommon::Options  m_options;
+    std::vector<AsmCommon::Line>   m_lines;
+    std::vector<Param>  m_params;
+
+    ExprNode_Asm2(Span sp, AsmCommon::Options options, std::vector<AsmCommon::Line> lines, std::vector<Param> params)
+        : ExprNode(mv$(sp))
+        , m_options(options)
+        , m_lines( move(lines) )
+        , m_params( move(params) )
     {
     }
 
@@ -862,6 +896,7 @@ public:
 
     NV(ExprNode_Block)
     NV(ExprNode_Asm)
+    NV(ExprNode_Asm2)
     NV(ExprNode_Return)
     NV(ExprNode_Yield)
     NV(ExprNode_Let)
@@ -913,6 +948,7 @@ public:
 
     NV(ExprNode_Block)
     NV(ExprNode_Asm)
+    NV(ExprNode_Asm2)
     NV(ExprNode_Return)
     NV(ExprNode_Yield)
     NV(ExprNode_Let)

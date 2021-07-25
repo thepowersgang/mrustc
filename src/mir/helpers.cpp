@@ -925,6 +925,25 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
                         }
                     }
                     }
+                TU_ARMA(Asm2, se) {
+                    for(const auto& p : se.params)
+                    {
+                        TU_MATCH_HDRA( (p), {)
+                        TU_ARMA(Const, v) {}
+                        TU_ARMA(Sym, v) {}
+                        TU_ARMA(Reg, v) {
+                            if(v.output) {
+                                if(*v.output == m_lv) {
+                                    // Assigned, just apply
+                                    DEBUG(m_mir_res << "- Assigned (asm!), return");
+                                    state.finalise(stmt_idx);
+                                    return ;
+                                }
+                            }
+                            }
+                        }
+                    }
+                    }
                 TU_ARMA(SetDropFlag, se) {
                     // Ignore
                     }

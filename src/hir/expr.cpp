@@ -38,6 +38,26 @@ DEF_VISIT(ExprNode_Asm, node,
     for(auto& v : node.m_inputs)
         visit_node_ptr(v.value);
 )
+DEF_VISIT(ExprNode_Asm2, node,
+    for(auto& v : node.m_params)
+    {
+        TU_MATCH_HDRA( (v), { )
+        TU_ARMA(Const, e) {
+            visit_node_ptr(e);
+            }
+        TU_ARMA(Sym, e) {
+            visit_path(::HIR::Visitor::PathContext::VALUE, e);
+            }
+        TU_ARMA(RegSingle, e) {
+            visit_node_ptr(e.val);
+            }
+        TU_ARMA(Reg, e) {
+            if(e.val_in)    visit_node_ptr(e.val_in);
+            if(e.val_out)   visit_node_ptr(e.val_out);
+            }
+        }
+    }
+)
 DEF_VISIT(ExprNode_Return, node,
     visit_node_ptr(node.m_value);
 )

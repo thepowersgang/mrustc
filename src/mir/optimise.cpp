@@ -586,6 +586,21 @@ namespace
             for(auto& v : e.outputs)
                 rv |= visit_mir_lvalue_raw_mut(v.second, ValUsage::Write, cb);
             }
+        TU_ARMA(Asm2, e) {
+            for(auto& p : e.params)
+            {
+                TU_MATCH_HDRA( (p), { )
+                TU_ARMA(Const, v) {}
+                TU_ARMA(Sym, v) {}
+                TU_ARMA(Reg, v) {
+                    if(v.input)
+                        rv |= visit_mir_lvalue_mut(*v.input, ValUsage::Read, cb);
+                    if(v.output)
+                        rv |= visit_mir_lvalue_raw_mut(*v.output, ValUsage::Write, cb);
+                    }
+                }
+            }
+            }
         TU_ARMA(SetDropFlag, e) {
             }
         TU_ARMA(Drop, e) {
@@ -1302,6 +1317,27 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
             return rv;
         }
 
+        ::std::vector<MIR::AsmParam>    clone_asm_params(const ::std::vector<MIR::AsmParam>& params) const
+        {
+            ::std::vector<MIR::AsmParam>    rv;
+            for(const auto& p : params)
+            {
+                TU_MATCH_HDRA((p), {)
+                TU_ARMA(Const, v)
+                    rv.push_back( this->clone_constant(v) );
+                TU_ARMA(Sym, v)
+                    rv.push_back( this->monomorph(v) );
+                TU_ARMA(Reg, v)
+                    rv.push_back(::MIR::AsmParam::make_Reg({
+                        v.dir,
+                        v.spec.clone(),
+                        v.input  ? box$(this->clone_param(*v.input)) : std::unique_ptr<MIR::Param>(),
+                        v.output ? box$(this->clone_lval(*v.output)) : std::unique_ptr<MIR::LValue>()
+                        }));
+                }
+            }
+            return rv;
+        }
         ::MIR::BasicBlock clone_bb(const ::MIR::BasicBlock& src, unsigned src_idx, unsigned new_idx) const
         {
             ::MIR::BasicBlock   rv;
@@ -1323,6 +1359,13 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
                         this->clone_name_lval_vec(se.inputs),
                         se.clobbers,
                         se.flags
+                        }) );
+                    ),
+                (Asm2,
+                    rv.statements.push_back( ::MIR::Statement::make_Asm2({
+                        se.options,
+                        se.lines,
+                        this->clone_asm_params(se.params)
                         }) );
                     ),
                 (SetDropFlag,
@@ -2752,14 +2795,14 @@ bool MIR_Optimise_UnifyBlocks(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             {
                 if( a.statements[i].tag() != b.statements[i].tag() )
                     return false;
-                TU_MATCHA( (a.statements[i], b.statements[i]), (ae, be),
-                (Assign,
+                TU_MATCH_HDRA( (a.statements[i], b.statements[i]), {)
+                TU_ARMA(Assign, ae, be) {
                     if( ae.dst != be.dst )
                         return false;
                     if( ae.src != be.src )
                         return false;
-                    ),
-                (Asm,
+                    }
+                TU_ARMA(Asm, ae, be) {
                     if( ae.tpl != be.tpl )
                         return false;
                     if( ae.outputs != be.outputs )
@@ -2770,28 +2813,36 @@ bool MIR_Optimise_UnifyBlocks(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                         return false;
                     if( ae.flags != be.flags )
                         return false;
-                    ),
-                (SetDropFlag,
+                    }
+                TU_ARMA(Asm2, ae, be) {
+                    if( ae.lines != be.lines )
+                        return false;
+                    if( !(ae.options == be.options) )
+                        return false;
+                    if( ae.params != be.params )
+                        return false;
+                    }
+                TU_ARMA(SetDropFlag, ae, be) {
                     if( ae.idx != be.idx )
                         return false;
                     if( ae.new_val != be.new_val )
                         return false;
                     if( ae.other != be.other )
                         return false;
-                    ),
-                (Drop,
+                    }
+                TU_ARMA(Drop, ae, be) {
                     if( ae.kind != be.kind )
                         return false;
                     if( ae.flag_idx != be.flag_idx )
                         return false;
                     if( ae.slot != be.slot )
                         return false;
-                    ),
-                (ScopeEnd,
+                    }
+                TU_ARMA(ScopeEnd, ae, be) {
                     if( ae.slots != be.slots )
                         return false;
-                    )
-                )
+                    }
+                }
             }
             if( a.terminator.tag() != b.terminator.tag() )
                 return false;

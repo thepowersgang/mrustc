@@ -1676,6 +1676,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
             state.write_lvalue(se.dst, ::std::move(new_val));
             } break;
         case ::MIR::Statement::TAG_Asm:
+        case ::MIR::Statement::TAG_Asm2:
             LOG_TODO(stmt);
             break;
         TU_ARM(stmt, Drop, se) {

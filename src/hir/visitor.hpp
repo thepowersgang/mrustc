@@ -31,6 +31,7 @@ public:
 
     // - Type Items
     virtual void visit_type_alias(ItemPath p, ::HIR::TypeAlias& item);
+    virtual void visit_trait_alias(::HIR::ItemPath p, ::HIR::TraitAlias& item);
     virtual void visit_trait(ItemPath p, ::HIR::Trait& item);
     virtual void visit_struct(ItemPath p, ::HIR::Struct& item);
     virtual void visit_enum(ItemPath p, ::HIR::Enum& item);

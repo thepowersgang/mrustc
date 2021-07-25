@@ -118,6 +118,10 @@ namespace {
             // TODO: Revisit for validation
             no_revisit(node);
         }
+        void visit(::HIR::ExprNode_Asm2& node) override {
+            // TODO: Revisit for validation
+            no_revisit(node);
+        }
         void visit(::HIR::ExprNode_Return& node) override {
             no_revisit(node);
         }
@@ -1505,6 +1509,9 @@ namespace {
             m_os << "_Block {" << context.m_ivars.fmt_type(node.m_nodes.back()->m_res_type) << "}";
         }
         void visit(::HIR::ExprNode_Asm& node) override {
+            no_revisit(node);
+        }
+        void visit(::HIR::ExprNode_Asm2& node) override {
             no_revisit(node);
         }
         void visit(::HIR::ExprNode_Return& node) override {

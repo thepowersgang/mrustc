@@ -245,7 +245,7 @@ namespace {
                 } break;
             case ::MIR::Statement::TAG_Asm: {
                 const auto& e = stmt.as_Asm();
-                DEBUG("- asm! \"" << e.tpl << "\"");
+                DEBUG("- llvm_asm! \"" << e.tpl << "\"");
                 ::std::vector< ::std::pair<::std::string, ::MIR::LValue>>   new_out, new_in;
                 new_out.reserve( e.outputs.size() );
                 for(auto& ent : e.outputs)
@@ -257,6 +257,30 @@ namespace {
                 statements.push_back( ::MIR::Statement::make_Asm({
                     e.tpl, mv$(new_out), mv$(new_in), e.clobbers, e.flags
                     }) );
+                } break;
+            case ::MIR::Statement::TAG_Asm2: {
+                const auto& e = stmt.as_Asm2();
+                DEBUG("- asm!");
+                std::vector<MIR::AsmParam>  new_params;
+                for(const auto& p : e.params)
+                {
+                    TU_MATCH_HDRA( (p), {)
+                    TU_ARMA(Const, v)
+                        new_params.push_back(monomorph_Constant(resolve, params, v));
+                    TU_ARMA(Sym, v)
+                        new_params.push_back(params.monomorph(resolve, v));
+                    TU_ARMA(Reg, v)
+                        new_params.push_back(MIR::AsmParam::make_Reg({
+                            v.dir,
+                            v.spec.clone(),
+                            v.input  ? box$( monomorph_Param(resolve, params, *v.input) ) : nullptr,
+                            v.output ? box$( monomorph_LValue(resolve, params, *v.output) ) : nullptr,
+                            }));
+                    }
+                }
+                statements.push_back(::MIR::Statement::make_Asm2({
+                    e.options, e.lines, std::move(new_params)
+                    }));
                 } break;
             }
         }

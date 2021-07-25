@@ -566,6 +566,40 @@ namespace typecheck
             // TODO: Revisit to check that the input are integers, and the outputs are integer lvalues
             this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
         }
+        void visit(::HIR::ExprNode_Asm2& node) override
+        {
+            TRACE_FUNCTION_F(&node << " asm! ...");
+
+            this->push_inner_coerce( false );
+            for(auto& v : node.m_params)
+            {
+                TU_MATCH_HDRA( (v), { )
+                TU_ARMA(Const, e) {
+                    this->context.add_ivars( e->m_res_type );
+                    visit_node_ptr(e);
+                    }
+                TU_ARMA(Sym, e) {
+                    }
+                TU_ARMA(RegSingle, e) {
+                    this->context.add_ivars( e.val->m_res_type );
+                    visit_node_ptr(e.val);
+                    }
+                TU_ARMA(Reg, e) {
+                    if(e.val_in) {
+                        this->context.add_ivars( e.val_in->m_res_type );
+                        visit_node_ptr(e.val_in);
+                    }
+                    if(e.val_out) {
+                        this->context.add_ivars( e.val_out->m_res_type );
+                        visit_node_ptr(e.val_out);
+                    }
+                    }
+                }
+            }
+            this->pop_inner_coerce();
+            // TODO: Revisit to check that the input are integers, and the outputs are integer lvalues
+            this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
+        }
 
         void visit(::HIR::ExprNode_Return& node) override
         {

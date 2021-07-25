@@ -1093,6 +1093,21 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                 for(auto& v : se.outputs)
                     MIR_Cleanup_LValue(state, mutator,  v.second);
                 }
+            TU_ARMA(Asm2, e) {
+                for(auto& p : e.params)
+                {
+                    TU_MATCH_HDRA( (p), { )
+                    TU_ARMA(Const, v) {}
+                    TU_ARMA(Sym, v) {}
+                    TU_ARMA(Reg, v) {
+                        if(v.input)
+                            MIR_Cleanup_Param(state, mutator, *v.input);
+                        if(v.output)
+                            MIR_Cleanup_LValue(state, mutator,  *v.output);
+                        }
+                    }
+                }
+                }
             TU_ARMA(Assign, se) {
                 MIR_Cleanup_LValue(state, mutator,  se.dst);
                 TU_MATCH_HDRA( (se.src), {)
