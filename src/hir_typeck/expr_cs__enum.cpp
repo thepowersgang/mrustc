@@ -45,7 +45,7 @@ namespace typecheck
             impl_params.m_types[g.binding] = ty.clone();
             return ::HIR::Compare::Equal;
         }
-        ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::Literal& sz) override {
+        ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::ConstGeneric& sz) override {
             TODO(Span(), "OwnedImplMatcher::match_val " << g << " with " << sz);
         }
     };
@@ -226,7 +226,7 @@ namespace typecheck
                 }
             }
 
-            ::HIR::Literal get_value(const Span& sp, const HIR::GenericRef& e) const override
+            ::HIR::ConstGeneric get_value(const Span& sp, const HIR::GenericRef& e) const override
             {
                 TODO(sp, "");
             }

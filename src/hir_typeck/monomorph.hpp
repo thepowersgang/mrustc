@@ -16,7 +16,7 @@ class Monomorphiser
 {
 public:
     virtual ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& g) const = 0;
-    virtual ::HIR::Literal get_value(const Span& sp, const ::HIR::GenericRef& g) const = 0;
+    virtual ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& g) const = 0;
 
     ::HIR::TypeRef monomorph_type(const Span& sp, const ::HIR::TypeRef& ty, bool allow_infer=true) const;
     ::HIR::Path monomorph_path(const Span& sp, const ::HIR::Path& tpl, bool allow_infer=true) const;
@@ -43,7 +43,7 @@ public:
     virtual const ::HIR::PathParams* get_method_params() const = 0;
 
     ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& ty) const override;
-    ::HIR::Literal get_value(const Span& sp, const ::HIR::GenericRef& val) const override;
+    ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& val) const override;
 };
 class MonomorphiserNop:
     public Monomorphiser
@@ -52,8 +52,8 @@ public:
     ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& ty) const override {
         return HIR::TypeRef(ty);
     }
-    ::HIR::Literal get_value(const Span& sp, const ::HIR::GenericRef& val) const override {
-        return HIR::Literal(val);
+    ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& val) const override {
+        return HIR::ConstGeneric(val);
     }
 };
 

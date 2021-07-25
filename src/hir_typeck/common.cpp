@@ -7,6 +7,7 @@
  */
 #include "common.hpp"
 #include <hir/path.hpp>
+#include "trans/target.hpp"
 
 
 template<typename I>
@@ -286,8 +287,8 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
             TU_ARMA(Generic, ve) {
                 sz = ve;
                 }
-            TU_ARMA(Integer, ve) {
-                sz = ve;
+            TU_ARMA(Evaluated, ve) {
+                sz = ve->read_usize(0);
                 }
             }
         }
@@ -641,7 +642,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
         }
     }
 }
-::HIR::Literal MonomorphiserPP::get_value(const Span& sp, const ::HIR::GenericRef& val) const /*override*/
+::HIR::ConstGeneric MonomorphiserPP::get_value(const Span& sp, const ::HIR::GenericRef& val) const /*override*/
 {
     switch(val.group())
     {

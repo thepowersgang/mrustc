@@ -459,8 +459,8 @@ namespace {
                         }
                         return HIR::TypeRef(ty);
                     }
-                    ::HIR::Literal get_value(const Span& sp, const ::HIR::GenericRef& val) const override {
-                        return HIR::Literal(val);
+                    ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& val) const override {
+                        return val;
                     }
                 };
 

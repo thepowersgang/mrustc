@@ -608,7 +608,7 @@ namespace {
                 return ::HIR::Compare::Equal;
             }
         }
-        ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::Literal& sz) override {
+        ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::ConstGeneric& sz) override {
             TODO(Span(), "Matcher::match_val " << g << " with " << sz);
         }
 
@@ -618,7 +618,7 @@ namespace {
             ASSERT_BUG(sp, impl_tys[g.idx()], "");
             return impl_tys[g.idx()]->clone();
         }
-        ::HIR::Literal get_value(const Span& sp, const ::HIR::GenericRef& g) const override {
+        ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& g) const override {
             TODO(Span(), "Matcher::get_value " << g);
         }
 
@@ -1406,7 +1406,28 @@ const ::HIR::t_struct_fields& HIR::pattern_get_named(const Span& sp, const ::HIR
     return pattern_get_struct(sp, path, binding, false).m_data.as_Named();
 }
 
+namespace HIR {
+EncodedLiteralPtr::EncodedLiteralPtr(EncodedLiteral el)
+{
+    p = new EncodedLiteral(mv$(el));
+}
+EncodedLiteralPtr::~EncodedLiteralPtr()
+{
+    if(p) {
+        delete p;
+        p = nullptr;
+    }
+}
+}
+
 // ---
+EncodedLiteral EncodedLiteral::make_usize(uint64_t v)
+{
+    EncodedLiteral  rv;
+    rv.bytes.resize(Target_GetPointerBits() / 8);
+    rv.write_usize(0, v);
+    return rv;
+}
 EncodedLiteral EncodedLiteral::clone() const
 {
     EncodedLiteral  rv;
@@ -1434,6 +1455,14 @@ void EncodedLiteral::write_uint(size_t ofs, size_t size,  uint64_t v)
             bytes[ofs + i] = b;
         }
     }
+}
+void EncodedLiteral::write_usize(size_t ofs,  uint64_t v)
+{
+    this->write_uint(ofs, Target_GetPointerBits() / 8, v);
+}
+uint64_t EncodedLiteral::read_usize(size_t ofs) const
+{
+    return EncodedLiteralSlice(*this).slice(ofs).read_uint(Target_GetPointerBits() / 8);
 }
 uint64_t EncodedLiteralSlice::read_uint(size_t size/*=0*/) const {
     if(size == 0)   size = m_size;

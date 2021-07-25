@@ -485,7 +485,7 @@
             }
         }
 
-        ::HIR::Literal deserialise_literal();
+        ::HIR::ConstGeneric deserialise_constgeneric();
         EncodedLiteral deserialise_encodedliteral();
 
         ::HIR::ExprPtr deserialise_exprptr()
@@ -920,7 +920,8 @@
 
     template<> DEF_D( ::HIR::Enum::ValueVariant, return d.deserialise_enumvaluevariant(); )
     template<> DEF_D( ::HIR::Enum::DataVariant, return d.deserialise_enumdatavariant(); )
-    template<> DEF_D( ::HIR::Literal, return d.deserialise_literal(); )
+    //template<> DEF_D( ::HIR::Literal, return d.deserialise_literal(); )
+    template<> DEF_D( ::HIR::ConstGeneric, return d.deserialise_constgeneric(); )
 
     template<> DEF_D( ::HIR::AssociatedType, return d.deserialise_associatedtype(); )
     template<> DEF_D( ::HIR::TraitValueItem, return d.deserialise_traitvalueitem(); )
@@ -1093,7 +1094,7 @@
         ::HIR::PathParams   rv;
         TRACE_FUNCTION_FR("", rv);
         rv.m_types = deserialise_vec< ::HIR::TypeRef>();
-        rv.m_values = deserialise_vec< ::HIR::Literal>();
+        rv.m_values = deserialise_vec< ::HIR::ConstGeneric>();
         return rv;
     }
     ::HIR::GenericPath HirDeserialiser::deserialise_genericpath()
@@ -1308,30 +1309,23 @@
         rv.m_vtable_path = deserialise_simplepath();
         return rv;
     }
-
-    ::HIR::Literal HirDeserialiser::deserialise_literal()
+    
+    ::HIR::ConstGeneric HirDeserialiser::deserialise_constgeneric()
     {
         switch( auto tag = m_in.read_tag() )
         {
-        #define _(x, ...)    case ::HIR::Literal::TAG_##x:   return ::HIR::Literal::make_##x(__VA_ARGS__);
+        #define _(x, ...)    case ::HIR::ConstGeneric::TAG_##x:   return ::HIR::ConstGeneric::make_##x(__VA_ARGS__);
         _(Invalid, {})
-        _(Defer, {})
+        _(Unevaluated, deserialise_exprptr())
         _(Generic,
             deserialise_genericref()
             )
-        _(List,   deserialise_vec< ::HIR::Literal>() )
-        _(Variant, {
-            static_cast<unsigned int>(m_in.read_count()),
-            box$( deserialise_literal() )
-            })
-        _(Integer, m_in.read_u64() )
-        _(Float,   m_in.read_double() )
-        _(BorrowPath, deserialise_path() )
-        //_(BorrowData, { box$(deserialise_literal()), HIR::TypeRef() } )
-        _(String,  m_in.read_string() )
+        _(Evaluated,
+            HIR::EncodedLiteralPtr(deserialise_encodedliteral())
+            )
         #undef _
         default:
-            BUG(Span(), "Unknown HIR::Literal tag when deserialising - " << tag);
+            BUG(Span(), "Unknown HIR::ConstGeneric tag when deserialising - " << tag);
         }
     }
     EncodedLiteral HirDeserialiser::deserialise_encodedliteral()

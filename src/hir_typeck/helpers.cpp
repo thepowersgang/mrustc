@@ -2899,7 +2899,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 return rv;
             }
         }
-        ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::Literal& sz) override
+        ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::ConstGeneric& sz) override
         {
             ASSERT_BUG(sp, g.binding < out_impl_params.m_values.size(), "Value generic " << g << " out of range (" << out_impl_params.m_values.size() << ")");
             if( out_impl_params.m_values[g.binding].is_Invalid() )
@@ -3056,7 +3056,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 return ::HIR::Compare::Unequal;
             }
         }
-        ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::Literal& sz) override
+        ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::ConstGeneric& sz) override
         {
             TODO(Span(), "Matcher::match_val " << g << " with " << sz);
         }
@@ -3075,7 +3075,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             ASSERT_BUG(sp, placeholders.m_types.size() == impl_params.m_types.size(), "Placeholder size mismatch: " << placeholders.m_types.size() << " != " << impl_params.m_types.size());
             return placeholders.m_types.at(ge.binding).clone();
         }
-        ::HIR::Literal get_value(const Span& sp, const ::HIR::GenericRef& val) const override {
+        ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& val) const override {
             ASSERT_BUG(sp, val.binding < 256, "Generic value binding in " << val << " out of range (>=256)");
             ASSERT_BUG(sp, val.binding < impl_params.m_values.size(), "Generic value binding in " << val << " out of range (>= " << impl_params.m_values.size() << ")");
             if( !impl_params.m_values.at(val.binding).is_Invalid() ) {
@@ -4138,7 +4138,7 @@ const ::HIR::TypeRef* TraitResolution::check_method_receiver(const Span& sp, con
                     }
                     return ::HIR::Compare::Equal;
                 }
-                ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::Literal& sz) override {
+                ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::ConstGeneric& sz) override {
                     TODO(Span(), "GetSelf::match_val " << g << " with " << sz);
                 }
             }   getself;

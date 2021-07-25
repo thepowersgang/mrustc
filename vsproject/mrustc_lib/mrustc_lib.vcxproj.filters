@@ -653,9 +653,6 @@
     <ClInclude Include="..\..\src\hir\type_ref.hpp">
       <Filter>Header Files\hir</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\src\hir\literal.hpp">
-      <Filter>Source Files\hir</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\src\hir\generic_ref.hpp">
       <Filter>Source Files\hir</Filter>
     </ClInclude>
@@ -681,6 +678,12 @@
       <Filter>Header Files\ast</Filter>
     </ClInclude>
     <ClInclude Include="..\..\src\hir\asm.hpp">
+      <Filter>Header Files\hir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\hir\encoded_literal.hpp">
+      <Filter>Header Files\hir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\hir\literal.hpp">
       <Filter>Header Files\hir</Filter>
     </ClInclude>
   </ItemGroup>

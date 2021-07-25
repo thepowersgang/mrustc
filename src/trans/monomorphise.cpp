@@ -55,9 +55,9 @@ namespace {
             TU_MATCH_HDRA( (val), {)
             default:
                 TODO(params.sp, "Monomorphise MIR generic constant " << ce << " = " << val);
-            TU_ARMA(Integer, ve) {
+            TU_ARMA(Evaluated, ve) {
                 // TODO: Need to know the expected type of this.
-                return ::MIR::Constant::make_Uint({ve, HIR::CoreType::Usize});
+                return ::MIR::Constant::make_Uint({ve->read_usize(0), HIR::CoreType::Usize});
                 }
             }
             }

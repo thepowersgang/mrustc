@@ -5,6 +5,7 @@
 #include <mir/mir.hpp>
 #include <mir/operations.hpp>   // MIR_Dump_Fcn
 
+TargetVersion gTargetVersion;
 //int g_debug_indent_level = 0;
 
 struct Args

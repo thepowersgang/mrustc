@@ -722,7 +722,7 @@ namespace {
                 ASSERT_BUG(sp, i < params.m_types.size(), "Item generic binding OOR - " << ge << " (" << i << " !< " << params.m_types.size() << ")");
                 return ::HIR::TypeRef(params.m_types[i].m_name, i);
             }
-            ::HIR::Literal get_value(const Span& sp, const ::HIR::GenericRef& ge) const {
+            ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& ge) const {
                 unsigned i;
                 if( ge.binding == 0xFFFF ) {
                     BUG(sp, "Binding 0xFFFF isn't valid for values");

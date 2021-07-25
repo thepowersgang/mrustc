@@ -1541,9 +1541,9 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
                 TU_MATCH_HDRA( (val), {)
                 default:
                     TODO(sp, "Monomorphise MIR generic constant " << ce << " = " << val);
-                TU_ARMA(Integer, ve) {
-                        // TODO: Need to know the expected type of this.
-                        return ::MIR::Constant::make_Uint({ve, HIR::CoreType::Usize});
+                TU_ARMA(Evaluated, ve) {
+                    // TODO: Need to know the expected type of this.
+                    return ::MIR::Constant::make_Uint({ve->read_usize(0), HIR::CoreType::Usize});
                     }
                 }
                 }

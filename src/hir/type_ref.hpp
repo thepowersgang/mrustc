@@ -17,7 +17,7 @@ class TypeRef;
 struct GenericRef;
 struct SimplePath;
 class Path;
-class Literal;
+class ConstGeneric;
 
 class ExprPtr;
 struct ExprNode_Closure;
@@ -37,7 +37,7 @@ public:
     //virtual const HIR::TypeRef& resolve_infer(const HIR::TypeRef& ty) const { return ty; }
     //virtual const HIR::TypeRef& resolve_generic(const HIR::TypeRef& ty) const { return ty; }
     virtual ::HIR::Compare match_ty(const ::HIR::GenericRef& g, const ::HIR::TypeRef& ty, t_cb_resolve_type resolve_cb) = 0;
-    virtual ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::Literal& sz) = 0;
+    virtual ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::ConstGeneric& sz) = 0;
 };
 
 

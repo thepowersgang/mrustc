@@ -660,40 +660,18 @@
                 }
             }
         }
-        void serialise(const ::HIR::Literal& lit)
+        void serialise(const ::HIR::ConstGeneric& v)
         {
-            m_out.write_tag(lit.tag());
-            TU_MATCH_HDRA( (lit), {)
-            TU_ARMA(Invalid,e) {
-                //BUG(Span(), "Literal::Invalid encountered in HIR");
+            m_out.write_tag(v.tag());
+            TU_MATCH_HDRA( (v), {)
+            TU_ARMA(Invalid, e) {
                 }
-            TU_ARMA(Defer, e) {
-                }
-            TU_ARMA(Generic, e) {
+            TU_ARMA(Unevaluated, e)
                 serialise(e);
-                }
-            TU_ARMA(List, e) {
-                serialise_vec(e);
-                }
-            TU_ARMA(Variant, e) {
-                m_out.write_count(e.idx);
-                serialise(*e.val);
-                }
-            TU_ARMA(Integer, e) {
-                m_out.write_u64(e);
-                }
-            TU_ARMA(Float, e) {
-                m_out.write_double(e);
-                }
-            TU_ARMA(BorrowPath, e) {
-                serialise_path(e);
-                }
-            TU_ARMA(BorrowData, e) {
-                BUG(Span(), "Unexpected attempt to serialise Literal::BorrowData");
-                }
-            TU_ARMA(String, e) {
-                m_out.write_string(e);
-                }
+            TU_ARMA(Generic, e)
+                serialise(e);
+            TU_ARMA(Evaluated, e)
+                serialise(*e);
             }
         }
 

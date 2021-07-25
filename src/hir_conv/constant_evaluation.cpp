@@ -2189,7 +2189,7 @@ namespace {
             }
             else
             {
-                DEBUG("constant? " << item.m_value);
+                DEBUG("constant?");// " << *item.m_value);
             }
 
             m_item_params = nullptr;

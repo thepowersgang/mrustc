@@ -308,6 +308,7 @@
     <ClInclude Include="..\..\src\expand\common.hpp" />
     <ClInclude Include="..\..\src\hir\asm.hpp" />
     <ClInclude Include="..\..\src\hir\crate_ptr.hpp" />
+    <ClInclude Include="..\..\src\hir\encoded_literal.hpp" />
     <ClInclude Include="..\..\src\hir\expr.hpp" />
     <ClInclude Include="..\..\src\hir\expr_ptr.hpp" />
     <ClInclude Include="..\..\src\hir\from_ast.hpp" />

@@ -52,8 +52,6 @@ public:
     virtual void emit_function_code(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params, bool is_extern_def, const ::MIR::FunctionPointer& code) {}
 };
 
-EncodedLiteral Trans_EncodeLiteralAsBytes(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::Literal& lit, const ::HIR::TypeRef& ty);
-
 extern ::std::unique_ptr<CodeGenerator> Trans_Codegen_GetGeneratorC(const ::HIR::Crate& crate, const ::std::string& outfile);
 extern ::std::unique_ptr<CodeGenerator> Trans_Codegen_GetGenerator_MonoMir(const ::HIR::Crate& crate, const ::std::string& outfile);
 

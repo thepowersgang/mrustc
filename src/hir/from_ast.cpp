@@ -502,14 +502,16 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
                     const auto& b = e->m_path.m_bindings.value.binding;
                     ASSERT_BUG(sp, b.is_Generic(), "Trivial path not type parameter - " << e->m_path << " - " << b.tag_str());
                     const auto& param = b.as_Generic();
-                    params.m_values.push_back( HIR::Literal::make_Generic(HIR::GenericRef(e->m_path.as_trivial(), param.index)) );
+                    params.m_values.push_back( HIR::GenericRef(e->m_path.as_trivial(), param.index) );
                 }
                 else {
-                    params.m_values.push_back( LowerHIR_Path(sp, e->m_path, FromAST_PathClass::Value) );
+                    //params.m_values.push_back( LowerHIR_Path(sp, e->m_path, FromAST_PathClass::Value) );
+                    TODO(iv->span(), "Constant params into PathParams - " << *iv);
                 }
             }
             else if( const auto* e = dynamic_cast<const AST::ExprNode_Integer*>(&*iv) ) {
-                params.m_values.push_back(e->m_value);
+                //params.m_values.push_back(e->m_value);
+                TODO(iv->span(), "Constant params into PathParams - " << *iv);
             }
             else {
                 TODO(iv->span(), "Constant params into PathParams - " << *iv);

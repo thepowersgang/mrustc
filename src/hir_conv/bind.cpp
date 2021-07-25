@@ -131,38 +131,6 @@ namespace {
                     visit_path(*r.p, ::HIR::Visitor::PathContext::VALUE);
             }
         }
-        void visit_literal(const Span& sp, ::HIR::Literal& lit)
-        {
-            TU_MATCH(::HIR::Literal, (lit), (e),
-            (Invalid,
-                ),
-            (Defer,
-                // Shouldn't happen here, but ...
-                ),
-            (Generic,
-                ),
-            (List,
-                for(auto& val : e) {
-                    visit_literal(sp, val);
-                }
-                ),
-            (Variant,
-                visit_literal(sp, *e.val);
-                ),
-            (Integer,
-                ),
-            (Float,
-                ),
-            (BorrowPath,
-                visit_path(e, ::HIR::Visitor::PathContext::VALUE);
-                ),
-            (BorrowData,
-                visit_literal(sp, *e.val);
-                ),
-            (String,
-                )
-            )
-        }
 
         void visit_pattern_Value(const Span& sp, ::HIR::Pattern& pat, ::HIR::Pattern::Value& val)
         {

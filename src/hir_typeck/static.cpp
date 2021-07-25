@@ -676,7 +676,7 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
                 return impl_params.m_types[g.binding].compare_with_placeholders(sp, ty, resolve_cb);
             }
         }
-        ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::Literal& sz) override {
+        ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::ConstGeneric& sz) override {
             ASSERT_BUG(sp, g.binding < impl_params.m_values.size(), "Type generic " << g << " out of range (" << impl_params.m_values.size() << ")");
             if( impl_params.m_values[g.binding].is_Invalid() )
             {
@@ -792,7 +792,7 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
                 return ::HIR::Compare::Unequal;
             }
         }
-        ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::Literal& sz) override {
+        ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::ConstGeneric& sz) override {
             TODO(Span(), "Matcher::match_val " << g << " with " << sz);
         }
 
@@ -810,7 +810,7 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
             }
             return placeholders.at(ge.binding).clone();
         }
-        ::HIR::Literal get_value(const Span& sp, const ::HIR::GenericRef& val) const override {
+        ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& val) const override {
             ASSERT_BUG(sp, val.binding < 256, "Generic value binding in " << val << " out of range (>=256)");
             ASSERT_BUG(sp, val.binding < impl_params.m_values.size(), "Generic value binding in " << val << " out of range (>= " << impl_params.m_values.size() << ")");
             if( !impl_params.m_values.at(val.binding).is_Invalid() ) {

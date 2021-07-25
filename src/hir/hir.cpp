@@ -31,86 +31,26 @@ namespace HIR {
         return os;
     }
 
-    ::std::ostream& operator<<(::std::ostream& os, const ::HIR::Literal& v)
+    ::std::ostream& operator<<(::std::ostream& os, const HIR::ConstGeneric& x)
     {
-        TU_MATCH(::HIR::Literal, (v), (e),
-        (Invalid,
-            os << "!";
-            ),
-        (Defer,
-            os << "?";
-            ),
-        (Generic,
-            os << e;
-            ),
-        (List,
-            os << "[";
-            for(const auto& val : e)
-                os << " " << val << ",";
-            os << " ]";
-            ),
-        (Variant,
-            os << "#" << e.idx << ":" << *e.val;
-            ),
-        (Integer,
-            os << e;
-            ),
-        (Float,
-            os << e;
-            ),
-        (BorrowPath,
-            os << "&" << e;
-            ),
-        (BorrowData,
-            os << "&" << *e.val;
-            ),
-        (String,
-            os << "\"" << FmtEscaped(e) << "\"";
-            )
-        )
+        TU_MATCH_HDRA( (x), {)
+        TU_ARMA(Invalid, e) os << "Invalid";
+        TU_ARMA(Unevaluated, e) os << "Unevaluated(...)";
+        TU_ARMA(Generic, e) os << "Generic(" << e << ")";
+        TU_ARMA(Evaluated, e)   os << "Evaluated(" << *e << ")";
+        }
         return os;
     }
-
-    bool operator==(const Literal& l, const Literal& r)
+    bool ConstGeneric::operator==(const ConstGeneric& x) const
     {
-        if( l.tag() != r.tag() )
+        if(this->tag() != x.tag())
             return false;
-        TU_MATCH(::HIR::Literal, (l,r), (le,re),
-        (Invalid,
-            ),
-        (Defer,
-            ),
-        (Generic,
-            return le == re;
-            ),
-        (List,
-            if( le.size() != re.size() )
-                return false;
-            for(unsigned int i = 0; i < le.size(); i ++)
-                if( le[i] != re[i] )
-                    return false;
-            ),
-        (Variant,
-            if( le.idx != re.idx )
-                return false;
-            return *le.val == *re.val;
-            ),
-        (Integer,
-            return le == re;
-            ),
-        (Float,
-            return le == re;
-            ),
-        (BorrowPath,
-            return le == re;
-            ),
-        (BorrowData,
-            return *le.val == *re.val;
-            ),
-        (String,
-            return le == re;
-            )
-        )
+        TU_MATCH_HDRA( (*this, x), {)
+        TU_ARMA(Invalid, te, xe) return true;
+        TU_ARMA(Unevaluated, te, xe)    return te == xe;
+        TU_ARMA(Generic, te, xe)    return te == xe;
+        TU_ARMA(Evaluated, te, xe)  return EncodedLiteralSlice(*te) == EncodedLiteralSlice(*xe);
+        }
         return true;
     }
 
@@ -130,44 +70,14 @@ namespace HIR {
     }
 }
 
-HIR::Literal HIR::Literal::clone() const
+HIR::ConstGeneric HIR::ConstGeneric::clone() const
 {
-    TU_MATCH(::HIR::Literal, (*this), (e),
-    (Invalid,
-        return ::HIR::Literal();
-        ),
-    (Defer,
-        return ::HIR::Literal::make_Defer({});
-        ),
-    (Generic,
-        return ::HIR::Literal(e);
-        ),
-    (List,
-        ::std::vector< ::HIR::Literal>  vals;
-        for(const auto& val : e) {
-            vals.push_back( val.clone() );
-        }
-        return ::HIR::Literal( mv$(vals) );
-        ),
-    (Variant,
-        return ::HIR::Literal::make_Variant({ e.idx, box$(e.val->clone()) });
-        ),
-    (Integer,
-        return ::HIR::Literal(e);
-        ),
-    (Float,
-        return ::HIR::Literal(e);
-        ),
-    (BorrowPath,
-        return ::HIR::Literal(e.clone());
-        ),
-    (BorrowData,
-        return ::HIR::Literal::make_BorrowData({ box$(e.val->clone()), e.ty.clone() });
-        ),
-    (String,
-        return ::HIR::Literal(e);
-        )
-    )
+    TU_MATCH_HDRA( (*this), {)
+    TU_ARMA(Invalid, e) return e;
+    TU_ARMA(Unevaluated, e) TODO(Span(), "Clone expression");
+    TU_ARMA(Generic, e) return e;
+    TU_ARMA(Evaluated, e)   return EncodedLiteralPtr(e->clone());
+    }
     throw "";
 }
 

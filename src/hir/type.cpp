@@ -776,9 +776,13 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         auto rv = Compare::Equal;
         if( const auto* tse = te.size.opt_Generic() )
         {
-            auto v = xe.size.opt_Known() ? HIR::Literal(xe.size.as_Known())
-                : HIR::Literal(xe.size.as_Generic())
-                ;
+            HIR::ConstGeneric   v;
+            if( xe.size.opt_Known() ) {
+                v = EncodedLiteralPtr( EncodedLiteral::make_usize(xe.size.as_Known()) );
+            }
+            else {
+                v = HIR::ConstGeneric(xe.size.as_Generic());
+            }
             rv &= callback.match_val(*tse, v);
         }
         else if( te.size != xe.size ) {

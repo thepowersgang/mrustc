@@ -330,7 +330,7 @@ namespace {
                                 e2.impl_params.m_types.push_back( ::HIR::TypeRef(ty.m_name, &ty - &m_resolve.m_impl_generics->m_types.front()) );
                             }
                             for(const auto& c : m_resolve.m_impl_generics->m_values) {
-                                e2.impl_params.m_values.push_back( ::HIR::Literal( ::HIR::GenericRef(c.m_name, &c - &m_resolve.m_impl_generics->m_values.front()) ) );
+                                e2.impl_params.m_values.push_back( ::HIR::GenericRef(c.m_name, &c - &m_resolve.m_impl_generics->m_values.front()) );
                             }
                             }
                         TU_ARMA(UfcsKnown, e2) {
