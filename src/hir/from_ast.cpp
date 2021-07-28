@@ -157,6 +157,19 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
     return rv;
 }
 
+::HIR::Path LowerHIR_Pattern_Path(const Span& sp, const ::AST::Path& path, FromAST_PathClass pc)
+{
+    if(const auto* be = path.m_bindings.type.binding.opt_TypeParameter())
+    {
+        if( be->slot == GENERIC_Self )
+        {
+            // HACK: Return `<Self>::` (to be expanded later on)
+            return ::HIR::Path(::HIR::TypeRef("Self", GENERIC_Self), "");
+        }
+    }
+    return LowerHIR_Path(sp, path, pc);
+}
+
 ::HIR::Pattern LowerHIR_Pattern(const ::AST::Pattern& pat)
 {
     TRACE_FUNCTION_F("@" << pat.span() << " pat = " << pat);
@@ -248,7 +261,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
         return ::HIR::Pattern(
             mv$(binding),
             ::HIR::Pattern::Data::make_PathTuple({
-                LowerHIR_Path(pat.span(), e.path, FromAST_PathClass::Value),
+                LowerHIR_Pattern_Path(pat.span(), e.path, FromAST_PathClass::Value),
                 ::HIR::Pattern::PathBinding(),
                 mv$(leading),
                 e.tup_pat.has_wildcard,
@@ -282,7 +295,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
         return ::HIR::Pattern(
             mv$(binding),
             ::HIR::Pattern::Data::make_PathNamed({
-                LowerHIR_Path(pat.span(), e.path, FromAST_PathClass::Type),
+                LowerHIR_Pattern_Path(pat.span(), e.path, FromAST_PathClass::Type),
                 ::HIR::Pattern::PathBinding(),
                 mv$(sub_patterns),
                 e.is_exhaustive
@@ -351,7 +364,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
                     return ::HIR::Pattern::Value::make_ByteString({e.v});
                     }
                 TU_ARMA(Named, e) {
-                    return ::HIR::Pattern::Value::make_Named( {LowerHIR_Path(sp, e, FromAST_PathClass::Value), nullptr} );
+                    return ::HIR::Pattern::Value::make_Named({ LowerHIR_Pattern_Path(sp, e, FromAST_PathClass::Value), nullptr });
                     }
                 }
                 throw "BUGCHECK: Reached end of LowerHIR_Pattern::H::lowerhir_pattern_value";
@@ -503,19 +516,10 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
                     ASSERT_BUG(sp, b.is_Generic(), "Trivial path not type parameter - " << e->m_path << " - " << b.tag_str());
                     const auto& param = b.as_Generic();
                     params.m_values.push_back( HIR::GenericRef(e->m_path.as_trivial(), param.index) );
-                }
-                else {
-                    //params.m_values.push_back( LowerHIR_Path(sp, e->m_path, FromAST_PathClass::Value) );
-                    TODO(iv->span(), "Constant params into PathParams - " << *iv);
+                    break ;
                 }
             }
-            else if( const auto* e = dynamic_cast<const AST::ExprNode_Integer*>(&*iv) ) {
-                //params.m_values.push_back(e->m_value);
-                TODO(iv->span(), "Constant params into PathParams - " << *iv);
-            }
-            else {
-                TODO(iv->span(), "Constant params into PathParams - " << *iv);
-            }
+            params.m_values.push_back( LowerHIR_ExprNode(*iv) );
             }
         TU_ARMA(AssociatedTyEqual, ty) {
             if( !allow_assoc )
