@@ -23,6 +23,7 @@ namespace {
     {
         const ::HIR::Crate& m_crate;
         bool m_visit_exprs;
+        bool m_run_eat;
 
         typedef ::std::vector< ::std::pair< const ::HIR::SimplePath*, const ::HIR::Trait* > >   t_trait_imports;
         t_trait_imports m_traits;
@@ -37,6 +38,7 @@ namespace {
         Visitor(const ::HIR::Crate& crate, bool visit_exprs):
             m_crate(crate),
             m_visit_exprs(visit_exprs),
+            m_run_eat(visit_exprs), // Defaults to running when doing second-pass
             m_resolve(crate)
         {}
 
@@ -62,6 +64,22 @@ namespace {
         {
             auto _ = this->push_mod_traits( mod );
             ::HIR::Visitor::visit_module(p, mod);
+        }
+
+        void visit_params(::HIR::GenericParams& params)
+        {
+            TRACE_FUNCTION_F(params.fmt_args() << params.fmt_bounds());
+
+            // Custom visitor to prevent running of EAT on type paramerter defaults
+            auto saved_run_eat = m_run_eat;
+            m_run_eat = false;
+            for(auto& tps : params.m_types) {
+                this->visit_type( tps.m_default );
+            }
+            m_run_eat = saved_run_eat;
+
+            for(auto& bound : params.m_bounds )
+                visit_generic_bound(bound);
         }
 
         void visit_union(::HIR::ItemPath p, ::HIR::Union& item) override {
@@ -607,7 +625,7 @@ namespace {
 
             // TODO: If this an associated type, check for default trait params
 
-            if( m_visit_exprs )
+            if( m_run_eat )
             {
                 unsigned counter = 0;
                 while( m_resolve.expand_associated_types_single(sp, ty) )

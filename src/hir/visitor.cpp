@@ -304,26 +304,29 @@ void ::HIR::Visitor::visit_params(::HIR::GenericParams& params)
     for(auto& tps : params.m_types)
         this->visit_type( tps.m_default );
     for(auto& bound : params.m_bounds )
-    {
-        TU_MATCH(::HIR::GenericBound, (bound), (e),
-        (Lifetime,
-            ),
-        (TypeLifetime,
-            this->visit_type(e.type);
-            ),
-        (TraitBound,
-            this->visit_type(e.type);
-            this->visit_trait_path(e.trait);
-            ),
-        //(NotTrait, struct {
-        //    ::HIR::TypeRef  type;
-        //    ::HIR::GenricPath    trait;
-        //    }),
-        (TypeEquality,
-            this->visit_type(e.type);
-            this->visit_type(e.other_type);
-            )
-        )
+        visit_generic_bound(bound);
+}
+
+void ::HIR::Visitor::visit_generic_bound(::HIR::GenericBound& bound)
+{
+    TU_MATCH_HDRA((bound), {)
+    TU_ARMA(Lifetime, e) {
+        }
+    TU_ARMA(TypeLifetime, e) {
+        this->visit_type(e.type);
+        }
+    TU_ARMA(TraitBound, e) {
+        this->visit_type(e.type);
+        this->visit_trait_path(e.trait);
+        }
+    //TU_ARMA(NotTrait, e) {
+    //    this->visit_type(e.type);
+    //    this->visit_trait_path(e.trait);
+    //    }
+    TU_ARMA(TypeEquality, e) {
+        this->visit_type(e.type);
+        this->visit_type(e.other_type);
+        }
     }
 }
 void ::HIR::Visitor::visit_type(::HIR::TypeRef& ty)
