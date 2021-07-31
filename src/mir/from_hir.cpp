@@ -2804,9 +2804,9 @@ void HIR_GenerateMIR_Expr(const ::HIR::Crate& crate, const ::HIR::ItemPath& path
 {
     if( !expr_ptr.m_mir )
     {
+        TRACE_FUNCTION;
         StaticTraitResolve  resolve { crate };
-        if(expr_ptr.m_state->m_impl_generics)   resolve.set_impl_generics(*expr_ptr.m_state->m_impl_generics);
-        if(expr_ptr.m_state->m_item_generics)   resolve.set_item_generics(*expr_ptr.m_state->m_item_generics);
+        resolve.set_both_generics_raw(expr_ptr.m_state->m_impl_generics, expr_ptr.m_state->m_item_generics);
         expr_ptr.set_mir( LowerMIR(resolve, path, expr_ptr, res_ty, args) );
         // Run cleanup to simplify consteval?
         // - This ends up running before things like vtable generation

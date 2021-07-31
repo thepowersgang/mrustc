@@ -1095,7 +1095,7 @@ const ::HIR::TypeRef& TraitResolution::get_const_param_type(const Span& sp, unsi
         TODO(sp, "Typecheck const generics - look up the type");
     }
     auto slot = binding & 0xFF;
-    ASSERT_BUG(sp, p, "No generic list");
+    ASSERT_BUG(sp, p, "No generic list for level " << (binding >> 8));
     ASSERT_BUG(sp, slot < p->m_values.size(), "Generic param index out of range");
     return p->m_values.at(slot).m_type;
 }

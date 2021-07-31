@@ -133,6 +133,13 @@ public:
         m_item_generics = nullptr;
         prep_indexes();
     }
+    void set_both_generics_raw(const ::HIR::GenericParams* gps_impl, const ::HIR::GenericParams* gps_fcn) {
+        assert( !m_impl_generics );
+        assert( !m_item_generics );
+        m_impl_generics = gps_impl;
+        m_item_generics = gps_fcn;
+        prep_indexes();
+    }
     /// \}
 
     /// \brief Lookups

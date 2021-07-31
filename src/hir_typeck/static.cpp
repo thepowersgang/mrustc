@@ -117,7 +117,11 @@ const ::HIR::TypeRef& StaticTraitResolve::get_const_param_type(const Span& sp, u
         TODO(sp, "Typecheck const generics - look up the type");
     }
     auto slot = binding & 0xFF;
-    ASSERT_BUG(sp, p, "No generic list");
+    if(!p) {
+        if(m_impl_generics) DEBUG("Impl: " << m_impl_generics->fmt_args());
+        if(m_item_generics) DEBUG("Impl: " << m_item_generics->fmt_args());
+    }
+    ASSERT_BUG(sp, p, "No generic list for " << (binding>>8) << ":" << slot);
     ASSERT_BUG(sp, slot < p->m_values.size(), "Generic param index out of range");
     return p->m_values.at(slot).m_type;
 }
