@@ -1811,6 +1811,56 @@ namespace HIR {
             TU_ARMA(Return, e) {
                 return std::move(local_state.retval);
                 }
+            TU_ARMA(If, e) {
+                bool res = 0 != local_state.get_lval(e.cond).read_uint(state, 1);
+                DEBUG(state << " = " << res);
+                cur_block = res ? e.bb1 : e.bb0;
+                }
+            TU_ARMA(Switch, e) {
+                HIR::TypeRef    tmp;
+                const auto& ty = state.get_lvalue_type(tmp, e.val);
+                auto* enm_repr = Target_GetTypeRepr(state.sp, state.m_resolve, ty);
+                auto lit = local_state.get_lval(e.val);
+
+                // TODO: Share code with `MIR_Cleanup_LiteralToRValue`/`PatternRulesetBuilder::append_from_lit`
+                unsigned var_idx = 0;
+                TU_MATCH_HDRA( (enm_repr->variants), { )
+                TU_ARMA(None, e) {
+                    }
+                TU_ARMA(Linear, ve) {
+                    auto v = (uint64_t)lit.slice( enm_repr->get_offset(state.sp, state.m_resolve, ve.field), ve.field.size).read_uint(state, 8*ve.field.size);
+                    if( v < ve.offset ) {
+                        var_idx = ve.field.index;
+                        DEBUG("VariantMode::Linear - Niche #" << var_idx);
+                    }
+                    else {
+                        var_idx = v - ve.offset;
+                        DEBUG("VariantMode::Linear - Other #" << var_idx);
+                    }
+                    }
+                TU_ARMA(Values, ve) {
+                    auto v = (uint64_t)lit.slice( enm_repr->get_offset(state.sp, state.m_resolve, ve.field), ve.field.size).read_uint(state, 8*ve.field.size);
+                    auto it = std::find(ve.values.begin(), ve.values.end(), v);
+                    ASSERT_BUG(state.sp, it != ve.values.end(), "Invalid enum tag: " << v << " for " << ty);
+                    var_idx = it - ve.values.begin();
+                    }
+                TU_ARMA(NonZero, ve) {
+                    size_t ofs = enm_repr->get_offset(state.sp, state.m_resolve, ve.field);
+                    bool is_nonzero = false;
+                    for(size_t i = 0; i < ve.field.size; i ++) {
+                        if( (uint64_t)lit.slice(ofs+i, 1).read_uint(state, 8) != 0 ) {
+                            is_nonzero = true;
+                            break;
+                        }
+                    }
+
+                    var_idx = (is_nonzero ? 1 - ve.zero_variant : ve.zero_variant);
+                    }
+                }
+                DEBUG(state << " = " << var_idx);
+                MIR_ASSERT(state, var_idx < e.targets.size(), "Switch " << var_idx << " out of range in target list (" << e.targets.size() << ")");
+                cur_block = e.targets[var_idx];
+                }
             TU_ARMA(Call, e) {
                 auto dst = local_state.get_lval(e.ret_val);
                 if( const auto* te = e.fcn.opt_Intrinsic() )
@@ -1871,7 +1921,51 @@ namespace HIR {
                         }
                         dst.write_uint(state, ti.bits, rv);
                     }
+                    else if( te->name == "add_with_overflow" ) {
+                        auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                        MIR_ASSERT(state, ty.data().is_Primitive(), "`add_with_overflow` with non-primitive " << ty);
+                        auto ti = TypeInfo::for_type(ty);
+                        switch(ti.ty)
+                        {
+                        case TypeInfo::Unsigned: {
+                            auto v1 = local_state.read_param_uint(ti.bits, e.args.at(0));
+                            auto v2 = local_state.read_param_uint(ti.bits, e.args.at(1));
+                            auto res = ti.mask(v1 + v2);
+                            bool overflowed = res < v1;
+                            dst.write_uint(state, ti.bits, res);
+                            dst.slice(ti.bits / 8).write_uint(state, 8, overflowed ? 1 : 0);
+                            } break;
+                        case TypeInfo::Signed: {
+                            auto v1r = local_state.read_param_sint(ti.bits, e.args.at(0));
+                            auto v2r = local_state.read_param_sint(ti.bits, e.args.at(1));
+                            // Convert to raw/unsigned repr
+                            auto v1u = static_cast<uint64_t>(v1r);
+                            auto v2u = static_cast<uint64_t>(v2r);
+                            // Then convert into a sign and absolute value
+                            auto v1s = (v1r < 0);
+                            auto v2s = (v2r < 0);
+                            auto v1a = v1s ? ~v1u + 1 : v1u;
+                            auto v2a = v2s ? ~v2u + 1 : v2u;
+
+                            // Determine the sign
+                            // - Equal has the same sign
+                            // - V2 negative is negative if |v2| > |v1|
+                            // - V1 negative is negative if |v2| < |v1|
+                            bool res_sign = (v1s == v2s) ? v1s : (v2s ? v1a < v2a : v1a > v2a);
+                            auto res = static_cast<int64_t>(v1u + v2u);
+                            bool overflowed = (res < 0 != res_sign);
+                            dst.write_sint(state, ti.bits, res);
+                            dst.slice(ti.bits / 8).write_uint(state, 8, overflowed ? 1 : 0);
+                            } break;
+                        case TypeInfo::Float:
+                        case TypeInfo::Other:
+                            MIR_TODO(state, "Call intrinsic \"" << te->name << "\" - " << block.terminator);
+                        }
+                    }
                     else if( te->name == "transmute" ) {
+                        local_state.write_param(dst, e.args.at(0));
+                    }
+                    else if( te->name == "unlikely" ) {
                         local_state.write_param(dst, e.args.at(0));
                     }
                     else {
