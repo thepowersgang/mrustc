@@ -446,20 +446,19 @@ namespace {
             ::HIR::Visitor::visit_trait(p, item);
         }
 
-        // TODO: Are generics for types "item" or "impl"?
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override
         {
-            auto _ = this->m_ms.set_item_generics(item.m_params);
+            auto _ = this->m_ms.set_impl_generics(item.m_params);
             ::HIR::Visitor::visit_enum(p, item);
         }
         void visit_struct(::HIR::ItemPath p, ::HIR::Struct& item) override
         {
-            auto _ = this->m_ms.set_item_generics(item.m_params);
+            auto _ = this->m_ms.set_impl_generics(item.m_params);
             ::HIR::Visitor::visit_struct(p, item);
         }
         void visit_union(::HIR::ItemPath p, ::HIR::Union& item) override
         {
-            auto _ = this->m_ms.set_item_generics(item.m_params);
+            auto _ = this->m_ms.set_impl_generics(item.m_params);
             ::HIR::Visitor::visit_union(p, item);
         }
 
