@@ -65,15 +65,15 @@ namespace {
         }
 
         void visit_union(::HIR::ItemPath p, ::HIR::Union& item) override {
-            auto _ = m_resolve.set_item_generics(item.m_params);
+            auto _ = m_resolve.set_impl_generics(item.m_params);
             ::HIR::Visitor::visit_union(p, item);
         }
         void visit_struct(::HIR::ItemPath p, ::HIR::Struct& item) override {
-            auto _ = m_resolve.set_item_generics(item.m_params);
+            auto _ = m_resolve.set_impl_generics(item.m_params);
             ::HIR::Visitor::visit_struct(p, item);
         }
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override {
-            auto _ = m_resolve.set_item_generics(item.m_params);
+            auto _ = m_resolve.set_impl_generics(item.m_params);
             ::HIR::Visitor::visit_enum(p, item);
         }
         void visit_function(::HIR::ItemPath p, ::HIR::Function& item) override {
