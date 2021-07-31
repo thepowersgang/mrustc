@@ -249,6 +249,16 @@ class CMacroExportHandler:
             DEBUG("- Export macro " << name << "!");
             crate.m_root_module.macros().push_back( mv$(e) );
         }
+        else if( i.is_Macro() ) {
+            const auto& name = path.nodes.back();
+            if(i.as_Macro())
+            {
+                i.as_Macro()->m_exported = true;
+                ASSERT_BUG(sp, path.nodes.size() == 1, "");
+                DEBUG("- Export macro " << name << "!");
+                //crate.m_root_module.macros().push_back( mv$(*i.as_Macro()) );
+            }
+        }
         else {
             ERROR(sp, E0000, "Use of #[macro_export] on non-macro - " << i.tag_str());
         }

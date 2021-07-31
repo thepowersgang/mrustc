@@ -1723,21 +1723,32 @@ void Expand_Mod_Early(::AST::Crate& crate, ::AST::Module& mod, std::vector<std::
             i->data = ::AST::Item::make_None({});
         }
         else if( is_macro_export ) {
-            if( !(i->data.is_MacroInv() && i->data.as_MacroInv().path().is_trivial() && i->data.as_MacroInv().path().as_trivial() == "macro_rules") )
-                ERROR(i->span, E0000, "#[macro_export] on non-macro_rules");
-            const auto& mac_inv = i->data.as_MacroInv();
-            DEBUG("macro_rules marked with #[macro_export] moved to the crate root - " << mac_inv.input_ident());
+            if( i->data.is_MacroInv() && i->data.as_MacroInv().path().is_trivial() && i->data.as_MacroInv().path().as_trivial() == "macro_rules" )
+            {
+                const auto& mac_inv = i->data.as_MacroInv();
+                DEBUG("macro_rules marked with #[macro_export] moved to the crate root - " << mac_inv.input_ident());
+                new_root_items.push_back(box$(*i));
+                i->data = AST::Item();
 
 #if 0
-            TTStream    lex(i->span, ParseState(crate.m_edition), mac_inv.input_tt());
-            auto mac = Parse_MacroRules(lex);
-            const auto* mac_ptr = &*mac;
-            crate.m_root_module.add_macro(true, mac_inv.input_ident(), std::move(mac));
-            crate.m_exported_macros[mac_inv.input_ident()] = mac_ptr;
+                TTStream    lex(i->span, ParseState(crate.m_edition), mac_inv.input_tt());
+                auto mac = Parse_MacroRules(lex);
+                const auto* mac_ptr = &*mac;
+                crate.m_root_module.add_macro(true, mac_inv.input_ident(), std::move(mac));
+                crate.m_exported_macros[mac_inv.input_ident()] = mac_ptr;
 #else
-            new_root_items.push_back(box$(*i));
-            i->data = AST::Item();
 #endif
+            }
+            else if( i->data.is_Macro() )
+            {
+                // TODO: `#[macro_export] macro foo { ... }` DOESN'T move the item to the root
+                // - Instead, it should add an alias? Or just tag for export
+                i->data.as_Macro()->m_exported = true;
+            }
+            else
+            {
+                ERROR(i->span, E0000, "#[macro_export] on non-macro_rules - " << i->data.tag_str());
+            }
         }
         else if( i->data.is_Module() ) {
             Expand_Mod_Early(crate, i->data.as_Module(), new_root_items);
