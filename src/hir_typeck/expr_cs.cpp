@@ -2244,6 +2244,15 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
 
                     return this->revisit_inner( context, *pe->sub, inner_ty, ::HIR::PatternBinding::Type::Move );
                 }
+                if(auto* pe = pattern.m_data.opt_Or())
+                {
+                    bool rv = true;
+                    for(auto& subpat : *pe)
+                    {
+                        rv &= this->revisit_inner(context, subpat, type, binding_mode);
+                    }
+                    return rv;
+                }
 
                 // If the type is a borrow, then count derefs required for the borrow
                 // - If the first non-borrow inner is an ivar, return false
@@ -2347,6 +2356,12 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
 
                 bool rv = false;
                 TU_MATCH_HDR( (pattern.m_data), { )
+                TU_ARM(pattern.m_data, Ref, pe) {
+                    BUG(sp, "Match ergonomics - `&` pattern already handled");
+                    }
+                TU_ARM(pattern.m_data, Or, pe) {
+                    BUG(sp, "Match ergonomics - `|` pattern already handled");
+                    }
                 TU_ARM(pattern.m_data, Any, pe) {
                     // no-op
                     rv = true;
@@ -2389,9 +2404,6 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                         //::HIR::GenericPath  path { m_lang_Box, ::HIR::PathParams(mv$(inner)) };
                         //this->equate_types( sp, type, ::HIR::TypeRef::new_path(mv$(path), ::HIR::TypePathBinding(&m_crate.get_struct_by_path(sp, m_lang_Box))) );
                     }
-                    }
-                TU_ARM(pattern.m_data, Ref, pe) {
-                    BUG(sp, "Match ergonomics - & pattern");
                     }
                 TU_ARM(pattern.m_data, Tuple, e) {
                     if( !ty.data().is_Tuple() ) {
@@ -2563,10 +2575,6 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                             rv &= this->revisit_inner(context, field_pat.second, field_type, binding_mode);
                         }
                     }
-                    }
-            
-                TU_ARM(pattern.m_data, Or, e) {
-                    TODO(sp, "expr_cs:revisit_inner_real - Split patterns");
                     }
                 }
                 return rv;

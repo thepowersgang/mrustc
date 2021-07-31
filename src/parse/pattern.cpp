@@ -217,7 +217,7 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, AllowOrPattern allow_or)
     //case TOK_DOUBLE_DOT:
     //    return AST::Pattern( AST::Pattern::TagWildcard() );
     case TOK_RWORD_BOX:
-        return AST::Pattern( AST::Pattern::TagBox(), lex.end_span(ps), Parse_Pattern(lex, allow_or) );
+        return AST::Pattern( AST::Pattern::TagBox(), lex.end_span(ps), Parse_Pattern1(lex, allow_or) );
     case TOK_DOUBLE_AMP:
         lex.putback(TOK_AMP);
     case TOK_AMP: {
@@ -228,7 +228,7 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, AllowOrPattern allow_or)
             is_mut = true;
         else
             PUTBACK(tok, lex);
-        return AST::Pattern( AST::Pattern::TagReference(), lex.end_span(ps), is_mut, Parse_Pattern(lex, allow_or) );
+        return AST::Pattern( AST::Pattern::TagReference(), lex.end_span(ps), is_mut, Parse_Pattern1(lex, allow_or) );
         }
     case TOK_RWORD_CRATE:
     case TOK_RWORD_SELF:

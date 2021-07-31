@@ -130,12 +130,14 @@ namespace HIR {
             os << " ]";
             }
         TU_ARMA(Or, e) {
+            os << "(";
             for(size_t i = 0; i < e.size(); i ++)
             {
                 if(i != 0)
                     os << "|";
                 os << e[i];
             }
+            os << ")";
             }
         }
         return os;
