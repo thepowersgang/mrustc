@@ -1238,6 +1238,38 @@ bool TraitResolution::find_trait_impls_magic(const Span& sp,
         }
     }
 
+    // - `DiscriminantKind`
+    if( TARGETVER_LEAST_1_54 && trait == this->m_crate.get_lang_item_path(sp, "discriminant_kind") )
+    {
+        // TODO: This logic is near identical to the logic in `static.cpp` - can it be de-duplicated?
+
+        if( type.data().is_Infer() || (type.data().is_Path() && type.data().as_Path().binding.is_Unbound()) ) {
+            // TODO: How to prevent EAT from expanding too early?
+            return callback( ImplRef(type.clone(), HIR::PathParams(), ::HIR::TraitPath::assoc_list_t()), ::HIR::Compare::Fuzzy );
+        }
+        else if( type.data().is_Generic() || (type.data().is_Path() && type.data().as_Path().binding.is_Opaque()) ) {
+            return callback( ImplRef(type.clone(), HIR::PathParams(), ::HIR::TraitPath::assoc_list_t()), ::HIR::Compare::Equal );
+        }
+        else if( type.data().is_Path() && type.data().as_Path().binding.is_Enum() ) {
+            const auto& enm = *type.data().as_Path().binding.as_Enum();
+            HIR::TypeRef    tag_ty = enm.get_repr_type(enm.m_tag_repr);
+            ::HIR::TraitPath::assoc_list_t   assoc_list;
+            assoc_list.insert(std::make_pair( RcString::new_interned("Discriminant"), HIR::TraitPath::AtyEqual {
+                trait,
+                std::move(tag_ty)
+                } ));
+            return callback(ImplRef(type.clone(), {}, std::move(assoc_list)), ::HIR::Compare::Equal);
+        }
+        else {
+            ::HIR::TraitPath::assoc_list_t   assoc_list;
+            assoc_list.insert(std::make_pair( RcString::new_interned("Discriminant"), HIR::TraitPath::AtyEqual {
+                trait,
+                HIR::TypeRef::new_unit()
+                } ));
+            return callback(ImplRef(type.clone(), {}, std::move(assoc_list)), ::HIR::Compare::Equal);
+        }
+    }
+
     // Magic Unsize impls to trait objects
     if( trait == lang_Unsize )
     {
