@@ -158,11 +158,102 @@ bool StaticTraitResolve::find_impl(
             }
         }
         else if( trait_path == m_lang_Unsize ) {
-            ASSERT_BUG(sp, trait_params, "TODO: Support no params for Unzie");
+            ASSERT_BUG(sp, trait_params, "TODO: Support no params for Unsize");
             const auto& dst_ty = trait_params->m_types.at(0);
             if( this->can_unsize(sp, dst_ty, type) ) {
                 return found_cb( ImplRef(&type, trait_params, &null_assoc), false );
             }
+        }
+        else if( TARGETVER_LEAST_1_54 && trait_path == m_lang_DiscriminantKind ) {
+            // If the type is generic, then don't populate the ATY
+            // Otherwise, populate the ATY with the correct type
+            // - Unit for non-enums
+            // - Enum type (usize probably) for enums
+            if( type.data().is_Generic() || (type.data().is_Path() && type.data().as_Path().binding.is_Opaque()) ) {
+                return found_cb( ImplRef(&type, trait_params, &null_assoc), false );
+            }
+            else if( type.data().is_Path() ) {
+                if( const auto* enmpp = type.data().as_Path().binding.opt_Enum() ) {
+                    const auto& enm = **enmpp;
+                    HIR::TypeRef    tag_ty = enm.get_repr_type(enm.m_tag_repr);
+                    ::HIR::TraitPath::assoc_list_t   assoc_list;
+                    assoc_list.insert(std::make_pair( RcString::new_interned("Discriminant"), HIR::TraitPath::AtyEqual {
+                        m_lang_DiscriminantKind,
+                        std::move(tag_ty)
+                        } ));
+                    return found_cb(ImplRef(type.clone(), {}, std::move(assoc_list)), false);
+                }
+                else {
+                }
+            }
+            else {
+            }
+            static ::HIR::TraitPath::assoc_list_t   assoc_unit;
+            if(assoc_unit.empty()) {
+                assoc_unit.insert(std::make_pair( RcString::new_interned("Discriminant"), HIR::TraitPath::AtyEqual {
+                    m_lang_DiscriminantKind,
+                    HIR::TypeRef::new_unit()
+                    } ));
+            }
+            return found_cb( ImplRef(&type, trait_params, &assoc_unit), false );
+        }
+        else if( TARGETVER_LEAST_1_54 && trait_path == m_lang_Pointee ) {
+            static ::HIR::TraitPath::assoc_list_t   assoc_unit;
+            static ::HIR::TraitPath::assoc_list_t   assoc_slice;
+            static RcString name_Metadata;
+            if(assoc_unit.empty()) {
+                name_Metadata = RcString::new_interned("Metadata");
+                assoc_unit.insert(std::make_pair( name_Metadata, HIR::TraitPath::AtyEqual {
+                    m_lang_Pointee,
+                    HIR::TypeRef::new_unit()
+                    } ));
+                assoc_slice.insert(std::make_pair( name_Metadata, HIR::TraitPath::AtyEqual {
+                    m_lang_Pointee,
+                    HIR::CoreType::Usize
+                    } ));
+            }
+            // Generics (or opaque ATYs)
+            if( type.data().is_Generic() || (type.data().is_Path() && type.data().as_Path().binding.is_Opaque()) ) {
+                // If the type is `Sized` return `()` as the type
+                if( type_is_sized(sp, type) ) {
+                    return found_cb( ImplRef(&type, trait_params, &assoc_unit), false );
+                }
+                else {
+                    // Return unbounded
+                    return found_cb( ImplRef(&type, trait_params, &null_assoc), false );
+                }
+            }
+            // Trait object: `Metadata=DynMetadata<T>`
+            if( type.data().is_TraitObject() ) {
+                ::HIR::TraitPath::assoc_list_t   assoc_list;
+                assoc_list.insert(std::make_pair( name_Metadata, HIR::TraitPath::AtyEqual {
+                    m_lang_DiscriminantKind,
+                    ::HIR::TypeRef::new_path(::HIR::GenericPath(m_lang_DynMetadata, HIR::PathParams(type.clone())), &m_crate.get_struct_by_path(sp, m_lang_DynMetadata))
+                    } ));
+                return found_cb(ImplRef(type.clone(), {}, std::move(assoc_list)), false);
+            }
+            // Slice and str
+            if( type.data().is_Slice() || TU_TEST1(type.data(), Primitive, == HIR::CoreType::Str) ) {
+                return found_cb( ImplRef(&type, trait_params, &assoc_slice), false );
+            }
+            // Structs: Can delegate their metadata
+            if( type.data().is_Path() && type.data().as_Path().binding.is_Struct() )
+            {
+                const auto& str = *type.data().as_Path().binding.as_Struct();
+                switch(str.m_struct_markings.dst_type)
+                {
+                case HIR::StructMarkings::DstType::None:
+                    return found_cb( ImplRef(&type, trait_params, &assoc_unit), false );
+                case HIR::StructMarkings::DstType::Possible:
+                    TODO(sp, "m_lang_Pointee - " << type);
+                    //return found_cb( ImplRef(&type, trait_params, &null_assoc), false );
+                case HIR::StructMarkings::DstType::Slice:
+                    return found_cb( ImplRef(&type, trait_params, &assoc_slice), false );
+                case HIR::StructMarkings::DstType::TraitObject:
+                    TODO(sp, "m_lang_Pointee - " << type);
+                }
+            }
+            return found_cb( ImplRef(&type, trait_params, &assoc_unit), false );
         }
     }
 

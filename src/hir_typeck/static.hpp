@@ -53,6 +53,9 @@ public:
     ::HIR::SimplePath   m_lang_FnOnce;
     ::HIR::SimplePath   m_lang_Box;
     ::HIR::SimplePath   m_lang_PhantomData;
+    ::HIR::SimplePath   m_lang_DiscriminantKind;    // 1.54
+    ::HIR::SimplePath   m_lang_Pointee;    // 1.54
+    ::HIR::SimplePath   m_lang_DynMetadata;    // 1.54
 
 private:
     mutable ::std::map< ::HIR::TypeRef, bool >  m_copy_cache;
@@ -77,6 +80,9 @@ public:
         m_lang_FnOnce = m_crate.get_lang_item_path_opt("fn_once");
         m_lang_Box = m_crate.get_lang_item_path_opt("owned_box");
         m_lang_PhantomData = m_crate.get_lang_item_path_opt("phantom_data");
+        m_lang_DiscriminantKind = m_crate.get_lang_item_path_opt("discriminant_kind");
+        m_lang_Pointee = m_crate.get_lang_item_path_opt("pointee_trait");
+        m_lang_DynMetadata = m_crate.get_lang_item_path_opt("dyn_metadata");
     }
 
 private:
