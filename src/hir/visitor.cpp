@@ -303,6 +303,8 @@ void ::HIR::Visitor::visit_params(::HIR::GenericParams& params)
     TRACE_FUNCTION_F(params.fmt_args() << params.fmt_bounds());
     for(auto& tps : params.m_types)
         this->visit_type( tps.m_default );
+    for(auto& val : params.m_values)
+        this->visit_type(val.m_type);
     for(auto& bound : params.m_bounds )
         visit_generic_bound(bound);
 }
@@ -511,6 +513,13 @@ void ::HIR::Visitor::visit_path_params(::HIR::PathParams& p)
     for( auto& ty : p.m_types )
     {
         this->visit_type(ty);
+    }
+    for( auto& v : p.m_values )
+    {
+        if(v.is_Unevaluated())
+        {
+            this->visit_expr(v.as_Unevaluated());
+        }
     }
 }
 void ::HIR::Visitor::visit_generic_path(::HIR::GenericPath& p, ::HIR::Visitor::PathContext /*pc*/)
