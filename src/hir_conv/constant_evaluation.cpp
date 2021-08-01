@@ -2103,6 +2103,8 @@ namespace {
         const ::HIR::GenericParams* m_impl_params;
         const ::HIR::GenericParams* m_item_params;
 
+        std::function<const ::HIR::GenericParams&(const Span& sp)>    m_get_params;
+
     public:
         Expander(const ::HIR::Crate& crate):
             m_crate(crate),
@@ -2189,6 +2191,86 @@ namespace {
 
             m_mod = nullptr;
             m_mod_path = nullptr;
+        }
+
+
+        void visit_path_params(::HIR::PathParams& p) override
+        {
+            static Span sp;
+            ::HIR::Visitor::visit_path_params(p);
+
+            for( auto& v : p.m_values )
+            {
+                if(v.is_Unevaluated())
+                {
+                    const auto& e = v.as_Unevaluated();
+                    auto name = FMT("param_" << &v << "#");
+                    auto nvs = NewvalState { *m_mod, *m_mod_path, name };
+                    auto eval = get_eval(e->span(), nvs);
+
+                    assert(m_get_params);
+                    const auto& params_def = m_get_params(sp);
+                    auto idx = &v - &p.m_values.front();
+                    ASSERT_BUG(sp, idx < params_def.m_values.size(), "");
+                    const auto& ty = params_def.m_values[idx].m_type;
+                    ASSERT_BUG(sp, !monomorphise_type_needed(ty), "" << ty);
+
+                    // Need to look up the required type - to do that requires knowing the item it's for
+                    // - Which, might not be known at this point - might be a UfcsInherent
+                    try
+                    {
+                        auto val = eval.evaluate_constant( ::HIR::ItemPath(*m_mod_path, name.c_str()), e, ty.clone() );
+                        v = ::HIR::ConstGeneric::make_Evaluated(std::move(val));
+                    }
+                    catch(const Defer& )
+                    {
+                        // Deferred - no update
+                    }
+                }
+            }
+        }
+        void visit_path(::HIR::Path& p, ::HIR::Visitor::PathContext pc) override
+        {
+            auto saved = m_get_params;
+            m_get_params = [&](const Span& sp)->const ::HIR::GenericParams& {
+                DEBUG("visit_path[m_get_params] " << p);
+                switch(pc)
+                {
+                case ::HIR::Visitor::PathContext::VALUE:
+                    if( const auto* pe = p.m_data.opt_Generic() ) {
+                        auto& vi = m_crate.get_valitem_by_path(sp, pe->m_path);
+                        TU_MATCH_HDRA( (vi), { )
+                        TU_ARMA(Import, e)  BUG(sp, "Module Import");
+                        TU_ARMA(Static, e)  BUG(sp, "Getting params definition for Static - " << p);
+                        TU_ARMA(Constant, e)    return e.m_params;
+                        TU_ARMA(Function, e)    return e.m_params;
+                        TU_ARMA(StructConstant, e)   return m_crate.get_struct_by_path(sp, e.ty).m_params;
+                        TU_ARMA(StructConstructor, e)   return m_crate.get_struct_by_path(sp, e.ty).m_params;
+                        }
+                    }
+                    break;
+                case ::HIR::Visitor::PathContext::TYPE:
+                case ::HIR::Visitor::PathContext::TRAIT:
+                    if( const auto* pe = p.m_data.opt_Generic() ) {
+                        auto& vi = m_crate.get_typeitem_by_path(sp, pe->m_path);
+                        TU_MATCH_HDRA( (vi), { )
+                        TU_ARMA(Import, e)  BUG(sp, "Module Import");
+                        TU_ARMA(Module, e)  BUG(sp, "mod - " << p);
+                        TU_ARMA(TypeAlias, e)  BUG(sp, "type - " << p);
+                        TU_ARMA(TraitAlias, e)  BUG(sp, "trait= - " << p);
+                        TU_ARMA(Struct, e)  return e.m_params;
+                        TU_ARMA(Enum , e)   return e.m_params;
+                        TU_ARMA(Union, e)   return e.m_params;
+                        TU_ARMA(Trait, e)   return e.m_params;
+                        TU_ARMA(ExternType, e)   BUG(sp, "extern type - " << p);
+                        }
+                    }
+                    break;
+                }
+                TODO(sp, "get params - " << p);
+                };
+            ::HIR::Visitor::visit_path(p, pc);
+            m_get_params = saved;
         }
 
         void visit_type(::HIR::TypeRef& ty) override
@@ -2363,6 +2445,9 @@ namespace {
                 void visit_path_params(::HIR::PathParams& pp) override {
                     // Explicit call to handle const params (eventually)
                     m_exp.visit_path_params(pp);
+                }
+                void visit_path(::HIR::Visitor::PathContext pc, ::HIR::Path& p) override {
+                    m_exp.visit_path(p, pc);
                 }
 
                 void visit(::HIR::ExprNode_ArraySized& node) override {
