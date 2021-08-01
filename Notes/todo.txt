@@ -6,6 +6,7 @@ TODO:
  - Almost done, just a few little niggles left
 - Optimise typecheck runtime
   - Mostly done with trait resolve optimisations
+- De-duplicate `static.cpp`/`helpers.cpp` (lots of common logic)
 
 
 ## Big change TODOs

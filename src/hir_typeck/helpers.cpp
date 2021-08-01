@@ -1241,20 +1241,30 @@ bool TraitResolution::find_trait_impls_magic(const Span& sp,
     // - `DiscriminantKind`
     if( TARGETVER_LEAST_1_54 && trait == this->m_crate.get_lang_item_path(sp, "discriminant_kind") )
     {
+        static auto name_Discriminant = RcString::new_interned("Discriminant");
         // TODO: This logic is near identical to the logic in `static.cpp` - can it be de-duplicated?
 
         if( type.data().is_Infer() || (type.data().is_Path() && type.data().as_Path().binding.is_Unbound()) ) {
-            // TODO: How to prevent EAT from expanding too early?
+            // TODO: How to prevent EAT from expanding (or setting opaque) too early?
             return callback( ImplRef(type.clone(), HIR::PathParams(), ::HIR::TraitPath::assoc_list_t()), ::HIR::Compare::Fuzzy );
         }
         else if( type.data().is_Generic() || (type.data().is_Path() && type.data().as_Path().binding.is_Opaque()) ) {
+            ::HIR::TraitPath::assoc_list_t   assoc_list;
+            assoc_list.insert(std::make_pair( name_Discriminant, HIR::TraitPath::AtyEqual {
+                trait,
+                HIR::TypeRef::new_path(
+                    HIR::Path(type.clone(), trait.clone(), name_Discriminant),
+                    HIR::TypePathBinding::make_Opaque({})
+                    )
+                } ));
             return callback( ImplRef(type.clone(), HIR::PathParams(), ::HIR::TraitPath::assoc_list_t()), ::HIR::Compare::Equal );
+            //return false;
         }
         else if( type.data().is_Path() && type.data().as_Path().binding.is_Enum() ) {
             const auto& enm = *type.data().as_Path().binding.as_Enum();
             HIR::TypeRef    tag_ty = enm.get_repr_type(enm.m_tag_repr);
             ::HIR::TraitPath::assoc_list_t   assoc_list;
-            assoc_list.insert(std::make_pair( RcString::new_interned("Discriminant"), HIR::TraitPath::AtyEqual {
+            assoc_list.insert(std::make_pair( name_Discriminant, HIR::TraitPath::AtyEqual {
                 trait,
                 std::move(tag_ty)
                 } ));
@@ -1262,12 +1272,68 @@ bool TraitResolution::find_trait_impls_magic(const Span& sp,
         }
         else {
             ::HIR::TraitPath::assoc_list_t   assoc_list;
-            assoc_list.insert(std::make_pair( RcString::new_interned("Discriminant"), HIR::TraitPath::AtyEqual {
+            assoc_list.insert(std::make_pair( name_Discriminant, HIR::TraitPath::AtyEqual {
                 trait,
                 HIR::TypeRef::new_unit()
                 } ));
             return callback(ImplRef(type.clone(), {}, std::move(assoc_list)), ::HIR::Compare::Equal);
         }
+    }
+    if( TARGETVER_LEAST_1_54 && trait == this->m_crate.get_lang_item_path(sp, "pointee_trait") )
+    {
+        static auto name_Metadata = RcString::new_interned("Metadata");
+        // TODO: This logic is near identical to the logic in `static.cpp` - can it be de-duplicated?
+
+        HIR::TypeRef    meta_ty;
+        if( type.data().is_Infer() || (type.data().is_Path() && type.data().as_Path().binding.is_Unbound()) ) {
+            return callback( ImplRef(type.clone(), HIR::PathParams(), ::HIR::TraitPath::assoc_list_t()), ::HIR::Compare::Fuzzy );
+        }
+        // Generics (or opaque ATYs)
+        if( type.data().is_Generic() || (type.data().is_Path() && type.data().as_Path().binding.is_Opaque()) ) {
+            // If the type is `Sized` return `()` as the type
+            if( type_is_sized(sp, type) ) {
+                meta_ty = HIR::TypeRef::new_unit();
+            }
+            else {
+                // Return unbounded
+                // - leave as `_`
+            }
+        }
+        // Trait object: `Metadata=DynMetadata<T>`
+        if( type.data().is_TraitObject() ) {
+            meta_ty = ::HIR::TypeRef::new_path(
+                ::HIR::GenericPath(this->m_crate.get_lang_item_path(sp, "dyn_metadata"), HIR::PathParams(type.clone())),
+                &m_crate.get_struct_by_path(sp, this->m_crate.get_lang_item_path(sp, "dyn_metadata"))
+                );
+        }
+        // Slice and str
+        if( type.data().is_Slice() || TU_TEST1(type.data(), Primitive, == HIR::CoreType::Str) ) {
+            meta_ty = HIR::CoreType::Usize;
+        }
+        // Structs: Can delegate their metadata
+        if( type.data().is_Path() && type.data().as_Path().binding.is_Struct() )
+        {
+            const auto& str = *type.data().as_Path().binding.as_Struct();
+            switch(str.m_struct_markings.dst_type)
+            {
+            case HIR::StructMarkings::DstType::None:
+                meta_ty = HIR::TypeRef::new_unit();
+                break;
+            case HIR::StructMarkings::DstType::Possible:
+                TODO(sp, "m_lang_Pointee - " << type);
+            case HIR::StructMarkings::DstType::Slice:
+                meta_ty = HIR::CoreType::Usize;
+                break;
+            case HIR::StructMarkings::DstType::TraitObject:
+                TODO(sp, "m_lang_Pointee - " << type);
+            }
+        }
+        ::HIR::TraitPath::assoc_list_t  assoc_list;
+        if(meta_ty != HIR::TypeRef()) {
+            assoc_list.insert(std::make_pair( RcString::new_interned("Metadata"), HIR::TraitPath::AtyEqual { trait, mv$(meta_ty) } ));
+        }
+
+        return callback( ImplRef(type.clone(), {}, std::move(assoc_list)), ::HIR::Compare::Equal );
     }
 
     // Magic Unsize impls to trait objects
@@ -2304,8 +2370,30 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
         }
     }
 
-    // 2. Crate-level impls
+    if( this->find_trait_impls_magic(sp, trait_path.m_path, trait_path.m_params, pe.type, [&](auto impl, auto qual)->bool {
+        DEBUG("[expand_associated_types__UfcsKnown] Found " << impl << " qual=" << qual);
+        // If it's a fuzzy match, keep going (but count if a concrete hasn't been found)
+        if( qual == ::HIR::Compare::Fuzzy ) {
+        }
+        else {
+            auto ty = impl.get_type( pe.item.c_str() );
+            if( ty == ::HIR::TypeRef() )
+            {
+                DEBUG("Assuming that " << input << " is an opaque name");
+                e.binding = ::HIR::TypePathBinding::make_Opaque({});
+            }
+            else
+            {
+                input = mv$(ty);
+            }
+        }
+        return true;
+        }) )
+    {
+        return ;
+    }
 
+    // 2. Crate-level impls
     DEBUG("Searching for impl");
     bool    can_fuzz = true;
     unsigned int    count = 0;
@@ -2343,7 +2431,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
             else {
                 auto ty = impl.get_type( pe.item.c_str() );
                 if( ty == ::HIR::TypeRef() )
-                    ERROR(sp, E0000, "Couldn't find assocated type " << pe.item << " in " << pe.trait);
+                    ERROR(sp, E0000, "Couldn't find assocated type " << pe.item << " in impl of " << pe.trait << " for " << pe.type);
 
                 if( impl.has_magic_params() ) {
                 }
@@ -2366,7 +2454,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
         else {
             auto ty = best_impl.get_type( pe.item.c_str() );
             if( ty == ::HIR::TypeRef() )
-                ERROR(sp, E0000, "Couldn't find assocated type " << pe.item << " in " << pe.trait);
+                ERROR(sp, E0000, "Couldn't find assocated type " << pe.item << " in impl of " << pe.trait << " for " << pe.type);
 
             // Try again later?
             if( best_impl.has_magic_params() ) {

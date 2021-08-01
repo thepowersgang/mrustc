@@ -231,7 +231,7 @@ bool StaticTraitResolve::find_impl(
             if( type.data().is_TraitObject() ) {
                 ::HIR::TraitPath::assoc_list_t   assoc_list;
                 assoc_list.insert(std::make_pair( name_Metadata, HIR::TraitPath::AtyEqual {
-                    m_lang_DiscriminantKind,
+                    m_lang_Pointee,
                     ::HIR::TypeRef::new_path(::HIR::GenericPath(m_lang_DynMetadata, HIR::PathParams(type.clone())), &m_crate.get_struct_by_path(sp, m_lang_DynMetadata))
                     } ));
                 return found_cb(ImplRef(type.clone(), {}, std::move(assoc_list)), false);
