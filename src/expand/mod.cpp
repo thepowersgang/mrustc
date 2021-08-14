@@ -737,8 +737,18 @@ struct CExpandExpr:
         m_try_stack.pop_back();
 
         auto core_crate = crate.m_ext_cratename_core;
-        auto path_Ok  = ::AST::Path(core_crate, {::AST::PathNode("result"), ::AST::PathNode("Result"), ::AST::PathNode("Ok")});
-        auto ok_node = ::AST::ExprNodeP(new ::AST::ExprNode_CallPath( mv$(path_Ok), ::make_vec1(mv$(node.m_inner)) ));
+        AST::ExprNodeP  ok_node;
+        if(TARGETVER_MOST_1_39)
+        {
+            auto path_Ok  = ::AST::Path(core_crate, {::AST::PathNode("result"), ::AST::PathNode("Result"), ::AST::PathNode("Ok")});
+            ok_node = ::AST::ExprNodeP(new ::AST::ExprNode_CallPath( mv$(path_Ok), ::make_vec1(mv$(node.m_inner)) ));
+        }
+        else
+        {
+            auto path_Try = ::AST::Path(core_crate, {::AST::PathNode("ops"), ::AST::PathNode("Try")});
+            auto path_Try_from_output  = ::AST::Path::new_ufcs_trait(::TypeRef(node.span()), path_Try, { ::AST::PathNode("from_output") });
+            ok_node = ::AST::ExprNodeP(new ::AST::ExprNode_CallPath( mv$(path_Try_from_output), ::make_vec1(mv$(node.m_inner)) ));
+        }
         auto break_node = AST::ExprNodeP(new AST::ExprNode_Flow(AST::ExprNode_Flow::BREAK, loop_name, mv$(ok_node)));
         this->replacement = AST::ExprNodeP(new AST::ExprNode_Loop(loop_name, mv$(break_node)));
     }
