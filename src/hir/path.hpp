@@ -38,9 +38,11 @@ public:
     EncodedLiteral* operator->() { assert(p); return p; }
     const EncodedLiteral* operator->() const { assert(p); return p; }
 };
-TAGGED_UNION_EX(ConstGeneric, (), Invalid, (
-    (Invalid, struct {}),
-    (Unevaluated, HIR::ExprPtr),    // Unevaluated (or evaluation deferred)
+TAGGED_UNION_EX(ConstGeneric, (), Infer, (
+    (Infer, struct {    // To be inferred
+        unsigned index = ~0u;
+        }),
+    (Unevaluated, std::shared_ptr<HIR::ExprPtr>),    // Unevaluated (or evaluation deferred)
     (Generic, GenericRef),  // A single generic reference
     (Evaluated, EncodedLiteralPtr) // A fully known literal
     ),

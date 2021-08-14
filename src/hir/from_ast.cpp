@@ -519,7 +519,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
                     break ;
                 }
             }
-            params.m_values.push_back( LowerHIR_ExprNode(*iv) );
+            params.m_values.push_back( std::make_shared<HIR::ExprPtr>(LowerHIR_ExprNode(*iv)) );
             }
         TU_ARMA(AssociatedTyEqual, ty) {
             if( !allow_assoc )
@@ -816,8 +816,16 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
                     return ::HIR::TypeRef::new_array( mv$(inner), ptr->m_value );
                 }
             }
+            if( const auto* ptr = dynamic_cast<const ::AST::ExprNode_NamedValue*>(&*e.size) )
+            {
+                if( ptr->m_path.is_trivial() )
+                {
+                    auto gr = HIR::GenericRef(ptr->m_path.as_trivial(), ptr->m_path.m_bindings.value.binding.as_Generic().index);
+                    return ::HIR::TypeRef::new_array( mv$(inner), HIR::ConstGeneric(mv$(gr)) );
+                }
+            }
 
-            return ::HIR::TypeRef::new_array( mv$(inner), LowerHIR_Expr(e.size) );
+            return ::HIR::TypeRef::new_array( mv$(inner), HIR::ConstGeneric::make_Unevaluated(std::make_shared<HIR::ExprPtr>(LowerHIR_Expr(e.size))) );
         }
         else {
             return ::HIR::TypeRef::new_slice( mv$(inner) );

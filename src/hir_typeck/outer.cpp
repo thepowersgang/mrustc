@@ -747,11 +747,13 @@ namespace {
             // - Done first so the path in return-position `impl Trait` is valid
             for(auto& arg : item.m_args)
             {
+                DEBUG("ARG " << arg);
                 visit_type(arg.second);
             }
             // Visit return type (populates path for `impl Trait` in return position
             m_fcn_path = &p;
             m_fcn_erased_count = 0;
+            DEBUG("RET " << item.m_return);
             visit_type(item.m_return);
             m_fcn_path = nullptr;
             m_fcn_ptr = nullptr;

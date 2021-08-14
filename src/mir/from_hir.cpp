@@ -1439,10 +1439,13 @@ namespace {
                         const auto& in_array = ty_in.data().as_Array();
                         ::MIR::Constant size_val;
                         TU_MATCH_HDRA( (in_array.size), {)
-                        default:
-                            BUG(node.span(), "Unsize Array with unknown size " << ty_in);
-                        TU_ARMA(Generic, se) {
-                            size_val = se;
+                        TU_ARMA(Unevaluated, se) {
+                            TU_MATCH_HDRA( (se), {)
+                            default:
+                                BUG(node.span(), "Unsize Array with unknown size " << ty_in);
+                            TU_ARMA(Generic, cge)
+                                size_val = cge;
+                            }
                             }
                         TU_ARMA(Known, se) {
                             size_val = ::MIR::Constant::make_Uint({ se, ::HIR::CoreType::Usize });

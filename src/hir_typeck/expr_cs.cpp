@@ -958,6 +958,9 @@ namespace {
                                     trait_params.m_types.push_back( ::HIR::TypeRef::new_infer(ivars[i], ::HIR::InferClass::None) );
                                     //ASSERT_BUG(sp, m_ivars.get_type( trait_params.m_types.back() ).m_data.as_Infer().index == ivars[i], "A method selection ivar was bound");
                                 }
+                                if(e1.trait.m_params.m_values.size() > 0) {
+                                    TODO(sp, "Populate infer for value generics");
+                                }
                                 // If one of these was already using the placeholder ivars, then maintain the one with the palceholders
                                 if( e1.trait.m_params != trait_params )
                                 {
@@ -1381,9 +1384,21 @@ namespace {
             check_type_resolved(sp, ty, ty);
             ty = this->context.m_resolve.expand_associated_types(sp, mv$(ty));
         }
+
+        void check_type_resolved_constgeneric(const Span& sp, ::HIR::ConstGeneric& v, const ::HIR::TypeRef& top_type) const
+        {
+            if(v.is_Infer())
+            {
+                auto val = ivars.get_value(v).clone();
+                v = std::move(val);
+            }
+        }
+
         void check_type_resolved_pp(const Span& sp, ::HIR::PathParams& pp, const ::HIR::TypeRef& top_type) const {
             for(auto& ty : pp.m_types)
                 check_type_resolved(sp, ty, top_type);
+            for(auto& val : pp.m_values)
+                check_type_resolved_constgeneric(sp, val, top_type);
         }
         void check_type_resolved_path(const Span& sp, ::HIR::Path& path) const {
             auto tmp = ::HIR::TypeRef::new_path(path.clone(), {});
@@ -1458,19 +1473,39 @@ namespace {
                         ERROR(sp, E0000, "UfcsUnknown " << path << " left in " << top_type);
                     ::HIR::Visitor::visit_path(path, pc);
                 }
+                void visit_constgeneric(::HIR::ConstGeneric& v) override
+                {
+                    if(v.is_Infer())
+                    {
+                        auto val = parent.ivars.get_value(v).clone();
+                        DEBUG(v << " -> " << val);
+                        v = std::move(val);
+                    }
+                }
                 void visit_type(::HIR::TypeRef& ty) override
                 {
                     if( ty.data().is_Infer() )
                     {
                         auto new_ty = parent.ivars.get_type(ty).clone();
+                        DEBUG(ty << " -> " << new_ty);
                         // - Move over before checking, so that the source type mentions the correct ivar
                         ty = mv$(new_ty);
                         if( ty.data().is_Infer() ) {
                             ERROR(sp, E0000, "Failed to infer type " << ty << " in "  << top_type);
                         }
                     }
-                    
+
                     ::HIR::Visitor::visit_type(ty);
+
+                    if( ty.data().is_Array() )
+                    {
+                        auto& size = ty.data_mut().as_Array().size;
+                        if(size.is_Unevaluated()) {
+                            if(size.as_Unevaluated().is_Evaluated()) {
+                                TODO(sp, ty);
+                            }
+                        }
+                    }
                 }
             };
 
@@ -1762,14 +1797,43 @@ void Context::equate_types_inner(const Span& sp, const ::HIR::TypeRef& li, const
             this->m_ivars.set_ivar_to(l_e->index, r_t.clone());
         }
         else {
+            auto equality_constgeneric = [&](const ::HIR::ConstGeneric& l, const ::HIR::ConstGeneric& r) {
+                if( l != r ) {
+                    if(l.is_Infer()) {
+                        if(r.is_Infer()) {
+                            // Unify ivars
+                            this->m_ivars.ivar_val_unify(l.as_Infer().index, r.as_Infer().index);
+                        }
+                        else {
+                            this->m_ivars.set_ivar_val_to(l.as_Infer().index, r.clone());
+                        }
+                    }
+                    else {
+                        if(r.is_Infer()) {
+                            this->m_ivars.set_ivar_val_to(r.as_Infer().index, l.clone());
+                        }
+                        else {
+                            ERROR(sp, E0000, "Value mismatch between " << l << " and " << r);
+                        }
+                    }
+                }
+                };
             // Helper function for Path and TraitObject
             auto equality_typeparams = [&](const ::HIR::PathParams& l, const ::HIR::PathParams& r) {
                     if( l.m_types.size() != r.m_types.size() ) {
-                        ERROR(sp, E0000, "Type mismatch in type params `" << l << "` and `" << r << "`");
+                        ERROR(sp, E0000, "Type mismatch in path params (type count) `" << l << "` and `" << r << "`");
                     }
                     for(unsigned int i = 0; i < l.m_types.size(); i ++)
                     {
                         this->equate_types_inner(sp, l.m_types[i], r.m_types[i]);
+                    }
+
+                    if( l.m_values.size() != r.m_values.size() ) {
+                        ERROR(sp, E0000, "Type mismatch in path params (value count) `" << l << "` and `" << r << "`");
+                    }
+                    for(unsigned int i = 0; i < l.m_values.size(); i ++)
+                    {
+                        equality_constgeneric(l.m_values[i], r.m_values[i]);
                     }
                 };
 
@@ -1818,34 +1882,34 @@ void Context::equate_types_inner(const Span& sp, const ::HIR::TypeRef& li, const
                 if( l_e.path.m_data.tag() != r_e.path.m_data.tag() ) {
                     ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
                 }
-                TU_MATCH(::HIR::Path::Data, (l_e.path.m_data, r_e.path.m_data), (lpe, rpe),
-                (Generic,
+                TU_MATCH_HDRA( (l_e.path.m_data, r_e.path.m_data), {)
+                TU_ARMA(Generic, lpe, rpe) {
                     if( lpe.m_path != rpe.m_path ) {
                         ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
                     }
                     equality_typeparams(lpe.m_params, rpe.m_params);
-                    ),
-                (UfcsInherent,
+                    }
+                TU_ARMA(UfcsInherent, lpe, rpe) {
                     equality_typeparams(lpe.params, rpe.params);
                     if( lpe.item != rpe.item )
                         ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
                     this->equate_types_inner(sp, lpe.type, rpe.type);
-                    ),
-                (UfcsKnown,
+                    }
+                TU_ARMA(UfcsKnown, lpe, rpe) {
                     if( lpe.trait.m_path != rpe.trait.m_path || lpe.item != rpe.item )
                         ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
                     equality_typeparams(lpe.trait.m_params, rpe.trait.m_params);
                     equality_typeparams(lpe.params, rpe.params);
                     this->equate_types_inner(sp, lpe.type, rpe.type);
-                    ),
-                (UfcsUnknown,
+                    }
+                TU_ARMA(UfcsUnknown, lpe, rpe) {
                     // TODO: If the type is fully known, locate a suitable trait item
                     equality_typeparams(lpe.params, rpe.params);
                     if( lpe.item != rpe.item )
                         ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t);
                     this->equate_types_inner(sp, lpe.type, rpe.type);
-                    )
-                )
+                    }
+                }
                 }
             TU_ARMA(Generic, l_e, r_e) {
                 if( l_e.binding != r_e.binding ) {
@@ -1889,7 +1953,25 @@ void Context::equate_types_inner(const Span& sp, const ::HIR::TypeRef& li, const
             TU_ARMA(Array, l_e, r_e) {
                 this->equate_types_inner(sp, l_e.inner, r_e.inner);
                 if( l_e.size != r_e.size ) {
-                    ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - sizes differ");
+                    if( (l_e.size.is_Unevaluated() && l_e.size.as_Unevaluated().is_Infer()) || TU_TEST1(r_e.size, Unevaluated, .is_Infer()) ) {
+                        // Handle one side being fully-known
+                        if( !l_e.size.is_Unevaluated() ) {
+                            assert(l_e.size.is_Known());
+                            assert(r_e.size.is_Unevaluated());
+                            equality_constgeneric(HIR::EncodedLiteralPtr(EncodedLiteral::make_usize(l_e.size.as_Known())), r_e.size.as_Unevaluated());
+                        }
+                        else if( !r_e.size.is_Unevaluated() ) {
+                            assert(l_e.size.is_Unevaluated());
+                            assert(r_e.size.is_Known());
+                            equality_constgeneric(l_e.size.as_Unevaluated(), HIR::EncodedLiteralPtr(EncodedLiteral::make_usize(r_e.size.as_Known())));
+                        }
+                        else {
+                            equality_constgeneric(l_e.size.as_Unevaluated(), r_e.size.as_Unevaluated());
+                        }
+                    }
+                    else {
+                        ERROR(sp, E0000, "Type mismatch between " << l_t << " and " << r_t << " - sizes differ");
+                    }
                 }
                 }
             TU_ARMA(Slice, l_e, r_e) {

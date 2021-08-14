@@ -15,6 +15,8 @@
 #include "expr_state.hpp"
 #include <hir_expand/main_bindings.hpp>
 #include <mir/main_bindings.hpp>
+#include <mir/mir.hpp>
+#include <hir/expr.hpp>
 
 namespace HIR {
     ::std::ostream& operator<<(::std::ostream& os, const Publicity& x)
@@ -31,11 +33,29 @@ namespace HIR {
         return os;
     }
 
-    ::std::ostream& operator<<(::std::ostream& os, const HIR::ConstGeneric& x)
+    ::std::ostream& operator<<(::std::ostream& os, const ConstGeneric& x)
     {
         TU_MATCH_HDRA( (x), {)
-        TU_ARMA(Invalid, e) os << "Invalid";
-        TU_ARMA(Unevaluated, e) os << "Unevaluated(...)";
+        TU_ARMA(Infer, e) {
+            os << "Infer";
+            if(e.index != ~0u) {
+                os << "(";
+                os << e.index;
+                os << ")";
+            }
+            }
+        TU_ARMA(Unevaluated, e) {
+            os << "Unevaluated(";
+            if(e->m_mir) {
+                for(const auto& b : e->m_mir->blocks) {
+                    os << b.statements << "; " << b.terminator;
+                }
+            }
+            else {
+                HIR_DumpExpr(os, *e);
+            }
+            os << ")";
+            }
         TU_ARMA(Generic, e) os << "Generic(" << e << ")";
         TU_ARMA(Evaluated, e)   os << "Evaluated(" << *e << ")";
         }
@@ -46,7 +66,7 @@ namespace HIR {
         if(this->tag() != x.tag())
             return false;
         TU_MATCH_HDRA( (*this, x), {)
-        TU_ARMA(Invalid, te, xe) return true;
+        TU_ARMA(Infer, te, xe) return true;
         TU_ARMA(Unevaluated, te, xe)    return te == xe;
         TU_ARMA(Generic, te, xe)    return te == xe;
         TU_ARMA(Evaluated, te, xe)  return EncodedLiteralSlice(*te) == EncodedLiteralSlice(*xe);
@@ -73,8 +93,8 @@ namespace HIR {
 HIR::ConstGeneric HIR::ConstGeneric::clone() const
 {
     TU_MATCH_HDRA( (*this), {)
-    TU_ARMA(Invalid, e) return e;
-    TU_ARMA(Unevaluated, e) TODO(Span(), "Clone expression");
+    TU_ARMA(Infer, e) return e;
+    TU_ARMA(Unevaluated, e) return e;
     TU_ARMA(Generic, e) return e;
     TU_ARMA(Evaluated, e)   return EncodedLiteralPtr(e->clone());
     }

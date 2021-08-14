@@ -991,8 +991,8 @@
         {
         #define _(x, ...)   case ::HIR::ArraySize::TAG_##x: DEBUG("- "#x); return HIR::ArraySize::make_##x(__VA_ARGS__);
         _(Known, m_in.read_u64c())
-        _(Generic,
-            deserialise_genericref()
+        _(Unevaluated,
+            deserialise_constgeneric()
             )
         default:
             BUG(Span(), "Bad tag for HIR::ArraySize - " << tag);
@@ -1315,8 +1315,8 @@
         switch( auto tag = m_in.read_tag() )
         {
         #define _(x, ...)    case ::HIR::ConstGeneric::TAG_##x:   return ::HIR::ConstGeneric::make_##x(__VA_ARGS__);
-        _(Invalid, {})
-        _(Unevaluated, deserialise_exprptr())
+        _(Infer, {})
+        _(Unevaluated, std::make_shared<HIR::ExprPtr>(deserialise_exprptr()))
         _(Generic,
             deserialise_genericref()
             )

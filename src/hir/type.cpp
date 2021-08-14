@@ -58,11 +58,7 @@ namespace HIR {
     {
         TU_MATCH_HDRA( (x), { )
         TU_ARMA(Unevaluated, se) {
-            os << "/*expr:*/";
-            HIR_DumpExpr(os, *se);
-            }
-        TU_ARMA(Generic, se) {
-            os << se.name << "/*" << se.binding << "*/";
+            os << se;
             }
         TU_ARMA(Known, se)
             os << se;
@@ -96,39 +92,52 @@ Ordering HIR::ArraySize::ord(const HIR::ArraySize& x) const
         return ::ord( static_cast<unsigned>(this->tag()), static_cast<unsigned>(x.tag()) );
     TU_MATCH_HDRA( (*this, x), {)
     TU_ARMA(Unevaluated, tse, xse) {
+        if(tse.tag() != xse.tag())
+            return ::ord( static_cast<unsigned>(tse.tag()), static_cast<unsigned>(xse .tag()) );
         // If the two types are the exact same expression (i.e. same pointer)
         // - They're equal
         if( tse == xse )
             return OrdEqual;
 
-        // If only one has populated MIR, they can't be equal (sort populated MIR after)
-        if( !tse->m_mir != !xse->m_mir ) {
-            return (tse->m_mir ? OrdGreater : OrdLess);
-        }
+        TU_MATCH_HDRA( (tse, xse), {)
+        TU_ARMA(Unevaluated, tsei, xsei) {
+            // If only one has populated MIR, they can't be equal (sort populated MIR after)
+            if( !tsei->m_mir != !xsei->m_mir ) {
+                return (tsei->m_mir ? OrdGreater : OrdLess);
+            }
 
-        // HACK: If the inner is a const param on both, sort based on that.
-        // - Very similar to the ordering of TypeRef::Generic
-        const auto* tn = dynamic_cast<const HIR::ExprNode_ConstParam*>(&**tse);
-        const auto* xn = dynamic_cast<const HIR::ExprNode_ConstParam*>(&**xse);
-        if( tn && xn )
-        {
-            // Is this valid? What if they're from different scopes?
-            return ::ord(tn->m_binding, xn->m_binding);
-        }
+            // HACK: If the inner is a const param on both, sort based on that.
+            // - Very similar to the ordering of TypeRef::Generic
+            const auto* tn = dynamic_cast<const HIR::ExprNode_ConstParam*>(&**tsei);
+            const auto* xn = dynamic_cast<const HIR::ExprNode_ConstParam*>(&**xsei);
+            if( tn && xn )
+            {
+                // Is this valid? What if they're from different scopes?
+                return ::ord(tn->m_binding, xn->m_binding);
+            }
 
-        if( tse->m_mir )
-        {
-            assert(xse->m_mir);
-            // TODO: Compare MIR
-            TODO(Span(), "Compare non-expanded array sizes - (w/ MIR) " << *this << " and " << x);
+            if( tsei->m_mir )
+            {
+                assert(xsei->m_mir);
+                // TODO: Compare MIR
+                TODO(Span(), "Compare non-expanded array sizes - (w/ MIR) " << *this << " and " << x);
+            }
+            else
+            {
+                TODO(Span(), "Compare non-expanded array sizes - (wo/ MIR) " << *this << " and " << x);
+            }
+            }
+        TU_ARMA(Generic, tsei, xsei) {
+            return tsei.ord(xsei);
+            }
+        TU_ARMA(Infer, tsei, xsei) {
+            return ::ord(tsei.index, xsei.index);
+            }
+        TU_ARMA(Evaluated, tsei, xsei) {
+            //return ::ord(*tsei, *xsei);
+            TODO(Span(), "Compare Evaluated array sizes - " << *this << " and " << x);
+            }
         }
-        else
-        {
-            TODO(Span(), "Compare non-expanded array sizes - (wo/ MIR) " << *this << " and " << x);
-        }
-        }
-    TU_ARMA(Generic, tse, xse) {
-        return ::ord(tse.binding, xse.binding);
         }
     TU_ARMA(Known, tse, xse)
         return ::ord(tse, xse);
@@ -140,9 +149,7 @@ HIR::ArraySize HIR::ArraySize::clone() const
 {
     TU_MATCH_HDRA( (*this), {)
     TU_ARMA(Unevaluated, se)
-        return se;
-    TU_ARMA(Generic, se)
-        return se;
+        return se.clone();
     TU_ARMA(Known, se)
         return se;
     }
@@ -519,6 +526,49 @@ namespace {
     {
         return t.match_test_generics_fuzz(sp, x, resolve_placeholder, callback);
     }
+    ::HIR::Compare match_values(const Span& sp, const ::HIR::ConstGeneric& t, const ::HIR::ConstGeneric& x, ::HIR::MatchGenerics& callback)
+    {
+        // LHS generic: call callback
+        if( const auto* e = t.opt_Generic() ) {
+            return callback.match_val(*e, x);
+        }
+
+        // Either are infer, check for exact match or return fuzzy
+        if(const auto* xep = x.opt_Infer())
+        {
+            const auto& xe = *xep;
+
+            if( xe.index != ~0u && t.is_Infer() && t.as_Infer().index == xe.index )
+            {
+                return ::HIR::Compare::Equal;
+            }
+
+            return ::HIR::Compare::Fuzzy;
+        }
+        if(const auto* tep = t.opt_Infer())
+        {
+            const auto& te = *tep;
+            ASSERT_BUG(sp, te.index != ~0u, "Encountered ivar for `this` - " << t);
+            return ::HIR::Compare::Fuzzy;
+        }
+
+        if( t.tag() != x.tag() )
+        {
+            return ::HIR::Compare::Unequal;
+        }
+
+        TU_MATCH_HDRA( (t,x), { )
+        TU_ARMA(Infer, te,xe) throw "Unreachable";
+        TU_ARMA(Unevaluated, te,xe) {
+            if(te == xe) {
+                return ::HIR::Compare::Equal;
+            }
+            }
+        TU_ARMA(Generic, te,xe) throw "Unreachable";
+        TU_ARMA(Evaluated, te, xe)
+            return *te == *xe ? ::HIR::Compare::Equal : ::HIR::Compare::Unequal;
+        }
+    }
 }
 
 bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x_in, t_cb_resolve_type resolve_placeholder, ::HIR::MatchGenerics& callback) const
@@ -774,16 +824,15 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         }
     TU_ARMA(Array, te, xe) {
         auto rv = Compare::Equal;
-        if( const auto* tse = te.size.opt_Generic() )
+        if( const auto* tse = te.size.opt_Unevaluated() )
         {
             HIR::ConstGeneric   v;
             if( xe.size.opt_Known() ) {
-                v = EncodedLiteralPtr( EncodedLiteral::make_usize(xe.size.as_Known()) );
+                rv &= match_values(sp, *tse, EncodedLiteralPtr( EncodedLiteral::make_usize(xe.size.as_Known()) ), callback);
             }
             else {
-                v = HIR::ConstGeneric(xe.size.as_Generic());
+                rv &= match_values(sp, *tse, xe.size.as_Unevaluated(), callback );
             }
-            rv &= callback.match_val(*tse, v);
         }
         else if( te.size != xe.size ) {
             return Compare::Unequal;

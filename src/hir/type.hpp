@@ -83,10 +83,8 @@ extern ::std::ostream& operator<<(::std::ostream& os, const BorrowType& bt);
 
 /// Array size used for types AND array literals
 TAGGED_UNION_EX(ArraySize, (), Unevaluated, (
-    /// Un-evaluated size (still an expression)
-    (Unevaluated, ::std::shared_ptr<::HIR::ExprPtr>),
-    /// Compiled and partially evaluated
-    (Generic, GenericRef),  // TODO: HIR::Literal
+    /// Un-evaluated size
+    (Unevaluated, ConstGeneric),
     /// Fully known
     (Known, uint64_t)
     ),
@@ -290,8 +288,8 @@ inline TypeRef TypeRef::new_array(TypeRef inner, uint64_t size) {
     assert(size != ~0u);
     return TypeRef(TypeData::make_Array({mv$(inner), size}));
 }
-inline TypeRef TypeRef::new_array(TypeRef inner, ::HIR::ExprPtr size_expr) {
-    return TypeRef(TypeData::make_Array({mv$(inner), std::make_shared<HIR::ExprPtr>(mv$(size_expr)) }));
+inline TypeRef TypeRef::new_array(TypeRef inner, ::HIR::ConstGeneric size_gen) {
+    return TypeRef(TypeData::make_Array({mv$(inner), mv$(size_gen) }));
 }
 inline TypeRef TypeRef::new_path(::HIR::Path path, TypePathBinding binding) {
     return TypeRef(TypeData::make_Path({ mv$(path), mv$(binding) }));

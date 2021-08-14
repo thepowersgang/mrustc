@@ -105,6 +105,20 @@ namespace typecheck
                 }
             }
         }
+
+        if( params.m_values.size() == param_defs.m_values.size() ) {
+            // Nothing to do, all good
+        }
+        else if( params.m_values.size() > param_defs.m_values.size() ) {
+            ERROR(sp, E0000, "Too many const parameters passed to " << path);
+        }
+        else {
+            while( params.m_values.size() < param_defs.m_values.size() ) {
+                //const auto& def = param_defs.m_values[params.m_values.size()];
+                params.m_values.push_back({});
+                context.m_ivars.add_ivars(params.m_values.back());
+            }
+        }
     }
     void fix_param_count(const Span& sp, Context& context, const ::HIR::TypeRef& self_ty, bool use_defaults, const ::HIR::Path& path, const ::HIR::GenericParams& param_defs,  ::HIR::PathParams& params) {
         fix_param_count_(sp, context, self_ty, use_defaults, path, param_defs, params);
@@ -228,7 +242,22 @@ namespace typecheck
 
             ::HIR::ConstGeneric get_value(const Span& sp, const HIR::GenericRef& e) const override
             {
-                TODO(sp, "");
+                if( e.binding < 256 )
+                {
+                    ASSERT_BUG(sp, impl_params, "Impl-level value parameter on free function (" << e << ")");
+                    auto idx = e.idx();
+                    ASSERT_BUG(sp, idx < impl_params->m_values.size(), "Generic value (impl) out of input range - " << e << " >= " << impl_params->m_values.size());
+                    return context.m_ivars.get_value(impl_params->m_values[idx]).clone();
+                }
+                else if( e.binding < 512 )
+                {
+                    auto idx = e.idx();
+                    ASSERT_BUG(sp, idx < fcn_params.m_values.size(), "Generic value out of input range - " << e << " >= " << fcn_params.m_values.size());
+                    return context.m_ivars.get_value(fcn_params.m_values[idx]).clone();
+                }
+                else {
+                    BUG(sp, "Generic value bounding out of total range (" << e << ")");
+                }
             }
         };
 
@@ -280,11 +309,11 @@ namespace typecheck
 
         // --- Monomorphise the argument/return types (into current context)
         for(const auto& arg : fcn.m_args) {
-            TRACE_FUNCTION_FR(path << " - Arg " << arg.first << ": " << arg.second, "Arg " << arg.first << " : " << cache.m_arg_types.back());
+            TRACE_FUNCTION_FR("ARG " << path << " - " << arg.first << ": " << arg.second, "Arg " << arg.first << " : " << cache.m_arg_types.back());
             cache.m_arg_types.push_back( monomorph.monomorph_type(sp, arg.second, false) );
         }
         {
-            TRACE_FUNCTION_FR(path << " - Ret " << fcn.m_return, "Ret " << cache.m_arg_types.back());
+            TRACE_FUNCTION_FR("RET " << path << " - " << fcn.m_return, "Ret " << cache.m_arg_types.back());
             cache.m_arg_types.push_back( monomorph.monomorph_type(sp, fcn.m_return, false) );
         }
 

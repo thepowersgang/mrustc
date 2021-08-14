@@ -92,7 +92,7 @@ public:
     static TypeRef new_tuple(::std::vector< ::HIR::TypeRef> sts) { return TypeRef(mv$(sts)); }
     static TypeRef new_slice(TypeRef inner);
     static TypeRef new_array(TypeRef inner, uint64_t size);
-    static TypeRef new_array(TypeRef inner, ::HIR::ExprPtr size_expr);
+    static TypeRef new_array(TypeRef inner, ::HIR::ConstGeneric size_expr);
     static TypeRef new_path(::HIR::Path path, TypePathBinding binding);
     static TypeRef new_closure(::HIR::ExprNode_Closure* node_ptr, ::std::vector< ::HIR::TypeRef> args, ::HIR::TypeRef rv);
     static TypeRef new_generator(::HIR::ExprNode_Generator* node_ptr);

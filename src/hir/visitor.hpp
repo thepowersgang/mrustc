@@ -47,7 +47,9 @@ public:
     virtual void visit_generic_bound(::HIR::GenericBound& bound);
     virtual void visit_pattern(::HIR::Pattern& pat);
     virtual void visit_pattern_val(::HIR::Pattern::Value& val);
+
     virtual void visit_type(::HIR::TypeRef& tr);
+    virtual void visit_constgeneric(::HIR::ConstGeneric& c);
 
     enum class PathContext {
         TYPE,

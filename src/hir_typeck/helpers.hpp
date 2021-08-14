@@ -69,6 +69,17 @@ public: // ?? - Needed once, anymore?
     };
 
     ::std::vector< IVar>    m_ivars;
+    struct IVarValue {
+        unsigned int alias;
+        ::std::unique_ptr< ::HIR::ConstGeneric> val;
+        IVarValue():
+            alias(~0u),
+            val(new ::HIR::ConstGeneric())
+        {}
+        bool is_alias() const { return alias != ~0u; }
+    };
+    ::std::vector< IVarValue>    m_values;
+
     bool    m_has_changed;
 
 public:
@@ -108,6 +119,7 @@ public:
 
     /// Add (and bind) all '_' types in `type`
     void add_ivars(::HIR::TypeRef& type);
+    void add_ivars(::HIR::ConstGeneric& val);
     // (helper) Add ivars to path parameters
     void add_ivars_params(::HIR::PathParams& params);
 
@@ -126,11 +138,22 @@ public:
     void set_ivar_to(unsigned int slot, ::HIR::TypeRef type);
     void ivar_unify(unsigned int left_slot, unsigned int right_slot);
 
+    // 
+    unsigned int new_ivar_val();
+    void set_ivar_val_to(unsigned int slot, ::HIR::ConstGeneric val);
+    void ivar_val_unify(unsigned int left_slot, unsigned int right_slot);
+
+    ::HIR::ConstGeneric new_val_ivar();
+    void set_val_ivar_to(unsigned int slot, ::HIR::ConstGeneric val);
+
     // Lookup
-    ::HIR::TypeRef& get_type(::HIR::TypeRef& type);
+    //::HIR::TypeRef& get_type(::HIR::TypeRef& type);
     const ::HIR::TypeRef& get_type(const ::HIR::TypeRef& type) const;
           ::HIR::TypeRef& get_type(unsigned idx);
     const ::HIR::TypeRef& get_type(unsigned idx) const;
+
+    const ::HIR::ConstGeneric& get_value(const ::HIR::ConstGeneric& val) const;
+    const ::HIR::ConstGeneric& get_value(unsigned idx) const;
 
     void check_for_loops();
     void expand_ivars(::HIR::TypeRef& type);

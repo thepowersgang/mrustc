@@ -255,9 +255,12 @@ namespace {
             {
                 this->visit_type( ep->inner );
                 DEBUG("Array size " << ty);
-                if( ep->size.is_Unevaluated() ) {
-                    ExprVisitor_Mutate  ev(m_crate, this->get_new_ty_cb(), *ep->size.as_Unevaluated());
-                    ev.visit_node_ptr( *ep->size.as_Unevaluated() );
+                if( auto* cg = ep->size.opt_Unevaluated() ) {
+                    if(cg->is_Unevaluated())
+                    {
+                        ExprVisitor_Mutate  ev(m_crate, this->get_new_ty_cb(), *cg->as_Unevaluated());
+                        ev.visit_node_ptr( *cg->as_Unevaluated() );
+                    }
                 }
             }
             else {

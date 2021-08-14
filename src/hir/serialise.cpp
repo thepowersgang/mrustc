@@ -168,13 +168,10 @@
             m_out.write_tag(static_cast<int>(as.tag()));
             TU_MATCH_HDRA( (as), { )
             TU_ARMA(Unevaluated, se) {
-                BUG(Span(), "Unepxected ArraySize::Unevaluated - " << as);
+                serialise(se);
                 }
             TU_ARMA(Known, se) {
                 m_out.write_u64c(se);
-                }
-            TU_ARMA(Generic, se) {
-                serialise(se);
                 }
             }
         }
@@ -664,7 +661,7 @@
         {
             m_out.write_tag(v.tag());
             TU_MATCH_HDRA( (v), {)
-            TU_ARMA(Invalid, e) {
+            TU_ARMA(Infer, e) {
                 }
             TU_ARMA(Unevaluated, e)
                 serialise(e);

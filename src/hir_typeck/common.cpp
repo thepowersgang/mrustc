@@ -276,20 +276,22 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
         }
     TU_ARMA(Array, e) {
         HIR::ArraySize  sz;
-        if( e.size.is_Generic() ) {
-            auto sz_val = this->get_value(sp, e.size.as_Generic());
-            TU_MATCH_HDRA( (sz_val), {)
-            default:
-                BUG(sp, "Unexpected value type - " << sz_val << " in replacement for " << e.size);
-            //TU_ARMA(Invalid, ve) {
-            //    sz = HIR::ArraySize::make_Unevaluated({});
-            //    }
-            TU_ARMA(Generic, ve) {
-                sz = ve;
-                }
-            TU_ARMA(Evaluated, ve) {
-                sz = ve->read_usize(0);
-                }
+        if( auto* se = e.size.opt_Unevaluated() ) {
+            if( se->is_Generic() ) {
+                sz = this->get_value(sp, se->as_Generic());
+                se = sz.opt_Unevaluated();
+                assert(se);
+            }
+            if(se->is_Unevaluated()) {
+                // TODO: Evaluate
+                //TODO(sp, "Evaluate unevaluated generic for array size - " << *se);
+                sz = se->clone();
+            }
+            else if( se->is_Evaluated() ) {
+                sz = se->as_Evaluated()->read_usize(0);
+            }
+            else {
+                sz = se->clone();
             }
         }
         else {

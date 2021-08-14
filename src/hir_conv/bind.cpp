@@ -74,6 +74,12 @@ namespace {
         if( params.m_types.size() != params_def.m_types.size() ) {
             ERROR(sp, E0000, "Incorrect parameter count, expected " << params_def.m_types.size() << ", got " << params.m_types.size());
         }
+        if( params.m_values.size() == 0 ) {
+            params.m_values.resize( params_def.m_values.size() );
+        }
+        if( params.m_values.size() != params_def.m_values.size() ) {
+            ERROR(sp, E0000, "Incorrect value parameter count, expected " << params_def.m_values.size() << ", got " << params.m_values.size());
+        }
         #endif
     }
 
@@ -242,52 +248,59 @@ namespace {
         }
         static void fix_param_count(const Span& sp, const ::HIR::GenericPath& path, const ::HIR::GenericParams& param_defs, ::HIR::PathParams& params, bool fill_infer=true, const ::HIR::TypeRef* self_ty=nullptr)
         {
-            if( params.m_types.size() == param_defs.m_types.size() ) {
-                // Nothing to do, all good
-                return ;
-            }
+            if( params.m_types.size() != param_defs.m_types.size() )
+            {
+                TRACE_FUNCTION_F(path);
 
-            TRACE_FUNCTION_F(path);
-
-            if( params.m_types.size() == 0 && fill_infer ) {
-                for(const auto& typ : param_defs.m_types) {
-                    (void)typ;
-                    params.m_types.push_back( ::HIR::TypeRef() );
+                if( params.m_types.size() == 0 && fill_infer ) {
+                    for(const auto& typ : param_defs.m_types) {
+                        (void)typ;
+                        params.m_types.push_back( ::HIR::TypeRef() );
+                    }
+                }
+                else if( params.m_types.size() > param_defs.m_types.size() ) {
+                    ERROR(sp, E0000, "Too many type parameters passed to " << path);
+                }
+                else {
+                    while( params.m_types.size() < param_defs.m_types.size() ) {
+                        const auto& typ = param_defs.m_types[params.m_types.size()];
+                        if( typ.m_default.data().is_Infer() ) {
+                            ERROR(sp, E0000, "Omitted type parameter with no default in " << path);
+                        }
+                        else {
+                            // Clone, replacing `self` if a replacement was provided.
+                            auto ty = clone_ty_with(sp, typ.m_default, [&](const auto& ty, auto& out){
+                                if(const auto* te = ty.data().opt_Generic() )
+                                {
+                                    if( te->binding == GENERIC_Self ) {
+                                        if( !self_ty )
+                                            TODO(sp, "Self enountered in default params, but no Self available - " << ty << " in " << typ.m_default << " for " << path);
+                                        out = self_ty->clone();
+                                    }
+                                    // NOTE: Should only be seeing impl-level params here. Method-level ones are only seen in expression context.
+                                    else if( (te->binding >> 8) == 0 ) {
+                                        auto idx = te->binding & 0xFF;
+                                        ASSERT_BUG(sp, idx < params.m_types.size(), "TODO: Handle use of latter types in defaults");
+                                        out = params.m_types[idx].clone();
+                                    }
+                                    else {
+                                        TODO(sp, "Monomorphise in fix_param_count - encountered " << ty << " in " << typ.m_default);
+                                    }
+                                    return true;
+                                }
+                                return false;
+                                });
+                            params.m_types.push_back( mv$(ty) );
+                        }
+                    }
                 }
             }
-            else if( params.m_types.size() > param_defs.m_types.size() ) {
-                ERROR(sp, E0000, "Too many type parameters passed to " << path);
-            }
-            else {
-                while( params.m_types.size() < param_defs.m_types.size() ) {
-                    const auto& typ = param_defs.m_types[params.m_types.size()];
-                    if( typ.m_default.data().is_Infer() ) {
-                        ERROR(sp, E0000, "Omitted type parameter with no default in " << path);
-                    }
-                    else {
-                        // Clone, replacing `self` if a replacement was provided.
-                        auto ty = clone_ty_with(sp, typ.m_default, [&](const auto& ty, auto& out){
-                            if(const auto* te = ty.data().opt_Generic() )
-                            {
-                                if( te->binding == GENERIC_Self ) {
-                                    if( !self_ty )
-                                        TODO(sp, "Self enountered in default params, but no Self available - " << ty << " in " << typ.m_default << " for " << path);
-                                    out = self_ty->clone();
-                                }
-                                // NOTE: Should only be seeing impl-level params here. Method-level ones are only seen in expression context.
-                                else if( (te->binding >> 8) == 0 ) {
-                                    auto idx = te->binding & 0xFF;
-                                    ASSERT_BUG(sp, idx < params.m_types.size(), "TODO: Handle use of latter types in defaults");
-                                    out = params.m_types[idx].clone();
-                                }
-                                else {
-                                    TODO(sp, "Monomorphise in fix_param_count - encountered " << ty << " in " << typ.m_default);
-                                }
-                                return true;
-                            }
-                            return false;
-                            });
-                        params.m_types.push_back( mv$(ty) );
+            if( params.m_values.size() != param_defs.m_values.size() )
+            {
+                if( params.m_values.size() == 0 && fill_infer ) {
+                    for(const auto& typ : param_defs.m_values) {
+                        (void)typ;
+                        params.m_values.push_back( ::HIR::ConstGeneric::make_Infer({}) );
                     }
                 }
             }

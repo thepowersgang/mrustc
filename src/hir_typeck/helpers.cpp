@@ -492,6 +492,9 @@ void HMTypeInferrence::add_ivars(::HIR::TypeRef& type)
         }
     TU_ARMA(Array, e) {
         add_ivars(e.inner);
+        if( e.size.is_Unevaluated() ) {
+            add_ivars(e.size.as_Unevaluated());
+        }
         }
     TU_ARMA(Slice, e) {
         add_ivars(e.inner);
@@ -519,9 +522,21 @@ void HMTypeInferrence::add_ivars(::HIR::TypeRef& type)
         }
     }
 }
+void HMTypeInferrence::add_ivars(::HIR::ConstGeneric& val)
+{
+    if(val.is_Infer()) {
+        if(val.as_Infer().index == ~0u) {
+            val.as_Infer().index = new_ivar_val();
+            this->mark_change();
+            DEBUG("New ivar " << val);
+        }
+    }
+}
 void HMTypeInferrence::add_ivars_params(::HIR::PathParams& params)
 {
     for(auto& arg : params.m_types)
+        add_ivars(arg);
+    for(auto& arg : params.m_values)
         add_ivars(arg);
 }
 
@@ -539,16 +554,40 @@ unsigned int HMTypeInferrence::new_ivar(HIR::InferClass ic/* = HIR::InferClass::
     return HIR::TypeRef::new_infer(this->new_ivar(ic));
 }
 
-::HIR::TypeRef& HMTypeInferrence::get_type(::HIR::TypeRef& type)
+unsigned int HMTypeInferrence::new_ivar_val()
 {
-    if(const auto* e = type.data().opt_Infer()) {
-        assert(e->index != ~0u);
-        return *get_pointed_ivar(e->index).type;
+    m_values.push_back(IVarValue());
+    m_values.back().val->as_Infer().index = m_values.size() - 1;
+    return m_values.size() - 1;
+}
+void HMTypeInferrence::set_ivar_val_to(unsigned int slot, ::HIR::ConstGeneric val)
+{
+    ASSERT_BUG(Span(), slot < m_values.size(), "slot " << slot << " >= " << m_values.size());
+    ASSERT_BUG(Span(), !m_values[slot].is_alias(), "slot " << slot);
+    if( *m_values[slot].val == val ) {
     }
     else {
-        return type;
+        DEBUG("Set ValIVar " << slot << " = " << val);
+        ASSERT_BUG(Span(), m_values[slot].val->is_Infer(), "slot " << slot << " - " << *m_values[slot].val);
+        ASSERT_BUG(Span(), m_values[slot].val->as_Infer().index == slot, "slot " << slot << " - " << *m_values[slot].val);
+        *m_values[slot].val = std::move(val);
     }
 }
+void HMTypeInferrence::ivar_val_unify(unsigned int left_slot, unsigned int right_slot)
+{
+    TODO(Span(), "ivar_val_unify(" << left_slot << "," << right_slot << ")");
+}
+
+//::HIR::TypeRef& HMTypeInferrence::get_type(::HIR::TypeRef& type)
+//{
+//    if(const auto* e = type.data().opt_Infer()) {
+//        assert(e->index != ~0u);
+//        return *get_pointed_ivar(e->index).type;
+//    }
+//    else {
+//        return type;
+//    }
+//}
 
 const ::HIR::TypeRef& HMTypeInferrence::get_type(const ::HIR::TypeRef& type) const
 {
@@ -723,6 +762,38 @@ void HMTypeInferrence::ivar_unify(unsigned int left_slot, unsigned int right_slo
         this->mark_change();
     }
 }
+
+
+
+const ::HIR::ConstGeneric& HMTypeInferrence::get_value(const ::HIR::ConstGeneric& val) const
+{
+    if(val.is_Infer()) {
+        return get_value(val.as_Infer().index);
+    }
+    else {
+        return val;
+    }
+}
+const ::HIR::ConstGeneric& HMTypeInferrence::get_value(unsigned slot) const
+{
+    ASSERT_BUG(Span(), slot != ~0u, "");
+    auto index = slot;
+    // Limit the iteration count to the number of ivars
+    for(unsigned int count = 0; count < m_values.size(); count ++)
+    {
+        ASSERT_BUG(Span(), index < m_values.size(), "");
+        auto& ent = m_values[index];
+        if(!ent.is_alias())
+        {
+            return *ent.val;
+        }
+        index = ent.alias;
+    }
+    this->dump();
+    BUG(Span(), "Loop detected in ivar list when starting at " << slot << ", current is " << index);
+}
+
+
 HMTypeInferrence::IVar& HMTypeInferrence::get_pointed_ivar(unsigned int slot) const
 {
     auto index = slot;
@@ -3022,7 +3093,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::ConstGeneric& sz) override
         {
             ASSERT_BUG(sp, g.binding < out_impl_params.m_values.size(), "Value generic " << g << " out of range (" << out_impl_params.m_values.size() << ")");
-            if( out_impl_params.m_values[g.binding].is_Invalid() )
+            if( out_impl_params.m_values[g.binding].is_Infer() )
             {
                 DEBUG("[ftic_check_params] Value param " << g.binding << " = " << sz);
                 out_impl_params.m_values[g.binding] = sz.clone();
@@ -3084,7 +3155,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
     }
     for(unsigned int i = 0; i < out_impl_params.m_values.size(); i ++ )
     {
-        if( out_impl_params.m_values[i].is_Invalid() )
+        if( out_impl_params.m_values[i].is_Infer() )
         {
             if( placeholders.m_values.size() == 0 )
                 placeholders.m_values.resize(out_impl_params.m_values.size());
@@ -3198,7 +3269,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& val) const override {
             ASSERT_BUG(sp, val.binding < 256, "Generic value binding in " << val << " out of range (>=256)");
             ASSERT_BUG(sp, val.binding < impl_params.m_values.size(), "Generic value binding in " << val << " out of range (>= " << impl_params.m_values.size() << ")");
-            if( !impl_params.m_values.at(val.binding).is_Invalid() ) {
+            if( !impl_params.m_values.at(val.binding).is_Infer() ) {
                 return impl_params.m_values.at(val.binding).clone();
             }
             ASSERT_BUG(sp, placeholders.m_values.size() == impl_params.m_values.size(), "Placeholder size mismatch: " << placeholders.m_values.size() << " != " << impl_params.m_values.size());

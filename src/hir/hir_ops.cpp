@@ -19,6 +19,31 @@
 namespace {
     bool matches_genericpath(const ::HIR::GenericPath& left, const ::HIR::GenericPath& right, ::HIR::t_cb_resolve_type ty_res, bool expand_generic);
 
+    bool matches_constgeneric(const ::HIR::ConstGeneric& left, const ::HIR::ConstGeneric& right, ::HIR::t_cb_resolve_type ty_res, bool expand_generic)
+    {
+        assert( !left.is_Infer() );
+        if(right.is_Infer())
+        {
+            return true;
+        }
+        if(right.is_Generic())
+        {
+            return left.is_Generic();
+        }
+
+        if(left.is_Generic()) {
+            //DEBUG("> Generic left, success");
+            return true;
+        }
+
+        if( left.tag() != right.tag() ) {
+            //DEBUG("> Tag mismatch, failure");
+            return false;
+        }
+
+        return left == right;
+    }
+
     bool matches_type_int(const ::HIR::TypeRef& left,  const ::HIR::TypeRef& right_in, ::HIR::t_cb_resolve_type ty_res, bool expand_generic)
     {
         assert(! left.data().is_Infer() );
@@ -126,8 +151,19 @@ namespace {
         TU_ARMA(Array, le, re) {
             if( ! matches_type_int(le.inner, re.inner, ty_res, expand_generic) )
                 return false;
-            if(le.size.is_Generic()) {
+            if(le.size.is_Unevaluated()) {
                 // If the left is a generic, allow it.
+                if( re.size.is_Unevaluated()) {
+                    if( !matches_constgeneric(le.size.as_Unevaluated(), re.size.as_Unevaluated(), ty_res, expand_generic) )
+                        return false;
+                }
+                else {
+                    if( le.size.as_Unevaluated().is_Generic() ) {
+                    }
+                    else {
+                        TODO(Span(), "Match an unevaluated array with an evaluated one - " << le.size << " " << re.size);
+                    }
+                }
             }
             else {
                 // TODO: Other unresolved sizes?
@@ -194,15 +230,26 @@ namespace {
         {
             // Count mismatch. Allow due to defaults.
             if( left.m_params.m_types.size() != right.m_params.m_types.size() ) {
-                return true;
-                //TODO(Span(), "Match generic paths " << left << " and " << right << " - count mismatch");
             }
-            for( unsigned int i = 0; i < right.m_params.m_types.size(); i ++ )
+            else {
+                for( unsigned int i = 0; i < right.m_params.m_types.size(); i ++ )
+                {
+                    if( ! matches_type_int(left.m_params.m_types[i], right.m_params.m_types[i], ty_res, expand_generic) )
+                        return false;
+                }
+            }
+        }
+
+        if( left.m_params.m_values.size() > 0 || right.m_params.m_values.size() > 0 )
+        {
+            auto num = std::min( left.m_params.m_values.size(), right.m_params.m_values.size() );
+            for(size_t i = 0; i < num; i ++)
             {
-                if( ! matches_type_int(left.m_params.m_types[i], right.m_params.m_types[i], ty_res, expand_generic) )
+                if( !matches_constgeneric(left.m_params.m_values[i], right.m_params.m_values[i], ty_res, expand_generic) )
                     return false;
             }
         }
+
         return true;
     }
 }

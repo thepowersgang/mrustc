@@ -27,6 +27,23 @@ struct Reloc {
         }
         return os;
     }
+    Ordering ord(const Reloc& x) const {
+        ORD(ofs, x.ofs);
+        ORD(len, x.len);
+        if( p ) {
+            if( !x.p )
+                return OrdLess;
+            return p->ord(*x.p);
+        }
+        else {
+            if( x.p )
+                return OrdGreater;
+            return ::ord(bytes, x.bytes);
+        }
+    }
+    bool operator==(const Reloc& x) const {
+        return ord(x) == OrdEqual;
+    }
 };
 struct EncodedLiteral {
     static const unsigned PTR_BASE = 0x1000;
@@ -54,6 +71,13 @@ struct EncodedLiteral {
         os << "{" << x.relocations << "}";
         return os;
     }
+
+    Ordering ord(const EncodedLiteral& x) const {
+        ORD(bytes, x.bytes);
+        ORD(relocations, x.relocations);
+        return OrdEqual;
+    }
+    bool operator==(const EncodedLiteral& x) const { return ord(x) == OrdEqual; }
 };
 
 struct EncodedLiteralSlice

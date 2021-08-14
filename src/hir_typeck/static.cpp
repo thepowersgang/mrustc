@@ -773,7 +773,7 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
         }
         ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::ConstGeneric& sz) override {
             ASSERT_BUG(sp, g.binding < impl_params.m_values.size(), "Type generic " << g << " out of range (" << impl_params.m_values.size() << ")");
-            if( impl_params.m_values[g.binding].is_Invalid() )
+            if( impl_params.m_values[g.binding].is_Infer() )
             {
                 impl_params.m_values[g.binding] = sz.clone();
                 DEBUG("[find_impl__check_crate_raw:GetParams] Set impl val param " << g << " to " << sz);
@@ -908,7 +908,7 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
         ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& val) const override {
             ASSERT_BUG(sp, val.binding < 256, "Generic value binding in " << val << " out of range (>=256)");
             ASSERT_BUG(sp, val.binding < impl_params.m_values.size(), "Generic value binding in " << val << " out of range (>= " << impl_params.m_values.size() << ")");
-            if( !impl_params.m_values.at(val.binding).is_Invalid() ) {
+            if( !impl_params.m_values.at(val.binding).is_Infer() ) {
                 return impl_params.m_values.at(val.binding).clone();
             }
             //ASSERT_BUG(sp, placeholders.m_values.size() == impl_params.m_values.size(), "Placeholder size mismatch: " << placeholders.m_values.size() << " != " << impl_params.m_values.size());

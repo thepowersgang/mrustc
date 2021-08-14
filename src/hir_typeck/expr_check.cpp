@@ -1330,11 +1330,13 @@ namespace {
             {
                 this->visit_type( e->inner );
                 DEBUG("Array size " << ty);
-                if( auto* se = e->size.opt_Unevaluated() ) {
-                    t_args  tmp;
-                    auto ty_usize = ::HIR::TypeRef(::HIR::CoreType::Usize);
-                    ExprVisitor_Validate    ev(m_resolve, tmp, ty_usize);
-                    ev.visit_root( **se );
+                if( auto* se1 = e->size.opt_Unevaluated() ) {
+                    if( auto* se = se1->opt_Unevaluated() ) {
+                        t_args  tmp;
+                        auto ty_usize = ::HIR::TypeRef(::HIR::CoreType::Usize);
+                        ExprVisitor_Validate    ev(m_resolve, tmp, ty_usize);
+                        ev.visit_root( **se );
+                    }
                 }
             }
             else {

@@ -2203,7 +2203,7 @@ namespace {
             {
                 if(v.is_Unevaluated())
                 {
-                    const auto& e = v.as_Unevaluated();
+                    const auto& e = *v.as_Unevaluated();
                     auto name = FMT("param_" << &v << "#");
                     auto nvs = NewvalState { *m_mod, *m_mod_path, name };
                     auto eval = get_eval(e->span(), nvs);
@@ -2280,9 +2280,9 @@ namespace {
             if(auto* e = ty.data_mut().opt_Array())
             {
                 TRACE_FUNCTION_FR(ty, ty);
-                if( e->size.is_Unevaluated() )
+                if( e->size.is_Unevaluated() && e->size.as_Unevaluated().is_Unevaluated() )
                 {
-                    const auto& expr_ptr = *e->size.as_Unevaluated();
+                    const auto& expr_ptr = *e->size.as_Unevaluated().as_Unevaluated();
                     auto ty_name = FMT("ty_" << &ty << "#");
 
                     auto nvs = NewvalState { *m_mod, *m_mod_path, ty_name };
@@ -2298,7 +2298,7 @@ namespace {
                     {
                         const auto* tn = dynamic_cast<const HIR::ExprNode_ConstParam*>(&*expr_ptr);
                         if(tn) {
-                            e->size = HIR::GenericRef(tn->m_name, tn->m_binding);
+                            e->size = HIR::ConstGeneric( HIR::GenericRef(tn->m_name, tn->m_binding) );
                         }
                         else {
                             //TODO(expr_ptr->span(), "Handle defer for array sizes");
