@@ -785,26 +785,21 @@ namespace {
             }
             DEBUG("Ret " << fcn.m_return);
             // Replace ErasedType and monomorphise
-            cache.m_arg_types.push_back( clone_ty_with(sp, fcn.m_return, [&](const auto& tpl, auto& rv)->bool {
-                if( tpl.data().is_Infer() ) {
-                    BUG(sp, "");
-                }
-                else if( tpl.data().is_Generic() ) {
-                    rv = monomorph_cb.get_type(sp, tpl.data().as_Generic()).clone();
-                    return true;
-                }
-                else if( this->expand_erased_types && tpl.data().is_ErasedType() ) {
-                    const auto& e = tpl.data().as_ErasedType();
+            cache.m_arg_types.push_back( monomorph_cb.monomorph_type(sp, fcn.m_return, false) );
+            visit_ty_with_mut(cache.m_arg_types.back(), [&](HIR::TypeRef& ty)->bool {
+                if( this->expand_erased_types && ty.data().is_ErasedType() ) {
+                    const auto& e = ty.data().as_ErasedType();
 
-                    ASSERT_BUG(sp, e.m_index < fcn_ptr->m_code.m_erased_types.size(), "");
-                    const auto& erased_type_replacement = fcn_ptr->m_code.m_erased_types.at(e.m_index);
-                    rv = monomorph_cb.monomorph_type(sp, erased_type_replacement, false);
-                    return true;
+                    // Check the origin, because monomorph might end up introducing other erased types
+                    if(e.m_origin == node.m_path) {
+                        ASSERT_BUG(sp, e.m_index < fcn_ptr->m_code.m_erased_types.size(), "");
+                        const auto& erased_type_replacement = fcn_ptr->m_code.m_erased_types.at(e.m_index);
+                        ty = monomorph_cb.monomorph_type(sp, erased_type_replacement, false);
+                        return true;
+                    }
                 }
-                else {
-                    return false;
-                }
-                }) );
+                return false;
+                });
             m_resolve.expand_associated_types(sp, cache.m_arg_types.back());
             DEBUG("= " << cache.m_arg_types.back());
 
@@ -1177,15 +1172,16 @@ namespace {
                 const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& ity, const char* name
             ) const
         {
-            if( trait == m_lang_Index && ity.data().is_Array() ) {
-                if(name)
-                {
-                    if( res != ity.data().as_Array().inner ) {
-                        ERROR(sp, E0000, "Associated type on " << trait << params << " for " << ity << " doesn't match - " << res << " != " << ity.data().as_Array().inner);
-                    }
-                }
-                return ;
-            }
+            DEBUG(sp << " - " << res << " == < " << ity << " as " << trait << params << " >::" << name);
+            //if( trait == m_lang_Index && ity.data().is_Array() ) {
+            //    if(name && params.m_types.)
+            //    {
+            //        if( res != ity.data().as_Array().inner ) {
+            //            ERROR(sp, E0000, "Associated type on " << trait << params << " for " << ity << " doesn't match - " << res << " != " << ity.data().as_Array().inner);
+            //        }
+            //    }
+            //    return ;
+            //}
             bool found = m_resolve.find_impl(sp, trait, &params, ity, [&](auto impl, bool fuzzy) {
                 if( name )
                 {

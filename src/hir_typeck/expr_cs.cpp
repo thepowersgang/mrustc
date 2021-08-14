@@ -1502,7 +1502,8 @@ namespace {
                         auto& size = ty.data_mut().as_Array().size;
                         if(size.is_Unevaluated()) {
                             if(size.as_Unevaluated().is_Evaluated()) {
-                                TODO(sp, ty);
+                                DEBUG("Known size: " << size);
+                                size = size.as_Unevaluated().as_Evaluated()->read_usize(0);
                             }
                         }
                     }
