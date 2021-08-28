@@ -168,7 +168,7 @@
 #define TU_TAG(name, ...)  TAG_##name,
 
 // Destructor internals
-#define TU_DEST_CASE(tag, ...)  case TAG_##tag: m_data.tag.~TU_DATANAME(tag)(); break;/*
+#define TU_DEST_CASE(tag, ...)  case TAG_##tag: TU_destruct_inplace(m_data.tag); break;/*
 */
 
 // move constructor internals
@@ -247,6 +247,11 @@ class _name TU_EXP _inherit { \
 
 /*
 */
+
+namespace {
+    template<typename T> static void TU_destruct_inplace(T& v) { v.~T(); }
+}
+
 
 #endif
 

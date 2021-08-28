@@ -30,7 +30,7 @@ public:
     EncodedLiteralPtr(EncodedLiteralPtr&& x): p(x.p) { x.p = nullptr; }
     EncodedLiteralPtr(const EncodedLiteralPtr& x) = delete;
 
-    EncodedLiteralPtr& operator=(EncodedLiteralPtr&& x) { this->~EncodedLiteralPtr(); this->p = x.p; x.p = nullptr; }
+    EncodedLiteralPtr& operator=(EncodedLiteralPtr&& x) { this->~EncodedLiteralPtr(); this->p = x.p; x.p = nullptr; return *this; }
     EncodedLiteralPtr& operator=(const EncodedLiteralPtr& x) = delete;
 
     EncodedLiteral& operator*() { assert(p); return *p; }
