@@ -1089,7 +1089,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
             if(val.m_root.is_Argument())
             {
                 auto a = val.m_root.as_Argument();
-                return params[a].is_Constant();
+                return params[a].is_Constant() && !params[a].as_Constant().is_Const();
             }
 
             // Find the source of this lvalue, chase it backwards
@@ -1101,10 +1101,24 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
                     if( se->src.is_Use() ) {
                         return value_is_const(fcn, src.bb_idx, src.stmt_idx, se->src.as_Use(), params);
                     }
+                    if(const auto* rve = se->src.opt_BinOp())
+                    {
+                        return value_is_const(fcn, src.bb_idx, src.stmt_idx, rve->val_l, params)
+                            && value_is_const(fcn, src.bb_idx, src.stmt_idx, rve->val_r, params);
+                    }
                 }
             }
 
             return false;
+        }
+        static bool value_is_const(const ::MIR::Function& fcn, unsigned bb_idx, unsigned stmt_idx, const ::MIR::Param& val, const std::vector<::MIR::Param>& params)
+        {
+            if( val.is_LValue() ) {
+                return value_is_const(fcn, bb_idx, stmt_idx, val.as_LValue(), params);
+            }
+            else {
+                return val.is_Constant() && !val.as_Constant().is_Const();
+            }
         }
         static bool can_inline(const ::HIR::Path& path, const ::MIR::Function& fcn, const std::vector<::MIR::Param>& params, bool minimal)
         {
