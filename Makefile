@@ -50,6 +50,8 @@ CXXFLAGS += -Wno-misleading-indentation
 #CXXFLAGS += -Wno-unused-private-field
 CXXFLAGS += -Wno-unknown-warning-option
 
+CXXFLAGS += -Werror=return-type
+
 
 # - Flags to pass to all mrustc invocations
 RUST_FLAGS := --cfg debug_assertions
@@ -103,6 +105,7 @@ OBJ +=  expand/rustc_diagnostics.o
 OBJ +=  expand/proc_macro.o
 OBJ +=  expand/assert.o expand/compile_error.o
 OBJ +=  expand/codegen.o expand/doc.o expand/lints.o expand/misc_attrs.o expand/stability.o
+OBJ +=  expand/panic.o
 OBJ += expand/test_harness.o
 OBJ += macro_rules/mod.o macro_rules/eval.o macro_rules/parse.o
 OBJ += resolve/use.o resolve/index.o resolve/absolute.o resolve/common.o
@@ -140,7 +143,7 @@ OBJ := $(addprefix $(OBJDIR),$(OBJ))
 all: $(BIN)
 
 clean:
-	$(RM) -r $(BIN) $(OBJ)
+	$(RM) -r $(BIN) $(OBJ) bin/mrustc.a
 
 
 PIPECMD ?= 2>&1 | tee $@_dbg.txt | tail -n $(TAIL_COUNT) ; test $${PIPESTATUS[0]} -eq 0

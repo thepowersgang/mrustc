@@ -10,6 +10,8 @@
 #include <hir/hir.hpp>  // ABI_RUST
 #include <hir/type.hpp>
 #include <cctype>
+#include <algorithm>	// std::find
+#include <cmath>	// ceil/log10
 
 class Mangler
 {
@@ -33,7 +35,7 @@ public:
         {
             auto idx = it - m_name_cache.begin();
             // Only emit this way if shorter than the formatted name would be.
-            auto len = 1 + static_cast<int>(std::ceil(std::log10(idx+1)));
+            auto len = 1 + static_cast<unsigned>(std::ceil(std::log10(idx+1)));
             if(len < s.size())
             {
                 m_os << "b" << idx;

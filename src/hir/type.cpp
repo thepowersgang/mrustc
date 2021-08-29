@@ -568,6 +568,7 @@ namespace {
         TU_ARMA(Evaluated, te, xe)
             return *te == *xe ? ::HIR::Compare::Equal : ::HIR::Compare::Unequal;
         }
+	throw "Unreachable";
     }
 }
 
