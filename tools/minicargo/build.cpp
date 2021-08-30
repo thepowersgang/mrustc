@@ -1291,6 +1291,16 @@ const helpers::path& get_mrustc_path()
 
 bool spawn_process(const char* exe_name, const StringList& args, const StringListKV& env, const ::helpers::path& logfile, const ::helpers::path& working_directory/*={}*/)
 {
+    if( getenv("MINICARGO_DUMPENV") )
+    {
+        ::std::stringstream environ_str;
+        for(auto kv : env)
+        {
+            environ_str << kv.first << "=" << kv.second << ' ';
+        }
+        std::cout << environ_str.str() << std::endl;
+    }
+
 #ifdef _WIN32
     ::std::stringstream cmdline;
     cmdline << exe_name;
