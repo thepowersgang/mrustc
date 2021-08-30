@@ -10,6 +10,8 @@
 #include <hir/hir.hpp>  // ABI_RUST
 #include <hir/type.hpp>
 #include <cctype>
+#include <cmath>
+#include <algorithm>
 
 class Mangler
 {

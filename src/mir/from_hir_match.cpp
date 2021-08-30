@@ -248,9 +248,9 @@ void MIR_LowerHIR_Let(MirBuilder& builder, MirConverter& conv, const Span& sp, c
 
     auto pat_builder = PatternRulesetBuilder { builder.resolve() };
     pat_builder.append_from(sp, pat, outer_ty);
-    for(const auto& sr : pat_builder.m_rulesets)
+    for(const auto& sra : pat_builder.m_rulesets)
     {
-        auto pat_idx = static_cast<unsigned>(&sr - &pat_builder.m_rulesets.front());
+        auto pat_idx = static_cast<unsigned>(&sra - &pat_builder.m_rulesets.front());
         auto& sr = pat_builder.m_rulesets[pat_idx];
         if( sr.m_is_impossible )
         {

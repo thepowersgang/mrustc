@@ -2,6 +2,7 @@
  */
 #pragma once
 #include <tagged_union.hpp>
+#include <climits>
 
 namespace AsmCommon {
 
