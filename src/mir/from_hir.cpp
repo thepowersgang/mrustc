@@ -338,6 +338,7 @@ namespace {
 
         void destructure_from_list(const Span& sp, const ::HIR::TypeRef& outer_ty, ::MIR::LValue outer_lval, const ::std::vector<PatternBinding>& bindings) override
         {
+            TRACE_FUNCTION_F(outer_lval << ": " << outer_ty << " [" << bindings << "]");
             for(const auto& b : bindings)
             {
                 auto lval = get_value_for_binding_path(sp, outer_ty, outer_lval, b);
@@ -517,6 +518,7 @@ namespace {
                 //TU_ARMA(Const, e) {
                 //    }
                 //}
+                (void)v;
             }
             TODO(node.span(), "new asm!");
         }

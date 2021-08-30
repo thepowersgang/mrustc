@@ -345,6 +345,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             // - Needed, because the order has to be: match, condition, destructure, code
             if(arm.m_cond)
             {
+                TRACE_FUNCTION_FR("CONDITIONAL","CONDITIONAL");
                 auto freeze_scope = builder.new_scope_freeze(arm.m_cond->span());
                 conv.destructure_aliases_from_list(arm.m_code->span(), match_ty, match_val.clone(), arm_rules.back().m_bindings);
 
@@ -721,6 +722,7 @@ void PatternRulesetBuilder::push_binding(PatternBinding b)
     assert(this->subset_end <= m_rulesets.size());
     for(size_t i = subset_start; i < subset_end; i ++)
     {
+        DEBUG(i << " " << b);
         m_rulesets[i].m_bindings.push_back(b);
     }
 }
@@ -731,7 +733,8 @@ void PatternRulesetBuilder::push_bindings(std::vector<PatternBinding> bindings)
     for(size_t i = subset_start; i < subset_end; i ++)
     {
         auto& l = m_rulesets[i].m_bindings;
-        l.insert(l.begin(), bindings.begin(), bindings.end());
+        l.insert(l.end(), bindings.begin(), bindings.end());
+        DEBUG(i << " [" << bindings << "] = [" << l << "]");
     }
 }
 void PatternRulesetBuilder::set_impossible()
@@ -755,9 +758,12 @@ void PatternRulesetBuilder::multiply_rulesets(size_t n, std::function<void(size_
     m_rulesets.resize( m_rulesets.size() + (n - 1) * subset_size );
     size_t new_subset_end = m_rulesets.size() - n_tail;
     // Copy the tail out of the way (reverse to avoid chasing itself)
-    for(size_t i = m_rulesets.size(); i -- >= new_subset_end; )
+    if(ofs > 0)
     {
-        m_rulesets[i] = std::move(m_rulesets[i-ofs]);
+        for(size_t i = m_rulesets.size(); i -- >= new_subset_end; )
+        {
+            m_rulesets[i] = std::move(m_rulesets[i-ofs]);
+        }
     }
     // Copy `n-1` copies of the current subset after itself
     for(size_t j = 1; j < n; j ++ )

@@ -174,13 +174,13 @@ public:
 
     typedef ::std::vector< ::std::pair< ::HIR::Pattern, ::HIR::TypeRef> >   args_t;
 
-    bool    m_save_code;    // Filled by enumerate, defaults to false
+    bool    m_save_code = false;    // Filled by enumerate, defaults to false
     Linkage m_linkage;
 
-    Receiver    m_receiver;
-    ::std::string   m_abi;
-    bool    m_unsafe;
-    bool    m_const;
+    Receiver    m_receiver = Receiver::Free;
+    ::std::string   m_abi = ABI_RUST;
+    bool    m_unsafe = false;
+    bool    m_const = false;
 
     GenericParams   m_params;
 

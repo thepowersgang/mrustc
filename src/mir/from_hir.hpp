@@ -165,6 +165,14 @@ struct PatternBinding
     bool is_split_slice() const {
         return split_slice.first != SIZE_MAX;
     }
+
+    friend ::std::ostream& operator<<(::std::ostream& os, const PatternBinding& x) {
+        os << *x.binding <<  x.field;
+        if( x.is_split_slice() ) {
+            os << "[" << x.split_slice.first << "..-" << x.split_slice.second << "]";
+        }
+        return os;
+    }
 };
 
 /// Helper class to construct MIR

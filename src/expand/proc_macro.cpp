@@ -343,7 +343,9 @@ ProcMacroInv ProcMacro_Invoke_int(const Span& sp, const ::AST::Crate& crate, con
     ::std::string   proc_macro_exe_name = ext_crate.m_filename;
 
     // 3. Create ProcMacroInv
-    return ProcMacroInv(sp, crate.m_edition, proc_macro_exe_name.c_str(), *pmp);
+    auto rv = ProcMacroInv(sp, crate.m_edition, proc_macro_exe_name.c_str(), *pmp);
+    rv.parse_state().crate = &crate;
+    return rv;
 
     // NOTE: 1.39 failure_derive (2015) emits `::failure::foo` but `libcargo` doesn't have `failure` in root (it's a 2018 crate)
     //return ProcMacroInv(sp, ext_crate.m_hir->m_edition, proc_macro_exe_name.c_str(), *pmp);

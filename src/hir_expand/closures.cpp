@@ -1448,6 +1448,7 @@ namespace {
             // -- Prepare drop impl for later filling
             ::HIR::Function* fcn_drop_ptr; {
                 ::HIR::Function fcn_drop;
+                fcn_drop.m_receiver = HIR::Function::Receiver::BorrowUnique;
                 auto drop_self_arg_ty = ::HIR::TypeRef::new_path( ::HIR::GenericPath(gen_struct_path, impl_path_params.clone()), &gen_struct_ref );
                 drop_self_arg_ty = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, std::move(drop_self_arg_ty));
                 fcn_drop.m_args.push_back(std::make_pair( HIR::Pattern(), mv$(drop_self_arg_ty) ));

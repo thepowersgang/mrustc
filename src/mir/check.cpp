@@ -12,6 +12,7 @@
 #include <hir_typeck/static.hpp>
 #include <mir/helpers.hpp>
 #include <mir/visit_crate_mir.hpp>
+#include <mir/operations.hpp>
 
 namespace {
     ::HIR::TypeRef get_metadata_type(const ::MIR::TypeResolve& state, const ::HIR::TypeRef& unsized_ty)
@@ -615,6 +616,8 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
     ::MIR::TypeResolve   state { sp, resolve, FMT_CB(ss, ss << path;), ret_type, args, fcn };
     // Validation rules:
 
+    if( debug_enabled() ) MIR_Dump_Fcn(::std::cout, fcn);
+    
     {
         for(const auto& bb : fcn.blocks)
         {
