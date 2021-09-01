@@ -732,19 +732,18 @@
             TRACE_FUNCTION;
             auto _ = m_in.open_object("HIR::Function");
 
-            ::HIR::Function rv {
-                false,
-                deserialise_linkage(),
-                static_cast< ::HIR::Function::Receiver>( m_in.read_tag() ),
-                m_in.read_string(),
-                m_in.read_bool(),
-                m_in.read_bool(),
-                deserialise_genericparams(),
-                deserialise_fcnargs(),
-                m_in.read_bool(),
-                deserialise_type(),
-                deserialise_exprptr()
-                };
+            ::HIR::Function rv;
+            rv.m_save_code = false;
+            rv.m_linkage = deserialise_linkage();
+            rv.m_receiver = static_cast< ::HIR::Function::Receiver>( m_in.read_tag() );
+            rv.m_abi = m_in.read_string();
+            rv.m_unsafe = m_in.read_bool();
+            rv.m_const = m_in.read_bool();
+            rv.m_params = deserialise_genericparams();
+            rv.m_args = deserialise_fcnargs();
+            rv.m_variadic = m_in.read_bool();
+            rv.m_return = deserialise_type();
+            rv.m_code = deserialise_exprptr();
             return rv;
         }
         ::std::vector< ::std::pair< ::HIR::Pattern, ::HIR::TypeRef> >   deserialise_fcnargs()

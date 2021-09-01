@@ -179,18 +179,12 @@ void Trans_AutoImpl_Clone(State& state, ::HIR::TypeRef ty)
 
     // Function
     ::HIR::Function fcn {
-        /*m_save_code=*/false,
-        ::HIR::Linkage {},
         ::HIR::Function::Receiver::BorrowShared,
-        /*m_abi=*/ABI_RUST,
-        /*m_unsafe =*/false,
-        /*m_const=*/false,
         ::HIR::GenericParams {},
         /*m_args=*/::make_vec1(::std::make_pair(
             ::HIR::Pattern( ::HIR::PatternBinding(false, ::HIR::PatternBinding::Type::Move, "self", 0), ::HIR::Pattern::Data::make_Any({}) ),
             ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, ty.clone())
             )),
-        /*m_variadic=*/false,
         /*m_return=*/ty.clone(),
         ::HIR::ExprPtr {}
         };

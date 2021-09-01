@@ -451,15 +451,9 @@ namespace {
             return ::HIR::TraitImpl {
                 mv$(params), {}, mv$(closure_type),
                 make_map1(
-                    RcString::new_interned("call_free"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::HIR::Function {
-                        false, ::HIR::Linkage {},
-                        ::HIR::Function::Receiver::Free,
-                        ABI_RUST, false, false,
-                        {},
-                        mv$(args), false,
-                        ret_ty.clone(),
-                        mv$(code)
-                        } }
+                    RcString::new_interned("call_free"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false,
+                        ::HIR::Function( ::HIR::Function::Receiver::Free, ::HIR::GenericParams {}, mv$(args), ret_ty.clone(), mv$(code))
+                        }
                     ),
                 {},
                 {},
@@ -482,17 +476,15 @@ namespace {
                 mv$(params), mv$(trait_params), mv$(closure_type),
                 make_map1(
                     RcString::new_interned("call_once"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::HIR::Function {
-                        false, ::HIR::Linkage {},
                         ::HIR::Function::Receiver::Value,
-                        ABI_RUST, false, false,
-                        {},
+                        ::HIR::GenericParams {},
                         make_vec2(
                             ::std::make_pair(
                                 ::HIR::Pattern { {false, ::HIR::PatternBinding::Type::Move, "self", 0}, {} },
                                 mv$(ty_of_self)
                                 ),
                             mv$( args_argent )
-                            ), false,
+                            ),
                         ret_ty.clone(),
                         mv$(code)
                         } }
@@ -520,17 +512,15 @@ namespace {
                 mv$(params), mv$(trait_params), mv$(closure_type),
                 make_map1(
                     RcString::new_interned("call_mut"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::HIR::Function {
-                        false, ::HIR::Linkage {},
                         ::HIR::Function::Receiver::BorrowUnique,
-                        ABI_RUST, false, false,
-                        {},
+                        ::HIR::GenericParams {},
                         make_vec2(
                             ::std::make_pair(
                                 ::HIR::Pattern { {false, ::HIR::PatternBinding::Type::Move, "self", 0}, {} },
                                 mv$(ty_of_self)
                                 ),
                             mv$( args_argent )
-                            ), false,
+                            ),
                         ret_ty.clone(),
                         mv$(code)
                         } }
@@ -556,17 +546,15 @@ namespace {
                 mv$(params), mv$(trait_params), mv$(closure_type),
                 make_map1(
                     RcString::new_interned("call"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::HIR::Function {
-                        false, ::HIR::Linkage {},
                         ::HIR::Function::Receiver::BorrowShared,
-                        ABI_RUST, false, false,
-                        {},
+                        ::HIR::GenericParams {},
                         make_vec2(
                             ::std::make_pair(
                                 ::HIR::Pattern { {false, ::HIR::PatternBinding::Type::Move, "self", 0}, {} },
                                 mv$(ty_of_self)
                                 ),
                             mv$(args_argent)
-                            ), false,
+                            ),
                         ret_ty.clone(),
                         mv$(code)
                         } }

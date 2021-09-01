@@ -190,6 +190,19 @@ public:
 
     ExprPtr m_code;
 
+    Function()
+    {
+    }
+    Function(Receiver receiver, GenericParams params, args_t args, TypeRef ret_ty, ExprPtr code)
+        : m_receiver(receiver)
+        , m_params(std::move(params))
+        , m_args(std::move(args))
+        , m_variadic(false)
+        , m_return(std::move(ret_ty))
+        , m_code(std::move(code))
+    {
+    }
+
     //::HIR::TypeRef make_ty(const Span& sp, const ::HIR::PathParams& params) const;
 };
 

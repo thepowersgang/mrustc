@@ -1591,16 +1591,19 @@ namespace {
         linkage.name = p.get_name();
     }
 
-    return ::HIR::Function {
-        force_emit,
-        mv$(linkage),
-        receiver,
-        f.abi(), f.is_unsafe(), f.is_const(),
-        LowerHIR_GenericParams(f.params(), nullptr),    // TODO: If this is a method, then it can add the Self: Sized bound
-        mv$(args), f.is_variadic(),
-        LowerHIR_Type( f.rettype() ),
-        LowerHIR_Expr( f.code() )
-        };
+    ::HIR::Function rv;
+    rv.m_save_code = force_emit;
+    rv.m_linkage = mv$(linkage);
+    rv.m_receiver = receiver;
+    rv.m_abi = f.abi();
+    rv.m_unsafe = f.is_unsafe();
+    rv.m_const = f.is_const();
+    rv.m_params = LowerHIR_GenericParams(f.params(), nullptr);  // TODO: If this is a method, then it can add the Self: Sized bound
+    rv.m_args = mv$(args);
+    rv.m_variadic = f.is_variadic();
+    rv.m_return = LowerHIR_Type( f.rettype() );
+    rv.m_code = LowerHIR_Expr( f.code() );
+    return rv;
 }
 
 void _add_mod_ns_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pub,  ::HIR::TypeItem ti) {
