@@ -22,7 +22,7 @@ proc_macro = { path = "../libproc_macro" }
 
 # Add librustc_codegen_llvm as a dep to the main binary
 [add.'src/rustc'.dependencies]
-rustc_codecen_llvm = { path = "../librustc_codegen_llvm" }
+rustc_codegen_llvm = { path = "../librustc_codegen_llvm" }
 # And explicit dependencies for librustc_codegen_llvm's implicit deps
 [add.'src/librustc_codegen_llvm'.dependencies]
 rustc-demangle = "0.1"
