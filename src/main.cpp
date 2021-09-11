@@ -240,7 +240,7 @@ int main(int argc, char *argv[])
         Cfg_SetValueCb("feature", [&params](const ::std::string& s) {
             return params.features.count(s) != 0;
             });
-
+#if 0
         DEBUG("sizeof(AST::TypeRef) = " << sizeof(TypeRef));
         DEBUG("sizeof(AST::Item) = " << sizeof(AST::Item));
         DEBUG("sizeof(AST::Impl) = " << sizeof(AST::Impl));
@@ -248,6 +248,7 @@ int main(int argc, char *argv[])
         DEBUG("sizeof(AST::Module) = " << sizeof(AST::Module));
         DEBUG("sizeof(HIR::TypeRef) = " << sizeof(HIR::TypeRef));
         DEBUG("sizeof(HIR::Path) = " << sizeof(HIR::Path));
+#endif
         });
     CompilePhaseV("Target Load", [&]() {
         Target_SetCfg(params.target);
@@ -865,6 +866,9 @@ ProgramParams::ProgramParams(int argc, char *argv[])
         else if( strcmp(a, "1.39") == 0 ) {
             gTargetVersion = TargetVersion::Rustc1_39;
         }
+        else if( strcmp(a, "1.54") == 0 ) {
+            gTargetVersion = TargetVersion::Rustc1_54;
+        }
         else {
         }
     }
@@ -883,6 +887,7 @@ ProgramParams::ProgramParams(int argc, char *argv[])
             case TargetVersion::Rustc1_19:  rustc_target = "1.19";  break;
             case TargetVersion::Rustc1_29:  rustc_target = "1.29";  break;
             case TargetVersion::Rustc1_39:  rustc_target = "1.39";  break;
+            case TargetVersion::Rustc1_54:  rustc_target = "1.54";  break;
             }
 
             ::std::cout << "rustc " << rustc_target << ".100 (mrustc " << Version_GetString() << ")" << ::std::endl;
@@ -1114,6 +1119,7 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 case TargetVersion::Rustc1_19:  rustc_target = "1.19";  break;
                 case TargetVersion::Rustc1_29:  rustc_target = "1.29";  break;
                 case TargetVersion::Rustc1_39:  rustc_target = "1.39";  break;
+                case TargetVersion::Rustc1_54:  rustc_target = "1.54";  break;
                 }
                 // NOTE: Starts the version with "rustc 1.29.100" so build scripts don't get confused
                 ::std::cout << "rustc " << rustc_target << ".100 (mrustc " << Version_GetString() << ")" << ::std::endl;
@@ -1205,22 +1211,21 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                     *p = '\0';
                     const char* opt = opt_and_val;
                     const char* val = p + 1;
+                    std::string s;
                     // TODO: Correctly parse the values.
                     // - Value should be a double-quoted string.
+                    if( val[0] == '"' ) {
+                        // TODO: Something cleaner than this.
+                        s = val+1;
+                        assert(s.back() == '"');
+                        s.pop_back();
+                        val = s.c_str();
+                    }
                     if( ::std::strcmp(opt, "feature") == 0 ) {
                         this->features.insert( ::std::string(val) );
                     }
                     else {
-                        if( val[0] == '"' ) {
-                            // TODO: Something cleaner than this.
-                            ::std::string   s = val+1;
-                            assert(s.back() == '"');
-                            s.pop_back();
-                            Cfg_SetValue(opt, s);
-                        }
-                        else {
-                            Cfg_SetValue(opt, val);
-                        }
+                        Cfg_SetValue(opt, val);
                     }
                 }
                 else {
@@ -1257,6 +1262,9 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 }
                 else if( strcmp(edition_str, "2018") == 0 ) {
                     this->edition = AST::Edition::Rust2018;
+                }
+                else if( strcmp(edition_str, "2021") == 0 ) {
+                    this->edition = AST::Edition::Rust2021;
                 }
                 else {
                     ::std::cerr << "Unknown value for " << arg << " - '" << edition_str << "'" << ::std::endl;

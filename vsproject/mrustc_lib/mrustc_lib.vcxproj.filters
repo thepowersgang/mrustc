@@ -438,6 +438,9 @@
     <ClCompile Include="..\..\src\expand\compile_error.cpp">
       <Filter>Source Files\expand</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\src\expand\panic.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\src\common.hpp">
@@ -650,9 +653,6 @@
     <ClInclude Include="..\..\src\hir\type_ref.hpp">
       <Filter>Header Files\hir</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\src\hir\literal.hpp">
-      <Filter>Source Files\hir</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\src\hir\generic_ref.hpp">
       <Filter>Source Files\hir</Filter>
     </ClInclude>
@@ -673,6 +673,18 @@
     </ClInclude>
     <ClInclude Include="..\..\src\ast\lifetime_ref.hpp">
       <Filter>Header Files\ast</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\ast\expr_ptr.hpp">
+      <Filter>Header Files\ast</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\hir\asm.hpp">
+      <Filter>Header Files\hir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\hir\encoded_literal.hpp">
+      <Filter>Header Files\hir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\hir\literal.hpp">
+      <Filter>Header Files\hir</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

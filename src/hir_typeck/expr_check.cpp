@@ -21,7 +21,14 @@ namespace {
         //const t_args&   m_args;
         const ::HIR::TypeRef&   real_ret_type;
         ::HIR::TypeRef ret_type;
-        ::std::vector< const ::HIR::TypeRef*>   closure_ret_types;
+        struct RetTarget {
+            const ::HIR::TypeRef*   ret_type;
+            const ::HIR::TypeRef*   yield_type;
+
+            RetTarget(const ::HIR::TypeRef& ret_type): ret_type(&ret_type), yield_type(nullptr) {}
+            RetTarget(const ::HIR::TypeRef& ret_type, const ::HIR::TypeRef& yield_type): ret_type(&ret_type), yield_type(&yield_type) {}
+        };
+        ::std::vector<RetTarget>   closure_ret_types;
         ::std::vector<const ::HIR::ExprNode_Loop*>  m_loops;
         //const ::HIR::ExprPtr* m_cur_expr;
 
@@ -77,7 +84,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_Asm& node) override
         {
-            TRACE_FUNCTION_F(&node << " asm! ...");
+            TRACE_FUNCTION_F(&node << " llvm_asm! ...");
 
             // TODO: Check result types
             for(auto& v : node.m_outputs)
@@ -89,18 +96,43 @@ namespace {
                 v.value->visit(*this);
             }
         }
+        void visit(::HIR::ExprNode_Asm2& node) override
+        {
+            TRACE_FUNCTION_F(&node << " asm! ...");
+
+            // TODO: Check result types
+            for(auto& v : node.m_params)
+            {
+                TU_MATCH_HDRA( (v), { )
+                TU_ARMA(Const, e) {
+                    visit_node_ptr(e);
+                    }
+                TU_ARMA(Sym, e) {
+                    }
+                TU_ARMA(RegSingle, e) {
+                    visit_node_ptr(e.val);
+                    }
+                TU_ARMA(Reg, e) {
+                    if(e.val_in)    visit_node_ptr(e.val_in);
+                    if(e.val_out)   visit_node_ptr(e.val_out);
+                    }
+                }
+            }
+        }
         void visit(::HIR::ExprNode_Return& node) override
         {
             TRACE_FUNCTION_F(&node << " return ...");
             // Check against return type
-            const auto& ret_ty = ( this->closure_ret_types.size() > 0 ? *this->closure_ret_types.back() : this->ret_type );
+            const auto& ret_ty = ( this->closure_ret_types.size() > 0 ? *this->closure_ret_types.back().ret_type : this->ret_type );
             check_types_equal(ret_ty, node.m_value);
             node.m_value->visit(*this);
         }
         void visit(::HIR::ExprNode_Yield& node) override
         {
             TRACE_FUNCTION_F(&node << " yield ...");
-            TODO(node.span(), "yield");
+            ASSERT_BUG(node.span(), !this->closure_ret_types.empty(), "Yield outside a generator closure");
+            ASSERT_BUG(node.span(), this->closure_ret_types.back().yield_type, "Yield outside a generator closure");
+            check_types_equal(*this->closure_ret_types.back().yield_type, node.m_value);
             node.m_value->visit(*this);
         }
         void visit(::HIR::ExprNode_Loop& node) override
@@ -113,7 +145,7 @@ namespace {
         void visit(::HIR::ExprNode_LoopControl& node) override
         {
             TRACE_FUNCTION_F(&node << " " << (node.m_continue ? "continue" : "break") << " '" << node.m_label);
-            // TODO: Validate `break` return value
+
             if( node.m_value )
             {
                 node.m_value->visit(*this);
@@ -753,26 +785,21 @@ namespace {
             }
             DEBUG("Ret " << fcn.m_return);
             // Replace ErasedType and monomorphise
-            cache.m_arg_types.push_back( clone_ty_with(sp, fcn.m_return, [&](const auto& tpl, auto& rv)->bool {
-                if( tpl.data().is_Infer() ) {
-                    BUG(sp, "");
-                }
-                else if( tpl.data().is_Generic() ) {
-                    rv = monomorph_cb.get_type(sp, tpl.data().as_Generic()).clone();
-                    return true;
-                }
-                else if( this->expand_erased_types && tpl.data().is_ErasedType() ) {
-                    const auto& e = tpl.data().as_ErasedType();
+            cache.m_arg_types.push_back( monomorph_cb.monomorph_type(sp, fcn.m_return, false) );
+            visit_ty_with_mut(cache.m_arg_types.back(), [&](HIR::TypeRef& ty)->bool {
+                if( this->expand_erased_types && ty.data().is_ErasedType() ) {
+                    const auto& e = ty.data().as_ErasedType();
 
-                    ASSERT_BUG(sp, e.m_index < fcn_ptr->m_code.m_erased_types.size(), "");
-                    const auto& erased_type_replacement = fcn_ptr->m_code.m_erased_types.at(e.m_index);
-                    rv = monomorph_cb.monomorph_type(sp, erased_type_replacement, false);
-                    return true;
+                    // Check the origin, because monomorph might end up introducing other erased types
+                    if(e.m_origin == node.m_path) {
+                        ASSERT_BUG(sp, e.m_index < fcn_ptr->m_code.m_erased_types.size(), "");
+                        const auto& erased_type_replacement = fcn_ptr->m_code.m_erased_types.at(e.m_index);
+                        ty = monomorph_cb.monomorph_type(sp, erased_type_replacement, false);
+                        return true;
+                    }
                 }
-                else {
-                    return false;
-                }
-                }) );
+                return false;
+                });
             m_resolve.expand_associated_types(sp, cache.m_arg_types.back());
             DEBUG("= " << cache.m_arg_types.back());
 
@@ -956,6 +983,7 @@ namespace {
         void visit(::HIR::ExprNode_Tuple& node) override
         {
             TRACE_FUNCTION_F(&node << " (...,)");
+            ASSERT_BUG(node.span(), node.m_res_type.data().is_Tuple(), "Tuple literal didn't return tuple");
             const auto& tys = node.m_res_type.data().as_Tuple();
 
             ASSERT_BUG(node.span(), tys.size() == node.m_vals.size(), "Bad element count in tuple literal - " << tys.size() << " != " << node.m_vals.size());
@@ -1068,9 +1096,46 @@ namespace {
             if( node.m_code )
             {
                 check_types_equal(node.m_code->span(), node.m_return, node.m_code->m_res_type);
-                this->closure_ret_types.push_back( &node.m_return );
+
+                auto loops = ::std::move(this->m_loops);
+
+                this->closure_ret_types.push_back( RetTarget(node.m_return) );
                 node.m_code->visit( *this );
                 this->closure_ret_types.pop_back( );
+
+                this->m_loops = ::std::move(loops);
+            }
+        }
+        void visit(::HIR::ExprNode_Generator& node) override
+        {
+            TRACE_FUNCTION_F(&node << " /*gen*/ |...| ...");
+
+            if( node.m_code )
+            {
+                auto loops = ::std::move(this->m_loops);
+
+                check_types_equal(node.m_code->span(), node.m_return, node.m_code->m_res_type);
+                this->closure_ret_types.push_back( RetTarget(node.m_return, node.m_yield_ty) );
+                node.m_code->visit( *this );
+                this->closure_ret_types.pop_back( );
+
+                this->m_loops = ::std::move(loops);
+            }
+        }
+        void visit(::HIR::ExprNode_GeneratorWrapper& node) override
+        {
+            TRACE_FUNCTION_F(&node << " /*gen*/ |...| ...");
+
+            if( node.m_code )
+            {
+                auto loops = ::std::move(this->m_loops);
+
+                check_types_equal(node.m_code->span(), node.m_return, node.m_code->m_res_type);
+                this->closure_ret_types.push_back( RetTarget(node.m_return, node.m_yield_ty) );
+                node.m_code->visit( *this );
+                this->closure_ret_types.pop_back( );
+
+                this->m_loops = ::std::move(loops);
             }
         }
 
@@ -1107,15 +1172,16 @@ namespace {
                 const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& ity, const char* name
             ) const
         {
-            if( trait == m_lang_Index && ity.data().is_Array() ) {
-                if(name)
-                {
-                    if( res != ity.data().as_Array().inner ) {
-                        ERROR(sp, E0000, "Associated type on " << trait << params << " for " << ity << " doesn't match - " << res << " != " << ity.data().as_Array().inner);
-                    }
-                }
-                return ;
-            }
+            DEBUG(sp << " - " << res << " == < " << ity << " as " << trait << params << " >::" << name);
+            //if( trait == m_lang_Index && ity.data().is_Array() ) {
+            //    if(name && params.m_types.)
+            //    {
+            //        if( res != ity.data().as_Array().inner ) {
+            //            ERROR(sp, E0000, "Associated type on " << trait << params << " for " << ity << " doesn't match - " << res << " != " << ity.data().as_Array().inner);
+            //        }
+            //    }
+            //    return ;
+            //}
             bool found = m_resolve.find_impl(sp, trait, &params, ity, [&](auto impl, bool fuzzy) {
                 if( name )
                 {
@@ -1191,6 +1257,11 @@ namespace {
                 // TODO: Check that the type is a Slice or Array
                 // - Array must have compatible size
                 }
+            
+            TU_ARMA(Or, e) {
+                for(auto& subpat : e)
+                    check_pattern(subpat, ty);
+                }
             }
         }
         void check_pattern_value(const Span& sp, const ::HIR::Pattern::Value& pv, const ::HIR::TypeRef& ty) const
@@ -1255,11 +1326,13 @@ namespace {
             {
                 this->visit_type( e->inner );
                 DEBUG("Array size " << ty);
-                if( auto* se = e->size.opt_Unevaluated() ) {
-                    t_args  tmp;
-                    auto ty_usize = ::HIR::TypeRef(::HIR::CoreType::Usize);
-                    ExprVisitor_Validate    ev(m_resolve, tmp, ty_usize);
-                    ev.visit_root( **se );
+                if( auto* se1 = e->size.opt_Unevaluated() ) {
+                    if( auto* se = se1->opt_Unevaluated() ) {
+                        t_args  tmp;
+                        auto ty_usize = ::HIR::TypeRef(::HIR::CoreType::Usize);
+                        ExprVisitor_Validate    ev(m_resolve, tmp, ty_usize);
+                        ev.visit_root( **se );
+                    }
                 }
             }
             else {

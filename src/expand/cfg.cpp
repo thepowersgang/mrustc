@@ -104,6 +104,8 @@ class CCfgExpander:
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const ::AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
         auto lex = TTStream(sp, ParseState(crate.m_edition), tt);
+        lex.parse_state().crate = &crate;
+        lex.parse_state().module = &mod;
         auto attrs = Parse_MetaItem(lex);
         DEBUG("cfg!() - " << attrs);
 
@@ -142,7 +144,25 @@ class CCfgHandler:
             i = AST::Item::make_None({});
         }
     }
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, ::std::unique_ptr<AST::ExprNode>& expr) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, AST::Impl& impl, const RcString& name, slice<const AST::Attribute> attrs, AST::Item&i) const override {
+        TRACE_FUNCTION_FR("#[cfg] item - " << mi, (i.is_None() ? "Deleted" : ""));
+        if( check_cfg(sp, mi) ) {
+            // Leave
+        }
+        else {
+            i = AST::Item::make_None({});
+        }
+    }
+    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, const AST::AbsolutePath& path, AST::Trait& trait, slice<const AST::Attribute> attrs, AST::Item&i) const override {
+        TRACE_FUNCTION_FR("#[cfg] item - " << mi, (i.is_None() ? "Deleted" : ""));
+        if( check_cfg(sp, mi) ) {
+            // Leave
+        }
+        else {
+            i = AST::Item::make_None({});
+        }
+    }
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, ::AST::ExprNodeP& expr) const override {
         DEBUG("#[cfg] expr - " << mi);
         if( check_cfg(sp, mi) ) {
             // Leave

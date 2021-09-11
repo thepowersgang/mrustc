@@ -805,7 +805,38 @@ void Resolve_Absolute_PathParams(/*const*/ Context& context, const Span& sp, ::A
             Resolve_Absolute_Lifetime(context, sp, l);
             }
         TU_ARMA(Type, t) {
-            Resolve_Absolute_Type(context, t);
+            // A trivial path type might be refering to a generic value (e.g. `Foo<T,N>` where `N` is a const generic)
+            if(t.m_data.is_Path() && t.m_data.as_Path()->is_trivial() )
+            {
+                auto p = t.m_data.as_Path()->m_class.as_Relative();
+                // If type lookup fails
+                auto new_path = context.lookup_opt(p.nodes[0].name(), p.hygiene, Context::LookupMode::Type);
+                if(new_path == AST::Path()) {
+                    // Try (constant) value lookup
+                    auto new_path = context.lookup_opt(p.nodes[0].name(), p.hygiene, Context::LookupMode::Constant);
+                    if(new_path != AST::Path()) {
+                        // If that lookup succeeds, then create a value (and visit it - just in case)
+                        ent = AST::PathParamEnt::make_Value(new AST::ExprNode_NamedValue(std::move(new_path)));
+                        Resolve_Absolute_ExprNode(context, *ent.as_Value());
+                    }
+                    else {
+                        // Otherwise, visit (which will most likely fail)
+                        Resolve_Absolute_Type(context, t);
+                    }
+                }
+                else {
+                    // Normal type, update it then visit
+                    *t.m_data.as_Path() = std::move(new_path);
+                    Resolve_Absolute_Type(context, t);
+                }
+            }
+            else
+            {
+                Resolve_Absolute_Type(context, t);
+            }
+            }
+        TU_ARMA(Value, n) {
+            Resolve_Absolute_ExprNode(context, *n);
             }
         TU_ARMA(AssociatedTyEqual, a) {
             Resolve_Absolute_Type(context, a.second);
@@ -1058,6 +1089,9 @@ namespace {
             TU_ARMA(Trait, e) {
                 pbt = ::AST::PathBinding_Type::make_Trait({nullptr, &e});
                 }
+            TU_ARMA(TraitAlias, e) {
+                pbt = ::AST::PathBinding_Type::make_TraitAlias({nullptr, &e});
+                }
             TU_ARMA(TypeAlias, e) {
                 pbt = ::AST::PathBinding_Type::make_TypeAlias({nullptr/*, &e*/});
                 }
@@ -1135,6 +1169,12 @@ namespace {
                 }
             TU_ARMA(Module, e) {
                 hmod = &e;
+                }
+            TU_ARMA(TraitAlias, e) {
+                //for(const auto& trait_path_hir : e.m_traits)
+                //{
+                //}
+                TODO(sp, "Path referring to a trait alias - " << path);
                 }
             TU_ARMA(Trait, e) {
                 AST::AbsolutePath   ap( crate.m_name, {} );
@@ -1254,6 +1294,9 @@ namespace {
                         }
                     TU_ARMA(Trait, e) {
                         pbt = ::AST::PathBinding_Type::make_Trait({nullptr, &e});
+                        }
+                    TU_ARMA(TraitAlias, e) {
+                        pbt = ::AST::PathBinding_Type::make_TraitAlias({nullptr, &e});
                         }
                     TU_ARMA(Module, e) {
                         pbt = ::AST::PathBinding_Type::make_Module({nullptr, {&crate, &e}});
@@ -2006,7 +2049,7 @@ void Resolve_Absolute_Type(Context& context,  TypeRef& type)
             assert( ufcs->nodes.size() == 1);
         }
 
-        if(auto* be = e->m_bindings.type.binding.opt_Trait())
+        if(e->m_bindings.type.binding.opt_Trait())
         {
             auto tp = Type_TraitPath();
             tp.path = std::move(e);
@@ -2357,6 +2400,10 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
         }
         for(auto& sp : e.trailing)
             Resolve_Absolute_Pattern(context, allow_refutable,  sp);
+        ),
+    (Or,
+        for(auto& sp : e)
+            Resolve_Absolute_Pattern(context, allow_refutable,  sp);
         )
     )
 }
@@ -2380,7 +2427,8 @@ void Resolve_Absolute_ImplItems(Context& item_context,  ::AST::NamedList< ::AST:
         (Module, BUG(i.span, "Resolve_Absolute_ImplItems - Module");),
         (Crate , BUG(i.span, "Resolve_Absolute_ImplItems - Crate");),
         (Enum  , BUG(i.span, "Resolve_Absolute_ImplItems - Enum");),
-        (Trait , BUG(i.span, "Resolve_Absolute_ImplItems - Trait");),
+        (Trait , BUG(i.span, "Resolve_Absolute_ImplItems - " << i.data.tag_str());),
+        (TraitAlias, BUG(i.span, "Resolve_Absolute_ImplItems - " << i.data.tag_str());),
         (Struct, BUG(i.span, "Resolve_Absolute_ImplItems - Struct");),
         (Union , BUG(i.span, "Resolve_Absolute_ImplItems - Union");),
         (Type,
@@ -2425,6 +2473,7 @@ void Resolve_Absolute_ImplItems(Context& item_context,  ::std::vector< ::AST::Im
         (Crate , BUG(i.sp, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
         (Enum  , BUG(i.sp, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
         (Trait , BUG(i.sp, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
+        (TraitAlias, BUG(i.sp, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
         (Struct, BUG(i.sp, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
         (Union , BUG(i.sp, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
         (Type,
@@ -2682,6 +2731,14 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
         TU_ARMA(Trait, e) {
             DEBUG("Trait - " << i->name);
             Resolve_Absolute_Trait(item_context, e);
+            }
+        TU_ARMA(TraitAlias, e) {
+            DEBUG("TraitAlias - " << i->name);
+            for(auto& st : e.traits) {
+                item_context.push(st.ent.hrbs);
+                Resolve_Absolute_Path(item_context, st.sp, Context::LookupMode::Type,  *st.ent.path);
+                item_context.pop(st.ent.hrbs);
+            }
             }
         TU_ARMA(Type, e) {
             DEBUG("Type - " << i->name);

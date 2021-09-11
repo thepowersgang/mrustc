@@ -183,9 +183,10 @@ namespace {
             {
                 this->visit_type( e->inner );
                 DEBUG("Array size " << ty);
-                if( e->size.is_Unevaluated() ) {
+                if( auto* cg = e->size.opt_Unevaluated() ) {
                     ExprVisitor_Mutate  ev(m_crate);
-                    ev.visit_node_ptr( *e->size.as_Unevaluated() );
+                    if(cg->is_Unevaluated())
+                        ev.visit_node_ptr( *cg->as_Unevaluated() );
                 }
             }
             else {
@@ -242,6 +243,7 @@ namespace {
 
 void HIR_Expand_Reborrows_Expr(const ::HIR::Crate& crate, ::HIR::ExprPtr& exp)
 {
+    TRACE_FUNCTION;
     ExprVisitor_Mutate  ev(crate);
     ev.visit_node_ptr( exp );
 }

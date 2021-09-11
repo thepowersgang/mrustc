@@ -12,8 +12,10 @@
 #include <hir/visitor.hpp>
 #include <hir/expr.hpp>
 #include <hir_typeck/static.hpp>
+#include <hir_conv/constant_evaluation.hpp>
 #include <algorithm>
 #include "main_bindings.hpp"
+#include <hir/expr_state.hpp>
 
 namespace {
     inline HIR::ExprNodeP mk_exprnodep(HIR::ExprNode* en, ::HIR::TypeRef ty){ en->m_res_type = mv$(ty); return HIR::ExprNodeP(en); }
@@ -22,200 +24,23 @@ namespace {
 
 namespace {
 
-    class ExprVisitor_Extract:
-        public ::HIR::ExprVisitorDef
-    {
-        const StaticTraitResolve& m_resolve;
-        HIR::Literal    m_out;
-    public:
-        ExprVisitor_Extract(const StaticTraitResolve& resolve)
-            :m_resolve(resolve)
-        {
-        }
-
-        HIR::Literal take_value() {
-            return mv$(m_out);
-        }
-
-        void visit_node_ptr(::HIR::ExprNodeP& node) override {
-            const auto& node_ref = *node;
-            const char* node_ty = typeid(node_ref).name();
-            // NOTE: It's the parent node that's unhandled, not this one
-            BUG(node->span(), "Unhandled node type in static_borrow_constants ExprVisitor_Extract - child=" << node_ty);
-        }
-
-        void visit(::HIR::ExprNode_ArraySized& node) override {
-
-            node.m_val->visit(*this);
-            auto rv = HIR::Literal::make_List({});
-            if( node.m_size_val > 0 )
-            {
-                for(size_t i = 0; i < node.m_size_val-1; i ++)
-                {
-                    rv.as_List().push_back(m_out.clone());
-                }
-                rv.as_List().push_back(mv$(m_out));
-            }
-            m_out = mv$(rv);
-        }
-        void visit(::HIR::ExprNode_ArrayList& node) override {
-            auto rv = HIR::Literal::make_List({});
-            for(auto& n : node.m_vals)
-            {
-                n->visit(*this);
-                rv.as_List().push_back(mv$(m_out));
-            }
-            m_out = mv$(rv);
-        }
-        void visit(::HIR::ExprNode_StructLiteral& node) override {
-            auto rv = HIR::Literal::make_List({});
-            if( node.m_base_value )
-            {
-                node.m_base_value->visit(*this);
-                rv = mv$(m_out);
-            }
-            for(auto& fld : node.m_values)
-            {
-                // Find field index
-                // Ensure correct size
-                // Set field
-                TODO(node.span(), "StructLiteral");
-            }
-            m_out = mv$(rv);
-            if( !node.m_is_struct )
-            {
-                unsigned var_idx = 0;
-                TODO(node.span(), "StructLiteral enum/union to Literal");
-                m_out = ::HIR::Literal::new_variant( var_idx, mv$(m_out) );
-            }
-        }
-        void visit(::HIR::ExprNode_TupleVariant& node) override {
-            auto rv = HIR::Literal::make_List({});
-            for(auto& n : node.m_args)
-            {
-                n->visit(*this);
-                rv.as_List().push_back(mv$(m_out));
-            }
-            m_out = mv$(rv);
-            if( !node.m_is_struct )
-            {
-                unsigned var_idx = 0;
-                TODO(node.span(), "TupleVariant enum to Literal");
-                m_out = ::HIR::Literal::new_variant( var_idx, mv$(m_out) );
-            }
-        }
-        void visit(::HIR::ExprNode_Tuple& node) override {
-            auto rv = HIR::Literal::make_List({});
-            for(auto& n : node.m_vals)
-            {
-                n->visit(*this);
-                rv.as_List().push_back(mv$(m_out));
-            }
-            m_out = mv$(rv);
-        }
-        // - Root values
-        void visit(::HIR::ExprNode_Literal& node) override {
-            TU_MATCH_HDRA( (node.m_data), {)
-            TU_ARMA(Integer, e) {
-                m_out = HIR::Literal::make_Integer(e.m_value);
-                }
-            TU_ARMA(Float, e) {
-                m_out = HIR::Literal::make_Float(e.m_value);
-                }
-            TU_ARMA(Boolean, e) {
-                m_out = HIR::Literal::make_Integer(e ? 1u : 0u);
-                }
-            TU_ARMA(String, e) {
-                m_out = HIR::Literal::make_String(e);
-                }
-            TU_ARMA(ByteString, e) {
-                std::string rv;
-                for(auto c : e)
-                    rv.push_back(c);
-                m_out = HIR::Literal::make_String(mv$(rv));
-                }
-            }
-        }
-        void visit(::HIR::ExprNode_PathValue& node) override {
-            // If the target is a constant, set `m_out`
-            MonomorphState  params;
-            auto val = m_resolve.get_value(node.span(), node.m_path, params);
-            const HIR::Constant& c = *val.as_Constant();
-            ASSERT_BUG(node.span(), !c.m_value_res.is_Invalid(), "Constant " << node.m_path << " value invalid?");
-            ASSERT_BUG(node.span(), !c.m_value_res.is_Defer(), "Constant " << node.m_path << " value is Deref (TODO)");
-            m_out = c.m_value_res.clone();
-        }
-
-        // - Accessors (constant if the inner is constant)
-        void visit(::HIR::ExprNode_Field& node) override {
-            node.m_value->visit(*this);
-            const auto& ty = node.m_value->m_res_type;
-            // Depending on the type, get the field index
-            size_t index = static_cast<size_t>(-0);
-            TU_MATCH_HDRA( (ty.data()), {)
-            default:
-                TODO(node.span(), "Field access `" << node.m_field << "` on " << ty);
-                break;
-            TU_ARMA(Path, te) {
-                TU_MATCH_HDRA( (te.binding), { )
-                default:
-                    TODO(node.span(), "Field access `" << node.m_field << "` on " << ty);
-                TU_ARMA(Union, pbe) {
-                    // NOTE: Unions need special handling
-                    auto it = ::std::find_if(pbe->m_variants.begin(), pbe->m_variants.end(), [&](const auto& e) { return e.first == node.m_field; });
-                    ASSERT_BUG(node.span(), it != pbe->m_variants.end(), "Unable to find field `" << node.m_field << "` on " << ty);
-                    auto var_index = it - pbe->m_variants.begin();
-                    auto ent = ::std::move(m_out.as_Variant());
-                    ASSERT_BUG(node.span(), ent.idx == var_index, "TODO: Support accessing other fields of a union?");
-                    m_out = std::move(*ent.val);
-                    return ;
-                    }
-                TU_ARMA(Struct, pbe) {
-                    TU_MATCH_HDRA( (pbe->m_data), {)
-                    default:
-                        TODO(node.span(), "Field access `" << node.m_field << "` on " << ty);
-                    TU_ARMA(Named, se) {
-                        auto it = ::std::find_if(se.begin(), se.end(), [&](const auto& e) { return e.first == node.m_field; });
-                        ASSERT_BUG(node.span(), it != se.end(), "Unable to find field `" << node.m_field << "` on " << ty);
-                        index = it - se.begin();
-                        }
-                    }
-                    }
-                }
-                }
-            }
-            if( index == static_cast<size_t>(-0) ) {
-                TODO(node.span(), "Field access `" << node.m_field << "` on " << ty);
-            }
-            auto ent = ::std::move(m_out.as_List());
-            ASSERT_BUG(node.span(), index < ent.size(), "");
-            m_out = ::std::move(ent[index]);
-        }
-
-        // Borrow (from an inner lift)
-        void visit(::HIR::ExprNode_Borrow& node) override {
-            ASSERT_BUG(node.span(), node.m_type == HIR::BorrowType::Shared, "Borrow in ExprVisitor_Extract not Shared");
-            ASSERT_BUG(node.span(), dynamic_cast<::HIR::ExprNode_PathValue*>(&*node.m_value), "Inner node of Borrow in ExprVisitor_Extract not _PathValue: " << typeid(*node.m_value).name());
-            auto& val_path_node = dynamic_cast<::HIR::ExprNode_PathValue&>(*node.m_value);
-            m_out = HIR::Literal::new_borrow_path( val_path_node.m_path.clone() );
-        }
-    };
-
     class ExprVisitor_Mutate:
         public ::HIR::ExprVisitorDef
     {
     public:
-        typedef std::function<HIR::SimplePath(Span, HIR::TypeRef, HIR::Literal)>    t_new_static_cb;
+        typedef std::function<HIR::SimplePath(Span, HIR::TypeRef, HIR::ExprPtr)>    t_new_static_cb;
     private:
         const StaticTraitResolve& m_resolve;
         t_new_static_cb m_new_static_cb;
+        const ::HIR::ExprPtr& m_expr_ptr;
 
         bool    m_is_constant;
         bool    m_all_constant;
     public:
-        ExprVisitor_Mutate(const StaticTraitResolve& resolve, t_new_static_cb new_static_cb):
+        ExprVisitor_Mutate(const StaticTraitResolve& resolve, t_new_static_cb new_static_cb, const ::HIR::ExprPtr& expr_ptr):
             m_resolve(resolve)
             ,m_new_static_cb( mv$(new_static_cb) )
+            ,m_expr_ptr(expr_ptr)
             ,m_is_constant(false)
             ,m_all_constant(false)
         {
@@ -255,16 +80,20 @@ namespace {
                 if( m_resolve.type_is_interior_mutable(node.m_value->span(), node.m_value->m_res_type) == HIR::Compare::Unequal )
                 {
                     DEBUG("-- Creating static");
-                    // Convert inner nodes into HIR::Literal
-                    ExprVisitor_Extract ev_extract(m_resolve);
-                    node.m_value->visit(ev_extract);
-                    auto val = ev_extract.take_value();
+                    auto val_expr = HIR::ExprPtr(mv$(node.m_value));
+                    val_expr.m_state = ::HIR::ExprStatePtr(::HIR::ExprState(m_expr_ptr.m_state->m_module, m_expr_ptr.m_state->m_mod_path));
+                    val_expr.m_state->m_traits = m_expr_ptr.m_state->m_traits;
+                    val_expr.m_state->m_impl_generics = m_expr_ptr.m_state->m_impl_generics;
+                    val_expr.m_state->m_item_generics = m_expr_ptr.m_state->m_item_generics;
+                    val_expr.m_state->stage = ::HIR::ExprState::Stage::Typecheck;
 
                     // Create new static
-                    auto path = m_new_static_cb(node.m_value->span(), node.m_value->m_res_type.clone(), mv$(val));
+                    auto sp = val_expr->span();
+                    auto ty = val_expr->m_res_type.clone();
+                    auto path = m_new_static_cb(sp, ty.clone(), mv$(val_expr));
                     DEBUG("> " << path);
                     // Update the `m_value` to point to a new node
-                    auto new_node = NEWNODE(mv$(node.m_value->m_res_type), PathValue, node.m_value->span(), mv$(path), HIR::ExprNode_PathValue::STATIC);
+                    auto new_node = NEWNODE(mv$(ty), PathValue, sp, mv$(path), HIR::ExprNode_PathValue::STATIC);
                     node.m_value = mv$(new_node);
 
                     m_is_constant = true;
@@ -274,6 +103,7 @@ namespace {
                     DEBUG("-- " << node.m_value->m_res_type << " could be interior mutable");
                 }
             }
+            // TODO: Special case for `&mut []` (or `&mut ZST` in general?)
             m_all_constant = saved_all_constant;
         }
 
@@ -324,8 +154,8 @@ namespace {
         const HIR::ItemPath*  m_current_module_path;
         const HIR::Module*  m_current_module;
 
-        std::map<const HIR::Module*, std::vector< std::pair<RcString, HIR::Static> > >  m_new_statics;
-        
+        std::map<const HIR::Module*, std::vector< std::pair<HIR::SimplePath, HIR::Static> > >  m_new_statics;
+
     public:
         OuterVisitor(const ::HIR::Crate& crate):
             m_crate(crate)
@@ -335,22 +165,21 @@ namespace {
 
         ExprVisitor_Mutate::t_new_static_cb get_new_ty_cb()
         {
-            return [this](Span sp, HIR::TypeRef ty, HIR::Literal val)->HIR::SimplePath {
+            return [this](Span sp, HIR::TypeRef ty, HIR::ExprPtr val_expr)->HIR::SimplePath {
                 ASSERT_BUG(sp, m_current_module, "");
                 // Assign a path (based on the current list)
                 auto& list = m_new_statics[m_current_module];
                 auto idx = list.size();
                 auto name = RcString::new_interned( FMT("lifted#" << idx) );
                 auto path = (*m_current_module_path + name).get_simple_path();
-                DEBUG(path << " = " << val);
                 auto new_static = HIR::Static(
                     HIR::Linkage(),
                     /*is_mut=*/false,
                     mv$(ty),
-                    /*m_value=*/HIR::ExprPtr()
+                    /*m_value=*/mv$(val_expr)
                     );
-                new_static.m_value_res = mv$(val);
-                list.push_back(std::make_pair( name, mv$(new_static) ));
+                DEBUG(path << " = " << new_static.m_value_res);
+                list.push_back(std::make_pair( path, mv$(new_static) ));
                 return path;
                 };
         }
@@ -362,10 +191,18 @@ namespace {
             for(auto& mod_list : m_new_statics)
             {
                 auto& mod = *const_cast<HIR::Module*>(mod_list.first);
-                
+
                 for(auto& new_static_pair : mod_list.second)
                 {
-                    mod.m_value_items.insert(std::make_pair( mv$(new_static_pair.first), box$(HIR::VisEnt<HIR::ValueItem> {
+                    struct NullNvs: ::HIR::Evaluator::Newval {
+                        ::HIR::Path new_static(::HIR::TypeRef type, EncodedLiteral value) override { BUG(Span(), "Unexpected attempt to create a new value in extracted constant"); }
+                    } null_nvs;
+                    Span    sp;
+                    auto& new_static = new_static_pair.second;
+                    new_static.m_value_res = ::HIR::Evaluator(sp, m_crate, null_nvs).evaluate_constant( new_static_pair.first, new_static.m_value, new_static.m_type.clone());
+                    new_static.m_value_generated = true;
+
+                    mod.m_value_items.insert(std::make_pair( mv$(new_static_pair.first.m_components.back()), box$(HIR::VisEnt<HIR::ValueItem> {
                         HIR::Publicity::new_none(), // Should really be private, but we're well after checking
                         HIR::ValueItem(mv$(new_static_pair.second))
                         })) );
@@ -418,9 +255,12 @@ namespace {
             {
                 this->visit_type( ep->inner );
                 DEBUG("Array size " << ty);
-                if( ep->size.is_Unevaluated() ) {
-                    ExprVisitor_Mutate  ev(m_crate, this->get_new_ty_cb());
-                    ev.visit_node_ptr( *ep->size.as_Unevaluated() );
+                if( auto* cg = ep->size.opt_Unevaluated() ) {
+                    if(cg->is_Unevaluated())
+                    {
+                        ExprVisitor_Mutate  ev(m_crate, this->get_new_ty_cb(), *cg->as_Unevaluated());
+                        ev.visit_node_ptr( *cg->as_Unevaluated() );
+                    }
                 }
             }
             else {
@@ -435,7 +275,7 @@ namespace {
             if( item.m_code )
             {
                 DEBUG("Function code " << p);
-                ExprVisitor_Mutate  ev(m_crate, this->get_new_ty_cb());
+                ExprVisitor_Mutate  ev(m_crate, this->get_new_ty_cb(), item.m_code);
                 ev.visit_node_ptr( item.m_code );
             }
             else
@@ -446,14 +286,14 @@ namespace {
         void visit_static(::HIR::ItemPath p, ::HIR::Static& item) override {
             if( item.m_value )
             {
-                ExprVisitor_Mutate  ev(m_crate, this->get_new_ty_cb());
+                ExprVisitor_Mutate  ev(m_crate, this->get_new_ty_cb(), item.m_value);
                 ev.visit_node_ptr(item.m_value);
             }
         }
         void visit_constant(::HIR::ItemPath p, ::HIR::Constant& item) override {
             if( item.m_value )
             {
-                ExprVisitor_Mutate  ev(m_crate, this->get_new_ty_cb());
+                ExprVisitor_Mutate  ev(m_crate, this->get_new_ty_cb(), item.m_value);
                 ev.visit_node_ptr(item.m_value);
             }
         }
@@ -466,7 +306,7 @@ namespace {
 
                     if( var.expr )
                     {
-                        ExprVisitor_Mutate  ev(m_crate, this->get_new_ty_cb());
+                        ExprVisitor_Mutate  ev(m_crate, this->get_new_ty_cb(), var.expr);
                         ev.visit_node_ptr(var.expr);
                     }
                 }
@@ -477,11 +317,11 @@ namespace {
 
 void HIR_Expand_StaticBorrowConstants_Expr(const ::HIR::Crate& crate, ::HIR::ExprPtr& exp)
 {
-    ExprVisitor_Mutate  ev(crate, [&](Span sp, HIR::TypeRef ty, HIR::Literal val)->HIR::SimplePath {
+    ExprVisitor_Mutate  ev(crate, [&](Span sp, HIR::TypeRef ty, HIR::ExprPtr val)->HIR::SimplePath {
         // How will this work? Can't easily mutate the crate in this context
         // - 
         TODO(exp.span(), "Create new static in per-expression context");
-        });
+        }, exp);
     ev.visit_node_ptr( exp );
 }
 void HIR_Expand_StaticBorrowConstants(::HIR::Crate& crate)

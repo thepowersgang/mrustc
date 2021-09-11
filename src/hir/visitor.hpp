@@ -31,6 +31,7 @@ public:
 
     // - Type Items
     virtual void visit_type_alias(ItemPath p, ::HIR::TypeAlias& item);
+    virtual void visit_trait_alias(::HIR::ItemPath p, ::HIR::TraitAlias& item);
     virtual void visit_trait(ItemPath p, ::HIR::Trait& item);
     virtual void visit_struct(ItemPath p, ::HIR::Struct& item);
     virtual void visit_enum(ItemPath p, ::HIR::Enum& item);
@@ -43,9 +44,12 @@ public:
 
     // - Misc
     virtual void visit_params(::HIR::GenericParams& params);
+    virtual void visit_generic_bound(::HIR::GenericBound& bound);
     virtual void visit_pattern(::HIR::Pattern& pat);
     virtual void visit_pattern_val(::HIR::Pattern::Value& val);
+
     virtual void visit_type(::HIR::TypeRef& tr);
+    virtual void visit_constgeneric(::HIR::ConstGeneric& c);
 
     enum class PathContext {
         TYPE,

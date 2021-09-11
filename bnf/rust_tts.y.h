@@ -1,7 +1,7 @@
 #define _C(v)	v { $$ = v; }
 #define _T(v)	v { $$ = v; }
 tt_tok
- : _T(IDENT) | _T(STRING) | _T(LIFETIME) | _T(MACRO)
+ : _T(IDENT_) | _T(STRING) | _T(LIFETIME)
  | _T(DOC_COMMENT) | _T(SUPER_DOC_COMMENT)
  | _T(CHARLIT) | _T(INTEGER)
  | _T(FLOAT)
@@ -12,6 +12,8 @@ tt_tok
  | _T(RWD_return) | _T(RWD_continue) | _T(RWD_break)
  | _T(RWD_impl) | _T(RWD_struct) | _T(RWD_enum) | _T(RWD_fn) | _T(RWD_type) | _T(RWD_static) | _T(RWD_const) | _T(RWD_trait) | _T(RWD_use)
  | _T(RWD_extern) | _T(RWD_crate) | _T(RWD_unsafe)
+ | _T(RWD_dyn)
+ | _T(RWC_default)
  | _C('/') | _T(SLASHEQUAL)
  | _C('%') | _T(PERCENTEQUAL)
  | _C('*') | _T(STAREQUAL)
@@ -25,7 +27,7 @@ tt_tok
  | _C('=') | _T(DOUBLEEQUAL) | _T(FATARROW)
  | _C('<') | _T(DOUBLELT)    | _T(LTEQUAL)   | _T(DOUBLELTEQUAL)
  | _C('>') | _T(DOUBLEGT)    | _T(GTEQUAL)   | _T(DOUBLEGTEQUAL)
- | _C('.') | _T(DOUBLEDOT)   | _T(TRIPLEDOT)
+ | _C('.') | _T(DOUBLEDOT)   | _T(DOUBLEDOTEQ) | _T(TRIPLEDOT)
  | _C('$') | _C('@') | _C('?')
  | _C('#') | _T(HASHBANG)
  ;

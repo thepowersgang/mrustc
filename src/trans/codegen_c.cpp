@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cmath>
 #include <hir/hir.hpp>
+#include <limits>
 #include <mir/mir.hpp>
 #include <hir_typeck/static.hpp>
 #include <mir/helpers.hpp>
@@ -234,6 +235,7 @@ namespace {
                 << "#include <stdint.h>\n"
                 << "#include <stdbool.h>\n"
                 << "#include <stdarg.h>\n"
+                << "#include <assert.h>\n"
                 ;
             switch(m_compiler)
             {
@@ -277,6 +279,7 @@ namespace {
                     ;
             }
             m_of
+                << "static inline size_t ALIGN_TO(size_t s, size_t a) { return (s + a-1) / a * a; }\n"
                 << "\n"
                 ;
             switch(m_compiler)
@@ -1109,20 +1112,22 @@ namespace {
             {
             case Compiler::Gcc:
                 // Pick the compiler
-                // - from `CC-${TRIPLE}` environment variable
-                // - from the $CC environment variable
-                // - `gcc-${TRIPLE}` (if available)
+                // - from `CC_${TRIPLE}` environment variable, with all '-' in TRIPLE replaced by '_'
+                // - from the `CC` environment variable
+                // - `${TRIPLE}-gcc` (if available)
                 // - `gcc` as fallback
                 {
-                    ::std::string varname = "CC-" +  Target_GetCurSpec().m_backend_c.m_c_compiler;
+                    std::string varname = "CC_" +  Target_GetCurSpec().m_backend_c.m_c_compiler;
+                    std::replace(varname.begin(), varname.end(), '-', '_');
+
                     if( getenv(varname.c_str()) ) {
                         args.push_back( getenv(varname.c_str()) );
                     }
+                    else if( getenv("CC") ) {
+                            args.push_back( getenv("CC") );
+                    }
                     else if (system(("command -v " + Target_GetCurSpec().m_backend_c.m_c_compiler + "-gcc" + " >/dev/null 2>&1").c_str()) == 0) {
                         args.push_back( Target_GetCurSpec().m_backend_c.m_c_compiler + "-gcc" );
-                    }
-                    else if( getenv("CC") ) {
-                        args.push_back( getenv("CC") );
                     }
                     else {
                         args.push_back("gcc");
@@ -1504,7 +1509,7 @@ namespace {
         void emit_struct_inner(const ::HIR::TypeRef& ty, const TypeRepr* repr, bool is_packed)
         {
             // Fill `fields` with ascending indexes (for sorting)
-            // AND: Determine if the type has an alignment hack (empty array)
+            // AND: Determine if the type has a a zero-sized item that has an alignment equal to the structure's alignment
             bool has_manual_align = false;
             ::std::vector<unsigned> fields;
             for(const auto& ent : repr->fields)
@@ -1512,7 +1517,10 @@ namespace {
                 fields.push_back(fields.size());
 
                 const auto& ty = ent.ty;
-                if( TU_TEST1(ty.data(), Array, .size.as_Known() == 0) ) {
+
+                size_t sz = -1, al = 0;
+                Target_GetSizeAndAlignOf(sp, m_resolve, ty, sz, al);
+                if( sz == 0 && al == repr->align && al > 0 ) {
                     has_manual_align = true;
                 }
             }
@@ -1688,7 +1696,20 @@ namespace {
                 m_of << " // " << ty << "\n";
                 }
             TU_ARMA(Array, te) {
-                m_of << "typedef struct "; emit_ctype(ty); m_of << " { ";
+                m_of << "typedef ";
+                size_t align;
+                if( te.size.as_Known() == 0 ) {
+                    Target_GetAlignOf(sp, m_resolve, ty, align);
+                    switch(m_compiler)
+                    {
+                    case Compiler::Msvc:
+                        m_of << "__declspec(align(" << align << "))\n";
+                        break;
+                    case Compiler::Gcc:
+                        break;
+                    }
+                }
+                m_of << "struct "; emit_ctype(ty); m_of << " { ";
                 if( te.size.as_Known() == 0 && m_options.disallow_empty_structs )
                 {
                     m_of << "char _d;";
@@ -1697,7 +1718,20 @@ namespace {
                 {
                     emit_ctype(te.inner); m_of << " DATA[" << te.size.as_Known() << "];";
                 }
-                m_of << " } "; emit_ctype(ty); m_of << ";";
+                m_of << " } ";
+                if( te.size.as_Known() == 0 ) {
+                    switch(m_compiler)
+                    {
+                    case Compiler::Msvc:
+                        break;
+                    case Compiler::Gcc:
+                        m_of << " __attribute__((";
+                        m_of << "__aligned__(" << align << "),";
+                        m_of << "))";
+                        break;
+                    }
+                }
+                emit_ctype(ty); m_of << ";";
                 m_of << " // " << ty << "\n";
                 }
             TU_ARMA(ErasedType, te) {
@@ -1809,13 +1843,13 @@ namespace {
             }
             if( const auto* te = ty->data().opt_Borrow() )
             {
-                if( metadata_type(te->inner) != MetadataType::None ) {
+                if( is_dst(te->inner) ) {
                     m_of << ".PTR";
                 }
             }
             else if( const auto* te = ty->data().opt_Pointer() )
             {
-                if( metadata_type(te->inner) != MetadataType::None ) {
+                if( is_dst(te->inner) ) {
                     m_of << ".PTR";
                 }
             }
@@ -2169,11 +2203,12 @@ namespace {
 
             auto type = params.monomorph(m_resolve, item.m_type);
             // statics that are zero do not require initializers, since they will be initialized to zero on program startup.
-            if (!is_zero_literal(type, item.m_value_res, params)) {
+            if( !is_zero_literal(type, item.m_value_res, params)) {
                 bool is_packed = emit_static_ty(type, p, /*is_proto=*/false);
                 m_of << " = ";
 
-                auto encoded = Trans_EncodeLiteralAsBytes(sp, m_resolve, item.m_value_res, type);
+                //auto encoded = Trans_EncodeLiteralAsBytes(sp, m_resolve, item.m_value_res, type);
+                const auto& encoded = item.m_value_res;
                 m_of << "{ .raw = {";
                 if( is_packed ) {
                     DEBUG("encoded.bytes = `" << FMT_CB(ss, for(auto& b: encoded.bytes) ss << std::setw(2) << std::setfill('0') << std::hex << unsigned(b) << (int(&b - encoded.bytes.data()) % 8 == 7 ? " " : "");) << "`");
@@ -2309,8 +2344,74 @@ namespace {
             {
                 m_of << "static ";
                 emit_function_header(p, item, params);
-                // TODO: Hand off to compiler-specific intrinsics
-                m_of << " { abort(); }\n";
+                m_of
+                    << "{\n"
+                    ;
+                m_of << "\t"; emit_ctype(item.m_return); m_of << " rv;\n";
+                // pshufb instruction w/ 128 bit operands
+                if( item.m_linkage.name == "llvm.x86.ssse3.pshuf.b.128" ) {
+                    m_of
+                        << "\tconst uint8_t* src = (const uint8_t*)&arg0;\n"
+                        << "\tconst uint8_t* mask = (const uint8_t*)&arg1;\n"
+                        << "\tuint8_t* dst = (uint8_t*)&rv;\n"
+                        << "\tfor(int i = 0; i < " << 128/8 << "; i ++) dst[i] = (mask[i] < 0x80 ? src[i] : 0);\n"
+                        << "\treturn rv;\n"
+                        ;
+                }
+                else if( item.m_linkage.name == "llvm.x86.sse2.psrli.d") {
+                    m_of
+                        << "\tconst uint32_t* src = (const uint32_t*)&arg0;\n"
+                        << "\tuint32_t* dst = (uint32_t*)&rv;\n"
+                        << "\tfor(int i = 0; i < " << 128/32 << "; i ++) dst[i] = src[i] >> arg1;\n"
+                        << "\treturn rv;\n"
+                        ;
+                }
+                else if( item.m_linkage.name == "llvm.x86.sse2.pslli.d") {
+                    m_of
+                        << "\tconst uint32_t* src = (const uint32_t*)&arg0;\n"
+                        << "\tuint32_t* dst = (uint32_t*)&rv;\n"
+                        << "\tfor(int i = 0; i < " << 128/32 << "; i ++) dst[i] = src[i] << arg1;\n"
+                        << "\treturn rv;\n"
+                        ;
+                }
+                else if( item.m_linkage.name == "llvm.x86.sse2.pmovmskb.128") {
+                    m_of
+                        << "\tconst uint8_t* src = (const uint8_t*)&arg0;\n"
+                        << "\tuint8_t* dst = (uint8_t*)&rv; *dst = 0;\n"
+                        << "\tfor(int i = 0; i < " << 128/8 << "; i ++) *dst |= (src[i] >> 7) << i;\n"
+                        << "\treturn rv;\n"
+                        ;
+                }
+                else if( item.m_linkage.name == "llvm.x86.sse2.storeu.dq" ) {
+                    m_of << "\tmemcpy(arg0, &arg1, sizeof(arg1));\n";
+                }
+                // Add with carry
+                // `fn llvm_addcarry_u32(a: u8, b: u32, c: u32) -> (u8, u32)`
+                else if( item.m_linkage.name == "llvm.x86.addcarry.32") {
+                    m_of << "\trv._0 = __builtin_add_overflow_u32(arg1, arg2, &rv._1);\n";
+                    m_of << "\tif(arg0) rv._0 |= __builtin_add_overflow_u32(rv._1, 1, &rv._1);\n";
+                }
+                // `fn llvm_addcarryx_u32(a: u8, b: u32, c: u32, d: *mut u8) -> u32`
+                else if( item.m_linkage.name == "llvm.x86.addcarryx.u32") {
+                    m_of << "\t*arg3 = __builtin_add_overflow_u32(arg1, arg2, rv);\n";
+                    m_of << "\tif(*arg3) *arg3 |= __builtin_add_overflow_u32(rv, 1, &rv);\n";
+                }
+                // `fn llvm_subborrow_u32(a: u8, b: u32, c: u32) -> (u8, u32);`
+                else if( item.m_linkage.name == "llvm.x86.subborrow.32") {
+                    m_of << "\trv._0 = __builtin_sub_overflow_u32(arg1, arg2, &rv._1);\n";
+                    m_of << "\tif(arg0) rv._0 |= __builtin_sub_overflow_u32(rv._1, 1, &rv._1);\n";
+                }
+                // AES functions
+                else if( item.m_linkage.name.rfind("llvm.x86.aesni.", 0) == 0 )
+                {
+                    m_of << "\tassert(!\"Unsupprorted LLVM x86 intrinsic: " << item.m_linkage.name << "\"); abort();\n";
+                }
+                else {
+                    // TODO: Hand off to compiler-specific intrinsics
+                    //MIR_TODO(*m_mir_res, "LLVM extern linkage: " << item.m_linkage.name);
+                    m_of << "\tassert(!\"" << item.m_linkage.name << "\"); abort();\n";
+                }
+                m_of << "}\n";
                 m_mir_res = nullptr;
                 return ;
             }
@@ -2393,7 +2494,7 @@ namespace {
                     m_of << "__attribute__((weak)) ";
                     break;
                 case Compiler::Msvc:
-		    // handled above
+                    // handled above
                     break;
                 }
                 break;
@@ -2965,13 +3066,16 @@ namespace {
                         }
                     };
                     // Get the number of fields in parent
-                    size_t n_parent_fields = H::get_field_count(mir_res,  mir_res.get_lvalue_type(tmp, field_inner));
+                    auto* repr = Target_GetTypeRepr(sp, m_resolve, mir_res.get_lvalue_type(tmp, field_inner));
+                    assert(repr);
+                    size_t n_parent_fields = repr->fields.size();
                     // Find next non-zero field
                     auto tmp_lv = ::MIR::LValue::new_Field( field_inner.clone(), val_fp.as_Field() + 1 );
                     bool found = false;
                     while(tmp_lv.as_Field() < n_parent_fields)
                     {
-                        const auto& ty = mir_res.get_lvalue_type(tmp, tmp_lv);
+                        auto idx = tmp_lv.as_Field();
+                        const auto& ty = repr->fields[idx].ty;
                         if( ty.data().is_Path() && ty.data().as_Path().binding.is_ExternType() ) {
                             // Extern types aren't emitted
                         }
@@ -2982,14 +3086,13 @@ namespace {
                             found = true;
                             break;
                         }
-                        auto idx = tmp_lv.as_Field();
                         tmp_lv.m_wrappers.back() = ::MIR::LValue::Wrapper::new_Field(idx + 1);
                     }
 
-                    // If no non-zero fields were found before the end, then add one to the struct's address
+                    // If no non-zero fields were found before the end, then do pointer manipulation using the repr
                     if( !found )
                     {
-                        m_of << "(void*)(& "; emit_lvalue(field_inner); m_of << " + 1) /*ZST*/";
+                        m_of << "(void*)( (uint8_t*)& "; emit_lvalue(field_inner); m_of << " + " << repr->fields[val_fp.as_Field()].offset << ") /*ZST*/";
                     }
                     // Otherwise, use the next non-zero field
                     else
@@ -3107,6 +3210,9 @@ namespace {
                     break;
                 }
                 break;
+            case ::MIR::Statement::TAG_Asm2:
+                MIR_TODO(mir_res, "Asm2 " << stmt);
+                break;
             case ::MIR::Statement::TAG_Assign: {
                 const auto& e = stmt.as_Assign();
                 DEBUG("- " << e.dst << " = " << e.src);
@@ -3195,7 +3301,7 @@ namespace {
                         break;
                     }
                     else if( const auto* te = ty.data().opt_Pointer() ) {
-                        if( metadata_type(te->inner) != MetadataType::None )
+                        if( is_dst(te->inner) )
                         {
                             switch(ve.op)
                             {
@@ -4380,19 +4486,24 @@ namespace {
         {
             if( visit_ty_with(item.m_return, [&](const auto& x){ return x.data().is_ErasedType() || x.data().is_Generic(); }) )
             {
-                tmp = clone_ty_with(Span(), item.m_return, [&](const auto& tpl, auto& out){
-                    if( const auto* e = tpl.data().opt_ErasedType() ) {
-                        out = params.monomorph(m_resolve, item.m_code.m_erased_types.at(e->m_index));
-                        return true;
-                    }
-                    else if( tpl.data().is_Generic() ) {
-                        out = params.monomorph_type(sp, tpl).clone();
-                        return true;
-                    }
-                    else {
-                        return false;
-                    }
-                    });
+                // If there's an erased type, make a copy with the erased type expanded
+                if( visit_ty_with(item.m_return, [&](const auto& x) { return x.data().is_ErasedType(); }) )
+                {
+                    tmp = clone_ty_with(sp, item.m_return, [&](const auto& x, auto& out) {
+                        if( const auto* te = x.data().opt_ErasedType() ) {
+                            out = item.m_code.m_erased_types.at(te->m_index).clone();
+                            return true;
+                        }
+                        else {
+                            return false;
+                        }
+                        });
+                    tmp = params.monomorph_type(Span(), tmp).clone();
+                }
+                else
+                {
+                    tmp = params.monomorph_type(Span(), item.m_return).clone();
+                }
                 m_resolve.expand_associated_types(Span(), tmp);
                 return tmp;
             }
@@ -4652,25 +4763,47 @@ namespace {
             else if( name == "size_of_val" ) {
                 emit_lvalue(e.ret_val); m_of << " = ";
                 const auto& ty = params.m_types.at(0);
-                //TODO: Get the unsized type and use that in place of MetadataType
+                // Get the unsized type and use that in place of MetadataType
                 auto inner_ty = get_inner_unsized_type(ty);
                 if( inner_ty == ::HIR::TypeRef() ) {
-                    // TODO: Target_GetSizeOf
-                    m_of << "sizeof("; emit_ctype(ty); m_of << ")";
+                    size_t size = 0;
+                    MIR_ASSERT(mir_res, Target_GetSizeOf(sp, m_resolve, ty, size), "Can't get size of " << ty);
+                    m_of << size;
                 }
-                else if( const auto* te = inner_ty.data().opt_Slice() ) {
-                    if( ! ty.data().is_Slice() ) {
+                // slice metadata (`[T]` and `str`)
+                else if( inner_ty.data().is_Slice() || inner_ty == ::HIR::CoreType::Str ) {
+                    bool align_needed = false;
+                    size_t item_size = 0;
+                    size_t item_align = 0;
+                    if(const auto* te = inner_ty.data().opt_Slice() ) {
+                        MIR_ASSERT(mir_res, Target_GetSizeAndAlignOf(sp, m_resolve, te->inner, item_size, item_align), "Can't get size of " << te->inner);
+                    }
+                    else {
+                        assert(inner_ty == ::HIR::CoreType::Str);
+                        item_size = 1;
+                        item_align = 1;
+                    }
+                    if( ! ty.data().is_Slice() && !ty.data().is_Primitive() ) {
+                        // TODO: What if the wrapper has no other fields?
+                        // Get the alignment and check if it's higher than the item alignment
+                        size_t wrapper_align = 0, wrapper_size_ignore = 0;
+                        MIR_ASSERT(mir_res, Target_GetSizeAndAlignOf(sp, m_resolve, ty, wrapper_size_ignore, wrapper_align), "Can't get align of " << ty);
+                        if(wrapper_align > item_align) {
+                            item_align = wrapper_align;
+                            align_needed = true;
+                            m_of << "ALIGN_TO(";
+                        }
                         m_of << "sizeof("; emit_ctype(ty); m_of << ") + ";
                     }
-                    emit_param(e.args.at(0)); m_of << ".META * sizeof("; emit_ctype(te->inner); m_of << ")";
-                }
-                else if( inner_ty == ::HIR::CoreType::Str ) {
-                    if( ! ty.data().is_Primitive() ) {
-                        m_of << "sizeof("; emit_ctype(ty); m_of << ") + ";
+                    emit_param(e.args.at(0)); m_of << ".META * " << item_size;
+                    if(align_needed) {
+                        m_of << ", " << item_align << ")";
                     }
-                    emit_param(e.args.at(0)); m_of << ".META";
                 }
+                // Trait object metadata.
                 else if( inner_ty.data().is_TraitObject() ) {
+                    // TODO: Handle aligning the size if the wrapper's alignment is greater than the object
+                    // - Also, how is the final field aligned?
                     if( ! ty.data().is_TraitObject() ) {
                         m_of << "sizeof("; emit_ctype(ty); m_of << ") + ";
                     }
@@ -4682,6 +4815,7 @@ namespace {
                 else {
                     MIR_BUG(mir_res, "Unknown inner unsized type " << inner_ty << " for " << ty);
                 }
+                // TODO: Align up
             }
             else if( name == "min_align_of_val" ) {
                 emit_lvalue(e.ret_val); m_of << " = ";
@@ -4996,7 +5130,15 @@ namespace {
                         m_of << "(*"; emit_param(e.args.at(0)); m_of << ")"; emit_enum_path(repr, ve.field);
                         } break;
                     TU_ARM(repr->variants, Linear, ve) {
-                        m_of << "(*"; emit_param(e.args.at(0)); m_of << ")"; emit_enum_path(repr, ve.field);
+                        if( ve.uses_niche() ) {
+                            m_of << "( (*"; emit_param(e.args.at(0)); m_of << ")"; emit_enum_path(repr, ve.field); m_of << " < " << ve.offset;
+                            m_of << " ? " << ve.field.index;
+                            m_of << " : (*"; emit_param(e.args.at(0)); m_of << ")"; emit_enum_path(repr, ve.field);
+                            m_of << " )";
+                        }
+                        else {
+                            m_of << "(*"; emit_param(e.args.at(0)); m_of << ")"; emit_enum_path(repr, ve.field);
+                        }
                         } break;
                     TU_ARM(repr->variants, NonZero, ve) {
                         m_of << "(*"; emit_param(e.args.at(0)); m_of << ")"; emit_enum_path(repr, ve.field); m_of << " ";
@@ -5472,13 +5614,21 @@ namespace {
                     break;
                 case ::HIR::CoreType::I32:
                 case ::HIR::CoreType::U32:
-                    emit_lvalue(e.ret_val); m_of << " = ";
-                    m_of << "_rotr("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ")";
+                    m_of << "{";
+                    m_of << " uint32_t v = "; emit_param(e.args.at(0)); m_of << ";";
+                    m_of << " unsigned shift = "; emit_param(e.args.at(1)); m_of << ";";
+                    m_of << " uint32_t rv = (v >> shift) | (v << (32 - shift));";
+                    m_of << " "; emit_lvalue(e.ret_val); m_of << " = rv;";
+                    m_of << "}";
                     break;
                 case ::HIR::CoreType::I64:
                 case ::HIR::CoreType::U64:
-                    emit_lvalue(e.ret_val); m_of << " = ";
-                    m_of << "_rotr64("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ")";
+                    m_of << "{";
+                    m_of << " uint64_t v = "; emit_param(e.args.at(0)); m_of << ";";
+                    m_of << " unsigned shift = "; emit_param(e.args.at(1)); m_of << ";";
+                    m_of << " uint64_t rv = (v >> shift) | (v << (64 - shift));";
+                    m_of << " "; emit_lvalue(e.ret_val); m_of << " = rv;";
+                    m_of << "}";
                     break;
                 case ::HIR::CoreType::I128:
                 case ::HIR::CoreType::U128:
@@ -5812,8 +5962,182 @@ namespace {
             }
             // -- Platform Intrinsics --
             else if( name.compare(0, 9, "platform:") == 0 ) {
-                // TODO: Platform intrinsics
-                m_of << "abort() /* TODO: Platform intrinsic \"" << name << "\" */";
+                struct SimdInfo {
+                    unsigned count;
+                    unsigned item_size;
+                    enum Ty {
+                        Float,
+                        Signed,
+                        Unsigned,
+                    } ty;
+
+                    static SimdInfo for_ty(const CodeGenerator_C& self, const HIR::TypeRef& ty) {
+                        size_t size_slot = 0, size_val = 0;;
+                        Target_GetSizeOf(self.sp, self.m_resolve, ty, size_slot);
+                        const auto& ty_val = ty.data().as_Path().binding.as_Struct()->m_data.as_Tuple().at(0).ent;
+                        Target_GetSizeOf(self.sp, self.m_resolve, ty_val, size_val);
+
+                        MIR_ASSERT(*self.m_mir_res, size_slot >= size_val, size_slot << " < " << size_val);
+                        MIR_ASSERT(*self.m_mir_res, size_slot / size_val * size_val == size_slot, size_slot << " not a multiple of " << size_val);
+
+                        SimdInfo    rv;
+                        rv.item_size = size_val;
+                        rv.count = size_slot / size_val;
+                        switch(ty_val.data().as_Primitive())
+                        {
+                        case ::HIR::CoreType::I8:   rv.ty = Signed; break;
+                        case ::HIR::CoreType::I16:  rv.ty = Signed; break;
+                        case ::HIR::CoreType::I32:  rv.ty = Signed; break;
+                        case ::HIR::CoreType::I64:  rv.ty = Signed; break;
+                        //case ::HIR::CoreType::I128: rv.ty = Signed; break;
+                        case ::HIR::CoreType::U8:   rv.ty = Unsigned; break;
+                        case ::HIR::CoreType::U16:  rv.ty = Unsigned; break;
+                        case ::HIR::CoreType::U32:  rv.ty = Unsigned; break;
+                        case ::HIR::CoreType::U64:  rv.ty = Unsigned; break;
+                        //case ::HIR::CoreType::U128: rv.ty = Unsigned; break;
+                        case ::HIR::CoreType::F32:  rv.ty = Float;  break;
+                        case ::HIR::CoreType::F64:  rv.ty = Float;  break;
+                        default:
+                            MIR_BUG(*self.m_mir_res, "Invalid SIMD type inner - " << ty_val);
+                        }
+                        return rv;
+                    }
+                    void emit_val_ty(CodeGenerator_C& self) {
+                        switch(ty)
+                        {
+                        case Float: self.m_of << (item_size == 4 ? "float" : "double"); break;
+                        case Signed:    self.m_of << "int" << (item_size*8) << "_t";    break;
+                        case Unsigned:  self.m_of << "uint" << (item_size*8) << "_t";   break;
+                        }
+                    }
+                };
+
+                auto simd_cmp = [&](const char* op) {
+                    auto src_info = SimdInfo::for_ty(*this, params.m_types.at(0));
+                    auto dst_info = SimdInfo::for_ty(*this, params.m_types.at(1));
+                    MIR_ASSERT(mir_res, src_info.count == dst_info.count, "Element counts must match for " << name);
+                    m_of << "for(int i = 0; i < " << dst_info.count << "; i++)";
+                    m_of << "(("; dst_info.emit_val_ty(*this); m_of << "*)&"; emit_lvalue(e.ret_val); m_of << ")[i] ";
+                    m_of << "= (";
+                    m_of << " (("; src_info.emit_val_ty(*this); m_of << "*)&"; emit_param(e.args.at(0)); m_of << ")[i]";
+                    m_of << op;
+                    m_of << " (("; src_info.emit_val_ty(*this); m_of << "*)&"; emit_param(e.args.at(1)); m_of << ")[i]";
+                    m_of << " )";
+                    };
+                auto simd_arith = [&](const char* op) {
+                    auto info = SimdInfo::for_ty(*this, params.m_types.at(0));
+                    // Emulate!
+                    emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0)); m_of << "; ";
+                    m_of << "for(int i = 0; i < " << info.count << "; i++)";
+                    m_of << "(("; info.emit_val_ty(*this); m_of << "*)&"; emit_lvalue(e.ret_val); m_of << ")[i] ";
+                    m_of << op << "=";
+                    m_of << " (("; info.emit_val_ty(*this); m_of << "*)&"; emit_param(e.args.at(1)); m_of << ")[i]";
+                    };
+
+                // dst: T, index: usize, val: U
+                // Insert a value at position
+                if( name == "platform:simd_insert" ) {
+                    size_t size_slot = 0, size_val = 0;
+                    Target_GetSizeOf(sp, m_resolve, params.m_types.at(0), size_slot);
+                    Target_GetSizeOf(sp, m_resolve, params.m_types.at(1), size_val);
+                    MIR_ASSERT(mir_res, size_slot >= size_val, size_slot << " < " << size_val);
+                    MIR_ASSERT(mir_res, size_slot / size_val * size_val == size_slot, size_slot << " not a multiple of " << size_val);
+
+                    // Emulate!
+                    emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0)); m_of << "; ";
+                    m_of << "(( "; emit_ctype(params.m_types.at(1)); m_of << "*)&"; emit_lvalue(e.ret_val); m_of << ")["; emit_param(e.args.at(1)); m_of << "] = "; emit_param(e.args.at(2));
+                }
+                else if( name == "platform:simd_extract" ) {
+                    size_t size_slot = 0, size_val = 0;
+                    Target_GetSizeOf(sp, m_resolve, params.m_types.at(0), size_slot);
+                    Target_GetSizeOf(sp, m_resolve, params.m_types.at(1), size_val);
+                    MIR_ASSERT(mir_res, size_slot >= size_val, size_slot << " < " << size_val);
+                    MIR_ASSERT(mir_res, size_slot / size_val * size_val == size_slot, size_slot << " not a multiple of " << size_val);
+
+                    // Emulate!
+                    emit_lvalue(e.ret_val); m_of << " = (( "; emit_ctype(params.m_types.at(1)); m_of << "*)&"; emit_param(e.args.at(0)); m_of << ")["; emit_param(e.args.at(1)); m_of << "]";
+                }
+                else if(
+                        name == "platform:simd_shuffle128" ||
+                        name == "platform:simd_shuffle64" ||
+                        name == "platform:simd_shuffle32" ||
+                        name == "platform:simd_shuffle16" ||
+                        name == "platform:simd_shuffle8" ||
+                        name == "platform:simd_shuffle4" ||
+                        name == "platform:simd_shuffle2"
+                        ) {
+                    // Shuffle in 8 entries
+                    size_t size_slot = 0;
+                    Target_GetSizeOf(sp, m_resolve, params.m_types.at(1), size_slot);
+                    size_t div =
+                        name == "platform:simd_shuffle128" ? 128 :
+                        name == "platform:simd_shuffle64" ? 64 :
+                        name == "platform:simd_shuffle32" ? 32 :
+                        name == "platform:simd_shuffle16" ? 16 :
+                        name == "platform:simd_shuffle8" ? 8 :
+                        name == "platform:simd_shuffle4" ? 4 :
+                        name == "platform:simd_shuffle2" ? 2 :
+                        throw ""
+                        ;
+                    size_t size_val = size_slot / div;
+                    MIR_ASSERT(mir_res, size_val > 0, size_slot << " / " << div << " == 0?");
+                    MIR_ASSERT(mir_res, size_slot >= size_val, size_slot << " < " << size_val);
+                    MIR_ASSERT(mir_res, size_slot / size_val * size_val == size_slot, size_slot << " not a multiple of " << size_val);
+                    m_of << "for(int i = 0; i < " << div << "; i++) { int j = "; emit_param(e.args.at(2)); m_of << ".DATA[i];";
+                    m_of << "((uint" << (size_val*8) << "_t*)&"; emit_lvalue(e.ret_val); m_of << ")[i]";
+                    m_of << " = ((uint" << (size_val*8) << "_t*)(j < " << div << " ? &"; emit_param(e.args.at(1)); m_of << " : &"; emit_param(e.args.at(1)); m_of << "))[j % " << div << "];";
+                    m_of << "}";
+                }
+                else if( name == "platform:simd_cast" ) {
+                    auto src_info = SimdInfo::for_ty(*this, params.m_types.at(0));
+                    auto dst_info = SimdInfo::for_ty(*this, params.m_types.at(1));
+                    MIR_ASSERT(mir_res, src_info.count == dst_info.count, "Element counts must match for " << name);
+                    m_of << "for(int i = 0; i < " << dst_info.count << "; i++) ";
+                    m_of << "(("; dst_info.emit_val_ty(*this); m_of << "*)&"; emit_lvalue(e.ret_val); m_of << ")[i] ";
+                    m_of << "= (("; src_info.emit_val_ty(*this); m_of << "*)&"; emit_param(e.args.at(0)); m_of << ")[i];";
+                }
+                // Select between two values
+                else if(name == "platform:simd_select") {
+                    auto mask_info = SimdInfo::for_ty(*this, params.m_types.at(0));
+                    auto val_info = SimdInfo::for_ty(*this, params.m_types.at(1));
+                    MIR_ASSERT(mir_res, mask_info.count == val_info.count, "Element counts must match for " << name);
+                    m_of << "for(int i = 0; i < " << val_info.count << "; i++) ";
+                    m_of << "(("; val_info.emit_val_ty(*this); m_of << "*)&"; emit_lvalue(e.ret_val); m_of << ")[i] ";
+                    m_of << "= (("; mask_info.emit_val_ty(*this); m_of << "*)&"; emit_param(e.args.at(0)); m_of << ")[i]";
+                    m_of << "? (("; val_info.emit_val_ty(*this); m_of << "*)&"; emit_param(e.args.at(1)); m_of << ")[i]";
+                    m_of << ": (("; val_info.emit_val_ty(*this); m_of << "*)&"; emit_param(e.args.at(2)); m_of << ")[i]";
+                    m_of << ";";
+                }
+                else if(name == "platform:simd_select_bitmask") {
+                    auto val_info = SimdInfo::for_ty(*this, params.m_types.at(1));
+                    m_of << "for(int i = 0; i < " << val_info.count << "; i++) ";
+                    m_of << "(("; val_info.emit_val_ty(*this); m_of << "*)&"; emit_lvalue(e.ret_val); m_of << ")[i] ";
+                    m_of << "= (("; emit_param(e.args.at(0)); m_of << ") >> i) != 0";
+                    m_of << "? (("; val_info.emit_val_ty(*this); m_of << "*)&"; emit_param(e.args.at(1)); m_of << ")[i]";
+                    m_of << ": (("; val_info.emit_val_ty(*this); m_of << "*)&"; emit_param(e.args.at(2)); m_of << ")[i]";
+                    m_of << ";";
+                }
+                // Comparisons
+                else if(name == "platform:simd_eq")   simd_cmp("==");
+                else if(name == "platform:simd_ne")   simd_cmp("!=");
+                else if(name == "platform:simd_lt")   simd_cmp("<" );
+                else if(name == "platform:simd_le")   simd_cmp("<=");
+                else if(name == "platform:simd_gt")   simd_cmp(">" );
+                else if(name == "platform:simd_ge")   simd_cmp(">=");
+                // Arithmetic
+                else if(name == "platform:simd_add")    simd_arith("+");
+                else if(name == "platform:simd_sub")    simd_arith("-");
+                else if(name == "platform:simd_mul")    simd_arith("*");
+                else if(name == "platform:simd_div")    simd_arith("/");
+                else if(name == "platform:simd_and")    simd_arith("&");
+                else if(name == "platform:simd_or" )    simd_arith("|");
+                else if(name == "platform:simd_xor")    simd_arith("^");
+
+                else {
+                    // TODO: Platform intrinsics
+                    m_of << "assert(!\"TODO: Platform intrinsic \\\"" << name << "\\\"\")";
+                    //MIR_TODO(mir_res, "Platform intrinsic " << name);
+                }
             }
             else {
                 MIR_BUG(mir_res, "Unknown intrinsic '" << name << "'");
@@ -5839,6 +6163,7 @@ namespace {
             TU_ARMA(Infer, te) {}
             TU_ARMA(ErasedType, te) {}
             TU_ARMA(Closure, te) {}
+            TU_ARMA(Generator, te) {}
             TU_ARMA(Generic, te) {}
 
             // Nothing
@@ -5952,35 +6277,6 @@ namespace {
             }
         }
 
-        const ::HIR::Literal& get_literal_for_const(const ::HIR::Path& path, ::HIR::TypeRef& ty)
-        {
-            MonomorphState  params;
-            auto v = m_resolve.get_value(m_mir_res->sp, path, params);
-            if( const auto* e = v.opt_Constant() )
-            {
-                const auto& hir_const = **e;
-                ty = params.monomorph_type(m_mir_res->sp, hir_const.m_type);
-                if( hir_const.m_value_res.is_Defer() )
-                {
-                    // Do some form of lookup of a pre-cached evaluated monomorphised constant
-                    // - Maybe on the `Constant` entry there can be a list of pre-monomorphised values
-                    auto it = hir_const.m_monomorph_cache.find(path);
-                    if( it == hir_const.m_monomorph_cache.end() )
-                    {
-                        MIR_BUG(*m_mir_res, "Constant with Defer literal and no cached monomorphisation - " << path);
-                        // TODO: Can do the consteval here?
-                    }
-                    MIR_ASSERT(*m_mir_res, !it->second.is_Defer(), "get_literal_for_const - Cached literal was Defer - " << path);
-                    return it->second;
-                }
-                return hir_const.m_value_res;
-            }
-            else
-            {
-                MIR_BUG(*m_mir_res, "get_literal_for_const - Not a constant - " << path);
-            }
-        }
-
         void emit_enum_variant_val(const TypeRepr* repr, unsigned idx)
         {
             const auto& ve = repr->variants.as_Values();
@@ -6017,122 +6313,13 @@ namespace {
         }
 
         // returns whether a literal can be represented as zeroed memory.
-        bool is_zero_literal(const ::HIR::TypeRef& ty, const ::HIR::Literal& lit, const Trans_Params& params) {
-            ::HIR::TypeRef  tmp;
-            auto monomorph_with = [&](const ::HIR::PathParams& pp, const ::HIR::TypeRef& ty)->const ::HIR::TypeRef& {
-                return m_resolve.monomorph_expand_opt(m_mir_res->sp, tmp, ty, MonomorphStatePtr(nullptr, &pp, nullptr));
-            };
-            auto get_inner_type = [&](unsigned int var, unsigned int idx)->const ::HIR::TypeRef& {
-                TU_MATCH_HDRA((ty.data()), { )
-                default:
-                    MIR_TODO(*m_mir_res, "Unknown type in list literal - " << ty);
-                TU_ARMA(Array, te) {
-                    return te.inner;
-                    }
-                TU_ARMA(Path, te) {
-                    const auto& pp = te.path.m_data.as_Generic().m_params;
-                    TU_MATCH_HDRA((te.binding), {)
-                    TU_ARMA(Unbound, pbe)   MIR_BUG(*m_mir_res, "Unbound type path " << ty);
-                    TU_ARMA(Opaque, pbe)    MIR_BUG(*m_mir_res, "Opaque type path " << ty);
-                    TU_ARMA(ExternType, pbe) {
-                        MIR_BUG(*m_mir_res, "Extern type literal");
-                        }
-                    TU_ARMA(Struct, pbe) {
-                        TU_MATCH_HDRA((pbe->m_data), {)
-                        TU_ARMA(Unit, se) {
-                            MIR_BUG(*m_mir_res, "Unit struct " << ty);
-                            }
-                        TU_ARMA(Tuple, se) {
-                            return monomorph_with(pp, se.at(idx).ent);
-                            }
-                        TU_ARMA(Named, se) {
-                            return monomorph_with(pp, se.at(idx).second.ent);
-                            }
-                        }
-                        }
-                    TU_ARMA(Union, pbe) {
-                        MIR_TODO(*m_mir_res, "Union literals");
-                        }
-                    TU_ARMA(Enum, pbe) {
-                        MIR_ASSERT(*m_mir_res, pbe->m_data.is_Data(), "get_inner_type: Expected a data enum, got " << pbe->m_data.tag_str());
-                        const auto& evar = pbe->m_data.as_Data().at(var);
-                        return monomorph_with(pp, evar.type);
-                        }
-                    }
-                    throw "";
-                    }
-                TU_ARMA(Tuple, te) {
-                    return te.at(idx);
-                    }
-                }
-                throw "";
-            };
-
-            TU_MATCH_HDRA( (lit), {)
-            TU_ARMA(List, e) {
-                bool all_zero = true;
-                for(unsigned int i = 0; i < e.size(); i ++) {
-                    const auto& ity = get_inner_type(0, i);
-                    all_zero &= is_zero_literal(ity, e[i], params);
-                }
-                return all_zero;
-                }
-            TU_ARMA(Variant, e) {
-                MIR_ASSERT(*m_mir_res, ty.data().is_Path(), "");
-                const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
-                if( const auto* enm_p = ty.data().as_Path().binding.opt_Enum() )
-                {
-                    const ::HIR::Enum& enm = **enm_p;
-                    if( enm.is_value() ) {
-                        return e.idx == 0;
-                    }
-                    TU_MATCH_HDRA( (repr->variants), {)
-                    TU_ARMA(None, ve) {
-                        return true;
-                        }
-                    TU_ARMA(NonZero, ve) {
-                        if( e.idx == ve.zero_variant ) {
-                            return true;
-                        } else {
-                            return is_zero_literal(get_inner_type(e.idx, 0), *e.val, params);
-                        }
-                        }
-                    TU_ARMA(Linear, ve) {
-                        // TODO: If this is the niche, then recurse?
-                        if( ve.is_niche(e.idx) ) {
-                            return is_zero_literal(get_inner_type(e.idx, 0), *e.val, params);
-                        }
-                        else {
-                            return ve.offset == 0 && e.idx == 0 && is_zero_literal(get_inner_type(e.idx, 0), *e.val, params);
-                        }
-                        }
-                    TU_ARMA(Values, ve) {
-                        return ve.values[e.idx] == 0 && is_zero_literal(get_inner_type(e.idx, 0), *e.val, params);
-                        }
-                    }
-                }
-                else if( ty.data().as_Path().binding.is_Union() )
-                {
-                    // Maybe? If all internal fields match?
+        bool is_zero_literal(const ::HIR::TypeRef& ty, const EncodedLiteral& lit, const Trans_Params& params) {
+            for(auto v: lit.bytes)
+                if(v)
                     return false;
-                }
-                else
-                {
-                    MIR_BUG(*m_mir_res, "Literal::Variant for non-enum/union");
-                }
-                }
-            TU_ARMA(Integer, e) { return e == 0; }
-            TU_ARMA(Float, e) { return e == 0; }
-            TU_ARMA(String, e) { return false; }
-            TU_ARMA(Invalid, e) { return false; }
-            TU_ARMA(Defer, e) { return false; }
-            TU_ARMA(Generic, e) {
-                MIR_BUG(*m_mir_res, "Generic literal encountered");
-            }
-            TU_ARMA(BorrowPath, e) { return false; }
-            TU_ARMA(BorrowData, e) { return false; }
-            }
-            return false;
+            if(!lit.relocations.empty())
+                return false;
+            return true;
         }
         void emit_lvalue(const ::MIR::LValue::CRef& val)
         {
@@ -6500,9 +6687,11 @@ namespace {
             TU_ARMA(Function, te) {
                 m_of << "t_" << Trans_Mangle(ty) << " " << inner;
                 }
-            TU_ARMA(Closure, te) {
+                break;
+            case ::HIR::TypeData::TAG_Closure:
+            case ::HIR::TypeData::TAG_Generator:
                 MIR_BUG(*m_mir_res, "Closure during trans - " << ty);
-                }
+                break;
             }
         }
 

@@ -13,6 +13,9 @@
 #include <common.hpp>   // FmtEscaped
 #include <cstring>	// strchr
 
+// TODO: Inline debug filter/caching
+// - Cache messages for the current phase, clearing the cache (dropping) when various signatures match
+//  > Similar to the `log_get_last_function.py` script
 
 int g_debug_indent_level = 0;
 bool g_debug_enabled = true;

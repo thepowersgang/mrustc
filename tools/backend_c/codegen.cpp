@@ -305,6 +305,9 @@ void Codegen_C::emit_function(const RcString& name, const ModuleTree& tree, cons
                 TU_ARMA(Asm, se) {
                     LOG_TODO(stmt);
                     }
+                TU_ARMA(Asm2, se) {
+                    LOG_TODO(stmt);
+                    }
                 TU_ARMA(Assign, se) {
                     emit_lvalue(se.dst);
                     m_of << " = ";

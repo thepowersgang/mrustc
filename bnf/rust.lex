@@ -83,6 +83,11 @@ int_suffix	([ui](size|8|16|32|64))?
 "break" { return RWD_break; }
 "continue" { return RWD_continue; }
 
+"dyn" { return RWD_dyn; }
+
+"default" { return RWC_default; }
+"union" { return RWC_union; }
+
 "::"	{ return DOUBLECOLON; }
 "->"	{ return THINARROW; }
 "=>"	{ return FATARROW; }
@@ -109,6 +114,7 @@ int_suffix	([ui](size|8|16|32|64))?
 ">>="	{ return DOUBLEGTEQUAL; }
 ".."	{ return DOUBLEDOT; }
 "..."	{ return TRIPLEDOT; }
+"..="	{ return DOUBLEDOTEQ; }
 
 "#!"	{ return HASHBANG; }
 
@@ -140,17 +146,18 @@ int_suffix	([ui](size|8|16|32|64))?
 	if(*yytext == '_' && yytext[1] == 0)
 		return '_';
 	else {
-		lvalp->IDENT = new ::std::string( yytext );
-		return IDENT;
+		lvalp->IDENT_ = new ::std::string( yytext );
+		return IDENT_;
 	}
 	}
 [0-9]{dec_digit}*"."{dec_digit}+(e[+\-]?{dec_digit}+)?(f32|f64)?	{ lvalp->FLOAT = strtod(yytext, NULL); return FLOAT; }
+[0-9]{dec_digit}*e[+\-]?{dec_digit}+(f32|f64)?	{ lvalp->FLOAT = strtod(yytext, NULL); return FLOAT; }
+[0-9]{dec_digit}*\.[^a-zA-Z\.]	{ auto len = strlen(yytext); yyless(len-1); lvalp->FLOAT = strtod(yytext, NULL); return FLOAT; }
 [0-9]{dec_digit}*(f32|f64)	{ lvalp->FLOAT = strtod(yytext, NULL); return FLOAT; }
 [0-9]{dec_digit}*{int_suffix}	{ lvalp->INTEGER = strtoull(yytext, NULL, 0); return INTEGER; }
 0x[0-9a-fA-F_]+{int_suffix}	{ lvalp->INTEGER = strtoull(yytext, NULL, 0); return INTEGER; }
 0o[0-7]+{int_suffix}	{ lvalp->INTEGER = strtoull(yytext, NULL, 0); return INTEGER; }
 0b[01_]+{int_suffix}	{ lvalp->INTEGER = strtoull(yytext, NULL, 0); return INTEGER; }
-{ident_c}({ident_c}|[0-9])*"!"	{ lvalp->MACRO = new ::std::string(yytext, 0, strlen(yytext)-1); return MACRO; }
 '{ident_c}{ident_c}*	{ lvalp->LIFETIME = new ::std::string(yytext, 1); return LIFETIME; }
 
 b?'(.|\\'|\\[^']+|[\x80-\xFF]*)'	{ lvalp->CHARLIT = yytext[0]; return CHARLIT; }

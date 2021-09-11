@@ -82,14 +82,14 @@ public:
     virtual void visit(AST::ExprNode_Asm& n) override {
         m_os << "asm!( \"" << n.m_text << "\"";
         m_os << " :";
-        for(const auto& v : n.m_output)
+        for(auto& v : n.m_output)
         {
             m_os << " \"" << v.name << "\" (";
             AST::NodeVisitor::visit(v.value);
             m_os << "),";
         }
         m_os << " :";
-        for(const auto& v : n.m_input)
+        for(auto& v : n.m_input)
         {
             m_os << " \"" << v.name << "\" (";
             AST::NodeVisitor::visit(v.value);
@@ -102,6 +102,48 @@ public:
         for(const auto& v : n.m_flags)
             m_os << " \"" << v << "\",";
         m_os << " )";
+    }
+    virtual void visit(AST::ExprNode_Asm2& n) override {
+        m_os << "asm!( ";
+        for(const auto& l : n.m_lines)
+        {
+            l.fmt(m_os);
+            m_os << ", ";
+        }
+        for(auto& p : n.m_params)
+        {
+            TU_MATCH_HDRA((p), {)
+            TU_ARMA(Const, e) {
+                m_os << "const ";
+                AST::NodeVisitor::visit(e);
+                }
+            TU_ARMA(Sym, e) {
+                m_os << "sym " << e;
+                }
+            TU_ARMA(RegSingle, e) {
+                m_os << e.dir << "(" << e.spec << ") ";
+                AST::NodeVisitor::visit(e.val);
+                }
+            TU_ARMA(Reg, e) {
+                m_os << e.dir << "(" << e.spec << ") ";
+                if(e.val_in) {
+                    AST::NodeVisitor::visit(e.val_in);
+                    if(e.val_out)
+                        m_os << " => ";
+                }
+                if(e.val_out)
+                    AST::NodeVisitor::visit(e.val_out);
+                }
+            }
+            m_os << ", ";
+        }
+        if(n.m_options.any())
+        {
+            n.m_options.fmt(m_os);
+            //m_os << "options(";
+            //m_os << ")";
+        }
+        m_os << ")";
     }
     virtual void visit(AST::ExprNode_Flow& n) override {
         m_expr_root = false;
@@ -308,7 +350,7 @@ public:
 
         visit_if_common(expr_root, n.m_true, n.m_false);
     }
-    void visit_if_common(bool expr_root, const ::std::unique_ptr<AST::ExprNode>& tv, const ::std::unique_ptr<AST::ExprNode>& fv)
+    void visit_if_common(bool expr_root, ::AST::ExprNodeP& tv, ::AST::ExprNodeP& fv)
     {
         if( expr_root )
         {
@@ -432,7 +474,7 @@ public:
         m_expr_root = false;
         m_os << n.m_path << " {\n";
         inc_indent();
-        for( const auto& i : n.m_values )
+        for( auto& i : n.m_values )
         {
             // TODO: Attributes
             m_os << indent() << i.name << ": ";
@@ -567,6 +609,8 @@ public:
         case AST::ExprNode_UniOp::BOX:      m_os << "box ";    break;
         case AST::ExprNode_UniOp::REF:    m_os << "&";    break;
         case AST::ExprNode_UniOp::REFMUT: m_os << "&mut ";    break;
+        case AST::ExprNode_UniOp::RawBorrow:    m_os << "&raw const "; break;
+        case AST::ExprNode_UniOp::RawBorrowMut: m_os << "&raw mut "; break;
         case AST::ExprNode_UniOp::QMARK: break;
         }
 
@@ -584,7 +628,7 @@ public:
 
 
 private:
-    void paren_wrap(::std::unique_ptr<AST::ExprNode>& node) {
+    void paren_wrap(::AST::ExprNodeP& node) {
         m_os << "(";
         AST::NodeVisitor::visit(node);
         m_os << ")";
@@ -1060,6 +1104,12 @@ void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
             m_os << v.trailing;
         }
         m_os << "]";
+        ),
+    (Or,
+        m_os << "(";
+        for(const auto& e : v)
+            m_os << (&e == &v.front() ? "" : " | ") << e;
+        m_os << ")";
         )
     )
 }

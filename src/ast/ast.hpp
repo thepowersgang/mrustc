@@ -45,17 +45,6 @@ using ::std::move;
 
 typedef bool    Visibility;
 
-enum eItemType
-{
-    ITEM_TRAIT,
-    ITEM_STRUCT,
-    ITEM_ENUM,
-    ITEM_UNION,
-    ITEM_FN,
-    ITEM_EXTERN_FN,
-    ITEM_STATIC,
-};
-
 struct StructItem
 {
     ::AST::AttributeList   m_attrs;
@@ -120,6 +109,18 @@ public:
     TypeRef& type() { return m_type; }
 
     TypeAlias clone() const;
+};
+class TraitAlias
+{
+public:
+    std::vector<Spanned<Type_TraitPath>>  traits;
+
+    TraitAlias clone() const {
+        TraitAlias  rv;
+        for(const auto& p : this->traits)
+            rv.traits.push_back(p);
+        return rv;
+    }
 };
 
 class Static
@@ -639,6 +640,7 @@ TAGGED_UNION_EX(Item, (), None,
     (Enum, Enum),
     (Union, Union),
     (Trait, Trait),
+    (TraitAlias, TraitAlias),
 
     (Function, Function),
     (Static, Static)

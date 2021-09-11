@@ -248,6 +248,7 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
             rv.m_targets.push_back(PackageTarget { PackageTarget::Type::Test });
             rv.m_targets.back().m_name = name;
             rv.m_targets.back().m_path = path;
+            rv.m_targets.back().m_edition = rv.m_edition;
         }
     }
 

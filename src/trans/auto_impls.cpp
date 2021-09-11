@@ -179,18 +179,12 @@ void Trans_AutoImpl_Clone(State& state, ::HIR::TypeRef ty)
 
     // Function
     ::HIR::Function fcn {
-        /*m_save_code=*/false,
-        ::HIR::Linkage {},
         ::HIR::Function::Receiver::BorrowShared,
-        /*m_abi=*/ABI_RUST,
-        /*m_unsafe =*/false,
-        /*m_const=*/false,
         ::HIR::GenericParams {},
         /*m_args=*/::make_vec1(::std::make_pair(
             ::HIR::Pattern( ::HIR::PatternBinding(false, ::HIR::PatternBinding::Type::Move, "self", 0), ::HIR::Pattern::Data::make_Any({}) ),
             ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, ty.clone())
             )),
-        /*m_variadic=*/false,
         /*m_return=*/ty.clone(),
         ::HIR::ExprPtr {}
         };
@@ -204,6 +198,7 @@ void Trans_AutoImpl_Clone(State& state, ::HIR::TypeRef ty)
     // Add impl to the crate
     auto& list = state.crate.m_trait_impls[state.lang_Clone].get_list_for_type_mut(impl.m_type);
     list.push_back( box$(impl) );
+    state.crate.m_all_trait_impls[state.lang_Clone].get_list_for_type_mut(list.back()->m_type).push_back( list.back().get() );
 }
 
 namespace {
@@ -507,21 +502,36 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
             // Create vtable contents
             auto monomorph_cb_trait = MonomorphStatePtr(&type, &trait_path.m_params, nullptr);
 
-            ::std::vector<HIR::Literal> vtable_contents;
-            vtable_contents.reserve( 3 + trait.m_value_indexes.size() );
+
+            HIR::Linkage linkage;
+            linkage.type = HIR::Linkage::Type::Weak;
+            HIR::Static vtable_static( ::std::move(linkage), /*is_mut*/false, mv$(vtable_ty), {} );
+            auto& vtable_data = vtable_static.m_value_res;
+            const auto ptr_bytes = Target_GetPointerBits()/8;
+            vtable_data.bytes.resize( (3+trait.m_value_indexes.size()) * ptr_bytes );
+            size_t ofs = 0;
+            auto push_ptr = [&vtable_data,&ofs,ptr_bytes](HIR::Path p) {
+                assert(ofs + ptr_bytes <= vtable_data.bytes.size());
+                vtable_data.relocations.push_back(Reloc::new_named( ofs, ptr_bytes, mv$(p) ));
+                vtable_data.write_uint(ofs, ptr_bytes, EncodedLiteral::PTR_BASE);
+                ofs += ptr_bytes;
+                assert(ofs <= vtable_data.bytes.size());
+            };
             // Drop glue
             trans_list.m_drop_glue.insert( type.clone() );
-            vtable_contents.push_back( HIR::Literal::make_BorrowPath(::HIR::Path(type.clone(), "#drop_glue")) );
+            push_ptr(::HIR::Path(type.clone(), "#drop_glue"));
             // Size & align
             {
                 size_t  size, align;
                 // NOTE: Uses the Size+Align version because that doesn't panic on unsized
                 ASSERT_BUG(sp, Target_GetSizeAndAlignOf(sp, state.resolve, type, size, align), "Unexpected generic? " << type);
-                vtable_contents.push_back( HIR::Literal::make_Integer(size) );
-                vtable_contents.push_back( HIR::Literal::make_Integer(align) );
+                vtable_data.write_uint(ofs, ptr_bytes, size ); ofs += ptr_bytes;
+                vtable_data.write_uint(ofs, ptr_bytes, align); ofs += ptr_bytes;
             }
+
             // Methods
             // - The `m_value_indexes` list isn't sorted (well, it's sorted differently) so we need an `O(n^2)` search
+
             for(unsigned int i = 0; i < trait.m_value_indexes.size(); i ++ )
             {
                 // Find the corresponding vtable entry
@@ -592,16 +602,11 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
                         }
                     }
                     //MIR_ASSERT(*m_mir_res, tr.m_values.at(m.first).is_Function(), "TODO: Handle generating vtables with non-function items");
-
-                    vtable_contents.push_back( HIR::Literal::make_BorrowPath(mv$(item_path)) );
+                    push_ptr(mv$(item_path));
                 }
-                assert(vtable_contents.size() == 3+i+1);
             }
-
-            HIR::Linkage linkage;
-            linkage.type = HIR::Linkage::Type::Weak;
-            HIR::Static vtable_static( ::std::move(linkage), /*is_mut*/false, mv$(vtable_ty), {} );
-            vtable_static.m_value_res = HIR::Literal::make_List(mv$(vtable_contents));
+            assert(ofs == vtable_data.bytes.size());
+            vtable_static.m_value_generated = true;
 
             // Add to list
             trans_list.m_auto_statics.push_back( box$(vtable_static) );
@@ -679,6 +684,8 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
                     TODO(sp, "Drop glue for Slice? " << ty);
                 TU_ARMA(Closure, _te)
                     TODO(sp, "Drop glue for Closure? " << ty);  // Should this be dead already?
+                TU_ARMA(Generator, _te)
+                    TODO(sp, "Drop glue for Generator? " << ty);  // Should this be dead already?
                 TU_ARMA(Diverge, te) {
                     // Exists for reasons...
                     builder.terminate_block( MIR::Terminator::make_Diverge({}) );
@@ -759,19 +766,25 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
                             has_drop = true;
                         }
 
-                        // NOTE: Lazy option of monomorphising and handling the two classes
-                        const auto* repr = Target_GetTypeRepr(sp, state.resolve, ty);
-                        ASSERT_BUG(sp, repr, "No repr for struct " << ty);
+                        if( ty.data().is_Path() && ty.data().as_Path().is_generator() ) {
+                            ASSERT_BUG(sp, has_drop, "");
+                            // Generators use a custom Drop impl that handles dropping values
+                        }
+                        else {
+                            // NOTE: Lazy option of monomorphising and handling the two classes
+                            const auto* repr = Target_GetTypeRepr(sp, state.resolve, ty);
+                            ASSERT_BUG(sp, repr, "No repr for struct " << ty);
 
-                        auto self = ::MIR::LValue::new_Deref(builder.self.clone());
-                        auto fld_lv = ::MIR::LValue::new_Field(mv$(self), 0);
-                        for(size_t i = 0; i < repr->fields.size(); i++)
-                        {
-                            if( state.resolve.type_needs_drop_glue(sp, repr->fields[i].ty) )
+                            auto self = ::MIR::LValue::new_Deref(builder.self.clone());
+                            auto fld_lv = ::MIR::LValue::new_Field(mv$(self), 0);
+                            for(size_t i = 0; i < repr->fields.size(); i++)
                             {
-                                builder.push_stmt_drop(fld_lv.clone());
+                                if( state.resolve.type_needs_drop_glue(sp, repr->fields[i].ty) )
+                                {
+                                    builder.push_stmt_drop(fld_lv.clone());
+                                }
+                                fld_lv.inc_Field();
                             }
-                            fld_lv.inc_Field();
                         }
                         }
                     TU_ARMA(Union, pbe) {

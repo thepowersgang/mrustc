@@ -11,6 +11,7 @@
 #include <string>
 #include <memory>   // std::unique_ptr
 #include <hir/type.hpp>
+#include "../hir/asm.hpp"
 
 struct MonomorphState;
 
@@ -400,6 +401,7 @@ struct LValue
     Ordering ord(const LValue::MRef& x) const;
 };
 extern ::std::ostream& operator<<(::std::ostream& os, const LValue& x);
+extern ::std::ostream& operator<<(::std::ostream& os, const LValue::Wrapper& x);
 static inline bool operator<(const LValue& a, const LValue::CRef& b) {
     return a.ord(b) == OrdLess;
 }
@@ -633,6 +635,18 @@ static inline bool operator!=(const Terminator& a, const Terminator& b) {
     return !(a == b);
 }
 
+TAGGED_UNION(AsmParam, Const,
+    (Const, ::MIR::Constant),
+    (Sym, ::HIR::Path),
+    (Reg, struct {
+        AsmCommon::Direction    dir;
+        AsmCommon::RegisterSpec spec;
+        std::unique_ptr<MIR::Param> input;
+        std::unique_ptr<MIR::LValue> output;
+        })
+    );
+extern bool operator==(const AsmParam& a, const AsmParam& b);
+
 enum class eDropKind {
     SHALLOW,
     DEEP,
@@ -643,13 +657,19 @@ TAGGED_UNION(Statement, Asm,
         LValue  dst;
         RValue  src;
         }),
-    // Inline assembly
+    // Inline assembly (`llvm_asm!`)
     (Asm, struct {
         ::std::string   tpl;
         ::std::vector< ::std::pair<::std::string,LValue> >  outputs;
         ::std::vector< ::std::pair<::std::string,LValue> >  inputs;
         ::std::vector< ::std::string>   clobbers;
         ::std::vector< ::std::string>   flags;
+        }),
+    // Inline assembly (stabilised)
+    (Asm2, struct {
+        AsmCommon::Options  options;
+        std::vector<AsmCommon::Line>   lines;
+        ::std::vector<AsmParam> params;
         }),
     // Update the state of a drop flag
     (SetDropFlag, struct {

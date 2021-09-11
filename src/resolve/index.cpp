@@ -177,6 +177,10 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
             p.m_bindings.type.set( ap, ::AST::PathBinding_Type::make_Trait({&e}) );
             _add_item_type(i->span, mod, i->name, i->is_pub,  mv$(p));
             }
+        TU_ARMA(TraitAlias, e) {
+            p.m_bindings.type.set( ap, ::AST::PathBinding_Type::make_TraitAlias({&e}) );
+            _add_item_type(i->span, mod, i->name, i->is_pub,  mv$(p));
+            }
         TU_ARMA(Type, e) {
             p.m_bindings.type.set( ap, ::AST::PathBinding_Type::make_TypeAlias({&e}) );
             _add_item_type(i->span, mod, i->name, i->is_pub,  mv$(p));
@@ -245,6 +249,8 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
             TU_ARMA(Union, e)
                 _add_item_type(sp, mod, i_data.name, i.is_pub,  pb.type, !allow_collide);
             TU_ARMA(Trait, e)
+                _add_item_type(sp, mod, i_data.name, i.is_pub,  pb.type, !allow_collide);
+            TU_ARMA(TraitAlias, e)
                 _add_item_type(sp, mod, i_data.name, i.is_pub,  pb.type, !allow_collide);
             TU_ARMA(TypeAlias, e)
                 _add_item_type(sp, mod, i_data.name, i.is_pub,  pb.type, !allow_collide);
@@ -369,6 +375,9 @@ void Resolve_Index_Module_Wildcard__glob_in_hir_mod(
                 }
             TU_ARMA(Struct, e) {
                 pb.binding = ::AST::PathBinding_Type::make_Struct({nullptr, &e});
+                }
+            TU_ARMA(TraitAlias, e) {
+                pb.binding = ::AST::PathBinding_Type::make_TraitAlias({nullptr, &e});
                 }
             TU_ARMA(Union, e) {
                 pb.binding = ::AST::PathBinding_Type::make_Union({nullptr, &e});

@@ -5,6 +5,7 @@
 #include <mir/mir.hpp>
 #include <mir/operations.hpp>   // MIR_Dump_Fcn
 
+TargetVersion gTargetVersion;
 //int g_debug_indent_level = 0;
 
 struct Args
@@ -38,6 +39,7 @@ struct Dumper
     void dump_trait(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Trait& trait, int nindent=0) const;
 
     void dump_value_import(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::ValueItem::Data_Import& imp, int nindent=0) const;
+    void dump_constant(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Constant& c, int nindent=0) const;
     void dump_function(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Function& fcn, int nindent=0) const;
 
     void dump_macrorules(const RcString& name, const MacroRules& rules) const;
@@ -182,7 +184,7 @@ void Dumper::dump_module(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const 
             this->dump_value_import(sub_ip, i.second->publicity, e);
             }
         TU_ARMA(Constant, e) {
-            //this->dump_constant(sub_ip, e);
+            this->dump_constant(sub_ip, i.second->publicity, e);
             }
         TU_ARMA(Static, e) {
             //this->dump_static(sub_ip, e);
@@ -263,6 +265,17 @@ void Dumper::dump_value_import(::HIR::ItemPath ip, const ::HIR::Publicity& pub, 
         ::std::cout << "#" << imp.idx;
     }
     ::std::cout << "\n";
+}
+void Dumper::dump_constant(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Constant& c, int nindent/*=0*/) const
+{
+    auto indent = RepeatLitStr { "   ", nindent };
+    if( !this->filters.types.values ) {
+        return ;
+    }
+    if( filters.public_only && !pub.is_global() ) {
+        return ;
+    }
+    ::std::cout << indent << "const " << ip << ": " << c.m_type << " = " << c.m_value_res << "\n";
 }
 void Dumper::dump_function(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Function& fcn, int nindent/*=0*/) const
 {

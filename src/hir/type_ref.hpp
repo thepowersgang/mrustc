@@ -17,10 +17,11 @@ class TypeRef;
 struct GenericRef;
 struct SimplePath;
 class Path;
-class Literal;
+class ConstGeneric;
 
 class ExprPtr;
 struct ExprNode_Closure;
+struct ExprNode_Generator;
 
 enum Compare {
     Equal,
@@ -36,7 +37,7 @@ public:
     //virtual const HIR::TypeRef& resolve_infer(const HIR::TypeRef& ty) const { return ty; }
     //virtual const HIR::TypeRef& resolve_generic(const HIR::TypeRef& ty) const { return ty; }
     virtual ::HIR::Compare match_ty(const ::HIR::GenericRef& g, const ::HIR::TypeRef& ty, t_cb_resolve_type resolve_cb) = 0;
-    virtual ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::Literal& sz) = 0;
+    virtual ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::ConstGeneric& sz) = 0;
 };
 
 
@@ -91,9 +92,10 @@ public:
     static TypeRef new_tuple(::std::vector< ::HIR::TypeRef> sts) { return TypeRef(mv$(sts)); }
     static TypeRef new_slice(TypeRef inner);
     static TypeRef new_array(TypeRef inner, uint64_t size);
-    static TypeRef new_array(TypeRef inner, ::HIR::ExprPtr size_expr);
+    static TypeRef new_array(TypeRef inner, ::HIR::ConstGeneric size_expr);
     static TypeRef new_path(::HIR::Path path, TypePathBinding binding);
     static TypeRef new_closure(::HIR::ExprNode_Closure* node_ptr, ::std::vector< ::HIR::TypeRef> args, ::HIR::TypeRef rv);
+    static TypeRef new_generator(::HIR::ExprNode_Generator* node_ptr);
 
     // Duplicate refcount
     TypeRef clone() const;

@@ -13,8 +13,48 @@
 #include <tagged_union.hpp>
 #include <span.hpp>
 #include "type_ref.hpp"
+#include "generic_ref.hpp"
+#include "expr_ptr.hpp"
+
+struct EncodedLiteral;
 
 namespace HIR {
+
+class EncodedLiteralPtr {
+    EncodedLiteral* p;
+public:
+    ~EncodedLiteralPtr();
+    EncodedLiteralPtr(): p(nullptr) {}
+    EncodedLiteralPtr(EncodedLiteral e);
+
+    EncodedLiteralPtr(EncodedLiteralPtr&& x): p(x.p) { x.p = nullptr; }
+    EncodedLiteralPtr(const EncodedLiteralPtr& x) = delete;
+
+    EncodedLiteralPtr& operator=(EncodedLiteralPtr&& x) { this->~EncodedLiteralPtr(); this->p = x.p; x.p = nullptr; return *this; }
+    EncodedLiteralPtr& operator=(const EncodedLiteralPtr& x) = delete;
+
+    EncodedLiteral& operator*() { assert(p); return *p; }
+    const EncodedLiteral& operator*() const { assert(p); return *p; }
+    EncodedLiteral* operator->() { assert(p); return p; }
+    const EncodedLiteral* operator->() const { assert(p); return p; }
+};
+TAGGED_UNION_EX(ConstGeneric, (), Infer, (
+    (Infer, struct {    // To be inferred
+        unsigned index = ~0u;
+        }),
+    (Unevaluated, std::shared_ptr<HIR::ExprPtr>),    // Unevaluated (or evaluation deferred)
+    (Generic, GenericRef),  // A single generic reference
+    (Evaluated, EncodedLiteralPtr) // A fully known literal
+    ),
+    /*extra_move=*/(),
+    /*extra_assign=*/(),
+    /*extra=*/(
+        ConstGeneric clone() const;
+        bool operator==(const ConstGeneric& x) const;
+        bool operator!=(const ConstGeneric& x) const { return !(*this == x); }
+        )
+    );
+::std::ostream& operator<<(::std::ostream& os, const ConstGeneric& x);
 
 class TypeRef;
 class Trait;
@@ -75,9 +115,7 @@ struct SimplePath
         return !(*this == x);
     }
     bool operator<(const SimplePath& x) const {
-        if( m_crate_name < x.m_crate_name ) return true;
-        if( m_crate_name > x.m_crate_name ) return false;
-        return ( m_components < x.m_components );
+        return ord(x) == OrdLess;
     }
     Ordering ord(const SimplePath& x) const {
         auto rv = ::ord(m_crate_name, x.m_crate_name);
@@ -93,7 +131,7 @@ struct PathParams
 {
     //::std::vector<LifetimeRef>  m_lifetimes;
     ::std::vector<TypeRef>  m_types;
-    ::std::vector<HIR::Literal>  m_values;
+    ::std::vector<HIR::ConstGeneric>  m_values;
 
     PathParams();
     PathParams(::HIR::TypeRef );
@@ -152,8 +190,6 @@ public:
 class TraitPath
 {
 public:
-    GenericPath m_path;
-    ::std::vector< RcString>   m_hrls;
     // TODO: Each bound should list its origin trait
     struct AtyEqual {
         ::HIR::GenericPath  source_trait;
@@ -176,8 +212,6 @@ public:
         }
 
     };
-    typedef ::std::map< RcString, AtyEqual> assoc_list_t;
-    assoc_list_t    m_type_bounds;
     /// Associated type trait bounds (`Type: Trait`)
     struct AtyBound {
         ::HIR::GenericPath  source_trait;
@@ -199,6 +233,12 @@ public:
             };
         }
     };
+
+    typedef ::std::map< RcString, AtyEqual> assoc_list_t;
+
+    GenericPath m_path;
+    ::std::vector< RcString>   m_hrls;
+    assoc_list_t    m_type_bounds;
     ::std::map< RcString, AtyBound>  m_trait_bounds;
 
     const ::HIR::Trait* m_trait_ptr;
@@ -206,15 +246,16 @@ public:
     TraitPath clone() const;
     Compare compare_with_placeholders(const Span& sp, const TraitPath& x, t_cb_resolve_type resolve_placeholder) const;
 
-    bool operator==(const TraitPath& x) const;
-    bool operator!=(const TraitPath& x) const { return !(*this == x); }
+    bool operator==(const TraitPath& x) const { return ord(x) == OrdEqual; }
+    bool operator!=(const TraitPath& x) const { return ord(x) != OrdEqual; }
     bool operator<(const TraitPath& x) const { return ord(x) == OrdLess; }
 
     Ordering ord(const TraitPath& x) const {
         ORD(m_path, x.m_path);
         ORD(m_hrls, x.m_hrls);
         ORD(m_trait_bounds, x.m_trait_bounds);
-        return ::ord(m_type_bounds, x.m_type_bounds);
+        ORD(m_type_bounds , x.m_type_bounds);
+        return OrdEqual;
     }
 
     friend ::std::ostream& operator<<(::std::ostream& os, const TraitPath& x);

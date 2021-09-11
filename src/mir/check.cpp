@@ -12,6 +12,7 @@
 #include <hir_typeck/static.hpp>
 #include <mir/helpers.hpp>
 #include <mir/visit_crate_mir.hpp>
+#include <mir/operations.hpp>
 
 namespace {
     ::HIR::TypeRef get_metadata_type(const ::MIR::TypeResolve& state, const ::HIR::TypeRef& unsized_ty)
@@ -438,6 +439,21 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
                 for(const auto& v : stmt.as_Asm().outputs)
                     val_state.mark_validity( state, v.second, true );
                 break;
+            TU_ARM(stmt, Asm2, e) {
+                for(const auto& p : e.params)
+                {
+                    TU_MATCH_HDRA( (p), { )
+                    TU_ARMA(Const, v) {}
+                    TU_ARMA(Sym, v) {}
+                    TU_ARMA(Reg, v) {
+                        if(v.input)
+                            val_state.move_val(state, *v.input);
+                        if(v.output)
+                            val_state.mark_validity(state, *v.output, true);
+                        }
+                    }
+                }
+                } break;
             case ::MIR::Statement::TAG_Assign:
                 // Destination must be valid
                 for(const auto& w : stmt.as_Assign().dst.m_wrappers)
@@ -600,6 +616,8 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
     ::MIR::TypeResolve   state { sp, resolve, FMT_CB(ss, ss << path;), ret_type, args, fcn };
     // Validation rules:
 
+    if( debug_enabled() ) MIR_Dump_Fcn(::std::cout, fcn);
+    
     {
         for(const auto& bb : fcn.blocks)
         {
@@ -794,7 +812,34 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                             // TODO: Check result type against type of const
                             }
                         TU_ARMA(ItemAddr, c) {
-                            // TODO: Check result type against pointer to item type
+                            MonomorphState  ms;
+                            auto v = state.m_resolve.get_value(state.sp, *c, ms, /*sig_only=*/true);
+                            ::HIR::TypeRef  tmp;
+                            TU_MATCH_HDRA( (v), {)
+                            TU_ARMA(NotFound, ve)
+                                MIR_BUG(state, "Unable to find item: " << *c);
+                            TU_ARMA(NotYetKnown, ve)
+                                MIR_BUG(state, "NotYetKnown returned with sig_only=true? for " << *c);
+                            TU_ARMA(Constant, ve)
+                                MIR_BUG(state, "Constant in ItemAddr: " << *c);
+                            TU_ARMA(StructConstant, ve)
+                                MIR_BUG(state, "StructConstant in ItemAddr: " << *c);
+                            TU_ARMA(EnumValue, ve)
+                                MIR_BUG(state, "EnumValue in ItemAddr: " << *c);
+                            TU_ARMA(Static, ve) {
+                                tmp = ms.monomorph_type(state.sp, ve->m_type);
+                                check_types( dst_ty, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, mv$(tmp)) );
+                                }
+                            TU_ARMA(Function, ve) {
+                                // TODO: Check
+                                }
+                            TU_ARMA(EnumConstructor, ve) {
+                                // TODO: Check
+                                }
+                            TU_ARMA(StructConstructor, ve) {
+                                // TODO: Check
+                                }
+                            }
                             }
                         }
                         }
@@ -802,7 +847,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                         // TODO: Check that return type is an array
                         // TODO: Check that the input type is Copy
                         }
-                    TU_ARMA(Borrow, e){
+                    TU_ARMA(Borrow, e) {
                         ::HIR::TypeRef  tmp;
                         check_types( dst_ty, ::HIR::TypeRef::new_borrow(e.type, state.get_lvalue_type(tmp, e.val).clone()) );
                         }
@@ -945,6 +990,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                     }
                     } break;
                 case ::MIR::Statement::TAG_Asm:
+                case ::MIR::Statement::TAG_Asm2:
                     // TODO: Ensure that values are all thin pointers or integers?
                     break;
                 case ::MIR::Statement::TAG_Drop:

@@ -83,9 +83,9 @@ const char* coretype_name(const eCoreType ct ) {
 Type_Function::Type_Function(const Type_Function& other):
     hrbs(other.hrbs),
     is_unsafe(other.is_unsafe),
-    is_variadic(other.is_variadic),
     m_abi(other.m_abi),
-    m_rettype( box$( other.m_rettype->clone() ) )
+    m_rettype( box$( other.m_rettype->clone() ) ),
+    is_variadic(other.is_variadic)
 {
     for( const auto& at : other.m_arg_types )
         m_arg_types.push_back( at.clone() );

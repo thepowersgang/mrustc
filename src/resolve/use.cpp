@@ -72,6 +72,15 @@ void Resolve_Use(::AST::Crate& crate)
             }
         }
 
+        // If there's only one node, then check for primitives.
+        if(path.nodes().size() == 1) {
+            auto ct = coretype_fromstring(path.nodes()[0].name().c_str());
+            if( ct != CORETYPE_INVAL ) {
+                // TODO: only if the item doesn't already exist?
+                return AST::Path(CRATE_BUILTINS, path.nodes());
+            }
+        }
+
         // EVIL HACK: If the current module is an anon module, refer to the parent
         if( base_path.nodes().size() > 0 && base_path.nodes().back().name().c_str()[0] == '#' ) {
             AST::Path   np("", {});
@@ -354,6 +363,9 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             TU_ARMA(Trait, e) {
                 rv.type.set(p, ::AST::PathBinding_Type::make_Trait({&e}));
                 }
+            TU_ARMA(TraitAlias, e) {
+                rv.type.set(p, ::AST::PathBinding_Type::make_TraitAlias({&e}));
+                }
 
             TU_ARMA(Function, e) {
                 rv.value.set(p, ::AST::PathBinding_Value::make_Function({&e}));
@@ -484,7 +496,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                 TU_MATCH_HDRA( (bindings->type.binding), {)
                 TU_ARMA(Crate, e) {
                     assert(e.crate_);
-                    const ::HIR::Module& hmod = e.crate_->m_hir->m_root_module;
+                    //const ::HIR::Module& hmod = e.crate_->m_hir->m_root_module;
                     rv.merge_from( Resolve_Use_GetBinding__ext(sp2, crate, AST::Path("", { AST::PathNode(des_item_name,{}) }), *e.crate_, 0) );
                     }
                 TU_ARMA(Module, e) {
@@ -772,6 +784,9 @@ namespace {
                     ),
                 (Trait,
                     rv.type.set( ap, ::AST::PathBinding_Type::make_Trait({nullptr, &e}) );
+                    ),
+                (TraitAlias,
+                    rv.type.set( ap, ::AST::PathBinding_Type::make_TraitAlias({nullptr, &e}) );
                     )
                 )
             }

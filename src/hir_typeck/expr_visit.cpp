@@ -177,7 +177,9 @@ namespace {
                 DEBUG("Array size " << ty);
                 t_args  tmp;
                 if( auto* se = e->size.opt_Unevaluated() ) {
-                    Typecheck_Code( m_ms, tmp, ::HIR::TypeRef(::HIR::CoreType::Usize), **se );
+                    if( se->is_Unevaluated() ) {
+                        Typecheck_Code( m_ms, tmp, ::HIR::TypeRef(::HIR::CoreType::Usize), *se->as_Unevaluated() );
+                    }
                 }
             }
             else {

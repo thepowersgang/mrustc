@@ -16,10 +16,12 @@ RcString::RcString(const char* s, size_t len):
 {
     if( len > 0 )
     {
-        m_ptr = new unsigned int[2 + (len+1 + sizeof(unsigned int)-1) / sizeof(unsigned int)];
-        m_ptr[0] = 1;
-        m_ptr[1] = static_cast<unsigned>(len);
-        char* data_mut = reinterpret_cast<char*>(m_ptr + 2);
+        size_t nwords = (len+1 + sizeof(unsigned int)-1) / sizeof(unsigned int);
+        m_ptr = reinterpret_cast<Inner*>(malloc(sizeof(Inner) + (nwords - 1) * sizeof(unsigned int)));
+        m_ptr->refcount = 1;
+        m_ptr->size = static_cast<unsigned>(len);
+        m_ptr->ordering = 0;
+        char* data_mut = reinterpret_cast<char*>(m_ptr->data);
         for(unsigned int j = 0; j < len; j ++ )
             data_mut[j] = s[j];
         data_mut[len] = '\0';
@@ -31,11 +33,11 @@ RcString::~RcString()
 {
     if(m_ptr)
     {
-        *m_ptr -= 1;
+        m_ptr->refcount -= 1;
         //::std::cout << "RcString(" << m_ptr << " \"" << *this << "\") - " << *m_ptr << " refs left (drop)" << ::std::endl;
-        if( *m_ptr == 0 )
+        if( m_ptr->refcount == 0 )
         {
-            delete[] m_ptr;
+            free(m_ptr);
             m_ptr = nullptr;
         }
     }
@@ -81,37 +83,40 @@ Ordering RcString::ord(const char* s) const
 }
 
 
-::std::set<RcString>    RcString_interned_strings;
+struct Cmp_RcString_Raw {
+    bool operator()(const RcString& a, const RcString& b) const {
+        return a.ord(b.c_str(), b.size()) == OrdLess;
+    }
+};
+// A set with a comparison function that always checks bytes (avoiding recursion with the cache)
+::std::set<RcString,Cmp_RcString_Raw>    RcString_interned_strings;
+bool    RcString_interned_ordering_valid;
 
-RcString RcString::new_interned(const ::std::string& s)
+RcString RcString::new_interned(const char* s, size_t len)
 {
-#if 0
-    auto it = RcString_interned_strings.find(s);
-    if( it == RcString_interned_strings.end() )
+    if(len == 0)
+        return RcString();
+    auto ret = RcString_interned_strings.insert(RcString(s, len));
+    // Set interned and invalidate the cache if an insert happened
+    if(ret.second)
     {
-        it = RcString_interned_strings.insert(RcString(s)).first;
+        ret.first->m_ptr->ordering = 1;
+        RcString_interned_ordering_valid = false;
     }
-    return *it;
-#else
-    // TODO: interning flag, so comparisons can just be a pointer comparison
-    // - Only want to set this flag on the cached instance
-    return *RcString_interned_strings.insert(RcString(s)).first;
-#endif
+    return *ret.first;
 }
-RcString RcString::new_interned(const char* s)
+Ordering RcString::ord_interned(const RcString& s) const
 {
-#if 0
-    auto it = RcString_interned_strings.find(s);
-    if( it == RcString_interned_strings.end() )
+    assert(s.is_interned() && this->is_interned());
+    if(!RcString_interned_ordering_valid)
     {
-        it = RcString_interned_strings.insert(RcString(s)).first;
+        // Populate cache
+        unsigned i = 1;
+        for(auto& e : RcString_interned_strings)
+            e.m_ptr->ordering = i++;
+        RcString_interned_ordering_valid = true;
     }
-    return *it;
-#else
-    // TODO: interning flag, so comparisons can just be a pointer comparison
-    // - Only want to set this flag on the cached instance
-    return *RcString_interned_strings.insert(RcString(s)).first;
-#endif
+    return ::ord(this->m_ptr->ordering, s.m_ptr->ordering);
 }
 
 size_t std::hash<RcString>::operator()(const RcString& s) const noexcept

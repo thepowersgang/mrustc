@@ -158,19 +158,30 @@ TomlKeyValue TomlFile::get_next_value()
             throw ::std::runtime_error(::format(m_lexer, ": Unexpected EOF in composite"));
         }
     }
-    switch (t.m_type)
+    std::vector<std::string>    key_name;
+    for(;;)
     {
-    case Token::Type::String:
-    case Token::Type::Ident:
-        break;
-    default:
-        throw ::std::runtime_error(::format(m_lexer, ": Unexpected token for key - ", t));
-    }
-    ::std::string   key_name = t.as_string();
-    t = m_lexer.get_token();
+        switch (t.m_type)
+        {
+        case Token::Type::String:
+        case Token::Type::Ident:
+            break;
+        default:
+            throw ::std::runtime_error(::format(m_lexer, ": Unexpected token for key - ", t));
+        }
+        key_name.push_back(t.as_string());
+        t = m_lexer.get_token();
+        if(t.m_type == Token::Type::Assign)
+        {
+            break;
+        }
 
-    if(t.m_type != Token::Type::Assign)
-        throw ::std::runtime_error(::format(m_lexer, ": Unexpected token after key - ", t));
+        if(t.m_type != Token::Type::Dot)
+            throw ::std::runtime_error(::format(m_lexer, ": Unexpected token after key - ", t));
+        t = m_lexer.get_token();
+    }
+
+    assert(t.m_type == Token::Type::Assign);
     t = m_lexer.get_token();
 
     // --- Value ---
@@ -179,18 +190,12 @@ TomlKeyValue TomlFile::get_next_value()
     {
     // String: Return the string value
     case Token::Type::String:
-        rv.path = m_current_block;
-        rv.path.insert(rv.path.end(), m_current_composite.begin(), m_current_composite.end());
-        rv.path.push_back(key_name);
-
+        rv.path = this->get_path(std::move(key_name));
         rv.value = TomlValue { t.m_data };
         break;
     // Array: Parse the entire list and return as Type::List
     case Token::Type::SquareOpen:
-        rv.path = m_current_block;
-        rv.path.insert(rv.path.end(), m_current_composite.begin(), m_current_composite.end());
-        rv.path.push_back(key_name);
-
+        rv.path = this->get_path(std::move(key_name));
         rv.value.m_type = TomlValue::Type::List;
         while( (t = m_lexer.get_token()).m_type != Token::Type::SquareClose )
         {
@@ -224,29 +229,23 @@ TomlKeyValue TomlFile::get_next_value()
             throw ::std::runtime_error(::format(m_lexer, ": Unexpected token after array - ", t));
         break;
     case Token::Type::BraceOpen:
-        m_current_composite.push_back(key_name);
+        m_current_composite.push_back(std::move(key_name));
         DEBUG("Enter composite block " << m_current_block << ", " << m_current_composite);
         // Recurse to restart parse
         return get_next_value();
     case Token::Type::Integer:
-        rv.path = m_current_block;
-        rv.path.insert(rv.path.end(), m_current_composite.begin(), m_current_composite.end());
-        rv.path.push_back(key_name);
+        rv.path = this->get_path(std::move(key_name));
         rv.value = TomlValue { t.m_intval };
         break;
     case Token::Type::Ident:
         if( t.m_data == "true" )
         {
-            rv.path = m_current_block;
-            rv.path.insert(rv.path.end(), m_current_composite.begin(), m_current_composite.end());
-            rv.path.push_back(key_name);
+            rv.path = this->get_path(std::move(key_name));
             rv.value = TomlValue { true };
         }
         else if( t.m_data == "false" )
         {
-            rv.path = m_current_block;
-            rv.path.insert(rv.path.end(), m_current_composite.begin(), m_current_composite.end());
-            rv.path.push_back(key_name);
+            rv.path = this->get_path(std::move(key_name));
 
             rv.value = TomlValue { false };
         }
@@ -277,6 +276,16 @@ TomlKeyValue TomlFile::get_next_value()
             throw ::std::runtime_error(::format(m_lexer, ": Unexpected token in TOML file after composite entry - ", t));
     }
     return rv;
+}
+
+std::vector<std::string> TomlFile::get_path(std::vector<std::string> tail) const
+{
+    std::vector<std::string>    path;
+    path = m_current_block;
+    for(const auto& composite_ent : m_current_composite)
+        path.insert(path.end(), composite_ent.begin(), composite_ent.end());
+    path.insert(path.end(), std::make_move_iterator(tail.begin()), std::make_move_iterator(tail.end()));
+    return path;
 }
 
 TomlLexer::TomlLexer(const ::std::string& filename)

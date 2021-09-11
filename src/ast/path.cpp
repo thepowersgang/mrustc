@@ -11,6 +11,7 @@
 #include <iostream>
 #include "../parse/parseerror.hpp"
 #include <algorithm>
+#include "expr.hpp"
 
 #define PRETTY_PATH_PRINT   1
 
@@ -23,6 +24,7 @@ namespace AST {
     (Crate ,  os << "Crate";    ),
     (Module,  os << "Module";    ),
     (Trait,     os << "Trait";   ),
+    (TraitAlias, os << "TraitAlias"; ),
     (Struct,    os << "Struct";  ),
     (Enum,      os << "Enum";    ),
     (Union,     os << "Union";   ),
@@ -39,6 +41,7 @@ PathBinding_Type PathBinding_Type::clone() const
     (Module   , return PathBinding_Type::make_Module(e);   ),
     (Crate    , return PathBinding_Type(e); ),
     (Trait    , return PathBinding_Type(e); ),
+    (TraitAlias, return PathBinding_Type(e); ),
     (Struct   , return PathBinding_Type(e); ),
     (Enum     , return PathBinding_Type(e); ),
     (Union    , return PathBinding_Type(e); ),
@@ -143,6 +146,9 @@ PathParamEnt PathParamEnt::clone() const
     TU_ARMA(Type, v) {
         return v.clone();
         }
+    TU_ARMA(Value, v) {
+        return v->clone();
+        }
     TU_ARMA(AssociatedTyEqual, v) {
         return ::std::make_pair(v.first, v.second.clone());
         }
@@ -167,6 +173,9 @@ Ordering PathParamEnt::ord(const PathParamEnt& x) const
     TU_ARMA(Type, v1, v2) {
         return ::ord(v1, v2);
         }
+    TU_ARMA(Value, v1, v2) {
+        return ::ord( (uintptr_t)v1.get(), (uintptr_t)v2.get() );
+        }
     TU_ARMA(AssociatedTyEqual, v1, v2) {
         return ::ord(v1, v2);
         }
@@ -187,6 +196,9 @@ void PathParamEnt::fmt(::std::ostream& os) const
         }
     TU_ARMA(Type, v) {
         os << v;
+        }
+    TU_ARMA(Value, v) {
+        v->print(os);
         }
     TU_ARMA(AssociatedTyEqual, v) {
         os << v.first << "=" << v.second;

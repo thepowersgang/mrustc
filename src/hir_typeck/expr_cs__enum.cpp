@@ -45,7 +45,7 @@ namespace typecheck
             impl_params.m_types[g.binding] = ty.clone();
             return ::HIR::Compare::Equal;
         }
-        ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::Literal& sz) override {
+        ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::ConstGeneric& sz) override {
             TODO(Span(), "OwnedImplMatcher::match_val " << g << " with " << sz);
         }
     };
@@ -103,6 +103,20 @@ namespace typecheck
                     params.m_types.push_back( context.m_ivars.new_ivar_tr() );
                     // TODO: It's possible that the default could be added using `context.possible_equate_type_def` to give inferrence a fallback
                 }
+            }
+        }
+
+        if( params.m_values.size() == param_defs.m_values.size() ) {
+            // Nothing to do, all good
+        }
+        else if( params.m_values.size() > param_defs.m_values.size() ) {
+            ERROR(sp, E0000, "Too many const parameters passed to " << path);
+        }
+        else {
+            while( params.m_values.size() < param_defs.m_values.size() ) {
+                //const auto& def = param_defs.m_values[params.m_values.size()];
+                params.m_values.push_back({});
+                context.m_ivars.add_ivars(params.m_values.back());
             }
         }
     }
@@ -226,9 +240,24 @@ namespace typecheck
                 }
             }
 
-            ::HIR::Literal get_value(const Span& sp, const HIR::GenericRef& e) const override
+            ::HIR::ConstGeneric get_value(const Span& sp, const HIR::GenericRef& e) const override
             {
-                TODO(sp, "");
+                if( e.binding < 256 )
+                {
+                    ASSERT_BUG(sp, impl_params, "Impl-level value parameter on free function (" << e << ")");
+                    auto idx = e.idx();
+                    ASSERT_BUG(sp, idx < impl_params->m_values.size(), "Generic value (impl) out of input range - " << e << " >= " << impl_params->m_values.size());
+                    return context.m_ivars.get_value(impl_params->m_values[idx]).clone();
+                }
+                else if( e.binding < 512 )
+                {
+                    auto idx = e.idx();
+                    ASSERT_BUG(sp, idx < fcn_params.m_values.size(), "Generic value out of input range - " << e << " >= " << fcn_params.m_values.size());
+                    return context.m_ivars.get_value(fcn_params.m_values[idx]).clone();
+                }
+                else {
+                    BUG(sp, "Generic value bounding out of total range (" << e << ")");
+                }
             }
         };
 
@@ -259,8 +288,6 @@ namespace typecheck
 
             fcn_ptr = &fcn;
 
-            const auto& trait_params = e.trait.m_params;
-            const auto& path_params = e.params;
             cache.m_monomorph.reset(new Monomorph(context, &e.type, &e.trait.m_params, e.params));
         }
         TU_ARMA(UfcsUnknown, e) {
@@ -282,11 +309,11 @@ namespace typecheck
 
         // --- Monomorphise the argument/return types (into current context)
         for(const auto& arg : fcn.m_args) {
-            TRACE_FUNCTION_FR(path << " - Arg " << arg.first << ": " << arg.second, "Arg " << arg.first << " : " << cache.m_arg_types.back());
+            TRACE_FUNCTION_FR("ARG " << path << " - " << arg.first << ": " << arg.second, "Arg " << arg.first << " : " << cache.m_arg_types.back());
             cache.m_arg_types.push_back( monomorph.monomorph_type(sp, arg.second, false) );
         }
         {
-            TRACE_FUNCTION_FR(path << " - Ret " << fcn.m_return, "Ret " << cache.m_arg_types.back());
+            TRACE_FUNCTION_FR("RET " << path << " - " << fcn.m_return, "Ret " << cache.m_arg_types.back());
             cache.m_arg_types.push_back( monomorph.monomorph_type(sp, fcn.m_return, false) );
         }
 
@@ -437,7 +464,14 @@ namespace typecheck
     {
         Context& context;
         const ::HIR::TypeRef&   ret_type;
-        ::std::vector< const ::HIR::TypeRef*>   closure_ret_types;
+        struct RetTarget {
+            const ::HIR::TypeRef*   ret_type;
+            const ::HIR::TypeRef*   yield_type;
+
+            RetTarget(const ::HIR::TypeRef& ret_type): ret_type(&ret_type), yield_type(nullptr) {}
+            RetTarget(const ::HIR::TypeRef& ret_type, const ::HIR::TypeRef& yield_type): ret_type(&ret_type), yield_type(&yield_type) {}
+        };
+        ::std::vector<RetTarget>   closure_ret_types;
 
         ::std::vector<bool> inner_coerce_enabled_stack;
 
@@ -561,13 +595,47 @@ namespace typecheck
             // TODO: Revisit to check that the input are integers, and the outputs are integer lvalues
             this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
         }
+        void visit(::HIR::ExprNode_Asm2& node) override
+        {
+            TRACE_FUNCTION_F(&node << " asm! ...");
+
+            this->push_inner_coerce( false );
+            for(auto& v : node.m_params)
+            {
+                TU_MATCH_HDRA( (v), { )
+                TU_ARMA(Const, e) {
+                    this->context.add_ivars( e->m_res_type );
+                    visit_node_ptr(e);
+                    }
+                TU_ARMA(Sym, e) {
+                    }
+                TU_ARMA(RegSingle, e) {
+                    this->context.add_ivars( e.val->m_res_type );
+                    visit_node_ptr(e.val);
+                    }
+                TU_ARMA(Reg, e) {
+                    if(e.val_in) {
+                        this->context.add_ivars( e.val_in->m_res_type );
+                        visit_node_ptr(e.val_in);
+                    }
+                    if(e.val_out) {
+                        this->context.add_ivars( e.val_out->m_res_type );
+                        visit_node_ptr(e.val_out);
+                    }
+                    }
+                }
+            }
+            this->pop_inner_coerce();
+            // TODO: Revisit to check that the input are integers, and the outputs are integer lvalues
+            this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
+        }
 
         void visit(::HIR::ExprNode_Return& node) override
         {
             TRACE_FUNCTION_F(&node << " return ...");
             this->context.add_ivars( node.m_value->m_res_type );
 
-            const auto& ret_ty = ( this->closure_ret_types.size() > 0 ? *this->closure_ret_types.back() : this->ret_type );
+            const auto& ret_ty = ( this->closure_ret_types.size() > 0 ? *this->closure_ret_types.back().ret_type : this->ret_type );
             this->context.equate_types_coerce(node.span(), ret_ty, node.m_value);
 
             this->push_inner_coerce( true );
@@ -580,14 +648,15 @@ namespace typecheck
             TRACE_FUNCTION_F(&node << " yield ...");
             this->context.add_ivars( node.m_value->m_res_type );
 
-            //const auto& ret_ty = ( this->closure_ret_types.size() > 0 ? *this->closure_ret_types.back() : this->ret_type );
-            //this->context.equate_types_coerce(node.span(), ret_ty, node.m_value);
-            TODO(node.span(), "yield");
+            if( this->closure_ret_types.empty() || this->closure_ret_types.back().yield_type == nullptr )
+                ERROR(node.span(), E0000, "`yield` outside a generator closure");
+            const auto& ret_ty = *this->closure_ret_types.back().yield_type;
+            this->context.equate_types_coerce(node.span(), ret_ty, node.m_value);
 
             this->push_inner_coerce( true );
             node.m_value->visit( *this );
             this->pop_inner_coerce();
-            this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_diverge());
+            this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
         }
 
         void visit(::HIR::ExprNode_Loop& node) override
@@ -1810,10 +1879,42 @@ namespace typecheck
 
             this->context.equate_types_coerce( node.span(), node.m_return, node.m_code );
 
+            // Save/clear/restore loop labels
+            auto saved_loops = ::std::move(this->loop_blocks);
+
             auto _ = this->push_inner_coerce_scoped(true);
-            this->closure_ret_types.push_back( &node.m_return );
+            this->closure_ret_types.push_back( RetTarget(node.m_return) );
             node.m_code->visit( *this );
             this->closure_ret_types.pop_back( );
+
+            this->loop_blocks = ::std::move(saved_loops);
+        }
+
+        void visit(::HIR::ExprNode_Generator& node) override
+        {
+            TRACE_FUNCTION_F(&node << " /*gen*/ || ...");
+            //for(auto& arg : node.m_args) {
+            //    this->context.add_ivars( arg.second );
+            //    this->context.handle_pattern( node.span(), arg.first, arg.second );
+            //}
+            this->context.add_ivars( node.m_return );
+            this->context.add_ivars( node.m_yield_ty );
+            this->context.add_ivars( node.m_code->m_res_type );
+
+            // Generator result type
+            this->context.equate_types( node.span(), node.m_res_type, ::HIR::TypeRef::new_generator(&node) );
+
+            this->context.equate_types_coerce( node.span(), node.m_return, node.m_code );
+
+            // TODO: Save/clear/restore loop labels
+            auto _ = this->push_inner_coerce_scoped(true);
+            this->closure_ret_types.push_back( RetTarget(node.m_return, node.m_yield_ty) );
+            node.m_code->visit( *this );
+            this->closure_ret_types.pop_back( );
+        }
+        void visit(::HIR::ExprNode_GeneratorWrapper& node) override
+        {
+            BUG(node.span(), "ExprNode_GeneratorWrapper unexpected at this time");
         }
 
     private:

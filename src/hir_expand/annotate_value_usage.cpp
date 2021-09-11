@@ -101,6 +101,27 @@ namespace {
                 this->visit_node_ptr(v.value);
             }
         }
+        void visit(::HIR::ExprNode_Asm2& node) override
+        {
+            auto _ = this->push_usage( ::HIR::ValueUsage::Move );
+            for(auto& v : node.m_params)
+            {
+                TU_MATCH_HDRA( (v), { )
+                TU_ARMA(Const, e) {
+                    visit_node_ptr(e);
+                    }
+                TU_ARMA(Sym, e) {
+                    }
+                TU_ARMA(RegSingle, e) {
+                    visit_node_ptr(e.val);
+                    }
+                TU_ARMA(Reg, e) {
+                    if(e.val_in)    visit_node_ptr(e.val_in);
+                    if(e.val_out)   visit_node_ptr(e.val_out);
+                    }
+                }
+            }
+        }
         void visit(::HIR::ExprNode_Return& node) override
         {
             auto _ = this->push_usage( ::HIR::ValueUsage::Move );
@@ -471,6 +492,15 @@ namespace {
             auto _ = push_usage( ::HIR::ValueUsage::Move );
             this->visit_node_ptr(node.m_code);
         }
+        void visit(::HIR::ExprNode_Generator& node) override
+        {
+            auto _ = push_usage( ::HIR::ValueUsage::Move );
+            this->visit_node_ptr(node.m_code);
+        }
+        void visit(::HIR::ExprNode_GeneratorWrapper& node) override
+        {
+            BUG(node.span(), "");
+        }
 
     private:
         ::HIR::ValueUsage get_usage_for_pattern_binding(const Span& sp, const ::HIR::PatternBinding& pb, const ::HIR::TypeRef& ty) const
@@ -613,6 +643,10 @@ namespace {
                 if( pe.extra_bind.is_valid() )
                     rv = ::std::max(rv, get_usage_for_pattern_binding(sp, pe.extra_bind, inner_ty));
                 return rv;
+                }
+            
+            TU_ARMA(Or, pe) {
+                TODO(sp, "AVU - Split patterns");
                 }
             }
             throw "";

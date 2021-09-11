@@ -99,6 +99,7 @@ public:
     ExprPtr(::std::unique_ptr< ::HIR::ExprNode> _);
     ExprPtr(const ExprPtr&) = delete;
     ExprPtr(ExprPtr&&) = default;
+    ExprPtr& operator=(ExprPtr&&) = default;
 
     /// Take the innards and turn into a unique_ptr - used so typecheck can edit the root node.
     ::std::unique_ptr< ::HIR::ExprNode> into_unique();

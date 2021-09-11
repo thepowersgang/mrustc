@@ -29,7 +29,7 @@ namespace HIR {
 
     ::std::ostream& operator<<(::std::ostream& os, const ::HIR::GenericParams::PrintArgs& x)
     {
-        if( x.gp.m_lifetimes.size() > 0 || x.gp.m_types.size() > 0 )
+        if( x.gp.m_lifetimes.size() > 0 || x.gp.m_types.size() > 0 || x.gp.m_values.size() > 0 )
         {
             os << "<";
             for(const auto& lft : x.gp.m_lifetimes) {

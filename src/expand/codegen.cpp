@@ -9,32 +9,55 @@
 #include <ast/generics.hpp>
 #include <ast/ast.hpp>
 
+namespace {
+    class Common_Function:
+        public ExpandDecorator
+    {
+    public:
+        virtual void handle(AST::Function& fcn) const = 0;
+
+        AttrStage   stage() const override { return AttrStage::Pre; }
+
+        void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
+            if( i.is_Function() ) {
+                this->handle(i.as_Function());
+            }
+            else {
+                // TODO: Error
+            }
+        }
+        void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, AST::Impl& impl, const RcString& name, slice<const AST::Attribute> attrs, AST::Item&i) const override {
+            if( i.is_Function() ) {
+                this->handle(i.as_Function());
+            }
+            else {
+                // TODO: Error
+            }
+        }
+        void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, const AST::AbsolutePath& path, AST::Trait& trait, slice<const AST::Attribute> attrs, AST::Item&i) const override {
+            if( i.is_Function() ) {
+                this->handle(i.as_Function());
+            }
+            else {
+                // TODO: Error
+            }
+        }
+    };
+}
 
 class CHandler_Inline:
-    public ExpandDecorator
+    public Common_Function
 {
-    AttrStage   stage() const override { return AttrStage::Pre; }
-
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
-        if( i.is_Function() ) {
-        }
-        else {
-            // TODO: Error
-        }
+public:
+    void handle(AST::Function& fcn) const override {
     }
 };
 STATIC_DECORATOR("inline", CHandler_Inline);
 class CHandler_Cold:
-    public ExpandDecorator
+    public Common_Function
 {
-    AttrStage   stage() const override { return AttrStage::Pre; }
-
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
-        if( i.is_Function() ) {
-        }
-        else {
-            // TODO: Error
-        }
+public:
+    void handle(AST::Function& fcn) const override {
     }
 };
 STATIC_DECORATOR("cold", CHandler_Cold);
@@ -57,7 +80,7 @@ class CHandler_RustcNonnullOptimizationGuaranteed:
 
     void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
         // TODO: Types only
-        if( auto* s = i.opt_Struct() ) {
+        if( i.is_Struct() ) {
         }
         else {
         }

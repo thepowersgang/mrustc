@@ -10,86 +10,159 @@
 #include "../ast/ast.hpp"
 #include "../ast/crate.hpp"
 
-
-void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::AbsolutePath& path, const ::std::string& name, AST::eItemType type)
+enum eItemType
 {
-    if(name == "phantom_fn") {
-        // - Just save path
+    ITEM_TRAIT,
+    ITEM_STRUCT,
+    ITEM_ENUM,
+    ITEM_UNION,
+    ITEM_FN,
+    ITEM_EXTERN_FN,
+    ITEM_STATIC,
+    ITEM_TYPE_ALIAS,
+};
+
+struct Handler {
+    typedef void (*cb_t)(const Span& sp, AST::Crate& crate, const std::string&, AST::AbsolutePath);
+    eItemType type;
+    cb_t    cb;
+    Handler(eItemType type, cb_t cb): type(type), cb(cb) {}
+};
+struct StrcmpTy {
+    bool operator()(const char* a, const char* b) const { return std::strcmp(a,b) < 0; }
+};
+static std::map<const char*,Handler,StrcmpTy>   g_handlers;
+
+void handle_save(const Span& sp, AST::Crate& crate, const std::string& name, AST::AbsolutePath path)
+{
+    auto rv = crate.m_lang_items.insert( ::std::make_pair(name, path) );
+    if( !rv.second ) {
+        const auto& other_path = rv.first->second;
+        if( path != other_path ) {
+            // HACK: Anon modules get visited twice, so can lead to duplicate annotations
+            ERROR(sp, E0000, "Duplicate definition of language item '" << name << "' - " << other_path << " and " << path);
+        }
     }
-    else if( name == "send" ) {
-        // Don't care, Send is fully library in mrustc
-        // - Needed for `static`
+    else {
+        DEBUG("Bind '"<<name<<"' to " << path);
     }
-    else if( name == "sync" ) {
-        // Don't care, Sync is fully library in mrustc
-        // - Needed for `static`
+}
+void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::AbsolutePath& path, const ::std::string& name, eItemType type)
+{
+    // NOTE: MSVC has a limit to the number of if-else chains
+    if(g_handlers.empty())
+    {
+        struct H {
+            static void add(const char* n, Handler h) {
+                g_handlers.insert(std::make_pair(n, std::move(h)));
+            }
+        };
+        H::add("phantom_fn", Handler(ITEM_FN, handle_save));
+        H::add("send" , Handler(ITEM_TRAIT, handle_save));
+        H::add("sync" , Handler(ITEM_TRAIT, handle_save));
+        H::add("sized", Handler(ITEM_TRAIT, handle_save));
+        H::add("copy" , Handler(ITEM_TRAIT, handle_save));
+        if( TARGETVER_LEAST_1_29 )
+        {
+            H::add("clone", Handler(ITEM_TRAIT, handle_save));
+        }
+        // ops traits
+        H::add("drop", Handler(ITEM_TRAIT, handle_save));
+        H::add("add", Handler(ITEM_TRAIT, handle_save));
+        H::add("sub", Handler(ITEM_TRAIT, handle_save));
+        H::add("mul", Handler(ITEM_TRAIT, handle_save));
+        H::add("div", Handler(ITEM_TRAIT, handle_save));
+        H::add("rem", Handler(ITEM_TRAIT, handle_save));
+
+        H::add("neg", Handler(ITEM_TRAIT, handle_save));
+        H::add("not", Handler(ITEM_TRAIT, handle_save));
+
+        H::add("bitand", Handler(ITEM_TRAIT, handle_save));
+        H::add("bitor" , Handler(ITEM_TRAIT, handle_save));
+        H::add("bitxor", Handler(ITEM_TRAIT, handle_save));
+        H::add("shl", Handler(ITEM_TRAIT, handle_save));
+        H::add("shr", Handler(ITEM_TRAIT, handle_save));
+
+        H::add("add_assign", Handler(ITEM_TRAIT, handle_save));
+        H::add("sub_assign", Handler(ITEM_TRAIT, handle_save));
+        H::add("div_assign", Handler(ITEM_TRAIT, handle_save));
+        H::add("rem_assign", Handler(ITEM_TRAIT, handle_save));
+        H::add("mul_assign", Handler(ITEM_TRAIT, handle_save));
+        H::add("bitand_assign", Handler(ITEM_TRAIT, handle_save));
+        H::add("bitor_assign", Handler(ITEM_TRAIT, handle_save));
+        H::add("bitxor_assign", Handler(ITEM_TRAIT, handle_save));
+        H::add("shl_assign", Handler(ITEM_TRAIT, handle_save));
+        H::add("shr_assign", Handler(ITEM_TRAIT, handle_save));
+
+        H::add("index", Handler(ITEM_TRAIT, handle_save));
+        H::add("deref", Handler(ITEM_TRAIT, handle_save));
+        H::add("index_mut", Handler(ITEM_TRAIT, handle_save));
+        H::add("deref_mut", Handler(ITEM_TRAIT, handle_save));
+        H::add("fn"     , Handler(ITEM_TRAIT, handle_save));
+        H::add("fn_mut" , Handler(ITEM_TRAIT, handle_save));
+        H::add("fn_once", Handler(ITEM_TRAIT, handle_save));
+
+        H::add("eq" , Handler(ITEM_TRAIT, handle_save));
+        H::add("ord", Handler(ITEM_TRAIT, handle_save));	// In 1.29 this is Ord, before it was PartialOrd
+        if( TARGETVER_LEAST_1_29 )
+            H::add("partial_ord", Handler(ITEM_TRAIT, handle_save));    // New name for v1.29
+
+        H::add("unsize"        , Handler(ITEM_TRAIT, handle_save));
+        H::add("coerce_unsized", Handler(ITEM_TRAIT, handle_save));
+        H::add("freeze", Handler(ITEM_TRAIT, handle_save));    // TODO: What version?
+
+        H::add("iterator", Handler(ITEM_TRAIT, handle_save));  /* mrustc just desugars? */
+        H::add("debug_trait", Handler(ITEM_TRAIT, handle_save));   /* TODO: Poke derive() with this */
+
+        if( TARGETVER_LEAST_1_29 )
+            H::add("termination", Handler(ITEM_TRAIT, handle_save));   // 1.29 - trait used for non-() main
+
+        if(TARGETVER_LEAST_1_54)
+        {
+            H::add("pointee_trait", Handler(ITEM_TRAIT, handle_save));  // 1.54 - pointer metadata trait
+            H::add("dyn_metadata", Handler(ITEM_STRUCT, handle_save));  // 1.54 - `dyn Trait` metadata structure
+            H::add("structural_peq", Handler(ITEM_TRAIT, handle_save)); // 1.54 - Structural equality trait (partial)
+            H::add("structural_teq", Handler(ITEM_TRAIT, handle_save)); // 1.54 - Structural equality trait (total)
+            H::add("discriminant_kind", Handler(ITEM_TRAIT, handle_save));  // 1.54 - trait: used for the `discriminant_kind` intrinsic
+        }
+
+
+        H::add("non_zero", Handler(ITEM_STRUCT, handle_save));
+        H::add("phantom_data", Handler(ITEM_STRUCT, handle_save));
+
+        if(TARGETVER_LEAST_1_54)
+        {
+            H::add("RangeFull", Handler(ITEM_STRUCT, [](const auto& sp, auto& crate, const auto& , auto p){ handle_save(sp, crate, "range_full", p); }));
+            H::add("Range"    , Handler(ITEM_STRUCT, [](const auto& sp, auto& crate, const auto& , auto p){ handle_save(sp, crate, "range"     , p); }));
+            H::add("RangeFrom", Handler(ITEM_STRUCT, [](const auto& sp, auto& crate, const auto& , auto p){ handle_save(sp, crate, "range_from", p); }));
+            H::add("RangeTo"  , Handler(ITEM_STRUCT, [](const auto& sp, auto& crate, const auto& , auto p){ handle_save(sp, crate, "range_to"  , p); }));
+            H::add("RangeInclusive"  , Handler(ITEM_STRUCT, [](const auto& sp, auto& crate, const auto& , auto p){ handle_save(sp, crate, "range_inclusive"   , p); }));
+            H::add("RangeToInclusive", Handler(ITEM_STRUCT, [](const auto& sp, auto& crate, const auto& , auto p){ handle_save(sp, crate, "range_to_inclusive", p); }));
+        }
+        else
+        {
+            H::add("range_full", Handler(ITEM_STRUCT, handle_save));
+            H::add("range"     , Handler(ITEM_STRUCT, handle_save));
+            H::add("range_from", Handler(ITEM_STRUCT, handle_save));
+            H::add("range_to"  , Handler(ITEM_STRUCT, handle_save));
+        }
     }
-    else if( name == "sized" ) {
-        DEBUG("Bind 'sized' to " << path);
+    const char* real_name = nullptr;    // For when lang items have their name changed
+    auto it = g_handlers.find(name.c_str());
+    if( it != g_handlers.end() )
+    {
+        if(type != it->second.type) {
+            ERROR(sp, E0000, "Language item '" << name << "' " << path << " - on incorrect item type " << type << " != " << it->second.type);
+        }
+        it->second.cb(sp, crate, name, path);
+        return ;
     }
-    else if( name == "copy" ) {
-        DEBUG("Bind 'copy' to " << path);
-    }
-    else if( TARGETVER_LEAST_1_29 && name == "clone" ) {}   // - Trait
-    // ops traits
-    else if( name == "drop" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "add" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "sub" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "mul" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "div" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "rem" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-
-    else if( name == "neg" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "not" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-
-    else if( name == "bitand" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "bitor"  ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "bitxor" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "shl" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "shr" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-
-    else if( name == "add_assign" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "sub_assign" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "div_assign" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "rem_assign" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "mul_assign" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "bitand_assign" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "bitor_assign" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "bitxor_assign" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "shl_assign" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "shr_assign" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-
-    else if( name == "index" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "deref" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "index_mut" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "deref_mut" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "fn"      ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "fn_mut"  ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "fn_once" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-
-    else if( name == "eq"  ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "ord" ) { DEBUG("Bind '"<<name<<"' to " << path); }	// In 1.29 this is Ord, before it was PartialOrd
-    else if( TARGETVER_LEAST_1_29 && name == "partial_ord" ) { DEBUG("Bind '"<<name<<"' to " << path); }    // New name for v1.29
-    else if( name == "unsize" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "coerce_unsized" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "freeze" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-
-    else if( name == "iterator" ) { /* mrustc just desugars? */ }
-
-    else if( name == "debug_trait" ) { /* TODO: Poke derive() with this */ }
-
-    else if( TARGETVER_LEAST_1_29 && name == "termination" ) { }    // 1.29 - trait used for non-() main
 
     // Structs
-    else if( name == "non_zero" ) { }
-    else if( name == "phantom_data" ) { }
-    else if( name == "range_full" ) { }
-    else if( name == "range" ) { }
-    else if( name == "range_from" ) { }
-    else if( name == "range_to" ) { }
     else if( name == "unsafe_cell" ) { }
     else if( TARGETVER_LEAST_1_29 && name == "alloc_layout") { }
     else if( TARGETVER_LEAST_1_29 && name == "panic_info" ) {}    // Struct
+    else if( TARGETVER_LEAST_1_54 && name == "panic_location" ) {}    // Struct
     else if( TARGETVER_LEAST_1_29 && name == "manually_drop" ) {}    // Struct
 
     else if( TARGETVER_LEAST_1_39 && name == "arc" ) {}    // Struct
@@ -101,6 +174,8 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::AbsolutePath
     else if( /*TARGETVER_1_39 &&*/ name == "unpin" ) {}    // Trait
     else if( /*TARGETVER_1_39 &&*/ name == "pin" ) {}    // Struct
     else if( /*TARGETVER_1_39 &&*/ name == "future_trait" ) {}    // Trait
+    else if( TARGETVER_LEAST_1_54 && name == "from_generator" ) {}    // Function
+    else if( TARGETVER_LEAST_1_54 && name == "get_context" ) {}    // Function
 
     // Variable argument lists
     else if( /*TARGETVER_1_39 &&*/ name == "va_list" ) {}    // Struct
@@ -112,6 +187,9 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::AbsolutePath
     // Generators
     else if( TARGETVER_LEAST_1_29 && name == "generator" ) {}   // - Trait
     else if( TARGETVER_LEAST_1_29 && name == "generator_state" ) {}   // - State enum
+
+    // Try
+    else if( TARGETVER_LEAST_1_54 && name == "Try" ) { real_name = "try"; }
 
     // Statics
     else if( name == "msvc_try_filter" ) { }
@@ -130,6 +208,7 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::AbsolutePath
     else if( name == "drop_in_place" ) { }
     else if( name == "align_offset" ) { }
     else if( TARGETVER_LEAST_1_39 && name == "begin_panic" ) {}    // Function
+    else if( TARGETVER_LEAST_1_54 && name == "panic_str") {}
     // - builtin `box` support
     else if( name == "exchange_malloc" ) { }
     else if( name == "exchange_free" ) { }
@@ -170,13 +249,13 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::AbsolutePath
         ERROR(sp, E0000, "Unknown language item '" << name << "'");
     }
 
-    if( type == AST::ITEM_EXTERN_FN )
+    if( type == ITEM_EXTERN_FN )
     {
         // TODO: This should force a specific link name instead
         return ;
     }
 
-    auto rv = crate.m_lang_items.insert( ::std::make_pair(name, path) );
+    auto rv = crate.m_lang_items.insert( ::std::make_pair(real_name == nullptr ? name : real_name, path) );
     if( !rv.second ) {
         const auto& other_path = rv.first->second;
         if( path != other_path ) {
@@ -193,37 +272,49 @@ public:
     AttrStage stage() const override { return AttrStage::Post; }
     void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
-        TU_MATCH_DEF(::AST::Item, (i), (e),
-        (
+        TU_MATCH_HDRA( (i), {)
+        default:
             TODO(sp, "Unknown item type " << i.tag_str() << " with #["<<attr<<"] attached at " << path);
-            ),
-        (None,
+            break;
+        TU_ARMA(None, e) {
             // NOTE: Can happen when #[cfg] removed this
-            ),
-        (Function,
+            }
+        TU_ARMA(Function, e) {
             if( e.code().is_valid() ) {
-                handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_FN);
+                handle_lang_item(sp, crate, path, attr.string(), ITEM_FN);
             }
             else {
-                handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_EXTERN_FN);
+                handle_lang_item(sp, crate, path, attr.string(), ITEM_EXTERN_FN);
             }
-            ),
-        (Static,
-            handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_STATIC);
-            ),
-        (Struct,
-            handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_STRUCT);
-            ),
-        (Enum,
-            handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_ENUM);
-            ),
-        (Union,
-            handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_UNION);
-            ),
-        (Trait,
-            handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_TRAIT);
-            )
-        )
+            }
+        TU_ARMA(Type, e) {
+            handle_lang_item(sp, crate, path, attr.string(), ITEM_TYPE_ALIAS);
+            }
+        TU_ARMA(Static, e) {
+            handle_lang_item(sp, crate, path, attr.string(), ITEM_STATIC);
+            }
+        TU_ARMA(Struct, e) {
+            handle_lang_item(sp, crate, path, attr.string(), ITEM_STRUCT);
+            }
+        TU_ARMA(Enum, e) {
+            handle_lang_item(sp, crate, path, attr.string(), ITEM_ENUM);
+            }
+        TU_ARMA(Union, e) {
+            handle_lang_item(sp, crate, path, attr.string(), ITEM_UNION);
+            }
+        TU_ARMA(Trait, e) {
+            handle_lang_item(sp, crate, path, attr.string(), ITEM_TRAIT);
+            }
+        }
+    }
+    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, const AST::AbsolutePath& path, AST::Trait& trait, slice<const AST::Attribute> attrs, AST::Item&i) const override {
+        // TODO: Trait ATYs (a sub-item of others)
+    }
+    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, ::AST::EnumVariant& ev) const override {
+        // TODO: Enum variants (sub-item of other lang items)
+    }
+    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, AST::Impl& impl, const RcString& name, slice<const AST::Attribute> attrs, AST::Item&i) const override {
+        // TODO: lang items on associated items (e.g. functions - `RangeFull::new`)
     }
 
     void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, const AST::Module& mod, AST::ImplDef& impl) const override {
@@ -243,6 +334,9 @@ public:
         else if( name == "usize" ) {}
         else if( name == "const_ptr" ) {}
         else if( name == "mut_ptr" ) {}
+        else if( TARGETVER_LEAST_1_54 && name == "const_slice_ptr" ) {}
+        else if( TARGETVER_LEAST_1_54 && name == "mut_slice_ptr" ) {}
+        else if( TARGETVER_LEAST_1_54 && name == "array" ) {}
         else if( /*TARGETVER_1_39 &&*/ name == "bool" ) {}
         // rustc_unicode
         else if( name == "char" ) {}
@@ -345,7 +439,7 @@ public:
     AttrStage stage() const override { return AttrStage::Post; }
     void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
-        if(const auto* _e = i.opt_Function())
+        if(i.is_Function())
         {
             auto rv = crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-panic_implementation"), path ));
             if( !rv.second )
@@ -378,7 +472,7 @@ public:
     AttrStage stage() const override { return AttrStage::Post; }
     void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
-        if(const auto* _e = i.opt_Function())
+        if(i.is_Function())
         {
             auto rv = crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-alloc_error_handler"), path ));
             if( !rv.second )

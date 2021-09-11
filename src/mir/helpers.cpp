@@ -75,7 +75,7 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_lvalue_type(::HIR::TypeRef& tmp, c
     const ::HIR::TypeRef* rv = nullptr;
     TU_MATCHA( (val.m_root), (e),
     (Return,
-        rv = &m_ret_type;
+        rv = m_monomorphed_rettype ? m_monomorphed_rettype : &m_ret_type;
         ),
     (Argument,
         MIR_ASSERT(*this, e < m_args.size(), "Argument " << val << " out of range (" << m_args.size() << ")");
@@ -83,7 +83,7 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_lvalue_type(::HIR::TypeRef& tmp, c
         ),
     (Local,
         MIR_ASSERT(*this, e < m_fcn.locals.size(), "Local " << val << " out of range (" << m_fcn.locals.size() << ")");
-        rv = &m_fcn.locals.at(e);
+        rv = m_monomorphed_locals ? &m_monomorphed_locals->at(e) : &m_fcn.locals.at(e);
         ),
     (Static,
         rv = &get_static_type(tmp,  e);
@@ -922,6 +922,25 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
                             DEBUG(m_mir_res << "- Assigned (asm!), return");
                             state.finalise(stmt_idx);
                             return ;
+                        }
+                    }
+                    }
+                TU_ARMA(Asm2, se) {
+                    for(const auto& p : se.params)
+                    {
+                        TU_MATCH_HDRA( (p), {)
+                        TU_ARMA(Const, v) {}
+                        TU_ARMA(Sym, v) {}
+                        TU_ARMA(Reg, v) {
+                            if(v.output) {
+                                if(*v.output == m_lv) {
+                                    // Assigned, just apply
+                                    DEBUG(m_mir_res << "- Assigned (asm!), return");
+                                    state.finalise(stmt_idx);
+                                    return ;
+                                }
+                            }
+                            }
                         }
                     }
                     }

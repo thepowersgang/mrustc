@@ -50,7 +50,7 @@ namespace MIR {
             os << *e.p;
             ),
         (Generic,
-            os << e.name << "/*" << e.binding << "*/";
+            os << e;
             ),
         (ItemAddr,
             os << "&" << *e;
@@ -139,6 +139,24 @@ namespace MIR {
     ::std::ostream& operator<<(::std::ostream& os, const LValue& x)
     {
         LValue::CRef(x).fmt(os);
+        return os;
+    }
+    ::std::ostream& operator<<(::std::ostream& os, const LValue::Wrapper& w)
+    {
+        TU_MATCHA( (w), (e),
+        (Field,
+            os << "." << e;
+            ),
+        (Deref,
+            os << "*";
+            ),
+        (Index,
+            os << "[_" << e << "]";
+            ),
+        (Downcast,
+            os << "#" << e;
+            )
+        )
         return os;
     }
 
@@ -538,22 +556,76 @@ namespace MIR {
         )
         return true;
     }
+    bool operator==(const AsmParam& a, const AsmParam& b)
+    {
+        if(a.tag() != b.tag())
+            return false;
+        TU_MATCH_HDRA( (a,b), {)
+        TU_ARMA(Const, ae, be) {
+            return ae == be;
+            }
+        TU_ARMA(Sym, ae, be) {
+            return ae == be;
+            }
+        TU_ARMA(Reg, ae, be) {
+            if(ae.dir != be.dir) return false;
+            if(ae.spec != be.spec)  return false;
+            if( !!ae.input != !!be.input )  return false;
+            if( ae.input && *ae.input != *be.input )    return false;
+            if( !!ae.output != !!be.output )  return false;
+            if( ae.output && *ae.output != *be.output ) return false;
+            }
+        }
+        return true;
+    }
     ::std::ostream& operator<<(::std::ostream& os, const Statement& x)
     {
-        TU_MATCHA( (x), (e),
-        (Assign,
+        TU_MATCH_HDRA( (x), {)
+        TU_ARMA(Assign, e) {
             os << e.dst << " = " << e.src;
-            ),
-        (Asm,
+            }
+        TU_ARMA(Asm, e) {
             os << "(";
             for(const auto& spec : e.outputs)
                 os << "\"" << spec.first << "\" : " << spec.second << ", ";
-            os << ") = asm!(\"" << e.tpl << "\", input=( ";
+            os << ") = llvm_asm!(\"" << e.tpl << "\", input=( ";
             for(const auto& spec : e.inputs)
                 os << "\"" << spec.first << "\" : " << spec.second << ", ";
             os << "), clobbers=[" << e.clobbers << "], flags=[" << e.flags << "])";
-            ),
-        (SetDropFlag,
+            }
+        TU_ARMA(Asm2, e) {
+            os << "asm!(";
+            for(const auto& l : e.lines)
+                l.fmt(os);
+            for(const auto& p : e.params)
+            {
+                os << ", ";
+                TU_MATCH_HDRA( (p), { )
+                TU_ARMA(Const, v) {
+                    os << "const " << v;
+                    }
+                TU_ARMA(Sym, v) {
+                    os << "sym " << v;
+                    }
+                TU_ARMA(Reg, v) {
+                    os << "reg " << v.dir << " " << v.spec;
+                    if(v.input)
+                        os << *v.input;
+                    else
+                        os << "_";
+                    os << " => ";
+                    if(v.output)
+                        os << *v.output;
+                    else
+                        os << "_";
+                    }
+                }
+            }
+            if(e.options.any())
+                e.options.fmt(os);
+            os << ")";
+            }
+        TU_ARMA(SetDropFlag, e) {
             os << "df$" << e.idx << " = ";
             if( e.other == ~0u )
             {
@@ -563,55 +635,61 @@ namespace MIR {
             {
                 os << (e.new_val ? "!" : "") << "df$" << e.other;
             }
-            ),
-        (Drop,
+            }
+        TU_ARMA(Drop, e) {
             os << "drop(" << e.slot;
             if(e.kind == ::MIR::eDropKind::SHALLOW)
                 os << " SHALLOW";
             if(e.flag_idx != ~0u)
                 os << " IF df$" << e.flag_idx;
             os << ")";
-            ),
-        (ScopeEnd,
+            }
+        TU_ARMA(ScopeEnd, e) {
             os << "ScopeEnd(";
             for(auto idx : e.slots)
                 os << "_$" << idx << ",";
             os << ")";
-            )
-        )
+            }
+        }
         return os;
     }
     bool operator==(const Statement& a, const Statement& b) {
         if( a.tag() != b.tag() )
             return false;
         
-        TU_MATCHA( (a,b), (ae,be),
-        (Assign,
+        TU_MATCH_HDRA( (a,b), {)
+        TU_ARMA(Assign, ae,be) {
             return ae.dst == be.dst && ae.src == be.src;
-            ),
-        (Asm,
+            }
+        TU_ARMA(Asm, ae,be) {
             return ae.outputs == be.outputs
                 && ae.inputs == be.inputs
                 && ae.clobbers == be.clobbers
                 && ae.flags == be.flags
                 ;
-            ),
-        (SetDropFlag,
+            }
+        TU_ARMA(Asm2, ae,be) {
+            return ae.lines == be.lines
+                && ae.options == be.options
+                && ae.params == be.params
+                ;
+            }
+        TU_ARMA(SetDropFlag, ae,be) {
             return ae.idx == be.idx
                 && ae.other == be.other
                 && ae.new_val == be.new_val
                 ;
-            ),
-        (Drop,
+            }
+        TU_ARMA(Drop, ae,be) {
             return ae.slot == be.slot
                 && ae.kind == be.kind
                 && ae.flag_idx == be.flag_idx
                 ;
-            ),
-        (ScopeEnd,
+            }
+        TU_ARMA(ScopeEnd, ae,be) {
             return ae.slots == be.slots;
-            )
-        )
+            }
+        }
         throw "";
     }
 }

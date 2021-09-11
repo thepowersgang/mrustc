@@ -273,7 +273,7 @@ namespace {
             {
                 m_os << indent() << "static " << p.get_name() << ": " << item.m_type << " = " << item.m_value_res << ";\n";
             }
-            else if( !item.m_value_res.is_Invalid() )
+            else if( item.m_value_generated )
             {
                 m_os << indent() << "static " << p.get_name() << ": " << item.m_type << " = /*magic*/ " << item.m_value_res << ";\n";
             }
@@ -349,6 +349,11 @@ namespace {
         }
 
         void visit(::HIR::ExprNode_Asm& node) override
+        {
+            m_os << "llvm_asm!(";
+            m_os << ")";
+        }
+        void visit(::HIR::ExprNode_Asm2& node) override
         {
             m_os << "asm!(";
             m_os << ")";
@@ -732,6 +737,38 @@ namespace {
                 }
                 m_os << ")";
             }
+        }
+        void visit(::HIR::ExprNode_Generator& node) override
+        {
+            if( node.m_code ) {
+                m_os << "/*gen*/";
+                if(node.m_is_pinned)
+                    m_os << "static ";
+                if(node.m_is_move)
+                    m_os << " move";
+                m_os << "|";
+                //for(const auto& arg : node.m_args)
+                //    m_os << arg.first << ": " << arg.second << ", ";
+                m_os << "| -> " << node.m_return << " ";
+                this->visit_node_ptr( node.m_code );
+            }
+            else {
+                m_os << node.m_obj_path << "( ";
+                for(/*const*/ auto& cap : node.m_captures) {
+                    this->visit_node_ptr(cap);
+                    m_os << ", ";
+                }
+                m_os << ")";
+            }
+        }
+        void visit(::HIR::ExprNode_GeneratorWrapper& node) override
+        {
+            m_os << "/*gen body*/";
+            m_os << "|";
+            //for(const auto& arg : node.m_args)
+            //    m_os << arg.first << ": " << arg.second << ", ";
+            m_os << "| -> " << node.m_return << " ";
+            this->visit_node_ptr( node.m_code );
         }
 
     private:

@@ -103,7 +103,6 @@ public:
           Allocation* operator->()       { assert(m_ptr); return m_ptr; }
 };
 
-// TODO: Split into RelocationPtr and AllocationHandle
 class RelocationPtr
 {
     void* m_ptr;
@@ -136,7 +135,19 @@ public:
         return *this;
     }
 
+    bool operator==(const RelocationPtr& x) const {
+        return m_ptr == x.m_ptr;
+    }
+    bool operator!=(const RelocationPtr& x) const {
+        return !(*this == x);
+    }
+    bool operator<(const RelocationPtr& x) const {
+        // HACK: Just compare the pointers (won't be predictable... but should be stable)
+        return m_ptr < x.m_ptr;
+    }
+
     size_t get_size() const;
+    size_t get_base() const;
 
     operator bool() const { return m_ptr != 0; }
     bool is_alloc() const {
@@ -167,6 +178,7 @@ public:
         assert(get_ty() == Ty::FfiPointer);
         return *static_cast<const FFIPointer*>(get_ptr());
     }
+
 
     Ty get_ty() const {
         return static_cast<Ty>( reinterpret_cast<uintptr_t>(m_ptr) & 3 );
@@ -209,6 +221,21 @@ struct ValueCommonRead
 
     /// De-reference a pointer (of target type `ty`) at the given offset, and return a reference to it
     ValueRef deref(size_t ofs, const ::HIR::TypeRef& ty);
+
+    bool read_ptr_ofs(size_t ofs, size_t& v, RelocationPtr& reloc) const {
+        reloc = get_relocation(ofs);
+        v = read_usize(ofs);
+        if(reloc)
+        {
+            auto base = reloc.get_base();
+            auto size = reloc.get_size();
+            if(v < base)
+                return false;
+            v -= base;
+            // TODO: Check size?
+        }
+        return true;
+    }
 
     /// Read a pointer that must be FFI with the specified tag (or NULL)
     void* read_pointer_tagged_null(size_t rd_ofs, const char* tag) const;
@@ -258,6 +285,10 @@ struct ValueCommonWrite:
     void write_usize(size_t ofs, uint64_t v);
     void write_isize(size_t ofs, int64_t v) { write_usize(ofs, static_cast<uint64_t>(v)); }
     virtual void write_ptr(size_t ofs, size_t ptr_ofs, RelocationPtr reloc) = 0;
+    void write_ptr_ofs(size_t ofs, size_t ptr_ofs, RelocationPtr reloc) {
+        ptr_ofs += reloc.get_base();
+        write_ptr(ofs, ptr_ofs, std::move(reloc));
+    }
 };
 
 class Allocation:
@@ -281,9 +312,6 @@ public:
 public:
     virtual ~Allocation() {}
     static AllocationHandle new_alloc(size_t size, ::std::string tag);
-
-    // NOTE: This should match the value in the MMIR backend
-    static const size_t PTR_BASE = 0x1000;
 
     const uint8_t* data_ptr() const { return reinterpret_cast<const uint8_t*>(this->m_data.data()); }
           uint8_t* data_ptr()       { return reinterpret_cast<      uint8_t*>(this->m_data.data()); }
@@ -408,6 +436,7 @@ public:
     static Value with_size(size_t size, bool have_allocation);
     static Value new_fnptr(const ::HIR::Path& fn_path);
     static Value new_ffiptr(FFIPointer ffi);
+    static Value new_pointer_ofs(::HIR::TypeRef ty, uint64_t ofs, RelocationPtr r);
     static Value new_pointer(::HIR::TypeRef ty, uint64_t v, RelocationPtr r);
     static Value new_usize(uint64_t v);
     static Value new_isize(int64_t v);

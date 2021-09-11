@@ -168,13 +168,10 @@
             m_out.write_tag(static_cast<int>(as.tag()));
             TU_MATCH_HDRA( (as), { )
             TU_ARMA(Unevaluated, se) {
-                BUG(Span(), "Unepxected ArraySize::Unevaluated - " << as);
+                serialise(se);
                 }
             TU_ARMA(Known, se) {
                 m_out.write_u64c(se);
-                }
-            TU_ARMA(Generic, se) {
-                serialise(se);
                 }
             }
         }
@@ -243,10 +240,11 @@
                 serialise_type(e.m_rettype);
                 serialise_vec(e.m_arg_types);
                 }
-            TU_ARMA(Closure, e) {
-                DEBUG("-- Closure - " << ty);
-                BUG(Span(), "Encountered closure type when serialising - " << ty);
-                }
+                break;
+            case ::HIR::TypeData::TAG_Closure:
+            case ::HIR::TypeData::TAG_Generator:
+                BUG(Span(), "Encountered invalid type when serialising - " << ty);
+                break;
             }
 
             m_types.insert(std::make_pair( ty.clone(), m_types.size() ));
@@ -271,6 +269,7 @@
         void serialise(const ::HIR::GenericPath& path) { serialise_genericpath(path); }
         void serialise_traitpath(const ::HIR::TraitPath& path)
         {
+            auto _ = m_out.open_object("HIR::TraitPath");
             serialise_genericpath(path.m_path);
             // TODO: Lifetimes? (m_hrls)
             serialise_strmap(path.m_type_bounds);
@@ -398,8 +397,8 @@
             for(const auto& ext : crate.m_ext_crates)
             {
                 m_out.write_string(ext.first);
-                //m_out.write_string(ext.second.m_basename);
-                m_out.write_string(ext.second.m_path);
+                m_out.write_string(ext.second.m_basename);
+                //m_out.write_string(ext.second.m_path);
             }
             serialise_vec(crate.m_ext_libs);
             serialise_vec(crate.m_link_paths);
@@ -411,6 +410,7 @@
         void serialise_module(const ::HIR::Module& mod)
         {
             TRACE_FUNCTION;
+            auto _ = m_out.open_object("HIR::Module");
 
             // m_traits doesn't need to be serialised
 
@@ -634,40 +634,41 @@
             }
         }
 
-        void serialise(const ::HIR::Literal& lit)
+        void serialise(const ::std::vector<uint8_t>& e)
         {
-            m_out.write_tag(lit.tag());
-            TU_MATCH_HDRA( (lit), {)
-            TU_ARMA(Invalid,e) {
-                //BUG(Span(), "Literal::Invalid encountered in HIR");
+            m_out.write_count(e.size());
+            m_out.write( e.data(), e.size() );
+        }
+        void serialise(const EncodedLiteral& lit)
+        {
+            serialise(lit.bytes);
+            m_out.write_count(lit.relocations.size());
+            for(const auto& reloc : lit.relocations)
+            {
+                m_out.write_count(reloc.ofs);
+                m_out.write_count(reloc.len);
+                if(reloc.p) {
+                    m_out.write_tag(0);
+                    serialise_path(*reloc.p);
                 }
-            TU_ARMA(Defer, e) {
+                else {
+                    m_out.write_tag(1);
+                    serialise(reloc.bytes);
                 }
-            TU_ARMA(Generic, e) {
+            }
+        }
+        void serialise(const ::HIR::ConstGeneric& v)
+        {
+            m_out.write_tag(v.tag());
+            TU_MATCH_HDRA( (v), {)
+            TU_ARMA(Infer, e) {
+                }
+            TU_ARMA(Unevaluated, e)
                 serialise(e);
-                }
-            TU_ARMA(List, e) {
-                serialise_vec(e);
-                }
-            TU_ARMA(Variant, e) {
-                m_out.write_count(e.idx);
-                serialise(*e.val);
-                }
-            TU_ARMA(Integer, e) {
-                m_out.write_u64(e);
-                }
-            TU_ARMA(Float, e) {
-                m_out.write_double(e);
-                }
-            TU_ARMA(BorrowPath, e) {
-                serialise_path(e);
-                }
-            TU_ARMA(BorrowData, e) {
-                BUG(Span(), "Unexpected attempt to serialise Literal::BorrowData");
-                }
-            TU_ARMA(String, e) {
-                m_out.write_string(e);
-                }
+            TU_ARMA(Generic, e)
+                serialise(e);
+            TU_ARMA(Evaluated, e)
+                serialise(*e);
             }
         }
 
@@ -727,6 +728,10 @@
             (ScopeEnd,
                 m_out.write_tag(4);
                 serialise_vec(e.slots);
+                ),
+            (Asm2,
+                m_out.write_tag(5);
+                TODO(Span(), "Serialise Asm2");
                 )
             )
         }
@@ -970,6 +975,10 @@
             (ExternType,
                 m_out.write_tag(7);
                 serialise(e);
+                ),
+            (TraitAlias,
+                m_out.write_tag(8);
+                serialise(e);
                 )
             )
         }
@@ -1057,7 +1066,12 @@
             serialise_generics(item.m_params);
             serialise(item.m_type);
             serialise(item.m_value);
-            serialise(item.m_value_res);
+            bool write_val = item.m_value_state == ::HIR::Constant::ValueState::Known;
+            m_out.write_bool(write_val);
+            if( write_val )
+            {
+                serialise(item.m_value_res);
+            }
         }
         void serialise(const ::HIR::Static& item)
         {
@@ -1087,8 +1101,14 @@
             serialise_generics(ta.m_params);
             serialise_type(ta.m_type);
         }
+        void serialise(const ::HIR::TraitAlias& ta)
+        {
+            serialise_generics(ta.m_params);
+            serialise_vec(ta.m_traits);
+        }
         void serialise(const ::HIR::Enum& item)
         {
+            auto _ = m_out.open_object("HIR::Enum");
             serialise_generics(item.m_params);
             m_out.write_bool( item.m_is_c_repr );
             m_out.write_tag( static_cast<int>(item.m_tag_repr) );
@@ -1157,6 +1177,7 @@
         void serialise(const ::HIR::Struct& item)
         {
             TRACE_FUNCTION_F("Struct");
+            auto _ = m_out.open_object("HIR::Struct");
 
             serialise_generics(item.m_params);
             m_out.write_tag( static_cast<int>(item.m_repr) );

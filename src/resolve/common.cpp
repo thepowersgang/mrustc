@@ -44,8 +44,6 @@ namespace {
         {
             TRACE_FUNCTION_F(path << " in " << base_path << (ignore_last ? " (ignore last)" : ""));
             const auto& base_nodes = base_path.nodes();
-            int node_offset = 0;
-            const AST::Module*  mod = nullptr;
             TU_MATCH_HDRA( (path.m_class), {)
             TU_ARMA(Invalid, e) {
                 // Should never happen
@@ -270,6 +268,9 @@ namespace {
                         TU_ARMA(Trait, _e) {
                             return ResolveModuleRef();
                             }
+                        TU_ARMA(TraitAlias, _e) {
+                            return ResolveModuleRef();
+                            }
                         TU_ARMA(Type, _e) {
                             return ResolveModuleRef();
                             }
@@ -402,6 +403,7 @@ namespace {
             case AST::Item::TAG_Enum:
             case AST::Item::TAG_Union:
             case AST::Item::TAG_Trait:
+            case AST::Item::TAG_TraitAlias:
                 return ns == ResolveNamespace::Namespace;
             case AST::Item::TAG_Struct:
                 return ns == ResolveNamespace::Namespace || (ns == ResolveNamespace::Value && !i.as_Struct().m_data.is_Struct());
@@ -489,6 +491,9 @@ namespace {
                     switch(ns)
                     {
                     case ResolveNamespace::Macro:
+                        if(const auto* mac = i->data.opt_Macro()) {
+                            return ResolveItemRef_Macro(&**mac);
+                        }
                         DEBUG("- Ignoring macro");
                         break;
                     case ResolveNamespace::Namespace:
@@ -743,12 +748,14 @@ ResolveItemRef_Macro Resolve_Lookup_Macro(const Span& span, const AST::Crate& cr
         auto rv = rs.find_item(*mod_ptr, item_name, ResolveNamespace::Macro, out_path);
         if( rv.is_None() )
             return ResolveItemRef_Macro::make_None({});
+        ASSERT_BUG(span, rv.is_Macro(), rv.tag_str());
         return std::move( rv.as_Macro() );
         }
     TU_ARMA(Hir, mod_ptr) {
         auto rv = rs.find_item_hir(*mod_ptr, item_name, ResolveNamespace::Macro, out_path);
         if( rv.is_None() )
             return ResolveItemRef_Macro::make_None({});
+        ASSERT_BUG(span, rv.is_Macro(), rv.tag_str());
         return std::move( rv.as_Macro() );
         }
     TU_ARMA(ImplicitPrelude, _e)

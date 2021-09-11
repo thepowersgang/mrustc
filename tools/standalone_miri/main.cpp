@@ -5,6 +5,7 @@
  * main.cpp
  * - Program entrypoint
  */
+#define _CRT_SECURE_NO_WARNINGS
 #include <iostream>
 #include "module_tree.hpp"
 #include "value.hpp"
@@ -13,6 +14,7 @@
 #include "debug.hpp"
 #include "miri.hpp"
 #include "../../src/common.hpp"
+#include <target_version.hpp>
 
 struct ProgramOptions
 {
@@ -31,8 +33,27 @@ struct ProgramOptions
     void show_help(const char* prog) const;
 };
 
+TargetVersion	gTargetVersion = TargetVersion::Rustc1_29;
+
 int main(int argc, const char* argv[])
 {
+    if( const auto* a = getenv("MRUSTC_TARGET_VER") )
+    {
+        if( strcmp(a, "1.19") == 0 ) {
+            gTargetVersion = TargetVersion::Rustc1_19;
+        }
+        else if( strcmp(a, "1.29") == 0 ) {
+            gTargetVersion = TargetVersion::Rustc1_29;
+        }
+        else if( strcmp(a, "1.39") == 0 ) {
+            gTargetVersion = TargetVersion::Rustc1_39;
+        }
+        else {
+            std::cerr << "Unknown target version string: '" << a << "'" << std::endl;
+            exit(1);
+        }
+    }
+
     ProgramOptions  opts;
 
     if( opts.parse(argc, argv) )
@@ -75,19 +96,17 @@ int main(int argc, const char* argv[])
 
     // Create argc/argv based on input arguments
     auto argv_alloc = Allocation::new_alloc((1 + opts.args.size()) * POINTER_SIZE, "argv");
-    argv_alloc->write_usize(0 * POINTER_SIZE, Allocation::PTR_BASE);
-    argv_alloc->relocations.push_back({ 0 * POINTER_SIZE, RelocationPtr::new_ffi(FFIPointer::new_const_bytes("argv0", opts.infile.c_str(), opts.infile.size() + 1)) });
+    argv_alloc->write_ptr_ofs( 0 * POINTER_SIZE, 0, RelocationPtr::new_ffi(FFIPointer::new_const_bytes("argv0", opts.infile.c_str(), opts.infile.size() + 1)) );
     for(size_t i = 0; i < opts.args.size(); i ++)
     {
-        argv_alloc->write_usize((1 + i) * POINTER_SIZE, Allocation::PTR_BASE);
-        argv_alloc->relocations.push_back({ (1 + i) * POINTER_SIZE, RelocationPtr::new_ffi(FFIPointer::new_const_bytes("argv", opts.args[i], ::std::strlen(opts.args[i]) + 1)) });
+        argv_alloc->write_ptr_ofs( (1 + i) * POINTER_SIZE, 0, RelocationPtr::new_ffi(FFIPointer::new_const_bytes("argv", opts.args[i], ::std::strlen(opts.args[i]) + 1)) );
     }
     LOG_DEBUG("argv_alloc = " << *argv_alloc);
 
     // Construct argc/argv values
     auto val_argc = Value::new_isize(1 + opts.args.size());
     auto argv_ty = ::HIR::TypeRef(RawType::I8).wrap(TypeWrapper::Ty::Pointer, 0 ).wrap(TypeWrapper::Ty::Pointer, 0);
-    auto val_argv = Value::new_pointer(argv_ty, Allocation::PTR_BASE, RelocationPtr::new_alloc(argv_alloc));
+    auto val_argv = Value::new_pointer_ofs(argv_ty, 0, RelocationPtr::new_alloc(argv_alloc));
 
     // Catch various exceptions from the interpreter
     try

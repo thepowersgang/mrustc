@@ -7,6 +7,7 @@
  */
 #include "common.hpp"
 #include <hir/path.hpp>
+#include "trans/target.hpp"
 
 
 template<typename I>
@@ -128,6 +129,9 @@ struct TyVisitor
                     return true;
             }
             return visit_type(e.m_rettype);
+            }
+        TU_ARMA(Generator, e) {
+            // Visits?
             }
         }
         return false;
@@ -272,20 +276,22 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
         }
     TU_ARMA(Array, e) {
         HIR::ArraySize  sz;
-        if( e.size.is_Generic() ) {
-            auto sz_val = this->get_value(sp, e.size.as_Generic());
-            TU_MATCH_HDRA( (sz_val), {)
-            default:
-                BUG(sp, "Unexpected value type - " << sz_val << " in replacement for " << e.size);
-            //TU_ARMA(Invalid, ve) {
-            //    sz = HIR::ArraySize::make_Unevaluated({});
-            //    }
-            TU_ARMA(Generic, ve) {
-                sz = ve;
-                }
-            TU_ARMA(Integer, ve) {
-                sz = ve;
-                }
+        if( auto* se = e.size.opt_Unevaluated() ) {
+            if( se->is_Generic() ) {
+                sz = this->get_value(sp, se->as_Generic());
+                se = sz.opt_Unevaluated();
+                assert(se);
+            }
+            if(se->is_Unevaluated()) {
+                // TODO: Evaluate
+                //TODO(sp, "Evaluate unevaluated generic for array size - " << *se);
+                sz = se->clone();
+            }
+            else if( se->is_Evaluated() ) {
+                sz = se->as_Evaluated()->read_usize(0);
+            }
+            else {
+                sz = se->clone();
             }
         }
         else {
@@ -328,6 +334,9 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
         for(const auto& arg : e.m_arg_types)
             oe.m_arg_types.push_back( this->monomorph_type(sp, arg, allow_infer) );
         return ::HIR::TypeRef( mv$(oe) );
+        }
+    TU_ARMA(Generator, e) {
+        TODO(sp, "Monomorphising a generator type?");
         }
     }
     throw "";
@@ -583,6 +592,9 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
             oe.m_arg_types.push_back( clone_ty_with(sp, a, callback) );
         rv = ::HIR::TypeRef( mv$(oe) );
         }
+    TU_ARMA(Generator, e) {
+        TODO(sp, "Cloning a generator type?");
+        }
     }
     return rv;
 }
@@ -632,7 +644,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
         }
     }
 }
-::HIR::Literal MonomorphiserPP::get_value(const Span& sp, const ::HIR::GenericRef& val) const /*override*/
+::HIR::ConstGeneric MonomorphiserPP::get_value(const Span& sp, const ::HIR::GenericRef& val) const /*override*/
 {
     switch(val.group())
     {

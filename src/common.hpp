@@ -420,6 +420,7 @@ public:
         ptr(ptr)
     {}
     ~NullOnDrop() {
+        DEBUG("NULL " << &ptr);
         ptr = nullptr;
     }
 };

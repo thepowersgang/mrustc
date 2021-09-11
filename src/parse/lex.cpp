@@ -1232,6 +1232,7 @@ Token Lex_FindReservedWord(const ::std::string& s, AST::Edition edition)
         RWORDS = RWORDS_2015;
         break;
     case AST::Edition::Rust2018:
+    case AST::Edition::Rust2021:
         len = LEN(RWORDS_2018);
         RWORDS = RWORDS_2018;
         break;

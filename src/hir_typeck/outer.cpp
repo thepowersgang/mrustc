@@ -52,6 +52,9 @@ namespace {
             (TypeAlias,
                 BUG(sp, "Type path pointed to type alias - " << path);
                 ),
+            (TraitAlias,
+                BUG(sp, "Type path pointed to trait alias - " << path);
+                ),
             (ExternType,
                 static ::HIR::GenericParams empty_params;
                 return empty_params;
@@ -198,6 +201,9 @@ namespace {
                 ),
             (Closure,
                 TODO(sp, "update_self_type - Closure");
+                ),
+            (Generator,
+                TODO(sp, "update_self_type - Generator?");
                 )
             )
         }
@@ -324,7 +330,7 @@ namespace {
                                 e2.impl_params.m_types.push_back( ::HIR::TypeRef(ty.m_name, &ty - &m_resolve.m_impl_generics->m_types.front()) );
                             }
                             for(const auto& c : m_resolve.m_impl_generics->m_values) {
-                                e2.impl_params.m_values.push_back( ::HIR::Literal( ::HIR::GenericRef(c.m_name, &c - &m_resolve.m_impl_generics->m_values.front()) ) );
+                                e2.impl_params.m_values.push_back( ::HIR::GenericRef(c.m_name, &c - &m_resolve.m_impl_generics->m_values.front()) );
                             }
                             }
                         TU_ARMA(UfcsKnown, e2) {
@@ -741,11 +747,13 @@ namespace {
             // - Done first so the path in return-position `impl Trait` is valid
             for(auto& arg : item.m_args)
             {
+                DEBUG("ARG " << arg);
                 visit_type(arg.second);
             }
             // Visit return type (populates path for `impl Trait` in return position
             m_fcn_path = &p;
             m_fcn_erased_count = 0;
+            DEBUG("RET " << item.m_return);
             visit_type(item.m_return);
             m_fcn_path = nullptr;
             m_fcn_ptr = nullptr;

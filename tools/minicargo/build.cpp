@@ -805,6 +805,8 @@ namespace {
 
 bool Builder::build_target(const PackageManifest& manifest, const PackageTarget& target, bool is_for_host, size_t index) const
 {
+    const bool is_rustc = (m_compiler_path.basename() == "rustc" || m_compiler_path.basename() == "rustc.exe");
+
     const char* crate_type;
     ::std::string   crate_suffix;
     auto outfile = this->get_crate_path(manifest, target, is_for_host,  &crate_type, &crate_suffix);
@@ -886,9 +888,22 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     args.push_back("-o"); args.push_back(outfile);
     args.push_back("--crate-name"); args.push_back(target.m_name.c_str());
     args.push_back("--crate-type"); args.push_back(crate_type);
-    args.push_back("-C"); args.push_back(format("emit-depfile=",depfile));
+    if( !is_rustc ) {
+        args.push_back("-C"); args.push_back(format("emit-depfile=",depfile));
+    }
+    else {
+        args.push_back("--emit"); args.push_back("link,dep-info");
+    }
     if( !crate_suffix.empty() ) {
-        args.push_back("--crate-tag"); args.push_back(crate_suffix.c_str() + 1);
+        if( !is_rustc ) {
+            args.push_back("--crate-tag"); args.push_back(crate_suffix.c_str() + 1);
+        }
+        else {
+            args.push_back("-C"); args.push_back(format("metadata=",crate_suffix.c_str() + 1));
+            if( outfile.str().find(crate_suffix) != std::string::npos ) {
+                args.push_back("-C"); args.push_back(format("extra-filename=",crate_suffix.c_str()));
+            }
+        }
     }
     if( true /*this->enable_debug*/ ) {
         args.push_back("-g");
@@ -936,7 +951,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         args.push_back(flag.c_str());
     }
     for(const auto& feat : manifest.active_features()) {
-        args.push_back("--cfg"); args.push_back(::format("feature=", feat));
+        args.push_back("--cfg"); args.push_back(::format("feature=\"", feat, "\""));
     }
     // If not building the package's library, but the package has a library
     if( target.m_type != PackageTarget::Type::Lib && manifest.has_library() )
@@ -1281,6 +1296,16 @@ const helpers::path& get_mrustc_path()
 
 bool spawn_process(const char* exe_name, const StringList& args, const StringListKV& env, const ::helpers::path& logfile, const ::helpers::path& working_directory/*={}*/)
 {
+    if( getenv("MINICARGO_DUMPENV") )
+    {
+        ::std::stringstream environ_str;
+        for(auto kv : env)
+        {
+            environ_str << kv.first << "=" << kv.second << ' ';
+        }
+        std::cout << environ_str.str() << std::endl;
+    }
+
 #ifdef _WIN32
     ::std::stringstream cmdline;
     cmdline << exe_name;

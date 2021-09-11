@@ -76,7 +76,7 @@ struct ImplRef
         }
 
         ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& ty) const override;
-        ::HIR::Literal get_value(const Span& sp, const ::HIR::GenericRef& val) const override;
+        ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& val) const override;
     };
     Monomorph get_cb_monomorph_traitimpl(const Span& sp) const;
 

@@ -21,6 +21,7 @@ const TargetArch ARCH_X86_64 = {
     64, false,
     TargetArch::Atomics(/*atomic(u8)=*/true, /*atomic(u16)=*/true, /*atomic(u32)=*/true, true,  true),
     TargetArch::Alignments(2, 4, 8, 16, 4, 8, 8)
+    //TargetArch::Alignments(2, 4, 8, 8, 4, 8, 8) // TODO: Alignment of u128 is 8 with rustc, but gcc uses 16
     };
 const TargetArch ARCH_X86 = {
     "x86",
@@ -381,7 +382,7 @@ namespace
         else if(target_name == "x86_64-linux-gnu")
         {
             return TargetSpec {
-                "unix", "linux", "gnu", {CodegenMode::Gnu11, false, "x86_64-linux-gnu", BACKEND_C_OPTS_GNU},
+                "unix", "linux", "gnu", {CodegenMode::Gnu11, true /*false*/, "x86_64-linux-gnu", BACKEND_C_OPTS_GNU},
                 ARCH_X86_64
                 };
         }
@@ -606,20 +607,22 @@ void Target_SetCfg(const ::std::string& target_name)
     Cfg_SetValue("target_pointer_width", FMT(g_target.m_arch.m_pointer_bits));
     Cfg_SetValue("target_endian", g_target.m_arch.m_big_endian ? "big" : "little");
     Cfg_SetValue("target_arch", g_target.m_arch.m_name);
-    if(g_target.m_arch.m_atomics.u8)    Cfg_SetValue("target_has_atomic", "8");
-    if(g_target.m_arch.m_atomics.u16)   Cfg_SetValue("target_has_atomic", "16");
-    if(g_target.m_arch.m_atomics.u32)   Cfg_SetValue("target_has_atomic", "32");
-    if(g_target.m_arch.m_atomics.u64)   Cfg_SetValue("target_has_atomic", "64");
-    if(g_target.m_arch.m_atomics.ptr)   Cfg_SetValue("target_has_atomic", "ptr");
-    if(g_target.m_arch.m_atomics.ptr)   Cfg_SetValue("target_has_atomic", "cas");   // TODO: Atomic compare-and-set option
+    if(g_target.m_arch.m_atomics.u8)    { Cfg_SetValue("target_has_atomic", "8"  ); Cfg_SetValue("target_has_atomic_load_store", "8"); }
+    if(g_target.m_arch.m_atomics.u16)   { Cfg_SetValue("target_has_atomic", "16" ); Cfg_SetValue("target_has_atomic_load_store", "16"); }
+    if(g_target.m_arch.m_atomics.u32)   { Cfg_SetValue("target_has_atomic", "32" ); Cfg_SetValue("target_has_atomic_load_store", "32"); }
+    if(g_target.m_arch.m_atomics.u64)   { Cfg_SetValue("target_has_atomic", "64" ); Cfg_SetValue("target_has_atomic_load_store", "64"); }
+    if(g_target.m_arch.m_atomics.ptr)   { Cfg_SetValue("target_has_atomic", "ptr"); Cfg_SetValue("target_has_atomic_load_store", "ptr"); }
+    // TODO: Atomic compare-and-set option
+    if(g_target.m_arch.m_atomics.ptr)   { Cfg_SetValue("target_has_atomic", "cas");  }
     Cfg_SetValueCb("target_feature", [](const ::std::string& s) {
+        //if(g_target.m_arch.m_name == "x86_64" && s == "sse2") return true;    // 1.39 ppv-lite86 requires sse2 (x86_64 always has it)
         return false;
         });
 }
 
 bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty, size_t& out_size, size_t& out_align)
 {
-    TRACE_FUNCTION_FR(ty, "size=" << out_size << ", align=" << out_align);
+    //TRACE_FUNCTION_FR(ty, "size=" << out_size << ", align=" << out_align);
     TU_MATCH_HDRA( (ty.data()), {)
     TU_ARMA(Infer, te) {
         BUG(sp, "sizeof on _ type");
@@ -722,6 +725,10 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve,
             return false;
         if( out_size == SIZE_MAX )
             BUG(sp, "Unsized type in array - " << ty);
+        if( !te.size.is_Known() ) {
+            DEBUG("Size unknown - " << ty);
+            return false;
+        }
         if( te.size.as_Known() == 0 || out_size == 0 )
         {
             out_size = 0;
@@ -799,6 +806,9 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve,
         }
     TU_ARMA(Closure, te) {
         BUG(sp, "Encountered closure type at trans stage - " << ty);
+        }
+    TU_ARMA(Generator, te) {
+        BUG(sp, "Encountered generator type at trans stage - " << ty);
         }
     }
     return false;
@@ -977,6 +987,7 @@ namespace {
             if( !struct_enumerate_fields(sp, resolve, ty, ents) )
                 return nullptr;
 
+            sorting = StructSorting::None;  // Defensive default for if repr is invalid
             switch(str.m_repr)
             {
             case ::HIR::Struct::Repr::Packed:
@@ -1252,6 +1263,7 @@ namespace {
     }
     ::std::unique_ptr<TypeRepr> make_type_repr_enum(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty)
     {
+        TRACE_FUNCTION_F(ty);
         const auto& te = ty.data().as_Path();
         const auto& enm = *te.binding.as_Enum();
 
@@ -1329,6 +1341,7 @@ namespace {
                 //rv.variants = TypeRepr::VariantMode::make_None({});
             }
             else {
+                TRACE_FUNCTION_F("repr(Rust)");
                 // repr(Rust) - allows interesting optimisations
                 struct Variant {
                     ::HIR::TypeRef  type;
@@ -1339,6 +1352,7 @@ namespace {
                 for(const auto& var : e)
                 {
                     variants.push_back({ monomorph(var.type), {} });
+                    TRACE_FUNCTION_F("");
                     if( var.type == ::HIR::TypeRef::new_unit() ) {
                         continue ;
                     }
@@ -1441,12 +1455,12 @@ namespace {
                                     case 8: max_var = 0xFFFFFFFF;  break;   // Just assume 2^32 here
                                     }
 
-                                    DEBUG("Niche optimisation (trailing): offset=" << offset << " path=" << nz_path);
                                     if( offset <= max_var && offset + e.size() <= max_var )
                                     {
                                         nz_path.sub_fields.push_back(i);
                                         nz_path.index = biggest_var;
                                         ::std::reverse(nz_path.sub_fields.begin(), nz_path.sub_fields.end());
+                                        DEBUG("Niche optimisation (trailing): offset=" << offset << " path=" << nz_path);
 
                                         assert(rv.variants.is_None());
                                         rv.variants = TypeRepr::VariantMode::make_Linear({ std::move(nz_path), offset, e.size() });
@@ -1454,7 +1468,11 @@ namespace {
                                     }
                                     else
                                     {
-                                        DEBUG("Out of space in this niche: " << (offset+e.size()) << " > " << max_var);
+                                        if(debug_enabled()) {
+                                            nz_path.sub_fields.push_back(i);
+                                            nz_path.index = biggest_var;
+                                        }
+                                        DEBUG("Out of space in this niche: " << (offset+e.size()) << " > " << max_var << " (path=" << nz_path << ")");
                                     }
                                 }
 
@@ -1857,3 +1875,23 @@ const ::HIR::TypeRef& Target_GetInnerType(const Span& sp, const StaticTraitResol
     ASSERT_BUG(sp, inner_repr, "No inner repr for " << ty);
     return Target_GetInnerType(sp, resolve, *inner_repr, sub_fields[ofs], sub_fields, ofs+1);
 }
+
+size_t TypeRepr::get_offset(const Span& sp, const StaticTraitResolve& resolve, const TypeRepr::FieldPath& path) const
+{
+    const auto* r = this;
+    assert(path.index < r->fields.size());
+    size_t ofs = r->fields[path.index].offset;
+
+    const auto* ty = &r->fields[path.index].ty;
+    for(const auto& f : path.sub_fields)
+    {
+        r = Target_GetTypeRepr(sp, resolve, *ty);
+        assert(r);  // We have an outer repr, so inner must exist
+        assert(f < r->fields.size());
+        ofs += r->fields[f].offset;
+        ty = &r->fields[f].ty;
+    }
+
+    return ofs;
+}
+

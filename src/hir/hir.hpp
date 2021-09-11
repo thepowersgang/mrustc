@@ -26,6 +26,7 @@
 #include <hir/expr_ptr.hpp>
 #include <hir/generic_params.hpp>
 #include <hir/crate_ptr.hpp>
+#include <hir/encoded_literal.hpp>
 
 #define ABI_RUST    "Rust"
 #define CRATE_BUILTINS  "#builtins" // used for macro re-exports of builtins
@@ -115,7 +116,8 @@ public:
 
     ExprPtr m_value;
 
-    Literal   m_value_res;
+    EncodedLiteral  m_value_res;
+    bool    m_value_generated = false;
     bool    m_save_literal = false;
     bool    m_no_emit_value = false;
 
@@ -135,10 +137,25 @@ public:
 
     TypeRef m_type;
     ExprPtr m_value;
-    Literal   m_value_res;
+
+    EncodedLiteral  m_value_res;
+    enum class ValueState {
+        Unknown,
+        Generic,
+        Known
+    } m_value_state = ValueState::Unknown;
 
     // A cache of monomorphised versions when the `const` depends on generics for its value
-    mutable ::std::map< ::HIR::Path, Literal>   m_monomorph_cache;
+    // TODO: Wait, how?
+    mutable ::std::map< ::HIR::Path, EncodedLiteral>   m_monomorph_cache;
+
+    Constant() {}
+    Constant(GenericParams params, TypeRef type, ExprPtr value)
+        :m_params(::std::move(params))
+        ,m_type(::std::move(type))
+        ,m_value(::std::move(value))
+    {
+    }
 };
 class Function
 {
@@ -157,13 +174,13 @@ public:
 
     typedef ::std::vector< ::std::pair< ::HIR::Pattern, ::HIR::TypeRef> >   args_t;
 
-    bool    m_save_code;    // Filled by enumerate, defaults to false
+    bool    m_save_code = false;    // Filled by enumerate, defaults to false
     Linkage m_linkage;
 
-    Receiver    m_receiver;
-    ::std::string   m_abi;
-    bool    m_unsafe;
-    bool    m_const;
+    Receiver    m_receiver = Receiver::Free;
+    ::std::string   m_abi = ABI_RUST;
+    bool    m_unsafe = false;
+    bool    m_const = false;
 
     GenericParams   m_params;
 
@@ -172,6 +189,19 @@ public:
     TypeRef m_return;
 
     ExprPtr m_code;
+
+    Function()
+    {
+    }
+    Function(Receiver receiver, GenericParams params, args_t args, TypeRef ret_ty, ExprPtr code)
+        : m_receiver(receiver)
+        , m_params(std::move(params))
+        , m_args(std::move(args))
+        , m_variadic(false)
+        , m_return(std::move(ret_ty))
+        , m_code(std::move(code))
+    {
+    }
 
     //::HIR::TypeRef make_ty(const Span& sp, const ::HIR::PathParams& params) const;
 };
@@ -183,6 +213,11 @@ struct TypeAlias
 {
     GenericParams   m_params;
     ::HIR::TypeRef  m_type;
+};
+struct TraitAlias
+{
+    GenericParams   m_params;
+    ::std::vector< ::HIR::TraitPath>    m_traits;
 };
 
 typedef ::std::vector< VisEnt<::HIR::TypeRef> > t_tuple_fields;
@@ -436,7 +471,7 @@ public:
     // Macros!
     ::std::unordered_map< RcString, ::std::unique_ptr<VisEnt<MacroItem>> > m_macro_items;
 
-    ::std::vector< ::std::pair<RcString, Static> >  m_inline_statics;
+    ::std::vector< ::std::pair<RcString, std::unique_ptr<Static>> >  m_inline_statics;
 
     Module() {}
     Module(const Module&) = delete;
@@ -451,6 +486,7 @@ TAGGED_UNION(TypeItem, Import,
     (Import, struct { ::HIR::SimplePath path; bool is_variant; unsigned int idx; }),
     (Module, Module),
     (TypeAlias, TypeAlias), // NOTE: These don't introduce new values
+    (TraitAlias, TraitAlias),
     (ExternType, ExternType),
     (Enum,      Enum),
     (Struct,    Struct),
@@ -566,10 +602,13 @@ public:
 
     Module  m_root_module;
 
+    // Placeholder for types created during constant evaluation
+    std::vector<std::pair<RcString, std::unique_ptr<VisEnt<TypeItem>> >>  m_new_types;
+
     template<typename T>
     struct ImplGroup
     {
-        typedef ::std::vector<::std::unique_ptr<T>> list_t;
+        typedef ::std::vector<T> list_t;
         ::std::map<::HIR::SimplePath, list_t>   named;
         list_t  non_named; // TODO: use a map of HIR::TypeRef::Data::Tag
         list_t  generic;
@@ -602,11 +641,16 @@ public:
     // - Named type (sorted on the path)
     // - Primitive types
     // - Unsorted (generics, and everything before outer type resolution)
-    ImplGroup<::HIR::TypeImpl>  m_type_impls;
+    ImplGroup<::std::unique_ptr<::HIR::TypeImpl>>  m_type_impls;
 
     /// Impl blocks
-    ::std::map< ::HIR::SimplePath, ImplGroup<::HIR::TraitImpl> > m_trait_impls;
-    ::std::map< ::HIR::SimplePath, ImplGroup<::HIR::MarkerImpl> > m_marker_impls;
+    ::std::map< ::HIR::SimplePath, ImplGroup<::std::unique_ptr<::HIR::TraitImpl>> > m_trait_impls;
+    ::std::map< ::HIR::SimplePath, ImplGroup<::std::unique_ptr<::HIR::MarkerImpl>> > m_marker_impls;
+
+    // TODO: Merged index versions of the above
+    ImplGroup<const ::HIR::TypeImpl*>   m_all_type_impls;
+    ::std::map< ::HIR::SimplePath, ImplGroup<const ::HIR::TraitImpl*> > m_all_trait_impls;
+    ::std::map< ::HIR::SimplePath, ImplGroup<const ::HIR::MarkerImpl*> > m_all_marker_impls;
 
     /// List of legacy-exported macros
     std::vector<RcString> m_exported_macro_names;

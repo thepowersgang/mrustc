@@ -53,11 +53,15 @@ public:
     ::HIR::SimplePath   m_lang_FnOnce;
     ::HIR::SimplePath   m_lang_Box;
     ::HIR::SimplePath   m_lang_PhantomData;
+    ::HIR::SimplePath   m_lang_DiscriminantKind;    // 1.54
+    ::HIR::SimplePath   m_lang_Pointee;    // 1.54
+    ::HIR::SimplePath   m_lang_DynMetadata;    // 1.54
 
 private:
     mutable ::std::map< ::HIR::TypeRef, bool >  m_copy_cache;
     mutable ::std::map< ::HIR::TypeRef, bool >  m_clone_cache;
     mutable ::std::map< ::HIR::TypeRef, bool >  m_drop_cache;
+    mutable ::std::map< ::HIR::Path, HIR::TypeRef>  m_aty_cache;
 
 public:
     StaticTraitResolve(const ::HIR::Crate& crate):
@@ -76,7 +80,9 @@ public:
         m_lang_FnOnce = m_crate.get_lang_item_path_opt("fn_once");
         m_lang_Box = m_crate.get_lang_item_path_opt("owned_box");
         m_lang_PhantomData = m_crate.get_lang_item_path_opt("phantom_data");
-        prep_indexes();
+        m_lang_DiscriminantKind = m_crate.get_lang_item_path_opt("discriminant_kind");
+        m_lang_Pointee = m_crate.get_lang_item_path_opt("pointee_trait");
+        m_lang_DynMetadata = m_crate.get_lang_item_path_opt("dyn_metadata");
     }
 
 private:
@@ -125,6 +131,13 @@ public:
     }
     void clear_item_generics() {
         m_item_generics = nullptr;
+        prep_indexes();
+    }
+    void set_both_generics_raw(const ::HIR::GenericParams* gps_impl, const ::HIR::GenericParams* gps_fcn) {
+        assert( !m_impl_generics );
+        assert( !m_item_generics );
+        m_impl_generics = gps_impl;
+        m_item_generics = gps_fcn;
         prep_indexes();
     }
     /// \}

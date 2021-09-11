@@ -2247,6 +2247,7 @@ static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mo
             auto lex = ProcMacro_Invoke(sp, crate, mac_path, attrs, path.nodes.back().c_str(), item);
             if( lex )
             {
+                lex->parse_state().module = &mod;
                 Parse_ModRoot_Items(*lex, mod);
                 found = true;
             }

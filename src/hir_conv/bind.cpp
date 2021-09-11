@@ -74,26 +74,14 @@ namespace {
         if( params.m_types.size() != params_def.m_types.size() ) {
             ERROR(sp, E0000, "Incorrect parameter count, expected " << params_def.m_types.size() << ", got " << params.m_types.size());
         }
+        if( params.m_values.size() == 0 ) {
+            params.m_values.resize( params_def.m_values.size() );
+        }
+        if( params.m_values.size() != params_def.m_values.size() ) {
+            ERROR(sp, E0000, "Incorrect value parameter count, expected " << params_def.m_values.size() << ", got " << params.m_values.size());
+        }
         #endif
     }
-
-    const ::HIR::Struct& get_struct_ptr(const Span& sp, const ::HIR::Crate& crate, ::HIR::GenericPath& path) {
-        const auto& str = *reinterpret_cast< const ::HIR::Struct*>( get_type_pointer(sp, crate, path.m_path, Target::Struct) );
-        fix_type_params(sp, str.m_params,  path.m_params);
-        return str;
-    }
-    ::std::pair< const ::HIR::Enum*, unsigned int> get_enum_ptr(const Span& sp, const ::HIR::Crate& crate, ::HIR::GenericPath& path) {
-        const auto& enm = *reinterpret_cast< const ::HIR::Enum*>( get_type_pointer(sp, crate, path.m_path, Target::EnumVariant) );
-        const auto& des_name = path.m_path.m_components.back();
-        auto idx = enm.find_variant(des_name);
-        if( idx == SIZE_MAX ) {
-            ERROR(sp, E0000, "Couldn't find enum variant " << path);
-        }
-
-        fix_type_params(sp, enm.m_params,  path.m_params);
-        return ::std::make_pair( &enm, static_cast<unsigned>(idx) );
-    }
-
 
     class Visitor:
         public ::HIR::Visitor
@@ -141,37 +129,13 @@ namespace {
             ::HIR::Visitor::visit_trait_path(p);
         }
 
-        void visit_literal(const Span& sp, ::HIR::Literal& lit)
+        void visit_literal(const Span& sp, EncodedLiteral& lit)
         {
-            TU_MATCH(::HIR::Literal, (lit), (e),
-            (Invalid,
-                ),
-            (Defer,
-                // Shouldn't happen here, but ...
-                ),
-            (Generic,
-                ),
-            (List,
-                for(auto& val : e) {
-                    visit_literal(sp, val);
-                }
-                ),
-            (Variant,
-                visit_literal(sp, *e.val);
-                ),
-            (Integer,
-                ),
-            (Float,
-                ),
-            (BorrowPath,
-                visit_path(e, ::HIR::Visitor::PathContext::VALUE);
-                ),
-            (BorrowData,
-                visit_literal(sp, *e.val);
-                ),
-            (String,
-                )
-            )
+            for(auto& r : lit.relocations)
+            {
+                if(r.p)
+                    visit_path(*r.p, ::HIR::Visitor::PathContext::VALUE);
+            }
         }
 
         void visit_pattern_Value(const Span& sp, ::HIR::Pattern& pat, ::HIR::Pattern::Value& val)
@@ -275,176 +239,68 @@ namespace {
                 this->visit_pattern_Value(sp, pat, e.end);
                 }
             TU_ARMA(PathValue, e) {
-#if 0
-                const auto& str = get_struct_ptr(sp, m_crate, e.path);
-                TU_IFLET(::HIR::Struct::Data, str.m_data, Unit, _,
-                    e.binding = &str;
-                )
-                else {
-                    ERROR(sp, E0000, "Struct value pattern on non-unit struct " << e.path);
-                }
-#endif
                 }
             TU_ARMA(PathTuple, e) {
-#if 0
-                const auto& str = get_struct_ptr(sp, m_crate, e.path);
-                TU_IFLET(::HIR::Struct::Data, str.m_data, Tuple, _,
-                    e.binding = &str;
-                )
-                else {
-                    ERROR(sp, E0000, "Struct tuple pattern on non-tuple struct " << e.path);
-                }
-#endif
                 }
             TU_ARMA(PathNamed, e) {
-#if 0
-                const auto& str = get_struct_ptr(sp, m_crate, e.path);
-                if(str.m_data.is_Named() ) {
                 }
-                else if( str.m_data.is_Unit() && e.sub_patterns.size() == 0 ) {
-                }
-                else if( str.m_data.is_Tuple() && str.m_data.as_Tuple().empty() && e.sub_patterns.size() == 0 ) {
-                }
-                else {
-                    ERROR(sp, E0000, "Struct pattern `" << pat << "` on field-less struct " << e.path);
-                }
-                e.binding = &str;
-#endif
-                }
-#if 0
-            TU_ARMA(EnumValue, e) {
-                auto p = get_enum_ptr(sp, m_crate, e.path);
-                if( p.first->m_data.is_Data() )
-                {
-                    const auto& var = p.first->m_data.as_Data()[p.second];
-                    if( var.is_struct || var.type != ::HIR::TypeRef::new_unit() )
-                        ERROR(sp, E0000, "Enum value pattern on non-unit variant " << e.path);
-                }
-                e.binding_ptr = p.first;
-                e.binding_idx = p.second;
-                }
-            TU_ARMA(EnumTuple, e) {
-                auto p = get_enum_ptr(sp, m_crate, e.path);
-                if( !p.first->m_data.is_Data() )
-                    ERROR(sp, E0000, "Enum tuple pattern on non-tuple variant " << e.path);
-                const auto& var = p.first->m_data.as_Data()[p.second];
-                if( var.is_struct )
-                    ERROR(sp, E0000, "Enum tuple pattern on non-tuple variant " << e.path);
-                e.binding_ptr = p.first;
-                e.binding_idx = p.second;
-                }
-            TU_ARMA(EnumStruct, e) {
-                auto p = get_enum_ptr(sp, m_crate, e.path);
-                if( !e.is_exhaustive && e.sub_patterns.empty() )
-                {
-                    if( !p.first->m_data.is_Data() ) {
-                        pat.m_data = ::HIR::Pattern::Data::make_EnumValue({
-                                ::std::move(e.path), p.first, p.second
-                                });
-                    }
-                    else {
-                        const auto& var = p.first->m_data.as_Data()[p.second];
-                        if( var.type == ::HIR::TypeRef::new_unit() )
-                        {
-                            pat.m_data = ::HIR::Pattern::Data::make_EnumValue({
-                                    ::std::move(e.path), p.first, p.second
-                                    });
-                        }
-                        else if( !var.is_struct )
-                        {
-                            ASSERT_BUG(sp, var.type.data().is_Path(), "");
-                            const auto& te = var.type.data().as_Path();
-                            const ::HIR::Struct* strp;
-                            if( te.binding.is_Unbound() ) {
-                                strp = &m_crate.get_struct_by_path(sp, te.path.m_data.as_Generic().m_path);
-                            }
-                            else {
-                                ASSERT_BUG(sp, te.binding.is_Struct(), "EnumStruct pattern on unexpected variant " << e.path << " with " << te.binding.tag_str());
-                                strp = te.binding.as_Struct();
-                            }
-                            const auto& str = *strp;
-                            ASSERT_BUG(sp, str.m_data.is_Tuple(), "");
-                            const auto& flds = str.m_data.as_Tuple();
-                            ::std::vector<HIR::Pattern> subpats;
-                            for(size_t i = 0; i < flds.size(); i ++)
-                                subpats.push_back(::HIR::Pattern { });
-                            pat.m_data = ::HIR::Pattern::Data::make_EnumTuple({
-                                    ::std::move(e.path), p.first, p.second, mv$(subpats)
-                                    });
-                        }
-                        else
-                        {
-                            // Keep as a struct pattern
-                        }
-                    }
-                }
-                else
-                {
-                    if( !p.first->m_data.is_Data() )
-                    {
-                        ERROR(sp, E0000, "Enum struct pattern `" << pat << "` on non-struct variant " << e.path);
-                    }
-                    else
-                    {
-                        const auto& var = p.first->m_data.as_Data()[p.second];
-                        if( !var.is_struct )
-                            ERROR(sp, E0000, "Enum struct pattern `" << pat << "` on non-struct variant " << e.path);
-                    }
-                }
-                e.binding_ptr = p.first;
-                e.binding_idx = p.second;
-                }
-#endif
             }
         }
         static void fix_param_count(const Span& sp, const ::HIR::GenericPath& path, const ::HIR::GenericParams& param_defs, ::HIR::PathParams& params, bool fill_infer=true, const ::HIR::TypeRef* self_ty=nullptr)
         {
-            if( params.m_types.size() == param_defs.m_types.size() ) {
-                // Nothing to do, all good
-                return ;
-            }
+            if( params.m_types.size() != param_defs.m_types.size() )
+            {
+                TRACE_FUNCTION_F(path);
 
-            TRACE_FUNCTION_F(path);
-
-            if( params.m_types.size() == 0 && fill_infer ) {
-                for(const auto& typ : param_defs.m_types) {
-                    (void)typ;
-                    params.m_types.push_back( ::HIR::TypeRef() );
+                if( params.m_types.size() == 0 && fill_infer ) {
+                    for(const auto& typ : param_defs.m_types) {
+                        (void)typ;
+                        params.m_types.push_back( ::HIR::TypeRef() );
+                    }
+                }
+                else if( params.m_types.size() > param_defs.m_types.size() ) {
+                    ERROR(sp, E0000, "Too many type parameters passed to " << path);
+                }
+                else {
+                    while( params.m_types.size() < param_defs.m_types.size() ) {
+                        const auto& typ = param_defs.m_types[params.m_types.size()];
+                        if( typ.m_default.data().is_Infer() ) {
+                            ERROR(sp, E0000, "Omitted type parameter with no default in " << path);
+                        }
+                        else {
+                            // Clone, replacing `self` if a replacement was provided.
+                            auto ty = clone_ty_with(sp, typ.m_default, [&](const auto& ty, auto& out){
+                                if(const auto* te = ty.data().opt_Generic() )
+                                {
+                                    if( te->binding == GENERIC_Self ) {
+                                        if( !self_ty )
+                                            TODO(sp, "Self enountered in default params, but no Self available - " << ty << " in " << typ.m_default << " for " << path);
+                                        out = self_ty->clone();
+                                    }
+                                    // NOTE: Should only be seeing impl-level params here. Method-level ones are only seen in expression context.
+                                    else if( (te->binding >> 8) == 0 ) {
+                                        auto idx = te->binding & 0xFF;
+                                        ASSERT_BUG(sp, idx < params.m_types.size(), "TODO: Handle use of latter types in defaults");
+                                        out = params.m_types[idx].clone();
+                                    }
+                                    else {
+                                        TODO(sp, "Monomorphise in fix_param_count - encountered " << ty << " in " << typ.m_default);
+                                    }
+                                    return true;
+                                }
+                                return false;
+                                });
+                            params.m_types.push_back( mv$(ty) );
+                        }
+                    }
                 }
             }
-            else if( params.m_types.size() > param_defs.m_types.size() ) {
-                ERROR(sp, E0000, "Too many type parameters passed to " << path);
-            }
-            else {
-                while( params.m_types.size() < param_defs.m_types.size() ) {
-                    const auto& typ = param_defs.m_types[params.m_types.size()];
-                    if( typ.m_default.data().is_Infer() ) {
-                        ERROR(sp, E0000, "Omitted type parameter with no default in " << path);
-                    }
-                    else {
-                        // Clone, replacing `self` if a replacement was provided.
-                        auto ty = clone_ty_with(sp, typ.m_default, [&](const auto& ty, auto& out){
-                            if(const auto* te = ty.data().opt_Generic() )
-                            {
-                                if( te->binding == GENERIC_Self ) {
-                                    if( !self_ty )
-                                        TODO(sp, "Self enountered in default params, but no Self available - " << ty << " in " << typ.m_default << " for " << path);
-                                    out = self_ty->clone();
-                                }
-                                // NOTE: Should only be seeing impl-level params here. Method-level ones are only seen in expression context.
-                                else if( (te->binding >> 8) == 0 ) {
-                                    auto idx = te->binding & 0xFF;
-                                    ASSERT_BUG(sp, idx < params.m_types.size(), "TODO: Handle use of latter types in defaults");
-                                    out = params.m_types[idx].clone();
-                                }
-                                else {
-                                    TODO(sp, "Monomorphise in fix_param_count - encountered " << ty << " in " << typ.m_default);
-                                }
-                                return true;
-                            }
-                            return false;
-                            });
-                        params.m_types.push_back( mv$(ty) );
+            if( params.m_values.size() != param_defs.m_values.size() )
+            {
+                if( params.m_values.size() == 0 && fill_infer ) {
+                    for(const auto& typ : param_defs.m_values) {
+                        (void)typ;
+                        params.m_values.push_back( ::HIR::ConstGeneric::make_Infer({}) );
                     }
                 }
             }
@@ -603,20 +459,19 @@ namespace {
             ::HIR::Visitor::visit_trait(p, item);
         }
 
-        // TODO: Are generics for types "item" or "impl"?
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override
         {
-            auto _ = this->m_ms.set_item_generics(item.m_params);
+            auto _ = this->m_ms.set_impl_generics(item.m_params);
             ::HIR::Visitor::visit_enum(p, item);
         }
         void visit_struct(::HIR::ItemPath p, ::HIR::Struct& item) override
         {
-            auto _ = this->m_ms.set_item_generics(item.m_params);
+            auto _ = this->m_ms.set_impl_generics(item.m_params);
             ::HIR::Visitor::visit_struct(p, item);
         }
         void visit_union(::HIR::ItemPath p, ::HIR::Union& item) override
         {
-            auto _ = this->m_ms.set_item_generics(item.m_params);
+            auto _ = this->m_ms.set_impl_generics(item.m_params);
             ::HIR::Visitor::visit_union(p, item);
         }
 

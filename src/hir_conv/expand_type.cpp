@@ -68,6 +68,7 @@ class Expander:
 {
     const ::HIR::Crate& m_crate;
     bool m_in_expr = false;
+    const ::HIR::TypeRef*   m_impl_type = nullptr;
 
 public:
     Expander(const ::HIR::Crate& crate):
@@ -175,7 +176,26 @@ public:
             path = std::move(gp2);
             return ::HIR::Pattern::PathBinding::make_Enum({ &enm, static_cast<unsigned>(idx) });
         }
+        // `Self { ... }` patterns - Encoded as `<Self>::`
+        if( path.m_data.is_UfcsInherent() ) {
+            const auto& ty = path.m_data.as_UfcsInherent().type;
+            const auto& name = path.m_data.as_UfcsInherent().item;
+            ASSERT_BUG(sp, ty.data().is_Generic() && ty.data().as_Generic().binding == GENERIC_Self, path);
+            ASSERT_BUG(sp, name == "", path);
+            if(!m_impl_type) {
+                ERROR(sp, E0000, "Use of `Self` pattern outside of an impl block");
+            }
+            if(!TU_TEST1(m_impl_type->data(), Path, .path.m_data.is_Generic()) ) {
+                ERROR(sp, E0000, "Use of `Self` pattern in non-struct impl block - " << *m_impl_type);
+            }
+            const auto& p = m_impl_type->data().as_Path().path.m_data.as_Generic();
+            const auto& str = m_crate.get_struct_by_path(sp, p.m_path);
 
+            path = p.clone();
+            return ::HIR::Pattern::PathBinding::make_Struct(&str);
+        }
+
+        // TODO: `Self { ... }` encoded as `<Self>::`
         ASSERT_BUG(sp, path.m_data.is_Generic(), path);
         auto& gp = path.m_data.as_Generic();
 
@@ -281,6 +301,21 @@ public:
             m_in_expr = old;
         }
     }
+
+
+    void visit_type_impl(::HIR::TypeImpl& impl) override
+    {
+        m_impl_type = &impl.m_type;
+        ::HIR::Visitor::visit_type_impl(impl);
+        m_impl_type = nullptr;
+    }
+    void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override
+    {
+        static Span sp;
+        m_impl_type = &impl.m_type;
+        ::HIR::Visitor::visit_trait_impl(trait_path, impl);
+        m_impl_type = nullptr;
+    }
 };
 
 
@@ -365,7 +400,6 @@ public:
     {
         static Span sp;
         m_impl_type = &impl.m_type;
-
         ::HIR::Visitor::visit_trait_impl(trait_path, impl);
         m_impl_type = nullptr;
     }

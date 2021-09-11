@@ -370,8 +370,7 @@ void Parse_WhereClause(TokenStream& lex, AST::GenericParams& params)
       || (LOOK_AHEAD(lex) == TOK_IDENT && lex.lookahead(1) == TOK_COLON)
       )
     {
-        // Function args can't be refuted
-        pat = Parse_Pattern(lex, false);
+        pat = Parse_Pattern(lex, AllowOrPattern::No);
         GET_CHECK_TOK(tok, lex, TOK_COLON);
     }
 
@@ -434,7 +433,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, bool allow_
             auto sp = lex.end_span(ps);
             args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), sp, "self"), TypeRef(TypeRef::TagReference(), sp, ::std::move(lifetime), is_mut, TypeRef(sp, "Self", 0xFFFF))) );
             if( allow_self == false )
-                throw ParseError::Generic(lex, "Self binding not expected");
+                ERROR(lex.point_span(), E0000, "Self binding not expected here");
 
             // Prime tok for next step
             GET_TOK(tok, lex);
@@ -1079,59 +1078,42 @@ AST::Attribute Parse_MetaItem(TokenStream& lex)
     ::AST::AttributeData  attr_data;
     switch(tok.type())
     {
-    case TOK_EQUAL:
-        //auto e = Parse_ExprVal(lex);
-        // TODO: Just store an expression (avoids needing to run expand here)
-        switch(GET_TOK(tok, lex))
+    case TOK_EQUAL: {
+        auto n = Parse_ExprVal(lex);
+#if 0
+        attr_data = AST::AttributeData::make_ValueUnexpanded(mv$(n));
+#else
+        void Expand_BareExpr(const AST::Crate& , const AST::Module&, AST::ExprNodeP& n);
+        ASSERT_BUG( lex.point_span(), lex.parse_state().crate, "Crate not set" );
+        ASSERT_BUG( lex.point_span(), lex.parse_state().module, "Module not set" );
+        Expand_BareExpr(*lex.parse_state().crate, *lex.parse_state().module, n);
+        if( auto* v = dynamic_cast<::AST::ExprNode_String*>(&*n) )
         {
-        case TOK_STRING:
-            attr_data = AST::AttributeData::make_String({tok.str()});
-            break;
-        case TOK_INTERPOLATED_EXPR: {
-            auto n = tok.take_frag_node();
-            void Expand_BareExpr(const AST::Crate& , const AST::Module&, ::std::unique_ptr<AST::ExprNode>& n);
-            ASSERT_BUG( lex.point_span(), lex.parse_state().crate, "Crate not set" );
-            ASSERT_BUG( lex.point_span(), lex.parse_state().module, "Module not set" );
-            Expand_BareExpr(*lex.parse_state().crate, *lex.parse_state().module, n);
-            if( auto* v = dynamic_cast<::AST::ExprNode_String*>(&*n) )
-            {
-                attr_data = AST::AttributeData::make_String({ mv$(v->m_value) });
-            }
-            else if( auto* v = dynamic_cast<::AST::ExprNode_Integer*>(&*n) )
+            attr_data = AST::AttributeData::make_String({ mv$(v->m_value) });
+        }
+        else if( TARGETVER_LEAST_1_29 )
+        {
+            if( auto* v = dynamic_cast<::AST::ExprNode_Integer*>(&*n) )
             {
                 attr_data = AST::AttributeData::make_String({ FMT(v->m_value) });
+            }
+            else if( auto* v = dynamic_cast<::AST::ExprNode_NamedValue*>(&*n) )
+            {
+                attr_data = AST::AttributeData::make_String({ FMT(v->m_path) });
             }
             else
             {
                 // - Force an error.
                 throw ParseError::Unexpected(lex, Token(InterpolatedFragment(InterpolatedFragment::EXPR, n.release())), TOK_STRING);
             }
-            break; }
-        case TOK_INTEGER:
-            if( TARGETVER_LEAST_1_29 )
-            {
-                attr_data = AST::AttributeData::make_String({ tok.to_str() });
-                break;
-            }
-        case TOK_IDENT:
-            if( TARGETVER_LEAST_1_29 )
-            {
-                auto s = tok.to_str();
-                while(lex.lookahead(0) == TOK_DOUBLE_COLON)
-                {
-                    GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
-                    s += "::";
-                    GET_CHECK_TOK(tok, lex, TOK_IDENT);
-                    s += tok.to_str();
-                }
-                attr_data = AST::AttributeData::make_String({ s });
-                break;
-            }
-        default:
-            // - Force an error.
-            throw ParseError::Unexpected(lex, tok, TOK_STRING);
         }
-        break;
+        else
+        {
+            // - Force an error.
+            throw ParseError::Unexpected(lex, Token(InterpolatedFragment(InterpolatedFragment::EXPR, n.release())), TOK_STRING);
+        }
+#endif
+        } break;
     case TOK_PAREN_OPEN: {
         ::std::vector<AST::Attribute>    items;
         do {
@@ -2065,7 +2047,25 @@ namespace {
     case TOK_RWORD_TRAIT:
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
         item_name = tok.ident().name;
-        item_data = ::AST::Item( Parse_TraitDef(lex, meta_items) );
+        if( lex.lookahead(0) == TOK_EQUAL ) {
+            // Trait alias
+
+            AST::TraitAlias rv;
+            do {
+                lex.getToken();
+
+                auto ps = lex.start_span();
+                auto hrbs = Parse_HRB_Opt(lex);
+                rv.traits.push_back( GET_SPANNED(Type_TraitPath, lex, (Type_TraitPath(mv$(hrbs), Parse_Path(lex, PATH_GENERIC_TYPE)) )) );
+            } while( lex.lookahead(0) == TOK_PLUS );
+
+            GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+
+            item_data = ::AST::Item( std::move(rv) );
+        }
+        else {
+            item_data = ::AST::Item( Parse_TraitDef(lex, meta_items) );
+        }
         break;
 
     case TOK_RWORD_MACRO:
@@ -2303,10 +2303,13 @@ void Parse_ModRoot(TokenStream& lex, AST::Module& mod, AST::AttributeList& mod_a
 {
     TRACE_FUNCTION;
 
+    auto prev_mod = lex.parse_state().module;
+    lex.parse_state().module = &mod;
     // Attributes on module/crate (will continue loop)
     Parse_ParentAttrs(lex,  mod_attrs);
 
     Parse_ModRoot_Items(lex, mod);
+    lex.parse_state().module = prev_mod;
 }
 
 AST::Crate Parse_Crate(::std::string mainfile, AST::Edition edition)

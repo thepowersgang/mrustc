@@ -9,6 +9,7 @@
 #define _AST_ATTRS_HPP_
 
 #include <tagged_union.hpp>
+#include "expr_ptr.hpp"
 
 namespace AST {
 
@@ -50,9 +51,9 @@ public:
     friend ::std::ostream& operator<<(::std::ostream& os, const AttributeList& x);
 };
 
-
 TAGGED_UNION(AttributeData, None,
     (None, struct {}),
+    (ValueUnexpanded, AST::ExprNodeP),
     (String, struct { ::std::string val; }),
     (List,  struct { ::std::vector<Attribute> sub_items; })
     );
@@ -95,27 +96,13 @@ public:
     {
     }
 
-    explicit Attribute(const Attribute& x):
-        m_span(x.m_span),
-        m_name(x.m_name),
-        m_is_used(x.m_is_used)
-    {
-        TU_MATCHA( (x.m_data), (e),
-        (None,
-            ),
-        (String,
-            m_data = AttributeData::make_String({ e.val });
-            ),
-        (List,
-            m_data = AttributeData::make_List({ ::std::vector<Attribute>(e.sub_items) });
-            )
-        )
-    }
+    explicit Attribute(const Attribute& x);
     Attribute& operator=(const Attribute& ) = delete;
     Attribute(Attribute&& ) = default;
     Attribute& operator=(Attribute&& ) = default;
     Attribute clone() const;
 
+    void fmt(std::ostream& os) const;
     void mark_used() const { m_is_used = true; }
     bool is_used() const { return m_is_used; }
 
@@ -134,17 +121,7 @@ public:
           ::std::vector<Attribute>& items()       { return m_data.as_List().sub_items; }
 
     friend ::std::ostream& operator<<(::std::ostream& os, const Attribute& x) {
-        os << x.m_name;
-        TU_MATCHA( (x.m_data), (e),
-        (None,
-            ),
-        (String,
-            os << "=\"" << e.val << "\"";
-            ),
-        (List,
-            os << "(" << e.sub_items << ")";
-            )
-        )
+        x.fmt(os);
         return os;
     }
 };

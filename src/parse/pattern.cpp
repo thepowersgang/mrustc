@@ -16,14 +16,14 @@ using AST::ExprNode;
 
 
 
-::AST::Pattern::TuplePat Parse_PatternTuple(TokenStream& lex, bool is_refutable);
-AST::Pattern Parse_PatternReal_Slice(TokenStream& lex, bool is_refutable);
-AST::Pattern Parse_PatternReal_Path(TokenStream& lex, ProtoSpan ps, AST::Path path, bool is_refutable);
-AST::Pattern Parse_PatternReal(TokenStream& lex, bool is_refutable);
-AST::Pattern Parse_PatternStruct(TokenStream& lex, ProtoSpan ps, AST::Path path, bool is_refutable);
+AST::Pattern Parse_Pattern1(TokenStream& lex, AllowOrPattern allow_or);
+AST::Pattern::TuplePat Parse_PatternTuple(TokenStream& lex);
+AST::Pattern Parse_PatternReal_Slice(TokenStream& lex);
+AST::Pattern Parse_PatternReal_Path(TokenStream& lex, ProtoSpan ps, AST::Path path);
+AST::Pattern Parse_PatternStruct(TokenStream& lex, ProtoSpan ps, AST::Path path);
 
-AST::Pattern Parse_PatternReal(TokenStream& lex, bool is_refutable);
-AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable);
+AST::Pattern Parse_PatternReal(TokenStream& lex, AllowOrPattern allow_or);
+AST::Pattern Parse_PatternReal1(TokenStream& lex, AllowOrPattern allow_or);
 
 
 /// Parse a pattern
@@ -35,7 +35,28 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable);
 /// - `"string"`
 /// - `mut x`
 /// - `mut x @ 1 ... 2`
-AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
+AST::Pattern Parse_Pattern(TokenStream& lex, AllowOrPattern allow_or)
+{
+    auto ps = lex.start_span();
+    auto rv = Parse_Pattern1(lex, allow_or);
+    if( allow_or == AllowOrPattern::Yes && lex.lookahead(0) == TOK_PIPE )
+    {
+        // NOTE: Legal for refutable positions (as long as all possibilities are covered)
+        std::vector<AST::Pattern>   pats;
+        pats.push_back(std::move(rv));
+        while( lex.lookahead(0) == TOK_PIPE )
+        {
+            lex.getToken();
+            pats.push_back(Parse_Pattern1(lex, allow_or));
+        }
+        return AST::Pattern( lex.end_span(ps), AST::Pattern::Data::make_Or(mv$(pats)) ); 
+    }
+    else
+    {
+        return rv;
+    }
+}
+AST::Pattern Parse_Pattern1(TokenStream& lex, AllowOrPattern allow_or)
 {
     TRACE_FUNCTION;
     auto ps = lex.start_span();
@@ -43,6 +64,7 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
     Token   tok;
     tok = lex.getToken();
 
+    // TODO: Why is this here explicitly?
     if( tok.type() == TOK_IDENT && lex.lookahead(0) == TOK_EXCLAM )
     {
         lex.getToken();
@@ -124,7 +146,7 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
         default: {  // Maybe bind
             auto name = tok.ident();
             // if the pattern can be refuted (i.e this could be an enum variant), return MaybeBind
-            if( is_refutable ) {
+            if( true /*is_refutable*/ ) {
                 assert(bind_type == ::AST::PatternBinding::Type::MOVE);
                 assert(is_mut == false);
                 return AST::Pattern(AST::Pattern::TagMaybeBind(), lex.end_span(ps), mv$(name));
@@ -142,12 +164,12 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
     }
 
     PUTBACK(tok, lex);
-    auto pat = Parse_PatternReal(lex, is_refutable);
+    auto pat = Parse_PatternReal(lex, allow_or);
     pat.binding() = mv$(binding);
     return pat;
 }
 
-AST::Pattern Parse_PatternReal(TokenStream& lex, bool is_refutable)
+AST::Pattern Parse_PatternReal(TokenStream& lex, AllowOrPattern allow_or)
 {
     Token   tok;
     if( LOOK_AHEAD(lex) == TOK_INTERPOLATED_PATTERN )
@@ -156,7 +178,7 @@ AST::Pattern Parse_PatternReal(TokenStream& lex, bool is_refutable)
         return mv$(tok.frag_pattern());
     }
     auto ps = lex.start_span();
-    AST::Pattern    ret = Parse_PatternReal1(lex, is_refutable);
+    AST::Pattern    ret = Parse_PatternReal1(lex, allow_or);
     if( (GET_TOK(tok, lex) == TOK_TRIPLE_DOT)
      || (TARGETVER_LEAST_1_29 && tok.type() == TOK_DOUBLE_DOT_EQUAL)
       )
@@ -165,7 +187,7 @@ AST::Pattern Parse_PatternReal(TokenStream& lex, bool is_refutable)
             throw ParseError::Generic(lex, "Using '...' with a non-value on left");
         auto& ret_v = ret.data().as_Value();
 
-        auto    right_pat = Parse_PatternReal1(lex, is_refutable);
+        auto    right_pat = Parse_PatternReal1(lex, allow_or);
         if( !right_pat.data().is_Value() )
             throw ParseError::Generic(lex, "Using '...' with a non-value on right");
         auto    rightval = mv$( right_pat.data().as_Value().start );
@@ -180,7 +202,7 @@ AST::Pattern Parse_PatternReal(TokenStream& lex, bool is_refutable)
         return ret;
     }
 }
-AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable)
+AST::Pattern Parse_PatternReal1(TokenStream& lex, AllowOrPattern allow_or)
 {
     TRACE_FUNCTION;
     auto ps = lex.start_span();
@@ -195,7 +217,7 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable)
     //case TOK_DOUBLE_DOT:
     //    return AST::Pattern( AST::Pattern::TagWildcard() );
     case TOK_RWORD_BOX:
-        return AST::Pattern( AST::Pattern::TagBox(), lex.end_span(ps), Parse_Pattern(lex, is_refutable) );
+        return AST::Pattern( AST::Pattern::TagBox(), lex.end_span(ps), Parse_Pattern1(lex, allow_or) );
     case TOK_DOUBLE_AMP:
         lex.putback(TOK_AMP);
     case TOK_AMP: {
@@ -206,7 +228,7 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable)
             is_mut = true;
         else
             PUTBACK(tok, lex);
-        return AST::Pattern( AST::Pattern::TagReference(), lex.end_span(ps), is_mut, Parse_Pattern(lex, is_refutable) );
+        return AST::Pattern( AST::Pattern::TagReference(), lex.end_span(ps), is_mut, Parse_Pattern1(lex, allow_or) );
         }
     case TOK_RWORD_CRATE:
     case TOK_RWORD_SELF:
@@ -217,7 +239,7 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable)
     case TOK_INTERPOLATED_PATH:
     case TOK_DOUBLE_COLON:
         PUTBACK(tok, lex);
-        return Parse_PatternReal_Path( lex, ps, Parse_Path(lex, PATH_GENERIC_EXPR), is_refutable );
+        return Parse_PatternReal_Path( lex, ps, Parse_Path(lex, PATH_GENERIC_EXPR) );
     case TOK_DASH:
         if(GET_TOK(tok, lex) == TOK_INTEGER)
         {
@@ -269,30 +291,30 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable)
         } break;
 
     case TOK_PAREN_OPEN:
-        return AST::Pattern( AST::Pattern::TagTuple(), lex.end_span(ps), Parse_PatternTuple(lex, is_refutable) );
+        return AST::Pattern( AST::Pattern::TagTuple(), lex.end_span(ps), Parse_PatternTuple(lex) );
     case TOK_SQUARE_OPEN:
-        return Parse_PatternReal_Slice(lex, is_refutable);
+        return Parse_PatternReal_Slice(lex);
     default:
         throw ParseError::Unexpected(lex, tok);
     }
 }
-AST::Pattern Parse_PatternReal_Path(TokenStream& lex, ProtoSpan ps, AST::Path path, bool is_refutable)
+AST::Pattern Parse_PatternReal_Path(TokenStream& lex, ProtoSpan ps, AST::Path path)
 {
     Token   tok;
 
     switch( GET_TOK(tok, lex) )
     {
     case TOK_PAREN_OPEN:
-        return AST::Pattern( AST::Pattern::TagNamedTuple(), lex.end_span(ps), mv$(path), Parse_PatternTuple(lex, is_refutable) );
+        return AST::Pattern( AST::Pattern::TagNamedTuple(), lex.end_span(ps), mv$(path), Parse_PatternTuple(lex) );
     case TOK_BRACE_OPEN:
-        return Parse_PatternStruct(lex, ps, mv$(path), is_refutable);
+        return Parse_PatternStruct(lex, ps, mv$(path));
     default:
         PUTBACK(tok, lex);
         return AST::Pattern( AST::Pattern::TagValue(), lex.end_span(ps), AST::Pattern::Value::make_Named(mv$(path)) );
     }
 }
 
-AST::Pattern Parse_PatternReal_Slice(TokenStream& lex, bool is_refutable)
+AST::Pattern Parse_PatternReal_Slice(TokenStream& lex)
 {
     auto ps = lex.start_span();
     Token   tok;
@@ -350,10 +372,10 @@ AST::Pattern Parse_PatternReal_Slice(TokenStream& lex, bool is_refutable)
         else {
             PUTBACK(tok, lex);
             if(!is_split) {
-                leading.push_back( Parse_Pattern(lex, is_refutable) );
+                leading.push_back( Parse_Pattern(lex) );
             }
             else {
-                trailing.push_back( Parse_Pattern(lex, is_refutable) );
+                trailing.push_back( Parse_Pattern(lex) );
             }
         }
 
@@ -374,7 +396,7 @@ AST::Pattern Parse_PatternReal_Slice(TokenStream& lex, bool is_refutable)
     }
 }
 
-::AST::Pattern::TuplePat Parse_PatternTuple(TokenStream& lex, bool is_refutable)
+::AST::Pattern::TuplePat Parse_PatternTuple(TokenStream& lex)
 {
     TRACE_FUNCTION;
     auto sp = lex.start_span();
@@ -383,7 +405,7 @@ AST::Pattern Parse_PatternReal_Slice(TokenStream& lex, bool is_refutable)
     ::std::vector<AST::Pattern> leading;
     while( LOOK_AHEAD(lex) != TOK_PAREN_CLOSE && LOOK_AHEAD(lex) != TOK_DOUBLE_DOT )
     {
-        leading.push_back( Parse_Pattern(lex, is_refutable) );
+        leading.push_back( Parse_Pattern(lex) );
 
         if( GET_TOK(tok, lex) != TOK_COMMA ) {
             CHECK_TOK(tok, TOK_PAREN_CLOSE);
@@ -405,7 +427,7 @@ AST::Pattern Parse_PatternReal_Slice(TokenStream& lex, bool is_refutable)
     {
         while( LOOK_AHEAD(lex) != TOK_PAREN_CLOSE )
         {
-            trailing.push_back( Parse_Pattern(lex, is_refutable) );
+            trailing.push_back( Parse_Pattern(lex) );
 
             if( GET_TOK(tok, lex) != TOK_COMMA ) {
                 PUTBACK(tok, lex);
@@ -419,7 +441,7 @@ AST::Pattern Parse_PatternReal_Slice(TokenStream& lex, bool is_refutable)
     return ::AST::Pattern::TuplePat { mv$(leading), true, mv$(trailing) };
 }
 
-AST::Pattern Parse_PatternStruct(TokenStream& lex, ProtoSpan ps, AST::Path path, bool is_refutable)
+AST::Pattern Parse_PatternStruct(TokenStream& lex, ProtoSpan ps, AST::Path path)
 {
     TRACE_FUNCTION;
     Token tok;
@@ -433,7 +455,7 @@ AST::Pattern Parse_PatternStruct(TokenStream& lex, ProtoSpan ps, AST::Path path,
         {
             unsigned int ofs = static_cast<unsigned int>(tok.intval());
             GET_CHECK_TOK(tok, lex, TOK_COLON);
-            auto val = Parse_Pattern(lex, is_refutable);
+            auto val = Parse_Pattern(lex);
             if( ! pats.insert( ::std::make_pair(ofs, mv$(val)) ).second ) {
                 ERROR(lex.point_span(), E0000, "Duplicate index");
             }
@@ -532,7 +554,7 @@ AST::Pattern Parse_PatternStruct(TokenStream& lex, ProtoSpan ps, AST::Path path,
         else {
             CHECK_TOK(tok, TOK_COLON);
             field_name = mv$(field_ident.name);
-            pat = Parse_Pattern(lex, is_refutable);
+            pat = Parse_Pattern(lex);
         }
 
         subpats.push_back( ::std::make_pair(mv$(field_name), mv$(pat)) );

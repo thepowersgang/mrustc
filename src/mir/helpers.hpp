@@ -58,6 +58,10 @@ public:
     const ::HIR::TypeRef&   m_ret_type;
     const args_t&    m_args;
     const ::MIR::Function&  m_fcn;
+
+    // If set, these override the list in `m_fcn`
+    const ::HIR::TypeRef*   m_monomorphed_rettype;
+    const ::std::vector<::HIR::TypeRef>*    m_monomorphed_locals;
 private:
     const ::HIR::SimplePath*    m_lang_Box = nullptr;
 
@@ -73,6 +77,8 @@ public:
         m_ret_type(ret_type),
         m_args(args),
         m_fcn(fcn)
+        , m_monomorphed_rettype(nullptr)
+        , m_monomorphed_locals(nullptr)
     {
         if( m_crate.m_lang_items.count("owned_box") > 0 ) {
             m_lang_Box = &m_crate.m_lang_items.at("owned_box");
@@ -369,6 +375,23 @@ namespace visit {
                     rv |= visit_lvalue(v.second, ValUsage::Read);
                 for(auto& v : e.outputs)
                     rv |= visit_lvalue(v.second, ValUsage::Write);
+                }
+            TU_ARMA(Asm2, e) {
+                for(auto& p : e.params)
+                {
+                    TU_MATCH_HDRA( (p), { )
+                    TU_ARMA(Const, v)
+                        rv |= visit_const(v);
+                    TU_ARMA(Sym, v)
+                        /*rv |= */visit_path(v);
+                    TU_ARMA(Reg, v) {
+                        if(v.input)
+                            rv |= visit_param(*v.input, ValUsage::Read);
+                        if(v.output)
+                            rv |= visit_lvalue(*v.output, ValUsage::Write);
+                        }
+                    }
+                }
                 }
             TU_ARMA(SetDropFlag, e) {
                 }

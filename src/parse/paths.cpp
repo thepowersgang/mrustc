@@ -74,14 +74,7 @@ AST::Path Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode)
     case TOK_LT: {
         TypeRef ty = Parse_Type(lex, true);  // Allow trait objects without parens
         if( GET_TOK(tok, lex) == TOK_RWORD_AS ) {
-            ::AST::Path trait;
-            if( GET_TOK(tok, lex) == TOK_DOUBLE_COLON ) {
-                trait = Parse_Path(lex, true, PATH_GENERIC_TYPE);
-            }
-            else {
-                PUTBACK(tok, lex);
-                trait = Parse_Path(lex, false, PATH_GENERIC_TYPE);
-            }
+            ::AST::Path trait = Parse_Path(lex, PATH_GENERIC_TYPE);
             GET_CHECK_TOK(tok, lex, TOK_GT);
             GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
             return AST::Path::new_ufcs_trait(mv$(ty), mv$(trait), Parse_PathNodes(lex, generic_mode));
@@ -124,7 +117,7 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
         }
     }
     else {
-        GET_TOK(tok, lex);
+        GET_CHECK_TOK(tok, lex, TOK_IDENT);
         auto hygine = tok.ident().hygiene;
         DEBUG("hygine = " << hygine);
         PUTBACK(tok, lex);
@@ -245,6 +238,13 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
         {
         case TOK_LIFETIME:
             rv.m_entries.push_back(AST::LifetimeRef(/*lex.point_span(),*/ tok.ident()));
+            break;
+        case TOK_INTEGER:
+        case TOK_FLOAT:
+        case TOK_INTERPOLATED_EXPR:
+        case TOK_BRACE_OPEN:
+            PUTBACK(tok, lex);
+            rv.m_entries.push_back( Parse_ExprVal(lex) );
             break;
         case TOK_IDENT:
             if( LOOK_AHEAD(lex) == TOK_EQUAL )

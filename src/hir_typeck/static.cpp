@@ -15,8 +15,14 @@ void StaticTraitResolve::prep_indexes()
     const Span& sp = sp_AAA;
 
     TRACE_FUNCTION_F("");
+    if(m_impl_generics) DEBUG("m_impl_generics = " << m_impl_generics->fmt_args());
+    if(m_item_generics) DEBUG("m_item_generics = " << m_item_generics->fmt_args());
 
     m_copy_cache.clear();
+    m_clone_cache.clear();
+    m_drop_cache.clear();
+    m_aty_cache.clear();
+
     m_type_equalities.clear();
     m_trait_bounds.clear();
 
@@ -111,7 +117,11 @@ const ::HIR::TypeRef& StaticTraitResolve::get_const_param_type(const Span& sp, u
         TODO(sp, "Typecheck const generics - look up the type");
     }
     auto slot = binding & 0xFF;
-    ASSERT_BUG(sp, p, "No generic list");
+    if(!p) {
+        if(m_impl_generics) DEBUG("Impl: " << m_impl_generics->fmt_args());
+        if(m_item_generics) DEBUG("Impl: " << m_item_generics->fmt_args());
+    }
+    ASSERT_BUG(sp, p, "No generic list for " << (binding>>8) << ":" << slot);
     ASSERT_BUG(sp, slot < p->m_values.size(), "Generic param index out of range");
     return p->m_values.at(slot).m_type;
 }
@@ -152,11 +162,102 @@ bool StaticTraitResolve::find_impl(
             }
         }
         else if( trait_path == m_lang_Unsize ) {
-            ASSERT_BUG(sp, trait_params, "TODO: Support no params for Unzie");
+            ASSERT_BUG(sp, trait_params, "TODO: Support no params for Unsize");
             const auto& dst_ty = trait_params->m_types.at(0);
             if( this->can_unsize(sp, dst_ty, type) ) {
                 return found_cb( ImplRef(&type, trait_params, &null_assoc), false );
             }
+        }
+        else if( TARGETVER_LEAST_1_54 && trait_path == m_lang_DiscriminantKind ) {
+            // If the type is generic, then don't populate the ATY
+            // Otherwise, populate the ATY with the correct type
+            // - Unit for non-enums
+            // - Enum type (usize probably) for enums
+            if( type.data().is_Generic() || (type.data().is_Path() && type.data().as_Path().binding.is_Opaque()) ) {
+                return found_cb( ImplRef(&type, trait_params, &null_assoc), false );
+            }
+            else if( type.data().is_Path() ) {
+                if( const auto* enmpp = type.data().as_Path().binding.opt_Enum() ) {
+                    const auto& enm = **enmpp;
+                    HIR::TypeRef    tag_ty = enm.get_repr_type(enm.m_tag_repr);
+                    ::HIR::TraitPath::assoc_list_t   assoc_list;
+                    assoc_list.insert(std::make_pair( RcString::new_interned("Discriminant"), HIR::TraitPath::AtyEqual {
+                        m_lang_DiscriminantKind,
+                        std::move(tag_ty)
+                        } ));
+                    return found_cb(ImplRef(type.clone(), {}, std::move(assoc_list)), false);
+                }
+                else {
+                }
+            }
+            else {
+            }
+            static ::HIR::TraitPath::assoc_list_t   assoc_unit;
+            if(assoc_unit.empty()) {
+                assoc_unit.insert(std::make_pair( RcString::new_interned("Discriminant"), HIR::TraitPath::AtyEqual {
+                    m_lang_DiscriminantKind,
+                    HIR::TypeRef::new_unit()
+                    } ));
+            }
+            return found_cb( ImplRef(&type, trait_params, &assoc_unit), false );
+        }
+        else if( TARGETVER_LEAST_1_54 && trait_path == m_lang_Pointee ) {
+            static ::HIR::TraitPath::assoc_list_t   assoc_unit;
+            static ::HIR::TraitPath::assoc_list_t   assoc_slice;
+            static RcString name_Metadata;
+            if(assoc_unit.empty()) {
+                name_Metadata = RcString::new_interned("Metadata");
+                assoc_unit.insert(std::make_pair( name_Metadata, HIR::TraitPath::AtyEqual {
+                    m_lang_Pointee,
+                    HIR::TypeRef::new_unit()
+                    } ));
+                assoc_slice.insert(std::make_pair( name_Metadata, HIR::TraitPath::AtyEqual {
+                    m_lang_Pointee,
+                    HIR::CoreType::Usize
+                    } ));
+            }
+            // Generics (or opaque ATYs)
+            if( type.data().is_Generic() || (type.data().is_Path() && type.data().as_Path().binding.is_Opaque()) ) {
+                // If the type is `Sized` return `()` as the type
+                if( type_is_sized(sp, type) ) {
+                    return found_cb( ImplRef(&type, trait_params, &assoc_unit), false );
+                }
+                else {
+                    // Return unbounded
+                    return found_cb( ImplRef(&type, trait_params, &null_assoc), false );
+                }
+            }
+            // Trait object: `Metadata=DynMetadata<T>`
+            if( type.data().is_TraitObject() ) {
+                ::HIR::TraitPath::assoc_list_t   assoc_list;
+                assoc_list.insert(std::make_pair( name_Metadata, HIR::TraitPath::AtyEqual {
+                    m_lang_Pointee,
+                    ::HIR::TypeRef::new_path(::HIR::GenericPath(m_lang_DynMetadata, HIR::PathParams(type.clone())), &m_crate.get_struct_by_path(sp, m_lang_DynMetadata))
+                    } ));
+                return found_cb(ImplRef(type.clone(), {}, std::move(assoc_list)), false);
+            }
+            // Slice and str
+            if( type.data().is_Slice() || TU_TEST1(type.data(), Primitive, == HIR::CoreType::Str) ) {
+                return found_cb( ImplRef(&type, trait_params, &assoc_slice), false );
+            }
+            // Structs: Can delegate their metadata
+            if( type.data().is_Path() && type.data().as_Path().binding.is_Struct() )
+            {
+                const auto& str = *type.data().as_Path().binding.as_Struct();
+                switch(str.m_struct_markings.dst_type)
+                {
+                case HIR::StructMarkings::DstType::None:
+                    return found_cb( ImplRef(&type, trait_params, &assoc_unit), false );
+                case HIR::StructMarkings::DstType::Possible:
+                    TODO(sp, "m_lang_Pointee - " << type);
+                    //return found_cb( ImplRef(&type, trait_params, &null_assoc), false );
+                case HIR::StructMarkings::DstType::Slice:
+                    return found_cb( ImplRef(&type, trait_params, &assoc_slice), false );
+                case HIR::StructMarkings::DstType::TraitObject:
+                    TODO(sp, "m_lang_Pointee - " << type);
+                }
+            }
+            return found_cb( ImplRef(&type, trait_params, &assoc_unit), false );
         }
     }
 
@@ -238,6 +339,15 @@ bool StaticTraitResolve::find_impl(
             ::HIR::TraitPath::assoc_list_t  assoc;
             assoc.insert( ::std::make_pair("Output", ::HIR::TraitPath::AtyEqual { ::HIR::GenericPath(m_lang_FnOnce, trait_params->clone()), e.m_rettype.clone() }) );
             return found_cb( ImplRef(type.clone(), trait_params->clone(), mv$(assoc)), false );
+        }
+        }
+    TU_ARMA(Generator, e) {
+        if( TARGETVER_LEAST_1_39 && trait_path == m_crate.get_lang_item_path(sp, "generator") )
+        {
+            ::HIR::TraitPath::assoc_list_t   assoc;
+            assoc.insert(::std::make_pair("Yield" , ::HIR::TraitPath::AtyEqual { trait_path.clone(), e.node->m_yield_ty.clone() }));
+            assoc.insert(::std::make_pair("Return", ::HIR::TraitPath::AtyEqual { trait_path.clone(), e.node->m_return.clone() }));
+            return found_cb( ImplRef(type.clone(), HIR::PathParams(), mv$(assoc)), ::HIR::Compare::Equal );
         }
         }
     // ----
@@ -661,9 +771,9 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
                 return impl_params.m_types[g.binding].compare_with_placeholders(sp, ty, resolve_cb);
             }
         }
-        ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::Literal& sz) override {
+        ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::ConstGeneric& sz) override {
             ASSERT_BUG(sp, g.binding < impl_params.m_values.size(), "Type generic " << g << " out of range (" << impl_params.m_values.size() << ")");
-            if( impl_params.m_values[g.binding].is_Invalid() )
+            if( impl_params.m_values[g.binding].is_Infer() )
             {
                 impl_params.m_values[g.binding] = sz.clone();
                 DEBUG("[find_impl__check_crate_raw:GetParams] Set impl val param " << g << " to " << sz);
@@ -777,7 +887,7 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
                 return ::HIR::Compare::Unequal;
             }
         }
-        ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::Literal& sz) override {
+        ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::ConstGeneric& sz) override {
             TODO(Span(), "Matcher::match_val " << g << " with " << sz);
         }
 
@@ -795,10 +905,10 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
             }
             return placeholders.at(ge.binding).clone();
         }
-        ::HIR::Literal get_value(const Span& sp, const ::HIR::GenericRef& val) const override {
+        ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& val) const override {
             ASSERT_BUG(sp, val.binding < 256, "Generic value binding in " << val << " out of range (>=256)");
             ASSERT_BUG(sp, val.binding < impl_params.m_values.size(), "Generic value binding in " << val << " out of range (>= " << impl_params.m_values.size() << ")");
-            if( !impl_params.m_values.at(val.binding).is_Invalid() ) {
+            if( !impl_params.m_values.at(val.binding).is_Infer() ) {
                 return impl_params.m_values.at(val.binding).clone();
             }
             //ASSERT_BUG(sp, placeholders.m_values.size() == impl_params.m_values.size(), "Placeholder size mismatch: " << placeholders.m_values.size() << " != " << impl_params.m_values.size());
@@ -875,6 +985,10 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
                     rv = this->find_impl(sp, b_tp_mono.m_path.m_path, b_tp_mono.m_path.m_params, b_ty_mono, [&](const auto& impl, bool) {
                         return true;
                         });
+                }
+                if(!rv && visit_ty_with(b_ty_mono, [](const HIR::TypeRef& ty){ return ty.data().is_Generic() && ty.data().as_Generic().is_placeholder(); }) ) {
+                    DEBUG("- Placeholder param within " << b_ty_mono << ", magic success");
+                    rv = true;
                 }
                 if( !rv ) {
                     DEBUG("> Fail - " << b_ty_mono << ": " << b_tp_mono);
@@ -1070,7 +1184,16 @@ void StaticTraitResolve::expand_associated_types_tp(const Span& sp, ::HIR::Trait
 {
     expand_associated_types_params(sp, input.m_path.m_params);
     for(auto& arg : input.m_type_bounds)
+    {
+        this->expand_associated_types_params(sp, arg.second.source_trait.m_params);
         this->expand_associated_types_inner(sp, arg.second.type);
+    }
+    for(auto& arg : input.m_trait_bounds)
+    {
+        this->expand_associated_types_params(sp, arg.second.source_trait.m_params);
+        for(auto& t : arg.second.traits)
+            this->expand_associated_types_tp(sp, t);
+    }
 }
 void StaticTraitResolve::expand_associated_types_inner(const Span& sp, ::HIR::TypeRef& input) const
 {
@@ -1086,28 +1209,38 @@ void StaticTraitResolve::expand_associated_types_inner(const Span& sp, ::HIR::Ty
     TU_ARMA(Primitive, e) {
         }
     TU_ARMA(Path, e) {
-        TU_MATCH(::HIR::Path::Data, (e.path.m_data), (e2),
-        (Generic,
+        TU_MATCH_HDRA( (e.path.m_data), { )
+        TU_ARMA(Generic, e2) {
             expand_associated_types_params(sp, e2.m_params);
-            ),
-        (UfcsInherent,
+            }
+        TU_ARMA(UfcsInherent, e2) {
             this->expand_associated_types_inner(sp, e2.type);
             expand_associated_types_params(sp, e2.params);
             // TODO: impl params too?
             for(auto& arg : e2.impl_params.m_types)
                 this->expand_associated_types_inner(sp, arg);
-            ),
-        (UfcsKnown,
+            }
+        TU_ARMA(UfcsKnown, e2) {
             // - Only try resolving if the binding isn't known
             if( !e.binding.is_Unbound() )
                 return ;
-            this->expand_associated_types__UfcsKnown(sp, input);
+            auto it = m_aty_cache.find(e.path);
+            if( it != m_aty_cache.end() )
+            {
+                input = it->second.clone();
+            }
+            else
+            {
+                auto p = e.path.clone();
+                this->expand_associated_types__UfcsKnown(sp, input);
+                m_aty_cache.insert(std::make_pair( std::move(p), input.clone() ));
+            }
             return;
-            ),
-        (UfcsUnknown,
+            }
+        TU_ARMA(UfcsUnknown, e2) {
             BUG(sp, "Encountered UfcsUnknown in EAT - " << e.path);
-            )
-        )
+            }
+        }
         }
     TU_ARMA(Generic, e) {
         }
@@ -1147,6 +1280,10 @@ void StaticTraitResolve::expand_associated_types_inner(const Span& sp, ::HIR::Ty
         for(auto& ty : e.m_arg_types)
             expand_associated_types_inner(sp, ty);
         expand_associated_types_inner(sp, e.m_rettype);
+        }
+    TU_ARMA(Generator, e) {
+        // TODO: Call into the node?
+        // - This should never be monomorphed, so useless?
         }
     }
 }
@@ -1408,12 +1545,7 @@ bool StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
         }
         else {
             auto nt = impl.get_type( e2.item.c_str() );
-            if( nt == ::HIR::TypeRef() ) {
-                DEBUG("Mark  " << e.path << " as opaque");
-                e.binding = ::HIR::TypePathBinding::make_Opaque({});
-                replacement_happened = this->replace_equalities(input);
-            }
-            else {
+            if( nt != ::HIR::TypeRef() ) {
                 DEBUG("Converted UfcsKnown - " << e.path << " = " << nt);
                 if( input == nt ) {
                     replacement_happened = false;
@@ -1421,6 +1553,11 @@ bool StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
                 }
                 input = mv$(nt);
                 replacement_happened = true;
+            }
+            else {
+                DEBUG("Mark  " << e.path << " as opaque");
+                e.binding = ::HIR::TypePathBinding::make_Opaque({});
+                replacement_happened = this->replace_equalities(input);
             }
             return true;
         }
@@ -1631,6 +1768,10 @@ bool StaticTraitResolve::type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) 
         }
         return false;
         }
+    TU_ARMA(Generator, e) {
+        // NOTE: Generators aren't Copy
+        return false;
+        }
     TU_ARMA(Infer, e) {
         // Shouldn't be hit
         return false;
@@ -1737,6 +1878,9 @@ bool StaticTraitResolve::type_is_clone(const Span& sp, const ::HIR::TypeRef& ty)
             return e.node->m_is_copy;
         }
         return false;
+        }
+    TU_ARMA(Generator, e) {
+        TODO(sp, "type_is_clone - Generator");
         }
     TU_ARMA(Infer, e) {
         // Shouldn't be hit
@@ -2121,6 +2265,9 @@ HIR::Compare StaticTraitResolve::type_is_interior_mutable(const Span& sp, const 
         // TODO: Closures could be known?
         return HIR::Compare::Fuzzy;
         }
+    TU_ARMA(Generator, e) {
+        return HIR::Compare::Unequal;
+        }
     // Borrow and pointer are not interior mutable (they might point to something, but that doesn't matter)
     TU_ARMA(Borrow, e) {
         return HIR::Compare::Unequal;
@@ -2147,8 +2294,8 @@ MetadataType StaticTraitResolve::metadata_type(const Span& sp, const ::HIR::Type
         }
         else if( (e.binding >> 8) == 0 ) {
             auto idx = e.binding & 0xFF;
-            assert( m_impl_generics );
-            assert( idx < m_impl_generics->m_types.size() );
+            ASSERT_BUG(sp, m_impl_generics, "Encountered generic " << ty << " without impl generics available");
+            ASSERT_BUG(sp, idx < m_impl_generics->m_types.size(), "Encountered generic " << ty << " out of range of impl generic spec");
             if( m_impl_generics->m_types[idx].m_is_sized ) {
                 return MetadataType::None;
             }
@@ -2158,8 +2305,8 @@ MetadataType StaticTraitResolve::metadata_type(const Span& sp, const ::HIR::Type
         }
         else if( (e.binding >> 8) == 1 ) {
             auto idx = e.binding & 0xFF;
-            assert( m_item_generics );
-            assert( idx < m_item_generics->m_types.size() );
+            ASSERT_BUG(sp, m_item_generics, "Encountered generic " << ty << " without item generics available");
+            ASSERT_BUG(sp, idx < m_item_generics->m_types.size(), "Encountered generic " << ty << " out of range of item generic spec");
             if( m_item_generics->m_types[idx].m_is_sized ) {
                 return MetadataType::None;
             }
@@ -2350,7 +2497,10 @@ bool StaticTraitResolve::type_needs_drop_glue(const Span& sp, const ::HIR::TypeR
         return false;
         }
     TU_ARMA(Closure, e) {
-        // TODO: Destructure?
+        // Note: Copy already covered above
+        return true;
+        }
+    TU_ARMA(Generator, e) {
         return true;
         }
     TU_ARMA(Infer, e) {
@@ -2459,6 +2609,7 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
             }
         }
         const ::HIR::Module& mod = m_crate.get_mod_by_path(sp, pe.m_path, /*ignore_last_node=*/true);
+        ASSERT_BUG(sp, mod.m_value_items.count(pe.m_path.m_components.back()), "Missing item " << pe.m_path);
         const auto& v = mod.m_value_items.at(pe.m_path.m_components.back());
         TU_MATCHA( (v->ent), (ve),
         (Import, BUG(sp, "Module Import");),
@@ -2505,6 +2656,7 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
         }
         else
         {
+            bool best_is_spec = false;
             ImplRef best_impl;
             ValuePtr    rv;
             this->find_impl(sp, pe.trait.m_path, &pe.trait.m_params, pe.type, [&](auto impl, bool is_fuzz)->bool{
@@ -2557,6 +2709,7 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
                 }
                 else {
                     DEBUG("- More specific (is_spec=" << is_spec << ")");
+                    best_is_spec = is_spec;
                     best_impl = mv$(impl);
                     rv = std::move(this_rv);
                     // NOTE: There could be an overlapping and more-specific impl without `default` being involved
@@ -2573,6 +2726,11 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
                     TU_MATCH_HDRA( (v), {)
                     TU_ARMA(Constant, ve) {
                         // Constants?
+                        if( ve.m_value_state != HIR::Constant::ValueState::Unknown ) {
+                            DEBUG("Trait provided value");
+                            // NOTE: The parameters have already been set
+                            return &ve;
+                        }
                         }
                     TU_ARMA(Static, ve) {
                         // Statics?
@@ -2588,6 +2746,15 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
                     }
                 }
                 return ValuePtr::make_NotYetKnown({});
+            }
+            if(best_is_spec)
+            {
+                // If there's generics present in the path, return NotYetKnown
+                if( monomorphise_type_needed(pe.type) || monomorphise_pathparams_needed(pe.trait.m_params) )
+                {
+                    DEBUG("Specialisable and still generic, return NotYetKnown");
+                    return ValuePtr::make_NotYetKnown({});
+                }
             }
 
             if( ! best_impl.m_data.is_TraitImpl() )

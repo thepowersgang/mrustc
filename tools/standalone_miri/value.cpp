@@ -15,7 +15,7 @@
 
 namespace {
     static bool in_bounds(size_t ofs, size_t size, size_t max_size) {
-        if( !(ofs < max_size) )
+        if( !(ofs <= max_size) )
             return false;
         if( !(size <= max_size) )
             return false;
@@ -56,7 +56,7 @@ namespace {
 
 ::std::ostream& operator<<(::std::ostream& os, const Allocation* x)
 {
-    os << "A(#" << x->m_index << " " << x->tag() /*<< " +" << x->size()*/ << ")";
+    os << "A(#" << x->m_index << " " << x->tag() << " s=" << x->size() << ")";
     return os;
 }
 
@@ -235,6 +235,10 @@ size_t RelocationPtr::get_size() const
     }
     throw "Unreachable";
 }
+size_t RelocationPtr::get_base() const
+{
+    return 0x1000;
+}
 
 ::std::ostream& operator<<(::std::ostream& os, const RelocationPtr& x)
 {
@@ -275,13 +279,13 @@ void ValueCommonWrite::write_usize(size_t ofs, uint64_t v)
 }
 void* ValueCommonRead::read_pointer_tagged_null(size_t rd_ofs, const char* tag) const
 {
+    auto reloc = get_relocation(rd_ofs);
     auto ofs = read_usize(rd_ofs);
-    LOG_ASSERT(ofs >= Allocation::PTR_BASE, "Deref of invalid pointer");
-    ofs -= Allocation::PTR_BASE;
+    LOG_ASSERT(ofs >= reloc.get_base(), "Invalid pointer read");
+    ofs -= reloc.get_base();
     if( ofs != 0 ) {
         LOG_FATAL("Read a non-zero offset for tagged pointer");
     }
-    auto reloc = get_relocation(rd_ofs);
     //LOG_TODO("read_pointer_tagged_null(" << rd_ofs << ", '" << tag << "')");
     if( !reloc )
     {
@@ -306,10 +310,10 @@ void* ValueCommonRead::read_pointer_tagged_null(size_t rd_ofs, const char* tag) 
 }
 void* ValueCommonRead::read_pointer_unsafe(size_t rd_ofs, size_t req_valid, size_t& out_size, bool& out_is_mut) const
 {
-    auto ofs = read_usize(rd_ofs);
-    LOG_ASSERT(ofs >= Allocation::PTR_BASE, "Deref of invalid pointer");
-    ofs -= Allocation::PTR_BASE;
     auto reloc = get_relocation(rd_ofs);
+    auto ofs = read_usize(rd_ofs);
+    LOG_ASSERT(ofs >= reloc.get_base(), "Invalid pointer read");
+    ofs -= reloc.get_base();
     if( !reloc )
     {
         if( ofs != 0 ) {
@@ -361,14 +365,18 @@ void* ValueCommonRead::read_pointer_unsafe(size_t rd_ofs, size_t req_valid, size
 }
 ValueRef ValueCommonRead::read_pointer_valref_mut(size_t rd_ofs, size_t size)
 {
-    auto ofs = read_usize(rd_ofs);
-    LOG_ASSERT(ofs >= Allocation::PTR_BASE, "Invalid pointer read");
-    ofs -= Allocation::PTR_BASE;
     auto reloc = get_relocation(rd_ofs);
+    auto ofs = read_usize(rd_ofs);
+    LOG_ASSERT(ofs >= reloc.get_base(), "Invalid pointer read");
+    ofs -= reloc.get_base();
     LOG_DEBUG("ValueCommonRead::read_pointer_valref_mut(" << ofs << "+" << size << ", reloc=" << reloc << ")");
     if( !reloc )
     {
         LOG_ERROR("Getting ValRef to null pointer (no relocation)");
+    }
+    else if(ofs == 0 && size == 0)
+    {
+        return ValueRef(reloc, ofs, size);
     }
     else
     {
@@ -568,7 +576,7 @@ void Allocation::write_bytes(size_t ofs, const void* src, size_t count)
 }
 void Allocation::write_ptr(size_t ofs, size_t ptr_ofs, RelocationPtr reloc)
 {
-    LOG_ASSERT(ptr_ofs >= Allocation::PTR_BASE, "Invalid pointer being written");
+    LOG_ASSERT(ptr_ofs >= reloc.get_base(), "Invalid pointer being written");
     this->write_usize(ofs, ptr_ofs);
     this->set_reloc(ofs, POINTER_SIZE, ::std::move(reloc));
 }
@@ -610,7 +618,7 @@ void Allocation::set_reloc(size_t ofs, size_t len, RelocationPtr reloc)
             os << "--";
         }
     }
-    os.setf(flags);
+    os << ::std::dec;
 
     os << " {";
     for(const auto& r : x.relocations)
@@ -620,6 +628,7 @@ void Allocation::set_reloc(size_t ofs, size_t len, RelocationPtr reloc)
             os << " @" << r.slot_ofs << "=" << r.backing_alloc;
         }
     }
+    os.flags(flags);
     os << " }";
     return os;
 }
@@ -666,15 +675,19 @@ Value Value::with_size(size_t size, bool have_allocation)
 Value Value::new_fnptr(const ::HIR::Path& fn_path)
 {
     Value   rv( ::HIR::TypeRef(::HIR::CoreType { RawType::Function }) );
-    rv.write_ptr(0, Allocation::PTR_BASE, RelocationPtr::new_fcn(fn_path));
+    rv.write_ptr_ofs(0, 0, RelocationPtr::new_fcn(fn_path));
     return rv;
 }
 Value Value::new_ffiptr(FFIPointer ffi)
 {
     Value   rv( ::HIR::TypeRef(::HIR::CoreType { RawType::USize }) );
     assert( !rv.m_inner.is_alloc );
-    rv.write_ptr(0, Allocation::PTR_BASE, RelocationPtr::new_ffi(ffi));
+    rv.write_ptr_ofs(0, 0, RelocationPtr::new_ffi(ffi));
     return rv;
+}
+Value Value::new_pointer_ofs(::HIR::TypeRef ty, uint64_t ofs, RelocationPtr r) {
+    ofs += r.get_base();
+    return Value::new_pointer(ty, ofs, std::move(r));
 }
 Value Value::new_pointer(::HIR::TypeRef ty, uint64_t v, RelocationPtr r) {
     assert(ty.get_wrapper());
@@ -897,7 +910,7 @@ extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v)
                     os << "--";
                 }
             }
-            os.setf(flags);
+            os.flags(flags);
 
             os << " {";
             for(const auto& r : alloc.relocations)
@@ -921,7 +934,7 @@ extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v)
             {
                 os << ::std::setw(2) << ::std::setfill('0') << (int)s.data()[i];
             }
-            os.setf(flags);
+            os.flags(flags);
             } break;
         case RelocationPtr::Ty::FfiPointer:
             LOG_TODO("ValueRef to " << alloc_ptr);
@@ -950,7 +963,7 @@ extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v)
                 os << "--";
             }
         }
-        os.setf(flags);
+        os.flags(flags);
 
         os << " {";
         for(const auto& r : alloc.relocations)
@@ -981,7 +994,7 @@ extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v)
                 os << "--";
             }
         }
-        os.setf(flags);
+        os.flags(flags);
         if(direct.reloc_0)
         {
             os << " { " << direct.reloc_0 << " }";

@@ -41,7 +41,7 @@ class TomlFile
     ::std::vector<::std::string>    m_current_block;
 
     /// Path suffix of the current composite (none if empty)
-    ::std::vector<::std::string>    m_current_composite;
+    ::std::vector< std::vector<std::string>>    m_current_composite;
 
     /// Index of the next array field (if zero, not parsing an array)
     unsigned int m_next_array_index;
@@ -59,6 +59,9 @@ public:
     TomlKeyValue get_next_value();
 
     const TomlLexer& lexer() const { return m_lexer; }
+
+private:
+    std::vector<std::string>    get_path(std::vector<std::string> tail) const;
 };
 
 struct TomlValue

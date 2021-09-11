@@ -24,6 +24,7 @@ DebugSink::~DebugSink()
     m_inner.flags({});
     if( m_stderr_too )
     {
+        ::std::cerr.flags({});
         ::std::cerr << ::std::endl;
     }
 }
@@ -57,6 +58,7 @@ DebugSink DebugSink::get(const char* fcn_name, const char* file, unsigned line, 
         break;
     case DebugLevel::Error:
         sink << "ERROR: ";
+        std::cerr << "ERROR: ";
         stderr_too = true;
         break;
     case DebugLevel::Fatal:
@@ -65,6 +67,7 @@ DebugSink DebugSink::get(const char* fcn_name, const char* file, unsigned line, 
         break;
     case DebugLevel::Bug:
         sink << "BUG: " << file << ":" << line << ": ";
+        std::cerr << "BUG: " << file << ":" << line << ": ";
         stderr_too = true;
         break;
     }

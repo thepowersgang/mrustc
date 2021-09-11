@@ -147,7 +147,7 @@ ImplRef::Monomorph ImplRef::get_cb_monomorph_traitimpl(const Span& sp) const
     ASSERT_BUG(sp, ge.binding < this->ti.impl_params.m_types.size(), "Binding in " << ge << " out of range (>= " << this->ti.impl_params.m_types.size() << ")");
     return this->ti.impl_params.m_types.at(ge.binding).clone();
 }
-::HIR::Literal ImplRef::Monomorph::get_value(const Span& sp, const ::HIR::GenericRef& val) const /*override*/
+::HIR::ConstGeneric ImplRef::Monomorph::get_value(const Span& sp, const ::HIR::GenericRef& val) const /*override*/
 {
     ASSERT_BUG(sp, val.binding < 256, "Generic value binding in " << val << " out of range (>=256)");
     ASSERT_BUG(sp, val.binding < this->ti.impl_params.m_values.size(), "Generic value binding in " << val << " out of range (>= " << this->ti.impl_params.m_values.size() << ")");

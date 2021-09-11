@@ -484,7 +484,7 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
             PUTBACK(tok, lex);
         return InterpolatedFragment( Parse_TT(lex, false) );
     case MacroPatEnt::PAT_PAT:
-        return InterpolatedFragment( Parse_Pattern(lex, true) );
+        return InterpolatedFragment( Parse_Pattern(lex, AllowOrPattern::No) );
     case MacroPatEnt::PAT_TYPE:
         return InterpolatedFragment( Parse_Type(lex) );
     case MacroPatEnt::PAT_EXPR:
@@ -1127,6 +1127,7 @@ namespace
             case TOK_DOUBLE_COLON:
             case TOK_RWORD_SELF:
             case TOK_RWORD_SUPER:
+            case TOK_RWORD_CRATE:
             case TOK_LT:
             case TOK_DOUBLE_LT:
                 if( !consume_path(lex) )
@@ -1920,6 +1921,7 @@ unsigned int Macro_InvokeRules_MatchPattern(const Span& sp, const MacroRules& ru
         DEBUG("Evalulating arm " << i);
 
         auto lex = TTStreamO(sp, ParseState(crate.m_edition), mv$(input));
+        lex.parse_state().crate = &crate;
         SET_MODULE(lex, mod);
         auto arm_stream = MacroPatternStream(rules.m_rules[i].m_pattern, &history);
 

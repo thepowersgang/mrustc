@@ -249,6 +249,16 @@ class CMacroExportHandler:
             DEBUG("- Export macro " << name << "!");
             crate.m_root_module.macros().push_back( mv$(e) );
         }
+        else if( i.is_Macro() ) {
+            const auto& name = path.nodes.back();
+            if(i.as_Macro())
+            {
+                i.as_Macro()->m_exported = true;
+                ASSERT_BUG(sp, path.nodes.size() == 1, "");
+                DEBUG("- Export macro " << name << "!");
+                //crate.m_root_module.macros().push_back( mv$(*i.as_Macro()) );
+            }
+        }
         else {
             ERROR(sp, E0000, "Use of #[macro_export] on non-macro - " << i.tag_str());
         }
@@ -314,7 +324,7 @@ class CBuiltinMacroHandler:
         ui.entries.push_back(AST::UseItem::Ent { });
         ui.entries.back().name = name;
         ui.entries.back().path = AST::Path(CRATE_BUILTINS, { name });
-        DEBUG("Convert macro_rules tagged #[rustc_builtin_macro] with use");
+        DEBUG("Convert macro_rules tagged #[rustc_builtin_macro] with use - " << name);
         i = AST::Item::make_Use(mv$(ui));
     }
 };

@@ -141,6 +141,8 @@ struct TypeRepr
         ::HIR::TypeRef  ty;
     };
     ::std::vector<Field>    fields;
+
+    size_t get_offset(const Span& sp, const StaticTraitResolve& resolve, const FieldPath& path) const;
 };
 static inline std::ostream& operator<<(std::ostream& os, const TypeRepr::FieldPath& x) {
     os << x.size << "@" << x.index;
@@ -152,6 +154,7 @@ static inline std::ostream& operator<<(std::ostream& os, const TypeRepr::FieldPa
 extern const TargetSpec& Target_GetCurSpec();
 extern void Target_SetCfg(const ::std::string& target_name);
 extern void Target_ExportCurSpec(const ::std::string& filename);
+static inline unsigned Target_GetPointerBits() { return Target_GetCurSpec().m_arch.m_pointer_bits; }
 
 extern bool Target_GetSizeOf(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty, size_t& out_size);
 extern bool Target_GetAlignOf(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty, size_t& out_align);

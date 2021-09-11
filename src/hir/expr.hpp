@@ -13,6 +13,7 @@
 #include <span.hpp>
 #include <hir/visitor.hpp>
 #include <hir_typeck/common.hpp>
+#include "asm.hpp"
 
 namespace HIR {
 
@@ -110,6 +111,39 @@ struct ExprNode_Asm:
         m_inputs( mv$(inputs) ),
         m_clobbers( mv$(clobbers) ),
         m_flags( mv$(flags) )
+    {
+    }
+
+    NODE_METHODS();
+};
+struct ExprNode_Asm2:
+    public ExprNode
+{
+    TAGGED_UNION(Param, Const,
+        (Const, HIR::ExprNodeP),
+        (Sym, HIR::Path),
+        (RegSingle, struct {
+            AsmCommon::Direction    dir;
+            AsmCommon::RegisterSpec spec;
+            HIR::ExprNodeP  val;
+            }),
+        (Reg, struct {
+            AsmCommon::Direction    dir;
+            AsmCommon::RegisterSpec spec;
+            HIR::ExprNodeP  val_in;
+            HIR::ExprNodeP  val_out;
+            })
+        );
+
+    AsmCommon::Options  m_options;
+    std::vector<AsmCommon::Line>   m_lines;
+    std::vector<Param>  m_params;
+
+    ExprNode_Asm2(Span sp, AsmCommon::Options options, std::vector<AsmCommon::Line> lines, std::vector<Param> params)
+        : ExprNode(mv$(sp))
+        , m_options(options)
+        , m_lines( move(lines) )
+        , m_params( move(params) )
     {
     }
 
@@ -788,6 +822,68 @@ struct ExprNode_Closure:
     NODE_METHODS();
 };
 
+struct ExprNode_Generator:
+    public ExprNode
+{
+    //ExprNode_Closure::args_t    m_args;
+    ::HIR::TypeRef  m_return;
+    ::HIR::TypeRef  m_yield_ty;
+    ::HIR::ExprNodeP    m_code;
+    bool    m_is_move;
+    bool    m_is_pinned;
+
+    // Generated type information
+    const ::HIR::Struct*    m_obj_ptr = nullptr;
+    ::HIR::GenericPath  m_obj_path;
+    // Captured variables (used for emitting the constructor)
+    ::std::vector< ::HIR::ExprNodeP>    m_captures;
+    // State data type (needed for initialising)
+    ::HIR::TypeRef  m_state_data_type;
+
+    ExprNode_Generator(Span sp, /*ExprNode_Closure::args_t args,*/ ::HIR::TypeRef rv, ::HIR::ExprNodeP code, bool is_move, bool is_pinned):
+        ExprNode(mv$(sp)),
+        //m_args( ::std::move(args) ),
+        m_return( ::std::move(rv) ),
+        m_code( ::std::move(code) ),
+        m_is_move(is_move),
+        m_is_pinned(is_pinned)
+    {}
+
+    NODE_METHODS();
+};
+
+/// <summary>
+/// Top-level wrapper for the generator method
+/// </summary>
+struct ExprNode_GeneratorWrapper:
+    public ExprNode
+{
+    //ExprNode_Closure::args_t    m_args;
+    ::HIR::TypeRef  m_return;
+    ::HIR::TypeRef  m_yield_ty;
+    ::HIR::ExprNodeP    m_code;
+
+    // Generated type information
+    const ::HIR::Struct*    m_obj_ptr = nullptr;
+    ::HIR::GenericPath  m_obj_path;
+
+    ::HIR::TypeRef  m_state_data_type;
+    ::HIR::SimplePath   m_state_idx_enum;
+    
+    ::HIR::Function*    m_drop_fcn_ptr = nullptr;
+
+    ::std::vector<HIR::ValueUsage> m_capture_usages;
+
+    ExprNode_GeneratorWrapper(Span sp, /*ExprNode_Closure::args_t args,*/ ::HIR::TypeRef rv, ::HIR::ExprNodeP code, bool is_move, bool is_pinned):
+        ExprNode(mv$(sp)),
+        //m_args( ::std::move(args) ),
+        m_return( ::std::move(rv) ),
+        m_code( ::std::move(code) )
+    {}
+
+    NODE_METHODS();
+};
+
 #undef NODE_METHODS
 
 class ExprVisitor
@@ -800,6 +896,7 @@ public:
 
     NV(ExprNode_Block)
     NV(ExprNode_Asm)
+    NV(ExprNode_Asm2)
     NV(ExprNode_Return)
     NV(ExprNode_Yield)
     NV(ExprNode_Let)
@@ -836,6 +933,8 @@ public:
     NV(ExprNode_ArraySized);
 
     NV(ExprNode_Closure);
+    NV(ExprNode_Generator);
+    NV(ExprNode_GeneratorWrapper);
     #undef NV
 };
 
@@ -849,6 +948,7 @@ public:
 
     NV(ExprNode_Block)
     NV(ExprNode_Asm)
+    NV(ExprNode_Asm2)
     NV(ExprNode_Return)
     NV(ExprNode_Yield)
     NV(ExprNode_Let)
@@ -885,6 +985,8 @@ public:
     NV(ExprNode_ArraySized);
 
     NV(ExprNode_Closure);
+    NV(ExprNode_Generator);
+    NV(ExprNode_GeneratorWrapper);
     #undef NV
 
     virtual void visit_pattern(const Span& sp, ::HIR::Pattern& pat);

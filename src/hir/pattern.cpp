@@ -129,6 +129,16 @@ namespace HIR {
                 os << ", " << s;
             os << " ]";
             }
+        TU_ARMA(Or, e) {
+            os << "(";
+            for(size_t i = 0; i < e.size(); i ++)
+            {
+                if(i != 0)
+                    os << "|";
+                os << e[i];
+            }
+            os << ")";
+            }
         }
         return os;
     }
@@ -250,6 +260,8 @@ namespace { ::HIR::Pattern::Data clone_pattern_data(const ::HIR::Pattern::Data& 
             clone_pat_vec(e.trailing)
             });
         }
+    TU_ARMA(Or, e)
+        return clone_pat_vec(e);
     }
 
     throw "";

@@ -30,12 +30,12 @@ struct PackageVersion
     static PackageVersion from_string(const ::std::string& s);
 
     PackageVersion next_minor() const {
-        if(major == 0) {
-            return PackageVersion { 0, minor, patch+1 };
-        }
-        else {
+        //if(major == 0) {
+        //    return PackageVersion { 0, minor, patch+1 };
+        //}
+        //else {
             return PackageVersion { major, minor+1, 0 };
-        }
+        //}
     }
     PackageVersion next_breaking() const {
         if(major == 0) {

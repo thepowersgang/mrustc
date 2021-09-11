@@ -38,6 +38,26 @@ DEF_VISIT(ExprNode_Asm, node,
     for(auto& v : node.m_inputs)
         visit_node_ptr(v.value);
 )
+DEF_VISIT(ExprNode_Asm2, node,
+    for(auto& v : node.m_params)
+    {
+        TU_MATCH_HDRA( (v), { )
+        TU_ARMA(Const, e) {
+            visit_node_ptr(e);
+            }
+        TU_ARMA(Sym, e) {
+            visit_path(::HIR::Visitor::PathContext::VALUE, e);
+            }
+        TU_ARMA(RegSingle, e) {
+            visit_node_ptr(e.val);
+            }
+        TU_ARMA(Reg, e) {
+            if(e.val_in)    visit_node_ptr(e.val_in);
+            if(e.val_out)   visit_node_ptr(e.val_out);
+            }
+        }
+    }
+)
 DEF_VISIT(ExprNode_Return, node,
     visit_node_ptr(node.m_value);
 )
@@ -45,11 +65,12 @@ DEF_VISIT(ExprNode_Yield, node,
     visit_node_ptr(node.m_value);
 )
 DEF_VISIT(ExprNode_Let, node,
-    visit_pattern(node.span(), node.m_pattern);
-    visit_type(node.m_type);
+    // Visit the value FIRST as it's evaluated before the variable is defined
     if( node.m_value ) {
         visit_node_ptr(node.m_value);
     }
+    visit_pattern(node.span(), node.m_pattern);
+    visit_type(node.m_type);
 )
 DEF_VISIT(ExprNode_Loop, node,
     visit_node_ptr(node.m_code);
@@ -203,6 +224,35 @@ DEF_VISIT(ExprNode_Closure, node,
             visit_node_ptr(cap);
     }
 )
+DEF_VISIT(ExprNode_Generator, node,
+    //for(auto& arg : node.m_args) {
+    //    visit_pattern(node.span(), arg.first);
+    //    visit_type(arg.second);
+    //}
+    visit_type(node.m_return);
+    visit_type(node.m_yield_ty);
+    if(node.m_code)
+    {
+        visit_node_ptr(node.m_code);
+    }
+    else
+    {
+        for(auto& cap : node.m_captures)
+            visit_node_ptr(cap);
+    }
+)
+DEF_VISIT(ExprNode_GeneratorWrapper, node,
+    //for(auto& arg : node.m_args) {
+    //    visit_pattern(node.span(), arg.first);
+    //    visit_type(arg.second);
+    //}
+    visit_type(node.m_return);
+    visit_type(node.m_yield_ty);
+    if(node.m_code)
+    {
+        visit_node_ptr(node.m_code);
+    }
+)
 
 #undef DEF_VISIT
 
@@ -253,6 +303,10 @@ void ::HIR::ExprVisitorDef::visit_pattern(const Span& sp, ::HIR::Pattern& pat)
         for(auto& subpat : e.leading)
             this->visit_pattern(sp, subpat);
         for(auto& subpat : e.trailing)
+            this->visit_pattern(sp, subpat);
+        }
+    TU_ARMA(Or, e) {
+        for(auto& subpat : e)
             this->visit_pattern(sp, subpat);
         }
     }
@@ -312,6 +366,8 @@ void ::HIR::ExprVisitorDef::visit_type(::HIR::TypeRef& ty)
             this->visit_type(t);
         }
         this->visit_type(e.m_rettype);
+        ),
+    (Generator,
         )
     )
 }

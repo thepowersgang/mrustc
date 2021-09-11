@@ -14,7 +14,7 @@
 
 namespace {
     template<typename T>
-    void visit_impls(::HIR::Crate::ImplGroup<T>& g, ::std::function<void(T&)> cb) {
+    void visit_impls(::HIR::Crate::ImplGroup<std::unique_ptr<T>>& g, ::std::function<void(T&)> cb) {
         for( auto& impl_group : g.named )
         {
             for( auto& impl : impl_group.second )
@@ -64,6 +64,10 @@ void ::HIR::Visitor::visit_module(::HIR::ItemPath p, ::HIR::Module& mod)
         TU_ARMA(TypeAlias, e) {
             TRACE_FUNCTION_F("type " << name);
             this->visit_type_alias(p + name, e);
+            }
+        TU_ARMA(TraitAlias, e) {
+            TRACE_FUNCTION_F("trait (alias) " << name);
+            this->visit_trait_alias(p + name, e);
             }
         TU_ARMA(ExternType, e) {
             TRACE_FUNCTION_F("extern type " << name);
@@ -174,6 +178,12 @@ void ::HIR::Visitor::visit_type_alias(::HIR::ItemPath p, ::HIR::TypeAlias& item)
 {
     this->visit_params(item.m_params);
     this->visit_type(item.m_type);
+}
+void ::HIR::Visitor::visit_trait_alias(::HIR::ItemPath p, ::HIR::TraitAlias& item)
+{
+    this->visit_params(item.m_params);
+    for(auto& p : item.m_traits)
+        this->visit_trait_path(p);
 }
 void ::HIR::Visitor::visit_trait(::HIR::ItemPath p, ::HIR::Trait& item)
 {
@@ -293,91 +303,106 @@ void ::HIR::Visitor::visit_params(::HIR::GenericParams& params)
     TRACE_FUNCTION_F(params.fmt_args() << params.fmt_bounds());
     for(auto& tps : params.m_types)
         this->visit_type( tps.m_default );
+    for(auto& val : params.m_values)
+        this->visit_type(val.m_type);
     for(auto& bound : params.m_bounds )
-    {
-        TU_MATCH(::HIR::GenericBound, (bound), (e),
-        (Lifetime,
-            ),
-        (TypeLifetime,
-            this->visit_type(e.type);
-            ),
-        (TraitBound,
-            this->visit_type(e.type);
-            this->visit_trait_path(e.trait);
-            ),
-        //(NotTrait, struct {
-        //    ::HIR::TypeRef  type;
-        //    ::HIR::GenricPath    trait;
-        //    }),
-        (TypeEquality,
-            this->visit_type(e.type);
-            this->visit_type(e.other_type);
-            )
-        )
+        visit_generic_bound(bound);
+}
+
+void ::HIR::Visitor::visit_generic_bound(::HIR::GenericBound& bound)
+{
+    TU_MATCH_HDRA((bound), {)
+    TU_ARMA(Lifetime, e) {
+        }
+    TU_ARMA(TypeLifetime, e) {
+        this->visit_type(e.type);
+        }
+    TU_ARMA(TraitBound, e) {
+        this->visit_type(e.type);
+        this->visit_trait_path(e.trait);
+        }
+    //TU_ARMA(NotTrait, e) {
+    //    this->visit_type(e.type);
+    //    this->visit_trait_path(e.trait);
+    //    }
+    TU_ARMA(TypeEquality, e) {
+        this->visit_type(e.type);
+        this->visit_type(e.other_type);
+        }
     }
 }
 void ::HIR::Visitor::visit_type(::HIR::TypeRef& ty)
 {
-    TU_MATCH(::HIR::TypeData, (ty.data_mut()), (e),
-    (Infer,
-        ),
-    (Diverge,
-        ),
-    (Primitive,
-        ),
-    (Path,
+    TU_MATCH_HDRA( (ty.data_mut()), {)
+    TU_ARMA(Infer, e) {
+        }
+    TU_ARMA(Diverge, e) {
+        }
+    TU_ARMA(Primitive, e) {
+        }
+    TU_ARMA(Path, e) {
         this->visit_path(e.path, ::HIR::Visitor::PathContext::TYPE);
-        ),
-    (Generic,
-        ),
-    (TraitObject,
+        }
+    TU_ARMA(Generic, e) {
+        }
+    TU_ARMA(TraitObject, e) {
         if( e.m_trait.m_path != ::HIR::SimplePath() ) {
             this->visit_trait_path(e.m_trait);
         }
         for(auto& trait : e.m_markers) {
             this->visit_generic_path(trait, ::HIR::Visitor::PathContext::TYPE);
         }
-        ),
-    (ErasedType,
+        }
+    TU_ARMA(ErasedType, e) {
         if( e.m_origin != ::HIR::SimplePath() ) {
             this->visit_path(e.m_origin, ::HIR::Visitor::PathContext::VALUE);
         }
         for(auto& trait : e.m_traits) {
             this->visit_trait_path(trait);
         }
-        ),
-    (Array,
+        }
+    TU_ARMA(Array, e) {
         this->visit_type( e.inner );
-        if( auto* se = e.size.opt_Unevaluated() )
-            this->visit_expr( **se );
-        ),
-    (Slice,
+        if( auto* se = e.size.opt_Unevaluated() ) {
+            this->visit_constgeneric(*se);
+        }
+        }
+    TU_ARMA(Slice, e) {
         this->visit_type( e.inner );
-        ),
-    (Tuple,
+        }
+    TU_ARMA(Tuple, e) {
         for(auto& t : e) {
             this->visit_type(t);
         }
-        ),
-    (Borrow,
+        }
+    TU_ARMA(Borrow, e) {
         this->visit_type( e.inner );
-        ),
-    (Pointer,
+        }
+    TU_ARMA(Pointer, e) {
         this->visit_type( e.inner );
-        ),
-    (Function,
+        }
+    TU_ARMA(Function, e) {
         for(auto& t : e.m_arg_types) {
             this->visit_type(t);
         }
         this->visit_type(e.m_rettype);
-        ),
-    (Closure,
+        }
+    TU_ARMA(Closure, e) {
         for(auto& t : e.m_arg_types) {
             this->visit_type(t);
         }
         this->visit_type(e.m_rettype);
-        )
-    )
+        }
+    TU_ARMA(Generator, e) {
+        }
+    }
+}
+void ::HIR::Visitor::visit_constgeneric(::HIR::ConstGeneric& v)
+{
+    if(v.is_Unevaluated())
+    {
+        this->visit_expr(*v.as_Unevaluated());
+    }
 }
 void ::HIR::Visitor::visit_pattern(::HIR::Pattern& pat)
 {
@@ -430,6 +455,10 @@ void ::HIR::Visitor::visit_pattern(::HIR::Pattern& pat)
         for(auto& sp : e.leading)
             this->visit_pattern(sp);
         for(auto& sp : e.trailing)
+            this->visit_pattern(sp);
+        }
+    TU_ARMA(Or, e) {
+        for(auto& sp : e)
             this->visit_pattern(sp);
         }
     }
@@ -492,6 +521,10 @@ void ::HIR::Visitor::visit_path_params(::HIR::PathParams& p)
     for( auto& ty : p.m_types )
     {
         this->visit_type(ty);
+    }
+    for( auto& v : p.m_values )
+    {
+        visit_constgeneric(v);
     }
 }
 void ::HIR::Visitor::visit_generic_path(::HIR::GenericPath& p, ::HIR::Visitor::PathContext /*pc*/)

@@ -20,8 +20,10 @@ void MIR::OuterVisitor::visit_type(::HIR::TypeRef& ty)
     {
         this->visit_type( e->inner );
         DEBUG("Array size " << ty);
-        if( auto* se = e->size.opt_Unevaluated() ) {
-            m_cb(m_resolve, ::HIR::ItemPath(""), **se, {}, ::HIR::TypeRef(::HIR::CoreType::Usize));
+        if( auto* se1 = e->size.opt_Unevaluated() ) {
+            if( auto* se = se1->opt_Unevaluated() ) {
+                m_cb(m_resolve, ::HIR::ItemPath(""), **se, {}, ::HIR::TypeRef(::HIR::CoreType::Usize));
+            }
         }
     }
     else {

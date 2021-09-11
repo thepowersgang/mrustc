@@ -863,6 +863,21 @@ void MIR_Validate_FullValState(::MIR::TypeResolve& mir_res, const ::MIR::Functio
                 for(const auto& v : se.outputs)
                     state.mark_lvalue_valid(mir_res, v.second);
                 }
+            TU_ARMA(Asm2, se) {
+                for(const auto& p : se.params)
+                {
+                    TU_MATCH_HDRA( (p), { )
+                    TU_ARMA(Const, v) {}
+                    TU_ARMA(Sym, v) {}
+                    TU_ARMA(Reg, v) {
+                        if(v.input)
+                            state.ensure_param_valid(mir_res, *v.input);
+                        if(v.output)
+                            state.mark_lvalue_valid(mir_res, *v.output);
+                        }
+                    }
+                }
+                }
             TU_ARMA(SetDropFlag, se) {
                 if( se.other == ~0u )
                 {

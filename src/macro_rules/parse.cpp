@@ -122,8 +122,9 @@ public:
                 // NOTE: Allow any reserved word
                 if( !Token::type_is_rword(tok.type()) )
                     throw ParseError::Unexpected(lex, tok);
+            case TOK_UNDERSCORE:
             case TOK_IDENT: {
-                auto name = tok.type() == TOK_IDENT ? tok.ident().name : RcString::new_interned(tok.to_str());
+                auto name = tok.type() == TOK_IDENT ? tok.ident().name : (tok.type() == TOK_UNDERSCORE ? RcString() : RcString::new_interned(tok.to_str()));
                 GET_CHECK_TOK(tok, lex, TOK_COLON);
                 GET_CHECK_TOK(tok, lex, TOK_IDENT);
                 RcString type = tok.ident().name;
@@ -136,7 +137,9 @@ public:
                     ;
                 else if( type == "tt" )
                     ty = MacroPatEnt::PAT_TT;
-                else if( type == "pat" )
+                else if( type == "pat" )    // 
+                    ty = MacroPatEnt::PAT_PAT;
+                else if( type == "pat_param" )  // Added between 39 and 54, explicitly excludes or-patterns
                     ty = MacroPatEnt::PAT_PAT;
                 else if( type == "ident" )
                     ty = MacroPatEnt::PAT_IDENT;
@@ -353,9 +356,9 @@ struct ContentLoopVariableUse
                     continue;
                 }
                 // TODO: Check that +/*/? matches for the controlling loops
-                for(const auto& loop_idx : controlling_loops)
-                {
-                }
+                //for(const auto& loop_idx : controlling_loops)
+                //{
+                //}
 
                 if( var_usage_ptr )
                 {
@@ -503,7 +506,9 @@ MacroRulesPtr Parse_MacroRules(TokenStream& lex)
     while( lex.lookahead(0) != TOK_EOF && lex.lookahead(0) != TOK_BRACE_CLOSE )
     {
         rules.push_back( Parse_MacroRules_Var(lex) );
-        if(GET_TOK(tok, lex) != TOK_SEMICOLON) {
+        GET_TOK(tok, lex);
+        // LAZY: `macro` allows comma (not `macro_rules!`) but this is strictly more permissive than rustc
+        if(tok.type() != TOK_SEMICOLON && tok.type() != TOK_COMMA ) {
             PUTBACK(tok,lex);
             break;
         }
@@ -669,9 +674,6 @@ namespace {
             };
         auto push_ifv = [&push](bool is_equal, ::std::vector<SimplePatIfCheck> ents, size_t tgt) {
             push(SimplePatEnt::make_If({ is_equal, tgt, mv$(ents) }));
-            };
-        auto push_if = [&push_ifv](bool is_equal, MacroPatEnt::Type ty, const Token& tok, size_t tgt) {
-            push_ifv(is_equal, make_vec1(SimplePatIfCheck { ty, tok }), tgt);
             };
         for(size_t idx = 0; idx < pattern.size(); idx ++)
         {

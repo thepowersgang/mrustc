@@ -23,6 +23,7 @@ namespace {
     {
         const ::HIR::Crate& m_crate;
         bool m_visit_exprs;
+        bool m_run_eat;
 
         typedef ::std::vector< ::std::pair< const ::HIR::SimplePath*, const ::HIR::Trait* > >   t_trait_imports;
         t_trait_imports m_traits;
@@ -37,6 +38,7 @@ namespace {
         Visitor(const ::HIR::Crate& crate, bool visit_exprs):
             m_crate(crate),
             m_visit_exprs(visit_exprs),
+            m_run_eat(visit_exprs), // Defaults to running when doing second-pass
             m_resolve(crate)
         {}
 
@@ -64,16 +66,32 @@ namespace {
             ::HIR::Visitor::visit_module(p, mod);
         }
 
+        void visit_params(::HIR::GenericParams& params)
+        {
+            TRACE_FUNCTION_F(params.fmt_args() << params.fmt_bounds());
+
+            // Custom visitor to prevent running of EAT on type paramerter defaults
+            auto saved_run_eat = m_run_eat;
+            m_run_eat = false;
+            for(auto& tps : params.m_types) {
+                this->visit_type( tps.m_default );
+            }
+            m_run_eat = saved_run_eat;
+
+            for(auto& bound : params.m_bounds )
+                visit_generic_bound(bound);
+        }
+
         void visit_union(::HIR::ItemPath p, ::HIR::Union& item) override {
-            auto _ = m_resolve.set_item_generics(item.m_params);
+            auto _ = m_resolve.set_impl_generics(item.m_params);
             ::HIR::Visitor::visit_union(p, item);
         }
         void visit_struct(::HIR::ItemPath p, ::HIR::Struct& item) override {
-            auto _ = m_resolve.set_item_generics(item.m_params);
+            auto _ = m_resolve.set_impl_generics(item.m_params);
             ::HIR::Visitor::visit_struct(p, item);
         }
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override {
-            auto _ = m_resolve.set_item_generics(item.m_params);
+            auto _ = m_resolve.set_impl_generics(item.m_params);
             ::HIR::Visitor::visit_enum(p, item);
         }
         void visit_function(::HIR::ItemPath p, ::HIR::Function& item) override {
@@ -459,8 +477,8 @@ namespace {
                         }
                         return HIR::TypeRef(ty);
                     }
-                    ::HIR::Literal get_value(const Span& sp, const ::HIR::GenericRef& val) const override {
-                        return HIR::Literal(val);
+                    ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& val) const override {
+                        return val;
                     }
                 };
 
@@ -607,7 +625,7 @@ namespace {
 
             // TODO: If this an associated type, check for default trait params
 
-            if( m_visit_exprs )
+            if( m_run_eat )
             {
                 unsigned counter = 0;
                 while( m_resolve.expand_associated_types_single(sp, ty) )
@@ -884,7 +902,7 @@ namespace {
     };
 
     template<typename T>
-    void sort_impl_group(::HIR::Crate::ImplGroup<T>& ig, ::std::function<void(::std::ostream& os, const T&)> fmt)
+    void sort_impl_group(::HIR::Crate::ImplGroup<std::unique_ptr<T>>& ig, ::std::function<void(::std::ostream& os, const T&)> fmt)
     {
         auto new_end = ::std::remove_if(ig.generic.begin(), ig.generic.end(), [&ig,&fmt](::std::unique_ptr<T>& ty_impl) {
             const auto& type = ty_impl->m_type;  // Using field accesses in templates feels so dirty
@@ -906,6 +924,33 @@ namespace {
             return true;
             });
         ig.generic.erase(new_end, ig.generic.end());
+    }
+
+    template<typename T>
+    void push_index_impl_group_list(::std::vector<const T*>& dst, const ::std::vector<std::unique_ptr<T>>& src)
+    {
+        for(const auto& e : src) {
+            dst.push_back(&*e);
+        }
+    }
+    template<typename T>
+    void push_index_impl_group(::HIR::Crate::ImplGroup<const T*>& dst, const ::HIR::Crate::ImplGroup<std::unique_ptr<T>>& src)
+    {
+        for(const auto& e : src.named) {
+            push_index_impl_group_list(dst.named[e.first], e.second);
+        }
+        push_index_impl_group_list(dst.non_named, src.non_named);
+        push_index_impl_group_list(dst.generic  , src.generic  );
+    }
+    void push_index_impls(::HIR::Crate& dst, const ::HIR::Crate& src)
+    {
+        push_index_impl_group(dst.m_all_type_impls, src.m_type_impls);
+        for(const auto& ig : src.m_trait_impls) {
+            push_index_impl_group(dst.m_all_trait_impls[ig.first], ig.second);
+        }
+        for(const auto& ig : src.m_marker_impls) {
+            push_index_impl_group(dst.m_all_marker_impls[ig.first], ig.second);
+        }
     }
 }   // namespace ""
 
@@ -938,5 +983,12 @@ void ConvertHIR_ResolveUFCS_SortImpls(::HIR::Crate& crate)
         sort_impl_group<HIR::MarkerImpl>(impl_group.second,
             [&](::std::ostream& os, const HIR::MarkerImpl& i){ os << "impl" << i.m_params.fmt_args() << " " << impl_group.first << i.m_trait_args << " for " << i.m_type << " {}"; }
             );
+    }
+
+
+    // Create indexes
+    push_index_impls(crate, crate);
+    for(const auto& ec : crate.m_ext_crates) {
+        push_index_impls(crate, *ec.second.m_data);
     }
 }
