@@ -1586,6 +1586,8 @@ namespace
                 }
                 else
                 {
+                    if( !lex.consume_if(TOK_IDENT) )
+                        return false;
                     if( !H::maybe_generics(lex) )
                         return false;
                     if( !H::maybe_where(lex) )
