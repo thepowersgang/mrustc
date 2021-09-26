@@ -272,7 +272,6 @@ namespace {
                         this->m_completed = true;
                         break;
                     case ::HIR::InferClass::None:
-                    case ::HIR::InferClass::Diverge:
                         break;
                     }
                     }
@@ -5787,13 +5786,6 @@ namespace
 
         if( ! ivar_ent.has_rules() )
         {
-            if( ty_l.data().as_Infer().ty_class == ::HIR::InferClass::Diverge )
-            {
-                DEBUG("Set IVar " << i << " = ! (no rules, and is diverge-class ivar)");
-                context.m_ivars.get_type(i) = ::HIR::TypeRef::new_diverge();
-                context.m_ivars.mark_change();
-                return true;
-            }
             // No rules, don't do anything (and don't print)
             DEBUG(i << ": No rules");
             return false;
@@ -6059,31 +6051,6 @@ namespace
                         return true;
                     }
                     // All of them failed bounds, what?
-                }
-            }
-
-            if( ty_l.data().as_Infer().ty_class == ::HIR::InferClass::Diverge )
-            {
-                // There's a coercion (not an unsizing) AND there's no sources
-                // - This ensures that the ! is directly as a value, and not as a generic param or behind a pointer
-                if( ::std::any_of(possible_tys.begin(), possible_tys.end(), PossibleType::is_coerce_s)
-                 && ::std::none_of(possible_tys.begin(), possible_tys.end(), PossibleType::is_source_s)
-                 )
-                {
-                    if( !ivar_ent.force_no_to && ::std::count_if(possible_tys.begin(), possible_tys.end(), PossibleType::is_dest_s) == 1 )
-                    {
-                        auto ent = *::std::find_if(possible_tys.begin(), possible_tys.end(), PossibleType::is_dest_s);
-                        DEBUG("One destination (diverge, no source), setting to " << *ent.ty);
-                        context.equate_types(sp, ty_l, *ent.ty);
-                        return true;
-                    }
-
-                    // There are no source possibilities, this has to be a `!`
-                    DEBUG("- Diverge with no source types, force setting to !");
-                    DEBUG("Set IVar " << i << " = !");
-                    context.m_ivars.get_type(i) = ::HIR::TypeRef::new_diverge();
-                    context.m_ivars.mark_change();
-                    return true;
                 }
             }
 

@@ -495,7 +495,7 @@ namespace typecheck
                 const auto& ty = this->context.get_type(rty);
                 // TODO: Search the entire type for `!`? (What about pointers to it? or Option/Result?)
                 // - A correct search will search for unconditional (ignoring enums with a non-! variant) non-rawptr instances of ! in the type
-                return ty.data().is_Diverge();// || (ty.data().is_Infer() && ty.data().as_Infer().ty_class == ::HIR::InferClass::Diverge);
+                return ty.data().is_Diverge();
                 };
 
             bool diverges = false;

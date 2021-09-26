@@ -136,7 +136,6 @@ TAGGED_UNION(TypeData, Diverge,
             switch(this->ty_class)
             {
             case InferClass::None:
-            case InferClass::Diverge:
                 return false;
             case InferClass::Integer:
             case InferClass::Float:

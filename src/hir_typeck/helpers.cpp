@@ -189,11 +189,6 @@ bool HMTypeInferrence::apply_defaults()
                 {
                 case ::HIR::InferClass::None:
                     break;
-                case ::HIR::InferClass::Diverge:
-                    rv = true;
-                    DEBUG("- IVar " << e->index << " = !");
-                    *v.type = ::HIR::TypeRef::new_diverge();
-                    break;
                 case ::HIR::InferClass::Integer:
                     rv = true;
                     DEBUG("- IVar " << e->index << " = i32");
@@ -660,7 +655,6 @@ void HMTypeInferrence::set_ivar_to(unsigned int slot, ::HIR::TypeRef type)
             switch(e->ty_class)
             {
             case ::HIR::InferClass::None:
-            case ::HIR::InferClass::Diverge:
                 break;
             case ::HIR::InferClass::Integer:
             case ::HIR::InferClass::Float:
@@ -705,25 +699,15 @@ void HMTypeInferrence::ivar_unify(unsigned int left_slot, unsigned int right_slo
         if( const auto* re = root_ivar.type->data().opt_Infer() )
         {
             DEBUG("Class unify " << *left_ivar.type << " <- " << *root_ivar.type);
-            if( re->ty_class == ::HIR::InferClass::Diverge )
-            {
-                if(auto* le = left_ivar.type->data_mut().opt_Infer()) {
-                    if( le->ty_class == ::HIR::InferClass::None ) {
-                        le->ty_class = ::HIR::InferClass::Diverge;
-                    }
-                }
-            }
-            else if(re->ty_class != ::HIR::InferClass::None)
+
+            if(re->ty_class != ::HIR::InferClass::None)
             {
                 TU_MATCH_DEF(::HIR::TypeData, (left_ivar.type->data_mut()), (le),
                 (
                     ERROR(sp, E0000, "Type unificiation of literal with invalid type - " << *left_ivar.type);
                     ),
                 (Infer,
-                    if( le.ty_class == ::HIR::InferClass::Diverge )
-                    {
-                    }
-                    else if( le.ty_class != ::HIR::InferClass::None && le.ty_class != re->ty_class )
+                    if( le.ty_class != ::HIR::InferClass::None && le.ty_class != re->ty_class )
                     {
                         ERROR(sp, E0000, "Unifying types with mismatching literal classes - " << *left_ivar.type << " := " << *root_ivar.type);
                     }

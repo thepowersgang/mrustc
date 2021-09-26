@@ -20,7 +20,6 @@ static inline bool type_is_unbounded_infer(const ::HIR::TypeRef& ty)
         case ::HIR::InferClass::Integer:    return false;
         case ::HIR::InferClass::Float:      return false;
         case ::HIR::InferClass::None:   return true;
-        case ::HIR::InferClass::Diverge:return true;
         }
     }
     return false;
@@ -57,7 +56,7 @@ public:
 public: // ?? - Needed once, anymore?
     struct IVar
     {
-        //bool could_be_diverge;    // TODO: use this instead of InferClass::Diverge
+        //bool could_be_diverge;
         unsigned int alias; // If not ~0, this points to another ivar
         ::std::unique_ptr< ::HIR::TypeRef> type;    // Type (only nullptr if alias!=0)
 

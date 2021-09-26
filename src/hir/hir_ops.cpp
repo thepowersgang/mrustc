@@ -61,7 +61,6 @@ namespace {
             switch(re->ty_class)
             {
             case ::HIR::InferClass::None:
-            case ::HIR::InferClass::Diverge:
                 //return left.m_data.is_Generic();
                 return true;
             case ::HIR::InferClass::Integer:
@@ -257,7 +256,7 @@ namespace {
 namespace {
     bool is_unbounded_infer(const ::HIR::TypeRef& type) {
         if( const auto* e = type.data().opt_Infer() ) {
-            return e->ty_class == ::HIR::InferClass::None || e->ty_class == ::HIR::InferClass::Diverge;
+            return e->ty_class == ::HIR::InferClass::None;
         }
         else {
             return false;

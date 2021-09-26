@@ -697,7 +697,6 @@ void check_type_class_primitive(const Span& sp, const ::HIR::TypeRef& type, ::HI
     switch(ic)
     {
     case ::HIR::InferClass::None:
-    case ::HIR::InferClass::Diverge:
         break;
     case ::HIR::InferClass::Float:
         switch(ct)
