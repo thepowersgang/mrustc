@@ -6,6 +6,7 @@
  * - Typecheck helpers
  */
 #include "helpers.hpp"
+#include <algorithm>
 
 // --------------------------------------------------------------------
 // HMTypeInferrence
@@ -2738,7 +2739,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         StackHandle(): stack(nullptr) {}
         StackHandle(std::vector<StackEnt>& stack) : stack(&stack) {}
         StackHandle(StackHandle&& x): stack(x.stack) { x.stack = nullptr; }
-        StackHandle& operator=(StackHandle&& x) { this->~StackHandle(); stack = x.stack; x.stack = nullptr; }
+        StackHandle& operator=(StackHandle&& x) { this->~StackHandle(); stack = x.stack; x.stack = nullptr; return *this; }
         StackHandle(const StackHandle&) = delete;
         StackHandle& operator=(const StackHandle&) = delete;
         ~StackHandle() { if(stack) stack->pop_back(); stack = nullptr; }
