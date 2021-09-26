@@ -740,7 +740,6 @@ namespace {
                     }
                     if( count == 1 )
                     {
-
                         // 3. Locate the most permissive implemented Fn* trait (Fn first, then FnMut, then assume just FnOnce)
                         // NOTE: Borrowing is added by the expansion to CallPath
                         if( this->context.m_resolve.find_trait_impls(node.span(), lang_Fn, trait_pp, ty, [&](auto impl, auto cmp) {
@@ -3559,14 +3558,14 @@ void Context::possible_equate_ivar_bounds(const Span& sp, unsigned int ivar_inde
                 }
             }
         }
-        DEBUG(ivar_index << " bounded as [" << ent.bounded << "], union from [" << types << "]");
+        DEBUG(ivar_index << " bounded as [" << ent.bounded << "], union from [" << types << "] has_self=" << ent.bounds_include_self);
     }
     else
     {
         ent.has_bounded = true;
         ent.bounds_include_self = has_self;
         ent.bounded = std::move(types);
-        DEBUG(ivar_index << " bounded as [" << ent.bounded << "]");
+        DEBUG(ivar_index << " bounded as [" << ent.bounded << "] has_self=" << has_self);
     }
 }
 
@@ -4196,6 +4195,12 @@ namespace {
         }
         // If either side is a literal, then can't Coerce
         if( TU_TEST1(dst.data(), Infer, .is_lit()) ) {
+            if(!src.data().is_Diverge()) {
+                return CoerceResult::Equality;
+            }
+        }
+        // Nothing but `!` can become `!` (reverse does not hold, `!` can become anything)
+        if( dst.data().is_Diverge() ) {
             return CoerceResult::Equality;
         }
         if( TU_TEST1(src.data(), Infer, .is_lit()) ) {
@@ -4354,6 +4359,13 @@ namespace {
             const auto& se = *sep;
             ASSERT_BUG(sp, ! dst.data().is_Infer(), "Already handled?");
 
+            // Add a disable flag to all ivars within the `dst` type
+            // - This should prevent early guessing
+            if(context_mut)
+            {
+                context_mut->possible_equate_type_unknown(sp, dst, Context::IvarUnknownType::From);
+            }
+
             // If the other side isn't a pointer, equate
             if( dst.data().is_Pointer() || dst.data().is_Borrow() )
             {
@@ -4365,7 +4377,26 @@ namespace {
             }
             else
             {
-                return CoerceResult::Equality;
+                if(context_mut)
+                {
+                    context_mut->possible_equate_ivar(sp, se.index, dst, Context::PossibleTypeSource::UnsizeFrom);
+                }
+                return CoerceResult::Unknown;
+            }
+        }
+        else if( src.data().is_Diverge() ) {
+            if( const auto* dep = dst.data().opt_Infer() )
+            {
+                if(context_mut)
+                {
+                    context_mut->possible_equate_ivar(sp, dep->index, src, Context::PossibleTypeSource::UnsizeFrom);
+                }
+                return CoerceResult::Unknown;
+            }
+            else {
+                // Downstream just handles this
+                //return CoerceResult::Unsize;
+                return CoerceResult::Custom;
             }
         }
         else if(const auto* sep = src.data().opt_Pointer())
@@ -4822,6 +4853,7 @@ namespace {
             ImplRef  impl_ref;
         };
         ::std::vector<Possibility>  possible_impls;
+        try {
         bool found = context.m_resolve.find_trait_impls(sp, v.trait, v.params,  v.impl_ty,
             [&](auto impl, auto cmp) {
                 DEBUG("[check_associated] Found cmp=" << cmp << " " << impl);
@@ -5108,6 +5140,10 @@ namespace {
                 DEBUG("IVar _/*" << e.first << "*/ ?= [" << e.second << "]");
                 context.possible_equate_ivar_bounds(sp, e.first, std::move(e.second));
             }
+            return false;
+        }
+        } catch(const TraitResolution::RecursionDetected& ) {
+            DEBUG("Recursion detected, deferring");
             return false;
         }
     }
@@ -5568,9 +5604,11 @@ namespace
             }
             else
             {
+                if( l == r )
+                    return OrdEqual;
                 TU_MATCH_HDRA( (l.data()), { )
                 default:
-                    BUG(sp, "Unexpected type class " << l << " in get_ordering_ty");
+                    BUG(sp, "Unexpected type class " << l << " in get_ordering_ty (" << r << ")");
                     break;
                 TU_ARMA(Generic, _te_l) {
                     cmp = OrdEqual;
@@ -5807,9 +5845,9 @@ namespace
         // ---
         // Skip Conditions
         // ---
-        if( ivar_ent.has_bounded && ivar_ent.bounded.empty() )
+        if( ivar_ent.has_bounded && (!ivar_ent.bounds_include_self && ivar_ent.bounded.empty()) )
         {
-            DEBUG(i << ": Empty bound set");
+            DEBUG(i << ": Bounded, but bound set empty");
             return false;
         }
         if( ivar_ent.force_disable )
@@ -5958,7 +5996,7 @@ namespace
                 // Single source, pick it?
                 const auto& ent = *::std::find_if(possible_tys.begin(), possible_tys.end(), PossibleType::is_source_s);
                 // - Only if there's no ivars
-                if( !context.m_ivars.type_contains_ivars(*ent.ty) )
+                if( !context.m_ivars.type_contains_ivars(*ent.ty) && !ent.ty->data().is_Diverge() )
                 {
                     if( !check_ivar_poss__fails_bounds(sp, context, ty_l, *ent.ty) )
                     {
@@ -6076,6 +6114,7 @@ namespace
             size_t n_ivars;
             size_t n_src_ivars;
             size_t n_dst_ivars;
+            bool possibly_diverge = false;
             {
                 n_src_ivars = 0;
                 n_dst_ivars = 0;
@@ -6091,6 +6130,11 @@ namespace
                             {
                                 n_dst_ivars += 1;
                             }
+                            return true;
+                        }
+                        else if( ent.ty->data().is_Diverge() )
+                        {
+                            possibly_diverge = true;
                             return true;
                         }
                         else
@@ -6461,7 +6505,7 @@ namespace
                             {
                                 DEBUG(" > " << *dty << " =? " << *oty);
                                 auto cmp = check_unsize_tys(context, sp, *oty, *dty, nullptr);
-                                DEBUG(" = " << cmp);
+                                DEBUG("check_unsize_tys(..) = " << cmp);
                                 if( cmp == CoerceResult::Equality )
                                 {
                                     //TODO(sp, "Impossibility for " << *oty << " := " << *dty);
@@ -6486,7 +6530,17 @@ namespace
                 }
                 it = (remove_option ? possible_tys.erase(it) : it + 1);
             }
-            DEBUG("possible_tys = " << possible_tys << " (" << n_src_ivars << " src ivars, " << n_dst_ivars << " dst ivars)");
+            DEBUG("possible_tys = {" << possible_tys << "} (" << n_src_ivars << " src ivars, " << n_dst_ivars << " dst ivars, possibly_diverge=" << possibly_diverge << ")");
+
+            if( /*n_src_ivars == 0 && n_dst_ivars == 0 &&*/ possible_tys.empty() && possibly_diverge && fallback_ty == IvarPossFallbackType::IgnoreWeakDisable ) {
+                auto t = ::HIR::TypeRef::new_diverge();
+                if( !check_ivar_poss__fails_bounds(sp, context, ty_l, t) )
+                {
+                    DEBUG("Possibly `!` and no other options - setting");
+                    context.equate_types(sp, ty_l, ::HIR::TypeRef::new_diverge());
+                    return true;
+                }
+            }
 
             // Find a CD option that can deref to a `--` option
             for(const auto& e : possible_tys)
@@ -6583,7 +6637,7 @@ namespace
             }
 
             // If only one bound meets the possible set, use it
-            if( ! possible_tys.empty() )
+            if( ! possible_tys.empty() && (!ivar_ent.bounds_include_self || fallback_ty == IvarPossFallbackType::FinalOption) )
             {
                 DEBUG("Checking bounded [" << ivar_ent.bounded << "]");
                 ::std::vector<const ::HIR::TypeRef*>    feasable_bounds;
@@ -6594,26 +6648,26 @@ namespace
                     // - Don't add to the possiblity list if so
                     for(const auto& opt : possible_tys)
                     {
+                        if( opt.cls == PossibleType::Equal ) {
+                            continue ;
+                        }
+                        if( *opt.ty == new_ty ) {
+                            continue ;
+                        }
+                        CoerceResult    cmp;
                         if( opt.is_source() ) {
-                            const auto* dty = opt.ty;
-
-                            DEBUG(" > " << new_ty << " =? " << *dty);
-                            auto cmp = check_unsize_tys(context, sp, new_ty, *dty, nullptr);
-                            DEBUG(" = " << cmp);
-                            if( cmp == CoerceResult::Equality ) {
-                                failed_a_bound = true;
-                                break;
-                            }
+                            DEBUG("(checking bounded) > " << new_ty << " =? " << *opt.ty);
+                            cmp = check_unsize_tys(context, sp, new_ty, *opt.ty, nullptr);
                         }
                         else {
                             // Destination type, this option must deref to it
-                            DEBUG(" > " << *opt.ty << " =? " << new_ty);
-                            auto cmp = check_unsize_tys(context, sp, *opt.ty, new_ty, nullptr);
-                            DEBUG(" = " << cmp);
-                            if( cmp == CoerceResult::Equality ) {
-                                failed_a_bound = true;
-                                break;
-                            }
+                            DEBUG("(checking bounded) > " << *opt.ty << " =? " << new_ty);
+                            cmp = check_unsize_tys(context, sp, *opt.ty, new_ty, nullptr);
+                        }
+                        DEBUG("(checking bounded) cmp = " << cmp);
+                        if( cmp == CoerceResult::Equality ) {
+                            failed_a_bound = true;
+                            break;
                         }
                     }
                     // TODO: Should this also check check_ivar_poss__fails_bounds
@@ -6622,6 +6676,7 @@ namespace
                         feasable_bounds.push_back(&new_ty);
                     }
                 }
+                DEBUG("Checking bounded: " << feasable_bounds.size() << " feasible bounds");
                 if( feasable_bounds.size() == 1 )
                 {
                     const auto& new_ty = *feasable_bounds.front();
@@ -6720,95 +6775,102 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         // 1. Check coercions for ones that cannot coerce due to RHS type (e.g. `str` which doesn't coerce to anything)
         // 2. (???) Locate coercions that cannot coerce (due to being the only way to know a type)
         // - Keep a list in the ivar of what types that ivar could be equated to.
-        DEBUG("--- Coercion checking");
-        for(size_t i = 0; i < context.link_coerce.size(); )
+        if( ! context.m_ivars.peek_changed() )
         {
-            auto ent = mv$(context.link_coerce[i]);
-            const auto& span = (*ent->right_node_ptr)->span();
-            auto& src_ty = (*ent->right_node_ptr)->m_res_type;
-            //src_ty = context.m_resolve.expand_associated_types( span, mv$(src_ty) );
-            ent->left_ty = context.m_resolve.expand_associated_types( span, mv$(ent->left_ty) );
-            if( check_coerce(context, *ent) )
+            DEBUG("--- Coercion checking");
+            for(size_t i = 0; i < context.link_coerce.size(); )
             {
-                DEBUG("- Consumed coercion R" << ent->rule_idx << " " << ent->left_ty << " := " << src_ty);
-
-                context.link_coerce.erase( context.link_coerce.begin() + i );
-            }
-            else
-            {
-                context.link_coerce[i] = mv$(ent);
-                ++ i;
-            }
-        }
-        // 3. Check associated type rules
-        DEBUG("--- Associated types");
-        unsigned int link_assoc_iter_limit = context.link_assoc.size() * 4;
-        for(unsigned int i = 0; i < context.link_assoc.size(); ) {
-            // - Move out (and back in later) to avoid holding a bad pointer if the list is updated
-            auto rule = mv$(context.link_assoc[i]);
-
-            DEBUG("- " << rule);
-            for( auto& ty : rule.params.m_types ) {
-                ty = context.m_resolve.expand_associated_types(rule.span, mv$(ty));
-            }
-            if( rule.name != "" ) {
-                rule.left_ty = context.m_resolve.expand_associated_types(rule.span, mv$(rule.left_ty));
-                // HACK: If the left type is `!`, remove the type bound
-                //if( rule.left_ty.data().is_Diverge() ) {
-                //    rule.name = "";
-                //}
-            }
-            rule.impl_ty = context.m_resolve.expand_associated_types(rule.span, mv$(rule.impl_ty));
-
-            if( check_associated(context, rule) ) {
-                DEBUG("- Consumed associated type rule " << i << "/" << context.link_assoc.size() << " - " << rule);
-                if( i != context.link_assoc.size()-1 )
+                auto ent = mv$(context.link_coerce[i]);
+                const auto& span = (*ent->right_node_ptr)->span();
+                auto& src_ty = (*ent->right_node_ptr)->m_res_type;
+                //src_ty = context.m_resolve.expand_associated_types( span, mv$(src_ty) );
+                ent->left_ty = context.m_resolve.expand_associated_types( span, mv$(ent->left_ty) );
+                if( check_coerce(context, *ent) )
                 {
-                    //assert( context.link_assoc[i] != context.link_assoc.back() );
-                    context.link_assoc[i] = mv$( context.link_assoc.back() );
-                }
-                context.link_assoc.pop_back();
-            }
-            else {
-                context.link_assoc[i] = mv$(rule);
-                i ++;
-            }
+                    DEBUG("- Consumed coercion R" << ent->rule_idx << " " << ent->left_ty << " := " << src_ty);
 
-            if( link_assoc_iter_limit -- == 0 )
-            {
-                DEBUG("link_assoc iteration limit exceeded");
-                break;
+                    context.link_coerce.erase( context.link_coerce.begin() + i );
+                }
+                else
+                {
+                    context.link_coerce[i] = mv$(ent);
+                    ++ i;
+                }
+            }
+            // 3. Check associated type rules
+            DEBUG("--- Associated types");
+            unsigned int link_assoc_iter_limit = context.link_assoc.size() * 4;
+            for(unsigned int i = 0; i < context.link_assoc.size(); ) {
+                // - Move out (and back in later) to avoid holding a bad pointer if the list is updated
+                auto rule = mv$(context.link_assoc[i]);
+
+                DEBUG("- " << rule);
+                for( auto& ty : rule.params.m_types ) {
+                    ty = context.m_resolve.expand_associated_types(rule.span, mv$(ty));
+                }
+                if( rule.name != "" ) {
+                    rule.left_ty = context.m_resolve.expand_associated_types(rule.span, mv$(rule.left_ty));
+                    // HACK: If the left type is `!`, remove the type bound
+                    //if( rule.left_ty.data().is_Diverge() ) {
+                    //    rule.name = "";
+                    //}
+                }
+                rule.impl_ty = context.m_resolve.expand_associated_types(rule.span, mv$(rule.impl_ty));
+
+                if( check_associated(context, rule) ) {
+                    DEBUG("- Consumed associated type rule " << i << "/" << context.link_assoc.size() << " - " << rule);
+                    if( i != context.link_assoc.size()-1 )
+                    {
+                        //assert( context.link_assoc[i] != context.link_assoc.back() );
+                        context.link_assoc[i] = mv$( context.link_assoc.back() );
+                    }
+                    context.link_assoc.pop_back();
+                }
+                else {
+                    context.link_assoc[i] = mv$(rule);
+                    i ++;
+                }
+
+                if( link_assoc_iter_limit -- == 0 )
+                {
+                    DEBUG("link_assoc iteration limit exceeded");
+                    break;
+                }
             }
         }
         // 4. Revisit nodes that require revisiting
-        DEBUG("--- Node revisits");
-        for( auto it = context.to_visit.begin(); it != context.to_visit.end(); )
+        if( ! context.m_ivars.peek_changed() )
         {
-            ::HIR::ExprNode& node = **it;
-            ExprVisitor_Revisit visitor { context };
-            DEBUG("> " << &node << " " << typeid(node).name() << " -> " << context.m_ivars.fmt_type(node.m_res_type));
-            node.visit( visitor );
-            //  - If the node is completed, remove it
-            if( visitor.node_completed() ) {
-                DEBUG("- Completed " << &node << " - " << typeid(node).name());
-                it = context.to_visit.erase(it);
-            }
-            else {
-                ++ it;
-            }
-        }
-        {
-            ::std::vector<bool> adv_revisit_remove_list;
-            size_t  len = context.adv_revisits.size();
-            for(size_t i = 0; i < len; i ++)
+            DEBUG("--- Node revisits");
+            for( auto it = context.to_visit.begin(); it != context.to_visit.end(); )
             {
-                auto& ent = *context.adv_revisits[i];
-                adv_revisit_remove_list.push_back( ent.revisit(context, /*is_fallback=*/false) );
+                ::HIR::ExprNode& node = **it;
+                ExprVisitor_Revisit visitor { context };
+                DEBUG("> " << &node << " " << typeid(node).name() << " -> " << context.m_ivars.fmt_type(node.m_res_type));
+                node.visit( visitor );
+                //  - If the node is completed, remove it
+                if( visitor.node_completed() ) {
+                    DEBUG("- Completed " << &node << " - " << typeid(node).name());
+                    it = context.to_visit.erase(it);
+                }
+                else {
+                    ++ it;
+                }
             }
-            for(size_t i = len; i --;)
             {
-                if( adv_revisit_remove_list[i] ) {
-                    context.adv_revisits.erase( context.adv_revisits.begin() + i );
+                ::std::vector<bool> adv_revisit_remove_list;
+                size_t  len = context.adv_revisits.size();
+                for(size_t i = 0; i < len; i ++)
+                {
+                    auto& ent = *context.adv_revisits[i];
+                    DEBUG("> " << FMT_CB(os, ent.fmt(os)));
+                    adv_revisit_remove_list.push_back( ent.revisit(context, /*is_fallback=*/false) );
+                }
+                for(size_t i = len; i --;)
+                {
+                    if( adv_revisit_remove_list[i] ) {
+                        context.adv_revisits.erase( context.adv_revisits.begin() + i );
+                    }
                 }
             }
         }
@@ -6910,20 +6972,23 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
                     ++ it;
                 }
             }
-        } // `if peek_changed` (node revisits)
-
-        if( !context.m_ivars.peek_changed() )
-        {
-            size_t  len = context.adv_revisits.size();
-            for(size_t i = 0; i < len; i ++)
             {
-                auto& ent = *context.adv_revisits[i];
-                ent.revisit(context, /*is_fallback=*/true);
-                if( context.m_ivars.peek_changed() ) {
-                    break;
+                ::std::vector<bool> adv_revisit_remove_list;
+                size_t  len = context.adv_revisits.size();
+                for(size_t i = 0; i < len; i ++)
+                {
+                    auto& ent = *context.adv_revisits[i];
+                    DEBUG("> " << FMT_CB(os, ent.fmt(os)));
+                    adv_revisit_remove_list.push_back( ent.revisit(context, /*is_fallback=*/false) );
+                }
+                for(size_t i = len; i --;)
+                {
+                    if( adv_revisit_remove_list[i] ) {
+                        context.adv_revisits.erase( context.adv_revisits.begin() + i );
+                    }
                 }
             }
-        }
+        } // `if peek_changed` (node revisits)
 
 #if 1
         if( !context.m_ivars.peek_changed() )
@@ -6940,7 +7005,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         }
 #endif
 
-#if 1
+#if 0
         if( !context.m_ivars.peek_changed() )
         {
             DEBUG("--- Coercion consume");
@@ -6994,6 +7059,26 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
                 }
             }
         }
+
+#if 1
+        if( !context.m_ivars.peek_changed() )
+        {
+            DEBUG("--- Coercion consume");
+            if( ! context.link_coerce.empty() )
+            {
+                auto ent = mv$(context.link_coerce.front());
+                context.link_coerce.erase( context.link_coerce.begin() );
+
+                const auto& sp = (*ent->right_node_ptr)->span();
+                auto& src_ty = (*ent->right_node_ptr)->m_res_type;
+                //src_ty = context.m_resolve.expand_associated_types( sp, mv$(src_ty) );
+                ent->left_ty = context.m_resolve.expand_associated_types( sp, mv$(ent->left_ty) );
+                DEBUG("- Equate coercion R" << ent->rule_idx << " " << ent->left_ty << " := " << src_ty);
+
+                context.equate_types(sp, ent->left_ty, src_ty);
+            }
+        }
+#endif
 
         // Clear ivar possibilities for next pass
         for(auto& ivar_ent : context.possible_ivar_vals)

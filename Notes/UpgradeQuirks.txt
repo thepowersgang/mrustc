@@ -1,0 +1,15 @@
+=== 1.54 ===
+
+- `panic` macro, pointing it at a `pub macro` in `pub mod panic`
+- `#[macro_export] macro` (slightly different rules to `macro_rules!` version)
+- new `asm` macro
+- `pub use bool` to import the primitive type, not a module
+- Trait aliases
+- Or patterns
+  > Hard question between having combinatorial explosion from expanding or patterns early (in HIR generation), or serious changes in destructuring logic.
+- Extended use of const generics
+  - Now need value inferrence
+- New language-provided trait impls
+- Lots of new `const fn` constructs
+- Updated `?` operator
+- Use of `!` as a type more (`e.into()` where `E: Into<!>`)

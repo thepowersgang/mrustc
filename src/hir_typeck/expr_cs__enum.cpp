@@ -513,6 +513,31 @@ namespace typecheck
                     if( is_diverge(snp->m_res_type) ) {
                         diverges = true;
                     }
+                    else {
+                        struct RevisitDefaultUnit: public Context::Revisitor {
+                            HIR::ExprNode* node;
+                            RevisitDefaultUnit(HIR::ExprNode* node): node(node) {}
+                            const Span& span(void) const { return node->span(); }
+                            void fmt(std::ostream& os) const {
+                                os << "RevisitDefaultUnit(" << node << ": " << node->m_res_type << ")";
+                            }
+                            bool revisit(Context& context, bool is_fallback) {
+                                const auto& ty = context.get_type(node->m_res_type);
+                                if(const auto* i = ty.data().opt_Infer()) {
+                                    if( is_fallback ) {
+                                        context.equate_types(node->span(), ty, HIR::TypeRef::new_unit());
+                                        return true;
+                                    }
+                                    //context.possible_equate_ivar_bounds(node->span(), i->index, make_vec2(ty.clone(), 
+                                    return false;
+                                }
+                                else {
+                                    return true;
+                                }
+                            }
+                        };
+                        this->context.add_revisit_adv(std::make_unique<RevisitDefaultUnit>(&*snp));
+                    }
                 }
                 this->pop_inner_coerce();
             }
@@ -667,9 +692,6 @@ namespace typecheck
             this->loop_blocks.push_back( &node );
             node.m_diverges = true;    // Set to `false` if a break is hit
 
-            // NOTE: This doesn't set the ivar to !, but marks it as a ! ivar (similar to the int/float markers)
-            this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_diverge());
-
             this->context.add_ivars(node.m_code->m_res_type);
             this->context.equate_types(node.span(), node.m_code->m_res_type, ::HIR::TypeRef::new_unit());
             node.m_code->visit( *this );
@@ -677,6 +699,8 @@ namespace typecheck
             this->loop_blocks.pop_back( );
 
             if( node.m_diverges ) {
+                // NOTE: This doesn't set the ivar to !, but marks it as a ! ivar (similar to the int/float markers)
+                this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_diverge());
                 DEBUG("Loop diverged");
             }
         }
@@ -790,7 +814,7 @@ namespace typecheck
                 }
 
                 this->context.add_ivars( arm.m_code->m_res_type );
-                this->equate_types_inner_coerce(node.span(), node.m_res_type, arm.m_code);
+                this->context.equate_types_coerce(node.span(), node.m_res_type, arm.m_code);
                 arm.m_code->visit( *this );
             }
 

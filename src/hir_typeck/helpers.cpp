@@ -686,16 +686,6 @@ void HMTypeInferrence::set_ivar_to(unsigned int slot, ::HIR::TypeRef type)
             BUG(sp, "Overwriting ivar " << slot << " (" << *root_ivar.type << ") with " << type);
         }
 
-        #if 1
-        if( type.data().is_Diverge() )
-        {
-            if( root_ivar.type->data().as_Infer().ty_class == ::HIR::InferClass::None )
-            {
-                root_ivar.type->data_mut().as_Infer().ty_class = ::HIR::InferClass::Diverge;
-            }
-        }
-        else
-        #endif
         root_ivar.type = box$( type );
     }
 
@@ -2738,6 +2728,48 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
 
     static ::HIR::TraitPath::assoc_list_t   null_assoc;
     TRACE_FUNCTION_F(trait << FMT_CB(ss, if(params_ptr) { ss << *params_ptr; } else { ss << "<?>"; }) << " for " << type);
+
+    struct StackEnt {
+        const ::HIR::SimplePath* trait;
+        const ::HIR::PathParams* params_ptr;
+        const ::HIR::TypeRef* type;
+        StackEnt(const ::HIR::SimplePath& trait, const ::HIR::PathParams* params_ptr, const ::HIR::TypeRef& type)
+            : trait(&trait), params_ptr(params_ptr), type(&type)
+        {
+        }
+        bool operator==(const StackEnt& e) const {
+            if( *e.trait != *trait )
+                return false;
+            if( !!e.params_ptr != !!params_ptr )
+                return false;
+            if( params_ptr && *e.params_ptr != *params_ptr )
+                return false;
+            if( *e.type != *type )
+                return false;
+            return true;
+        }
+    };
+    struct StackHandle {
+        std::vector<StackEnt>* stack;
+        StackHandle(): stack(nullptr) {}
+        StackHandle(std::vector<StackEnt>& stack) : stack(&stack) {}
+        StackHandle(StackHandle&& x): stack(x.stack) { x.stack = nullptr; }
+        StackHandle& operator=(StackHandle&& x) { this->~StackHandle(); stack = x.stack; x.stack = nullptr; }
+        StackHandle(const StackHandle&) = delete;
+        StackHandle& operator=(const StackHandle&) = delete;
+        ~StackHandle() { if(stack) stack->pop_back(); stack = nullptr; }
+    };
+    static std::vector<StackEnt>    s_recurse_stack;
+    auto se = StackEnt(trait, params_ptr, type);
+    // NOTE: Allow 1 level of recursion (EAT being run)
+    if( std::count(s_recurse_stack.begin(), s_recurse_stack.end(), se) > 1 ) {
+        DEBUG("Recursion detected in `find_trait_impls_crate`");
+        //return false;
+        throw TraitResolution::RecursionDetected();
+        //BUG(sp, "Recursion detected in `find_trait_impls_crate`");
+    }
+    s_recurse_stack.push_back(se);
+    StackHandle sh { s_recurse_stack };
 
     // Handle auto traits (aka OIBITs)
     if( m_crate.get_trait_by_path(sp, trait).m_is_marker )

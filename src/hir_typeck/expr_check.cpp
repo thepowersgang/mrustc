@@ -445,6 +445,10 @@ namespace {
                 ASSERT_BUG(sp, dst_ty.data().is_Slice(), "");
                 ASSERT_BUG(sp, node.m_usage == ::HIR::ValueUsage::Unknown, "");
             }
+            else if( src_ty.data().is_Diverge() )
+            {
+                // Perfectly valid. (! can become anything)
+            }
             else if( src_ty == dst_ty )
             {
             }
