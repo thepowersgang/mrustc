@@ -2217,6 +2217,7 @@ public:
             HIR::SimplePath(g_crate_name, lang_item_path.second.nodes)
             ) );
     }
+    rv.m_ext_crates_ordered = crate.m_extern_crates_ord;
     for(auto& ext_crate : crate.m_extern_crates)
     {
         // Populate m_lang_items from loaded crates too

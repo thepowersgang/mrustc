@@ -256,9 +256,9 @@ namespace
             m_outfile_path(outfile),
             m_of(m_outfile_path + ".mir")
         {
-            for( const auto& crate : m_crate.m_ext_crates )
+            for( const auto& crate_name : m_crate.m_ext_crates_ordered )
             {
-                m_of << "crate \"" << FmtEscaped(crate.second.m_path) << ".mir\";\n";
+                m_of << "crate \"" << FmtEscaped(m_crate.m_ext_crates.at(crate_name).m_path) << ".mir\";\n";
             }
         }
 

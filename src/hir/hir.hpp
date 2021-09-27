@@ -658,6 +658,9 @@ public:
     /// Language items avaliable through this crate (includes ones from loaded externs)
     ::std::unordered_map< ::std::string, ::HIR::SimplePath> m_lang_items;
 
+    /// Referenced crates (in load order) - Used to ensure final linking order is sane
+    // NOT SERIALISED
+    ::std::vector<RcString> m_ext_crates_ordered;
     /// Referenced crates
     ::std::unordered_map< RcString, ExternCrate>  m_ext_crates;
     /// Referenced system libraries

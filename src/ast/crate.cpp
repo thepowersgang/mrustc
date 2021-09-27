@@ -269,6 +269,10 @@ RcString Crate::load_extern_crate(Span sp, const RcString& name, const ::std::st
     auto res = m_extern_crates.insert(::std::make_pair( real_name, mv$(ec) ));
     if( !res.second ) {
         // Crate already loaded?
+        DEBUG("Duplicate load of '" << real_name);
+        return real_name;
+    }
+    else {
     }
     auto& ext_crate = res.first->second;
     // Move the external list out (doesn't need to be kept in the nested crate)
@@ -288,6 +292,8 @@ RcString Crate::load_extern_crate(Span sp, const RcString& name, const ::std::st
             }
         }
     }
+    // NOTE: Add the crate to the ordered list AFTER its dependencies
+    m_extern_crates_ord.push_back(real_name);
 
     if( ext_crate.m_short_name == "core" ) {
         if( this->m_ext_cratename_core == "" ) {

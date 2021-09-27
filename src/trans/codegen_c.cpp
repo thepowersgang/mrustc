@@ -953,9 +953,9 @@ namespace {
             {
             case CodegenOutput::Executable:
             case CodegenOutput::DynamicLibrary:
-                for( const auto& crate : m_crate.m_ext_crates )
+                for( const auto& crate_name : m_crate.m_ext_crates_ordered )
                 {
-
+                    const auto& crate = m_crate.m_ext_crates.at(crate_name);
                     auto is_dylib = [](const ::HIR::ExternCrate& c) {
                         bool rv = false;
                         // TODO: Better rule than this
@@ -971,8 +971,8 @@ namespace {
                         {
                             for(const auto& subcrate : crate2.second.m_data->m_ext_crates)
                             {
-                                if( subcrate.second.m_path == crate.second.m_path ) {
-                                    DEBUG(crate.first << " referenced by dylib " << crate2.first);
+                                if( subcrate.second.m_path == crate.m_path ) {
+                                    DEBUG(crate_name << " referenced by dylib " << crate2.first);
                                     is_in_dylib = true;
                                 }
                             }
@@ -981,31 +981,31 @@ namespace {
                             break;
                     }
                     // NOTE: Only exclude non-dylibs referenced by other dylibs
-                    if( is_in_dylib && !is_dylib(crate.second) )
+                    if( is_in_dylib && !is_dylib(crate) )
                         continue ;
 
                     // Ignore panic crates unless they're the selected crate (and add in the selected panic crate)
-                    if( crate.second.m_data->m_lang_items.count("mrustc-panic_runtime") )
+                    if( crate.m_data->m_lang_items.count("mrustc-panic_runtime") )
                     {
                         // Check if this is the requested panic crate
-                        if( strncmp(crate.first.c_str(), opt.panic_crate.c_str(), opt.panic_crate.size()) != 0 )
+                        if( strncmp(crate_name.c_str(), opt.panic_crate.c_str(), opt.panic_crate.size()) != 0 )
                         {
-                            DEBUG("Ignore not-selected panic crate: " << crate.first);
+                            DEBUG("Ignore not-selected panic crate: " << crate_name);
                             continue ;
                         }
                         else
                         {
-                            DEBUG("Keep panic crate: " << crate.first);
+                            DEBUG("Keep panic crate: " << crate_name);
                         }
                     }
 
-                    if( crate.second.m_path.compare(crate.second.m_path.size() - 5, 5, ".rlib") == 0)
+                    if( crate.m_path.compare(crate.m_path.size() - 5, 5, ".rlib") == 0)
                     {
-                        ext_crates.push_back(crate.second.m_path.c_str());
+                        ext_crates.push_back(crate.m_path.c_str());
                     }
-                    else if( is_dylib(crate.second) )
+                    else if( is_dylib(crate) )
                     {
-                        ext_crates_dylib.push_back(crate.second.m_path.c_str());
+                        ext_crates_dylib.push_back(crate.m_path.c_str());
                     }
                     else
                     {
@@ -1068,21 +1068,22 @@ namespace {
                     libraries_and_dirs.push_lib(lib.name.c_str());
                 }
 
-                for( const auto& crate : m_crate.m_ext_crates )
+                for( const auto& crate_name : m_crate.m_ext_crates_ordered )
                 {
-                    if( !crate.second.m_data->m_ext_libs.empty() )
+                    const auto& crate = m_crate.m_ext_crates.at(crate_name);
+                    if( !crate.m_data->m_ext_libs.empty() )
                     {
-                        if( !crate.second.m_data->m_link_paths.empty() ) {
+                        if( !crate.m_data->m_link_paths.empty() ) {
                             libraries_and_dirs.push_border();
                         }
-                        for(const auto& path : crate.second.m_data->m_link_paths ) {
+                        for(const auto& path : crate.m_data->m_link_paths ) {
                             libraries_and_dirs.push_dir(path.c_str());
                         }
                         // NOTE: Does explicit lookup, to provide scoped search directories
                         // - Needed for 1.39 cargo on linux when libgit2 and libz exist on the system, butsystem libgit2 isn't new enough
-                        for(const auto& lib : crate.second.m_data->m_ext_libs) {
-                            ASSERT_BUG(Span(), lib.name != "", "Empty lib from " << crate.first);
-                            auto path = H::find_library(crate.second.m_data->m_link_paths, opt.library_search_dirs, lib.name, m_compiler == Compiler::Msvc);
+                        for(const auto& lib : crate.m_data->m_ext_libs) {
+                            ASSERT_BUG(Span(), lib.name != "", "Empty lib from " << crate_name);
+                            auto path = H::find_library(crate.m_data->m_link_paths, opt.library_search_dirs, lib.name, m_compiler == Compiler::Msvc);
                             if( path != "" )
                             {
                                 libraries_and_dirs.push_explicit(std::move(path));
