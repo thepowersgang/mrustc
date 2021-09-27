@@ -279,7 +279,7 @@ namespace MIR { namespace eval {
         bool    is_readonly;
         ::HIR::TypeRef  m_type;
         std::vector<Reloc>  relocations;
-        uint8_t data[0];
+        uint8_t data[1];
 
         Allocation(size_t len, const ::HIR::TypeRef& ty)
             : reference_count(1)
@@ -289,6 +289,8 @@ namespace MIR { namespace eval {
         {
             memset(data, 0, len + (len + 7) / 8);
         }
+        Allocation(const Allocation&) = delete;
+        Allocation& operator=(const Allocation&) = delete;
     public:
         void fmt_ident(std::ostream& os) const override {
             os << "A:" << this;

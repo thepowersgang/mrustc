@@ -1135,6 +1135,7 @@ namespace
         TU_ARMA(Pointer, te)
             return get_type_crate(crate, te.inner);
         }
+        throw "Unreachable";
     }
 }
 
