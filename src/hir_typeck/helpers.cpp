@@ -4783,7 +4783,7 @@ bool TraitResolution::find_field(const Span& sp, const ::HIR::TypeRef& ty, const
             TU_ARMA(Tuple, se) {
                 for( unsigned int i = 0; i < se.size(); i ++ )
                 {
-                    DEBUG(i << ": " << se[i].publicity);
+                    DEBUG(i << ": " << se[i].publicity << ", " << this->m_vis_path << " : " << se[i].ent);
                     if( se[i].publicity.is_visible(this->m_vis_path) && FMT(i) == name ) {
                         field_ty = monomorph.monomorph_type(sp, se[i].ent);
                         return true;
@@ -4793,7 +4793,7 @@ bool TraitResolution::find_field(const Span& sp, const ::HIR::TypeRef& ty, const
             TU_ARMA(Named, se) {
                 for( const auto& fld : se )
                 {
-                    DEBUG(fld.first << ": " << fld.second.publicity << ", " << this->m_vis_path);
+                    DEBUG(fld.first << ": " << fld.second.publicity << ", " << this->m_vis_path << " : " << fld.second.ent);
                     if( fld.second.publicity.is_visible(this->m_vis_path) && fld.first == name ) {
                         field_ty = monomorph.monomorph_type(sp, fld.second.ent);
                         return true;

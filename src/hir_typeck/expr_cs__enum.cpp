@@ -46,7 +46,10 @@ namespace typecheck
             return ::HIR::Compare::Equal;
         }
         ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::ConstGeneric& sz) override {
-            TODO(Span(), "OwnedImplMatcher::match_val " << g << " with " << sz);
+            assert( g.binding < impl_params.m_values.size() );
+            ASSERT_BUG(Span(), impl_params.m_values[g.binding] == ::HIR::ConstGeneric(), "TODO: Multiple values? " << impl_params.m_values[g.binding] << " and " << sz);
+            impl_params.m_values[g.binding] = sz.clone();
+            return ::HIR::Compare::Equal;
         }
     };
 
@@ -360,6 +363,7 @@ namespace typecheck
         {
             // Default-construct entires in the `impl_params` array
             impl_params.m_types.resize( impl_ptr->m_params.m_types.size() );
+            impl_params.m_values.resize( impl_ptr->m_params.m_values.size() );
             OwnedImplMatcher matcher(impl_params);
 
             auto cmp = impl_ptr->m_type.match_test_generics_fuzz(sp, e.type, context.m_ivars.callback_resolve_infer(), matcher);
@@ -1818,6 +1822,7 @@ namespace typecheck
                 if( impl_ptr->m_params.m_types.size() > 0 )
                 {
                     impl_params.m_types.resize( impl_ptr->m_params.m_types.size() );
+                    impl_params.m_values.resize( impl_ptr->m_params.m_values.size() );
                     OwnedImplMatcher    matcher(impl_params);
                     // NOTE: Could be fuzzy.
                     bool r = impl_ptr->m_type.match_test_generics(sp, e.type, this->context.m_ivars.callback_resolve_infer(), matcher);
@@ -2034,9 +2039,24 @@ void Typecheck_Code_CS__EnumerateRules(
         context.handle_pattern( Span(), arg.first, arg.second );
     }
 
-    struct H {
-        // Can't use a lambda, as this has to recurse for ATT bounds
-        static bool clone_ty_cb(const Span& sp, Context& context, ::HIR::ExprPtr& expr, const ::HIR::TypeRef& tpl, ::HIR::TypeRef& rv) {
+    struct M: public Monomorphiser
+    {
+        Context& context;
+        ::HIR::ExprPtr& expr;
+        M(Context& context, ::HIR::ExprPtr& expr)
+            : context(context)
+            , expr(expr)
+        {
+        }
+
+        ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& g) const override {
+            return ::HIR::TypeRef(g);
+        }
+        ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& g) const override {
+            return g;
+        }
+
+        ::HIR::TypeRef monomorph_type(const Span& sp, const ::HIR::TypeRef& tpl, bool allow_infer=true) const override {
             if( const auto* e = tpl.data().opt_ErasedType() )
             {
                 // NOTE: `Typecheck Outer` visits erased types subtly differently (it recurses then handles)
@@ -2048,7 +2068,7 @@ void Typecheck_Code_CS__EnumerateRules(
                 }
                 ASSERT_BUG(sp, expr.m_erased_types[e->m_index] == HIR::TypeRef(), "Multiple-visits to erased type #" << e->m_index);
                 expr.m_erased_types[e->m_index] = context.m_ivars.new_ivar_tr();
-                rv = expr.m_erased_types[e->m_index].clone();
+                auto rv = expr.m_erased_types[e->m_index].clone();
                 DEBUG(tpl << " -> " << rv);
                 for(const auto& trait : e->m_traits)
                 {
@@ -2060,20 +2080,23 @@ void Typecheck_Code_CS__EnumerateRules(
                     {
                         for(const auto& aty : trait.m_type_bounds)
                         {
-                            auto aty_cloned = clone_ty_with(sp, aty.second.type, [&](const auto& tpl, auto& rv) { return H::clone_ty_cb(sp, context, expr, tpl, rv); });
+                            auto aty_cloned = this->monomorph_type(sp, aty.second.type);
                             //auto params = clone_path_params_with(sp, trait.m_path.m_params, [&](const auto& tpl, auto& rv) { return clone_ty_cb(sp, context, expr, tpl, rv); });
                             auto params = trait.m_path.m_params.clone();
                             context.equate_types_assoc(sp, std::move(aty_cloned), trait.m_path.m_path, std::move(params), rv, aty.first.c_str(), false);
                         }
                     }
                 }
-                return true;
+                return rv;
             }
-            return false;
+            else
+            {
+                return Monomorphiser::monomorph_type(sp, tpl, allow_infer);
+            }
         }
     };
     // If the result type contans an erased type, replace that with a new ivar and emit trait bounds for it.
-    ::HIR::TypeRef  new_res_ty = clone_ty_with(sp, result_type, [&](const auto& tpl, auto& rv) { return H::clone_ty_cb(sp, context, expr, tpl, rv); });
+    ::HIR::TypeRef  new_res_ty = M(context, expr).monomorph_type(sp, result_type);
     // - Final check to ensure that all erased type indexes are visited
     for(size_t i = 0; i < expr.m_erased_types.size(); i ++)
     {

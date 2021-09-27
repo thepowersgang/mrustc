@@ -1009,8 +1009,18 @@ struct CExpandExpr:
                 ::AST::ExprNode_StructLiteral::t_values values;
                 values.push_back({ {}, "start", mv$(node.m_left)  });
                 values.push_back({ {}, "end"  , mv$(node.m_right) });
-                if( gTargetVersion >= TargetVersion::Rustc1_29 )
+                switch(gTargetVersion)
+                {
+                case TargetVersion::Rustc1_19:
+                    break;
+                case TargetVersion::Rustc1_29:
+                case TargetVersion::Rustc1_39:
                     values.push_back({ {}, "is_empty", ::AST::ExprNodeP(new ::AST::ExprNode_NamedValue(mv$(path_None))) });
+                    break;
+                case TargetVersion::Rustc1_54:
+                    values.push_back({ {}, "exhausted", ::AST::ExprNodeP(new ::AST::ExprNode_Bool(false)) });
+                    break;
+                }
                 replacement.reset( new ::AST::ExprNode_StructLiteral(mv$(path_RangeInclusive_NonEmpty), nullptr, mv$(values)) );
             }
             else
