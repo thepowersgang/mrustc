@@ -1522,6 +1522,14 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
         }
         }
     TU_ARMA(Array, e) {
+        // If the size is unknown, just push a `_` pattern.
+        // OR: don't push anything?
+        if( !e.size.is_Known() ) {
+            DEBUG("Matching over unknown-sized array - " << e.size);
+            ASSERT_BUG(sp, pat.m_data.is_Any(), "Matching generic-sized array with non `_` pattern - " << pat);
+            this->push_rule( PatternRule::make_Any({}) );
+            break;
+        }
         // Sequential match just like tuples.
         m_field_path.push_back(0);
         TU_MATCH_HDRA( (pat.m_data), {)

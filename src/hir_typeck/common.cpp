@@ -217,6 +217,8 @@ bool monomorphise_path_needed(const ::HIR::Path& tpl)
 bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
 {
     return visit_ty_with(tpl, [&](const auto& ty) {
+        if( ty.data().is_Array() && ty.data().as_Array().size.is_Unevaluated() /*&& ty.data().as_Array().size.as_Unevaluated().*/ )
+            return true;
         return (ty.data().is_Generic() ? true : false);
         });
 }
@@ -279,12 +281,14 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
         if( auto* se = e.size.opt_Unevaluated() ) {
             if( se->is_Generic() ) {
                 sz = this->get_value(sp, se->as_Generic());
+                DEBUG(e.size << " -> " << sz);
                 se = sz.opt_Unevaluated();
                 assert(se);
             }
+
             if(se->is_Unevaluated()) {
                 // TODO: Evaluate
-                //TODO(sp, "Evaluate unevaluated generic for array size - " << *se);
+                DEBUG("Evaluate unevaluated generic for array size - " << *se);
                 sz = se->clone();
             }
             else if( se->is_Evaluated() ) {
