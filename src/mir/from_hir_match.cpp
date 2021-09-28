@@ -327,16 +327,22 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             // - Convert HIR pattern into ruleset
             auto pat_builder = PatternRulesetBuilder { builder.resolve() };
             pat_builder.append_from(node.span(), pat, match_ty);
-            ASSERT_BUG(sp, pat_builder.m_rulesets.size() == 1, "TODO: Handle `|` patterns");
-            auto& sr = pat_builder.m_rulesets[0];
-            if( sr.m_is_impossible )
+            size_t first_rule = arm_rules.size();
+            for(auto& sr : pat_builder.m_rulesets)
             {
-                DEBUG("ARM PAT (" << arm_idx << "," << pat_idx << ") " << pat << " ==> IMPOSSIBLE [" << sr.m_rules << "]");
-            }
-            else
-            {
-                DEBUG("ARM PAT (" << arm_idx << "," << pat_idx << ") " << pat << " ==> [" << sr.m_rules << "]");
-                arm_rules.push_back( PatternRuleset { arm_idx, pat_idx, mv$(sr.m_rules), mv$(sr.m_bindings) } );
+                size_t i = &sr - &pat_builder.m_rulesets.front();
+                if( sr.m_is_impossible )
+                {
+                    DEBUG("ARM PAT (" << arm_idx << "," << pat_idx << " #" << i << ") " << pat << " ==> IMPOSSIBLE [" << sr.m_rules << "]");
+                }
+                else
+                {
+                    DEBUG("ARM PAT (" << arm_idx << "," << pat_idx << " #" << i << ") " << pat << " ==> [" << sr.m_rules << "]");
+                    if( first_rule < arm_rules.size() ) {
+                        ASSERT_BUG(sp, arm_rules[first_rule].m_bindings == sr.m_bindings, "Disagreement in bindings between pattern");
+                    }
+                    arm_rules.push_back( PatternRuleset { arm_idx, pat_idx, mv$(sr.m_rules), mv$(sr.m_bindings) } );
+                }
             }
             ap.code = builder.new_bb_unlinked();
             builder.set_cur_block( ap.code );
@@ -347,7 +353,9 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             {
                 TRACE_FUNCTION_FR("CONDITIONAL","CONDITIONAL");
                 auto freeze_scope = builder.new_scope_freeze(arm.m_cond->span());
-                conv.destructure_aliases_from_list(arm.m_code->span(), match_ty, match_val.clone(), arm_rules.back().m_bindings);
+                if( first_rule < arm_rules.size() ) {
+                    conv.destructure_aliases_from_list(arm.m_code->span(), match_ty, match_val.clone(), arm_rules[first_rule].m_bindings);
+                }
 
                 auto tmp_scope = builder.new_scope_temp(arm.m_cond->span());
                 conv.visit_node_ptr( arm.m_cond );
@@ -363,7 +371,9 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             }
 
             // - Emit code to destructure the matched pattern
-            conv.destructure_from_list(arm.m_code->span(), match_ty, match_val.clone(), arm_rules.back().m_bindings);
+            if( first_rule < arm_rules.size() ) {
+                conv.destructure_from_list(arm.m_code->span(), match_ty, match_val.clone(), arm_rules[first_rule].m_bindings);
+            }
             // TODO: Previous versions had reachable=false here (causing a use-after-free), would having `true` lead to leaks?
             builder.end_split_arm( arm.m_code->span(), pat_scope, /*reachable=*/true );
             builder.end_block(::MIR::Terminator::make_Goto(arm_body_block));
@@ -1087,7 +1097,13 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
     if(pat.m_data.is_Or())
     {
         // Multiply the current pattern (sub)set out, visit with sub-sets
-        TODO(sp, "Handle or patterns");
+        const auto& e = pat.m_data.as_Or();
+        assert(pat.m_implicit_deref_count == 0);    // Shouldn't have any, so this code doesn't need to pop them.
+        assert(e.size() > 0);
+        this->multiply_rulesets(e.size(), [&](size_t i){
+            this->append_from(sp, e[i], top_ty);
+            });
+        return ;
     }
 
     TU_MATCH_HDRA( (ty.data()), {)

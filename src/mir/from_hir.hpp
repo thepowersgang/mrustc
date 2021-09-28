@@ -166,8 +166,11 @@ struct PatternBinding
         return split_slice.first != SIZE_MAX;
     }
 
+    bool operator==(const PatternBinding& x) const {
+        return field == x.field && binding == x.binding && split_slice == x.split_slice;
+    }
     friend ::std::ostream& operator<<(::std::ostream& os, const PatternBinding& x) {
-        os << *x.binding <<  x.field;
+        os << *x.binding << x.field;
         if( x.is_split_slice() ) {
             os << "[" << x.split_slice.first << "..-" << x.split_slice.second << "]";
         }
