@@ -595,8 +595,11 @@ namespace MIR {
             }
         TU_ARMA(Asm2, e) {
             os << "asm!(";
-            for(const auto& l : e.lines)
+            for(const auto& l : e.lines) {
+                if(&l != &e.lines.front())
+                    os << " ";
                 l.fmt(os);
+            }
             for(const auto& p : e.params)
             {
                 os << ", ";
@@ -608,7 +611,7 @@ namespace MIR {
                     os << "sym " << v;
                     }
                 TU_ARMA(Reg, v) {
-                    os << "reg " << v.dir << " " << v.spec;
+                    os << "reg " << v.dir << " " << v.spec << " ";
                     if(v.input)
                         os << *v.input;
                     else
@@ -621,8 +624,10 @@ namespace MIR {
                     }
                 }
             }
-            if(e.options.any())
+            if(e.options.any()) {
+                os << ", ";
                 e.options.fmt(os);
+            }
             os << ")";
             }
         TU_ARMA(SetDropFlag, e) {
