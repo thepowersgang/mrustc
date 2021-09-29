@@ -70,8 +70,32 @@ namespace {
                 TODO(params.sp, "Monomorphise MIR generic constant " << ce << " = " << val);
             TU_ARMA(Evaluated, ve) {
                 const auto& def = get_value_param_def(resolve, ce);
-                auto v = EncodedLiteralSlice(*ve).read_uint(ve->bytes.size());
-                return ::MIR::Constant::make_Uint({v, def.m_type.data().as_Primitive()});
+                auto ty = def.m_type.data().as_Primitive();
+                switch(ty)
+                {
+                case HIR::CoreType::Char:
+                case HIR::CoreType::Usize:
+                case HIR::CoreType::U128:
+                case HIR::CoreType::U64:
+                case HIR::CoreType::U32:
+                case HIR::CoreType::U16:
+                case HIR::CoreType::U8:
+                    return ::MIR::Constant::make_Uint({EncodedLiteralSlice(*ve).read_uint(ve->bytes.size()), ty});
+                case HIR::CoreType::Bool:
+                    return ::MIR::Constant::make_Bool({EncodedLiteralSlice(*ve).read_uint(ve->bytes.size()) != 0});
+                case HIR::CoreType::Isize:
+                case HIR::CoreType::I128:
+                case HIR::CoreType::I64:
+                case HIR::CoreType::I32:
+                case HIR::CoreType::I16:
+                case HIR::CoreType::I8:
+                    return ::MIR::Constant::make_Int({EncodedLiteralSlice(*ve).read_sint(ve->bytes.size()), ty});
+                case HIR::CoreType::F32:
+                case HIR::CoreType::F64:
+                    return ::MIR::Constant::make_Float({EncodedLiteralSlice(*ve).read_float(ve->bytes.size()), ty});
+                case HIR::CoreType::Str:
+                    BUG(params.sp, "Constant of type `str`?");
+                }
                 }
             }
             }
