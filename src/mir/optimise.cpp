@@ -1555,6 +1555,9 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
                 TU_MATCH_HDRA( (val), {)
                 default:
                     TODO(sp, "Monomorphise MIR generic constant " << ce << " = " << val);
+                TU_ARMA(Generic, ve) {
+                    return ve;
+                    }
                 TU_ARMA(Evaluated, ve) {
                     // TODO: Need to know the expected type of this.
                     return ::MIR::Constant::make_Uint({ve->read_usize(0), HIR::CoreType::Usize});
@@ -2043,7 +2046,7 @@ bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::
                         auto& set_stmt = set_bb.statements[slot.set_loc.stmt_idx];
                         TU_MATCH_HDRA( (set_stmt), {)
                         TU_ARMA(Assign, se) {
-                            MIR_ASSERT(state, se.dst == ::MIR::LValue::new_Local(var_idx), "");
+                            MIR_ASSERT(state, se.dst == ::MIR::LValue::new_Local(var_idx), "Impossibility: Value set but isn't destination in " << set_stmt);
                             DEBUG("Move destination " << dst << " from " << use_bb.statements[slot.use_loc.stmt_idx] << " to " << set_stmt);
                             se.dst = dst.clone();
                             use_bb.statements[slot.use_loc.stmt_idx] = ::MIR::Statement();
@@ -2051,6 +2054,28 @@ bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::
                             }
                         TU_ARMA(Asm, se) {
                             // Initialised from an ASM statement, find the variable in the output parameters
+                            }
+                        TU_ARMA(Asm2, se) {
+                            // Initialised from an ASM statement, find the variable in the output parameters
+                            // TODO: Replace the output variable
+                            for(auto& e : se.params)
+                            {
+                                if(const auto* ep = e.opt_Reg())
+                                {
+                                    if( ep->output ) {
+                                        if( *ep->output == ::MIR::LValue::new_Local(var_idx) ) {
+                                            DEBUG("Move destination " << dst << " from " << use_bb.statements[slot.use_loc.stmt_idx] << " to " << set_stmt);
+                                            *ep->output = dst.clone();
+                                            use_bb.statements[slot.use_loc.stmt_idx] = ::MIR::Statement();
+                                            changed = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            if( !changed ) {
+                                MIR_BUG(state, "Failed to find usage of _" << var_idx << " in asm! statement");
+                            }
                             }
                             break;
                         default:
@@ -3580,6 +3605,10 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                         {
                             // One of the arms is a named constant, can't check (they're not an actual value, just a
                             // reference to one)
+                        }
+                        else if( val_l.is_Generic() || val_r.is_Generic() )
+                        {
+                            // One of the arms is a generic, can't check either
                         }
                         else
                         {
@@ -5626,6 +5655,14 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
             {
                 for(const auto& val : e->outputs)
                     assigned_lval(val.second);
+            }
+            else if( const auto* e = stmt.opt_Asm2() )
+            {
+                for(const auto& p : e->params)
+                {
+                    if(p.is_Reg() && p.as_Reg().output)
+                        assigned_lval(*p.as_Reg().output);
+                }
             }
             else if( const auto* e = stmt.opt_SetDropFlag() )
             {
