@@ -356,52 +356,10 @@ TransList Trans_Enumerate_Public(::HIR::Crate& crate)
 
     auto rv = Trans_Enumerate_CommonPost(state);
 
-    struct H
-    {
-        static bool is_generic(const ::HIR::TypeRef& ty)
-        {
-            return visit_ty_with(ty, [&](const auto& ty) {
-                return ty.data().is_Generic();
-                });
-        }
-        static bool is_generic(const ::HIR::PathParams& pp)
-        {
-            for(const auto& ty : pp.m_types)
-                if( is_generic(ty) )
-                    return true;
-            return false;
-        }
-        static bool is_generic(const ::HIR::Path& p)
-        {
-            TU_MATCHA( (p.m_data), (pe),
-            (Generic,
-                return is_generic(pe.m_params);
-                ),
-            (UfcsKnown,
-                if( is_generic(pe.type) )
-                    return true;
-                if( is_generic(pe.trait.m_params) )
-                    return true;
-                if( is_generic(pe.params) )
-                    return true;
-                ),
-            (UfcsInherent,
-                if( is_generic(pe.type) )
-                    return true;
-                if( is_generic(pe.params) )
-                    return true;
-                ),
-            (UfcsUnknown,
-                )
-            )
-            return false;
-        }
-    };
-
     // Strip out any functions/types/statics that are still generic?
     for(auto it = rv.m_functions.begin(); it != rv.m_functions.end(); )
     {
-        if( H::is_generic(it->first) ) {
+        if( monomorphise_path_needed(it->first) ) {
             rv.m_functions.erase(it++);
         }
         else {
@@ -410,7 +368,7 @@ TransList Trans_Enumerate_Public(::HIR::Crate& crate)
     }
     for(auto it = rv.m_statics.begin(); it != rv.m_statics.end(); )
     {
-        if( H::is_generic(it->first) ) {
+        if( monomorphise_path_needed(it->first) ) {
             rv.m_statics.erase(it++);
         }
         else {
@@ -1176,6 +1134,7 @@ void Trans_Enumerate_FillFrom_PathMono(EnumState& state, ::HIR::Path path_mono)
     // Get the item type
     // - Valid types are Function and Static
     auto item_ref = get_ent_fullpath(sp, state.crate, path_mono, sub_pp.pp_impl);
+    DEBUG("sub_pp.pp_method = " << sub_pp.pp_method);
     DEBUG("sub_pp.pp_impl = " << sub_pp.pp_impl);
     TU_MATCH_HDRA( (item_ref), {)
     TU_ARMA(NotFound, e) {
