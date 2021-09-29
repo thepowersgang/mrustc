@@ -2382,16 +2382,19 @@ namespace {
                 else if( item.m_linkage.name == "llvm.x86.addcarry.32") {
                     m_of << "\trv._0 = __builtin_add_overflow_u32(arg1, arg2, &rv._1);\n";
                     m_of << "\tif(arg0) rv._0 |= __builtin_add_overflow_u32(rv._1, 1, &rv._1);\n";
+                    m_of << "\treturn rv;\n";
                 }
                 // `fn llvm_addcarryx_u32(a: u8, b: u32, c: u32, d: *mut u8) -> u32`
                 else if( item.m_linkage.name == "llvm.x86.addcarryx.u32") {
-                    m_of << "\t*arg3 = __builtin_add_overflow_u32(arg1, arg2, rv);\n";
+                    m_of << "\t*arg3 = __builtin_add_overflow_u32(arg1, arg2, &rv);\n";
                     m_of << "\tif(*arg3) *arg3 |= __builtin_add_overflow_u32(rv, 1, &rv);\n";
+                    m_of << "\treturn rv;\n";
                 }
                 // `fn llvm_subborrow_u32(a: u8, b: u32, c: u32) -> (u8, u32);`
                 else if( item.m_linkage.name == "llvm.x86.subborrow.32") {
                     m_of << "\trv._0 = __builtin_sub_overflow_u32(arg1, arg2, &rv._1);\n";
                     m_of << "\tif(arg0) rv._0 |= __builtin_sub_overflow_u32(rv._1, 1, &rv._1);\n";
+                    m_of << "\treturn rv;\n";
                 }
                 // AES functions
                 else if( item.m_linkage.name.rfind("llvm.x86.aesni.", 0) == 0 )
@@ -3200,7 +3203,15 @@ namespace {
                 }
                 break;
             case ::MIR::Statement::TAG_Asm2:
-                MIR_TODO(mir_res, "Asm2 " << stmt);
+                switch(m_compiler)
+                {
+                case Compiler::Gcc:
+                    MIR_TODO(mir_res, "Asm2 GCC " << stmt);
+                    break;
+                case Compiler::Msvc:
+                    this->emit_asm2_msvc(mir_res, stmt, indent_level);
+                    break;
+                }
                 break;
             case ::MIR::Statement::TAG_Assign: {
                 const auto& e = stmt.as_Assign();
@@ -4470,6 +4481,183 @@ namespace {
             }
             m_of << ";\n";
         }
+
+        struct Asm2TplMatch {
+            const MIR::TypeResolve& m_mir_res;
+            const ::MIR::Statement& stmt;
+            const ::MIR::Statement::Data_Asm2& e;
+            std::vector<std::string>    fmt_lines;
+            std::vector<std::string>    fmt_params;
+
+            Asm2TplMatch(const MIR::TypeResolve& mir_res, const ::MIR::Statement& stmt)
+                : m_mir_res(mir_res)
+                , stmt(stmt)
+                , e(stmt.as_Asm2())
+            {
+                for(const auto& v : e.lines) {
+                    fmt_lines.push_back(FMT(FMT_CB(os, v.fmt(os))));
+                    fmt_lines.back().erase(fmt_lines.back().begin());
+                    fmt_lines.back().pop_back();
+                    DEBUG(fmt_lines.back());
+                }
+
+                for(const auto& p : e.params) {
+                    fmt_params.push_back(get_param_text(p));
+                }
+            }
+            bool matches_template(::std::initializer_list<const char*> lines, ::std::initializer_list<const char*> params) const
+            {
+                if( !check_list(fmt_lines, lines) )
+                    return false;
+
+                if( !check_list(fmt_params, params) ) {
+                    MIR_BUG(m_mir_res, "Hard-coded asm translation doesn't apply - " << stmt << "\n"
+                        << "[" << fmt_params << "] != \n[" << FMT_CB(os, for(auto it = params.begin(); it != params.end(); ++it) os << *it << ", ") << "]");
+                }
+
+                return true;
+            }
+
+            const MIR::AsmParam& p(size_t i) const {
+                return e.params.at(i);
+            }
+            const MIR::Param& input(size_t i) const {
+                MIR_ASSERT(m_mir_res, e.params.at(i).as_Reg().input, "Parameter " << i << " isn't a register input");
+                return *e.params.at(i).as_Reg().input;
+            }
+            const MIR::LValue& output(size_t i) const {
+                MIR_ASSERT(m_mir_res, e.params.at(i).as_Reg().output, "Parameter " << i << " isn't a register output");
+                return *e.params.at(i).as_Reg().output;
+            }
+
+        private:
+            /// Get a description of the parameter's important attributes
+            static std::string get_param_text(const MIR::AsmParam& p) {
+                TU_MATCH_HDRA( (p), {)
+                TU_ARMA(Reg, e) {
+                    TU_MATCH_HDRA( (e.spec), { )
+                    TU_ARMA(Explicit, n) {
+                        return FMT(get_dir_text(e.dir) << "=" << n);
+                        }
+                    TU_ARMA(Class, c) {
+                        return FMT(get_dir_text(e.dir) << ":" << AsmCommon::to_string(c));
+                        }
+                    }
+                    }
+                TU_ARMA(Const, e)
+                    return "const";
+                TU_ARMA(Sym, e)
+                    return "sym";
+                }
+                throw "";
+            }
+            static const char* get_dir_text(const AsmCommon::Direction& d) {
+                switch(d)
+                {
+                case AsmCommon::Direction::In:  return "in";
+                case AsmCommon::Direction::Out:  return "out";
+                case AsmCommon::Direction::InOut:  return "inout";
+                case AsmCommon::Direction::LateOut:  return "lateout";
+                case AsmCommon::Direction::InLateOut:  return "inlateout";
+                }
+                throw "";
+            }
+            static bool check_list(const std::vector<std::string>& have, const ::std::initializer_list<const char*>& exp) {
+                if( have.size() != exp.size() ) {
+                    return false;
+                }
+                auto h_it = have.begin();
+                auto e_it = exp.begin();
+                for(; h_it != have.end(); ++h_it, ++e_it)
+                {
+                    if( *h_it != *e_it ) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+        };
+        void emit_asm2_msvc(const ::MIR::TypeResolve& mir_res, const ::MIR::Statement& stmt, unsigned indent_level)
+        {
+            auto indent = RepeatLitStr{ "\t", static_cast<int>(indent_level) };
+            Asm2TplMatch    m { mir_res, stmt };
+
+            if( stmt.as_Asm2().lines.empty() ) 
+            {
+                // Ignore?
+            }
+            // === x86 intrinsics ===
+            // - CPUID
+            else if( m.matches_template({"movq %rbx, {0:r}", "cpuid", "xchgq %rbx, {0:r}"}, {"lateout:reg","inlateout=eax","inlateout=ecx","lateout=edx"}) )
+            {
+                m_of << indent << "{";
+                m_of << " int cpuid_out[4];";
+                m_of << " __cpuidex(cpuid_out, "; emit_param(m.input(1)); m_of << ", "; emit_param(m.input(2)); m_of << ");";
+                m_of << " "; emit_lvalue(m.output(1)); m_of << " = cpuid_out[0];";  // EAX
+                m_of << " "; emit_lvalue(m.output(0)); m_of << " = cpuid_out[1];";  // EBX
+                m_of << " "; emit_lvalue(m.output(2)); m_of << " = cpuid_out[2];";  // ECX
+                m_of << " "; emit_lvalue(m.output(3)); m_of << " = cpuid_out[3];";  // EDX
+                m_of << " }\n";
+            }
+            // - EFlags
+            else if( m.matches_template({"pushfq", "pop {0}"}, {"out:reg"}) )
+            {
+                m_of << indent; emit_lvalue(m.output(0)); m_of << " = __readeflags();\n";
+            }
+            else if( m.matches_template({"push {0}", "popfq"}, {"in:reg"}) )
+            {
+                m_of << indent << "__writeeflags("; emit_param(m.input(0)); m_of << ");\n";
+            }
+            // - Bit test (and *)
+            else if( m.matches_template({"btl {1:e}, ({0})", "setc {2}"}, {"in:reg", "in:reg", "out:reg_byte"}) )
+            {
+                m_of << indent; emit_lvalue(m.output(2));
+                m_of << " = _bittest("; emit_param(m.input(0)); m_of << ","; emit_param(m.input(1)); m_of << ");\n";
+            }
+            else if( m.matches_template({"btq {1}, ({0})", "setc {2}"}, {"in:reg", "in:reg", "out:reg_byte"}) )
+            {
+                m_of << indent; emit_lvalue(m.output(2));
+                m_of << " = _bittest64("; emit_param(m.input(0)); m_of << ","; emit_param(m.input(1)); m_of << ");\n";
+            }
+            else if( m.matches_template({"btcl {1:e}, ({0})", "setc {2}"}, {"in:reg", "in:reg", "out:reg_byte"}) )
+            {
+                m_of << indent; emit_lvalue(m.output(2));
+                m_of << " = _bittestandcomplement("; emit_param(m.input(0)); m_of << ","; emit_param(m.input(1)); m_of << ");\n";
+            }
+            else if( m.matches_template({"btcq {1}, ({0})", "setc {2}"}, {"in:reg", "in:reg", "out:reg_byte"}) )
+            {
+                m_of << indent; emit_lvalue(m.output(2));
+                m_of << " = _bittestandcomplement64("; emit_param(m.input(0)); m_of << ","; emit_param(m.input(1)); m_of << ");\n";
+            }
+            else if( m.matches_template({"btrl {1:e}, ({0})", "setc {2}"}, {"in:reg", "in:reg", "out:reg_byte"}) )
+            {
+                m_of << indent; emit_lvalue(m.output(2));
+                m_of << " = _bittestandreset("; emit_param(m.input(0)); m_of << ","; emit_param(m.input(1)); m_of << ");\n";
+            }
+            else if( m.matches_template({"btrq {1}, ({0})", "setc {2}"}, {"in:reg", "in:reg", "out:reg_byte"}) )
+            {
+                m_of << indent; emit_lvalue(m.output(2));
+                m_of << " = _bittestandreset64("; emit_param(m.input(0)); m_of << ","; emit_param(m.input(1)); m_of << ");\n";
+            }
+            else if( m.matches_template({"btsl {1:e}, ({0})", "setc {2}"}, {"in:reg", "in:reg", "out:reg_byte"}) )
+            {
+                m_of << indent; emit_lvalue(m.output(2));
+                m_of << " = _bittestandset("; emit_param(m.input(0)); m_of << ","; emit_param(m.input(1)); m_of << ");\n";
+            }
+            else if( m.matches_template({"btsq {1}, ({0})", "setc {2}"}, {"in:reg", "in:reg", "out:reg_byte"}) )
+            {
+                m_of << indent; emit_lvalue(m.output(2));
+                m_of << " = _bittestandset64("; emit_param(m.input(0)); m_of << ","; emit_param(m.input(1)); m_of << ");\n";
+            }
+            // -- Unknown --
+            else
+            {
+                if( Target_GetCurSpec().m_backend_c.m_c_compiler == "amd64" ) {
+                    MIR_TODO(mir_res, "MSVC amd64 doesn't support inline assembly, need to have a transform for " << stmt);
+                }
+                MIR_TODO(mir_res, "Translate to MSVC");
+            }
+        }
     private:
         const ::HIR::TypeRef& monomorphise_fcn_return(::HIR::TypeRef& tmp, const ::HIR::Function& item, const Trans_Params& params)
         {
@@ -4860,9 +5048,17 @@ namespace {
                 }
                 #endif
             }
-            else if( name == "panic_if_uninhabited" ) {
-                // TODO: Detect uninhabited (empty enum, or containing that)
+            // --- Type assertions ---
+            else if( name == "panic_if_uninhabited" || name == "assert_inhabited" ) {
+                // TODO: Detect uninhabited (empty enum or `!` - potentially via nested types)
             }
+            else if( name == "assert_zero_valid" ) {
+                // TODO: Detect nonzero within
+            }
+            else if( name == "assert_uninit_valid" ) {
+                // TODO: Detect nonzero or enum within
+            }
+            // --- Type identity ---
             else if( name == "type_id" ) {
                 const auto& ty = params.m_types.at(0);
                 // NOTE: Would define the typeid here, but it has to be public
@@ -4891,12 +5087,12 @@ namespace {
                 {
                     auto src_meta = metadata_type(ty_src.data().is_Pointer() ? ty_src.data().as_Pointer().inner : ty_src.data().as_Borrow().inner);
                     auto dst_meta = metadata_type(ty_dst.data().is_Pointer() ? ty_dst.data().as_Pointer().inner : ty_dst.data().as_Borrow().inner);
-                    if( src_meta == MetadataType::None )
+                    if( src_meta == MetadataType::None || src_meta == MetadataType::Zero )
                     {
-                        MIR_ASSERT(*m_mir_res, dst_meta == MetadataType::None, "Transmuting to fat pointer from thin: " << ty_src << " -> " << ty_dst);
+                        MIR_ASSERT(*m_mir_res, dst_meta == MetadataType::None || dst_meta == MetadataType::Zero, "Transmuting to fat pointer from thin: " << ty_src << " -> " << ty_dst);
                         emit_lvalue(e.ret_val); m_of << " = (void*)"; emit_param(e.args.at(0));
                     }
-                    else if(dst_meta == MetadataType::None)
+                    else if(dst_meta == MetadataType::None || dst_meta == MetadataType::Zero)
                     {
                         MIR_BUG(*m_mir_res, "Transmuting from fat pointer to thin: (" << src_meta << "->" << dst_meta << ") " << ty_src << " -> " << ty_dst);
                     }
@@ -4922,6 +5118,17 @@ namespace {
                 else
                 {
                     m_of << "memcpy( &"; emit_lvalue(e.ret_val); m_of << ", &"; emit_param(e.args.at(0)); m_of << ", sizeof("; emit_ctype(ty_src); m_of << "))";
+                }
+            }
+            else if( name == "float_to_int_unchecked" ) {
+                const auto& dst_ty = params.m_types.at(1);
+                // Unchecked (can return `undef`) cast from a float to an integer
+                if( this->type_is_emulated_i128(dst_ty) ) {
+                    m_of << "abort()";
+                    //emit_lvalue(e.ret_val); m_of << " = ("; emit_ctype(dst_ty); m_of << ")"; emit_param(e.args.at(0));
+                }
+                else {
+                    emit_lvalue(e.ret_val); m_of << " = ("; emit_ctype(dst_ty); m_of << ")"; emit_param(e.args.at(0));
                 }
             }
             else if( name == "copy_nonoverlapping" || name == "copy" ) {
@@ -4959,6 +5166,7 @@ namespace {
             else if( name == "drop_in_place" ) {
                 emit_destructor_call( ::MIR::LValue::new_Deref(e.args.at(0).as_LValue().clone()), params.m_types.at(0), true, /*indent_level=*/1 /* TODO: get from caller */ );
             }
+            // --- Type traits
             else if( name == "needs_drop" ) {
                 // Returns `true` if the actual type given as `T` requires drop glue;
                 // returns `false` if the actual type provided for `T` implements `Copy`. (Either otherwise)
@@ -4973,6 +5181,7 @@ namespace {
                     m_of << "false";
                 }
             }
+            // --- Initialisation (or lack thereof)
             else if( name == "uninit" ) {
                 // Do nothing, leaves the destination undefined
                 // TODO: This makes the C compiler warn
@@ -5021,12 +5230,25 @@ namespace {
                     break;
                 }
             }
+            // --- #[track_caller]
+            else if( name == "caller_location" ) {
+                m_of << "abort()";
+                //emit_lvalue(e.ret_val); m_of << " = mrustc_caller_location"; 
+            }
+            // --- Pointer manipulation
             else if( name == "offset" ) {
                 emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0)); m_of << " + "; emit_param(e.args.at(1));
             }
             else if( name == "arith_offset" ) {
                 emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0)); m_of << " + "; emit_param(e.args.at(1));
             }
+            else if( name == "ptr_guaranteed_eq" ) {
+                emit_lvalue(e.ret_val); m_of << " = ("; emit_param(e.args.at(0)); m_of << " == "; emit_param(e.args.at(1)); m_of << ")";
+            }
+            else if( name == "ptr_guaranteed_ne" ) {
+                emit_lvalue(e.ret_val); m_of << " = ("; emit_param(e.args.at(0)); m_of << " != "; emit_param(e.args.at(1)); m_of << ")";
+            }
+            // ----
             else if( name == "bswap" ) {
                 const auto& ty = params.m_types.at(0);
                 MIR_ASSERT(mir_res, ty.data().is_Primitive(), "Invalid type passed to bwsap, must be a primitive, got " << ty);
@@ -5418,7 +5640,7 @@ namespace {
                 }
 #endif
             }
-            else if( name == "overflowing_mul" || name == "wrapping_mul" ) {
+            else if( name == "overflowing_mul" || name == "wrapping_mul" || name == "unchecked_mul" ) {
                 if(m_options.emulated_i128 && params.m_types.at(0) == ::HIR::CoreType::U128)
                 {
                     m_of << "mul128_o";
