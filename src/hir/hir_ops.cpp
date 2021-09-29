@@ -1513,7 +1513,7 @@ uint64_t EncodedLiteral::read_usize(size_t ofs) const
 }
 uint64_t EncodedLiteralSlice::read_uint(size_t size/*=0*/) const {
     if(size == 0)   size = m_size;
-    assert(size <= m_size);
+    ASSERT_BUG(Span(), size <= m_size, "Over-large read (" << size << " > " << m_size << ")");
     uint64_t v = 0;
     for(size_t i = 0; i < size; i ++) {
         size_t bit = (Target_GetCurSpec().m_arch.m_big_endian ? (size-1-i)*8 : i*8 );

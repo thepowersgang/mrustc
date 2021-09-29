@@ -24,6 +24,19 @@ namespace {
             return tpl.clone();
         }
     }
+    const ::HIR::ValueParamDef& get_value_param_def(const ::StaticTraitResolve& resolve, const ::HIR::GenericRef& g) {
+        switch(g.group())
+        {
+        case 0:
+            ASSERT_BUG(Span(), g.idx() < resolve.impl_generics().m_values.size(), "Value generic " << g << " out of bounds in impl: " << resolve.impl_generics().m_values.size());
+            return resolve.impl_generics().m_values.at(g.idx());
+        case 1:
+            ASSERT_BUG(Span(), g.idx() < resolve.item_generics().m_values.size(), "Value generic " << g << " out of bounds in fcn: " << resolve.item_generics().m_values.size());
+            return resolve.item_generics().m_values.at(g.idx());
+        default:
+            BUG(Span(), "");
+        }
+    }
     ::MIR::Constant monomorph_Constant(const ::StaticTraitResolve& resolve, const Trans_Params& params, const ::MIR::Constant& tpl)
     {
         TU_MATCH_HDRA( (tpl), {)
@@ -56,8 +69,9 @@ namespace {
             default:
                 TODO(params.sp, "Monomorphise MIR generic constant " << ce << " = " << val);
             TU_ARMA(Evaluated, ve) {
-                // TODO: Need to know the expected type of this.
-                return ::MIR::Constant::make_Uint({ve->read_usize(0), HIR::CoreType::Usize});
+                const auto& def = get_value_param_def(resolve, ce);
+                auto v = EncodedLiteralSlice(*ve).read_uint(ve->bytes.size());
+                return ::MIR::Constant::make_Uint({v, def.m_type.data().as_Primitive()});
                 }
             }
             }
@@ -409,6 +423,12 @@ void Trans_Monomorphise_List(const ::HIR::Crate& crate, TransList& list)
             TRACE_FUNCTION_FR("FUNCTION " << path, "FUNCTION " << path);
             ASSERT_BUG(Span(), fcn.m_code.m_mir, "No code for " << path);
 
+            // TODO: Get the item params too
+            if( fcn_ent.second->pp.pp_impl.has_params() ) {
+                assert(pp.gdef_impl);
+            }
+            resolve.set_both_generics_raw(pp.gdef_impl, &fcn.m_params);
+
             auto mir = Trans_Monomorphise(resolve, fcn_ent.second->pp, fcn.m_code.m_mir);
 
             // TODO: Should these be moved to their own pass? Potentially not, the extra pass should just be an inlining optimise pass
@@ -427,6 +447,7 @@ void Trans_Monomorphise_List(const ::HIR::Crate& crate, TransList& list)
             fcn_ent.second->monomorphised.ret_ty = ::std::move(ret_type);
             fcn_ent.second->monomorphised.arg_tys = ::std::move(args);
             fcn_ent.second->monomorphised.code = ::std::move(mir);
+            resolve.clear_both_generics();
         }
         else
         {

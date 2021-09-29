@@ -1009,15 +1009,18 @@ namespace {
         (Static, const ::HIR::Static*),
         (Constant, const ::HIR::Constant*)
         );
-    EntPtr get_ent_fullpath(const Span& sp, const ::HIR::Crate& crate, const ::HIR::Path& path, ::HIR::PathParams& impl_pp)
+    EntPtr get_ent_fullpath(const Span& sp, const ::HIR::Crate& crate, const ::HIR::Path& path, ::HIR::PathParams& impl_pp, const ::HIR::GenericParams*& impl_def)
     {
         TRACE_FUNCTION_F(path);
         StaticTraitResolve  resolve { crate };
 
         MonomorphState  ms;
-        auto ent = resolve.get_value(sp, path, ms, /*signature_only=*/false);
+        impl_def = nullptr;
+        auto ent = resolve.get_value(sp, path, ms, /*signature_only=*/false, &impl_def);
         if(ms.get_impl_params()) {
             impl_pp = ms.get_impl_params()->clone();
+            if(impl_pp.has_params())
+                assert(impl_def);
         }
         DEBUG(path << " = " << ent.tag_str() << " w/ impl" << impl_pp);
         TU_MATCH_HDRA( (ent), {)
@@ -1133,7 +1136,7 @@ void Trans_Enumerate_FillFrom_PathMono(EnumState& state, ::HIR::Path path_mono)
     }
     // Get the item type
     // - Valid types are Function and Static
-    auto item_ref = get_ent_fullpath(sp, state.crate, path_mono, sub_pp.pp_impl);
+    auto item_ref = get_ent_fullpath(sp, state.crate, path_mono, sub_pp.pp_impl, sub_pp.gdef_impl);
     DEBUG("sub_pp.pp_method = " << sub_pp.pp_method);
     DEBUG("sub_pp.pp_impl = " << sub_pp.pp_impl);
     TU_MATCH_HDRA( (item_ref), {)

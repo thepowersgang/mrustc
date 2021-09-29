@@ -2597,7 +2597,7 @@ const ::HIR::TypeRef* StaticTraitResolve::is_type_phantom_data(const ::HIR::Type
     return &pe.m_params.m_types.at(0);
 }
 
-StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const ::HIR::Path& p, MonomorphState& out_params, bool signature_only/*=false*/) const
+StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const ::HIR::Path& p, MonomorphState& out_params, bool signature_only/*=false*/, const HIR::GenericParams** out_impl_params_def/*=nullptr*/) const
 {
     TRACE_FUNCTION_F(p << ", signature_only=" << signature_only);
     out_params = MonomorphState {};
@@ -2608,6 +2608,9 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
             const auto& ti = m_crate.get_typeitem_by_path(sp, pe.m_path, /*ignore_crate_name=*/false, /*ignore_last_node=*/true);
             if( const auto* e = ti.opt_Enum() )
             {
+                if(out_impl_params_def) {
+                    *out_impl_params_def = &e->m_params;
+                }
                 out_params.pp_impl = &pe.m_params;
                 auto idx = e->find_variant(pe.m_path.m_components.back());
                 if( e->m_data.is_Data() )
@@ -2643,7 +2646,11 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
             ),
         (StructConstructor,
             out_params.pp_impl = &pe.m_params;
-            return ValuePtr::Data_StructConstructor { &ve.ty, &m_crate.get_struct_by_path(sp, ve.ty) };
+            const auto& str = m_crate.get_struct_by_path(sp, ve.ty);
+            if(out_impl_params_def) {
+                *out_impl_params_def = &str.m_params;
+            }
+            return ValuePtr::Data_StructConstructor { &ve.ty, &str };
             )
         )
         throw "";
@@ -2657,6 +2664,12 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
             DEBUG("Value " << pe.item << " not found in trait " << pe.trait.m_path);
             return ValuePtr();
         }
+
+        if(out_impl_params_def) {
+            *out_impl_params_def = &tr.m_params;
+            // Updated if an impl is found+used
+        }
+
         const ::HIR::TraitValueItem& v = tr.m_values.at(pe.item);
         if( signature_only )
         {
@@ -2772,6 +2785,9 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
             if( ! best_impl.m_data.is_TraitImpl() )
                 TODO(sp, "Use bounded constant values for " << p);
             auto& ie = best_impl.m_data.as_TraitImpl();
+            if(out_impl_params_def) {
+                *out_impl_params_def = &ie.impl->m_params;
+            }
             out_params.pp_impl = &out_params.pp_impl_data;
             out_params.pp_impl_data = ie.impl_params.clone();
             ASSERT_BUG(sp, !rv.is_NotFound(), "");
@@ -2807,6 +2823,10 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
                 }
 
                 out_params.pp_impl = &out_params.pp_impl_data;
+            }
+
+            if(out_impl_params_def) {
+                *out_impl_params_def = &impl.m_params;
             }
 
             // TODO: Specialisation
