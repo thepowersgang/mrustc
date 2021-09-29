@@ -383,9 +383,18 @@ void Trans_Monomorphise_List(const ::HIR::Crate& crate, TransList& list)
         ms.self_ty = pp.self_type.clone();
         ms.pp_impl = &pp.pp_impl;
         ms.pp_method = &pp.pp_method;
-        auto new_lit = eval.evaluate_constant(path, c.m_value, ::std::move(ty), ::std::move(ms));
-        // 2. Store evaluated HIR::Literal in c.m_monomorph_cache
-        c.m_monomorph_cache.insert(::std::make_pair( path.clone(), ::std::move(new_lit) ));
+        DEBUG("ms = " << ms);
+        try
+        {
+            auto new_lit = eval.evaluate_constant(path, c.m_value, ::std::move(ty), ::std::move(ms));
+            // 2. Store evaluated HIR::Literal in c.m_monomorph_cache
+            c.m_monomorph_cache.insert(::std::make_pair( path.clone(), ::std::move(new_lit) ));
+        }
+        catch(...)
+        {
+            // Deferred - no update
+            BUG(Span(), "Exception thrown during evaluation of: " << path);
+        }
     }
 
     for(auto& fcn_ent : list.m_functions)

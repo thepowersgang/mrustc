@@ -1150,6 +1150,22 @@ namespace HIR {
                 }
             }
 
+            void write_encoded(ValueRef dst, const EncodedLiteral& encoded)
+            {
+                // Write the encoded value into the destination
+                dst.write_bytes(state, encoded.bytes.data(), encoded.bytes.size());
+                for(const auto& r : encoded.relocations)
+                {
+                    RelocPtr    reloc;
+                    if( r.p ) {
+                        reloc = RelocPtr(get_staticref(r.p->clone()));
+                    }
+                    else {
+                        reloc = RelocPtr(AllocationPtr::allocate_ro(r.bytes.data(), r.bytes.size()));
+                    }
+                    dst.slice(r.ofs, r.len).set_reloc(std::move(reloc));
+                }
+            }
             void write_const(ValueRef dst, const ::MIR::Constant& c)
             {
                 TU_MATCH_HDR( (c), {)
@@ -1177,22 +1193,21 @@ namespace HIR {
                     const auto& encoded = get_const(*e2.p, &ty);
                     DEBUG(*e2.p << " = " << encoded);
 
-                    // Write the encoded value into the destination
-                    dst.write_bytes(state, encoded.bytes.data(), encoded.bytes.size());
-                    for(const auto& r : encoded.relocations)
-                    {
-                        RelocPtr    reloc;
-                        if( r.p ) {
-                            reloc = RelocPtr(get_staticref(r.p->clone()));
-                        }
-                        else {
-                            reloc = RelocPtr(AllocationPtr::allocate_ro(r.bytes.data(), r.bytes.size()));
-                        }
-                        dst.slice(r.ofs, r.len).set_reloc(std::move(reloc));
-                    }
+                    write_encoded(dst, encoded);
                     }
                 TU_ARM(c, Generic, e2) {
-                    throw Defer();
+                    auto v = ms.get_value(Span(), e2);
+                    TU_MATCH_HDRA( (v), { )
+                    default:
+                        MIR_TODO(state, "Handle expanded generic: " << v);
+                    TU_ARMA(Generic, _) {
+                        throw Defer();
+                        }
+                    TU_ARMA(Evaluated, ve) {
+                        DEBUG(e2 << " = " << *ve);
+                        write_encoded(dst, *ve);
+                        }
+                    }
                     }
                 TU_ARM(c, ItemAddr, e2) {
                     dst.write_ptr(state, EncodedLiteral::PTR_BASE, get_staticref_mono(*e2));
@@ -2158,6 +2173,8 @@ namespace {
             ::HIR::PathParams   pp_impl;
             for(const auto& tp : impl.m_params.m_types)
                 pp_impl.m_types.push_back( ::HIR::TypeRef(tp.m_name, pp_impl.m_types.size()) );
+            for(const auto& vp : impl.m_params.m_values)
+                pp_impl.m_values.push_back( ::HIR::GenericRef(vp.m_name, pp_impl.m_values.size()) );
             m_monomorph_state.pp_impl = &pp_impl;
             m_impl_params = &impl.m_params;
 
@@ -2182,6 +2199,8 @@ namespace {
             ::HIR::PathParams   pp_impl;
             for(const auto& tp : impl.m_params.m_types)
                 pp_impl.m_types.push_back( ::HIR::TypeRef(tp.m_name, pp_impl.m_types.size()) );
+            for(const auto& vp : impl.m_params.m_values)
+                pp_impl.m_values.push_back( ::HIR::GenericRef(vp.m_name, pp_impl.m_values.size()) );
             m_monomorph_state.pp_impl = &pp_impl;
             m_impl_params = &impl.m_params;
 

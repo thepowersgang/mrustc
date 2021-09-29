@@ -65,6 +65,12 @@ public:
     //GenericParams() {}
 
     GenericParams clone() const;
+    bool is_generic() const {
+        if(!m_types.empty())    return true;
+        // Note: Lifetimes don't matter
+        if(!m_values.empty())    return true;
+        return false;
+    }
 
     struct PrintArgs {
         const GenericParams& gp;

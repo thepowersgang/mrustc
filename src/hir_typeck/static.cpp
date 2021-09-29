@@ -732,39 +732,28 @@ bool StaticTraitResolve::find_impl__check_bound(
     return false;
 }
 
-bool StaticTraitResolve::find_impl__check_crate_raw(
-        const Span& sp,
-        const ::HIR::SimplePath& des_trait_path, const ::HIR::PathParams* des_trait_params, const ::HIR::TypeRef& des_type,
-        const ::HIR::GenericParams& impl_params_def, const ::HIR::PathParams& impl_trait_params, const ::HIR::TypeRef& impl_type,
-        ::std::function<bool(HIR::PathParams, ::HIR::Compare)> found_cb
-    ) const
-{
-    auto cb_ident = [](const auto&ty)->const ::HIR::TypeRef&{return ty;};
-    TRACE_FUNCTION_F("impl" << impl_params_def.fmt_args() << " " << des_trait_path << impl_trait_params << " for " << impl_type << impl_params_def.fmt_bounds());
-
-    // TODO: What if `des_trait_params` already has impl placeholders?
-
-    HIR::PathParams impl_params;
-    impl_params.m_types.resize( impl_params_def.m_types.size() );
-    impl_params.m_values.resize( impl_params_def.m_values.size() );
+namespace {
 
     class GetParams:
-        public ::HIR::MatchGenerics
+    public ::HIR::MatchGenerics
     {
         Span    sp;
         HIR::PathParams& impl_params;
     public:
-        GetParams(Span sp, HIR::PathParams& impl_params):
+        GetParams(Span sp, const HIR::GenericParams& impl_params_def, HIR::PathParams& impl_params):
             sp(sp),
             impl_params(impl_params)
-        {}
+        {
+            impl_params.m_types.resize( impl_params_def.m_types.size() );
+            impl_params.m_values.resize( impl_params_def.m_values.size() );
+        }
 
         ::HIR::Compare match_ty(const ::HIR::GenericRef& g, const ::HIR::TypeRef& ty, ::HIR::t_cb_resolve_type resolve_cb) override {
-            ASSERT_BUG(sp, g.binding < impl_params.m_types.size(), "");
+            ASSERT_BUG(sp, g.binding < impl_params.m_types.size(), "[GetParams] Type generic " << g << " out of bounds (" << impl_params.m_types.size() << ")");
             if( impl_params.m_types[g.binding] == HIR::TypeRef() )
             {
                 impl_params.m_types[g.binding] = ty.clone();
-                DEBUG("[find_impl__check_crate_raw:GetParams] Set impl ty param " << g << " to " << ty);
+                DEBUG("[GetParams] Set impl ty param " << g << " to " << ty);
                 return ::HIR::Compare::Equal;
             }
             else {
@@ -772,11 +761,11 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
             }
         }
         ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::ConstGeneric& sz) override {
-            ASSERT_BUG(sp, g.binding < impl_params.m_values.size(), "Type generic " << g << " out of range (" << impl_params.m_values.size() << ")");
+            ASSERT_BUG(sp, g.binding < impl_params.m_values.size(), "[GetParams] Value generic " << g << " out of range (" << impl_params.m_values.size() << ")");
             if( impl_params.m_values[g.binding].is_Infer() )
             {
                 impl_params.m_values[g.binding] = sz.clone();
-                DEBUG("[find_impl__check_crate_raw:GetParams] Set impl val param " << g << " to " << sz);
+                DEBUG("[GetParams] Set impl val param " << g << " to " << sz);
                 return ::HIR::Compare::Equal;
             }
             else
@@ -790,7 +779,22 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
             }
         }
     };
-    GetParams get_params { sp, impl_params };
+}
+
+bool StaticTraitResolve::find_impl__check_crate_raw(
+        const Span& sp,
+        const ::HIR::SimplePath& des_trait_path, const ::HIR::PathParams* des_trait_params, const ::HIR::TypeRef& des_type,
+        const ::HIR::GenericParams& impl_params_def, const ::HIR::PathParams& impl_trait_params, const ::HIR::TypeRef& impl_type,
+        ::std::function<bool(HIR::PathParams, ::HIR::Compare)> found_cb
+    ) const
+{
+    auto cb_ident = [](const auto&ty)->const ::HIR::TypeRef&{return ty;};
+    TRACE_FUNCTION_F("impl" << impl_params_def.fmt_args() << " " << des_trait_path << impl_trait_params << " for " << impl_type << impl_params_def.fmt_bounds());
+
+    // TODO: What if `des_trait_params` already has impl placeholders?
+
+    HIR::PathParams impl_params;
+    GetParams get_params { sp, impl_params_def, impl_params };
 
     auto match = impl_type.match_test_generics_fuzz(sp, des_type, cb_ident, get_params);
     unsigned base_impl_placeholder_idx = 0;
@@ -836,6 +840,14 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
                 placeholders.resize(impl_params.m_types.size());
             placeholders[i] = ::HIR::TypeRef(placeholder_name, 2*256 + i + base_impl_placeholder_idx);
             DEBUG("Placeholder " << placeholders[i] << " for I:" << i << " " << impl_params_def.m_types[i].m_name);
+        }
+    }
+    for(size_t i = 0; i < impl_params.m_values.size(); i ++ ) {
+        if( impl_params.m_values[i] == HIR::ConstGeneric() )
+        {
+            // TODO: Is there an equivalent of a placeholder for const generics?
+            // - Yes, it's a placeholder generic :D
+            // TODO: use placeholder generics for values
         }
     }
 
@@ -2775,7 +2787,28 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
         ValuePtr    rv;
         m_crate.find_type_impls(pe.type, [](const auto&x)->const ::HIR::TypeRef& { return x; }, [&](const auto& impl) {
             DEBUG("Found impl" << impl.m_params.fmt_args() << " " << impl.m_type);
-            // TODO: Populate pp_impl
+            // Populate pp_impl if not populated
+            if( !pe.impl_params.has_params() ) {
+                GetParams get_params { sp, impl.m_params, out_params.pp_impl_data };
+
+                auto cb_ident = [](const ::HIR::TypeRef&ty)->const ::HIR::TypeRef& { return ty; };
+                impl.m_type.match_test_generics_fuzz(sp, pe.type, cb_ident, get_params);
+
+                const auto& impl_params = out_params.pp_impl_data;
+                for(size_t i = 0; i < impl_params.m_types.size(); i ++ ) {
+                    if( impl_params.m_types[i] == HIR::TypeRef() ) {
+                        // TODO: Error when there's a type param that can't be determined?
+                    }
+                }
+                for(size_t i = 0; i < impl_params.m_values.size(); i ++ ) {
+                    if( impl_params.m_values[i] == HIR::ConstGeneric() ) {
+                        // TODO: Error when there's a value param that can't be determined?
+                    }
+                }
+
+                out_params.pp_impl = &out_params.pp_impl_data;
+            }
+
             // TODO: Specialisation
             {
                 auto fit = impl.m_methods.find(pe.item);
