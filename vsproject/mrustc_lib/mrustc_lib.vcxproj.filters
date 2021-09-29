@@ -659,9 +659,6 @@
     <ClInclude Include="..\..\src\hir_typeck\monomorph_state.hpp">
       <Filter>Header Files\hir_typeck</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\src\hir_typeck\common.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\src\resolve\common.hpp">
       <Filter>Header Files\resolve</Filter>
     </ClInclude>
@@ -685,6 +682,9 @@
     </ClInclude>
     <ClInclude Include="..\..\src\hir\literal.hpp">
       <Filter>Header Files\hir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\hir_typeck\common.hpp">
+      <Filter>Header Files\hir_typeck</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
