@@ -54,7 +54,7 @@ struct Trans_Params:
     ::HIR::PathParams monomorph(const ::StaticTraitResolve& resolve, const ::HIR::PathParams& p) const;
 
     bool has_types() const {
-        return pp_method.m_types.size() > 0 || pp_impl.m_types.size() > 0;
+        return pp_method.has_params() || pp_impl.has_params();
     }
 
 

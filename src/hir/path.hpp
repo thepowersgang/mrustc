@@ -148,7 +148,7 @@ struct PathParams
     /// Indicates that params exist (and thus the target requires monomorphisation)
     /// - Ignores lifetime params
     bool has_params() const {
-        return !m_types.empty();
+        return !m_types.empty() || !m_values.empty();
     }
 
     bool operator==(const PathParams& x) const;

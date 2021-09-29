@@ -406,7 +406,7 @@ void Trans_Monomorphise_List(const ::HIR::Crate& crate, TransList& list)
         {
             const auto& path = fcn_ent.first;
             const auto& pp = fcn_ent.second->pp;
-            TRACE_FUNCTION_FR(path, path);
+            TRACE_FUNCTION_FR("FUNCTION " << path, "FUNCTION " << path);
             ASSERT_BUG(Span(), fcn.m_code.m_mir, "No code for " << path);
 
             auto mir = Trans_Monomorphise(resolve, fcn_ent.second->pp, fcn.m_code.m_mir);
@@ -427,6 +427,10 @@ void Trans_Monomorphise_List(const ::HIR::Crate& crate, TransList& list)
             fcn_ent.second->monomorphised.ret_ty = ::std::move(ret_type);
             fcn_ent.second->monomorphised.arg_tys = ::std::move(args);
             fcn_ent.second->monomorphised.code = ::std::move(mir);
+        }
+        else
+        {
+            DEBUG("Non-generic: FUNCTION " << fcn_ent.first);
         }
     }
 }
