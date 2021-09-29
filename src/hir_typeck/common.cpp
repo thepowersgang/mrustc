@@ -455,6 +455,8 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
     rv.m_types.reserve( tpl.m_types.size() );
     for( const auto& ty : tpl.m_types)
         rv.m_types.push_back( clone_ty_with(sp, ty, callback) );
+    for( const auto& v : tpl.m_values)
+        rv.m_values.push_back( v.clone() );
     return rv;
 }
 ::HIR::GenericPath clone_ty_with__generic_path(const Span& sp, const ::HIR::GenericPath& tpl, t_cb_clone_ty callback) {

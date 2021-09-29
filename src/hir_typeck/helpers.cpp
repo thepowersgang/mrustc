@@ -336,10 +336,14 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr) 
 }
 void HMTypeInferrence::print_pathparams(::std::ostream& os, const ::HIR::PathParams& pps) const
 {
-    if( pps.m_types.size() > 0 ) {
+    if( pps.has_params() ) {
         os << "<";
         for(const auto& pp_t : pps.m_types) {
             this->print_type(os, pp_t);
+            os << ",";
+        }
+        for(const auto& pp_v : pps.m_values) {
+            os << pp_v;
             os << ",";
         }
         os << ">";
