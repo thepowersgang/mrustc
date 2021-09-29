@@ -52,6 +52,7 @@ TAGGED_UNION_EX(ConstGeneric, (), Infer, (
         ConstGeneric clone() const;
         bool operator==(const ConstGeneric& x) const;
         bool operator!=(const ConstGeneric& x) const { return !(*this == x); }
+        Ordering ord(const ConstGeneric& x) const;
         )
     );
 ::std::ostream& operator<<(::std::ostream& os, const ConstGeneric& x);
@@ -154,7 +155,9 @@ struct PathParams
     bool operator!=(const PathParams& x) const { return !(*this == x); }
     bool operator<(const PathParams& x) const { return ord(x) == OrdLess; }
     Ordering ord(const PathParams& x) const {
-        return ::ord(m_types, x.m_types);
+        if(auto cmp = ::ord(m_types, x.m_types)) return cmp;
+        if(auto cmp = ::ord(m_values, x.m_values)) return cmp;
+        return OrdEqual;
     }
 
     friend ::std::ostream& operator<<(::std::ostream& os, const PathParams& x);

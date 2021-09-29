@@ -1581,6 +1581,41 @@ bool EncodedLiteralSlice::operator==(const EncodedLiteralSlice& x) const
     return true;
 }
 
+Ordering EncodedLiteralSlice::ord(const EncodedLiteralSlice& x) const
+{
+    // NOTE: Check the data first (to maintain some level of lexical ordering)
+    auto min_size = std::min(m_size, x.m_size);
+    for(size_t i = 0; i < min_size; i ++)
+        if(auto cmp = ::ord(m_base.bytes[m_ofs + i], x.m_base.bytes[x.m_ofs + i]))
+            return cmp;
+    if( auto cmp = ::ord(m_size, x.m_size) )
+        return cmp;
+
+    auto it1 = std::find_if(  m_base.relocations.begin(),   m_base.relocations.end(), [&](const Reloc& r){ return r.ofs >=   m_ofs; });
+    auto it2 = std::find_if(x.m_base.relocations.begin(), x.m_base.relocations.end(), [&](const Reloc& r){ return r.ofs >= x.m_ofs; });
+
+    for(; it1 != m_base.relocations.end() && it2 != x.m_base.relocations.end(); ++it1, ++it2)
+    {
+        if( auto cmp = ::ord(it1->ofs - m_ofs, it2->ofs - x.m_ofs) )
+            return cmp;
+        if( auto cmp = ::ord(it1->len, it2->len) )
+            return cmp;
+        if( auto cmp = ::ord(bool(it1->p), bool(it2->p)) )
+            return cmp;
+        if( it1->p )
+        {
+            if( auto cmp = ::ord(*it1->p, *it2->p) )
+                return cmp;
+        }
+        else
+        {
+            if(auto cmp = ::ord(it1->bytes, it2->bytes) )
+                return cmp;
+        }
+    }
+    return OrdEqual;
+}
+
 ::std::ostream& operator<<(std::ostream& os, const EncodedLiteralSlice& x) {
     auto it = std::find_if(x.m_base.relocations.begin(), x.m_base.relocations.end(), [&](const Reloc& r){ return r.ofs >= x.m_ofs; });
     for(size_t i = 0; i < x.m_size; i++)

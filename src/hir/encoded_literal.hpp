@@ -118,6 +118,7 @@ struct EncodedLiteralSlice
 
     bool operator==(const EncodedLiteralSlice& x) const;
     bool operator!=(const EncodedLiteralSlice& x) const { return !(*this == x); }
+    Ordering ord(const EncodedLiteralSlice& x) const;
 
     friend ::std::ostream& operator<<(std::ostream& os, const EncodedLiteralSlice& x);
 };
