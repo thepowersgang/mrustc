@@ -16,6 +16,7 @@ def main():
             or 'Trans_Monomorphise_List: ' in line \
             or 'Trans_Codegen: FUNCTION CODE' in line \
             or 'Trans_Codegen- emit_' in line \
+            or 'MIR_OptimiseInline: >> (' in line \
             :
             if found_fcn:
                 break
