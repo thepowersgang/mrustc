@@ -731,11 +731,11 @@
                 }
             TU_ARMA(Reg, e) {
                 m_out.write_tag(static_cast<unsigned>(e.dir));
+                serialise(e.spec);
                 m_out.write_bool(bool(e.input));
                 if(e.input) serialise(e.input);
                 m_out.write_bool(bool(e.output));
                 if(e.output)    serialise(e.output);
-                serialise(e.spec);
                 }
             }
         }
@@ -790,9 +790,9 @@
                 }
             TU_ARMA(Asm2, e) {
                 m_out.write_tag(5);
+                serialise(e.options);
                 serialise_vec(e.lines);
                 serialise_vec(e.params);
-                serialise(e.options);
                 }
             }
         }

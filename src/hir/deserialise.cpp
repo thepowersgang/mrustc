@@ -502,6 +502,11 @@
         ::MIR::FunctionPointer deserialise_mir();
         ::MIR::BasicBlock deserialise_mir_basicblock();
         ::MIR::Statement deserialise_mir_statement();
+        AsmCommon::Options deserialise_asm_options();
+        AsmCommon::LineFragment deserialise_asm_line_frag();
+        AsmCommon::Line deserialise_asm_line();
+        AsmCommon::RegisterSpec deserialise_asm_spec();
+        ::MIR::AsmParam deserialise_asm_param();
         ::MIR::Terminator deserialise_mir_terminator();
         ::MIR::Terminator deserialise_mir_terminator_();
         ::MIR::SwitchValues deserialise_mir_switchvalues();
@@ -648,6 +653,14 @@
                 };
         }
 
+        ::HIR::TraitAlias deserialise_traitalias()
+        {
+            return ::HIR::TraitAlias {
+                deserialise_genericparams(),
+                deserialise_vec<HIR::TraitPath>()
+                };
+        }
+
         ::HIR::TypeItem deserialise_typeitem()
         {
             switch(auto tag = m_in.read_tag())
@@ -671,6 +684,8 @@
                 return ::HIR::TypeItem( deserialise_union() );
             case 7:
                 return ::HIR::TypeItem( deserialise_externtype() );
+            case 8:
+                return ::HIR::TypeItem( deserialise_traitalias() );
             default:
                 BUG(Span(), "Bad tag for HIR::TypeItem - " << tag);
             }
@@ -928,6 +943,9 @@
     template<> DEF_D( ::MIR::Param, return d.deserialise_mir_param(); )
     template<> DEF_D( ::MIR::LValue::Wrapper, return d.deserialise_mir_lvalue_wrapper(); )
     template<> DEF_D( ::MIR::LValue, return d.deserialise_mir_lvalue(); )
+    template<> DEF_D( AsmCommon::LineFragment, return d.deserialise_asm_line_frag(); )
+    template<> DEF_D( AsmCommon::Line, return d.deserialise_asm_line(); )
+    template<> DEF_D( ::MIR::AsmParam, return d.deserialise_asm_param(); )
     template<> DEF_D( ::MIR::Statement, return d.deserialise_mir_statement(); )
     template<> DEF_D( ::MIR::BasicBlock, return d.deserialise_mir_basicblock(); )
 
@@ -1372,6 +1390,67 @@
             deserialise_mir_terminator()
             };
     }
+    AsmCommon::Options HirDeserialiser::deserialise_asm_options()
+    {
+        AsmCommon::Options  o;
+        const uint16_t bitflag_1 = m_in.read_u16();
+        #define BIT(i,fld)  if(fld & (1 << (i))) fld = true
+        BIT(0, o.pure);
+        BIT(1, o.nomem);
+        BIT(2, o.readonly);
+        BIT(3, o.preserves_flags);
+        BIT(4, o.noreturn);
+        BIT(5, o.nostack);
+        BIT(6, o.att_syntax);
+        #undef BIT
+        return o;
+    }
+    AsmCommon::LineFragment HirDeserialiser::deserialise_asm_line_frag()
+    {
+        AsmCommon::LineFragment lf;
+        lf.before = m_in.read_string();
+        lf.index = m_in.read_count();
+        lf.modifier = static_cast<char>(m_in.read_i64c());
+        return lf;
+    }
+    AsmCommon::Line HirDeserialiser::deserialise_asm_line()
+    {
+        AsmCommon::Line l;
+        l.frags = deserialise_vec<AsmCommon::LineFragment>();
+        l.trailing = m_in.read_string();
+        return l;
+    }
+    AsmCommon::RegisterSpec HirDeserialiser::deserialise_asm_spec()
+    {
+        switch(auto tag = m_in.read_tag())
+        {
+        case AsmCommon::RegisterSpec::TAG_Class:
+            return static_cast<AsmCommon::RegisterClass>(m_in.read_tag());
+        case AsmCommon::RegisterSpec::TAG_Explicit:
+            return m_in.read_string();
+        default:
+            BUG(Span(), "Bad tag for AsmCommon::RegisterSpec - " << tag);
+        }
+    }
+    ::MIR::AsmParam HirDeserialiser::deserialise_asm_param()
+    {
+        switch(auto tag = m_in.read_tag())
+        {
+        case ::MIR::AsmParam::TAG_Sym:
+            return ::MIR::AsmParam::make_Sym(deserialise_path());
+        case ::MIR::AsmParam::TAG_Const:
+            return ::MIR::AsmParam::make_Const(deserialise_mir_constant());
+        case ::MIR::AsmParam::TAG_Reg:
+            return ::MIR::AsmParam::make_Reg({
+                static_cast<AsmCommon::Direction>(m_in.read_tag()),
+                deserialise_asm_spec(),
+                m_in.read_bool() ? ::std::make_unique<MIR::Param>(deserialise_mir_param()) : std::unique_ptr<MIR::Param>(),
+                m_in.read_bool() ? ::std::make_unique<MIR::LValue>(deserialise_mir_lvalue()) : std::unique_ptr<MIR::LValue>()
+                });
+        default:
+            BUG(Span(), "Bad tag for MIR::AsmParam - " << tag);
+        }
+    }
     ::MIR::Statement HirDeserialiser::deserialise_mir_statement()
     {
         MIR::Statement  rv;
@@ -1413,6 +1492,13 @@
         case 4:
             rv = ::MIR::Statement::make_ScopeEnd({
                 deserialise_vec<unsigned int>()
+                });
+            break;
+        case 5:
+            rv = ::MIR::Statement::make_Asm2({
+                deserialise_asm_options(),
+                deserialise_vec< AsmCommon::Line>(),
+                deserialise_vec< MIR::AsmParam>()
                 });
             break;
         default:
