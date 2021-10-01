@@ -1898,6 +1898,19 @@ namespace HIR {
                         else
                             throw Defer();
                     }
+                    // ---
+                    else if( te->name == "ctpop" ) {
+                        auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                        MIR_ASSERT(state, ty.data().is_Primitive(), "bswap with non-primitive " << ty);
+                        auto ti = TypeInfo::for_type(ty);
+                        auto val = local_state.read_param_uint(ti.bits, e.args.at(0));
+#ifdef _MSC_VER
+                        unsigned rv = __popcnt(val & 0xFFFFFFFF) + __popcnt(val >> 32);
+#else
+                        unsigned rv = __builtin_popcountll(val);
+#endif
+                        dst.write_uint(state, ti.bits, rv);
+                    }
                     else if( te->name == "bswap" ) {
                         auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
                         MIR_ASSERT(state, ty.data().is_Primitive(), "bswap with non-primitive " << ty);
@@ -1938,6 +1951,7 @@ namespace HIR {
                         }
                         dst.write_uint(state, ti.bits, rv);
                     }
+                    // ---
                     else if( te->name == "add_with_overflow" ) {
                         auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
                         MIR_ASSERT(state, ty.data().is_Primitive(), "`add_with_overflow` with non-primitive " << ty);
@@ -1979,6 +1993,7 @@ namespace HIR {
                             MIR_TODO(state, "Call intrinsic \"" << te->name << "\" - " << block.terminator);
                         }
                     }
+                    // ---
                     else if( te->name == "transmute" ) {
                         local_state.write_param(dst, e.args.at(0));
                     }
