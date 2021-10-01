@@ -2493,6 +2493,7 @@ void Resolve_Absolute_ImplItems(Context& item_context,  ::std::vector< ::AST::Im
         (Static,
             DEBUG("Static - " << i.name);
             Resolve_Absolute_Type( item_context, e.type() );
+            auto _h = item_context.enter_rootblock();
             Resolve_Absolute_Expr( item_context, e.value() );
             )
         )
