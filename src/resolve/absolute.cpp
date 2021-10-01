@@ -2364,6 +2364,15 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
         Resolve_Absolute_PatternValue(context, pat.span(), e.start);
         Resolve_Absolute_PatternValue(context, pat.span(), e.end);
         ),
+    (ValueLeftInc,
+        if( ! allow_refutable )
+        {
+            // TODO: If this is a single value of a unit-like struct, accept
+            BUG(pat.span(), "Resolve_Absolute_Pattern - Encountered refutable pattern where only irrefutable allowed - " << pat);
+        }
+        Resolve_Absolute_PatternValue(context, pat.span(), e.start);
+        Resolve_Absolute_PatternValue(context, pat.span(), e.end);
+        ),
     (Tuple,
         for(auto& sp : e.start)
             Resolve_Absolute_Pattern(context, allow_refutable,  sp);

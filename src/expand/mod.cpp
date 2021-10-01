@@ -343,6 +343,10 @@ void Expand_Pattern(::AST::Crate& crate, LList<const AST::Module*> modstack, ::A
         //Expand_Expr(crate, modstack, e.start);
         //Expand_Expr(crate, modstack, e.end);
         ),
+    (ValueLeftInc,
+        //Expand_Expr(crate, modstack, e.start);
+        //Expand_Expr(crate, modstack, e.end);
+        ),
     (Tuple,
         for(auto& sp : e.start)
             Expand_Pattern(crate, modstack, mod, sp, is_refutable);

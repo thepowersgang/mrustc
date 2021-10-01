@@ -388,6 +388,9 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
                 };
         }
         }
+    TU_ARMA(ValueLeftInc, e) {
+        TODO(Span(), "");
+        }
     TU_ARMA(Slice, e) {
         ::std::vector< ::HIR::Pattern>  leading;
         for(const auto& sp : e.sub_pats)

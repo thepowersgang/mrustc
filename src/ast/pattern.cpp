@@ -112,7 +112,10 @@ namespace AST {
     (Value,
         os << ent.start;
         if( ! ent.end.is_Invalid() )
-            os << " ... " << ent.end;
+            os << " ..= " << ent.end;
+        ),
+    (ValueLeftInc,
+        os << ent.start << " .. " << ent.end;
         ),
     (Tuple,
         os << "(" << ent << ")";
@@ -221,6 +224,9 @@ AST::Pattern AST::Pattern::clone() const
         ),
     (Value,
         rv.m_data = Data::make_Value({ H::clone_val(e.start), H::clone_val(e.end) });
+        ),
+    (ValueLeftInc,
+        rv.m_data = Data::make_ValueLeftInc({ H::clone_val(e.start), H::clone_val(e.end) });
         ),
     (Tuple,
         rv.m_data = Data::make_Tuple( H::clone_tup(e) );
