@@ -1694,6 +1694,7 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
         TU_ARMA(None, e) {
             }
         TU_ARMA(Macro, e) {
+            // NOTE: These are in `m_macros`
             }
         TU_ARMA(MacroInv, e) {
             // Valid.
@@ -1789,7 +1790,16 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
             }
         }
     }
-    // Ignore macros (exported macros are in the root, and handled differently)
+    // Some explicit handling of mac
+    for(auto& mac : const_cast<AST::Module&>(ast_mod).macros() )
+    {
+        if( mac.is_pub )
+        {
+            ASSERT_BUG(mac.span, mac.data, "Null macro - " << mac.name);
+            ASSERT_BUG(mac.span, mac.data->m_rules.size() > 0, "Empty macro - " << mac.name);
+            _add_mod_mac_item(mod, mac.name, get_pub(mac.is_pub), std::move(mac.data));
+        }
+    }
 
     // Imports
     Span    mod_span;
@@ -1842,15 +1852,19 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
         const auto& sp = mod_span;
         if( ie.first.c_str()[0] == ' ' )
             continue;
+        auto hir_path = LowerHIR_SimplePath( sp, ie.second.path, FromAST_PathClass::Macro );
         if( ie.second.is_import )
         {
-            auto hir_path = LowerHIR_SimplePath( sp, ie.second.path, FromAST_PathClass::Macro );
             assert(!hir_path.m_components.empty());
             assert(hir_path.m_components.back() != "");
 
             DEBUG("Import MACRO " << ie.first << " = " << hir_path);
             auto mi = ::HIR::MacroItem::make_Import({ mv$(hir_path) });
             _add_mod_mac_item( mod, ie.first, get_pub(ie.second.is_pub), mv$(mi) );
+        }
+        else
+        {
+            DEBUG("Defined MACRO " << ie.first << " = " << hir_path);
         }
     }
 
@@ -2106,10 +2120,21 @@ public:
         {
             auto& mod = *mods.back();
             mods.pop_back();
-
+            
             for( /*const*/ auto& mac : mod.macros() ) {
                 if( mac.data->m_exported ) {
-                    auto res = macros.insert( ::std::make_pair( mac.name, mv$(mac.data) ) );
+                    HIR::MacroItem  mi;
+                    if( &mod == &crate.m_root_module ) {
+                        mi = mv$(mac.data);
+                    }
+                    else {
+                        assert(mac.data);
+                        assert(!mac.data->m_rules.empty());
+                        ::HIR::SimplePath   p { g_crate_name, mod.path().nodes };
+                        p.m_components.push_back(mac.name);
+                        mi = HIR::MacroItem::make_Import({ mv$(p) });
+                    }
+                    auto res = macros.insert( ::std::make_pair( mac.name, mv$(mi) ) );
                     if( res.second )
                     {
                         DEBUG("- Define " << mac.name << "!");
@@ -2129,20 +2154,22 @@ public:
 
         for( auto& mac : crate.m_root_module.macro_imports_res() ) {
             if( mac.data.is_MacroRules() && mac.data.as_MacroRules()->m_exported && mac.name != "" ) {
-                auto mp = MacroRulesPtr(new MacroRules( mv$(*const_cast<MacroRules*>(mac.data.as_MacroRules())) ));
+                auto* mp = mac.data.as_MacroRules();
                 auto it = macros.find(mac.name);
                 if( it == macros.end() )
                 {
+                    auto mpo = MacroRulesPtr(new MacroRules( mv$(*const_cast<MacroRules*>(mp)) ));
                     rv.m_exported_macro_names.push_back(mac.name);
-                    auto res = macros.insert( ::std::make_pair( mac.name, mv$(mp) ) );
+                    auto res = macros.insert( ::std::make_pair( mac.name, mv$(mpo) ) );
                     DEBUG("- Import " << mac.name << "! (from \"" << res.first->second.as_MacroRules()->m_source_crate << "\")");
                 }
                 else if( mp->m_rules.empty() ) {
                     // Skip
                 }
                 else {
-                    DEBUG("- Replace " << mac.name << "! "/*"(from \"" << it->second->m_source_crate << "\") "*/"with one from \"" << mp->m_source_crate << "\"");
-                    it->second = mv$(mp);
+                    assert(mp->m_source_crate == "");
+                    //DEBUG("- Replace " << mac.name << "! "/*"(from \"" << it->second->m_source_crate << "\") "*/"with one from \"" << mp->m_source_crate << "\"");
+                    //it->second = MacroRulesPtr(new MacroRules( mv$(*const_cast<MacroRules*>(mp)) ));
                 }
             }
         }

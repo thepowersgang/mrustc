@@ -1441,6 +1441,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             dat.as_MacroInv() = mv$(mi_owned);
             }
         TU_ARMA(Macro, e) {
+            ASSERT_BUG(i.span, e, "Null macro - " << i.name);
             mod.add_macro(i.is_pub, i.name, mv$(e));
             }
         TU_ARMA(Use, e) {
@@ -1806,6 +1807,7 @@ void Expand_Mod_Early(::AST::Crate& crate, ::AST::Module& mod, std::vector<std::
             {
                 // TODO: `#[macro_export] macro foo { ... }` DOESN'T move the item to the root
                 // - Instead, it should add an alias? Or just tag for export
+                DEBUG("macro item export: " << i->name);
                 i->data.as_Macro()->m_exported = true;
             }
             else

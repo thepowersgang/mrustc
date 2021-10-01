@@ -255,7 +255,7 @@ class CMacroExportHandler:
             {
                 i.as_Macro()->m_exported = true;
                 ASSERT_BUG(sp, path.nodes.size() == 1, "");
-                DEBUG("- Export macro " << name << "!");
+                DEBUG("- Export macro (item) " << name << "!");
                 //crate.m_root_module.macros().push_back( mv$(*i.as_Macro()) );
             }
         }
