@@ -4781,6 +4781,10 @@ namespace {
                     else if( ::std::strcmp(suffix, "acqrel") == 0 ) {
                         return Ordering::AcqRel;
                     }
+                    // TODO: Is this correct?
+                    else if( ::std::strcmp(suffix, "unordered") == 0 ) {
+                        return Ordering::Relaxed;
+                    }
                     else {
                         MIR_BUG(mir_res, "Unknown atomic ordering suffix - '" << suffix << "'");
                     }
