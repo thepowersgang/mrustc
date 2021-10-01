@@ -194,6 +194,70 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
                 rv.push_back( LowerHIR_Pattern(sp) );
             return rv;
         }
+        static ::HIR::CoreType get_int_type(const Span& sp, const ::eCoreType ct) {
+            switch(ct)
+            {
+            case CORETYPE_ANY:  return ::HIR::CoreType::Str;
+
+            case CORETYPE_I8 :  return ::HIR::CoreType::I8;
+            case CORETYPE_U8 :  return ::HIR::CoreType::U8;
+            case CORETYPE_I16:  return ::HIR::CoreType::I16;
+            case CORETYPE_U16:  return ::HIR::CoreType::U16;
+            case CORETYPE_I32:  return ::HIR::CoreType::I32;
+            case CORETYPE_U32:  return ::HIR::CoreType::U32;
+            case CORETYPE_I64:  return ::HIR::CoreType::I64;
+            case CORETYPE_U64:  return ::HIR::CoreType::U64;
+
+            case CORETYPE_INT:  return ::HIR::CoreType::Isize;
+            case CORETYPE_UINT: return ::HIR::CoreType::Usize;
+
+            case CORETYPE_CHAR: return ::HIR::CoreType::Char;
+
+            case CORETYPE_BOOL: return ::HIR::CoreType::Bool;
+
+            default:
+                BUG(sp, "Unknown type for integer literal in pattern - " << ct );
+            }
+        }
+        static ::HIR::CoreType get_float_type(const Span& sp, const ::eCoreType ct) {
+            switch(ct)
+            {
+            case CORETYPE_ANY:  return ::HIR::CoreType::Str;
+            case CORETYPE_F32:  return ::HIR::CoreType::F32;
+            case CORETYPE_F64:  return ::HIR::CoreType::F64;
+            default:
+                BUG(sp, "Unknown type for float literal in pattern - " << ct );
+            }
+        }
+        static ::HIR::Pattern::Value lowerhir_pattern_value(const Span& sp, const ::AST::Pattern::Value& v) {
+            TU_MATCH_HDRA((v), {)
+                TU_ARMA(Invalid, e) {
+                BUG(sp, "Encountered Invalid value in Pattern");
+            }
+            TU_ARMA(Integer, e) {
+                return ::HIR::Pattern::Value::make_Integer({
+                    H::get_int_type(sp, e.type),
+                    e.value
+                    });
+            }
+            TU_ARMA(Float, e) {
+                return ::HIR::Pattern::Value::make_Float({
+                    H::get_float_type(sp, e.type),
+                    e.value
+                    });
+            }
+            TU_ARMA(String, e) {
+                return ::HIR::Pattern::Value::make_String(e);
+            }
+            TU_ARMA(ByteString, e) {
+                return ::HIR::Pattern::Value::make_ByteString({e.v});
+            }
+            TU_ARMA(Named, e) {
+                return ::HIR::Pattern::Value::make_Named({ LowerHIR_Pattern_Path(sp, e, FromAST_PathClass::Value), nullptr });
+            }
+            }
+            throw "BUGCHECK: Reached end of LowerHIR_Pattern::H::lowerhir_pattern_value";
+        }
     };
 
     TU_MATCH_HDRA( (pat.data()), {)
@@ -304,72 +368,6 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
         }
 
     TU_ARMA(Value, e) {
-        struct H {
-            static ::HIR::CoreType get_int_type(const Span& sp, const ::eCoreType ct) {
-                switch(ct)
-                {
-                case CORETYPE_ANY:  return ::HIR::CoreType::Str;
-
-                case CORETYPE_I8 :  return ::HIR::CoreType::I8;
-                case CORETYPE_U8 :  return ::HIR::CoreType::U8;
-                case CORETYPE_I16:  return ::HIR::CoreType::I16;
-                case CORETYPE_U16:  return ::HIR::CoreType::U16;
-                case CORETYPE_I32:  return ::HIR::CoreType::I32;
-                case CORETYPE_U32:  return ::HIR::CoreType::U32;
-                case CORETYPE_I64:  return ::HIR::CoreType::I64;
-                case CORETYPE_U64:  return ::HIR::CoreType::U64;
-
-                case CORETYPE_INT:  return ::HIR::CoreType::Isize;
-                case CORETYPE_UINT: return ::HIR::CoreType::Usize;
-
-                case CORETYPE_CHAR: return ::HIR::CoreType::Char;
-
-                case CORETYPE_BOOL: return ::HIR::CoreType::Bool;
-
-                default:
-                    BUG(sp, "Unknown type for integer literal in pattern - " << ct );
-                }
-            }
-            static ::HIR::CoreType get_float_type(const Span& sp, const ::eCoreType ct) {
-                switch(ct)
-                {
-                case CORETYPE_ANY:  return ::HIR::CoreType::Str;
-                case CORETYPE_F32:  return ::HIR::CoreType::F32;
-                case CORETYPE_F64:  return ::HIR::CoreType::F64;
-                default:
-                    BUG(sp, "Unknown type for float literal in pattern - " << ct );
-                }
-            }
-            static ::HIR::Pattern::Value lowerhir_pattern_value(const Span& sp, const ::AST::Pattern::Value& v) {
-                TU_MATCH_HDRA((v), {)
-                TU_ARMA(Invalid, e) {
-                    BUG(sp, "Encountered Invalid value in Pattern");
-                    }
-                TU_ARMA(Integer, e) {
-                    return ::HIR::Pattern::Value::make_Integer({
-                        H::get_int_type(sp, e.type),
-                        e.value
-                        });
-                    }
-                TU_ARMA(Float, e) {
-                    return ::HIR::Pattern::Value::make_Float({
-                        H::get_float_type(sp, e.type),
-                        e.value
-                        });
-                    }
-                TU_ARMA(String, e) {
-                    return ::HIR::Pattern::Value::make_String(e);
-                    }
-                TU_ARMA(ByteString, e) {
-                    return ::HIR::Pattern::Value::make_ByteString({e.v});
-                    }
-                TU_ARMA(Named, e) {
-                    return ::HIR::Pattern::Value::make_Named({ LowerHIR_Pattern_Path(sp, e, FromAST_PathClass::Value), nullptr });
-                    }
-                }
-                throw "BUGCHECK: Reached end of LowerHIR_Pattern::H::lowerhir_pattern_value";
-            }
-        };
         if( e.end.is_Invalid() ) {
             return ::HIR::Pattern {
                 mv$(binding),
@@ -383,13 +381,21 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
                 mv$(binding),
                 ::HIR::Pattern::Data::make_Range({
                     H::lowerhir_pattern_value(pat.span(), e.start),
-                    H::lowerhir_pattern_value(pat.span(), e.end)
+                    H::lowerhir_pattern_value(pat.span(), e.end),
+                    true
                     })
                 };
         }
         }
     TU_ARMA(ValueLeftInc, e) {
-        TODO(Span(), "");
+        return ::HIR::Pattern {
+            mv$(binding),
+            ::HIR::Pattern::Data::make_Range({
+                H::lowerhir_pattern_value(pat.span(), e.start),
+                H::lowerhir_pattern_value(pat.span(), e.end),
+                false
+                })
+        };
         }
     TU_ARMA(Slice, e) {
         ::std::vector< ::HIR::Pattern>  leading;

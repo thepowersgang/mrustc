@@ -143,7 +143,7 @@ struct Pattern
         (Or, std::vector<Pattern>),
         // Always refutable
         (Value,     struct { Value val; } ),
-        (Range,     struct { Value start; Value end; } ),
+        (Range,     struct { Value start; Value end; bool is_inclusive; } ),
         (Slice,     struct {
             ::std::vector<Pattern> sub_patterns;
             } ),

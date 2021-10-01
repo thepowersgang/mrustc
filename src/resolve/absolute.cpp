@@ -2312,8 +2312,8 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
 {
     TRACE_FUNCTION_FR("allow_refutable = " << allow_refutable << ", pat = " << pat, pat);
     if( pat.binding().is_valid() ) {
-        if( !pat.data().is_Any() && ! allow_refutable )
-            TODO(pat.span(), "Resolve_Absolute_Pattern - Encountered bound destructuring pattern");
+        //if( !pat.data().is_Any() && ! allow_refutable )
+        //    TODO(pat.span(), "Resolve_Absolute_Pattern - Encountered bound destructuring pattern");
         pat.binding().m_slot = context.push_var( pat.span(), pat.binding().m_name );
         DEBUG("- Binding #" << pat.binding().m_slot << " '" << pat.binding().m_name << "'");
     }
