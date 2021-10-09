@@ -26,7 +26,7 @@ public:
         m_len(v.size())
     {}
     span(::std::vector<T>& v):
-        m_first(&v[0]),
+        m_first(v.data()),
         m_len(v.size())
     {}
     span(T* ptr, unsigned int len):

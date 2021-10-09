@@ -17,7 +17,7 @@
 #include <hir_typeck/static.hpp>
 #include <algorithm>    // std::remove_if
 
-namespace {
+namespace resolve_ufcs {
     class Visitor:
         public ::HIR::Visitor
     {
@@ -46,14 +46,21 @@ namespace {
             Visitor* v;
             t_trait_imports old_imports;
 
+            ModTraitsGuard(Visitor& v, t_trait_imports old_imports): v(&v), old_imports(mv$(old_imports)) {}
+            ModTraitsGuard(ModTraitsGuard&& x): v(x.v), old_imports(mv$(x.old_imports)) { x.v = nullptr; }
+            ModTraitsGuard& operator=(ModTraitsGuard&&) = delete;
             ~ModTraitsGuard() {
-                this->v->m_traits = mv$(this->old_imports);
+                if(v) {
+                    DEBUG("Stack pop: " << this->v->m_traits.size() << " -> " << this->old_imports.size());
+                    this->v->m_traits = mv$(this->old_imports);
+                    v = nullptr;
+                }
             }
         };
         ModTraitsGuard push_mod_traits(const ::HIR::Module& mod) {
             static Span sp;
             DEBUG("");
-            auto rv = ModTraitsGuard {  this, mv$(this->m_traits)  };
+            ModTraitsGuard rv { *this, mv$(this->m_traits)  };
             for( const auto& trait_path : mod.m_traits ) {
                 DEBUG("- " << trait_path);
                 m_traits.push_back( ::std::make_pair( &trait_path, &m_crate.get_trait_by_path(sp, trait_path) ) );
@@ -580,6 +587,7 @@ namespace {
         {
             static Span sp;
             auto& e = pd.as_UfcsUnknown();
+            DEBUG("m_traits.size() = " << m_traits.size());
             for( const auto& trait_info : m_traits )
             {
                 const auto& trait = *trait_info.second;
@@ -630,6 +638,7 @@ namespace {
                 unsigned counter = 0;
                 while( m_resolve.expand_associated_types_single(sp, ty) )
                 {
+                    ASSERT_BUG(sp, !visit_ty_with(ty, [&](const HIR::TypeRef& ty)->bool { return TU_TEST1(ty.data(), Generic, .is_placeholder()); }), "Encountered placeholder - " << ty);
                     ASSERT_BUG(sp, counter++ < 20, "Sanity limit exceeded when resolving UFCS in type " << ty);
                     // Invoke a special version of EAT that only processes a single item.
                     // - Keep recursing while this does replacements
@@ -784,10 +793,7 @@ namespace {
                     return ;
                 }
                 assert(p.m_data.is_UfcsUnknown());
-                DEBUG(e.type);
-                DEBUG(e.type.data().is_Path());
-                DEBUG( static_cast<int>(pc) );
-                DEBUG( (e.type.data().is_Path() && e.type.data().as_Path().binding.is_Enum()) );
+                DEBUG("e.type = " << e.type);
 
                 // If the inner is an enum, look for an enum variant? (check context)
                 if( (pc == HIR::Visitor::PathContext::VALUE /*|| pc == HIR::Visitor::PathContext::PATTERN*/)
@@ -953,6 +959,7 @@ namespace {
         }
     }
 }   // namespace ""
+using namespace resolve_ufcs;
 
 void ConvertHIR_ResolveUFCS_Outer(::HIR::Crate& crate)
 {
