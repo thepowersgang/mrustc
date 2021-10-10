@@ -3,20 +3,12 @@
 // For more information see https://go.microsoft.com/fwlink/?linkid=865984
 #define TODO(span, msg) do { const char* __TODO_func = __func__; ::Span(span).bug([&](::std::ostream& os) { os << __FILE__ << ":" << __LINE__ << ": TODO: " << __TODO_func << " - " << msg; }); throw ::std::runtime_error("Bug (todo) fell through"); } while(0)
 #define TODO(fmt) do { ::std::cerr << "TODO: " << fmt << ::std::endl; abort(); } while(0)
-
-// Hint files help the Visual Studio IDE interpret Visual C++ identifiers
-// such as names of functions and macros.
-// For more information see https://go.microsoft.com/fwlink/?linkid=865984
 #define BUG(span, msg) do { ::Span(span).bug([&](::std::ostream& os) { os << __FILE__ << ":" << __LINE__ << ": " << msg; }); throw ::std::runtime_error("Bug fell through"); } while(0)
-// Hint files help the Visual Studio IDE interpret Visual C++ identifiers
-// such as names of functions and macros.
-// For more information see https://go.microsoft.com/fwlink/?linkid=865984
 #define ASSERT_BUG(span, cnd, msg) do { if( !(cnd) ) { ::Span(span).bug([&](::std::ostream& os) { os << "ASSERT FAIL: " << __FILE__ << ":" << __LINE__ << ":" #cnd << ": " << msg; }); throw ::std::runtime_error("Bug fell through"); } } while(0)
-// Hint files help the Visual Studio IDE interpret Visual C++ identifiers
-// such as names of functions and macros.
-// For more information see https://go.microsoft.com/fwlink/?linkid=865984
 #define box$(__VA_ARGS__) ::make_unique_ptr(::std::move(__VA_ARGS__))
-// Hint files help the Visual Studio IDE interpret Visual C++ identifiers
-// such as names of functions and macros.
-// For more information see https://go.microsoft.com/fwlink/?linkid=865984
 #define mv$(x) ::std::move(x)
+
+
+#define TU_TEST1(VAL, TAG1, TEST)    ((VAL).is_##TAG1() && (VAL).as_##TAG1() TEST)
+#define TU_TEST2(VAL, TAG1, FLD1,TAG2, TEST)    ((VAL).is_##TAG1() && (VAL).as_##TAG1() FLD1.is_##TAG2() && (VAL).as_##TAG1() FLD1.as_##TAG2() TEST)
+
