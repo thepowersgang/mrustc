@@ -498,6 +498,21 @@ namespace {
             this->visit_node_ptr(node.m_value);
             if( !skip_parens )  m_os << ")";
         }
+        void visit(::HIR::ExprNode_RawBorrow& node) override
+        {
+            m_os << "&raw ";
+            switch(node.m_type)
+            {
+            case ::HIR::BorrowType::Shared: break;
+            case ::HIR::BorrowType::Unique: m_os << "mut "; break;
+            case ::HIR::BorrowType::Owned : m_os << "move "; break;
+            }
+
+            bool skip_parens = this->node_is_leaf(*node.m_value) || NODE_IS(node.m_value, _Deref);
+            if( !skip_parens )  m_os << "(";
+            this->visit_node_ptr(node.m_value);
+            if( !skip_parens )  m_os << ")";
+        }
         void visit(::HIR::ExprNode_Cast& node) override
         {
             this->visit_node_ptr(node.m_value);

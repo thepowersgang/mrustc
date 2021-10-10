@@ -332,6 +332,12 @@ namespace {
             check_types_equal(node.span(), node.m_res_type, ::HIR::TypeRef::new_borrow(node.m_type, node.m_value->m_res_type.clone()));
             node.m_value->visit( *this );
         }
+        void visit(::HIR::ExprNode_RawBorrow& node) override
+        {
+            TRACE_FUNCTION_F(&node << " &raw _ ...");
+            check_types_equal(node.span(), node.m_res_type, ::HIR::TypeRef::new_pointer(node.m_type, node.m_value->m_res_type.clone()));
+            node.m_value->visit( *this );
+        }
         void visit(::HIR::ExprNode_Index& node) override
         {
             TRACE_FUNCTION_F(&node << " ... [ ... ]");

@@ -408,6 +408,20 @@ struct ExprNode_Borrow:
 
     NODE_METHODS();
 };
+struct ExprNode_RawBorrow:
+    public ExprNode
+{
+    ::HIR::BorrowType   m_type;
+    ::HIR::ExprNodeP    m_value;
+
+    ExprNode_RawBorrow(Span sp, ::HIR::BorrowType bt, ::HIR::ExprNodeP value):
+        ExprNode( mv$(sp) ),
+        m_type(bt),
+        m_value( mv$(value) )
+    {}
+
+    NODE_METHODS();
+};
 struct ExprNode_Cast:
     public ExprNode
 {
@@ -909,6 +923,7 @@ public:
     NV(ExprNode_BinOp)
     NV(ExprNode_UniOp)
     NV(ExprNode_Borrow)
+    NV(ExprNode_RawBorrow)
     NV(ExprNode_Cast)   // Conversion
     NV(ExprNode_Unsize) // Coercion
     NV(ExprNode_Index)
@@ -961,6 +976,7 @@ public:
     NV(ExprNode_BinOp)
     NV(ExprNode_UniOp)
     NV(ExprNode_Borrow)
+    NV(ExprNode_RawBorrow)
     NV(ExprNode_Cast)
     NV(ExprNode_Unsize)
     NV(ExprNode_Index)

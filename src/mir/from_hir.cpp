@@ -1333,6 +1333,31 @@ namespace {
 
             m_builder.set_result( node.span(), ::MIR::RValue::make_Borrow({ node.m_type, mv$(val) }) );
         }
+        void visit(::HIR::ExprNode_RawBorrow& node) override
+        {
+            TRACE_FUNCTION_F("_RawBorrow");
+
+            auto _ = save_and_edit(m_in_borrow, true);
+
+            const auto& ty_val = node.m_value->m_res_type;
+            this->visit_node_ptr(node.m_value);
+            auto val = m_builder.get_result_in_lvalue(node.m_value->span(), ty_val);
+
+            if( m_borrow_raise_target )
+            {
+                DEBUG("- Raising borrow to scope " << *m_borrow_raise_target);
+                m_builder.raise_temporaries(node.span(), val, *m_borrow_raise_target);
+            }
+
+            // TODO: MIR op too?
+            m_builder.set_result( node.span(), ::MIR::RValue::make_Borrow({ node.m_type, mv$(val) }) );
+
+            // HACK: Insert a cast
+            {
+                auto val = m_builder.get_result_in_lvalue(node.span(), ::HIR::TypeRef::new_borrow(node.m_type, ty_val.clone()));
+                m_builder.set_result( node.span(), ::MIR::RValue::make_Cast({ mv$(val), node.m_res_type.clone() }));
+            }
+        }
         void visit(::HIR::ExprNode_Cast& node) override
         {
             TRACE_FUNCTION_F("_Cast " << node.m_res_type);

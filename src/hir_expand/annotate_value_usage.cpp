@@ -224,6 +224,25 @@ namespace {
 
             m_usage.pop_back();
         }
+        void visit(::HIR::ExprNode_RawBorrow& node) override
+        {
+            switch(node.m_type)
+            {
+            case ::HIR::BorrowType::Shared:
+                m_usage.push_back( ::HIR::ValueUsage::Borrow );
+                break;
+            case ::HIR::BorrowType::Unique:
+                m_usage.push_back( ::HIR::ValueUsage::Mutate );
+                break;
+            case ::HIR::BorrowType::Owned:
+                m_usage.push_back( ::HIR::ValueUsage::Move );
+                break;
+            }
+
+            this->visit_node_ptr(node.m_value);
+
+            m_usage.pop_back();
+        }
 
         void visit(::HIR::ExprNode_BinOp& node) override
         {

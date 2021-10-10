@@ -156,6 +156,9 @@ namespace {
         void visit(::HIR::ExprNode_Borrow& node) override {
             no_revisit(node);
         }
+        void visit(::HIR::ExprNode_RawBorrow& node) override {
+            no_revisit(node);
+        }
         void visit(::HIR::ExprNode_Cast& node) override {
             const auto& sp = node.span();
             const auto& tgt_ty = this->context.get_type(node.m_res_type);
@@ -519,7 +522,11 @@ namespace {
             // NOTE: `owned_box` shouldn't point to anything but a struct
             const auto& str = this->context.m_crate.get_struct_by_path(sp, lang_Boxed);
             // TODO: Store this type to avoid having to construct it every pass
-            auto boxed_ty = ::HIR::TypeRef::new_path( ::HIR::GenericPath(lang_Boxed, {data_ty.clone()}), &str );
+            auto p = ::HIR::GenericPath(lang_Boxed, {data_ty.clone()});
+            if(TARGETVER_LEAST_1_54) {
+                p.m_params.m_types.push_back(this->context.m_ivars.new_ivar_tr());
+            }
+            auto boxed_ty = ::HIR::TypeRef::new_path( mv$(p), &str );
 
             // TODO: is there anyting special about this node that might need revisits?
 
@@ -1579,6 +1586,9 @@ namespace {
             no_revisit(node);
         }
         void visit(::HIR::ExprNode_Borrow& node) override {
+            no_revisit(node);
+        }
+        void visit(::HIR::ExprNode_RawBorrow& node) override {
             no_revisit(node);
         }
         void visit(::HIR::ExprNode_Cast& node) override {

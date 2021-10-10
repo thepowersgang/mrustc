@@ -1021,6 +1021,15 @@ namespace typecheck
 
             node.m_value->visit( *this );
         }
+        void visit(::HIR::ExprNode_RawBorrow& node) override
+        {
+            TRACE_FUNCTION_F(&node << " &raw _ ...");
+            this->context.add_ivars( node.m_value->m_res_type );
+
+            this->context.equate_types( node.span(), node.m_res_type,  ::HIR::TypeRef::new_pointer(node.m_type, node.m_value->m_res_type.clone()) );
+
+            node.m_value->visit( *this );
+        }
         void visit(::HIR::ExprNode_Cast& node) override
         {
             auto _ = this->push_inner_coerce_scoped(false);
