@@ -1069,13 +1069,10 @@ void TraitResolution::prep_indexes__add_trait_bound(const Span& sp, const ::HIR:
     m_trait_bounds.insert( std::make_pair(ty.clone(), trait_path.clone()) );
 
     // Explicitly listed bounds
-    for( const auto& tb : trait_path.m_type_bounds ) {
+    for( const auto& tb : trait_path.m_type_bounds )
+    {
         DEBUG("[prep_indexes] Equality (TB) - <" << ty << " as " << tb.second.source_trait << ">::" << tb.first << " = " << tb.second.type);
-
-        auto ty_l = ::HIR::TypeRef::new_path(
-            ::HIR::Path( ty.clone(), tb.second.source_trait.clone(), tb.first ),
-            ::HIR::TypePathBinding::make_Opaque({})
-        );
+        auto ty_l = ::HIR::TypeRef::new_path( ::HIR::Path( ty.clone(), tb.second.source_trait.clone(), tb.first ), ::HIR::TypePathBinding::make_Opaque({}) );
 
         prep_indexes__add_equality( sp, mv$(ty_l), tb.second.type.clone() );
     }
@@ -1145,7 +1142,7 @@ const ::HIR::TypeRef& TraitResolution::get_const_param_type(const Span& sp, unsi
         TODO(sp, "Typecheck const generics - look up the type");
     }
     auto slot = binding & 0xFF;
-    ASSERT_BUG(sp, p, "No generic list for level " << (binding >> 8));
+    ASSERT_BUG(sp, p, "No generic list for " << (binding>>8) << ":" << slot);
     ASSERT_BUG(sp, slot < p->m_values.size(), "Generic param index out of range");
     return p->m_values.at(slot).m_type;
 }

@@ -335,6 +335,7 @@
     <ClInclude Include="..\..\src\include\cpp_unpack.h" />
     <ClInclude Include="..\..\src\include\debug.hpp" />
     <ClInclude Include="..\..\src\include\main_bindings.hpp" />
+    <ClInclude Include="..\..\src\include\range_vec_map.hpp" />
     <ClInclude Include="..\..\src\include\rc_string.hpp" />
     <ClInclude Include="..\..\src\include\rustic.hpp" />
     <ClInclude Include="..\..\src\include\serialise.hpp" />

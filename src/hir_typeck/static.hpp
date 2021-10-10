@@ -10,6 +10,7 @@
 #include <hir/hir.hpp>
 #include "common.hpp"
 #include "impl_ref.hpp"
+#include <range_vec_map.hpp>
 
 enum class MetadataType {
     Unknown,    // Unknown still
@@ -30,6 +31,7 @@ static inline std::ostream& operator<<(std::ostream& os, const MetadataType& x) 
     return os << "?";
 }
 
+
 class StaticTraitResolve
 {
 public:
@@ -41,7 +43,45 @@ public:
 
     ::std::map< ::HIR::TypeRef, ::HIR::TypeRef> m_type_equalities;
     // A pre-calculated list of trait bounds
-    ::std::set< std::pair< ::HIR::TypeRef, ::HIR::TraitPath> > m_trait_bounds;
+    struct CachedBound {
+        const HIR::Trait*   trait_ptr;
+        HIR::TraitPath::assoc_list_t    assoc;
+    };
+    struct CachedBoundCmp {
+        typedef std::pair< ::HIR::TypeRef, ::HIR::GenericPath>  key_t;
+        typedef std::pair< const ::HIR::TypeRef&, const ::HIR::GenericPath&>  ref_t;
+        typedef std::pair< const ::HIR::TypeRef&, const ::HIR::SimplePath&>  ref_sp_t;
+        Ordering ord(const key_t& a, const key_t& b) const {
+            return ::ord(a,b);
+        }
+        bool operator()(const key_t& a, const key_t& b) const {
+            return ord(a,b) == OrdLess;
+        }
+        Ordering ord(const key_t& a, const ref_t& b) const {
+            ORD(a.first, b.first);
+            ORD(a.second, b.second);
+            return OrdEqual;
+        }
+        bool operator()(const key_t& a, const ref_t& b) const {
+            return ord(a,b) == OrdLess;
+        }
+        bool operator()(const ref_t& a, const key_t& b) const {
+            return ord(b,a) == OrdGreater;
+        }
+        Ordering ord(const key_t& a, const ref_sp_t& b) const {
+            ORD(a.first, b.first);
+            ORD(a.second.m_path, b.second);
+            return OrdEqual;
+        }
+        bool operator()(const key_t& a, const ref_sp_t& b) const {
+            return ord(a,b) == OrdLess;
+        }
+        bool operator()(const ref_sp_t& a, const key_t& b) const {
+            return ord(b,a) == OrdGreater;
+        }
+    };
+    typedef RangeVecMap< std::pair< ::HIR::TypeRef, ::HIR::GenericPath>, CachedBound, CachedBoundCmp> cached_bounds_t;
+    cached_bounds_t m_trait_bounds;
 
     ::HIR::SimplePath   m_lang_Copy;
     ::HIR::SimplePath   m_lang_Clone;   // 1.29
@@ -88,7 +128,7 @@ public:
 private:
     void prep_indexes();
     void prep_indexes__add_equality(const Span& sp, ::HIR::TypeRef long_ty, ::HIR::TypeRef short_ty);
-    void prep_indexes__add_trait_bound(const Span& sp, ::HIR::TypeRef type, ::HIR::TraitPath trait_path);
+    void prep_indexes__add_trait_bound(const Span& sp, ::HIR::TypeRef type, ::HIR::TraitPath trait_path, bool add_parents=true);
 
 public:
     bool has_self() const {
@@ -169,13 +209,11 @@ public:
         ) const;
 
 private:
-    bool find_impl__check_bound(
+    bool find_impl__bounds(
         const Span& sp,
         const ::HIR::SimplePath& trait_path, const ::HIR::PathParams* trait_params,
         const ::HIR::TypeRef& type,
-        t_cb_find_impl found_cb,
-        //const ::HIR::GenericBound& bound
-        const ::std::pair< ::HIR::TypeRef, ::HIR::TraitPath>& bound
+        t_cb_find_impl found_cb
         ) const;
     bool find_impl__check_crate(
         const Span& sp,

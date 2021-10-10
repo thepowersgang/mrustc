@@ -418,6 +418,7 @@ class Trait
 public:
     GenericParams   m_params;
     LifetimeRef m_lifetime;
+    // NOTE: Not serialised!
     ::std::vector< ::HIR::TraitPath >  m_parent_traits;
 
     bool    m_is_marker;    // aka OIBIT

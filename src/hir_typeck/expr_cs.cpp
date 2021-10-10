@@ -7147,14 +7147,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
     {
         DEBUG("==== FINAL VALIDATE ====");
         StaticTraitResolve  static_resolve(ms.m_crate);
-        if( ms.m_impl_generics )
-        {
-            static_resolve.set_impl_generics_raw(*ms.m_impl_generics);
-        }
-        if( ms.m_item_generics )
-        {
-            static_resolve.set_item_generics_raw(*ms.m_item_generics);
-        }
+        static_resolve.set_both_generics_raw(ms.m_impl_generics, ms.m_item_generics);
         Typecheck_Expressions_ValidateOne(static_resolve, args, result_type, expr);
     }
 }

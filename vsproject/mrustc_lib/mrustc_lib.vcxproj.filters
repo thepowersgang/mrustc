@@ -686,6 +686,9 @@
     <ClInclude Include="..\..\src\hir_typeck\common.hpp">
       <Filter>Header Files\hir_typeck</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\src\include\range_vec_map.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="../packages.config" />
