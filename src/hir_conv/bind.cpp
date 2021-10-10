@@ -656,25 +656,28 @@ namespace {
             struct Enumerate
             {
                 ::std::vector< ::HIR::TraitPath>    supertraits;
+                ::std::vector<const ::HIR::TraitPath*>  tp_stack;
 
-                void enum_supertraits_in(const ::HIR::Trait& tr, ::HIR::GenericPath path, ::std::function<::HIR::TypeRef(const char*)> get_aty)
+                void enum_supertraits_in(const ::HIR::Trait& tr, ::HIR::TraitPath path)
                 {
                     TRACE_FUNCTION_F(path);
+                    tp_stack.push_back(&path);
+                    auto& params = path.m_path.m_params;
 
                     // Fill defaulted parameters.
                     // NOTE: Doesn't do much error checking.
-                    if( path.m_params.m_types.size() != tr.m_params.m_types.size() )
+                    if( path.m_path.m_params.m_types.size() != tr.m_params.m_types.size() )
                     {
-                        ASSERT_BUG(sp, path.m_params.m_types.size() < tr.m_params.m_types.size(), "");
-                        for(unsigned int i = path.m_params.m_types.size(); i < tr.m_params.m_types.size(); i ++)
+                        ASSERT_BUG(sp, params.m_types.size() < tr.m_params.m_types.size(), "");
+                        for(unsigned int i = params.m_types.size(); i < tr.m_params.m_types.size(); i ++)
                         {
                             const auto& def = tr.m_params.m_types[i];
-                            path.m_params.m_types.push_back( def.m_default.clone_shallow() );
+                            params.m_types.push_back( def.m_default.clone_shallow() );
                         }
                     }
 
                     ::HIR::TypeRef  ty_self { "Self", 0xFFFF };
-                    auto monomorph_cb = MonomorphStatePtr(&ty_self, &path.m_params, nullptr);
+                    auto monomorph_cb = MonomorphStatePtr(&ty_self, &params, nullptr);
                     if( tr.m_all_parent_traits.size() > 0 )
                     {
                         for(const auto& pt : tr.m_all_parent_traits)
@@ -687,13 +690,7 @@ namespace {
                         // Recurse into parent traits
                         for(const auto& pt : tr.m_parent_traits)
                         {
-                            auto get_aty_this = [&](const char* name) {
-                                auto it = pt.m_type_bounds.find(name);
-                                if( it != pt.m_type_bounds.end() )
-                                    return monomorph_cb.monomorph_type(sp, it->second.type);
-                                return get_aty(name);
-                            };
-                            enum_supertraits_in(*pt.m_trait_ptr, monomorph_cb.monomorph_genericpath(sp, pt.m_path, false), get_aty_this);
+                            enum_supertraits_in(*pt.m_trait_ptr, monomorph_cb.monomorph_traitpath(sp, pt, false));
                         }
                         // - Bound parent traits
                         for(const auto& b : tr.m_params.m_bounds)
@@ -704,36 +701,62 @@ namespace {
                             if( be.type != ::HIR::TypeRef("Self", 0xFFFF) )
                                 continue;
                             const auto& pt = be.trait;
-                            if( pt.m_path.m_path == path.m_path )
+                            if( pt.m_path.m_path == path.m_path.m_path )
                                 continue ;
 
-                            auto get_aty_this = [&](const char* name) {
-                                auto it = pt.m_type_bounds.find(name);
-                                if( it != pt.m_type_bounds.end() )
-                                    return monomorph_cb.monomorph_type(sp, it->second.type);
-                                return get_aty(name);
-                            };
-
-                            enum_supertraits_in(*pt.m_trait_ptr, monomorph_cb.monomorph_genericpath(sp, pt.m_path, false), get_aty_this);
+                            enum_supertraits_in(*pt.m_trait_ptr, monomorph_cb.monomorph_traitpath(sp, pt, false));
                         }
                     }
 
 
                     // Build output path.
                     ::HIR::TraitPath    out_path;
-                    out_path.m_path = mv$(path);
+                    out_path.m_path = mv$(path.m_path);
                     out_path.m_trait_ptr = &tr;
                     // - Locate associated types for this trait
                     for(const auto& ty : tr.m_types)
                     {
-                        auto v = get_aty(ty.first.c_str());
-                        if( v != ::HIR::TypeRef() )
                         {
-                            out_path.m_type_bounds.insert( ::std::make_pair(ty.first, ::HIR::TraitPath::AtyEqual { out_path.m_path.clone(), mv$(v) }) );
+                            HIR::TypeRef    v;
+
+                            for(auto oit = tp_stack.rbegin(); oit != tp_stack.rend(); ++oit)
+                            {
+                                auto it = (*oit)->m_type_bounds.find(ty.first);
+                                if( it != (*oit)->m_type_bounds.end() ) {
+                                    // TODO: Check the source trait
+                                    v = it->second.type.clone();
+                                    break;
+                                }
+                            }
+                            // TODO: What if there's multiple?
+
+                            if( v != ::HIR::TypeRef() )
+                            {
+                                out_path.m_type_bounds.insert( ::std::make_pair(ty.first, ::HIR::TraitPath::AtyEqual { out_path.m_path.clone(), mv$(v) }) );
+                            }
+                        }
+
+                        {
+                            std::vector<HIR::TraitPath> traits;
+                            for(auto oit = tp_stack.rbegin(); oit != tp_stack.rend(); ++oit)
+                            {
+                                auto it = (*oit)->m_trait_bounds.find(ty.first);
+                                if( it != (*oit)->m_trait_bounds.end() )
+                                {
+                                    // TODO: Check the source trait
+                                    for(const auto& t : it->second.traits)
+                                        traits.push_back(t.clone());
+                                }
+                            }
+                            if( !traits.empty() )
+                            {
+                                out_path.m_trait_bounds.insert( ::std::make_pair(ty.first, ::HIR::TraitPath::AtyBound { out_path.m_path.clone(), mv$(traits) }) );
+                            }
                         }
                     }
                     // TODO: HRLs?
                     supertraits.push_back( mv$(out_path) );
+                    tp_stack.pop_back();
                 }
             };
 
@@ -743,13 +766,7 @@ namespace {
             Enumerate   e;
             for(const auto& pt : tr.m_parent_traits)
             {
-                auto get_aty = [&](const char* name)->::HIR::TypeRef {
-                    auto it = pt.m_type_bounds.find(name);
-                    if( it != pt.m_type_bounds.end() )
-                        return it->second.type.clone();
-                    return ::HIR::TypeRef();
-                };
-                e.enum_supertraits_in(*pt.m_trait_ptr, pt.m_path.clone(), get_aty);
+                e.enum_supertraits_in(*pt.m_trait_ptr, pt.clone());
             }
             for(const auto& b : tr.m_params.m_bounds)
             {
@@ -767,13 +784,7 @@ namespace {
                     continue ;
                 }
 
-                auto get_aty = [&](const char* name)->::HIR::TypeRef {
-                    auto it = be.trait.m_type_bounds.find(name);
-                    if( it != be.trait.m_type_bounds.end() )
-                        return it->second.type.clone();
-                    return ::HIR::TypeRef();
-                };
-                e.enum_supertraits_in(*be.trait.m_trait_ptr, be.trait.m_path.clone(), get_aty);
+                e.enum_supertraits_in(*be.trait.m_trait_ptr, be.trait.clone());
             }
 
             ::std::sort(e.supertraits.begin(), e.supertraits.end());
