@@ -1190,6 +1190,7 @@ namespace HIR {
                     }
                 TU_ARM(c, Const, e2) {
                     ::HIR::TypeRef  ty;
+                    assert(e2.p);
                     const auto& encoded = get_const(*e2.p, &ty);
                     DEBUG(*e2.p << " = " << encoded);
 
@@ -1210,6 +1211,7 @@ namespace HIR {
                     }
                     }
                 TU_ARM(c, ItemAddr, e2) {
+                    assert(e2);
                     dst.write_ptr(state, EncodedLiteral::PTR_BASE, get_staticref_mono(*e2));
                     //MIR_TODO(state, "ItemAddr");
                     }
@@ -1423,26 +1425,6 @@ namespace HIR {
                     default:
                         // NOTE: Can be an unsizing!
                         MIR_TODO(state, "RValue::Cast to " << e.type << ", val = " << inval);
-                    TU_ARMA(Path, te) {
-                        bool done = false;
-                        // CoerceUnsized cast
-                        if(te.binding.is_Struct())
-                        {
-                            const HIR::Struct& str = *te.binding.as_Struct();
-                            if( src_ty.data().is_Path() && src_ty.data().as_Path().binding.is_Struct() && src_ty.data().as_Path().binding.as_Struct() == &str )
-                            {
-                                if( str.m_struct_markings.coerce_unsized != HIR::StructMarkings::Coerce::None )
-                                {
-                                    dst.copy_from( state, inval );
-                                    done = true;
-                                }
-                            }
-                        }
-                        if(!done )
-                        {
-                            MIR_TODO(state, "RValue::Cast to " << e.type << ", val = " << inval);
-                        }
-                        }
                     TU_ARMA(Primitive, te) {
                         auto ti = TypeInfo::for_primitive(te);
                         auto src_ti = TypeInfo::for_type(src_ty);
@@ -1500,22 +1482,8 @@ namespace HIR {
                         }
                     // Allow casting any integer value to a pointer (TODO: Ensure that the pointer is sized?)
                     TU_ARMA(Pointer, te) {
-                        // This might be a cast fat to thin, so restrict th input size
+                        // This might be a cast fat to thin, so restrict the input size
                         dst.copy_from( state, inval.slice(0, std::min(inval.get_len(), dst.get_len())) );
-                        }
-                    TU_ARMA(Borrow, te) {
-                        // TODO: What can cast TO a borrow? - Non-converted dyn unsizes .. but they require vtables,
-                        // which aren't available yet!
-                        if( const auto* tep = te.inner.data().opt_TraitObject() )
-                        {
-                            auto vtable_path = ::HIR::Path(src_ty.data().as_Borrow().inner.clone(), tep->m_trait.m_path.clone(), "vtable#");
-                            dst.copy_from( state, inval );
-                            dst.slice(Target_GetPointerBits()/8).write_ptr(state, EncodedLiteral::PTR_BASE, local_state.get_staticref(std::move(vtable_path)));
-                        }
-                        else
-                        {
-                            MIR_BUG(state, "Cast to " << e.type << " from " << src_ty);
-                        }
                         }
                     }
                     }
@@ -1692,9 +1660,60 @@ namespace HIR {
                     MIR_TODO(state, "RValue::DstPtr");
                     }
                 TU_ARMA(MakeDst, e) {
-                    size_t ptr_size = Target_GetPointerBits() / 8;
-                    local_state.write_param(dst.slice(0, ptr_size),  e.ptr_val);
-                    local_state.write_param(dst.slice(ptr_size),  e.meta_val);
+                    if( TU_TEST2(e.meta_val, Constant, ,ItemAddr, .get() == nullptr) ) {
+
+                        ::HIR::TypeRef  tmp;
+                        const auto& src_ty = state.get_param_type(tmp, e.ptr_val);
+                        ::HIR::TypeRef  tmp2;
+                        const auto& dst_ty = state.get_lvalue_type(tmp2, sa.dst);
+
+                        auto inval = local_state.get_lval(e.ptr_val.as_LValue());
+
+                        TU_MATCH_HDRA( (dst_ty.data()), {)
+                        default:
+                            // NOTE: Can be an unsizing!
+                            MIR_TODO(state, "RValue::MakeDst Coerce to " << dst_ty<< ", val = " << inval);
+                        TU_ARMA(Path, te) {
+                            bool done = false;
+                            // CoerceUnsized cast
+                            if(te.binding.is_Struct())
+                            {
+                                const HIR::Struct& str = *te.binding.as_Struct();
+                                if( src_ty.data().is_Path() && src_ty.data().as_Path().binding.is_Struct() && src_ty.data().as_Path().binding.as_Struct() == &str )
+                                {
+                                    if( str.m_struct_markings.coerce_unsized != HIR::StructMarkings::Coerce::None )
+                                    {
+                                        dst.copy_from( state, inval );
+                                        done = true;
+                                    }
+                                }
+                            }
+                            if(!done )
+                            {
+                                MIR_TODO(state, "RValue::MakeDst Coerce to " << dst_ty<< ", val = " << inval);
+                            }
+                            }
+                        TU_ARMA(Borrow, te) {
+                            // TODO: What can cast TO a borrow? - Non-converted dyn unsizes .. but they require vtables,
+                            // which aren't available yet!
+                            if( const auto* tep = te.inner.data().opt_TraitObject() )
+                            {
+                                auto vtable_path = ::HIR::Path(src_ty.data().as_Borrow().inner.clone(), tep->m_trait.m_path.clone(), "vtable#");
+                                dst.copy_from( state, inval );
+                                dst.slice(Target_GetPointerBits()/8).write_ptr(state, EncodedLiteral::PTR_BASE, local_state.get_staticref(std::move(vtable_path)));
+                            }
+                            else
+                            {
+                                MIR_BUG(state, "Cast to " << dst_ty << " from " << src_ty);
+                            }
+                            }
+                        }
+                    }
+                    else {
+                        size_t ptr_size = Target_GetPointerBits() / 8;
+                        local_state.write_param(dst.slice(0, ptr_size),  e.ptr_val);
+                        local_state.write_param(dst.slice(ptr_size),  e.meta_val);
+                    }
                     }
                 TU_ARMA(Tuple, e) {
                     ::HIR::TypeRef tmp;

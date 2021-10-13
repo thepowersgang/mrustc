@@ -746,39 +746,7 @@ namespace {
                     }
                     if( count == 1 )
                     {
-                        // 3. Locate the most permissive implemented Fn* trait (Fn first, then FnMut, then assume just FnOnce)
-                        // NOTE: Borrowing is added by the expansion to CallPath
-                        if( this->context.m_resolve.find_trait_impls(node.span(), lang_Fn, trait_pp, ty, [&](auto impl, auto cmp) {
-                                // TODO: Take the value of `cmp` into account
-                                fcn_ret = impl.get_type("Output");
-                                return true;
-                                //return cmp == ::HIR::Compare::Equal;
-                            }) )
-                        {
-                            DEBUG("-- Using Fn");
-                            node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::Fn;
-
-                            this->context.equate_types_assoc(node.span(), node.m_res_type, lang_Fn, ::make_vec1(fcn_args_tup.clone()), ty, "Output");
-                        }
-                        else if( this->context.m_resolve.find_trait_impls(node.span(), lang_FnMut, trait_pp, ty, [&](auto impl, auto cmp) {
-                                // TODO: Take the value of `cmp` into account
-                                fcn_ret = impl.get_type("Output");
-                                return true;
-                                //return cmp == ::HIR::Compare::Equal;
-                            }) )
-                        {
-                            DEBUG("-- Using FnMut");
-                            node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::FnMut;
-
-                            this->context.equate_types_assoc(node.span(), node.m_res_type, lang_FnMut, ::make_vec1(fcn_args_tup.clone()), ty, "Output");
-                        }
-                        else
-                        {
-                            DEBUG("-- Using FnOnce (default)");
-                            node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::FnOnce;
-
-                            this->context.equate_types_assoc(node.span(), node.m_res_type, lang_FnOnce, ::make_vec1(fcn_args_tup.clone()), ty, "Output");
-                        }
+                        this->context.equate_types_assoc(node.span(), node.m_res_type, lang_FnOnce, ::make_vec1(fcn_args_tup.clone()), ty, "Output");
 
                         // If the return type wasn't found in the impls, emit it as a UFCS
                         if(fcn_ret == ::HIR::TypeRef())
@@ -1336,6 +1304,58 @@ namespace {
         void visit(::HIR::ExprNode_CallValue& node) override {
             for(auto& ty : node.m_arg_types)
                 this->check_type_resolved_top(node.span(), ty);
+            
+            {
+                const auto& ty = context.get_type(node.m_value->m_res_type);
+                if( const auto* e = ty.data().opt_Closure() )
+                {
+                    node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::Unknown;
+                }
+                else if( const auto* e = ty.data().opt_Function() )
+                {
+                    node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::Fn;
+                }
+                else
+                {
+                    // 1. Create a param set with a single tuple (of all argument types)
+                    ::HIR::PathParams   trait_pp;
+                    {
+                        ::std::vector< ::HIR::TypeRef>  arg_types;
+                        for(const auto& arg_ty : node.m_arg_ivars) {
+                            arg_types.push_back( this->context.get_type(arg_ty).clone() );
+                        }
+                        trait_pp.m_types.push_back( ::HIR::TypeRef( mv$(arg_types) ) );
+                    }
+
+                    const auto& lang_FnMut  = this->context.m_crate.get_lang_item_path(node.span(), "fn_mut");
+                    const auto& lang_Fn     = this->context.m_crate.get_lang_item_path(node.span(), "fn");
+
+                    // 3. Locate the most permissive implemented Fn* trait (Fn first, then FnMut, then assume just FnOnce)
+                    // NOTE: Borrowing is added by the expansion to CallPath
+                    if( this->context.m_resolve.find_trait_impls(node.span(), lang_Fn, trait_pp, ty, [&](auto impl, auto cmp) {
+                        ASSERT_BUG(node.span(), cmp == ::HIR::Compare::Equal, "");
+                        return true;
+                        }) )
+                    {
+                        DEBUG("-- Using Fn");
+                        node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::Fn;
+                    }
+                    else if( this->context.m_resolve.find_trait_impls(node.span(), lang_FnMut, trait_pp, ty, [&](auto impl, auto cmp) {
+                        ASSERT_BUG(node.span(), cmp == ::HIR::Compare::Equal, "");
+                        return true;
+                        }) )
+                    {
+                        DEBUG("-- Using FnMut");
+                        node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::FnMut;
+                    }
+                    else
+                    {
+                        DEBUG("-- Using FnOnce (default)");
+                        node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::FnOnce;
+                    }
+                }
+            }
+
             ::HIR::ExprVisitorDef::visit(node);
         }
 
@@ -4419,51 +4439,111 @@ namespace {
                 }
                 return CoerceResult::Unknown;
             }
-            if( ! dst.data().is_Pointer() )
+            else if( const auto* dep = dst.data().opt_Pointer() )
+            {
+                // Check strength reduction
+                if( dep->type < se.type )
+                {
+                    if( node_ptr_ptr )
+                    {
+                        // > Convert `src` to `src as *mut SI`
+                        auto new_type = ::HIR::TypeRef::new_pointer(dep->type, se.inner.clone());
+
+                        // If the coercion is of a block, do the reborrow on the last node of the block
+                        // - Cleans up the dumped MIR and prevents needing a reborrow elsewhere.
+                        // - TODO: Alter the block's result types
+                        ::HIR::ExprNodeP* npp = node_ptr_ptr;
+                        while( auto* p = dynamic_cast< ::HIR::ExprNode_Block*>(&**npp) )
+                        {
+                            DEBUG("- Propagate to the last node of a _Block");
+                            ASSERT_BUG( p->span(), context.m_ivars.types_equal(p->m_res_type, p->m_value_node->m_res_type),
+                                "Block and result mismatch - " << context.m_ivars.fmt_type(p->m_res_type) << " != " << context.m_ivars.fmt_type(p->m_value_node->m_res_type));
+                            if( !context.m_ivars.types_equal(p->m_res_type, src) ) {
+                                DEBUG("Block and result mismatch - " << context.m_ivars.fmt_type(p->m_res_type) << " != " << context.m_ivars.fmt_type(src));
+                                return CoerceResult::Unknown;
+                            }
+                            if(context_mut)
+                            {
+                                p->m_res_type = dst.clone();
+                            }
+                            npp = &p->m_value_node;
+                        }
+                        ::HIR::ExprNodeP& node_ptr = *npp;
+
+                        if(context_mut)
+                        {
+                            // Add cast down
+                            auto span = node_ptr->span();
+                            // *<inner>
+                            DEBUG("- NEWNODE _Cast -> " << new_type);
+                            node_ptr = NEWNODE( new_type.clone(), span, _Cast,  mv$(node_ptr), new_type.clone() );
+                            context.m_ivars.get_type(node_ptr->m_res_type);
+
+                            context_mut->m_ivars.mark_change();
+                        }
+
+                        // Continue on with coercion (now that node_ptr is updated)
+                        switch( check_unsize_tys(context, sp, dep->inner, se.inner, context_mut, &node_ptr) )
+                        {
+                        case CoerceResult::Unknown:
+                            // Add new coercion at the new inner point
+                            if( &node_ptr != node_ptr_ptr )
+                            {
+                                DEBUG("Unknown check_unsize_tys after autoderef - " << dst << " := " << node_ptr->m_res_type);
+                                if(context_mut)
+                                {
+                                    context_mut->equate_types_coerce(sp, dst, node_ptr);
+                                }
+                                return CoerceResult::Custom;
+                            }
+                            else
+                            {
+                                return CoerceResult::Unknown;
+                            }
+                        case CoerceResult::Custom:
+                            return CoerceResult::Custom;
+                        case CoerceResult::Equality:
+                            if(context_mut)
+                            {
+                                context_mut->equate_types(sp, dep->inner, se.inner);
+                            }
+                            return CoerceResult::Custom;
+                        case CoerceResult::Unsize:
+                            if(context_mut)
+                            {
+                                DEBUG("- NEWNODE _Unsize " << &node_ptr << " " << &*node_ptr << " -> " << dst);
+                                auto span = node_ptr->span();
+                                node_ptr = NEWNODE( dst.clone(), span, _Unsize,  mv$(node_ptr), dst.clone() );
+                            }
+                            return CoerceResult::Custom;
+                        }
+                        throw "";
+                    }
+                    else
+                    {
+                        //TODO(sp, "Borrow strength reduction with no node pointer - " << src << " -> " << dst);
+                        DEBUG("Pointer strength reduction with no node pointer - " << src << " -> " << dst);
+                        return CoerceResult::Unsize;
+                    }
+                }
+                else if( dep->type == se.type ) {
+                    // Valid.
+                }
+                else {
+                    //ERROR(sp, E0000, "Type mismatch between " << dst << " and " << src << " - Borrow classes differ");
+                    // TODO: return CoerceResult::Failed? (indicating that it failed outright, don't even try)
+                    return CoerceResult::Equality;
+                }
+                ASSERT_BUG(sp, dep->type == se.type, "Pointer strength mismatch");
+
+                // Call unsizing code
+                return check_unsize_tys(context, sp, dep->inner, se.inner, context_mut, node_ptr_ptr);
+            }
+            else
             {
                 // TODO: Error here? (leave to caller)
                 return CoerceResult::Equality;
             }
-            // Pointers coerce to similar pointers of higher restriction
-            if( se.type == ::HIR::BorrowType::Shared )
-            {
-                // *const is the bottom of the tree, it doesn't coerce to anything
-                return CoerceResult::Equality;
-            }
-            const auto* dep = &dst.data().as_Pointer();
-        
-            // If using `*mut T` where `*const T` is expected - add cast
-            if( dep->type == ::HIR::BorrowType::Shared && se.type == ::HIR::BorrowType::Unique )
-            {
-                if(context_mut)
-                {
-                    context_mut->equate_types(sp, dep->inner, se.inner);
-                }
-
-                if( node_ptr_ptr )
-                {
-                    if(context_mut)
-                    {
-                        auto& node_ptr = *node_ptr_ptr;
-                        // Add cast down
-                        auto span = node_ptr->span();
-                        //node_ptr->m_res_type = src.clone();
-                        node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Cast( mv$(span), mv$(node_ptr), dst.clone() ));
-                        node_ptr->m_res_type = dst.clone();
-                    }
-
-                    return CoerceResult::Custom;
-                }
-                else
-                {
-                    return CoerceResult::Unsize;
-                }
-            }
-
-            if( dep->type != se.type ) {
-                ERROR(sp, E0000, "Type mismatch between " << dst << " and " << src << " - Pointer mutability differs");
-            }
-            return CoerceResult::Equality;
         }
         else if(const auto* sep = src.data().opt_Borrow())
         {

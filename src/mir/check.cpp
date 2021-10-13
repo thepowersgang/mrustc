@@ -946,19 +946,24 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                         // TODO: Check return type
                         }
                     TU_ARMA(MakeDst, e) {
+                        if( TU_TEST2(e.meta_val, Constant, ,ItemAddr, .get() == nullptr) ) {
+                            // TODO: Check the validity?
+                            // - Ensure that something is generic in either the destination or source 
+                            break;
+                        }
                         const ::HIR::TypeRef*   ity_p = nullptr;
                         if( const auto* te = dst_ty.data().opt_Borrow() )
                             ity_p = &te->inner;
                         else if( const auto* te = dst_ty.data().opt_Pointer() )
                             ity_p = &te->inner;
                         else {
-                            MIR_BUG(state, "DstMeta requires a pointer as output, got " << dst_ty);
+                            MIR_BUG(state, "MakeDst requires a pointer as output, got " << dst_ty);
                         }
                         assert(ity_p);
                         auto meta = get_metadata_type(state, *ity_p);
                         if( meta == ::HIR::TypeRef() )
                         {
-                            MIR_BUG(state, "DstMeta requires a pointer to an unsized type as output, got " << dst_ty);
+                            MIR_BUG(state, "MakeDst requires a pointer to an unsized type as output, got " << dst_ty);
                         }
                         // TODO: Check metadata type?
 

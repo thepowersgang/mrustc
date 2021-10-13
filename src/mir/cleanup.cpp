@@ -1217,39 +1217,14 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                     }
                 }
 
-                // Fix up RValue::Cast into coercions
-                if( auto* e = se.src.opt_Cast() )
+                // Fix up coercions
+                if( auto* e = se.src.opt_MakeDst() )
                 {
-                    ::HIR::TypeRef  tmp;
-                    const auto& src_ty = state.get_lvalue_type(tmp, e->val);
-                    // TODO: Unsize and CoerceUnsized operations
-                    // - Unsize should create a fat pointer if the pointer class is known (vtable or len)
-                    if( /*auto* te =*/ e->type.data().opt_Borrow() )
-                    {
-                        //  > & -> & = Unsize, create DST based on the pointer class of the destination.
-                        // (&-ptr being destination is otherwise invalid)
-                        // TODO Share with the CoerceUnsized handling?
-                        se.src = MIR_Cleanup_CoerceUnsized(state, mutator, e->type, src_ty, mv$(e->val));
-                    }
-                    // - CoerceUnsized should re-create the inner type if known.
-                    else if(const auto* dte = e->type.data().opt_Path())
-                    {
-                        if(const auto* ste = src_ty.data().opt_Path())
-                        {
-                            ASSERT_BUG( sp, !dte->binding.is_Unbound(), "" );
-                            ASSERT_BUG( sp, !ste->binding.is_Unbound(), "" );
-                            if( dte->binding.is_Opaque() || ste->binding.is_Opaque() ) {
-                                // Either side is opaque, leave for now
-                            }
-                            else {
-                                se.src = MIR_Cleanup_CoerceUnsized(state, mutator, e->type, src_ty, mv$(e->val));
-                            }
-                        }
-                        else {
-                            ASSERT_BUG( sp, src_ty.data().is_Generic(), "Cast to Path from " << src_ty );
-                        }
-                    }
-                    else {
+                    if( TU_TEST2(e->meta_val, Constant, ,ItemAddr, .get() == nullptr) ) {
+                        ::HIR::TypeRef  tmp, tmp2;
+                        const auto& src_ty = state.get_param_type(tmp, e->ptr_val);
+                        const auto& dst_ty = state.get_lvalue_type(tmp2, se.dst);
+                        se.src = MIR_Cleanup_CoerceUnsized(state, mutator, dst_ty, src_ty, mv$(e->ptr_val.as_LValue()));
                     }
                 }
             }

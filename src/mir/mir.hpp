@@ -518,7 +518,7 @@ TAGGED_UNION_EX(RValue, (), Tuple, (
         Param   val;
         unsigned int    count;
         }),
-    // Cast on primitives
+    // Cast on primitives (thin pointers, integers, floats)
     (Cast, struct {
         LValue  val;
         ::HIR::TypeRef  type;
@@ -544,6 +544,7 @@ TAGGED_UNION_EX(RValue, (), Tuple, (
         LValue  val;
         }),
     // Construct a DST pointer from a thin pointer and metadata
+    // OR: (if `meta_val` is `Constant::ItemAddr(nullptr)`) A still-to-be-resolved unsizing coercion
     (MakeDst, struct {
         Param   ptr_val;
         Param   meta_val;

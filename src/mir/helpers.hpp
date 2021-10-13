@@ -335,7 +335,11 @@ namespace visit {
                 }
             TU_ARMA (MakeDst, se) {
                 rv |= visit_param(se.ptr_val, ValUsage::Move);
-                rv |= visit_param(se.meta_val, ValUsage::Move);
+                if( TU_TEST2(se.meta_val, Constant, ,ItemAddr, .get() == nullptr) ) {
+                }
+                else {
+                    rv |= visit_param(se.meta_val, ValUsage::Move);
+                }
                 }
             TU_ARMA(Tuple, se) {
                 for(auto& v : se.vals)

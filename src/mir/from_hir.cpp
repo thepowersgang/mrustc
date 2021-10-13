@@ -1523,12 +1523,12 @@ namespace {
                     if( m_builder.resolve().find_impl( node.span(), lang_Unsize, ::HIR::PathParams(ty_out.clone()), ty_in.clone(), [](auto , bool ){ return true; }) )
                     {
                         // - HACK: Emit a cast operation on the pointers. Leave it up to monomorph to 'fix' it
-                        m_builder.set_result( node.span(), ::MIR::RValue::make_Cast({ mv$(ptr_lval), node.m_res_type.clone() }) );
+                        m_builder.set_result( node.span(), ::MIR::RValue::make_MakeDst({ mv$(ptr_lval), ::MIR::Constant::make_ItemAddr({}) }) );
                     }
                     else
                     {
                         // Probably an error?
-                        m_builder.set_result( node.span(), ::MIR::RValue::make_Cast({ mv$(ptr_lval), node.m_res_type.clone() }) );
+                        m_builder.set_result( node.span(), ::MIR::RValue::make_MakeDst({ mv$(ptr_lval), ::MIR::Constant::make_ItemAddr({}) }) );
                         //TODO(node.span(), "MIR _Unsize to " << ty_out);
                     }
                     }
@@ -1565,7 +1565,7 @@ namespace {
                     }
                     }
                 TU_ARMA(TraitObject, e) {
-                    m_builder.set_result( node.span(), ::MIR::RValue::make_Cast({ mv$(ptr_lval), node.m_res_type.clone() }) );
+                    m_builder.set_result( node.span(), ::MIR::RValue::make_MakeDst({ mv$(ptr_lval), ::MIR::Constant::make_ItemAddr({}) }) );
                     }
                 }
             }
@@ -1577,7 +1577,7 @@ namespace {
 
                 // TODO: Just emit a cast and leave magic handling to codegen
                 // - This code _could_ do inspection of the types and insert a destructure+unsize+restructure, but that does't handle direct `T: CoerceUnsize<U>`
-                m_builder.set_result( node.span(), ::MIR::RValue::make_Cast({ mv$(ptr_lval), node.m_res_type.clone() }) );
+                m_builder.set_result( node.span(), ::MIR::RValue::make_MakeDst({ mv$(ptr_lval), ::MIR::Constant::make_ItemAddr({}) }) );
             }
         }
         void visit(::HIR::ExprNode_Index& node) override
