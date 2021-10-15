@@ -24,6 +24,19 @@ namespace {
             return tpl.clone();
         }
     }
+    const ::HIR::ValueParamDef& get_value_param_def(const ::StaticTraitResolve& resolve, const ::HIR::GenericRef& g) {
+        switch(g.group())
+        {
+        case 0:
+            ASSERT_BUG(Span(), g.idx() < resolve.impl_generics().m_values.size(), "Value generic " << g << " out of bounds in impl: " << resolve.impl_generics().m_values.size());
+            return resolve.impl_generics().m_values.at(g.idx());
+        case 1:
+            ASSERT_BUG(Span(), g.idx() < resolve.item_generics().m_values.size(), "Value generic " << g << " out of bounds in fcn: " << resolve.item_generics().m_values.size());
+            return resolve.item_generics().m_values.at(g.idx());
+        default:
+            BUG(Span(), "");
+        }
+    }
     ::MIR::Constant monomorph_Constant(const ::StaticTraitResolve& resolve, const Trans_Params& params, const ::MIR::Constant& tpl)
     {
         TU_MATCH_HDRA( (tpl), {)
@@ -56,8 +69,33 @@ namespace {
             default:
                 TODO(params.sp, "Monomorphise MIR generic constant " << ce << " = " << val);
             TU_ARMA(Evaluated, ve) {
-                // TODO: Need to know the expected type of this.
-                return ::MIR::Constant::make_Uint({ve->read_usize(0), HIR::CoreType::Usize});
+                const auto& def = get_value_param_def(resolve, ce);
+                auto ty = def.m_type.data().as_Primitive();
+                switch(ty)
+                {
+                case HIR::CoreType::Char:
+                case HIR::CoreType::Usize:
+                case HIR::CoreType::U128:
+                case HIR::CoreType::U64:
+                case HIR::CoreType::U32:
+                case HIR::CoreType::U16:
+                case HIR::CoreType::U8:
+                    return ::MIR::Constant::make_Uint({EncodedLiteralSlice(*ve).read_uint(ve->bytes.size()), ty});
+                case HIR::CoreType::Bool:
+                    return ::MIR::Constant::make_Bool({EncodedLiteralSlice(*ve).read_uint(ve->bytes.size()) != 0});
+                case HIR::CoreType::Isize:
+                case HIR::CoreType::I128:
+                case HIR::CoreType::I64:
+                case HIR::CoreType::I32:
+                case HIR::CoreType::I16:
+                case HIR::CoreType::I8:
+                    return ::MIR::Constant::make_Int({EncodedLiteralSlice(*ve).read_sint(ve->bytes.size()), ty});
+                case HIR::CoreType::F32:
+                case HIR::CoreType::F64:
+                    return ::MIR::Constant::make_Float({EncodedLiteralSlice(*ve).read_float(ve->bytes.size()), ty});
+                case HIR::CoreType::Str:
+                    BUG(params.sp, "Constant of type `str`?");
+                }
                 }
             }
             }
@@ -383,9 +421,18 @@ void Trans_Monomorphise_List(const ::HIR::Crate& crate, TransList& list)
         ms.self_ty = pp.self_type.clone();
         ms.pp_impl = &pp.pp_impl;
         ms.pp_method = &pp.pp_method;
-        auto new_lit = eval.evaluate_constant(path, c.m_value, ::std::move(ty), ::std::move(ms));
-        // 2. Store evaluated HIR::Literal in c.m_monomorph_cache
-        c.m_monomorph_cache.insert(::std::make_pair( path.clone(), ::std::move(new_lit) ));
+        DEBUG("ms = " << ms);
+        try
+        {
+            auto new_lit = eval.evaluate_constant(path, c.m_value, ::std::move(ty), ::std::move(ms));
+            // 2. Store evaluated HIR::Literal in c.m_monomorph_cache
+            c.m_monomorph_cache.insert(::std::make_pair( path.clone(), ::std::move(new_lit) ));
+        }
+        catch(...)
+        {
+            // Deferred - no update
+            BUG(Span(), "Exception thrown during evaluation of: " << path);
+        }
     }
 
     for(auto& fcn_ent : list.m_functions)
@@ -397,8 +444,14 @@ void Trans_Monomorphise_List(const ::HIR::Crate& crate, TransList& list)
         {
             const auto& path = fcn_ent.first;
             const auto& pp = fcn_ent.second->pp;
-            TRACE_FUNCTION_FR(path, path);
+            TRACE_FUNCTION_FR("FUNCTION " << path, "FUNCTION " << path);
             ASSERT_BUG(Span(), fcn.m_code.m_mir, "No code for " << path);
+
+            // TODO: Get the item params too
+            if( fcn_ent.second->pp.pp_impl.has_params() ) {
+                assert(pp.gdef_impl);
+            }
+            resolve.set_both_generics_raw(pp.gdef_impl, &fcn.m_params);
 
             auto mir = Trans_Monomorphise(resolve, fcn_ent.second->pp, fcn.m_code.m_mir);
 
@@ -418,6 +471,11 @@ void Trans_Monomorphise_List(const ::HIR::Crate& crate, TransList& list)
             fcn_ent.second->monomorphised.ret_ty = ::std::move(ret_type);
             fcn_ent.second->monomorphised.arg_tys = ::std::move(args);
             fcn_ent.second->monomorphised.code = ::std::move(mir);
+            resolve.clear_both_generics();
+        }
+        else
+        {
+            DEBUG("Non-generic: FUNCTION " << fcn_ent.first);
         }
     }
 }

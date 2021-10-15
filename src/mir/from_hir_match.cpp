@@ -44,7 +44,7 @@ TAGGED_UNION_EX(PatternRule, (), Any,(
     (Bool, bool),
     // General value
     (Value, ::MIR::Constant),
-    (ValueRange, struct { ::MIR::Constant first, last; }),
+    (ValueRange, struct { ::MIR::Constant first, last; bool is_inclusive; }),
     // _ pattern
     (Any, struct {})
     ),
@@ -327,16 +327,22 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             // - Convert HIR pattern into ruleset
             auto pat_builder = PatternRulesetBuilder { builder.resolve() };
             pat_builder.append_from(node.span(), pat, match_ty);
-            ASSERT_BUG(sp, pat_builder.m_rulesets.size() == 1, "TODO: Handle `|` patterns");
-            auto& sr = pat_builder.m_rulesets[0];
-            if( sr.m_is_impossible )
+            size_t first_rule = arm_rules.size();
+            for(auto& sr : pat_builder.m_rulesets)
             {
-                DEBUG("ARM PAT (" << arm_idx << "," << pat_idx << ") " << pat << " ==> IMPOSSIBLE [" << sr.m_rules << "]");
-            }
-            else
-            {
-                DEBUG("ARM PAT (" << arm_idx << "," << pat_idx << ") " << pat << " ==> [" << sr.m_rules << "]");
-                arm_rules.push_back( PatternRuleset { arm_idx, pat_idx, mv$(sr.m_rules), mv$(sr.m_bindings) } );
+                size_t i = &sr - &pat_builder.m_rulesets.front();
+                if( sr.m_is_impossible )
+                {
+                    DEBUG("ARM PAT (" << arm_idx << "," << pat_idx << " #" << i << ") " << pat << " ==> IMPOSSIBLE [" << sr.m_rules << "]");
+                }
+                else
+                {
+                    DEBUG("ARM PAT (" << arm_idx << "," << pat_idx << " #" << i << ") " << pat << " ==> [" << sr.m_rules << "]");
+                    if( first_rule < arm_rules.size() ) {
+                        ASSERT_BUG(sp, arm_rules[first_rule].m_bindings == sr.m_bindings, "Disagreement in bindings between pattern");
+                    }
+                    arm_rules.push_back( PatternRuleset { arm_idx, pat_idx, mv$(sr.m_rules), mv$(sr.m_bindings) } );
+                }
             }
             ap.code = builder.new_bb_unlinked();
             builder.set_cur_block( ap.code );
@@ -347,7 +353,9 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             {
                 TRACE_FUNCTION_FR("CONDITIONAL","CONDITIONAL");
                 auto freeze_scope = builder.new_scope_freeze(arm.m_cond->span());
-                conv.destructure_aliases_from_list(arm.m_code->span(), match_ty, match_val.clone(), arm_rules.back().m_bindings);
+                if( first_rule < arm_rules.size() ) {
+                    conv.destructure_aliases_from_list(arm.m_code->span(), match_ty, match_val.clone(), arm_rules[first_rule].m_bindings);
+                }
 
                 auto tmp_scope = builder.new_scope_temp(arm.m_cond->span());
                 conv.visit_node_ptr( arm.m_cond );
@@ -363,7 +371,9 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             }
 
             // - Emit code to destructure the matched pattern
-            conv.destructure_from_list(arm.m_code->span(), match_ty, match_val.clone(), arm_rules.back().m_bindings);
+            if( first_rule < arm_rules.size() ) {
+                conv.destructure_from_list(arm.m_code->span(), match_ty, match_val.clone(), arm_rules[first_rule].m_bindings);
+            }
             // TODO: Previous versions had reachable=false here (causing a use-after-free), would having `true` lead to leaks?
             builder.end_split_arm( arm.m_code->span(), pat_scope, /*reachable=*/true );
             builder.end_block(::MIR::Terminator::make_Goto(arm_body_block));
@@ -550,7 +560,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
         os << e;
         }
     TU_ARMA(ValueRange, e) {
-        os << e.first << " ... " << e.last;
+        os << e.first << " .." << (e.is_inclusive ? "=" : "") <<  " " << e.last;
         }
     }
     return os;
@@ -599,9 +609,9 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
         return ::ord( te, xe );
         }
     TU_ARMA(ValueRange, te, xe) {
-        if( te.first != xe.first )
-            return ::ord(te.first, xe.first);
-        return ::ord(te.last, xe.last);
+        ORD(te.first, xe.first);
+        ORD(te.last, xe.last);
+        return ::ord(te.is_inclusive, xe.is_inclusive);
         }
     }
     throw "";
@@ -632,7 +642,7 @@ PatternRule PatternRule::clone() const
     TU_ARMA(Value, te)
         return te.clone();
     TU_ARMA(ValueRange, te)
-        return PatternRule::make_ValueRange({ te.first.clone(), te.last.clone() });
+        return PatternRule::make_ValueRange({ te.first.clone(), te.last.clone(), te.is_inclusive });
     }
     throw "";
 }
@@ -1087,7 +1097,13 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
     if(pat.m_data.is_Or())
     {
         // Multiply the current pattern (sub)set out, visit with sub-sets
-        TODO(sp, "Handle or patterns");
+        const auto& e = pat.m_data.as_Or();
+        assert(pat.m_implicit_deref_count == 0);    // Shouldn't have any, so this code doesn't need to pop them.
+        assert(e.size() > 0);
+        this->multiply_rulesets(e.size(), [&](size_t i){
+            this->append_from(sp, e[i], top_ty);
+            });
+        return ;
     }
 
     TU_MATCH_HDRA( (ty.data()), {)
@@ -1113,7 +1129,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             case ::HIR::CoreType::F64: {
                 double start = H::get_pattern_value_float(sp, pat, pe.start);
                 double end   = H::get_pattern_value_float(sp, pat, pe.end  );
-                this->push_rule( PatternRule::make_ValueRange( {::MIR::Constant::make_Float({ start, e }), ::MIR::Constant::make_Float({ end, e })} ) );
+                this->push_rule( PatternRule::make_ValueRange( {::MIR::Constant::make_Float({ start, e }), ::MIR::Constant::make_Float({ end, e }), pe.is_inclusive } ) );
                 } break;
             case ::HIR::CoreType::U8:
             case ::HIR::CoreType::U16:
@@ -1123,7 +1139,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             case ::HIR::CoreType::Usize: {
                 uint64_t start = H::get_pattern_value_int(sp, pat, pe.start);
                 uint64_t end   = H::get_pattern_value_int(sp, pat, pe.end  );
-                this->push_rule( PatternRule::make_ValueRange( {::MIR::Constant::make_Uint({ start, e }), ::MIR::Constant::make_Uint({ end, e })} ) );
+                this->push_rule( PatternRule::make_ValueRange( {::MIR::Constant::make_Uint({ start, e }), ::MIR::Constant::make_Uint({ end, e }), pe.is_inclusive} ) );
                 } break;
             case ::HIR::CoreType::I8:
             case ::HIR::CoreType::I16:
@@ -1133,7 +1149,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             case ::HIR::CoreType::Isize: {
                 int64_t start = H::get_pattern_value_int(sp, pat, pe.start);
                 int64_t end   = H::get_pattern_value_int(sp, pat, pe.end  );
-                this->push_rule( PatternRule::make_ValueRange( {::MIR::Constant::make_Int({ start, e }), ::MIR::Constant::make_Int({ end, e })} ) );
+                this->push_rule( PatternRule::make_ValueRange( {::MIR::Constant::make_Int({ start, e }), ::MIR::Constant::make_Int({ end, e }), pe.is_inclusive} ) );
                 } break;
             case ::HIR::CoreType::Bool:
                 BUG(sp, "Can't range match on Bool");
@@ -1141,7 +1157,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             case ::HIR::CoreType::Char: {
                 uint64_t start = H::get_pattern_value_int(sp, pat, pe.start);
                 uint64_t end   = H::get_pattern_value_int(sp, pat, pe.end  );
-                this->push_rule( PatternRule::make_ValueRange( {::MIR::Constant::make_Uint({ start, e }), ::MIR::Constant::make_Uint({ end, e })} ) );
+                this->push_rule( PatternRule::make_ValueRange( {::MIR::Constant::make_Uint({ start, e }), ::MIR::Constant::make_Uint({ end, e }), pe.is_inclusive} ) );
                 } break;
             case ::HIR::CoreType::Str:
                 BUG(sp, "Hit match over `str` - must be `&str`");
@@ -1506,6 +1522,14 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
         }
         }
     TU_ARMA(Array, e) {
+        // If the size is unknown, just push a `_` pattern.
+        // OR: don't push anything?
+        if( !e.size.is_Known() ) {
+            DEBUG("Matching over unknown-sized array - " << e.size);
+            ASSERT_BUG(sp, pat.m_data.is_Any(), "Matching generic-sized array with non `_` pattern - " << pat);
+            this->push_rule( PatternRule::make_Any({}) );
+            break;
+        }
         // Sequential match just like tuples.
         m_field_path.push_back(0);
         TU_MATCH_HDRA( (pat.m_data), {)
@@ -1735,7 +1759,8 @@ namespace {
             }
         TU_ARMA(ValueRange, ae, be) {
             ORD(ae.first, be.first);
-            return ::ord(ae.last, be.last);
+            ORD(ae.last, be.last);
+            return ::ord(ae.is_inclusive, be.is_inclusive);
             }
         }
         throw "";
@@ -1763,12 +1788,14 @@ namespace {
         // Value Range: Overlaps with contained values.
         if(const auto* ae = a.opt_ValueRange() )
         {
+            assert(ae->is_inclusive);
             if(const auto* be = b.opt_Value() )
             {
                 return ( ae->first <= *be && *be <= ae->last );
             }
             else if( const auto* be = b.opt_ValueRange() )
             {
+                assert(be->is_inclusive);
                 // Start of B within A
                 if( ae->first <= be->first && be->first <= ae->last )
                     return true;
@@ -1792,6 +1819,7 @@ namespace {
         }
         if(const auto* be = b.opt_ValueRange())
         {
+            assert(be->is_inclusive);
             if(const auto* ae = a.opt_Value() )
             {
                 return (be->first <= *ae && *ae <= be->last);
@@ -2216,19 +2244,18 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
             case ::HIR::CoreType::U64:
             case ::HIR::CoreType::U128:
             case ::HIR::CoreType::Usize:
-                TU_MATCH_DEF( PatternRule, (rule), (re),
-                (
+                TU_MATCH_HDRA((rule), {)
+                default:
                     BUG(sp, "PatternRule for integer is not Value or ValueRange");
-                    ),
-                (Value,
+                TU_ARMA(Value, re) {
                     auto succ_bb = builder.new_bb_unlinked();
 
                     auto test_val = ::MIR::Param( ::MIR::Constant::make_Uint({ re.as_Uint().v, te }));
                     builder.push_stmt_assign(sp, builder.get_if_cond(), ::MIR::RValue::make_BinOp({ val.clone(), ::MIR::eBinOp::EQ, mv$(test_val) }));
                     builder.end_block( ::MIR::Terminator::make_If({ builder.get_if_cond(), succ_bb, fail_bb }) );
                     builder.set_cur_block(succ_bb);
-                    ),
-                (ValueRange,
+                    }
+                TU_ARMA(ValueRange, re) {
                     auto succ_bb = builder.new_bb_unlinked();
                     auto test_bb_2 = builder.new_bb_unlinked();
 
@@ -2242,12 +2269,13 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                     builder.set_cur_block(test_bb_2);
 
                     // IF `val` > `last` : fail_bb
-                    auto cmp_gt_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ ::MIR::Param(val.clone()), ::MIR::eBinOp::GT, mv$(test_gt_val) }));
+                    auto op = re.is_inclusive ?  ::MIR::eBinOp::GT : ::MIR::eBinOp::GE;
+                    auto cmp_gt_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ ::MIR::Param(val.clone()), op, mv$(test_gt_val) }));
                     builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_gt_lval), fail_bb, succ_bb }) );
 
                     builder.set_cur_block(succ_bb);
-                    )
-                )
+                    }
+                }
                 break;
             case ::HIR::CoreType::I8:
             case ::HIR::CoreType::I16:
@@ -2255,19 +2283,18 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
             case ::HIR::CoreType::I64:
             case ::HIR::CoreType::I128:
             case ::HIR::CoreType::Isize:
-                TU_MATCH_DEF( PatternRule, (rule), (re),
-                (
+                TU_MATCH_HDRA((rule), {)
+                default:
                     BUG(sp, "PatternRule for integer is not Value or ValueRange");
-                    ),
-                (Value,
+                TU_ARMA(Value, re) {
                     auto succ_bb = builder.new_bb_unlinked();
 
                     auto test_val = ::MIR::Param(::MIR::Constant::make_Int({ re.as_Int().v, te }));
                     auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ val.clone(), ::MIR::eBinOp::EQ, mv$(test_val) }));
                     builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval), succ_bb, fail_bb }) );
                     builder.set_cur_block(succ_bb);
-                    ),
-                (ValueRange,
+                    }
+                TU_ARMA(ValueRange, re) {
                     auto succ_bb = builder.new_bb_unlinked();
                     auto test_bb_2 = builder.new_bb_unlinked();
 
@@ -2281,12 +2308,13 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                     builder.set_cur_block(test_bb_2);
 
                     // IF `val` > `last` : fail_bb
-                    auto cmp_gt_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ ::MIR::Param(val.clone()), ::MIR::eBinOp::GT, mv$(test_gt_val) }));
+                    auto op = re.is_inclusive ?  ::MIR::eBinOp::GT : ::MIR::eBinOp::GE;
+                    auto cmp_gt_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ ::MIR::Param(val.clone()), op, mv$(test_gt_val) }));
                     builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_gt_lval), fail_bb, succ_bb }) );
 
                     builder.set_cur_block(succ_bb);
-                    )
-                )
+                    }
+                }
                 break;
             case ::HIR::CoreType::Char:
                 TU_MATCH_DEF( PatternRule, (rule), (re),
@@ -2315,7 +2343,8 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                     builder.set_cur_block(test_bb_2);
 
                     // IF `val` > `last` : fail_bb
-                    auto cmp_gt_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ ::MIR::Param(val.clone()), ::MIR::eBinOp::GT, mv$(test_gt_val) }));
+                    auto op = re.is_inclusive ?  ::MIR::eBinOp::GT : ::MIR::eBinOp::GE;
+                    auto cmp_gt_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ ::MIR::Param(val.clone()), op, mv$(test_gt_val) }));
                     builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_gt_lval), fail_bb, succ_bb }) );
 
                     builder.set_cur_block(succ_bb);
@@ -2350,7 +2379,8 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                     builder.set_cur_block(test_bb_2);
 
                     // IF `val` > `last` : fail_bb
-                    auto cmp_gt_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ ::MIR::Param(val.clone()), ::MIR::eBinOp::GT, mv$(test_gt_val) }));
+                    auto op = re.is_inclusive ?  ::MIR::eBinOp::GT : ::MIR::eBinOp::GE;
+                    auto cmp_gt_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ ::MIR::Param(val.clone()), op, mv$(test_gt_val) }));
                     builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_gt_lval), fail_bb, succ_bb }) );
 
                     builder.set_cur_block(succ_bb);
@@ -2358,7 +2388,7 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                 )
                 break;
             case ::HIR::CoreType::Str: {
-                ASSERT_BUG(sp, rule.is_Value() && rule.as_Value().is_StaticString(), "");
+                ASSERT_BUG(sp, rule.is_Value() && rule.as_Value().is_StaticString(), "Unexpected use of non-value pattern on `str`");
                 const auto& v = rule.as_Value();
                 ASSERT_BUG(sp, val.is_Deref(), "");
                 val.m_wrappers.pop_back();
@@ -2679,7 +2709,7 @@ public:
     void gen_dispatch__enum(::HIR::TypeRef ty, ::MIR::LValue val, const ::std::vector<t_rules_subset>& rules, size_t ofs, const ::std::vector<::MIR::BasicBlockId>& arm_targets, ::MIR::BasicBlockId def_blk);
     void gen_dispatch__slice(::HIR::TypeRef ty, ::MIR::LValue val, const ::std::vector<t_rules_subset>& rules, size_t ofs, const ::std::vector<::MIR::BasicBlockId>& arm_targets, ::MIR::BasicBlockId def_blk);
 
-    void gen_dispatch_range(const field_path_t& field_path, const ::MIR::Constant& first, const ::MIR::Constant& last, ::MIR::BasicBlockId def_blk);
+    void gen_dispatch_range(const field_path_t& field_path, const ::MIR::Constant& first, const ::MIR::Constant& last, bool is_inclusive, ::MIR::BasicBlockId def_blk);
     void gen_dispatch_splitslice(const field_path_t& field_path, const PatternRule::Data_SplitSlice& e, ::MIR::BasicBlockId def_blk);
 
     ::MIR::LValue push_compare(::MIR::LValue left, ::MIR::eBinOp op, ::MIR::Param right)
@@ -2968,7 +2998,7 @@ void MatchGenGrouped::gen_for_slice(t_rules_subset arm_rules, size_t ofs, ::MIR:
             if(const auto* e = rule.opt_ValueRange())
             {
                 // Generate branch based on range
-                this->gen_dispatch_range(arm_rules[first_any][ofs].field_path, e->first, e->last, next);
+                this->gen_dispatch_range(arm_rules[first_any][ofs].field_path, e->first, e->last, e->is_inclusive, next);
             }
             else if(const auto* e = rule.opt_SplitSlice())
             {
@@ -3402,9 +3432,9 @@ void MatchGenGrouped::gen_dispatch__slice(::HIR::TypeRef ty, ::MIR::LValue val, 
 }
 
 
-void MatchGenGrouped::gen_dispatch_range(const field_path_t& field_path, const ::MIR::Constant& first, const ::MIR::Constant& last, ::MIR::BasicBlockId def_blk)
+void MatchGenGrouped::gen_dispatch_range(const field_path_t& field_path, const ::MIR::Constant& first, const ::MIR::Constant& last, bool is_inclusive, ::MIR::BasicBlockId def_blk)
 {
-    TRACE_FUNCTION_F("field_path="<<field_path<<", " << first << " ... " << last);
+    TRACE_FUNCTION_F("field_path="<<field_path<<", " << first << " .." << (is_inclusive ? "=" : "") << " " << last);
     ::MIR::LValue   val;
     ::HIR::TypeRef  ty;
     get_ty_and_val(sp, m_builder, m_top_ty, m_top_val,  field_path, m_field_path_ofs,  ty, val);
@@ -3447,7 +3477,7 @@ void MatchGenGrouped::gen_dispatch_range(const field_path_t& field_path, const :
             break;
         case ::HIR::CoreType::Char:
             lower_possible = (first.as_Uint().v > 0);
-            upper_possible = (first.as_Uint().v <= 0x10FFFF);
+            upper_possible = is_inclusive ? (first.as_Uint().v <= 0x10FFFF) : (first.as_Uint().v < 0x10FFFF);
             break;
         case ::HIR::CoreType::F32:
         case ::HIR::CoreType::F64:
@@ -3459,7 +3489,7 @@ void MatchGenGrouped::gen_dispatch_range(const field_path_t& field_path, const :
         {
             auto test_bb_2 = m_builder.new_bb_unlinked();
             // IF `val` < `first` : fail_bb
-            auto cmp_lt_lval = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ ::MIR::Param(val.clone()), ::MIR::eBinOp::LT, ::MIR::Param(first.clone()) }));
+            auto cmp_lt_lval = m_builder.get_rval_in_if_cond(sp, ::MIR::RValue::make_BinOp({ ::MIR::Param(val.clone()), ::MIR::eBinOp::LT, ::MIR::Param(first.clone()) }));
             m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lt_lval), def_blk, test_bb_2 }) );
 
             m_builder.set_cur_block(test_bb_2);
@@ -3471,7 +3501,8 @@ void MatchGenGrouped::gen_dispatch_range(const field_path_t& field_path, const :
             auto succ_bb = m_builder.new_bb_unlinked();
 
             // IF `val` > `last` : fail_bb
-            auto cmp_gt_lval = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ ::MIR::Param(val.clone()), ::MIR::eBinOp::GT, ::MIR::Param(last.clone()) }));
+            auto op = is_inclusive ? ::MIR::eBinOp::GT : ::MIR::eBinOp::GE;
+            auto cmp_gt_lval = m_builder.get_rval_in_if_cond(sp, ::MIR::RValue::make_BinOp({ ::MIR::Param(val.clone()), op, ::MIR::Param(last.clone()) }));
             m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_gt_lval), def_blk, succ_bb }) );
 
             m_builder.set_cur_block(succ_bb);

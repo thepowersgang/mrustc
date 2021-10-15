@@ -529,7 +529,7 @@ struct ExprNode_NamedValue:
 {
     Path    m_path;
 
-    ExprNode_NamedValue(Path&& path):
+    ExprNode_NamedValue(Path path):
         m_path( ::std::move(path) )
     {
     }

@@ -2147,6 +2147,11 @@ static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mo
         {
             types_args.m_entries.push_back( TypeRef(TypeRef::TagArg(), sp, pe->name()) );
         }
+        if(const auto* pe = param.opt_Value())
+        {
+            auto p = AST::Path(pe->name().name);
+            types_args.m_entries.push_back( AST::ExprNodeP(new AST::ExprNode_NamedValue(std::move(p))) );
+        }
     }
 
     DeriveOpts opts = {

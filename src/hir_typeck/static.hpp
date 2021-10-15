@@ -140,6 +140,11 @@ public:
         m_item_generics = gps_fcn;
         prep_indexes();
     }
+    void clear_both_generics() {
+        m_impl_generics = nullptr;
+        m_item_generics = nullptr;
+        prep_indexes();
+    }
     /// \}
 
     /// \brief Lookups
@@ -273,6 +278,6 @@ public:
     );
 
     /// `signature_only` - Returns a pointer to an item with the correct signature, not the actual implementation (faster)
-    ValuePtr get_value(const Span& sp, const ::HIR::Path& p, MonomorphState& out_params, bool signature_only=false) const;
+    ValuePtr get_value(const Span& sp, const ::HIR::Path& p, MonomorphState& out_params, bool signature_only=false, const HIR::GenericParams** out_impl_params_def=nullptr) const;
 };
 

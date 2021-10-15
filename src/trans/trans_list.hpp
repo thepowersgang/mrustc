@@ -23,13 +23,14 @@ struct Trans_Params:
     public MonomorphiserPP
 {
     Span    sp;
+    const ::HIR::GenericParams* gdef_impl;
     ::HIR::PathParams   pp_method;
     ::HIR::PathParams   pp_impl;
     ::HIR::TypeRef  self_type;
 
-    Trans_Params() {}
+    Trans_Params(): gdef_impl(nullptr) {}
     Trans_Params(const Span& sp):
-        sp(sp)
+        sp(sp), gdef_impl(nullptr)
     {}
 
     static Trans_Params new_impl(Span sp, HIR::TypeRef ty, HIR::PathParams impl_params) {
@@ -54,7 +55,7 @@ struct Trans_Params:
     ::HIR::PathParams monomorph(const ::StaticTraitResolve& resolve, const ::HIR::PathParams& p) const;
 
     bool has_types() const {
-        return pp_method.m_types.size() > 0 || pp_impl.m_types.size() > 0;
+        return pp_method.has_params() || pp_impl.has_params();
     }
 
 

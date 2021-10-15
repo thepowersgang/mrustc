@@ -695,45 +695,106 @@
             serialise_vec( block.statements );
             serialise(block.terminator);
         }
+
+        void serialise(const ::AsmCommon::LineFragment& l)
+        {
+            serialise(l.before);
+            m_out.write_count(l.index);
+            m_out.write_i64c(l.modifier);
+        }
+        void serialise(const ::AsmCommon::Line& l)
+        {
+            serialise_vec(l.frags);
+            serialise(l.trailing);
+        }
+        void serialise(const ::AsmCommon::RegisterSpec& r)
+        {
+            m_out.write_tag(static_cast<unsigned>(r.tag()));
+            TU_MATCH_HDRA( (r), {)
+            TU_ARMA(Class, e) {
+                m_out.write_tag(static_cast<unsigned>(e));
+                }
+            TU_ARMA(Explicit, e) {
+                m_out.write_string(e);
+                }
+            }
+        }
+        void serialise(const ::MIR::AsmParam& p)
+        {
+            m_out.write_tag(static_cast<unsigned>(p.tag()));
+            TU_MATCH_HDRA( (p), {)
+            TU_ARMA(Sym, e) {
+                serialise_path(e);
+                }
+            TU_ARMA(Const, e) {
+                serialise(e);
+                }
+            TU_ARMA(Reg, e) {
+                m_out.write_tag(static_cast<unsigned>(e.dir));
+                serialise(e.spec);
+                m_out.write_bool(bool(e.input));
+                if(e.input) serialise(e.input);
+                m_out.write_bool(bool(e.output));
+                if(e.output)    serialise(e.output);
+                }
+            }
+        }
+        void serialise(const ::AsmCommon::Options& o)
+        {
+            uint16_t bitflag_1 = 0;
+            #define BIT(i,fld)  if(fld) bitflag_1 |= 1 << (i);
+            BIT(0, o.pure);
+            BIT(1, o.nomem);
+            BIT(2, o.readonly);
+            BIT(3, o.preserves_flags);
+            BIT(4, o.noreturn);
+            BIT(5, o.nostack);
+            BIT(6, o.att_syntax);
+            #undef BIT
+            m_out.write_u16(bitflag_1);
+        }
+
         void serialise(const ::MIR::Statement& stmt)
         {
             auto _ = m_out.open_object("MIR::Statement");
-            TU_MATCHA( (stmt), (e),
-            (Assign,
+            TU_MATCH_HDRA( (stmt), {)
+            TU_ARMA(Assign, e) {
                 m_out.write_tag(0);
                 serialise(e.dst);
                 serialise(e.src);
-                ),
-            (Drop,
+                }
+            TU_ARMA(Drop, e) {
                 m_out.write_tag(1);
                 assert(e.kind == ::MIR::eDropKind::DEEP || e.kind == ::MIR::eDropKind::SHALLOW);
                 m_out.write_bool(e.kind == ::MIR::eDropKind::DEEP);
                 serialise(e.slot);
                 m_out.write_count(e.flag_idx);
-                ),
-            (Asm,
+                }
+            TU_ARMA(Asm, e) {
                 m_out.write_tag(2);
                 m_out.write_string(e.tpl);
                 serialise_vec(e.outputs);
                 serialise_vec(e.inputs);
                 serialise_vec(e.clobbers);
                 serialise_vec(e.flags);
-                ),
-            (SetDropFlag,
+                }
+            TU_ARMA(SetDropFlag, e) {
                 m_out.write_tag(3);
                 m_out.write_count(e.idx);
                 m_out.write_bool(e.new_val);
                 m_out.write_count(e.other);
-                ),
-            (ScopeEnd,
+                }
+            TU_ARMA(ScopeEnd, e) {
                 m_out.write_tag(4);
                 serialise_vec(e.slots);
-                ),
-            (Asm2,
+                }
+            TU_ARMA(Asm2, e) {
                 m_out.write_tag(5);
-                TODO(Span(), "Serialise Asm2");
-                )
-            )
+                serialise(e.options);
+                serialise_vec(e.lines);
+                serialise_vec(e.params);
+                }
+            }
         }
         void serialise(const ::MIR::Terminator& term)
         {

@@ -4,6 +4,9 @@
  *
  * trans/mangling_v2.cpp
  * - Name mangling (encoding of rust paths into symbols)
+ * 
+ * Ensures that symbols contain only alpha-numerics and `_`
+ * NOTE: `$` is used ONLY for shortening excessively long symbols
  */
 #include <debug.hpp>
 #include <string_view.hpp>
@@ -131,10 +134,31 @@ public:
     {
         // Type Parameter count
         m_os << pp.m_types.size();
+        if(pp.m_values.size() > 0) {
+            m_os << "v";
+            m_os << pp.m_values.size();
+        }
         m_os << "g";
         for(const auto& ty : pp.m_types)
         {
             fmt_type(ty);
+        }
+        for(const auto& v : pp.m_values)
+        {
+            const auto& ev = *v.as_Evaluated();
+            m_os << "V";
+            m_os << ev.bytes.size();
+            m_os << "_";
+            // TODO: Base64 data? (`_` and `$` as the other two?)
+            for(size_t i = 0; i < ev.bytes.size(); i ++) {
+                m_os << "0123456789abdef"[ ev.bytes[i] >> 4 ];
+                m_os << "0123456789abdef"[ ev.bytes[i] & 0xF ];
+            }
+            if( ev.relocations.size() > 0 )
+            {
+                m_os << "_" << ev.relocations.size() << "R";
+                TODO(Span(), "Mangle relocated values");
+            }
         }
     }
     // GenericPath : <SimplePath> <PathParams>

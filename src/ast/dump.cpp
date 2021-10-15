@@ -1040,8 +1040,11 @@ void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
     (Value,
         m_os << v.start;
         if( ! v.end.is_Invalid() ) {
-            m_os << " ... " << v.end;
+            m_os << " ..= " << v.end;
         }
+        ),
+    (ValueLeftInc,
+        m_os << v.start << " .. " << v.end;
         ),
     (StructTuple,
         m_os << v.path << "(";

@@ -968,7 +968,7 @@ void PackageManifest::load_build_script(const ::std::string& path)
 {
     ::std::ifstream is( path );
     if( !is.good() )
-        throw ::std::runtime_error("Unable to open build script file '" + path + "'");
+        throw ::std::runtime_error(format("Unable to open build script file '" + path + "' for ", this->m_manifest_path));
 
     BuildScriptOutput   rv;
 

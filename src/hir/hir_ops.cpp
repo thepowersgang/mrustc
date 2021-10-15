@@ -61,7 +61,6 @@ namespace {
             switch(re->ty_class)
             {
             case ::HIR::InferClass::None:
-            case ::HIR::InferClass::Diverge:
                 //return left.m_data.is_Generic();
                 return true;
             case ::HIR::InferClass::Integer:
@@ -257,7 +256,7 @@ namespace {
 namespace {
     bool is_unbounded_infer(const ::HIR::TypeRef& type) {
         if( const auto* e = type.data().opt_Infer() ) {
-            return e->ty_class == ::HIR::InferClass::None || e->ty_class == ::HIR::InferClass::Diverge;
+            return e->ty_class == ::HIR::InferClass::None;
         }
         else {
             return false;
@@ -1136,8 +1135,7 @@ namespace
         TU_ARMA(Pointer, te)
             return get_type_crate(crate, te.inner);
         }
-        assert("get_type_crate unsuccessful");
-        return NULL;
+        throw "Unreachable";
     }
 }
 
@@ -1515,7 +1513,7 @@ uint64_t EncodedLiteral::read_usize(size_t ofs) const
 }
 uint64_t EncodedLiteralSlice::read_uint(size_t size/*=0*/) const {
     if(size == 0)   size = m_size;
-    assert(size <= m_size);
+    ASSERT_BUG(Span(), size <= m_size, "Over-large read (" << size << " > " << m_size << ")");
     uint64_t v = 0;
     for(size_t i = 0; i < size; i ++) {
         size_t bit = (Target_GetCurSpec().m_arch.m_big_endian ? (size-1-i)*8 : i*8 );
@@ -1581,6 +1579,41 @@ bool EncodedLiteralSlice::operator==(const EncodedLiteralSlice& x) const
         }
     }
     return true;
+}
+
+Ordering EncodedLiteralSlice::ord(const EncodedLiteralSlice& x) const
+{
+    // NOTE: Check the data first (to maintain some level of lexical ordering)
+    auto min_size = std::min(m_size, x.m_size);
+    for(size_t i = 0; i < min_size; i ++)
+        if(auto cmp = ::ord(m_base.bytes[m_ofs + i], x.m_base.bytes[x.m_ofs + i]))
+            return cmp;
+    if( auto cmp = ::ord(m_size, x.m_size) )
+        return cmp;
+
+    auto it1 = std::find_if(  m_base.relocations.begin(),   m_base.relocations.end(), [&](const Reloc& r){ return r.ofs >=   m_ofs; });
+    auto it2 = std::find_if(x.m_base.relocations.begin(), x.m_base.relocations.end(), [&](const Reloc& r){ return r.ofs >= x.m_ofs; });
+
+    for(; it1 != m_base.relocations.end() && it2 != x.m_base.relocations.end(); ++it1, ++it2)
+    {
+        if( auto cmp = ::ord(it1->ofs - m_ofs, it2->ofs - x.m_ofs) )
+            return cmp;
+        if( auto cmp = ::ord(it1->len, it2->len) )
+            return cmp;
+        if( auto cmp = ::ord(bool(it1->p), bool(it2->p)) )
+            return cmp;
+        if( it1->p )
+        {
+            if( auto cmp = ::ord(*it1->p, *it2->p) )
+                return cmp;
+        }
+        else
+        {
+            if(auto cmp = ::ord(it1->bytes, it2->bytes) )
+                return cmp;
+        }
+    }
+    return OrdEqual;
 }
 
 ::std::ostream& operator<<(std::ostream& os, const EncodedLiteralSlice& x) {

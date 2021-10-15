@@ -496,9 +496,9 @@ public:
                 else {
                     cur_string += *c;
                 }
-                line.trailing = std::move(cur_string);
                 c ++;
             }
+            line.trailing = std::move(cur_string);
             lines.push_back(std::move(line));
         }
 

@@ -74,6 +74,50 @@ namespace HIR {
         return true;
     }
 
+    Ordering ConstGeneric::ord(const ConstGeneric& x) const
+    {
+        if(auto cmp = ::ord(static_cast<int>(this->tag()), static_cast<int>(x.tag())))  return cmp;
+        TU_MATCH_HDRA( (*this, x), {)
+        TU_ARMA(Infer, te, xe) {
+            if(auto cmp = ::ord(te.index, xe.index))    return cmp;
+            }
+        TU_ARMA(Unevaluated, te, xe) {
+            // If only one has populated MIR, they can't be equal (sort populated MIR after)
+            if( !te->m_mir != !xe->m_mir ) {
+                return (te->m_mir ? OrdGreater : OrdLess);
+            }
+
+            // HACK: If the inner is a const param on both, sort based on that.
+            // - Very similar to the ordering of TypeRef::Generic
+            const auto* tn = dynamic_cast<const HIR::ExprNode_ConstParam*>(&**te);
+            const auto* xn = dynamic_cast<const HIR::ExprNode_ConstParam*>(&**xe);
+            if( tn && xn )
+            {
+                // Is this valid? What if they're from different scopes?
+                return ::ord(tn->m_binding, xn->m_binding);
+            }
+
+            if( te->m_mir )
+            {
+                assert(xe->m_mir);
+                // TODO: Compare MIR
+                TODO(Span(), "Compare non-expanded array sizes - (w/ MIR) " << *this << " and " << x);
+            }
+            else
+            {
+                TODO(Span(), "Compare non-expanded array sizes - (wo/ MIR) " << *this << " and " << x);
+            }
+            }
+        TU_ARMA(Generic, te, xe) {
+            if(auto cmp = ::ord(te, xe))    return cmp;
+            }
+        TU_ARMA(Evaluated, te, xe) {
+            if(auto cmp = ::ord(EncodedLiteralSlice(*te), EncodedLiteralSlice(*xe)))    return cmp;
+            }
+        }
+        return OrdEqual;
+    }
+
     ::std::ostream& operator<<(::std::ostream& os, const Struct::Repr& x) {
         os << "repr(";
         switch(x)

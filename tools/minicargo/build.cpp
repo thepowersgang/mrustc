@@ -1231,7 +1231,13 @@ bool Builder::build_library(const PackageManifest& manifest, bool is_for_host, s
 bool Builder::spawn_process_mrustc(const StringList& args, StringListKV env, const ::helpers::path& logfile) const
 {
     //env.push_back("MRUSTC_DEBUG", "");
-    return spawn_process(m_compiler_path.str().c_str(), args, env, logfile);
+    auto rv = spawn_process(m_compiler_path.str().c_str(), args, env, logfile);
+    if(getenv("MINICARGO_RUN_ONCE"))
+    {
+        std::cerr << "- Only running compiler once" << std::endl;
+        exit(1);
+    }
+    return rv;
 }
 
 const helpers::path& get_mrustc_path()

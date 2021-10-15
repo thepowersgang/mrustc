@@ -14,9 +14,10 @@ def main():
     #cratename,pat = 'rustc', 'fn tables.*::"rustc"::ty::context::TyCtxt'
 
     argp = argparse.ArgumentParser()
-    argp.add_argument("--file", type=str)
-    argp.add_argument("--crate", type=str)
-    argp.add_argument("--fn-name", type=str, default='resize.*HashMap')
+    argp_src = argp.add_mutually_exclusive_group(required=True)
+    argp_src.add_argument("--file", type=str)
+    argp_src.add_argument("--crate", type=str)
+    argp.add_argument("--fn-name", type=str, required=True)
     args = argp.parse_args()
 
     pat = 'fn '+args.fn_name
@@ -28,7 +29,7 @@ def main():
     for line in fp:
         line = line.strip()
         if start_pat.match(line) != None:
-            print "# ",line
+            print("# ",line)
             def_line = line
             break
 
@@ -73,7 +74,7 @@ def main():
             if comment_level == 0:
                 outstr += line[i]
             i += 1
-        print "#",len(bbs),outstr
+        print("#",len(bbs),outstr)
 
         cur_bb_lines.append(outstr)
 
@@ -111,18 +112,18 @@ def main():
 
 
 
-    print "digraph {"
-    print "node [shape=box, labeljust=l; fontname=\"mono\"];"
+    print("digraph {")
+    print("node [shape=box, labeljust=l; fontname=\"mono\"];")
     for l in links:
-        print '"%s" -> "%s" [label="%s"];' % (l._src, l._dst, l._label)
+        print('"{}" -> "{}" [label="{}"];'.format(l._src, l._dst, l._label))
 
-    print ""
+    print("")
     for idx,bb in enumerate(bbs):
-        print '"bb%i" [label="BB%i:' % (idx,idx,),
+        print('"bb{0}" [label="BB{0}:'.format(idx), end="")
         for stmt in bb:
-            print '\\l',stmt.replace('"', '\\"'),
-        print '"];'
-    print "}"
+            print('\\l',stmt.replace('"', '\\"'), end="")
+        print('"];')
+    print("}")
 
 
 main()

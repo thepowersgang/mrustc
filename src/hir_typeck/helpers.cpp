@@ -6,6 +6,7 @@
  * - Typecheck helpers
  */
 #include "helpers.hpp"
+#include <algorithm>
 
 // --------------------------------------------------------------------
 // HMTypeInferrence
@@ -189,11 +190,6 @@ bool HMTypeInferrence::apply_defaults()
                 {
                 case ::HIR::InferClass::None:
                     break;
-                case ::HIR::InferClass::Diverge:
-                    rv = true;
-                    DEBUG("- IVar " << e->index << " = !");
-                    *v.type = ::HIR::TypeRef::new_diverge();
-                    break;
                 case ::HIR::InferClass::Integer:
                     rv = true;
                     DEBUG("- IVar " << e->index << " = i32");
@@ -340,10 +336,14 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr) 
 }
 void HMTypeInferrence::print_pathparams(::std::ostream& os, const ::HIR::PathParams& pps) const
 {
-    if( pps.m_types.size() > 0 ) {
+    if( pps.has_params() ) {
         os << "<";
         for(const auto& pp_t : pps.m_types) {
             this->print_type(os, pp_t);
+            os << ",";
+        }
+        for(const auto& pp_v : pps.m_values) {
+            os << pp_v;
             os << ",";
         }
         os << ">";
@@ -660,7 +660,6 @@ void HMTypeInferrence::set_ivar_to(unsigned int slot, ::HIR::TypeRef type)
             switch(e->ty_class)
             {
             case ::HIR::InferClass::None:
-            case ::HIR::InferClass::Diverge:
                 break;
             case ::HIR::InferClass::Integer:
             case ::HIR::InferClass::Float:
@@ -686,16 +685,6 @@ void HMTypeInferrence::set_ivar_to(unsigned int slot, ::HIR::TypeRef type)
             BUG(sp, "Overwriting ivar " << slot << " (" << *root_ivar.type << ") with " << type);
         }
 
-        #if 1
-        if( type.data().is_Diverge() )
-        {
-            if( root_ivar.type->data().as_Infer().ty_class == ::HIR::InferClass::None )
-            {
-                root_ivar.type->data_mut().as_Infer().ty_class = ::HIR::InferClass::Diverge;
-            }
-        }
-        else
-        #endif
         root_ivar.type = box$( type );
     }
 
@@ -715,25 +704,15 @@ void HMTypeInferrence::ivar_unify(unsigned int left_slot, unsigned int right_slo
         if( const auto* re = root_ivar.type->data().opt_Infer() )
         {
             DEBUG("Class unify " << *left_ivar.type << " <- " << *root_ivar.type);
-            if( re->ty_class == ::HIR::InferClass::Diverge )
-            {
-                if(auto* le = left_ivar.type->data_mut().opt_Infer()) {
-                    if( le->ty_class == ::HIR::InferClass::None ) {
-                        le->ty_class = ::HIR::InferClass::Diverge;
-                    }
-                }
-            }
-            else if(re->ty_class != ::HIR::InferClass::None)
+
+            if(re->ty_class != ::HIR::InferClass::None)
             {
                 TU_MATCH_DEF(::HIR::TypeData, (left_ivar.type->data_mut()), (le),
                 (
                     ERROR(sp, E0000, "Type unificiation of literal with invalid type - " << *left_ivar.type);
                     ),
                 (Infer,
-                    if( le.ty_class == ::HIR::InferClass::Diverge )
-                    {
-                    }
-                    else if( le.ty_class != ::HIR::InferClass::None && le.ty_class != re->ty_class )
+                    if( le.ty_class != ::HIR::InferClass::None && le.ty_class != re->ty_class )
                     {
                         ERROR(sp, E0000, "Unifying types with mismatching literal classes - " << *left_ivar.type << " := " << *root_ivar.type);
                     }
@@ -2738,6 +2717,48 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
 
     static ::HIR::TraitPath::assoc_list_t   null_assoc;
     TRACE_FUNCTION_F(trait << FMT_CB(ss, if(params_ptr) { ss << *params_ptr; } else { ss << "<?>"; }) << " for " << type);
+
+    struct StackEnt {
+        const ::HIR::SimplePath* trait;
+        const ::HIR::PathParams* params_ptr;
+        const ::HIR::TypeRef* type;
+        StackEnt(const ::HIR::SimplePath& trait, const ::HIR::PathParams* params_ptr, const ::HIR::TypeRef& type)
+            : trait(&trait), params_ptr(params_ptr), type(&type)
+        {
+        }
+        bool operator==(const StackEnt& e) const {
+            if( *e.trait != *trait )
+                return false;
+            if( !!e.params_ptr != !!params_ptr )
+                return false;
+            if( params_ptr && *e.params_ptr != *params_ptr )
+                return false;
+            if( *e.type != *type )
+                return false;
+            return true;
+        }
+    };
+    struct StackHandle {
+        std::vector<StackEnt>* stack;
+        StackHandle(): stack(nullptr) {}
+        StackHandle(std::vector<StackEnt>& stack) : stack(&stack) {}
+        StackHandle(StackHandle&& x): stack(x.stack) { x.stack = nullptr; }
+        StackHandle& operator=(StackHandle&& x) { this->~StackHandle(); stack = x.stack; x.stack = nullptr; return *this; }
+        StackHandle(const StackHandle&) = delete;
+        StackHandle& operator=(const StackHandle&) = delete;
+        ~StackHandle() { if(stack) stack->pop_back(); stack = nullptr; }
+    };
+    static std::vector<StackEnt>    s_recurse_stack;
+    auto se = StackEnt(trait, params_ptr, type);
+    // NOTE: Allow 1 level of recursion (EAT being run)
+    if( std::count(s_recurse_stack.begin(), s_recurse_stack.end(), se) > 1 ) {
+        DEBUG("Recursion detected in `find_trait_impls_crate`");
+        //return false;
+        throw TraitResolution::RecursionDetected();
+        //BUG(sp, "Recursion detected in `find_trait_impls_crate`");
+    }
+    s_recurse_stack.push_back(se);
+    StackHandle sh { s_recurse_stack };
 
     // Handle auto traits (aka OIBITs)
     if( m_crate.get_trait_by_path(sp, trait).m_is_marker )
@@ -4766,7 +4787,7 @@ bool TraitResolution::find_field(const Span& sp, const ::HIR::TypeRef& ty, const
             TU_ARMA(Tuple, se) {
                 for( unsigned int i = 0; i < se.size(); i ++ )
                 {
-                    DEBUG(i << ": " << se[i].publicity);
+                    DEBUG(i << ": " << se[i].publicity << ", " << this->m_vis_path << " : " << se[i].ent);
                     if( se[i].publicity.is_visible(this->m_vis_path) && FMT(i) == name ) {
                         field_ty = monomorph.monomorph_type(sp, se[i].ent);
                         return true;
@@ -4776,7 +4797,7 @@ bool TraitResolution::find_field(const Span& sp, const ::HIR::TypeRef& ty, const
             TU_ARMA(Named, se) {
                 for( const auto& fld : se )
                 {
-                    DEBUG(fld.first << ": " << fld.second.publicity << ", " << this->m_vis_path);
+                    DEBUG(fld.first << ": " << fld.second.publicity << ", " << this->m_vis_path << " : " << fld.second.ent);
                     if( fld.second.publicity.is_visible(this->m_vis_path) && fld.first == name ) {
                         field_ty = monomorph.monomorph_type(sp, fld.second.ent);
                         return true;

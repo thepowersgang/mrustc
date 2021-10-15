@@ -49,6 +49,9 @@ public:
     ::std::map< ::std::string, ::AST::AbsolutePath> m_lang_items;
 public:
     Module  m_root_module;
+
+    /// Loaded crates in load order
+    ::std::vector<RcString> m_extern_crates_ord;
     ::std::map< RcString, ExternCrate> m_extern_crates;
     // Mapping filled by searching for (?visible) macros with is_pub=true
     ::std::map< RcString, const MacroRules*> m_exported_macros;

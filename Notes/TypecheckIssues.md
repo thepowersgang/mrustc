@@ -604,3 +604,35 @@ Typecheck Expressions-      `anonymous-namespace'::check_associated:  for ::"rus
 ```
 
 Had forgotten to run EAT on the impl type (had already run it on trait params, but not on the type)
+
+
+
+
+# (1.54) `<::"core-0_0_0"::result::Result<T/*I:0*/,E/*I:1*/,>/*E*/>::into_ok`
+Uses `!` as a type, which kinda breaks with some of the type inferrence
+- Looks like coercions are being done first, which means that the method call's return coercion site isn't being propagated fast enough
+- Leading to a method lookup failure as the return type of `e.into()` is "known" to be `T` (but it's actually `!`)
+
+```
+Typecheck Expressions-     check_ivar_poss: >> (4)
+Typecheck Expressions-      `anonymous-namespace'::check_ivar_poss: 4: possible_tys = -D T/*I:0*/
+Typecheck Expressions-      `anonymous-namespace'::check_ivar_poss: 4: bounds = +, !
+```
+
+## EXPERIMENT: Move node revisits to first in the typecheck cycle
+Failed in 1.39 std, `..\rustc-1.39.0-src\src\libstd\sys_common\thread.rs:14: error:0:Failed to find an impl of ::"core-0_0_0"::ops::function::Fn<(),> for ::"alloc-0_0_0"::boxed::Box<::"alloc-0_0_0"::boxed::Box<(::"core-0_0_0"::ops::function::FnOnce<(),>+ ''_),>,> with Output = ()`
+
+## EXPERIMENT: Remove short-circuit for `T = _` in `check_coerce_tys`
+Fails early in libcore 1.39, because other users of `check_coerce_tys` don't get info on the weak equality
+
+## EXPERIMENT: Add weak equality return to `check_coerce_tys`
+- Use this to defer the equality action
+
+## EXPERIMENT: Remove short-circuit for `T = _` in `check_coerce_tys`, AND remember to add possibility
+- Lots of other breakage?
+
+
+## EXPERIMENT: Treat `!` as a full type (remove special case handling in ivars)
+- Requires special handling in `check_ivar_poss` (ignore completely? Add as final fallback?)
+- Coerce rule `! := *` becomes equality
+- Some other additions required to handle inference breakage for `!` (e.g. around block returns)

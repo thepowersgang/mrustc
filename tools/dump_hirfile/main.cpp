@@ -42,7 +42,7 @@ struct Dumper
     void dump_constant(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Constant& c, int nindent=0) const;
     void dump_function(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Function& fcn, int nindent=0) const;
 
-    void dump_macrorules(const RcString& name, const MacroRules& rules) const;
+    void dump_macrorules(const HIR::ItemPath& ip, const MacroRules& rules) const;
 };
 
 int main(int argc, const char* argv[])
@@ -136,7 +136,7 @@ void Dumper::dump_module(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const 
             ::std::cout << "macro " << sub_ip << " = " << e.path << "\n";
             }
         TU_ARMA(MacroRules, mac) {
-            dump_macrorules(i.first, *mac);
+            dump_macrorules(sub_ip, *mac);
             }
         TU_ARMA(ProcMacro, mac) {
             // TODO: Attribute list
@@ -309,9 +309,9 @@ void Dumper::dump_function(::HIR::ItemPath ip, const ::HIR::Publicity& pub, cons
 
 
 
-void Dumper::dump_macrorules(const RcString& name, const MacroRules& rules) const
+void Dumper::dump_macrorules(const HIR::ItemPath& ip, const MacroRules& rules) const
 {
-    ::std::cout << "macro_rules! " << name << "{" << std::endl;
+    ::std::cout << "macro_rules! " << ip << "{" << std::endl;
     for(const auto& arm : rules.m_rules)
     {
         ::std::cout << "    (";

@@ -87,6 +87,7 @@ public:
         (Box,       struct { unique_ptr<Pattern> sub; } ),
         (Ref,       struct { bool mut; unique_ptr<Pattern> sub; } ),
         (Value,     struct { Value start; Value end; } ),
+        (ValueLeftInc, struct { Value start; Value end; } ),
         (Tuple,     TuplePat ),
         (StructTuple, struct { Path path; TuplePat tup_pat; } ),
         (Struct,    struct { Path path; ::std::vector< ::std::pair< RcString, Pattern> > sub_patterns; bool is_exhaustive; } ),

@@ -23,7 +23,7 @@ struct TyVisitor
 {
     virtual typename W<HIR::TypeData>::T& get_ty_data(typename W<HIR::TypeRef>::T& ty) const = 0;
 
-    bool visit_path_params(typename W<::HIR::PathParams>::T& tpl)
+    virtual bool visit_path_params(typename W<::HIR::PathParams>::T& tpl)
     {
         for(auto& ty : tpl.m_types)
             if( visit_type(ty) )
@@ -143,7 +143,7 @@ struct TyVisitor
 struct TyVisitorCbConst: TyVisitor<WConst>
 {
     t_cb_visit_ty   callback;
-    const HIR::TypeData& get_ty_data(const HIR::TypeRef& ty) const override{
+    const HIR::TypeData& get_ty_data(const HIR::TypeRef& ty) const override {
         return ty.data();
     }
     bool visit_type(const ::HIR::TypeRef& ty) override
@@ -196,29 +196,48 @@ bool visit_path_tys_with_mut(::HIR::Path& path, t_cb_visit_ty_mut callback)
 }
 // */
 
+
+struct TyVisitorMonomorphNeeded: TyVisitor<WConst>
+{
+    const HIR::TypeData& get_ty_data(const HIR::TypeRef& ty) const override {
+        return ty.data();
+    }
+    bool visit_path_params(const ::HIR::PathParams& pp) override
+    {
+        for(const auto& v : pp.m_values) {
+            if(v.is_Generic())
+                return true;
+        }
+        return TyVisitor::visit_path_params(pp);
+    }
+    bool visit_type(const ::HIR::TypeRef& ty) override
+    {
+        if( ty.data().is_Generic() )
+            return true;
+        if( ty.data().is_Array() && ty.data().as_Array().size.is_Unevaluated() /*&& ty.data().as_Array().size.as_Unevaluated().*/ )
+            return true;
+        return TyVisitor::visit_type(ty);
+    }
+};
 bool monomorphise_pathparams_needed(const ::HIR::PathParams& tpl)
 {
-    TyVisitorCbConst v;
-    v.callback = [&](const auto& ty) { return (ty.data().is_Generic() ? true : false); };
+    TyVisitorMonomorphNeeded v;
     return v.visit_path_params(tpl);
 }
 bool monomorphise_traitpath_needed(const ::HIR::TraitPath& tpl)
 {
-    TyVisitorCbConst v;
-    v.callback = [&](const auto& ty) { return (ty.data().is_Generic() ? true : false); };
+    TyVisitorMonomorphNeeded v;
     return v.visit_trait_path(tpl);
 }
 bool monomorphise_path_needed(const ::HIR::Path& tpl)
 {
-    return visit_path_tys_with(tpl, [&](const auto& ty) {
-        return (ty.data().is_Generic() ? true : false);
-        });
+    TyVisitorMonomorphNeeded v;
+    return v.visit_path(tpl);
 }
 bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
 {
-    return visit_ty_with(tpl, [&](const auto& ty) {
-        return (ty.data().is_Generic() ? true : false);
-        });
+    TyVisitorMonomorphNeeded v;
+    return v.visit_type(tpl);
 }
 
 
@@ -279,12 +298,14 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
         if( auto* se = e.size.opt_Unevaluated() ) {
             if( se->is_Generic() ) {
                 sz = this->get_value(sp, se->as_Generic());
+                DEBUG(e.size << " -> " << sz);
                 se = sz.opt_Unevaluated();
                 assert(se);
             }
+
             if(se->is_Unevaluated()) {
                 // TODO: Evaluate
-                //TODO(sp, "Evaluate unevaluated generic for array size - " << *se);
+                DEBUG("Evaluate unevaluated generic for array size - " << *se);
                 sz = se->clone();
             }
             else if( se->is_Evaluated() ) {
@@ -434,6 +455,8 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
     rv.m_types.reserve( tpl.m_types.size() );
     for( const auto& ty : tpl.m_types)
         rv.m_types.push_back( clone_ty_with(sp, ty, callback) );
+    for( const auto& v : tpl.m_values)
+        rv.m_values.push_back( v.clone() );
     return rv;
 }
 ::HIR::GenericPath clone_ty_with__generic_path(const Span& sp, const ::HIR::GenericPath& tpl, t_cb_clone_ty callback) {
@@ -697,7 +720,6 @@ void check_type_class_primitive(const Span& sp, const ::HIR::TypeRef& type, ::HI
     switch(ic)
     {
     case ::HIR::InferClass::None:
-    case ::HIR::InferClass::Diverge:
         break;
     case ::HIR::InferClass::Float:
         switch(ct)

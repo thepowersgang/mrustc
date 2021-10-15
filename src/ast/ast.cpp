@@ -351,6 +351,8 @@ void Module::add_macro_invocation(MacroInvocation item) {
     this->add_item( item.span(), false, "", Item( mv$(item) ), ::AST::AttributeList {} );
 }
 void Module::add_macro(bool is_exported, RcString name, MacroRulesPtr macro) {
+    assert(macro);
+    assert(macro->m_rules.size() > 0);
     m_macros.push_back( Named<MacroRulesPtr>( Span(), {}, /*is_pub=*/is_exported, mv$(name), mv$(macro) ) );
 }
 

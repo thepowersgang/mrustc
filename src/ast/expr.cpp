@@ -155,6 +155,8 @@ namespace {
                 os << "{{";
             else if( c == '\\' )
                 os << "\\\\";
+            else if( c == '"' )
+                os << "\\\"";
             else if( std::isprint(c) )
                 os << c;
             else

@@ -721,6 +721,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                     const auto& dst_ty = state.get_lvalue_type(dst_tmp, a.dst);
 
                     auto check_types = [&](const auto& dst_ty, const auto& src_ty) {
+                        DEBUG("check_types: " << dst_ty << " := " << src_ty);
                         if( src_ty == ::HIR::TypeRef::new_diverge() ) {
                             // It's valid to assign to anything from a !
                         }
@@ -1091,7 +1092,15 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                         const auto& in_ty = state.get_param_type(tmp1, e.args[i]);
                         const auto& exp_ty = maybe_monomorph(fcn.m_args[i].second);
                         DEBUG("Arg " << i << " " << in_ty << " ?= " << exp_ty);
-                        MIR_ASSERT(state, in_ty == exp_ty, "Argument (" << i << ") type mismatch: input is " << in_ty << ", but expected is " << exp_ty);
+                        if( in_ty == ::HIR::TypeRef::new_diverge() ) {
+                            // It's valid to assign to anything from a !
+                        }
+                        else if( in_ty == exp_ty ) {
+                            // Types are equal, good.
+                        }
+                        else {
+                            MIR_BUG(state,  "Argument (" << i << ") type mismatch: input is " << in_ty << ", but expected is " << exp_ty);
+                        }
                     }
                     // Check return
                     const auto& slot_ty = state.get_lvalue_type(tmp1, e.ret_val);

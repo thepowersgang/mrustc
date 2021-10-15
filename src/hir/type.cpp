@@ -91,54 +91,8 @@ Ordering HIR::ArraySize::ord(const HIR::ArraySize& x) const
     if(this->tag() != x.tag())
         return ::ord( static_cast<unsigned>(this->tag()), static_cast<unsigned>(x.tag()) );
     TU_MATCH_HDRA( (*this, x), {)
-    TU_ARMA(Unevaluated, tse, xse) {
-        if(tse.tag() != xse.tag())
-            return ::ord( static_cast<unsigned>(tse.tag()), static_cast<unsigned>(xse .tag()) );
-        // If the two types are the exact same expression (i.e. same pointer)
-        // - They're equal
-        if( tse == xse )
-            return OrdEqual;
-
-        TU_MATCH_HDRA( (tse, xse), {)
-        TU_ARMA(Unevaluated, tsei, xsei) {
-            // If only one has populated MIR, they can't be equal (sort populated MIR after)
-            if( !tsei->m_mir != !xsei->m_mir ) {
-                return (tsei->m_mir ? OrdGreater : OrdLess);
-            }
-
-            // HACK: If the inner is a const param on both, sort based on that.
-            // - Very similar to the ordering of TypeRef::Generic
-            const auto* tn = dynamic_cast<const HIR::ExprNode_ConstParam*>(&**tsei);
-            const auto* xn = dynamic_cast<const HIR::ExprNode_ConstParam*>(&**xsei);
-            if( tn && xn )
-            {
-                // Is this valid? What if they're from different scopes?
-                return ::ord(tn->m_binding, xn->m_binding);
-            }
-
-            if( tsei->m_mir )
-            {
-                assert(xsei->m_mir);
-                // TODO: Compare MIR
-                TODO(Span(), "Compare non-expanded array sizes - (w/ MIR) " << *this << " and " << x);
-            }
-            else
-            {
-                TODO(Span(), "Compare non-expanded array sizes - (wo/ MIR) " << *this << " and " << x);
-            }
-            }
-        TU_ARMA(Generic, tsei, xsei) {
-            return tsei.ord(xsei);
-            }
-        TU_ARMA(Infer, tsei, xsei) {
-            return ::ord(tsei.index, xsei.index);
-            }
-        TU_ARMA(Evaluated, tsei, xsei) {
-            //return ::ord(*tsei, *xsei);
-            TODO(Span(), "Compare Evaluated array sizes - " << *this << " and " << x);
-            }
-        }
-        }
+    TU_ARMA(Unevaluated, tse, xse)
+        return ::ord(tse, xse);
     TU_ARMA(Known, tse, xse)
         return ::ord(tse, xse);
     }
@@ -172,7 +126,6 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
             switch(e.ty_class)
             {
             case ::HIR::InferClass::None:   break;
-            case ::HIR::InferClass::Diverge:os << ":!"; break;
             case ::HIR::InferClass::Float:  os << ":f"; break;
             case ::HIR::InferClass::Integer:os << ":i"; break;
             }
@@ -597,7 +550,6 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         switch(xe.ty_class)
         {
         case ::HIR::InferClass::None:
-        case ::HIR::InferClass::Diverge:
             // TODO: Have another callback (optional?) that allows the caller to equate `v` somehow
             // - Very niche?
             return Compare::Fuzzy;
@@ -647,7 +599,6 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         switch(te.ty_class)
         {
         case ::HIR::InferClass::None:
-        case ::HIR::InferClass::Diverge:
             // TODO: Have another callback (optional?) that allows the caller to equate `v` somehow
             // - Very niche?
             return Compare::Fuzzy;
@@ -716,13 +667,11 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         switch(te.ty_class)
         {
         case ::HIR::InferClass::None:
-        case ::HIR::InferClass::Diverge:
             return Compare::Fuzzy;
         default:
             switch(xe.ty_class)
             {
             case ::HIR::InferClass::None:
-            case ::HIR::InferClass::Diverge:
                 return Compare::Fuzzy;
             default:
                 if( te.ty_class != xe.ty_class )
@@ -1059,7 +1008,6 @@ const ::HIR::TraitMarkings* HIR::TypePathBinding::get_trait_markings() const
         switch(e->ty_class)
         {
         case ::HIR::InferClass::None:
-        case ::HIR::InferClass::Diverge:
             return Compare::Fuzzy;
         case ::HIR::InferClass::Integer:
             TU_MATCH_HDRA( (right.data()), {)
@@ -1083,7 +1031,6 @@ const ::HIR::TraitMarkings* HIR::TypePathBinding::get_trait_markings() const
                 switch(re.ty_class)
                 {
                 case ::HIR::InferClass::None:
-                case ::HIR::InferClass::Diverge:
                 case ::HIR::InferClass::Integer:
                     return Compare::Fuzzy;
                 case ::HIR::InferClass::Float:
@@ -1112,7 +1059,6 @@ const ::HIR::TraitMarkings* HIR::TypePathBinding::get_trait_markings() const
                 switch(re.ty_class)
                 {
                 case ::HIR::InferClass::None:
-                case ::HIR::InferClass::Diverge:
                 case ::HIR::InferClass::Float:
                     return Compare::Fuzzy;
                 case ::HIR::InferClass::Integer:
@@ -1133,7 +1079,6 @@ const ::HIR::TraitMarkings* HIR::TypePathBinding::get_trait_markings() const
         switch( re->ty_class )
         {
         case ::HIR::InferClass::None:
-        case ::HIR::InferClass::Diverge:
             return Compare::Fuzzy;
         case ::HIR::InferClass::Integer:
             TU_MATCH_HDRA( (left.data()), {)

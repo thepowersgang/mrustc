@@ -279,7 +279,7 @@ namespace MIR { namespace eval {
         bool    is_readonly;
         ::HIR::TypeRef  m_type;
         std::vector<Reloc>  relocations;
-        uint8_t data[0];
+        uint8_t data[1];
 
         Allocation(size_t len, const ::HIR::TypeRef& ty)
             : reference_count(1)
@@ -289,6 +289,8 @@ namespace MIR { namespace eval {
         {
             memset(data, 0, len + (len + 7) / 8);
         }
+        Allocation(const Allocation&) = delete;
+        Allocation& operator=(const Allocation&) = delete;
     public:
         void fmt_ident(std::ostream& os) const override {
             os << "A:" << this;
@@ -1148,6 +1150,22 @@ namespace HIR {
                 }
             }
 
+            void write_encoded(ValueRef dst, const EncodedLiteral& encoded)
+            {
+                // Write the encoded value into the destination
+                dst.write_bytes(state, encoded.bytes.data(), encoded.bytes.size());
+                for(const auto& r : encoded.relocations)
+                {
+                    RelocPtr    reloc;
+                    if( r.p ) {
+                        reloc = RelocPtr(get_staticref(r.p->clone()));
+                    }
+                    else {
+                        reloc = RelocPtr(AllocationPtr::allocate_ro(r.bytes.data(), r.bytes.size()));
+                    }
+                    dst.slice(r.ofs, r.len).set_reloc(std::move(reloc));
+                }
+            }
             void write_const(ValueRef dst, const ::MIR::Constant& c)
             {
                 TU_MATCH_HDR( (c), {)
@@ -1175,22 +1193,21 @@ namespace HIR {
                     const auto& encoded = get_const(*e2.p, &ty);
                     DEBUG(*e2.p << " = " << encoded);
 
-                    // Write the encoded value into the destination
-                    dst.write_bytes(state, encoded.bytes.data(), encoded.bytes.size());
-                    for(const auto& r : encoded.relocations)
-                    {
-                        RelocPtr    reloc;
-                        if( r.p ) {
-                            reloc = RelocPtr(get_staticref(r.p->clone()));
-                        }
-                        else {
-                            reloc = RelocPtr(AllocationPtr::allocate_ro(r.bytes.data(), r.bytes.size()));
-                        }
-                        dst.slice(r.ofs, r.len).set_reloc(std::move(reloc));
-                    }
+                    write_encoded(dst, encoded);
                     }
                 TU_ARM(c, Generic, e2) {
-                    throw Defer();
+                    auto v = ms.get_value(Span(), e2);
+                    TU_MATCH_HDRA( (v), { )
+                    default:
+                        MIR_TODO(state, "Handle expanded generic: " << v);
+                    TU_ARMA(Generic, _) {
+                        throw Defer();
+                        }
+                    TU_ARMA(Evaluated, ve) {
+                        DEBUG(e2 << " = " << *ve);
+                        write_encoded(dst, *ve);
+                        }
+                    }
                     }
                 TU_ARM(c, ItemAddr, e2) {
                     dst.write_ptr(state, EncodedLiteral::PTR_BASE, get_staticref_mono(*e2));
@@ -1881,6 +1898,19 @@ namespace HIR {
                         else
                             throw Defer();
                     }
+                    // ---
+                    else if( te->name == "ctpop" ) {
+                        auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                        MIR_ASSERT(state, ty.data().is_Primitive(), "bswap with non-primitive " << ty);
+                        auto ti = TypeInfo::for_type(ty);
+                        auto val = local_state.read_param_uint(ti.bits, e.args.at(0));
+#ifdef _MSC_VER
+                        unsigned rv = __popcnt(val & 0xFFFFFFFF) + __popcnt(val >> 32);
+#else
+                        unsigned rv = __builtin_popcountll(val);
+#endif
+                        dst.write_uint(state, ti.bits, rv);
+                    }
                     else if( te->name == "bswap" ) {
                         auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
                         MIR_ASSERT(state, ty.data().is_Primitive(), "bswap with non-primitive " << ty);
@@ -1921,6 +1951,7 @@ namespace HIR {
                         }
                         dst.write_uint(state, ti.bits, rv);
                     }
+                    // ---
                     else if( te->name == "add_with_overflow" ) {
                         auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
                         MIR_ASSERT(state, ty.data().is_Primitive(), "`add_with_overflow` with non-primitive " << ty);
@@ -1962,6 +1993,7 @@ namespace HIR {
                             MIR_TODO(state, "Call intrinsic \"" << te->name << "\" - " << block.terminator);
                         }
                     }
+                    // ---
                     else if( te->name == "transmute" ) {
                         local_state.write_param(dst, e.args.at(0));
                     }
@@ -2156,6 +2188,8 @@ namespace {
             ::HIR::PathParams   pp_impl;
             for(const auto& tp : impl.m_params.m_types)
                 pp_impl.m_types.push_back( ::HIR::TypeRef(tp.m_name, pp_impl.m_types.size()) );
+            for(const auto& vp : impl.m_params.m_values)
+                pp_impl.m_values.push_back( ::HIR::GenericRef(vp.m_name, pp_impl.m_values.size()) );
             m_monomorph_state.pp_impl = &pp_impl;
             m_impl_params = &impl.m_params;
 
@@ -2180,6 +2214,8 @@ namespace {
             ::HIR::PathParams   pp_impl;
             for(const auto& tp : impl.m_params.m_types)
                 pp_impl.m_types.push_back( ::HIR::TypeRef(tp.m_name, pp_impl.m_types.size()) );
+            for(const auto& vp : impl.m_params.m_values)
+                pp_impl.m_values.push_back( ::HIR::GenericRef(vp.m_name, pp_impl.m_values.size()) );
             m_monomorph_state.pp_impl = &pp_impl;
             m_impl_params = &impl.m_params;
 

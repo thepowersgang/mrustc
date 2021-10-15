@@ -343,6 +343,10 @@ void Expand_Pattern(::AST::Crate& crate, LList<const AST::Module*> modstack, ::A
         //Expand_Expr(crate, modstack, e.start);
         //Expand_Expr(crate, modstack, e.end);
         ),
+    (ValueLeftInc,
+        //Expand_Expr(crate, modstack, e.start);
+        //Expand_Expr(crate, modstack, e.end);
+        ),
     (Tuple,
         for(auto& sp : e.start)
             Expand_Pattern(crate, modstack, mod, sp, is_refutable);
@@ -1009,8 +1013,18 @@ struct CExpandExpr:
                 ::AST::ExprNode_StructLiteral::t_values values;
                 values.push_back({ {}, "start", mv$(node.m_left)  });
                 values.push_back({ {}, "end"  , mv$(node.m_right) });
-                if( gTargetVersion >= TargetVersion::Rustc1_29 )
+                switch(gTargetVersion)
+                {
+                case TargetVersion::Rustc1_19:
+                    break;
+                case TargetVersion::Rustc1_29:
+                case TargetVersion::Rustc1_39:
                     values.push_back({ {}, "is_empty", ::AST::ExprNodeP(new ::AST::ExprNode_NamedValue(mv$(path_None))) });
+                    break;
+                case TargetVersion::Rustc1_54:
+                    values.push_back({ {}, "exhausted", ::AST::ExprNodeP(new ::AST::ExprNode_Bool(false)) });
+                    break;
+                }
                 replacement.reset( new ::AST::ExprNode_StructLiteral(mv$(path_RangeInclusive_NonEmpty), nullptr, mv$(values)) );
             }
             else
@@ -1431,6 +1445,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             dat.as_MacroInv() = mv$(mi_owned);
             }
         TU_ARMA(Macro, e) {
+            ASSERT_BUG(i.span, e, "Null macro - " << i.name);
             mod.add_macro(i.is_pub, i.name, mv$(e));
             }
         TU_ARMA(Use, e) {
@@ -1796,6 +1811,7 @@ void Expand_Mod_Early(::AST::Crate& crate, ::AST::Module& mod, std::vector<std::
             {
                 // TODO: `#[macro_export] macro foo { ... }` DOESN'T move the item to the root
                 // - Instead, it should add an alias? Or just tag for export
+                DEBUG("macro item export: " << i->name);
                 i->data.as_Macro()->m_exported = true;
             }
             else

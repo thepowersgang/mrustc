@@ -1481,7 +1481,7 @@ void MirBuilder::end_split_arm(const Span& sp, const ScopeHandle& handle, bool r
             // Clone this arm's state
             for(auto& ent : this_arm_state.states)
             {
-                DEBUG("Slot(" << ent.first << ") = " << ent.second);
+                DEBUG("State _" << ent.first << " = " << ent.second);
                 sd_split.end_state.states.insert(::std::make_pair( ent.first, ent.second.clone() ));
             }
             for(auto& ent : this_arm_state.arg_states)
@@ -1927,6 +1927,8 @@ VarState& MirBuilder::get_slot_state_mut(const Span& sp, unsigned int idx, SlotT
                 }
             }
         }
+        // DISABLED: Long-ish experiment for allowing moves within match conditions (hopefully won't break codegen)
+#if 0
         // Freeze is used for `match` guards
         // - These are only allowed to modify the (known `bool`) condition variable
         // TODO: Some guards have more complex pieces of code, with self-contained scopes, allowable?
@@ -1956,6 +1958,7 @@ VarState& MirBuilder::get_slot_state_mut(const Span& sp, unsigned int idx, SlotT
                 break;  // Stop searching
             }
         }
+#endif
         else
         {
             // Unknown scope type?

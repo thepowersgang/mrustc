@@ -646,7 +646,10 @@ namespace {
                 }
             
             TU_ARMA(Or, pe) {
-                TODO(sp, "AVU - Split patterns");
+                auto rv = ::HIR::ValueUsage::Borrow;
+                for(const auto& pat : pe)
+                    rv = ::std::max(rv, get_usage_for_pattern(sp, pat, ty));
+                return rv;
                 }
             }
             throw "";

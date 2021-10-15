@@ -17,7 +17,7 @@ using AST::ExprNode;
 
 
 AST::Pattern Parse_Pattern1(TokenStream& lex, AllowOrPattern allow_or);
-AST::Pattern::TuplePat Parse_PatternTuple(TokenStream& lex);
+AST::Pattern::TuplePat Parse_PatternTuple(TokenStream& lex, bool* maybe_just_paren=nullptr);
 AST::Pattern Parse_PatternReal_Slice(TokenStream& lex);
 AST::Pattern Parse_PatternReal_Path(TokenStream& lex, ProtoSpan ps, AST::Path path);
 AST::Pattern Parse_PatternStruct(TokenStream& lex, ProtoSpan ps, AST::Path path);
@@ -196,6 +196,20 @@ AST::Pattern Parse_PatternReal(TokenStream& lex, AllowOrPattern allow_or)
 
         return ret;
     }
+    else if( TARGETVER_LEAST_1_39 && tok.type() == TOK_DOUBLE_DOT )
+    {
+        if( !ret.data().is_Value() )
+            throw ParseError::Generic(lex, "Using `..` with a non-value on left");
+        auto& ret_v = ret.data().as_Value();
+        auto leftval = std::move(ret_v.start);
+
+        auto right_pat = Parse_PatternReal1(lex, allow_or);
+        if( !right_pat.data().is_Value() )
+            throw ParseError::Generic(lex, "Using `..` with a non-value on right");
+        auto rightval = mv$( right_pat.data().as_Value().start );
+
+        return AST::Pattern(lex.end_span(ps), AST::Pattern::Data::make_ValueLeftInc({ mv$(leftval), mv$(rightval) }));
+    }
     else
     {
         PUTBACK(tok, lex);
@@ -290,8 +304,18 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, AllowOrPattern allow_or)
         }
         } break;
 
-    case TOK_PAREN_OPEN:
-        return AST::Pattern( AST::Pattern::TagTuple(), lex.end_span(ps), Parse_PatternTuple(lex) );
+    case TOK_PAREN_OPEN: {
+        bool just_paren = false;
+        auto tpat = Parse_PatternTuple(lex, &just_paren);
+        // If it was `(<pat>)` (and not `(<pat>,)`) then unwrap to the first element
+        if(just_paren) {
+            assert(tpat.start.size() == 1);
+            assert(!tpat.has_wildcard);
+            assert(tpat.end.size() == 0);
+            return std::move(tpat.start.front());
+        }
+        return AST::Pattern( AST::Pattern::TagTuple(), lex.end_span(ps), std::move(tpat) );
+        }
     case TOK_SQUARE_OPEN:
         return Parse_PatternReal_Slice(lex);
     default:
@@ -305,7 +329,7 @@ AST::Pattern Parse_PatternReal_Path(TokenStream& lex, ProtoSpan ps, AST::Path pa
     switch( GET_TOK(tok, lex) )
     {
     case TOK_PAREN_OPEN:
-        return AST::Pattern( AST::Pattern::TagNamedTuple(), lex.end_span(ps), mv$(path), Parse_PatternTuple(lex) );
+        return AST::Pattern( AST::Pattern::TagNamedTuple(), lex.end_span(ps), mv$(path), Parse_PatternTuple(lex, nullptr) );
     case TOK_BRACE_OPEN:
         return Parse_PatternStruct(lex, ps, mv$(path));
     default:
@@ -396,11 +420,12 @@ AST::Pattern Parse_PatternReal_Slice(TokenStream& lex)
     }
 }
 
-::AST::Pattern::TuplePat Parse_PatternTuple(TokenStream& lex)
+::AST::Pattern::TuplePat Parse_PatternTuple(TokenStream& lex, bool *just_paren)
 {
     TRACE_FUNCTION;
     auto sp = lex.start_span();
     Token tok;
+    if(just_paren) *just_paren = false;
 
     ::std::vector<AST::Pattern> leading;
     while( LOOK_AHEAD(lex) != TOK_PAREN_CLOSE && LOOK_AHEAD(lex) != TOK_DOUBLE_DOT )
@@ -409,6 +434,8 @@ AST::Pattern Parse_PatternReal_Slice(TokenStream& lex)
 
         if( GET_TOK(tok, lex) != TOK_COMMA ) {
             CHECK_TOK(tok, TOK_PAREN_CLOSE);
+            // If this was just a parenthesised pattern, then indicate to the caller
+            if(just_paren) *just_paren = (leading.size() == 1);
             return AST::Pattern::TuplePat { mv$(leading), false, {} };
         }
     }

@@ -112,7 +112,7 @@ struct LowerHIR_ExprNode_Visitor:
                     e.dir,
                     e.spec.clone(),
                     lower(e.val_in),
-                    lower(e.val_out)
+                    e.val_out ? lower(e.val_out) : nullptr
                     }));
                 }
             }

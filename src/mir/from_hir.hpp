@@ -166,8 +166,11 @@ struct PatternBinding
         return split_slice.first != SIZE_MAX;
     }
 
+    bool operator==(const PatternBinding& x) const {
+        return field == x.field && binding == x.binding && split_slice == x.split_slice;
+    }
     friend ::std::ostream& operator<<(::std::ostream& os, const PatternBinding& x) {
-        os << *x.binding <<  x.field;
+        os << *x.binding << x.field;
         if( x.is_split_slice() ) {
             os << "[" << x.split_slice.first << "..-" << x.split_slice.second << "]";
         }
@@ -245,12 +248,12 @@ public:
     // Variable aliases (used for match guards)
     void add_variable_alias(const Span& sp, unsigned idx, HIR::PatternBinding::Type ty, MIR::LValue lv) {
         DEBUG("#" << idx << " = " << int(ty) << " " << lv);
-        ASSERT_BUG(sp, idx < m_variable_aliases.size(), "");
-        ASSERT_BUG(sp, m_variable_aliases[idx].second == MIR::LValue(), "");
+        ASSERT_BUG(sp, idx < m_variable_aliases.size(), "Variable alias #" << idx << " out of bounds");
+        ASSERT_BUG(sp, m_variable_aliases[idx].second == MIR::LValue(), "Variable alias #" << idx << " already exists: " << m_variable_aliases[idx].second << " setting " << lv);
         m_variable_aliases[idx] = std::make_pair(ty, mv$(lv));
     }
     const var_alias_t* get_variable_alias(const Span& sp, unsigned idx) const {
-        ASSERT_BUG(sp, idx < m_variable_aliases.size(), "");
+        ASSERT_BUG(sp, idx < m_variable_aliases.size(), "Variable alias #" << idx << " out of bounds");
         if(m_variable_aliases[idx].second == MIR::LValue()) {
             return nullptr;
         }

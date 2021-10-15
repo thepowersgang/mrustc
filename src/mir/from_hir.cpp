@@ -510,17 +510,89 @@ namespace {
             // TODO: How to represent inout in the MIR?
             // - Potentially a register specifier that links to one of the inputs
             // - OR: Just keep the parameter list as before - but now simplified to just one `Reg`
+            ::MIR::Statement::Data_Asm2 ent;
+            ent.options = node.m_options;
+            ent.lines = node.m_lines;
 
-            ::std::vector<MIR::AsmParam>  params;
             for(auto& v : node.m_params)
             {
-                //TU_MATCH_HDRA( (v), { )
-                //TU_ARMA(Const, e) {
-                //    }
-                //}
-                (void)v;
+                TU_MATCH_HDRA( (v), { )
+                TU_ARMA(Const, e) {
+                    // TODO: This constant needs to have been evaluated fully (so a `MIR::Constant` can be created)
+                    //ent.params.push_back(MIR::AsmParam::make_Const());
+                    TODO(node.span(), "asm! const");
+                    }
+                TU_ARMA(Sym, e) {
+                    ent.params.push_back(MIR::AsmParam::make_Sym(e.clone()));
+                    }
+                TU_ARMA(RegSingle, e) {
+                    std::unique_ptr<MIR::Param> input;
+                    std::unique_ptr<MIR::LValue> output;
+                    this->visit_node_ptr(e.val);
+                    switch(e.dir)
+                    {
+                    case AsmCommon::Direction::In:
+                        ASSERT_BUG(node.span(), e.val, "`in` register with no value");
+                        input = box$( m_builder.get_result_in_param(e.val->span(), e.val->m_res_type) );
+                        break;
+                    case AsmCommon::Direction::Out:
+                    case AsmCommon::Direction::LateOut:
+                        if(e.val)
+                        {
+                            output = box$( m_builder.get_result_unwrap_lvalue(e.val->span()) );
+                        }
+                        break;
+                    case AsmCommon::Direction::InOut:
+                    case AsmCommon::Direction::InLateOut:
+                        ASSERT_BUG(node.span(), e.val, "`inout` register with no value");
+                        output = box$( m_builder.get_result_unwrap_lvalue(e.val->span()) );
+                        input = std::make_unique<MIR::Param>( output->clone() );
+                        break;
+                    }
+                    ent.params.push_back(MIR::AsmParam::make_Reg({
+                        e.dir, std::move(e.spec), std::move(input), std::move(output)
+                        }));
+                    }
+                TU_ARMA(Reg, e) {
+                    std::unique_ptr<MIR::Param> input;
+                    std::unique_ptr<MIR::LValue> output;
+                    switch(e.dir)
+                    {
+                    case AsmCommon::Direction::In:
+                        ASSERT_BUG(node.span(), e.val_in, "`in` register with no input");
+                        this->visit_node_ptr(e.val_in);
+                        input = box$( m_builder.get_result_in_param(e.val_in->span(), e.val_in->m_res_type) );
+                        assert(!e.val_out);
+                        break;
+                    case AsmCommon::Direction::Out:
+                    case AsmCommon::Direction::LateOut:
+                        ASSERT_BUG(node.span(), !e.val_in, "`[late]out` register with input value");
+                        if(e.val_out)
+                        {
+                            this->visit_node_ptr(e.val_out);
+                            output = box$( m_builder.get_result_unwrap_lvalue(e.val_out->span()) );
+                        }
+                        break;
+                    case AsmCommon::Direction::InOut:
+                    case AsmCommon::Direction::InLateOut:
+                        ASSERT_BUG(node.span(), e.val_in, "`in[late]out` register with no input");
+                        this->visit_node_ptr(e.val_in);
+                        input = box$( m_builder.get_result_in_param(e.val_in->span(), e.val_in->m_res_type) );
+                        if( e.val_out )
+                        {
+                            this->visit_node_ptr(e.val_out);
+                            output = box$( m_builder.get_result_unwrap_lvalue(e.val_out->span()) );
+                        }
+                        break;
+                    }
+                    ent.params.push_back(MIR::AsmParam::make_Reg({
+                        e.dir, std::move(e.spec), std::move(input), std::move(output)
+                        }));
+                    }
+                }
             }
-            TODO(node.span(), "new asm!");
+            m_builder.push_stmt( node.span(), mv$(ent) );
+            m_builder.set_result(node.span(), ::MIR::RValue::make_Tuple({}));
         }
         void visit(::HIR::ExprNode_Return& node) override
         {
@@ -1502,8 +1574,13 @@ namespace {
                 BUG(node.span(), "Indexing unsupported type " << ty_val);
             TU_ARMA(Array, e) {
                 TU_MATCH_HDRA( (e.size), {)
-                default:
-                    BUG(node.span(), "Indexing with unknown size" << ty_val);
+                TU_ARMA(Unevaluated, se) {
+                    if(se.is_Generic() ) {
+                        limit_val = ::MIR::Constant::make_Generic(se.as_Generic());
+                        break;
+                    }
+                    BUG(node.span(), "Indexing with unknown size - " << e.size);
+                    }
                 TU_ARMA(Known, se) {
                     limit_val = ::MIR::Constant::make_Uint({ se, ::HIR::CoreType::Usize });
                     }

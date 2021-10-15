@@ -2312,8 +2312,8 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
 {
     TRACE_FUNCTION_FR("allow_refutable = " << allow_refutable << ", pat = " << pat, pat);
     if( pat.binding().is_valid() ) {
-        if( !pat.data().is_Any() && ! allow_refutable )
-            TODO(pat.span(), "Resolve_Absolute_Pattern - Encountered bound destructuring pattern");
+        //if( !pat.data().is_Any() && ! allow_refutable )
+        //    TODO(pat.span(), "Resolve_Absolute_Pattern - Encountered bound destructuring pattern");
         pat.binding().m_slot = context.push_var( pat.span(), pat.binding().m_name );
         DEBUG("- Binding #" << pat.binding().m_slot << " '" << pat.binding().m_name << "'");
     }
@@ -2356,6 +2356,15 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
         Resolve_Absolute_Pattern(context, allow_refutable,  *e.sub);
         ),
     (Value,
+        if( ! allow_refutable )
+        {
+            // TODO: If this is a single value of a unit-like struct, accept
+            BUG(pat.span(), "Resolve_Absolute_Pattern - Encountered refutable pattern where only irrefutable allowed - " << pat);
+        }
+        Resolve_Absolute_PatternValue(context, pat.span(), e.start);
+        Resolve_Absolute_PatternValue(context, pat.span(), e.end);
+        ),
+    (ValueLeftInc,
         if( ! allow_refutable )
         {
             // TODO: If this is a single value of a unit-like struct, accept
@@ -2493,6 +2502,7 @@ void Resolve_Absolute_ImplItems(Context& item_context,  ::std::vector< ::AST::Im
         (Static,
             DEBUG("Static - " << i.name);
             Resolve_Absolute_Type( item_context, e.type() );
+            auto _h = item_context.enter_rootblock();
             Resolve_Absolute_Expr( item_context, e.value() );
             )
         )
