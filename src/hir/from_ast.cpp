@@ -1489,9 +1489,10 @@ namespace {
 
     if( args.size() > 0 && args.front().first.m_binding.m_name == "self" )
     {
-        const auto& arg_self_ty = args.front().second;
+        const auto& sp = f.args()[0].first.span();
+        auto& arg_self_ty = args.front().second;
 
-        auto is_valid_custom_receiver = [&](const ::HIR::TypeRef& ty)->bool {
+        auto is_valid_custom_receiver = [&](::HIR::TypeRef& ty)->bool {
             // - The path must include Self as a (the only?) type param.
             if( const auto* e = ty.data().opt_Path() )
             {
@@ -1504,11 +1505,15 @@ namespace {
                     //}
                     // TODO: Allow if the type parm is a valid receiver it type too
                     // - In general, it's valid if there's a deref chain from this type to `self` (maybe could check that in a later pass, instead of erroring here)
-                    if( pe->m_params.m_types[0] == explicit_self_type || pe->m_params.m_types[0] == real_self_type ) {
+                    if( pe->m_params.m_types[0] == explicit_self_type ) {
                     }
-                    else if( TU_TEST1(pe->m_params.m_types[0].data(), Borrow, .inner.operator==(explicit_self_type)) ) {
+                    else if( pe->m_params.m_types[0] == real_self_type ) {
+                        ty.data_mut().as_Path().path.m_data.as_Generic().m_params.m_types[0] = explicit_self_type.clone();
                     }
-                    else if( TU_TEST1(pe->m_params.m_types[0].data(), Borrow, .inner.operator==(real_self_type)) ) {
+                    else if( TU_TEST1(pe->m_params.m_types[0].data(), Borrow, .inner == explicit_self_type) ) {
+                    }
+                    else if( TU_TEST1(pe->m_params.m_types[0].data(), Borrow, .inner == real_self_type) ) {
+                        ty.data_mut().as_Path().path.m_data.as_Generic().m_params.m_types[0].data_mut().as_Borrow().inner = explicit_self_type.clone();
                     }
                     else {
                         ERROR(sp, E0000, "Unsupported receiver type - " << arg_self_ty);
@@ -1519,10 +1524,10 @@ namespace {
             return false;
             };
 
-        if( arg_self_ty == explicit_self_type || arg_self_ty == real_self_type ) {
+        if( arg_self_ty == explicit_self_type  || arg_self_ty == real_self_type ) {
             receiver = ::HIR::Function::Receiver::Value;
         }
-        else if(const auto* e = arg_self_ty.data().opt_Borrow() ) {
+        else if(auto* e = arg_self_ty.data_mut().opt_Borrow() ) {
             if( e->inner == explicit_self_type || e->inner == real_self_type )
             {
                 switch(e->type)
@@ -1540,14 +1545,15 @@ namespace {
                 }
             }
         }
-        else if(const auto* e = arg_self_ty.data().opt_Path()) {
+        else if(auto* e = arg_self_ty.data_mut().opt_Path()) {
             // Box - Compare with `owned_box` lang item
-            if(const auto* pe = e->path.m_data.opt_Generic()) {
+            if(auto* pe = e->path.m_data.opt_Generic()) {
                 auto p = g_crate_ptr->get_lang_item_path_opt("owned_box");
                 if( pe->m_path == p )
                 {
-                    if( pe->m_params.m_types.size() == 1 && (pe->m_params.m_types[0] == explicit_self_type || pe->m_params.m_types[0] == real_self_type) )
+                    if( pe->m_params.m_types.size() >= 1 && (pe->m_params.m_types[0] == explicit_self_type || pe->m_params.m_types[0] == real_self_type) )
                     {
+                        pe->m_params.m_types[0] = explicit_self_type.clone();
                         receiver = ::HIR::Function::Receiver::Box;
                     }
                 }

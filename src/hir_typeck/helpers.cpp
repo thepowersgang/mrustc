@@ -4352,7 +4352,7 @@ const ::HIR::TypeRef* TraitResolution::check_method_receiver(const Span& sp, con
                 }
             }   getself;
             if( fcn.m_args.front().second .match_test_generics(sp, ty, this->m_ivars.callback_resolve_infer(), getself) ) {
-                assert(getself.detected_self_ty);
+                ASSERT_BUG(sp, getself.detected_self_ty, "Unable to determine receiver type when matching " << fcn.m_args.front().second << " and " << ty);
                 return &this->m_ivars.get_type(*getself.detected_self_ty);
             }
         }
