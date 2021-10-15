@@ -29,8 +29,8 @@ public:
         item_t* operator->() { return &**m_inner; }
         iterator& operator++() { ++m_inner; return *this; }
         iterator operator+(size_t i) const { return iterator(m_inner + i); }
-        bool operator==(const iterator& x) const { return m_inner.operator==(x.m_inner); }
-        bool operator!=(const iterator& x) const { return m_inner.operator!=(x.m_inner); }
+        bool operator==(const iterator& x) const { return m_inner == x.m_inner; }
+        bool operator!=(const iterator& x) const { return m_inner != x.m_inner; }
         ptrdiff_t operator-(const iterator& x) const { return m_inner - x.m_inner; }
     };
     class const_iterator {
@@ -43,8 +43,8 @@ public:
         const item_t* operator->() { return &**m_inner; }
         const_iterator& operator++() { ++m_inner; return *this; }
         const_iterator operator+(size_t i) const { return const_iterator(m_inner + i); }
-        bool operator==(const const_iterator& x) const { return m_inner.operator==(x.m_inner); }
-        bool operator!=(const const_iterator& x) const { return m_inner.operator!=(x.m_inner); }
+        bool operator==(const const_iterator& x) const { return m_inner == x.m_inner; }
+        bool operator!=(const const_iterator& x) const { return m_inner != x.m_inner; }
         ptrdiff_t operator-(const const_iterator& x) const { return m_inner - x.m_inner; }
     };
 

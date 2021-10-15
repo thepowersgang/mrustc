@@ -1394,7 +1394,7 @@
     {
         AsmCommon::Options  o;
         const uint16_t bitflag_1 = m_in.read_u16();
-        #define BIT(i,fld)  if(fld & (1 << (i))) fld = true
+        #define BIT(i,fld)  if(bitflag_1 & (1 << (i))) fld = true
         BIT(0, o.pure);
         BIT(1, o.nomem);
         BIT(2, o.readonly);
