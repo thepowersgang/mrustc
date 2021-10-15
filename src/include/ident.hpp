@@ -100,8 +100,10 @@ struct Ident
 
         // Returns true if an ident with hygine `source` can see an ident with this hygine
         bool is_visible(const Hygiene& source) const;
-        bool operator==(const Hygiene& x) const { return m_inner->contexts == x->contexts && m_inner->search_module == x->search_module; }
-        //bool operator!=(const Hygiene& x) const { return scope_index != x.scope_index; }
+        Ordering ord(const Hygiene& x) const { ORD(m_inner->contexts, x->contexts); /*ORD(*m_inner->search_module, *x->search_module);*/ return OrdEqual; }
+        bool operator==(const Hygiene& x) const { return ord(x) == OrdEqual; }
+        bool operator!=(const Hygiene& x) const { return ord(x) != OrdEqual; }
+        bool operator<(const Hygiene& x) const { return ord(x) == OrdLess; }
 
         friend ::std::ostream& operator<<(::std::ostream& os, const Hygiene& v);
     };
@@ -144,7 +146,13 @@ struct Ident
     bool operator!=(const Ident& x) const {
         return !(*this == x);
     }
-    bool operator<(const Ident& x) const;
+    bool operator<(const Ident& x) const {
+        if(this->name != x.name)
+            return this->name < x.name;
+        if(this->hygiene != x.hygiene)
+            return this->hygiene < x.hygiene;
+        return false;
+    }
 
     friend ::std::ostream& operator<<(::std::ostream& os, const Ident& x);
 };

@@ -3627,6 +3627,7 @@ void Context::possible_equate_ivar_unknown(const Span& sp, unsigned int ivar_ind
 void Context::add_var(const Span& sp, unsigned int index, const RcString& name, ::HIR::TypeRef type) {
     DEBUG("(" << index << " " << name << " : " << type << ")");
     assert(index != ~0u);
+    ASSERT_BUG(sp, type != HIR::TypeRef(), "Unset ivar in variable type");
     if( m_bindings.size() <= index )
         m_bindings.resize(index+1);
     if( m_bindings[index].name == "" ) {
@@ -3641,6 +3642,7 @@ void Context::add_var(const Span& sp, unsigned int index, const RcString& name, 
 
 const ::HIR::TypeRef& Context::get_var(const Span& sp, unsigned int idx) const {
     if( idx < this->m_bindings.size() ) {
+        ASSERT_BUG(sp, this->m_bindings[idx].ty != HIR::TypeRef(), "Local #" << idx << " `" << this->m_bindings[idx].name << "` with no populated type");
         return this->m_bindings[idx].ty;
     }
     else {
