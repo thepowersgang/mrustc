@@ -11,6 +11,7 @@
 #include <hir/expr.hpp> // t_trait_list
 
 #include "common.hpp"
+#include "resolve_common.hpp"
 
 static inline bool type_is_unbounded_infer(const ::HIR::TypeRef& ty)
 {
@@ -167,49 +168,24 @@ private:
     IVar& get_pointed_ivar(unsigned int slot) const;
 };
 
-class TraitResolution
+class TraitResolution:
+    public TraitResolveCommon
 {
     const HMTypeInferrence& m_ivars;
 
-    const ::HIR::Crate& m_crate;
-    const ::HIR::GenericParams* m_impl_params;
-    const ::HIR::GenericParams* m_item_params;
     const ::HIR::SimplePath&    m_vis_path;
 
-    ::std::map< ::HIR::TypeRef, ::HIR::TypeRef> m_type_equalities;
-    // A pre-calculated list of trait bounds
-    ::std::set< std::pair< ::HIR::TypeRef, ::HIR::TraitPath> > m_trait_bounds;
-
-    ::HIR::SimplePath   m_lang_Box;
     mutable ::std::vector< ::HIR::TypeRef>  m_eat_active_stack;
 public:
     TraitResolution(const HMTypeInferrence& ivars, const ::HIR::Crate& crate, const ::HIR::GenericParams* impl_params, const ::HIR::GenericParams* item_params, const ::HIR::SimplePath& vis_path):
-        m_ivars(ivars),
-        m_crate(crate),
-        m_impl_params( impl_params ),
-        m_item_params( item_params )
+        TraitResolveCommon(crate)
+        ,m_ivars(ivars)
         ,m_vis_path(vis_path)
     {
-        prep_indexes();
-        m_lang_Box = crate.get_lang_item_path_opt("owned_box");
+        m_impl_generics = impl_params;
+        m_item_generics = item_params;
+        prep_indexes(Span());
     }
-
-    const ::HIR::GenericParams& impl_params() const {
-        static ::HIR::GenericParams empty;
-        return m_impl_params ? *m_impl_params : empty;
-    }
-    const ::HIR::GenericParams& item_params() const {
-        static ::HIR::GenericParams empty;
-        return m_item_params ? *m_item_params : empty;
-    }
-
-    const ::HIR::TypeRef& get_const_param_type(const Span& sp, unsigned binding) const;
-
-    void prep_indexes();
-private:
-    void prep_indexes__add_equality(const Span& sp, ::HIR::TypeRef long_ty, ::HIR::TypeRef short_ty);
-    void prep_indexes__add_trait_bound(const Span& sp, const ::HIR::TypeRef& ty, const ::HIR::TraitPath& path);
-public:
 
     ::HIR::Compare compare_pp(const Span& sp, const ::HIR::PathParams& left, const ::HIR::PathParams& right) const;
 
@@ -231,9 +207,10 @@ public:
         }
     }
 
-    /// Iterate over in-scope bounds (function then top)
-    bool iterate_bounds( ::std::function<bool(const ::HIR::GenericBound&)> cb) const;
-    bool iterate_bounds_traits(const Span& sp, ::std::function<bool(const ::HIR::TypeRef&, const ::HIR::TraitPath& trait)> cb) const;
+    typedef ::std::function<bool(HIR::Compare cmp, const ::HIR::TypeRef&, const ::HIR::GenericPath& trait_path, const CachedBound& info)> t_cb_bound;
+    bool iterate_bounds_traits(const Span& sp, const HIR::TypeRef& type, const HIR::SimplePath& trait, t_cb_bound cb) const;
+    bool iterate_bounds_traits(const Span& sp, const HIR::TypeRef& type, t_cb_bound cb) const;
+    bool iterate_bounds_traits(const Span& sp, t_cb_bound cb) const;
     bool iterate_aty_bounds(const Span& sp, const ::HIR::Path::Data::Data_UfcsKnown& pe, ::std::function<bool(const ::HIR::TraitPath&)> cb) const;
 
     typedef ::std::function<bool(const ::HIR::TypeRef&, const ::HIR::PathParams&, const ::HIR::TraitPath::assoc_list_t&)> t_cb_trait_impl;

@@ -117,6 +117,7 @@ OBJ +=  hir/type.o hir/path.o hir/expr.o hir/pattern.o
 OBJ +=  hir/visitor.o hir/crate_post_load.o
 OBJ += hir_conv/expand_type.o hir_conv/constant_evaluation.o hir_conv/resolve_ufcs.o hir_conv/bind.o hir_conv/markings.o
 OBJ += hir_typeck/outer.o hir_typeck/common.o hir_typeck/helpers.o hir_typeck/static.o hir_typeck/impl_ref.o
+OBJ += hir_typeck/resolve_common.o
 OBJ += hir_typeck/expr_visit.o
 OBJ += hir_typeck/expr_cs.o hir_typeck/expr_cs__enum.o
 OBJ += hir_typeck/expr_check.o

@@ -314,12 +314,11 @@ namespace {
                     }
                     else
                     {
-                        const auto& lang_Unsize = this->context.m_crate.get_lang_item_path(sp, "unsize");
-                        bool found = this->context.m_resolve.find_trait_impls(sp, lang_Unsize, ::HIR::PathParams(e.inner.clone()), s_e.inner, [](auto , auto){ return true; });
+                        bool found = this->context.m_resolve.find_trait_impls(sp, this->context.m_resolve.m_lang_Unsize, ::HIR::PathParams(e.inner.clone()), s_e.inner, [](auto , auto){ return true; });
                         if( found ) {
                             auto ty = ::HIR::TypeRef::new_borrow(e.type, e.inner.clone());
                             node.m_value = NEWNODE(ty.clone(), sp, _Unsize, mv$(node.m_value), ty.clone());
-                            this->context.add_trait_bound(sp, s_e.inner,  lang_Unsize, ::HIR::PathParams(e.inner.clone()));
+                            this->context.add_trait_bound(sp, s_e.inner, this->context.m_resolve.m_lang_Unsize, ::HIR::PathParams(e.inner.clone()));
                         }
                         else {
                             this->context.equate_types(sp, e.inner, s_e.inner);
@@ -398,7 +397,7 @@ namespace {
             no_revisit(node);
         }
         void visit(::HIR::ExprNode_Index& node) override {
-            const auto& lang_Index = this->context.m_crate.get_lang_item_path(node.span(), "index");
+            const auto& lang_Index = this->context.m_crate.get_lang_item_path(node.span(), "index");    // TODO: Pre-load
             const auto& val_ty = this->context.get_type(node.m_value->m_res_type);
             //const auto& idx_ty = this->context.get_type(node.m_index->m_res_type);
             const auto& idx_ty = this->context.get_type(node.m_cache.index_ty);
@@ -659,10 +658,7 @@ namespace {
                 return ;
             }
 
-            const auto& lang_FnOnce = this->context.m_crate.get_lang_item_path(node.span(), "fn_once");
-            const auto& lang_FnMut  = this->context.m_crate.get_lang_item_path(node.span(), "fn_mut");
-            const auto& lang_Fn     = this->context.m_crate.get_lang_item_path(node.span(), "fn");
-
+            const auto& lang_FnOnce = this->context.m_resolve.m_lang_FnOnce;
 
             // 1. Create a param set with a single tuple (of all argument types)
             ::HIR::PathParams   trait_pp;
@@ -1302,6 +1298,7 @@ namespace {
             ::HIR::ExprVisitorDef::visit(node);
         }
         void visit(::HIR::ExprNode_CallValue& node) override {
+
             for(auto& ty : node.m_arg_types)
                 this->check_type_resolved_top(node.span(), ty);
             
@@ -1327,12 +1324,9 @@ namespace {
                         trait_pp.m_types.push_back( ::HIR::TypeRef( mv$(arg_types) ) );
                     }
 
-                    const auto& lang_FnMut  = this->context.m_crate.get_lang_item_path(node.span(), "fn_mut");
-                    const auto& lang_Fn     = this->context.m_crate.get_lang_item_path(node.span(), "fn");
-
                     // 3. Locate the most permissive implemented Fn* trait (Fn first, then FnMut, then assume just FnOnce)
                     // NOTE: Borrowing is added by the expansion to CallPath
-                    if( this->context.m_resolve.find_trait_impls(node.span(), lang_Fn, trait_pp, ty, [&](auto impl, auto cmp) {
+                    if( this->context.m_resolve.find_trait_impls(node.span(), this->context.m_resolve.m_lang_Fn, trait_pp, ty, [&](auto impl, auto cmp) {
                         ASSERT_BUG(node.span(), cmp == ::HIR::Compare::Equal, "");
                         return true;
                         }) )
@@ -1340,7 +1334,7 @@ namespace {
                         DEBUG("-- Using Fn");
                         node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::Fn;
                     }
-                    else if( this->context.m_resolve.find_trait_impls(node.span(), lang_FnMut, trait_pp, ty, [&](auto impl, auto cmp) {
+                    else if( this->context.m_resolve.find_trait_impls(node.span(), this->context.m_resolve.m_lang_FnMut, trait_pp, ty, [&](auto impl, auto cmp) {
                         ASSERT_BUG(node.span(), cmp == ::HIR::Compare::Equal, "");
                         return true;
                         }) )
@@ -1408,6 +1402,7 @@ namespace {
         void check_type_resolved_top(const Span& sp, ::HIR::TypeRef& ty) const {
             check_type_resolved(sp, ty, ty);
             ty = this->context.m_resolve.expand_associated_types(sp, mv$(ty));
+            DEBUG(ty);
         }
 
         void check_type_resolved_constgeneric(const Span& sp, ::HIR::ConstGeneric& v, const ::HIR::TypeRef& top_type) const
@@ -4084,14 +4079,13 @@ namespace {
         };
         if( H::type_is_bounded(src) )
         {
-            const auto& lang_Unsize = context.m_crate.get_lang_item_path(sp, "unsize");
             DEBUG("Search for `Unsize<" << dst << ">` impl for `" << src << "`");
 
             ImplRef best_impl;
             unsigned int count = 0;
 
             ::HIR::PathParams   pp { dst.clone() };
-            bool found = context.m_resolve.find_trait_impls(sp, lang_Unsize, pp, src, [&best_impl,&count,&context](auto impl, auto cmp){
+            bool found = context.m_resolve.find_trait_impls(sp, context.m_resolve.m_lang_Unsize, pp, src, [&best_impl,&count,&context](auto impl, auto cmp){
                     DEBUG("[check_unsize_tys] Found impl " << impl << (cmp == ::HIR::Compare::Fuzzy ? " (fuzzy)" : ""));
                     if( !impl.overlaps_with(context.m_crate, best_impl) )
                     {
@@ -4280,7 +4274,7 @@ namespace {
         // TODO: Should ErasedType be counted here? probably not.
         if( H::type_is_bounded(src) || H::type_is_bounded(dst) )
         {
-            const auto& lang_CoerceUnsized = context.m_crate.get_lang_item_path(sp, "coerce_unsized");
+            const auto& lang_CoerceUnsized = context.m_crate.get_lang_item_path(sp, "coerce_unsized");  // TODO: Pre-load
             // `CoerceUnsized<U> for T` means `T -> U`
 
             ::HIR::PathParams   pp { dst.clone() };
@@ -5042,12 +5036,32 @@ namespace {
                             }
 
                             // Edge case: Might be just outright identical
-                            if( v.name == "" && possible_impl.impl_ty == impl_ty && possible_impl.params == impl_params )
+                            if( possible_impl.impl_ty == impl_ty && possible_impl.params == impl_params )
                             {
-                                DEBUG("[check_associated] HACK: Same type and params, and don't care about ATYs");
-                                was_used = true;
-                                count -= 1;
-                                break;
+                                auto t1 = v.name == "" ? HIR::TypeRef() : possible_impl.impl_ref.get_type(v.name.c_str());
+                                auto t2 = v.name == "" ? HIR::TypeRef() : impl.get_type(v.name.c_str());
+                                if(v.name == "" || t1 == t2 || t2 == HIR::TypeRef())
+                                {
+                                    DEBUG("[check_associated] HACK: Same type and params, and ATY matches or this impl doesn't have it");
+                                    was_used = true;
+                                    count -= 1;
+                                    break;
+                                }
+                                else if( t1 == HIR::TypeRef() )
+                                {
+                                    DEBUG("[check_associated] - Same type and params, and has an ATY (while original doesn't)");
+                                    // NOTE: This picks the _least_ specific impl
+                                    possible_impl.impl_ty = ::std::move(impl_ty);
+                                    possible_impl.params = ::std::move(impl_params);
+                                    possible_impl.impl_ref = ::std::move(impl);
+                                    was_used = true;
+                                    count -= 1;
+                                    break;
+                                }
+                                else
+                                {
+                                    DEBUG("[check_associated] HACK: Same type and params, but ATY mismatch - " << possible_impl.impl_ref.get_type(v.name.c_str()) << " != " << impl.get_type(v.name.c_str()));
+                                }
                             }
                         }
                         if( !was_used )
@@ -5100,7 +5114,7 @@ namespace {
                 // There's still an ivar (or an unbound UFCS), keep trying
                 return false;
             }
-            else if( v.trait == context.m_crate.get_lang_item_path(sp, "unsize") )
+            else if( v.trait == context.m_resolve.m_lang_Unsize )
             {
                 // TODO: Detect if this was a compiler-generated bound, or was actually in the code.
 
