@@ -83,3 +83,189 @@
 +pub fn check_for(x: Feature) -> bool {
 +    false
 +}
+# macOS on Apple Silicon support
+--- src/liblibc/src/unix/bsd/apple/mod.rs
++++ src/liblibc/src/unix/bsd/apple/mod.rs
+@@ -2388,9 +2388,9 @@ extern {
+     pub fn __error() -> *mut ::c_int;
+     pub fn backtrace(buf: *mut *mut ::c_void,
+                      sz: ::c_int) -> ::c_int;
+-    #[cfg_attr(target_os = "macos", link_name = "statfs$INODE64")]
++    #[cfg_attr(all(target_os = "macos", target_arch = "x86_64"), link_name = "statfs$INODE64")]
+     pub fn statfs(path: *const ::c_char, buf: *mut statfs) -> ::c_int;
+-    #[cfg_attr(target_os = "macos", link_name = "fstatfs$INODE64")]
++    #[cfg_attr(all(target_os = "macos", target_arch = "x86_64"), link_name = "fstatfs$INODE64")]
+     pub fn fstatfs(fd: ::c_int, buf: *mut statfs) -> ::c_int;
+     pub fn kevent(kq: ::c_int,
+                   changelist: *const ::kevent,
+
+--- src/liblibc/src/unix/bsd/mod.rs
++++ src/liblibc/src/unix/bsd/mod.rs
+@@ -402,7 +402,7 @@ extern {
+                       euid: *mut ::uid_t,
+                       egid: *mut ::gid_t) -> ::c_int;
+ 
+-    #[cfg_attr(target_os = "macos", link_name = "glob$INODE64")]
++    #[cfg_attr(all(target_os = "macos", target_arch = "x86_64"), link_name = "glob$INODE64")]
+     #[cfg_attr(target_os = "netbsd", link_name = "__glob30")]
+     #[cfg_attr(target_os = "freebsd", link_name = "glob@FBSD_1.0")]
+     pub fn glob(pattern: *const ::c_char,
+
+--- src/liblibc/src/unix/mod.rs
++++ src/liblibc/src/unix/mod.rs
+@@ -390,14 +390,14 @@ extern {
+                link_name = "fchmod$UNIX2003")]
+     pub fn fchmod(fd: ::c_int, mode: mode_t) -> ::c_int;
+ 
+-    #[cfg_attr(target_os = "macos", link_name = "fstat$INODE64")]
++    #[cfg_attr(all(target_os = "macos", target_arch = "x86_64"), link_name = "fstat$INODE64")]
+     #[cfg_attr(target_os = "netbsd", link_name = "__fstat50")]
+     #[cfg_attr(target_os = "freebsd", link_name = "fstat@FBSD_1.0")]
+     pub fn fstat(fildes: ::c_int, buf: *mut stat) -> ::c_int;
+ 
+     pub fn mkdir(path: *const c_char, mode: mode_t) -> ::c_int;
+ 
+-    #[cfg_attr(target_os = "macos", link_name = "stat$INODE64")]
++    #[cfg_attr(all(target_os = "macos", target_arch = "x86_64"), link_name = "stat$INODE64")]
+     #[cfg_attr(target_os = "netbsd", link_name = "__stat50")]
+     #[cfg_attr(target_os = "freebsd", link_name = "stat@FBSD_1.0")]
+     pub fn stat(path: *const c_char, buf: *mut stat) -> ::c_int;
+@@ -431,11 +431,11 @@ extern {
+                link_name = "fdopendir$INODE64$UNIX2003")]
+     pub fn fdopendir(fd: ::c_int) -> *mut ::DIR;
+ 
+-    #[cfg_attr(target_os = "macos", link_name = "readdir$INODE64")]
++    #[cfg_attr(all(target_os = "macos", target_arch = "x86_64"), link_name = "readdir$INODE64")]
+     #[cfg_attr(target_os = "netbsd", link_name = "__readdir30")]
+     #[cfg_attr(target_os = "freebsd", link_name = "readdir@FBSD_1.0")]
+     pub fn readdir(dirp: *mut ::DIR) -> *mut ::dirent;
+-    #[cfg_attr(target_os = "macos", link_name = "readdir_r$INODE64")]
++    #[cfg_attr(all(target_os = "macos", target_arch = "x86_64"), link_name = "readdir_r$INODE64")]
+     #[cfg_attr(target_os = "netbsd", link_name = "__readdir_r30")]
+     #[cfg_attr(target_os = "solaris", link_name = "__posix_readdir_r")]
+     #[cfg_attr(target_os = "freebsd", link_name = "readdir_r@FBSD_1.0")]
+@@ -460,7 +460,7 @@ extern {
+     pub fn fchownat(dirfd: ::c_int, pathname: *const ::c_char,
+                     owner: ::uid_t, group: ::gid_t,
+                     flags: ::c_int) -> ::c_int;
+-    #[cfg_attr(target_os = "macos", link_name = "fstatat$INODE64")]
++    #[cfg_attr(all(target_os = "macos", target_arch = "x86_64"), link_name = "fstatat$INODE64")]
+     #[cfg_attr(target_os = "freebsd", link_name = "fstatat@FBSD_1.1")]
+     pub fn fstatat(dirfd: ::c_int, pathname: *const ::c_char,
+                    buf: *mut stat, flags: ::c_int) -> ::c_int;
+@@ -613,7 +613,7 @@ extern {
+     pub fn if_indextoname(ifindex: ::c_uint,
+                           ifname: *mut ::c_char) -> *mut ::c_char;
+ 
+-    #[cfg_attr(target_os = "macos", link_name = "lstat$INODE64")]
++    #[cfg_attr(all(target_os = "macos", target_arch = "x86_64"), link_name = "lstat$INODE64")]
+     #[cfg_attr(target_os = "netbsd", link_name = "__lstat50")]
+     #[cfg_attr(target_os = "freebsd", link_name = "lstat@FBSD_1.0")]
+     pub fn lstat(path: *const c_char, buf: *mut stat) -> ::c_int;
+
+--- src/vendor/libc/src/unix/bsd/apple/mod.rs
++++ src/vendor/libc/src/unix/bsd/apple/mod.rs
+@@ -2376,9 +2376,9 @@ extern {
+     pub fn __error() -> *mut ::c_int;
+     pub fn backtrace(buf: *mut *mut ::c_void,
+                      sz: ::c_int) -> ::c_int;
+-    #[cfg_attr(target_os = "macos", link_name = "statfs$INODE64")]
++    #[cfg_attr(all(target_os = "macos", target_arch = "x86_64"), link_name = "statfs$INODE64")]
+     pub fn statfs(path: *const ::c_char, buf: *mut statfs) -> ::c_int;
+-    #[cfg_attr(target_os = "macos", link_name = "fstatfs$INODE64")]
++    #[cfg_attr(all(target_os = "macos", target_arch = "x86_64"), link_name = "fstatfs$INODE64")]
+     pub fn fstatfs(fd: ::c_int, buf: *mut statfs) -> ::c_int;
+     pub fn kevent(kq: ::c_int,
+                   changelist: *const ::kevent,
+
+--- src/vendor/libc/src/unix/mod.rs
++++ src/vendor/libc/src/unix/mod.rs
+@@ -382,14 +382,14 @@ extern {
+                link_name = "fchmod$UNIX2003")]
+     pub fn fchmod(fd: ::c_int, mode: mode_t) -> ::c_int;
+ 
+-    #[cfg_attr(target_os = "macos", link_name = "fstat$INODE64")]
++    #[cfg_attr(all(target_os = "macos", target_arch = "x86_64"), link_name = "fstat$INODE64")]
+     #[cfg_attr(target_os = "netbsd", link_name = "__fstat50")]
+     #[cfg_attr(target_os = "freebsd", link_name = "fstat@FBSD_1.0")]
+     pub fn fstat(fildes: ::c_int, buf: *mut stat) -> ::c_int;
+ 
+     pub fn mkdir(path: *const c_char, mode: mode_t) -> ::c_int;
+ 
+-    #[cfg_attr(target_os = "macos", link_name = "stat$INODE64")]
++    #[cfg_attr(all(target_os = "macos", target_arch = "x86_64"), link_name = "stat$INODE64")]
+     #[cfg_attr(target_os = "netbsd", link_name = "__stat50")]
+     #[cfg_attr(target_os = "freebsd", link_name = "stat@FBSD_1.0")]
+     pub fn stat(path: *const c_char, buf: *mut stat) -> ::c_int;
+@@ -416,11 +416,11 @@ extern {
+                link_name = "opendir$INODE64$UNIX2003")]
+     #[cfg_attr(target_os = "netbsd", link_name = "__opendir30")]
+     pub fn opendir(dirname: *const c_char) -> *mut ::DIR;
+-    #[cfg_attr(target_os = "macos", link_name = "readdir$INODE64")]
++    #[cfg_attr(all(target_os = "macos", target_arch = "x86_64"), link_name = "readdir$INODE64")]
+     #[cfg_attr(target_os = "netbsd", link_name = "__readdir30")]
+     #[cfg_attr(target_os = "freebsd", link_name = "readdir@FBSD_1.0")]
+     pub fn readdir(dirp: *mut ::DIR) -> *mut ::dirent;
+-    #[cfg_attr(target_os = "macos", link_name = "readdir_r$INODE64")]
++    #[cfg_attr(all(target_os = "macos", target_arch = "x86_64"), link_name = "readdir_r$INODE64")]
+     #[cfg_attr(target_os = "netbsd", link_name = "__readdir_r30")]
+     #[cfg_attr(target_os = "solaris", link_name = "__posix_readdir_r")]
+     #[cfg_attr(target_os = "freebsd", link_name = "readdir_r@FBSD_1.0")]
+@@ -445,7 +445,7 @@ extern {
+     pub fn fchownat(dirfd: ::c_int, pathname: *const ::c_char,
+                     owner: ::uid_t, group: ::gid_t,
+                     flags: ::c_int) -> ::c_int;
+-    #[cfg_attr(target_os = "macos", link_name = "fstatat$INODE64")]
++    #[cfg_attr(all(target_os = "macos", target_arch = "x86_64"), link_name = "fstatat$INODE64")]
+     #[cfg_attr(target_os = "freebsd", link_name = "fstatat@FBSD_1.1")]
+     pub fn fstatat(dirfd: ::c_int, pathname: *const ::c_char,
+                    buf: *mut stat, flags: ::c_int) -> ::c_int;
+@@ -598,7 +598,7 @@ extern {
+     pub fn if_indextoname(ifindex: ::c_uint,
+                           ifname: *mut ::c_char) -> *mut ::c_char;
+ 
+-    #[cfg_attr(target_os = "macos", link_name = "lstat$INODE64")]
++    #[cfg_attr(all(target_os = "macos", target_arch = "x86_64"), link_name = "lstat$INODE64")]
+     #[cfg_attr(target_os = "netbsd", link_name = "__lstat50")]
+     #[cfg_attr(target_os = "freebsd", link_name = "lstat@FBSD_1.0")]
+     pub fn lstat(path: *const c_char, buf: *mut stat) -> ::c_int;
+# Backport of https://github.com/servo/core-foundation-rs/commit/aa6d1cd4c15561b48c24322527e3d9e60f603db4
+--- src/vendor/core-foundation-sys/src/attributed_string.rs
++++ src/vendor/core-foundation-sys/src/attributed_string.rs
+@@ -52,5 +52,4 @@ extern {
+         value: CFTypeRef,
+     );
+ 
+-    pub fn CFMutableAttributedStringGetTypeID() -> CFTypeID;
+ }
+diff --git a/core-foundation/src/attributed_string.rs b/core-foundation/src/attributed_string.rs
+index e0fa576..c99775d 100644
+--- src/vendor/core-foundation/src/attributed_string.rs
++++ src/vendor/core-foundation/src/attributed_string.rs
+@@ -41,7 +41,7 @@ impl CFAttributedString {
+ declare_TCFType!{
+     CFMutableAttributedString, CFMutableAttributedStringRef
+ }
+-impl_TCFType!(CFMutableAttributedString, CFMutableAttributedStringRef, CFMutableAttributedStringGetTypeID);
++impl_TCFType!(CFMutableAttributedString, CFMutableAttributedStringRef, CFAttributedStringGetTypeID);
+ 
+ impl CFMutableAttributedString {
+     #[inline]
+@@ -83,3 +83,16 @@ impl Default for CFMutableAttributedString {
+         Self::new()
+     }
+ }
++
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn attributed_string_type_id_comparison() {
++        // CFMutableAttributedString TypeID must be equal to CFAttributedString TypeID.
++        // Compilation must not fail.
++        assert_eq!(<CFAttributedString as TCFType>::type_id(), <CFMutableAttributedString as TCFType>::type_id());
++    }
++}
+

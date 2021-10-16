@@ -1027,6 +1027,10 @@ void PackageManifest::load_build_script(const ::std::string& path)
                     else if( ty_str == "dylib" ) {
                         type = "dynamic";
                     }
+                    // on Apple operating systems only, an application framework.
+                    else if( ty_str == "framework" ) {
+                        type = "framework";
+                    }
                     else {
                         throw ::std::runtime_error(::format("TODO: rustc-link-lib ", ty_str));
                     }

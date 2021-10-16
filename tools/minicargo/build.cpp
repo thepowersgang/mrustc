@@ -937,7 +937,12 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         args.push_back("-L"); args.push_back(dir.second.c_str());
     }
     for(const auto& lib : manifest.build_script_output().rustc_link_lib) {
-        args.push_back("-l"); args.push_back(lib.second.c_str());
+        if(!strcmp(lib.first, "framework")) {
+            args.push_back("-l"); args.push_back(format("framework=",lib.second.c_str()));
+        }
+        else {
+            args.push_back("-l"); args.push_back(lib.second.c_str());
+        }
     }
     for(const auto& cfg : manifest.build_script_output().rustc_cfg) {
         args.push_back("--cfg"); args.push_back(cfg.c_str());

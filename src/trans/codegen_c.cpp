@@ -1194,8 +1194,14 @@ namespace {
                             args.push_back(l_d.second);
                             break;
                         case LinkList::Ty::Implicit:
-                            args.push_back("-l");
-                            args.push_back(l_d.second);
+                            if (!strncmp(l_d.second, "framework=", strlen("framework="))) {
+                                args.push_back("-framework");
+                                args.push_back(l_d.second + strlen("framework="));
+                            }
+                            else {
+                                args.push_back("-l");
+                                args.push_back(l_d.second);
+                            }
                             break;
                         case LinkList::Ty::Explicit:
                             args.push_back(l_d.second);
@@ -2144,7 +2150,10 @@ namespace {
             emit_static_ty(type, p, /*is_proto=*/true);
             if( linkage_name != "" && m_compiler == Compiler::Gcc)
             {
-                m_of << " asm(\"" << linkage_name << "\")";
+                if (Target_GetCurSpec().m_os_name == "macos") // Not macOS only, but all Apple platforms.
+                    m_of << " asm(\"_" << linkage_name << "\")";
+                else
+                    m_of << " asm(\"" << linkage_name << "\")";
             }
             m_of << ";";
             m_of << "\t// static " << p << " : " << type;
@@ -2438,7 +2447,10 @@ namespace {
                 switch(m_compiler)
                 {
                 case Compiler::Gcc:
-                    m_of << " asm(\"" << item.m_linkage.name << "\")";
+                    if (Target_GetCurSpec().m_os_name == "macos") // Not macOS only, but all Apple platforms.
+                        m_of << " asm(\"_" << item.m_linkage.name << "\")";
+                    else
+                        m_of << " asm(\"" << item.m_linkage.name << "\")";
                     break;
                 case Compiler::Msvc:
                     break;
@@ -6018,7 +6030,7 @@ namespace {
                 auto ordering = get_atomic_ordering(name, 7+4+1);
                 const auto& ty = params.m_types.at(0);
                 emit_lvalue(e.ret_val); m_of << " = __mrustc_atomicloop" << get_prim_size(ty) << "(";
-                    m_of << "(volatile "; emit_ctype(ty); m_of << "*)";
+                    m_of << "(volatile uint" << get_prim_size(ty) << "_t*)";
                     emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1));
                     if( m_compiler == Compiler::Gcc )
                     {
@@ -6041,7 +6053,7 @@ namespace {
                 const auto& ty = params.m_types.at(0);
                 const char* op = (name.c_str()[7+1] == 'a' ? "imax" : "imin");    // m'a'x vs m'i'n
                 emit_lvalue(e.ret_val); m_of << " = __mrustc_atomicloop" << get_prim_size(ty) << "(";
-                    m_of << "(volatile "; emit_ctype(ty); m_of << "*)";
+                    m_of << "(volatile uint" << get_prim_size(ty) << "_t*)";
                     emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1));
                     if( m_compiler == Compiler::Gcc )
                     {
@@ -6056,7 +6068,7 @@ namespace {
                 const auto& ty = params.m_types.at(0);
                 const char* op = (name.c_str()[7+2] == 'a' ? "umax" : "umin");    // m'a'x vs m'i'n
                 emit_lvalue(e.ret_val); m_of << " = __mrustc_atomicloop" << get_prim_size(ty) << "(";
-                    m_of << "(volatile "; emit_ctype(ty); m_of << "*)";
+                    m_of << "(volatile uint" << get_prim_size(ty) << "_t*)";
                     emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1));
                     if( m_compiler == Compiler::Gcc )
                     {

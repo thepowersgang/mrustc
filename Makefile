@@ -290,14 +290,22 @@ output$(OUTDIR_SUF)/rust/test_run-pass_hello_out.txt: output$(OUTDIR_SUF)/rust/t
 bin/mrustc.a: $(filter-out $(OBJDIR)main.o, $(OBJ))
 	@mkdir -p $(dir $@)
 	@echo [AR] -o $@
+ifeq ($(shell uname -s || echo not),Darwin)
+# We can use llvm-ar for having rcD available on Darwin.
+# However, that is not bundled as a part of the operating system.
+	$Var rc $@ $(filter-out $(OBJDIR)main.o, $(OBJ))
+else
 	$Var rcD $@ $(filter-out $(OBJDIR)main.o, $(OBJ))
+endif
+
 $(BIN): $(OBJDIR)main.o bin/mrustc.a bin/common_lib.a
 	@mkdir -p $(dir $@)
 	@echo [CXX] -o $@
-	$V$(CXX) -o $@ $(LINKFLAGS) $(OBJDIR)main.o -Wl,--whole-archive bin/mrustc.a -Wl,--no-whole-archive bin/common_lib.a $(LIBS)
 ifeq ($(OS),Windows_NT)
 else ifeq ($(shell uname -s || echo not),Darwin)
+	$V$(CXX) -o $@ $(LINKFLAGS) $(OBJDIR)main.o -Wl,-all_load bin/mrustc.a bin/common_lib.a $(LIBS)
 else
+	$V$(CXX) -o $@ $(LINKFLAGS) $(OBJDIR)main.o -Wl,--whole-archive bin/mrustc.a -Wl,--no-whole-archive bin/common_lib.a $(LIBS)
 	objcopy --only-keep-debug $(BIN) $(BIN).debug
 	objcopy --add-gnu-debuglink=$(BIN).debug $(BIN)
 	strip $(BIN)

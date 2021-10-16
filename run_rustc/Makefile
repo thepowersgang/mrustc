@@ -130,8 +130,11 @@ endif
 	@echo [CARGO] $(RUST_SRC)libtest/Cargo.toml '>' $(OUTDIR)build-std
 	$VCARGO_TARGET_DIR=$(OUTDIR)build-std RUSTC=$(BINDIR_2)rustc $(CARGO_ENV) $(BINDIR)cargo build --manifest-path $(RUST_SRC)libtest/Cargo.toml -j 1 --release --features panic-unwind -v
 	$Vcp --remove-destination $(OUTDIR)build-std/release/deps/*.rlib $(LIBDIR)
+ifeq ($(shell uname -s || echo not),Darwin)
+	$Vcp --remove-destination $(OUTDIR)build-std/release/deps/*.dylib $(LIBDIR)
+else
 	$Vcp --remove-destination $(OUTDIR)build-std/release/deps/*.so $(LIBDIR)
-
+endif
 # - Build rustc with itself (so we have a rustc with the right ABI)
 $(BINDIR)rustc: $(BINDIR)rustc_m $(BINDIR)cargo $(CARGO_HOME)config $(LIBDIR_S)libstd.rlib
 	@mkdir -p $(PREFIX)tmp
@@ -144,7 +147,11 @@ ifeq ($(RUSTC_VERSION),1.39.0)
 	@echo "[CP] libraries and results"
 	$V$(call fn_opt_copy,$(OUTDIR)build-rustc/release/librustc_codegen_llvm.so,$(LIBDIR)../codegen-backends/librustc_codegen_llvm-llvm.so)
 endif
+ifeq ($(shell uname -s || echo not),Darwin)
+	$Vcp $(OUTDIR)build-rustc/release/deps/*.dylib $(LIBDIR)
+else
 	$Vcp $(OUTDIR)build-rustc/release/deps/*.so $(LIBDIR)
+endif
 	$Vcp $(OUTDIR)build-rustc/release/deps/*.rlib $(LIBDIR)
 ifeq ($(RUSTC_VERSION),1.19.0)
 	$Vcp $(OUTDIR)build-rustc/release/rustc $(BINDIR)rustc_binary
