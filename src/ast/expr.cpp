@@ -188,6 +188,24 @@ NODE(ExprNode_Asm2, {
     }
     for(const auto& p : m_params)
     {
+        TU_MATCH_HDRA( (p), {)
+        TU_ARMA(Const, e) {
+            os << "const " << *e;
+            }
+        TU_ARMA(Sym, e) {
+            os << "sym " << e;
+            }
+        TU_ARMA(RegSingle, e) {
+            os << "reg(" << e.dir << " " << e.spec << ") " << *e.val;
+            }
+        TU_ARMA(Reg, e) {
+            os << "reg(" << e.dir << " " << e.spec << ") ";
+            if( e.val_in ) os << *e.val_in; else os << "_";
+            os << " => ";
+            if( e.val_out ) os << *e.val_out; else os << "_";
+            }
+        }
+        os << ", ";
     }
     os << " )";
 },{
