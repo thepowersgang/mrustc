@@ -47,9 +47,6 @@ jobs:
     - name: make RUSTCSRC
       run: make RUSTCSRC
     - name: avoid recompile
-      run: |
-        make --touch
-        make --touch -C tools/minicargo
-        make --touch -C tools/testrunner
+      run: make --touch && make --touch -C tools/minicargo && make --touch -C tools/testrunner
     - name: make test
       run: make test
