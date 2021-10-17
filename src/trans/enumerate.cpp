@@ -991,7 +991,8 @@ void Trans_Enumerate_Types(EnumState& state)
                 // Reqire drop glue for inner type.
                 // - Should that already exist?
                 // Requires box_free lang item
-                Trans_Enumerate_FillFrom_PathMono(state, ::HIR::GenericPath( state.crate.get_lang_item_path(sp, "box_free"), { ity->clone() } ));
+                const auto& p = ty.data().as_Path().path.m_data.as_Generic().m_params;
+                Trans_Enumerate_FillFrom_PathMono(state, ::HIR::GenericPath( state.crate.get_lang_item_path(sp, "box_free"), p.clone() ));
             }
         }
         types_count = state.rv.m_types.size();
