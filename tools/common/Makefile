@@ -23,12 +23,12 @@ clean:
 	rm $(BIN) $(OBJS)
 
 $(BIN): $(OBJS)
-	@mkdir -p $(dir $@)
+	@+mkdir -p $(dir $@)
 	@echo [AR] rcu $@
 	$V$(AR) rcu $@ $(OBJS)
 
 $(OBJDIR)%.o: %.cpp
-	@mkdir -p $(dir $@)
+	@+mkdir -p $(dir $@)
 	@echo [CXX] $<
 	$V$(CXX) -o $@ -c $< $(CXXFLAGS) -MMD -MP -MF $@.dep
 

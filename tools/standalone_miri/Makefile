@@ -31,17 +31,17 @@ clean:
 	rm $(BIN) $(OBJS)
 
 $(BIN): $(OBJS) $(COMMON_LIB)
-	@mkdir -p $(dir $@)
+	@+mkdir -p $(dir $@)
 	@echo [CXX] -o $@
 	$V$(CXX) -o $@ $(OBJS) $(COMMON_LIB) $(LINKFLAGS)
 
 $(OBJDIR)%.o: %.cpp
-	@mkdir -p $(dir $@)
+	@+mkdir -p $(dir $@)
 	@echo [CXX] $<
 	$V$(CXX) -o $@ -c $< $(CXXFLAGS) -MMD -MP -MF $@.dep
 
 $(OBJDIR)%.o: ../../src/%.cpp
-	@mkdir -p $(dir $@)
+	@+mkdir -p $(dir $@)
 	@echo [CXX] $<
 	$V$(CXX) -o $@ -c $< $(CXXFLAGS) -MMD -MP -MF $@.dep
 

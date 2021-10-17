@@ -33,12 +33,12 @@ run: $(BIN)
 	$(BIN) tests > tests.log
 
 $(BIN): $(OBJS) $(LIBS)
-	@mkdir -p $(dir $@)
+	@+mkdir -p $(dir $@)
 	@echo [CXX] -o $@
 	$V$(CXX) -o $@ $(OBJS) $(LIBS) $(LINKFLAGS)
 
 $(OBJDIR)%.o: %.cpp
-	@mkdir -p $(dir $@)
+	@+mkdir -p $(dir $@)
 	@echo [CXX] $<
 	$V$(CXX) -o $@ -c $< $(CXXFLAGS) -MMD -MP -MF $@.dep
 ../../bin/mrustc.a:

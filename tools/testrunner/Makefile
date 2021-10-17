@@ -18,17 +18,17 @@ clean:
 	rm $(BIN) $(OBJS) $(OBJS:%.o=%.o.dep)
 
 $(BIN): $(OBJS)
-	@mkdir -p $(dir $@)
+	@+mkdir -p $(dir $@)
 	@echo [CXX] -o $@
 	$V$(CXX) -o $@ $(OBJS) $(LINKFLAGS)
 
 $(OBJDIR)%.o: %.cpp
-	@mkdir -p $(dir $@)
+	@+mkdir -p $(dir $@)
 	@echo [CXX] $<
 	$V$(CXX) -o $@ -c $< $(CXXFLAGS) -MMD -MP -MF $@.dep
 # - Include files from common (TODO: Be less hacky)
 $(OBJDIR)%.o: ../common/%.cpp
-	@mkdir -p $(dir $@)
+	@+mkdir -p $(dir $@)
 	@echo [CXX] $<
 	$V$(CXX) -o $@ -c $< $(CXXFLAGS) -MMD -MP -MF $@.dep
 

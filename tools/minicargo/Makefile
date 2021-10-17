@@ -29,7 +29,7 @@ clean:
 	rm $(BIN) $(OBJS)
 
 $(BIN): $(OBJS) ../../bin/common_lib.a
-	@mkdir -p $(dir $@)
+	@+mkdir -p $(dir $@)
 	@echo [CXX] -o $@
 	$V$(CXX) -o $@ $(OBJS) ../../bin/common_lib.a $(LINKFLAGS)
 ifeq ($(OS),Windows_NT)
@@ -41,7 +41,7 @@ else
 endif
 
 $(OBJDIR)%.o: %.cpp
-	@mkdir -p $(dir $@)
+	@+mkdir -p $(dir $@)
 	@echo [CXX] $<
 	$V$(CXX) -o $@ -c $< $(CXXFLAGS) -MMD -MP -MF $@.dep
 
