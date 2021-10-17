@@ -1941,7 +1941,7 @@ namespace {
             // 3. Do a non-dropping write into the target location (i.e. just a MIR assignment)
             m_builder.push_stmt_assign(node.span(), ::MIR::LValue::new_Deref(place.clone()), mv$(val), /*drop_destination=*/false);
             // 4. Convert the pointer into an `owned_box`
-            auto res_type = ::HIR::TypeRef::new_path(::HIR::GenericPath(lang_owned_box, mv$(trait_params_data)), &m_builder.crate().get_struct_by_path(node.span(), lang_owned_box));
+            const auto& res_type = node.m_res_type;
             auto res = m_builder.new_temporary(res_type);
             auto cast__panic = m_builder.new_bb_unlinked();
             auto cast__ok = m_builder.new_bb_unlinked();
