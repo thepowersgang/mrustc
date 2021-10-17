@@ -338,8 +338,13 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
                 else
                 {
                     DEBUG("ARM PAT (" << arm_idx << "," << pat_idx << " #" << i << ") " << pat << " ==> [" << sr.m_rules << "]");
+                    // Ensure that all patterns bindind to the same set of variables (only check the variables)
                     if( first_rule < arm_rules.size() ) {
-                        ASSERT_BUG(sp, arm_rules[first_rule].m_bindings == sr.m_bindings, "Disagreement in bindings between pattern");
+                        const auto& fr = arm_rules[first_rule];
+                        ASSERT_BUG(sp, fr.m_bindings.size() == sr.m_bindings.size(), "Disagreement in bindings between pattern - {" << arm_rules[first_rule].m_bindings << "} vs {" << sr.m_bindings << "}");
+                        for(size_t j = 0; j < fr.m_bindings.size(); j ++ ) {
+                            ASSERT_BUG(sp, fr.m_bindings[j].binding->m_slot == sr.m_bindings[j].binding->m_slot, "Disagreement in bindings between pattern - {" << arm_rules[first_rule].m_bindings << "} vs {" << sr.m_bindings << "}");
+                        }
                     }
                     arm_rules.push_back( PatternRuleset { arm_idx, pat_idx, mv$(sr.m_rules), mv$(sr.m_bindings) } );
                 }
@@ -568,10 +573,9 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
 
 ::Ordering PatternRule::ord(const PatternRule& x) const
 {
-    if(tag() != x.tag())
-    {
-        return tag() < x.tag() ? ::OrdLess : ::OrdGreater;
-    }
+    ORD(static_cast<int>(tag()), static_cast<int>(x.tag()));
+    ORD(this->field_path, x.field_path);
+
     TU_MATCH_HDRA( (*this, x), {)
     TU_ARMA(Any, te, xe) { return OrdEqual; }
     TU_ARMA(Variant, te, xe) {
@@ -625,26 +629,32 @@ PatternRule PatternRule::clone() const
                 rv.push_back(e.clone());
             return rv;
         }
+        static PatternRule clone_inner(const PatternRule& t) {
+            TU_MATCH_HDRA( (t), {)
+            TU_ARMA(Any, te)
+                return te;
+
+            TU_ARMA(Variant, te)
+                return PatternRule::make_Variant({ te.idx, H::clone_list(te.sub_rules) });
+            TU_ARMA(Slice, te)
+                return PatternRule::make_Slice({ te.len, H::clone_list(te.sub_rules) });
+            TU_ARMA(SplitSlice, te)
+                return PatternRule::make_SplitSlice({ te.min_len, te.trailing_len, H::clone_list(te.leading), H::clone_list(te.trailing) });
+
+            TU_ARMA(Bool, te)
+                return te;
+            TU_ARMA(Value, te)
+                return te.clone();
+            TU_ARMA(ValueRange, te)
+                return PatternRule::make_ValueRange({ te.first.clone(), te.last.clone(), te.is_inclusive });
+            }
+            throw "";
+        }
     };
-    TU_MATCH_HDRA( (*this), {)
-    TU_ARMA(Any, te)
-        return te;
 
-    TU_ARMA(Variant, te)
-        return PatternRule::make_Variant({ te.idx, H::clone_list(te.sub_rules) });
-    TU_ARMA(Slice, te)
-        return PatternRule::make_Slice({ te.len, H::clone_list(te.sub_rules) });
-    TU_ARMA(SplitSlice, te)
-        return PatternRule::make_SplitSlice({ te.min_len, te.trailing_len, H::clone_list(te.leading), H::clone_list(te.trailing) });
-
-    TU_ARMA(Bool, te)
-        return te;
-    TU_ARMA(Value, te)
-        return te.clone();
-    TU_ARMA(ValueRange, te)
-        return PatternRule::make_ValueRange({ te.first.clone(), te.last.clone(), te.is_inclusive });
-    }
-    throw "";
+    auto rv = H::clone_inner(*this);
+    rv.field_path = this->field_path;
+    return rv;
 }
 ::Ordering PatternRuleset::rule_is_before(const PatternRule& l, const PatternRule& r)
 {
@@ -760,29 +770,48 @@ void PatternRulesetBuilder::set_impossible()
 void PatternRulesetBuilder::multiply_rulesets(size_t n, std::function<void(size_t idx)> cb)
 {
     assert(n > 0);
+    if( n == 1 ) {
+        cb(0);
+        return;
+    }
+    TRACE_FUNCTION_F(n);
     assert(this->subset_start < this->subset_end);
     assert(this->subset_end <= m_rulesets.size());
     size_t subset_size = this->subset_end - this->subset_start;
     size_t ofs = (n - 1) * subset_size;
+    assert(ofs > 0);
+    size_t new_subset_end = this->subset_start + n * subset_size;
     size_t n_tail = m_rulesets.size() - this->subset_end;
+    DEBUG("subset_size=" << subset_size << ", ofs = " << ofs << ", n_tail=" << n_tail);
     m_rulesets.resize( m_rulesets.size() + (n - 1) * subset_size );
-    size_t new_subset_end = m_rulesets.size() - n_tail;
+    assert(new_subset_end == m_rulesets.size() - n_tail);
     // Copy the tail out of the way (reverse to avoid chasing itself)
-    if(ofs > 0)
+    for(size_t i = m_rulesets.size(); i -- > new_subset_end; )
     {
-        for(size_t i = m_rulesets.size(); i -- >= new_subset_end; )
-        {
-            m_rulesets[i] = std::move(m_rulesets[i-ofs]);
-        }
+        m_rulesets[i] = std::move(m_rulesets[i-ofs]);
     }
     // Copy `n-1` copies of the current subset after itself
     for(size_t j = 1; j < n; j ++ )
     {
-        for(size_t i = subset_size; i --; )
+        for(size_t i = 0; i < subset_size; i ++)
         {
-            auto& src = m_rulesets[this->subset_start + i];
+            const auto& src = m_rulesets[this->subset_start + i];
             m_rulesets[this->subset_start + j*subset_size + i] = src.clone();
         }
+    }
+    for(size_t j = this->subset_start+subset_size; j < new_subset_end; j += subset_size)
+    {
+        for(size_t i = 0; i < subset_size; i ++)
+        {
+            const auto& exp = m_rulesets[this->subset_start+i];
+            const auto& a = m_rulesets[j+i];
+            ASSERT_BUG(Span(), a.m_rules == exp.m_rules, "BUG: {" << a.m_rules << "} != {" << exp.m_rules << "}");
+            ASSERT_BUG(Span(), a.m_bindings == exp.m_bindings, "BUG: {" << a.m_bindings << "} != {" << exp.m_bindings << "}");
+        }
+    }
+    for(size_t i = this->subset_start; i < new_subset_end; i += 1)
+    {
+        DEBUG("#" << i << " rules=[" << m_rulesets[i].m_rules << "], bindings=[" << m_rulesets[i].m_bindings << "]");
     }
 
     // Iterate the new subsets
@@ -791,12 +820,18 @@ void PatternRulesetBuilder::multiply_rulesets(size_t n, std::function<void(size_
     for(size_t i = 0; i < n; i ++)
     {
         this->subset_end += subset_size;
+        DEBUG("++ " << i << " " << this->subset_start << " - " << this->subset_end);
         cb(i);
+        DEBUG("-- " << i);
         this->subset_start += subset_size;
     }
     // Update the subset again to cover everything
     this->subset_start = saved_start;
     ASSERT_BUG(Span(), this->subset_end == new_subset_end, this->subset_end << " == " << new_subset_end);
+    for(size_t i = this->subset_start; i < new_subset_end; i += 1)
+    {
+        DEBUG("#" << i << " rules=[" << m_rulesets[i].m_rules << "], bindings=[" << m_rulesets[i].m_bindings << "]");
+    }
 }
 
 void PatternRulesetBuilder::append_from_lit(const Span& sp, EncodedLiteralSlice lit, const ::HIR::TypeRef& ty)

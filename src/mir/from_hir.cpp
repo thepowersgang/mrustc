@@ -339,8 +339,10 @@ namespace {
         void destructure_from_list(const Span& sp, const ::HIR::TypeRef& outer_ty, ::MIR::LValue outer_lval, const ::std::vector<PatternBinding>& bindings) override
         {
             TRACE_FUNCTION_F(outer_lval << ": " << outer_ty << " [" << bindings << "]");
-            for(const auto& b : bindings)
+            // Reverse order to avoid potential use-after-move for `foo @ Bar(baz, ..)`
+            for(size_t i = bindings.size(); i--;)
             {
+                const auto& b = bindings[i];
                 auto lval = get_value_for_binding_path(sp, outer_ty, outer_lval, b);
 
                 MIR::RValue rv;

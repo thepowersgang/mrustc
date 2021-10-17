@@ -129,6 +129,7 @@ struct field_path_t
     uint8_t& back() { return data.back(); }
 
     bool operator==(const field_path_t& x) const { return data == x.data; }
+    Ordering ord(const field_path_t& x) const { return ::ord(data, x.data); }
 
     friend ::std::ostream& operator<<(::std::ostream& os, const field_path_t& x) {
         for(auto idx : x.data) {
