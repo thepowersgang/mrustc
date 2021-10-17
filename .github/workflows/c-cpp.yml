@@ -33,7 +33,7 @@ jobs:
        rustver: ["1.29", "1.39", "1.19"]
     runs-on: ubuntu-latest
     env:
-     MRUSTC_VERSION: ${{ matrix.rustver }}.0
+     RUSTC_VERSION: ${{ matrix.rustver }}.0
      MRUSTC_TARGET_VER: ${{ matrix.rustver }}
      OUTDIR_SUF: -${{ matrix.rustver }}.0
     steps:
@@ -49,6 +49,6 @@ jobs:
     - name: make RUSTCSRC
       run: make RUSTCSRC
     - name: avoid recompile 2
-      run: make --touch && make --touch -C tools/minicargo && make --touch -C tools/testrunner
+      run: make --touch && make --touch -C tools/minicargo && make --touch -C tools/testrunner && chmod +x bin/*
     - name: make test
       run: make test
