@@ -84,7 +84,17 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
             // TODO: Check if this trait is `Sized` and ignore if it is? (It's a useless bound)
 
             auto bound_trait_path = LowerHIR_TraitPath(bound.span, e.trait, /*allow_bounds=*/true);
-            for(auto& bound : bound_trait_path.m_trait_bounds)
+            auto tp_bounds = mv$(bound_trait_path.m_trait_bounds);
+            bound_trait_path.m_trait_bounds.clear();
+
+            rv.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({
+                /*LowerHIR_HigherRankedBounds(e.outer_hrbs),*/
+                type.clone(),
+                mv$(bound_trait_path)
+                }));
+            //rv.m_bounds.back().as_TraitBound().trait.m_hrls = LowerHIR_HigherRankedBounds(e.inner_hrbs);
+
+            for(auto& bound : tp_bounds)
             {
                 const auto& name = bound.first;
                 const auto& src_trait = bound.second.source_trait;
@@ -97,14 +107,6 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
                 }
                 bound.second.traits.clear();
             }
-            bound_trait_path.m_trait_bounds.clear();
-
-            rv.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({
-                /*LowerHIR_HigherRankedBounds(e.outer_hrbs),*/
-                mv$(type),
-                mv$(bound_trait_path)
-                }));
-            //rv.m_bounds.back().as_TraitBound().trait.m_hrls = LowerHIR_HigherRankedBounds(e.inner_hrbs);
             }
         TU_ARMA(MaybeTrait, e) {
             auto type = LowerHIR_Type(e.type);
