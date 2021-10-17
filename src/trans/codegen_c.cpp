@@ -4661,6 +4661,11 @@ namespace {
                 m_of << indent; emit_lvalue(m.output(2));
                 m_of << " = _bittestandset64("; emit_param(m.input(0)); m_of << ","; emit_param(m.input(1)); m_of << ");\n";
             }
+            // -- Windows intrinsics --
+            else if( m.matches_template({"int $$0x29"}, {"in=ecx"}) )
+            {
+                m_of << indent << "__fastfail("; emit_param(m.input(0)); m_of << ");\n";
+            }
             // -- Unknown --
             else
             {
