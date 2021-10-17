@@ -689,6 +689,10 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
         if( src_ty.data().is_Array() )
         {
             const auto& in_array = src_ty.data().as_Array();
+            if( !in_array.size.is_Known() ) {
+                DEBUG("Array size not yet known - " << in_array.size);
+                return false;
+            }
             out_meta_ty = ::HIR::CoreType::Usize;
             out_meta_val = ::MIR::Constant::make_Uint({ in_array.size.as_Known(), ::HIR::CoreType::Usize });
             return true;
