@@ -793,6 +793,123 @@ struct CExpandExpr:
     void visit(::AST::ExprNode_Assign& node) override {
         this->visit_nodelete(node, node.m_slot);
         this->visit_nodelete(node, node.m_value);
+
+        // Desugar destructuring assignment
+        // https://rust-lang.github.io/rfcs/2909-destructuring-assignment.html
+        if( node.m_op == ::AST::ExprNode_Assign::NONE )
+        {
+            struct VisitorToPat:
+                public ::AST::NodeVisitor
+            {
+                std::vector<std::pair<RcString,AST::ExprNodeP>> m_slots;
+                ::AST::Pattern  m_rv;
+
+                bool m_rv_set = false;
+                bool m_is_slot = false;
+
+                ::AST::Pattern lower(::AST::ExprNodeP& ep) {
+                    assert(ep);
+                    ep->visit(*this);
+                    ASSERT_BUG(ep->span(), m_rv_set, typeid(*ep).name() << " - Didn't yield a pattern");
+                    if(m_is_slot) {
+                        assert(!m_slots.empty());
+                        assert(!m_slots.back().second);
+                        m_slots.back().second = std::move(ep);
+                        m_is_slot = false;
+                    }
+                    m_rv_set = false;
+                    return std::move(m_rv);
+                }
+
+                // - This is a de-structuring pattern
+                void pat(::AST::Pattern rv) {
+                    assert(!m_rv_set);
+                    assert(!m_is_slot);
+                    m_rv_set = true;
+                    assert(!rv.binding().is_valid());
+                    m_rv = std::move(rv);
+                }
+                // - This is a slot (to be assigned)
+                void slot(::AST::ExprNode& v) {
+                    m_rv_set = true;
+                    m_is_slot = true;
+
+                    RcString   name(FMT("_#" << m_slots.size()).c_str());
+                    m_slots.push_back(std::make_pair(name, AST::ExprNodeP()));
+                    m_rv = AST::Pattern(AST::Pattern::TagBind(), v.span(), m_slots.back().first);
+                }
+                // - The given node isn't valid on the LHS of an assignment
+                void invalid(const ::AST::ExprNode& v) {
+                    ERROR(v.span(), E0000, typeid(v).name() << " isn't valid on the LHS of an assignemnt");
+                }
+
+                void visit(::AST::ExprNode_Block& v) override { invalid(v); }
+                void visit(::AST::ExprNode_Try  & v) override { invalid(v); }
+                void visit(::AST::ExprNode_Macro& v) override { BUG(v.span(), "Encountered macro"); }
+                void visit(::AST::ExprNode_Asm & v) override { invalid(v); }
+                void visit(::AST::ExprNode_Asm2& v) override { invalid(v); }
+                void visit(::AST::ExprNode_Flow& v) override { invalid(v); }
+                void visit(::AST::ExprNode_LetBinding& v) override { invalid(v); }
+                void visit(::AST::ExprNode_Assign& v) override { invalid(v); }
+                void visit(::AST::ExprNode_CallPath  & v) override { invalid(v); }
+                void visit(::AST::ExprNode_CallMethod& v) override { invalid(v); }
+                void visit(::AST::ExprNode_CallObject& v) override { invalid(v); }
+                void visit(::AST::ExprNode_Loop& v) override { invalid(v); }
+                void visit(::AST::ExprNode_Match& v) override { invalid(v); }
+                void visit(::AST::ExprNode_If& v) override { invalid(v); }
+                void visit(::AST::ExprNode_IfLet& v) override { invalid(v); }
+                void visit(::AST::ExprNode_Integer& v) override { invalid(v); }
+                void visit(::AST::ExprNode_Float& v) override { invalid(v); }
+                void visit(::AST::ExprNode_Bool& v) override { invalid(v); }
+                void visit(::AST::ExprNode_String& v) override { invalid(v); }
+                void visit(::AST::ExprNode_ByteString& v) override { invalid(v); }
+                void visit(::AST::ExprNode_Closure& v) override { invalid(v); }
+
+                void visit(::AST::ExprNode_StructLiteral& v) override {
+                    TODO(v.span(), "Struct literal in destructured assignment");
+                }
+                void visit(::AST::ExprNode_Array& v) override {
+                    TODO(v.span(), "Array literal in destructured assignment");
+                }
+                void visit(::AST::ExprNode_Tuple& v) override {
+                    std::vector<AST::Pattern>   subpats;
+                    for(auto& v : v.m_values) {
+                        subpats.push_back(lower(v));
+                    }
+                    pat(AST::Pattern(AST::Pattern::TagTuple(), v.span(), std::move(subpats)));
+                }
+
+                // Just emit as if it's a slot, `UnitStruct = Foo` isn't valid
+                void visit(::AST::ExprNode_NamedValue& v) override { slot(v); }
+                void visit(::AST::ExprNode_Field& v) override { slot(v); }
+                void visit(::AST::ExprNode_Index& v) override { slot(v); }
+                void visit(::AST::ExprNode_Deref& v) override { slot(v); }
+
+                void visit(::AST::ExprNode_Cast& v) override { invalid(v); }
+                void visit(::AST::ExprNode_TypeAnnotation& v) override { invalid(v); }
+                void visit(::AST::ExprNode_BinOp& v) override { invalid(v); }
+                void visit(::AST::ExprNode_UniOp& v) override { invalid(v); }
+            } v;
+            auto pat = v.lower(node.m_slot);
+            if(pat.binding().is_valid()) {
+                assert(!node.m_slot);
+                assert(v.m_slots.front().second);
+                node.m_slot = std::move(v.m_slots.front().second);
+            }
+            else {
+                // Create a block with a `let` and individual assignments
+                auto rv = new AST::ExprNode_Block();
+                rv->m_yields_final_value = false;
+                rv->m_nodes.push_back(AST::ExprNodeP(new AST::ExprNode_LetBinding(std::move(pat), TypeRef(node.span()), std::move(node.m_value))));
+                for(auto& slots : v.m_slots) {
+                    rv->m_nodes.push_back(AST::ExprNodeP(new AST::ExprNode_Assign(AST::ExprNode_Assign::NONE,
+                        std::move(slots.second),
+                        AST::ExprNodeP(new AST::ExprNode_NamedValue(AST::Path::new_local(std::move(slots.first))))
+                        )));
+                }
+                this->replacement = AST::ExprNodeP(rv);
+            }
+        }
     }
     void visit(::AST::ExprNode_CallPath& node) override {
         Expand_Path(crate, modstack, this->cur_mod(),  node.m_path);
