@@ -4355,8 +4355,27 @@ namespace {
             // Has to be equal?
             if( sm.coerce_unsized == ::HIR::StructMarkings::Coerce::None )
                 return CoerceResult::Equality;
-            const auto& idst = dst.data().as_Path().path.m_data.as_Generic().m_params.m_types.at(sm.coerce_param);
-            const auto& isrc = src.data().as_Path().path.m_data.as_Generic().m_params.m_types.at(sm.coerce_param);
+
+            // Equate all parameters that aren't the unsizing param
+            const auto& pp_dst = dst.data().as_Path().path.m_data.as_Generic().m_params;
+            const auto& pp_src = src.data().as_Path().path.m_data.as_Generic().m_params;
+            DEBUG(pp_dst << " = " << pp_src);
+            assert(pp_dst.m_types.size() == pp_src.m_types.size());
+            for(size_t i = 0; i < pp_src.m_types.size(); i ++ ) {
+                if( i == sm.coerce_param )
+                    continue ;
+                if(context_mut)
+                {
+                    context_mut->equate_types(sp, pp_dst.m_types.at(i), pp_src.m_types.at(i));
+                }
+            }
+            assert(pp_dst.m_values.size() == pp_src.m_values.size());
+            for(size_t i = 0; i < pp_src.m_values.size(); i ++ ) {
+                TODO(sp, "Handle values in CoerceUnsized");
+            }
+            // Check coercion/unsizing of the target type
+            const auto& idst = pp_dst.m_types.at(sm.coerce_param);
+            const auto& isrc = pp_src.m_types.at(sm.coerce_param);
             switch( sm.coerce_unsized )
             {
             case ::HIR::StructMarkings::Coerce::None:
