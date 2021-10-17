@@ -277,6 +277,15 @@ void ValueCommonWrite::write_usize(size_t ofs, uint64_t v)
 {
     this->write_bytes(ofs, &v, POINTER_SIZE);
 }
+const ::HIR::Path& ValueCommonRead::read_pointer_fcn(size_t rd_ofs) const
+{
+    auto reloc = get_relocation(rd_ofs);
+    auto ofs = read_usize(rd_ofs);
+    LOG_ASSERT(ofs >= reloc.get_base(), "Invalid pointer read");
+    LOG_ASSERT(reloc.get_ty() == RelocationPtr::Ty::Function, "");
+    LOG_ASSERT(ofs == reloc.get_base(), "Function pointer offet not zero");
+    return reloc.fcn();
+}
 void* ValueCommonRead::read_pointer_tagged_null(size_t rd_ofs, const char* tag) const
 {
     auto reloc = get_relocation(rd_ofs);

@@ -237,6 +237,8 @@ struct ValueCommonRead
         return true;
     }
 
+    /// Read a pointer that should be a function pointer
+    const ::HIR::Path& read_pointer_fcn(size_t rd_ofs) const;
     /// Read a pointer that must be FFI with the specified tag (or NULL)
     void* read_pointer_tagged_null(size_t rd_ofs, const char* tag) const;
     /// Read a pointer that must be FFI with the specified tag (cannot be NULL)

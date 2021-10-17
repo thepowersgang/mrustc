@@ -133,7 +133,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     }
     else if( link_name == "__rust_maybe_catch_panic" )
     {
-        auto fcn_path = args.at(0).get_relocation(0).fcn();
+        auto fcn_path = args.at(0).read_pointer_fcn(0);
         auto arg = args.at(1);
         auto data_ptr = args.at(2).read_pointer_valref_mut(0, POINTER_SIZE);
         auto vtable_ptr = args.at(3).read_pointer_valref_mut(0, POINTER_SIZE);
@@ -524,8 +524,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     {
         auto thread_handle_out = args.at(0).read_pointer_valref_mut(0, sizeof(pthread_t));
         auto attrs = args.at(1).read_pointer_const(0, sizeof(pthread_attr_t));
-        auto fcn_path = args.at(2).get_relocation(0).fcn();
-        LOG_ASSERT(args.at(2).read_usize(0) == Allocation::PTR_BASE, "");
+        auto fcn_path = args.at(2).read_pointer_fcn(0);
         auto arg = args.at(3);
         LOG_NOTICE("TODO: pthread_create(" << thread_handle_out << ", " << attrs << ", " << fcn_path << ", " << arg << ")");
         // TODO: Create a new interpreter context with this thread, use co-operative scheduling
