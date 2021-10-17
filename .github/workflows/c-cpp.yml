@@ -8,14 +8,48 @@ on:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v2
+    - name: make
+      run: |
+        make all
+        make -C tools/minicargo
+        make -C tools/testrunner
+    - name: save artefacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: binaries
+        path: |
+          bin/minicargo
+          bin/mrustc
+          bin/testrunner
+  test:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+       rustver: ["1.29", "1.39", "1.19"]
+    runs-on: ubuntu-latest
+    env:
+     MRUSTC_VERSION: ${{ matrix.rustver }}.0
+     MRUSTC_TARGET_VER: ${{ matrix.rustver }}
+     OUTDIR_SUF: -${{ matrix.rustver }}.0
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+    - name: Download all workflow run artifacts
+      uses: actions/download-artifact@v2
+      with:
+        name: binaries
+        path: bin
     - name: make RUSTCSRC
       run: make RUSTCSRC
-    - name: make
-      run: make all && make -C tools/minicargo
+    - name: avoid recompile
+      run: |
+        make --touch
+        make --touch -C tools/minicargo
+        make --touch -C tools/testrunner
     - name: make test
       run: make test
