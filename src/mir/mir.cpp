@@ -47,13 +47,19 @@ namespace MIR {
             os << "\"" << FmtEscaped(e) << "\"";
             ),
         (Const,
+            assert(e.p);
             os << *e.p;
             ),
         (Generic,
             os << e;
             ),
         (ItemAddr,
-            os << "&" << *e;
+            if(e) {
+                os << "&" << *e;
+            }
+            else {
+                os << "#UNSIZE_PLACEHOLDER";    // A `Const` with `nullptr` is a placeholder for MakeDst `Unsize`
+            }
             )
         )
         return os;
@@ -94,7 +100,9 @@ namespace MIR {
             return ::ord(ae.binding, be.binding);
             ),
         (ItemAddr,
-            return ::ord(*ae, *be);
+            ORD(static_cast<bool>(ae), static_cast<bool>(be));
+            if(ae) ORD(*ae, *be);
+            return OrdEqual;
             )
         )
         throw "";
