@@ -1785,28 +1785,40 @@ namespace {
                 return true;
         }
 
+        // Checks if the value is within the righthand edge of the range
+        auto is_within_right = [](const MIR::Constant& c, const PatternRule::Data_ValueRange& e)->bool {
+            return (e.is_inclusive ? c <= e.last : c < e.last);
+            };
+
         // Value Range: Overlaps with contained values.
         if(const auto* ae = a.opt_ValueRange() )
         {
-            assert(ae->is_inclusive);
             if(const auto* be = b.opt_Value() )
             {
-                return ( ae->first <= *be && *be <= ae->last );
+                return ( ae->first <= *be && is_within_right(*be, *ae) );
             }
             else if( const auto* be = b.opt_ValueRange() )
             {
-                assert(be->is_inclusive);
+                auto check_ends = []( const PatternRule::Data_ValueRange& lo, const PatternRule::Data_ValueRange& hi)->bool {
+                    return lo.is_inclusive == hi.is_inclusive ? lo.last <= hi.last
+                        : (lo.is_inclusive
+                            ? lo.last < hi.last // Lower side is inclusive, higher side exlusive - must be less than higher side
+                            : throw "TODO" // Lower side is excl, higher side incl - lower+1 < higher = lower < higher-1 = lower
+                            );
+                    };
+                assert(ae->is_inclusive && "TODO: Exclusive ranges");
+                assert(be->is_inclusive && "TODO: Exclusive ranges");
                 // Start of B within A
-                if( ae->first <= be->first && be->first <= ae->last )
+                if( ae->first <= be->first && is_within_right(be->first, *ae) )
                     return true;
                 // End of B within A
-                if( ae->first <= be->last && be->last <= ae->last )
+                if( is_within_right(ae->first, *be) && be->last <= ae->last ) // TODO: Right-exclusive (if equal type then original check, otherwise complex)
                     return true;
                 // Start of A within B
-                if( be->first <= ae->first && ae->first <= be->last )
+                if( be->first <= ae->first && is_within_right(ae->first, *be) )
                     return true;
                 // End of A within B
-                if( be->first <= ae->last && ae->last <= be->last )
+                if( is_within_right(be->first, *ae) && ae->last <= be->last ) // TODO: Right-exclusive
                     return true;
 
                 // Disjoint
@@ -1819,10 +1831,16 @@ namespace {
         }
         if(const auto* be = b.opt_ValueRange())
         {
-            assert(be->is_inclusive);
             if(const auto* ae = a.opt_Value() )
             {
-                return (be->first <= *ae && *ae <= be->last);
+                if(be->is_inclusive)
+                {
+                    return (be->first <= *ae && *ae <= be->last);
+                }
+                else
+                {
+                    return (be->first <= *ae && *ae < be->last);
+                }
             }
             // Note: A can't be ValueRange
             else
