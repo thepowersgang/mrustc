@@ -126,6 +126,7 @@
     <ClInclude Include="..\..\tools\common\debug.h" />
     <ClInclude Include="..\..\tools\common\helpers.h" />
     <ClInclude Include="..\..\tools\common\path.h" />
+    <ClInclude Include="..\..\tools\common\target_detect.h" />
     <ClInclude Include="..\..\tools\common\toml.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

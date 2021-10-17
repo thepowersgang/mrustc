@@ -29,6 +29,13 @@
 # else
 #  warning "Unable to detect a suitable default target (linux-gnu)"
 # endif
+// - msys/cygwin
+#elif defined(__CYGWIN__)
+# if defined(__x86_64__)
+#  define DEFAULT_TARGET_NAME "x86_64-pc-windows-gnu"
+# else
+#  define DEFAULT_TARGET_NAME "i586-pc-windows-gnu"
+# endif
 // - MinGW
 #elif defined(__MINGW32__)
 # if defined(_WIN64)
