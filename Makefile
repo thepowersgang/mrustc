@@ -289,7 +289,7 @@ output$(OUTDIR_SUF)/rust/test_run-pass_hello_out.txt: output$(OUTDIR_SUF)/rust/t
 # Compile rules for mrustc itself
 # -------------------------------
 bin/mrustc.a: $(filter-out $(OBJDIR)main.o, $(OBJ))
-	@mkdir -p $(dir $@)
+	@+mkdir -p $(dir $@)
 	@echo [AR] -o $@
 ifeq ($(shell uname -s || echo not),Darwin)
 # We can use llvm-ar for having rcD available on Darwin.
@@ -300,7 +300,7 @@ else
 endif
 
 $(BIN): $(OBJDIR)main.o bin/mrustc.a bin/common_lib.a
-	@mkdir -p $(dir $@)
+	@+mkdir -p $(dir $@)
 	@echo [CXX] -o $@
 ifeq ($(OS),Windows_NT)
 else ifeq ($(shell uname -s || echo not),Darwin)
