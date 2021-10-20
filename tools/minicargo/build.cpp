@@ -1015,6 +1015,9 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     StringListKV    env;
     auto out_dir = this->get_output_dir(is_for_host).to_absolute() / "build_" + manifest.name().c_str();
     env.push_back("OUT_DIR", out_dir.str());
+    for(const auto& e : manifest.build_script_output().rustc_env) {
+        env.push_back(e.first.c_str(), e.second.c_str());
+    }
     push_env_common(env, manifest);
 
     // TODO: If emitting command files (i.e. cross-compiling), concatenate the contents of `outfile + ".sh"` onto a

@@ -1051,7 +1051,11 @@ void PackageManifest::load_build_script(const ::std::string& path)
             }
             // cargo:rustc-env=FOO=BAR
             else if( key == "rustc-env" ) {
-                rv.rustc_env.push_back( value );
+                auto eq = std::find(value.begin(), value.end(), '=');
+                if( eq == value.end() )
+                    throw ::std::runtime_error(::format("rustc-env has no `=` - `", value, "`"));
+
+                rv.rustc_env.push_back(std::make_pair( std::string(value.begin(), eq), std::string(eq+1, value.end()) ));
             }
             // cargo:rerun-if-changed=foo.rs
             else if( key == "rerun-if-changed" ) {

@@ -261,7 +261,7 @@ public:
     // cargo:rustc-flags=-l foo
     ::std::vector<::std::string>    rustc_flags;
     // cargo:rustc-env=FOO=BAR
-    ::std::vector<::std::string>    rustc_env;
+    ::std::vector<::std::pair<::std::string, ::std::string>>    rustc_env;
 
     // cargo:foo=bar when [package]links=baz
     ::std::vector<::std::pair<::std::string, ::std::string>>    downstream_env;
