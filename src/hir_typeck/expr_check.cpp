@@ -1021,14 +1021,17 @@ namespace {
         }
         void visit(::HIR::ExprNode_ArraySized& node) override
         {
-            TRACE_FUNCTION_F(&node << " [...; "<<node.m_size_val<<"]");
+            TRACE_FUNCTION_F(&node << " [...; " << node.m_size << "]");
 
             //check_types_equal(node.m_size->span(), ::HIR::TypeRef(::HIR::Primitive::Usize), node.m_size->m_res_type);
             const auto& inner_ty = node.m_res_type.data().as_Array().inner;
             check_types_equal(node.m_val->span(), inner_ty, node.m_val->m_res_type);
 
             node.m_val->visit( *this );
-            node.m_size->visit( *this );
+            //if(node.m_size.is_Unevaluated() && node.m_size.as_Unevaluated().is_Unevaluated())
+            //{
+            //    (*node.m_size.as_Unevaluated().as_Unevaluated())->visit( *this );
+            //}
         }
 
         void visit(::HIR::ExprNode_Literal& node) override

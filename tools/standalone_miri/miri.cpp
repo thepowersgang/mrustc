@@ -1602,7 +1602,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                 size_t stride = inner_ty.get_size();
 
                 size_t ofs = 0;
-                for(size_t i = 0; i < re.count; i++)
+                for(size_t i = 0; i < re.count.count; i++)
                 {
                     new_val.write_value(ofs, state.param_to_value(re.val));
                     ofs += stride;

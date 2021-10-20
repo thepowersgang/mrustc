@@ -1574,17 +1574,17 @@ namespace typecheck
         }
         void visit(::HIR::ExprNode_ArraySized& node) override
         {
-            TRACE_FUNCTION_F(&node << " [...; "<<node.m_size_val<<"]");
+            TRACE_FUNCTION_F(&node << " [...; " << node.m_size << "]");
             this->context.add_ivars( node.m_val->m_res_type );
 
             // Create result type (can't be known until after const expansion)
             // - Should it be created in const expansion?
-            auto ty = ::HIR::TypeRef::new_array( context.m_ivars.new_ivar_tr(), node.m_size_val );
+            auto ty = ::HIR::TypeRef(HIR::TypeData::make_Array({context.m_ivars.new_ivar_tr(), node.m_size.clone() }));
             this->context.equate_types(node.span(), node.m_res_type, ty);
             // Equate with coercions
             const auto& inner_ty = ty.data().as_Array().inner;
             this->equate_types_inner_coerce(node.span(), inner_ty, node.m_val);
-            this->context.equate_types(node.span(), ::HIR::TypeRef(::HIR::CoreType::Usize), node.m_size->m_res_type);
+            //this->context.equate_types(node.span(), ::HIR::TypeRef(::HIR::CoreType::Usize), node.m_size->m_res_type);
 
             node.m_val->visit( *this );
         }

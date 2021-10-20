@@ -911,7 +911,7 @@
                 ),
             (SizedArray,
                 serialise(e.val);
-                m_out.write_u64c(e.count);
+                serialise_arraysize(e.count);
                 ),
             (Borrow,
                 m_out.write_tag( static_cast<int>(e.type) );

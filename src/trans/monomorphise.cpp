@@ -202,7 +202,7 @@ namespace {
                 (SizedArray,
                     rval = ::MIR::RValue::make_SizedArray({
                         monomorph_Param(resolve, params, se.val),
-                        se.count
+                        params.monomorph_arraysize(sp, se.count)
                         });
                     ),
                 (Borrow,

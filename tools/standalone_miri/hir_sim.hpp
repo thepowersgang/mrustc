@@ -102,6 +102,13 @@ namespace HIR {
             return os << "GenericRef";
         }
     };
+    struct ArraySize {
+        unsigned    count;
+        friend ::std::ostream& operator<<(::std::ostream& os, const ArraySize& x) {
+            return os << x.count;
+        }
+        bool operator<(const ArraySize& o) const { return count < o.count; }
+    };
 
     /// Definition of a type
     struct TypeRef

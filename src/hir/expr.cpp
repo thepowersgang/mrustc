@@ -208,7 +208,7 @@ DEF_VISIT(ExprNode_ArrayList, node,
 )
 DEF_VISIT(ExprNode_ArraySized, node,
     visit_node_ptr(node.m_val);
-    //visit_node_ptr(node.m_size);
+    //visit_arraysize(node.m_size); // Don't do this, array sizes are not part of the normal expression tree
 )
 
 DEF_VISIT(ExprNode_Closure, node,
@@ -342,7 +342,6 @@ void ::HIR::ExprVisitorDef::visit_type(::HIR::TypeRef& ty)
         ),
     (Array,
         this->visit_type( e.inner );
-        //this->visit_expr( e.size );
         ),
     (Slice,
         this->visit_type( e.inner );

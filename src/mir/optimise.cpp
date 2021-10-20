@@ -1601,7 +1601,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
                 return this->clone_constant(se);
                 ),
             (SizedArray,
-                return ::MIR::RValue::make_SizedArray({ this->clone_param(se.val), se.count });
+                return ::MIR::RValue::make_SizedArray({ this->clone_param(se.val), params.monomorph_arraysize(sp, se.count) });
                 ),
             (Borrow,
                 // TODO: Region IDs

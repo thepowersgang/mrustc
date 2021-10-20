@@ -231,7 +231,11 @@ namespace resolve_ufcs {
                 // Custom to visit the inner expression
                 void visit(::HIR::ExprNode_ArraySized& node) override
                 {
-                    upper_visitor.visit_expr(node.m_size);
+                    auto& as = node.m_size;
+                    if( as.is_Unevaluated() && as.as_Unevaluated().is_Unevaluated() )
+                    {
+                        upper_visitor.visit_expr(*as.as_Unevaluated().as_Unevaluated());
+                    }
                     ::HIR::ExprVisitorDef::visit(node);
                 }
 

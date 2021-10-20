@@ -730,7 +730,7 @@ namespace {
         {
             m_os << "[";
             this->visit_node_ptr(node.m_val);
-            m_os << "; " << node.m_size_val;
+            m_os << "; " << node.m_size;
             m_os << "]";
         }
         void visit(::HIR::ExprNode_Closure& node) override

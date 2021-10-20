@@ -24,6 +24,8 @@ public:
     ::HIR::PathParams monomorph_path_params(const Span& sp, const ::HIR::PathParams& tpl, bool allow_infer) const;
     ::HIR::GenericPath monomorph_genericpath(const Span& sp, const ::HIR::GenericPath& tpl, bool allow_infer) const;
 
+    ::HIR::ArraySize monomorph_arraysize(const Span& sp, const ::HIR::ArraySize& tpl) const;
+
     const ::HIR::TypeRef& maybe_monomorph_type(const Span& sp, ::HIR::TypeRef& tmp, const ::HIR::TypeRef& ty, bool allow_infer=true) const {
         if( monomorphise_type_needed(ty) ) {
             return tmp = monomorph_type(sp, ty, allow_infer);

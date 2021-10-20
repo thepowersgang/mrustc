@@ -516,7 +516,7 @@ TAGGED_UNION_EX(RValue, (), Tuple, (
     (Constant, Constant),
     (SizedArray, struct {
         Param   val;
-        unsigned int    count;
+        ::HIR::ArraySize    count;
         }),
     // Cast on primitives (thin pointers, integers, floats)
     (Cast, struct {

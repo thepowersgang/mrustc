@@ -1197,7 +1197,7 @@ namespace HIR {
                     write_encoded(dst, encoded);
                     }
                 TU_ARM(c, Generic, e2) {
-                    auto v = ms.get_value(Span(), e2);
+                    auto v = ms.get_value(state.sp, e2);
                     TU_MATCH_HDRA( (v), { )
                     default:
                         MIR_TODO(state, "Handle expanded generic: " << v);
@@ -1742,7 +1742,11 @@ namespace HIR {
                     }
                     }
                 TU_ARMA(SizedArray, e) {
-                    if( e.count > 0 )
+                    if(!e.count.is_Known()) {
+                        MIR_BUG(state, "TODO: SizedArray - " << e.count);
+                        throw Defer();
+                    }
+                    if( e.count.as_Known() > 0 )
                     {
                         ::HIR::TypeRef tmp;
                         const auto& ty = state.get_lvalue_type(tmp, sa.dst);
@@ -1750,7 +1754,7 @@ namespace HIR {
                         size_t sz = local_state.size_of_or_bug(ity);
 
                         local_state.write_param( dst.slice(0, sz), e.val );
-                        for(unsigned int i = 1; i < e.count; i++)
+                        for(unsigned int i = 1; i < e.count.as_Known(); i++)
                             dst.slice(sz*i, sz).copy_from( state, dst.slice(0, sz) );
                     }
                     }
@@ -2169,11 +2173,18 @@ namespace {
         ::HIR::Evaluator get_eval(const Span& sp, NewvalState& nvs) const
         {
             auto eval = ::HIR::Evaluator { sp, m_crate, nvs };
-            if(m_impl_params)   eval.resolve.set_impl_generics_raw(*m_impl_params);
-            if(m_item_params)   eval.resolve.set_item_generics_raw(*m_item_params);
+            eval.resolve.set_both_generics_raw(m_impl_params, m_item_params);
             return eval;
         }
 
+        ::HIR::PathParams get_params_for_def(const ::HIR::GenericParams& tpl, bool is_function_level=false) const {
+            ::HIR::PathParams   pp;
+            for(const auto& tp : tpl.m_types)
+                pp.m_types.push_back( ::HIR::TypeRef(tp.m_name, (is_function_level ? 256 : 0) + pp.m_types.size()) );
+            for(const auto& vp : tpl.m_values)
+                pp.m_values.push_back( ::HIR::GenericRef(vp.m_name, (is_function_level ? 256 : 0) + pp.m_values.size()) );
+            return pp;
+        }
 
         void visit_module(::HIR::ItemPath p, ::HIR::Module& mod) override
         {
@@ -2190,9 +2201,13 @@ namespace {
         void visit_function(::HIR::ItemPath p, ::HIR::Function& f) override
         {
             TRACE_FUNCTION_F(p);
+
+            auto pp_fcn = get_params_for_def(f.m_params, true);
+            m_monomorph_state.pp_method = &pp_fcn;
             m_item_params = &f.m_params;
             ::HIR::Visitor::visit_function(p, f);
             m_item_params = nullptr;
+            m_monomorph_state.pp_method = nullptr;
         }
 
         void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override
@@ -2204,11 +2219,7 @@ namespace {
             m_mod_path = &mp;
             m_mod = &m_crate.get_mod_by_path(sp, impl.m_src_module);
 
-            ::HIR::PathParams   pp_impl;
-            for(const auto& tp : impl.m_params.m_types)
-                pp_impl.m_types.push_back( ::HIR::TypeRef(tp.m_name, pp_impl.m_types.size()) );
-            for(const auto& vp : impl.m_params.m_values)
-                pp_impl.m_values.push_back( ::HIR::GenericRef(vp.m_name, pp_impl.m_values.size()) );
+            auto pp_impl = get_params_for_def(impl.m_params);
             m_monomorph_state.pp_impl = &pp_impl;
             m_impl_params = &impl.m_params;
 
@@ -2230,11 +2241,7 @@ namespace {
             m_mod_path = &mp;
             m_mod = &m_crate.get_mod_by_path(sp, impl.m_src_module);
 
-            ::HIR::PathParams   pp_impl;
-            for(const auto& tp : impl.m_params.m_types)
-                pp_impl.m_types.push_back( ::HIR::TypeRef(tp.m_name, pp_impl.m_types.size()) );
-            for(const auto& vp : impl.m_params.m_values)
-                pp_impl.m_values.push_back( ::HIR::GenericRef(vp.m_name, pp_impl.m_values.size()) );
+            auto pp_impl = get_params_for_def(impl.m_params);
             m_monomorph_state.pp_impl = &pp_impl;
             m_impl_params = &impl.m_params;
 
@@ -2328,6 +2335,38 @@ namespace {
             m_get_params = saved;
         }
 
+        void visit_arraysize(::HIR::ArraySize& as, std::string name)
+        {
+            if( as.is_Unevaluated() && as.as_Unevaluated().is_Unevaluated() )
+            {
+                const auto& expr_ptr = *as.as_Unevaluated().as_Unevaluated();
+
+                auto nvs = NewvalState { *m_mod, *m_mod_path, name };
+                auto eval = get_eval(expr_ptr->span(), nvs);
+                try
+                {
+                    auto val = eval.evaluate_constant(*m_mod_path + name, expr_ptr, ::HIR::CoreType::Usize, m_monomorph_state.clone());
+                    // TODO: Read a usize out of the literal
+                    as = EncodedLiteralSlice(val).read_uint();
+                    DEBUG("Array size = " << as);
+                }
+                catch(const Defer& )
+                {
+                    const auto* tn = dynamic_cast<const HIR::ExprNode_ConstParam*>(&*expr_ptr);
+                    if(tn) {
+                        as = HIR::ConstGeneric( HIR::GenericRef(tn->m_name, tn->m_binding) );
+                    }
+                    else {
+                        //TODO(expr_ptr->span(), "Handle defer for array sizes");
+                    }
+                }
+            }
+            else
+            {
+                DEBUG("Array size (known) = " << as);
+            }
+        }
+
         void visit_type(::HIR::TypeRef& ty) override
         {
             ::HIR::Visitor::visit_type(ty);
@@ -2335,35 +2374,7 @@ namespace {
             if(auto* e = ty.data_mut().opt_Array())
             {
                 TRACE_FUNCTION_FR(ty, ty);
-                if( e->size.is_Unevaluated() && e->size.as_Unevaluated().is_Unevaluated() )
-                {
-                    const auto& expr_ptr = *e->size.as_Unevaluated().as_Unevaluated();
-                    auto ty_name = FMT("ty_" << &ty << "#");
-
-                    auto nvs = NewvalState { *m_mod, *m_mod_path, ty_name };
-                    auto eval = get_eval(expr_ptr->span(), nvs);
-                    try
-                    {
-                        auto val = eval.evaluate_constant(::HIR::ItemPath(*m_mod_path, ty_name.c_str()), expr_ptr, ::HIR::CoreType::Usize);
-                        // TODO: Read a usize out of the literal
-                        e->size = EncodedLiteralSlice(val).read_uint();
-                        DEBUG("Array " << ty << " - size = " << e->size.as_Known());
-                    }
-                    catch(const Defer& )
-                    {
-                        const auto* tn = dynamic_cast<const HIR::ExprNode_ConstParam*>(&*expr_ptr);
-                        if(tn) {
-                            e->size = HIR::ConstGeneric( HIR::GenericRef(tn->m_name, tn->m_binding) );
-                        }
-                        else {
-                            //TODO(expr_ptr->span(), "Handle defer for array sizes");
-                        }
-                    }
-                }
-                else
-                {
-                    DEBUG("Array " << ty << " - size = " << e->size);
-                }
+                visit_arraysize(e->size, FMT("ty_" << e << "#"));
             }
 
             if( m_recurse_types )
@@ -2506,20 +2517,8 @@ namespace {
                 }
 
                 void visit(::HIR::ExprNode_ArraySized& node) override {
-                    assert( node.m_size );
-                    auto name = FMT("array_" << &node << "#");
-                    auto nvs = NewvalState { *m_exp.m_mod, *m_exp.m_mod_path, name };
-                    auto eval = m_exp.get_eval(node.m_size->span(), nvs);
-                    try
-                    {
-                        auto val = eval.evaluate_constant( ::HIR::ItemPath(*m_exp.m_mod_path, name.c_str()), node.m_size, ::HIR::CoreType::Usize );
-                        node.m_size_val = static_cast<size_t>(EncodedLiteralSlice(val).read_uint());
-                        DEBUG("Array literal [?; " << node.m_size_val << "]");
-                    }
-                    catch(const Defer& )
-                    {
-                        TODO(node.span(), "Defer ArraySized");
-                    }
+                    ::HIR::ExprVisitorDef::visit(node);
+                    m_exp.visit_arraysize(node.m_size, FMT("array_" << &node << "#"));
                 }
             };
 

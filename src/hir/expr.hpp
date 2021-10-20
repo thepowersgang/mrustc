@@ -787,14 +787,12 @@ struct ExprNode_ArraySized:
     public ExprNode
 {
     ::HIR::ExprNodeP    m_val;
-    ::HIR::ExprPtr  m_size;
-    size_t  m_size_val;
+    ::HIR::ArraySize    m_size;
 
     ExprNode_ArraySized(Span sp, ::HIR::ExprNodeP val, ::HIR::ExprPtr size):
         ExprNode(mv$(sp)),
         m_val( mv$(val) ),
-        m_size( mv$(size) ),
-        m_size_val( ~0u )
+        m_size( HIR::ConstGeneric(std::make_shared<HIR::ExprPtr>(mv$(size))) )
     {}
 
     NODE_METHODS();

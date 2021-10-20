@@ -554,7 +554,7 @@
             _(Constant, deserialise_mir_constant() )
             _(SizedArray, {
                 deserialise_mir_param(),
-                static_cast<unsigned int>(m_in.read_u64c())
+                deserialise_arraysize()
                 })
             _(Borrow, {
                 static_cast< ::HIR::BorrowType>( m_in.read_tag() ),

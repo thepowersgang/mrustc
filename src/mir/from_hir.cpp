@@ -2622,7 +2622,7 @@ namespace {
 
             m_builder.set_result( node.span(), ::MIR::RValue::make_SizedArray({
                 mv$(value),
-                static_cast<unsigned int>(node.m_size_val)
+                std::move(node.m_size)
                 }) );
         }
 

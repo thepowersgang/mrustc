@@ -758,7 +758,7 @@ namespace MIR {
         return e.clone();
         ),
     (SizedArray,
-        return ::MIR::RValue::make_SizedArray({ e.val.clone(), e.count });
+        return ::MIR::RValue::make_SizedArray({ e.val.clone(), e.count.clone() });
         ),
     (Borrow,
         return ::MIR::RValue::make_Borrow({ e.type, e.val.clone() });

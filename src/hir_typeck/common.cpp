@@ -294,33 +294,9 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
             } );
         }
     TU_ARMA(Array, e) {
-        HIR::ArraySize  sz;
-        if( auto* se = e.size.opt_Unevaluated() ) {
-            if( se->is_Generic() ) {
-                sz = this->get_value(sp, se->as_Generic());
-                DEBUG(e.size << " -> " << sz);
-                se = sz.opt_Unevaluated();
-                assert(se);
-            }
-
-            if(se->is_Unevaluated()) {
-                // TODO: Evaluate
-                DEBUG("Evaluate unevaluated generic for array size - " << *se);
-                sz = se->clone();
-            }
-            else if( se->is_Evaluated() ) {
-                sz = se->as_Evaluated()->read_usize(0);
-            }
-            else {
-                sz = se->clone();
-            }
-        }
-        else {
-            sz = e.size.clone();
-        }
         return ::HIR::TypeRef( ::HIR::TypeData::make_Array({
             this->monomorph_type(sp, e.inner, allow_infer),
-            mv$(sz)
+            this->monomorph_arraysize(sp, e.size)
             }) );
         }
     TU_ARMA(Slice, e) {
@@ -447,6 +423,34 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
 ::HIR::GenericPath Monomorphiser::monomorph_genericpath(const Span& sp, const ::HIR::GenericPath& tpl, bool allow_infer) const
 {
     return ::HIR::GenericPath( tpl.m_path, this->monomorph_path_params(sp, tpl.m_params, allow_infer) );
+}
+
+::HIR::ArraySize Monomorphiser::monomorph_arraysize(const Span& sp, const ::HIR::ArraySize& tpl) const
+{
+    if( auto* se = tpl.opt_Unevaluated() ) {
+        HIR::ArraySize  sz;
+        if( se->is_Generic() ) {
+            sz = this->get_value(sp, se->as_Generic());
+            DEBUG(tpl << " -> " << sz);
+            se = sz.opt_Unevaluated();
+            assert(se);
+        }
+
+        if(se->is_Unevaluated()) {
+            // TODO: Evaluate
+            DEBUG("Evaluate unevaluated generic for array size - " << *se);
+            return se->clone();
+        }
+        else if( se->is_Evaluated() ) {
+            return se->as_Evaluated()->read_usize(0);
+        }
+        else {
+            return se->clone();
+        }
+    }
+    else {
+        return tpl.clone();
+    }
 }
 
 
