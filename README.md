@@ -3,7 +3,7 @@
 _In-progress_ alternative rust compiler. Capable of building a fully-working copy of rustc, but not suitable for everyday use (due to terrible error messages).
 
 [![Build Status: windows](https://ci.appveyor.com/api/projects/status/96y4ui20pl8xjm2h/branch/master?svg=true)](https://ci.appveyor.com/project/thepowersgang/mrustc/branch/master)
-[![Build Status: Linux/OSX](https://travis-ci.org/thepowersgang/mrustc.svg?branch=master)](https://travis-ci.org/thepowersgang/mrustc)
+[![C/C++ CI](https://github.com/thepowersgang/mrustc/actions/workflows/c-cpp.yml/badge.svg)](https://github.com/thepowersgang/mrustc/actions/workflows/c-cpp.yml)
 
 Intro
 ===
