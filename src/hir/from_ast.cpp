@@ -1485,13 +1485,13 @@ namespace {
 
     ::std::vector< ::std::pair< ::HIR::Pattern, ::HIR::TypeRef > >    args;
     for(const auto& arg : f.args())
-        args.push_back( ::std::make_pair( LowerHIR_Pattern(arg.first), LowerHIR_Type(arg.second) ) );
+        args.push_back( ::std::make_pair( LowerHIR_Pattern(arg.pat), LowerHIR_Type(arg.ty) ) );
 
     auto receiver = ::HIR::Function::Receiver::Free;
 
     if( args.size() > 0 && args.front().first.m_binding.m_name == "self" )
     {
-        const auto& sp = f.args()[0].first.span();
+        const auto& sp = f.args()[0].pat.span();
         auto& arg_self_ty = args.front().second;
 
         auto is_valid_custom_receiver = [&](::HIR::TypeRef& ty)->bool {

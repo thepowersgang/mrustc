@@ -148,7 +148,7 @@ Function Function::clone() const
 {
     decltype(m_args)    new_args;
     for(const auto& arg : m_args)
-        new_args.push_back( ::std::make_pair( arg.first.clone(), arg.second.clone() ) );
+        new_args.push_back( AST::Function::Arg( arg.pat.clone(), arg.ty.clone(), arg.attrs.clone() ) );
 
     auto rv = Function( m_span, m_params.clone(), m_abi, m_is_unsafe, m_is_const, m_is_variadic, m_rettype.clone(), mv$(new_args) );
     if( m_code.is_valid() )

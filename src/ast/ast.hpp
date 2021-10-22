@@ -156,7 +156,20 @@ public:
 class Function
 {
 public:
-    typedef ::std::vector< ::std::pair<AST::Pattern,TypeRef> >   Arglist;
+    struct Arg
+    {
+        ::AST::AttributeList    attrs;
+        ::AST::Pattern  pat;
+        TypeRef  ty;
+
+        Arg(::AST::Pattern pat, TypeRef ty, ::AST::AttributeList attrs={})
+            : attrs(mv$(attrs))
+            , pat(mv$(pat))
+            , ty(mv$(ty))
+        {
+        }
+    };
+    typedef ::std::vector<Arg>   Arglist;
 
 private:
     Span    m_span;

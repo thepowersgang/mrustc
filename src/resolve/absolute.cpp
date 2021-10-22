@@ -2550,7 +2550,7 @@ void Resolve_Absolute_Function(Context& item_context, ::AST::Function& fcn)
     DEBUG("- Prototype types");
     Resolve_Absolute_Type( item_context, fcn.rettype() );
     for(auto& arg : fcn.args())
-        Resolve_Absolute_Type( item_context, arg.second );
+        Resolve_Absolute_Type( item_context, arg.ty );
     item_context.m_ibl_target_generics = nullptr;
 
     DEBUG("- Body");
@@ -2559,7 +2559,7 @@ void Resolve_Absolute_Function(Context& item_context, ::AST::Function& fcn)
         item_context.push_block();
         for(auto& arg : fcn.args()) {
             item_context.start_patbind();
-            Resolve_Absolute_Pattern( item_context, false, arg.first );
+            Resolve_Absolute_Pattern( item_context, false, arg.pat );
             item_context.end_patbind();
         }
 

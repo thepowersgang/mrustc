@@ -1244,8 +1244,9 @@ void RustPrinter::handle_function(bool is_pub, const RcString& name, const AST::
     {
         if( !is_first )
             m_os << ", ";
-        print_pattern( a.first, false );
-        m_os << ": " << a.second.print_pretty();
+        print_attrs(a.attrs);
+        print_pattern( a.pat, false );
+        m_os << ": " << a.ty.print_pretty();
         is_first = false;
     }
     m_os << ")";

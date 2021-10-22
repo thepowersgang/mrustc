@@ -1339,6 +1339,23 @@ void Expand_BareExpr(const ::AST::Crate& crate, const AST::Module& mod, ::AST::E
     Expand_Expr(const_cast< ::AST::Crate&>(crate), LList<const AST::Module*>(nullptr, &mod), node);
 }
 
+void Expand_Function(::AST::Crate& crate, LList<const AST::Module*> modstack, AST::Module& mod, AST::Function& e)
+{
+    for(auto& arg : e.args()) {
+        Expand_Attrs_CfgAttr(arg.attrs);
+        Expand_Attrs(arg.attrs, AttrStage::Pre, [&](const Span& sp, const ExpandDecorator& d, const AST::Attribute& a) {
+            TODO(sp, "attributes on function arguments");
+            });
+        Expand_Pattern(crate, modstack, mod,  arg.pat, false);
+        Expand_Type(crate, modstack, mod,  arg.ty);
+        Expand_Attrs(arg.attrs, AttrStage::Post, [&](const Span& sp, const ExpandDecorator& d, const AST::Attribute& a) {
+            TODO(sp, "attributes on function arguments");
+            });
+    }
+    Expand_Type(crate, modstack, mod,  e.rettype());
+    Expand_Expr(crate, modstack, e.code());
+}
+
 void Expand_Impl(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Path modpath, ::AST::Module& mod, ::AST::Impl& impl)
 {
     TRACE_FUNCTION_F(impl.def());
@@ -1397,12 +1414,7 @@ void Expand_Impl(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST:
             }
         TU_ARMA(Function, e) {
             TRACE_FUNCTION_F("fn " << i.name);
-            for(auto& arg : e.args()) {
-                Expand_Pattern(crate, modstack, mod,  arg.first, false);
-                Expand_Type(crate, modstack, mod,  arg.second);
-            }
-            Expand_Type(crate, modstack, mod,  e.rettype());
-            Expand_Expr(crate, modstack, e.code());
+            Expand_Function(crate, modstack, mod, e);
             }
         TU_ARMA(Static, e) {
             TRACE_FUNCTION_F("static " << i.name);
@@ -1442,6 +1454,8 @@ void Expand_ImplDef(::AST::Crate& crate, LList<const AST::Module*> modstack, ::A
 
     Expand_Attrs(impl_def.attrs(), AttrStage::Post,  crate, mod, impl_def);
 }
+
+//void Expand_Function(
 
 void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::AbsolutePath modpath, ::AST::Module& mod, unsigned int first_item)
 {
@@ -1778,13 +1792,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                     }
                     }
                 TU_ARMA(Function, e) {
-                    Expand_GenericParams(crate, modstack, mod,  e.params());
-                    for(auto& arg : e.args()) {
-                        Expand_Pattern(crate, modstack, mod,  arg.first, false);
-                        Expand_Type(crate, modstack, mod,  arg.second);
-                    }
-                    Expand_Type(crate, modstack, mod,  e.rettype());
-                    Expand_Expr(crate, modstack, e.code());
+                    Expand_Function(crate, modstack, mod, e);
                     }
                 TU_ARMA(Static, e) {
                     Expand_Expr(crate, modstack, e.value());
@@ -1809,13 +1817,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             }
 
         TU_ARMA(Function, e) {
-            Expand_GenericParams(crate, modstack, mod,  e.params());
-            for(auto& arg : e.args()) {
-                Expand_Pattern(crate, modstack, mod,  arg.first, false);
-                Expand_Type(crate, modstack, mod,  arg.second);
-            }
-            Expand_Type(crate, modstack, mod,  e.rettype());
-            Expand_Expr(crate, modstack, e.code());
+            Expand_Function(crate, modstack, mod, e);
             }
         TU_ARMA(Static, e) {
             Expand_Expr(crate, modstack, e.value());

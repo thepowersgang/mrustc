@@ -350,12 +350,12 @@ void Parse_WhereClause(TokenStream& lex, AST::GenericParams& params)
 }
 
 // Parse a single function argument
-::std::pair< AST::Pattern, TypeRef> Parse_Function_Arg(TokenStream& lex, bool expect_named)
+AST::Function::Arg Parse_Function_Arg(TokenStream& lex, bool expect_named)
 {
     TRACE_FUNCTION_F("expect_named = " << expect_named);
     Token   tok;
 
-    AST::Pattern pat;
+    auto attrs = Parse_ItemAttrs(lex);
 
     // If any of the following
     // - Expecting a named parameter (i.e. defining a function in root or impl)
@@ -363,6 +363,7 @@ void Parse_WhereClause(TokenStream& lex, AST::GenericParams& params)
     // - Next token is 'mut' (a mutable parameter slot) or 'ref' (ref pattern)
     // - Next two are <ident> ':' (a trivial named parameter)
     // NOTE: When not expecting a named param, destructuring patterns are not allowed
+    AST::Pattern    pat;
     if( expect_named
       || LOOK_AHEAD(lex) == TOK_UNDERSCORE
       || LOOK_AHEAD(lex) == TOK_RWORD_REF
@@ -374,10 +375,9 @@ void Parse_WhereClause(TokenStream& lex, AST::GenericParams& params)
         GET_CHECK_TOK(tok, lex, TOK_COLON);
     }
 
-    TypeRef type = Parse_Type(lex);
+    auto ty = Parse_Type(lex);
 
-
-    return ::std::make_pair( ::std::move(pat), ::std::move(type) );
+    return AST::Function::Arg(mv$(pat), mv$(ty), mv$(attrs));
 }
 
 /// Parse a function definition (after the 'fn <name>')
@@ -431,7 +431,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, bool allow_
             }
             CHECK_TOK(tok, TOK_RWORD_SELF);
             auto sp = lex.end_span(ps);
-            args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), sp, "self"), TypeRef(TypeRef::TagReference(), sp, ::std::move(lifetime), is_mut, TypeRef(sp, "Self", 0xFFFF))) );
+            args.push_back( AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), sp, "self"), TypeRef(TypeRef::TagReference(), sp, ::std::move(lifetime), is_mut, TypeRef(sp, "Self", 0xFFFF))) );
             if( allow_self == false )
                 ERROR(lex.point_span(), E0000, "Self binding not expected here");
 
@@ -459,7 +459,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, bool allow_
             else {
                 PUTBACK(tok, lex);
             }
-            args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), binding_sp, "self"), mv$(ty)) );
+            args.push_back( AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), binding_sp, "self"), mv$(ty)) );
             GET_TOK(tok, lex);
         }
     }
@@ -477,7 +477,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, bool allow_
         else {
             PUTBACK(tok, lex);
         }
-        args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), binding_sp, "self"), mv$(ty)) );
+        args.push_back( AST::Function::Arg( AST::Pattern(AST::Pattern::TagBind(), binding_sp, "self"), mv$(ty)) );
         GET_TOK(tok, lex);
     }
     else
