@@ -171,6 +171,7 @@ private:
 class TraitResolution:
     public TraitResolveCommon
 {
+    const HIR::SimplePath&  m_lang_Deref;
     const HMTypeInferrence& m_ivars;
 
     const ::HIR::SimplePath&    m_vis_path;
@@ -179,6 +180,7 @@ class TraitResolution:
 public:
     TraitResolution(const HMTypeInferrence& ivars, const ::HIR::Crate& crate, const ::HIR::GenericParams* impl_params, const ::HIR::GenericParams* item_params, const ::HIR::SimplePath& vis_path):
         TraitResolveCommon(crate)
+        ,m_lang_Deref(crate.get_lang_item_path_opt("deref"))
         ,m_ivars(ivars)
         ,m_vis_path(vis_path)
     {

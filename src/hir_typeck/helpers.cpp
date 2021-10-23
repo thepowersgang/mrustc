@@ -1955,8 +1955,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
         // TODO: Fall through? Maybe there's a generic impl that could match.
         }
     TU_ARMA(Generator, te) {
-        const auto& lang_Generator = this->m_crate.get_lang_item_path(sp, "generator");
-        if( pe.trait.m_path == lang_Generator )
+        if( pe.trait.m_path == this->m_lang_Generator )
         {
             if( pe.item == "Return" ) {
                 input = te.node->m_return.clone();
@@ -3304,6 +3303,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 auto cmp = type_is_sized(sp, out_impl_params.m_types[i]);
                 if( cmp == ::HIR::Compare::Unequal )
                 {
+                    DEBUG("- Sized bound failed for " << out_impl_params.m_types[i]);
                     return ::HIR::Compare::Unequal;
                 }
             }
@@ -3906,16 +3906,25 @@ const ::HIR::TypeRef* TraitResolution::autoderef(const Span& sp, const ::HIR::Ty
         return &tmp_type;
     }
     // Shortcut, don't look up a Deref impl for primitives or slices
-    else if( ty.data().is_Slice() || ty.data().is_Primitive() ) {
+    else if( ty.data().is_Slice() || ty.data().is_Primitive() || ty.data().is_Tuple() || ty.data().is_Array() ) {
         return nullptr;
     }
     else {
-        bool succ = this->find_trait_impls(sp, this->m_crate.get_lang_item_path(sp, "deref"), ::HIR::PathParams {}, ty, [&](auto impls, auto match) {
+#if 0
+        auto it = m_deref_cache.find(ty_in);
+        if(it != m_deref_cache.end()) {
+            if(it->second == HIR::TypeRef())
+                return nullptr;
+            return &it->second;
+        }
+#endif
+
+        bool succ = this->find_trait_impls(sp, m_lang_Deref, ::HIR::PathParams {}, ty, [&](auto impls, auto match) {
             tmp_type = impls.get_type("Target");
             if( tmp_type == ::HIR::TypeRef() )
             {
                 tmp_type = ::HIR::TypeRef::new_path(
-                    ::HIR::Path( ty.clone(), this->m_crate.get_lang_item_path(sp, "deref"), "Target" ),
+                    ::HIR::Path( ty.clone(), m_lang_Deref, "Target" ),
                     ::HIR::TypePathBinding::make_Opaque({})
                     );
             }
@@ -3923,10 +3932,10 @@ const ::HIR::TypeRef* TraitResolution::autoderef(const Span& sp, const ::HIR::Ty
             {
                 this->expand_associated_types_inplace(sp, tmp_type, {});
             }
-            DEBUG("Deref " << ty << " into " << tmp_type);
             return true;
             });
         if( succ ) {
+            DEBUG("Deref " << ty << " into " << tmp_type);
             return &tmp_type;
         }
         else {
@@ -4110,6 +4119,7 @@ const ::HIR::TypeRef* TraitResolution::check_method_receiver(const Span& sp, con
         }
         break;
     case ::HIR::Function::Receiver::Custom:
+        ASSERT_BUG(sp, visit_ty_with(fcn.m_receiver_type, [](const HIR::TypeRef& v){ return v.data().is_Generic() && v.data().as_Generic().is_self(); }), fcn.m_receiver_type);
         // TODO: Handle custom-receiver functions
         // - match_test_generics, if it succeeds return the matched Self
         {
@@ -4128,8 +4138,8 @@ const ::HIR::TypeRef* TraitResolution::check_method_receiver(const Span& sp, con
                     TODO(Span(), "GetSelf::match_val " << g << " with " << sz);
                 }
             }   getself;
-            if( fcn.m_args.front().second .match_test_generics(sp, ty, this->m_ivars.callback_resolve_infer(), getself) ) {
-                ASSERT_BUG(sp, getself.detected_self_ty, "Unable to determine receiver type when matching " << fcn.m_args.front().second << " and " << ty);
+            if( fcn.m_receiver_type.match_test_generics(sp, ty, this->m_ivars.callback_resolve_infer(), getself) ) {
+                ASSERT_BUG(sp, getself.detected_self_ty, "Unable to determine receiver type when matching " << fcn.m_receiver_type << " and " << ty);
                 return &this->m_ivars.get_type(*getself.detected_self_ty);
             }
         }
@@ -4399,6 +4409,8 @@ bool TraitResolution::find_method(const Span& sp,
 
     // 4. Search for inherent methods
     // - Inherent methods are searched first.
+    // TODO: Have a cache of name+receiver_type to a list of types and impls
+    // e.g. `len` `&Self` = `[T]`
     DEBUG("> Inherent methods");
     {
         const ::HIR::TypeRef*   cur_check_ty = &ty;
@@ -4408,6 +4420,7 @@ bool TraitResolution::find_method(const Span& sp,
             auto it = impl.m_methods.find( method_name );
             if( it == impl.m_methods.end() )
                 return false ;
+            DEBUG("Potential in `impl" << impl.m_params.fmt_args() << " " << impl.m_type << "` fn " << method_name/* << " - " << top_ty*/);
             const ::HIR::Function&  fcn = it->second.data;
             if( const auto* self_ty_p = this->check_method_receiver(sp, fcn, ty, access) )
             {
@@ -4422,6 +4435,18 @@ bool TraitResolution::find_method(const Span& sp,
             DEBUG("[find_method] Method was present in `impl" << impl.m_params.fmt_args() << " " << impl.m_type << "` but receiver mismatched");
             return false;
             };
+#if 1
+        HIR::TypeRef    tmp;
+        while(cur_check_ty)
+        {
+            DEBUG("Search " << *cur_check_ty);
+            if( m_crate.find_type_impls(*cur_check_ty, m_ivars.callback_resolve_infer(), find_type_impls_cb) )
+            {
+                rv = true;
+            }
+            cur_check_ty = this->autoderef(sp, *cur_check_ty, tmp);
+        }
+#else
         if( m_crate.find_type_impls(ty, m_ivars.callback_resolve_infer(), find_type_impls_cb) )
         {
             rv = true;
@@ -4436,6 +4461,7 @@ bool TraitResolution::find_method(const Span& sp,
         {
             rv = true;
         }
+#endif
     }
 
     // 5. Search for trait methods (using currently in-scope traits)

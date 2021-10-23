@@ -751,6 +751,7 @@
             rv.m_save_code = false;
             rv.m_linkage = deserialise_linkage();
             rv.m_receiver = static_cast< ::HIR::Function::Receiver>( m_in.read_tag() );
+            rv.m_receiver_type = deserialise_type();
             rv.m_abi = m_in.read_string();
             rv.m_unsafe = m_in.read_bool();
             rv.m_const = m_in.read_bool();

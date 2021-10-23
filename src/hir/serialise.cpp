@@ -1106,6 +1106,7 @@
             serialise(fcn.m_linkage);
 
             m_out.write_tag( static_cast<int>(fcn.m_receiver) );
+            serialise(fcn.m_receiver_type);
             m_out.write_string(fcn.m_abi);
             m_out.write_bool(fcn.m_unsafe);
             m_out.write_bool(fcn.m_const);
