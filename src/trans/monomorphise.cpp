@@ -100,6 +100,8 @@ namespace {
             }
             }
         TU_ARMA(ItemAddr, ce) {
+            if(!ce)
+                return ::MIR::Constant::make_ItemAddr({});
             auto p = params.monomorph(resolve, *ce);
             // TODO: If this is a pointer to a function on a trait object, replace with the address loaded from the vtable.
             // - Requires creating a new temporary for the vtable pointer.

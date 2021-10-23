@@ -581,7 +581,7 @@
                 })
             _(MakeDst, {
                 deserialise_mir_param(),
-                deserialise_mir_param()
+                m_in.read_bool() ? deserialise_mir_param() : MIR::Constant::make_ItemAddr({})
                 })
             _(Tuple, {
                 deserialise_vec< ::MIR::Param>()

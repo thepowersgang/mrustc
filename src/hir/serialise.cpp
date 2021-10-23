@@ -938,7 +938,9 @@
                 ),
             (MakeDst,
                 serialise(e.ptr_val);
-                serialise(e.meta_val);
+                auto b = !TU_TEST2(e.meta_val, Constant, ,ItemAddr, .get() == nullptr);
+                m_out.write_bool(b);
+                if(b) serialise(e.meta_val);
                 ),
             (Tuple,
                 serialise_vec(e.vals);

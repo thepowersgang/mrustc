@@ -855,7 +855,45 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                     TU_ARMA(Cast, e) {
                         // Check return type
                         check_types( dst_ty, e.type );
-                        // TODO: Check suitability of source type (COMPLEX)
+                        ::HIR::TypeRef  tmp;
+                        const auto& src_ty = state.get_lvalue_type(tmp, e.val);
+                        // Check suitability of source type (COMPLEX)
+                        TU_MATCH_HDRA((src_ty.data()), {)
+                        default:
+                            break;
+                        // Pointers: Can either be casted to another pointer, or to integers
+                        TU_ARMA(Pointer, s_e) {
+                            auto s_meta = state.m_resolve.metadata_type(state.sp, s_e.inner);
+                            TU_MATCH_HDRA((dst_ty.data()), {)
+                            default:
+                            TU_ARMA(Pointer, d_e) {
+                                // Only valid if metadata matches, or destination is thin
+                                if( s_e.inner != d_e.inner )
+                                {
+                                    auto d_meta = state.m_resolve.metadata_type(state.sp, d_e.inner);
+                                    //MIR_ASSERT(state, d_meta != MetadataType::Unknown, "Casting to unknown-meta pointer: " << dst_ty << " from " << src_ty);
+                                    if(d_meta != MetadataType::None) {
+                                        MIR_ASSERT(state, d_meta == s_meta, "Casting has mismatched metadata: " << dst_ty << " from " << src_ty);
+                                    }
+                                }
+                                }
+                            TU_ARMA(Primitive, d_e) {
+                                switch(d_e)
+                                {
+                                case ::HIR::CoreType::Str:
+                                case ::HIR::CoreType::F32:
+                                case ::HIR::CoreType::F64:
+                                    MIR_BUG(state, "Casting pointer to invalid type - ");
+                                    break;
+                                default:
+                                    // Technicall, this applies, but mrustc sometimes misses the `T: Sized` bound
+                                    //MIR_ASSERT(state, s_meta == MetadataType::None || s_meta == MetadataType::Zero, "Casting fat pointer to integer: " << dst_ty << " from " << src_ty);
+                                    break;
+                                }
+                                }
+                            }
+                            }
+                        }
                         }
                     TU_ARMA(BinOp, e) {
                         /*
@@ -949,6 +987,9 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                         if( TU_TEST2(e.meta_val, Constant, ,ItemAddr, .get() == nullptr) ) {
                             // TODO: Check the validity?
                             // - Ensure that something is generic in either the destination or source 
+                            //::HIR::TypeRef  tmp;
+                            //const auto& src_ty = state.get_param_type(tmp, e.ptr_val);
+                            //MIR_ASSERT(state, monomorphise_type_needed(src_ty), "MakeDst Unsize with known source - " << src_ty);
                             break;
                         }
                         const ::HIR::TypeRef*   ity_p = nullptr;

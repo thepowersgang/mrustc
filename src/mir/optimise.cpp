@@ -1565,6 +1565,8 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
                 }
                 }
             TU_ARMA(ItemAddr, ce) {
+                if(!ce)
+                    return ::MIR::Constant::make_ItemAddr({});
                 return ::MIR::Constant::make_ItemAddr(box$(this->monomorph(*ce)));
                 }
             }

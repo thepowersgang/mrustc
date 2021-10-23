@@ -1282,7 +1282,8 @@ void Trans_Enumerate_FillFrom_MIR_Constant(MIR::EnumCache& state, const ::MIR::C
     (Generic,
         ),
     (ItemAddr,
-        state.insert_path(*ce);
+        if(ce)
+            state.insert_path(*ce);
         )
     )
 }

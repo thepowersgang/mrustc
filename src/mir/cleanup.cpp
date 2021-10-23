@@ -792,8 +792,8 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
     }
     else
     {
-        // Emit a cast rvalue, as something is still generic.
-        return ::MIR::RValue::make_Cast({ mv$(ptr_value), dst_ty.clone() });
+        // Re-emit the "unsize" pseudo-op
+        return ::MIR::RValue::make_MakeDst({ mv$(ptr_value), MIR::Constant::make_ItemAddr({}) });
     }
 }
 
@@ -1229,6 +1229,17 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                         const auto& src_ty = state.get_param_type(tmp, e->ptr_val);
                         const auto& dst_ty = state.get_lvalue_type(tmp2, se.dst);
                         se.src = MIR_Cleanup_CoerceUnsized(state, mutator, dst_ty, src_ty, mv$(e->ptr_val.as_LValue()));
+                    }
+                }
+
+                if( auto* e = se.src.opt_MakeDst() )
+                {
+                    if( TU_TEST2(e->meta_val, Constant, ,ItemAddr, .get() == nullptr) ) {
+                        // TODO: Check the validity?
+                        // - Ensure that something is generic in either the destination or source 
+                        ::HIR::TypeRef  tmp;
+                        const auto& src_ty = state.get_param_type(tmp, e->ptr_val);
+                        MIR_ASSERT(state, monomorphise_type_needed(src_ty), "MakeDst Unsize with known source - " << src_ty);
                     }
                 }
             }
