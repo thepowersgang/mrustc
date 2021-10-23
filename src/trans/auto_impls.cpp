@@ -431,10 +431,11 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
                 else if( TARGETVER_LEAST_1_39 && trait_path.m_path == state.resolve.m_lang_FnOnce )
                     offset = 2;
                 else
-                    offset = 3;
+                    offset = 3; // Wait, is this reachable?
 
                 for(; offset < sizeof(entries)/sizeof(entries[0]); offset ++)
                 {
+                    bool is_by_value = (offset == 2);
                     const auto& ent = entries[offset];
 
                     auto fcn_p = path.clone();
@@ -449,7 +450,7 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
 
                     HIR::Function   fcn;
                     fcn.m_return = te->m_rettype.clone();
-                    fcn.m_args.push_back(std::make_pair( HIR::Pattern(), HIR::TypeRef::new_borrow(ent.bt, type.clone()) ));
+                    fcn.m_args.push_back(std::make_pair( HIR::Pattern(), !is_by_value ? HIR::TypeRef::new_borrow(ent.bt, type.clone()) : type.clone() ));
                     fcn.m_args.push_back(std::make_pair( HIR::Pattern(), mv$(arg_ty) ));
 
                     fcn.m_code.m_mir = MIR::FunctionPointer(new MIR::Function());
@@ -461,7 +462,8 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
                         arg_params.push_back(MIR::LValue::new_Field(MIR::LValue::new_Argument(1), i));
                     }
                     builder.terminate_Call(MIR::LValue::new_Return(),
-                        MIR::LValue::new_Deref(MIR::LValue::new_Argument(0)), mv$(arg_params),
+                        !is_by_value ? MIR::LValue::new_Deref(MIR::LValue::new_Argument(0)) : MIR::LValue::new_Argument(0),
+                        mv$(arg_params),
                         1, 2
                         );
                     // BB1: Return
