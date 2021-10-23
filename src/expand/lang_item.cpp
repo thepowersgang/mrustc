@@ -146,6 +146,12 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::AbsolutePath
             H::add("range_from", Handler(ITEM_STRUCT, handle_save));
             H::add("range_to"  , Handler(ITEM_STRUCT, handle_save));
         }
+
+        if( TARGETVER_LEAST_1_54 )
+        {
+            H::add("unwind_safe", Handler(ITEM_TRAIT, handle_save));    // 1.54 - UnwindSafe trait
+            H::add("ref_unwind_safe", Handler(ITEM_TRAIT, handle_save));    // 1.54 - RefUnwindSafe trait
+        }
     }
     const char* real_name = nullptr;    // For when lang items have their name changed
     auto it = g_handlers.find(name.c_str());
