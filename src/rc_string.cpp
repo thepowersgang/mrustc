@@ -38,8 +38,8 @@ RcString::~RcString()
         if( m_ptr->refcount == 0 )
         {
             free(m_ptr);
-            m_ptr = nullptr;
         }
+        m_ptr = nullptr;
     }
 }
 Ordering RcString::ord(const char* s, size_t len) const
