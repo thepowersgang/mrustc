@@ -817,6 +817,12 @@ struct ExprNode_Closure:
     } m_class = Class::Unknown;
     bool m_is_copy = false;
 
+    // - Cache between the AVU and ExpandClosures passes
+    struct {
+        ::std::vector<unsigned int> local_vars;
+        ::std::vector< ::std::pair<unsigned int, ::HIR::ValueUsage> > captured_vars;
+    } m_avu_cache;
+
     // - Path to the generated closure type
     const ::HIR::Struct*    m_obj_ptr = nullptr;
     ::HIR::GenericPath  m_obj_path_base;
@@ -843,6 +849,11 @@ struct ExprNode_Generator:
     ::HIR::ExprNodeP    m_code;
     bool    m_is_move;
     bool    m_is_pinned;
+
+    struct {
+        ::std::vector<unsigned int> local_vars;
+        ::std::vector< ::std::pair<unsigned int, ::HIR::ValueUsage> > captured_vars;
+    } m_avu_cache;
 
     // Generated type information
     const ::HIR::Struct*    m_obj_ptr = nullptr;
