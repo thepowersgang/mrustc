@@ -179,6 +179,7 @@ ExprNodeP Parse_ExprBlockLine_WithItems(TokenStream& lex, ::std::shared_ptr<AST:
         return rv;
         } break;
     }
+    throw "unreachable";
 }
 
 /// Parse a single line from a block

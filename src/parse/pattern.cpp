@@ -321,6 +321,7 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, AllowOrPattern allow_or)
     default:
         throw ParseError::Unexpected(lex, tok);
     }
+    throw "unreachable";
 }
 AST::Pattern Parse_PatternReal_Path(TokenStream& lex, ProtoSpan ps, AST::Path path)
 {
