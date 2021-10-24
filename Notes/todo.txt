@@ -53,6 +53,8 @@ TODO:
     - No memory gains though.
 - Full SMIRI support in `minicargo` (running `standalone_miri` on build scripts)
 - Rupport `rustc` in `minicargo` (for doing the pre-cargo build of libstd)
+- Restructure to treat `if { ... } else if` chains as a list instead of recursive structures
+- Pre-cache inherent methods for faster lookup
 
 ## MIR Optimisations
 - Argument propagation: replace assignments from `Argument(_)` if target is only
