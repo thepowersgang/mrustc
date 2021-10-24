@@ -9,7 +9,16 @@
   > Hard question between having combinatorial explosion from expanding or patterns early (in HIR generation), or serious changes in destructuring logic.
 - Extended use of const generics
   - Now need value inferrence
+  - Used in array initialisation
 - New language-provided trait impls
 - Lots of new `const fn` constructs
 - Updated `?` operator
 - Use of `!` as a type more (`e.into()` where `E: Into<!>`)
+- Right-exclusive range patterns
+- Destructuring assignment added (used in `liballoc`)
+- `#[cfg]` on function arguments
+- Custom receivers (Pin) used with inherent impls
+- More advanced use of closures locally (broke usage logic)
+- atomic pointer ops
+- `alloc_error_handler`
+- `Box<T>` now has an allocator param

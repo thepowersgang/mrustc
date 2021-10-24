@@ -851,18 +851,43 @@ namespace {
                         m_of << "}\n";
                     }
 
-                    // TODO: Bind `oom` lang item to the item tagged with `alloc_error_handler`
-                    // - Can do this in enumerate/auto_impls instead, for better iteraction with enum
-                    // XXX: HACK HACK HACK - This only works with libcore/libstd's current layout
-                    auto layout_path = ::HIR::SimplePath("core", {"alloc", "Layout"});
-                    //auto oom_method = ::HIR::SimplePath("std", {"alloc", "rust_oom"});
-                    auto oom_method = m_crate.get_lang_item_path(Span(), "mrustc-alloc_error_handler");
-                    m_of << "struct s_" << Trans_Mangle(layout_path) << "_A { uintptr_t a, b; };\n";
-                    m_of << "void oom_impl(struct s_" << Trans_Mangle(layout_path) << "_A l) {"
-                        << " extern void " << Trans_Mangle(oom_method) << "(struct s_" << Trans_Mangle(layout_path) << "_A l);"
-                        << " " << Trans_Mangle(oom_method) << "(l);"
-                        << " }\n"
-                        ;
+                    if( TARGETVER_LEAST_1_54 )
+                    {
+                        auto oom_method = m_crate.get_lang_item_path_opt("mrustc-alloc_error_handler");
+                        m_of << "void __rust_alloc_error_handler(uintptr_t s, uintptr_t a) {\n";
+                        if(oom_method == HIR::SimplePath()) {
+                            m_of << "\t__rdl_oom(s,a);\n";
+                        }
+                        else {
+                            m_of << "\t__rg_oom(s,a);\n";
+                        }
+                        m_of << "}\n";
+
+                        if(oom_method != HIR::SimplePath()) {
+                            auto layout_path = ::HIR::SimplePath("core", {"alloc", "Layout"});
+                            m_of << "struct s_" << Trans_Mangle(layout_path) << "_A { uintptr_t a, b; };\n";
+                            m_of << "void oom_impl(struct s_" << Trans_Mangle(layout_path) << "_A l) {"
+                                << " extern void " << Trans_Mangle(oom_method) << "(struct s_" << Trans_Mangle(layout_path) << "_A l);"
+                                << " " << Trans_Mangle(oom_method) << "(l);"
+                                << " }\n"
+                                ;
+                        }
+                    }
+                    else
+                    {
+                        // TODO: Bind `oom` lang item to the item tagged with `alloc_error_handler`
+                        // - Can do this in enumerate/auto_impls instead, for better iteraction with enum
+                        // XXX: HACK HACK HACK - This only works with libcore/libstd's current layout
+                        auto layout_path = ::HIR::SimplePath("core", {"alloc", "Layout"});
+                        //auto oom_method = ::HIR::SimplePath("std", {"alloc", "rust_oom"});
+                        auto oom_method = m_crate.get_lang_item_path(Span(), "mrustc-alloc_error_handler");
+                        m_of << "struct s_" << Trans_Mangle(layout_path) << "_A { uintptr_t a, b; };\n";
+                        m_of << "void oom_impl(struct s_" << Trans_Mangle(layout_path) << "_A l) {"
+                            << " extern void " << Trans_Mangle(oom_method) << "(struct s_" << Trans_Mangle(layout_path) << "_A l);"
+                            << " " << Trans_Mangle(oom_method) << "(l);"
+                            << " }\n"
+                            ;
+                    }
                 }
 
 
