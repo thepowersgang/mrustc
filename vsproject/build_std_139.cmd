@@ -2,6 +2,7 @@
 @set MRUSTC_TARGET_VER=1.39
 @set OUTDIR=output-%RUSTC_VERSION%
 @set COMMON_ARGS=--vendor-dir ..\rustc-%RUSTC_VERSION%-src\vendor --manifest-overrides ..\rustc-%RUSTC_VERSION%-overrides.toml
+@if defined PARLEVEL ( set COMMON_ARGS=%COMMON_ARGS% -j %PARLEVEL% )
 @set STD_ARGS=--output-dir %OUTDIR% %COMMON_ARGS%
 @set STD_ARGS=%STD_ARGS% --script-overrides ..\script-overrides\stable-%RUSTC_VERSION%-windows
 @mkdir %OUTDIR%
