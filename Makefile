@@ -270,9 +270,11 @@ rust_tests-libs: $(TEST_DEPS)
 #
 test: output$(OUTDIR_SUF)/rust/test_run-pass_hello_out.txt
 
-HELLO_TEST := run-pass/hello.rs
-ifeq ($(RUSTC_VERSION),1.39.0)
-  HELLO_TEST := ui/hello.rs
+HELLO_TEST := ui/hello.rs
+ifeq ($(RUSTC_VERSION),1.19.0)
+  HELLO_TEST := run-pass/hello.rs
+else ifeq ($(RUSTC_VERSION),1.29.0)
+  HELLO_TEST := run-pass/hello.rs
 endif
 
 # "hello, world" test - Invoked by the `make test` target

@@ -44,11 +44,18 @@ ifeq ($(RUSTC_CHANNEL),nightly)
 else
   RUSTCSRC := rustc-$(RUSTC_VERSION)-src/
 endif
-ifeq ($(RUSTC_VERSION),1.39.0)
-  VENDOR_DIR := $(RUSTCSRC)vendor
-  MINICARGO_FLAGS += --manifest-overrides rustc-1.39.0-overrides.toml
-else
+ifeq ($(RUSTC_VERSION),1.19.0)
   VENDOR_DIR := $(RUSTCSRC)src/vendor
+else ifeq ($(RUSTC_VERSION),1.29.0)
+  VENDOR_DIR := $(RUSTCSRC)src/vendor
+else
+  VENDOR_DIR := $(RUSTCSRC)vendor
+  MINICARGO_FLAGS += --manifest-overrides rustc-$(RUSTC_VERSION)-overrides.toml
+endif
+ifeq ($(RUSTC_VERSION),1.54.0)
+  RUST_LIB_PREFIX := library/
+else
+  RUST_LIB_PREFIX := src/lib
 endif
 
 LLVM_CONFIG := $(RUSTCSRC)build/bin/llvm-config
@@ -90,16 +97,13 @@ $(MINICARGO):
 # - libstd, libpanic_unwind, libtest and libgetopts
 # - libproc_macro (mrustc)
 $(OUTDIR)libstd.rlib: $(MRUSTC) $(MINICARGO)
-	$(MINICARGO) $(RUSTCSRC)src/libstd --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
+	$(MINICARGO) $(RUSTCSRC)$(RUST_LIB_PREFIX)std --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
 	@test -e $@
 $(OUTDIR)libpanic_unwind.rlib: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.rlib
-	$(MINICARGO) $(RUSTCSRC)src/libpanic_unwind --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
+	$(MINICARGO) $(RUSTCSRC)$(RUST_LIB_PREFIX)panic_unwind --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
 	@test -e $@
 $(OUTDIR)libtest.rlib: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.rlib $(OUTDIR)libpanic_unwind.rlib
-	$(MINICARGO) $(RUSTCSRC)src/libtest --vendor-dir $(VENDOR_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
-	@test -e $@
-$(OUTDIR)libgetopts.rlib: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.rlib
-	$(MINICARGO) $(RUSTCSRC)src/libgetopts --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
+	$(MINICARGO) $(RUSTCSRC)$(RUST_LIB_PREFIX)test --vendor-dir $(VENDOR_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
 	@test -e $@
 # MRustC custom version of libproc_macro
 $(OUTDIR)libproc_macro.rlib: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.rlib
@@ -108,9 +112,9 @@ $(OUTDIR)libproc_macro.rlib: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.rlib
 
 $(OUTDIR)test/libtest.so: $(MRUSTC) $(MINICARGO)
 	mkdir -p $(dir $@)
-	MINICARGO_DYLIB=1 $(MINICARGO) $(RUSTCSRC)src/libstd          --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(dir $@) $(MINICARGO_FLAGS)
-	MINICARGO_DYLIB=1 $(MINICARGO) $(RUSTCSRC)src/libpanic_unwind --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(dir $@) $(MINICARGO_FLAGS)
-	MINICARGO_DYLIB=1 $(MINICARGO) $(RUSTCSRC)src/libtest         --vendor-dir $(VENDOR_DIR) --output-dir $(dir $@) $(MINICARGO_FLAGS)
+	MINICARGO_DYLIB=1 $(MINICARGO) $(RUSTCSRC)$(RUST_LIB_PREFIX)std          --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(dir $@) $(MINICARGO_FLAGS)
+	MINICARGO_DYLIB=1 $(MINICARGO) $(RUSTCSRC)$(RUST_LIB_PREFIX)panic_unwind --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(dir $@) $(MINICARGO_FLAGS)
+	MINICARGO_DYLIB=1 $(MINICARGO) $(RUSTCSRC)$(RUST_LIB_PREFIX)test         --vendor-dir $(VENDOR_DIR) --output-dir $(dir $@) $(MINICARGO_FLAGS)
 	test -e $@
 
 RUSTC_ENV_VARS := CFG_COMPILER_HOST_TRIPLE=$(RUSTC_TARGET)
