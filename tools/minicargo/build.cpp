@@ -78,6 +78,8 @@ public:
     ::helpers::path build_build_script(const PackageManifest& manifest, bool is_for_host, bool* out_is_rebuilt) const;
 
 private:
+    ::std::string get_crate_suffix(const PackageManifest& manifest) const;
+    ::std::string get_build_script_out(const PackageManifest& manifest) const;
     ::helpers::path get_crate_path(const PackageManifest& manifest, const PackageTarget& target, bool is_for_host, const char** crate_type, ::std::string* out_crate_suffix) const;
     bool spawn_process_mrustc(const StringList& args, StringListKV env, const ::helpers::path& logfile) const;
 
@@ -412,47 +414,56 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs)
             {
                 const auto& list = *list_p;
                 auto& queue = *queue_p;
-                for(;;)
+                try
                 {
-                    DEBUG("Thread " << my_idx << ": waiting");
-                    queue.avaliable_tasks.wait();
+                    for(;;)
+                    {
+                        DEBUG("Thread " << my_idx << ": waiting");
+                        queue.avaliable_tasks.wait();
 
-                    if( queue.complete || queue.failure )
-                    {
-                        DEBUG("Thread " << my_idx << ": Terminating");
-                        break;
-                    }
-
-                    unsigned cur;
-                    {
-                        ::std::lock_guard<::std::mutex> sl { queue.mutex };
-                        cur = queue.state.get_next();
-                        queue.num_active ++;
-                    }
-
-                    DEBUG("Thread " << my_idx << ": Starting " << cur << " - " << list[cur].package->name());
-                    if( ! builder->build_library(*list[cur].package, list[cur].is_host, cur) )
-                    {
-                        queue.failure = true;
-                        queue.signal_all();
-                    }
-                    else
-                    {
-                        ::std::lock_guard<::std::mutex> sl { queue.mutex };
-                        queue.num_active --;
-                        int v = queue.state.complete_package(cur, list);
-                        while(v--)
+                        if( queue.complete || queue.failure )
                         {
-                            queue.avaliable_tasks.notify();
+                            DEBUG("Thread " << my_idx << ": Terminating");
+                            break;
                         }
 
-                        // If the queue is empty, and there's no active jobs, stop.
-                        if( queue.state.build_queue.empty() && queue.num_active == 0 )
+                        unsigned cur;
                         {
-                            queue.complete = true;
+                            ::std::lock_guard<::std::mutex> sl { queue.mutex };
+                            cur = queue.state.get_next();
+                            queue.num_active ++;
+                        }
+
+                        DEBUG("Thread " << my_idx << ": Starting " << cur << " - " << list[cur].package->name());
+                        if( ! builder->build_library(*list[cur].package, list[cur].is_host, cur) )
+                        {
+                            queue.failure = true;
                             queue.signal_all();
                         }
+                        else
+                        {
+                            ::std::lock_guard<::std::mutex> sl { queue.mutex };
+                            queue.num_active --;
+                            int v = queue.state.complete_package(cur, list);
+                            while(v--)
+                            {
+                                queue.avaliable_tasks.notify();
+                            }
+
+                            // If the queue is empty, and there's no active jobs, stop.
+                            if( queue.state.build_queue.empty() && queue.num_active == 0 )
+                            {
+                                queue.complete = true;
+                                queue.signal_all();
+                            }
+                        }
                     }
+                }
+                catch(const std::exception& e)
+                {
+                    ::std::cerr << "EXCEPTION: " << e.what() << ::std::endl;
+                    queue.failure = true;
+                    queue.signal_all();
                 }
 
                 queue.dead_threads.notify();
@@ -576,9 +587,8 @@ Builder::Builder(const BuildOptions& opts, size_t total_targets):
     m_compiler_path = get_mrustc_path();
 }
 
-::helpers::path Builder::get_crate_path(const PackageManifest& manifest, const PackageTarget& target, bool is_for_host, const char** crate_type, ::std::string* out_crate_suffix) const
+::std::string Builder::get_crate_suffix(const PackageManifest& manifest) const
 {
-    auto outfile = this->get_output_dir(is_for_host);
     ::std::string   crate_suffix;
     // HACK: If there's no version, don't emit a version tag
     //if( manifest.version() != PackageVersion() ) 
@@ -619,6 +629,17 @@ Builder::Builder(const BuildOptions& opts, size_t total_targets):
                 v = '_';
 #endif
     }
+    return crate_suffix;
+}
+::std::string Builder::get_build_script_out(const PackageManifest& manifest) const
+{
+    return std::string("build_") + manifest.name().c_str() + (manifest.version() == PackageVersion() ? "" : get_crate_suffix(manifest).c_str());
+}
+::helpers::path Builder::get_crate_path(const PackageManifest& manifest, const PackageTarget& target, bool is_for_host, const char** crate_type, ::std::string* out_crate_suffix) const
+{
+    auto outfile = this->get_output_dir(is_for_host);
+
+    auto crate_suffix = get_crate_suffix(manifest);
 
     if(out_crate_suffix)
         *out_crate_suffix = crate_suffix;
@@ -1013,7 +1034,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
 
     // Environment variables (rustc_env)
     StringListKV    env;
-    auto out_dir = this->get_output_dir(is_for_host).to_absolute() / "build_" + manifest.name().c_str();
+    auto out_dir = this->get_output_dir(is_for_host).to_absolute() / get_build_script_out(manifest);
     env.push_back("OUT_DIR", out_dir.str());
     for(const auto& e : manifest.build_script_output().rustc_env) {
         env.push_back(e.first.c_str(), e.second.c_str());
@@ -1028,7 +1049,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
 ::helpers::path Builder::build_build_script(const PackageManifest& manifest, bool is_for_host, bool* out_is_rebuilt) const
 {
     // - Output dir is the same as the library.
-    auto outfile = this->get_output_dir(is_for_host) / manifest.name() + "_build" EXESUF;
+    auto outfile = this->get_output_dir(is_for_host) / get_build_script_out(manifest) + "_run" EXESUF;
 
     auto ts_result = Timestamp::for_file(outfile);
     if( ts_result == Timestamp::infinite_past() ) {
@@ -1116,8 +1137,8 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
 {
     auto output_dir_abs = this->get_output_dir(is_for_host).to_absolute();
 
-    auto out_file = output_dir_abs / "build_" + manifest.name().c_str() + ".txt";
-    auto out_dir = output_dir_abs / "build_" + manifest.name().c_str();
+    auto out_file = output_dir_abs / get_build_script_out(manifest) + ".txt";
+    auto out_dir = output_dir_abs / get_build_script_out(manifest);
 
     bool run_build_script = false;
     // TODO: Handle a pre-existing script containing `cargo:rerun-if-changed`
@@ -1210,6 +1231,7 @@ bool Builder::build_library(const PackageManifest& manifest, bool is_for_host, s
         // Locate a build script override file
         if(this->m_opts.build_script_overrides.is_valid())
         {
+            //auto override_file = this->m_opts.build_script_overrides / get_build_script_out(manifest) + ".txt";
             auto override_file = this->m_opts.build_script_overrides / "build_" + manifest.name().c_str() + ".txt";
             // TODO: Should this test if it exists? or just assume and let it error?
 
@@ -1382,7 +1404,10 @@ bool spawn_process(const char* exe_name, const StringList& args, const StringLis
     GetExitCodeProcess(pi.hProcess, &status);
     if (status != 0)
     {
-        DEBUG("Process exited with non-zero exit status " << status);
+#ifndef DISABLE_MULTITHREAD
+        ::std::lock_guard<::std::mutex> lh { s_cout_mutex };
+#endif
+        std::cerr << "Process `" << cmdline_str << "` exited with non-zero exit status " << status << std::endl;
         return false;
     }
 #else
@@ -1463,12 +1488,17 @@ bool spawn_process(const char* exe_name, const StringList& args, const StringLis
     waitpid(pid, &status, 0);
     if( status != 0 )
     {
+        ::std::lock_guard<::std::mutex> lh { s_cout_mutex };
         if( WIFEXITED(status) )
             ::std::cerr << "Process exited with non-zero exit status " << WEXITSTATUS(status) << ::std::endl;
         else if( WIFSIGNALED(status) )
             ::std::cerr << "Process was terminated with signal " << WTERMSIG(status) << ::std::endl;
         else
             ::std::cerr << "Process terminated for unknown reason, status=" << status << ::std::endl;
+        ::std::cerr << "FAILING COMMAND: ";
+        for(const auto& p : argv)
+            ::std::cerr  << " " << p;
+        ::std::cerr << ::std::endl;
         //::std::cerr << "See " << logfile << " for the compiler output" << ::std::endl;
         return false;
     }

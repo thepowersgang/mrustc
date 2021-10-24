@@ -1252,6 +1252,7 @@ namespace {
                     case CodegenOutput::Executable:
                     case CodegenOutput::DynamicLibrary:
                         args.push_back("/Zi");  // Emit a PDB
+                        args.push_back(FMT("/Fd" << m_outfile_path << ".pdb")); // Set the PDB path
                         break;
                     case CodegenOutput::StaticLibrary:
                     case CodegenOutput::Object:
