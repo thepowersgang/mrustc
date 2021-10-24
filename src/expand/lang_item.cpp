@@ -23,7 +23,7 @@ enum eItemType
 };
 
 struct Handler {
-    typedef void (*cb_t)(const Span& sp, AST::Crate& crate, const std::string&, AST::AbsolutePath);
+    typedef void (*cb_t)(const Span& sp, AST::Crate& crate, const std::string&, const AST::AbsolutePath&);
     eItemType type;
     cb_t    cb;
     Handler(eItemType type, cb_t cb): type(type), cb(cb) {}
@@ -33,7 +33,7 @@ struct StrcmpTy {
 };
 static std::map<const char*,Handler,StrcmpTy>   g_handlers;
 
-void handle_save(const Span& sp, AST::Crate& crate, const std::string& name, AST::AbsolutePath path)
+void handle_save(const Span& sp, AST::Crate& crate, const std::string& name, const AST::AbsolutePath& path)
 {
     auto rv = crate.m_lang_items.insert( ::std::make_pair(name, path) );
     if( !rv.second ) {
@@ -132,12 +132,12 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::AbsolutePath
 
         if(TARGETVER_LEAST_1_54)
         {
-            H::add("RangeFull", Handler(ITEM_STRUCT, [](const auto& sp, auto& crate, const auto& , auto p){ handle_save(sp, crate, "range_full", p); }));
-            H::add("Range"    , Handler(ITEM_STRUCT, [](const auto& sp, auto& crate, const auto& , auto p){ handle_save(sp, crate, "range"     , p); }));
-            H::add("RangeFrom", Handler(ITEM_STRUCT, [](const auto& sp, auto& crate, const auto& , auto p){ handle_save(sp, crate, "range_from", p); }));
-            H::add("RangeTo"  , Handler(ITEM_STRUCT, [](const auto& sp, auto& crate, const auto& , auto p){ handle_save(sp, crate, "range_to"  , p); }));
-            H::add("RangeInclusive"  , Handler(ITEM_STRUCT, [](const auto& sp, auto& crate, const auto& , auto p){ handle_save(sp, crate, "range_inclusive"   , p); }));
-            H::add("RangeToInclusive", Handler(ITEM_STRUCT, [](const auto& sp, auto& crate, const auto& , auto p){ handle_save(sp, crate, "range_to_inclusive", p); }));
+            H::add("RangeFull", Handler(ITEM_STRUCT, [](const auto& sp, auto& crate, const auto& , const auto& p){ handle_save(sp, crate, "range_full", p); }));
+            H::add("Range"    , Handler(ITEM_STRUCT, [](const auto& sp, auto& crate, const auto& , const auto& p){ handle_save(sp, crate, "range"     , p); }));
+            H::add("RangeFrom", Handler(ITEM_STRUCT, [](const auto& sp, auto& crate, const auto& , const auto& p){ handle_save(sp, crate, "range_from", p); }));
+            H::add("RangeTo"  , Handler(ITEM_STRUCT, [](const auto& sp, auto& crate, const auto& , const auto& p){ handle_save(sp, crate, "range_to"  , p); }));
+            H::add("RangeInclusive"  , Handler(ITEM_STRUCT, [](const auto& sp, auto& crate, const auto& , const auto& p){ handle_save(sp, crate, "range_inclusive"   , p); }));
+            H::add("RangeToInclusive", Handler(ITEM_STRUCT, [](const auto& sp, auto& crate, const auto& , const auto& p){ handle_save(sp, crate, "range_to_inclusive", p); }));
         }
         else
         {
