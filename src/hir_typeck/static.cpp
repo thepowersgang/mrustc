@@ -2101,8 +2101,14 @@ MetadataType StaticTraitResolve::metadata_type(const Span& sp, const ::HIR::Type
     default:
         return MetadataType::None;
     TU_ARMA(Generic, e) {
+        // Check for an explicit `Sized` bound
+        auto pp = ::HIR::PathParams();
+        bool rv = this->find_impl__bounds(sp, m_lang_Sized, &pp, ty, [&](auto , bool ){ return true; });
+        if(rv) {
+            return MetadataType::None;
+        }
         if( e.binding == 0xFFFF ) {
-            // TODO: Self: Sized?
+            // TODO: `Self: ?Sized` (e.g. traits)
             return MetadataType::None;
         }
         else if( (e.binding >> 8) == 0 ) {
