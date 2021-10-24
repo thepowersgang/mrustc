@@ -4808,6 +4808,8 @@ namespace {
                     throw "";
                 };
             auto get_prim_size = [&mir_res](const ::HIR::TypeRef& ty)->unsigned {
+                    if(ty.data().is_Pointer())
+                        return Target_GetCurSpec().m_arch.m_pointer_bits;
                     if( !ty.data().is_Primitive() )
                         MIR_BUG(mir_res, "Unknown type for getting primitive size - " << ty);
                     switch( ty.data().as_Primitive() )
@@ -4855,22 +4857,22 @@ namespace {
                 }
                 };
             auto emit_msvc_atomic_op = [&](const char* name, Ordering ordering) {
+                const auto& ty = params.m_types.at(0);
+                if(ty.data().is_Pointer()) {
+                    m_of << "("; emit_ctype(ty); m_of << ")";
+                }
                 m_of << name;
-                switch( get_real_prim_ty(params.m_types.at(0).data().as_Primitive()) )
+                switch( get_prim_size(params.m_types.at(0)) )
                 {
-                case ::HIR::CoreType::U8:
-                case ::HIR::CoreType::I8:
+                case 8:
                     m_of << "8";
                     break;
-                case ::HIR::CoreType::U16:
-                case ::HIR::CoreType::I16:
+                case 16:
                     m_of << "16";
                     break;
-                case ::HIR::CoreType::U32:
-                case ::HIR::CoreType::I32:
+                case 32:
                     break;
-                case ::HIR::CoreType::U64:
-                case ::HIR::CoreType::I64:
+                case 64:
                     m_of << "64";
                     break;
                 default:
@@ -4878,6 +4880,9 @@ namespace {
                 }
                 m_of << get_atomic_suffix_msvc(ordering);
                 m_of << "(";
+                if(ty.data().is_Pointer()) {
+                    m_of << "(uintptr_t*)";
+                }
                 };
             auto emit_atomic_cast = [&]() {
                 m_of << "(_Atomic "; emit_ctype(params.m_types.at(0)); m_of << "*)";
@@ -4908,7 +4913,9 @@ namespace {
                     emit_lvalue(e.ret_val); m_of << "._0 = ";
                     emit_msvc_atomic_op("InterlockedCompareExchange", Ordering::SeqCst);  // TODO: Use ordering, but which one?
                     // Slot, Exchange (new value), Comparand (expected value) - Note different order to the gcc/stdc version
-                    emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(2)); m_of << ", "; emit_param(e.args.at(1)); m_of << ")";
+                    emit_param(e.args.at(0)); m_of << ", ";
+                    if(params.m_types.at(0).data().is_Pointer()) { m_of << "(uintptr_t)"; } emit_param(e.args.at(2)); m_of << ", ";
+                    if(params.m_types.at(0).data().is_Pointer()) { m_of << "(uintptr_t)"; } emit_param(e.args.at(1)); m_of << ")";
                     m_of << ";\n\t";
                     // If the result equals the expected value, return true
                     emit_lvalue(e.ret_val); m_of << "._1 = ("; emit_lvalue(e.ret_val); m_of << "._0 == "; emit_param(e.args.at(1)); m_of << ")";
@@ -5257,11 +5264,14 @@ namespace {
                 //emit_lvalue(e.ret_val); m_of << " = mrustc_caller_location"; 
             }
             // --- Pointer manipulation
-            else if( name == "offset" ) {
+            else if( name == "offset" ) {   // addition, with the reqirement that the resultant pointer be in bounds
                 emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0)); m_of << " + "; emit_param(e.args.at(1));
             }
-            else if( name == "arith_offset" ) {
+            else if( name == "arith_offset" ) { // addition, with no requirements
                 emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0)); m_of << " + "; emit_param(e.args.at(1));
+            }
+            else if( name == "ptr_offset_from" ) {  // effectively subtraction
+                emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0)); m_of << " - "; emit_param(e.args.at(1));
             }
             else if( name == "ptr_guaranteed_eq" ) {
                 emit_lvalue(e.ret_val); m_of << " = ("; emit_param(e.args.at(0)); m_of << " == "; emit_param(e.args.at(1)); m_of << ")";
@@ -6169,7 +6179,7 @@ namespace {
                         ordering = Ordering::SeqCst;
                     emit_msvc_atomic_op("InterlockedExchange", ordering);
                     emit_param(e.args.at(0)); m_of << ", ";
-                    emit_param(e.args.at(1)); m_of << ")";
+                    if(params.m_types.at(0).data().is_Pointer()) { m_of << "(uintptr_t)"; } emit_param(e.args.at(1)); m_of << ")";
                     break;
                 }
             }
