@@ -3274,7 +3274,7 @@ namespace {
                 switch(m_compiler)
                 {
                 case Compiler::Gcc:
-                    MIR_TODO(mir_res, "Asm2 GCC " << stmt);
+                    this->emit_asm2_gcc(mir_res, stmt, indent_level);
                     break;
                 case Compiler::Msvc:
                     this->emit_asm2_msvc(mir_res, stmt, indent_level);
@@ -4729,6 +4729,175 @@ namespace {
                     MIR_TODO(mir_res, "MSVC amd64 doesn't support inline assembly, need to have a transform for " << stmt);
                 }
                 MIR_TODO(mir_res, "Translate to MSVC");
+            }
+        }
+        void emit_asm2_gcc(const ::MIR::TypeResolve& mir_res, const ::MIR::Statement& stmt, unsigned indent_level)
+        {
+            auto indent = RepeatLitStr{ "\t", static_cast<int>(indent_level) };
+            Asm2TplMatch    m { mir_res, stmt };
+            const auto& se = stmt.as_Asm2();
+
+
+            // The following clobber overlaps with an output
+            // __asm__ ("cpuid": "=a" (var0), "=b" (var1), "=c" (var2), "=d" (var3): "a" (arg0), "c" (var4): "rbx");
+            if( m.matches_template({"movq %rbx, {0:r}", "cpuid", "xchgq %rbx, {0:r}"}, {"lateout:reg", "inlateout=eax", "inlateout=ecx", "lateout=edx"}) )
+            {
+                //if( e.clobbers.size() == 1 && e.clobbers[0] == "rbx" ) {
+                    m_of << indent << "__asm__(\"cpuid\"";
+                    m_of << " : ";
+                    m_of << "\"=a\" ("; emit_lvalue(m.output(1)); m_of << "), ";
+                    m_of << "\"=b\" ("; emit_lvalue(m.output(0)); m_of << "), ";
+                    m_of << "\"=c\" ("; emit_lvalue(m.output(2)); m_of << "), ";
+                    m_of << "\"=d\" ("; emit_lvalue(m.output(3)); m_of << ")";
+                    m_of << " : ";
+                    m_of << "\"a\" ("; emit_param(m.input(1)); m_of << "), ";
+                    m_of << "\"c\" ("; emit_param(m.input(2)); m_of << ")";
+                    m_of << " );\n";
+                    return ;
+                //}
+            }
+            else if( m.matches_template({"btl {1:e}, ({0})", "setc {2}"}, {"in:reg", "in:reg", "out:reg_byte"}) )
+            {
+                m_of << indent << "__asm__(\"bt %1, (%2); setc %0\"";
+                m_of << " : \"=r\"("; emit_lvalue(m.output(2)); m_of << ")";
+                m_of << " : \"r\"("; emit_param(m.input(0));  m_of << "), \"r\"("; emit_param(m.input(1));  m_of << ")";
+                m_of << ");\n";
+                return;
+            }
+            else if( m.matches_template({"btcl {1:e}, ({0})", "setc {2}"}, {"in:reg", "in:reg", "out:reg_byte"}) )
+            {
+                m_of << indent << "__asm__(\"btc %1, (%2); setc %0\"";
+                m_of << " : \"=r\"("; emit_lvalue(m.output(2)); m_of << ")";
+                m_of << " : \"r\"("; emit_param(m.input(0));  m_of << "), \"r\"("; emit_param(m.input(1));  m_of << ")";
+                m_of << ");\n";
+                return;
+            }
+            else if( m.matches_template({"btrl {1:e}, ({0})", "setc {2}"}, {"in:reg", "in:reg", "out:reg_byte"}) )
+            {
+                m_of << indent << "__asm__(\"btr %1, (%2); setc %0\"";
+                m_of << " : \"=r\"("; emit_lvalue(m.output(2)); m_of << ")";
+                m_of << " : \"r\"("; emit_param(m.input(0));  m_of << "), \"r\"("; emit_param(m.input(1));  m_of << ")";
+                m_of << ");\n";
+                return;
+            }
+            else if( m.matches_template({"btsl {1:e}, ({0})", "setc {2}"}, {"in:reg", "in:reg", "out:reg_byte"}) )
+            {
+                m_of << indent << "__asm__(\"bts %1, (%2); setc %0\"";
+                m_of << " : \"=r\"("; emit_lvalue(m.output(2)); m_of << ")";
+                m_of << " : \"r\"("; emit_param(m.input(0));  m_of << "), \"r\"("; emit_param(m.input(1));  m_of << ")";
+                m_of << ");\n";
+                return;
+            }
+            else
+            {
+                std::vector<unsigned>   arg_mappings(se.params.size(), UINT_MAX);
+                std::vector<const MIR::AsmParam::Data_Reg*>   outputs;
+                // Outputs
+                for(size_t i = 0; i < se.params.size(); i ++)
+                {
+                    if( const auto* pe = se.params[i].opt_Reg() ) {
+                        if( pe->output )
+                        {
+                            arg_mappings[i] = outputs.size();
+                            outputs.push_back(pe);
+                        }
+                    }
+                }
+                // Inputs
+                std::vector<const MIR::AsmParam*>   inputs;
+                for(size_t i = 0; i < se.params.size(); i ++)
+                {
+                    if( const auto* pe = se.params[i].opt_Reg() ) {
+                        if( pe->input )
+                        {
+                            arg_mappings[i] = outputs.size() + inputs.size();
+                            inputs.push_back(&se.params[i]);
+                        }
+                    }
+                }
+                // Clobbers
+                std::vector<const char*>   clobbers;
+                for(size_t i = 0; i < se.params.size(); i ++)
+                {
+                    // An explicit register, not "In" and output parameter
+                }
+
+                m_of << indent << "__asm__ ";
+                m_of << "__volatile__"; // Default everything to volatile
+                m_of << "(\".intel_syntax; ";
+                for(const auto& l : se.lines)
+                {
+                    for(const auto& f : l.frags)
+                    {
+                        m_of << FmtEscaped(f.before);
+                        //if( f.modifier != '\0' )
+                        //    MIR_TODO(mir_res, "Asm2 GCC: modifier - " << stmt);
+                        MIR_ASSERT(mir_res, arg_mappings.at(f.index) != UINT_MAX, stmt);
+                        m_of << "%" << arg_mappings.at(f.index);
+                    }
+                    m_of << FmtEscaped(l.trailing);
+                    m_of << ";\\n ";
+                }
+                m_of << ".att_syntax; \"";
+                m_of << " :";
+                for(size_t i = 0; i < outputs.size(); i ++)
+                {
+                    const auto& p = *outputs[i];
+                    if(i != 0)  m_of << ",";
+                    m_of << " ";
+                    m_of << "\"";
+                    TU_MATCH_HDRA((p.spec), {)
+                    TU_ARMA(Class, c)
+                        switch(c)
+                        {
+                        case AsmCommon::RegisterClass::x86_reg: m_of << "=r";   break;
+                        case AsmCommon::RegisterClass::x86_reg_abcd: m_of << "=Q";   break;
+                        case AsmCommon::RegisterClass::x86_reg_byte: m_of << "=q";   break;
+                        case AsmCommon::RegisterClass::x86_xmm: m_of << "=x";   break;
+                        case AsmCommon::RegisterClass::x86_ymm: m_of << "=x";   break;
+                        case AsmCommon::RegisterClass::x86_zmm: m_of << "=v";   break;
+                        case AsmCommon::RegisterClass::x86_kreg: MIR_TODO(mir_res, "Asm2 GCC - x86_kreg: " << stmt);
+                        }
+                    TU_ARMA(Explicit, name) {
+                        MIR_TODO(mir_res, "Asm2 GCC - Explicit output reg: " << stmt);
+                        }
+                    }
+                    assert(p.output);
+                    m_of << "\" ("; emit_lvalue(*p.output); m_of << ")";
+                }
+                m_of << " :";
+                for(size_t i = 0; i < inputs.size(); i ++)
+                {
+                    const auto& p = *inputs[i];
+                    if(i != 0)  m_of << ",";
+                    m_of << " ";
+                    TU_MATCH_HDRA((p), {)
+                    TU_ARMA(Reg, r) {
+                        m_of << "\"";
+                        TU_MATCH_HDRA((r.spec), {)
+                        TU_ARMA(Class, c)
+                            switch(c)
+                            {
+                            case AsmCommon::RegisterClass::x86_reg: m_of << "r";   break;
+                            case AsmCommon::RegisterClass::x86_reg_abcd: m_of << "Q";   break;
+                            case AsmCommon::RegisterClass::x86_reg_byte: m_of << "q";   break;
+                            case AsmCommon::RegisterClass::x86_xmm: m_of << "x";   break;
+                            case AsmCommon::RegisterClass::x86_ymm: m_of << "x";   break;
+                            case AsmCommon::RegisterClass::x86_zmm: m_of << "v";   break;
+                            case AsmCommon::RegisterClass::x86_kreg: MIR_TODO(mir_res, "Asm2 GCC - x86_kreg: " << stmt);
+                            }
+                        TU_ARMA(Explicit, name) {
+                            MIR_TODO(mir_res, "Asm2 GCC - Explicit output reg: " << stmt);
+                            }
+                        }
+                        assert(r.input);
+                        m_of << "\" ("; emit_param(*r.input); m_of << ")";
+                        }
+                    TU_ARMA(Const, c)   MIR_TODO(mir_res, "Asm2 GCC - Const: " << stmt);
+                    TU_ARMA(Sym, c)   MIR_TODO(mir_res, "Asm2 GCC - Sym: " << stmt);
+                    }
+                }
+                m_of << ");\n";
             }
         }
     private:
