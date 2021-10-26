@@ -151,8 +151,8 @@ public:
             m_os << "_";
             // TODO: Base64 data? (`_` and `$` as the other two?)
             for(size_t i = 0; i < ev.bytes.size(); i ++) {
-                m_os << "0123456789abdef"[ ev.bytes[i] >> 4 ];
-                m_os << "0123456789abdef"[ ev.bytes[i] & 0xF ];
+                m_os << "0123456789abcdef"[ ev.bytes[i] >> 4 ];
+                m_os << "0123456789abcdef"[ ev.bytes[i] & 0xF ];
             }
             if( ev.relocations.size() > 0 )
             {
