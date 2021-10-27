@@ -1060,7 +1060,7 @@ namespace {
             rv.m_struct_markings.is_nonzero = true;
         }
         else {
-            TODO(sp, "Handle #[rustc_layout_scalar_valid_range_start(" << ent.m_markings.scalar_valid_start << ")]");
+            //TODO(sp, "Handle #[rustc_layout_scalar_valid_range_start(" << ent.m_markings.scalar_valid_start << ")]");
         }
     }
     // TODO: Store the scalar valid range information for downstream
@@ -1127,7 +1127,9 @@ namespace {
                 break;
 
             default:
-                ERROR(sp, E0000, "Invalid use of #[rustc_layout_scalar_valid_range_start] or #[rustc_layout_scalar_valid_range_end] on invalid type (must be an integer or pointer)");
+                ignore = true;
+                //ERROR(sp, E0000, "Invalid use of #[rustc_layout_scalar_valid_range_start] or #[rustc_layout_scalar_valid_range_end] on invalid type (must be an integer or pointer) - " << *ty);
+                break;
             }
         }
 
