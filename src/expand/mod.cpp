@@ -1341,15 +1341,29 @@ void Expand_BareExpr(const ::AST::Crate& crate, const AST::Module& mod, ::AST::E
 
 void Expand_Function(::AST::Crate& crate, LList<const AST::Module*> modstack, AST::Module& mod, AST::Function& e)
 {
-    for(auto& arg : e.args()) {
+    for(size_t i = 0; i < e.args().size(); i ++)
+    {
+        auto& arg = e.args()[i];
+        bool remove = false;
         Expand_Attrs_CfgAttr(arg.attrs);
         Expand_Attrs(arg.attrs, AttrStage::Pre, [&](const Span& sp, const ExpandDecorator& d, const AST::Attribute& a) {
-            TODO(sp, "attributes on function arguments");
+            if( a.name() == "cfg" ) {
+                if( !check_cfg(sp, a) ) {
+                    remove = true;
+                }
+                return ;
+            }
+            TODO(sp, "attributes on function arguments - " << a);
             });
+        if( remove ) {
+            e.args().erase(e.args().begin() + i);
+            i --;
+            continue ;
+        }
         Expand_Pattern(crate, modstack, mod,  arg.pat, false);
         Expand_Type(crate, modstack, mod,  arg.ty);
         Expand_Attrs(arg.attrs, AttrStage::Post, [&](const Span& sp, const ExpandDecorator& d, const AST::Attribute& a) {
-            TODO(sp, "attributes on function arguments");
+            TODO(sp, "attributes on function arguments - " << a);
             });
     }
     Expand_Type(crate, modstack, mod,  e.rettype());
