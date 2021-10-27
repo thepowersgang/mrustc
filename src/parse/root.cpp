@@ -1888,12 +1888,35 @@ namespace {
             GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
             item_data = ::AST::Item( ::AST::Static(AST::Static::CONST, mv$(type), mv$(val)) );
             break; }
-        case TOK_RWORD_UNSAFE:
+        case TOK_RWORD_UNSAFE: {
+            struct H { static std::string opt_extern(Token& tok, TokenStream& lex) {
+                if( lex.lookahead(0) == TOK_RWORD_EXTERN ) {
+                    GET_TOK(tok, lex);
+                    if( lex.lookahead(0) == TOK_STRING ) {
+                        GET_TOK(tok, lex);
+                        return tok.str();
+                    }
+                    else {
+                        return "C";
+                    }
+                }
+                else {
+                    return ABI_RUST;
+                }
+            }};
+            auto abi = H::opt_extern(tok, lex);
             GET_CHECK_TOK(tok, lex, TOK_RWORD_FN);
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             item_name = tok.ident().name;
-            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, ABI_RUST, false,  true,true/*unsafe,const*/) );
-            break;
+            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, abi, false,  true,true/*unsafe,const*/) );
+            break; }
+        case TOK_RWORD_EXTERN: {
+            auto abi = lex.lookahead(0) == TOK_STRING ? lex.getToken().str() : "C";
+            GET_CHECK_TOK(tok, lex, TOK_RWORD_FN);
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            item_name = tok.ident().name;
+            item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, abi, false,  false,true/*unsafe,const*/) );
+            break; }
         case TOK_RWORD_FN:
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             item_name = tok.ident().name;

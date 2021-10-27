@@ -1614,11 +1614,13 @@ namespace
                 return false;
             }
             break;
-        // const fn
+        // const [unsafe] [extern] fn
         // const FOO
         case TOK_RWORD_CONST:
             lex.consume();
             if(lex.next() == TOK_RWORD_UNSAFE)
+                lex.consume();
+            if(lex.next() == TOK_RWORD_EXTERN)
                 lex.consume();
             if( lex.consume_if(TOK_RWORD_FN) )
             {
