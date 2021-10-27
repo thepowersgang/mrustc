@@ -5460,7 +5460,12 @@ namespace {
                     m_of << " jmp_buf jmpbuf, *old = mrustc_panic_target; mrustc_panic_target = &jmpbuf;";
                     m_of << " if(setjmp(jmpbuf)) {";
                     // NOTE: gcc unwind has a pointer as its `local_ptr` parameter
-                    m_of << " *(void**)("; emit_param(e.args.at(2)); m_of << ") = mrustc_panic_value;";
+                    if(TARGETVER_MOST_1_39) {
+                        m_of << " *(void**)("; emit_param(e.args.at(2)); m_of << ") = mrustc_panic_value;";
+                    }
+                    else {
+                        m_of << "("; emit_param(e.args.at(2)); m_of << ")("; emit_param(e.args.at(1)); m_of << ", &mrustc_panic_value);";
+                    }
                     m_of << " "; emit_lvalue(e.ret_val); m_of << " = 1;";   // Return value non-zero when panic happens
                     m_of << " } else {";
                     m_of << " ";
