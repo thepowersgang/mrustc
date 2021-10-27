@@ -1,0 +1,2 @@
+cargo:rustc-cfg=backtrace_in_libstd
+cargo:rustc-env=STD_ENV_ARCH=x86_64
