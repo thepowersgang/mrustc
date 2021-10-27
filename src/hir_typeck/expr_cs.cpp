@@ -523,7 +523,8 @@ namespace {
             // TODO: Store this type to avoid having to construct it every pass
             auto p = ::HIR::GenericPath(lang_Boxed, {data_ty.clone()});
             if(TARGETVER_LEAST_1_54) {
-                p.m_params.m_types.push_back(this->context.m_ivars.new_ivar_tr());
+                p.m_params.m_types.push_back( MonomorphStatePtr(nullptr, &p.m_params,nullptr).monomorph_type(sp,str.m_params.m_types.at(1).m_default) );
+                this->context.add_ivars(p.m_params.m_types.back());
             }
             auto boxed_ty = ::HIR::TypeRef::new_path( mv$(p), &str );
 
