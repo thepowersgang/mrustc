@@ -110,7 +110,7 @@ $(CARGO_HOME)config: Makefile
 # Build libstd and friends with the final rustc, but using minicargo (to avoid running build scripts)
 $(LIBDIR_2)libtest.rlib: $(BINDIR)rustc
 	@mkdir -p $(LIBDIR_2)
-	$VMRUSTC_PATH=$(abspath $(BINDIR)rustc) ../bin/minicargo $(RUST_SRC)libtest --vendor-dir $(VENDOR_DIR) --script-overrides ../script-overrides/stable-$(RUSTC_VERSION)-linux/ --output-dir $(LIBDIR_2)
+	+$VMRUSTC_PATH=$(abspath $(BINDIR)rustc) ../bin/minicargo $(RUST_SRC)libtest --vendor-dir $(VENDOR_DIR) --script-overrides ../script-overrides/stable-$(RUSTC_VERSION)-linux/ --output-dir $(LIBDIR_2)
 
 $(BINDIR_2)rustc: $(BINDIR)rustc
 	mkdir -p $(BINDIR_2) $(LIBDIR_2)../codegen-backends
@@ -180,8 +180,8 @@ ifeq ($(RUSTC_VERSION),1.39.0)
 $(LIBDIR_S)libstd.rlib: $(BINDIR_S)rustc ../bin/minicargo Makefile
 	@echo "[MINICARGO] $(RUST_SRC)libstd > $(LIBDIR_S)"
 	mkdir -p $(LIBDIR_S)
-	$VMRUSTC_PATH=$(abspath $(BINDIR_S)rustc) ../bin/minicargo $(RUST_SRC)libstd --vendor-dir $(VENDOR_DIR) --script-overrides ../script-overrides/stable-$(RUSTC_VERSION)-linux/ --output-dir $(LIBDIR_S)
-	$VMRUSTC_PATH=$(abspath $(BINDIR_S)rustc) ../bin/minicargo $(RUST_SRC)libtest --vendor-dir $(VENDOR_DIR) --script-overrides ../script-overrides/stable-$(RUSTC_VERSION)-linux/ --output-dir $(LIBDIR_S)
+	$V+MRUSTC_PATH=$(abspath $(BINDIR_S)rustc) ../bin/minicargo $(RUST_SRC)libstd --vendor-dir $(VENDOR_DIR) --script-overrides ../script-overrides/stable-$(RUSTC_VERSION)-linux/ --output-dir $(LIBDIR_S)
+	$V+MRUSTC_PATH=$(abspath $(BINDIR_S)rustc) ../bin/minicargo $(RUST_SRC)libtest --vendor-dir $(VENDOR_DIR) --script-overrides ../script-overrides/stable-$(RUSTC_VERSION)-linux/ --output-dir $(LIBDIR_S)
 else
 $(LIBDIR_S)lib%.rlib: $(RUST_SRC)lib%/lib.rs $(BINDIR_S)rustc
 	@mkdir -p $(dir $@)
