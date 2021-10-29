@@ -8,7 +8,7 @@ fn inlined_copy_args()
     #[inline(always)]
     fn inline_fn(mut v: u8) {
         v = 2;
-        asm!("" : : "r" (v) : /*clobber*/ : "volatile");
+        llvm_asm!("" : : "r" (v) : /*clobber*/ : "volatile");
     }
     let v = 1;
     inline_fn(v);
