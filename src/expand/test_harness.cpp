@@ -89,6 +89,13 @@ void Expand_TestHarness(::AST::Crate& crate)
             // TODO: Get this from attributes
             desc_vals.push_back({ {}, "allow_fail", NEWNODE(_Bool, false) });
         }
+        if( TARGETVER_LEAST_1_54 )
+        {
+            // TODO: Get this from attributes
+            desc_vals.push_back({ {}, "compile_fail", NEWNODE(_Bool, false) });
+            desc_vals.push_back({ {}, "no_run", NEWNODE(_Bool, false) });
+            desc_vals.push_back({ {}, "test_type", NEWNODE(_NamedValue, ::AST::Path(c_test, { AST::PathNode("TestType"), AST::PathNode("UnitTest") })) });
+        }
         auto desc_expr = NEWNODE(_StructLiteral,  ::AST::Path(c_test, { ::AST::PathNode("TestDesc")}), nullptr, mv$(desc_vals));
 
         ::AST::ExprNode_StructLiteral::t_values   descandfn_vals;
