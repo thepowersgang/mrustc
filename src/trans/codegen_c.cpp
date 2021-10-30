@@ -4269,7 +4269,7 @@ namespace {
 
             m_of << indent << "__asm__ ";
             if (is_volatile) m_of << "__volatile__";
-            m_of << "(\"" << (is_intel ? ".syntax intel; " : "");
+            m_of << "(\"" << (is_intel ? ".intel_syntax; " : "");
             // TODO: Use a more powerful parser
             for (auto it = e.tpl.begin(); it != e.tpl.end(); ++it)
             {
@@ -4300,7 +4300,7 @@ namespace {
                 else
                     m_of << *it;
             }
-            m_of << (is_intel ? ".syntax att; " : "") << "\"";
+            m_of << (is_intel ? ".att_syntax; " : "") << "\"";
             m_of << ": ";
             for (unsigned int i = 0; i < e.outputs.size(); i++)
             {
