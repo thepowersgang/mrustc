@@ -1426,7 +1426,7 @@ namespace HIR {
                     TU_MATCH_HDRA( (e.type.data()), {)
                     default:
                         // NOTE: Can be an unsizing!
-                        MIR_TODO(state, "RValue::Cast to " << e.type << ", val = " << inval);
+                        MIR_TODO(state, "RValue::Cast to " << e.type << " from " << src_ty << ", val = " << inval);
                     TU_ARMA(Primitive, te) {
                         auto ti = TypeInfo::for_primitive(te);
                         auto src_ti = TypeInfo::for_type(src_ty);
@@ -1485,6 +1485,9 @@ namespace HIR {
                     // Allow casting any integer value to a pointer (TODO: Ensure that the pointer is sized?)
                     TU_ARMA(Pointer, te) {
                         // This might be a cast fat to thin, so restrict the input size
+                        dst.copy_from( state, inval.slice(0, std::min(inval.get_len(), dst.get_len())) );
+                        }
+                    TU_ARMA(Function, te) {
                         dst.copy_from( state, inval.slice(0, std::min(inval.get_len(), dst.get_len())) );
                         }
                     }
