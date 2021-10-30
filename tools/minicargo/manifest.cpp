@@ -311,6 +311,7 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const TomlKeyValue& key_val
                 try
                 {
                     rv.m_version = PackageVersion::from_string(key_val.value.as_string());
+                    rv.m_version.patch_set = true;
                 }
                 catch(const ::std::invalid_argument& e)
                 {
@@ -1187,6 +1188,12 @@ PackageVersion PackageVersion::from_string(const ::std::string& s)
     if( iss.get() != EOF )
     {
         iss >> rv.patch;
+        rv.patch_set = true;
+    }
+    else
+    {
+        rv.patch = 0;
+        rv.patch_set = false;
     }
     return rv;
 }

@@ -26,6 +26,7 @@ struct PackageVersion
     unsigned major;
     unsigned minor;
     unsigned patch;
+    bool patch_set;
 
     static PackageVersion from_string(const ::std::string& s);
 
@@ -56,39 +57,40 @@ struct PackageVersion
         }
     }
 
+    int cmp(const PackageVersion& x) const {
+        if( major != x.major )  return (major < x.major) ? -1 : 1;
+        if( minor != x.minor )  return (minor < x.minor) ? -1 : 1;
+        if( x.patch_set == patch_set ) {
+            return (patch < x.patch) ? -1 : 1;
+        }
+        else {
+            return 0;
+        }
+    }
+
     bool operator==(const PackageVersion& x) const {
-        if( major != x.major )  return false;
-        if( minor != x.minor )  return false;
-        return patch == x.patch;
+        return cmp(x) == 0;
     }
     bool operator!=(const PackageVersion& x) const {
-        if( major != x.major )  return true;
-        if( minor != x.minor )  return true;
-        return patch != x.patch;
+        return cmp(x) != 0;
     }
     bool operator<(const PackageVersion& x) const {
-        if( major != x.major )  return major < x.major;
-        if( minor != x.minor )  return minor < x.minor;
-        return patch < x.patch;
+        return cmp(x) < 0;
     }
     bool operator<=(const PackageVersion& x) const {
-        if( major != x.major )  return major < x.major;
-        if( minor != x.minor )  return minor < x.minor;
-        return patch <= x.patch;
+        return cmp(x) <= 0;
     }
     bool operator>(const PackageVersion& x) const {
-        if( major != x.major )  return major > x.major;
-        if( minor != x.minor )  return minor > x.minor;
-        return patch > x.patch;
+        return cmp(x) > 0;
     }
     bool operator>=(const PackageVersion& x) const {
-        if( major != x.major )  return major > x.major;
-        if( minor != x.minor )  return minor > x.minor;
-        return patch >= x.patch;
+        return cmp(x) >= 0;
     }
 
     friend ::std::ostream& operator<<(::std::ostream& os, const PackageVersion& v) {
-        os << v.major << "." << v.minor << "." << v.patch;
+        os << v.major << "." << v.minor;
+        if(v.patch_set)
+            os << "." << v.patch;
         return os;
     }
 };
