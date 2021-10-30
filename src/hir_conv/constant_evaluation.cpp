@@ -365,7 +365,7 @@ namespace MIR { namespace eval {
                 // Tail entires (partial byte)
                 if(len > 0)
                 {
-                    uint8_t mask = (0xFF >> len);
+                    uint8_t mask = (0xFF >> (8-len));
                     *dst = (*dst & ~mask) | (*src & mask);
                 }
             }
@@ -651,6 +651,7 @@ namespace MIR { namespace eval {
             MIR_ASSERT(state, storage, "");
             MIR_ASSERT(state, len >= 1, "");
             const auto* src = storage.as_value().get_bytes(ofs, len, /*check_mask*/true);
+            MIR_ASSERT(state, src, "Invalid read: " << ofs << "+" << len << " (in " << *this << ")");
             memcpy(data, src, len);
         }
         double read_float(const ::MIR::TypeResolve& state, unsigned bits) const {
@@ -1004,16 +1005,17 @@ namespace HIR {
                         if(repr->size != SIZE_MAX) {
                             metadata = ValueRef();
                         }
+                        auto ofs = repr->fields[e].offset;
                         typ = &repr->fields[e].ty;
 
                         size_t sz, al;
                         if( !Target_GetSizeAndAlignOf(state.sp, state.m_resolve, *typ,  sz, al) )
                             throw Defer();
                         if( sz == SIZE_MAX ) {
-                            val = val.slice(repr->fields[e].offset);
+                            val = val.slice(ofs);
                         }
                         else {
-                            val = val.slice(repr->fields[e].offset, sz);
+                            val = val.slice(ofs, sz);
                         }
                         }
                     TU_ARMA(Deref, e) {
