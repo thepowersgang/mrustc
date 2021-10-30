@@ -428,7 +428,7 @@ Token Token::lex_from_inner(::std::ifstream& is)
         }
         return Token { Type::String, str };
     default:
-        if(isalpha(c))
+        if(isalpha(c) || c == '_')
         {
             // Identifier
             while(isalnum(c) || c == '-' || c == '_')
