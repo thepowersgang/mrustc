@@ -173,27 +173,23 @@ BuildList::BuildList(const PackageManifest& manifest, const BuildOptions& opts):
         }
         void add_dependencies(const PackageManifest& p, unsigned level, bool include_build, bool is_native)
         {
-            for (const auto& dep : p.dependencies())
-            {
-                if( dep.is_disabled() )
+            p.iter_main_dependencies([&](const PackageRef& dep) {
+                if( !dep.is_disabled() )
                 {
-                    continue ;
+                    DEBUG(p.name() << ": Dependency " << dep.name());
+                    add_package(dep.get_package(), level+1, include_build, is_native);
                 }
-                DEBUG(p.name() << ": Dependency " << dep.name());
-                add_package(dep.get_package(), level+1, include_build, is_native);
-            }
+            });
 
             if( p.build_script() != "" && include_build )
             {
-                for(const auto& dep : p.build_dependencies())
-                {
-                    if( dep.is_disabled() )
+                p.iter_build_dependencies([&](const PackageRef& dep) {
+                    if( !dep.is_disabled() )
                     {
-                        continue ;
+                        DEBUG(p.name() << ": Build Dependency " << dep.name());
+                        add_package(dep.get_package(), level+1, true, true);
                     }
-                    DEBUG(p.name() << ": Build Dependency " << dep.name());
-                    add_package(dep.get_package(), level+1, true, true);
-                }
+                });
             }
         }
         void sort_list()
@@ -227,15 +223,13 @@ BuildList::BuildList(const PackageManifest& manifest, const BuildOptions& opts):
     }
     if( opts.mode != BuildOptions::Mode::Normal)
     {
-        for(const auto& dep : manifest.dev_dependencies())
-        {
-            if( dep.is_disabled() )
+        manifest.iter_dev_dependencies([&](const PackageRef& dep) {
+            if( !dep.is_disabled() )
             {
-                continue ;
+                DEBUG(manifest.name() << ": Dependency " << dep.name());
+                b.add_package(dep.get_package(), 1, !opts.build_script_overrides.is_valid(), !cross_compiling);
             }
-            DEBUG(manifest.name() << ": Dependency " << dep.name());
-            b.add_package(dep.get_package(), 1, !opts.build_script_overrides.is_valid(), !cross_compiling);
-        }
+        });
     }
 
     // TODO: Add the binaries too?
@@ -257,22 +251,20 @@ BuildList::BuildList(const PackageManifest& manifest, const BuildOptions& opts):
         for(size_t j = i+1; j < m_list.size(); j ++)
         {
             const auto& p = *m_list[j].package;
-            for( const auto& dep : p.dependencies() )
-            {
+            p.iter_main_dependencies([&](const PackageRef& dep) {
                 if( !dep.is_disabled() && &dep.get_package() == cur )
                 {
                     m_list[i].dependents.push_back(static_cast<unsigned>(j));
                 }
-            }
+            });
             if( p.build_script() != "" && !opts.build_script_overrides.is_valid() )
             {
-                for(const auto& dep : p.build_dependencies())
-                {
+                p.iter_build_dependencies([&](const PackageRef& dep) {
                     if( !dep.is_disabled() && &dep.get_package() == cur )
                     {
                         m_list[i].dependents.push_back(static_cast<unsigned>(j));
                     }
-                }
+                });
             }
         }
     }
@@ -323,25 +315,21 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs)
         auto idx = static_cast<unsigned>(state.num_deps_remaining.size());
         const auto& p = *e.package;
         unsigned n_deps = 0;
-        for (const auto& dep : p.dependencies())
-        {
-            if( dep.is_disabled() )
+        p.iter_main_dependencies([&](const PackageRef& dep) {
+            if( !dep.is_disabled() )
             {
-                continue ;
+                n_deps ++;
             }
-            n_deps ++;
-        }
+        });
 
         if( p.build_script() != "" && include_build )
         {
-            for(const auto& dep : p.build_dependencies())
-            {
-                if( dep.is_disabled() )
+            p.iter_build_dependencies([&](const PackageRef& dep) {
+                if( !dep.is_disabled() )
                 {
-                    continue ;
+                    n_deps ++;
                 }
-                n_deps ++;
-            }
+            });
         }
         // If there's no dependencies for this package, add it to the build queue
         if( n_deps == 0 )
@@ -810,8 +798,7 @@ namespace {
         env.push_back("CARGO_PKG_VERSION_MINOR", ::format(manifest.version().minor));
         env.push_back("CARGO_PKG_VERSION_PATCH", ::format(manifest.version().patch));
         // - Downstream environment variables
-        for(const auto& dep : manifest.dependencies())
-        {
+        manifest.iter_main_dependencies([&](const PackageRef& dep) {
             if( ! dep.is_disabled() )
             {
                 const auto& m = dep.get_package();
@@ -820,7 +807,7 @@ namespace {
                     env.push_back(p.first.c_str(), p.second.c_str());
                 }
             }
-        }
+        });
     }
 }
 
@@ -1008,8 +995,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
             return rv;
         }
     };
-    for(const auto& dep : manifest.dependencies())
-    {
+    manifest.iter_main_dependencies([&](const PackageRef& dep) {
         if( ! dep.is_disabled() )
         {
             const auto& m = dep.get_package();
@@ -1017,11 +1003,10 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
             args.push_back("--extern");
             args.push_back(::format(H::escape_dashes(dep.key()), "=", path));
         }
-    }
+    });
     if( target.m_type == PackageTarget::Type::Test )
     {
-        for(const auto& dep : manifest.dev_dependencies())
-        {
+        manifest.iter_dev_dependencies([&](const PackageRef& dep) {
             if( ! dep.is_disabled() )
             {
                 const auto& m = dep.get_package();
@@ -1029,7 +1014,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
                 args.push_back("--extern");
                 args.push_back(::format(H::escape_dashes(dep.key()), "=", path));
             }
-        }
+        });
     }
 
     // Environment variables (rustc_env)
@@ -1082,8 +1067,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         args.push_back("-L");
         args.push_back(d.str().c_str());
     }
-    for(const auto& dep : manifest.build_dependencies())
-    {
+    manifest.iter_build_dependencies([&](const PackageRef& dep) {
         if( ! dep.is_disabled() )
         {
             const auto& m = dep.get_package();
@@ -1091,7 +1075,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
             args.push_back("--extern");
             args.push_back(::format(m.get_library().m_name, "=", path));
         }
-    }
+    });
     for(const auto& feat : manifest.active_features())
     {
         args.push_back("--cfg"); args.push_back(::format("feature=", feat));

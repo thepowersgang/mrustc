@@ -282,9 +282,13 @@ class PackageManifest
 
     ::std::string   m_build_script;
 
-    ::std::vector<PackageRef>   m_dependencies;
-    ::std::vector<PackageRef>   m_build_dependencies;
-    ::std::vector<PackageRef>   m_dev_dependencies;
+    struct Dependencies {
+        ::std::vector<PackageRef>   main;
+        ::std::vector<PackageRef>   build;
+        ::std::vector<PackageRef>   dev;
+    };
+    Dependencies    m_dependencies;
+    std::map<std::string,Dependencies>  m_target_dependencies;
 
     ::std::vector<PackageTarget>    m_targets;
 
@@ -342,14 +346,24 @@ public:
     const BuildScriptOutput& build_script_output() const {
         return m_build_script_output;
     }
-    const ::std::vector<PackageRef>& dependencies() const {
-        return m_dependencies;
+    void iter_dep_groups(std::function<void(const Dependencies&)> cb) const;
+    void iter_main_dependencies(std::function<void(const PackageRef&)> cb) const {
+        iter_dep_groups([=](const Dependencies& deps) {
+            for(const auto& d : deps.main)
+                cb(d);
+            });
     }
-    const ::std::vector<PackageRef>& build_dependencies() const {
-        return m_build_dependencies;
+    void iter_build_dependencies(std::function<void(const PackageRef&)> cb) const {
+        iter_dep_groups([=](const Dependencies& deps) {
+            for(const auto& d : deps.build)
+                cb(d);
+            });
     }
-    const ::std::vector<PackageRef>& dev_dependencies() const {
-        return m_dev_dependencies;
+    void iter_dev_dependencies(std::function<void(const PackageRef&)> cb) const {
+        iter_dep_groups([=](const Dependencies& deps) {
+            for(const auto& d : deps.dev)
+                cb(d);
+            });
     }
     const ::std::vector<::std::string>& active_features() const {
         return m_active_features;

@@ -159,7 +159,7 @@ CfgParseLexer::Tok CfgParseLexer::get_next()
 struct CfgChecker
 {
     std::unordered_set<std::string>   flags;
-    std::unordered_map<std::string, std::string>    values;
+    std::unordered_multimap<std::string, std::string>    values;
 
     static CfgChecker for_target(const helpers::path& compiler_path, const char* target_spec);
     bool check_cfg(const char* str) const;
@@ -173,9 +173,14 @@ void Cfg_SetTarget(const char* target_name)
 {
     gCfgChecker = CfgChecker::for_target(get_mrustc_path(), target_name);
 }
-bool Cfg_Check(const char* cfg_string)
+bool Cfg_Check(const char* cfg_string, const std::vector<std::string>& features)
 {
-    return gCfgChecker.check_cfg(cfg_string);
+    auto checker = gCfgChecker;
+    checker.values.insert(std::make_pair("feature", ""));
+    for(const auto& feat : features) {
+        checker.values.insert(std::make_pair("feature", feat));
+    }
+    return checker.check_cfg(cfg_string);
 }
 /// Dump configuration as CARGO_CFG_<name>
 void Cfg_ToEnvironment(StringListKV& out)
@@ -344,9 +349,9 @@ bool CfgChecker::check_cfg(CfgParseLexer& p) const
             throw ::std::runtime_error("Expected a string after `=`");
         const auto& val = t.str();
 
-        auto it = this->values.find(name);
-        if( it != this->values.end() ) {
-            return it->second == val;
+        auto its = this->values.equal_range(name);
+        if( its.first != its.second ) {
+            return std::any_of(its.first, its.second, [&](const auto& v){ return v.second == val; });
         }
         else {
             throw std::runtime_error(format("Unknown cfg value `", name, "` (=\"", val, "\")"));

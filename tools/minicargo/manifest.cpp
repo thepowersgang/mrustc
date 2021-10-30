@@ -252,13 +252,12 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
         }
     }
 
-    for(const auto& dep : rv.m_dependencies)
-    {
+    rv.iter_main_dependencies([&](const PackageRef& dep) {
         if( dep.m_optional )
         {
             rv.m_features.insert(::std::make_pair( dep.m_name, ::std::vector<::std::string>() ));
         }
-    }
+    });
 
     // Auto-detect the build script if required
     if( rv.m_build_script == "-" )
@@ -470,10 +469,11 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const TomlKeyValue& key_val
         }
         else if( section == "dependencies" || section == "build-dependencies" || section == "dev-dependencies" )
         {
+            auto& dep_group = rv.m_dependencies;
             ::std::vector<PackageRef>& dep_list =
-                section == "dependencies" ? rv.m_dependencies :
-                section == "build-dependencies" ? rv.m_build_dependencies :
-                /*section == "dev-dependencies" ? */ rv.m_dev_dependencies /*:
+                section == "dependencies" ? dep_group.main :
+                section == "build-dependencies" ? dep_group.build :
+                /*section == "dev-dependencies" ? */ dep_group.dev /*:
                                                                            throw ""*/
                 ;
             assert(key_val.path.size() > 1);
@@ -509,6 +509,9 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const TomlKeyValue& key_val
             const auto& real_section = key_val.path[2];
             // Check if `cfg` currently applies.
             // - It can be a target spec, or a cfg(foo) same as rustc
+#if 1
+            auto& dep_group = rv.m_target_dependencies[cfg];
+#else
             bool success;
             if( cfg.substr(0, 4) == "cfg(" ) {
                 try {
@@ -523,8 +526,11 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const TomlKeyValue& key_val
                 // It's a target name
                 success = (cfg == TARGET_NAME);
             }
+            auto& dep_group = rv.m_dependencies;
+
             // If so, parse as if the path was `real_section....`
             if( success )
+#endif
             {
                 if( real_section == "dependencies"
                     || real_section == "dev-dependencies" 
@@ -532,9 +538,9 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const TomlKeyValue& key_val
                     )
                 {
                     ::std::vector<PackageRef>& dep_list =
-                        real_section == "dependencies" ? rv.m_dependencies :
-                        real_section == "build-dependencies" ? rv.m_build_dependencies :
-                        /*real_section == "dev-dependencies" ? */ rv.m_dev_dependencies /*:
+                        real_section == "dependencies" ? dep_group.main :
+                        real_section == "build-dependencies" ? dep_group.build :
+                        /*real_section == "dev-dependencies" ? */ dep_group.dev /*:
                                                                                         throw ""*/
                         ;
                     assert(key_val.path.size() > 3);
@@ -792,30 +798,55 @@ void PackageManifest::dump(std::ostream& os) const
         << "  m_workspace_manifest = " << m_workspace_manifest << "\n"
         << "  m_edition = " << (int)m_edition << "\n"
         << "  m_dependencies = [\n";
-    for(const auto& dep : m_dependencies)
-    {
+    this->iter_main_dependencies([&](const PackageRef& dep) {
         os << "    " << dep << "\n";
-    }
+    });
     os
         << "  ]\n"
         << "  m_build_dependencies = [\n"
         ;
-    for(const auto& dep : m_build_dependencies)
-    {
+    this->iter_build_dependencies([&](const PackageRef& dep) {
         os << "    " << dep << "\n";
-    }
+        });
     os
         << "  ]\n"
         << "  m_dev_dependencies = [\n"
         ;
-    for(const auto& dep : m_dev_dependencies)
-    {
+    this->iter_dev_dependencies([&](const PackageRef& dep) {
         os << "    " << dep << "\n";
-    }
+        });
     os
         << "  ]\n"
         << "}\n"
         ;
+}
+
+void PackageManifest::iter_dep_groups(std::function<void(const Dependencies&)> cb) const
+{
+    cb(m_dependencies);
+    for(const auto& td : m_target_dependencies)
+    {
+        const auto& cfg = td.first;
+        bool success;
+        if( cfg.substr(0, 4) == "cfg(" ) {
+            try {
+                // TODO: Pass feature list
+                success = Cfg_Check(cfg.c_str(), this->m_active_features);
+            }
+            catch(const std::exception& /*e*/)
+            {
+                //eh.error(e.what());
+                throw ;
+            }
+        }
+        else {
+            // It's a target name
+            success = (cfg == TARGET_NAME);
+        }
+        if(success) {
+            cb(td.second);
+        }
+    }
 }
 
 bool PackageManifest::has_library() const
@@ -869,6 +900,19 @@ void PackageManifest::set_features(const ::std::vector<::std::string>& features,
     for(size_t i = start; i < m_active_features.size(); i ++)
     {
         const auto featname = m_active_features[i];
+
+        auto iter_all_deps = [&](std::function<void(PackageRef&)> cb) {
+            iter_dep_groups([&](const Dependencies& dg_c) {
+                Dependencies& dg = const_cast<Dependencies&>(dg_c);
+                for(auto& dep : dg.main)
+                    cb(dep);
+                for(auto& dep : dg.build)
+                    cb(dep);
+                for(auto& dep : dg.dev)
+                    cb(dep);
+            });
+        };
+
         // Look up this feature
         auto it = m_features.find(featname);
         if( it != m_features.end() )
@@ -881,12 +925,12 @@ void PackageManifest::set_features(const ::std::vector<::std::string>& features,
                     ::std::string depname = sub_feat.substr(0, slash_pos);
                     ::std::string depfeat = sub_feat.substr(slash_pos+1);
                     DEBUG("Activate feature '" << depfeat << "' from dependency '" << depname << "'");
-                    auto it2 = ::std::find_if(m_dependencies.begin(), m_dependencies.end(), [&](const auto& x){ return x.m_key == depname; });
-                    if(it2 != m_dependencies.end())
-                    {
-                        it2->m_features.push_back(depfeat);
-                        // TODO: Does this need to be set again?
-                    }
+                    iter_all_deps([&](PackageRef& dep) {
+                        if(dep.m_key == depname) {
+                            dep.m_features.push_back(depfeat);
+                            // TODO: Does this need to call `set_features` again?
+                        }
+                        });
                 }
                 else {
                     add_feature(sub_feat);
@@ -894,28 +938,11 @@ void PackageManifest::set_features(const ::std::vector<::std::string>& features,
             }
         }
 
-        {
-            auto it2 = ::std::find_if(m_dependencies.begin(), m_dependencies.end(), [&](const auto& x){ return x.m_key == featname; });
-            if(it2 != m_dependencies.end())
-            {
-                it2->m_optional_enabled = true;
+        iter_all_deps([&](PackageRef& dep) {
+            if(dep.m_key == featname) {
+                dep.m_optional_enabled = true;
             }
-        }
-
-        {
-            auto it2 = ::std::find_if(m_build_dependencies.begin(), m_build_dependencies.end(), [&](const auto& x){ return x.m_key == featname; });
-            if(it2 != m_build_dependencies.end())
-            {
-                it2->m_optional_enabled = true;
-            }
-        }
-        {
-            auto it2 = ::std::find_if(m_dev_dependencies.begin(), m_dev_dependencies.end(), [&](const auto& x){ return x.m_key == featname; });
-            if(it2 != m_dev_dependencies.end())
-            {
-                it2->m_optional_enabled = true;
-            }
-        }
+            });
     }
 
     // Return true if any features were activated
@@ -928,40 +955,61 @@ void PackageManifest::load_dependencies(Repository& repo, bool include_build, bo
     auto base_path = ::helpers::path(m_manifest_path).parent();
 
     // 2. Recursively load dependency manifests
-    for(auto& dep : m_dependencies)
-    {
+    iter_main_dependencies([&](const PackageRef& dep_c) {
+        auto& dep = const_cast<PackageRef&>(dep_c);
         if( dep.m_optional && !dep.m_optional_enabled )
         {
-            continue ;
+            return ;
         }
-        dep.load_manifest(repo, base_path, include_build);
-    }
+        try {
+            dep.load_manifest(repo, base_path, include_build);
+        }
+        catch(const std::exception& )
+        {
+            std::cerr << "While processing " << this->manifest_path() << std::endl;
+            throw ;
+        }
+    });
 
     // Load build deps if there's a build script AND build scripts are enabled
     if( m_build_script != "" && include_build )
     {
         DEBUG("- Build dependencies");
-        for(auto& dep : m_build_dependencies)
-        {
+        iter_build_dependencies([&](const PackageRef& dep_c) {
+            auto& dep = const_cast<PackageRef&>(dep_c);
             if( dep.m_optional && !dep.m_optional_enabled )
             {
-                continue ;
+                return ;
             }
-            dep.load_manifest(repo, base_path, include_build);
-        }
+            try {
+                dep.load_manifest(repo, base_path, include_build);
+            }
+            catch(const std::exception& )
+            {
+                std::cerr << "While processing build deps " << this->manifest_path() << std::endl;
+                throw ;
+            }
+        });
     }
     // Load dev dependencies if the caller has indicated they should be
     if( include_dev )
     {
         DEBUG("- Dev dependencies");
-        for(auto& dep : m_dev_dependencies)
-        {
+        iter_dev_dependencies([&](const PackageRef& dep_c) {
+            auto& dep = const_cast<PackageRef&>(dep_c);
             if( dep.m_optional && !dep.m_optional_enabled )
             {
-                continue ;
+                return ;
             }
-            dep.load_manifest(repo, base_path, include_build);
-        }
+            try {
+                dep.load_manifest(repo, base_path, include_build);
+            }
+            catch(const std::exception& )
+            {
+                std::cerr << "While processing dev deps " << this->manifest_path() << std::endl;
+                throw ;
+            }
+        });
     }
 }
 
