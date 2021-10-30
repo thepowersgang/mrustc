@@ -22,3 +22,6 @@
 - atomic pointer ops
 - `alloc_error_handler`
 - `Box<T>` now has an allocator param
+- `cfg(feature="foo")` in Cargo.toml target dependencies
+- `$crate` within nested macro (macro defined by a macro)
+- `#[rustc_legacy_const_generics]`
