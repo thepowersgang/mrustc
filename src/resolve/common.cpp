@@ -193,7 +193,7 @@ namespace {
                 }
             TU_ARMA(Absolute, e) {
                 DEBUG("Absolute " << path);
-                if( e.crate == "" || e.crate == crate.m_crate_name ) {
+                if( e.crate == "" || e.crate == crate.m_crate_name_real ) {
                     return get_module_ast(crate.m_root_module, path, 0, ignore_last, out_path);
                 }
                 else {

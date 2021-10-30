@@ -1424,7 +1424,7 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
     TRACE_FUNCTION_FR("path = " << path, path);
     auto& path_abs = path.m_class.as_Absolute();
 
-    if( path_abs.crate != "" ) {
+    if( path_abs.crate != "" && path_abs.crate != context.m_crate.m_crate_name_real ) {
         // TODO: Handle items from other crates (back-converting HIR paths)
         Resolve_Absolute_Path_BindAbsolute__hir_from(context, sp, mode, path,  context.m_crate.m_extern_crates.at(path_abs.crate), 0);
         return ;

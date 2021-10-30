@@ -309,7 +309,7 @@ int main(int argc, char *argv[])
             });
 
         if( params.crate_name != "" ) {
-            crate.m_crate_name = params.crate_name;
+            crate.set_crate_name(params.crate_name);
         }
 
         // Iterate all items in the AST, applying syntax extensions
@@ -341,7 +341,7 @@ int main(int argc, char *argv[])
         auto crate_name = params.crate_name;
         if( crate_name == "" )
         {
-            crate_name = crate.m_crate_name;
+            crate_name = crate.m_crate_name_set;
         }
         if( crate_name == "" ) {
             auto s = params.infile.find_last_of('/');
@@ -370,27 +370,27 @@ int main(int argc, char *argv[])
                 }
             }
         }
-        crate.m_crate_name = crate_name;
         if( params.test_harness )
         {
-            crate.m_crate_name += "$test";
+            crate_name += "$test";
             if(params.codegen.panic_type == "")
             {
                 params.codegen.panic_type = "unwind";
             }
         }
+        crate.set_crate_name( crate_name );
 
         if( params.outfile == "" ) {
             switch( crate.m_crate_type )
             {
             case ::AST::Crate::Type::RustLib:
-                params.outfile = FMT(params.output_dir << "lib" << crate.m_crate_name << ".rlib");
+                params.outfile = FMT(params.output_dir << "lib" << crate.m_crate_name_set << ".rlib");
                 break;
             case ::AST::Crate::Type::Executable:
-                params.outfile = FMT(params.output_dir << crate.m_crate_name);
+                params.outfile = FMT(params.output_dir << crate.m_crate_name_set);
                 break;
             default:
-                params.outfile = FMT(params.output_dir << crate.m_crate_name << ".o");
+                params.outfile = FMT(params.output_dir << crate.m_crate_name_set << ".o");
                 break;
             }
             DEBUG("params.outfile = " << params.outfile);

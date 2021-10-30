@@ -557,7 +557,7 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
     Macro_InvokeRules_CountSubstUses(bound_tts, rule.m_contents);
 
     TokenStream* ret_ptr = new MacroExpander(
-        name, sp, crate.m_edition, rules.m_hygiene, rule.m_contents, mv$(bound_tts), rules.m_source_crate,
+        name, sp, crate.m_edition, rules.m_hygiene, rule.m_contents, mv$(bound_tts), rules.m_source_crate == "" ? crate.m_crate_name_real : rules.m_source_crate,
         rules.m_source_crate == "" ? crate.m_edition : crate.m_extern_crates.at(rules.m_source_crate).m_hir->m_edition
         );
 

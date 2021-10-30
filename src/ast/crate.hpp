@@ -85,14 +85,25 @@ public:
         LOAD_CORE,
         LOAD_NONE,
     } m_load_std = LOAD_STD;
-    ::std::string   m_crate_name_suffix;
-    ::std::string   m_crate_name;
+    ::std::string   m_crate_name_suffix;    // Suffix (from command-line)
+    ::std::string   m_crate_name_set;   // Crate name as set by the user (or auto-detected)
+    RcString    m_crate_name_real;  // user name '-' suffix
     AST::Path   m_prelude_path;
 
     Crate();
 
     const Module& root_module() const { return m_root_module; }
           Module& root_module()       { return m_root_module; }
+    
+    void set_crate_name(std::string name) {
+        m_crate_name_set = name;
+        if( m_crate_type == Type::Executable ) {
+            m_crate_name_real = "";
+        }
+        else {
+            m_crate_name_real = m_crate_name_suffix != "" ? RcString::new_interned(name + "-" + m_crate_name_suffix) : RcString::new_interned(name);
+        }
+    }
 
     /// Load referenced crates
     void load_externs();

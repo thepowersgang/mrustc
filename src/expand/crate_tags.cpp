@@ -48,7 +48,7 @@ public:
         if( !mi.has_string() || mi.string() == "" ) {
             ERROR(sp, E0000, "#![crate_name] requires a non-empty string argument");
         }
-        crate.m_crate_name = mi.string();
+        crate.set_crate_name(mi.string());
     }
 };
 

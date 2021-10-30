@@ -941,7 +941,7 @@ namespace {
     //::AST::Path rv;
 
     // If the path is directly referring to an external crate - call __ext
-    if( path.m_class.is_Absolute() && path.m_class.as_Absolute().crate != "" ) {
+    if( path.m_class.is_Absolute() && (path.m_class.as_Absolute().crate != "" && path.m_class.as_Absolute().crate != crate.m_crate_name_real) ) {
         const auto& path_abs = path.m_class.as_Absolute();
         // Builtin macro imports
         if(path_abs.crate == CRATE_BUILTINS)

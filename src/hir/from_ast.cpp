@@ -2138,14 +2138,7 @@ public:
 
     if(crate.m_crate_type != ::AST::Crate::Type::Executable)
     {
-        if(crate.m_crate_name_suffix != "")
-        {
-            rv.m_crate_name = RcString::new_interned(FMT(crate.m_crate_name + "-" + crate.m_crate_name_suffix));
-        }
-        else
-        {
-            rv.m_crate_name = RcString::new_interned(crate.m_crate_name);
-        }
+        rv.m_crate_name = crate.m_crate_name_real;
     }
     rv.m_edition = crate.m_edition;
 
@@ -2335,7 +2328,7 @@ public:
 
     // HACK: If the current crate is libcore, store the paths to various non-lang ops items
     // - Some operators aren't tagged with #[lang], so this works around that
-    if( crate.m_crate_name == "core" )
+    if( crate.m_crate_name_set == "core" )
     {
         struct H {
             static ::HIR::SimplePath resolve_path(const ::HIR::Crate& crate, bool is_value, ::std::initializer_list<const char*> n)

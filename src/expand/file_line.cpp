@@ -62,7 +62,7 @@ class CExpanderModulePath:
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
         ::std::string   path_str;
-        path_str += crate.m_crate_name;
+        path_str += crate.m_crate_name_set;
         for(const auto& comp : mod.path().nodes) {
             path_str += "::";
             path_str += comp.c_str();
