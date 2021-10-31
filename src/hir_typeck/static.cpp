@@ -1354,25 +1354,26 @@ bool StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
 
     bool replacement_happened = true;
     ::ImplRef  best_impl;
-    rv = this->find_impl(sp, trait_path.m_path, trait_path.m_params, e2.type, [&](auto impl, bool fuzzy) {
+    rv = this->find_impl(sp, trait_path.m_path, trait_path.m_params, e2.type, [&](ImplRef impl, bool fuzzy) {
         DEBUG("[expand_associated_types] Found " << impl);
         // If a fuzzy match was found, monomorphise and EAT the checked types and try again
         // - A fuzzy can be caused by an opaque match.
         // - TODO: Move this logic into `find_impl`
         if( fuzzy ) {
+            auto cb_ident = [](const ::HIR::TypeRef& x)->const ::HIR::TypeRef& { return x; };
             DEBUG("[expand_associated_types] - Fuzzy, monomorph+expand and recheck");
 
             auto impl_ty = impl.get_impl_type();
             this->expand_associated_types(sp, impl_ty);
             if(impl_ty != e2.type) {
-                DEBUG("[expand_associated_types] - Fuzzy - Doesn't match");
+                DEBUG("[expand_associated_types] - Fuzzy - impl type doesn't match: " << impl_ty << " != " << e2.type);
                 return false;
             }
             auto pp = impl.get_trait_params();
             for(auto& ty : pp.m_types)
                 this->expand_associated_types(sp, ty);
-            if( pp != trait_path.m_params ) {
-                DEBUG("[expand_associated_types] - Fuzzy - Doesn't match");
+            if( pp.compare_with_placeholders(sp, trait_path.m_params, cb_ident) == HIR::Compare::Unequal ) {
+                DEBUG("[expand_associated_types] - Fuzzy - params don't match: " << pp << " != " << trait_path.m_params);
                 return false;
             }
             DEBUG("[expand_associated_types] - Fuzzy - Actually matches");

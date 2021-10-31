@@ -642,7 +642,8 @@ namespace resolve_ufcs {
                 unsigned counter = 0;
                 while( m_resolve.expand_associated_types_single(sp, ty) )
                 {
-                    ASSERT_BUG(sp, !visit_ty_with(ty, [&](const HIR::TypeRef& ty)->bool { return TU_TEST1(ty.data(), Generic, .is_placeholder()); }), "Encountered placeholder - " << ty);
+                    //ASSERT_BUG(sp, !visit_ty_with(ty, [&](const HIR::TypeRef& ty)->bool { return TU_TEST1(ty.data(), Generic, .is_placeholder()); }), "Encountered placeholder - " << ty);
+                    visit_ty_with_mut(ty, [&](HIR::TypeRef& ty)->bool { if( TU_TEST1(ty.data(), Generic, .is_placeholder()) ) ty = HIR::TypeRef(); return false; });
                     ASSERT_BUG(sp, counter++ < 20, "Sanity limit exceeded when resolving UFCS in type " << ty);
                     // Invoke a special version of EAT that only processes a single item.
                     // - Keep recursing while this does replacements
