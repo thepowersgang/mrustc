@@ -246,7 +246,7 @@ AST::GenericParams Parse_GenericParams(TokenStream& lex)
     AST::GenericParams ret;
     Token tok;
     do {
-        if( GET_TOK(tok, lex) == TOK_GT ) {
+        if( GET_TOK(tok, lex) == TOK_GT || tok.type() == TOK_GTE ) {
             break ;
         }
 
@@ -301,7 +301,15 @@ AST::GenericParams Parse_GenericParams(TokenStream& lex)
             throw ParseError::Unexpected(lex, tok, {TOK_IDENT, TOK_LIFETIME});
         }
     } while( tok.type() == TOK_COMMA );
-    PUTBACK(tok, lex);
+
+    if(tok.type() == TOK_GT) {
+    }
+    else if(tok.type() == TOK_GTE) {
+        lex.putback(TOK_EQUAL);
+    }
+    else {
+        throw ParseError::Unexpected(lex, tok, {TOK_GT, TOK_GTE});
+    }
     return ret;
 }
 
@@ -393,7 +401,6 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, bool allow_
     if( GET_TOK(tok, lex) == TOK_LT )
     {
         params = Parse_GenericParams(lex);
-        GET_CHECK_TOK(tok, lex, TOK_GT);
     }
     else {
         PUTBACK(tok, lex);
@@ -576,7 +583,6 @@ AST::TypeAlias Parse_TypeAlias(TokenStream& lex)
     if( GET_TOK(tok, lex) == TOK_LT )
     {
         params = Parse_GenericParams(lex);
-        GET_CHECK_TOK(tok, lex, TOK_GT);
         GET_TOK(tok, lex);
     }
 
@@ -605,7 +611,6 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::AttributeList& meta_items)
     if( tok.type() == TOK_LT )
     {
         params = Parse_GenericParams(lex);
-        GET_CHECK_TOK(tok, lex, TOK_GT);
         if(GET_TOK(tok, lex) == TOK_RWORD_WHERE)
         {
             Parse_WhereClause(lex, params);
@@ -829,7 +834,6 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::AttributeList& meta_items
     if( GET_TOK(tok, lex) == TOK_LT )
     {
         params = Parse_GenericParams(lex);
-        GET_CHECK_TOK(tok, lex, TOK_GT);
         tok = lex.getToken();
     }
 
@@ -887,7 +891,6 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::AttributeList& meta_items)
     if( tok.type() == TOK_LT )
     {
         params = Parse_GenericParams(lex);
-        GET_CHECK_TOK(tok, lex, TOK_GT);
         if(GET_TOK(tok, lex) == TOK_RWORD_WHERE)
         {
             Parse_WhereClause(lex, params);
@@ -987,7 +990,6 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::AttributeList& meta_items)
     if( GET_TOK(tok, lex) == TOK_LT )
     {
         params = Parse_GenericParams(lex);
-        GET_CHECK_TOK(tok, lex, TOK_GT);
         if(GET_TOK(tok, lex) == TOK_RWORD_WHERE)
         {
             Parse_WhereClause(lex, params);
@@ -1145,7 +1147,6 @@ AST::Attribute Parse_MetaItem(TokenStream& lex)
     if( GET_TOK(tok, lex) == TOK_LT )
     {
         params = Parse_GenericParams(lex);
-        GET_CHECK_TOK(tok, lex, TOK_GT);
     }
     else {
         PUTBACK(tok, lex);
