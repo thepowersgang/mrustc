@@ -630,7 +630,7 @@
                 m_out.write_double(e.m_floatval);
                 } break;
             TU_ARM(td, Fragment, e)
-                assert(!"Serialising interpolated macro fragment");
+                assert(!"Serialising interpolated macro fragment - should have been handled in HIR lowering");
             }
         }
 

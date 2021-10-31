@@ -2438,6 +2438,83 @@ public:
         }
     }
 
+    // Macro fixups:
+    // - Convert interpolated AST items to token sequences
+    {
+        struct H {
+            static void fix_macro_contents(std::vector<MacroExpansionEnt>& rule_contents)
+            {
+                for(auto& ent : rule_contents)
+                {
+                    if(auto* tok = ent.opt_Token())
+                    {
+                        struct H {
+                            static void emit_ast(std::vector<Token>& out, const AST::ExprNode& e)
+                            {
+                                if( const auto* ep = dynamic_cast<const AST::ExprNode_Integer*>(&e) ) {
+                                    out.push_back( Token(ep->m_value, ep->m_datatype) );
+                                }
+                                else {
+                                    throw std::runtime_error("Unknown node type");
+                                }
+                            }
+                        };
+
+                        std::vector<Token>  new_toks;
+                        switch(tok->type())
+                        {
+                        case TOK_INTERPOLATED_PATH:
+                        case TOK_INTERPOLATED_TYPE:
+                        case TOK_INTERPOLATED_PATTERN:
+                        case TOK_INTERPOLATED_STMT:
+                        case TOK_INTERPOLATED_BLOCK:
+                        case TOK_INTERPOLATED_META:
+                        case TOK_INTERPOLATED_ITEM:
+                        case TOK_INTERPOLATED_VIS:
+                            // Emit as a token tree with no separator
+                            TODO(Span(), "Convert interpolated macro fragment: " << *tok);
+                            break;
+                        case TOK_INTERPOLATED_EXPR:
+                            try {
+                                H::emit_ast(new_toks, *tok->take_frag_node());
+                            }
+                            catch(const std::exception& e) {
+                                TODO(Span(), "Convert interpolated macro fragment: " << *tok << " - " << e.what());
+                            }
+                            break;
+                        default:
+                            continue;
+                        }
+                        if( new_toks.size() == 1 ) {
+                            *tok = std::move(new_toks.front());
+                        }
+                        else {
+                            TODO(Span(), "Expand interpolated macro fragment to multiple (or no) tokens");
+                        }
+                    }
+                }
+            }
+            static void fix_macros_in_mod(HIR::Module& mod)
+            {
+                for(auto& mi : mod.m_mod_items) {
+                    if(auto* submod_p = mi.second->ent.opt_Module()) {
+                        fix_macros_in_mod(*submod_p);
+                    }
+                }
+                for(auto& mi : mod.m_macro_items) {
+                    if(auto* mrpp = mi.second->ent.opt_MacroRules()) {
+                        auto& mr = **mrpp;
+                        for(auto& rule : mr.m_rules)
+                        {
+                            fix_macro_contents(rule.m_contents);
+                        }
+                    }
+                }
+            }
+        };
+        H::fix_macros_in_mod(rv.m_root_module);
+    }
+
     g_crate_ptr = nullptr;
     return ::HIR::CratePtr( mv$(rv) );
 }
