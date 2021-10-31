@@ -918,6 +918,16 @@ void Trans_Enumerate_Types(EnumState& state)
 
             tv.visit_type( pp.monomorph(tv.m_resolve, stat.m_type) );
         }
+        // - Constants need visiting, as they will be expanded
+        for(const auto& ent : state.rv.m_constants)
+        {
+            TRACE_FUNCTION_F("Enumerate constant " << ent.first);
+            assert(ent.second->ptr);
+            const auto& stat = *ent.second->ptr;
+            const auto& pp = ent.second->pp;
+
+            tv.visit_type( pp.monomorph(tv.m_resolve, stat.m_type) );
+        }
         for(const auto& ent : state.rv.m_vtables)
         {
             TRACE_FUNCTION_F("vtable " << ent.first);

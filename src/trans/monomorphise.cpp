@@ -419,6 +419,7 @@ void Trans_Monomorphise_List(const ::HIR::Crate& crate, TransList& list)
             }
         } nvs;
         auto eval = ::HIR::Evaluator { pp.sp, crate, nvs };
+        eval.resolve.set_both_generics_raw(pp.gdef_impl, nullptr);
         MonomorphState   ms;
         ms.self_ty = pp.self_type.clone();
         ms.pp_impl = &pp.pp_impl;
