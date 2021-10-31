@@ -1112,6 +1112,7 @@
             m_out.write_string(fcn.m_abi);
             m_out.write_bool(fcn.m_unsafe);
             m_out.write_bool(fcn.m_const);
+            serialise(fcn.m_markings);
 
             serialise_generics(fcn.m_params);
             m_out.write_count(fcn.m_args.size());
@@ -1122,6 +1123,11 @@
             DEBUG("m_args = " << fcn.m_args);
 
             serialise(fcn.m_code, fcn.m_save_code || fcn.m_const);
+        }
+        void serialise(const ::HIR::Function::Markings& m)
+        {
+            auto _ = m_out.open_object("HIR::Function::Markings");
+            serialise_vec(m.rustc_legacy_const_generics);
         }
         void serialise(const ::HIR::Constant& item)
         {

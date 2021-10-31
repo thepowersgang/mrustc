@@ -56,7 +56,7 @@ const Attribute* AttributeList::get(const char *name) const
 ::std::ostream& operator<<(::std::ostream& os, const AttributeName& x) {
     if(x.elems.empty())
     {
-        os << "''";
+        os << "<empty>";
     }
     else
     {

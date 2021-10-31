@@ -543,6 +543,37 @@ namespace {
                 {
                     upper_visitor.visit_path(node.m_path, ::HIR::Visitor::PathContext::VALUE);
                     ::HIR::ExprVisitorDef::visit(node);
+
+                    // #[rustc_legacy_const_generics] - A backwards compatability hack added between 1.39 and 1.54 to be backwards compatible with the x86 intrinsics
+                    // - Rewrites some literal arguments into const generics
+                    if(auto* e = node.m_path.m_data.opt_Generic())
+                    {
+                        auto& fcn = upper_visitor.m_crate.get_function_by_path(node.span(), e->m_path);
+                        if(!fcn.m_markings.rustc_legacy_const_generics.empty() )
+                        {
+                            if( node.m_args.size() == fcn.m_args.size() ) {
+                                // Acceptable
+                            }
+                            else if( node.m_args.size() == fcn.m_args.size() + fcn.m_markings.rustc_legacy_const_generics.size() ) {
+                                for(auto idx : fcn.m_markings.rustc_legacy_const_generics)
+                                {
+                                    auto& arg_node = node.m_args.at(idx);
+                                    assert(arg_node);
+                                    if( !dynamic_cast<const HIR::ExprNode_Literal*>(arg_node.get()) )
+                                        ERROR(arg_node->span(), E0000, "Argument " << idx << " must be a literal for #[rustc_legacy_const_generics] tagged function");
+                                    HIR::ExprPtr    ep { std::move(arg_node) };
+                                    e->m_params.m_values.push_back( HIR::ConstGeneric( std::make_shared<HIR::ExprPtr>(std::move(ep)) ));
+                                    // - Visit to ensure that the expr state gets filled
+                                    upper_visitor.visit_constgeneric(e->m_params.m_values.back());
+                                }
+                                auto new_end = std::remove_if(node.m_args.begin(), node.m_args.end(), [](const HIR::ExprNodeP& np){ return !np; });
+                                node.m_args.erase(new_end, node.m_args.end());
+                            }
+                            else {
+                                // Will error downstream
+                            }
+                        }
+                    }
                 }
                 void visit(::HIR::ExprNode_CallMethod& node) override
                 {

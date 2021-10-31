@@ -755,11 +755,19 @@
             rv.m_abi = m_in.read_string();
             rv.m_unsafe = m_in.read_bool();
             rv.m_const = m_in.read_bool();
+            rv.m_markings = deserialise_function_markings();
             rv.m_params = deserialise_genericparams();
             rv.m_args = deserialise_fcnargs();
             rv.m_variadic = m_in.read_bool();
             rv.m_return = deserialise_type();
             rv.m_code = deserialise_exprptr();
+            return rv;
+        }
+        ::HIR::Function::Markings deserialise_function_markings()
+        {
+            auto _ = m_in.open_object("HIR::Function::Markings");
+            ::HIR::Function::Markings rv;
+            rv.rustc_legacy_const_generics = deserialise_vec<unsigned>();
             return rv;
         }
         ::std::vector< ::std::pair< ::HIR::Pattern, ::HIR::TypeRef> >   deserialise_fcnargs()

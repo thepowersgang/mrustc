@@ -191,6 +191,10 @@ public:
 
     ExprPtr m_code;
 
+    struct Markings {
+        std::vector<unsigned> rustc_legacy_const_generics;
+    } m_markings;
+
     Function()
     {
     }

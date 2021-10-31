@@ -1591,6 +1591,30 @@ namespace {
         }
     }
 
+    HIR::Function::Markings markings;
+    // #[rustc_legacy_const_generics] - Used to convert a literal argument into a const generic
+    if( const auto* a = attrs.get("rustc_legacy_const_generics") )
+    {
+        ASSERT_BUG(a->span(), a->has_sub_items(), *a);
+        ASSERT_BUG(a->span(), a->items().size() >= 1, *a);
+        for(const auto& si : a->items())
+        {
+            ASSERT_BUG(a->span(), si.name().elems.empty(), *a);
+            try {
+                auto idx = std::stoul(si.string());
+                ASSERT_BUG(a->span(), std::find(markings.rustc_legacy_const_generics.begin(), markings.rustc_legacy_const_generics.end(), idx) == markings.rustc_legacy_const_generics.end(),
+                    "#[rustc_legacy_const_generics(" << idx << ")] duplicate index");
+                ASSERT_BUG(a->span(), idx < args.size() + a->items().size(),
+                    "#[rustc_legacy_const_generics(" << idx << ")] out of range (0.." << args.size() + a->items().size() << ")");
+                markings.rustc_legacy_const_generics.push_back( idx );
+            }
+            catch(const std::exception& e)
+            {
+                BUG(a->span(), si);
+            }
+        }
+    }
+
     ::HIR::Linkage  linkage;
 
     // Convert #[link_name/no_mangle] attributes into the name
@@ -1647,6 +1671,7 @@ namespace {
     rv.m_variadic = f.is_variadic();
     rv.m_return = LowerHIR_Type( f.rettype() );
     rv.m_code = LowerHIR_Expr( f.code() );
+    rv.m_markings = markings;
     return rv;
 }
 
