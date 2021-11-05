@@ -1815,7 +1815,7 @@ namespace HIR {
                             }
                             if(ve.field.size % 8 > 0)
                             {
-                                dst.slice(ofs, 8).write_uint(state, (ve.field.size % 8) * 8, 0);
+                                dst.slice(ofs, ve.field.size % 8).write_uint(state, (ve.field.size % 8) * 8, 0);
                             }
                             DEBUG("@" << ofs << " = " << dst.slice(saved_ofs, ve.field.size) << " NonZero");
                         }
@@ -2012,7 +2012,7 @@ namespace HIR {
                             // - V1 negative is negative if |v2| < |v1|
                             bool res_sign = (v1s == v2s) ? v1s : (v2s ? v1a < v2a : v1a > v2a);
                             auto res = static_cast<int64_t>(v1u + v2u);
-                            bool overflowed = (res < 0 != res_sign);
+                            bool overflowed = ((res < 0) != res_sign);
                             dst.write_sint(state, ti.bits, res);
                             dst.slice(ti.bits / 8).write_uint(state, 8, overflowed ? 1 : 0);
                             } break;
@@ -2277,7 +2277,7 @@ namespace {
 
                     assert(m_get_params);
                     const auto& params_def = m_get_params(sp);
-                    auto idx = &v - &p.m_values.front();
+                    auto idx = static_cast<size_t>(&v - &p.m_values.front());
                     ASSERT_BUG(sp, idx < params_def.m_values.size(), "");
                     const auto& ty = params_def.m_values[idx].m_type;
                     ASSERT_BUG(sp, !monomorphise_type_needed(ty), "" << ty);
