@@ -4266,6 +4266,16 @@ namespace {
                     return ;
                 }
             }
+            if(asm_matches_template(e, "pushfd; popl $0", {}, {"=r"}))
+            {
+                m_of << indent << "__asm__ __volatile__ (\"pushfl; popl %0\" : \"=r\" ("; emit_lvalue(e.outputs[0].second); m_of << ") : : );\n";
+                return;
+            }
+            if(asm_matches_template(e, "pushl $0; popfd", {"r"}, {}))
+            {
+                m_of << indent << "__asm__ __volatile__ (\"pushl %0; popfl\" : : \"r\" ("; emit_lvalue(e.inputs[0].second); m_of << ") : );\n";
+                return;
+            }
 
             m_of << indent << "__asm__ ";
             if (is_volatile) m_of << "__volatile__";
