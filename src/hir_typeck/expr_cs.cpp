@@ -3672,8 +3672,7 @@ const ::HIR::TypeRef& Context::get_var(const Span& sp, unsigned int idx) const {
 namespace {
     void add_coerce_borrow(Context& context, ::HIR::ExprNodeP& orig_node_ptr, const ::HIR::TypeRef& des_borrow_inner, ::std::function<void(::HIR::ExprNodeP& n)> cb)
     {
-        const auto& src_type = context.m_ivars.get_type(orig_node_ptr->m_res_type);
-        auto borrow_type = src_type.data().as_Borrow().type;
+        auto borrow_type = context.m_ivars.get_type(orig_node_ptr->m_res_type).data().as_Borrow().type;
 
         // Since this function operates on destructured &-ptrs, the dereferences have to be added behind a borrow
         ::HIR::ExprNodeP*   node_ptr_ptr = &orig_node_ptr;
@@ -3693,6 +3692,7 @@ namespace {
         }
         #endif
         auto& node_ptr = *node_ptr_ptr;
+        const auto& src_type = context.m_ivars.get_type(node_ptr->m_res_type);
 
         // - If the pointed node is a borrow operation, add the dereferences within its value
         if( auto* p = dynamic_cast< ::HIR::ExprNode_Borrow*>(&*node_ptr) )
@@ -3709,12 +3709,15 @@ namespace {
             auto span = node_ptr->span();
             const auto& src_inner_ty = src_type.data().as_Borrow().inner;
 
+            // NOTE: The type here is for _after_ `cb` has been called
             auto inner_ty_ref = ::HIR::TypeRef::new_borrow(borrow_type, des_borrow_inner.clone());
 
             // 1. Dereference (resulting in the dereferenced input type)
             node_ptr = NEWNODE(src_inner_ty.clone(), span, _Deref,  mv$(node_ptr));
+            DEBUG("- Deref " << &*node_ptr << " -> " << node_ptr->m_res_type);
             // 2. Borrow (resulting in the referenced output type)
             node_ptr = NEWNODE(mv$(inner_ty_ref), span, _Borrow,  borrow_type, mv$(node_ptr));
+            DEBUG("- Borrow " << &*node_ptr << " -> " << node_ptr->m_res_type);
 
             // - Set node pointer reference to point into the new borrow op
             node_ptr_ptr = &dynamic_cast< ::HIR::ExprNode_Borrow&>(*node_ptr).m_value;
@@ -4210,10 +4213,11 @@ namespace {
     // - Pointers do unsizing (and maybe casting)
     // - All other types equate
     CoerceResult check_coerce_tys(
-        const Context& context, const Span& sp, const ::HIR::TypeRef& dst, const ::HIR::TypeRef& src,
+        const Context& context, const Span& sp, const ::HIR::TypeRef& dst, const ::HIR::TypeRef& src_r,
         Context* context_mut=nullptr, ::HIR::ExprNodeP* node_ptr_ptr=nullptr
         )
     {
+        auto src = src_r.clone_shallow();
         TRACE_FUNCTION_F(dst << " := " << src);
         // If the types are equal, then return equality
         if( context.m_ivars.types_equal(dst, src) ) {
@@ -4644,16 +4648,25 @@ namespace {
                         // If the coercion is of a block, do the reborrow on the last node of the block
                         // - Cleans up the dumped MIR and prevents needing a reborrow elsewhere.
                         // - TODO: Alter the block's result types
+                        {
+                            ::HIR::ExprNodeP* npp = node_ptr_ptr;
+                            while( auto* p = dynamic_cast< ::HIR::ExprNode_Block*>(&**npp) )
+                            {
+                                if( !context.m_ivars.types_equal(p->m_res_type, src) ) {
+                                    DEBUG("(borrow) Block and result mismatch - " << context.m_ivars.fmt_type(p->m_res_type) << " != " << context.m_ivars.fmt_type(src));
+                                    return CoerceResult::Unknown;
+                                }
+                                npp = &p->m_value_node;
+                            }
+                        }
                         ::HIR::ExprNodeP* npp = node_ptr_ptr;
                         while( auto* p = dynamic_cast< ::HIR::ExprNode_Block*>(&**npp) )
                         {
-                            DEBUG("- Propagate to the last node of a _Block");
+                            DEBUG("- Propagate borrow coercion to the last node of a _Block: " << context.m_ivars.fmt_type(p->m_res_type));
                             ASSERT_BUG( p->span(), context.m_ivars.types_equal(p->m_res_type, p->m_value_node->m_res_type),
-                                "Block and result mismatch - " << context.m_ivars.fmt_type(p->m_res_type) << " != " << context.m_ivars.fmt_type(p->m_value_node->m_res_type));
-                            if( !context.m_ivars.types_equal(p->m_res_type, src) ) {
-                                DEBUG("Block and result mismatch - " << context.m_ivars.fmt_type(p->m_res_type) << " != " << context.m_ivars.fmt_type(src));
-                                return CoerceResult::Unknown;
-                            }
+                                "(borrow) Block and result mismatch - " << context.m_ivars.fmt_type(p->m_res_type) << " != " << context.m_ivars.fmt_type(p->m_value_node->m_res_type));
+                            ASSERT_BUG( p->span(), context.m_ivars.types_equal(p->m_res_type, src),
+                                "(borrow) Block and result mismatch - " << context.m_ivars.fmt_type(p->m_res_type) << " != " << context.m_ivars.fmt_type(src) );
                             if(context_mut)
                             {
                                 p->m_res_type = dst.clone();
@@ -4834,7 +4847,10 @@ namespace {
         const auto& sp = node_ptr->span();
         const auto& ty_dst = context.m_ivars.get_type(v.left_ty);
         const auto& ty_src = context.m_ivars.get_type(node_ptr->m_res_type);
-        TRACE_FUNCTION_F(v << " - " << context.m_ivars.fmt_type(ty_dst) << " := " << context.m_ivars.fmt_type(ty_src));
+        TRACE_FUNCTION_FR(
+                v << " - " << context.m_ivars.fmt_type(ty_dst) << " := " << context.m_ivars.fmt_type(ty_src),
+                v << " - " << context.m_ivars.fmt_type(v.left_ty) << " := " << context.m_ivars.fmt_type(node_ptr->m_res_type)
+                );
 
         // NOTE: Coercions can happen on comparisons, which means that checking for Sized isn't valid (because you can compare unsized types)
 
@@ -6876,7 +6892,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
                 auto ent = mv$(context.link_coerce[i]);
                 const auto& span = (*ent->right_node_ptr)->span();
                 auto& src_ty = (*ent->right_node_ptr)->m_res_type;
-                //src_ty = context.m_resolve.expand_associated_types( span, mv$(src_ty) );
+                src_ty = context.m_resolve.expand_associated_types( span, mv$(src_ty) );    // TODO: This was commented, why?
                 ent->left_ty = context.m_resolve.expand_associated_types( span, mv$(ent->left_ty) );
                 if( check_coerce(context, *ent) )
                 {
