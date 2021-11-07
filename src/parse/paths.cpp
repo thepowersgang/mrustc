@@ -239,6 +239,8 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
         case TOK_LIFETIME:
             rv.m_entries.push_back(AST::LifetimeRef(/*lex.point_span(),*/ tok.ident()));
             break;
+        case TOK_RWORD_TRUE:
+        case TOK_RWORD_FALSE:
         case TOK_INTEGER:
         case TOK_FLOAT:
         case TOK_INTERPOLATED_EXPR:
