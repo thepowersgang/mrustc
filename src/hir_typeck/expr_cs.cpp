@@ -4920,12 +4920,29 @@ namespace {
             else if( v.params.m_types.size() == 1 )
             {
                 // Binary operations - If both types are primitives, the output is the lefthand side
+                // NOTE: Comparison ops don't (currently) see this
                 const auto& left = context.get_type(v.impl_ty); // yes, impl = LHS of binop
                 const auto& right = context.get_type(v.params.m_types.at(0));
                 const auto& res = context.get_type(v.left_ty);
                 if( H::type_is_num(left) && H::type_is_num(right) ) {
                     DEBUG("- Magic inferrence link for binops on numerics");
-                    context.equate_types(sp, res, left);
+                    if( v.name == "" )
+                    {
+                        // Comparison op, output already known to be `bool`
+                    }
+                    else
+                    {
+                        context.equate_types(sp, res, left);
+                    }
+                    if( v.trait == context.m_crate.get_lang_item_path_opt("shl") || v.trait == context.m_crate.get_lang_item_path_opt("shr") )
+                    {
+                        // Shifts can have mismatched types on each side.
+                    }
+                    else
+                    {
+                        // NOTE: This only holds if not a shift
+                        context.equate_types(sp, v.impl_ty, right);
+                    }
                 }
                 context.possible_equate_type_unknown(sp, /*right*/v.params.m_types.at(0), Context::IvarUnknownType::To); // RHS, can't use `right` because it might be freed by the above equate.
             }
@@ -6869,7 +6886,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
 
     auto root_ptr = expr.into_unique();
     assert(!ms.m_mod_paths.empty());
-    Context context { ms.m_crate, ms.m_impl_generics, ms.m_item_generics, ms.m_mod_paths.back() };
+    Context context { ms.m_crate, ms.m_impl_generics, ms.m_item_generics, ms.m_mod_paths.back(), ms.m_current_trait };
 
     // - Build up ruleset from node tree
     Typecheck_Code_CS__EnumerateRules(context, ms, args, result_type, expr, root_ptr);
@@ -7088,7 +7105,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
                 {
                     auto& ent = *context.adv_revisits[i];
                     DEBUG("> " << FMT_CB(os, ent.fmt(os)));
-                    adv_revisit_remove_list.push_back( ent.revisit(context, /*is_fallback=*/false) );
+                    adv_revisit_remove_list.push_back( ent.revisit(context, /*is_fallback=*/true) );
                 }
                 for(size_t i = len; i --;)
                 {

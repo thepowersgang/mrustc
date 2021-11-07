@@ -13,6 +13,7 @@ namespace typeck {
     {
         const ::HIR::Crate& m_crate;
 
+        const ::HIR::GenericPath*    m_current_trait;
         const ::HIR::GenericParams*   m_impl_generics;
         const ::HIR::GenericParams*   m_item_generics;
 
@@ -21,6 +22,7 @@ namespace typeck {
 
         ModuleState(const ::HIR::Crate& crate):
             m_crate(crate),
+            m_current_trait(nullptr),
             m_impl_generics(nullptr),
             m_item_generics(nullptr)
         {}
@@ -36,12 +38,17 @@ namespace typeck {
                 ptr = nullptr;
             }
         };
-        NullOnDrop<const ::HIR::GenericParams> set_impl_generics(::HIR::GenericParams& gps) {
+        NullOnDrop<const ::HIR::GenericPath> set_current_trait(const ::HIR::GenericPath& p) {
+            assert( !m_current_trait );
+            m_current_trait = &p;
+            return NullOnDrop<const ::HIR::GenericPath>(m_current_trait);
+        }
+        NullOnDrop<const ::HIR::GenericParams> set_impl_generics(const ::HIR::GenericParams& gps) {
             assert( !m_impl_generics );
             m_impl_generics = &gps;
             return NullOnDrop<const ::HIR::GenericParams>(m_impl_generics);
         }
-        NullOnDrop<const ::HIR::GenericParams> set_item_generics(::HIR::GenericParams& gps) {
+        NullOnDrop<const ::HIR::GenericParams> set_item_generics(const ::HIR::GenericParams& gps) {
             assert( !m_item_generics );
             m_item_generics = &gps;
             return NullOnDrop<const ::HIR::GenericParams>(m_item_generics);

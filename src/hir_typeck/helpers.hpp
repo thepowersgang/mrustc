@@ -175,14 +175,18 @@ class TraitResolution:
     const HMTypeInferrence& m_ivars;
 
     const ::HIR::SimplePath&    m_vis_path;
+    const ::HIR::GenericPath*   m_current_trait_path;
+    const ::HIR::Trait* m_current_trait_ptr;
 
-    mutable ::std::vector< ::HIR::TypeRef>  m_eat_active_stack;
+    mutable ::std::vector<std::unique_ptr<::HIR::TypeRef>>  m_eat_active_stack;
 public:
-    TraitResolution(const HMTypeInferrence& ivars, const ::HIR::Crate& crate, const ::HIR::GenericParams* impl_params, const ::HIR::GenericParams* item_params, const ::HIR::SimplePath& vis_path):
+    TraitResolution(const HMTypeInferrence& ivars, const ::HIR::Crate& crate, const ::HIR::GenericParams* impl_params, const ::HIR::GenericParams* item_params, const ::HIR::SimplePath& vis_path,  const ::HIR::GenericPath* current_trait):
         TraitResolveCommon(crate)
         ,m_lang_Deref(crate.get_lang_item_path_opt("deref"))
         ,m_ivars(ivars)
         ,m_vis_path(vis_path)
+        ,m_current_trait_path(current_trait)
+        ,m_current_trait_ptr(current_trait ? &crate.get_trait_by_path(Span(), current_trait->m_path) : nullptr)
     {
         m_impl_generics = impl_params;
         m_item_generics = item_params;

@@ -1793,7 +1793,7 @@ void TraitResolution::expand_associated_types_inplace(const Span& sp, ::HIR::Typ
 {
     for(const auto& ty : m_eat_active_stack)
     {
-        if( input == ty ) {
+        if( input == *ty ) {
             DEBUG("Recursive lookup, skipping - input = " << input);
             return ;
         }
@@ -1894,15 +1894,18 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
     struct D {
         const TraitResolution&  m_tr;
         D(const TraitResolution& tr, ::HIR::TypeRef v): m_tr(tr) {
-            tr.m_eat_active_stack.push_back( mv$(v) );
+            tr.m_eat_active_stack.push_back( box$(v) );
         }
         ~D() {
             m_tr.m_eat_active_stack.pop_back();
         }
+        D(D&&) = delete;
+        D(const D&) = delete;
     };
     D   _(*this, input.clone());
     // State stack to avoid infinite recursion
-    LList<const ::HIR::TypeRef*>    stack(&prev_stack, &m_eat_active_stack.back());
+    assert(m_eat_active_stack.size() > 0);
+    LList<const ::HIR::TypeRef*>    stack(&prev_stack, m_eat_active_stack.back().get());
 
     expand_associated_types_inplace(sp, pe.type, stack);
     for(auto& ty : pe.trait.m_params.m_types)
@@ -4169,7 +4172,100 @@ bool TraitResolution::find_method(const Span& sp,
     TRACE_FUNCTION_FR("ty=" << ty << ", name=" << method_name << ", access=" << access, rv << " " << possibilities);
     auto cb_infer = m_ivars.callback_resolve_infer();
 
-    // 1. Search generic bounds for a match
+    auto get_ivared_params = [&](const ::HIR::GenericParams& tpl)->::HIR::PathParams {
+        unsigned int n_params = tpl.m_types.size();
+        assert(n_params <= ivars.size());
+        ::HIR::PathParams   trait_params;
+        trait_params.m_types.reserve( n_params );
+        for(unsigned int i = 0; i < n_params; i++) {
+            trait_params.m_types.push_back( ::HIR::TypeRef::new_infer(ivars[i], ::HIR::InferClass::None) );
+            ASSERT_BUG(sp, m_ivars.get_type( trait_params.m_types.back() ).data().as_Infer().index == ivars[i], "A method selection ivar was bound");
+        }
+        ASSERT_BUG(sp, tpl.m_values.empty(), "TODO: Handle value params");
+        return trait_params;
+        };
+
+    // 1. Search for inherent methods
+    // - Inherent methods are searched first.
+    // TODO: Have a cache of name+receiver_type to a list of types and impls
+    // e.g. `len` `&Self` = `[T]`
+    DEBUG("> Inherent methods");
+    {
+        const ::HIR::TypeRef*   cur_check_ty = &ty;
+        auto find_type_impls_cb = [&](const auto& impl) {
+            // TODO: Should this take into account the actual suitability of this method? Or just that the name exists?
+            // - If this impl matches fuzzily, it may not actually match
+            auto it = impl.m_methods.find( method_name );
+            if( it == impl.m_methods.end() )
+                return false ;
+            DEBUG("Potential in `impl" << impl.m_params.fmt_args() << " " << impl.m_type << "` fn " << method_name/* << " - " << top_ty*/);
+            const ::HIR::Function&  fcn = it->second.data;
+            if( const auto* self_ty_p = this->check_method_receiver(sp, fcn, ty, access) )
+            {
+                DEBUG("Found `impl" << impl.m_params.fmt_args() << " " << impl.m_type << "` fn " << method_name/* << " - " << top_ty*/);
+                if( *self_ty_p == *cur_check_ty )
+                {
+                    possibilities.push_back(::std::make_pair( borrow_type, ::HIR::Path(self_ty_p->clone(), method_name, {}) ));
+                    DEBUG("++ " << possibilities.back());
+                    return true;
+                }
+            }
+            DEBUG("[find_method] Method was present in `impl" << impl.m_params.fmt_args() << " " << impl.m_type << "` but receiver mismatched");
+            return false;
+        };
+
+        HIR::TypeRef    tmp;
+        while(cur_check_ty)
+        {
+            DEBUG("Search " << *cur_check_ty);
+            if( m_crate.find_type_impls(*cur_check_ty, m_ivars.callback_resolve_infer(), find_type_impls_cb) )
+            {
+                rv = true;
+            }
+            cur_check_ty = this->autoderef(sp, *cur_check_ty, tmp);
+        }
+    }
+
+    // 2. Search the current trait (if in an impl block)
+    if(m_current_trait_path)
+    {
+        ::HIR::GenericPath final_trait_path;
+        const ::HIR::Function* fcn_ptr;
+        if( (fcn_ptr = this->trait_contains_method(sp, *m_current_trait_path, *m_current_trait_ptr, ty, method_name, final_trait_path)) )
+        {
+            DEBUG("- Found trait " << final_trait_path << " (current)");
+            if(const auto* self_ty = check_method_receiver(sp, *fcn_ptr, ty, access))
+            {
+                // If the type is an unbounded ivar, don't check.
+                if( TU_TEST1(self_ty->data(), Infer, .is_lit() == false) )
+                    return false;
+
+                // Use the set of ivars we were given to populate the trait parameters
+                const auto& trait = m_crate.get_trait_by_path(sp, final_trait_path.m_path);
+                auto trait_params = get_ivared_params(trait.m_params);
+                //auto trait_params = std::move(final_trait_path.m_params);
+
+                bool crate_impl_found = false;
+                find_trait_impls_crate(sp, final_trait_path.m_path, &trait_params, *self_ty,  [&](auto impl, auto cmp) {
+                    DEBUG("[find_method] " << impl << ", cmp = " << cmp);
+                    //magic_found = true;
+                    crate_impl_found = true;
+                    return true;
+                    });
+                if( crate_impl_found ) {
+                    DEBUG("Found trait impl " << m_current_trait_path->m_path << trait_params << " for " << *self_ty << " ("<<m_ivars.fmt_type(*self_ty)<<")");
+                    possibilities.push_back(::std::make_pair( borrow_type, ::HIR::Path(self_ty->clone(), ::HIR::GenericPath( final_trait_path.m_path, mv$(trait_params) ), method_name, {}) ));
+                    DEBUG("++ " << possibilities.back());
+                    return true;
+                }
+                else
+                {
+                }
+            }
+        }
+    }
+
+    // 3. Search generic bounds for a match
     // - If there is a bound on the receiver, then that bound is usable no-matter what
     DEBUG("> Bounds");
     for(const auto& tb : m_trait_bounds)
@@ -4263,7 +4359,7 @@ bool TraitResolution::find_method(const Span& sp,
         };
 
     DEBUG("> Special cases");
-    // 2. If the type is a trait object, search for methods on that trait object
+    // 4. If the type is a trait object, search for methods on that trait object
     // - NOTE: This isnt mutually exclusive with the below set (an inherent impl of `(Trait)` is valid)
     if( const auto* ityp = get_inner_type(ty, [](const auto& t){ return t.data().is_TraitObject(); }) )
     {
@@ -4292,7 +4388,7 @@ bool TraitResolution::find_method(const Span& sp,
         }
     }
 
-    // 3. Mutually exclusive searches
+    // 5. Mutually exclusive searches
     // - Erased type - `impl Trait`
     if( const auto* ityp = get_inner_type(ty, [](const auto& t){ return t.data().is_ErasedType(); }) )
     {
@@ -4407,64 +4503,7 @@ bool TraitResolution::find_method(const Span& sp,
     {
     }
 
-    // 4. Search for inherent methods
-    // - Inherent methods are searched first.
-    // TODO: Have a cache of name+receiver_type to a list of types and impls
-    // e.g. `len` `&Self` = `[T]`
-    DEBUG("> Inherent methods");
-    {
-        const ::HIR::TypeRef*   cur_check_ty = &ty;
-        auto find_type_impls_cb = [&](const auto& impl) {
-            // TODO: Should this take into account the actual suitability of this method? Or just that the name exists?
-            // - If this impl matches fuzzily, it may not actually match
-            auto it = impl.m_methods.find( method_name );
-            if( it == impl.m_methods.end() )
-                return false ;
-            DEBUG("Potential in `impl" << impl.m_params.fmt_args() << " " << impl.m_type << "` fn " << method_name/* << " - " << top_ty*/);
-            const ::HIR::Function&  fcn = it->second.data;
-            if( const auto* self_ty_p = this->check_method_receiver(sp, fcn, ty, access) )
-            {
-                DEBUG("Found `impl" << impl.m_params.fmt_args() << " " << impl.m_type << "` fn " << method_name/* << " - " << top_ty*/);
-                if( *self_ty_p == *cur_check_ty )
-                {
-                    possibilities.push_back(::std::make_pair( borrow_type, ::HIR::Path(self_ty_p->clone(), method_name, {}) ));
-                    DEBUG("++ " << possibilities.back());
-                    return true;
-                }
-            }
-            DEBUG("[find_method] Method was present in `impl" << impl.m_params.fmt_args() << " " << impl.m_type << "` but receiver mismatched");
-            return false;
-            };
-#if 1
-        HIR::TypeRef    tmp;
-        while(cur_check_ty)
-        {
-            DEBUG("Search " << *cur_check_ty);
-            if( m_crate.find_type_impls(*cur_check_ty, m_ivars.callback_resolve_infer(), find_type_impls_cb) )
-            {
-                rv = true;
-            }
-            cur_check_ty = this->autoderef(sp, *cur_check_ty, tmp);
-        }
-#else
-        if( m_crate.find_type_impls(ty, m_ivars.callback_resolve_infer(), find_type_impls_cb) )
-        {
-            rv = true;
-        }
-        cur_check_ty = (ty.data().is_Borrow() ? &ty.data().as_Borrow().inner : nullptr);
-        if( cur_check_ty && m_crate.find_type_impls(*cur_check_ty, m_ivars.callback_resolve_infer(), find_type_impls_cb) )
-        {
-            rv = true;
-        }
-        cur_check_ty = this->type_is_owned_box(sp, ty);
-        if( cur_check_ty && m_crate.find_type_impls(*cur_check_ty, m_ivars.callback_resolve_infer(), find_type_impls_cb) )
-        {
-            rv = true;
-        }
-#endif
-    }
-
-    // 5. Search for trait methods (using currently in-scope traits)
+    // 6. Search for trait methods (using currently in-scope traits)
     DEBUG("> Trait methods");
     for(const auto& trait_ref : ::reverse(traits))
     {
@@ -4483,14 +4522,7 @@ bool TraitResolution::find_method(const Span& sp,
             DEBUG("Search for impl of " << *trait_ref.first << " for " << self_ty);
 
             // Use the set of ivars we were given to populate the trait parameters
-            unsigned int n_params = trait_ref.second->m_params.m_types.size();
-            assert(n_params <= ivars.size());
-            ::HIR::PathParams   trait_params;
-            trait_params.m_types.reserve( n_params );
-            for(unsigned int i = 0; i < n_params; i++) {
-                trait_params.m_types.push_back( ::HIR::TypeRef::new_infer(ivars[i], ::HIR::InferClass::None) );
-                ASSERT_BUG(sp, m_ivars.get_type( trait_params.m_types.back() ).data().as_Infer().index == ivars[i], "A method selection ivar was bound");
-            }
+            ::HIR::PathParams   trait_params = get_ivared_params(trait_ref.second->m_params);
 
             // TODO: Re-monomorphise the trait path!
 

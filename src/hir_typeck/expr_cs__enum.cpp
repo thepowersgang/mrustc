@@ -526,6 +526,7 @@ namespace typecheck
                                 os << "RevisitDefaultUnit(" << node << ": " << node->m_res_type << ")";
                             }
                             bool revisit(Context& context, bool is_fallback) {
+                                DEBUG("is_fallback=" << is_fallback);
                                 const auto& ty = context.get_type(node->m_res_type);
                                 if(const auto* i = ty.data().opt_Infer()) {
                                     if( is_fallback ) {
