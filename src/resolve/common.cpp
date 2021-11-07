@@ -144,7 +144,7 @@ namespace {
                 if( crate.m_edition >= AST::Edition::Rust2018 )
                 {
                     DEBUG("Trying implicit externs for " << name);
-                    DEBUG(FmtLambda([&](std::ostream& os) { for(const auto& v : crate.m_extern_crates) os << " " << v.first;}));
+                    DEBUG(FmtLambda([&](std::ostream& os) { for(const auto& v : AST::g_implicit_crates) os << " " << v.first;}));
                     auto ec_it = AST::g_implicit_crates.find(name);
                     if(ec_it != AST::g_implicit_crates.end())
                     {
