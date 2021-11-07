@@ -1822,8 +1822,11 @@ void Context::equate_types_inner(const Span& sp, const ::HIR::TypeRef& li, const
             this->m_ivars.set_ivar_to(l_e->index, r_t.clone());
         }
         else {
-            auto equality_constgeneric = [&](const ::HIR::ConstGeneric& l, const ::HIR::ConstGeneric& r) {
+            auto equality_constgeneric = [&](const ::HIR::ConstGeneric& rl, const ::HIR::ConstGeneric& rr) {
+                const auto& l = this->m_ivars.get_value(rl);
+                const auto& r = this->m_ivars.get_value(rr);
                 if( l != r ) {
+                    DEBUG(l << " != " << r);
                     if(l.is_Infer()) {
                         if(r.is_Infer()) {
                             // Unify ivars
@@ -1841,6 +1844,9 @@ void Context::equate_types_inner(const Span& sp, const ::HIR::TypeRef& li, const
                             ERROR(sp, E0000, "Value mismatch between " << l << " and " << r);
                         }
                     }
+                }
+                else {
+                    DEBUG(l << " == " << r);
                 }
                 };
             // Helper function for Path and TraitObject

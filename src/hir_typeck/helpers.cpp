@@ -13,8 +13,8 @@
 // --------------------------------------------------------------------
 void HMTypeInferrence::dump() const
 {
-    unsigned int i = 0;
     for(const auto& v : m_ivars) {
+        auto i = &v - &m_ivars.front();
         if(v.is_alias()) {
             //DEBUG("#" << i << " = " << v.alias);
         }
@@ -35,7 +35,27 @@ void HMTypeInferrence::dump() const
                     os << "}";
                 ));
         }
-        i ++ ;
+    }
+    for(const auto& v : m_values) {
+        auto i = &v - &m_values.front();
+        if(v.is_alias()) {
+        }
+        else {
+            DEBUG("V#" << i << " = " << *v.val << FMT_CB(os,
+                bool open = false;
+                for(const auto& v2 : m_values) {
+                    auto i2 = &v2 - &m_values.front();
+                    if( v2.is_alias() && v2.alias == i ) {
+                        if( !open )
+                            os << " { ";
+                        open = true;
+                        os << "#" << i2 << " ";
+                    }
+                }
+                if(open)
+                    os << "}";
+            ));
+        }
     }
 }
 void HMTypeInferrence::check_for_loops()
@@ -565,6 +585,7 @@ void HMTypeInferrence::set_ivar_val_to(unsigned int slot, ::HIR::ConstGeneric va
     ASSERT_BUG(Span(), slot < m_values.size(), "slot " << slot << " >= " << m_values.size());
     ASSERT_BUG(Span(), !m_values[slot].is_alias(), "slot " << slot);
     if( *m_values[slot].val == val ) {
+        //DEBUG("Set ValIVar " << slot << " == " << val);
     }
     else {
         DEBUG("Set ValIVar " << slot << " = " << val);
@@ -575,7 +596,24 @@ void HMTypeInferrence::set_ivar_val_to(unsigned int slot, ::HIR::ConstGeneric va
 }
 void HMTypeInferrence::ivar_val_unify(unsigned int left_slot, unsigned int right_slot)
 {
-    TODO(Span(), "ivar_val_unify(" << left_slot << "," << right_slot << ")");
+    Span    sp;
+    ASSERT_BUG(sp, left_slot < m_values.size(), "slot " << left_slot << " >= " << m_values.size());
+    ASSERT_BUG(sp, right_slot < m_values.size(), "slot " << left_slot << " >= " << m_values.size());
+    ASSERT_BUG(sp, !m_values[left_slot].is_alias(), "slot " << left_slot);
+    ASSERT_BUG(sp, !m_values[right_slot].is_alias(), "slot " << right_slot);
+
+    if( const auto* re = m_values[right_slot].val->opt_Infer() )
+    {
+        DEBUG("Set ValIVar " << right_slot << " = @" << left_slot);
+        m_values[right_slot].alias = left_slot;
+        m_values[right_slot].val.reset();
+
+        this->mark_change();
+    }
+    else
+    {
+        BUG(sp, "Unifiying over a set value");
+    }
 }
 
 //::HIR::TypeRef& HMTypeInferrence::get_type(::HIR::TypeRef& type)

@@ -359,7 +359,7 @@ namespace typecheck
         // If the impl block has parameters, figure out what types they map to
         // - The function params are already mapped (from fix_param_count)
         auto& impl_params = e.impl_params;
-        if( impl_ptr->m_params.m_types.size() > 0 )
+        if( impl_ptr->m_params.is_generic() )
         {
             // Default-construct entires in the `impl_params` array
             impl_params.m_types.resize( impl_ptr->m_params.m_types.size() );
@@ -846,6 +846,7 @@ namespace typecheck
                 this->context.equate_types_coerce(node.span(), node.m_res_type, node.m_true);
             }
             else {
+                this->context.equate_types(node.span(), node.m_true->m_res_type, ::HIR::TypeRef::new_unit());
                 this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
             }
             node.m_true->visit( *this );
@@ -856,7 +857,6 @@ namespace typecheck
                 node.m_false->visit( *this );
             }
             else {
-                this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
             }
         }
 
@@ -2115,11 +2115,13 @@ void Typecheck_Code_CS__EnumerateRules(
 
     if(true)
     {
+        DEBUG("--- Pre-adding ivars");
         typecheck::ExprVisitor_AddIvars    visitor(context);
         context.add_ivars(root_ptr->m_res_type);
         root_ptr->visit(visitor);
     }
 
+    DEBUG("--- Enumerating");
     typecheck::ExprVisitor_Enum    visitor(context, ms.m_traits, new_res_ty);
     context.add_ivars(root_ptr->m_res_type);
     root_ptr->visit(visitor);

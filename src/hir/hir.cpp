@@ -66,7 +66,7 @@ namespace HIR {
         if(this->tag() != x.tag())
             return false;
         TU_MATCH_HDRA( (*this, x), {)
-        TU_ARMA(Infer, te, xe) return true;
+        TU_ARMA(Infer, te, xe) return te.index == xe.index;
         TU_ARMA(Unevaluated, te, xe)    return te == xe;
         TU_ARMA(Generic, te, xe)    return te == xe;
         TU_ARMA(Evaluated, te, xe)  return EncodedLiteralSlice(*te) == EncodedLiteralSlice(*xe);
