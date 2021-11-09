@@ -1036,10 +1036,13 @@ namespace {
                 rv.m_repr = ::HIR::Struct::Repr::Transparent;
             }
             else if( repr_str == "align" ) {
-                //ASSERT_BUG(a.span(), a.has_string(), "#[repr(aligned)] attribute malformed, " << *attr_repr);
-                ASSERT_BUG(a.span(), rv.m_repr != ::HIR::Struct::Repr::Packed, "Conflicting #[repr] attributes - " << rv.m_repr << ", " << repr_str);
+                ASSERT_BUG(a.span(), a.items().size() == 1, "#[repr(aligned)] attribute malformed, " << *attr_repr);
+                ASSERT_BUG(a.span(), a.items()[0].has_string(), "#[repr(aligned)] attribute malformed, " << *attr_repr);
+                //ASSERT_BUG(a.span(), rv.m_repr != ::HIR::Struct::Repr::Rust, "Conflicting #[repr] attributes - " << rv.m_repr << ", " << repr_str);
                 //rv.m_repr = ::HIR::Struct::Repr::Aligned;
-                //rv.m_forced_alignment = ::std::stol(a.string());
+                ASSERT_BUG(a.span(), rv.m_forced_alignment == 0, "Conflicting #[repr] attributes");
+                rv.m_forced_alignment = ::std::stol(a.items()[0].string());
+                ASSERT_BUG(a.span(), rv.m_forced_alignment > 0, "#[repr(aligned)] attribute malformed, " << *attr_repr);
             }
             else {
                 TODO(a.span(), "Handle struct repr '" << repr_str << "'");

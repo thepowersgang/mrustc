@@ -607,11 +607,11 @@ void Target_SetCfg(const ::std::string& target_name)
     Cfg_SetValue("target_pointer_width", FMT(g_target.m_arch.m_pointer_bits));
     Cfg_SetValue("target_endian", g_target.m_arch.m_big_endian ? "big" : "little");
     Cfg_SetValue("target_arch", g_target.m_arch.m_name);
-    if(g_target.m_arch.m_atomics.u8)    { Cfg_SetValue("target_has_atomic", "8"  ); Cfg_SetValue("target_has_atomic_load_store", "8"); }
-    if(g_target.m_arch.m_atomics.u16)   { Cfg_SetValue("target_has_atomic", "16" ); Cfg_SetValue("target_has_atomic_load_store", "16"); }
-    if(g_target.m_arch.m_atomics.u32)   { Cfg_SetValue("target_has_atomic", "32" ); Cfg_SetValue("target_has_atomic_load_store", "32"); }
-    if(g_target.m_arch.m_atomics.u64)   { Cfg_SetValue("target_has_atomic", "64" ); Cfg_SetValue("target_has_atomic_load_store", "64"); }
-    if(g_target.m_arch.m_atomics.ptr)   { Cfg_SetValue("target_has_atomic", "ptr"); Cfg_SetValue("target_has_atomic_load_store", "ptr"); }
+    if(g_target.m_arch.m_atomics.u8)    { Cfg_SetValue("target_has_atomic", "8"  ); Cfg_SetValue("target_has_atomic_load_store", "8"  ); Cfg_SetValue("target_has_atomic_equal_alignment", "8"  ); }
+    if(g_target.m_arch.m_atomics.u16)   { Cfg_SetValue("target_has_atomic", "16" ); Cfg_SetValue("target_has_atomic_load_store", "16" ); Cfg_SetValue("target_has_atomic_equal_alignment", "16" ); }
+    if(g_target.m_arch.m_atomics.u32)   { Cfg_SetValue("target_has_atomic", "32" ); Cfg_SetValue("target_has_atomic_load_store", "32" ); Cfg_SetValue("target_has_atomic_equal_alignment", "32"); }
+    if(g_target.m_arch.m_atomics.u64)   { Cfg_SetValue("target_has_atomic", "64" ); Cfg_SetValue("target_has_atomic_load_store", "64" ); Cfg_SetValue("target_has_atomic_equal_alignment", "64"); }
+    if(g_target.m_arch.m_atomics.ptr)   { Cfg_SetValue("target_has_atomic", "ptr"); Cfg_SetValue("target_has_atomic_load_store", "ptr"); Cfg_SetValue("target_has_atomic_equal_alignment", "ptr"); }
     // TODO: Atomic compare-and-set option
     if(g_target.m_arch.m_atomics.ptr)   { Cfg_SetValue("target_has_atomic", "cas");  }
     Cfg_SetValueCb("target_feature", [](const ::std::string& s) {
@@ -901,7 +901,7 @@ namespace {
     /// Generate a struct representation using the provided entries
     /// 
     /// - Handles (optional) sorting and packing
-    ::std::unique_ptr<TypeRepr> make_type_repr_struct__inner(const Span&sp, const ::HIR::TypeRef& ty, ::std::vector<Ent>& ents, StructSorting sorting)
+    ::std::unique_ptr<TypeRepr> make_type_repr_struct__inner(const Span&sp, const ::HIR::TypeRef& ty, ::std::vector<Ent>& ents, StructSorting sorting, unsigned forced_alignment)
     {
         if(ents.size() > 0)
         {
@@ -956,6 +956,9 @@ namespace {
                 cur_ofs += e.size;
             }
         }
+        if(forced_alignment > 0) {
+            max_align = std::max(max_align, static_cast<size_t>(forced_alignment));
+        }
         // If not packing (and the size isn't infinite/unsized) then round the size up to the alignment
         if( sorting != StructSorting::Packed && cur_ofs != SIZE_MAX )
         {
@@ -979,6 +982,7 @@ namespace {
         TRACE_FUNCTION_F(ty);
         ::std::vector<Ent>  ents;
         StructSorting   sorting;
+        unsigned forced_alignment = 0;
         if( ty.data().is_Path() && ty.data().as_Path().binding.is_Struct() )
         {
             const auto& te = ty.data().as_Path();
@@ -987,6 +991,7 @@ namespace {
             if( !struct_enumerate_fields(sp, resolve, ty, ents) )
                 return nullptr;
 
+            forced_alignment = str.m_forced_alignment;
             sorting = StructSorting::None;  // Defensive default for if repr is invalid
             switch(str.m_repr)
             {
@@ -1036,7 +1041,7 @@ namespace {
             BUG(sp, "Unexpected type in creating type repr - " << ty);
         }
 
-        return make_type_repr_struct__inner(sp, ty, ents, sorting);
+        return make_type_repr_struct__inner(sp, ty, ents, sorting, forced_alignment);
     }
 
 
@@ -1414,7 +1419,7 @@ namespace {
                         std::vector< std::unique_ptr<TypeRepr> >    reprs;
                         for( size_t i = 0; i < variants.size(); i ++ )
                         {
-                            reprs.push_back( make_type_repr_struct__inner(sp, e[i].type, variants[i].ents, StructSorting::All) );
+                            reprs.push_back( make_type_repr_struct__inner(sp, e[i].type, variants[i].ents, StructSorting::All, 0) );
                             max_align = std::max(max_align, reprs.back()->align);
                             size_t var_size = reprs.back()->size;
                             // If larger than current max, update current max and reset
@@ -1572,7 +1577,7 @@ namespace {
                                         variants[i].ents[0].field = variants[i].ents.size() - 1;
                                         variants[i].ents[0].ty = niche_ty.clone();
                                         // Create the new repr
-                                        reprs[i] = make_type_repr_struct__inner(sp, variants[i].type, variants[i].ents, StructSorting::None);
+                                        reprs[i] = make_type_repr_struct__inner(sp, variants[i].type, variants[i].ents, StructSorting::None, 0);
                                         // Make sure that the newly calculated repr doesn't change the size/alignment
                                         assert(reprs[i]->size <= max_size);
                                         assert(reprs[i]->align <= max_align);
@@ -1663,7 +1668,7 @@ namespace {
                             ents[0].ty = tag_ty.clone();
 
                             // - Create repr and assign
-                            auto repr =  make_type_repr_struct__inner(sp, var_ty, ents, StructSorting::None);
+                            auto repr = make_type_repr_struct__inner(sp, var_ty, ents, StructSorting::None, 0);
                             max_size  = std::max(max_size , repr->size );
                             max_align = std::max(max_align, repr->align);
                             set_type_repr(sp, var_ty, std::move(repr));

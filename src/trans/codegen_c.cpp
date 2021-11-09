@@ -1567,8 +1567,9 @@ namespace {
         {
             // Fill `fields` with ascending indexes (for sorting)
             // AND: Determine if the type has a a zero-sized item that has an alignment equal to the structure's alignment
-            bool has_manual_align = false;
             ::std::vector<unsigned> fields;
+            size_t max_align = 0;
+            bool has_manual_align = false;
             for(const auto& ent : repr->fields)
             {
                 fields.push_back(fields.size());
@@ -1580,6 +1581,10 @@ namespace {
                 if( sz == 0 && al == repr->align && al > 0 ) {
                     has_manual_align = true;
                 }
+                max_align = std::max(max_align, al);
+            }
+            if(!is_packed && max_align != repr->align /*&& repr->size > 0*/) {
+                has_manual_align = true;
             }
             // - Sort the fields by offset
             ::std::sort(fields.begin(), fields.end(), [&](auto a, auto b){ return repr->fields[a].offset < repr->fields[b].offset; });
@@ -3016,6 +3021,13 @@ namespace {
                 return false;
             }
         }
+        bool type_is_high_align(const ::HIR::TypeRef& ty) const
+        {
+            size_t  size, align;
+            // NOTE: Uses the Size+Align version because that doesn't panic on unsized
+            MIR_ASSERT(*m_mir_res, Target_GetSizeAndAlignOf(sp, m_resolve, ty, size, align), "Unexpected generic? " << ty);
+            return align >Target_GetPointerBits() / 8;
+        }
 
         void emit_borrow(const ::MIR::TypeResolve& mir_res, HIR::BorrowType bt, const MIR::LValue& val)
         {
@@ -4168,15 +4180,17 @@ namespace {
             for(unsigned int j = 0; j < e.args.size(); j ++) {
                 if(j != 0)  m_of << ",";
                 m_of << " ";
-                if( m_options.disallow_empty_structs /*&& TU_TEST1(e.args[j], LValue, .is_Field())*/ )
+                ::HIR::TypeRef tmp;
+                const auto& ty = m_mir_res->get_param_type(tmp, e.args[j]);
+
+                if( this->type_is_high_align(ty) )
                 {
-                    ::HIR::TypeRef tmp;
-                    const auto& ty = m_mir_res->get_param_type(tmp, e.args[j]);
-                    if( this->type_is_bad_zst(ty) )
-                    {
-                        m_of << "zarg" << j;
-                        continue;
-                    }
+                    m_of << "&";
+                }
+                if( this->type_is_bad_zst(ty) )
+                {
+                    m_of << "zarg" << j;
+                    continue;
                 }
                 emit_param(e.args[j]);
             }
@@ -4963,7 +4977,9 @@ namespace {
                     {
                         if( i != 0 )    m_of << ",";
                         ss << "\n\t\t";
-                        this->emit_ctype( params.monomorph(m_resolve, item.m_args[i].second), FMT_CB(os, os << "arg" << i;) );
+                        // TODO: If the type has a high alignment, emit as a pointer
+                        auto ty = params.monomorph(m_resolve, item.m_args[i].second);
+                        this->emit_ctype( ty, FMT_CB(os, os << (this->type_is_high_align(ty) ? "*":"") << "arg" << i;) );
                     }
 
                     if( item.m_variadic )
@@ -6810,7 +6826,14 @@ namespace {
                 m_of << "rv";
                 }
             TU_ARMA(Argument, e) {
-                m_of << "arg" << e;
+                if(this->type_is_high_align(m_mir_res->m_args[e].second)) {
+                    m_of << "(*";
+                    m_of << "arg" << e;
+                    m_of << ")";
+                }
+                else {
+                    m_of << "arg" << e;
+                }
                 }
             TU_ARMA(Local, e) {
                 if( e == ::MIR::LValue::Storage::MAX_ARG )
