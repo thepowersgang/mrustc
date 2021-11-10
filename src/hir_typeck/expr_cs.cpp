@@ -4927,10 +4927,11 @@ namespace {
             {
                 // Binary operations - If both types are primitives, the output is the lefthand side
                 // NOTE: Comparison ops don't (currently) see this
-                const auto& left = context.get_type(v.impl_ty); // yes, impl = LHS of binop
-                const auto& right = context.get_type(v.params.m_types.at(0));
-                const auto& res = context.get_type(v.left_ty);
-                if( H::type_is_num(left) && H::type_is_num(right) ) {
+                const auto& left = v.impl_ty; // yes, impl = LHS of binop
+                const auto& right = v.params.m_types.at(0);
+                const auto& res = v.left_ty;
+                if( H::type_is_num(context.get_type(left)) && H::type_is_num(context.get_type(right)) )
+                {
                     DEBUG("- Magic inferrence link for binops on numerics");
                     if( v.name == "" )
                     {
@@ -4947,10 +4948,10 @@ namespace {
                     else
                     {
                         // NOTE: This only holds if not a shift
-                        context.equate_types(sp, v.impl_ty, right);
+                        context.equate_types(sp, left, right);
                     }
                 }
-                context.possible_equate_type_unknown(sp, /*right*/v.params.m_types.at(0), Context::IvarUnknownType::To); // RHS, can't use `right` because it might be freed by the above equate.
+                context.possible_equate_type_unknown(sp, right, Context::IvarUnknownType::To);
             }
             else
             {
