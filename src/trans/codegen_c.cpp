@@ -6172,7 +6172,7 @@ namespace {
                     m_of << ");";
                     return ;
                 }
-                else if( ty == ::HIR::CoreType::U64 || (ty == ::HIR::CoreType::Usize /*&& target_is_64_bit */) )
+                else if( ty == ::HIR::CoreType::U64 || (ty == ::HIR::CoreType::Usize && Target_GetPointerBits() > 32) )
                 {
                     emit_param(e.args.at(0)); m_of << " != 0 ? ";
                     if( name == "ctlz" || name == "ctlz_nonzero" ) {
