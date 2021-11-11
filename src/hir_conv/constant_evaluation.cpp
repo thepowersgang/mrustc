@@ -635,7 +635,7 @@ namespace MIR { namespace eval {
             }
             else {
                 assert(bits == 128);
-                int64_t vs[2] = {v, -1};
+                int64_t vs[2] = {v, v < 0 ? -1 : 0};
                 write_bytes(state, vs, 128/8);
             }
         }
