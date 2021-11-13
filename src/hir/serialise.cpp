@@ -663,8 +663,10 @@
             TU_MATCH_HDRA( (v), {)
             TU_ARMA(Infer, e) {
                 }
-            TU_ARMA(Unevaluated, e)
-                serialise(e);
+            TU_ARMA(Unevaluated, e) {
+                ASSERT_BUG(e->span(), e->m_mir, "Encountered non-translated value in ConstGeneric");
+                serialise(*e);
+                }
             TU_ARMA(Generic, e)
                 serialise(e);
             TU_ARMA(Evaluated, e)
