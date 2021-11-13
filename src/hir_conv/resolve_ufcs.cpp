@@ -937,6 +937,7 @@ namespace resolve_ufcs {
         ig.generic.erase(new_end, ig.generic.end());
     }
 
+    // --- Indexing of trait impls ---
     template<typename T>
     void push_index_impl_group_list(::std::vector<const T*>& dst, const ::std::vector<std::unique_ptr<T>>& src)
     {
@@ -962,6 +963,26 @@ namespace resolve_ufcs {
         for(const auto& ig : src.m_marker_impls) {
             push_index_impl_group(dst.m_all_marker_impls[ig.first], ig.second);
         }
+    }
+
+    // --- Indexing of inherent methods ---
+    void push_index_inherent_methods_list(::HIR::InherentCache& icache, const HIR::SimplePath& lang_Box, const ::std::vector<std::unique_ptr< HIR::TypeImpl >>& src)
+    {
+        Span    sp;
+        for(const auto& ti : src)
+        {
+            const auto& impl = *ti;
+            DEBUG("impl" << impl.m_params.fmt_args() << " " << impl.m_type);
+            icache.insert_all(sp, impl, lang_Box);
+        }
+    }
+    void push_index_inherent_methods(::HIR::InherentCache& icache, const HIR::SimplePath& lang_Box, const ::HIR::Crate& src)
+    {
+        for(const auto& e : src.m_type_impls.named) {
+            push_index_inherent_methods_list(icache, lang_Box, e.second);
+        }
+        push_index_inherent_methods_list(icache, lang_Box, src.m_type_impls.non_named);
+        push_index_inherent_methods_list(icache, lang_Box, src.m_type_impls.generic  );
     }
 }   // namespace ""
 using namespace resolve_ufcs;
@@ -1002,5 +1023,13 @@ void ConvertHIR_ResolveUFCS_SortImpls(::HIR::Crate& crate)
     push_index_impls(crate, crate);
     for(const auto& ec : crate.m_ext_crates) {
         push_index_impls(crate, *ec.second.m_data);
+    }
+
+    {
+        const auto& lang_Box = crate.get_lang_item_path_opt("owned_box");
+        push_index_inherent_methods(crate.m_inherent_method_cache, lang_Box, crate);
+        for(const auto& ec : crate.m_ext_crates) {
+            push_index_inherent_methods(crate.m_inherent_method_cache, lang_Box, *ec.second.m_data);
+        }
     }
 }

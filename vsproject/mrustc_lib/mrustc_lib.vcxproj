@@ -174,6 +174,7 @@
     <ClCompile Include="..\..\src\expand\misc_attrs.cpp" />
     <ClCompile Include="..\..\src\expand\panic.cpp" />
     <ClCompile Include="..\..\src\expand\stability.cpp" />
+    <ClCompile Include="..\..\src\hir\inherent_cache.cpp" />
     <ClCompile Include="..\..\src\hir_expand\static_borrow_constants.cpp" />
     <ClCompile Include="..\..\src\hir_typeck\expr_cs__enum.cpp" />
     <ClCompile Include="..\..\src\hir_typeck\monomorph.hpp" />
@@ -316,6 +317,7 @@
     <ClInclude Include="..\..\src\hir\generic_params.hpp" />
     <ClInclude Include="..\..\src\hir\generic_ref.hpp" />
     <ClInclude Include="..\..\src\hir\hir.hpp" />
+    <ClInclude Include="..\..\src\hir\inherent_cache.hpp" />
     <ClInclude Include="..\..\src\hir\literal.hpp" />
     <ClInclude Include="..\..\src\hir\path.hpp" />
     <ClInclude Include="..\..\src\hir\pattern.hpp" />

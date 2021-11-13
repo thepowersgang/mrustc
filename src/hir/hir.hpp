@@ -27,6 +27,7 @@
 #include <hir/generic_params.hpp>
 #include <hir/crate_ptr.hpp>
 #include <hir/encoded_literal.hpp>
+#include <hir/inherent_cache.hpp>
 
 #define ABI_RUST    "Rust"
 #define CRATE_BUILTINS  "#builtins" // used for macro re-exports of builtins
@@ -649,11 +650,14 @@ public:
     // - Unsorted (generics, and everything before outer type resolution)
     ImplGroup<::std::unique_ptr<::HIR::TypeImpl>>  m_type_impls;
 
+    /// CACHE: Cache of all inherent (non-trait) methods (for faster lookup)
+    InherentCache   m_inherent_method_cache;
+
     /// Impl blocks
     ::std::map< ::HIR::SimplePath, ImplGroup<::std::unique_ptr<::HIR::TraitImpl>> > m_trait_impls;
     ::std::map< ::HIR::SimplePath, ImplGroup<::std::unique_ptr<::HIR::MarkerImpl>> > m_marker_impls;
 
-    // TODO: Merged index versions of the above
+    /// Merged index versions of the above
     ImplGroup<const ::HIR::TypeImpl*>   m_all_type_impls;
     ::std::map< ::HIR::SimplePath, ImplGroup<const ::HIR::TraitImpl*> > m_all_trait_impls;
     ::std::map< ::HIR::SimplePath, ImplGroup<const ::HIR::MarkerImpl*> > m_all_marker_impls;

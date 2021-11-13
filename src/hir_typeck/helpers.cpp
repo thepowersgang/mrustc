@@ -4228,41 +4228,15 @@ bool TraitResolution::find_method(const Span& sp,
     // TODO: Have a cache of name+receiver_type to a list of types and impls
     // e.g. `len` `&Self` = `[T]`
     DEBUG("> Inherent methods");
-    {
-        const ::HIR::TypeRef*   cur_check_ty = &ty;
-        auto find_type_impls_cb = [&](const auto& impl) {
-            // TODO: Should this take into account the actual suitability of this method? Or just that the name exists?
-            // - If this impl matches fuzzily, it may not actually match
-            auto it = impl.m_methods.find( method_name );
-            if( it == impl.m_methods.end() )
-                return false ;
-            DEBUG("Potential in `impl" << impl.m_params.fmt_args() << " " << impl.m_type << "` fn " << method_name/* << " - " << top_ty*/);
-            const ::HIR::Function&  fcn = it->second.data;
-            if( const auto* self_ty_p = this->check_method_receiver(sp, fcn, ty, access) )
-            {
-                DEBUG("Found `impl" << impl.m_params.fmt_args() << " " << impl.m_type << "` fn " << method_name/* << " - " << top_ty*/);
-                if( *self_ty_p == *cur_check_ty )
-                {
-                    possibilities.push_back(::std::make_pair( borrow_type, ::HIR::Path(self_ty_p->clone(), method_name, {}) ));
-                    DEBUG("++ " << possibilities.back());
-                    return true;
-                }
-            }
-            DEBUG("[find_method] Method was present in `impl" << impl.m_params.fmt_args() << " " << impl.m_type << "` but receiver mismatched");
-            return false;
-        };
-
-        HIR::TypeRef    tmp;
-        while(cur_check_ty)
+    m_crate.m_inherent_method_cache.find(sp, method_name, ty, [&](const HIR::TypeRef& self_ty, const HIR::TypeImpl& impl) {
+        if( impl.matches_type(self_ty, m_ivars.callback_resolve_infer()) )
         {
-            DEBUG("Search " << *cur_check_ty);
-            if( m_crate.find_type_impls(*cur_check_ty, m_ivars.callback_resolve_infer(), find_type_impls_cb) )
-            {
-                rv = true;
-            }
-            cur_check_ty = this->autoderef(sp, *cur_check_ty, tmp);
+            DEBUG("Found `impl" << impl.m_params.fmt_args() << " " << impl.m_type << "` fn " << method_name/* << " - " << top_ty*/);
+            possibilities.push_back(::std::make_pair( borrow_type, ::HIR::Path(self_ty.clone(), method_name, {}) ));
+            DEBUG("++ " << possibilities.back());
+            rv = true;
         }
-    }
+        });
 
     // 2. Search the current trait (if in an impl block)
     if(m_current_trait_path)

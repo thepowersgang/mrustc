@@ -444,6 +444,9 @@
     <ClCompile Include="..\..\src\hir_typeck\resolve_common.cpp">
       <Filter>Source Files\hir_typeck</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\src\hir\inherent_cache.cpp">
+      <Filter>Source Files\hir</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\src\common.hpp">
@@ -694,6 +697,9 @@
     </ClInclude>
     <ClInclude Include="..\..\src\hir_typeck\resolve_common.hpp">
       <Filter>Header Files\hir_typeck</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\hir\inherent_cache.hpp">
+      <Filter>Header Files\hir</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
