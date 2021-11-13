@@ -3369,7 +3369,7 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                 if( w.is_Index() )
                 {
                     auto it = known_values.find(MIR::LValue::new_Local(w.as_Index()));
-                    if( it != known_values.find(lv) && !it->second.is_Const() )
+                    if( it != known_values.find(lv) && !it->second.is_Const() && !it->second.is_Generic() )
                     {
                         MIR_ASSERT(state, it->second.is_Uint(), "Indexing with non-Uint constant - " << it->second);
                         MIR_ASSERT(state, it->second.as_Uint().t == HIR::CoreType::Usize, "Indexing with non-usize constant - " << it->second);
@@ -3479,6 +3479,14 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                 }
                                 else if( const auto* vp = nv.opt_Int() )
                                 {
+                                    if( *te == HIR::CoreType::U128 )
+                                    {
+                                        // u128 destination, can only cast if the value is positive (otherwise the sign extension is lost)
+                                        if( vp->v < 0 ) {
+                                            DEBUG(state << "Cast of negative to u128, sign extension would be lost");
+                                            break;
+                                        }
+                                    }
                                     new_value = ::MIR::Constant::make_Uint({
                                         H::truncate_u(*te, vp->v),
                                         *te
@@ -3503,6 +3511,14 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                             case ::HIR::CoreType::Isize:
                                 if( const auto* vp = nv.opt_Uint() )
                                 {
+                                    // If the destination is i128 and the value is >INT64_MAX, sign extension will break
+                                    if( *te == ::HIR::CoreType::I128 )
+                                    {
+                                        if( vp->v > INT64_MAX ) {
+                                            DEBUG(state << "Cast of large value to i128, sign extension would be incorrect");
+                                            break;
+                                        }
+                                    }
                                     new_value = ::MIR::Constant::make_Int({
                                         H::truncate_s(*te, vp->v),
                                         *te
@@ -3880,7 +3896,6 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                         const auto& val = it->second;
                         ::MIR::Constant new_value;
                         bool replace = false;
-                        // TODO: Evaluate UniOp
                         switch( se.op )
                         {
                         case ::MIR::eUniOp::INV:
@@ -3921,9 +3936,12 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                 case ::HIR::CoreType::Isize:
                                 case ::HIR::CoreType::I64:
                                     val = H::truncate_s(ve.t, ~val);
+                                    replace = true;
                                     break;
-                                case ::HIR::CoreType::U128:
-                                    replace = false;
+                                case ::HIR::CoreType::I128:
+                                    // TODO: Are there any cases where sign extension stops being correct here?
+                                    val = H::truncate_s(ve.t, ~val);
+                                    replace = true;
                                     break;
                                 case ::HIR::CoreType::Char:
                                     MIR_BUG(state, "Invalid use of ! on char");
@@ -4126,7 +4144,7 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
         TU_ARM(bb.terminator, If, te) {
             auto it = known_values.find(te.cond);
             if( it != known_values.end() ) {
-                if( it->second.is_Const() ) {
+                if( it->second.is_Const() || it->second.is_Generic() ) {
                 }
                 else {
                     MIR_ASSERT(state, it->second.is_Bool(), "Terminator::If with known value not Bool - " << it->second);
