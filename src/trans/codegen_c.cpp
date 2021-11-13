@@ -1205,6 +1205,7 @@ namespace {
                     {
                         args.push_back(c);
                     }
+                    args.push_back("-Wl,--start-group");    // Group to avoid linking ordering
                     //args.push_back("-Wl,--push-state");
                     for(auto l_d : libraries_and_dirs)
                     {
@@ -1234,6 +1235,7 @@ namespace {
                         }
                     }
                     //args.push_back("-Wl,--pop-state");
+                    args.push_back("-Wl,--end-group");    // Group to avoid linking ordering
                     for( const auto& a : Target_GetCurSpec().m_backend_c.m_linker_opts )
                     {
                         args.push_back( a.c_str() );
