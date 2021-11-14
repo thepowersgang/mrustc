@@ -2275,17 +2275,16 @@ namespace {
                     auto nvs = NewvalState { *m_mod, *m_mod_path, name };
                     auto eval = get_eval(e->span(), nvs);
 
-                    assert(m_get_params);
-                    const auto& params_def = m_get_params(sp);
-                    auto idx = static_cast<size_t>(&v - &p.m_values.front());
-                    ASSERT_BUG(sp, idx < params_def.m_values.size(), "");
-                    const auto& ty = params_def.m_values[idx].m_type;
-                    ASSERT_BUG(sp, !monomorphise_type_needed(ty), "" << ty);
-
                     // Need to look up the required type - to do that requires knowing the item it's for
                     // - Which, might not be known at this point - might be a UfcsInherent
                     try
                     {
+                        const auto& params_def = m_get_params(sp);
+                        auto idx = static_cast<size_t>(&v - &p.m_values.front());
+                        ASSERT_BUG(sp, idx < params_def.m_values.size(), "");
+                        const auto& ty = params_def.m_values[idx].m_type;
+                        ASSERT_BUG(sp, !monomorphise_type_needed(ty), "" << ty);
+
                         auto val = eval.evaluate_constant( ::HIR::ItemPath(*m_mod_path, name.c_str()), e, ty.clone() );
                         v = ::HIR::ConstGeneric::make_Evaluated(std::move(val));
                     }
@@ -2521,6 +2520,15 @@ namespace {
                     m_exp.visit_path(p, pc);
                 }
 
+                void visit(::HIR::ExprNode_CallMethod& node) override {
+                    auto saved = m_exp.m_get_params;
+                    m_exp.m_get_params = [&](const Span& sp)->const ::HIR::GenericParams& {
+                        DEBUG("visit(ExprNode_CallMethod)[m_get_params] Defer until after main typecheck");
+                        throw Defer();
+                        };
+                    ::HIR::ExprVisitorDef::visit(node);
+                    m_exp.m_get_params = std::move(saved);
+                }
                 void visit(::HIR::ExprNode_ArraySized& node) override {
                     ::HIR::ExprVisitorDef::visit(node);
                     m_exp.visit_arraysize(node.m_size, FMT("array_" << &node << "#"));
@@ -2631,4 +2639,40 @@ void ConvertHIR_ConstantEvaluate_Enum(const ::HIR::Crate& crate, const ::HIR::It
     auto& item = const_cast<::HIR::Enum&>(enm);
 
     Expander::visit_enum_inner(crate, ip, mod, mod_path, item_name.c_str(), item);
+}
+void ConvertHIR_ConstantEvaluate_MethodParams(
+    const Span& sp,
+    const ::HIR::Crate& crate, const HIR::SimplePath& mod_path, const ::HIR::GenericParams* impl_generics, const ::HIR::GenericParams* item_generics,
+    const ::HIR::GenericParams& params_def,
+    ::HIR::PathParams& params
+    )
+{
+    for(auto& v : params.m_values)
+    {
+        if(v.is_Unevaluated())
+        {
+            const auto& e = *v.as_Unevaluated();
+            auto name = FMT("param_" << &v << "#");
+            auto nvs = NewvalState { crate.get_mod_by_path(Span(), mod_path), mod_path, name };
+            auto eval = ::HIR::Evaluator { sp, crate, nvs };
+            eval.resolve.set_both_generics_raw(impl_generics, item_generics);
+
+            // Need to look up the required type - to do that requires knowing the item it's for
+            // - Which, might not be known at this point - might be a UfcsInherent
+            try
+            {
+                auto idx = static_cast<size_t>(&v - &params.m_values.front());
+                ASSERT_BUG(sp, idx < params_def.m_values.size(), "");
+                const auto& ty = params_def.m_values[idx].m_type;
+                ASSERT_BUG(sp, !monomorphise_type_needed(ty), "" << ty);
+
+                auto val = eval.evaluate_constant( ::HIR::ItemPath(mod_path, name.c_str()), e, ty.clone() );
+                v = ::HIR::ConstGeneric::make_Evaluated(std::move(val));
+            }
+            catch(const Defer& )
+            {
+                // Deferred - no update
+            }
+        }
+    }
 }

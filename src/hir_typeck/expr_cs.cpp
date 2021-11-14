@@ -15,6 +15,7 @@
 #include "helpers.hpp"
 #include "expr_visit.hpp"
 #include "expr_cs.hpp"
+#include "hir_conv/main_bindings.hpp"
 
 namespace {
     inline HIR::ExprNodeP mk_exprnodep(HIR::ExprNode* en, ::HIR::TypeRef ty){ en->m_res_type = mv$(ty); return HIR::ExprNodeP(en); }
@@ -7315,6 +7316,50 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         StaticTraitResolve  static_resolve(ms.m_crate);
         static_resolve.set_both_generics_raw(ms.m_impl_generics, ms.m_item_generics);
         Typecheck_Expressions_ValidateOne(static_resolve, args, result_type, expr);
+
+        DEBUG("=== Method const params ===");
+        struct VisitMethodConst: public HIR::ExprVisitorDef {
+            const typeck::ModuleState&  ms;
+            const StaticTraitResolve& static_resolve;
+
+            VisitMethodConst(const typeck::ModuleState& ms, const StaticTraitResolve& static_resolve)
+                : ms(ms)
+                , static_resolve(static_resolve)
+            {
+            }
+
+            void visit(HIR::ExprNode_CallMethod& node) override {
+                HIR::ExprVisitorDef::visit(node);
+
+                HIR::PathParams*    params_ptr = nullptr;
+                TU_MATCH_HDRA( (node.m_method_path.m_data), {)
+                TU_ARMA(Generic, _pe)   BUG(node.span(), "");
+                TU_ARMA(UfcsUnknown, _pe)   BUG(node.span(), "");
+                TU_ARMA(UfcsKnown, pe)  params_ptr = &pe.params;
+                TU_ARMA(UfcsInherent, pe)  params_ptr = &pe.params;
+                }
+                assert(params_ptr);
+
+                bool found = false;
+                for(auto& v : params_ptr->m_values)
+                {
+                    if(v.is_Unevaluated())
+                    {
+                        found = true;
+                    }
+                }
+                if(found)
+                {
+                    TRACE_FUNCTION_FR("Method const params: " << node.m_method_path, "Method const params");
+                    MonomorphState  out_params;
+                    auto val_ref = static_resolve.get_value(node.span(), node.m_method_path, out_params, /*signature_only=*/true, nullptr);
+                    const HIR::Function& fcn = *val_ref.as_Function();
+                    const HIR::GenericParams& gp_def = fcn.m_params;
+                    ConvertHIR_ConstantEvaluate_MethodParams(node.span(), ms.m_crate, ms.m_mod_paths.back(), ms.m_impl_generics, ms.m_item_generics, gp_def, *params_ptr);
+                }
+            }
+        } v(ms, static_resolve);
+        expr->visit(v);
     }
 }
 
