@@ -42,7 +42,9 @@ class CExpander_panic:
         }
         toks.push_back( Token(TOK_EXCLAM) );
         toks.push_back( Token(TOK_PAREN_OPEN) );
-        toks.push_back( tt.clone() );
+        if(tt.size() > 0) {
+            toks.push_back( tt.clone() );
+        }
         toks.push_back( Token(TOK_PAREN_CLOSE) );
 
         return box$( TTStreamO(sp, ParseState(crate.m_edition), TokenTree(Ident::Hygiene::new_scope(), mv$(toks))) );
