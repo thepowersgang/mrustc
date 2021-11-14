@@ -4228,7 +4228,7 @@ bool TraitResolution::find_method(const Span& sp,
     // TODO: Have a cache of name+receiver_type to a list of types and impls
     // e.g. `len` `&Self` = `[T]`
     DEBUG("> Inherent methods");
-    m_crate.m_inherent_method_cache.find(sp, method_name, ty, [&](const HIR::TypeRef& self_ty, const HIR::TypeImpl& impl) {
+    m_crate.m_inherent_method_cache.find(sp, method_name, ty, m_ivars.callback_resolve_infer(), [&](const HIR::TypeRef& self_ty, const HIR::TypeImpl& impl) {
         if( impl.matches_type(self_ty, m_ivars.callback_resolve_infer()) )
         {
             DEBUG("Found `impl" << impl.m_params.fmt_args() << " " << impl.m_type << "` fn " << method_name/* << " - " << top_ty*/);

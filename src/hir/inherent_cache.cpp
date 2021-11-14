@@ -110,44 +110,33 @@ void HIR::InherentCache::Inner::insert(const Span& sp, const HIR::TypeRef& cur_t
         }
     }
 }
-void HIR::InherentCache::Inner::find(const Span& sp, const HIR::TypeRef& cur_ty, InherentCache::inner_callback_t& cb) const
+void HIR::InherentCache::Inner::find(const Span& sp, const HIR::TypeRef& cur_ty_act, t_cb_resolve_type ty_res, InherentCache::inner_callback_t& cb) const
 {
-    struct H {
-        static void find_inner(const Span& sp, const HIR::TypeRef& inner_ty, InherentCache::inner_callback_t& cb, const std::unique_ptr<Inner>& slot) {
-            if(slot)    slot->find(sp, inner_ty, cb);
-        }
-    };
+    const auto& cur_ty = ty_res(cur_ty_act);
     m_byvalue.iterate(cur_ty, cb);
+
+    const Inner* inner = nullptr;
+    const HIR::TypeRef* inner_ty = nullptr;
     TU_MATCH_HDRA( (cur_ty.data()), { )
     default:
         // No recursion possible
         break;
     TU_ARMA(Borrow, te) {
+        inner_ty = &te.inner;
         switch(te.type)
         {
-        case ::HIR::BorrowType::Shared:
-            H::find_inner(sp, te.inner, cb, m_ref);
-            break;
-        case ::HIR::BorrowType::Unique:
-            H::find_inner(sp, te.inner, cb, m_ref_mut);
-            break;
-        case ::HIR::BorrowType::Owned:
-            H::find_inner(sp, te.inner, cb, m_ref_move);
-            break;
+        case ::HIR::BorrowType::Shared: inner = m_ref.get();        break;
+        case ::HIR::BorrowType::Unique: inner = m_ref_mut.get();    break;
+        case ::HIR::BorrowType::Owned:  inner = m_ref_move.get();   break;
         }
         }
     TU_ARMA(Pointer, te) {
+        inner_ty = &te.inner;
         switch(te.type)
         {
-        case ::HIR::BorrowType::Shared:
-            H::find_inner(sp, te.inner, cb, m_ptr);
-            break;
-        case ::HIR::BorrowType::Unique:
-            H::find_inner(sp, te.inner, cb, m_ptr_mut);
-            break;
-        case ::HIR::BorrowType::Owned:
-            H::find_inner(sp, te.inner, cb, m_ptr_move);
-            break;
+        case ::HIR::BorrowType::Shared: inner = m_ptr.get();        break;
+        case ::HIR::BorrowType::Unique: inner = m_ptr_mut.get();    break;
+        case ::HIR::BorrowType::Owned:  inner = m_ptr_move.get();   break;
         }
         }
     TU_ARMA(Path, te) {
@@ -158,11 +147,17 @@ void HIR::InherentCache::Inner::find(const Span& sp, const HIR::TypeRef& cur_ty,
             {
                 auto it = m_path.find(gp.m_path);
                 if(it != m_path.end()) {
-                    it->second.find(sp, gp.m_params.m_types.at(0), cb);
+                    inner_ty = &gp.m_params.m_types.at(0);
+                    inner = &it->second;
                 }
             }
         }
         }
+    }
+
+    if(inner) {
+        assert(inner_ty);
+        inner->find(sp, *inner_ty, ty_res, cb);
     }
 }
 
@@ -204,7 +199,7 @@ void HIR::InherentCache::insert_all(const Span& sp, const HIR::TypeImpl& impl, c
         }
     }
 }
-void HIR::InherentCache::find(const Span& sp, const RcString& name, const HIR::TypeRef& ty, callback_t cb) const
+void HIR::InherentCache::find(const Span& sp, const RcString& name, const HIR::TypeRef& ty, t_cb_resolve_type ty_res, callback_t cb) const
 {
     TRACE_FUNCTION_F(name << ", " << ty);
     auto cb_resolve = [](const HIR::TypeRef& t)->const HIR::TypeRef& { return t; };
@@ -241,6 +236,6 @@ void HIR::InherentCache::find(const Span& sp, const RcString& name, const HIR::T
         };
     auto it = items.find(name);
     if(it != items.end()) {
-        it->second.find(sp, ty, inner_cb);
+        it->second.find(sp, ty, ty_res, inner_cb);
     }
 }

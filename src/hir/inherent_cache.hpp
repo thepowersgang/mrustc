@@ -50,7 +50,7 @@ private:
 		std::map<HIR::SimplePath,Inner>	m_path;
 
 		void insert(const Span& sp, const HIR::TypeRef& receiver, const HIR::TypeImpl& impl);
-		void find(const Span& sp, const HIR::TypeRef& cur_ty, inner_callback_t& cb) const;
+		void find(const Span& sp, const HIR::TypeRef& cur_ty, t_cb_resolve_type ty_res, inner_callback_t& cb) const;
 	};
 
 	std::map<RcString,Inner>	items;
@@ -63,7 +63,7 @@ public:
 
 	void insert_all(const Span& sp, const HIR::TypeImpl& impl, const HIR::SimplePath& lang_Box);
 	/// Locates methods matching the specifided type
-	void find(const Span& sp, const RcString& name, const HIR::TypeRef& ty, callback_t cb) const;
+	void find(const Span& sp, const RcString& name, const HIR::TypeRef& ty, t_cb_resolve_type ty_res, callback_t cb) const;
 };
 
 }
