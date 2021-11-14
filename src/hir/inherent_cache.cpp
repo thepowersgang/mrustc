@@ -12,13 +12,46 @@
 
 void HIR::InherentCache::Lowest::insert(const Span& sp, const HIR::TypeImpl& impl)
 {
-    inner.push_back(&impl);
-}
-void HIR::InherentCache::Lowest::iterate(const HIR::TypeRef& ty, InherentCache::inner_callback_t& cb) const
-{
-    for(const HIR::TypeImpl* impl_ptr : inner)
+    const auto& type = impl.m_type;
+    if(const auto* path = type.get_sort_path())
     {
-        cb(ty, *impl_ptr);
+        this->named[*path].push_back(&impl);
+    }
+    else if( type.data().is_Path() || type.data().is_Generic() )
+    {
+        this->generic.push_back(&impl);
+    }
+    else
+    {
+        this->non_named.push_back(&impl);
+    }
+}
+void HIR::InherentCache::Lowest::iterate(const HIR::TypeRef& type, InherentCache::inner_callback_t& cb) const
+{
+    auto visit = [&](const list_t& l) {
+        for(const HIR::TypeImpl* impl_ptr : l)
+        {
+            cb(type, *impl_ptr);
+        }
+        };
+
+    visit(this->generic);
+
+    if(const auto* path = type.get_sort_path())
+    {
+        auto it = this->named.find(*path);
+        if(it != this->named.end())
+        {
+            visit(it->second);
+        }
+    }
+    else if( type.data().is_Path() || type.data().is_Generic() )
+    {
+        // Already handled by the unconditional generic
+    }
+    else
+    {
+        visit(this->non_named);
     }
 }
 

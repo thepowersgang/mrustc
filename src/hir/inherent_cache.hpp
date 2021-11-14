@@ -23,9 +23,11 @@ private:
 	typedef ::std::function<void(const HIR::TypeRef& self_ty, const HIR::TypeImpl& impl)>	inner_callback_t;
 	struct Lowest
 	{
-		// Map from the `Self` type to the impl containing this method
-		//RangeVecMap<HIR::TypeRef, const HIR::TypeImpl*>	inner;
-		std::vector<const HIR::TypeImpl*>	inner;
+		// Same as HIR::Crate::ImplGroup
+		typedef ::std::vector<const HIR::TypeImpl*>	list_t;
+		::std::map<::HIR::SimplePath, list_t>   named;
+		list_t  non_named; // TODO: use a map of HIR::TypeRef::Data::Tag
+		list_t  generic;
 
 		void insert(const Span& sp, const HIR::TypeImpl& impl);
 		void iterate(const HIR::TypeRef& ty, inner_callback_t& cb) const;
