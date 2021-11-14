@@ -559,8 +559,10 @@ namespace {
                                 {
                                     auto& arg_node = node.m_args.at(idx);
                                     assert(arg_node);
-                                    if( !dynamic_cast<const HIR::ExprNode_Literal*>(arg_node.get()) )
-                                        ERROR(arg_node->span(), E0000, "Argument " << idx << " must be a literal for #[rustc_legacy_const_generics] tagged function");
+                                    // TODO: Check that the expression is a valid const (no locals referenced, no function calls?)
+                                    // - Allow: Arithmatic, casts, literals
+                                    //if( !dynamic_cast<const HIR::ExprNode_Literal*>(arg_node.get()) )
+                                    //    ERROR(arg_node->span(), E0000, "Argument " << idx << " must be a literal for #[rustc_legacy_const_generics] tagged function");
                                     HIR::ExprPtr    ep { std::move(arg_node) };
                                     e->m_params.m_values.push_back( HIR::ConstGeneric( std::make_shared<HIR::ExprPtr>(std::move(ep)) ));
                                     // - Visit to ensure that the expr state gets filled
