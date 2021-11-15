@@ -20,7 +20,7 @@ class CExpander_assert:
     {
         Token   tok;
 
-        auto lex = TTStream(sp, ParseState(crate.m_edition), tt);
+        auto lex = TTStream(sp, ParseState(), tt);
         lex.parse_state().module = &mod;
 
         // assertion condition
@@ -84,7 +84,7 @@ class CExpander_assert:
 
         toks.push_back( Token(TOK_BRACE_CLOSE) );
 
-        return box$( TTStreamO(sp, ParseState(crate.m_edition), TokenTree(Ident::Hygiene::new_scope(), mv$(toks))) );
+        return box$( TTStreamO(sp, ParseState(), TokenTree(AST::Edition::Rust2015, Ident::Hygiene::new_scope(), mv$(toks))) );
     }
 };
 

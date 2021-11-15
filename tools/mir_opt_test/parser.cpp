@@ -31,7 +31,7 @@ namespace {
 
 MirOptTestFile  MirOptTestFile::load_from_file(const helpers::path& p)
 {
-    Lexer   lex(p.str(), ParseState(AST::Edition::Rust2015));
+    Lexer   lex(p.str(), AST::Edition::Rust2015, ParseState());
     Token   tok;
 
     MirOptTestFile  rv;

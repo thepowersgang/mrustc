@@ -44,12 +44,14 @@ class Lexer:
     Codepoint   m_last_char;
     ::std::vector<Token>    m_next_tokens;
 
+    AST::Edition    m_edition;
     Ident::Hygiene m_hygiene;
 public:
-    Lexer(const ::std::string& filename, ParseState ps);
+    Lexer(const ::std::string& filename, AST::Edition edition, ParseState ps);
 
     Position getPosition() const override;
     Ident::Hygiene realGetHygiene() const override;
+    AST::Edition realGetEdition() const override { return m_edition; }
     Token realGetToken() override;
 
 private:

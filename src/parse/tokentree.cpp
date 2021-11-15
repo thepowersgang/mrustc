@@ -6,19 +6,20 @@
  * - Token Tree (collection of tokens)
  */
 #include "tokentree.hpp"
+#include <ast/edition.hpp>
 #include <common.hpp>
 
 TokenTree TokenTree::clone() const
 {
     if( m_subtrees.size() == 0 ) {
-        return TokenTree(m_hygiene, m_tok.clone());
+        return TokenTree(m_edition, m_hygiene, m_tok.clone());
     }
     else {
         ::std::vector< TokenTree>   ents;
         ents.reserve( m_subtrees.size() );
         for(const auto& sub : m_subtrees)
             ents.push_back( sub.clone() );
-        return TokenTree( m_hygiene, mv$(ents) );
+        return TokenTree(m_edition, m_hygiene, mv$(ents) );
     }
 }
 
@@ -30,18 +31,21 @@ TokenTree TokenTree::clone() const
         {
         case TOK_IDENT:
         case TOK_LIFETIME:
-            os << "/*" << tt.m_hygiene << "*/";
+            os << "/*" << tt.m_edition << " " << tt.m_hygiene << "*/";
             break;
         default:
             if( TOK_INTERPOLATED_PATH <= tt.m_tok.type() && tt.m_tok.type() <= TOK_INTERPOLATED_VIS ) {
-                os << "/*int*/";
+                os << "/*" << tt.m_edition << " int*/";
+            }
+            else {
+                os << "/*" << tt.m_edition << "*/";
             }
             break;
         }
         return os << tt.m_tok.to_str();
     }
     else {
-        os << "/*" << tt.m_hygiene << " TT*/";
+        os << "/*" << tt.m_edition << " " << tt.m_hygiene << " TT*/";
         // NOTE: All TTs (except the outer tt on a macro invocation) include the grouping
         bool first = true;
         for(const auto& i : tt.m_subtrees) {

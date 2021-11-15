@@ -493,7 +493,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, bool allow_
     }
 
     // In 2018, patterns must always be provided
-    if( lex.parse_state().edition_after(AST::Edition::Rust2018) )
+    if( lex.edition_after(AST::Edition::Rust2018) )
     {
         can_be_prototype = false;
     }
@@ -1511,7 +1511,7 @@ void Parse_Use_Root(TokenStream& lex, ::std::vector<AST::UseItem::Ent>& entries)
             GET_CHECK_TOK(tok, lex, TOK_STRING);
             path = ::AST::Path(RcString::new_interned(tok.str()), {});
         }
-        else if( lex.parse_state().edition_after(AST::Edition::Rust2018) )
+        else if( lex.edition_after(AST::Edition::Rust2018) )
         {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             // HACK: if the crate name starts with `=` it's a 2018 absolute path (references a crate loaded with `--extern`)
@@ -1546,7 +1546,7 @@ void Parse_Use_Root(TokenStream& lex, ::std::vector<AST::UseItem::Ent>& entries)
         GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
         break;
     default:
-        if(lex.parse_state().edition_after(AST::Edition::Rust2018))
+        if(lex.edition_after(AST::Edition::Rust2018))
         {
             //path = AST::Path(lex.parse_state().module->path());
             path = AST::Path::new_relative(/*hygine=*/{}, {});
@@ -2228,7 +2228,7 @@ namespace {
                     submod.m_file_info.path = newpath_file;
                     submod.m_file_info.controls_dir = false;
                     DEBUG("- path = " << submod.m_file_info.path);
-                    Lexer sub_lex(submod.m_file_info.path, lex.parse_state());
+                    Lexer sub_lex(submod.m_file_info.path, lex.get_edition(), lex.parse_state());
                     Parse_ModRoot(sub_lex, submod, meta_items);
                     GET_CHECK_TOK(tok, sub_lex, TOK_EOF);
                 }
@@ -2269,7 +2269,7 @@ namespace {
                     ERROR(lex.point_span(), E0000, "Can't find file for '" << name << "' in '" << mod_fileinfo.path << "'");
                 }
                 DEBUG("- path = " << submod.m_file_info.path);
-                Lexer sub_lex(submod.m_file_info.path, lex.parse_state());
+                Lexer sub_lex(submod.m_file_info.path, lex.get_edition(), lex.parse_state());
                 Parse_ModRoot(sub_lex, submod, meta_items);
                 GET_CHECK_TOK(tok, sub_lex, TOK_EOF);
             }
@@ -2340,7 +2340,7 @@ AST::Crate Parse_Crate(::std::string mainfile, AST::Edition edition)
 {
     Token   tok;
 
-    Lexer lex(mainfile, ParseState(edition));
+    Lexer lex(mainfile, edition, ParseState());
 
     size_t p = mainfile.find_last_of('/');
     p = (p == ::std::string::npos ? mainfile.find_last_of('\\') : p);

@@ -429,6 +429,7 @@ class MacroExpander:
 
     Token   m_next_token;   // used for inserting a single token into the stream
     ::std::unique_ptr<TTStreamO> m_ttstream;
+    AST::Edition    m_source_edition;
     Ident::Hygiene  m_hygiene;
 
 public:
@@ -444,7 +445,7 @@ public:
         RcString crate_name,
         AST::Edition source_edition
     ):
-        TokenStream(ParseState(source_edition)),    // TODO: Get from the source crate
+        TokenStream(ParseState()),
         m_log_index(s_next_log_index++),
         m_macro_filename( FMT("Macro:" << macro_name) ),
         m_crate_name( mv$(crate_name) ),
@@ -452,6 +453,7 @@ public:
         m_invocation_edition( edition ),
         m_mappings( mv$(mappings) ),
         m_state( contents, m_mappings ),
+        m_source_edition( source_edition ),
         m_hygiene( Ident::Hygiene::new_scope_chained(parent_hygiene) )
     {
     }
@@ -459,6 +461,7 @@ public:
     Position getPosition() const override;
     Span outerSpan() const override { return m_invocation_span; }
     Ident::Hygiene realGetHygiene() const override;
+    AST::Edition realGetEdition() const override;
     Token realGetToken() override;
 };
 unsigned MacroExpander::s_next_log_index = 0;
@@ -506,16 +509,16 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
         // NOTE: Any reserved word is also valid as an ident
         GET_TOK(tok, lex);
         if( Token::type_is_rword(tok.type()) )
-            return InterpolatedFragment( TokenTree(lex.get_hygiene(), tok) );
+            return InterpolatedFragment( TokenTree(lex.get_edition(), lex.get_hygiene(), tok) );
         else {
             CHECK_TOK(tok, TOK_IDENT);
-            return InterpolatedFragment( TokenTree(lex.get_hygiene(), tok) );
+            return InterpolatedFragment( TokenTree(lex.get_edition(), lex.get_hygiene(), tok) );
         }
     case MacroPatEnt::PAT_VIS:
         return InterpolatedFragment( Parse_Publicity(lex, /*allow_restricted=*/true) );
     case MacroPatEnt::PAT_LIFETIME:
         GET_CHECK_TOK(tok, lex, TOK_LIFETIME);
-        return InterpolatedFragment( TokenTree(lex.get_hygiene(), tok) );
+        return InterpolatedFragment( TokenTree(lex.get_edition(), lex.get_hygiene(), tok) );
     case MacroPatEnt::PAT_LITERAL:
         GET_TOK(tok, lex);
         switch(tok.type())
@@ -530,7 +533,7 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
         default:
             throw ParseError::Unexpected(lex, tok, {TOK_INTEGER, TOK_FLOAT, TOK_STRING, TOK_BYTESTRING, TOK_RWORD_TRUE, TOK_RWORD_FALSE});
         }
-        return InterpolatedFragment( TokenTree(lex.get_hygiene(), tok) );
+        return InterpolatedFragment( TokenTree(lex.get_edition(), lex.get_hygiene(), tok) );
     }
     throw "";
 }
@@ -1924,7 +1927,7 @@ unsigned int Macro_InvokeRules_MatchPattern(const Span& sp, const MacroRules& ru
         const auto& history = matches[0].second;
         DEBUG("Evalulating arm " << i);
 
-        auto lex = TTStreamO(sp, ParseState(crate.m_edition), mv$(input));
+        auto lex = TTStreamO(sp, ParseState(), mv$(input));
         lex.parse_state().crate = &crate;
         SET_MODULE(lex, mod);
         auto arm_stream = MacroPatternStream(rules.m_rules[i].m_pattern, &history);
@@ -2008,6 +2011,17 @@ Position MacroExpander::getPosition() const
     // TODO: Return the attached position of the last fetched token
     return Position(m_macro_filename, 0, m_state.top_pos());
 }
+AST::Edition MacroExpander::realGetEdition() const
+{
+    if( m_ttstream )
+    {
+        return m_ttstream->get_edition();
+    }
+    else
+    {
+        return m_source_edition;
+    }
+}
 Ident::Hygiene MacroExpander::realGetHygiene() const
 {
     if( m_ttstream )
@@ -2072,7 +2086,7 @@ Token MacroExpander::realGetToken()
                     DEBUG("[" << m_log_index << "] Crate name hack");
                     if( m_crate_name == "" )
                     {
-                        if( parse_state().edition_after(AST::Edition::Rust2018) )
+                        if( this->edition_after(AST::Edition::Rust2018) )
                         {
                             return Token(TOK_RWORD_CRATE);
                         }
@@ -2096,7 +2110,7 @@ Token MacroExpander::realGetToken()
                 if( frag->m_type == InterpolatedFragment::TT )
                 {
                     auto res_tt = can_steal ? mv$(frag->as_tt()) : frag->as_tt().clone();
-                    m_ttstream.reset( new TTStreamO(this->outerSpan(), ParseState(m_invocation_edition), mv$(res_tt)) );
+                    m_ttstream.reset( new TTStreamO(this->outerSpan(), ParseState(), mv$(res_tt)) );
                     return m_ttstream->getToken();
                 }
                 else

@@ -18,13 +18,14 @@
 //#define TRACE_CHARS
 //#define TRACE_RAW_TOKENS
 
-Lexer::Lexer(const ::std::string& filename, ParseState ps):
+Lexer::Lexer(const ::std::string& filename, AST::Edition edition, ParseState ps):
     TokenStream(ps),
     m_path(filename.c_str()),
     m_line(1),
     m_line_ofs(0),
     m_istream(filename.c_str()),
     m_last_char_valid(false),
+    m_edition(edition),
     m_hygiene( Ident::Hygiene::new_scope() )
 {
     if( !m_istream.is_open() )
@@ -884,7 +885,7 @@ Token Lexer::getTokenInt_Identifier(Codepoint leader, Codepoint leader2, bool pa
     this->ungetc();
     if(parse_reserved_word)
     {
-        auto v = Lex_FindReservedWord(str, this->parse_state().get_edition());
+        auto v = Lex_FindReservedWord(str, this->m_edition);
         if( v != TOK_NULL)
         {
             return Token(v);
@@ -1237,6 +1238,7 @@ Token Lex_FindReservedWord(const ::std::string& s, AST::Edition edition)
         RWORDS = RWORDS_2018;
         break;
     }
+    assert(len > 0);
     for(size_t i = 0; i < len; i++)
     {
         const auto& e = RWORDS[i];

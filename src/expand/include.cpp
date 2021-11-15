@@ -79,7 +79,7 @@ class CIncludeExpander:
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
         Token   tok;
-        auto lex = TTStream(sp, ParseState(crate.m_edition), tt);
+        auto lex = TTStream(sp, ParseState(), tt);
 
         auto path = get_string(sp, lex, crate, mod);
         GET_CHECK_TOK(tok, lex, TOK_EOF);
@@ -88,9 +88,10 @@ class CIncludeExpander:
         crate.m_extra_files.push_back(file_path);
 
         try {
-            ParseState  ps(crate.m_edition);
+            ParseState  ps;
             ps.module = &mod;
-            return box$( Lexer(file_path, ps) );
+            DEBUG("Edition = " << crate.m_edition);
+            return box$( Lexer(file_path, crate.m_edition, ps) );
         }
         catch(::std::runtime_error& e)
         {
@@ -105,7 +106,7 @@ class CIncludeBytesExpander:
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
         Token   tok;
-        auto lex = TTStream(sp, ParseState(crate.m_edition), tt);
+        auto lex = TTStream(sp, ParseState(), tt);
 
         auto path = get_string(sp, lex, crate, mod);
         GET_CHECK_TOK(tok, lex, TOK_EOF);
@@ -122,7 +123,7 @@ class CIncludeBytesExpander:
 
         ::std::vector<TokenTree>    toks;
         toks.push_back(Token(TOK_BYTESTRING, mv$(ss.str())));
-        return box$( TTStreamO(sp, ParseState(crate.m_edition), TokenTree(Ident::Hygiene::new_scope(), mv$(toks))) );
+        return box$( TTStreamO(sp, ParseState(), TokenTree(AST::Edition::Rust2015, Ident::Hygiene::new_scope(), mv$(toks))) );
     }
 };
 
@@ -132,7 +133,7 @@ class CIncludeStrExpander:
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
         Token   tok;
-        auto lex = TTStream(sp, ParseState(crate.m_edition), tt);
+        auto lex = TTStream(sp, ParseState(), tt);
 
         auto path = get_string(sp, lex, crate, mod);
         GET_CHECK_TOK(tok, lex, TOK_EOF);
@@ -149,7 +150,7 @@ class CIncludeStrExpander:
 
         ::std::vector<TokenTree>    toks;
         toks.push_back(Token(TOK_STRING, mv$(ss.str())));
-        return box$( TTStreamO(sp, ParseState(crate.m_edition), TokenTree(Ident::Hygiene::new_scope(), mv$(toks))) );
+        return box$( TTStreamO(sp, ParseState(), TokenTree(AST::Edition::Rust2015, Ident::Hygiene::new_scope(), mv$(toks))) );
     }
 };
 

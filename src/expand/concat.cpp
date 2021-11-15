@@ -21,7 +21,7 @@ class CConcatExpander:
     {
         Token   tok;
 
-        auto lex = TTStream(sp, ParseState(crate.m_edition), tt);
+        auto lex = TTStream(sp, ParseState(), tt);
 
         ::std::string   rv;
         do {
@@ -64,7 +64,7 @@ class CConcatExpander:
         if( tok.type() != TOK_EOF )
             throw ParseError::Unexpected(lex, tok, {TOK_COMMA, TOK_EOF});
 
-        return box$( TTStreamO(sp, ParseState(crate.m_edition), TokenTree(Token(TOK_STRING, mv$(rv)))) );
+        return box$( TTStreamO(sp, ParseState(), TokenTree(tt.get_edition(), Token(TOK_STRING, mv$(rv)))) );
     }
 };
 
@@ -74,7 +74,7 @@ class CConcatIdentsExpander:
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
         Token   tok;
-        auto lex = TTStream(sp, ParseState(crate.m_edition), tt);
+        auto lex = TTStream(sp, ParseState(), tt);
 
         ::std::string   rv;
 
@@ -91,7 +91,7 @@ class CConcatIdentsExpander:
         if( tok.type() != TOK_EOF )
             throw ParseError::Unexpected(lex, tok, {TOK_COMMA, TOK_EOF});
 
-        return box$( TTStreamO(sp, ParseState(crate.m_edition), TokenTree(Token(TOK_IDENT, Ident(lex.get_hygiene(), RcString::new_interned(rv)))) ) );
+        return box$( TTStreamO(sp, ParseState(), TokenTree(tt.get_edition(), Token(TOK_IDENT, Ident(lex.get_hygiene(), RcString::new_interned(rv)))) ) );
     }
 };
 

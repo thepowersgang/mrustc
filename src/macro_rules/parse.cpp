@@ -176,7 +176,7 @@ public:
 
                 GET_TOK(tok, lex);  // Joiner or loop type
                 // If the token is a loop type, then it can't be a joiner
-                if( lex.parse_state().edition_after(AST::Edition::Rust2018) && tok.type() == TOK_QMARK )
+                if( lex.edition_after(AST::Edition::Rust2018) && tok.type() == TOK_QMARK )
                 {
                     // 2018 added `?` repetition operator
                 }
@@ -204,7 +204,7 @@ public:
                     // TODO: Can a `$()?` have a joiner?
                     break;
                 default:
-                    if( lex.parse_state().edition_after(AST::Edition::Rust2018) )
+                    if( lex.edition_after(AST::Edition::Rust2018) )
                         throw ParseError::Unexpected(lex, tok, { TOK_PLUS, TOK_STAR, TOK_QMARK });
                     else
                         throw ParseError::Unexpected(lex, tok, { TOK_PLUS, TOK_STAR });
@@ -300,7 +300,7 @@ struct ContentLoopVariableUse
 
                 GET_TOK(tok, lex);
                 enum eTokenType joiner = TOK_NULL;
-                if( lex.parse_state().edition_after(AST::Edition::Rust2018) && tok.type() == TOK_QMARK )
+                if( lex.edition_after(AST::Edition::Rust2018) && tok.type() == TOK_QMARK )
                 {
                     // 2018 added `?` repetition operator
                 }
@@ -321,7 +321,7 @@ struct ContentLoopVariableUse
                 case TOK_STAR:  loop_type = '*';    break;
                 case TOK_QMARK: loop_type = '?';    break;
                 default:
-                    if( lex.parse_state().edition_after(AST::Edition::Rust2018) )
+                    if( lex.edition_after(AST::Edition::Rust2018) )
                         throw ParseError::Unexpected(lex, tok, { TOK_PLUS, TOK_STAR, TOK_QMARK });
                     else
                         throw ParseError::Unexpected(lex, tok, { TOK_PLUS, TOK_STAR });

@@ -12,8 +12,13 @@
 #include <ident.hpp>
 #include <vector>
 
+namespace  AST {
+    enum class Edition;
+}
+
 class TokenTree
 {
+    AST::Edition    m_edition;
     Ident::Hygiene m_hygiene;
     Token   m_tok;
     ::std::vector<TokenTree>    m_subtrees;
@@ -30,12 +35,19 @@ public:
         m_tok( ::std::move(tok) )
     {
     }
-    TokenTree(Ident::Hygiene hygiene, Token tok):
+    TokenTree(AST::Edition edition, Token tok):
+        m_edition(edition),
+        m_tok( ::std::move(tok) )
+    {
+    }
+    TokenTree(AST::Edition edition, Ident::Hygiene hygiene, Token tok):
+        m_edition(edition),
         m_hygiene( ::std::move(hygiene) ),
         m_tok( ::std::move(tok) )
     {
     }
-    TokenTree(Ident::Hygiene hygiene, ::std::vector<TokenTree> subtrees):
+    TokenTree(AST::Edition edition, Ident::Hygiene hygiene, ::std::vector<TokenTree> subtrees):
+        m_edition(edition),
         m_hygiene( ::std::move(hygiene) ),
         m_subtrees( ::std::move(subtrees) )
     {
@@ -54,6 +66,7 @@ public:
     const Token& tok() const { return m_tok; }
           Token& tok()       { return m_tok; }
     const Ident::Hygiene& hygiene() const { return m_hygiene; }
+    const AST::Edition& get_edition() const { return m_edition; }
 
     friend ::std::ostream& operator<<(::std::ostream& os, const TokenTree& tt);
 };

@@ -18,7 +18,7 @@ class CExpander:
         Token   tok;
         ::std::string rv;
 
-        auto lex = TTStream(sp, ParseState(crate.m_edition), tt);
+        auto lex = TTStream(sp, ParseState(), tt);
         while( GET_TOK(tok, lex) != TOK_EOF )
         {
             if(!rv.empty())
@@ -30,7 +30,7 @@ class CExpander:
         // TODO: Strip out any `{...}` sequences that aren't from nested
         // strings.
 
-        return box$( TTStreamO(sp, ParseState(crate.m_edition), TokenTree(Token(TOK_STRING, mv$(rv)))) );
+        return box$( TTStreamO(sp, ParseState(), TokenTree(Token(TOK_STRING, mv$(rv)))) );
     }
 };
 

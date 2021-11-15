@@ -178,6 +178,7 @@ struct ProcMacroInv:
 {
     Span    m_parent_span;
     const ::HIR::ProcMacro& m_proc_macro_desc;
+    AST::Edition    m_edition;
     ::std::ofstream m_dump_file_out;
     ::std::ofstream m_dump_file_res;
 
@@ -290,6 +291,7 @@ public:
 
     virtual Position getPosition() const override;
     virtual Token realGetToken() override;
+    virtual AST::Edition realGetEdition() const override { return m_edition; }
     virtual Ident::Hygiene realGetHygiene() const override;
 private:
     Token realGetToken_();
@@ -1113,7 +1115,8 @@ namespace {
 }
 
 ProcMacroInv::ProcMacroInv(const Span& sp, AST::Edition edition, const char* executable, const ::HIR::ProcMacro& proc_macro_desc):
-    TokenStream(ParseState(edition)),
+    TokenStream(ParseState()),
+    m_edition(edition),
     m_parent_span(sp),
     m_proc_macro_desc(proc_macro_desc)
 {

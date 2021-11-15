@@ -1386,6 +1386,7 @@ TokenTree Parse_TT(TokenStream& lex, bool unwrapped)
     TokenTree   rv;
     TRACE_FUNCTION_FR("", rv);
 
+    auto edition = lex.get_edition();
     Token tok = lex.getToken();
     eTokenType  closer = TOK_PAREN_CLOSE;
     switch(tok.type())
@@ -1407,13 +1408,14 @@ TokenTree Parse_TT(TokenStream& lex, bool unwrapped)
     case TOK_BRACE_CLOSE:
         throw ParseError::Unexpected(lex, tok);
     default:
-        rv = TokenTree(lex.get_hygiene(), mv$(tok) );
+        rv = TokenTree(edition, lex.get_hygiene(), mv$(tok) );
+        DEBUG(rv);
         return rv;
     }
 
     ::std::vector<TokenTree>   items;
     if( !unwrapped )
-        items.push_back( TokenTree(lex.get_hygiene(), mv$(tok)) );
+        items.push_back( TokenTree(edition, lex.get_hygiene(), mv$(tok)) );
     while(GET_TOK(tok, lex) != closer && tok.type() != TOK_EOF)
     {
         if( tok.type() == TOK_NULL )
@@ -1422,7 +1424,8 @@ TokenTree Parse_TT(TokenStream& lex, bool unwrapped)
         items.push_back(Parse_TT(lex, false));
     }
     if( !unwrapped )
-        items.push_back( TokenTree(lex.get_hygiene(), mv$(tok)) );
-    rv = TokenTree(lex.get_hygiene(), mv$(items));
+        items.push_back( TokenTree(lex.get_edition(), lex.get_hygiene(), mv$(tok)) );
+    rv = TokenTree(edition, lex.get_hygiene(), mv$(items));
+    DEBUG(rv);
     return rv;
 }

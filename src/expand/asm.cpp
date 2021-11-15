@@ -54,7 +54,7 @@ public:
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const ::AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
         Token   tok;
-        auto lex = TTStream(sp, ParseState(crate.m_edition), tt);
+        auto lex = TTStream(sp, ParseState(), tt);
 
         auto template_text = get_string(sp, lex,  crate, mod);
         ::std::vector<::AST::ExprNode_Asm::ValRef>  outputs;
@@ -203,7 +203,7 @@ public:
 
         // Convert this into an AST node and insert as an intepolated expression
         ::AST::ExprNodeP rv = ::AST::ExprNodeP( new ::AST::ExprNode_Asm { mv$(template_text), mv$(outputs), mv$(inputs), mv$(clobbers), mv$(flags) } );
-        return box$( TTStreamO(sp, ParseState(crate.m_edition), TokenTree(Token( InterpolatedFragment(InterpolatedFragment::EXPR, rv.release()) ))));
+        return box$( TTStreamO(sp, ParseState(), TokenTree(Token( InterpolatedFragment(InterpolatedFragment::EXPR, rv.release()) ))));
     }
 };
 
@@ -236,7 +236,7 @@ public:
         // Stabilisation-path `asm!`
 
         Token   tok;
-        auto lex = TTStream(sp, ParseState(crate.m_edition), tt);
+        auto lex = TTStream(sp, ParseState(), tt);
 
         std::vector<std::pair<Span,std::string>>    raw_lines;
         do {
@@ -519,7 +519,7 @@ public:
 
         // Convert this into an AST node and insert as an intepolated expression
         ::AST::ExprNodeP rv = ::AST::ExprNodeP( new ::AST::ExprNode_Asm2 { mv$(options), mv$(lines), mv$(params) } );
-        return box$( TTStreamO(sp, ParseState(crate.m_edition), TokenTree(Token( InterpolatedFragment(InterpolatedFragment::EXPR, rv.release()) ))));
+        return box$( TTStreamO(sp, ParseState(), TokenTree(Token( InterpolatedFragment(InterpolatedFragment::EXPR, rv.release()) ))));
     }
 };
 

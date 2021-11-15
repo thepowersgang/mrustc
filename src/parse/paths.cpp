@@ -53,7 +53,7 @@ AST::Path Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode)
         else if( lex.lookahead(0) == TOK_RWORD_CRATE )
         {
         }
-        else if( lex.parse_state().edition_after(AST::Edition::Rust2018) )
+        else if( lex.edition_after(AST::Edition::Rust2018) )
         {
             // The first component is a crate name
             GET_CHECK_TOK(tok, lex, TOK_IDENT);

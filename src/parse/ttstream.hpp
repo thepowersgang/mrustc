@@ -16,6 +16,7 @@ class TTStream:
 {
     ::std::vector< ::std::pair<unsigned int, const TokenTree*> > m_stack;
     Span m_parent_span;
+    AST::Edition m_edition = AST::Edition::Rust2015;
     const Ident::Hygiene*   m_hygiene_ptr = nullptr;
 public:
     TTStream(Span parent, ParseState ps, const TokenTree& input_tt);
@@ -27,6 +28,7 @@ public:
     Span outerSpan() const override { return m_parent_span; }
 
 protected:
+    AST::Edition realGetEdition() const override;
     Ident::Hygiene realGetHygiene() const override;
     Token realGetToken() override;
 };
@@ -39,6 +41,7 @@ class TTStreamO:
     Position    m_last_pos;
     TokenTree   m_input_tt;
     ::std::vector< ::std::pair<unsigned int, TokenTree*> > m_stack;
+    AST::Edition m_edition = AST::Edition::Rust2015;
     const Ident::Hygiene*   m_hygiene_ptr = nullptr;
 public:
     TTStreamO(Span parent, ParseState ps, TokenTree input_tt);
@@ -52,6 +55,7 @@ public:
     Span outerSpan() const override { return m_parent_span; }
 
 protected:
+    AST::Edition realGetEdition() const override;
     Ident::Hygiene realGetHygiene() const override;
     Token realGetToken() override;
 };
