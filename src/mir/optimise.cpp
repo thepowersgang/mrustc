@@ -683,10 +683,14 @@ namespace
         ::HIR::PathParams   impl_params;
         const ::HIR::PathParams*  fcn_params;
         const ::HIR::TypeRef*   self_ty;
+        const ::HIR::GenericParams* impl_params_def;
+        const ::HIR::GenericParams* fcn_params_def;
 
         ParamsSet():
             fcn_params(nullptr),
             self_ty(nullptr)
+            , impl_params_def(nullptr)
+            , fcn_params_def(nullptr)
         {}
 
         const ::HIR::TypeRef* get_self_type() const override {
@@ -726,7 +730,7 @@ namespace
         }
 
         MonomorphState  out_params;
-        auto e = state.m_resolve.get_value(state.sp, path, out_params);
+        auto e = state.m_resolve.get_value(state.sp, path, out_params, /*sig_only*/false, &params.impl_params_def);
         DEBUG(e.tag_str() << " " << out_params);
         params.fcn_params = out_params.get_method_params();
         params.impl_params = out_params.pp_impl == nullptr ? ::HIR::PathParams()
@@ -758,6 +762,7 @@ namespace
             return nullptr;
             }
         TU_ARMA(Function, f) {
+            params.fcn_params_def = &f->m_params;
             return f->m_code.get_mir_opt();
             }
         }
@@ -1551,6 +1556,22 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
                 return ::MIR::Constant::make_Const({ box$(this->monomorph(*ce.p)) });
                 }
             TU_ARMA(Generic, ce) {
+                const HIR::GenericParams* p;
+                switch(ce.group())
+                {
+                case 0: // impl level
+                    p = params.impl_params_def;
+                    break;
+                case 1: // method level
+                    p = params.fcn_params_def;
+                    break;
+                default:
+                    TODO(sp, "Typecheck const generics - look up the type");
+                }
+                ASSERT_BUG(sp, p, "No generic list for " << ce);
+                ASSERT_BUG(sp, ce.idx() < p->m_values.size(), "Generic param index out of range");
+                const auto& ty = p->m_values.at(ce.idx()).m_type;
+
                 auto val = params.get_value(sp, ce);
                 TU_MATCH_HDRA( (val), {)
                 default:
@@ -1559,8 +1580,29 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
                     return ve;
                     }
                 TU_ARMA(Evaluated, ve) {
-                    // TODO: Need to know the expected type of this.
-                    return ::MIR::Constant::make_Uint({ve->read_usize(0), HIR::CoreType::Usize});
+                    auto v = EncodedLiteralSlice(*ve);
+                    ASSERT_BUG(sp, ty.data().is_Primitive(), "Handle non-primitive const generic: " << ty);
+                    // TODO: This is duplicated in `mir/from_hir_match.cpp` - De-duplicate?
+                    switch(ty.data().as_Primitive())
+                    {
+                    case ::HIR::CoreType::Bool: return ::MIR::Constant::make_Bool({ v.read_uint(1) == 0 });
+                    case ::HIR::CoreType::U8:   return ::MIR::Constant::make_Uint({ v.read_uint(1), ty.data().as_Primitive() });
+                    case ::HIR::CoreType::U16:  return ::MIR::Constant::make_Uint({ v.read_uint(2), ty.data().as_Primitive() });
+                    case ::HIR::CoreType::U32:  return ::MIR::Constant::make_Uint({ v.read_uint(4), ty.data().as_Primitive() });
+                    case ::HIR::CoreType::U64:  return ::MIR::Constant::make_Uint({ v.read_uint(8), ty.data().as_Primitive() });
+                    case ::HIR::CoreType::Usize:  return ::MIR::Constant::make_Uint({ v.read_uint(Target_GetPointerBits() / 8), ty.data().as_Primitive() });
+                    case ::HIR::CoreType::U128:  TODO(sp, "u128 const generic");
+                    case ::HIR::CoreType::I8:   return ::MIR::Constant::make_Int({ v.read_sint(1), ty.data().as_Primitive() });
+                    case ::HIR::CoreType::I16:  return ::MIR::Constant::make_Int({ v.read_sint(2), ty.data().as_Primitive() });
+                    case ::HIR::CoreType::I32:  return ::MIR::Constant::make_Int({ v.read_sint(4), ty.data().as_Primitive() });
+                    case ::HIR::CoreType::I64:  return ::MIR::Constant::make_Int({ v.read_sint(8), ty.data().as_Primitive() });
+                    case ::HIR::CoreType::Isize:  return ::MIR::Constant::make_Int({ v.read_sint(Target_GetPointerBits() / 8), ty.data().as_Primitive() });
+                    case ::HIR::CoreType::I128:  TODO(sp, "i128 const generic");
+                    case ::HIR::CoreType::F32:  return ::MIR::Constant::make_Float({ v.read_float(4), ty.data().as_Primitive() });
+                    case ::HIR::CoreType::F64:  return ::MIR::Constant::make_Float({ v.read_float(8), ty.data().as_Primitive() });
+                    case ::HIR::CoreType::Char: return ::MIR::Constant::make_Uint({ v.read_uint(4), ty.data().as_Primitive() });
+                    case ::HIR::CoreType::Str:  BUG(sp, "`str` const generic");
+                    }
                     }
                 }
                 }
