@@ -3497,9 +3497,8 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
     const auto& type = this->m_ivars.get_type(ty);
     TU_MATCH_HDRA( (type.data()), {)
     default: {
-        // NOTE: Don't use find_trait_impls, because that calls this
         bool is_fuzzy = false;
-        bool has_eq = find_trait_impls_crate(sp, m_lang_Copy, ::HIR::PathParams{}, ty,  [&](auto , auto c)->bool{
+        bool has_eq = find_trait_impls(sp, m_lang_Copy, ::HIR::PathParams{}, ty,  [&](auto , auto c)->bool{
             switch(c)
             {
             case ::HIR::Compare::Equal: return true;
@@ -3510,7 +3509,7 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
                 return false;
             }
             throw "";
-            });
+            }, /*magic_trait_impls=*/false);
         if( has_eq ) {
             return ::HIR::Compare::Equal;
         }
@@ -3582,7 +3581,6 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
             // If it was a closure, assume true (later code can check)
             return ::HIR::Compare::Equal;
         }
-        // NOTE: Don't use find_trait_impls, because that calls this
         bool is_fuzzy = false;
         bool has_eq = find_trait_impls(sp, m_lang_Clone, ::HIR::PathParams{}, ty,  [&](auto , auto c)->bool{
             switch(c)
@@ -3595,7 +3593,7 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
                 return false;
             }
             throw "";
-            }, false);
+            }, /*magic_trait_impls=*/false);
         if( has_eq ) {
             return ::HIR::Compare::Equal;
         }
