@@ -27,3 +27,5 @@
 - `#[rustc_legacy_const_generics]`
 - Exporting of macro-defined macros (interpolated expressions)
 - `self.foo()` where `Self` implements two traits wtih a `foo` method, one of which is the current impl
+- Nested macro expansion edition hygiene
+- Variables in constants/statics
