@@ -29,6 +29,7 @@ namespace resolve_ufcs {
         t_trait_imports m_traits;
 
         StaticTraitResolve  m_resolve;
+        bool m_in_trait_def = false;
         const ::HIR::TypeRef* m_current_type = nullptr;
         const ::HIR::Trait* m_current_trait = nullptr;
         const ::HIR::ItemPath* m_current_trait_path = nullptr;
@@ -113,12 +114,15 @@ namespace resolve_ufcs {
 #endif
         }
         void visit_trait(::HIR::ItemPath p, ::HIR::Trait& trait) override {
+            //TRACE_FUNCTION_F("impl" << impl.m_params.fmt_args() << " " << impl.m_type << " (mod=" << impl.m_src_module << ")");
+            m_in_trait_def = true;
             m_current_trait = &trait;
             m_current_trait_path = &p;
             //auto _ = m_resolve.set_cur_trait(p, trait);
             auto _ = m_resolve.set_impl_generics(trait.m_params);
             ::HIR::Visitor::visit_trait(p, trait);
             m_current_trait = nullptr;
+            m_in_trait_def = false;
         }
         void visit_type_impl(::HIR::TypeImpl& impl) override {
             TRACE_FUNCTION_F("impl" << impl.m_params.fmt_args() << " " << impl.m_type << " (mod=" << impl.m_src_module << ")");
@@ -699,7 +703,8 @@ namespace resolve_ufcs {
                     if( locate_in_trait_and_set(pc, trait_path, *m_current_trait,  p.m_data) ) {
                         assert(!p.m_data.is_UfcsUnknown());
                         // Success!
-                        if( m_in_expr ) {
+                        // - If in an expression (and not in a `trait` provided impl), clear the params
+                        if( m_in_expr && !m_in_trait_def ) {
                             for(auto& t : p.m_data.as_UfcsKnown().trait.m_params.m_types)
                                 t = ::HIR::TypeRef();
                         }
