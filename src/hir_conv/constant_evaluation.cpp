@@ -2260,6 +2260,18 @@ namespace {
             m_mod_path = nullptr;
         }
 
+        void visit_trait(::HIR::ItemPath ip, ::HIR::Trait& trait) override
+        {
+            auto pp_impl = get_params_for_def(trait.m_params);
+            m_monomorph_state.pp_impl = &pp_impl;
+            m_impl_params = &trait.m_params;
+
+            ::HIR::Visitor::visit_trait(ip, trait);
+
+            assert(m_impl_params);
+            m_impl_params = nullptr;
+            m_monomorph_state.pp_impl = nullptr;
+        }
 
         void visit_path_params(::HIR::PathParams& p) override
         {
