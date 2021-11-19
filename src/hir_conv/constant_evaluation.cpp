@@ -1092,6 +1092,7 @@ namespace HIR {
             const EncodedLiteral& get_const(const ::HIR::Path& in_p, ::HIR::TypeRef* out_ty)
             {
                 auto p = ms.monomorph_path(state.sp, in_p);
+                state.m_resolve.expand_associated_types_path(state.sp, p);
                 // If there's any mention of generics in this path, then return Literal::Defer
                 if( visit_path_tys_with(p, [&](const auto& ty)->bool { return ty.data().is_Generic(); }) )
                 {

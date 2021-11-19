@@ -1042,6 +1042,30 @@ void StaticTraitResolve::expand_associated_types(const Span& sp, ::HIR::TypeRef&
     TRACE_FUNCTION_FR(input, input);
     this->expand_associated_types_inner(sp, input);
 }
+void StaticTraitResolve::expand_associated_types_path(const Span& sp, ::HIR::Path& input) const
+{
+    TRACE_FUNCTION_FR(input, input);
+    TU_MATCH_HDRA( (input.m_data), { )
+    TU_ARMA(Generic, e2) {
+        this->expand_associated_types_params(sp, e2.m_params);
+        }
+    TU_ARMA(UfcsInherent, e2) {
+        this->expand_associated_types_inner(sp, e2.type);
+        this->expand_associated_types_params(sp, e2.params);
+        // TODO: impl params too?
+        for(auto& arg : e2.impl_params.m_types)
+            this->expand_associated_types_inner(sp, arg);
+        }
+    TU_ARMA(UfcsKnown, e2) {
+        this->expand_associated_types_inner(sp, e2.type);
+        this->expand_associated_types_params(sp, e2.trait.m_params);
+        this->expand_associated_types_params(sp, e2.params);
+        }
+    TU_ARMA(UfcsUnknown, e2) {
+        BUG(sp, "Encountered UfcsUnknown in EAT - " << input);
+        }
+    }
+}
 bool StaticTraitResolve::expand_associated_types_single(const Span& sp, ::HIR::TypeRef& input) const
 {
     TRACE_FUNCTION_F(input);
