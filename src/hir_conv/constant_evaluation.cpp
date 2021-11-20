@@ -505,7 +505,7 @@ namespace MIR { namespace eval {
                     if(r.ofs == ofs) {
                         RelocPtr    reloc;
                         if( r.p ) {
-                            //return RelocPtr(get_staticref(r.p->clone()));
+                            return RelocPtr(StaticRefPtr::allocate(r.p->clone(), nullptr));
                             TODO(Span(), "Convert relocation pointer - " << *r.p);
                         }
                         else {
@@ -844,7 +844,8 @@ namespace {
         TU_ARMA(NotFound, e)
             return EntPtr();
         TU_ARMA(NotYetKnown, e)
-            TODO(sp, "Handle NotYetKnown - " << path);
+            return EntPtr();
+            //TODO(sp, "Handle NotYetKnown - " << path);
         TU_ARMA(Constant, e)
             return e;
         TU_ARMA(Static, e)
