@@ -29,3 +29,6 @@
 - `self.foo()` where `Self` implements two traits wtih a `foo` method, one of which is the current impl
 - Nested macro expansion edition hygiene
 - Variables in constants/statics
+- `#[track_caller]` for panics
+- `return (1 << shift).abs();` - Literal inference through a method call (likely actually uses traits, implemented using inherents)
+- Nested function using traits from parent function
