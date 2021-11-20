@@ -6785,8 +6785,15 @@ namespace
                         if( opt.cls == PossibleType::Equal ) {
                             continue ;
                         }
-                        if( *opt.ty == new_ty ) {
-                            continue ;
+                        // If a fuzzy compare succeeds, keep
+                        switch( new_ty.compare_with_placeholders(sp, *opt.ty, context.m_ivars.callback_resolve_infer()) )
+                        {
+                        case HIR::Compare::Unequal:
+                            // If not equal, then maybe an unsize could happen
+                            break;
+                        case HIR::Compare::Fuzzy:
+                        case HIR::Compare::Equal:
+                            continue;
                         }
                         CoerceResult    cmp;
                         if( opt.is_source() ) {
