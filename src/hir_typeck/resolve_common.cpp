@@ -49,7 +49,7 @@ void TraitResolveCommon::prep_indexes__add_trait_bound(const Span& sp, ::HIR::Ty
     TRACE_FUNCTION_F(type << " : " << trait_path);
 
     auto get_or_add_trait_bound = [&](const HIR::GenericPath& trait_path)->CachedBound& {
-        DEBUG(trait_path);
+        DEBUG("[get_or_add_trait_bound] " << trait_path);
         auto it = m_trait_bounds.find(std::make_pair(std::ref(type), std::ref(trait_path)));
         if( it != m_trait_bounds.end() ) {
             return it->second;

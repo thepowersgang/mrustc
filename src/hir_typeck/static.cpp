@@ -544,9 +544,9 @@ bool StaticTraitResolve::find_impl__bounds(
         {
             const auto& b_type = it->first.first;
             const auto& b_params = it->first.second.m_params;
+            DEBUG(b_type << ": " << trait_path << b_params);
             // Check against `params`
             if( trait_params ) {
-                DEBUG("Checking trait params `" << *trait_params << "` vs `" << b_params << "`");
                 if( !H::compare_pp(sp, *trait_params, b_params) )
                     continue;
             }

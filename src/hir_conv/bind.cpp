@@ -312,8 +312,20 @@ namespace {
             {
                 if(auto* be = bound.opt_TraitBound())
                 {
-                    const auto& trait = m_crate.get_trait_by_path(sp, be->trait.m_path.m_path);
-                    fix_param_count(sp, be->trait.m_path, trait.m_params, be->trait.m_path.m_params, /*fill_infer=*/false, &be->type);
+                    {
+                        const auto& trait = m_crate.get_trait_by_path(sp, be->trait.m_path.m_path);
+                        fix_param_count(sp, be->trait.m_path, trait.m_params, be->trait.m_path.m_params, /*fill_infer=*/false, &be->type);
+                    }
+                    // Also ensure that the defaults are filled in the source traits
+                    // - Is there a better solution to this? It feels like it would give the wrong answer (filling defaults incorrectly)
+                    for(auto& aty : be->trait.m_type_bounds) {
+                        const auto& trait = m_crate.get_trait_by_path(sp, aty.second.source_trait.m_path);
+                        fix_param_count(sp, be->trait.m_path, trait.m_params, aty.second.source_trait.m_params, /*fill_infer=*/false, &be->type);
+                    }
+                    for(auto& aty : be->trait.m_type_bounds) {
+                        const auto& trait = m_crate.get_trait_by_path(sp, aty.second.source_trait.m_path);
+                        fix_param_count(sp, be->trait.m_path, trait.m_params, aty.second.source_trait.m_params, /*fill_infer=*/false, &be->type);
+                    }
                 }
             }
 
