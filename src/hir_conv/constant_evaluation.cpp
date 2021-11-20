@@ -1932,6 +1932,7 @@ namespace HIR {
                         auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
                         MIR_ASSERT(state, ty.data().is_Primitive(), "bswap with non-primitive " << ty);
                         auto ti = TypeInfo::for_type(ty);
+                        //MIR_ASSERT(state, ti.type == TypeInfo::Unsigned, "`bswap` with non-unsigned " << ty);
                         auto val = local_state.read_param_uint(ti.bits, e.args.at(0));
 #ifdef _MSC_VER
                         unsigned rv = __popcnt(val & 0xFFFFFFFF) + __popcnt(val >> 32);
@@ -1939,6 +1940,41 @@ namespace HIR {
                         unsigned rv = __builtin_popcountll(val);
 #endif
                         dst.write_uint(state, ti.bits, rv);
+                    }
+                    // - CounT Trailing Zeros
+                    else if( te->name == "cttz" ) {
+                        auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                        MIR_ASSERT(state, ty.data().is_Primitive(), "`cttz` with non-primitive " << ty);
+                        auto ti = TypeInfo::for_type(ty);
+                        MIR_ASSERT(state, ti.ty == TypeInfo::Unsigned, "`cttz` with non-unsigned " << ty);
+                        auto val = local_state.read_param_uint(ti.bits, e.args.at(0));
+                        unsigned rv = 0;
+                        if(val == 0) {
+                            rv = ti.bits;
+                        }
+                        else {
+                            while( (val & 1) == 0 ) {
+                                val >>= 1;
+                                rv += 1;
+                            }
+                        }
+                        dst.write_uint(state, ti.bits, rv);
+                    }
+                    // - CounT Lrailing Zeros
+                    else if( te->name == "ctlz" ) {
+                        auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                        MIR_ASSERT(state, ty.data().is_Primitive(), "`ctlz` with non-primitive " << ty);
+                        auto ti = TypeInfo::for_type(ty);
+                        MIR_ASSERT(state, ti.ty == TypeInfo::Unsigned, "`ctlz` with non-unsigned " << ty);
+                        auto val = local_state.read_param_uint(ti.bits, e.args.at(0));
+                        unsigned rv = 0;
+                        // Count how many shifts needed to remove the MSB
+                        while( val != 0 ) {
+                            val >>= 1;
+                            rv += 1;
+                        }
+                        // Then subtract from the total bit count (no shift needed = max bits)
+                        dst.write_uint(state, ti.bits, ti.bits - rv);
                     }
                     else if( te->name == "bswap" ) {
                         auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
