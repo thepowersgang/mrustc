@@ -26,10 +26,23 @@ public:
     {
     }
 
-    // Item names:
-    // - These can have a single '#' in them (either leading or in the middle)
-    // TODO: Some other invalid characters can appear:
-    // - '-' (crate names)
+    /// Formats an integer in a decodable format (lower case until the final digit)
+    // Used to encode values that might be have trailing digits
+    void fmt_base26_int(unsigned val)
+    {
+        // Lower-case: 
+        while(val >= 26) {
+            m_os << 'a' + (val%26);
+            val /= 26;
+        }
+        assert(val < 26);
+        m_os << 'A' + val;
+    }
+
+    // Reference-counted item names
+    // - These can be repeated quite often, so support back-references
+    //   > Back-references are emitted as "`_` <base26>"
+    // - Otherwise, emitted as a raw string (see below)
     void fmt_name(const RcString& s)
     {
         // Support back-references to names (if shorter than the literal name)
@@ -38,10 +51,10 @@ public:
         {
             auto idx = it - m_name_cache.begin();
             // Only emit this way if shorter than the formatted name would be.
-            auto len = 1 + static_cast<unsigned>(std::ceil(std::log10(idx+1)));
+            auto len = 1 + static_cast<unsigned>(std::ceil(std::log10(idx+1) / std::log10(26)));
             if(len < s.size())
             {
-                m_os << "b" << idx;
+                m_os << "_"; fmt_base26_int(idx);
                 return ;
             }
         }
@@ -52,13 +65,22 @@ public:
 
         this->fmt_name(s.c_str());
     }
+    // Item names:
+    // - These can have a single '#' in them (either leading or in the middle)
+    // - '-' (crate names)
+    // Encoding is either:
+    // - "<len:int> <raw_data>" (fully valid identifier)
+    // - "<ofs:base26> <len:int> <raw_data1> <raw_data2>" (`#` or `-` present)
+    // - "<len:base26> `_` <raw_data2>" (`#` or `-` at the start)
     void fmt_name(const char* const s)
     {
         size_t size = strlen(s);
         const char* hash_pos = nullptr;
-        // - Search the string for the '#' character
+        // - Search the string for the '#' or '-' character
         for(const auto* p = s; *p; p++)
         {
+            // If looking at the first character, ensure that it's not a digit
+            // - Also, `#<digit>` isn't valid (as it'd also badly encode)
             if( p == s ) {
                 ASSERT_BUG(Span(), !isdigit(*p), "Leading digit not valid in '" << s << "'");
             }
@@ -77,18 +99,25 @@ public:
             }
         }
 
-        // If there's a hash, then prefix with a letter indicating its location?
-        // - Using a 3 character overhead currently (but a letter could work really well)
+        // If there's a hash, then encode such that it's removed
         if( hash_pos != nullptr )
         {
             auto pre_hash_len = static_cast<int>(hash_pos - s);
-#if 0
-            assert(pre_hash_len < 26);
-            // <posletter> <full_len> <body1> <body2>
-            m_os << 'a' + pre_hash_len;
-            m_os << size - 1;
-            m_os << ::stdx::string_view(s, s + pre_hash_len);
-            m_os << hash_pos + 1;;
+#if 1
+            if( hash_pos == s && isdigit(hash_pos[1]) ) {
+                // <len:base26> '_' <body2>
+                // An encoding that allows this pattern
+                fmt_base26_int(size-1);
+                m_os << '_';
+                m_os << hash_pos + 1;
+            }
+            else {
+                // <pos:base26> <len:int> <body1> <body2>
+                fmt_base26_int(pre_hash_len);
+                m_os << size - 1;
+                m_os << ::stdx::string_view(s, s + pre_hash_len);
+                m_os << hash_pos + 1;
+            }
 #else
             // If the suffix is all digits, then print `H` and the literal contents
             if( false && std::isdigit(hash_pos[1]) )
