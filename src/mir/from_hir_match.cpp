@@ -917,6 +917,7 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, EncodedLiteralSlice 
 
             // TODO: Share code with `MIR_Cleanup_LiteralToRValue`
             unsigned var_idx = 0;
+            bool sub_has_tag = false;
             TU_MATCH_HDRA( (enm_repr->variants), { )
             TU_ARMA(None, e) {
                 }
@@ -924,10 +925,12 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, EncodedLiteralSlice 
                 auto v = lit.slice( enm_repr->get_offset(sp, m_resolve, ve.field), ve.field.size).read_uint(ve.field.size);
                 if( v < ve.offset ) {
                     var_idx = ve.field.index;
+                    sub_has_tag = false;
                     DEBUG("VariantMode::Linear - Niche #" << var_idx);
                 }
                 else {
                     var_idx = v - ve.offset;
+                    sub_has_tag = true;
                     DEBUG("VariantMode::Linear - Other #" << var_idx);
                 }
                 }
@@ -957,7 +960,29 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, EncodedLiteralSlice 
                 sub_builder.m_field_path = m_field_path;
                 sub_builder.m_field_path.push_back(var_idx);
 
-                sub_builder.append_from_lit(sp, lit.slice(enm_repr->fields[var_idx].offset), enm_repr->fields[var_idx].ty);
+                // If the tag is in the sub-type, then ignore.
+                const auto& var_ty = enm_repr->fields[var_idx].ty;
+                auto var_lit = lit.slice(enm_repr->fields[var_idx].offset);
+                // NOTE: The tag is only present if it's an auto-generated struct (i.e. not `()`)
+                if( sub_has_tag && var_ty != HIR::TypeRef::new_unit() )
+                {
+                    // This inner type should be a struct
+                    DEBUG("Enum variant type w/ tag field: " << var_ty);
+                    auto* inner_repr = Target_GetTypeRepr(sp, m_resolve, var_ty);
+                    assert(inner_repr->variants.is_None());
+                    assert(inner_repr->fields.size() > 0);
+                    sub_builder.m_field_path.push_back(0);
+                    for(size_t i = 0; i < inner_repr->fields.size() - 1; i ++)
+                    {
+                        sub_builder.append_from_lit(sp, var_lit.slice(inner_repr->fields[i].offset), inner_repr->fields[i].ty);
+                        sub_builder.m_field_path.back() ++;
+                    }
+                    sub_builder.m_field_path.pop_back();
+                }
+                else
+                {
+                    sub_builder.append_from_lit(sp, var_lit, var_ty);
+                }
             }
 
             ASSERT_BUG(sp, sub_builder.m_rulesets.size() == 1, "Multiple rulesets generated from a literal");
@@ -2022,6 +2047,7 @@ namespace {
         for(unsigned int i = field_path_ofs; i < field_path.size(); i ++ )
         {
             unsigned idx = field_path.data[i];
+            DEBUG("> " << *cur_ty << " #" << idx);
 
             TU_MATCH_HDRA( (cur_ty->data()), {)
             TU_ARMA(Infer, e)   BUG(sp, "Ivar for in match type");
@@ -2039,6 +2065,17 @@ namespace {
                     cur_ty = &e.path.m_data.as_Generic().m_params.m_types.at(0);
                     break;
                 }
+                auto monomorph_to_ptr = [&](const auto& ty)->const auto* {
+                    if( monomorphise_type_needed(ty) ) {
+                        auto rv = MonomorphStatePtr(nullptr, &e.path.m_data.as_Generic().m_params, nullptr).monomorph_type(sp, ty);
+                        resolve.expand_associated_types(sp, rv);
+                        tmp_ty = mv$(rv);
+                        return &tmp_ty;
+                    }
+                    else {
+                        return &ty;
+                    }
+                    };
                 TU_MATCH_HDRA( (e.binding), {)
                 TU_ARMA(Unbound, pbe) {
                     BUG(sp, "Encounterd unbound path - " << e.path);
@@ -2050,71 +2087,31 @@ namespace {
                     BUG(sp, "Destructuring an extern type - " << *cur_ty);
                     }
                 TU_ARMA(Struct, pbe) {
-                    // TODO: Should this do a call to expand_associated_types?
-                    auto monomorph = [&](const auto& ty) {
-                        auto rv = MonomorphStatePtr(nullptr, &e.path.m_data.as_Generic().m_params, nullptr).monomorph_type(sp, ty);
-                        resolve.expand_associated_types(sp, rv);
-                        return rv;
-                        };
                     TU_MATCH_HDRA( (pbe->m_data), { )
                     TU_ARMA(Unit, fields) {
                         BUG(sp, "Destructuring an unit-like tuple - " << *cur_ty);
                         }
                     TU_ARMA(Tuple, fields) {
-                        assert( idx < fields.size() );
+                        ASSERT_BUG(sp, idx < fields.size(), "Tuple struct index (" << idx << ") out of range (" << fields.size() << ") in " << *cur_ty);
                         const auto& fld = fields[idx];
-                        if( monomorphise_type_needed(fld.ent) ) {
-                            tmp_ty = monomorph(fld.ent);
-                            cur_ty = &tmp_ty;
-                        }
-                        else {
-                            cur_ty = &fld.ent;
-                        }
+                        cur_ty = monomorph_to_ptr(fld.ent);
                         lval = ::MIR::LValue::new_Field(mv$(lval), idx);
                         }
                     TU_ARMA(Named, fields) {
-                        assert( idx < fields.size() );
+                        ASSERT_BUG(sp, idx < fields.size(), "Tuple struct index (" << idx << ") out of range (" << fields.size() << ") in " << *cur_ty);
                         const auto& fld = fields[idx].second;
-                        if( monomorphise_type_needed(fld.ent) ) {
-                            tmp_ty = monomorph(fld.ent);
-                            cur_ty = &tmp_ty;
-                        }
-                        else {
-                            cur_ty = &fld.ent;
-                        }
+                        cur_ty = monomorph_to_ptr(fld.ent);
                         lval = ::MIR::LValue::new_Field(mv$(lval), idx);
                         }
                     }
                     }
                 TU_ARMA(Union, pbe) {
-                    auto monomorph = [&](const auto& ty) {
-                        auto rv = MonomorphStatePtr(nullptr, &e.path.m_data.as_Generic().m_params, nullptr).monomorph_type(sp, ty);
-                        resolve.expand_associated_types(sp, rv);
-                        return rv;
-                        };
-                    assert(idx < pbe->m_variants.size());
+                    ASSERT_BUG(sp, idx < pbe->m_variants.size(), "Union variant index (" << idx << ") out of range (" << pbe->m_variants.size() << ") in " << *cur_ty);
                     const auto& fld = pbe->m_variants[idx];
-                    if( monomorphise_type_needed(fld.second.ent) ) {
-                        tmp_ty = monomorph(fld.second.ent);
-                        cur_ty = &tmp_ty;
-                    }
-                    else {
-                        cur_ty = &fld.second.ent;
-                    }
+                    cur_ty = monomorph_to_ptr(fld.second.ent);
                     lval = ::MIR::LValue::new_Downcast(mv$(lval), idx);
                     }
                 TU_ARMA(Enum, pbe) {
-                    auto monomorph_to_ptr = [&](const auto& ty)->const auto* {
-                        if( monomorphise_type_needed(ty) ) {
-                            auto rv = MonomorphStatePtr(nullptr, &e.path.m_data.as_Generic().m_params, nullptr).monomorph_type(sp, ty);
-                            resolve.expand_associated_types(sp, rv);
-                            tmp_ty = mv$(rv);
-                            return &tmp_ty;
-                        }
-                        else {
-                            return &ty;
-                        }
-                        };
                     ASSERT_BUG(sp, pbe->m_data.is_Data(), "Value enum being destructured - " << *cur_ty);
                     const auto& variants = pbe->m_data.as_Data();
                     ASSERT_BUG(sp, idx < variants.size(), "Variant index (" << idx << ") out of range (" << variants.size() <<  ") for enum " << *cur_ty);
