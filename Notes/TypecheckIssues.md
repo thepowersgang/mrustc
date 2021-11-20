@@ -636,3 +636,17 @@ Fails early in libcore 1.39, because other users of `check_coerce_tys` don't get
 - Requires special handling in `check_ivar_poss` (ignore completely? Add as final fallback?)
 - Coerce rule `! := *` becomes equality
 - Some other additions required to handle inference breakage for `!` (e.g. around block returns)
+
+
+# (1.54) `<i8 as ::"num_integer-0_1_44"::Integer>::gcd`
+Calling a method on an integer ivar leading to ambigious lookup. mrustc returns all the inherent methods (with no auto-ref) so doesn't see the trait method (which requires one)
+```
+return (1 << shift).abs();
+```
+
+## EXPERIMENT: Hack avoid inherent methods on bounded ivars (in `find_method)
+- libcore fails looking for `saturating_sub`
+## EXPERIMENT: Hack avoid inherent methods on bounded ivars (in `visit(_Method)`)
+- Failed libcore again first try
+- Limited only to fallback mode (and only if it doesn't remove eveything).
+- Worked.

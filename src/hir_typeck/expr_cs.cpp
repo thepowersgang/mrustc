@@ -854,6 +854,14 @@ namespace {
             if( deref_count != ~0u )
             {
                 DEBUG("possible_methods = " << possible_methods);
+                // HACK: In fallback mode, remove inherent impls from bounded ivars
+                if( ty.data().is_Infer() && this->m_is_fallback )
+                {
+                    auto new_end = std::remove_if(possible_methods.begin(), possible_methods.end(), [](const auto& e){ return e.second.m_data.is_UfcsInherent(); });
+                    if( new_end != possible_methods.begin() ) {
+                        possible_methods.erase(new_end, possible_methods.end());
+                    }
+                }
                 if( possible_methods.empty() )
                 {
                     //ERROR(sp, E0000, "Could not find method `" << method_name << "` on type `" << top_ty << "`");
@@ -878,9 +886,7 @@ namespace {
                     //
                     // So: To be able to prune the list, we need to check the type parameters for the trait/type/impl 
 
-                    // De-duplcate traits in this list.
-                    // - If the self type and the trait name are the same, replace with an entry using placeholder
-                    //   ivars (node.m_trait_param_ivars)
+                    // Remove anything except for the highest autoref level
                     for(auto it_1 = possible_methods.begin(); it_1 != possible_methods.end(); ++ it_1)
                     {
                         if( it_1->first != possible_methods.front().first )
@@ -888,6 +894,9 @@ namespace {
                             it_1 = possible_methods.erase(it_1) - 1;
                         }
                     }
+                    // De-duplcate traits in this list.
+                    // - If the self type and the trait name are the same, replace with an entry using placeholder
+                    //   ivars (node.m_trait_param_ivars)
                     for(auto it_1 = possible_methods.begin(); it_1 != possible_methods.end(); ++ it_1)
                     {
                         if( !it_1->second.m_data.is_UfcsKnown() )
@@ -942,6 +951,7 @@ namespace {
                             }
                         }
                     }
+                    DEBUG("possible_methods = " << possible_methods);
                 }
                 assert( !possible_methods.empty() );
                 if( possible_methods.size() != 1 && possible_methods.front().second.m_data.is_UfcsKnown() )
@@ -974,7 +984,6 @@ namespace {
                 // TODO: If this is ambigious, and it's an inherent, and in fallback mode - fall down to the next trait method.
                 if( !typecheck::visit_call_populate_cache(this->context, node.span(), node.m_method_path, node.m_cache) )
                 {
-                    DEBUG("- AMBIGUOUS - Trying again later");
                     // Move the params back
                     TU_MATCH(::HIR::Path::Data, (node.m_method_path.m_data), (e),
                     (Generic, ),
@@ -986,18 +995,27 @@ namespace {
                         node.m_params = mv$(e.params);
                         )
                     )
-                    if( this->m_is_fallback && fcn_path.m_data.is_UfcsInherent() )
+                    if( this->m_is_fallback && node.m_method_path.m_data.is_UfcsInherent() )
                     {
-                        //possible_methods.erase(possible_methods.begin());
-                        while( !possible_methods.empty() && possible_methods.front().second.m_data.is_UfcsInherent() )
+                        unsigned n_remove = 1;
+                        while( n_remove < possible_methods.size() && possible_methods[n_remove].second.m_data.is_UfcsInherent() )
                         {
-                            possible_methods.erase(possible_methods.begin());
+                            n_remove += 1;
                         }
-                        if( !possible_methods.empty() )
+                        if( n_remove < possible_methods.size() )
                         {
-                            DEBUG("Infference stall, try again with " << possible_methods.front().second);
+                            possible_methods.erase(possible_methods.begin() + n_remove);
+                            DEBUG("Inference stall (remove " << n_remove << ") try again with " << possible_methods.front().second);
                             goto try_again;
                         }
+                        else
+                        {
+                            DEBUG("AMBIGUOUS and removed all " << n_remove << " possibilities");
+                        }
+                    }
+                    else
+                    {
+                        DEBUG("- AMBIGUOUS - Trying again later");
                     }
                     return ;
                 }
