@@ -35,6 +35,14 @@ namespace {
                 inc_indent();
             }
 
+            // TODO: Include trait list
+            if(true)
+            {
+                for(const auto& t : mod.m_traits)
+                {
+                    m_os << indent() << "use " << t << ";\n";
+                }
+            }
             // TODO: Print publicitiy.
             ::HIR::Visitor::visit_module(p, mod);
 

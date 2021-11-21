@@ -47,6 +47,8 @@ public:
         inc_indent();
         if( n.m_local_mod )
         {
+            m_os << "\n";
+            m_os << indent() << "// ANON: " << n.m_local_mod->path() << "\n";
             handle_module(*n.m_local_mod);
         }
         bool is_first = true;
