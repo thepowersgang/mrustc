@@ -16,7 +16,7 @@
 - Use of `!` as a type more (`e.into()` where `E: Into<!>`)
 - Right-exclusive range patterns
 - Destructuring assignment added (used in `liballoc`)
-- `#[cfg]` on function arguments
+- `#[cfg]` on function arguments (and struct patterns)
 - Custom receivers (Pin) used with inherent impls
 - More advanced use of closures locally (broke usage logic)
 - atomic pointer ops
