@@ -3686,6 +3686,10 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                 {TU_MATCH_HDRA( (val_l), {)
                                 default:
                                     break;
+                                TU_ARMA(Float, le) { const auto& re = val_r.as_Float();
+                                    MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::ADD - " << val_l << " / " << val_r);
+                                    new_value = ::MIR::Constant::make_Float({ le.v + re.v, le.t });
+                                    }
                                 // TU_ARMav(Int, (le, re)) {
                                 TU_ARMA(Int, le) { const auto& re = val_r.as_Int();
                                     MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::ADD - " << val_l << " + " << val_r);
@@ -3703,6 +3707,10 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                 {TU_MATCH_HDRA( (val_l), {)
                                 default:
                                     break;
+                                TU_ARMA(Float, le) { const auto& re = val_r.as_Float();
+                                    MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::SUB - " << val_l << " / " << val_r);
+                                    new_value = ::MIR::Constant::make_Float({ le.v - re.v, le.t });
+                                    }
                                 // TU_ARMav(Int, (le, re)) {
                                 TU_ARMA(Int, le) { const auto& re = val_r.as_Int();
                                     MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::SUB - " << val_l << " - " << val_r);
@@ -3720,6 +3728,10 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                 {TU_MATCH_HDRA( (val_l), {)
                                 default:
                                     break;
+                                TU_ARMA(Float, le) { const auto& re = val_r.as_Float();
+                                    MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::MUL - " << val_l << " / " << val_r);
+                                    new_value = ::MIR::Constant::make_Float({ le.v * re.v, le.t });
+                                    }
                                 // TU_ARMav(Int, (le, re)) {
                                 TU_ARMA(Int, le) { const auto& re = val_r.as_Int();
                                     MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::MUL - " << val_l << " * " << val_r);
@@ -3737,6 +3749,10 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                 {TU_MATCH_HDRA( (val_l), {)
                                 default:
                                     break;
+                                TU_ARMA(Float, le) { const auto& re = val_r.as_Float();
+                                    MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::DIV - " << val_l << " / " << val_r);
+                                    new_value = ::MIR::Constant::make_Float({ le.v / re.v, le.t });
+                                    }
                                 // TU_ARMav(Int, (le, re)) {
                                 TU_ARMA(Int, le) { const auto& re = val_r.as_Int();
                                     MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::DIV - " << val_l << " / " << val_r);
