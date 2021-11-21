@@ -1361,6 +1361,10 @@ namespace
     bool consume_stmt(TokenStreamRO& lex)
     {
         TRACE_FUNCTION;
+        if( lex.consume_if(TOK_INTERPOLATED_STMT) )
+        {
+            return true;
+        }
         if( lex.consume_if(TOK_RWORD_LET) )
         {
             if( !consume_pat(lex) )
