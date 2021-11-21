@@ -56,6 +56,8 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe/*=false*/, Ident 
     ::std::vector<ExprNodeP> nodes;
     AST::AttributeList  attrs;
 
+
+    auto orig_module = lex.parse_state().module;
     ::std::shared_ptr<AST::Module> local_mod;
 
     if( LOOK_AHEAD(lex) == TOK_INTERPOLATED_BLOCK )
@@ -91,6 +93,10 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe/*=false*/, Ident 
     }
     GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
 
+    if( lex.parse_state().module != orig_module ) {
+        DEBUG("Restore module from " << lex.parse_state().module->path() << " to " << orig_module->path() );
+        lex.parse_state().module = orig_module;
+    }
     auto* rv_blk = new ::AST::ExprNode_Block(is_unsafe, last_value_yielded, mv$(nodes), mv$(local_mod) );
     rv_blk->m_label = label;
     auto rv = ExprNodeP(rv_blk);
@@ -113,6 +119,8 @@ ExprNodeP Parse_ExprBlockLine_WithItems(TokenStream& lex, ::std::shared_ptr<AST:
         PUTBACK(tok, lex);
         if( !local_mod ) {
             local_mod = lex.parse_state().get_current_mod().add_anon();
+            DEBUG("Set module from " << lex.parse_state().module->path() << " to " << local_mod->path() );
+            lex.parse_state().module = local_mod.get();
         }
         Parse_Mod_Item(lex, *local_mod, mv$(item_attrs));
         return ExprNodeP();
@@ -124,6 +132,8 @@ ExprNodeP Parse_ExprBlockLine_WithItems(TokenStream& lex, ::std::shared_ptr<AST:
         // - Allows correct scoping of defined macros
         if( !local_mod ) {
             local_mod = lex.parse_state().get_current_mod().add_anon();
+            DEBUG("Set module from " << lex.parse_state().module->path() << " to " << local_mod->path() );
+            lex.parse_state().module = local_mod.get();
         }
     }
 
@@ -149,6 +159,8 @@ ExprNodeP Parse_ExprBlockLine_WithItems(TokenStream& lex, ::std::shared_ptr<AST:
         PUTBACK(tok, lex);
         if( !local_mod ) {
             local_mod = lex.parse_state().get_current_mod().add_anon();
+            DEBUG("Set module from " << lex.parse_state().module->path() << " to " << local_mod->path() );
+            lex.parse_state().module = local_mod.get();
         }
         Parse_Mod_Item(lex, *local_mod, mv$(item_attrs));
         return ExprNodeP();
@@ -159,6 +171,8 @@ ExprNodeP Parse_ExprBlockLine_WithItems(TokenStream& lex, ::std::shared_ptr<AST:
             PUTBACK(tok, lex);
             if( !local_mod ) {
                 local_mod = lex.parse_state().get_current_mod().add_anon();
+                DEBUG("Set module from " << lex.parse_state().module->path() << " to " << local_mod->path() );
+                lex.parse_state().module = local_mod.get();
             }
             Parse_Mod_Item(lex, *local_mod, mv$(item_attrs));
             return ExprNodeP();
