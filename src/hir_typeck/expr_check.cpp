@@ -701,19 +701,9 @@ namespace {
             )
         }
 
-        void visit(::HIR::ExprNode_CallPath& node) override
+        void check_function(const Span& sp, const ::HIR::Path& path, HIR::ExprCallCache& cache)
         {
-            const auto& sp = node.span();
-            TRACE_FUNCTION_F(&node << " " << node.m_path << "(..., )");
-
-            for( auto& val : node.m_args ) {
-                val->visit( *this );
-            }
-
             // Do function resolution again, this time with concrete types.
-            const auto& path = node.m_path;
-            /*const*/ auto& cache = node.m_cache;
-
             const ::HIR::Function*  fcn_ptr = nullptr;
             MonomorphStatePtr   monomorph_cb;
 
@@ -801,7 +791,7 @@ namespace {
                     const auto& e = ty.data().as_ErasedType();
 
                     // Check the origin, because monomorph might end up introducing other erased types
-                    if(e.m_origin == node.m_path) {
+                    if(e.m_origin == path) {
                         ASSERT_BUG(sp, e.m_index < fcn_ptr->m_code.m_erased_types.size(), "");
                         const auto& erased_type_replacement = fcn_ptr->m_code.m_erased_types.at(e.m_index);
                         ty = monomorph_cb.monomorph_type(sp, erased_type_replacement, false);
@@ -812,18 +802,6 @@ namespace {
                 });
             m_resolve.expand_associated_types(sp, cache.m_arg_types.back());
             DEBUG("= " << cache.m_arg_types.back());
-
-            // Check types
-            for(unsigned int i = 0; i < fcn.m_args.size(); i ++) {
-                DEBUG("CHECK ARG " << i << " " << node.m_cache.m_arg_types[i] << " == " << node.m_args[i]->m_res_type);
-                check_types_equal(node.span(), node.m_cache.m_arg_types[i], node.m_args[i]->m_res_type);
-            }
-            for(unsigned int i = fcn.m_args.size(); i < node.m_args.size(); i ++) {
-                DEBUG("CHECK ARG " << i << " *  == " << node.m_args[i]->m_res_type);
-                // TODO: Check that the types here are valid.
-            }
-            DEBUG("CHECK RV " << node.m_res_type << " == " << node.m_cache.m_arg_types.back());
-            check_types_equal(node.span(), node.m_res_type,  node.m_cache.m_arg_types.back());
 
             cache.m_monomorph.reset( new MonomorphStatePtr(monomorph_cb) );
 
@@ -872,6 +850,30 @@ namespace {
                     }
                 }
             }
+        }
+
+        void visit(::HIR::ExprNode_CallPath& node) override
+        {
+            const auto& sp = node.span();
+            TRACE_FUNCTION_F(&node << " " << node.m_path << "(..., )");
+
+            for( auto& val : node.m_args ) {
+                val->visit( *this );
+            }
+
+            check_function(sp, node.m_path, node.m_cache);
+
+            // Check types
+            for(unsigned int i = 0; i < node.m_cache.m_arg_types.size()-1; i ++) {
+                DEBUG("CHECK ARG " << i << " " << node.m_cache.m_arg_types[i] << " == " << node.m_args[i]->m_res_type);
+                check_types_equal(sp, node.m_cache.m_arg_types[i], node.m_args[i]->m_res_type);
+            }
+            for(unsigned int i = node.m_cache.m_arg_types.size()-1; i < node.m_args.size(); i ++) {
+                DEBUG("CHECK ARG " << i << " *  == " << node.m_args[i]->m_res_type);
+                // TODO: Check that the types here are valid.
+            }
+            DEBUG("CHECK RV " << node.m_res_type << " == " << node.m_cache.m_arg_types.back());
+            check_types_equal(sp, node.m_res_type,  node.m_cache.m_arg_types.back());
         }
         void visit(::HIR::ExprNode_CallValue& node) override
         {
@@ -939,20 +941,26 @@ namespace {
         void visit(::HIR::ExprNode_CallMethod& node) override
         {
             TRACE_FUNCTION_F(&node << " (...)." << node.m_method << "(...,) - " << node.m_method_path);
-            // TODO: Don't use m_cache
-            ASSERT_BUG(node.span(), node.m_cache.m_arg_types.size() > 0, "CallMethod cache not populated");
-            ASSERT_BUG(node.span(), node.m_cache.m_arg_types.size() == 1 + node.m_args.size() + 1, "CallMethod cache mis-sized");
-            check_types_equal(node.m_cache.m_arg_types[0], node.m_value);
-            for(unsigned int i = 0; i < node.m_args.size(); i ++)
-            {
-                check_types_equal(node.m_cache.m_arg_types[1+i], node.m_args[i]);
-            }
-            check_types_equal(node.span(), node.m_res_type, node.m_cache.m_arg_types.back());
 
             node.m_value->visit( *this );
             for( auto& val : node.m_args ) {
                 val->visit( *this );
             }
+
+            const Span& sp = node.span();
+            check_function(sp, node.m_method_path, node.m_cache);
+
+            // Check types
+            for(unsigned int i = 0; i < node.m_cache.m_arg_types.size()-2; i ++) {
+                DEBUG("CHECK ARG " << i << " " << node.m_cache.m_arg_types[1+i] << " == " << node.m_args[i]->m_res_type);
+                check_types_equal(sp, node.m_cache.m_arg_types[1+i], node.m_args[i]->m_res_type);
+            }
+            for(unsigned int i = node.m_cache.m_arg_types.size()-1; i < node.m_args.size(); i ++) {
+                DEBUG("CHECK ARG " << i << " *  == " << node.m_args[i]->m_res_type);
+                // TODO: Check that the types here are valid.
+            }
+            DEBUG("CHECK RV " << node.m_res_type << " == " << node.m_cache.m_arg_types.back());
+            check_types_equal(sp, node.m_res_type,  node.m_cache.m_arg_types.back());
         }
 
         void visit(::HIR::ExprNode_Field& node) override
