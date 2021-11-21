@@ -154,6 +154,16 @@ bool StaticTraitResolve::find_impl(
             return found_cb( ImplRef(&type, trait_params, &null_assoc), false );
         }
     }
+    struct H
+    {
+        static bool check_params(const Span& sp, const HIR::PathParams& target_params, const HIR::PathParams* trait_params)
+        {
+            if(!trait_params)
+                return true;
+
+            return target_params.compare_with_placeholders(sp, *trait_params, [](const auto&t)->const ::HIR::TypeRef&{return t;}) != HIR::Compare::Unequal;
+        }
+    };
 
     // --- MAGIC IMPLS ---
     // TODO: There should be quite a few more here, but laziness
@@ -170,7 +180,7 @@ bool StaticTraitResolve::find_impl(
                 }
                 for(unsigned int i = 0; i < des_arg_tys.size(); i ++)
                 {
-                    if( des_arg_tys[i] != e.m_arg_types[i] ) {
+                    if( des_arg_tys[i].compare_with_placeholders(sp, e.m_arg_types[i], [](const auto&t)->const ::HIR::TypeRef&{return t;}) == ::HIR::Compare::Unequal ) {
                         return false;
                     }
                 }
@@ -179,9 +189,16 @@ bool StaticTraitResolve::find_impl(
             {
                 trait_params = &null_params;
             }
+            std::vector<HIR::TypeRef>   arg_types;
+            for(unsigned int i = 0; i < e.m_arg_types.size(); i ++)
+            {
+                arg_types.push_back(e.m_arg_types[i].clone());
+            }
+            HIR::PathParams params;
+            params.m_types.push_back(HIR::TypeRef::new_tuple(std::move(arg_types)));
             ::HIR::TraitPath::assoc_list_t  assoc;
-            assoc.insert( ::std::make_pair("Output", ::HIR::TraitPath::AtyEqual { ::HIR::GenericPath(m_lang_FnOnce, trait_params->clone()), e.m_rettype.clone() }) );
-            return found_cb( ImplRef(type.clone(), trait_params->clone(), mv$(assoc)), false );
+            assoc.insert( ::std::make_pair("Output", ::HIR::TraitPath::AtyEqual { ::HIR::GenericPath(m_lang_FnOnce, params.clone()), e.m_rettype.clone() }) );
+            return found_cb( ImplRef(type.clone(), mv$(params), mv$(assoc)), false );
         }
         }
     TU_ARMA(Closure, e) {
@@ -195,7 +212,7 @@ bool StaticTraitResolve::find_impl(
                 }
                 for(unsigned int i = 0; i < des_arg_tys.size(); i ++)
                 {
-                    if( des_arg_tys[i] != e.m_arg_types[i] ) {
+                    if( des_arg_tys[i].compare_with_placeholders(sp, e.m_arg_types[i], [](const auto&t)->const ::HIR::TypeRef&{return t;}) == ::HIR::Compare::Unequal ) {
                         return false;
                     }
                 }
@@ -239,7 +256,7 @@ bool StaticTraitResolve::find_impl(
     TU_ARMA(TraitObject, e) {
         if( trait_path == e.m_trait.m_path.m_path )
         {
-            if( !trait_params || e.m_trait.m_path.m_params == *trait_params )
+            if( H::check_params(sp, e.m_trait.m_path.m_params, trait_params) )
             {
                 return found_cb( ImplRef(&type, &e.m_trait.m_path.m_params, &e.m_trait.m_type_bounds), false );
             }
@@ -248,7 +265,7 @@ bool StaticTraitResolve::find_impl(
         for( const auto& mt : e.m_markers )
         {
             if( trait_path == mt.m_path ) {
-                if( !trait_params || mt.m_params == *trait_params )
+                if( H::check_params(sp, mt.m_params, trait_params) )
                 {
                     return found_cb( ImplRef(&type, &mt.m_params, &null_assoc), false );
                 }
@@ -281,7 +298,7 @@ bool StaticTraitResolve::find_impl(
     TU_ARMA(ErasedType, e) {
         for(const auto& trait : e.m_traits)
         {
-            if( trait_path == trait.m_path.m_path && (!trait_params || trait.m_path.m_params == *trait_params) )
+            if( trait_path == trait.m_path.m_path && H::check_params(sp, trait.m_path.m_params, trait_params) )
             {
                 return found_cb( ImplRef(&type, &trait.m_path.m_params, &trait.m_type_bounds), false );
             }
@@ -334,7 +351,7 @@ bool StaticTraitResolve::find_impl(
 
                 if( bound.m_path.m_path == trait_path )
                 {
-                    if( !trait_params || b_params_mono == *trait_params )
+                    if( H::check_params(sp, b_params_mono, trait_params) )
                     {
                         if( &b_params_mono == &params_mono_o || ::std::any_of(bound.m_type_bounds.begin(), bound.m_type_bounds.end(), [&](const auto& x){ return monomorphise_type_needed(x.second.type); }) )
                         {
