@@ -702,39 +702,52 @@ namespace {
                 }
 
                 // - Duplicates need special handling (build up a subseqent set)
-                for(auto e_it = entry_conds.begin(); e_it != entry_conds.end(); ++e_it)
+                const size_t MAX_CONDITION_ADD = 2;
+                for(size_t iterations = 0; iterations < MAX_CONDITION_ADD; iterations ++)
                 {
-                    auto s_it = ::std::find(skip_conds.begin(), skip_conds.end(), *e_it);
-                    if( s_it != skip_conds.end() )
+                    bool did_extend = false;
+                    for(auto e_it = entry_conds.begin(); e_it != entry_conds.end(); ++e_it)
                     {
-                        auto path = ::make_vec1<ExpTok>(ExpTok(e_it->front().ty, &e_it->front().tok));
-                        auto entry_pats2 = macro_pattern_get_head_set(ent.subpats, 0, path);
-                        assert(entry_pats2.size() > 0);
-                        auto skip_pats2 = macro_pattern_get_head_set(pattern, idx+1, path);
-                        assert(skip_pats2.size() > 0);
-                        DEBUG("entry_pats2 = [" << entry_pats2 << "]");
-                        DEBUG("skip_pats2 = [" << skip_pats2 << "]");
-                        // Update the current element for both of them, and add new elements to the end of each list
+                        auto s_it = ::std::find(skip_conds.begin(), skip_conds.end(), *e_it);
+                        if( s_it != skip_conds.end() )
                         {
-                            auto e2_it = entry_pats2.begin();
-                            e_it->push_back({e2_it->ty, *e2_it->tok});
-                            for(++e2_it; e2_it != entry_pats2.end(); ++ e2_it)
-                            {
-                                e_it = entry_conds.insert(e_it, *e_it);
-                                e_it->back() = SimplePatIfCheck { e2_it->ty, *e2_it->tok };
-                            }
-                        }
+                            did_extend = true;
 
-                        {
-                            auto s2_it = skip_pats2.begin();
-                            s_it->push_back({s2_it->ty, *s2_it->tok});
-                            for(++s2_it; s2_it != skip_pats2.end(); ++ s2_it)
+                            std::vector<ExpTok> path;
+                            for(auto it = e_it->begin(); it != e_it->end(); ++it) {
+                                path.push_back( ExpTok(it->ty, &it->tok) );
+                            }
+                            auto entry_pats2 = macro_pattern_get_head_set(ent.subpats, 0, path);
+                            assert(entry_pats2.size() > 0);
+                            auto skip_pats2 = macro_pattern_get_head_set(pattern, idx+1, path);
+                            assert(skip_pats2.size() > 0);
+                            DEBUG("entry_pats2 = [" << entry_pats2 << "]");
+                            DEBUG("skip_pats2 = [" << skip_pats2 << "]");
+                            // Update the current element for both of them, and add new elements to the end of each list
                             {
-                                s_it = skip_conds.insert(s_it, *s_it);
-                                s_it->back() = SimplePatIfCheck { s2_it->ty, *s2_it->tok };
+                                auto e2_it = entry_pats2.begin();
+                                e_it->push_back({e2_it->ty, *e2_it->tok});
+                                for(++e2_it; e2_it != entry_pats2.end(); ++ e2_it)
+                                {
+                                    e_it = entry_conds.insert(e_it, *e_it);
+                                    e_it->back() = SimplePatIfCheck { e2_it->ty, *e2_it->tok };
+                                }
+                            }
+
+                            {
+                                auto s2_it = skip_pats2.begin();
+                                s_it->push_back({s2_it->ty, *s2_it->tok});
+                                for(++s2_it; s2_it != skip_pats2.end(); ++ s2_it)
+                                {
+                                    s_it = skip_conds.insert(s_it, *s_it);
+                                    s_it->back() = SimplePatIfCheck { s2_it->ty, *s2_it->tok };
+                                }
                             }
                         }
-                        //TODO(ent.sp, "Entry and skip patterns share an entry, ambigious - " << path);
+                    }
+                    if( !did_extend )
+                    {
+                        break;
                     }
                 }
                 // - If there's three-level needed, error?
@@ -743,7 +756,7 @@ namespace {
                     auto s_it = ::std::find(skip_conds.begin(), skip_conds.end(), *e_it);
                     if( s_it != skip_conds.end() )
                     {
-                        TODO(ent.sp, "Entry and skip patterns share an entry, ambigious - " << *e_it);
+                        TODO(ent.sp, "Entry and skip patterns share an entry (max extend " << MAX_CONDITION_ADD << "), ambigious - " << *e_it);
                     }
                 }
                 DEBUG("Entry = [" << entry_conds << "]");

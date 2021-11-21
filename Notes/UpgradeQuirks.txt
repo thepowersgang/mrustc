@@ -32,3 +32,4 @@
 - `#[track_caller]` for panics
 - `return (1 << shift).abs();` - Literal inference through a method call (likely actually uses traits, implemented using inherents)
 - Nested function using traits from parent function
+- Extra-nested macro patterns
