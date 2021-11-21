@@ -455,6 +455,10 @@ namespace MIR {
             (String,
                 for(unsigned int j = 0; j < e.targets.size(); j ++)
                     os << "\"" << ve[j] << "\" => bb" << e.targets[j] << ", ";
+                ),
+            (ByteString,
+                for(unsigned int j = 0; j < e.targets.size(); j ++)
+                    os << "b\"" << ve[j] << "\" => bb" << e.targets[j] << ", ";
                 )
             )
             os << "else bb" << e.def_target << ")";
@@ -518,22 +522,8 @@ namespace MIR {
                 return false;
             if( ae.targets != be.targets )
                 return false;
-            if( ae.values.tag() != be.values.tag() )
+            if( ae.values != be.values)
                 return false;
-            TU_MATCHA( (ae.values, be.values), (ave, bve),
-            (Unsigned,
-                if( ave != bve )
-                    return false;
-                ),
-            (Signed,
-                if( ave != bve )
-                    return false;
-                ),
-            (String,
-                if( ave != bve )
-                    return false;
-                )
-            )
             ),
         (Call,
             if( ae.ret_val != be.ret_val )
@@ -832,8 +822,36 @@ namespace MIR {
         ),
     (String,
         return ve;
+        ),
+    (ByteString,
+        return ve;
         )
     )
     throw "";
+}
+
+bool MIR::SwitchValues::operator==(const SwitchValues& x) const
+{
+    if( this->tag() != x.tag() )
+        return false;
+    TU_MATCHA( ((*this), x), (ave, bve),
+    (Unsigned,
+        if( ave != bve )
+            return false;
+        ),
+    (Signed,
+        if( ave != bve )
+            return false;
+        ),
+    (String,
+        if( ave != bve )
+            return false;
+        ),
+    (ByteString,
+        if( ave != bve )
+            return false;
+        )
+    )
+    return true;
 }
 

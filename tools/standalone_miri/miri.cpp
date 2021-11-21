@@ -1884,6 +1884,25 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     cur_frame.bb_idx = te.def_target;
                 }
                 }
+            TU_ARMA(ByteString, vals) {
+                auto size = v.read_usize(POINTER_SIZE);
+                const char* sv_ptr = reinterpret_cast<const char*>(v.read_pointer_const(0, size));
+                //auto switch_val = ::stdx::array_view(sv_ptr, sv_ptr+size);
+                auto switch_val = ::stdx::string_view(sv_ptr, sv_ptr+size);
+
+                auto it = ::std::find_if(vals.begin(), vals.end(), [&](const ::std::vector<uint8_t>& x){ return x.size() == size && memcmp(x.data(), sv_ptr, size) == 0; });
+                if( it != vals.end() )
+                {
+                    auto idx = it - vals.begin();
+                    LOG_TRACE("- b\"" << switch_val << "\" matched arm " << idx);
+                    cur_frame.bb_idx = te.targets.at(idx);
+                }
+                else
+                {
+                    LOG_TRACE("- b\"" << switch_val << "\" not matched, taking default arm");
+                    cur_frame.bb_idx = te.def_target;
+                }
+                }
             }
             }
         TU_ARM(bb.terminator, Call, te) {

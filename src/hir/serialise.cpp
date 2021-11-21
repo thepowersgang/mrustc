@@ -852,6 +852,9 @@
                 ),
             (String,
                 serialise_vec(e);
+                ),
+            (ByteString,
+                serialise_vec(e);
                 )
             )
         }

@@ -177,6 +177,30 @@ namespace {
                     (String,
                         for(unsigned int j = 0; j < e.targets.size(); j ++)
                             m_os << "\"" << FmtEscaped(ve[j]) << "\" => bb" << e.targets[j] << ", ";
+                        ),
+                    (ByteString,
+                        for(unsigned int j = 0; j < e.targets.size(); j ++) {
+                            m_os << "b\"";
+                            for(size_t i = 0; i < ve[j].size(); i ++) {
+                                auto b = ve[j][i];
+                                switch(b)
+                                {
+                                case '\\': m_os << "\\\\"; break;
+                                case '\"': m_os << "\\\""; break;
+                                default:
+                                    if( ' ' <= b && b < 0x7f ) {
+                                        m_os << char(ve[j][i]);
+                                    }
+                                    else {
+                                        m_os << "\\x";
+                                        m_os << "0123456789ABCDEF"[b >> 4];
+                                        m_os << "0123456789ABCDEF"[b & 15];
+                                    }
+                                    break;
+                                }
+                            }
+                            m_os << "\" => bb" << e.targets[j] << ", ";
+                        }
                         )
                     )
                     m_os << "_ => bb" << e.def_target <<  "}\n";

@@ -2965,22 +2965,8 @@ bool MIR_Optimise_UnifyBlocks(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                     return false;
                 if( ae.def_target != be.def_target )
                     return false;
-                if( ae.values.tag() != be.values.tag() )
+                if( ae.values != be.values )
                     return false;
-                TU_MATCHA( (ae.values, be.values), (ae2, be2),
-                (Unsigned,
-                    if( ae2 != be2 )
-                        return false;
-                    ),
-                (Signed,
-                    if( ae2 != be2 )
-                        return false;
-                    ),
-                (String,
-                    if( ae2 != be2 )
-                        return false;
-                    )
-                )
                 ),
             (Call,
                 if( ae.ret_block != be.ret_block )

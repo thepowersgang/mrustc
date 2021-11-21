@@ -1633,10 +1633,14 @@ bool TraitResolution::find_trait_impls(const Span& sp,
                                 return true;
                             params_mono_o = monomorph_cb.monomorph_path_params(sp, b_params, false);
                         }
+                        else if( !b_atys.empty() )
+                        {
+                            if( callback( ImplRef(type.clone(), b_params_mono.clone(), mv$(b_atys)), cmp ) )
+                                return true;
+                        }
                         else
                         {
-                            //if( callback( ImplRef(&type, &bound.m_path.m_params, &null_assoc), cmp ) )
-                            if( callback( ImplRef(&type, &bound.m_path.m_params, &b_atys), cmp ) )
+                            if( callback( ImplRef(&type, &bound.m_path.m_params, &null_assoc), cmp ) )
                                 return true;
                         }
                     }

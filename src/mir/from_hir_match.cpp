@@ -3161,7 +3161,33 @@ void MatchGenGrouped::gen_dispatch(const ::std::vector<t_rules_subset>& rules, s
         BUG(sp, "Attempting to match an erased type");
         }
     TU_ARMA(Array, te) {
-        BUG(sp, "Attempting to match on an Array (should have been destructured)");
+        // Byte strings?
+        // Remove the deref on the &str
+        ASSERT_BUG(sp, !val.m_wrappers.empty() && val.m_wrappers.back().is_Deref(), "&[T; N] match on non-Deref lvalue - " << val);
+        val.m_wrappers.pop_back();
+
+        ::std::vector< ::MIR::BasicBlockId> targets;
+        ::std::vector< ::std::vector<uint8_t> >   values;
+        size_t tgt_ofs = 0;
+        for(size_t i = 0; i < rules.size(); i++)
+        {
+            for(size_t j = 1; j < rules[i].size(); j ++)
+                ASSERT_BUG(sp, arm_targets[tgt_ofs] == arm_targets[tgt_ofs+j], "Mismatched target blocks for Value match");
+
+            const auto& r = rules[i][0][ofs];
+            ASSERT_BUG(sp, r.is_Value(), "Matching without _Value pattern - " << r.tag_str());
+            const auto& re = r.as_Value();
+            if(re.is_Const())
+                TODO(sp, "Handle Constant::Const in match");
+
+            targets.push_back( arm_targets[tgt_ofs] );
+            values.push_back( re.as_Bytes() );
+
+            tgt_ofs += rules[i].size();
+        }
+        m_builder.end_block( ::MIR::Terminator::make_SwitchValue({
+            mv$(val), def_blk, mv$(targets), ::MIR::SwitchValues(mv$(values))
+            }) );
         }
     TU_ARMA(Slice, te) {
         this->gen_dispatch__slice(mv$(ty), mv$(val), rules, ofs, arm_targets, def_blk);

@@ -595,9 +595,12 @@ TAGGED_UNION(CallTarget, Intrinsic,
 TAGGED_UNION_EX(SwitchValues, (), Unsigned, (
     (Unsigned, ::std::vector<uint64_t>),
     (Signed, ::std::vector<int64_t>),
-    (String, ::std::vector<::std::string>)
+    (String, ::std::vector<::std::string>),
+    (ByteString, ::std::vector<::std::vector<uint8_t>>)
     ), (),(), (
         SwitchValues clone() const;
+        bool operator==(const SwitchValues& x) const;
+        bool operator!=(const SwitchValues& x) const { return !(*this == x); }
     )
     );
 

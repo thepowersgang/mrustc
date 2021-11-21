@@ -5518,8 +5518,8 @@ namespace {
             }
             // --- #[track_caller]
             else if( name == "caller_location" ) {
-                m_of << "abort()";
-                //emit_lvalue(e.ret_val); m_of << " = mrustc_caller_location"; 
+                //m_of << "abort()";
+                emit_lvalue(e.ret_val); m_of << " = NULL"; // TODO: Store the caller location (same as panic?)
             }
             // --- Pointer manipulation
             else if( name == "offset" ) {   // addition, with the reqirement that the resultant pointer be in bounds

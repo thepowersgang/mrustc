@@ -1029,6 +1029,31 @@ namespace
                             m_of << "\"" << FmtEscaped(ve[i]) << "\" = " << e.targets[i] << ",";
                         }
                         break;
+                    TU_ARM(e.values, ByteString, ve) {
+                        for(size_t j = 0; j < ve.size(); j ++)
+                        {
+                            m_of << "b\"";
+                            for(size_t i = 0; i < ve[j].size(); i ++) {
+                                auto b = ve[j][i];
+                                switch(b)
+                                {
+                                case '\\': m_of << "\\\\"; break;
+                                case '\"': m_of << "\\\""; break;
+                                default:
+                                    if( ' ' <= b && b < 0x7f ) {
+                                        m_of << char(ve[j][i]);
+                                    }
+                                    else {
+                                        m_of << "\\x";
+                                        m_of << "0123456789ABCDEF"[b >> 4];
+                                        m_of << "0123456789ABCDEF"[b & 15];
+                                    }
+                                    break;
+                                }
+                            }
+                            m_of << "\" = " << e.targets[i] << ",";
+                        }
+                        } break;
                     TU_ARM(e.values, Unsigned, ve)
                         for(size_t i = 0; i < ve.size(); i++)
                         {

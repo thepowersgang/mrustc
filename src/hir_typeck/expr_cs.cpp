@@ -2193,11 +2193,14 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                     }
                 TU_ARM(pv, ByteString, ve) {
                     // TODO: ByteString patterns can match either &[u8] or &[u8; N]
-                    //return ::HIR::TypeRef::new_borrow(
-                    //        ::HIR::BorrowType::Shared,
-                    //        ::HIR::TypeRef::new_slice(::HIR::CoreType::U8)
-                    //        );
+#if 0
+                    return ::HIR::TypeRef::new_borrow(
+                            ::HIR::BorrowType::Shared,
+                            ::HIR::TypeRef::new_slice(::HIR::CoreType::U8)
+                            );
+#else
                     return ::HIR::TypeRef();
+#endif
                     }
                 TU_ARM(pv, Named, ve) {
                     // TODO: Look up the path and get the type
