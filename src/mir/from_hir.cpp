@@ -2585,13 +2585,7 @@ namespace {
         void visit(::HIR::ExprNode_Tuple& node) override
         {
             TRACE_FUNCTION_F("_Tuple");
-            ::std::vector< ::MIR::Param>   values;
-            values.reserve( node.m_vals.size() );
-            for(auto& arg : node.m_vals)
-            {
-                this->visit_node_ptr(arg);
-                values.push_back( m_builder.get_result_in_param(arg->span(), arg->m_res_type) );
-            }
+            auto values = get_args(node.m_vals);
 
             m_builder.set_result( node.span(), ::MIR::RValue::make_Tuple({
                 mv$(values)
@@ -2601,13 +2595,7 @@ namespace {
         void visit(::HIR::ExprNode_ArrayList& node) override
         {
             TRACE_FUNCTION_F("_ArrayList");
-            ::std::vector< ::MIR::Param>   values;
-            values.reserve( node.m_vals.size() );
-            for(auto& arg : node.m_vals)
-            {
-                this->visit_node_ptr(arg);
-                values.push_back( m_builder.get_result_in_param(arg->span(), arg->m_res_type) );
-            }
+            auto values = get_args(node.m_vals);
 
             m_builder.set_result( node.span(), ::MIR::RValue::make_Array({
                 mv$(values)
