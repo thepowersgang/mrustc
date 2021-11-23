@@ -815,7 +815,7 @@ struct ExprNode_Closure:
         Mut,
         Once,
     } m_class = Class::Unknown;
-    bool m_is_copy = false;
+    bool m_is_copy = true;  // Assume that closures are Copy/Clone (for the purposes of typecheck) until AVU is run
 
     // - Cache between the AVU and ExpandClosures passes
     struct {

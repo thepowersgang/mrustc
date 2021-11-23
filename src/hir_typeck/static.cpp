@@ -1628,9 +1628,6 @@ bool StaticTraitResolve::type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) 
     TU_ARMA(Closure, e) {
         if( TARGETVER_LEAST_1_29 )
         {
-            // HACK: If this is empty, either it's a non-capturing closure (so is Clone/Copy), or it's not yet visited
-            if(e.node->m_captures.empty())
-                return true;
             // TODO: Auto-gerated impls
             return e.node->m_is_copy;
         }
@@ -1735,10 +1732,6 @@ bool StaticTraitResolve::type_is_clone(const Span& sp, const ::HIR::TypeRef& ty)
     TU_ARMA(Closure, e) {
         if( TARGETVER_LEAST_1_29 )
         {
-            // HACK: If this is empty, either it's a non-capturing closure (so is Clone/Copy), or it's not yet visited
-            if(e.node->m_captures.empty())
-                return true;
-            // TODO: Auto-gerated impls
             return e.node->m_is_copy;
         }
         return false;

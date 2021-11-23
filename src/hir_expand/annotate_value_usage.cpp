@@ -110,6 +110,18 @@ namespace {
 
         void visit_root(::HIR::ExprPtr& root_ptr)
         {
+            // HACK: Pre-visit all nodes to find closures, and mark those as !Copy
+            // - Closures are marked as Copy until this pass, where they need to default to not-Copy so usage defaults to the most restrictive
+            {
+                struct IV: public ::HIR::ExprVisitorDef {
+                    void visit(::HIR::ExprNode_Closure& node) override {
+                        node.m_is_copy = false;
+                        ::HIR::ExprVisitorDef::visit(node);
+                    }
+                }   iv;
+                root_ptr->visit(iv);
+            }
+
             assert(root_ptr);
             root_ptr->m_usage = this->get_usage();
             auto expected_size = m_usage.size();
