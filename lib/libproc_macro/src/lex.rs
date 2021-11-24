@@ -65,6 +65,11 @@ static SYMS: [&[u8]; 53] = [
 pub struct LexError {
     inner: &'static str,
 }
+impl ::std::fmt::Display for LexError {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        f.write_str(self.inner)
+    }
+}
 impl ::std::fmt::Debug for LexError {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         write!(f, "LexError({})", self.inner)
