@@ -342,7 +342,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
     TU_ARMA(Struct, e) {
         ::std::vector< ::std::pair< RcString, ::HIR::Pattern> > sub_patterns;
         for(const auto& sp : e.sub_patterns)
-            sub_patterns.push_back( ::std::make_pair(sp.first, LowerHIR_Pattern(sp.second)) );
+            sub_patterns.push_back( ::std::make_pair(sp.name, LowerHIR_Pattern(sp.pat)) );
 
         // No sub-patterns, no `..`, and the VALUE binding points to an enum variant
         if( e.sub_patterns.empty() && !e.is_exhaustive ) {

@@ -163,6 +163,22 @@ void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::AST::Cr
     Expand_Attrs(attrs, stage,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, mod, impl); });
 }
 
+bool Expand_Attrs_CfgOnly(AST::AttributeList& attrs)
+{
+    bool remove = false;
+    Expand_Attrs_CfgAttr(attrs);
+    Expand_Attrs(attrs, AttrStage::Pre, [&](const Span& sp, const ExpandDecorator& d, const AST::Attribute& a) {
+        if( a.name() == "cfg" ) {
+            if( !check_cfg(sp, a) ) {
+                remove = true;
+            }
+            return ;
+        }
+        TODO(sp, "non-cfg attributes - " << a);
+        });
+    return !remove;
+}
+
 MacroRef Expand_LookupMacro(const Span& mi_span, const ::AST::Crate& crate, LList<const AST::Module*> modstack, const AST::Path& path)
 {
     ASSERT_BUG(mi_span, path.size() > 0, "Path should have nodes: " << path);
@@ -306,10 +322,10 @@ MacroRef Expand_LookupMacro(const Span& mi_span, const ::AST::Crate& crate, LLis
 
 void Expand_Pattern(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod, ::AST::Pattern& pat, bool is_refutable)
 {
-    TU_MATCH(::AST::Pattern::Data, (pat.data()), (e),
-    (MaybeBind,
-        ),
-    (Macro,
+    TU_MATCH_HDRA( (pat.data()), {)
+    TU_ARMA(MaybeBind, e) {
+        }
+    TU_ARMA(Macro, e) {
         const auto span = e.inv->span();
 
         auto tt = Expand_Macro(crate, modstack, mod,  *e.inv);
@@ -330,54 +346,62 @@ void Expand_Pattern(::AST::Crate& crate, LList<const AST::Module*> modstack, ::A
 
         pat = mv$(newpat);
         Expand_Pattern(crate, modstack, mod, pat, is_refutable);
-        ),
-    (Any,
-        ),
-    (Box,
+        }
+    TU_ARMA(Any, e) {
+        }
+    TU_ARMA(Box, e) {
         Expand_Pattern(crate, modstack, mod,  *e.sub, is_refutable);
-        ),
-    (Ref,
+        }
+    TU_ARMA(Ref, e) {
         Expand_Pattern(crate, modstack, mod,  *e.sub, is_refutable);
-        ),
-    (Value,
+        }
+    TU_ARMA(Value, e) {
         //Expand_Expr(crate, modstack, e.start);
         //Expand_Expr(crate, modstack, e.end);
-        ),
-    (ValueLeftInc,
+        }
+    TU_ARMA(ValueLeftInc, e) {
         //Expand_Expr(crate, modstack, e.start);
         //Expand_Expr(crate, modstack, e.end);
-        ),
-    (Tuple,
+        }
+    TU_ARMA(Tuple, e) {
         for(auto& sp : e.start)
             Expand_Pattern(crate, modstack, mod, sp, is_refutable);
         for(auto& sp : e.end)
             Expand_Pattern(crate, modstack, mod, sp, is_refutable);
-        ),
-    (StructTuple,
+        }
+    TU_ARMA(StructTuple, e) {
         for(auto& sp : e.tup_pat.start)
             Expand_Pattern(crate, modstack, mod, sp, is_refutable);
         for(auto& sp : e.tup_pat.end)
             Expand_Pattern(crate, modstack, mod, sp, is_refutable);
-        ),
-    (Struct,
-        for(auto& sp : e.sub_patterns)
-            Expand_Pattern(crate, modstack, mod, sp.second, is_refutable);
-        ),
-    (Slice,
+        }
+    TU_ARMA(Struct, e) {
+        for(auto& subpat : e.sub_patterns) {
+            if( !Expand_Attrs_CfgOnly(subpat.attrs) ) {
+                subpat.name = RcString();
+                continue ;
+            }
+
+            Expand_Pattern(crate, modstack, mod, subpat.pat, is_refutable);
+        }
+        auto new_end = std::remove_if(e.sub_patterns.begin(), e.sub_patterns.end(), [&](const auto& e){ return e.name == ""; });
+        e.sub_patterns.erase(new_end, e.sub_patterns.end());
+        }
+    TU_ARMA(Slice, e) {
         for(auto& sp : e.sub_pats)
             Expand_Pattern(crate, modstack, mod, sp, is_refutable);
-        ),
-    (SplitSlice,
+        }
+    TU_ARMA(SplitSlice, e) {
         for(auto& sp : e.leading)
             Expand_Pattern(crate, modstack, mod, sp, is_refutable);
         for(auto& sp : e.trailing)
             Expand_Pattern(crate, modstack, mod, sp, is_refutable);
-        ),
-    (Or,
+        }
+    TU_ARMA(Or, e) {
         for(auto& sp : e)
             Expand_Pattern(crate, modstack, mod, sp, is_refutable);
-        )
-    )
+        }
+    }
 }
 
 void Expand_Type(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod, ::TypeRef& ty)
@@ -1344,18 +1368,7 @@ void Expand_Function(::AST::Crate& crate, LList<const AST::Module*> modstack, AS
     for(size_t i = 0; i < e.args().size(); i ++)
     {
         auto& arg = e.args()[i];
-        bool remove = false;
-        Expand_Attrs_CfgAttr(arg.attrs);
-        Expand_Attrs(arg.attrs, AttrStage::Pre, [&](const Span& sp, const ExpandDecorator& d, const AST::Attribute& a) {
-            if( a.name() == "cfg" ) {
-                if( !check_cfg(sp, a) ) {
-                    remove = true;
-                }
-                return ;
-            }
-            TODO(sp, "attributes on function arguments - " << a);
-            });
-        if( remove ) {
+        if( !Expand_Attrs_CfgOnly(arg.attrs) ) {
             e.args().erase(e.args().begin() + i);
             i --;
             continue ;

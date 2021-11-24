@@ -1057,8 +1057,8 @@ void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
         const auto& v = p.data().as_Struct();
         m_os << v.path << "(";
         for(const auto& sp : v.sub_patterns) {
-            m_os << sp.first << ": ";
-            print_pattern(sp.second, is_refutable);
+            m_os << sp.name << ": ";
+            print_pattern(sp.pat, is_refutable);
             m_os << ",";
         }
         m_os << ")";

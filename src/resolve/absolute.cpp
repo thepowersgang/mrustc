@@ -2418,7 +2418,7 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
         //}
         Resolve_Absolute_Path(context, pat.span(), Context::LookupMode::Type, e.path);
         for(auto& sp : e.sub_patterns)
-            Resolve_Absolute_Pattern(context, allow_refutable,  sp.second);
+            Resolve_Absolute_Pattern(context, allow_refutable,  sp.pat);
         }
     TU_ARMA(Slice, e) {
         // NOTE: Can be irrefutable (if the type is array)

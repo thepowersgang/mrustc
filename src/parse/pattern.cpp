@@ -524,17 +524,24 @@ AST::Pattern Parse_PatternStruct(TokenStream& lex, ProtoSpan ps, AST::Path path)
     }
 
     bool is_exhaustive = true;
-    ::std::vector< ::std::pair< RcString, AST::Pattern> >  subpats;
+    ::std::vector< AST::StructPatternEntry >  subpats;
     do {
-        GET_TOK(tok, lex);
-        DEBUG("tok = " << tok);
-        if( tok.type() == TOK_BRACE_CLOSE )
+        if( lex.lookahead(0) == TOK_BRACE_CLOSE ) {
+            GET_TOK(tok, lex);
             break;
-        if( tok.type() == TOK_DOUBLE_DOT ) {
+        }
+        if( lex.lookahead(0) == TOK_DOUBLE_DOT ) {
+            GET_CHECK_TOK(tok, lex, TOK_DOUBLE_DOT);
             is_exhaustive = false;
             GET_TOK(tok, lex);
             break;
         }
+
+        auto attrs = Parse_ItemAttrs(lex);
+
+        GET_TOK(tok, lex);
+        DEBUG("tok = " << tok);
+
 
         auto inner_ps = lex.start_span();
         bool is_short_bind = false;
@@ -585,7 +592,7 @@ AST::Pattern Parse_PatternStruct(TokenStream& lex, ProtoSpan ps, AST::Path path)
             pat = Parse_Pattern(lex);
         }
 
-        subpats.push_back( ::std::make_pair(mv$(field_name), mv$(pat)) );
+        subpats.push_back(AST::StructPatternEntry { mv$(attrs), mv$(field_name), mv$(pat) });
     } while( GET_TOK(tok, lex) == TOK_COMMA );
     CHECK_TOK(tok, TOK_BRACE_CLOSE);
 

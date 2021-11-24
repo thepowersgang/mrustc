@@ -90,7 +90,7 @@ static ::std::vector<AST::ExprNodeP> make_refpat_a(
 }
 static ::std::vector<AST::ExprNodeP> make_refpat_a(
         const Span& sp,
-        ::std::vector< ::std::pair<RcString, AST::Pattern> >&   pats_a,
+        ::std::vector< AST::StructPatternEntry>&   pats_a,
         const ::std::vector<AST::StructItem>& fields,
         ::std::function<AST::ExprNodeP(size_t, AST::ExprNodeP)> cb
     )
@@ -100,7 +100,7 @@ static ::std::vector<AST::ExprNodeP> make_refpat_a(
     for( const auto& fld : fields )
     {
         auto name_a = RcString::new_interned(FMT("a" << fld.m_name));
-        pats_a.push_back( ::std::make_pair(fld.m_name, ::AST::Pattern(::AST::Pattern::TagBind(), sp, name_a, ::AST::PatternBinding::Type::REF)) );
+        pats_a.push_back(AST::StructPatternEntry { AST::AttributeList(), fld.m_name, ::AST::Pattern(::AST::Pattern::TagBind(), sp, name_a, ::AST::PatternBinding::Type::REF) });
         nodes.push_back( cb(idx, NEWNODE(NamedValue, AST::Path(name_a))) );
         idx ++;
     }
@@ -127,8 +127,8 @@ static ::std::vector<AST::ExprNodeP> make_refpat_ab(
 }
 static ::std::vector<AST::ExprNodeP> make_refpat_ab(
         const Span& sp,
-        ::std::vector< ::std::pair<RcString, AST::Pattern> >&   pats_a,
-        ::std::vector< ::std::pair<RcString, AST::Pattern> >&   pats_b,
+        ::std::vector<AST::StructPatternEntry>&   pats_a,
+        ::std::vector<AST::StructPatternEntry>&   pats_b,
         const ::std::vector<AST::StructItem>& fields,
         ::std::function<AST::ExprNodeP(size_t, AST::ExprNodeP, AST::ExprNodeP)> cb
     )
@@ -139,8 +139,8 @@ static ::std::vector<AST::ExprNodeP> make_refpat_ab(
     {
         auto name_a = RcString::new_interned(FMT("a" << fld.m_name));
         auto name_b = RcString::new_interned(FMT("b" << fld.m_name));
-        pats_a.push_back( ::std::make_pair(fld.m_name, ::AST::Pattern(::AST::Pattern::TagBind(), sp, name_a, ::AST::PatternBinding::Type::REF)) );
-        pats_b.push_back( ::std::make_pair(fld.m_name, ::AST::Pattern(::AST::Pattern::TagBind(), sp, name_b, ::AST::PatternBinding::Type::REF)) );
+        pats_a.push_back(AST::StructPatternEntry { AST::AttributeList(), fld.m_name, ::AST::Pattern(::AST::Pattern::TagBind(), sp, name_a, ::AST::PatternBinding::Type::REF) });
+        pats_b.push_back(AST::StructPatternEntry { AST::AttributeList(), fld.m_name, ::AST::Pattern(::AST::Pattern::TagBind(), sp, name_b, ::AST::PatternBinding::Type::REF) });
         nodes.push_back( cb(idx, NEWNODE(NamedValue, AST::Path(name_a)), NEWNODE(NamedValue, AST::Path(name_b))) );
         idx ++;
     }
@@ -514,7 +514,7 @@ public:
                 pat_a = AST::Pattern(AST::Pattern::TagNamedTuple(), sp, variant_path, mv$(pats_a));
                 }
             TU_ARMA(Struct, e) {
-                ::std::vector< ::std::pair<RcString, AST::Pattern> > pats_a;
+                ::std::vector< AST::StructPatternEntry> pats_a;
 
                 auto s_ent = NEWNODE(NamedValue, AST::Path("s"));
                 auto nodes = make_refpat_a(sp, pats_a, e.m_fields, [&](size_t idx, auto a){
@@ -656,8 +656,8 @@ public:
                 code = NEWNODE(Block, mv$(nodes));
                 }
             TU_ARMA(Struct, e) {
-                ::std::vector< ::std::pair<RcString, AST::Pattern> > pats_a;
-                ::std::vector< ::std::pair<RcString, AST::Pattern> > pats_b;
+                ::std::vector<AST::StructPatternEntry> pats_a;
+                ::std::vector<AST::StructPatternEntry> pats_b;
 
                 auto nodes = make_refpat_ab(sp, pats_a, pats_b, e.m_fields, [&](const auto& name, auto a, auto b){
                         return this->compare_and_ret(sp, opts.core_name, mv$(a), mv$(b));
@@ -838,8 +838,8 @@ public:
                 code = NEWNODE(Block, mv$(nodes));
                 }
             TU_ARMA(Struct, e) {
-                ::std::vector< ::std::pair<RcString, AST::Pattern> > pats_a;
-                ::std::vector< ::std::pair<RcString, AST::Pattern> > pats_b;
+                ::std::vector<AST::StructPatternEntry> pats_a;
+                ::std::vector<AST::StructPatternEntry> pats_b;
 
                 auto nodes = make_refpat_ab(sp, pats_a, pats_b, e.m_fields, [&](size_t /*idx*/, auto a, auto b){
                         return this->make_compare_and_ret(sp, opts.core_name, NEWNODE(Deref, mv$(a)), NEWNODE(Deref, mv$(b)));
@@ -994,7 +994,7 @@ public:
                 code = NEWNODE(Block, mv$(nodes));
                 }
             TU_ARMA(Struct, e) {
-                ::std::vector< ::std::pair<RcString, AST::Pattern> > pats_a;
+                ::std::vector<AST::StructPatternEntry> pats_a;
                 auto nodes = make_refpat_a(sp, pats_a, e.m_fields, [&](size_t idx, auto a){
                     return this->assert_is_eq(assert_method_path, mv$(a));
                     });
@@ -1158,8 +1158,8 @@ public:
                 code = NEWNODE(Block, mv$(nodes));
                 }
             TU_ARMA(Struct, e) {
-                ::std::vector< ::std::pair<RcString, AST::Pattern> > pats_a;
-                ::std::vector< ::std::pair<RcString, AST::Pattern> > pats_b;
+                ::std::vector<AST::StructPatternEntry> pats_a;
+                ::std::vector<AST::StructPatternEntry> pats_b;
 
                 auto nodes = make_refpat_ab(sp, pats_a, pats_b, e.m_fields, [&](const auto& /*name*/, auto a, auto b) {
                         return this->make_compare_and_ret(sp, opts.core_name, mv$(a), mv$(b));
@@ -1324,13 +1324,13 @@ public:
                 code = NEWNODE(CallPath, base_path + v.m_name, mv$(nodes));
                 }
             TU_ARMA(Struct, e) {
-                ::std::vector< ::std::pair<RcString, AST::Pattern> > pats_a;
+                ::std::vector<AST::StructPatternEntry> pats_a;
                 ::AST::ExprNode_StructLiteral::t_values vals;
 
                 for( const auto& fld : e.m_fields )
                 {
                     auto name_a = RcString::new_interned(FMT("a" << fld.m_name));
-                    pats_a.push_back( ::std::make_pair(fld.m_name, ::AST::Pattern(::AST::Pattern::TagBind(), sp, name_a, ::AST::PatternBinding::Type::REF)) );
+                    pats_a.push_back(AST::StructPatternEntry { AST::AttributeList(), fld.m_name, ::AST::Pattern(::AST::Pattern::TagBind(), sp, name_a, ::AST::PatternBinding::Type::REF) });
                     vals.push_back({ {}, fld.m_name, this->clone_val_direct(opts.core_name, NEWNODE(NamedValue, AST::Path(name_a))) });
                 }
 
@@ -1606,7 +1606,7 @@ public:
                 code = NEWNODE(Block, mv$(nodes));
                 }
             TU_ARMA(Struct, e) {
-                ::std::vector< ::std::pair<RcString, AST::Pattern> > pats_a;
+                ::std::vector<AST::StructPatternEntry> pats_a;
                 auto nodes = make_refpat_a(sp, pats_a, e.m_fields, [&](size_t , auto a) {
                         return this->hash_val_direct(opts.core_name, mv$(a));
                         });
@@ -1819,7 +1819,7 @@ public:
                 pat_a = AST::Pattern(AST::Pattern::TagNamedTuple(), sp, base_path + v.m_name, mv$(pats_a));
                 }
             TU_ARMA(Struct, e) {
-                ::std::vector< ::std::pair<RcString, AST::Pattern> > pats_a;
+                ::std::vector<AST::StructPatternEntry> pats_a;
                 auto nodes = make_refpat_a(sp, pats_a, e.m_fields, [&](size_t idx, auto a){
                     return NEWNODE(CallPath, this->get_trait_path_Encoder() + RcString::new_interned("emit_enum_struct_variant_field"),
                         vec$(

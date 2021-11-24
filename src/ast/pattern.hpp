@@ -56,6 +56,8 @@ public:
     bool is_valid() const { return m_name.name != ""; }
 };
 
+struct StructPatternEntry;
+
 class Pattern
 {
 public:
@@ -90,7 +92,7 @@ public:
         (ValueLeftInc, struct { Value start; Value end; } ),
         (Tuple,     TuplePat ),
         (StructTuple, struct { Path path; TuplePat tup_pat; } ),
-        (Struct,    struct { Path path; ::std::vector< ::std::pair< RcString, Pattern> > sub_patterns; bool is_exhaustive; } ),
+        (Struct,    struct { Path path; ::std::vector<StructPatternEntry> sub_patterns; bool is_exhaustive; } ),
         (Slice,     struct { ::std::vector<Pattern> sub_pats; }),
         (SplitSlice, struct { ::std::vector<Pattern> leading; PatternBinding extra_bind; ::std::vector<Pattern> trailing; } ),
         (Or,        std::vector<Pattern>)
@@ -174,7 +176,7 @@ public:
     {}
 
     struct TagStruct {};
-    Pattern(TagStruct, Span sp, Path path, ::std::vector< ::std::pair< RcString,Pattern> > sub_patterns, bool is_exhaustive):
+    Pattern(TagStruct, Span sp, Path path, ::std::vector<StructPatternEntry> sub_patterns, bool is_exhaustive):
         m_span( mv$(sp) ),
         m_data( Data::make_Struct( { ::std::move(path), ::std::move(sub_patterns), is_exhaustive } ) )
     {}
@@ -198,6 +200,13 @@ public:
     const Path& path() const { return m_data.as_StructTuple().path; }
 
     friend ::std::ostream& operator<<(::std::ostream& os, const Pattern& pat);
+};
+
+struct StructPatternEntry
+{
+    AttributeList   attrs;
+    RcString    name;
+    Pattern     pat;
 };
 
 extern ::std::ostream& operator<<(::std::ostream& os, const Pattern::Value& val);
