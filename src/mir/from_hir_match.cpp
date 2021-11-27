@@ -1946,10 +1946,19 @@ void sort_rulesets(RulesetRef rulesets, size_t idx)
     if(rulesets.size() < 2)
         return ;
 
+    for(size_t i = 0; i < rulesets.size(); i ++)
+        assert(rulesets[i].size() == rulesets[0].size());
+    // Multiple rules, but no checks within then (can happen with `match () { _ if foo => ..., _ => ... }`)
+    if(rulesets[0].size() == 0)
+        return ;
+
     bool found_non_any = false;
     for(size_t i = 0; i < rulesets.size(); i ++)
+    {
+        assert(idx < rulesets[i].size());
         if( !rulesets[i][idx].is_Any() )
             found_non_any = true;
+    }
     if( found_non_any )
     {
         TRACE_FUNCTION_F(idx);
