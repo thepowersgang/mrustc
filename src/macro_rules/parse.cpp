@@ -116,6 +116,12 @@ public:
         case TOK_DOLLAR:
             switch( GET_TOK(tok, lex) )
             {
+            case TOK_SQUARE_CLOSE:
+            case TOK_PAREN_CLOSE:
+            case TOK_BRACE_CLOSE:
+                ret.push_back( MacroPatEnt(lex.end_span(ps), TOK_DOLLAR) );
+                PUTBACK(tok, lex);
+                break;
             case TOK_RWORD_CRATE:   // Not valid, as `$crate` already has meaning
                 throw ParseError::Unexpected(lex, tok);
             default:
@@ -408,6 +414,11 @@ struct ContentLoopVariableUse
                     }
                     ret.push_back( MacroExpansionEnt(ns->idx) );
                 }
+            }
+            else if( tok.type() == TOK_PAREN_CLOSE || tok.type() == TOK_SQUARE_CLOSE || tok.type() == TOK_BRACE_CLOSE )
+            {
+                PUTBACK(tok, lex);
+                ret.push_back( MacroExpansionEnt(Token(TOK_DOLLAR)) );
             }
             else
             {
