@@ -3490,6 +3490,9 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
             )
         )
         ),
+    (ErasedType,
+        return e.m_is_sized ? ::HIR::Compare::Equal : ::HIR::Compare::Unequal;
+        ),
     (TraitObject,
         return ::HIR::Compare::Unequal;
         )

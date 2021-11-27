@@ -1063,6 +1063,7 @@
         _(ErasedType, {
             deserialise_path(),
             static_cast<unsigned int>(m_in.read_count()),
+            m_in.read_bool(),
             deserialise_vec< ::HIR::TraitPath>(),
             deserialise_lifetimeref()
             })

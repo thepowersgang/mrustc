@@ -289,6 +289,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
 
         return ::HIR::TypeRef( ::HIR::TypeData::Data_ErasedType {
             mv$(origin), e.m_index,
+            e.m_is_sized,
             mv$(traits),
             e.m_lifetime
             } );
@@ -579,6 +580,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
 
         rv = ::HIR::TypeRef( ::HIR::TypeData::Data_ErasedType {
             mv$(origin), e.m_index,
+            e.m_is_sized,
             mv$(traits),
             e.m_lifetime
             } );

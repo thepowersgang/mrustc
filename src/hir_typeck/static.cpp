@@ -2178,6 +2178,12 @@ MetadataType StaticTraitResolve::metadata_type(const Span& sp, const ::HIR::Type
             BUG(sp, "Unknown generic binding on " << ty);
         }
         }
+    TU_ARMA(ErasedType, e) {
+        if(e.m_is_sized)
+            return MetadataType::None;
+        else
+            return MetadataType::Unknown;
+        }
     TU_ARMA(Path, e) {
         TU_MATCH_HDRA( (e.binding), { )
         TU_ARMA(Unbound, pbe) {

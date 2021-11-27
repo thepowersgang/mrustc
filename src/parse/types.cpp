@@ -370,21 +370,25 @@ TypeRef Parse_Type_ErasedType(TokenStream& lex, bool allow_trait_list)
     Token   tok;
 
     auto ps = lex.start_span();
-    ::std::vector<Type_TraitPath>   traits;
-    ::std::vector<AST::LifetimeRef>   lifetimes;
+    TypeData::Data_ErasedType   rv_data;
     do {
         if( LOOK_AHEAD(lex) == TOK_LIFETIME ) {
             GET_TOK(tok, lex);
-            lifetimes.push_back(AST::LifetimeRef( /*lex.point_span(),*/ tok.ident() ));
+            rv_data.lifetimes.push_back(AST::LifetimeRef( /*lex.point_span(),*/ tok.ident() ));
+        }
+        else if( LOOK_AHEAD(lex) == TOK_QMARK ) {
+            GET_TOK(tok, lex);
+            AST::HigherRankedBounds hrbs = Parse_HRB_Opt(lex);
+            rv_data.maybe_traits.push_back({ mv$(hrbs), Parse_Path(lex, PATH_GENERIC_TYPE) });
         }
         else
         {
             AST::HigherRankedBounds hrbs = Parse_HRB_Opt(lex);
-            traits.push_back({ mv$(hrbs), Parse_Path(lex, PATH_GENERIC_TYPE) });
+            rv_data.traits.push_back({ mv$(hrbs), Parse_Path(lex, PATH_GENERIC_TYPE) });
         }
     } while( GET_TOK(tok, lex) == TOK_PLUS );
     PUTBACK(tok, lex);
 
-    return TypeRef(lex.end_span(ps), TypeData::make_ErasedType({ mv$(traits), mv$(lifetimes) }));
+    return TypeRef(lex.end_span(ps), mv$(rv_data));
 }
 

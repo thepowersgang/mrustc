@@ -898,6 +898,16 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
             // TODO: Handle ATY bounds
             traits.push_back( LowerHIR_TraitPath(ty.span(), *t.path, /*allow_aty_trait_bounds=*/true) );
         }
+        bool is_sized = true;
+        for(const auto& t : e.maybe_traits) {
+            auto tp = LowerHIR_TraitPath(ty.span(), *t.path, /*allow_aty_trait_bounds=*/true);
+            if( tp.m_path.m_path == path_Sized ) {
+                is_sized = false;
+            }
+            else {
+                TODO(ty.span(), "Optional trait (not Sized) - " << ty);
+            }
+        }
         ::HIR::LifetimeRef  lft;
         if( e.lifetimes.size() == 0 )
         {
@@ -913,6 +923,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
         // Leave `m_origin` until the bind pass
         return ::HIR::TypeRef( ::HIR::TypeData::make_ErasedType(::HIR::TypeData::Data_ErasedType {
             ::HIR::Path(::HIR::SimplePath()), 0,
+            is_sized,
             mv$(traits),
             lft
             } ) );

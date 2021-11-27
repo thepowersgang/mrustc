@@ -141,6 +141,7 @@ TAGGED_UNION(TypeData, None,
         }),
     (ErasedType, struct {
         ::std::vector<Type_TraitPath>   traits;
+        ::std::vector<Type_TraitPath>   maybe_traits;
         ::std::vector<AST::LifetimeRef> lifetimes;
         })
     );

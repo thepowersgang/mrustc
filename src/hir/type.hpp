@@ -172,6 +172,7 @@ TAGGED_UNION(TypeData, Diverge,
     (ErasedType, struct {  // TODO: Pointer wrap
         ::HIR::Path m_origin;
         unsigned int m_index;
+        bool m_is_sized;
         ::std::vector< ::HIR::TraitPath>    m_traits;
         ::HIR::LifetimeRef  m_lifetime;
         }),

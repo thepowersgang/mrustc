@@ -925,6 +925,7 @@ const ::HIR::TraitMarkings* HIR::TypePathBinding::get_trait_markings() const
             traits.push_back( trait.clone() );
         return ::HIR::TypeRef( TypeData::make_ErasedType({
             e.m_origin.clone(), e.m_index,
+            e.m_is_sized,
             mv$(traits),
             e.m_lifetime
             }) );
