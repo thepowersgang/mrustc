@@ -5912,7 +5912,7 @@ namespace
                 else if( TU_TEST2(ty_l.data(), Path, .binding, Struct, ->m_struct_markings.coerce_unsized != ::HIR::StructMarkings::Coerce::None) )
                 {
                     const auto& le = ty_l.data().as_Path();
-                    const auto& re = ty_l.data().as_Path();
+                    const auto& re = ty_r.data().as_Path();
                     if( le.binding != re.binding )
                         return Incompatible;
                     auto param_idx = le.binding.as_Struct()->m_struct_markings.coerce_param;
@@ -6472,14 +6472,16 @@ namespace
                         case InfoOrdering::Incompatible:
                             break;
                         case InfoOrdering::Less:
+                            DEBUG("(less) Remove " << *it << ", keep " << *it2);
+                            if(0)
                         case InfoOrdering::Same:
-                            DEBUG("Remove " << *it << ", keep " << *it2);
+                            DEBUG("(same) Remove " << *it << ", keep " << *it2);
                             it->ty = it2->ty;
                             // Classes are already the same
                             it2->ty = nullptr;
                             break;
                         case InfoOrdering::More:
-                            DEBUG("Keep " << *it << ", remove " << *it2);
+                            DEBUG("(more) Keep " << *it << ", remove " << *it2);
                             it2->ty = nullptr;
                             break;
                         }
