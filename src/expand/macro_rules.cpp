@@ -161,7 +161,8 @@ class CMacroUseHandler:
             }
         }
         else {
-            ERROR(sp, E0000, "Use of #[macro_use] on non-module/crate - " << i.tag_str());
+            WARNING(sp, W0000, "Use of #[macro_use] on non-module/crate - " << i.tag_str());
+            return ;
         }
 
         for(size_t i = 0; i < filter.size(); i ++)
