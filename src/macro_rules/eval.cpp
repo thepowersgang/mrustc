@@ -1405,6 +1405,13 @@ namespace
         }
         else
         {
+            // HACK: If the next character is nothing interesting, then force no match?
+            // - TODO: Instead, have `:vis` force a deepeer check
+            if( lex.next() == TOK_EOF || lex.next() == TOK_PAREN_CLOSE || lex.next() == TOK_BRACE_CLOSE || lex.next() == TOK_SQUARE_CLOSE )
+            {
+                return false;
+            }
+            // NOTE: This is kinda true?
             return true;
         }
     }

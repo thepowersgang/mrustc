@@ -756,6 +756,7 @@ namespace {
                             }
                         }
                     }
+                    // TODO: If any end with `:vis` then extend
                     if( !did_extend )
                     {
                         break;
