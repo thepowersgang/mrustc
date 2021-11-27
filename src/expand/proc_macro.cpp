@@ -778,8 +778,53 @@ namespace {
         {
             if( !params.m_bounds.empty() )
             {
-                // TODO:
-                TODO(Span(), "visit_bounds");
+                m_pmi.send_ident("where");
+
+                for(const auto& e : params.m_bounds)
+                {
+                    TU_MATCH_HDRA((e), {)
+                    TU_ARMA(None, be)   continue;
+                    TU_ARMA(Lifetime, be) {
+                        m_pmi.send_lifetime(be.bound.name().name.c_str());
+                        m_pmi.send_symbol(":");
+                        m_pmi.send_lifetime(be.test.name().name.c_str());
+                        }
+                    TU_ARMA(TypeLifetime, be) {
+                        visit_type(be.type);
+                        m_pmi.send_symbol(":");
+                        m_pmi.send_lifetime(be.bound.name().name.c_str());
+                        }
+                    TU_ARMA(IsTrait, be) {
+                        if( !be.outer_hrbs.empty() ) {
+                            TODO(Span(), "be.inner_hrbs");
+                        }
+                        visit_type(be.type);
+                        m_pmi.send_symbol(":");
+                        if( !be.inner_hrbs.empty() ) {
+                            TODO(Span(), "be.inner_hrbs");
+                        }
+                        visit_path(be.trait);
+                        }
+                    TU_ARMA(MaybeTrait, be) {
+                        visit_type(be.type);
+                        m_pmi.send_symbol(":");
+                        m_pmi.send_symbol("?");
+                        visit_path(be.trait);
+                        }
+                    TU_ARMA(NotTrait, be) {
+                        visit_type(be.type);
+                        m_pmi.send_symbol(":");
+                        m_pmi.send_symbol("!");
+                        visit_path(be.trait);
+                        }
+                    TU_ARMA(Equality, be) {
+                        visit_type(be.type);
+                        m_pmi.send_symbol("=");
+                        visit_type(be.replacement);
+                        }
+                    }
+                    m_pmi.send_symbol(",");
+                }
             }
         }
         void visit_node(const ::AST::ExprNode& e)
