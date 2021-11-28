@@ -6245,8 +6245,28 @@ namespace
             // If there's no disable flags set, and there's only one source, pick it.
             // - Slight hack to speed up flow-down inference
             if( possible_tys.size() == 1 && possible_tys[0].is_source() && !ivar_ent.force_no_from ) {
-                DEBUG("One possibility (before ivar removal), setting to " << *possible_tys[0].ty);
-                context.equate_types(sp, ty_l, *possible_tys[0].ty);
+                const auto* ty_p = possible_tys[0].ty;
+                if( possible_tys[0].is_unsize() ) {
+                    HIR::TypeRef tmp_ty;
+
+                    do {
+                        if( !check_ivar_poss__fails_bounds(sp, context, ty_l, *ty_p) ) {
+                            DEBUG("Single possibility failed bounds, trying deref - " << *ty_p);
+                            break;
+                        }
+                    } while(ty_p = context.m_resolve.autoderef(sp, *ty_p, tmp_ty));
+                    if(!ty_p) {
+                        // All would fail, just set something sensible
+                        ty_p = possible_tys[0].ty;
+                    }
+                }
+                else {
+                    //if( check_ivar_poss__fails_bounds(sp, context, ty_l, *ty_p) ) {
+                    //    ERROR(
+                    //}
+                }
+                DEBUG("One possibility (before ivar removal), setting to " << *ty_p);
+                context.equate_types(sp, ty_l, *ty_p);
                 return true;
             }
 

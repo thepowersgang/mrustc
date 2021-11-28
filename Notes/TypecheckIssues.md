@@ -650,3 +650,23 @@ return (1 << shift).abs();
 - Failed libcore again first try
 - Limited only to fallback mode (and only if it doesn't remove eveything).
 - Worked.
+
+# (1.54) 
+```
+fn compute_lifetime_flags<I: Interner>(lifetime: &Lifetime<I>, interner: &I) -> TypeFlags { ... }
+
+fn compute_flags<I: Interner>(kind: &TyKind<I>, interner: &I) -> TypeFlags {
+   ...
+   dyn_flags |= compute_lifetime_flags(&(lifetime_outlives.a), &interner)
+```
+Passes `&interner` but there's no `Interner for &I` impl (so trait bound fails)
+
+```
+Typecheck Expressions-    check_ivar_poss: >> (202)
+Typecheck Expressions-     `anonymous-namespace'::check_ivar_poss: One possibility (before ivar removal), setting to &I/*M:0*/
+Typecheck Expressions-      HMTypeInferrence::set_ivar_to: Set IVar 202 = &I/*M:0*/
+```
+
+## Experiment: When picking a lone possibility (and it is dereferencable), check that it meets bounds and deref until it does
+- Simple check and loop.
+- Seems to have worked
