@@ -259,10 +259,15 @@ AST::GenericParams Parse_GenericParams(TokenStream& lex)
             auto param_name = tok.ident().name;
             auto param_def = AST::TypeParam( lex.point_span(), ::std::move(attrs), param_name );
 
+            size_t bound_start = SIZE_MAX;
+            size_t bound_end = SIZE_MAX;
             auto param_ty = TypeRef(lex.point_span(), param_name);
             if( GET_TOK(tok, lex) == TOK_COLON )
             {
+                bound_start = ret.m_bounds.size();
                 Parse_TypeBound(lex, ret, mv$(param_ty));
+                bound_end = ret.m_bounds.size();
+
                 GET_TOK(tok, lex);
             }
 
@@ -271,20 +276,24 @@ AST::GenericParams Parse_GenericParams(TokenStream& lex)
                 param_def.setDefault( Parse_Type(lex) );
                 GET_TOK(tok, lex);
             }
-            ret.add_ty_param( mv$(param_def) );
+            ret.add_ty_param( mv$(param_def), bound_start, bound_end );
         }
         else if( tok.type() == TOK_LIFETIME )
         {
+            size_t bound_start = SIZE_MAX;
+            size_t bound_end = SIZE_MAX;
             auto param_name = tok.ident();
             auto ref = get_LifetimeRef(lex, mv$(tok));
-            ret.add_lft_param(::AST::LifetimeParam(lex.point_span(), ::std::move(attrs), param_name ));
             if( GET_TOK(tok, lex) == TOK_COLON )
             {
+                bound_start = ret.m_bounds.size();
                 do {
                     GET_CHECK_TOK(tok, lex, TOK_LIFETIME);
                     ret.add_bound(AST::GenericBound::make_Lifetime({ AST::LifetimeRef(ref), get_LifetimeRef(lex, mv$(tok)) }));
                 } while( GET_TOK(tok, lex) == TOK_PLUS );
+                bound_end = ret.m_bounds.size();
             }
+            ret.add_lft_param(::AST::LifetimeParam(lex.point_span(), ::std::move(attrs), param_name ), bound_start, bound_end);
         }
         else if( tok.type() == TOK_RWORD_CONST )
         {

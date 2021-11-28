@@ -740,21 +740,62 @@ namespace {
             {
                 bool is_first = true;
                 m_pmi.send_symbol("<");
-                for( const auto& p : params.m_params )
+                for( const auto& param : params.m_params )
                 {
                     if( !is_first )
                         m_pmi.send_symbol(",");
-                    TU_MATCH_HDRA( (p), {)
+                    TU_MATCH_HDRA( (param), {)
                     TU_ARMA(None, p) {
                         // Uh... oops?
                         BUG(Span(), "Enountered GenericParam::None");
                         }
                     TU_ARMA(Lifetime, p) {
                         m_pmi.send_lifetime(p.name().name.c_str());
+                        bool first = true;
+                        for(size_t i = param.bounds_start; i < param.bounds_end; i++) {
+                            if(!params.m_bounds[i].is_None()) {
+                                if(first) { m_pmi.send_symbol(":"); first = false; }
+                                else { m_pmi.send_symbol("+"); }
+                            }
+                            TU_MATCH_HDRA((params.m_bounds[i]), {)
+                            default:
+                                BUG(Span(), "");
+                            TU_ARMA(None, be) {}
+                            TU_ARMA(Lifetime, be) {
+                                m_pmi.send_lifetime(be.test.name().name.c_str());
+                                }
+                            }
+                        }
                         }
                     TU_ARMA(Type, p) {
                         this->visit_attrs(p.attrs());
                         m_pmi.send_ident(p.name().c_str());
+                        bool first = true;
+                        for(size_t i = param.bounds_start; i < param.bounds_end; i++) {
+                            if(!params.m_bounds[i].is_None()) {
+                                if(first) { m_pmi.send_symbol(":"); first = false; }
+                                else { m_pmi.send_symbol("+"); }
+                            }
+                            TU_MATCH_HDRA((params.m_bounds[i]), {)
+                            default:
+                                BUG(Span(), "");
+                            TU_ARMA(None, be) {}
+                            TU_ARMA(Lifetime, be) {
+                                m_pmi.send_lifetime(be.test.name().name.c_str());
+                                }
+                            TU_ARMA(IsTrait, be) {
+                                assert(be.outer_hrbs.empty());  // Shouldn't be possible in this position
+                                if( !be.inner_hrbs.empty() ) {
+                                    TODO(Span(), "be.inner_hrbs");
+                                }
+                                visit_path(be.trait);
+                                }
+                            TU_ARMA(MaybeTrait, be) {
+                                m_pmi.send_symbol("?");
+                                visit_path(be.trait);
+                                }
+                            }
+                        }
                         if( !p.get_default().is_wildcard() )
                         {
                             m_pmi.send_symbol("=");
@@ -767,6 +808,7 @@ namespace {
                         m_pmi.send_ident(p.name().name.c_str());
                         m_pmi.send_symbol(":");
                         visit_type(p.type());
+                        assert(param.bounds_start == param.bounds_end);
                         }
                     }
                     is_first = false;
@@ -782,6 +824,16 @@ namespace {
 
                 for(const auto& e : params.m_bounds)
                 {
+                    auto i = &e - params.m_bounds.data();
+                    bool already_emitted = false;
+                    for(const auto& p : params.m_params) {
+                        if(p.is_None())
+                            continue ;
+                        if( p.bounds_start <= i && i < p.bounds_end )
+                            already_emitted = true;
+                    }
+                    if(already_emitted)
+                        continue ;
                     TU_MATCH_HDRA((e), {)
                     TU_ARMA(None, be)   continue;
                     TU_ARMA(Lifetime, be) {

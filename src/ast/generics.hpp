@@ -57,6 +57,7 @@ class LifetimeParam
     Span    m_span;
     Ident   m_name;
 public:
+
     LifetimeParam(Span sp, ::AST::AttributeList attrs, Ident name):
         m_attrs( ::std::move(attrs) ),
         m_span( ::std::move(sp) ),
@@ -113,8 +114,10 @@ TAGGED_UNION_EX( GenericParam, (), None,
         (Type, TypeParam),
         (Value, ValueParam)
         ),
-    (), (),
+    (, bounds_start(x.bounds_start), bounds_end(x.bounds_end) ), ( bounds_start = x.bounds_start; bounds_end = x.bounds_end; ),
     (
+        size_t bounds_start = 0;
+        size_t bounds_end = 0;
         GenericParam clone() const;
 
         friend std::ostream& operator<<(std::ostream& os, const GenericParam& x);
@@ -207,8 +210,16 @@ public:
     }
 
 
-    void add_lft_param(LifetimeParam lft) { m_params.push_back( ::std::move(lft) ); }
-    void add_ty_param(TypeParam param) { m_params.push_back( ::std::move(param) ); }
+    void add_param(GenericParam gp, size_t bounds_start, size_t bounds_end) {
+        m_params.push_back( ::std::move(gp) ); m_params.back().bounds_start = bounds_start; m_params.back().bounds_end = bounds_end;
+    }
+
+    void add_lft_param(LifetimeParam lft) { add_param( ::std::move(lft), SIZE_MAX, SIZE_MAX ); }
+    void add_lft_param(LifetimeParam lft, size_t bounds_start, size_t bounds_end) { add_param( ::std::move(lft), bounds_start, bounds_end); }
+
+    void add_ty_param(TypeParam param) { add_param( ::std::move(param), SIZE_MAX, SIZE_MAX); }
+    void add_ty_param(TypeParam param, size_t bounds_start, size_t bounds_end) { add_param( ::std::move(param), bounds_start, bounds_end); }
+
     void add_value_param(Span sp, AttributeList attrs, Ident name, TypeRef ty) {
         m_params.push_back(ValueParam(mv$(sp), mv$(attrs), mv$(name), mv$(ty)));
     }
