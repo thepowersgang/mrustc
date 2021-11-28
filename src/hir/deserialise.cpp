@@ -768,6 +768,7 @@
             auto _ = m_in.open_object("HIR::Function::Markings");
             ::HIR::Function::Markings rv;
             rv.rustc_legacy_const_generics = deserialise_vec<unsigned>();
+            rv.track_caller = m_in.read_bool();
             return rv;
         }
         ::std::vector< ::std::pair< ::HIR::Pattern, ::HIR::TypeRef> >   deserialise_fcnargs()

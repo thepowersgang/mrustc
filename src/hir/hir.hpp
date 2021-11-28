@@ -194,6 +194,7 @@ public:
 
     struct Markings {
         std::vector<unsigned> rustc_legacy_const_generics;
+        bool track_caller = false;
     } m_markings;
 
     Function()

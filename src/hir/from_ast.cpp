@@ -1628,6 +1628,12 @@ namespace {
             }
         }
     }
+    // #[track_caller] - Provides caller information
+    // NOTE: This can only be (cleanly) handled in the backend [where it sees fully monomorphised paths]
+    if( const auto* a = attrs.get("track_caller") )
+    {
+        markings.track_caller = true;
+    }
 
     ::HIR::Linkage  linkage;
 

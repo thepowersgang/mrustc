@@ -5519,7 +5519,8 @@ namespace {
             // --- #[track_caller]
             else if( name == "caller_location" ) {
                 //m_of << "abort()";
-                emit_lvalue(e.ret_val); m_of << " = NULL"; // TODO: Store the caller location (same as panic?)
+                m_of << "static struct s_ZRG2c699core0_0_05panic8Location0g mrustc_empty_caller_location = {0,0,{\"\",0}};";
+                emit_lvalue(e.ret_val); m_of << " = &mrustc_empty_caller_location"; // TODO: Hidden ABI for caller location
             }
             // --- Pointer manipulation
             else if( name == "offset" ) {   // addition, with the reqirement that the resultant pointer be in bounds

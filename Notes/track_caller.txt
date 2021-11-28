@@ -1,0 +1,27 @@
+% `#[track_caller]` implementation notes
+
+== ISSUES ==
+- Function pointer implicit closure (has to be created before MIR lower, or maybe MUCH later on)
+- Trait methods (present on `Index::index`, so ABI must match for all impls)
+
+== Ideas ==
+- Rewrite ABI during MIR lower?
+ > HIR storage of the flag might be interesting (can't modify the metadata)
+- Rewrite during trans?
+  - Would be duplicated across backends.
+  - No span to get at this stage.
+  - UPSIDE: Requires less fiddling through the earlier stages
+  - UPSIDE: Much easier to create new items
+  - CHALLENGE: Determining if the hidden argument should be added? (Maybe do a signature-only get_value)
+
+- Rewrite ABI earlier? Adds problems to typecheck.
+  - These problems would exist for external functions anyway
+  - Problems
+    - Argument types (every time arguments are checked)
+	  - Not much of an issue (only two locations)
+  - Design:
+    - Store function flag for `track_caller`
+    - Add extra argument to fcn during HIR lower
+    - Add extra argument to calls during HIR bind
+    - Fudge function pointers during bind (insert a pass-through closure)
+  - DOESN'T WORK (trait methods)
