@@ -1833,6 +1833,28 @@ bool TraitResolution::has_associated_type(const ::HIR::TypeRef& input) const
 }
 void TraitResolution::expand_associated_types_inplace(const Span& sp, ::HIR::TypeRef& input, LList<const ::HIR::TypeRef*> stack) const
 {
+    struct H {
+        static void expand_associated_types_params(const Span& sp, const TraitResolution& res, ::HIR::PathParams& params, LList<const ::HIR::TypeRef*> stack)
+        {
+            for(auto& arg : params.m_types)
+                res.expand_associated_types_inplace(sp, arg, stack);
+        }
+        static void expand_associated_types_tp(const Span& sp, const TraitResolution& res, ::HIR::TraitPath& input, LList<const ::HIR::TypeRef*> stack)
+        {
+            expand_associated_types_params(sp, res, input.m_path.m_params, stack);
+            for(auto& arg : input.m_type_bounds)
+            {
+                expand_associated_types_params(sp, res, arg.second.source_trait.m_params, stack);
+                res.expand_associated_types_inplace(sp, arg.second.type, stack);
+            }
+            for(auto& arg : input.m_trait_bounds)
+            {
+                expand_associated_types_params(sp, res, arg.second.source_trait.m_params, stack);
+                for(auto& t : arg.second.traits)
+                    expand_associated_types_tp(sp, res, t, stack);
+            }
+        }
+    };
     for(const auto& ty : m_eat_active_stack)
     {
         if( input == *ty ) {
@@ -1856,13 +1878,11 @@ void TraitResolution::expand_associated_types_inplace(const Span& sp, ::HIR::Typ
     TU_ARMA(Path, e) {
         TU_MATCH_HDRA( (e.path.m_data), {)
         TU_ARMA(Generic, pe) {
-            for(auto& arg : pe.m_params.m_types)
-                expand_associated_types_inplace(sp, arg, stack);
+            H::expand_associated_types_params(sp, *this, pe.m_params, stack);
             }
         TU_ARMA(UfcsInherent, pe) {
             expand_associated_types_inplace(sp, pe.type, stack);
-            for(auto& arg : pe.params.m_types)
-                expand_associated_types_inplace(sp, arg, stack);
+            H::expand_associated_types_params(sp, *this, pe.params, stack);
             // TODO: only valid for enum variants? (and only in some contexts)
             if( TU_TEST1(pe.type.data(), Path, .binding.is_Enum()) )
             {
@@ -1872,10 +1892,8 @@ void TraitResolution::expand_associated_types_inplace(const Span& sp, ::HIR::Typ
             }
         TU_ARMA(UfcsKnown, pe) {
             expand_associated_types_inplace(sp, pe.type, stack);
-            for(auto& arg : pe.params.m_types)
-                expand_associated_types_inplace(sp, arg, stack);
-            for(auto& arg : pe.trait.m_params.m_types)
-                expand_associated_types_inplace(sp, arg, stack);
+            H::expand_associated_types_params(sp, *this, pe.params, stack);
+            H::expand_associated_types_params(sp, *this, pe.trait.m_params, stack);
             // - Only try resolving if the binding isn't known
             if( e.binding.is_Unbound() )
             {
@@ -1891,6 +1909,9 @@ void TraitResolution::expand_associated_types_inplace(const Span& sp, ::HIR::Typ
         }
     TU_ARMA(TraitObject, e) {
         // Recurse?
+        H::expand_associated_types_tp(sp, *this, e.m_trait, stack);
+        for(auto& m : e.m_markers)
+            H::expand_associated_types_params(sp, *this, m.m_params, stack);
         }
     TU_ARMA(ErasedType, e) {
         // Recurse?
