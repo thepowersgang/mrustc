@@ -1256,7 +1256,7 @@ namespace {
             TU_ARMA(Enum, e) {
                 if( i+1 < path_abs.nodes.size() )
                 {
-                    const auto& next_node = path_abs.nodes[i+1];
+                    auto& next_node = path_abs.nodes[i+1];
                     // If this refers to an enum variant, return the full path
                     // - Otherwise, assume it's an associated type?
                     auto idx = e.find_variant(next_node.name());
@@ -1273,7 +1273,13 @@ namespace {
 
                         // NOTE: Type parameters for enums go after the _variant_
                         if( ! n.args().is_empty() ) {
-                            ERROR(sp, E0000, "Type parameters were not expected here (enum params go on the variant)");
+                            if( next_node.args().is_empty() ) {
+                                DEBUG("Moving type params from on the enum to the variant");
+                                next_node.args() = std::move(n.args());
+                            }
+                            else {
+                                ERROR(sp, E0000, "Type parameters were not expected here (enum params go on the variant)");
+                            }
                         }
 
                         if( e.m_data.is_Data() && e.m_data.as_Data()[idx].is_struct ) {
@@ -1565,7 +1571,7 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
                 }
                 else {
                     assert( e.enum_ );
-                    const auto& last_node = path_abs.nodes.back();
+                    auto& last_node = path_abs.nodes.back();
                     for( const auto& var : e.enum_->variants() ) {
                         if( var.m_name == last_node.name() ) {
 
@@ -1574,7 +1580,13 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
                             }
                             // NOTE: Type parameters for enums go after the _variant_
                             if( ! n.args().is_empty() ) {
-                                ERROR(sp, E0000, "Type parameters were not expected here (enum params go on the variant)");
+                                if( last_node.args().is_empty() ) {
+                                    DEBUG("Moving type params from on the enum to the variant");
+                                    last_node.args() = std::move(n.args());
+                                }
+                                else {
+                                    ERROR(sp, E0000, "Type parameters were not expected here (enum params go on the variant)");
+                                }
                             }
 
                             unsigned int idx = &var - &e.enum_->variants().front();

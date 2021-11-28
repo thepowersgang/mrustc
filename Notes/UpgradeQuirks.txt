@@ -33,3 +33,5 @@
 - `return (1 << shift).abs();` - Literal inference through a method call (likely actually uses traits, implemented using inherents)
 - Nested function using traits from parent function
 - Extra-nested macro patterns
+- `chalk_derive` is pendantic on `struct Binders<T: HasInterner> { ... }`, and doesn't work with `struct Binders<T> where T: HasInterner { ... }`
+- `chalk-ir` uses `Enum::<TypeParam>::Variant` instead of `Enum::Variant::<TypeParam>`
