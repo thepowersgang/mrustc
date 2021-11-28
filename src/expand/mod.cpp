@@ -1611,7 +1611,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             for(const auto& ue : e.entries)
             {
                 // Get module ref, if it's to a HIR module then grab the macro
-                if(ue.name != "")
+                if(ue.name != "" && ue.path.nodes().size() >= 1)
                 {
                     DEBUG("Use " << ue.path);
 

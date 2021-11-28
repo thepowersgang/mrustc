@@ -196,6 +196,22 @@ namespace {
                 if( e.crate == "" || e.crate == crate.m_crate_name_real ) {
                     return get_module_ast(crate.m_root_module, path, 0, ignore_last, out_path);
                 }
+                // 2018 `::cratename::` paths
+                else if( e.crate.c_str()[0] == '=' ) {
+                    const char* n = e.crate.c_str()+1;
+                    if( n == crate.m_crate_name_set) {
+                        return get_module_ast(crate.m_root_module, path, 0, ignore_last, out_path);
+                    }
+                    auto ec_it = AST::g_implicit_crates.find(n);
+                    if(ec_it == AST::g_implicit_crates.end())
+                        return ResolveModuleRef();
+                    auto ec_it2 = crate.m_extern_crates.find(ec_it->second);
+                    if( ec_it2 == crate.m_extern_crates.end() ) {
+                        DEBUG("Crate " << ec_it->second << " not found");
+                        return ResolveModuleRef();
+                    }
+                    return get_module_hir(ec_it2->second.m_hir->m_root_module, path, 0, ignore_last, out_path);
+                }
                 else {
                     // HIR lookup (different)
                     auto ec_it = crate.m_extern_crates.find(e.crate);
