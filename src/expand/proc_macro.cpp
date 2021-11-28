@@ -1219,6 +1219,7 @@ ProcMacroInv::ProcMacroInv(const Span& sp, AST::Edition edition, const char* exe
     PROCESS_INFORMATION piProcInfo{};
     STARTUPINFO siStartInfo{};
     siStartInfo.cb = sizeof(STARTUPINFO);
+    siStartInfo.hStdError = GetStdHandle(STD_ERROR_HANDLE);
     siStartInfo.hStdOutput = stdout_write;
     siStartInfo.hStdInput = stdin_read;
     siStartInfo.dwFlags |= STARTF_USESTDHANDLES;
