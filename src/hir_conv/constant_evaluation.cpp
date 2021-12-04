@@ -954,6 +954,7 @@ namespace HIR {
                         DEBUG("- Evaluate " << p);
                         try
                         {
+                            item.m_value_generated = true;
                             item.m_value_res = eval.evaluate_constant(::HIR::ItemPath(p), item.m_value, item.m_type.clone());
                             item.m_value_generated = true;
                         }
