@@ -670,3 +670,69 @@ Typecheck Expressions-      HMTypeInferrence::set_ivar_to: Set IVar 202 = &I/*M:
 ## Experiment: When picking a lone possibility (and it is dereferencable), check that it meets bounds and deref until it does
 - Simple check and loop.
 - Seems to have worked
+
+# (1.54) `::"chalk_solve-0_55_0_H7"::clauses::push_alias_implemented_clause`
+```rs
+// chalk-ir-0.55.0/src/lib.rs
+#[derive(..., HasInterner)]
+pub struct Ty<I: Interner> {
+    interned: I::InternedType,
+}
+// chalk-ir-0.55.0/src/lib.rs
+impl<T: HasInterner> Binders<T> {
+    ...
+    pub fn with_fresh_type_var(
+            interner: &T::Interner,
+            op: impl FnOnce(Ty<T::Interner>) -> T,
+        ) -> Binders<T> { ... }
+    ...
+}
+
+// chalk-solve-0.55.0/src/clauses.rs
+let binders = Binders::with_fresh_type_var(interner, |ty_var| ty_var);
+```
+Leads to a self-recursive type
+- `T` = `Ty<T::Interner>`
+- `T` = `Ty<?>`
+- This type isn't know around this point, requires some downstream bounds to work.
+
+## Added anti-recursion guards
+```
+..\rustc-1.54.0-src\vendor\chalk-solve-0.55.0\src\clauses.rs:761: warn:0:Spare Rule - &<::"chalk_ir-0_55_0"::Ty<</*RECURSE*/ as ::"chalk_ir-0_55_0"::interner::HasInterner>::Interner,> as ::"chalk_ir-0_55_0"::interner::HasInterner>::Interner := &I/*M:0*/
+..\rustc-1.54.0-src\vendor\chalk-solve-0.55.0\src\clauses.rs:753: warn:0:Spare Rule - <::"chalk_ir-0_55_0"::Ty<</*RECURSE*/ as ::"chalk_ir-0_55_0"::interner::HasInterner>::Interner,> as ::"chalk_ir-0_55_0"::interner::HasInterner>::Interner : ::"chalk_ir-0_55_0"::interner::Interner
+..\rustc-1.54.0-src\vendor\chalk-solve-0.55.0\src\clauses.rs:781: warn:0:Spare Rule - I/*M:0*/ = < ::"chalk_ir-0_55_0"::Ty<<::"chalk_ir-0_55_0"::Ty</*RECURSE*/,> as ::"chalk_ir-0_55_0"::interner::HasInterner>::Interner,> as ::"chalk_ir-0_55_0"::interner::HasInterner >::Interner
+:0: BUG:..\..\src\hir_typeck\expr_cs.cpp:7313: Spare rules left after typecheck stabilised
+```
+
+Probably the ivar for `Binders_T` shouldn't have been expanded/assigned to be `Ty<Binders_T>::Interner` (so the rule above doing `&<Ty<Binders_T>::Interner> = &I` would set it to `I` correctly via `Ty<T>::Interner == T`)
+
+
+## HACK: Updating the source worked
+```
+let binders = Binders::with_fresh_type_var(interner, |ty_var| ty_var);
+```
+to
+```
+let binders = Binders::<Ty<I>>::with_fresh_type_var(interner, |ty_var| ty_var);
+```
+
+So, from that `Binders_T = Ty<I>`
+
+## Error source: Generating the loop
+```
+Typecheck Expressions-      check_coerce: >> (R26 _/*155*/ := 000001BE70835FD0 000001BE75D536A0 (::"chalk_ir-0_55_0"::Ty<<_/*155*/ as ::"chalk_ir-0_55_0"::interner::HasInterner>::Interner/*?*/,>/*S*/) - _/*155*/ := ::"chalk_ir-0_55_0"::Ty<<_/*155*/ as ::"chalk_ir-0_55_0"::interner::HasInterner>::Interner,>)
+Typecheck Expressions-       check_coerce_tys: >> (_/*155*/ := ::"chalk_ir-0_55_0"::Ty<<_/*155*/ as ::"chalk_ir-0_55_0"::interner::HasInterner>::Interner/*?*/,>/*S*/)
+Typecheck Expressions-       check_coerce_tys: << ()
+Typecheck Expressions-       `anonymous-namespace'::check_coerce: Trigger equality - Completed
+Typecheck Expressions-        HMTypeInferrence::set_ivar_to: Set IVar 155 = ::"chalk_ir-0_55_0"::Ty<<_/*155*/ as ::"chalk_ir-0_55_0"::interner::HasInterner>::Interner/*?*/,>/*S*/
+```
+Before allowing an assignment in `check_coerce` (especially of an ivar), check if it would trigger recursion (i.e. the mentioned ivar is in the target type, but the types aren't equal)
+- If it does, defer the coercion once more.
+- Worked, in that it didn't cause the loop, but still has a failure to infer.
+- Not consuming `R26` means that `_/*155*/` isn't inferred to be a `Ty<...>`
+  - Could detect the potential loop and introduce a new ivar for the param to `Ty`?
+    - Check/ensure that there is a UfcsKnown in the looping variable
+    - Replace the UfcsKnown with a new ivar (and add a ATY rule for it)
+ - Worked!
+ - Moved the anti-recursion to `Context::equate_types` (where it works all the time, and is less expensive to implement)
+

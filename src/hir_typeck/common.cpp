@@ -21,6 +21,8 @@ struct WMut {
 template<template<typename> class W>
 struct TyVisitor
 {
+    const LList<const HIR::TypeRef*>*  m_cur_recurse_stack = nullptr;
+
     virtual typename W<HIR::TypeData>::T& get_ty_data(typename W<HIR::TypeRef>::T& ty) const = 0;
 
     virtual bool visit_path_params(typename W<::HIR::PathParams>::T& tpl)
@@ -69,6 +71,24 @@ struct TyVisitor
     }
     virtual bool visit_type(typename W<HIR::TypeRef>::T& ty)
     {
+        if(m_cur_recurse_stack) {
+            for(const auto* p : *m_cur_recurse_stack) {
+                if( p == &ty ) {
+                    return false;
+                }
+            }
+        }
+        struct _ {
+            typedef LList<const HIR::TypeRef*> stack_t;
+            const stack_t*&  dst;
+            stack_t stack;
+            _(const stack_t*& dst, const HIR::TypeRef& ty): dst(dst), stack(dst, &ty) {
+                dst = &stack;
+            }
+            ~_() {
+                dst = stack.m_prev;
+            }
+        } h(m_cur_recurse_stack, ty);
         TU_MATCH_HDRA( (this->get_ty_data(ty)), {)
         TU_ARMA(Infer, e) {
             }

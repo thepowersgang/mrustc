@@ -107,8 +107,8 @@ public:
 
     void dump() const;
 
-    void print_type(::std::ostream& os, const ::HIR::TypeRef& tr) const;
-    void print_pathparams(::std::ostream& os, const ::HIR::PathParams& pps) const;
+    void print_type(::std::ostream& os, const ::HIR::TypeRef& tr, LList<const ::HIR::TypeRef*> stack = {}) const;
+    void print_pathparams(::std::ostream& os, const ::HIR::PathParams& pps, LList<const ::HIR::TypeRef*> stack = {}) const;
 
     FmtType fmt_type(const ::HIR::TypeRef& tr) const {
         return FmtType(*this, tr);

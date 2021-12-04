@@ -1804,6 +1804,42 @@ void Context::equate_types_inner(const Span& sp, const ::HIR::TypeRef& li, const
         }
     }
 
+    auto set_ivar = [&](const HIR::TypeRef& dst, const HIR::TypeRef& src) {
+        auto ivar_idx = dst.data().as_Infer().index;
+        if( ivar_idx < m_ivars_sized.size() && m_ivars_sized.at(ivar_idx) ) {
+            this->require_sized(sp, src);
+        }
+        if( visit_ty_with(src, [&](const HIR::TypeRef& ity){ return ity == dst; }) ) {
+            DEBUG("Start of a loop detected: rewrite");
+            // Ensure that there's an unexpanded ATY in here (containing the ivar)
+            // Replace the ATY with a new ivar
+            // Equate this ivar with the updated type
+            // Add an ATY equality rule for the new ivar
+            // - `_0 = Ty< <_0 as Foo>::Type >`
+            // becomes
+            // - `_0 = Ty<_1>`
+            // - `<_0 as Foo>::Type = _1`
+            auto new_src = clone_ty_with(sp, src, [&](const HIR::TypeRef& tpl, HIR::TypeRef& out_ty)->bool {
+                if( tpl.data().is_Path() && tpl.data().as_Path().binding.is_Unbound() ) {
+                    if( visit_ty_with(src, [&](const HIR::TypeRef& ity){ return ity == dst; }) ) {
+                        const auto& pe = tpl.data().as_Path().path.m_data.as_UfcsKnown();
+                        out_ty = this->m_ivars.new_ivar_tr();
+                        this->equate_types_assoc(sp, out_ty, pe.trait.m_path, pe.trait.m_params.clone(), pe.type, pe.item.c_str(), false);
+                        return true;
+                    }
+                    else {
+                    }
+                }
+                return false;
+                });
+            ASSERT_BUG(sp, !visit_ty_with(new_src, [&](const HIR::TypeRef& ity){ return ity == dst; }), "");
+            this->m_ivars.set_ivar_to(ivar_idx, std::move(new_src));
+        }
+        else {
+            this->m_ivars.set_ivar_to(ivar_idx, src.clone());
+        }
+        };
+
     DEBUG("- l_t = " << l_t << ", r_t = " << r_t);
     if(const auto* r_e = r_t.data().opt_Infer())
     {
@@ -1824,10 +1860,7 @@ void Context::equate_types_inner(const Span& sp, const ::HIR::TypeRef& li, const
         }
         else {
             // Righthand side is infer, alias it to the left
-            if( r_e->index < m_ivars_sized.size() && m_ivars_sized.at(r_e->index) ) {
-                this->require_sized(sp, l_t);
-            }
-            this->m_ivars.set_ivar_to(r_e->index, l_t.clone());
+            set_ivar(r_t, l_t);
         }
     }
     else
@@ -1835,10 +1868,7 @@ void Context::equate_types_inner(const Span& sp, const ::HIR::TypeRef& li, const
         if(const auto* l_e = l_t.data().opt_Infer())
         {
             // Lefthand side is infer, alias it to the right
-            if( l_e->index < m_ivars_sized.size() && m_ivars_sized.at(l_e->index) ) {
-                this->require_sized(sp, r_t);
-            }
-            this->m_ivars.set_ivar_to(l_e->index, r_t.clone());
+            set_ivar(l_t, r_t);
         }
         else {
             auto equality_constgeneric = [&](const ::HIR::ConstGeneric& rl, const ::HIR::ConstGeneric& rr) {

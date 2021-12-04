@@ -60,6 +60,30 @@ void HMTypeInferrence::dump() const
 }
 void HMTypeInferrence::check_for_loops()
 {
+#if 1
+    struct LoopChecker {
+        ::std::vector<unsigned int> m_indexes;
+        void check_ty(const HMTypeInferrence& ivars, const ::HIR::TypeRef& ty) {
+
+            visit_ty_with(ty, [&](const HIR::TypeRef& t) {
+                if( const auto* ep = t.data().opt_Infer() ) {
+                    const auto& e = *ep;
+                    for(auto idx : m_indexes)
+                        ASSERT_BUG(Span(), e.index != idx, "Recursion in ivar #" << m_indexes.front() << " " << *ivars.m_ivars[m_indexes.front()].type
+                            << " - loop with " << idx << " " << *ivars.m_ivars[idx].type);
+                    const auto& ivd = ivars.get_pointed_ivar(e.index);
+                    assert( !ivd.is_alias() );
+                    if( !ivd.type->data().is_Infer() ) {
+                        m_indexes.push_back( e.index );
+                        this->check_ty(ivars, *ivd.type);
+                        m_indexes.pop_back( );
+                    }
+                }
+                return false;
+                });
+        }
+    };
+#else
     struct LoopChecker {
         ::std::vector<unsigned int> m_indexes;
 
@@ -153,6 +177,7 @@ void HMTypeInferrence::check_for_loops()
             }
         }
     };
+#endif
     unsigned int i = 0;
     for(const auto& v : m_ivars)
     {
@@ -227,9 +252,24 @@ bool HMTypeInferrence::apply_defaults()
     return rv;
 }
 
-void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr) const
+void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr, LList<const ::HIR::TypeRef*> outer_stack) const
 {
     const auto& ty = this->get_type(tr);
+    for(const auto* pty : outer_stack) {
+        if( pty  ) {
+            if( pty == &ty ) {
+                os << "/*RECURSE*/";
+                return ;
+            }
+        }
+    }
+    auto stack = LList<const ::HIR::TypeRef*>(&outer_stack, &ty);
+
+    auto print_traitpath = [&](const HIR::TraitPath& tp) {
+        os << "(" << tp.m_path.m_path;
+        this->print_pathparams(os, tp.m_path.m_params, stack);
+    };
+
     TU_MATCH_HDRA( (ty.data()), {)
     TU_ARMA(Infer, e) {
         os << ty;
@@ -243,21 +283,21 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr) 
         TU_MATCH(::HIR::Path::Data, (e.path.m_data), (pe),
         (Generic,
             os << pe.m_path;
-            this->print_pathparams(os, pe.m_params);
+            this->print_pathparams(os, pe.m_params, stack);
             ),
         (UfcsKnown,
             os << "<";
-            this->print_type(os, pe.type);
+            this->print_type(os, pe.type, stack);
             os << " as " << pe.trait.m_path;
-            this->print_pathparams(os, pe.trait.m_params);
+            this->print_pathparams(os, pe.trait.m_params, stack);
             os << ">::" << pe.item;
-            this->print_pathparams(os, pe.params);
+            this->print_pathparams(os, pe.params, stack);
             ),
         (UfcsInherent,
             os << "<";
-            this->print_type(os, pe.type);
+            this->print_type(os, pe.type, stack);
             os << ">::" << pe.item;
-            this->print_pathparams(os, pe.params);
+            this->print_pathparams(os, pe.params, stack);
             ),
         (UfcsUnknown,
             BUG(Span(), "UfcsUnknown");
@@ -274,7 +314,7 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr) 
         case ::HIR::BorrowType::Unique: os << "mut ";  break;
         case ::HIR::BorrowType::Owned:  os << "move "; break;
         }
-        this->print_type(os, e.inner);
+        this->print_type(os, e.inner, stack);
         }
     TU_ARMA(Pointer, e) {
         switch(e.type)
@@ -283,26 +323,26 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr) 
         case ::HIR::BorrowType::Unique: os << "*mut ";  break;
         case ::HIR::BorrowType::Owned:  os << "*move "; break;
         }
-        this->print_type(os, e.inner);
+        this->print_type(os, e.inner, stack);
         }
     TU_ARMA(Slice, e) {
         os << "[";
-        this->print_type(os, e.inner);
+        this->print_type(os, e.inner, stack);
         os << "]";
         }
     TU_ARMA(Array, e) {
         os << "[";
-        this->print_type(os, e.inner);
+        this->print_type(os, e.inner, stack);
         os << "; " << e.size << "]";
         }
     TU_ARMA(Closure, e) {
         os << "{" << e.node << "}(";
         for(const auto& arg : e.m_arg_types) {
-            this->print_type(os, arg);
+            this->print_type(os, arg, stack);
             os << ",";
         }
         os << ")->";
-        this->print_type(os, e.m_rettype);
+        this->print_type(os, e.m_rettype, stack);
         }
     TU_ARMA(Generator, e) {
         os << "{gen:" << e.node << "}";
@@ -315,18 +355,18 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr) 
             os << "extern \"" << e.m_abi << "\" ";
         os << "fn(";
         for(const auto& arg : e.m_arg_types) {
-            this->print_type(os, arg);
+            this->print_type(os, arg, stack);
             os << ",";
         }
         os << ")->";
-        this->print_type(os, e.m_rettype);
+        this->print_type(os, e.m_rettype, stack);
         }
     TU_ARMA(TraitObject, e) {
-        os << "(" << e.m_trait.m_path.m_path;
-        this->print_pathparams(os, e.m_trait.m_path.m_params);
+        os << "(";
+        print_traitpath(e.m_trait);
         for(const auto& marker : e.m_markers) {
             os << "+" << marker.m_path;
-            this->print_pathparams(os, marker.m_params);
+            this->print_pathparams(os, marker.m_params, stack);
         }
         if( e.m_lifetime != ::HIR::LifetimeRef::new_static() )
             os << "+ '" << e.m_lifetime;
@@ -338,7 +378,7 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr) 
         for(const auto& tr : e.m_traits) {
             if( &tr != &e.m_traits[0] )
                 os << "+";
-            os << tr;
+            print_traitpath(tr);
         }
         if( e.m_lifetime != ::HIR::LifetimeRef::new_static() )
             os << "+" << e.m_lifetime;
@@ -347,19 +387,19 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr) 
     TU_ARMA(Tuple, e) {
         os << "(";
         for(const auto& st : e) {
-            this->print_type(os, st);
+            this->print_type(os, st, stack);
             os << ",";
         }
         os << ")";
         }
     }
 }
-void HMTypeInferrence::print_pathparams(::std::ostream& os, const ::HIR::PathParams& pps) const
+void HMTypeInferrence::print_pathparams(::std::ostream& os, const ::HIR::PathParams& pps, LList<const ::HIR::TypeRef*> stack) const
 {
     if( pps.has_params() ) {
         os << "<";
         for(const auto& pp_t : pps.m_types) {
-            this->print_type(os, pp_t);
+            this->print_type(os, pp_t, stack);
             os << ",";
         }
         for(const auto& pp_v : pps.m_values) {
@@ -372,6 +412,21 @@ void HMTypeInferrence::print_pathparams(::std::ostream& os, const ::HIR::PathPar
 
 void HMTypeInferrence::expand_ivars(::HIR::TypeRef& type)
 {
+    thread_local static std::vector<const HIR::TypeRef*>  s_recurse_stack;
+    for(const auto* p : s_recurse_stack) {
+        if( p == &type ) {
+            return ;
+        }
+    }
+    struct _ {
+        _(const HIR::TypeRef* ptr) {
+            s_recurse_stack.push_back(ptr);
+        }
+        ~_() {
+            s_recurse_stack.pop_back();
+        }
+    } h(&type);
+
     struct H {
         static void expand_ivars_path(/*const*/ HMTypeInferrence& self, ::HIR::Path& path)
         {
@@ -1858,7 +1913,7 @@ void TraitResolution::expand_associated_types_inplace(const Span& sp, ::HIR::Typ
     for(const auto& ty : m_eat_active_stack)
     {
         if( input == *ty ) {
-            DEBUG("Recursive lookup, skipping - input = " << input);
+            DEBUG("Recursive lookup, skipping - &input = " << &input);
             return ;
         }
     }
@@ -1891,6 +1946,23 @@ void TraitResolution::expand_associated_types_inplace(const Span& sp, ::HIR::Typ
             TODO(sp, "Path - UfcsInherent - " << e.path);
             }
         TU_ARMA(UfcsKnown, pe) {
+            struct D {
+                const TraitResolution&  m_tr;
+                D(const TraitResolution& tr, ::HIR::TypeRef v): m_tr(tr) {
+                    tr.m_eat_active_stack.push_back( box$(v) );
+                }
+                ~D() {
+                    m_tr.m_eat_active_stack.pop_back();
+                }
+                D(D&&) = delete;
+                D(const D&) = delete;
+            };
+            D   _(*this, input.clone());
+            // State stack to avoid infinite recursion
+            assert(m_eat_active_stack.size() > 0);
+            auto& prev_stack = stack;
+            LList<const ::HIR::TypeRef*>    stack(&prev_stack, m_eat_active_stack.back().get());
+
             expand_associated_types_inplace(sp, pe.type, stack);
             H::expand_associated_types_params(sp, *this, pe.params, stack);
             H::expand_associated_types_params(sp, *this, pe.trait.m_params, stack);
@@ -1948,27 +2020,11 @@ void TraitResolution::expand_associated_types_inplace(const Span& sp, ::HIR::Typ
 }
 
 
-void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp, ::HIR::TypeRef& input, LList<const ::HIR::TypeRef*> prev_stack) const
+void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp, ::HIR::TypeRef& input, LList<const ::HIR::TypeRef*> stack) const
 {
     TRACE_FUNCTION_FR("input=" << input, input);
     auto& e = input.data_mut().as_Path();
     auto& pe = e.path.m_data.as_UfcsKnown();
-
-    struct D {
-        const TraitResolution&  m_tr;
-        D(const TraitResolution& tr, ::HIR::TypeRef v): m_tr(tr) {
-            tr.m_eat_active_stack.push_back( box$(v) );
-        }
-        ~D() {
-            m_tr.m_eat_active_stack.pop_back();
-        }
-        D(D&&) = delete;
-        D(const D&) = delete;
-    };
-    D   _(*this, input.clone());
-    // State stack to avoid infinite recursion
-    assert(m_eat_active_stack.size() > 0);
-    LList<const ::HIR::TypeRef*>    stack(&prev_stack, m_eat_active_stack.back().get());
 
     expand_associated_types_inplace(sp, pe.type, stack);
     for(auto& ty : pe.trait.m_params.m_types)

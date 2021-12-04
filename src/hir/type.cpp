@@ -116,6 +116,23 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         os << "NULL";
         return ;
     }
+
+    thread_local static std::vector<const HIR::TypeInner*>  s_recurse_stack;
+    for(const auto* p : s_recurse_stack) {
+        if( p == m_ptr ) {
+            os << "RECURSE";
+            return ;
+        }
+    }
+    struct _ {
+        _(const HIR::TypeInner* ptr) {
+            s_recurse_stack.push_back(ptr);
+        }
+        ~_() {
+            s_recurse_stack.pop_back();
+        }
+    } h(m_ptr);
+
     //os << "{" << m_ptr << "}";
     TU_MATCH_HDRA( (data()), { )
     TU_ARMA(Infer, e) {
@@ -328,6 +345,9 @@ bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const
 Ordering HIR::TypeRef::ord(const ::HIR::TypeRef& x) const
 {
     Ordering    rv;
+
+    if( &data() == &x.data() )
+        return OrdEqual;
 
     ORD( static_cast<unsigned int>(data().tag()), static_cast<unsigned int>(x.data().tag()) );
 
@@ -636,6 +656,30 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
             break;
         }
     }
+#if 1
+    thread_local static std::vector<const HIR::TypeInner*>  s_recurse_stack;
+    for(const auto* p : s_recurse_stack) {
+        if( p == m_ptr ) {
+            DEBUG("Recursion");
+            ASSERT_BUG(sp, &v == &x, "Recursion with unequal type pointers");
+            return HIR::Compare::Equal;
+        }
+    }
+    struct _ {
+        _(const HIR::TypeInner* ptr) {
+            s_recurse_stack.push_back(ptr);
+        }
+        ~_() {
+            s_recurse_stack.pop_back();
+        }
+    } h(m_ptr);
+#else
+    // NOTE: This doesn't allow matching identical types (which can be desirable)
+    if( &v == &x ) {
+        DEBUG("Pointer equality");
+        return HIR::Compare::Equal;
+    }
+#endif
 
     if( v.data().tag() != x.data().tag() ) {
         // HACK: If the path is Opaque, return a fuzzy match.
