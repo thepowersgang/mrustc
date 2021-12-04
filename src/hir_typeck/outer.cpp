@@ -349,7 +349,7 @@ namespace {
                         size_t idx = m_fcn_ptr->m_params.m_types.size();
                         auto name = RcString::new_interned(FMT("erased$" << idx));
                         auto new_ty = ::HIR::TypeRef( name, 256 + idx );
-                        m_fcn_ptr->m_params.m_types.push_back({ name, ::HIR::TypeRef(), true });
+                        m_fcn_ptr->m_params.m_types.push_back({ name, ::HIR::TypeRef(), e->m_is_sized });
                         for( const auto& trait : e->m_traits )
                         {
                             m_fcn_ptr->m_params.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({
