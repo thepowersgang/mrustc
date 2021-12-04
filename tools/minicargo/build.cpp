@@ -52,6 +52,46 @@ extern int _putenv_s(const char*, const char*);
 # include <sys/sysctl.h>
 #endif
 
+
+namespace {
+    enum class TerminalColour {
+        Default,
+        Red,    // ANSI 1
+        Green  // ANSI 2
+    };
+    void set_console_colour(std::ostream& os, TerminalColour colour) {
+#if defined(_WIN32) && !defined(__MINGW32__)
+        HANDLE  h;
+        WORD default_val;
+        if( &os == &std::cout ) {
+            h = GetStdHandle(STD_OUTPUT_HANDLE);
+            default_val = FOREGROUND_INTENSITY | FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE;
+        }
+        else if( &os == &std::cerr ) {
+            h = GetStdHandle(STD_ERROR_HANDLE);
+            default_val = FOREGROUND_INTENSITY | FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE;
+        }
+        else {
+            return ;
+        }
+        switch(colour)
+        {
+        case TerminalColour::Default: SetConsoleTextAttribute(h, default_val); break;
+        case TerminalColour::Red  : SetConsoleTextAttribute(h, FOREGROUND_INTENSITY | FOREGROUND_RED); break;
+        case TerminalColour::Green: SetConsoleTextAttribute(h, FOREGROUND_INTENSITY | FOREGROUND_GREEN); break;
+        }
+#else
+        // TODO: Only enable if printing to a terminal (not to a file)
+        switch(colour)
+        {
+        case TerminalColour::Default:   os << "\x1B[0m";    break;
+        case TerminalColour::Red  :     os << "\x1B[31m";   break;
+        case TerminalColour::Green:     os << "\x1B[32m";   break;
+        }
+#endif
+    };
+}
+
 #ifdef _WIN32
 # define EXESUF ".exe"
 # define DLLSUF ".dll"
@@ -878,6 +918,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
 #ifndef DISABLE_MULTITHREAD
         ::std::lock_guard<::std::mutex> lh { s_cout_mutex };
 #endif
+        set_console_colour(std::cout, TerminalColour::Green);
         // TODO: Determine what number and total targets there are
         if( index != ~0u ) {
             //::std::cout << "(" << index << "/" << m_total_targets << ") ";
@@ -889,6 +930,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         ::std::cout << manifest.name() << " v" << manifest.version();
         if( !manifest.active_features().empty() )
             ::std::cout << " with features [" << manifest.active_features() << "]";
+        set_console_colour(std::cout, TerminalColour::Default);
         ::std::cout << ::std::endl;
     }
     StringList  args;
@@ -1241,9 +1283,11 @@ bool Builder::spawn_process_mrustc(const StringList& args, StringListKV env, con
 {
     //env.push_back("MRUSTC_DEBUG", "");
     auto rv = spawn_process(m_compiler_path.str().c_str(), args, env, logfile);
-    if(getenv("MINICARGO_RUN_ONCE"))
+    if(getenv("MINICARGO_RUN_ONCE") || getenv("MINICARGO_RUN_ONCE"))
     {
-        std::cerr << "- Only running compiler once" << std::endl;
+        if(rv) {
+            std::cerr << "- Only running compiler once" << std::endl;
+        }
         exit(1);
     }
     return rv;
@@ -1391,7 +1435,10 @@ bool spawn_process(const char* exe_name, const StringList& args, const StringLis
 #ifndef DISABLE_MULTITHREAD
         ::std::lock_guard<::std::mutex> lh { s_cout_mutex };
 #endif
-        std::cerr << "Process `" << cmdline_str << "` exited with non-zero exit status " << status << std::endl;
+        set_console_colour(std::cerr, TerminalColour::Red);
+        std::cerr << "Process `" << cmdline_str << "` exited with non-zero exit status " << status;
+        set_console_colour(std::cerr, TerminalColour::Default);
+        std::cerr << std::endl;
         return false;
     }
 #else
@@ -1458,7 +1505,13 @@ bool spawn_process(const char* exe_name, const StringList& args, const StringLis
         }
         if( posix_spawn(&pid, exe_name, &fa, /*attr=*/nullptr, (char* const*)argv.data(), (char* const*)envp.get_vec().data()) != 0 )
         {
-            ::std::cerr << "Unable to run process '" << exe_name << "' - " << strerror(errno) << ::std::endl;
+#ifndef DISABLE_MULTITHREAD
+            ::std::lock_guard<::std::mutex> lh { s_cout_mutex };
+#endif
+            set_console_colour(std::cerr, TerminalColour::Red);
+            ::std::cerr << "Unable to run process '" << exe_name << "' - " << strerror(errno);
+            set_console_colour(std::cerr, TerminalColour::Default);
+            ::std::cerr << ::std::endl;
             DEBUG("Unable to spawn executable");
             posix_spawn_file_actions_destroy(&fa);
             return false;
@@ -1472,13 +1525,17 @@ bool spawn_process(const char* exe_name, const StringList& args, const StringLis
     waitpid(pid, &status, 0);
     if( status != 0 )
     {
+#ifndef DISABLE_MULTITHREAD
         ::std::lock_guard<::std::mutex> lh { s_cout_mutex };
+#endif
+        set_console_colour(std::cerr, TerminalColour::Red);
         if( WIFEXITED(status) )
             ::std::cerr << "Process exited with non-zero exit status " << WEXITSTATUS(status) << ::std::endl;
         else if( WIFSIGNALED(status) )
             ::std::cerr << "Process was terminated with signal " << WTERMSIG(status) << ::std::endl;
         else
             ::std::cerr << "Process terminated for unknown reason, status=" << status << ::std::endl;
+        set_console_colour(std::cerr, TerminalColour::Default);
         ::std::cerr << "FAILING COMMAND: ";
         for(const auto& p : argv)
             ::std::cerr  << " " << p;
