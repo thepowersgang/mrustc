@@ -49,6 +49,8 @@
 
 /lib/libproc_macro/Cargo.lock
 /lib/libproc_macro/target
+/lib/libproc_macro/tools/dump.exe
+/lib/libproc_macro/tools/dump.pdb
 
 /bnf/*.o
 /bnf/*.dep
