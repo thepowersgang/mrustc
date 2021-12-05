@@ -250,7 +250,7 @@ namespace {
         {
             if( params.m_types.size() != param_defs.m_types.size() )
             {
-                TRACE_FUNCTION_F(path);
+                TRACE_FUNCTION_FR(path, params);
 
                 if( params.m_types.size() == 0 && fill_infer ) {
                     for(const auto& typ : param_defs.m_types) {

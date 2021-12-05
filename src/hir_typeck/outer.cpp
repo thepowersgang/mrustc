@@ -209,6 +209,8 @@ namespace {
         }
         void check_parameters(const Span& sp, const ::HIR::GenericParams& param_def,  ::HIR::PathParams& param_vals)
         {
+            MonomorphStatePtr ms(m_self_types.empty() ? nullptr : m_self_types.back(), &param_vals, nullptr);
+
             while( param_vals.m_types.size() < param_def.m_types.size() ) {
                 unsigned int i = param_vals.m_types.size();
                 const auto& ty_def = param_def.m_types[i];
@@ -217,11 +219,8 @@ namespace {
                 }
 
                 // Replace and expand
-                param_vals.m_types.push_back( ty_def.m_default.clone_shallow() );
-                auto& ty = param_vals.m_types.back();
-                // TODO: Monomorphise?
-                // Replace `Self` here with the real Self
-                update_self_type(sp, ty);
+                param_vals.m_types.push_back( ms.monomorph_type(sp, ty_def.m_default) );
+                DEBUG("Add missing param (using default): " << param_vals.m_types.back());
             }
 
             if( param_vals.m_types.size() != param_def.m_types.size() ) {
@@ -234,8 +233,8 @@ namespace {
                     //if( param_def.m_types[i].m_default == ::HIR::TypeRef() )
                     //    ERROR(sp, E0000, "Unspecified parameter with no default");
                     // TODO: Monomorphise?
-                    param_vals.m_types[i] = param_def.m_types[i].m_default.clone_shallow();
-                    update_self_type(sp, param_vals.m_types[i]);
+                    param_vals.m_types[i] = ms.monomorph_type(sp, param_def.m_types[i].m_default);
+                    DEBUG("Add `_` param (using default): " << param_vals.m_types[i]);
                 }
             }
 

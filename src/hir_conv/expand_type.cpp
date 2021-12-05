@@ -14,30 +14,32 @@
 ::HIR::TypeRef ConvertHIR_ExpandAliases_GetExpansion_GP(const Span& sp, const ::HIR::Crate& crate, const ::HIR::GenericPath& path, bool is_expr)
 {
     const auto& ti = crate.get_typeitem_by_path(sp, path.m_path);
-    if(const auto* e = ti.opt_TypeAlias() )
+    if(const auto* ep = ti.opt_TypeAlias() )
     {
-        const auto& e2 = *e;
+        const auto& ta = *ep;
         auto pp = path.m_params.clone();
         if( !is_expr ) {
-            while( pp.m_types.size() < e2.m_params.m_types.size() && e2.m_params.m_types[pp.m_types.size()].m_default != ::HIR::TypeRef() ) {
-                pp.m_types.push_back( e2.m_params.m_types[pp.m_types.size()].m_default.clone_shallow() );
+            auto ms_o = MonomorphStatePtr(nullptr, &path.m_params, nullptr);
+            while( pp.m_types.size() < ta.m_params.m_types.size() && ta.m_params.m_types[pp.m_types.size()].m_default != ::HIR::TypeRef() ) {
+                pp.m_types.push_back( ms_o.monomorph_type(sp, ta.m_params.m_types[pp.m_types.size()].m_default) );
             }
-            if( pp.m_types.size() != e2.m_params.m_types.size() ) {
-                ERROR(sp, E0000, "Mismatched parameter count in " << path << ", expected " << e2.m_params.m_types.size() << " got " << pp.m_types.size());
+            if( pp.m_types.size() != ta.m_params.m_types.size() ) {
+                ERROR(sp, E0000, "Mismatched parameter count in " << path << ", expected " << ta.m_params.m_types.size() << " got " << pp.m_types.size());
             }
         }
         else {
-            while( pp.m_types.size() < e2.m_params.m_types.size() )
+            while( pp.m_types.size() < ta.m_params.m_types.size() )
             {
                 pp.m_types.push_back( ::HIR::TypeRef() );
             }
         }
-        if( e2.m_params.m_types.size() > 0 ) {
+        if( ta.m_params.m_types.size() > 0 ) {
+            // Monomorphise the exapnded type using the created params
             auto ms = MonomorphStatePtr(nullptr, &pp, nullptr);
-            return ms.monomorph_type(sp, e2.m_type);
+            return ms.monomorph_type(sp, ta.m_type);
         }
         else {
-            return e2.m_type.clone();
+            return ta.m_type.clone();
         }
     }
     return ::HIR::TypeRef();
