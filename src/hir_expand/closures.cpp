@@ -351,6 +351,8 @@ namespace {
             // Handle casts from closures to function pointers
             if( node.m_value->m_res_type.data().is_Closure() )
             {
+                TRACE_FUNCTION_FR("_Cast: " << &node << " " << node.m_value->m_res_type, node.m_value->m_res_type);
+
                 const auto& src_te = node.m_value->m_res_type.data().as_Closure();
                 ASSERT_BUG(sp, node.m_res_type.data().is_Function(), "Cannot convert closure to non-fn type");
                 //const auto& dte = node.m_res_type.m_data.as_Function();
@@ -359,16 +361,18 @@ namespace {
                     ERROR(sp, E0000, "Cannot cast a closure with captures to a fn() type");
                 }
 
-                ::HIR::FunctionType    fcn_ty_inner { /*is_unsafe=*/false, ABI_RUST, src_te.node->m_return.clone(), {} };
-                ::std::vector<::HIR::TypeRef>   arg_types;
-                fcn_ty_inner.m_arg_types.reserve(src_te.node->m_args.size());
-                arg_types.reserve(src_te.node->m_args.size());
-                for(const auto& arg : src_te.node->m_args)
-                {
-                    fcn_ty_inner.m_arg_types.push_back( arg.second.clone() );
-                    arg_types.push_back(arg.second.clone());
+                //auto ms = MonomorphStatePtr(nullptr, &src_te.node->m_obj_path.m_params, nullptr);
+                //auto monomorph = [&](const HIR::TypeRef& ty)->HIR::TypeRef { return src_te.node->m_obj_ptr ? ms.monomorph_type(sp, ty) : ty.clone_shallow(); };
+                //::HIR::FunctionType    fcn_ty_inner { /*is_unsafe=*/false, ABI_RUST, monomorph(src_te.node->m_return), {} };
+                //fcn_ty_inner.m_arg_types.reserve(src_te.node->m_args.size());
+                //for(const auto& arg : src_te.node->m_args) {
+                //    fcn_ty_inner.m_arg_types.push_back( monomorph(arg.second) );
+                //}
+                ::HIR::FunctionType    fcn_ty_inner { /*is_unsafe=*/false, ABI_RUST, src_te.m_rettype.clone_shallow(), {} };
+                fcn_ty_inner.m_arg_types.reserve(src_te.m_arg_types.size());
+                for(const auto& arg : src_te.m_arg_types) {
+                    fcn_ty_inner.m_arg_types.push_back( arg.clone_shallow() );
                 }
-                auto trait_params = ::HIR::PathParams( ::HIR::TypeRef(mv$(arg_types)) );
                 auto res_ty = ::HIR::TypeRef(mv$(fcn_ty_inner));
 
                 const auto& str = *src_te.node->m_obj_ptr;

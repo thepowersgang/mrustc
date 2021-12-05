@@ -351,8 +351,10 @@ namespace {
 
         void visit(::HIR::ExprNode_Cast& node) override
         {
-            TRACE_FUNCTION_F(&node << " ... as " << node.m_res_type);
+            TRACE_FUNCTION_F(&node << " " << node.m_value->m_res_type << " as " << node.m_dst_type);
             const Span& sp = node.span();
+            DEBUG("Cast res type " << node.m_res_type);
+            //ASSERT_BUG(node.span(), node.m_res_type == node.m_dst_type, node.m_res_type << " != " << node.m_dst_type);
 
             const auto& src_ty = node.m_value->m_res_type;
             const auto& dst_ty = node.m_res_type;
