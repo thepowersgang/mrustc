@@ -2181,9 +2181,12 @@ public:
 {
     ::HIR::Crate    rv;
 
-    if(crate.m_crate_type != ::AST::Crate::Type::Executable)
-    {
+    if(crate.m_crate_type != ::AST::Crate::Type::Executable) {
         rv.m_crate_name = crate.m_crate_name_real;
+    }
+    else {
+        // Use a non-empty crate name that won't conflict with any libraries
+        rv.m_crate_name = "bin#";
     }
     rv.m_edition = crate.m_edition;
 
