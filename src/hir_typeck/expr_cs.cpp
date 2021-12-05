@@ -1430,6 +1430,7 @@ namespace {
             if(v.is_Infer())
             {
                 auto val = ivars.get_value(v).clone();
+                ASSERT_BUG(sp, !val.is_Infer(), "Failure to infer " << v << " in " << top_type);
                 v = std::move(val);
             }
         }
@@ -2283,6 +2284,7 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                     }
                 TU_ARM(pattern.m_data, Slice, e) {
                     // Can be either a [T] or [T; n]. Can't provide a hint
+                    // - Can provide the hint if not behind a borrow.
                     }
                 TU_ARM(pattern.m_data, SplitSlice, pe) {
                     // Can be either a [T] or [T; n]. Can't provide a hint
@@ -2605,6 +2607,8 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                     }
                     else if(const auto* te = ty.data().opt_Array() ) {
                         slice_inner = &te->inner;
+                        // Equate the array size
+                        context.equate_types(sp, ty, ::HIR::TypeRef::new_array(slice_inner->clone(), e.sub_patterns.size()));
                     }
                     else {
                         ERROR(sp, E0000, "Matching a non-array/slice with a slice pattern - " << ty);
