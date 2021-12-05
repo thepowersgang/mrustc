@@ -304,7 +304,8 @@ int main(int argc, char *argv[])
             crate.load_externs();
             if( params.test_harness )
             {
-                crate.load_extern_crate(Span(), "test");
+                auto test_crate_name = RcString::new_interned("test");
+                AST::g_implicit_crates.insert( std::make_pair(test_crate_name, crate.load_extern_crate(Span(), test_crate_name)) );
             }
             });
 

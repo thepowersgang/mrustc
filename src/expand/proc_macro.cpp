@@ -80,7 +80,8 @@ STATIC_DECORATOR("proc_macro", Decorator_ProcMacro)
 
 void Expand_ProcMacro(::AST::Crate& crate)
 {
-    crate.load_extern_crate(Span(), "proc_macro");
+    auto pm_crate_name = RcString::new_interned("proc_macro");
+    AST::g_implicit_crates.insert( std::make_pair(pm_crate_name, crate.load_extern_crate(Span(), pm_crate_name)) );
 
     // Create the following module:
     // ```
