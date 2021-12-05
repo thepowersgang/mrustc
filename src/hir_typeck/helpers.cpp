@@ -266,7 +266,7 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr, 
     auto stack = LList<const ::HIR::TypeRef*>(&outer_stack, &ty);
 
     auto print_traitpath = [&](const HIR::TraitPath& tp) {
-        os << "(" << tp.m_path.m_path;
+        os << tp.m_path.m_path;
         this->print_pathparams(os, tp.m_path.m_params, stack);
     };
 
@@ -362,14 +362,14 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr, 
         this->print_type(os, e.m_rettype, stack);
         }
     TU_ARMA(TraitObject, e) {
-        os << "(";
+        os << "dyn (";
         print_traitpath(e.m_trait);
         for(const auto& marker : e.m_markers) {
             os << "+" << marker.m_path;
             this->print_pathparams(os, marker.m_params, stack);
         }
         if( e.m_lifetime != ::HIR::LifetimeRef::new_static() )
-            os << "+ '" << e.m_lifetime;
+            os << "+" << e.m_lifetime;
         os << ")";
         }
     TU_ARMA(ErasedType, e) {
@@ -2535,7 +2535,7 @@ bool TraitResolution::find_named_trait_in_trait(const Span& sp,
 }
 bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl_r callback) const
 {
-    TRACE_FUNCTION_F("trait = " << trait << params << " , type = " << type);
+    TRACE_FUNCTION_F("trait = " << trait << params << ", type = " << type);
     const ::HIR::Path::Data::Data_UfcsKnown* assoc_info = nullptr;
     if(const auto* e = type.data().opt_Path()) {
         assoc_info = e->path.m_data.opt_UfcsKnown();
