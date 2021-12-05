@@ -1,6 +1,8 @@
 //
 //
 //
+#![allow(ellipsis_inclusive_range_patterns)]    // 1.19 doesn't support `..=`
+
 #[allow(dead_code)]
 #[path="../src/protocol.rs"]
 mod protocol;
@@ -18,12 +20,31 @@ pub fn dump_token_stream<R: ::std::io::Read>(reader: R)
         Token::Ident(s) => println!("IDENT {}", s),
         Token::Lifetime(s) => println!("LIFETIME {}", s),
         Token::String(s) => println!("STRING {:?}", s),
-        Token::ByteString(s) => println!("BYTESTRING {:x?}", s),
+        Token::ByteString(s) => println!("BYTESTRING {:?}", FmtByteString(&s)),
         Token::Char(c) => println!("CHAR {:?}", c),
         Token::Unsigned(val, ty) => println!("UNSIGNED {val:?} ty={ty}", val=val, ty=ty),
         Token::Signed(val, ty) => println!("SIGNED {val:?} ty={ty}", val=val, ty=ty),
         Token::Float(val, ty) => println!("FLOAT {val:?} ty={ty}", val=val, ty=ty),
         }
+    }
+}
+
+struct FmtByteString<'a>(&'a [u8]);
+impl<'a> std::fmt::Debug for FmtByteString<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        use std::fmt::Write;
+        f.write_char('"')?;
+        for &b in self.0 {
+            match b
+            {
+            b'\\' => f.write_str("\\\\")?,
+            b'"' => f.write_str("\\\"")?,
+            0x20...0x7F => f.write_char(b as char)?,
+            b => write!(f, "\\x{:02X}", b)?,
+            }
+        }
+        f.write_char('"')?;
+        Ok(())
     }
 }
 
@@ -38,7 +59,7 @@ pub fn dump_token_stream_pretty<R: ::std::io::Read>(reader: R)
         Token::Ident(s) => print!("{} ", s),
         Token::Lifetime(s) => print!("'{} ", s),
         Token::String(s) => print!("{:?}", s),
-        Token::ByteString(s) => print!("{:x?}", s),
+        Token::ByteString(s) => print!("{:?}", FmtByteString(&s)),
         Token::Char(c) => print!("'{:?}'", c),
         Token::Unsigned(val, ty) => print!("{val:?} /*ty={ty}*/", val=val, ty=ty),
         Token::Signed(val, ty) => print!("{val:?} /*ty={ty}*/", val=val, ty=ty),

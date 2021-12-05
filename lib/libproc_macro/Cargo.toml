@@ -6,3 +6,10 @@ version = "0.0.0"
 [features]
 default = ["mrustc"]
 mrustc = []
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "dump"
+path = "tools/dump.rs"

@@ -1,6 +1,7 @@
 // MRustC custom version of libproc_macro
 //
 // Unlike the original rustc version, this one is designed to live complely detached from its compiler.
+#![allow(ellipsis_inclusive_range_patterns)]
 
 macro_rules! some_else {
     ($e:expr => $alt:expr) => {match $e { Some(v) => v, None => $alt }};
@@ -29,6 +30,7 @@ mod lex;
 mod protocol;
 /// Converts to/from TokenStream and IPC
 mod serialisation;
+mod diagnostic;
 
 mod token_stream {
 
@@ -158,6 +160,7 @@ pub use crate::token_tree::{TokenTree,Group,Ident,Punct,Literal};
 pub use crate::token_tree::{Delimiter,Spacing};
 
 pub use crate::lex::LexError;
+pub use crate::diagnostic::{Diagnostic,Level,MultiSpan};
 
 
 #[doc(hidden)]
