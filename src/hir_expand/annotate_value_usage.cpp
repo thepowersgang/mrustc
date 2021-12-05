@@ -670,11 +670,18 @@ namespace {
         
         void visit(::HIR::ExprNode_Closure& node) override
         {
+            if(!node.m_code)
+            {
+                DEBUG("Already expanded (via consteval?)");
+                return ;
+            }
+
             m_closure_stack.push_back(ClosureScope(node));
 
             for(const auto& arg : node.m_args)
                 add_defs_from_pattern(node.span(), arg.first);
 
+            if(node.m_code)
             {
                 auto _ = push_usage( ::HIR::ValueUsage::Move );
                 this->visit_node_ptr(node.m_code);

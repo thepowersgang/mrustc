@@ -731,6 +731,12 @@ namespace {
         /// </summary>
         void visit(::HIR::ExprNode_Closure& node) override
         {
+            if(!node.m_code)
+            {
+                DEBUG("Already expanded (via consteval?)");
+                return ;
+            }
+
             const auto& sp = node.span();
 
             TRACE_FUNCTION_F("Extract closure - " << node.m_res_type);
