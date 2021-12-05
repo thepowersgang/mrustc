@@ -4103,7 +4103,10 @@ namespace {
                     }
                     else
                     {
-                        // TODO: Should this check?
+                        // Check that the trait is implemented (so this only returns `Unsize` if the rule would be valid - use for check_ivar_poss)
+                        if( !context.m_resolve.find_trait_impls(sp, trait.m_path, trait.m_params, src, [&](auto _impl_ref, auto _cmp) { return true; }) ) {
+                            return CoerceResult::Equality;
+                        }
                     }
                 }
 
