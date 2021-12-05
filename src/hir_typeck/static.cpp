@@ -907,6 +907,19 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
         ASSERT_BUG(sp, impl_params.m_types[i] != HIR::TypeRef(), "");
     }
 
+    assert(impl_params_def.m_types.size() == impl_params.m_types.size());
+    for(size_t i = 0; i < impl_params_def.m_types.size(); i ++)
+    {
+        if( impl_params_def.m_types.at(i).m_is_sized )
+        {
+            if( !type_is_sized(sp, impl_params.m_types[i]) )
+            {
+                DEBUG("- Sized bound failed for " << impl_params.m_types[i]);
+                return false;
+            }
+        }
+    }
+
     return found_cb( mv$(impl_params), match );
 }
 
@@ -2173,6 +2186,9 @@ MetadataType StaticTraitResolve::metadata_type(const Span& sp, const ::HIR::Type
             else {
                 return MetadataType::Unknown;
             }
+        }
+        else if( e.is_placeholder() ) {
+            return MetadataType::None;
         }
         else {
             BUG(sp, "Unknown generic binding on " << ty);

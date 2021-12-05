@@ -280,6 +280,7 @@ namespace {
     class ExprVisitor_Fixup:
         public ::HIR::ExprVisitorDef
     {
+    public:
         const ::HIR::Crate& m_crate;
         StaticTraitResolve  m_resolve;
         const Monomorphiser&    m_monomorphiser;
@@ -804,7 +805,7 @@ namespace {
                 // - Fix type to replace closure types with known paths
                 ExprVisitor_Fixup   fixup { m_resolve.m_crate, &params, monomorph_cb };
                 fixup.visit_type(ty_mono);
-                if( !m_resolve.type_is_copy(sp, ty_mono) )
+                if( !fixup.m_resolve.type_is_copy(sp, ty_mono) )
                 {
                     node.m_is_copy = false;
                 }
