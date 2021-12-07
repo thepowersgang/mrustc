@@ -617,11 +617,17 @@ namespace {
                     }
                 }
             }
-            DEBUG("Not found");
             if( mod.is_anon() )
             {
-                // TODO: Search parent
+                DEBUG("Recurse to parent");
+                const AST::Module* m = &crate.m_root_module;
+                for(size_t i = 0; i < mod.path().nodes.size() - 1; i ++)
+                {
+                    m = &as_Namespace(this->find_item(*m, mod.path().nodes[i], ResolveNamespace::Namespace)).as_Ast()->as_Module();
+                }
+                return find_item(*m, name, ns, out_path);
             }
+            DEBUG("Not found");
             return ResolveItemRef::make_None({});
         }
 
