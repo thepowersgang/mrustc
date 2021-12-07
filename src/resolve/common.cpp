@@ -623,7 +623,14 @@ namespace {
                 const AST::Module* m = &crate.m_root_module;
                 for(size_t i = 0; i < mod.path().nodes.size() - 1; i ++)
                 {
-                    m = &as_Namespace(this->find_item(*m, mod.path().nodes[i], ResolveNamespace::Namespace)).as_Ast()->as_Module();
+                    auto& tgt_name = mod.path().nodes[i];
+                    if( tgt_name.c_str()[0] == '#' ) {
+                        auto idx = strtol(tgt_name.c_str()+1, nullptr, 10);
+                        m = &*m->anon_mods()[idx];
+                    }
+                    else {
+                        m = &as_Namespace(this->find_item(*m, tgt_name, ResolveNamespace::Namespace)).as_Ast()->as_Module();
+                    }
                 }
                 return find_item(*m, name, ns, out_path);
             }
