@@ -897,8 +897,8 @@ struct CExpandExpr:
                 }
                 void visit(::AST::ExprNode_Tuple& v) override {
                     std::vector<AST::Pattern>   subpats;
-                    for(auto& v : v.m_values) {
-                        subpats.push_back(lower(v));
+                    for(auto& m : v.m_values) {
+                        subpats.push_back(lower(m));
                     }
                     pat(AST::Pattern(AST::Pattern::TagTuple(), v.span(), std::move(subpats)));
                 }
