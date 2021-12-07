@@ -308,6 +308,32 @@ void Dumper::dump_function(::HIR::ItemPath ip, const ::HIR::Publicity& pub, cons
 }
 
 
+namespace {
+    void dump_macro_contents(std::ostream& os, const std::vector<MacroExpansionEnt>& ents) {
+        for(const auto& ent : ents)
+        {
+            os << " ";
+            TU_MATCH_HDRA( (ent), { )
+            TU_ARMA(Loop, e) {
+                os << "loop(";
+                os << e.controlling_input_loops;
+                os << ") {";
+                dump_macro_contents(os, e.entries);
+                os << "}" << e.joiner;
+                }
+            TU_ARMA(NamedValue, e) {
+                if(e == ~0u)
+                    os << "$crate";
+                else
+                    os << "$" << e;
+                }
+            TU_ARMA(Token, e) {
+                os << e;
+                }
+            }
+        }
+    }
+}
 
 void Dumper::dump_macrorules(const HIR::ItemPath& ip, const MacroRules& rules) const
 {
@@ -345,7 +371,9 @@ void Dumper::dump_macrorules(const HIR::ItemPath& ip, const MacroRules& rules) c
             }
         }
         ::std::cout << " ) => {\n";
-        // TODO: Macro expansion
+        ::std::cout << "    ";
+        dump_macro_contents(std::cout, arm.m_contents);
+        ::std::cout << "\n";
         ::std::cout << "    }\n";
     }
     ::std::cout << "}\n";
