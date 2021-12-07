@@ -240,6 +240,29 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence)
     }
     else
     {
+        // HACK: Parse a path and look for a `macro::path! { }`, so it can be parsed as a block (instead of as an expression)
+        // NOTE: This means that here is where the path parsing code ends up
+        switch(tok.type())
+        {
+        case TOK_IDENT:
+        case TOK_RWORD_CRATE:
+        case TOK_RWORD_SUPER:
+        case TOK_DOUBLE_COLON:
+        case TOK_RWORD_SELF:
+            if(tok.type() != TOK_RWORD_SELF || lex.lookahead(0) == TOK_DOUBLE_COLON) {
+                PUTBACK(tok, lex);
+                auto p = Parse_Path(lex, PATH_GENERIC_EXPR);
+                if( lex.lookahead(0) == TOK_EXCLAM && lex.lookahead(1) == TOK_BRACE_OPEN ) {
+                    GET_CHECK_TOK(tok, lex, TOK_EXCLAM);
+                    return Parse_ExprMacro(lex, std::move(p));
+                }
+                tok = Token(Token::TagTakeIP(), InterpolatedFragment(std::move(p)));
+            }
+            break;
+        default:
+            break;
+        }
+
         switch( tok.type() )
         {
         case TOK_INTERPOLATED_BLOCK:

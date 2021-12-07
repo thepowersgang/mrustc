@@ -68,7 +68,7 @@ private:
         DEBUG(">> " << m_hygiene);
     }
     void pop_hygine() override {
-        DEBUG("<< " << m_hygiene);
+        DEBUG("<< " << m_hygiene << " -> " << m_hygiene.get_parent());
         m_hygiene = m_hygiene.get_parent();
     }
 

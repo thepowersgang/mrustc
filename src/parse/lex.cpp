@@ -891,7 +891,7 @@ Token Lexer::getTokenInt_Identifier(Codepoint leader, Codepoint leader2, bool pa
             return Token(v);
         }
     }
-    return Token(TOK_IDENT, Ident(this->get_hygiene(), RcString::new_interned(str)));
+    return Token(TOK_IDENT, Ident(this->realGetHygiene(), RcString::new_interned(str)));
 }
 
 // Takes the VERY lazy way of reading the float into a string then passing to strtod

@@ -37,7 +37,7 @@ Token TokenStream::getToken()
     if( m_cache_valid )
     {
 #ifdef FULL_TRACE
-        DEBUG("<<< " << m_cache << " (cache)");
+        DEBUG("<= " << m_cache << " (cache)");
 #endif
         m_cache_valid = false;
         return mv$(m_cache);
@@ -49,7 +49,7 @@ Token TokenStream::getToken()
         m_hygiene = m_lookahead.front().hygiene;
         m_lookahead.erase(m_lookahead.begin());
 #ifdef FULL_TRACE
-        DEBUG("<<< " << ret << " (lookahead)");
+        DEBUG("<= " << ret << " (lookahead)");
 #endif
         if( DEBUG_PRINT_TOKENS ) {
             ::std::cout << "getToken[" << typeid(*this).name() << "] - " << ret.get_pos() << "-" << ret << ::std::endl;
@@ -62,7 +62,7 @@ Token TokenStream::getToken()
         m_edition = this->realGetEdition();
         m_hygiene = this->realGetHygiene();
 #ifdef FULL_TRACE
-        DEBUG("<<< " << ret << " (new)");
+        DEBUG("<= " << ret << " (new)");
 #endif
         if( DEBUG_PRINT_TOKENS ) {
             ::std::cout << "getToken[" << typeid(*this).name() << "] - " << ret.get_pos() << "-" << ret << ::std::endl;
