@@ -998,7 +998,7 @@ namespace HIR {
                 for(const auto& w : lv.m_wrappers)
                 {
                     assert(typ);
-                    DEBUG(w << " " << val);
+                    DEBUG(w << " " << val << ": " << *typ);
                     TU_MATCH_HDRA( (w), {)
                     TU_ARMA(Field, e) {
                         auto* repr = Target_GetTypeRepr(state.sp, state.m_resolve, *typ);
@@ -1082,7 +1082,8 @@ namespace HIR {
                         if(repr->size != SIZE_MAX) {
                             metadata = ValueRef();
                         }
-                        val = val.slice(repr->fields[e].offset, size_of_or_bug(repr->fields[e].ty));
+                        typ = &repr->fields[e].ty;
+                        val = val.slice(repr->fields[e].offset, size_of_or_bug(*typ));
                         }
                     }
                 }
