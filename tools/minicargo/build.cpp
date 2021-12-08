@@ -1043,7 +1043,12 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
             const auto& m = dep.get_package();
             auto path = this->get_crate_path(m, m.get_library(), is_for_host, nullptr, nullptr);
             args.push_back("--extern");
-            args.push_back(::format(H::escape_dashes(dep.key()), "=", path));
+            if( dep.key() != m.name() ) {
+                args.push_back(::format(H::escape_dashes(dep.key()), "=", path));
+            }
+            else {
+                args.push_back(::format(m.get_library().m_name, "=", path));
+            }
         }
     });
     if( target.m_type == PackageTarget::Type::Test )
