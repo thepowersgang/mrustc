@@ -224,13 +224,13 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
     for(auto& ip : mod.m_items)
     {
         auto& i = *ip;
-        TU_MATCH_DEF( AST::Item, (i.data), (e),
-        (
-            ),
-        (Module,
-            Resolve_Use_Mod(crate, i.data.as_Module(), path + i.name);
-            ),
-        (Impl,
+        TU_MATCH_HDRA( (i.data),  {)
+        default:
+            break;
+        TU_ARMA(Module, e) {
+            Resolve_Use_Mod(crate, e, path + i.name);
+            }
+        TU_ARMA(Impl, e) {
             for(auto& i : e.items())
             {
                 TU_MATCH_DEF( AST::Item, (*i.data), (e),
@@ -248,8 +248,8 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                     )
                 )
             }
-            ),
-        (Trait,
+            }
+        TU_ARMA(Trait, e) {
             for(auto& ti : e.items())
             {
                 TU_MATCH_DEF( AST::Item, (ti.data), (e),
@@ -276,18 +276,18 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                     )
                 )
             }
-            ),
-        (Function,
+            }
+        TU_ARMA(Function, e) {
             if( e.code().is_valid() ) {
                 e.code().node().visit( expr_iter );
             }
-            ),
-        (Static,
+            }
+        TU_ARMA(Static, e) {
             if( e.value().is_valid() ) {
                 e.value().node().visit( expr_iter );
             }
-            )
-        )
+            }
+        }
     }
 }
 

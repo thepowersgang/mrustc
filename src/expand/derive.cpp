@@ -427,15 +427,15 @@ public:
             }
         TU_ARMA(Struct, e) {
             node = NEWNODE(NamedValue, AST::Path("f"));
-            node = NEWNODE(CallMethod,
-                mv$(node), AST::PathNode("debug_struct",{}),
-                vec$( NEWNODE(String, name) )
-                );
-            // TODO: use a block instead of chaining
+            std::vector<AST::ExprNodeP> nodes;
+            nodes.push_back(NEWNODE(LetBinding, AST::Pattern(AST::Pattern::TagBind(), sp, "s"), TypeRef(sp), NEWNODE(CallMethod,
+                    mv$(node), AST::PathNode("debug_struct",{}),
+                    vec$( NEWNODE(String, name) )
+                )));
             for( const auto& fld : e.ents )
             {
-                node = NEWNODE(CallMethod,
-                    mv$(node), AST::PathNode("field",{}),
+                nodes.push_back(NEWNODE(CallMethod,
+                    NEWNODE(NamedValue, AST::Path("s")), AST::PathNode("field",{}),
                     vec$(
                         NEWNODE(String, fld.m_name.c_str()),
                         NEWNODE(UniOp, AST::ExprNode_UniOp::REF, NEWNODE(UniOp, AST::ExprNode_UniOp::REF,
@@ -445,9 +445,10 @@ public:
                                 )
                             ))
                     )
-                    );
+                    ));
             }
-            node = NEWNODE(CallMethod, mv$(node), AST::PathNode("finish",{}), {});
+            nodes.push_back(NEWNODE(CallMethod, NEWNODE(NamedValue, AST::Path("s")), AST::PathNode("finish",{}), {}));
+            node = NEWNODE(Block, false, /*yields_final_value*/true, mv$(nodes), {});
             }
         TU_ARMA(Tuple, e) {
             node = NEWNODE(NamedValue, AST::Path("f"));
