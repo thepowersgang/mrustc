@@ -866,6 +866,7 @@ namespace {
                     DEBUG("Can't get size/align of " << ty);
                     return false;
                 }
+                DEBUG("#" << idx << ": s=" << size << ",a=" << align << " " << ty);
                 ents.push_back(Ent { idx++, size, align, mv$(ty) });
             }
             }
@@ -880,6 +881,7 @@ namespace {
                     DEBUG("Can't get size/align of " << ty);
                     return false;
                 }
+                DEBUG("#" << idx << " " << e.first << ": s=" << size << ",a=" << align << " " << ty);
                 ents.push_back(Ent { idx++, size, align, mv$(ty) });
             }
             }
@@ -1136,6 +1138,32 @@ namespace {
         TRACE_FUNCTION_F(ty << " min_offset=" << min_offset << " max_offset=" << max_offset);
         switch(ty.data().tag())
         {
+        TU_ARM(ty.data(), Tuple, te) {
+            const TypeRepr* r = Target_GetTypeRepr(sp, resolve, ty);
+            if( !r )
+            {
+                return 0;
+            }
+
+            for(size_t i = 0; i < r->fields.size(); i ++)
+            {
+                const auto& f = r->fields[i];
+                auto size = get_size_or_zero(sp, resolve, f.ty);
+                DEBUG(i << ": " << f.offset << " + " << size);
+                if( f.offset >= max_offset )
+                {
+                    continue ;
+                }
+                else if( f.offset + size > min_offset )
+                {
+                    if( auto rv = get_variant_niche_path(sp, resolve, f.ty, (f.offset < min_offset ? min_offset - f.offset : 0), max_offset - f.offset, out_path) )
+                    {
+                        out_path.sub_fields.push_back(i);
+                        return rv;
+                    }
+                }
+            }
+            }
         TU_ARM(ty.data(), Path, te) {
             if( te.binding.is_Struct() )
             {
@@ -1251,12 +1279,21 @@ namespace {
             {
             case ::HIR::CoreType::Char:
                 // Only valid if the min offset is zero
-                if( min_offset == 0 && min_offset >= 4  )
+                if( min_offset == 0 && max_offset >= 4 )
                 {
                     out_path.size = 4;
                     return 0x10FFFF + 1;
                 }
                 break;
+#if 0   // TODO: C backend uses c's `bool`
+            case ::HIR::CoreType::Bool:
+                if( min_offset == 0 && max_offset >= 1 )
+                {
+                    out_path.size = 1;
+                    return 2;
+                }
+                break;
+#endif
             default:
                 break;
             }
@@ -1481,6 +1518,8 @@ namespace {
                                     }
                                 }
 
+                                // Disabled, becuase rustc doesn't do this
+#if 0
                                 // 2. Look for a possible tag at the start?
                                 // - Prepending the tag might change the next-largest variant too much?
                                 if( fld.offset == 0 )
@@ -1513,7 +1552,7 @@ namespace {
                                             nz_path.sub_fields.push_back(i);
                                             nz_path.index = biggest_var;
                                             ::std::reverse(nz_path.sub_fields.begin(), nz_path.sub_fields.end());
-                                            DEBUG("Niche optimisation (leading): offset=" << offset << " path=" << nz_path);
+                                            DEBUG("Niche optimisation (leading): linear offset=" << offset << " path=" << nz_path << " @byte " << niche_offset);
 
                                             niche_before_data = true;
                                             non_niche_offset = nz_path.size;
@@ -1527,6 +1566,7 @@ namespace {
                                         }
                                     }
                                 }
+#endif
                             }
                         }
 
@@ -1765,7 +1805,30 @@ namespace {
             }
             } break;
         }
-        DEBUG("rv.variants = " << rv.variants.tag_str());
+
+        TU_MATCH_HDRA( (rv.variants), { )
+        TU_ARMA(None, e) {
+            DEBUG("rv.variants = None");
+            }
+        TU_ARMA(Linear, e) {
+            DEBUG("rv.variants = Linear {"
+                << " field=" << e.field
+                << " value " << e.offset << "+" << e.num_variants
+                << " }");
+            }
+        TU_ARMA(Values, e) {
+            DEBUG("rv.variants = Values {"
+                << " field=" << e.field
+                << " values " << e.values
+                << " }");
+            }
+        TU_ARMA(NonZero, e) {
+            DEBUG("rv.variants = NonZero {"
+                << " field=" << e.field
+                << " zero_variant=" << e.zero_variant
+                << " }");
+            }
+        }
         return box$(rv);
     }
     ::std::unique_ptr<TypeRepr> make_type_repr_union(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty)
