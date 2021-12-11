@@ -876,6 +876,17 @@ namespace
                         mir_visit.visit_stmt(stmt);
                     }
                     mir_visit.visit_terminator(block.terminator);
+
+                    // HACK: Currently calling `caller_location` creates an empty location (so needs the type)
+                    if( block.terminator.is_Call() && block.terminator.as_Call().fcn.is_Intrinsic() ) {
+                        const auto& e2 = block.terminator.as_Call().fcn.as_Intrinsic();
+                        if( e2.name == "caller_location" ) {
+                            const auto& p = mir_res.m_resolve.m_crate.get_lang_item_path(sp, "panic_location");
+                            const auto& s = mir_res.m_resolve.m_crate.get_struct_by_path(sp, p);
+                            tv.visit_type(HIR::TypeRef::new_path(p, &s));
+                        }
+
+                    }
                 }
             }
         }
