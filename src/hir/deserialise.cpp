@@ -1046,7 +1046,7 @@
         switch( auto tag = m_in.read_tag() )
         {
         #define _(x, ...)    case ::HIR::TypeData::TAG_##x: DEBUG("- "#x); rv = ::HIR::TypeRef( ::HIR::TypeData::make_##x( __VA_ARGS__ ) ); break;
-        _(Infer, {})
+        _(Infer, { ~0u, HIR::InferClass::None })
         _(Diverge, {})
         _(Primitive,
             static_cast< ::HIR::CoreType>( m_in.read_tag() )
