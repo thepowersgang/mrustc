@@ -1786,17 +1786,7 @@ namespace
                     return consume_tt(lex);
                 case TOK_EQUAL:
                     lex.consume();
-                    switch(lex.next())
-                    {
-                    case TOK_INTEGER:
-                    case TOK_FLOAT:
-                    case TOK_STRING:
-                        lex.consume();
-                        break;
-                    default:
-                        return false;
-                    }
-                    break;
+                    return consume_expr(lex);
                 default:
                     break;
                 }
