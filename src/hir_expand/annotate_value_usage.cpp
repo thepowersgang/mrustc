@@ -296,6 +296,10 @@ namespace {
                     for( const auto& pat : arm.m_patterns )
                         vu = ::std::max( vu, this->get_usage_for_pattern(node.span(), pat, val_ty) );
                 }
+                if( vu == ::HIR::ValueUsage::Unknown ) {
+                    DEBUG("No value usage for pattern arms (no arms?), default to borrow");
+                    vu = ::HIR::ValueUsage::Borrow;
+                }
                 auto _ = this->push_usage( vu );
                 this->visit_node_ptr( node.m_value );
             }
