@@ -1285,7 +1285,6 @@ namespace {
                     return 0x10FFFF + 1;
                 }
                 break;
-#if 0   // TODO: C backend uses c's `bool`
             case ::HIR::CoreType::Bool:
                 if( min_offset == 0 && max_offset >= 1 )
                 {
@@ -1293,7 +1292,6 @@ namespace {
                     return 2;
                 }
                 break;
-#endif
             default:
                 break;
             }

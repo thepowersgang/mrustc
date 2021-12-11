@@ -258,6 +258,7 @@ namespace {
             }
             m_of
                 << "typedef uint32_t RUST_CHAR;\n"
+                << "typedef uint8_t RUST_BOOL;\n"
                 << "typedef struct { void* PTR; size_t META; } SLICE_PTR;\n"
                 << "typedef struct { void* PTR; void* META; } TRAITOBJ_PTR;\n"
                 << "typedef struct { void (*drop)(void*); size_t size; size_t align; } VTABLE_HDR;\n"
@@ -7123,7 +7124,7 @@ namespace {
                 case ::HIR::CoreType::F32: m_of << "float"; break;
                 case ::HIR::CoreType::F64: m_of << "double"; break;
 
-                case ::HIR::CoreType::Bool: m_of << "bool"; break;
+                case ::HIR::CoreType::Bool: m_of << "RUST_BOOL"; break;
                 case ::HIR::CoreType::Char: m_of << "RUST_CHAR";  break;
                 case ::HIR::CoreType::Str:
                     MIR_BUG(*m_mir_res, "Raw str");
