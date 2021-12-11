@@ -916,43 +916,9 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, EncodedLiteralSlice 
             ASSERT_BUG(sp, enm_repr, "Matching with generic constant type not valid - " << ty);
 
             // TODO: Share code with `MIR_Cleanup_LiteralToRValue`
-            unsigned var_idx = 0;
-            bool sub_has_tag = false;
-            TU_MATCH_HDRA( (enm_repr->variants), { )
-            TU_ARMA(None, e) {
-                }
-            TU_ARMA(Linear, ve) {
-                auto v = lit.slice( enm_repr->get_offset(sp, m_resolve, ve.field), ve.field.size).read_uint(ve.field.size);
-                if( v < ve.offset ) {
-                    var_idx = ve.field.index;
-                    sub_has_tag = false;
-                    DEBUG("VariantMode::Linear - Niche #" << var_idx);
-                }
-                else {
-                    var_idx = v - ve.offset;
-                    sub_has_tag = true;
-                    DEBUG("VariantMode::Linear - Other #" << var_idx);
-                }
-                }
-            TU_ARMA(Values, ve) {
-                auto v = lit.slice( enm_repr->get_offset(sp, m_resolve, ve.field), ve.field.size).read_uint(ve.field.size);
-                auto it = std::find(ve.values.begin(), ve.values.end(), v);
-                ASSERT_BUG(sp, it != ve.values.end(), "Invalid enum tag: " << v << " for " << ty);
-                var_idx = it - ve.values.begin();
-                }
-            TU_ARMA(NonZero, ve) {
-                size_t ofs = enm_repr->get_offset(sp, m_resolve, ve.field);
-                bool is_nonzero = false;
-                for(size_t i = 0; i < ve.field.size; i ++) {
-                    if( lit.slice(ofs+i, 1).read_uint(1) != 0 ) {
-                        is_nonzero = true;
-                        break;
-                    }
-                }
-
-                var_idx = (is_nonzero ? 1 - ve.zero_variant : ve.zero_variant);
-                }
-            }
+            auto var_info = enm_repr->get_enum_variant(sp, m_resolve, lit);
+            unsigned var_idx = var_info.first;
+            bool sub_has_tag = var_info.second;
 
             PatternRulesetBuilder   sub_builder { this->m_resolve };
             if(enm_repr->fields.size() > 1 || enm_repr->variants.is_None())

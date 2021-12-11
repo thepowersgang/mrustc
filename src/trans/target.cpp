@@ -1961,3 +1961,46 @@ size_t TypeRepr::get_offset(const Span& sp, const StaticTraitResolve& resolve, c
     return ofs;
 }
 
+std::pair<unsigned,bool> TypeRepr::get_enum_variant(const Span& sp, const StaticTraitResolve& resolve, const EncodedLiteralSlice& lit) const
+{
+    unsigned var_idx = 0;
+    bool sub_has_tag = false;
+    TU_MATCH_HDRA( (this->variants), {)
+    TU_ARMA(None, ve) {
+        }
+    TU_ARMA(Linear, ve) {
+        auto v = lit.slice( this->get_offset(sp, resolve, ve.field), ve.field.size).read_uint(ve.field.size);
+        if( v < ve.offset ) {
+            var_idx = ve.field.index;
+            sub_has_tag = false; // TODO: is this correct?
+            DEBUG("VariantMode::Linear - Niche #" << var_idx);
+        }
+        else {
+            var_idx = v - ve.offset;
+            sub_has_tag = true;
+            DEBUG("VariantMode::Linear - Other #" << var_idx);
+        }
+        }
+    TU_ARMA(Values, ve) {
+        auto v = lit.slice( this->get_offset(sp, resolve, ve.field), ve.field.size).read_uint(ve.field.size);
+        auto it = std::find(ve.values.begin(), ve.values.end(), v);
+        ASSERT_BUG(sp, it != ve.values.end(), "Invalid enum tag: " << v);
+        var_idx = it - ve.values.begin();
+        DEBUG("VariantMode::Values - #" << var_idx);
+        }
+    TU_ARMA(NonZero, ve) {
+        size_t ofs = this->get_offset(sp, resolve, ve.field);
+        bool is_nonzero = false;
+        for(size_t i = 0; i < ve.field.size; i ++) {
+            if( lit.slice(ofs+i, 1).read_uint(1) != 0 ) {
+                is_nonzero = true;
+                break;
+            }
+        }
+
+        var_idx = (is_nonzero ? 1 - ve.zero_variant : ve.zero_variant);
+        DEBUG("VariantMode::NonZero - #" << var_idx);
+        }
+    }
+    return std::make_pair(var_idx, sub_has_tag);
+}

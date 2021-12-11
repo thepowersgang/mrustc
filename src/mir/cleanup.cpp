@@ -253,40 +253,9 @@ const EncodedLiteral* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
         }
         else if( te.binding.is_Enum() )
         {
-            unsigned var_idx = 0;
-            TU_MATCH_HDRA( (repr->variants), {)
-            TU_ARMA(None, ve) {
-                }
-            TU_ARMA(NonZero, ve) {
-                size_t ofs = repr->get_offset(state.sp, state.m_resolve, ve.field);
-                bool is_nonzero = false;
-                for(size_t i = 0; i < ve.field.size; i ++) {
-                    if( lit.slice(ofs+i, 1).read_uint(1) != 0 ) {
-                        is_nonzero = true;
-                        break;
-                    }
-                }
-
-                var_idx = (is_nonzero ? 1 - ve.zero_variant : ve.zero_variant);
-                }
-            TU_ARMA(Linear, ve) {
-                auto v = lit.slice( repr->get_offset(state.sp, state.m_resolve, ve.field), ve.field.size).read_uint(ve.field.size);
-                if( v < ve.offset ) {
-                    var_idx = ve.field.index;
-                    DEBUG("VariantMode::Linear - Niche #" << var_idx);
-                }
-                else {
-                    var_idx = v - ve.offset;
-                    DEBUG("VariantMode::Linear - Other #" << var_idx);
-                }
-                }
-            TU_ARMA(Values, ve) {
-                auto v = lit.slice( repr->get_offset(state.sp, state.m_resolve, ve.field), ve.field.size).read_uint(ve.field.size);
-                auto it = std::find(ve.values.begin(), ve.values.end(), v);
-                MIR_ASSERT(state, it != ve.values.end(), "Invalid enum tag: " << v << " for " << ty);
-                var_idx = it - ve.values.begin();
-                }
-            }
+            auto var_info = repr->get_enum_variant(state.sp, state.m_resolve, lit);
+            unsigned var_idx = var_info.first;
+            bool has_tag_field = var_info.second;
 
             const auto& enm = *te.binding.as_Enum();
 
@@ -294,7 +263,6 @@ const EncodedLiteral* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
             if( enm.m_data.is_Data() )
             {
                 const auto& fld = repr->fields.at(var_idx);
-                bool has_tag_field = repr->variants.is_Linear() && !repr->variants.as_Linear().uses_niche();
 
                 size_t base_ofs = fld.offset;
                 const auto* repr = Target_GetTypeRepr(state.sp, state.m_resolve, fld.ty);
