@@ -1516,8 +1516,8 @@ namespace {
                                     }
                                 }
 
-                                // Disabled, becuase rustc doesn't do this
-#if 0
+                                // Note: rustc doesn't do this.
+#if 1
                                 // 2. Look for a possible tag at the start?
                                 // - Prepending the tag might change the next-largest variant too much?
                                 if( fld.offset == 0 )

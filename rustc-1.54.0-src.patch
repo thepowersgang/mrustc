@@ -1,0 +1,18 @@
+# mrustc is much better at enum packing, so causes almost all of these to be smaller by one pointer
+--- compiler/rustc_ast/src/ast.rs
++++ compiler/rustc_ast/src/ast.rs
+@@ -2832,6 +2832,6 @@
+ }
+ 
+-#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
++#[cfg(all(not(rust_compiler="mrustc"),target_arch = "x86_64", target_pointer_width = "64"))]
+ rustc_data_structures::static_assert_size!(ForeignItemKind, 72);
+ 
+ impl From<ForeignItemKind> for ItemKind {
+--- compiler/rustc_hir/src/hir.rs
++++ compiler/rustc_hir/src/hir.rs
+@@ -3050,3 +3050,3 @@
+ // Some nodes are used a lot. Make sure they don't unintentionally get bigger.
+-#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
++#[cfg(all(not(rust_compiler="mrustc"),target_arch = "x86_64", target_pointer_width = "64"))]
+ mod size_asserts {
