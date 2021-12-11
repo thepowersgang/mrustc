@@ -13,6 +13,15 @@ namespace {
 
     const ::HIR::GenericParams& get_params_for_item(const Span& sp, const ::HIR::Crate& crate, const ::HIR::SimplePath& path, ::HIR::Visitor::PathContext pc)
     {
+        // Support for enum variants
+        if( path.m_components.size() > 1 )
+        {
+            const auto& pitem = crate.get_typeitem_by_path(sp, path, false, true);
+            if(pitem.is_Enum() ) {
+                return pitem.as_Enum().m_params;
+            }
+        }
+
         switch( pc )
         {
         case ::HIR::Visitor::PathContext::VALUE: {
@@ -230,11 +239,13 @@ namespace {
             for(unsigned int i = 0; i < param_vals.m_types.size(); i ++)
             {
                 if( param_vals.m_types[i] == ::HIR::TypeRef() ) {
+                    // TODO: Why is this pulling in the default? Why not just leave it as-is
+
                     //if( param_def.m_types[i].m_default == ::HIR::TypeRef() )
                     //    ERROR(sp, E0000, "Unspecified parameter with no default");
                     // TODO: Monomorphise?
                     param_vals.m_types[i] = ms.monomorph_type(sp, param_def.m_types[i].m_default);
-                    DEBUG("Add `_` param (using default): " << param_vals.m_types[i]);
+                    DEBUG("Update `_` param (using default): " << param_def.m_types[i].m_default << " -> " << param_vals.m_types[i]);
                 }
             }
 
