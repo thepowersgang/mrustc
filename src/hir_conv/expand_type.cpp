@@ -375,6 +375,10 @@ public:
             {
                 upper_visitor.visit_type(ty);
             }
+            void visit_pattern(const Span& sp, ::HIR::Pattern& pat) override
+            {
+                upper_visitor.visit_pattern(pat);
+            }
 
             // Custom impl to visit the inner expression
             void visit(::HIR::ExprNode_ArraySized& node) override
