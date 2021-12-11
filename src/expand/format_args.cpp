@@ -196,8 +196,10 @@ namespace {
     ::std::tuple< ::std::vector<FmtFrag>, ::std::string> parse_format_string(
         const Span& sp,
         const ::std::string& format_string,
-        const ::std::map<RcString,unsigned int>& named,
-        unsigned int n_free
+        ::std::map<RcString,unsigned int>& named,
+        unsigned int n_free,
+        std::vector<TokenTree>& named_args,
+        const Ident::Hygiene& hygiene
         )
     {
         //unsigned int n_named = named.size();
@@ -266,8 +268,12 @@ namespace {
                         }
                         auto ident = RcString(start, s - start);
                         auto it = named.find(ident);
-                        if( it == named.end() )
-                            ERROR(sp, E0000, "Named argument '"<<ident<<"' not found");
+                        if( it == named.end() ) {
+                            // Add an implicit named argument
+                            it = named.insert(std::make_pair(ident, static_cast<unsigned>(named_args.size()))).first;
+                            // TODO: Create a token with span information pointing to this location in the string.
+                            named_args.push_back(Token(TOK_IDENT, Ident(hygiene, ident)));
+                        }
                         index = n_free + it->second;
                     }
                 }
@@ -537,6 +543,7 @@ namespace {
         Token   tok;
 
         auto format_string_node = Parse_ExprVal(lex);
+        auto h = lex.get_hygiene();
         ASSERT_BUG(sp, format_string_node, "No expression returned");
         Expand_BareExpr(crate, lex.parse_state().get_current_mod(), format_string_node);
 
@@ -587,7 +594,7 @@ namespace {
         // - Parse the format string
         ::std::vector< FmtFrag> fragments;
         ::std::string   tail;
-        ::std::tie( fragments, tail ) = parse_format_string(format_string_sp, format_string,  named_args_index, free_args.size());
+        ::std::tie( fragments, tail ) = parse_format_string(format_string_sp, format_string,  named_args_index, free_args.size(), named_args, h);
         if( add_newline )
         {
             tail += "\n";
