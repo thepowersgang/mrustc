@@ -968,7 +968,7 @@ namespace {
             TODO(sp, "ExprNode_Tuple");
         }
         void visit(::AST::ExprNode_NamedValue& node) {
-            TODO(sp, "ExprNode_NamedValue");
+            this->visit_path(node.m_path, true);
         }
 
         void visit(::AST::ExprNode_Field& node) {
