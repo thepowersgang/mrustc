@@ -199,11 +199,11 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         const AST::Crate& crate;
         ::std::vector< const AST::Module* >   parent_modules;
 
-        NV(const AST::Crate& crate, const AST::Module& cur_module):
+        NV(const AST::Crate& crate, const AST::Module& cur_module, ::std::span< const AST::Module* > parent_modules):
             crate(crate),
-            parent_modules()
+            parent_modules(parent_modules.begin(), parent_modules.end())
         {
-            parent_modules.push_back( &cur_module );
+            this->parent_modules.push_back( &cur_module );
         }
 
         void visit(AST::ExprNode_Block& node) override {
@@ -217,7 +217,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                 parent_modules.pop_back();
             }
         }
-    } expr_iter(crate, mod);
+    } expr_iter(crate, mod, parent_modules);
 
     // TODO: Check that all code blocks are covered by these
     // - NOTE: Handle anon modules by iterating code (allowing correct item mappings)

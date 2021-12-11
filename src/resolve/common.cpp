@@ -121,6 +121,10 @@ namespace {
                         }
                     TU_ARMA(Hir, i_ent_ptr) {
                         ASSERT_BUG(sp, !i_ent_ptr->is_Import(), "");
+                        if(i_ent_ptr->is_Enum()) {
+                            DEBUG("Enum");
+                            return ResolveModuleRef();
+                        }
 
                         //if( const auto* imp = i.ent.opt_Import() ) {
                         //    ASSERT_BUG(sp, imp->path.m_components.empty(), "Expected crate path, got " << imp->path);
