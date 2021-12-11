@@ -36,3 +36,6 @@
 - `chalk_derive` is pendantic on `struct Binders<T: HasInterner> { ... }`, and doesn't work with `struct Binders<T> where T: HasInterner { ... }`
 - `chalk-ir` uses `Enum::<TypeParam>::Variant` instead of `Enum::Variant::<TypeParam>`
 - Type recursion in `chalk_solve`, see TypecheckIssues
+- Enum patterns in arguments (e.g. `Ok` when `E=!`)
+- Implicit formatting arguments (e.g `format!("{foo}")`)
+- `mrustc` being better at packing enums than `rustc` (so makes smaller structs than rustc was expecting)
