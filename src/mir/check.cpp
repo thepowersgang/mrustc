@@ -619,6 +619,15 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
     if( debug_enabled() ) MIR_Dump_Fcn(::std::cout, fcn);
     
     {
+        for(const auto& ty : fcn.locals)
+        {
+            if( !monomorphise_type_needed(ty) ) {
+                MIR_ASSERT(state, resolve.type_is_sized(sp, ty), "Local variable _" << (&ty - fcn.locals.data()) << ": " << ty << " isn't Sized");
+            }
+        }
+    }
+
+    {
         for(const auto& bb : fcn.blocks)
         {
             state.set_cur_stmt_term(&bb - &fcn.blocks.front());

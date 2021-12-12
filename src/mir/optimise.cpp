@@ -2159,6 +2159,31 @@ bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::
                         [&](auto loc, const auto& stmt)->bool{ return check_invalidates_lvalue(stmt, src) || TU_TEST2(stmt, Assign, .src, Borrow, .type != HIR::BorrowType::Shared); },
                         [&](auto loc, const auto& term)->bool{ return check_invalidates_lvalue(term, src); }
                         );
+                // If this is a deref, and there are move ops between definition and use - then invalidate
+                if( !invalidated && std::any_of(src.m_wrappers.begin(), src.m_wrappers.end(), [](const MIR::LValue::Wrapper& w){ return w.is_Deref(); }) )
+                {
+                    // If there are any move ops between the set and the usage, invalidate
+                    bool stop = false;
+                    auto check_cb = [&](const MIR::LValue& lv, ValUsage vu){
+                        if( lv == this_var ) {
+                            stop = true;
+                            return false;
+                        }
+                        if( stop ) {
+                            // Once the value is seen, ignore anything else
+                            return false;
+                        }
+                        // If a move is seen, check if it's a move (and not a copy)
+                        if( vu == ValUsage::Move ) {
+                            return !state.lvalue_is_copy(lv);
+                        }
+                        return false;
+                        };
+                    invalidated = IterPathRes::Complete != iter_path(fcn, set_loc_next, use_loc_inc,
+                        [&](auto loc, const auto& stmt)->bool{ return visit_mir_lvalues(stmt, check_cb); },
+                        [&](auto loc, const auto& term)->bool{ return visit_mir_lvalues(term, check_cb); }
+                        );
+                }
                 if( !invalidated )
                 {
                     // Update the usage site and replace.
