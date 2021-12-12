@@ -27,6 +27,14 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
     const ::AST::Path& path, ::std::span< const ::AST::Module* > parent_modules,
     bool types_only=false
     );
+
+::AST::Path::Bindings Resolve_Use_GetBinding_Mod(
+    const Span& span,
+    const ::AST::Crate& crate, const ::AST::AbsolutePath& source_mod_path, const ::AST::Module& mod,
+    const RcString& des_item_name,
+    ::std::span< const ::AST::Module* > parent_modules,
+    bool types_only = false
+    );
 ::AST::Path::Bindings Resolve_Use_GetBinding__ext(const Span& span, const ::AST::Crate& crate, const AST::ExternCrate& ec, const ::HIR::Module& hmodr, const ::AST::Path& path, unsigned int start, AST::AbsolutePath ap={});
 ::AST::Path::Bindings Resolve_Use_GetBinding__ext(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path,  const AST::ExternCrate& ec, unsigned int start);
 
@@ -82,10 +90,54 @@ void Resolve_Use(::AST::Crate& crate)
         }
 
         // EVIL HACK: If the current module is an anon module, refer to the parent
+        // TODO: Check if the desired item is in this module, 
         if( base_path.nodes().size() > 0 && base_path.nodes().back().name().c_str()[0] == '#' ) {
+
+            std::vector<const AST::Module*>   parent_mods;
+            const AST::Module* cur_mod = &crate.m_root_module;
+            for( unsigned int i = 0; i < base_path.nodes().size(); i ++ )
+            {
+                const auto& name = base_path.nodes()[i].name();
+                const AST::Module* next_mod = nullptr;
+
+                // If the desired item is an anon module (starts with #) then parse and index
+                if( name.size() > 0 && name.c_str()[0] == '#' ) {
+                    unsigned int idx = 0;
+                    if( ::std::sscanf(name.c_str(), "#%u", &idx) != 1 ) {
+                        BUG(span, "Invalid anon path segment '" << name << "'");
+                    }
+                    ASSERT_BUG(span, idx < cur_mod->anon_mods().size(), "Invalid anon path segment '" << name << "'");
+                    assert( cur_mod->anon_mods()[idx] );
+                    next_mod = &*cur_mod->anon_mods()[idx];
+                }
+                else {
+                    for(const auto& item : cur_mod->m_items) {
+                        if( item->name == name && item->data.is_Module() ) {
+                            next_mod = &item->data.as_Module();
+                            break;
+                        }
+                    }
+                }
+                assert(next_mod);
+                cur_mod = next_mod;
+                if( name.c_str()[0] != '#' ) {
+                    parent_mods.clear();
+                }
+                parent_mods.push_back(cur_mod);
+            }
+            parent_mods.pop_back();
+            DEBUG("parent_mods.size() = " << parent_mods.size());
+
+            while( !parent_mods.empty() && !Resolve_Use_GetBinding_Mod(span, crate, parent_mods[0]->path(), *cur_mod, e.nodes.front().name(), parent_mods, /*types_only*/e.nodes.size() > 1).has_binding() )
+            {
+                cur_mod = parent_mods.back();
+                parent_mods.pop_back();
+            }
+            DEBUG("Found item in " << cur_mod->path());
+
             AST::Path   np("", {});
-            for( unsigned int i = 0; i < base_path.nodes().size() - 1; i ++ )
-                np.nodes().push_back( base_path.nodes()[i] );
+            for( unsigned int i = 0; i < cur_mod->path().nodes.size(); i ++ )
+                np.nodes().push_back( cur_mod->path().nodes[i] );
             np += path;
             return np;
         }
@@ -296,7 +348,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         const ::AST::Crate& crate, const ::AST::AbsolutePath& source_mod_path, const ::AST::Module& mod,
         const RcString& des_item_name,
         ::std::span< const ::AST::Module* > parent_modules,
-        bool types_only = false
+        bool types_only// = false
     )
 {
     ::AST::Path::Bindings   rv;
