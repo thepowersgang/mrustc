@@ -17,6 +17,7 @@ using AST::ExprNode;
 
 
 AST::Pattern Parse_Pattern1(TokenStream& lex, AllowOrPattern allow_or);
+AST::Pattern::Value Parse_PatternValue(TokenStream& lex);
 AST::Pattern::TuplePat Parse_PatternTuple(TokenStream& lex, bool* maybe_just_paren=nullptr);
 AST::Pattern Parse_PatternReal_Slice(TokenStream& lex);
 AST::Pattern Parse_PatternReal_Path(TokenStream& lex, ProtoSpan ps, AST::Path path);
@@ -134,6 +135,7 @@ AST::Pattern Parse_Pattern1(TokenStream& lex, AllowOrPattern allow_or)
         case TOK_BRACE_OPEN:
         case TOK_PAREN_OPEN:
         // Known value `IDENT ...`
+        case TOK_DOUBLE_DOT:
         case TOK_TRIPLE_DOT:
         case TOK_DOUBLE_DOT_EQUAL:
             PUTBACK(tok, lex);
@@ -189,15 +191,13 @@ AST::Pattern Parse_PatternReal(TokenStream& lex, AllowOrPattern allow_or)
         if( !ret.data().is_Value() )
             throw ParseError::Generic(lex, "Using '...' with a non-value on left");
         auto& ret_v = ret.data().as_Value();
+        auto leftval = std::move(ret_v.start);
 
-        auto    right_pat = Parse_PatternReal1(lex, allow_or);
-        if( !right_pat.data().is_Value() )
-            throw ParseError::Generic(lex, "Using '...' with a non-value on right");
-        auto    rightval = mv$( right_pat.data().as_Value().start );
-        ret_v.end = mv$(rightval);
-        // TODO: use `ps` here?
+        auto rightval = Parse_PatternValue(lex);
+        if( rightval.is_Invalid() )
+            throw ParseError::Generic(lex, "Using '...' with a no RHS value");
 
-        return ret;
+        return AST::Pattern(lex.end_span(ps), AST::Pattern::Data::make_Value({ mv$(leftval), mv$(rightval) }));
     }
     else if( TARGETVER_LEAST_1_39 && tok.type() == TOK_DOUBLE_DOT )
     {
@@ -206,10 +206,11 @@ AST::Pattern Parse_PatternReal(TokenStream& lex, AllowOrPattern allow_or)
         auto& ret_v = ret.data().as_Value();
         auto leftval = std::move(ret_v.start);
 
-        auto right_pat = Parse_PatternReal1(lex, allow_or);
-        if( !right_pat.data().is_Value() )
-            throw ParseError::Generic(lex, "Using `..` with a non-value on right");
-        auto rightval = mv$( right_pat.data().as_Value().start );
+        auto rightval = Parse_PatternValue(lex);
+        if( rightval.is_Invalid() ) {
+            // Right-open range!
+            // - Perfectly valid
+        }
 
         return AST::Pattern(lex.end_span(ps), AST::Pattern::Data::make_ValueLeftInc({ mv$(leftval), mv$(rightval) }));
     }
@@ -217,6 +218,78 @@ AST::Pattern Parse_PatternReal(TokenStream& lex, AllowOrPattern allow_or)
     {
         PUTBACK(tok, lex);
         return ret;
+    }
+}
+AST::Pattern::Value Parse_PatternValue(TokenStream& lex)
+{
+    TRACE_FUNCTION;
+
+    Token   tok;
+    switch( GET_TOK(tok, lex) )
+    {
+    case TOK_RWORD_CRATE:
+    case TOK_RWORD_SELF:
+    case TOK_RWORD_SUPER:
+    case TOK_IDENT:
+    case TOK_LT:
+    case TOK_DOUBLE_LT:
+    case TOK_INTERPOLATED_PATH:
+    case TOK_DOUBLE_COLON:
+        PUTBACK(tok, lex);
+        return AST::Pattern::Value::make_Named( Parse_Path(lex, PATH_GENERIC_EXPR) );
+
+    case TOK_DASH:
+        if(GET_TOK(tok, lex) == TOK_INTEGER)
+        {
+            auto dt = tok.datatype();
+            // TODO: Ensure that the type is ANY or a signed integer
+            return AST::Pattern::Value::make_Integer({dt, ~tok.intval() + 1});
+        }
+        else if( tok.type() == TOK_FLOAT )
+        {
+            return AST::Pattern::Value::make_Float({tok.datatype(), -tok.floatval()});
+        }
+        else
+        {
+            throw ParseError::Unexpected(lex, tok, {TOK_INTEGER, TOK_FLOAT});
+        }
+    case TOK_FLOAT:
+        return AST::Pattern::Value::make_Float({tok.datatype(), tok.floatval()});
+    case TOK_INTEGER:
+        return AST::Pattern::Value::make_Integer({tok.datatype(), tok.intval()});
+    case TOK_RWORD_TRUE:
+        return AST::Pattern::Value::make_Integer({CORETYPE_BOOL, 1});
+    case TOK_RWORD_FALSE:
+        return AST::Pattern::Value::make_Integer({CORETYPE_BOOL, 0});
+    case TOK_STRING:
+        return AST::Pattern::Value::make_String( mv$(tok.str()) );
+    case TOK_BYTESTRING:
+        return AST::Pattern::Value::make_ByteString({ mv$(tok.str()) });
+    case TOK_INTERPOLATED_EXPR: {
+        auto e = tok.take_frag_node();
+        // TODO: Visitor?
+        if( auto* n = dynamic_cast<AST::ExprNode_String*>(e.get()) ) {
+            return AST::Pattern::Value::make_String( mv$(n->m_value) );
+        }
+        else if( auto* n = dynamic_cast<AST::ExprNode_ByteString*>(e.get()) ) {
+            return AST::Pattern::Value::make_ByteString({ mv$(n->m_value) });
+        }
+        else if( auto* n = dynamic_cast<AST::ExprNode_Bool*>(e.get()) ) {
+            return AST::Pattern::Value::make_Integer({CORETYPE_BOOL, n->m_value});
+        }
+        else if( auto* n = dynamic_cast<AST::ExprNode_Integer*>(e.get()) ) {
+            return AST::Pattern::Value::make_Integer({n->m_datatype, n->m_value});
+        }
+        else if( auto* n = dynamic_cast<AST::ExprNode_Float*>(e.get()) ) {
+            return AST::Pattern::Value::make_Float({n->m_datatype, n->m_value});
+        }
+        else {
+            TODO(lex.point_span(), "Convert :expr into a pattern value - " << *e);
+        }
+        } break;
+    default:
+        PUTBACK(tok, lex);
+        return AST::Pattern::Value::make_Invalid({});
     }
 }
 AST::Pattern Parse_PatternReal1(TokenStream& lex, AllowOrPattern allow_or)
@@ -258,54 +331,15 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, AllowOrPattern allow_or)
         PUTBACK(tok, lex);
         return Parse_PatternReal_Path( lex, ps, Parse_Path(lex, PATH_GENERIC_EXPR) );
     case TOK_DASH:
-        if(GET_TOK(tok, lex) == TOK_INTEGER)
-        {
-            auto dt = tok.datatype();
-            // TODO: Ensure that the type is ANY or a signed integer
-            return AST::Pattern( AST::Pattern::TagValue(), lex.end_span(ps), AST::Pattern::Value::make_Integer({dt, ~tok.intval() + 1}) );
-        }
-        else if( tok.type() == TOK_FLOAT )
-        {
-            return AST::Pattern( AST::Pattern::TagValue(), lex.end_span(ps), AST::Pattern::Value::make_Float({tok.datatype(), -tok.floatval()}) );
-        }
-        else
-        {
-            throw ParseError::Unexpected(lex, tok, {TOK_INTEGER, TOK_FLOAT});
-        }
     case TOK_FLOAT:
-        return AST::Pattern( AST::Pattern::TagValue(), lex.end_span(ps), AST::Pattern::Value::make_Float({tok.datatype(), tok.floatval()}) );
     case TOK_INTEGER:
-        return AST::Pattern( AST::Pattern::TagValue(), lex.end_span(ps), AST::Pattern::Value::make_Integer({tok.datatype(), tok.intval()}) );
     case TOK_RWORD_TRUE:
-        return AST::Pattern( AST::Pattern::TagValue(), lex.end_span(ps), AST::Pattern::Value::make_Integer({CORETYPE_BOOL, 1}) );
     case TOK_RWORD_FALSE:
-        return AST::Pattern( AST::Pattern::TagValue(), lex.end_span(ps), AST::Pattern::Value::make_Integer({CORETYPE_BOOL, 0}) );
     case TOK_STRING:
-        return AST::Pattern( AST::Pattern::TagValue(), lex.end_span(ps), AST::Pattern::Value::make_String( mv$(tok.str()) ) );
     case TOK_BYTESTRING:
-        return AST::Pattern( AST::Pattern::TagValue(), lex.end_span(ps), AST::Pattern::Value::make_ByteString({ mv$(tok.str()) }) );
-    case TOK_INTERPOLATED_EXPR: {
-        auto e = tok.take_frag_node();
-        // TODO: Visitor?
-        if( auto* n = dynamic_cast<AST::ExprNode_String*>(e.get()) ) {
-            return AST::Pattern( AST::Pattern::TagValue(), lex.end_span(ps), AST::Pattern::Value::make_String( mv$(n->m_value) ) );
-        }
-        else if( auto* n = dynamic_cast<AST::ExprNode_ByteString*>(e.get()) ) {
-            return AST::Pattern( AST::Pattern::TagValue(), lex.end_span(ps), AST::Pattern::Value::make_ByteString({ mv$(n->m_value) }) );
-        }
-        else if( auto* n = dynamic_cast<AST::ExprNode_Bool*>(e.get()) ) {
-            return AST::Pattern( AST::Pattern::TagValue(), lex.end_span(ps), AST::Pattern::Value::make_Integer({CORETYPE_BOOL, n->m_value}) );
-        }
-        else if( auto* n = dynamic_cast<AST::ExprNode_Integer*>(e.get()) ) {
-            return AST::Pattern( AST::Pattern::TagValue(), lex.end_span(ps), AST::Pattern::Value::make_Integer({n->m_datatype, n->m_value}) );
-        }
-        else if( auto* n = dynamic_cast<AST::ExprNode_Float*>(e.get()) ) {
-            return AST::Pattern( AST::Pattern::TagValue(), lex.end_span(ps), AST::Pattern::Value::make_Float({n->m_datatype, n->m_value}) );
-        }
-        else {
-            TODO(lex.point_span(), "Convert :expr into a pattern value - " << *e);
-        }
-        } break;
+    case TOK_INTERPOLATED_EXPR:
+        PUTBACK(tok, lex);
+        return AST::Pattern( AST::Pattern::TagValue(), lex.end_span(ps), Parse_PatternValue(lex) );
 
     case TOK_PAREN_OPEN: {
         bool just_paren = false;
