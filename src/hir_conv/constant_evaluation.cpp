@@ -1287,6 +1287,8 @@ namespace HIR {
                         throw Defer();
                     if(e.is_Int())
                         return e.as_Int().v;
+                    if(e.is_Bool())
+                        return e.as_Bool().v ? 1 : 0;
                     MIR_ASSERT(state, e.is_Uint(), "Expected an integer, got " << e.tag_str() << " " << e);
                     return e.as_Uint().v;
                     }
