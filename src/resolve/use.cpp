@@ -84,6 +84,7 @@ void Resolve_Use(::AST::Crate& crate)
         if(path.nodes().size() == 1) {
             auto ct = coretype_fromstring(path.nodes()[0].name().c_str());
             if( ct != CORETYPE_INVAL ) {
+                DEBUG("Found builtin type for `use` - " << path);
                 // TODO: only if the item doesn't already exist?
                 return AST::Path(CRATE_BUILTINS, path.nodes());
             }
@@ -529,6 +530,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                         bindings_ = Resolve_Use_GetBinding(sp2, crate, mod.path(), Resolve_Use_AbsolutisePath(sp2, crate, mod.path(), imp_e.path), parent_modules, /*type_only=*/true);
                         if( bindings_.type.is_Unbound() ) {
                             DEBUG("Recursion detected, skipping " << imp_e.path);
+                            resolve_stack_ptrs.pop_back();
                             continue ;
                         }
                         // *waves hand* I'm not evil.

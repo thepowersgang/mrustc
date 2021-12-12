@@ -28,7 +28,7 @@ static const struct {
     {"i32", CORETYPE_I32},
     {"i64", CORETYPE_I64},
     {"i8", CORETYPE_I8},
-    {"int", CORETYPE_INT},
+    //{"int", CORETYPE_INT},
     {"isize", CORETYPE_INT},
     {"str", CORETYPE_STR},
     {"u128", CORETYPE_U128},
@@ -36,7 +36,7 @@ static const struct {
     {"u32", CORETYPE_U32},
     {"u64", CORETYPE_U64},
     {"u8",  CORETYPE_U8},
-    {"uint", CORETYPE_UINT},
+    //{"uint", CORETYPE_UINT},
     {"usize", CORETYPE_UINT},
 };
 
