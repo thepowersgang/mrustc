@@ -309,7 +309,7 @@ namespace
             if(e.first_arm_done)
             {
                 if( e.first_arm_variables != e.created_variables ) {
-                    ERROR(sp, E0000, "Mismatched bindings in pattern - " << e.first_arm_variables << " " << e.created_variables);
+                    ERROR(sp, E0000, "Mismatched bindings in pattern - [" << e.first_arm_variables << "] != [" << e.created_variables << "]");
                 }
             }
             else
@@ -322,6 +322,14 @@ namespace
         /// End a multiple-pattern binding state (unfreeze really)
         void end_patbind() {
             assert(!m_pattern_stack.empty());
+            // Propagate the created variables to the next level up.
+            if( m_pattern_stack.size() > 1 ) {
+                const auto& cur = m_pattern_stack[m_pattern_stack.size() - 1];
+                auto& next = m_pattern_stack[m_pattern_stack.size() - 2];
+                for(auto& var : cur.first_arm_variables) {
+                    next.created_variables.insert(std::move(var));
+                }
+            }
             m_pattern_stack.pop_back();
         }
 
