@@ -99,7 +99,7 @@ public:
         );
 private:
     Span    m_span;
-    PatternBinding  m_binding;
+    std::vector<PatternBinding> m_bindings;
     Data m_data;
 
 public:
@@ -129,9 +129,10 @@ public:
 
     struct TagBind {};
     Pattern(TagBind, Span sp, Ident name, PatternBinding::Type ty = PatternBinding::Type::MOVE, bool is_mut=false):
-        m_span( mv$(sp) ),
-        m_binding( PatternBinding(mv$(name), ty, is_mut) )
-    {}
+        m_span( mv$(sp) )
+    {
+        m_bindings.push_back( PatternBinding(mv$(name), ty, is_mut) );
+    }
 
     struct TagBox {};
     Pattern(TagBox, Span sp, Pattern sub):
@@ -181,19 +182,14 @@ public:
         m_data( Data::make_Struct( { ::std::move(path), ::std::move(sub_patterns), is_exhaustive } ) )
     {}
 
-    // Mutators
-    void set_bind(Ident name, PatternBinding::Type type, bool is_mut) {
-        m_binding = PatternBinding(mv$(name), type, is_mut);
-    }
-
 
     const Span& span() const { return m_span; }
 
     Pattern clone() const;
 
     // Accessors
-          PatternBinding& binding()       { return m_binding; }
-    const PatternBinding& binding() const { return m_binding; }
+          std::vector<PatternBinding>& bindings()       { return m_bindings; }
+    const std::vector<PatternBinding>& bindings() const { return m_bindings; }
           Data& data()       { return m_data; }
     const Data& data() const { return m_data; }
           Path& path()       { return m_data.as_StructTuple().path; }

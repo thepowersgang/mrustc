@@ -338,10 +338,8 @@ void Expand_Pattern(::AST::Crate& crate, LList<const AST::Module*> modstack, ::A
             ERROR(span, E0000, "Trailing tokens in macro expansion");
         }
 
-        if( pat.binding().is_valid() ) {
-            if( newpat.binding().is_valid() )
-                ERROR(span, E0000, "Macro expansion provided a binding, but one already present");
-            newpat.binding() = mv$(pat.binding());
+        for(auto& b : pat.bindings()) {
+            newpat.bindings().push_back( std::move(b) );
         }
 
         pat = mv$(newpat);
@@ -850,7 +848,7 @@ struct CExpandExpr:
                     assert(!m_rv_set);
                     assert(!m_is_slot);
                     m_rv_set = true;
-                    assert(!rv.binding().is_valid());
+                    assert(rv.bindings().empty());
                     m_rv = std::move(rv);
                 }
                 // - This is a slot (to be assigned)
@@ -915,7 +913,8 @@ struct CExpandExpr:
                 void visit(::AST::ExprNode_UniOp& v) override { invalid(v); }
             } v;
             auto pat = v.lower(node.m_slot);
-            if(pat.binding().is_valid()) {
+            if(pat.bindings().size() > 0) {
+                assert(pat.bindings().size() == 1); // The above code shouldn't be making double bindings
                 assert(!node.m_slot);
                 assert(v.m_slots.front().second);
                 node.m_slot = std::move(v.m_slots.front().second);

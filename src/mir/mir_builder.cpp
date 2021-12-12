@@ -46,9 +46,10 @@ MirBuilder::MirBuilder(const Span& sp, const StaticTraitResolve& resolve, const 
     for(size_t i = 0; i < args.size(); i ++)
     {
         const auto& pat = args[i].first;
-        if( pat.m_binding.is_valid() && pat.m_binding.m_type == ::HIR::PatternBinding::Type::Move )
+        if( pat.m_bindings.size() == 1 && pat.m_bindings[0].m_type == ::HIR::PatternBinding::Type::Move )
         {
-            m_var_arg_mappings[pat.m_binding.m_slot] = i;
+            DEBUG("Argument shortcut: " << pat.m_bindings[0] << " -> a" << i);
+            m_var_arg_mappings[pat.m_bindings[0].m_slot] = i;
         }
     }
 

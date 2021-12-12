@@ -994,10 +994,10 @@ void RustPrinter::print_pattern_tuple(const AST::Pattern::TuplePat& v, bool is_r
 }
 void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
 {
-    if( p.binding().is_valid() ) {
-        if( p.binding().m_mutable )
+    for( const auto& pb : p.bindings() ) {
+        if( pb.m_mutable )
             m_os << "mut ";
-        switch(p.binding().m_type)
+        switch(pb.m_type)
         {
         case ::AST::PatternBinding::Type::MOVE:
             break;
@@ -1008,9 +1008,9 @@ void RustPrinter::print_pattern(const AST::Pattern& p, bool is_refutable)
             m_os << "ref mut ";
             break;
         }
-        m_os << p.binding().m_name << "/*"<<p.binding().m_slot<<"*/";
+        m_os << pb.m_name << "/*" << pb.m_slot << "*/";
         // If binding is irrefutable, and would be binding against a wildcard, just emit the name
-        if( !is_refutable && p.data().is_Any() )
+        if( !is_refutable && p.bindings().size() == 1 && p.data().is_Any() )
         {
             return ;
         }

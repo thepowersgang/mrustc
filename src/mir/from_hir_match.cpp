@@ -1077,15 +1077,15 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
         }
     };
 
-    if(pat.m_binding.is_valid())
+    for(const auto& pb : pat.m_bindings)
     {
         auto path = m_field_path;
-        for(size_t i = 0; i < pat.m_binding.m_implicit_deref_count; i ++)
+        for(size_t i = 0; i < pb.m_implicit_deref_count; i ++)
         {
             path.push_back(FIELD_DEREF);
         }
 
-        this->push_binding(PatternBinding(path, pat.m_binding));
+        this->push_binding(PatternBinding(path, pb));
     }
 
     const auto* ty_p = &top_ty;

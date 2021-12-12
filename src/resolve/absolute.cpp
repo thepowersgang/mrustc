@@ -2353,36 +2353,37 @@ void Resolve_Absolute_PatternValue(/*const*/ Context& context, const Span& sp, :
 void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pattern& pat)
 {
     TRACE_FUNCTION_FR("allow_refutable = " << allow_refutable << ", pat = " << pat, pat);
-    if( pat.binding().is_valid() ) {
+    for(auto& pb : pat.bindings()) {
         //if( !pat.data().is_Any() && ! allow_refutable )
         //    TODO(pat.span(), "Resolve_Absolute_Pattern - Encountered bound destructuring pattern");
-        pat.binding().m_slot = context.push_var( pat.span(), pat.binding().m_name );
-        DEBUG("- Binding #" << pat.binding().m_slot << " '" << pat.binding().m_name << "'");
+        pb.m_slot = context.push_var( pat.span(), pb.m_name );
+        DEBUG("- Binding #" << pb.m_slot << " '" << pb.m_name << "'");
     }
 
     TU_MATCH_HDRA( (pat.data()), {)
     TU_ARMA(MaybeBind, e) {
-        assert( pat.binding().is_valid() == false );
         if( allow_refutable ) {
             auto name = mv$( e.name );
             // Attempt to resolve the name in the current namespace, and if it fails, it's a binding
             auto p = context.lookup_opt( name.name, name.hygiene, Context::LookupMode::PatternValue );
             if( p.is_valid() ) {
                 Resolve_Absolute_Path(context, pat.span(), Context::LookupMode::PatternValue, p);
-                pat = ::AST::Pattern(::AST::Pattern::TagValue(), pat.span(), ::AST::Pattern::Value::make_Named(mv$(p)));
+                pat.data() = AST::Pattern::Data::make_Value({ ::AST::Pattern::Value::make_Named(mv$(p)), AST::Pattern::Value() });
                 DEBUG("MaybeBind resolved to " << pat);
             }
             else {
-                pat = ::AST::Pattern(::AST::Pattern::TagBind(), pat.span(), mv$(name));
-                pat.binding().m_slot = context.push_var( pat.span(), pat.binding().m_name );
-                DEBUG("- Binding #" << pat.binding().m_slot << " '" << pat.binding().m_name << "' (was MaybeBind)");
+                pat.bindings().push_back(AST::PatternBinding(mv$(name), AST::PatternBinding::Type::MOVE, false));
+                pat.bindings().back().m_slot = context.push_var( pat.span(), pat.bindings().back().m_name );
+                pat.data() = AST::Pattern::Data::make_Any({});
+                DEBUG("- Binding #" << pat.bindings().back().m_slot << " '" << pat.bindings().back().m_name << "' (was MaybeBind)");
             }
         }
         else {
             auto name = mv$( e.name );
 
-            pat = ::AST::Pattern(::AST::Pattern::TagBind(), pat.span(), mv$(name));
-            pat.binding().m_slot = context.push_var( pat.span(), pat.binding().m_name );
+            pat.bindings().push_back(AST::PatternBinding(mv$(name), AST::PatternBinding::Type::MOVE, false));
+            pat.bindings().back().m_slot = context.push_var( pat.span(), pat.bindings().back().m_name );
+            pat.data() = AST::Pattern::Data::make_Any({});
         }
         }
     TU_ARMA(Macro, e) {

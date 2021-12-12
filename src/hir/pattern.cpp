@@ -43,8 +43,8 @@ namespace HIR {
         return os;
     }
     ::std::ostream& operator<<(::std::ostream& os, const Pattern& x) {
-        if( x.m_binding.is_valid() ) {
-            os << x.m_binding;
+        for(const auto& pb : x.m_bindings) {
+            os << pb;
         }
         if( x.m_implicit_deref_count > 0 ) {
             os << "&*" << x.m_implicit_deref_count;
@@ -269,7 +269,7 @@ namespace { ::HIR::Pattern::Data clone_pattern_data(const ::HIR::Pattern::Data& 
 } }
 ::HIR::Pattern HIR::Pattern::clone() const
 {
-    auto rv = Pattern(m_binding, clone_pattern_data(m_data));
+    auto rv = Pattern(m_bindings, clone_pattern_data(m_data));
     rv.m_implicit_deref_count = m_implicit_deref_count;
     return rv;
 }

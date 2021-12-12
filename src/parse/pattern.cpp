@@ -105,6 +105,7 @@ AST::Pattern Parse_Pattern1(TokenStream& lex, AllowOrPattern allow_or)
     }
 
     AST::PatternBinding binding;
+    AST::Pattern    pat;
     // If a 'ref' or 'mut' annotation was seen, the next name must be a binding name
     if( expect_bind )
     {
@@ -119,7 +120,8 @@ AST::Pattern Parse_Pattern1(TokenStream& lex, AllowOrPattern allow_or)
         binding = AST::PatternBinding( mv$(bind_name), bind_type, is_mut );
 
         // '@' consumed, move on to next token
-        GET_TOK(tok, lex);
+        //GET_TOK(tok, lex);
+        pat = Parse_Pattern1(lex, allow_or);
     }
     // Otherwise, handle MaybeBind
     else if( tok.type() == TOK_IDENT )
@@ -128,20 +130,20 @@ AST::Pattern Parse_Pattern1(TokenStream& lex, AllowOrPattern allow_or)
         {
         // Known path `ident::`
         case TOK_DOUBLE_COLON:
-            break;
         // Known struct `Ident {` or `Ident (`
         case TOK_BRACE_OPEN:
         case TOK_PAREN_OPEN:
-            break;
         // Known value `IDENT ...`
         case TOK_TRIPLE_DOT:
         case TOK_DOUBLE_DOT_EQUAL:
+            PUTBACK(tok, lex);
+            pat = Parse_PatternReal(lex, allow_or);
             break;
         // Known binding `ident @`
         case TOK_AT:
             binding = AST::PatternBinding( tok.ident(), bind_type/*MOVE*/, is_mut/*false*/ );
             GET_TOK(tok, lex);  // '@'
-            GET_TOK(tok, lex);  // Match lex.putback() below
+            pat = Parse_Pattern1(lex, allow_or);
             break;
         default: {  // Maybe bind
             auto name = tok.ident();
@@ -155,17 +157,18 @@ AST::Pattern Parse_Pattern1(TokenStream& lex, AllowOrPattern allow_or)
             else {
                 return AST::Pattern(AST::Pattern::TagBind(), lex.end_span(ps), mv$(name), bind_type, is_mut);
             }
-            break;}
+            throw "";}
         }
     }
     else
     {
         // Otherwise, fall through
+        PUTBACK(tok, lex);
+        pat = Parse_PatternReal(lex, allow_or);
     }
-
-    PUTBACK(tok, lex);
-    auto pat = Parse_PatternReal(lex, allow_or);
-    pat.binding() = mv$(binding);
+    if(binding.is_valid()) {
+        pat.bindings().insert( pat.bindings().begin(), mv$(binding) );
+    }
     return pat;
 }
 
@@ -580,7 +583,7 @@ AST::Pattern Parse_PatternStruct(TokenStream& lex, ProtoSpan ps, AST::Path path)
             PUTBACK(tok, lex);
             pat = AST::Pattern(lex.end_span(inner_ps), {});
             field_name = field_ident.name;
-            pat.set_bind(mv$(field_ident), bind_type, is_mut);
+            pat.bindings().push_back( AST::PatternBinding(mv$(field_ident), bind_type, is_mut) );
             if( is_box )
             {
                 pat = AST::Pattern(AST::Pattern::TagBox(), lex.end_span(inner_ps), mv$(pat));

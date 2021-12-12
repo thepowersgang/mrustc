@@ -857,8 +857,7 @@ namespace {
         void add_closure_def_from_pattern(const Span& sp, const ::HIR::Pattern& pat)
         {
             // Add binding indexes to m_closure_defs
-            if( pat.m_binding.is_valid() ) {
-                const auto& pb = pat.m_binding;
+            for(const auto& pb : pat.m_bindings ) {
                 add_var_def(sp, pb.m_slot);
             }
 
@@ -949,8 +948,13 @@ namespace {
 
         ::HIR::ValueUsage get_usage_for_pattern(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::TypeRef& outer_ty) const
         {
-            if( pat.m_binding.is_valid() ) {
-                return get_usage_for_pattern_binding(sp, pat.m_binding, outer_ty);
+            if( pat.m_bindings.size() > 0 )
+            {
+                auto vu = ::HIR::ValueUsage::Borrow;
+                for(const auto& pb : pat.m_bindings ) {
+                    vu = std::max(vu, get_usage_for_pattern_binding(sp, pb, outer_ty));
+                }
+                return vu;
             }
 
             // Implicit derefs

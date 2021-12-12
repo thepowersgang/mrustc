@@ -172,21 +172,26 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
     return LowerHIR_Path(sp, path, pc);
 }
 
+namespace {
+    ::HIR::PatternBinding::Type convert_binding_type(::AST::PatternBinding::Type pbt)
+    {
+        switch(pbt)
+        {
+        case ::AST::PatternBinding::Type::MOVE:     return ::HIR::PatternBinding::Type::Move;
+        case ::AST::PatternBinding::Type::REF:      return ::HIR::PatternBinding::Type::Ref;
+        case ::AST::PatternBinding::Type::MUTREF:   return ::HIR::PatternBinding::Type::MutRef;
+        }
+        throw "";
+    }
+}
 ::HIR::Pattern LowerHIR_Pattern(const ::AST::Pattern& pat)
 {
     TRACE_FUNCTION_F("@" << pat.span() << " pat = " << pat);
 
-    ::HIR::PatternBinding   binding;
-    if( pat.binding().is_valid() )
+    std::vector<::HIR::PatternBinding>  bindings;
+    for(const auto& pb : pat.bindings())
     {
-        ::HIR::PatternBinding::Type bt = ::HIR::PatternBinding::Type::Move;
-        switch(pat.binding().m_type)
-        {
-        case ::AST::PatternBinding::Type::MOVE: bt = ::HIR::PatternBinding::Type::Move; break;
-        case ::AST::PatternBinding::Type::REF:  bt = ::HIR::PatternBinding::Type::Ref;  break;
-        case ::AST::PatternBinding::Type::MUTREF: bt = ::HIR::PatternBinding::Type::MutRef; break;
-        }
-        binding = ::HIR::PatternBinding(pat.binding().m_mutable, bt, pat.binding().m_name.name, pat.binding().m_slot);
+        bindings.push_back( ::HIR::PatternBinding(pb.m_mutable, convert_binding_type(pb.m_type), pb.m_name.name, pb.m_slot) );
     }
 
     struct H {
@@ -271,19 +276,19 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
         }
     TU_ARMA(Any, e)
         return ::HIR::Pattern {
-            mv$(binding),
+            mv$(bindings),
             ::HIR::Pattern::Data::make_Any({})
             };
     TU_ARMA(Box, e)
         return ::HIR::Pattern {
-            mv$(binding),
+            mv$(bindings),
             ::HIR::Pattern::Data::make_Box({
                 box$(LowerHIR_Pattern( *e.sub ))
                 })
             };
     TU_ARMA(Ref, e)
         return ::HIR::Pattern {
-            mv$(binding),
+            mv$(bindings),
             ::HIR::Pattern::Data::make_Ref({
                 (e.mut ? ::HIR::BorrowType::Unique : ::HIR::BorrowType::Shared),
                 box$(LowerHIR_Pattern( *e.sub ))
@@ -296,7 +301,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
         if( e.has_wildcard )
         {
             return ::HIR::Pattern(
-                mv$(binding),
+                mv$(bindings),
                 ::HIR::Pattern::Data::make_SplitTuple({
                     mv$(leading), mv$(trailing)
                     })
@@ -306,7 +311,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
         {
             assert( trailing.size() == 0 );
             return ::HIR::Pattern(
-                mv$(binding),
+                mv$(bindings),
                 ::HIR::Pattern::Data::make_Tuple({
                     mv$(leading)
                     })
@@ -325,7 +330,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
         }
 
         return ::HIR::Pattern(
-            mv$(binding),
+            mv$(bindings),
             ::HIR::Pattern::Data::make_PathTuple({
                 LowerHIR_Pattern_Path(pat.span(), e.path, FromAST_PathClass::Value),
                 ::HIR::Pattern::PathBinding(),
@@ -348,7 +353,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
         if( e.sub_patterns.empty() && !e.is_exhaustive ) {
             if( const auto* pbp = e.path.m_bindings.value.binding.opt_EnumVar() ) {
                 return ::HIR::Pattern {
-                    mv$(binding),
+                    mv$(bindings),
                     ::HIR::Pattern::Data::make_PathNamed({
                         LowerHIR_GenericPath(pat.span(), e.path, FromAST_PathClass::Value),
                         ::HIR::Pattern::PathBinding::make_Enum({ pbp->hir, pbp->idx }),
@@ -359,7 +364,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
             }
         }
         return ::HIR::Pattern(
-            mv$(binding),
+            mv$(bindings),
             ::HIR::Pattern::Data::make_PathNamed({
                 LowerHIR_Pattern_Path(pat.span(), e.path, FromAST_PathClass::Type),
                 ::HIR::Pattern::PathBinding(),
@@ -372,7 +377,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
     TU_ARMA(Value, e) {
         if( e.end.is_Invalid() ) {
             return ::HIR::Pattern {
-                mv$(binding),
+                mv$(bindings),
                 ::HIR::Pattern::Data::make_Value({
                     H::lowerhir_pattern_value(pat.span(), e.start)
                     })
@@ -380,7 +385,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
         }
         else {
             return ::HIR::Pattern {
-                mv$(binding),
+                mv$(bindings),
                 ::HIR::Pattern::Data::make_Range({
                     H::lowerhir_pattern_value(pat.span(), e.start),
                     H::lowerhir_pattern_value(pat.span(), e.end),
@@ -391,7 +396,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
         }
     TU_ARMA(ValueLeftInc, e) {
         return ::HIR::Pattern {
-            mv$(binding),
+            mv$(bindings),
             ::HIR::Pattern::Data::make_Range({
                 H::lowerhir_pattern_value(pat.span(), e.start),
                 H::lowerhir_pattern_value(pat.span(), e.end),
@@ -404,7 +409,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
         for(const auto& sp : e.sub_pats)
             leading.push_back( LowerHIR_Pattern(sp) );
         return ::HIR::Pattern {
-            mv$(binding),
+            mv$(bindings),
             ::HIR::Pattern::Data::make_Slice({
                 mv$(leading)
                 })
@@ -419,21 +424,13 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
         for(const auto& sp : e.trailing)
             trailing.push_back( LowerHIR_Pattern(sp) );
 
-        ::HIR::PatternBinding::Type bt = ::HIR::PatternBinding::Type::Move;
-        switch( e.extra_bind.m_type )
-        {
-        case ::AST::PatternBinding::Type::MOVE: break;
-        case ::AST::PatternBinding::Type::REF:  bt = ::HIR::PatternBinding::Type::Ref;  break;
-        case ::AST::PatternBinding::Type::MUTREF: bt = ::HIR::PatternBinding::Type::MutRef; break;
-        }
         auto extra_bind = e.extra_bind.is_valid()
-            // TODO: Share code with the outer binding code
-            ? ::HIR::PatternBinding(false, bt, e.extra_bind.m_name.name, e.extra_bind.m_slot)
+            ? ::HIR::PatternBinding(false, convert_binding_type(e.extra_bind.m_type), e.extra_bind.m_name.name, e.extra_bind.m_slot)
             : ::HIR::PatternBinding()
             ;
 
         return ::HIR::Pattern {
-            mv$(binding),
+            mv$(bindings),
             ::HIR::Pattern::Data::make_SplitSlice({
                 mv$(leading),
                 mv$(extra_bind),
@@ -446,7 +443,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
         for(const auto& sp : e)
             subpats.push_back( LowerHIR_Pattern(sp) );
         return ::HIR::Pattern {
-            mv$(binding),
+            mv$(bindings),
             ::HIR::Pattern::Data::make_Or(mv$(subpats))
             };
         }
@@ -1505,7 +1502,7 @@ namespace {
 
     auto receiver = ::HIR::Function::Receiver::Free;
 
-    if( args.size() > 0 && args.front().first.m_binding.m_name == "self" )
+    if( args.size() > 0 && args.front().first.m_bindings.size() > 0 && args.front().first.m_bindings[0].m_name == "self" )
     {
         const auto& sp = f.args()[0].pat.span();
         auto& arg_self_ty = args.front().second;

@@ -2149,8 +2149,8 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
     if( pat.m_data.is_Any() ) {
         // `_` pattern, no destructure/match, so no auto-ref/deref
         // - TODO: Does this do auto-borrow too?
-        if( pat.m_binding.is_valid() ) {
-            this->add_binding_inner(sp, pat.m_binding, type.clone());
+        for(const auto& pb : pat.m_bindings) {
+            this->add_binding_inner(sp, pb, type.clone());
         }
         return ;
     }
@@ -2367,16 +2367,16 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                 TRACE_FUNCTION_F(pattern << " : " << type);
 
                 // Binding applies to the raw input type (not after dereferencing)
-                if( pattern.m_binding.is_valid() )
+                for(auto& pb : pattern.m_bindings )
                 {
                     // - Binding present, use the current binding mode
-                    if( pattern.m_binding.m_type == ::HIR::PatternBinding::Type::Move )
+                    if( pb.m_type == ::HIR::PatternBinding::Type::Move )
                     {
-                        pattern.m_binding.m_type = binding_mode;
+                        pb.m_type = binding_mode;
                     }
                     ::HIR::TypeRef  tmp;
                     const ::HIR::TypeRef* binding_type = nullptr;
-                    switch(pattern.m_binding.m_type)
+                    switch(pb.m_type)
                     {
                     case ::HIR::PatternBinding::Type::Move:
                         binding_type = &type;
@@ -2393,7 +2393,7 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                         TODO(sp, "Assign variable type using mode " << (int)binding_mode << " and " << type);
                     }
                     assert(binding_type);
-                    context.equate_types(sp, context.get_var(sp, pattern.m_binding.m_slot), *binding_type);
+                    context.equate_types(sp, context.get_var(sp, pb.m_slot), *binding_type);
                 }
 
                 // For `_` patterns, there's nothing to match, so they just succeed with no derefs
@@ -2751,8 +2751,7 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
 
             static void disable_possibilities_on_bindings(const Span& sp, Context& context, const ::HIR::Pattern& pat)
             {
-                if( pat.m_binding.is_valid() ) {
-                    const auto& pb = pat.m_binding;
+                for(const auto& pb : pat.m_bindings ) {
                     context.possible_equate_type_unknown(sp, context.get_var(sp, pb.m_slot), Context::IvarUnknownType::Bound);
                 }
                 TU_MATCH_HDRA( (pat.m_data), {)
@@ -2816,8 +2815,7 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
             }
             static void create_bindings(const Span& sp, Context& context, ::HIR::Pattern& pat)
             {
-                if( pat.m_binding.is_valid() ) {
-                    const auto& pb = pat.m_binding;
+                for(const auto& pb : pat.m_bindings ) {
                     context.add_var( sp, pb.m_slot, pb.m_name, context.m_ivars.new_ivar_tr() );
                     // TODO: Ensure that there's no more bindings below this?
                     // - I'll leave the option open, MIR generation should handle cases where there's multiple borrows
@@ -2901,10 +2899,8 @@ void Context::handle_pattern_direct_inner(const Span& sp, ::HIR::Pattern& pat, c
 {
     TRACE_FUNCTION_F("pat = " << pat << ", type = " << type);
 
-    if( pat.m_binding.is_valid() ) {
-        this->add_binding_inner(sp, pat.m_binding, type.clone());
-
-        // TODO: Bindings aren't allowed within another binding
+    for(const auto& pb : pat.m_bindings ) {
+        this->add_binding_inner(sp, pb, type.clone());
     }
 
     struct H {

@@ -205,8 +205,8 @@ namespace {
         // Brings variables defined in `pat` into scope
         void define_vars_from(const Span& sp, const ::HIR::Pattern& pat) override
         {
-            if( pat.m_binding.is_valid() ) {
-                m_builder.define_variable( pat.m_binding.m_slot );
+            for(const auto& pb : pat.m_bindings) {
+                m_builder.define_variable( pb.m_slot );
             }
 
             TU_MATCHA( (pat.m_data), (e),
@@ -681,9 +681,12 @@ namespace {
                 }
                 auto res = m_builder.get_result(node.span());
 
-                if( node.m_pattern.m_binding.is_valid() && node.m_pattern.m_data.is_Any() && node.m_pattern.m_binding.m_type == ::HIR::PatternBinding::Type::Move )
+                // Shortcut for `let foo = bar;` (avoids the extra temporary that would need to be optimised out)
+                if( node.m_pattern.m_data.is_Any() && std::all_of(node.m_pattern.m_bindings.begin(), node.m_pattern.m_bindings.end(), [](const HIR::PatternBinding& pb){ return pb.m_type == ::HIR::PatternBinding::Type::Move;}) )
                 {
-                    m_builder.push_stmt_assign( node.span(), m_builder.get_variable(node.span(), node.m_pattern.m_binding.m_slot),  mv$(res) );
+                    for(const auto& pb : node.m_pattern.m_bindings) {
+                        m_builder.push_stmt_assign( node.span(), m_builder.get_variable(node.span(), pb.m_slot),  mv$(res) );
+                    }
                 }
                 else
                 {
@@ -2704,12 +2707,13 @@ namespace {
         {
             const auto& pat = arg.first;
             // If the binding is set (i.e. this isn't destructuring) then the table populated by `MirBuilder::MirBuilder(...)` will be used
-            if( pat.m_binding.is_valid() && pat.m_binding.m_type == ::HIR::PatternBinding::Type::Move )
+            if( pat.m_bindings.size() == 1 && pat.m_bindings[0].m_type == ::HIR::PatternBinding::Type::Move )
             {
                 // Simple `var: Type` arguments are handled by `MirBuilder.m_var_arg_mappings`
             }
             else
             {
+                DEBUG("Argument a" << i << " - " << pat);
                 ev.define_vars_from(ptr->span(), arg.first);
                 MIR_LowerHIR_Let(builder, ev, ptr->span(), arg.first, ::MIR::LValue::new_Argument(i), /*else_node=*/nullptr);
             }

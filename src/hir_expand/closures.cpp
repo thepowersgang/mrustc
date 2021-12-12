@@ -143,14 +143,15 @@ namespace {
         }
 
         void visit_pattern(const Span& sp, ::HIR::Pattern& pat) override {
-            if( pat.m_binding.is_valid() ) {
-                auto binding_it = ::std::find(m_local_vars.begin(), m_local_vars.end(), pat.m_binding.m_slot);
+            for(auto& pb : pat.m_bindings)
+            {
+                auto binding_it = ::std::find(m_local_vars.begin(), m_local_vars.end(), pb.m_slot);
                 if( binding_it != m_local_vars.end() ) {
                     // NOTE: Offset of 1 is for `self` (`args` is destructured)
-                    pat.m_binding.m_slot = 1 + binding_it - m_local_vars.begin();
+                    pb.m_slot = 1 + binding_it - m_local_vars.begin();
                 }
                 else {
-                    BUG(sp, "Pattern binds to non-local - " << pat.m_binding);
+                    BUG(sp, "Pattern binds to non-local - " << pb);
                 }
             }
 
@@ -485,7 +486,7 @@ namespace {
                         ::HIR::GenericParams {},
                         make_vec2(
                             ::std::make_pair(
-                                ::HIR::Pattern { {false, ::HIR::PatternBinding::Type::Move, "self", 0}, {} },
+                                ::HIR::Pattern { HIR::PatternBinding {false, ::HIR::PatternBinding::Type::Move, "self", 0}, {} },
                                 mv$(ty_of_self)
                                 ),
                             mv$( args_argent )
@@ -857,7 +858,7 @@ namespace {
                 args_ty_inner.push_back( monomorph_cb.monomorph_type(sp, arg.second) );
             }
             ::HIR::TypeRef  args_ty { mv$(args_ty_inner) };
-            ::HIR::Pattern  args_pat { {}, ::HIR::Pattern::Data::make_Tuple({ mv$(args_pat_inner) }) };
+            ::HIR::Pattern  args_pat { HIR::PatternBinding(), ::HIR::Pattern::Data::make_Tuple({ mv$(args_pat_inner) }) };
             ::HIR::TypeRef  ret_type = monomorph_cb.monomorph_type(sp, node.m_return);
 
             DEBUG("args_ty = " << args_ty << ", ret_type = " << ret_type);
@@ -1225,7 +1226,10 @@ namespace {
                 void visit_pattern(const Span& sp, ::HIR::Pattern& pat) override
                 {
                     ::HIR::ExprVisitorDef::visit_pattern(sp, pat);
-                    visit_pattern_binding(sp, pat.m_binding);
+                    for(auto& pb : pat.m_bindings)
+                    {
+                        visit_pattern_binding(sp, pb);
+                    }
                     if(auto* pe = pat.m_data.opt_SplitSlice())
                     {
                         visit_pattern_binding(sp, pe->extra_bind);

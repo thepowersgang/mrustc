@@ -39,3 +39,4 @@
 - Enum patterns in arguments (e.g. `Ok` when `E=!`)
 - Implicit formatting arguments (e.g `format!("{foo}")`)
 - `mrustc` being better at packing enums than `rustc` (so makes smaller structs than rustc was expecting)
+- `[x0 @ xn] | [x0, .., xn] => ` : Multiple bindings for a single value.

@@ -90,8 +90,8 @@ namespace AST {
 }
 ::std::ostream& operator<<(::std::ostream& os, const Pattern& pat)
 {
-    if( pat.m_binding.is_valid() ) {
-        os << pat.m_binding << " @ ";
+    for(const auto& pb : pat.m_bindings) {
+        os << pb << " @ ";
     }
     TU_MATCH_HDRA( (pat.m_data), {)
     TU_ARMA(MaybeBind, ent) {
@@ -181,7 +181,9 @@ AST::Pattern AST::Pattern::clone() const
 {
     AST::Pattern    rv;
     rv.m_span = m_span;
-    rv.m_binding = PatternBinding(m_binding);
+    for(const auto& pb : m_bindings) {
+        rv.m_bindings.push_back(pb);
+    }
 
     struct H {
         static ::std::unique_ptr<Pattern> clone_sp(const ::std::unique_ptr<Pattern>& p) {

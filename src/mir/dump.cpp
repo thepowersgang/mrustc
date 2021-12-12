@@ -505,7 +505,7 @@ namespace {
             m_os << item.m_params.fmt_args() << "(";
             for(unsigned int i = 0; i < item.m_args.size(); i ++)
             {
-                if( i == 0 && item.m_args[i].first.m_binding.m_name == "self" ) {
+                if( i == 0 && item.m_args[i].first.m_bindings.size() > 0 && item.m_args[i].first.m_bindings[0].m_name == "self" ) {
                     m_os << "self=";
                 }
                 m_os << "arg$" << i << ": " << item.m_args[i].second << ", ";
