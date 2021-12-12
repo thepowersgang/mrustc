@@ -444,8 +444,8 @@ void ::HIR::Visitor::visit_pattern(::HIR::Pattern& pat)
         this->visit_pattern_val(e.val);
         }
     TU_ARMA(Range, e) {
-        this->visit_pattern_val(e.start);
-        this->visit_pattern_val(e.end);
+        if(e.start) this->visit_pattern_val(*e.start);
+        if(e.end  ) this->visit_pattern_val(*e.end);
         }
     TU_ARMA(Slice, e) {
         for(auto& sp : e.sub_patterns)

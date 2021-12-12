@@ -108,7 +108,9 @@ namespace HIR {
             os << e.val;
             }
         TU_ARMA(Range, e) {
-            os << e.start << " .." << (e.is_inclusive ? "=" : "") << " " << e.end;
+            if(e.start) os << *e.start;
+            os << " .." << (e.is_inclusive ? "=" : "") << " ";
+            if(e.end)   os << *e.end;
             }
 
         TU_ARMA(Slice, e) {
@@ -243,8 +245,8 @@ namespace { ::HIR::Pattern::Data clone_pattern_data(const ::HIR::Pattern::Data& 
         }
     TU_ARMA(Range, e) {
         return ::HIR::Pattern::Data::make_Range({
-            clone_patval(e.start),
-            clone_patval(e.end),
+            box$(clone_patval(*e.start)),
+            box$(clone_patval(*e.end)),
             e.is_inclusive
             });
         }

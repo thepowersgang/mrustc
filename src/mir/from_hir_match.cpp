@@ -1149,12 +1149,14 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             this->push_rule( PatternRule::make_Any({}) );
             }
         TU_ARM(pat.m_data, Range, pe) {
+            if( !pe.start || !pe.end )
+                TODO(sp, "Handle half-open ranges in patterns");
             switch(e)
             {
             case ::HIR::CoreType::F32:
             case ::HIR::CoreType::F64: {
-                double start = H::get_pattern_value_float(sp, pat, pe.start);
-                double end   = H::get_pattern_value_float(sp, pat, pe.end  );
+                double start = H::get_pattern_value_float(sp, pat, *pe.start);
+                double end   = H::get_pattern_value_float(sp, pat, *pe.end  );
                 this->push_rule( PatternRule::make_ValueRange( {::MIR::Constant::make_Float({ start, e }), ::MIR::Constant::make_Float({ end, e }), pe.is_inclusive } ) );
                 } break;
             case ::HIR::CoreType::U8:
@@ -1163,8 +1165,8 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             case ::HIR::CoreType::U64:
             case ::HIR::CoreType::U128:
             case ::HIR::CoreType::Usize: {
-                uint64_t start = H::get_pattern_value_int(sp, pat, pe.start);
-                uint64_t end   = H::get_pattern_value_int(sp, pat, pe.end  );
+                uint64_t start = H::get_pattern_value_int(sp, pat, *pe.start);
+                uint64_t end   = H::get_pattern_value_int(sp, pat, *pe.end  );
                 this->push_rule( PatternRule::make_ValueRange( {::MIR::Constant::make_Uint({ start, e }), ::MIR::Constant::make_Uint({ end, e }), pe.is_inclusive} ) );
                 } break;
             case ::HIR::CoreType::I8:
@@ -1173,16 +1175,16 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             case ::HIR::CoreType::I64:
             case ::HIR::CoreType::I128:
             case ::HIR::CoreType::Isize: {
-                int64_t start = H::get_pattern_value_int(sp, pat, pe.start);
-                int64_t end   = H::get_pattern_value_int(sp, pat, pe.end  );
+                int64_t start = H::get_pattern_value_int(sp, pat, *pe.start);
+                int64_t end   = H::get_pattern_value_int(sp, pat, *pe.end  );
                 this->push_rule( PatternRule::make_ValueRange( {::MIR::Constant::make_Int({ start, e }), ::MIR::Constant::make_Int({ end, e }), pe.is_inclusive} ) );
                 } break;
             case ::HIR::CoreType::Bool:
                 BUG(sp, "Can't range match on Bool");
                 break;
             case ::HIR::CoreType::Char: {
-                uint64_t start = H::get_pattern_value_int(sp, pat, pe.start);
-                uint64_t end   = H::get_pattern_value_int(sp, pat, pe.end  );
+                uint64_t start = H::get_pattern_value_int(sp, pat, *pe.start);
+                uint64_t end   = H::get_pattern_value_int(sp, pat, *pe.end  );
                 this->push_rule( PatternRule::make_ValueRange( {::MIR::Constant::make_Uint({ start, e }), ::MIR::Constant::make_Uint({ end, e }), pe.is_inclusive} ) );
                 } break;
             case ::HIR::CoreType::Str:

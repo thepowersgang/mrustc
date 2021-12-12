@@ -235,8 +235,8 @@ namespace {
                 this->visit_pattern_Value(sp, pat, e.val);
                 }
             TU_ARMA(Range, e) {
-                this->visit_pattern_Value(sp, pat, e.start);
-                this->visit_pattern_Value(sp, pat, e.end);
+                if(e.start) this->visit_pattern_Value(sp, pat, *e.start);
+                if(e.end  ) this->visit_pattern_Value(sp, pat, *e.end);
                 }
             TU_ARMA(PathValue, e) {
                 }

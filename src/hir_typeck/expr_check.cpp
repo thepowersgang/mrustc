@@ -1269,8 +1269,8 @@ namespace {
                 this->check_pattern_value(sp, pe.val, ty);
                 }
             TU_ARMA(Range, pe) {
-                this->check_pattern_value(sp, pe.start, ty);
-                this->check_pattern_value(sp, pe.end, ty);
+                if(pe.start)    this->check_pattern_value(sp, *pe.start, ty);
+                if(pe.end  )    this->check_pattern_value(sp, *pe.end, ty);
                 }
             TU_ARMA(Slice, e) {
                 // TODO: Check that the type is a Slice or Array

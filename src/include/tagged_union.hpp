@@ -117,7 +117,7 @@
 */} break;
 #define TU_MATCH_ARMS(CLASS, VAR, NAME, ...)    TU_EXP1( TU_GMA(__VA_ARGS__)(TU_MATCH_ARM, (CLASS, VAR, NAME), __VA_ARGS__) )
 
-#define TU_IFLET(CLASS, VAR, TAG, NAME, ...) if(VAR.tag() == CLASS::TAG_##TAG) { auto& NAME = VAR.as_##TAG(); (void)&NAME; __VA_ARGS__ }
+#define TU_IFLET(CLASS, VAR, TAG, NAME, ...) if((VAR).tag() == CLASS::TAG_##TAG) { auto& NAME = (VAR).as_##TAG(); (void)&NAME; __VA_ARGS__ }
 
 #define TU_MATCH_HDR(VARS, brace)  TU_MATCH_HDR_(::std::remove_reference<decltype(TU_FIRST VARS)>::type, VARS, brace)
 #define TU_MATCH_HDR_(CLASS, VARS, brace)  switch( (TU_FIRST VARS).tag() ) brace case CLASS::TAGDEAD: assert(!"ERROR: destructed tagged union used");

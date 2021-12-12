@@ -1287,7 +1287,7 @@ namespace HIR {
                         throw Defer();
                     if(e.is_Int())
                         return e.as_Int().v;
-                    MIR_ASSERT(state, e.is_Uint(), "Expected an integer, got " << e);
+                    MIR_ASSERT(state, e.is_Uint(), "Expected an integer, got " << e.tag_str() << " " << e);
                     return e.as_Uint().v;
                     }
                 }
@@ -1308,7 +1308,7 @@ namespace HIR {
                     }
                     if(e.is_Generic())
                         throw Defer();
-                    MIR_ASSERT(state, e.is_Int(), "Expected an integer, got " << e);
+                    MIR_ASSERT(state, e.is_Int(), "Expected an integer, got " << e.tag_str() << " " << e);
                     return e.as_Int().v;
                     }
                 }

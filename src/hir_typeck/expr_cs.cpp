@@ -1242,10 +1242,10 @@ namespace {
                 )
                 }
             TU_ARMA(Range, e) {
-                TU_IFLET( ::HIR::Pattern::Value, e.start, Named, ve,
+                TU_IFLET( ::HIR::Pattern::Value, *e.start, Named, ve,
                     this->check_type_resolved_path(sp, ve.path);
                 )
-                TU_IFLET( ::HIR::Pattern::Value, e.end, Named, ve,
+                TU_IFLET( ::HIR::Pattern::Value, *e.end, Named, ve,
                     this->check_type_resolved_path(sp, ve.path);
                 )
                 }
@@ -2253,9 +2253,9 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                     possible_type = get_possible_type_val(context, pe.val);
                     }
                 TU_ARM(pattern.m_data, Range, pe) {
-                    possible_type = get_possible_type_val(context, pe.start);
+                    if(pe.start)    possible_type = get_possible_type_val(context, *pe.start);
                     if( possible_type == ::HIR::TypeRef() ) {
-                        possible_type = get_possible_type_val(context, pe.end);
+                        if(pe.end)  possible_type = get_possible_type_val(context, *pe.end);
                     }
                     else {
                         // TODO: Check that the type from .end matches .start
@@ -2964,8 +2964,8 @@ void Context::handle_pattern_direct_inner(const Span& sp, ::HIR::Pattern& pat, c
         H::handle_value(*this, sp, type, e.val);
         }
     TU_ARMA(Range, e) {
-        H::handle_value(*this, sp, type, e.start);
-        H::handle_value(*this, sp, type, e.end);
+        if(e.start) H::handle_value(*this, sp, type, *e.start);
+        if(e.end  ) H::handle_value(*this, sp, type, *e.end);
         }
     TU_ARMA(Box, e) {
         if( m_lang_Box == ::HIR::SimplePath() )

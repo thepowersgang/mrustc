@@ -866,8 +866,8 @@ namespace resolve_ufcs {
                 }
                 }
             TU_ARMA(Range, e) {
-                this->visit_pattern_Value(sp, pat, e.start);
-                this->visit_pattern_Value(sp, pat, e.end);
+                if(e.start) this->visit_pattern_Value(sp, pat, *e.start);
+                if(e.end  ) this->visit_pattern_Value(sp, pat, *e.end);
                 }
             }
         }

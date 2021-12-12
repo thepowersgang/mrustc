@@ -238,7 +238,7 @@ namespace {
         }
         static ::HIR::Pattern::Value lowerhir_pattern_value(const Span& sp, const ::AST::Pattern::Value& v) {
             TU_MATCH_HDRA((v), {)
-                TU_ARMA(Invalid, e) {
+            TU_ARMA(Invalid, e) {
                 BUG(sp, "Encountered Invalid value in Pattern");
             }
             TU_ARMA(Integer, e) {
@@ -387,19 +387,29 @@ namespace {
             return ::HIR::Pattern {
                 mv$(bindings),
                 ::HIR::Pattern::Data::make_Range({
-                    H::lowerhir_pattern_value(pat.span(), e.start),
-                    H::lowerhir_pattern_value(pat.span(), e.end),
+                    box$(H::lowerhir_pattern_value(pat.span(), e.start)),
+                    box$(H::lowerhir_pattern_value(pat.span(), e.end)),
                     true
                     })
                 };
         }
         }
     TU_ARMA(ValueLeftInc, e) {
+        if( e.end.is_Invalid() ) {
+            return ::HIR::Pattern {
+                mv$(bindings),
+                ::HIR::Pattern::Data::make_Range({
+                    box$(H::lowerhir_pattern_value(pat.span(), e.start)),
+                    {},
+                    false
+                    })
+            };
+        }
         return ::HIR::Pattern {
             mv$(bindings),
             ::HIR::Pattern::Data::make_Range({
-                H::lowerhir_pattern_value(pat.span(), e.start),
-                H::lowerhir_pattern_value(pat.span(), e.end),
+                box$(H::lowerhir_pattern_value(pat.span(), e.start)),
+                box$(H::lowerhir_pattern_value(pat.span(), e.end)),
                 false
                 })
         };
