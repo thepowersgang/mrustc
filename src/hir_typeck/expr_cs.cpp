@@ -1242,12 +1242,12 @@ namespace {
                 )
                 }
             TU_ARMA(Range, e) {
-                TU_IFLET( ::HIR::Pattern::Value, *e.start, Named, ve,
-                    this->check_type_resolved_path(sp, ve.path);
-                )
-                TU_IFLET( ::HIR::Pattern::Value, *e.end, Named, ve,
-                    this->check_type_resolved_path(sp, ve.path);
-                )
+                if( e.end && e.start->is_Named() ) {
+                    this->check_type_resolved_path(sp, e.start->as_Named().path);
+                }
+                if( e.end && e.end->is_Named() ) {
+                    this->check_type_resolved_path(sp, e.end->as_Named().path);
+                }
                 }
             TU_ARMA(PathValue, e) {
                 this->check_type_resolved_path(sp, e.path);
@@ -6217,6 +6217,18 @@ namespace
                         context.equate_types(sp, ty_l, *ent.ty);
                         return true;
                     }
+                }
+            }
+            if( fallback_ty == IvarPossFallbackType::IgnoreWeakDisable
+                && possible_tys.size() == 1
+                )
+            {
+                auto ent = possible_tys[0];
+                if( !check_ivar_poss__fails_bounds(sp, context, ty_l, *ent.ty) )
+                {
+                    DEBUG("Single option (and in final), " << *ent.ty);
+                    context.equate_types(sp, ty_l, *ent.ty);
+                    return true;
                 }
             }
 

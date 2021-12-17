@@ -736,3 +736,16 @@ Before allowing an assignment in `check_coerce` (especially of an ivar), check i
  - Worked!
  - Moved the anti-recursion to `Context::equate_types` (where it works all the time, and is less expensive to implement)
 
+# (1.54) `::"rustc_middle-0_0_0"::middle::limits::update_limit`
+```
+..\rustc-1.54.0-src\compiler\rustc_middle\src\middle\limits.rs:54: error:0:Type mismatch between ::"core-0_0_0"::num::error::IntErrorKind and &::"core-0_0_0"::num::error::IntErrorKind
+```
+
+`.parse()` result type only inferred through a `From::from` call, leads to the match default being applied (via ivar possibilities) before the parse result type is known (and thus the error type is known).
+
+Query: `parse()`'s result should be known, and the error type should be an aty bound.
+- BUT, there's a method call on that ATY/UfcsKnown bound, which is the thing being inferred.
+- So, why does the result type not infer beforehand?
+
+Solution: If there's an ivar with only one possibility, and we're in a fallback mode - then pick that possibility (if it fits available bounds)
+- This leads to the coercions being traversed earlier, thus avoiding the inference race.
