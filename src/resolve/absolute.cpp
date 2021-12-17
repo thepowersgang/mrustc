@@ -242,12 +242,20 @@ namespace
             if( m_var_count == ~0u ) {
                 BUG(sp, "Assigning local when there's no variable context");
             }
+            // If this variable is defined within a stack entry, then use it
             assert(!m_pattern_stack.empty());
+            bool already_defined = m_pattern_stack.back().first_arm_done;
+            for(auto it = m_pattern_stack.rbegin(); it != m_pattern_stack.rend(); ++it) {
+                if( it->first_arm_variables.count(name) ) {
+                    already_defined = true;
+                    break;
+                }
+            }
             if( !m_pattern_stack.back().created_variables.insert(name).second ) {
                 ERROR(sp, E0000, "Duplicate definition of `" << name << "` in pattern arm");
             }
             // Are we currently in the second (or later) arm of a split pattern
-            if( m_pattern_stack.back().first_arm_done )
+            if( already_defined )
             {
                 if( !m_name_context.back().is_VarBlock() ) {
                     BUG(sp, "resolve/absolute.cpp - Context::push_var - No block");
@@ -256,7 +264,7 @@ namespace
                 for( const auto& v : vb.variables )
                 {
                     if( v.first == name ) {
-                        DEBUG("Arm defined var var @ " << m_block_level << ": #" << v.second << " " << name);
+                        DEBUG("Arm defined var @ " << m_block_level << ": #" << v.second << " " << name);
                         return v.second;
                     }
                 }
