@@ -16,3 +16,21 @@
 -#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
 +#[cfg(all(not(rust_compiler="mrustc"),target_arch = "x86_64", target_pointer_width = "64"))]
  mod size_asserts {
+--- compiler/rustc_middle/src/mir/interpret/error.rs
++++ compiler/rustc_middle/src/mir/interpret/error.rs
+@@ -452,2 +452,2 @@
+-#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
++#[cfg(all(not(rust_compiler="mrustc"), target_arch = "x86_64", target_pointer_width = "64"))]
+ static_assert_size!(InterpError<'_>, 64);
+--- compiler/rustc_middle/src/mir/mod.rs
++++ compiler/rustc_middle/src/mir/mod.rs
+@@ -2203,2 +2203,2 @@
+-#[cfg(target_arch = "x86_64")]
++#[cfg(all(not(rust_compiler="mrustc"), target_arch = "x86_64"))]
+ static_assert_size!(AggregateKind<'_>, 48);
+--- compiler/rustc_middle/src/thir.rs
++++ compiler/rustc_middle/src/thir.rs
+@@ -147,2 +147,2 @@
+-#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
++#[cfg(all(not(rust_compiler="mrustc"), target_arch = "x86_64", target_pointer_width = "64"))]
+ rustc_data_structures::static_assert_size!(Expr<'_>, 144);
