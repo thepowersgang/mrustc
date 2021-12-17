@@ -2053,13 +2053,17 @@ void Typecheck_Code_CS__EnumerateRules(
     {
         Context& context;
         ::HIR::ExprPtr& expr;
+        mutable  const ::HIR::TypeRef*  cur_self;
         M(Context& context, ::HIR::ExprPtr& expr)
             : context(context)
             , expr(expr)
+            , cur_self(nullptr)
         {
         }
 
         ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& g) const override {
+            if( g.binding == GENERIC_Self && cur_self )
+                return cur_self->clone();
             return ::HIR::TypeRef(g);
         }
         ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& g) const override {
@@ -2079,24 +2083,30 @@ void Typecheck_Code_CS__EnumerateRules(
                 ASSERT_BUG(sp, expr.m_erased_types[e->m_index] == HIR::TypeRef(), "Multiple-visits to erased type #" << e->m_index);
                 expr.m_erased_types[e->m_index] = context.m_ivars.new_ivar_tr();
                 auto rv = expr.m_erased_types[e->m_index].clone();
+                auto prev_cur_self = this->cur_self;
+                this->cur_self = &rv;
                 DEBUG(tpl << " -> " << rv);
+
                 for(const auto& trait : e->m_traits)
                 {
                     if( trait.m_type_bounds.size() == 0 )
                     {
-                        context.equate_types_assoc(sp, ::HIR::TypeRef(), trait.m_path.m_path, trait.m_path.m_params.clone(), rv, "", false);
+                        
+                        context.equate_types_assoc(sp, ::HIR::TypeRef(), trait.m_path.m_path, this->monomorph_path_params(sp, trait.m_path.m_params, allow_infer), rv, "", false);
                     }
                     else
                     {
                         for(const auto& aty : trait.m_type_bounds)
                         {
                             auto aty_cloned = this->monomorph_type(sp, aty.second.type);
-                            //auto params = clone_path_params_with(sp, trait.m_path.m_params, [&](const auto& tpl, auto& rv) { return clone_ty_cb(sp, context, expr, tpl, rv); });
-                            auto params = trait.m_path.m_params.clone();
+                            auto params = this->monomorph_path_params(sp, trait.m_path.m_params, allow_infer);
                             context.equate_types_assoc(sp, std::move(aty_cloned), trait.m_path.m_path, std::move(params), rv, aty.first.c_str(), false);
                         }
                     }
                 }
+
+                this->cur_self = prev_cur_self;
+
                 return rv;
             }
             else

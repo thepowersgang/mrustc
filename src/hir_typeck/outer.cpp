@@ -135,6 +135,7 @@ namespace {
             return rv;
         }
 
+#if 0
         void update_self_type(const Span& sp, ::HIR::TypeRef& ty) const
         {
             struct H {
@@ -146,7 +147,7 @@ namespace {
 
             TU_MATCH(::HIR::TypeData, (ty.data_mut()), (e),
             (Generic,
-                if(e.name == "Self") {
+                if(e.name == "Self" || e.binding == GENERIC_Self) {
                     if( m_self_types.empty() )
                         ERROR(sp, E0000, "Self appeared in unexpected location");
                     if( !m_self_types.back() )
@@ -216,6 +217,7 @@ namespace {
                 )
             )
         }
+#endif
         void check_parameters(const Span& sp, const ::HIR::GenericParams& param_def,  ::HIR::PathParams& param_vals)
         {
             MonomorphStatePtr ms(m_self_types.empty() ? nullptr : m_self_types.back(), &param_vals, nullptr);
@@ -275,12 +277,22 @@ namespace {
         {
             static Span _sp;
             const Span& sp = _sp;
+
+            HIR::TypeRef    self("Self", GENERIC_Self);
+            if( ty.data().is_ErasedType() ) {
+                m_self_types.push_back(&self);
+            }
+
             ::HIR::Visitor::visit_type(ty);
+
+            if( ty.data().is_ErasedType() ) {
+                m_self_types.pop_back();
+            }
 
             #if 0
             if( const auto* te = ty.m_data.opt_Generic() )
             {
-                if(te->name == "Self" && te->binding == 0xFFFF) {
+                if(te->name == "Self" && te->binding == GENERIC_Self) {
                     if( m_self_types.empty() )
                         ERROR(sp, E0000, "Self appeared in unexpected location");
                     if( !m_self_types.back() )
@@ -697,7 +709,7 @@ namespace {
         void visit_associatedtype(::HIR::ItemPath p, ::HIR::AssociatedType& item) override
         {
             // Push `Self = <Self as CurTrait>::Type` for processing defaults in the bounds.
-            auto path_aty = ::HIR::Path( ::HIR::TypeRef("Self", 0xFFFF), this->get_current_trait_gp(), p.get_name() );
+            auto path_aty = ::HIR::Path( ::HIR::TypeRef("Self", GENERIC_Self), this->get_current_trait_gp(), p.get_name() );
             auto ty_aty = ::HIR::TypeRef::new_path( mv$(path_aty), ::HIR::TypePathBinding::make_Opaque({}) );
             m_self_types.push_back(&ty_aty);
 

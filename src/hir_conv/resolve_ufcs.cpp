@@ -685,7 +685,7 @@ namespace resolve_ufcs {
                 // If processing a trait, and the type is 'Self', search for the type/method on the trait
                 // - Explicitly encoded because `Self::Type` has a different meaning to `MyType::Type` (the latter will search bounds first)
                 // - NOTE: Could be in an inherent block, where there's no trait
-                if( /*m_current_type &&*/ m_current_trait && e.type == ::HIR::TypeRef("Self", 0xFFFF) )
+                if( /*m_current_type &&*/ m_current_trait && e.type == ::HIR::TypeRef("Self", GENERIC_Self) )
                 {
                     ::HIR::GenericPath  trait_path;
                     if( m_current_trait_path->trait_path() )
