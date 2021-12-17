@@ -4534,7 +4534,7 @@ namespace {
                         // - Cleans up the dumped MIR and prevents needing a reborrow elsewhere.
                         // - TODO: Alter the block's result types
                         ::HIR::ExprNodeP* npp = node_ptr_ptr;
-                        while( auto* p = dynamic_cast< ::HIR::ExprNode_Block*>(&**npp) )
+                        while( auto* p = dynamic_cast< ::HIR::ExprNode_Block*>(npp->get()) )
                         {
                             DEBUG("- Propagate to the last node of a _Block");
                             ASSERT_BUG( p->span(), context.m_ivars.types_equal(p->m_res_type, p->m_value_node->m_res_type),
@@ -4711,7 +4711,7 @@ namespace {
                         // - TODO: Alter the block's result types
                         {
                             ::HIR::ExprNodeP* npp = node_ptr_ptr;
-                            while( auto* p = dynamic_cast< ::HIR::ExprNode_Block*>(&**npp) )
+                            while( auto* p = dynamic_cast< ::HIR::ExprNode_Block*>(npp->get()) )
                             {
                                 if( !context.m_ivars.types_equal(p->m_res_type, src) ) {
                                     DEBUG("(borrow) Block and result mismatch - " << context.m_ivars.fmt_type(p->m_res_type) << " != " << context.m_ivars.fmt_type(src));
@@ -4721,7 +4721,7 @@ namespace {
                             }
                         }
                         ::HIR::ExprNodeP* npp = node_ptr_ptr;
-                        while( auto* p = dynamic_cast< ::HIR::ExprNode_Block*>(&**npp) )
+                        while( auto* p = dynamic_cast< ::HIR::ExprNode_Block*>(npp->get()) )
                         {
                             DEBUG("- Propagate borrow coercion to the last node of a _Block: " << context.m_ivars.fmt_type(p->m_res_type));
                             ASSERT_BUG( p->span(), context.m_ivars.types_equal(p->m_res_type, p->m_value_node->m_res_type),
