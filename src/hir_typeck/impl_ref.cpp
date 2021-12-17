@@ -95,27 +95,26 @@ bool ImplRef::has_magic_params() const
 }
 bool ImplRef::type_is_specialisable(const char* name) const
 {
-    TU_MATCH(Data, (this->m_data), (e),
-    (TraitImpl,
+    TU_MATCH_HDRA( (this->m_data), {)
+    TU_ARMA(TraitImpl, e) {
         if( e.impl == nullptr ) {
             // No impl yet? This type is specialisable.
             return true;
         }
-        //TODO(Span(), "type_is_specializable - Impl = " << *this << ", Type = " << name);
         auto it = e.impl->m_types.find(name);
         if( it == e.impl->m_types.end() ) {
-            TODO(Span(), "Handle missing type in " << *this << ", name = " << name);
-            return false;
+            // If not present (which might happen during UFCS resolution), assume that it's specialisable
+            return true;
         }
         return it->second.is_specialisable;
-        ),
-    (BoundedPtr,
+        }
+    TU_ARMA(BoundedPtr, e) {
         return false;
-        ),
-    (Bounded,
+        }
+    TU_ARMA(Bounded, E) {
         return false;
-        )
-    )
+        }
+    }
     throw "";
 }
 
