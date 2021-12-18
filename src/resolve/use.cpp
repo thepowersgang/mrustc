@@ -96,6 +96,7 @@ void Resolve_Use(::AST::Crate& crate)
 
             std::vector<const AST::Module*>   parent_mods;
             const AST::Module* cur_mod = &crate.m_root_module;
+            parent_mods.push_back(cur_mod);
             for( unsigned int i = 0; i < base_path.nodes().size(); i ++ )
             {
                 const auto& name = base_path.nodes()[i].name();
