@@ -819,16 +819,20 @@ void PatternRulesetBuilder::multiply_rulesets(size_t n, std::function<void(size_
     this->subset_end = this->subset_start;
     for(size_t i = 0; i < n; i ++)
     {
+        auto orig_start = this->subset_start;
         this->subset_end += subset_size;
         DEBUG("++ " << i << " " << this->subset_start << " - " << this->subset_end);
         cb(i);
         DEBUG("-- " << i);
-        this->subset_start += subset_size;
+        assert(this->subset_start == orig_start);   // This should always be unchanged (even if the callback splits again). The end can change though.
+        assert(this->subset_end >= this->subset_start + subset_size);   // The end should always be at least equal to start + size (i.e. hasn't shrunk)
+        this->subset_start = this->subset_end;
     }
     // Update the subset again to cover everything
     this->subset_start = saved_start;
-    ASSERT_BUG(Span(), this->subset_end == new_subset_end, this->subset_end << " == " << new_subset_end);
-    for(size_t i = this->subset_start; i < new_subset_end; i += 1)
+    // NOTE: Can't asser that the end is as-expected, as there might be inner subsets created that makes this assumption no longer valid
+    //ASSERT_BUG(Span(), this->subset_end == new_subset_end, this->subset_end << " == " << new_subset_end);
+    for(size_t i = this->subset_start; i < this->subset_end; i += 1)
     {
         DEBUG("#" << i << " rules=[" << m_rulesets[i].m_rules << "], bindings=[" << m_rulesets[i].m_bindings << "]");
     }
