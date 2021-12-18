@@ -35,6 +35,7 @@
         RcString read_istring() { return m_in.read_istring(); }
         ::std::string read_string() { return m_in.read_string(); }
         bool read_bool() { return m_in.read_bool(); }
+        uint8_t read_u8() { return m_in.read_u8(); }
         size_t deserialise_count() { return m_in.read_count(); }
 
         template<typename V>
@@ -142,7 +143,7 @@
         }
 
         template<typename T>
-        ::std::vector<T> deserialise_vec()
+        ::std::vector<T> deserialise_vec_c(::std::function<T()> cb)
         {
             TRACE_FUNCTION_FR("<" << typeid(T).name() << ">", m_in.get_pos());
             auto _ = m_in.open_object(typeid(::std::vector<T>).name());
@@ -151,21 +152,23 @@
             ::std::vector<T>    rv;
             rv.reserve(n);
             for(size_t i = 0; i < n; i ++)
-                rv.push_back( D<T>::des(*this) );
-            return rv;
-        }
-        template<typename T>
-        ::std::vector<T> deserialise_vec_c(::std::function<T()> cb)
-        {
-            TRACE_FUNCTION_F("<" << typeid(T).name() << ">");
-            auto _ = m_in.open_object(typeid(::std::vector<T>).name());
-            size_t n = m_in.read_count();
-            ::std::vector<T>    rv;
-            rv.reserve(n);
-            for(size_t i = 0; i < n; i ++)
                 rv.push_back( cb() );
             return rv;
         }
+        template<typename T>
+        ::std::vector<T> deserialise_vec()
+        {
+            return deserialise_vec_c<T>([&](){ return D<T>::des(*this); });
+        }
+        template<>
+        ::std::vector<uint8_t> deserialise_vec()
+        {
+            size_t n = m_in.read_count();
+            ::std::vector<uint8_t>    rv(n);
+            m_in.read(rv.data(), n);
+            return rv;
+        }
+
         template<typename T>
         ::std::set<T> deserialise_set()
         {
@@ -909,6 +912,7 @@
     template<>
     DEF_D( bool,
         return d.read_bool(); );
+    template<> DEF_D( uint8_t, return d.read_u8(); );
 
     template<typename T>
     DEF_D( ::std::unique_ptr<T>,
@@ -1572,6 +1576,7 @@
         _(Unsigned, deserialise_vec_c<uint64_t>([&](){ return m_in.read_u64c(); }))
         _(Signed  , deserialise_vec_c< int64_t>([&](){ return m_in.read_i64c(); }))
         _(String  , deserialise_vec<::std::string>())
+        _(ByteString, deserialise_vec<::std::vector<uint8_t>>())
         #undef _
         default:
             BUG(Span(), "Bad tag for MIR::SwitchValues - " << tag);

@@ -340,7 +340,7 @@ public:
         else /*if( v == 0xFF )*/ {
             rv = ~0u;
         }
-        //DEBUG(rv);
+        DEBUG(rv);
         return rv;
     }
     RcString read_istring() {
@@ -418,7 +418,7 @@ public:
     CloseOnDrop open_object(const char* name) {
         auto v = read_u8();
         if( v != 0xFD ) {
-            std::cerr << "Expected OpenNamed(" << name << "), got " << unsigned(v) << ::std::endl;
+            std::cerr << "Expected OpenNamed(" << name << "), got " << unsigned(v) << "u8" << ::std::endl;
             abort();
         }
         auto key = raw_read_uint();

@@ -96,7 +96,7 @@
         template<typename T>
         void serialise_vec(const ::std::vector<T>& vec)
         {
-            TRACE_FUNCTION_F("size=" << vec.size());
+            TRACE_FUNCTION_F("<" << typeid(T).name() << "> size=" << vec.size());
             auto _ = m_out.open_object(typeid(::std::vector<T>).name());
             m_out.write_count(vec.size());
             for(const auto& i : vec)
@@ -147,6 +147,7 @@
 
         void serialise(bool v) { m_out.write_bool(v); };
         void serialise(unsigned int v) { m_out.write_count(v); };
+        void serialise(uint8_t v) { m_out.write_u8(v); };
         void serialise(uint64_t v) { m_out.write_u64c(v); };
         void serialise(int64_t v) { m_out.write_i64c(v); };
 
@@ -844,20 +845,20 @@
         void serialise(const ::MIR::SwitchValues& sv)
         {
             m_out.write_tag( static_cast<int>(sv.tag()) );
-            TU_MATCHA( (sv), (e),
-            (Unsigned,
+            TU_MATCH_HDRA( (sv), {)
+            TU_ARMA(Unsigned, e) {
                 serialise_vec(e);
-                ),
-            (Signed,
+                }
+            TU_ARMA(Signed, e) {
                 serialise_vec(e);
-                ),
-            (String,
+                }
+            TU_ARMA(String, e) {
                 serialise_vec(e);
-                ),
-            (ByteString,
+                }
+            TU_ARMA(ByteString, e) {
                 serialise_vec(e);
-                )
-            )
+                }
+            }
         }
         void serialise(const ::MIR::CallTarget& ct)
         {
