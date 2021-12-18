@@ -937,7 +937,7 @@ bool StaticTraitResolve::find_impl__check_crate(
         trait_path, trait_params, type,
         impl.m_params, impl.m_trait_args, impl.m_type,
         [&](auto impl_params, auto match) {
-            return found_cb( ImplRef(mv$(impl_params), trait_path, impl), (match == ::HIR::Compare::Fuzzy) );
+            return found_cb( ImplRef(mv$(impl_params), m_crate.get_trait_by_path(sp, trait_path), trait_path, impl), (match == ::HIR::Compare::Fuzzy) );
         });
 }
 
@@ -1324,6 +1324,7 @@ bool StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
     if( rv ) {
         if( assume_opaque ) {
             input.data_mut().as_Path().binding = ::HIR::TypePathBinding::make_Opaque({});
+            ASSERT_BUG(sp, monomorphise_type_needed(input), "Set opaque on a non-generic type: " << input);
             DEBUG("Assuming that " << input << " is an opaque name");
 
             bool rv = this->replace_equalities(input);
@@ -1454,6 +1455,7 @@ bool StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
             else {
                 DEBUG("Mark  " << e.path << " as opaque");
                 e.binding = ::HIR::TypePathBinding::make_Opaque({});
+                ASSERT_BUG(sp, monomorphise_type_needed(input), "Set opaque on a non-generic type: " << input);
                 replacement_happened = this->replace_equalities(input);
             }
             return true;
@@ -1466,6 +1468,7 @@ bool StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
     }
     if( best_impl.is_valid() ) {
         e.binding = ::HIR::TypePathBinding::make_Opaque({});
+        ASSERT_BUG(sp, monomorphise_type_needed(input), "Set opaque on a non-generic type: " << input);
         this->replace_equalities(input);
         DEBUG("- Couldn't find a non-specialised impl of " << trait_path << " for " << e2.type << " - treating as opaque");
         return false;

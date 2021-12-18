@@ -22,6 +22,7 @@ struct ImplRef
     TAGGED_UNION(Data, TraitImpl,
     (TraitImpl, struct {
         HIR::PathParams impl_params;
+        const ::HIR::Trait* trait_ptr;
         const ::HIR::SimplePath*    trait_path;
         const ::HIR::TraitImpl* impl;
         mutable ::HIR::TypeRef  self_cache;
@@ -41,10 +42,10 @@ struct ImplRef
     Data    m_data;
 
     ImplRef():
-        m_data(Data::make_TraitImpl({ {}, nullptr, nullptr }))
+        m_data(Data::make_TraitImpl({ {}, nullptr, nullptr, nullptr }))
     {}
-    ImplRef(HIR::PathParams impl_params, const ::HIR::SimplePath& trait, const ::HIR::TraitImpl& impl):
-        m_data(Data::make_TraitImpl({ mv$(impl_params), &trait, &impl }))
+    ImplRef(HIR::PathParams impl_params, const HIR::Trait& trait_ref, const ::HIR::SimplePath& trait, const ::HIR::TraitImpl& impl):
+        m_data(Data::make_TraitImpl({ mv$(impl_params), &trait_ref, &trait, &impl }))
 
     {}
     ImplRef(const ::HIR::TypeRef* type, const ::HIR::PathParams* args, const ::HIR::TraitPath::assoc_list_t* assoc):

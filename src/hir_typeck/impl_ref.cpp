@@ -103,8 +103,8 @@ bool ImplRef::type_is_specialisable(const char* name) const
         }
         auto it = e.impl->m_types.find(name);
         if( it == e.impl->m_types.end() ) {
-            // If not present (which might happen during UFCS resolution), assume that it's specialisable
-            return true;
+            // If not present (which might happen during UFCS resolution), assume that it's not specialisable
+            return false;
         }
         return it->second.is_specialisable;
         }
@@ -224,11 +224,16 @@ ImplRef::Monomorph ImplRef::get_cb_monomorph_traitimpl(const Span& sp) const
     if( !name[0] )
         return ::HIR::TypeRef();
     static Span  sp;
-    TU_MATCH(Data, (this->m_data), (e),
-    (TraitImpl,
+    TU_MATCH_HDRA( (this->m_data), {)
+    TU_ARMA(TraitImpl, e) {
         auto it = e.impl->m_types.find(name);
         if( it == e.impl->m_types.end() )
+        {
+            if( e.trait_ptr->m_types.count(name) && e.trait_ptr->m_types.at(name).m_default != HIR::TypeRef() ) {
+                return this->get_cb_monomorph_traitimpl(sp).monomorph_type(sp, e.trait_ptr->m_types.at(name).m_default);
+            }
             return ::HIR::TypeRef();
+        }
         const ::HIR::TypeRef& tpl_ty = it->second.data;
         DEBUG("name=" << name << " tpl_ty=" << tpl_ty << " " << *this);
         if( monomorphise_type_needed(tpl_ty) ) {
@@ -237,20 +242,20 @@ ImplRef::Monomorph ImplRef::get_cb_monomorph_traitimpl(const Span& sp) const
         else {
             return tpl_ty.clone();
         }
-        ),
-    (BoundedPtr,
+        }
+    TU_ARMA(BoundedPtr, e) {
         auto it = e.assoc->find(name);
         if(it == e.assoc->end())
             return ::HIR::TypeRef();
         return it->second.type.clone();
-        ),
-    (Bounded,
+        }
+    TU_ARMA(Bounded, e) {
         auto it = e.assoc.find(name);
         if(it == e.assoc.end())
             return ::HIR::TypeRef();
         return it->second.type.clone();
-        )
-    )
+        }
+    }
     return ::HIR::TypeRef();
 }
 

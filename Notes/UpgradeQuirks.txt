@@ -41,3 +41,4 @@
 - `mrustc` being better at packing enums than `rustc` (so makes smaller structs than rustc was expecting)
 - `[x0 @ xn] | [x0, .., xn] => ` : Multiple bindings for a single value.
 - Right-open pattern ranges `foo..`
+- Trait-provided associated types

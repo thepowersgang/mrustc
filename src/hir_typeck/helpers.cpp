@@ -2294,6 +2294,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
         case ResultType::Opaque: {
             DEBUG("Assuming that " << input << " is an opaque name");
             input.data_mut().as_Path().binding = ::HIR::TypePathBinding::make_Opaque({});
+            ASSERT_BUG(sp, visit_ty_with(input, [](const HIR::TypeRef& ty){ return ty.data().is_Generic() || ty.data().is_ErasedType() || ty.data().is_Infer(); }), "Set opaque on a non-generic type: " << input);
 
             DEBUG("- " << m_type_equalities.size() << " replacements");
             for( const auto& v : m_type_equalities )
@@ -2851,7 +2852,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             }
             DEBUG("[find_trait_impls_crate] - Found with impl_params=" << impl_params);
 
-            return callback(ImplRef(mv$(impl_params), trait, impl), match);
+            return callback(ImplRef(mv$(impl_params), m_crate.get_trait_by_path(sp, trait), trait, impl), match);
         }
         );
 }
