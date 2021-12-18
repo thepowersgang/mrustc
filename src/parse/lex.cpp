@@ -499,6 +499,13 @@ Token Lexer::getTokenInt()
 
                     this->ungetc();
                     double fval = this->parseFloat(val);
+                    if( fval != fval )
+                    {
+                        assert(!this->m_next_tokens.empty());
+                        auto t = std::move( this->m_next_tokens.back() );
+                        this->m_next_tokens.pop_back();
+                        return t;
+                    }
                     if( issym(ch = this->getc()) )
                     {
                         ::std::string   suffix;
@@ -519,7 +526,7 @@ Token Lexer::getTokenInt()
                     {
                         this->ungetc();
                     }
-                    return Token( fval, num_type);
+                    return Token(fval, num_type);
 
                 }
                 else if( issym(ch)) {
@@ -908,6 +915,23 @@ double Lexer::parseFloat(uint64_t whole)
     {
         PUTC(ch);
         ch = this->getc_num();
+    }
+    // If the current char is a `.`
+    if( ch == '.' )
+    {
+        assert( buf[ofs-1] != '.' );    // Shouldn't be possible (as that would have been handled by the caller as `<int> '..'`
+        DEBUG("Detected double tuple indexing (trailing `.` after a float)");
+        // x.y. -> This should be two integers.
+        // - Parse into `<int> '.' <int>` (ungetting the final `.`)
+        auto cit = std::find(buf, buf+sizeof(buf), '.');
+        *cit = '\0';
+        // - Push these in reverse order (as they're popped off the back)
+        this->ungetc();
+        m_next_tokens.push_back(Token(std::strtoull(cit+1, nullptr, 10), CORETYPE_ANY));
+        m_next_tokens.push_back(TOK_DOT);
+        m_next_tokens.push_back(Token(std::strtoull(buf, nullptr, 10), CORETYPE_ANY));
+
+        return std::numeric_limits<double>::quiet_NaN();
     }
     if( ch == 'e' || ch == 'E' )
     {
