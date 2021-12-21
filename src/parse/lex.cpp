@@ -919,8 +919,9 @@ double Lexer::parseFloat(uint64_t whole)
     // If the current char is a `.`
     if( ch == '.' )
     {
+        buf[ofs] = '\0';
         assert( buf[ofs-1] != '.' );    // Shouldn't be possible (as that would have been handled by the caller as `<int> '..'`
-        DEBUG("Detected double tuple indexing (trailing `.` after a float)");
+        DEBUG("Detected double tuple indexing (trailing `.` after a float - " << buf << ")");
         // x.y. -> This should be two integers.
         // - Parse into `<int> '.' <int>` (ungetting the final `.`)
         auto cit = std::find(buf, buf+sizeof(buf), '.');
