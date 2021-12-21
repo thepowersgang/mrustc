@@ -33,14 +33,11 @@
                 pp.m_types.push_back( ::HIR::TypeRef() );
             }
         }
-        if( ta.m_params.m_types.size() > 0 ) {
-            // Monomorphise the exapnded type using the created params
-            auto ms = MonomorphStatePtr(nullptr, &pp, nullptr);
-            return ms.monomorph_type(sp, ta.m_type);
-        }
-        else {
-            return ta.m_type.clone();
-        }
+        // Monomorphise the exapnded type using the created params
+        auto ms = MonomorphStatePtr(nullptr, &pp, nullptr);
+        HIR::TypeRef rv = ms.monomorph_type(sp, ta.m_type);
+        DEBUG(path << " -> " << path.m_path << pp << " -> " << rv);
+        return rv;
     }
     return ::HIR::TypeRef();
 }

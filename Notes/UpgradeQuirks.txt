@@ -42,3 +42,6 @@
 - `[x0 @ xn] | [x0, .., xn] => ` : Multiple bindings for a single value.
 - Right-open pattern ranges `foo..`
 - Trait-provided associated types
+- Type alias that expands its generic parameter twice
+  - Defer type aliases (and resolve ufcs) to during main typecheck?
+  - OR, allocate ivars really early

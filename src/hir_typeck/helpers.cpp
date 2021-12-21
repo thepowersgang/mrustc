@@ -522,7 +522,7 @@ void HMTypeInferrence::add_ivars(::HIR::TypeRef& type)
     TU_MATCH_HDRA( (type.data_mut()), {)
     TU_ARMA(Infer, e) {
         if( e.index == ~0u ) {
-            type = this->new_ivar_tr(e.ty_class);
+            e.index = this->new_ivar(e.ty_class);
             this->mark_change();
             DEBUG("New ivar " << type);
         }
