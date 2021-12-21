@@ -140,6 +140,10 @@ ExprNodeP Parse_ExprBlockLine_WithItems(TokenStream& lex, ::std::shared_ptr<AST:
     switch(tok.type())
     {
     // Items:
+    case TOK_RWORD_CRATE:
+        if( lex.lookahead(0) == TOK_DOUBLE_COLON ) {
+            break;
+        }
     case TOK_INTERPOLATED_VIS:
     case TOK_INTERPOLATED_ITEM:
     case TOK_RWORD_PUB:
@@ -178,22 +182,21 @@ ExprNodeP Parse_ExprBlockLine_WithItems(TokenStream& lex, ::std::shared_ptr<AST:
             return ExprNodeP();
         }
         // fall
-    default: {
-        PUTBACK(tok, lex);
-        auto rv = Parse_ExprBlockLine(lex, &add_silence_if_end);
-        if( rv ) {
-            rv->set_attrs( mv$(item_attrs) );
-        }
-        else if( item_attrs.m_items.size() > 0 ) {
-            // TODO: Is this an error? - Attributes on a expression that didn't yeild a node.
-            // - They should have applied to the item that was parsed?
-        }
-        else {
-        }
-        return rv;
-        } break;
+    default:
+        break;
     }
-    throw "unreachable";
+    PUTBACK(tok, lex);
+    auto rv = Parse_ExprBlockLine(lex, &add_silence_if_end);
+    if( rv ) {
+        rv->set_attrs( mv$(item_attrs) );
+    }
+    else if( item_attrs.m_items.size() > 0 ) {
+        // TODO: Is this an error? - Attributes on a expression that didn't yeild a node.
+        // - They should have applied to the item that was parsed?
+    }
+    else {
+    }
+    return rv;
 }
 
 /// Parse a single line from a block
