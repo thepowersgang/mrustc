@@ -928,9 +928,9 @@ double Lexer::parseFloat(uint64_t whole)
         *cit = '\0';
         // - Push these in reverse order (as they're popped off the back)
         this->ungetc();
-        m_next_tokens.push_back(Token(std::strtoull(cit+1, nullptr, 10), CORETYPE_ANY));
+        m_next_tokens.push_back(Token(static_cast<uint64_t>(std::strtoull(cit+1, nullptr, 10)), CORETYPE_ANY));
         m_next_tokens.push_back(TOK_DOT);
-        m_next_tokens.push_back(Token(std::strtoull(buf, nullptr, 10), CORETYPE_ANY));
+        m_next_tokens.push_back(Token(static_cast<uint64_t>(std::strtoull(buf  , nullptr, 10)), CORETYPE_ANY));
 
         return std::numeric_limits<double>::quiet_NaN();
     }

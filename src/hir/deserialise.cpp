@@ -160,7 +160,7 @@
         {
             return deserialise_vec_c<T>([&](){ return D<T>::des(*this); });
         }
-        template<>
+        //template<>
         ::std::vector<uint8_t> deserialise_vec()
         {
             size_t n = m_in.read_count();
