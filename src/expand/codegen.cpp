@@ -366,6 +366,13 @@ class CHandler_Link:
                         ERROR(sp, E0000, "Empty name on extern block");
                     link.lib_name = v;
                 }
+                else if( key == "kind" ) {
+                    lex.getTokenCheck(TOK_EQUAL);
+                    auto v = lex.getTokenCheck(TOK_STRING).str();
+                    if(v == "")
+                        ERROR(sp, E0000, "Empty `kind` on extern block #[link]");
+                    // TODO: save and use the kind
+                }
                 else if( key == "cfg" ) {
                     emit &= check_cfg_stream(lex);
                 }
