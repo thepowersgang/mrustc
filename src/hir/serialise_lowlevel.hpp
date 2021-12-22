@@ -360,7 +360,15 @@ public:
         return rv;
     }
     bool read_bool() {
-        return read_u8() != 0x00;
+        auto v = read_u8();
+        switch(v)
+        {
+        case 0: return false;
+        case 255: return true;
+        default:
+            std::cerr << "Expected false(0)/true(255), got " << unsigned(v) << "u8" << ::std::endl;
+            abort();
+        }
     }
 
 

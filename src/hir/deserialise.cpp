@@ -160,14 +160,6 @@
         {
             return deserialise_vec_c<T>([&](){ return D<T>::des(*this); });
         }
-        //template<>
-        ::std::vector<uint8_t> deserialise_vec()
-        {
-            size_t n = m_in.read_count();
-            ::std::vector<uint8_t>    rv(n);
-            m_in.read(rv.data(), n);
-            return rv;
-        }
 
         template<typename T>
         ::std::set<T> deserialise_set()
@@ -1363,9 +1355,7 @@
     EncodedLiteral HirDeserialiser::deserialise_encodedliteral()
     {
         EncodedLiteral  rv;
-        auto nbytes = m_in.read_count();
-        rv.bytes.resize(nbytes);
-        m_in.read(rv.bytes.data(), nbytes);
+        rv.bytes = deserialise_vec<uint8_t>();
 
         auto nreloc = m_in.read_count();
         rv.relocations.reserve(nreloc);

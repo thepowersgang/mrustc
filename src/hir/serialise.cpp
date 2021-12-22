@@ -636,11 +636,6 @@
             }
         }
 
-        void serialise(const ::std::vector<uint8_t>& e)
-        {
-            m_out.write_count(e.size());
-            m_out.write( e.data(), e.size() );
-        }
         void serialise(const EncodedLiteral& lit)
         {
             serialise(lit.bytes);
