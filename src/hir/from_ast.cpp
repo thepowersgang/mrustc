@@ -1443,8 +1443,7 @@ namespace {
     bool trait_reqires_sized = false;
 
     HIR::TraitAlias ta;
-    //ta.params = LowerHIR_GenericParams(f.params, &trait_reqires_sized);
-    ta.m_params = ::HIR::GenericParams();
+    ta.m_params = LowerHIR_GenericParams(f.params, &trait_reqires_sized);
     for(const auto& t : f.traits)
     {
         ta.m_traits.push_back( LowerHIR_TraitPath(t.sp, *t.ent.path) );

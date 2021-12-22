@@ -321,6 +321,16 @@ AST::GenericParams Parse_GenericParams(TokenStream& lex)
     }
     return ret;
 }
+AST::GenericParams Parse_GenericParamsOpt(TokenStream& lex)
+{
+    if( lex.getTokenIf(TOK_LT) )
+    {
+        return Parse_GenericParams(lex);
+    }
+    else {
+        return AST::GenericParams();
+    }
+}
 
 
 /// Parse the contents of a 'where' clause
@@ -406,14 +416,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, bool allow_
     Token   tok;
 
     // Parameters
-    AST::GenericParams params;
-    if( GET_TOK(tok, lex) == TOK_LT )
-    {
-        params = Parse_GenericParams(lex);
-    }
-    else {
-        PUTBACK(tok, lex);
-    }
+    AST::GenericParams params = Parse_GenericParamsOpt(lex);
 
     AST::Function::Arglist  args;
 
@@ -588,13 +591,9 @@ AST::TypeAlias Parse_TypeAlias(TokenStream& lex)
     Token   tok;
 
     // Params
-    AST::GenericParams params;
-    if( GET_TOK(tok, lex) == TOK_LT )
-    {
-        params = Parse_GenericParams(lex);
-        GET_TOK(tok, lex);
-    }
+    AST::GenericParams params = Parse_GenericParamsOpt(lex);
 
+    GET_TOK(tok, lex);
     if( tok.type() == TOK_RWORD_WHERE )
     {
         Parse_WhereClause(lex, params);
@@ -833,18 +832,13 @@ AST::Named<AST::Item> Parse_Trait_Item(TokenStream& lex)
     return ::AST::Named<::AST::Item>( lex.end_span(ps), mv$(item_attrs), true, mv$(name), mv$(rv) );
 }
 
-AST::Trait Parse_TraitDef(TokenStream& lex, const AST::AttributeList& meta_items)
+AST::Trait Parse_TraitDef(TokenStream& lex, const AST::AttributeList& meta_items, AST::GenericParams params)
 {
     TRACE_FUNCTION;
 
     Token   tok;
 
-    AST::GenericParams params;
-    if( GET_TOK(tok, lex) == TOK_LT )
-    {
-        params = Parse_GenericParams(lex);
-        tok = lex.getToken();
-    }
+    GET_TOK(tok, lex);
 
     // Trait bounds "trait Trait : 'lifetime + OtherTrait + OtherTrait2"
     ::std::vector<Spanned<Type_TraitPath> >    supertraits;
@@ -1956,7 +1950,7 @@ namespace {
         case TOK_RWORD_TRAIT: {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             item_name = tok.ident().name;
-            auto tr = Parse_TraitDef(lex, meta_items);
+            auto tr = Parse_TraitDef(lex, meta_items, Parse_GenericParamsOpt(lex));
             tr.set_is_unsafe();
             item_data = ::AST::Item( ::std::move(tr) );
             break; }
@@ -1981,7 +1975,7 @@ namespace {
                 GET_CHECK_TOK(tok, lex, TOK_RWORD_TRAIT);
                 GET_CHECK_TOK(tok, lex, TOK_IDENT);
                 item_name = tok.ident().name;
-                auto tr = Parse_TraitDef(lex, meta_items);
+                auto tr = Parse_TraitDef(lex, meta_items, Parse_GenericParamsOpt(lex));
                 tr.set_is_unsafe();
                 tr.set_is_marker();
                 item_data = ::AST::Item( ::std::move(tr) );
@@ -2030,7 +2024,7 @@ namespace {
             GET_CHECK_TOK(tok, lex, TOK_RWORD_TRAIT);
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             item_name = tok.ident().name;
-            auto tr = Parse_TraitDef(lex, meta_items);
+            auto tr = Parse_TraitDef(lex, meta_items, Parse_GenericParamsOpt(lex));
             tr.set_is_marker();
             item_data = ::AST::Item( ::std::move(tr) );
         }
@@ -2043,13 +2037,15 @@ namespace {
     case TOK_RWORD_IMPL:
         return ::AST::Named< ::AST::Item> { Span(), {}, false, "", Parse_Impl(lex, mv$(meta_items)) };
     // `trait`
-    case TOK_RWORD_TRAIT:
+    case TOK_RWORD_TRAIT: {
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
         item_name = tok.ident().name;
+        AST::GenericParams params = Parse_GenericParamsOpt(lex);
         if( lex.lookahead(0) == TOK_EQUAL ) {
-            // Trait alias
+            // Trait alias (can't be auto or unsafe?)
 
             AST::TraitAlias rv;
+            rv.params = std::move(params);
             do {
                 lex.getToken();
 
@@ -2063,9 +2059,9 @@ namespace {
             item_data = ::AST::Item( std::move(rv) );
         }
         else {
-            item_data = ::AST::Item( Parse_TraitDef(lex, meta_items) );
+            item_data = ::AST::Item( Parse_TraitDef(lex, meta_items, std::move(params)) );
         }
-        break;
+        break; }
 
     case TOK_RWORD_MACRO:
         if( TARGETVER_LEAST_1_29 )

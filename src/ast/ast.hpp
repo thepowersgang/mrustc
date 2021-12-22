@@ -113,6 +113,7 @@ public:
 class TraitAlias
 {
 public:
+    GenericParams  params;
     std::vector<Spanned<Type_TraitPath>>  traits;
 
     TraitAlias clone() const {
