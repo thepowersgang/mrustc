@@ -70,6 +70,13 @@ Token TokenStream::getToken()
         return ret;
     }
 }
+Token TokenStream::getTokenCheck(eTokenType exp)
+{
+    auto tok = getToken();
+    if(tok.type() != exp)
+        throw ParseError::Unexpected(*this, tok, Token(exp));
+    return tok;
+}
 void TokenStream::putback(Token tok)
 {
     if( m_cache_valid )

@@ -1018,54 +1018,27 @@ namespace {
         mv$(data)
         };
 
-    if( const auto* attr_repr = attrs.get("repr") )
+    // Determine the repr
     {
-        ASSERT_BUG(attr_repr->span(), attr_repr->has_sub_items(), "#[repr] attribute malformed, " << *attr_repr);
-        ASSERT_BUG(attr_repr->span(), attr_repr->items().size() > 0, "#[repr] attribute malformed, " << *attr_repr);
-        // TODO: Change reprs to be a flag set (instead of an enum)?
-        // (Or at least make C be a flag)
-        for( const auto& a : attr_repr->items() )
+        switch(ent.m_markings.repr)
         {
-            const auto& repr_str = a.name();
-            if( repr_str == "C" ) {
-                ASSERT_BUG(a.span(), a.has_noarg(), "#[repr] attribute malformed, " << *attr_repr);
-                if( rv.m_repr == ::HIR::Struct::Repr::Aligned )
-                {
-                }
-                else if( rv.m_repr != ::HIR::Struct::Repr::Packed )
-                {
-                    ASSERT_BUG(a.span(), rv.m_repr == ::HIR::Struct::Repr::Rust, "Conflicting #[repr] attributes - " << rv.m_repr << ", " << repr_str);
-                    rv.m_repr = ::HIR::Struct::Repr::C;
-                }
-            }
-            else if( repr_str == "packed" ) {
-                ASSERT_BUG(a.span(), a.has_noarg(), "#[repr] attribute malformed, " << *attr_repr);
-                ASSERT_BUG(a.span(), rv.m_repr == ::HIR::Struct::Repr::Rust || rv.m_repr == ::HIR::Struct::Repr::C, "Conflicting #[repr] attributes - " << rv.m_repr << ", " << repr_str);
-                rv.m_repr = ::HIR::Struct::Repr::Packed;
-            }
-            else if( repr_str == "simd" ) {
-                ASSERT_BUG(a.span(), a.has_noarg(), "#[repr] attribute malformed, " << *attr_repr);
-                ASSERT_BUG(a.span(), rv.m_repr == ::HIR::Struct::Repr::Rust, "Conflicting #[repr] attributes - " << rv.m_repr << ", " << repr_str);
-                rv.m_repr = ::HIR::Struct::Repr::Simd;
-            }
-            else if( repr_str == "transparent" ) {
-                ASSERT_BUG(a.span(), a.has_noarg(), "#[repr] attribute malformed, " << *attr_repr);
-                ASSERT_BUG(a.span(), rv.m_repr == ::HIR::Struct::Repr::Rust, "Conflicting #[repr] attributes - " << rv.m_repr << ", " << repr_str);
-                rv.m_repr = ::HIR::Struct::Repr::Transparent;
-            }
-            else if( repr_str == "align" ) {
-                ASSERT_BUG(a.span(), a.items().size() == 1, "#[repr(aligned)] attribute malformed, " << *attr_repr);
-                ASSERT_BUG(a.span(), a.items()[0].has_string(), "#[repr(aligned)] attribute malformed, " << *attr_repr);
-                //ASSERT_BUG(a.span(), rv.m_repr != ::HIR::Struct::Repr::Rust, "Conflicting #[repr] attributes - " << rv.m_repr << ", " << repr_str);
-                //rv.m_repr = ::HIR::Struct::Repr::Aligned;
-                ASSERT_BUG(a.span(), rv.m_forced_alignment == 0, "Conflicting #[repr] attributes");
-                rv.m_forced_alignment = ::std::stol(a.items()[0].string());
-                ASSERT_BUG(a.span(), rv.m_forced_alignment > 0, "#[repr(aligned)] attribute malformed, " << *attr_repr);
-            }
-            else {
-                TODO(a.span(), "Handle struct repr '" << repr_str << "'");
-            }
+        case AST::Struct::Markings::Repr::Rust:
+            rv.m_repr = ::HIR::Struct::Repr::Rust;
+            break;
+        case AST::Struct::Markings::Repr::C:
+            rv.m_repr = ::HIR::Struct::Repr::C;
+            break;
+        case AST::Struct::Markings::Repr::Packed:
+            rv.m_repr = ::HIR::Struct::Repr::Packed;
+            break;
+        case AST::Struct::Markings::Repr::Simd:
+            rv.m_repr = ::HIR::Struct::Repr::Simd;
+            break;
+        case AST::Struct::Markings::Repr::Transparent:
+            rv.m_repr = ::HIR::Struct::Repr::Transparent;
+            break;
         }
+        rv.m_forced_alignment = ent.m_markings.align_value;
     }
 
     // #[rustc_nonnull_optimization_guaranteed]
@@ -1201,30 +1174,21 @@ namespace {
         ERROR(Span(), E0000, "Enum " << path << " has both value and data variants");
     }
 
-    bool is_repr_c = false;
+    bool is_repr_c = ent.m_markings.is_repr_c;
     auto repr = ::HIR::Enum::Repr::Auto;
-    if( const auto* attr_repr = attrs.get("repr") )
+    switch(ent.m_markings.repr)
     {
-        ASSERT_BUG(Span(), attr_repr->has_sub_items(), "#[repr] attribute malformed, " << *attr_repr);
-        ASSERT_BUG(Span(), attr_repr->items().size() == 1, "#[repr] attribute malformed, " << *attr_repr);
-        ASSERT_BUG(Span(), attr_repr->items()[0].has_noarg(), "#[repr] attribute malformed, " << *attr_repr);
-        const auto& repr_str = attr_repr->items()[0].name();
-        if( repr_str == "C" ) {
-            is_repr_c = true;
-        }
-        else if( repr_str == "u8"   ) { repr = ::HIR::Enum::Repr::U8; }
-        else if( repr_str == "u16"  ) { repr = ::HIR::Enum::Repr::U16; }
-        else if( repr_str == "u32"  ) { repr = ::HIR::Enum::Repr::U32; }
-        else if( repr_str == "u64"  ) { repr = ::HIR::Enum::Repr::U64; }
-        else if( repr_str == "usize") { repr = ::HIR::Enum::Repr::Usize; }
-        else if( repr_str == "i8"   ) { repr = ::HIR::Enum::Repr::I8; }
-        else if( repr_str == "i16"  ) { repr = ::HIR::Enum::Repr::I16; }
-        else if( repr_str == "i32"  ) { repr = ::HIR::Enum::Repr::I32; }
-        else if( repr_str == "i64"  ) { repr = ::HIR::Enum::Repr::I64; }
-        else if( repr_str == "isize") { repr = ::HIR::Enum::Repr::Isize; }
-        else {
-            ERROR(attrs.get("repr")->span(), E0000, "Unknown enum repr '" << repr_str << "'");
-        }
+    case ::AST::Enum::Markings::Repr::Rust: repr = ::HIR::Enum::Repr::Auto; break;
+    case ::AST::Enum::Markings::Repr::U8 : repr = ::HIR::Enum::Repr::U8 ; break;
+    case ::AST::Enum::Markings::Repr::U16: repr = ::HIR::Enum::Repr::U16; break;
+    case ::AST::Enum::Markings::Repr::U32: repr = ::HIR::Enum::Repr::U32; break;
+    case ::AST::Enum::Markings::Repr::U64: repr = ::HIR::Enum::Repr::U64; break;
+    case ::AST::Enum::Markings::Repr::Usize: repr = ::HIR::Enum::Repr::Usize; break;
+    case ::AST::Enum::Markings::Repr::I8 : repr = ::HIR::Enum::Repr::I8 ; break;
+    case ::AST::Enum::Markings::Repr::I16: repr = ::HIR::Enum::Repr::I16; break;
+    case ::AST::Enum::Markings::Repr::I32: repr = ::HIR::Enum::Repr::I32; break;
+    case ::AST::Enum::Markings::Repr::I64: repr = ::HIR::Enum::Repr::I64; break;
+    case ::AST::Enum::Markings::Repr::Isize: repr = ::HIR::Enum::Repr::Isize; break;
     }
 
     ::HIR::Enum::Class  data;
@@ -1345,22 +1309,11 @@ namespace {
     auto get_pub = [&](bool is_pub){ return is_pub ? ::HIR::Publicity::new_global() : priv_path; };
 
     auto repr = ::HIR::Union::Repr::Rust;
-
-    if( const auto* attr_repr = attrs.get("repr") )
+    switch(f.m_markings.repr)
     {
-        ASSERT_BUG(Span(), attr_repr->has_sub_items(), "#[repr] attribute malformed, " << *attr_repr);
-        ASSERT_BUG(Span(), attr_repr->items().size() == 1, "#[repr] attribute malformed, " << *attr_repr);
-        ASSERT_BUG(Span(), attr_repr->items()[0].has_noarg(), "#[repr] attribute malformed, " << *attr_repr);
-        const auto& repr_str = attr_repr->items()[0].name();
-        if( repr_str == "C" ) {
-            repr = ::HIR::Union::Repr::C;
-        }
-        else if( repr_str == "transparent" ) {
-            repr = ::HIR::Union::Repr::Transparent;
-        }
-        else {
-            ERROR(attr_repr->span(), E0000, "Unknown union repr '" << repr_str << "'");
-        }
+    case ::AST::Union::Markings::Repr::Rust:    repr = ::HIR::Union::Repr::Rust;    break;
+    case ::AST::Union::Markings::Repr::C   :    repr = ::HIR::Union::Repr::C   ;    break;
+    case ::AST::Union::Markings::Repr::Transparent:    repr = ::HIR::Union::Repr::Transparent;    break;
     }
 
     ::HIR::Struct::Data::Data_Named variants;
@@ -1602,38 +1555,27 @@ namespace {
     }
 
     bool force_emit = false;
-    if( const auto* a = attrs.get("inline") )
+    switch(f.m_markings.inline_type)
     {
-        if( a->has_sub_items() && ::std::any_of(a->items().begin(), a->items().end(), [](const auto& v){ return v.name() == "never"; }) ) {
-            // Inline(never)
-        }
-        else {
-            force_emit = true;
-        }
+    case ::AST::Function::Markings::Inline::Auto:
+        break;
+    case ::AST::Function::Markings::Inline::Never:
+        break;
+    case ::AST::Function::Markings::Inline::Always:
+        force_emit = true;
+        break;
+    case ::AST::Function::Markings::Inline::Normal:
+        force_emit = true;
+        break;
     }
 
     HIR::Function::Markings markings;
     // #[rustc_legacy_const_generics] - Used to convert a literal argument into a const generic
-    if( const auto* a = attrs.get("rustc_legacy_const_generics") )
+    for(auto idx : f.m_markings.rustc_legacy_const_generics)
     {
-        ASSERT_BUG(a->span(), a->has_sub_items(), *a);
-        ASSERT_BUG(a->span(), a->items().size() >= 1, *a);
-        for(const auto& si : a->items())
-        {
-            ASSERT_BUG(a->span(), si.name().elems.empty(), *a);
-            try {
-                auto idx = std::stoul(si.string());
-                ASSERT_BUG(a->span(), std::find(markings.rustc_legacy_const_generics.begin(), markings.rustc_legacy_const_generics.end(), idx) == markings.rustc_legacy_const_generics.end(),
-                    "#[rustc_legacy_const_generics(" << idx << ")] duplicate index");
-                ASSERT_BUG(a->span(), idx < args.size() + a->items().size(),
-                    "#[rustc_legacy_const_generics(" << idx << ")] out of range (0.." << args.size() + a->items().size() << ")");
-                markings.rustc_legacy_const_generics.push_back( idx );
-            }
-            catch(const std::exception& e)
-            {
-                BUG(a->span(), si);
-            }
-        }
+        ASSERT_BUG(attrs.get("rustc_legacy_const_generics")->span(), idx < args.size() + f.m_markings.rustc_legacy_const_generics.size(),
+            "#[rustc_legacy_const_generics(" << idx << ")] out of range (0.." << args.size() + f.m_markings.rustc_legacy_const_generics.size() << ")");
+        markings.rustc_legacy_const_generics.push_back( idx );
     }
     // #[track_caller] - Provides caller information
     // NOTE: This can only be (cleanly) handled in the backend [where it sees fully monomorphised paths]
@@ -1651,9 +1593,7 @@ namespace {
     }
     else if( const auto* a = attrs.get("link_name") )
     {
-        if( !a->has_string() )
-            ERROR(sp, E0000, "#[link_name] requires a string");
-        linkage.name = a->string();
+        linkage.name = f.m_markings.link_name;
     }
     else if( attrs.get("rustc_std_internal_symbol") )
     {
@@ -1666,7 +1606,8 @@ namespace {
     }
     else if( const auto* a = attrs.get("lang") )
     {
-        if( a->string() == "panic_fmt")
+        assert(a->data().size() == 2);
+        if( a->data()[1].tok().str() == "panic_fmt")
         {
             linkage.name = "rust_begin_unwind";
         }
@@ -1729,9 +1670,7 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
         ::HIR::Linkage  linkage;
 
         if( const auto* a = attrs.get("link_name") ) {
-            if ( !a->has_string() )
-                ERROR(sp, E0000, "#[link_name] requires a string");
-            linkage.name = a->string();
+            linkage.name = e.m_markings.link_name;
         }
         // If there's no code, demangle the name (TODO: By ABI) and set linkage.
         else if( linkage.name == "" && !e.value().is_valid() ) {
@@ -1801,27 +1740,9 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
             {
                 TODO(sp, "Expand ExternBlock");
             }
-            // Insert a record of the `link` attribute
-            for(const auto& a : item.attrs.m_items)
+            for(const auto& lib : e.m_libraries)
             {
-                if( a.name() != "link" )    continue ;
-
-                ::std::string   name;
-                for(const auto& i : a.items())
-                {
-                    if( i.name() == "name" ) {
-                        name = i.string();
-                    }
-                    else {
-                    }
-                }
-                if( name != "" )
-                {
-                    g_crate_ptr->m_ext_libs.push_back( ::HIR::ExternLibrary { name } );
-                }
-                else {
-                    ERROR(sp, E0000, "#[link] needs `name`");
-                }
+                g_crate_ptr->m_ext_libs.push_back( ::HIR::ExternLibrary { lib.lib_name } );
             }
             }
         TU_ARMA(Impl, e) {

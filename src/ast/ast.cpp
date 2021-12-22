@@ -14,6 +14,10 @@
 #include "../parse/parseerror.hpp"
 #include <algorithm>
 
+#include <parse/ttstream.hpp>
+#include <parse/common.hpp>
+#include <parse/interpolated_fragment.hpp>
+
 namespace AST {
 
 
@@ -74,23 +78,8 @@ Attribute::Attribute(const Attribute& x):
     m_span(x.m_span),
     m_name(x.m_name),
     m_is_used(x.m_is_used)
+    , m_data(x.m_data.clone())
 {
-    struct H {
-        static AttributeData clone_ad(const AttributeData& ad) {
-            TU_MATCH_HDRA( (ad), {)
-            TU_ARMA(None, e)
-                return AttributeData::make_None({});
-            TU_ARMA(ValueUnexpanded, e)
-                return AttributeData::make_ValueUnexpanded( e->clone() );
-            TU_ARMA(String, e)
-                return AttributeData::make_String({ e.val });
-            TU_ARMA(List, e)
-                return AttributeData::make_List({ clone_mivec(e.sub_items) });
-            }
-            throw ::std::runtime_error("Attribute::clone - Fell off end");
-        }
-    };
-    m_data = H::clone_ad(x.m_data);
 }
 Attribute Attribute::clone() const
 {
@@ -99,19 +88,49 @@ Attribute Attribute::clone() const
 void Attribute::fmt(std::ostream& os) const
 {
     os << m_name;
-    TU_MATCH_HDRA( (m_data), {)
-    TU_ARMA(None, e) {
-        }
-    TU_ARMA(ValueUnexpanded, e) {
-        os << "=\"" << *e << "\"";
-        }
-    TU_ARMA(String, e) {
-        os << "=\"" << e.val << "\"";
-        }
-    TU_ARMA(List, e) {
-        os << "(" << e.sub_items << ")";
-        }
+    os << m_data;
+}
+
+
+std::string Attribute::parse_equals_string(const AST::Crate& crate, const AST::Module& mod) const
+{
+    TTStream    lex(this->m_span, ParseState(), this->data());
+    lex.getTokenCheck(TOK_EQUAL);
+    // TODO: Parse string (with expand)
+    extern ::AST::ExprNodeP Expand_ParseAndExpand_ExprVal(const ::AST::Crate& crate, const AST::Module& mod, TokenStream& lex);
+    auto n = Expand_ParseAndExpand_ExprVal(crate, mod, lex);
+
+    std::string rv;
+    if( auto* v = dynamic_cast<::AST::ExprNode_String*>(&*n) ) {
+        rv = v->m_value;
     }
+    else
+    {
+        throw ParseError::Unexpected(lex, Token(InterpolatedFragment(InterpolatedFragment::EXPR, n.release())), TOK_STRING);
+    }
+    lex.getTokenCheck(TOK_EOF);
+    return rv;
+}
+
+std::string Attribute::parse_paren_string() const
+{
+    TTStream    lex(this->m_span, ParseState(), this->data());
+    lex.getTokenCheck(TOK_PAREN_OPEN);
+    auto rv = lex.getTokenCheck(TOK_STRING).str();
+    lex.getTokenCheck(TOK_PAREN_CLOSE);
+    return rv;
+}
+void Attribute::parse_paren_ident_list(std::function<void(const Span& sp, RcString ident)> item_cb) const
+{
+    TTStream    lex(this->m_span, ParseState(), this->data());
+    lex.getTokenCheck(TOK_PAREN_OPEN);
+    while(lex.lookahead(0) != TOK_PAREN_CLOSE) {
+        item_cb(lex.point_span(), lex.getTokenCheck(TOK_IDENT).ident().name);
+        if(lex.lookahead(0) != TOK_COMMA)
+            break;
+        lex.getTokenCheck(TOK_COMMA);
+    }
+    lex.getTokenCheck(TOK_PAREN_CLOSE);
 }
 
 StructItem StructItem::clone() const

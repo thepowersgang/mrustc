@@ -278,6 +278,7 @@ public:
     AttrStage stage() const override { return AttrStage::Post; }
     void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
+        auto v = attr.parse_equals_string(crate, mod);
         TU_MATCH_HDRA( (i), {)
         default:
             TODO(sp, "Unknown item type " << i.tag_str() << " with #["<<attr<<"] attached at " << path);
@@ -287,29 +288,29 @@ public:
             }
         TU_ARMA(Function, e) {
             if( e.code().is_valid() ) {
-                handle_lang_item(sp, crate, path, attr.string(), ITEM_FN);
+                handle_lang_item(sp, crate, path, v, ITEM_FN);
             }
             else {
-                handle_lang_item(sp, crate, path, attr.string(), ITEM_EXTERN_FN);
+                handle_lang_item(sp, crate, path, v, ITEM_EXTERN_FN);
             }
             }
         TU_ARMA(Type, e) {
-            handle_lang_item(sp, crate, path, attr.string(), ITEM_TYPE_ALIAS);
+            handle_lang_item(sp, crate, path, v, ITEM_TYPE_ALIAS);
             }
         TU_ARMA(Static, e) {
-            handle_lang_item(sp, crate, path, attr.string(), ITEM_STATIC);
+            handle_lang_item(sp, crate, path, v, ITEM_STATIC);
             }
         TU_ARMA(Struct, e) {
-            handle_lang_item(sp, crate, path, attr.string(), ITEM_STRUCT);
+            handle_lang_item(sp, crate, path, v, ITEM_STRUCT);
             }
         TU_ARMA(Enum, e) {
-            handle_lang_item(sp, crate, path, attr.string(), ITEM_ENUM);
+            handle_lang_item(sp, crate, path, v, ITEM_ENUM);
             }
         TU_ARMA(Union, e) {
-            handle_lang_item(sp, crate, path, attr.string(), ITEM_UNION);
+            handle_lang_item(sp, crate, path, v, ITEM_UNION);
             }
         TU_ARMA(Trait, e) {
-            handle_lang_item(sp, crate, path, attr.string(), ITEM_TRAIT);
+            handle_lang_item(sp, crate, path, v, ITEM_TRAIT);
             }
         }
     }
@@ -324,7 +325,7 @@ public:
     }
 
     void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, const AST::Module& mod, AST::ImplDef& impl) const override {
-        const ::std::string& name = mi.string();
+        ::std::string name = mi.parse_equals_string(crate, mod);
 
              if( name == "i8" ) {}
         else if( name == "u8" ) {}

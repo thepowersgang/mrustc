@@ -10,8 +10,12 @@
 
 #include <tagged_union.hpp>
 #include "expr_ptr.hpp"
+#include "../parse/tokentree.hpp"
 
 namespace AST {
+
+class Crate;
+class Module;
 
 //
 class Attribute;
@@ -84,11 +88,11 @@ class Attribute
 {
     Span    m_span;
     AttributeName   m_name;
-    AttributeData   m_data;
+    TokenTree   m_data;
     mutable bool    m_is_used;
     // TODO: Parse as a TT then expand?
 public:
-    Attribute(Span sp, AttributeName name, AttributeData data):
+    Attribute(Span sp, AttributeName name, TokenTree data):
         m_span(::std::move(sp)),
         m_name(::std::move(name)),
         m_data(::std::move(data)),
@@ -108,17 +112,15 @@ public:
 
     const Span& span() const { return m_span; }
     const AttributeName& name() const { return m_name; }
-    const AttributeData& data() const { return m_data; }
+    const TokenTree& data() const { return m_data; }
 
-    // Legacy accessors/checkers
-    bool has_noarg() const { return m_data.is_None(); }
 
-    bool has_string() const { return m_data.is_String(); }
-    const ::std::string& string() const { return m_data.as_String().val; }
+    /// Parses the data as a `="string"` and returns the string
+    std::string parse_equals_string(const AST::Crate& crate, const AST::Module& mod) const;
+    /// Parses the data as a `("string")` and returns the string
+    std::string parse_paren_string() const;
 
-    bool has_sub_items() const { return m_data.is_List(); }
-    const ::std::vector<Attribute>& items() const { return m_data.as_List().sub_items; }
-          ::std::vector<Attribute>& items()       { return m_data.as_List().sub_items; }
+    void parse_paren_ident_list(std::function<void(const Span& sp, RcString ident)> item_cb) const;
 
     friend ::std::ostream& operator<<(::std::ostream& os, const Attribute& x) {
         x.fmt(os);

@@ -14,6 +14,7 @@
 #include <hir/hir.hpp>  // ABI_RUST
 #include "proc_macro.hpp"
 #include <parse/lex.hpp>
+#include <parse/ttstream.hpp>
 #ifdef _WIN32
 # define NOMINMAX
 # define NOGDI  // Don't include GDI functions (defines some macros that collide with mrustc ones)
@@ -43,16 +44,25 @@ public:
         if( !i.is_Function() )
             TODO(sp, "Error for proc_macro_derive on non-Function");
 
-        auto trait_name = attr.items().at(0).name();
         ::std::vector<::std::string>    attributes;
-        for(size_t i = 1; i < attr.items().size(); i ++)
+        TTStream    lex(sp, ParseState(), attr.data());
+        lex.getTokenCheck(TOK_PAREN_OPEN);
+        auto trait_name = lex.getTokenCheck(TOK_IDENT).ident().name;
+        while(lex.getTokenIf(TOK_COMMA))
         {
-            if( attr.items()[i].name() == "attributes") {
-                for(const auto& si : attr.items()[i].items()) {
-                    attributes.push_back( si.name().as_trivial().c_str() );
-                }
+            auto k = lex.getTokenCheck(TOK_IDENT).ident().name;
+            if( k == "attributes" ) {
+                lex.getTokenCheck(TOK_PAREN_OPEN);
+                do {
+                    attributes.push_back( lex.getTokenCheck(TOK_IDENT).ident().name.c_str() );
+                } while(lex.getTokenIf(TOK_COMMA));
+                lex.getTokenCheck(TOK_PAREN_CLOSE);
+            }
+            else {
+                ERROR(sp, E0000, "Unexpected `" << k << "` in `#[proc_macro_derive]`");
             }
         }
+        lex.getTokenCheck(TOK_PAREN_CLOSE);
 
         crate.m_proc_macros.push_back(AST::ProcMacroDef { RcString::new_interned(FMT(trait_name)), path, mv$(attributes) });
     }
@@ -1030,25 +1040,7 @@ namespace {
                 m_pmi.send_ident(e.c_str());
             }
 
-            if( i.has_noarg() ) {
-            }
-            else if( i.has_string() ) {
-                m_pmi.send_symbol("=");
-                m_pmi.send_string( i.string().c_str() );
-            }
-            else {
-                assert(i.has_sub_items());
-                m_pmi.send_symbol("(");
-                bool first = true;
-                for(const auto& si : i.items())
-                {
-                    if(!first)
-                        m_pmi.send_symbol(",");
-                    this->visit_meta_item(si);
-                    first = false;
-                }
-                m_pmi.send_symbol(")");
-            }
+            visit_tokentree(i.data());
         }
 
         void visit_struct(const ::std::string& name, bool is_pub, const ::AST::Struct& str)

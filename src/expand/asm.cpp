@@ -23,9 +23,7 @@ namespace
 {
     ::std::string get_string(const Span& sp, TokenStream& lex, const ::AST::Crate& crate, AST::Module& mod)
     {
-        auto n = Parse_ExprVal(lex);
-        ASSERT_BUG(sp, n, "No expression returned");
-        Expand_BareExpr(crate, mod, n);
+        auto n = Expand_ParseAndExpand_ExprVal(crate, mod, lex);
 
         auto* format_string_np = dynamic_cast<AST::ExprNode_String*>(&*n);
         if( !format_string_np ) {

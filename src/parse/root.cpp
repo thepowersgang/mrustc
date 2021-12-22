@@ -1086,60 +1086,26 @@ AST::Attribute Parse_MetaItem(TokenStream& lex)
             name.elems.push_back(tok.ident().name);
         } while(GET_TOK(tok, lex) == TOK_DOUBLE_COLON);
     }
-    ::AST::AttributeData  attr_data;
+    TokenTree   attr_data;
     switch(tok.type())
     {
     case TOK_EQUAL: {
-        auto n = Parse_ExprVal(lex);
-#if 0
-        attr_data = AST::AttributeData::make_ValueUnexpanded(mv$(n));
-#else
-        void Expand_BareExpr(const AST::Crate& , const AST::Module&, AST::ExprNodeP& n);
-        ASSERT_BUG( lex.point_span(), lex.parse_state().crate, "Crate not set" );
-        ASSERT_BUG( lex.point_span(), lex.parse_state().module, "Module not set" );
-        Expand_BareExpr(*lex.parse_state().crate, *lex.parse_state().module, n);
-        if( auto* v = dynamic_cast<::AST::ExprNode_String*>(&*n) )
+        std::vector<TokenTree>  tt;
+        tt.push_back(std::move(tok));
+        // - Square close (top-level) AND paren close (cfg_attr)
+        while( lex.lookahead(0) != TOK_SQUARE_CLOSE && lex.lookahead(0) != TOK_PAREN_CLOSE && lex.lookahead(0) != TOK_EOF )
         {
-            attr_data = AST::AttributeData::make_String({ mv$(v->m_value) });
+            tt.push_back(Parse_TT(lex, false));
         }
-        else if( TARGETVER_LEAST_1_29 )
-        {
-            if( auto* v = dynamic_cast<::AST::ExprNode_Integer*>(&*n) )
-            {
-                attr_data = AST::AttributeData::make_String({ FMT(v->m_value) });
-            }
-            else if( auto* v = dynamic_cast<::AST::ExprNode_NamedValue*>(&*n) )
-            {
-                attr_data = AST::AttributeData::make_String({ FMT(v->m_path) });
-            }
-            else
-            {
-                // - Force an error.
-                throw ParseError::Unexpected(lex, Token(InterpolatedFragment(InterpolatedFragment::EXPR, n.release())), TOK_STRING);
-            }
-        }
-        else
-        {
-            // - Force an error.
-            throw ParseError::Unexpected(lex, Token(InterpolatedFragment(InterpolatedFragment::EXPR, n.release())), TOK_STRING);
-        }
-#endif
+        attr_data = TokenTree(lex.get_edition(), lex.get_hygiene(), std::move(tt));
         } break;
-    case TOK_PAREN_OPEN: {
-        ::std::vector<AST::Attribute>    items;
-        do {
-            if(LOOK_AHEAD(lex) == TOK_PAREN_CLOSE) {
-                GET_TOK(tok, lex);
-                break;
-            }
-            items.push_back(Parse_MetaItem(lex));
-        } while(GET_TOK(tok, lex) == TOK_COMMA);
-        CHECK_TOK(tok, TOK_PAREN_CLOSE);
-        attr_data = AST::AttributeData::make_List({ mv$(items) });
-        } break;
-    default:
+    case TOK_PAREN_OPEN:
         PUTBACK(tok, lex);
-        attr_data = AST::AttributeData::make_None({});
+        attr_data = Parse_TT(lex, false);
+        break;
+    default:
+        // Empty
+        PUTBACK(tok, lex);
         break;
     }
     return AST::Attribute(lex.end_span(ps), name, mv$(attr_data));
@@ -2167,11 +2133,14 @@ namespace {
         for(const auto& a : meta_items.m_items)
         {
             if( a.name() == "path" ) {
-                path_attr = a.string();
+                path_attr = a.parse_equals_string(*lex.parse_state().crate, *lex.parse_state().module);
             }
-            else if( a.name() == "cfg_attr" && a.items().at(1).name() == "path" ) {
-                if( check_cfg(a.span(), a.items().at(0)) ) {
-                    path_attr = a.items().at(1).string();
+            else if( a.name() == "cfg_attr" ) {
+                for(const auto& a2 : check_cfg_attr(a))
+                {
+                    if( a2.name() == "path" ) {
+                        path_attr = a2.parse_equals_string(*lex.parse_state().crate, *lex.parse_state().module);
+                    }
                 }
             }
             else {

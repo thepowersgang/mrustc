@@ -15,14 +15,7 @@ public:
     AttrStage stage() const override { return AttrStage::Pre; }
 
     void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate) const override {
-        //if( crate.m_crate_type != AST::Crate::Type::Unknown ) {
-        //    //ERROR(sp, E0000, "Multiple #![crate_type] attributes");
-        //    return ;
-        //}
-        if( !mi.has_string() ) {
-            ERROR(sp, E0000, "#![crate_type] requires a string argument");
-        }
-        const auto& name = mi.string();
+        auto name = mi.parse_equals_string(crate, crate.m_root_module);
         if( name == "rlib" || name == "lib" ) {
             crate.m_crate_type = AST::Crate::Type::RustLib;
         }
@@ -42,13 +35,8 @@ public:
     AttrStage stage() const override { return AttrStage::Pre; }
 
     void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate) const override {
-        //if( crate.m_crate_name != "" ) {
-        //    ERROR(sp, E0000, "Multiple #![crate_name] attributes");
-        //}
-        if( !mi.has_string() || mi.string() == "" ) {
-            ERROR(sp, E0000, "#![crate_name] requires a non-empty string argument");
-        }
-        crate.set_crate_name(mi.string());
+        auto name = mi.parse_equals_string(crate, crate.m_root_module);
+        crate.set_crate_name(name);
     }
 };
 

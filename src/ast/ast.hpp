@@ -137,6 +137,9 @@ private:
     TypeRef m_type;
     Expr    m_value;
 public:
+    struct Markings {
+        std::string link_name;
+    } m_markings;
     Static(Class s_class, TypeRef type, Expr value):
         m_class(s_class),
         m_type( move(type) ),
@@ -183,6 +186,20 @@ private:
     bool    m_is_unsafe;
     bool    m_is_variadic;  // extern only
 public:
+    struct Markings {
+        enum Inline {
+            Auto,
+            Never,
+            Normal,
+            Always
+        } inline_type = Inline::Auto;
+        bool is_cold = false;
+        std::vector<unsigned>   rustc_legacy_const_generics;
+
+        std::string link_name;
+    } m_markings;
+
+
     Function(const Function&) = delete;
     Function& operator=(const Function&) = delete;
     Function(Function&&) = default;
@@ -324,6 +341,24 @@ class Enum
     GenericParams    m_params;
     ::std::vector<EnumVariant>   m_variants;
 public:
+
+    struct Markings {
+        enum class Repr {
+            Rust,
+            U8 ,
+            U16,
+            U32,
+            U64,
+            Usize,
+            I8,
+            I16,
+            I32,
+            I64,
+            Isize
+        } repr = Repr::Rust;
+        bool is_repr_c = false;
+    } m_markings;
+    
     Enum() {}
     Enum( GenericParams params, ::std::vector<EnumVariant> variants ):
         m_params( move(params) ),
@@ -365,6 +400,15 @@ public:
             memset(this, 0, sizeof(*this));
         }
 
+        enum class Repr {
+            Rust,
+            C,
+            Packed,
+            Simd,
+            Transparent,
+        } repr = Repr::Rust;
+        uint64_t align_value = 0;
+
         // 1.39 nonzero etc
         bool    scalar_valid_start_set;
         uint64_t    scalar_valid_start;
@@ -398,6 +442,13 @@ class Union
 public:
     GenericParams   m_params;
     ::std::vector<StructItem>   m_variants;
+    struct Markings {
+        enum class Repr {
+            Rust,
+            C,
+            Transparent,
+        } repr = Repr::Rust;
+    } m_markings;
 
     Union( GenericParams params, ::std::vector<StructItem> fields ):
         m_params( move(params) ),
@@ -512,6 +563,11 @@ class ExternBlock
     ::std::string   m_abi;
     ::std::vector< Named<Item>> m_items;
 public:
+    struct Link {
+        std::string lib_name;
+    };
+    std::vector<Link>   m_libraries;
+
     ExternBlock(::std::string abi):
         m_abi( mv$(abi) )
     {}

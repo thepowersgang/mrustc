@@ -117,14 +117,9 @@ void Expand_Attrs_CfgAttr(AST::AttributeList& attrs)
     {
         auto& a = *it;
         if( a.name() == "cfg_attr" ) {
-            if( check_cfg(a.span(), a.items().at(0)) ) {
-                auto inner_attr = mv$(a.items().at(1));
-                a = mv$(inner_attr);
-                ++ it;
-            }
-            else {
-                it = attrs.m_items.erase(it);
-            }
+            auto new_attrs = check_cfg_attr(a);
+            it = attrs.m_items.erase(it);
+            it = attrs.m_items.insert(it, std::make_move_iterator(new_attrs.begin()), std::make_move_iterator(new_attrs.end()));
         }
         else {
             ++ it;
@@ -1360,6 +1355,14 @@ void Expand_GenericParams(::AST::Crate& crate, LList<const AST::Module*> modstac
 void Expand_BareExpr(const ::AST::Crate& crate, const AST::Module& mod, ::AST::ExprNodeP& node)
 {
     Expand_Expr(const_cast< ::AST::Crate&>(crate), LList<const AST::Module*>(nullptr, &mod), node);
+}
+::AST::ExprNodeP Expand_ParseAndExpand_ExprVal(const ::AST::Crate& crate, const AST::Module& mod, TokenStream& lex)
+{
+    auto sp = lex.point_span();
+    auto n = Parse_ExprVal(lex);
+    ASSERT_BUG(sp, n, "No expression returned");
+    Expand_BareExpr(crate, mod, n);
+    return n;
 }
 
 void Expand_Function(::AST::Crate& crate, LList<const AST::Module*> modstack, AST::Module& mod, AST::Function& e)

@@ -12,6 +12,7 @@
 #include "cfg.hpp"
 #include <ast/expr.hpp> // Needed to clear a ExprNodeP
 #include <ast/crate.hpp>
+#include <parse/parseerror.hpp>
 
 #include <map>
 #include <set>
@@ -39,63 +40,145 @@ void Cfg_SetValueCb(::std::string name, ::std::function<bool(const ::std::string
     g_cfg_value_fcns.insert( ::std::make_pair(mv$(name), mv$(cb)) );
 }
 
-bool check_cfg(const Span& sp, const ::AST::Attribute& mi)
-{
-    if( !mi.name().is_trivial() )   ERROR(sp, E0000, "Non-trivial attribute name in cfg - " << mi.name());
-    if( mi.has_sub_items() ) {
-        // Must be `any`/`not`/`all`
-        if( mi.name() == "any" || mi.name() == "cfg" ) {
-            for(const auto& si : mi.items()) {
-                if( check_cfg(sp, si) )
+namespace {
+    bool check_cfg_inner1(const RcString& name, TokenStream& lex);
+    bool check_cfg_inner(TokenStream& lex)
+    {
+        TRACE_FUNCTION;
+        if( lex.lookahead(0) == TOK_INTERPOLATED_META )
+        {
+            auto meta = std::move(lex.getTokenCheck(TOK_INTERPOLATED_META).frag_meta());
+            auto ilex = TTStream(meta.span(), ParseState(), meta.data());
+            return check_cfg_inner1(meta.name().as_trivial(), ilex);
+        }
+        else
+        {
+            auto name = lex.getTokenCheck(TOK_IDENT).ident().name;
+            return check_cfg_inner1(name, lex);
+        }
+    }
+    bool check_cfg_inner1(const RcString& name, TokenStream& lex)
+    {
+        Token   tok;
+        switch(lex.lookahead(0))
+        {
+        case TOK_EQUAL: {
+            GET_CHECK_TOK(tok, lex, TOK_EQUAL);
+            std::string val;
+            if(lex.lookahead(0) == TOK_INTERPOLATED_EXPR) {
+                auto n = lex.getTokenCheck(TOK_INTERPOLATED_EXPR).take_frag_node();
+                const auto* np = dynamic_cast<AST::ExprNode_String*>(n.get());
+                ASSERT_BUG(n->span(), np, "");
+                val = np->m_value;
+            }
+            else {
+                GET_CHECK_TOK(tok, lex, TOK_STRING);
+                val = tok.str();
+            }
+            // Equality
+            auto its = g_cfg_values.equal_range(name.c_str());
+            for(auto it = its.first; it != its.second; ++it)
+            {
+                DEBUG(name << ": '" << it->second << "' == '" << val << "'");
+                if( it->second == val )
                     return true;
             }
-            return false;
-        }
-        else if( mi.name() == "not" ) {
-            if( mi.items().size() != 1 )
-                ERROR(sp, E0000, "cfg(not()) with != 1 argument");
-            return !check_cfg(sp, mi.items()[0]);
-        }
-        else if( mi.name() == "all" ) {
-            for(const auto& si : mi.items()) {
-                if( ! check_cfg(sp, si) )
-                    return false;
+            if( its.first != its.second )
+                return false;
+
+            auto it2 = g_cfg_value_fcns.find(name.c_str());
+            if(it2 != g_cfg_value_fcns.end() )
+            {
+                DEBUG(name << ": ('" << val << "')?");
+                return it2->second( val );
             }
-            return true;
-        }
-        else {
-            // oops
-            ERROR(sp, E0000, "Unknown cfg() function - " << mi.name());
+
+            WARNING(lex.point_span(), W0000, "Unknown cfg() param '" << name << "'");
+            return false;
+            }
+        case TOK_PAREN_OPEN:
+            GET_TOK(tok, lex);
+
+            if( name == "any" || name == "cfg" ) {
+                bool rv = false;
+                while(lex.lookahead(0) != TOK_PAREN_CLOSE) {
+                    rv |= check_cfg_inner(lex);
+                    if(lex.lookahead(0) != TOK_COMMA)
+                        break;
+                    GET_CHECK_TOK(tok, lex, TOK_COMMA);
+                }
+                GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
+                return rv;
+            }
+            else if( name == "not" ) {
+                bool rv = check_cfg_inner(lex);
+                GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
+                return !rv;
+            }
+            else if( name == "all" ) {
+                bool rv = true;
+                while(lex.lookahead(0) != TOK_PAREN_CLOSE) {
+                    rv &= check_cfg_inner(lex);
+                    if(lex.lookahead(0) != TOK_COMMA)
+                        break;
+                    GET_CHECK_TOK(tok, lex, TOK_COMMA);
+                }
+                GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
+                return rv;
+            }
+            else {
+                // oops
+                ERROR(lex.point_span(), E0000, "Unknown cfg() function - " << name);
+            }
+
+            break;
+        default:
+            // Flag
+            auto it = g_cfg_flags.find(name.c_str());
+            return (it != g_cfg_flags.end());
         }
     }
-    else if( mi.has_string() ) {
-        // Equaliy
-        auto its = g_cfg_values.equal_range(mi.name().as_trivial().c_str());
-        for(auto it = its.first; it != its.second; ++it)
-        {
-            DEBUG(""<<mi.name()<<": '"<<it->second<<"' == '"<<mi.string()<<"'");
-            if( it->second == mi.string() )
-                return true;
-        }
-        if( its.first != its.second )
-            return false;
+}
+bool check_cfg_stream(TokenStream& lex)
+{
+    Token   tok;
+    bool rv = false;
+    GET_CHECK_TOK(tok, lex, TOK_PAREN_OPEN);
+    while(lex.lookahead(0) != TOK_PAREN_CLOSE) {
+        rv |= check_cfg_inner(lex);
+        if(lex.lookahead(0) != TOK_COMMA)
+            break;
+        GET_CHECK_TOK(tok, lex, TOK_COMMA);
+    }
+    GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
+    return rv;
+}
+bool check_cfg(const Span& sp, const ::AST::Attribute& mi)
+{
+    TTStream    lex(sp, ParseState(), mi.data());
+    return check_cfg_stream(lex);
+}
+std::vector<AST::Attribute> check_cfg_attr(const ::AST::Attribute& mi)
+{
+    TTStream    lex(mi.span(), ParseState(), mi.data());
 
-        auto it2 = g_cfg_value_fcns.find(mi.name().as_trivial().c_str());
-        if(it2 != g_cfg_value_fcns.end() )
-        {
-            DEBUG(""<<mi.name()<<": ('"<<mi.string()<<"')?");
-            return it2->second( mi.string() );
-        }
-
-        WARNING(sp, W0000, "Unknown cfg() param '" << mi.name() << "'");
-        return false;
+    Token   tok;
+    std::vector<AST::Attribute> rv;
+    lex.getTokenCheck(TOK_PAREN_OPEN);
+    auto cfg_res = check_cfg_inner(lex);
+    while( lex.lookahead(0) == TOK_COMMA )
+    {
+        lex.getTokenCheck(TOK_COMMA);
+        rv.push_back( Parse_MetaItem(lex) );
+    }
+    lex.getTokenCheck(TOK_PAREN_CLOSE);
+    lex.getTokenCheck(TOK_EOF);
+    if(cfg_res) {
+        return rv;
     }
     else {
-        // Flag
-        auto it = g_cfg_flags.find(mi.name().as_trivial().c_str());
-        return (it != g_cfg_flags.end());
+        return std::vector<AST::Attribute>();
     }
-    BUG(sp, "Fell off the end of check_cfg");
 }
 
 class CCfgExpander:
@@ -103,18 +186,12 @@ class CCfgExpander:
 {
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const ::AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
+        DEBUG("cfg!() - " << tt);
         auto lex = TTStream(sp, ParseState(), tt);
-        lex.parse_state().crate = &crate;
-        lex.parse_state().module = &mod;
-        auto attrs = Parse_MetaItem(lex);
-        DEBUG("cfg!() - " << attrs);
+        bool rv = check_cfg_inner(lex);
+        lex.getTokenCheck(TOK_EOF);
 
-        if( check_cfg(sp, attrs) ) {
-            return box$( TTStreamO(sp, ParseState(), TokenTree(AST::Edition::Rust2015,{},TOK_RWORD_TRUE )) );
-        }
-        else {
-            return box$( TTStreamO(sp, ParseState(), TokenTree(AST::Edition::Rust2015,{},TOK_RWORD_FALSE)) );
-        }
+        return box$( TTStreamO(sp, ParseState(), TokenTree(AST::Edition::Rust2015,{}, rv ? TOK_RWORD_TRUE : TOK_RWORD_FALSE )) );
     }
 };
 

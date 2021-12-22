@@ -96,10 +96,9 @@ void Crate::load_externs()
             no_std = true;
         if( a.name() == "no_core" )
             no_core = true;
-        if( a.name() == "cfg_attr" && a.items().size() == 2 ) {
-            if( check_cfg(a.span(), a.items().at(0)) )
+        if( a.name() == "cfg_attr" ) {
+            for(const auto& a2 : check_cfg_attr(a))
             {
-                const auto& a2 = a.items().at(1);
                 if( a2.name() == "no_std" )
                     no_std = true;
                 if( a2.name() == "no_core" )

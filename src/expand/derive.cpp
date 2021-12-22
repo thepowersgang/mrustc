@@ -12,6 +12,7 @@
 #include "../ast/crate.hpp"
 #include <hir/hir.hpp>  // ABI_RUST
 #include <parse/common.hpp>    // Parse_ModRoot_Items
+#include <parse/ttstream.hpp>
 #include "proc_macro.hpp"
 #include "common.hpp"   // Expand_LookupMacro
 
@@ -151,7 +152,6 @@ static ::std::vector<AST::ExprNodeP> make_refpat_ab(
 struct DeriveOpts
 {
     RcString core_name;
-    const ::std::vector<::AST::Attribute>&  derive_items;
 };
 
 /// Interface for derive handlers
@@ -2129,54 +2129,55 @@ static const Deriver* find_impl(const RcString& trait_name)
     return nullptr;
 }
 
-template<typename T>
-static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mod, const AST::Attribute& attr, const AST::AbsolutePath& path, slice<const AST::Attribute> attrs, const T& item)
-{
-    if( !attr.has_sub_items() ) {
-        //ERROR(sp, E0000, "#[derive()] requires a list of known traits to derive");
-        return ;
-    }
-
-    DEBUG("path = " << path);
-    bool    fail = false;
-
-    const auto& params = item.params();
-    TypeRef type(sp, path);
-    auto& types_args = type.path().nodes().back().args();
-    for( const auto& param : params.m_params ) {
-        if(const auto* pe = param.opt_Type())
-        {
-            types_args.m_entries.push_back( TypeRef(TypeRef::TagArg(), sp, pe->name()) );
-        }
-        if(const auto* pe = param.opt_Value())
-        {
-            auto p = AST::Path(pe->name().name);
-            types_args.m_entries.push_back( AST::ExprNodeP(new AST::ExprNode_NamedValue(std::move(p))) );
-        }
-    }
-
-    DeriveOpts opts = {
-        crate.m_ext_cratename_core,
-        attr.items()
-        };
-
-    ::std::vector<AST::AttributeName>   missing_handlers;
-    for( const auto& trait : attr.items() )
+namespace {
+    std::vector<AST::AttributeName>   get_derive_items(const AST::Attribute& attr)
     {
-        DEBUG("- " << trait.name());
+        std::vector<AST::AttributeName> rv;
 
+        TTStream    lex(attr.span(), ParseState(), attr.data());
+        lex.getTokenCheck(TOK_PAREN_OPEN);
+        while(lex.lookahead(0) != TOK_PAREN_CLOSE) {
+
+            AST::AttributeName  item;
+            do {
+                item.elems.push_back( lex.getTokenCheck(TOK_IDENT).ident().name );
+            } while(lex.getTokenIf(TOK_DOUBLE_COLON));
+            rv.push_back(std::move(item));
+
+            if(lex.lookahead(0) != TOK_COMMA)
+                break;
+            lex.getTokenCheck(TOK_COMMA);
+        }
+        lex.getTokenCheck(TOK_PAREN_CLOSE);
+        return rv;
+    }
+
+    TypeRef make_type(const Span& sp, const AST::AbsolutePath& path, const AST::GenericParams& params)
+    {
+        TypeRef type(sp, path);
+        auto& types_args = type.path().nodes().back().args();
+        for( const auto& param : params.m_params ) {
+            if(const auto* pe = param.opt_Type())
+            {
+                types_args.m_entries.push_back( TypeRef(TypeRef::TagArg(), sp, pe->name()) );
+            }
+            if(const auto* pe = param.opt_Value())
+            {
+                auto p = AST::Path(pe->name().name);
+                types_args.m_entries.push_back( AST::ExprNodeP(new AST::ExprNode_NamedValue(std::move(p))) );
+            }
+        }
+        return type;
+    }
+
+    std::vector<RcString> find_macro(const Span& sp, const AST::Crate& crate, const AST::Module& mod, const AST::AttributeName& trait_path)
+    {
         std::vector<RcString>   mac_path;
         //auto mac_name = RcString::new_interned( FMT("derive#" << trait.name().elems.back()) );
-        auto mac_name = trait.name().elems.back();
+        auto mac_name = trait_path.elems.back();
 
-        if( trait.name().elems.size() == 1 )
+        if( trait_path.elems.size() == 1 )
         {
-            auto dp = find_impl(trait.name().elems[0]);
-            if( dp ) {
-                mod.add_item(sp, false, "", dp->handle_item(sp, opts, params, type, item), {} );
-                continue ;
-            }
-
             for(const auto& mac_import : mod.m_macro_imports)
             {
                 if( mac_import.name == mac_name )
@@ -2187,7 +2188,7 @@ static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mo
                     }
                     else {
                         // proc_macro - Invoke the handler.
-                        DEBUG("proc_macro " << mac_import.path << ", attrs = " << attrs);
+                        DEBUG("proc_macro " << mac_import.path);
                         mac_path = mac_import.path;
                         break;
                     }
@@ -2196,7 +2197,7 @@ static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mo
 
             if(mac_path.empty())
             {
-                auto p = AST::Path::new_relative(Ident::Hygiene(), {trait.name().elems[0]});
+                auto p = AST::Path::new_relative(Ident::Hygiene(), {trait_path.elems[0]});
                 auto mac = Expand_LookupMacro(sp, crate, LList<const AST::Module*>(nullptr, &mod), p);
                 
                 TU_MATCH_HDRA( (mac), {)
@@ -2217,10 +2218,10 @@ static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mo
         }
         else
         {
-            if( trait.name().elems.size() != 2 )
-                ERROR(sp, E0000, "Invalid macro path format (must be two items, got " << trait.name());
-            const auto& des_crate = trait.name().elems[0];
-            const auto& des_mac = trait.name().elems[1];
+            if( trait_path.elems.size() != 2 )
+                ERROR(sp, E0000, "Invalid macro path format (must be two items, got " << trait_path);
+            const auto& des_crate = trait_path.elems[0];
+            const auto& des_mac   = trait_path.elems[1];
             RcString    crate_name;
             RcString    mac_name;
             for(const auto& ec : crate.m_extern_crates)
@@ -2246,6 +2247,43 @@ static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mo
             }
             mac_path = make_vec2(crate_name, mac_name);
         }
+        return mac_path;
+    }
+}
+
+template<typename T>
+static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mod, const AST::Attribute& attr, const AST::AbsolutePath& path, slice<const AST::Attribute> attrs, const T& item)
+{
+    auto derive_items = get_derive_items(attr);
+    if( derive_items.empty() ) {
+        //ERROR(sp, E0000, "#[derive()] requires a list of known traits to derive");
+        return ;
+    }
+
+    DEBUG("path = " << path);
+
+    auto type = make_type(sp, path, item.params());
+
+    DeriveOpts opts = {
+        crate.m_ext_cratename_core
+        };
+
+    bool    fail = false;
+    ::std::vector<AST::AttributeName>   missing_handlers;
+    for( const auto& trait_path : derive_items )
+    {
+        DEBUG("- " << trait_path);
+
+        if( trait_path.elems.size() == 1 )
+        {
+            auto dp = find_impl(trait_path.elems[0]);
+            if( dp ) {
+                mod.add_item(sp, false, "", dp->handle_item(sp, opts, item.params(), type, item), {} );
+                continue ;
+            }
+        }
+
+        std::vector<RcString>   mac_path = find_macro(sp, crate, mod, trait_path);
 
         bool found = false;
         if( !mac_path.empty() )
@@ -2264,8 +2302,8 @@ static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mo
         if( found )
             continue ;
 
-        DEBUG("> No handler for " << trait.name());
-        missing_handlers.push_back( trait.name() );
+        DEBUG("> No handler for " << trait_path);
+        missing_handlers.push_back( trait_path );
         fail = true;
     }
 

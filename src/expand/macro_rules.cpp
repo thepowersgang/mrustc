@@ -47,17 +47,14 @@ class CMacroUseHandler:
         TRACE_FUNCTION_F("[CMacroUseHandler] path=" << path);
 
         std::vector<RcString>   filter;
-        std::vector<bool>   filters_used;
-        if( mi.has_sub_items() )
+        if( mi.data().size() > 0 )
         {
-            filter.reserve(mi.items().size());
-            filters_used.resize(mi.items().size());
-            for( const auto& si : mi.items() )
-            {
-                const auto& name = si.name().as_trivial();
-                filter.push_back(name);
-            }
+            mi.parse_paren_ident_list([&](const Span& sp, RcString ident) {
+                filter.push_back(ident);
+                });
         }
+        std::vector<bool>   filters_used(filter.size());
+
         auto filter_valid = [&](RcString name)->bool {
             if( filter.empty() ) {
                 return true;
@@ -186,18 +183,18 @@ class CMacroExportHandler:
         // - `local_inner_macros`: Forces macro lookups within the expansion to search within the source crate
         //   > Strictly speaking, not the same as `macro`-style macros?
         bool local_inner_macros = false;
-        if(mi.has_sub_items())
+        if(mi.data().size() > 0)
         {
-            for(const auto& a : mi.items())
-            {
-                if( a.name() == "local_inner_macros" ) {
+            mi.parse_paren_ident_list([&](const Span& sp, RcString ident) {
+                if( ident == "local_inner_macros" ) {
                     local_inner_macros = true;
                 }
                 else {
-                    ERROR(sp, E0000, "Unknown option for #[macro_export] - " << a.name());
+                    ERROR(sp, E0000, "Unknown option for #[macro_export] - " << ident);
                 }
-            }
+                });
         }
+
         if( i.is_None() ) {
         }
         // If on a `use` it's for a #[rustc_builtin_macro]
@@ -279,24 +276,13 @@ class CMacroReexportHandler:
         const auto& crate_name = i.as_Crate().name;
         auto& ext_crate = *crate.m_extern_crates.at(crate_name.c_str()).m_hir;
 
-        if( mi.has_sub_items() )
-        {
-            for( const auto& si : mi.items() )
-            {
-                if( !si.name().is_trivial() )
-                    ERROR(sp, E0000, "macro_reexport of non-trivial name - " << si.name());
-                const auto& name = si.name().as_trivial();
-                auto it = ::std::find(ext_crate.m_exported_macro_names.begin(), ext_crate.m_exported_macro_names.end(), name);
-                if( it == ext_crate.m_exported_macro_names.end() )
-                    ERROR(sp, E0000, "Could not find macro " << name << "! in crate " << crate_name);
-                // TODO: Do this differently.
-                ext_crate.m_root_module.m_macro_items.at(name)->ent.as_MacroRules()->m_exported = true;
-            }
-        }
-        else
-        {
-            ERROR(sp, E0000, "#[macro_reexport] requires a list of macros");
-        }
+        mi.parse_paren_ident_list([&](const Span& sp, RcString name) {
+            auto it = ::std::find(ext_crate.m_exported_macro_names.begin(), ext_crate.m_exported_macro_names.end(), name);
+            if( it == ext_crate.m_exported_macro_names.end() )
+                ERROR(sp, E0000, "Could not find macro " << name << "! in crate " << crate_name);
+            // TODO: Do this differently.
+            ext_crate.m_root_module.m_macro_items.at(name)->ent.as_MacroRules()->m_exported = true;
+            });
     }
 };
 
