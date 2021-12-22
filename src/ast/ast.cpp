@@ -17,6 +17,7 @@
 #include <parse/ttstream.hpp>
 #include <parse/common.hpp>
 #include <parse/interpolated_fragment.hpp>
+#include <synext.hpp>   // Expand_ParseAndExpand_ExprVal
 
 namespace AST {
 
@@ -96,8 +97,6 @@ std::string Attribute::parse_equals_string(const AST::Crate& crate, const AST::M
 {
     TTStream    lex(this->m_span, ParseState(), this->data());
     lex.getTokenCheck(TOK_EQUAL);
-    // TODO: Parse string (with expand)
-    extern ::AST::ExprNodeP Expand_ParseAndExpand_ExprVal(const ::AST::Crate& crate, const AST::Module& mod, TokenStream& lex);
     auto n = Expand_ParseAndExpand_ExprVal(crate, mod, lex);
 
     std::string rv;
