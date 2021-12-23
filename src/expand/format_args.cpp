@@ -567,10 +567,10 @@ namespace {
             }
 
             // - Named parameters
-            if( lex.lookahead(0) == TOK_IDENT && lex.lookahead(1) == TOK_EQUAL )
+            if( (lex.lookahead(0) == TOK_IDENT || Token::type_is_rword(lex.lookahead(0))) && lex.lookahead(1) == TOK_EQUAL )
             {
-                GET_CHECK_TOK(tok, lex, TOK_IDENT);
-                auto name = tok.ident().name;
+                GET_TOK(tok, lex);
+                auto name = tok.type() == TOK_IDENT ? tok.ident().name : RcString::new_interned(tok.to_str());
 
                 GET_CHECK_TOK(tok, lex, TOK_EQUAL);
 
