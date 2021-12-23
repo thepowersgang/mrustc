@@ -5739,7 +5739,11 @@ namespace
                     // An ivar is less restrictive?
                     if( te_l.binding.is_Unbound() )
                         return OrdLess;
-                    TODO(sp, l << " with " << r << " - LHS is Path, RHS is ?");
+                    TODO(sp, l << " with " << r << " - LHS is Path, RHS is " << r.data().tag_str());
+                TU_ARMA(Slice, te_r) {
+                    // Paths can deref to a slice (well, to any type) - so `slice < path` in restrictiveness
+                    return OrdGreater;
+                    }
                 TU_ARMA(Path, te_r) {
                     // If both are unbound, assume equal (effectively an ivar)
                     if( te_l.binding.is_Unbound() && te_r.binding.is_Unbound() )
