@@ -5816,6 +5816,9 @@ namespace
                 ::HIR::TypeData::TAG_Borrow,
                 ::HIR::TypeData::TAG_Path, // Strictly speaking, Path == Generic
                 ::HIR::TypeData::TAG_Generic,
+                // These two are kinda their own pair
+                ::HIR::TypeData::TAG_Function,
+                ::HIR::TypeData::TAG_Closure,
                 };
             static const ::HIR::TypeData::Tag* tag_ordering_end = &tag_ordering[ sizeof(tag_ordering) / sizeof(tag_ordering[0] )];
             if( l.data().tag() != r.data().tag() )
@@ -5886,6 +5889,18 @@ namespace
                 return true;
             return false;
         }
+        static bool compare_score(int& score, const ::HIR::TypeRef& ty_l, const ::HIR::TypeRef& ty_r) {
+            auto rv = compare(ty_l, ty_r);
+            switch(rv)
+            {
+            case Incompatible:
+                return Incompatible;
+            case Less:  score --;   break;
+            case Same:              break;
+            case More:  score ++;   break;
+            }
+            return rv;
+        }
         static eInfoOrdering compare(const ::HIR::TypeRef& ty_l, const ::HIR::TypeRef& ty_r) {
             if( is_infer(ty_l) ) {
                 if( is_infer(ty_r) )
@@ -5902,27 +5917,21 @@ namespace
             TU_MATCH_HDRA( (ty_l.data(), ty_r.data()), {)
             default:
                 return Incompatible;
+            TU_ARMA(Closure, le, re) {
+                if( le.node != re.node )
+                    return Incompatible;
+                return Same;
+                }
             TU_ARMA(Tuple, le, re) {
                 if( le.size() != re.size() )
                     return Incompatible;
                 int score = 0;
                 for(size_t i = 0; i < le.size(); i ++)
                 {
-                    switch(compare(le[i], re[i]))
-                    {
-                    case Incompatible:
+                    if( compare_score(score, le[i], re[i]) == Incompatible )
                         return Incompatible;
-                    case Less:  score --;   break;
-                    case Same:              break;
-                    case More:  score ++;   break;
-                    }
                 }
-                if( score < 0 )
-                    return Less;
-                else if( score > 0 )
-                    return More;
-                else
-                    return Same;
+                return (score == 0 ? Same : (score < 0 ? Less : More));
                 }
             }
             throw "unreachable";
@@ -5963,6 +5972,13 @@ namespace
                         context.m_ivars.get_type(re.path.m_data.as_Generic().m_params.m_types.at(param_idx)),
                         false
                     );
+                }
+                else if( const auto* le = ty_l.data().opt_Closure())
+                {
+                    const auto& re = ty_r.data().as_Closure();
+                    if( le->node != re.node )
+                        return Incompatible;
+                    return Same;
                 }
                 else
                 {

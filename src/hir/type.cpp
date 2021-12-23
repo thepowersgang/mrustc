@@ -1271,6 +1271,8 @@ const ::HIR::TraitMarkings* HIR::TypePathBinding::get_trait_markings() const
         return rv;
         }
     TU_ARMA(Closure, le, re) {
+        if( le.node != re.node )
+            return Compare::Unequal;
         if( le.m_arg_types.size() != re.m_arg_types.size() )
             return Compare::Unequal;
         auto rv = Compare::Equal;
