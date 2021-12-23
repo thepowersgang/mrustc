@@ -2802,11 +2802,16 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
             }
         TU_ARMA(TraitAlias, e) {
             DEBUG("TraitAlias - " << i->name);
+            item_context.push( e.params, GenericSlot::Level::Top, true );
+            Resolve_Absolute_Generic(item_context,  e.params);
+
             for(auto& st : e.traits) {
                 item_context.push(st.ent.hrbs);
                 Resolve_Absolute_Path(item_context, st.sp, Context::LookupMode::Type,  *st.ent.path);
                 item_context.pop(st.ent.hrbs);
             }
+
+            item_context.pop(e.params, true);
             }
         TU_ARMA(Type, e) {
             DEBUG("Type - " << i->name);
