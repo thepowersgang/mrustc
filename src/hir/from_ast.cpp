@@ -2299,7 +2299,7 @@ public:
     LowerHIR_Module_Impls(crate.m_root_module,  rv);
 
     // Set all pointers in the HIR to the correct (now fixed) locations
-    IndexVisitor(rv).visit_crate( rv );
+    //IndexVisitor(rv).visit_crate( rv );
 
     // HACK: If the current crate is libcore, store the paths to various non-lang ops items
     // - Some operators aren't tagged with #[lang], so this works around that

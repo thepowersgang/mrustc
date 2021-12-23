@@ -11,28 +11,35 @@
 #include <hir/visitor.hpp>
 #include <hir_typeck/common.hpp>    // monomorphise_type_with
 
+namespace {
+    HIR::PathParams get_path_params(const Span& sp, const ::HIR::GenericParams& params_def, const ::HIR::GenericPath& path, bool is_expr)
+    {
+        auto pp = path.m_params.clone();
+        if( !is_expr ) {
+            auto ms_o = MonomorphStatePtr(nullptr, &path.m_params, nullptr);
+            while( pp.m_types.size() < params_def.m_types.size() && params_def.m_types[pp.m_types.size()].m_default != ::HIR::TypeRef() ) {
+                pp.m_types.push_back( ms_o.monomorph_type(sp, params_def.m_types[pp.m_types.size()].m_default) );
+            }
+            if( pp.m_types.size() != params_def.m_types.size() ) {
+                ERROR(sp, E0000, "Mismatched parameter count in " << path << ", expected " << params_def.m_types.size() << " got " << pp.m_types.size());
+            }
+        }
+        else {
+            while( pp.m_types.size() < params_def.m_types.size() )
+            {
+                pp.m_types.push_back( ::HIR::TypeRef() );
+            }
+        }
+        return pp;
+    }
+}
 ::HIR::TypeRef ConvertHIR_ExpandAliases_GetExpansion_GP(const Span& sp, const ::HIR::Crate& crate, const ::HIR::GenericPath& path, bool is_expr)
 {
     const auto& ti = crate.get_typeitem_by_path(sp, path.m_path);
     if(const auto* ep = ti.opt_TypeAlias() )
     {
         const auto& ta = *ep;
-        auto pp = path.m_params.clone();
-        if( !is_expr ) {
-            auto ms_o = MonomorphStatePtr(nullptr, &path.m_params, nullptr);
-            while( pp.m_types.size() < ta.m_params.m_types.size() && ta.m_params.m_types[pp.m_types.size()].m_default != ::HIR::TypeRef() ) {
-                pp.m_types.push_back( ms_o.monomorph_type(sp, ta.m_params.m_types[pp.m_types.size()].m_default) );
-            }
-            if( pp.m_types.size() != ta.m_params.m_types.size() ) {
-                ERROR(sp, E0000, "Mismatched parameter count in " << path << ", expected " << ta.m_params.m_types.size() << " got " << pp.m_types.size());
-            }
-        }
-        else {
-            while( pp.m_types.size() < ta.m_params.m_types.size() )
-            {
-                pp.m_types.push_back( ::HIR::TypeRef() );
-            }
-        }
+        auto pp = get_path_params(sp, ta.m_params, path, is_expr);
         // Monomorphise the exapnded type using the created params
         auto ms = MonomorphStatePtr(nullptr, &pp, nullptr);
         HIR::TypeRef rv = ms.monomorph_type(sp, ta.m_type);
@@ -60,6 +67,41 @@
         )
     )
     return ::HIR::TypeRef();
+}
+
+std::vector<HIR::TraitPath> ConvertHIR_ExpandAliases_GetTraitExpansion_GP(const Span& sp, const ::HIR::Crate& crate, const HIR::GenericPath& path, bool is_expr)
+{
+    const auto& ti = crate.get_typeitem_by_path(sp, path.m_path);
+    if(const auto* ep = ti.opt_TraitAlias() )
+    {
+        const auto& ta = *ep;
+        auto pp = get_path_params(sp, ta.m_params, path, is_expr);
+        auto ms = MonomorphStatePtr(nullptr, &pp, nullptr);
+        std::vector<HIR::TraitPath> rv;
+        rv.reserve(ta.m_traits.size());
+        for(const auto& exp : ta.m_traits)
+        {
+            rv.push_back(ms.monomorph_traitpath(sp, exp, false));
+        }
+        DEBUG(path << " -> " << path.m_path << pp << " -> {" << rv << "}");
+        return rv;
+    }
+    else
+    {
+        return std::vector<HIR::TraitPath>();
+    }
+}
+std::vector<HIR::TraitPath> ConvertHIR_ExpandAliases_GetTraitExpansion(const Span& sp, const ::HIR::Crate& crate, const HIR::TraitPath& path, bool is_expr)
+{
+    auto rv = ConvertHIR_ExpandAliases_GetTraitExpansion_GP(sp, crate, path.m_path, is_expr);
+    if( !rv.empty() )
+    {
+        if( !path.m_trait_bounds.empty() || !path.m_type_bounds.empty() )
+        {
+            TODO(sp, "Re-assign ATYs - " << path);
+        }
+    }
+    return rv;
 }
 
 class Expander:
@@ -110,6 +152,29 @@ public:
         }
     }
 
+    void visit_trait_path(::HIR::TraitPath& tp) override
+    {
+        static Span sp;
+        // 1. Make sure that the trait path isn't pointing at an alias (should have been handled by the caller, which can expand to multiple items)
+        ASSERT_BUG(sp, m_crate.get_typeitem_by_path(sp, tp.m_path.m_path).is_Trait(), "Bad trait path - " << tp.m_path);
+        // 2. Handle AtyBounds
+        for(auto& tb : tp.m_trait_bounds)
+        {
+            for(auto it = tb.second.traits.begin(); it != tb.second.traits.end(); ++it)
+            {
+                auto n = ConvertHIR_ExpandAliases_GetTraitExpansion(sp, m_crate, *it, m_in_expr);
+                if(!n.empty())
+                {
+                    it = tb.second.traits.erase(it);
+                    it = tb.second.traits.insert(it, std::make_move_iterator(n.begin()), std::make_move_iterator(n.end()));
+                    --it;
+                }
+            }
+        }
+
+        // Finally. Recurse
+        ::HIR::Visitor::visit_trait_path(tp);
+    }
 
     ::HIR::Path expand_alias_path(const Span& sp, const ::HIR::Path& path)
     {
@@ -259,6 +324,30 @@ public:
             // TODO: If this is an empty/wildcard AND it's poiting at a value/tuple entry, change to PathValue/PathTuple
             }
         }
+    }
+
+    void visit_params(::HIR::GenericParams& params) override
+    {
+        for(auto it = params.m_bounds.begin(); it != params.m_bounds.end(); ++it)
+        {
+            static Span sp;
+            if( it->is_TraitBound() )
+            {
+                auto n = ConvertHIR_ExpandAliases_GetTraitExpansion(sp, m_crate, it->as_TraitBound().trait, m_in_expr);
+                if(!n.empty())
+                {
+                    auto type = std::move(it->as_TraitBound().type);
+                    visit_type(type);
+
+                    it = params.m_bounds.erase(it);
+                    for(auto& t : n)
+                    {
+                        it = params.m_bounds.insert(it, HIR::GenericBound::make_TraitBound({ type.clone(), std::move(t) }));
+                    }
+                }
+            }
+        }
+        ::HIR::Visitor::visit_params(params);
     }
 
     void visit_expr(::HIR::ExprPtr& expr) override
