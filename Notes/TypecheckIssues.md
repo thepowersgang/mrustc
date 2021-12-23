@@ -749,3 +749,26 @@ Query: `parse()`'s result should be known, and the error type should be an aty b
 
 Solution: If there's an ivar with only one possibility, and we're in a fallback mode - then pick that possibility (if it fits available bounds)
 - This leads to the coercions being traversed earlier, thus avoiding the inference race.
+
+
+# (1.54) `<::"rustc_mir_build-0_0_0"::build::Builder/*S*/>::bind_pattern`
+```
+..\rustc-1.54.0-src\compiler\rustc_mir_build\src\build\matches/mod.rs:387: error:0:Failed to find an impl of ::"core-0_0_0"::ops::function::FnOnce<(::"rustc_mir_build-0_0_0"::build::matches::Candidate,&mut _/*93*/,),> for {000002938DE60E10}(::"rustc_mir_build-0_0_0"::build::matches::Candidate,&[(::"alloc-0_0_0"::vec::Vec<::"rustc_mir_build-0_0_0"::build::matches::Binding,::"alloc-0_0_0"::alloc::Global,>,::"alloc-0_0_0"::vec::Vec<::"rustc_mir_build-0_0_0"::build::matches::Ascription,::"alloc-0_0_0"::alloc::Global,>,)],)->() with Output = ()
+```
+
+Early-infer of the closure's argument type, before the expected argument type information was available.
+```
+Typecheck Expressions-     Context::dump: R11 &mut _/*95*/ := 000002938C755870 000002938C7548E0 (&mut {000002938DE60E10}(_/*39*/,_/*40*/,)->_/*30*/)
+Typecheck Expressions-           Context::equate_types_assoc: ++ R4 () = < `_/*95*/` as `::"core-0_0_0"::ops::function::FnOnce<(_/*92*/, &mut _/*93*/, ),>` >::Output
+Typecheck Expressions-     check_ivar_poss: >> (40)
+Typecheck Expressions-      `anonymous-namespace'::check_ivar_poss: 40: possible_tys = C- &[(::"alloc-0_0_0"::vec::Vec<::"rustc_mir_build-0_0_0"::build::matches::Binding/*S*/,::"alloc-0_0_0"::alloc::Global/*S*/,>/*S*/, ::"alloc-0_0_0"::vec::Vec<::"rustc_mir_build-0_0_0"::build::matches::Ascription/*S*/,::"alloc-0_0_0"::alloc::Global/*S*/,>/*S*/, )]
+Typecheck Expressions-      `anonymous-namespace'::check_ivar_poss: Only &[(::"alloc-0_0_0"::vec::Vec<::"rustc_mir_build-0_0_0"::build::matches::Binding/*S*/,::"alloc-0_0_0"::alloc::Global/*S*/,>/*S*/, ::"alloc-0_0_0"::vec::Vec<::"rustc_mir_build-0_0_0"::build::matches::Ascription/*S*/,::"alloc-0_0_0"::alloc::Global/*S*/,>/*S*/, )] is an option
+Typecheck Expressions-       HMTypeInferrence::set_ivar_to: Set IVar 40 = &[(::"alloc-0_0_0"::vec::Vec<::"rustc_mir_build-0_0_0"::build::matches::Binding/*S*/,::"alloc-0_0_0"::alloc::Global/*S*/,>/*S*/, ::"alloc-0_0_0"::vec::Vec<::"rustc_mir_build-0_0_0"::build::matches::Ascription/*S*/,::"alloc-0_0_0"::alloc::Global/*S*/,>/*S*/, )]
+Typecheck Expressions-      `anonymous-namespace'::check_ivar_poss: One possibility (before ivar removal), setting to closure[000002938DE60E10](_/*39*/, _/*40*/, ) -> ()
+Typecheck Expressions-       HMTypeInferrence::set_ivar_to: Set IVar 95 = closure[000002938DE60E10](_/*39*/, _/*40*/, ) -> ()
+Typecheck Expressions-     Typecheck_Code_CS: - R4 () = < `_/*95*/` as `::"core-0_0_0"::ops::function::FnOnce<(::"rustc_mir_build-0_0_0"::build::matches::Candidate/*S*/, &mut _/*93*/, ),>` >::Output
+```
+
+Need to prevent auto-inferring of closure argument types? (bound them to include self?)
+- Challenge: Closures aren't revisited (currently)
+- HACK: Do a disable on closures when being unsized to an ivar.

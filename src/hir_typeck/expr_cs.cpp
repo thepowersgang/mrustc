@@ -3845,6 +3845,10 @@ namespace {
             if( context_mut )
             {
                 context_mut->possible_equate_ivar(sp, dep->index, src, Context::PossibleTypeSource::UnsizeFrom);
+                // Disable inner parts of the source? (E.g. if it's a closure)
+                if( src.data().is_Closure() ) {
+                    context_mut->possible_equate_type_unknown(sp, src, Context::IvarUnknownType::To);
+                }
             }
             DEBUG("Dst ivar");
             return CoerceResult::Unknown;
@@ -6809,7 +6813,7 @@ namespace
                 if(active)
                 {
                     const auto& new_ty = *possible_tys[0].ty;
-                    DEBUG("Only " << new_ty << " is an option");
+                    DEBUG("Only one option: " << new_ty);
                     context.equate_types(sp, ty_l, new_ty);
                     return true;
                 }
