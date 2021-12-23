@@ -70,6 +70,7 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    bool error = false;
     try {
         // 1. Parse the patch file
         auto patch = load_patch(opts.patchfile);
@@ -119,7 +120,18 @@ int main(int argc, char *argv[])
                 {
                     //for(size_t i = src_ofs; i < frag.orig_line; i ++)
                     //    std::cerr << i << "___ " << orig_file[i] << std::endl;
-                    is_clean &= sublist_match(orig_file, frag.orig_line, frag.orig_contents);
+                    if( !sublist_match(orig_file, frag.orig_line, frag.orig_contents) )
+                    {
+                        if( frag.orig_line == frag.new_line && sublist_match(orig_file, frag.new_line, frag.new_contents) )
+                        {
+                            // Fragment is already applied
+                        }
+                        else
+                        {
+                            is_clean = false;
+                        }
+                    }
+
                     //for(size_t i = 0; i < frag.orig_contents.size(); i ++)
                     //    std::cerr << (frag.orig_line+i) << "--- " << frag.orig_contents[i] << std::endl;
                     //src_ofs = frag.orig_line + frag.orig_contents.size();
@@ -130,6 +142,7 @@ int main(int argc, char *argv[])
 
             if( !is_clean ) {
                 std::cerr << orig_path << " is not clean" << std::endl;
+                error = true;
                 continue;
             }
 
@@ -139,7 +152,7 @@ int main(int argc, char *argv[])
             for(const auto& frag : f.fragments)
             {
                 new_file2.insert(new_file2.end(), orig_file.begin() + src_ofs, orig_file.begin() + frag.orig_line);
-                new_file2.insert(new_file2.begin(), frag.new_contents.begin(), frag.new_contents.end());
+                new_file2.insert(new_file2.end(), frag.new_contents.begin(), frag.new_contents.end());
                 src_ofs = frag.orig_line + frag.orig_contents.size();
             }
             new_file2.insert(new_file2.end(), orig_file.begin() + src_ofs, orig_file.end());
@@ -165,7 +178,7 @@ int main(int argc, char *argv[])
         std::cerr << "Exception: " << e.what() << std::endl;
     }
 
-    return 0;
+    return error ? 1 : 0;
 }
 
 struct Parser {

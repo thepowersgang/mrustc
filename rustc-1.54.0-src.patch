@@ -34,3 +34,23 @@
 -#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
 +#[cfg(all(not(rust_compiler="mrustc"), target_arch = "x86_64", target_pointer_width = "64"))]
  rustc_data_structures::static_assert_size!(Expr<'_>, 144);
+--- compiler/rustc_mir/src/interpret/place.rs
++++ compiler/rustc_mir/src/interpret/place.rs
+@@ -91,2 +91,2 @@
+-#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
++#[cfg(all(not(rust_compiler = "mrustc"), target_arch = "x86_64", target_pointer_width = "64"))]
+ rustc_data_structures::static_assert_size!(Place, 64);
+@@ -100,2 +100,2 @@
+-#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
++#[cfg(all(not(rust_compiler = "mrustc"), target_arch = "x86_64", target_pointer_width = "64"))]
+ rustc_data_structures::static_assert_size!(PlaceTy<'_>, 80);
+--- compiler/rustc_mir/src/interpret/operand.rs
++++ compiler/rustc_mir/src/interpret/operand.rs
+@@ -35,2 +35,2 @@
+-#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
++#[cfg(all(not(rust_compiler = "mrustc"), target_arch = "x86_64", target_pointer_width = "64"))]
+ rustc_data_structures::static_assert_size!(Immediate, 56);
+@@ -90,2 +90,2 @@
+-#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
++#[cfg(all(not(rust_compiler = "mrustc"), target_arch = "x86_64", target_pointer_width = "64"))]
+ rustc_data_structures::static_assert_size!(ImmTy<'_>, 72);
