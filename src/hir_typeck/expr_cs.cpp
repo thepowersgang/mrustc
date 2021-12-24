@@ -4895,6 +4895,15 @@ namespace {
                 }
                 return CoerceResult::Custom;
             }
+            // Function pointers can coerce safety
+            else if( const auto* dep = dst.data().opt_Infer() )
+            {
+                if(context_mut)
+                {
+                    context_mut->possible_equate_ivar(sp, dep->index, src, Context::PossibleTypeSource::UnsizeFrom);
+                }
+                return CoerceResult::Unknown;
+            }
             else
             {
                 return CoerceResult::Equality;

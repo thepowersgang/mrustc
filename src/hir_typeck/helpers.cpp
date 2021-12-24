@@ -3194,6 +3194,10 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 if( ty.data().is_Path() && ty.data().as_Path().binding.is_Unbound() ) {
                     return ::HIR::Compare::Fuzzy;
                 }
+                if( ty.data().is_Generic() && ty.data().as_Generic().is_placeholder() ) {
+                    return ::HIR::Compare::Fuzzy;
+                }
+                DEBUG("Unequal generic - " << g << " != " << ty);
                 return ::HIR::Compare::Unequal;
             }
         }
