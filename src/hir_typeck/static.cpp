@@ -850,8 +850,11 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
                         rv = true;
                     }
                     else {
-                        rv = this->find_impl(sp, aty_src_trait.m_path, aty_src_trait.m_params, b_ty_mono, [&](const auto& impl, bool)->bool {
+                        rv = this->find_impl(sp, aty_src_trait.m_path, aty_src_trait.m_params, b_ty_mono, [&](const ImplRef& impl, bool)->bool {
                             ::HIR::TypeRef have = impl.get_type(aty_name.c_str());
+                            if( have == HIR::TypeRef() ) {
+                                have = HIR::TypeRef::new_path(HIR::Path(impl.get_impl_type(), HIR::GenericPath(aty_src_trait.m_path, impl.get_trait_params()), aty_name), HIR::TypePathBinding::make_Unbound({}));
+                            }
                             this->expand_associated_types(sp, have);
 
                             DEBUG("[find_impl__check_crate_raw] ATY ::" << aty_name << " - " << have << " ?= " << exp);
