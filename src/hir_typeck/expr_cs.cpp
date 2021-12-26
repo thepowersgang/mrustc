@@ -2370,7 +2370,7 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                 for(auto& pb : pattern.m_bindings )
                 {
                     // - Binding present, use the current binding mode
-                    if( pb.m_type == ::HIR::PatternBinding::Type::Move )
+                    if( pb.m_type == ::HIR::PatternBinding::Type::Move && !pb.m_mutable )
                     {
                         pb.m_type = binding_mode;
                     }
