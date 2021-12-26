@@ -123,6 +123,10 @@ class CMacroUseHandler:
                     }
                 TU_ARMA(MacroRules, mac_ptr) {
                     DEBUG("Imported " << name << "!");
+
+                    auto mi = AST::Module::MacroImport{ false, name, make_vec2(ec_item->name, name), &*mac_ptr };
+                    mod.m_macro_imports.push_back(mv$(mi));
+
                     mod.add_macro_import( sp, name, &*mac_ptr );
                     }
                 TU_ARMA(ProcMacro, p) {
@@ -282,6 +286,7 @@ class CMacroReexportHandler:
                 ERROR(sp, E0000, "Could not find macro " << name << "! in crate " << crate_name);
             // TODO: Do this differently.
             ext_crate.m_root_module.m_macro_items.at(name)->ent.as_MacroRules()->m_exported = true;
+            //ext_crate.m_root_module.m_macro_items.at(name)->publicity = AST::Publicity::new_global();
             });
     }
 };

@@ -2126,6 +2126,7 @@ public:
 
     // - Extract exported macros
     {
+        TRACE_FUNCTION_FR("macros", "macros");
         ::std::vector< ::AST::Module*>    mods;
         mods.push_back( &crate.m_root_module );
         do
@@ -2146,12 +2147,27 @@ public:
                         p.m_components.push_back(mac.name);
                         mi = HIR::MacroItem::make_Import({ mv$(p) });
                     }
-                    auto res = macros.insert( ::std::make_pair( mac.name, mv$(mi) ) );
-                    if( res.second )
+                    ASSERT_BUG(Span(), macros.count(mac.name) == 0, "Duplicate export of: " << mac.name);
+                    if( macros.count(mac.name) == 0 )
                     {
-                        DEBUG("- Define " << mac.name << "!");
-                        rv.m_exported_macro_names.push_back(mac.name);
+                        auto res = macros.insert( ::std::make_pair( mac.name, mv$(mi) ) );
+                        if( res.second )
+                        {
+                            DEBUG("- Define " << mac.name << "!");
+                            rv.m_exported_macro_names.push_back(mac.name);
+                        }
+                        if(res.first->second.is_MacroRules() ) {
+                            ASSERT_BUG(Span(), !res.first->second.as_MacroRules()->m_rules.empty(), "Empty macro? - " << mac.name);
+                        }
                     }
+
+#if 1
+                    for(auto& e : macros) {
+                        if(e.second.is_MacroRules() ) {
+                            ASSERT_BUG(Span(), !e.second.as_MacroRules()->m_rules.empty(), "Empty macro? - " << e.first);
+                        }
+                    }
+#endif
                 }
                 else {
                     DEBUG("- Non-exported " << mac.name << "!");
@@ -2164,61 +2180,19 @@ public:
             }
         } while( mods.size() > 0 );
 
-        for( auto& mac : crate.m_root_module.macro_imports_res() ) {
-            if( mac.data.is_MacroRules() && mac.data.as_MacroRules()->m_exported && mac.name != "" ) {
-                auto* mp = mac.data.as_MacroRules();
-                auto it = macros.find(mac.name);
-                if( it == macros.end() )
-                {
-                    auto mpo = MacroRulesPtr(new MacroRules( mv$(*const_cast<MacroRules*>(mp)) ));
-                    rv.m_exported_macro_names.push_back(mac.name);
-                    auto res = macros.insert( ::std::make_pair( mac.name, mv$(mpo) ) );
-                    DEBUG("- Import " << mac.name << "! (from \"" << res.first->second.as_MacroRules()->m_source_crate << "\")");
-                }
-                else if( mp->m_rules.empty() ) {
-                    // Skip
-                }
-                else {
-                    assert(mp->m_source_crate == "");
-                    //DEBUG("- Replace " << mac.name << "! "/*"(from \"" << it->second->m_source_crate << "\") "*/"with one from \"" << mp->m_source_crate << "\"");
-                    //it->second = MacroRulesPtr(new MacroRules( mv$(*const_cast<MacroRules*>(mp)) ));
-                }
-            }
-        }
         for( const auto& mac : crate.m_root_module.m_macro_imports )
         {
-            if( mac.is_pub )
-            {
-                if( !mac.macro_ptr ) {
-                    continue ;
-                }
-                // TODO: Why does this to such a move?
-                auto mp = MacroRulesPtr(new MacroRules( mv$(*const_cast<MacroRules*>(mac.macro_ptr)) ));
-
-                auto it = macros.find(mac.name);
-                if( it == macros.end() )
-                {
-                    rv.m_exported_macro_names.push_back(mac.name);
-                    auto res = macros.insert( ::std::make_pair( mac.name, mv$(mp)) );
-                    DEBUG("- Import " << mac.name << "! (from \"" << res.first->second.as_MacroRules()->m_source_crate << "\")");
-                }
-                else if( mp->m_rules.empty() ) {
-                    // Skip
-                }
-                else {
-                    DEBUG("- Replace " << mac.name << "! "/*"(from \"" << it->second->m_source_crate << "\") "*/"with one from \"" << mp->m_source_crate << "\"");
-                    it->second = mv$( mp );
-                }
-            }
-        }
-
-
-        for( const auto& mac : crate.m_root_module.m_macro_imports )
-        {
-            if( mac.is_pub && !mac.macro_ptr ) {
+            if( mac.is_pub || (mac.macro_ptr && mac.macro_ptr->m_exported) ) {
                 // Add to the re-export list
                 auto path = ::HIR::SimplePath(mac.path.front(), ::std::vector<RcString>(mac.path.begin()+1, mac.path.end()));
-                macros.insert( std::make_pair(mac.name, HIR::MacroItem::make_Import({path})) );
+                auto res = macros.insert( std::make_pair(mac.name, HIR::MacroItem::make_Import({path})) );
+                if( !res.second ) {
+                    DEBUG("Conflict in imported vs local macros: " << mac.name);
+                }
+                else {
+                    DEBUG("Re-export " << mac.name << "! = " << path);
+                    rv.m_exported_macro_names.push_back(mac.name);
+                }
             }
         }
 
@@ -2293,6 +2267,9 @@ public:
     rv.m_root_module = LowerHIR_Module( crate.m_root_module, ::HIR::ItemPath(rv.m_crate_name) );
     for(auto& e : macros)
     {
+        if(e.second.is_MacroRules() ) {
+            ASSERT_BUG(Span(), !e.second.as_MacroRules()->m_rules.empty(), "Empty macro? - " << e.first);
+        }
         rv.m_root_module.m_macro_items.insert( ::std::make_pair(e.first, box$(HIR::VisEnt<HIR::MacroItem> { HIR::Publicity::new_global(), mv$(e.second) })) );
     }
 

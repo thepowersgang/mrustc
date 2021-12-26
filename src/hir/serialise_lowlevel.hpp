@@ -192,7 +192,7 @@ public:
         CloseOnDrop(Writer& r): r(&r) {}
     public:
         CloseOnDrop(CloseOnDrop&& x): r(x.r) { x.r = nullptr; }
-        ~CloseOnDrop(){ if(r) r->close_object(); }
+        ~CloseOnDrop(){ if(r) r->close_object(); r = nullptr; }
     };
     CloseOnDrop open_object(const char* name) {
         write_u8(0xFD);
@@ -419,8 +419,9 @@ public:
         Reader* r;
         CloseOnDrop(Reader& r): r(&r) {}
     public:
+        CloseOnDrop(const CloseOnDrop&) = delete;
         CloseOnDrop(CloseOnDrop&& x): r(x.r) { x.r = nullptr; }
-        ~CloseOnDrop(){ if(r) r->close_object(); }
+        ~CloseOnDrop(){ if(r) r->close_object(); r = nullptr; }
     };
 
     CloseOnDrop open_object(const char* name) {
@@ -451,7 +452,11 @@ public:
         return CloseOnDrop(*this);
     }
     void close_object() {
-        assert(read_u8() == 0xFF);
+        auto v = read_u8();
+        if( v != 0xFF ) {
+            std::cerr << "Expected CloseObject(0xFF), got " << unsigned(v) << ::std::endl;
+            abort();
+        }
     }
 };
 
