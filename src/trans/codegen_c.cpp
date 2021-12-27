@@ -2477,7 +2477,7 @@ namespace {
                 else {
                     // TODO: Hand off to compiler-specific intrinsics
                     //MIR_TODO(*m_mir_res, "LLVM extern linkage: " << item.m_linkage.name);
-                    m_of << "\tassert(!\"" << item.m_linkage.name << "\"); abort();\n";
+                    m_of << "\tassert(!\"Extern LLVM: " << item.m_linkage.name << "\"); abort();\n";
                 }
                 m_of << "}\n";
                 m_mir_res = nullptr;
@@ -4057,28 +4057,45 @@ namespace {
 
             bool has_zst = false;
             for(unsigned int j = 0; j < e.args.size(); j ++) {
+                ::HIR::TypeRef tmp;
+                const auto& ty = m_mir_res->get_param_type(tmp, e.args[j]);
                 if( m_options.disallow_empty_structs /*&& TU_TEST1(e.args[j], LValue, .is_Field())*/ )
                 {
-                    ::HIR::TypeRef tmp;
-                    const auto& ty = m_mir_res->get_param_type(tmp, e.args[j]);
                     if( this->type_is_bad_zst(ty) )
                     {
                         if(!has_zst) {
                             m_of << "{\n";
                             indent.n ++ ;
                             m_of << indent;
+                            has_zst = true;
                         }
-                        has_zst = true;
                         emit_ctype(ty, FMT_CB(ss, ss << "zarg" << j;));
                         m_of << " = {0};\n";
                         m_of << indent;
+                        continue;
                     }
+                }
+                if( e.args[j].is_Constant() && this->type_is_high_align(ty) )
+                {
+                    if(!has_zst) {
+                        m_of << "{\n";
+                        indent.n ++ ;
+                        m_of << indent;
+                        has_zst = true;
+                    }
+
+                    emit_ctype(ty, FMT_CB(ss, ss << "haarg" << j;));
+                    m_of << " = ";
+                    emit_param(e.args[j]);
+                    m_of << ";\n";
+                    m_of << indent;
+                    continue;
                 }
             }
 
             bool omit_assign = false;
 
-            // If the return type is `()`, omit the assignment (all () returning functions are marked as returning
+            // If the return type is `()`, omit the assignment (all `()` returning functions are marked as returning
             // void)
             {
                 ::HIR::TypeRef  tmp;
@@ -4189,6 +4206,10 @@ namespace {
                 if( this->type_is_high_align(ty) )
                 {
                     m_of << "&";
+                    if( e.args[j].is_Constant() ) {
+                        m_of << "haarg" << j;
+                        continue;
+                    }
                 }
                 if( this->type_is_bad_zst(ty) )
                 {
