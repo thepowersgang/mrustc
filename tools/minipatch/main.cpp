@@ -99,10 +99,9 @@ int main(int argc, char *argv[])
             }
 
             if( is_applied ) {
-                std::cerr << new_path << " aready patched" << std::endl;
+                std::cerr << "already patched: " << new_path << std::endl;
                 continue;
             }
-            std::cerr << "   " << new_path << " not yet patched" << std::endl;
 
 
             // Get the input path
@@ -141,10 +140,11 @@ int main(int argc, char *argv[])
             }
 
             if( !is_clean ) {
-                std::cerr << orig_path << " is not clean" << std::endl;
+                std::cerr << "NOT CLEAN: " << orig_path << std::endl;
                 error = true;
                 continue;
             }
+            std::cerr << "PATCHING: " << new_path << std::endl;
 
             // Apply each patch
             std::vector<std::string>    new_file2;
