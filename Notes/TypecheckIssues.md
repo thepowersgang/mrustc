@@ -772,3 +772,31 @@ Typecheck Expressions-     Typecheck_Code_CS: - R4 () = < `_/*95*/` as `::"core-
 Need to prevent auto-inferring of closure argument types? (bound them to include self?)
 - Challenge: Closures aren't revisited (currently)
 - HACK: Do a disable on closures when being unsized to an ivar.
+
+
+# (1.54) `<::"schannel-0_1_19"::security_context::SecurityContext/*S*/>::attribute`
+```
+..\rustc-1.54.0-src\vendor\schannel\src\security_context.rs:101: error:0:Type mismatch between T/*M:0*/ and ::"core-0_0_0"::ffi::c_void
+```
+
+```
+Typecheck Expressions-         Context::equate_types_coerce: ++ R6 _/*35*/ := 000001D9AD738D70 000001D9BC0014E0 (_/*24*/)
+Typecheck Expressions-     check_coerce: >> (R10 ::"core-0_0_0"::result::Result<T/*M:0*/,::"std-0_0_0"::io::error::Error/*S*/,>/*E*/ := 000000A6D912E5A8 000001D9BA421FC0 (::"core-0_0_0"::result::Result<_/*35*/,::"std-0_0_0"::io::error::Error/*S*/,>/*E*/) - ::"core-0_0_0"::result::Result<T/*M:0*/,::"std-0_0_0"::io::error::Error,> := ::"core-0_0_0"::result::Result<_/*35*/,::"std-0_0_0"::io::error::Error,>)
+Typecheck Expressions-       HMTypeInferrence::set_ivar_to: Set IVar 35 = T/*M:0*/
+Typecheck Expressions-     visit: >> (*mut _/*13*/ as *mut ::"core-0_0_0"::ffi::c_void/*E*/)
+Typecheck Expressions-       HMTypeInferrence::set_ivar_to: Set IVar 13 = ::"core-0_0_0"::ffi::c_void/*E*/
+Typecheck Expressions-     check_coerce: >> (R6 T/*M:0*/ := 000001D9AD738D70 000001D9BC0014E0 (::"core-0_0_0"::ffi::c_void/*E*/) - T/*M:0*/ := ::"core-0_0_0"::ffi::c_void)
+Typecheck Expressions-       Context::equate_types_inner: - l_t = T/*M:0*/, r_t = ::"core-0_0_0"::ffi::c_void/*E*/
+```
+
+```
+Typecheck Expressions-     check_ivar_poss: >> (13)
+Typecheck Expressions-      `anonymous-namespace'::check_ivar_poss: - Source/Destination type
+Typecheck Expressions-      Context::equate_types: _/*13*/ == _/*13*/
+Typecheck Expressions-     check_ivar_poss: << ()
+Typecheck Expressions-     Context::possible_equate_ivar_unknown: 13 = ?? (From)
+Typecheck Expressions-     Context::possible_equate_ivar_unknown: 13 = ?? (To)
+Typecheck Expressions-     Typecheck_Code_CS: --- IVar possibilities (fallback 1)
+```
+
+Solution: check if the equal source/destination is the current type, and skip if so.

@@ -6079,7 +6079,7 @@ namespace
                 for(const auto& t2 : ivar_ent.types_coerce_from)
                 {
                     // TODO: Compare such that &[_; 1] == &[u8; 1]? and `&[_]` == `&[T]`
-                    if(t.ty == t2.ty)
+                    if(t.ty == t2.ty && t.ty != ty_l)
                     {
                         DEBUG("- Source/Destination type");
                         context.equate_types(sp, ty_l, t.ty);
