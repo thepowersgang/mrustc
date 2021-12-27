@@ -1360,6 +1360,7 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
         }
         else
         {
+            CLEAR_PARSE_FLAG(lex, disallow_struct_literal);
             PUTBACK(tok, lex);
             auto first = Parse_Expr0(lex);
             if( GET_TOK(tok, lex) == TOK_SEMICOLON )
