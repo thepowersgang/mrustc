@@ -2234,8 +2234,16 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
 #endif
                     }
                 TU_ARM(pv, Named, ve) {
-                    // TODO: Look up the path and get the type
-                    return ::HIR::TypeRef();
+                    DEBUG("TODO: Look up the path and get the type: " << ve.path);
+                    if( ve.binding ) {
+                        return ve.binding->m_type.clone();
+                    }
+                    else if( ve.path.m_data.is_Generic() ) {
+                        TODO(sp, "Look up pattern value: " << ve.path);
+                    }
+                    else {
+                        return ::HIR::TypeRef();
+                    }
                     }
                 }
                 throw "";
