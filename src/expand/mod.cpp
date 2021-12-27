@@ -1993,6 +1993,8 @@ void Expand(::AST::Crate& crate)
     Expand_Attrs_CfgAttr(crate.m_attrs);
     Expand_Attrs(crate.m_attrs, AttrStage::Pre,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate); });
 
+    // TODO: Crate name and type
+
     std::vector<std::unique_ptr<AST::Named<AST::Item>>> new_root_items;
     Expand_Mod_Early(crate, crate.m_root_module, new_root_items);
     crate.m_root_module.m_items.insert( crate.m_root_module.m_items.begin(),

@@ -310,18 +310,32 @@ int main(int argc, char *argv[])
             });
 
         if( params.crate_name != "" ) {
+
+
+            // Extract the crate type and name from the crate attributes
+            auto crate_type = params.crate_type;
+            if( crate_type == ::AST::Crate::Type::Unknown ) {
+                crate_type = crate.m_crate_type;
+            }
+            if( crate_type == ::AST::Crate::Type::Unknown ) {
+                // Assume to be executable
+                crate_type = ::AST::Crate::Type::Executable;
+            }
+            crate.m_crate_type = crate_type;
+
             crate.set_crate_name(params.crate_name);
+            crate.m_crate_type = ::AST::Crate::Type::Unknown;
         }
 
         // Iterate all items in the AST, applying syntax extensions
         CompilePhaseV("Expand", [&]() {
             Expand(crate);
-            });
 
-        if( params.test_harness )
-        {
-            Expand_TestHarness(crate);
-        }
+            if( params.test_harness )
+            {
+                Expand_TestHarness(crate);
+            }
+            });
 
         // Extract the crate type and name from the crate attributes
         auto crate_type = params.crate_type;

@@ -198,6 +198,7 @@ namespace {
             TU_ARMA(Absolute, e) {
                 DEBUG("Absolute " << path);
                 if( e.crate == "" || e.crate == crate.m_crate_name_real ) {
+                    DEBUG("Current crate");
                     return get_module_ast(crate.m_root_module, path, 0, ignore_last, out_path);
                 }
                 // 2018 `::cratename::` paths

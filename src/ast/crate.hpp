@@ -101,7 +101,9 @@ public:
             m_crate_name_real = "";
         }
         else {
-            m_crate_name_real = m_crate_name_suffix != "" ? RcString::new_interned(name + "-" + m_crate_name_suffix) : RcString::new_interned(name);
+            m_crate_name_real = m_crate_name_suffix != ""
+                ? RcString::new_interned(name + "-" + m_crate_name_suffix)
+                : RcString::new_interned(name);
         }
     }
 
