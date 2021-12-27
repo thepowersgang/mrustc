@@ -93,4 +93,12 @@
       <Item Name="Module"  Condition="m_tag == TAG_Module">m_data.Module</Item>
     </Expand>
   </Type>
+  <Type Name="HIR::MacroItem">
+    <DisplayString Condition="m_tag == TAG_MacroRules">MacroRules {m_data.MacroRules}</DisplayString>
+    <DisplayString Condition="m_tag == TAG_Import">Import {m_data.Import}</DisplayString>
+    <Expand>
+      <Item Name="Import"     Condition="m_tag == TAG_Import"     >m_data.Import</Item>
+      <Item Name="MacroRules" Condition="m_tag == TAG_MacroRules" >m_data.MacroRules</Item>
+    </Expand>
+  </Type>
 </AutoVisualizer>

@@ -82,39 +82,36 @@ void Codegen_C::emit_function(const RcString& name, const ModuleTree& tree, cons
 
         const ::HIR::TypeRef& get_lvalue_type(const ::MIR::LValue::CRef& val) const
         {
-            const ::HIR::TypeRef* ty_p = nullptr;
+            ::HIR::TypeRef ty;
             TU_MATCH_HDRA( (val.lv().m_root), {)
             TU_ARMA(Static, ve) {
-                ty_p = &m_module_tree.get_static(ve).ty;
+                ty = m_module_tree.get_static(ve).ty;
                 }
             TU_ARMA(Return, _ve) {
-                ty_p = &m_fcn.ret_ty;
+                ty = m_fcn.ret_ty;
                 }
             TU_ARMA(Argument, ve) {
-                ty_p = &m_fcn.args.at(ve);
+                ty = m_fcn.args.at(ve);
                 }
             TU_ARMA(Local, ve) {
-                ty_p = &m_fcn.m_mir.locals.at(ve);
+                ty = m_fcn.m_mir.locals.at(ve);
                 }
             }
 
             LOG_ASSERT(val.wrapper_count() <= val.lv().m_wrappers.size(), "");
             for(size_t i = 0; i < val.wrapper_count(); i ++)
             {
-                const auto& ty = *ty_p;
-                ty_p = nullptr;
                 TU_MATCH_HDRA( (val.lv().m_wrappers[i]), {)
-                TU_ARMA(Index, we) { ty_p = &ty.get_inner(); }
-                TU_ARMA(Field, we) { size_t ofs; ty_p = &ty.get_field(we, ofs); }
-                TU_ARMA(Deref, we) { ty_p = &ty.get_inner(); }
+                TU_ARMA(Index, we) { ty = ty.get_inner(); }
+                TU_ARMA(Field, we) { size_t ofs; ty = ty.get_field(we, ofs); }
+                TU_ARMA(Deref, we) { ty = ty.get_inner(); }
                 TU_ARMA(Downcast, we) {
                     size_t ofs;
-                    ty_p = &ty.get_field(we, ofs);
+                    ty = ty.get_field(we, ofs);
                     }
                 }
-                assert(ty_p);
             }
-            return *ty_p;
+            return ty;
         }
 
         void emit_lvalue(const ::MIR::LValue::CRef& val)
