@@ -4951,10 +4951,12 @@ namespace {
     private:
         const ::HIR::TypeRef& monomorphise_fcn_return(::HIR::TypeRef& tmp, const ::HIR::Function& item, const Trans_Params& params)
         {
-            if( visit_ty_with(item.m_return, [&](const auto& x){ return x.data().is_ErasedType() || x.data().is_Generic(); }) )
+            bool has_erased = visit_ty_with(item.m_return, [&](const auto& x) { return x.data().is_ErasedType(); });
+            
+            if( has_erased || monomorphise_type_needed(item.m_return) )
             {
                 // If there's an erased type, make a copy with the erased type expanded
-                if( visit_ty_with(item.m_return, [&](const auto& x) { return x.data().is_ErasedType(); }) )
+                if( has_erased )
                 {
                     tmp = clone_ty_with(sp, item.m_return, [&](const auto& x, auto& out) {
                         if( const auto* te = x.data().opt_ErasedType() ) {
