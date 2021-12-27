@@ -571,6 +571,7 @@ namespace {
             {
                 GET_TOK(tok, lex);
                 auto name = tok.type() == TOK_IDENT ? tok.ident().name : RcString::new_interned(tok.to_str());
+                DEBUG("Named `" << name << "`");
 
                 GET_CHECK_TOK(tok, lex, TOK_EQUAL);
 
@@ -585,6 +586,7 @@ namespace {
             // - Free parameters
             else
             {
+                DEBUG("Free");
                 auto expr_tt = TokenTree(Token( InterpolatedFragment(InterpolatedFragment::EXPR, Parse_Expr0(lex).release()) ));
                 free_args.push_back( mv$(expr_tt) );
             }

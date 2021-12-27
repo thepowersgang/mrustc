@@ -33,6 +33,9 @@ class CExpander_assert:
         toks.push_back( Token(TOK_EXCLAM) );
 
         GET_TOK(tok, lex);
+        if( tok == TOK_COMMA && lex.lookahead(0) == TOK_EOF ) {
+            GET_TOK(tok, lex);
+        }
         if( tok == TOK_COMMA )
         {
             toks.push_back( Token(InterpolatedFragment(InterpolatedFragment::EXPR, n.release())) );
@@ -47,11 +50,12 @@ class CExpander_assert:
             if( lex.getTokenIf(TOK_COMMA) )
             {
                 toks.push_back( Token(InterpolatedFragment(InterpolatedFragment::EXPR, fmt.release())) );
-                toks.push_back(TOK_COMMA);
 
                 while(lex.lookahead(0) != TOK_EOF )
                 {
-                    if( lex.lookahead(0) == TOK_IDENT && lex.lookahead(1) == TOK_EQUAL )
+                    toks.push_back(TOK_COMMA);
+
+                    if( (lex.lookahead(0) == TOK_IDENT || Token::type_is_rword(lex.lookahead(0))) && lex.lookahead(1) == TOK_EQUAL )
                     {
                         toks.push_back( lex.getToken() );
                         toks.push_back( lex.getToken() );
@@ -64,7 +68,6 @@ class CExpander_assert:
                     if( lex.lookahead(0) != TOK_COMMA )
                         break;
                     GET_CHECK_TOK(tok, lex, TOK_COMMA);
-                    toks.push_back( Token(TOK_COMMA) );
                 }
             }
             else

@@ -32,6 +32,7 @@ Token TTStream::realGetToken()
         if(idx == 0 && tree.is_token()) {
             idx ++;
             m_hygiene_ptr = &tree.hygiene();
+            DEBUG(tree.tok());
             return tree.tok();
         }
 
@@ -41,6 +42,7 @@ Token TTStream::realGetToken()
             idx ++;
             if( subtree.size() == 0 ) {
                 m_hygiene_ptr = &subtree.hygiene();
+                DEBUG(subtree.tok());
                 return subtree.tok().clone();
             }
             else {
