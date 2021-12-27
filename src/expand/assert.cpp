@@ -41,23 +41,39 @@ class CExpander_assert:
             toks.push_back( Token(TOK_IDENT, RcString::new_interned("panic")) );
             toks.push_back( Token(TOK_EXCLAM) );
             toks.push_back( Token(TOK_PAREN_OPEN) );
-            while(lex.lookahead(0) != TOK_EOF )
+
+            auto fmt = Parse_Expr0(lex);
+            // If there's a comma, it's a formatting sequence
+            if( lex.getTokenIf(TOK_COMMA) )
             {
-                if( lex.lookahead(0) == TOK_IDENT && lex.lookahead(1) == TOK_EQUAL )
+                toks.push_back( Token(InterpolatedFragment(InterpolatedFragment::EXPR, fmt.release())) );
+                toks.push_back(TOK_COMMA);
+
+                while(lex.lookahead(0) != TOK_EOF )
                 {
-                    toks.push_back( lex.getToken() );
-                    toks.push_back( lex.getToken() );
-                    toks.push_back( Token(InterpolatedFragment(InterpolatedFragment::EXPR, Parse_Expr0(lex).release())) );
+                    if( lex.lookahead(0) == TOK_IDENT && lex.lookahead(1) == TOK_EQUAL )
+                    {
+                        toks.push_back( lex.getToken() );
+                        toks.push_back( lex.getToken() );
+                        toks.push_back( Token(InterpolatedFragment(InterpolatedFragment::EXPR, Parse_Expr0(lex).release())) );
+                    }
+                    else
+                    {
+                        toks.push_back( Token(InterpolatedFragment(InterpolatedFragment::EXPR, Parse_Expr0(lex).release())) );
+                    }
+                    if( lex.lookahead(0) != TOK_COMMA )
+                        break;
+                    GET_CHECK_TOK(tok, lex, TOK_COMMA);
+                    toks.push_back( Token(TOK_COMMA) );
                 }
-                else
-                {
-                    toks.push_back( Token(InterpolatedFragment(InterpolatedFragment::EXPR, Parse_Expr0(lex).release())) );
-                }
-                if( lex.lookahead(0) != TOK_COMMA )
-                    break;
-                GET_CHECK_TOK(tok, lex, TOK_COMMA);
-                toks.push_back( Token(TOK_COMMA) );
             }
+            else
+            {   // Single-argument: Treat as a `Display`-able value
+                toks.push_back( Token(TOK_STRING, std::string("{}")) );
+                toks.push_back(TOK_COMMA);
+                toks.push_back( Token(InterpolatedFragment(InterpolatedFragment::EXPR, fmt.release())) );
+            }
+
             GET_CHECK_TOK(tok, lex, TOK_EOF);
             toks.push_back( Token(TOK_PAREN_CLOSE) );
         }
