@@ -15,20 +15,22 @@ namespace {
     HIR::PathParams get_path_params(const Span& sp, const ::HIR::GenericParams& params_def, const ::HIR::GenericPath& path, bool is_expr)
     {
         auto pp = path.m_params.clone();
-        if( !is_expr ) {
-            auto ms_o = MonomorphStatePtr(nullptr, &path.m_params, nullptr);
-            while( pp.m_types.size() < params_def.m_types.size() && params_def.m_types[pp.m_types.size()].m_default != ::HIR::TypeRef() ) {
-                pp.m_types.push_back( ms_o.monomorph_type(sp, params_def.m_types[pp.m_types.size()].m_default) );
-            }
-            if( pp.m_types.size() != params_def.m_types.size() ) {
-                ERROR(sp, E0000, "Mismatched parameter count in " << path << ", expected " << params_def.m_types.size() << " got " << pp.m_types.size());
-            }
-        }
-        else {
+
+        if( is_expr && pp.m_types.empty() )
+        {
+            // Empty list, fill with ivars
             while( pp.m_types.size() < params_def.m_types.size() )
             {
                 pp.m_types.push_back( ::HIR::TypeRef() );
             }
+        }
+
+        auto ms_o = MonomorphStatePtr(nullptr, &path.m_params, nullptr);
+        while( pp.m_types.size() < params_def.m_types.size() && params_def.m_types[pp.m_types.size()].m_default != ::HIR::TypeRef() ) {
+            pp.m_types.push_back( ms_o.monomorph_type(sp, params_def.m_types[pp.m_types.size()].m_default) );
+        }
+        if( pp.m_types.size() != params_def.m_types.size() ) {
+            ERROR(sp, E0000, "Mismatched parameter count in " << path << ", expected " << params_def.m_types.size() << " got " << pp.m_types.size());
         }
         return pp;
     }

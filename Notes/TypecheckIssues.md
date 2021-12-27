@@ -800,3 +800,28 @@ Typecheck Expressions-     Typecheck_Code_CS: --- IVar possibilities (fallback 1
 ```
 
 Solution: check if the equal source/destination is the current type, and skip if so.
+
+# (1.54) `::"cargo_util-0_1_0"::paths::write_if_changed`
+```
+..\rustc-1.54.0-src\src\tools\cargo\crates\cargo-util\src\paths.rs:183: warn:0:Spare Rule - _/*2*/ : ::"anyhow-1_0_40_H2"::context::ext::StdError
+..\rustc-1.54.0-src\src\tools\cargo\crates\cargo-util\src\paths.rs:183: warn:0:Spare Rule - _/*2*/ : ::"core-0_0_0"::marker::Send
+:0: warn:0:Spare Rule - _/*2*/ : ::"core-0_0_0"::convert::From<::"std-0_0_0"::io::error::Error/*S*/,>
+..\rustc-1.54.0-src\src\tools\cargo\crates\cargo-util\src\paths.rs:183: warn:0:Spare Rule - _/*2*/ : ::"core-0_0_0"::marker::Sync
+:0: BUG:..\..\src\hir_typeck\expr_cs.cpp:7391: Spare rules left after typecheck stabilised
+```
+
+```
+Typecheck Expressions-            equate_types: >> (_/*91*/ == closure[000001DF369EA8E0]() -> ::"core-0_0_0"::result::Result<(),_/*2*/,>/*E*/)
+```
+
+Looks like a name resolution error, used `std::result::Result` instead of `anyhow::Result`. Also, didn't error properly when `Result<()>` was seen (should require all or none)
+- Resolve is correct (points at `anyhow`'s `Result`), but HIR dump shows closure result as not having the error set
+- "Resolve Type Aliases"
+
+```
+Resolve Type Aliases-             ConvertHIR_ExpandAliases_GetExpansion_GP: ::"anyhow-1_0_40_H2"::Result<(),> -> ::"anyhow-1_0_40_H2"::Result<(),_,> -> ::"core-0_0_0"::result::Result<(),_,>/*?*/
+```
+
+Anyhow's definition: `pub type Result<T, E = Error> = core::result::Result<T, E>;`
+
+Problem: RTA doesn't correctly handle missing/not-complete argument lists
