@@ -54,3 +54,16 @@
 -#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
 +#[cfg(all(not(rust_compiler = "mrustc"), target_arch = "x86_64", target_pointer_width = "64"))]
  rustc_data_structures::static_assert_size!(ImmTy<'_>, 72);
+
+#
+# Disable crc32fast's use of stdarch
+#
+--- vendor/crc32fast/src/specialized/mod.rs
++++ vendor/crc32fast/src/specialized/mod.rs
+@@ -1,5 +1,6 @@
+ cfg_if! {
+     if #[cfg(all(
++        not(rust_compiler = "mrustc"),
+         crc32fast_stdarchx86,
+         any(target_arch = "x86", target_arch = "x86_64")
+     ))] {
