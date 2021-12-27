@@ -14,6 +14,12 @@ test_script:
 # - Download/extract rust 1.29.0
 - appveyor DownloadFile https://static.rust-lang.org/dist/rustc-1.29.0-src.tar.gz
 - tar xzf rustc-1.29.0-src.tar.gz
+# - Download/extract rust 1.39.0
+- appveyor DownloadFile https://static.rust-lang.org/dist/rustc-1.39.0-src.tar.gz
+- tar xzf rustc-1.39.0-src.tar.gz
 - cmd: cd vsproject
 - cmd: call build_std.cmd
 - cmd: call run_hello.cmd
+#- cmd: call run_hello_119.cmd
+- cmd: call run_hello_139.cmd
+#- cmd: call run_hello_154.cmd
