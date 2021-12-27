@@ -26,7 +26,12 @@ class CExpander_panic:
         }
         ::std::vector<TokenTree> toks;
         toks.push_back( Token(TOK_DOUBLE_COLON) );
-        toks.push_back( Token(TOK_STRING, std::string(crate.m_ext_cratename_core.c_str())) );
+        if( crate.m_load_std == AST::Crate::LOAD_STD ) {
+            toks.push_back( Token(TOK_STRING, std::string(crate.m_ext_cratename_std.c_str())) );
+        }
+        else {
+            toks.push_back( Token(TOK_STRING, std::string(crate.m_ext_cratename_core.c_str())) );
+        }
         toks.push_back( Token(TOK_DOUBLE_COLON) );
         toks.push_back( Token(TOK_IDENT, RcString::new_interned("panic")) );
         toks.push_back( Token(TOK_DOUBLE_COLON) );
