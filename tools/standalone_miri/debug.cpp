@@ -63,6 +63,7 @@ DebugSink DebugSink::get(const char* fcn_name, const char* file, unsigned line, 
         break;
     case DebugLevel::Fatal:
         sink << "FATAL: ";
+        std::cerr << "FATAL: ";
         stderr_too = true;
         break;
     case DebugLevel::Bug:

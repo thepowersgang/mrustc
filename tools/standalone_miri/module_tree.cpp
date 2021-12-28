@@ -838,10 +838,54 @@ bool Parser::parse_one()
                 ::MIR::Statement::Data_Asm2 stmt_asm2;
                 lex.check_consume('(');
                 do {
-                    auto line = std::move(lex.check_consume(TokenClass::String).strval);
-                    // TODO: Share parsing code with main compiler?
-                    //AsmCommon::Line l;
-                    //stmt_asm2.lines.push_back( line );
+                    auto text = std::move(lex.check_consume(TokenClass::String).strval);
+                    AsmCommon::Line line;
+
+                    // Stripped-down version of the parsing code from the main compiler
+                    const char* c = text.c_str();
+                    std::string cur_string;
+                    while(*c)
+                    {
+                        if(*c == '{')
+                        {
+                            AsmCommon::LineFragment frag;
+
+                            c ++;
+                            unsigned idx = 0;
+                            while(*c && *c != ':' && *c != '}')
+                            {
+                                LOG_ASSERT('0' <= *c && *c <= '9', lex << "Non-integer argument in asm! format string");
+                                idx *= 10;
+                                idx += *c - '0';
+                                c ++;
+                            }
+                            LOG_ASSERT(*c, lex << "Unexpected EOF in asm! format string");
+                            frag.index = idx;
+                            assert(*c == ':' || *c == '}');
+                            if(*c == ':')
+                            {
+                                c ++;
+                                LOG_ASSERT(*c, lex << "Unexpected EOF in asm! format string");
+                                if(*c != '}') {
+                                    frag.modifier = *c;
+                                    c ++;
+                                }
+                            }
+                            LOG_ASSERT(*c, lex << "Unexpected EOF in asm! format string");
+                            LOG_ASSERT(*c == '}', lex << "Expected '}' in asm! format string");
+
+                            frag.before = std::move(cur_string);
+                            cur_string.clear();
+                            line.frags.push_back(std::move(frag));
+                        }
+                        else {
+                            cur_string += *c;
+                        }
+                        c ++;
+                    }
+                    line.trailing = std::move(cur_string);
+                    stmt_asm2.lines.push_back(std::move(line));
+
                     if( lex.next() == ')' )
                         break;
                 } while( !lex.consume_if(',') );

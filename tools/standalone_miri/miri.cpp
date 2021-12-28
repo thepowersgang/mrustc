@@ -14,6 +14,7 @@
 #include <iomanip>
 #include "debug.hpp"
 #include "miri.hpp"
+#include <target_version.hpp>
 #undef DEBUG
 
 unsigned ThreadState::s_next_tls_key = 1;
@@ -1679,7 +1680,13 @@ bool InterpreterThread::step_one(Value& out_thread_result)
             LOG_DEBUG("F" << cur_frame.frame_index << " " << se.dst << " = " << new_val);
             state.write_lvalue(se.dst, ::std::move(new_val));
             } break;
-        case ::MIR::Statement::TAG_Asm:
+        TU_ARM(stmt, Asm, se) {
+            // An empty output list and empty clobber list is just a `black_box` anti-optimisation trick
+            if( se.tpl == "" && se.outputs.empty() ) {
+                break;
+            }
+            LOG_TODO(stmt);
+            } break;
         case ::MIR::Statement::TAG_Asm2:
             LOG_TODO(stmt);
             break;
@@ -2273,7 +2280,7 @@ bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, co
 
         val_l.get().write_to_value( data_ref.m_alloc.alloc(), data_ref.m_offset );
     }
-    else if( name == "atomic_xchg" || name == "atomic_xchg_acqrel" )
+    else if( name == "atomic_xchg" || name == "atomic_xchg_acqrel"  )
     {
         const auto& ty_T = ty_params.tys.at(0);
         auto data_ref = args.at(0).read_pointer_valref_mut(0, ty_T.get_size());
@@ -2283,7 +2290,7 @@ bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, co
         LOG_ASSERT(data_ref.m_alloc.is_alloc(), "Atomic operation with non-allocation pointer - " << data_ref);
         data_ref.m_alloc.alloc().write_value( data_ref.m_offset, new_v );
     }
-    else if( name == "atomic_cxchg" )
+    else if( name == "atomic_cxchg" || name == "atomic_cxchg_acq" )
     {
         const auto& ty_T = ty_params.tys.at(0);
         const auto& ret_dt = ret_ty.composite_type();
@@ -2491,11 +2498,15 @@ bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, co
         const auto& ty = ty_params.tys.at(0);
         return drop_value(val, ty);
     }
+    else if( name == "forget" )
+    {
+        // Nothing needs to be done, this just stops the destructor from running.
+    }
     else if( name == "try" )
     {
         auto fcn_path = args.at(0).get_relocation(0).fcn();
         auto arg = args.at(1);
-        auto out_panic_value = args.at(2).read_pointer_valref_mut(0, POINTER_SIZE);
+        auto panic_arg = args.at(2);
 
         ::std::vector<Value>    sub_args;
         sub_args.push_back( ::std::move(arg) );
@@ -2506,8 +2517,14 @@ bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, co
                 assert(m_thread.panic_count > 0);
                 m_thread.panic_active = false;
                 m_thread.panic_count --;
-                LOG_ASSERT(m_thread.panic_value.size() == out_panic_value.m_size, "Panic value " << m_thread.panic_value << " doesn't fit in " << out_panic_value);
-                out_panic_value.m_alloc.alloc().write_value( out_panic_value.m_offset, ::std::move(m_thread.panic_value) );
+                if( TARGETVER_MOST_1_39 ) {
+                    auto out_panic_value = panic_arg.read_pointer_valref_mut(0, POINTER_SIZE);
+                    LOG_ASSERT(m_thread.panic_value.size() == out_panic_value.m_size, "Panic value " << m_thread.panic_value << " doesn't fit in " << out_panic_value);
+                    out_panic_value.m_alloc.alloc().write_value( out_panic_value.m_offset, ::std::move(m_thread.panic_value) );
+                }
+                else {
+                    LOG_TODO("Handle panic value for 1.54+ (`try` takes a closure)");
+                }
                 out_rv = Value::new_u32(1);
                 return true;
             }
@@ -2519,7 +2536,6 @@ bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, co
             }
             }));
 
-        // TODO: Catch the panic out of this.
         if( this->call_path(rv, fcn_path, ::std::move(sub_args)) )
         {
             bool v = this->pop_stack(rv);
@@ -2725,7 +2741,7 @@ bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, co
         unsigned n = 0;
         for(size_t i = ty_T.get_size()*8; i--;)
         {
-            n += (v & 1) == 0 ? 1 : 0;
+            n += ((v & 1) == 0 ? 0 : 1);
             v = v >> static_cast<uint8_t>(1);
         }
         rv = Value( HIR::TypeRef(RawType::USize) );
@@ -2738,7 +2754,7 @@ bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, co
     {
         rv = std::move(args.at(0));
     }
-    else if( name == "panic_if_uninhabited" )
+    else if( name == "panic_if_uninhabited" || name == "assert_inhabited" )
     {
         //LOG_ASSERT(ty_params.tys.at(0).get_size(0) != SIZE_MAX, "");
     }
@@ -2747,7 +2763,12 @@ bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, co
     // ----
     else if( name == "caller_location" )
     {
-        LOG_TODO("Call intrinsic \"" << name << "\"" << ty_params);
+        auto t = HIR::TypeRef(&m_global.m_modtree.get_composite("ZRG2cE9core0_0_05panic8Location0g"));
+        auto v = Value(t);
+        v.ensure_allocation();
+        auto& a = v.m_inner.alloc.alloc;
+        rv = Value(t.wrapped(TypeWrapper::Ty::Borrow, 0));
+        rv.write_ptr(0, 0x1000, RelocationPtr::new_alloc(a));
     }
     else
     {

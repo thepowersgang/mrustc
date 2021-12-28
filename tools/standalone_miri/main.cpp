@@ -138,6 +138,15 @@ int main(int argc, const char* argv[])
         }
         return 1;
     }
+    catch(const std::exception& e)
+    {
+        ::std::cerr << "Unexpected exception: " << e.what() << ::std::endl;
+        if(opts.logfile != "")
+        {
+            ::std::cerr << "- See '" << opts.logfile << "' for details" << ::std::endl;
+        }
+        return 1;
+    }
 
     return 0;
 }

@@ -399,7 +399,7 @@ ValueRef ValueCommonRead::read_pointer_valref_mut(size_t rd_ofs, size_t size)
             LOG_ASSERT( in_bounds(ofs, size,  reloc.str().size()), "Deref with OOB size - " << ofs << "+" << size << " > " << reloc.str().size() );
             break;
         case RelocationPtr::Ty::Function:
-            LOG_FATAL("read_pointer_valref_mut w/ function");
+            LOG_FATAL("Called read_pointer_valref_mut with a Function");
         case RelocationPtr::Ty::FfiPointer:
             LOG_ASSERT( in_bounds(ofs, size,  reloc.ffi().get_size()), "Deref with OOB size - " << ofs << "+" << size << " > " << reloc.ffi().get_size() );
             break;
