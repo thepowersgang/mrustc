@@ -21,4 +21,10 @@ echo rustc 1.39
 call build_librustcdriver_139.cmd
 if %errorlevel% neq 0 exit /b %errorlevel%
 
+echo rustc 1.54
+call build_cargo_minicargo_154.cmd
+if %errorlevel% neq 0 exit /b %errorlevel%
+call build_librustcdriver_154.cmd
+if %errorlevel% neq 0 exit /b %errorlevel%
+
 @echo --SUCCESS--
