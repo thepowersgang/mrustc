@@ -5526,7 +5526,7 @@ namespace {
                         m_of << " *(void**)("; emit_param(e.args.at(2)); m_of << ") = mrustc_panic_value;";
                     }
                     else {
-                        m_of << "("; emit_param(e.args.at(2)); m_of << ")("; emit_param(e.args.at(1)); m_of << ", &mrustc_panic_value);";
+                        m_of << "("; emit_param(e.args.at(2)); m_of << ")("; emit_param(e.args.at(1)); m_of << ", mrustc_panic_value);";
                     }
                     m_of << " "; emit_lvalue(e.ret_val); m_of << " = 1;";   // Return value non-zero when panic happens
                     m_of << " } else {";
