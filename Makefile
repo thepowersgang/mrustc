@@ -174,7 +174,7 @@ output$(OUTDIR_SUF)/libtest.rlib output$(OUTDIR_SUF)/libpanic_unwind.rlib output
 output$(OUTDIR_SUF)/rustc output$(OUTDIR_SUF)/cargo: output$(OUTDIR_SUF)/libtest.rlib
 	$(MAKE_MINICARGO) $@
 
-TEST_DEPS := output$(OUTDIR_SUF)/libstd.rlib output$(OUTDIR_SUF)/libtest.rlib output$(OUTDIR_SUF)/libpanic_unwind.rlib
+TEST_DEPS := output$(OUTDIR_SUF)/libstd.rlib output$(OUTDIR_SUF)/libtest.rlib output$(OUTDIR_SUF)/libpanic_unwind.rlib output$(OUTDIR_SUF)/libproc_macro.rlib
 
 fcn_extcrate = $(patsubst %,output$(OUTDIR_SUF)/lib%.rlib,$(1))
 
