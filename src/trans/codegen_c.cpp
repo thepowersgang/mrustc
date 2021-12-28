@@ -857,9 +857,11 @@ namespace {
                         auto oom_method = m_crate.get_lang_item_path_opt("mrustc-alloc_error_handler");
                         m_of << "void __rust_alloc_error_handler(uintptr_t s, uintptr_t a) {\n";
                         if(oom_method == HIR::SimplePath()) {
+                            m_of << "\tvoid __rdl_oom(uintptr_t, uintptr_t);\n";
                             m_of << "\t__rdl_oom(s,a);\n";
                         }
                         else {
+                            m_of << "\tvoid __rg_oom(uintptr_t, uintptr_t);\n";
                             m_of << "\t__rg_oom(s,a);\n";
                         }
                         m_of << "}\n";
@@ -2413,6 +2415,14 @@ namespace {
                     << "{\n"
                     ;
                 m_of << "\t"; emit_ctype(item.m_return); m_of << " rv;\n";
+
+                // MSVC needs suffixed `__builtin_{add,sub}_overflow` calls
+                const char* msvc_suffix_u32 = "";
+                if( m_compiler == Compiler::Msvc )
+                {
+                    msvc_suffix_u32 = "_u32";
+                }
+
                 // pshufb instruction w/ 128 bit operands
                 if( item.m_linkage.name == "llvm.x86.ssse3.pshuf.b.128" ) {
                     m_of
@@ -2453,20 +2463,20 @@ namespace {
                 // Add with carry
                 // `fn llvm_addcarry_u32(a: u8, b: u32, c: u32) -> (u8, u32)`
                 else if( item.m_linkage.name == "llvm.x86.addcarry.32") {
-                    m_of << "\trv._0 = __builtin_add_overflow_u32(arg1, arg2, &rv._1);\n";
-                    m_of << "\tif(arg0) rv._0 |= __builtin_add_overflow_u32(rv._1, 1, &rv._1);\n";
+                    m_of << "\trv._0 = __builtin_add_overflow" << msvc_suffix_u32 << "(arg1, arg2, &rv._1);\n";
+                    m_of << "\tif(arg0) rv._0 |= __builtin_add_overflow" << msvc_suffix_u32 << "(rv._1, 1, &rv._1);\n";
                     m_of << "\treturn rv;\n";
                 }
                 // `fn llvm_addcarryx_u32(a: u8, b: u32, c: u32, d: *mut u8) -> u32`
                 else if( item.m_linkage.name == "llvm.x86.addcarryx.u32") {
-                    m_of << "\t*arg3 = __builtin_add_overflow_u32(arg1, arg2, &rv);\n";
-                    m_of << "\tif(*arg3) *arg3 |= __builtin_add_overflow_u32(rv, 1, &rv);\n";
+                    m_of << "\t*arg3 = __builtin_add_overflow" << msvc_suffix_u32 << "(arg1, arg2, &rv);\n";
+                    m_of << "\tif(*arg3) *arg3 |= __builtin_add_overflow" << msvc_suffix_u32 << "(rv, 1, &rv);\n";
                     m_of << "\treturn rv;\n";
                 }
-                // `fn llvm_subborrow_u32(a: u8, b: u32, c: u32) -> (u8, u32);`
+                // `fn llvm_subborrow" << msvc_suffix_u32 << "(a: u8, b: u32, c: u32) -> (u8, u32);`
                 else if( item.m_linkage.name == "llvm.x86.subborrow.32") {
-                    m_of << "\trv._0 = __builtin_sub_overflow_u32(arg1, arg2, &rv._1);\n";
-                    m_of << "\tif(arg0) rv._0 |= __builtin_sub_overflow_u32(rv._1, 1, &rv._1);\n";
+                    m_of << "\trv._0 = __builtin_sub_overflow" << msvc_suffix_u32 << "(arg1, arg2, &rv._1);\n";
+                    m_of << "\tif(arg0) rv._0 |= __builtin_sub_overflow" << msvc_suffix_u32 << "(rv._1, 1, &rv._1);\n";
                     m_of << "\treturn rv;\n";
                 }
                 // AES functions
@@ -6483,7 +6493,7 @@ namespace {
             }
             // -- stdarg --
             else if( name == "va_copy" ) {
-                m_of << "va_copy("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ")";
+                m_of << "va_copy( *(va_list*)&"; emit_param(e.args.at(0)); m_of << ", *(va_list*)&"; emit_param(e.args.at(1)); m_of << ")";
             }
             // -- Platform Intrinsics --
             else if( name.compare(0, 9, "platform:") == 0 ) {
