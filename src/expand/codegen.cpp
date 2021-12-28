@@ -315,11 +315,8 @@ class CHandler_LinkName:
     AttrStage   stage() const override { return AttrStage::Pre; }
 
     void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
-        TTStream    lex(sp, ParseState(), mi.data());
-        lex.getTokenCheck(TOK_EQUAL);
-        auto link_name = lex.getTokenCheck(TOK_STRING).str();
+        auto link_name = mi.parse_equals_string(crate, mod);
         ASSERT_BUG(sp, link_name != "", "Empty #[link_name] attribute");
-        lex.getTokenCheck(TOK_EOF);
 
         if(i.is_None()) {
         }

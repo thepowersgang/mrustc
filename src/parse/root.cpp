@@ -1065,7 +1065,7 @@ AST::Attribute Parse_MetaItem(TokenStream& lex)
     }
 
     auto ps = lex.start_span();
-    
+
     AST::AttributeName  name;
     // NOTE: After 1.19 mode, values can be present with no name
     if( TARGETVER_LEAST_1_29 && lex.lookahead(0) != TOK_IDENT )
@@ -1087,7 +1087,11 @@ AST::Attribute Parse_MetaItem(TokenStream& lex)
         std::vector<TokenTree>  tt;
         tt.push_back(std::move(tok));
         // - Square close (top-level) AND paren close (cfg_attr)
-        while( lex.lookahead(0) != TOK_SQUARE_CLOSE && lex.lookahead(0) != TOK_PAREN_CLOSE && lex.lookahead(0) != TOK_EOF )
+        while(
+            lex.lookahead(0) != TOK_EOF
+            && lex.lookahead(0) != TOK_SQUARE_CLOSE && lex.lookahead(0) != TOK_PAREN_CLOSE && lex.lookahead(0) != TOK_BRACE_CLOSE
+            && lex.lookahead(0) != TOK_COMMA && lex.lookahead(0) != TOK_SEMICOLON
+            )
         {
             tt.push_back(Parse_TT(lex, false));
         }
