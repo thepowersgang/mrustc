@@ -26,14 +26,18 @@ bool Token::operator==(const char* s) const
 
 uint64_t Token::integer() const
 {
-    if( this->type != TokenClass::Integer )
-        throw ::std::runtime_error(FMT_STRING("Expected interger, got " << *this));
+    if( this->type != TokenClass::Integer ) {
+        ::std::cerr << "?: Syntax error: Expected [integer] - got " << *this << ::std::endl;
+        throw "ERROR";
+    }
     return this->numbers.int_val;
 }
 double Token::real() const
 {
-    if( this->type != TokenClass::Real )
-        throw "";
+    if( this->type != TokenClass::Real ) {
+        ::std::cerr << "?: Syntax error: Expected [real] - got " << *this << ::std::endl;
+        throw "ERROR";
+    }
     return this->numbers.real_val;
 }
 

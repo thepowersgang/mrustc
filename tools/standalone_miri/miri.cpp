@@ -708,8 +708,12 @@ GlobalState::GlobalState(const ModuleTree& modtree):
     // Hacky implementation of the mangling rules (doesn't support generics)
     auto fmt_ident = [](::std::ostream& os, const char* i) {
         if( const auto* hash = strchr(i, '#') ) {
-            os << "h" << (hash - i) << ::std::string(i, hash-i);
-            os << strlen(hash+1) << hash+1;
+            auto hofs = hash - i;
+            assert(hofs < 26);
+            os << char('A' + hofs);
+            os << strlen(i) - 1;
+            os << ::std::string(i, hash-i);
+            os << hash+1;
         }
         else {
             os << strlen(i) << i;
@@ -2347,6 +2351,20 @@ bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, co
             rv.write_usize(0, new_ofs);
         }
     }
+    else if( name == "ptr_guaranteed_eq" ) {
+        bool is_eq = true;
+        is_eq &= args.at(0).read_usize(0) == args.at(1).read_usize(0);
+        is_eq &= args.at(0).get_relocation(0) == args.at(1).get_relocation(0);
+        rv = Value( ret_ty );
+        rv.write_u8(0, is_eq ? 1 : 0);
+    }
+    else if( name == "ptr_guaranteed_ne" ) {
+        bool is_eq = true;
+        is_eq &= args.at(0).read_usize(0) != args.at(1).read_usize(0);
+        is_eq &= args.at(0).get_relocation(0) != args.at(1).get_relocation(0);
+        rv = Value( ret_ty );
+        rv.write_u8(0, is_eq ? 1 : 0);
+    }
     // effectively ptr::write
     else if( name == "move_val_init" )
     {
@@ -2698,9 +2716,38 @@ bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, co
         rv = Value( HIR::TypeRef(RawType::USize) );
         rv.write_usize(0, n);
     }
+    // cttz = CounT POPulated
+    else if( name == "ctpop" )
+    {
+        const auto& ty_T = ty_params.tys.at(0);
+        auto v_inner = PrimitiveValueVirt::from_value(ty_T, args.at(0));
+        auto v = v_inner.get().as_u128();
+        unsigned n = 0;
+        for(size_t i = ty_T.get_size()*8; i--;)
+        {
+            n += (v & 1) == 0 ? 1 : 0;
+            v = v >> static_cast<uint8_t>(1);
+        }
+        rv = Value( HIR::TypeRef(RawType::USize) );
+        rv.write_usize(0, n);
+    }
+    // ----
+    // Hints
+    // ----
+    else if( name == "unlikely" || name == "likely" )
+    {
+        rv = std::move(args.at(0));
+    }
     else if( name == "panic_if_uninhabited" )
     {
         //LOG_ASSERT(ty_params.tys.at(0).get_size(0) != SIZE_MAX, "");
+    }
+    // ----
+    // Track caller
+    // ----
+    else if( name == "caller_location" )
+    {
+        LOG_TODO("Call intrinsic \"" << name << "\"" << ty_params);
     }
     else
     {

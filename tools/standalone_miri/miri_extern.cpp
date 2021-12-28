@@ -196,10 +196,10 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         const void* arg0 = (tgt_alloc ? tgt_alloc.alloc().data_ptr() : nullptr);
         //extern void* GetModuleHandleW(const void* s);
         if(arg0) {
-            LOG_DEBUG("GetModuleHandleW(" << tgt_alloc.alloc() << ")");
+            LOG_DEBUG("FFI GetModuleHandleW(" << tgt_alloc.alloc() << ")");
         }
         else {
-            LOG_DEBUG("GetModuleHandleW(NULL)");
+            LOG_DEBUG("FFI GetModuleHandleW(NULL)");
         }
 
         auto ret = GetModuleHandleW(static_cast<LPCWSTR>(arg0));

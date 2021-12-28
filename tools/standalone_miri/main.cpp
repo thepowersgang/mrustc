@@ -39,15 +39,10 @@ int main(int argc, const char* argv[])
 {
     if( const auto* a = getenv("MRUSTC_TARGET_VER") )
     {
-        if( strcmp(a, "1.19") == 0 ) {
-            gTargetVersion = TargetVersion::Rustc1_19;
-        }
-        else if( strcmp(a, "1.29") == 0 ) {
-            gTargetVersion = TargetVersion::Rustc1_29;
-        }
-        else if( strcmp(a, "1.39") == 0 ) {
-            gTargetVersion = TargetVersion::Rustc1_39;
-        }
+        /* */if( strcmp(a, "1.19") == 0 ) { gTargetVersion = TargetVersion::Rustc1_19; }
+        else if( strcmp(a, "1.29") == 0 ) { gTargetVersion = TargetVersion::Rustc1_29; }
+        else if( strcmp(a, "1.39") == 0 ) { gTargetVersion = TargetVersion::Rustc1_39; }
+        else if( strcmp(a, "1.54") == 0 ) { gTargetVersion = TargetVersion::Rustc1_54; }
         else {
             std::cerr << "Unknown target version string: '" << a << "'" << std::endl;
             exit(1);

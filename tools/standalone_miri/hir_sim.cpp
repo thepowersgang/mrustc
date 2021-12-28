@@ -23,7 +23,7 @@ size_t HIR::TypeRef::get_size(size_t ofs) const
         switch(w->type)
         {
         case TypeWrapper::Ty::Array:
-            return this->get_size(1) * w->size;
+            return this->get_size(ofs+1) * w->size;
         case TypeWrapper::Ty::Borrow:
         case TypeWrapper::Ty::Pointer:
             if( const auto* next_w = this->get_wrapper(ofs+1) )
