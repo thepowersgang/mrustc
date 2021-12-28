@@ -55,7 +55,7 @@ class CTestHandler_SP:
                 if( td.path != path )
                     continue ;
 
-                if( mi.data().size() == 0 )
+                if( mi.data().size() != 0 )
                 {
                     td.panic_type = ::AST::TestDesc::ShouldPanic::YesWithMessage;
                     // TODO: Check that name is correct and that it is a string
