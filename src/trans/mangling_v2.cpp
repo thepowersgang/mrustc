@@ -32,11 +32,11 @@ public:
     {
         // Lower-case: 
         while(val >= 26) {
-            m_os << 'a' + (val%26);
+            m_os << char('a' + (val%26));
             val /= 26;
         }
         assert(val < 26);
-        m_os << 'A' + val;
+        m_os << char('A' + val);
     }
 
     // Reference-counted item names
