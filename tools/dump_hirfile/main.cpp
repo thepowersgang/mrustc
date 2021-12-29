@@ -155,6 +155,9 @@ void Dumper::dump_module(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const 
         TU_ARMA(Import, e) {
             this->dump_mod_import(sub_ip, i.second->publicity, e);
             }
+        TU_ARMA(TraitAlias, e) {
+            //this->dump_trait_alias(sub_ip, e);
+            }
         TU_ARMA(TypeAlias, e) {
             //this->dump_type_alias(sub_ip, e);
             }
@@ -226,11 +229,43 @@ void Dumper::dump_struct(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const 
     if( !filters.public_only && !pub.is_global() ) {
         return ;
     }
-    ::std::cout << indent << "struct " << ip << item.m_params.fmt_args() << "\n";
-    ::std::cout << indent << "{\n";
-    auto indent2 = RepeatLitStr { "   ", nindent+1 };
-    // ...
-    ::std::cout << indent << "}\n";
+    ::std::cout << indent << "struct " << ip << item.m_params.fmt_args();
+    TU_MATCH_HDRA( (item.m_data), {)
+    TU_ARMA(Unit, se) {
+        if( !item.m_params.m_bounds.empty() ) {
+            ::std::cout << "\n";
+            ::std::cout << indent << item.m_params.fmt_bounds() << "\n";
+        }
+        ::std::cout << ";\n";
+        }
+    TU_ARMA(Tuple, se) {
+        ::std::cout << "(\n";
+        auto indent2 = RepeatLitStr { "   ", nindent+1 };
+        for(const auto& f : se)
+        {
+            ::std::cout << indent2 << f.publicity << " " << f.ent << ",\n";
+        }
+        ::std::cout << indent2 << ")";
+        if( !item.m_params.m_bounds.empty() ) {
+            ::std::cout << "\n";
+            ::std::cout << indent2 << item.m_params.fmt_bounds() << "\n";
+        }
+        ::std::cout << ";\n";
+        }
+    TU_ARMA(Named, se) {
+        ::std::cout << "\n";
+        if( !item.m_params.m_bounds.empty() ) {
+            ::std::cout << indent << item.m_params.fmt_bounds() << "\n";
+        }
+        ::std::cout << indent << "{\n";
+        auto indent2 = RepeatLitStr { "   ", nindent+1 };
+        for(const auto& f : se)
+        {
+            ::std::cout << indent2 << f.second.publicity << " " << f.first << ": " << f.second.ent << ",\n";
+        }
+        ::std::cout << indent << "}\n";
+        }
+    }
     ::std::cout << ::std::endl;
 }
 void Dumper::dump_trait(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Trait& trait, int nindent/*=0*/) const
@@ -245,7 +280,37 @@ void Dumper::dump_trait(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const :
     ::std::cout << indent << "trait " << ip << trait.m_params.fmt_args() << "\n";
     ::std::cout << indent << "{\n";
     auto indent2 = RepeatLitStr { "   ", nindent+1 };
-    // ...
+    for(const auto& t : trait.m_types)
+    {
+        ::std::cout << indent2 << "type " << t.first;
+        auto prefix = ':';
+        if( !t.second.is_sized ) {
+            ::std::cout << ": ?Sized";
+            prefix = '+';
+        }
+        for(const auto& t : t.second.m_trait_bounds) {
+            ::std::cout << ' ' << prefix << ' ' << t;
+            prefix = '+';
+        }
+        if( t.second.m_default != HIR::TypeRef() ) {
+            ::std::cout << " = " << t.second.m_default;
+        }
+        ::std::cout << ";\n";
+    }
+    for(const auto& v : trait.m_values)
+    {
+        TU_MATCH_HDRA( (v.second), {)
+        TU_ARMA(Constant, e) {
+            //dump_constant(v.first, 
+            }
+        TU_ARMA(Static, e) {
+            //dump_static(v.first, 
+            }
+        TU_ARMA(Function, e) {
+            //dump_function(v.first, 
+            }
+        }
+    }
     ::std::cout << indent << "}\n";
     ::std::cout << ::std::endl;
 }
