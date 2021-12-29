@@ -77,9 +77,9 @@ const Attribute* AttributeList::get(const char *name) const
 
 Attribute::Attribute(const Attribute& x):
     m_span(x.m_span),
-    m_name(x.m_name),
-    m_is_used(x.m_is_used)
+    m_name(x.m_name)
     , m_data(x.m_data.clone())
+    , m_is_used(x.m_is_used)
 {
 }
 Attribute Attribute::clone() const
