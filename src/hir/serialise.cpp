@@ -1120,9 +1120,9 @@
             m_out.write_count(fcn.m_args.size());
             for(const auto& a : fcn.m_args)
                 serialise(a.second);
+            DEBUG("m_args = " << fcn.m_args);
             m_out.write_bool(fcn.m_variadic);
             serialise(fcn.m_return);
-            DEBUG("m_args = " << fcn.m_args);
 
             serialise(fcn.m_code, fcn.m_save_code || fcn.m_const);
         }

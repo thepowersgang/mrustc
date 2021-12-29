@@ -136,7 +136,7 @@ public:
     }
     void write_string(const RcString& v);
     void write_string(size_t len, const char* s) {
-        //DEBUG(FMT_CB(os, for(size_t i = 0; i < ));
+        TRACE_FUNCTION;
         if(len < 128) {
             write_u8( static_cast<uint8_t>(len) );
         }
@@ -151,6 +151,7 @@ public:
         write_string(v.size(), v.c_str());
     }
     void write_bool(bool v) {
+        TRACE_FUNCTION_F(v);
         write_u8(v ? 0xFF : 0x00);
     }
 

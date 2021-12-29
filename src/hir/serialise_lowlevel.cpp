@@ -12,6 +12,7 @@
 #include <string.h>   // memcpy
 #include <common.hpp>
 #include <algorithm>
+#include <iomanip>
 
 namespace HIR {
 namespace serialise {
@@ -68,6 +69,7 @@ void Writer::open(const ::std::string& filename)
 void Writer::write(const void* buf, size_t len)
 {
     if( m_inner ) {
+        DEBUG("write(" << FMT_CB(ss, for(size_t i = 0; i < len; i ++) ss << std::setw(2) << std::setfill('0') << std::hex << unsigned( ((const uint8_t*)buf)[i] )) << ")");
         m_inner->write(buf, len);
     }
     else {

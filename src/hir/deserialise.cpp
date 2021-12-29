@@ -6,7 +6,10 @@
  * - HIR (De)Serialisation for crate metadata
  */
 // TODO: Have an environment variable that controls if debug is enabled here.
-#define DEBUG_EXTRA_ENABLE && false
+#define DEBUG_EXTRA_ENABLE && des_debug_enabled()
+namespace {
+    bool des_debug_enabled();
+}
 //#define DISABLE_DEBUG   //  Disable debug for this function - too hot
 #include "hir.hpp"
 #include "main_bindings.hpp"
@@ -14,6 +17,16 @@
 #include <macro_rules/macro_rules.hpp>
 #include "serialise_lowlevel.hpp"
 #include <typeinfo>
+
+namespace {
+    bool des_debug_enabled() {
+        static unsigned enabled = 0;
+        if( enabled == 0 ) {
+            enabled = (getenv("MRUSTC_DEBUG_DESERIALISE") ? 2 : 1);
+        }
+        return enabled > 1;
+    }
+}
 
 //namespace {
 
@@ -258,6 +271,7 @@
             rv.m_params = deserialise_genericparams();
             rv.m_trait_args = deserialise_pathparams();
             rv.m_type = deserialise_type();
+            DEBUG("impl" << rv.m_params.fmt_args() << " ?" << rv.m_trait_args << " for " << rv.m_type);
 
 
             size_t method_count = m_in.read_count();
@@ -265,6 +279,7 @@
             {
                 auto name = m_in.read_istring();
                 auto is_spec = m_in.read_bool();
+                DEBUG((is_spec ? "default " : "") << "fn " << name);
                 rv.m_methods.insert( ::std::make_pair( mv$(name), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> {
                     is_spec, deserialise_function()
                     } ) );
@@ -274,6 +289,7 @@
             {
                 auto name = m_in.read_istring();
                 auto is_spec = m_in.read_bool();
+                DEBUG((is_spec ? "default " : "") << "const " << name);
                 rv.m_constants.insert( ::std::make_pair( mv$(name), ::HIR::TraitImpl::ImplEnt< ::HIR::Constant> {
                     is_spec, deserialise_constant()
                     } ) );
@@ -283,6 +299,7 @@
             {
                 auto name = m_in.read_istring();
                 auto is_spec = m_in.read_bool();
+                DEBUG((is_spec ? "default " : "") << "static " << name);
                 rv.m_statics.insert( ::std::make_pair( mv$(name), ::HIR::TraitImpl::ImplEnt< ::HIR::Static> {
                     is_spec, deserialise_static()
                     } ) );
@@ -292,6 +309,7 @@
             {
                 auto name = m_in.read_istring();
                 auto is_spec = m_in.read_bool();
+                DEBUG((is_spec ? "default " : "") << "type " << name);
                 rv.m_types.insert( ::std::make_pair( mv$(name), ::HIR::TraitImpl::ImplEnt< ::HIR::TypeRef> {
                     is_spec, deserialise_type()
                     } ) );
