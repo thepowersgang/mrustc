@@ -235,7 +235,7 @@ public:
     // - TraitObject: 'D' <data:GenericPath> <nmarker> [markers: <GenericPath> ...] <naty> [<TypeRef> ...]    TODO: Does this need to include the ATY name?
     // - Borrow: 'B' ('s'|'u'|'o') <TypeRef>
     // - RawPointer: 'P' ('s'|'u'|'o') <TypeRef>
-    // - Function: 'F' <abi:RcString> <nargs> [args: <TypeRef> ...] <ret:TypeRef>
+    // - Function: 'F' (|'u') (| 'e' <abi:RcString>) <nargs> [args: <TypeRef> ...] <ret:TypeRef>
     // - Primitives::
     //   - u8  : 'C' 'a'
     //   - i8  : 'C' 'b'
