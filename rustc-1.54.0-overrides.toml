@@ -16,3 +16,7 @@ proc_macro = { path = "../../library/proc_macro" }
 'library/proc_macro' = [
 	"dependencies.std",
 	]
+# mrustc has already built a proc_macro, remove it from libtest's deps (used on linux)
+'library/test' = [
+	"dependencies.proc_macro",
+	]
