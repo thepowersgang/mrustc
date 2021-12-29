@@ -1578,19 +1578,20 @@ namespace {
     }
     // #[track_caller] - Provides caller information
     // NOTE: This can only be (cleanly) handled in the backend [where it sees fully monomorphised paths]
-    if( const auto* a = attrs.get("track_caller") )
+    if( attrs.get("track_caller") )
     {
         markings.track_caller = true;
     }
 
     ::HIR::Linkage  linkage;
+    linkage.section = f.m_markings.link_section;
 
     // Convert #[link_name/no_mangle] attributes into the name
     if( g_ast_crate_ptr->m_test_harness && f.code().is_valid() )
     {
         // If we're making a test harness, and this item defines code, don't apply the linkage rules
     }
-    else if( const auto* a = attrs.get("link_name") )
+    else if( f.m_markings.link_name != "" )
     {
         linkage.name = f.m_markings.link_name;
     }
@@ -1667,8 +1668,9 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
         // Note: Empty names are allowed for `const _: ...`
         ASSERT_BUG(sp, name != "", "Empty constant name " << p);
         ::HIR::Linkage  linkage;
+        linkage.section = e.m_markings.link_section;
 
-        if( const auto* a = attrs.get("link_name") ) {
+        if( e.m_markings.link_name != "" ) {
             linkage.name = e.m_markings.link_name;
         }
         // If there's no code, demangle the name (TODO: By ABI) and set linkage.

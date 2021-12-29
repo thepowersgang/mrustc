@@ -106,6 +106,8 @@ struct Linkage
 
     // External symbol name
     ::std::string   name;
+    // Target section
+    ::std::string   section;
 };
 
 class Static

@@ -2253,6 +2253,18 @@ namespace {
                 }
                 break;
             }
+            if(item.m_linkage.section != "")
+            {
+                switch(m_compiler)
+                {
+                case Compiler::Gcc:
+                    m_of << "__attribute__((section(\"" << item.m_linkage.section << "\"))) ";
+                    break;
+                case Compiler::Msvc:
+                    // Ignore section on MSVC
+                    break;
+                }
+            }
             emit_static_ty(type, p, /*is_proto=*/true);
             m_of << ";";
             m_of << "\t// static " << p << " : " << type;
@@ -5172,7 +5184,7 @@ namespace {
                 }
                 };
             auto emit_atomic_cast = [&]() {
-                m_of << "(_Atomic "; emit_ctype(params.m_types.at(0)); m_of << "*)";
+                m_of << "("; emit_ctype(params.m_types.at(0)); m_of << "_Atomic *)";
                 };
             auto emit_atomic_cxchg = [&](const auto& e, Ordering o_succ, Ordering o_fail, bool is_weak) {
                 switch(m_compiler)

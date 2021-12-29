@@ -140,6 +140,7 @@ private:
 public:
     struct Markings {
         std::string link_name;
+        std::string link_section;
     } m_markings;
     Static(Class s_class, TypeRef type, Expr value):
         m_class(s_class),
@@ -198,6 +199,7 @@ public:
         std::vector<unsigned>   rustc_legacy_const_generics;
 
         std::string link_name;
+        std::string link_section;
     } m_markings;
 
 

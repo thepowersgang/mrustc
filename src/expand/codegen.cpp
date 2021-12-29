@@ -337,6 +337,34 @@ class CHandler_LinkName:
 };
 STATIC_DECORATOR("link_name", CHandler_LinkName);
 
+class CHandler_LinkSection:
+    public ExpandDecorator
+{
+    AttrStage   stage() const override { return AttrStage::Pre; }
+
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
+        auto link_section = mi.parse_equals_string(crate, mod);
+        ASSERT_BUG(sp, link_section != "", "Empty #[link_section] attribute");
+
+        if(i.is_None()) {
+        }
+        else if( auto* fcn = i.opt_Function() )
+        {
+            ASSERT_BUG(sp, fcn->m_markings.link_section == "", "Duplicate #[link_section] attributes");
+            fcn->m_markings.link_section = link_section;
+        }
+        else if( auto* st = i.opt_Static() )
+        {
+            ASSERT_BUG(sp, st->s_class() != ::AST::Static::CONST, "#[link_section] on `const`");
+            ASSERT_BUG(sp, st->m_markings.link_section == "", "Duplicate #[link_section] attributes");
+            st->m_markings.link_section = link_section;
+        }
+        else {
+        }
+    }
+};
+STATIC_DECORATOR("link_section", CHandler_LinkSection);
+
 class CHandler_Link:
     public ExpandDecorator
 {
