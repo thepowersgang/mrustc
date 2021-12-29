@@ -3533,32 +3533,20 @@ void MatchGenGrouped::gen_dispatch__slice(::HIR::TypeRef ty, ::MIR::LValue val, 
             ASSERT_BUG(sp, re->is_Bytes(), "Slice with non-Bytes value - " << *re);
             const auto& b = re->as_Bytes();
 
-            auto val_tst = ::MIR::Constant::make_Uint({ b.size(), ::HIR::CoreType::Usize });
-            auto cmp_slice_val = m_builder.lvalue_or_temp(sp,
-                    ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::TypeRef::new_slice(::HIR::CoreType::U8) ),
-                    ::MIR::RValue::make_MakeDst({ ::MIR::Param(re->clone()), val_tst.clone() })
-                    );
-
-            if( b.size() > 0 )
-            {
-                auto cmp_eq_blk = m_builder.new_bb_unlinked();
-                auto cmp_lval_lt = this->push_compare( val_len.clone(), ::MIR::eBinOp::LT, val_tst.clone() );
-                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval_lt), def_blk, cmp_eq_blk }) );
-                m_builder.set_cur_block(cmp_eq_blk);
-            }
+            auto val_tst_len = ::MIR::Constant::make_Uint({ b.size(), ::HIR::CoreType::Usize });
 
             // IF v == tst : target
             {
-                auto succ_blk = m_builder.new_bb_unlinked();
                 auto next_cmp_blk = m_builder.new_bb_unlinked();
-                auto cmp_lval_eq = this->push_compare( val_len.clone(), ::MIR::eBinOp::EQ, mv$(val_tst) );
-                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval_eq), succ_blk, next_cmp_blk }) );
-                m_builder.set_cur_block(succ_blk);
 
                 // TODO: What if `val` isn't a Deref?
                 ASSERT_BUG(sp, !val.m_wrappers.empty() && val.m_wrappers.back().is_Deref(), "TODO: Handle non-Deref matches of byte strings - " << val);
-                cmp_lval_eq = this->push_compare( val.clone_unwrapped(), ::MIR::eBinOp::EQ, mv$(cmp_slice_val) );
-                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval_eq), arm_targets[tgt_ofs], def_blk }) );
+                auto cmp_slice_val = m_builder.lvalue_or_temp(sp,
+                    ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::TypeRef::new_slice(::HIR::CoreType::U8) ),
+                    ::MIR::RValue::make_MakeDst({ ::MIR::Param(re->clone()), val_tst_len.clone() })
+                    );
+                auto cmp_lval_eq = this->push_compare( val.clone_unwrapped(), ::MIR::eBinOp::EQ, mv$(cmp_slice_val) );
+                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval_eq), arm_targets[tgt_ofs], next_cmp_blk }) );
 
                 m_builder.set_cur_block(next_cmp_blk);
             }
