@@ -2322,7 +2322,7 @@ AST::Crate Parse_Crate(::std::string mainfile, AST::Edition edition)
 
     size_t p = mainfile.find_last_of('/');
     p = (p == ::std::string::npos ? mainfile.find_last_of('\\') : p);
-    ::std::string mainpath = (p != ::std::string::npos ? ::std::string(mainfile.begin(), mainfile.begin()+p+1) : "./");
+    ::std::string mainpath = mainfile == "-" ? "-" : (p != ::std::string::npos ? ::std::string(mainfile.begin(), mainfile.begin()+p+1) : "./");
 
     AST::Crate  crate;
     crate.m_edition = edition;

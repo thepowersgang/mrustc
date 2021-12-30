@@ -23,29 +23,33 @@ Lexer::Lexer(const ::std::string& filename, AST::Edition edition, ParseState ps)
     m_path(filename.c_str()),
     m_line(1),
     m_line_ofs(0),
-    m_istream(filename.c_str()),
+    m_istream_fp(filename != "-" ? new std::ifstream(filename.c_str()) : nullptr),
+    m_istream(filename != "-" ? *m_istream_fp : std::cin),
     m_last_char_valid(false),
     m_edition(edition),
     m_hygiene( Ident::Hygiene::new_scope() )
 {
-    if( !m_istream.is_open() )
+    if( m_istream_fp )
     {
-        throw ::std::runtime_error("Unable to open file '" + filename + "'");
-    }
-    // Consume the BOM
-    if( this->getc_byte() == '\xef' )
-    {
-        if( this->getc_byte() != '\xbb' ) {
-            throw ::std::runtime_error("Incomplete BOM - missing \\xBB in second position");
+        if( !m_istream_fp->is_open() )
+        {
+            throw ::std::runtime_error("Unable to open file '" + filename + "'");
         }
-        if( this->getc_byte() != '\xbf' ) {
-            throw ::std::runtime_error("Incomplete BOM - missing \\xBF in second position");
+        // Consume the BOM
+        if( this->getc_byte() == '\xef' )
+        {
+            if( this->getc_byte() != '\xbb' ) {
+                throw ::std::runtime_error("Incomplete BOM - missing \\xBB in second position");
+            }
+            if( this->getc_byte() != '\xbf' ) {
+                throw ::std::runtime_error("Incomplete BOM - missing \\xBF in second position");
+            }
+            m_line_ofs = 0;
         }
-        m_line_ofs = 0;
-    }
-    else
-    {
-        m_istream.unget();
+        else
+        {
+            m_istream.unget();
+        }
     }
 }
 

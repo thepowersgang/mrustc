@@ -888,6 +888,11 @@ ProgramParams::ProgramParams(int argc, char *argv[])
         }
     }
 
+    if( const auto* a = getenv("MRUSTC_LIBDIR") )
+    {
+        this->lib_search_dirs.push_back(a);
+    }
+
     // Hacky command-line parsing
     for( int i = 1; i < argc; i ++ )
     {
@@ -916,7 +921,7 @@ ProgramParams::ProgramParams(int argc, char *argv[])
             exit(0);
         }
 
-        if( arg[0] != '-' )
+        if( arg[0] != '-' || arg[1] == '\0' )
         {
             if (this->infile == "")
             {
@@ -1123,6 +1128,20 @@ ProgramParams::ProgramParams(int argc, char *argv[])
         }
         else
         {
+            auto check_with_arg = [&](const char* name)->const char* {
+                if( strcmp(arg+2, name) == 0 ) {
+                    if (i == argc - 1) {
+                        ::std::cerr << "Flag " << arg << " requires an argument" << ::std::endl;
+                        exit(1);
+                    }
+                    return argv[++i];
+                }
+                if( strncmp(arg+2, name, strlen(name)) == 0 && arg[2+strlen(name)] == '=' ) {
+                    return arg + 2 + strlen(name) + 1;
+                }
+                return nullptr;
+                };
+
             if( strcmp(arg, "--help") == 0 ) {
                 this->show_help();
                 exit(0);
@@ -1144,12 +1163,8 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 exit(0);
             }
             // --out-dir <dir>  >> Set the output directory for automatically-named files
-            else if( strcmp(arg, "--out-dir") == 0) {
-                if (i == argc - 1) {
-                    ::std::cerr << "Flag " << arg << " requires an argument" << ::std::endl;
-                    exit(1);
-                }
-                this->output_dir = argv[++i];
+            else if( const char* out_dir = check_with_arg("out-dir") ) {
+                this->output_dir = out_dir;
                 if( this->output_dir != "" && this->output_dir.back() != '/' )
                 {
                     this->output_dir += '/';
@@ -1173,32 +1188,16 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 this->crate_overrides.insert(::std::make_pair( mv$(name), mv$(path) ));
             }
             // --crate-tag <name>  >> Specify a version/identifier suffix for the crate
-            else if( strcmp(arg, "--crate-tag") == 0 ) {
-                if( i == argc - 1 ) {
-                    ::std::cerr << "Flag " << arg << " requires an argument" << ::std::endl;
-                    exit(1);
-                }
-                const char* name_str = argv[++i];
+            else if( const auto* name_str = check_with_arg("crate-tag") ) {
                 this->crate_name_suffix = name_str;
             }
             // --crate-name <name>  >> Specify the crate name (overrides `#![crate_name="<name>"]`)
-            else if( strcmp(arg, "--crate-name") == 0 ) {
-                if( i == argc - 1 ) {
-                    ::std::cerr << "Flag --crate-name requires an argument" << ::std::endl;
-                    exit(1);
-                }
-                const char* name_str = argv[++i];
+            else if( const auto* name_str = check_with_arg("crate-name") ) {
                 this->crate_name = name_str;
             }
             // `--crate-type <name>`    - Specify the crate type (overrides `#![crate_type="<name>"]`)
-            else if( strcmp(arg, "--crate-type") == 0 ) {
-                if( i == argc - 1 ) {
-                    ::std::cerr << "Flag --crate-type requires an argument" << ::std::endl;
-                    exit(1);
-                }
-                const char* type_str = argv[++i];
-
-                if( strcmp(type_str, "rlib") == 0 ) {
+            else if( const char* type_str = check_with_arg("crate-type") ) {
+                if( strcmp(type_str, "lib") == 0 || strcmp(type_str, "rlib") == 0 ) {
                     this->crate_type = ::AST::Crate::Type::RustLib;
                 }
                 else if( strcmp(type_str, "dylib") == 0 ) {
@@ -1211,7 +1210,7 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                     this->crate_type = ::AST::Crate::Type::ProcMacro;
                 }
                 else {
-                    ::std::cerr << "Unknown value for --crate-type" << ::std::endl;
+                    ::std::cerr << "Unknown value for --crate-type: " << type_str << ::std::endl;
                     exit(1);
                 }
             }
@@ -1248,13 +1247,12 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                     Cfg_SetFlag(opt_and_val);
                 }
             }
+            else if( const char* emit = check_with_arg("emit") ) {
+                ::std::cerr << "Ignoring `--emit " << emit << "` for compatability with rustc" << std::endl;
+            }
             // `--target <triple>`  - Override the default compiler target
-            else if( strcmp(arg, "--target") == 0 ) {
-                if (i == argc - 1) {
-                    ::std::cerr << "Flag " << arg << " requires an argument" << ::std::endl;
-                    exit(1);
-                }
-                this->target = argv[++i];
+            else if( const char* target_name = check_with_arg("target") ) {
+                this->target = target_name;
             }
             else if( strcmp(arg, "--dump-target-spec") == 0 ) {
                 if (i == argc - 1) {
@@ -1266,13 +1264,7 @@ ProgramParams::ProgramParams(int argc, char *argv[])
             else if( strcmp(arg, "--test") == 0 ) {
                 this->test_harness = true;
             }
-            else if( strcmp(arg, "--edition") == 0 ) {
-                if (i == argc - 1) {
-                    ::std::cerr << "Flag " << arg << " requires an argument" << ::std::endl;
-                    exit(1);
-                }
-
-                const char* edition_str = argv[++i];
+            else if( const char* edition_str = check_with_arg("edition") ) {
                 if( strcmp(edition_str, "2015") == 0 ) {
                     this->edition = AST::Edition::Rust2015;
                 }
