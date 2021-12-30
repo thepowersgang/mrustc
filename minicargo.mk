@@ -145,10 +145,10 @@ RUSTC_ENV_VARS += CFG_RELEASE_CHANNEL=$(RUSTC_CHANNEL)
 RUSTC_ENV_VARS += CFG_VERSION=$(RUSTC_VERSION)-$(RUSTC_CHANNEL)-mrustc
 RUSTC_ENV_VARS += CFG_PREFIX=mrustc
 RUSTC_ENV_VARS += CFG_LIBDIR_RELATIVE=lib
-RUSTC_ENV_VARS += LD_LIBRARY_PATH=$(abspath output)
+RUSTC_ENV_VARS += LD_LIBRARY_PATH=$(abspath $(OUTDIR))
 RUSTC_ENV_VARS += REAL_LIBRARY_PATH_VAR=LD_LIBRARY_PATH
 RUSTC_ENV_VARS += RUSTC_INSTALL_BINDIR=bin
-RUSTC_ENV_VARS += MRUSTC_LIBDIR=$(abspath output-1.54.0)
+RUSTC_ENV_VARS += MRUSTC_LIBDIR=$(abspath $(OUTDIR))
 
 $(OUTDIR)rustc: $(MRUSTC) $(MINICARGO) LIBS $(LLVM_CONFIG)
 	mkdir -p $(OUTDIR)rustc-build
@@ -159,7 +159,7 @@ $(OUTDIR)rustc-build/librustc_driver.rlib: $(MRUSTC) $(MINICARGO) LIBS
 	$(RUSTC_ENV_VARS) $(MINICARGO) $(RUSTCSRC)$(SRCDIR_RUSTC_DRIVER) --vendor-dir $(VENDOR_DIR) --output-dir $(OUTDIR)rustc-build -L $(OUTDIR) $(MINICARGO_FLAGS)
 $(OUTDIR)cargo: $(MRUSTC) LIBS
 	mkdir -p $(OUTDIR)cargo-build
-	MRUSTC_LIBDIR=$(abspath output-1.54.0) $(MINICARGO) $(RUSTCSRC)src/tools/cargo --vendor-dir $(VENDOR_DIR) --output-dir $(OUTDIR)cargo-build -L $(OUTDIR) $(MINICARGO_FLAGS)
+	MRUSTC_LIBDIR=$(abspath $(OUTDIR)) $(MINICARGO) $(RUSTCSRC)src/tools/cargo --vendor-dir $(VENDOR_DIR) --output-dir $(OUTDIR)cargo-build -L $(OUTDIR) $(MINICARGO_FLAGS)
 	test -e $@ -a ! $(OUTDIR)cargo-build/cargo -nt $@ || cp $(OUTDIR)cargo-build/cargo $@
 
 # Reference $(RUSTCSRC)src/bootstrap/native.rs for these values
