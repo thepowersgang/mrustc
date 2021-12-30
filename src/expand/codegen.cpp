@@ -134,8 +134,6 @@ class CHandler_Repr:
                 if( repr_type == "C" ) {
                     switch( s->m_markings.repr )
                     {
-                    case AST::Struct::Markings::Repr::Packed:
-                        break;
                     case AST::Struct::Markings::Repr::Rust:
                         s->m_markings.repr = AST::Struct::Markings::Repr::C;
                         break;
@@ -149,12 +147,13 @@ class CHandler_Repr:
                     {
                     case AST::Struct::Markings::Repr::C:
                     case AST::Struct::Markings::Repr::Rust:
-                        // Packed is a super-set of C
-                        s->m_markings.repr = AST::Struct::Markings::Repr::Packed;
                         break;
                     default:
                         // TODO: Error
                         break;
+                    }
+                    if( s->m_markings.max_field_align != 0 ) {
+                        // TODO: Error
                     }
                     if( lex.getTokenIf(TOK_PAREN_OPEN) )
                     {
@@ -166,8 +165,12 @@ class CHandler_Repr:
                         ASSERT_BUG(lex.point_span(), (v & (v-1)) == 0, "#[repr(packed(" << v << "))] - alignment must be a power of two");
                         ASSERT_BUG(lex.point_span(), s->m_markings.align_value == 0, "#[repr(packed(" << v << "))] - conflicts with previous alignment");
                         // TODO: I believe this should change the internal aligment too?
-                        s->m_markings.align_value = v;
+                        s->m_markings.max_field_align = v;
                         lex.getTokenCheck(TOK_PAREN_CLOSE);
+                    }
+                    else
+                    {
+                        s->m_markings.max_field_align = 1;
                     }
                 }
                 else if( repr_type == "simd" ) {

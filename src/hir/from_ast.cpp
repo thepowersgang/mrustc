@@ -1028,17 +1028,17 @@ namespace {
         case AST::Struct::Markings::Repr::C:
             rv.m_repr = ::HIR::Struct::Repr::C;
             break;
-        case AST::Struct::Markings::Repr::Packed:
-            rv.m_repr = ::HIR::Struct::Repr::Packed;
-            break;
         case AST::Struct::Markings::Repr::Simd:
             rv.m_repr = ::HIR::Struct::Repr::Simd;
+            ASSERT_BUG(sp, ent.m_markings.max_field_align == 0, "packed() on simd?");
             break;
         case AST::Struct::Markings::Repr::Transparent:
             rv.m_repr = ::HIR::Struct::Repr::Transparent;
+            ASSERT_BUG(sp, ent.m_markings.max_field_align == 0, "packed() on transparent?");
             break;
         }
         rv.m_forced_alignment = ent.m_markings.align_value;
+        rv.m_max_field_alignment = ent.m_markings.max_field_align;
     }
 
     // #[rustc_nonnull_optimization_guaranteed]

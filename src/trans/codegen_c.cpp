@@ -1568,7 +1568,7 @@ namespace {
         }
 
         // Shared logic between `emit_struct` and `emit_type` (w/ Tuple)
-        void emit_struct_inner(const ::HIR::TypeRef& ty, const TypeRepr* repr, bool is_packed)
+        void emit_struct_inner(const ::HIR::TypeRef& ty, const TypeRepr* repr, unsigned packing_max_align)
         {
             // Fill `fields` with ascending indexes (for sorting)
             // AND: Determine if the type has a a zero-sized item that has an alignment equal to the structure's alignment
@@ -1588,23 +1588,16 @@ namespace {
                 }
                 max_align = std::max(max_align, al);
             }
-            if(!is_packed && max_align != repr->align /*&& repr->size > 0*/) {
+            if(packing_max_align == 0 && max_align != repr->align /*&& repr->size > 0*/) {
                 has_manual_align = true;
             }
             // - Sort the fields by offset
             ::std::sort(fields.begin(), fields.end(), [&](auto a, auto b){ return repr->fields[a].offset < repr->fields[b].offset; });
 
             // For repr(packed), mark as packed
-            if(is_packed)
+            if(packing_max_align)
             {
-                switch(m_compiler)
-                {
-                case Compiler::Msvc:
-                    m_of << "#pragma pack(push, 1)\n";
-                    break;
-                case Compiler::Gcc:
-                    break;
-                }
+                m_of << "#pragma pack(push, " << packing_max_align << ")\n";
             }
             if(has_manual_align)
             {
@@ -1633,6 +1626,7 @@ namespace {
                 const auto offset = repr->fields[fld].offset;
                 size_t s = 0, a;
                 Target_GetSizeAndAlignOf(sp, m_resolve, ty, s, a);
+                DEBUG("@" << offset << ": " << ty << " " << s << "," << a);
 
                 // Check offset/alignment
                 if( s == SIZE_MAX )
@@ -1644,11 +1638,10 @@ namespace {
                 else
                 {
                     MIR_ASSERT(*m_mir_res, cur_ofs <= offset, "Current offset is already past expected (#" << fld << "): " << cur_ofs << " > " << offset);
-                    if(!is_packed)
-                    {
-                        while(cur_ofs % a != 0)
-                            cur_ofs ++;
-                    }
+                    a = packing_max_align > 0 ? std::min<size_t>(packing_max_align, a) : a;
+                    DEBUG("a = " << a);
+                    while(cur_ofs % a != 0)
+                        cur_ofs ++;
                     MIR_ASSERT(*m_mir_res, cur_ofs == offset, "Current offset doesn't match expected (#" << fld << "): " << cur_ofs << " != " << offset);
 
                     cur_ofs += s;
@@ -1691,7 +1684,7 @@ namespace {
                 m_of << "\tchar _d;\n";
             }
             m_of << "}";
-            if(is_packed || has_manual_align)
+            if(has_manual_align)
             {
                 switch(m_compiler)
                 {
@@ -1702,14 +1695,10 @@ namespace {
                         emit_ctype(ty);
                     }
                     m_of << ";";
-                    if( is_packed )
-                        m_of << "\n#pragma pack(pop)";
                     m_of << "\n";
                     break;
                 case Compiler::Gcc:
                     m_of << " __attribute__((";
-                    if( is_packed )
-                        m_of << "packed,";
                     if( has_manual_align )
                         m_of << "__aligned__(" << repr->align << "),";
                     m_of << "))";
@@ -1731,6 +1720,10 @@ namespace {
                 }
                 m_of << ";\n";
             }
+            if( packing_max_align != 0 )
+            {
+                m_of << "#pragma pack(pop)\n";
+            }
         }
 
         void emit_type(const ::HIR::TypeRef& ty) override
@@ -1750,7 +1743,7 @@ namespace {
                     m_of << " // " << ty << "\n";
                     const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
 
-                    emit_struct_inner(ty, repr, /*is_packed=*/false);
+                    emit_struct_inner(ty, repr, /*packing_max_align=*/0);
 
                     if( repr->size > 0 )
                     {
@@ -1816,7 +1809,6 @@ namespace {
             ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "struct " << p;), ::HIR::TypeRef(), {}, empty_fcn };
             m_mir_res = &top_mir_res;
             // TODO: repr(transparent) and repr(align(foo))
-            bool is_packed = item.m_repr == ::HIR::Struct::Repr::Packed;
 
             TRACE_FUNCTION_F(p);
             auto item_ty = ::HIR::TypeRef::new_path(p.clone(), &item);
@@ -1825,7 +1817,7 @@ namespace {
 
             m_of << "// struct " << p << "\n";
 
-            emit_struct_inner(item_ty, repr, is_packed);
+            emit_struct_inner(item_ty, repr, item.m_max_field_alignment);
 
             if(repr->size > 0 && repr->size != SIZE_MAX )
             {

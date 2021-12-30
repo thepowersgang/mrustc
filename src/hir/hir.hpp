@@ -355,9 +355,7 @@ public:
     {
         Rust,
         C,
-        Packed,
         Simd,
-        Aligned,    // Alignment stored elsewhere
         Transparent,
     };
     TAGGED_UNION(Data, Unit,
@@ -386,6 +384,7 @@ public:
     Repr    m_repr;
     Data    m_data;
     unsigned    m_forced_alignment = 0;
+    unsigned    m_max_field_alignment = 0;    // for packed
 
     TraitMarkings   m_markings;
     StructMarkings  m_struct_markings;

@@ -406,11 +406,12 @@ public:
         enum class Repr {
             Rust,
             C,
-            Packed,
             Simd,
             Transparent,
         } repr = Repr::Rust;
         uint64_t align_value = 0;
+        // Indicates packing
+        uint64_t max_field_align = 0;
 
         // 1.39 nonzero etc
         bool    scalar_valid_start_set;
