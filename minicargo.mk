@@ -35,10 +35,16 @@ OUTDIR := output$(OUTDIR_SUF)/
 
 MRUSTC ?= bin/mrustc$(EXESUF)
 MINICARGO := bin/minicargo$(EXESUF)
-RUSTC_OUT_BIN := rustc_binary
 ifeq ($(RUSTC_VERSION),1.19.0)
   RUSTC_OUT_BIN := rustc
+else ifeq ($(RUSTC_VERSION),1.29.0)
+  RUSTC_OUT_BIN := rustc_binary
+else ifeq ($(RUSTC_VERSION),1.39.0)
+  RUSTC_OUT_BIN := rustc_binary
+else
+  RUSTC_OUT_BIN := rustc_main
 endif
+
 ifeq ($(RUSTC_CHANNEL),nightly)
   RUSTCSRC := rustc-nightly-src/
 else
@@ -56,6 +62,21 @@ ifeq ($(RUSTC_VERSION),1.54.0)
   RUST_LIB_PREFIX := library/
 else
   RUST_LIB_PREFIX := src/lib
+endif
+
+ifeq ($(RUSTC_VERSION),1.19.0)
+  LLVM_DIR := src/llvm
+else ifeq ($(RUSTC_VERSION),1.29.0)
+  LLVM_DIR := src/llvm
+else
+  LLVM_DIR := src/llvm-project/llvm
+endif
+
+SRCDIR_RUSTC := src/rustc
+SRCDIR_RUSTC_DRIVER := src/librustc_driver
+ifeq ($(RUSTC_VERSION),1.54.0)
+  SRCDIR_RUSTC := compiler/rustc
+  SRCDIR_RUSTC_DRIVER := compiler/rustc_driver
 endif
 
 LLVM_CONFIG := $(RUSTCSRC)build/bin/llvm-config
@@ -127,18 +148,19 @@ RUSTC_ENV_VARS += CFG_LIBDIR_RELATIVE=lib
 RUSTC_ENV_VARS += LD_LIBRARY_PATH=$(abspath output)
 RUSTC_ENV_VARS += REAL_LIBRARY_PATH_VAR=LD_LIBRARY_PATH
 RUSTC_ENV_VARS += RUSTC_INSTALL_BINDIR=bin
+RUSTC_ENV_VARS += MRUSTC_LIBDIR=$(abspath output-1.54.0)
 
 $(OUTDIR)rustc: $(MRUSTC) $(MINICARGO) LIBS $(LLVM_CONFIG)
 	mkdir -p $(OUTDIR)rustc-build
-	$(RUSTC_ENV_VARS) $(MINICARGO) $(RUSTCSRC)src/rustc --vendor-dir $(VENDOR_DIR) --output-dir $(OUTDIR)rustc-build -L $(OUTDIR) $(MINICARGO_FLAGS)
-	test ! $(OUTDIR)rustc-build/$(RUSTC_OUT_BIN) -nt $@ || cp $(OUTDIR)rustc-build/$(RUSTC_OUT_BIN) $@
+	$(RUSTC_ENV_VARS) $(MINICARGO) $(RUSTCSRC)$(SRCDIR_RUSTC) --vendor-dir $(VENDOR_DIR) --output-dir $(OUTDIR)rustc-build -L $(OUTDIR) $(MINICARGO_FLAGS)
+	test -e $@ -a ! $(OUTDIR)rustc-build/$(RUSTC_OUT_BIN) -nt $@ || cp $(OUTDIR)rustc-build/$(RUSTC_OUT_BIN) $@
 $(OUTDIR)rustc-build/librustc_driver.rlib: $(MRUSTC) $(MINICARGO) LIBS
 	mkdir -p $(OUTDIR)rustc-build
-	$(RUSTC_ENV_VARS) $(MINICARGO) $(RUSTCSRC)src/librustc_driver --vendor-dir $(VENDOR_DIR) --output-dir $(OUTDIR)rustc-build -L $(OUTDIR) $(MINICARGO_FLAGS)
+	$(RUSTC_ENV_VARS) $(MINICARGO) $(RUSTCSRC)$(SRCDIR_RUSTC_DRIVER) --vendor-dir $(VENDOR_DIR) --output-dir $(OUTDIR)rustc-build -L $(OUTDIR) $(MINICARGO_FLAGS)
 $(OUTDIR)cargo: $(MRUSTC) LIBS
 	mkdir -p $(OUTDIR)cargo-build
-	$(MINICARGO) $(RUSTCSRC)src/tools/cargo --vendor-dir $(VENDOR_DIR) --output-dir $(OUTDIR)cargo-build -L $(OUTDIR) $(MINICARGO_FLAGS)
-	test ! $(OUTDIR)cargo-build/cargo -nt $@ || cp $(OUTDIR)cargo-build/cargo $@
+	MRUSTC_LIBDIR=$(abspath output-1.54.0) $(MINICARGO) $(RUSTCSRC)src/tools/cargo --vendor-dir $(VENDOR_DIR) --output-dir $(OUTDIR)cargo-build -L $(OUTDIR) $(MINICARGO_FLAGS)
+	test -e $@ -a ! $(OUTDIR)cargo-build/cargo -nt $@ || cp $(OUTDIR)cargo-build/cargo $@
 
 # Reference $(RUSTCSRC)src/bootstrap/native.rs for these values
 LLVM_CMAKE_OPTS := LLVM_TARGET_ARCH=$(firstword $(subst -, ,$(RUSTC_TARGET))) LLVM_DEFAULT_TARGET_TRIPLE=$(RUSTC_TARGET)
@@ -152,15 +174,10 @@ LLVM_CMAKE_OPTS += CMAKE_BUILD_TYPE=RelWithDebInfo
 
 $(LLVM_CONFIG): $(RUSTCSRC)build/Makefile
 	$Vcd $(RUSTCSRC)build && $(MAKE)
-ifeq ($(RUSTC_VERSION),1.39.0)
-$(RUSTCSRC)build/Makefile: $(RUSTCSRC)src/llvm-project/llvm/CMakeLists.txt
+
+$(RUSTCSRC)build/Makefile: $(RUSTCSRC)$(LLVM_DIR)/CMakeLists.txt
 	@mkdir -p $(RUSTCSRC)build
-	$Vcd $(RUSTCSRC)build && cmake $(addprefix -D , $(LLVM_CMAKE_OPTS)) ../src/llvm-project/llvm
-else
-$(RUSTCSRC)build/Makefile: $(RUSTCSRC)src/llvm/CMakeLists.txt
-	@mkdir -p $(RUSTCSRC)build
-	$Vcd $(RUSTCSRC)build && cmake $(addprefix -D , $(LLVM_CMAKE_OPTS)) ../src/llvm
-endif
+	$Vcd $(RUSTCSRC)build && cmake $(addprefix -D , $(LLVM_CMAKE_OPTS)) ../$(LLVM_DIR)
 
 #
 # Developement-only targets
