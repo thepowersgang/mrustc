@@ -930,14 +930,15 @@ namespace {
         for(auto& e : ents)
         {
             // Increase offset to fit alignment
-            if( sorting != StructSorting::Packed && e.align > 0 )
+            auto align = sorting != StructSorting::Packed ? e.align : std::max(forced_alignment,1u);
+            if( align > 0 )
             {
-                while( cur_ofs % e.align != 0 )
+                while( cur_ofs % align != 0 )
                 {
                     cur_ofs ++;
                 }
             }
-            max_align = ::std::max(max_align, e.align);
+            max_align = ::std::max(max_align, align);
 
             // Forced padding is indicated by setting the field index to -1
             if( e.field != ~0u )
@@ -971,7 +972,7 @@ namespace {
             }
         }
         // Aligment is 1 for packed structs, and `max_align` otherwise
-        rv.align = sorting == StructSorting::Packed ? 1 : max_align;
+        rv.align = max_align;
         rv.size = cur_ofs;
         rv.fields = ::std::move(fields);
         DEBUG(ty << ": size = " << rv.size << ", align = " << rv.align);
