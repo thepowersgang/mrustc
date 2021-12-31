@@ -529,6 +529,10 @@ namespace typecheck
                                 DEBUG("is_fallback=" << is_fallback);
                                 const auto& ty = context.get_type(node->m_res_type);
                                 if(const auto* i = ty.data().opt_Infer()) {
+                                    if( i->ty_class != HIR::InferClass::None ) {
+                                        // Bounded ivar, remove this rule.
+                                        return true;
+                                    }
                                     if( is_fallback ) {
                                         context.equate_types(node->span(), ty, HIR::TypeRef::new_unit());
                                         return true;
