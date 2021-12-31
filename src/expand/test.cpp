@@ -8,6 +8,10 @@
 #include <synext_decorator.hpp>
 #include <ast/ast.hpp>
 #include <ast/crate.hpp>
+#include <parse/ttstream.hpp>
+#include <synext.hpp>   // Expand_ParseAndExpand_ExprVal
+#include <parse/parseerror.hpp> // ParseError
+#include <parse/interpolated_fragment.hpp>
 
 class CTestHandler:
     public ExpandDecorator
@@ -58,8 +62,30 @@ class CTestHandler_SP:
                 if( mi.data().size() != 0 )
                 {
                     td.panic_type = ::AST::TestDesc::ShouldPanic::YesWithMessage;
-                    // TODO: Check that name is correct and that it is a string
-                    td.expected_panic_message = mi.parse_paren_string();
+
+                    TTStream    lex(sp, ParseState(), mi.data());
+                    lex.getTokenCheck(TOK_PAREN_OPEN);
+                    while(lex.lookahead(0) != TOK_PAREN_CLOSE)
+                    {
+                        auto n = lex.getTokenCheck(TOK_IDENT).ident().name;
+                        if( n == "expected" ) {
+                            lex.getTokenCheck(TOK_EQUAL);
+                            auto n = Expand_ParseAndExpand_ExprVal(crate, mod, lex);
+                            if( auto* v = dynamic_cast<::AST::ExprNode_String*>(&*n) ) {
+                                td.expected_panic_message = v->m_value;
+                            }
+                            else
+                            {
+                                throw ParseError::Unexpected(lex, Token(InterpolatedFragment(InterpolatedFragment::EXPR, n.release())), TOK_STRING);
+                            }
+                        }
+                        else {
+                            TODO(sp, "Handle #[should_panic(" << n << ")");
+                        }
+                        if(!lex.getTokenIf(TOK_COMMA))
+                            break;
+                    }
+                    lex.getTokenCheck(TOK_PAREN_CLOSE);
                 }
                 else
                 {
