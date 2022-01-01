@@ -50,6 +50,7 @@ struct FFIPointer
     // - A data format (e.g. size of allocation, internal data format)
     //   - If the data format is unspecified (null) then it's a void pointer
     // - An actual pointer
+    // TODO: Add extra metadata
 
     // Pointer value, returned by the FFI
     void*   ptr_value;

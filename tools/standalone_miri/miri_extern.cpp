@@ -230,6 +230,10 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
 
         if( ret )
         {
+            char modulename[1024] = {0};
+            GetModuleFileNameA(static_cast<HMODULE>(handle), modulename, sizeof(modulename));
+            auto* last_slash = std::strrchr(modulename, '\\');
+            std::string name = std::string("#FFI{") + (last_slash+1) + "}" + static_cast<const char*>(symname);
             // TODO: Get the functon name (and source library) and store in the result
             // - Maybe return a FFI function pointer (::"#FFI"::DllName+ProcName)
             rv = Value::new_ffiptr(FFIPointer::new_void("GetProcAddress", ret));

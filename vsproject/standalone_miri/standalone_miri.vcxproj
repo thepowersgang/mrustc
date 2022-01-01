@@ -182,6 +182,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\tools\standalone_miri\miri.hpp" />
+    <ClInclude Include="..\..\tools\standalone_miri\primitive_value.h" />
     <ClInclude Include="..\..\tools\standalone_miri\value.hpp" />
     <ClInclude Include="targetver.h" />
   </ItemGroup>
@@ -189,6 +190,7 @@
     <ClCompile Include="..\..\tools\standalone_miri\main.cpp" />
     <ClCompile Include="..\..\tools\standalone_miri\miri.cpp" />
     <ClCompile Include="..\..\tools\standalone_miri\miri_extern.cpp" />
+    <ClCompile Include="..\..\tools\standalone_miri\miri_intrinsic.cpp" />
     <ClCompile Include="..\..\tools\standalone_miri\value.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

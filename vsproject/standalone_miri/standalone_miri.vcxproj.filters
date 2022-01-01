@@ -27,6 +27,9 @@
     <ClInclude Include="..\..\tools\standalone_miri\miri.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\tools\standalone_miri\primitive_value.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\..\tools\standalone_miri\main.cpp">
@@ -39,6 +42,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\..\tools\standalone_miri\miri_extern.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\tools\standalone_miri\miri_intrinsic.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
