@@ -1560,7 +1560,7 @@ namespace {
                 {
                     if(i != 0)  m_of << ",";
                     m_of << " ";
-                    emit_ctype(te.m_arg_types[i]);
+                    this->emit_ctype( te.m_arg_types[i], FMT_CB(os, os << (this->type_is_high_align(ty) ? "*":"");) );
                 }
                 m_of << " )";
             }
