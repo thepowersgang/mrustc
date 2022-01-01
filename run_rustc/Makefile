@@ -162,7 +162,7 @@ ifeq ($(RUSTC_VERSION),1.39.0)
 	$V$(RUSTC_ENV_VARS) TMPDIR=$(abspath $(PREFIX)tmp) CARGO_TARGET_DIR=$(OUTDIR)build-rustc RUSTC=$(BINDIR_2)rustc $(CARGO_ENV) $(BINDIR)cargo rustc --manifest-path $(RUST_SRC)librustc_codegen_llvm/Cargo.toml --release -j $(PARLEVEL) -- -L $(abspath $(OUTDIR)build-rustc/release/deps)
 	@mkdir -p $(LIBDIR)../codegen-backends
 	@echo "[CP] libraries and results"
-	$V$(call fn_opt_copy,$(OUTDIR)build-rustc/release/librustc_codegen_llvm.so,$(LIBDIR)../codegen-backends/librustc_codegen_llvm-llvm.so)
+	$V$(call fn_opt_copy,$(OUTDIR)build-rustc/release/librustc_codegen_llvm.$(DYLIB_EXT),$(LIBDIR)../codegen-backends/librustc_codegen_llvm-llvm.$(DYLIB_EXT))
 else
 	@echo "[CP] libraries and results"
 endif
