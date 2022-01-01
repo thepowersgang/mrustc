@@ -1302,8 +1302,8 @@ namespace {
         TRACE_FUNCTION_FR("", m_in.get_pos());
         auto _ = m_in.open_object("HIR::Struct");
         auto params = deserialise_genericparams();
-        auto repr = static_cast< ::HIR::Struct::Repr>( m_in.read_tag() );
         DEBUG("params = " << params.fmt_args() << params.fmt_bounds());
+        auto repr = static_cast< ::HIR::Struct::Repr>( m_in.read_tag() );
 
         ::HIR::Struct::Data data;
         switch( auto tag = m_in.read_tag() )
@@ -1323,14 +1323,17 @@ namespace {
         default:
             BUG(Span(), "Bad tag for HIR::Struct::Data - " << tag);
         }
-        auto align = static_cast<unsigned>(m_in.read_u64c());
-        DEBUG("align = " << align);
+        unsigned forced_alignment = m_in.read_count();
+        unsigned max_field_alignment = m_in.read_count();
+        DEBUG("align = " << forced_alignment);
         auto markings = deserialise_markings();
         auto str_markings = deserialise_str_markings();
 
-        return ::HIR::Struct {
-            mv$(params), repr, mv$(data), align, mv$(markings), mv$(str_markings)
+        auto rv = ::HIR::Struct {
+            mv$(params), repr, mv$(data), forced_alignment, mv$(markings), mv$(str_markings)
             };
+        rv.m_max_field_alignment = max_field_alignment;
+        return rv;
     }
     ::HIR::Trait HirDeserialiser::deserialise_trait()
     {

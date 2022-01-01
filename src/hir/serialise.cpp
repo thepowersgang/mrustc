@@ -1267,7 +1267,8 @@
                 )
             )
 
-            m_out.write_u64c(item.m_forced_alignment);
+            m_out.write_count(item.m_forced_alignment);
+            m_out.write_count(item.m_max_field_alignment);
             serialise(item.m_markings);
             serialise(item.m_struct_markings);
         }
