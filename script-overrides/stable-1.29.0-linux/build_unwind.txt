@@ -1,1 +1,2 @@
 # On both windows (MSVC) and linux (glibc), nothing is needed
+cargo:rustc-link-lib=gcc_s
