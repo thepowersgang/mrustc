@@ -241,7 +241,7 @@ LLVM_CMAKE_OPTS += CMAKE_BUILD_TYPE=Release
 LLVM_CMAKE_OPTS += $(LLVM_CMAKE_OPTS_EXTRA)
 
 
-$(LLVM_CONFIG): $(RUSTCSRC)build/Makefile
+$(RUSTCSRC)build/bin/llvm-config: $(RUSTCSRC)build/Makefile
 	$Vcd $(RUSTCSRC)build && $(MAKE)
 
 $(RUSTCSRC)build/Makefile: $(RUSTCSRC)$(LLVM_DIR)/CMakeLists.txt
