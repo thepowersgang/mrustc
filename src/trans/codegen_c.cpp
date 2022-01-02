@@ -206,6 +206,7 @@ namespace {
             m_outfile_path_c(outfile + ".c"),
             m_of(m_outfile_path_c)
         {
+            ASSERT_BUG(Span(), m_of.is_open(), "Failed to open `" << m_outfile_path_c << "` for writing");
             m_options.emulated_i128 = Target_GetCurSpec().m_backend_c.m_emulated_i128;
             switch(Target_GetCurSpec().m_backend_c.m_codegen_mode)
             {
@@ -1352,6 +1353,7 @@ namespace {
             bool use_arg_file = arg_file_start > 0;
             if(use_arg_file) {
                 command_file_stream.open(command_file);
+                ASSERT_BUG(Span(), command_file_stream.is_open(), "Failed to open command file `" << command_file << "` for writing");
             }
             size_t i = -1;
             for(const auto& arg : args.get_vec())
