@@ -77,7 +77,11 @@ namespace {
             if( m_all_constant && node.m_type == HIR::BorrowType::Shared )
             {
                 // And it's not interior mutable
-                if( m_resolve.type_is_interior_mutable(node.m_value->span(), node.m_value->m_res_type) == HIR::Compare::Unequal )
+                if( monomorphise_type_needed(node.m_value->m_res_type) )
+                {
+                    DEBUG("-- " << node.m_value->m_res_type << " is generic");
+                }
+                else if( m_resolve.type_is_interior_mutable(node.m_value->span(), node.m_value->m_res_type) == HIR::Compare::Unequal )
                 {
                     DEBUG("-- Creating static");
                     auto val_expr = HIR::ExprPtr(mv$(node.m_value));
@@ -140,9 +144,16 @@ namespace {
         }
         void visit(::HIR::ExprNode_PathValue& node) override {
             ::HIR::ExprVisitorDef::visit(node);
+            MonomorphState  ms;
             // If the target is a constant, set `m_is_constant`
-            if( node.m_target == ::HIR::ExprNode_PathValue::CONSTANT ) {
-                m_is_constant = true;
+            auto v = m_resolve.get_value(node.span(), node.m_path, ms, /*signature_only*/true);
+            if(v.is_Constant()) {
+                if( monomorphise_path_needed(node.m_path) ) {
+                    DEBUG("Constant path is still generic, can't transform into a `static`");
+                }
+                else {
+                    m_is_constant = true;
+                }
             }
         }
     };

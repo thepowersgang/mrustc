@@ -2100,6 +2100,11 @@ HIR::Compare StaticTraitResolve::type_is_interior_mutable(const Span& sp, const 
         return HIR::Compare::Unequal;
         }
     TU_ARMA(Path, e) {
+        auto monomorph_cb = MonomorphStatePtr(nullptr, e.path.m_data.is_Generic() ? &e.path.m_data.as_Generic().m_params : nullptr, nullptr);
+        HIR::TypeRef    tmp_ty;
+        auto monomorph = [&](const auto& tpl)->const ::HIR::TypeRef& {
+            return this->monomorph_expand_opt(sp, tmp_ty, tpl, monomorph_cb);
+            };
         TU_MATCH_HDRA( (e.binding), {)
         TU_ARMA(Unbound, pbe)
             return HIR::Compare::Fuzzy;
@@ -2107,9 +2112,68 @@ HIR::Compare StaticTraitResolve::type_is_interior_mutable(const Span& sp, const 
             return HIR::Compare::Fuzzy;
         TU_ARMA(ExternType, pbe)    // Extern types can't be interior mutable (but they also shouldn't be direct)
             return HIR::Compare::Unequal;
-        // TODO: For struct/enum/union, look up.
-        default:
+
+        TU_ARMA(Struct, pbe) {
+            const HIR::GenericPath& p = e.path.m_data.as_Generic();
+            if( p.m_path == m_crate.get_lang_item_path(sp, "unsafe_cell") ) {
+                return HIR::Compare::Equal;
+            }
+            // TODO: Cache this result?
+            TU_MATCH_HDRA( (pbe->m_data), { )
+            TU_ARMA(Unit, _)    return HIR::Compare::Unequal;
+            TU_ARMA(Tuple, e) {
+                for(const auto& v : e) {
+                    switch( this->type_is_interior_mutable(sp, monomorph(v.ent)) )
+                    {
+                    case HIR::Compare::Equal:
+                        return HIR::Compare::Equal;
+                    case HIR::Compare::Fuzzy:
+                        return HIR::Compare::Fuzzy;
+                    default:
+                        continue;
+                    }
+                }
+                return HIR::Compare::Unequal;
+                }
+            TU_ARMA(Named, e) {
+                for(const auto& v : e) {
+                    switch( this->type_is_interior_mutable(sp, monomorph(v.second.ent)) )
+                    {
+                    case HIR::Compare::Equal:
+                        return HIR::Compare::Equal;
+                    case HIR::Compare::Fuzzy:
+                        return HIR::Compare::Fuzzy;
+                    default:
+                        continue;
+                    }
+                }
+                return HIR::Compare::Unequal;
+                }
+            }
+            }
+        TU_ARMA(Enum, pbe) {
+            TU_MATCH_HDRA( (pbe->m_data), { )
+            TU_ARMA(Value, _)   return HIR::Compare::Unequal;
+            TU_ARMA(Data, ee) {
+                for(const auto& var : ee) {
+                    switch( this->type_is_interior_mutable(sp, monomorph(var.type)) )
+                    {
+                    case HIR::Compare::Equal:
+                        return HIR::Compare::Equal;
+                    case HIR::Compare::Fuzzy:
+                        return HIR::Compare::Fuzzy;
+                    default:
+                        continue;
+                    }
+                }
+                return HIR::Compare::Unequal;
+                }
+            }
+            }
+        TU_ARMA(Union, pbe) {
+            DEBUG("TODO: Check if union is interior mutable - " << e.path);
             return HIR::Compare::Fuzzy;
+            }
         }
         }
     TU_ARMA(Generic, e) {
