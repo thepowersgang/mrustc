@@ -1589,7 +1589,10 @@ public:
             AST::Pattern    pat_a;
 
             auto var_path = base_path + v.m_name;
-            auto var_idx_hash = this->hash_val_ref( opts.core_name, NEWNODE(Integer, var_idx, CORETYPE_UINT) );
+            auto var_idx_hash = enm.variants().size() > 1
+                ?  this->hash_val_ref( opts.core_name, NEWNODE(Integer, var_idx, CORETYPE_UINT) )
+                : NEWNODE(Tuple, {})
+                ;
 
             TU_MATCH_HDRA( (v.m_data), {)
             TU_ARMA(Value, e) {
