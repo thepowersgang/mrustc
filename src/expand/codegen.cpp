@@ -208,23 +208,33 @@ class CHandler_Repr:
             TTStream    lex(sp, ParseState(), mi.data());
             lex.getTokenCheck(TOK_PAREN_OPEN);
 
-            // TODO: Loop, so `repr(C, u8)` is valid
-            auto repr_str = lex.getTokenCheck(TOK_IDENT).ident().name;
-            if( repr_str == "C" ) {
-                e->m_markings.is_repr_c = true;
-            }
-            else if( repr_str == "u8"   ) { e->m_markings.repr = ::AST::Enum::Markings::Repr::U8; }
-            else if( repr_str == "u16"  ) { e->m_markings.repr = ::AST::Enum::Markings::Repr::U16; }
-            else if( repr_str == "u32"  ) { e->m_markings.repr = ::AST::Enum::Markings::Repr::U32; }
-            else if( repr_str == "u64"  ) { e->m_markings.repr = ::AST::Enum::Markings::Repr::U64; }
-            else if( repr_str == "usize") { e->m_markings.repr = ::AST::Enum::Markings::Repr::Usize; }
-            else if( repr_str == "i8"   ) { e->m_markings.repr = ::AST::Enum::Markings::Repr::I8; }
-            else if( repr_str == "i16"  ) { e->m_markings.repr = ::AST::Enum::Markings::Repr::I16; }
-            else if( repr_str == "i32"  ) { e->m_markings.repr = ::AST::Enum::Markings::Repr::I32; }
-            else if( repr_str == "i64"  ) { e->m_markings.repr = ::AST::Enum::Markings::Repr::I64; }
-            else if( repr_str == "isize") { e->m_markings.repr = ::AST::Enum::Markings::Repr::Isize; }
-            else {
-                ERROR(lex.point_span(), E0000, "Unknown enum repr '" << repr_str << "'");
+            // Loop, so `repr(C, u8)` is valid
+            while( lex.lookahead(0) != TOK_PAREN_CLOSE )
+            {
+                auto set_repr = [&](::AST::Enum::Markings::Repr r) {
+                    ASSERT_BUG(lex.point_span(), e->m_markings.repr == ::AST::Enum::Markings::Repr::Rust, "Multiple enum reprs set");
+                    e->m_markings.repr = r;
+                    };
+                auto repr_str = lex.getTokenCheck(TOK_IDENT).ident().name;
+                if( repr_str == "C" ) {
+                    // Repeated is OK
+                    e->m_markings.is_repr_c = true;
+                }
+                else if( repr_str == "u8"   ) { set_repr( ::AST::Enum::Markings::Repr::U8 ); }
+                else if( repr_str == "u16"  ) { set_repr( ::AST::Enum::Markings::Repr::U16); }
+                else if( repr_str == "u32"  ) { set_repr( ::AST::Enum::Markings::Repr::U32); }
+                else if( repr_str == "u64"  ) { set_repr( ::AST::Enum::Markings::Repr::U64); }
+                else if( repr_str == "usize") { set_repr( ::AST::Enum::Markings::Repr::Usize); }
+                else if( repr_str == "i8"   ) { set_repr( ::AST::Enum::Markings::Repr::I8 ); }
+                else if( repr_str == "i16"  ) { set_repr( ::AST::Enum::Markings::Repr::I16); }
+                else if( repr_str == "i32"  ) { set_repr( ::AST::Enum::Markings::Repr::I32); }
+                else if( repr_str == "i64"  ) { set_repr( ::AST::Enum::Markings::Repr::I64); }
+                else if( repr_str == "isize") { set_repr( ::AST::Enum::Markings::Repr::Isize); }
+                else {
+                    ERROR(lex.point_span(), E0000, "Unknown enum repr '" << repr_str << "'");
+                }
+                if( !lex.getTokenIf(TOK_COMMA) )
+                    break;
             }
 
             lex.getTokenCheck(TOK_PAREN_CLOSE);
