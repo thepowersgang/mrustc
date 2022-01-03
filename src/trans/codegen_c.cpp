@@ -908,6 +908,7 @@ namespace {
 
             m_of.flush();
             m_of.close();
+            ASSERT_BUG(Span(), !m_of.bad(), "Error set on output stream for: " << m_outfile_path_c);
 
             class LinkList: private StringList
             {
@@ -1375,6 +1376,7 @@ namespace {
             if(use_arg_file) {
                 cmd_ss << "@\"" << FmtShell(command_file, is_windows) << "\"";
                 command_file_stream.close();
+                ASSERT_BUG(Span(), !command_file_stream.bad(), "Error set on output stream for: " << m_outfile_path_c);
             }
             //DEBUG("- " << cmd_ss.str());
             ::std::cout << "Running command - " << cmd_ss.str() << ::std::endl;
