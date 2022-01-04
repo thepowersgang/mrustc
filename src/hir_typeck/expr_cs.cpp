@@ -3745,6 +3745,7 @@ namespace {
 
         #if 1
         // If the coercion is of a block, apply the mutation to the inner node
+        ASSERT_BUG(Span(), orig_node_ptr, "Null node pointer passed to `add_coerce_borrow`");
         while( auto* p = dynamic_cast< ::HIR::ExprNode_Block*>(&**node_ptr_ptr) )
         {
             DEBUG("- Moving into block");
@@ -4545,8 +4546,8 @@ namespace {
                         // If the coercion is of a block, do the reborrow on the last node of the block
                         // - Cleans up the dumped MIR and prevents needing a reborrow elsewhere.
                         // - TODO: Alter the block's result types
-                        ::HIR::ExprNodeP* npp = node_ptr_ptr;
-                        while( auto* p = dynamic_cast< ::HIR::ExprNode_Block*>(&**npp) )
+                        ::HIR::ExprNodeP* npp = node_ptr_ptr;   // Note: Node pointer can be null (when checking)
+                        while( auto* p = dynamic_cast< ::HIR::ExprNode_Block*>(npp->get()) )
                         {
                             DEBUG("- Propagate to the last node of a _Block");
                             ASSERT_BUG( p->span(), context.m_ivars.types_equal(p->m_res_type, p->m_value_node->m_res_type),
@@ -4560,6 +4561,7 @@ namespace {
                                 p->m_res_type = dst.clone();
                             }
                             npp = &p->m_value_node;
+                            ASSERT_BUG(sp, *npp, "Null node pointer on block");
                         }
                         ::HIR::ExprNodeP& node_ptr = *npp;
 
@@ -4723,17 +4725,18 @@ namespace {
                         // - TODO: Alter the block's result types
                         {
                             ::HIR::ExprNodeP* npp = node_ptr_ptr;
-                            while( auto* p = dynamic_cast< ::HIR::ExprNode_Block*>(&**npp) )
+                            while( auto* p = dynamic_cast< ::HIR::ExprNode_Block*>(npp->get()) )
                             {
                                 if( !context.m_ivars.types_equal(p->m_res_type, src) ) {
                                     DEBUG("(borrow) Block and result mismatch - " << context.m_ivars.fmt_type(p->m_res_type) << " != " << context.m_ivars.fmt_type(src));
                                     return CoerceResult::Unknown;
                                 }
                                 npp = &p->m_value_node;
+                                ASSERT_BUG(sp, *npp, "Null node pointer in block");
                             }
                         }
                         ::HIR::ExprNodeP* npp = node_ptr_ptr;
-                        while( auto* p = dynamic_cast< ::HIR::ExprNode_Block*>(&**npp) )
+                        while( auto* p = dynamic_cast< ::HIR::ExprNode_Block*>(npp->get()) )
                         {
                             DEBUG("- Propagate borrow coercion to the last node of a _Block: " << context.m_ivars.fmt_type(p->m_res_type));
                             ASSERT_BUG( p->span(), context.m_ivars.types_equal(p->m_res_type, p->m_value_node->m_res_type),
@@ -5475,7 +5478,7 @@ namespace
 
         for(const auto& pty : context.possible_ivar_vals.at(ty_l.data().as_Infer().index).types_coerce_to)
         {
-            HIR::ExprNodeP  stub_node;
+            HIR::ExprNodeP  stub_node;  // Empty node to 
             CoerceResult    res = CoerceResult::Unknown;
             switch(pty.op)
             {
