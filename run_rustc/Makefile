@@ -23,11 +23,13 @@ ifeq ($(RUSTC_VERSION),$(RUSTC_VERSION_DEF))
 else
   OUTDIR_SUF ?= -$(RUSTC_VERSION)
 endif
-# Extension for dynamic libraries
+# Extension for dynamic libraries and platform for script overrides
 ifeq ($(shell uname -s || echo not),Darwin)
   DYLIB_EXT := dylib
+  PLATFORM := macos
 else
   DYLIB_EXT := so
+  PLATFORM := linux
 endif
 
 RUSTC_TARGET ?= x86_64-unknown-linux-gnu
@@ -139,9 +141,9 @@ $(CARGO_HOME)config: Makefile
 $(LIBDIR_S)libstd.rlib: $(BINDIR_S)rustc ../bin/minicargo Makefile
 	@echo "[MINICARGO] $(RUST_SRC_LIBS)std > $(LIBDIR_S)"
 	mkdir -p $(LIBDIR_S)
-	$V+MRUSTC_PATH=$(abspath $(BINDIR_S)rustc) ../bin/minicargo --vendor-dir $(VENDOR_DIR) --script-overrides ../script-overrides/stable-$(RUSTC_VERSION)-linux/ --output-dir $(LIBDIR_S) $(RUST_SRC_LIBS)std
-	$V+MRUSTC_PATH=$(abspath $(BINDIR_S)rustc) ../bin/minicargo --vendor-dir $(VENDOR_DIR) --script-overrides ../script-overrides/stable-$(RUSTC_VERSION)-linux/ --output-dir $(LIBDIR_S) $(RUST_SRC_LIBS)panic_unwind
-	$V+MRUSTC_PATH=$(abspath $(BINDIR_S)rustc) ../bin/minicargo --vendor-dir $(VENDOR_DIR) --script-overrides ../script-overrides/stable-$(RUSTC_VERSION)-linux/ --output-dir $(LIBDIR_S) $(RUST_SRC_LIBS)test
+	$V+MRUSTC_PATH=$(abspath $(BINDIR_S)rustc) ../bin/minicargo --vendor-dir $(VENDOR_DIR) --script-overrides ../script-overrides/stable-$(RUSTC_VERSION)-$(PLATFORM)/ --output-dir $(LIBDIR_S) $(RUST_SRC_LIBS)std
+	$V+MRUSTC_PATH=$(abspath $(BINDIR_S)rustc) ../bin/minicargo --vendor-dir $(VENDOR_DIR) --script-overrides ../script-overrides/stable-$(RUSTC_VERSION)-$(PLATFORM)/ --output-dir $(LIBDIR_S) $(RUST_SRC_LIBS)panic_unwind
+	$V+MRUSTC_PATH=$(abspath $(BINDIR_S)rustc) ../bin/minicargo --vendor-dir $(VENDOR_DIR) --script-overrides ../script-overrides/stable-$(RUSTC_VERSION)-$(PLATFORM)/ --output-dir $(LIBDIR_S) $(RUST_SRC_LIBS)test
 
 # Build hello_world using the bootstrapping compiler (mrustc-built rustc)
 $(BINDIR_S)hello_world: $(RUST_SRC_HELLO) $(LIBDIR_S)libstd.rlib $(BINDIR_S)rustc
