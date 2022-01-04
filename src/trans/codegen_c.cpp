@@ -5676,7 +5676,7 @@ namespace {
                         if( ve.uses_niche() ) {
                             m_of << "( (*"; emit_param(e.args.at(0)); m_of << ")"; emit_enum_path(repr, ve.field); m_of << " < " << ve.offset;
                             m_of << " ? " << ve.field.index;
-                            m_of << " : (*"; emit_param(e.args.at(0)); m_of << ")"; emit_enum_path(repr, ve.field);
+                            m_of << " : (*"; emit_param(e.args.at(0)); m_of << ")"; emit_enum_path(repr, ve.field); m_of << " - " << ve.offset;
                             m_of << " )";
                         }
                         else {
