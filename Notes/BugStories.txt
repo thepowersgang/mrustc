@@ -53,5 +53,20 @@ librustc takes ~20mins to recompile, and that's just one crate out of ~80 in rus
 - Used WinDbgX to reverse debug, located bad pointer coming between a virtual call and the target of the call
 - Cause: calling `call_once` via vtable used mismatched ABI.
 
+
+2022-01-04: Symbol hash mismatch
+================================
+- Mismatch in symbols (on `_ZN4core3num19ASCII_UPPERCASE_MAP17h7b802857e26a00e6E`)
+- Chased the difference down by editing `librustc_codegen_helpers` to add
+  extra println debugging.
+- Cause: Faulty implementation of `discriminant_value` (didn't return variant
+  index)
+- Side-cause: Wasn't using the right compiler sets
+  - Need to use proxy script when bootstrapping rustc (so build scripts and
+    proc macros use the link ABI)
+    - Plugins should also work with this model? assuming structures passed
+      around are abi-stable
+  - Need to compile std with the final rustc (for the same reason)
+
 <!-- vim: ft=markdown
 -->

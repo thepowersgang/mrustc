@@ -5,6 +5,7 @@ set -u  # Error on unset variables
 
 WORKDIR=${WORKDIR:-rustc_bootstrap}/
 
+RUSTC_TARGET=${RUSTC_TARGET:-x86_64-unknown-linux-gnu}
 RUSTC_VERSION=${*-1.29.0}
 RUN_RUSTC_SUF=""
 if [[ "$RUSTC_VERSION" == "1.29.0" ]]; then
@@ -53,11 +54,12 @@ cleanup_mrustc() {
     (cd ${WORKDIR} && mv build mrustc)
 }
 trap cleanup_mrustc EXIT
-(cd ${WORKDIR}build/rustc-${RUSTC_VERSION_NEXT}-src/ && LD_LIBRARY_PATH=${PREFIX}lib/rustlib/x86_64-unknown-linux-gnu/lib ./x.py build --stage 3) > ${WORKDIR}mrustc.log 2>&1
+rm -r ${WORKDIR}build/rustc-${RUSTC_VERSION_NEXT}-src/build
+(cd ${WORKDIR}build/rustc-${RUSTC_VERSION_NEXT}-src/ && LD_LIBRARY_PATH=${PREFIX}lib/rustlib/${RUSTC_TARGET}/lib ./x.py build --stage 3) > ${WORKDIR}mrustc.log 2>&1
 cleanup_mrustc
 trap - EXIT
 rm -rf ${WORKDIR}mrustc-output
-cp -r ${WORKDIR}mrustc/rustc-${RUSTC_VERSION_NEXT}-src/build/x86_64-unknown-linux-gnu/stage2 ${WORKDIR}mrustc-output
+cp -r ${WORKDIR}mrustc/rustc-${RUSTC_VERSION_NEXT}-src/build/${RUSTC_TARGET}/stage2 ${WORKDIR}mrustc-output
 tar -czf ${WORKDIR}mrustc.tar.gz -C ${WORKDIR} mrustc-output
 
 #
@@ -76,5 +78,5 @@ echo "--- Running x.py, see ${WORKDIR}official.log for progress"
 (cd ${WORKDIR}build/rustc-${RUSTC_VERSION_NEXT}-src/ && ./x.py build --stage 3) > ${WORKDIR}official.log 2>&1
 (cd ${WORKDIR} && mv build official)
 rm -rf ${WORKDIR}official-output
-cp -r ${WORKDIR}official/rustc-${RUSTC_VERSION_NEXT}-src/build/x86_64-unknown-linux-gnu/stage2 ${WORKDIR}official-output
+cp -r ${WORKDIR}official/rustc-${RUSTC_VERSION_NEXT}-src/build/${RUSTC_TARGET}/stage2 ${WORKDIR}official-output
 tar -czf ${WORKDIR}official.tar.gz -C ${WORKDIR} official-output
