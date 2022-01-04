@@ -80,7 +80,7 @@ void Codegen_C::emit_function(const RcString& name, const ModuleTree& tree, cons
             m_parent.emit_ctype(ty);
         }
 
-        const ::HIR::TypeRef& get_lvalue_type(const ::MIR::LValue::CRef& val) const
+        ::HIR::TypeRef get_lvalue_type(const ::MIR::LValue::CRef& val) const
         {
             ::HIR::TypeRef ty;
             TU_MATCH_HDRA( (val.lv().m_root), {)

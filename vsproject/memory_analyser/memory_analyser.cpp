@@ -522,7 +522,7 @@ int main(int argc, char* argv[])
         const auto& mod = module_list->Modules[i];
         const auto* mod_name = reinterpret_cast<const MINIDUMP_STRING*>((char*)view + mod.ModuleNameRva);
         module_names.push_back(FMT_STRING(fmt_u16z(mod_name->Buffer)));
-        std::cout << (void*)mod.BaseOfImage << " + " << (void*)mod.SizeOfImage << " : " << module_names.back()  << std::endl;
+        std::cout << (void*)mod.BaseOfImage << " + " << /*for hex formatting*/reinterpret_cast<void*>(static_cast<uintptr_t>(mod.SizeOfImage)) << " : " << module_names.back()  << std::endl;
         if( !SymLoadModule(proc_handle, NULL, module_names.back().c_str(), NULL, mod.BaseOfImage, mod.SizeOfImage) )
             return error("SymLoadModule ext");
     }
@@ -1480,8 +1480,8 @@ bool MemoryStats::are_equal(const TypeRef& val_ty, DWORD64 addr1, DWORD64 addr2)
     if( ty.is_any_basic() || (!ty.wrappers.empty() && ty.wrappers.back().is_pointer()) ) {
         DWORD64 v1 = 0;
         DWORD64 v2 = 0;
-        ReadMemory::read(NULL, addr1, &v1, ty.size(), NULL);
-        ReadMemory::read(NULL, addr2, &v2, ty.size(), NULL);
+        ReadMemory::read(NULL, addr1, &v1, static_cast<DWORD>(ty.size()), NULL);
+        ReadMemory::read(NULL, addr2, &v2, static_cast<DWORD>(ty.size()), NULL);
         //std::cout << ty << " " << v1 << " ?= " << v2 << std::endl;
         return v1 == v2;
     }
@@ -1613,13 +1613,13 @@ void MemoryStats::enum_type_at(const TypeRef& val_ty, DWORD64 addr, bool is_top_
     if( is_top_level )
     {
         m_counts[FMT_STRING(ty << " [" << ty.size() << "]")] ++;
-        m_counts["~TOTAL"] += ty.size();
+        m_counts["~TOTAL"] += static_cast<unsigned>(ty.size());
     }
 
     // 2. Recurse (using special handlers if required)
     if( ty.is_any_basic() || (!ty.wrappers.empty() && ty.wrappers.back().is_pointer()) ) {
         DWORD64 v = 0;
-        ReadMemory::read(NULL, addr, &v, ty.size(), NULL);
+        ReadMemory::read(NULL, addr, &v, static_cast<DWORD>(ty.size()), NULL);
         DO_DEBUG("enum_type_at: " << ty << " @ " << (void*)addr << " = " << (void*)v);
     }
     else if( !ty.wrappers.empty() ) {
