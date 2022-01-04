@@ -2092,7 +2092,8 @@ namespace {
             {
                 if(i != 0)
                     m_of << ", ";
-                emit_ctype( args[i].second, FMT_CB(ss, ss << "arg" << i;) );
+                const auto& ty = args[i].second; // already monomorphised
+                emit_ctype( ty, FMT_CB(ss, ss << (this->type_is_high_align(ty) ? "*" : "") << "arg" << i;) );
             }
             m_of << ") {\n";
 
@@ -2132,19 +2133,21 @@ namespace {
             {
                 if(i != 0)
                     m_of << ", ";
-                emit_ctype( monomorph(e[i].ent), FMT_CB(ss, ss << "_" << i;) );
+                const auto& ty = monomorph(e[i].ent);
+                emit_ctype( ty, FMT_CB(ss, ss << (this->type_is_high_align(ty) ? "*" : "") << "_" << i;) );
             }
             m_of << ") {\n";
             m_of << "\tstruct s_" << Trans_Mangle(p) << " rv = {";
             bool emitted = false;
             for(unsigned int i = 0; i < e.size(); i ++)
             {
-                if( this->type_is_bad_zst(monomorph(e[i].ent)) )
+                const auto& ty = monomorph(e[i].ent);
+                if( this->type_is_bad_zst(ty) )
                     continue ;
                 if(emitted)
                     m_of << ",";
                 emitted = true;
-                m_of << "\n\t\t_" << i;
+                m_of << "\n\t\t" << (this->type_is_high_align(ty) ? "*" : "") << "_" << i;
             }
             if( !emitted )
             {
