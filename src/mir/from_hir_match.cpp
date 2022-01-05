@@ -9,6 +9,7 @@
 #include <hir_typeck/common.hpp>   // monomorphise_type
 #include <algorithm>
 #include <numeric>
+#include <limits>   // std::numeric_limits
 #include <trans/target.hpp>
 
 void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val );
