@@ -27,12 +27,12 @@ endif
 ifeq ($(shell uname -s || echo not),Darwin)
   DYLIB_EXT := dylib
   PLATFORM := macos
+  RUSTC_TARGET ?= x86_64-apple-darwin
 else
   DYLIB_EXT := so
   PLATFORM := linux
+  RUSTC_TARGET ?= x86_64-unknown-linux-gnu
 endif
-
-RUSTC_TARGET ?= x86_64-unknown-linux-gnu
 
 TARGETVER_LEAST_1_29 := $(shell test "$(RUSTC_VERSION)" ">" "1.29" && echo yes)
 TARGETVER_LEAST_1_39 := $(shell test "$(RUSTC_VERSION)" ">" "1.39" && echo yes)

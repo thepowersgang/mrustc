@@ -64,8 +64,6 @@
  use self::generic as arch;
 
 
-diff --git a/llvm/include/llvm/Demangle/MicrosoftDemangleNodes.h b/llvm/include/llvm/Demangle/MicrosoftDemangleNodes.h
-index da9d9d5bfdc0..3d47471f0ef0 100644
 --- src/llvm-project/llvm/include/llvm/Demangle/MicrosoftDemangleNodes.h
 +++ src/llvm-project/llvm/include/llvm/Demangle/MicrosoftDemangleNodes.h
 @@ -16,6 +16,8 @@
@@ -80,18 +78,69 @@ index da9d9d5bfdc0..3d47471f0ef0 100644
 ##
 ## gcc (used by mrustc) has 16-byte uint128_t alignment, while rustc uses 8
 ##
-#--- src/libsyntax/ast.rs
-#+++ src/libsyntax/ast.rs
-#@@ -986,2 +986,2 @@
-#-#[cfg(target_arch = "x86_64")]
-#-static_assert_size!(Expr, 96);
-#+//#[cfg(target_arch = "x86_64")]
-#+//static_assert_size!(Expr, 96);
-#--- src/librustc/ty/sty.rs
-#+++ src/librustc/ty/sty.rs
-#@@ -2258,2 +2258,2 @@
-#-#[cfg(target_arch = "x86_64")]
-#-static_assert_size!(Const<'_>, 40);
-#+//#[cfg(target_arch = "x86_64")]
-#+//static_assert_size!(Const<'_>, 40);
+--- src/libsyntax/ast.rs
++++ src/libsyntax/ast.rs
+@@ -985,3 +985,3 @@ pub struct Expr {
+ // `Expr` is used a lot. Make sure it doesn't unintentionally get bigger.
+-#[cfg(target_arch = "x86_64")]
++#[cfg(all(target_arch = "x86_64", not(rust_compiler="mrustc")))]
+ static_assert_size!(Expr, 96);
 
+--- src/librustc/ty/sty.rs
++++ src/librustc/ty/sty.rs
+@@ -2257,3 +2257,3 @@ pub struct Const<'tcx> {
+
+-#[cfg(target_arch = "x86_64")]
++#[cfg(all(target_arch = "x86_64", not(rust_compiler="mrustc")))]
+ static_assert_size!(Const<'_>, 40);
+
+--- src/librustc/hir/mod.rs
++++ src/librustc/hir/mod.rs
+@@ -1412,8 +1412,8 @@ pub struct Expr {
+ }
+ 
+ // `Expr` is used a lot. Make sure it doesn't unintentionally get bigger.
+-#[cfg(target_arch = "x86_64")]
+-static_assert_size!(Expr, 72);
++#[cfg(all(target_arch = "x86_64", not(rust_compiler="mrustc")))]
++static_assert_size!(Expr, 72);
+ 
+ impl Expr {
+     pub fn precedence(&self) -> ExprPrecedence {
+
+--- src/librustc/mir/interpret/value.rs
++++ src/librustc/mir/interpret/value.rs
+@@ -106,8 +106,8 @@ pub enum Scalar<Tag = (), Id = AllocId> {
+     Ptr(Pointer<Tag, Id>),
+ }
+ 
+-#[cfg(target_arch = "x86_64")]
+-static_assert_size!(Scalar, 24);
++#[cfg(all(target_arch = "x86_64", not(rust_compiler="mrustc")))]
++static_assert_size!(Scalar, 24);
+ 
+ impl<Tag: fmt::Debug, Id: fmt::Debug> fmt::Debug for Scalar<Tag, Id> {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+
+# Workaround linker error attempting to find symbol CFMutableAttributedStringGetTypeID on macOS.
+# See details at https://github.com/servo/core-foundation-rs/pull/357
+--- vendor/core-foundation/src/attributed_string.rs
++++ vendor/core-foundation/src/attributed_string.rs
+@@ -41,7 +41,7 @@ impl CFAttributedString {
+ declare_TCFType!{
+     CFMutableAttributedString, CFMutableAttributedStringRef
+ }
+-impl_TCFType!(CFMutableAttributedString, CFMutableAttributedStringRef, CFMutableAttributedStringGetTypeID);
++impl_TCFType!(CFMutableAttributedString, CFMutableAttributedStringRef, CFAttributedStringGetTypeID);
+ 
+ impl CFMutableAttributedString {
+     #[inline]
+--- vendor/core-foundation-sys/src/attributed_string.rs
++++ vendor/core-foundation-sys/src/attributed_string.rs
+@@ -51,6 +51,4 @@ extern {
+         attr_name: CFStringRef,
+         value: CFTypeRef,
+     );
+-
+-    pub fn CFMutableAttributedStringGetTypeID() -> CFTypeID;
+ }

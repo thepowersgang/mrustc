@@ -532,7 +532,7 @@ namespace
                 ARCH_X86_64
                 };
         }
-        else if(target_name == "x86_64-apple-macosx")
+        else if(target_name == "x86_64-apple-darwin")
         {
             // NOTE: OSX uses Mach-O binaries, which don't fully support the defaults used for GNU targets
             return TargetSpec {
@@ -540,7 +540,7 @@ namespace
                 ARCH_X86_64
                 };
         }
-        else if(target_name == "aarch64-apple-macosx")
+        else if(target_name == "aarch64-apple-darwin")
         {
             // NOTE: OSX uses Mach-O binaries, which don't fully support the defaults used for GNU targets
             return TargetSpec {
