@@ -1,6 +1,8 @@
 @set RUSTC_VERSION=1.39.0
 @set MRUSTC_TARGET_VER=1.39
-@set OUTDIR=output-%RUSTC_VERSION%
+@set RUSTC_TARGET=x86_64-pc-windows-msvc
+@set CFG_COMPILER_HOST_TRIPLE=%RUSTC_TARGET%
+@set OUTDIR=output-%RUSTC_VERSION%\
 @set COMMON_ARGS=--vendor-dir ..\rustc-%RUSTC_VERSION%-src\vendor --manifest-overrides ..\rustc-%RUSTC_VERSION%-overrides.toml
 @if defined PARLEVEL ( set COMMON_ARGS=%COMMON_ARGS% -j %PARLEVEL% )
 @set STD_ARGS=--output-dir %OUTDIR% %COMMON_ARGS%

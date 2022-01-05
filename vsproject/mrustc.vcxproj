@@ -169,6 +169,7 @@
       <AdditionalDependencies>common_lib.lib;mrustc_lib.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(OutDir)</AdditionalLibraryDirectories>
       <AdditionalOptions>/WHOLEARCHIVE:mrustc_lib.lib %(AdditionalOptions)</AdditionalOptions>
+      <StackReserveSize>8388608</StackReserveSize>
       <Profile>true</Profile>
     </Link>
     <ProjectReference />

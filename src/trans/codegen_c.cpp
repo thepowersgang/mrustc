@@ -1666,7 +1666,6 @@ namespace {
                 }
                 else if( TU_TEST1(ty.data(), Path, .binding.is_ExternType()) ) {
                     m_of << "// External";
-                    has_unsized = true;
                 }
                 else {
                     if( s == 0 && m_options.disallow_empty_structs ) {
