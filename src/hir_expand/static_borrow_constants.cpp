@@ -74,17 +74,35 @@ namespace {
             m_all_constant = true;
             ::HIR::ExprVisitorDef::visit(node);
             // If the inner is constant (Array, Struct, Literal, const)
-            if( m_all_constant && node.m_type == HIR::BorrowType::Shared )
+            if( m_all_constant )
             {
-                // And it's not interior mutable
-                if( monomorphise_type_needed(node.m_value->m_res_type) )
+                // Handle a `_Unsize` inner
+                auto* value_ptr_ptr = &node.m_value;
+                if(auto* inner_node = dynamic_cast<::HIR::ExprNode_Unsize*>(value_ptr_ptr->get()))
                 {
-                    DEBUG("-- " << node.m_value->m_res_type << " is generic");
+                    value_ptr_ptr = &inner_node->m_value;
                 }
-                else if( m_resolve.type_is_interior_mutable(node.m_value->span(), node.m_value->m_res_type) == HIR::Compare::Unequal )
+                auto& value_ptr = *value_ptr_ptr;
+
+                // Not generic (can't check for interior mutability)
+                if( monomorphise_type_needed(value_ptr->m_res_type) )
+                {
+                    DEBUG("-- " << value_ptr->m_res_type << " is generic");
+                }
+                // Not mutable (... or at least, not a non-shared non-zst)
+                else if( node.m_type != HIR::BorrowType::Shared /*&& ([&]()->bool{ size_t v = 1; Target_GetSizeOf(value_ptr->span(), m_resolve, value_ptr->m_res_type, v); return v != 0; })()*/ )
+                {
+                    DEBUG("-- Mutable borrow of non-ZST");
+                }
+                // And it's not interior mutable
+                else if( m_resolve.type_is_interior_mutable(value_ptr->span(), value_ptr->m_res_type) != HIR::Compare::Unequal )
+                {
+                    DEBUG("-- " << value_ptr->m_res_type << " could be interior mutable");
+                }
+                else
                 {
                     DEBUG("-- Creating static");
-                    auto val_expr = HIR::ExprPtr(mv$(node.m_value));
+                    auto val_expr = HIR::ExprPtr(mv$(value_ptr));
                     val_expr.m_state = ::HIR::ExprStatePtr(::HIR::ExprState(m_expr_ptr.m_state->m_module, m_expr_ptr.m_state->m_mod_path));
                     val_expr.m_state->m_traits = m_expr_ptr.m_state->m_traits;
                     val_expr.m_state->m_impl_generics = m_expr_ptr.m_state->m_impl_generics;
@@ -98,16 +116,11 @@ namespace {
                     DEBUG("> " << path);
                     // Update the `m_value` to point to a new node
                     auto new_node = NEWNODE(mv$(ty), PathValue, sp, mv$(path), HIR::ExprNode_PathValue::STATIC);
-                    node.m_value = mv$(new_node);
+                    value_ptr = mv$(new_node);
 
                     m_is_constant = true;
                 }
-                else
-                {
-                    DEBUG("-- " << node.m_value->m_res_type << " could be interior mutable");
-                }
             }
-            // TODO: Special case for `&mut []` (or `&mut ZST` in general?)
             m_all_constant = saved_all_constant;
         }
 
@@ -137,6 +150,15 @@ namespace {
             ::HIR::ExprVisitorDef::visit(node);
             m_is_constant = m_all_constant;
         }
+        // - Operations (only cast currently)
+        void visit(::HIR::ExprNode_Cast& node) override {
+            ::HIR::ExprVisitorDef::visit(node);
+            m_is_constant = m_all_constant;
+        }
+        void visit(::HIR::ExprNode_Unsize& node) override {
+            ::HIR::ExprVisitorDef::visit(node);
+            m_is_constant = m_all_constant;
+        }
         // - Root values
         void visit(::HIR::ExprNode_Literal& node) override {
             ::HIR::ExprVisitorDef::visit(node);
@@ -147,13 +169,19 @@ namespace {
             MonomorphState  ms;
             // If the target is a constant, set `m_is_constant`
             auto v = m_resolve.get_value(node.span(), node.m_path, ms, /*signature_only*/true);
-            if(v.is_Constant()) {
+            switch(v.tag())
+            {
+            case StaticTraitResolve::ValuePtr::TAG_Constant:
+            case StaticTraitResolve::ValuePtr::TAG_Function:
                 if( monomorphise_path_needed(node.m_path) ) {
                     DEBUG("Constant path is still generic, can't transform into a `static`");
                 }
                 else {
                     m_is_constant = true;
                 }
+                break;
+            default:
+                break;
             }
         }
     };
