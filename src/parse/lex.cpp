@@ -14,6 +14,7 @@
 #include <cstdlib>  // strtol
 #include <typeinfo>
 #include <algorithm>    // std::count
+#include <limits>       // std::numeric_limits
 #include <cctype>
 //#define TRACE_CHARS
 //#define TRACE_RAW_TOKENS
