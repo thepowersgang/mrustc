@@ -843,7 +843,7 @@ bool Target_GetSizeOf(const Span& sp, const StaticTraitResolve& resolve, const :
 {
     size_t  ignore_align;
     bool rv = Target_GetSizeAndAlignOf(sp, resolve, ty, out_size, ignore_align);
-    if( out_size == SIZE_MAX )
+    if( rv && out_size == SIZE_MAX )
         BUG(sp, "Getting size of Unsized type - " << ty);
     return rv;
 }

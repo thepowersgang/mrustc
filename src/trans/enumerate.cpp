@@ -23,6 +23,7 @@ namespace {
     struct EnumState
     {
         const ::HIR::Crate& crate;
+        StaticTraitResolve  resolve;
         TransList   rv;
 
         // Queue of items to enumerate
@@ -31,6 +32,7 @@ namespace {
 
         EnumState(const ::HIR::Crate& crate):
             crate(crate)
+            , resolve(crate)
         {}
 
         void enum_fcn(::HIR::Path p, const ::HIR::Function& fcn, Trans_Params pp)
@@ -85,7 +87,7 @@ namespace MIR {
             TRACE_FUNCTION_F("");
             for(const auto* ty_p : this->typeids)
             {
-                state.rv.m_typeids.insert( pp.monomorph(state.crate, *ty_p) );
+                state.rv.m_typeids.insert( pp.monomorph(state.resolve, *ty_p) );
             }
             for(const auto& path : this->paths)
             {
@@ -1113,7 +1115,7 @@ namespace {
 
 void Trans_Enumerate_FillFrom_Path(EnumState& state, const ::HIR::Path& path, const Trans_Params& pp)
 {
-    auto path_mono = pp.monomorph(state.crate, path);
+    auto path_mono = pp.monomorph(state.resolve, path);
     Trans_Enumerate_FillFrom_PathMono(state, mv$(path_mono));
 }
 void Trans_Enumerate_FillFrom_PathMono(EnumState& state, ::HIR::Path path_mono)

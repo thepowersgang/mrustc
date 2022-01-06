@@ -189,6 +189,7 @@ namespace {
         public ::HIR::Visitor
     {
         const ::HIR::Crate& m_crate;
+        StaticTraitResolve  m_resolve;
 
         const HIR::ItemPath*  m_current_module_path;
         const HIR::Module*  m_current_module;
@@ -196,9 +197,10 @@ namespace {
         std::map<const HIR::Module*, std::vector< std::pair<HIR::SimplePath, HIR::Static> > >  m_new_statics;
 
     public:
-        OuterVisitor(const ::HIR::Crate& crate):
-            m_crate(crate)
-            ,m_current_module(nullptr)
+        OuterVisitor(const ::HIR::Crate& crate)
+            : m_crate(crate)
+            , m_resolve(m_crate)
+            , m_current_module(nullptr)
         {
         }
 
@@ -267,6 +269,7 @@ namespace {
             m_current_module = &srcmod;
             m_current_module_path = &mod_ip;
 
+            auto _ = m_resolve.set_impl_generics(impl.m_params);
             ::HIR::Visitor::visit_type_impl(impl);
 
             m_current_module = nullptr;
@@ -278,6 +281,7 @@ namespace {
             m_current_module = &srcmod;
             m_current_module_path = &mod_ip;
 
+            auto _ = m_resolve.set_impl_generics(impl.m_params);
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);
 
             m_current_module = nullptr;
@@ -297,7 +301,7 @@ namespace {
                 if( auto* cg = ep->size.opt_Unevaluated() ) {
                     if(cg->is_Unevaluated())
                     {
-                        ExprVisitor_Mutate  ev(m_crate, this->get_new_ty_cb(), *cg->as_Unevaluated());
+                        ExprVisitor_Mutate  ev(m_resolve, this->get_new_ty_cb(), *cg->as_Unevaluated());
                         ev.visit_node_ptr( *cg->as_Unevaluated() );
                     }
                 }
@@ -310,11 +314,11 @@ namespace {
         // Code-containing items
         // ------
         void visit_function(::HIR::ItemPath p, ::HIR::Function& item) override {
-            //auto _ = this->m_ms.set_item_generics(item.m_params);
             if( item.m_code )
             {
+                auto _ = m_resolve.set_item_generics(item.m_params);
                 DEBUG("Function code " << p);
-                ExprVisitor_Mutate  ev(m_crate, this->get_new_ty_cb(), item.m_code);
+                ExprVisitor_Mutate  ev(m_resolve, this->get_new_ty_cb(), item.m_code);
                 ev.visit_node_ptr( item.m_code );
             }
             else
@@ -325,27 +329,28 @@ namespace {
         void visit_static(::HIR::ItemPath p, ::HIR::Static& item) override {
             if( item.m_value )
             {
-                ExprVisitor_Mutate  ev(m_crate, this->get_new_ty_cb(), item.m_value);
+                ExprVisitor_Mutate  ev(m_resolve, this->get_new_ty_cb(), item.m_value);
                 ev.visit_node_ptr(item.m_value);
             }
         }
         void visit_constant(::HIR::ItemPath p, ::HIR::Constant& item) override {
             if( item.m_value )
             {
-                ExprVisitor_Mutate  ev(m_crate, this->get_new_ty_cb(), item.m_value);
+                ExprVisitor_Mutate  ev(m_resolve, this->get_new_ty_cb(), item.m_value);
                 ev.visit_node_ptr(item.m_value);
             }
         }
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override {
             if(auto* e = item.m_data.opt_Value())
             {
+                auto _ = m_resolve.set_impl_generics(item.m_params);
                 for(auto& var : e->variants)
                 {
                     DEBUG("Enum value " << p << " - " << var.name);
 
                     if( var.expr )
                     {
-                        ExprVisitor_Mutate  ev(m_crate, this->get_new_ty_cb(), var.expr);
+                        ExprVisitor_Mutate  ev(m_resolve, this->get_new_ty_cb(), var.expr);
                         ev.visit_node_ptr(var.expr);
                     }
                 }
@@ -356,7 +361,8 @@ namespace {
 
 void HIR_Expand_StaticBorrowConstants_Expr(const ::HIR::Crate& crate, ::HIR::ExprPtr& exp)
 {
-    ExprVisitor_Mutate  ev(crate, [&](Span sp, HIR::TypeRef ty, HIR::ExprPtr val)->HIR::SimplePath {
+    StaticTraitResolve  resolve(crate);
+    ExprVisitor_Mutate  ev(resolve, [&](Span sp, HIR::TypeRef ty, HIR::ExprPtr val)->HIR::SimplePath {
         // How will this work? Can't easily mutate the crate in this context
         // - 
         TODO(exp.span(), "Create new static in per-expression context");

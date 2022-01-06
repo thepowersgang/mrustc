@@ -934,7 +934,7 @@ namespace HIR {
                     throw Defer();
                 }
                 MonomorphState  const_ms;
-                auto ent = get_ent_fullpath(state.sp, state.m_resolve.m_crate, p, EntNS::Value,  const_ms);
+                auto ent = get_ent_fullpath(state.sp, state.m_resolve, p, EntNS::Value,  const_ms);
                 if(ent.is_Static())
                 {
                     const auto& s = *ent.as_Static();
@@ -1103,7 +1103,7 @@ namespace HIR {
                     throw Defer();
                 }
                 MonomorphState  const_ms;
-                auto ent = get_ent_fullpath(state.sp, state.m_resolve.m_crate, p, EntNS::Value,  const_ms);
+                auto ent = get_ent_fullpath(state.sp, state.m_resolve, p, EntNS::Value,  const_ms);
                 MIR_ASSERT(state, ent.is_Constant(), "MIR Constant::Const(" << p << ") didn't point to a Constant - " << ent.tag_str());
                 const auto& c = *ent.as_Constant();
                 if( c.m_value_state == HIR::Constant::ValueState::Unknown )
@@ -2080,7 +2080,7 @@ namespace HIR {
                     auto fcnp = ms.monomorph_path(state.sp, fcnp_raw);
 
                     MonomorphState  fcn_ms;
-                    auto& fcn = get_function(this->root_span, this->resolve.m_crate, fcnp, fcn_ms);
+                    auto& fcn = get_function(this->root_span, this->resolve, fcnp, fcn_ms);
 
                     // Argument values
                     ::std::vector<AllocationPtr>  call_args;

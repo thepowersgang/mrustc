@@ -42,7 +42,7 @@ class StaticTraitResolve:
     mutable ::std::map< ::HIR::Path, HIR::TypeRef>  m_aty_cache;
 
 public:
-    StaticTraitResolve(const ::HIR::Crate& crate):
+    explicit StaticTraitResolve(const ::HIR::Crate& crate):
         TraitResolveCommon(crate)
     {
     }
