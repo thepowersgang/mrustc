@@ -335,7 +335,7 @@ namespace {
                         //args.alternate = false;
                     }
 
-                    if( *s == '0' ) {
+                    if( *s == '0' && s[1] != '$' ) {    // Special case `0$` to be an argument index, instead of zero pad
                         args.zero_pad = true;
                         args.align_char = '0';
                         s ++;
