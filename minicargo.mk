@@ -42,6 +42,7 @@ else ifeq ($(RUSTC_VERSION),1.29.0)
 else ifeq ($(RUSTC_VERSION),1.39.0)
   RUSTC_OUT_BIN := rustc_binary
 else
+  MINICARGO_FLAGS_$(OUTDIR)rustc := --features llvm
   RUSTC_OUT_BIN := rustc_main
 endif
 
@@ -152,11 +153,11 @@ RUSTC_ENV_VARS += MRUSTC_LIBDIR=$(abspath $(OUTDIR))
 
 $(OUTDIR)rustc: $(MRUSTC) $(MINICARGO) LIBS $(LLVM_CONFIG)
 	mkdir -p $(OUTDIR)rustc-build
-	$(RUSTC_ENV_VARS) $(MINICARGO) $(RUSTCSRC)$(SRCDIR_RUSTC) --vendor-dir $(VENDOR_DIR) --output-dir $(OUTDIR)rustc-build -L $(OUTDIR) $(MINICARGO_FLAGS)
+	$(RUSTC_ENV_VARS) $(MINICARGO) $(RUSTCSRC)$(SRCDIR_RUSTC) --vendor-dir $(VENDOR_DIR) --output-dir $(OUTDIR)rustc-build -L $(OUTDIR) $(MINICARGO_FLAGS) $(MINICARGO_FLAGS_$@)
 	test -e $@ -a ! $(OUTDIR)rustc-build/$(RUSTC_OUT_BIN) -nt $@ || cp $(OUTDIR)rustc-build/$(RUSTC_OUT_BIN) $@
 $(OUTDIR)rustc-build/librustc_driver.rlib: $(MRUSTC) $(MINICARGO) LIBS
 	mkdir -p $(OUTDIR)rustc-build
-	$(RUSTC_ENV_VARS) $(MINICARGO) $(RUSTCSRC)$(SRCDIR_RUSTC_DRIVER) --vendor-dir $(VENDOR_DIR) --output-dir $(OUTDIR)rustc-build -L $(OUTDIR) $(MINICARGO_FLAGS)
+	$(RUSTC_ENV_VARS) $(MINICARGO) $(RUSTCSRC)$(SRCDIR_RUSTC_DRIVER) --vendor-dir $(VENDOR_DIR) --output-dir $(OUTDIR)rustc-build -L $(OUTDIR) $(MINICARGO_FLAGS) $(MINICARGO_FLAGS_$(OUTDIR)rustc)
 $(OUTDIR)cargo: $(MRUSTC) LIBS
 	mkdir -p $(OUTDIR)cargo-build
 	MRUSTC_LIBDIR=$(abspath $(OUTDIR)) $(MINICARGO) $(RUSTCSRC)src/tools/cargo --vendor-dir $(VENDOR_DIR) --output-dir $(OUTDIR)cargo-build -L $(OUTDIR) $(MINICARGO_FLAGS)
@@ -210,11 +211,13 @@ LIB_TESTS :=
 LIB_TESTS += alloc
 LIB_TESTS += std
 LIB_TESTS += rustc_data_structures
+#LIB_TESTS += rustc
 rust_tests-libs: $(patsubst %,$(OUTDIR)stdtest/%-test_out.txt, $(LIB_TESTS))
 rust_tests-libs: $(OUTDIR)stdtest/collectionstests_out.txt
 .PRECIOUS: $(OUTDIR)stdtest/alloc-test
 .PRECIOUS: $(OUTDIR)stdtest/std-test
 .PRECIOUS: $(OUTDIR)stdtest/rustc_data_structures-test
+#.PRECIOUS: $(OUTDIR)stdtest/rustc-test
 
 RUNTIME_ARGS_$(OUTDIR)stdtest/alloc-test := --test-threads 1
 RUNTIME_ARGS_$(OUTDIR)stdtest/alloc-test += --skip ::collections::linked_list::tests::test_fuzz
@@ -254,6 +257,9 @@ RUNTIME_ARGS_$(OUTDIR)stdtest/collectionstests += --skip ::vec::drain_filter_unc
 # No support for custom alignment
 RUNTIME_ARGS_$(OUTDIR)stdtest/collectionstests += --skip ::vec::overaligned_allocations
 
+#ENV_$(OUTDIR)stdtest/rustc-test := 
+#ENV_$(OUTDIR)stdtest/rustc-test += CFG_COMPILER_HOST_TRIPLE=$(RUSTC_TARGET)
+
 $(OUTDIR)stdtest/%-test: $(RUSTCSRC)src/lib%/lib.rs LIBS
 	MRUSTC_LIBDIR=$(abspath $(OUTDIR)) $(MINICARGO) --test $(RUSTCSRC)src/lib$* --vendor-dir $(VENDOR_DIR) --output-dir $(dir $@) -L $(OUTDIR)
 $(OUTDIR)stdtest/collectionstests: $(OUTDIR)stdtest/alloc-test
@@ -261,4 +267,4 @@ $(OUTDIR)stdtest/collectionstests: $(OUTDIR)stdtest/alloc-test
 $(OUTDIR)collectionstest_out.txt: $(OUTDIR)%
 $(OUTDIR)%_out.txt: $(OUTDIR)% minicargo.mk
 	@echo "--- [$<]"
-	$V./$< $(RUNTIME_ARGS_$<) > $@ 2>&1 || (tail -n 1 $@; mv $@ $@_fail; false)
+	$(ENV_$<) $V./$< $(RUNTIME_ARGS_$<) > $@ 2>&1 || (tail -n 1 $@; mv $@ $@_fail; false)
