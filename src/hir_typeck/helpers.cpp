@@ -1071,9 +1071,7 @@ bool HMTypeInferrence::types_equal(const ::HIR::TypeRef& rl, const ::HIR::TypeRe
         return types_equal(le.inner, re.inner);
         ),
     (Closure,
-        if( !type_list_equal(*this, le.m_arg_types, re.m_arg_types) )
-            return false;
-        return types_equal(le.m_rettype, re.m_rettype);
+        return le.node == re.node;
         ),
     (Generator,
         return le.node == re.node;

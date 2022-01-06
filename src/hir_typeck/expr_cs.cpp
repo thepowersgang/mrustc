@@ -5869,6 +5869,9 @@ namespace
                     // TODO: Prevent this rule from applying?
                     return OrdEqual;
                     }
+                TU_ARMA(Closure, te_l) {
+                    return OrdEqual;
+                    }
                 TU_ARMA(Borrow, te_l) {
                     const auto& te_r = r.data().as_Borrow();
                     cmp = ord( (int)te_l.type, (int)te_r.type );   // Unique>Shared in the listing, and Unique is more restrictive than Shared
@@ -6636,7 +6639,7 @@ namespace
                         }
                     }
 
-                    if( dest_type && n_ivars == 0 && any_ivar_present == false )
+                    if( dest_type && n_ivars == 0 && any_ivar_present == false && !dest_type->data().is_Closure() )
                     {
                         DEBUG("Suitable option " << *dest_type << " from " << possible_tys);
                         context.equate_types(sp, ty_l, *dest_type);
@@ -6721,6 +6724,23 @@ namespace
                 it = (remove_option ? possible_tys.erase(it) : it + 1);
             }
             DEBUG("possible_tys = " << possible_tys);
+
+            if( possible_tys.size() >= 2
+            // && n_ivars == 0
+             && fallback_ty == IvarPossFallbackType::FinalOption
+             && std::all_of(possible_tys.begin(), possible_tys.end(),  [](const auto& e){ return e.ty && e.ty->data().is_Closure(); })
+             )
+            {
+                const auto& t1_c = possible_tys[0].ty->data().as_Closure();
+                auto ft = HIR::FunctionType{ false, ABI_RUST, t1_c.m_rettype.clone(), {} };
+                for(const auto& t : t1_c.m_arg_types)
+                    ft.m_arg_types.push_back(t.clone());
+                auto new_ty = HIR::TypeRef(std::move(ft));
+                DEBUG("HACK: All options are closures, adding a function pointer - " << new_ty);
+                context.equate_types(sp, ty_l, new_ty);
+                return true;
+            }
+
             // Remove any options that are filled by other options (e.g. `str` and a derferencable String)
             for(auto it = possible_tys.begin(); it != possible_tys.end(); )
             {
