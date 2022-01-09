@@ -164,6 +164,10 @@ namespace {
             ::HIR::ExprVisitorDef::visit(node);
             m_is_constant = true;
         }
+        void visit(::HIR::ExprNode_UnitVariant& node) override {
+            ::HIR::ExprVisitorDef::visit(node);
+            m_is_constant = true;
+        }
         void visit(::HIR::ExprNode_PathValue& node) override {
             ::HIR::ExprVisitorDef::visit(node);
             MonomorphState  ms;
