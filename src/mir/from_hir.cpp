@@ -409,8 +409,7 @@ namespace {
                 this->visit_node_ptr(subnode);
 
                 if( m_builder.block_active() || m_builder.has_result() ) {
-                    // TODO: Emit a drop
-                    m_builder.get_result(sp);
+                    m_builder.get_result_in_lvalue(sp, subnode->m_res_type);    // Storing in a temporary will cause a drop if this is not an lvalue
                     m_builder.terminate_scope(sp, mv$(stmt_scope));
                     diverged |= subnode->m_res_type.data().is_Diverge();
                 }
