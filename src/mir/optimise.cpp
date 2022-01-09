@@ -2181,7 +2181,7 @@ bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::
                         };
                     invalidated = IterPathRes::Complete != iter_path(fcn, set_loc_next, use_loc_inc,
                         [&](auto loc, const auto& stmt)->bool{ return visit_mir_lvalues(stmt, check_cb); },
-                        [&](auto loc, const auto& term)->bool{ return visit_mir_lvalues(term, check_cb); }
+                        [&](auto loc, const auto& term)->bool{ return (term.is_Call() && !visit_mir_lvalues(term, [&](const MIR::LValue& lv, ValUsage vu){return lv == this_var;})) || visit_mir_lvalues(term, check_cb); }
                         );
                 }
                 if( !invalidated )
