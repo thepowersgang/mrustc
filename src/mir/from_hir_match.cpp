@@ -71,7 +71,7 @@ TAGGED_UNION_EX(PatternRule, (), Any,(
 struct PatternRuleset
 {
     unsigned int arm_idx;
-    unsigned int pat_idx;
+    unsigned int arm_rule_idx;
 
     ::std::vector<PatternRule>  m_rules;
     ::std::vector<PatternBinding> m_bindings;
@@ -83,14 +83,13 @@ struct PatternRuleset
 /// Generated code for an arm
 struct ArmCode {
     bool has_condition = false;
-    // TODO: Each pattern can have its own condition w/ false
     struct Pattern {
-        ::MIR::BasicBlockId   code = 0;
+        /// Entrypoint for guard and destructuring
+        ::MIR::BasicBlockId   entry = 0;
+        /// Block jumped to by the guard code when the condition fails
         ::MIR::BasicBlockId   cond_false = ~0u;
-
-        mutable ::MIR::BasicBlockId cond_fail_tgt = 0;
     };
-    std::vector<Pattern> patterns;
+    std::vector<Pattern> rules;
 };
 
 typedef ::std::vector<PatternRuleset>  t_arm_rules;
@@ -260,14 +259,16 @@ void MIR_LowerHIR_Let(MirBuilder& builder, MirConverter& conv, const Span& sp, c
         {
             DEBUG("LET PAT #" << pat_idx << " " << pat << " ==> [" << sr.m_rules << "]");
             arm_rules.push_back( PatternRuleset { 0, pat_idx, mv$(sr.m_rules), mv$(sr.m_bindings) } );
-            ArmCode::Pattern    ap;
+
             auto pat_node = builder.new_bb_unlinked();
             builder.set_cur_block( pat_node );
             conv.destructure_from_list(sp, outer_ty, val.clone(), arm_rules.back().m_bindings);
             builder.end_block(MIR::Terminator::make_Goto(success_node));
-            ap.code = pat_node;
+
+            ArmCode::Pattern    ap;
+            ap.entry = pat_node;
             ArmCode ac;
-            ac.patterns.push_back(ap);
+            ac.rules.push_back(ap);
             arm_code.push_back(ac);
         }
     }
@@ -315,15 +316,13 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
         // - Define variables from the first pattern
         conv.define_vars_from(node.span(), arm.m_patterns.front());
 
-        ac.patterns.resize(arm.m_patterns.size());
-
         auto arm_body_block = builder.new_bb_unlinked();
 
         auto pat_scope = builder.new_scope_split(node.span());
+        auto first_arm_rule_idx = arm_rules.size();
         for( unsigned int pat_idx = 0; pat_idx < arm.m_patterns.size(); pat_idx ++ )
         {
             const auto& pat = arm.m_patterns[pat_idx];
-            auto& ap = ac.patterns[pat_idx];
 
             // - Convert HIR pattern into ruleset
             auto pat_builder = PatternRulesetBuilder { builder.resolve() };
@@ -344,46 +343,77 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
                         const auto& fr = arm_rules[first_rule];
                         ASSERT_BUG(sp, fr.m_bindings.size() == sr.m_bindings.size(), "Disagreement in bindings between pattern - {" << arm_rules[first_rule].m_bindings << "} vs {" << sr.m_bindings << "}");
                         for(size_t j = 0; j < fr.m_bindings.size(); j ++ ) {
-                            ASSERT_BUG(sp, fr.m_bindings[j].binding->m_slot == sr.m_bindings[j].binding->m_slot, "Disagreement in bindings between pattern - {" << arm_rules[first_rule].m_bindings << "} vs {" << sr.m_bindings << "}");
+                            ASSERT_BUG(sp, fr.m_bindings[j].binding->m_slot == sr.m_bindings[j].binding->m_slot,
+                                    "Disagreement in bindings between pattern - {" << arm_rules[first_rule].m_bindings << "} vs {" << sr.m_bindings << "}");
                         }
                     }
-                    arm_rules.push_back( PatternRuleset { arm_idx, pat_idx, mv$(sr.m_rules), mv$(sr.m_bindings) } );
+                    arm_rules.push_back( PatternRuleset { arm_idx, static_cast<unsigned>(arm_rules.size() - first_arm_rule_idx), mv$(sr.m_rules), mv$(sr.m_bindings) } );
                 }
             }
-            ap.code = builder.new_bb_unlinked();
-            builder.set_cur_block( ap.code );
-
-            // Duplicate the condition for each arm
-            // - Needed, because the order has to be: match, condition, destructure, code
-            if(arm.m_cond)
-            {
-                TRACE_FUNCTION_FR("CONDITIONAL","CONDITIONAL");
-                auto freeze_scope = builder.new_scope_freeze(arm.m_cond->span());
-                if( first_rule < arm_rules.size() ) {
-                    conv.destructure_aliases_from_list(arm.m_code->span(), match_ty, match_val.clone(), arm_rules[first_rule].m_bindings);
-                }
-
-                auto tmp_scope = builder.new_scope_temp(arm.m_cond->span());
-                conv.visit_node_ptr( arm.m_cond );
-                auto cond_lval = builder.get_result_in_if_cond(arm.m_cond->span());
-                builder.terminate_scope( arm.m_code->span(), mv$(tmp_scope) );
-                builder.terminate_scope( arm.m_code->span(), mv$(freeze_scope) );
-
-                ap.cond_false = builder.new_bb_unlinked();
-
-                auto destructure_block = builder.new_bb_unlinked();
-                builder.end_block(::MIR::Terminator::make_If({ mv$(cond_lval), destructure_block, ap.cond_false }));
-                builder.set_cur_block( destructure_block );
-            }
-
-            // - Emit code to destructure the matched pattern
-            if( first_rule < arm_rules.size() ) {
-                conv.destructure_from_list(arm.m_code->span(), match_ty, match_val.clone(), arm_rules[first_rule].m_bindings);
-            }
-            // TODO: Previous versions had reachable=false here (causing a use-after-free), would having `true` lead to leaks?
-            builder.end_split_arm( arm.m_code->span(), pat_scope, /*reachable=*/true );
-            builder.end_block(::MIR::Terminator::make_Goto(arm_body_block));
         }
+
+        // Generate `if` guard and destructuring code
+        // - Prefers to use one copy (if all rules have the same binding set)
+        {
+            bool same_bindings = std::all_of(arm_rules.begin() + first_arm_rule_idx+1, arm_rules.end(),
+                    [&](const PatternRuleset& r)->bool{ return r.m_bindings == arm_rules[first_arm_rule_idx].m_bindings; }
+                    );
+
+            auto emit_condition = [&](MIR::BasicBlockId& cond_false, const std::vector<PatternBinding>& bindings) {
+                if( arm.m_cond )
+                {
+                    auto freeze_scope = builder.new_scope_freeze(arm.m_cond->span());
+                    TRACE_FUNCTION_FR("CONDITIONAL", "CONDITIONAL");
+                    conv.destructure_aliases_from_list(arm.m_code->span(), match_ty, match_val.clone(), bindings);
+
+                    auto tmp_scope = builder.new_scope_temp(arm.m_cond->span());
+                    conv.visit_node_ptr( arm.m_cond );
+                    auto cond_lval = builder.get_result_in_if_cond(arm.m_cond->span());
+                    builder.terminate_scope( arm.m_code->span(), mv$(tmp_scope) );
+                    builder.terminate_scope( arm.m_code->span(), mv$(freeze_scope) );
+
+                    cond_false = builder.new_bb_unlinked();
+
+                    auto destructure_block = builder.new_bb_unlinked();
+                    builder.end_block(::MIR::Terminator::make_If({ mv$(cond_lval), destructure_block, cond_false }));
+                    builder.set_cur_block( destructure_block );
+                }
+
+                conv.destructure_from_list(arm.m_code->span(), match_ty, match_val.clone(), bindings);
+                // TODO: Previous versions had reachable=false here (causing a use-after-free), would having `true` lead to leaks?
+                builder.end_split_arm( arm.m_code->span(), pat_scope, /*reachable=*/true );
+                builder.end_block(::MIR::Terminator::make_Goto(arm_body_block));
+                };
+            if( same_bindings )
+            {
+                TRACE_FUNCTION_FR("Bindings (common)", "Bindings (common)");
+                unsigned cond_false_block = ~0u;
+                auto entry_block = builder.new_bb_unlinked();
+                builder.set_cur_block( entry_block );
+
+                emit_condition(cond_false_block, arm_rules[first_arm_rule_idx].m_bindings);
+
+                for(size_t i = first_arm_rule_idx; i < arm_rules.size(); i ++)
+                {
+                    ac.rules.push_back(ArmCode::Pattern { entry_block, cond_false_block });
+                }
+            }
+            else
+            {
+                for(size_t i = first_arm_rule_idx; i < arm_rules.size(); i ++)
+                {
+                    TRACE_FUNCTION_FR("Bindings (AR" << i << ")", "Bindings (AR" << i << ")");
+                    unsigned cond_false_block = ~0u;
+                    auto entry_block = builder.new_bb_unlinked();
+                    builder.set_cur_block( entry_block );
+
+                    emit_condition(cond_false_block, arm_rules[i].m_bindings);
+
+                    ac.rules.push_back(ArmCode::Pattern { entry_block, cond_false_block });
+                }
+            }
+        }
+
         builder.terminate_scope( sp, mv$(pat_scope) );
 
         // Condition
@@ -473,7 +503,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
 
     for(const auto& arm_rule : arm_rules)
     {
-        DEBUG("> (" << arm_rule.arm_idx << ", " << arm_rule.pat_idx << ") - " << arm_rule.m_rules
+        DEBUG("> (" << arm_rule.arm_idx << ", " << arm_rule.arm_rule_idx << ") - " << arm_rule.m_rules
                 << (arm_code[arm_rule.arm_idx].has_condition ? " (cond)" : ""));
     }
 
@@ -486,12 +516,14 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
     //  > equal rules cannot be reordered
     //  > Values cannot cross ranges that contain the value
     //  > This will have to be a bubble sort to ensure that it's correctly stable.
-    sort_rulesets(arm_rules);
-    DEBUG("Post-sort");
-    for(const auto& arm_rule : arm_rules)
-    {
-        DEBUG("> (" << arm_rule.arm_idx << ", " << arm_rule.pat_idx << ") - " << arm_rule.m_rules
-                << (arm_code[arm_rule.arm_idx].has_condition ? " (cond)" : ""));
+    if( !fall_back_on_simple ) {
+        sort_rulesets(arm_rules);
+        DEBUG("Post-sort");
+        for(const auto& arm_rule : arm_rules)
+        {
+            DEBUG("> (" << arm_rule.arm_idx << ", " << arm_rule.arm_rule_idx << ") - " << arm_rule.m_rules
+                    << (arm_code[arm_rule.arm_idx].has_condition ? " (cond)" : ""));
+        }
     }
     // De-duplicate arms (emitting a warning when it happens)
     // - This allows later code to assume that duplicate arms are a codegen bug.
@@ -1889,13 +1921,13 @@ namespace {
             }
             else if( const auto* be = b.opt_ValueRange() )
             {
-                auto check_ends = []( const PatternRule::Data_ValueRange& lo, const PatternRule::Data_ValueRange& hi)->bool {
-                    return lo.is_inclusive == hi.is_inclusive ? lo.last <= hi.last
-                        : (lo.is_inclusive
-                            ? lo.last < hi.last // Lower side is inclusive, higher side exlusive - must be less than higher side
-                            : throw "TODO" // Lower side is excl, higher side incl - lower+1 < higher = lower < higher-1 = lower
-                            );
-                    };
+                //auto check_ends = []( const PatternRule::Data_ValueRange& lo, const PatternRule::Data_ValueRange& hi)->bool {
+                //    return lo.is_inclusive == hi.is_inclusive ? lo.last <= hi.last
+                //        : (lo.is_inclusive
+                //            ? lo.last < hi.last // Lower side is inclusive, higher side exlusive - must be less than higher side
+                //            : throw "TODO" // Lower side is excl, higher side incl - lower+1 < higher = lower < higher-1 = lower
+                //            );
+                //    };
                 assert(ae->is_inclusive && "TODO: Exclusive ranges");
                 assert(be->is_inclusive && "TODO: Exclusive ranges");
                 // Start of B within A
@@ -2243,46 +2275,41 @@ void MIR_LowerHIR_Match_Simple( MirBuilder& builder, MirConverter& conv, ::HIR::
 
     // 1. Generate pattern matches
     builder.set_cur_block( first_cmp_block );
-    for( unsigned int arm_idx = 0; arm_idx < node.m_arms.size(); arm_idx ++ )
+    auto next_arm_bb = builder.new_bb_unlinked();
+    size_t prev_arm_idx = !arm_rules.empty() ? arm_rules[0].arm_idx : 0;
+    for(const auto& pat_rule : arm_rules)
     {
-        const auto& arm = node.m_arms[arm_idx];
-        auto& arm_code = arms_code[arm_idx];
-
-        auto next_arm_bb = builder.new_bb_unlinked();
-
-        for( unsigned int i = 0; i < arm.m_patterns.size(); i ++ )
-        {
-            size_t rule_idx = 0;
-            for(; rule_idx < arm_rules.size(); rule_idx++)
-                if( arm_rules[rule_idx].arm_idx == arm_idx && arm_rules[rule_idx].pat_idx == i )
-                    break;
-            const auto& pat_rule = arm_rules[rule_idx];
-            bool is_last_pat = (i+1 == arm.m_patterns.size());
-            auto next_pattern_bb = (!is_last_pat ? builder.new_bb_unlinked() : next_arm_bb);
-
-            // 1. Check
-            // - If the ruleset is empty, this is a _ arm over a value
-            if( pat_rule.m_rules.size() > 0 )
-            {
-                MIR_LowerHIR_Match_Simple__GeneratePattern(builder, arm.m_code->span(), pat_rule.m_rules.data(), pat_rule.m_rules.size(), node.m_value->m_res_type, match_val, 0, next_pattern_bb);
-            }
-            builder.end_block( ::MIR::Terminator::make_Goto(arm_code.patterns[i].code) );
-
-            // - Go to code/condition check
-            if( arm_code.has_condition )
-            {
-                builder.set_cur_block( arm_code.patterns[i].cond_false );
-                builder.end_block( ::MIR::Terminator::make_Goto(next_arm_bb) );
-            }
-
-            if( !is_last_pat )
-            {
-                builder.set_cur_block( next_pattern_bb );
-            }
+        if( pat_rule.arm_idx != prev_arm_idx ) {
+            DEBUG("New arm (" << prev_arm_idx << " -> " << pat_rule.arm_idx << ")");
+            prev_arm_idx = pat_rule.arm_idx;
+            builder.end_block( ::MIR::Terminator::make_Goto(next_arm_bb) );
+            builder.set_cur_block( next_arm_bb );
+            next_arm_bb = builder.new_bb_unlinked();
         }
-        builder.set_cur_block( next_arm_bb );
+        const auto& arm = node.m_arms[pat_rule.arm_idx];
+        const auto& rc = arms_code[pat_rule.arm_idx].rules[pat_rule.arm_rule_idx];
+        auto next_pattern_bb = builder.new_bb_unlinked();
+
+        // 1. Check
+        // - If the ruleset is empty, this is a _ arm over a value
+        if( pat_rule.m_rules.size() > 0 )
+        {
+            MIR_LowerHIR_Match_Simple__GeneratePattern(builder, arm.m_code->span(), pat_rule.m_rules.data(), pat_rule.m_rules.size(), node.m_value->m_res_type, match_val, 0, next_pattern_bb);
+        }
+        builder.end_block( ::MIR::Terminator::make_Goto(rc.entry) );
+
+        // - Update the condition's failure target
+        if( arms_code[pat_rule.arm_idx].has_condition && (pat_rule.arm_rule_idx == 0 || rc.cond_false != arms_code[pat_rule.arm_idx].rules[0].cond_false) )
+        {
+            builder.set_cur_block( rc.cond_false );
+            builder.end_block( ::MIR::Terminator::make_Goto(next_arm_bb) );
+        }
+
+        builder.set_cur_block( next_pattern_bb );
     }
     // - Kill the final pattern block (which is dead code)
+    builder.end_block( ::MIR::Terminator::make_Diverge({}) );
+    builder.set_cur_block( next_arm_bb );
     builder.end_block( ::MIR::Terminator::make_Diverge({}) );
 }
 
@@ -2720,9 +2747,14 @@ public:
         return *rule_sets[n];
     }
     bool is_arm() const { return is_arm_indexes; }
-    ::std::pair<size_t,size_t> arm_idx(size_t n) const {
+    struct ArmIdxes {
+        size_t  arm;
+        size_t  arm_rule;
+    };
+    ArmIdxes arm_idx(size_t n) const {
         assert(is_arm_indexes);
-        return decode_arm_idx( arm_idxes.at(n) );
+        auto v = decode_arm_idx( arm_idxes.at(n) );
+        return ArmIdxes { v.first, v.second };
     }
     ::MIR::BasicBlockId bb_idx(size_t n) const {
         assert(!is_arm_indexes);
@@ -2890,7 +2922,7 @@ namespace {
             {
                 push_flat_rules(pattern_rules, mv$(r));
             }
-            rv.push_back(PatternRuleset { ruleset.arm_idx, ruleset.pat_idx, mv$(pattern_rules) });
+            rv.push_back(PatternRuleset { ruleset.arm_idx, ruleset.arm_rule_idx, mv$(pattern_rules) });
         }
         return rv;
     }
@@ -2914,7 +2946,7 @@ void MIR_LowerHIR_Match_Grouped(
     t_rules_subset  rules { arm_rules.size(), /*is_arm_indexes=*/true };
     for(const auto& r : arm_rules)
     {
-        rules.push_arm( r.m_rules, r.arm_idx, r.pat_idx );
+        rules.push_arm( r.m_rules, r.arm_idx, r.arm_rule_idx );
     }
 
     auto inst = MatchGenGrouped { builder, sp, match_ty, match_val, arms_code, 0 };
@@ -2960,7 +2992,7 @@ void MatchGenGrouped::gen_for_slice(t_rules_subset arm_rules, size_t ofs, ::MIR:
         // Completed arms
         while( idx < arm_rules.size() && arm_rules[idx].size() <= ofs )
         {
-            auto next = idx+1 == arm_rules.size() ? default_arm : m_builder.new_bb_unlinked();
+            //auto next = idx+1 == arm_rules.size() ? default_arm : m_builder.new_bb_unlinked();
             ASSERT_BUG(sp, arm_rules[idx].size() == ofs, "Offset too large for rule - ofs=" << ofs << ", rules=" << arm_rules[idx]);
             DEBUG(idx << ": Complete");
             // Emit jump to either arm code, or arm condition
@@ -2968,10 +3000,9 @@ void MatchGenGrouped::gen_for_slice(t_rules_subset arm_rules, size_t ofs, ::MIR:
             {
                 auto ai = arm_rules.arm_idx(idx);
                 ASSERT_BUG(sp, m_arms_code.size() > 0, "Bottom-level ruleset with no arm code information");
-                const auto& ac = m_arms_code[ai.first];
-                const auto& ap = ac.patterns[ai.second];
+                const auto& ac = m_arms_code[ai.arm];
 
-                m_builder.end_block( ::MIR::Terminator::make_Goto(ap.code) );
+                m_builder.end_block( ::MIR::Terminator::make_Goto(ac.rules[ai.arm_rule].entry) );
 
                 if( ac.has_condition )
                 {
@@ -2983,24 +3014,23 @@ void MatchGenGrouped::gen_for_slice(t_rules_subset arm_rules, size_t ofs, ::MIR:
                     // - For now, only the first pattern gets edited.
                     // - Maybe clone the blocks used for the condition?
 
+#if 0
                     // Check for marking in `ac` that the block has already been terminated, assert that target is `next`
-                    if( ai.second == 0 )
+                    if( ap.cond_fail_tgt != 0 )
                     {
-                        if( ap.cond_fail_tgt != 0 )
-                        {
-                            ASSERT_BUG(sp, ap.cond_fail_tgt == next, "Condition fail target already set with mismatching arm, set to bb" << ap.cond_fail_tgt << " cur is bb" << next);
-                        }
-                        else
-                        {
-                            ap.cond_fail_tgt = next;
+                        ASSERT_BUG(sp, ap.cond_fail_tgt == next, "Condition fail target already set with mismatching arm, set to bb" << ap.cond_fail_tgt << " cur is bb" << next);
+                    }
+                    else
+                    {
+                        ap.cond_fail_tgt = next;
 
-                            m_builder.set_cur_block( ap.cond_false );
-                            m_builder.end_block( ::MIR::Terminator::make_Goto(next) );
-                        }
+                        m_builder.set_cur_block( ap.cond_false );
+                        m_builder.end_block( ::MIR::Terminator::make_Goto(next) );
                     }
 
                     if( next != default_arm )
                         m_builder.set_cur_block(next);
+#endif
                 }
                 else
                 {
