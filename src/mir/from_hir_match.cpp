@@ -338,7 +338,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
                 else
                 {
                     DEBUG("ARM PAT (" << arm_idx << "," << pat_idx << " #" << i << ") " << pat << " ==> [" << sr.m_rules << "]");
-                    // Ensure that all patterns bindind to the same set of variables (only check the variables)
+                    // Ensure that all patterns binding to the same set of variables (only check the variables)
                     if( first_rule < arm_rules.size() ) {
                         const auto& fr = arm_rules[first_rule];
                         ASSERT_BUG(sp, fr.m_bindings.size() == sr.m_bindings.size(), "Disagreement in bindings between pattern - {" << arm_rules[first_rule].m_bindings << "} vs {" << sr.m_bindings << "}");
@@ -432,7 +432,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
 
             // NOTE: Paused so that later code (which knows what the false branch will be) can end it correctly
 
-            // TODO: What to do with contidionals in the fast model?
+            // TODO: What to do with conditionals in the fast model?
             // > Could split the match on each conditional - separating such that if a conditional fails it can fall into the other compatible branches.
             fall_back_on_simple = true;
         }

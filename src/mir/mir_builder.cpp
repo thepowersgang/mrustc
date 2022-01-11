@@ -1127,7 +1127,7 @@ namespace
             case VarState::TAG_MovedOut: {
                 const auto& nse = new_state.as_MovedOut();
 
-                // Create a new staet that is internally valid and uses the same drop flag
+                // Create a new state that is internally valid and uses the same drop flag
                 old_state = VarState::make_MovedOut({ box$(VarState::make_Valid({})), nse.outer_flag });
                 auto& ose = old_state.as_MovedOut();
                 if( ose.outer_flag != ~0u )
