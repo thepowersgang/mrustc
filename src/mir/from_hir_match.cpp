@@ -395,7 +395,10 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
 
                 for(size_t i = first_arm_rule_idx; i < arm_rules.size(); i ++)
                 {
-                    ac.rules.push_back(ArmCode::Pattern { entry_block, cond_false_block });
+                    ArmCode ap;
+                    ap.entry = entry_block;
+                    ap.cond_false = cond_false_block;
+                    ac.rules.push_back(mv$(ap));
                 }
             }
             else
@@ -409,7 +412,10 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
 
                     emit_condition(cond_false_block, arm_rules[i].m_bindings);
 
-                    ac.rules.push_back(ArmCode::Pattern { entry_block, cond_false_block });
+                    ArmCode ap;
+                    ap.entry = entry_block;
+                    ap.cond_false = cond_false_block;
+                    ac.rules.push_back(mv$(ap));
                 }
             }
         }
