@@ -1526,7 +1526,19 @@ void MirBuilder::end_split_arm(const Span& sp, const ScopeHandle& handle, bool r
     }
     if( !early )
     {
-        sd_split.arms.push_back( {} );
+        SplitArm arm;
+        DEBUG("New Arm");
+        for(auto& ent : sd_split.cond_state.states)
+        {
+            DEBUG(" Condition State _" << ent.first << " = " << ent.second);
+            arm.states.insert(::std::make_pair( ent.first, ent.second.clone() ));
+        }
+        for(auto& ent : sd_split.cond_state.arg_states)
+        {
+            DEBUG(" Condition Argument(" << ent.first << ") = " << ent.second);
+            arm.arg_states.insert(::std::make_pair( ent.first, ent.second.clone() ));
+        }
+        sd_split.arms.push_back(mv$(arm));
     }
 }
 void MirBuilder::end_split_arm_early(const Span& sp)
@@ -1556,6 +1568,42 @@ void MirBuilder::end_split_arm_early(const Span& sp)
         }
         // TODO: What if this is a loop?
     }
+}
+void MirBuilder::end_split_condition(const Span& sp, const ScopeHandle& handle)
+{
+    ASSERT_BUG(sp, handle.idx < m_scopes.size(), "Handle passed to end_split_arm is invalid");
+    auto& sd = m_scopes.at( handle.idx );
+    ASSERT_BUG(sp, sd.data.is_Split(), "Ending split arm on non-Split arm - " << sd.data.tag_str());
+    auto& sd_split = sd.data.as_Split();
+    ASSERT_BUG(sp, !sd_split.arms.empty(), "Split arm list is empty (impossible)");
+
+    const auto& this_arm_state = sd_split.arms.back();
+
+    DEBUG("Split condition clause end: merging");
+
+    auto merge_list = [sp,this](const auto& states, auto& end_states, auto type) {
+        // Insert copies of the parent state
+        for(const auto& ent : states) {
+            if( end_states.count(ent.first) == 0 ) {
+                end_states.insert(::std::make_pair( ent.first, get_slot_state(sp, ent.first, type, 1).clone() ));
+            }
+        }
+        // Merge state
+        for(auto& ent : end_states)
+        {
+            auto idx = ent.first;
+            auto& out_state = ent.second;
+
+            // Merge the states
+            auto it = states.find(idx);
+            const auto& src_state = (it != states.end() ? it->second : get_slot_state(sp, idx, type, 1));
+
+            auto lv = (type == SlotType::Local ? ::MIR::LValue::new_Local(idx) : ::MIR::LValue::new_Argument(idx));
+            merge_state(sp, *this, mv$(lv), out_state, src_state);
+        }
+        };
+    merge_list(this_arm_state.states, sd_split.cond_state.states, SlotType::Local);
+    merge_list(this_arm_state.arg_states, sd_split.cond_state.arg_states, SlotType::Argument);
 }
 void MirBuilder::complete_scope(ScopeDef& sd)
 {
