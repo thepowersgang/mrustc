@@ -387,7 +387,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             if( same_bindings )
             {
                 TRACE_FUNCTION_FR("Bindings (common)", "Bindings (common)");
-                unsigned cond_false_block = ~0u;
+                MIR::BasicBlockId cond_false_block = ~0u;
                 auto entry_block = builder.new_bb_unlinked();
                 builder.set_cur_block( entry_block );
 
@@ -395,7 +395,10 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
 
                 for(size_t i = first_arm_rule_idx; i < arm_rules.size(); i ++)
                 {
-                    ac.rules.push_back(ArmCode::Pattern { entry_block, cond_false_block });
+                    ArmCode::Pattern    acp;
+                    acp.entry = entry_block;
+                    acp.cond_false = cond_false_block;
+                    ac.rules.push_back(acp);
                 }
             }
             else
@@ -403,13 +406,16 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
                 for(size_t i = first_arm_rule_idx; i < arm_rules.size(); i ++)
                 {
                     TRACE_FUNCTION_FR("Bindings (AR" << i << ")", "Bindings (AR" << i << ")");
-                    unsigned cond_false_block = ~0u;
+                    MIR::BasicBlockId cond_false_block = ~0u;
                     auto entry_block = builder.new_bb_unlinked();
                     builder.set_cur_block( entry_block );
 
                     emit_condition(cond_false_block, arm_rules[i].m_bindings);
 
-                    ac.rules.push_back(ArmCode::Pattern { entry_block, cond_false_block });
+                    ArmCode::Pattern    acp;
+                    acp.entry = entry_block;
+                    acp.cond_false = cond_false_block;
+                    ac.rules.push_back(acp);
                 }
             }
         }
