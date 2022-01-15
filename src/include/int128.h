@@ -69,6 +69,16 @@ public:
     U128& operator<<=(unsigned bits) { *this = *this << bits; return *this; }
     U128& operator>>=(unsigned bits) { *this = *this >> bits; return *this; }
 
+    U128 operator<<(U128 bits) const {
+        if(bits >= 128)
+            return U128(0);
+        return *this << static_cast<unsigned>(bits.truncate_u64());
+    }
+    U128 operator>>(U128 bits) const {
+        if(bits >= 128)
+            return U128(0);
+        return *this >> static_cast<unsigned>(bits.truncate_u64());
+    }
     U128 operator<<(unsigned bits) const {
         if(bits == 0)
             return *this;

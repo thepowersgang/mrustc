@@ -24,18 +24,26 @@ bool Token::operator==(const char* s) const
     return (this->type == TokenClass::Ident || this->type == TokenClass::Symbol) && this->strval == s;
 }
 
-uint64_t Token::integer() const
+uint64_t Token::integer_64(const Lexer& l) const
+{
+    if( this->type != TokenClass::Integer || !this->numbers.int_val.is_u64() ) {
+        ::std::cerr << l << "Syntax error: Expected [integer:64] - got " << *this << ::std::endl;
+        throw "ERROR";
+    }
+    return this->numbers.int_val.truncate_u64();
+}
+U128 Token::integer_128(const Lexer& l) const
 {
     if( this->type != TokenClass::Integer ) {
-        ::std::cerr << "?: Syntax error: Expected [integer] - got " << *this << ::std::endl;
+        ::std::cerr << l << "Syntax error: Expected [integer] - got " << *this << ::std::endl;
         throw "ERROR";
     }
     return this->numbers.int_val;
 }
-double Token::real() const
+double Token::real(const Lexer& l) const
 {
     if( this->type != TokenClass::Real ) {
-        ::std::cerr << "?: Syntax error: Expected [real] - got " << *this << ::std::endl;
+        ::std::cerr << l << "Syntax error: Expected [real] - got " << *this << ::std::endl;
         throw "ERROR";
     }
     return this->numbers.real_val;
@@ -279,7 +287,7 @@ void Lexer::advance()
                 if( !::std::isxdigit(ch) )
                     throw "ERROR";
 
-                uint64_t    rv = 0;
+                U128    rv(0);
                 while(::std::isxdigit(ch))
                 {
                     rv *= 16;
@@ -371,7 +379,7 @@ void Lexer::advance()
             }
         }
 
-        uint64_t    rv = 0;
+        U128    rv(0);
         while(::std::isdigit(ch))
         {
             rv *= 10;

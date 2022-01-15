@@ -153,10 +153,10 @@ bool Parser::parse_one()
             {
                 lex.check_consume('@');
                 lex.check(TokenClass::Integer);
-                auto ofs = lex.consume().integer();
+                auto ofs = lex.consume().integer_64(lex);
                 lex.check_consume('+');
                 lex.check(TokenClass::Integer);
-                auto size = lex.consume().integer();
+                auto size = lex.consume().integer_64(lex);
                 lex.check_consume('=');
                 if( lex.next() == TokenClass::String )
                 {
@@ -195,10 +195,10 @@ bool Parser::parse_one()
 
         lex.check_consume('{');
         lex.check_consume("SIZE");
-        rv.size = lex.consume().integer();
+        rv.size = lex.consume().integer_64(lex);
         lex.check_consume(',');
         lex.check_consume("ALIGN");
-        rv.alignment = lex.consume().integer();
+        rv.alignment = lex.consume().integer_64(lex);
         lex.check_consume(';');
 
         // Drop glue (if present)
@@ -229,7 +229,7 @@ bool Parser::parse_one()
             // Data
             if(lex.next() == TokenClass::Integer)
             {
-                size_t ofs = lex.consume().integer();
+                size_t ofs = lex.consume().integer_64(lex);
                 lex.check_consume('=');
                 auto ty = parse_type();
                 lex.check_consume(';');
@@ -242,13 +242,13 @@ bool Parser::parse_one()
             {
                 lex.check_consume('@');
                 lex.check_consume('[');
-                rv.tag_path.base_field = lex.consume().integer();
+                rv.tag_path.base_field = lex.consume().integer_64(lex);
                 if( lex.consume_if(',') )
                 {
                     while(lex.next() != ']')
                     {
                         lex.check(TokenClass::Integer);
-                        rv.tag_path.other_indexes.push_back( lex.consume().integer() );
+                        rv.tag_path.other_indexes.push_back( lex.consume().integer_64(lex) );
                         if( !lex.consume_if(',') )
                             break;
                     }
@@ -267,7 +267,7 @@ bool Parser::parse_one()
                         var.tag_data = ::std::move(lex.consume().strval);
                     }
                     if(lex.consume_if('=')) {
-                        var.data_field = lex.check_consume(TokenClass::Integer).integer();
+                        var.data_field = lex.check_consume(TokenClass::Integer).integer_64(lex);
                     }
                     else {
                         var.data_field = SIZE_MAX;
@@ -378,13 +378,13 @@ bool Parser::parse_one()
                 if( lex.consume_if('@') )
                 {
                     lex.check(TokenClass::Integer);
-                    auto idx = static_cast<unsigned>( lex.consume().integer() );
+                    auto idx = static_cast<unsigned>( lex.consume().integer_64(lex) );
                     lv = ::MIR::LValue::new_Downcast(::std::move(lv), idx);
                 }
                 else if( lex.consume_if('.') )
                 {
                     lex.check(TokenClass::Integer);
-                    auto idx = static_cast<unsigned>( lex.consume().integer() );
+                    auto idx = static_cast<unsigned>( lex.consume().integer_64(lex) );
                     lv = ::MIR::LValue::new_Field( ::std::move(lv), idx );
                 }
                 else if( lex.next() == '[' )
@@ -409,9 +409,9 @@ bool Parser::parse_one()
         static ::MIR::Constant parse_const(Parser& p)
         {
             if( p.lex.next() == TokenClass::Integer ) {
-                auto v = p.lex.consume().integer();
+                auto v = p.lex.consume().integer_128(p.lex);
                 auto cty = p.parse_core_type();
-                return ::MIR::Constant::make_Uint({ static_cast<uint64_t>(v), cty });
+                return ::MIR::Constant::make_Uint({ v, cty });
             }
             else if( p.lex.next() == TokenClass::String ) {
                 auto v = ::std::move( p.lex.consume().strval );
@@ -429,13 +429,13 @@ bool Parser::parse_one()
                 bool is_neg = (p.lex.consume() == '-');
                 if( p.lex.next() == TokenClass::Integer )
                 {
-                    auto v = static_cast<int64_t>(p.lex.consume().integer());
+                    auto v = S128(p.lex.consume().integer_128(p.lex));
                     auto cty = p.parse_core_type();
                     return ::MIR::Constant::make_Int({ is_neg ? -v : v, cty });
                 }
                 else if( p.lex.next() == TokenClass::Real )
                 {
-                    auto v = p.lex.consume().real();
+                    auto v = p.lex.consume().real(p.lex);
                     auto cty = p.parse_core_type();
                     return ::MIR::Constant::make_Float({ is_neg ? -v : v, cty });
                 }
@@ -487,7 +487,7 @@ bool Parser::parse_one()
         auto name = ::std::move(lex.consume().strval);
         if(lex.consume_if('='))
         {
-            rv.drop_flags.push_back(lex.consume().integer() != 0);
+            rv.drop_flags.push_back(lex.consume().integer_64(lex) != 0);
             drop_flag_names.push_back(::std::move(name));
         }
         else if(lex.consume_if(':'))
@@ -508,7 +508,7 @@ bool Parser::parse_one()
         ::std::vector<::MIR::Statement> stmts;
         ::MIR::Terminator   term;
 
-        if( lex.next().integer() != rv.blocks.size() )
+        if( lex.next().integer_64(lex) != rv.blocks.size() )
         {
             // TODO: Error.
         }
@@ -574,7 +574,7 @@ bool Parser::parse_one()
                         {
                             // Sized array
                             lex.check(TokenClass::Integer);
-                            auto size_val = static_cast<unsigned>(lex.consume().integer());
+                            auto size_val = static_cast<unsigned>(lex.consume().integer_64(lex));
                             lex.check_consume(']');
 
                             src_rval = ::MIR::RValue::make_SizedArray({ ::std::move(vals[0]), size_val });
@@ -614,7 +614,7 @@ bool Parser::parse_one()
                     auto path = HIR::GenericPath { RcString( lex.check_consume(TokenClass::Ident).strval.c_str() ) };
                     //auto idx = static_cast<unsigned>(lex.consume_integer());
                     lex.check(TokenClass::Integer);
-                    auto idx = static_cast<unsigned>(lex.consume().integer());
+                    auto idx = static_cast<unsigned>(lex.consume().integer_64(lex));
                     auto val = H::parse_param(*this, var_names);
 
                     src_rval = ::MIR::RValue::make_UnionVariant({ ::std::move(path), idx, ::std::move(val) });
@@ -623,7 +623,7 @@ bool Parser::parse_one()
                     auto path = HIR::GenericPath { RcString( lex.check_consume(TokenClass::Ident).strval.c_str() ) };
                     //auto idx = static_cast<unsigned>(lex.consume_integer());
                     lex.check(TokenClass::Integer);
-                    auto idx = static_cast<unsigned>(lex.consume().integer());
+                    auto idx = static_cast<unsigned>(lex.consume().integer_64(lex));
 
                     lex.check_consume('{');
                     ::std::vector<::MIR::Param> vals;
@@ -739,7 +739,7 @@ bool Parser::parse_one()
                 auto df_idx = static_cast<unsigned>( df_it - drop_flag_names.begin() );
                 lex.check_consume('=');
                 if( lex.next() == TokenClass::Integer ) {
-                    bool val = lex.consume().integer() != 0;
+                    bool val = lex.consume().integer_64(lex) != 0;
                     stmts.push_back(::MIR::Statement::make_SetDropFlag({ df_idx, val, ~0u }));
                 }
                 else {
@@ -990,11 +990,11 @@ bool Parser::parse_one()
         lex.check(TokenClass::Ident);
         if( lex.consume_if("GOTO") )
         {
-            term = ::MIR::Terminator::make_Goto(static_cast<unsigned>(lex.consume().integer()));
+            term = ::MIR::Terminator::make_Goto(static_cast<unsigned>(lex.consume().integer_64(lex)));
         }
         else if( lex.consume_if("PANIC") )
         {
-            term = ::MIR::Terminator::make_Panic({ static_cast<unsigned>(lex.consume().integer()) });
+            term = ::MIR::Terminator::make_Panic({ static_cast<unsigned>(lex.consume().integer_64(lex)) });
         }
         else if( lex.consume_if("RETURN") )
         {
@@ -1012,9 +1012,9 @@ bool Parser::parse_one()
         {
             auto val = H::parse_lvalue(*this, var_names);
             lex.check_consume("goto");
-            auto tgt_true = static_cast<unsigned>(lex.consume().integer());
+            auto tgt_true = static_cast<unsigned>(lex.consume().integer_64(lex));
             lex.check_consume("else");
-            auto tgt_false = static_cast<unsigned>(lex.consume().integer());
+            auto tgt_false = static_cast<unsigned>(lex.consume().integer_64(lex));
             term = ::MIR::Terminator::make_If({ ::std::move(val), tgt_true, tgt_false });
         }
         else if( lex.consume_if("SWITCH") )
@@ -1024,7 +1024,7 @@ bool Parser::parse_one()
             ::std::vector<unsigned> targets;
             while(lex.next() != '{')
             {
-                targets.push_back( static_cast<unsigned>(lex.check_consume(TokenClass::Integer).integer()) );
+                targets.push_back( static_cast<unsigned>(lex.check_consume(TokenClass::Integer).integer_64(lex)) );
                 if( !lex.consume_if(',') )
                     break;
             }
@@ -1042,9 +1042,9 @@ bool Parser::parse_one()
                 ::std::vector<uint64_t> values;
                 while(lex.next() != '_')
                 {
-                    values.push_back( lex.check_consume(TokenClass::Integer).integer() );
+                    values.push_back( lex.check_consume(TokenClass::Integer).integer_64(lex) );
                     lex.check_consume('=');
-                    targets.push_back( static_cast<unsigned>( lex.check_consume(TokenClass::Integer).integer() ) );
+                    targets.push_back( static_cast<unsigned>( lex.check_consume(TokenClass::Integer).integer_64(lex) ) );
                     lex.check_consume(',');
                 }
                 vals = ::MIR::SwitchValues::make_Unsigned(::std::move(values));
@@ -1054,10 +1054,10 @@ bool Parser::parse_one()
                 while(lex.next() != '_')
                 {
                     auto neg = lex.consume() == '-';
-                    int64_t val = static_cast<int64_t>( lex.check_consume(TokenClass::Integer).integer() );
+                    int64_t val = static_cast<int64_t>( lex.check_consume(TokenClass::Integer).integer_64(lex) );
                     values.push_back( neg ? -val : val );
                     lex.check_consume('=');
-                    targets.push_back( static_cast<unsigned>( lex.check_consume(TokenClass::Integer).integer() ) );
+                    targets.push_back( static_cast<unsigned>( lex.check_consume(TokenClass::Integer).integer_64(lex) ) );
                     lex.check_consume(',');
                 }
                 vals = ::MIR::SwitchValues::make_Signed(::std::move(values));
@@ -1068,7 +1068,7 @@ bool Parser::parse_one()
                 {
                     values.push_back( ::std::move(lex.check_consume(TokenClass::String).strval) );
                     lex.check_consume('=');
-                    targets.push_back( static_cast<unsigned>( lex.check_consume(TokenClass::Integer).integer() ) );
+                    targets.push_back( static_cast<unsigned>( lex.check_consume(TokenClass::Integer).integer_64(lex) ) );
                     lex.check_consume(',');
                 }
                 vals = ::MIR::SwitchValues::make_String(::std::move(values));
@@ -1078,7 +1078,7 @@ bool Parser::parse_one()
             }
             lex.check_consume('_');
             lex.check_consume('=');
-            auto def_tgt = static_cast<unsigned>( lex.check_consume(TokenClass::Integer).integer() );
+            auto def_tgt = static_cast<unsigned>( lex.check_consume(TokenClass::Integer).integer_64(lex) );
             lex.check_consume('}');
 
             term = ::MIR::Terminator::make_SwitchValue({ ::std::move(val), def_tgt, ::std::move(targets), ::std::move(vals) });
@@ -1112,10 +1112,10 @@ bool Parser::parse_one()
             lex.check_consume("goto");
             //auto tgt_idx = lex.consume_integer();
             lex.check(TokenClass::Integer);
-            auto tgt_block = static_cast<unsigned>(lex.consume().integer());
+            auto tgt_block = static_cast<unsigned>(lex.consume().integer_64(lex));
             lex.check_consume("else");
             lex.check(TokenClass::Integer);
-            auto panic_block = static_cast<unsigned>(lex.consume().integer());
+            auto panic_block = static_cast<unsigned>(lex.consume().integer_64(lex));
 
             term = ::MIR::Terminator::make_Call({ tgt_block, panic_block, ::std::move(dst), ::std::move(ct), ::std::move(args) });
         }
@@ -1197,7 +1197,7 @@ RawType Parser::parse_core_type()
         auto rv = parse_type();
         if( lex.consume_if(';') )
         {
-            size_t size = lex.check_consume(TokenClass::Integer).integer();
+            size_t size = lex.check_consume(TokenClass::Integer).integer_64(lex);
             lex.check_consume(']');
             return ::std::move(rv).wrap( TypeWrapper::Ty::Array, size );
         }

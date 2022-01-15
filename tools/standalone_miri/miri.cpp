@@ -884,7 +884,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                             dst_val = static_cast<uint64_t>( src_value.read_i64(0) );
                             if(0)
                         case RawType::U128:
-                            dst_val = static_cast<uint64_t>( src_value.read_u128(0) );
+                            dst_val = src_value.read_u128(0).truncate_u64();
                             if(0)
                         case RawType::I128:
                             LOG_TODO("Cast i128 to " << re.type);
@@ -933,8 +933,8 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                         U128    dst_val;
                         switch(src_ty.inner_type)
                         {
-                        case RawType::U8:   dst_val = src_value.read_u8 (0);    break;
-                        case RawType::I8:   dst_val = src_value.read_i8 (0);    break;
+                        case RawType::U8:   dst_val = U128(src_value.read_u8 (0));    break;
+                        case RawType::I8:   dst_val = U128(src_value.read_i8 (0));    break;
                         default:
                             LOG_TODO("Cast " << src_ty << " to " << re.type);
                         }
@@ -1102,7 +1102,6 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     new_val = Value(ty_l);
                     switch(ty_l.inner_type)
                     {
-                    // TODO: U128
                     case RawType::U128: new_val.write_u128(0, Ops::do_bitwise(v_l.read_u128(0), U128(shift), re.op));   break;
                     case RawType::U64:  new_val.write_u64(0, Ops::do_bitwise(v_l.read_u64(0), static_cast<uint64_t>(shift), re.op));   break;
                     case RawType::U32:  new_val.write_u32(0, Ops::do_bitwise(v_l.read_u32(0), static_cast<uint32_t>(shift), re.op));   break;

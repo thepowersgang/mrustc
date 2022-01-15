@@ -16,7 +16,7 @@ namespace {
     HIR::TypeRef get_core_type(const RcString& s);
     HIR::TypeRef parse_type(TokenStream& lex);
     MIR::LValue parse_lvalue(TokenStream& lex, const ::std::map<RcString, MIR::LValue::Storage>& name_map);
-    MIR::LValue parse_param(TokenStream& lex, const ::std::map<RcString, MIR::LValue::Storage>& name_map);
+    MIR::Param parse_param(TokenStream& lex, const ::std::map<RcString, MIR::LValue::Storage>& name_map);
 
     bool consume_if(TokenStream& lex, eTokenType tok) {
         if( lex.lookahead(0) == tok ) {
@@ -275,7 +275,7 @@ namespace {
                             default:
                                 throw ParseError::Unexpected(lex, ty_tok);
                             }
-                            src = MIR::Constant::make_Int({ is_neg ? -static_cast<int64_t>(v) : static_cast<int64_t>(v), ct });
+                            src = MIR::Constant::make_Int({ is_neg ? -S128(v) : S128(v), ct });
                             } break;
                         case TOK_FLOAT: {
                             auto v = tok.floatval();
@@ -692,7 +692,7 @@ namespace {
                 GET_CHECK_TOK(tok, lex, TOK_INTEGER);
                 auto size = tok.intval();
                 ASSERT_BUG(lex.point_span(), size < UINT_MAX, "");
-                return HIR::TypeRef::new_array(mv$(ity), static_cast<unsigned>(size));
+                return HIR::TypeRef::new_array(mv$(ity), static_cast<unsigned>(size.truncate_u64()));
             }
             else if( tok == TOK_SQUARE_CLOSE )
             {
@@ -759,12 +759,10 @@ namespace {
         }
         else
         {
-            Token   tok;
-            GET_TOK(tok, lex);
-            CHECK_TOK(tok, TOK_IDENT);
-            auto it = name_map.find(tok.ident().name);
+            auto name = lex.getTokenCheck(TOK_IDENT).ident().name;
+            auto it = name_map.find(name);
             if( it == name_map.end() )
-                ERROR(lex.point_span(), E0000, "Unable to find value " << tok.ident().name);
+                ERROR(lex.point_span(), E0000, "Unable to find value " << name);
             return it->second.clone();
         }
     }
@@ -785,12 +783,12 @@ namespace {
             case TOK_DOT:
                 GET_CHECK_TOK(tok, lex, TOK_INTEGER);
                 ASSERT_BUG(lex.point_span(), tok.intval() < UINT_MAX, "");
-                wrappers.push_back(::MIR::LValue::Wrapper::new_Field( static_cast<unsigned>(tok.intval()) ));
+                wrappers.push_back(::MIR::LValue::Wrapper::new_Field( static_cast<unsigned>(tok.intval().truncate_u64()) ));
                 break;
             case TOK_HASH:
                 GET_CHECK_TOK(tok, lex, TOK_INTEGER);
                 ASSERT_BUG(lex.point_span(), tok.intval() < UINT_MAX, "");
-                wrappers.push_back(::MIR::LValue::Wrapper::new_Downcast( static_cast<unsigned>(tok.intval()) ));
+                wrappers.push_back(::MIR::LValue::Wrapper::new_Downcast( static_cast<unsigned>(tok.intval().truncate_u64()) ));
                 break;
             case TOK_STAR:
                 wrappers.push_back(::MIR::LValue::Wrapper::new_Deref());
@@ -802,9 +800,93 @@ namespace {
         }
     }
 
-    MIR::LValue parse_param(TokenStream& lex, const ::std::map<RcString, MIR::LValue::Storage>& name_map)
+    MIR::Param parse_param(TokenStream& lex, const ::std::map<RcString, MIR::LValue::Storage>& name_map)
     {
+        struct H {
+            static HIR::CoreType to_type_float(const Span& sp, eCoreType ct) {
+                switch(ct)
+                {
+                case CORETYPE_F32: return HIR::CoreType::F32;
+                case CORETYPE_F64: return HIR::CoreType::F64;
+                case CORETYPE_ANY:
+                    BUG(sp, "Type suffix required");
+                default:
+                    BUG(sp, "Incorrect type suffix for float - " << coretype_name(ct));
+                }
+            }
+            static HIR::CoreType to_type_signed(const Span& sp, eCoreType ct) {
+                switch(ct)
+                {
+                case CORETYPE_INT : return HIR::CoreType::Isize;
+                case CORETYPE_I8  : return HIR::CoreType::I8;
+                case CORETYPE_I16 : return HIR::CoreType::I16;
+                case CORETYPE_I32 : return HIR::CoreType::I32;
+                case CORETYPE_I64 : return HIR::CoreType::I64;
+                case CORETYPE_I128: return HIR::CoreType::I128;
+                case CORETYPE_ANY:
+                    BUG(sp, "Type suffix required");
+                default:
+                    BUG(sp, "Incorrect type suffix for integer - " << coretype_name(ct));
+                }
+            }
+        };
         // Can be any constant, or an LValue
-        return parse_lvalue(lex, name_map);
+        auto sp = lex.point_span();
+        switch(lex.lookahead(0))
+        {
+        case TOK_INTEGER: {
+            auto v = lex.getTokenCheck(TOK_INTEGER);
+            switch(v.datatype())
+            {
+            case CORETYPE_UINT: return MIR::Constant::make_Uint({ v.intval(), HIR::CoreType::Usize });
+            case CORETYPE_U8  : return MIR::Constant::make_Uint({ v.intval(), HIR::CoreType::U8   });
+            case CORETYPE_U16 : return MIR::Constant::make_Uint({ v.intval(), HIR::CoreType::U16  });
+            case CORETYPE_U32 : return MIR::Constant::make_Uint({ v.intval(), HIR::CoreType::U32  });
+            case CORETYPE_U64 : return MIR::Constant::make_Uint({ v.intval(), HIR::CoreType::U64  });
+            case CORETYPE_U128: return MIR::Constant::make_Uint({ v.intval(), HIR::CoreType::U128 });
+            default:
+                return MIR::Constant::make_Int({ S128(v.intval()), H::to_type_signed(sp, v.datatype()) });
+            }
+            }
+        case TOK_FLOAT: {
+            auto v = lex.getTokenCheck(TOK_INTEGER);
+            return MIR::Constant::make_Float({ v.floatval(), H::to_type_float(sp, v.datatype()) });
+            }
+        case TOK_PLUS:
+            lex.getToken();
+            switch(lex.lookahead(0))
+            {
+            case TOK_INTEGER: {
+                auto v = lex.getTokenCheck(TOK_INTEGER);
+                return MIR::Constant::make_Int({ S128(v.intval()), H::to_type_signed(sp, v.datatype()) });
+            }
+            case TOK_FLOAT: {
+                auto v = lex.getTokenCheck(TOK_INTEGER);
+                return MIR::Constant::make_Float({ v.floatval(), H::to_type_float(sp, v.datatype()) });
+            }
+            default:
+                throw ParseError::Unexpected(lex, lex.getToken(), {TOK_INTEGER, TOK_FLOAT});
+            }
+        case TOK_DASH:
+            lex.getToken();
+            switch(lex.lookahead(0))
+            {
+            case TOK_INTEGER: {
+                auto v = lex.getTokenCheck(TOK_INTEGER);
+                return MIR::Constant::make_Int({ -S128(v.intval()), H::to_type_signed(sp, v.datatype()) });
+                }
+            case TOK_FLOAT: {
+                auto v = lex.getTokenCheck(TOK_INTEGER);
+                return MIR::Constant::make_Float({ -v.floatval(), H::to_type_float(sp, v.datatype()) });
+                }
+            default:
+                throw ParseError::Unexpected(lex, lex.getToken(), {TOK_INTEGER, TOK_FLOAT});
+            }
+        case TOK_IDENT:
+        case TOK_DOUBLE_COLON:
+            return parse_lvalue(lex, name_map);
+        default:
+            throw ParseError::Unexpected(lex, lex.getToken(), {TOK_INTEGER, TOK_FLOAT, TOK_PLUS, TOK_DASH, TOK_IDENT, TOK_DOUBLE_COLON});
+        }
     }
 }

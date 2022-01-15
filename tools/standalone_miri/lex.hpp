@@ -8,6 +8,7 @@
 #pragma once
 #include <string>
 #include <fstream>
+#include "../include/int128.h"
 
 enum class TokenClass
 {
@@ -21,13 +22,16 @@ enum class TokenClass
     Lifetime,
 };
 
+class Lexer;
+
 struct Token
 {
     TokenClass  type;
     ::std::string   strval;
-    union {
+    union Numbers {
         double  real_val;
-        uint64_t    int_val;
+        U128    int_val;
+        Numbers(): int_val(0) {}
     } numbers;
 
     bool operator==(TokenClass tc) const;
@@ -37,8 +41,9 @@ struct Token
     bool operator==(const char* s) const;
     bool operator!=(const char* s) const { return !(*this == s); }
 
-    uint64_t integer() const;
-    double real() const;
+    uint64_t integer_64(const Lexer& l) const;
+    U128 integer_128(const Lexer& l) const;
+    double real(const Lexer& l) const;
 
     friend ::std::ostream& operator<<(::std::ostream& os, const Token& x);
 };

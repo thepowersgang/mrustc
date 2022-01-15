@@ -1,5 +1,9 @@
 #pragma once
 
+#if 1
+#include "../include/int128.h"
+typedef S128    I128;
+#else
 class U128
 {
     friend class I128;
@@ -175,3 +179,5 @@ public:
 
     friend ::std::ostream& operator<<(::std::ostream& os, const I128& x) { x.fmt(os); return os; }
 };
+
+#endif
