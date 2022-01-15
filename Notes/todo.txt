@@ -8,6 +8,12 @@ TODO:
   - Mostly done with trait resolve optimisations
 - De-duplicate `static.cpp`/`helpers.cpp` (lots of common logic)
 
+MIR match generation
+- If there's multiple rules, defer codegen of guards until after the match
+  grid is generated
+  > Rule codegen should store the next block for each rule
+  > Store both the source block and the next block (can store multiple pairs)
+
 
 ## Big change TODOs
 - Support MIR-only RLibs
