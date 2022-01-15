@@ -53,6 +53,7 @@ struct ProgramOptions
     /// Build and run tests?
     bool test = false;
 
+    bool no_default_features = false;
     ::std::vector<::std::string>    features;
 
     int parse(int argc, const char* argv[]);
@@ -107,7 +108,7 @@ int main(int argc, const char* argv[])
         Debug_SetPhase("Load Root");
         auto dir = ::helpers::path(opts.directory ? opts.directory : ".");
         auto m = PackageManifest::load_from_toml( dir / "Cargo.toml" );
-        m.set_features(opts.features, opts.features.empty());
+        m.set_features(opts.features, !opts.no_default_features);
 
         if(false)
         {
@@ -388,6 +389,9 @@ int ProgramOptions::parse(int argc, const char* argv[])
                 }
                 this->features.push_back( ::std::string(a) );
             }
+            else if( ::std::strcmp(arg, "--no-default-features") == 0 ) {
+                this->no_default_features = true;
+            }
             else if( ::std::strcmp(arg, "--pause") == 0 ) {
                 this->pause_before_quit = true;
             }
@@ -431,5 +435,7 @@ void ProgramOptions::help() const
         << "-L <dir>                 : Search for pre-built crates (e.g. libstd) in the specified directory\n"
         << "-j <count>               : Run at most <count> build tasks at once (default is to run only one)\n"
         << "-n                       : Don't build any packages, just list the packages that would be built\n"
+        << "--no-default-features    : \n"
+        << "--features <list>        : \n"
         ;
 }
