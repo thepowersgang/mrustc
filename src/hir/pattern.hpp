@@ -9,6 +9,7 @@
 
 #include <memory>
 #include <vector>
+#include <int128.h>
 #include <tagged_union.hpp>
 #include <hir/path.hpp>
 #include <hir/type.hpp>
@@ -59,7 +60,7 @@ struct Pattern
     TAGGED_UNION(Value, String,
         (Integer, struct {
             ::HIR::CoreType type;  // Str == _
-            uint64_t value; // Signed numbers are encoded as 2's complement
+            U128    value; // Signed numbers are encoded as 2's complement
             }),
         (Float, struct {
             ::HIR::CoreType type;  // Str == _

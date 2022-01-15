@@ -104,7 +104,9 @@ class CHandler_rustc_legacy_const_generics:
 
         auto& list = fcn.m_markings.rustc_legacy_const_generics;
         do {
-            auto idx = lex.getTokenCheck(TOK_INTEGER).intval();
+            auto idx_raw = lex.getTokenCheck(TOK_INTEGER).intval();
+            ASSERT_BUG(lex.point_span(), idx_raw < U128(UINT_MAX), "#[rustc_legacy_const_generics(" << idx_raw << ")] too large");
+            auto idx = static_cast<unsigned>( idx_raw.truncate_u64() );
             ASSERT_BUG(lex.point_span(), std::find(list.begin(), list.end(), idx) == list.end(), "#[rustc_legacy_const_generics(" << idx << ")] duplicate index");
             list.push_back(idx);
         } while( lex.getTokenIf(TOK_COMMA) );
@@ -161,11 +163,11 @@ class CHandler_Repr:
                         auto* val = dynamic_cast<AST::ExprNode_Integer*>(&*n);
                         ASSERT_BUG(n->span(), val, "#[repr(packed(...))] - alignment must be an integer");
                         auto v = val->m_value;
-                        ASSERT_BUG(lex.point_span(), v > 0, "#[repr(packed(" << v << "))] - alignment must be non-zero");
-                        ASSERT_BUG(lex.point_span(), (v & (v-1)) == 0, "#[repr(packed(" << v << "))] - alignment must be a power of two");
+                        ASSERT_BUG(lex.point_span(), v > U128(0), "#[repr(packed(" << v << "))] - alignment must be non-zero");
+                        ASSERT_BUG(lex.point_span(), (v & (v-1)) == U128(0), "#[repr(packed(" << v << "))] - alignment must be a power of two");
                         ASSERT_BUG(lex.point_span(), s->m_markings.align_value == 0, "#[repr(packed(" << v << "))] - conflicts with previous alignment");
                         // TODO: I believe this should change the internal aligment too?
-                        s->m_markings.max_field_align = v;
+                        s->m_markings.max_field_align = v.truncate_u64();
                         lex.getTokenCheck(TOK_PAREN_CLOSE);
                     }
                     else
@@ -185,10 +187,10 @@ class CHandler_Repr:
                     auto* val = dynamic_cast<AST::ExprNode_Integer*>(&*n);
                     ASSERT_BUG(n->span(), val, "#[repr(align(...))] - alignment must be an integer");
                     auto v = val->m_value;
-                    ASSERT_BUG(lex.point_span(), v > 0, "#[repr(align(" << v << "))] - alignment must be non-zero");
-                    ASSERT_BUG(lex.point_span(), (v & (v-1)) == 0, "#[repr(align(" << v << "))] - alignment must be a power of two");
+                    ASSERT_BUG(lex.point_span(), v > U128(0), "#[repr(align(" << v << "))] - alignment must be non-zero");
+                    ASSERT_BUG(lex.point_span(), (v & (v-1)) == U128(0), "#[repr(align(" << v << "))] - alignment must be a power of two");
                     ASSERT_BUG(lex.point_span(), s->m_markings.align_value == 0, "#[repr(align(" << v << "))] - conflicts with previous alignment");
-                    s->m_markings.align_value = v;
+                    s->m_markings.align_value = v.truncate_u64();
                     lex.getTokenCheck(TOK_PAREN_CLOSE);
                 }
                 else if( repr_type == "no_niche" ) {

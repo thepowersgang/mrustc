@@ -628,19 +628,20 @@ namespace {
                 case ::HIR::CoreType::U32:  m_os << e.m_value << "_u32";    break;
                 case ::HIR::CoreType::U64:  m_os << e.m_value << "_u64";    break;
                 case ::HIR::CoreType::Usize:m_os << e.m_value << "_usize";  break;
-                case ::HIR::CoreType::I8:   m_os << static_cast<int64_t>(e.m_value) << "_i8";   break;
-                case ::HIR::CoreType::I16:  m_os << static_cast<int64_t>(e.m_value) << "_i16";  break;
-                case ::HIR::CoreType::I32:  m_os << static_cast<int64_t>(e.m_value) << "_i32";  break;
-                case ::HIR::CoreType::I64:  m_os << static_cast<int64_t>(e.m_value) << "_i64";  break;
-                case ::HIR::CoreType::Isize:m_os << static_cast<int64_t>(e.m_value) << "_isize";break;
-                case ::HIR::CoreType::Char:
-                    if( e.m_value == '\\' || e.m_value == '\'' )
-                        m_os << "'\\" << static_cast<char>(e.m_value) << "'";
-                    else if( ' ' <= e.m_value && e.m_value <= 0x7F )
-                        m_os << "'" << static_cast<char>(e.m_value) << "'";
+                case ::HIR::CoreType::I8:   m_os << /*I128*/(e.m_value) << "_i8";   break;
+                case ::HIR::CoreType::I16:  m_os << /*I128*/(e.m_value) << "_i16";  break;
+                case ::HIR::CoreType::I32:  m_os << /*I128*/(e.m_value) << "_i32";  break;
+                case ::HIR::CoreType::I64:  m_os << /*I128*/(e.m_value) << "_i64";  break;
+                case ::HIR::CoreType::Isize:m_os << /*I128*/(e.m_value) << "_isize";break;
+                case ::HIR::CoreType::Char: {
+                    auto v = e.m_value.truncate_u64();
+                    if( v == '\\' || v == '\'' )
+                        m_os << "'\\" << static_cast<char>(v) << "'";
+                    else if( ' ' <= v && v <= 0x7F )
+                        m_os << "'" << static_cast<char>(v) << "'";
                     else
-                        m_os << "'\\u{" << ::std::hex << e.m_value << ::std::dec << "}'";
-                    break;
+                        m_os << "'\\u{" << ::std::hex << v << ::std::dec << "}'";
+                    } break;
                 default: m_os << e.m_value << "_unk";    break;
                 }
                 ),

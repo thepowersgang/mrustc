@@ -1213,7 +1213,7 @@ namespace {
                         return 0;
                     out_path.sub_fields.push_back(0);
                     out_path.size = size;
-                    return str->m_struct_markings.bounded_max_value + 1;
+                    return str->m_struct_markings.bounded_max_value.truncate_u64() + 1;
                 }
 
                 for(size_t i = 0; i < r->fields.size(); i ++)
@@ -1996,14 +1996,14 @@ std::pair<unsigned,bool> TypeRepr::get_enum_variant(const Span& sp, const Static
             DEBUG("VariantMode::Linear - Niche #" << var_idx);
         }
         else {
-            var_idx = v - ve.offset;
+            var_idx = v.truncate_u64() - ve.offset;
             sub_has_tag = true;
             DEBUG("VariantMode::Linear - Other #" << var_idx);
         }
         }
     TU_ARMA(Values, ve) {
         auto v = lit.slice( this->get_offset(sp, resolve, ve.field), ve.field.size).read_uint(ve.field.size);
-        auto it = std::find(ve.values.begin(), ve.values.end(), v);
+        auto it = std::find(ve.values.begin(), ve.values.end(), v.truncate_u64());
         ASSERT_BUG(sp, it != ve.values.end(), "Invalid enum tag: " << v);
         var_idx = it - ve.values.begin();
         DEBUG("VariantMode::Values - #" << var_idx);

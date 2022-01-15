@@ -18,6 +18,7 @@
 // 0xFE indicates start of an unnamed object
 // 0xFF indicates end of an object
 
+#include <int128.h>
 #include <vector>
 #include <string>
 #include <map>
@@ -107,6 +108,13 @@ public:
         va <<= 1;
         va |= (sign ? 1 : 0);
         write_u64c(va);
+    }
+    void write_u128(U128 v) {
+        write_u64(v.get_lo());
+        write_u64(v.get_hi());
+    }
+    void write_i128(S128 v) {
+        write_u128(v.get_inner());
     }
     void write_double(double v) {
         // - Just raw-writes the double
@@ -278,6 +286,14 @@ public:
     }
     int64_t read_i64() {
         return static_cast<int64_t>(read_u64());
+    }
+    U128 read_u128() {
+        auto lo = read_u64();
+        auto hi = read_u64();
+        return U128(lo, hi);
+    }
+    S128 read_i128() {
+        return S128(read_u128());
     }
     // Variable-length encoded u64 (for array sizes)
     uint64_t read_u64c() {

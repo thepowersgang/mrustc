@@ -527,7 +527,7 @@ struct LowerHIR_ExprNode_Visitor:
             m_rv.reset( new ::HIR::ExprNode_Literal( v.span(),
                 ::HIR::ExprNode_Literal::Data::make_Float({
                     (v.m_datatype == CORETYPE_F32 ? ::HIR::CoreType::F32 : ::HIR::CoreType::F64),
-                    static_cast<double>(v.m_value)
+                    v.m_value.to_double()
                     })
                 ) );
             return ;
@@ -547,7 +547,7 @@ struct LowerHIR_ExprNode_Visitor:
         case CORETYPE_F32:  ct = ::HIR::CoreType::F32;  break;
         case CORETYPE_F64:  ct = ::HIR::CoreType::F64;  break;
         default:
-            BUG(v.span(), "Unknown type for float literal");
+            BUG(v.span(), "Unknown type for float literal - " << coretype_name(v.m_datatype));
         }
         m_rv.reset( new ::HIR::ExprNode_Literal( v.span(),
             ::HIR::ExprNode_Literal::Data::make_Float({ ct, v.m_value })

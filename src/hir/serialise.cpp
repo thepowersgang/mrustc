@@ -625,7 +625,7 @@
                 } break;
             TU_ARM(td, Integer, e) {
                 m_out.write_tag(e.m_datatype);
-                m_out.write_u64c(e.m_intval);
+                m_out.write_u128(e.m_intval);
                 } break;
             TU_ARM(td, Float, e) {
                 m_out.write_tag(e.m_datatype);
@@ -971,11 +971,11 @@
             m_out.write_tag(v.tag());
             TU_MATCHA( (v), (e),
             (Int,
-                m_out.write_i64c(e.v);
+                m_out.write_u128(e.v.get_inner());
                 m_out.write_tag(static_cast<unsigned>(e.t));
                 ),
             (Uint,
-                m_out.write_u64c(e.v);
+                m_out.write_u128(e.v);
                 m_out.write_tag(static_cast<unsigned>(e.t));
                 ),
             (Float,
@@ -1243,7 +1243,7 @@
             m_out.write_count( m.unsized_field );
             m_out.write_count( m.unsized_param );
             if(m.bounded_max)
-                m_out.write_u64(m.bounded_max_value);
+                m_out.write_u128(m.bounded_max_value);
             // TODO: auto_impls
         }
 

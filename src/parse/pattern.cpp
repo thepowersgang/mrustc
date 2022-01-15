@@ -243,7 +243,7 @@ AST::Pattern::Value Parse_PatternValue(TokenStream& lex)
         {
             auto dt = tok.datatype();
             // TODO: Ensure that the type is ANY or a signed integer
-            return AST::Pattern::Value::make_Integer({dt, ~tok.intval() + 1});
+            return AST::Pattern::Value::make_Integer({dt, ~tok.intval() + 1u});
         }
         else if( tok.type() == TOK_FLOAT )
         {
@@ -258,9 +258,9 @@ AST::Pattern::Value Parse_PatternValue(TokenStream& lex)
     case TOK_INTEGER:
         return AST::Pattern::Value::make_Integer({tok.datatype(), tok.intval()});
     case TOK_RWORD_TRUE:
-        return AST::Pattern::Value::make_Integer({CORETYPE_BOOL, 1});
+        return AST::Pattern::Value::make_Integer({CORETYPE_BOOL, U128(1)});
     case TOK_RWORD_FALSE:
-        return AST::Pattern::Value::make_Integer({CORETYPE_BOOL, 0});
+        return AST::Pattern::Value::make_Integer({CORETYPE_BOOL, U128(0)});
     case TOK_STRING:
         return AST::Pattern::Value::make_String( mv$(tok.str()) );
     case TOK_BYTESTRING:
@@ -275,7 +275,7 @@ AST::Pattern::Value Parse_PatternValue(TokenStream& lex)
             return AST::Pattern::Value::make_ByteString({ mv$(n->m_value) });
         }
         else if( auto* n = dynamic_cast<AST::ExprNode_Bool*>(e.get()) ) {
-            return AST::Pattern::Value::make_Integer({CORETYPE_BOOL, n->m_value});
+            return AST::Pattern::Value::make_Integer({CORETYPE_BOOL, U128(n->m_value ? 1 : 0)});
         }
         else if( auto* n = dynamic_cast<AST::ExprNode_Integer*>(e.get()) ) {
             return AST::Pattern::Value::make_Integer({n->m_datatype, n->m_value});
@@ -518,7 +518,7 @@ AST::Pattern Parse_PatternStruct(TokenStream& lex, ProtoSpan ps, AST::Path path)
         ::std::map<unsigned int, AST::Pattern> pats;
         while( GET_TOK(tok, lex) == TOK_INTEGER )
         {
-            unsigned int ofs = static_cast<unsigned int>(tok.intval());
+            unsigned int ofs = static_cast<unsigned int>(tok.intval().truncate_u64());
             GET_CHECK_TOK(tok, lex, TOK_COLON);
             auto val = Parse_Pattern(lex);
             if( ! pats.insert( ::std::make_pair(ofs, mv$(val)) ).second ) {

@@ -62,15 +62,25 @@ Token::Token(enum eTokenType type, ::std::string str):
     m_data(Data::make_String(mv$(str)))
 {
 }
-Token::Token(uint64_t val, enum eCoreType datatype):
+Token::Token(U128 val, enum eCoreType datatype):
     m_type(TOK_INTEGER),
     m_data( Data::make_Integer({datatype, val}) )
 {
 }
-Token::Token(double val, enum eCoreType datatype):
-    m_type(TOK_FLOAT),
-    m_data( Data::make_Float({datatype, val}) )
+Token Token::make_float(double val, enum eCoreType datatype)
 {
+    auto rv = Token(TOK_FLOAT);
+    rv.m_data = Data::make_Float({datatype, val});
+    switch(datatype)
+    {
+    case CORETYPE_F32:
+    case CORETYPE_F64:
+    case CORETYPE_ANY:
+        break;
+    default:
+        throw std::runtime_error("Bad type for float");
+    }
+    return rv;
 }
 Token::Token(const InterpolatedFragment& frag)
 {

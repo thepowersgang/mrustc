@@ -17,6 +17,7 @@
 #include <hir/item_path.hpp>
 #include <limits.h>
 #include <hir_typeck/helpers.hpp>   // monomorph
+#include <trans/target.hpp>
 
 ::HIR::Module LowerHIR_Module(const ::AST::Module& module, ::HIR::ItemPath path, ::std::vector< ::HIR::SimplePath> traits = {});
 ::HIR::Function LowerHIR_Function(::HIR::ItemPath path, const ::AST::AttributeList& attrs, const ::AST::Function& f, const ::HIR::TypeRef& self_type);
@@ -828,10 +829,10 @@ namespace {
                 if( ptr->m_datatype == CORETYPE_UINT || ptr->m_datatype == CORETYPE_ANY )
                 {
                     // TODO: Chage the HIR format to support very large arrays
-                    if( ptr->m_value >= UINT64_MAX ) {
+                    if( ptr->m_value >= U128(UINT64_MAX) ) {
                         ERROR(ty.span(), E0000, "Array size out of bounds - 0x" << ::std::hex << ptr->m_value << " > 0x" << UINT64_MAX << " in " << ::std::dec << ty);
                     }
-                    return ::HIR::TypeRef::new_array( mv$(inner), ptr->m_value );
+                    return ::HIR::TypeRef::new_array( mv$(inner), ptr->m_value.truncate_u64() );
                 }
             }
             if( const auto* ptr = dynamic_cast<const ::AST::ExprNode_NamedValue*>(&*e.size) )
@@ -1050,7 +1051,7 @@ namespace {
     }
     if(ent.m_markings.scalar_valid_start_set)
     {
-        if( ent.m_markings.scalar_valid_start == 1 ) {
+        if( ent.m_markings.scalar_valid_start == U128(1) ) {
             rv.m_struct_markings.is_nonzero = true;
         }
         else {
@@ -1087,13 +1088,13 @@ namespace {
             //TODO: Ensure that this second field is PhantomData
         }
 
-        uint64_t TGT_PTR_MAX = -1;
-        uint64_t    min = 0, max = -1;
+        uint64_t TGT_PTR_MAX = Target_GetPointerBits() == 64 ? UINT64_MAX : UINT32_MAX;
+        U128    min = U128(0), max = U128(UINT64_MAX,UINT64_MAX);
         bool ignore = false;
         if( ty->data().is_Pointer() )
         {
-            min = 0;
-            max = TGT_PTR_MAX;
+            min = U128(0);
+            max = U128(TGT_PTR_MAX);
         }
         else
         {
@@ -1103,12 +1104,12 @@ namespace {
                 ct = ty->data().as_Primitive();
             switch(ct)
             {
-            case ::HIR::CoreType::U8:   max = 0xFF;     break;
-            case ::HIR::CoreType::U16:  max = UINT16_MAX;   break;
-            case ::HIR::CoreType::U32:  max = UINT32_MAX;   break;
-            case ::HIR::CoreType::U64:  max = UINT64_MAX;   break;
-            case ::HIR::CoreType::U128: ignore = true;  break;
-            case ::HIR::CoreType::Usize:  max = TGT_PTR_MAX;   break;
+            case ::HIR::CoreType::U8:   max = U128(0xFF);     break;
+            case ::HIR::CoreType::U16:  max = U128(UINT16_MAX);   break;
+            case ::HIR::CoreType::U32:  max = U128(UINT32_MAX);   break;
+            case ::HIR::CoreType::U64:  max = U128(UINT64_MAX);   break;
+            case ::HIR::CoreType::U128: break;
+            case ::HIR::CoreType::Usize:  max = U128(TGT_PTR_MAX);   break;
 
             case ::HIR::CoreType::I8:   //max = 0x7F;     break;
             case ::HIR::CoreType::I16:  //max = INT16_MAX;   break;

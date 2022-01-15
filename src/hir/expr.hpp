@@ -645,7 +645,7 @@ struct ExprNode_Literal:
     TAGGED_UNION(Data, Integer,
     (Integer, struct {
         ::HIR::CoreType m_type; // if not an integer type, it's unknown
-        uint64_t m_value;
+        U128    m_value;
         }),
     (Float, struct {
         ::HIR::CoreType m_type; // If not a float type, it's unknown

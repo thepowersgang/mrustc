@@ -12,6 +12,7 @@
 #include <memory>   // std::unique_ptr
 #include <hir/type.hpp>
 #include "../hir/asm.hpp"
+#include <int128.h>
 
 struct MonomorphState;
 
@@ -452,11 +453,11 @@ enum class eUniOp
 // Compile-time known values
 TAGGED_UNION_EX(Constant, (), Int, (
     (Int, struct {
-        ::std::int64_t  v;
+        S128    v;
         ::HIR::CoreType t;
         }),
     (Uint, struct {
-        ::std::uint64_t v;
+        U128    v;
         ::HIR::CoreType t;
         }),
     (Float, struct {

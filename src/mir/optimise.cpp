@@ -3272,7 +3272,7 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
             if( Target_GetSizeOf(state.sp, state.m_resolve, tef.params.m_types.at(0), size_val) )
             {
                 DEBUG("size_of = " << size_val);
-                auto val = ::MIR::Constant::make_Uint({ size_val, ::HIR::CoreType::Usize });
+                auto val = ::MIR::Constant::make_Uint({ U128(size_val), ::HIR::CoreType::Usize });
                 bb.statements.push_back(::MIR::Statement::make_Assign({ mv$(te.ret_val), mv$(val) }));
                 bb.terminator = ::MIR::Terminator::make_Goto(te.ret_block);
                 changed = true;
@@ -3284,7 +3284,7 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
             if( Target_GetSizeAndAlignOf(state.sp, state.m_resolve, tef.params.m_types.at(0), size_val, tmp) && size_val != SIZE_MAX )
             {
                 DEBUG("size_of_val = " << size_val);
-                auto val = ::MIR::Constant::make_Uint({ size_val, ::HIR::CoreType::Usize });
+                auto val = ::MIR::Constant::make_Uint({ U128(size_val), ::HIR::CoreType::Usize });
                 bb.statements.push_back(::MIR::Statement::make_Assign({ mv$(te.ret_val), mv$(val) }));
                 bb.terminator = ::MIR::Terminator::make_Goto(te.ret_block);
                 changed = true;
@@ -3296,7 +3296,7 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
             if( Target_GetAlignOf(state.sp, state.m_resolve, tef.params.m_types.at(0), align_val) )
             {
                 DEBUG("align_of = " << align_val);
-                auto val = ::MIR::Constant::make_Uint({ align_val, ::HIR::CoreType::Usize });
+                auto val = ::MIR::Constant::make_Uint({ U128(align_val), ::HIR::CoreType::Usize });
                 bb.statements.push_back(::MIR::Statement::make_Assign({ mv$(te.ret_val), mv$(val) }));
                 bb.terminator = ::MIR::Terminator::make_Goto(te.ret_block);
                 changed = true;
@@ -3310,7 +3310,7 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
             if( Target_GetSizeAndAlignOf(state.sp, state.m_resolve, tef.params.m_types.at(0), size_val, align_val) && align_val > 0 )
             {
                 DEBUG("min_align_of_val = " << align_val);
-                auto val = ::MIR::Constant::make_Uint({ align_val, ::HIR::CoreType::Usize });
+                auto val = ::MIR::Constant::make_Uint({ U128(align_val), ::HIR::CoreType::Usize });
                 bb.statements.push_back(::MIR::Statement::make_Assign({ mv$(te.ret_val), mv$(val) }));
                 bb.terminator = ::MIR::Terminator::make_Goto(te.ret_block);
                 changed = true;
@@ -3428,7 +3428,7 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                         MIR_ASSERT(state, it->second.as_Uint().t == HIR::CoreType::Usize, "Indexing with non-usize constant - " << it->second);
                         auto idx = it->second.as_Uint().v;
                         MIR_ASSERT(state, idx < (1<<30), "Known index is excessively large");
-                        w = MIR::LValue::Wrapper::new_Field( idx );
+                        w = MIR::LValue::Wrapper::new_Field( idx.truncate_u64() );
                         changed = true;
                     }
                 }
@@ -3450,23 +3450,23 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
             if( auto* e = stmt.opt_Assign() )
             {
                 struct H {
-                    static int64_t truncate_s(::HIR::CoreType ct, int64_t v) {
+                    static S128 truncate_s(::HIR::CoreType ct, S128 v) {
                         // Truncate unsigned, then sign extend
                         return v;
                     }
-                    static uint64_t truncate_u(::HIR::CoreType ct, uint64_t v) {
+                    static U128 truncate_u(::HIR::CoreType ct, U128 v) {
                         switch(ct)
                         {
-                        case ::HIR::CoreType::I8:   case ::HIR::CoreType::U8:   return v & 0xFF;
-                        case ::HIR::CoreType::I16:  case ::HIR::CoreType::U16:  return v & 0xFFFF;
-                        case ::HIR::CoreType::I32:  case ::HIR::CoreType::U32:  return v & 0xFFFFFFFF;
-                        case ::HIR::CoreType::I64:  case ::HIR::CoreType::U64:  return v;
+                        case ::HIR::CoreType::I8:   case ::HIR::CoreType::U8:   return v & U128(0xFF);
+                        case ::HIR::CoreType::I16:  case ::HIR::CoreType::U16:  return v & U128(0xFFFF);
+                        case ::HIR::CoreType::I32:  case ::HIR::CoreType::U32:  return v & U128(0xFFFFFFFF);
+                        case ::HIR::CoreType::I64:  case ::HIR::CoreType::U64:  return v & U128(UINT64_MAX);
                         case ::HIR::CoreType::I128: case ::HIR::CoreType::U128: return v;
                         // usize/size - need to handle <64 pointer bits
                         case ::HIR::CoreType::Isize:
                         case ::HIR::CoreType::Usize:
                             if(Target_GetPointerBits() < 64)
-                                return v & (static_cast<uint64_t>(-1) >> (64 - Target_GetPointerBits()));
+                                return v & U128(UINT64_MAX >> (64 - Target_GetPointerBits()));
                             return v;
                         case ::HIR::CoreType::Char:
                             //MIR_BUG(state, "Invalid use of operator on char");
@@ -3532,23 +3532,15 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                 }
                                 else if( const auto* vp = nv.opt_Int() )
                                 {
-                                    if( *te == HIR::CoreType::U128 )
-                                    {
-                                        // u128 destination, can only cast if the value is positive (otherwise the sign extension is lost)
-                                        if( vp->v < 0 ) {
-                                            DEBUG(state << "Cast of negative to u128, sign extension would be lost");
-                                            break;
-                                        }
-                                    }
                                     new_value = ::MIR::Constant::make_Uint({
-                                        H::truncate_u(*te, vp->v),
+                                        H::truncate_u(*te, vp->v.get_inner()),
                                         *te
                                         });
                                 }
                                 else if( const auto* vp = nv.opt_Bool() )
                                 {
                                     new_value = ::MIR::Constant::make_Uint({
-                                        (vp->v ? 1u : 0u),
+                                        U128(vp->v ? 1u : 0u),
                                         *te
                                         });
                                 }
@@ -3564,14 +3556,6 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                             case ::HIR::CoreType::Isize:
                                 if( const auto* vp = nv.opt_Uint() )
                                 {
-                                    // If the destination is i128 and the value is >INT64_MAX, sign extension will break
-                                    if( *te == ::HIR::CoreType::I128 )
-                                    {
-                                        if( vp->v > INT64_MAX ) {
-                                            DEBUG(state << "Cast of large value to i128, sign extension would be incorrect");
-                                            break;
-                                        }
-                                    }
                                     new_value = ::MIR::Constant::make_Int({
                                         H::truncate_s(*te, vp->v),
                                         *te
@@ -3587,7 +3571,7 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                 else if( const auto* vp = nv.opt_Bool() )
                                 {
                                     new_value = ::MIR::Constant::make_Int({
-                                        (vp->v ? 1 : 0),
+                                        S128(vp->v ? 1 : 0),
                                         *te
                                         });
                                 }
@@ -3618,7 +3602,7 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                         const auto& src_ty = state.get_lvalue_type(tmp, se.val);
                         const HIR::Enum& enm = *src_ty.data().as_Path().binding.as_Enum();
                         MIR_ASSERT(state, enm.is_value(), "Casting non-value enum to value");
-                        uint32_t v = enm.get_value(variant_idx);
+                        auto v = enm.get_value(variant_idx);
 
                         auto ct = se.type.data().as_Primitive();
                         switch(ct)
@@ -3629,7 +3613,7 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                         case ::HIR::CoreType::U64:
                         case ::HIR::CoreType::U128:
                         case ::HIR::CoreType::Usize:
-                            new_value = ::MIR::Constant::make_Uint({ v, ct });
+                            new_value = ::MIR::Constant::make_Uint({ U128(v), ct });
                             break;
                         case ::HIR::CoreType::I8:
                         case ::HIR::CoreType::I16:
@@ -3637,7 +3621,7 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                         case ::HIR::CoreType::I64:
                         case ::HIR::CoreType::I128:
                         case ::HIR::CoreType::Isize:
-                            new_value = ::MIR::Constant::make_Int({ static_cast<int32_t>(v), ct });
+                            new_value = ::MIR::Constant::make_Int({ S128(U128(v)), ct });
                             break;
                         case ::HIR::CoreType::F32:
                         case ::HIR::CoreType::F64:
@@ -3880,66 +3864,54 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                 break;
 
                             case ::MIR::eBinOp::BIT_SHL: {
-                                uint64_t shift_len = 0;
+                                U128 shift_len_r;
                                 TU_MATCH_HDRA( (val_r), {)
                                 default:
-                                    MIR_BUG(state, "Mismatched types for eBinOp::BIT_SHL - " << val_l << " << " << val_r << " - " << e->src);
+                                    MIR_BUG(state, "Mismatched types for eBinOp::BIT_SHL - " << val_l << " >> " << val_r);
                                     break;
                                 TU_ARMA(Int, re) {
-                                    shift_len = re.v;
+                                    shift_len_r = re.v.get_inner();
                                     }
                                 TU_ARMA(Uint, re) {
-                                    shift_len = re.v;
+                                    shift_len_r = re.v;
                                     }
                                 }
+                                MIR_ASSERT(state, shift_len_r <= 128, "Const eval error: Over-sized eBinOp::BIT_SHL - " << val_l << " << " << val_r);
+                                auto shift_len = shift_len_r.truncate_u64();
                                 TU_MATCH_HDRA( (val_l), {)
                                 default:
                                     break;
                                 TU_ARMA(Int, le) {
-                                    if( le.t != HIR::CoreType::I128 )
-                                    {
-                                        MIR_ASSERT(state, shift_len < 64, "Const eval error: Over-sized eBinOp::BIT_SHL - " << val_l << " << " << val_r);
-                                        new_value = ::MIR::Constant::make_Int({ H::truncate_s(le.t, le.v << shift_len), le.t });
-                                    }
+                                    new_value = ::MIR::Constant::make_Int({ H::truncate_s(le.t, le.v << shift_len), le.t });
                                     }
                                 TU_ARMA(Uint, le) {
-                                    if( le.t != HIR::CoreType::U128 )
-                                    {
-                                        MIR_ASSERT(state, shift_len < 64, "Const eval error: Over-sized eBinOp::BIT_SHL - " << val_l << " << " << val_r);
-                                        new_value = ::MIR::Constant::make_Uint({ H::truncate_u(le.t, le.v << shift_len), le.t });
-                                    }
+                                    new_value = ::MIR::Constant::make_Uint({ H::truncate_u(le.t, le.v << shift_len), le.t });
                                     }
                                 }
                                 } break;
                             case ::MIR::eBinOp::BIT_SHR:{
-                                uint64_t shift_len = 0;
+                                U128 shift_len_r;
                                 TU_MATCH_HDRA( (val_r), {)
                                 default:
                                     MIR_BUG(state, "Mismatched types for eBinOp::BIT_SHR - " << val_l << " >> " << val_r);
                                     break;
                                 TU_ARMA(Int, re) {
-                                    shift_len = re.v;
+                                    shift_len_r = re.v.get_inner();
                                     }
                                 TU_ARMA(Uint, re) {
-                                    shift_len = re.v;
+                                    shift_len_r = re.v;
                                     }
                                 }
+                                MIR_ASSERT(state, shift_len_r <= 128, "Const eval error: Over-sized shift - " << val_l << " >> " << val_r);
+                                auto shift_len = shift_len_r.truncate_u64();
                                 TU_MATCH_HDRA( (val_l), {)
                                 default:
                                     break;
                                 TU_ARMA(Int, le) {
-                                    if( le.t != HIR::CoreType::I128 )
-                                    {
-                                        MIR_ASSERT(state, shift_len < 64, "Const eval error: Over-sized eBinOp::BIT_SHR - " << val_l << " >> " << val_r);
-                                        new_value = ::MIR::Constant::make_Int({ H::truncate_s(le.t, le.v >> shift_len), le.t });
-                                    }
+                                    new_value = ::MIR::Constant::make_Int({ H::truncate_s(le.t, le.v >> shift_len), le.t });
                                     }
                                 TU_ARMA(Uint, le) {
-                                    if( le.t != HIR::CoreType::U128 )
-                                    {
-                                        MIR_ASSERT(state, shift_len < 64, "Const eval error: Over-sized eBinOp::BIT_SHR - " << val_l << " >> " << val_r);
-                                        new_value = ::MIR::Constant::make_Uint({ H::truncate_u(le.t, le.v >> shift_len), le.t });
-                                    }
+                                    new_value = ::MIR::Constant::make_Uint({ H::truncate_u(le.t, le.v >> shift_len), le.t });
                                     }
                                 }
                                 } break;

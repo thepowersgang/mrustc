@@ -1509,28 +1509,28 @@ void EncodedLiteral::write_usize(size_t ofs,  uint64_t v)
 }
 uint64_t EncodedLiteral::read_usize(size_t ofs) const
 {
-    return EncodedLiteralSlice(*this).slice(ofs).read_uint(Target_GetPointerBits() / 8);
+    return EncodedLiteralSlice(*this).slice(ofs).read_uint(Target_GetPointerBits() / 8).truncate_u64();
 }
-uint64_t EncodedLiteralSlice::read_uint(size_t size/*=0*/) const {
+U128 EncodedLiteralSlice::read_uint(size_t size/*=0*/) const {
     if(size == 0)   size = m_size;
     ASSERT_BUG(Span(), size <= m_size, "Over-large read (" << size << " > " << m_size << ")");
-    uint64_t v = 0;
+    U128 v(0);
     for(size_t i = 0; i < size; i ++) {
         size_t bit = (Target_GetCurSpec().m_arch.m_big_endian ? (size-1-i)*8 : i*8 );
-        if(bit < 64)
-            v |= static_cast<uint64_t>(m_base.bytes[m_ofs + i]) << bit;
+        if(bit < 128)
+            v |= U128(m_base.bytes[m_ofs + i]) << bit;
     }
     DEBUG("("<<size<<") = " << v);
     return v;
 }
-int64_t EncodedLiteralSlice::read_sint(size_t size/*=0*/) const {
+S128 EncodedLiteralSlice::read_sint(size_t size/*=0*/) const {
     auto v = read_uint(size);
-    if(size < 64/8 && v >> (8*size-1) ) {
+    if(size < 128/8 && v >> (8*size-1) != 0 ) {
         // Sign extend
-        v |= INT64_MAX << (8*size);
+        v |= U128(UINT64_MAX,UINT64_MAX) << (8*size);
     }
     DEBUG("("<<size<<") = " << v);
-    return v;
+    return S128(v);
 }
 double EncodedLiteralSlice::read_float(size_t size/*=0*/) const {
     if(size == 0)   size = m_size;

@@ -386,9 +386,9 @@ struct ExprNode_Integer:
     public ExprNode
 {
     enum eCoreType  m_datatype;
-    uint64_t    m_value;
+    U128    m_value;
 
-    ExprNode_Integer(uint64_t value, enum eCoreType datatype):
+    ExprNode_Integer(U128 value, enum eCoreType datatype):
         m_datatype(datatype),
         m_value(value)
     {

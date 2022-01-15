@@ -3,6 +3,7 @@
 //
 #pragma once
 #include "../common.hpp"
+#include <int128.h>
 
 struct Reloc {
     size_t  ofs;
@@ -111,8 +112,8 @@ struct EncodedLiteralSlice
         return rv;
     }
 
-    uint64_t read_uint(size_t size=0) const;
-    int64_t read_sint(size_t size=0) const;
+    U128 read_uint(size_t size=0) const;
+    S128 read_sint(size_t size=0) const;
     double read_float(size_t size=0) const;
     const Reloc* get_reloc() const;
 

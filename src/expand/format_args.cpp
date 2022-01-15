@@ -657,7 +657,7 @@ namespace {
             toks.push_back( Token(TOK_LIFETIME, RcString::new_interned("static")) );
             toks.push_back( ident("str") );
             toks.push_back( Token(TOK_SEMICOLON) );
-            toks.push_back( Token(static_cast<uint64_t>(fragments.size() + 1), CORETYPE_UINT) );
+            toks.push_back( Token(U128(fragments.size() + 1), CORETYPE_UINT) );
             toks.push_back( TokenTree(TOK_SQUARE_CLOSE) );
 
             toks.push_back( Token(TOK_EQUAL) );
@@ -749,7 +749,7 @@ namespace {
                         push_path(toks, crate, {"fmt", "rt", "v1", "Position", "Next"});
                     }
                     else {
-                        push_toks(toks, Token(static_cast<uint64_t>(&frag - fragments.data()), CORETYPE_UINT));
+                        push_toks(toks, Token(U128(&frag - fragments.data()), CORETYPE_UINT));
                     }
                     push_toks(toks, TOK_COMMA);
 
@@ -757,7 +757,7 @@ namespace {
                     push_path(toks, crate, {"fmt", "rt", "v1", "FormatSpec"});
                     toks.push_back( TokenTree(TOK_BRACE_OPEN) );
                     {
-                        push_toks(toks, ident("fill"), TOK_COLON, Token(uint64_t(frag.args.align_char), CORETYPE_CHAR), TOK_COMMA );
+                        push_toks(toks, ident("fill"), TOK_COLON, Token(U128(frag.args.align_char), CORETYPE_CHAR), TOK_COMMA );
 
                         push_toks(toks, ident("align"), TOK_COLON);
                         const char* align_var_name = nullptr;
@@ -788,7 +788,7 @@ namespace {
                         case FmtArgs::Debug::LowerHex:  flags |= 1 << 4;    break;
                         case FmtArgs::Debug::UpperHex:  flags |= 1 << 5;    break;
                         }
-                        push_toks(toks, Token(uint64_t(flags), CORETYPE_U32));
+                        push_toks(toks, Token(U128(flags), CORETYPE_U32));
                         push_toks(toks, TOK_COMMA);
 
                         push_toks(toks, ident("precision"), TOK_COLON );
@@ -799,7 +799,7 @@ namespace {
                                 push_toks(toks, TOK_STAR, ident(FMT("a" << frag.args.prec).c_str()) );
                             }
                             else {
-                                push_toks(toks, Token(uint64_t(frag.args.prec), CORETYPE_UINT) );
+                                push_toks(toks, Token(U128(frag.args.prec), CORETYPE_UINT) );
                             }
                             toks.push_back( TokenTree(TOK_PAREN_CLOSE) );
                         }
@@ -816,7 +816,7 @@ namespace {
                                 push_toks(toks, TOK_STAR, ident(FMT("a" << frag.args.width).c_str()) );
                             }
                             else {
-                                push_toks(toks, Token(uint64_t(frag.args.width), CORETYPE_UINT) );
+                                push_toks(toks, Token(U128(frag.args.width), CORETYPE_UINT) );
                             }
                             toks.push_back( TokenTree(TOK_PAREN_CLOSE) );
                         }

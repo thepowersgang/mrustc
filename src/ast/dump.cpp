@@ -438,7 +438,7 @@ public:
         case CORETYPE_I64:
         case CORETYPE_I128:
         case CORETYPE_INT:
-            m_os << (int64_t)n.m_value;
+            m_os << n.m_value;
             break;
         }
     }

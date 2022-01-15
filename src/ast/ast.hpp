@@ -415,9 +415,9 @@ public:
 
         // 1.39 nonzero etc
         bool    scalar_valid_start_set;
-        uint64_t    scalar_valid_start;
+        U128    scalar_valid_start;
         bool    scalar_valid_end_set;
-        uint64_t    scalar_valid_end;
+        U128    scalar_valid_end;
     }   m_markings;
 
     Struct() {}

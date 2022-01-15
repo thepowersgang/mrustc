@@ -312,7 +312,7 @@ namespace {
                     // 1. Obtain remaining length
                     auto src_len_lval = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ m_builder.get_ptr_to_dst(sp, lval) }));
                     unsigned sub_val_i = static_cast<unsigned>(b.split_slice.first + b.split_slice.second);
-                    auto sub_val = ::MIR::Param(::MIR::Constant::make_Uint({ sub_val_i, ::HIR::CoreType::Usize }));
+                    auto sub_val = ::MIR::Param(::MIR::Constant::make_Uint({ U128(sub_val_i), ::HIR::CoreType::Usize }));
                     ::MIR::LValue len_val = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_BinOp({ mv$(src_len_lval), ::MIR::eBinOp::SUB, mv$(sub_val) }) );
 
                     // 2. Obtain pointer to the first element
@@ -1551,7 +1551,7 @@ namespace {
                             }
                             }
                         TU_ARMA(Known, se) {
-                            size_val = ::MIR::Constant::make_Uint({ se, ::HIR::CoreType::Usize });
+                            size_val = ::MIR::Constant::make_Uint({ U128(se), ::HIR::CoreType::Usize });
                             }
                         }
                         m_builder.set_result( node.span(), ::MIR::RValue::make_MakeDst({ mv$(ptr_lval), mv$(size_val) }) );
@@ -1611,7 +1611,7 @@ namespace {
                     BUG(node.span(), "Indexing with unknown size - " << e.size);
                     }
                 TU_ARMA(Known, se) {
-                    limit_val = ::MIR::Constant::make_Uint({ se, ::HIR::CoreType::Usize });
+                    limit_val = ::MIR::Constant::make_Uint({ U128(se), ::HIR::CoreType::Usize });
                     }
                 }
                 }
@@ -1885,7 +1885,7 @@ namespace {
             auto val = m_builder.get_result(node.span());
 
             const auto& lang_exchange_malloc = m_builder.crate().get_lang_item_path(node.span(), "exchange_malloc");
-            const auto& lang_owned_box = m_builder.crate().get_lang_item_path(node.span(), "owned_box");
+            //const auto& lang_owned_box = m_builder.crate().get_lang_item_path(node.span(), "owned_box");
 
             ::HIR::PathParams   trait_params_data;
             trait_params_data.m_types.push_back( data_ty.clone() );
@@ -1894,8 +1894,8 @@ namespace {
             ::MIR::Param    size_param, align_param;
             size_t  item_size, item_align;
             if( Target_GetSizeAndAlignOf(node.span(), m_builder.resolve(), data_ty, item_size, item_align) ) {
-                size_param = ::MIR::Constant::make_Int({ static_cast<int64_t>(item_size), ::HIR::CoreType::Usize });
-                align_param = ::MIR::Constant::make_Int({ static_cast<int64_t>(item_align), ::HIR::CoreType::Usize });
+                size_param = ::MIR::Constant::make_Uint({ U128(item_size), ::HIR::CoreType::Usize });
+                align_param = ::MIR::Constant::make_Uint({ U128(item_align), ::HIR::CoreType::Usize });
             }
             else {
                 // Insert calls to "size_of" and "align_of" intrinsics
@@ -2213,8 +2213,8 @@ namespace {
         void visit(::HIR::ExprNode_Literal& node) override
         {
             TRACE_FUNCTION_F("_Literal");
-            TU_MATCHA( (node.m_data), (e),
-            (Integer,
+            TU_MATCH_HDRA( (node.m_data), {)
+            TU_ARMA(Integer, e) {
                 ASSERT_BUG(node.span(), node.m_res_type.data().is_Primitive(), "Non-primitive return type for Integer literal - " << node.m_res_type);
                 auto ity = node.m_res_type.data().as_Primitive();
                 switch(ity)
@@ -2228,7 +2228,7 @@ namespace {
                     m_builder.set_result(node.span(), ::MIR::Constant::make_Uint({ e.m_value, ity }) );
                     break;
                 case ::HIR::CoreType::Char:
-                    m_builder.set_result(node.span(), ::MIR::Constant::make_Uint({ static_cast<uint64_t>(e.m_value), ity }) );
+                    m_builder.set_result(node.span(), ::MIR::Constant::make_Uint({ e.m_value, ity }) );
                     break;
                 case ::HIR::CoreType::I8:
                 case ::HIR::CoreType::I16:
@@ -2236,28 +2236,28 @@ namespace {
                 case ::HIR::CoreType::I64:
                 case ::HIR::CoreType::I128:
                 case ::HIR::CoreType::Isize:
-                    m_builder.set_result(node.span(), ::MIR::Constant::make_Int({ static_cast<int64_t>(e.m_value), ity }) );
+                    m_builder.set_result(node.span(), ::MIR::Constant::make_Int({ S128(e.m_value), ity }) );
                     break;
                 default:
                     BUG(node.span(), "Integer literal with unexpected type - " << node.m_res_type);
                 }
-                ),
-            (Float,
+                }
+            TU_ARMA(Float, e) {
                 ASSERT_BUG(node.span(), node.m_res_type.data().is_Primitive(), "Non-primitive return type for Float literal - " << node.m_res_type);
                 auto ity = node.m_res_type.data().as_Primitive();
                 m_builder.set_result(node.span(), ::MIR::RValue::make_Constant( ::MIR::Constant::make_Float({ e.m_value, ity }) ));
-                ),
-            (Boolean,
+                }
+            TU_ARMA(Boolean, e) {
                 m_builder.set_result(node.span(), ::MIR::RValue::make_Constant( ::MIR::Constant::make_Bool({e}) ));
-                ),
-            (String,
+                }
+            TU_ARMA(String, e) {
                 m_builder.set_result(node.span(), ::MIR::RValue::make_Constant( ::MIR::Constant(e) ));
-                ),
-            (ByteString,
+                }
+            TU_ARMA(ByteString, e) {
                 auto v = mv$( *reinterpret_cast< ::std::vector<uint8_t>*>( &e) );
                 m_builder.set_result(node.span(), ::MIR::RValue::make_Constant( ::MIR::Constant(mv$(v)) ));
-                )
-            )
+                }
+            }
         }
         void visit(::HIR::ExprNode_UnitVariant& node) override
         {

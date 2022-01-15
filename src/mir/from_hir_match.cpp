@@ -1050,8 +1050,8 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, EncodedLiteralSlice 
         m_field_path.push_back( FIELD_DEREF );
         if( e.inner == ::HIR::CoreType::Str ) {
             auto ptr_size = Target_GetPointerBits()/8;
-            auto ptr = lit.read_uint(ptr_size);
-            auto len = lit.slice(ptr_size, ptr_size).read_uint(ptr_size);
+            auto ptr = lit.read_uint(ptr_size).truncate_u64();
+            auto len = lit.slice(ptr_size, ptr_size).read_uint(ptr_size).truncate_u64();
             auto* r = lit.get_reloc();
             ASSERT_BUG(sp, r, "Null relocation for string in pattern generation");
             ASSERT_BUG(sp, ptr >= EncodedLiteral::PTR_BASE, "");
@@ -1088,7 +1088,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
     static ::HIR::Pattern   empty_pattern;
     TRACE_FUNCTION_F("pat="<<pat<<", ty="<<top_ty<<",   m_field_path=[" << m_field_path << "]");
     struct H {
-        static uint64_t get_pattern_value_int(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::Pattern::Value& val) {
+        static U128 get_pattern_value_int(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::Pattern::Value& val) {
             TU_MATCH_DEF( ::HIR::Pattern::Value, (val), (e),
             (
                 BUG(sp, "Invalid Value type in " << pat);
@@ -1139,7 +1139,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             case ::HIR::CoreType::I64:
             case ::HIR::CoreType::I128:
             case ::HIR::CoreType::Isize:
-                return ::MIR::Constant::make_Int({ static_cast<int64_t>(H::get_pattern_value_int(sp, pat, val)), e });
+                return ::MIR::Constant::make_Int({ S128(H::get_pattern_value_int(sp, pat, val)), e });
             case ::HIR::CoreType::Bool:
                 BUG(sp, "Can't range match on Bool");
                 break;
@@ -1165,20 +1165,20 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             case ::HIR::CoreType::U64:
             case ::HIR::CoreType::U128:
             case ::HIR::CoreType::Usize:
-                return ::MIR::Constant::make_Uint({ 0, e });
+                return ::MIR::Constant::make_Uint({ U128(0), e });
             case ::HIR::CoreType::I8:
             case ::HIR::CoreType::I16:
             case ::HIR::CoreType::I32:
             case ::HIR::CoreType::I64:
             case ::HIR::CoreType::I128:
             case ::HIR::CoreType::Isize:
-                return ::MIR::Constant::make_Int({ INT64_MIN, e });
+                return ::MIR::Constant::make_Int({ S128::min(), e });
             case ::HIR::CoreType::Bool:
                 BUG(sp, "Can't range match on Bool");
                 break;
             case ::HIR::CoreType::Char:
                 // Char is just another name for 'u32'... but with a restricted range
-                return ::MIR::Constant::make_Uint({ 0, e });
+                return ::MIR::Constant::make_Uint({ U128(0), e });
             case ::HIR::CoreType::Str:
                 BUG(sp, "Hit match over `str` - must be `&str`");
                 break;
@@ -1198,20 +1198,20 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             case ::HIR::CoreType::U64:
             case ::HIR::CoreType::U128:
             case ::HIR::CoreType::Usize:
-                return ::MIR::Constant::make_Uint({ UINT64_MAX, e });
+                return ::MIR::Constant::make_Uint({ U128::max(), e });
             case ::HIR::CoreType::I8:
             case ::HIR::CoreType::I16:
             case ::HIR::CoreType::I32:
             case ::HIR::CoreType::I64:
             case ::HIR::CoreType::I128:
             case ::HIR::CoreType::Isize:
-                return ::MIR::Constant::make_Int({ INT64_MAX, e });
+                return ::MIR::Constant::make_Int({ S128::max(), e });
             case ::HIR::CoreType::Bool:
                 BUG(sp, "Can't range match on Bool");
                 break;
             case ::HIR::CoreType::Char:
                 // Char is just another name for 'u32'... but with a restricted range
-                return ::MIR::Constant::make_Uint({ UINT64_MAX, e });
+                return ::MIR::Constant::make_Uint({ U128::max(), e });
             case ::HIR::CoreType::Str:
                 BUG(sp, "Hit match over `str` - must be `&str`");
                 break;
@@ -2232,7 +2232,7 @@ namespace {
                     idx = FIELD_INDEX_MAX - idx;
                     // 1. Create an LValue containing the size of this slice subtract `idx`
                     auto len_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ builder.get_ptr_to_dst(sp, lval) }));
-                    auto sub_val = ::MIR::Param(::MIR::Constant::make_Uint({ idx, ::HIR::CoreType::Usize }));
+                    auto sub_val = ::MIR::Param(::MIR::Constant::make_Uint({ U128(idx), ::HIR::CoreType::Usize }));
                     auto ofs_val = builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_BinOp({ mv$(len_lval), ::MIR::eBinOp::SUB, mv$(sub_val) }) );
                     // 2. Return _Index with that value
                     lval = ::MIR::LValue::new_Index(mv$(lval), ofs_val.as_Local());
@@ -2393,7 +2393,7 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                     }
 
                     // IF `val` > `last` : fail_bb
-                    if(re.last.as_Uint().v == UINT64_MAX && re.is_inclusive) {
+                    if(re.last.as_Uint().v == U128::max() && re.is_inclusive) {
                         builder.end_block( ::MIR::Terminator::make_Goto({ succ_bb }) );
                     }
                     else {
@@ -2428,7 +2428,7 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                     auto succ_bb = builder.new_bb_unlinked();
 
                     // IF `val` < `first` : fail_bb
-                    if( re.first.as_Int().v != INT64_MIN ) {
+                    if( re.first.as_Int().v != S128::min() ) {
                         auto test_bb_2 = builder.new_bb_unlinked();
                         auto test_lt_val = ::MIR::Param(::MIR::Constant::make_Int({ re.first.as_Int().v, te }));
                         auto cmp_lt_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ ::MIR::Param(val.clone()), ::MIR::eBinOp::LT, mv$(test_lt_val) }));
@@ -2437,7 +2437,7 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                     }
 
                     // IF `val` > `last` : fail_bb
-                    if(re.last.as_Int().v == INT64_MAX && re.is_inclusive) {
+                    if(re.last.as_Int().v == S128::max() && re.is_inclusive) {
                         builder.end_block( ::MIR::Terminator::make_Goto({ succ_bb }) );
                     }
                     else {
@@ -2479,7 +2479,7 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                     }
 
                     // IF `val` > `last` : fail_bb
-                    if(re.last.as_Uint().v == UINT64_MAX ) {
+                    if(re.last.as_Uint().v >= 0x10FFFF ) {
                         assert(re.is_inclusive);
                         builder.end_block( ::MIR::Terminator::make_Goto({ succ_bb }) );
                     }
@@ -2636,7 +2636,7 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
             if( rule.is_Value() ) {
                 ASSERT_BUG(sp, te.inner == ::HIR::CoreType::U8, "Bytes pattern on non-&[u8]");
                 auto cloned_val = ::MIR::Constant( rule.as_Value().as_Bytes() );
-                auto size_val = ::MIR::Constant::make_Uint({ rule.as_Value().as_Bytes().size(), ::HIR::CoreType::Usize });
+                auto size_val = ::MIR::Constant::make_Uint({ U128(rule.as_Value().as_Bytes().size()), ::HIR::CoreType::Usize });
 
                 auto succ_bb = builder.new_bb_unlinked();
 
@@ -2653,7 +2653,7 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                 const auto& re = rule.as_Slice();
 
                 // Compare length
-                auto test_val = ::MIR::Param( ::MIR::Constant::make_Uint({ re.len, ::HIR::CoreType::Usize }) );
+                auto test_val = ::MIR::Param( ::MIR::Constant::make_Uint({ U128(re.len), ::HIR::CoreType::Usize }) );
                 auto len_val = builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ builder.get_ptr_to_dst(sp, val) }));
                 auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ mv$(len_val), ::MIR::eBinOp::EQ, mv$(test_val) }));
 
@@ -2672,7 +2672,7 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                 const auto& re = rule.as_SplitSlice();
 
                 // Compare length
-                auto test_val = ::MIR::Param( ::MIR::Constant::make_Uint({ re.min_len, ::HIR::CoreType::Usize}) );
+                auto test_val = ::MIR::Param( ::MIR::Constant::make_Uint({ U128(re.min_len), ::HIR::CoreType::Usize}) );
                 auto len_val = builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ builder.get_ptr_to_dst(sp, val) }));
                 auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ mv$(len_val), ::MIR::eBinOp::LT, mv$(test_val) }));
 
@@ -3373,7 +3373,10 @@ void MatchGenGrouped::gen_dispatch__primitive(::HIR::TypeRef ty, ::MIR::LValue v
                 if(re.is_Const())
                     TODO(sp, "Handle Constant::Const in match");
 
-                values.push_back( re.as_Uint().v );
+                if(re.as_Uint().v > U128(UINT64_MAX))
+                    TODO(sp, "Handle 128-bit values in SwitchValue");
+
+                values.push_back( re.as_Uint().v.truncate_u64() );
                 targets.push_back( arm_targets[tgt_ofs] );
 
                 tgt_ofs += rules[i].size();
@@ -3419,7 +3422,9 @@ void MatchGenGrouped::gen_dispatch__primitive(::HIR::TypeRef ty, ::MIR::LValue v
                 if(re.is_Const())
                     TODO(sp, "Handle Constant::Const in match");
 
-                values.push_back( re.as_Int().v );
+                if( re.as_Int().v > S128(INT64_MAX) || re.as_Int().v < S128(INT64_MIN) )
+                    TODO(sp, "Handle 128-bit values in SwitchValue");
+                values.push_back( re.as_Int().v.truncate_i64() );
                 targets.push_back( arm_targets[tgt_ofs] );
 
                 tgt_ofs += rules[i].size();
@@ -3543,7 +3548,7 @@ void MatchGenGrouped::gen_dispatch__slice(::HIR::TypeRef ty, ::MIR::LValue val, 
         if(const auto* re = r.opt_Slice())
         {
             ASSERT_BUG(sp, re->sub_rules.size() == 0, "Sub-rules in MatchGenGrouped");
-            auto val_tst = ::MIR::Constant::make_Uint({ re->len, ::HIR::CoreType::Usize });
+            auto val_tst = ::MIR::Constant::make_Uint({ U128(re->len), ::HIR::CoreType::Usize });
 
             for(size_t j = 0; j < rules[i].size(); j ++)
                 assert(arm_targets[tgt_ofs] == arm_targets[tgt_ofs+j]);
@@ -3570,7 +3575,7 @@ void MatchGenGrouped::gen_dispatch__slice(::HIR::TypeRef ty, ::MIR::LValue val, 
             ASSERT_BUG(sp, re->is_Bytes(), "Slice with non-Bytes value - " << *re);
             const auto& b = re->as_Bytes();
 
-            auto val_tst_len = ::MIR::Constant::make_Uint({ b.size(), ::HIR::CoreType::Usize });
+            auto val_tst_len = ::MIR::Constant::make_Uint({ U128(b.size()), ::HIR::CoreType::Usize });
 
             // IF v == tst : target
             {
@@ -3631,7 +3636,7 @@ void MatchGenGrouped::gen_dispatch_range(const field_path_t& field_path, const :
             lower_possible = (first.as_Uint().v > 0);
             // TODO: Should this also check for the end being the max value of the type?
             // - Can just leave that to the optimiser
-            upper_possible = is_inclusive ? (last.as_Uint().v < UINT64_MAX) : true;
+            upper_possible = is_inclusive ? (last.as_Uint().v < U128::max()) : true;
             break;
         case ::HIR::CoreType::I8:
         case ::HIR::CoreType::I16:
@@ -3639,8 +3644,8 @@ void MatchGenGrouped::gen_dispatch_range(const field_path_t& field_path, const :
         case ::HIR::CoreType::I64:
         case ::HIR::CoreType::I128:
         case ::HIR::CoreType::Isize:
-            lower_possible = (first.as_Int().v > INT64_MIN);
-            upper_possible = is_inclusive ? (last.as_Int().v < INT64_MAX) : true;
+            lower_possible = (first.as_Int().v > S128::min());
+            upper_possible = is_inclusive ? (last.as_Int().v < S128::max()) : true;
             break;
         case ::HIR::CoreType::Char:
             lower_possible = (first.as_Uint().v > 0);
@@ -3700,7 +3705,7 @@ void MatchGenGrouped::gen_dispatch_splitslice(const field_path_t& field_path, co
     // `IF len < min_len : def_blk, next
     {
         auto next = m_builder.new_bb_unlinked();
-        auto cmp_val = this->push_compare(val_len.clone(), ::MIR::eBinOp::LT, ::MIR::Constant::make_Uint({ e.min_len, ::HIR::CoreType::Usize }));
+        auto cmp_val = this->push_compare(val_len.clone(), ::MIR::eBinOp::LT, ::MIR::Constant::make_Uint({ U128(e.min_len), ::HIR::CoreType::Usize }));
         m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_val), def_blk, next }) );
         m_builder.set_cur_block(next);
     }

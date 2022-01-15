@@ -35,7 +35,7 @@ class CExpanderLine:
 {
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
-        return box$( TTStreamO(sp, ParseState(), TokenTree(Token((uint64_t)get_top_span(sp)->start_line, CORETYPE_U32))) );
+        return box$( TTStreamO(sp, ParseState(), TokenTree(Token(U128(get_top_span(sp)->start_line), CORETYPE_U32))) );
     }
 };
 
@@ -44,7 +44,7 @@ class CExpanderColumn:
 {
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
-        return box$( TTStreamO(sp, ParseState(), TokenTree(Token((uint64_t)get_top_span(sp)->start_ofs, CORETYPE_U32))) );
+        return box$( TTStreamO(sp, ParseState(), TokenTree(Token(U128(get_top_span(sp)->start_ofs), CORETYPE_U32))) );
     }
 };
 class CExpanderUnstableColumn:
@@ -52,7 +52,7 @@ class CExpanderUnstableColumn:
 {
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
-        return box$( TTStreamO(sp, ParseState(), TokenTree(Token((uint64_t)get_top_span(sp)->start_ofs, CORETYPE_U32))) );
+        return box$( TTStreamO(sp, ParseState(), TokenTree(Token(U128(get_top_span(sp)->start_ofs), CORETYPE_U32))) );
     }
 };
 

@@ -618,29 +618,19 @@ namespace MIR { namespace eval {
             }
         }
         void write_uint(const MIR::TypeResolve& state, unsigned bits, uint64_t v) {
-            if(Target_GetCurSpec().m_arch.m_big_endian) MIR_TODO(state, "Handle big endian in constant evaluate");
-            if( bits <= 64 ) {
-                write_bytes(state, &v, (bits+7)/8);
-            }
-            else {
-                assert(bits == 128);
-                uint64_t vs[2] = {v, 0};
-                write_bytes(state, vs, 128/8);
-            }
+            assert(bits <= 64);
+            write_uint(state, bits, U128(v));
         }
-        void write_sint(const MIR::TypeResolve& state, unsigned bits, int64_t v) {
+        void write_uint(const MIR::TypeResolve& state, unsigned bits, U128 v) {
             if(Target_GetCurSpec().m_arch.m_big_endian) MIR_TODO(state, "Handle big endian in constant evaluate");
-            if( bits <= 64 ) {
-                write_bytes(state, &v, (bits+7)/8);
-            }
-            else {
-                assert(bits == 128);
-                int64_t vs[2] = {v, v < 0 ? -1 : 0};
-                write_bytes(state, vs, 128/8);
-            }
+            write_bytes(state, &v, (bits+7)/8);
+        }
+        void write_sint(const MIR::TypeResolve& state, unsigned bits, S128 v) {
+            if(Target_GetCurSpec().m_arch.m_big_endian) MIR_TODO(state, "Handle big endian in constant evaluate");
+            write_bytes(state, &v, (bits+7)/8);
         }
         void write_ptr(const MIR::TypeResolve& state, uint64_t val, RelocPtr reloc) {
-            write_uint(state, Target_GetPointerBits(), val);
+            write_uint(state, Target_GetPointerBits(), U128(val));
             storage.as_value().set_reloc(ofs, std::move(reloc));
         }
         void set_reloc(RelocPtr reloc) {
@@ -667,16 +657,14 @@ namespace MIR { namespace eval {
             if(Target_GetCurSpec().m_arch.m_big_endian) MIR_TODO(state, "Handle big endian in constant evaluate");
             assert(bits <= 128);
             if(bits > 64) {
-                uint64_t    lo = 0;
-                uint64_t    hi = 0;
-                read_bytes(state, &lo, 8);
-                read_bytes(state, &hi, (bits+7)/8 - 8);
-                return U128(lo, hi);
+                uint64_t    v[2] = {0,0};
+                read_bytes(state, v, (bits+7)/8);
+                return U128(v[0], v[1]);
             }
             else {
                 uint64_t    rv = 0;
                 read_bytes(state, &rv, (bits+7)/8);
-                return rv;
+                return U128(rv);
             }
         }
         S128 read_sint(const ::MIR::TypeResolve& state, unsigned bits) const {
@@ -684,7 +672,7 @@ namespace MIR { namespace eval {
             if( v.bit(bits-1) ) {
                 // Apply sign extension
                 if( bits <= 64 ) {
-                    auto v64 = static_cast<uint64_t>(v);
+                    auto v64 = v.truncate_u64();
                     v64 |= UINT64_MAX << bits;
                     v = U128(v64, UINT64_MAX);
                 }
@@ -695,7 +683,7 @@ namespace MIR { namespace eval {
             return S128(v);
         }
         uint64_t read_usize(const ::MIR::TypeResolve& state) const {
-            return read_uint(state, Target_GetPointerBits());
+            return read_uint(state, Target_GetPointerBits()).truncate_u64();
         }
         std::pair<uint64_t, RelocPtr> read_ptr(const ::MIR::TypeResolve& state) const {
             return std::make_pair(read_usize(state), storage.as_value().get_reloc(ofs));
@@ -1270,7 +1258,7 @@ namespace HIR {
                 abort();
             }
 
-            uint64_t read_param_uint(unsigned bits, const ::MIR::Param& p)
+            U128 read_param_uint(unsigned bits, const ::MIR::Param& p)
             {
                 TU_MATCH_HDRA( (p), { )
                 TU_ARMA(LValue, e)
@@ -1286,16 +1274,16 @@ namespace HIR {
                     if(e.is_Generic())
                         throw Defer();
                     if(e.is_Int())
-                        return e.as_Int().v;
+                        return e.as_Int().v.get_inner();
                     if(e.is_Bool())
-                        return e.as_Bool().v ? 1 : 0;
+                        return U128( e.as_Bool().v ? 1 : 0 );
                     MIR_ASSERT(state, e.is_Uint(), "Expected an integer, got " << e.tag_str() << " " << e);
-                    return e.as_Uint().v;
+                    return U128( e.as_Uint().v );
                     }
                 }
                 abort();
             }
-            int64_t read_param_sint(unsigned bits, const ::MIR::Param& p)
+            S128 read_param_sint(unsigned bits, const ::MIR::Param& p)
             {
                 TU_MATCH_HDRA( (p), { )
                 TU_ARMA(LValue, e)
@@ -1311,7 +1299,7 @@ namespace HIR {
                     if(e.is_Generic())
                         throw Defer();
                     MIR_ASSERT(state, e.is_Int(), "Expected an integer, got " << e.tag_str() << " " << e);
-                    return e.as_Int().v;
+                    return S128( e.as_Int().v );
                     }
                 }
                 abort();
@@ -1369,21 +1357,39 @@ namespace HIR {
                 return for_primitive(ty.data().as_Primitive());
             }
 
-            uint64_t mask(uint64_t v) const {
+            U128 mask(U128 v) const {
                 if(bits < 64)
                 {
-                    uint64_t mask_val = (1ull << bits) - 1;
-                    return v & mask_val;
+                    uint64_t mask_val = (static_cast<uint64_t>(1ull) << bits) - 1;
+                    assert(mask_val != 0);
+                    return U128(v.get_lo() & mask_val);
                 }
-                return v;
+                else if( bits == 64 )
+                {
+                    return U128(v.get_lo());
+                }
+                else if( bits < 128 )
+                {
+                    U128 mask_val = (U128(1) << bits) - 1u;
+                    assert(mask_val != 0);
+                    return U128(v & mask_val);
+                }
+                else if( bits == 128 )
+                {
+                    return v;
+                }
+                else
+                {
+                    throw "";
+                }
             }
-            uint64_t mask(int64_t v) const {
+            U128 mask(S128 v) const {
                 if( v < 0 ) {
                     // Negate, mask, and re-negate
-                    return static_cast<uint64_t>( -static_cast<int64_t>( mask(static_cast<uint64_t>(-v)) ));
+                    return ( -S128( mask( (-v).get_inner() ) )).get_inner();
                 }
                 else {
-                    return mask(static_cast<uint64_t>(v));
+                    return mask((v).get_inner());
                 }
             }
             double mask(double v) const {
@@ -1445,7 +1451,7 @@ namespace HIR {
                             {
                             case TypeInfo::Signed: {
                                 auto v = inval.read_sint(state, src_ti.bits);
-                                dst.write_uint( state, ti.bits, v );
+                                dst.write_uint( state, ti.bits, v.get_inner() );
                                 } break;
                             case TypeInfo::Unsigned:
                                 dst.write_uint( state, ti.bits, inval.read_uint(state, src_ti.bits) );
@@ -1472,10 +1478,10 @@ namespace HIR {
                             switch(src_ti.ty)
                             {
                             case TypeInfo::Signed:
-                                dst.write_float(state, ti.bits, static_cast<double>(static_cast<int64_t>(inval.read_uint(state, src_ti.bits))) );
+                                dst.write_float(state, ti.bits, static_cast<double>(S128(inval.read_uint(state, src_ti.bits)).to_double()) );
                                 break;
                             case TypeInfo::Unsigned:
-                                dst.write_float(state, ti.bits, static_cast<double>(inval.read_uint(state, src_ti.bits)) );
+                                dst.write_float(state, ti.bits, static_cast<double>(inval.read_uint(state, src_ti.bits).to_double()) );
                                 break;
                             case TypeInfo::Float:
                                 dst.write_float(state, ti.bits, inval.read_float(state, src_ti.bits) );
@@ -1511,15 +1517,17 @@ namespace HIR {
 
                         auto r = ti_r.ty == TypeInfo::Unsigned
                             ? local_state.read_param_uint(ti_r.bits, e.val_r)
-                            : local_state.read_param_sint(ti_r.bits, e.val_r);
+                            : local_state.read_param_sint(ti_r.bits, e.val_r).get_inner();
+                        MIR_ASSERT(state, r <= ti.bits, "Shift out of range - " << r << " > " << ti.bits);
+                        auto amt = r.truncate_u64();
                         switch(ti.ty)
                         {
                         case TypeInfo::Unsigned: {
                             auto l = local_state.read_param_uint(ti.bits, e.val_l);
                             switch(e.op)
                             {
-                            case ::MIR::eBinOp::BIT_SHL: dst.write_uint(state, ti.bits, ti.mask(l << r));  break;
-                            case ::MIR::eBinOp::BIT_SHR: dst.write_uint(state, ti.bits, ti.mask(l >> r));  break;
+                            case ::MIR::eBinOp::BIT_SHL: dst.write_uint(state, ti.bits, ti.mask(l << amt));  break;
+                            case ::MIR::eBinOp::BIT_SHR: dst.write_uint(state, ti.bits, ti.mask(l >> amt));  break;
                             default:    MIR_BUG(state, "This block should only be active for SHL/SHR");
                             }
                             break; }
@@ -1527,8 +1535,8 @@ namespace HIR {
                             auto l = local_state.read_param_sint(ti.bits, e.val_l);
                             switch(e.op)
                             {
-                            case ::MIR::eBinOp::BIT_SHL: dst.write_uint(state, ti.bits, ti.mask(l << r));  break;
-                            case ::MIR::eBinOp::BIT_SHR: dst.write_uint(state, ti.bits, ti.mask(l >> r));  break;
+                            case ::MIR::eBinOp::BIT_SHL: dst.write_uint(state, ti.bits, ti.mask(l << amt));  break;
+                            case ::MIR::eBinOp::BIT_SHR: dst.write_uint(state, ti.bits, ti.mask(l >> amt));  break;
                             default:    MIR_BUG(state, "This block should only be active for SHL/SHR");
                             }
                             break; }
@@ -1589,8 +1597,8 @@ namespace HIR {
                         case ::MIR::eBinOp::BIT_OR : dst.write_uint(state, ti.bits, l | r);  break;
                         case ::MIR::eBinOp::BIT_AND: dst.write_uint(state, ti.bits, l & r);  break;
                         case ::MIR::eBinOp::BIT_XOR: dst.write_uint(state, ti.bits, l ^ r);  break;
-                        case ::MIR::eBinOp::BIT_SHL: dst.write_uint(state, ti.bits, ti.mask(l << r));  break;
-                        case ::MIR::eBinOp::BIT_SHR: dst.write_uint(state, ti.bits, ti.mask(l >> r));  break;
+                        case ::MIR::eBinOp::BIT_SHL: dst.write_uint(state, ti.bits, ti.mask(l << r.truncate_u64()));  break;
+                        case ::MIR::eBinOp::BIT_SHR: dst.write_uint(state, ti.bits, ti.mask(l >> r.truncate_u64()));  break;
 
                         case ::MIR::eBinOp::EQ: dst.write_byte(state, l == r);  break;
                         case ::MIR::eBinOp::NE: dst.write_byte(state, l != r);  break;
@@ -1616,11 +1624,11 @@ namespace HIR {
                         case ::MIR::eBinOp::DIV_OV:
                             MIR_TODO(state, "RValue::BinOp - " << sa.src << ", val = " << l << " , " << r);
 
-                        case ::MIR::eBinOp::BIT_OR : dst.write_uint( state, ti.bits, l | r);  break;
-                        case ::MIR::eBinOp::BIT_AND: dst.write_uint( state, ti.bits, l & r );  break;
-                        case ::MIR::eBinOp::BIT_XOR: dst.write_uint( state, ti.bits, l ^ r );  break;
-                        case ::MIR::eBinOp::BIT_SHL: dst.write_uint( state, ti.bits, ti.mask(l << r) );  break;
-                        case ::MIR::eBinOp::BIT_SHR: dst.write_uint( state, ti.bits, ti.mask(l >> r) );  break;
+                        case ::MIR::eBinOp::BIT_OR : dst.write_uint( state, ti.bits, (l | r).get_inner() );  break;
+                        case ::MIR::eBinOp::BIT_AND: dst.write_uint( state, ti.bits, (l & r).get_inner() );  break;
+                        case ::MIR::eBinOp::BIT_XOR: dst.write_uint( state, ti.bits, (l ^ r).get_inner() );  break;
+                        case ::MIR::eBinOp::BIT_SHL: dst.write_uint( state, ti.bits, ti.mask(l << static_cast<unsigned>(r.get_inner().truncate_u64())) );  break;
+                        case ::MIR::eBinOp::BIT_SHR: dst.write_uint( state, ti.bits, ti.mask(l >> static_cast<unsigned>(r.get_inner().truncate_u64())) );  break;
 
                         case ::MIR::eBinOp::EQ: dst.write_byte(state, l == r);  break;
                         case ::MIR::eBinOp::NE: dst.write_byte(state, l != r);  break;
@@ -1863,7 +1871,7 @@ namespace HIR {
                 return std::move(local_state.retval);
                 }
             TU_ARMA(If, e) {
-                bool res = 0 != local_state.get_lval(e.cond).read_uint(state, 1);
+                bool res = U128(0) != local_state.get_lval(e.cond).read_uint(state, 1);
                 DEBUG(state << " = " << res);
                 cur_block = res ? e.bb1 : e.bb0;
                 }
@@ -1879,7 +1887,7 @@ namespace HIR {
                 TU_ARMA(None, e) {
                     }
                 TU_ARMA(Linear, ve) {
-                    auto v = (uint64_t)lit.slice( enm_repr->get_offset(state.sp, state.m_resolve, ve.field), ve.field.size).read_uint(state, 8*ve.field.size);
+                    auto v = lit.slice( enm_repr->get_offset(state.sp, state.m_resolve, ve.field), ve.field.size).read_uint(state, 8*ve.field.size).truncate_u64();
                     if( v < ve.offset ) {
                         var_idx = ve.field.index;
                         DEBUG("VariantMode::Linear - Niche #" << var_idx);
@@ -1890,7 +1898,7 @@ namespace HIR {
                     }
                     }
                 TU_ARMA(Values, ve) {
-                    auto v = (uint64_t)lit.slice( enm_repr->get_offset(state.sp, state.m_resolve, ve.field), ve.field.size).read_uint(state, 8*ve.field.size);
+                    auto v = lit.slice( enm_repr->get_offset(state.sp, state.m_resolve, ve.field), ve.field.size).read_uint(state, 8*ve.field.size).truncate_u64();
                     auto it = std::find(ve.values.begin(), ve.values.end(), v);
                     ASSERT_BUG(state.sp, it != ve.values.end(), "Invalid enum tag: " << v << " for " << ty);
                     var_idx = it - ve.values.begin();
@@ -1899,7 +1907,7 @@ namespace HIR {
                     size_t ofs = enm_repr->get_offset(state.sp, state.m_resolve, ve.field);
                     bool is_nonzero = false;
                     for(size_t i = 0; i < ve.field.size; i ++) {
-                        if( (uint64_t)lit.slice(ofs+i, 1).read_uint(state, 8) != 0 ) {
+                        if( lit.slice(ofs+i, 1).read_uint(state, 8).truncate_u64() != 0 ) {
                             is_nonzero = true;
                             break;
                         }
@@ -1920,7 +1928,7 @@ namespace HIR {
                         auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
                         size_t  size_val;
                         if( Target_GetSizeOf(state.sp, this->resolve, ty, size_val) )
-                            dst.write_uint(state, Target_GetPointerBits(), size_val);
+                            dst.write_uint(state, Target_GetPointerBits(), U128(size_val));
                         else
                             throw Defer();
                     }
@@ -1928,7 +1936,7 @@ namespace HIR {
                         auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
                         size_t  align_val;
                         if( Target_GetAlignOf(state.sp, this->resolve, ty, align_val) )
-                            dst.write_uint(state, Target_GetPointerBits(), align_val);
+                            dst.write_uint(state, Target_GetPointerBits(), U128(align_val));
                         else
                             throw Defer();
                     }
@@ -1940,11 +1948,12 @@ namespace HIR {
                         //MIR_ASSERT(state, ti.type == TypeInfo::Unsigned, "`bswap` with non-unsigned " << ty);
                         auto val = local_state.read_param_uint(ti.bits, e.args.at(0));
 #ifdef _MSC_VER
-                        unsigned rv = __popcnt(val & 0xFFFFFFFF) + __popcnt(val >> 32);
+                        unsigned rv = __popcnt(val.get_lo() & 0xFFFFFFFF) + __popcnt(val.get_lo() >> 32)
+                            + __popcnt(val.get_hi() & 0xFFFFFFFF) + __popcnt(val.get_hi() >> 32);
 #else
-                        unsigned rv = __builtin_popcountll(val);
+                        unsigned rv = __builtin_popcountll(val.get_lo()) + __builtin_popcountll(val.get_hi());
 #endif
-                        dst.write_uint(state, ti.bits, rv);
+                        dst.write_uint(state, ti.bits, U128(rv));
                     }
                     // - CounT Trailing Zeros
                     else if( te->name == "cttz" ) {
@@ -1954,16 +1963,16 @@ namespace HIR {
                         MIR_ASSERT(state, ti.ty == TypeInfo::Unsigned, "`cttz` with non-unsigned " << ty);
                         auto val = local_state.read_param_uint(ti.bits, e.args.at(0));
                         unsigned rv = 0;
-                        if(val == 0) {
+                        if(val == U128(0)) {
                             rv = ti.bits;
                         }
                         else {
-                            while( (val & 1) == 0 ) {
+                            while( (val & 1) == U128(0) ) {
                                 val >>= 1;
                                 rv += 1;
                             }
                         }
-                        dst.write_uint(state, ti.bits, rv);
+                        dst.write_uint(state, ti.bits, U128(rv));
                     }
                     // - CounT Lrailing Zeros
                     else if( te->name == "ctlz" ) {
@@ -1974,12 +1983,12 @@ namespace HIR {
                         auto val = local_state.read_param_uint(ti.bits, e.args.at(0));
                         unsigned rv = 0;
                         // Count how many shifts needed to remove the MSB
-                        while( val != 0 ) {
+                        while( val != U128(0) ) {
                             val >>= 1;
                             rv += 1;
                         }
                         // Then subtract from the total bit count (no shift needed = max bits)
-                        dst.write_uint(state, ti.bits, ti.bits - rv);
+                        dst.write_uint(state, ti.bits, U128(ti.bits - rv));
                     }
                     else if( te->name == "bswap" ) {
                         auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
@@ -1997,7 +2006,7 @@ namespace HIR {
                                 return bswap32(v >> 32) | (static_cast<uint64_t>(bswap32(static_cast<uint32_t>(v))) << 32);
                             }
                         };
-                        uint64_t rv;
+                        U128 rv;
                         switch(ty.data().as_Primitive())
                         {
                         case ::HIR::CoreType::I8:
@@ -2006,15 +2015,15 @@ namespace HIR {
                             break;
                         case ::HIR::CoreType::I16:
                         case ::HIR::CoreType::U16:
-                            rv = H::bswap16(val);
+                            rv = U128(H::bswap16(val.truncate_u64()));
                             break;
                         case ::HIR::CoreType::I32:
                         case ::HIR::CoreType::U32:
-                            rv = H::bswap32(val);
+                            rv = U128(H::bswap32(val.truncate_u64()));
                             break;
                         case ::HIR::CoreType::I64:
                         case ::HIR::CoreType::U64:
-                            rv = H::bswap64(val);
+                            rv = U128(H::bswap64(val.truncate_u64()));
                             break;
                         default:
                             MIR_TODO(state, "Handle bswap with " << ty);
@@ -2034,14 +2043,14 @@ namespace HIR {
                             auto res = ti.mask(v1 + v2);
                             bool overflowed = res < v1;
                             dst.write_uint(state, ti.bits, res);
-                            dst.slice(ti.bits / 8).write_uint(state, 8, overflowed ? 1 : 0);
+                            dst.slice(ti.bits / 8).write_uint(state, 8, U128(overflowed ? 1 : 0));
                             } break;
                         case TypeInfo::Signed: {
                             auto v1r = local_state.read_param_sint(ti.bits, e.args.at(0));
                             auto v2r = local_state.read_param_sint(ti.bits, e.args.at(1));
                             // Convert to raw/unsigned repr
-                            auto v1u = static_cast<uint64_t>(v1r);
-                            auto v2u = static_cast<uint64_t>(v2r);
+                            auto v1u = v1r.get_inner();
+                            auto v2u = v2r.get_inner();
                             // Then convert into a sign and absolute value
                             auto v1s = (v1r < 0);
                             auto v2s = (v2r < 0);
@@ -2053,10 +2062,10 @@ namespace HIR {
                             // - V2 negative is negative if |v2| > |v1|
                             // - V1 negative is negative if |v2| < |v1|
                             bool res_sign = (v1s == v2s) ? v1s : (v2s ? v1a < v2a : v1a > v2a);
-                            auto res = static_cast<int64_t>(v1u + v2u);
+                            auto res = S128(v1u + v2u);
                             bool overflowed = ((res < 0) != res_sign);
                             dst.write_sint(state, ti.bits, res);
-                            dst.slice(ti.bits / 8).write_uint(state, 8, overflowed ? 1 : 0);
+                            dst.slice(ti.bits / 8).write_uint(state, 8, U128(overflowed ? 1 : 0));
                             } break;
                         case TypeInfo::Float:
                         case TypeInfo::Other:
@@ -2404,8 +2413,7 @@ namespace {
                 try
                 {
                     auto val = eval.evaluate_constant(*m_mod_path + name, expr_ptr, ::HIR::CoreType::Usize, m_monomorph_state.clone());
-                    // TODO: Read a usize out of the literal
-                    as = EncodedLiteralSlice(val).read_uint();
+                    as = val.read_usize(0);
                     DEBUG("Array size = " << as);
                 }
                 catch(const Defer& )
@@ -2617,7 +2625,7 @@ namespace {
                         {
                             auto val = eval.evaluate_constant(p, var.expr, ty.clone());
                             DEBUG("enum variant: " << p << "::" << var.name << " = " << val);
-                            i = EncodedLiteralSlice(val).read_sint();
+                            i = EncodedLiteralSlice(val).read_sint().truncate_i64();
                         }
                         catch(const Defer&)
                         {

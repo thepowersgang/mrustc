@@ -9,6 +9,7 @@
  */
 #pragma once
 #include <target_version.hpp>
+#include <int128.h>
 
 #include <cassert>
 #include <unordered_map>
@@ -289,7 +290,7 @@ struct StructMarkings
 
     // #[rustc_layout_scalar_valid_range_end]
     bool bounded_max = false;
-    uint64_t    bounded_max_value;
+    U128    bounded_max_value;
 };
 
 class ExternType

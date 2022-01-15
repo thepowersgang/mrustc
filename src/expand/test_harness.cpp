@@ -126,7 +126,7 @@ void Expand_TestHarness(::AST::Crate& crate)
     auto tests_list = ::AST::Static { ::AST::Static::Class::STATIC,
         TypeRef(TypeRef::TagSizedArray(), Span(),
                 mv$(list_item_ty),
-                ::std::shared_ptr<::AST::ExprNode>( new ::AST::ExprNode_Integer(test_count, CORETYPE_UINT) )
+                ::std::shared_ptr<::AST::ExprNode>( new ::AST::ExprNode_Integer(U128(test_count), CORETYPE_UINT) )
                ),
         ::AST::Expr( mv$(tests_array) )
         };

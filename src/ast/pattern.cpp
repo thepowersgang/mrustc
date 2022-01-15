@@ -21,7 +21,7 @@ namespace AST {
         switch(e.type)
         {
         case CORETYPE_BOOL:
-            os << (e.value ? "true" : "false");
+            os << (e.value != U128(0) ? "true" : "false");
             break;
         case CORETYPE_F32:
         case CORETYPE_F64:

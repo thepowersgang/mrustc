@@ -376,7 +376,7 @@ const EncodedLiteral* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
     TU_ARMA(Borrow, te) {
         const auto* data_reloc = lit.get_reloc();
         auto data_ptr = lit.read_uint(Target_GetPointerBits()/8);
-        MIR_ASSERT(state, data_ptr == EncodedLiteral::PTR_BASE, "TODO: Support offset pointers in borrows");
+        MIR_ASSERT(state, data_ptr == EncodedLiteral::PTR_BASE, "TODO: Support offset pointers in borrows - 0x" << std::hex << data_ptr);
 
         if(data_reloc->p)
         {
@@ -397,7 +397,7 @@ const EncodedLiteral* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
                 MIR_ASSERT(state, te.size.is_Known(), "BorrowOf returning slice of unknown-sized array - " << ty);
                 unsigned int size = te.size.as_Known();
 
-                auto size_val = ::MIR::Param( ::MIR::Constant::make_Uint({ size, ::HIR::CoreType::Usize }) );
+                auto size_val = ::MIR::Param( ::MIR::Constant::make_Uint({ U128(size), ::HIR::CoreType::Usize }) );
                 return ::MIR::RValue::make_MakeDst({ ::MIR::Param(mv$(ptr_val)), mv$(size_val) });
                 break; }
             case MetadataType::TraitObject: {
@@ -427,7 +427,7 @@ const EncodedLiteral* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
                 ::std::vector<uint8_t>  bytestr;
                 for(auto v : data_reloc->bytes)
                     bytestr.push_back( static_cast<uint8_t>(v) );
-                return ::MIR::RValue::make_MakeDst({ ::MIR::Constant(mv$(bytestr)), ::MIR::Constant::make_Uint({ data_reloc->bytes.size(), ::HIR::CoreType::Usize }) });
+                return ::MIR::RValue::make_MakeDst({ ::MIR::Constant(mv$(bytestr)), ::MIR::Constant::make_Uint({ U128(data_reloc->bytes.size()), ::HIR::CoreType::Usize }) });
             }
             else if( te.inner.data().is_Array() && te.inner.data().as_Array().inner == ::HIR::CoreType::U8 ) {
                 // TODO: How does this differ at codegen to the above?
@@ -446,7 +446,7 @@ const EncodedLiteral* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
                 for(auto v : data_reloc->bytes)
                     bytestr.push_back( static_cast<uint8_t>(v) );
                 // Make a `*const [u8]`
-                auto ptr1 = ::MIR::RValue::make_MakeDst({ ::MIR::Constant(mv$(bytestr)), ::MIR::Constant::make_Uint({ data_reloc->bytes.size(), ::HIR::CoreType::Usize }) });
+                auto ptr1 = ::MIR::RValue::make_MakeDst({ ::MIR::Constant(mv$(bytestr)), ::MIR::Constant::make_Uint({ U128(data_reloc->bytes.size()), ::HIR::CoreType::Usize }) });
                 auto lval = mutator.in_temporary( ::HIR::TypeRef::new_pointer(HIR::BorrowType::Shared, ::HIR::TypeRef::new_slice(::HIR::CoreType::U8)), mv$(ptr1) );
                 // Cast to `*const T`
                 auto raw_ptr_ty = ::HIR::TypeRef::new_pointer(HIR::BorrowType::Shared, te.inner.clone());
@@ -662,7 +662,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
                 return false;
             }
             out_meta_ty = ::HIR::CoreType::Usize;
-            out_meta_val = ::MIR::Constant::make_Uint({ in_array.size.as_Known(), ::HIR::CoreType::Usize });
+            out_meta_val = ::MIR::Constant::make_Uint({ U128(in_array.size.as_Known()), ::HIR::CoreType::Usize });
             return true;
         }
         else if( src_ty.data().is_Generic() || (src_ty.data().is_Path() && src_ty.data().as_Path().binding.is_Opaque()) )
@@ -690,7 +690,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
         // - Codegen assumes it's a pointer.
         if( de.m_trait.m_path.m_path == ::HIR::SimplePath() )
         {
-            auto null_lval = mutator.in_temporary( ::HIR::CoreType::Usize, ::MIR::Constant::make_Uint({ 0u, ::HIR::CoreType::Usize }) );
+            auto null_lval = mutator.in_temporary( ::HIR::CoreType::Usize, ::MIR::Constant::make_Uint({ U128(0u), ::HIR::CoreType::Usize }) );
             out_meta_ty = ty_unit_ptr.clone();
             out_meta_val = mutator.in_temporary( out_meta_ty.clone(), ::MIR::RValue::make_Cast({ mv$(null_lval), mv$(ty_unit_ptr) }) );
         }
@@ -970,7 +970,7 @@ void MIR_Cleanup_Constant(const ::MIR::TypeResolve& state, MirMutator& mutator, 
         // HACK: Restrict Usize to 32-bits when needed
         case ::HIR::CoreType::Usize:
             if( Target_GetCurSpec().m_arch.m_pointer_bits == 32 )
-                e->v &= 0xFFFFFFFF;
+                e->v &= U128(0xFFFFFFFF);
             break;
         default:
             break;
@@ -1125,7 +1125,7 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                         BUG(Span(), "Unexpected input type for DstMeta - " << ty);
                     }
                     if( const auto* te = ity_p->data().opt_Array() ) {
-                        se.src = ::MIR::Constant::make_Uint({ te->size.as_Known(), ::HIR::CoreType::Usize });
+                        se.src = ::MIR::Constant::make_Uint({ U128(te->size.as_Known()), ::HIR::CoreType::Usize });
                     }
                     }
                 TU_ARMA(DstPtr, re) {

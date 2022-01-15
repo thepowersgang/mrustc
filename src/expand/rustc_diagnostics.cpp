@@ -55,7 +55,7 @@ class CExpanderBuildDiagnosticArray:
         toks.push_back( TOK_AMP ); toks.push_back( Token(TOK_LIFETIME, RcString::new_interned("static")) ); toks.push_back( Token(TOK_IDENT, RcString::new_interned("str")) );
         toks.push_back( TOK_PAREN_CLOSE );
         toks.push_back( TOK_SEMICOLON );
-        toks.push_back( Token(static_cast<uint64_t>(0), CORETYPE_UINT) );
+        toks.push_back( Token(U128(0), CORETYPE_UINT) );
         toks.push_back( TOK_SQUARE_CLOSE );
         // = [];
         toks.push_back( TOK_EQUAL );

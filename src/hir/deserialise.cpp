@@ -487,7 +487,7 @@ namespace {
                 }
             case ::Token::Data::TAG_Integer: {
                 auto dty = static_cast<eCoreType>(m_in.read_tag());
-                return ::Token::Data::make_Integer({ dty, m_in.read_u64c() });
+                return ::Token::Data::make_Integer({ dty, m_in.read_u128() });
                 }
             case ::Token::Data::TAG_Float: {
                 auto dty = static_cast<eCoreType>(m_in.read_tag());
@@ -629,11 +629,11 @@ namespace {
             {
             #define _(x, ...)    case ::MIR::Constant::TAG_##x: DEBUG("- " #x); return ::MIR::Constant::make_##x( __VA_ARGS__ );
             _(Int, {
-                m_in.read_i64c(),
+                m_in.read_i128(),
                 static_cast< ::HIR::CoreType>(m_in.read_tag())
                 })
             _(Uint, {
-                m_in.read_u64c(),
+                m_in.read_u128(),
                 static_cast< ::HIR::CoreType>(m_in.read_tag())
                 })
             _(Float, {
@@ -872,7 +872,7 @@ namespace {
             m.unsized_field = m_in.read_count( );
             m.unsized_param = m_in.read_count();
             if(m.bounded_max)
-                m.bounded_max_value = m_in.read_u64();
+                m.bounded_max_value = m_in.read_u128();
             // TODO: auto_impls
             return m;
         }

@@ -1061,7 +1061,7 @@ ExprNodeP Parse_ExprVal_StructLiteral(TokenStream& lex, AST::Path path)
         ::std::map<unsigned int, ExprNodeP> nodes;
         while( GET_TOK(tok, lex) == TOK_INTEGER )
         {
-            unsigned int ofs = static_cast<unsigned int>(tok.intval());
+            unsigned int ofs = static_cast<unsigned int>(tok.intval().truncate_u64());
             GET_CHECK_TOK(tok, lex, TOK_COLON);
             ExprNodeP   val = Parse_Stmt(lex);
             if( ! nodes.insert( ::std::make_pair(ofs, mv$(val)) ).second ) {

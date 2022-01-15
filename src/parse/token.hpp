@@ -12,6 +12,7 @@
 #include "../coretypes.hpp"
 #include <ident.hpp>
 #include <memory>
+#include <int128.h>
 
 enum eTokenType
 {
@@ -69,7 +70,7 @@ class Token
     (String, ::std::string),
     (Integer, struct {
         enum eCoreType  m_datatype;
-        uint64_t    m_intval;
+        U128    m_intval;
         }),
     (Float, struct {
         enum eCoreType  m_datatype;
@@ -116,8 +117,8 @@ public:
     Token(enum eTokenType type);
     Token(enum eTokenType type, ::std::string str);
     Token(enum eTokenType type, Ident i);
-    Token(uint64_t val, enum eCoreType datatype);
-    Token(double val, enum eCoreType datatype);
+    Token(U128 val, enum eCoreType datatype);
+    static Token make_float(double val, enum eCoreType datatype);
     Token(const InterpolatedFragment& );
     struct TagTakeIP {};
     Token(TagTakeIP, InterpolatedFragment );
@@ -129,7 +130,7 @@ public:
     ::std::string& str() { return m_data.as_String(); }
     const ::std::string& str() const { return m_data.as_String(); }
     enum eCoreType  datatype() const { TU_MATCH_DEF(Data, (m_data), (e), (assert(!"Getting datatype of invalid token type");), (Integer, return e.m_datatype;), (Float, return e.m_datatype;)) throw ""; }
-    uint64_t intval() const { return m_data.as_Integer().m_intval; }
+    U128 intval() const { return m_data.as_Integer().m_intval; }
     double floatval() const { return m_data.as_Float().m_floatval; }
 
     // TODO: Replace these with a way of getting a InterpolatedFragment&

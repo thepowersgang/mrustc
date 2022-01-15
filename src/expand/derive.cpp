@@ -1590,7 +1590,7 @@ public:
 
             auto var_path = base_path + v.m_name;
             auto var_idx_hash = enm.variants().size() > 1
-                ?  this->hash_val_ref( opts.core_name, NEWNODE(Integer, var_idx, CORETYPE_UINT) )
+                ?  this->hash_val_ref( opts.core_name, NEWNODE(Integer, U128(var_idx), CORETYPE_UINT) )
                 : NEWNODE(Tuple, {})
                 ;
 
@@ -1728,7 +1728,7 @@ public:
                     vec$(
                         NEWNODE(NamedValue, AST::Path("s")),
                         NEWNODE(String, fld.m_name.c_str()),
-                        NEWNODE(Integer, idx, CORETYPE_UINT),
+                        NEWNODE(Integer, U128(idx), CORETYPE_UINT),
                         this->enc_closure( sp, this->enc_val_ref(this->field(fld.m_name)) )
                         )
                     ) );
@@ -1740,7 +1740,7 @@ public:
             {
                 nodes.push_back( NEWNODE(CallPath,
                     this->get_trait_path_Encoder() + "emit_tuple_struct_arg",
-                    vec$( NEWNODE(NamedValue, AST::Path("s")), NEWNODE(Integer, idx, CORETYPE_UINT), this->enc_closure( sp, this->enc_val_ref(this->field(FMT(idx))) ) )
+                    vec$( NEWNODE(NamedValue, AST::Path("s")), NEWNODE(Integer, U128(idx), CORETYPE_UINT), this->enc_closure( sp, this->enc_val_ref(this->field(FMT(idx))) ) )
                     ) );
             }
             }
@@ -1757,13 +1757,13 @@ public:
         TU_ARMA(Struct, e) {
             node = NEWNODE(CallPath,
                 this->get_trait_path_Encoder() + "emit_struct",
-                vec$( NEWNODE(NamedValue, AST::Path("s")), NEWNODE(String, struct_name), NEWNODE(Integer, e.ents.size(), CORETYPE_UINT), mv$(closure) )
+                vec$( NEWNODE(NamedValue, AST::Path("s")), NEWNODE(String, struct_name), NEWNODE(Integer, U128(e.ents.size()), CORETYPE_UINT), mv$(closure) )
                 );
             }
         TU_ARMA(Tuple, e) {
             node = NEWNODE(CallPath,
                 this->get_trait_path_Encoder() + "emit_tuple_struct",
-                vec$( NEWNODE(NamedValue, AST::Path("s")), NEWNODE(String, struct_name), NEWNODE(Integer, e.ents.size(), CORETYPE_UINT), mv$(closure) )
+                vec$( NEWNODE(NamedValue, AST::Path("s")), NEWNODE(String, struct_name), NEWNODE(Integer, U128(e.ents.size()), CORETYPE_UINT), mv$(closure) )
                 );
             }
         }
@@ -1791,8 +1791,8 @@ public:
                     vec$(
                         s_ent->clone(),
                         NEWNODE(String, v.m_name.c_str()),
-                        NEWNODE(Integer, var_idx, CORETYPE_UINT),
-                        NEWNODE(Integer, 0, CORETYPE_UINT),
+                        NEWNODE(Integer, U128(var_idx), CORETYPE_UINT),
+                        NEWNODE(Integer, U128(0), CORETYPE_UINT),
                         this->enc_closure(sp, this->get_val_ok(opts.core_name))
                         )
                     );
@@ -1804,7 +1804,7 @@ public:
                     return NEWNODE(CallPath, this->get_trait_path_Encoder() + RcString::new_interned("emit_enum_variant_arg"),
                         vec$(
                             s_ent->clone(),
-                            NEWNODE(Integer, idx, CORETYPE_UINT),
+                            NEWNODE(Integer, U128(idx), CORETYPE_UINT),
                             this->enc_closure(sp, this->enc_val_direct(mv$(a)))
                             )
                         );
@@ -1815,8 +1815,8 @@ public:
                     vec$(
                         s_ent->clone(),
                         NEWNODE(String, v.m_name.c_str()),
-                        NEWNODE(Integer, var_idx, CORETYPE_UINT),
-                        NEWNODE(Integer, e.m_sub_types.size(), CORETYPE_UINT),
+                        NEWNODE(Integer, U128(var_idx), CORETYPE_UINT),
+                        NEWNODE(Integer, U128(e.m_sub_types.size()), CORETYPE_UINT),
                         this->enc_closure(sp, NEWNODE(Block, mv$(nodes)))
                         )
                     );
@@ -1829,7 +1829,7 @@ public:
                         vec$(
                             s_ent->clone(),
                             NEWNODE(String, e.m_fields[idx].m_name.c_str()),
-                            NEWNODE(Integer, idx, CORETYPE_UINT),
+                            NEWNODE(Integer, U128(idx), CORETYPE_UINT),
                             this->enc_closure(sp, this->enc_val_direct(mv$(a)))
                             )
                         );
@@ -1841,8 +1841,8 @@ public:
                     vec$(
                         s_ent->clone(),
                         NEWNODE(String, v.m_name.c_str()),
-                        NEWNODE(Integer, var_idx, CORETYPE_UINT),
-                        NEWNODE(Integer, e.m_fields.size(), CORETYPE_UINT),
+                        NEWNODE(Integer, U128(var_idx), CORETYPE_UINT),
+                        NEWNODE(Integer, U128(e.m_fields.size()), CORETYPE_UINT),
                         this->enc_closure(sp, NEWNODE(Block, mv$(nodes)))
                         )
                     );
@@ -1964,7 +1964,7 @@ public:
             {
                 vals.push_back({ {}, fld.m_name, NEWNODE(UniOp, ::AST::ExprNode_UniOp::QMARK, NEWNODE(CallPath,
                     this->get_trait_path_Decoder() + "read_struct_field",
-                    vec$( NEWNODE(NamedValue, AST::Path("d")), NEWNODE(String, fld.m_name.c_str()), NEWNODE(Integer, idx, CORETYPE_UINT), this->dec_closure( sp, this->dec_val() ) )
+                    vec$( NEWNODE(NamedValue, AST::Path("d")), NEWNODE(String, fld.m_name.c_str()), NEWNODE(Integer, U128(idx), CORETYPE_UINT), this->dec_closure( sp, this->dec_val() ) )
                     )) });
                 idx ++;
             }
@@ -1976,7 +1976,7 @@ public:
             {
                 vals.push_back( NEWNODE(UniOp, ::AST::ExprNode_UniOp::QMARK, NEWNODE(CallPath,
                     this->get_trait_path_Decoder() + "read_tuple_struct_arg",
-                    vec$( NEWNODE(NamedValue, AST::Path("d")), NEWNODE(Integer, idx, CORETYPE_UINT), this->dec_closure(sp, this->dec_val()) )
+                    vec$( NEWNODE(NamedValue, AST::Path("d")), NEWNODE(Integer, U128(idx), CORETYPE_UINT), this->dec_closure(sp, this->dec_val()) )
                     )) );
             }
             node_v = NEWNODE(CallPath, mv$(base_path), mv$(vals));
@@ -1994,12 +1994,12 @@ public:
             }
         TU_ARMA(Struct, e) {
             assert( !args[2] );
-            args[2] = NEWNODE(Integer, e.ents.size(), CORETYPE_UINT);
+            args[2] = NEWNODE(Integer, U128(e.ents.size()), CORETYPE_UINT);
             node = NEWNODE(CallPath, this->get_trait_path_Decoder() + "read_struct", mv$(args) );
             }
         TU_ARMA(Tuple, e) {
             assert( !args[2] );
-            args[2] = NEWNODE(Integer, e.ents.size(), CORETYPE_UINT);
+            args[2] = NEWNODE(Integer, U128(e.ents.size()), CORETYPE_UINT);
             node = NEWNODE(CallPath, this->get_trait_path_Decoder() + "read_tuple_struct", mv$(args) );
             }
         }
@@ -2034,7 +2034,7 @@ public:
                     args.push_back( NEWNODE(UniOp, ::AST::ExprNode_UniOp::QMARK, NEWNODE(CallPath, this->get_trait_path_Decoder() + "read_enum_variant_arg",
                         vec$(
                             NEWNODE(NamedValue, AST::Path("d")),
-                            NEWNODE(Integer, idx, CORETYPE_UINT),
+                            NEWNODE(Integer, U128(idx), CORETYPE_UINT),
                             this->dec_closure(sp, this->dec_val())
                             )
                         )) );
@@ -2051,7 +2051,7 @@ public:
                         vec$(
                             NEWNODE(NamedValue, AST::Path("d")),
                             NEWNODE(String, fld.m_name.c_str()),
-                            NEWNODE(Integer, idx, CORETYPE_UINT),
+                            NEWNODE(Integer, U128(idx), CORETYPE_UINT),
                             this->dec_closure(sp, this->dec_val())
                             )
                         ) )});
@@ -2063,7 +2063,7 @@ public:
             }
 
             ::std::vector< AST::Pattern>    pats;
-            pats.push_back( AST::Pattern(AST::Pattern::TagValue(), sp, AST::Pattern::Value::make_Integer({CORETYPE_UINT, var_idx})) );
+            pats.push_back( AST::Pattern(AST::Pattern::TagValue(), sp, AST::Pattern::Value::make_Integer({CORETYPE_UINT, U128(var_idx)})) );
 
             arms.push_back(AST::ExprNode_Match_Arm(
                 mv$(pats),

@@ -743,11 +743,11 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
                             auto idx = builder.add_local(HIR::CoreType::Usize);
                             auto fld_lv = ::MIR::LValue::new_Index(mv$(self), idx.as_Local());
                             auto cmp = builder.add_local(HIR::CoreType::Bool);
-                            builder.push_stmt_assign(idx.clone(), MIR::Constant::make_Uint({0, HIR::CoreType::Usize}));
+                            builder.push_stmt_assign(idx.clone(), MIR::Constant::make_Uint({ U128(0), HIR::CoreType::Usize }));
                             builder.terminate_block(MIR::Terminator::make_Goto(1));
                             builder.push_stmt_drop(fld_lv.clone());
-                            builder.push_stmt_assign(idx.clone(), MIR::RValue::make_BinOp({ idx.clone(), MIR::eBinOp::ADD, MIR::Constant::make_Uint({1, HIR::CoreType::Usize}) }));
-                            builder.push_stmt_assign(cmp.clone(), MIR::RValue::make_BinOp({ idx.clone(), MIR::eBinOp::EQ, MIR::Constant::make_Uint({size, HIR::CoreType::Usize}) }));
+                            builder.push_stmt_assign(idx.clone(), MIR::RValue::make_BinOp({ idx.clone(), MIR::eBinOp::ADD, MIR::Constant::make_Uint({ U128(1), HIR::CoreType::Usize }) }));
+                            builder.push_stmt_assign(cmp.clone(), MIR::RValue::make_BinOp({ idx.clone(), MIR::eBinOp::EQ, MIR::Constant::make_Uint({ U128(size), HIR::CoreType::Usize }) }));
                             builder.terminate_block(MIR::Terminator::make_If({ cmp.clone(), 1, 2 }));
                             builder.ensure_open();
                         }

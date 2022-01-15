@@ -6999,74 +6999,68 @@ namespace {
         {
             TU_MATCH_HDRA( (ve), {)
             TU_ARMA(Int, c) {
-                if( c.v == INT64_MIN )
+                switch(c.t)
                 {
-                    if( m_options.emulated_i128 && c.t == ::HIR::CoreType::I128 )
+                // TODO: These should already have been truncated/reinterpreted, but just in case.
+                case ::HIR::CoreType::I8:
+                    m_of << static_cast<int>( static_cast<int8_t>(c.v.truncate_i64()) );   // cast to int, because `int8_t` is printed as a `char`
+                    break;
+                case ::HIR::CoreType::I16:
+                    m_of << static_cast<int16_t>(c.v.truncate_i64());
+                    break;
+                case ::HIR::CoreType::I32:
+                    m_of << static_cast<int32_t>(c.v.truncate_i64());
+                    break;
+                case ::HIR::CoreType::I64:
+                case ::HIR::CoreType::Isize:
+                    if( c.v.truncate_i64() == INT64_MIN ) {
+                        m_of << "INT64_MIN";
+                    }
+                    else if( c.v.truncate_i64() == INT64_MAX ) {
+                        m_of << "INT64_MAX";
+                    }
+                    else {
+                        m_of << c.v.truncate_i64();
+                        m_of << "ll";
+                    }
+                    break;
+                case ::HIR::CoreType::I128:
+                    if( m_options.emulated_i128 )
                     {
-                        m_of << "make128s(INT64_MIN)";
+                        m_of << "make128s_raw(" << c.v.get_inner().get_hi() << "ull, " << c.v.get_inner().get_lo() << "ull)";
                     }
                     else
                     {
-                        m_of << "INT64_MIN";
-                    }
-                }
-                else
-                {
-                    switch(c.t)
-                    {
-                    // TODO: These should already have been truncated/reinterpreted, but just in case.
-                    case ::HIR::CoreType::I8:
-                        m_of << static_cast<int>( static_cast<int8_t>(c.v) );   // cast to int, because `int8_t` is printed as a `char`
-                        break;
-                    case ::HIR::CoreType::I16:
-                        m_of << static_cast<int16_t>(c.v);
-                        break;
-                    case ::HIR::CoreType::I32:
-                        m_of << static_cast<int32_t>(c.v);
-                        break;
-                    case ::HIR::CoreType::I64:
-                    case ::HIR::CoreType::Isize:
+                        m_of << "(int128_t)";
                         m_of << c.v;
                         m_of << "ll";
-                        break;
-                    case ::HIR::CoreType::I128:
-                        if( m_options.emulated_i128 )
-                        {
-                            m_of << "make128s(" << c.v << "ll)";
-                        }
-                        else
-                        {
-                            m_of << "(int128_t)";
-                            m_of << c.v;
-                            m_of << "ll";
-                        }
-                        break;
-                    default:
-                        m_of << c.v;
-                        break;
                     }
+                    break;
+                default:
+                    m_of << c.v;
+                    break;
                 }
                 }
             TU_ARMA(Uint, c) {
                 switch(c.t)
                 {
                 case ::HIR::CoreType::U8:
-                    m_of << ::std::hex << "0x" << (c.v & 0xFF) << ::std::dec;
+                    m_of << ::std::hex << "0x" << (c.v.truncate_u64() & 0xFF) << ::std::dec;
                     break;
                 case ::HIR::CoreType::U16:
-                    m_of << ::std::hex << "0x" << (c.v & 0xFFFF) << ::std::dec;
+                    m_of << ::std::hex << "0x" << (c.v.truncate_u64() & 0xFFFF) << ::std::dec;
                     break;
                 case ::HIR::CoreType::U32:
-                    m_of << ::std::hex << "0x" << (c.v & 0xFFFFFFFF) << ::std::dec;
+                    m_of << ::std::hex << "0x" << (c.v.truncate_u64() & 0xFFFFFFFF) << ::std::dec;
                     break;
                 case ::HIR::CoreType::U64:
                 case ::HIR::CoreType::Usize:
-                    m_of << ::std::hex << "0x" << c.v << "ull" << ::std::dec;
+                    m_of << ::std::hex << "0x" << c.v.truncate_u64() << "ull" << ::std::dec;
                     break;
                 case ::HIR::CoreType::U128:
                     if( m_options.emulated_i128 )
                     {
-                        m_of << "make128(" << ::std::hex << "0x" << c.v << "ull)" << ::std::dec;
+                        m_of << "make128_raw(" << c.v.get_hi() << "ull, " << c.v.get_lo() << "ull)";
                     }
                     else
                     {
@@ -7075,7 +7069,7 @@ namespace {
                     }
                     break;
                 case ::HIR::CoreType::Char:
-                    assert(0 <= c.v && c.v <= 0x10FFFF);
+                    assert(c.v <= 0x10FFFF);
                     if( c.v < 256 ) {
                         m_of << c.v;
                     }

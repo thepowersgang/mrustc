@@ -140,7 +140,7 @@ void Expand_ProcMacro(::AST::Crate& crate)
     auto tests_list = ::AST::Static { ::AST::Static::Class::STATIC,
         TypeRef(TypeRef::TagSizedArray(), Span(),
                 TypeRef(Span(), ::AST::Path(crate.m_ext_cratename_procmacro, { ::AST::PathNode("MacroDesc") })),
-                ::std::shared_ptr<::AST::ExprNode>( new ::AST::ExprNode_Integer(test_count, CORETYPE_UINT) )
+                ::std::shared_ptr<::AST::ExprNode>( new ::AST::ExprNode_Integer(U128(test_count), CORETYPE_UINT) )
                ),
         ::AST::Expr( mv$(tests_array) )
         };
@@ -252,7 +252,7 @@ public:
         this->send_u8(static_cast<uint8_t>(TokenClass::CharLit));
         this->send_v128u(ch);
     }
-    void send_int(eCoreType ct, int64_t v) {
+    void send_int(eCoreType ct, U128 v) {
         uint8_t size;
         switch(ct)
         {
@@ -280,7 +280,6 @@ public:
         default:
             BUG(m_parent_span, "Unknown integer type");
         }
-        assert(v >= 0); // Integer literals can't be negative, and `send_v128u` is unsigned
         this->send_v128u(v);
     }
     void send_float(eCoreType ct, double v) {
@@ -310,11 +309,13 @@ private:
     void send_bytes(const void* val, size_t size);
     void send_bytes_raw(const void* val, size_t size);
     void send_v128u(uint64_t val);
+    void send_v128u(U128 val);
 
     uint8_t recv_u8();
     ::std::string recv_bytes();
     void recv_bytes_raw(void* out_void, size_t len);
     uint64_t recv_v128u();
+    U128 recv_v128u_u128();
 };
 
 ProcMacroInv ProcMacro_Invoke_int(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path)
@@ -412,7 +413,7 @@ namespace {
                 case TOK_IDENT:     m_pmi.send_ident(tok.ident().name.c_str());   break;  // TODO: Raw idents
                 case TOK_LIFETIME:  m_pmi.send_lifetime(tok.ident().name.c_str());  break;  // TODO: Hygine?
                 case TOK_INTEGER:   m_pmi.send_int(tok.datatype(), tok.intval());   break;
-                case TOK_CHAR:      m_pmi.send_char(tok.intval());  break;
+                case TOK_CHAR:      m_pmi.send_char(tok.intval().truncate_u64());  break;
                 case TOK_FLOAT:     m_pmi.send_float(tok.datatype(), tok.floatval());   break;
                 case TOK_STRING:        m_pmi.send_string(tok.str());       break;
                 case TOK_BYTESTRING:    m_pmi.send_bytestring(tok.str());   break;
@@ -835,7 +836,7 @@ namespace {
 
                 for(const auto& e : params.m_bounds)
                 {
-                    auto i = &e - params.m_bounds.data();
+                    size_t i = &e - params.m_bounds.data();
                     bool already_emitted = false;
                     for(const auto& p : params.m_params) {
                         if(p.is_None())
@@ -1206,9 +1207,9 @@ namespace {
 
 ProcMacroInv::ProcMacroInv(const Span& sp, AST::Edition edition, const char* executable, const ::HIR::ProcMacro& proc_macro_desc):
     TokenStream(ParseState()),
-    m_edition(edition),
     m_parent_span(sp),
-    m_proc_macro_desc(proc_macro_desc)
+    m_proc_macro_desc(proc_macro_desc),
+    m_edition(edition)
 {
     // TODO: Optionally dump the data sent to the client.
     if( getenv("MRUSTC_DUMP_PROCMACRO") )
@@ -1445,6 +1446,14 @@ void ProcMacroInv::send_v128u(uint64_t val)
     }
     this->send_u8( static_cast<uint8_t>(val & 0x7F) );
 }
+void ProcMacroInv::send_v128u(U128 val)
+{
+    while( val >= U128(128) ) {
+        this->send_u8( static_cast<uint8_t>(val.truncate_u64() & 0x7F) | 0x80 );
+        val >>= 7;
+    }
+    this->send_u8( static_cast<uint8_t>(val.truncate_u64() & 0x7F) );
+}
 uint8_t ProcMacroInv::recv_u8()
 {
     uint8_t v;
@@ -1502,6 +1511,20 @@ uint64_t ProcMacroInv::recv_v128u()
     }
     return v;
 }
+U128 ProcMacroInv::recv_v128u_u128()
+{
+    U128    v(0);
+    unsigned    ofs = 0;
+    for(;;)
+    {
+        auto b = recv_u8();
+        v |= U128(b & 0x7F) << ofs;
+        if( (b & 0x80) == 0 )
+            break;
+        ofs += 7;
+    }
+    return v;
+}
 
 Position ProcMacroInv::getPosition() const {
     return Position();
@@ -1549,7 +1572,7 @@ Token ProcMacroInv::realGetToken_() {
         }
     case TokenClass::CharLit: {
         auto val = this->recv_v128u();
-        return Token(static_cast<uint64_t>(val), CORETYPE_CHAR);
+        return Token(U128(val), CORETYPE_CHAR);
         }
     case TokenClass::UnsignedInt: {
         ::eCoreType ty;
@@ -1564,8 +1587,8 @@ Token ProcMacroInv::realGetToken_() {
         case 128: ty = CORETYPE_U128;   break;
         default:    BUG(this->m_parent_span, "Invalid integer size from child process");
         }
-        auto val = this->recv_v128u();
-        return Token(static_cast<uint64_t>(val), ty);
+        auto val = this->recv_v128u_u128();
+        return Token(val, ty);
         }
     case TokenClass::SignedInt: {
         ::eCoreType ty;
@@ -1580,15 +1603,15 @@ Token ProcMacroInv::realGetToken_() {
         case 128: ty = CORETYPE_I128;   break;
         default:    BUG(this->m_parent_span, "Invalid integer size from child process");
         }
-        auto val = this->recv_v128u();
-        if(val & 1) {
+        auto val = this->recv_v128u_u128();
+        if(val.truncate_u64() & 1) {
             val = ~(val >> 1) + 1;  // Negative (Is this even possible?)
             TODO(this->m_parent_span, "Negative literal from proc macro, what?");
         }
         else {
             val = (val >> 1);
         }
-        return Token(static_cast<uint64_t>(val), ty);
+        return Token(val, ty);
         }
     case TokenClass::Float: {
         ::eCoreType ty;
@@ -1601,12 +1624,12 @@ Token ProcMacroInv::realGetToken_() {
         }
         double val;
         this->recv_bytes_raw(&val, sizeof(val));
-        return Token(val, ty);
+        return Token::make_float(val, ty);
         }
     case TokenClass::Fragment:
         TODO(this->m_parent_span, "Handle ints/floats/fragments from child process");
     }
-    BUG(this->m_parent_span, "Invalid token class from child process");
+    BUG(this->m_parent_span, "Invalid token class from child process - " << int(v));
 
     throw "";
 }

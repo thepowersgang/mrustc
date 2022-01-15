@@ -65,7 +65,7 @@ public:
         (Invalid, struct {}),
         (Integer, struct {
             enum eCoreType type;
-            uint64_t value; // Signed numbers are encoded as 2's complement
+            U128 value; // Signed numbers are encoded as 2's complement
             }),
         (Float, struct {
             enum eCoreType type;

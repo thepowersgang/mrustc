@@ -42,7 +42,7 @@ class CConcatExpander:
             else if( auto* vp = dynamic_cast<AST::ExprNode_Integer*>(v.get()) )
             {
                 if( vp->m_datatype == CORETYPE_CHAR ) {
-                    rv += Codepoint { static_cast<uint32_t>(vp->m_value) };
+                    rv += Codepoint { static_cast<uint32_t>(vp->m_value.truncate_u64()) };
                 }
                 else {
                     rv += FMT(vp->m_value);

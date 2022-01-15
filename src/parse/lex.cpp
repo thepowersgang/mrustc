@@ -397,7 +397,7 @@ Token Lexer::getTokenInt()
 
 
                 // Handle integers/floats
-                uint64_t    val = 0;
+                U128    val(0);
                 if( ch == '0' ) {
                     // Octal/hex handling
                     ch = this->getc_num();
@@ -407,11 +407,11 @@ Token Lexer::getTokenInt()
                         {
                             val *= 16;
                             if(ch.v <= '9')
-                                val += ch.v - '0';
+                                val += U128(ch.v - '0');
                             else if( ch.v <= 'F' )
-                                val += ch.v - 'A' + 10;
+                                val += U128(ch.v - 'A' + 10);
                             else if( ch.v <= 'f' )
-                                val += ch.v - 'a' + 10;
+                                val += U128(ch.v - 'a' + 10);
                         }
                     }
                     else if( ch == 'b' ) {
@@ -432,7 +432,7 @@ Token Lexer::getTokenInt()
                         while( (ch = this->getc_num()).isdigit() ) {
                             val *= 8;
                             if('0' <= ch.v && ch.v <= '7')
-                                val += ch.v - '0';
+                                val += U128(ch.v - '0');
                             else
                                 throw ParseError::Generic("Invalid digit in octal literal");
                         }
@@ -441,7 +441,7 @@ Token Lexer::getTokenInt()
                         num_mode = DEC;
                         while( ch.isdigit() ) {
                             val *= 10;
-                            val += ch.v - '0';
+                            val += U128(ch.v - '0');
                             ch = this->getc_num();
                         }
                     }
@@ -449,7 +449,7 @@ Token Lexer::getTokenInt()
                 else {
                     while( ch.isdigit() ) {
                         val *= 10;
-                        val += ch.v - '0';
+                        val += U128(ch.v - '0');
                         ch = this->getc_num();
                     }
                 }
@@ -487,8 +487,8 @@ Token Lexer::getTokenInt()
                             }
                             else
                             {
-                                double fval = static_cast<double>(val);
-                                return Token(fval, CORETYPE_ANY);
+                                double fval = val.to_double();
+                                return Token::make_float(fval, CORETYPE_ANY);
                             }
                         }
                         else
@@ -503,7 +503,7 @@ Token Lexer::getTokenInt()
 
 
                     this->ungetc();
-                    double fval = this->parseFloat(val);
+                    double fval = this->parseFloat(val.truncate_u64());
                     if( fval != fval )
                     {
                         assert(!this->m_next_tokens.empty());
@@ -531,7 +531,7 @@ Token Lexer::getTokenInt()
                     {
                         this->ungetc();
                     }
-                    return Token(fval, num_type);
+                    return Token::make_float(fval, num_type);
 
                 }
                 else if( issym(ch)) {
@@ -610,12 +610,12 @@ Token Lexer::getTokenInt()
                             uint32_t val = this->parseEscape('\'');
                             if( this->getc() != '\'' )
                                 throw ParseError::Generic(*this, "Multi-byte character literal");
-                            return Token((uint64_t)val, CORETYPE_U8);
+                            return Token( U128(val), CORETYPE_U8);
                         }
                         else {
                             if( this->getc() != '\'' )
                                 throw ParseError::Generic(*this, "Multi-byte character literal");
-                            return Token((uint64_t)ch.v, CORETYPE_U8);
+                            return Token( U128(ch.v), CORETYPE_U8);
                         }
                     }
                     else {
@@ -750,13 +750,13 @@ Token Lexer::getTokenInt()
                     if(this->getc() != '\'') {
                         throw ParseError::Todo("Proper error for lex failures");
                     }
-                    return Token((uint64_t)val, CORETYPE_CHAR);
+                    return Token( U128(val), CORETYPE_CHAR);
                 }
                 else {
                     ch = this->getc();
                     if( ch == '\'' ) {
                         // Character constant
-                        return Token((uint64_t)firstchar.v, CORETYPE_CHAR);
+                        return Token( U128(firstchar.v), CORETYPE_CHAR);
                     }
                     else if( issym(firstchar.v) ) {
                         // Lifetime name
@@ -933,9 +933,9 @@ double Lexer::parseFloat(uint64_t whole)
         *cit = '\0';
         // - Push these in reverse order (as they're popped off the back)
         this->ungetc();
-        m_next_tokens.push_back(Token(static_cast<uint64_t>(std::strtoull(cit+1, nullptr, 10)), CORETYPE_ANY));
+        m_next_tokens.push_back(Token(U128(std::strtoull(cit+1, nullptr, 10)), CORETYPE_ANY));
         m_next_tokens.push_back(TOK_DOT);
-        m_next_tokens.push_back(Token(static_cast<uint64_t>(std::strtoull(buf  , nullptr, 10)), CORETYPE_ANY));
+        m_next_tokens.push_back(Token(U128(std::strtoull(buf  , nullptr, 10)), CORETYPE_ANY));
 
         return std::numeric_limits<double>::quiet_NaN();
     }
