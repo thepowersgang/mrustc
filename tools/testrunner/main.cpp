@@ -381,7 +381,9 @@ int main(int argc, const char* argv[])
                     test_exe_ts = Timestamp::infinite_past();
                 }
             }
-            if( test_exe_ts == Timestamp::infinite_past() || (!NO_COMPILER_DEP && !SKIP_PASS && test_exe_ts < compiler_ts) )
+            if( test_exe_ts == Timestamp::infinite_past()
+             || test_exe_ts < Timestamp::for_file(test.m_path)
+             || (!NO_COMPILER_DEP && !SKIP_PASS && test_exe_ts < compiler_ts) )
             {
                 bool pre_build_failed = false;
                 for(const auto& file : test.m_pre_build)
