@@ -107,8 +107,31 @@ def main():
             continue
 
 
-        for m in switch_regex.finditer(bb[-1]):
-            links.append( Link(idx, int(m.group(2)), "var%s" % (m.group(1),) ) )
+        # Rewrite `switch` terminators to de-duplicate the most common arm
+        if bb[-1].startswith("switch "):
+            arms = []
+            counts = {}
+            for m in switch_regex.finditer(bb[-1]):
+                tgt = int(m.group(2))
+                arms.append(( tgt, "var%s" % (m.group(1),) ))
+                if not tgt in counts:
+                    counts[tgt] = 0
+                counts[tgt] += 1
+            max_arm = max([ (v,k) for k,v in counts.items() ])
+            # If one arm is used more times than there are arms, dedup it
+            if max_arm[0] > len(counts):
+                default_tgt = max_arm[1]
+                p = bb[-1].find('{')
+                bb[-1] = bb[-1][:p+1]
+                for tgt,var in arms:
+                    if tgt != default_tgt:
+                        links.append( Link(idx, tgt, var ) )
+                        bb[-1] += "{} => bb{}, ".format(var, tgt)
+                bb[-1] += "* => bb{} }}".format(default_tgt)
+                links.append(Link(idx, default_tgt, "*" ))
+            else:
+                for tgt,var in arms:
+                    links.append( Link(idx, tgt, var ) )
 
 
 
