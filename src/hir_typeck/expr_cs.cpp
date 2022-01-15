@@ -1319,16 +1319,17 @@ namespace {
         }
         void visit(::HIR::ExprNode_CallValue& node) override {
 
-            for(auto& ty : node.m_arg_types)
+            for(auto& ty : node.m_arg_types) {
                 this->check_type_resolved_top(node.span(), ty);
-            
+            }
+
             {
                 const auto& ty = context.get_type(node.m_value->m_res_type);
-                if( const auto* e = ty.data().opt_Closure() )
+                if( /*const auto* e =*/ ty.data().opt_Closure() )
                 {
                     node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::Unknown;
                 }
-                else if( const auto* e = ty.data().opt_Function() )
+                else if( /*const auto* e =*/ ty.data().opt_Function() )
                 {
                     node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::Fn;
                 }
@@ -1866,7 +1867,7 @@ void Context::equate_types_inner(const Span& sp, const ::HIR::TypeRef& li, const
     }
     else
     {
-        if(const auto* l_e = l_t.data().opt_Infer())
+        if(/*const auto* l_e =*/ l_t.data().opt_Infer())
         {
             // Lefthand side is infer, alias it to the right
             set_ivar(l_t, r_t);
@@ -6346,7 +6347,7 @@ namespace
                             DEBUG("Single possibility failed bounds, trying deref - " << *ty_p);
                             break;
                         }
-                    } while(ty_p = context.m_resolve.autoderef(sp, *ty_p, tmp_ty));
+                    } while( (ty_p = context.m_resolve.autoderef(sp, *ty_p, tmp_ty)) );
                     if(!ty_p) {
                         // All would fail, just set something sensible
                         ty_p = possible_tys[0].ty;

@@ -657,7 +657,7 @@ void HMTypeInferrence::ivar_val_unify(unsigned int left_slot, unsigned int right
     ASSERT_BUG(sp, !m_values[left_slot].is_alias(), "slot " << left_slot);
     ASSERT_BUG(sp, !m_values[right_slot].is_alias(), "slot " << right_slot);
 
-    if( const auto* re = m_values[right_slot].val->opt_Infer() )
+    if( /*const auto* re =*/ m_values[right_slot].val->opt_Infer() )
     {
         DEBUG("Set ValIVar " << right_slot << " = @" << left_slot);
         m_values[right_slot].alias = left_slot;

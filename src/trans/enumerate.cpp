@@ -1009,7 +1009,7 @@ void Trans_Enumerate_Types(EnumState& state)
                 }
             }
 
-            if( const auto* ity = tv.m_resolve.is_type_owned_box(ty) )
+            if( /*const auto* ity =*/ tv.m_resolve.is_type_owned_box(ty) )
             {
                 // Reqire drop glue for inner type.
                 // - Should that already exist?

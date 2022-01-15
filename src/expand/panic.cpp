@@ -52,7 +52,7 @@ class CExpander_panic:
         }
         toks.push_back( Token(TOK_PAREN_CLOSE) );
 
-        return box$( TTStreamO(sp, ParseState(), TokenTree(AST::Edition::Rust2015, Ident::Hygiene::new_scope(), mv$(toks))) );
+        return box$( TTStreamO(sp, ParseState(), TokenTree(edition, Ident::Hygiene::new_scope(), mv$(toks))) );
     }
 };
 
