@@ -818,6 +818,7 @@ namespace {
             TRACE_FUNCTION;
 
             auto linkage = deserialise_linkage();
+            auto params = deserialise_genericparams();
             uint8_t bitflag_1 = m_in.read_u8();
             #define BIT(i,fld)  fld = (bitflag_1 & (1 << (i))) != 0;
             bool is_mut;
@@ -827,6 +828,11 @@ namespace {
             #undef BIT
             auto ty = deserialise_type();
             auto rv = ::HIR::Static(mv$(linkage), is_mut, mv$(ty), {});
+            if(params.is_generic())
+            {
+                rv.m_value = deserialise_exprptr();
+            }
+            rv.m_params = ::std::move(params);
             if(save_literal)
             {
                 rv.m_value_res = deserialise_encodedliteral();

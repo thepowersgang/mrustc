@@ -2264,6 +2264,9 @@ namespace {
                     break;
                 }
             }
+            if( item.m_params.is_generic() ) {
+                m_of << "static ";
+            }
             emit_static_ty(type, p, /*is_proto=*/true);
             m_of << ";";
             m_of << "\t// static " << p << " : " << type;
@@ -2271,7 +2274,7 @@ namespace {
 
             m_mir_res = nullptr;
         }
-        void emit_static_local(const ::HIR::Path& p, const ::HIR::Static& item, const Trans_Params& params) override
+        void emit_static_local(const ::HIR::Path& p, const ::HIR::Static& item, const Trans_Params& params, const EncodedLiteral& encoded) override
         {
             ::MIR::Function empty_fcn;
             ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "static " << p;), ::HIR::TypeRef(), {}, empty_fcn };
@@ -2281,12 +2284,13 @@ namespace {
 
             auto type = params.monomorph(m_resolve, item.m_type);
             // statics that are zero do not require initializers, since they will be initialized to zero on program startup.
-            if( !is_zero_literal(type, item.m_value_res, params)) {
+            if( !is_zero_literal(type, encoded, params)) {
+                if( item.m_params.is_generic() ) {
+                    m_of << "static ";
+                }
                 bool is_packed = emit_static_ty(type, p, /*is_proto=*/false);
                 m_of << " = ";
 
-                //auto encoded = Trans_EncodeLiteralAsBytes(sp, m_resolve, item.m_value_res, type);
-                const auto& encoded = item.m_value_res;
                 m_of << "{ .raw = {";
                 if( is_packed ) {
                     DEBUG("encoded.bytes = `" << FMT_CB(ss, for(auto& b: encoded.bytes) ss << std::setw(2) << std::setfill('0') << std::hex << unsigned(b) << (int(&b - encoded.bytes.data()) % 8 == 7 ? " " : "");) << "`");
@@ -2314,7 +2318,7 @@ namespace {
                             MIR_ASSERT(*m_mir_res, reloc_it->len == ptr_size, "Relocation size not pointer size - " << reloc_it->len << " != " << ptr_size);
                             v -= EncodedLiteral::PTR_BASE;
 
-                            MIR_ASSERT(*m_mir_res, v == 0, "TODO: Relocation with non-zero offset " << i << ": v=0x" << std::hex << v << std::dec << " Literal=" << item.m_value_res << " Reloc=" << *reloc_it);
+                            MIR_ASSERT(*m_mir_res, v == 0, "TODO: Relocation with non-zero offset " << i << ": v=0x" << std::hex << v << std::dec << " Literal=" << encoded << " Reloc=" << *reloc_it);
                             m_of << "(uintptr_t)";
                             if( reloc_it->p ) {
                                 m_of << "&" << Trans_Mangle(*reloc_it->p);
@@ -2343,7 +2347,7 @@ namespace {
                 }
                 m_of << "} }";
                 m_of << ";";
-                m_of << "\t// static " << p << " : " << type << " = " << item.m_value_res;
+                m_of << "\t// static " << p << " : " << type << " = " << encoded;
                 m_of << "\n";
             }
 

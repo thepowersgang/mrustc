@@ -1380,6 +1380,7 @@ namespace {
             }
         }
         void visit_static(::HIR::ItemPath p, ::HIR::Static& item) override {
+            auto _ = this->m_resolve.set_item_generics(item.m_params);
             if( item.m_value )
             {
                 t_args  tmp;
@@ -1397,7 +1398,7 @@ namespace {
             m_resolve.expand_associated_types(Span(), item.m_type);
         }
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override {
-            //auto _ = this->m_ms.set_item_generics(item.m_params);
+            auto _ = this->m_resolve.set_impl_generics(item.m_params);
 
             if( auto* e = item.m_data.opt_Value() )
             {

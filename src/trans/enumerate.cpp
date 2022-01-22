@@ -167,7 +167,7 @@ namespace {
         TU_ARM(vi, Constant, e) {
             } break;
         TU_ARM(vi, Static, e) {
-            if( is_visible )
+            if( is_visible && !e.m_params.is_generic() )
             {
                 // HACK: Refuse to emit unused generated statics
                 // - Needed because all items are visited (regardless of
@@ -1555,11 +1555,13 @@ void Trans_Enumerate_FillFrom(EnumState& state, const ::HIR::Function& function,
 void Trans_Enumerate_FillFrom(EnumState& state, const ::HIR::Static& item, TransList_Static& out_stat, Trans_Params pp)
 {
     TRACE_FUNCTION;
-    /*if( item.m_value.m_mir )
+    if( item.m_params.is_generic() )
     {
-        Trans_Enumerate_FillFrom_MIR(state, *item.m_value.m_mir, pp);
+        MIR::EnumCache  es;
+        Trans_Enumerate_FillFrom_MIR(es, *item.m_value.m_mir);
+        es.apply(state, pp);
     }
-    else*/ if( item.m_type.data().is_Infer() )
+    else if( item.m_type.data().is_Infer() )
     {
         BUG(Span(), "Enumerating static with no assigned type (unused elevated literal)");
     }

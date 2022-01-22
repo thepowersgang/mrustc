@@ -438,6 +438,46 @@ void Trans_Monomorphise_List(const ::HIR::Crate& crate, TransList& list)
         }
     }
 
+    for(auto& ent : list.m_statics)
+    {
+        const auto& path = ent.first;
+        const auto& pp = ent.second->pp;
+        const auto& s = *ent.second->ptr;
+
+        if( !s.m_params.is_generic() )
+        {
+            continue ;
+        }
+
+        TRACE_FUNCTION_FR("STATIC " << path, "STATIC " << path);
+        auto ty = pp.monomorph(resolve, s.m_type);
+        // 1. Evaluate the constant
+        struct Nvs: public ::HIR::Evaluator::Newval
+        {
+            ::HIR::Path new_static(::HIR::TypeRef type, EncodedLiteral value) override {
+                TODO(Span(), "Create new static in monomorph pass - " << value << " : " << type);
+            }
+        } nvs;
+        auto eval = ::HIR::Evaluator { pp.sp, crate, nvs };
+        eval.resolve.set_both_generics_raw(pp.gdef_impl, &s.m_params);
+        MonomorphState   ms;
+        ms.self_ty = pp.self_type.clone();
+        ms.pp_impl = &pp.pp_impl;
+        ms.pp_method = &pp.pp_method;
+        DEBUG("ms = " << ms);
+        try
+        {
+            auto new_lit = eval.evaluate_constant(path, s.m_value, ::std::move(ty), ::std::move(ms));
+            // 2. Store evaluated HIR::Literal in s.m_monomorph_cache
+            s.m_monomorph_cache.insert(::std::make_pair( path.clone(), ::std::move(new_lit) ));
+        }
+        catch(...)
+        {
+            // Deferred - no update
+            BUG(Span(), "Exception thrown during evaluation of: " << path);
+        }
+    }
+
     for(auto& fcn_ent : list.m_functions)
     {
         const auto& fcn = *fcn_ent.second->ptr;

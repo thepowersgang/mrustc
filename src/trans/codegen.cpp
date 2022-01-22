@@ -138,7 +138,7 @@ void Trans_Codegen(const ::std::string& outfile, CodegenOutput out_ty, const Tra
         assert(ent.second->ptr);
         const auto& stat = *ent.second->ptr;
 
-        if( stat.m_value_generated && !stat.m_no_emit_value )
+        if( (stat.m_value_generated && !stat.m_no_emit_value) || stat.m_params.is_generic() )
         {
             codegen->emit_static_proto(ent.first, stat, ent.second->pp);
         }
@@ -152,10 +152,18 @@ void Trans_Codegen(const ::std::string& outfile, CodegenOutput out_ty, const Tra
         DEBUG("STATIC " << ent.first);
         assert(ent.second->ptr);
         const auto& stat = *ent.second->ptr;
+        const auto& pp = ent.second->pp;
 
-        if( stat.m_value_generated && !stat.m_no_emit_value )
+        if( stat.m_params.is_generic() )
         {
-            codegen->emit_static_local(ent.first, stat, ent.second->pp);
+            codegen->emit_static_local(ent.first, stat, ent.second->pp, stat.m_monomorph_cache.at(ent.first));
+        }
+        else if( stat.m_value_generated && !stat.m_no_emit_value )
+        {
+            codegen->emit_static_local(ent.first, stat, ent.second->pp, stat.m_value_res);
+        }
+        else
+        {
         }
     }
 
