@@ -80,7 +80,7 @@ ifeq ($(RUSTC_VERSION),1.54.0)
   SRCDIR_RUSTC_DRIVER := compiler/rustc_driver
 endif
 
-LLVM_CONFIG := $(RUSTCSRC)build/bin/llvm-config
+LLVM_CONFIG ?= $(RUSTCSRC)build/bin/llvm-config
 ifeq ($(shell uname -s || echo not),Darwin)
 # /usr/bin/uname because uname might call coreutils
 # which can make the arm64 uname called when
