@@ -71,3 +71,32 @@
          crc32fast_stdarchx86,
          any(target_arch = "x86", target_arch = "x86_64")
      ))] {
+
+#
+# Disable std_detect's detection logic (use the same logic as miri)
+#
+--- library/stdarch/crates/std_detect/src/detect/mod.rs
++++ library/stdarch/crates/std_detect/src/detect/mod.rs
+@@ -88,2 +88,2 @@
+ cfg_if! {
+-    if #[cfg(miri)] {
++    if #[cfg(any(miri, rust_compiler = "mrustc"))] {
+
+# PPV-Lite also needs to know that we're pretending to be miri
+--- vendor/ppv-lite86/src/lib.rs
++++ vendor/ppv-lite86/src/lib.rs
+@@ -12,9 +12,9 @@
+-#[cfg(all(feature = "simd", target_arch = "x86_64", not(miri)))]
++#[cfg(all(feature = "simd", target_arch = "x86_64", not(miri), not(rust_compiler = "mrustc")))]
+ pub mod x86_64;
+-#[cfg(all(feature = "simd", target_arch = "x86_64", not(miri)))]
++#[cfg(all(feature = "simd", target_arch = "x86_64", not(miri), not(rust_compiler = "mrustc")))]
+ use self::x86_64 as arch;
+ 
+-#[cfg(any(miri, not(all(feature = "simd", any(target_arch = "x86_64")))))]
++#[cfg(any(miri, rust_compiler = "mrustc", not(all(feature = "simd", any(target_arch = "x86_64")))))]
+ pub mod generic;
+-#[cfg(any(miri, not(all(feature = "simd", any(target_arch = "x86_64")))))]
++#[cfg(any(miri, rust_compiler = "mrustc", not(all(feature = "simd", any(target_arch = "x86_64")))))]
+ use self::generic as arch;
+
