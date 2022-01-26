@@ -7033,11 +7033,15 @@ namespace {
                     {
                         m_of << "make128s_raw(" << c.v.get_inner().get_hi() << "ull, " << c.v.get_inner().get_lo() << "ull)";
                     }
-                    else
+                    else if( c.v.is_i64() && c.v.truncate_i64() != INT64_MIN )
                     {
                         m_of << "(int128_t)";
                         m_of << c.v;
                         m_of << "ll";
+                    }
+                    else
+                    {
+                        m_of << "(int128_t)( ((uint128_t)" << c.v.get_inner().get_hi() << "ull << 64) | (uint128_t)" << c.v.get_inner().get_lo() << "ull)";
                     }
                     break;
                 default:
@@ -7066,10 +7070,14 @@ namespace {
                     {
                         m_of << "make128_raw(" << c.v.get_hi() << "ull, " << c.v.get_lo() << "ull)";
                     }
-                    else
+                    else if( c.v.is_u64() )
                     {
                         m_of << "(uint128_t)";
                         m_of << ::std::hex << "0x" << c.v << "ull" << ::std::dec;
+                    }
+                    else
+                    {
+                        m_of << std::hex << "( ((uint128_t)0x" << c.v.get_hi() << "ull << 64) | (uint128_t)0x" << c.v.get_lo() << "ull)" << std::dec;
                     }
                     break;
                 case ::HIR::CoreType::Char:

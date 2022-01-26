@@ -17,7 +17,7 @@ namespace MIR {
             os << " " << e.t;
             ),
         (Uint,
-            os << e.v;
+            os << std::hex << "0x" << e.v << std::dec;
             os << " " << e.t;
             ),
         (Float,
