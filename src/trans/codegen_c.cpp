@@ -3051,6 +3051,9 @@ namespace {
         }
         bool type_is_high_align(const ::HIR::TypeRef& ty) const
         {
+            // Only applicable to MSVC (which doesn't like unaligned arguments)
+            if( m_compiler != Compiler::Msvc )
+                return false;
             size_t  size, align;
             // NOTE: Uses the Size+Align version because that doesn't panic on unsized
             MIR_ASSERT(*m_mir_res, Target_GetSizeAndAlignOf(sp, m_resolve, ty, size, align), "Unexpected generic? " << ty);
