@@ -3309,6 +3309,7 @@ namespace {
                     this->emit_asm_msvc(mir_res, stmt.as_Asm(), indent_level);
                     break;
                 }
+                m_of << indent << "// ^ " << stmt << "\n";
                 break;
             case ::MIR::Statement::TAG_Asm2:
                 switch(m_compiler)
@@ -3320,6 +3321,7 @@ namespace {
                     this->emit_asm2_msvc(mir_res, stmt, indent_level);
                     break;
                 }
+                m_of << indent << "// ^ " << stmt << "\n";
                 break;
             case ::MIR::Statement::TAG_Assign: {
                 const auto& e = stmt.as_Assign();
@@ -4897,7 +4899,9 @@ namespace {
 
                 m_of << indent << "__asm__ ";
                 m_of << "__volatile__"; // Default everything to volatile
-                m_of << "(\".intel_syntax; ";
+                m_of << "(\"";
+                if( !se.options.att_syntax )
+                    m_of << ".intel_syntax; ";
                 for(const auto& l : se.lines)
                 {
                     for(const auto& f : l.frags)
@@ -4911,8 +4915,9 @@ namespace {
                     m_of << FmtEscaped(l.trailing);
                     m_of << ";\\n ";
                 }
-                m_of << ".att_syntax; \"";
-                m_of << " :";
+                if( !se.options.att_syntax )
+                    m_of << ".att_syntax; ";
+                m_of << "\" :";
                 for(size_t i = 0; i < outputs.size(); i ++)
                 {
                     const auto& p = *outputs[i];
