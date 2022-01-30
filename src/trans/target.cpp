@@ -59,6 +59,13 @@ const TargetArch ARCH_POWERPC64LE = {
     { /*atomic(u8)=*/true, true, true, true,  true },
     TargetArch::Alignments(2, 4, 8, 16, 4, 8, 8)
 };
+// see https://webassembly.org/docs/portability/
+const TargetArch ARCH_WASM32 = {
+    "wasm32",
+    32, false,
+    { /*atomic(u8)=*/true, true, true, true,  true },
+    TargetArch::Alignments(2, 4, 8, 8, 4, 8, 4)
+};
 TargetSpec  g_target;
 
 
@@ -136,6 +143,10 @@ namespace
                         else if( key_val.value.as_string() == ARCH_M68K.m_name )
                         {
                             rv.m_arch = ARCH_M68K;
+                        }
+                        else if( key_val.value.as_string() == ARCH_WASM32.m_name )
+                        {
+                            rv.m_arch = ARCH_WASM32;
                         }
                         else
                         {
