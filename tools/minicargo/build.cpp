@@ -44,6 +44,7 @@ extern int _putenv_s(const char*, const char*);
 # include <sys/stat.h>
 # include <sys/wait.h>
 # include <fcntl.h>
+# include <limits.h> // PATH_MAX
 #endif
 #ifdef __APPLE__
 # include <mach-o/dyld.h>
@@ -1318,7 +1319,7 @@ const helpers::path& get_mrustc_path()
         // MSVC, minicargo and mrustc are in the same dir
         s_compiler_path = minicargo_path / "mrustc.exe";
 #else
-        char buf[1024];
+        char buf[PATH_MAX];
 # ifdef __linux__
         ssize_t s = readlink("/proc/self/exe", buf, sizeof(buf)-1);
         if(s >= 0)
