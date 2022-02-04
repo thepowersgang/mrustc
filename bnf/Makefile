@@ -5,6 +5,10 @@
 .SUFFIXES:
 
 CXXFLAGS := -std=c++11 -x c++ -I . -g
+LINKFLAGS := -std=c++11 -g
+
+CXXFLAGS += $(CXXFLAGS_EXTRA)
+LINKFLAGS += $(LINKFLAGS_EXTRA)
 
 OBJS := main.o rust.tab.o rust.lex.o
 
@@ -34,7 +38,7 @@ output/rust/%.txt: $(RUST_TESTS_DIR)%.rs $(BIN)
 	$(BIN) $< > $@ 2>&1
 
 $(BIN): $(OBJS)
-	g++ -std=c++11 $(OBJS) -o $@ -g
+	g++ $(OBJS) -o $@ $(LINKFLAGS)
 
 %.o: %.cpp
 	g++ $(CXXFLAGS) $< -c -o $@ -MMD -MP -MF $@.dep

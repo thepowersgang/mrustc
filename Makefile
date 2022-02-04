@@ -82,6 +82,8 @@ ifneq ($(GPROF),)
   EXESUF := -gprof$(EXESUF)
 endif
 
+LINKFLAGS += $(LINKFLAGS_EXTRA)
+
 BIN := bin/mrustc$(EXESUF)
 
 OBJ := main.o version.o

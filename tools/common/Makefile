@@ -13,6 +13,8 @@ OBJS = toml.o path.o debug.o
 
 CXXFLAGS := -Wall -std=c++14 -g -O2
 
+CXXFLAGS += $(CXXFLAGS_EXTRA)
+
 OBJS := $(OBJS:%=$(OBJDIR)%)
 
 .PHONY: all clean

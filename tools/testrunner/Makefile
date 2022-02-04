@@ -8,6 +8,9 @@ OBJS := main.o path.o
 LINKFLAGS := -g
 CXXFLAGS := -Wall -std=c++14 -g -O2
 
+CXXFLAGS += $(CXXFLAGS_EXTRA)
+LINKFLAGS += $(LINKFLAGS_EXTRA)
+
 OBJS := $(OBJS:%=$(OBJDIR)%)
 
 .PHONY: all clean
