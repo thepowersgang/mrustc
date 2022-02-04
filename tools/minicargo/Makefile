@@ -19,6 +19,9 @@ LINKFLAGS := -g -lpthread
 CXXFLAGS := -Wall -std=c++14 -g -O2
 CXXFLAGS += -I ../common
 
+CXXFLAGS += $(CXXFLAGS_EXTRA)
+LINKFLAGS += $(LINKFLAGS_EXTRA)
+
 OBJS := $(OBJS:%=$(OBJDIR)%)
 
 .PHONY: all clean
