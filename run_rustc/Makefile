@@ -110,9 +110,9 @@ all: $(BINDIR)cargo
 
 # Helper rules to ensure that mrustc has built rustc and cargo
 ../output$(OUTDIR_SUF)/rustc:
-	$(MAKE) -C ../ output$(OUTDIR_SUF)/rustc -j 3
+	$(MAKE) -C ../ output$(OUTDIR_SUF)/rustc
 ../output$(OUTDIR_SUF)/cargo:
-	$(MAKE) -C ../ output$(OUTDIR_SUF)/cargo -j 3
+	$(MAKE) -C ../ output$(OUTDIR_SUF)/cargo
 
 # Stage 0 setup
 $(BINDIR)rustc_m: ../output$(OUTDIR_SUF)/rustc
