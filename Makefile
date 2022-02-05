@@ -23,6 +23,13 @@ else
   V :=
 endif
 
+ifeq ($(RUSTC_VERSION),)
+  OUTDIR_SUF_DEF :=
+else
+  OUTDIR_SUF_DEF := -$(RUSTC_VERSION)
+endif
+OUTDIR_SUF ?= $(OUTDIR_SUF_DEF)
+
 TAIL_COUNT ?= 10
 
 # - Disable implicit rules
