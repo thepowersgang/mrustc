@@ -1345,9 +1345,15 @@ namespace
                 return; }
             case VarState::TAG_MovedOut: {
                 const auto& nse = new_state.as_MovedOut();
-                if( ose.outer_flag != nse.outer_flag )
+
+                if( ose.outer_flag == ~0u )
                 {
-                    TODO(sp, "Handle mismatched flags in MovedOut");
+                    ose.outer_flag = nse.outer_flag;
+                }
+                else
+                {
+                    builder.push_stmt_set_dropflag_other(sp, ose.outer_flag, nse.outer_flag);
+                    builder.push_stmt_set_dropflag_default(sp, nse.outer_flag);
                 }
                 merge_state(sp, builder, ::MIR::LValue::new_Deref(lv.clone()), *ose.inner_state, *nse.inner_state);
                 return; }
