@@ -91,7 +91,10 @@ RUSTC_ENV_VARS += REAL_LIBRARY_PATH_VAR=LD_LIBRARY_PATH
 RUSTC_ENV_VARS += RUSTC_INSTALL_BINDIR=bin
 RUSTC_ENV_VARS += RUSTC_ERROR_METADATA_DST=$(abspath $(PREFIX))
 
-CARGO_FLAGS := --target $(RUSTC_TARGET) -j $(PARLEVEL) --release --verbose
+MINICARGO_FLAGS ?=
+
+CARGO_FLAGS ?=
+CARGO_FLAGS += --target $(RUSTC_TARGET) -j $(PARLEVEL) --release --verbose
 
 CARGO_ENV := CFG_COMPILER_HOST_TRIPLE=$(RUSTC_TARGET)
 CARGO_ENV += RUSTC_BOOTSTRAP=1
@@ -141,9 +144,9 @@ $(CARGO_HOME)config: Makefile
 $(LIBDIR_S)libstd.rlib: $(BINDIR_S)rustc ../bin/minicargo Makefile
 	@echo "[MINICARGO] $(RUST_SRC_LIBS)std > $(LIBDIR_S)"
 	mkdir -p $(LIBDIR_S)
-	$V+MRUSTC_PATH=$(abspath $(BINDIR_S)rustc) ../bin/minicargo --vendor-dir $(VENDOR_DIR) --script-overrides ../script-overrides/stable-$(RUSTC_VERSION)-$(PLATFORM)/ --output-dir $(LIBDIR_S) $(RUST_SRC_LIBS)std
-	$V+MRUSTC_PATH=$(abspath $(BINDIR_S)rustc) ../bin/minicargo --vendor-dir $(VENDOR_DIR) --script-overrides ../script-overrides/stable-$(RUSTC_VERSION)-$(PLATFORM)/ --output-dir $(LIBDIR_S) $(RUST_SRC_LIBS)panic_unwind
-	$V+MRUSTC_PATH=$(abspath $(BINDIR_S)rustc) ../bin/minicargo --vendor-dir $(VENDOR_DIR) --script-overrides ../script-overrides/stable-$(RUSTC_VERSION)-$(PLATFORM)/ --output-dir $(LIBDIR_S) $(RUST_SRC_LIBS)test
+	$V+MRUSTC_PATH=$(abspath $(BINDIR_S)rustc) ../bin/minicargo $(MINICARGO_FLAGS) --vendor-dir $(VENDOR_DIR) --script-overrides ../script-overrides/stable-$(RUSTC_VERSION)-$(PLATFORM)/ --output-dir $(LIBDIR_S) $(RUST_SRC_LIBS)std
+	$V+MRUSTC_PATH=$(abspath $(BINDIR_S)rustc) ../bin/minicargo $(MINICARGO_FLAGS) --vendor-dir $(VENDOR_DIR) --script-overrides ../script-overrides/stable-$(RUSTC_VERSION)-$(PLATFORM)/ --output-dir $(LIBDIR_S) $(RUST_SRC_LIBS)panic_unwind
+	$V+MRUSTC_PATH=$(abspath $(BINDIR_S)rustc) ../bin/minicargo $(MINICARGO_FLAGS) --vendor-dir $(VENDOR_DIR) --script-overrides ../script-overrides/stable-$(RUSTC_VERSION)-$(PLATFORM)/ --output-dir $(LIBDIR_S) $(RUST_SRC_LIBS)test
 
 # Build hello_world using the bootstrapping compiler (mrustc-built rustc)
 $(BINDIR_S)hello_world: $(RUST_SRC_HELLO) $(LIBDIR_S)libstd.rlib $(BINDIR_S)rustc
