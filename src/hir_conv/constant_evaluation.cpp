@@ -1457,7 +1457,10 @@ namespace HIR {
                                 dst.write_uint( state, ti.bits, inval.read_uint(state, src_ti.bits) );
                                 break;
                             case TypeInfo::Float:
-                                dst.write_uint( state, ti.bits, static_cast<int64_t>(inval.read_float(state, src_ti.bits)) );
+                                if( ti.ty == TypeInfo::Signed )
+                                    dst.write_uint( state, ti.bits, static_cast<int64_t>(inval.read_float(state, src_ti.bits)) );
+                                else
+                                    dst.write_uint( state, ti.bits, static_cast<uint64_t>(inval.read_float(state, src_ti.bits)) );
                                 break;
                             case TypeInfo::Other: {
                                 MIR_ASSERT(state, TU_TEST1(src_ty.data(), Path, .binding.is_Enum()), "Constant cast Variant to integer with invalid type - " << src_ty);
