@@ -364,7 +364,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         ASSERT_BUG(span, idx < mod.anon_mods().size(), "Invalid anon path segment '" << des_item_name << "'");
         assert( mod.anon_mods()[idx] );
         const auto& m = *mod.anon_mods()[idx];
-        rv.type.set(m.path(), ::AST::PathBinding_Type::make_Module({&m, nullptr}));
+        rv.type.set(m.path(), ::AST::PathBinding_Type::make_Module({ &m, { nullptr } }));
         return rv;
     }
 
@@ -1017,7 +1017,7 @@ namespace {
     const auto& nodes = path.nodes();
     if( nodes.size() == 0 ) {
         // An import of the root.
-        rv.type.set( mod->path(), ::AST::PathBinding_Type::make_Module({ mod, nullptr }) );
+        rv.type.set( mod->path(), ::AST::PathBinding_Type::make_Module({ mod, { nullptr } }) );
         return rv;
     }
 
