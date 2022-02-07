@@ -229,7 +229,7 @@ struct ValueCommonRead
         if(reloc)
         {
             auto base = reloc.get_base();
-            auto size = reloc.get_size();
+            //auto size = reloc.get_size();
             if(v < base)
                 return false;
             v -= base;

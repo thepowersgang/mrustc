@@ -475,7 +475,12 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     {
         rv = Value::new_i32(0);
     }
-    else if( link_name == "pthread_mutex_init" || link_name == "pthread_mutex_lock" || link_name == "pthread_mutex_unlock" || link_name == "pthread_mutex_destroy" )
+    else if( link_name == "pthread_mutex_init"
+        || link_name == "pthread_mutex_lock"
+        || link_name == "pthread_mutex_trylock"
+        || link_name == "pthread_mutex_unlock"
+        || link_name == "pthread_mutex_destroy"
+        )
     {
         rv = Value::new_i32(0);
     }
