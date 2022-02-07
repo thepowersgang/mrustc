@@ -86,9 +86,9 @@
 // - Apple devices
 #elif defined(__APPLE__)
 # if defined(__aarch64__)
-#  define DEFAULT_TARGET_NAME "aarch64-apple-macosx"
+#  define DEFAULT_TARGET_NAME "aarch64-apple-darwin"
 # else
-#  define DEFAULT_TARGET_NAME "x86_64-apple-macosx"
+#  define DEFAULT_TARGET_NAME "x86_64-apple-darwin"
 #endif
 // - Haiku
 #elif defined(__HAIKU__)
