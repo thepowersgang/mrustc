@@ -19,6 +19,9 @@ CXXFLAGS := -Wall -std=c++14 -g -O2
 CXXFLAGS += -I ../common -I ../../src/include -I .
 CXXFLAGS += -Wno-misleading-indentation	# Gets REALLY confused by the TU_ARM macro
 
+CXXFLAGS += $(CXXFLAGS_EXTRA)
+LINKFLAGS += $(LINKFLAGS_EXTRA)
+
 OBJS := $(OBJS:%=$(OBJDIR)%)
 
 COMMON_LIB := ../../bin/common_lib.a

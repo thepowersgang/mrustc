@@ -39,13 +39,15 @@ TARGETVER_LEAST_1_39 := $(shell test "$(RUSTC_VERSION)" ">" "1.39" && echo yes)
 TARGETVER_LEAST_1_54 := $(shell test "$(RUSTC_VERSION)" ">" "1.54" && echo yes)
 
 RUSTC_BINNAME := rustc_binary
+CARGO_FLAGS_rustc := 
 ifneq ($(TARGETVER_LEAST_1_54),)
  RUST_SRC_HELLO := $(RUST_SRC)src/test/ui/hello.rs
  RUST_SRC_LIBS := $(RUST_SRC)library/
  RUST_SRC_RUSTC := $(RUST_SRC)compiler/rustc/
  RUST_SRC_CODEGEN := $(RUST_SRC)compiler/rustc_codegen_llvm/
  VENDOR_DIR := $(RUST_SRC)vendor
- RUSTC_BINNAME := rustc_main
+ RUSTC_BINNAME := rustc-main
+ CARGO_FLAGS_rustc += --features llvm
 else ifneq ($(TARGETVER_LEAST_1_39),)
  RUST_SRC_HELLO := $(RUST_SRC)src/test/ui/hello.rs
  RUST_SRC_LIBS := $(RUST_SRC)src/lib
@@ -110,9 +112,9 @@ all: $(BINDIR)cargo
 
 # Helper rules to ensure that mrustc has built rustc and cargo
 ../output$(OUTDIR_SUF)/rustc:
-	$(MAKE) -C ../ output$(OUTDIR_SUF)/rustc -j 3
+	$(MAKE) -C ../ output$(OUTDIR_SUF)/rustc
 ../output$(OUTDIR_SUF)/cargo:
-	$(MAKE) -C ../ output$(OUTDIR_SUF)/cargo -j 3
+	$(MAKE) -C ../ output$(OUTDIR_SUF)/cargo
 
 # Stage 0 setup
 $(BINDIR)rustc_m: ../output$(OUTDIR_SUF)/rustc
@@ -181,8 +183,8 @@ CARGO_ENV_RUSTC := CARGO_TARGET_DIR=$(OUTDIR)build-rustc RUSTC=$(abspath rustc_p
 $(BINDIR)rustc: $(BINDIR_2)rustc $(BINDIR)cargo $(CARGO_HOME)config $(LIBDIR_2)libtest.rlib
 	@mkdir -p $(PREFIX)tmp
 	@echo [CARGO] $(RUST_SRC_RUSTC)Cargo.toml '>' $(OUTDIR)build-rustc/
-	$V$(RUSTC_ENV_VARS) TMPDIR=$(abspath $(PREFIX)tmp) $(CARGO_ENV_RUSTC) $(BINDIR)cargo build $(CARGO_FLAGS) --manifest-path $(RUST_SRC_RUSTC)Cargo.toml
-ifneq ($(TARGETVER_LEAST_1_39),)
+	$V$(RUSTC_ENV_VARS) TMPDIR=$(abspath $(PREFIX)tmp) $(CARGO_ENV_RUSTC) $(BINDIR)cargo build $(CARGO_FLAGS) --manifest-path $(RUST_SRC_RUSTC)Cargo.toml $(CARGO_FLAGS_rustc)
+ifeq ($(RUSTC_VERSION),1.39.0)
 	@echo [CARGO] $(RUST_SRC_CODEGEN)Cargo.toml '>' $(OUTDIR)build-rustc/
 	$V$(RUSTC_ENV_VARS) TMPDIR=$(abspath $(PREFIX)tmp) $(CARGO_ENV_RUSTC) $(BINDIR)cargo rustc $(CARGO_FLAGS) --manifest-path $(RUST_SRC_CODEGEN)Cargo.toml -- -L $(abspath $(CARGO_OUTDIR_RUSTC)deps)
 	@mkdir -p $(LIBDIR)../codegen-backends
