@@ -1221,7 +1221,22 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
 
         if( m_opts.emit_mmir )
         {
-            TODO("Invoke `standalone_miri` on build script when emitting MIR");
+            // HACK: Search for `-mmir/` in the output, remove it, and if that exists copy it to here
+            auto tmp_out = out_file.str();
+            auto p = tmp_out.rfind("-mmir/");
+            if( p != std::string::npos )
+            {
+                auto src = tmp_out.substr(0, p) + tmp_out.substr(p+5);
+                std::ifstream   ifs(src);
+                if( ifs.good() )
+                {
+                    std::cout << "HACK: Copying " << src << " to " << tmp_out << std::endl;
+                    ::std::ofstream ofs(tmp_out);
+                    ofs << ifs.rdbuf();
+                    return out_file;
+                }
+            }
+            TODO("Invoke `standalone_miri` on build script when emitting MIR - " << out_file);
         }
 
         if( !spawn_process(script_exe_abs.str().c_str(), {}, env, out_file, /*working_directory=*/manifest.directory()) )
