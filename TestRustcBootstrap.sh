@@ -16,6 +16,9 @@ elif [[ "$RUSTC_VERSION" == "1.19.0" ]]; then
 elif [[ "$RUSTC_VERSION" == "1.39.0" ]]; then
     RUSTC_VERSION_NEXT=1.40.0
     RUN_RUSTC_SUF=-1.39.0
+elif [[ "$RUSTC_VERSION" == "1.54.0" ]]; then
+    RUSTC_VERSION_NEXT=1.55.0
+    RUN_RUSTC_SUF=-1.54.0
 else
     echo "Unknown rustc version"
 fi
@@ -47,6 +50,8 @@ cargo = "${PREFIX}bin/cargo"
 rustc = "${PREFIX}bin/rustc"
 full-bootstrap = true
 vendor = true
+[llvm]
+ninja = false
 EOF
 echo "--- Running x.py, see ${WORKDIR}mrustc.log for progress"
 (cd ${WORKDIR} && mv mrustc build)
@@ -54,7 +59,7 @@ cleanup_mrustc() {
     (cd ${WORKDIR} && mv build mrustc)
 }
 trap cleanup_mrustc EXIT
-rm -r ${WORKDIR}build/rustc-${RUSTC_VERSION_NEXT}-src/build
+rm -rf ${WORKDIR}build/rustc-${RUSTC_VERSION_NEXT}-src/build
 (cd ${WORKDIR}build/rustc-${RUSTC_VERSION_NEXT}-src/ && LD_LIBRARY_PATH=${PREFIX}lib/rustlib/${RUSTC_TARGET}/lib ./x.py build --stage 3) > ${WORKDIR}mrustc.log 2>&1
 cleanup_mrustc
 trap - EXIT
@@ -72,6 +77,8 @@ cat - > ${WORKDIR}official/rustc-${RUSTC_VERSION_NEXT}-src/config.toml <<EOF
 [build]
 full-bootstrap = true
 vendor = true
+[llvm]
+ninja = false
 EOF
 echo "--- Running x.py, see ${WORKDIR}official.log for progress"
 (cd ${WORKDIR} && mv official build)
