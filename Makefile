@@ -293,14 +293,8 @@ output$(OUTDIR_SUF)/rust/test_run-pass_hello_out.txt: output$(OUTDIR_SUF)/rust/t
 # -------------------------------
 bin/mrustc.a: $(filter-out $(OBJDIR)main.o, $(OBJ))
 	@+mkdir -p $(dir $@)
-	@echo [AR] -o $@
-ifeq ($(shell uname -s || echo not),Darwin)
-# We can use llvm-ar for having rcD available on Darwin.
-# However, that is not bundled as a part of the operating system.
-	$Var rc $@ $(filter-out $(OBJDIR)main.o, $(OBJ))
-else
-	$Var rcD $@ $(filter-out $(OBJDIR)main.o, $(OBJ))
-endif
+	@echo [AR] $@
+	$V$(AR) crs $@ $(filter-out $(OBJDIR)main.o, $(OBJ))
 
 $(BIN): $(OBJDIR)main.o bin/mrustc.a bin/common_lib.a
 	@+mkdir -p $(dir $@)

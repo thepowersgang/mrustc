@@ -24,8 +24,8 @@ clean:
 
 $(BIN): $(OBJS)
 	@+mkdir -p $(dir $@)
-	@echo [AR] rcu $@
-	$V$(AR) rcu $@ $(OBJS)
+	@echo [AR] $@
+	$V$(AR) crs $@ $(OBJS)
 
 $(OBJDIR)%.o: %.cpp
 	@+mkdir -p $(dir $@)
