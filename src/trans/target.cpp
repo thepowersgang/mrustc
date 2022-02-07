@@ -192,12 +192,20 @@ namespace
                                 rv.m_backend_c.m_compiler_opts.push_back( v.as_string() );
                             }
                         }
-                        else if( key_val.path[2] == "linker-opts" )
+                        else if( key_val.path[2] == "linker-opts-pre" )
                         {
                             check_path_length(key_val, 3);
                             for(const auto& v : key_val.value.as_list())
                             {
-                                rv.m_backend_c.m_linker_opts.push_back( v.as_string() );
+                                rv.m_backend_c.m_linker_opts_pre.push_back( v.as_string() );
+                            }
+                        }
+                        else if( key_val.path[2] == "linker-opts" || key_val.path[2] == "linker-opts-post" )
+                        {
+                            check_path_length(key_val, 3);
+                            for(const auto& v : key_val.value.as_list())
+                            {
+                                rv.m_backend_c.m_linker_opts_post.push_back( v.as_string() );
                             }
                         }
                         else
@@ -352,7 +360,8 @@ namespace
             << "variant = \"" << H::c_variant_name(spec.m_backend_c.m_codegen_mode) << "\"\n"
             << "target = \"" << spec.m_backend_c.m_c_compiler << "\"\n"
             << "compiler-opts = ["; for(const auto& s : spec.m_backend_c.m_compiler_opts) of << "\"" << s << "\","; of << "]\n"
-            << "linker-opts = ["; for(const auto& s : spec.m_backend_c.m_linker_opts) of << "\"" << s << "\","; of << "]\n"
+            << "linker-opts-pre = ["; for(const auto& s : spec.m_backend_c.m_linker_opts_pre) of << "\"" << s << "\","; of << "]\n"
+            << "linker-opts-post = ["; for(const auto& s : spec.m_backend_c.m_linker_opts_post) of << "\"" << s << "\","; of << "]\n"
             << "\n"
             << "[arch]\n"
             << "name = \"" << spec.m_arch.m_name << "\"\n"
@@ -378,7 +387,7 @@ namespace
     TargetSpec init_from_spec_name(const ::std::string& target_name)
     {
         // Options for all the fully-GNU environments
-        #define BACKEND_C_OPTS_GNU  {"-ffunction-sections", "-pthread"}, {"-Wl,--gc-sections", "-l", "atomic"}
+        #define BACKEND_C_OPTS_GNU  {"-ffunction-sections", "-pthread"}, {"-Wl,--start-group"}, {"-Wl,--end-group", "-Wl,--gc-sections", "-l", "atomic"}
         // If there's a '/' or a '\' in the filename, open it as a path, otherwise assume it's a triple.
         if( target_name.find('/') != ::std::string::npos || target_name.find('\\') != ::std::string::npos )
         {

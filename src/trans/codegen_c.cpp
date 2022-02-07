@@ -1202,6 +1202,10 @@ namespace {
                 case CodegenOutput::DynamicLibrary:
                     args.push_back("-shared");
                 case CodegenOutput::Executable:
+                    for( const auto& a : Target_GetCurSpec().m_backend_c.m_linker_opts_pre )
+                    {
+                        args.push_back( a.c_str() );
+                    }
                     for(const auto& c : ext_crates)
                     {
                         args.push_back(std::string(c) + ".o");
@@ -1210,16 +1214,10 @@ namespace {
                     {
                         args.push_back(c);
                     }
-                    args.push_back("-Wl,--start-group");    // Group to avoid linking ordering
-                    //args.push_back("-Wl,--push-state");
                     for(auto l_d : libraries_and_dirs)
                     {
                         switch(l_d.first)
                         {
-                        //case LinkList::Ty::Border:
-                        //    args.push_back("-Wl,--pop-state");
-                        //    args.push_back("-Wl,--push-state");
-                        //    break;
                         case LinkList::Ty::Directory:
                             args.push_back("-L");
                             args.push_back(l_d.second);
@@ -1239,9 +1237,7 @@ namespace {
                             break;
                         }
                     }
-                    //args.push_back("-Wl,--pop-state");
-                    args.push_back("-Wl,--end-group");    // Group to avoid linking ordering
-                    for( const auto& a : Target_GetCurSpec().m_backend_c.m_linker_opts )
+                    for( const auto& a : Target_GetCurSpec().m_backend_c.m_linker_opts_post )
                     {
                         args.push_back( a.c_str() );
                     }
