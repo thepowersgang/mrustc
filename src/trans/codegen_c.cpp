@@ -2478,10 +2478,10 @@ namespace {
                     m_of << "\tif(arg0) rv._0 |= __builtin_add_overflow" << msvc_suffix_u32 << "(rv._1, 1, &rv._1);\n";
                     m_of << "\treturn rv;\n";
                 }
-                // `fn llvm_addcarryx_u32(a: u8, b: u32, c: u32, d: *mut u8) -> u32`
+                // `fn llvm_addcarryx_u32(a: u8, b: u32, c: u32, d: *mut u8) -> u8`
                 else if( item.m_linkage.name == "llvm.x86.addcarryx.u32") {
-                    m_of << "\t*arg3 = __builtin_add_overflow" << msvc_suffix_u32 << "(arg1, arg2, &rv);\n";
-                    m_of << "\tif(*arg3) *arg3 |= __builtin_add_overflow" << msvc_suffix_u32 << "(rv, 1, &rv);\n";
+                    m_of << "\trv = __builtin_add_overflow" << msvc_suffix_u32 << "(arg1, arg2, arg3);\n";
+                    m_of << "\tif(arg0) rv |= __builtin_add_overflow" << msvc_suffix_u32 << "(*arg3, 1, arg3);\n";
                     m_of << "\treturn rv;\n";
                 }
                 // `fn llvm_subborrow" << msvc_suffix_u32 << "(a: u8, b: u32, c: u32) -> (u8, u32);`
