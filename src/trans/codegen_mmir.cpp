@@ -437,6 +437,9 @@ namespace
                         auto vtable_ty = trait.get_vtable_type(sp, resolve.m_crate, te);
                         return ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, std::move(vtable_ty));
                     }
+                    else if( t.data().is_Path() && t.data().as_Path().binding.is_ExternType() ) {
+                        return HIR::TypeRef::new_unit();
+                    }
                     else if( t.data().is_Path() ) {
                         auto* repr = Target_GetTypeRepr(sp, resolve, t);
                         ASSERT_BUG(sp, repr, "No repr for " << t);
