@@ -16,6 +16,13 @@
 PARLEVEL ?= 1
 RUSTC_VERSION_DEF := $(shell cat ../rust-version)
 
+ifeq ($(OS),Windows_NT)
+  EXESUF ?= .exe
+endif
+EXESUF ?=
+
+MINICARGO ?= bin/minicargo$(EXESUF)
+
 RUSTC_VERSION ?= $(RUSTC_VERSION_DEF)
 RUST_SRC ?= ../rustc-$(RUSTC_VERSION)-src/
 ifeq ($(RUSTC_VERSION),$(RUSTC_VERSION_DEF))
@@ -112,9 +119,11 @@ all: $(BINDIR)cargo
 
 # Helper rules to ensure that mrustc has built rustc and cargo
 ../output$(OUTDIR_SUF)/rustc:
-	$(MAKE) -C ../ output$(OUTDIR_SUF)/rustc
+	$(MAKE) -C ../ -f minicargo.mk output$(OUTDIR_SUF)/rustc
 ../output$(OUTDIR_SUF)/cargo:
-	$(MAKE) -C ../ output$(OUTDIR_SUF)/cargo
+	$(MAKE) -C ../ -f minicargo.mk output$(OUTDIR_SUF)/cargo
+$(RUST_SRC_HELLO):
+	$(MAKE) -C ../ RUSTCSRC
 
 # Stage 0 setup
 $(BINDIR)rustc_m: ../output$(OUTDIR_SUF)/rustc
@@ -140,12 +149,12 @@ $(CARGO_HOME)config: Makefile
 # - Can't use `cargo` because there isn't a rustc-compatible std yet
 # - _could_ use it if mrustc accepted all the arguments rustc does (via the proxy)
 # -------------------------------------
-$(LIBDIR_S)libstd.rlib: $(BINDIR_S)rustc ../bin/minicargo Makefile
+$(LIBDIR_S)libstd.rlib: $(BINDIR_S)rustc $(MINICARGO) Makefile
 	@echo "[MINICARGO] $(RUST_SRC_LIBS)std > $(LIBDIR_S)"
 	mkdir -p $(LIBDIR_S)
-	$V+MRUSTC_PATH=$(abspath $(BINDIR_S)rustc) ../bin/minicargo --vendor-dir $(VENDOR_DIR) --script-overrides ../script-overrides/stable-$(RUSTC_VERSION)-$(PLATFORM)/ --output-dir $(LIBDIR_S) $(RUST_SRC_LIBS)std
-	$V+MRUSTC_PATH=$(abspath $(BINDIR_S)rustc) ../bin/minicargo --vendor-dir $(VENDOR_DIR) --script-overrides ../script-overrides/stable-$(RUSTC_VERSION)-$(PLATFORM)/ --output-dir $(LIBDIR_S) $(RUST_SRC_LIBS)panic_unwind
-	$V+MRUSTC_PATH=$(abspath $(BINDIR_S)rustc) ../bin/minicargo --vendor-dir $(VENDOR_DIR) --script-overrides ../script-overrides/stable-$(RUSTC_VERSION)-$(PLATFORM)/ --output-dir $(LIBDIR_S) $(RUST_SRC_LIBS)test
+	$V+MRUSTC_PATH=$(abspath $(BINDIR_S)rustc) $(MINICARGO) --vendor-dir $(VENDOR_DIR) --script-overrides ../script-overrides/stable-$(RUSTC_VERSION)-$(PLATFORM)/ --output-dir $(LIBDIR_S) $(RUST_SRC_LIBS)std
+	$V+MRUSTC_PATH=$(abspath $(BINDIR_S)rustc) $(MINICARGO) --vendor-dir $(VENDOR_DIR) --script-overrides ../script-overrides/stable-$(RUSTC_VERSION)-$(PLATFORM)/ --output-dir $(LIBDIR_S) $(RUST_SRC_LIBS)panic_unwind
+	$V+MRUSTC_PATH=$(abspath $(BINDIR_S)rustc) $(MINICARGO) --vendor-dir $(VENDOR_DIR) --script-overrides ../script-overrides/stable-$(RUSTC_VERSION)-$(PLATFORM)/ --output-dir $(LIBDIR_S) $(RUST_SRC_LIBS)test
 
 # Build hello_world using the bootstrapping compiler (mrustc-built rustc)
 $(BINDIR_S)hello_world: $(RUST_SRC_HELLO) $(LIBDIR_S)libstd.rlib $(BINDIR_S)rustc
