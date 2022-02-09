@@ -1561,7 +1561,26 @@ bool spawn_process(const char* exe_name, const StringList& args, const StringLis
         for(const auto& p : argv)
             ::std::cerr  << " " << p;
         ::std::cerr << ::std::endl;
-        //::std::cerr << "See " << logfile << " for the compiler output" << ::std::endl;
+        if ( getenv("MINICARGO_DUMP_COMPILER_OUTPUT_ON_ERROR") ) {
+            ::std::ifstream in(logfile_str);
+            if (in.is_open())
+            {
+                ::std::cerr << "Compiler output starts here" << "---" << ::std::endl;
+                while (in.good())
+                {
+                    ::std::string line;
+                    ::std::getline(in, line);
+                    ::std::cerr << line <<  ::std::endl;
+                }
+                ::std::cerr << ::std::endl << "---" << ::std::endl;
+            }
+            else
+            {
+                ::std::cerr << "Unable to open file" << logfile << ::std::endl;
+            }
+        } else {
+            ::std::cerr << "See " << logfile << " for the compiler output" << ::std::endl;
+        }
         return false;
     }
     else
