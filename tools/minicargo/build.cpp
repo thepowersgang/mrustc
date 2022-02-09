@@ -1474,6 +1474,7 @@ bool spawn_process(const char* exe_name, const StringList& args, const StringLis
     {
         posix_spawn_file_actions_init(&fa);
         posix_spawn_file_actions_addopen(&fa, 1, logfile_str.c_str(), O_CREAT|O_WRONLY|O_TRUNC, 0644);
+        posix_spawn_file_actions_adddup2(&fa, 1, 2);
     }
 
     // Generate `argv`
