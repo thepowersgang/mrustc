@@ -34,7 +34,7 @@ endif
 OUTDIR := output$(OUTDIR_SUF)/
 
 MRUSTC ?= bin/mrustc$(EXESUF)
-MINICARGO := bin/minicargo$(EXESUF)
+MINICARGO ?= bin/minicargo$(EXESUF)
 ifeq ($(RUSTC_VERSION),1.19.0)
   RUSTC_OUT_BIN := rustc
 else ifeq ($(RUSTC_VERSION),1.29.0)
