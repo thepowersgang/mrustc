@@ -1303,6 +1303,10 @@ bool Builder::build_library(const PackageManifest& manifest, bool is_for_host, s
 bool Builder::spawn_process_mrustc(const StringList& args, StringListKV env, const ::helpers::path& logfile) const
 {
     //env.push_back("MRUSTC_DEBUG", "");
+    if( getenv("MRUSTC_DUMP_BACKTRACE") )
+    {
+        env.push_back("MRUSTC_DUMP_BACKTRACE", "1");
+    }
     auto rv = spawn_process(m_compiler_path.str().c_str(), args, env, logfile);
     if(getenv("MINICARGO_RUN_ONCE") || getenv("MINICARGO_RUN_ONCE"))
     {

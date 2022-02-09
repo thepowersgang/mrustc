@@ -35,6 +35,9 @@
 # define NOGDI
 # include <Windows.h>
 # include <DbgHelp.h>
+#else
+# include <signal.h>
+# include <execinfo.h>
 #endif
 
 TargetVersion	gTargetVersion = TargetVersion::Rustc1_29;
@@ -228,9 +231,35 @@ void memory_dump(const char* phase) {
     }
 }
 
+#ifndef _WIN32
+void backtrace_dump_on_signal_handler(int signo)
+{
+    void* callstack[1024];
+    int i, frames = backtrace(callstack, 1024);
+    char** strs = backtrace_symbols(callstack, frames);
+    for (i = 0; i < frames; ++i) {
+        ::std::cerr << strs[i] << ::std::endl;
+    }
+    free(strs);
+
+    ::std::cerr << ::std::flush;
+
+	signal(signo, SIG_DFL);
+	raise(signo);
+}
+#endif
+
 /// main!
 int main(int argc, char *argv[])
 {
+#ifndef _WIN32
+    if( getenv("MRUSTC_DUMP_BACKTRACE") )
+    {
+        signal(SIGABRT, backtrace_dump_on_signal_handler);
+        signal(SIGSEGV, backtrace_dump_on_signal_handler);
+    }
+#endif
+
     init_debug_list();
     ProgramParams   params(argc, argv);
 
