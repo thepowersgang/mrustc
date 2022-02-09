@@ -1559,7 +1559,8 @@ bool spawn_process(const char* exe_name, const StringList& args, const StringLis
         set_console_colour(std::cerr, TerminalColour::Default);
         ::std::cerr << "FAILING COMMAND: ";
         for(const auto& p : argv)
-            ::std::cerr  << " " << p;
+            if (p != nullptr)
+                ::std::cerr  << " " << p;
         ::std::cerr << ::std::endl;
         //::std::cerr << "See " << logfile << " for the compiler output" << ::std::endl;
         return false;
