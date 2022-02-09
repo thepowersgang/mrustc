@@ -541,11 +541,21 @@ namespace
                 ARCH_X86_64
                 };
         }
+        else if(target_name == "i686-apple-darwin")
+        {
+            // NOTE: OSX uses Mach-O binaries, which don't fully support the defaults used for GNU targets
+            // The first 32bit Intel Mac was Core Solo aka yonah. It allows to use `-march=yonah` like Rust.
+            return TargetSpec {
+                "unix", "macos", "gnu", {CodegenMode::Gnu11, false, "x86_64-apple-darwin", {"-march=yonah"}, {}},
+                ARCH_X86_64
+                };
+        }
         else if(target_name == "x86_64-apple-darwin")
         {
             // NOTE: OSX uses Mach-O binaries, which don't fully support the defaults used for GNU targets
+            // The first 64bit Intel Mac was Core Duo. It allows to use `-march=core2` like Rust.
             return TargetSpec {
-                "unix", "macos", "gnu", {CodegenMode::Gnu11, false, "x86_64-apple-darwin", {}, {}},
+                "unix", "macos", "gnu", {CodegenMode::Gnu11, false, "x86_64-apple-darwin", {"-march=core2"}, {}},
                 ARCH_X86_64
                 };
         }
