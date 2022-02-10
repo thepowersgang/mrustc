@@ -52,6 +52,8 @@ namespace {
         {
             sink << parent->filename << ":" << parent->start_line << ": note: From here" << ::std::endl;
         }
+
+        sink << ::std::flush;
     }
 }
 void Span::bug(::std::function<void(::std::ostream&)> msg) const
