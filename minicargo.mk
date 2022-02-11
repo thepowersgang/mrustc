@@ -2,39 +2,65 @@
 # minicargo.mk - Makefile that handles invoking `minicargo` to build libstd, rustc, and cargo
 #
 
+
+EXESUF :=
+ifeq ($(OS),Windows_NT)
+  EXESUF := .exe
+endif
+
+# -------------------
+# ----- INPUTS ------
+# -------------------
+
+# OUTDIR_SUF : Output directory suffix
 ifeq ($(RUSTC_VERSION),)
   OUTDIR_SUF_DEF :=
 else
   OUTDIR_SUF_DEF := -$(RUSTC_VERSION)
 endif
 OUTDIR_SUF ?= $(OUTDIR_SUF_DEF)
-MMIR ?=
-RUSTC_CHANNEL ?= stable
-RUSTC_VERSION ?= $(shell cat rust-version)
 
-EXESUF :=
+# MMIR : Set to non-empty to compile Monomorphised MIR
+MMIR ?=
+# RUSTC_CHANNEL : `rustc` release channel (picks source dir)
+RUSTC_CHANNEL ?= stable
+# RUSTC_VERSION : Version of rustc to load (picks source dir)
+RUSTC_VERSION ?= $(shell cat rust-version)
+# PARLEVEL : `minicargo`'s job count
+PARLEVEL ?= 1
+# Additional flags for `minicargo` (e.g. library paths)
+MINICARGO_FLAGS ?=
+# RUST_TESTS_FINAL_STAGE : Final stage for tests run as part of the rust_tests target.
+#  VALID OPTIONS: parse, expand, mir, ALL
+RUST_TESTS_FINAL_STAGE ?= ALL
+# MRUSTC : Executable path to `mrustc`
+MRUSTC ?= bin/mrustc$(EXESUF)
+# MINICARGO : Executable path to `minicargo`
+MINICARGO ?= bin/minicargo$(EXESUF)
+# LLVM_TARGETS : Target list for llvm
+LLVM_TARGETS ?= X86;ARM;AArch64#;Mips;PowerPC;SystemZ;JSBackend;MSP430;Sparc;NVPTX
+
 ifeq ($(OS),Windows_NT)
-  EXESUF := .exe
+  OVERRIDE_SUFFIX ?= -windows
 else ifeq ($(shell uname -s || echo not),Darwin)
   OVERRIDE_SUFFIX ?= -macos
 else
   OVERRIDE_SUFFIX ?= -linux
 endif
-PARLEVEL ?= 1
-MINICARGO_FLAGS ?=
 
+# --- Pepare minicargo flags etc ---
+# Set up for MMIR mode
 ifneq ($(MMIR),)
   OUTDIR_SUF := $(OUTDIR_SUF)-mmir
   MINICARGO_FLAGS += -Z emit-mmir
 endif
+# Job count
 ifneq ($(PARLEVEL),1)
   MINICARGO_FLAGS += -j $(PARLEVEL)
 endif
 
 OUTDIR := output$(OUTDIR_SUF)/
 
-MRUSTC ?= bin/mrustc$(EXESUF)
-MINICARGO ?= bin/minicargo$(EXESUF)
 ifeq ($(RUSTC_VERSION),1.19.0)
   RUSTC_OUT_BIN := rustc
 else ifeq ($(RUSTC_VERSION),1.29.0)
@@ -51,6 +77,7 @@ ifeq ($(RUSTC_CHANNEL),nightly)
 else
   RUSTCSRC := rustc-$(RUSTC_VERSION)-src/
 endif
+RUSTC_SRC_DL := $(RUSTCSRC)/dl-version
 ifeq ($(RUSTC_VERSION),1.19.0)
   VENDOR_DIR := $(RUSTCSRC)src/vendor
 else ifeq ($(RUSTC_VERSION),1.29.0)
@@ -80,59 +107,97 @@ ifeq ($(RUSTC_VERSION),1.54.0)
   SRCDIR_RUSTC_DRIVER := compiler/rustc_driver
 endif
 
+SRCDIR_RUST_TESTS := $(RUSTCSRC)src/test/
+
 LLVM_CONFIG := $(RUSTCSRC)build/bin/llvm-config
 ifeq ($(shell uname -s || echo not),Darwin)
-# /usr/bin/uname because uname might call coreutils
-# which can make the arm64 uname called when
-# running under the Rosetta execution environment.
-ifeq ($(shell /usr/bin/uname -m || echo not),arm64)
-  RUSTC_TARGET ?= aarch64-apple-darwin
-else
-  RUSTC_TARGET ?= x86_64-apple-darwin
-endif
+ # /usr/bin/uname because uname might call coreutils
+ # which can make the arm64 uname called when
+ # running under the Rosetta execution environment.
+ ifeq ($(shell /usr/bin/uname -m || echo not),arm64)
+   RUSTC_TARGET ?= aarch64-apple-darwin
+ else
+   RUSTC_TARGET ?= x86_64-apple-darwin
+ endif
+else ifeq ($(OS),Windows_NT)
+  RUSTC_TARGET ?= x86_64-windows-gnu
 else
   RUSTC_TARGET ?= x86_64-unknown-linux-gnu
 endif
-LLVM_TARGETS ?= X86;ARM;AArch64#;Mips;PowerPC;SystemZ;JSBackend;MSP430;Sparc;NVPTX
+# Directory for minicargo build script overrides
 OVERRIDE_DIR := script-overrides/$(RUSTC_CHANNEL)-$(RUSTC_VERSION)$(OVERRIDE_SUFFIX)/
 
-.PHONY: bin/mrustc bin/minicargo
+
+# ---------------------------------------------------------------------
+#  Top-level targets
+# ---------------------------------------------------------------------
+
 .PHONY: $(OUTDIR)libstd.rlib $(OUTDIR)libtest.rlib $(OUTDIR)libpanic_unwind.rlib $(OUTDIR)libproc_macro.rlib
 .PHONY: $(OUTDIR)rustc $(OUTDIR)cargo
 
-.PHONY: all LIBS
+.PHONY: all test LIBS
+.PHONY: RUSTCSRC
 
 
 all: $(OUTDIR)rustc
 
+test: $(OUTDIR)rust/test_run-pass_hello_out.txt
+
 LIBS: $(OUTDIR)libstd.rlib $(OUTDIR)libtest.rlib $(OUTDIR)libpanic_unwind.rlib $(OUTDIR)libproc_macro.rlib
 
-$(MRUSTC):
+RUSTCSRC: $(RUSTC_SRC_DL)
+
+.PHONY: rust_tests local_tests
+rust_tests: RUST_TESTS_run-pass
+# rust_tests-run-fail
+# rust_tests-compile-fail
+
+# --- Ensure that mrustc/minicargo are built ---
+.PHONY: bin/mrustc$(EXESUF) bin/minicargo$(EXESUF) bin/testrunner$(EXESUF)
+bin/mrustc$(EXESUF):
 	$(MAKE) -f Makefile all
 	test -e $@
 
-$(MINICARGO):
+bin/minicargo$(EXESUF):
 	$(MAKE) -C tools/minicargo/
 	test -e $@
+bin/testrunner$(EXESUF):
+	$(MAKE) -C tools/testrunner/
+	test -e $@
+
+
+#
+# rustc (with std/cargo) source download
+#
+RUSTC_SRC_TARBALL := rustc-$(RUSTC_VERSION)-src.tar.gz
+$(RUSTC_SRC_TARBALL): $(RUSTC_SRC_DES)
+	@echo [CURL] $@
+	@rm -f $@
+	@curl -sS https://static.rust-lang.org/dist/$@ -o $@
+$(RUSTC_SRC_DL): $(RUSTC_SRC_TARBALL) rustc-$(RUSTC_VERSION)-src.patch
+	tar -xf $(RUSTC_SRC_TARBALL)
+	cd $(RUSTCSRC) && patch -p0 < ../rustc-$(RUSTC_VERSION)-src.patch;
+	cat $(RUSTC_SRC_DES) > $(RUSTC_SRC_DL)
 
 # Standard library crates
 # - libstd, libpanic_unwind, libtest and libgetopts
 # - libproc_macro (mrustc)
-$(OUTDIR)libstd.rlib: $(MRUSTC) $(MINICARGO)
+$(OUTDIR)libstd.rlib: $(MRUSTC) $(MINICARGO) $(RUSTC_SRC_DL)
 	$(MINICARGO) $(RUSTCSRC)$(RUST_LIB_PREFIX)std --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
 	@test -e $@
-$(OUTDIR)libpanic_unwind.rlib: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.rlib
+$(OUTDIR)libpanic_unwind.rlib: $(OUTDIR)libstd.rlib
 	$(MINICARGO) $(RUSTCSRC)$(RUST_LIB_PREFIX)panic_unwind --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
 	@test -e $@
-$(OUTDIR)libtest.rlib: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.rlib $(OUTDIR)libpanic_unwind.rlib
+$(OUTDIR)libtest.rlib: $(OUTDIR)libstd.rlib $(OUTDIR)libpanic_unwind.rlib
 	$(MINICARGO) $(RUSTCSRC)$(RUST_LIB_PREFIX)test --vendor-dir $(VENDOR_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
 	@test -e $@
 # MRustC custom version of libproc_macro
-$(OUTDIR)libproc_macro.rlib: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.rlib
+$(OUTDIR)libproc_macro.rlib: $(OUTDIR)libstd.rlib
 	$(MINICARGO) lib/libproc_macro --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
 	@test -e $@
 
-$(OUTDIR)test/libtest.so: $(MRUSTC) $(MINICARGO)
+# Dynamically linked version of the standard library
+$(OUTDIR)test/libtest.so: $(RUSTC_SRC_DL)
 	mkdir -p $(dir $@)
 	MINICARGO_DYLIB=1 $(MINICARGO) $(RUSTCSRC)$(RUST_LIB_PREFIX)std          --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(dir $@) $(MINICARGO_FLAGS)
 	MINICARGO_DYLIB=1 $(MINICARGO) $(RUSTCSRC)$(RUST_LIB_PREFIX)panic_unwind --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(dir $@) $(MINICARGO_FLAGS)
@@ -202,6 +267,57 @@ $(OUTDIR)cargo-build/libterm-0_4_5.rlib: $(MRUSTC) LIBS
 	$(MINICARGO) $(VENDOR_DIR)/term --vendor-dir $(VENDOR_DIR) --output-dir $(dir $@) -L $(OUTDIR) $(MINICARGO_FLAGS)
 $(OUTDIR)cargo-build/libfailure-0_1_2.rlib: $(MRUSTC) LIBS
 	$(MINICARGO) $(VENDOR_DIR)/failure --vendor-dir $(VENDOR_DIR) --output-dir $(dir $@) -L $(OUTDIR) --features std,derive,backtrace,failure_derive $(MINICARGO_FLAGS)
+
+
+#
+# TEST: Rust standard library and the "hello, world" run-pass test
+#
+
+HELLO_TEST := ui/hello.rs
+ifeq ($(RUSTC_VERSION),1.19.0)
+  HELLO_TEST := run-pass/hello.rs
+else ifeq ($(RUSTC_VERSION),1.29.0)
+  HELLO_TEST := run-pass/hello.rs
+endif
+
+# "hello, world" test - Invoked by the `make test` target
+$(OUTDIR)rust/test_run-pass_hello: $(SRCDIR_RUST_TESTS)$(HELLO_TEST) LIBS
+	@mkdir -p $(dir $@)
+	@echo "--- [MRUSTC] -o $@"
+	$(DBG) $(MRUSTC) $< -o $@ --cfg debug_assertions -g -O -L $(OUTDIR) > $@_dbg.txt
+$(OUTDIR)rust/test_run-pass_hello_out.txt: $(OUTDIR)rust/test_run-pass_hello
+	@echo "--- [$<]"
+	@./$< | tee $@
+
+# 
+# RUSTC TESTS
+# 
+
+.PHONY: RUST_TESTS RUST_TESTS_run-pass
+RUST_TESTS: RUST_TESTS_run-pass
+RUST_TESTS_run-pass: output$(OUTDIR_SUF)/test/librust_test_helpers.a LIBS bin/testrunner$(EXESUF)
+	@mkdir -p $(OUTDIR)rust_tests/run-pass
+	./bin/testrunner$(EXESUF) -L $(OUTDIR)test -o $(OUTDIR)rust_tests/run-pass $(SRCDIR_RUST_TESTS)run-pass --exceptions disabled_tests_run-pass.txt
+$(OUTDIR)test/librust_test_helpers.a: $(OUTDIR)test/rust_test_helpers.o
+	@mkdir -p $(dir $@)
+	ar cur $@ $<
+ifeq ($(RUSTC_VERSION),1.19.0)
+RUST_TEST_HELPERS_C := $(RUSTCSRC)src/rt/rust_test_helpers.c
+else
+RUST_TEST_HELPERS_C := $(RUSTCSRC)src/test/auxiliary/rust_test_helpers.c
+endif
+output$(OUTDIR_SUF)/test/rust_test_helpers.o: $(RUST_TEST_HELPERS_C)
+	@mkdir -p $(dir $@)
+	$(CC) -c $< -o $@
+
+#
+# MRUSTC-specific tests
+# 
+.PHONY: local_tests
+local_tests: $(TEST_DEPS)
+	@$(MAKE) -C tools/testrunner
+	@mkdir -p output$(OUTDIR_SUF)/local_tests
+	./bin/testrunner -o output$(OUTDIR_SUF)/local_tests -L output$(OUTDIR_SUF) samples/test
 
 #
 # Testing
