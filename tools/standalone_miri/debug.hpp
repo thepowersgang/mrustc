@@ -113,4 +113,4 @@ struct DebugExceptionError:
 #define LOG_BUG(strm) do { DebugSink::get(__FUNCTION__,__FILE__,__LINE__,DebugLevel::Bug) << strm; abort(); } while(0)
 #define LOG_ASSERT(cnd,strm) do { if( !(cnd) ) { LOG_ERROR(__FILE__ << ":" << __LINE__ << ": Assertion failure: " #cnd " - " << strm); } } while(0)
 
-#define FMT_STRING(...) (dynamic_cast<::std::stringstream&>(::std::stringstream() << __VA_ARGS__).str())
+#define FMT_STRING(...) (dynamic_cast<::std::stringstream&&>(::std::stringstream() << __VA_ARGS__).str())

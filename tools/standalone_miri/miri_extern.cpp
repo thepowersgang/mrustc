@@ -410,27 +410,24 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         int fd = args.at(0).read_i32(0);
         int command = args.at(1).read_i32(0);
 
+        auto fcntl_noarg = [&](const char* name)->int {
+            LOG_DEBUG("fnctl(" << fd << ", " << name << "{" << command << "})");
+            return fcntl(fd, command);
+            };
+        auto fcntl_int = [&](const char* name)->int {
+            int arg = args.at(2).read_i32(0);
+            LOG_DEBUG("fnctl(" << fd << ", " << name << "{" << command << "}, " << arg << ")");
+            return fcntl(fd, command, arg);
+            };
         int rv_i;
-        const char* name;
         switch(command)
         {
-            // - No argument
-        case F_GETFD: name = "F_GETFD"; if(0)
-            ;
-        {
-            LOG_DEBUG("fcntl(" << fd << ", " << name << ")");
-            rv_i = fcntl(fd, command);
-        } break;
+        // - No argument
+        case F_GETFD: rv_i = fcntl_noarg("F_GETFD");    break;
         // - Integer arguments
-        case F_DUPFD: name = "F_DUPFD"; if(0)
-        case F_DUPFD_CLOEXEC: name = "F_DUPFD_CLOEXEC"; if(0)
-        case F_SETFD: name = "F_SETFD"; if(0)
-            ;
-        {
-            int arg = args.at(2).read_i32(0);
-            LOG_DEBUG("fcntl(" << fd << ", " << name << ", " << arg << ")");
-            rv_i = fcntl(fd, command, arg);
-        } break;
+        case F_DUPFD        : rv_i = fcntl_int("F_DUPFD"        );  break;
+        case F_DUPFD_CLOEXEC: rv_i = fcntl_int("F_DUPFD_CLOEXEC");  break;
+        case F_SETFD        : rv_i = fcntl_int("F_SETFD"        ); break;
         default:
             if( args.size() > 2 )
             {
@@ -515,6 +512,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         const auto attr_p = args.at(0).read_pointer_const(0, 1);
         auto out_size = args.at(1).deref(0, HIR::TypeRef(RawType::USize));
 
+        (void)attr_p;
         out_size.m_alloc.alloc().write_usize(out_size.m_offset, 0x1000);
 
         rv = Value::new_i32(0);
@@ -525,6 +523,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         auto out_ptr = args.at(2).deref(0, HIR::TypeRef(RawType::USize));
         auto out_size = args.at(2).deref(0, HIR::TypeRef(RawType::USize));
 
+        (void)attr_p;
         out_size.m_alloc.alloc().write_usize(out_size.m_offset, 0x4000);
 
         rv = Value::new_i32(0);

@@ -447,7 +447,7 @@ public:
     static Value new_i32(int32_t v);
     static Value new_i64(int64_t v);
 
-    AllocationHandle borrow(::std::string loc) {
+    AllocationHandle borrow(::std::string /*loc*/) {
         if( !m_inner.is_alloc )
             create_allocation(/*loc*/);
         return m_inner.alloc.alloc;
@@ -631,7 +631,7 @@ struct ValueRef:
     }
     void mark_bytes_valid(size_t ofs, size_t size);
 
-    void read_bytes(size_t ofs, void* dst, size_t size) const {
+    void read_bytes(size_t ofs, void* dst, size_t size) const override {
         if( size == 0 )
             return ;
         LOG_ASSERT(in_bounds(ofs, size, m_size), "read_bytes(" << ofs << "+" << size << " > " << m_size <<")");

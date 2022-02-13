@@ -116,7 +116,7 @@ size_t HIR::TypeRef::get_align(size_t ofs) const
 {
     if( const auto* w = this->get_wrapper(ofs) )
     {
-        LOG_TODO("get_align " << *this);
+        LOG_TODO("get_align " << *this); (void)w;
     }
     else
     {
@@ -450,7 +450,8 @@ namespace HIR {
             switch(it->type)
             {
             case TypeWrapper::Ty::Array:
-                os << ";" << it->size;
+                os << ";" << it->size << "]";
+                break;
             case TypeWrapper::Ty::Slice:
                 os << "]";
                 break;
@@ -472,4 +473,35 @@ namespace HIR {
         }
         return os;
     }
+}
+
+namespace {
+    void print_fmt_string(std::ostream& os, const std::string& s) {
+        static const char* hex = "0123456789ABCDEF";
+        for(auto c : s) {
+            if( c == '{' )
+                os << "{{";
+            else if( c == '\\' )
+                os << "\\\\";
+            else if( c == '"' )
+                os << "\\\"";
+            else if( std::isprint(c) )
+                os << c;
+            else
+                os << "\\x" << hex[c >> 4] << hex[c & 15];
+        }
+    }
+}
+void AsmCommon::Line::fmt(std::ostream& os) const {
+    os << "\"";
+    for(const auto& f : this->frags)
+    {
+        print_fmt_string(os, f.before);
+        os << "{" << f.index;
+        if(f.modifier)
+            os << ":" << f.modifier;
+        os << "}";
+    }
+    print_fmt_string(os, this->trailing);
+    os << "\"";
 }

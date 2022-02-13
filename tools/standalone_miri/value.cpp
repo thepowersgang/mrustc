@@ -632,7 +632,7 @@ void Allocation::set_reloc(size_t ofs, size_t len, RelocationPtr reloc)
     os << " {";
     for(const auto& r : x.relocations)
     {
-        if( 0 <= r.slot_ofs && r.slot_ofs < x.size() )
+        if( /*0 <= r.slot_ofs &&*/ r.slot_ofs < x.size() )
         {
             os << " @" << r.slot_ofs << "=" << r.backing_alloc;
         }
@@ -839,7 +839,7 @@ void Value::write_bytes(size_t ofs, const void* src, size_t count)
         }
         ::std::memcpy(direct.data + ofs, src, count);
         mark_bytes_valid(ofs, count);
-        if( 0 <= ofs && ofs < POINTER_SIZE ) {
+        if( /*0 <= ofs &&*/ ofs < POINTER_SIZE ) {
             direct.reloc_0 = RelocationPtr();
         }
     }

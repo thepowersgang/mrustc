@@ -292,7 +292,11 @@ namespace MIR {
                 ),
             (String,
                 for(unsigned int j = 0; j < e.targets.size(); j ++)
-                    os << "\"" << ve[j] << "\" => bb" << e.targets[j] << ", ";
+                    os << "\"" << FmtEscaped(ve[j]) << "\" => bb" << e.targets[j] << ", ";
+                ),
+            (ByteString,
+                for(unsigned int j = 0; j < e.targets.size(); j ++)
+                    os << "[" << ve[j] << "] => bb" << e.targets[j] << ", ";
                 )
             )
             os << "else bb" << e.def_target << ")";
@@ -333,6 +337,43 @@ namespace MIR {
             for(const auto& spec : e.inputs)
                 os << "\"" << spec.first << "\" : " << spec.second << ", ";
             os << "), clobbers=[" << e.clobbers << "], flags=[" << e.flags << "])";
+            ),
+        (Asm2,
+            os << "asm!(";
+            for(const auto& l : e.lines) {
+                if(&l != &e.lines.front())
+                    os << " ";
+                l.fmt(os);
+            }
+            for(const auto& p : e.params)
+            {
+                os << ", ";
+                TU_MATCH_HDRA( (p), { )
+                TU_ARMA(Const, v) {
+                    os << "const " << v;
+                    }
+                TU_ARMA(Sym, v) {
+                    os << "sym " << v;
+                    }
+                TU_ARMA(Reg, v) {
+                    os << "reg " << v.dir << " " << v.spec << " ";
+                    if(v.input)
+                        os << *v.input;
+                    else
+                        os << "_";
+                    os << " => ";
+                    if(v.output)
+                        os << *v.output;
+                    else
+                        os << "_";
+                    }
+                }
+            }
+            if(e.options.any()) {
+                os << ", ";
+                e.options.fmt(os);
+            }
+            os << ")";
             ),
         (SetDropFlag,
             os << "df$" << e.idx << " = ";

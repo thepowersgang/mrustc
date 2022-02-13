@@ -95,9 +95,9 @@ struct LValue
         bool is_Local() const    { return (val & 3) == 1; }
         bool is_Static() const   { return (val & 3) == 2; }
 
-        const char     as_Return  () const { assert(is_Return()); return 0; }
-        const unsigned as_Argument() const { assert(is_Argument()); return static_cast<unsigned>( (val >> 2) - 1 ); }
-        const unsigned as_Local   () const { assert(is_Local()); return static_cast<unsigned>(val >> 2); }
+        char     as_Return  () const { assert(is_Return()); return 0; }
+        unsigned as_Argument() const { assert(is_Argument()); return static_cast<unsigned>( (val >> 2) - 1 ); }
+        unsigned as_Local   () const { assert(is_Local()); return static_cast<unsigned>(val >> 2); }
 
         const ::HIR::Path& as_Static() const { assert(is_Static()); return *reinterpret_cast<const ::HIR::Path*>(val & ~3llu); }
               ::HIR::Path& as_Static()       { assert(is_Static()); return *reinterpret_cast<      ::HIR::Path*>(val & ~3llu); }
@@ -140,11 +140,11 @@ struct LValue
         // Stores a Local index
         bool is_Index   () const { return (val & 3) == 3; }
 
-        const char     as_Deref   () const { assert(is_Deref()); return 0; }
-        const unsigned as_Field   () const { assert(is_Field()); return (val >> 2); }
-        const unsigned as_Downcast() const { assert(is_Downcast()); return (val >> 2); }
+        char     as_Deref   () const { assert(is_Deref()); return 0; }
+        unsigned as_Field   () const { assert(is_Field()); return (val >> 2); }
+        unsigned as_Downcast() const { assert(is_Downcast()); return (val >> 2); }
         // TODO: Should this return a LValue?
-        const unsigned as_Index   () const { assert(is_Index()); unsigned rv = (val >> 2); return rv; }
+        unsigned as_Index   () const { assert(is_Index()); unsigned rv = (val >> 2); return rv; }
 
         void inc_Field   () { assert(is_Field   ()); *this = Wrapper::new_Field   (as_Field   () + 1); }
         void inc_Downcast() { assert(is_Downcast()); *this = Wrapper::new_Downcast(as_Downcast() + 1); }
@@ -179,12 +179,12 @@ struct LValue
 
     bool is_Return() const { return m_wrappers.empty() && m_root.is_Return(); }
     bool is_Local () const { return m_wrappers.empty() && m_root.is_Local(); }
-    const unsigned as_Local() const { assert(m_wrappers.empty()); return m_root.as_Local(); }
+    unsigned as_Local() const { assert(m_wrappers.empty()); return m_root.as_Local(); }
 
     bool is_Deref   () const { return m_wrappers.size() > 0 && m_wrappers.back().is_Deref(); }
     bool is_Field   () const { return m_wrappers.size() > 0 && m_wrappers.back().is_Field(); }
     bool is_Downcast() const { return m_wrappers.size() > 0 && m_wrappers.back().is_Downcast(); }
-    const unsigned as_Field() const { assert(!m_wrappers.empty()); return m_wrappers.back().as_Field(); }
+    unsigned as_Field() const { assert(!m_wrappers.empty()); return m_wrappers.back().as_Field(); }
 
     void inc_Field   () { assert(m_wrappers.size() > 0); m_wrappers.back().inc_Field   (); }
     void inc_Downcast() { assert(m_wrappers.size() > 0); m_wrappers.back().inc_Downcast(); }
@@ -313,14 +313,14 @@ struct LValue
         bool is_Downcast() const { return m_wrapper_count >= 1 && m_lv->m_wrappers[m_wrapper_count-1].is_Downcast(); }
         bool is_Index   () const { return m_wrapper_count >= 1 && m_lv->m_wrappers[m_wrapper_count-1].is_Index   (); }
 
-        const unsigned   as_Local   () const { assert(is_Local   ()); return m_lv->m_root.as_Local   (); }
-        const char       as_Return  () const { assert(is_Return  ()); return m_lv->m_root.as_Return  (); }
-        const unsigned   as_Argument() const { assert(is_Argument()); return m_lv->m_root.as_Argument(); }
+        unsigned   as_Local   () const { assert(is_Local   ()); return m_lv->m_root.as_Local   (); }
+        char       as_Return  () const { assert(is_Return  ()); return m_lv->m_root.as_Return  (); }
+        unsigned   as_Argument() const { assert(is_Argument()); return m_lv->m_root.as_Argument(); }
         const HIR::Path& as_Static  () const { assert(is_Static  ()); return m_lv->m_root.as_Static  (); }
-        const char     as_Deref   () const { assert(is_Deref   ()); return m_lv->m_wrappers[m_wrapper_count-1].as_Deref   (); }
-        const unsigned as_Field   () const { assert(is_Field   ()); return m_lv->m_wrappers[m_wrapper_count-1].as_Field   (); }
-        const unsigned as_Downcast() const { assert(is_Downcast()); return m_lv->m_wrappers[m_wrapper_count-1].as_Downcast(); }
-        const unsigned as_Index   () const { assert(is_Index   ()); return m_lv->m_wrappers[m_wrapper_count-1].as_Index   (); }
+        char     as_Deref   () const { assert(is_Deref   ()); return m_lv->m_wrappers[m_wrapper_count-1].as_Deref   (); }
+        unsigned as_Field   () const { assert(is_Field   ()); return m_lv->m_wrappers[m_wrapper_count-1].as_Field   (); }
+        unsigned as_Downcast() const { assert(is_Downcast()); return m_lv->m_wrappers[m_wrapper_count-1].as_Downcast(); }
+        unsigned as_Index   () const { assert(is_Index   ()); return m_lv->m_wrappers[m_wrapper_count-1].as_Index   (); }
 
         void fmt(::std::ostream& os) const;
         Ordering ord(const RefCommon& b) const;

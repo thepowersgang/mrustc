@@ -178,7 +178,7 @@ struct MirHelpers
                 }
                 else
                 {
-                    LOG_ASSERT(ty.get_meta_type() != RawType::Unreachable || ty.get_size() >= 0, "Dereference (giving a non-ZST) with no allocation");
+                    LOG_ASSERT(ty.get_meta_type() != RawType::Unreachable || ty.get_size() > 0, "Dereference (giving a non-ZST) with no allocation");
                 }
                 size_t size;
 

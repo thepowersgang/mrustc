@@ -98,7 +98,7 @@ namespace HIR {
     struct GenericRef
     {
         // Should never be needed!
-        friend ::std::ostream& operator<<(::std::ostream& os, const GenericRef& x) {
+        friend ::std::ostream& operator<<(::std::ostream& os, const GenericRef& ) {
             return os << "GenericRef";
         }
     };

@@ -56,10 +56,12 @@ void ModuleTree::load_file(const ::std::string& path)
 void ModuleTree::validate()
 {
     TRACE_FUNCTION_R("", "");
+#if 0
     for(const auto& dt : this->data_types)
     {
-        //LOG_ASSERT(dt.second->populated, "Type " << dt.first << " never defined");
+        LOG_ASSERT(dt.second->populated, "Type " << dt.first << " never defined");
     }
+#endif
 
     for(const auto& fcn : this->functions)
     {
@@ -543,8 +545,8 @@ bool Parser::parse_one()
                         bt = ::HIR::BorrowType::Move;
                     else if( lex.consume_if("mut") )
                         bt = ::HIR::BorrowType::Unique;
-                    else
-                        ;
+                    else {
+                    }
                     auto val = H::parse_lvalue(*this, var_names);
                     src_rval = ::MIR::RValue::make_Borrow({ bt, ::std::move(val) });
                 }
@@ -1223,8 +1225,9 @@ RawType Parser::parse_core_type()
             bt = ::HIR::BorrowType::Move;
         else if( lex.consume_if("mut") )
             bt = ::HIR::BorrowType::Unique;
-        else
-            ; // keep as shared
+        else {
+            // keep as shared
+        }
         return parse_type().wrap( TypeWrapper::Ty::Borrow, static_cast<size_t>(bt) );
     }
     else if( lex.consume_if('*') )
