@@ -1102,6 +1102,7 @@ namespace {
             deserialise_type()
             })
         _(Function, {
+            deserialise_genericparams(),
             m_in.read_bool(),
             m_in.read_string(),
             deserialise_type(),
@@ -1135,6 +1136,7 @@ namespace {
     {
         ::HIR::PathParams   rv;
         TRACE_FUNCTION_FR("", rv);
+        rv.m_lifetimes = deserialise_vec< ::HIR::LifetimeRef>();
         rv.m_types = deserialise_vec< ::HIR::TypeRef>();
         rv.m_values = deserialise_vec< ::HIR::ConstGeneric>();
         return rv;

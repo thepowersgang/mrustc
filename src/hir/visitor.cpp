@@ -140,7 +140,7 @@ void ::HIR::Visitor::visit_type_impl(::HIR::TypeImpl& impl)
 void ::HIR::Visitor::visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl)
 {
     ::HIR::ItemPath    p( impl.m_type, trait_path, impl.m_trait_args );
-    TRACE_FUNCTION_F(p);
+    TRACE_FUNCTION_F("impl" << impl.m_params.fmt_args() << " " << trait_path << impl.m_trait_args << " for " << impl.m_type );
     this->visit_params(impl.m_params);
     // - HACK: Create a generic path to visit (so that proper checks are performed)
     {
@@ -388,10 +388,6 @@ void ::HIR::Visitor::visit_type(::HIR::TypeRef& ty)
         this->visit_type(e.m_rettype);
         }
     TU_ARMA(Closure, e) {
-        for(auto& t : e.m_arg_types) {
-            this->visit_type(t);
-        }
-        this->visit_type(e.m_rettype);
         }
     TU_ARMA(Generator, e) {
         }

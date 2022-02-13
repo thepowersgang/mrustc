@@ -67,6 +67,13 @@ namespace {
     void fix_type_params(const Span& sp, const ::HIR::GenericParams& params_def, ::HIR::PathParams& params)
     {
         #if 1
+        if( params.m_lifetimes.size() == 0 ) {
+            params.m_lifetimes.resize( params_def.m_lifetimes.size() );
+        }
+        if( params.m_lifetimes.size() != params_def.m_lifetimes.size() ) {
+            ERROR(sp, E0000, "Incorrect lifetime param count, expected " << params_def.m_lifetimes.size() << ", got " << params.m_lifetimes.size());
+        }
+
         if( params.m_types.size() == 0 ) {
             params.m_types.resize( params_def.m_types.size() );
             // TODO: Optionally fill in the defaults?
@@ -74,6 +81,7 @@ namespace {
         if( params.m_types.size() != params_def.m_types.size() ) {
             ERROR(sp, E0000, "Incorrect parameter count, expected " << params_def.m_types.size() << ", got " << params.m_types.size());
         }
+
         if( params.m_values.size() == 0 ) {
             params.m_values.resize( params_def.m_values.size() );
         }
@@ -248,6 +256,15 @@ namespace {
         }
         static void fix_param_count(const Span& sp, const ::HIR::GenericPath& path, const ::HIR::GenericParams& param_defs, ::HIR::PathParams& params, bool fill_infer=true, const ::HIR::TypeRef* self_ty=nullptr)
         {
+            if( params.m_lifetimes.size() != param_defs.m_lifetimes.size() )
+            {
+                if( params.m_lifetimes.size() == 0 && fill_infer ) {
+                    for(const auto& lft : param_defs.m_lifetimes) {
+                        (void)lft;
+                        params.m_lifetimes.push_back({});
+                    }
+                }
+            }
             if( params.m_types.size() != param_defs.m_types.size() )
             {
                 TRACE_FUNCTION_FR(path, params);

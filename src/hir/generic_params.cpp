@@ -6,16 +6,17 @@
  * - HIR version of generic definition blocks
  */
 #include "generic_params.hpp"
+#include "type.hpp"
 
 namespace HIR {
     ::std::ostream& operator<<(::std::ostream& os, const GenericBound& x)
     {
         TU_MATCH(::HIR::GenericBound, (x), (e),
         (Lifetime,
-            os << "'" << e.test << ": '" << e.valid_for;
+            os << e.test << ": " << e.valid_for;
             ),
         (TypeLifetime,
-            os << e.type << ": '" << e.valid_for;
+            os << e.type << ": " << e.valid_for;
             ),
         (TraitBound,
             os << e.type << ": " << e.trait/*.m_path*/;
@@ -103,6 +104,24 @@ Ordering ord(const HIR::GenericBound& a, const HIR::GenericBound& b)
         )
     )
     return OrdEqual;
+}
+
+
+HIR::PathParams HIR::GenericParams::make_nop_params(unsigned level, bool lifetimes_only/*=false*/) const
+{
+    HIR::PathParams rv;
+    for(const auto& t : this->m_lifetimes) {
+        rv.m_lifetimes.push_back(HIR::LifetimeRef( 256*level + rv.m_lifetimes.size() ));
+    }
+    assert( !lifetimes_only || this->m_types .empty() );
+    assert( !lifetimes_only || this->m_values.empty() );
+    for(const auto& t : this->m_types) {
+        rv.m_types.push_back(HIR::TypeRef(t.m_name, 256*level + rv.m_types.size()));
+    }
+    for(const auto& t : this->m_values) {
+        rv.m_values.push_back(HIR::GenericRef(t.m_name, 256*level + rv.m_values.size()));
+    }
+    return rv;
 }
 
 ::HIR::GenericParams HIR::GenericParams::clone() const

@@ -205,11 +205,13 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         os << ")";
         }
     TU_ARMA(Borrow, e) {
+        os << "&";
+        os << e.lifetime << " ";
         switch(e.type)
         {
-        case ::HIR::BorrowType::Shared: os << "&";  break;
-        case ::HIR::BorrowType::Unique: os << "&mut ";  break;
-        case ::HIR::BorrowType::Owned:  os << "&move "; break;
+        case ::HIR::BorrowType::Shared: os << "";  break;
+        case ::HIR::BorrowType::Unique: os << "mut ";  break;
+        case ::HIR::BorrowType::Owned:  os << "move "; break;
         }
         os << e.inner;
         }
@@ -223,6 +225,9 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         os << e.inner;
         }
     TU_ARMA(Function, e) {
+        if( !e.hrls.m_lifetimes.empty() ) {
+            os << "for" << e.hrls.fmt_args() << " ";
+        }
         if( e.is_unsafe ) {
             os << "unsafe ";
         }
@@ -236,10 +241,6 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         }
     TU_ARMA(Closure, e) {
         os << "closure["<<e.node<<"]";
-        os << "(";
-        for(const auto& t : e.m_arg_types)
-            os << t << ", ";
-        os << ") -> " << e.m_rettype;
         }
     TU_ARMA(Generator, e) {
         os << "generator["<<e.node<<"]";
@@ -272,7 +273,7 @@ bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const
         return te.path == xe.path;
         ),
     (Generic,
-        return te.name == xe.name && te.binding == xe.binding;
+        return /*te.name == xe.name &&*/ te.binding == xe.binding;
         ),
     (TraitObject,
         if( te.m_trait != xe.m_trait )
@@ -283,7 +284,8 @@ bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const
             if( te.m_markers[i] != xe.m_markers[i] )
                 return false;
         }
-        return te.m_lifetime == xe.m_lifetime;
+        //return te.m_lifetime == xe.m_lifetime;
+        return true;
         ),
     (ErasedType,
         return te.m_origin == xe.m_origin;
@@ -366,7 +368,7 @@ Ordering HIR::TypeRef::ord(const ::HIR::TypeRef& x) const
         return ::ord( te.path, xe.path );
         ),
     (Generic,
-        ORD(te.name, xe.name);
+        //ORD(te.name, xe.name);
         if( (rv = ::ord(te.binding, xe.binding)) != OrdEqual )
             return rv;
         return OrdEqual;
@@ -374,8 +376,8 @@ Ordering HIR::TypeRef::ord(const ::HIR::TypeRef& x) const
     (TraitObject,
         ORD(te.m_trait, xe.m_trait);
         ORD(te.m_markers, xe.m_markers);
+        //ORD(te.m_lifetime, xe.m_lifetime);
         return OrdEqual;
-        //return ::ord(te.m_lifetime, xe.m_lifetime);
         ),
     (ErasedType,
         ORD(te.m_origin, xe.m_origin);
@@ -856,7 +858,10 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
     TU_ARMA(Borrow, te, xe) {
         if( te.type != xe.type )
             return Compare::Unequal;
-        return te.inner.match_test_generics_fuzz( sp, xe.inner, resolve_placeholder, callback );
+        auto rv = Compare::Equal;
+        /*rv &=*/ callback.match_lft(HIR::GenericRef("", te.lifetime.binding), xe.lifetime);
+        rv &= te.inner.match_test_generics_fuzz( sp, xe.inner, resolve_placeholder, callback );
+        return rv;
         }
     TU_ARMA(Function, te, xe) {
         if( te.is_unsafe != xe.is_unsafe )
@@ -994,6 +999,7 @@ const ::HIR::TraitMarkings* HIR::TypePathBinding::get_trait_markings() const
         }
     TU_ARMA(Function, e) {
         FunctionType    ft {
+            e.hrls.clone(),
             e.is_unsafe,
             e.m_abi,
             e.m_rettype.clone(),
@@ -1006,9 +1012,9 @@ const ::HIR::TraitMarkings* HIR::TypePathBinding::get_trait_markings() const
     TU_ARMA(Closure, e) {
         TypeData::Data_Closure  oe;
         oe.node = e.node;
-        oe.m_rettype = e.m_rettype.clone();
-        for(const auto& a : e.m_arg_types)
-            oe.m_arg_types.push_back( a.clone() );
+        //oe.m_closure_rettype = e.m_closure_rettype.clone();
+        //for(const auto& a : e.m_closure_arg_types)
+        //    oe.m_closure_arg_types.push_back( a.clone() );
         return ::HIR::TypeRef(TypeData::make_Closure( mv$(oe) ));
         }
     TU_ARMA(Generator, e) {
@@ -1271,9 +1277,10 @@ const ::HIR::TraitMarkings* HIR::TypePathBinding::get_trait_markings() const
         return rv;
         }
     TU_ARMA(Closure, le, re) {
+#if 0
         if( le.node != re.node )
             return Compare::Unequal;
-        if( le.m_arg_types.size() != re.m_arg_types.size() )
+        if( le.m_closure_arg_types.size() != re.m_closure_arg_types.size() )
             return Compare::Unequal;
         auto rv = Compare::Equal;
         for( unsigned int i = 0; i < le.m_arg_types.size(); i ++ )
@@ -1284,6 +1291,11 @@ const ::HIR::TraitMarkings* HIR::TypePathBinding::get_trait_markings() const
         }
         rv &= le.m_rettype.compare_with_placeholders( sp, re.m_rettype, resolve_placeholder );
         return rv;
+#else
+        if( le.node != re.node )
+            return Compare::Unequal;
+        return Compare::Equal;
+#endif
         }
     TU_ARMA(Generator, le, re) {
         if( le.node != re.node )

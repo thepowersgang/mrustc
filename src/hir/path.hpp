@@ -59,6 +59,7 @@ TAGGED_UNION_EX(ConstGeneric, (), Infer, (
 
 class TypeRef;
 class Trait;
+class GenericParams;
 
 static inline ::std::ostream& operator<<(::std::ostream& os, const Compare& x) {
     switch(x)
@@ -130,12 +131,13 @@ struct SimplePath
 
 struct PathParams
 {
-    //::std::vector<LifetimeRef>  m_lifetimes;
+    ::std::vector<LifetimeRef>  m_lifetimes;
     ::std::vector<TypeRef>  m_types;
     ::std::vector<HIR::ConstGeneric>  m_values;
 
     PathParams();
     PathParams(::HIR::TypeRef );
+    PathParams(::HIR::LifetimeRef );
     PathParams clone() const;
     PathParams(const PathParams&) = delete;
     PathParams& operator=(const PathParams&) = delete;
@@ -155,6 +157,7 @@ struct PathParams
     bool operator!=(const PathParams& x) const { return !(*this == x); }
     bool operator<(const PathParams& x) const { return ord(x) == OrdLess; }
     Ordering ord(const PathParams& x) const {
+        //if(auto cmp = ::ord(m_lifetimes, x.m_lifetimes)) return cmp;
         if(auto cmp = ::ord(m_types, x.m_types)) return cmp;
         if(auto cmp = ::ord(m_values, x.m_values)) return cmp;
         return OrdEqual;
@@ -240,7 +243,7 @@ public:
     typedef ::std::map< RcString, AtyEqual> assoc_list_t;
 
     GenericPath m_path;
-    ::std::vector< RcString>   m_hrls;
+    std::unique_ptr<GenericParams>  m_hrls;
     assoc_list_t    m_type_bounds;
     ::std::map< RcString, AtyBound>  m_trait_bounds;
 
@@ -253,13 +256,7 @@ public:
     bool operator!=(const TraitPath& x) const { return ord(x) != OrdEqual; }
     bool operator<(const TraitPath& x) const { return ord(x) == OrdLess; }
 
-    Ordering ord(const TraitPath& x) const {
-        ORD(m_path, x.m_path);
-        ORD(m_hrls, x.m_hrls);
-        ORD(m_trait_bounds, x.m_trait_bounds);
-        ORD(m_type_bounds , x.m_type_bounds);
-        return OrdEqual;
-    }
+    Ordering ord(const TraitPath& x) const;
 
     friend ::std::ostream& operator<<(::std::ostream& os, const TraitPath& x);
 };

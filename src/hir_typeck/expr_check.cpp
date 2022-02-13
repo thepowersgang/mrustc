@@ -155,19 +155,12 @@ namespace {
             {
                 ::HIR::TypeRef  unit = ::HIR::TypeRef::new_unit();
                 const auto& ty = (node.m_value ? node.m_value->m_res_type : unit);
-                const ::HIR::ExprNode_Loop* loop;
-                if( node.m_label == "" ) {
-                    ASSERT_BUG(node.span(), !m_loops.empty(), "Break with no loop");
-                    loop = m_loops.back();
-                }
-                else {
-                    auto it = ::std::find_if( m_loops.rbegin(), m_loops.rend(), [&](const auto* lp){ return lp->m_label == node.m_label; } );
-                    ASSERT_BUG(node.span(), it != m_loops.rend(), "Break with no matching loop");
-                    loop = *it;
-                }
 
-                DEBUG("Breaking to " << loop << ", type " << loop->m_res_type);
-                check_types_equal(node.span(), loop->m_res_type, ty);
+                auto it = ::std::find(this->m_loops.rbegin(), this->m_loops.rend(), node.m_target_node);
+                ASSERT_BUG(node.span(), it != this->m_loops.rend(), "Loop target node not found in the loop stack");
+
+                DEBUG("Breaking to " << node.m_target_node << ", type " << node.m_target_node->m_res_type);
+                check_types_equal(node.span(), node.m_target_node->m_res_type, ty);
             }
         }
         void visit(::HIR::ExprNode_Let& node) override
@@ -342,7 +335,7 @@ namespace {
         {
             TRACE_FUNCTION_F(&node << " ... [ ... ]");
             check_associated_type(node.span(),
-                node.m_res_type, m_lang_Index, { node.m_index->m_res_type.clone() }, node.m_value->m_res_type, "Target"
+                node.m_res_type, m_lang_Index, { node.m_index->m_res_type.clone() }, node.m_value->m_res_type, "Output"
                 );
 
             node.m_value->visit( *this );
@@ -639,10 +632,11 @@ namespace {
             }
             ASSERT_BUG(node.span(), fields_ptr, "Didn't get field for path in _StructLiteral - " << ty);
             const ::HIR::t_struct_fields& fields = *fields_ptr;
+            for(const auto& fld : fields) {
+                DEBUG(fld.first << ": " << fld.second.ent);
+            }
 
-            #if 1
             auto ms = MonomorphStatePtr(&ty, &ty_path.m_params, nullptr);
-            #endif
 
             // Bind fields with type params (coercable)
             for( auto& val : node.m_values)
@@ -654,8 +648,9 @@ namespace {
                 auto& des_ty_cache = node.m_value_types[it - fields.begin()];
                 const auto* des_ty = &des_ty_r;
 
+                DEBUG(name << " : " << des_ty_r);
                 if( monomorphise_type_needed(des_ty_r) ) {
-                    assert( des_ty_cache != ::HIR::TypeRef() );
+                    ASSERT_BUG( node.span(), des_ty_cache != ::HIR::TypeRef(), name );
                     des_ty_cache = ms.monomorph_type(node.span(), des_ty_r);
                     m_resolve.expand_associated_types(node.span(), des_ty_cache);
                     des_ty = &des_ty_cache;
@@ -821,26 +816,22 @@ namespace {
                 TU_ARMA(TraitBound, be) {
                     auto real_type = cache.m_monomorph->monomorph_type(sp, be.type);
                     m_resolve.expand_associated_types(sp, real_type);
-                    auto real_trait = cache.m_monomorph->monomorph_genericpath(sp, be.trait.m_path, false);
-                    for(auto& t : real_trait.m_params.m_types)
-                        m_resolve.expand_associated_types(sp, t);
+                    auto real_trait = cache.m_monomorph->monomorph_traitpath(sp, be.trait, false);
+                    m_resolve.expand_associated_types_tp(sp, real_trait);
                     DEBUG("Bound " << be.type << ":  " << be.trait);
                     DEBUG("= (" << real_type << ": " << real_trait << ")");
-                    const auto& trait_params = real_trait.m_params;
+                    const auto& trait_params = real_trait.m_path.m_params;
 
                     const auto& trait_path = be.trait.m_path.m_path;
                     check_associated_type(sp, ::HIR::TypeRef(), trait_path, trait_params, real_type, "");
 
                     // TODO: Either - Don't include the above impl bound, or change the below trait to the one that has that type
-                    for( const auto& assoc : be.trait.m_type_bounds ) {
+                    for( auto& assoc : real_trait.m_type_bounds ) {
                         ::HIR::GenericPath  type_trait_path;
-                        bool has_ty = m_resolve.trait_contains_type(sp, real_trait, *be.trait.m_trait_ptr, assoc.first.c_str(),  type_trait_path);
-                        ASSERT_BUG(sp, has_ty, "Type " << assoc.first << " not found in chain of " << real_trait);
+                        bool has_ty = m_resolve.trait_contains_type(sp, real_trait.m_path, *be.trait.m_trait_ptr, assoc.first.c_str(),  type_trait_path);
+                        ASSERT_BUG(sp, has_ty, "Type " << assoc.first << " not found in chain of " << real_trait.m_path);
 
-                        auto other_ty = cache.m_monomorph->monomorph_type(sp, assoc.second.type, true);
-                        m_resolve.expand_associated_types(sp, other_ty);
-
-                        check_associated_type(sp, other_ty,  type_trait_path.m_path, type_trait_path.m_params, real_type, assoc.first.c_str());
+                        check_associated_type(sp, assoc.second.type,  type_trait_path.m_path, type_trait_path.m_params, real_type, assoc.first.c_str());
                     }
                     }
                 TU_ARMA(TypeEquality, be) {

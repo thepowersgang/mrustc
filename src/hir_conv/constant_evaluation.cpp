@@ -2234,12 +2234,7 @@ namespace {
         }
 
         ::HIR::PathParams get_params_for_def(const ::HIR::GenericParams& tpl, bool is_function_level=false) const {
-            ::HIR::PathParams   pp;
-            for(const auto& tp : tpl.m_types)
-                pp.m_types.push_back( ::HIR::TypeRef(tp.m_name, (is_function_level ? 256 : 0) + pp.m_types.size()) );
-            for(const auto& vp : tpl.m_values)
-                pp.m_values.push_back( ::HIR::GenericRef(vp.m_name, (is_function_level ? 256 : 0) + pp.m_values.size()) );
-            return pp;
+            return tpl.make_nop_params(is_function_level ? 1 : 0);
         }
 
         void visit_module(::HIR::ItemPath p, ::HIR::Module& mod) override
@@ -2683,6 +2678,12 @@ void ConvertHIR_ConstantEvaluate(::HIR::Crate& crate)
     {
         crate.m_root_module.m_mod_items.insert( mv$(new_ty_pair) );
     }
+    crate.m_new_types.clear();
+    for(auto& new_val_pair : crate.m_new_values)
+    {
+        crate.m_root_module.m_value_items.insert( mv$(new_val_pair) );
+    }
+    crate.m_new_values.clear();
 }
 void ConvertHIR_ConstantEvaluate_Expr(const ::HIR::Crate& crate, const ::HIR::ItemPath& ip, ::HIR::ExprPtr& expr_ptr)
 {

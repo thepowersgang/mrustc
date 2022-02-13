@@ -9,7 +9,9 @@
 #include <string>
 #include <vector>
 #include <iostream>
-#include "type.hpp"
+#include "generic_ref.hpp"
+#include "path.hpp"
+#include "type_ref.hpp"
 
 namespace HIR {
 
@@ -22,6 +24,7 @@ struct TypeParamDef
 struct LifetimeDef
 {
     RcString    m_name;
+    Ordering ord(const LifetimeDef& x) const { return m_name.ord(x.m_name); }
 };
 struct ValueParamDef
 {
@@ -70,6 +73,18 @@ public:
         // Note: Lifetimes don't matter
         if(!m_values.empty())    return true;
         return false;
+    }
+
+    /// Create a PathParams instance that doesn't monomorphise at all
+    PathParams make_nop_params(unsigned level, bool lifetimes_only=false) const;
+    PathParams make_empty_params(bool lifetimes_only=false) const {
+        assert(lifetimes_only);
+        PathParams  rv;
+        for(const auto& unused_lft : m_lifetimes) {
+            (void)unused_lft;
+            rv.m_lifetimes.push_back(HIR::LifetimeRef());
+        }
+        return rv;
     }
 
     struct PrintArgs {

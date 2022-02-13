@@ -27,13 +27,14 @@ namespace
         {
             Top,
             Method,
+            Unused_Placeholder,
             Hrb,
         } level;
         unsigned short  index;
 
         unsigned int to_binding() const {
             if(level == Level::Method && index != 0xFFFF) {
-                return (unsigned int)index + 256;
+                return (unsigned int)index + 256*static_cast<unsigned int>(level);
             }
             else {
                 return (unsigned int)index;

@@ -7,6 +7,7 @@
  */
 #include <hir/path.hpp>
 #include <hir/type.hpp>
+#include <algorithm>
 
 ::HIR::SimplePath HIR::SimplePath::operator+(const RcString& s) const
 {
@@ -37,10 +38,13 @@ namespace HIR {
 
     ::std::ostream& operator<<(::std::ostream& os, const PathParams& x)
     {
-        bool has_args = ( x.m_types.size() > 0 || x.m_values.size() > 0 );
+        bool has_args = ( x.m_lifetimes.size() > 0 || x.m_types.size() > 0 || x.m_values.size() > 0 );
 
         if(has_args) {
             os << "<";
+        }
+        for(const auto& lft : x.m_lifetimes) {
+            os << lft << ",";
         }
         for(const auto& ty : x.m_types) {
             os << ty << ",";
@@ -60,11 +64,8 @@ namespace HIR {
     }
     ::std::ostream& operator<<(::std::ostream& os, const TraitPath& x)
     {
-        if( x.m_hrls.size() > 0 ) {
-            os << "for<";
-            for(const auto& lft : x.m_hrls)
-                os << "'" << lft << ",";
-            os << "> ";
+        if( x.m_hrls ) {
+            os << "for" << x.m_hrls->fmt_args() << " ";
         }
         os << x.m_path.m_path;
         bool has_args = ( x.m_path.m_params.m_types.size() > 0 || x.m_type_bounds.size() > 0 || x.m_trait_bounds.size() > 0 );
@@ -120,9 +121,15 @@ namespace HIR {
 {
     m_types.push_back( mv$(ty0) );
 }
+HIR::PathParams::PathParams(::HIR::LifetimeRef lft)
+{
+    m_lifetimes.push_back(lft);
+}
 ::HIR::PathParams HIR::PathParams::clone() const
 {
     PathParams  rv;
+    for( const auto& l : m_lifetimes )
+        rv.m_lifetimes.push_back( l );
     for( const auto& t : m_types )
         rv.m_types.push_back( t.clone() );
     for( const auto& t : m_values )
@@ -173,7 +180,7 @@ bool ::HIR::GenericPath::operator==(const GenericPath& x) const
 {
     ::HIR::TraitPath    rv {
         m_path.clone(),
-        m_hrls,
+        m_hrls ? box$(m_hrls->clone()) : nullptr,
         {},
         {},
         m_trait_ptr
@@ -185,6 +192,16 @@ bool ::HIR::GenericPath::operator==(const GenericPath& x) const
         rv.m_trait_bounds.insert(::std::make_pair( assoc.first, assoc.second.clone() ));
 
     return rv;
+}
+Ordering HIR::TraitPath::ord(const TraitPath& x) const
+{
+    ORD(m_path, x.m_path);
+    ORD(m_hrls.get() == nullptr, x.m_hrls.get() == nullptr);
+    if(m_hrls)
+        ORD(m_hrls->m_lifetimes, x.m_hrls->m_lifetimes);
+    ORD(m_trait_bounds, x.m_trait_bounds);
+    ORD(m_type_bounds , x.m_type_bounds);
+    return OrdEqual;
 }
 
 ::HIR::Path::Path(::HIR::GenericPath gp):
@@ -288,6 +305,25 @@ bool ::HIR::GenericPath::operator==(const GenericPath& x) const
             }
         }
     }
+
+#if 1
+    if( this->m_lifetimes.size() != x.m_lifetimes.size() ) {
+        //return Compare::Unequal;
+    }
+    for( unsigned int i = 0; i < std::min(this->m_lifetimes.size(), x.m_lifetimes.size()); i ++ )
+    {
+        if( this->m_lifetimes[i].is_param() ) {
+            /*rv &=*/ match.match_lft(HIR::GenericRef("", this->m_lifetimes[i].binding), x.m_lifetimes[i]);
+            //if(rv == Compare::Unequal)
+            //    return Compare::Unequal;
+        }
+        else {
+            //if( this->m_lifetimes[i] != x.m_lifetimes[i] ) {
+            //    return Compare::Unequal;
+            //}
+        }
+    }
+#endif
 
     return rv;
 }

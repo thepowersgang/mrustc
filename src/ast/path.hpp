@@ -277,6 +277,7 @@ class PathParamEnt;
 struct PathParams
 {
     ::std::vector< PathParamEnt >  m_entries;
+    bool m_is_paren = false;
 
     PathParams(PathParams&& x) = default;
     PathParams(const PathParams& x);

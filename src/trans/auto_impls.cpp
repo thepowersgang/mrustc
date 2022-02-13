@@ -332,7 +332,8 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
             unsigned vtable_idx = ty_dyn.m_trait.m_trait_ptr->get_vtable_value_index(trait_path, name);
             ASSERT_BUG(sp, vtable_idx > 0, "Calling method '" << name << "' from " << trait_path << " through " << pe.type << " which isn't in the vtable");
 
-            MonomorphStatePtr   ms(&pe.type, &trait_path.m_params, nullptr);
+            auto pp = fcn_def.m_params.make_nop_params(1, true);
+            MonomorphStatePtr   ms(&pe.type, &trait_path.m_params, &pp);
 
             HIR::Function   new_fcn;
             new_fcn.m_return = ms.monomorph_type(sp, fcn_def.m_return);

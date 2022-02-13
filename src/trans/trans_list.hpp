@@ -68,6 +68,9 @@ struct Trans_Params:
     const ::HIR::PathParams* get_method_params() const override {
         return &pp_method;
     }
+    const ::HIR::PathParams* get_hrb_params() const override {
+        return nullptr;
+    }
 };
 
 struct CachedFunction {

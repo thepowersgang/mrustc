@@ -111,7 +111,30 @@ namespace {
 
                     // Create new static
                     auto sp = val_expr->span();
-                    auto ty = val_expr->m_res_type.clone();
+
+                    // Replace all unknown lifetimes with `'static`
+                    // - (Currently) there shouldn't be any generics, need to solve that later on?
+                    struct M: public Monomorphiser {
+                        ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& g) const override {
+                            return HIR::TypeRef(g.name, g.binding);
+                        }
+                        ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& g) const override {
+                            return g;
+                        }
+                        ::HIR::LifetimeRef get_lifetime(const Span& sp, const ::HIR::GenericRef& g) const override {
+                            return HIR::LifetimeRef(g.binding);
+                        }
+                        HIR::LifetimeRef monomorph_lifetime(const Span& sp, const HIR::LifetimeRef& lft) const override {
+                            if( lft == HIR::LifetimeRef() ) {
+                                return  HIR::LifetimeRef::new_static();
+                            }
+                            else {
+                                return lft;
+                            }
+                        }
+                    } m;
+                    auto ty = m.monomorph_type(sp, val_expr->m_res_type, /*allow_infer=*/false);
+
                     auto path = m_new_static_cb(sp, ty.clone(), mv$(val_expr));
                     DEBUG("> " << path);
                     // Update the `m_value` to point to a new node
@@ -363,13 +386,25 @@ namespace {
     };
 }   // namespace
 
-void HIR_Expand_StaticBorrowConstants_Expr(const ::HIR::Crate& crate, ::HIR::ExprPtr& exp)
+void HIR_Expand_StaticBorrowConstants_Expr(const ::HIR::Crate& crate, const ::HIR::ItemPath& ip, ::HIR::ExprPtr& exp)
 {
     StaticTraitResolve  resolve(crate);
-    ExprVisitor_Mutate  ev(resolve, [&](Span sp, HIR::TypeRef ty, HIR::ExprPtr val)->HIR::SimplePath {
-        // How will this work? Can't easily mutate the crate in this context
-        // - 
-        TODO(exp.span(), "Create new static in per-expression context");
+
+    static int static_count = 0;
+    ExprVisitor_Mutate  ev(resolve, [&](Span sp, HIR::TypeRef ty, HIR::ExprPtr val_expr)->HIR::SimplePath {
+        auto name = RcString::new_interned(FMT("lifted#C_" << static_count++));
+
+        auto path = ::HIR::SimplePath(crate.m_crate_name, {name});
+        auto new_static = HIR::Static(
+            HIR::Linkage(),
+            /*is_mut=*/false,
+            mv$(ty),
+            /*m_value=*/mv$(val_expr)
+            );
+        DEBUG(path << " = " << new_static.m_value_res);
+        auto boxed = box$(( ::HIR::VisEnt< ::HIR::ValueItem> { ::HIR::Publicity::new_none(), ::HIR::ValueItem( mv$(new_static) ) } ));
+        crate.m_new_values.push_back( ::std::make_pair(name, mv$(boxed)) );
+        return path;
         }, exp);
     ev.visit_node_ptr( exp );
 }

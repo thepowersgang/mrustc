@@ -795,6 +795,7 @@ namespace {
                 this->visit_node_ptr(node.m_value);
             }
 
+            // TODO: Use node.m_target_node
             const LoopDesc& target_block = this->find_loop(node.span(), node.m_label);
 
             if( node.m_continue ) {
@@ -1704,7 +1705,7 @@ namespace {
                     assert(method);
 
                     // - Construct trait path - Index*<IdxTy>
-                    auto method_path = ::HIR::Path(ty_val.clone(), ::HIR::GenericPath(m_builder.resolve().m_crate.get_lang_item_path(node.span(), langitem), {}), method);
+                    auto method_path = ::HIR::Path(ty_val.clone(), ::HIR::GenericPath(m_builder.resolve().m_crate.get_lang_item_path(node.span(), langitem), {}), method, HIR::PathParams(HIR::LifetimeRef()));
 
                     // Store a borrow of the input value
                     ::std::vector<::MIR::Param>    args;
@@ -2350,6 +2351,7 @@ namespace {
 
                     // TODO: Obtain function type for this function (i.e. a type that is specifically for this function)
                     auto fcn_ty_data = ::HIR::FunctionType {
+                        HIR::GenericParams(),
                         e.m_unsafe,
                         e.m_abi,
                         monomorph_cb.monomorph_type(sp, e.m_return),
@@ -2614,6 +2616,8 @@ namespace {
                 mv$(value),
                 std::move(node.m_size)
                 }) );
+            // Ensure that the size is valid (avoids crashes when debug is enabled)
+            node.m_size = HIR::ArraySize();
         }
 
         void visit(::HIR::ExprNode_Closure& node) override

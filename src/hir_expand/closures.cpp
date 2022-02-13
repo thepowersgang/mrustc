@@ -70,12 +70,15 @@ namespace {
             switch(impl.first)
             {
             case ::HIR::ExprNode_Closure::Class::Once:
+                DEBUG("impl" << impl.second.m_params.fmt_args() << " FnOnce" << impl.second.m_trait_args << " for " << impl.second.m_type);
                 push_trait_impl(crate.get_lang_item_path(sp, "fn_once"), box$(impl.second));
                 break;
             case ::HIR::ExprNode_Closure::Class::Mut:
+                DEBUG("impl" << impl.second.m_params.fmt_args() << " FnMut" << impl.second.m_trait_args << " for " << impl.second.m_type);
                 push_trait_impl(crate.get_lang_item_path(sp, "fn_mut" ), box$(impl.second));
                 break;
             case ::HIR::ExprNode_Closure::Class::Shared:
+                DEBUG("impl" << impl.second.m_params.fmt_args() << " Fn" << impl.second.m_trait_args << " for " << impl.second.m_type);
                 push_trait_impl(crate.get_lang_item_path(sp, "fn"     ), box$(impl.second));
                 break;
             case ::HIR::ExprNode_Closure::Class::NoCapture: {
@@ -84,7 +87,7 @@ namespace {
                 assert(impl.second.m_constants.empty());
                 // NOTE: This should always have a name
                 const auto& path = impl.second.m_type.data().as_Path().path.m_data.as_Generic().m_path;
-                DEBUG("Adding type impl " << path);
+                DEBUG("Adding type impl" << impl.second.m_params.fmt_args() << " " << path);
                 auto ptr = box$(::HIR::TypeImpl {
                     mv$(impl.second.m_params),
                     mv$(impl.second.m_type),
@@ -175,16 +178,10 @@ namespace {
 
         void visit_type(::HIR::TypeRef& ty) override {
             ty = m_monomorphiser.monomorph_type(Span(), ty, /*allow_infer=*/true);
-#if 0
-            if( ty.data().is_Generic() ) {
-                auto n = m_monomorph_cb(ty).clone();
-                DEBUG(ty << " -> " << n);
-                ty = mv$(n);
-            }
-            else {
-                ::HIR::ExprVisitorDef::visit_type(ty);
-            }
-#endif
+        }
+
+        void visit_path_params(::HIR::PathParams& pp) override {
+            pp = m_monomorphiser.monomorph_path_params(Span(), pp, /*allow_infer*/false);
         }
 
         void visit_node_ptr(::HIR::ExprNodeP& node_ptr) override {
@@ -363,17 +360,12 @@ namespace {
                     ERROR(sp, E0000, "Cannot cast a closure with captures to a fn() type");
                 }
 
-                //auto ms = MonomorphStatePtr(nullptr, &src_te.node->m_obj_path.m_params, nullptr);
-                //auto monomorph = [&](const HIR::TypeRef& ty)->HIR::TypeRef { return src_te.node->m_obj_ptr ? ms.monomorph_type(sp, ty) : ty.clone_shallow(); };
-                //::HIR::FunctionType    fcn_ty_inner { /*is_unsafe=*/false, ABI_RUST, monomorph(src_te.node->m_return), {} };
-                //fcn_ty_inner.m_arg_types.reserve(src_te.node->m_args.size());
-                //for(const auto& arg : src_te.node->m_args) {
-                //    fcn_ty_inner.m_arg_types.push_back( monomorph(arg.second) );
-                //}
-                ::HIR::FunctionType    fcn_ty_inner { /*is_unsafe=*/false, ABI_RUST, src_te.m_rettype.clone_shallow(), {} };
-                fcn_ty_inner.m_arg_types.reserve(src_te.m_arg_types.size());
-                for(const auto& arg : src_te.m_arg_types) {
-                    fcn_ty_inner.m_arg_types.push_back( arg.clone_shallow() );
+                // TODO: Get lifetime params
+                const auto& src_node = *src_te.node;
+                ::HIR::FunctionType    fcn_ty_inner { HIR::GenericParams(), /*is_unsafe=*/false, ABI_RUST, src_node.m_return.clone_shallow(), {} };
+                fcn_ty_inner.m_arg_types.reserve(src_node.m_args.size());
+                for(const auto& arg : src_node.m_args) {
+                    fcn_ty_inner.m_arg_types.push_back( arg.second.clone_shallow() );
                 }
                 auto res_ty = ::HIR::TypeRef(mv$(fcn_ty_inner));
 
@@ -512,14 +504,16 @@ namespace {
                 ::HIR::ExprPtr code
             )
         {
-            auto ty_of_self = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Unique, closure_type.clone() );
+            ::HIR::GenericParams fcn_params;
+            fcn_params.m_lifetimes.push_back(HIR::LifetimeDef());
+            auto ty_of_self = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Unique, closure_type.clone(), HIR::LifetimeRef(256 + 0) );
             fix_fn_params(code, ty_of_self, args_argent.second);
             return ::HIR::TraitImpl {
                 mv$(params), mv$(trait_params), mv$(closure_type),
                 make_map1(
                     RcString::new_interned("call_mut"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::HIR::Function {
                         ::HIR::Function::Receiver::BorrowUnique,
-                        ::HIR::GenericParams {},
+                        mv$(fcn_params),
                         make_vec2(
                             ::std::make_pair(
                                 ::HIR::Pattern { {false, ::HIR::PatternBinding::Type::Move, "self", 0}, {} },
@@ -604,19 +598,24 @@ namespace {
         struct Monomorph: public Monomorphiser
         {
             const ::HIR::GenericParams& params;
+            unsigned ofs_impl_l;
+            unsigned ofs_item_l;
             unsigned ofs_impl_t;
             unsigned ofs_item_t;
             unsigned ofs_impl_v;
             unsigned ofs_item_v;
             Monomorph(const ::HIR::GenericParams& params,
                 unsigned ofs_impl_t, unsigned ofs_item_t,
-                unsigned ofs_impl_v, unsigned ofs_item_v
+                unsigned ofs_impl_v, unsigned ofs_item_v,
+                unsigned ofs_impl_l, unsigned ofs_item_l
                 )
                 : params(params)
                 , ofs_impl_t(ofs_impl_t)
                 , ofs_item_t(ofs_item_t)
                 , ofs_impl_v(ofs_impl_v)
                 , ofs_item_v(ofs_item_v)
+                , ofs_impl_l(ofs_impl_l)
+                , ofs_item_l(ofs_item_l)
             {
             }
             ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& ge) const override
@@ -626,15 +625,15 @@ namespace {
                     i = 0;
                 }
                 else if( ge.binding < 256 ) {
-                    i = ofs_impl_t + ge.binding;
+                    i = ofs_impl_t + ge.idx();
                 }
                 else if( ge.binding < 2*256 ) {
-                    i = ofs_item_t + (ge.binding - 256);
+                    i = ofs_item_t + ge.idx();
                 }
                 else {
                     BUG(sp, "Generic type " << ge << " unknown");
                 }
-                ASSERT_BUG(sp, i < params.m_types.size(), "Item generic binding OOR - " << ge << " (" << i << " !< " << params.m_types.size() << ")");
+                ASSERT_BUG(sp, i < params.m_types.size(), "Item generic type binding OOR - " << ge << " (" << i << " !< " << params.m_types.size() << ")");
                 return ::HIR::TypeRef(params.m_types[i].m_name, i);
             }
             ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& ge) const {
@@ -643,16 +642,43 @@ namespace {
                     BUG(sp, "Binding 0xFFFF isn't valid for values");
                 }
                 else if( ge.binding < 256 ) {
-                    i = ofs_impl_v + ge.binding;
+                    i = ofs_impl_v + ge.idx();
                 }
                 else if( ge.binding < 2*256 ) {
-                    i = ofs_item_v + (ge.binding - 256);
+                    i = ofs_item_v + ge.idx();
                 }
                 else {
                     BUG(sp, "Generic value " << ge << " unknown");
                 }
                 ASSERT_BUG(sp, i < params.m_values.size(), "Item generic value binding OOR - " << ge << " (" << i << " !< " << params.m_values.size() << ")");
                 return ::HIR::GenericRef(params.m_values[i].m_name, i);
+            }
+            ::HIR::LifetimeRef get_lifetime(const Span& sp, const ::HIR::GenericRef& ge) const override {
+                unsigned i;
+                switch(ge.group())
+                {
+                case 0:
+                    i = ofs_impl_l + ge.idx();
+                    break;
+                case 1:
+                    i = ofs_item_l + ge.idx();
+                    break;
+                default:
+                    BUG(sp, "Generic value " << ge << " unknown");
+                }
+                ASSERT_BUG(sp, i < params.m_lifetimes.size(), "Item generic lifetime binding OOR - " << ge << " (" << i << " !< " << params.m_lifetimes.size() << ")");
+                return ::HIR::LifetimeRef(i);
+            }
+
+
+            ::HIR::LifetimeRef monomorph_lifetime(const Span& sp, const ::HIR::LifetimeRef& tpl) const override {
+                // TODO: Custom impl that renumbers local lifetimes into the new list, and handles arguments/return into impl
+                // - Have a list of lifetimes from arguments and returns
+                if( tpl.binding == HIR::LifetimeRef::UNKNOWN || tpl.binding == HIR::LifetimeRef::INFER )
+                    TODO(sp, "Handle unbound lifetime when monomorphising closure? " << tpl);
+                if( tpl.binding != HIR::LifetimeRef::STATIC && !tpl.is_param() )
+                    TODO(sp, "Handle non-param lifetime when monomorphising closure? " << tpl);
+                return Monomorphiser::monomorph_lifetime(sp, tpl);
             }
         };
 
@@ -666,6 +692,12 @@ namespace {
                 params.m_types.push_back( ::HIR::TypeParamDef { "Super", {}, false } );  // TODO: Determine if parent Self is Sized
             }
             // - Top-level params come first
+            unsigned ofs_impl_l = params.m_lifetimes.size();
+            for(const auto& lft_def : m_resolve.impl_generics().m_lifetimes) {
+                unsigned i = &lft_def - &m_resolve.impl_generics().m_lifetimes.front();
+                constructor_path_params.m_lifetimes.push_back( ::HIR::LifetimeRef( 0*256 + i ) );
+                params.m_lifetimes.push_back( ::HIR::LifetimeDef { lft_def.m_name } );
+            }
             unsigned ofs_impl_t = params.m_types.size();
             for(const auto& ty_def : m_resolve.impl_generics().m_types) {
                 unsigned i = &ty_def - &m_resolve.impl_generics().m_types.front();
@@ -679,6 +711,12 @@ namespace {
                 params.m_values.push_back( ::HIR::ValueParamDef { v_def.m_name, v_def.m_type.clone() } );
             }
             // - Item-level params come second
+            unsigned ofs_item_l = params.m_lifetimes.size();
+            for(const auto& lft_def : m_resolve.item_generics().m_lifetimes) {
+                unsigned i = &lft_def - &m_resolve.item_generics().m_lifetimes.front();
+                constructor_path_params.m_lifetimes.push_back( ::HIR::LifetimeRef( 1*256 + i ) );
+                params.m_lifetimes.push_back( ::HIR::LifetimeDef { lft_def.m_name } );
+            }
             unsigned ofs_item_t = params.m_types.size();
             for(const auto& ty_def : m_resolve.item_generics().m_types) {
                 unsigned i = &ty_def - &m_resolve.item_generics().m_types.front();
@@ -693,28 +731,25 @@ namespace {
             }
 
             // Create the params used for the type on the impl block
-            for(unsigned int i = 0; i < params.m_types.size(); i ++) {
-                impl_path_params.m_types.push_back( ::HIR::TypeRef(params.m_types[i].m_name, i) );
-            }
-            for(unsigned int i = 0; i < params.m_values.size(); i ++) {
-                impl_path_params.m_values.push_back( ::HIR::GenericRef(params.m_values[i].m_name, i) );
-            }
+            impl_path_params = params.make_nop_params(0);
             DEBUG("impl_path_params = " << impl_path_params << ", ofs_*_t=" << ofs_item_t << "," << ofs_impl_t << " ofs_*_v=" << ofs_item_v << "," << ofs_impl_v);
 
-            Monomorph monomorph_cb(params, ofs_impl_t, ofs_item_t, ofs_impl_v, ofs_impl_v);
-            auto monomorph = [&](const auto& ty){ return monomorph_cb.monomorph_type(sp, ty); };
+            Monomorph monomorph_cb(params, ofs_impl_t, ofs_item_t, ofs_impl_v, ofs_item_v, ofs_impl_l, ofs_item_l);
 
             // - Clone the bounds (from both levels)
             auto monomorph_bound = [&](const ::HIR::GenericBound& b)->::HIR::GenericBound {
                 TU_MATCH_HDRA( (b), {)
                 TU_ARMA(Lifetime, e)
-                    return ::HIR::GenericBound(e);
+                    return ::HIR::GenericBound::make_Lifetime({
+                            monomorph_cb.monomorph_lifetime(sp, e.test),
+                            monomorph_cb.monomorph_lifetime(sp, e.valid_for),
+                            });
                 TU_ARMA(TypeLifetime, e)
-                    return ::HIR::GenericBound::make_TypeLifetime({ monomorph(e.type), e.valid_for });
+                    return ::HIR::GenericBound::make_TypeLifetime({ monomorph_cb.monomorph_type(sp, e.type), monomorph_cb.monomorph_lifetime(sp, e.valid_for) });
                 TU_ARMA(TraitBound, e)
-                    return ::HIR::GenericBound::make_TraitBound({ monomorph(e.type), monomorph_cb.monomorph_traitpath(sp, e.trait, false) });
+                    return ::HIR::GenericBound::make_TraitBound  ({ monomorph_cb.monomorph_type(sp, e.type), monomorph_cb.monomorph_traitpath(sp, e.trait, false) });
                 TU_ARMA(TypeEquality, e)
-                    return ::HIR::GenericBound::make_TypeEquality({ monomorph(e.type), monomorph(e.other_type) });
+                    return ::HIR::GenericBound::make_TypeEquality({ monomorph_cb.monomorph_type(sp, e.type), monomorph_cb.monomorph_type(sp, e.other_type) });
                 }
                 throw "";
                 };
@@ -747,6 +782,11 @@ namespace {
             ::HIR::ExprVisitorDef::visit(node);
 
             // --- Extract and mutate code into a trait impl on the closure type ---
+
+            // TODO: Fix up lifetimes somehow
+            //  - Convert any referenced lifetimes in arguments/return into impl params
+            //  - Interior lifetimes need to be renumbered
+            // - Need to have done lifetime inferrence (allocating locals to all) beforehand.
 
             // 1. Prepare type params for rewriting the expression tree
             ::HIR::GenericParams params;
@@ -876,6 +916,7 @@ namespace {
                 fixup.visit_type( ret_type );
                 // TODO: Replace erased types too
             }
+            DEBUG("args_ty = " << args_ty << ", ret_type = " << ret_type);
 
             if( node.m_is_copy )
             {
@@ -985,7 +1026,7 @@ namespace {
                 // - FnOnce
                 {
                     auto dispatch_node = NEWNODE(ret_type.clone(), CallPath, sp,
-                        ::HIR::Path(closure_type.clone(), ::HIR::GenericPath(lang_Fn, trait_params.clone()), RcString::new_interned("call")),
+                        ::HIR::Path(closure_type.clone(), ::HIR::GenericPath(lang_Fn, trait_params.clone()), RcString::new_interned("call"), HIR::PathParams(HIR::LifetimeRef())),
                         make_vec2(
                             NEWNODE(method_self_ty.clone(), Borrow, sp, ::HIR::BorrowType::Shared, NEWNODE(closure_type.clone(), Variable, sp, RcString::new_interned("self"), 0)),
                             NEWNODE(args_ty.clone(), Variable, sp, "arg", 1)
@@ -1005,7 +1046,7 @@ namespace {
                 {
                     auto self_ty = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Unique, closure_type.clone() );
                     auto dispatch_node = NEWNODE(ret_type.clone(), CallPath, sp,
-                        ::HIR::Path(closure_type.clone(), ::HIR::GenericPath(lang_Fn, trait_params.clone()), "call"),
+                        ::HIR::Path(closure_type.clone(), ::HIR::GenericPath(lang_Fn, trait_params.clone()), "call", HIR::PathParams(HIR::LifetimeRef())),
                         make_vec2(
                             NEWNODE(method_self_ty.clone(), Borrow, sp, ::HIR::BorrowType::Shared, NEWNODE(closure_type.clone(), Deref, sp, NEWNODE(mv$(self_ty), Variable, sp, "self", 0))),
                             NEWNODE(args_ty.clone(), Variable, sp, "arg", 1)
@@ -1035,7 +1076,7 @@ namespace {
                 // - FnOnce
                 {
                     auto dispatch_node = NEWNODE(ret_type.clone(), CallPath, sp,
-                        ::HIR::Path(closure_type.clone(), ::HIR::GenericPath(lang_FnMut, trait_params.clone()), "call_mut"),
+                        ::HIR::Path(closure_type.clone(), ::HIR::GenericPath(lang_FnMut, trait_params.clone()), "call_mut", HIR::PathParams(HIR::LifetimeRef())),
                         make_vec2(
                             NEWNODE(method_self_ty.clone(), Borrow, sp, ::HIR::BorrowType::Unique, NEWNODE(closure_type.clone(), Variable, sp, "self", 0)),
                             NEWNODE(args_ty.clone(), Variable, sp, "arg", 1)

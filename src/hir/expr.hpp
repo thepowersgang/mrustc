@@ -198,11 +198,14 @@ struct ExprNode_LoopControl:
     bool    m_continue;
     ::HIR::ExprNodeP    m_value;
 
+    const ExprNode_Loop*    m_target_node;  // populated by expr_cs__enum.cpp
+
     ExprNode_LoopControl(Span sp, RcString label, bool cont, ::HIR::ExprNodeP value={}):
         ExprNode(mv$(sp)),
         m_label( mv$(label) ),
         m_continue( cont ),
         m_value( mv$(value) )
+        , m_target_node(nullptr)
     {}
 
     NODE_METHODS();

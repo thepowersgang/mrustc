@@ -337,6 +337,10 @@ namespace {
             return false;
         }
 
+        void visit_node_ptr(::HIR::ExprNodeP& node_ptr) override {
+            HIR::ExprVisitor::visit_node_ptr(node_ptr);
+            m_os << "/*: " << node_ptr->m_res_type << " */";
+        }
         void visit(::HIR::ExprNode_Block& node) override
         {
             m_os << "{\n";

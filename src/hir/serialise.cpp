@@ -14,7 +14,7 @@
 //namespace {
     class HirSerialiser
     {
-        ::std::map<HIR::TypeRef, size_t>    m_types;
+        ::std::map<std::string, size_t>    m_types;
         ::HIR::serialise::Writer&   m_out;
     public:
         HirSerialiser(::HIR::serialise::Writer& out):
@@ -178,7 +178,15 @@
         }
         void serialise_type(const ::HIR::TypeRef& ty)
         {
-            auto it = m_types.find(ty);
+            // Use string comparison to ensure that lifetimes are checked
+            auto ty_str = FMT(ty);
+            if(ty_str[0] == '{') {
+                auto p = ty_str.find('}');
+                ty_str = ty_str.substr(p+1);
+            }
+
+
+            auto it = m_types.find(ty_str);
             if( it != m_types.end() ) {
                 DEBUG("Cached " << it->second);
                 m_out.write_count(it->second);
@@ -237,6 +245,7 @@
                 serialise_type(e.inner);
                 }
             TU_ARMA(Function, e) {
+                serialise_generics(e.hrls);
                 m_out.write_bool(e.is_unsafe);
                 m_out.write_string(e.m_abi);
                 serialise_type(e.m_rettype);
@@ -249,7 +258,7 @@
                 break;
             }
 
-            m_types.insert(std::make_pair( ty.clone(), m_types.size() ));
+            m_types.insert(std::make_pair( std::move(ty_str), m_types.size() ));
         }
         void serialise_simplepath(const ::HIR::SimplePath& path)
         {
@@ -259,6 +268,7 @@
         }
         void serialise_pathparams(const ::HIR::PathParams& pp)
         {
+            serialise_vec(pp.m_lifetimes);
             serialise_vec(pp.m_types);
             serialise_vec(pp.m_values);
         }

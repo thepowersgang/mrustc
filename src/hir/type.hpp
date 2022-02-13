@@ -16,6 +16,7 @@
 #include "type_ref.hpp"
 #include "literal.hpp"
 #include "generic_ref.hpp"
+#include "generic_params.hpp"
 
 constexpr const char* CLOSURE_PATH_PREFIX = "closure#";
 constexpr const char* GENERATOR_PATH_PREFIX = "generator#";
@@ -120,6 +121,7 @@ TAGGED_UNION_EX(TypePathBinding, (), Unbound, (
 
 struct FunctionType
 {
+    GenericParams   hrls;   // Higher-ranked lifetimes
     bool    is_unsafe;
     ::std::string   m_abi;
     TypeRef m_rettype;
@@ -196,8 +198,6 @@ TAGGED_UNION(TypeData, Diverge,
     (Function, FunctionType),   // TODO: Pointer wrap, this is quite large
     (Closure, struct {
         const ::HIR::ExprNode_Closure*  node;
-        TypeRef m_rettype;
-        ::std::vector<TypeRef>  m_arg_types;
         }),
     (Generator, struct {
         const ::HIR::ExprNode_Generator* node;
@@ -278,6 +278,9 @@ inline TypeRef TypeRef::new_infer(unsigned int idx /*= ~0u*/, InferClass ty_clas
 inline TypeRef TypeRef::new_borrow(BorrowType bt, TypeRef inner) {
     return TypeRef(TypeData::make_Borrow({ ::HIR::LifetimeRef(), bt, mv$(inner) }));
 }
+inline TypeRef TypeRef::new_borrow(BorrowType bt, TypeRef inner, HIR::LifetimeRef lft) {
+    return TypeRef(TypeData::make_Borrow({ lft, bt, mv$(inner) }));
+}
 inline TypeRef TypeRef::new_pointer(BorrowType bt, TypeRef inner) {
     return TypeRef(TypeData::make_Pointer({bt, mv$(inner)}));
 }
@@ -294,8 +297,8 @@ inline TypeRef TypeRef::new_array(TypeRef inner, ::HIR::ConstGeneric size_gen) {
 inline TypeRef TypeRef::new_path(::HIR::Path path, TypePathBinding binding) {
     return TypeRef(TypeData::make_Path({ mv$(path), mv$(binding) }));
 }
-inline TypeRef TypeRef::new_closure(::HIR::ExprNode_Closure* node_ptr, ::std::vector< ::HIR::TypeRef> args, ::HIR::TypeRef rv) {
-    return TypeRef(TypeData::make_Closure({ node_ptr, mv$(rv), mv$(args) }));
+inline TypeRef TypeRef::new_closure(::HIR::ExprNode_Closure* node_ptr) {
+    return TypeRef(TypeData::make_Closure({ node_ptr }));
 }
 inline TypeRef TypeRef::new_generator(::HIR::ExprNode_Generator* node_ptr) {
     return TypeRef(TypeData::make_Generator({ node_ptr }));
