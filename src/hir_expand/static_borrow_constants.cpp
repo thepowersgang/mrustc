@@ -242,7 +242,17 @@ namespace {
                 }
                 auto& value_ptr = *value_ptr_ptr;
 
-                bool is_zst = ([&]()->bool{ size_t v = 1; Target_GetSizeOf(value_ptr->span(), m_resolve, value_ptr->m_res_type, v); return v != 0; })();
+                bool is_zst = ([&]()->bool{
+                    // HACK: `Target_GetSizeOf` calls `Target_GetSizeAndAlignOf` which doesn't work on generic arrays (needs alignment)
+                    if( const auto* te = value_ptr->m_res_type.data().opt_Array() ) {
+                        if( te->size.is_Known() && te->size.as_Known() == 0 ) {
+                            return true;
+                        }
+                    }
+                    size_t v = 1;
+                    Target_GetSizeOf(value_ptr->span(), m_resolve, value_ptr->m_res_type, v);
+                    return v == 0;
+                    })();
                 // Not generic (can't check for interior mutability)
                 if( !is_zst && monomorphise_type_needed(value_ptr->m_res_type) )
                 {
