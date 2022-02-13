@@ -7,6 +7,7 @@
  */
 #include <iostream>
 #include <algorithm>
+#include <cctype>   // isprint
 
 #include "hir_sim.hpp"
 #include "module_tree.hpp"
