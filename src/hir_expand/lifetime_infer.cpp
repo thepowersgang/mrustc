@@ -18,7 +18,11 @@ namespace {
     {
         TAGGED_UNION(LocalLifetimeData, Composite,
         (Composite, std::vector<HIR::LifetimeRef>),
-        (PatternBinding, const HIR::PatternBinding*),
+        (PatternBinding, struct {
+            const HIR::ExprNode*    borrow_point;
+            const HIR::ExprNode*    value;
+            const HIR::PatternBinding* pat;
+            }),
         (Node, struct {
             const HIR::ExprNode* borrow_point;
             const HIR::ExprNode* value;
@@ -67,8 +71,8 @@ namespace {
         HIR::LifetimeRef allocate_local(const Span& sp, std::vector<HIR::LifetimeRef> sources) {
             return allocate_local(sp, LocalLifetimeData::make_Composite(std::move(sources)));
         }
-        HIR::LifetimeRef allocate_local(const Span& sp, const HIR::PatternBinding& pb) {
-            return allocate_local(sp, LocalLifetimeData::make_PatternBinding(&pb));
+        HIR::LifetimeRef allocate_local(const Span& sp, const HIR::ExprNode& borrow_point, const HIR::ExprNode& value, const HIR::PatternBinding& pb) {
+            return allocate_local(sp, LocalLifetimeData::make_PatternBinding({ &borrow_point, &value, &pb }));
         }
         HIR::LifetimeRef allocate_local(const HIR::ExprNode& borrow_point, const HIR::ExprNode& value) {
             return allocate_local(borrow_point.span(), LocalLifetimeData::Data_Node { &borrow_point, &value });
@@ -137,7 +141,7 @@ namespace {
                     DEBUG(lft << " := {" << le << "}");
                     }
                 TU_ARMA(PatternBinding, le) {
-                    DEBUG(lft << " := PB" << le);
+                    DEBUG(lft << " := PB " << le.pat << " (" << le.value << " @ " << le.borrow_point << ")");
                     }
                 TU_ARMA(Node, le) {
                     DEBUG(lft << " := Node " << le.value << " @ " << le.borrow_point);
@@ -223,7 +227,7 @@ namespace {
                         return true;
                     }
                     // Check for an outlives relationship
-                    return iterate_lft_bounds([&](const HIR::GenericBound::Data_Lifetime& b)->bool {
+                    bool rv = iterate_lft_bounds([&](const HIR::GenericBound::Data_Lifetime& b)->bool {
                         if( b.test == rhs ) {
                             if( b.valid_for == lhs /*check_lifetimes(sp, lhs, b.valid_for)*/ ) {
                                 return true;
@@ -231,6 +235,10 @@ namespace {
                         }
                         return false;
                         });
+                    if( !rv ) {
+                        fails.push_back(rhs);
+                    }
+                    return rv;
                 }
                 else if( opt_local(sp, rhs) ) {
                     DEBUG("param from local");
@@ -244,7 +252,7 @@ namespace {
             else if( lhs.binding == HIR::LifetimeRef::STATIC ) {
                 if( rhs.is_param() ) {
                     // Check for an outlives relationship (this param must be bounded to `'static`)
-                    return iterate_lft_bounds([&](const HIR::GenericBound::Data_Lifetime& b)->bool {
+                    bool rv = iterate_lft_bounds([&](const HIR::GenericBound::Data_Lifetime& b)->bool {
                         if( b.test == rhs ) {
                             if( b.valid_for == lhs /*check_lifetimes(sp, lhs, b.valid_for)*/ ) {
                                 return true;
@@ -252,6 +260,10 @@ namespace {
                         }
                         return false;
                         });
+                    if( !rv ) {
+                        fails.push_back(rhs);
+                    }
+                    return rv;
                 }
                 else if( opt_local(sp, rhs) ) {
                     DEBUG("static from local");
@@ -289,6 +301,25 @@ namespace {
             std::vector<HIR::LifetimeRef>   failed_bounds;
             if( !check_liftimes(sp, lhs, rhs, failed_bounds) )
             {
+                ASSERT_BUG(sp, !failed_bounds.empty(), "");
+                for(const HIR::LifetimeRef& b : failed_bounds)
+                {
+                    if(const auto* l = this->opt_local(sp, b)) {
+                        TU_MATCH_HDRA( (l->data), { )
+                        TU_ARMA(Composite, le) {
+                            }
+                        TU_ARMA(PatternBinding, le) {
+                            NOTE(l->borrow_span, "Pattern binding @ " << le.pat);
+                            NOTE(le.value->span(), " borrow of value here");
+                            NOTE(le.borrow_point->span(), " borrowed here");
+                            }
+                        TU_ARMA(Node, le) {
+                            NOTE(le.value->span(), "Borrow of value here");
+                            NOTE(le.borrow_point->span(), " borrowed here");
+                            }
+                        }
+                    }
+                }
                 ERROR(sp, E0000, "Lifetime bound " << lhs << " : " << rhs << " failed - [" << failed_bounds << "]");
             }
         }
@@ -446,6 +477,7 @@ namespace {
                 }
                 }
             TU_ARMA(TraitObject, l, r) {
+                // TODO: Sometimes the traits involved will make stricter lifetimes requirements (e.g. Any implies 'static)
                 this->equate_lifetimes(sp, l.m_lifetime, r.m_lifetime);
                 this->equate_traitpath(sp, l.m_trait, r.m_trait);
                 ASSERT_BUG(sp, l.m_markers.size() == r.m_markers.size(), "");
@@ -488,38 +520,42 @@ namespace {
             }
         }
         std::vector<HIR::LifetimeRef>   m_pattern_lifetime_stack;
-        void equate_pattern(const Span& sp, const HIR::Pattern& pat, const HIR::TypeRef& src_ty, const HIR::ExprNode& root_node) {
+        void equate_pattern_binding(const Span& sp, const HIR::PatternBinding& b, const HIR::TypeRef& src_ty, const HIR::ExprNode& root_node)
+        {
+            const HIR::TypeRef*   cur_ty = &src_ty;
+            if( b.m_implicit_deref_count ) {
+                TODO(sp, "Apply implicit derefs (binding) " << *cur_ty << " deref " << b.m_implicit_deref_count);
+            }
+            auto get_lft = [&]()->HIR::LifetimeRef {
+                if(m_pattern_lifetime_stack.empty()) {
+                    return get_borrow_lifetime(root_node, [&](const HIR::ExprNode& value){ return m_state.allocate_local(sp, root_node, value, b); });
+                }
+                else {
+                    return m_pattern_lifetime_stack.back();
+                }
+            };
+            const auto& slot = get_local_var_ty(sp, b.m_slot);
+            switch(b.m_type)
+            {
+            case ::HIR::PatternBinding::Type::Move:
+                this->equate_types(sp, slot, *cur_ty);
+                break;
+            case ::HIR::PatternBinding::Type::MutRef:
+                this->equate_types(sp, slot, HIR::TypeRef::new_borrow(HIR::BorrowType::Unique, cur_ty->clone(), get_lft()));
+                break;
+            case ::HIR::PatternBinding::Type::Ref:
+                this->equate_types(sp, slot, HIR::TypeRef::new_borrow(HIR::BorrowType::Shared, cur_ty->clone(), get_lft()));
+                break;
+            }
+        }
+        void equate_pattern(const Span& sp, const HIR::Pattern& pat, const HIR::TypeRef& src_ty, const HIR::ExprNode& root_node)
+        {
             // Match pattern into the type (including bindings)
             if(src_ty.data().is_Diverge())
                 return ;
             for(const auto& b : pat.m_bindings)
             {
-                const HIR::TypeRef*   cur_ty = &src_ty;
-                if( b.m_implicit_deref_count ) {
-                    TODO(sp, "Apply implicit derefs (binding) " << *cur_ty << " deref " << pat.m_implicit_deref_count);
-                }
-                auto get_lft = [&]()->HIR::LifetimeRef {
-                    if(m_pattern_lifetime_stack.empty()) {
-                        return get_borrow_lifetime(root_node);
-                        //return m_state.allocate_local(sp, b);
-                    }
-                    else {
-                        return m_pattern_lifetime_stack.back();
-                    }
-                    };
-                const auto& slot = get_local_var_ty(sp, b.m_slot);
-                switch(b.m_type)
-                {
-                case ::HIR::PatternBinding::Type::Move:
-                    this->equate_types(sp, slot, *cur_ty);
-                    break;
-                case ::HIR::PatternBinding::Type::MutRef:
-                    this->equate_types(sp, slot, HIR::TypeRef::new_borrow(HIR::BorrowType::Unique, cur_ty->clone(), get_lft()));
-                    break;
-                case ::HIR::PatternBinding::Type::Ref:
-                    this->equate_types(sp, slot, HIR::TypeRef::new_borrow(HIR::BorrowType::Shared, cur_ty->clone(), get_lft()));
-                    break;
-                }
+                equate_pattern_binding(sp, b, src_ty, root_node);
             }
             const HIR::TypeRef*   cur_ty = &src_ty;
             size_t start_lifetime_stack_height = m_pattern_lifetime_stack.size();
@@ -547,7 +583,7 @@ namespace {
                     equate_pattern(sp, subpat, ity, root_node); 
                 }
                 if(pe.extra_bind.is_valid()) {
-                    TODO(sp, "SplitSlice patterns w/ binding");
+                    equate_pattern_binding(sp, pe.extra_bind, *cur_ty, root_node);
                 }
                 for(const auto& subpat : pe.trailing) {
                     equate_pattern(sp, subpat, ity, root_node); 
@@ -688,26 +724,27 @@ namespace {
         /// Obtain the root lifetime for a borrow operation
         /// </summary>
         /// <param name="node">Root node</param>
+        /// <param name="cb">Function to get a local lifetime from the root value</param>
         /// <returns>Lifetime reference (a local, or the first dereferenced borrow)</returns>
-        HIR::LifetimeRef get_borrow_lifetime(const ::HIR::ExprNode& node)
+        HIR::LifetimeRef get_borrow_lifetime(const ::HIR::ExprNode& node, std::function<HIR::LifetimeRef(const ::HIR::ExprNode&)> cb) const
         {
             // Determine a suitable lifetime for this value
             // - Deref? Grab lifetime of deref-ed value
             // - Static - 'static
             // - Local variable (really anything else) - allocate local
             struct V: public HIR::ExprVisitor {
-                ExprVisitor_Enumerate& m_parent;
-                const HIR::ExprNode&  m_root_node;
+                const ExprVisitor_Enumerate& m_parent;
+                std::function<HIR::LifetimeRef(const ::HIR::ExprNode&)>& m_cb;
                 HIR::LifetimeRef    m_res;
 
-                V(ExprVisitor_Enumerate& parent, const HIR::ExprNode& root_node)
+                V(const ExprVisitor_Enumerate& parent, std::function<HIR::LifetimeRef(const ::HIR::ExprNode&)>& cb)
                     : m_parent(parent)
-                    , m_root_node(root_node)
+                    , m_cb(cb)
                 {
                 }
 
                 void local(const HIR::ExprNode& cur) {
-                    m_res = m_parent.m_state.allocate_local(m_root_node, cur);
+                    m_res = m_cb(cur);
                 }
 
                 #define NV(nt)   void visit(HIR::nt& node) override { local(node); }
@@ -796,7 +833,7 @@ namespace {
                     node.m_value->visit(*this);
                 }
 
-            } v { *this, node };
+            } v { *this, cb };
             const_cast<HIR::ExprNode&>(node).visit(v);
             ASSERT_BUG(node.span(), v.m_res != HIR::LifetimeRef(), "");
             return v.m_res;
@@ -884,7 +921,7 @@ namespace {
 
         void visit(::HIR::ExprNode_Borrow& node) override {
             HIR::ExprVisitorDef::visit(node);
-            auto lft = get_borrow_lifetime(*node.m_value);
+            auto lft = get_borrow_lifetime(*node.m_value, [&](const HIR::ExprNode& value){ return m_state.allocate_local(node, value); });
             equate_types(node.span(), node.m_res_type, HIR::TypeRef::new_borrow(node.m_type, node.m_value->m_res_type.clone(), lft));
         }
         void visit(::HIR::ExprNode_RawBorrow& node) override {
@@ -961,7 +998,8 @@ namespace {
                 if(is_opaque(t)) {
                     // Iterate type lifetime bounds
                     iterate_type_lifetime_bounds(t, [&](const HIR::LifetimeRef& lft)->bool {
-                        TODO(sp, t << ": " << lft);
+                        this->equate_lifetimes(sp, dst_lft, lft);
+                        return false;
                         });
                     if( t.data().is_Generic() ) {
                         // If the above didn't return anything, then assign a "only this function" liftime
@@ -970,7 +1008,7 @@ namespace {
                         TODO(sp, "Get lifetime (from bounds) for opaque type - " << t);
                     }
                 }
-                if(t.data().is_Path()) {
+                if( t.data().is_Path() && t.data().as_Path().path.m_data.is_Generic() ) {
                     for(const auto& l : t.data().as_Path().path.m_data.as_Generic().m_params.m_lifetimes)
                         this->equate_lifetimes(sp, dst_lft, l);
                 }
