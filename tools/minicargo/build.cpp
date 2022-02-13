@@ -44,6 +44,7 @@ extern int _putenv_s(const char*, const char*);
 # include <sys/stat.h>
 # include <sys/wait.h>
 # include <fcntl.h>
+# include <limits.h> // PATH_MAX
 #endif
 #ifdef __APPLE__
 # include <mach-o/dyld.h>
@@ -1220,7 +1221,22 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
 
         if( m_opts.emit_mmir )
         {
-            TODO("Invoke `standalone_miri` on build script when emitting MIR");
+            // HACK: Search for `-mmir/` in the output, remove it, and if that exists copy it to here
+            auto tmp_out = out_file.str();
+            auto p = tmp_out.rfind("-mmir/");
+            if( p != std::string::npos )
+            {
+                auto src = tmp_out.substr(0, p) + tmp_out.substr(p+5);
+                std::ifstream   ifs(src);
+                if( ifs.good() )
+                {
+                    std::cout << "HACK: Copying " << src << " to " << tmp_out << std::endl;
+                    ::std::ofstream ofs(tmp_out);
+                    ofs << ifs.rdbuf();
+                    return out_file;
+                }
+            }
+            TODO("Invoke `standalone_miri` on build script when emitting MIR - " << out_file);
         }
 
         if( !spawn_process(script_exe_abs.str().c_str(), {}, env, out_file, /*working_directory=*/manifest.directory()) )
@@ -1318,7 +1334,7 @@ const helpers::path& get_mrustc_path()
         // MSVC, minicargo and mrustc are in the same dir
         s_compiler_path = minicargo_path / "mrustc.exe";
 #else
-        char buf[1024];
+        char buf[PATH_MAX];
 # ifdef __linux__
         ssize_t s = readlink("/proc/self/exe", buf, sizeof(buf)-1);
         if(s >= 0)
@@ -1543,7 +1559,8 @@ bool spawn_process(const char* exe_name, const StringList& args, const StringLis
         set_console_colour(std::cerr, TerminalColour::Default);
         ::std::cerr << "FAILING COMMAND: ";
         for(const auto& p : argv)
-            ::std::cerr  << " " << p;
+            if (p != nullptr)
+                ::std::cerr  << " " << p;
         ::std::cerr << ::std::endl;
         //::std::cerr << "See " << logfile << " for the compiler output" << ::std::endl;
         return false;

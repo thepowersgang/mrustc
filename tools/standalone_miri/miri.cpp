@@ -178,7 +178,7 @@ struct MirHelpers
                 }
                 else
                 {
-                    LOG_ASSERT(ty.get_meta_type() != RawType::Unreachable || ty.get_size() >= 0, "Dereference (giving a non-ZST) with no allocation");
+                    LOG_ASSERT(ty.get_meta_type() != RawType::Unreachable || ty.get_size() > 0, "Dereference (giving a non-ZST) with no allocation");
                 }
                 size_t size;
 
@@ -518,6 +518,10 @@ GlobalState::GlobalState(const ModuleTree& modtree):
 
     // - No stack overflow handling needed
     push_override_std( {"sys", "imp", "stack_overflow", "imp", "init"}, cb_nop );
+    m_fcn_overrides.insert(::std::make_pair( "ZRG5cD8std0_0_03sys4unix14stack_overflow3imp4init0g", cb_nop ));  // 1.54
+
+    // No need to fudge the fds
+    m_fcn_overrides.insert(::std::make_pair( "ZRG4cD8std0_0_03sys4unixB_021sanitize_standard_fds0g", cb_nop )); // 1.54
 }
 
 // ====================================================================

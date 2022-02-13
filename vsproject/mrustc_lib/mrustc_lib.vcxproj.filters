@@ -707,6 +707,9 @@
     <ClInclude Include="..\..\src\hir\generic_ref.hpp">
       <Filter>Header Files\hir</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\src\trans\target.hpp">
+      <Filter>Header Files\trans</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="../packages.config" />

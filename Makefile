@@ -4,19 +4,27 @@
 # Makefile
 #
 # - Compiles mrustc
-# - Downloads rustc source to test against
-# - Attempts to compile rust's libstd
+# - Provides shortcuts to tasks done in minicargo.mk
 #
 # DEPENDENCIES
 # - zlib (-dev)
 # - curl (bin, for downloading libstd source)
+
 ifeq ($(OS),Windows_NT)
   EXESUF ?= .exe
+else
+  EXESUF ?=
 endif
-EXESUF ?=
+# CXX : C++ compiler
 CXX ?= g++
+# V (or VERBOSE) : If set, prints all important commands
 V ?= !
+# GPROF : If set, enables the generation of a gprof annotated executable
 GPROF ?=
+
+ifneq ($(VERBOSE),)
+ V :=
+endif
 ifeq ($(V),!)
   V := @
 else
@@ -29,10 +37,6 @@ TAIL_COUNT ?= 10
 .SUFFIXES:
 # - Disable deleting intermediate files
 .SECONDARY:
-
-# - Final stage for tests run as part of the rust_tests target.
-#  VALID OPTIONS: parse, expand, mir, ALL
-RUST_TESTS_FINAL_STAGE ?= ALL
 
 LINKFLAGS := -g
 LIBS := -lz
@@ -52,26 +56,8 @@ CXXFLAGS += -Wno-unknown-warning-option
 
 CXXFLAGS += -Werror=return-type
 
-
-# - Flags to pass to all mrustc invocations
-RUST_FLAGS := --cfg debug_assertions
-RUST_FLAGS += -g
-RUST_FLAGS += -O
-RUST_FLAGS += -L output$(OUTDIR_SUF)/
-RUST_FLAGS += $(RUST_FLAGS_EXTRA)
-
+# Force the use of `bash` as the shell
 SHELL = bash
-
-ifeq ($(DBGTPL),)
-else ifeq ($(DBGTPL),gdb)
-  DBG := echo -e "r\nbt 14\nq" | gdb --args
-else ifeq ($(DBGTPL),valgrind)
-  DBG := valgrind --leak-check=full --num-callers=35
-else ifeq ($(DBGTPL),time)
-  DBG := time
-else
-  $(error "Unknown debug template")
-endif
 
 OBJDIR = .obj/
 
@@ -81,6 +67,8 @@ ifneq ($(GPROF),)
   LINKFLAGS += -pg -no-pie
   EXESUF := -gprof$(EXESUF)
 endif
+
+LINKFLAGS += $(LINKFLAGS_EXTRA)
 
 BIN := bin/mrustc$(EXESUF)
 
@@ -137,170 +125,37 @@ OBJ += trans/enumerate.o trans/auto_impls.o trans/monomorphise.o trans/codegen.o
 OBJ += trans/codegen_c.o trans/codegen_c_structured.o trans/codegen_mmir.o
 OBJ += trans/target.o trans/allocator.o
 
+# TODO is this needed? (or worth it)
 PCHS := ast/ast.hpp
 
 OBJ := $(addprefix $(OBJDIR),$(OBJ))
 
+.PHONY: all clean
 
 all: $(BIN)
 
 clean:
-	$(RM) -r $(BIN) $(OBJ) bin/mrustc.a
+	$(RM) -rf -- $(BIN) $(OBJ) bin/mrustc.a
 
-
-PIPECMD ?= 2>&1 | tee $@_dbg.txt | tail -n $(TAIL_COUNT) ; test $${PIPESTATUS[0]} -eq 0
-
-#RUSTC_SRC_TY ?= nightly
-RUSTC_SRC_TY ?= stable
-ifeq ($(RUSTC_SRC_TY),nightly)
-RUSTC_SRC_DES := rust-nightly-date
-RUSTCSRC := rustc-nightly-src/
-else ifeq ($(RUSTC_SRC_TY),stable)
-RUSTC_SRC_DES := rust-version
-RUSTC_VERSION ?= $(shell cat $(RUSTC_SRC_DES))
-RUSTCSRC := rustc-$(RUSTC_VERSION)-src/
-else
-$(error Unknown rustc channel)
-endif
-RUSTC_SRC_DL := $(RUSTCSRC)/dl-version
-
-MAKE_MINICARGO = $(MAKE) -f minicargo.mk RUSTC_VERSION=$(RUSTC_VERSION) RUSTC_CHANNEL=$(RUSTC_SRC_TY) OUTDIR_SUF=$(OUTDIR_SUF)
-
-
-output$(OUTDIR_SUF)/libstd.rlib: $(RUSTC_SRC_DL) $(BIN)
-	$(MAKE_MINICARGO) $@
-output$(OUTDIR_SUF)/libtest.rlib output$(OUTDIR_SUF)/libpanic_unwind.rlib output$(OUTDIR_SUF)/libproc_macro.rlib: output$(OUTDIR_SUF)/libstd.rlib
-	$(MAKE_MINICARGO) $@
-output$(OUTDIR_SUF)/rustc output$(OUTDIR_SUF)/cargo: output$(OUTDIR_SUF)/libtest.rlib
-	$(MAKE_MINICARGO) $@
-
-TEST_DEPS := output$(OUTDIR_SUF)/libstd.rlib output$(OUTDIR_SUF)/libtest.rlib output$(OUTDIR_SUF)/libpanic_unwind.rlib output$(OUTDIR_SUF)/libproc_macro.rlib
-
-fcn_extcrate = $(patsubst %,output$(OUTDIR_SUF)/lib%.rlib,$(1))
-
-fn_getdeps = \
-  $(shell cat $1 \
-  | sed -n 's/.*extern crate \([a-zA-Z_0-9][a-zA-Z_0-9]*\)\( as .*\)\{0,1\};.*/\1/p' \
-  | tr '\n' ' ')
-
-
-.PHONY: RUSTCSRC
-RUSTCSRC: $(RUSTC_SRC_DL)
 
 #
-# rustc (with std/cargo) source download
+# Defer to minicargo.mk for some common operations
 #
-# NIGHTLY:
-ifeq ($(RUSTC_SRC_TY),nightly)
-rustc-nightly-src.tar.gz: $(RUSTC_SRC_DES)
-	@export DL_RUST_DATE=$$(cat rust-nightly-date); \
-	export DISK_RUST_DATE=$$([ -f $(RUSTC_SRC_DL) ] && cat $(RUSTC_SRC_DL)); \
-	echo "Rust version on disk is '$${DISK_RUST_DATE}'. Downloading $${DL_RUST_DATE}."; \
-	rm -f rustc-nightly-src.tar.gz; \
-	curl -sS https://static.rust-lang.org/dist/$${DL_RUST_DATE}/rustc-nightly-src.tar.gz -o rustc-nightly-src.tar.gz
-
-$(RUSTC_SRC_DL): rust-nightly-date rustc-nightly-src.tar.gz rustc-nightly-src.patch
-	@export DL_RUST_DATE=$$(cat rust-nightly-date); \
-	export DISK_RUST_DATE=$$([ -f $(RUSTC_SRC_DL) ] && cat $(RUSTC_SRC_DL)); \
-	if [ "$$DL_RUST_DATE" != "$$DISK_RUST_DATE" ]; then \
-		rm -rf rustc-nightly-src; \
-		tar -xf rustc-nightly-src.tar.gz; \
-		cd $(RUSTCSRC) && patch -p0 < ../rustc-nightly-src.patch; \
-	fi
-	cat rust-nightly-date > $(RUSTC_SRC_DL)
-else
-# NAMED (Stable or beta)
-RUSTC_SRC_TARBALL := rustc-$(RUSTC_VERSION)-src.tar.gz
-$(RUSTC_SRC_TARBALL): $(RUSTC_SRC_DES)
-	@echo [CURL] $@
-	@rm -f $@
-	@curl -sS https://static.rust-lang.org/dist/$@ -o $@
-$(RUSTC_SRC_DL): $(RUSTC_SRC_TARBALL) rustc-$(RUSTC_VERSION)-src.patch
-	tar -xf $(RUSTC_SRC_TARBALL)
-	cd $(RUSTCSRC) && patch -p0 < ../rustc-$(RUSTC_VERSION)-src.patch;
-	cat $(RUSTC_SRC_DES) > $(RUSTC_SRC_DL)
-endif
-
-
-# MRUSTC-specific tests
-.PHONY: local_tests
-local_tests: $(TEST_DEPS)
-	@$(MAKE) -C tools/testrunner
-	@mkdir -p output$(OUTDIR_SUF)/local_tests
-	./bin/testrunner -o output$(OUTDIR_SUF)/local_tests -L output$(OUTDIR_SUF) samples/test
-
-# 
-# RUSTC TESTS
-# 
-.PHONY: rust_tests local_tests
-RUST_TESTS_DIR := $(RUSTCSRC)src/test/
-rust_tests: RUST_TESTS_run-pass
-# rust_tests-run-fail
-# rust_tests-compile-fail
-
-.PHONY: RUST_TESTS RUST_TESTS_run-pass
-RUST_TESTS: RUST_TESTS_run-pass
-RUST_TESTS_run-pass: output$(OUTDIR_SUF)/test/librust_test_helpers.a
-	@$(MAKE) -C tools/testrunner
-	@mkdir -p output$(OUTDIR_SUF)/rust_tests/run-pass
-	$(MAKE) -f minicargo.mk output$(OUTDIR_SUF)/test/libtest.so
-	./bin/testrunner -L output$(OUTDIR_SUF)/test -o output$(OUTDIR_SUF)/rust_tests/run-pass $(RUST_TESTS_DIR)run-pass --exceptions disabled_tests_run-pass.txt
-output$(OUTDIR_SUF)/test/librust_test_helpers.a: output$(OUTDIR_SUF)/test/rust_test_helpers.o
-	@mkdir -p $(dir $@)
-	ar cur $@ $<
-ifeq ($(RUSTC_VERSION),1.19.0)
-RUST_TEST_HELPERS_C := $(RUSTCSRC)src/rt/rust_test_helpers.c
-else
-RUST_TEST_HELPERS_C := $(RUSTCSRC)src/test/auxiliary/rust_test_helpers.c
-endif
-output$(OUTDIR_SUF)/test/rust_test_helpers.o: $(RUST_TEST_HELPERS_C)
-	@mkdir -p $(dir $@)
-	$(CC) -c $< -o $@
-
-# 
-# libstd tests
-# 
 .PHONY: rust_tests-libs
-rust_tests-libs: $(TEST_DEPS)
-	$(MAKE) -f minicargo.mk $@
-
-
+.PHONY: local_tests
+.PHONY: RUSTCSRC
 .PHONY: test
-#
-# TEST: Rust standard library and the "hello, world" run-pass test
-#
-test: output$(OUTDIR_SUF)/rust/test_run-pass_hello_out.txt
-
-HELLO_TEST := ui/hello.rs
-ifeq ($(RUSTC_VERSION),1.19.0)
-  HELLO_TEST := run-pass/hello.rs
-else ifeq ($(RUSTC_VERSION),1.29.0)
-  HELLO_TEST := run-pass/hello.rs
-endif
-
-# "hello, world" test - Invoked by the `make test` target
-output$(OUTDIR_SUF)/rust/test_run-pass_hello: $(RUST_TESTS_DIR)$(HELLO_TEST) $(TEST_DEPS)
-	@mkdir -p $(dir $@)
-	@echo "--- [MRUSTC] -o $@"
-	$(DBG) $(BIN) $< -o $@ $(RUST_FLAGS) $(PIPECMD)
-output$(OUTDIR_SUF)/rust/test_run-pass_hello_out.txt: output$(OUTDIR_SUF)/rust/test_run-pass_hello
-	@echo "--- [$<]"
-	@./$< | tee $@
-
+.PHONY: LIBS
+rust_tests-libs local_tests RUSTCSRC test LIBS:
+	$(MAKE) -f minicargo.mk $@
 
 # -------------------------------
 # Compile rules for mrustc itself
 # -------------------------------
 bin/mrustc.a: $(filter-out $(OBJDIR)main.o, $(OBJ))
 	@+mkdir -p $(dir $@)
-	@echo [AR] -o $@
-ifeq ($(shell uname -s || echo not),Darwin)
-# We can use llvm-ar for having rcD available on Darwin.
-# However, that is not bundled as a part of the operating system.
-	$Var rc $@ $(filter-out $(OBJDIR)main.o, $(OBJ))
-else
-	$Var rcD $@ $(filter-out $(OBJDIR)main.o, $(OBJ))
-endif
+	@echo [AR] $@
+	$V$(AR) crs $@ $(filter-out $(OBJDIR)main.o, $(OBJ))
 
 $(BIN): $(OBJDIR)main.o bin/mrustc.a bin/common_lib.a
 	@+mkdir -p $(dir $@)

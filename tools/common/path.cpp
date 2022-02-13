@@ -10,6 +10,7 @@
 # include <Windows.h>
 #else
 # include <unistd.h>    // getcwd/chdir
+# include <limits.h> // PATH_MAX
 #endif
 
 helpers::path::path(const char* s):
@@ -50,7 +51,7 @@ helpers::path helpers::path::to_absolute() const
     char cwd[1024];
     GetCurrentDirectoryA(sizeof(cwd), cwd);
     #else
-    char cwd[1024];
+    char cwd[PATH_MAX];
     if( !getcwd(cwd, sizeof(cwd)) )
         throw ::std::runtime_error("Calling getcwd() failed in path::to_absolute()");
     #endif

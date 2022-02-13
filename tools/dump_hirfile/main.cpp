@@ -86,6 +86,11 @@ void Dumper::dump_crate(const char* name, const ::HIR::Crate& crate) const
     }
 #endif
 
+    for(const auto& i : crate.m_lang_items)
+    {
+        ::std::cout << "// lang " << i.first << " at " << i.second << ::std::endl;
+    }
+
     this->dump_module(::HIR::ItemPath(name), ::HIR::Publicity::new_global(), crate.m_root_module);
 
     for(const auto& i : crate.m_trait_impls)

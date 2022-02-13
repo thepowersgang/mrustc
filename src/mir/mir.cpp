@@ -17,7 +17,7 @@ namespace MIR {
             os << " " << e.t;
             ),
         (Uint,
-            os << e.v;
+            os << std::hex << "0x" << e.v << std::dec;
             os << " " << e.t;
             ),
         (Float,
@@ -586,7 +586,7 @@ namespace MIR {
             os << "(";
             for(const auto& spec : e.outputs)
                 os << "\"" << spec.first << "\" : " << spec.second << ", ";
-            os << ") = llvm_asm!(\"" << e.tpl << "\", input=( ";
+            os << ") = llvm_asm!(\"" << FmtEscaped(e.tpl) << "\", input=( ";
             for(const auto& spec : e.inputs)
                 os << "\"" << spec.first << "\" : " << spec.second << ", ";
             os << "), clobbers=[" << e.clobbers << "], flags=[" << e.flags << "])";

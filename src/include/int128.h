@@ -136,20 +136,20 @@ public:
             switch( os.flags() & std::ios_base::basefield )
             {
             case std::ios_base::hex:
-                while( v.hi > 0 && v.lo > 0 ) {
+                while( v.hi > 0 || v.lo > 0 ) {
                     output[i++] = chars[ (v.lo & 0xF) ];
                     v >>= 4u;
                 }
                 break;
             case std::ios_base::oct:
-                while( v.hi > 0 && v.lo > 0 ) {
+                while( v.hi > 0 || v.lo > 0 ) {
                     output[i++] = chars[ (v.lo & 7) ];
                     v >>= 3u;
                 }
                 break;
             case std::ios_base::dec:
             default:
-                while( v.hi > 0 && v.lo > 0 ) {
+                while( v.hi > 0 || v.lo > 0 ) {
                     U128    v2(0), rem(0);
                     div128_o(v, U128(10), &v2, &rem);
                     output[i++] = chars[ (rem.lo % 10) ];

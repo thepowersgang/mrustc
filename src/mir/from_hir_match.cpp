@@ -338,7 +338,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
                 else
                 {
                     DEBUG("ARM PAT (" << arm_idx << "," << pat_idx << " #" << i << ") " << pat << " ==> [" << sr.m_rules << "]");
-                    // Ensure that all patterns bindind to the same set of variables (only check the variables)
+                    // Ensure that all patterns binding to the same set of variables (only check the variables)
                     if( first_rule < arm_rules.size() ) {
                         const auto& fr = arm_rules[first_rule];
                         ASSERT_BUG(sp, fr.m_bindings.size() == sr.m_bindings.size(), "Disagreement in bindings between pattern - {" << arm_rules[first_rule].m_bindings << "} vs {" << sr.m_bindings << "}");
@@ -423,16 +423,13 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
         builder.terminate_scope( sp, mv$(pat_scope) );
 
         // Condition
-        // NOTE: Lack of drop due to early exit from this arm isn't an issue. All captures must be Copy
-        // - The above is rustc E0008 "cannot bind by-move into a pattern guard"
-        // TODO: Create a special wrapping scope for the conditions that forces any moves to use a drop flag
         if(arm.m_cond)
         {
             ac.has_condition = true;
 
             // NOTE: Paused so that later code (which knows what the false branch will be) can end it correctly
 
-            // TODO: What to do with contidionals in the fast model?
+            // TODO: What to do with conditionals in the fast model?
             // > Could split the match on each conditional - separating such that if a conditional fails it can fall into the other compatible branches.
             fall_back_on_simple = true;
         }
@@ -446,6 +443,11 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
 
         auto tmp_scope = builder.new_scope_temp(arm.m_code->span());
         builder.set_cur_block( arm_body_block );
+
+        // Push the MovedOut state up into the split's m_cond_state, so that values moved
+        // in the pattern are recognized as moved in following branches.
+        builder.end_split_condition( arm.m_code->span(), match_scope );
+
         conv.visit_node_ptr( arm.m_code );
 
         if( !builder.block_active() && !builder.has_result() ) {

@@ -42,6 +42,7 @@ void MIR::OuterVisitor::visit_function(::HIR::ItemPath p, ::HIR::Function& item)
 }
 void MIR::OuterVisitor::visit_static(::HIR::ItemPath p, ::HIR::Static& item)
 {
+    auto _ = this->m_resolve.set_item_generics(item.m_params);
     if( item.m_value ) {
         DEBUG("`static` value " << p);
         m_cb(m_resolve, p, item.m_value, {}, item.m_type);
@@ -56,7 +57,7 @@ void MIR::OuterVisitor::visit_constant(::HIR::ItemPath p, ::HIR::Constant& item)
 }
 void MIR::OuterVisitor::visit_enum(::HIR::ItemPath p, ::HIR::Enum& item)
 {
-    auto _ = this->m_resolve.set_item_generics(item.m_params);
+    auto _ = this->m_resolve.set_impl_generics(item.m_params);
 
     if( auto* e = item.m_data.opt_Value() )
     {

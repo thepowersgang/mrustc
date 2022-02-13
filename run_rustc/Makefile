@@ -16,6 +16,13 @@
 PARLEVEL ?= 1
 RUSTC_VERSION_DEF := $(shell cat ../rust-version)
 
+ifeq ($(OS),Windows_NT)
+  EXESUF ?= .exe
+endif
+EXESUF ?=
+
+MINICARGO ?= ../bin/minicargo$(EXESUF)
+
 RUSTC_VERSION ?= $(RUSTC_VERSION_DEF)
 RUST_SRC ?= ../rustc-$(RUSTC_VERSION)-src/
 ifeq ($(RUSTC_VERSION),$(RUSTC_VERSION_DEF))
@@ -27,25 +34,27 @@ endif
 ifeq ($(shell uname -s || echo not),Darwin)
   DYLIB_EXT := dylib
   PLATFORM := macos
+  RUSTC_TARGET ?= x86_64-apple-darwin
 else
   DYLIB_EXT := so
   PLATFORM := linux
+  RUSTC_TARGET ?= x86_64-unknown-linux-gnu
 endif
-
-RUSTC_TARGET ?= x86_64-unknown-linux-gnu
 
 TARGETVER_LEAST_1_29 := $(shell test "$(RUSTC_VERSION)" ">" "1.29" && echo yes)
 TARGETVER_LEAST_1_39 := $(shell test "$(RUSTC_VERSION)" ">" "1.39" && echo yes)
 TARGETVER_LEAST_1_54 := $(shell test "$(RUSTC_VERSION)" ">" "1.54" && echo yes)
 
 RUSTC_BINNAME := rustc_binary
+CARGO_FLAGS_rustc := 
 ifneq ($(TARGETVER_LEAST_1_54),)
  RUST_SRC_HELLO := $(RUST_SRC)src/test/ui/hello.rs
  RUST_SRC_LIBS := $(RUST_SRC)library/
  RUST_SRC_RUSTC := $(RUST_SRC)compiler/rustc/
  RUST_SRC_CODEGEN := $(RUST_SRC)compiler/rustc_codegen_llvm/
  VENDOR_DIR := $(RUST_SRC)vendor
- RUSTC_BINNAME := rustc_main
+ RUSTC_BINNAME := rustc-main
+ CARGO_FLAGS_rustc += --features llvm
 else ifneq ($(TARGETVER_LEAST_1_39),)
  RUST_SRC_HELLO := $(RUST_SRC)src/test/ui/hello.rs
  RUST_SRC_LIBS := $(RUST_SRC)src/lib
@@ -110,9 +119,11 @@ all: $(BINDIR)cargo
 
 # Helper rules to ensure that mrustc has built rustc and cargo
 ../output$(OUTDIR_SUF)/rustc:
-	$(MAKE) -C ../ output$(OUTDIR_SUF)/rustc -j 3
+	$(MAKE) -C ../ -f minicargo.mk output$(OUTDIR_SUF)/rustc
 ../output$(OUTDIR_SUF)/cargo:
-	$(MAKE) -C ../ output$(OUTDIR_SUF)/cargo -j 3
+	$(MAKE) -C ../ -f minicargo.mk output$(OUTDIR_SUF)/cargo
+$(RUST_SRC_HELLO):
+	$(MAKE) -C ../ RUSTCSRC
 
 # Stage 0 setup
 $(BINDIR)rustc_m: ../output$(OUTDIR_SUF)/rustc
@@ -138,12 +149,12 @@ $(CARGO_HOME)config: Makefile
 # - Can't use `cargo` because there isn't a rustc-compatible std yet
 # - _could_ use it if mrustc accepted all the arguments rustc does (via the proxy)
 # -------------------------------------
-$(LIBDIR_S)libstd.rlib: $(BINDIR_S)rustc ../bin/minicargo Makefile
+$(LIBDIR_S)libstd.rlib: $(BINDIR_S)rustc $(MINICARGO) Makefile
 	@echo "[MINICARGO] $(RUST_SRC_LIBS)std > $(LIBDIR_S)"
 	mkdir -p $(LIBDIR_S)
-	$V+MRUSTC_PATH=$(abspath $(BINDIR_S)rustc) ../bin/minicargo --vendor-dir $(VENDOR_DIR) --script-overrides ../script-overrides/stable-$(RUSTC_VERSION)-$(PLATFORM)/ --output-dir $(LIBDIR_S) $(RUST_SRC_LIBS)std
-	$V+MRUSTC_PATH=$(abspath $(BINDIR_S)rustc) ../bin/minicargo --vendor-dir $(VENDOR_DIR) --script-overrides ../script-overrides/stable-$(RUSTC_VERSION)-$(PLATFORM)/ --output-dir $(LIBDIR_S) $(RUST_SRC_LIBS)panic_unwind
-	$V+MRUSTC_PATH=$(abspath $(BINDIR_S)rustc) ../bin/minicargo --vendor-dir $(VENDOR_DIR) --script-overrides ../script-overrides/stable-$(RUSTC_VERSION)-$(PLATFORM)/ --output-dir $(LIBDIR_S) $(RUST_SRC_LIBS)test
+	$V+MRUSTC_PATH=$(abspath $(BINDIR_S)rustc) $(MINICARGO) --vendor-dir $(VENDOR_DIR) --script-overrides ../script-overrides/stable-$(RUSTC_VERSION)-$(PLATFORM)/ --output-dir $(LIBDIR_S) $(RUST_SRC_LIBS)std
+	$V+MRUSTC_PATH=$(abspath $(BINDIR_S)rustc) $(MINICARGO) --vendor-dir $(VENDOR_DIR) --script-overrides ../script-overrides/stable-$(RUSTC_VERSION)-$(PLATFORM)/ --output-dir $(LIBDIR_S) $(RUST_SRC_LIBS)panic_unwind
+	$V+MRUSTC_PATH=$(abspath $(BINDIR_S)rustc) $(MINICARGO) --vendor-dir $(VENDOR_DIR) --script-overrides ../script-overrides/stable-$(RUSTC_VERSION)-$(PLATFORM)/ --output-dir $(LIBDIR_S) $(RUST_SRC_LIBS)test
 
 # Build hello_world using the bootstrapping compiler (mrustc-built rustc)
 $(BINDIR_S)hello_world: $(RUST_SRC_HELLO) $(LIBDIR_S)libstd.rlib $(BINDIR_S)rustc
@@ -155,7 +166,7 @@ $(BINDIR_S)hello_world: $(RUST_SRC_HELLO) $(LIBDIR_S)libstd.rlib $(BINDIR_S)rust
 # ---
 CARGO_OUTDIR_STAGE2_STD := $(OUTDIR)build-std2/$(RUSTC_TARGET)/release/
 CARGO_ENV_STAGE2_STD := CARGO_TARGET_DIR=$(OUTDIR)build-std2 RUSTC=$(abspath rustc_proxy.sh) PROXY_RUSTC=$(abspath $(BINDIR_2)rustc) PROXY_MRUSTC=$(abspath $(BINDIR_S)rustc) $(CARGO_ENV)
-$(LIBDIR_2)libtest.rlib: $(LIBDIR_S)libstd.rlib $(BINDIR_2)rustc $(BINDIR_S)rustc $(CARGO_HOME)config Makefile
+$(LIBDIR_2)libtest.rlib: $(LIBDIR_S)libstd.rlib $(BINDIR_2)rustc $(BINDIR_S)rustc $(BINDIR)cargo $(CARGO_HOME)config Makefile
 	@mkdir -p $(LIBDIR_2)
 	@echo [CARGO] $(RUST_SRC_LIBS)test/Cargo.toml '>' $(OUTDIR)build-std2
 ifeq ($(TARGETVER_LEAST_1_39),)
@@ -181,8 +192,8 @@ CARGO_ENV_RUSTC := CARGO_TARGET_DIR=$(OUTDIR)build-rustc RUSTC=$(abspath rustc_p
 $(BINDIR)rustc: $(BINDIR_2)rustc $(BINDIR)cargo $(CARGO_HOME)config $(LIBDIR_2)libtest.rlib
 	@mkdir -p $(PREFIX)tmp
 	@echo [CARGO] $(RUST_SRC_RUSTC)Cargo.toml '>' $(OUTDIR)build-rustc/
-	$V$(RUSTC_ENV_VARS) TMPDIR=$(abspath $(PREFIX)tmp) $(CARGO_ENV_RUSTC) $(BINDIR)cargo build $(CARGO_FLAGS) --manifest-path $(RUST_SRC_RUSTC)Cargo.toml
-ifneq ($(TARGETVER_LEAST_1_39),)
+	$V$(RUSTC_ENV_VARS) TMPDIR=$(abspath $(PREFIX)tmp) $(CARGO_ENV_RUSTC) $(BINDIR)cargo build $(CARGO_FLAGS) --manifest-path $(RUST_SRC_RUSTC)Cargo.toml $(CARGO_FLAGS_rustc)
+ifeq ($(RUSTC_VERSION),1.39.0)
 	@echo [CARGO] $(RUST_SRC_CODEGEN)Cargo.toml '>' $(OUTDIR)build-rustc/
 	$V$(RUSTC_ENV_VARS) TMPDIR=$(abspath $(PREFIX)tmp) $(CARGO_ENV_RUSTC) $(BINDIR)cargo rustc $(CARGO_FLAGS) --manifest-path $(RUST_SRC_CODEGEN)Cargo.toml -- -L $(abspath $(CARGO_OUTDIR_RUSTC)deps)
 	@mkdir -p $(LIBDIR)../codegen-backends

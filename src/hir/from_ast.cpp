@@ -2281,6 +2281,7 @@ public:
             lang_item_path.first,
             HIR::SimplePath(g_crate_name, lang_item_path.second.nodes)
             ) );
+            DEBUG("Defined language item '" << lang_item_path.first << "' at " << lang_item_path.second);
     }
     rv.m_ext_crates_ordered = crate.m_extern_crates_ord;
     for(auto& ext_crate : crate.m_extern_crates)
@@ -2291,6 +2292,7 @@ public:
             const auto& name = lang.first;
             const auto& path = lang.second;
             auto irv = rv.m_lang_items.insert( ::std::make_pair(name, path) );
+            DEBUG("Load language item '" << lang.first << "' at " << lang.second << " from " << ext_crate.first);
             if( irv.second == true )
             {
                 // Doesn't yet exist, all good

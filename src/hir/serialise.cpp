@@ -1161,6 +1161,7 @@
             TRACE_FUNCTION_F("_static:");
 
             serialise(item.m_linkage);
+            serialise_generics(item.m_params);
 
             uint8_t bitflag_1 = 0;
             #define BIT(i,fld)  if(fld) bitflag_1 |= 1 << (i);
@@ -1170,6 +1171,10 @@
             m_out.write_u8(bitflag_1);
             serialise(item.m_type);
 
+            if( item.m_params.is_generic() )
+            {
+                serialise(item.m_value);
+            }
             // NOTE: Value not stored (What if the static is generic? It can't be.)
             // - Need to store if the item was from a const (special linkage?)
             if(item.m_save_literal)

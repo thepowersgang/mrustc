@@ -12,12 +12,15 @@ OBJDIR := .obj/
 
 BIN := ../../bin/standalone_miri$(EXESUF)
 OBJS := main.o debug.o mir.o lex.o value.o module_tree.o hir_sim.o rc_string.o
-OBJS += miri.o miri_extern.o
+OBJS += miri.o miri_extern.o miri_intrinsic.o
 
 LINKFLAGS := -g -lpthread
 CXXFLAGS := -Wall -std=c++14 -g -O2
 CXXFLAGS += -I ../common -I ../../src/include -I .
 CXXFLAGS += -Wno-misleading-indentation	# Gets REALLY confused by the TU_ARM macro
+
+CXXFLAGS += $(CXXFLAGS_EXTRA)
+LINKFLAGS += $(LINKFLAGS_EXTRA)
 
 OBJS := $(OBJS:%=$(OBJDIR)%)
 

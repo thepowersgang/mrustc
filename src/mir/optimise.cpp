@@ -3553,6 +3553,19 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                         *te
                                         });
                                 }
+                                else if( const auto* vp = nv.opt_Float() )
+                                {
+                                    if( 0.0 <= vp->v && vp->v <= UINT64_MAX )
+                                    {
+                                        new_value = ::MIR::Constant::make_Uint({
+                                            H::truncate_u(*te, U128(static_cast<uint64_t>(vp->v))),
+                                            *te
+                                            });
+                                    }
+                                    else {
+                                        // UB: Casting float out of range?
+                                    }
+                                }
                                 else
                                 {
                                 }

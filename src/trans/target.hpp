@@ -66,7 +66,8 @@ struct BackendOptsC
     bool    m_emulated_i128;    // Influences the chosen alignment for i128/u128
     ::std::string   m_c_compiler;   // MSVC arch / GNU triplet
     ::std::vector< ::std::string>   m_compiler_opts;
-    ::std::vector< ::std::string>   m_linker_opts;
+    ::std::vector< ::std::string>   m_linker_opts_pre;
+    ::std::vector< ::std::string>   m_linker_opts_post;
 };
 struct TargetSpec
 {

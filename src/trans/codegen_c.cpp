@@ -1202,6 +1202,10 @@ namespace {
                 case CodegenOutput::DynamicLibrary:
                     args.push_back("-shared");
                 case CodegenOutput::Executable:
+                    for( const auto& a : Target_GetCurSpec().m_backend_c.m_linker_opts_pre )
+                    {
+                        args.push_back( a.c_str() );
+                    }
                     for(const auto& c : ext_crates)
                     {
                         args.push_back(std::string(c) + ".o");
@@ -1210,16 +1214,10 @@ namespace {
                     {
                         args.push_back(c);
                     }
-                    args.push_back("-Wl,--start-group");    // Group to avoid linking ordering
-                    //args.push_back("-Wl,--push-state");
                     for(auto l_d : libraries_and_dirs)
                     {
                         switch(l_d.first)
                         {
-                        //case LinkList::Ty::Border:
-                        //    args.push_back("-Wl,--pop-state");
-                        //    args.push_back("-Wl,--push-state");
-                        //    break;
                         case LinkList::Ty::Directory:
                             args.push_back("-L");
                             args.push_back(l_d.second);
@@ -1239,9 +1237,7 @@ namespace {
                             break;
                         }
                     }
-                    //args.push_back("-Wl,--pop-state");
-                    args.push_back("-Wl,--end-group");    // Group to avoid linking ordering
-                    for( const auto& a : Target_GetCurSpec().m_backend_c.m_linker_opts )
+                    for( const auto& a : Target_GetCurSpec().m_backend_c.m_linker_opts_post )
                     {
                         args.push_back( a.c_str() );
                     }
@@ -2264,6 +2260,9 @@ namespace {
                     break;
                 }
             }
+            if( item.m_params.is_generic() ) {
+                m_of << "static ";
+            }
             emit_static_ty(type, p, /*is_proto=*/true);
             m_of << ";";
             m_of << "\t// static " << p << " : " << type;
@@ -2271,7 +2270,7 @@ namespace {
 
             m_mir_res = nullptr;
         }
-        void emit_static_local(const ::HIR::Path& p, const ::HIR::Static& item, const Trans_Params& params) override
+        void emit_static_local(const ::HIR::Path& p, const ::HIR::Static& item, const Trans_Params& params, const EncodedLiteral& encoded) override
         {
             ::MIR::Function empty_fcn;
             ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "static " << p;), ::HIR::TypeRef(), {}, empty_fcn };
@@ -2281,12 +2280,13 @@ namespace {
 
             auto type = params.monomorph(m_resolve, item.m_type);
             // statics that are zero do not require initializers, since they will be initialized to zero on program startup.
-            if( !is_zero_literal(type, item.m_value_res, params)) {
+            if( !is_zero_literal(type, encoded, params)) {
+                if( item.m_params.is_generic() ) {
+                    m_of << "static ";
+                }
                 bool is_packed = emit_static_ty(type, p, /*is_proto=*/false);
                 m_of << " = ";
 
-                //auto encoded = Trans_EncodeLiteralAsBytes(sp, m_resolve, item.m_value_res, type);
-                const auto& encoded = item.m_value_res;
                 m_of << "{ .raw = {";
                 if( is_packed ) {
                     DEBUG("encoded.bytes = `" << FMT_CB(ss, for(auto& b: encoded.bytes) ss << std::setw(2) << std::setfill('0') << std::hex << unsigned(b) << (int(&b - encoded.bytes.data()) % 8 == 7 ? " " : "");) << "`");
@@ -2314,7 +2314,7 @@ namespace {
                             MIR_ASSERT(*m_mir_res, reloc_it->len == ptr_size, "Relocation size not pointer size - " << reloc_it->len << " != " << ptr_size);
                             v -= EncodedLiteral::PTR_BASE;
 
-                            MIR_ASSERT(*m_mir_res, v == 0, "TODO: Relocation with non-zero offset " << i << ": v=0x" << std::hex << v << std::dec << " Literal=" << item.m_value_res << " Reloc=" << *reloc_it);
+                            MIR_ASSERT(*m_mir_res, v == 0, "TODO: Relocation with non-zero offset " << i << ": v=0x" << std::hex << v << std::dec << " Literal=" << encoded << " Reloc=" << *reloc_it);
                             m_of << "(uintptr_t)";
                             if( reloc_it->p ) {
                                 m_of << "&" << Trans_Mangle(*reloc_it->p);
@@ -2343,7 +2343,7 @@ namespace {
                 }
                 m_of << "} }";
                 m_of << ";";
-                m_of << "\t// static " << p << " : " << type << " = " << item.m_value_res;
+                m_of << "\t// static " << p << " : " << type << " = " << encoded;
                 m_of << "\n";
             }
 
@@ -2478,10 +2478,10 @@ namespace {
                     m_of << "\tif(arg0) rv._0 |= __builtin_add_overflow" << msvc_suffix_u32 << "(rv._1, 1, &rv._1);\n";
                     m_of << "\treturn rv;\n";
                 }
-                // `fn llvm_addcarryx_u32(a: u8, b: u32, c: u32, d: *mut u8) -> u32`
+                // `fn llvm_addcarryx_u32(a: u8, b: u32, c: u32, d: *mut u8) -> u8`
                 else if( item.m_linkage.name == "llvm.x86.addcarryx.u32") {
-                    m_of << "\t*arg3 = __builtin_add_overflow" << msvc_suffix_u32 << "(arg1, arg2, &rv);\n";
-                    m_of << "\tif(*arg3) *arg3 |= __builtin_add_overflow" << msvc_suffix_u32 << "(rv, 1, &rv);\n";
+                    m_of << "\trv = __builtin_add_overflow" << msvc_suffix_u32 << "(arg1, arg2, arg3);\n";
+                    m_of << "\tif(arg0) rv |= __builtin_add_overflow" << msvc_suffix_u32 << "(*arg3, 1, arg3);\n";
                     m_of << "\treturn rv;\n";
                 }
                 // `fn llvm_subborrow" << msvc_suffix_u32 << "(a: u8, b: u32, c: u32) -> (u8, u32);`
@@ -3047,6 +3047,9 @@ namespace {
         }
         bool type_is_high_align(const ::HIR::TypeRef& ty) const
         {
+            // Only applicable to MSVC (which doesn't like unaligned arguments)
+            if( m_compiler != Compiler::Msvc )
+                return false;
             size_t  size, align;
             // NOTE: Uses the Size+Align version because that doesn't panic on unsized
             MIR_ASSERT(*m_mir_res, Target_GetSizeAndAlignOf(sp, m_resolve, ty, size, align), "Unexpected generic? " << ty);
@@ -3305,6 +3308,7 @@ namespace {
                     this->emit_asm_msvc(mir_res, stmt.as_Asm(), indent_level);
                     break;
                 }
+                m_of << indent << "// ^ " << stmt << "\n";
                 break;
             case ::MIR::Statement::TAG_Asm2:
                 switch(m_compiler)
@@ -3316,6 +3320,7 @@ namespace {
                     this->emit_asm2_msvc(mir_res, stmt, indent_level);
                     break;
                 }
+                m_of << indent << "// ^ " << stmt << "\n";
                 break;
             case ::MIR::Statement::TAG_Assign: {
                 const auto& e = stmt.as_Assign();
@@ -4893,7 +4898,9 @@ namespace {
 
                 m_of << indent << "__asm__ ";
                 m_of << "__volatile__"; // Default everything to volatile
-                m_of << "(\".intel_syntax; ";
+                m_of << "(\"";
+                if( !se.options.att_syntax )
+                    m_of << ".intel_syntax; ";
                 for(const auto& l : se.lines)
                 {
                     for(const auto& f : l.frags)
@@ -4907,8 +4914,9 @@ namespace {
                     m_of << FmtEscaped(l.trailing);
                     m_of << ";\\n ";
                 }
-                m_of << ".att_syntax; \"";
-                m_of << " :";
+                if( !se.options.att_syntax )
+                    m_of << ".att_syntax; ";
+                m_of << "\" :";
                 for(size_t i = 0; i < outputs.size(); i ++)
                 {
                     const auto& p = *outputs[i];
@@ -7029,11 +7037,15 @@ namespace {
                     {
                         m_of << "make128s_raw(" << c.v.get_inner().get_hi() << "ull, " << c.v.get_inner().get_lo() << "ull)";
                     }
-                    else
+                    else if( c.v.is_i64() && c.v.truncate_i64() != INT64_MIN )
                     {
                         m_of << "(int128_t)";
                         m_of << c.v;
                         m_of << "ll";
+                    }
+                    else
+                    {
+                        m_of << "(int128_t)( ((uint128_t)" << c.v.get_inner().get_hi() << "ull << 64) | (uint128_t)" << c.v.get_inner().get_lo() << "ull)";
                     }
                     break;
                 default:
@@ -7062,10 +7074,14 @@ namespace {
                     {
                         m_of << "make128_raw(" << c.v.get_hi() << "ull, " << c.v.get_lo() << "ull)";
                     }
-                    else
+                    else if( c.v.is_u64() )
                     {
                         m_of << "(uint128_t)";
                         m_of << ::std::hex << "0x" << c.v << "ull" << ::std::dec;
+                    }
+                    else
+                    {
+                        m_of << std::hex << "( ((uint128_t)0x" << c.v.get_hi() << "ull << 64) | (uint128_t)0x" << c.v.get_lo() << "ull)" << std::dec;
                     }
                     break;
                 case ::HIR::CoreType::Char:

@@ -437,6 +437,9 @@ namespace
                         auto vtable_ty = trait.get_vtable_type(sp, resolve.m_crate, te);
                         return ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, std::move(vtable_ty));
                     }
+                    else if( t.data().is_Path() && t.data().as_Path().binding.is_ExternType() ) {
+                        return HIR::TypeRef::new_unit();
+                    }
                     else if( t.data().is_Path() ) {
                         auto* repr = Target_GetTypeRepr(sp, resolve, t);
                         ASSERT_BUG(sp, repr, "No repr for " << t);
@@ -695,7 +698,7 @@ namespace
                 m_of << "\\x" << ::std::hex << int(b) << ::std::dec;
             }
         }
-        void emit_static_local(const ::HIR::Path& p, const ::HIR::Static& item, const Trans_Params& params) override
+        void emit_static_local(const ::HIR::Path& p, const ::HIR::Static& item, const Trans_Params& params, const EncodedLiteral& encoded) override
         {
             ::MIR::Function empty_fcn;
             ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "static " << p;), ::HIR::TypeRef(), {}, empty_fcn };
@@ -704,7 +707,6 @@ namespace
             TRACE_FUNCTION_F(p);
 
             auto type = params.monomorph(m_resolve, item.m_type);
-            const auto& encoded = item.m_value_res;
 
             m_of << "static " << fmt(p) << ": " << fmt(type) << " = \"";
             for(auto b : encoded.bytes)

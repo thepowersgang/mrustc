@@ -18,6 +18,9 @@ LINKFLAGS := -g -lpthread -lz
 CXXFLAGS := -Wall -std=c++14 -g -O2
 CXXFLAGS += -I ../common -I ../../src -I ../../src/include
 
+CXXFLAGS += $(CXXFLAGS_EXTRA)
+LINKFLAGS += $(LINKFLAGS_EXTRA)
+
 LIBS := ../../bin/mrustc.a ../../bin/common_lib.a
 
 OBJS := $(OBJS:%=$(OBJDIR)%)

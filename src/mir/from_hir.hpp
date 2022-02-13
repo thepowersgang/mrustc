@@ -95,6 +95,7 @@ TAGGED_UNION(ScopeType, Owning,
         }),
     (Split, struct {
         bool end_state_valid = false;
+        SplitEnd    cond_state;
         SplitEnd    end_state;
         ::std::vector<SplitArm> arms;
         }),
@@ -353,6 +354,8 @@ public:
     void end_split_arm(const Span& sp, const ScopeHandle& , bool reachable, bool early=false);
     /// Terminates the current split early (TODO: What does this mean?)
     void end_split_arm_early(const Span& sp);
+    /// Terminates the current split condition clause (used for the conditional portion of a match arm)
+    void end_split_condition(const Span& sp, const ScopeHandle&);
 
     const ScopeHandle& fcn_scope() const {
         return m_fcn_scope;

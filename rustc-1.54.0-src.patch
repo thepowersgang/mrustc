@@ -1,11 +1,26 @@
 # mrustc is much better at enum packing, so causes almost all of these to be smaller by one pointer
 --- compiler/rustc_ast/src/ast.rs
 +++ compiler/rustc_ast/src/ast.rs
-@@ -2782,2 +2782,2 @@
+@@ -1075,7 +1075,7 @@ pub struct Expr {
+ }
+ 
+ // `Expr` is used a lot. Make sure it doesn't unintentionally get bigger.
+-#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
++#[cfg(all(not(rust_compiler = "mrustc"), target_arch = "x86_64", target_pointer_width = "64"))]
+ rustc_data_structures::static_assert_size!(Expr, 104);
+ 
+ impl Expr {
+@@ -2779,7 +2779,7 @@ pub enum AssocItemKind {
+     MacCall(MacCall),
+ }
+ 
 -#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
 +#[cfg(all(not(rust_compiler = "mrustc"), target_arch = "x86_64", target_pointer_width = "64"))]
  rustc_data_structures::static_assert_size!(AssocItemKind, 72);
-@@ -2832,6 +2832,6 @@
+ 
+ impl AssocItemKind {
+@@ -2831,7 +2831,7 @@ pub enum ForeignItemKind {
+     MacCall(MacCall),
  }
  
 -#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
@@ -71,3 +86,32 @@
          crc32fast_stdarchx86,
          any(target_arch = "x86", target_arch = "x86_64")
      ))] {
+
+#
+# Disable std_detect's detection logic (use the same logic as miri)
+#
+--- library/stdarch/crates/std_detect/src/detect/mod.rs
++++ library/stdarch/crates/std_detect/src/detect/mod.rs
+@@ -88,2 +88,2 @@
+ cfg_if! {
+-    if #[cfg(miri)] {
++    if #[cfg(any(miri, rust_compiler = "mrustc"))] {
+
+# PPV-Lite also needs to know that we're pretending to be miri
+--- vendor/ppv-lite86/src/lib.rs
++++ vendor/ppv-lite86/src/lib.rs
+@@ -12,9 +12,9 @@
+-#[cfg(all(feature = "simd", target_arch = "x86_64", not(miri)))]
++#[cfg(all(feature = "simd", target_arch = "x86_64", not(miri), not(rust_compiler = "mrustc")))]
+ pub mod x86_64;
+-#[cfg(all(feature = "simd", target_arch = "x86_64", not(miri)))]
++#[cfg(all(feature = "simd", target_arch = "x86_64", not(miri), not(rust_compiler = "mrustc")))]
+ use self::x86_64 as arch;
+ 
+-#[cfg(any(miri, not(all(feature = "simd", any(target_arch = "x86_64")))))]
++#[cfg(any(miri, rust_compiler = "mrustc", not(all(feature = "simd", any(target_arch = "x86_64")))))]
+ pub mod generic;
+-#[cfg(any(miri, not(all(feature = "simd", any(target_arch = "x86_64")))))]
++#[cfg(any(miri, rust_compiler = "mrustc", not(all(feature = "simd", any(target_arch = "x86_64")))))]
+ use self::generic as arch;
+

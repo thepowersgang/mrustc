@@ -54,9 +54,8 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_static_type(::HIR::TypeRef& tmp, c
 {
     TU_MATCHA( (path.m_data), (pe),
     (Generic,
-        MIR_ASSERT(*this, pe.m_params.m_types.empty(), "Path params on static");
         const auto& s = m_crate.get_static_by_path(sp, pe.m_path);
-        return s.m_type;
+        return tmp = MonomorphStatePtr(nullptr, nullptr, &pe.m_params).monomorph_type(sp, s.m_type);
         ),
     (UfcsKnown,
         MIR_TODO(*this, "LValue::Static - UfcsKnown - " << path);

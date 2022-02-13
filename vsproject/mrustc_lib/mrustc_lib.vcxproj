@@ -376,6 +376,7 @@
     <ClInclude Include="..\..\src\trans\main_bindings.hpp" />
     <ClInclude Include="..\..\src\trans\mangling.hpp" />
     <ClInclude Include="..\..\src\trans\monomorphise.hpp" />
+    <ClInclude Include="..\..\src\trans\target.hpp" />
     <ClInclude Include="..\..\src\trans\trans_list.hpp" />
   </ItemGroup>
   <ItemGroup>

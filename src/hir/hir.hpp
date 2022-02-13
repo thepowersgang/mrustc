@@ -114,6 +114,9 @@ struct Linkage
 class Static
 {
 public:
+    // NOTE: The generics can't influence the value of this `const`
+    GenericParams   m_params;
+
     Linkage m_linkage;
     bool    m_is_mut;
     TypeRef m_type;
@@ -124,6 +127,8 @@ public:
     bool    m_value_generated = false;
     bool    m_save_literal = false;
     bool    m_no_emit_value = false;
+
+    mutable ::std::map< ::HIR::Path, EncodedLiteral>   m_monomorph_cache;
 
     Static(Linkage linkage, bool is_mut, TypeRef type, ExprPtr value)
         : m_linkage( std::move(linkage) )

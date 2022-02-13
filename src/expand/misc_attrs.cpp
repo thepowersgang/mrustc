@@ -71,7 +71,7 @@ class CHandler_RustcInheritOverflowChecks:
     void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, const AST::AbsolutePath& path, AST::Trait& trait, slice<const AST::Attribute> attrs, AST::Item&i) const override {
     }
 
-    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, ::AST::ExprNodeP& expr) const {
+    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, ::AST::ExprNodeP& expr) const override {
     }
 };
 STATIC_DECORATOR("rustc_inherit_overflow_checks", CHandler_RustcInheritOverflowChecks);

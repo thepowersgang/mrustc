@@ -1531,7 +1531,7 @@ U128 EncodedLiteralSlice::read_uint(size_t size/*=0*/) const {
 }
 S128 EncodedLiteralSlice::read_sint(size_t size/*=0*/) const {
     auto v = read_uint(size);
-    if(size < 128/8 && v >> (8*size-1) != 0 ) {
+    if(size < 128/8 && ((v >> (8*size-1)) != 0) ) {
         // Sign extend
         v |= U128(UINT64_MAX,UINT64_MAX) << (8*size);
     }

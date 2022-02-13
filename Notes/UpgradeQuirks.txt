@@ -45,3 +45,6 @@
 - Type alias that expands its generic parameter twice
   - Defer type aliases (and resolve ufcs) to during main typecheck?
   - OR, allocate ivars really early
+- Generic values raised to statics
+- U128 literals required
+- An annoying-to-debug excessive memset caused by a bad float to u64 cast
