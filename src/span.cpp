@@ -42,7 +42,8 @@ namespace {
     void print_span_message(const Span& sp, ::std::function<void(::std::ostream&)> tag, ::std::function<void(::std::ostream&)> msg)
     {
         auto& sink = ::std::cerr;
-        sink << sp->filename << ":" << sp->start_line << ": ";
+        sink << sp << " ";
+        //sink << sp->filename << ":" << sp->start_line << ": ";
         tag(sink);
         sink << ":";
         msg(sink);
@@ -78,11 +79,20 @@ void Span::warning(WarningType tag, ::std::function<void(::std::ostream&)> msg) 
     print_span_message(*this, [&](auto& os){os << "warn:" << tag;}, msg);
 }
 void Span::note(::std::function<void(::std::ostream&)> msg) const {
-    print_span_message(*this, [](auto& os){os << "note:";}, msg);
+    print_span_message(*this, [](auto& os){os << "note";}, msg);
 }
 
 ::std::ostream& operator<<(::std::ostream& os, const Span& sp)
 {
-    os << sp->filename << ":" << sp->start_line;
+    os << sp->filename;
+    if( sp->start_line != sp->end_line ) {
+        os << ":" << sp->start_line << "-" << sp->end_line;
+    }
+    else if( sp->start_ofs != sp->end_ofs ) {
+        os << ":" << sp->start_line << ":" << sp->start_ofs << "-" << sp->end_ofs;
+    }
+    else {
+        os << ":" << sp->start_line << ":" << sp->start_ofs;
+    }
     return os;
 }
