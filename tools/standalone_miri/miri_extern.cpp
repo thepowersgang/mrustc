@@ -28,7 +28,7 @@
 #undef DEBUG
 
 
-#ifdef _WIN32
+#if _WIN32 || __APPLE__
 const char* memrchr(const void* p, int c, size_t s) {
     const char* p2 = reinterpret_cast<const char*>(p);
     while( s > 0 )
