@@ -673,6 +673,7 @@ namespace {
                 return ::HIR::Compare::Equal;
             }
             else {
+                DEBUG("[GetParams] Compare  " << g << " (" << impl_params.m_lifetimes[g.binding] << ") with " << lft);
                 if( impl_params.m_lifetimes[g.binding] != lft ) {
                     return HIR::Compare::Unequal;
                 }
@@ -704,13 +705,11 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
     if( des_trait_params )
     {
         ASSERT_BUG( sp, des_trait_params->m_types.size() == impl_trait_params.m_types.size(), "Size mismatch in arguments for " << des_trait_path << " - " << *des_trait_params << " and " << impl_trait_params );
-        unsigned max_impl_idx = 0;
-        for( unsigned int i = 0; i < impl_trait_params.m_types.size(); i ++ )
-        {
-            const auto& l = impl_trait_params.m_types[i];
-            const auto& r = des_trait_params->m_types[i];
-            match &= l.match_test_generics_fuzz(sp, r, cb_ident, get_params);
+        match &= impl_trait_params.match_test_generics_fuzz(sp, *des_trait_params, cb_ident, get_params);
 
+        unsigned max_impl_idx = 0;
+        for(const auto& r : des_trait_params->m_types )
+        {
             visit_ty_with(r, [&](const ::HIR::TypeRef& t)->bool {
                 if( t.data().is_Generic() && (t.data().as_Generic().binding >> 8) == 2 ) {
                     unsigned impl_idx = t.data().as_Generic().binding & 0xFF;
