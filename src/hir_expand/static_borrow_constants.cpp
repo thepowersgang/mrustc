@@ -16,6 +16,7 @@
 #include <algorithm>
 #include "main_bindings.hpp"
 #include <hir/expr_state.hpp>
+#include <trans/target.hpp>
 
 namespace {
     inline HIR::ExprNodeP mk_exprnodep(HIR::ExprNode* en, ::HIR::TypeRef ty){ en->m_res_type = mv$(ty); return HIR::ExprNodeP(en); }
@@ -110,7 +111,7 @@ namespace {
                     BUG(sp, "Generic type " << ge << " unknown");
                 }
                 ASSERT_BUG(sp, i < params.m_types.size(), "Item generic type binding OOR - " << ge << " (" << i << " !< " << params.m_types.size() << ")");
-                return ::HIR::TypeRef(params.m_types[i].m_name, i);
+                return ::HIR::TypeRef(params.m_types[i].m_name, 256 + i);
             }
             ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& ge) const {
                 unsigned i;
@@ -127,7 +128,7 @@ namespace {
                     BUG(sp, "Generic value " << ge << " unknown");
                 }
                 ASSERT_BUG(sp, i < params.m_values.size(), "Item generic value binding OOR - " << ge << " (" << i << " !< " << params.m_values.size() << ")");
-                return ::HIR::GenericRef(params.m_values[i].m_name, i);
+                return ::HIR::GenericRef(params.m_values[i].m_name, 256 + i);
             }
             ::HIR::LifetimeRef get_lifetime(const Span& sp, const ::HIR::GenericRef& ge) const override {
                 unsigned i;
@@ -143,18 +144,7 @@ namespace {
                     BUG(sp, "Generic value " << ge << " unknown");
                 }
                 ASSERT_BUG(sp, i < params.m_lifetimes.size(), "Item generic lifetime binding OOR - " << ge << " (" << i << " !< " << params.m_lifetimes.size() << ")");
-                return ::HIR::LifetimeRef(i);
-            }
-
-
-            ::HIR::LifetimeRef monomorph_lifetime(const Span& sp, const ::HIR::LifetimeRef& tpl) const override {
-                // TODO: Custom impl that renumbers local lifetimes into the new list, and handles arguments/return into impl
-                // - Have a list of lifetimes from arguments and returns
-                if( tpl.binding == HIR::LifetimeRef::UNKNOWN || tpl.binding == HIR::LifetimeRef::INFER )
-                    TODO(sp, "Handle unbound lifetime when monomorphising closure? " << tpl);
-                if( tpl.binding != HIR::LifetimeRef::STATIC && !tpl.is_param() )
-                    TODO(sp, "Handle non-param lifetime when monomorphising closure? " << tpl);
-                return Monomorphiser::monomorph_lifetime(sp, tpl);
+                return ::HIR::LifetimeRef(256 + i);
             }
         };
 
@@ -252,18 +242,19 @@ namespace {
                 }
                 auto& value_ptr = *value_ptr_ptr;
 
+                bool is_zst = ([&]()->bool{ size_t v = 1; Target_GetSizeOf(value_ptr->span(), m_resolve, value_ptr->m_res_type, v); return v != 0; })();
                 // Not generic (can't check for interior mutability)
-                if( monomorphise_type_needed(value_ptr->m_res_type) )
+                if( !is_zst && monomorphise_type_needed(value_ptr->m_res_type) )
                 {
                     DEBUG("-- " << value_ptr->m_res_type << " is generic");
                 }
                 // Not mutable (... or at least, not a non-shared non-zst)
-                else if( node.m_type != HIR::BorrowType::Shared /*&& ([&]()->bool{ size_t v = 1; Target_GetSizeOf(value_ptr->span(), m_resolve, value_ptr->m_res_type, v); return v != 0; })()*/ )
+                else if( !is_zst && node.m_type != HIR::BorrowType::Shared )
                 {
                     DEBUG("-- Mutable borrow of non-ZST");
                 }
                 // And it's not interior mutable
-                else if( m_resolve.type_is_interior_mutable(value_ptr->span(), value_ptr->m_res_type) != HIR::Compare::Unequal )
+                else if( !is_zst && m_resolve.type_is_interior_mutable(value_ptr->span(), value_ptr->m_res_type) != HIR::Compare::Unequal )
                 {
                     DEBUG("-- " << value_ptr->m_res_type << " could be interior mutable");
                 }
@@ -291,6 +282,7 @@ namespace {
                         }
                     } v(monomorph);
                     value_ptr->visit(v);
+                    v.visit_type(value_ptr->m_res_type);
                     if( !v.is_generic ) {
                         params_def = HIR::GenericParams();
                         constr_params = HIR::PathParams();
@@ -471,6 +463,7 @@ namespace {
                     auto& new_static = new_static_pair.second;
                     if( !new_static.m_params.is_generic() )
                     {
+                        TRACE_FUNCTION_F("New static " << new_static_pair.first);
                         new_static.m_value_res = ::HIR::Evaluator(sp, m_crate, null_nvs).evaluate_constant( new_static_pair.first, new_static.m_value, new_static.m_type.clone());
                         new_static.m_value_generated = true;
                     }
