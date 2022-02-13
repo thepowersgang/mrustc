@@ -21,7 +21,7 @@ ifeq ($(OS),Windows_NT)
 endif
 EXESUF ?=
 
-MINICARGO ?= bin/minicargo$(EXESUF)
+MINICARGO ?= ../bin/minicargo$(EXESUF)
 
 RUSTC_VERSION ?= $(RUSTC_VERSION_DEF)
 RUST_SRC ?= ../rustc-$(RUSTC_VERSION)-src/
