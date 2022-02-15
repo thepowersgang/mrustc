@@ -1381,15 +1381,15 @@ namespace {
     auto params = LowerHIR_GenericParams(f.params(), &trait_reqires_sized);
 
     ::HIR::LifetimeRef  lifetime;
+    if( !f.lifetimes().empty() ) {
+        ASSERT_BUG(f.lifetimes()[0].sp, f.lifetimes().size() == 1, "");
+        lifetime = LowerHIR_LifetimeRef(f.lifetimes()[0].ent);
+        DEBUG("Lifetime " << lifetime << " (" << f.lifetimes()[0].ent << " " << f.lifetimes()[0].ent.binding() << ")");
+    }
     ::std::vector< ::HIR::TraitPath>    supertraits;
     for(const auto& st : f.supertraits()) {
-        if( st.ent.path->is_valid() ) {
-            // TODO: ATY bounds?
-            supertraits.push_back( LowerHIR_TraitPath(st.sp, *st.ent.path, st.ent.hrbs, true) );
-        }
-        else {
-            lifetime = ::HIR::LifetimeRef::new_static();
-        }
+        supertraits.push_back( LowerHIR_TraitPath(st.sp, *st.ent.path, st.ent.hrbs, true) );
+        DEBUG("Supertrait " << supertraits.back());
     }
     ::HIR::Trait    rv {
         mv$(params),

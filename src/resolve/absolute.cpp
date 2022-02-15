@@ -2642,6 +2642,9 @@ void Resolve_Absolute_Trait(Context& item_context, ::AST::Trait& e)
     item_context.push( e.params(), GenericSlot::Level::Top, true );
     Resolve_Absolute_Generic(item_context,  e.params());
 
+    for(auto& lft : e.lifetimes()) {
+        Resolve_Absolute_Lifetime(item_context, lft.sp, lft.ent);
+    }
     for(auto& st : e.supertraits()) {
         if( !st.ent.path->is_valid() ) {
             DEBUG("- ST 'static");

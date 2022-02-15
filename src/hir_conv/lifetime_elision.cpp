@@ -116,6 +116,7 @@ namespace
                     }
                 }
                 if(auto* e = ty.data_mut().opt_TraitObject()) {
+                    // TODO: If one of the parent traits provides a lifetime bound (e.g. 'static) use that?
                     visit_lifetime(sp, e->m_lifetime);
                 }
                 if(auto* e = ty.data_mut().opt_ErasedType()) {
@@ -224,7 +225,6 @@ namespace
                 for(auto& assoc : tp.m_trait_bounds) {
                     fix_source(assoc.second.source_trait, assoc.first);
                 }
-
 
                 // Set the output lifetime (if present)
                 auto output_lifetime = HIR::LifetimeRef(3*256 + 0);

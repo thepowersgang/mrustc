@@ -96,7 +96,7 @@ namespace {
         }
         void visit_trait(::HIR::ItemPath p, ::HIR::Trait& item) override
         {
-            m_os << indent() << "trait " << p.get_name() << item.m_params.fmt_args() << "\n";
+            m_os << indent() << "trait " << p.get_name() << item.m_params.fmt_args() << " : " << item.m_lifetime << "\n";
             if( ! item.m_parent_traits.empty() )
             {
                 m_os << indent() << "  " << ": ";

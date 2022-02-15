@@ -478,7 +478,17 @@ namespace {
                 }
             TU_ARMA(TraitObject, l, r) {
                 // TODO: Sometimes the traits involved will make stricter lifetimes requirements (e.g. Any implies 'static)
-                this->equate_lifetimes(sp, l.m_lifetime, r.m_lifetime);
+                auto get_lifetime = [](const HIR::TypeData::Data_TraitObject& e)->HIR::LifetimeRef {
+                    const auto& t = *e.m_trait.m_trait_ptr;
+                    DEBUG(e.m_trait.m_path << " " << t.m_lifetime);
+                    if( t.m_lifetime == HIR::LifetimeRef::new_static() ) {
+                        return t.m_lifetime;
+                    }
+                    for(const auto& st : t.m_all_parent_traits) {
+                    }
+                    return e.m_lifetime;
+                    };
+                this->equate_lifetimes(sp, get_lifetime(l), get_lifetime(r));
                 this->equate_traitpath(sp, l.m_trait, r.m_trait);
                 ASSERT_BUG(sp, l.m_markers.size() == r.m_markers.size(), "");
                 for(size_t i = 0; i < l.m_markers.size(); i ++)
@@ -1266,7 +1276,22 @@ namespace {
                         TODO(node.span(), "Handle CallValue (trait impl) - " << val_ty);
                         }
                     TU_ARMA(Bounded, e) {
-                        TODO(node.span(), "Handle CallValue (bounded) - " << val_ty);
+                        if( e.hrls.m_lifetimes.size() > 0 ) {
+                            // Monomorphise with some new lifetime params
+                            ::HIR::PathParams   hrl_params = e.hrls.make_empty_params(true);
+                            this->visit_path_params(hrl_params);
+                            auto ms = MonomorphHrlsOnly(hrl_params);
+                            auto mm_trait_args = ms.monomorph_path_params(node.span(), e.trait_args, true);
+                            auto mm_res = ms.monomorph_type(node.span(), e.assoc.at("Output").type, true);
+                            DEBUG("mm_trait_args=" << mm_trait_args << " mm_res=" << mm_res);
+
+                            equate_pps(node.span(), mm_trait_args, params); 
+                            equate_types(node.span(), node.m_res_type, mm_res);
+                        }
+                        else {
+                            equate_pps(node.span(), e.trait_args, params); 
+                            equate_types(node.span(), node.m_res_type, impl_ref.get_type("Output"));
+                        }
                         }
                     TU_ARMA(BoundedPtr, e) {
                         if( e.hrls && e.hrls->m_lifetimes.size() > 0 ) {

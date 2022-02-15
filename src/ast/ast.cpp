@@ -206,7 +206,7 @@ bool Trait::has_named_item(const RcString& name, bool& out_is_fcn) const
 
 Trait Trait::clone() const
 {
-    auto rv = Trait(m_params.clone(), m_supertraits);
+    auto rv = Trait(m_params.clone(), m_supertraits, m_lifetimes);
     for(const auto& item : m_items)
     {
         rv.m_items.push_back( Named<Item> { item.span, item.attrs.clone(), item.is_pub, item.name, item.data.clone() } );
