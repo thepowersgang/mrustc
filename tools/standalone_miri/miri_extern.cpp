@@ -426,7 +426,9 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         case F_GETFD: rv_i = fcntl_noarg("F_GETFD");    break;
         // - Integer arguments
         case F_DUPFD        : rv_i = fcntl_int("F_DUPFD"        );  break;
+#if !defined(__APPLE__) || __DARWIN_C_LEVEL >= 200809L
         case F_DUPFD_CLOEXEC: rv_i = fcntl_int("F_DUPFD_CLOEXEC");  break;
+#endif
         case F_SETFD        : rv_i = fcntl_int("F_SETFD"        ); break;
         default:
             if( args.size() > 2 )
