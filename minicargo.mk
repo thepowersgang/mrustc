@@ -170,14 +170,14 @@ bin/testrunner$(EXESUF):
 # rustc (with std/cargo) source download
 #
 RUSTC_SRC_TARBALL := rustc-$(RUSTC_VERSION)-src.tar.gz
-$(RUSTC_SRC_TARBALL): $(RUSTC_SRC_DES)
+$(RUSTC_SRC_TARBALL):
 	@echo [CURL] $@
 	@rm -f $@
 	@curl -sS https://static.rust-lang.org/dist/$@ -o $@
 $(RUSTC_SRC_DL): $(RUSTC_SRC_TARBALL) rustc-$(RUSTC_VERSION)-src.patch
 	tar -xf $(RUSTC_SRC_TARBALL)
 	cd $(RUSTCSRC) && patch -p0 < ../rustc-$(RUSTC_VERSION)-src.patch;
-	cat $(RUSTC_SRC_DES) > $(RUSTC_SRC_DL)
+	touch $(RUSTC_SRC_DL)
 
 # Standard library crates
 # - libstd, libpanic_unwind, libtest and libgetopts
