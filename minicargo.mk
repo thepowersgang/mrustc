@@ -12,8 +12,12 @@ endif
 # ----- INPUTS ------
 # -------------------
 
+# RUSTC_VERSION : Version of rustc to load (picks source dir)
+RUSTC_VERSION_DEF := $(shell cat rust-version)
+RUSTC_VERSION ?= $(RUSTC_VERSION_DEF)
+
 # OUTDIR_SUF : Output directory suffix
-ifeq ($(RUSTC_VERSION),)
+ifeq ($(RUSTC_VERSION),$(RUSTC_VERSION_DEF))
   OUTDIR_SUF_DEF :=
 else
   OUTDIR_SUF_DEF := -$(RUSTC_VERSION)
@@ -24,8 +28,6 @@ OUTDIR_SUF ?= $(OUTDIR_SUF_DEF)
 MMIR ?=
 # RUSTC_CHANNEL : `rustc` release channel (picks source dir)
 RUSTC_CHANNEL ?= stable
-# RUSTC_VERSION : Version of rustc to load (picks source dir)
-RUSTC_VERSION ?= $(shell cat rust-version)
 # PARLEVEL : `minicargo`'s job count
 PARLEVEL ?= 1
 # Additional flags for `minicargo` (e.g. library paths)
