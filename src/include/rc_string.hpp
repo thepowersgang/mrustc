@@ -9,6 +9,7 @@
 
 #include <cstring>
 #include <ostream>
+#include <utility>
 #include "../common.hpp"
 
 class RcString
@@ -47,9 +48,8 @@ public:
         if( m_ptr ) m_ptr->refcount += 1;
     }
     RcString(RcString&& x):
-        m_ptr(x.m_ptr)
+        m_ptr(::std::exchange(x.m_ptr, nullptr))
     {
-        x.m_ptr = nullptr;
     }
 
     ~RcString();
