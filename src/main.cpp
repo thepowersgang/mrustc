@@ -144,6 +144,7 @@ void init_debug_list()
 
         "Expand HIR Annotate",
         "Expand HIR Static Borrow",
+        "Expand HIR Lifetimes",
         "Expand HIR Closures",
         "Expand HIR Calls",
         "Expand HIR VTables",
