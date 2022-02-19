@@ -597,14 +597,20 @@ namespace {
         
         struct Monomorph: public Monomorphiser
         {
-            const ::HIR::GenericParams& params;
+            /*const*/ ::HIR::GenericParams& params;
             unsigned ofs_impl_l;
             unsigned ofs_item_l;
             unsigned ofs_impl_t;
             unsigned ofs_item_t;
             unsigned ofs_impl_v;
             unsigned ofs_item_v;
-            Monomorph(const ::HIR::GenericParams& params,
+            enum class Mode {
+                Args,
+                Return,
+                Body,
+            } mode = Mode::Body;
+            mutable std::map<uint32_t, HIR::LifetimeRef>    m_lifetime_mappings;
+            Monomorph(/*const*/ ::HIR::GenericParams& params,
                 unsigned ofs_impl_t, unsigned ofs_item_t,
                 unsigned ofs_impl_v, unsigned ofs_item_v,
                 unsigned ofs_impl_l, unsigned ofs_item_l
@@ -670,15 +676,45 @@ namespace {
                 return ::HIR::LifetimeRef(i);
             }
 
-
             ::HIR::LifetimeRef monomorph_lifetime(const Span& sp, const ::HIR::LifetimeRef& tpl) const override {
                 // TODO: Custom impl that renumbers local lifetimes into the new list, and handles arguments/return into impl
                 // - Have a list of lifetimes from arguments and returns
-                if( tpl.binding == HIR::LifetimeRef::UNKNOWN || tpl.binding == HIR::LifetimeRef::INFER )
-                    TODO(sp, "Handle unbound lifetime when monomorphising closure? " << tpl);
-                if( tpl.binding != HIR::LifetimeRef::STATIC && !tpl.is_param() )
-                    TODO(sp, "Handle non-param lifetime when monomorphising closure? " << tpl);
-                return Monomorphiser::monomorph_lifetime(sp, tpl);
+                switch(tpl.binding)
+                {
+                case HIR::LifetimeRef::UNKNOWN:
+                case HIR::LifetimeRef::INFER:
+                    BUG(sp, "Found unbound lifetime when monomorphising closure? " << tpl);
+                    break;
+                case HIR::LifetimeRef::STATIC:
+                    return tpl;
+                default:
+                    if( tpl.is_param() ) {
+                        return Monomorphiser::monomorph_lifetime(sp, tpl);
+                    }
+                    else {
+                        auto it = m_lifetime_mappings.find(tpl.binding);
+                        if( it != m_lifetime_mappings.end() ) {
+                            return it->second;
+                        }
+                        switch(mode)
+                        {
+                        case Mode::Args: {
+                            // Allocate a new lifetime param
+                            auto idx = params.m_lifetimes.size();
+                            params.m_lifetimes.push_back(HIR::LifetimeDef());
+                            m_lifetime_mappings.insert(std::make_pair( tpl.binding, ::HIR::LifetimeRef(idx) ));
+                            return ::HIR::LifetimeRef(idx);
+                            }
+                        case Mode::Return:
+                            // Error? This would be the return type being from a local (or a capature)
+                            TODO(sp, "Handle non-param lifetime when monomorphising closure? (return type) " << tpl);
+                        case Mode::Body:
+                            // Unset body types
+                            return HIR::LifetimeRef();
+                        }
+                        throw "unreachable";
+                    }
+                }
             }
         };
 
@@ -793,7 +829,18 @@ namespace {
             ::HIR::PathParams constructor_path_params;
             ::HIR::PathParams impl_path_params;
             auto monomorph_cb = create_params(sp, params, constructor_path_params, impl_path_params);
-            auto monomorph = [&](const auto& ty){ return monomorph_cb.monomorph_type(sp, ty); };
+
+            // Argument and return types
+            ::std::vector< ::HIR::TypeRef>  args_ty_inner;
+            monomorph_cb.mode = Monomorph::Mode::Args;
+            for(const auto& arg : node.m_args) {
+                args_ty_inner.push_back( monomorph_cb.monomorph_type(sp, arg.second) );
+            }
+            monomorph_cb.mode = Monomorph::Mode::Return;
+            ::HIR::TypeRef  args_ty { mv$(args_ty_inner) };
+            ::HIR::TypeRef  ret_type = monomorph_cb.monomorph_type(sp, node.m_return);
+            DEBUG("args_ty = " << args_ty << ", ret_type = " << ret_type);
+            monomorph_cb.mode = Monomorph::Mode::Body;
 
             DEBUG("--- Mutate inner code");
             // 2. Iterate over the nodes and rewrite variable accesses to either renumbered locals, or field accesses
@@ -806,7 +853,7 @@ namespace {
             ::std::vector< ::HIR::TypeRef>  local_types;
             local_types.push_back( ::HIR::TypeRef() );  // self - filled by make_fn*
             for(const auto binding_idx : node.m_avu_cache.local_vars) {
-                local_types.push_back( monomorph( m_variable_types.at(binding_idx).clone() ) );
+                local_types.push_back( monomorph_cb.monomorph_type(sp, m_variable_types.at(binding_idx).clone()) );
             }
             // - Generate types of captures, and construct the actual capture values
             //  > Capture types (with borrows and using closure's type params)
@@ -822,7 +869,7 @@ namespace {
                 auto binding_type = binding.second;
 
                 const auto& cap_ty = m_variable_types.at(binding_idx);
-                auto ty_mono = monomorph(cap_ty);
+                auto ty_mono = monomorph_cb.monomorph_type(sp, cap_ty);
 
                 auto val_node = NEWNODE(cap_ty.clone(), Variable,  sp, "", binding_idx);
                 ::HIR::BorrowType   bt;
@@ -887,21 +934,13 @@ namespace {
                 ::HIR::GenericPath(node.m_obj_path.m_path.clone(), mv$(impl_path_params)),
                 ::HIR::TypePathBinding::make_Struct(&closure_struct_ref)
                 );
-
-            // - Args
             ::std::vector< ::HIR::Pattern>  args_pat_inner;
-            ::std::vector< ::HIR::TypeRef>  args_ty_inner;
-
             for(const auto& arg : node.m_args) {
                 args_pat_inner.push_back( arg.first.clone() );
                 ev.visit_pattern(sp, args_pat_inner.back() );
-                args_ty_inner.push_back( monomorph_cb.monomorph_type(sp, arg.second) );
             }
-            ::HIR::TypeRef  args_ty { mv$(args_ty_inner) };
             ::HIR::Pattern  args_pat { HIR::PatternBinding(), ::HIR::Pattern::Data::make_Tuple({ mv$(args_pat_inner) }) };
-            ::HIR::TypeRef  ret_type = monomorph_cb.monomorph_type(sp, node.m_return);
 
-            DEBUG("args_ty = " << args_ty << ", ret_type = " << ret_type);
 
             ::HIR::ExprPtr body_code { mv$(node.m_code) };
             body_code.m_bindings = mv$(local_types);
