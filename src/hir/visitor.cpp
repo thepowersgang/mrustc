@@ -243,20 +243,20 @@ void ::HIR::Visitor::visit_struct(::HIR::ItemPath p, ::HIR::Struct& item)
 void ::HIR::Visitor::visit_enum(::HIR::ItemPath p, ::HIR::Enum& item)
 {
     this->visit_params(item.m_params);
-    TU_MATCHA( (item.m_data), (e),
-    (Value,
+    TU_MATCH_HDRA( (item.m_data), {)
+    TU_ARMA(Value, e) {
         for(auto& var : e.variants)
         {
             this->visit_expr(var.expr);
         }
-        ),
-    (Data,
+        }
+    TU_ARMA(Data, e) {
         for(auto& var : e)
         {
             this->visit_type(var.type);
         }
-        )
-    )
+        }
+    }
 }
 void ::HIR::Visitor::visit_union(::HIR::ItemPath p, ::HIR::Union& item)
 {

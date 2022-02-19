@@ -93,6 +93,29 @@ namespace
                 m_cur_params_level = 3;
             }
 
+            if(auto* e = ty.data_mut().opt_Path()) {
+                // Expand default lifetime params
+                if( auto* p = e->path.m_data.opt_Generic() )
+                {
+                    const HIR::TypeItem& ti = m_resolve.m_crate.get_typeitem_by_path(sp, p->m_path);
+                    const HIR::GenericParams* gp = nullptr;
+                    TU_MATCH_HDRA( (ti), { )
+                    TU_ARMA(Import, v) { BUG(sp, "Unexpected import: " << p->m_path); }
+                    TU_ARMA(Module, v) { BUG(sp, "Unexpected module: " << p->m_path); }
+                    TU_ARMA(TypeAlias, v) { gp = &v.m_params; }
+                    TU_ARMA(TraitAlias, v) { gp = &v.m_params; }
+                    TU_ARMA(ExternType, v) { gp = nullptr; }
+                    TU_ARMA(Enum, v) { gp = &v.m_params; }
+                    TU_ARMA(Struct, v) { gp = &v.m_params; }
+                    TU_ARMA(Union, v) { gp = &v.m_params; }
+                    TU_ARMA(Trait, v) { gp = &v.m_params; }
+                    }
+                    if(gp) {
+                        p->m_params.m_lifetimes.resize( gp->m_lifetimes.size() );
+                    }
+                }
+            }
+
             ::HIR::Visitor::visit_type(ty);
 
             if(auto* e = ty.data_mut().opt_Function()) {
