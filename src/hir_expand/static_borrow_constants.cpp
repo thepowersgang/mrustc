@@ -334,11 +334,13 @@ namespace {
                         }
                     } m;
                     auto ty = m.monomorph_type(sp, val_expr->m_res_type, /*allow_infer=*/false);
+                    auto m2 = MonomorphStatePtr(nullptr, nullptr, &constr_params);
+                    auto ty2 = m2.monomorph_type(sp, ty, false);
 
-                    auto path = m_new_static_cb(sp, ty.clone(), mv$(val_expr), mv$(params_def));
+                    auto path = m_new_static_cb(sp, mv$(ty), mv$(val_expr), mv$(params_def));
                     DEBUG("> " << path);
                     // Update the `m_value` to point to a new node
-                    auto new_node = NEWNODE(mv$(ty), PathValue, sp, HIR::GenericPath(mv$(path), mv$(constr_params)), HIR::ExprNode_PathValue::STATIC);
+                    auto new_node = NEWNODE(mv$(ty2), PathValue, sp, HIR::GenericPath(mv$(path), mv$(constr_params)), HIR::ExprNode_PathValue::STATIC);
                     value_ptr = mv$(new_node);
 
                     m_is_constant = true;
