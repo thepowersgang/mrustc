@@ -1237,6 +1237,8 @@ namespace {
     case ::AST::Enum::Markings::Repr::Isize: repr = ::HIR::Enum::Repr::Isize; break;
     }
 
+    auto params = LowerHIR_GenericParams(ent.params(), nullptr);
+
     ::HIR::Enum::Class  data;
     if( ent.variants().size() > 0 && !has_data )
     {
@@ -1307,17 +1309,7 @@ namespace {
                 ty_ipath.name = ty_name.c_str();
                 auto ty_path = ty_ipath.get_full_path();
                 // Add type params
-                {
-                    auto& params = ty_path.m_data.as_Generic().m_params;
-                    unsigned int i = 0;
-                    for(const auto& p : ent.params().m_params)
-                    {
-                        if(const auto* typ = p.opt_Type())
-                        {
-                            params.m_types.push_back( ::HIR::TypeRef/*::new_generic*/(typ->name(), i++) );
-                        }
-                    }
-                }
+                ty_path.m_data.as_Generic().m_params = params.make_nop_params(0);
                 variants.push_back({ var.m_name, var.m_data.is_Struct(), ::HIR::TypeRef::new_path( mv$(ty_path), {} ) });
             }
         }
@@ -1343,7 +1335,7 @@ namespace {
     }
 
     return ::HIR::Enum {
-        LowerHIR_GenericParams(ent.params(), nullptr),
+        mv$(params),
         is_repr_c,
         repr,
         mv$(data)
