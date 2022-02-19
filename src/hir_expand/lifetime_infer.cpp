@@ -1085,6 +1085,17 @@ namespace {
 
                 unsize_types(sp, dst_te->inner, src_te.inner);
             }
+            else if( const auto* dst_te = dst.data().opt_Pointer() ) {
+                if( const auto* src_te = src.data().opt_Borrow() ) {
+                    unsize_types(sp, dst_te->inner, src_te->inner);
+                }
+                else if( const auto* src_te = src.data().opt_Pointer() ) {
+                    unsize_types(sp, dst_te->inner, src_te->inner);
+                }
+                else {
+                    TODO(sp, "Propagate lifetimes through unsize - " << dst << " := " << src);
+                }
+            }
             else if( dst.data().is_Slice() && src.data().is_Array() ) {
                 this->equate_types(sp, dst.data().as_Slice().inner, src.data().as_Array().inner);
             }
@@ -1455,7 +1466,32 @@ namespace {
         
         void visit(::HIR::ExprNode_Emplace& node) override {
             HIR::ExprVisitorDef::visit(node);
-            TODO(node.span(), "Emplace");
+            if(TARGETVER_MOST_1_19)
+            {
+                switch( node.m_type )
+                {
+                case ::HIR::ExprNode_Emplace::Type::Noop:
+                    assert( !node.m_place );
+                    this->equate_types(node.span(), node.m_res_type, node.m_value->m_res_type);
+                    break;
+                case ::HIR::ExprNode_Emplace::Type::Boxer:
+                    TODO(node.span(), "Emplace - Boxer");
+                    // TODO: Check trait and associated type
+                    break;
+                case ::HIR::ExprNode_Emplace::Type::Placer:
+                    TODO(node.span(), "Emplace - Placer");
+                    // TODO: Check trait
+                    break;
+                }
+            }
+            else
+            {
+                assert( node.m_type == ::HIR::ExprNode_Emplace::Type::Boxer );
+                const auto& data_ty = node.m_value->m_res_type;
+                const auto& box_ty = node.m_res_type;
+                const auto& box_path = box_ty.data().as_Path().path.m_data.as_Generic();
+                this->equate_types(node.span(), box_path.m_params.m_types.at(0), data_ty);
+            }
         }
         void visit(::HIR::ExprNode_TupleVariant& node) override {
             const Span& sp = node.span();
