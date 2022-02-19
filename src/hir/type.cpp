@@ -78,6 +78,7 @@ void HIR::GenericRef::fmt(std::ostream& os) const
         case 0: os << "I:" << this->idx();  break;
         case 1: os << "M:" << this->idx();  break;
         case 2: os << "P:" << this->idx();  break;
+        case 3: os << "H:" << this->idx();  break;
         default:
             os << this->binding;
             break;

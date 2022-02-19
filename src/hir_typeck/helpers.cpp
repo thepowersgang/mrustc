@@ -4385,6 +4385,9 @@ bool TraitResolution::find_method(const Span& sp,
         // 2. Compare the receiver of the above to this type and the bound.
         if(const auto* self_ty = check_method_receiver(sp, *fcn_ptr, ty, access))
         {
+            // TODO: HRLs.
+            final_trait_path = MonomorphHrlsOnly(tb.second.hrbs.make_empty_params(true)).monomorph_genericpath(sp, final_trait_path, true);
+
             // If the type is an unbounded ivar, don't check.
             if( TU_TEST1(self_ty->data(), Infer, .is_lit() == false) )
                 return false;
