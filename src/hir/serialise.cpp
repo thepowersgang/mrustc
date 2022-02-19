@@ -283,7 +283,10 @@
         {
             auto _ = m_out.open_object("HIR::TraitPath");
             serialise_genericpath(path.m_path);
-            // TODO: Lifetimes? (m_hrls)
+            m_out.write_bool( static_cast<bool>(path.m_hrls) );
+            if(path.m_hrls) {
+                serialise_generics(*path.m_hrls);
+            }
             serialise_strmap(path.m_type_bounds);
             serialise_strmap(path.m_trait_bounds);
         }
