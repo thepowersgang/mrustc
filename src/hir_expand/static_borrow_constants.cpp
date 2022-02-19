@@ -370,6 +370,16 @@ namespace {
             ::HIR::ExprVisitorDef::visit(node);
             m_is_constant = m_all_constant;
         }
+        void visit(::HIR::ExprNode_CallPath& node) override {
+            ::HIR::ExprVisitorDef::visit(node);
+            if( m_all_constant ) {
+                MonomorphState  ms_unused;
+                auto v = m_resolve.get_value(node.span(), node.m_path, ms_unused, true);
+                if( v.as_Function()->m_const ) {
+                    m_is_constant = true;
+                }
+            }
+        }
         // - Accessors (constant if the inner is constant)
         void visit(::HIR::ExprNode_Field& node) override {
             ::HIR::ExprVisitorDef::visit(node);
