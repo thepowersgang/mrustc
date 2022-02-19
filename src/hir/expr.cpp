@@ -215,7 +215,7 @@ DEF_VISIT(ExprNode_PathValue, node,
     visit_path(::HIR::Visitor::PathContext::VALUE, node.m_path);
 )
 DEF_VISIT(ExprNode_Variable, node,
-    TRACE_FUNCTION_F("_Variable: " << node.m_slot);
+    TRACE_FUNCTION_F("_Variable: #" << node.m_slot);
 )
 DEF_VISIT(ExprNode_ConstParam, node,
     TRACE_FUNCTION_F("_ConstParam");

@@ -350,6 +350,7 @@ namespace {
 
             // Translate the return type's erased types
             const auto& sp = ep->span();
+            DEBUG("m_real_ret_type = " << m_real_ret_type);
             m_ret_ty = clone_ty_with(sp, m_real_ret_type, [&](const HIR::TypeRef& tpl, HIR::TypeRef& rv)->bool {
                 if( const auto* e = tpl.data().opt_ErasedType() )
                 {
@@ -361,6 +362,7 @@ namespace {
                 }
                 return false;
                 });
+            DEBUG("m_ret_ty = " << m_ret_ty);
 
             for(auto& ty : ep.m_bindings) {
                 this->visit_type(ty);
@@ -917,7 +919,9 @@ namespace {
 
         void visit(::HIR::ExprNode_Assign& node) override {
             HIR::ExprVisitorDef::visit(node);
-            equate_types(node.span(), node.m_slot->m_res_type, node.m_value->m_res_type);
+            if( node.m_op == HIR::ExprNode_Assign::Op::None ) {
+                equate_types(node.span(), node.m_slot->m_res_type, node.m_value->m_res_type);
+            }
         }
         void visit(::HIR::ExprNode_BinOp& node) override {
             HIR::ExprVisitorDef::visit(node);
@@ -1376,6 +1380,45 @@ namespace {
             TU_MATCH_HDRA( (v), { )
             default:
                 TODO(node.span(), "PathValue - " << node.m_path << " - " << v.tag_str());
+            TU_ARMA(EnumConstructor, ve) {
+                const auto& variant_ty = ve.e->m_data.as_Data().at(ve.v).type;
+                const auto& variant_path = variant_ty.data().as_Path().path.m_data.as_Generic();
+                const auto& str = *variant_ty.data().as_Path().binding.as_Struct();
+                const auto& fields = str.m_data.as_Tuple();
+
+                auto p = node.m_path.m_data.as_Generic().m_path;
+                p.m_components.pop_back();
+
+                ::HIR::FunctionType ft {
+                    HIR::GenericParams(),   // TODO: Get HRLs?
+                    false, ABI_RUST,
+                    HIR::TypeRef::new_path(HIR::GenericPath(p, node.m_path.m_data.as_Generic().m_params.clone()), ve.e),
+                    {}
+                    };
+
+                auto ms = MonomorphStatePtr(nullptr, &node.m_path.m_data.as_Generic().m_params, nullptr);
+                for(const auto& var : fields) {
+                    ft.m_arg_types.push_back( m_resolve.monomorph_expand(sp, var.ent, ms) );
+                }
+                ty = ::HIR::TypeRef(mv$(ft));
+                }
+            TU_ARMA(StructConstructor, ve) {
+                const auto& str = *ve.s;
+                const auto& fields = str.m_data.as_Tuple();
+
+                ::HIR::FunctionType ft {
+                    HIR::GenericParams(),   // TODO: Get HRLs?
+                    false, ABI_RUST,
+                    HIR::TypeRef::new_path(node.m_path.m_data.as_Generic().clone(), ve.s),
+                    {}
+                };
+
+                auto ms = MonomorphStatePtr(nullptr, &node.m_path.m_data.as_Generic().m_params, nullptr);
+                for(const auto& var : fields) {
+                    ft.m_arg_types.push_back( m_resolve.monomorph_expand(sp, var.ent, ms) );
+                }
+                ty = ::HIR::TypeRef(mv$(ft));
+                }
             TU_ARMA(Constant, ve) {
                 ty = m_resolve.monomorph_expand(sp, ve->m_type, ms);
                 }
@@ -1384,7 +1427,7 @@ namespace {
                 }
             TU_ARMA(Function, ve) {
                 ::HIR::FunctionType ft {
-                    HIR::GenericParams(),   // TODO: Get HRLs
+                    HIR::GenericParams(),
                     ve->m_unsafe, ve->m_abi,
                     m_resolve.monomorph_expand(sp, ve->m_return, ms),
                     {}
