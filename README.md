@@ -15,7 +15,7 @@ Progress
 --------
 
 - Builds working copies of `rustc` and `cargo` from a release source tarball
-  - Supports (and can bootstrap) rustc 1.19.0, 1.29.0, and 1.39.0
+  - Supports (and can bootstrap) rustc 1.19.0, 1.29.0, 1.39.0, and 1.54.0
 - Supported Targets:
   - x86-64 linux GNU (fully bootstrap tested using Debian 10.9)
   - x86-64 windows MSVC (runnable executables on Windows 10, but bootstrap hasn't been fully tested)
@@ -124,6 +124,3 @@ Medium-term
 - Emit C code that is (more) human readable (uses names from the original source, reduced/no gotos)
 - Add alternate backends (e.g. LLVM IR, cretonne, ...)
 
-
-
-Note: All progress is against the source of rustc 1.19.0, rustc 1.29.0, AND rustc 1.39.0
