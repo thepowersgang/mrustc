@@ -285,8 +285,8 @@ bool StaticTraitResolve::find_impl(
                 // HACK! Just add all the associated type bounds (only inserted if not already present)
                 for(const auto& e2 : e.m_trait.m_type_bounds)
                     assoc_clone.insert( ::std::make_pair(e2.first, e2.second.clone()) );
-                auto ir = ImplRef(type.clone(), i_params.clone(), mv$(assoc_clone));
-                DEBUG("- ir = " << ir);
+                auto ir = ImplRef(e.m_trait.m_hrls ? e.m_trait.m_hrls->clone() : HIR::GenericParams(), type.clone(), i_params.clone(), mv$(assoc_clone));
+                DEBUG("[TraitObject] - ir = " << ir);
                 rv = found_cb( mv$(ir), false );
                 return true;
             });

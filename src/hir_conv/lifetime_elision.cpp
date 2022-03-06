@@ -145,7 +145,59 @@ namespace
                     }
                 }
                 if(auto* e = ty.data_mut().opt_TraitObject()) {
-                    // TODO: If one of the parent traits provides a lifetime bound (e.g. 'static) use that?
+                    if( e->m_lifetime.binding == HIR::LifetimeRef::INFER ||  e->m_lifetime.binding == HIR::LifetimeRef::UNKNOWN )
+                    {
+                        // https://doc.rust-lang.org/reference/lifetime-elision.html#default-trait-object-lifetimes
+                        // If the trait object is used as a type argument of a generic type then the containing type is first used to try to infer a bound.
+                        // - If there is a unique bound from the containing type then that is the default
+                        // - If there is more than one bound from the containing type then an explicit bound must be specified
+                        // If neither of those rules apply, then the bounds on the trait are used:
+                        // - If the trait is defined with a single lifetime bound then that bound is used.
+                        // - If 'static is used for any lifetime bound then 'static is used.
+                        // - If the trait has no lifetime bounds, then the lifetime is inferred in expressions and is 'static outside of expressions.
+
+                        struct H {
+                            const Span& sp;
+                            const HIR::Crate& crate;
+                            std::vector<HIR::LifetimeRef>   lifetimes;
+                            void visit_trait(const HIR::SimplePath& p, const HIR::PathParams& params) {
+                                const auto& t = crate.get_trait_by_path(sp, p);
+                                DEBUG(p << " " << t.m_lifetime);
+                                if( t.m_lifetime != HIR::LifetimeRef() )
+                                {
+                                    if( t.m_lifetime == HIR::LifetimeRef::new_static() ) {
+                                        lifetimes.push_back(t.m_lifetime);
+                                        // Early return on 'static, no need to check anything else
+                                        return ;
+                                    }
+                                    else {
+                                        // TODO: Parameters
+                                    }
+                                }
+                                // TODO: Monomorph? (for lifetime parameters)
+                                for(const auto& st : t.m_parent_traits) {
+                                    visit_trait(st.m_path.m_path, st.m_path.m_params);
+                                }
+                            }
+                        } h { sp, m_resolve.m_crate };
+                        if( e->m_trait.m_path.m_path != HIR::SimplePath() ) {
+                            h.visit_trait(e->m_trait.m_path.m_path, e->m_trait.m_path.m_params);
+                        }
+                        std::sort(h.lifetimes.begin(), h.lifetimes.end());
+                        auto new_end = std::unique(h.lifetimes.begin(), h.lifetimes.end());
+                        h.lifetimes.erase(new_end, h.lifetimes.end());
+                        if( h.lifetimes.empty() ) {
+                            // Apply normal elision rules?
+                        }
+                        else {
+                            if( h.lifetimes.size() == 1 || h.lifetimes.back() == HIR::LifetimeRef::new_static() ) {
+                                e->m_lifetime = h.lifetimes.front();
+                            }
+                            else {
+                                // Error?
+                            }
+                        }
+                    }
                     visit_lifetime(sp, e->m_lifetime);
                 }
                 if(auto* e = ty.data_mut().opt_ErasedType()) {

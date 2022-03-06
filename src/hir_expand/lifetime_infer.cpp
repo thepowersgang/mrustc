@@ -480,18 +480,7 @@ namespace {
                 }
                 }
             TU_ARMA(TraitObject, l, r) {
-                // TODO: Sometimes the traits involved will make stricter lifetimes requirements (e.g. Any implies 'static)
-                auto get_lifetime = [](const HIR::TypeData::Data_TraitObject& e)->HIR::LifetimeRef {
-                    const auto& t = *e.m_trait.m_trait_ptr;
-                    DEBUG(e.m_trait.m_path << " " << t.m_lifetime);
-                    if( t.m_lifetime == HIR::LifetimeRef::new_static() ) {
-                        return t.m_lifetime;
-                    }
-                    for(const auto& st : t.m_all_parent_traits) {
-                    }
-                    return e.m_lifetime;
-                    };
-                this->equate_lifetimes(sp, get_lifetime(l), get_lifetime(r));
+                this->equate_lifetimes(sp, l.m_lifetime, r.m_lifetime);
                 this->equate_traitpath(sp, l.m_trait, r.m_trait);
                 ASSERT_BUG(sp, l.m_markers.size() == r.m_markers.size(), "");
                 for(size_t i = 0; i < l.m_markers.size(); i ++)
@@ -1327,7 +1316,7 @@ namespace {
                     this->equate_types(node.span(), node.m_res_type, tep->node->m_return);
                 }
             }
-            else if( val_ty.data().is_Path() || val_ty.data().is_Generic() || val_ty.data().is_ErasedType() ) {
+            else if( val_ty.data().is_Path() || val_ty.data().is_Generic() || val_ty.data().is_ErasedType() || val_ty.data().is_TraitObject() ) {
                 // Look up the trait impl and check the generics on it
                 // - If it's a bound, then handle the HRLs
                 // - If an impl ref, just as normal.

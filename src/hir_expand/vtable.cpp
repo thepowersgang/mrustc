@@ -171,7 +171,7 @@ namespace {
                             ft.m_abi = ve.m_abi;
                             ft.m_rettype = m.monomorph_type(sp, ve.m_return);
                             ft.m_arg_types.reserve( ve.m_args.size() );
-                            ft.m_arg_types.push_back( clone_ty_with(sp, ve.m_args[0].second, clone_self_cb) );
+                            ft.m_arg_types.push_back( clone_ty_with(sp, m.monomorph_type(sp, ve.m_args[0].second), clone_self_cb) );
                             if( ve.m_receiver == ::HIR::Function::Receiver::Value ) {
                                 ft.m_arg_types[0] = HIR::TypeRef::new_borrow(HIR::BorrowType::Owned, mv$(ft.m_arg_types[0]));
                             }
