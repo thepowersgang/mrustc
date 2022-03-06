@@ -1185,7 +1185,8 @@ void StaticTraitResolve::expand_associated_types_inner(const Span& sp, ::HIR::Ty
             // - Only try resolving if the binding isn't known
             if( !e.binding.is_Unbound() )
                 return ;
-            auto it = m_aty_cache.find(e.path);
+            auto k = FMT(e.path);
+            auto it = m_aty_cache.find(k);
             if( it != m_aty_cache.end() )
             {
                 DEBUG("Cached " << it->second);
@@ -1193,9 +1194,8 @@ void StaticTraitResolve::expand_associated_types_inner(const Span& sp, ::HIR::Ty
             }
             else
             {
-                auto p = e.path.clone();
                 this->expand_associated_types__UfcsKnown(sp, input);
-                m_aty_cache.insert(std::make_pair( std::move(p), input.clone() ));
+                m_aty_cache.insert(std::make_pair( std::move(k), input.clone() ));
             }
             return;
             }

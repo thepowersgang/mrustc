@@ -60,9 +60,9 @@ struct GenericRef
 
 struct LifetimeRef
 {
-    static const uint32_t STATIC = 0xFFFF;
-    static const uint32_t UNKNOWN = 0xFFFE;
-    static const uint32_t INFER = 0xFFFD;
+    static const uint32_t STATIC = 0xFFFF;  // `'static`
+    static const uint32_t UNKNOWN = 0xFFFE; // omitted
+    static const uint32_t INFER = 0xFFFD;   // `'_`
     static const uint32_t MAX_LOCAL = 0x8'0000;
 
     //RcString  name;
@@ -91,6 +91,7 @@ struct LifetimeRef
     Ordering ord(const LifetimeRef& x) const {
         return ::ord(binding, x.binding);
     }
+    bool operator<(const LifetimeRef& x) const { return this->ord(x) == OrdLess; }
     bool operator==(const LifetimeRef& x) const {
         return binding == x.binding;
     }

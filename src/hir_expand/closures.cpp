@@ -702,6 +702,7 @@ namespace {
                             // Allocate a new lifetime param
                             auto idx = params.m_lifetimes.size();
                             params.m_lifetimes.push_back(HIR::LifetimeDef());
+                            DEBUG("Allocate lifetime: 'I" << idx);
                             m_lifetime_mappings.insert(std::make_pair( tpl.binding, ::HIR::LifetimeRef(idx) ));
                             return ::HIR::LifetimeRef(idx);
                             }
@@ -718,7 +719,7 @@ namespace {
             }
         };
 
-        Monomorph create_params(const Span& sp, ::HIR::GenericParams& params, ::HIR::PathParams& constructor_path_params, ::HIR::PathParams& impl_path_params) const
+        Monomorph create_params(const Span& sp, ::HIR::GenericParams& params, ::HIR::PathParams& constructor_path_params) const
         {
             // - 0xFFFF "Self" -> 0 "Super" (if present)
             if( m_resolve.has_self() )
@@ -767,8 +768,7 @@ namespace {
             }
 
             // Create the params used for the type on the impl block
-            impl_path_params = params.make_nop_params(0);
-            DEBUG("impl_path_params = " << impl_path_params << ", ofs_*_t=" << ofs_item_t << "," << ofs_impl_t << " ofs_*_v=" << ofs_item_v << "," << ofs_impl_v);
+            DEBUG("impl_path_params = " << params.make_nop_params(0) << ", ofs_*_t=" << ofs_item_t << "," << ofs_impl_t << " ofs_*_v=" << ofs_item_v << "," << ofs_impl_v);
 
             Monomorph monomorph_cb(params, ofs_impl_t, ofs_item_t, ofs_impl_v, ofs_item_v, ofs_impl_l, ofs_item_l);
 
@@ -827,8 +827,7 @@ namespace {
             // 1. Prepare type params for rewriting the expression tree
             ::HIR::GenericParams params;
             ::HIR::PathParams constructor_path_params;
-            ::HIR::PathParams impl_path_params;
-            auto monomorph_cb = create_params(sp, params, constructor_path_params, impl_path_params);
+            auto monomorph_cb = create_params(sp, params, constructor_path_params);
 
             // Argument and return types
             ::std::vector< ::HIR::TypeRef>  args_ty_inner;
@@ -863,6 +862,7 @@ namespace {
             capture_types.reserve( node.m_avu_cache.captured_vars.size() );
             capture_nodes.reserve( node.m_avu_cache.captured_vars.size() );
             node.m_is_copy = true;
+            bool lifetime_needed = false;
             for(const auto binding : node.m_avu_cache.captured_vars)
             {
                 const auto binding_idx = binding.first;
@@ -881,13 +881,13 @@ namespace {
                 case ::HIR::ValueUsage::Borrow:
                     DEBUG("Capture by & _#" << binding_idx << " : " << binding_type);
                     bt = ::HIR::BorrowType::Shared;
-                    capture_nodes.push_back(NEWNODE( ::HIR::TypeRef::new_borrow(bt, cap_ty.clone()), Borrow,  sp, bt, mv$(val_node) ));
+                    capture_nodes.push_back(NEWNODE( ::HIR::TypeRef::new_borrow(bt, cap_ty.clone(), HIR::LifetimeRef(HIR::LifetimeRef::MAX_LOCAL + 1)), Borrow,  sp, bt, mv$(val_node) ));
                     ty_mono = ::HIR::TypeRef::new_borrow(bt, mv$(ty_mono));
                     break;
                 case ::HIR::ValueUsage::Mutate:
                     DEBUG("Capture by &mut _#" << binding_idx << " : " << binding_type);
                     bt = ::HIR::BorrowType::Unique;
-                    capture_nodes.push_back(NEWNODE( ::HIR::TypeRef::new_borrow(bt, cap_ty.clone()), Borrow,  sp, bt, mv$(val_node) ));
+                    capture_nodes.push_back(NEWNODE( ::HIR::TypeRef::new_borrow(bt, cap_ty.clone(), HIR::LifetimeRef(HIR::LifetimeRef::MAX_LOCAL + 1)), Borrow,  sp, bt, mv$(val_node) ));
                     ty_mono = ::HIR::TypeRef::new_borrow(bt, mv$(ty_mono));
                     break;
                 case ::HIR::ValueUsage::Move:
@@ -903,7 +903,30 @@ namespace {
                 {
                     node.m_is_copy = false;
                 }
+                if( binding_type != ::HIR::ValueUsage::Move ) {
+                    lifetime_needed = true;
+                }
                 capture_types.push_back( ::HIR::VisEnt< ::HIR::TypeRef> { ::HIR::Publicity::new_none(), mv$(ty_mono) } );
+            }
+            if( lifetime_needed ) {
+                auto ref_capture_lft_idx = params.m_lifetimes.size();
+
+                for(size_t i = 0; i < capture_types.size(); i ++)
+                {
+                    auto binding_type = node.m_avu_cache.captured_vars[i].second;
+                    auto& ty_mono = capture_types[i].ent;
+                    if( binding_type != ::HIR::ValueUsage::Move ) {
+                        ty_mono.data_mut().as_Borrow().lifetime = HIR::LifetimeRef(ref_capture_lft_idx);
+                    }
+                }
+
+                params.m_lifetimes.push_back(HIR::LifetimeDef());
+                params.m_lifetimes.back().m_name = RcString::new_interned("captures");
+                DEBUG("Added by-borrow lifetime: #" << ref_capture_lft_idx << " - " << params.fmt_args());
+            }
+            // Any lifetimes added need to be included (arguments and captures)
+            while( constructor_path_params.m_lifetimes.size() < params.m_lifetimes.size() ) {
+                constructor_path_params.m_lifetimes.push_back(HIR::LifetimeRef(HIR::LifetimeRef::MAX_LOCAL + 1));
             }
 
             // --- ---
@@ -912,6 +935,7 @@ namespace {
                 DEBUG("Copy closure");
             }
 
+            auto impl_path_params = params.make_nop_params(0);
             auto str = ::HIR::Struct {
                 params.clone(),
                 ::HIR::Struct::Repr::Rust,
@@ -1164,8 +1188,7 @@ namespace {
             // -- Prepare type params for rewriting the expression tree
             ::HIR::GenericParams params;
             ::HIR::PathParams constructor_path_params;
-            ::HIR::PathParams impl_path_params;
-            auto monomorph_cb = create_params(sp, params, constructor_path_params, impl_path_params);
+            auto monomorph_cb = create_params(sp, params, constructor_path_params);
 
             // Create state index enum
             auto state_idx_type = m_out.new_type("gen_state_idx#", m_new_type_suffix, ::HIR::Enum {
@@ -1187,7 +1210,7 @@ namespace {
             ::HIR::SimplePath   state_struct_path;
             const ::HIR::TypeItem* state_struct_ptr;
             ::std::tie(state_struct_path, state_struct_ptr) = m_out.new_type("gen_state#", m_new_type_suffix, mv$(state_str));
-            auto state_type = ::HIR::TypeRef::new_path( ::HIR::GenericPath(state_struct_path, impl_path_params.clone()), &state_struct_ptr->as_Struct() );
+            auto state_type = ::HIR::TypeRef::new_path( ::HIR::GenericPath(state_struct_path, params.make_nop_params(0)), &state_struct_ptr->as_Struct() );
             node.m_state_data_type = state_type.clone();
 
             // 3. Classify varibles
@@ -1344,7 +1367,7 @@ namespace {
 
             ::HIR::TypeRef& self_arg_ty = new_locals[0];
             // `::path::to::struct`
-            self_arg_ty = ::HIR::TypeRef::new_path( ::HIR::GenericPath(gen_struct_path, impl_path_params.clone()), &gen_struct_ref );
+            self_arg_ty = ::HIR::TypeRef::new_path( ::HIR::GenericPath(gen_struct_path, params.make_nop_params(0)), &gen_struct_ref );
             // `&mut Self`
             self_arg_ty = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, std::move(self_arg_ty));
             auto lang_Pin = m_resolve.m_crate.get_lang_item_path(sp, "pin");
@@ -1366,7 +1389,7 @@ namespace {
             ::HIR::Function* fcn_drop_ptr; {
                 ::HIR::Function fcn_drop;
                 fcn_drop.m_receiver = HIR::Function::Receiver::BorrowUnique;
-                auto drop_self_arg_ty = ::HIR::TypeRef::new_path( ::HIR::GenericPath(gen_struct_path, impl_path_params.clone()), &gen_struct_ref );
+                auto drop_self_arg_ty = ::HIR::TypeRef::new_path( ::HIR::GenericPath(gen_struct_path, params.make_nop_params(0)), &gen_struct_ref );
                 drop_self_arg_ty = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, std::move(drop_self_arg_ty));
                 fcn_drop.m_args.push_back(std::make_pair( HIR::Pattern(), mv$(drop_self_arg_ty) ));
                 fcn_drop.m_return = ::HIR::TypeRef::new_unit();
@@ -1374,7 +1397,7 @@ namespace {
                 fcn_drop.m_code->m_res_type = ::HIR::TypeRef::new_unit();
                 ::HIR::TraitImpl    drop_impl;
                 drop_impl.m_params = params.clone();
-                drop_impl.m_type = ::HIR::TypeRef::new_path( ::HIR::GenericPath(gen_struct_path, impl_path_params.clone()), &gen_struct_ref );
+                drop_impl.m_type = ::HIR::TypeRef::new_path( ::HIR::GenericPath(gen_struct_path, params.make_nop_params(0)), &gen_struct_ref );
                 drop_impl.m_methods.insert(std::make_pair( RcString::new_interned("drop"), ::HIR::TraitImpl::ImplEnt<HIR::Function> { false, std::move(fcn_drop) } ));
                 fcn_drop_ptr = &drop_impl.m_methods.at("drop").data;
                 m_out.impls_drop.push_back(std::move(drop_impl));
@@ -1409,7 +1432,7 @@ namespace {
             // -- Create impl
             ::HIR::TraitImpl    impl;
             impl.m_params = std::move(params);
-            impl.m_type = ::HIR::TypeRef::new_path( ::HIR::GenericPath(gen_struct_path, std::move(impl_path_params)), &gen_struct_ref );
+            impl.m_type = ::HIR::TypeRef::new_path( ::HIR::GenericPath(gen_struct_path, impl.m_params.make_nop_params(0)), &gen_struct_ref );
             impl.m_types.insert(std::make_pair( RcString::new_interned("Yield" ), ::HIR::TraitImpl::ImplEnt<HIR::TypeRef> { false, monomorph_cb.monomorph_type(sp, node.m_yield_ty) } ));
             impl.m_types.insert(std::make_pair( RcString::new_interned("Return"), ::HIR::TraitImpl::ImplEnt<HIR::TypeRef> { false, monomorph_cb.monomorph_type(sp, node.m_return) } ));
             impl.m_methods.insert(std::make_pair( RcString::new_interned("resume"), ::HIR::TraitImpl::ImplEnt<HIR::Function> { false, std::move(fcn_resume) } ));

@@ -1624,7 +1624,7 @@ namespace {
                 // - NOT on the left, because `!` can become everything, but nothing can become `!`
             }
             else if( l != r ) {
-                ERROR(sp, E0000, "Type mismatch - " << l << " != " << r);
+                ERROR(sp, E0000, "Type mismatch\n - " << l << "\n!= " << r);
             }
             else {
                 // All good
@@ -4169,13 +4169,15 @@ namespace {
                     // Just call equate_types_assoc to add the required bounds.
                     if( context_mut )
                     {
+                        auto pp = dep->m_trait.m_hrls ? dep->m_trait.m_hrls->make_empty_params(true) : HIR::PathParams();
+                        MonomorphHrlsOnly   ms(pp);
                         for(const auto& tyb : dep->m_trait.m_type_bounds)
                         {
-                            context_mut->equate_types_assoc(sp, tyb.second.type,  trait.m_path, trait.m_params.clone(), src, tyb.first.c_str(), false);
+                            context_mut->equate_types_assoc(sp, tyb.second.type,  trait.m_path, ms.monomorph_path_params(sp, trait.m_params, true), src, tyb.first.c_str(), false);
                         }
                         if( dep->m_trait.m_type_bounds.empty() )
                         {
-                            context_mut->add_trait_bound(sp, src,  trait.m_path, trait.m_params.clone());
+                            context_mut->add_trait_bound(sp, src,  trait.m_path, ms.monomorph_path_params(sp, trait.m_params, true));
                         }
                     }
                     else

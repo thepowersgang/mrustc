@@ -1175,7 +1175,7 @@ namespace {
                 // TODO: Is this always true?
             }
             else if( l != r ) {
-                ERROR(sp, E0000, "Type mismatch - " << l << " != " << r);
+                ERROR(sp, E0000, "Type mismatch\n - " << l << "\n!= " << r);
             }
             else {
                 // All good

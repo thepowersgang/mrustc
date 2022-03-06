@@ -39,7 +39,7 @@ class StaticTraitResolve:
     mutable ::std::map< ::HIR::TypeRef, bool >  m_copy_cache;
     mutable ::std::map< ::HIR::TypeRef, bool >  m_clone_cache;
     mutable ::std::map< ::HIR::TypeRef, bool >  m_drop_cache;
-    mutable ::std::map< ::HIR::Path, HIR::TypeRef>  m_aty_cache;
+    mutable ::std::map< std::string, HIR::TypeRef>  m_aty_cache;
 
 public:
     explicit StaticTraitResolve(const ::HIR::Crate& crate):

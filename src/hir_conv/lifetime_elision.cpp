@@ -8,6 +8,7 @@
 #include <hir/hir.hpp>
 #include <hir/visitor.hpp>
 #include <hir_typeck/static.hpp>
+#include <hir/expr.hpp> // ExprVisitor
 #include "main_bindings.hpp"
 
 namespace
@@ -17,7 +18,8 @@ namespace
     {
         ::HIR::Crate& crate;
         StaticTraitResolve  m_resolve;
-        
+
+        bool m_in_expr = false;
         ::HIR::GenericParams* m_cur_params = nullptr;
         unsigned m_cur_params_level = 0;
         ::std::vector< ::HIR::LifetimeRef* >    m_current_lifetime;
@@ -51,6 +53,10 @@ namespace
                         auto idx = m_cur_params->m_lifetimes.size();
                         m_cur_params->m_lifetimes.push_back(HIR::LifetimeDef { RcString::new_interned(FMT("elided#" << idx)) });
                         lft.binding = m_cur_params_level * 256 + idx;
+                        DEBUG("Create elided lifetime: " << lft << " " << m_cur_params->m_lifetimes.back().m_name);
+                    }
+                    else if ( m_in_expr ) {
+                        // Allow
                     }
                     else {
                         // TODO: Would error here, but there's places where it doesn't quite work.
@@ -143,6 +149,61 @@ namespace
                     visit_lifetime(sp, e->m_lifetime);
                 }
                 if(auto* e = ty.data_mut().opt_ErasedType()) {
+                    // TODO: For an erased type, check if there's a lifetime within any of the ATYs
+                    // - If so, use that [citation needed]
+                    // https://rust-lang.github.io/rfcs/1951-expand-impl-trait.html#scoping-for-type-and-lifetime-parameters
+                    // Any mentioned lifetimes within the trait are considered as "captured"
+                    // - So, enumerate the mentioned lifetimes and create a composite for it.
+                    if( e->m_lifetime.binding == HIR::LifetimeRef::UNKNOWN ) {
+                        // If there is no lifetime assigned, then grab all mentioned lifetimes?
+                        struct V: public HIR::Visitor {
+                            std::set<HIR::LifetimeRef>  lfts;
+                            void visit_path_params(HIR::PathParams& pp) override {
+                                for(auto& lft : pp.m_lifetimes) {
+                                    this->lfts.insert(lft);
+                                }
+
+                                HIR::Visitor::visit_path_params(pp);
+                            }
+                            void add_lifetime(const HIR::LifetimeRef& lft) {
+                                if(lft.is_param() && (lft.binding >> 8) == 3 ) {
+                                    // HRL - ignore
+                                    return;
+                                }
+                                this->lfts.insert(lft);
+                            }
+                            void visit_type(HIR::TypeRef& ty) override {
+                                if(const auto* tep = ty.data().opt_Borrow()) {
+                                    add_lifetime(tep->lifetime);
+                                }
+                                if(const auto* tep = ty.data().opt_Function()) {
+                                    // Push HRLs?
+                                }
+                                if(const auto* tep = ty.data().opt_TraitObject()) {
+                                    add_lifetime(tep->m_lifetime);
+                                    // Push HRLs?
+                                }
+                                if(const auto* tep = ty.data().opt_ErasedType()) {
+                                    //TODO(Span(), "Recursive erased type?");
+                                }
+                                HIR::Visitor::visit_type(ty);
+                            }
+                        } v;
+                        v.visit_type(ty);
+                        if( v.lfts.empty() ) {
+                            // No contained lifetimes, it's `'static`?
+                            DEBUG("No inner lifetimes, will be `'static`");
+                        }
+                        else if( v.lfts.size() == 1) {
+                            // Easy, just assign this lifetime
+                            DEBUG("ErasedType: Use contained lifetime " << *v.lfts.begin());
+                            e->m_lifetime = *v.lfts.begin();
+                        }
+                        else {
+                            TODO(sp, "Encountered multiple lifetimes, which to use? in " << ty << ": " << v.lfts);
+                        }
+                    }
+
                     visit_lifetime(sp, e->m_lifetime);
                 }
                 if(pushed) {
@@ -268,6 +329,24 @@ namespace
             {
                 ::HIR::Visitor::visit_trait_path(tp);
             }
+        }
+
+        void visit_expr(::HIR::ExprPtr& ep) override
+        {
+            struct EV: public HIR::ExprVisitorDef {
+                Visitor& parent;
+                EV(Visitor& parent): parent(parent) {}
+                void visit_type(HIR::TypeRef& ty) {
+                    parent.visit_type(ty);
+                }
+            } v { *this };
+
+            auto s = m_in_expr;
+            m_in_expr = true;
+            if(ep) {
+                ep->visit(v);
+            }
+            m_in_expr = s;
         }
 
         void visit_type_impl(::HIR::TypeImpl& impl) override

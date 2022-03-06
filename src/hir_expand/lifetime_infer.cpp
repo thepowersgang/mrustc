@@ -382,6 +382,7 @@ namespace {
         }
 
         void equate_lifetimes(const Span& sp, const HIR::LifetimeRef& lhs, const HIR::LifetimeRef& rhs) {
+            DEBUG(lhs << " := " << rhs);
             ASSERT_BUG(sp, lhs != HIR::LifetimeRef() && lhs.binding != HIR::LifetimeRef::INFER, "Unspecified lifetime - " << lhs);
             ASSERT_BUG(sp, rhs != HIR::LifetimeRef() && rhs.binding != HIR::LifetimeRef::INFER, "Unspecified lifetime - " << rhs);
             if( lhs.is_param() && (lhs.binding >> 8) == 3 ) {
@@ -1006,28 +1007,83 @@ namespace {
         /// Extract lifetimes from a type and equate with the target lifetime.
         void equate_type_lifetimes(const Span& sp, const HIR::LifetimeRef& dst_lft, const HIR::TypeRef& ty)
         {
-            visit_ty_with(ty, [&](const HIR::TypeRef& t)->bool {
-                if(t.data().is_Borrow())
-                    this->equate_lifetimes(sp, dst_lft, t.data().as_Borrow().lifetime);
-                if(is_opaque(t)) {
-                    // Iterate type lifetime bounds
-                    iterate_type_lifetime_bounds(t, [&](const HIR::LifetimeRef& lft)->bool {
-                        this->equate_lifetimes(sp, dst_lft, lft);
-                        return false;
-                        });
-                    if( t.data().is_Generic() ) {
-                        // If the above didn't return anything, then assign a "only this function" liftime
+            struct V: public HIR::Visitor {
+                ExprVisitor_Enumerate& parent;
+                const Span& sp;
+                const HIR::LifetimeRef& dst_lft;
+                std::vector<HIR::PathParams>    m_hrls;
+
+                V( ExprVisitor_Enumerate& parent, const Span& sp, const HIR::LifetimeRef& dst_lft)
+                    : parent(parent)
+                    , sp(sp)
+                    , dst_lft(dst_lft)
+                {
+                }
+
+                void equate_lifetime(const HIR::LifetimeRef& src) {
+                    if( src.is_param() && (src.binding >> 8) == 3 ) {
+                        ASSERT_BUG(sp, m_hrls.size() > 0, "Encountered HRL with no HRL in the stack");
+                        //parent.equate_lifetimes(sp, dst_lft, m_hrls.back().m_lifetimes[src.binding & 0xFF]);
                     }
                     else {
-                        TODO(sp, "Get lifetime (from bounds) for opaque type - " << t);
+                        parent.equate_lifetimes(sp, dst_lft, src);
                     }
                 }
-                if( t.data().is_Path() && t.data().as_Path().path.m_data.is_Generic() ) {
-                    for(const auto& l : t.data().as_Path().path.m_data.as_Generic().m_params.m_lifetimes)
-                        this->equate_lifetimes(sp, dst_lft, l);
+
+                void visit_type(HIR::TypeRef& t) override {
+                    if(t.data().is_Borrow())
+                        equate_lifetime(t.data().as_Borrow().lifetime);
+
+                    bool hrl_pushed = false;
+                    auto push_hrls = [&](const HIR::GenericParams& hrls_def) {
+                        hrl_pushed = true;
+                        m_hrls.push_back(hrls_def.make_empty_params(true));
+                        for(auto& l : m_hrls.back().m_lifetimes)
+                            l = parent.m_state.allocate_ivar(sp);
+                    };
+
+                    if(is_opaque(t)) {
+                        // Iterate type lifetime bounds
+                        parent.iterate_type_lifetime_bounds(t, [&](const HIR::LifetimeRef& lft)->bool {
+                            equate_lifetime(lft);
+                            return false;
+                            });
+                        if( t.data().is_Generic() ) {
+                            // If the above didn't return anything, then assign a "only this function" liftime
+                        }
+                        else if( const auto* e = t.data().opt_ErasedType() ) {
+                            equate_lifetime(e->m_lifetime);
+                            //if( e->m_trait.m_hrls ) {
+                            //    push_hrls(*e->m_trait.m_hrls);
+                            //}
+                        }
+                        else {
+                            TODO(sp, "Get lifetime (from bounds) for opaque type - " << t);
+                        }
+                    }
+
+                    if( const auto* e = t.data().opt_TraitObject() ) {
+                        // Get the lifetime
+                        equate_lifetime(e->m_lifetime);
+                        // Handle HRLs
+                        if( e->m_trait.m_hrls ) {
+                            push_hrls(*e->m_trait.m_hrls);
+                        }
+                    }
+                    if( const auto* e = t.data().opt_Function() ) {
+                        push_hrls(e->hrls);
+                    }
+                    if( t.data().is_Path() && t.data().as_Path().path.m_data.is_Generic() ) {
+                        for(const auto& l : t.data().as_Path().path.m_data.as_Generic().m_params.m_lifetimes)
+                            equate_lifetime(l);
+                    }
+                    HIR::Visitor::visit_type(t);
+                    if( hrl_pushed ) {
+                        m_hrls.pop_back();
+                    }
                 }
-                return false;
-                });
+            } v { *this, sp, dst_lft };
+            v.visit_type(const_cast<HIR::TypeRef&>(ty));
         }
         static bool is_opaque(const ::HIR::TypeRef& ty) {
             if(ty.data().is_Generic())
@@ -1288,7 +1344,11 @@ namespace {
 
                     TU_MATCH_HDRA( (impl_ref.m_data), { )
                     TU_ARMA(TraitImpl, e) {
-                        TODO(node.span(), "Handle CallValue (trait impl) - " << val_ty);
+                        DEBUG("impl_ref = " << impl_ref);
+                        equate_pps(node.span(), impl_ref.get_trait_params(), params);
+                        auto res_ty = impl_ref.get_type("Output");
+                        m_resolve.expand_associated_types(node.span(), res_ty);
+                        equate_types(node.span(), node.m_res_type, res_ty);
                         }
                     TU_ARMA(Bounded, e) {
                         if( e.hrls.m_lifetimes.size() > 0 ) {
