@@ -77,11 +77,11 @@ void TraitResolveCommon::prep_indexes__add_trait_bound(const Span& sp, ::HIR::Ty
     }
 #endif
 
-    get_or_add_trait_bound(trait_path.m_hrls.get(), trait_path.m_path);
+    get_or_add_trait_bound(trait_path.m_path.m_hrls.get(), trait_path.m_path);
     for( const auto& tb : trait_path.m_type_bounds )
     {
         DEBUG("Equality (TB) - <" << type << " as " << tb.second.source_trait << ">::" << tb.first << " = " << tb.second);
-        push_type(tb.first, trait_path.m_hrls.get(), tb.second);
+        push_type(tb.first, trait_path.m_path.m_hrls.get(), tb.second);
 
         auto ty_l = ::HIR::TypeRef::new_path( ::HIR::Path( type.clone(), tb.second.source_trait.clone(), tb.first ), ::HIR::TypePathBinding::make_Opaque({}) );
         prep_indexes__add_equality( sp, mv$(ty_l), tb.second.type.clone() );

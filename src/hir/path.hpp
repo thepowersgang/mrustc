@@ -153,8 +153,8 @@ struct PathParams
         return !m_types.empty() || !m_values.empty();
     }
 
-    bool operator==(const PathParams& x) const;
-    bool operator!=(const PathParams& x) const { return !(*this == x); }
+    bool operator==(const PathParams& x) const { return ord(x) == OrdEqual; }
+    bool operator!=(const PathParams& x) const { return ord(x) != OrdEqual; }
     bool operator<(const PathParams& x) const { return ord(x) == OrdLess; }
     Ordering ord(const PathParams& x) const {
         //if(auto cmp = ::ord(m_lifetimes, x.m_lifetimes)) return cmp;
@@ -170,25 +170,23 @@ struct PathParams
 class GenericPath
 {
 public:
+    std::unique_ptr<GenericParams>  m_hrls;
     SimplePath  m_path;
     PathParams  m_params;
 
     GenericPath();
     GenericPath(::HIR::SimplePath sp);
     GenericPath(::HIR::SimplePath sp, ::HIR::PathParams params);
+    GenericPath(::HIR::GenericParams hrls, ::HIR::SimplePath sp, ::HIR::PathParams params);
 
     GenericPath clone() const;
     Compare compare_with_placeholders(const Span& sp, const GenericPath& x, t_cb_resolve_type resolve_placeholder) const;
 
-    bool operator==(const GenericPath& x) const;
-    bool operator!=(const GenericPath& x) const { return !(*this == x); }
+    bool operator==(const GenericPath& x) const { return ord(x) == OrdEqual; }
+    bool operator!=(const GenericPath& x) const { return ord(x) != OrdEqual; }
     bool operator<(const GenericPath& x) const { return ord(x) == OrdLess; }
 
-    Ordering ord(const GenericPath& x) const {
-        auto rv = ::ord(m_path, x.m_path);
-        if(rv != OrdEqual)  return rv;
-        return ::ord(m_params, x.m_params);
-    }
+    Ordering ord(const GenericPath& x) const;
 
     friend ::std::ostream& operator<<(::std::ostream& os, const GenericPath& x);
 };
@@ -243,7 +241,6 @@ public:
     typedef ::std::map< RcString, AtyEqual> assoc_list_t;
 
     GenericPath m_path;
-    std::unique_ptr<GenericParams>  m_hrls;
     assoc_list_t    m_type_bounds;
     ::std::map< RcString, AtyBound>  m_trait_bounds;
 

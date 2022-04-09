@@ -602,7 +602,6 @@ namespace {
         LowerHIR_GenericPath(sp, path, FromAST_PathClass::Type, /*allow_assoc=*/true),
         {},
         {},
-        {},
         nullptr
         };
     if( !hrbs.empty() )
@@ -610,20 +609,20 @@ namespace {
         HIR::GenericParams  params;
         for(const auto& lft_def : hrbs.m_lifetimes)
             params.m_lifetimes.push_back(HIR::LifetimeDef { lft_def.name().name });
-        rv.m_hrls = box$(params);
+        rv.m_path.m_hrls = box$(params);
     }
     // HACK: If the path is from `Fn(Foo)` flag it for lifetime elision.
     // - Matching hack in `lifetime_elision.cpp` `visit_traitpath`
-    if( !rv.m_hrls && path.nodes().back().args().m_is_paren ) {
+    if( !rv.m_path.m_hrls && path.nodes().back().args().m_is_paren ) {
         HIR::GenericParams  params;
-        rv.m_hrls = box$(params);
+        rv.m_path.m_hrls = box$(params);
     }
-    if( rv.m_hrls && path.nodes().back().args().m_is_paren && rv.m_hrls->m_lifetimes.empty() ) {
-        rv.m_hrls->m_lifetimes.push_back(HIR::LifetimeDef { "#apply_elision" });
+    if( rv.m_path.m_hrls && path.nodes().back().args().m_is_paren && rv.m_path.m_hrls->m_lifetimes.empty() ) {
+        rv.m_path.m_hrls->m_lifetimes.push_back(HIR::LifetimeDef { "#apply_elision" });
     }
 
-    if(rv.m_hrls) {
-        DEBUG("HRLS = " << rv.m_hrls->fmt_args());
+    if(rv.m_path.m_hrls) {
+        DEBUG("HRLS = " << rv.m_path.m_hrls->fmt_args());
     }
     else {
         DEBUG("No HRLS");

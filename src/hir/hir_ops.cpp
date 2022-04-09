@@ -482,7 +482,7 @@ namespace {
         for(const auto& trait_path_raw : tr.m_all_parent_traits)
         {
             // 1. Monomorph
-            auto trait_path_mono = monomorph_cb.monomorph_traitpath(sp, trait_path_raw, false);
+            auto trait_path_mono = monomorph_cb.monomorph_traitpath(sp, trait_path_raw, false, false);
             // 2. Add
             rv.push_back( ::HIR::GenericBound::make_TraitBound({ type.clone(), mv$(trait_path_mono) }) );
         }
@@ -895,7 +895,7 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
                 return in;
             }
             else {
-                tmp = ms.monomorph_traitpath(sp, in, true);
+                tmp = ms.monomorph_traitpath(sp, in, true, false);
                 // TODO: EAT?
                 return tmp;
             }

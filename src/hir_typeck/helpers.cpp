@@ -1566,7 +1566,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             auto cmp = compare_pp(sp, e.m_trait.m_path.m_params, params);
             if( cmp != ::HIR::Compare::Unequal ) {
                 DEBUG("TraitObject impl params" << e.m_trait.m_path.m_params);
-                return callback( ImplRef(e.m_trait.m_hrls.get(), &type, &e.m_trait.m_path.m_params, &e.m_trait.m_type_bounds), cmp );
+                return callback( ImplRef(e.m_trait.m_path.m_hrls.get(), &type, &e.m_trait.m_path.m_params, &e.m_trait.m_type_bounds), cmp );
             }
         }
         // Markers too
@@ -1575,7 +1575,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             if( trait == mt.m_path ) {
                 auto cmp = compare_pp(sp, mt.m_params, params);
                 if( cmp != ::HIR::Compare::Unequal ) {
-                    return callback( ImplRef(e.m_trait.m_hrls.get(), &type, &mt.m_params, &null_assoc), cmp );
+                    return callback( ImplRef(e.m_trait.m_path.m_hrls.get(), &type, &mt.m_params, &null_assoc), cmp );
                 }
             }
         }
@@ -1592,7 +1592,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
                     ::HIR::TraitPath::assoc_list_t assoc_clone;
                     for(const auto& e : i_assoc)
                         assoc_clone.insert( ::std::make_pair(e.first, e.second.clone()) );
-                    auto ir = ImplRef(e.m_trait.m_hrls ? e.m_trait.m_hrls->clone() : HIR::GenericParams(), i_ty.clone(), i_params.clone(), mv$(assoc_clone));
+                    auto ir = ImplRef(e.m_trait.m_path.m_hrls ? e.m_trait.m_path.m_hrls->clone() : HIR::GenericParams(), i_ty.clone(), i_params.clone(), mv$(assoc_clone));
                     DEBUG("- ir = " << ir);
                     rv = callback(mv$(ir), cmp);
                     return true;
@@ -1611,7 +1611,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
                 auto cmp = compare_pp(sp, trait_path.m_path.m_params, params);
                 if( cmp != ::HIR::Compare::Unequal ) {
                     DEBUG("TraitObject impl params" << trait_path.m_path.m_params);
-                    return callback( ImplRef(trait_path.m_hrls.get(), &type, &trait_path.m_path.m_params, &trait_path.m_type_bounds), cmp );
+                    return callback( ImplRef(trait_path.m_path.m_hrls.get(), &type, &trait_path.m_path.m_params, &trait_path.m_type_bounds), cmp );
                 }
             }
 
@@ -1627,7 +1627,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
                         ::HIR::TraitPath::assoc_list_t assoc_clone;
                         for(const auto& e : i_assoc)
                             assoc_clone.insert( ::std::make_pair(e.first, e.second.clone()) );
-                        auto ir = ImplRef(trait_path.m_hrls ? trait_path.m_hrls->clone() : HIR::GenericParams(), i_ty.clone(), i_params.clone(), mv$(assoc_clone));
+                        auto ir = ImplRef(trait_path.m_path.m_hrls ? trait_path.m_path.m_hrls->clone() : HIR::GenericParams(), i_ty.clone(), i_params.clone(), mv$(assoc_clone));
                         DEBUG("- ir = " << ir);
                         rv = callback(mv$(ir), cmp);
                         return true;

@@ -59,14 +59,14 @@ namespace HIR {
     }
     ::std::ostream& operator<<(::std::ostream& os, const GenericPath& x)
     {
+        if( x.m_hrls ) {
+            os << "for" << x.m_hrls->fmt_args() << " ";
+        }
         os << x.m_path << x.m_params;
         return os;
     }
     ::std::ostream& operator<<(::std::ostream& os, const TraitPath& x)
     {
-        if( x.m_hrls ) {
-            os << "for" << x.m_hrls->fmt_args() << " ";
-        }
         os << x.m_path.m_path;
         bool has_args = ( x.m_path.m_params.m_types.size() > 0 || x.m_type_bounds.size() > 0 || x.m_trait_bounds.size() > 0 );
 
@@ -136,22 +136,6 @@ HIR::PathParams::PathParams(::HIR::LifetimeRef lft)
         rv.m_values.push_back( t.clone() );
     return rv;
 }
-bool ::HIR::PathParams::operator==(const ::HIR::PathParams& x) const
-{
-    if( m_types.size() != x.m_types.size() )
-        return false;
-    for( unsigned int i = 0; i < m_types.size(); i ++ )
-        if( !(m_types[i] == x.m_types[i]) )
-            return false;
-
-    if( m_values.size() != x.m_values.size() )
-        return false;
-    for( unsigned int i = 0; i < m_values.size(); i ++ )
-        if( !(m_values[i] == x.m_values[i]) )
-            return false;
-
-    return true;
-}
 
 ::HIR::GenericPath::GenericPath()
 {
@@ -165,22 +149,33 @@ bool ::HIR::PathParams::operator==(const ::HIR::PathParams& x) const
     m_params( mv$(params) )
 {
 }
+::HIR::GenericPath::GenericPath(::HIR::GenericParams hrls, ::HIR::SimplePath sp, ::HIR::PathParams params):
+    m_hrls( box$(hrls) ),
+    m_path( mv$(sp) ),
+    m_params( mv$(params) )
+{
+}
 ::HIR::GenericPath HIR::GenericPath::clone() const
 {
-    return GenericPath(m_path.clone(), m_params.clone());
+    if(m_hrls)
+        return GenericPath(m_hrls->clone(), m_path.clone(), m_params.clone());
+    else
+        return GenericPath(m_path.clone(), m_params.clone());
 }
-bool ::HIR::GenericPath::operator==(const GenericPath& x) const
+Ordering HIR::GenericPath::ord(const HIR::GenericPath& x) const
 {
-    if( m_path != x.m_path )
-        return false;
-    return m_params == x.m_params;
+    ORD(m_path, x.m_path);
+    ORD(m_params, x.m_params);
+    ORD(m_hrls.get() == nullptr, x.m_hrls.get() == nullptr);
+    //if( m_hrls )
+    //    ORD(m_hrls->m_lifetimes, x.m_hrls->m_lifetimes);
+    return OrdEqual;
 }
 
 ::HIR::TraitPath HIR::TraitPath::clone() const
 {
     ::HIR::TraitPath    rv {
         m_path.clone(),
-        m_hrls ? box$(m_hrls->clone()) : nullptr,
         {},
         {},
         m_trait_ptr
@@ -196,9 +191,6 @@ bool ::HIR::GenericPath::operator==(const GenericPath& x) const
 Ordering HIR::TraitPath::ord(const TraitPath& x) const
 {
     ORD(m_path, x.m_path);
-    ORD(m_hrls.get() == nullptr, x.m_hrls.get() == nullptr);
-    if(m_hrls)
-        ORD(m_hrls->m_lifetimes, x.m_hrls->m_lifetimes);
     ORD(m_trait_bounds, x.m_trait_bounds);
     ORD(m_type_bounds , x.m_type_bounds);
     return OrdEqual;

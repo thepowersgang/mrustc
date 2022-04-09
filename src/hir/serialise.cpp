@@ -275,6 +275,10 @@
         void serialise_genericpath(const ::HIR::GenericPath& path)
         {
             TRACE_FUNCTION_F(path);
+            m_out.write_bool( static_cast<bool>(path.m_hrls) );
+            if(path.m_hrls) {
+                serialise_generics(*path.m_hrls);
+            }
             serialise_simplepath(path.m_path);
             serialise_pathparams(path.m_params);
         }
@@ -283,10 +287,6 @@
         {
             auto _ = m_out.open_object("HIR::TraitPath");
             serialise_genericpath(path.m_path);
-            m_out.write_bool( static_cast<bool>(path.m_hrls) );
-            if(path.m_hrls) {
-                serialise_generics(*path.m_hrls);
-            }
             serialise_strmap(path.m_type_bounds);
             serialise_strmap(path.m_trait_bounds);
         }
@@ -303,30 +303,30 @@
         void serialise_path(const ::HIR::Path& path)
         {
             TRACE_FUNCTION_F("path="<<path);
-            TU_MATCHA( (path.m_data), (e),
-            (Generic,
+            TU_MATCH_HDRA( (path.m_data), {)
+            TU_ARMA(Generic, e) {
                 m_out.write_tag(0);
                 serialise_genericpath(e);
-                ),
-            (UfcsInherent,
+                }
+            TU_ARMA(UfcsInherent, e) {
                 m_out.write_tag(1);
                 serialise_type(e.type);
                 m_out.write_string(e.item);
                 serialise_pathparams(e.params);
                 serialise_pathparams(e.impl_params);
-                ),
-            (UfcsKnown,
+                }
+            TU_ARMA(UfcsKnown, e) {
                 m_out.write_tag(2);
                 serialise_type(e.type);
                 serialise_genericpath(e.trait);
                 m_out.write_string(e.item);
                 serialise_pathparams(e.params);
-                ),
-            (UfcsUnknown,
+                }
+            TU_ARMA(UfcsUnknown, e) {
                 DEBUG("-- UfcsUnknown - " << path);
                 assert(!"Unexpected UfcsUnknown");
-                )
-            )
+                }
+            }
         }
 
         void serialise_generics(const ::HIR::GenericParams& params)

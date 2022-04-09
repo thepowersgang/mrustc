@@ -704,6 +704,8 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
             MIR_ASSERT(state, vtable_ty_spath != HIR::SimplePath(), "Trait " << de.m_trait.m_path << " does not have a vtable");
             const auto& vtable_ref = state.m_crate.get_struct_by_path(state.sp, vtable_ty_spath);
             // Copy the param set from the trait in the trait object
+            // TODO: How can this handle HRLs properly? (e.g. on `dyn FnMut`'s vtable). Every time it's called, the lifetimes should be different.
+            // - Implies that GenericPath should have HRLs (not everywhere else)
             ::HIR::PathParams   vtable_params = trait_path.m_path.m_params.clone();
             // - Include associated types
             for(const auto& ty_b : trait_path.m_type_bounds) {
@@ -725,8 +727,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
             else
             {
                 MIR_ASSERT(state, state.m_resolve.type_is_sized(state.sp, src_ty), "Attempting to get vtable for unsized type - " << src_ty);
-
-                ::HIR::Path vtable { src_ty.clone(), trait_path.m_path.clone(), "vtable#" };
+                auto vtable = ::HIR::Path( HIR::Path::Data::make_UfcsKnown({ src_ty.clone(), trait_path.m_path.clone(), "vtable#" }) );
                 out_meta_val = ::MIR::Constant::make_ItemAddr(box$(vtable));
             }
         }

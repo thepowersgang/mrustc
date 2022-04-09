@@ -422,8 +422,8 @@ namespace {
             // Ignore values
         }
         void equate_traitpath(const Span& sp, const HIR::TraitPath& lhs, const HIR::TraitPath& rhs) {
-            auto pp_l = lhs.m_hrls ? lhs.m_hrls->make_empty_params(true) : HIR::PathParams();
-            auto pp_r = rhs.m_hrls ? rhs.m_hrls->make_empty_params(true) : HIR::PathParams();
+            auto pp_l = lhs.m_path.m_hrls ? lhs.m_path.m_hrls->make_empty_params(true) : HIR::PathParams();
+            auto pp_r = rhs.m_path.m_hrls ? rhs.m_path.m_hrls->make_empty_params(true) : HIR::PathParams();
             visit_path_params(pp_l);
             visit_path_params(pp_r);
             auto ms_l = MonomorphHrlsOnly(pp_l);
@@ -1055,8 +1055,8 @@ namespace {
                         // Get the lifetime
                         equate_lifetime(e->m_lifetime);
                         // Handle HRLs
-                        if( e->m_trait.m_hrls ) {
-                            push_hrls(*e->m_trait.m_hrls);
+                        if( e->m_trait.m_path.m_hrls ) {
+                            push_hrls(*e->m_trait.m_path.m_hrls);
                         }
                     }
                     if( const auto* e = t.data().opt_Function() ) {

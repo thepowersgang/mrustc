@@ -154,7 +154,7 @@ namespace typecheck
                 auto real_trait = ms.monomorph_traitpath(sp, be.trait, false);
                 DEBUG("Bound " << be.type << ":  " << be.trait);
                 DEBUG("= (" << real_type << ": " << real_trait << ")");
-                auto pp_hrl = real_trait.m_hrls ? real_trait.m_hrls->make_empty_params(true) : HIR::PathParams();
+                auto pp_hrl = real_trait.m_path.m_hrls ? real_trait.m_path.m_hrls->make_empty_params(true) : HIR::PathParams();
                 auto ms_hrl = MonomorphHrlsOnly(pp_hrl);
                 const auto& trait_path = real_trait.m_path.m_path;
                 const auto& trait_params = real_trait.m_path.m_params;
@@ -210,11 +210,13 @@ namespace typecheck
             const HIR::TypeRef* self_ty;
             const HIR::PathParams* impl_params;
             const HIR::PathParams& fcn_params;
-            Monomorph(Context& context, const HIR::TypeRef* self_ty, const HIR::PathParams* impl_params, const HIR::PathParams& fcn_params)
+            const HIR::PathParams hrl_params;
+            Monomorph(Context& context, const HIR::TypeRef* self_ty, const HIR::PathParams* impl_params, const HIR::PathParams& fcn_params, HIR::PathParams hrl_params)
                 : context(context)
                 , self_ty(self_ty)
                 , impl_params(impl_params)
                 , fcn_params(fcn_params)
+                , hrl_params(std::move(hrl_params))
             {
             }
 
@@ -288,6 +290,11 @@ namespace typecheck
                     ASSERT_BUG(sp, idx < fcn_params.m_lifetimes.size(), "Generic lifetime out of input range - " << e << " >= " << fcn_params.m_lifetimes.size());
                     return fcn_params.m_lifetimes[idx];
                 }
+                else if( e.group() == 3 ) {
+                    auto idx = e.idx();
+                    ASSERT_BUG(sp, idx < fcn_params.m_lifetimes.size(), "Generic lifetime out of input range - " << e << " >= " << hrl_params.m_lifetimes.size());
+                    return hrl_params.m_lifetimes[idx];
+                }
                 else {
                     BUG(sp, "Generic lifetime bounding out of total range (" << e << ")");
                 }
@@ -303,7 +310,7 @@ namespace typecheck
 
             //const auto& params_def = fcn.m_params;
             const auto& path_params = e.m_params;
-            cache.m_monomorph.reset(new Monomorph(context, nullptr, nullptr, path_params));
+            cache.m_monomorph.reset(new Monomorph(context, nullptr, nullptr, path_params, {}));
             }
         TU_ARMA(UfcsKnown, e) {
             const auto& trait = context.m_crate.get_trait_by_path(sp, e.trait.m_path);
@@ -317,11 +324,13 @@ namespace typecheck
             cache.m_top_params = &trait.m_params;
 
             // Add a bound requiring the Self type impl the trait
-            context.add_trait_bound(sp, e.type,  e.trait.m_path, e.trait.m_params.clone());
+            auto pp_hrl = e.trait.m_hrls ? e.trait.m_hrls->make_empty_params(true) : HIR::PathParams();
+            auto ms_hrl = MonomorphHrlsOnly(pp_hrl);
+            context.add_trait_bound(sp, e.type,  e.trait.m_path, ms_hrl.monomorph_path_params(sp, e.trait.m_params, true));
 
             fcn_ptr = &fcn;
 
-            cache.m_monomorph.reset(new Monomorph(context, &e.type, &e.trait.m_params, e.params));
+            cache.m_monomorph.reset(new Monomorph(context, &e.type, &e.trait.m_params, e.params, std::move(pp_hrl)));
         }
         TU_ARMA(UfcsUnknown, e) {
             // TODO: Eventually, the HIR `Resolve UFCS` pass will be removed, leaving this code responsible for locating the item.
@@ -2138,7 +2147,7 @@ void Typecheck_Code_CS__EnumerateRules(
                 auto prev_hrls = this->hrls;
                 for(const auto& trait : e->m_traits)
                 {
-                    auto pp_hrl = trait.m_hrls ? trait.m_hrls->make_empty_params(true) : HIR::PathParams();
+                    auto pp_hrl = trait.m_path.m_hrls ? trait.m_path.m_hrls->make_empty_params(true) : HIR::PathParams();
                     this->hrls = &pp_hrl;
                     if( trait.m_type_bounds.size() == 0 )
                     {

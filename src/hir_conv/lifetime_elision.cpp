@@ -270,18 +270,20 @@ namespace
             const Span  sp;
             TRACE_FUNCTION_FR(tp, tp);
             // Handle a hack from lowering pass added when the path is `Foo()`
-            if(tp.m_hrls && tp.m_hrls->m_lifetimes.size() == 1 && tp.m_hrls->m_lifetimes[0].m_name == "#apply_elision")
+            if(tp.m_path.m_hrls && tp.m_path.m_hrls->m_lifetimes.size() == 1 && tp.m_path.m_hrls->m_lifetimes[0].m_name == "#apply_elision")
             {
-                tp.m_hrls->m_lifetimes.clear();
+                tp.m_path.m_hrls->m_lifetimes.clear();
                 m_current_lifetime.push_back(nullptr);
 
                 // Visit the trait args (as inputs)
                 auto saved_params_ptr = m_cur_params;
                 auto saved_params_lvl = m_cur_params_level;
-                m_cur_params = tp.m_hrls.get();
+                m_cur_params = tp.m_path.m_hrls.get();
                 m_cur_params_level = 3;
+
                 this->visit_generic_path(tp.m_path, ::HIR::Visitor::PathContext::TYPE);
                 DEBUG(tp.m_path);
+
                 m_cur_params = saved_params_ptr;
                 m_cur_params_level = saved_params_lvl;
 
@@ -364,7 +366,7 @@ namespace
 
                 // Set the output lifetime (if present)
                 auto output_lifetime = HIR::LifetimeRef(3*256 + 0);
-                if( tp.m_hrls->m_lifetimes.size() == 1 ) {
+                if( tp.m_path.m_hrls->m_lifetimes.size() == 1 ) {
                     m_current_lifetime.pop_back();
                     m_current_lifetime.push_back(&output_lifetime);
                 }
