@@ -61,6 +61,13 @@ private:
     signed int getSymbol();
     Token getTokenInt_RawString(bool is_byte);
     Token getTokenInt_Identifier(Codepoint ch, Codepoint ch2='\0', bool parse_reserved_word=true);
+    enum class NumMode {
+        BIN,
+        OCT,
+        DEC,
+        HEX,
+    };
+    U128 parseInt(NumMode* num_mode);
     double parseFloat(uint64_t whole);
     uint32_t parseEscape(char enclosing);
 
