@@ -956,8 +956,10 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
             }
         }
     }
-    if( true /*this->enable_debug*/ ) {
+    if( this->m_opts.enable_debug ) {
         args.push_back("-g");
+    }
+    if( true ) {
         args.push_back("--cfg"); args.push_back("debug_assertions");
     }
     if( true /*this->enable_optimise*/ ) {
