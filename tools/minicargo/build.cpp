@@ -1108,7 +1108,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     args.push_back("--crate-type"); args.push_back("bin");
     args.push_back("-o"); args.push_back(outfile);
     args.push_back("-L"); args.push_back(this->get_output_dir(true).str()); // NOTE: Forces `is_for_host` to true here.
-    if( true )
+    if( this->m_opts.enable_debug )
     {
         args.push_back("-g");
     }
