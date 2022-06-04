@@ -16,7 +16,7 @@
 #include <algorithm>    // std::count
 #include <limits>       // std::numeric_limits
 #include <cctype>
-#define TRACE_CHARS
+//#define TRACE_CHARS
 //#define TRACE_RAW_TOKENS
 
 Lexer::Lexer(const ::std::string& filename, AST::Edition edition, ParseState ps):
