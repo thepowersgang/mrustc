@@ -399,9 +399,9 @@ public:
     StructData  m_data;
     struct Markings {
 
-        Markings() {
-            memset(this, 0, sizeof(*this));
-        }
+        //Markings() {
+        //    memset(this, 0, sizeof(*this));
+        //}
 
         enum class Repr {
             Rust,
@@ -414,9 +414,9 @@ public:
         uint64_t max_field_align = 0;
 
         // 1.39 nonzero etc
-        bool    scalar_valid_start_set;
+        bool    scalar_valid_start_set = false;
         U128    scalar_valid_start;
-        bool    scalar_valid_end_set;
+        bool    scalar_valid_end_set = false;
         U128    scalar_valid_end;
     }   m_markings;
 
