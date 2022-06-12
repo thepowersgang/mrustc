@@ -343,8 +343,11 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
                 state.resolve.expand_associated_types(sp, new_fcn.m_args.back().second);
             }
             HIR::BorrowType bt;
-            if( fcn_def.m_receiver == HIR::Function::Receiver::Value )
+            switch(fcn_def.m_receiver)
             {
+            case HIR::Function::Receiver::Free:
+                BUG(sp, "Free function trait object method: " << path);
+            case HIR::Function::Receiver::Value: {
                 // By-value trait object dispatch
                 // - Receiver should be a `&move` (BUT, does the caller know this?)
                 // - MIR Cleanup should fix that (after monomoprh)
@@ -352,10 +355,17 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
                 bt = HIR::BorrowType::Owned;
                 self_ty = ::HIR::TypeRef::new_borrow(bt, mv$(self_ty));
                 DEBUG("<dyn " << trait_path << ">::" << name << " - By-Value");
-            }
-            else
-            {
+                } break;
+            case HIR::Function::Receiver::BorrowOwned:
+            case HIR::Function::Receiver::BorrowUnique:
+            case HIR::Function::Receiver::BorrowShared:
+                ASSERT_BUG(sp, !new_fcn.m_args.empty(), path);
+                ASSERT_BUG(sp, new_fcn.m_args.front().second.data().is_Borrow(), path << "\nReceiver not borrow: " << new_fcn.m_args.front().second);
                 bt = new_fcn.m_args.front().second.data().as_Borrow().type;
+                break;
+            default:
+                TODO(sp, "Handle Box/custom trait object methods\n" << path);
+                break;
             }
 
             new_fcn.m_code.m_mir = MIR::FunctionPointer(new MIR::Function());

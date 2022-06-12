@@ -1572,13 +1572,12 @@ namespace {
         {
             // Fill `fields` with ascending indexes (for sorting)
             // AND: Determine if the type has a a zero-sized item that has an alignment equal to the structure's alignment
-            ::std::vector<unsigned> fields;
+            ::std::vector<unsigned> fields; fields.reserve(repr->fields.size());
+            ::std::vector<bool>   zsts; zsts.reserve(repr->fields.size());
             size_t max_align = 0;
             bool has_manual_align = false;
             for(const auto& ent : repr->fields)
             {
-                fields.push_back(fields.size());
-
                 const auto& ty = ent.ty;
 
                 size_t sz = -1, al = 0;
@@ -1587,12 +1586,19 @@ namespace {
                     has_manual_align = true;
                 }
                 max_align = std::max(max_align, al);
+
+                fields.push_back(fields.size());
+                zsts.push_back(sz == 0);
             }
             if(packing_max_align == 0 && max_align != repr->align /*&& repr->size > 0*/) {
                 has_manual_align = true;
             }
             // - Sort the fields by offset
-            ::std::sort(fields.begin(), fields.end(), [&](auto a, auto b){ return repr->fields[a].offset < repr->fields[b].offset; });
+            ::std::sort(fields.begin(), fields.end(), [&](auto a, auto b){
+                if( repr->fields[a].offset == repr->fields[b].offset )
+                    return !zsts[a] < !zsts[b]; // Sort zero sized fields first (!zst means size is 1+)
+                return repr->fields[a].offset < repr->fields[b].offset;
+                });
 
             // For repr(packed), mark as packed
             if(packing_max_align)
@@ -1642,12 +1648,18 @@ namespace {
                     DEBUG("a = " << a);
                     while(cur_ofs % a != 0)
                         cur_ofs ++;
-                    MIR_ASSERT(*m_mir_res, cur_ofs == offset, "Current offset doesn't match expected (#" << fld << "): " << cur_ofs << " != " << offset);
-
-                    cur_ofs += s;
                 }
 
+                // Inject padding
+                if( cur_ofs < offset ) {
+                    auto n = offset - cur_ofs;
+                    m_of << "\tuint8_t _padding" << fld << "[" << n << "];\n";
+                    cur_ofs += n;
+                }
+                MIR_ASSERT(*m_mir_res, cur_ofs == offset, "Current offset doesn't match expected (#" << fld << "): " << cur_ofs << " != " << offset);
+
                 m_of << "\t";
+                m_of << "/*@" << offset << "*/";
                 if( const auto* te = ty.data().opt_Slice() ) {
                     emit_ctype( te->inner, FMT_CB(ss, ss << "_" << fld << "[0]";) );
                     has_unsized = true;
@@ -1678,6 +1690,8 @@ namespace {
                     }
                 }
                 m_of << "; // " << ty << "\n";
+
+                cur_ofs += s;
             }
             if( sized_fields == 0 && !has_unsized && m_options.disallow_empty_structs )
             {
@@ -2346,6 +2360,11 @@ namespace {
                 m_of << "\t// static " << p << " : " << type << " = " << encoded;
                 m_of << "\n";
             }
+            //else {
+            //    m_of << "//";
+            //    emit_static_ty(type, p, /*is_proto=*/false);
+            //    m_of << "\t// Zero init static " << p << " : " << type << " = " << encoded << "\n";
+            //}
 
             m_mir_res = nullptr;
         }
@@ -3648,7 +3667,20 @@ namespace {
                         bool emit_newline = false;
                         if( !re.is_niche(ve.index) )
                         {
-                            emit_lvalue(e.dst); emit_enum_path(repr, re.field); m_of << " = " << (re.offset + ve.index);
+                            // Each variant has its own tag field, it will be the last numbered field in that variant slot
+                            // - Only use that if there isn't an explicit tag field in the enum
+                            if( re.field.sub_fields.empty() || type_is_bad_zst(repr->fields[ve.index].ty) ) {
+                                emit_lvalue(e.dst); emit_enum_path(repr, re.field); m_of << " = " << (re.offset + ve.index);
+                            }
+                            else {
+                                auto vr = Target_GetTypeRepr(sp, m_resolve, repr->fields[ve.index].ty);
+                                //m_of << "assert(&";
+                                //emit_lvalue(e.dst); m_of << ".DATA.var_" << ve.index << "._" << (vr->fields.size() - 1);
+                                //m_of << " == &";
+                                //emit_lvalue(e.dst); emit_enum_path(repr, re.field);
+                                //m_of << "); ";
+                                emit_lvalue(e.dst); m_of << ".DATA.var_" << ve.index << "._" << (vr->fields.size() - 1) << " = " << (re.offset + ve.index);
+                            }
                             emit_newline = true;
                         }
                         else {
@@ -3913,11 +3945,25 @@ namespace {
                     MIR_BUG(mir_res, "Invalid tag type?! " << tag_ty);
                 }
 
+                auto emit_variant = [&]() {
+#if 1
+                    emit_lvalue(val); emit_enum_path(repr, e.field);
+#else
+                    // Emit using a pointer manipulation, to avoid `union` "active member" rule
+                    // - Technically not type punning, as the type is the same in all cases
+                    // Get the offset
+                    size_t offset = repr->get_offset(sp, m_resolve, e.field);;
+                    // Emit
+                    m_of << " *("; emit_ctype(tag_ty); m_of << "*)(";
+                    m_of << "(const char*)&"; emit_lvalue(val); m_of <<" + " << offset;
+                     _of << ")";
+#endif
+                    };
 
                 // Optimisation: If there's only one arm with a different value, then emit an `if` isntead of a `switch`
                 if( odd_arm != static_cast<size_t>(-1) )
                 {
-                    m_of << indent << "if( "; emit_lvalue(val); emit_enum_path(repr, e.field);
+                    m_of << indent << "if( "; emit_variant();
                     if( e.is_niche(odd_arm) ) {
                         m_of << " < " << e.offset;
                     }
@@ -3928,7 +3974,7 @@ namespace {
                 }
                 else
                 {
-                    m_of << indent << "switch("; emit_lvalue(val); emit_enum_path(repr, e.field); m_of << ") {\n";
+                    m_of << indent << "switch("; emit_variant(); m_of << ") {\n";
                     for(size_t j = 0; j < n_arms; j ++)
                     {
                         if( e.is_niche(j) ) {

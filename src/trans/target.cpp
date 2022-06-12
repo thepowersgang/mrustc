@@ -978,7 +978,12 @@ namespace {
             }
         }
 
-        ::std::vector<TypeRepr::Field>  fields(ents.size());
+        unsigned max_field = 0;
+        for(const auto& e : ents) {
+            if(e.field != ~0u)
+                max_field = std::max(max_field, e.field);
+        }
+        ::std::vector<TypeRepr::Field>  fields(ents.size() > 0 ? max_field + 1 : 0);
 
         TypeRepr  rv;
         size_t  cur_ofs = 0;
@@ -1026,6 +1031,9 @@ namespace {
             {
                 cur_ofs ++;
             }
+        }
+        for(const auto& f : fields) {
+            ASSERT_BUG(sp, f.ty != HIR::TypeRef(), "Uninitialised field found - " << (&f - &fields[0]));
         }
         // Aligment is 1 for packed structs, and `max_align` otherwise
         rv.align = max_align;
@@ -1549,10 +1557,16 @@ namespace {
 
                                     if( offset <= max_var && offset + e.size() <= max_var )
                                     {
+                                        // TODO: Get the niche offset, store so structure updating can add it...
+                                        nz_path.index = i;
+                                        ::std::reverse(nz_path.sub_fields.begin(), nz_path.sub_fields.end());
+                                        niche_offset = get_offset(sp, resolve, &*reprs[biggest_var], nz_path);
+                                        ::std::reverse(nz_path.sub_fields.begin(), nz_path.sub_fields.end());
+
                                         nz_path.sub_fields.push_back(i);
                                         nz_path.index = biggest_var;
                                         ::std::reverse(nz_path.sub_fields.begin(), nz_path.sub_fields.end());
-                                        DEBUG("Niche optimisation (trailing): offset=" << offset << " path=" << nz_path);
+                                        DEBUG("Niche optimisation (trailing): value offset=" << offset << " path=" << nz_path << " (@" << niche_offset << ")");
 
                                         assert(rv.variants.is_None());
                                         rv.variants = TypeRepr::VariantMode::make_Linear({ std::move(nz_path), offset, e.size() });
@@ -1630,15 +1644,13 @@ namespace {
                             const auto& niche_path = rv.variants.as_Linear().field;
 
                             ::HIR::TypeRef  niche_ty;
-                            if( niche_before_data ) {
-                                switch( niche_path.size )
-                                {
-                                case 1: niche_ty = ::HIR::CoreType::U8 ;    break;
-                                case 2: niche_ty = ::HIR::CoreType::U16;    break;
-                                case 4: niche_ty = ::HIR::CoreType::U32;    break;
-                                case 8: niche_ty = ::HIR::CoreType::U64;    break;
-                                default:    BUG(sp, "Unknown niche size: " << niche_path);
-                                }
+                            switch( niche_path.size )
+                            {
+                            case 1: niche_ty = ::HIR::CoreType::U8 ;    break;
+                            case 2: niche_ty = ::HIR::CoreType::U16;    break;
+                            case 4: niche_ty = ::HIR::CoreType::U32;    break;
+                            case 8: niche_ty = ::HIR::CoreType::U64;    break;
+                            default:    BUG(sp, "Unknown niche size: " << niche_path);
                             }
                             // Generate raw struct reprs for all variants
                             // - Add `non_niche_offset` to all variants
@@ -1648,7 +1660,10 @@ namespace {
                                 if( e[i].type != HIR::TypeRef::new_unit() )
                                 {
                                     // If the tag is leading, then add to all other variants and update reprs
-                                    if( niche_before_data && i != biggest_var )
+                                    if( i == biggest_var )
+                                    {
+                                    }
+                                    else if( niche_before_data )
                                     {
                                         // Add padding (if needed)
                                         if( niche_offset > 0 )
@@ -1666,6 +1681,40 @@ namespace {
                                         variants[i].ents[0].size = niche_path.size;
                                         variants[i].ents[0].field = variants[i].ents.size() - 1;
                                         variants[i].ents[0].ty = niche_ty.clone();
+                                        // Create the new repr
+                                        reprs[i] = make_type_repr_struct__inner(sp, variants[i].type, variants[i].ents, StructSorting::None, 0,0);
+                                        // Make sure that the newly calculated repr doesn't change the size/alignment
+                                        assert(reprs[i]->size <= max_size);
+                                        assert(reprs[i]->align <= max_align);
+                                    }
+                                    else
+                                    {
+                                        auto tag_fld_idx = variants[i].ents.size();
+                                        size_t max_ofs = 0;
+                                        for(const auto& f : reprs[i]->fields) {
+                                            max_ofs = std::max(max_ofs, f.offset + get_size_or_zero(sp, resolve, f.ty));
+                                        }
+                                        // - Increase alignment to the niche size
+                                        if( max_ofs % niche_path.size != 0 ) {
+                                            max_ofs += niche_path.size - (max_ofs % niche_path.size);
+                                        }
+                                        assert(niche_offset % niche_path.size == 0);
+                                        assert(max_ofs % niche_path.size == 0);
+                                        ASSERT_BUG(sp, niche_offset >= max_ofs,
+                                            "Niche offset (" << niche_offset << ") overlaps with variant data (" << max_ofs << ")");
+                                        auto req_padding = niche_offset - max_ofs;
+                                        if(req_padding > 0)
+                                        {
+                                            variants[i].ents.push_back( Ent() );
+                                            variants[i].ents.back().align = 1;
+                                            variants[i].ents.back().size = req_padding;
+                                            variants[i].ents.back().field = ~0u;
+                                        }
+                                        variants[i].ents.push_back(Ent());
+                                        variants[i].ents.back().align = niche_path.size;
+                                        variants[i].ents.back().size = niche_path.size;
+                                        variants[i].ents.back().field = tag_fld_idx;
+                                        variants[i].ents.back().ty = niche_ty.clone();
                                         // Create the new repr
                                         reprs[i] = make_type_repr_struct__inner(sp, variants[i].type, variants[i].ents, StructSorting::None, 0,0);
                                         // Make sure that the newly calculated repr doesn't change the size/alignment
