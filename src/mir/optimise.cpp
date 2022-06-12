@@ -2275,7 +2275,6 @@ bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::
 bool MIR_Optimise_DeTemporary_Borrows(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 {
     bool changed = false;
-#if 1
     TRACE_FUNCTION_FR("", changed);
 
     // Find all single-assign borrows that are only ever used via Deref
@@ -2354,10 +2353,15 @@ bool MIR_Optimise_DeTemporary_Borrows(::MIR::TypeResolve& state, ::MIR::Function
         auto this_var = ::MIR::LValue::new_Local(var_idx);
 
         // This rule only applies to single-write variables, with no use other than via derefs
-        if( !(slot.n_write == 1 && slot.n_other_read == 0) )
+        if( slot.n_write != 1 )
         {
             //DEBUG(this_var << " - Multi-assign, or use-by-value");
             continue ;
+        }
+        if( slot.n_other_read > 0 )    // TODO: Remove this to get better optimisation (needs debugging)
+        {
+            //DEBUG(this_var << " - Use by value");
+            continue;
         }
         if( slot.n_deref_read == 0 )
         {
@@ -2379,7 +2383,7 @@ bool MIR_Optimise_DeTemporary_Borrows(::MIR::TypeResolve& state, ::MIR::Function
             DEBUG(this_var << " - Source is too complex - " << src_lv);
             continue;
         }
-        if( slot.n_deref_read > 1 && fcn.locals[var_idx].data().as_Borrow().type != ::HIR::BorrowType::Shared )
+        if( slot.n_deref_read + slot.n_other_read > 1 && fcn.locals[var_idx].data().as_Borrow().type != ::HIR::BorrowType::Shared )
         {
             DEBUG(this_var << " - Multi-use non-shared borrow, too complex to do");
             continue;
@@ -2391,10 +2395,10 @@ bool MIR_Optimise_DeTemporary_Borrows(::MIR::TypeResolve& state, ::MIR::Function
         cur_loc.stmt_idx ++;
         unsigned num_replaced = 0;
         auto replace_cb = [&](::MIR::LValue& lv, auto _vu) {
-            if( lv.m_root == this_var.m_root )
+            if( lv.m_root == this_var.m_root && !lv.m_wrappers.empty() )
             {
                 ASSERT_BUG(Span(), !lv.m_wrappers.empty(), cur_loc << " " << lv);
-                assert(lv.m_wrappers.front().is_Deref());
+                MIR_ASSERT(state, lv.m_wrappers.front().is_Deref(), "Use of a replacable value that isn't via a deref - " << lv);
                 // Make a LValue reference, then overwrite it
                 {
                     auto lvr = ::MIR::LValue::MRef(lv);
@@ -2461,6 +2465,7 @@ bool MIR_Optimise_DeTemporary_Borrows(::MIR::TypeResolve& state, ::MIR::Function
             //    cur_pos.bb_idx = e;
             //    cur_pos.stmt_idx = 0;
             //    }
+            // TODO: Fork state to handle multi-tagets
             // NOTE: `Call` can't work in the presense of unwinding, would need to traverse both paths
             //TU_ARMA(Call, e) {
             //    }
@@ -2478,7 +2483,8 @@ bool MIR_Optimise_DeTemporary_Borrows(::MIR::TypeResolve& state, ::MIR::Function
         }
 
         // If all usage sites were updated, then remove the original assignment
-        if(num_replaced == slot.n_deref_read)
+        // - Since this code works with `&mut`, can't just leave the assignment for DCE when mut
+        if(num_replaced == slot.n_deref_read + slot.n_other_read)
         {
             DEBUG(this_var << " - Erase " << slot.set_loc << " as it is no longer used (" << src_bb.statements[slot.set_loc.stmt_idx] << ")");
             src_bb.statements[slot.set_loc.stmt_idx] = ::MIR::Statement();
@@ -2488,44 +2494,9 @@ bool MIR_Optimise_DeTemporary_Borrows(::MIR::TypeResolve& state, ::MIR::Function
                 fcn.blocks[drop_loc.bb_idx].statements[drop_loc.stmt_idx] = ::MIR::Statement();
             }
         }
-#if 0
-        else if( num_replaced > 0 )
-        {
-            auto src_rval = ::std::move(src_bb.statements[slot.set_loc.stmt_idx].as_Assign().src);
-            src_bb.statements[slot.set_loc.stmt_idx] = ::MIR::Statement();
-            DEBUG(this_var << " - Move " << slot.set_loc << " to after " << cur_loc);
-            // TODO: Move the source borrow up to this point.
-            auto& cur_bb = fcn.blocks[cur_loc.bb_idx];
-            if( cur_loc.stmt_idx >= cur_bb.statements.size() )
-            {
-                auto push_bb_front = [&fcn,&this_var](unsigned b, ::MIR::RValue s){
-                    fcn.blocks[b].statements.insert(fcn.blocks[b].statements.begin(), ::MIR::Statement::make_Assign({ this_var.clone(), ::std::move(s) }));
-                    // TODO: Update all references to this block?
-                    };
-                // Move the borrow to the next block?
-                // - Terminators shouldn't be able to invalidate...
-                TU_MATCH_HDRA( (cur_bb.terminator), { )
-                default:
-                    TODO(Span(), "Move borrow to after terminator " << cur_bb.terminator);
-                TU_ARMA(Goto, e) {
-                    push_bb_front(e, ::std::move(src_rval));
-                    }
-                TU_ARMA(Call, e) {
-                    push_bb_front(e.ret_block, src_rval.clone());
-                    push_bb_front(e.panic_block, ::std::move(src_rval));
-                    }
-                }
-            }
-            else
-            {
-                // If invalidated, then there _shouldn't_ be more to come (borrow rules)
-                TODO(Span(), "Move borrow to after " << cur_loc);
-            }
-        }
-#endif
         else
         {
-            // No replacement, keep the source where it is
+            // The variable is still used, keep the source where it is
             DEBUG(this_var << " - Keep " << slot.set_loc);
         }
 
@@ -2535,7 +2506,6 @@ bool MIR_Optimise_DeTemporary_Borrows(::MIR::TypeResolve& state, ::MIR::Function
             changed = true;
         }
     }
-#endif
 
     return changed;
 }
@@ -3396,6 +3366,62 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                 //    }
                 //}
 
+                // Reads of statics
+                if( lv.m_wrappers.empty() && lv.m_root.is_Static() )
+                {
+                    DEBUG("Read of a static - " << lv.m_root.as_Static());
+                    // Look up this static, and see if it's not mutable, and a primitive
+                    // - If the static is an immutable primitive: read and save
+                    MonomorphState  ms;
+                    auto v = state.m_resolve.get_value(state.sp, lv.m_root.as_Static(), ms);
+                    if( v.is_Static() )
+                    {
+                        const auto& stat = *v.as_Static();
+                        if( stat.m_value_generated
+                        && !stat.m_is_mut
+                        && state.m_resolve.type_is_interior_mutable(state.sp, stat.m_type) == HIR::Compare::Unequal )
+                        {
+                            // Convert the encoded literal into a `MIR::Const`
+                            const auto el = EncodedLiteralSlice(stat.m_value_res);
+                            // Check the type
+                            // - Primitives
+                            if( stat.m_type.data().is_Primitive() ) {
+                                auto ty = stat.m_type.data().as_Primitive();
+                                switch(ty)
+                                {
+                                case HIR::CoreType::Char:
+                                case HIR::CoreType::Usize:
+                                case HIR::CoreType::U128:
+                                case HIR::CoreType::U64:
+                                case HIR::CoreType::U32:
+                                case HIR::CoreType::U16:
+                                case HIR::CoreType::U8:
+                                    return ::MIR::Constant::make_Uint({el.read_uint(el.m_size), ty});
+                                case HIR::CoreType::Bool:
+                                    return ::MIR::Constant::make_Bool({el.read_uint(el.m_size) != 0});
+                                case HIR::CoreType::Isize:
+                                case HIR::CoreType::I128:
+                                case HIR::CoreType::I64:
+                                case HIR::CoreType::I32:
+                                case HIR::CoreType::I16:
+                                case HIR::CoreType::I8:
+                                    return ::MIR::Constant::make_Int({el.read_sint(el.m_size), ty});
+                                case HIR::CoreType::F32:
+                                case HIR::CoreType::F64:
+                                    return ::MIR::Constant::make_Float({el.read_float(el.m_size), ty});
+                                case HIR::CoreType::Str:
+                                    MIR_BUG(state, "Constant of type `str`?");
+                                }
+                            }
+                            // - Pointers
+                            if( stat.m_type.data().is_Borrow() ) {
+                                // TODO: Read the borrow, and store
+                            }
+                            // - Could traverse the static via the wrappers too?
+                        }
+                    }
+                }
+
                 // Not a known value, and not a known composite
                 // - Use a nullptr ItemAddr to indicate this
                 return ::MIR::Constant::make_ItemAddr({});
@@ -3416,7 +3442,7 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
             };
 
         // Convert known indexes into field acceses
-        auto edit_lval = [&](auto& lv, auto _vu)->bool {
+        auto edit_lval = [&](MIR::LValue& lv, ValUsage _vu)->bool {
             for(auto& w : lv.m_wrappers)
             {
                 if( w.is_Index() )
@@ -3429,6 +3455,24 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                         auto idx = it->second.as_Uint().v;
                         MIR_ASSERT(state, idx < (1<<30), "Known index is excessively large");
                         w = MIR::LValue::Wrapper::new_Field( idx.truncate_u64() );
+                        changed = true;
+                    }
+                }
+            }
+
+            // If a Deref of a known value is seen, replace with the source of that value.
+            if( !lv.m_wrappers.empty() && lv.m_wrappers.front().is_Deref() && !lv.m_root.is_Static() )
+            {
+                auto ilv = MIR::LValue(lv.m_root.clone(),{});
+                auto it = known_values.find(ilv);
+                if( it != known_values.find(lv) )
+                {
+                    DEBUG("Known deref source: " << ilv << " == " << it->second);
+                    //MIR_ASSERT(state, it->second.is_ItemAddr(), "Derefernce with known value not an ItemAddr - " << it->second);
+                    if( it->second.is_ItemAddr() )
+                    {
+                        lv.m_wrappers.erase( lv.m_wrappers.begin() );
+                        lv.m_root = MIR::LValue::Storage::new_Static(it->second.as_ItemAddr()->clone());
                         changed = true;
                     }
                 }

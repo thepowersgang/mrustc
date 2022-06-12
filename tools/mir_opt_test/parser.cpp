@@ -85,6 +85,33 @@ MirOptTestFile  MirOptTestFile::load_from_file(const helpers::path& p)
                 }
             }
         }
+        else if( consume_if(lex, TOK_RWORD_STATIC) )
+        {
+            auto is_mut = consume_if(lex, TOK_RWORD_MUT);
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            auto name = tok.ident().name;
+            GET_CHECK_TOK(tok, lex, TOK_COLON);
+            auto type = parse_type(lex);
+            GET_CHECK_TOK(tok, lex, TOK_EQUAL);
+            GET_CHECK_TOK(tok, lex, TOK_STRING);
+            EncodedLiteral value;
+            for(auto b : tok.str())
+                value.bytes.push_back(b);
+            if( consume_if(lex, TOK_BRACE_OPEN) ) {
+                TODO(lex.point_span(), "static - relocations");
+            }
+            GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+
+            auto st_decl = ::HIR::Static(HIR::Linkage(), is_mut, std::move(type), HIR::ExprPtr());
+            st_decl.m_value_res = std::move(value);
+            st_decl.m_value_generated = true;
+            auto vi = ::HIR::VisEnt<HIR::ValueItem> {
+                HIR::Publicity::new_global(), ::HIR::ValueItem(mv$(st_decl))
+                };
+            rv.m_crate->m_root_module.m_value_items.insert(::std::make_pair(name,
+                ::std::make_unique<decltype(vi)>(mv$(vi))
+                ));
+        }
         //else if( lex.lookahead(0) == "INCLUDE" )
         //{
         //    auto path = lex.check_consume(TokenClass::String).strval;
@@ -315,6 +342,11 @@ namespace {
                         src = MIR::Constant::make_Uint({ v, ct });
                         } break;
 
+                    case TOK_RWORD_CONST:
+                        GET_CHECK_TOK(tok, lex, TOK_AMP);
+                        src = MIR::Constant::make_ItemAddr({ box$(parse_path(lex)) });
+                        break;
+
                     case TOK_AMP:
                         if( consume_if(lex, TOK_RWORD_MOVE) )
                             src = MIR::RValue::make_Borrow({ HIR::BorrowType::Owned, parse_lvalue(lex, val_name_map) });
@@ -346,6 +378,10 @@ namespace {
                                 src = parse_binop(lex, MIR::eBinOp::ADD);
                             else if(tok.ident().name == "SUB")
                                 src = parse_binop(lex, MIR::eBinOp::SUB);
+                            else if(tok.ident().name == "MUL")
+                                src = parse_binop(lex, MIR::eBinOp::MUL);
+                            else if(tok.ident().name == "DIV")
+                                src = parse_binop(lex, MIR::eBinOp::DIV);
                             else if(tok.ident().name == "BIT_SHL")
                                 src = parse_binop(lex, MIR::eBinOp::BIT_SHL);
                             else if(tok.ident().name == "BIT_SHR")
@@ -356,6 +392,8 @@ namespace {
                                 src = parse_binop(lex, MIR::eBinOp::BIT_OR);
                             else if(tok.ident().name == "BIT_XOR")
                                 src = parse_binop(lex, MIR::eBinOp::BIT_XOR);
+                            else if(tok.ident().name == "EQ")
+                                src = parse_binop(lex, MIR::eBinOp::EQ);
                             else
                             {
                                 TODO(lex.point_span(), "MIR assign operator - " << tok.ident().name);
