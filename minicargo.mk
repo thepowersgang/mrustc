@@ -242,7 +242,7 @@ LLVM_CMAKE_OPTS += $(LLVM_CMAKE_OPTS_EXTRA)
 
 
 $(RUSTCSRC)build/bin/llvm-config: $(RUSTCSRC)build/Makefile
-	$Vcd $(RUSTCSRC)build && $(MAKE)
+	$Vcd $(RUSTCSRC)build && $(MAKE) -j $(PARLEVEL)
 
 $(RUSTCSRC)build/Makefile: $(RUSTCSRC)$(LLVM_DIR)/CMakeLists.txt
 	@mkdir -p $(RUSTCSRC)build
