@@ -205,6 +205,9 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
             // - Run until no changes
             while( MIR_Optimise_DeTemporary(state, fcn) )
             {
+                if( check_after_all() ) {
+                    MIR_Validate(resolve, path, fcn, args, ret_type);
+                }
             }
 #if DUMP_AFTER_ALL
             if( debug_enabled() ) MIR_Dump_Fcn(::std::cout, fcn);
@@ -2358,11 +2361,6 @@ bool MIR_Optimise_DeTemporary_Borrows(::MIR::TypeResolve& state, ::MIR::Function
             //DEBUG(this_var << " - Multi-assign, or use-by-value");
             continue ;
         }
-        if( slot.n_other_read > 0 )    // TODO: Remove this to get better optimisation (needs debugging)
-        {
-            //DEBUG(this_var << " - Use by value");
-            continue;
-        }
         if( slot.n_deref_read == 0 )
         {
             //DEBUG(this_var << " - Not used");
@@ -2504,6 +2502,8 @@ bool MIR_Optimise_DeTemporary_Borrows(::MIR::TypeResolve& state, ::MIR::Function
         if( num_replaced > 0 )
         {
             changed = true;
+            // Return as soon as a variable has been changed, as this can invalidate the slot information
+            return changed;
         }
     }
 
@@ -2520,7 +2520,9 @@ bool MIR_Optimise_DeTemporary(::MIR::TypeResolve& state, ::MIR::Function& fcn)
     TRACE_FUNCTION_FR("", changed);
 
     changed |= MIR_Optimise_DeTemporary_SingleSetAndUse(state, fcn);
+    if(changed) return changed;
     changed |= MIR_Optimise_DeTemporary_Borrows(state, fcn);
+    if(changed) return changed;
 
 
     // OLD ALGORITHM.
