@@ -3498,7 +3498,32 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                 struct H {
                     static S128 truncate_s(::HIR::CoreType ct, S128 v) {
                         // Truncate unsigned, then sign extend
+                        auto u = H::truncate_u(ct, v.get_inner());
+                        switch(ct)
+                        {
+                        case ::HIR::CoreType::I8:   return sext(u, 8);
+                        case ::HIR::CoreType::I16:  return sext(u, 16);
+                        case ::HIR::CoreType::I32:  return sext(u, 32);
+                        case ::HIR::CoreType::I64:  return sext(u, 64);
+                        case ::HIR::CoreType::I128: return v;
+                        // usize/size - need to handle <64 pointer bits
+                        case ::HIR::CoreType::Isize:
+                            if(Target_GetPointerBits() < 64)
+                                return sext(u, Target_GetPointerBits());
+                            return v;
+                        default:
+                            // Invalid type for `Constant::Int` literal
+                            break;
+                        }
                         return v;
+                    }
+                    static S128 sext(U128 v, unsigned bits) {
+                        if( v >> (bits-1) != 0 ) {
+                            return S128(v | (U128::max() << bits));
+                        }
+                        else {
+                            return S128(v);
+                        }
                     }
                     static U128 truncate_u(::HIR::CoreType ct, U128 v) {
                         switch(ct)

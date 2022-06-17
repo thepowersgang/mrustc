@@ -66,3 +66,21 @@ fn static_read_exp() -> usize {
     } RETURN;
 }
 
+
+// thepowersgang/mrustc#270 - propgating through casts didn't truncate properly
+#[test="mrustc_270_exp"]
+fn mrustc_270() -> i32 {
+    let v: isize;
+    let a: i32;
+    bb0: {
+        ASSIGN v = +545201568421088164 isize;
+        ASSIGN a = CAST v as i32;
+        ASSIGN retval = DIV(a, +30313_i32);
+    } RETURN;
+}
+fn mrustc_270_exp() -> i32 {
+    bb0: {
+        ASSIGN retval = +13684 i32;
+    } RETURN;
+}
+
