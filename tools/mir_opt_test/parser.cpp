@@ -337,6 +337,7 @@ namespace {
                         case HIR::CoreType::Usize:
                             break;
                         default:
+                            // bad type
                             throw ParseError::Unexpected(lex, tok);
                         }
                         src = MIR::Constant::make_Uint({ v, ct });
@@ -482,6 +483,7 @@ namespace {
                 {
                     GET_TOK(tok, lex);
                     target = ::MIR::CallTarget::make_Value(parse_lvalue(lex, val_name_map));
+                    GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
                 }
                 else if( lex.lookahead(0) == TOK_STRING )
                 {
@@ -784,6 +786,25 @@ namespace {
                 return HIR::TypeRef::new_pointer(HIR::BorrowType::Shared, parse_type(lex));
             else
                 throw ParseError::Unexpected(lex, lex.getToken(), { TOK_RWORD_MOVE, TOK_RWORD_MUT, TOK_RWORD_CONST });
+        case TOK_RWORD_FN: {
+            HIR::FunctionType   ft;
+            ft.is_unsafe = false;
+            GET_CHECK_TOK(tok, lex, TOK_PAREN_OPEN);
+            while( lex.lookahead(0) != TOK_PAREN_CLOSE )
+            {
+                ft.m_arg_types.push_back( parse_type(lex) );
+                if( !consume_if(lex, TOK_COMMA) )
+                    break;
+            }
+            GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
+            if( consume_if(lex, TOK_THINARROW) ) {
+                ft.m_rettype = parse_type(lex);
+            }
+            else {
+                ft.m_rettype = HIR::TypeRef::new_unit();
+            }
+            return HIR::TypeRef(mv$(ft));
+            }
         default:
             TODO(lex.point_span(), tok);
         }
