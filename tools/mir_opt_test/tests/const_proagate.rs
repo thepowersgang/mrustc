@@ -83,4 +83,19 @@ fn mrustc_270_exp() -> i32 {
         ASSIGN retval = +13684 i32;
     } RETURN;
 }
+#[test="mrustc_270_2_exp"]
+fn mrustc_270_2() -> i8 {
+    let v: isize;
+    let a: i8;
+    bb0: {
+        ASSIGN v = +0x10FE isize;
+        ASSIGN a = CAST v as i8;
+        ASSIGN retval = DIV(a, +2_i8);
+    } RETURN;
+}
+fn mrustc_270_2_exp() -> i8 {
+    bb0: {
+        ASSIGN retval = -1 i8;
+    } RETURN;
+}
 

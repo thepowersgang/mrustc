@@ -2048,6 +2048,7 @@ bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::
         const auto& slot = usage_info[var_idx];
         auto this_var = ::MIR::LValue::new_Local(var_idx);
         //ASSERT_BUG(Span(), slot.n_write > 0, "Variable " << var_idx << " not written?");
+        DEBUG("_" << var_idx << ": " << slot.n_write << "," << slot.n_read << "," << slot.n_borrow);
         if( slot.n_write == 1 && slot.n_read == 1 && slot.n_borrow == 0 )
         {
             // Single-use variable, now check how we can eliminate it
@@ -4696,21 +4697,31 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                     DEBUG(" - VU " << e.dst << " R:" << vu.read << " W:" << vu.write << " B:" << vu.borrow);
                     // TODO: Allow write many?
                     // > Where the variable is written once and read once
-                    if( !( vu.read == 1 && vu.write == 1 && vu.borrow == 0 ) )
+                    if( !( vu.read == 1 && vu.write == 1 && vu.borrow == 0 ) ) {
+                        DEBUG("> Not a single read+write");
                         continue ;
+                    }
                 }
                 else
                 {
                     continue ;
                 }
+                bool only_one = false;
                 if( e.src.is_Use() )
                 {
                     // Keep the complexity down
                     const auto* srcp = &e.src.as_Use();
-                    if( ::std::any_of(srcp->m_wrappers.begin(), srcp->m_wrappers.end(), [](auto& w) { return !w.is_Field(); }) )
-                        continue ;
-                    if( !srcp->m_root.is_Local() )
-                        continue ;
+                    // If there are deref/index accesses, then only allow one statement
+                    // - This is the lazy option, avoids needing to check for invalidation (could be a write through deref)
+                    if( ::std::any_of(srcp->m_wrappers.begin(), srcp->m_wrappers.end(), [](auto& w) { return !w.is_Field() && !w.is_Downcast(); }) ) {
+                        DEBUG("Non-field access");
+                        only_one = true;
+                    }
+                    // TODO: Why is this limited to locals only?
+                    //if( !srcp->m_root.is_Local() ) {
+                    //    DEBUG("> Can't replace, not a local root");
+                    //    continue ;
+                    //}
 
                     if( replacements_find(*srcp) != replacements.end() )
                     {
@@ -4720,6 +4731,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                 }
                 else
                 {
+                    // Not a use
                     continue ;
                 }
                 bool src_is_lvalue = e.src.is_Use();
@@ -4745,6 +4757,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                     // Check for invalidation (done first, to avoid cases where the source is moved into a struct)
                     if( check_invalidates_lvalue(stmt2, e.src.as_Use()) ) {
                         stop = true;
+                        DEBUG("Source invalidated");
                         break;
                     }
 
@@ -4766,6 +4779,17 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                         found = true;
                         stop = true;
                         break;
+                    }
+
+                    if( only_one ) {
+                        stop = true;
+                    }
+                }
+                if( !stop )
+                {
+                    if( check_invalidates_lvalue(block.terminator, e.src.as_Use()) ) {
+                        stop = true;
+                        DEBUG("Source invalidated in terminator");
                     }
                 }
                 if( !stop )
