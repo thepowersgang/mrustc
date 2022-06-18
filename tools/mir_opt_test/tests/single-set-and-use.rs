@@ -36,6 +36,26 @@ fn simple_rev_exp(a: i32) -> (i32,)
 	} RETURN;
 }
 
+
+static mut FOO: (i32, i32, i32) = "\x00\0\0\0\x01\0\0\0\x02\0\0\0";
+#[test="static_multiple_exp"]
+fn static_multiple() -> [i32; 3] {
+    let a: i32;
+    let b: i32;
+    let c: i32;
+    bb0: {
+        ASSIGN a = ::""::FOO.0;
+        ASSIGN b = ::""::FOO.1;
+        ASSIGN c = ::""::FOO.2;
+        ASSIGN retval = [a, b, c];
+    } RETURN;
+}
+fn static_multiple_exp() -> [i32; 3] {
+    bb0: {
+        ASSIGN retval = [::""::FOO.0, ::""::FOO.1, ::""::FOO.2];
+    } RETURN;
+}
+
 // Check that if there's a mutable borrow of the source, that the source isn't propagated forwards
 // - NOTE: This relies on the optimiser not being smart enough to move the `retval` construction up
 #[test="nomut"]

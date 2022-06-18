@@ -1923,6 +1923,16 @@ namespace {
             switch(vu)
             {
             case ValUsage::Move:    // A move can invalidate
+                if( lv.m_root == val.m_root ) {
+                    // Check if `lv`'s wrappers are a subset of `val`'s
+                    auto l = std::min(lv.m_wrappers.size(), val.m_wrappers.size());
+                    for(size_t i = 0; i < l; i ++) {
+                        // A wrapper differs, won't invalidate
+                        if( lv.m_wrappers[i] != val.m_wrappers[i] )
+                            return false;
+                    }
+                    return true;
+                }
                 // - Ideally this would check if it DOES invalidate
             case ValUsage::Write:
             case ValUsage::Borrow:
