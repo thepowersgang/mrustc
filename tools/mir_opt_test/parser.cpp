@@ -426,6 +426,32 @@ namespace {
                         }
                         GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
                         } break;
+                    case TOK_SQUARE_OPEN: {
+                        if( lex.lookahead(0) != TOK_SQUARE_CLOSE ) {
+                            auto val1 = parse_param(lex, val_name_map);
+                            if( consume_if(lex, TOK_SEMICOLON) ) {
+                                GET_CHECK_TOK(tok, lex, TOK_INTEGER);
+                                src = MIR::RValue::make_SizedArray({
+                                    mv$(val1),
+                                    ::HIR::ArraySize( tok.intval().truncate_u64() )
+                                    });
+                            }
+                            else {
+                                src = MIR::RValue::make_Array({});
+                                auto& vals = src.as_Array().vals;
+                                vals.push_back(mv$(val1));
+                                while( consume_if(lex, TOK_COMMA) ) {
+                                    if(lex.lookahead(0) == TOK_SQUARE_CLOSE )
+                                        break;
+                                    vals.push_back(parse_param(lex, val_name_map));
+                                }
+                            }
+                        }
+                        else {
+                            src = MIR::RValue::make_Array({});
+                        }
+                        GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
+                        } break;
                     default:
                         TODO(lex.point_span(), "MIR assign - " << tok);
                     }
@@ -731,6 +757,7 @@ namespace {
             {
                 GET_CHECK_TOK(tok, lex, TOK_INTEGER);
                 auto size = tok.intval();
+                GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
                 ASSERT_BUG(lex.point_span(), size < UINT_MAX, "");
                 return HIR::TypeRef::new_array(mv$(ity), static_cast<unsigned>(size.truncate_u64()));
             }
