@@ -1,5 +1,10 @@
 % MIR Optimisations (Design Notes)
 
+TODO
+====
+- Dead-code `&mut` (can be dropped)
+- Useless reborrow (a `&mut *` where the source is never used again)
+
 De-Tuple
 ========
 
