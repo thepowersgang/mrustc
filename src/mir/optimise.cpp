@@ -5311,6 +5311,7 @@ bool MIR_Optimise_DeadAssignments(::MIR::TypeResolve& state, ::MIR::Function& fc
 
     // Per-local flag indicating that the particular local is read.
     ::std::vector<bool> read_locals( fcn.locals.size() );
+    ::std::vector<bool> dropped_locals( fcn.locals.size() );
     for(const auto& bb : fcn.blocks)
     {
         auto cb = [&](const ::MIR::LValue& lv, ValUsage vu) {
@@ -5324,12 +5325,16 @@ bool MIR_Optimise_DeadAssignments(::MIR::TypeResolve& state, ::MIR::Function& fc
             };
         for(const auto& stmt : bb.statements)
         {
-            if( stmt.is_Assign() && stmt.as_Assign().dst.is_Local() )
-            {
+            // If the assignment is to a local, then just consider the source (the target is writing to a local)
+            if( stmt.is_Assign() && stmt.as_Assign().dst.is_Local() )  {
                 visit_mir_lvalues(stmt.as_Assign().src, cb);
             }
-            else
-            {
+            // Record drops differently, allowing us to remove unused non-Copy items
+            else if( stmt.is_Drop() && stmt.as_Drop().slot.is_Local() ) {
+                dropped_locals[ stmt.as_Drop().slot.as_Local() ] = true;
+            }
+            // For other statment types (e.g. asm) - record anything
+            else {
                 visit_mir_lvalues(stmt, cb);
             }
         }
@@ -5338,17 +5343,34 @@ bool MIR_Optimise_DeadAssignments(::MIR::TypeResolve& state, ::MIR::Function& fc
 
     for(auto& bb : fcn.blocks)
     {
-        for(auto it = bb.statements.begin(); it != bb.statements.end(); )
+        for(auto it = bb.statements.begin(), next = it+1; it != bb.statements.end(); it = next, next = it+1 )
         {
             state.set_cur_stmt(&bb - &fcn.blocks.front(), it - bb.statements.begin());
-            if( it->is_Assign() && it->as_Assign().dst.is_Local() && read_locals[it->as_Assign().dst.as_Local()] == false )
-            {
-                DEBUG(state << "Unread assignment, remove - " << *it);
-                it = bb.statements.erase(it);
-                changed = true;
-                continue ;
+
+            // Remove drops of assigned values that will be removed
+            if( it->is_Drop() && it->as_Drop().slot.is_Local() ) {
+                auto idx = it->as_Drop().slot.as_Local();
+                if( !read_locals[idx] && fcn.locals[idx].data().is_Borrow() ) {
+                    DEBUG(state << "Drop of unread value, remove - " << *it);
+                    next = it = bb.statements.erase(it);
+                    continue;
+                }
             }
-            ++ it;
+
+            // Not an assignment, ignore
+            if( !(it->is_Assign() && it->as_Assign().dst.is_Local()) )
+                continue ;
+            auto idx = it->as_Assign().dst.as_Local();
+            // Local was read, ignore it
+            if( read_locals[idx] )
+                continue;
+            // If the local was dropped, then ignore IF it's not a borrow (TODO: Only if there's drop glue?)
+            if( dropped_locals[idx] && !fcn.locals[idx].data().is_Borrow() )
+                continue;
+            // Remove the assignment, as it's unused
+            DEBUG(state << "Unread assignment, remove - " << *it);
+            next = it = bb.statements.erase(it);
+            changed = true;
         }
     }
 
