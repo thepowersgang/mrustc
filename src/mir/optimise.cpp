@@ -2392,12 +2392,19 @@ bool MIR_Optimise_DeTemporary_Borrows(::MIR::TypeResolve& state, ::MIR::Function
             DEBUG(this_var << " - Source is too complex - " << src_lv);
             continue;
         }
+        // If there are multiple derefs, don't expand. More than one deref makes determining invalidation VERY hard
+        if( std::count_if(src_lv.m_wrappers.begin(), src_lv.m_wrappers.end(), [](const MIR::LValue::Wrapper& w){ return w.is_Deref(); }) > 1 )
+        {
+            DEBUG(this_var << " - Source is too complex (deref) - " << src_lv);
+            continue;
+        }
+        // Keep the complexity down (when not used only once)
         if( slot.n_deref_read + slot.n_other_read > 1 && fcn.locals[var_idx].data().as_Borrow().type != ::HIR::BorrowType::Shared )
         {
             DEBUG(this_var << " - Multi-use non-shared borrow, too complex to do");
             continue;
         }
-        DEBUG(this_var << " - Borrow of " << src_lv << " at " << slot.set_loc << ", used " << slot.n_deref_read << " times (dropped " << slot.drop_locs << ")");
+        DEBUG(this_var << " - Borrow of " << src_lv << " at " << slot.set_loc << ", used " << slot.n_deref_read << " times (dropped {" << slot.drop_locs << "})");
 
         // Locate usage sites (by walking forwards) and check for invalidation
         auto cur_loc = slot.set_loc;
@@ -2430,19 +2437,19 @@ bool MIR_Optimise_DeTemporary_Borrows(::MIR::TypeResolve& state, ::MIR::Function
             {
                 auto& stmt = cur_bb.statements[cur_loc.stmt_idx];
                 DEBUG(cur_loc << " " << stmt);
-                // Replace usage
-                bool invalidates = check_invalidates_lvalue(stmt, src_lv);
-                visit_mir_lvalues_mut(stmt, replace_cb);
-                if( num_replaced == slot.n_deref_read )
-                {
-                    stop = true;
-                    break;
-                }
                 // Check for invalidation (actual check done before replacement)
+                bool invalidates = check_invalidates_lvalue(stmt, src_lv);
                 if( invalidates )
                 {
                     // Invalidated, stop here.
                     DEBUG(this_var << " - Source invalidated @ " << cur_loc << " in " << stmt);
+                    stop = true;
+                    break;
+                }
+                // Replace usage
+                visit_mir_lvalues_mut(stmt, replace_cb);
+                if( num_replaced == slot.n_deref_read )
+                {
                     stop = true;
                     break;
                 }

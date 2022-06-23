@@ -85,6 +85,16 @@ fn structures_exp(i: &((i32, ), )) -> (&i32,)
 }
 
 
+#[test="regression_273"]
+fn regression_273(i: (i32,&i32)) -> ( (i32,&i32),i32 ) {
+	let b: &i32;
+	bb0: {
+		ASSIGN b = &i.1*;
+		ASSIGN retval = ( i, b* );
+	} RETURN;
+}
+
+
 // ----
 // Regression
 // ----
