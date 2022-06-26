@@ -5077,15 +5077,16 @@ namespace {
                 {
                     for(unsigned int i = 0; i < item.m_args.size(); i ++)
                     {
-                        if( i != 0 )    m_of << ",";
                         ss << "\n\t\t";
-                        // TODO: If the type has a high alignment, emit as a pointer
+                        // TODO: If the type has a high alignment, emit as a pointer? Might have FFI issues
                         auto ty = params.monomorph(m_resolve, item.m_args[i].second);
                         this->emit_ctype( ty, FMT_CB(os, os << (this->type_is_high_align(ty) ? "*":"") << "arg" << i;) );
+                        if( item.m_variadic || i+1 < item.m_args.size() )    m_of << ",";
+                        m_of << " // " << ty;
                     }
 
                     if( item.m_variadic )
-                        m_of << ", ...";
+                        m_of << "\n\t\t...";
 
                     ss << "\n\t\t)";
                 }
@@ -5098,6 +5099,7 @@ namespace {
             {
                 m_of << "void " << cb;
             }
+            m_of << " // -> " << ret_ty << "\n";
         }
 
         void emit_intrinsic_call(const RcString& name, const ::HIR::PathParams& params, const ::MIR::Terminator::Data_Call& e)
