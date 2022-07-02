@@ -117,6 +117,9 @@ all: $(BINDIR)hello_world	# Implies $(LIBDIR)libstd.rlib
 all: $(BINDIR)rustc
 all: $(BINDIR)cargo
 
+clean:
+	rm -rf -- output$(OUTDIR_SUF)/*
+
 # Helper rules to ensure that mrustc has built rustc and cargo
 ../output$(OUTDIR_SUF)/rustc:
 	$(MAKE) -C ../ -f minicargo.mk output$(OUTDIR_SUF)/rustc
