@@ -1178,6 +1178,9 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
             {
             }
 
+            // TODO: If all inputs are known, then allow larger/complex functions (e.g. allow one call and any number of blocks?)
+            // - Seen `min_by(const, const, fcn)` - that would be a trivial optimisation
+
             if( can_inline_Switch_wrapper(path, fcn, params) )
                 return true;
             if( can_inline_SwitchValue_wrapper(path, fcn, params) )
@@ -1821,6 +1824,7 @@ namespace {
         unsigned    stmt_idx;
         StmtRef(): bb_idx(~0u), stmt_idx(0) {}
         StmtRef(unsigned b, unsigned s): bb_idx(b), stmt_idx(s) {}
+        bool operator==(const StmtRef& x) const { return bb_idx == x.bb_idx && stmt_idx == x.stmt_idx; }
     };
     ::std::ostream& operator<<(::std::ostream& os, const StmtRef& x) {
         return os << "BB" << x.bb_idx << "/" << x.stmt_idx;
@@ -2529,6 +2533,193 @@ bool MIR_Optimise_DeTemporary_Borrows(::MIR::TypeResolve& state, ::MIR::Function
 }
 
 // --------------------------------------------------------------------
+// Replaces reborrows where the source is never used again (except maybe
+// being dropped)
+// 
+// _1 = & _0*;
+// ...
+// drop(_0);
+// --------------------------------------------------------------------
+bool MIR_Optimise_DeTemporary_ReborrowOfUnused(::MIR::TypeResolve& state, ::MIR::Function& fcn)
+{
+    bool changed = false;
+    TRACE_FUNCTION_FR("", changed);
+
+    struct Poss {
+        StmtRef pos;
+        MIR::LValue::Storage    slot;
+        MIR::LValue::Storage    replace;
+        bool    used;
+        Poss(StmtRef pos, ::MIR::LValue::Storage slot, ::MIR::LValue::Storage replace)
+            : pos(pos)
+            , slot(mv$(slot))
+            , replace(mv$(replace))
+            , used(false)
+        {
+        }
+    };
+    ::std::vector<Poss> possible;
+    // Locate reborrows with the same source/destination type
+    // Source lvalue must be a local/argument
+    for(const auto& blk : fcn.blocks)
+    {
+        for(const auto& stmt : blk.statements)
+        {
+            state.set_cur_stmt(&blk - fcn.blocks.data(), &stmt - blk.statements.data());
+
+            if( !stmt.is_Assign() )
+                continue;
+            const auto& se = stmt.as_Assign();
+            // Must be assigning to a local
+            if( !se.dst.is_Local() )
+                continue;
+            // Soure must be a borrow
+            if( !se.src.is_Borrow() )
+                continue;
+            const auto& re = se.src.as_Borrow();
+            // Source must be `<local>*` or `<arg>*`
+            if( !(re.val.m_root.is_Local() || re.val.m_root.is_Argument()) )
+                continue;
+            if( !(re.val.m_wrappers.size() == 1 && re.val.m_wrappers[0].is_Deref()) )
+                continue;
+            // Types must match (avoids decaying reborrows or raw pointer accesses)
+            const auto& src_ty = re.val.m_root.is_Local() ? fcn.locals[re.val.m_root.as_Local()] : state.m_args[re.val.m_root.as_Argument()].second;
+            const auto& dst_ty = fcn.locals[ se.dst.as_Local() ];
+            if( src_ty != dst_ty )
+                continue;
+
+            // Record as a possible useless reborrow
+            // - Depends on the usage of the source
+            auto pos = StmtRef(state.get_cur_block(), state.get_cur_stmt_ofs());
+            DEBUG(state << "Possible " << se.dst << " = " << re.val);
+            possible.push_back(Poss( pos, re.val.m_root.clone(), se.dst.m_root.clone() ));
+        }
+    }
+    if( possible.size() == 0 ) {
+        return false;
+    }
+    // The borrow must not be within a loop
+    {
+        std::vector<bool>   visited(fcn.blocks.size());
+        std::vector<bool>   loops(fcn.blocks.size());
+        struct VisitState {
+            const ::MIR::Function&  fcn;
+            std::vector<bool>   visited;
+            std::vector<unsigned>   stack;
+
+            VisitState(const ::MIR::Function& fcn): fcn(fcn) {}
+
+            bool does_block_loop(unsigned root_idx) {
+                stack.clear();
+                visited.clear();
+                visited.resize( fcn.blocks.size() );
+                visited[root_idx] = true;
+                stack.push_back(root_idx);
+                while( !stack.empty() )
+                {
+                    auto bb_idx = stack.back(); stack.pop_back();
+                    auto& bb = fcn.blocks[bb_idx];
+                    bool is_loop = false;
+                    visit_terminator_target(bb.terminator, [&](const ::MIR::BasicBlockId& idx) {
+                        if( idx == root_idx )
+                            is_loop = true;
+                        if( !visited[idx] )
+                        {
+                            visited[idx] = true;
+                            stack.push_back(idx);
+                        }
+                        });
+                    if( is_loop )
+                        return true;
+                }
+                return false;
+            }
+        } vs { fcn };
+        for(auto& poss : possible ) {
+            if( !visited[poss.pos.bb_idx] ) {
+                visited[poss.pos.bb_idx] = true;
+                loops[poss.pos.bb_idx] = vs.does_block_loop(poss.pos.bb_idx);
+            }
+            poss.used |= loops[poss.pos.bb_idx];
+        }
+    }
+
+    // Must be the only use (apart from dropping) of the source lvalue
+    for(const auto& blk : fcn.blocks)
+    {
+        for(const auto& stmt : blk.statements)
+        {
+            state.set_cur_stmt(&blk - fcn.blocks.data(), &stmt - blk.statements.data());
+            auto pos = StmtRef(state.get_cur_block(), state.get_cur_stmt_ofs());
+            for(auto& p : possible) {
+                if( pos == p.pos )
+                    continue;
+                if( stmt.is_Drop() && stmt.as_Drop().slot.m_root == p.slot && stmt.as_Drop().slot.m_wrappers.empty() ) {
+                    DEBUG(state << p.slot << " Droped - " << stmt);
+                    continue;
+                }
+                if( visit_mir_lvalues(stmt, [&](const ::MIR::LValue& lv, ValUsage /*vu*/) { return lv.m_root == p.slot; }) ) {
+                    DEBUG(state << p.slot << " Used - " << stmt);
+                    p.used = true;
+                }
+            }
+        }
+        for(auto& p : possible) {
+            if( visit_mir_lvalues(blk.terminator, [&](const ::MIR::LValue& lv, ValUsage /*vu*/) { return lv.m_root == p.slot; }) ) {
+                DEBUG(state << p.slot << " Used - " << blk.terminator);
+                p.used = true;
+            }
+        }
+    }
+
+    // Remove any marked with `used=true` from the list
+    { auto ne = std::remove_if(possible.begin(), possible.end(), [&](const Poss& p){ return p.used; }); possible.erase(ne, possible.end()); }
+    if( possible.size() == 0 ) {
+        return false;
+    }
+    // Rewrite and erase
+    for(auto& blk : fcn.blocks)
+    {
+        for(auto& stmt : blk.statements)
+        {
+            state.set_cur_stmt(&blk - fcn.blocks.data(), &stmt - blk.statements.data());
+            auto pos = StmtRef(state.get_cur_block(), state.get_cur_stmt_ofs());
+            for(const auto& p : possible) {
+                if( pos == p.pos ) {
+                    DEBUG(state << p.slot << " Erase initial");
+                    stmt = ::MIR::Statement();
+                    continue ;
+                }
+                if( stmt.is_Drop() && stmt.as_Drop().slot.m_root == p.slot && stmt.as_Drop().slot.m_wrappers.empty() ) {
+                    DEBUG(state << p.slot << " Erase drop");
+                    stmt = ::MIR::Statement();
+                    continue;
+                }
+                visit_mir_lvalues_mut(stmt, [&](::MIR::LValue& lv, ValUsage /*vu*/) {
+                    if( lv.m_root == p.replace ) {
+                        DEBUG(state << p.slot << " Replace " << p.replace);
+                        lv.m_root = p.slot.clone();
+                    }
+                    return false;
+                    });
+            }
+        }
+
+        for(const auto& p : possible) {
+            visit_mir_lvalues_mut(blk.terminator, [&](::MIR::LValue& lv, ValUsage /*vu*/) {
+                if( lv.m_root == p.replace ) {
+                    DEBUG(state << p.slot << " Replace " << p.replace);
+                    lv.m_root = p.slot.clone();
+                }
+                return false;
+                });
+        }
+    }
+    changed = true;
+    return changed;
+}
+
+// --------------------------------------------------------------------
 // Replaces uses of stack slots with what they were assigned with (when
 // possible)
 // --------------------------------------------------------------------
@@ -2541,6 +2732,7 @@ bool MIR_Optimise_DeTemporary(::MIR::TypeResolve& state, ::MIR::Function& fcn)
     if(changed) return changed;
     changed |= MIR_Optimise_DeTemporary_Borrows(state, fcn);
     if(changed) return changed;
+    changed |= MIR_Optimise_DeTemporary_ReborrowOfUnused(state, fcn);
 
 
     // OLD ALGORITHM.
@@ -3593,6 +3785,10 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                     {
                         e->src = ::MIR::RValue::make_Constant( ::MIR::Constant::make_ItemAddr({ box$(se.val.m_root.as_Static()) }) );
                         changed = true;
+                    }
+                    else if( se.type == HIR::BorrowType::Unique ) {
+                        known_values.erase(se.val);
+                        known_values_var.erase(se.val);
                     }
                     }
                 TU_ARMA(Cast, se) {
