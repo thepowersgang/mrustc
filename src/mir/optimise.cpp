@@ -4971,12 +4971,13 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                     if( ::std::any_of(srcp->m_wrappers.begin(), srcp->m_wrappers.end(), [](auto& w) { return !w.is_Field() && !w.is_Downcast(); }) ) {
                         DEBUG("Non-field access");
                         only_one = true;
+                        continue;
                     }
                     // TODO: Why is this limited to locals only?
-                    //if( !srcp->m_root.is_Local() ) {
-                    //    DEBUG("> Can't replace, not a local root");
-                    //    continue ;
-                    //}
+                    if( !srcp->m_root.is_Local() ) {
+                        DEBUG("> Can't replace, not a local root");
+                        continue ;
+                    }
 
                     if( replacements_find(*srcp) != replacements.end() )
                     {
