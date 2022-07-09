@@ -644,13 +644,13 @@ namespace {
                     << " return rv;"
                     << " }\n"
                     << "static inline bool div128s_o(int128_t a, int128_t b, int128_t* q, int128_t* r) {"
-                    << " bool sgna = a.hi & (1ull<<63);"
-                    << " bool sgnb = b.hi & (1ull<<63);"
+                    << " bool sgna = (a.hi >> 63) != 0;"
+                    << " bool sgnb = (b.hi >> 63) != 0;"
                     << " if(sgna) a = neg128s(a);"
                     << " if(sgnb) b = neg128s(b);"
                     << " bool rv = div128_o(*(uint128_t*)&a, *(uint128_t*)&b, (uint128_t*)q, (uint128_t*)r);"
-                    << " if(sgna != sgnb) *q = neg128s(*q);"
-                    << " if(sgna) *r = neg128s(*r);"    // Remainder has the same sign as the dividend (a)
+                    << " if(sgna != sgnb && q) *q = neg128s(*q);"
+                    << " if(sgna && r) *r = neg128s(*r);"    // Remainder has the same sign as the dividend (a)
                     << " return rv;"
                     << " }\n"
                     << "static inline int128_t add128s(int128_t a, int128_t b) { int128_t v; add128s_o(a, b, &v); return v; }\n"
