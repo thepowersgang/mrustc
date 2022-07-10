@@ -34,6 +34,8 @@
 #  define DEFAULT_TARGET_NAME "powerpc64-unknown-linux-gnu"
 # elif defined(__powerpc64__) && defined(__LITTLE_ENDIAN__)
 #  define DEFAULT_TARGET_NAME "powerpc64le-unknown-linux-gnu"
+# elif defined(__riscv) && __riscv_xlen == 64
+#  define DEFAULT_TARGET_NAME "riscv64-unknown-linux-gnu"
 # else
 #  warning "Unable to detect a suitable default target (linux-gnu)"
 # endif
