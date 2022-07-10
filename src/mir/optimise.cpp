@@ -3560,7 +3560,7 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                 auto it = known_values.find(lv);
                 if( it != known_values.end() )
                 {
-                    DEBUG(state << "Value " << lv << " known to be" << it->second);
+                    DEBUG(state << "Value " << lv << " known to be " << it->second);
                     return it->second.clone();
                 }
 
