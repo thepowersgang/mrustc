@@ -3968,12 +3968,13 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                             ::MIR::Constant new_value;
                             switch(se.op)
                             {
-                            case ::MIR::eBinOp::EQ: new_value = ::MIR::Constant::make_Bool({val_l == val_r});   break;
-                            case ::MIR::eBinOp::NE: new_value = ::MIR::Constant::make_Bool({val_l != val_r});   break;
-                            case ::MIR::eBinOp::LT: new_value = ::MIR::Constant::make_Bool({val_l <  val_r});   break;
-                            case ::MIR::eBinOp::LE: new_value = ::MIR::Constant::make_Bool({val_l <= val_r});   break;
-                            case ::MIR::eBinOp::GT: new_value = ::MIR::Constant::make_Bool({val_l >  val_r});   break;
-                            case ::MIR::eBinOp::GE: new_value = ::MIR::Constant::make_Bool({val_l >= val_r});   break;
+                            // Note: f32's bit accuracy is different to f64, so they can't be considered equivalent in behaviour
+                            case ::MIR::eBinOp::EQ: if(!val_l.is_Float()) new_value = ::MIR::Constant::make_Bool({val_l == val_r});   break;
+                            case ::MIR::eBinOp::NE: if(!val_l.is_Float()) new_value = ::MIR::Constant::make_Bool({val_l != val_r});   break;
+                            case ::MIR::eBinOp::LT: if(!val_l.is_Float()) new_value = ::MIR::Constant::make_Bool({val_l <  val_r});   break;
+                            case ::MIR::eBinOp::LE: if(!val_l.is_Float()) new_value = ::MIR::Constant::make_Bool({val_l <= val_r});   break;
+                            case ::MIR::eBinOp::GT: if(!val_l.is_Float()) new_value = ::MIR::Constant::make_Bool({val_l >  val_r});   break;
+                            case ::MIR::eBinOp::GE: if(!val_l.is_Float()) new_value = ::MIR::Constant::make_Bool({val_l >= val_r});   break;
 
                             case ::MIR::eBinOp::ADD:
                                 MIR_ASSERT(state, val_l.tag() == val_r.tag(), "Mismatched types for eBinOp::ADD - " << val_l << " + " << val_r);

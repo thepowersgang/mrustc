@@ -2369,7 +2369,7 @@ namespace {
 
             m_mir_res = nullptr;
         }
-        void emit_float(double v) {
+        void emit_float(double v, HIR::CoreType ty) {
             if( ::std::isnan(v) ) {
                 m_of << "NAN";
             }
@@ -2377,8 +2377,13 @@ namespace {
                 m_of << (v < 0 ? "-" : "") << "INFINITY";
             }
             else {
-                m_of.precision(::std::numeric_limits<double>::max_digits10 + 1);
-                m_of << ::std::scientific << v;
+                if( ty == HIR::CoreType::F32 ) {
+                    m_of.precision(::std::numeric_limits<float>::max_digits10 + 1);
+                    m_of << ::std::scientific << v << "f";
+                } else {
+                    m_of.precision(::std::numeric_limits<double>::max_digits10 + 1);
+                    m_of << ::std::scientific << v;
+                }
             }
         }
 
@@ -7147,7 +7152,7 @@ namespace {
                 }
                 }
             TU_ARMA(Float, c) {
-                this->emit_float(c.v);
+                this->emit_float(c.v, c.t);
                 }
             TU_ARMA(Bool, c) {
                 m_of << (c.v ? "true" : "false");

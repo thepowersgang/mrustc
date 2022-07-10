@@ -21,7 +21,8 @@ namespace MIR {
             os << " " << e.t;
             ),
         (Float,
-            os << e.v;
+            os << std::hexfloat << e.v << std::defaultfloat;
+            os << " " << e.t;
             ),
         (Bool,
             os << (e.v ? "true" : "false");
