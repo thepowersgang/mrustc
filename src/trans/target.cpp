@@ -65,6 +65,12 @@ const TargetArch ARCH_POWERPC64LE = {
     { /*atomic(u8)=*/true, true, true, true,  true },
     TargetArch::Alignments(2, 4, 8, 16, 4, 8, 8)
 };
+const TargetArch ARCH_RISCV64 = {
+    "riscv64",
+    64, false,
+    { /*atomic(u8)=*/true, true, true, true,  true },
+    TargetArch::Alignments(2, 4, 8, 16, 4, 8, 8)
+};
 TargetSpec  g_target;
 
 
@@ -453,6 +459,13 @@ namespace
             return TargetSpec {
                 "unix", "linux", "gnu", {CodegenMode::Gnu11, false, "powerpc64le-unknown-linux-gnu", BACKEND_C_OPTS_GNU},
                 ARCH_POWERPC64LE
+                };
+        }
+        else if(target_name == "riscv64-unknown-linux-gnu")
+        {
+            return TargetSpec {
+                "unix", "linux", "gnu", {CodegenMode::Gnu11, false, "riscv64-unknown-linux-gnu", BACKEND_C_OPTS_GNU},
+                ARCH_RISCV64
                 };
         }
         else if(target_name == "i586-pc-windows-gnu")
