@@ -299,7 +299,7 @@ $(OUTDIR)rust/test_run-pass_hello_out.txt: $(OUTDIR)rust/test_run-pass_hello
 RUST_TESTS: RUST_TESTS_run-pass
 RUST_TESTS_run-pass: output$(OUTDIR_SUF)/test/librust_test_helpers.a LIBS bin/testrunner$(EXESUF)
 	@mkdir -p $(OUTDIR)rust_tests/run-pass
-	./bin/testrunner$(EXESUF) -L $(OUTDIR)test -o $(OUTDIR)rust_tests/run-pass $(SRCDIR_RUST_TESTS)run-pass --exceptions disabled_tests_run-pass.txt
+	./bin/testrunner$(EXESUF) -L $(OUTDIR) -L $(OUTDIR)test -o $(OUTDIR)rust_tests/run-pass $(SRCDIR_RUST_TESTS)run-pass --exceptions disabled_tests_run-pass.txt
 $(OUTDIR)test/librust_test_helpers.a: $(OUTDIR)test/rust_test_helpers.o
 	@mkdir -p $(dir $@)
 	ar cur $@ $<
