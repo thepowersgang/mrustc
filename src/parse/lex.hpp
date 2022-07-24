@@ -68,7 +68,7 @@ private:
         HEX,
     };
     U128 parseInt(NumMode* num_mode);
-    double parseFloat(uint64_t whole);
+    double parseFloat(U128 whole);
     uint32_t parseEscape(char enclosing);
 
     void push_hygine() override {

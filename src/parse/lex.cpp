@@ -446,7 +446,7 @@ Token Lexer::getTokenInt()
 
 
                     this->ungetc();
-                    double fval = this->parseFloat(val.truncate_u64());
+                    double fval = this->parseFloat(val);
                     if( fval != fval )
                     {
                         assert(!this->m_next_tokens.empty());
@@ -935,15 +935,16 @@ U128 Lexer::parseInt(NumMode* num_mode_out)
 }
 
 // Takes the VERY lazy way of reading the float into a string then passing to strtod
-double Lexer::parseFloat(uint64_t whole)
+double Lexer::parseFloat(U128 whole)
 {
     const int MAX_LEN = 63;
     const int MAX_SIG = MAX_LEN - 1 - 4;
-    char buf[MAX_LEN+1];
-    int ofs = snprintf(buf, MAX_LEN+1, "%llu.", (unsigned long long)whole);
+    std::string  sbuf = FMT(whole << ".");
+    //char buf[MAX_LEN+1];
+    //int ofs = snprintf(buf, MAX_LEN+1, "%llu.", (unsigned long long)whole);
 
     auto ch = this->getc_num();
-    #define PUTC(ch)    do { if( ofs < MAX_SIG ) { assert(ch.v < 127); buf[ofs] = ch.v; ofs ++; } else { throw ParseError::Generic("Oversized float"); } } while(0)
+    #define PUTC(ch)    do { assert(ch.v < 127); sbuf += char(ch.v); /* if( ofs < MAX_SIG ) { buf[ofs] = ch.v; ofs ++; } else { throw ParseError::Generic("Oversized float"); } */ } while(0)
     while( ch.isdigit() )
     {
         PUTC(ch);
@@ -970,21 +971,25 @@ double Lexer::parseFloat(uint64_t whole)
                 m_next_tokens.push_back(TOK_DOUBLE_DOT);
                 break;
             }
-            buf[ofs] = 0;
-            m_next_tokens.push_back(Token::make_float(::std::strtod(buf, NULL), CORETYPE_ANY));
+            //buf[ofs] = 0;
+            //m_next_tokens.push_back(Token::make_float(::std::strtod(buf, NULL), CORETYPE_ANY));
+            m_next_tokens.push_back(Token::make_float(::std::strtod(sbuf.c_str(), NULL), CORETYPE_ANY));
 
             return std::numeric_limits<double>::quiet_NaN();
         }
         else {
             this->ungetc();
 
-            buf[ofs] = '\0';
-            assert( buf[ofs-1] != '.' );    // Shouldn't be possible (as that would have been handled by the caller as `<int> '..'`
-            DEBUG("Detected double tuple indexing (trailing `.` after a float - " << buf << ")");
+            //buf[ofs] = '\0';
+            //assert( buf[ofs-1] != '.' );    // Shouldn't be possible (as that would have been handled by the caller as `<int> '..'`
+            DEBUG("Detected double tuple indexing (trailing `.` after a float - " << sbuf << ")");
             // x.y. -> This should be two integers.
             // - Parse into `<int> '.' <int>` (ungetting the final `.`)
-            auto cit = std::find(buf, buf+sizeof(buf), '.');
-            *cit = '\0';
+            const char* buf = sbuf.data();
+            auto cit = std::find(buf, buf+sbuf.size(), '.');
+            sbuf[cit - sbuf.data()] = '\0';
+            //auto cit = std::find(buf, buf+sizeof(buf), '.');
+            //*cit = '\0';
             // - Push these in reverse order (as they're popped off the back)
             m_next_tokens.push_back(TOK_DOT);
             m_next_tokens.push_back(Token(U128(std::strtoull(cit+1, nullptr, 10)), CORETYPE_ANY));
@@ -1012,11 +1017,12 @@ double Lexer::parseFloat(uint64_t whole)
             } while( ch.isdigit() );
         }
         this->ungetc();
-        buf[ofs] = 0;
+        //buf[ofs] = 0;
+        //DEBUG("buf = " << buf << ", ch = '" << ch << "'");
+        DEBUG("buf = " << sbuf << ", ch = '" << ch << "'");
 
-        DEBUG("buf = " << buf << ", ch = '" << ch << "'");
-
-        return ::std::strtod(buf, NULL);
+        //return ::std::strtod(buf, NULL);
+        return ::std::strtod(sbuf.c_str(), NULL);
     }
 }
 

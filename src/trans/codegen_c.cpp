@@ -557,12 +557,39 @@ namespace {
                 m_of
                     << "typedef struct { uint64_t lo, hi; } uint128_t;\n"
                     << "typedef struct { uint64_t lo, hi; } int128_t;\n"
+                    << "static inline uint128_t intrinsic_ctlz_u128(uint128_t v);\n"
+                    << "static inline uint128_t shl128(uint128_t a, uint32_t b);\n"
+                    << "static inline uint128_t shr128(uint128_t a, uint32_t b);\n"
                     << "static inline float make_float(int is_neg, int exp, uint32_t mantissa_bits) { float rv; uint32_t vi=(mantissa_bits&((1<<23)-1))|((exp+127)<<23);if(is_neg)vi|=1<<31; memcpy(&rv, &vi, 4); return rv; }\n"
                     << "static inline double make_double(int is_neg, int exp, uint32_t mantissa_bits) { double rv; uint64_t vi=(mantissa_bits&((1ull<<52)-1))|((uint64_t)(exp+1023)<<52);if(is_neg)vi|=1ull<<63; memcpy(&rv, &vi, 4); return rv; }\n"
                     << "static inline uint128_t make128_raw(uint64_t hi, uint64_t lo) { uint128_t rv = { lo, hi }; return rv; }\n"
                     << "static inline uint128_t make128(uint64_t v) { uint128_t rv = { v, 0 }; return rv; }\n"
-                    << "static inline float cast128_float(uint128_t v) { if(v.hi == 0) return v.lo; int exp = 0; uint32_t mant = 0; return make_float(0, exp, mant); }\n"
-                    << "static inline double cast128_double(uint128_t v) { if(v.hi == 0) return v.lo; int exp = 0; uint64_t mant = 0; return make_double(0, exp, mant); }\n"
+                    // https://blog.m-ou.se/floats/
+                    << "static inline float cast128_float(uint128_t v) {"
+                    << " int n = intrinsic_ctlz_u128(v).lo;"
+                    << " uint128_t y = shl128(v, n);"
+                    << " uint64_t a = (y.hi >> ((128-(23+1))-64));" // Base mantissa (top 24 bits)
+                    << " uint64_t b = shr128(y, (64-(23+1))).lo | (y.lo & 0xFFFFFFFFFF);" // Were any discarded bits set? (shift right by 40 to get 64 bits with the top just before the last mantissa bit, then extract 40 bits from low)
+                    << " uint64_t m = a + ((b - ((b >> 63) & ~a)) >> 63);"    // Account for rounding
+                    << " uint64_t e = (v.lo == 0 && v.hi == 0) ? 0 : (127 - n)+127-1;"  // Exponent, with the -1 to fudge the 24th bit in mantissa
+                    << " uint32_t vi = (e << 23) + m;"  // Add is like or, but the final bit of the mantissa can propagate through the exponent (intended)
+                    //<< " printf(\"%016llx:%016llx n=%i,a=%#llx,b=%#llx  e=%lli,m=%#llx vi=%#lx\\n\", v.hi,v.lo, n, a, b, e, m, vi);"
+                    << " float rv;"
+                    << " memcpy(&rv, &vi, sizeof(rv));"
+                    << " return rv;"
+                    << " }\n"
+                    << "static inline double cast128_double(uint128_t v) {"
+                    << " int n = intrinsic_ctlz_u128(v).lo;"
+                    << " uint128_t y = shl128(v, n);"
+                    << " uint64_t a = (y.hi >> ((128-(52+1))-64));"
+                    << " uint64_t b = shr128(y, (64-(52+1))).lo | (y.lo & 0x7FF);"
+                    << " uint64_t m = a + ((b - (b >> 63 & ~a)) >> 63);"
+                    << " uint64_t e = (v.lo == 0 && v.hi == 0) ? 0 : (127 - n)+1023-1;"
+                    << " uint64_t vi = (e << 52) + m;"
+                    << " double rv;"
+                    << " memcpy(&rv, &vi, sizeof(rv));"
+                    << " return rv;"
+                    << " }\n"
                     << "static inline int cmp128(uint128_t a, uint128_t b) { if(a.hi != b.hi) return a.hi < b.hi ? -1 : 1; if(a.lo != b.lo) return a.lo < b.lo ? -1 : 1; return 0; }\n"
                     // Returns true if overflow happens (res < a)
                     << "static inline bool add128_o(uint128_t a, uint128_t b, uint128_t* o) { o->lo = a.lo + b.lo; o->hi = a.hi + b.hi + (o->lo < a.lo ? 1 : 0); return (o->hi < a.hi); }\n"

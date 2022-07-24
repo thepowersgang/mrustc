@@ -1484,7 +1484,8 @@ namespace HIR {
                                 dst.write_float(state, ti.bits, static_cast<double>(S128(inval.read_uint(state, src_ti.bits)).to_double()) );
                                 break;
                             case TypeInfo::Unsigned:
-                                dst.write_float(state, ti.bits, static_cast<double>(inval.read_uint(state, src_ti.bits).to_double()) );
+                                // TODO: Subtle rounding differences between f32 and f64
+                                dst.write_float(state, ti.bits, ti.bits == 32 ? inval.read_uint(state, src_ti.bits).to_float() : inval.read_uint(state, src_ti.bits).to_double() );
                                 break;
                             case TypeInfo::Float:
                                 dst.write_float(state, ti.bits, inval.read_float(state, src_ti.bits) );
