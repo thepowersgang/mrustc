@@ -118,6 +118,12 @@ extern void debug_init_phases(const char* env_var_name, std::initializer_list<co
     {
         while( debug_string[0] )
         {
+            if ( strcmp(debug_string, "*") == 0 )
+            {
+                g_debug_disable_map.clear();
+                return;
+            }
+
             const char* end = strchr(debug_string, ':');
 
             ::std::string   s;
