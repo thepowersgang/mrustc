@@ -827,7 +827,7 @@ struct CExpandExpr:
                 ::AST::Pattern lower(::AST::ExprNodeP& ep) {
                     assert(ep);
                     ep->visit(*this);
-                    ASSERT_BUG(ep->span(), m_rv_set, typeid(*ep).name() << " - Didn't yield a pattern");
+                    ASSERT_BUG(ep->span(), m_rv_set, ep.type_name() << " - Didn't yield a pattern");
                     if(m_is_slot) {
                         assert(!m_slots.empty());
                         assert(!m_slots.back().second);
