@@ -60,6 +60,8 @@ public:
         m_span( mv$(sp) )
     {}
     virtual ~ExprNode();
+
+    const char* type_name() const;
 };
 
 typedef ::std::unique_ptr<ExprNode> ExprNodeP;
