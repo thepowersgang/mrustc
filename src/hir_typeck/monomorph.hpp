@@ -15,6 +15,7 @@ extern bool monomorphise_type_needed(const ::HIR::TypeRef& tpl);
 class Monomorphiser
 {
 public:
+    virtual ~Monomorphiser() = default;
     virtual ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& g) const = 0;
     virtual ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& g) const = 0;
 
