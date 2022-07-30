@@ -11,6 +11,7 @@
 #include <main_bindings.hpp>
 #include <hir/hir.hpp>  // ABI_RUST - TODO: Move elsewhere?
 #include <fstream>
+#include <limits> // std::numeric_limits
 
 #include <cpp_unpack.h>
 
@@ -726,7 +727,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
         print_attrs(item.attrs);
         m_os << indent() << "extern \"" << e.abi() << "\" {}\n";
     }
-    
+
     for( const auto& ip : mod.m_items )
     {
         const auto& item = *ip;
