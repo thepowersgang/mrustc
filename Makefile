@@ -52,7 +52,7 @@ CPPFLAGS += -I tools/common/
 CXXFLAGS += -Wno-pessimizing-move
 CXXFLAGS += -Wno-misleading-indentation
 #CXXFLAGS += -Wno-unused-private-field
-CXXFLAGS += -Wno-unknown-warning-option
+#CXXFLAGS += -Wno-unknown-warning-option
 
 CXXFLAGS += -Werror=return-type
 
