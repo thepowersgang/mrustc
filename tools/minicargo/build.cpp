@@ -761,7 +761,7 @@ namespace {
                     return t;
                 }
                 ::std::string get_token_int() {
-                    if( ifp.eof() )
+                    if( ifp.eof() && m_c == '\0')
                         return "";
                     while( m_c == ' ' )
                     {
