@@ -1102,7 +1102,7 @@ uint32_t Lexer::parseEscape(char enclosing)
 char Lexer::getc_byte()
 {
     int rv = m_istream.get();
-    if( rv == EOF || m_istream.eof() )
+    if( rv == EOF )
         throw Lexer::EndOfFile();
 
     if( rv == '\r' )
