@@ -893,6 +893,11 @@ ProgramParams::ProgramParams(int argc, char *argv[])
         this->lib_search_dirs.push_back(a);
     }
 
+    if( const auto* a = getenv("MRUSTC_LIBD") )
+    {
+        this->libraries.push_back(a);
+    }
+
     // Hacky command-line parsing
     for( int i = 1; i < argc; i ++ )
     {
