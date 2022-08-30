@@ -1099,8 +1099,13 @@ namespace {
             }
             // If either side is an opaque type (generic/erased/opaque) then just look for an impl
             else if( is_opaque(dst) || is_opaque(src) ) {
-                // TODO: Look for the `Unsize` impl? Could it provide a lifetime rule?
-                TODO(sp, "Propagate lifetimes through unsize (generic) - " << dst << " := " << src);
+                HIR::PathParams pp;
+                pp.m_types.push_back(dst.clone());
+                m_resolve.find_impl(sp, m_resolve.m_lang_Unsize, pp, src, [&](ImplRef ir, bool is_fuzzed)->bool {
+                    equate_types(sp, ir.get_impl_type(), src);
+                    equate_types(sp, dst, ir.get_trait_params().m_types.at(0));
+                    return false;
+                    });
             }
             // If the inner is a path, it must be a struct with an `Unsize` impl somewhere
             else if( dst.data().is_Path() ) {
