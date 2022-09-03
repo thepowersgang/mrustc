@@ -60,6 +60,12 @@ endif
 ifneq ($(PARLEVEL),1)
   MINICARGO_FLAGS += -j $(PARLEVEL)
 endif
+# Target override
+ifeq ($(MRUSTC_TARGET),)
+else
+  MINICARGO_FLAGS += --target $(MRUSTC_TARGET)
+  OUTDIR_SUF := $(OUTDIR_SUF)-$(MRUSTC_TARGET)
+endif
 
 OUTDIR := output$(OUTDIR_SUF)/
 
