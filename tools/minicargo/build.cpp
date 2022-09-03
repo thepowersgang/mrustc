@@ -1388,6 +1388,11 @@ bool spawn_process(const char* exe_name, const StringList& args, const StringLis
         std::cout << environ_str.str() << std::endl;
     }
 
+    // TODO: Support running with a debugger
+    // - Determine if this is not the automatic initial run for `cfg`
+    // - Put the exe name in the first arg
+    // - Update the executable name
+
 #ifdef _WIN32
     ::std::stringstream cmdline;
     cmdline << exe_name;
@@ -1464,7 +1469,8 @@ bool spawn_process(const char* exe_name, const StringList& args, const StringLis
         std::cerr << std::endl;
         return false;
     }
-#else
+
+#else   // ^^ WIN32 / VV posix
 
     // Create logfile output directory
     mkdir(static_cast<::std::string>(logfile.parent()).c_str(), 0755);
