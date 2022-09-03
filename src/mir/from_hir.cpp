@@ -519,9 +519,13 @@ namespace {
             {
                 TU_MATCH_HDRA( (v), { )
                 TU_ARMA(Const, e) {
-                    // TODO: This constant needs to have been evaluated fully (so a `MIR::Constant` can be created)
-                    //ent.params.push_back(MIR::AsmParam::make_Const());
-                    TODO(node.span(), "asm! const");
+                    // This constant needs to have been evaluated fully (so a `MIR::Constant` can be created)
+                    this->visit_node_ptr(e);
+                    auto param = m_builder.get_result_in_param(e->span(), e->m_res_type);
+                    if( param.is_Constant() )
+                        ent.params.push_back(MIR::AsmParam::make_Const( std::move(param.as_Constant()) ));
+                    else
+                        TODO(node.span(), "asm! const");
                     }
                 TU_ARMA(Sym, e) {
                     ent.params.push_back(MIR::AsmParam::make_Sym(e.clone()));
