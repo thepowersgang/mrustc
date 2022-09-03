@@ -1233,7 +1233,7 @@ PackageVersion PackageVersion::from_string(const ::std::string& s)
     iss >> rv.major;
     iss.get();
     iss >> rv.minor;
-    if( iss.get() != EOF )
+    if( iss.get() != EOF && !iss.eof() )
     {
         iss >> rv.patch;
         rv.patch_set = true;
