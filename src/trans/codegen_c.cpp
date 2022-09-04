@@ -4986,7 +4986,7 @@ namespace {
                 m_of << indent << "__asm__ ";
                 m_of << "__volatile__"; // Default everything to volatile
                 m_of << "(\"";
-                if( !se.options.att_syntax )
+                if( (Target_GetCurSpec().m_arch.m_name == "x86" || Target_GetCurSpec().m_arch.m_name == "x86_64") && !se.options.att_syntax )
                     m_of << ".intel_syntax; ";
                 for(const auto& l : se.lines)
                 {
@@ -5001,7 +5001,7 @@ namespace {
                     m_of << FmtEscaped(l.trailing);
                     m_of << ";\\n ";
                 }
-                if( !se.options.att_syntax )
+                if( (Target_GetCurSpec().m_arch.m_name == "x86" || Target_GetCurSpec().m_arch.m_name == "x86_64") && !se.options.att_syntax )
                     m_of << ".att_syntax; ";
                 m_of << "\" :";
                 for(size_t i = 0; i < outputs.size(); i ++)
