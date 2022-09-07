@@ -61,6 +61,7 @@ def demangle_string(s):
         tail = (c_iter.cache or '') + ''.join(c_iter.inner)
         print(s)
         print(' '*(len(s) - len(tail)-1), '^', sep='')
+        print("rv =",rv.inner)
         raise
     rv.push("{")
     for c in c_iter:
@@ -199,7 +200,8 @@ def demangle_int_ident(c_iter):
         len1 = demangle_int_getbase26(c_iter)
         # `<len:int26> '_' <data>` - Hash prefixed string
         if c_iter.peek() == '_':
-            rv = '#' + demangle_int_fixedlen(len1);
+            next(c_iter)
+            rv = '#' + demangle_int_fixedlen(c_iter, len1);
             pass
         # `<ofs:int26> <len:idx> <data>` - String with a hash
         else:
