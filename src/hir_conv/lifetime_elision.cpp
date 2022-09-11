@@ -507,6 +507,12 @@ namespace
                     DEBUG("Elided 'only");
                 }
             }
+            if( elided_output_lifetime == HIR::LifetimeRef() ) {
+                if( item.m_params.m_lifetimes.size() == 1 ) {
+                    elided_output_lifetime = HIR::LifetimeRef(256 + 0);
+                    DEBUG("Elided 'single");
+                }
+            }
             // If present, set it (push to the stack)
             assert(m_current_lifetime.empty());
             if( elided_output_lifetime != HIR::LifetimeRef() ) {
