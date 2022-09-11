@@ -339,13 +339,14 @@ namespace
                     }
                 } h(m_resolve.m_crate);
                 auto fix_source = [&](HIR::GenericPath& gp, const RcString& name) {
-                    DEBUG(">> " << gp);
-                    if( gp == tp.m_path ) {
+                    DEBUG("[fix_source] >> " << gp);
+                    // NOTE: The HRLs of this path have been edited! (they were `<'#apply_elision,>`, now blank)
+                    if( gp.m_path == tp.m_path.m_path && gp.m_params == tp.m_path.m_params ) {
                         gp = tp.m_path.clone();
                         return ;
                     }
                     if( h.enum_supertraits(sp, trait, tp.m_path, [&](HIR::GenericPath m) {
-                        DEBUG("?? " << m);
+                        DEBUG("[fix_source] ?? " << m);
                         if( m == gp ) { // Equality ignores lifetimes
                             gp = std::move(m);
                             return true;

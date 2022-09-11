@@ -166,9 +166,12 @@ Ordering HIR::GenericPath::ord(const HIR::GenericPath& x) const
 {
     ORD(m_path, x.m_path);
     ORD(m_params, x.m_params);
-    ORD(m_hrls.get() == nullptr, x.m_hrls.get() == nullptr);
-    //if( m_hrls )
-    //    ORD(m_hrls->m_lifetimes, x.m_hrls->m_lifetimes);
+    // NOTE: An empty set is treated as the same as none
+    ORD(m_hrls.get() && !m_hrls->is_empty(), x.m_hrls.get() && !x.m_hrls->is_empty());
+    if( m_hrls && x.m_hrls ) {
+        ORD(m_hrls->m_lifetimes.size(), x.m_hrls->m_lifetimes.size());
+        ORD(m_hrls->m_bounds, x.m_hrls->m_bounds);
+    }
     return OrdEqual;
 }
 

@@ -20,16 +20,30 @@ struct TypeParamDef
     RcString    m_name;
     ::HIR::TypeRef  m_default;
     bool    m_is_sized;
+    Ordering ord(const TypeParamDef& x) const {
+        ORD(m_name, x.m_name);
+        ORD(m_default, x.m_default);
+        ORD(m_is_sized, x.m_is_sized);
+        return OrdEqual;
+    }
 };
 struct LifetimeDef
 {
     RcString    m_name;
-    Ordering ord(const LifetimeDef& x) const { return m_name.ord(x.m_name); }
+    Ordering ord(const LifetimeDef& x) const {
+        ORD(m_name, x.m_name);
+        return OrdEqual;
+    }
 };
 struct ValueParamDef
 {
     RcString    m_name;
     ::HIR::TypeRef  m_type;
+    Ordering ord(const ValueParamDef& x) const {
+        ORD(m_name, x.m_name);
+        ORD(m_type, x.m_type);
+        return OrdEqual;
+    }
 };
 
 TAGGED_UNION(GenericBound, Lifetime,
@@ -68,6 +82,13 @@ public:
     //GenericParams() {}
 
     GenericParams clone() const;
+    bool is_empty() const {
+        if(!m_types.empty())        return false;
+        if(!m_lifetimes.empty())    return false;
+        if(!m_values.empty())       return false;
+        if(!m_bounds.empty())       return false;
+        return true;
+    }
     bool is_generic() const {
         if(!m_types.empty())    return true;
         // Note: Lifetimes don't matter
@@ -99,6 +120,14 @@ public:
         friend ::std::ostream& operator<<(::std::ostream& os, const PrintBounds& x);
     };
     PrintBounds fmt_bounds() const { return PrintBounds(*this); }
+
+    Ordering ord(const HIR::GenericParams& x) const {
+        ORD(m_types, x.m_types);
+        ORD(m_lifetimes, x.m_lifetimes);
+        ORD(m_values, x.m_values);
+        ORD(m_bounds, x.m_bounds);
+        return OrdEqual;
+    }
 };
 
 }   // namespace HIR
