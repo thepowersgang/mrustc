@@ -2,9 +2,10 @@ mrustc vtable types and paths with HRTBs/HRLs.
 
 `dyn Fn(&T)->&U` becomes `dyn for<'a> Fn<(&'a T,),Output=&'a U>`
 - Lifetime must be kept generic until method invoke.
+- OR, just ignore those lifetime params completely - the params end up in the vtable's `for<'a> fn(self: &Self, arg: (&'a T,)) -> &'a U`
 
 
-VTable type needs the HRL present.
+VTable type needs the HRL present? Maybe it can just be an unused lifetime
 - Currently, vtables are normal structs with hidden names
 - Could be a magic associated type that has no name?
   > Need to get the fields of the type.
@@ -27,14 +28,16 @@ fn foo(input: &'_ dyn for<'a> Fn<(&'a (i32,i32),),Output=&'a i32>)
 {
 	let temp1: (i32,i32);
 	let vtable: for<'a> Fn#vtable<(&'a (i32,i32),), &'a i32>;
+	let ptr: & ();
 	bb0: {
 		vtable = DSTMETA input;
+		ptr = DSTPTR input;
 		temp1 = (1i32,2i32,);
-		borrow = CALL (vtable*.2)(&temp1) goto bb1 else bb_panic;	// Here is where the lifetimes need to be expanded
+		borrow = CALL (vtable*.2)(ptr, &temp1) goto bb1 else bb_panic;	// Here is where the lifetimes need to be expanded
 	}
 	bb1: {
 		temp1 = (3i32,4i32,);
-		borrow = CALL (vtable*.2)(&temp1) goto bb2 else bb_panic;	// Here is where the lifetimes need to be expanded
+		borrow = CALL (vtable*.2)(ptr, &temp1) goto bb2 else bb_panic;	// Here is where the lifetimes need to be expanded
 	}
 	bb2: {
 		return;
@@ -54,6 +57,12 @@ struct for<'a>  Fn#vtable<(&'a (i32,i32),), &'a i32>
 {
 	vtable_common: VtableCommon,
 	call: fn(&self, (&'a (i32,i32),)) -> &'a i32,
+}
+
+struct Fn#vtable<'a, (&'a (i32,i32),), &'a i32>
+{
+	vtable_common: VtableCommon,
+	call: for<'a> fn(&self, (&'a (i32,i32),)) -> &'a i32,
 }
 ```
 
@@ -80,3 +89,21 @@ struct for<'a> Foo#vtable<(&'a (i32,i32),), u32, &'a i32>
 ```
 
 Generalised issue, two layers of function pointers.
+- This requires each generic reference to also point at the target generic block
+  - Option: A relative index - this breaks with type inference/expansion?
+    - TODO: Example of breakage.
+  - Option: Direct reference (shared pointer, or a global block identifer)
+    - Global ID would need to have the crate ID and a within-crate ID, but how would that handle function pointers properly?
+    - I guess shared pointers?
+  - Any special handling needed for cloned HRL blocks?
+  - Option: Direct reference #2
+    - A global reference number, never cloned
+
+General solution
+- Add an ID (runtime allocated) to every `HIR::GenericParams`
+  - This ID _could_ be globally unique (allocated per crate, and include a per-crate ID)
+  - Or, just have a global pool and compact/map during writeout/read
+  - Want the ID to be small-ish? `GenericRef` is currently a `RcString` (single pointer) plus a `u32`
+    - It's usually used in enums with three pointes (e.g. vector/string)
+    - Adding another `u32` shouldn't have much (or any) impact.
+- Whenever expanding generics, search up a stack for the relevant ID
