@@ -72,7 +72,7 @@ int main(int argc, const char* argv[])
                 rv = get_ord(t2, t1);
                 return rv == OrdGreater;
             }
-            bool operator()(const HIR::TypeRef& t1, const HIR::TypeRef& t2) {
+            bool operator()(const HIR::TypeRef& t1, const HIR::TypeRef& t2) const {
                 return t1 < t2;
             }
         };
