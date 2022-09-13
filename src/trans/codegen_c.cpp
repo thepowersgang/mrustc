@@ -2306,7 +2306,8 @@ namespace {
                     m_of << "__attribute__((section(\"" << item.m_linkage.section << "\"))) ";
                     break;
                 case Compiler::Msvc:
-                    // Ignore section on MSVC
+                    m_of << "#pragma section(\"" << item.m_linkage.section << "\", read)\n";
+                    m_of << "__declspec(allocate(\"" << item.m_linkage.section << "\")) ";
                     break;
                 }
             }
