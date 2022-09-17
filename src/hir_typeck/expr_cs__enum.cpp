@@ -941,7 +941,7 @@ namespace typecheck
 
                 auto ty = this->context.m_ivars.new_ivar_tr();
                 this->context.equate_types_coerce(node.span(), ty, node.m_value);
-                this->context.equate_types_assoc(node.span(), ::HIR::TypeRef(), trait_path, ::make_vec1(mv$(ty)),  node.m_slot->m_res_type.clone(), "");
+                this->context.equate_types_assoc(node.span(), ::HIR::TypeRef(), trait_path, HIR::PathParams(mv$(ty)),  node.m_slot->m_res_type.clone(), "");
             }
 
             node.m_slot->visit( *this );
@@ -990,7 +990,7 @@ namespace typecheck
                 assert(item_name);
                 const auto& op_trait = this->context.m_crate.get_lang_item_path(node.span(), item_name);
 
-                this->context.equate_types_assoc(node.span(), ::HIR::TypeRef(),  op_trait, ::make_vec1(right_ty.clone()), left_ty.clone(), "");
+                this->context.equate_types_assoc(node.span(), ::HIR::TypeRef(),  op_trait, HIR::PathParams(right_ty.clone()), left_ty.clone(), "");
                 break; }
 
             case ::HIR::ExprNode_BinOp::Op::BoolAnd:
@@ -1029,7 +1029,7 @@ namespace typecheck
                 const auto& op_trait = this->context.m_crate.get_lang_item_path(node.span(), item_name);
 
                 // NOTE: `true` marks the association as coming from a binary operation, which changes integer handling
-                this->context.equate_types_assoc(node.span(), node.m_res_type,  op_trait, ::make_vec1(right_ty.clone()), left_ty.clone(), "Output", true);
+                this->context.equate_types_assoc(node.span(), node.m_res_type,  op_trait, HIR::PathParams(right_ty.clone()), left_ty.clone(), "Output", true);
                 break; }
             }
             node.m_left ->visit( *this );

@@ -266,8 +266,7 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr, 
     auto stack = LList<const ::HIR::TypeRef*>(&outer_stack, &ty);
 
     auto print_traitpath = [&](const HIR::TraitPath& tp) {
-        os << tp.m_path.m_path;
-        this->print_pathparams(os, tp.m_path.m_params, stack);
+        this->print_genericpath(os, tp.m_path, stack);
     };
 
     TU_MATCH_HDRA( (ty.data()), {)
@@ -280,29 +279,28 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr, 
     TU_ARMA(Diverge, e) { os << ty; }
     TU_ARMA(Generic, e) { os << ty; }
     TU_ARMA(Path, e) {
-        TU_MATCH(::HIR::Path::Data, (e.path.m_data), (pe),
-        (Generic,
-            os << pe.m_path;
-            this->print_pathparams(os, pe.m_params, stack);
-            ),
-        (UfcsKnown,
+        TU_MATCH_HDRA( (e.path.m_data), {)
+        TU_ARMA(Generic, pe) {
+            this->print_genericpath(os, pe, stack);
+            }
+        TU_ARMA(UfcsKnown, pe) {
             os << "<";
             this->print_type(os, pe.type, stack);
-            os << " as " << pe.trait.m_path;
-            this->print_pathparams(os, pe.trait.m_params, stack);
+            os << " as ";
+            this->print_genericpath(os, pe.trait, stack);
             os << ">::" << pe.item;
             this->print_pathparams(os, pe.params, stack);
-            ),
-        (UfcsInherent,
+            }
+        TU_ARMA(UfcsInherent, pe) {
             os << "<";
             this->print_type(os, pe.type, stack);
             os << ">::" << pe.item;
             this->print_pathparams(os, pe.params, stack);
-            ),
-        (UfcsUnknown,
+            }
+        TU_ARMA(UfcsUnknown, pe) {
             BUG(Span(), "UfcsUnknown");
-            )
-        )
+            }
+        }
         }
     TU_ARMA(Borrow, e) {
         os << "&";
@@ -366,8 +364,8 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr, 
         os << "dyn (";
         print_traitpath(e.m_trait);
         for(const auto& marker : e.m_markers) {
-            os << "+" << marker.m_path;
-            this->print_pathparams(os, marker.m_params, stack);
+            os << "+";
+            this->print_genericpath(os, marker, stack);
         }
         if( e.m_lifetime != ::HIR::LifetimeRef::new_static() )
             os << "+" << e.m_lifetime;
@@ -395,10 +393,22 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr, 
         }
     }
 }
+void HMTypeInferrence::print_genericpath(::std::ostream& os, const ::HIR::GenericPath& gp, LList<const ::HIR::TypeRef*> stack) const
+{
+    if(gp.m_hrls && !gp.m_hrls->is_empty()) {
+        os << gp.m_hrls->fmt_args();
+    }
+    os << gp.m_path;
+    this->print_pathparams(os, gp.m_params, stack);
+}
 void HMTypeInferrence::print_pathparams(::std::ostream& os, const ::HIR::PathParams& pps, LList<const ::HIR::TypeRef*> stack) const
 {
-    if( pps.has_params() ) {
+    if( pps.has_params() || !pps.m_lifetimes.empty() ) {
         os << "<";
+        for(const auto& pp_l : pps.m_lifetimes) {
+            os << pp_l;
+            os << ",";
+        }
         for(const auto& pp_t : pps.m_types) {
             this->print_type(os, pp_t, stack);
             os << ",";
@@ -2561,7 +2571,7 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
             if( ord == ::HIR::Compare::Fuzzy ) {
                 DEBUG("[find_trait_impls_bound] - Fuzzy match");
             }
-            DEBUG("[find_trait_impls_bound] Match for" << bound_info.hrbs.fmt_args() << bound_ty << " : " << bound_trait);
+            DEBUG("[find_trait_impls_bound] Match for" << bound_info.hrbs.fmt_args() << " " << bound_ty << " : " << bound_trait);
             // Hand off to the closure, and return true if it does
             // TODO: The type bounds are only the types that are specified.
             if( callback( ImplRef(&bound_info.hrbs, &bound_ty, &bound_trait.m_params, &bound_info.assoc), ord) ) {

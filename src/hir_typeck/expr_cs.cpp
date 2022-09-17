@@ -564,10 +564,10 @@ namespace {
                 const auto& lang_Placer = this->context.m_crate.get_lang_item_path(sp, "placer_trait");
                 const auto& lang_InPlace = this->context.m_crate.get_lang_item_path(sp, "in_place_trait");
                 // - Bound P: Placer<D>
-                this->context.equate_types_assoc(sp, {}, lang_Placer, ::make_vec1(data_ty.clone()), placer_ty, "");
+                this->context.equate_types_assoc(sp, {}, lang_Placer, HIR::PathParams(data_ty.clone()), placer_ty, "");
                 // - 
                 auto place_ty = ::HIR::TypeRef::new_path( ::HIR::Path(placer_ty.clone(), ::HIR::GenericPath(lang_Placer, ::HIR::PathParams(data_ty.clone())), "Place"), {} );
-                this->context.equate_types_assoc(sp, node.m_res_type, lang_InPlace, ::make_vec1(data_ty.clone()), place_ty, "Owner");
+                this->context.equate_types_assoc(sp, node.m_res_type, lang_InPlace, HIR::PathParams(data_ty.clone()), place_ty, "Owner");
                 break; }
             case ::HIR::ExprNode_Emplace::Type::Boxer: {
                 const ::HIR::TypeRef* inner_ty;
@@ -749,7 +749,7 @@ namespace {
                     }
                     if( count == 1 )
                     {
-                        this->context.equate_types_assoc(node.span(), node.m_res_type, lang_FnOnce, ::make_vec1(fcn_args_tup.clone()), ty, "Output");
+                        this->context.equate_types_assoc(node.span(), node.m_res_type, lang_FnOnce, HIR::PathParams(fcn_args_tup.clone()), ty, "Output");
 
                         // If the return type wasn't found in the impls, emit it as a UFCS
                         if(fcn_ret == ::HIR::TypeRef())
@@ -1847,13 +1847,13 @@ void Context::equate_types_inner(const Span& sp, const ::HIR::TypeRef& li, const
         return ;
     }
 
-    // If either side is still a UfcsUnkonw after `expand_associated_types`, then emit an assoc bound instead of damaging ivars
+    // If either side is still a UfcsKnown after `expand_associated_types`, then emit an assoc bound instead of damaging ivars
     if(const auto* r_e = r_t.data().opt_Path())
     {
         if(const auto* rpe = r_e->path.m_data.opt_UfcsKnown())
         {
             if( r_e->binding.is_Unbound() ) {
-                this->equate_types_assoc(sp, l_t,  rpe->trait.m_path, rpe->trait.m_params.clone().m_types, rpe->type,  rpe->item.c_str());
+                this->equate_types_assoc(sp, l_t,  rpe->trait.m_path, rpe->trait.m_params.clone(), rpe->type,  rpe->item.c_str(), false);
                 return ;
             }
         }
@@ -1863,7 +1863,7 @@ void Context::equate_types_inner(const Span& sp, const ::HIR::TypeRef& li, const
         if(const auto* lpe = l_e->path.m_data.opt_UfcsKnown())
         {
             if( l_e->binding.is_Unbound() ) {
-                this->equate_types_assoc(sp, r_t,  lpe->trait.m_path, lpe->trait.m_params.clone().m_types, lpe->type,  lpe->item.c_str());
+                this->equate_types_assoc(sp, r_t,  lpe->trait.m_path, lpe->trait.m_params.clone(), lpe->type,  lpe->item.c_str(), false);
                 return ;
             }
         }
