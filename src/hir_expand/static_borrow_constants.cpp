@@ -18,6 +18,9 @@
 #include <hir/expr_state.hpp>
 #include <trans/target.hpp>
 
+
+extern RcString    g_core_crate;    // Defined in hir/from_ast.cpp
+
 namespace {
     inline HIR::ExprNodeP mk_exprnodep(HIR::ExprNode* en, ::HIR::TypeRef ty){ en->m_res_type = mv$(ty); return HIR::ExprNodeP(en); }
 }
@@ -36,6 +39,8 @@ namespace {
         t_new_static_cb m_new_static_cb;
         const ::HIR::ExprPtr& m_expr_ptr;
 
+        HIR::SimplePath m_lang_RangeFull;
+
         bool    m_is_constant;
         bool    m_all_constant;
     public:
@@ -47,6 +52,18 @@ namespace {
             ,m_is_constant(false)
             ,m_all_constant(false)
         {
+            m_lang_RangeFull = m_resolve.m_crate.get_lang_item_path_opt("range_full");
+            // EVIL hack: Since `range_full` wasn't a lang item until (latest) 1.54, resolve the path here
+            if( m_lang_RangeFull == ::HIR::SimplePath() ) {
+                auto sp = ::HIR::SimplePath(g_core_crate, {"ops", "RangeFull"});
+                auto& ti = m_resolve.m_crate.get_typeitem_by_path(Span(), sp);
+                if(ti.is_Import()) {
+                    m_lang_RangeFull = ti.as_Import().path;
+                }
+                else {
+                    m_lang_RangeFull = mv$(sp);
+                }
+            }
         }
         void visit_node_ptr(::HIR::ExprPtr& root) {
             const auto& node_ref = *root;
@@ -236,6 +253,10 @@ namespace {
             {
                 // Handle a `_Unsize` inner
                 auto* value_ptr_ptr = &node.m_value;
+                if(auto* inner_node = dynamic_cast<::HIR::ExprNode_Index*>(value_ptr_ptr->get()))
+                {
+                    value_ptr_ptr = &inner_node->m_value;
+                }
                 if(auto* inner_node = dynamic_cast<::HIR::ExprNode_Unsize*>(value_ptr_ptr->get()))
                 {
                     value_ptr_ptr = &inner_node->m_value;
@@ -384,6 +405,21 @@ namespace {
         void visit(::HIR::ExprNode_Field& node) override {
             ::HIR::ExprVisitorDef::visit(node);
             m_is_constant = m_all_constant;
+        }
+        void visit(::HIR::ExprNode_Index& node) override {
+            ::HIR::ExprVisitorDef::visit(node);
+            // Ensure that it's only a ".."
+            if(m_all_constant)
+            {
+                const auto& ty = node.m_index->m_res_type;
+                DEBUG("_Index: ty = " << ty);
+                if( ty.data().is_Path() && ty.data().as_Path().path.m_data.is_Generic() && ty.data().as_Path().path.m_data.as_Generic().m_path == m_lang_RangeFull ) {
+                    DEBUG("_Index: RangeFull - can be constant");
+                    m_is_constant = m_all_constant;
+                }
+                else {
+                }
+            }
         }
         // - Operations (only cast currently)
         void visit(::HIR::ExprNode_Cast& node) override {
