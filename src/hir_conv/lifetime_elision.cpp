@@ -499,6 +499,11 @@ namespace
                         elided_output_lifetime = b->lifetime;
                         DEBUG("Elided 'self");
                     }
+                    // Also allow 'static self (see lazy_static 1.0.2)
+                    if( b->lifetime.binding == HIR::LifetimeRef::STATIC ) {
+                        elided_output_lifetime = b->lifetime;
+                        DEBUG("Static 'self");
+                    }
                 }
             }
             // - OR, look for only one elided lifetime
