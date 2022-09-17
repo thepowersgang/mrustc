@@ -152,6 +152,7 @@ namespace typecheck
             TU_ARMA(TraitBound, be) {
                 auto real_type = ms.monomorph_type(sp, be.type);
                 auto real_trait = ms.monomorph_traitpath(sp, be.trait, false);
+                // TODO: Replace any HRLs with unbound/empty lifetimes
                 DEBUG("Bound " << be.type << ":  " << be.trait);
                 DEBUG("= (" << real_type << ": " << real_trait << ")");
                 auto pp_hrl = real_trait.m_path.m_hrls ? real_trait.m_path.m_hrls->make_empty_params(true) : HIR::PathParams();
@@ -277,14 +278,19 @@ namespace typecheck
                 }
             }
             ::HIR::LifetimeRef get_lifetime(const Span& sp, const ::HIR::GenericRef& e) const override {
-                if( e.binding < 256 )
+                if( e.group() == 0 )
                 {
                     ASSERT_BUG(sp, impl_params, "Impl-level lifetime parameter on free function (" << e << ")");
                     auto idx = e.idx();
                     ASSERT_BUG(sp, idx < impl_params->m_lifetimes.size(), "Generic lifetime (impl) out of input range - " << e << " >= " << impl_params->m_lifetimes.size());
-                    return impl_params->m_lifetimes[idx];
+                    // If this resolves to a HRL (group 3) then return an empty lifetime
+                    auto rv = impl_params->m_lifetimes[idx];
+                    if(rv.is_param() && HIR::GenericRef("", rv.binding).group() == 3 ) {
+                        return HIR::LifetimeRef();
+                    }
+                    return rv;
                 }
-                else if( e.binding < 512 )
+                else if( e.group() == 1 )
                 {
                     auto idx = e.idx();
                     ASSERT_BUG(sp, idx < fcn_params.m_lifetimes.size(), "Generic lifetime out of input range - " << e << " >= " << fcn_params.m_lifetimes.size());
