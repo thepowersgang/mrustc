@@ -307,6 +307,7 @@ namespace {
                     if(const auto* l = this->opt_local(sp, b)) {
                         TU_MATCH_HDRA( (l->data), { )
                         TU_ARMA(Composite, le) {
+                            NOTE(sp, "Composite - " << le);
                             }
                         TU_ARMA(PatternBinding, le) {
                             NOTE(l->borrow_span, "Pattern binding @ " << le.pat);
@@ -691,7 +692,9 @@ namespace {
             }
             ::HIR::LifetimeRef get_lifetime(const Span& sp, const ::HIR::GenericRef& g) const override {
                 if( g.group() == 3 ) {
-                    TODO(sp, "Found HRL");
+                    //TODO(sp, "Found HRL");
+                    // HACK: Return blank?
+                    return HIR::LifetimeRef();
                 }
                 return HIR::LifetimeRef(g.binding);
             }
