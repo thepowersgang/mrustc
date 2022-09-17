@@ -2487,6 +2487,10 @@ public:
         H::fix_macros_in_mod(rv.m_root_module);
     }
 
+    if(g_core_crate == "") {
+        g_core_crate = g_crate_name;
+    }
+
     g_crate_ptr = nullptr;
     return ::HIR::CratePtr( mv$(rv) );
 }
