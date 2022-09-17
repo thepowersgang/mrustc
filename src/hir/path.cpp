@@ -68,10 +68,13 @@ namespace HIR {
     ::std::ostream& operator<<(::std::ostream& os, const TraitPath& x)
     {
         os << x.m_path.m_path;
-        bool has_args = ( x.m_path.m_params.m_types.size() > 0 || x.m_type_bounds.size() > 0 || x.m_trait_bounds.size() > 0 );
+        bool has_args = ( x.m_path.m_params.m_lifetimes.size() > 0 || x.m_path.m_params.m_types.size() > 0 || x.m_type_bounds.size() > 0 || x.m_trait_bounds.size() > 0 );
 
         if(has_args) {
             os << "<";
+        }
+        for(const auto& lft : x.m_path.m_params.m_lifetimes) {
+            os << lft << ",";
         }
         for(const auto& ty : x.m_path.m_params.m_types) {
             os << ty << ",";
