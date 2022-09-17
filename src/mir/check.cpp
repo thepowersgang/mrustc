@@ -738,7 +738,10 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                             // Types are equal, good.
                         }
                         else {
-                            MIR_BUG(state,  "Type mismatch, destination is " << dst_ty << ", source is " << src_ty);
+                            MIR_BUG(state,  "Type mismatch:\n"
+                                << " dst : " << dst_ty << "\n"
+                                << " src : " << src_ty
+                                );
                         }
                         };
                     TU_MATCH_HDRA( (a.src), {)

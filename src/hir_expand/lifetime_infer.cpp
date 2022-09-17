@@ -411,11 +411,11 @@ namespace {
             this->equate_types(rhs->span(), lhs.m_res_type, rhs->m_res_type);
         }
         void equate_pps(const Span& sp, const HIR::PathParams& lhs, const HIR::PathParams& rhs) {
-            ASSERT_BUG(sp, lhs.m_lifetimes.size() == rhs.m_lifetimes.size(), "");
+            ASSERT_BUG(sp, lhs.m_lifetimes.size() == rhs.m_lifetimes.size(), "equate_pps: " << lhs << " = " << rhs);
             for(size_t i = 0; i < lhs.m_lifetimes.size(); i ++) {
                 equate_lifetimes(sp, lhs.m_lifetimes[i], rhs.m_lifetimes[i]);
             }
-            ASSERT_BUG(sp, lhs.m_types.size() == rhs.m_types.size(), "");
+            ASSERT_BUG(sp, lhs.m_types.size() == rhs.m_types.size(), "equate_pps: " << lhs << " = " << rhs);
             for(size_t i = 0; i < lhs.m_types.size(); i ++) {
                 equate_types(sp, lhs.m_types[i], rhs.m_types[i]);
             }
