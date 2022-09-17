@@ -812,6 +812,11 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         if( it_l != te.m_trait.m_type_bounds.end() || it_r != xe.m_trait.m_type_bounds.end() ) {
             return Compare::Unequal;
         }
+
+        if(te.m_lifetime.is_param()) {
+            /*cmp &= */callback.match_lft(HIR::GenericRef("", te.m_lifetime.binding), xe.m_lifetime);
+        }
+
         return cmp;
         }
     TU_ARMA(ErasedType, te, xe) {
