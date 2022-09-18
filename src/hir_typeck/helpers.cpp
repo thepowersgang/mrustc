@@ -754,6 +754,12 @@ void HMTypeInferrence::set_ivar_to(unsigned int slot, ::HIR::TypeRef type)
         return ;
     }
     else {
+        // Erase (replace with blank) lifetimes
+        if( type.data().is_Borrow() && type.data().as_Borrow().lifetime != HIR::LifetimeRef() ) {
+            auto& t = type.get_unique();
+            t.as_Borrow().lifetime = HIR::LifetimeRef();
+        }
+
         // Otherwise, store left in right's slot
         DEBUG("Set IVar " << slot << " = " << type);
         if(const auto* e = root_ivar.type->data().opt_Infer())
