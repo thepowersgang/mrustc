@@ -755,10 +755,32 @@ void HMTypeInferrence::set_ivar_to(unsigned int slot, ::HIR::TypeRef type)
     }
     else {
         // Erase (replace with blank) lifetimes
+#if 1
+        // TODO: Avoid needing to clone in all cases?
+        struct Monomorph_AddLifetimes: public Monomorphiser {
+            ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& g) const override {
+                return HIR::TypeRef(g.name, g.binding);
+            }
+            ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& g) const override {
+                return g;
+            }
+            ::HIR::LifetimeRef get_lifetime(const Span& sp, const ::HIR::GenericRef& g) const override {
+                return HIR::LifetimeRef();
+            }
+
+            ::HIR::LifetimeRef monomorph_lifetime(const Span& sp, const ::HIR::LifetimeRef& tpl) const override {
+                return HIR::LifetimeRef();
+            }
+
+            Monomorph_AddLifetimes() {}
+        };
+        type = Monomorph_AddLifetimes().monomorph_type(sp, type, true);
+#else
         if( type.data().is_Borrow() && type.data().as_Borrow().lifetime != HIR::LifetimeRef() ) {
             auto& t = type.get_unique();
             t.as_Borrow().lifetime = HIR::LifetimeRef();
         }
+#endif
 
         // Otherwise, store left in right's slot
         DEBUG("Set IVar " << slot << " = " << type);
