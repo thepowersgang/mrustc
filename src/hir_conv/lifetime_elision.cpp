@@ -68,6 +68,50 @@ namespace
                     BUG(sp, "Unexpected lifetime binding - " << lft);
                 }
             }
+            else
+            {
+                // If there's a current active lifetime, add/ensure bounds for it
+                // -See rustc-1.29.0/src/vendor/regex-syntax/src/error.rs:167: `fn from_formatter<'e, E: fmt::Display>( \n fmter: &'p Formatter<'e, E>, `
+                if( std::none_of(m_current_lifetime.begin(), m_current_lifetime.end(), [](const HIR::LifetimeRef* v){ return v == nullptr; }))
+                {
+                    for(auto it = m_current_lifetime.rbegin(); it != m_current_lifetime.rend(); ++it) {
+                        if( !*it )
+                            break;
+                        if( (**it).is_param() && ((**it).binding >> 8) == 3 ) {
+                            continue ;
+                        }
+                        if( lft.is_param() && (lft.binding >> 8) == 3 ) {
+                            continue ;
+                        }
+                        if( **it != lft ) {
+                            if( !bound_exists(lft, **it) ) {
+                                auto* params = const_cast<HIR::GenericParams*>(m_resolve.m_item_generics ? m_resolve.m_item_generics : m_resolve.m_impl_generics);
+                                params->m_bounds.push_back(HIR::GenericBound::make_Lifetime({ lft, **it }));
+                                //TODO(sp, "Ensure " << lft << " : " << **it);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        bool bound_exists(const HIR::LifetimeRef& test, const HIR::LifetimeRef& valid_for) const {
+            if( m_resolve.m_impl_generics ) {
+                for(const auto& b : m_resolve.m_impl_generics->m_bounds ) {
+                    if(b.is_Lifetime()) DEBUG(b);
+                    if( b.is_Lifetime() && b.as_Lifetime().test == test && b.as_Lifetime().valid_for == valid_for ) {
+                        return true;
+                    }
+                }
+            }
+            if( m_resolve.m_item_generics ) {
+                for(const auto& b : m_resolve.m_item_generics->m_bounds ) {
+                    if(b.is_Lifetime()) DEBUG(b);
+                    if( b.is_Lifetime() && b.as_Lifetime().test == test && b.as_Lifetime().valid_for == valid_for ) {
+                        return true;
+                    }
+                }
+            }
+            return false;
         }
         
         void visit_path_params(::HIR::PathParams& pp) override
@@ -417,6 +461,8 @@ namespace
                 m_cur_params = nullptr;
             }
 
+            // TODO: Propagate bounds from the type
+
             ::HIR::Visitor::visit_type_impl(impl);
         }
         void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override
@@ -432,6 +478,8 @@ namespace
                 this->visit_path_params(impl.m_trait_args);
                 m_cur_params = nullptr;
             }
+
+            // TODO: Propagate bounds from the type/trait
 
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);
         }
@@ -449,7 +497,25 @@ namespace
                 m_cur_params = nullptr;
             }
 
+            // TODO: Propagate bounds from the type/trait
+
             ::HIR::Visitor::visit_marker_impl(trait_path, impl);
+        }
+
+        void visit_struct(::HIR::ItemPath p, ::HIR::Struct& item) override
+        {
+            auto _ = m_resolve.set_impl_generics(item.m_params);
+            ::HIR::Visitor::visit_struct(p, item);
+        }
+        void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override
+        {
+            auto _ = m_resolve.set_impl_generics(item.m_params);
+            ::HIR::Visitor::visit_enum(p, item);
+        }
+        void visit_union(::HIR::ItemPath p, ::HIR::Union& item) override
+        {
+            auto _ = m_resolve.set_impl_generics(item.m_params);
+            ::HIR::Visitor::visit_union(p, item);
         }
 
         void visit_constant(::HIR::ItemPath p, ::HIR::Constant& item) override
