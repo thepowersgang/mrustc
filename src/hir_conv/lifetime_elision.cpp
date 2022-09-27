@@ -70,28 +70,6 @@ namespace
             }
             else
             {
-                // If there's a current active lifetime, add/ensure bounds for it
-                // -See rustc-1.29.0/src/vendor/regex-syntax/src/error.rs:167: `fn from_formatter<'e, E: fmt::Display>( \n fmter: &'p Formatter<'e, E>, `
-                if( std::none_of(m_current_lifetime.begin(), m_current_lifetime.end(), [](const HIR::LifetimeRef* v){ return v == nullptr; }))
-                {
-                    for(auto it = m_current_lifetime.rbegin(); it != m_current_lifetime.rend(); ++it) {
-                        if( !*it )
-                            break;
-                        if( (**it).is_param() && ((**it).binding >> 8) == 3 ) {
-                            continue ;
-                        }
-                        if( lft.is_param() && (lft.binding >> 8) == 3 ) {
-                            continue ;
-                        }
-                        if( **it != lft ) {
-                            if( !bound_exists(lft, **it) ) {
-                                auto* params = const_cast<HIR::GenericParams*>(m_resolve.m_item_generics ? m_resolve.m_item_generics : m_resolve.m_impl_generics);
-                                params->m_bounds.push_back(HIR::GenericBound::make_Lifetime({ lft, **it }));
-                                //TODO(sp, "Ensure " << lft << " : " << **it);
-                            }
-                        }
-                    }
-                }
             }
         }
         bool bound_exists(const HIR::LifetimeRef& test, const HIR::LifetimeRef& valid_for) const {

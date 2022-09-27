@@ -953,17 +953,35 @@ namespace {
                             );
                     }
                     // HACK: Replace all types (which should be functionally identical) so lifetimes match
-#if 1
+                    // - This is needed for monomorphisation to work properly?
+                    // REF: rustc-1.29.0/src/vendor/serde/src/private/de.rs:1379
                     // Update AFTER the checks
+                    DEBUG("Replace generic block with " << trait_fcn.m_params.fmt_args());
                     impl_fcn.m_params.m_lifetimes = trait_fcn.m_params.m_lifetimes;
+#if 0
+                    // Replace the lifetime bounds too (undoes some potential confusion from elision?
+                    {
+                        auto& bl = impl_fcn.m_params.m_bounds;
+                        bl.erase( std::remove_if(bl.begin(), bl.end(), [](const HIR::GenericBound& b){ return b.is_Lifetime(); }), bl.end());
+                    }
+                    for(const auto& b : trait_fcn.m_params.m_bounds) {
+                        TU_MATCH_HDRA( (b), { )
+                        default:
+                    
+                        TU_ARMA(Lifetime, be) {
+                            impl_fcn.m_params.m_bounds.push_back(::HIR::GenericBound::make_Lifetime({ ms.monomorph_lifetime(sp, be.test), ms.monomorph_lifetime(sp, be.valid_for) }));
+                            }
+                        }
+                    }
+#endif
+                    // TODO: Also replace any lifetime bounds (or just all bounds in general)
                     impl_fcn.m_return = exp_ret_ty.clone();
                     // HACK: Clone the expected type, so the lifetimes match.
                     for( size_t i = 0; i < std::min(impl_fcn.m_args.size(), trait_fcn.m_args.size()); i ++ )
                     {
-                        impl_fcn.m_args[i].second = maybe_monomorph(trait_fcn.m_args[i].second).clone();
+                        impl_fcn.m_args[i].second = m_resolve.monomorph_expand(sp, trait_fcn.m_args[i].second, ms);
                     }
                     DEBUG("Updated < " << impl.m_type << " as " << trait_path << impl.m_trait_args << " >::" << e.first);
-#endif
 
                     DEBUG(FMT_CB(os, {
                         os << "fn " << e.first << impl_fcn.m_params.fmt_args() << "(";

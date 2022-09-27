@@ -16,6 +16,48 @@
 namespace {
     struct LifetimeInferState
     {
+        struct LifetimeBound {
+            ::HIR::LifetimeRef  lft;
+            const ::HIR::TypeRef* ty;
+            ::HIR::LifetimeRef  valid_for;
+            LifetimeBound(::HIR::LifetimeRef lft, ::HIR::LifetimeRef valid_for)
+                : lft(lft)
+                , ty(nullptr)
+                , valid_for(valid_for)
+            {
+            }
+            LifetimeBound(const ::HIR::TypeRef& ty, ::HIR::LifetimeRef valid_for)
+                : lft()
+                , ty(&ty)
+                , valid_for(valid_for)
+            {
+            }
+
+            ::std::ostream& fmt(::std::ostream& os) const {
+                if(ty) {
+                    os << *ty;
+                }
+                else {
+                    os << lft;
+                }
+                os << " : " << valid_for;
+                return os;
+            }
+            bool operator==(const LifetimeBound& x) const {
+                if( static_cast<bool>(ty) != static_cast<bool>(x.ty) )
+                    return false;
+                if( ty && *ty != *x.ty )
+                    return false;
+                if( !ty && lft != x.lft )
+                    return false;
+                if( valid_for != x.valid_for )
+                    return false;
+                return true;
+            }
+            bool operator!=(const LifetimeBound& x) const {
+                return !operator==(x);
+            }
+        };
         TAGGED_UNION(LocalLifetimeData, Composite,
         (Composite, std::vector<HIR::LifetimeRef>),
         (PatternBinding, struct {
@@ -53,6 +95,7 @@ namespace {
         };
 
         const StaticTraitResolve& m_resolve;
+        std::vector<LifetimeBound>  m_bounds;
         std::vector<LocalLifetime>  m_locals;
         std::vector<IvarLifetime>   m_ivars;
 
@@ -159,20 +202,14 @@ namespace {
             }
         }
 
-        bool iterate_lft_bounds(std::function<bool(const HIR::GenericBound::Data_Lifetime&)> cb) const
+        bool iterate_lft_bounds(const HIR::LifetimeRef& target, std::function<bool(const HIR::LifetimeRef&)> cb) const
         {
-            if( m_resolve.m_impl_generics ) {
-                for(const auto& b : m_resolve.m_impl_generics->m_bounds) {
-                    if( const auto* be = b.opt_Lifetime() )
-                        if( cb(*be) )
+            for(const auto& b : m_bounds) {
+                if(!b.ty) {
+                    if( b.lft == target ) {
+                        if( cb(b.valid_for) )
                             return true;
-                }
-            }
-            if( m_resolve.m_item_generics ) {
-                for(const auto& b : m_resolve.m_item_generics->m_bounds) {
-                    if( const auto* be = b.opt_Lifetime() )
-                        if( cb(*be) )
-                            return true;
+                    }
                 }
             }
             return false;
@@ -180,7 +217,7 @@ namespace {
 
         /// Check that `rhs` is valid for `lhs` (assignment ordering)
         /// Stores the root RHS lifetimes that failed bounds in `fails`
-        bool check_liftimes(const Span& sp, const HIR::LifetimeRef& lhs, const HIR::LifetimeRef& rhs, std::vector<HIR::LifetimeRef>& fails) const
+        bool check_lifetimes(const Span& sp, const HIR::LifetimeRef& lhs, const HIR::LifetimeRef& rhs, std::vector<HIR::LifetimeRef>& fails) const
         {
             //TRACE_FUNCTION_F(lhs << " = " << rhs);
             assert( !opt_ivar(sp, lhs) );
@@ -201,7 +238,7 @@ namespace {
                     DEBUG("RHS composite: all");
                     bool rv = true;
                     for(const auto& inner : *r_le) {
-                        rv &= this->check_liftimes(sp, lhs, inner, fails);
+                        rv &= this->check_lifetimes(sp, lhs, inner, fails);
                     }
                     return rv;
                 }
@@ -212,7 +249,7 @@ namespace {
                     DEBUG("LHS composite: any");
                     std::vector<HIR::LifetimeRef>   tmp;
                     for(const auto& inner : *l_le) {
-                        if( this->check_liftimes(sp, inner, rhs, tmp) )
+                        if( this->check_lifetimes(sp, inner, rhs, tmp) )
                             return true;
                     }
                     fails.push_back(rhs);
@@ -222,16 +259,11 @@ namespace {
 
             if( lhs.is_param() ) {
                 if( rhs.is_param() ) {
-                    // If RHS is an impl and LHS is a method, then good
-                    if( (lhs.binding >> 8) == 1 && (rhs.binding >> 8) == 0 ) {
-                        return true;
-                    }
                     // Check for an outlives relationship
-                    bool rv = iterate_lft_bounds([&](const HIR::GenericBound::Data_Lifetime& b)->bool {
-                        if( b.test == rhs ) {
-                            if( b.valid_for == lhs /*check_lifetimes(sp, lhs, b.valid_for)*/ ) {
-                                return true;
-                            }
+                    bool rv = iterate_lft_bounds(rhs, [&](const HIR::LifetimeRef& valid_for)->bool {
+                        if( valid_for == lhs) {
+                        //if( check_lifetimes(sp, lhs, valid_for, fails) ) {
+                            return true;
                         }
                         return false;
                         });
@@ -252,11 +284,10 @@ namespace {
             else if( lhs.binding == HIR::LifetimeRef::STATIC ) {
                 if( rhs.is_param() ) {
                     // Check for an outlives relationship (this param must be bounded to `'static`)
-                    bool rv = iterate_lft_bounds([&](const HIR::GenericBound::Data_Lifetime& b)->bool {
-                        if( b.test == rhs ) {
-                            if( b.valid_for == lhs /*check_lifetimes(sp, lhs, b.valid_for)*/ ) {
-                                return true;
-                            }
+                    bool rv = iterate_lft_bounds(rhs, [&](const HIR::LifetimeRef& valid_for)->bool {
+                        if(valid_for == lhs ) {
+                        //if( check_lifetimes(sp, lhs, valid_for, fails) ) {
+                            return true;
                         }
                         return false;
                         });
@@ -299,7 +330,7 @@ namespace {
         {
             DEBUG(lhs << " = " << rhs);
             std::vector<HIR::LifetimeRef>   failed_bounds;
-            if( !check_liftimes(sp, lhs, rhs, failed_bounds) )
+            if( !check_lifetimes(sp, lhs, rhs, failed_bounds) )
             {
                 ASSERT_BUG(sp, !failed_bounds.empty(), "");
                 for(const HIR::LifetimeRef& b : failed_bounds)
@@ -977,21 +1008,12 @@ namespace {
 
         bool iterate_type_lifetime_bounds(const HIR::TypeRef& ty, std::function<bool(const HIR::LifetimeRef&)> cb) const
         {
-            if( m_resolve.m_impl_generics ) {
-                for(const auto& b : m_resolve.m_impl_generics->m_bounds) {
-                    if( const auto* be = b.opt_TypeLifetime() ) {
-                        if( be->type == ty )
-                            if( cb(be->valid_for) )
-                                return true;
+            for(const auto& b : m_state.m_bounds) {
+                if(b.ty) {
+                    if( *b.ty == ty ) {
+                        if( cb(b.valid_for) )
+                            return true;
                     }
-                }
-            }
-            if( m_resolve.m_item_generics ) {
-                for(const auto& b : m_resolve.m_item_generics->m_bounds) {
-                    if( const auto* be = b.opt_TypeLifetime() )
-                        if( be->type == ty )
-                            if( cb(be->valid_for) )
-                                return true;
                 }
             }
             return false;
@@ -1766,8 +1788,128 @@ namespace {
         // Before running algorithm, dump the HIR (just as a reference for debugging)
         DEBUG("\n" << FMT_CB(os, HIR_DumpExpr(os, ep)));
 
+
+        // Build up a simplified list of in-scope liftime rules (bounds)
+        {
+            TRACE_FUNCTION_FR("Enumerating bounds", "Enumerating bounds");
+            // - Add all bounds from `GenericParams`
+            auto push_bounds = [&state](const HIR::GenericParams& params) {
+                for(const auto& b : params.m_bounds) {
+                    if( const auto* be = b.opt_TypeLifetime() ) {
+                        state.m_bounds.push_back(LifetimeInferState::LifetimeBound(be->type, be->valid_for));
+                    }
+                    else if( const auto* be = b.opt_Lifetime() ) {
+                        state.m_bounds.push_back(LifetimeInferState::LifetimeBound(be->test, be->valid_for));
+                    }
+                    else {
+                    }
+                }
+            };
+            push_bounds(resolve.impl_generics());
+            push_bounds(resolve.item_generics());
+            // Visit types and add implicit bounds
+            // -See rustc-1.29.0/src/vendor/regex-syntax/src/error.rs:167: `fn from_formatter<'e, E: fmt::Display>( \n fmter: &'p Formatter<'e, E>, `
+            struct TypeVisitor: public HIR::Visitor {
+                LifetimeInferState&     m_state;
+                std::vector<const HIR::LifetimeRef*>  m_stack;
+                TypeVisitor(LifetimeInferState& state): m_state(state) {}
+
+                void maybe_push_lifetime_bound(const HIR::LifetimeRef& test, const HIR::LifetimeRef& valid_for) {
+                    // Only check parameters
+                    if( !test.is_param() ) {
+                        return;
+                    }
+                    // but not HRLs
+                    if( HIR::GenericRef("", test.binding).group() == 3 ) {
+                        return ;
+                    }
+                    // if the bound is a param, it can't be a HRL.
+                    if( valid_for.is_param() && HIR::GenericRef("", valid_for.binding).group() == 3 ) {
+                        return ;
+                    }
+
+                    auto b = LifetimeInferState::LifetimeBound(test, valid_for);
+                    DEBUG("> Infer liftime bound: " << b);
+                    if( std::find(m_state.m_bounds.begin(), m_state.m_bounds.end(), b) == m_state.m_bounds.end() ) {
+                         m_state.m_bounds.push_back(b);
+                    }
+                }
+                /// Add a bound for this lifetime (requiring that it outlives the top of the stack)
+                void check_lifetime_variant(const HIR::LifetimeRef& lft) {
+                    if( !m_stack.empty() && m_stack.back() ) {
+                        auto& valid_for = *m_stack.back();
+                        maybe_push_lifetime_bound(lft, valid_for);
+                    }
+                }
+
+                void visit_type(HIR::TypeRef& ty) override {
+                    auto ssize = m_stack.size();
+                    if(const auto* te = ty.data().opt_Borrow()) {
+                        check_lifetime_variant(te->lifetime);
+                        m_stack.push_back(&te->lifetime);
+                    }
+                    if(const auto* te = ty.data().opt_TraitObject()) {
+                        check_lifetime_variant(te->m_lifetime);
+                    }
+                    if(const auto* te = ty.data().opt_Path() ) {
+                        if(te->path.m_data.is_Generic()) {
+                            // TODO: Get the variance info of each parameter (instead of assuming "variant")
+                            const auto& p = te->path.m_data.as_Generic();
+                            if( !p.m_params.m_lifetimes.empty() ) {
+                                DEBUG("TODO: Check variance " << ty);
+                                for(const auto& l : p.m_params.m_lifetimes) {
+                                    check_lifetime_variant(l);
+                                }
+                            }
+                        }
+                        // TODO: Add a type bound for associated types?
+                        (void)te;
+                    }
+                    if(ty.data().is_Generic()) {
+                        // TODO: Add a type bound?
+                    }
+                    if( ty.data().is_Function() ) {
+                        m_stack.push_back(nullptr);
+                    }
+                    HIR::Visitor::visit_type(ty);
+                    m_stack.erase(m_stack.begin() + ssize, m_stack.end());
+                }
+            } tv(state);
+            for(const auto& a : args) {
+                DEBUG("ARG " << a.second);
+                tv.visit_type(const_cast<HIR::TypeRef&>(a.second));
+            }
+
+            // Build up chains
+            // - Iterate bounds, see if there's a bound for the `valid_for` of each. If there is, make another for the chain.
+            for(bool added = true; added; )
+            {
+                added = false;
+                for(size_t i = 0; i < state.m_bounds.size(); i ++) {
+                     const auto& v = state.m_bounds[i].valid_for;
+                     for(size_t j = 0; j < state.m_bounds.size(); j ++) {
+                         if( state.m_bounds[j].lft == state.m_bounds[i].valid_for ) {
+                             auto b = state.m_bounds[i];
+                             b.valid_for = state.m_bounds[j].valid_for;
+
+                             if( std::find(state.m_bounds.begin(), state.m_bounds.end(), b) == state.m_bounds.end() ) {
+                                 DEBUG("Add chained bound: " << b);
+                                 state.m_bounds.push_back(b);
+                                 added = true;
+                             }
+                         }
+                     }
+                }
+            }
+
+            for(const auto& b : state.m_bounds) {
+                DEBUG("BOUND - " << b);
+            }
+        }
+
         // Enumerate lifetimes and relationships
         {
+            TRACE_FUNCTION_FR("Enumerating lifetimes", "Enumerating lifetimes");
             // TODO: Also do lifetime equality of the return type and the ATY version
             ExprVisitor_Enumerate   ev(resolve, args, ret_ty, state);
             ev.visit_root(ep);
