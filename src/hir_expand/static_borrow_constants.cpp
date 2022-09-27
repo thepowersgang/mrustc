@@ -167,6 +167,8 @@ namespace {
 
         Monomorph create_params(const Span& sp, ::HIR::GenericParams& params, ::HIR::PathParams& constructor_path_params) const
         {
+            DEBUG("Impl: " << m_resolve.impl_generics().fmt_args());
+            DEBUG("Item: " << m_resolve.item_generics().fmt_args());
             // - 0xFFFF "Self" -> 0 "Super" (if present)
             if( m_resolve.has_self() )
             {
@@ -214,7 +216,10 @@ namespace {
             }
 
             // Create the params used for the type on the impl block
-            DEBUG("ofs_*_t=" << ofs_item_t << "," << ofs_impl_t << " ofs_*_v=" << ofs_item_v << "," << ofs_impl_v);
+            DEBUG("ofs_*_t=" << ofs_item_t << "," << ofs_impl_t << "," << params.m_types.size()
+                << " ofs_*_v=" << ofs_item_v << "," << ofs_impl_v << "," << params.m_values.size()
+                << " ofs_*_l=" << ofs_item_l << "," << ofs_impl_l << "," << params.m_lifetimes.size()
+                );
 
             Monomorph monomorph_cb(params, ofs_impl_t, ofs_item_t, ofs_impl_v, ofs_item_v, ofs_impl_l, ofs_item_l);
 
@@ -236,9 +241,11 @@ namespace {
                 throw "";
                 };
             for(const auto& bound : m_resolve.impl_generics().m_bounds ) {
+                DEBUG("IMPL - " << bound);
                 params.m_bounds.push_back( monomorph_bound(bound) );
             }
             for(const auto& bound : m_resolve.item_generics().m_bounds ) {
+                DEBUG("ITEM - " << bound);
                 params.m_bounds.push_back( monomorph_bound(bound) );
             }
             return monomorph_cb;
