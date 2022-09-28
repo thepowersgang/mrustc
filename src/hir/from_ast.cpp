@@ -617,7 +617,7 @@ namespace {
         HIR::GenericParams  params;
         rv.m_path.m_hrls = box$(params);
     }
-    if( rv.m_path.m_hrls && path.nodes().back().args().m_is_paren && rv.m_path.m_hrls->m_lifetimes.empty() ) {
+    if( rv.m_path.m_hrls && path.nodes().back().args().m_is_paren ) {
         rv.m_path.m_hrls->m_lifetimes.push_back(HIR::LifetimeDef { "#apply_elision" });
     }
 

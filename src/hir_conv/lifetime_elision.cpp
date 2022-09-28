@@ -108,17 +108,28 @@ namespace
             static Span _sp;
             const Span& sp = _sp;
 
+            auto saved_liftime_depth = m_current_lifetime.size();
+            auto saved_params = std::make_pair(m_cur_params, m_cur_params_level);
+
             // Lifetime elision logic!
+
             if(auto* e = ty.data_mut().opt_Borrow()) {
                 visit_lifetime(sp, e->lifetime);
                 m_current_lifetime.push_back(&e->lifetime);
             }
-
-            auto saved_params = std::make_pair(m_cur_params, m_cur_params_level);
             if(auto* e = ty.data_mut().opt_Function()) {
                 m_current_lifetime.push_back(nullptr);
                 m_cur_params = &e->hrls;
                 m_cur_params_level = 3;
+            }
+            if(auto* e = ty.data_mut().opt_TraitObject()) {
+                // TODO: Create? but what if it's not used?
+                if( e->m_trait.m_path.m_hrls )
+                {
+                    m_current_lifetime.push_back(nullptr);
+                    m_cur_params = &*e->m_trait.m_path.m_hrls;
+                    m_cur_params_level = 3;
+                }
             }
 
             if(auto* e = ty.data_mut().opt_Path()) {
@@ -146,15 +157,10 @@ namespace
 
             ::HIR::Visitor::visit_type(ty);
 
-            if(auto* e = ty.data_mut().opt_Function()) {
-                m_cur_params       = saved_params.first ;
-                m_cur_params_level = saved_params.second;
+            m_cur_params       = saved_params.first ;
+            m_cur_params_level = saved_params.second;
+            while(m_current_lifetime.size() > saved_liftime_depth)
                 m_current_lifetime.pop_back();
-            }
-
-            if(/*const auto* e =*/ ty.data().opt_Borrow()) {
-                m_current_lifetime.pop_back();
-            }
 
             {
                 bool pushed = false;
@@ -292,9 +298,17 @@ namespace
             const Span  sp;
             TRACE_FUNCTION_FR(tp, tp);
             // Handle a hack from lowering pass added when the path is `Foo()`
-            if(tp.m_path.m_hrls && tp.m_path.m_hrls->m_lifetimes.size() == 1 && tp.m_path.m_hrls->m_lifetimes[0].m_name == "#apply_elision")
+            bool was_paren_trait_object = tp.m_path.m_hrls && tp.m_path.m_hrls->m_lifetimes.size() >= 1 && tp.m_path.m_hrls->m_lifetimes.back().m_name == "#apply_elision";
+            if( was_paren_trait_object )
             {
-                tp.m_path.m_hrls->m_lifetimes.clear();
+                bool created_hrls = false;
+                if(!tp.m_path.m_hrls) {
+                    tp.m_path.m_hrls = std::make_unique<HIR::GenericParams>();
+                    created_hrls = true;
+                }
+                if(was_paren_trait_object) {
+                    tp.m_path.m_hrls->m_lifetimes.pop_back();
+                }
                 m_current_lifetime.push_back(nullptr);
 
                 // Visit the trait args (as inputs)
@@ -401,6 +415,10 @@ namespace
                 ::HIR::Visitor::visit_trait_path(tp);
 
                 m_current_lifetime.pop_back();
+
+                if(created_hrls && tp.m_path.m_hrls->is_empty()) {
+                    tp.m_path.m_hrls.reset();
+                }
             }
             else
             {
