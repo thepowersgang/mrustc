@@ -165,8 +165,8 @@ namespace
             {
                 bool pushed = false;
                 if( m_current_lifetime.empty() || !m_current_lifetime.back() ) {
-                    // Push `'static` (if this is a trait object, or we're not in arguments)
-                    if( !m_cur_params || ty.data().is_TraitObject() ) {
+                    // Push `'static` (if not in expression mode AND; this is a trait object OR we're not in arguments)
+                    if( !m_in_expr && (!m_cur_params || ty.data().is_TraitObject()) ) {
                         static HIR::LifetimeRef static_lifetime = HIR::LifetimeRef::new_static();
                         m_current_lifetime.push_back(&static_lifetime);
                         pushed = true;
