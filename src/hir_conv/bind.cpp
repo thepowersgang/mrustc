@@ -427,6 +427,19 @@ namespace {
                     }
                 }
             }
+            else if( auto* te = ty.data_mut().opt_TraitObject() )
+            {
+                if( te->m_trait.m_path.m_path != HIR::SimplePath() )
+                {
+                    const auto& trait = m_crate.get_trait_by_path(sp, te->m_trait.m_path.m_path);
+                    fix_param_count(sp, te->m_trait.m_path, trait.m_params, te->m_trait.m_path.m_params, /*fill_infer=*/m_in_expr, nullptr);
+                }
+                for(auto& m : te->m_markers) {
+                    const auto& trait = m_crate.get_trait_by_path(sp, m.m_path);
+                    fix_param_count(sp, m, trait.m_params, m.m_params, /*fill_infer=*/m_in_expr, nullptr);
+                }
+                DEBUG("- " << ty);
+            }
 
             ::HIR::Visitor::visit_type(ty);
         }
