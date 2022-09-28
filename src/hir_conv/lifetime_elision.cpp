@@ -439,8 +439,6 @@ namespace
                 m_cur_params = nullptr;
             }
 
-            // TODO: Propagate bounds from the type
-
             ::HIR::Visitor::visit_type_impl(impl);
         }
         void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override
@@ -457,8 +455,6 @@ namespace
                 m_cur_params = nullptr;
             }
 
-            // TODO: Propagate bounds from the type/trait
-
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);
         }
         void visit_marker_impl(const ::HIR::SimplePath& trait_path, ::HIR::MarkerImpl& impl) override
@@ -474,8 +470,6 @@ namespace
                 this->visit_path_params(impl.m_trait_args);
                 m_cur_params = nullptr;
             }
-
-            // TODO: Propagate bounds from the type/trait
 
             ::HIR::Visitor::visit_marker_impl(trait_path, impl);
         }

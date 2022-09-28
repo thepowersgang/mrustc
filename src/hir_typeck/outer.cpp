@@ -800,6 +800,45 @@ namespace {
             // Ignore type aliases, they don't have to typecheck.
         }
 
+
+        void add_lifetime_bounds_for_impl_type(const Span& sp, HIR::GenericParams& dst, const ::HIR::TypeRef& ty)
+        {
+            // REF: rustc-1.29.0-src/src/vendor/clap/src/args/arg.rs:54 - Omitted lifetime bounds
+
+            // https://rust-lang.github.io/rfcs/2089-implied-bounds.html ?
+            // HACK: Just grab the lifetime bounds from a path type
+            if( ty.data().is_Path() && ty.data().as_Path().path.m_data.is_Generic() )
+            {
+                const auto& gp = ty.data().as_Path().path.m_data.as_Generic();
+                const auto& ti = m_resolve.m_crate.get_typeitem_by_path(sp, gp.m_path);
+
+                const HIR::GenericParams* params = nullptr;
+                if(const auto* e = ti.opt_Struct()) {
+                    params = &e->m_params;
+                }
+                else if(const auto* e = ti.opt_Enum()) {
+                    params = &e->m_params;
+                }
+                else if(const auto* e = ti.opt_Union()) {
+                    params = &e->m_params;
+                }
+                else {
+                    DEBUG("TODO: Obtain bounds from " << ti.tag_str());
+                }
+
+                if(params)
+                {
+                    MonomorphStatePtr   ms(nullptr, &gp.m_params, nullptr);
+                    for(const auto& b : params->m_bounds)
+                    {
+                        if( const auto* be = b.opt_Lifetime() ) {
+                            dst.m_bounds.push_back(HIR::GenericBound::make_Lifetime({ ms.monomorph_lifetime(sp, be->test), ms.monomorph_lifetime(sp, be->valid_for) }));
+                        }
+                    }
+                }
+            }
+        }
+
         void visit_type_impl(::HIR::TypeImpl& impl) override
         {
             TRACE_FUNCTION_F("impl " << impl.m_type);
@@ -813,6 +852,9 @@ namespace {
                 this->visit_type(impl.m_type);
                 m_cur_params = nullptr;
             }
+
+            // Propagate bounds from the type
+            add_lifetime_bounds_for_impl_type(Span(), impl.m_params, impl.m_type);
 
             ::HIR::Visitor::visit_type_impl(impl);
             // TODO: Check that the type is valid
@@ -834,6 +876,9 @@ namespace {
                 this->visit_path_params(impl.m_trait_args);
                 m_cur_params = nullptr;
             }
+
+            // Propagate bounds from the type
+            add_lifetime_bounds_for_impl_type(Span(), impl.m_params, impl.m_type);
 
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);
             m_self_types.pop_back();
@@ -1038,6 +1083,9 @@ namespace {
                 this->visit_path_params(impl.m_trait_args);
                 m_cur_params = nullptr;
             }
+
+            // Propagate bounds from the type/trait
+            add_lifetime_bounds_for_impl_type(Span(), impl.m_params, impl.m_type);
 
             ::HIR::Visitor::visit_marker_impl(trait_path, impl);
             // TODO: Check that the type+trait is valid
