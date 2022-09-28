@@ -1,362 +1,58 @@
-input = """
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar0 -- to=['#ivar120], from=['#ivar15]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar1 -- to=['#ivar121], from=['#ivar16]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar2 -- to=['#ivar49], from=['#ivar48]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar3 -- to=['#ivar67], from=['#ivar65]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar4 -- to=['#ivar93], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar5 -- to=['#ivar115], from=['#ivar70]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar6 -- to=['#ivar104, '#ivar194, '#ivar205], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar7 -- to=['#ivar105, '#ivar195, '#ivar206], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar8 -- to=['#ivar149], from=['#ivar107]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar9 -- to=['#ivar150], from=['#ivar108]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar10 -- to=['#ivar163], from=['#ivar109]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar11 -- to=['#ivar178], from=['#ivar110]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar12 -- to=['#ivar179], from=['#ivar111]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar13 -- to=['#ivar180], from=['#ivar112]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar14 -- to=['#ivar254], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar15 -- to=['#ivar0], from=['#ivar19]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar16 -- to=['#ivar1], from=['#ivar20]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar17 -- to=[], from=['#ivar23]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar18 -- to=[], from=['#ivar24]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar19 -- to=['#ivar15], from=['#ivar23]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar20 -- to=['#ivar16], from=['#ivar24]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar21 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar22 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar23 -- to=['#ivar17, '#ivar19], from=['#ivar25]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar24 -- to=['#ivar18, '#ivar20], from=['#ivar26]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar25 -- to=['#ivar23], from=['#ivar29]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar26 -- to=['#ivar24], from=['#ivar30]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar27 -- to=[], from=['M0]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar28 -- to=[], from=['#ivar31]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar29 -- to=['#ivar25], from=['#ivar31]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar30 -- to=['#ivar26], from=['#ivar31]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar31 -- to=['#ivar28, '#ivar30, '#ivar29], from=['M0]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar32 -- to=[], from=['M0]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar33 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar34 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar35 -- to=[], from=['#ivar37]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar36 -- to=[], from=['#ivar39]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar37 -- to=['#ivar35], from=['#ivar39]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar38 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar39 -- to=['#ivar36, '#ivar37], from=['#ivar41]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar40 -- to=['static], from=['#ivar44]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar41 -- to=['#ivar39], from=['#ivar45]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar42 -- to=[], from=['M0]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar43 -- to=[], from=['#ivar46]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar44 -- to=['#ivar40], from=['#ivar46]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar45 -- to=['#ivar41], from=['#ivar46]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar46 -- to=['#ivar43, '#ivar45, '#ivar44], from=['M0]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar47 -- to=[], from=['M0]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar48 -- to=['#ivar2], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar49 -- to=[], from=['#ivar2]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar50 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar51 -- to=['static], from=['#ivar66, '#ivar69]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar52 -- to=[], from=['#ivar54]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar53 -- to=[], from=['#ivar56]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar54 -- to=['#ivar52], from=['#ivar56]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar55 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar56 -- to=['#ivar53, '#ivar54], from=['#ivar58]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar57 -- to=['static], from=['#ivar61]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar58 -- to=['#ivar56], from=['#ivar62]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar59 -- to=[], from=['M0]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar60 -- to=[], from=['#ivar63]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar61 -- to=['#ivar57], from=['#ivar63]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar62 -- to=['#ivar58], from=['#ivar63]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar63 -- to=['#ivar60, '#ivar62, '#ivar61], from=['M0]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar64 -- to=[], from=['M0]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar65 -- to=['#ivar3], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar66 -- to=['#ivar51], from=['#ivar67]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar67 -- to=['#ivar66], from=['#ivar3]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar68 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar69 -- to=['#ivar51], from=['static]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar70 -- to=['#ivar5], from=['#ivar73]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar71 -- to=[], from=['#ivar75]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar72 -- to=[], from=['#ivar75]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar73 -- to=['#ivar70], from=['#ivar75]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar74 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar75 -- to=['#ivar71, '#ivar72, '#ivar73], from=['#ivar76, '#ivar94]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar76 -- to=['#ivar75], from=['#ivar78]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar77 -- to=[], from=['#ivar81]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar78 -- to=['#ivar76], from=['#ivar80]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar79 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar80 -- to=['#ivar78], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar81 -- to=['#ivar77], from=['#ivar82]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar82 -- to=['#ivar81], from=['#ivar84]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar83 -- to=[], from=['#ivar85]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar84 -- to=['#ivar82], from=['#ivar85]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar85 -- to=['#ivar83, '#ivar84], from=['#ivar86]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar86 -- to=['#ivar85], from=['#local0]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar87 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar88 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar89 -- to=[], from=['#ivar91]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar90 -- to=[], from=['#ivar92]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar91 -- to=['#ivar89], from=['#ivar92]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar92 -- to=['#ivar90, '#ivar91], from=['#ivar93]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar93 -- to=['#ivar92], from=['#ivar4]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar94 -- to=['#ivar75], from=['static]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar95 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar96 -- to=[], from=['#ivar227, '#ivar257]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar97 -- to=[], from=['#ivar228, '#ivar258]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar98 -- to=[], from=['#ivar101]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar99 -- to=[], from=['#ivar102]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar100 -- to=[], from=['#ivar103]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar101 -- to=['#ivar98], from=['#ivar104]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar102 -- to=['#ivar99], from=['#ivar105]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar103 -- to=['#ivar100], from=['#ivar106]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar104 -- to=['#ivar101], from=['#ivar6]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar105 -- to=['#ivar102], from=['#ivar7]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar106 -- to=['#ivar103], from=['#ivar122]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar107 -- to=['#ivar8], from=['#ivar113]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar108 -- to=['#ivar9], from=['#ivar114]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar109 -- to=['#ivar10], from=['#ivar116]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar110 -- to=['#ivar11], from=['#ivar117]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar111 -- to=['#ivar12], from=['#ivar118]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar112 -- to=['#ivar13], from=['#ivar119]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar113 -- to=['#ivar107], from=['#ivar115]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar114 -- to=['#ivar108], from=['#local1]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar115 -- to=['#ivar113], from=['#ivar5]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar116 -- to=['#ivar109], from=['#local2]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar117 -- to=['#ivar110], from=['#ivar120]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar118 -- to=['#ivar111], from=['#ivar121]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar119 -- to=['#ivar112], from=['#local3]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar120 -- to=['#ivar117], from=['#ivar0]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar121 -- to=['#ivar118], from=['#ivar1]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar122 -- to=['#ivar106], from=['#ivar123]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar123 -- to=['#ivar122], from=['#ivar127]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar124 -- to=[], from=['#ivar128]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar125 -- to=[], from=['#ivar128]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar126 -- to=[], from=['#ivar128]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar127 -- to=['#ivar123], from=['#ivar128]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar128 -- to=['#ivar129, '#ivar124, '#ivar126, '#ivar125, '#ivar127], from=['#ivar130, '#ivar134, '#ivar133]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar129 -- to=[], from=['#ivar128]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar130 -- to=['#ivar128], from=['#ivar131]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar131 -- to=['#ivar130], from=['#ivar132]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar132 -- to=['#ivar131], from=['static]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar133 -- to=['#ivar128], from=['#ivar135]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar134 -- to=['#ivar128], from=['#ivar136]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar135 -- to=['#ivar133], from=['#ivar137]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar136 -- to=['#ivar134], from=['#ivar138]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar137 -- to=['#ivar135], from=['#ivar139]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar138 -- to=['#ivar136], from=['#local4]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar139 -- to=['#ivar137], from=['#ivar140, '#ivar157, '#ivar166]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar140 -- to=['#ivar139], from=['#ivar144]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar141 -- to=[], from=['#ivar147]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar142 -- to=[], from=['#ivar146]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar143 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar144 -- to=['#ivar140], from=['#ivar146]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar145 -- to=['#ivar148], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar146 -- to=['#ivar142, '#ivar144], from=['#ivar150]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar147 -- to=['#ivar141], from=['#ivar149]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar148 -- to=[], from=['#ivar145]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar149 -- to=['#ivar147], from=['#ivar8]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar150 -- to=['#ivar146], from=['#ivar9]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar151 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar152 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar153 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar154 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar155 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar156 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar157 -- to=['#ivar139], from=['#ivar159]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar158 -- to=[], from=['#ivar161]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar159 -- to=['#ivar157], from=['#ivar161]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar160 -- to=['#ivar162], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar161 -- to=['#ivar158, '#ivar159], from=['#ivar163]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar162 -- to=[], from=['#ivar160]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar163 -- to=['#ivar161], from=['#ivar10]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar164 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar165 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar166 -- to=['#ivar139], from=['#ivar172]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar167 -- to=[], from=['#ivar175]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar168 -- to=[], from=['#ivar176]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar169 -- to=[], from=['#ivar174]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar170 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar171 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar172 -- to=['#ivar166], from=['#ivar174]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar173 -- to=['#ivar177], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar174 -- to=['#ivar169, '#ivar172], from=['#ivar180]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar175 -- to=['#ivar167], from=['#ivar178]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar176 -- to=['#ivar168], from=['#ivar179]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar177 -- to=[], from=['#ivar173]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar178 -- to=['#ivar175], from=['#ivar11]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar179 -- to=['#ivar176], from=['#ivar12]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar180 -- to=['#ivar174], from=['#ivar13]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar181 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar182 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar183 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar184 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar185 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar186 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar187 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar188 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar189 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar190 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar191 -- to=[], from=['#ivar193]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar192 -- to=[], from=['#ivar193]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar193 -- to=['#ivar192, '#ivar191], from=['#ivar195, '#ivar194]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar194 -- to=['#ivar193], from=['#ivar6]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar195 -- to=['#ivar193], from=['#ivar7]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar196 -- to=[], from=['#ivar197]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar197 -- to=['#ivar196], from=['#ivar198]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar198 -- to=['#ivar197], from=['static]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar199 -- to=[], from=['#ivar202]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar200 -- to=[], from=['#ivar203]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar201 -- to=[], from=['#ivar204]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar202 -- to=['#ivar199], from=['#ivar205]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar203 -- to=['#ivar200], from=['#ivar206]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar204 -- to=['#ivar201], from=['#ivar207]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar205 -- to=['#ivar202], from=['#ivar6]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar206 -- to=['#ivar203], from=['#ivar7]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar207 -- to=['#ivar204], from=['#ivar208]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar208 -- to=['#ivar207], from=['#ivar209]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar209 -- to=['#ivar208], from=['#ivar213]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar210 -- to=[], from=['#ivar214]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar211 -- to=[], from=['#ivar214]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar212 -- to=[], from=['#ivar214]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar213 -- to=['#ivar209], from=['#ivar214]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar214 -- to=['#ivar215, '#ivar210, '#ivar212, '#ivar211, '#ivar213], from=['#ivar216, '#ivar220, '#ivar219]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar215 -- to=[], from=['#ivar214]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar216 -- to=['#ivar214], from=['#ivar217]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar217 -- to=['#ivar216], from=['#ivar218]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar218 -- to=['#ivar217], from=['static]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar219 -- to=['#ivar214], from=['#ivar221]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar220 -- to=['#ivar214], from=['#ivar222]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar221 -- to=['#ivar219], from=['#ivar223]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar222 -- to=['#ivar220], from=['#ivar224]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar223 -- to=['#ivar221], from=['static]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar224 -- to=['#ivar222], from=['static]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar225 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar226 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar227 -- to=['#ivar96], from=['#ivar229]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar228 -- to=['#ivar97], from=['#ivar230]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar229 -- to=['#ivar227], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar230 -- to=['#ivar228], from=['#ivar231]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar231 -- to=['#ivar230], from=['#local6]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar232 -- to=[], from=['#ivar235]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar233 -- to=[], from=['#ivar238]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar234 -- to=[], from=['#ivar239]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar235 -- to=['#ivar232], from=['#ivar238]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar236 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar237 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar238 -- to=['#ivar233, '#ivar235], from=['#ivar240]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar239 -- to=['#ivar234], from=['#ivar241]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar240 -- to=['#ivar238], from=['#ivar243]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar241 -- to=['#ivar239], from=['#ivar244]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar242 -- to=[], from=['#ivar245]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar243 -- to=['#ivar240], from=['#ivar245]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar244 -- to=['#ivar241], from=['#ivar245]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar245 -- to=['#ivar242, '#ivar243, '#ivar244], from=['#ivar246]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar246 -- to=['#ivar245], from=['#local5]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar247 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar248 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar249 -- to=[], from=['#ivar251]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar250 -- to=[], from=['#ivar253]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar251 -- to=['#ivar249], from=['#ivar253]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar252 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar253 -- to=['#ivar250, '#ivar251], from=['#ivar254]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar254 -- to=['#ivar253], from=['#ivar14]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar255 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar256 -- to=[], from=[]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar257 -- to=['#ivar96], from=['#ivar259]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar258 -- to=['#ivar97], from=['#ivar260]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar259 -- to=['#ivar257], from=['static]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar260 -- to=['#ivar258], from=['#ivar261]
-Expand HIR Lifetimes-     `anonymous-namespace'::LifetimeInferState::dump: '#ivar261 -- to=['#ivar260], from=['#local7]
+import argparse
+import re
+import log_get_last_function
 
-"""
+RE_equate_lifetimes = re.compile(r".*equate_lifetimes: ('[^ ]+) := ('[^$]+)")
+assert RE_equate_lifetimes.match("Expand HIR Lifetimes-       `anonymous-namespace'::ExprVisitor_Enumerate::equate_lifetimes: 'static := '#ivar14"), RE_equate_lifetimes.pattern
+# Expand HIR Lifetimes-   HIR_Expand_LifetimeInfer_ExprInner: >> (=== Iter 0 ===)
+# Expand HIR Lifetimes-    `anonymous-namespace'::LifetimeInferState::dump: '#ivar0 -- to=['#ivar69, '#ivar83], from=['#ivar13]
+# Expand HIR Lifetimes-   HIR_Expand_LifetimeInfer_ExprInner: << (=== Iter 0 ===)
+# Expand HIR Lifetimes-   HIR_Expand_LifetimeInfer_ExprInner: >> (COMPACT)
+# Expand HIR Lifetimes-    `anonymous-namespace'::LifetimeInferState::dump: '#ivar0 = 'static to=['static, 'static]
+# Expand HIR Lifetimes-   HIR_Expand_LifetimeInfer_ExprInner: << (COMPACT)
 
-input2 = """
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar0 = 'M0 to=['M0, 'M0, 'M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar1 = 'M0 to=['M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar2 = 'M0 to=['M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar3 = 'M0 to=['M0, 'M0, 'M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar4 = 'M0 to=['M0, 'M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar5 = 'M0 to=[]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar6 = 'M0 to=['M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar7 = 'M0 to=['M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar8 = 'M0 to=[]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar9 = 'M1 to=[]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar10 = 'M0 to=['M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar11 = 'M1 to=['M1]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar12 = 'M0 to=[]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar13 = 'M0 to=['M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar14 = 'M0 to=[]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar15 = 'M0 to=['M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar16 = 'M0 to=[]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar17 = 'M1 to=[]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar18 = 'M0 to=['M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar19 = 'M1 to=['M1]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar20 = 'M0 to=[]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar21 = 'M1 to=[]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar22 = 'M0 to=['M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar23 = 'M1 to=['M1]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar24 = 'M0 to=['M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar25 = 'M0 to=[]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar26 = 'M0 to=[]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar27 = 'M0 to=[]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar28 = 'M1 to=[]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar29 = 'M0 to=['M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar30 = 'M1 to=['M1]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar31 = 'M0 to=['M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar32 = 'M0 to=[]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar33 = 'M1 to=[]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar34 = 'M0 to=['M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar35 = 'M1 to=['M1]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar36 = 'M0 to=['M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar37 = 'M0 to=['M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar38 = 'M0 to=[]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar39 = 'M0 to=['M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar40 = 'M0 to=['M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar41 = 'M0 to=['M0, 'M0, 'M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar42 = 'static to=[]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar43 = 'static to=[]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar44 = 'M0 to=['M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar45 = 'M0 to=['M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar46 = 'M0 to=[]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar47 = 'M0 to=['M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar48 = 'M0 to=['M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar49 = 'M0 to=['M0, 'M0, 'M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar50 = 'M0 to=['M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar51 = 'static to=[]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar52 = 'static to=[]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar53 = 'M0 to=['M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar54 = 'M0 to=['M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar55 = 'static to=[]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar56 = 'M0 to=[]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar57 = 'M0 to=['M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar58 = 'M0 to=['M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar59 = 'M0 to=['M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar60 = 'M0 to=[]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar61 = 'M0 to=['M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar62 = 'M0 to=['M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar63 = 'M0 to=['M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar64 = 'M0 to=[]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar65 = 'M1 to=[]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar66 = 'M0 to=[]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar67 = 'M0 to=['M0, 'M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar68 = 'M1 to=['M1]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar69 = 'M0 to=['M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar70 = 'M0 to=['M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar71 = 'M0 to=['M0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar72 = '#local1 to=[]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar73 = 'M1 to=[]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar74 = '#local1 to=[]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar75 = '#local1 to=['#ivar72, '#ivar74]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar76 = 'M1 to=['M1]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar77 = 'M0 to=['#local1]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar78 = '#local0 to=['#local1]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar79 = 'static to=['#local0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar80 = 'static to=[]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar81 = 'M0 to=['#local0]
-Expand HIR Lifetimes-       `anonymous-namespace'::LifetimeInferState::dump: '#ivar82 = 'M0 to=['M0]
-
-"""
-
-def get_links_ivartree(input):
-    links = set()
-    for line in input.split('\n'):
-        if line == "":
+def main():
+    argp = argparse.ArgumentParser()
+    argp.add_argument("logfile", help="Single-function log file")
+    argp.add_argument("--source", choices=['raw', 'initial', 'final'], default='raw')
+    argp.add_argument("--only-ivar")
+    args = argp.parse_args()
+    
+    class State(object):
+        def __init__(self):
+            self.links_raw = []
+            self.links_initial = set() # from the initial ivar dump
+            self.links_final = {}
+            self.in_iter_0 = False
+            self.in_compact = False
+    fcn_name = ""
+    state = State()
+    for line in open(args.logfile):
+        line = line.strip()
+        if log_get_last_function.is_function_header(line):
+            fcn_name = line
+            state = State()
             continue
-        try:
+        
+        if ' >> (=== Iter 0 ===)' in line:
+            state.in_iter_0 = True
+            continue
+        if ' << (=== Iter 0 ===)' in line:
+            state.in_iter_0 = False
+            continue
+        if ' >> (COMPACT)' in line:
+            state.in_compact = True
+            continue
+        if ' << (COMPACT)' in line:
+            state.in_compact = False
+            continue
+        
+        m = RE_equate_lifetimes.match(line)
+        if m is not None:
+            state.links_raw.append( (m[2], m[1], "") )
+            continue
+        
+        if state.in_iter_0 and 'dump: ' in line and ' -- to=' in line:
             _,line = line.split('dump: ')
             if ' = ' in line:
                 continue
@@ -367,20 +63,13 @@ def get_links_ivartree(input):
             
             if to != "":
                 for v in to.split(', '):
-                    links.add((varname, v, ""))
+                    state.links_initial.add((varname, v, ""))
             if fr != "":
                 for v in fr.split(', '):
-                    links.add((v, varname, ""))
-        except:
-            print(line)
-            raise
-    return links
-def get_links_deplist(input):
-    links = dict()
-    for line in input.split('\n'):
-        if line == "":
+                    state.links_initial.add((v, varname, ""))
             continue
-        try:
+        
+        if state.in_compact and "dump: '" in line and " = '" in line:
             _,line = line.split('dump: ')
             if not ' = ' in line:
                 continue
@@ -391,33 +80,88 @@ def get_links_deplist(input):
             
             if to != "":
                 for v in to.split(', '):
-                    links.setdefault((fr, v, ), set()).add(varname)
-        except:
-            print(line)
-            raise
-    def make_list(vals):
-        vals = list(vals)
-        rv = ""
-        for i in range(0, len(vals), 5):
-            rv += ", ".join(vals[i:][:5])
-            rv += "\n"
-        return rv
-    return set( (a,b,make_list(vals)) for (a,b),vals in links.items() )
-
-
-links = get_links_ivartree(input)
-#links = get_links_deplist(input2)
-
-if True:
-    import graphviz
-    g = graphviz.Digraph('borrowck')
-    for a,b,label in links:
-        g.edge(a, b, label=label)
-    g.view()
-else:
-    print()
-    print("digraph borrowck {")
-    for a,b in links:
-        print("\"{a}\" -> \"{b}\";".format(a=a,b=b))
-    print("}")
+                    state.links_final.setdefault((fr, v, ), set()).add(varname)
+            continue
+    state.links_final = set( (a,b,make_list(vals)) for (a,b),vals in state.links_final.items() )
     
+    links = {
+        'raw': state.links_raw,
+        'initial': state.links_initial,
+        'final': state.links_final,
+        }[args.source]
+    if args.only_ivar is not None:
+        links = get_subgraph_for_ivar(links, "'#ivar"+args.only_ivar)
+    
+    if True:
+        print()
+        print("digraph borrowck {")
+        for a,b,label in links:
+            print("\"{a}\" -> \"{b}\" {{ label = \"{label}\" }};".format(a=a,b=b, label=label))
+        print("}")
+
+    if True:
+        import networkx as nx
+        import matplotlib.pyplot as plt
+        g = nx.DiGraph()
+        for a,b,label in links:
+            if a.startswith("'#ivar"):
+                a = a[6:]
+            else:
+                a = a + '-T'
+            if b.startswith("'#ivar"):
+                b = b[6:]
+            else:
+                b = b + '-B'
+            g.add_edge(a, b)
+        pos = None
+        #pos = nx.planar_layout(g)
+        pos = nx.kamada_kawai_layout(g) # Gives a decent layout without needing graphviz/dot
+        #pos = nx.nx_agraph.graphviz_layout(g)
+        #pos = nx.nx_pydot.graphviz_layout(g)
+        nx.draw(g, with_labels=True, arrows=True, pos=pos)
+        plt.show()
+    elif True:
+        import graphviz
+        g = graphviz.Digraph('borrowck')
+        for a,b,label in links:
+            g.edge(a, b, label=label)
+        g.view()
+    else:
+        print()
+        print("digraph borrowck {")
+        for a,b in links:
+            print("\"{a}\" -> \"{b}\";".format(a=a,b=b))
+        print("}")
+
+
+def make_list(vals):
+    vals = list(vals)
+    rv = ""
+    for i in range(0, len(vals), 5):
+        rv += ", ".join(vals[i:][:5])
+        rv += "\n"
+    return rv
+
+def get_subgraph_for_ivar(links, name):
+    assert name.startswith("'#ivar")
+    return get_tree(links, name, 0) + get_tree(links, name, 1)
+
+def get_tree(links, root_name, dir=0):
+    rv = []
+    stack = [root_name]
+    visited = set()
+    while len(stack) > 0:
+        n = stack[-1]; del stack[-1]
+        if n in visited:
+            continue
+        visited.add(n)
+        if not n.startswith("'#ivar"):
+            continue
+        for l in links:
+            if l[dir] == n:
+                rv.append(l)
+                stack.append( l[1-dir] )
+    return rv
+
+if __name__ == "__main__":
+    main()

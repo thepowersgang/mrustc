@@ -1,6 +1,17 @@
 import argparse
 import sys
 
+def is_function_header(line):
+    if 'visit_function: ' in line \
+        or 'evaluate_constant: ' in line \
+        or 'Trans_Monomorphise_List: ' in line \
+        or 'Trans_Codegen: FUNCTION CODE' in line \
+        or 'Trans_Codegen- emit_' in line \
+        or 'MIR_OptimiseInline: >> (' in line \
+        :
+        return True
+    return None
+
 def main():
     argp = argparse.ArgumentParser()
     argp.add_argument("-o", "--output", type=lambda v: open(v, 'w'), default=sys.stdout)
@@ -11,13 +22,7 @@ def main():
     fcn_lines = []
     found_fcn = False
     for line in args.logfile:
-        if 'visit_function: ' in line \
-            or 'evaluate_constant: ' in line \
-            or 'Trans_Monomorphise_List: ' in line \
-            or 'Trans_Codegen: FUNCTION CODE' in line \
-            or 'Trans_Codegen- emit_' in line \
-            or 'MIR_OptimiseInline: >> (' in line \
-            :
+        if is_function_header(line) is not None:
             if found_fcn:
                 break
             fcn_lines = []
@@ -29,4 +34,5 @@ def main():
         args.output.write(l)
         args.output.write("\n")
 
-main()
+if __name__ == "__main__":
+    main()
