@@ -380,6 +380,10 @@ namespace {
 
         void visit_root(HIR::ExprPtr& ep) {
 
+            for(auto& ty : ep.m_erased_types) {
+                this->visit_type(ty);
+            }
+
             // Translate the return type's erased types
             const auto& sp = ep->span();
             DEBUG("m_real_ret_type = " << m_real_ret_type);
@@ -389,6 +393,7 @@ namespace {
                     ASSERT_BUG(sp, e->m_index < ep.m_erased_types.size(),
                         "Erased type index OOB - " << e->m_origin << " " << e->m_index << " >= " << ep.m_erased_types.size());
                     rv = ep.m_erased_types[e->m_index].clone();
+                    DEBUG("Erased type liftime: " << e->m_lifetime << " := " << rv);
                     this->equate_type_lifetimes(sp, e->m_lifetime, rv);
                     return true;
                 }
