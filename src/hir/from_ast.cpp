@@ -84,10 +84,25 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
             auto type = LowerHIR_Type(e.type);
 
             // TODO: Check if this trait is `Sized` and ignore if it is? (It's a useless bound)
+
+            // If there are outer HRBs, see if they can be converted to HRBs on the trait only.
             if( !e.outer_hrbs.empty() ) {
                 // TODO: Check if there's a HRL mentioned in `type`
-                // HACK: Run a HRL monomorph with no params (will crash if HRLs are present)
-                MonomorphHrlsOnly(HIR::PathParams()).monomorph_type(bound.span, type);
+                DEBUG("Checking that there are no HRLs in: " << type << " for " << bound);
+
+                // HACK: Run a monomorph as a visitor
+                struct M: public MonomorphiserNop {
+                    mutable bool found_hrl;
+                    HIR::LifetimeRef monomorph_lifetime(const Span& sp, const HIR::LifetimeRef& ref) const override {
+                        if(ref.is_param() && HIR::GenericRef(RcString(), ref.binding).group() == 3) {
+                            found_hrl = true;
+                        }
+                        return MonomorphiserNop::monomorph_lifetime(sp, ref);
+                    }
+                    M(): found_hrl(false) {}
+                } m;
+                m.monomorph_type(bound.span, type);
+                ASSERT_BUG(bound.span, !m.found_hrl, "TODO: Handle outer HRL used in type - " << type);
 
                 if( !e.inner_hrbs.empty() ) {
                     TODO(bound.span, "Handle two layers of HRBs in a bound");
@@ -104,7 +119,6 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
                 type.clone(),
                 mv$(bound_trait_path)
                 }));
-            //rv.m_bounds.back().as_TraitBound().trait.m_hrls = LowerHIR_HigherRankedBounds(e.inner_hrbs);
 
             for(auto& bound : tp_bounds)
             {

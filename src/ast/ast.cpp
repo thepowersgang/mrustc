@@ -461,7 +461,7 @@ Item Item::clone() const
     {
         os << "for<";
         for(const auto& l : x.m_lifetimes)
-            os << "'" << l << ",";
+            os << l << ",";
         os << "> ";
     }
     return os;
@@ -505,10 +505,10 @@ std::ostream& operator<<(std::ostream& os, const GenericParam& x)
         os << "/*-*/";
         }
     TU_ARMA(Lifetime, ent) {
-        os << "'" << ent.test << ": '" << ent.bound;
+        os << ent.test << ": " << ent.bound;
         }
     TU_ARMA(TypeLifetime, ent) {
-        os << ent.type << ": '" << ent.bound;
+        os << ent.type << ": " << ent.bound;
         }
     TU_ARMA(IsTrait, ent) {
         os << ent.outer_hrbs << ent.type << ": " << ent.inner_hrbs << ent.trait;

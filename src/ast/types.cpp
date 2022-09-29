@@ -269,7 +269,7 @@ void TypeRef::print(::std::ostream& os, bool is_debug/*=false*/) const
     _(Primitive,
         os << ent.core_type;
         )
-    _2(Function, {)
+    TU_ARM(m_data, Function, ent) {
         os << ent.info.hrbs;
         if( ent.info.m_abi != "" )
             os << "extern \"" << ent.info.m_abi << "\" ";
@@ -295,10 +295,13 @@ void TypeRef::print(::std::ostream& os, bool is_debug/*=false*/) const
         }
         os << ")";
         )
-    _(Borrow,
-        os << "&" << (ent.is_mut ? "mut " : "");
+    TU_ARM(m_data, Borrow, ent) {
+        os << "&";
+        if(ent.lifetime != AST::LifetimeRef())
+            os << ent.lifetime << " ";
+        os << (ent.is_mut ? "mut " : "");
         ent.inner->print(os, is_debug);
-        )
+        } break;
     _(Pointer,
         os << "*" << (ent.is_mut ? "mut" : "const");
         ent.inner->print(os, is_debug);
