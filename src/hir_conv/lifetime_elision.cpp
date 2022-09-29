@@ -284,7 +284,12 @@ namespace
                         }
                     }
 
-                    visit_lifetime(sp, e->m_lifetime);
+                    // If in arguments, don't visit an omitted lifetime (so we don't add an elided lifetime for something that will be generic)
+                    if( e->m_lifetime.binding == HIR::LifetimeRef::UNKNOWN && m_cur_params ) {
+                    }
+                    else {
+                        visit_lifetime(sp, e->m_lifetime);
+                    }
                 }
                 if(pushed) {
                     m_current_lifetime.pop_back();
@@ -529,6 +534,7 @@ namespace
 
         void visit_function(::HIR::ItemPath p, ::HIR::Function& item) override
         {
+            TRACE_FUNCTION_F(p);
             auto _ = m_resolve.set_item_generics(item.m_params);
             // NOTE: Superfluous... except that it makes the params valid for the return type.
             visit_params(item.m_params);
