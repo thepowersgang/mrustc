@@ -246,7 +246,7 @@ namespace
                                 HIR::Visitor::visit_path_params(pp);
                             }
                             void add_lifetime(const HIR::LifetimeRef& lft) {
-                                if(lft.is_param() && (lft.binding >> 8) == 3 ) {
+                                if( lft.is_hrl() ) {
                                     // HRL - ignore
                                     return;
                                 }

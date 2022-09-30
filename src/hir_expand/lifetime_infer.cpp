@@ -422,10 +422,10 @@ namespace {
             DEBUG(lhs << " := " << rhs);
             ASSERT_BUG(sp, lhs != HIR::LifetimeRef() && lhs.binding != HIR::LifetimeRef::INFER, "Unspecified lifetime - " << lhs);
             ASSERT_BUG(sp, rhs != HIR::LifetimeRef() && rhs.binding != HIR::LifetimeRef::INFER, "Unspecified lifetime - " << rhs);
-            if( lhs.is_param() && (lhs.binding >> 8) == 3 ) {
+            if( lhs.is_hrl() ) {
                 BUG(sp, "Encountered HRL - " << lhs);
             }
-            if( rhs.is_param() && (rhs.binding >> 8) == 3 ) {
+            if( rhs.is_hrl() ) {
                 BUG(sp, "Encountered HRL - " << rhs);
             }
 
@@ -736,7 +736,7 @@ namespace {
             }
 
             ::HIR::LifetimeRef monomorph_lifetime(const Span& sp, const ::HIR::LifetimeRef& tpl) const override {
-                if( tpl.binding == HIR::LifetimeRef::UNKNOWN || tpl.binding == HIR::LifetimeRef::INFER ) {
+                if( tpl.binding == HIR::LifetimeRef::UNKNOWN || tpl.binding == HIR::LifetimeRef::INFER || tpl.is_hrl() ) {
                     return parent.m_state.allocate_ivar(sp);
                 }
                 else {
@@ -1040,7 +1040,7 @@ namespace {
                 }
 
                 void equate_lifetime(const HIR::LifetimeRef& src) {
-                    if( src.is_param() && (src.binding >> 8) == 3 ) {
+                    if( src.is_hrl() ) {
                         ASSERT_BUG(sp, m_hrls.size() > 0, "Encountered HRL with no HRL in the stack");
                         //parent.equate_lifetimes(sp, dst_lft, m_hrls.back().m_lifetimes[src.binding & 0xFF]);
                     }
@@ -1825,11 +1825,11 @@ namespace {
                         return;
                     }
                     // but not HRLs
-                    if( HIR::GenericRef("", test.binding).group() == 3 ) {
+                    if( test.is_hrl() ) {
                         return ;
                     }
                     // if the bound is a param, it can't be a HRL.
-                    if( valid_for.is_param() && HIR::GenericRef("", valid_for.binding).group() == 3 ) {
+                    if( valid_for.is_hrl() ) {
                         return ;
                     }
 

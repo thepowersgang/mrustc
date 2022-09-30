@@ -285,7 +285,7 @@ namespace typecheck
                     ASSERT_BUG(sp, idx < impl_params->m_lifetimes.size(), "Generic lifetime (impl) out of input range - " << e << " >= " << impl_params->m_lifetimes.size());
                     // If this resolves to a HRL (group 3) then return an empty lifetime
                     auto rv = impl_params->m_lifetimes[idx];
-                    if(rv.is_param() && HIR::GenericRef("", rv.binding).group() == 3 ) {
+                    if( rv.is_hrl() ) {
                         return HIR::LifetimeRef();
                     }
                     return rv;

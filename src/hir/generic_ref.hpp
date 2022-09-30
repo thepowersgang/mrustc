@@ -87,6 +87,13 @@ struct LifetimeRef
     bool is_param() const {
         return binding < 0xFF00;
     }
+    GenericRef as_param() const {
+        assert(is_param());
+        return GenericRef(RcString(), binding);
+    }
+    bool is_hrl() const {
+        return is_param() && as_param().group() == 3;
+    }
 
     Ordering ord(const LifetimeRef& x) const {
         return ::ord(binding, x.binding);

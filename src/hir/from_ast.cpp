@@ -94,7 +94,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
                 struct M: public MonomorphiserNop {
                     mutable bool found_hrl;
                     HIR::LifetimeRef monomorph_lifetime(const Span& sp, const HIR::LifetimeRef& ref) const override {
-                        if(ref.is_param() && HIR::GenericRef(RcString(), ref.binding).group() == 3) {
+                        if( ref.is_hrl() ) {
                             found_hrl = true;
                         }
                         return MonomorphiserNop::monomorph_lifetime(sp, ref);
