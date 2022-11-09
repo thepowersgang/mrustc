@@ -115,3 +115,137 @@
 +#[cfg(any(miri, rust_compiler = "mrustc", not(all(feature = "simd", any(target_arch = "x86_64")))))]
  use self::generic as arch;
 
+#
+# Backport which is required to support arm64 on macOS 12
+# See: https://github.com/alexcrichton/curl-rust/commit/0aea09c428b9bc2bcf46da0fc33959fe3f03c74a
+#
+diff --git vendor/curl/src/lib.rs vendor/curl/src/lib.rs
+index 9f2e50ea9b..50eaba742b 100644
+--- vendor/curl/src/lib.rs
++++ vendor/curl/src/lib.rs
+@@ -82,6 +82,9 @@ pub mod easy;
+ pub mod multi;
+ mod panic;
+ 
++#[cfg(test)]
++static INITIALIZED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
++
+ /// Initializes the underlying libcurl library.
+ ///
+ /// The underlying libcurl library must be initialized before use, and must be
+@@ -102,46 +105,62 @@ pub fn init() {
+     /// Used to prevent concurrent or duplicate initialization.
+     static INIT: Once = Once::new();
+ 
+-    /// An exported constructor function. On supported platforms, this will be
+-    /// invoked automatically before the program's `main` is called.
+-    #[cfg_attr(
+-        any(target_os = "linux", target_os = "freebsd", target_os = "android"),
+-        link_section = ".init_array"
+-    )]
+-    #[cfg_attr(target_os = "macos", link_section = "__DATA,__mod_init_func")]
+-    #[cfg_attr(target_os = "windows", link_section = ".CRT$XCU")]
+-    static INIT_CTOR: extern "C" fn() = init_inner;
++    INIT.call_once(|| {
++        #[cfg(need_openssl_init)]
++        openssl_probe::init_ssl_cert_env_vars();
++        #[cfg(need_openssl_init)]
++        openssl_sys::init();
++
++        unsafe {
++            assert_eq!(curl_sys::curl_global_init(curl_sys::CURL_GLOBAL_ALL), 0);
++        }
++
++        #[cfg(test)]
++        {
++            INITIALIZED.store(true, std::sync::atomic::Ordering::SeqCst);
++        }
++
++        // Note that we explicitly don't schedule a call to
++        // `curl_global_cleanup`. The documentation for that function says
++        //
++        // > You must not call it when any other thread in the program (i.e. a
++        // > thread sharing the same memory) is running. This doesn't just mean
++        // > no other thread that is using libcurl.
++        //
++        // We can't ever be sure of that, so unfortunately we can't call the
++        // function.
++    });
++}
+ 
++/// An exported constructor function. On supported platforms, this will be
++/// invoked automatically before the program's `main` is called. This is done
++/// for the convenience of library users since otherwise the thread-safety rules
++/// around initialization can be difficult to fulfill.
++///
++/// This is a hidden public item to ensure the symbol isn't optimized away by a
++/// rustc/LLVM bug: https://github.com/rust-lang/rust/issues/47384. As long as
++/// any item in this module is used by the final binary (which `init` will be)
++/// then this symbol should be preserved.
++#[used]
++#[doc(hidden)]
++#[cfg_attr(
++    any(target_os = "linux", target_os = "freebsd", target_os = "android"),
++    link_section = ".init_array"
++)]
++#[cfg_attr(target_os = "macos", link_section = "__DATA,__mod_init_func")]
++#[cfg_attr(target_os = "windows", link_section = ".CRT$XCU")]
++pub static INIT_CTOR: extern "C" fn() = {
+     /// This is the body of our constructor function.
+     #[cfg_attr(
+         any(target_os = "linux", target_os = "android"),
+         link_section = ".text.startup"
+     )]
+-    extern "C" fn init_inner() {
+-        INIT.call_once(|| {
+-            #[cfg(need_openssl_init)]
+-            openssl_sys::init();
+-
+-            unsafe {
+-                assert_eq!(curl_sys::curl_global_init(curl_sys::CURL_GLOBAL_ALL), 0);
+-            }
+-
+-            // Note that we explicitly don't schedule a call to
+-            // `curl_global_cleanup`. The documentation for that function says
+-            //
+-            // > You must not call it when any other thread in the program (i.e.
+-            // > a thread sharing the same memory) is running. This doesn't just
+-            // > mean no other thread that is using libcurl.
+-            //
+-            // We can't ever be sure of that, so unfortunately we can't call the
+-            // function.
+-        });
++    extern "C" fn init_ctor() {
++        init();
+     }
+ 
+-    // We invoke our init function through our static to ensure the symbol isn't
+-    // optimized away by a bug: https://github.com/rust-lang/rust/issues/47384
+-    INIT_CTOR();
+-}
++    init_ctor
++};
+ 
+ unsafe fn opt_str<'a>(ptr: *const libc::c_char) -> Option<&'a str> {
+     if ptr.is_null() {
+@@ -158,3 +177,20 @@ fn cvt(r: curl_sys::CURLcode) -> Result<(), Error> {
+         Err(Error::new(r))
+     }
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    #[cfg(any(
++        target_os = "linux",
++        target_os = "macos",
++        target_os = "windows",
++        target_os = "freebsd",
++        target_os = "android"
++    ))]
++    fn is_initialized_before_main() {
++        assert!(INITIALIZED.load(std::sync::atomic::Ordering::SeqCst));
++    }
++}
