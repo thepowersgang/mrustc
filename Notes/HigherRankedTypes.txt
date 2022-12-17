@@ -1,3 +1,9 @@
+== Current Design ==
+- `HIR::GenericPath` has a HRL blob attached
+
+
+
+== Running notes ==
 mrustc vtable types and paths with HRTBs/HRLs.
 
 `dyn Fn(&T)->&U` becomes `dyn for<'a> Fn<(&'a T,),Output=&'a U>`
@@ -107,3 +113,19 @@ General solution
     - It's usually used in enums with three pointes (e.g. vector/string)
     - Adding another `u32` shouldn't have much (or any) impact.
 - Whenever expanding generics, search up a stack for the relevant ID
+
+
+
+ISSUE: Two layers of HRLS on a generic bound
+> Is that legal in rustc?
+> it is not! "error[E0316]: nested quantification of lifetimes"
+```rust
+trait Bar<'a> {
+    fn get(&self) -> &'a i32;
+}
+
+struct Foo<T>(T)
+where
+    for<'a> &'a T: for<'b> Bar<'b>
+;
+```

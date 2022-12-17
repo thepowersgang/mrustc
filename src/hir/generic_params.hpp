@@ -46,7 +46,9 @@ struct ValueParamDef
     }
 };
 
-TAGGED_UNION(GenericBound, Lifetime,
+class GenericParams;
+
+TAGGED_UNION_EX(GenericBound, (), Lifetime, (
     (Lifetime, struct {
         LifetimeRef test;
         LifetimeRef valid_for;
@@ -56,6 +58,7 @@ TAGGED_UNION(GenericBound, Lifetime,
         LifetimeRef valid_for;
         }),
     (TraitBound, struct {
+        ::std::unique_ptr<::HIR::GenericParams> hrtbs;
         ::HIR::TypeRef  type;
         ::HIR::TraitPath    trait;
         })/*,
@@ -67,7 +70,9 @@ TAGGED_UNION(GenericBound, Lifetime,
         ::HIR::TypeRef  type;
         ::HIR::TypeRef  other_type;
         })
-    );
+    ), (), (), (
+    GenericBound clone() const;
+    ));
 extern ::std::ostream& operator<<(::std::ostream& os, const GenericBound& x);
 
 class GenericParams

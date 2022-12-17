@@ -2773,6 +2773,10 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
                 auto cb_ident = [](const ::HIR::TypeRef&ty)->const ::HIR::TypeRef& { return ty; };
                 impl.m_type.match_test_generics_fuzz(sp, pe.type, cb_ident, get_params);
 
+                if( !pe.impl_params.m_lifetimes.empty() ) {
+                    out_params.pp_impl_data.m_lifetimes = pe.impl_params.m_lifetimes;
+                }
+
                 const auto& impl_params = out_params.pp_impl_data;
                 for(size_t i = 0; i < impl_params.m_types.size(); i ++ ) {
                     if( impl_params.m_types[i] == HIR::TypeRef() ) {

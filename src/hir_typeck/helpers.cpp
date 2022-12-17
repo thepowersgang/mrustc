@@ -3283,8 +3283,9 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         TU_ARMA(TypeLifetime, be) {
             }
         TU_ARMA(TraitBound, be) {
-
             DEBUG("Check bound " << be.type << " : " << be.trait);
+            static const HIR::GenericParams empty_params;
+            auto _ = matcher.push_hrb(be.hrtbs ? *be.hrtbs : empty_params);
             auto real_type = matcher.monomorph_type(sp, be.type, false);
             auto real_trait = matcher.monomorph_traitpath(sp, be.trait, false);
             real_type = this->expand_associated_types(sp, mv$(real_type));

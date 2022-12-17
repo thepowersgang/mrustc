@@ -148,35 +148,42 @@ HIR::PathParams HIR::GenericParams::make_nop_params(unsigned level, bool lifetim
     rv.m_bounds.reserve(m_bounds.size());
     for(const auto& bound : m_bounds)
     {
-        TU_MATCH(::HIR::GenericBound, (bound), (e),
-        (Lifetime,
-            rv.m_bounds.push_back(::HIR::GenericBound::make_Lifetime(e));
-            ),
-        (TypeLifetime,
-            rv.m_bounds.push_back(::HIR::GenericBound::make_TypeLifetime({
-                e.type.clone(),
-                e.valid_for
-                }));
-            ),
-        (TraitBound,
-            rv.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({
-                e.type.clone(),
-                e.trait.clone()
-                }));
-            )/*,
-        (NotTrait,
-            rv.m_bounds.push_back(::HIR::GenericBound::make_NotTrait({
-                e.type.clone(),
-                e.trait.clone()
-                }));
-            )*/,
-        (TypeEquality,
-            rv.m_bounds.push_back(::HIR::GenericBound::make_TypeEquality({
-                e.type.clone(),
-                e.other_type.clone()
-                }));
-            )
-        )
+        rv.m_bounds.push_back(bound.clone());
     }
     return rv;
+}
+
+::HIR::GenericBound HIR::GenericBound::clone() const
+{
+    TU_MATCH_HDRA( (*this), {)
+    TU_ARMA(Lifetime, e) {
+        return ::HIR::GenericBound::make_Lifetime(e);
+        }
+    TU_ARMA(TypeLifetime, e) {
+        return ::HIR::GenericBound::make_TypeLifetime({
+            e.type.clone(),
+            e.valid_for
+            });
+        }
+    TU_ARMA(TraitBound, e) {
+        return ::HIR::GenericBound::make_TraitBound({
+            e.hrtbs ? box$(e.hrtbs->clone()) : nullptr,
+            e.type.clone(),
+            e.trait.clone()
+            });
+        }/*
+    TU_ARMA(NotTrait, e) {
+        return ::HIR::GenericBound::make_NotTrait({
+            e.type.clone(),
+            e.trait.clone()
+            });
+        }*/
+    TU_ARMA(TypeEquality, e) {
+        return ::HIR::GenericBound::make_TypeEquality({
+            e.type.clone(),
+            e.other_type.clone()
+            });
+        }
+    }
+    throw "Unreachable";
 }

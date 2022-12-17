@@ -15,6 +15,21 @@ class Monomorphiser
 {
     mutable std::vector<const HIR::GenericParams*>  m_hrb_stack;
 public:
+    class PopOnDrop {
+        friend class Monomorphiser;
+        std::vector<const HIR::GenericParams*>& v;
+        PopOnDrop(std::vector<const HIR::GenericParams*>& v): v(v) {
+        }
+    public:
+        ~PopOnDrop() {
+            v.pop_back();
+        }
+    };
+    PopOnDrop push_hrb(const HIR::GenericParams& params) const {
+        m_hrb_stack.push_back(&params);
+        return PopOnDrop(m_hrb_stack);
+    }
+
     virtual ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& g) const = 0;
     virtual ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& g) const = 0;
     virtual ::HIR::LifetimeRef get_lifetime(const Span& sp, const ::HIR::GenericRef& g) const = 0;

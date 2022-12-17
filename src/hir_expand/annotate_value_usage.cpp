@@ -1240,8 +1240,9 @@ namespace {
     };
 }
 
-void HIR_Expand_AnnotateUsage_Expr(const ::HIR::Crate& crate, ::HIR::ExprPtr& exp)
+void HIR_Expand_AnnotateUsage_Expr(const ::HIR::Crate& crate, const ::HIR::ItemPath& ip, ::HIR::ExprPtr& exp)
 {
+    TRACE_FUNCTION_F(ip);
     assert(exp);
     StaticTraitResolve   resolve { crate };
     if(exp.m_state->m_impl_generics)   resolve.set_impl_generics(*exp.m_state->m_impl_generics);

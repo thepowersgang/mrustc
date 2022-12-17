@@ -302,18 +302,30 @@ namespace
         {
             const Span  sp;
             TRACE_FUNCTION_FR(tp, tp);
+
+            auto has_apply_elision = [](::HIR::GenericPath& gp, bool& created_hrls)->bool {
+                bool was_paren_trait_object = gp.m_hrls && gp.m_hrls->m_lifetimes.size() >= 1 && gp.m_hrls->m_lifetimes.back().m_name == "#apply_elision";
+                created_hrls = false;
+                if( was_paren_trait_object )
+                {
+                    if(!gp.m_hrls) {
+                        gp.m_hrls = std::make_unique<HIR::GenericParams>();
+                        created_hrls = true;
+                    }
+                    if(was_paren_trait_object) {
+                        gp.m_hrls->m_lifetimes.pop_back();
+                    }
+                    return true;
+                }
+                else {
+                    return false;
+                }
+                };
+
             // Handle a hack from lowering pass added when the path is `Foo()`
-            bool was_paren_trait_object = tp.m_path.m_hrls && tp.m_path.m_hrls->m_lifetimes.size() >= 1 && tp.m_path.m_hrls->m_lifetimes.back().m_name == "#apply_elision";
-            if( was_paren_trait_object )
+            bool created_hrls = false;
+            if( has_apply_elision(tp.m_path, created_hrls) )
             {
-                bool created_hrls = false;
-                if(!tp.m_path.m_hrls) {
-                    tp.m_path.m_hrls = std::make_unique<HIR::GenericParams>();
-                    created_hrls = true;
-                }
-                if(was_paren_trait_object) {
-                    tp.m_path.m_hrls->m_lifetimes.pop_back();
-                }
                 m_current_lifetime.push_back(nullptr);
 
                 // Visit the trait args (as inputs)
@@ -379,7 +391,47 @@ namespace
                         return false;
                     }
                 } h(m_resolve.m_crate);
+                auto fix_path = [this,&has_apply_elision](HIR::GenericPath& gp) {
+                    bool created_hrls;
+                    if( has_apply_elision(gp, created_hrls) )
+                    {
+                        m_current_lifetime.push_back(nullptr);
+
+                        auto saved_params_ptr = m_cur_params;
+                        auto saved_params_lvl = m_cur_params_level;
+                        m_cur_params = gp.m_hrls.get();
+                        m_cur_params_level = 3;
+
+                        DEBUG("[fix_path] >> " << gp);
+                        this->visit_generic_path(gp, ::HIR::Visitor::PathContext::TYPE);
+
+                        m_cur_params = saved_params_ptr;
+                        m_cur_params_level = saved_params_lvl;
+
+                        m_current_lifetime.pop_back();
+                        if(created_hrls && gp.m_hrls->is_empty()) {
+                            gp.m_hrls.reset();
+                        }
+                    }
+                    else {
+                        m_current_lifetime.push_back(nullptr);
+
+                        auto saved_params_ptr = m_cur_params;
+                        auto saved_params_lvl = m_cur_params_level;
+                        m_cur_params = gp.m_hrls.get();
+                        m_cur_params_level = 3;
+
+                        DEBUG("[fix_path] >> " << gp);
+                        this->visit_generic_path(gp, ::HIR::Visitor::PathContext::TYPE);
+
+                        m_cur_params = saved_params_ptr;
+                        m_cur_params_level = saved_params_lvl;
+
+                        m_current_lifetime.pop_back();
+                    }
+                };
                 auto fix_source = [&](HIR::GenericPath& gp, const RcString& name) {
+                    //fix_path(gp);
                     DEBUG("[fix_source] >> " << gp);
                     // NOTE: The HRLs of this path have been edited! (they were `<'#apply_elision,>`, now blank)
                     if( gp.m_path == tp.m_path.m_path && gp.m_params == tp.m_path.m_params ) {

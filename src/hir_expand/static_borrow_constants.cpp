@@ -78,11 +78,13 @@ namespace {
             const char* node_ty = typeid(node_ref).name();
             m_is_constant = false;
             {
-                TRACE_FUNCTION_FR(&*node << " " << node_ty << " : " << node->m_res_type, node_ty << " " << m_is_constant);
+                TRACE_FUNCTION_FR(&*node << " " << node_ty << " : " << node->m_res_type, node_ty << " " << m_is_constant << " A=" << m_all_constant);
 
                 // If the inner didn't set `is_constant`, clear `all_constant`
                 node->visit(*this);
                 if( !m_is_constant ) {
+                    if(m_all_constant)
+                        DEBUG("m_all_constant = false");
                     m_all_constant = false;
                 }
             }
@@ -216,7 +218,8 @@ namespace {
             }
 
             // Create the params used for the type on the impl block
-            DEBUG("ofs_*_t=" << ofs_item_t << "," << ofs_impl_t << "," << params.m_types.size()
+            DEBUG("impl_path_params = " << params.make_nop_params(0)
+                << " ofs_*_t=" << ofs_item_t << "," << ofs_impl_t << "," << params.m_types.size()
                 << " ofs_*_v=" << ofs_item_v << "," << ofs_impl_v << "," << params.m_values.size()
                 << " ofs_*_l=" << ofs_item_l << "," << ofs_impl_l << "," << params.m_lifetimes.size()
                 );
@@ -234,7 +237,7 @@ namespace {
                 TU_ARMA(TypeLifetime, e)
                     return ::HIR::GenericBound::make_TypeLifetime({ monomorph_cb.monomorph_type(sp, e.type), monomorph_cb.monomorph_lifetime(sp, e.valid_for) });
                 TU_ARMA(TraitBound, e)
-                    return ::HIR::GenericBound::make_TraitBound  ({ monomorph_cb.monomorph_type(sp, e.type), monomorph_cb.monomorph_traitpath(sp, e.trait, false) });
+                    return ::HIR::GenericBound::make_TraitBound  ({ (e.hrtbs ? box$(e.hrtbs->clone()) : nullptr), monomorph_cb.monomorph_type(sp, e.type), monomorph_cb.monomorph_traitpath(sp, e.trait, false) });
                 TU_ARMA(TypeEquality, e)
                     return ::HIR::GenericBound::make_TypeEquality({ monomorph_cb.monomorph_type(sp, e.type), monomorph_cb.monomorph_type(sp, e.other_type) });
                 }
@@ -379,24 +382,39 @@ namespace {
 
         // - Composites (set local constant if all inner are constant)
         void visit(::HIR::ExprNode_ArraySized& node) override {
+            auto saved_all_constant = m_all_constant;
+            m_all_constant = true;
             ::HIR::ExprVisitorDef::visit(node);
             m_is_constant = m_all_constant;
+            m_all_constant = saved_all_constant;
         }
         void visit(::HIR::ExprNode_ArrayList& node) override {
+            auto saved_all_constant = m_all_constant;
+            m_all_constant = true;
             ::HIR::ExprVisitorDef::visit(node);
             m_is_constant = m_all_constant;
+            m_all_constant = saved_all_constant;
         }
         void visit(::HIR::ExprNode_StructLiteral& node) override {
+            auto saved_all_constant = m_all_constant;
+            m_all_constant = true;
             ::HIR::ExprVisitorDef::visit(node);
             m_is_constant = m_all_constant;
+            m_all_constant = saved_all_constant;
         }
         void visit(::HIR::ExprNode_TupleVariant& node) override {
+            auto saved_all_constant = m_all_constant;
+            m_all_constant = true;
             ::HIR::ExprVisitorDef::visit(node);
             m_is_constant = m_all_constant;
+            m_all_constant = saved_all_constant;
         }
         void visit(::HIR::ExprNode_Tuple& node) override {
+            auto saved_all_constant = m_all_constant;
+            m_all_constant = true;
             ::HIR::ExprVisitorDef::visit(node);
             m_is_constant = m_all_constant;
+            m_all_constant = saved_all_constant;
         }
         void visit(::HIR::ExprNode_CallPath& node) override {
             ::HIR::ExprVisitorDef::visit(node);
@@ -430,10 +448,21 @@ namespace {
         }
         // - Operations (only cast currently)
         void visit(::HIR::ExprNode_Cast& node) override {
+            auto saved_all_constant = m_all_constant;
+            m_all_constant = true;
             ::HIR::ExprVisitorDef::visit(node);
             m_is_constant = m_all_constant;
+            m_all_constant = saved_all_constant;
         }
         void visit(::HIR::ExprNode_Unsize& node) override {
+            auto saved_all_constant = m_all_constant;
+            m_all_constant = true;
+            ::HIR::ExprVisitorDef::visit(node);
+            m_is_constant = m_all_constant;
+            m_all_constant = saved_all_constant;
+        }
+        // - Block (only if everything? What about just has a value?)
+        void visit(::HIR::ExprNode_Block& node) override {
             ::HIR::ExprVisitorDef::visit(node);
             m_is_constant = m_all_constant;
         }
@@ -662,6 +691,7 @@ namespace {
 
 void HIR_Expand_StaticBorrowConstants_Expr(const ::HIR::Crate& crate, const ::HIR::ItemPath& ip, ::HIR::ExprPtr& exp)
 {
+    TRACE_FUNCTION_F(ip);
     StaticTraitResolve  resolve(crate);
 
     static int static_count = 0;

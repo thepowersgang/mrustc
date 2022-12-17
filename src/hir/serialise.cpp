@@ -357,6 +357,9 @@
                 ),
             (TraitBound,
                 m_out.write_tag(2);
+                m_out.write_bool(static_cast<bool>(e.hrtbs));
+                if(e.hrtbs)
+                    serialise_generics(*e.hrtbs);
                 serialise_type(e.type);
                 serialise_traitpath(e.trait);
                 ),

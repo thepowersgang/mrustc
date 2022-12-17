@@ -449,9 +449,10 @@ namespace {
                         for( const auto& trait : e->m_traits )
                         {
                             m_fcn_ptr->m_params.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({
-                                    new_ty.clone(),
-                                    trait.clone()
-                                    }));
+                                nullptr,    
+                                new_ty.clone(),
+                                trait.clone()
+                                }));
                         }
                         if( e->m_lifetime != ::HIR::LifetimeRef() )
                         {

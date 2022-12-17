@@ -346,18 +346,23 @@ public:
         for(auto it = params.m_bounds.begin(); it != params.m_bounds.end(); ++it)
         {
             static Span sp;
-            if( it->is_TraitBound() )
+            if( auto* be = it->opt_TraitBound() )
             {
-                auto n = ConvertHIR_ExpandAliases_GetTraitExpansion(sp, m_crate, it->as_TraitBound().trait, m_in_expr);
+                auto n = ConvertHIR_ExpandAliases_GetTraitExpansion(sp, m_crate, be->trait, m_in_expr);
                 if(!n.empty())
                 {
-                    auto type = std::move(it->as_TraitBound().type);
-                    visit_type(type);
+                    auto orig_type = std::move(be->type);
+                    auto orig_hrtbs = std::move(be->hrtbs);
+                    if(orig_hrtbs)
+                        visit_params(*orig_hrtbs);
+                    visit_type(orig_type);
 
                     it = params.m_bounds.erase(it);
                     for(auto& t : n)
                     {
-                        it = params.m_bounds.insert(it, HIR::GenericBound::make_TraitBound({ type.clone(), std::move(t) }));
+                        auto type = (&t == &n.back() ? std::move(orig_type) : orig_type.clone());
+                        auto hrtbs = orig_hrtbs ? (&t == &n.back() ? std::move(orig_hrtbs) : box$(orig_hrtbs->clone())) : nullptr;
+                        it = params.m_bounds.insert(it, HIR::GenericBound::make_TraitBound({ std::move(hrtbs), std::move(type), std::move(t) }));
                     }
                 }
             }

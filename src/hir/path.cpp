@@ -67,6 +67,9 @@ namespace HIR {
     }
     ::std::ostream& operator<<(::std::ostream& os, const TraitPath& x)
     {
+        if( x.m_path.m_hrls ) {
+            os << "for" << x.m_path.m_hrls->fmt_args() << " ";
+        }
         os << x.m_path.m_path;
         bool has_args = ( x.m_path.m_params.m_lifetimes.size() > 0 || x.m_path.m_params.m_types.size() > 0 || x.m_type_bounds.size() > 0 || x.m_trait_bounds.size() > 0 );
 
@@ -168,7 +171,15 @@ HIR::PathParams::PathParams(::HIR::LifetimeRef lft)
 Ordering HIR::GenericPath::ord(const HIR::GenericPath& x) const
 {
     ORD(m_path, x.m_path);
+    //DEBUG("\n  " << *this << "\n  " << x);
     ORD(m_params, x.m_params);
+
+    // HACK! if either of the HRLs are tagged as not having been un-elided, then assume they're equal
+    // - Mostly a workaround for `lifetime_elision.cpp` fixing TraitPath ATY origins
+    auto is_elision = [](const HIR::GenericPath& gp){ return gp.m_hrls && gp.m_hrls->m_lifetimes.size() >= 1 && gp.m_hrls->m_lifetimes.back().m_name == "#apply_elision"; };
+    if( is_elision(*this) || is_elision(x) )
+        return OrdEqual;
+
     // NOTE: An empty set is treated as the same as none
     ORD(m_hrls.get() && !m_hrls->is_empty(), x.m_hrls.get() && !x.m_hrls->is_empty());
     if( m_hrls && x.m_hrls ) {

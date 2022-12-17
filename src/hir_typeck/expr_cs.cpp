@@ -5405,10 +5405,20 @@ namespace {
                     TU_ARMA(TraitBound, be) {
                         DEBUG("New bound (pre-mono) " << bound);
                         auto ms = best_impl.get_cb_monomorph_traitimpl(sp);
+                        static const HIR::GenericParams empty_params;
+                        bool outer_present = be.hrtbs && !be.hrtbs->is_empty();
+                        auto _ = ms.push_hrb(outer_present ? *be.hrtbs : empty_params);
                         auto b_ty_mono = ms.monomorph_type(sp, be.type);
                         auto b_tp_mono = ms.monomorph_traitpath(sp, be.trait, true);
                         DEBUG("- " << b_ty_mono << " : " << b_tp_mono);
-                        auto pp_hrl = b_tp_mono.m_path.m_hrls ? b_tp_mono.m_path.m_hrls->make_empty_params(true) : HIR::PathParams();
+                        ASSERT_BUG(sp, !outer_present || !static_cast<bool>(b_tp_mono.m_path.m_hrls), "Two layers of HRTBs not allowed (should have been disallowed in HIR lower)");
+                        auto pp_hrl = outer_present ? be.hrtbs->make_empty_params(true)
+                            : (b_tp_mono.m_path.m_hrls ? b_tp_mono.m_path.m_hrls->make_empty_params(true) : HIR::PathParams());
+                        if(outer_present)
+                            DEBUG("be.hrtbs = " << be.hrtbs->fmt_args());
+                        if(b_tp_mono.m_path.m_hrls)
+                            DEBUG("b_tp_mono.m_path.m_hrls = " << b_tp_mono.m_path.m_hrls->fmt_args());
+                        DEBUG("pp_hrl = " << pp_hrl);
                         auto ms_hrl = MonomorphHrlsOnly(pp_hrl);
                         if( b_tp_mono.m_type_bounds.size() > 0 )
                         {

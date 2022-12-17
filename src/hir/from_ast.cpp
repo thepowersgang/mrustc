@@ -24,6 +24,7 @@
 ::HIR::ValueItem LowerHIR_Static(::HIR::ItemPath p, const ::AST::AttributeList& attrs, const ::AST::Static& e, const Span& sp, const RcString& name);
 ::HIR::PathParams LowerHIR_PathParams(const Span& sp, const ::AST::PathParams& src_params, bool allow_assoc);
 ::HIR::TraitPath LowerHIR_TraitPath(const Span& sp, const ::AST::Path& path, const AST::HigherRankedBounds& hrbs, bool allow_bounds=false);
+::HIR::GenericParams LowerHIR_HigherRankedBounds(const AST::HigherRankedBounds& hrbs);
 
 ::HIR::SimplePath path_Sized;
 RcString    g_core_crate;
@@ -85,6 +86,12 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
 
             // TODO: Check if this trait is `Sized` and ignore if it is? (It's a useless bound)
 
+            if( !e.outer_hrbs.empty() && !e.inner_hrbs.empty() ) {
+                // NOTE: rustc doesn't allow this (E0316)
+                TODO(bound.span, "Handle two layers of HRBs in a bound");
+            }
+
+#if 0
             // If there are outer HRBs, see if they can be converted to HRBs on the trait only.
             if( !e.outer_hrbs.empty() ) {
                 // TODO: Check if there's a HRL mentioned in `type`
@@ -109,13 +116,16 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
                 }
                 // The HRBs will be handled below
             }
+#endif
 
+            static const AST::HigherRankedBounds empty_hrbs;
+            const auto& outer_hrbs = e.inner_hrbs.empty() ? empty_hrbs : e.outer_hrbs;
             auto bound_trait_path = LowerHIR_TraitPath(bound.span, e.trait, e.inner_hrbs.empty() ? e.outer_hrbs : e.inner_hrbs, /*allow_bounds=*/true);
             auto tp_bounds = mv$(bound_trait_path.m_trait_bounds);
             bound_trait_path.m_trait_bounds.clear();
 
             rv.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({
-                /*LowerHIR_HigherRankedBounds(e.outer_hrbs),*/
+                box$(LowerHIR_HigherRankedBounds(outer_hrbs)),
                 type.clone(),
                 mv$(bound_trait_path)
                 }));
@@ -127,6 +137,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
                 for(auto& trait : bound.second.traits)
                 {
                     rv.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({
+                        box$(LowerHIR_HigherRankedBounds(outer_hrbs)),
                         ::HIR::TypeRef::new_path( ::HIR::Path(type.clone(), src_trait.clone(), name), {} ),
                         std::move(trait)
                         }));
@@ -609,6 +620,14 @@ namespace {
         BUG(sp, "Encountered non-Absolute path when creating ::HIR::GenericPath - " << path);
     }
 }
+
+::HIR::GenericParams LowerHIR_HigherRankedBounds(const AST::HigherRankedBounds& hrbs)
+{
+    HIR::GenericParams  params;
+    for(const auto& lft_def : hrbs.m_lifetimes)
+        params.m_lifetimes.push_back(HIR::LifetimeDef { lft_def.name().name });
+    return params;
+}
 ::HIR::TraitPath LowerHIR_TraitPath(const Span& sp, const ::AST::Path& path, const AST::HigherRankedBounds& hrbs, bool ignore_bounds/*=false*/)
 {
     DEBUG(hrbs << " " << path);
@@ -620,10 +639,7 @@ namespace {
         };
     if( !hrbs.empty() )
     {
-        HIR::GenericParams  params;
-        for(const auto& lft_def : hrbs.m_lifetimes)
-            params.m_lifetimes.push_back(HIR::LifetimeDef { lft_def.name().name });
-        rv.m_path.m_hrls = box$(params);
+        rv.m_path.m_hrls = box$(LowerHIR_HigherRankedBounds(hrbs));
     }
     // HACK: If the path is from `Fn(Foo)` flag it for lifetime elision.
     // - Matching hack in `lifetime_elision.cpp` `visit_traitpath`
@@ -1414,7 +1430,7 @@ namespace {
         for(const auto& arg : rv.m_params.m_values) {
             this_trait.m_params.m_values.push_back( ::HIR::GenericRef(arg.m_name, this_trait.m_params.m_values.size()) );
         }
-        rv.m_params.m_bounds.push_back( ::HIR::GenericBound::make_TraitBound({ ::HIR::TypeRef("Self",0xFFFF), { mv$(this_trait) } }) );
+        rv.m_params.m_bounds.push_back( ::HIR::GenericBound::make_TraitBound({ {}, ::HIR::TypeRef("Self",0xFFFF), { mv$(this_trait) } }) );
     }
 
     for(const auto& item : f.items())

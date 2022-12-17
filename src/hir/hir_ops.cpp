@@ -472,7 +472,7 @@ namespace {
 }
 
 namespace {
-    void add_bound_from_trait(::std::vector< ::HIR::GenericBound>& rv,  const ::HIR::TypeRef& type, const ::HIR::TraitPath& cur_trait)
+    void add_bound_from_trait(::std::vector< ::HIR::GenericBound>& rv, const std::unique_ptr<HIR::GenericParams>& hrtbs, const ::HIR::TypeRef& type, const ::HIR::TraitPath& cur_trait)
     {
         static Span sp;
         assert( cur_trait.m_trait_ptr );
@@ -484,7 +484,7 @@ namespace {
             // 1. Monomorph
             auto trait_path_mono = monomorph_cb.monomorph_traitpath(sp, trait_path_raw, false, false);
             // 2. Add
-            rv.push_back( ::HIR::GenericBound::make_TraitBound({ type.clone(), mv$(trait_path_mono) }) );
+            rv.push_back( ::HIR::GenericBound::make_TraitBound({ hrtbs ? box$(hrtbs->clone()) : nullptr, type.clone(), mv$(trait_path_mono) }) );
         }
 
         // TODO: Add traits from `Self: Foo` bounds?
@@ -495,21 +495,10 @@ namespace {
         ::std::vector< ::HIR::GenericBound >    rv;
         for(const auto& b : bounds)
         {
-            TU_MATCHA( (b), (be),
-            (Lifetime,
-                rv.push_back( ::HIR::GenericBound(be) );
-                ),
-            (TypeLifetime,
-                rv.push_back( ::HIR::GenericBound::make_TypeLifetime({ be.type.clone(), be.valid_for }) );
-                ),
-            (TraitBound,
-                rv.push_back( ::HIR::GenericBound::make_TraitBound({ be.type.clone(), be.trait.clone() }) );
-                add_bound_from_trait(rv,  be.type, be.trait);
-                ),
-            (TypeEquality,
-                rv.push_back( ::HIR::GenericBound::make_TypeEquality({ be.type.clone(), be.other_type.clone() }) );
-                )
-            )
+            rv.push_back(b.clone());
+            if(const auto* be = b.opt_TraitBound()) {
+                add_bound_from_trait(rv, be->hrtbs, be->type, be->trait);
+            }
         }
         ::std::sort(rv.begin(), rv.end(), [](const auto& a, const auto& b){ return ::ord(a,b) == OrdLess; });
         return rv;
@@ -1344,7 +1333,7 @@ const ::MIR::Function* HIR::Crate::get_or_gen_mir(const ::HIR::ItemPath& ip, con
                 ms.m_mod_paths.push_back(ep.m_state->m_mod_path);
                 Typecheck_Code(ms, const_cast<::HIR::Function::args_t&>(args), ret_ty, ep_mut);
                 //Debug_SetStagePre("Expand HIR Annotate");
-                HIR_Expand_AnnotateUsage_Expr(*this, ep_mut);
+                HIR_Expand_AnnotateUsage_Expr(*this, ip, ep_mut);
                 // NOTE: Disabled due to challenges in making new statics at this stage
                 //Debug_SetStagePre("Expand HIR Statics");
                 HIR_Expand_StaticBorrowConstants_Expr(*this, ip, ep_mut);

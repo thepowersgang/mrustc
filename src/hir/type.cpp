@@ -253,30 +253,30 @@ bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const
 {
     if( m_ptr == x.m_ptr )
         return true;
-    
+
     if( !m_ptr || !x.m_ptr )
         return false;
     if( data().tag() != x.data().tag() )
         return false;
 
-    TU_MATCH(::HIR::TypeData, (data(), x.data()), (te, xe),
-    (Infer,
+    TU_MATCH_HDRA( (data(), x.data()), {)
+    TU_ARMA(Infer, te, xe) {
         // TODO: Should comparing inferrence vars be an error?
         return te.index == xe.index;
-        ),
-    (Diverge,
+        }
+    TU_ARMA(Diverge, te, xe) {
         return true;
-        ),
-    (Primitive,
+        }
+    TU_ARMA(Primitive, te, xe) {
         return te == xe;
-        ),
-    (Path,
+        }
+    TU_ARMA(Path, te, xe) {
         return te.path == xe.path;
-        ),
-    (Generic,
+        }
+    TU_ARMA(Generic, te, xe) {
         return /*te.name == xe.name &&*/ te.binding == xe.binding;
-        ),
-    (TraitObject,
+        }
+    TU_ARMA(TraitObject, te, xe) {
         if( te.m_trait != xe.m_trait )
             return false;
         if( te.m_markers.size() != xe.m_markers.size() )
@@ -287,21 +287,21 @@ bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const
         }
         //return te.m_lifetime == xe.m_lifetime;
         return true;
-        ),
-    (ErasedType,
+        }
+    TU_ARMA(ErasedType, te, xe) {
         return te.m_origin == xe.m_origin;
-        ),
-    (Array,
+        }
+    TU_ARMA(Array, te, xe) {
         if( te.inner != xe.inner )
             return false;
         if( xe.size != te.size )
             return false;
         return true;
-        ),
-    (Slice,
+        }
+    TU_ARMA(Slice, te, xe) {
         return te.inner == xe.inner;
-        ),
-    (Tuple,
+        }
+    TU_ARMA(Tuple, te, xe) {
         if( te.size() != xe.size() )
             return false;
         for(unsigned int i = 0; i < te.size(); i ++ ) {
@@ -309,18 +309,20 @@ bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const
                 return false;
         }
         return true;
-        ),
-    (Borrow,
+        }
+    TU_ARMA(Borrow, te, xe) {
+        if( te.type != xe.type )
+            return false;
+        //if( te.lifetime != xe.lifetime )
+        //    return false;
+        return te.inner == xe.inner;
+        }
+    TU_ARMA(Pointer, te, xe) {
         if( te.type != xe.type )
             return false;
         return te.inner == xe.inner;
-        ),
-    (Pointer,
-        if( te.type != xe.type )
-            return false;
-        return te.inner == xe.inner;
-        ),
-    (Function,
+        }
+    TU_ARMA(Function, te, xe) {
         if( te.is_unsafe != xe.is_unsafe )
             return false;
         if( te.m_abi != xe.m_abi )
@@ -332,17 +334,17 @@ bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const
                 return false;
         }
         return te.m_rettype == xe.m_rettype;
-        ),
-    (Closure,
+        }
+    TU_ARMA(Closure, te, xe) {
         if( te.node != xe.node )
             return false;
         //assert( te.m_rettype == xe.m_rettype );
         return true;
-        ),
-    (Generator,
+        }
+    TU_ARMA(Generator, te, xe) {
         return te.node == xe.node;
-        )
-    )
+        }
+    }
     throw "";
 }
 Ordering HIR::TypeRef::ord(const ::HIR::TypeRef& x) const

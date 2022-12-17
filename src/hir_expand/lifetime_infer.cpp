@@ -1067,8 +1067,8 @@ namespace {
                             equate_lifetime(lft);
                             return false;
                             });
-                        if( t.data().is_Generic() ) {
-                            // If the above didn't return anything, then assign a "only this function" liftime
+                        if( t.data().is_Generic() || t.data().is_Path() ) {
+                            // TODO: If the above didn't return anything, then assign a "only this function" liftime
                         }
                         else if( const auto* e = t.data().opt_ErasedType() ) {
                             equate_lifetime(e->m_lifetime);
@@ -1110,6 +1110,8 @@ namespace {
             if(ty.data().is_ErasedType())
                 return true;
             if(ty.data().is_Path() && ty.data().as_Path().binding.is_Opaque())
+                return true;
+            if(ty.data().is_Path() && ty.data().as_Path().binding.is_Unbound())
                 return true;
             return false;
         }

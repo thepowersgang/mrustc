@@ -1234,6 +1234,7 @@ namespace {
             return ::HIR::GenericBound::make_TypeLifetime({});
         case 2:
             return ::HIR::GenericBound::make_TraitBound({
+                m_in.read_bool() ? box$(deserialise_genericparams()) : nullptr,
                 deserialise_type(),
                 deserialise_traitpath()
                 });

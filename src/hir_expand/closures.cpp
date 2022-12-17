@@ -721,6 +721,8 @@ namespace {
 
         Monomorph create_params(const Span& sp, ::HIR::GenericParams& params, ::HIR::PathParams& constructor_path_params) const
         {
+            DEBUG("Impl: " << m_resolve.impl_generics().fmt_args());
+            DEBUG("Item: " << m_resolve.item_generics().fmt_args());
             // - 0xFFFF "Self" -> 0 "Super" (if present)
             if( m_resolve.has_self() )
             {
@@ -768,7 +770,11 @@ namespace {
             }
 
             // Create the params used for the type on the impl block
-            DEBUG("impl_path_params = " << params.make_nop_params(0) << ", ofs_*_t=" << ofs_item_t << "," << ofs_impl_t << " ofs_*_v=" << ofs_item_v << "," << ofs_impl_v);
+            DEBUG("impl_path_params = " << params.make_nop_params(0)
+                << " ofs_*_t=" << ofs_item_t << "," << ofs_impl_t << "," << params.m_types.size()
+                << " ofs_*_v=" << ofs_item_v << "," << ofs_impl_v << "," << params.m_values.size()
+                << " ofs_*_l=" << ofs_item_l << "," << ofs_impl_l << "," << params.m_lifetimes.size()
+                );
 
             Monomorph monomorph_cb(params, ofs_impl_t, ofs_item_t, ofs_impl_v, ofs_item_v, ofs_impl_l, ofs_item_l);
 
@@ -783,7 +789,7 @@ namespace {
                 TU_ARMA(TypeLifetime, e)
                     return ::HIR::GenericBound::make_TypeLifetime({ monomorph_cb.monomorph_type(sp, e.type), monomorph_cb.monomorph_lifetime(sp, e.valid_for) });
                 TU_ARMA(TraitBound, e)
-                    return ::HIR::GenericBound::make_TraitBound  ({ monomorph_cb.monomorph_type(sp, e.type), monomorph_cb.monomorph_traitpath(sp, e.trait, false) });
+                    return ::HIR::GenericBound::make_TraitBound  ({ (e.hrtbs ? box$(e.hrtbs->clone()) : nullptr), monomorph_cb.monomorph_type(sp, e.type), monomorph_cb.monomorph_traitpath(sp, e.trait, false) });
                 TU_ARMA(TypeEquality, e)
                     return ::HIR::GenericBound::make_TypeEquality({ monomorph_cb.monomorph_type(sp, e.type), monomorph_cb.monomorph_type(sp, e.other_type) });
                 }
