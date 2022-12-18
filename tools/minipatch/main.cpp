@@ -176,6 +176,7 @@ int main(int argc, char *argv[])
     catch(const ::std::exception& e)
     {
         std::cerr << "Exception: " << e.what() << std::endl;
+        return 1;
     }
 
     return error ? 1 : 0;
@@ -194,7 +195,7 @@ struct Parser {
     }
     void expect_eof() const {
         if( !is_eof() ) {
-            throw ::std::runtime_error("TODO: error message");
+            throw ::std::runtime_error("Expected EOF, but didn't get it");
         }
     }
 
@@ -226,7 +227,7 @@ struct Parser {
             l += len;
         }
         else {
-            throw ::std::runtime_error("TODO: error message");
+            throw ::std::runtime_error(std::string("Parser error: Expected '") + v + "'");
         }
     }
 
@@ -258,9 +259,11 @@ namespace {
 
         std::vector<FilePatch>  rv;
         std::string line;
+        unsigned lineno = 0;
         while(!ifs.eof())
         {
             std::getline(ifs, line);
+            lineno += 1;
 
             if(!line.empty() && line.back() == '\n') {
                 line.pop_back();
@@ -274,58 +277,68 @@ namespace {
             }
 
             Parser  p(line);
-            if( p.try_consume("---") ) {
-                p.consume_whitespace();
-                rv.push_back(FilePatch(p.l));
-            }
-            else if( p.try_consume("+++") ) {
-                p.consume_whitespace();
-                if(rv.empty())
-                    throw ::std::runtime_error("`+++` without preceding ---");
-                if(!(rv.back().new_path == ""))
-                    throw ::std::runtime_error("`+++` without preceding ---");
-                rv.back().new_path = p.l;
-            }
-            else if( p.try_consume("@@") ) {
-                p.consume_whitespace();
-                p.expect_consume("-");
-                auto orig_line = p.read_int();
-                p.expect_consume(",");
-                auto orig_len = p.read_int();
-                p.consume_whitespace();
-                p.expect_consume("+");
-                auto new_line = p.read_int();
-                p.expect_consume(",");
-                auto new_len = p.read_int();
-                p.consume_whitespace();
-                p.expect_consume("@@");
-                p.expect_eof();
-
-                if(rv.empty())
-                    throw ::std::runtime_error("@@ without preceding header");
-                if(rv.back().new_path == "")
-                    throw ::std::runtime_error("@@ without preceding header");
-
-                rv.back().fragments.push_back(PatchFragment(orig_line, orig_len, new_line, new_len));
-            }
-            else {
-                switch(line[0])
-                {
-                case '+':
-                    rv.back().fragments.back().new_contents.push_back(line.c_str()+1);
-                    break;
-                case '-':
-                    rv.back().fragments.back().orig_contents.push_back(line.c_str()+1);
-                    break;
-                case ' ':
-                    // Common line
-                    rv.back().fragments.back().new_contents.push_back(line.c_str()+1);
-                    rv.back().fragments.back().orig_contents.push_back(line.c_str()+1);
-                    break;
-                default:
-                    // ignore the line
-                    break;
+            try
+            {
+                if( p.try_consume("---") ) {
+                    p.consume_whitespace();
+                    rv.push_back(FilePatch(p.l));
                 }
+                else if( p.try_consume("+++") ) {
+                    p.consume_whitespace();
+                    if(rv.empty())
+                        throw ::std::runtime_error("`+++` without preceding ---");
+                    if(!(rv.back().new_path == ""))
+                        throw ::std::runtime_error("`+++` without preceding ---");
+                    rv.back().new_path = p.l;
+                }
+                else if( p.try_consume("@@") ) {
+                    p.consume_whitespace();
+                    p.expect_consume("-");
+                    auto orig_line = p.read_int();
+                    p.expect_consume(",");
+                    auto orig_len = p.read_int();
+                    p.consume_whitespace();
+                    p.expect_consume("+");
+                    auto new_line = p.read_int();
+                    p.expect_consume(",");
+                    auto new_len = p.read_int();
+                    p.consume_whitespace();
+                    p.expect_consume("@@");
+                    // Can be followed by a free-form context string
+                    //p.expect_eof();
+
+                    if(rv.empty())
+                        throw ::std::runtime_error("@@ without preceding header");
+                    if(rv.back().new_path == "")
+                        throw ::std::runtime_error("@@ without preceding header");
+
+                    rv.back().fragments.push_back(PatchFragment(orig_line, orig_len, new_line, new_len));
+                }
+                else {
+                    switch(line[0])
+                    {
+                    case '+':
+                        rv.back().fragments.back().new_contents.push_back(line.c_str()+1);
+                        break;
+                    case '-':
+                        rv.back().fragments.back().orig_contents.push_back(line.c_str()+1);
+                        break;
+                    case ' ':
+                        // Common line
+                        rv.back().fragments.back().new_contents.push_back(line.c_str()+1);
+                        rv.back().fragments.back().orig_contents.push_back(line.c_str()+1);
+                        break;
+                    default:
+                        // ignore the line
+                        break;
+                    }
+                }
+            }
+            catch(const std::exception& e)
+            {
+                ::std::cerr << "Parse error: " << e.what() << ::std::endl;
+                ::std::cerr << "On line " << lineno << ": " << line << ::std::endl;
+                exit(1);
             }
 
         }
