@@ -708,6 +708,7 @@ namespace {
                             }
                         case Mode::Return:
                             // Error? This would be the return type being from a local (or a capature)
+                            // - Locals can be composites (can they?)
                             TODO(sp, "Handle non-param lifetime when monomorphising closure? (return type) " << tpl);
                         case Mode::Body:
                             // Unset body types
@@ -839,10 +840,12 @@ namespace {
             ::std::vector< ::HIR::TypeRef>  args_ty_inner;
             monomorph_cb.mode = Monomorph::Mode::Args;
             for(const auto& arg : node.m_args) {
+                DEBUG("> ARG " << arg.second);
                 args_ty_inner.push_back( monomorph_cb.monomorph_type(sp, arg.second) );
             }
             monomorph_cb.mode = Monomorph::Mode::Return;
             ::HIR::TypeRef  args_ty { mv$(args_ty_inner) };
+            DEBUG("> Return type: " << node.m_return);
             ::HIR::TypeRef  ret_type = monomorph_cb.monomorph_type(sp, node.m_return);
             DEBUG("args_ty = " << args_ty << ", ret_type = " << ret_type);
             monomorph_cb.mode = Monomorph::Mode::Body;

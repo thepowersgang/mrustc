@@ -2068,11 +2068,69 @@ namespace {
                     BUG(sp, "Unexpected unknown lifetime");
                 }
                 else if( const auto* iv = state.opt_ivar(sp, tpl) ) {
-                    return iv->known;
+                    return clean_up_local(sp, iv->known);
                 }
                 else {
-                    return tpl;
+                    return clean_up_local(sp, tpl);
                 }
+            }
+
+        private:
+            HIR::LifetimeRef clean_up_local(const Span& sp, const HIR::LifetimeRef& tpl) const {
+                // If this is a composite, check if there is a clear shortest option
+                // - If there is, use that instead
+                // - Otherwise, keep as a composite
+                //   > Ensure that the composite is recorded? (or just let the downstream code re-derive)
+                if( const auto* l = state.opt_local(sp, tpl) ) {
+                    if( const auto* c = l->data.opt_Composite() ) {
+                        ::std::vector<HIR::LifetimeRef> flat;
+                        flatten_composite(flat, sp, tpl);
+                        DEBUG(tpl << " flat=" << flat);
+                        if( std::all_of(flat.begin(), flat.end(), [&](const HIR::LifetimeRef& l) { return state.opt_local(sp, l) == nullptr; }) )
+                        {
+                            ::HIR::LifetimeRef  min = ::HIR::LifetimeRef::new_static();
+                            for(const auto& e : flat) {
+                                ::std::vector<HIR::LifetimeRef> tmp;
+                                // Skip actually equal options
+                                if( e == min )
+                                    continue ;
+                                bool e_min = state.check_lifetimes(sp, e, min, tmp);
+                                bool min_e = state.check_lifetimes(sp, min, e, tmp);
+                                // If they're both equal, or they're not compatible (not sorting) then we can't get a minimum - have to keep as a template
+                                if( e_min == min_e ) {
+                                    min = ::HIR::LifetimeRef();
+                                    break;
+                                }
+                                // Is `e` smaller than `min` - then update `min`
+                                if( e_min ) {
+                                    min = e;
+                                }
+                            }
+                            if( min != ::HIR::LifetimeRef() ) {
+                                DEBUG("-> " << min);
+                                return min;
+                            }
+                        }
+                        // TODO: Register and return a flattened composite?
+                        // - Just return the original one (which will be just an unnamed local)
+                        return tpl;
+                    }
+                    else {
+                        return tpl;
+                    }
+                }
+                return tpl;
+            }
+            void flatten_composite(::std::vector<HIR::LifetimeRef>& dst, const Span& sp, const HIR::LifetimeRef& tpl) const {
+                if( const auto* l = state.opt_local(sp, tpl) ) {
+                    if( const auto* c = l->data.opt_Composite() ) {
+                        for(const auto& r : *c) {
+                            flatten_composite(dst, sp, r);
+                        }
+                        return ;
+                    }
+                }
+                dst.push_back(tpl);
             }
         } ms(state);
         {
