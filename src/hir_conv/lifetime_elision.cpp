@@ -240,7 +240,7 @@ namespace
                             std::set<HIR::LifetimeRef>  lfts;
                             void visit_path_params(HIR::PathParams& pp) override {
                                 for(auto& lft : pp.m_lifetimes) {
-                                    this->lfts.insert(lft);
+                                    add_lifetime(lft);
                                 }
 
                                 HIR::Visitor::visit_path_params(pp);
@@ -270,7 +270,12 @@ namespace
                             }
                         } v;
                         v.visit_type(ty);
-                        if( v.lfts.empty() ) {
+                        // If there is a lifetime on the stack (that wasn't from a `'static` pushed above), then use it
+                        if( !m_current_lifetime.empty() && m_current_lifetime.back() && !pushed ) {
+                            DEBUG("ErasedType: Use wrapping lifetime");
+                            e->m_lifetime = *m_current_lifetime.back();
+                        }
+                        else if( v.lfts.empty() ) {
                             // No contained lifetimes, it's `'static`?
                             DEBUG("No inner lifetimes, will be `'static`");
                         }
@@ -280,7 +285,17 @@ namespace
                             e->m_lifetime = *v.lfts.begin();
                         }
                         else {
-                            TODO(sp, "Encountered multiple lifetimes, which to use? in " << ty << ": " << v.lfts);
+                            // If in arguments: Create a new input lifetime with a union of these lifetimes.
+                            if( m_cur_params ) {
+                                e->m_lifetime = HIR::LifetimeRef(m_cur_params_level * 256 + m_cur_params->m_lifetimes.size());
+                                m_cur_params->m_lifetimes.push_back(HIR::LifetimeDef { });
+                                for(const auto& l : v.lfts) {
+                                    m_cur_params->m_bounds.push_back(HIR::GenericBound::make_Lifetime({ e->m_lifetime, l }));
+                                }
+                            }
+                            else {
+                                TODO(sp, "Encountered multiple lifetimes, which to use? in " << ty << ": " << v.lfts);
+                            }
                         }
                     }
 
