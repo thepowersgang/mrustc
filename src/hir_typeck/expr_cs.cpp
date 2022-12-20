@@ -5424,12 +5424,18 @@ namespace {
                         {
                             for(const auto& aty_bound : b_tp_mono.m_type_bounds)
                             {
-                                context.equate_types_assoc(sp, aty_bound.second.type,  b_tp_mono.m_path.m_path, ms_hrl.monomorph_path_params(sp, b_tp_mono.m_path.m_params, true), b_ty_mono, aty_bound.first.c_str(), false);
+                                context.equate_types_assoc(sp,
+                                    aty_bound.second.type,
+                                    b_tp_mono.m_path.m_path, ms_hrl.monomorph_path_params(sp, b_tp_mono.m_path.m_params, true),
+                                    ms_hrl.monomorph_type(sp, b_ty_mono, true),
+                                    aty_bound.first.c_str(),
+                                    false
+                                    );
                             }
                         }
                         else
                         {
-                            context.add_trait_bound(sp, b_ty_mono,  b_tp_mono.m_path.m_path, ms_hrl.monomorph_path_params(sp, b_tp_mono.m_path.m_params, true));
+                            context.add_trait_bound(sp, ms_hrl.monomorph_type(sp, b_ty_mono, true),  b_tp_mono.m_path.m_path, ms_hrl.monomorph_path_params(sp, b_tp_mono.m_path.m_params, true));
                         }
                         }
                     }
