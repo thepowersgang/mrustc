@@ -294,11 +294,7 @@ namespace {
                 {
                     DEBUG("-- Mutable borrow of non-ZST");
                 }
-                // And it's not interior mutable
-                else if( !is_zst && m_resolve.type_is_interior_mutable(value_ptr->span(), value_ptr->m_res_type) != HIR::Compare::Unequal )
-                {
-                    DEBUG("-- " << value_ptr->m_res_type << " could be interior mutable");
-                }
+                // NOTE: Interior mutability is handled at the root level (function calls and consts)
                 else
                 {
                     DEBUG("-- Creating static");
@@ -422,7 +418,7 @@ namespace {
                 MonomorphState  ms_unused;
                 auto v = m_resolve.get_value(node.span(), node.m_path, ms_unused, true);
                 if( v.as_Function()->m_const ) {
-                    m_is_constant = true;
+                    m_is_constant = !is_maybe_interior_mut(node);
                 }
             }
         }
@@ -440,7 +436,7 @@ namespace {
                 DEBUG("_Index: ty = " << ty);
                 if( ty.data().is_Path() && ty.data().as_Path().path.m_data.is_Generic() && ty.data().as_Path().path.m_data.as_Generic().m_path == m_lang_RangeFull ) {
                     DEBUG("_Index: RangeFull - can be constant");
-                    m_is_constant = m_all_constant;
+                    m_is_constant = !is_maybe_interior_mut(node);
                 }
                 else {
                 }
@@ -487,7 +483,7 @@ namespace {
                     DEBUG("Constant path is still generic, can't transform into a `static`");
                 }
                 else {
-                    m_is_constant = true;
+                    m_is_constant = !is_maybe_interior_mut(node);
                 }
                 break;
             case StaticTraitResolve::ValuePtr::TAG_Function:
@@ -496,6 +492,11 @@ namespace {
             default:
                 break;
             }
+        }
+
+    private:
+        bool is_maybe_interior_mut(const ::HIR::ExprNode& node) const {
+            return m_resolve.type_is_interior_mutable(node.span(), node.m_res_type) != HIR::Compare::Unequal;
         }
     };
     class OuterVisitor:
