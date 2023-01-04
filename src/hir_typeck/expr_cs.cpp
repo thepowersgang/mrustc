@@ -39,6 +39,22 @@ namespace {
             return false;
             });
     }
+
+    struct MonomorphEraseHrls: public Monomorphiser {
+        ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& g) const override {
+            return ::HIR::TypeRef(g);
+        }
+        ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& g) const override {
+            return g;
+        }
+        ::HIR::LifetimeRef get_lifetime(const Span& sp, const ::HIR::GenericRef& g) const override {
+            if( g.group() == 3 ) {
+                return HIR::LifetimeRef();
+            } else {
+                return HIR::LifetimeRef(g.binding);
+            }
+        }
+    };
 }
 #define NEWNODE(TY, SP, CLASS, ...)  mk_exprnodep(new HIR::ExprNode##CLASS(SP ,## __VA_ARGS__), TY)
 
@@ -1819,8 +1835,9 @@ void Context::equate_types(const Span& sp, const ::HIR::TypeRef& li, const ::HIR
     const auto& l_t = this->m_resolve.expand_associated_types(sp, this->m_ivars.get_type(li), l_tmp);
     const auto& r_t = this->m_resolve.expand_associated_types(sp, this->m_ivars.get_type(ri), r_tmp);
 
-    MonomorphHrlsOnly(HIR::PathParams()).monomorph_type(sp, l_t);
-    MonomorphHrlsOnly(HIR::PathParams()).monomorph_type(sp, r_t);
+    // Strip HRLs, just in case
+    MonomorphEraseHrls().monomorph_type(sp, l_t);
+    MonomorphEraseHrls().monomorph_type(sp, r_t);
 
     if( l_t.data().is_Diverge() && !r_t.data().is_Infer() ) {
         return ;
@@ -3504,14 +3521,11 @@ void Context::equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const
     this->link_assoc.push_back(Associated {
         this->next_rule_idx ++,
         sp,
-        //l.clone(),
-        MonomorphHrlsOnly(HIR::PathParams()).monomorph_type(sp, l, true),
+        MonomorphEraseHrls().monomorph_type(sp, l, true),
 
         trait.clone(),
-        //mv$(pp),
-        MonomorphHrlsOnly(HIR::PathParams()).monomorph_path_params(sp, pp, true),
-        //impl_ty.clone(),
-        MonomorphHrlsOnly(HIR::PathParams()).monomorph_type(sp, impl_ty, true),
+        MonomorphEraseHrls().monomorph_path_params(sp, pp, true),
+        MonomorphEraseHrls().monomorph_type(sp, impl_ty, true),
         name,
         is_op
         });
@@ -5152,7 +5166,7 @@ namespace {
         ::std::vector<Possibility>  possible_impls;
         try {
         bool found = context.m_resolve.find_trait_impls(sp, v.trait, v.params,  v.impl_ty,
-            [&](auto impl, auto cmp) {
+            [&](ImplRef impl, HIR::Compare cmp) {
                 DEBUG("[check_associated] Found cmp=" << cmp << " " << impl);
                 if( v.name != "" ) {
                     auto out_ty_o = impl.get_type(v.name.c_str());
@@ -5164,18 +5178,17 @@ namespace {
 
                     // TODO: if this is an unbound UfcsUnknown, treat as a fuzzy match.
                     // - Shouldn't compare_with_placeholders do that?
-                    const auto& out_ty = out_ty_o;
 
                     // - If we're looking for an associated type, allow it to eliminate impossible impls
                     //  > This makes `let v: usize = !0;` work without special cases
-                    auto cmp2 = v.left_ty.compare_with_placeholders(sp, out_ty, context.m_ivars.callback_resolve_infer());
+                    auto cmp2 = v.left_ty.compare_with_placeholders(sp, out_ty_o, context.m_ivars.callback_resolve_infer());
                     if( cmp2 == ::HIR::Compare::Unequal ) {
-                        DEBUG("[check_associated] - (fail) known result can't match (" << context.m_ivars.fmt_type(v.left_ty) << " and " << context.m_ivars.fmt_type(out_ty) << ")");
+                        DEBUG("[check_associated] - (fail) known result can't match (" << context.m_ivars.fmt_type(v.left_ty) << " and " << context.m_ivars.fmt_type(out_ty_o) << ")");
                         return false;
                     }
                     // if solid or fuzzy, leave as-is
                     output_type = mv$( out_ty_o );
-                    DEBUG("[check_associated] cmp = " << cmp << " (2)");
+                    DEBUG("[check_associated] cmp = " << cmp << " (2) out=" << output_type);
                 }
                 if( cmp == ::HIR::Compare::Equal ) {
                     // NOTE: Sometimes equal can be returned when it's not 100% equal (TODO)

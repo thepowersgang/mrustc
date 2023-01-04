@@ -1697,8 +1697,12 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             // TODO: Should Self here be `type` or `pe.type`
             // - Depends... if implicit it should be `type` (as it relates to the associated type), but if explicit it's referring to the trait
             auto monomorph_cb = MonomorphStatePtr(&pe.type, &pe.trait.m_params, nullptr);
-            auto rv = this->iterate_aty_bounds(sp, pe, [&](const auto& bound) {
+            auto rv = this->iterate_aty_bounds(sp, pe, [&](const HIR::TraitPath& bound) {
                 DEBUG("Bound on ATY: " << bound);
+                static const HIR::GenericParams empty_params;
+                const auto& hrls_def = (bound.m_path.m_hrls && !bound.m_path.m_hrls->is_empty()) ? *bound.m_path.m_hrls : empty_params;
+                auto pp_hrb = hrls_def.make_empty_params(true);
+                monomorph_cb.pp_hrb = &pp_hrb;
                 const auto& b_params = bound.m_path.m_params;
                 ::HIR::PathParams   params_mono_o;
                 const auto& b_params_mono = (monomorphise_pathparams_needed(b_params) ? params_mono_o = monomorph_cb.monomorph_path_params(sp, b_params, false) : b_params);
@@ -1726,11 +1730,12 @@ bool TraitResolution::find_trait_impls(const Span& sp,
                         }
                         else
                         {
-                            if( callback( ImplRef(nullptr, &type, &bound.m_path.m_params, &null_assoc), cmp ) )
+                            if( callback( ImplRef(bound.m_path.m_hrls.get(), &type, &bound.m_path.m_params, &null_assoc), cmp ) )
                                 return true;
                         }
                     }
                 }
+                monomorph_cb.pp_hrb = nullptr;
 
                 bool rv = false;
                 bool ret = this->find_named_trait_in_trait(sp,  trait, params,  *bound.m_trait_ptr,  bound.m_path.m_path, b_params_mono, type,
@@ -4583,10 +4588,8 @@ bool TraitResolution::find_method(const Span& sp,
                 {
                     if( *self_ty_p == *ityp )
                     {
-                        if( true || monomorphise_pathparams_needed(final_trait_path.m_params) ) {
-                            final_trait_path.m_params = monomorph_cb.monomorph_path_params(sp, final_trait_path.m_params, false);
-                            DEBUG("- Monomorph to " << final_trait_path);
-                        }
+                        final_trait_path = monomorph_cb.monomorph_genericpath(sp, final_trait_path, false);
+                        DEBUG("- Monomorph to " << final_trait_path);
 
                         // Found the method, return the UFCS path for it
                         possibilities.push_back(::std::make_pair( borrow_type, ::HIR::Path(self_ty_p->clone(), mv$(final_trait_path), method_name, {}) ));
