@@ -441,7 +441,7 @@ namespace resolve_ufcs {
             ::HIR::GenericPath  par_trait_path_tmp;
             auto monomorph_gp_if_needed = [&](const ::HIR::GenericPath& tpl)->const ::HIR::GenericPath& {
                 // NOTE: This doesn't monomorph if the parameter set is the same
-                if( monomorphise_genericpath_needed(tpl) && tpl.m_params != trait_path.m_params ) {
+                if( monomorphise_genericpath_needed(tpl) /*&& tpl.m_params != trait_path.m_params*/ ) {
                     DEBUG("- Monomorph " << tpl);
                     return par_trait_path_tmp = monomorph_cb.monomorph_genericpath(sp, tpl, false /*no infer*/);
                 }
