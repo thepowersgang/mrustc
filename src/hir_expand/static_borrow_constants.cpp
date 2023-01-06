@@ -160,7 +160,7 @@ namespace {
                     i = ofs_item_l + ge.idx();
                     break;
                 default:
-                    BUG(sp, "Generic value " << ge << " unknown");
+                    BUG(sp, "Generic lifetime " << ge << " unknown");
                 }
                 ASSERT_BUG(sp, i < params.m_lifetimes.size(), "Item generic lifetime binding OOR - " << ge << " (" << i << " !< " << params.m_lifetimes.size() << ")");
                 return ::HIR::LifetimeRef(256 + i);

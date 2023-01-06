@@ -151,6 +151,41 @@ namespace
                     }
                     if(gp) {
                         p->m_params.m_lifetimes.resize( gp->m_lifetimes.size() );
+
+                        // Inherit bounds.
+                        if( m_cur_params ) {
+                            TRACE_FUNCTION_FR("INHERIT BOUNDS: " << *p, "INHERIT BOUNDS");
+                            // Visit lifeitmes first - so they're un-elided
+                            for(auto& l : p->m_params.m_lifetimes) {
+                                visit_lifetime(sp, l);
+                            }
+                            // Then make a monomorph state, and find lifetime bounds
+                            MonomorphStatePtr   ms(nullptr, &p->m_params, nullptr);
+                            for(const auto& b : gp->m_bounds) {
+                                TU_MATCH_HDRA((b), {)
+                                TU_ARMA(Lifetime, be) {
+                                    m_cur_params->m_bounds.push_back(HIR::GenericBound::make_Lifetime({
+                                        ms.monomorph_lifetime(sp, be.test),
+                                        ms.monomorph_lifetime(sp, be.valid_for)
+                                        }));
+                                    const auto& nbe = m_cur_params->m_bounds.back().as_Lifetime();
+                                    if( (nbe.test.is_param() && nbe.test.as_param().group() == 3)
+                                     || (nbe.valid_for.is_param() && nbe.valid_for.as_param().group() == 3) ) {
+                                        //TODO(sp, "HRL inherited? - " << b << " -> " << m_cur_params->m_bounds.back());
+                                        m_cur_params->m_bounds.pop_back();
+                                    }
+                                    else {
+                                        DEBUG("INHERIT " << m_cur_params->m_bounds.back());
+                                    }
+                                    }
+                                TU_ARMA(TypeLifetime, be) {
+                                    // TODO: Should type lifetimes be inferred too?
+                                    }
+                                TU_ARMA(TraitBound, _be) {}
+                                TU_ARMA(TypeEquality, _be) {}
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -607,6 +642,9 @@ namespace
             visit_params(item.m_params);
 
             auto first_elided_lifetime_idx = item.m_params.m_lifetimes.size();
+
+            // TODO: Add lifetime bounds from argument types!
+            // - While visiting the argument types, find path types and inherit the lifetime bounds
 
             // Visit arguments to get the input lifetimes
             m_cur_params = &item.m_params;
