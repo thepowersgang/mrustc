@@ -612,6 +612,9 @@ namespace {
                 m_os << ", ";
             }
             m_os << ")";
+            if( !node.m_cache.m_arg_types.empty() ) {
+                m_os << "/*CACHE:" << node.m_cache.m_arg_types << "*/";
+            }
         }
         void visit(::HIR::ExprNode_Field& node) override
         {

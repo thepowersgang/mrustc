@@ -357,7 +357,16 @@ void Dumper::dump_function(::HIR::ItemPath ip, const ::HIR::Publicity& pub, cons
         return ;
     }
     ::std::cout << indent << "fn " << ip << fcn.m_params.fmt_args() << "(";
-    ::std::cout << " )";
+    for(const auto& a : fcn.m_args) {
+        ::std::cout << "\n" << indent << indent.s << a.first << " : " << a.second;
+        ::std::cout << ",";
+    }
+    ::std::cout << "\n" << indent << ") -> ";
+    ::std::cout << fcn.m_return;
+    if( !fcn.m_params.m_bounds.empty() ) {
+        ::std::cout << "\n";
+        ::std::cout << fcn.m_params.fmt_bounds();
+    }
     if( fcn.m_code.m_mir )
     {
         ::std::cout << "\n";
