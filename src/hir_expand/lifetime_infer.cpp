@@ -2143,6 +2143,9 @@ namespace {
                     for(auto& ty : ep.m_bindings) {
                         this->visit_type(ty);
                     }
+                    for(auto& b : ep.m_erased_types) {
+                        this->visit_type(b);
+                    }
 
                     this->visit_type(ep->m_res_type);
                     ep->visit(*this);
