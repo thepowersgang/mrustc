@@ -279,25 +279,37 @@ ImplRef::Monomorph ImplRef::get_cb_monomorph_traitimpl(const Span& sp) const
         else {
             os << "impl";
             os << "(" << e.impl << ")";
-            if( e.impl->m_params.m_types.size() )
-            {
-                os << "<";
-                for( unsigned int i = 0; i < e.impl->m_params.m_types.size(); i ++ )
-                {
-                    const auto& ty_d = e.impl->m_params.m_types[i];
-                    os << ty_d.m_name;
-                    os << ",";
-                }
-                os << ">";
-            }
+            os << e.impl->m_params.fmt_args();
             os << " " << *e.trait_path << e.impl->m_trait_args << " for " << e.impl->m_type << e.impl->m_params.fmt_bounds();
             os << " {";
+            for( unsigned int i = 0; i < e.impl->m_params.m_lifetimes.size(); i ++ ) {
+                const auto& d = e.impl->m_params.m_lifetimes[i];
+                os << d.m_name << " = ";
+                if( e.impl_params.m_lifetimes[i] != HIR::LifetimeRef() ) {
+                    os << e.impl_params.m_lifetimes[i];
+                }
+                else {
+                    os << "?";
+                }
+                os << ",";
+            }
             for( unsigned int i = 0; i < e.impl->m_params.m_types.size(); i ++ )
             {
                 const auto& ty_d = e.impl->m_params.m_types[i];
                 os << ty_d.m_name << " = ";
                 if( e.impl_params.m_types[i] != HIR::TypeRef() ) {
                     os << e.impl_params.m_types[i];
+                }
+                else {
+                    os << "?";
+                }
+                os << ",";
+            }
+            for( unsigned int i = 0; i < e.impl->m_params.m_values.size(); i ++ ) {
+                const auto& d = e.impl->m_params.m_values[i];
+                os << d.m_name << " = ";
+                if( e.impl_params.m_values[i] != HIR::ConstGeneric() ) {
+                    os << e.impl_params.m_values[i];
                 }
                 else {
                     os << "?";

@@ -322,7 +322,7 @@ Ordering HIR::TraitPath::ord(const TraitPath& x) const
     for( unsigned int i = 0; i < std::min(this->m_lifetimes.size(), x.m_lifetimes.size()); i ++ )
     {
         if( this->m_lifetimes[i].is_param() ) {
-            /*rv &=*/ match.match_lft(HIR::GenericRef("", this->m_lifetimes[i].binding), x.m_lifetimes[i]);
+            /*rv &=*/ match.match_lft(this->m_lifetimes[i].as_param(), x.m_lifetimes[i]);
             //if(rv == Compare::Unequal)
             //    return Compare::Unequal;
         }

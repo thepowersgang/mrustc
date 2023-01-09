@@ -732,6 +732,11 @@ namespace {
                     // HACK: Return blank?
                     return HIR::LifetimeRef();
                 }
+                // Placeholder.
+                if( g.group() == 2 ) {
+                    // HACK: Ideally - placeholders won't be here, but just in case...
+                    return parent.m_state.allocate_ivar(sp);
+                }
                 return HIR::LifetimeRef(g.binding);
             }
 

@@ -867,7 +867,13 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         if( te.type != xe.type )
             return Compare::Unequal;
         auto rv = Compare::Equal;
-        /*rv &=*/ callback.match_lft(HIR::GenericRef("", te.lifetime.binding), xe.lifetime);
+        if( te.lifetime.is_param() ) {
+            /*rv &=*/ callback.match_lft(te.lifetime.as_param(), xe.lifetime);
+        }
+        else {
+            //if( te.lifetime != xe.lifetime )
+            //    return Compare::Unequal;
+        }
         rv &= te.inner.match_test_generics_fuzz( sp, xe.inner, resolve_placeholder, callback );
         return rv;
         }

@@ -622,22 +622,35 @@ namespace {
     class GetParams:
         public ::HIR::MatchGenerics
     {
+    public:
+        struct ParamsSet {
+            std::vector<bool>   m_types;
+            std::vector<bool>   m_lifetimes;
+            std::vector<bool>   m_values;
+        };
+    private:
         Span    sp;
         HIR::PathParams& impl_params;
+        ParamsSet&  params_set;
     public:
-        GetParams(Span sp, const HIR::GenericParams& impl_params_def, HIR::PathParams& impl_params):
-            sp(sp),
-            impl_params(impl_params)
+        GetParams(Span sp, const HIR::GenericParams& impl_params_def, HIR::PathParams& impl_params, ParamsSet& params_set)
+            : sp(sp)
+            , impl_params(impl_params)
+            , params_set(params_set)
         {
             impl_params.m_lifetimes.resize( impl_params_def.m_lifetimes.size() );
             impl_params.m_types.resize( impl_params_def.m_types.size() );
             impl_params.m_values.resize( impl_params_def.m_values.size() );
+            params_set.m_lifetimes.resize( impl_params_def.m_lifetimes.size() );
+            params_set.m_types.resize( impl_params_def.m_types.size() );
+            params_set.m_values.resize( impl_params_def.m_values.size() );
         }
 
         ::HIR::Compare match_ty(const ::HIR::GenericRef& g, const ::HIR::TypeRef& ty, ::HIR::t_cb_resolve_type resolve_cb) override {
             ASSERT_BUG(sp, g.binding < impl_params.m_types.size(), "[GetParams] Type generic " << g << " out of bounds (" << impl_params.m_types.size() << ")");
-            if( impl_params.m_types[g.binding] == HIR::TypeRef() )
+            if( !params_set.m_types[g.binding] )
             {
+                params_set.m_types[g.binding] = true;
                 impl_params.m_types[g.binding] = ty.clone();
                 DEBUG("[GetParams] Set impl ty param " << g << " to " << ty);
                 return ::HIR::Compare::Equal;
@@ -648,8 +661,9 @@ namespace {
         }
         ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::ConstGeneric& sz) override {
             ASSERT_BUG(sp, g.binding < impl_params.m_values.size(), "[GetParams] Value generic " << g << " out of range (" << impl_params.m_values.size() << ")");
-            if( impl_params.m_values[g.binding].is_Infer() )
+            if( !params_set.m_values[g.binding] )
             {
+                params_set.m_values[g.binding] = true;
                 impl_params.m_values[g.binding] = sz.clone();
                 DEBUG("[GetParams] Set impl val param " << g << " to " << sz);
                 return ::HIR::Compare::Equal;
@@ -667,7 +681,9 @@ namespace {
         ::HIR::Compare match_lft(const ::HIR::GenericRef& g, const ::HIR::LifetimeRef& lft) override {
             if( g.binding >= 2*256 )    return HIR::Compare::Equal;
             ASSERT_BUG(sp, g.binding < impl_params.m_lifetimes.size(), "[GetParams] Lifetime generic " << g << " out of range (" << impl_params.m_lifetimes.size() << ")");
-            if( impl_params.m_lifetimes[g.binding].binding == HIR::LifetimeRef::UNKNOWN ) {
+            if( !params_set.m_lifetimes[g.binding] )
+            {
+                params_set.m_lifetimes[g.binding] = true;
                 impl_params.m_lifetimes[g.binding] = lft;
                 DEBUG("[GetParams] Set impl lifetime param " << g << " to " << lft);
                 return ::HIR::Compare::Equal;
@@ -698,35 +714,70 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
     // TODO: What if `des_trait_params` already has impl placeholders?
 
     HIR::PathParams impl_params;
-    GetParams get_params { sp, impl_params_def, impl_params };
+    GetParams::ParamsSet    params_set;
+    GetParams get_params { sp, impl_params_def, impl_params, params_set };
 
     auto match = impl_type.match_test_generics_fuzz(sp, des_type, cb_ident, get_params);
-    unsigned base_impl_placeholder_idx = 0;
+    struct BaseImplPlaceholderIdx {
+        unsigned ty = 0;
+        unsigned lft = 0;
+    } base_impl_placeholder_idx;
     if( des_trait_params )
     {
         ASSERT_BUG( sp, des_trait_params->m_types.size() == impl_trait_params.m_types.size(), "Size mismatch in arguments for " << des_trait_path << " - " << *des_trait_params << " and " << impl_trait_params );
         match &= impl_trait_params.match_test_generics_fuzz(sp, *des_trait_params, cb_ident, get_params);
 
-        unsigned max_impl_idx = 0;
+        unsigned max_impl_idx_ty = 0;
+        unsigned max_impl_idx_lft = 0;
+        auto visit_lft = [&](const ::HIR::LifetimeRef& l) {
+            if(l.is_param() && l.as_param().is_placeholder()) {
+                max_impl_idx_lft = ::std::max(max_impl_idx_lft, l.as_param().idx());
+            }
+            };
+        // TODO: Get a generic visitor (running the same way as `Monomorphiser`)
         for(const auto& r : des_trait_params->m_types )
         {
             visit_ty_with(r, [&](const ::HIR::TypeRef& t)->bool {
-                if( t.data().is_Generic() && (t.data().as_Generic().binding >> 8) == 2 ) {
-                    unsigned impl_idx = t.data().as_Generic().binding & 0xFF;
-                    max_impl_idx = ::std::max(max_impl_idx, impl_idx+1);
+                if( t.data().is_Generic() && t.data().as_Generic().is_placeholder() ) {
+                    unsigned impl_idx = t.data().as_Generic().idx();
+                    max_impl_idx_ty = ::std::max(max_impl_idx_ty, impl_idx);
                 }
+                if( const auto* te = t.data().opt_Borrow() ) {
+                    visit_lft(te->lifetime);
+                }
+                // TODO: Path param lifetimes, etc
                 return false;
                 });
         }
-        base_impl_placeholder_idx = max_impl_idx;
+        for(const auto& l : des_trait_params->m_lifetimes) {
+            visit_lft(l);
+        }
+        base_impl_placeholder_idx.ty  = max_impl_idx_ty +1;
+        base_impl_placeholder_idx.lft = max_impl_idx_lft+1;
 
-        size_t n_placeholders_needed = 0;
+        size_t n_placeholder_tys_needed = 0;
         for(unsigned int i = 0; i < impl_params.m_types.size(); i ++ ) {
-            if( impl_params.m_types[i] == HIR::TypeRef() ) {
-                n_placeholders_needed ++;
+            if( !params_set.m_types[i] ) {
+                n_placeholder_tys_needed ++;
             }
         }
-        ASSERT_BUG(sp, base_impl_placeholder_idx + n_placeholders_needed <= 256, "Out of impl placeholders");
+        size_t n_placeholder_lfts_needed = 0;
+        for(unsigned int i = 0; i < impl_params.m_lifetimes.size(); i ++ ) {
+            if( !params_set.m_lifetimes[i] ) {
+                n_placeholder_lfts_needed ++;
+            }
+        }
+#if 0
+        ASSERT_BUG(sp, base_impl_placeholder_idx.ty  + n_placeholder_tys_needed  <= 256, "Out of impl placeholder types");
+        ASSERT_BUG(sp, base_impl_placeholder_idx.lft + n_placeholder_lfts_needed <= 256, "Out of impl placeholder lifetimes");
+#else
+        if( n_placeholder_tys_needed > 0 ) {
+            ASSERT_BUG(sp, base_impl_placeholder_idx.ty  + impl_params.m_types.size()  <= 256, "Out of impl placeholder types");
+        }
+        if( n_placeholder_tys_needed > 0 ) {
+            ASSERT_BUG(sp, base_impl_placeholder_idx.lft + impl_params.m_lifetimes.size() <= 256, "Out of impl placeholder lifetimes");
+        }
+#endif
     }
     if( match == ::HIR::Compare::Unequal ) {
         DEBUG(" > Type mismatch");
@@ -734,22 +785,32 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
     }
 
     auto placeholder_name = RcString::new_interned(FMT("impl_?_" << &impl_params_def));
-    std::vector<HIR::TypeRef>   placeholders;
+    GetParams::ParamsSet    placeholders_set;
+    HIR::PathParams placeholders;
     for(unsigned int i = 0; i < impl_params.m_types.size(); i ++ ) {
-        if( impl_params.m_types[i] == HIR::TypeRef() )
-        {
-            if( placeholders.size() == 0 )
-                placeholders.resize(impl_params.m_types.size());
-            placeholders[i] = ::HIR::TypeRef(placeholder_name, 2*256 + i + base_impl_placeholder_idx);
-            DEBUG("Placeholder " << placeholders[i] << " for I:" << i << " " << impl_params_def.m_types[i].m_name);
+        if( !params_set.m_types[i] ) {
+            if( placeholders.m_types.size() == 0 ) {
+                placeholders.m_types.resize(impl_params.m_types.size());
+                placeholders_set.m_types.resize(impl_params.m_types.size());
+            }
+            placeholders.m_types[i] = ::HIR::TypeRef(placeholder_name, 2*256 + base_impl_placeholder_idx.ty + i);
+            DEBUG("Placeholder " << placeholders.m_types[i] << " for I:" << i << " " << impl_params_def.m_types[i].m_name);
         }
     }
     for(size_t i = 0; i < impl_params.m_values.size(); i ++ ) {
-        if( impl_params.m_values[i] == HIR::ConstGeneric() )
-        {
+        if( !params_set.m_values[i] ) {
             // TODO: Is there an equivalent of a placeholder for const generics?
             // - Yes, it's a placeholder generic :D
             // TODO: use placeholder generics for values
+        }
+    }
+    for(size_t i = 0; i < impl_params.m_lifetimes.size(); i ++ ) {
+        if( !params_set.m_lifetimes[i] ) {
+            if( placeholders.m_lifetimes.size() == 0 ) {
+                placeholders.m_lifetimes.resize(impl_params.m_lifetimes.size());
+                placeholders_set.m_lifetimes.resize(impl_params.m_lifetimes.size());
+            }
+            placeholders.m_lifetimes[i] = ::HIR::LifetimeRef(2*256 + base_impl_placeholder_idx.lft + i);
         }
     }
 
@@ -759,15 +820,27 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
     {
         Span    sp;
         const HIR::PathParams& impl_params;
-        unsigned    base_impl_placeholder_idx;
+        const GetParams::ParamsSet& params_set;
+        const BaseImplPlaceholderIdx& base_impl_placeholder_idx;
         RcString    placeholder_name;
-        std::vector<HIR::TypeRef>&  placeholders;
-        Matcher(Span sp, const HIR::PathParams& impl_params, RcString placeholder_name, unsigned base_impl_placeholder_idx, std::vector<HIR::TypeRef>& placeholders):
-            sp(sp),
-            impl_params(impl_params),
-            base_impl_placeholder_idx(base_impl_placeholder_idx),
-            placeholder_name(placeholder_name),
-            placeholders(placeholders)
+        HIR::PathParams&    placeholders;
+        GetParams::ParamsSet&   placeholders_set;
+        Matcher(
+            Span sp,
+            const HIR::PathParams& impl_params,
+            const GetParams::ParamsSet& params_set,
+            RcString placeholder_name,
+            const BaseImplPlaceholderIdx& base_impl_placeholder_idx,
+            HIR::PathParams& placeholders,
+            GetParams::ParamsSet& placeholders_set
+        )
+            : sp(sp)
+            , impl_params(impl_params)
+            , params_set(params_set)
+            , base_impl_placeholder_idx(base_impl_placeholder_idx)
+            , placeholder_name(placeholder_name)
+            , placeholders(placeholders)
+            , placeholders_set(placeholders_set)
         {
         }
 
@@ -776,13 +849,15 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
                 return ::HIR::Compare::Equal;
             if( g.is_placeholder() )
             {
-                if( g.idx() >= base_impl_placeholder_idx )
+                if( g.idx() >= base_impl_placeholder_idx.ty )
                 {
-                    auto i = g.idx() - base_impl_placeholder_idx;
-                    ASSERT_BUG(sp, impl_params.m_types[i] == HIR::TypeRef(), "Placeholder to populated type returned. new " << ty << ", existing " << impl_params.m_types[i]);
-                    auto& ph = placeholders[i];
-                    if( ph.data().is_Generic() && ph.data().as_Generic() == g ) {
+                    auto i = g.idx() - base_impl_placeholder_idx.ty;
+                    ASSERT_BUG(sp, !params_set.m_types[i],
+                        "Placeholder to populated type returned. new " << ty << ", existing " << impl_params.m_types[i]);
+                    auto& ph = placeholders.m_types[i];
+                    if( !placeholders_set.m_types[i] ) {
                         DEBUG("[find_impl__check_crate_raw] Bind placeholder " << i << " to " << ty);
+                        placeholders_set.m_types[i] = true;
                         ph = ty.clone();
                         return ::HIR::Compare::Equal;
                     }
@@ -801,8 +876,42 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
                 return ::HIR::Compare::Unequal;
             }
         }
-        ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::ConstGeneric& sz) override {
-            TODO(Span(), "Matcher::match_val " << g << " with " << sz);
+        ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::ConstGeneric& val) override {
+            TODO(Span(), "Matcher::match_val " << g << " with " << val);
+        }
+        ::HIR::Compare match_lft(const ::HIR::GenericRef& g, const ::HIR::LifetimeRef& lft) override {
+            if( lft.is_param() && lft.binding == g.binding ) {
+                return HIR::Equal;
+            }
+            if( g.is_placeholder() )
+            {
+                if( g.idx() >= base_impl_placeholder_idx.lft )
+                {
+                    auto i = g.idx() - base_impl_placeholder_idx.lft;
+                    ASSERT_BUG(sp, !params_set.m_lifetimes[i],
+                        "Placeholder to populated lifetime returned. new " << lft << ", existing " << impl_params.m_lifetimes[i]);
+                    auto& ph = placeholders.m_lifetimes[i];
+                    if( !placeholders_set.m_lifetimes[i] ) {
+                        DEBUG("[find_impl__check_crate_raw] Bind placeholder lifetime " << i << " to " << lft);
+                        placeholders_set.m_lifetimes[i] = true;
+                        ph = lft;
+                        return ::HIR::Compare::Equal;
+                    }
+                    else if( ph == lft ) {
+                        return ::HIR::Compare::Equal;
+                    }
+                    else {
+                        TODO(sp, "[find_impl__check_crate_raw] Compare placeholder type " << i << " " << ph << " == " << lft);
+                    }
+                }
+                else {
+                    return ::HIR::Compare::Fuzzy;
+                }
+            }
+            if( lft == HIR::LifetimeRef() ) {
+                return HIR::Equal;
+            }
+            return HIR::Unequal;
         }
 
         ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& ge) const override {
@@ -814,10 +923,10 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
                 TODO(sp, "get_type Self");
             }
             ASSERT_BUG(sp, !ge.is_placeholder(), "[find_impl__check_crate_raw] Placeholder param seen - " << ge);
-            if( impl_params.m_types.at(ge.binding) != HIR::TypeRef() ) {
+            if( params_set.m_types.at(ge.binding) ) {
                 return impl_params.m_types.at(ge.binding).clone();
             }
-            return placeholders.at(ge.binding).clone();
+            return placeholders.m_types.at(ge.binding).clone();
         }
         ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& val) const override {
             ASSERT_BUG(sp, val.binding < 256, "Generic value binding in " << val << " out of range (>=256)");
@@ -834,10 +943,15 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
                 return HIR::LifetimeRef(g.binding);
             ASSERT_BUG(sp, g.group() == 0, "Generic lifetime binding in " << g << " out of range (must be impl)");
             ASSERT_BUG(sp, g.idx() < impl_params.m_lifetimes.size(), "Generic lifetime binding in " << g << " out of range (>= " << impl_params.m_lifetimes.size() << ")");
-            return impl_params.m_lifetimes.at(g.binding);
+            if( params_set.m_lifetimes.at(g.binding) ) {
+                return impl_params.m_lifetimes.at(g.binding);
+            }
+            ASSERT_BUG(sp, placeholders.m_lifetimes.size() == impl_params.m_lifetimes.size(),
+                "Placeholder (lifetime) size mismatch: " << placeholders.m_lifetimes.size() << " != " << impl_params.m_lifetimes.size());
+            return placeholders.m_lifetimes.at(g.binding);
         }
     };
-    Matcher matcher { sp, impl_params, placeholder_name, base_impl_placeholder_idx, placeholders };
+    Matcher matcher { sp, impl_params, params_set, placeholder_name, base_impl_placeholder_idx, placeholders, placeholders_set };
 
     // Bounds
     for(const auto& bound : impl_params_def.m_bounds)
@@ -920,6 +1034,7 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
                 }
             }
         }
+        //else if( const auto* be
         else  // bound.opt_TraitBound()
         {
             // Ignore
@@ -928,22 +1043,44 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
 
     for(size_t i = 0; i < impl_params.m_types.size(); i ++)
     {
-        if( impl_params.m_types[i] == HIR::TypeRef() )
+        if( !params_set.m_types[i] )
         {
-            impl_params.m_types[i] = std::move(placeholders[i]);
+            if( !placeholders_set.m_types[i] ) {
+                //BUG(sp, "Placeholder types shouldn't leak :( - " << placeholders.m_types[i]);
+            }
+            impl_params.m_types[i] = std::move(placeholders.m_types[i]);
         }
-        ASSERT_BUG(sp, impl_params.m_types[i] != HIR::TypeRef(), "Impl parameter #" << i << " wasn't set (or even a placeholder)");
+        //ASSERT_BUG(sp, impl_params.m_types[i] != HIR::TypeRef(), "Impl type parameter #" << i << " wasn't set (or even a placeholder)");
     }
+    for(size_t i = 0; i < impl_params.m_lifetimes.size(); i ++)
+    {
+        if( !params_set.m_lifetimes[i] )
+        {
+            if( des_trait_params )
+            {
+                if( !placeholders_set.m_lifetimes[i] ) {
+                    //BUG(sp, "Placeholder lifetimes shouldn't leak :( - " << placeholders.m_lifetimes[i]);
+                    impl_params.m_lifetimes[i] = HIR::LifetimeRef();
+                    continue ;
+                }
+            }
+            impl_params.m_lifetimes[i] = std::move(placeholders.m_lifetimes[i]);
+        }
+    }
+    DEBUG("impl_params = " << impl_params);
 
     assert(impl_params_def.m_types.size() == impl_params.m_types.size());
     for(size_t i = 0; i < impl_params_def.m_types.size(); i ++)
     {
         if( impl_params_def.m_types.at(i).m_is_sized )
         {
-            if( !type_is_sized(sp, impl_params.m_types[i]) )
+            if( impl_params.m_types[i] != HIR::TypeRef() )  // HACK: During "Resolve UFCS paths"
             {
-                DEBUG("- Sized bound failed for " << impl_params.m_types[i]);
-                return false;
+                if( !type_is_sized(sp, impl_params.m_types[i]) )
+                {
+                    DEBUG("- Sized bound failed for " << impl_params.m_types[i]);
+                    return false;
+                }
             }
         }
     }
@@ -2768,7 +2905,8 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
             DEBUG("Found impl" << impl.m_params.fmt_args() << " " << impl.m_type);
             // Populate pp_impl if not populated
             if( !pe.impl_params.has_params() ) {
-                GetParams get_params { sp, impl.m_params, out_params.pp_impl_data };
+                GetParams::ParamsSet    params_set;
+                GetParams get_params { sp, impl.m_params, out_params.pp_impl_data, params_set };
 
                 auto cb_ident = [](const ::HIR::TypeRef&ty)->const ::HIR::TypeRef& { return ty; };
                 impl.m_type.match_test_generics_fuzz(sp, pe.type, cb_ident, get_params);
@@ -2779,13 +2917,18 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
 
                 const auto& impl_params = out_params.pp_impl_data;
                 for(size_t i = 0; i < impl_params.m_types.size(); i ++ ) {
-                    if( impl_params.m_types[i] == HIR::TypeRef() ) {
+                    if( !params_set.m_types[i] ) {
                         // TODO: Error when there's a type param that can't be determined?
                     }
                 }
                 for(size_t i = 0; i < impl_params.m_values.size(); i ++ ) {
-                    if( impl_params.m_values[i] == HIR::ConstGeneric() ) {
+                    if( !params_set.m_values[i] ) {
                         // TODO: Error when there's a value param that can't be determined?
+                    }
+                }
+                for(size_t i = 0; i < impl_params.m_lifetimes.size(); i ++ ) {
+                    if( !params_set.m_lifetimes[i] ) {
+                        // TODO: Error when there's a lifetime param that can't be determined?
                     }
                 }
 

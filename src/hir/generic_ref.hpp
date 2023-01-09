@@ -124,6 +124,7 @@ struct LifetimeRef
             {
             case 0: os << "'I" << (x.binding & 0xFF);   break;  // Impl/type
             case 1: os << "'M" << (x.binding & 0xFF);   break;  // Method/value
+            case 2: os << "'P" << (x.binding & 0xFF);   break;  // HRLS
             case 3: os << "'H" << (x.binding & 0xFF);   break;  // HRLS
             default: os << "'unk" << std::hex << x.binding << std::dec;   break;
             }
