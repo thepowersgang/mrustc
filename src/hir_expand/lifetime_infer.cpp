@@ -326,6 +326,7 @@ namespace {
                 BUG(sp, "Unknown lifetime " << lhs);
             }
         }
+        // NOTE: lhs/rhs is about assignments, not lifetime bounds
         void ensure_outlives(const Span& sp, const HIR::LifetimeRef& lhs, const HIR::LifetimeRef& rhs) const
         {
             DEBUG(lhs << " = " << rhs);
@@ -352,7 +353,7 @@ namespace {
                         }
                     }
                 }
-                ERROR(sp, E0000, "Lifetime bound " << lhs << " : " << rhs << " failed - [" << failed_bounds << "]");
+                ERROR(sp, E0000, "Lifetime bound " << rhs << ": " << lhs << " failed - [" << failed_bounds << "]");
             }
         }
     };
@@ -1252,6 +1253,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_Field& node) override {
             HIR::ExprVisitorDef::visit(node);
+            TRACE_FUNCTION_FR("_Field " << node.m_field, "_Field " << node.m_field);
             const auto& sp = node.span();
             const auto& str_ty = node.m_value->m_res_type;
 
@@ -1305,7 +1307,7 @@ namespace {
 
                 auto ms = MonomorphStatePtr(&str_ty, &ty_e.path.m_data.as_Generic().m_params, nullptr);
                 auto fld_ty = m_resolve.monomorph_expand(sp, *fld_ty_ptr, ms);
-
+                DEBUG("Field type " << node.m_field << ": " << *fld_ty_ptr << " -> " << fld_ty);
                 this->equate_types(sp, node.m_res_type, fld_ty);
             }
         }

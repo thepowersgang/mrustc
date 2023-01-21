@@ -187,7 +187,7 @@ DEF_VISIT_H(ExprNode_CallValue, node) {
         visit_node_ptr(arg);
 }
 DEF_VISIT_H(ExprNode_CallMethod, node) {
-    TRACE_FUNCTION_F("_CallMethod: " << node.m_method);
+    TRACE_FUNCTION_FR("_CallMethod: " << node.m_method, "_CallMethod: " << node.m_method);
     visit_path_params(node.m_params);
     for(auto& ty : node.m_cache.m_arg_types)
         visit_type(ty);
