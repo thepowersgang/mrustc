@@ -650,7 +650,10 @@ namespace {
                 }
                 }
             TU_ARMA(Box, pe) {
-                TODO(sp, "Box patterns w/ " << *cur_ty);
+                const auto& gp = cur_ty->data().as_Path().path.m_data.as_Generic();
+                ASSERT_BUG(sp, gp.m_path == m_resolve.m_lang_Box, *cur_ty);
+                const HIR::TypeRef& inner_ty = gp.m_params.m_types.at(0);
+                equate_pattern(sp, *pe.sub, inner_ty, root_node);
                 }
             TU_ARMA(Ref, pe) {
                 const auto& te = cur_ty->data().as_Borrow();
