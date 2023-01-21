@@ -557,8 +557,8 @@ namespace {
         TU_MATCH_HDRA( (param), {)
         TU_ARMA(Null, ty) {
             }
-        TU_ARMA(Lifetime, ty) {
-            params.m_lifetimes.push_back(HIR::LifetimeRef(ty.binding()));
+        TU_ARMA(Lifetime, lft) {
+            params.m_lifetimes.push_back(LowerHIR_LifetimeRef(lft));
             }
         TU_ARMA(Type, ty) {
             params.m_types.push_back( LowerHIR_Type(ty) );
@@ -936,7 +936,7 @@ namespace {
             // Lifetime elision should have handled this?
         }
         else if( e.lifetimes.size() == 1 ) {
-            v.m_lifetime = HIR::LifetimeRef(e.lifetimes[0].binding());
+            v.m_lifetime = LowerHIR_LifetimeRef(e.lifetimes[0]);
         }
         else {
             BUG(ty.span(), "Handle multiple lifetimes on a trait object - " << ty);
@@ -992,7 +992,7 @@ namespace {
         }
         else if( e.lifetimes.size() == 1 )
         {
-            lft = HIR::LifetimeRef(e.lifetimes[0].binding());
+            lft = LowerHIR_LifetimeRef(e.lifetimes[0]);
         }
         else
         {

@@ -1356,6 +1356,7 @@ namespace {
             ::HIR::LifetimeRef(),  // TODO: Better type for lifetime
             {}
             };
+        rv.m_lifetime = deserialise_lifetimeref();
         rv.m_is_marker = m_in.read_bool();
         rv.m_types = deserialise_istrumap< ::HIR::AssociatedType>();
         rv.m_values = deserialise_istrumap< ::HIR::TraitValueItem>();

@@ -13,9 +13,11 @@ namespace AST {
     class LifetimeRef
     {
     public:
-        static const uint16_t BINDING_STATIC = 0xFFFF;
-        static const uint16_t BINDING_UNBOUND = 0xFFFE;
-        static const uint16_t BINDING_INFER = 0xFFFD;
+        // NOTE: These (the first three) must match HIR::LifetimeRef's versions
+        static const uint16_t BINDING_STATIC      = 0xFFFF; // 'static
+        static const uint16_t BINDING_UNSPECIFIED = 0xFFFE; // <unspec>
+        static const uint16_t BINDING_INFER       = 0xFFFD; // '_
+        static const uint16_t BINDING_UNBOUND     = 0xFFFC;
 
     private:
         Ident   m_name;
@@ -28,7 +30,7 @@ namespace AST {
         }
     public:
         LifetimeRef():
-            LifetimeRef("", BINDING_INFER)
+            LifetimeRef("", BINDING_UNSPECIFIED)
         {
         }
         LifetimeRef(Ident name):
@@ -37,6 +39,9 @@ namespace AST {
         }
         static LifetimeRef new_static() {
             return LifetimeRef("static", BINDING_STATIC);
+        }
+        static LifetimeRef new_infer() {
+            return LifetimeRef("_", BINDING_INFER);
         }
 
         void set_binding(uint16_t b) { assert(m_binding == BINDING_UNBOUND); m_binding = b; }

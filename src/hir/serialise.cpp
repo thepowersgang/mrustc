@@ -1315,7 +1315,7 @@
             auto _ = m_out.open_object("HIR::Trait");
 
             serialise_generics(item.m_params);
-            //m_out.write_string(item.m_lifetime);    // TODO: Better type for lifetime
+            serialise(item.m_lifetime);
             m_out.write_bool( item.m_is_marker );
             serialise_strmap( item.m_types );
             serialise_strmap( item.m_values );
