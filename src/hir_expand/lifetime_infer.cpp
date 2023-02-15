@@ -731,11 +731,6 @@ namespace {
                 return g;
             }
             ::HIR::LifetimeRef get_lifetime(const Span& sp, const ::HIR::GenericRef& g) const override {
-                if( g.group() == 3 ) {
-                    //TODO(sp, "Found HRL");
-                    // HACK: Return blank?
-                    return HIR::LifetimeRef();
-                }
                 // Placeholder.
                 if( g.group() == 2 ) {
                     // HACK: Ideally - placeholders won't be here, but just in case...
@@ -759,6 +754,19 @@ namespace {
         };
         Monomorph_AddLifetimes get_monomorph_add() {
             return Monomorph_AddLifetimes(*this);
+        }
+        void visit_path(::HIR::Visitor::PathContext pc, HIR::Path& p) override {
+            Span    sp;
+            TRACE_FUNCTION_FR(p, p);
+            if( auto* pe = p.m_data.opt_UfcsKnown() ) {
+                if( pe->trait.m_hrls && !pe->trait.m_hrls->is_empty() ) {
+                    // Remove this level of HRL
+                    auto pp = pe->trait.m_hrls->make_empty_params(true);
+                    pe->trait.m_hrls.reset();
+                    pe->trait = MonomorphHrlsOnly(pp).monomorph_genericpath(sp, pe->trait);
+                }
+            }
+            p = get_monomorph_add().monomorph_path(sp, p, false);
         }
         void visit_path_params(HIR::PathParams& pps) override {
             TRACE_FUNCTION_FR(pps, pps);
@@ -1435,9 +1443,10 @@ namespace {
             }
         }
         void visit(::HIR::ExprNode_CallMethod& node) override {
+            DEBUG("_CallMethod: " << node.m_method_path);
             HIR::ExprVisitorDef::visit(node);
 
-            TRACE_FUNCTION_FR("_CallMethod", "_CallMethod");
+            TRACE_FUNCTION_FR("_CallMethod: " << node.m_method_path, "_CallMethod");
             // Equate arguments and returns (monomorphised)
             MonomorphState  ms;
             auto v = m_resolve.get_value(node.span(), node.m_method_path, ms, /*signature_only*/true);
