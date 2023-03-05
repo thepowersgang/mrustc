@@ -1304,7 +1304,7 @@ bool Builder::spawn_process_mrustc(const StringList& args, StringListKV env, con
 {
     //env.push_back("MRUSTC_DEBUG", "");
     auto rv = spawn_process(m_compiler_path.str().c_str(), args, env, logfile);
-    if(getenv("MINICARGO_RUN_ONCE") || getenv("MINICARGO_RUN_ONCE"))
+    if(getenv("MINICARGO_RUN_ONCE") || getenv("MINICARGO_RUNONCE"))
     {
         if(rv) {
             std::cerr << "- Only running compiler once" << std::endl;
