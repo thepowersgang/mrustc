@@ -1229,9 +1229,9 @@ namespace {
         switch(auto tag = m_in.read_tag())
         {
         case 0:
-            return ::HIR::GenericBound::make_Lifetime({});
+            return ::HIR::GenericBound::make_Lifetime({ deserialise_lifetimeref(), deserialise_lifetimeref() });
         case 1:
-            return ::HIR::GenericBound::make_TypeLifetime({});
+            return ::HIR::GenericBound::make_TypeLifetime({ deserialise_type(), deserialise_lifetimeref() });
         case 2:
             return ::HIR::GenericBound::make_TraitBound({
                 m_in.read_bool() ? box$(deserialise_genericparams()) : nullptr,

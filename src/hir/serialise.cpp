@@ -348,27 +348,31 @@
         }
         void serialise(const ::HIR::GenericBound& b) {
             TRACE_FUNCTION_F(b);
-            TU_MATCHA( (b), (e),
-            (Lifetime,
+            TU_MATCH_HDRA( (b), {)
+            TU_ARMA(Lifetime, e) {
                 m_out.write_tag(0);
-                ),
-            (TypeLifetime,
+                serialise(e.test);
+                serialise(e.valid_for);
+                }
+            TU_ARMA(TypeLifetime, e) {
                 m_out.write_tag(1);
-                ),
-            (TraitBound,
+                serialise_type(e.type);
+                serialise(e.valid_for);
+                }
+            TU_ARMA(TraitBound, e) {
                 m_out.write_tag(2);
                 m_out.write_bool(static_cast<bool>(e.hrtbs));
                 if(e.hrtbs)
                     serialise_generics(*e.hrtbs);
                 serialise_type(e.type);
                 serialise_traitpath(e.trait);
-                ),
-            (TypeEquality,
+                }
+            TU_ARMA(TypeEquality, e) {
                 m_out.write_tag(3);
                 serialise_type(e.type);
                 serialise_type(e.other_type);
-                )
-            )
+                }
+            }
         }
 
 
