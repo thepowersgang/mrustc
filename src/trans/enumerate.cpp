@@ -18,6 +18,7 @@
 #include <deque>
 #include <algorithm>
 #include "target.hpp"
+#include "mangling.hpp"
 
 namespace {
     struct EnumState
@@ -30,6 +31,8 @@ namespace {
         ::std::deque<TransList_Function*>  fcn_queue;
         ::std::vector<TransList_Function*> fcns_to_type_visit;
 
+        ::std::set<std::string> emitted_functions;
+
         EnumState(const ::HIR::Crate& crate):
             crate(crate)
             , resolve(crate)
@@ -39,6 +42,11 @@ namespace {
         {
             if(auto* e = rv.add_function(mv$(p)))
             {
+#if 1
+                auto name = FMT(Trans_Mangle(*e->path));
+                auto inserted = emitted_functions.insert(name).second;
+                ASSERT_BUG(Span(), inserted, "Duplicated mangled name - " << *e->path);
+#endif
                 fcns_to_type_visit.push_back(e);
                 e->ptr = &fcn;
                 e->pp = mv$(pp);
