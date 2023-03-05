@@ -12,8 +12,8 @@ void TraitResolveCommon::prep_indexes(const Span& sp)
 {
     TRACE_FUNCTION_F("");
 
-    if(m_impl_generics) DEBUG("m_impl_generics = " << m_impl_generics->fmt_args());
-    if(m_item_generics) DEBUG("m_item_generics = " << m_item_generics->fmt_args());
+    if(m_impl_generics) DEBUG("m_impl_generics = " << m_impl_generics->fmt_args() << m_impl_generics->fmt_bounds());
+    if(m_item_generics) DEBUG("m_item_generics = " << m_item_generics->fmt_args() << m_item_generics->fmt_bounds());
 
     m_type_equalities.clear();
     m_trait_bounds.clear();

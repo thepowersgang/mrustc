@@ -769,6 +769,8 @@ namespace
             }
             assert(m_current_lifetime.empty());
 
+            DEBUG("Output: " << item.m_params.fmt_args() << item.m_params.fmt_bounds());
+
             ::HIR::Visitor::visit_function(p, item);
         }
     };

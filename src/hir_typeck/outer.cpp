@@ -1002,10 +1002,9 @@ namespace {
                     // - This is needed for monomorphisation to work properly?
                     // REF: rustc-1.29.0/src/vendor/serde/src/private/de.rs:1379
                     // Update AFTER the checks
-                    DEBUG("Replace generic block with " << trait_fcn.m_params.fmt_args());
+                    DEBUG("Replace generic block's lifetimes with " << trait_fcn.m_params.fmt_args());
                     impl_fcn.m_params.m_lifetimes = trait_fcn.m_params.m_lifetimes;
-#if 0
-                    // Replace the lifetime bounds too (undoes some potential confusion from elision?
+                    // Replace the lifetime bounds too (undoes some potential confusion from elision)
                     {
                         auto& bl = impl_fcn.m_params.m_bounds;
                         bl.erase( std::remove_if(bl.begin(), bl.end(), [](const HIR::GenericBound& b){ return b.is_Lifetime(); }), bl.end());
@@ -1019,8 +1018,7 @@ namespace {
                             }
                         }
                     }
-#endif
-                    // TODO: Also replace any lifetime bounds (or just all bounds in general)
+
                     impl_fcn.m_return = exp_ret_ty.clone();
                     // HACK: Clone the expected type, so the lifetimes match.
                     for( size_t i = 0; i < std::min(impl_fcn.m_args.size(), trait_fcn.m_args.size()); i ++ )
