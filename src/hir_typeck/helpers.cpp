@@ -379,8 +379,10 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr, 
                 os << "+";
             print_traitpath(tr);
         }
-        if( e.m_lifetime != ::HIR::LifetimeRef::new_static() )
-            os << "+" << e.m_lifetime;
+        if( !e.m_lifetimes.empty() ) {
+            for(const auto& lft : e.m_lifetimes)
+                os << "+" << lft;
+        }
         os << "/*" << e.m_origin << "#" << e.m_index << "*/";
         }
     TU_ARMA(Tuple, e) {

@@ -215,6 +215,19 @@ namespace {
             return false;
         }
 
+        bool iterate_type_lifetime_bounds(const HIR::TypeRef& ty, std::function<bool(const HIR::LifetimeRef&)> cb) const
+        {
+            for(const auto& b : m_bounds) {
+                if(b.ty) {
+                    if( *b.ty == ty ) {
+                        if( cb(b.valid_for) )
+                            return true;
+                    }
+                }
+            }
+            return false;
+        }
+
         /// Check that `rhs` is valid for `lhs` (assignment ordering)
         /// Stores the root RHS lifetimes that failed bounds in `fails`
         bool check_lifetimes(const Span& sp, const HIR::LifetimeRef& lhs, const HIR::LifetimeRef& rhs, std::vector<HIR::LifetimeRef>& fails) const
@@ -357,6 +370,19 @@ namespace {
             }
         }
     };
+
+    static bool is_opaque(const ::HIR::TypeRef& ty) {
+        if(ty.data().is_Generic())
+            return true;
+        if(ty.data().is_ErasedType())
+            return true;
+        if(ty.data().is_Path() && ty.data().as_Path().binding.is_Opaque())
+            return true;
+        if(ty.data().is_Path() && ty.data().as_Path().binding.is_Unbound())
+            return true;
+        return false;
+    }
+
     class ExprVisitor_Enumerate: public HIR::ExprVisitorDef
     {
         const StaticTraitResolve&   m_resolve;
@@ -394,8 +420,6 @@ namespace {
                     ASSERT_BUG(sp, e->m_index < ep.m_erased_types.size(),
                         "Erased type index OOB - " << e->m_origin << " " << e->m_index << " >= " << ep.m_erased_types.size());
                     rv = ep.m_erased_types[e->m_index].clone();
-                    DEBUG("Erased type liftime: " << e->m_lifetime << " := " << rv);
-                    this->equate_type_lifetimes(sp, e->m_lifetime, rv);
                     return true;
                 }
                 return false;
@@ -525,7 +549,8 @@ namespace {
                     this->equate_pps(sp, l.m_markers[i].m_params, r.m_markers[i].m_params);
                 }
             TU_ARMA(ErasedType, l, r) {
-                this->equate_lifetimes(sp, l.m_lifetime, r.m_lifetime);
+                for(size_t i = 0; i < l.m_lifetimes.size(); i++)
+                    this->equate_lifetimes(sp, l.m_lifetimes[i], r.m_lifetimes[i]);
                 ASSERT_BUG(sp, l.m_traits.size() == r.m_traits.size(), "");
                 for(size_t i = 0; i < l.m_traits.size(); i ++)
                     this->equate_traitpath(sp, l.m_traits[i], r.m_traits[i]);
@@ -1028,18 +1053,6 @@ namespace {
             this->equate_types(node.span(), node.m_res_type, dst);
         }
 
-        bool iterate_type_lifetime_bounds(const HIR::TypeRef& ty, std::function<bool(const HIR::LifetimeRef&)> cb) const
-        {
-            for(const auto& b : m_state.m_bounds) {
-                if(b.ty) {
-                    if( *b.ty == ty ) {
-                        if( cb(b.valid_for) )
-                            return true;
-                    }
-                }
-            }
-            return false;
-        }
         /// Extract lifetimes from a type and equate with the target lifetime.
         void equate_type_lifetimes(const Span& sp, const HIR::LifetimeRef& dst_lft, const HIR::TypeRef& ty)
         {
@@ -1080,7 +1093,7 @@ namespace {
 
                     if(is_opaque(t)) {
                         // Iterate type lifetime bounds
-                        parent.iterate_type_lifetime_bounds(t, [&](const HIR::LifetimeRef& lft)->bool {
+                        parent.m_state.iterate_type_lifetime_bounds(t, [&](const HIR::LifetimeRef& lft)->bool {
                             equate_lifetime(lft);
                             return false;
                             });
@@ -1088,7 +1101,8 @@ namespace {
                             // TODO: If the above didn't return anything, then assign a "only this function" liftime
                         }
                         else if( const auto* e = t.data().opt_ErasedType() ) {
-                            equate_lifetime(e->m_lifetime);
+                            for(const auto& lft : e->m_lifetimes)
+                                equate_lifetime(lft);
                             //if( e->m_trait.m_hrls ) {
                             //    push_hrls(*e->m_trait.m_hrls);
                             //}
@@ -1120,17 +1134,6 @@ namespace {
                 }
             } v { *this, sp, dst_lft };
             v.visit_type(const_cast<HIR::TypeRef&>(ty));
-        }
-        static bool is_opaque(const ::HIR::TypeRef& ty) {
-            if(ty.data().is_Generic())
-                return true;
-            if(ty.data().is_ErasedType())
-                return true;
-            if(ty.data().is_Path() && ty.data().as_Path().binding.is_Opaque())
-                return true;
-            if(ty.data().is_Path() && ty.data().as_Path().binding.is_Unbound())
-                return true;
-            return false;
         }
         void unsize_types(const Span& sp, const ::HIR::TypeRef& dst, const ::HIR::TypeRef& src) {
             if(dst == src) {
@@ -2060,6 +2063,102 @@ namespace {
                 for(const auto& d : iv.destinations)
                     state.ensure_outlives(iv.sp, d, iv.known);
             }
+
+            clone_ty_with(ep->m_span, ret_ty, [&](const HIR::TypeRef& tpl, HIR::TypeRef& rv)->bool {
+                if( const auto* e = tpl.data().opt_ErasedType() )
+                {
+                    ASSERT_BUG(ep->m_span, e->m_index < ep.m_erased_types.size(),
+                        "Erased type index OOB - " << e->m_origin << " " << e->m_index << " >= " << ep.m_erased_types.size());
+
+                    struct V: public HIR::Visitor {
+                        LifetimeInferState& state;
+                        const Span& sp;
+                        const std::vector<HIR::LifetimeRef>& dst_lfts;
+                        std::vector<HIR::PathParams>    m_hrls;
+
+                        V( LifetimeInferState& state, const Span& sp, const std::vector<HIR::LifetimeRef>& dst_lfts)
+                            : state(state)
+                            , sp(sp)
+                            , dst_lfts(dst_lfts)
+                        {
+                        }
+
+                        void equate_lifetime(const HIR::LifetimeRef& src) {
+                            if( src.is_hrl() ) {
+                                ASSERT_BUG(sp, m_hrls.size() > 0, "Encountered HRL with no HRL in the stack");
+                                //parent.equate_lifetimes(sp, dst_lft, m_hrls.back().m_lifetimes[src.binding & 0xFF]);
+                            }
+                            else {
+                                const auto& src_real = state.get_final_lft(sp, src);
+                                for(const auto& dst_lft : dst_lfts) {
+                                    std::vector<HIR::LifetimeRef>   unused;
+                                    if( state.check_lifetimes(sp, dst_lft, src_real, unused) )
+                                        return ;
+                                }
+                                ERROR(sp, E0000, "None of erased lifetime lifetime bounds [" << dst_lfts << "]: " << src_real << " passed");
+                            }
+                        }
+
+                        void visit_type(HIR::TypeRef& t) override {
+                            if(t.data().is_Borrow())
+                                equate_lifetime(t.data().as_Borrow().lifetime);
+
+                            bool hrl_pushed = false;
+                            auto push_hrls = [&](const HIR::GenericParams& hrls_def) {
+                                hrl_pushed = true;
+                                m_hrls.push_back(hrls_def.make_empty_params(true));
+                            };
+
+                            if(is_opaque(t)) {
+                                // Iterate type lifetime bounds
+                                state.iterate_type_lifetime_bounds(t, [&](const HIR::LifetimeRef& lft)->bool {
+                                    equate_lifetime(lft);
+                                    return false;
+                                    });
+                                if( t.data().is_Generic() || t.data().is_Path() ) {
+                                    // TODO: If the above didn't return anything, then assign a "only this function" liftime
+                                }
+                                else if( const auto* e = t.data().opt_ErasedType() ) {
+                                    for(const auto& lft : e->m_lifetimes)
+                                        equate_lifetime(lft);
+                                    //if( e->m_trait.m_hrls ) {
+                                    //    push_hrls(*e->m_trait.m_hrls);
+                                    //}
+                                }
+                                else {
+                                    TODO(sp, "Get lifetime (from bounds) for opaque type - " << t);
+                                }
+                            }
+
+                            if( const auto* e = t.data().opt_TraitObject() ) {
+                                // Get the lifetime
+                                equate_lifetime(e->m_lifetime);
+                                // Handle HRLs
+                                if( e->m_trait.m_path.m_hrls ) {
+                                    push_hrls(*e->m_trait.m_path.m_hrls);
+                                }
+                            }
+                            if( const auto* e = t.data().opt_Function() ) {
+                                push_hrls(e->hrls);
+                            }
+                            if( t.data().is_Path() && t.data().as_Path().path.m_data.is_Generic() ) {
+                                for(const auto& l : t.data().as_Path().path.m_data.as_Generic().m_params.m_lifetimes)
+                                    equate_lifetime(l);
+                            }
+                            HIR::Visitor::visit_type(t);
+                            if( hrl_pushed ) {
+                                m_hrls.pop_back();
+                            }
+                        }
+                    } v { state, ep->m_span, e->m_lifetimes };
+
+                    v.visit_type(ep.m_erased_types[e->m_index]);
+
+                    rv = HIR::TypeRef::new_unit();
+                    return true;
+                }
+                return false;
+                });
         }
 
 

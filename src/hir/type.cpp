@@ -189,8 +189,10 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
                 os << "+";
             os << tr;
         }
-        if( e.m_lifetime != LifetimeRef::new_static() )
-            os << "+" << e.m_lifetime;
+        if( !e.m_lifetimes.empty() ) {
+            for(const auto& lft : e.m_lifetimes)
+                os << "+" << lft;
+        }
         os << "/*" << e.m_origin << "#" << e.m_index << "*/";
         }
     TU_ARMA(Array, e) {
@@ -990,7 +992,7 @@ const ::HIR::TraitMarkings* HIR::TypePathBinding::get_trait_markings() const
             e.m_origin.clone(), e.m_index,
             e.m_is_sized,
             mv$(traits),
-            e.m_lifetime
+            e.m_lifetimes
             }) );
         }
     TU_ARMA(Array, e) {

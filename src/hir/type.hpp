@@ -176,7 +176,7 @@ TAGGED_UNION(TypeData, Diverge,
         unsigned int m_index;
         bool m_is_sized;
         ::std::vector< ::HIR::TraitPath>    m_traits;
-        ::HIR::LifetimeRef  m_lifetime;
+        ::std::vector< ::HIR::LifetimeRef>  m_lifetimes;
         }),
     (Array, struct {
         TypeRef inner;

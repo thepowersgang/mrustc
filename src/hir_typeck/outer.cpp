@@ -403,7 +403,8 @@ namespace {
             // If an ErasedType is encountered, check if it has an origin set.
             if(auto* e = ty.data_mut().opt_ErasedType())
             {
-                visit_lifetime(sp, e->m_lifetime);
+                for(auto& lft : e->m_lifetimes)
+                    visit_lifetime(sp, lft);
                 if( e->m_origin == ::HIR::SimplePath() )
                 {
                     DEBUG("Set origin of ErasedType - " << ty);
@@ -454,11 +455,11 @@ namespace {
                                 trait.clone()
                                 }));
                         }
-                        if( e->m_lifetime != ::HIR::LifetimeRef() )
+                        for(const auto& lft : e->m_lifetimes)
                         {
                             m_fcn_ptr->m_params.m_bounds.push_back(::HIR::GenericBound::make_TypeLifetime({
                                 new_ty.clone(),
-                                e->m_lifetime
+                                lft
                                 }));
                         }
                         ty = ::std::move(new_ty);

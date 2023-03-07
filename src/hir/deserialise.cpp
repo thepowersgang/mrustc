@@ -1086,7 +1086,7 @@ namespace {
             static_cast<unsigned int>(m_in.read_count()),
             m_in.read_bool(),
             deserialise_vec< ::HIR::TraitPath>(),
-            deserialise_lifetimeref()
+            deserialise_vec< ::HIR::LifetimeRef>()
             })
         _(Array, {
             deserialise_type(),

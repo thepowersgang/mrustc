@@ -986,13 +986,14 @@ namespace {
                 TODO(ty.span(), "Optional trait (not Sized) - " << ty);
             }
         }
-        ::HIR::LifetimeRef  lft;
+        std::vector<::HIR::LifetimeRef>  lfts;
         if( e.lifetimes.size() == 0 )
         {
+            lfts.push_back(::HIR::LifetimeRef());
         }
         else if( e.lifetimes.size() == 1 )
         {
-            lft = LowerHIR_LifetimeRef(e.lifetimes[0]);
+            lfts.push_back( LowerHIR_LifetimeRef(e.lifetimes[0]) );
         }
         else
         {
@@ -1003,7 +1004,7 @@ namespace {
             ::HIR::Path(::HIR::SimplePath()), 0,
             is_sized,
             mv$(traits),
-            lft
+            mv$(lfts)
             } ) );
         }
     TU_ARMA(Function, e) {

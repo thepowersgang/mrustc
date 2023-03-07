@@ -320,12 +320,15 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
         traits.reserve( e.m_traits.size() );
         for(const auto& trait : e.m_traits)
             traits.push_back( this->monomorph_traitpath(sp, trait, allow_infer, false) );
+        ::std::vector< ::HIR::LifetimeRef>  lfts;
+        for(const auto& lft : e.m_lifetimes)
+            lfts.push_back(monomorph_lifetime(sp, lft));
 
         return ::HIR::TypeRef( ::HIR::TypeData::Data_ErasedType {
             mv$(origin), e.m_index,
             e.m_is_sized,
             mv$(traits),
-            monomorph_lifetime(sp, e.m_lifetime)
+            mv$(lfts)
             } );
         }
     TU_ARMA(Array, e) {
@@ -667,7 +670,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
             mv$(origin), e.m_index,
             e.m_is_sized,
             mv$(traits),
-            e.m_lifetime
+            e.m_lifetimes
             } );
         }
     TU_ARMA(Array, e) {

@@ -223,7 +223,7 @@
                 
                 m_out.write_bool(e.m_is_sized);
                 serialise_vec(e.m_traits);
-                serialise(e.m_lifetime);
+                serialise_vec(e.m_lifetimes);
                 }
             TU_ARMA(Array, e) {
                 serialise_type(e.inner);
