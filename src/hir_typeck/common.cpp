@@ -809,7 +809,8 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
 }
 ::HIR::LifetimeRef MonomorphiserPP::get_lifetime(const Span& sp, const ::HIR::GenericRef& lft_ref) const /*override*/
 {
-    // HACK: If no params are present, just return unchanged
+    // HACK: If no params are present at all, just return unchanged
+    // - Note: Equality on PathParams ignores lifetimes, hence the second check
     if( (!this->get_impl_params  () || (*this->get_impl_params  () == HIR::PathParams() && this->get_impl_params  ()->m_lifetimes.empty()))
      && (!this->get_method_params() || (*this->get_method_params() == HIR::PathParams() && this->get_method_params()->m_lifetimes.empty()))
      && (!this->get_hrb_params   () || (*this->get_hrb_params   () == HIR::PathParams() && this->get_hrb_params   ()->m_lifetimes.empty()))

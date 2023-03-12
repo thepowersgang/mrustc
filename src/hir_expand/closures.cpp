@@ -797,9 +797,11 @@ namespace {
                 throw "";
                 };
             for(const auto& bound : m_resolve.impl_generics().m_bounds ) {
+                DEBUG("-- Bound " << bound);
                 params.m_bounds.push_back( monomorph_bound(bound) );
             }
             for(const auto& bound : m_resolve.item_generics().m_bounds ) {
+                DEBUG("-- Bound " << bound);
                 params.m_bounds.push_back( monomorph_bound(bound) );
             }
             return monomorph_cb;

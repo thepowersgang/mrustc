@@ -686,9 +686,11 @@ namespace
         const ::HIR::GenericParams* impl_params_def;
         const ::HIR::GenericParams* fcn_params_def;
 
-        ParamsSet():
-            fcn_params(nullptr),
-            self_ty(nullptr)
+
+        ::HIR::PathParams   fcn_params_tmp;
+        ParamsSet()
+            : fcn_params(nullptr)
+            , self_ty(nullptr)
             , impl_params_def(nullptr)
             , fcn_params_def(nullptr)
         {}
@@ -716,8 +718,11 @@ namespace
             {
                 MIR_BUG(state, "Enumeration failure - Function " << path << " not in TransList");
             }
-            //params.impl_params = it->second->pp.pp_impl.clone();
-            //params.fcn_params = &it->second->pp.pp_method;
+            // TODO: Need identity params for most, but lifetime params need to be from the input.
+            // Except, everything should already be monomorphised, so no identity required!
+            params.impl_params.m_lifetimes = it->second->pp.pp_impl.m_lifetimes;
+            params.fcn_params_tmp.m_lifetimes = it->second->pp.pp_method.m_lifetimes;
+            params.fcn_params = &params.fcn_params_tmp;
 
             const auto& hir_fcn = *it->second->ptr;
             if( it->second->monomorphised.code ) {
