@@ -20,6 +20,7 @@ namespace
         StaticTraitResolve  m_resolve;
 
         bool m_in_expr = false;
+        bool m_create_elided = false;
         ::HIR::GenericParams* m_cur_params = nullptr;
         unsigned m_cur_params_level = 0;
         ::std::vector< ::HIR::LifetimeRef* >    m_current_lifetime;
@@ -32,6 +33,60 @@ namespace
             : crate(crate)
             , m_resolve(crate)
         {
+        }
+
+    private:
+
+        struct SavedParams {
+            Visitor* parent;
+            bool m_create_elided;
+            ::HIR::GenericParams* m_cur_params;
+            unsigned m_cur_params_level;
+            SavedParams(Visitor& parent)
+                : parent(&parent)
+                , m_create_elided(parent.m_create_elided)
+                , m_cur_params(parent.m_cur_params)
+                , m_cur_params_level(parent.m_cur_params_level)
+            {
+            }
+            SavedParams(const SavedParams&) = delete;
+            SavedParams(SavedParams&& x)
+                : parent(x.parent)
+                , m_create_elided(x.m_create_elided)
+                , m_cur_params(x.m_cur_params)
+                , m_cur_params_level(x.m_cur_params_level)
+            {
+                x.parent = nullptr;
+            }
+            ~SavedParams() {
+                restore();
+            }
+            void restore() {
+                if(parent) {
+                    parent->m_create_elided = m_create_elided;
+                    parent->m_cur_params = m_cur_params;
+                    parent->m_cur_params_level = m_cur_params_level;
+                    parent = nullptr;
+                }
+            }
+        };
+        SavedParams save_params() {
+            return SavedParams(*this);
+        }
+        void set_params(::HIR::GenericParams* params, unsigned level) {
+            m_create_elided = true;
+            m_cur_params = params;
+            m_cur_params_level = level;
+        }
+        SavedParams push_params(::HIR::GenericParams& params, unsigned level) {
+            auto rv = save_params();
+            set_params(&params, level);
+            return rv;
+        }
+        SavedParams push_params(::HIR::GenericParams* params, unsigned level) {
+            auto rv = save_params();
+            set_params(params, level);
+            return rv;
         }
 
     public:
@@ -52,7 +107,7 @@ namespace
                         lft = *m_current_lifetime.back();
                     }
                     // Otherwise, try to make a new one
-                    else if( m_cur_params ) {
+                    else if( m_cur_params && m_create_elided ) {
                         auto idx = m_cur_params->m_lifetimes.size();
                         m_cur_params->m_lifetimes.push_back(HIR::LifetimeDef { RcString::new_interned(FMT("elided#" << idx)) });
                         lft.binding = m_cur_params_level * 256 + idx;
@@ -113,7 +168,7 @@ namespace
 
             auto saved_m_trait_object_rule = m_trait_object_rule.size();
             auto saved_liftime_depth = m_current_lifetime.size();
-            auto saved_params = std::make_pair(m_cur_params, m_cur_params_level);
+            auto saved_params = save_params();
             if(m_current_depth == 0 ) {
                 DEBUG("> " << ty);
             }
@@ -128,16 +183,14 @@ namespace
             }
             if(auto* e = ty.data_mut().opt_Function()) {
                 m_current_lifetime.push_back(nullptr);
-                m_cur_params = &e->hrls;
-                m_cur_params_level = 3;
+                set_params(&e->hrls, 3);
             }
             if(auto* e = ty.data_mut().opt_TraitObject()) {
                 // TODO: Create? but what if it's not used?
                 if( e->m_trait.m_path.m_hrls )
                 {
                     m_current_lifetime.push_back(nullptr);
-                    m_cur_params = &*e->m_trait.m_path.m_hrls;
-                    m_cur_params_level = 3;
+                    set_params(&*e->m_trait.m_path.m_hrls, 3);
                 }
 
 
@@ -198,7 +251,7 @@ namespace
                 // If the trait object is used as a type argument of a generic type then the containing type is first used to try to infer a bound.
                 // - If there is a unique bound from the containing type then that is the default
                 // - If there is more than one bound from the containing type then an explicit bound must be specified
-                if( (e->m_lifetime.binding == HIR::LifetimeRef::UNKNOWN || e->m_lifetime.binding == HIR::LifetimeRef::INFER) && m_cur_params && (!HACK_STATIC_IN_STRUCT || !m_in_expr) )
+                if( (e->m_lifetime.binding == HIR::LifetimeRef::UNKNOWN || e->m_lifetime.binding == HIR::LifetimeRef::INFER) && (m_create_elided && m_cur_params) && (!HACK_STATIC_IN_STRUCT || !m_in_expr) )
                 //if( e->m_lifetime.binding == HIR::LifetimeRef::UNKNOWN && m_cur_params && !m_in_expr )
                 {
                     if(!m_trait_object_rule.empty() )
@@ -214,7 +267,7 @@ namespace
                     }
                 }
                 // TODO: Is this valid?
-                if( HACK_STATIC_IN_STRUCT && e->m_lifetime.binding == HIR::LifetimeRef::UNKNOWN && !m_in_expr && !m_cur_params )
+                if( HACK_STATIC_IN_STRUCT && e->m_lifetime.binding == HIR::LifetimeRef::UNKNOWN && !m_in_expr && !(m_create_elided && m_cur_params) )
                 {
                     e->m_lifetime = HIR::LifetimeRef::new_static();
                     DEBUG("TraitObject: Set lifetime " << e->m_lifetime << " - hack");
@@ -253,10 +306,16 @@ namespace
                             for(const auto& b : gp->m_bounds) {
                                 TU_MATCH_HDRA((b), {)
                                 TU_ARMA(Lifetime, be) {
+                                    ASSERT_BUG(sp, be.test.is_param(), b);
+                                    ASSERT_BUG(sp, be.valid_for.binding != HIR::LifetimeRef::UNKNOWN, b);
                                     m_cur_params->m_bounds.push_back(HIR::GenericBound::make_Lifetime({
                                         ms.monomorph_lifetime(sp, be.test),
                                         ms.monomorph_lifetime(sp, be.valid_for)
                                         }));
+                                    ASSERT_BUG(sp, m_cur_params->m_bounds.back().as_Lifetime().test.is_param(),
+                                        b << " -> " << m_cur_params->m_bounds.back());
+                                    ASSERT_BUG(sp, m_cur_params->m_bounds.back().as_Lifetime().valid_for.binding != HIR::LifetimeRef::UNKNOWN,
+                                        b << " -> " << m_cur_params->m_bounds.back());
                                     const auto& nbe = m_cur_params->m_bounds.back().as_Lifetime();
                                     if( (nbe.test.is_param() && nbe.test.as_param().group() == 3)
                                      || (nbe.valid_for.is_param() && nbe.valid_for.as_param().group() == 3) ) {
@@ -295,8 +354,7 @@ namespace
 
             ::HIR::Visitor::visit_type(ty);
 
-            m_cur_params       = saved_params.first ;
-            m_cur_params_level = saved_params.second;
+            saved_params.restore();
             while(m_current_lifetime.size() > saved_liftime_depth)
                 m_current_lifetime.pop_back();
             while(m_trait_object_rule.size() > saved_m_trait_object_rule)
@@ -307,7 +365,7 @@ namespace
                 bool pushed = false;
                 if( m_current_lifetime.empty() || !m_current_lifetime.back() ) {
                     // Push `'static` (if not in expression mode AND; this is a trait object OR we're not in arguments)
-                    if( !m_in_expr && (!m_cur_params || ty.data().is_TraitObject()) ) {
+                    if( !m_in_expr && (!(m_cur_params && m_create_elided) || ty.data().is_TraitObject()) ) {
                         static HIR::LifetimeRef static_lifetime = HIR::LifetimeRef::new_static();
                         m_current_lifetime.push_back(&static_lifetime);
                         pushed = true;
@@ -383,7 +441,7 @@ namespace
                         }
                         else {
                             // If in arguments: Create a new input lifetime with a union of these lifetimes.
-                            if( m_cur_params ) {
+                            if( m_cur_params && m_create_elided ) {
                                 e->m_lifetimes[0] = HIR::LifetimeRef(m_cur_params_level * 256 + m_cur_params->m_lifetimes.size());
                                 m_cur_params->m_lifetimes.push_back(HIR::LifetimeDef { });
                                 for(const auto& l : v.lfts) {
@@ -401,7 +459,7 @@ namespace
                     }
 
                     // If in arguments, don't visit an omitted lifetime (so we don't add an elided lifetime for something that will be generic)
-                    if( (!e->m_lifetimes.empty() && e->m_lifetimes.front().binding == HIR::LifetimeRef::UNKNOWN) && m_cur_params ) {
+                    if( (!e->m_lifetimes.empty() && e->m_lifetimes.front().binding == HIR::LifetimeRef::UNKNOWN) && (m_cur_params && m_create_elided) ) {
                     }
                     else {
                         for(auto& lft : e->m_lifetimes)
@@ -450,16 +508,12 @@ namespace
                 m_current_lifetime.push_back(nullptr);
 
                 // Visit the trait args (as inputs)
-                auto saved_params_ptr = m_cur_params;
-                auto saved_params_lvl = m_cur_params_level;
-                m_cur_params = tp.m_path.m_hrls.get();
-                m_cur_params_level = 3;
+                auto saved_params = push_params(tp.m_path.m_hrls.get(), 3);
 
                 this->visit_generic_path(tp.m_path, ::HIR::Visitor::PathContext::TYPE);
                 DEBUG(tp.m_path);
 
-                m_cur_params = saved_params_ptr;
-                m_cur_params_level = saved_params_lvl;
+                saved_params.restore();
 
                 // Fix the source paths in ATYs
                 const auto& trait = m_resolve.m_crate.get_trait_by_path(sp, tp.m_path.m_path);
@@ -518,16 +572,12 @@ namespace
                     {
                         m_current_lifetime.push_back(nullptr);
 
-                        auto saved_params_ptr = m_cur_params;
-                        auto saved_params_lvl = m_cur_params_level;
-                        m_cur_params = gp.m_hrls.get();
-                        m_cur_params_level = 3;
+                        auto saved_params = push_params(gp.m_hrls.get(), 3);
 
                         DEBUG("[fix_path] >> " << gp);
                         this->visit_generic_path(gp, ::HIR::Visitor::PathContext::TYPE);
 
-                        m_cur_params = saved_params_ptr;
-                        m_cur_params_level = saved_params_lvl;
+                        saved_params.restore();
 
                         m_current_lifetime.pop_back();
                         if(created_hrls && gp.m_hrls->is_empty()) {
@@ -537,16 +587,12 @@ namespace
                     else {
                         m_current_lifetime.push_back(nullptr);
 
-                        auto saved_params_ptr = m_cur_params;
-                        auto saved_params_lvl = m_cur_params_level;
-                        m_cur_params = gp.m_hrls.get();
-                        m_cur_params_level = 3;
+                        auto saved_params = push_params(gp.m_hrls.get(), 3);
 
                         DEBUG("[fix_path] >> " << gp);
                         this->visit_generic_path(gp, ::HIR::Visitor::PathContext::TYPE);
 
-                        m_cur_params = saved_params_ptr;
-                        m_cur_params_level = saved_params_lvl;
+                        saved_params.restore();
 
                         m_current_lifetime.pop_back();
                     }
@@ -629,10 +675,8 @@ namespace
 
             // Pre-visit so lifetime elision can work
             {
-                m_cur_params = &impl.m_params;
-                m_cur_params_level = 0;
+                auto _ = push_params(impl.m_params, 0);
                 this->visit_type(impl.m_type);
-                m_cur_params = nullptr;
             }
 
             ::HIR::Visitor::visit_type_impl(impl);
@@ -644,11 +688,9 @@ namespace
 
             // Pre-visit so lifetime elision can work
             {
-                m_cur_params = &impl.m_params;
-                m_cur_params_level = 0;
+                auto _ = push_params(impl.m_params, 0);
                 this->visit_type(impl.m_type);
                 this->visit_path_params(impl.m_trait_args);
-                m_cur_params = nullptr;
             }
 
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);
@@ -660,11 +702,9 @@ namespace
 
             // Pre-visit so lifetime elision can work
             {
-                m_cur_params = &impl.m_params;
-                m_cur_params_level = 0;
+                auto _ = push_params(impl.m_params, 0);
                 this->visit_type(impl.m_type);
                 this->visit_path_params(impl.m_trait_args);
-                m_cur_params = nullptr;
             }
 
             ::HIR::Visitor::visit_marker_impl(trait_path, impl);
@@ -718,14 +758,13 @@ namespace
             // - While visiting the argument types, find path types and inherit the lifetime bounds
 
             // Visit arguments to get the input lifetimes
-            m_cur_params = &item.m_params;
-            m_cur_params_level = 1;
+            auto saved_params = push_params(item.m_params, 1);
             for(auto& arg : item.m_args)
             {
                 TRACE_FUNCTION_FR("ARG " << arg, "ARG " << arg);
                 visit_type(arg.second);
             }
-            m_cur_params = nullptr;
+            m_create_elided = false;
 
             // Get output lifetime
             // - Try `&self`'s lifetime (if it was an elided lifetime)
@@ -768,6 +807,8 @@ namespace
                 TRACE_FUNCTION_FR("RET " << item.m_return, "RET " << item.m_return);
                 visit_type(item.m_return);
             }
+            // - Unset params for the expression
+            saved_params.restore();
 
             if( elided_output_lifetime != HIR::LifetimeRef() ) {
                 m_current_lifetime.pop_back();
