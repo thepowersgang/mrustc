@@ -91,7 +91,7 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_lvalue_type(::HIR::TypeRef& tmp, c
     if(val.m_wrappers.size() > 0)
     {
         assert(wrapper_skip_count <= val.m_wrappers.size());
-        const auto* stop_wrapper = &val.m_wrappers[ val.m_wrappers.size() - wrapper_skip_count ];
+        const auto* stop_wrapper = val.m_wrappers.data() + (val.m_wrappers.size() - wrapper_skip_count);
         for(const auto& w : val.m_wrappers)
         {
             if( &w == stop_wrapper )
