@@ -1,7 +1,7 @@
 # Add mrustc slice length intrinsics
 --- src/libcore/intrinsics.rs
 +++ src/libcore/intrinsics.rs
-@@ -678,5 +678,9 @@
+@@ -690,5 +690,9 @@
      pub fn min_align_of_val<T: ?Sized>(_: &T) -> usize;
  
 +    /// Obtain the length of a slice pointer
@@ -13,7 +13,7 @@
 
 --- src/libcore/slice/mod.rs
 +++ src/libcore/slice/mod.rs
-@@ -413,5 +413,7 @@
+@@ -130,5 +130,7 @@
      pub const fn len(&self) -> usize {
 -        unsafe {
 -            Repr { rust: self }.raw.len
@@ -36,7 +36,7 @@
  extern crate syntax_pos;
 +extern crate rustc_codegen_llvm;
  
-@@ -296,3 +296,7 @@
+@@ -295,3 +296,7 @@
      }
  
 +    if backend_name == "llvm" {
@@ -58,7 +58,7 @@
 # tag in padding)
 --- src/librustc/ty/context.rs
 +++ src/librustc/ty/context.rs
-@@ -805,5 +805,5 @@
+@@ -804,5 +804,5 @@
          // Ensure our type representation does not grow
 -        #[cfg(target_pointer_width = "64")]
 -        assert!(mem::size_of::<ty::TypeVariants>() <= 24);
@@ -69,6 +69,15 @@
 +        //#[cfg(target_pointer_width = "64")]
 +        //assert!(mem::size_of::<ty::TyS>() <= 32);
 
+# A strange bug in `librustc_mir`
+--- src/librustc_mir/borrow_check/nll/invalidation.rs
++++ src/librustc_mir/borrow_check/nll/invalidation.rs
+@@ -298,4 +298,4  @@
+         let drop_field = |
+-            ig: &mut InvalidationGenerator<'cg, 'cx, 'gcx, 'tcx>,
++            ig: &mut InvalidationGenerator<'cg, 'cx, 'tcx, 'gcx>,
+             (index, field): (usize, ty::Ty<'gcx>),
+         | {
 --- src/stdsimd/stdsimd/arch/detect/os/x86.rs
 +++ src/stdsimd/stdsimd/arch/detect/os/x86.rs
 @@ -14,5 +14,11 @@
@@ -251,8 +260,9 @@ index e0fa576..c99775d 100644
  
  impl CFMutableAttributedString {
      #[inline]
-@@ -83,3 +83,16 @@ impl Default for CFMutableAttributedString {
-         Self::new()
+@@ -76,4 +83,17 @@ impl Default for CFMutableAttributedString {
+                 self.0, range, name, value.as_CFTypeRef());
+         }
      }
  }
 +
