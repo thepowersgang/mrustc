@@ -114,26 +114,29 @@ int main(int argc, char *argv[])
             auto orig_file = load_file(orig_path.c_str());
             bool is_clean = true;
             {
-                //size_t src_ofs = 0;
+                int src_ofs = 0;
                 for(const auto& frag : f.fragments)
                 {
                     //for(size_t i = src_ofs; i < frag.orig_line; i ++)
                     //    std::cerr << i << "___ " << orig_file[i] << std::endl;
-                    if( !sublist_match(orig_file, frag.orig_line, frag.orig_contents) )
+                    if( !sublist_match(orig_file, frag.orig_line + src_ofs, frag.orig_contents) )
                     {
                         if( frag.orig_line == frag.new_line && sublist_match(orig_file, frag.new_line, frag.new_contents) )
                         {
                             // Fragment is already applied
+                            ::std::cout << "- Fragment applied" << ::std::endl;
                         }
                         else
                         {
+                            ::std::cout << "- Fragment not applied: " << frag.orig_line << " " << frag.new_line << "" << ::std::endl;
                             is_clean = false;
+                            break;
                         }
                     }
 
                     //for(size_t i = 0; i < frag.orig_contents.size(); i ++)
                     //    std::cerr << (frag.orig_line+i) << "--- " << frag.orig_contents[i] << std::endl;
-                    //src_ofs = frag.orig_line + frag.orig_contents.size();
+                    src_ofs = static_cast<int>(frag.orig_line + frag.orig_contents.size()) - static_cast<int>(frag.new_line + frag.new_contents.size());
                 }
                 //for(size_t i = src_ofs; i < orig_file.size(); i ++)
                 //    std::cerr << i << "___ " << orig_file[i] << std::endl;
@@ -349,7 +352,7 @@ namespace {
     {
         std::ifstream   ifs(path);
         if(!ifs.good()) {
-            throw ::std::runtime_error("Unable to open patch file");
+            throw ::std::runtime_error("Unable to open file file: " + std::string(path));
         }
 
         std::vector<std::string>  rv;
@@ -373,9 +376,11 @@ namespace {
     bool sublist_match(const std::vector<::std::string>& target, size_t offset, const std::vector<::std::string>& pattern)
     {
         if( offset >= target.size() ) {
+            std::cerr << "sublist_match: past end " << offset << " " << target.size() << std::endl;
             return false;
         }
-        if( offset + pattern.size() >= target.size() ) {
+        if( offset + pattern.size() > target.size() ) {
+            std::cerr << "sublist_match: past end " << offset << "+" << pattern.size() << " " << target.size() << std::endl;
             return false;
         }
 
@@ -383,9 +388,12 @@ namespace {
         {
             if( target[offset + i] != pattern[i] )
             {
-                std::cerr << "[" << (1+i+offset) << "] --- " << target[offset + i] << std::endl;
-                std::cerr << "[" << (1+i+offset) << "] +++ " << pattern[i] << std::endl;
+                std::cerr << "sublist_match: [" << (1+i+offset) << "] --- " << target[offset + i] << std::endl;
+                std::cerr << "sublist_match: [" << (1+i+offset) << "] +++ " << pattern[i] << std::endl;
                 return false;
+            }
+            else {
+                std::cerr << "sublist_match: [" << (1+i+offset) << "] === " << pattern[i] << std::endl;
             }
         }
         return true;
