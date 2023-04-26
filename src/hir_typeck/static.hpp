@@ -36,6 +36,7 @@ static inline std::ostream& operator<<(std::ostream& os, const MetadataType& x) 
 class StaticTraitResolve:
     public TraitResolveCommon
 {
+    MetadataType   m_self_metadata = MetadataType::Unknown;
     mutable ::std::map< ::HIR::TypeRef, bool >  m_copy_cache;
     mutable ::std::map< ::HIR::TypeRef, bool >  m_clone_cache;
     mutable ::std::map< ::HIR::TypeRef, bool >  m_drop_cache;
@@ -59,20 +60,46 @@ public:
 
     /// \brief State manipulation
     /// \{
-    NullOnDrop<const ::HIR::GenericParams> set_impl_generics(const ::HIR::GenericParams& gps) {
-        set_impl_generics_raw(gps);
+    NullOnDrop<const ::HIR::GenericParams> set_impl_generics(HIR::StructMarkings::DstType struct_dst_type, const ::HIR::GenericParams& gps) {
+        MetadataType    mt = MetadataType::None;
+        switch(struct_dst_type)
+        {
+        case HIR::StructMarkings::DstType::None:
+            break;
+        case HIR::StructMarkings::DstType::Possible:
+            mt = MetadataType::Unknown;
+            break;
+        case HIR::StructMarkings::DstType::Slice:
+            mt = MetadataType::Slice;
+            break;
+        case HIR::StructMarkings::DstType::TraitObject:
+            mt = MetadataType::TraitObject;
+            break;
+        }
+        set_impl_generics_raw(mt, gps);
+        return NullOnDrop<const ::HIR::GenericParams>(m_impl_generics);
+    }
+    NullOnDrop<const ::HIR::GenericParams> set_impl_generics(MetadataType self_meta_type, const ::HIR::GenericParams& gps) {
+        set_impl_generics_raw(self_meta_type, gps);
+        return NullOnDrop<const ::HIR::GenericParams>(m_impl_generics);
+    }
+    NullOnDrop<const ::HIR::GenericParams> set_impl_generics(const ::HIR::TypeRef& self_ty, const ::HIR::GenericParams& gps) {
+        set_impl_generics_raw(MetadataType::Unknown, gps);
+        m_self_metadata = metadata_type(Span(), self_ty);
         return NullOnDrop<const ::HIR::GenericParams>(m_impl_generics);
     }
     NullOnDrop<const ::HIR::GenericParams> set_item_generics(const ::HIR::GenericParams& gps) {
         set_item_generics_raw(gps);
         return NullOnDrop<const ::HIR::GenericParams>(m_item_generics);
     }
-    void set_impl_generics_raw(const ::HIR::GenericParams& gps) {
+    void set_impl_generics_raw(MetadataType self_meta_type, const ::HIR::GenericParams& gps) {
         assert( !m_impl_generics );
+        m_self_metadata = self_meta_type;
         m_impl_generics = &gps;
         prep_indexes();
     }
     void clear_impl_generics() {
+        m_self_metadata = MetadataType::Unknown;
         m_impl_generics = nullptr;
         prep_indexes();
     }
@@ -93,6 +120,7 @@ public:
         prep_indexes();
     }
     void clear_both_generics() {
+        m_self_metadata = MetadataType::Unknown;
         m_impl_generics = nullptr;
         m_item_generics = nullptr;
         prep_indexes();

@@ -30,6 +30,7 @@
         {
             m_out.write_count(map.size());
             for(const auto& v : map) {
+                DEBUG(v.first);
                 m_out.write_string(v.first);
                 serialise(v.second);
             }

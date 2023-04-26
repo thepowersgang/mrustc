@@ -2394,8 +2394,8 @@ MetadataType StaticTraitResolve::metadata_type(const Span& sp, const ::HIR::Type
             return MetadataType::None;
         }
         if( e.binding == 0xFFFF ) {
-            // TODO: `Self: ?Sized` (e.g. traits)
-            return MetadataType::None;
+            ASSERT_BUG(sp, m_impl_generics, "Use of `Self` with no self type (no impl generics)");
+            return m_self_metadata;
         }
         else if( (e.binding >> 8) == 0 ) {
             auto idx = e.binding & 0xFF;

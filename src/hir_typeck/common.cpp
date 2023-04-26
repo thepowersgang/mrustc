@@ -169,11 +169,18 @@ struct TyVisitorCbConst: TyVisitor<WConst>
         return TyVisitor::visit_type(ty);
     }
 };
+
 bool visit_ty_with(const ::HIR::TypeRef& ty, t_cb_visit_ty callback)
 {
     TyVisitorCbConst v;
     v.callback = callback;
     return v.visit_type(ty);
+}
+bool visit_trait_path_tys_with(const ::HIR::TraitPath& path, t_cb_visit_ty callback)
+{
+    TyVisitorCbConst v;
+    v.callback = callback;
+    return v.visit_trait_path(path);
 }
 bool visit_path_tys_with(const ::HIR::Path& path, t_cb_visit_ty callback)
 {

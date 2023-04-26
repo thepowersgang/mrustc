@@ -2618,7 +2618,7 @@ namespace {
                     {
                         auto nvs = NewvalState { mod, mod_path, FMT(name << "_" << var.name << "#") };
                         auto eval = ::HIR::Evaluator { var.expr->span(), crate, nvs };
-                        eval.resolve.set_impl_generics_raw(item.m_params);
+                        eval.resolve.set_impl_generics_raw(MetadataType::None, item.m_params);
                         try
                         {
                             auto val = eval.evaluate_constant(p, var.expr, ty.clone());

@@ -1389,7 +1389,7 @@ namespace {
             m_resolve.expand_associated_types(Span(), item.m_type);
         }
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override {
-            auto _ = this->m_resolve.set_impl_generics(item.m_params);
+            auto _ = this->m_resolve.set_impl_generics(MetadataType::None, item.m_params);
 
             if( auto* e = item.m_data.opt_Value() )
             {
@@ -1410,20 +1410,20 @@ namespace {
 
         void visit_trait(::HIR::ItemPath p, ::HIR::Trait& item) override
         {
-            auto _ = this->m_resolve.set_impl_generics(item.m_params);
+            auto _ = this->m_resolve.set_impl_generics(MetadataType::TraitObject, item.m_params);
             ::HIR::Visitor::visit_trait(p, item);
         }
         void visit_type_impl(::HIR::TypeImpl& impl) override
         {
             TRACE_FUNCTION_F("impl " << impl.m_type);
-            auto _ = this->m_resolve.set_impl_generics(impl.m_params);
+            auto _ = this->m_resolve.set_impl_generics(impl.m_type, impl.m_params);
 
             ::HIR::Visitor::visit_type_impl(impl);
         }
         void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override
         {
             TRACE_FUNCTION_F("impl" << impl.m_params.fmt_args() << " " << trait_path << " for " << impl.m_type);
-            auto _ = this->m_resolve.set_impl_generics(impl.m_params);
+            auto _ = this->m_resolve.set_impl_generics(impl.m_type, impl.m_params);
 
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);
         }

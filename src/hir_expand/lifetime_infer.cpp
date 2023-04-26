@@ -112,16 +112,25 @@ namespace {
         }
     public:
         HIR::LifetimeRef allocate_local(const Span& sp, std::vector<HIR::LifetimeRef> sources) {
-            return allocate_local(sp, LocalLifetimeData::make_Composite(std::move(sources)));
+            auto rv = allocate_local(sp, LocalLifetimeData::make_Composite(std::move(sources)));
+            DEBUG(rv << " = {" << opt_local(sp, rv)->data.as_Composite() << "} (span=" << sp << ")");
+            return rv;
         }
         HIR::LifetimeRef allocate_local(const Span& sp, const HIR::ExprNode& borrow_point, const HIR::ExprNode& value, const HIR::PatternBinding& pb) {
-            return allocate_local(sp, LocalLifetimeData::make_PatternBinding({ &borrow_point, &value, &pb }));
+            auto rv = allocate_local(sp, LocalLifetimeData::make_PatternBinding({ &borrow_point, &value, &pb }));
+            DEBUG(rv << " = " << pb << " (span=" << sp << ")");
+            return rv;
         }
         HIR::LifetimeRef allocate_local(const HIR::ExprNode& borrow_point, const HIR::ExprNode& value) {
-            return allocate_local(borrow_point.span(), LocalLifetimeData::Data_Node { &borrow_point, &value });
+            auto rv = allocate_local(borrow_point.span(), LocalLifetimeData::Data_Node { &borrow_point, &value });
+            DEBUG(rv << " = " << value.span() << " (span=" << borrow_point.span() << ")");
+            return rv;
+        }
+        bool is_local(const HIR::LifetimeRef& lft) const {
+            return 0x1'0000 <= lft.binding && lft.binding < HIR::LifetimeRef::MAX_LOCAL;
         }
         const LocalLifetime* opt_local(const Span& sp, const HIR::LifetimeRef& lft) const {
-            if( 0x1'0000 <= lft.binding && lft.binding < HIR::LifetimeRef::MAX_LOCAL ) {
+            if( is_local(lft) ) {
                 auto idx = lft.binding - 0x1'0000;
                 ASSERT_BUG(sp, idx < m_locals.size(), "Local lifetime index out of range - " << lft);
                 return &m_locals[idx];
@@ -139,8 +148,11 @@ namespace {
             DEBUG("Allocate " << rv);
             return rv;
         }
+        bool is_ivar(const HIR::LifetimeRef& lft) const {
+            return HIR::LifetimeRef::MAX_LOCAL <= lft.binding;
+        }
         IvarLifetime* opt_ivar(const Span& sp, const HIR::LifetimeRef& lft) {
-            if( HIR::LifetimeRef::MAX_LOCAL <= lft.binding ) {
+            if( is_ivar(lft) ) {
                 auto idx = lft.binding - HIR::LifetimeRef::MAX_LOCAL;
                 ASSERT_BUG(sp, idx < m_ivars.size(), "IVar lifetime index out of range - " << lft);
                 return &m_ivars[idx];
@@ -389,6 +401,7 @@ namespace {
         const ::HIR::Function::args_t&  m_args;
         const HIR::TypeRef& m_real_ret_type;
         HIR::TypeRef m_ret_ty;
+        bool remove_locals;
 
         LifetimeInferState& m_state;
         const std::vector<HIR::TypeRef>*    m_binding_types_ptr;
@@ -397,10 +410,11 @@ namespace {
         std::vector<const HIR::TypeRef*>    m_returns;
 
     public:
-        ExprVisitor_Enumerate(const StaticTraitResolve& resolve, const ::HIR::Function::args_t& args, const HIR::TypeRef& ret_ty, LifetimeInferState& state)
+        ExprVisitor_Enumerate(const StaticTraitResolve& resolve, const ::HIR::Function::args_t& args, const HIR::TypeRef& ret_ty, bool remove_locals, LifetimeInferState& state)
             : m_resolve(resolve)
             , m_args(args)
             , m_real_ret_type(ret_ty)
+            , remove_locals(remove_locals)
             , m_state(state)
         {
         }
@@ -428,6 +442,7 @@ namespace {
 
             for(auto& ty : ep.m_bindings) {
                 this->visit_type(ty);
+                DEBUG("_" << (&ty - ep.m_bindings.data()) << ": " << ty);
             }
             this->m_binding_types_ptr = &ep.m_bindings;
 
@@ -769,8 +784,11 @@ namespace {
                     return parent.m_state.allocate_ivar(sp);
                 }
                 else {
-                    ASSERT_BUG(sp, !parent.m_state.opt_ivar(sp, tpl), "Found ivar while adding lifetimes - " << tpl);
-                    ASSERT_BUG(sp, !parent.m_state.opt_local(sp, tpl), "Found local while adding lifetimes - " << tpl);
+                    if(parent.remove_locals && (parent.m_state.is_local(tpl) || parent.m_state.is_ivar(tpl)) ) {
+                        return parent.m_state.allocate_ivar(sp);
+                    }
+                    ASSERT_BUG(sp, !parent.m_state.is_ivar(tpl), "Found ivar while adding lifetimes - " << tpl);
+                    ASSERT_BUG(sp, !parent.m_state.is_local(tpl), "Found local while adding lifetimes - " << tpl);
                     return Monomorphiser::monomorph_lifetime(sp, tpl);
                 }
             }
@@ -1810,7 +1828,7 @@ namespace {
     };
 
 
-    void HIR_Expand_LifetimeInfer_ExprInner(const StaticTraitResolve& resolve, const ::HIR::Function::args_t& args, const HIR::TypeRef& ret_ty, HIR::ExprPtr& ep)
+    void HIR_Expand_LifetimeInfer_ExprInner(const StaticTraitResolve& resolve, const ::HIR::Function::args_t& args, const HIR::TypeRef& ret_ty, HIR::ExprPtr& ep, bool remove_locals)
     {
         LifetimeInferState  state { resolve };
 
@@ -1940,7 +1958,7 @@ namespace {
         {
             TRACE_FUNCTION_FR("Enumerating lifetimes", "Enumerating lifetimes");
             // TODO: Also do lifetime equality of the return type and the ATY version
-            ExprVisitor_Enumerate   ev(resolve, args, ret_ty, state);
+            ExprVisitor_Enumerate   ev(resolve, args, ret_ty, remove_locals, state);
             ev.visit_root(ep);
         }
 
@@ -2006,6 +2024,35 @@ namespace {
                             auto lft = state.get_final_lft(iv.sp, s);
                             if( std::find(dedup_sources.begin(), dedup_sources.end(), lft) == dedup_sources.end() )
                                 dedup_sources.push_back(lft);
+                        }
+
+                        // Remove lifetimes that are source-compatible to another option
+                        // - E.g. `'static` with anything else can be safely removed.
+                        // - Or if `'a: 'b` and both are in the list then `'a` can be removed (it's longer than `'b`)
+                        for(bool any_removed = true; any_removed; )
+                        {
+                            any_removed = false;
+                            for(auto it = dedup_sources.begin(); it != dedup_sources.end(); ) {
+                                bool remove = false;
+                                for(const auto& lft : dedup_sources) {
+                                    if( *it == lft ) {
+                                    }
+                                    else {
+                                        std::vector<HIR::LifetimeRef>   _unused_fails;
+                                        if( state.check_lifetimes(Span(), lft, *it, _unused_fails) ) {
+                                            // `it2` is shorter than `it`, so `it` isn't needed
+                                            remove = true;
+                                        }
+                                    }
+                                }
+                                if( remove ) {
+                                    it = dedup_sources.erase(it);
+                                    any_removed = true;
+                                }
+                                else {
+                                    ++ it;
+                                }
+                            }
                         }
 
                         if( dedup_sources.size() == 1 ) {
@@ -2091,11 +2138,12 @@ namespace {
                             else {
                                 const auto& src_real = state.get_final_lft(sp, src);
                                 for(const auto& dst_lft : dst_lfts) {
-                                    std::vector<HIR::LifetimeRef>   unused;
-                                    if( state.check_lifetimes(sp, dst_lft, src_real, unused) )
+                                    std::vector<HIR::LifetimeRef>   fails;
+                                    if( state.check_lifetimes(sp, dst_lft, src_real, fails) )
                                         return ;
+                                    DEBUG(dst_lft << " = " << src_real << " (" << src << ") failed: " << fails);
                                 }
-                                ERROR(sp, E0000, "None of erased lifetime lifetime bounds [" << dst_lfts << "]: " << src_real << " passed");
+                                ERROR(sp, E0000, "None of erased lifetime lifetime bounds [" << dst_lfts << "]: " << src_real << " (" << src << ") passed");
                             }
                         }
 
@@ -2152,6 +2200,8 @@ namespace {
                         }
                     } v { state, ep->m_span, e->m_lifetimes };
 
+                    DEBUG("Checking erased: " << ep.m_erased_types[e->m_index]);
+                    DEBUG("vs " << tpl);
                     v.visit_type(ep.m_erased_types[e->m_index]);
 
                     rv = HIR::TypeRef::new_unit();
@@ -2297,9 +2347,11 @@ namespace {
         public ::HIR::Visitor
     {
         StaticTraitResolve  m_resolve;
+        bool m_remove_locals;
     public:
-        OuterVisitor(const ::HIR::Crate& crate):
-            m_resolve(crate)
+        OuterVisitor(const ::HIR::Crate& crate, bool remove_locals)
+            : m_resolve(crate)
+            , m_remove_locals(remove_locals)
         {}
 
         void check(const HIR::TypeRef& ret_ty, const ::HIR::Function::args_t& args, HIR::ExprPtr& root)
@@ -2308,7 +2360,7 @@ namespace {
                 DEBUG("MIR present, skipping");
                 return ;
             }
-            HIR_Expand_LifetimeInfer_ExprInner(m_resolve, args, ret_ty, root);
+            HIR_Expand_LifetimeInfer_ExprInner(m_resolve, args, ret_ty, root, m_remove_locals);
         }
 
         // NOTE: This is left here to ensure that any expressions that aren't handled by higher code cause a failure
@@ -2381,19 +2433,19 @@ namespace {
         void visit_trait(::HIR::ItemPath p, ::HIR::Trait& item) override
         {
             TRACE_FUNCTION_F("trait " << p);
-            auto _ = this->m_resolve.set_impl_generics(item.m_params);
+            auto _ = this->m_resolve.set_impl_generics(MetadataType::TraitObject, item.m_params);
             ::HIR::Visitor::visit_trait(p, item);
         }
         void visit_type_impl(::HIR::TypeImpl& impl) override
         {
             TRACE_FUNCTION_F("impl " << impl.m_type);
-            auto _ = this->m_resolve.set_impl_generics(impl.m_params);
+            auto _ = this->m_resolve.set_impl_generics(impl.m_type, impl.m_params);
             ::HIR::Visitor::visit_type_impl(impl);
         }
         void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override
         {
             TRACE_FUNCTION_F("impl" << impl.m_params.fmt_args() << " " << trait_path << " for " << impl.m_type);
-            auto _ = this->m_resolve.set_impl_generics(impl.m_params);
+            auto _ = this->m_resolve.set_impl_generics(impl.m_type, impl.m_params);
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);
         }
     };
@@ -2401,7 +2453,13 @@ namespace {
 
 void HIR_Expand_LifetimeInfer(::HIR::Crate& crate)
 {
-    OuterVisitor    ov(crate);
+    OuterVisitor    ov(crate, false);
+    ov.visit_crate( crate );
+}
+void HIR_Expand_LifetimeInfer_Validate(::HIR::Crate& crate)
+{
+    // TODO: When running, clear all local lifetimes (replace with empty - to be turned into ivars)
+    OuterVisitor    ov(crate, true);
     ov.visit_crate( crate );
 }
 
@@ -2409,8 +2467,7 @@ void HIR_Expand_LifetimeInfer_Expr(const ::HIR::Crate& crate, const ::HIR::ItemP
 {
     TRACE_FUNCTION_F("ip=" << ip << " ret_ty=" << ret_ty << ", args=" << args);
     StaticTraitResolve  resolve { crate };
-    if(exp.m_state->m_impl_generics)   resolve.set_impl_generics(*exp.m_state->m_impl_generics);
-    if(exp.m_state->m_item_generics)   resolve.set_item_generics(*exp.m_state->m_item_generics);
+    resolve.set_both_generics_raw(exp.m_state->m_impl_generics, exp.m_state->m_item_generics);
 
-    HIR_Expand_LifetimeInfer_ExprInner(resolve, args, ret_ty, exp);
+    HIR_Expand_LifetimeInfer_ExprInner(resolve, args, ret_ty, exp, /*remove_locals*/false);
 }

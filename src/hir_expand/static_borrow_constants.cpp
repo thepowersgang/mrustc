@@ -585,7 +585,7 @@ namespace {
         void visit_trait(::HIR::ItemPath p, ::HIR::Trait& item) override {
             ::HIR::TypeRef  self("Self", 0xFFFF);
             m_self_type = &self;
-            auto _ = m_resolve.set_impl_generics(item.m_params);
+            auto _ = m_resolve.set_impl_generics(MetadataType::TraitObject, item.m_params);
             ::HIR::Visitor::visit_trait(p, item);
             m_self_type = &self;
         }
@@ -597,7 +597,7 @@ namespace {
             m_current_module = &srcmod;
             m_current_module_path = &mod_ip;
 
-            auto _ = m_resolve.set_impl_generics(impl.m_params);
+            auto _ = m_resolve.set_impl_generics(impl.m_type, impl.m_params);
             ::HIR::Visitor::visit_type_impl(impl);
 
             m_current_module = nullptr;
@@ -611,7 +611,7 @@ namespace {
             m_current_module = &srcmod;
             m_current_module_path = &mod_ip;
 
-            auto _ = m_resolve.set_impl_generics(impl.m_params);
+            auto _ = m_resolve.set_impl_generics(impl.m_type, impl.m_params);
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);
 
             m_current_module = nullptr;
@@ -674,7 +674,7 @@ namespace {
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override {
             if(auto* e = item.m_data.opt_Value())
             {
-                auto _ = m_resolve.set_impl_generics(item.m_params);
+                auto _ = m_resolve.set_impl_generics(MetadataType::None, item.m_params);
                 for(auto& var : e->variants)
                 {
                     DEBUG("Enum value " << p << " - " << var.name);

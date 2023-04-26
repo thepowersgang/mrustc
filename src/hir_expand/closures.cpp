@@ -291,7 +291,7 @@ namespace {
             m_run_eat(false)
         {
             if( params ) {
-                m_resolve.set_impl_generics_raw(*params);
+                m_resolve.set_impl_generics_raw(MetadataType::None, *params);   // Closure types are sized
                 m_run_eat = true;
             }
         }
@@ -594,86 +594,88 @@ namespace {
             root.visit(*this);
         }
 
-        
         struct Monomorph: public Monomorphiser
         {
-            /*const*/ ::HIR::GenericParams& params;
-            unsigned ofs_impl_l;
-            unsigned ofs_item_l;
-            unsigned ofs_impl_t;
-            unsigned ofs_item_t;
-            unsigned ofs_impl_v;
-            unsigned ofs_item_v;
+            ::HIR::GenericParams& params;
+            ::HIR::PathParams& constructor_path_params;
             enum class Mode {
                 Args,
                 Return,
                 Body,
             } mode = Mode::Body;
+            bool m_frozen = false;
             mutable std::map<uint32_t, HIR::LifetimeRef>    m_lifetime_mappings;
-            Monomorph(/*const*/ ::HIR::GenericParams& params,
-                unsigned ofs_impl_t, unsigned ofs_item_t,
-                unsigned ofs_impl_v, unsigned ofs_item_v,
-                unsigned ofs_impl_l, unsigned ofs_item_l
-                )
+
+            Monomorph(::HIR::GenericParams& params, ::HIR::PathParams& constructor_path_params)
                 : params(params)
-                , ofs_impl_t(ofs_impl_t)
-                , ofs_item_t(ofs_item_t)
-                , ofs_impl_v(ofs_impl_v)
-                , ofs_item_v(ofs_item_v)
-                , ofs_impl_l(ofs_impl_l)
-                , ofs_item_l(ofs_item_l)
+                , constructor_path_params(constructor_path_params)
             {
             }
-            ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& ge) const override
-            {
-                unsigned i;
-                if( ge.binding == 0xFFFF ) {
-                    i = 0;
+
+            ::HIR::PathParams freeze() {
+                m_frozen = true;
+                return constructor_path_params.clone();
+            }
+
+            ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& ge) const override {
+                size_t rv = SIZE_MAX;
+                for(size_t i = 0; i < constructor_path_params.m_types.size(); i++) {
+                    const auto& t = constructor_path_params.m_types[i];
+                    if( t.data().is_Generic() && t.data().as_Generic() == ge ) {
+                        rv = i;
+                        DEBUG("Use param: " << ::HIR::TypeRef(params.m_types[rv].m_name, rv));
+                        break;
+                    }
                 }
-                else if( ge.binding < 256 ) {
-                    i = ofs_impl_t + ge.idx();
+                if(rv == SIZE_MAX)
+                {
+                    ASSERT_BUG(sp, !m_frozen, "get_type would add a new param after freeze - " << ge);
+                    rv = constructor_path_params.m_types.size();
+                    constructor_path_params.m_types.push_back(HIR::TypeRef(ge.name, ge.binding));
+                    params.m_types.push_back(::HIR::TypeParamDef());
+                    params.m_types.back().m_is_sized = true;
+                    params.m_types.back().m_name = ge.name;
+                    DEBUG("Add param: " << ::HIR::TypeRef(params.m_types[rv].m_name, rv));
                 }
-                else if( ge.binding < 2*256 ) {
-                    i = ofs_item_t + ge.idx();
-                }
-                else {
-                    BUG(sp, "Generic type " << ge << " unknown");
-                }
-                ASSERT_BUG(sp, i < params.m_types.size(), "Item generic type binding OOR - " << ge << " (" << i << " !< " << params.m_types.size() << ")");
-                return ::HIR::TypeRef(params.m_types[i].m_name, i);
+                return ::HIR::TypeRef(params.m_types[rv].m_name, rv);
             }
             ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& ge) const {
-                unsigned i;
-                if( ge.binding == 0xFFFF ) {
-                    BUG(sp, "Binding 0xFFFF isn't valid for values");
+                size_t rv = SIZE_MAX;
+                for(size_t i = 0; i < constructor_path_params.m_values.size(); i++) {
+                    const auto& v = constructor_path_params.m_values[i];
+                    if( v.is_Generic() && v.as_Generic() == ge ) {
+                        rv = i;
+                        break;
+                    }
                 }
-                else if( ge.binding < 256 ) {
-                    i = ofs_impl_v + ge.idx();
+                if(rv == SIZE_MAX)
+                {
+                    ASSERT_BUG(sp, !m_frozen, "get_value would add a new param after freeze - " << ge);
+                    rv = constructor_path_params.m_values.size();
+                    constructor_path_params.m_values.push_back(ge);
+                    params.m_values.push_back(::HIR::ValueParamDef());
+                    params.m_values.back().m_name = ge.name;
                 }
-                else if( ge.binding < 2*256 ) {
-                    i = ofs_item_v + ge.idx();
-                }
-                else {
-                    BUG(sp, "Generic value " << ge << " unknown");
-                }
-                ASSERT_BUG(sp, i < params.m_values.size(), "Item generic value binding OOR - " << ge << " (" << i << " !< " << params.m_values.size() << ")");
-                return ::HIR::GenericRef(params.m_values[i].m_name, i);
+                return ::HIR::ConstGeneric::make_Generic({params.m_values[rv].m_name, static_cast<uint32_t>(rv)});
             }
             ::HIR::LifetimeRef get_lifetime(const Span& sp, const ::HIR::GenericRef& ge) const override {
-                unsigned i;
-                switch(ge.group())
-                {
-                case 0:
-                    i = ofs_impl_l + ge.idx();
-                    break;
-                case 1:
-                    i = ofs_item_l + ge.idx();
-                    break;
-                default:
-                    BUG(sp, "Generic value " << ge << " unknown");
+                size_t rv = SIZE_MAX;
+                for(size_t i = 0; i < constructor_path_params.m_lifetimes.size(); i++) {
+                    const auto& v = constructor_path_params.m_lifetimes[i];
+                    if( v.binding == ge.binding ) {
+                        rv = i;
+                        break;
+                    }
                 }
-                ASSERT_BUG(sp, i < params.m_lifetimes.size(), "Item generic lifetime binding OOR - " << ge << " (" << i << " !< " << params.m_lifetimes.size() << ")");
-                return ::HIR::LifetimeRef(i);
+                if(rv == SIZE_MAX)
+                {
+                    ASSERT_BUG(sp, !m_frozen, "get_lifetime would add a new param after freeze - " << ge);
+                    rv = constructor_path_params.m_lifetimes.size();
+                    constructor_path_params.m_lifetimes.push_back(ge.binding);
+                    params.m_lifetimes.push_back(::HIR::LifetimeDef());
+                    //params.m_values.back().m_name = ge.name;
+                }
+                return ::HIR::LifetimeRef(rv);
             }
 
             ::HIR::LifetimeRef monomorph_lifetime(const Span& sp, const ::HIR::LifetimeRef& tpl) const override {
@@ -705,7 +707,7 @@ namespace {
                             DEBUG("Allocate lifetime: 'I" << idx);
                             m_lifetime_mappings.insert(std::make_pair( tpl.binding, ::HIR::LifetimeRef(idx) ));
                             return ::HIR::LifetimeRef(idx);
-                            }
+                        }
                         case Mode::Return:
                             // Error? This would be the return type being from a local (or a capature)
                             // - Locals can be composites (can they?)
@@ -718,93 +720,133 @@ namespace {
                     }
                 }
             }
-        };
 
-        Monomorph create_params(const Span& sp, ::HIR::GenericParams& params, ::HIR::PathParams& constructor_path_params) const
-        {
-            DEBUG("Impl: " << m_resolve.impl_generics().fmt_args());
-            DEBUG("Item: " << m_resolve.item_generics().fmt_args());
-            // - 0xFFFF "Self" -> 0 "Super" (if present)
-            if( m_resolve.has_self() )
-            {
-                assert( m_self_type );
-                constructor_path_params.m_types.push_back( m_self_type->clone() );
-                params.m_types.push_back( ::HIR::TypeParamDef { "Super", {}, false } );  // TODO: Determine if parent Self is Sized
+            void maybe_monomorph_bound(const Span& sp, const HIR::GenericBound& bound) {
+                // Determine if the bound relates to any of the types in the list.
+                if( bound_needed(sp, bound) ) {
+                    params.m_bounds.push_back( monomorph_bound(sp, bound) );
+                }
             }
-            // - Top-level params come first
-            unsigned ofs_impl_l = params.m_lifetimes.size();
-            for(const auto& lft_def : m_resolve.impl_generics().m_lifetimes) {
-                unsigned i = &lft_def - &m_resolve.impl_generics().m_lifetimes.front();
-                constructor_path_params.m_lifetimes.push_back( ::HIR::LifetimeRef( 0*256 + i ) );
-                params.m_lifetimes.push_back( ::HIR::LifetimeDef { lft_def.m_name } );
-            }
-            unsigned ofs_impl_t = params.m_types.size();
-            for(const auto& ty_def : m_resolve.impl_generics().m_types) {
-                unsigned i = &ty_def - &m_resolve.impl_generics().m_types.front();
-                constructor_path_params.m_types.push_back( ::HIR::TypeRef( ty_def.m_name, 0*256 + i ) );
-                params.m_types.push_back( ::HIR::TypeParamDef { ty_def.m_name, {}, ty_def.m_is_sized } );
-            }
-            unsigned ofs_impl_v = params.m_values.size();
-            for(const auto& v_def : m_resolve.impl_generics().m_values) {
-                unsigned i = &v_def - &m_resolve.impl_generics().m_values.front();
-                constructor_path_params.m_values.push_back( ::HIR::GenericRef( v_def.m_name, 0*256 + i ) );
-                params.m_values.push_back( ::HIR::ValueParamDef { v_def.m_name, v_def.m_type.clone() } );
-            }
-            // - Item-level params come second
-            unsigned ofs_item_l = params.m_lifetimes.size();
-            for(const auto& lft_def : m_resolve.item_generics().m_lifetimes) {
-                unsigned i = &lft_def - &m_resolve.item_generics().m_lifetimes.front();
-                constructor_path_params.m_lifetimes.push_back( ::HIR::LifetimeRef( 1*256 + i ) );
-                params.m_lifetimes.push_back( ::HIR::LifetimeDef { lft_def.m_name } );
-            }
-            unsigned ofs_item_t = params.m_types.size();
-            for(const auto& ty_def : m_resolve.item_generics().m_types) {
-                unsigned i = &ty_def - &m_resolve.item_generics().m_types.front();
-                constructor_path_params.m_types.push_back( ::HIR::TypeRef( ty_def.m_name, 1*256 + i ) );
-                params.m_types.push_back( ::HIR::TypeParamDef { ty_def.m_name, {}, ty_def.m_is_sized } );
-            }
-            unsigned ofs_item_v = params.m_values.size();
-            for(const auto& v_def : m_resolve.item_generics().m_values) {
-                unsigned i = &v_def - &m_resolve.item_generics().m_values.front();
-                constructor_path_params.m_values.push_back( ::HIR::GenericRef( v_def.m_name, 1*256 + i ) );
-                params.m_values.push_back( ::HIR::ValueParamDef { v_def.m_name, v_def.m_type.clone() } );
-            }
+            void add_bounds(const Span& sp, const StaticTraitResolve& resolve) {
 
-            // Create the params used for the type on the impl block
-            DEBUG("impl_path_params = " << params.make_nop_params(0)
-                << " ofs_*_t=" << ofs_item_t << "," << ofs_impl_t << "," << params.m_types.size()
-                << " ofs_*_v=" << ofs_item_v << "," << ofs_impl_v << "," << params.m_values.size()
-                << " ofs_*_l=" << ofs_item_l << "," << ofs_impl_l << "," << params.m_lifetimes.size()
-                );
+                for(const auto& bound : resolve.impl_generics().m_bounds ) {
+                    DEBUG("-- Bound " << bound);
+                    maybe_monomorph_bound(sp, bound);
+                }
+                for(const auto& bound : resolve.item_generics().m_bounds ) {
+                    DEBUG("-- Bound " << bound);
+                    maybe_monomorph_bound(sp, bound);
+                }
 
-            Monomorph monomorph_cb(params, ofs_impl_t, ofs_item_t, ofs_impl_v, ofs_item_v, ofs_impl_l, ofs_item_l);
-
-            // - Clone the bounds (from both levels)
-            auto monomorph_bound = [&](const ::HIR::GenericBound& b)->::HIR::GenericBound {
+                DEBUG(constructor_path_params);
+                for(size_t i = 0; i < constructor_path_params.m_types.size(); i ++) {
+                    DEBUG("-- " << constructor_path_params.m_types[i]);
+                    params.m_types[i].m_is_sized = resolve.type_is_sized(sp, constructor_path_params.m_types[i]);
+                }
+                for(size_t i = 0; i < constructor_path_params.m_values.size(); i ++) {
+                    DEBUG("-- " << constructor_path_params.m_values[i]);
+                    params.m_values[i].m_type = resolve.get_const_param_type(sp, constructor_path_params.m_values[i].as_Generic().binding).clone();
+                }
+                DEBUG(params.fmt_args());
+            }
+        private:
+            template<typename T, typename U>
+            static bool contains(const ::std::vector<T>& l, const U& v) {
+                return ::std::find(l.begin(), l.end(), v) != l.end();
+            }
+            enum class TypeNeed {
+                // No generics used
+                NoGenerics,
+                // A non-referenced type is used - exclude
+                UsesOthers,
+                // A referenced type is used - must be included
+                Required,
+            };
+            ::std::function<bool(const::HIR::TypeRef&)> get_needed_cb(TypeNeed& rv) const {
+                // Only include if a used generic is present AND there are no unused generics
+                // - Visit the type, if there's a generic then determine if the 
+                return [this,&rv](const ::HIR::TypeRef& t)->bool {
+                    if(t.data().is_Generic() ){
+                        if(contains(constructor_path_params.m_types, t)) {
+                            if( rv == TypeNeed::NoGenerics ) {
+                                rv = TypeNeed::Required;
+                            }
+                        }
+                        else {
+                            // Trigger an early-return
+                            rv = TypeNeed::UsesOthers;
+                            return true;
+                        }
+                    }
+                    return false;
+                };
+            }
+            TypeNeed type_bound_needed(const Span& sp, const HIR::TypeRef& ty) const {
+                // Only include if a used generic is present AND there are no unused generics
+                // - Visit the type, if there's a generic then determine if the 
+                auto rv = TypeNeed::NoGenerics;
+                visit_ty_with(ty, get_needed_cb(rv));
+                return rv;
+            }
+            TypeNeed type_bound_needed(const Span& sp, const HIR::TraitPath& tp) const {
+                auto rv = TypeNeed::NoGenerics;
+                visit_trait_path_tys_with(tp, get_needed_cb(rv));
+                return rv;
+            }
+            bool bound_needed(const Span& sp, const ::HIR::GenericBound& b) const {
+                TU_MATCH_HDRA( (b), {)
+                TU_ARMA(Lifetime, e) {
+                    if( e.test.is_param() && !contains(constructor_path_params.m_lifetimes, e.test))
+                        return false;
+                    if( e.valid_for.is_param() && !contains(constructor_path_params.m_lifetimes, e.valid_for))
+                        return false;
+                    return true;
+                    }
+                TU_ARMA(TypeLifetime, e) {
+                    if( type_bound_needed(sp, e.type) != TypeNeed::Required )
+                        return false;
+                    if( e.valid_for.is_param() && !contains(constructor_path_params.m_lifetimes, e.valid_for))
+                        return false;
+                    return true;
+                    }
+                TU_ARMA(TraitBound, e) {
+                    auto rv_ty = type_bound_needed(sp, e.type);
+                    if( rv_ty != TypeNeed::Required )
+                        return false;
+                    // Check that the bounds don't reference an unused type.
+                    auto rv_tp = type_bound_needed(sp, e.trait);
+                    if( rv_ty == TypeNeed::UsesOthers )
+                        return false;
+                    return true;
+                    }
+                TU_ARMA(TypeEquality, e) {
+                    TODO(sp, "");
+                    }
+                }
+                throw "";
+            }
+            ::HIR::GenericBound monomorph_bound(const Span& sp, const ::HIR::GenericBound& b) const {
                 TU_MATCH_HDRA( (b), {)
                 TU_ARMA(Lifetime, e)
                     return ::HIR::GenericBound::make_Lifetime({
-                            monomorph_cb.monomorph_lifetime(sp, e.test),
-                            monomorph_cb.monomorph_lifetime(sp, e.valid_for),
-                            });
+                        this->monomorph_lifetime(sp, e.test),
+                        this->monomorph_lifetime(sp, e.valid_for),
+                        });
                 TU_ARMA(TypeLifetime, e)
-                    return ::HIR::GenericBound::make_TypeLifetime({ monomorph_cb.monomorph_type(sp, e.type), monomorph_cb.monomorph_lifetime(sp, e.valid_for) });
+                    return ::HIR::GenericBound::make_TypeLifetime({ this->monomorph_type(sp, e.type), this->monomorph_lifetime(sp, e.valid_for) });
                 TU_ARMA(TraitBound, e)
-                    return ::HIR::GenericBound::make_TraitBound  ({ (e.hrtbs ? box$(e.hrtbs->clone()) : nullptr), monomorph_cb.monomorph_type(sp, e.type), monomorph_cb.monomorph_traitpath(sp, e.trait, false) });
+                    return ::HIR::GenericBound::make_TraitBound  ({ (e.hrtbs ? box$(e.hrtbs->clone()) : nullptr), this->monomorph_type(sp, e.type), this->monomorph_traitpath(sp, e.trait, false) });
                 TU_ARMA(TypeEquality, e)
-                    return ::HIR::GenericBound::make_TypeEquality({ monomorph_cb.monomorph_type(sp, e.type), monomorph_cb.monomorph_type(sp, e.other_type) });
+                    return ::HIR::GenericBound::make_TypeEquality({ this->monomorph_type(sp, e.type), this->monomorph_type(sp, e.other_type) });
                 }
                 throw "";
-                };
-            for(const auto& bound : m_resolve.impl_generics().m_bounds ) {
-                DEBUG("-- Bound " << bound);
-                params.m_bounds.push_back( monomorph_bound(bound) );
             }
-            for(const auto& bound : m_resolve.item_generics().m_bounds ) {
-                DEBUG("-- Bound " << bound);
-                params.m_bounds.push_back( monomorph_bound(bound) );
-            }
-            return monomorph_cb;
+        };
+        Monomorph create_params(const Span& sp, ::HIR::GenericParams& params, ::HIR::PathParams& constructor_path_params) const
+        {
+            // TODO: How to get the bounds?
+            // - Only want the bounds that relate to generics used.
+            return Monomorph(params, constructor_path_params);
         }
 
         /// <summary>
@@ -836,6 +878,7 @@ namespace {
             // 1. Prepare type params for rewriting the expression tree
             ::HIR::GenericParams params;
             ::HIR::PathParams constructor_path_params;
+            // TODO: Don't create using all inputs, instead only use the parameters required by the body
             auto monomorph_cb = create_params(sp, params, constructor_path_params);
 
             // Argument and return types
@@ -851,6 +894,8 @@ namespace {
             ::HIR::TypeRef  ret_type = monomorph_cb.monomorph_type(sp, node.m_return);
             DEBUG("args_ty = " << args_ty << ", ret_type = " << ret_type);
             monomorph_cb.mode = Monomorph::Mode::Body;
+
+            DEBUG("params = " << params.fmt_args());
 
             DEBUG("--- Mutate inner code");
             // 2. Iterate over the nodes and rewrite variable accesses to either renumbered locals, or field accesses
@@ -946,12 +991,15 @@ namespace {
                 DEBUG("Copy closure");
             }
 
+            monomorph_cb.add_bounds(sp, m_resolve);
+            DEBUG("params = " << params.fmt_args() << params.fmt_bounds());
+
             auto impl_path_params = params.make_nop_params(0);
             auto str = ::HIR::Struct {
                 params.clone(),
                 ::HIR::Struct::Repr::Rust,
                 ::HIR::Struct::Data::make_Tuple(mv$(capture_types))
-                };
+            };
             str.m_markings.is_copy = node.m_is_copy;
             ::HIR::SimplePath   closure_struct_path;
             const ::HIR::TypeItem* closure_struct_ptr;
@@ -960,7 +1008,7 @@ namespace {
 
             // Mark the object pathname in the closure.
             node.m_obj_ptr = &closure_struct_ref;
-            node.m_obj_path = ::HIR::GenericPath( closure_struct_path, mv$(constructor_path_params) );
+            node.m_obj_path = ::HIR::GenericPath( closure_struct_path, monomorph_cb.freeze() );
             node.m_obj_path_base = node.m_obj_path.clone();
             node.m_captures = mv$(capture_nodes);
             //node.m_res_type = ::HIR::TypeRef( node.m_obj_path.clone() );
@@ -994,7 +1042,7 @@ namespace {
 
             if( node.m_is_copy )
             {
-                auto lang_Copy = m_resolve.m_crate.get_lang_item_path(sp, "copy");
+                const auto& lang_Copy = m_resolve.m_crate.get_lang_item_path(sp, "copy");
                 auto& v = const_cast<::HIR::Crate&>(m_resolve.m_crate).m_trait_impls[lang_Copy].get_list_for_type_mut(closure_type);
                 v.push_back(box$(::HIR::TraitImpl {
                     params.clone(), {}, closure_type.clone(),
@@ -1534,6 +1582,7 @@ namespace {
 
             for(auto& e : new_types)
             {
+                DEBUG(p << ": Push " << e.first);
                 mod.m_mod_items.insert( mv$(e) );
             }
         }
@@ -1622,7 +1671,7 @@ namespace {
 
         void visit_trait(::HIR::ItemPath p, ::HIR::Trait& item) override
         {
-            auto _ = this->m_resolve.set_impl_generics(item.m_params);
+            auto _ = this->m_resolve.set_impl_generics(MetadataType::TraitObject, item.m_params);
             ::HIR::TypeRef  self("Self", 0xFFFF);
             m_self_type = &self;
             ::HIR::Visitor::visit_trait(p, item);
@@ -1634,7 +1683,7 @@ namespace {
         {
             TRACE_FUNCTION_F("impl " << impl.m_type);
             m_self_type = &impl.m_type;
-            auto _ = this->m_resolve.set_impl_generics(impl.m_params);
+            auto _ = this->m_resolve.set_impl_generics(impl.m_type, impl.m_params);
 
             // TODO: Re-create m_new_type to store in the source module
 
@@ -1646,7 +1695,7 @@ namespace {
         {
             TRACE_FUNCTION_F("impl " << trait_path << " for " << impl.m_type);
             m_self_type = &impl.m_type;
-            auto _ = this->m_resolve.set_impl_generics(impl.m_params);
+            auto _ = this->m_resolve.set_impl_generics(impl.m_type, impl.m_params);
 
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);
 
@@ -1663,8 +1712,7 @@ void HIR_Expand_Closures_Expr(const ::HIR::Crate& crate_ro, ::HIR::ExprPtr& exp)
 
     StaticTraitResolve   resolve { crate };
     assert(exp);
-    if(exp.m_state->m_impl_generics)   resolve.set_impl_generics(*exp.m_state->m_impl_generics);
-    if(exp.m_state->m_item_generics)   resolve.set_item_generics(*exp.m_state->m_item_generics);
+    resolve.set_both_generics_raw(exp.m_state->m_impl_generics, exp.m_state->m_item_generics);
 
     const ::HIR::TypeRef*   self_type = nullptr;  // TODO: Need to be able to get this?
 

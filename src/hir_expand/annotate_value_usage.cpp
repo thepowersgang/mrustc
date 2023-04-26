@@ -1219,21 +1219,21 @@ namespace {
 
 
         void visit_trait(::HIR::ItemPath p, ::HIR::Trait& item) override {
-            auto _ = this->m_resolve.set_impl_generics(item.m_params);
+            auto _ = this->m_resolve.set_impl_generics(MetadataType::TraitObject, item.m_params);
             ::HIR::Visitor::visit_trait(p, item);
         }
 
         void visit_type_impl(::HIR::TypeImpl& impl) override
         {
             TRACE_FUNCTION_F("impl " << impl.m_type);
-            auto _ = this->m_resolve.set_impl_generics(impl.m_params);
+            auto _ = this->m_resolve.set_impl_generics(impl.m_type, impl.m_params);
 
             ::HIR::Visitor::visit_type_impl(impl);
         }
         void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override
         {
             TRACE_FUNCTION_F("impl " << trait_path << " for " << impl.m_type);
-            auto _ = this->m_resolve.set_impl_generics(impl.m_params);
+            auto _ = this->m_resolve.set_impl_generics(impl.m_type, impl.m_params);
 
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);
         }
@@ -1245,8 +1245,7 @@ void HIR_Expand_AnnotateUsage_Expr(const ::HIR::Crate& crate, const ::HIR::ItemP
     TRACE_FUNCTION_F(ip);
     assert(exp);
     StaticTraitResolve   resolve { crate };
-    if(exp.m_state->m_impl_generics)   resolve.set_impl_generics(*exp.m_state->m_impl_generics);
-    if(exp.m_state->m_item_generics)   resolve.set_item_generics(*exp.m_state->m_item_generics);
+    resolve.set_both_generics_raw(exp.m_state->m_impl_generics, exp.m_state->m_item_generics);
     ExprVisitor_Mark    ev { resolve, exp.m_bindings };
     ev.visit_root(exp);
 }
