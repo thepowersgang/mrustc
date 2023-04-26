@@ -231,7 +231,7 @@ void Dumper::dump_struct(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const 
     if( !this->filters.types.types ) {
         return ;
     }
-    if( !filters.public_only && !pub.is_global() ) {
+    if( filters.public_only && !pub.is_global() ) {
         return ;
     }
     ::std::cout << indent << "struct " << ip << item.m_params.fmt_args();
@@ -279,7 +279,7 @@ void Dumper::dump_trait(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const :
     if( !this->filters.types.traits ) {
         return ;
     }
-    if( !filters.public_only && !pub.is_global() ) {
+    if( filters.public_only && !pub.is_global() ) {
         return ;
     }
     ::std::cout << indent << "trait " << ip << trait.m_params.fmt_args() << "\n";
