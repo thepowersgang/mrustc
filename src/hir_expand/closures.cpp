@@ -604,6 +604,7 @@ namespace {
                 Body,
             } mode = Mode::Body;
             bool m_frozen = false;
+            HIR::LifetimeRef    m_capture_lifetime;
             mutable std::map<uint32_t, HIR::LifetimeRef>    m_lifetime_mappings;
 
             Monomorph(::HIR::GenericParams& params, ::HIR::PathParams& constructor_path_params)
@@ -709,9 +710,9 @@ namespace {
                             return ::HIR::LifetimeRef(idx);
                         }
                         case Mode::Return:
-                            // Error? This would be the return type being from a local (or a capature)
-                            // - Locals can be composites (can they?)
-                            TODO(sp, "Handle non-param lifetime when monomorphising closure? (return type) " << tpl);
+                            // NOTE: This return is probably good, but the unification of captures might be iffy.
+                            // - TODO: Would be nice to use different lifetime params for each capture.
+                            return m_capture_lifetime;
                         case Mode::Body:
                             // Unset body types
                             return HIR::LifetimeRef();
@@ -979,6 +980,7 @@ namespace {
                 params.m_lifetimes.push_back(HIR::LifetimeDef());
                 params.m_lifetimes.back().m_name = RcString::new_interned("captures");
                 DEBUG("Added by-borrow lifetime: #" << ref_capture_lft_idx << " - " << params.fmt_args());
+                monomorph_cb.m_capture_lifetime = HIR::LifetimeRef(ref_capture_lft_idx);
             }
             // Any lifetimes added need to be included (arguments and captures)
             while( constructor_path_params.m_lifetimes.size() < params.m_lifetimes.size() ) {
