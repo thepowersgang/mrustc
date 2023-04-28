@@ -222,6 +222,11 @@ namespace {
             mir.locals.push_back(mv$(ty));
             return MIR::LValue::new_Local(rv);
         }
+        MIR::LValue in_temporary(HIR::TypeRef ty, MIR::RValue val) {
+            auto rv = add_local(mv$(ty));
+            push_stmt_assign(rv.clone(), mv$(val));
+            return rv;
+        }
 
         void ensure_open() {
             if(!mir.blocks.back().terminator.is_Incomplete()) {
@@ -270,6 +275,74 @@ namespace {
             this->ensure_open();
         }
     };
+
+    MIR::LValue deref_box(MIR::LValue box)
+    {
+        auto inner_ptr = ::MIR::LValue::new_Field( ::MIR::LValue::new_Field( mv$(box), 0 ) ,0);
+        if(TARGETVER_MOST_1_29) {
+            inner_ptr = ::MIR::LValue::new_Field(std::move(inner_ptr), 0);
+        }
+        return ::MIR::LValue::new_Deref(std::move(inner_ptr));
+    }
+
+    ::MIR::LValue get_unit_ptr(
+        const Span& sp, Builder& mutator,
+        ::HIR::TypeRef ty, ::MIR::LValue lv,
+        ::MIR::LValue& out_inner_ptr
+        )
+    {
+        if( ty.data().is_Path() )
+        {
+            const auto& te = ty.data().as_Path();
+            ASSERT_BUG(sp, te.binding.is_Struct(), "");
+            const auto& ty_path = te.path.m_data.as_Generic();
+            const auto& str = *te.binding.as_Struct();
+            ::HIR::TypeRef  tmp;
+            auto monomorph = [&](const auto& t) { return MonomorphStatePtr(nullptr, &ty_path.m_params, nullptr).monomorph_type(sp, t); };
+            ::std::vector< ::MIR::Param>   vals;
+            TU_MATCH_HDRA( (str.m_data), {)
+            TU_ARMA(Unit, se) {
+                }
+            TU_ARMA(Tuple, se) {
+                for(unsigned int i = 0; i < se.size(); i ++ ) {
+                    auto val = ::MIR::LValue::new_Field( (i == se.size() - 1 ? mv$(lv) : lv.clone()), i );
+                    if( i == str.m_struct_markings.coerce_unsized_index ) {
+                        vals.push_back( get_unit_ptr(sp, mutator, monomorph(se[i].ent), mv$(val), out_inner_ptr) );
+                    }
+                    else {
+                        vals.push_back( mv$(val) );
+                    }
+                }
+            }
+            TU_ARMA(Named, se) {
+                for(unsigned int i = 0; i < se.size(); i ++ ) {
+                    auto val = ::MIR::LValue::new_Field( (i == se.size() - 1 ? mv$(lv) : lv.clone()), i );
+                    if( i == str.m_struct_markings.coerce_unsized_index ) {
+                        vals.push_back( get_unit_ptr(sp, mutator, monomorph(se[i].second.ent), mv$(val), out_inner_ptr ) );
+                    }
+                    else {
+                        vals.push_back( mv$(val) );
+                    }
+                }
+                }
+            }
+
+            auto new_path = ty_path.clone();
+            return mutator.in_temporary( mv$(ty), ::MIR::RValue::make_Struct({ mv$(new_path), mv$(vals) }) );
+        }
+        else if( ty.data().is_Borrow() || ty.data().is_Pointer() )
+        {
+            out_inner_ptr = lv.clone();
+            return mutator.in_temporary(
+                ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, ::HIR::TypeRef::new_unit()),
+                ::MIR::RValue::make_DstPtr({ mv$(lv) })
+            );
+        }
+        else
+        {
+            BUG(sp, "Unexpected type coerce_unsize in receiver - " << ty);
+        }
+    }
 }
 
 void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
@@ -343,35 +416,56 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
                 new_fcn.m_args.push_back(std::make_pair( HIR::Pattern(), ms.monomorph_type(sp, arg.second) ));
                 state.resolve.expand_associated_types(sp, new_fcn.m_args.back().second);
             }
-            HIR::BorrowType bt;
-            if( fcn_def.m_receiver == HIR::Function::Receiver::Value )
-            {
-                // By-value trait object dispatch
-                // - Receiver should be a `&move` (BUT, does the caller know this?)
-                // - MIR Cleanup should fix that (after monomoprh)
-                auto& self_ty = new_fcn.m_args.front().second;
-                bt = HIR::BorrowType::Owned;
-                self_ty = ::HIR::TypeRef::new_borrow(bt, mv$(self_ty));
-                DEBUG("<dyn " << trait_path << ">::" << name << " - By-Value");
-            }
-            else
-            {
-                bt = new_fcn.m_args.front().second.data().as_Borrow().type;
-            }
+            ASSERT_BUG(sp, !new_fcn.m_args.empty(), "Trait object method with no arguments?!");
 
             new_fcn.m_code.m_mir = MIR::FunctionPointer(new MIR::Function());
             Builder builder(state, *new_fcn.m_code.m_mir);
 
+            MIR::LValue lv_self = MIR::LValue::new_Argument(0);
+            MIR::LValue lv_ptr;
             // ---
             // bb0:
             //   _1 = DstPtr a1
-            auto lv_ptr = builder.add_local(::HIR::TypeRef::new_borrow(bt, ::HIR::TypeRef::new_unit()));
-            builder.push_stmt_assign(lv_ptr.clone(), MIR::RValue::make_DstPtr({ MIR::LValue::new_Argument(0) }));
+            switch(fcn_def.m_receiver)
+            {
+            case HIR::Function::Receiver::Value: {
+                // By-value trait object dispatch
+                // - Receiver should be a `&move` (BUT, does the caller know this?)
+                // - MIR Cleanup should fix that (after monomoprh)
+                auto& self_ty = new_fcn.m_args.front().second;
+                self_ty = ::HIR::TypeRef::new_borrow(HIR::BorrowType::Owned, mv$(self_ty));
+                lv_ptr = builder.add_local(::HIR::TypeRef::new_borrow(HIR::BorrowType::Owned, ::HIR::TypeRef::new_unit()));
+                builder.push_stmt_assign(lv_ptr.clone(), MIR::RValue::make_DstPtr({ lv_self.clone() }));
+                DEBUG("<dyn " << trait_path << ">::" << name << " - By-Value");
+                } break;
+            case HIR::Function::Receiver::BorrowOwned:
+            case HIR::Function::Receiver::BorrowUnique:
+            case HIR::Function::Receiver::BorrowShared: {
+                ASSERT_BUG(sp, new_fcn.m_args.front().second.data().is_Borrow(), new_fcn.m_args.front().second);
+                auto bt = new_fcn.m_args.front().second.data().as_Borrow().type;
+                DEBUG("<dyn " << trait_path << ">::" << name << " - By-borrow");
+                lv_ptr = builder.add_local(::HIR::TypeRef::new_borrow(bt, ::HIR::TypeRef::new_unit()));
+                builder.push_stmt_assign(lv_ptr.clone(), MIR::RValue::make_DstPtr({ lv_self.clone() }));
+                } break;
+            case HIR::Function::Receiver::Box: {
+                // TODO: What is the real reciver here? (for the MIR)
+                // - the `self` type is `Box<dyn ThisTrait>`, so need to deref through that to the right type
+                DEBUG("<dyn " << trait_path << ">::" << name << " - Boxed");
+                // - Need to make a new receiver (convert `Box<dyn ThisTrait>` into `Box<()>`)
+                auto gpath = new_fcn.m_args.front().second.data().as_Path().path.m_data.as_Generic().clone();
+                gpath.m_params.m_types.at(0) = ::HIR::TypeRef::new_unit();
+                auto ty = HIR::TypeRef::new_path(mv$(gpath), new_fcn.m_args.front().second.data().as_Path().binding.clone());
+                lv_ptr = get_unit_ptr(sp, builder, mv$(ty), MIR::LValue::new_Argument(0), lv_self);
+                } break;
+            default:
+                TODO(sp, "Handle different receiver types: <dyn " << trait_path << ">::" << name << " - self: " << new_fcn.m_args.front().second);
+            }
+
             //   _2 = DstMeta a1
             auto lv_vtable = builder.add_local(::HIR::TypeRef::new_borrow(
                 HIR::BorrowType::Shared, ty_dyn.m_trait.m_trait_ptr->get_vtable_type(sp, crate, ty_dyn)
                 ));
-            builder.push_stmt_assign(lv_vtable.clone(), MIR::RValue::make_DstMeta({ MIR::LValue::new_Argument(0) }));
+            builder.push_stmt_assign(lv_vtable.clone(), MIR::RValue::make_DstMeta({ mv$(lv_self) }));
             //   rv = _2*.{idx}(a2, ...) goto bb2 else bb3
             std::vector<MIR::Param> call_args;
             call_args.push_back(mv$(lv_ptr));
@@ -654,18 +748,8 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
             builder.push_stmt_assign( MIR::LValue::new_Return(), MIR::RValue::make_Tuple({}) );
             if( const auto* ity = state.resolve.is_type_owned_box(ty) )
             {
-                // Call inner destructor
-                auto inner_ptr =
-                    ::MIR::LValue::new_Field(
-                        ::MIR::LValue::new_Field(
-                            ::MIR::LValue::new_Deref( builder.self.clone() )
-                            ,0)
-                        ,0)
-                    ;
-                if(TARGETVER_MOST_1_29) {
-                    inner_ptr = ::MIR::LValue::new_Field(std::move(inner_ptr), 0);
-                }
-                auto inner_val = ::MIR::LValue::new_Deref(std::move(inner_ptr));
+                // Call inner destructors
+                auto inner_val = deref_box(  ::MIR::LValue::new_Deref( builder.self.clone() ) );
                 HIR::TypeRef    tmp;
                 ASSERT_BUG(sp, mir_res.get_lvalue_type(tmp, inner_val) == *ity, "Hard-coded box pointer path didn't result in the inner type");
                 builder.push_stmt_drop(std::move(inner_val));
