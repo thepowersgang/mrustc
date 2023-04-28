@@ -318,18 +318,24 @@ namespace
                                         ms.monomorph_lifetime(sp, be.test),
                                         ms.monomorph_lifetime(sp, be.valid_for)
                                         }));
-                                    ASSERT_BUG(sp, m_cur_params->m_bounds.back().as_Lifetime().test.is_param(),
-                                        b << " -> " << m_cur_params->m_bounds.back());
-                                    ASSERT_BUG(sp, m_cur_params->m_bounds.back().as_Lifetime().valid_for.binding != HIR::LifetimeRef::UNKNOWN,
-                                        b << " -> " << m_cur_params->m_bounds.back());
                                     const auto& nbe = m_cur_params->m_bounds.back().as_Lifetime();
-                                    if( (nbe.test.is_param() && nbe.test.as_param().group() == 3)
-                                     || (nbe.valid_for.is_param() && nbe.valid_for.as_param().group() == 3) ) {
-                                        //TODO(sp, "HRL inherited? - " << b << " -> " << m_cur_params->m_bounds.back());
-                                        m_cur_params->m_bounds.pop_back();
+                                    if( nbe.test.is_param() ) {
+                                        ASSERT_BUG(sp, nbe.test.is_param(),
+                                            b << " -> " << m_cur_params->m_bounds.back());
+                                        ASSERT_BUG(sp, nbe.valid_for.binding != HIR::LifetimeRef::UNKNOWN,
+                                            b << " -> " << m_cur_params->m_bounds.back());
+                                        if( (nbe.test.is_param() && nbe.test.as_param().group() == 3)
+                                         || (nbe.valid_for.is_param() && nbe.valid_for.as_param().group() == 3) ) {
+                                            m_cur_params->m_bounds.pop_back();
+                                        }
+                                        else {
+                                            DEBUG("INHERIT " << m_cur_params->m_bounds.back());
+                                        }
                                     }
                                     else {
-                                        DEBUG("INHERIT " << m_cur_params->m_bounds.back());
+                                        // The monomorphised lifetime wasn't a parameter - had to be `'static` but not checking
+                                        // - Remove the new bound, if it was bad then there should be an error later on?
+                                        m_cur_params->m_bounds.pop_back();
                                     }
                                     }
                                 TU_ARMA(TypeLifetime, be) {
