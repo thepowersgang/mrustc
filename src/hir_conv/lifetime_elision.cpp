@@ -251,10 +251,16 @@ namespace
                 // If the trait object is used as a type argument of a generic type then the containing type is first used to try to infer a bound.
                 // - If there is a unique bound from the containing type then that is the default
                 // - If there is more than one bound from the containing type then an explicit bound must be specified
-                if( (e->m_lifetime.binding == HIR::LifetimeRef::UNKNOWN || e->m_lifetime.binding == HIR::LifetimeRef::INFER) && (m_create_elided && m_cur_params) && (!HACK_STATIC_IN_STRUCT || !m_in_expr) )
-                //if( e->m_lifetime.binding == HIR::LifetimeRef::UNKNOWN && m_cur_params && !m_in_expr )
+
+                // If the lifetime is omitted, or '_
+                // ... AND this is within prototype (not in an expression)
+                if( (e->m_lifetime.binding == HIR::LifetimeRef::UNKNOWN /*|| e->m_lifetime.binding == HIR::LifetimeRef::INFER*/)
+                    //&& m_cur_params
+                    //&& m_create_elided    // In arguments
+                    && !m_in_expr   // Not in expression
+                    )
                 {
-                    if(!m_trait_object_rule.empty() )
+                    if( !m_trait_object_rule.empty() )
                     {
                         DEBUG("TraitObject: cur=" << m_current_depth << " back.first=" << m_trait_object_rule.back().first);
                         if( m_trait_object_rule.back().first == m_current_depth-1) {
@@ -266,8 +272,8 @@ namespace
                         }
                     }
                 }
-                // TODO: Is this valid?
-                if( HACK_STATIC_IN_STRUCT && e->m_lifetime.binding == HIR::LifetimeRef::UNKNOWN && !m_in_expr && !(m_create_elided && m_cur_params) )
+                // If there is no available rule (i.e. not in a borrow), and the lifetime was omitted (not just '_), then fill in 'static
+                if( false && m_trait_object_rule.empty() && e->m_lifetime.binding == HIR::LifetimeRef::UNKNOWN && !m_in_expr && !(m_create_elided && m_cur_params) )
                 {
                     e->m_lifetime = HIR::LifetimeRef::new_static();
                     DEBUG("TraitObject: Set lifetime " << e->m_lifetime << " - hack");
@@ -794,6 +800,13 @@ namespace
                 if( item.m_params.m_lifetimes.size() == 1 ) {
                     elided_output_lifetime = HIR::LifetimeRef(256 + 0);
                     DEBUG("Elided 'single");
+                }
+            }
+            if( elided_output_lifetime == HIR::LifetimeRef() ) {
+                // TODO: If the only argument is a `'static`, use that? (or if there's only one borrow in the arguments, use that)
+                if( item.m_args.size() == 1 && item.m_args.front().second.data().is_Borrow() ) {
+                    elided_output_lifetime = item.m_args.front().second.data().as_Borrow().lifetime;
+                    DEBUG("Explicit 'single");
                 }
             }
             // If present, set it (push to the stack)
