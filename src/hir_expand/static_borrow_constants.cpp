@@ -272,6 +272,7 @@ namespace {
                     value_ptr_ptr = &inner_node->m_value;
                 }
                 auto& value_ptr = *value_ptr_ptr;
+                auto usage = value_ptr->m_usage;
 
                 bool is_zst = ([&]()->bool{
                     // HACK: `Target_GetSizeOf` calls `Target_GetSizeAndAlignOf` which doesn't work on generic arrays (needs alignment)
@@ -368,6 +369,7 @@ namespace {
                     DEBUG("> " << path);
                     // Update the `m_value` to point to a new node
                     auto new_node = NEWNODE(mv$(ty2), PathValue, sp, HIR::GenericPath(mv$(path), mv$(constr_params)), HIR::ExprNode_PathValue::STATIC);
+                    new_node->m_usage = usage;
                     value_ptr = mv$(new_node);
 
                     m_is_constant = true;

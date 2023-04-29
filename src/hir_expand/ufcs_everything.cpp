@@ -576,7 +576,7 @@ namespace {
             switch( node.m_value->m_usage )
             {
             case ::HIR::ValueUsage::Unknown:
-                BUG(sp, "Usage of value in index op is unknown");
+                BUG(sp, "Usage of index reciever is still `Unknown`");
                 break;
             case ::HIR::ValueUsage::Borrow:
                 bt = ::HIR::BorrowType::Shared;
