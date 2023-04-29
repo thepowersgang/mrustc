@@ -1044,8 +1044,13 @@ namespace {
                 visit_path_params(pp);
                 auto ms_d = MonomorphHrlsOnly(pp);
                 if( const auto* se = src.data().opt_Function() ) {
-                    //const auto& se = src.data().as_Function();
-                    TODO(node.span(), "Propagate lifetimes through cast - " << dst << " := " << src);
+                    auto pp_s = se->hrls.make_empty_params(true);
+                    auto ms_s = MonomorphHrlsOnly(pp_s);
+                    ASSERT_BUG(node.span(), de->m_arg_types.size() == se->m_arg_types.size(), "");
+                    for(size_t i = 0; i < de->m_arg_types.size(); i ++) {
+                        this->equate_types(node.span(), ms_d.monomorph_type(sp, de->m_arg_types[i]), ms_s.monomorph_type(sp, se->m_arg_types[i]));
+                    }
+                    this->equate_types(node.span(), ms_d.monomorph_type(sp, de->m_rettype), ms_s.monomorph_type(sp, se->m_rettype));
                 }
                 else if( const auto* se = src.data().opt_Closure() ) {
                     const HIR::ExprNode_Closure& cnode = *se->node;
