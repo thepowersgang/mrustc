@@ -1605,10 +1605,18 @@ namespace {
                     assert( !node.m_place );
                     this->equate_types(node.span(), node.m_res_type, node.m_value->m_res_type);
                     break;
-                case ::HIR::ExprNode_Emplace::Type::Boxer:
-                    TODO(node.span(), "Emplace - Boxer");
-                    // TODO: Check trait and associated type
-                    break;
+                case ::HIR::ExprNode_Emplace::Type::Boxer: {
+                    // NOTE: `m_place` is `()` - so just ignore it.
+                    //assert( !node.m_place );
+                    const auto& data_ty = node.m_value->m_res_type;
+                    const auto& box_ty = node.m_res_type;
+
+                    // TODO: Full trait magic?
+                    // - `<box_ty as Boxed>::finalize( < <box_ty as Boxer>::Place as BoxPlace<data_ty> >::make_place() )`
+
+                    const auto& box_path = box_ty.data().as_Path().path.m_data.as_Generic();
+                    this->equate_types(node.span(), box_path.m_params.m_types.at(0), data_ty);
+                    } break;
                 case ::HIR::ExprNode_Emplace::Type::Placer:
                     TODO(node.span(), "Emplace - Placer");
                     // TODO: Check trait
