@@ -31,4 +31,5 @@ extern void HIR_Expand_UfcsEverything_Expr(const ::HIR::Crate& crate, ::HIR::Exp
 extern void HIR_Expand_Reborrows_Expr(const ::HIR::Crate& crate, ::HIR::ExprPtr& exp);
 extern void HIR_Expand_StaticBorrowConstants_Expr(const ::HIR::Crate& crate, const ::HIR::ItemPath& ip, ::HIR::ExprPtr& exp);
 extern void HIR_Expand_LifetimeInfer(::HIR::Crate& crate);
+extern void HIR_Expand_LifetimeInfer_Validate(::HIR::Crate& crate);
 extern void HIR_Expand_LifetimeInfer_Expr(const ::HIR::Crate& crate, const ::HIR::ItemPath& ip, const ::std::vector< ::std::pair< ::HIR::Pattern, ::HIR::TypeRef> >& args, const HIR::TypeRef& ret_ty, ::HIR::ExprPtr& exp);

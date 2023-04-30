@@ -151,6 +151,7 @@ void init_debug_list()
         "Expand HIR Reborrows",
         "Expand HIR ErasedType",
         "Typecheck Expressions (validate)",
+        "Expand HIR Lifetimes (validate)",
 
         "Dump HIR",
         "Lower MIR",
@@ -691,6 +692,11 @@ int main(int argc, char *argv[])
         CompilePhaseV("Typecheck Expressions (validate)", [&]() {
             Typecheck_Expressions_Validate(*hir_crate);
             });
+        // HACK?: Run lifetime inference again, so that bad closures are caught
+        // - Doesn't quite work, can't seem to run this twice?
+        //CompilePhaseV("Expand HIR Lifetimes (validate)", [&]() {
+        //    HIR_Expand_LifetimeInfer_Validate(*hir_crate);
+        //    });
 
         if( params.last_stage == ProgramParams::STAGE_TYPECK ) {
             return 0;
