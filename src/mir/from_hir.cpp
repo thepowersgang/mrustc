@@ -1820,7 +1820,7 @@ namespace {
                 auto place_refmut__type = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, place_type.clone());
                 auto place_refmut = m_builder.lvalue_or_temp(node.span(), place_refmut__type,  ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Unique, place.clone() }));
                 // <typeof(place) as ops::Place<T>>::pointer (T = inner)
-                auto fcn_path = ::HIR::Path(place_type.clone(), ::HIR::GenericPath(path_Place, ::HIR::PathParams(data_ty.clone())), "pointer");
+                auto fcn_path = ::HIR::Path(place_type.clone(), ::HIR::GenericPath(path_Place, ::HIR::PathParams(data_ty.clone())), "pointer", ::HIR::PathParams(HIR::LifetimeRef()));
                 m_builder.moved_lvalue(node.span(), place_refmut);
                 m_builder.end_block(::MIR::Terminator::make_Call({
                     place_raw__ok, place_raw__panic,
