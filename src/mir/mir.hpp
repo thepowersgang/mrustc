@@ -13,6 +13,7 @@
 #include <hir/type.hpp>
 #include "../hir/asm.hpp"
 #include <int128.h>
+#include <cstdint>
 
 struct MonomorphState;
 
