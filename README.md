@@ -28,6 +28,8 @@ Progress
 Getting Started
 ===============
 
+You can set the number of jobs (parallel builds) by setting the enviromment variable `PARLEVEL`, e.g. `PARLEVEL=$(nproc)` for CPU core count. This can and will break at times, as such outside of toying around, it's best to do `PARLEVEL=1` or let mrustc figure it out by itself.
+
 Dependencies
 ------------
 - C++14-compatible compiler (tested with gcc 5.4 and gcc 6, and MSVC 2015)
@@ -123,4 +125,5 @@ Medium-term
 - Propagate lifetime annotations so that MIR can include a borrow checker
 - Emit C code that is (more) human readable (uses names from the original source, reduced/no gotos)
 - Add alternate backends (e.g. LLVM IR, cretonne, ...)
+- Working parallel builds (fix races)
 
