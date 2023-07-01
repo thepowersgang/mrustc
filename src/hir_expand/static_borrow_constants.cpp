@@ -271,7 +271,16 @@ namespace {
                 {
                     value_ptr_ptr = &inner_node->m_value;
                 }
+                // If the inner value is already a static or it's a constant, then treat as a valid static
                 auto& value_ptr = *value_ptr_ptr;
+                if(auto* inner_node = dynamic_cast<::HIR::ExprNode_Deref*>(value_ptr_ptr->get()))
+                {
+                    //if( dynamic_cast<HIR::ExprNode_PathValue*>(&*inner_node->m_value) ) {
+                        m_all_constant = saved_all_constant;
+                        m_is_constant = true;
+                        return ;
+                    //}
+                }
                 auto usage = value_ptr->m_usage;
 
                 bool is_zst = ([&]()->bool{
@@ -425,6 +434,12 @@ namespace {
             }
         }
         // - Accessors (constant if the inner is constant)
+        void visit(::HIR::ExprNode_Deref& node) override {
+            ::HIR::ExprVisitorDef::visit(node);
+            if(node.m_value->m_res_type.data().is_Borrow()) {
+                m_is_constant = m_all_constant;
+            }
+        }
         void visit(::HIR::ExprNode_Field& node) override {
             ::HIR::ExprVisitorDef::visit(node);
             m_is_constant = m_all_constant;
@@ -486,6 +501,7 @@ namespace {
                 }
                 else {
                     m_is_constant = !is_maybe_interior_mut(node);
+                    DEBUG(node.m_path << " m_is_constant=" << m_is_constant);
                 }
                 break;
             case StaticTraitResolve::ValuePtr::TAG_Function:

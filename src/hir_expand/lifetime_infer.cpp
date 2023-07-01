@@ -921,6 +921,9 @@ namespace {
                         m_res = HIR::LifetimeRef::new_static();
                         }
                     TU_ARMA(Borrow, te) {
+                        // TODO: Is anything needed for mut reborrow chains?
+                        // `&mut **foo` - this will use the outermost-most lifetime (i.e. the inner borrow)
+                        // - But, it should use the outermost for mut?
                         m_res = te.lifetime;
                         }
                     }
@@ -1024,7 +1027,10 @@ namespace {
 
         void visit(::HIR::ExprNode_Borrow& node) override {
             HIR::ExprVisitorDef::visit(node);
-            auto lft = get_borrow_lifetime(*node.m_value, [&](const HIR::ExprNode& value){ return m_state.allocate_local(node, value); });
+            auto lft = get_borrow_lifetime(*node.m_value, [&](const HIR::ExprNode& value)->HIR::LifetimeRef{
+                DEBUG("LOCAL: " << typeid(*node.m_value).name() << " " << typeid(value).name());
+                return m_state.allocate_local(node, value);
+                });
             equate_types(node.span(), node.m_res_type, HIR::TypeRef::new_borrow(node.m_type, node.m_value->m_res_type.clone(), lft));
         }
         void visit(::HIR::ExprNode_RawBorrow& node) override {
