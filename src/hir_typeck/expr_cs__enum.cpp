@@ -1270,10 +1270,14 @@ namespace typecheck
         void visit(::HIR::ExprNode_StructLiteral& node) override
         {
             const auto& sp = node.span();
-            TRACE_FUNCTION_F(&node << " " << node.m_type << "{...} [" << (node.m_is_struct ? "struct" : "enum") << "]");
+            TRACE_FUNCTION_F(&node << " " << node.m_type << " (" << node.m_real_path << ") {...} [" << (node.m_is_struct ? "struct" : "enum") << "]");
             auto _ = this->push_inner_coerce_scoped(true);
 
-            this->context.add_ivars(node.m_type);
+            // Note: This can happen if doing a second pass on a const function (run first time for const eval)
+            if( node.m_real_path == HIR::GenericPath() )
+            {
+                this->context.add_ivars(node.m_type);
+            }
 
             for( auto& val : node.m_values ) {
                 this->context.add_ivars( val.second->m_res_type );
@@ -1282,21 +1286,24 @@ namespace typecheck
                 this->context.add_ivars( node.m_base_value->m_res_type );
             }
 
-            auto t = this->context.m_resolve.expand_associated_types(sp, mv$(node.m_type));
-            node.m_type = HIR::TypeRef();
-            if( node.m_is_struct )
+            if( node.m_real_path == HIR::GenericPath() )
             {
-                ASSERT_BUG(sp, TU_TEST1(t.data(), Path, .path.m_data.is_Generic()), "Struct literal with non-Generic path - " << t);
-                node.m_real_path = t.data().as_Path().path.m_data.as_Generic().clone();
-            }
-            else
-            {
-                ASSERT_BUG(sp, TU_TEST1(t.data(), Path, .path.m_data.is_UfcsInherent()), "Enum struct literal with non-UfcsInherent path - " << t);
-                auto& it = t.data().as_Path().path.m_data.as_UfcsInherent().type;
-                auto& name = t.data().as_Path().path.m_data.as_UfcsInherent().item;
-                ASSERT_BUG(sp, TU_TEST1(it.data(), Path, .path.m_data.is_Generic()), "Struct literal with non-Generic path - " << t);
-                node.m_real_path = it.data().as_Path().path.m_data.as_Generic().clone();
-                node.m_real_path.m_path.m_components.push_back( name );
+                auto t = this->context.m_resolve.expand_associated_types(sp, mv$(node.m_type));
+                node.m_type = HIR::TypeRef();
+                if( node.m_is_struct )
+                {
+                    ASSERT_BUG(sp, TU_TEST1(t.data(), Path, .path.m_data.is_Generic()), "Struct literal with non-Generic path - " << t);
+                    node.m_real_path = t.data().as_Path().path.m_data.as_Generic().clone();
+                }
+                else
+                {
+                    ASSERT_BUG(sp, TU_TEST1(t.data(), Path, .path.m_data.is_UfcsInherent()), "Enum struct literal with non-UfcsInherent path - " << t);
+                    auto& it = t.data().as_Path().path.m_data.as_UfcsInherent().type;
+                    auto& name = t.data().as_Path().path.m_data.as_UfcsInherent().item;
+                    ASSERT_BUG(sp, TU_TEST1(it.data(), Path, .path.m_data.is_Generic()), "Struct literal with non-Generic path - " << t);
+                    node.m_real_path = it.data().as_Path().path.m_data.as_Generic().clone();
+                    node.m_real_path.m_path.m_components.push_back( name );
+                }
             }
             auto& ty_path = node.m_real_path;
 
