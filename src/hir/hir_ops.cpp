@@ -1337,6 +1337,12 @@ const ::MIR::Function* HIR::Crate::get_or_gen_mir(const ::HIR::ItemPath& ip, con
                 // NOTE: Disabled due to challenges in making new statics at this stage
                 //Debug_SetStagePre("Expand HIR Statics");
                 HIR_Expand_StaticBorrowConstants_Expr(*this, ip, ep_mut);
+            }
+            if( ep.m_state->stage < ::HIR::ExprState::Stage::Expand )
+            {
+                if( ep.m_state->stage == ::HIR::ExprState::Stage::ExpandRequest )
+                    ERROR(Span(), E0000, "Loop in constant evaluation");
+                ep.m_state->stage = ::HIR::ExprState::Stage::ExpandRequest;
                 //Debug_SetStagePre("Expand HIR Lifetimes");
                 HIR_Expand_LifetimeInfer_Expr(*this, ip, args, ret_ty, ep_mut);
                 //Debug_SetStagePre("Expand HIR Closures");
@@ -1349,7 +1355,7 @@ const ::MIR::Function* HIR::Crate::get_or_gen_mir(const ::HIR::ItemPath& ip, con
                 //HIR_Expand_ErasedType(*this, ep_mut);    // - Maybe?
                 //Typecheck_Expressions_Validate(*hir_crate);
 
-                ep.m_state->stage = ::HIR::ExprState::Stage::Typecheck;
+                ep.m_state->stage = ::HIR::ExprState::Stage::Expand;
             }
             // Generate MIR
             if( ep.m_state->stage < ::HIR::ExprState::Stage::Mir )

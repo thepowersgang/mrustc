@@ -423,6 +423,17 @@ namespace {
             m_is_constant = m_all_constant;
             m_all_constant = saved_all_constant;
         }
+        // Function calls
+        void visit(::HIR::ExprNode_CallMethod& node) override {
+            ::HIR::ExprVisitorDef::visit(node);
+            if( m_all_constant ) {
+                MonomorphState  ms_unused;
+                auto v = m_resolve.get_value(node.span(), node.m_method_path, ms_unused, true);
+                if( v.as_Function()->m_const ) {
+                    m_is_constant = !is_maybe_interior_mut(node);
+                }
+            }
+        }
         void visit(::HIR::ExprNode_CallPath& node) override {
             ::HIR::ExprVisitorDef::visit(node);
             if( m_all_constant ) {

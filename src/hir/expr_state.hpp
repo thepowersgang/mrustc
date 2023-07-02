@@ -27,6 +27,8 @@ public:
         ConstEval,
         TypecheckRequest,
         Typecheck,
+        ExpandRequest,
+        Expand,
         MirRequest,
         Mir,
     };
