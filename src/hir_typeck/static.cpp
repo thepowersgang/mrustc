@@ -2329,8 +2329,18 @@ HIR::Compare StaticTraitResolve::type_is_interior_mutable(const Span& sp, const 
             }
             }
         TU_ARMA(Union, pbe) {
-            DEBUG("TODO: Check if union is interior mutable - " << e.path);
-            return HIR::Compare::Fuzzy;
+            for(const auto& var : pbe->m_variants) {
+                switch( this->type_is_interior_mutable(sp, monomorph(var.second.ent)) )
+                {
+                case HIR::Compare::Equal:
+                    return HIR::Compare::Equal;
+                case HIR::Compare::Fuzzy:
+                    return HIR::Compare::Fuzzy;
+                default:
+                    continue;
+                }
+            }
+            return HIR::Compare::Unequal;
             }
         }
         }
