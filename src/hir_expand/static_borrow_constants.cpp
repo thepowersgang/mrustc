@@ -65,11 +65,15 @@ namespace {
                 }
             }
         }
+        bool all_constant() const {
+            return m_all_constant;
+        }
         void visit_node_ptr(::HIR::ExprPtr& root) {
             const auto& node_ref = *root;
             const char* node_ty = typeid(node_ref).name();
             TRACE_FUNCTION_FR(&*root << " " << node_ty << " : " << root->m_res_type, node_ty);
 
+            m_all_constant = true;
             root->visit(*this);
         }
         void visit_node_ptr(::HIR::ExprNodeP& node) override {
@@ -425,24 +429,32 @@ namespace {
         }
         // Function calls
         void visit(::HIR::ExprNode_CallMethod& node) override {
+            auto saved_all_constant = m_all_constant;
+            m_all_constant = true;
             ::HIR::ExprVisitorDef::visit(node);
             if( m_all_constant ) {
                 MonomorphState  ms_unused;
                 auto v = m_resolve.get_value(node.span(), node.m_method_path, ms_unused, true);
+                DEBUG(node.m_method_path << " is " << (v.as_Function()->m_const ? "" : "NOT ") << "constant");
                 if( v.as_Function()->m_const ) {
                     m_is_constant = !is_maybe_interior_mut(node);
                 }
             }
+            m_all_constant = saved_all_constant;
         }
         void visit(::HIR::ExprNode_CallPath& node) override {
+            auto saved_all_constant = m_all_constant;
+            m_all_constant = true;
             ::HIR::ExprVisitorDef::visit(node);
             if( m_all_constant ) {
                 MonomorphState  ms_unused;
                 auto v = m_resolve.get_value(node.span(), node.m_path, ms_unused, true);
+                DEBUG(node.m_path << " is " << (v.as_Function()->m_const ? "" : "NOT") << " constant");
                 if( v.as_Function()->m_const ) {
                     m_is_constant = !is_maybe_interior_mut(node);
                 }
             }
+            m_all_constant = saved_all_constant;
         }
         // - Accessors (constant if the inner is constant)
         void visit(::HIR::ExprNode_Deref& node) override {
@@ -485,6 +497,37 @@ namespace {
             m_is_constant = m_all_constant;
             m_all_constant = saved_all_constant;
         }
+        void visit(::HIR::ExprNode_BinOp& node) override {
+            auto saved_all_constant = m_all_constant;
+            m_all_constant = true;
+            ::HIR::ExprVisitorDef::visit(node);
+            if( m_all_constant )
+            {
+                // Only allow operations between matching primitives
+                // - Which can only be integer/float ops
+                if( node.m_left->m_res_type == node.m_right->m_res_type ) {
+                    if( node.m_left->m_res_type.data().is_Primitive() ) {
+                        m_is_constant = true;
+                    }
+                }
+            }
+            m_all_constant = saved_all_constant;
+        }
+        void visit(::HIR::ExprNode_UniOp& node) override {
+            auto saved_all_constant = m_all_constant;
+            m_all_constant = true;
+            ::HIR::ExprVisitorDef::visit(node);
+            if( m_all_constant )
+            {
+                // Only allow operations on primitives
+                // - Which can only be integer/float ops
+                if( node.m_value->m_res_type.data().is_Primitive() ) {
+                    m_is_constant = true;
+                }
+            }
+            m_all_constant = saved_all_constant;
+        }
+
         // - Block (only if everything? What about just has a value?)
         void visit(::HIR::ExprNode_Block& node) override {
             ::HIR::ExprVisitorDef::visit(node);
@@ -680,6 +723,13 @@ namespace {
                 DEBUG("Function code " << p);
                 ExprVisitor_Mutate  ev(m_resolve, m_self_type, this->get_new_ty_cb(), item.m_code);
                 ev.visit_node_ptr( item.m_code );
+                if( item.m_const )
+                {
+                    if( !ev.all_constant() ) {
+                        //ERROR(item.m_code->span(), E0000, "`const fn " << p << "` is not constant");
+                        // - Todo: Constant blocks?
+                    }
+                }
             }
             else
             {
@@ -691,6 +741,9 @@ namespace {
             {
                 ExprVisitor_Mutate  ev(m_resolve, m_self_type, this->get_new_ty_cb(), item.m_value);
                 ev.visit_node_ptr(item.m_value);
+                if( !ev.all_constant() ) {
+                    ERROR(item.m_value->span(), E0000, "`static " << p << "` is not constant");
+                }
             }
         }
         void visit_constant(::HIR::ItemPath p, ::HIR::Constant& item) override {
@@ -698,6 +751,9 @@ namespace {
             {
                 ExprVisitor_Mutate  ev(m_resolve, m_self_type, this->get_new_ty_cb(), item.m_value);
                 ev.visit_node_ptr(item.m_value);
+                if( !ev.all_constant() ) {
+                    ERROR(item.m_value->span(), E0000, "`const " << p << "` is not constant");
+                }
             }
         }
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override {
@@ -743,6 +799,11 @@ void HIR_Expand_StaticBorrowConstants_Expr(const ::HIR::Crate& crate, const ::HI
         return path;
         }, exp);
     ev.visit_node_ptr( exp );
+    if( !ev.all_constant() ) {
+        //ERROR(exp->span(), E0000, "`static`/`const` " << ip << " is not constant");
+        // TODO: How to determine if this is a static/const instead of a function?
+        // - For a function, maybe could also check?
+    }
 }
 void HIR_Expand_StaticBorrowConstants(::HIR::Crate& crate)
 {
