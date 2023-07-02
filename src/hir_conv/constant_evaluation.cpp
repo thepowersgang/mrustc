@@ -1676,10 +1676,14 @@ namespace HIR {
                     }
                     }
                 TU_ARMA(DstMeta, e) {
-                    MIR_TODO(state, "RValue::DstMeta");
+                    auto v = local_state.get_lval(e.val);
+                    size_t ptr_size = Target_GetPointerBits() / 8;
+                    dst.copy_from(state, v.slice(ptr_size));
                     }
                 TU_ARMA(DstPtr, e) {
-                    MIR_TODO(state, "RValue::DstPtr");
+                    auto v = local_state.get_lval(e.val);
+                    size_t ptr_size = Target_GetPointerBits() / 8;
+                    dst.copy_from(state, v.slice(0, ptr_size));
                     }
                 TU_ARMA(MakeDst, e) {
                     if( TU_TEST2(e.meta_val, Constant, ,ItemAddr, .get() == nullptr) ) {
