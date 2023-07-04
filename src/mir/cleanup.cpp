@@ -1052,6 +1052,7 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                 }
             }
             // >> Visit all LValues for box deref hackery
+            DEBUG(state << stmt);
             TU_MATCH_HDRA( (stmt), { )
             TU_ARMA(Drop, se) {
                 MIR_Cleanup_LValue(state, mutator,  se.slot);
@@ -1122,6 +1123,14 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                     else if( const auto* te = ty.data().opt_Pointer() ) {
                         ity_p = &te->inner;
                     }
+                    // NOTE: This can happen with calling a by-value method on a trait object, e.g. `<dyn Foo as FnOnce>::call_once`
+                    // - That is handled with magic in trans, so needs magic here (for inlining)
+                    else if( ty.data().is_TraitObject() ) {
+                        ity_p = &ty;
+                        // Remove the deref so downstream doesn't need to care
+                        MIR_ASSERT(state, !re.val.m_wrappers.empty() && re.val.m_wrappers.back().is_Deref(), "DstMeta on bare trait object with no deref: " << re.val);
+                        re.val.m_wrappers.pop_back();
+                    }
                     else {
                         BUG(Span(), "Unexpected input type for DstMeta - " << ty);
                     }
@@ -1134,6 +1143,27 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                     re.val.m_wrappers.push_back( ::MIR::LValue::Wrapper::new_Deref() );
                     MIR_Cleanup_LValue(state, mutator,  re.val);
                     re.val.m_wrappers.pop_back();
+
+                    ::HIR::TypeRef  tmp;
+                    const auto& ty = state.get_lvalue_type(tmp, re.val);
+                    const ::HIR::TypeRef* ity_p;
+                    if( const auto* te = ty.data().opt_Borrow() ) {
+                        ity_p = &te->inner;
+                    }
+                    else if( const auto* te = ty.data().opt_Pointer() ) {
+                        ity_p = &te->inner;
+                    }
+                    // NOTE: This can happen with calling a by-value method on a trait object, e.g. `<dyn Foo as FnOnce>::call_once`
+                    // - That is handled with magic in trans, so needs magic here (for inlining)
+                    else if( ty.data().is_TraitObject() ) {
+                        ity_p = &ty;
+                        // Remove the deref so downstream doesn't need to care
+                        MIR_ASSERT(state, !re.val.m_wrappers.empty() && re.val.m_wrappers.back().is_Deref(), "DstPtr on bare trait object with no deref: " << re.val);
+                        re.val.m_wrappers.pop_back();
+                    }
+                    else {
+                        BUG(Span(), "Unexpected input type for DstMeta - " << ty);
+                    }
                     }
                 TU_ARMA(MakeDst, re) {
                     MIR_Cleanup_Param(state, mutator,  re.ptr_val);
