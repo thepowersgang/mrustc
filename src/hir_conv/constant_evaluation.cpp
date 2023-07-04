@@ -455,8 +455,12 @@ namespace MIR { namespace eval {
         }
         void fmt(::std::ostream& os, size_t ofs, size_t len) const override {
             os << "[" << m_path << "]";
-            if(m_encoded)
+            if(m_encoded) {
                 os << EncodedLiteralSlice(*m_encoded).slice(ofs, len);
+            }
+            else {
+                os << "?";
+            }
         }
 
         size_t size() const { return m_encoded ? m_encoded->bytes.size() : 0; }
@@ -552,8 +556,7 @@ namespace MIR { namespace eval {
         }
 
         ValueRef slice(size_t ofs, size_t len) {
-            assert(ofs <= this->len);
-            assert(ofs+len <= this->len);
+            ASSERT_BUG(Span(), ofs <= this->len && ofs+len <= this->len, "ValueRef::slice: " << ofs << "+" << len << " out of range (" << this->len << ")");
 
             ValueRef    rv;
             rv.storage = storage;
@@ -562,7 +565,7 @@ namespace MIR { namespace eval {
             return rv;
         }
         ValueRef slice(size_t ofs) {
-            assert(ofs <= this->len);
+            ASSERT_BUG(Span(), ofs <= this->len, "ValueRef::slice: " << ofs << " out of range (" << this->len << ")");
             return slice(ofs, this->len - ofs);
         }
 
@@ -697,7 +700,7 @@ namespace MIR { namespace eval {
             os << "ValueRef(null)";
         }
         else {
-            os << "ValueRef(";
+            os << "ValueRef({" << vr.ofs << "+" << vr.len << "}";
             vr.storage.as_value().fmt(os, vr.ofs, vr.len);
             os << ")";
         }
@@ -923,6 +926,7 @@ namespace HIR {
                 }
                 MonomorphState  const_ms;
                 auto ent = get_ent_fullpath(state.sp, state.m_resolve, p, EntNS::Value,  const_ms);
+                DEBUG(ent.tag_str());
                 if(ent.is_Static())
                 {
                     const auto& s = *ent.as_Static();
@@ -930,8 +934,10 @@ namespace HIR {
                     if( !s.m_value_generated )
                     {
                         // If there's no MIR and no HIR then this is an external static (which can only be borrowed)
-                        if( !s.m_value && !s.m_value.m_mir )
+                        if( !s.m_value && !s.m_value.m_mir ) {
+                            DEBUG("No value and no mir");
                             return StaticRefPtr::allocate(std::move(p), nullptr);
+                        }
 
                         auto& item = const_cast<::HIR::Static&>(s);
 
@@ -954,7 +960,9 @@ namespace HIR {
                     return StaticRefPtr::allocate(std::move(p), &s.m_value_res);
                 }
                 else
+                {
                     return StaticRefPtr::allocate(std::move(p), nullptr);
+                }
             }
 
             ValueRef get_lval(const ::MIR::LValue& lv, ValueRef* meta=nullptr)
@@ -1030,7 +1038,7 @@ namespace HIR {
                         auto p = val.read_ptr(state);
                         MIR_ASSERT(state, p.first >= EncodedLiteral::PTR_BASE, "Null (<PTR_BASE) pointer deref");
                         MIR_ASSERT(state, p.first % al == 0, "Unaligned pointer deref");
-                        DEBUG("> " << ValueRef(p.second) << " - " << (p.first - EncodedLiteral::PTR_BASE) << " " << sz << " " << *typ);
+                        DEBUG("> " << ValueRef(p.second) << " - o=" << (p.first - EncodedLiteral::PTR_BASE) << " sz=" << sz << " " << *typ);
                         // TODO: Determine size using metadata?
                         if(sz == SIZE_MAX) {
                             val = ValueRef(p.second, p.first - EncodedLiteral::PTR_BASE);

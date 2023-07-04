@@ -793,6 +793,8 @@ void HIR_Expand_StaticBorrowConstants_Expr(const ::HIR::Crate& crate, const ::HI
             /*m_value=*/mv$(val_expr)
             );
         new_static.m_params = mv$(generics);
+        // - Since this was neeed in consteval, it's going to need to be saved?
+        new_static.m_save_literal = true;
         DEBUG(path << " = " << new_static.m_value_res);
         auto boxed = box$(( ::HIR::VisEnt< ::HIR::ValueItem> { ::HIR::Publicity::new_none(), ::HIR::ValueItem( mv$(new_static) ) } ));
         crate.m_new_values.push_back( ::std::make_pair(name, mv$(boxed)) );
