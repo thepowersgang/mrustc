@@ -268,4 +268,12 @@ index e0fa576..c99775d 100644
 +        assert_eq!(<CFAttributedString as TCFType>::type_id(), <CFMutableAttributedString as TCFType>::type_id());
 +    }
 +}
-
+--- src/llvm/lib/Demangle/ItaniumDemangle.cpp
++++ src/llvm/lib/Demangle/ItaniumDemangle.cpp
+@@ -19,6 +19,7 @@
+ #include <cstdio>
+ #include <cstdlib>
+ #include <cstring>
++#include <limits>
+ #include <numeric>
+ #include <vector>
