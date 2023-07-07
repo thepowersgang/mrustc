@@ -1,7 +1,8 @@
 # Add mrustc slice length intrinsics
 --- src/libcore/intrinsics.rs
 +++ src/libcore/intrinsics.rs
-@@ -678,5 +678,9 @@
+@@ -689,6 +689,10 @@ extern "rust-intrinsic" {
+     pub fn size_of_val<T: ?Sized>(_: &T) -> usize;
      pub fn min_align_of_val<T: ?Sized>(_: &T) -> usize;
  
 +    /// Obtain the length of a slice pointer
@@ -13,7 +14,9 @@
 
 --- src/libcore/slice/mod.rs
 +++ src/libcore/slice/mod.rs
-@@ -413,5 +413,7 @@
+@@ -128,9 +128,11 @@ impl<T> [T] {
+     #[inline]
+     #[rustc_const_unstable(feature = "const_slice_len")]
      pub const fn len(&self) -> usize {
 -        unsafe {
 -            Repr { rust: self }.raw.len
@@ -24,65 +27,9 @@
 +        const fn len_inner<T>(s: &[T]) -> usize { unsafe { ::intrinsics::mrustc_slice_len(s) } }
 +        len_inner(self)
      }
-# Static-link rustc_codegen_llvm because mrustc doesn't have dylib support
---- src/librustc_driver/Cargo.toml
-+++ src/librustc_driver/Cargo.toml
-@@ -39,1 +39,2 @@
- syntax_pos = { path = "../libsyntax_pos" }
-+rustc_codegen_llvm = { path = "../librustc_codegen_llvm" }
---- src/librustc_driver/lib.rs
-+++ src/librustc_driver/lib.rs
-@@ -63,2 +63,3 @@
- extern crate syntax_pos;
-+extern crate rustc_codegen_llvm;
  
-@@ -296,3 +296,7 @@
-     }
- 
-+    if backend_name == "llvm" {
-+        return rustc_codegen_llvm::__rustc_codegen_backend;
-+    }
-+
-     let target = session::config::host_triple();
-# No workspace support in minicargo, patch cargo's Cargo.toml
---- src/tools/cargo/Cargo.toml
-+++ src/tools/cargo/Cargo.toml
-@@ -60,5 +60,5 @@
- # A noop dependency that changes in the Rust repository, it's a bit of a hack.
- # See the `src/tools/rustc-workspace-hack/README.md` file in `rust-lang/rust`
- # for more information.
--rustc-workspace-hack = "1.0.0"
-+rustc-workspace-hack = { path = "../rustc-workspace-hack" }
- 
-# mrustc can't represent a 24 byte version of this enum (no way of storing the
-# tag in padding)
---- src/librustc/ty/context.rs
-+++ src/librustc/ty/context.rs
-@@ -805,5 +805,5 @@
-         // Ensure our type representation does not grow
--        #[cfg(target_pointer_width = "64")]
--        assert!(mem::size_of::<ty::TypeVariants>() <= 24);
--        #[cfg(target_pointer_width = "64")]
--        assert!(mem::size_of::<ty::TyS>() <= 32);
-+        //#[cfg(target_pointer_width = "64")]
-+        //assert!(mem::size_of::<ty::TypeVariants>() <= 24);
-+        //#[cfg(target_pointer_width = "64")]
-+        //assert!(mem::size_of::<ty::TyS>() <= 32);
+     /// Returns `true` if the slice has a length of 0.
 
---- src/stdsimd/stdsimd/arch/detect/os/x86.rs
-+++ src/stdsimd/stdsimd/arch/detect/os/x86.rs
-@@ -14,5 +14,11 @@
- /// Performs run-time feature detection.
- #[inline]
-+#[cfg(not(rust_compiler="mrustc"))]
- pub fn check_for(x: Feature) -> bool {
-     cache::test(x as u32, detect_features)
- }
-+#[inline]
-+#[cfg(rust_compiler="mrustc")]
-+pub fn check_for(x: Feature) -> bool {
-+    false
-+}
 # macOS on Apple Silicon support
 --- src/liblibc/src/unix/bsd/apple/mod.rs
 +++ src/liblibc/src/unix/bsd/apple/mod.rs
@@ -163,6 +110,127 @@
      #[cfg_attr(target_os = "freebsd", link_name = "lstat@FBSD_1.0")]
      pub fn lstat(path: *const c_char, buf: *mut stat) -> ::c_int;
 
+# mrustc can't represent a 24 byte version of this enum (no way of storing the
+# tag in padding)
+--- src/librustc/ty/context.rs
++++ src/librustc/ty/context.rs
+@@ -802,10 +802,10 @@ impl<'a, 'gcx> HashStable<StableHashingContext<'a>> for TypeckTables<'gcx> {
+ impl<'tcx> CommonTypes<'tcx> {
+     fn new(interners: &CtxtInterners<'tcx>) -> CommonTypes<'tcx> {
+         // Ensure our type representation does not grow
+-        #[cfg(target_pointer_width = "64")]
+-        assert!(mem::size_of::<ty::TypeVariants>() <= 24);
+-        #[cfg(target_pointer_width = "64")]
+-        assert!(mem::size_of::<ty::TyS>() <= 32);
++        //#[cfg(target_pointer_width = "64")]
++        //assert!(mem::size_of::<ty::TypeVariants>() <= 24);
++        //#[cfg(target_pointer_width = "64")]
++        //assert!(mem::size_of::<ty::TyS>() <= 32);
+ 
+         let mk = |sty| CtxtInterners::intern_ty(interners, interners, sty);
+         let mk_region = |r| {
+
+# Static-link rustc_codegen_llvm because mrustc doesn't have dylib support
+--- src/librustc_driver/Cargo.toml
++++ src/librustc_driver/Cargo.toml
+@@ -37,3 +37,4 @@ serialize = { path = "../libserialize" }
+ syntax = { path = "../libsyntax" }
+ syntax_ext = { path = "../libsyntax_ext" }
+ syntax_pos = { path = "../libsyntax_pos" }
++rustc_codegen_llvm = { path = "../librustc_codegen_llvm" }
+
+--- src/librustc_driver/lib.rs
++++ src/librustc_driver/lib.rs
+@@ -61,6 +61,7 @@ extern crate log;
+ extern crate syntax;
+ extern crate syntax_ext;
+ extern crate syntax_pos;
++extern crate rustc_codegen_llvm;
+ 
+ use driver::CompileController;
+ use pretty::{PpMode, UserIdentifiedItem};
+@@ -294,6 +295,10 @@ fn get_codegen_sysroot(backend_name: &str) -> fn() -> Box<dyn CodegenBackend> {
+         return rustc_codegen_utils::codegen_backend::MetadataOnlyCodegenBackend::new
+     }
+ 
++    if backend_name == "llvm" {
++        return rustc_codegen_llvm::__rustc_codegen_backend;
++    }
++
+     let target = session::config::host_triple();
+     let mut sysroot_candidates = vec![filesearch::get_or_default_sysroot()];
+     let path = current_dll_path()
+
+--- src/stdsimd/stdsimd/arch/detect/os/x86.rs
++++ src/stdsimd/stdsimd/arch/detect/os/x86.rs
+@@ -13,9 +13,15 @@ use arch::detect::bit;
+ 
+ /// Performs run-time feature detection.
+ #[inline]
++#[cfg(not(rust_compiler="mrustc"))]
+ pub fn check_for(x: Feature) -> bool {
+     cache::test(x as u32, detect_features)
+ }
++#[inline]
++#[cfg(rust_compiler="mrustc")]
++pub fn check_for(x: Feature) -> bool {
++    false
++}
+ 
+ /// Run-time feature detection on x86 works by using the CPUID instruction.
+ ///
+
+# No workspace support in minicargo, patch cargo's Cargo.toml
+--- src/tools/cargo/Cargo.toml
++++ src/tools/cargo/Cargo.toml
+@@ -60,7 +60,7 @@ openssl = { version = '0.10.11', optional = true }
+ # A noop dependency that changes in the Rust repository, it's a bit of a hack.
+ # See the `src/tools/rustc-workspace-hack/README.md` file in `rust-lang/rust`
+ # for more information.
+-rustc-workspace-hack = "1.0.0"
++rustc-workspace-hack = { path = "../rustc-workspace-hack" }
+ 
+ [target.'cfg(target_os = "macos")'.dependencies]
+ core-foundation = { version = "0.6.0", features = ["mac_os_10_7_support"] }
+
+--- src/vendor/core-foundation-sys/src/attributed_string.rs
++++ src/vendor/core-foundation-sys/src/attributed_string.rs
+@@ -52,5 +52,4 @@ extern {
+         value: CFTypeRef,
+     );
+ 
+-    pub fn CFMutableAttributedStringGetTypeID() -> CFTypeID;
+ }
+
+# Backport of https://github.com/servo/core-foundation-rs/commit/aa6d1cd4c15561b48c24322527e3d9e60f603db4
+--- src/vendor/core-foundation/src/attributed_string.rs
++++ src/vendor/core-foundation/src/attributed_string.rs
+@@ -41,7 +41,7 @@ impl CFAttributedString {
+ declare_TCFType!{
+     CFMutableAttributedString, CFMutableAttributedStringRef
+ }
+-impl_TCFType!(CFMutableAttributedString, CFMutableAttributedStringRef, CFMutableAttributedStringGetTypeID);
++impl_TCFType!(CFMutableAttributedString, CFMutableAttributedStringRef, CFAttributedStringGetTypeID);
+ 
+ impl CFMutableAttributedString {
+     #[inline]
+@@ -77,3 +77,15 @@ impl CFMutableAttributedString {
+         }
+     }
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn attributed_string_type_id_comparison() {
++        // CFMutableAttributedString TypeID must be equal to CFAttributedString TypeID.
++        // Compilation must not fail.
++        assert_eq!(<CFAttributedString as TCFType>::type_id(), <CFMutableAttributedString as TCFType>::type_id());
++    }
++}
+
 --- src/vendor/libc/src/unix/bsd/apple/mod.rs
 +++ src/vendor/libc/src/unix/bsd/apple/mod.rs
 @@ -2376,9 +2376,9 @@ extern {
@@ -229,45 +297,7 @@
      #[cfg_attr(target_os = "netbsd", link_name = "__lstat50")]
      #[cfg_attr(target_os = "freebsd", link_name = "lstat@FBSD_1.0")]
      pub fn lstat(path: *const c_char, buf: *mut stat) -> ::c_int;
-# Backport of https://github.com/servo/core-foundation-rs/commit/aa6d1cd4c15561b48c24322527e3d9e60f603db4
---- src/vendor/core-foundation-sys/src/attributed_string.rs
-+++ src/vendor/core-foundation-sys/src/attributed_string.rs
-@@ -52,5 +52,4 @@ extern {
-         value: CFTypeRef,
-     );
- 
--    pub fn CFMutableAttributedStringGetTypeID() -> CFTypeID;
- }
-diff --git a/core-foundation/src/attributed_string.rs b/core-foundation/src/attributed_string.rs
-index e0fa576..c99775d 100644
---- src/vendor/core-foundation/src/attributed_string.rs
-+++ src/vendor/core-foundation/src/attributed_string.rs
-@@ -41,7 +41,7 @@ impl CFAttributedString {
- declare_TCFType!{
-     CFMutableAttributedString, CFMutableAttributedStringRef
- }
--impl_TCFType!(CFMutableAttributedString, CFMutableAttributedStringRef, CFMutableAttributedStringGetTypeID);
-+impl_TCFType!(CFMutableAttributedString, CFMutableAttributedStringRef, CFAttributedStringGetTypeID);
- 
- impl CFMutableAttributedString {
-     #[inline]
-@@ -83,3 +83,16 @@ impl Default for CFMutableAttributedString {
-         Self::new()
-     }
- }
-+
-+
-+#[cfg(test)]
-+mod tests {
-+    use super::*;
-+
-+    #[test]
-+    fn attributed_string_type_id_comparison() {
-+        // CFMutableAttributedString TypeID must be equal to CFAttributedString TypeID.
-+        // Compilation must not fail.
-+        assert_eq!(<CFAttributedString as TCFType>::type_id(), <CFMutableAttributedString as TCFType>::type_id());
-+    }
-+}
+
 --- src/llvm/lib/Demangle/ItaniumDemangle.cpp
 +++ src/llvm/lib/Demangle/ItaniumDemangle.cpp
 @@ -19,6 +19,7 @@
