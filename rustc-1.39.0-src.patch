@@ -1,7 +1,8 @@
 # Add mrustc slice length intrinsics
 --- src/libcore/intrinsics.rs
 +++ src/libcore/intrinsics.rs
-@@ -685,4 +685,8 @@
+@@ -684,6 +684,10 @@ extern "rust-intrinsic" {
+     pub fn size_of_val<T: ?Sized>(_: &T) -> usize;
      pub fn min_align_of_val<T: ?Sized>(_: &T) -> usize;
  
 +    /// Obtain the length of a slice pointer
@@ -10,9 +11,12 @@
 +
      /// Gets a static string slice containing the name of a type.
      pub fn type_name<T: ?Sized>() -> &'static str;
+ 
 --- src/libcore/slice/mod.rs
 +++ src/libcore/slice/mod.rs
-@@ -68,5 +68,8 @@
+@@ -66,9 +66,12 @@ impl<T> [T] {
+     // SAFETY: const sound because we transmute out the length field as a usize (which it must be)
+     #[cfg_attr(not(bootstrap), allow_internal_unstable(const_fn_union))]
      pub const fn len(&self) -> usize {
 -        unsafe {
 -            crate::ptr::Repr { rust: self }.raw.len
@@ -24,48 +28,25 @@
 +        const fn len_inner<T>(s: &[T]) -> usize { unsafe { crate::intrinsics::mrustc_slice_len(s) } }
 +        len_inner(self)
      }
+ 
+     /// Returns `true` if the slice has a length of 0.
+
 #
 # Static-link rustc_codegen_llvm so the generated rustc is standalone
 # > Note: Interacts with `rustc-1.39.0-overrides.toml`
 #
 --- src/librustc_interface/util.rs
 +++ src/librustc_interface/util.rs
-@@ -421,2 +421,4 @@
+@@ -417,6 +417,8 @@ fn sysroot_candidates() -> Vec<PathBuf> {
+ }
+ 
  pub fn get_codegen_sysroot(backend_name: &str) -> fn() -> Box<dyn CodegenBackend> {
 +    #[cfg(rust_compiler="mrustc")]
 +    { if(backend_name == "llvm") { extern "Rust" { fn __rustc_codegen_backend() -> Box<dyn CodegenBackend>; } return || unsafe { __rustc_codegen_backend() } } }
      // For now we only allow this function to be called once as it'll dlopen a
-# Disable most architecture intrinsics
---- src/stdarch/crates/std_detect/src/detect/mod.rs
-+++ src/stdarch/crates/std_detect/src/detect/mod.rs
-@@ -74,4 +74,7 @@
-         // this run-time detection logic is never called.
-         #[path = "os/other.rs"]
-         mod os;
-+    } else if #[cfg(rust_compiler="mrustc")] {
-+        #[path = "os/other.rs"]
-+        mod os;
-     } else if #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] {
---- vendor/ppv-lite86/src/lib.rs
-+++ vendor/ppv-lite86/src/lib.rs
-@@ -12,9 +12,9 @@
--#[cfg(all(feature = "simd", target_arch = "x86_64", not(miri)))]
-+#[cfg(all(feature = "simd", target_arch = "x86_64", not(miri), not(rust_compiler="mrustc")))]
- pub mod x86_64;
--#[cfg(all(feature = "simd", target_arch = "x86_64", not(miri)))]
-+#[cfg(all(feature = "simd", target_arch = "x86_64", not(miri), not(rust_compiler="mrustc")))]
- use self::x86_64 as arch;
+     // few things, which seems to work best if we only do that once. In
+     // general this assertion never trips due to the once guard in `get_codegen_backend`,
 
--#[cfg(any(miri, not(all(feature = "simd", any(target_arch = "x86_64")))))]
-+#[cfg(any(miri, rust_compiler="mrustc", not(all(feature = "simd", any(target_arch = "x86_64")))))]
- pub mod generic;
--#[cfg(any(miri, not(all(feature = "simd", any(target_arch = "x86_64")))))]
-+#[cfg(any(miri, rust_compiler="mrustc", not(all(feature = "simd", any(target_arch = "x86_64")))))]
- use self::generic as arch;
-
-
-diff --git a/llvm/include/llvm/Demangle/MicrosoftDemangleNodes.h b/llvm/include/llvm/Demangle/MicrosoftDemangleNodes.h
-index da9d9d5bfdc0..3d47471f0ef0 100644
 --- src/llvm-project/llvm/include/llvm/Demangle/MicrosoftDemangleNodes.h
 +++ src/llvm-project/llvm/include/llvm/Demangle/MicrosoftDemangleNodes.h
 @@ -16,6 +16,8 @@
@@ -77,21 +58,39 @@ index da9d9d5bfdc0..3d47471f0ef0 100644
  
  namespace llvm {
  namespace itanium_demangle {
-##
-## gcc (used by mrustc) has 16-byte uint128_t alignment, while rustc uses 8
-##
-#--- src/libsyntax/ast.rs
-#+++ src/libsyntax/ast.rs
-#@@ -986,2 +986,2 @@
-#-#[cfg(target_arch = "x86_64")]
-#-static_assert_size!(Expr, 96);
-#+//#[cfg(target_arch = "x86_64")]
-#+//static_assert_size!(Expr, 96);
-#--- src/librustc/ty/sty.rs
-#+++ src/librustc/ty/sty.rs
-#@@ -2258,2 +2258,2 @@
-#-#[cfg(target_arch = "x86_64")]
-#-static_assert_size!(Const<'_>, 40);
-#+//#[cfg(target_arch = "x86_64")]
-#+//static_assert_size!(Const<'_>, 40);
 
+# Disable most architecture intrinsics
+--- src/stdarch/crates/std_detect/src/detect/mod.rs
++++ src/stdarch/crates/std_detect/src/detect/mod.rs
+@@ -72,6 +72,9 @@ cfg_if! {
+         // this run-time detection logic is never called.
+         #[path = "os/other.rs"]
+         mod os;
++    } else if #[cfg(rust_compiler="mrustc")] {
++        #[path = "os/other.rs"]
++        mod os;
+     } else if #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] {
+         // On x86/x86_64 no OS specific functionality is required.
+         #[path = "os/x86.rs"]
+
+--- vendor/ppv-lite86/src/lib.rs
++++ vendor/ppv-lite86/src/lib.rs
+@@ -9,14 +9,14 @@ mod soft;
+ mod types;
+ pub use self::types::*;
+ 
+-#[cfg(all(feature = "simd", target_arch = "x86_64", not(miri)))]
++#[cfg(all(feature = "simd", target_arch = "x86_64", not(miri), not(rust_compiler="mrustc")))]
+ pub mod x86_64;
+-#[cfg(all(feature = "simd", target_arch = "x86_64", not(miri)))]
++#[cfg(all(feature = "simd", target_arch = "x86_64", not(miri), not(rust_compiler="mrustc")))]
+ use self::x86_64 as arch;
+ 
+-#[cfg(any(miri, not(all(feature = "simd", any(target_arch = "x86_64")))))]
++#[cfg(any(miri, rust_compiler="mrustc", not(all(feature = "simd", any(target_arch = "x86_64")))))]
+ pub mod generic;
+-#[cfg(any(miri, not(all(feature = "simd", any(target_arch = "x86_64")))))]
++#[cfg(any(miri, rust_compiler="mrustc", not(all(feature = "simd", any(target_arch = "x86_64")))))]
+ use self::generic as arch;
+ 
+ pub use self::arch::{vec128_storage, vec256_storage, vec512_storage};
