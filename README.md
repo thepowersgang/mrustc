@@ -39,6 +39,7 @@ Dependencies
 - `libz-dev` (used to reduce size of bytecode files, linux only - windows uses vcpkg to download it)
 - `curl` (for downloading the rust source, linux only)
 - `cmake` (at least 3.4.3, required for building llvm in rustc)
+- `pkg-config` (required for find crate build deps, i.e libssl)
 - `python3` (required for building llvm in rustc)
 
 Linux GNU and macOS
