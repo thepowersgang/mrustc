@@ -1,6 +1,7 @@
 --- src/libcore/intrinsics.rs
 +++ src/libcore/intrinsics.rs
-@@ -678,5 +678,9 @@
+@@ -691,6 +691,10 @@ extern "rust-intrinsic" {
+     pub fn size_of_val<T: ?Sized>(_: &T) -> usize;
      pub fn min_align_of_val<T: ?Sized>(_: &T) -> usize;
  
 +    /// Obtain the length of a slice pointer
@@ -9,10 +10,11 @@
 +
      /// Gets a static string slice containing the name of a type.
      pub fn type_name<T: ?Sized>() -> &'static str;
-
+ 
 --- src/libcore/slice/mod.rs
 +++ src/libcore/slice/mod.rs
-@@ -413,6 +413,8 @@
+@@ -412,9 +412,11 @@ impl<T> SliceExt for [T] {
+ 
      #[inline]
      fn len(&self) -> usize {
 -        unsafe {
@@ -24,3 +26,5 @@
 +        let rv = unsafe { ::intrinsics::mrustc_slice_len(self) };
 +        rv
      }
+ 
+     #[inline]
