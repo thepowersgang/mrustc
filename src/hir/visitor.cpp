@@ -530,4 +530,10 @@ void ::HIR::Visitor::visit_generic_path(::HIR::GenericPath& p, ::HIR::Visitor::P
 void ::HIR::Visitor::visit_expr(::HIR::ExprPtr& exp)
 {
     // Do nothing, leave expression stuff for user
+    for(auto& t : exp.m_erased_types) {
+        visit_type(t);
+    }
+    for(auto& t : exp.m_bindings) {
+        visit_type(t);
+    }
 }

@@ -455,6 +455,8 @@ namespace {
 
     private:
         const HIR::TypeRef& get_local_var_ty(const Span& sp, size_t binding) const {
+            ASSERT_BUG(sp, m_binding_types_ptr, "get_loca_var_ty: m_binding_types_ptr is null");
+            ASSERT_BUG(sp, binding < m_binding_types_ptr->size(), "get_local_var_ty: #" << binding << " out of range (" << m_binding_types_ptr->size() << " bindings)");
             return m_binding_types_ptr->at(binding);
         }
 
@@ -529,6 +531,16 @@ namespace {
             // Match the types, letting lifetimes equate
             if(rhs.data().is_Diverge())
                 return ;
+
+#if 0
+            // HACK: Handle equality between expanded and unexpanded closures.
+            if( lhs.data().is_Closure() && rhs.data().is_Path() ) {
+                const auto& le = lhs.data().as_Closure();
+                const auto& re = rhs.data().as_Path();
+                //le.node->m_obj_path_base
+                return ;
+            }
+#endif
 
             ASSERT_BUG(sp, lhs.data().tag() == rhs.data().tag(), "Mismatched types: " << lhs << " != " << rhs);
             TU_MATCH_HDRA( (lhs.data(), rhs.data()), { )

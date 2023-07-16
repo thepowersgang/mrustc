@@ -1288,7 +1288,7 @@ bool ::HIR::Crate::find_type_impls(const ::HIR::TypeRef& type, t_cb_resolve_type
     return false;
 }
 
-const ::MIR::Function* HIR::Crate::get_or_gen_mir(const ::HIR::ItemPath& ip, const ::HIR::ExprPtr& ep, const ::HIR::Function::args_t& args, const ::HIR::TypeRef& ret_ty) const
+const ::MIR::Function* HIR::Crate::get_or_gen_mir(const ::HIR::ItemPath& ip, const ::HIR::ExprPtr& ep, const ::HIR::Function::args_t& args, ::HIR::TypeRef& ret_ty) const
 {
     if( !ep )
     {
@@ -1346,7 +1346,7 @@ const ::MIR::Function* HIR::Crate::get_or_gen_mir(const ::HIR::ItemPath& ip, con
                 //Debug_SetStagePre("Expand HIR Lifetimes");
                 HIR_Expand_LifetimeInfer_Expr(*this, ip, args, ret_ty, ep_mut);
                 //Debug_SetStagePre("Expand HIR Closures");
-                HIR_Expand_Closures_Expr(*this, ep_mut);
+                HIR_Expand_Closures_Expr(*this, ret_ty, ep_mut);
                 //Debug_SetStagePre("Expand HIR Calls");
                 HIR_Expand_UfcsEverything_Expr(*this, ep_mut);
                 //Debug_SetStagePre("Expand HIR Reborrows");

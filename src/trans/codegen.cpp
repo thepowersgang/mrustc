@@ -134,10 +134,11 @@ void Trans_Codegen(const ::std::string& outfile, CodegenOutput out_ty, const Tra
     // 3. Emit statics
     for(const auto& ent : list.m_statics)
     {
-        DEBUG("STATIC proto " << ent.first);
         assert(ent.second->ptr);
         const auto& stat = *ent.second->ptr;
 
+        DEBUG("STATIC proto " << ent.first << ": "
+            << "(m_value_generated=" << stat.m_value_generated << " && !m_no_emit_value=" << stat.m_no_emit_value << ") || is_generic=" << stat.m_params.is_generic());
         if( (stat.m_value_generated && !stat.m_no_emit_value) || stat.m_params.is_generic() )
         {
             codegen->emit_static_proto(ent.first, stat, ent.second->pp);

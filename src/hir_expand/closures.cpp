@@ -300,6 +300,7 @@ namespace {
             if( const auto* e = ty.data().opt_Closure() )
             {
                 DEBUG("Closure: " << e->node->m_obj_path_base); // TODO: Why does this use the `_base`
+                ASSERT_BUG(sp, e->node->m_obj_path_base != HIR::GenericPath(), ty);
                 auto path = monomorphiser.monomorph_genericpath(sp, e->node->m_obj_path_base, false);
                 const auto& str = *e->node->m_obj_ptr;
                 DEBUG(ty << " -> " << path);
@@ -330,12 +331,15 @@ namespace {
             root->visit(*this);
             visit_type(root->m_res_type);
 
-            DEBUG("Locals");
-            for(auto& ty : root.m_bindings)
+            for(auto& ty : root.m_bindings) {
                 visit_type(ty);
+                DEBUG("Local " << ty);
+            }
 
-            for(auto& ty : root.m_erased_types)
+            for(auto& ty : root.m_erased_types) {
                 visit_type(ty);
+                DEBUG("Erased " << ty);
+            }
         }
 
         void visit_node_ptr(::HIR::ExprNodeP& node) override
@@ -405,15 +409,39 @@ namespace {
 
         void visit_type(::HIR::TypeRef& ty) override
         {
-            bool run_eat = m_run_eat;
-            m_run_eat = false;
-            fix_type(m_crate, Span(), m_monomorphiser, ty);
-            ::HIR::ExprVisitorDef::visit_type(ty);
-            if( run_eat ) {
-                // TODO: Instead of running EAT, just mark any Unbound UfcsKnown types as Opaque
-                //m_resolve.expand_associated_types(Span(), ty);
-                m_run_eat = true;
-            }
+            struct M: MonomorphiserNop {
+                const Monomorphiser&    monomorphiser;
+                M(const Monomorphiser& monomorphiser): monomorphiser(monomorphiser) {}
+                ::HIR::TypeRef monomorph_type(const Span& sp, const ::HIR::TypeRef& ty, bool allow_infer) const override {
+                    if( const auto* e = ty.data().opt_Closure() )
+                    {
+                        DEBUG("Closure: " << e->node->m_obj_path_base); // TODO: Why does this use the `_base`
+                        auto path = monomorphiser.monomorph_genericpath(sp, e->node->m_obj_path_base, false);
+                        const auto& str = *e->node->m_obj_ptr;
+                        DEBUG(ty << " -> " << path);
+                        return ::HIR::TypeRef::new_path( mv$(path), ::HIR::TypePathBinding::make_Struct(&str) );
+                    }
+                    if(const auto* e = ty.data().opt_Generator() )
+                    {
+                        DEBUG("Generator: " << e->node->m_obj_path);
+                        auto path = monomorphiser.monomorph_genericpath(sp, e->node->m_obj_path, false);
+                        const auto& str = *e->node->m_obj_ptr;
+                        DEBUG(ty << " -> " << path);
+                        return ::HIR::TypeRef::new_path( mv$(path), ::HIR::TypePathBinding::make_Struct(&str) );
+                    }
+
+                    auto rv = MonomorphiserNop::monomorph_type(sp, ty, allow_infer);
+                    if( auto* e = rv.data_mut().opt_Path() )
+                    {
+                        if( e->binding.is_Unbound() && e->path.m_data.is_UfcsKnown() )
+                        {
+                            e->binding = ::HIR::TypePathBinding::make_Opaque({});
+                        }
+                    }
+                    return rv;
+                }
+            } m(m_monomorphiser);
+            ty = m.monomorph_type(Span(), ty, true);
         }
     };
 
@@ -596,6 +624,7 @@ namespace {
 
         struct Monomorph: public Monomorphiser
         {
+            const StaticTraitResolve& resolve;
             ::HIR::GenericParams& params;
             ::HIR::PathParams& constructor_path_params;
             enum class Mode {
@@ -607,8 +636,9 @@ namespace {
             HIR::LifetimeRef    m_capture_lifetime;
             mutable std::map<uint32_t, HIR::LifetimeRef>    m_lifetime_mappings;
 
-            Monomorph(::HIR::GenericParams& params, ::HIR::PathParams& constructor_path_params)
-                : params(params)
+            Monomorph(const StaticTraitResolve& resolve, ::HIR::GenericParams& params, ::HIR::PathParams& constructor_path_params)
+                : resolve(resolve)
+                , params(params)
                 , constructor_path_params(constructor_path_params)
             {
             }
@@ -632,11 +662,12 @@ namespace {
                 {
                     ASSERT_BUG(sp, !m_frozen, "get_type would add a new param after freeze - " << ge);
                     rv = constructor_path_params.m_types.size();
+                    DEBUG("Add param: " << ::HIR::TypeRef(ge.name, rv));
                     constructor_path_params.m_types.push_back(HIR::TypeRef(ge.name, ge.binding));
                     params.m_types.push_back(::HIR::TypeParamDef());
-                    params.m_types.back().m_is_sized = true;
+                    //params.m_types.back().m_is_sized = true;
+                    params.m_types.back().m_is_sized = resolve.type_is_sized(sp, constructor_path_params.m_types.back());
                     params.m_types.back().m_name = ge.name;
-                    DEBUG("Add param: " << ::HIR::TypeRef(params.m_types[rv].m_name, rv));
                 }
                 return ::HIR::TypeRef(params.m_types[rv].m_name, rv);
             }
@@ -677,6 +708,13 @@ namespace {
                     //params.m_values.back().m_name = ge.name;
                 }
                 return ::HIR::LifetimeRef(rv);
+            }
+
+            ::HIR::TypeRef monomorph_type(const Span& sp, const ::HIR::TypeRef& tpl, bool allow_infer=true) const override {
+                if( const auto* te = tpl.data().opt_Closure() ) {
+                    //this->monomorph_genericpath(sp, te->node->m_obj_path, allow_infer);
+                }
+                return Monomorphiser::monomorph_type(sp, tpl, allow_infer);
             }
 
             ::HIR::LifetimeRef monomorph_lifetime(const Span& sp, const ::HIR::LifetimeRef& tpl) const override {
@@ -729,7 +767,7 @@ namespace {
                 }
             }
             void add_bounds(const Span& sp, const StaticTraitResolve& resolve) {
-
+                assert(&resolve == &this->resolve);
                 for(const auto& bound : resolve.impl_generics().m_bounds ) {
                     DEBUG("-- Bound " << bound);
                     maybe_monomorph_bound(sp, bound);
@@ -739,16 +777,16 @@ namespace {
                     maybe_monomorph_bound(sp, bound);
                 }
 
-                DEBUG(constructor_path_params);
+                DEBUG("constructor_path_params = " << constructor_path_params);
                 for(size_t i = 0; i < constructor_path_params.m_types.size(); i ++) {
-                    DEBUG("-- " << constructor_path_params.m_types[i]);
+                    DEBUG("-- constructor_path_params Type: " << constructor_path_params.m_types[i]);
                     params.m_types[i].m_is_sized = resolve.type_is_sized(sp, constructor_path_params.m_types[i]);
                 }
                 for(size_t i = 0; i < constructor_path_params.m_values.size(); i ++) {
-                    DEBUG("-- " << constructor_path_params.m_values[i]);
+                    DEBUG("-- constructor_path_params Value: " << constructor_path_params.m_values[i]);
                     params.m_values[i].m_type = resolve.get_const_param_type(sp, constructor_path_params.m_values[i].as_Generic().binding).clone();
                 }
-                DEBUG(params.fmt_args());
+                DEBUG("params = " << params.fmt_args());
             }
         private:
             template<typename T, typename U>
@@ -843,11 +881,11 @@ namespace {
                 throw "";
             }
         };
-        Monomorph create_params(const Span& sp, ::HIR::GenericParams& params, ::HIR::PathParams& constructor_path_params) const
+        Monomorph create_params(const Span& sp, const StaticTraitResolve& resolve, ::HIR::GenericParams& params, ::HIR::PathParams& constructor_path_params) const
         {
             // TODO: How to get the bounds?
             // - Only want the bounds that relate to generics used.
-            return Monomorph(params, constructor_path_params);
+            return Monomorph(resolve, params, constructor_path_params);
         }
 
         /// <summary>
@@ -880,7 +918,7 @@ namespace {
             ::HIR::GenericParams params;
             ::HIR::PathParams constructor_path_params;
             // TODO: Don't create using all inputs, instead only use the parameters required by the body
-            auto monomorph_cb = create_params(sp, params, constructor_path_params);
+            auto monomorph_cb = create_params(sp, m_resolve, params, constructor_path_params);
 
             // Argument and return types
             ::std::vector< ::HIR::TypeRef>  args_ty_inner;
@@ -1249,7 +1287,7 @@ namespace {
             // -- Prepare type params for rewriting the expression tree
             ::HIR::GenericParams params;
             ::HIR::PathParams constructor_path_params;
-            auto monomorph_cb = create_params(sp, params, constructor_path_params);
+            auto monomorph_cb = create_params(sp, m_resolve, params, constructor_path_params);
 
             // Create state index enum
             auto state_idx_type = m_out.new_type("gen_state_idx#", m_new_type_suffix, ::HIR::Enum {
@@ -1640,9 +1678,15 @@ namespace {
         void visit_static(::HIR::ItemPath p, ::HIR::Static& item) override {
             if( item.m_value )
             {
-                //::std::vector< ::HIR::TypeRef>  tmp;
-                //ExprVisitor_Extract    ev(m_resolve, m_self_type, tmp, m_new_trait_impls);
-                //ev.visit_root(*item.m_value);
+                ExprVisitor_Extract    ev(m_resolve, m_self_type, item.m_value.m_bindings, m_out, p.name);
+                ev.visit_root(*item.m_value);
+
+                {
+                    MonomorphiserNop    mm;
+                    ExprVisitor_Fixup   fixup(m_resolve.m_crate, nullptr, mm);
+                    fixup.visit_root( item.m_value );
+                    fixup.visit_type( item.m_type );
+                }
             }
         }
         void visit_constant(::HIR::ItemPath p, ::HIR::Constant& item) override {
@@ -1706,7 +1750,7 @@ namespace {
     };
 }
 
-void HIR_Expand_Closures_Expr(const ::HIR::Crate& crate_ro, ::HIR::ExprPtr& exp)
+void HIR_Expand_Closures_Expr(const ::HIR::Crate& crate_ro, ::HIR::TypeRef& exp_ty, ::HIR::ExprPtr& exp)
 {
     Span    sp;
     auto& crate = const_cast<::HIR::Crate&>(crate_ro);
@@ -1738,6 +1782,7 @@ void HIR_Expand_Closures_Expr(const ::HIR::Crate& crate_ro, ::HIR::ExprPtr& exp)
         MonomorphiserNop    mm;
         ExprVisitor_Fixup   fixup(crate, nullptr, mm);
         fixup.visit_root( exp );
+        fixup.visit_type(exp_ty);
     }
 
     for(auto& impl : out.impls_closure)

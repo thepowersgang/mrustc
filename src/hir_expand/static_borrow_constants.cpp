@@ -321,6 +321,7 @@ namespace {
                     struct V: public HIR::ExprVisitorDef {
                         const Monomorph&    monomorph;
                         bool is_generic;
+                        std::map<unsigned,unsigned> binding_mapping;
                         V(const Monomorph& monomorph): monomorph(monomorph), is_generic(false) {}
 
                         void visit_type(HIR::TypeRef& ty) override {
@@ -330,6 +331,29 @@ namespace {
                                 DEBUG(ty << " -> " << new_ty);
                                 ty = std::move(new_ty);
                             }
+                        }
+                        void visit_pattern(const Span& sp, HIR::Pattern& pat) override {
+                            HIR::ExprVisitorDef::visit_pattern(sp, pat);
+                            for( auto& pb : pat.m_bindings )
+                            {
+                                auto idx = static_cast<unsigned>(binding_mapping.size());
+                                binding_mapping.insert(::std::make_pair(pb.m_slot, idx));
+                                pb.m_slot = idx;
+                            }
+                        }
+                        void visit(HIR::ExprNode_Variable& node) override {
+                            HIR::ExprVisitorDef::visit(node);
+                            ASSERT_BUG(node.span(), binding_mapping.count(node.m_slot) != 0, "");
+                            node.m_slot = binding_mapping.at(node.m_slot);
+                        }
+                        void visit(HIR::ExprNode_Closure& node) override {
+                            HIR::ExprVisitorDef::visit(node);
+                            // Update bindings here too
+                            for(auto& l : node.m_avu_cache.local_vars) {
+                                ASSERT_BUG(node.span(), binding_mapping.count(l) != 0, "");
+                                l = binding_mapping.at(l);
+                            }
+                            assert(node.m_avu_cache.captured_vars.empty());
                         }
                     } v(monomorph);
                     value_ptr->visit(v);
@@ -349,6 +373,11 @@ namespace {
                     val_expr.m_state->m_impl_generics = m_expr_ptr.m_state->m_impl_generics;
                     val_expr.m_state->m_item_generics = m_expr_ptr.m_state->m_item_generics;
                     val_expr.m_state->stage = ::HIR::ExprState::Stage::Typecheck;
+
+                    val_expr.m_bindings.resize(v.binding_mapping.size());
+                    for(auto& e : v.binding_mapping) {
+                        val_expr.m_bindings[e.second] = monomorph.monomorph_type(node.span(), m_expr_ptr.m_bindings[e.first]);
+                    }
 
                     // Create new static
                     auto sp = val_expr->span();
@@ -374,14 +403,16 @@ namespace {
                             }
                         }
                     } m;
-                    auto ty = m.monomorph_type(sp, val_expr->m_res_type, /*allow_infer=*/false);
-                    auto m2 = MonomorphStatePtr(nullptr, nullptr, &constr_params);
-                    auto ty2 = m2.monomorph_type(sp, ty, false);
 
-                    auto path = m_new_static_cb(sp, mv$(ty), mv$(val_expr), mv$(params_def));
+                    auto static_ty = m.monomorph_type(sp, val_expr->m_res_type, /*allow_infer=*/false);
+
+                    auto m2 = MonomorphStatePtr(nullptr, nullptr, &constr_params);
+                    auto new_res_ty = m2.monomorph_type(sp, static_ty, false);
+
+                    auto path = m_new_static_cb(sp, mv$(static_ty), mv$(val_expr), mv$(params_def));
                     DEBUG("> " << path);
                     // Update the `m_value` to point to a new node
-                    auto new_node = NEWNODE(mv$(ty2), PathValue, sp, HIR::GenericPath(mv$(path), mv$(constr_params)), HIR::ExprNode_PathValue::STATIC);
+                    auto new_node = NEWNODE(std::move(new_res_ty), PathValue, sp, HIR::GenericPath(mv$(path), mv$(constr_params)), HIR::ExprNode_PathValue::STATIC);
                     new_node->m_usage = usage;
                     value_ptr = mv$(new_node);
 
@@ -421,6 +452,14 @@ namespace {
             m_all_constant = saved_all_constant;
         }
         void visit(::HIR::ExprNode_Tuple& node) override {
+            auto saved_all_constant = m_all_constant;
+            m_all_constant = true;
+            ::HIR::ExprVisitorDef::visit(node);
+            m_is_constant = m_all_constant;
+            m_all_constant = saved_all_constant;
+        }
+        // - `let` is valid if the value is constant
+        void visit(::HIR::ExprNode_Let& node) override {
             auto saved_all_constant = m_all_constant;
             m_all_constant = true;
             ::HIR::ExprVisitorDef::visit(node);
@@ -468,6 +507,8 @@ namespace {
             m_is_constant = m_all_constant;
         }
         void visit(::HIR::ExprNode_Index& node) override {
+            auto saved_all_constant = m_all_constant;
+            m_all_constant = true;
             ::HIR::ExprVisitorDef::visit(node);
             // Ensure that it's only a ".."
             if(m_all_constant)
@@ -479,8 +520,12 @@ namespace {
                     m_is_constant = !is_maybe_interior_mut(node);
                 }
                 else {
+                    // ... or just allow it - consteval can handle indexing out of bounds, right?
+                    // ref: 1.39 librustc_data_structures/indexed_vec.rs L141 `const fn from_u32_const` uses it as a compile-time assert
+                    m_is_constant = !is_maybe_interior_mut(node);
                 }
             }
+            m_all_constant = saved_all_constant;
         }
         // - Operations (only cast currently)
         void visit(::HIR::ExprNode_Cast& node) override {
@@ -565,6 +610,20 @@ namespace {
                 break;
             }
         }
+        // - Closures: Only constant if they don't capture anything
+        void visit(::HIR::ExprNode_Closure& node) override {
+            if( node.m_avu_cache.captured_vars.empty() ) {
+                m_is_constant = true;
+
+                // Don't allow if any local is generic.
+                for(auto idx : node.m_avu_cache.local_vars ) {
+                    if( monomorphise_type_needed(m_expr_ptr.m_bindings[idx]) ) {
+                        m_is_constant = false;
+                        break;
+                    }
+                }
+            }
+        }
 
     private:
         bool is_maybe_interior_mut(const ::HIR::ExprNode& node) const {
@@ -628,9 +687,11 @@ namespace {
                     } null_nvs;
                     Span    sp;
                     auto& new_static = new_static_pair.second;
+
+                    TRACE_FUNCTION_F("New static " << new_static_pair.first);
+
                     if( !new_static.m_params.is_generic() )
                     {
-                        TRACE_FUNCTION_F("New static " << new_static_pair.first);
                         new_static.m_value_res = ::HIR::Evaluator(sp, m_crate, null_nvs).evaluate_constant( new_static_pair.first, new_static.m_value, new_static.m_type.clone());
                         new_static.m_value_generated = true;
                     }
@@ -802,6 +863,7 @@ void HIR_Expand_StaticBorrowConstants_Expr(const ::HIR::Crate& crate, const ::HI
         }, exp);
     ev.visit_node_ptr( exp );
     if( !ev.all_constant() ) {
+        //WARNING(exp->span(), W0000, "`static`/`const` " << ip << " is not constant?");
         //ERROR(exp->span(), E0000, "`static`/`const` " << ip << " is not constant");
         // TODO: How to determine if this is a static/const instead of a function?
         // - For a function, maybe could also check?
@@ -811,4 +873,16 @@ void HIR_Expand_StaticBorrowConstants(::HIR::Crate& crate)
 {
     OuterVisitor    ov(crate);
     ov.visit_crate( crate );
+
+    // Consteval can run again, creating new items
+    for(auto& new_ty_pair : crate.m_new_types)
+    {
+        crate.m_root_module.m_mod_items.insert( mv$(new_ty_pair) );
+    }
+    crate.m_new_types.clear();
+    for(auto& new_val_pair : crate.m_new_values)
+    {
+        crate.m_root_module.m_value_items.insert( mv$(new_val_pair) );
+    }
+    crate.m_new_values.clear();
 }
