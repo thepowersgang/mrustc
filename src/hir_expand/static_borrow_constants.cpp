@@ -612,6 +612,8 @@ namespace {
         }
         // - Closures: Only constant if they don't capture anything
         void visit(::HIR::ExprNode_Closure& node) override {
+            ::HIR::ExprVisitorDef::visit(node);
+
             if( node.m_avu_cache.captured_vars.empty() ) {
                 m_is_constant = true;
 

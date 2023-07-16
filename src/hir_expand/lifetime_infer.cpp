@@ -916,6 +916,7 @@ namespace {
                     // If this is a static, return 'static
                     MonomorphState  ms;
                     auto v = m_parent.m_resolve.get_value(node.span(), node.m_path, ms, /*signature_only*/true);
+                    DEBUG("get_borrow_lifetime: " << node.m_path << " : " << v.tag_str());
                     if( v.is_Static() ) {
                         m_res = HIR::LifetimeRef::new_static();
                     }
