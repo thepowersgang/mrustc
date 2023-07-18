@@ -706,10 +706,9 @@ namespace {
                 for( const auto& st : trait.supertraits() )
                 {
                     auto b = LowerHIR_TraitPath(sp, *st.ent.path, st.ent.hrbs, true);
-                    auto p = ms.monomorph_genericpath(sp, b.m_path, /*allow_infer=*/false);
-                    auto rv = H::find_source_trait(sp, p, st.ent.path->m_bindings.type.binding.as_Trait(), name, cb);
+                    auto rv = H::find_source_trait(sp, b.m_path, st.ent.path->m_bindings.type.binding.as_Trait(), name, cb);
                     if(rv != HIR::GenericPath())
-                        return rv;
+                        return ms.monomorph_genericpath(sp, rv, /*allow_infer=*/false);
                 }
             }
             else
