@@ -128,6 +128,28 @@ namespace
             }
             else
             {
+                // Add implicit bound
+                if( m_cur_params ) {
+                    if( !m_current_lifetime.empty() && m_current_lifetime.back() && m_current_lifetime.back()->is_param() && lft != *m_current_lifetime.back() ) {
+                        if( lft.as_param().group() == m_cur_params_level && m_current_lifetime.back()->as_param().group() == m_cur_params_level ) {
+                            // Add `'this: 'outer`
+                            const auto& outer = *m_current_lifetime.back();
+                            bool found = false;
+                            for(const auto& b : m_cur_params->m_bounds) {
+                                if( const auto* be = b.opt_Lifetime() ) {
+                                    if( be->test == lft && be->valid_for == outer) {
+                                        found = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            if( !found ) {
+                                DEBUG("Push bound " << lft << ": " << outer);
+                                m_cur_params->m_bounds.push_back(::HIR::GenericBound::make_Lifetime({ lft, outer }));
+                            }
+                        }
+                    }
+                }
             }
         }
         bool bound_exists(const HIR::LifetimeRef& test, const HIR::LifetimeRef& valid_for) const {
@@ -725,16 +747,19 @@ namespace
         void visit_struct(::HIR::ItemPath p, ::HIR::Struct& item) override
         {
             auto _ = m_resolve.set_impl_generics(item.m_struct_markings.dst_type, item.m_params);
+            auto _2 = push_params(item.m_params, 0); m_create_elided = false;
             ::HIR::Visitor::visit_struct(p, item);
         }
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override
         {
             auto _ = m_resolve.set_impl_generics(MetadataType::None, item.m_params);
+            auto _2 = push_params(item.m_params, 0); m_create_elided = false;
             ::HIR::Visitor::visit_enum(p, item);
         }
         void visit_union(::HIR::ItemPath p, ::HIR::Union& item) override
         {
             auto _ = m_resolve.set_impl_generics(MetadataType::None, item.m_params);
+            auto _2 = push_params(item.m_params, 0); m_create_elided = false;
             ::HIR::Visitor::visit_union(p, item);
         }
 
