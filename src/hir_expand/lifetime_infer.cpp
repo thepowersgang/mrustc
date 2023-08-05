@@ -1875,9 +1875,11 @@ namespace {
             auto push_bounds = [&state](const HIR::GenericParams& params) {
                 for(const auto& b : params.m_bounds) {
                     if( const auto* be = b.opt_TypeLifetime() ) {
+                        DEBUG("Add bound: " << be->type << ": " << be->valid_for);
                         state.m_bounds.push_back(LifetimeInferState::LifetimeBound(be->type, be->valid_for));
                     }
                     else if( const auto* be = b.opt_Lifetime() ) {
+                        DEBUG("Add bound: " << be->test << ": " << be->valid_for);
                         state.m_bounds.push_back(LifetimeInferState::LifetimeBound(be->test, be->valid_for));
                     }
                     else {
@@ -1955,7 +1957,7 @@ namespace {
                 }
             } tv(state);
             for(const auto& a : args) {
-                DEBUG("ARG " << a.second);
+                DEBUG("Visit ARG " << a.second);
                 tv.visit_type(const_cast<HIR::TypeRef&>(a.second));
             }
 
@@ -1967,16 +1969,21 @@ namespace {
                 for(size_t i = 0; i < state.m_bounds.size(); i ++) {
                      const auto& v = state.m_bounds[i].valid_for;
                      for(size_t j = 0; j < state.m_bounds.size(); j ++) {
-                         if( state.m_bounds[j].lft == state.m_bounds[i].valid_for ) {
+                         // `'a: 'b` and `'b: 'c` then add `'a: 'c`
+                         if( !state.m_bounds[i].ty && state.m_bounds[i].valid_for == state.m_bounds[j].lft ) {
                              auto b = state.m_bounds[i];
                              b.valid_for = state.m_bounds[j].valid_for;
 
                              if( std::find(state.m_bounds.begin(), state.m_bounds.end(), b) == state.m_bounds.end() ) {
-                                 DEBUG("Add chained bound: " << b);
+                                 DEBUG("Add chained bound: " << b << " (from " << state.m_bounds[i] << " and " << state.m_bounds[j] << ")");
                                  state.m_bounds.push_back(b);
                                  added = true;
+                                 break;
                              }
                          }
+                     }
+                     if(added) {
+                         break;
                      }
                 }
             }
@@ -2138,11 +2145,12 @@ namespace {
             TRACE_FUNCTION_FR("VALIDATE", "VALIDATE");
             for(auto& iv : state.m_ivars)
             {
-                DEBUG("--" << state.get_lft_for_iv(iv));
+                DEBUG("Validate IVar: " << state.get_lft_for_iv(iv));
                 for(const auto& d : iv.destinations)
                     state.ensure_outlives(iv.sp, d, iv.known);
             }
 
+            DEBUG("Validate return: " << ret_ty);
             clone_ty_with(ep->m_span, ret_ty, [&](const HIR::TypeRef& tpl, HIR::TypeRef& rv)->bool {
                 if( const auto* e = tpl.data().opt_ErasedType() )
                 {
@@ -2180,8 +2188,10 @@ namespace {
                         }
 
                         void visit_type(HIR::TypeRef& t) override {
-                            if(t.data().is_Borrow())
+                            if(t.data().is_Borrow()) {
+                                DEBUG("Borrow " << t);
                                 equate_lifetime(t.data().as_Borrow().lifetime);
+                            }
 
                             bool hrl_pushed = false;
                             auto push_hrls = [&](const HIR::GenericParams& hrls_def) {
@@ -2192,6 +2202,7 @@ namespace {
                             if(is_opaque(t)) {
                                 // Iterate type lifetime bounds
                                 state.iterate_type_lifetime_bounds(t, [&](const HIR::LifetimeRef& lft)->bool {
+                                    DEBUG("Generic opaque bound: " << t << ": " << lft);
                                     equate_lifetime(lft);
                                     return false;
                                     });
@@ -2199,8 +2210,10 @@ namespace {
                                     // TODO: If the above didn't return anything, then assign a "only this function" liftime
                                 }
                                 else if( const auto* e = t.data().opt_ErasedType() ) {
-                                    for(const auto& lft : e->m_lifetimes)
+                                    for(const auto& lft : e->m_lifetimes) {
+                                        DEBUG("Erased " << t);
                                         equate_lifetime(lft);
+                                    }
                                     //if( e->m_trait.m_hrls ) {
                                     //    push_hrls(*e->m_trait.m_hrls);
                                     //}
@@ -2211,6 +2224,7 @@ namespace {
                             }
 
                             if( const auto* e = t.data().opt_TraitObject() ) {
+                                DEBUG("Trait object " << t);
                                 // Get the lifetime
                                 equate_lifetime(e->m_lifetime);
                                 // Handle HRLs
@@ -2222,6 +2236,7 @@ namespace {
                                 push_hrls(e->hrls);
                             }
                             if( t.data().is_Path() && t.data().as_Path().path.m_data.is_Generic() ) {
+                                DEBUG("Generic path " << t);
                                 for(const auto& l : t.data().as_Path().path.m_data.as_Generic().m_params.m_lifetimes)
                                     equate_lifetime(l);
                             }
