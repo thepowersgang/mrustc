@@ -988,7 +988,8 @@ namespace {
         std::vector<::HIR::LifetimeRef>  lfts;
         if( e.lifetimes.size() == 0 )
         {
-            lfts.push_back(::HIR::LifetimeRef());
+            // NOTE: This signals to the lifetime elision code
+            //lfts.push_back(::HIR::LifetimeRef());
         }
         else if( e.lifetimes.size() == 1 )
         {

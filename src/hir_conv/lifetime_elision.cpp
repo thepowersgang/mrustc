@@ -130,11 +130,19 @@ namespace
             {
                 // Add implicit bound
                 if( m_cur_params ) {
-                    if( !m_current_lifetime.empty() && m_current_lifetime.back() && m_current_lifetime.back()->is_param() && lft != *m_current_lifetime.back() ) {
-                        if( lft.as_param().group() == m_cur_params_level && m_current_lifetime.back()->as_param().group() == m_cur_params_level ) {
+                    if( !m_current_lifetime.empty() && m_current_lifetime.back() && m_current_lifetime.back()->is_param() ) {
+                        const auto& outer = *m_current_lifetime.back();
+                        //DEBUG("maybe add " << lft << ": " << outer);
+                        if( lft != outer
+                            && lft.as_param().group() < 2 // I.e. an impl or method param, not HRL or placeholder
+                            && outer.as_param().group() < 2
+                            // One of the two lifetimes must be from this block?
+                            && (lft.as_param().group() == m_cur_params_level || outer.as_param().group() == m_cur_params_level)
+                            )
+                        {
                             // Add `'this: 'outer`
-                            const auto& outer = *m_current_lifetime.back();
                             bool found = false;
+                            // Only if not a duplicate
                             for(const auto& b : m_cur_params->m_bounds) {
                                 if( const auto* be = b.opt_Lifetime() ) {
                                     if( be->test == lft && be->valid_for == outer) {
@@ -147,6 +155,16 @@ namespace
                                 DEBUG("Push bound " << lft << ": " << outer);
                                 m_cur_params->m_bounds.push_back(::HIR::GenericBound::make_Lifetime({ lft, outer }));
                             }
+                        }
+                    }
+                    else {
+                        if( m_current_lifetime.empty() ) {
+                        }
+                        else if( m_current_lifetime.back() ) {
+                            //DEBUG("No bound " << lft << ": " << *m_current_lifetime.back());
+                        }
+                        else {
+                            //DEBUG("No bound " << lft << ": nullptr");
                         }
                     }
                 }
@@ -418,12 +436,12 @@ namespace
                     DEBUG("TraitObject: Final lifetime " << e->m_lifetime);
                 }
                 if(auto* e = ty.data_mut().opt_ErasedType()) {
-                    // TODO: For an erased type, check if there's a lifetime within any of the ATYs
+                    // For an erased type, check if there's a lifetime within any of the ATYs
                     // - If so, use that [citation needed]
                     // https://rust-lang.github.io/rfcs/1951-expand-impl-trait.html#scoping-for-type-and-lifetime-parameters
                     // Any mentioned lifetimes within the trait are considered as "captured"
                     // - So, enumerate the mentioned lifetimes and create a composite for it.
-                    if( !e->m_lifetimes.empty() && e->m_lifetimes.front().binding == HIR::LifetimeRef::UNKNOWN ) {
+                    if( e->m_lifetimes.empty() ) {
                         // If there is no lifetime assigned, then grab all mentioned lifetimes?
                         struct V: public HIR::Visitor {
                             std::set<HIR::LifetimeRef>  lfts;
@@ -453,30 +471,33 @@ namespace
                                     // Push HRLs?
                                 }
                                 if(const auto* tep = ty.data().opt_ErasedType()) {
-                                    //TODO(Span(), "Recursive erased type?");
+                                    for(const auto& lft : tep->m_lifetimes) {
+                                        add_lifetime(lft);
+                                    }
                                 }
                                 HIR::Visitor::visit_type(ty);
                             }
                         } v;
                         v.visit_type(ty);
                         // If there is a lifetime on the stack (that wasn't from a `'static` pushed above), then use it
-                        if( !m_current_lifetime.empty() && m_current_lifetime.back() && !pushed ) {
+                        if( v.lfts.empty() && !m_current_lifetime.empty() && m_current_lifetime.back() && !pushed ) {
                             DEBUG("ErasedType: Use wrapping lifetime");
-                            e->m_lifetimes[0] = *m_current_lifetime.back();
+                            e->m_lifetimes.push_back( *m_current_lifetime.back() );
                         }
                         else if( v.lfts.empty() ) {
                             // No contained lifetimes, it's `'static`?
                             DEBUG("No inner lifetimes, will be `'static`");
+                            e->m_lifetimes.push_back( HIR::LifetimeRef::new_static() );
                         }
                         else if( v.lfts.size() == 1) {
                             // Easy, just assign this lifetime
                             DEBUG("ErasedType: Use contained lifetime " << *v.lfts.begin());
-                            e->m_lifetimes[0] = *v.lfts.begin();
+                            e->m_lifetimes.push_back( *v.lfts.begin() );
                         }
                         else {
                             // If in arguments: Create a new input lifetime with a union of these lifetimes.
                             if( m_cur_params && m_create_elided ) {
-                                e->m_lifetimes[0] = HIR::LifetimeRef(m_cur_params_level * 256 + m_cur_params->m_lifetimes.size());
+                                e->m_lifetimes.push_back( HIR::LifetimeRef(m_cur_params_level * 256 + m_cur_params->m_lifetimes.size()) );
                                 m_cur_params->m_lifetimes.push_back(HIR::LifetimeDef { });
                                 for(const auto& l : v.lfts) {
                                     m_cur_params->m_bounds.push_back(HIR::GenericBound::make_Lifetime({ e->m_lifetimes[0], l }));
@@ -817,6 +838,11 @@ namespace
                     if( b->lifetime.binding == HIR::LifetimeRef::STATIC ) {
                         elided_output_lifetime = b->lifetime;
                         DEBUG("Static 'self");
+                    }
+                    // OR, just always use `'self` if present
+                    if(true) {
+                        DEBUG("'self specified");
+                        elided_output_lifetime = b->lifetime;
                     }
                 }
             }
