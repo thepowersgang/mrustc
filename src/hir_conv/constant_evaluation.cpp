@@ -1955,6 +1955,12 @@ namespace HIR {
                         else
                             throw Defer();
                     }
+                    else if( te->name == "type_name" ) {
+                        auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                        auto name = FMT(ty);
+                        dst.write_ptr(state, EncodedLiteral::PTR_BASE, AllocationPtr::allocate_ro(name.data(), name.size()));
+                        dst.slice(Target_GetPointerBits()/8).write_uint(state, Target_GetPointerBits(), name.size());
+                    }
                     // ---
                     else if( te->name == "ctpop" ) {
                         auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
@@ -2084,7 +2090,7 @@ namespace HIR {
                             } break;
                         case TypeInfo::Float:
                         case TypeInfo::Other:
-                            MIR_TODO(state, "Call intrinsic \"" << te->name << "\" - " << block.terminator);
+                            MIR_TODO(state, "add_with_overflow on unexpected type - " << ty);
                         }
                     }
                     // ---
