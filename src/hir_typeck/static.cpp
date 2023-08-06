@@ -1541,10 +1541,11 @@ bool StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
                 }
 
                 // Find trait in this trait.
+                auto bound_params = cb_placeholders_trait.monomorph_path_params(sp, bound.m_path.m_params, false);
                 const auto& bound_trait = m_crate.get_trait_by_path(sp, bound.m_path.m_path);
                 bool replaced = this->find_named_trait_in_trait(sp,
                         e2.trait.m_path, e2.trait.m_params,
-                        bound_trait, bound.m_path.m_path,bound.m_path.m_params, e2.type,
+                        bound_trait, bound.m_path.m_path, bound_params, e2.type,
                         [&](const auto& params, const auto& assoc){
                             auto it = assoc.find(e2.item);
                             if( it != assoc.end() ) {
