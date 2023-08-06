@@ -408,6 +408,7 @@ namespace {
 
         std::vector<const HIR::ExprNode_Loop*>  m_loops;
         std::vector<const HIR::TypeRef*>    m_returns;
+        std::vector<const HIR::TypeRef*>    m_yields;
 
     public:
         ExprVisitor_Enumerate(const StaticTraitResolve& resolve, const ::HIR::Function::args_t& args, const HIR::TypeRef& ret_ty, bool remove_locals, LifetimeInferState& state)
@@ -984,7 +985,10 @@ namespace {
         }
         void visit(::HIR::ExprNode_Yield& node) override {
             HIR::ExprVisitorDef::visit(node);
-            TODO(node.span(), "Handle yield in lifetime inferrence");
+            if( node.m_value ) {
+                ASSERT_BUG(node.span(), !m_yields.empty(), "Yield without a generator block?");
+                equate_types(node.m_value->span(), *m_yields.back(), node.m_value->m_res_type);
+            }
         }
         void visit(::HIR::ExprNode_Let& node) override {
             HIR::ExprVisitorDef::visit(node);
@@ -1812,8 +1816,10 @@ namespace {
         }
         void visit(::HIR::ExprNode_Generator& node) override {
             m_returns.push_back(&node.m_return);
+            m_yields.push_back(&node.m_yield_ty);
             // TODO: Yield?
             HIR::ExprVisitorDef::visit(node);
+            m_yields.pop_back();
             m_returns.pop_back();
         }
         void visit(::HIR::ExprNode_GeneratorWrapper& node) override {
