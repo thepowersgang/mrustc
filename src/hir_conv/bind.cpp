@@ -285,28 +285,9 @@ namespace {
                             ERROR(sp, E0000, "Omitted type parameter with no default in " << path);
                         }
                         else {
-                            // Clone, replacing `self` if a replacement was provided.
-                            auto ty = clone_ty_with(sp, typ.m_default, [&](const auto& ty, auto& out){
-                                if(const auto* te = ty.data().opt_Generic() )
-                                {
-                                    if( te->binding == GENERIC_Self ) {
-                                        if( !self_ty )
-                                            TODO(sp, "Self enountered in default params, but no Self available - " << ty << " in " << typ.m_default << " for " << path);
-                                        out = self_ty->clone();
-                                    }
-                                    // NOTE: Should only be seeing impl-level params here. Method-level ones are only seen in expression context.
-                                    else if( (te->binding >> 8) == 0 ) {
-                                        auto idx = te->binding & 0xFF;
-                                        ASSERT_BUG(sp, idx < params.m_types.size(), "TODO: Handle use of latter types in defaults");
-                                        out = params.m_types[idx].clone();
-                                    }
-                                    else {
-                                        TODO(sp, "Monomorphise in fix_param_count - encountered " << ty << " in " << typ.m_default);
-                                    }
-                                    return true;
-                                }
-                                return false;
-                                });
+                            // TODO: Does expanding defualts need a custom monomorphiser that can handle later defaults?
+                            MonomorphStatePtr   ms(self_ty, &params, nullptr);
+                            auto ty = ms.monomorph_type(sp, typ.m_default);
                             params.m_types.push_back( mv$(ty) );
                         }
                     }

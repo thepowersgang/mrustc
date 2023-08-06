@@ -369,16 +369,6 @@ namespace resolve_ufcs {
             }
             return false;
         }
-        static ::HIR::GenericPath make_generic_path(::HIR::SimplePath sp, const ::HIR::Trait& trait)
-        {
-            auto trait_path_g = ::HIR::GenericPath( mv$(sp) );
-            for(unsigned int i = 0; i < trait.m_params.m_types.size(); i ++ ) {
-                //trait_path_g.m_params.m_types.push_back( ::HIR::TypeRef(trait.m_params.m_types[i].m_name, i) );
-                //trait_path_g.m_params.m_types.push_back( ::HIR::TypeRef() );
-                trait_path_g.m_params.m_types.push_back( trait.m_params.m_types[i].m_default.clone_shallow() );
-            }
-            return trait_path_g;
-        }
         // Locate the item in `pd` and set `pd` to UfcsResolved if found
         // TODO: This code may end up generating paths without the type information they should contain
         bool locate_in_trait_and_set(::HIR::Visitor::PathContext pc, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait,  ::HIR::Path::Data& pd) {
@@ -387,7 +377,7 @@ namespace resolve_ufcs {
             static Span _sp;
             const auto& sp = _sp;
             if( locate_item_in_trait(pc, trait,  pd) ) {
-                pd = get_ufcs_known(mv$(pd.as_UfcsUnknown()), trait_path.clone() /*make_generic_path(trait_path.m_path, trait)*/, trait);
+                pd = get_ufcs_known(mv$(pd.as_UfcsUnknown()), trait_path.clone(), trait);
                 return true;
             }
 
