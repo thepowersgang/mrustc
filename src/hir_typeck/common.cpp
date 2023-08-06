@@ -372,13 +372,16 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
         m_hrb_stack.pop_back();
         return ::HIR::TypeRef( mv$(ft) );
         }
+    // Closures and generators are just passed through, needed for hackery in type checking (erasing HRLs)
     TU_ARMA(Closure, e) {
         ::HIR::TypeData::Data_Closure  oe;
         oe.node = e.node;
         return ::HIR::TypeRef( mv$(oe) );
         }
     TU_ARMA(Generator, e) {
-        TODO(sp, "Monomorphising a generator type?");
+        ::HIR::TypeData::Data_Generator oe;
+        oe.node = e.node;
+        return ::HIR::TypeRef( mv$(oe) );
         }
     }
     throw "";
