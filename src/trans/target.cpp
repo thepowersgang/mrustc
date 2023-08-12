@@ -907,6 +907,7 @@ namespace {
     {
         const auto& te = ty.data().as_Path();
         const auto& str = *te.binding.as_Struct();
+        // TODO: Wipe lifetimes?
         auto monomorph_cb = MonomorphStatePtr(nullptr, &te.path.m_data.as_Generic().m_params, nullptr);
         auto monomorph = [&](const auto& tpl) {
             return resolve.monomorph_expand(sp, tpl, monomorph_cb);
