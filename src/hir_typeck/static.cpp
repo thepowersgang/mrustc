@@ -443,7 +443,7 @@ bool StaticTraitResolve::find_impl(
                     return true;
             }
 
-            DEBUG("- No bounds matched");
+            DEBUG("- No bounds on trait/aty matched");
         }
         }
         // --- /UfcsKnown ---
@@ -556,6 +556,34 @@ bool StaticTraitResolve::find_impl__bounds(
         }
     };
 
+    // If there's a `_` in the type, then need to do a linear search
+    if(visit_ty_with(type, [&](const HIR::TypeRef& t)->bool{ return t.data().is_Infer(); }))
+    {
+        for(auto it = m_trait_bounds.begin(); it != m_trait_bounds.end(); ++ it)
+        {
+            if(it->first.second.m_path != trait_path) {
+                continue;
+            }
+            const auto& b_type = it->first.first;
+            const auto& b_params = it->first.second.m_params;
+
+            DEBUG("ivar present: type ?= " << b_type);
+            if( b_type.compare_with_placeholders(sp, type, [](const auto&t)->const ::HIR::TypeRef&{return t;}) == ::HIR::Compare::Unequal ) {
+                continue;
+            }
+            DEBUG(b_type << ": " << "for" << it->second.hrbs.fmt_args() << " " << trait_path << b_params);
+            // Check against `params`
+            if( trait_params ) {
+                if( !H::compare_pp(sp, *trait_params, b_params) )
+                    continue;
+            }
+            // Hand off to the closure, and return true if it does
+            if( found_cb(ImplRef(&it->second.hrbs, &b_type, &b_params, &it->second.assoc), false) ) {
+                return true;
+            }
+        }
+    }
+    else
     {
         auto ir = m_trait_bounds.equal_range(std::make_pair(std::ref(type), std::ref(trait_path)));
         for(auto it = ir.first; it != ir.second; ++ it)

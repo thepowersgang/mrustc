@@ -5391,11 +5391,19 @@ namespace {
                 // If the output type is just < v.impl_ty as v.trait >::v.name, return false
                 if( TU_TEST1(output_type.data(), Path, .path.m_data.is_UfcsKnown()) )
                 {
-                    const auto& pe = output_type.data().as_Path().path.m_data.as_UfcsKnown();
+                    auto& pe = output_type.data().as_Path().path.m_data.as_UfcsKnown();
+
                     if( pe.type == v.impl_ty && pe.trait.m_path == v.trait && pe.trait.m_params == v.params && pe.item == v.name )
                     {
-                        DEBUG("- Attempted recursion, stopping it");
-                        return false;
+                        if( TU_TEST1(v.left_ty.data(), Path, .path.m_data.is_UfcsKnown()) )
+                        {
+                            output_type.data_mut().as_Path().binding = HIR::TypePathBinding::make_Opaque({});
+                        }
+                        else
+                        {
+                            DEBUG("- Attempted recursion, stopping it");
+                            return false;
+                        }
                     }
                 }
                 context.equate_types(sp, v.left_ty, output_type);
