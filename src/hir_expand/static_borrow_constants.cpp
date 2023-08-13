@@ -262,28 +262,33 @@ namespace {
             auto saved_all_constant = m_all_constant;
             m_all_constant = true;
             ::HIR::ExprVisitorDef::visit(node);
+
             // If the inner is constant (Array, Struct, Literal, const)
             if( m_all_constant )
             {
                 // Handle a `_Unsize` inner
                 auto* value_ptr_ptr = &node.m_value;
-                if(auto* inner_node = dynamic_cast<::HIR::ExprNode_Index*>(value_ptr_ptr->get()))
+                for(;;)
                 {
-                    value_ptr_ptr = &inner_node->m_value;
-                }
-                if(auto* inner_node = dynamic_cast<::HIR::ExprNode_Unsize*>(value_ptr_ptr->get()))
-                {
-                    value_ptr_ptr = &inner_node->m_value;
+                    if(auto* inner_node = dynamic_cast<::HIR::ExprNode_Index*>(value_ptr_ptr->get()))
+                    {
+                        value_ptr_ptr = &inner_node->m_value;
+                        continue;
+                    }
+                    if(auto* inner_node = dynamic_cast<::HIR::ExprNode_Unsize*>(value_ptr_ptr->get()))
+                    {
+                        value_ptr_ptr = &inner_node->m_value;
+                        continue;
+                    }
+                    break;
                 }
                 // If the inner value is already a static or it's a constant, then treat as a valid static
                 auto& value_ptr = *value_ptr_ptr;
                 if(auto* inner_node = dynamic_cast<::HIR::ExprNode_Deref*>(value_ptr_ptr->get()))
                 {
-                    //if( dynamic_cast<HIR::ExprNode_PathValue*>(&*inner_node->m_value) ) {
-                        m_all_constant = saved_all_constant;
-                        m_is_constant = true;
-                        return ;
-                    //}
+                    m_all_constant = saved_all_constant;
+                    m_is_constant = true;
+                    return ;
                 }
                 auto usage = value_ptr->m_usage;
 
@@ -419,6 +424,15 @@ namespace {
                     m_is_constant = true;
                 }
             }
+            else
+            {
+                // TODO: It would be nice if this could see through indexing/fields, but indexing needs a constant index
+                if( dynamic_cast<::HIR::ExprNode_PathValue*>(node.m_value.get()) && node.m_value->m_usage == HIR::ValueUsage::Borrow )
+                {
+                    m_is_constant =  true;
+                }
+            }
+
             m_all_constant = saved_all_constant;
         }
 
@@ -582,6 +596,10 @@ namespace {
         void visit(::HIR::ExprNode_Literal& node) override {
             ::HIR::ExprVisitorDef::visit(node);
             m_is_constant = true;
+        }
+        void visit(::HIR::ExprNode_ConstParam& node) override {
+            ::HIR::ExprVisitorDef::visit(node);
+            //m_is_constant = true;
         }
         void visit(::HIR::ExprNode_UnitVariant& node) override {
             ::HIR::ExprVisitorDef::visit(node);
@@ -807,7 +825,7 @@ namespace {
                 ExprVisitor_Mutate  ev(m_resolve, m_self_type, this->get_new_ty_cb(), item.m_value);
                 ev.visit_node_ptr(item.m_value);
                 if( !ev.all_constant() ) {
-                    ERROR(item.m_value->span(), E0000, "`static " << p << "` is not constant");
+                    WARNING(item.m_value->span(), W0000, "`static " << p << "` is not constant");
                 }
             }
         }
@@ -817,7 +835,7 @@ namespace {
                 ExprVisitor_Mutate  ev(m_resolve, m_self_type, this->get_new_ty_cb(), item.m_value);
                 ev.visit_node_ptr(item.m_value);
                 if( !ev.all_constant() ) {
-                    ERROR(item.m_value->span(), E0000, "`const " << p << "` is not constant");
+                    WARNING(item.m_value->span(), W0000, "`const " << p << "` is not constant");
                 }
             }
         }
