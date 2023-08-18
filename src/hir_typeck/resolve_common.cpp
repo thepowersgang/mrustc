@@ -18,7 +18,7 @@ void TraitResolveCommon::prep_indexes(const Span& sp)
     m_type_equalities.clear();
     m_trait_bounds.clear();
 
-    this->iterate_bounds([&](const auto& b)->bool {
+    this->iterate_bounds([&](const HIR::GenericBound& b)->bool {
         TU_MATCH_HDRA( (b), { )
         default:
             break;

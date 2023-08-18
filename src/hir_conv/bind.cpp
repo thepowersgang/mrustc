@@ -738,11 +738,27 @@ namespace {
 
                     ::HIR::TypeRef  ty_self { "Self", 0xFFFF };
                     auto monomorph_cb = MonomorphStatePtr(&ty_self, &params, nullptr);
+                    auto monomorph_tp = [&](const HIR::TraitPath& tp)->HIR::TraitPath {
+                        // TODO: if `path.m_path` has HRLs, then this needs HRLs (only if the HRLs get used?)
+                        if( tp.m_path.m_hrls && path.m_path.m_hrls ) {
+                            // TODO: How to determine which to use?
+                            // - May need to combine them.
+                            return monomorph_cb.monomorph_traitpath(sp, tp, false);
+                        }
+                        else if (path.m_path.m_hrls) {
+                            auto rv = monomorph_cb.monomorph_traitpath(sp, tp, false);
+                            rv.m_path.m_hrls = box$(path.m_path.m_hrls->clone());
+                            return rv;
+                        }
+                        else {
+                            return monomorph_cb.monomorph_traitpath(sp, tp, false);
+                        }
+                        };
                     if( tr.m_all_parent_traits.size() > 0 )
                     {
                         for(const auto& pt : tr.m_all_parent_traits)
                         {
-                            supertraits.push_back( monomorph_cb.monomorph_traitpath(sp, pt, false) );
+                            supertraits.push_back( monomorph_tp(pt) );
                         }
                     }
                     else
@@ -750,7 +766,8 @@ namespace {
                         // Recurse into parent traits
                         for(const auto& pt : tr.m_parent_traits)
                         {
-                            enum_supertraits_in(*pt.m_trait_ptr, monomorph_cb.monomorph_traitpath(sp, pt, false));
+                            // TODO: if `path.m_path` has HRLs, then this needs HRLs
+                            enum_supertraits_in(*pt.m_trait_ptr, monomorph_tp(pt));
                         }
                         // - Bound parent traits
                         for(const auto& b : tr.m_params.m_bounds)
@@ -764,7 +781,7 @@ namespace {
                             if( pt.m_path.m_path == path.m_path.m_path )
                                 continue ;
 
-                            enum_supertraits_in(*pt.m_trait_ptr, monomorph_cb.monomorph_traitpath(sp, pt, false));
+                            enum_supertraits_in(*pt.m_trait_ptr, monomorph_tp(pt));
                         }
                     }
 
