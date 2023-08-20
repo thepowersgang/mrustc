@@ -121,6 +121,7 @@ OBJ +=  mir/dump.o mir/helpers.o mir/visit_crate_mir.o
 OBJ +=  mir/from_hir.o mir/from_hir_match.o mir/mir_builder.o
 OBJ +=  mir/check.o mir/cleanup.o mir/optimise.o
 OBJ +=  mir/check_full.o
+OBJ +=  mir/borrow_check.o
 OBJ += hir/serialise.o hir/deserialise.o hir/serialise_lowlevel.o
 OBJ += trans/trans_list.o trans/mangling_v2.o
 OBJ +=  trans/enumerate.o trans/auto_impls.o trans/monomorphise.o trans/codegen.o
