@@ -73,11 +73,11 @@ namespace HIR {
         return os;
     }
 }
-Ordering ord(const HIR::GenericBound& a, const HIR::GenericBound& b)
+Ordering HIR::GenericBound::ord(const HIR::GenericBound& b) const
 {
-    if( a.tag() != b.tag() )
-        return a.tag() < b.tag() ? OrdLess : OrdGreater;
-    TU_MATCHA( (a,b), (ae,be),
+    if( this->tag() != b.tag() )
+        return this->tag() < b.tag() ? OrdLess : OrdGreater;
+    TU_MATCHA( (*this,b), (ae,be),
     (Lifetime,
         auto cmp = ::ord( ae.test, be.test );
         if(cmp != OrdEqual) return cmp;

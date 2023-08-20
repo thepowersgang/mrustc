@@ -72,6 +72,7 @@ TAGGED_UNION_EX(GenericBound, (), Lifetime, (
         })
     ), (), (), (
     GenericBound clone() const;
+    Ordering ord(const GenericBound& x) const;
     ));
 extern ::std::ostream& operator<<(::std::ostream& os, const GenericBound& x);
 
@@ -136,6 +137,4 @@ public:
 };
 
 }   // namespace HIR
-
-extern Ordering ord(const HIR::GenericBound& a, const HIR::GenericBound& b);
 
