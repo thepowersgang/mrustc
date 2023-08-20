@@ -362,7 +362,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
         }
     TU_ARMA(Function, e) {
         m_hrb_stack.push_back(&e.hrls);
-        ::HIR::FunctionType ft;
+        ::HIR::TypeData_FunctionPointer ft;
         ft.hrls = e.hrls.clone();
         ft.is_unsafe = e.is_unsafe;
         ft.m_abi = e.m_abi;
@@ -703,7 +703,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
         rv = ::HIR::TypeRef::new_pointer(e.type, clone_ty_with(sp, e.inner, callback));
         }
     TU_ARMA(Function, e) {
-        ::HIR::FunctionType ft;
+        ::HIR::TypeData_FunctionPointer ft;
         ft.hrls = e.hrls.clone();
         ft.is_unsafe = e.is_unsafe;
         ft.m_abi = e.m_abi;

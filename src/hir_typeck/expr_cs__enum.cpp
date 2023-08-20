@@ -1697,7 +1697,7 @@ namespace typecheck
             this->add_ivars_path(node.span(), node.m_path);
             
             auto get_function_type = [](const Span& sp, const HIR::Function& f, MonomorphStatePtr ms)->HIR::TypeRef {
-                ::HIR::FunctionType ft {
+                ::HIR::TypeData_FunctionPointer ft {
                     HIR::GenericParams(),   // TODO: Get HRLs
                     f.m_unsafe,
                     f.m_abi,
@@ -1744,7 +1744,7 @@ namespace typecheck
 
                     auto ms = MonomorphStatePtr(nullptr, &e.m_params, nullptr);
 
-                    ::HIR::FunctionType ft {
+                    ::HIR::TypeData_FunctionPointer ft {
                         HIR::GenericParams(),   // TODO: Get HRLs
                         false,
                         ABI_RUST,
@@ -1773,7 +1773,7 @@ namespace typecheck
                     const auto& var_data = str.m_data.as_Tuple();
 
                     auto ms = MonomorphStatePtr(nullptr, &e.m_params, nullptr);
-                    ::HIR::FunctionType ft {
+                    ::HIR::TypeData_FunctionPointer ft {
                         HIR::GenericParams(),   // TODO: Get HRLs
                         false,
                         ABI_RUST,

@@ -165,7 +165,7 @@ namespace {
                                 }
                             }
 
-                            ::HIR::FunctionType ft;
+                            ::HIR::TypeData_FunctionPointer ft;
                             ft.hrls.m_lifetimes = ve.m_params.m_lifetimes;
                             ft.is_unsafe = ve.m_unsafe;
                             ft.m_abi = ve.m_abi;
@@ -221,7 +221,7 @@ namespace {
 
             VtableConstruct vtc { this, &tr, {} };
             // - Drop glue pointer
-            ::HIR::FunctionType ft;
+            ::HIR::TypeData_FunctionPointer ft;
             ft.is_unsafe = false;
             ft.m_abi = ABI_RUST;
             ft.m_rettype = ::HIR::TypeRef::new_unit();

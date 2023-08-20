@@ -117,9 +117,40 @@ TAGGED_UNION_EX(TypePathBinding, (), Unbound, (
         bool operator!=(const TypePathBinding& x) const { return !(*this == x); }
     )
     );
+struct TypeData_Path
+{
+    ::HIR::Path path;
+    TypePathBinding binding;
 
+    bool is_closure() const {
+        return path.m_data.is_Generic()
+            && path.m_data.as_Generic().m_path.m_components.back().size() > 8
+            && path.m_data.as_Generic().m_path.m_components.back().compare(0,strlen(CLOSURE_PATH_PREFIX), CLOSURE_PATH_PREFIX) == 0
+            ;
+    }
+    bool is_generator() const {
+        return path.m_data.is_Generic()
+            && path.m_data.as_Generic().m_path.m_components.back().size() > 8
+            && path.m_data.as_Generic().m_path.m_components.back().compare(0,strlen(GENERATOR_PATH_PREFIX), GENERATOR_PATH_PREFIX) == 0
+            ;
+    }
+};
 
-struct FunctionType
+struct TypeData_TraitObject
+{
+    ::HIR::TraitPath    m_trait;
+    ::std::vector< ::HIR::GenericPath > m_markers;
+    ::HIR::LifetimeRef  m_lifetime;
+};
+struct TypeData_ErasedType
+{
+    ::HIR::Path m_origin;
+    unsigned int m_index;
+    bool m_is_sized;
+    ::std::vector< ::HIR::TraitPath>    m_traits;
+    ::std::vector< ::HIR::LifetimeRef>  m_lifetimes;
+};
+struct TypeData_FunctionPointer
 {
     GenericParams   hrls;   // Higher-ranked lifetimes
     bool    is_unsafe;
@@ -148,36 +179,10 @@ TAGGED_UNION(TypeData, Diverge,
         }),
     (Diverge, struct {}),
     (Primitive, ::HIR::CoreType),
-    (Path, struct {  // TODO: Pointer wrap
-        ::HIR::Path path;
-        TypePathBinding binding;
-
-        bool is_closure() const {
-            return path.m_data.is_Generic()
-                && path.m_data.as_Generic().m_path.m_components.back().size() > 8
-                && path.m_data.as_Generic().m_path.m_components.back().compare(0,strlen(CLOSURE_PATH_PREFIX), CLOSURE_PATH_PREFIX) == 0
-                ;
-        }
-        bool is_generator() const {
-            return path.m_data.is_Generic()
-                && path.m_data.as_Generic().m_path.m_components.back().size() > 8
-                && path.m_data.as_Generic().m_path.m_components.back().compare(0,strlen(GENERATOR_PATH_PREFIX), GENERATOR_PATH_PREFIX) == 0
-                ;
-        }
-        }),
+    (Path, TypeData_Path),  // TODO: Pointer wrap
     (Generic, GenericRef),
-    (TraitObject, struct {  // TODO: Pointer wrap
-        ::HIR::TraitPath    m_trait;
-        ::std::vector< ::HIR::GenericPath > m_markers;
-        ::HIR::LifetimeRef  m_lifetime;
-        }),
-    (ErasedType, struct {  // TODO: Pointer wrap
-        ::HIR::Path m_origin;
-        unsigned int m_index;
-        bool m_is_sized;
-        ::std::vector< ::HIR::TraitPath>    m_traits;
-        ::std::vector< ::HIR::LifetimeRef>  m_lifetimes;
-        }),
+    (TraitObject, TypeData_TraitObject),  // TODO: Pointer wrap
+    (ErasedType, TypeData_ErasedType),  // TODO: Pointer wrap
     (Array, struct {
         TypeRef inner;
         ArraySize  size;
@@ -195,7 +200,7 @@ TAGGED_UNION(TypeData, Diverge,
         ::HIR::BorrowType   type;
         TypeRef inner;
         }),
-    (Function, FunctionType),   // TODO: Pointer wrap, this is quite large
+    (Function, TypeData_FunctionPointer),   // TODO: Pointer wrap, this is quite large
     (Closure, struct {
         const ::HIR::ExprNode_Closure*  node;
         }),
@@ -261,7 +266,7 @@ inline TypeRef::TypeRef(RcString name, unsigned int slot):
 inline TypeRef::TypeRef(::std::vector< ::HIR::TypeRef> sts):
     TypeRef( TypeData::make_Tuple(mv$(sts)) )
 {}
-inline TypeRef::TypeRef(FunctionType ft):
+inline TypeRef::TypeRef(TypeData_FunctionPointer ft):
     TypeRef( TypeData::make_Function(mv$(ft)) )
 {
 }

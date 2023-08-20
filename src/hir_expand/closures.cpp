@@ -366,7 +366,7 @@ namespace {
 
                 // TODO: Get lifetime params
                 const auto& src_node = *src_te.node;
-                ::HIR::FunctionType    fcn_ty_inner { HIR::GenericParams(), /*is_unsafe=*/false, ABI_RUST, src_node.m_return.clone_shallow(), {} };
+                ::HIR::TypeData_FunctionPointer    fcn_ty_inner { HIR::GenericParams(), /*is_unsafe=*/false, ABI_RUST, src_node.m_return.clone_shallow(), {} };
                 fcn_ty_inner.m_arg_types.reserve(src_node.m_args.size());
                 for(const auto& arg : src_node.m_args) {
                     fcn_ty_inner.m_arg_types.push_back( arg.second.clone_shallow() );

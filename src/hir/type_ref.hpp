@@ -54,7 +54,7 @@ enum class CoreType;
 enum class BorrowType;
 class TypeData;
 class TypeInner;
-struct FunctionType;
+struct TypeData_FunctionPointer;
 class TypePathBinding;
 
 class TypeRef
@@ -83,7 +83,7 @@ public:
     TypeRef(::HIR::CoreType ct);
     TypeRef(RcString name, unsigned int slot);
     TypeRef(::std::vector< ::HIR::TypeRef> sts);
-    TypeRef(FunctionType ft);
+    TypeRef(TypeData_FunctionPointer ft);
 
     static TypeRef new_unit();
     static TypeRef new_diverge();

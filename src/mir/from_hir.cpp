@@ -2350,7 +2350,7 @@ namespace {
                     auto monomorph_cb = MonomorphStatePtr(nullptr, nullptr, &pe.m_params);
 
                     // TODO: Obtain function type for this function (i.e. a type that is specifically for this function)
-                    auto fcn_ty_data = ::HIR::FunctionType {
+                    auto fcn_ty_data = ::HIR::TypeData_FunctionPointer {
                         HIR::GenericParams(),
                         e.m_unsafe,
                         e.m_abi,

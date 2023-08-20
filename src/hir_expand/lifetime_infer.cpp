@@ -1554,7 +1554,7 @@ namespace {
                 auto p = node.m_path.m_data.as_Generic().m_path;
                 p.m_components.pop_back();
 
-                ::HIR::FunctionType ft {
+                ::HIR::TypeData_FunctionPointer ft {
                     HIR::GenericParams(),   // TODO: Get HRLs?
                     false, ABI_RUST,
                     HIR::TypeRef::new_path(HIR::GenericPath(p, node.m_path.m_data.as_Generic().m_params.clone()), ve.e),
@@ -1571,7 +1571,7 @@ namespace {
                 const auto& str = *ve.s;
                 const auto& fields = str.m_data.as_Tuple();
 
-                ::HIR::FunctionType ft {
+                ::HIR::TypeData_FunctionPointer ft {
                     HIR::GenericParams(),   // TODO: Get HRLs?
                     false, ABI_RUST,
                     HIR::TypeRef::new_path(node.m_path.m_data.as_Generic().clone(), ve.s),
@@ -1591,7 +1591,7 @@ namespace {
                 ty = m_resolve.monomorph_expand(sp, ve->m_type, ms);
                 }
             TU_ARMA(Function, ve) {
-                ::HIR::FunctionType ft {
+                ::HIR::TypeData_FunctionPointer ft {
                     HIR::GenericParams(),
                     ve->m_unsafe, ve->m_abi,
                     m_resolve.monomorph_expand(sp, ve->m_return, ms),

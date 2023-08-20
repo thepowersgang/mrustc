@@ -1014,7 +1014,7 @@ namespace {
         ::std::vector< ::HIR::TypeRef>  args;
         for(const auto& arg : e.info.m_arg_types)
             args.push_back( LowerHIR_Type(arg) );
-        ::HIR::FunctionType f {
+        ::HIR::TypeData_FunctionPointer f {
             mv$(params),
             e.info.is_unsafe,
             e.info.m_abi,

@@ -1014,7 +1014,7 @@ const ::HIR::TraitMarkings* HIR::TypePathBinding::get_trait_markings() const
         return ::HIR::TypeRef( TypeData::make_Pointer({e.type, e.inner.clone()}) );
         }
     TU_ARMA(Function, e) {
-        FunctionType    ft {
+        TypeData_FunctionPointer ft {
             e.hrls.clone(),
             e.is_unsafe,
             e.m_abi,
