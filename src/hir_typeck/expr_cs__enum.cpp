@@ -2118,7 +2118,7 @@ void Typecheck_Code_CS__EnumerateRules(
             : context(context)
             , expr(expr)
             , cur_self(nullptr)
-            , hrls(false)
+            , hrls(nullptr)
         {
         }
 
