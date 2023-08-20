@@ -1678,6 +1678,7 @@ namespace {
         void visit_static(::HIR::ItemPath p, ::HIR::Static& item) override {
             if( item.m_value )
             {
+                auto _ = this->m_resolve.set_item_generics(item.m_params);
                 ExprVisitor_Extract    ev(m_resolve, m_self_type, item.m_value.m_bindings, m_out, p.name);
                 ev.visit_root(*item.m_value);
 

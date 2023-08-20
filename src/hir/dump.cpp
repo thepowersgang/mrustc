@@ -279,16 +279,21 @@ namespace {
                 m_os << indent() << "#[link_name=\"" << item.m_linkage.name << "\"]\n";
             if( item.m_value )
             {
-                m_os << indent() << "static " << p.get_name() << ": " << item.m_type << " = " << item.m_value_res << ";\n";
+                m_os << indent() << "static " << p.get_name() << item.m_params.fmt_args() << ": " << item.m_type << " = " << item.m_value_res;
             }
             else if( item.m_value_generated )
             {
-                m_os << indent() << "static " << p.get_name() << ": " << item.m_type << " = /*magic*/ " << item.m_value_res << ";\n";
+                m_os << indent() << "static " << p.get_name() << item.m_params.fmt_args() << ": " << item.m_type << " = /*magic*/ " << item.m_value_res;
             }
             else
             {
-                m_os << indent() << "extern static " << p.get_name() << ": " << item.m_type << ";\n";
+                m_os << indent() << "extern static " << p.get_name() << ": " << item.m_type;
             }
+            if( ! item.m_params.m_bounds.empty() )
+            {
+                m_os << indent() << " " << item.m_params.fmt_bounds() << "\n";
+            }
+            m_os << ";\n";
         }
         void visit_constant(::HIR::ItemPath p, ::HIR::Constant& item) override
         {

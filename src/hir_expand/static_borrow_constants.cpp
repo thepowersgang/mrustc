@@ -413,9 +413,10 @@ namespace {
 
                     auto m2 = MonomorphStatePtr(nullptr, nullptr, &constr_params);
                     auto new_res_ty = m2.monomorph_type(sp, static_ty, false);
+                    DEBUG("new_res_ty = " << new_res_ty);
 
                     auto path = m_new_static_cb(sp, mv$(static_ty), mv$(val_expr), mv$(params_def));
-                    DEBUG("> " << path);
+                    DEBUG("> " << path << constr_params);
                     // Update the `m_value` to point to a new node
                     auto new_node = NEWNODE(std::move(new_res_ty), PathValue, sp, HIR::GenericPath(mv$(path), mv$(constr_params)), HIR::ExprNode_PathValue::STATIC);
                     new_node->m_usage = usage;

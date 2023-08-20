@@ -304,7 +304,7 @@ Ordering HIR::TraitPath::ord(const TraitPath& x) const
     for( unsigned int i = 0; i < x.m_values.size(); i ++ )
     {
         if( const auto* ge = this->m_values[i].opt_Generic() ) {
-            auto rv = match.match_val(*ge, x.m_values[i]);
+            rv &= match.match_val(*ge, x.m_values[i]);
             if(rv == Compare::Unequal)
                 return Compare::Unequal;
         }

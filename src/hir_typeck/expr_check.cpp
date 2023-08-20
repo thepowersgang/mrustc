@@ -1042,54 +1042,43 @@ namespace {
         void visit(::HIR::ExprNode_PathValue& node) override
         {
             TRACE_FUNCTION_F(&node << " " << node.m_path);
-            const auto& sp = node.span();
-
-            TU_MATCH_HDRA( (node.m_path.m_data), {)
-            TU_ARMA(Generic, e) {
-                switch(node.m_target)
-                {
-                case ::HIR::ExprNode_PathValue::UNKNOWN:
-                    BUG(sp, "Unknown target PathValue encountered with Generic path");
-                case ::HIR::ExprNode_PathValue::FUNCTION:
-                    // TODO: Is validate needed?
-                    assert( node.m_res_type.data().is_Function() );
-                    break;
-                case ::HIR::ExprNode_PathValue::STRUCT_CONSTR: {
-                    } break;
-                case ::HIR::ExprNode_PathValue::ENUM_VAR_CONSTR: {
-                    } break;
-                case ::HIR::ExprNode_PathValue::STATIC: {
-                    } break;
-                case ::HIR::ExprNode_PathValue::CONSTANT: {
-                    } break;
+            const Span& sp = node.span();
+            
+            MonomorphState  out_params;
+            StaticTraitResolve::ValuePtr v = this->m_resolve.get_value(sp, node.m_path, out_params, /*signature_only=*/true);
+            TU_MATCH_HDRA( (v), {)
+            TU_ARMA(NotFound, ve) {
+                BUG(sp, node.m_path << " Not found");
                 }
+            TU_ARMA(NotYetKnown, ve) {
+                // If the exact value can't be found, then
+                BUG(sp, node.m_path << " still unknown (has ivars?)");
                 }
-            TU_ARMA(UfcsUnknown, e) {
-                BUG(sp, "Encountered UfcsUnknown");
+            TU_ARMA(Static, ve) {
+                auto ty = out_params.monomorph_type(node.span(), ve->m_type);
+                this->m_resolve.expand_associated_types(sp, ty);
+                check_types_equal(sp, node.m_res_type, ty);
                 }
-            TU_ARMA(UfcsKnown, e) {
-                check_associated_type(sp, ::HIR::TypeRef(),  e.trait.m_path, e.trait.m_params, e.type.clone(), "");
-
-                const auto& trait = this->m_resolve.m_crate.get_trait_by_path(sp, e.trait.m_path);
-                auto it = trait.m_values.find( e.item );
-                if( it == trait.m_values.end() ) {
-                    ERROR(sp, E0000, "`" << e.item << "` is not a value member of trait " << e.trait.m_path);
+            TU_ARMA(Constant, ve) {
+                auto ty = out_params.monomorph_type(node.span(), ve->m_type);
+                this->m_resolve.expand_associated_types(sp, ty);
+                check_types_equal(sp, node.m_res_type, ty);
                 }
-                TU_MATCH_HDRA( (it->second), {)
-                TU_ARMA(Constant, ie) {
-                    ::HIR::TypeRef  tmp;
-                    const ::HIR::TypeRef& ty = m_resolve.monomorph_expand_opt(sp, tmp, ie.m_type, MonomorphStatePtr(&e.type, &e.trait.m_params, nullptr));
-                    check_types_equal(sp, node.m_res_type, ty);
-                    }
-                TU_ARMA(Static, ie) {
-                    TODO(sp, "Monomorpise associated static type - " << ie.m_type);
-                    }
-                TU_ARMA(Function, ie) {
-                    assert( node.m_res_type.data().is_Function() );
-                    }
+            TU_ARMA(StructConstant, ve) {
+                // TODO: Check struct type
                 }
+            TU_ARMA(EnumValue, ve) {
+                // TODO: Check enum variant type
                 }
-            TU_ARMA(UfcsInherent, e) {
+            
+            TU_ARMA(Function, ve) {
+                // TODO: Check function type
+                }
+            TU_ARMA(StructConstructor, ve) {
+                // TODO: Check function type (struct constructor)
+                }
+            TU_ARMA(EnumConstructor, ve) {
+                // TODO: Check function type (enum variant constructor)
                 }
             }
         }
