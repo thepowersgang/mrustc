@@ -72,7 +72,7 @@
 # A strange bug in `librustc_mir`
 --- src/librustc_mir/borrow_check/nll/invalidation.rs
 +++ src/librustc_mir/borrow_check/nll/invalidation.rs
-@@ -298,4 +298,4  @@
+@@ -298,4 +298,4 @@
          let drop_field = |
 -            ig: &mut InvalidationGenerator<'cg, 'cx, 'gcx, 'tcx>,
 +            ig: &mut InvalidationGenerator<'cg, 'cx, 'tcx, 'gcx>,
