@@ -249,19 +249,19 @@ DEF_VISIT(ExprNode_ArraySized, node,
 
 DEF_VISIT_H(ExprNode_Closure, node) {
     TRACE_FUNCTION_F("_Closure");
-    for(auto& arg : node.m_args) {
-        visit_pattern(node.span(), arg.first);
-        visit_type(arg.second);
-    }
-    visit_type(node.m_return);
-    if(node.m_code)
-    {
-        visit_node_ptr(node.m_code);
-    }
-    else
+    if( node.m_obj_path != HIR::GenericPath() )
     {
         for(auto& cap : node.m_captures)
             visit_node_ptr(cap);
+    }
+    else
+    {
+        for(auto& arg : node.m_args) {
+            visit_pattern(node.span(), arg.first);
+            visit_type(arg.second);
+        }
+        visit_type(node.m_return);
+        visit_node_ptr(node.m_code);
     }
 }
 DEF_VISIT_H(ExprNode_Generator, node) {

@@ -72,6 +72,8 @@ public:
 
     operator bool () const { return ptr != nullptr; }
 
+    ExprStatePtr clone() const;
+
           ::HIR::ExprState& operator*()       { assert(ptr); return *ptr; }
     const ::HIR::ExprState& operator*() const { assert(ptr); return *ptr; }
           ::HIR::ExprState* operator->()       { assert(ptr); return ptr; }

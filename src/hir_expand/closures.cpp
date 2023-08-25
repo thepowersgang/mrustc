@@ -31,6 +31,30 @@ namespace {
         new_type_cb_t   new_type;
 
         void push_new_impls(const Span& sp, ::HIR::Crate& crate);
+        struct Counts {
+            size_t  closure;
+            size_t  generator;
+            size_t  drop;
+        } save_counts() const {
+            return Counts { impls_closure.size(), impls_generator.size(), impls_drop.size() };
+        }
+        void update_source_module(Counts c, const HIR::SimplePath& path) {
+            for(auto i = c.closure; i < impls_closure.size(); i ++) {
+                if( impls_closure[i].second.m_src_module == HIR::SimplePath() ) {
+                    impls_closure[i].second.m_src_module = path;
+                }
+            }
+            for(auto i = c.generator; i < impls_generator.size(); i ++) {
+                if( impls_generator[i].m_src_module == HIR::SimplePath() ) {
+                    impls_generator[i].m_src_module = path;
+                }
+            }
+            for(auto i = c.drop; i < impls_drop.size(); i ++) {
+                if( impls_drop[i].m_src_module == HIR::SimplePath() ) {
+                    impls_drop[i].m_src_module = path;
+                }
+            }
+        }
     };
 
     template<typename K, typename V>
@@ -59,7 +83,13 @@ namespace {
 
     void OutState::push_new_impls(const Span& sp, ::HIR::Crate& crate)
     {
+        auto check_state = [&crate](::HIR::TraitImpl& ti) {
+            for(auto& m : ti.m_methods) {
+                ASSERT_BUG(Span(), m.second.data.m_code.m_state, "Missing expression state on " << ti.m_type << " :: " << m.first);
+            }
+            };
         auto push_trait_impl = [&](const ::HIR::SimplePath& p, std::unique_ptr<::HIR::TraitImpl> ptr) {
+            check_state(*ptr);
             auto& trait_impl_list_r = crate.m_all_trait_impls[p].get_list_for_type_mut(ptr->m_type);
             trait_impl_list_r.push_back(ptr.get());
             auto& trait_impl_list   = crate.m_trait_impls[p].get_list_for_type_mut(ptr->m_type);
@@ -108,10 +138,12 @@ namespace {
         }
         for(auto& impl : this->impls_generator)
         {
+            check_state(impl);
             push_trait_impl( crate.get_lang_item_path(sp, "generator"), box$(impl) );
         }
         for(auto& impl : this->impls_drop)
         {
+            check_state(impl);
             push_trait_impl( crate.get_lang_item_path(sp, "drop"), box$(impl) );
         }
         this->impls_closure.resize(0);
@@ -151,7 +183,7 @@ namespace {
                 auto binding_it = ::std::find(m_local_vars.begin(), m_local_vars.end(), pb.m_slot);
                 if( binding_it != m_local_vars.end() ) {
                     // NOTE: Offset of 1 is for `self` (`args` is destructured)
-                    pb.m_slot = 1 + binding_it - m_local_vars.begin();
+                    pb.m_slot = 1 + (binding_it - m_local_vars.begin());
                 }
                 else {
                     BUG(sp, "Pattern binds to non-local - " << pb);
@@ -165,7 +197,7 @@ namespace {
                     auto binding_it = ::std::find(m_local_vars.begin(), m_local_vars.end(), e->extra_bind.m_slot);
                     if( binding_it != m_local_vars.end() ) {
                         // NOTE: Offset of 1 is for `self` (`args` is destructured)
-                        e->extra_bind.m_slot = 1 + binding_it - m_local_vars.begin();
+                        e->extra_bind.m_slot = 1 + (binding_it - m_local_vars.begin());
                     }
                     else {
                         BUG(sp, "Pattern (split slice extra) binds to non-local - " << e->extra_bind);
@@ -602,16 +634,18 @@ namespace {
         const StaticTraitResolve& m_resolve;
         const ::HIR::TypeRef*   m_self_type;
         const ::std::vector< ::HIR::TypeRef>& m_variable_types;
+        const ::HIR::ExprPtr& m_expr_ptr;
 
         // Outputs
         OutState&   m_out;
         const char* m_new_type_suffix;
 
     public:
-        ExprVisitor_Extract(const StaticTraitResolve& resolve, const ::HIR::TypeRef* self_type, const ::std::vector< ::HIR::TypeRef>& var_types, OutState& out, const char* new_type_suffix):
+        ExprVisitor_Extract(const StaticTraitResolve& resolve, const ::HIR::TypeRef* self_type, const ::std::vector< ::HIR::TypeRef>& var_types, const ::HIR::ExprPtr& expr_ptr, OutState& out, const char* new_type_suffix):
             m_resolve(resolve),
             m_self_type(self_type),
             m_variable_types(var_types),
+            m_expr_ptr(expr_ptr),
             m_out(out),
             m_new_type_suffix(new_type_suffix)
         {
@@ -1269,6 +1303,14 @@ namespace {
                     ));
                 break;
             }
+
+            for(auto& ti : m_out.impls_closure) {
+                for(auto& m : ti.second.m_methods) {
+                    if(!m.second.data.m_code.m_state) {
+                        m.second.data.m_code.m_state = m_expr_ptr.m_state.clone();
+                    }
+                }
+            }
         }
 
 
@@ -1494,6 +1536,7 @@ namespace {
                 fcn_drop.m_return = ::HIR::TypeRef::new_unit();
                 fcn_drop.m_code.reset( new ::HIR::ExprNode_Tuple(sp, {}) );
                 fcn_drop.m_code->m_res_type = ::HIR::TypeRef::new_unit();
+                fcn_drop.m_code.m_state = m_expr_ptr.m_state.clone();
                 ::HIR::TraitImpl    drop_impl;
                 drop_impl.m_params = params.clone();
                 drop_impl.m_type = ::HIR::TypeRef::new_path( ::HIR::GenericPath(gen_struct_path, params.make_nop_params(0)), &gen_struct_ref );
@@ -1525,6 +1568,7 @@ namespace {
             v->m_drop_fcn_ptr = fcn_drop_ptr;
             body_node.reset(v.release());
             fcn_resume.m_code.reset( body_node.release() );
+            fcn_resume.m_code.m_state = m_expr_ptr.m_state.clone();
             fcn_resume.m_code.m_bindings = std::move(new_locals);
 
 
@@ -1590,7 +1634,12 @@ namespace {
                 return ::std::make_pair( ::HIR::SimplePath(crate.m_crate_name, {}) + name, ret_ptr );
                 };
 
+            auto empty_counts = m_out.save_counts();
+
             ::HIR::Visitor::visit_crate(crate);
+
+            // Defensive measure
+            m_out.update_source_module(empty_counts, root_mod_path);
 
             m_out.push_new_impls(sp, crate);
         }
@@ -1602,6 +1651,8 @@ namespace {
             m_cur_mod_path = &path;
 
             ::std::vector< ::std::pair<RcString, std::unique_ptr< ::HIR::VisEnt< ::HIR::TypeItem> > >>  new_types;
+
+            auto prev_impls = m_out.save_counts();
 
             unsigned int closure_count = 0;
             auto saved_nt = mv$(m_out.new_type);
@@ -1625,6 +1676,10 @@ namespace {
                 DEBUG(p << ": Push " << e.first);
                 mod.m_mod_items.insert( mv$(e) );
             }
+            // Fix module paths on all impls created during this call that haven't already had a path set
+            // - Child modules will set paths on theirs
+            // - The start counts are needed to avoid setting impls from sibling items
+            m_out.update_source_module(prev_impls, path);
         }
 
         // NOTE: This is left here to ensure that any expressions that aren't handled by higher code cause a failure
@@ -1660,7 +1715,7 @@ namespace {
                 DEBUG("Function code " << p);
 
                 {
-                    ExprVisitor_Extract    ev(m_resolve, m_self_type, item.m_code.m_bindings, m_out, p.name);
+                    ExprVisitor_Extract    ev(m_resolve, m_self_type, item.m_code.m_bindings, item.m_code, m_out, p.name);
                     ev.visit_root( *item.m_code );
                 }
 
@@ -1679,7 +1734,7 @@ namespace {
             if( item.m_value )
             {
                 auto _ = this->m_resolve.set_item_generics(item.m_params);
-                ExprVisitor_Extract    ev(m_resolve, m_self_type, item.m_value.m_bindings, m_out, p.name);
+                ExprVisitor_Extract    ev(m_resolve, m_self_type, item.m_value.m_bindings, item.m_value, m_out, p.name);
                 ev.visit_root(*item.m_value);
 
                 {
@@ -1734,7 +1789,11 @@ namespace {
 
             // TODO: Re-create m_new_type to store in the source module
 
+            auto prev_impls = m_out.save_counts();
+
             ::HIR::Visitor::visit_type_impl(impl);
+
+            m_out.update_source_module(prev_impls, impl.m_src_module);
 
             m_self_type = nullptr;
         }
@@ -1744,7 +1803,11 @@ namespace {
             m_self_type = &impl.m_type;
             auto _ = this->m_resolve.set_impl_generics(impl.m_type, impl.m_params);
 
+            auto prev_impls = m_out.save_counts();
+
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);
+
+            m_out.update_source_module(prev_impls, impl.m_src_module);
 
             m_self_type = nullptr;
         }
@@ -1775,7 +1838,7 @@ void HIR_Expand_Closures_Expr(const ::HIR::Crate& crate_ro, ::HIR::TypeRef& exp_
         };
 
     {
-        ExprVisitor_Extract    ev(resolve, self_type, exp.m_bindings, out, "");
+        ExprVisitor_Extract    ev(resolve, self_type, exp.m_bindings, exp, out, "");
         ev.visit_root( *exp );
     }
 

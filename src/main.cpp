@@ -143,9 +143,10 @@ void init_debug_list()
         "Typecheck Expressions",
 
         "Expand HIR Annotate",
-        "Expand HIR Static Borrow",
+        "Expand HIR Static Borrow Mark",
         "Expand HIR Lifetimes",
         "Expand HIR Closures",
+        "Expand HIR Static Borrow",
         "Expand HIR Calls",
         "Expand HIR VTables",
         "Expand HIR Reborrows",
@@ -652,8 +653,8 @@ int main(int argc, char *argv[])
         CompilePhaseV("Expand HIR Annotate", [&]() {
             HIR_Expand_AnnotateUsage(*hir_crate);
             });
-        CompilePhaseV("Expand HIR Static Borrow", [&]() {
-            HIR_Expand_StaticBorrowConstants(*hir_crate);
+        CompilePhaseV("Expand HIR Static Borrow Mark", [&]() {
+            HIR_Expand_StaticBorrowConstants_Mark(*hir_crate);
             });
         // - Needs to be done after static borrows, but before closures
         CompilePhaseV("Expand HIR Lifetimes", [&]() {
@@ -662,6 +663,9 @@ int main(int argc, char *argv[])
         // - Now that all types are known, closures can be desugared
         CompilePhaseV("Expand HIR Closures", [&]() {
             HIR_Expand_Closures(*hir_crate);
+            });
+        CompilePhaseV("Expand HIR Static Borrow", [&]() {
+            HIR_Expand_StaticBorrowConstants(*hir_crate);
             });
         // - Construct VTables for all traits and impls.
         //  TODO: How early can this be done?

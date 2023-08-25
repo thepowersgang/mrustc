@@ -1044,10 +1044,12 @@ namespace {
 
         void visit(::HIR::ExprNode_Borrow& node) override {
             HIR::ExprVisitorDef::visit(node);
-            auto lft = get_borrow_lifetime(*node.m_value, [&](const HIR::ExprNode& value)->HIR::LifetimeRef{
-                DEBUG("LOCAL: " << typeid(*node.m_value).name() << " " << typeid(value).name());
-                return m_state.allocate_local(node, value);
-                });
+            auto lft = node.m_is_valid_static_borrow_constant
+                ? ::HIR::LifetimeRef::new_static()
+                : get_borrow_lifetime(*node.m_value, [&](const HIR::ExprNode& value)->HIR::LifetimeRef{
+                    DEBUG("LOCAL: " << typeid(*node.m_value).name() << " " << typeid(value).name());
+                    return m_state.allocate_local(node, value);
+                    });
             equate_types(node.span(), node.m_res_type, HIR::TypeRef::new_borrow(node.m_type, node.m_value->m_res_type.clone(), lft));
         }
         void visit(::HIR::ExprNode_RawBorrow& node) override {

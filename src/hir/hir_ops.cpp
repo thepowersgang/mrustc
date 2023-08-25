@@ -1334,7 +1334,18 @@ const ::MIR::Function* HIR::Crate::get_or_gen_mir(const ::HIR::ItemPath& ip, con
                 Typecheck_Code(ms, const_cast<::HIR::Function::args_t&>(args), ret_ty, ep_mut);
                 //Debug_SetStagePre("Expand HIR Annotate");
                 HIR_Expand_AnnotateUsage_Expr(*this, ip, ep_mut);
-                // NOTE: Disabled due to challenges in making new statics at this stage
+                //Debug_SetStagePre("Expand HIR Statics Mark");
+                HIR_Expand_StaticBorrowConstants_Mark_Expr(*this, ip, ep_mut);
+            }
+            if( ep.m_state->stage < ::HIR::ExprState::Stage::Sbc )
+            {
+                if( ep.m_state->stage == ::HIR::ExprState::Stage::SbcRequest )
+                    ERROR(Span(), E0000, "Loop in constant evaluation");
+                ep.m_state->stage = ::HIR::ExprState::Stage::SbcRequest;
+                //Debug_SetStagePre("Expand HIR Lifetimes");
+                HIR_Expand_LifetimeInfer_Expr(*this, ip, args, ret_ty, ep_mut);
+                //Debug_SetStagePre("Expand HIR Closures");
+                HIR_Expand_Closures_Expr(*this, ret_ty, ep_mut);
                 //Debug_SetStagePre("Expand HIR Statics");
                 HIR_Expand_StaticBorrowConstants_Expr(*this, ip, ep_mut);
             }
@@ -1343,10 +1354,6 @@ const ::MIR::Function* HIR::Crate::get_or_gen_mir(const ::HIR::ItemPath& ip, con
                 if( ep.m_state->stage == ::HIR::ExprState::Stage::ExpandRequest )
                     ERROR(Span(), E0000, "Loop in constant evaluation");
                 ep.m_state->stage = ::HIR::ExprState::Stage::ExpandRequest;
-                //Debug_SetStagePre("Expand HIR Lifetimes");
-                HIR_Expand_LifetimeInfer_Expr(*this, ip, args, ret_ty, ep_mut);
-                //Debug_SetStagePre("Expand HIR Closures");
-                HIR_Expand_Closures_Expr(*this, ret_ty, ep_mut);
                 //Debug_SetStagePre("Expand HIR Calls");
                 HIR_Expand_UfcsEverything_Expr(*this, ep_mut);
                 //Debug_SetStagePre("Expand HIR Reborrows");

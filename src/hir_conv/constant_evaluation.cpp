@@ -469,6 +469,10 @@ namespace MIR { namespace eval {
                 assert(ofs <= m_encoded->bytes.size());
                 assert(len <= m_encoded->bytes.size());
                 assert(ofs+len <= m_encoded->bytes.size());
+                if(m_encoded->bytes.size() == 0) {
+                    // Empty vectors can have a null data pointer
+                    return reinterpret_cast<const uint8_t*>("");
+                }
                 return m_encoded->bytes.data() + ofs;
             }
             else {
@@ -926,7 +930,6 @@ namespace HIR {
                 }
                 MonomorphState  const_ms;
                 auto ent = get_ent_fullpath(state.sp, state.m_resolve, p, EntNS::Value,  const_ms);
-                DEBUG(ent.tag_str());
                 if(ent.is_Static())
                 {
                     const auto& s = *ent.as_Static();
@@ -956,11 +959,13 @@ namespace HIR {
                         {
                             MIR_BUG(state, p << " Defer during value generation");
                         }
+                        DEBUG(p << " = " << item.m_value_res);
                     }
                     return StaticRefPtr::allocate(std::move(p), &s.m_value_res);
                 }
                 else
                 {
+                    DEBUG(ent.tag_str() << " " << p);
                     return StaticRefPtr::allocate(std::move(p), nullptr);
                 }
             }
