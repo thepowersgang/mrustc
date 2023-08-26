@@ -1966,6 +1966,10 @@ namespace HIR {
                         dst.write_ptr(state, EncodedLiteral::PTR_BASE, AllocationPtr::allocate_ro(name.data(), name.size()));
                         dst.slice(Target_GetPointerBits()/8).write_uint(state, Target_GetPointerBits(), name.size());
                     }
+                    else if( te->name == "type_id" ) {
+                        auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                        dst.write_ptr(state, EncodedLiteral::PTR_BASE, StaticRefPtr::allocate(HIR::Path(mv$(ty), "#type_id"), nullptr));
+                    }
                     // ---
                     else if( te->name == "ctpop" ) {
                         auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
