@@ -35,7 +35,8 @@ namespace {
             size_t  closure;
             size_t  generator;
             size_t  drop;
-        } save_counts() const {
+        };
+        Counts save_counts() const {
             return Counts { impls_closure.size(), impls_generator.size(), impls_drop.size() };
         }
         void update_source_module(Counts c, const HIR::SimplePath& path) {
@@ -396,20 +397,26 @@ namespace {
                     ERROR(sp, E0000, "Cannot cast a closure with captures to a fn() type");
                 }
 
-                // TODO: Get lifetime params
+                // TODO: Store a path on the closure node to avoid issues with leakage.
+                // - If a closure defined in a closure leaks to its parent, its types will be mangled such that they're no longer valid.
+
+                // - Get the result type (can't use `get_value` as that won't find the still-to-be stored impls)
+                // TODO: Get lifetime params?
                 const auto& src_node = *src_te.node;
                 ::HIR::TypeData_FunctionPointer    fcn_ty_inner { HIR::GenericParams(), /*is_unsafe=*/false, ABI_RUST, src_node.m_return.clone_shallow(), {} };
                 fcn_ty_inner.m_arg_types.reserve(src_node.m_args.size());
                 for(const auto& arg : src_node.m_args) {
                     fcn_ty_inner.m_arg_types.push_back( arg.second.clone_shallow() );
                 }
-                auto res_ty = ::HIR::TypeRef(mv$(fcn_ty_inner));
+                auto res_ty = m_monomorphiser.monomorph_type(node.span(), ::HIR::TypeRef(mv$(fcn_ty_inner)));
 
+                // - Get the new PathValue
                 const auto& str = *src_te.node->m_obj_ptr;
                 auto closure_type = ::HIR::TypeRef::new_path( src_te.node->m_obj_path.clone(), &str );
                 auto fn_path = ::HIR::Path(mv$(closure_type), "call_free");
                 fn_path.m_data.as_UfcsInherent().impl_params = src_te.node->m_obj_path.m_params.clone();
 
+                DEBUG("PathValue " << fn_path);
                 node.m_value = NEWNODE(mv$(res_ty), PathValue, sp, mv$(fn_path), ::HIR::ExprNode_PathValue::FUNCTION);
             }
             ::HIR::ExprVisitorDef::visit(node);
@@ -796,14 +803,18 @@ namespace {
 
             void maybe_monomorph_bound(const Span& sp, const HIR::GenericBound& bound) {
                 // Determine if the bound relates to any of the types in the list.
-                if( bound_needed(sp, bound) ) {
+                // NOTE: Disabled, being picky is hard :(  - Sometimes a bound can add new types
+                if( true || bound_needed(sp, bound) ) {
+                    DEBUG("-- Bound added " << bound);
                     params.m_bounds.push_back( monomorph_bound(sp, bound) );
+                }
+                else {
+                    DEBUG("-- Bound un-used " << bound);
                 }
             }
             void add_bounds(const Span& sp, const StaticTraitResolve& resolve) {
                 assert(&resolve == &this->resolve);
                 for(const auto& bound : resolve.impl_generics().m_bounds ) {
-                    DEBUG("-- Bound " << bound);
                     maybe_monomorph_bound(sp, bound);
                 }
                 for(const auto& bound : resolve.item_generics().m_bounds ) {
@@ -861,6 +872,13 @@ namespace {
                 visit_ty_with(ty, get_needed_cb(rv));
                 return rv;
             }
+            TypeNeed type_bound_needed(const Span& sp, const HIR::GenericPath& tp) const {
+                auto rv = TypeNeed::NoGenerics;
+                for(const auto& ty : tp.m_params.m_types) {
+                    visit_ty_with(ty, get_needed_cb(rv));
+                }
+                return rv;
+            }
             TypeNeed type_bound_needed(const Span& sp, const HIR::TraitPath& tp) const {
                 auto rv = TypeNeed::NoGenerics;
                 visit_trait_path_tys_with(tp, get_needed_cb(rv));
@@ -883,13 +901,12 @@ namespace {
                     return true;
                     }
                 TU_ARMA(TraitBound, e) {
-                    auto rv_ty = type_bound_needed(sp, e.type);
-                    if( rv_ty != TypeNeed::Required )
+                    if( type_bound_needed(sp, e.type) != TypeNeed::Required )
                         return false;
                     // Check that the bounds don't reference an unused type.
-                    auto rv_tp = type_bound_needed(sp, e.trait);
-                    if( rv_ty == TypeNeed::UsesOthers )
-                        return false;
+                    //auto rv_tp = type_bound_needed(sp, e.trait.m_path);
+                    //if( rv_tp == TypeNeed::UsesOthers )
+                    //    return false;
                     return true;
                     }
                 TU_ARMA(TypeEquality, e) {
@@ -992,7 +1009,7 @@ namespace {
             capture_nodes.reserve( node.m_avu_cache.captured_vars.size() );
             node.m_is_copy = true;
             bool lifetime_needed = false;
-            for(const auto binding : node.m_avu_cache.captured_vars)
+            for(const auto& binding : node.m_avu_cache.captured_vars)
             {
                 const auto binding_idx = binding.first;
                 auto binding_type = binding.second;
