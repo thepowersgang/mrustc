@@ -17,4 +17,4 @@ Options:
   - ISSUE: When a closure is extracted in SBC, its generics change from a mix of I/M into just M. That mapping cannot be applied to the various instances around. The issue is the node changing, not the type leaking and needing to be monomorphised.
 >> Maybe I can leave a tag on the borrow node that indicates that it's static? And then use a second pass to make the actual static?
   - Instead of making closure expansion two-phase, make SBC two-phase. First pass tags static borrows, and second pass extracts/replaces them.
-  - One small change to lifetime_infer to 
+  - One small change to lifetime_infer to make it treat a borrow with this tag as `&'static` even if its body isn't.
