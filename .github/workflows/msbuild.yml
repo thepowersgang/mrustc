@@ -47,7 +47,7 @@ jobs:
       working-directory: ${{env.GITHUB_WORKSPACE}}
       # Add additional options to the MSBuild command line here (like platform or verbosity level).
       # See https://docs.microsoft.com/visualstudio/msbuild/msbuild-command-line-reference
-      run: msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} ${{env.SOLUTION_FILE_PATH
+      run: msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} ${{env.SOLUTION_FILE_PATH}}
      
     - name: Save Artifacts
       uses: actions/upload-artifact@v2
@@ -55,11 +55,11 @@ jobs:
         name: binaries
         # Includes `minipatch` as that's needed by the test scripts
         path: |
-          vsproject/x64/Release/minicargo.exe
-          vsproject/x64/Release/mrustc.exe
-          vsproject/x64/Release/testrunner.exe
-          vsproject/x64/Release/minipatch.exe
-          vsproject/x64/Release/mir_opt_test.exe
+          vsproject/x64/${{env.BUILD_CONFIGURATION}}/minicargo.exe
+          vsproject/x64/${{env.BUILD_CONFIGURATION}}/mrustc.exe
+          vsproject/x64/${{env.BUILD_CONFIGURATION}}/testrunner.exe
+          vsproject/x64/${{env.BUILD_CONFIGURATION}}/minipatch.exe
+          vsproject/x64/${{env.BUILD_CONFIGURATION}}/mir_opt_test.exe
   #test-run:
   #  needs: build
   #  strategy:
