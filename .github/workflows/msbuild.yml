@@ -27,6 +27,13 @@ jobs:
     runs-on: windows-latest
 
     steps:
+    # https://github.com/actions/runner-images/issues/842#issuecomment-643382166
+    # - Win8.1 SDK is (currently) used by mrustc
+    - name: Install Windows 8.1 SDK
+      shell: powershell
+      run: |
+        Invoke-WebRequest -Method Get -Uri https://go.microsoft.com/fwlink/p/?LinkId=323507 -OutFile sdksetup.exe -UseBasicParsing
+        Start-Process -Wait sdksetup.exe -ArgumentList "/q", "/norestart", "/features", "OptionId.WindowsDesktopSoftwareDevelopmentKit", "OptionId.NetFxSoftwareDevelopmentKit"
     - uses: actions/checkout@v3
 
     - name: Add MSBuild to PATH
@@ -36,9 +43,46 @@ jobs:
       working-directory: ${{env.GITHUB_WORKSPACE}}
       run: nuget restore ${{env.SOLUTION_FILE_PATH}}
 
-    # TODO: Disabled, mrustc uses the Win8.1 toolkit, but this doesn't have it.
-    #- name: Build
-    #  working-directory: ${{env.GITHUB_WORKSPACE}}
-    #  # Add additional options to the MSBuild command line here (like platform or verbosity level).
-    #  # See https://docs.microsoft.com/visualstudio/msbuild/msbuild-command-line-reference
-    #  run: msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} ${{env.SOLUTION_FILE_PATH}}
+    - name: Build
+      working-directory: ${{env.GITHUB_WORKSPACE}}
+      # Add additional options to the MSBuild command line here (like platform or verbosity level).
+      # See https://docs.microsoft.com/visualstudio/msbuild/msbuild-command-line-reference
+      run: msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} ${{env.SOLUTION_FILE_PATH
+     
+    - name: Save Artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: binaries
+        # Includes `minipatch` as that's needed by the test scripts
+        path: |
+          vsproject/x64/Release/minicargo.exe
+          vsproject/x64/Release/mrustc.exe
+          vsproject/x64/Release/testrunner.exe
+          vsproject/x64/Release/minipatch.exe
+          vsproject/x64/Release/mir_opt_test.exe
+  #test-run:
+  #  needs: build
+  #  strategy:
+  #    fail-fast: false
+  #    matrix:
+  #     rustver: ["1.29", "1.39", "1.19", "1.54"]
+  #  runs-on: windows-latest
+  #  env:
+  #   RUSTC_VERSION: ${{ matrix.rustver }}.0
+  #   MRUSTC_TARGET_VER: ${{ matrix.rustver }}
+  #   OUTDIR_SUF: -${{ matrix.rustver }}.0
+  #  steps:
+  #  - name: Checkout
+  #    uses: actions/checkout@v2
+  #  - name: Download all workflow run artifacts
+  #    uses: actions/download-artifact@v2
+  #    with:
+  #      name: binaries
+  #      path: bin
+  #  - name: Download rust source
+  #    shell: powershell
+  #    run: |
+  #      Invoke-WebRequest -Method Get -Uri https://static.rust-lang.org/dist/rustc-$RUSTC_VERSION-src.tar.gz -UseBasicParsing
+  #      "c:\Program Files\7-Zip\7z.exe" x rustc-$RUSTC_VERSION-src.tar.gz
+  #  - name: Build
+  #    run: vsproject\run_hello_${{ matrix.rustver }}.bat
