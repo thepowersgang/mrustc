@@ -1498,6 +1498,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             {
                 const auto& at = e.node->m_args[i].second;
                 args.push_back( at.clone() );
+                DEBUG(at << " ?= " << args_des[i]);
                 cmp &= at.compare_with_placeholders(sp, args_des[i], this->m_ivars.callback_resolve_infer());
             }
             if( cmp != ::HIR::Compare::Unequal )

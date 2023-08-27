@@ -840,6 +840,20 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
                 rv &= match_values(sp, *tse, xe.size.as_Unevaluated(), callback );
             }
         }
+        else if( const auto* xse = xe.size.opt_Unevaluated() )
+        {
+            // `te.size` must be known here, all we need to handle is `Infer`?
+            if( xse->is_Infer() ) {
+                rv &= Compare::Fuzzy;
+            }
+            else {
+                ASSERT_BUG(sp, !xse->is_Evaluated(), "TODO: Handle " << te.size << " ?= " << xe.size);
+                // - Evaluated? (TODO - could use `EncodedLiteralPtr( EncodedLiteral::make_usize(te.size.as_Known()) )`)
+                // - Generic - could only match with another generic, i.e. `tse` must have been `Unevaluated,Generic`
+                // - Unevaluated - could only match with another Unevaluated, i.e. `tse` must have been `Unevaluated,Unevaluated`
+                return Compare::Unequal;
+            }
+        }
         else if( te.size != xe.size ) {
             return Compare::Unequal;
         }
@@ -1246,9 +1260,21 @@ const ::HIR::TraitMarkings* HIR::TypePathBinding::get_trait_markings() const
         //TODO(sp, "ErasedType");
         }
     TU_ARMA(Array, le, re) {
-        if( le.size != re.size )
+        auto rv = Compare::Equal;
+        if( le.size.is_Unevaluated() && le.size.as_Unevaluated().is_Infer() ) {
+            rv &= Compare::Fuzzy;
+        }
+        else if( re.size.is_Unevaluated() && re.size.as_Unevaluated().is_Infer() ) {
+            rv &= Compare::Fuzzy;
+        }
+        else if( le.size != re.size ) {
             return Compare::Unequal;
-        return le.inner.compare_with_placeholders(sp, re.inner, resolve_placeholder);
+        }
+        else {
+            // Sizes equal
+        }
+        rv &= le.inner.compare_with_placeholders(sp, re.inner, resolve_placeholder);
+        return rv;
         }
     TU_ARMA(Slice, le, re) {
         return le.inner.compare_with_placeholders(sp, re.inner, resolve_placeholder);
