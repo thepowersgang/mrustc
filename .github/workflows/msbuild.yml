@@ -85,7 +85,7 @@ jobs:
     - name: Download rust source
       shell: powershell
       run: |
-        Invoke-WebRequest -Method Get -Uri https://static.rust-lang.org/dist/rustc-$RUSTC_VERSION-src.tar.gz -UseBasicParsing
-        "c:\Program Files\7-Zip\7z.exe" x rustc-$RUSTC_VERSION-src.tar.gz
+        Invoke-WebRequest -Method Get -Uri https://static.rust-lang.org/dist/rustc-${{matrix.rustver}}.0-src.tar.gz -UseBasicParsing
+        Start-Process -Wait "c:\Program Files\7-Zip\7z.exe" x rustc-${{matrix.rustver}}.0-src.tar.gz
     - name: Build
       run: vsproject\run_hello_Pick.cmd ${{ matrix.rustver }}
