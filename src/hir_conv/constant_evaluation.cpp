@@ -1970,6 +1970,21 @@ namespace HIR {
                         auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
                         dst.write_ptr(state, EncodedLiteral::PTR_BASE, StaticRefPtr::allocate(HIR::Path(mv$(ty), "#type_id"), nullptr));
                     }
+                    else if( te->name == "caller_location" ) {
+                        auto ty_path = state.m_resolve.m_crate.get_lang_item_path(state.sp, "panic_location");
+                        auto ty = HIR::TypeRef::new_path(ty_path, &state.m_resolve.m_crate.get_struct_by_path(state.sp, ty_path));
+                        auto* repr = Target_GetTypeRepr(state.sp, state.m_resolve, ty);
+                        MIR_ASSERT(state, repr, "No repr for panic::Location?");
+                        MIR_ASSERT(state, repr->fields.size() == 3, "Unexpected item count in panic::Location");
+                        auto val = RelocPtr(AllocationPtr::allocate(state, ty));
+                        dst.write_ptr(state, EncodedLiteral::PTR_BASE, val);
+                        auto rv = ValueRef(val);
+                        auto pb = Target_GetPointerBits()/8;
+                        rv.slice(repr->fields[0].offset+ 0, pb).write_ptr(state, EncodedLiteral::PTR_BASE, ConstantPtr::allocate("", 0)); // file.ptr
+                        rv.slice(repr->fields[0].offset+pb, pb).write_uint(state, Target_GetPointerBits(), 0);    // file.len
+                        rv.slice(repr->fields[1].offset, 4).write_uint(state, 32, 0);  // line: u32
+                        rv.slice(repr->fields[2].offset, 4).write_uint(state, 32, 0);  // col: u32
+                    }
                     // ---
                     else if( te->name == "ctpop" ) {
                         auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));

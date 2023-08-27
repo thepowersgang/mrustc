@@ -938,12 +938,51 @@ namespace static_borrow_constants {
             for(auto& mod_list : m_new_statics)
             {
                 auto& mod = *const_cast<HIR::Module*>(mod_list.first);
+                m_current_module = &mod;
+
+                HIR::SimplePath mod_path;
+                if( !mod_list.second.empty() )
+                {
+                    mod_path = mod_list.second[0].first;
+                    mod_path.m_components.pop_back();
+                }
+
+                struct Nvs: ::HIR::Evaluator::Newval {
+
+                    size_t m_next_idx ;
+                    ::HIR::SimplePath   m_current_module_path;
+                    ::HIR::Module&  m_current_module;
+
+                    Nvs(::HIR::SimplePath current_module_path, ::HIR::Module& current_module, size_t idx)
+                        : m_current_module_path(::std::move(current_module_path))
+                        , m_current_module(current_module)
+                        , m_next_idx (idx)
+                    {
+                    }
+
+                    ::HIR::Path new_static(::HIR::TypeRef type, EncodedLiteral value) override {
+                        auto name = RcString::new_interned( FMT("lifted#" << m_next_idx) );
+                        m_next_idx ++;
+                        auto path = m_current_module_path + name;
+                        auto new_static = HIR::Static(
+                            HIR::Linkage(),
+                            /*is_mut=*/false,
+                            ::std::move(type),
+                            /*m_value=*/HIR::ExprPtr()
+                        );
+                        new_static.m_value_generated = true;
+                        new_static.m_value_res = ::std::move(value);
+                        DEBUG(path << " = " << new_static.m_value_res);
+                        m_current_module.m_value_items.insert(std::make_pair( name, box$(HIR::VisEnt<HIR::ValueItem> {
+                                HIR::Publicity::new_none(), // Should really be private, but we're well after checking
+                                HIR::ValueItem(::std::move(new_static))
+                            })) );
+                        return path;
+                    }
+                } nvs { mod_path, mod, mod_list.second.size() };
 
                 for(auto& new_static_pair : mod_list.second)
                 {
-                    struct NullNvs: ::HIR::Evaluator::Newval {
-                        ::HIR::Path new_static(::HIR::TypeRef type, EncodedLiteral value) override { BUG(Span(), "Unexpected attempt to create a new value in extracted constant"); }
-                    } null_nvs;
                     Span    sp;
                     auto& new_static = new_static_pair.second;
 
@@ -951,7 +990,7 @@ namespace static_borrow_constants {
 
                     if( !new_static.m_params.is_generic() )
                     {
-                        new_static.m_value_res = ::HIR::Evaluator(sp, m_crate, null_nvs).evaluate_constant( new_static_pair.first, new_static.m_value, new_static.m_type.clone());
+                        new_static.m_value_res = ::HIR::Evaluator(sp, m_crate, nvs).evaluate_constant( new_static_pair.first, new_static.m_value, new_static.m_type.clone());
                         new_static.m_value_generated = true;
                     }
 
