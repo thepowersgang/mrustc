@@ -803,8 +803,9 @@ namespace {
 
             void maybe_monomorph_bound(const Span& sp, const HIR::GenericBound& bound) {
                 // Determine if the bound relates to any of the types in the list.
-                // NOTE: Disabled, being picky is hard :(  - Sometimes a bound can add new types
-                if( true || bound_needed(sp, bound) ) {
+                // - This helps reduce the number of generics captured (which is needed for lifetimes)
+                // TODO: What if a bound adds a new type? Need to bring the bounds for that type in too
+                if( bound_needed(sp, bound) ) {
                     DEBUG("-- Bound added " << bound);
                     params.m_bounds.push_back( monomorph_bound(sp, bound) );
                 }
@@ -818,7 +819,6 @@ namespace {
                     maybe_monomorph_bound(sp, bound);
                 }
                 for(const auto& bound : resolve.item_generics().m_bounds ) {
-                    DEBUG("-- Bound " << bound);
                     maybe_monomorph_bound(sp, bound);
                 }
 
