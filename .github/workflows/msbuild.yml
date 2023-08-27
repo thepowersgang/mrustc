@@ -24,7 +24,8 @@ permissions:
 
 jobs:
   build:
-    runs-on: windows-latest
+    # Windows 2019 has VC140, -latest (-2022) does not
+    runs-on: windows-2019
 
     steps:
     # https://github.com/actions/runner-images/issues/842#issuecomment-643382166
