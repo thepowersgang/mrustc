@@ -676,6 +676,8 @@ namespace {
             bool m_frozen = false;
             HIR::LifetimeRef    m_capture_lifetime;
             mutable std::map<uint32_t, HIR::LifetimeRef>    m_lifetime_mappings;
+            // A set of bounds that have already been added to `params` - used to allow looping
+            std::set<const HIR::GenericBound*>    m_added_bounds;
 
             Monomorph(const StaticTraitResolve& resolve, ::HIR::GenericParams& params, ::HIR::PathParams& constructor_path_params)
                 : resolve(resolve)
@@ -804,10 +806,12 @@ namespace {
             void maybe_monomorph_bound(const Span& sp, const HIR::GenericBound& bound) {
                 // Determine if the bound relates to any of the types in the list.
                 // - This helps reduce the number of generics captured (which is needed for lifetimes)
-                // TODO: What if a bound adds a new type? Need to bring the bounds for that type in too
                 if( bound_needed(sp, bound) ) {
-                    DEBUG("-- Bound added " << bound);
-                    params.m_bounds.push_back( monomorph_bound(sp, bound) );
+                    if( m_added_bounds.insert(&bound).second ) {
+                        DEBUG("-- Bound added " << bound);
+                        auto new_b = monomorph_bound(sp, bound);
+                        params.m_bounds.push_back( mv$(new_b) );
+                    }
                 }
                 else {
                     DEBUG("-- Bound un-used " << bound);
@@ -815,11 +819,18 @@ namespace {
             }
             void add_bounds(const Span& sp, const StaticTraitResolve& resolve) {
                 assert(&resolve == &this->resolve);
-                for(const auto& bound : resolve.impl_generics().m_bounds ) {
-                    maybe_monomorph_bound(sp, bound);
-                }
-                for(const auto& bound : resolve.item_generics().m_bounds ) {
-                    maybe_monomorph_bound(sp, bound);
+                // Loop until no new bounds are added
+                // This handles the case where a bound adds a new generic, which then needs previously-visited bounds
+                size_t l = SIZE_MAX;
+                while(l != params.m_bounds.size())
+                {
+                    l = params.m_bounds.size();
+                    for(const auto& bound : resolve.impl_generics().m_bounds ) {
+                        maybe_monomorph_bound(sp, bound);
+                    }
+                    for(const auto& bound : resolve.item_generics().m_bounds ) {
+                        maybe_monomorph_bound(sp, bound);
+                    }
                 }
 
                 DEBUG("constructor_path_params = " << constructor_path_params);
@@ -903,10 +914,14 @@ namespace {
                 TU_ARMA(TraitBound, e) {
                     if( type_bound_needed(sp, e.type) != TypeNeed::Required )
                         return false;
+                    // Check for an unused type omitted: `V: FromIterator<A>` `I: IntoIterator<Item=A>` - `A` is only used in the bounds.
+#if 0
                     // Check that the bounds don't reference an unused type.
+                    auto rv_tp = type_bound_needed(sp, e.trait);
                     //auto rv_tp = type_bound_needed(sp, e.trait.m_path);
-                    //if( rv_tp == TypeNeed::UsesOthers )
-                    //    return false;
+                    if( rv_tp == TypeNeed::UsesOthers )
+                        return false;
+#endif
                     return true;
                     }
                 TU_ARMA(TypeEquality, e) {
