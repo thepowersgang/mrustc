@@ -847,6 +847,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                                 MIR_BUG(state, "EnumValue in ItemAddr: " << *c);
                             TU_ARMA(Static, ve) {
                                 tmp = ms.monomorph_type(state.sp, ve->m_type);
+                                resolve.expand_associated_types(state.sp, tmp);
                                 check_types( dst_ty, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, mv$(tmp)) );
                                 }
                             TU_ARMA(Function, ve) {

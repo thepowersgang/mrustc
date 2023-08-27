@@ -52,21 +52,23 @@ const ::MIR::BasicBlock& ::MIR::TypeResolve::get_block(::MIR::BasicBlockId id) c
 
 const ::HIR::TypeRef& ::MIR::TypeResolve::get_static_type(::HIR::TypeRef& tmp, const ::HIR::Path& path) const
 {
-    TU_MATCHA( (path.m_data), (pe),
-    (Generic,
+    TU_MATCH_HDRA( (path.m_data), {)
+    TU_ARMA(Generic, pe) {
         const auto& s = m_crate.get_static_by_path(sp, pe.m_path);
-        return tmp = MonomorphStatePtr(nullptr, nullptr, &pe.m_params).monomorph_type(sp, s.m_type);
-        ),
-    (UfcsKnown,
+        tmp = MonomorphStatePtr(nullptr, nullptr, &pe.m_params).monomorph_type(sp, s.m_type);
+        m_resolve.expand_associated_types(this->sp, tmp);
+        return tmp;
+        }
+    TU_ARMA(UfcsKnown, pe) {
         MIR_TODO(*this, "LValue::Static - UfcsKnown - " << path);
-        ),
-    (UfcsUnknown,
+        }
+    TU_ARMA(UfcsUnknown, pe) {
         MIR_BUG(*this, "Encountered UfcsUnknown in LValue::Static - " << path);
-        ),
-    (UfcsInherent,
+        }
+    TU_ARMA(UfcsInherent, pe) {
         MIR_TODO(*this, "LValue::Static - UfcsInherent - " << path);
-        )
-    )
+        }
+    }
     throw "";
 }
 const ::HIR::TypeRef& ::MIR::TypeResolve::get_lvalue_type(::HIR::TypeRef& tmp, const ::MIR::LValue& val, unsigned wrapper_skip_count/*=0*/) const
