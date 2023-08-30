@@ -695,6 +695,11 @@ namespace {
         }
 
     public:
+        void visit_expr(HIR::ExprPtr& exp) override
+        {
+            // No-op
+        }
+
         void visit_path(::HIR::Path& p, ::HIR::Visitor::PathContext pc) override
         {
             //assert(pc == ::HIR::Visitor::PathContext::TYPE);
