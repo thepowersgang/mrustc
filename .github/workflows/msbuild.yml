@@ -86,6 +86,6 @@ jobs:
       shell: powershell
       run: |
         Invoke-WebRequest -Method Get -Uri https://static.rust-lang.org/dist/rustc-${{matrix.rustver}}.0-src.tar.gz -UseBasicParsing
-        Start-Process -Wait "c:\Program Files\7-Zip\7z.exe" x rustc-${{matrix.rustver}}.0-src.tar.gz
+        Start-Process -Wait "c:\Program Files\7-Zip\7z.exe" -ArgumentList x rustc-${{matrix.rustver}}.0-src.tar.gz
     - name: Build
       run: vsproject\run_hello_Pick.cmd ${{ matrix.rustver }}
