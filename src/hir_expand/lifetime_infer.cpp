@@ -103,6 +103,45 @@ namespace {
             : m_resolve(resolve)
         {}
 
+        void add_lifetime_bound(const HIR::LifetimeRef& test, const HIR::LifetimeRef& valid_for) {
+            DEBUG("Add bound: " << test << ": " << valid_for);
+            m_bounds.push_back(LifetimeInferState::LifetimeBound(test, valid_for));
+        }
+        void add_type_lifetime_bound(const HIR::TypeRef& ty, const HIR::LifetimeRef& valid_for) {
+            DEBUG("Add bound: " << ty << ": " << valid_for);
+            m_bounds.push_back(LifetimeInferState::LifetimeBound(ty, valid_for));
+            if( const auto* te = ty.data().opt_Tuple() ) {
+                for(const auto& t : *te) {
+                    add_type_lifetime_bound(t, valid_for);
+                }
+            }
+            else if( const auto* te = ty.data().opt_Slice() ) {
+                add_type_lifetime_bound(te->inner, valid_for);
+            }
+            else if( const auto* te = ty.data().opt_Array() ) {
+                add_type_lifetime_bound(te->inner, valid_for);
+            }
+            else if( const auto* te = ty.data().opt_Borrow() ) {
+                add_lifetime_bound(te->lifetime, valid_for);
+                add_type_lifetime_bound(te->inner, valid_for);
+            }
+            else if( const auto* te = ty.data().opt_Path() ) {
+                if( const auto* pe = te->path.m_data.opt_Generic() ) {
+                    // TODO: Look up variance of the lifetime params
+                    // 
+                    // TODO: Get the variance info of each parameter (instead of assuming "variant")
+                    const auto& p = te->path.m_data.as_Generic();
+                    if( !p.m_params.m_lifetimes.empty() ) {
+                        DEBUG("TODO: Check variance " << ty);
+                        for(const auto& l : p.m_params.m_lifetimes) {
+                            add_lifetime_bound(l, valid_for);
+                        }
+                    }
+                    // TODO: Add a type bound for associated types?
+                }
+            }
+        }
+
     private:
         HIR::LifetimeRef allocate_local(const Span& sp, LocalLifetimeData v) {
             auto idx = m_locals.size();
@@ -1883,12 +1922,10 @@ namespace {
             auto push_bounds = [&state](const HIR::GenericParams& params) {
                 for(const auto& b : params.m_bounds) {
                     if( const auto* be = b.opt_TypeLifetime() ) {
-                        DEBUG("Add bound: " << be->type << ": " << be->valid_for);
-                        state.m_bounds.push_back(LifetimeInferState::LifetimeBound(be->type, be->valid_for));
+                        state.add_type_lifetime_bound(be->type, be->valid_for);
                     }
                     else if( const auto* be = b.opt_Lifetime() ) {
-                        DEBUG("Add bound: " << be->test << ": " << be->valid_for);
-                        state.m_bounds.push_back(LifetimeInferState::LifetimeBound(be->test, be->valid_for));
+                        state.add_lifetime_bound(be->test, be->valid_for);
                     }
                     else {
                     }
@@ -1941,18 +1978,9 @@ namespace {
                         check_lifetime_variant(te->m_lifetime);
                     }
                     if(const auto* te = ty.data().opt_Path() ) {
-                        if(te->path.m_data.is_Generic()) {
-                            // TODO: Get the variance info of each parameter (instead of assuming "variant")
-                            const auto& p = te->path.m_data.as_Generic();
-                            if( !p.m_params.m_lifetimes.empty() ) {
-                                DEBUG("TODO: Check variance " << ty);
-                                for(const auto& l : p.m_params.m_lifetimes) {
-                                    check_lifetime_variant(l);
-                                }
-                            }
+                        if( !m_stack.empty() && m_stack.back() ) {
+                            m_state.add_type_lifetime_bound(ty, *m_stack.back());
                         }
-                        // TODO: Add a type bound for associated types?
-                        (void)te;
                     }
                     if(ty.data().is_Generic()) {
                         // TODO: Add a type bound?
@@ -1996,6 +2024,7 @@ namespace {
                 }
             }
 
+            DEBUG(state.m_bounds.size() << " lifetime bounds");
             for(const auto& b : state.m_bounds) {
                 DEBUG("BOUND - " << b);
             }
