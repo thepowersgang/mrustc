@@ -1007,6 +1007,7 @@ namespace {
                     // HACK: Replace all types (which should be functionally identical) so lifetimes match
                     // - This is needed for monomorphisation to work properly?
                     // REF: rustc-1.29.0/src/vendor/serde/src/private/de.rs:1379
+                    // Counter-ref: rustc-1.54.0
                     // Update AFTER the checks
                     DEBUG("Replace generic block's lifetimes with " << trait_fcn.m_params.fmt_args());
                     impl_fcn.m_params.m_lifetimes = trait_fcn.m_params.m_lifetimes;
@@ -1019,6 +1020,9 @@ namespace {
                         TU_MATCH_HDRA( (b), { )
                         default:
                     
+                        TU_ARMA(TypeLifetime, be) {
+                            impl_fcn.m_params.m_bounds.push_back(::HIR::GenericBound::make_TypeLifetime({ ms.monomorph_type(sp, be.type), ms.monomorph_lifetime(sp, be.valid_for) }));
+                            }
                         TU_ARMA(Lifetime, be) {
                             impl_fcn.m_params.m_bounds.push_back(::HIR::GenericBound::make_Lifetime({ ms.monomorph_lifetime(sp, be.test), ms.monomorph_lifetime(sp, be.valid_for) }));
                             }
