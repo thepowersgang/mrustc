@@ -105,6 +105,7 @@ namespace
                     // If there's a current liftime (i.e. we're within a borrow), then use that
                     if( !m_current_lifetime.empty() && m_current_lifetime.back() ) {
                         lft = *m_current_lifetime.back();
+                        DEBUG("Use stack: " << lft);
                     }
                     // Otherwise, try to make a new one
                     else if( m_cur_params && m_create_elided ) {
@@ -417,10 +418,18 @@ namespace
                 bool pushed = false;
                 if( m_current_lifetime.empty() || !m_current_lifetime.back() ) {
                     // Push `'static` (if not in expression mode AND; this is a trait object OR we're not in arguments)
-                    if( !m_in_expr && (!(m_cur_params && m_create_elided) || ty.data().is_TraitObject()) ) {
+                    if( !m_in_expr ) {
                         static HIR::LifetimeRef static_lifetime = HIR::LifetimeRef::new_static();
-                        m_current_lifetime.push_back(&static_lifetime);
-                        pushed = true;
+                        if( !(m_cur_params && m_create_elided) ) {
+                            // In the return type, so we don't want to make a new parameter - push `'static`
+                            m_current_lifetime.push_back(&static_lifetime);
+                            pushed = true;
+                        }
+                        else if( ty.data().is_TraitObject() && ty.data().as_TraitObject().m_lifetime == HIR::LifetimeRef() ) {
+                            // `dyn Foo` as vs `dyn Foo+'_`
+                            m_current_lifetime.push_back(&static_lifetime);
+                            pushed = true;
+                        }
                     }
                 }
                 if(auto* e = ty.data_mut().opt_TraitObject()) {
