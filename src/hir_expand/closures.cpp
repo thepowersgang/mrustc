@@ -912,7 +912,11 @@ namespace {
                     return true;
                     }
                 TU_ARMA(TraitBound, e) {
-                    if( type_bound_needed(sp, e.type) != TypeNeed::Required )
+                    //if( type_bound_needed(sp, e.type) != TypeNeed::Required )
+                    //    return false;
+                    // Allows more complex type bounds
+                    // e.g. `ty::Predicate<'tcx>: LowerInto<'tcx, std::option::Option<T>>,` (from 1.54 compiler/rustc_traits/src/chalk/db.rs:54)
+                    if( type_bound_needed(sp, e.type) != TypeNeed::Required && type_bound_needed(sp, e.trait) != TypeNeed::Required )
                         return false;
                     // Check for an unused type omitted: `V: FromIterator<A>` `I: IntoIterator<Item=A>` - `A` is only used in the bounds.
 #if 0
