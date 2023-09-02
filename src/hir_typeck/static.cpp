@@ -2400,10 +2400,33 @@ HIR::Compare StaticTraitResolve::type_is_interior_mutable(const Span& sp, const 
         return HIR::Compare::Unequal;
         }
     TU_ARMA(Closure, e) {
-        // TODO: Closures could be known?
-        return HIR::Compare::Fuzzy;
+        // Return fuzzy (i.e. might be) if the closure class is still unknown.
+        if( e.node->m_class == HIR::ExprNode_Closure::Class::Unknown) {
+            return HIR::Compare::Fuzzy;
+        }
+        // Shortcut: Copy closures won't be imut
+        if( e.node->m_is_copy ) {
+            return HIR::Compare::Unequal;
+        }
+        // Check all captures
+        for(const auto& c : e.node->m_captures) {
+            auto rv = this->type_is_interior_mutable(sp, c->m_res_type);
+            if( rv != HIR::Compare::Unequal ) {
+                return rv;
+            }
+        }
+        // If no capture possibly imut, then return no
+        return HIR::Compare::Unequal;
         }
     TU_ARMA(Generator, e) {
+        // Check all captures
+        for(const auto& c : e.node->m_captures) {
+            auto rv = this->type_is_interior_mutable(sp, c->m_res_type);
+            if( rv != HIR::Compare::Unequal ) {
+                return rv;
+            }
+        }
+        // If no capture possibly imut, then return no
         return HIR::Compare::Unequal;
         }
     // Borrow and pointer are not interior mutable (they might point to something, but that doesn't matter)
