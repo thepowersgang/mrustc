@@ -61,8 +61,8 @@ TransList Trans_Enumerate_CommonPost(EnumState& state);
 void Trans_Enumerate_Types(EnumState& state);
 void Trans_Enumerate_FillFrom_Path(EnumState& state, const ::HIR::Path& path, const Trans_Params& pp);
 void Trans_Enumerate_FillFrom_PathMono(EnumState& state, ::HIR::Path path);
-void Trans_Enumerate_FillFrom(EnumState& state, const ::HIR::Function& function, const Trans_Params& pp);
-void Trans_Enumerate_FillFrom(EnumState& state, const ::HIR::Static& stat, TransList_Static& stat_out, Trans_Params pp={});
+void Trans_Enumerate_FillFrom_Function(EnumState& state, const ::HIR::Function& function, const Trans_Params& pp);
+void Trans_Enumerate_FillFrom_Static(EnumState& state, const ::HIR::Static& stat, TransList_Static& stat_out, Trans_Params pp={});
 void Trans_Enumerate_FillFrom_VTable (EnumState& state, ::HIR::Path vtable_path, const Trans_Params& pp);
 void Trans_Enumerate_FillFrom_Literal(EnumState& state, const EncodedLiteral& lit, const Trans_Params& pp);
 void Trans_Enumerate_FillFrom_MIR(MIR::EnumCache& state, const ::MIR::Function& code);
@@ -188,7 +188,7 @@ namespace {
                 //state.enum_static(mod_path + vi.first, *e);
                 auto* ptr = state.rv.add_static( get_path() );
                 if(ptr)
-                    Trans_Enumerate_FillFrom(state, e, *ptr);
+                    Trans_Enumerate_FillFrom_Static(state, e, *ptr);
             }
             } break;
         TU_ARM(vi, Function, e) {
@@ -491,7 +491,7 @@ void Trans_Enumerate_CommonPost_Run(EnumState& state)
 
         TRACE_FUNCTION_F("Function " << ::std::find_if(state.rv.m_functions.begin(), state.rv.m_functions.end(), [&](const auto&x){ return x.second.get() == &fcn_out; })->first);
 
-        Trans_Enumerate_FillFrom(state, *fcn_out.ptr, fcn_out.pp);
+        Trans_Enumerate_FillFrom_Function(state, *fcn_out.ptr, fcn_out.pp);
     }
 }
 TransList Trans_Enumerate_CommonPost(EnumState& state)
@@ -1296,7 +1296,7 @@ void Trans_Enumerate_FillFrom_PathMono(EnumState& state, ::HIR::Path path_mono)
     TU_ARMA(Static, e) {
         if( auto* ptr = state.rv.add_static(mv$(path_mono)) )
         {
-            Trans_Enumerate_FillFrom(state, *e, *ptr, mv$(sub_pp));
+            Trans_Enumerate_FillFrom_Static(state, *e, *ptr, mv$(sub_pp));
         }
         }
     TU_ARMA(Constant, e) {
@@ -1519,6 +1519,7 @@ void Trans_Enumerate_FillFrom_Literal(EnumState& state, const EncodedLiteral& li
     for(const auto& r : lit.relocations)
     {
         if( r.p ) {
+            // TODO: Replace lifetimes
             Trans_Enumerate_FillFrom_Path(state, *r.p, pp);
         }
     }
@@ -1564,7 +1565,7 @@ namespace {
     }
 }
 
-void Trans_Enumerate_FillFrom(EnumState& state, const ::HIR::Function& function, const Trans_Params& pp)
+void Trans_Enumerate_FillFrom_Function(EnumState& state, const ::HIR::Function& function, const Trans_Params& pp)
 {
     TRACE_FUNCTION_F("Function pp=" << pp.pp_impl << " + " << pp.pp_method);
     if( function.m_code.m_mir )
@@ -1593,9 +1594,11 @@ void Trans_Enumerate_FillFrom(EnumState& state, const ::HIR::Function& function,
         // External.
     }
 }
-void Trans_Enumerate_FillFrom(EnumState& state, const ::HIR::Static& item, TransList_Static& out_stat, Trans_Params pp)
+void Trans_Enumerate_FillFrom_Static(EnumState& state, const ::HIR::Static& item, TransList_Static& out_stat, Trans_Params pp)
 {
-    TRACE_FUNCTION;
+    // HACK: Ensure that lifetimes are populated.
+    pp.pp_method.m_lifetimes.resize(item.m_params.m_lifetimes.size());
+
     if( item.m_params.is_generic() )
     {
         MIR::EnumCache  es;
