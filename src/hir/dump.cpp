@@ -298,7 +298,7 @@ namespace {
         void visit_constant(::HIR::ItemPath p, ::HIR::Constant& item) override
         {
             m_os << indent() << "const " << p.get_name() << ": " << item.m_type << " = " << item.m_value_res;
-            if( item.m_value && item.m_value_state != HIR::Constant::ValueState::Known )
+            if( item.m_value /*&& item.m_value_state != HIR::Constant::ValueState::Known*/ )
             {
                 m_os << " /*= ";
                 item.m_value->visit(*this);
