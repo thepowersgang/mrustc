@@ -90,4 +90,4 @@ jobs:
     - name: Build
       run: |
         cd vsproject
-        run_hello_Pick.cmd ${{ matrix.rustver }}
+        .\run_hello_Pick.cmd ${{ matrix.rustver }}
