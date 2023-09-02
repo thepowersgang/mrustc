@@ -1,0 +1,5 @@
+% Notes on a "Version 2" of the MIR
+
+# Goals/Existing Issues
+- Struct initialisation is linear
+- No in-place initialisation

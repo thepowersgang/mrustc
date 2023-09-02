@@ -1,0 +1,14 @@
+% Ideas for an updated C backend
+
+
+# Goals
+- Improve quality of emitted C code
+  - Reduced size
+  - Less chaff for the optimiser
+  
+# Ideas
+- (Simplified) C AST representation
+- Multiple codegen units
+- Optimiser/simplifier that:
+  - Removes usless variables/operations (e.g. unused ZSTs)
+  - Replaces initialisation chains with direct initialisation

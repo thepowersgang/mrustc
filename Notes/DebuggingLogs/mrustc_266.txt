@@ -1,0 +1,519 @@
+SEGFAULT:
+- 19544b4: mov 0x8(%rbx),%rsi
+%rbx set:
+- 1954479: mov %rdi,%rbx
+
+0x1a19b9b: call 0x1954470
+0x1a19b94: lea 0x450(%rax),%rdi
+0x1a19b91: mov (%rsi),%rax	< What's in RSI[0]
+
+# get_predicates_of0g
+0x1a19cb2: call 0x1a19b80 get_super_predicates0g
+0x1a19cad: mov %rax,0x30(%rsp)	< RAX in RSI[0]
+0x1a19c9d: lea 0x30(%rsp),%rsi
+0x1a19c93: call get_crate_data0g
+
+0x195d79e: add $0x10,%rax
+0x195d791: mov (%rax),%rax
+0x195d789: call 0x195d6e0 (Fn::call)
+
+
+## Reverse debugging
+
+=> 0x55b3c7c4d3b8 <ZRIG2cO19rustc_metadata0_0_05rmeta4Lazy2gG3c_A_B5table5Table2gG2cK15rustc_span0_0_06def_id8DefIndex0gG2c_A_B_C2gG3cM17r$f00c71b05dc7a9d0+88>:        mov    0x8(%rbx),%rsi
+=> 0x55b3c7c4d36d <ZRIG2cO19rustc_metadata0_0_05rmeta4Lazy2gG3c_A_B5table5Table2gG2cK15rustc_span0_0_06def_id8DefIndex0gG2c_A_B_C2gG3cM17r$f00c71b05dc7a9d0+13>:        mov    %rdi,%rbx
+=> 0x55b3c7d22f28 <ZRIG2cO19rustc_metadata0_0_07creader16CrateMetadataRef0g20get_super_predicates0g+40>:        lea    0x450(%rax),%rdi
+=> 0x55b3c7d22f25 <ZRIG2cO19rustc_metadata0_0_07creader16CrateMetadataRef0g20get_super_predicates0g+37>:        mov    (%rsi),%rax
+
+=> 0x55b3c7d23058 <ZRG5cO19rustc_metadata0_0_05rmeta7decoder11cstore_implB_119super_predicates_of0g+216>:       mov    %rax,0x30(%rsp)
+=> 0x55b3c7c579fa <ZRIG2cO19rustc_metadata0_0_07creader6CStore0g14get_crate_data0g+58>: add    $0x10,%rax
+rax            0x6c202f2f2f0a6060  7791279235050135648
+=> 0x55b3c7c579f5 <ZRIG2cO19rustc_metadata0_0_07creader6CStore0g14get_crate_data0g+53>: test   %rax,%rax
+=> 0x55b3c7c579f1 <ZRIG2cO19rustc_metadata0_0_07creader6CStore0g14get_crate_data0g+49>: mov    (%rax,%rbx,8),%rax
+#rax            0x7f7c380952c0      140171492807360
+rax            0x7f9b740952c0      140305643426496
+rbx            0xb25               2853
+= %rax+%rbx*8 = 0x7F7C3809ABE8
+
+### Write of 0x7f7c380952c0
+=> 0x7f7c3dc479fd <syscall_hook+5437>:  rep movsb %ds:(%rsi),%es:(%rdi)
+#0  0x00007f7c3dc479fd in local_memcpy (n=50906, source=0x7f7c3ca8103e, dest=0x7f7c38098a10) at ./src/preload/syscallbuf.c:989
+#10 0x000055b3c668c880 in ZRIG4cD8std0_0_03sys4unix2fd8FileDesc0g4read0g ()
+#14 0x000055b3c687284b in ZRQG2cK15rustc_span0_0_010source_map14RealFileLoader0g2c_A_B10FileLoader0g9read_file0g ()
+^ That's reading a source file!
+So, the address calculated earlier is bad, pointing into the source code.
+
+Track source of rax=0x7f7c380952c0
+- It came directly from a malloc call.
+
+=> 0x5569773669ec <ZRIG2cO19rustc_metadata0_0_07creader6CStore0g14get_crate_data0g+44>: callq  0x5569772f5f70 <ZRG3cE9core0_0_05slice3raw14from_raw_parts1gG3cM17rustc_middle0_0_02ty5subst10GenericArg0g>
+
+=> 0x55b3c7be6f92 <ZRG3cE9core0_0_05slice3raw14from_raw_parts1gG3cM17rustc_middle0_0_02ty5subst10GenericArg0g+34>:      test   $0x7,%al
+=> 0x55b3c7be6f8f <ZRG3cE9core0_0_05slice3raw14from_raw_parts1gG3cM17rustc_middle0_0_02ty5subst10GenericArg0g+31>:      mov    %rdi,%rax
+=> 0x55b3c7be6f8a <ZRG3cE9core0_0_05slice3raw14from_raw_parts1gG3cM17rustc_middle0_0_02ty5subst10GenericArg0g+26>:      test   %rdi,%rdi
+=> 0x55b3c7c579d8 <ZRIG2cO19rustc_metadata0_0_07creader6CStore0g14get_crate_data0g+24>: mov    0x10(%rdi),%rdi	<- CStore IndexVec pointer (offset 8 is the length)
+#rdi            0x7f7c380952c0      140171492807360
+#rdi            0x7f7c204c70f0      140171094552816
+rax            0x7f9b740952c0      140305643426496
+rdi            0x7f9b544c70f0      140305110954224
+
+(rr) watch *(uint64_t*)(0x7f7c204c70f0+0x10)
+=> 0x55b3c8c845c8 <ZRIG1cN18rustc_resolve0_0_08Resolver0g12into_outputs0g+1016>:        movups %xmm1,0x10(%rbx)	<- Appears to be copying
+=> 0x5569783935bf <ZRIG1cN18rustc_resolve0_0_08Resolver0g12into_outputs0g+1007>:        movdqa 0x210(%rsp),%xmm1
+rsp            0x7f9b791ba440      0x7f9b791ba440
+=> 0x55697839354e <ZRIG1cN18rustc_resolve0_0_08Resolver0g12into_outputs0g+894>: movaps %xmm4,0x2b0(%rsp)
+=> 0x556978393505 <ZRIG1cN18rustc_resolve0_0_08Resolver0g12into_outputs0g+821>: movdqa 0x250(%rsp),%xmm4
+rsp            0x7f9b791ba3a0      0x7f9b791ba3a0
+=> 0x55697734d721 <ZRIG2cO19rustc_metadata0_0_07creader11CrateLoader0g11into_cstore0g+65>:      movups %xmm1,0x10(%rdi)
+=> 0x55697734d6f7 <ZRIG2cO19rustc_metadata0_0_07creader11CrateLoader0g11into_cstore0g+23>:      movdqu 0x60(%rsp),%xmm1
+rsp            0x7f9b791ba390      0x7f9b791ba390
+=> 0x5569783934a0 <ZRIG1cN18rustc_resolve0_0_08Resolver0g12into_outputs0g+720>: pushq  0xb68(%rsp)
+rsp            0x7f9b791ba3f8      0x7f9b791ba3f8
+0x7f9b791ba3f8 + 0xb68 = 0x7F9B791BAF60
+=> 0x556978638991 <ZRIG3cP23rustc_interface0_0_0_H36passes14boxed_resolver13BoxedResolver0g19to_resolver_outputs0g+465>:        rep movsq %ds:(%rsi),%es:(%rdi)
+rsi            0x7f9b791bba10      140305728518672
+rdi            0x7f9b791baf60      140305728515936
+=> 0x55697863897e <ZRIG3cP23rustc_interface0_0_0_H36passes14boxed_resolver13BoxedResolver0g19to_resolver_outputs0g+446>:        rep movsq %ds:(%rsi),%es:(%rdi)
+rsi            0x7f9b791bdc90      140305728527504
+rdi            0x7f9b791bba10      140305728518672
+=> 0x55697863895f <ZRIG3cP23rustc_interface0_0_0_H36passes14boxed_resolver13BoxedResolver0g19to_resolver_outputs0g+415>:        rep movsq %ds:(%rsi),%es:(%rdi)
+rsi            0x7f9b791bd3f0      140305728525296
+rdi            0x7f9b791bdc90      140305728527504
+=> 0x556978638941 <ZRIG3cP23rustc_interface0_0_0_H36passes14boxed_resolver13BoxedResolver0g19to_resolver_outputs0g+385>:        rep movsq %ds:(%rsi),%es:(%rdi)
+rsi            0x7f9b791bc2b0      140305728520880
+rdi            0x7f9b791bd3f0      140305728525296
+=> 0x5569785865c8 <ZRG2cE9core0_0_03mem7replace1gG2c_A6option6Option1gG1cN18rustc_resolve0_0_08Resolver0g+88>:  rep movsq %ds:(%rsi),%es:(%rdi)
+rsi            0x7f9b791b9e00      140305728511488
+=> 0x5569785865ba <ZRG2cE9core0_0_03mem7replace1gG2c_A6option6Option1gG1cN18rustc_resolve0_0_08Resolver0g+74>:  rep movsq %ds:(%rsi),%es:(%rdi)
+rsi            0x7f9b791ba6a0      140305728513696
+=> 0x5569785865ac <ZRG2cE9core0_0_03mem7replace1gG2c_A6option6Option1gG1cN18rustc_resolve0_0_08Resolver0g+60>:  rep movsq %ds:(%rsi),%es:(%rdi)
+rsi            0x7f9b7408ccf8      140305643392248
+=> 0x55697864a8a4 <ZRIG3cP23rustc_interface0_0_0_H36passes14boxed_resolver13BoxedResolver0g3new1gG2c_A_BH30closureconfigure_and_expand_500g+1044>:      rep movsq %ds:(%rsi),%es:(%rdi)
+rsi            0x7f9b791bf360      140305728533344
+=> 0x55697864a787 <ZRIG3cP23rustc_interface0_0_0_H36passes14boxed_resolver13BoxedResolver0g3new1gG2c_A_BH30closureconfigure_and_expand_500g+759>:       rep movsq %ds:(%rsi),%es:(%rdi)
+rsi            0x7f9b791be0b0      140305728528560
+=> 0x55697864a658 <ZRIG3cP23rustc_interface0_0_0_H36passes14boxed_resolver13BoxedResolver0g3new1gG2c_A_BH30closureconfigure_and_expand_500g+456>:       rep movsq %ds:(%rsi),%es:(%rdi)
+rsi            0x7f9b791bced0      140305728523984
+=> 0x556978649a4a <ZRG2cP23rustc_interface0_0_0_H36passes26configure_and_expand_inner0g+3786>:  rep movsq %ds:(%rsi),%es:(%rdi)
+rsi            0x7f9b791bb8e0      140305728518368
+=> 0x5569786499ff <ZRG2cP23rustc_interface0_0_0_H36passes26configure_and_expand_inner0g+3711>:  rep movsq %ds:(%rsi),%es:(%rdi)
+rsi            0x7f9b791baff0      140305728516080
+=> 0x556978648ca6 <ZRG2cP23rustc_interface0_0_0_H36passes26configure_and_expand_inner0g+294>:   rep movsq %ds:(%rsi),%es:(%rdi)
+rsi            0x7f9b791ba250      140305728512592
+=> 0x5569783c042b <ZRIG1cN18rustc_resolve0_0_08Resolver0g3new0g+6939>:  rep movsq %ds:(%rsi),%es:(%rdi)
+rsi            0x7f9b791b9880      140305728510080
+=> 0x5569783bfe12 <ZRIG1cN18rustc_resolve0_0_08Resolver0g3new0g+5378>:  movups %xmm5,0x1210(%rsp)
+=> 0x5569783bfda8 <ZRIG1cN18rustc_resolve0_0_08Resolver0g3new0g+5272>:  movdqu 0x5a0(%rsp),%xmm5
+rsp            0x7f9b791b8670      0x7f9b791b8670
+=> 0x55697734d9e8 <ZRIG2cO19rustc_metadata0_0_07creader11CrateLoader0g3new0g+600>:      mov    %rdx,0x50(%r12)
+=> 0x55697734d913 <ZRIG2cO19rustc_metadata0_0_07creader11CrateLoader0g3new0g+387>:      mov    0x10(%rsp),%rdx
+rsp            0x7f9b791b8550      0x7f9b791b8550
+=> 0x55697734d8ee <ZRIG2cO19rustc_metadata0_0_07creader11CrateLoader0g3new0g+350>:      mov    %rdx,0x10(%rsp)
+=> 0x55697734d8d3 <ZRIG2cO19rustc_metadata0_0_07creader11CrateLoader0g3new0g+323>:      mov    0x48(%rsp),%rdx
+rsp            0x7f9b791b8550      0x7f9b791b8550
+=> 0x55697734d853 <ZRIG2cO19rustc_metadata0_0_07creader11CrateLoader0g3new0g+195>:      mov    %rax,0x48(%rsp)
+=> 0x556977310421 <ZRIG2cF10alloc0_0_07raw_vec6RawVec2gG2cE9core0_0_06option6Option1gG2c_A2rc2Rc1gG3cO19rustc_metadata0_0_05rmeta7decoder1$b47988b540d96744.constprop.0+113>:   mov    %r12,%rax
+=> 0x556977310400 <ZRIG2cF10alloc0_0_07raw_vec6RawVec2gG2cE9core0_0_06option6Option1gG2c_A2rc2Rc1gG3cO19rustc_metadata0_0_05rmeta7decoder1$b47988b540d96744.constprop.0+80>:    mov    0x8(%rsp),%r12
+rsp            0x7f9b791b84f0      0x7f9b791b84f0
+=> 0x55697730b5f1 <ZRIG2cF10alloc0_0_05alloc6Global0g10alloc_impl0g.constprop.0+65>:    mov    %rax,0x8(%r12)
+=> 0x55697730b5ec <ZRIG2cF10alloc0_0_05alloc6Global0g10alloc_impl0g.constprop.0+60>:    test   %rax,%rax
+=> 0x7f9b795b6187 <__GI___libc_malloc+167>:     mov    %r8,%rax	<- Malloc!
+r8             0x7f9b740952c0      140305643426496
+
+
+
+## Look for writes to the above address
+0x7f9b740952c0 + 0xb25*8
+= 0x7F9B7409ABE8
+
+(rr) watch *(uint64_t*)0x7F9B7409ABE8
+
+=> 0x7f9b7989e3b2 <_raw_syscall+47>:    callq  *0x20(%rsp)
+#0  _raw_syscall () at /build/rr-S0CLEN/rr-5.3.0/src/preload/raw_syscall.S:120
+#10 0x00007f9b795b13a7 in new_heap (size=135168, size@entry=2888, top_pad=<optimised out>) at arena.c:488
+-- This is in malloc
+
+=> 0x7f9b7989c9fd <syscall_hook+5437>:  rep movsb %ds:(%rsi),%es:(%rdi) (8 times)
+#0  0x00007f9b7989c9fd in local_memcpy (n=50906, source=0x7f9b786d603e, dest=0x7f9b74098a10) at ./src/preload/syscallbuf.c:989
+#14 0x0000556975f8184b in ZRQG2cK15rustc_span0_0_010source_map14RealFileLoader0g2c_A_B10FileLoader0g9read_file0g ()
+SEGFAULT
+
+## Chase the allocation used for the `read_file`
+- NOTE: The file being read is "../rustc-1.54.0-src/library/core/src/macros/mod.rs"
+ZRG3cD8std0_0_02fsB_15inner0g:
+   0x0000556975dbda8c <+204>:   callq  0x556975d8e8f0 <ZRIG2cF10alloc0_0_07raw_vec6RawVec2gCaG2c_A5alloc6Global0g11allocate_in0g.constprop.0>
+   0x0000556975dbda91 <+209>:   lea    0x8(%rsp),%rsi
+=> 0x556975dbda91 <ZRG3cD8std0_0_02fsB_15inner0g+209>:  lea    0x8(%rsp),%rsi
+rax            0x7f9b74098a10      140305643440656
+rdx            0xc6db              50907
+> Target address is 0x21D8 bytes into the above allocation. 0xb25*8 is 0x5928
+> This implies a use-after free? Or something broke the allocator.
+
+OR: The `0xb25` index is crap, and the fault is reading outside of its buffer.
+
+## Track `%rbx` from `ZRIG2cO19rustc_metadata0_0_07creader6CStore0g14get_crate_data0g+49`
+=> 0x5569773669ca <ZRIG2cO19rustc_metadata0_0_07creader6CStore0g14get_crate_data0g+10>: mov    %esi,%ebx
+=> 0x556977432037 <ZRG5cO19rustc_metadata0_0_05rmeta7decoder11cstore_implB_119super_predicates_of0g+183>:       mov    %ebx,%esi
+=> 0x556977431f93 <ZRG5cO19rustc_metadata0_0_05rmeta7decoder11cstore_implB_119super_predicates_of0g+19>:        mov    %rdx,%rbx
+=> 0x5569776f3a81 <ZRQG2cQ21rustc_query_impl0_0_07queries19super_predicates_of0g3cS23rustc_query_system0_0_05query6config14QueryAccessors1$d93264ec1c4f798d+81>:        mov    %r12,%rdx
+=> 0x5569776f3a3b <ZRQG2cQ21rustc_query_impl0_0_07queries19super_predicates_of0g3cS23rustc_query_system0_0_05query6config14QueryAccessors1$d93264ec1c4f798d+11>:        mov    %rcx,%r12
+rcx            0xb2500000b25       12253541698341
+=> 0x5569777707de <ZRG1cH13stacker0_1_1210maybe_grow2gG3cM17rustc_middle0_0_02ty8generics17GenericPredicates0gG3cS23rustc_query_system0_0_$506ba1f64976ccc5.constprop.0+254>:   mov    0xe0(%rsp),%rcx
+rsp            0x7f9b791b5510      0x7f9b791b5510
+=> 0x556977c2047c <ZRQG1cQ21rustc_query_impl0_0_0H22closureI_start_query_43gG2c_A8plumbing9QueryCtxt0gG3cM17rustc_middle0_0_02ty8generics1$bbca563757c8433b+188>:       push   %r15
+r15            0xb2500000b25       12253541698341
+=> 0x556977c20402 <ZRQG1cQ21rustc_query_impl0_0_0H22closureI_start_query_43gG2c_A8plumbing9QueryCtxt0gG3cM17rustc_middle0_0_02ty8generics1$bbca563757c8433b+66>:        mov    0xd8(%rsp),%r15
+rsp            0x7f9b791b5610      0x7f9b791b5610
+=> 0x556977c2058f <ZRQG4cM17rustc_middle0_0_02ty7context3tlsH21closurewith_context_42gG4c_A2ty_C_DH29closurewith_related_context_12gG1cQ21$8ee3156fdfa78246+111>:       pushq  0x50(%rsp)
+rsp            0x7f9b791b56f0      0x7f9b791b56f0
+=> 0x556977c20576 <ZRQG4cM17rustc_middle0_0_02ty7context3tlsH21closurewith_context_42gG4c_A2ty_C_DH29closurewith_related_context_12gG1cQ21$8ee3156fdfa78246+86>:        movups %xmm2,0x40(%rsp)
+=> 0x556977c20556 <ZRQG4cM17rustc_middle0_0_02ty7context3tlsH21closurewith_context_42gG4c_A2ty_C_DH29closurewith_related_context_12gG1cQ21$8ee3156fdfa78246+54>:        movdqu 0x90(%rsp),%xmm2
+rsp            0x7f9b791b5700      0x7f9b791b5700
+=> 0x556977c2064d <ZRG4cM17rustc_middle0_0_02ty7context3tls16with_context_opt2gG4c_A2ty_C_DH21closurewith_context_42gG4c_A2ty_C_DH29closur$83dae7c6423395e5+61>:        pushq  0x58(%rsp)
+rsp            0x7f9b791b5798      0x7f9b791b5798
+=> 0x556977d732c4 <ZRG3cS23rustc_query_system0_0_05query8plumbing17try_execute_query2gG2cQ21rustc_query_impl0_0_0_C9QueryCtxt0gG3c_A_B6cac$b3eed9970bab7cc.isra.0+116>: push   %rax
+=> 0x556975f9f654 <ZRQG2cK15rustc_span0_0_06def_id5DefId0g2cE9core0_0_05clone5Clone0g_E0g+4>:   mov    (%rdi),%rax
+=> 0x556977d7327a <ZRG3cS23rustc_query_system0_0_05query8plumbing17try_execute_query2gG2cQ21rustc_query_impl0_0_0_C9QueryCtxt0gG3c_A_B6cac$b3eed9970bab7cc.isra.0+42>:  lea    0x240(%rsp),%rdi
+rsp            0x7f9b791b5810      0x7f9b791b5810
+=> 0x556977d73b3a <ZRG3cS23rustc_query_system0_0_05query8plumbing9get_query2gG2cQ21rustc_query_impl0_0_07queries19super_predicates_of0gG2c$4218758434e7d805.isra.0+250>:        pushq  0x48(%rsp)
+rsp            0x7f9b791b5a58      0x7f9b791b5a58
+=> 0x556977d73a62 <ZRG3cS23rustc_query_system0_0_05query8plumbing9get_query2gG2cQ21rustc_query_impl0_0_07queries19super_predicates_of0gG2c$4218758434e7d805.isra.0+34>: mov    %r8,0x30(%rsp)
+=> 0x5569767459c3 <ZRIG3cL16rustc_infer0_0_06traits4util10Elaborator0g9elaborate0g+611>:        mov    0xd8(%rsp),%r8
+rsp            0x7f9b791b5cf0      0x7f9b791b5cf0
+=> 0x55697674589a <ZRIG3cL16rustc_infer0_0_06traits4util10Elaborator0g9elaborate0g+314>:        mov    %edx,0xcc(%rsp)
+=> 0x55697674588f <ZRIG3cL16rustc_infer0_0_06traits4util10Elaborator0g9elaborate0g+303>:        shr    $0x20,%rdx
+rdx            0xb2500000b25       12253541698341
+=> 0x556976745875 <ZRIG3cL16rustc_infer0_0_06traits4util10Elaborator0g9elaborate0g+277>:        mov    %rax,%rdx
+=> 0x5569763a9074 <ZRIG2cM17rustc_middle0_0_02ty14TraitPredicate0g6def_id0g+4>: mov    %rdi,%rax
+rdi            0xb2500000b25       12253541698341
+=> 0x556976745850 <ZRIG3cL16rustc_infer0_0_06traits4util10Elaborator0g9elaborate0g+240>:        mov    0x128(%rsp),%rdi
+rsp            0x7f9b791b5d00      0x7f9b791b5d00
+(rr) print /x *(uint64_t*)(0x7f9b791b5d00+0x128)
+$20 = 0xb2500000b25
+=> 0x5569767457f3 <ZRIG3cL16rustc_infer0_0_06traits4util10Elaborator0g9elaborate0g+147>:        movups %xmm4,0x120(%rsp)	> In second half
+=> 0x5569767457e2 <ZRIG3cL16rustc_infer0_0_06traits4util10Elaborator0g9elaborate0g+130>:        movdqu 0x168(%rsp),%xmm4	> Saved
+rsp            0x7f9b791b5d00      0x7f9b791b5d00
+(rr) watch *(uint64_t*)(0x7f9b791b5d00+0x168+8)
+=> 0x5569767457a9 <ZRIG3cL16rustc_infer0_0_06traits4util10Elaborator0g9elaborate0g+73>: movups %xmm7,0x170(%rsp)	> In first half
+=> 0x55697674578d <ZRIG3cL16rustc_infer0_0_06traits4util10Elaborator0g9elaborate0g+45>: movdqu 0x18(%rax),%xmm7		> Saved
+rsp            0x7f9b791b5d00      0x7f9b791b5d00
+rax            0x7f9b4d39a2d8      140304992281304
+(rr) print /x *(uint64_t*)(0x7f9b4d39a2d8+0x18)
+$22 = 0xb2500000b25
+(rr) watch *(uint64_t*)(0x7f9b4d39a2d8+0x18)
+=> 0x5569763be1ab <ZRQG1cM17rustc_middle0_0_0H29closureI_intern_predicate_1551gG3c_A2ty7context13CtxtInterners0g3cE9core0_0_03ops8function$e1588bd80960ed9e+315>:       movups %xmm1,0x10(%rax)	> In second half
+rax            0x7f9b4d39a2d8      140304992281304
+=> 0x5569763be17e <ZRQG1cM17rustc_middle0_0_0H29closureI_intern_predicate_1551gG3c_A2ty7context13CtxtInterners0g3cE9core0_0_03ops8function$e1588bd80960ed9e+270>:       movdqu 0x80(%rsp),%xmm1
+rsp            0x7f9b791b5fe0      0x7f9b791b5fe0
+(rr) print /x *(uint64_t*)(0x7f9b791b5fe0+0x80+8)
+$24 = 0xb2500000b25
+(rr) watch *(uint64_t*)(0x7f9b791b5fe0+0x80+8)
+=> 0x5569763be13d <ZRQG1cM17rustc_middle0_0_0H29closureI_intern_predicate_1551gG3c_A2ty7context13CtxtInterners0g3cE9core0_0_03ops8function$e1588bd80960ed9e+205>:       movups %xmm3,0xb0(%rsp)	> In second half
+=> 0x5569763be123 <ZRQG1cM17rustc_middle0_0_0H29closureI_intern_predicate_1551gG3c_A2ty7context13CtxtInterners0g3cE9core0_0_03ops8function$e1588bd80960ed9e+179>:       movdqu 0x80(%rsp),%xmm3
+rsp            0x7f9b791b5fb0      0x7f9b791b5fb0
+(rr) print /x *(uint64_t*)(0x7f9b791b5fb0+0x80+8); $29 = 0xb2500000b25
+=> 0x5569763be11b <ZRQG1cM17rustc_middle0_0_0H29closureI_intern_predicate_1551gG3c_A2ty7context13CtxtInterners0g3cE9core0_0_03ops8function$e1588bd80960ed9e+171>:       movups %xmm6,0x88(%rsp)	> In first half
+rsp            0x7f9b791b5fb0      0x7f9b791b5fb0
+=> 0x5569763be102 <ZRQG1cM17rustc_middle0_0_0H29closureI_intern_predicate_1551gG3c_A2ty7context13CtxtInterners0g3cE9core0_0_03ops8function$e1588bd80960ed9e+146>:       movdqu 0x50(%rsp),%xmm6
+rsp            0x7f9b791b5fb0      0x7f9b791b5fb0
+(rr) print /x *(uint64_t*)(0x7f9b791b5fb0+0x50); $29 = 0xb2500000b25
+(rr) watch *(uint64_t*)(0x7f9b791b5fb0+0x50)
+=> 0x5569763be0c5 <ZRQG1cM17rustc_middle0_0_0H29closureI_intern_predicate_1551gG3c_A2ty7context13CtxtInterners0g3cE9core0_0_03ops8function$e1588bd80960ed9e+85>:        movups %xmm4,0x28(%rsp)	> In first half
+rsp            0x7f9b791b5fd8      0x7f9b791b5fd8
+=> 0x5569763be0aa <ZRQG1cM17rustc_middle0_0_0H29closureI_intern_predicate_1551gG3c_A2ty7context13CtxtInterners0g3cE9core0_0_03ops8function$e1588bd80960ed9e+58>:        movdqu 0x100(%rsp),%xmm4
+rsp            0x7f9b791b5fe0      0x7f9b791b5fe0
+(rr) print /x *(uint64_t*)(0x7f9b791b5fe0+0x100); $30 = 0xb2500000b25
+=> 0x5569764657ab <ZRIG2cV26rustc_data_structures0_0_07sharded7Sharded1gG4cD8std0_0_011collections4hash3map7HashMap3gG3cM17rustc_middle0_0$c58b81eaa0e46f8e+315>:       pushq  0xa8(%rsp)
+rsp            0x7f9b791b60e8      0x7f9b791b60e8
+(rr) watch *(uint64_t*)(0x7f9b791b60e8+0xa8)
+=> 0x55697646578d <ZRIG2cV26rustc_data_structures0_0_07sharded7Sharded1gG4cD8std0_0_011collections4hash3map7HashMap3gG3cM17rustc_middle0_0$c58b81eaa0e46f8e+285>:       movups %xmm4,0x98(%rsp)	> first half
+rsp            0x7f9b791b60f8      0x7f9b791b60f8
+=> 0x556976465774 <ZRIG2cV26rustc_data_structures0_0_07sharded7Sharded1gG4cD8std0_0_011collections4hash3map7HashMap3gG3cM17rustc_middle0_0$c58b81eaa0e46f8e+260>:       movdqu 0x258(%rsp),%xmm4
+rsp            0x7f9b791b60f8      0x7f9b791b60f8
+(rr) print /x *(uint64_t*)(0x7f9b791b60f8+0x258); $37 = 0xb2500000b25
+=> 0x5569764d6dfa <ZRQG2cM17rustc_middle0_0_02ty12ConstnessAnd1gG3c_A2ty3sty6Binder1gG3c_A2ty_D8TraitRef0g2c_A2ty11ToPredicate0g12to_predicate0g+122>:  pushq  0x58(%rsp)
+(rr) watch *(uint64_t*)(0x7f9b791b6358+0x58)
+=> 0x5569764d6d49 <ZRIG3cM17rustc_middle0_0_02ty3sty6Binder1gG3c_A2ty_C8TraitRef0g9map_bound2gG1c_AH26closureI_to_predicate_12851gG2c_A2ty$bd67b349dc464e0f+297>:       movups %xmm1,0x8(%r12)	> second half
+=> 0x5569764d6d3a <ZRIG3cM17rustc_middle0_0_02ty3sty6Binder1gG3c_A2ty_C8TraitRef0g9map_bound2gG1c_AH26closureI_to_predicate_12851gG2c_A2ty$bd67b349dc464e0f+282>:       movdqu (%rsp),%xmm1
+rsp            0x7f9b791b61d0      0x7f9b791b61d0
+(rr) print /x *(uint64_t*)(0x7f9b791b61d0+8)
+=> 0x5569764d6c75 <ZRIG3cM17rustc_middle0_0_02ty3sty6Binder1gG3c_A2ty_C8TraitRef0g9map_bound2gG1c_AH26closureI_to_predicate_12851gG2c_A2ty$bd67b349dc464e0f+85>:        mov    %rax,0x8(%rsp)
+=> 0x5569764d6c51 <ZRIG3cM17rustc_middle0_0_02ty3sty6Binder1gG3c_A2ty_C8TraitRef0g9map_bound2gG1c_AH26closureI_to_predicate_12851gG2c_A2ty$bd67b349dc464e0f+49>:        mov    0x188(%rsp),%rax
+rsp            0x7f9b791b61d0      0x7f9b791b61d0
+(rr) watch *(uint64_t*)(0x7f9b791b61d0+0x188)
+=> 0x5569764d6dc1 <ZRQG2cM17rustc_middle0_0_02ty12ConstnessAnd1gG3c_A2ty3sty6Binder1gG3c_A2ty_D8TraitRef0g2c_A2ty11ToPredicate0g12to_predicate0g+65>:   pushq  0x28(%rsp)
+rsp            0x7f9b791b6360      0x7f9b791b6360
+(rr) watch *(uint64_t*)(0x7f9b791b6360+0x28)
+=> 0x5569764d6db3 <ZRQG2cM17rustc_middle0_0_02ty12ConstnessAnd1gG3c_A2ty3sty6Binder1gG3c_A2ty_D8TraitRef0g2c_A2ty11ToPredicate0g12to_predicate0g+51>:   movups %xmm0,0x18(%rsp)	> second half
+rsp            0x7f9b791b6368      0x7f9b791b6368
+=> 0x5569764d6d9c <ZRQG2cM17rustc_middle0_0_02ty12ConstnessAnd1gG3c_A2ty3sty6Binder1gG3c_A2ty_D8TraitRef0g2c_A2ty11ToPredicate0g12to_predicate0g+28>:   movdqu 0x78(%rsp),%xmm0
+rsp            0x7f9b791b6370      0x7f9b791b6370
+(rr) print /x *(uint64_t*)(0x7f9b791b6370+0x78+8)
+=> 0x5569764d704f <ZRIG3cM17rustc_middle0_0_02ty3sty6Binder1gG3c_A2ty_C20ExistentialPredicate0g12with_self_ty0g+543>:   pushq  0x148(%rsp)
+rsp            0x7f9b791b63f8      0x7f9b791b63f8
+(rr) watch *(uint64_t*)(0x7f9b791b63f8+0x148)
+=> 0x5569764d7040 <ZRIG3cM17rustc_middle0_0_02ty3sty6Binder1gG3c_A2ty_C20ExistentialPredicate0g12with_self_ty0g+528>:   movups %xmm4,0x138(%rsp)	> second half
+rsp            0x7f9b791b6400      0x7f9b791b6400
+=> 0x5569764d702f <ZRIG3cM17rustc_middle0_0_02ty3sty6Binder1gG3c_A2ty_C20ExistentialPredicate0g12with_self_ty0g+511>:   movdqu 0xb0(%rsp),%xmm4
+rsp            0x7f9b791b6400      0x7f9b791b6400
+(rr) print /x *(uint64_t*)(0x7f9b791b6400+0xb0+8); $46 = 0xb2500000b25
+=> 0x5569764d44f2 <ZRIG3cM17rustc_middle0_0_02ty3sty6Binder1gG3c_A2ty_C20ExistentialPredicate0g6rebind1gG3c_A2ty_C8TraitRef0g+258>:     mov    %rax,0x8(%r12)
+=> 0x5569764d44ee <ZRIG3cM17rustc_middle0_0_02ty3sty6Binder1gG3c_A2ty_C20ExistentialPredicate0g6rebind1gG3c_A2ty_C8TraitRef0g+254>:     mov    (%rsp),%rax
+(rr) watch *(uint64_t*)(0x7f9b791b6290)
+=> 0x5569764d4404 <ZRIG3cM17rustc_middle0_0_02ty3sty6Binder1gG3c_A2ty_C20ExistentialPredicate0g6rebind1gG3c_A2ty_C8TraitRef0g+20>:      mov    %rdx,(%rsp)
+=> 0x5569764d7004 <ZRIG3cM17rustc_middle0_0_02ty3sty6Binder1gG3c_A2ty_C20ExistentialPredicate0g12with_self_ty0g+468>:   mov    0x34(%rsp),%rdx	< Unaligned?
+rsp            0x7f9b791b6400      0x7f9b791b6400
+=> 0x5569764d6e8f <ZRIG3cM17rustc_middle0_0_02ty3sty6Binder1gG3c_A2ty_C20ExistentialPredicate0g12with_self_ty0g+95>:    movups %xmm0,0x30(%rsp)	> +4
+=> 0x5569764d6e7d <ZRIG3cM17rustc_middle0_0_02ty3sty6Binder1gG3c_A2ty_C20ExistentialPredicate0g12with_self_ty0g+77>:    movdqu 0xf8(%rsp),%xmm0
+rsp            0x7f9b791b6400      0x7f9b791b6400
+(rr) print /x *(uint64_t*)(0x7f9b791b6400+0xf8); $50 = 0xb25ffffff03
+=> 0x5569764d6e75 <ZRIG3cM17rustc_middle0_0_02ty3sty6Binder1gG3c_A2ty_C20ExistentialPredicate0g12with_self_ty0g+69>:    movups %xmm1,0xf0(%rsp)
+=> 0x5569764d6e49 <ZRIG3cM17rustc_middle0_0_02ty3sty6Binder1gG3c_A2ty_C20ExistentialPredicate0g12with_self_ty0g+25>:    movdqu (%rdi),%xmm1
+rdi            0x7f9b791b6580      140305728497024
+(rr) print /x *(uint64_t*)(0x7f9b791b6580+8); $53 = 0xb25ffffff03
+=> 0x556976927d7c <ZRQG3cV26rustc_trait_selection0_0_06traits2wfH29closureobject_region_bounds_00g3cE9core0_0_03ops8function2Fn1gT1G3cM17r$a7e5ff38affbf267+44>:        movups %xmm0,(%rsp)
+=> 0x556976927d68 <ZRQG3cV26rustc_trait_selection0_0_06traits2wfH29closureobject_region_bounds_00g3cE9core0_0_03ops8function2Fn1gT1G3cM17r$a7e5ff38affbf267+24>:        movdqu 0x40(%rsp),%xmm0
+(rr) print /x *(uint64_t*)(0x7f9b791b6580+0x40+8)
+=> 0x556976927e54 <ZRQG4cE9core0_0_04iter8adapters3map3Map2gG4c_A_B_C10filter_map9FilterMap2gG4c_A_B_C6copied6Copied1gG3c_A5slice_B4Iter1g$c6df2bd3fb44cf40+148>:       push   %rdx
+rdx            0xb25ffffff03       12257836662531
+=> 0x556976927df8 <ZRQG4cE9core0_0_04iter8adapters3map3Map2gG4c_A_B_C10filter_map9FilterMap2gG4c_A_B_C6copied6Copied1gG3c_A5slice_B4Iter1g$c6df2bd3fb44cf40+56>:        mov    0x8(%rcx),%rdx
+rcx            0x7f9b4d39a520      140304992281888
+(rr) watch *(uint64_t*)(0x7f9b4d39a520+8)
+=> 0x7f9b795d7c83 <__memmove_sse2_unaligned_erms+211>:  movups %xmm2,0x20(%rdi)
+=> 0x5569763b2768 <ZRIG3cM17rustc_middle0_0_02ty4list4List1gG3c_A2ty3sty6Binder1gG3c_A2ty_E20ExistentialPredicate0g10from_arena0g+200>: callq  0x556975cb2cb0 <memcpy@plt>
+rsi            0x7f9b791b69d8      140305728498136
+rdi            0x7f9b4d39a500      140304992281856
+rdx            0x40                64
+(rr) watch *(uint64_t*)(0x7f9b791b69d8+0x28)
+=> 0x556976381a12 <ZRIG1cI17smallvec1_6_1_H128SmallVec1gA8G3cM17rustc_middle0_0_02ty3sty6Binder1gG3c_C2ty_E20ExistentialPredicate0g4push0g+82>: movups %xmm1,(%rax)	< Upper half
+=> 0x5569763819f5 <ZRIG1cI17smallvec1_6_1_H128SmallVec1gA8G3cM17rustc_middle0_0_02ty3sty6Binder1gG3c_C2ty_E20ExistentialPredicate0g4push0g+53>: movdqu 0x60(%rsp),%xmm1
+rsp            0x7f9b791b6760      0x7f9b791b6760
+(rr) watch *(uint64_t*)(0x7f9b791b6760+0x60+8)
+=> 0x5569764df469 <ZRG3cM17rustc_middle0_0_02ty4util9fold_list3gG3c_A2ty4fold16BoundVarReplacer0gG3c_A2ty3sty6Binder1gG3c_A2ty_G20Existent$c490adfdebb8258f+1049>:      pushq  0x148(%rsp)
+rsp            0x7f9b791b67d0      0x7f9b791b67d0
+=> 0x5569764df3aa <ZRG3cM17rustc_middle0_0_02ty4util9fold_list3gG3c_A2ty4fold16BoundVarReplacer0gG3c_A2ty3sty6Binder1gG3c_A2ty_G20Existent$c490adfdebb8258f+858>:       movups %xmm7,0x130(%rsp)	> Upper half
+rsp            0x7f9b791b67e0      0x7f9b791b67e0
+=> 0x5569764df390 <ZRG3cM17rustc_middle0_0_02ty4util9fold_list3gG3c_A2ty4fold16BoundVarReplacer0gG3c_A2ty3sty6Binder1gG3c_A2ty_G20Existent$c490adfdebb8258f+832>:       movdqu 0x168(%rsp),%xmm7
+rsp            0x7f9b791b67e0      0x7f9b791b67e0
+(rr) watch *(uint64_t*)(0x7f9b791b67e0+0x168+8)
+=> 0x5569764df1de <ZRG3cM17rustc_middle0_0_02ty4util9fold_list3gG3c_A2ty4fold16BoundVarReplacer0gG3c_A2ty3sty6Binder1gG3c_A2ty_G20Existent$c490adfdebb8258f+398>:       movups %xmm7,0x170(%rsp)	> Lower half
+=> 0x5569764df1c5 <ZRG3cM17rustc_middle0_0_02ty4util9fold_list3gG3c_A2ty4fold16BoundVarReplacer0gG3c_A2ty3sty6Binder1gG3c_A2ty_G20Existent$c490adfdebb8258f+373>:       movdqu 0x1d0(%rsp),%xmm7
+(rr) print /x *(uint64_t*)(0x7f9b791b67e0+0x1d0)
+=> 0x5569764df011 <ZRQG3cM17rustc_middle0_0_02ty4utilH18closurefold_list_13gG3c_A2ty4fold16BoundVarReplacer0gG3c_A2ty3sty6Binder1gG3c_A2ty$dcd7632c1b095c15+241>:       movups %xmm5,0x10(%r12)
+=> 0x5569764df001 <ZRQG3cM17rustc_middle0_0_02ty4utilH18closurefold_list_13gG3c_A2ty4fold16BoundVarReplacer0gG3c_A2ty3sty6Binder1gG3c_A2ty$dcd7632c1b095c15+225>:       movdqu 0x70(%rsp),%xmm5
+(rr) watch *(uint64_t*)(0x7f9b791b6700+0x70)
+=> 0x5569764deff2 <ZRQG3cM17rustc_middle0_0_02ty4utilH18closurefold_list_13gG3c_A2ty4fold16BoundVarReplacer0gG3c_A2ty3sty6Binder1gG3c_A2ty$dcd7632c1b095c15+210>:       movups %xmm2,0x68(%rsp)
+=> 0x5569764defd3 <ZRQG3cM17rustc_middle0_0_02ty4utilH18closurefold_list_13gG3c_A2ty4fold16BoundVarReplacer0gG3c_A2ty3sty6Binder1gG3c_A2ty$dcd7632c1b095c15+179>:       movdqu 0x40(%rsp),%xmm2
+rsp            0x7f9b791b6700      0x7f9b791b6700
+(rr) watch *(uint64_t*)(0x7f9b791b6700+0x40+8)
+=> 0x5569764defa3 <ZRQG3cM17rustc_middle0_0_02ty4utilH18closurefold_list_13gG3c_A2ty4fold16BoundVarReplacer0gG3c_A2ty3sty6Binder1gG3c_A2ty$dcd7632c1b095c15+131>:       movups %xmm0,0x60(%rsp)
+=> 0x5569764def97 <ZRQG3cM17rustc_middle0_0_02ty4utilH18closurefold_list_13gG3c_A2ty4fold16BoundVarReplacer0gG3c_A2ty3sty6Binder1gG3c_A2ty$dcd7632c1b095c15+119>:       movdqu 0x20(%rsp),%xmm0
+rsp            0x7f9b791b66e0      0x7f9b791b66e0
+(rr) watch *(uint64_t*)(0x7f9b791b66e0+0x20+8)
+=> 0x5569764ded84 <ZRIG3cM17rustc_middle0_0_02ty3sty6Binder1gG3c_A2ty_C20ExistentialPredicate0g9map_bound2gG1c_AH29closureI_super_fold_wit$834e43867ba4400a+340>:       movups %xmm2,0x8(%r12)
+=> 0x5569764ded75 <ZRIG3cM17rustc_middle0_0_02ty3sty6Binder1gG3c_A2ty_C20ExistentialPredicate0g9map_bound2gG1c_AH29closureI_super_fold_wit$834e43867ba4400a+325>:       movdqu 0x20(%rsp),%xmm2
+rsp            0x7f9b791b64f0      0x7f9b791b64f0
+(rr) print /x *(uint64_t*)(0x7f9b791b64f0+0x20); $70 = 0xb25ffffff03
+(rr) watch *(uint64_t*)(0x7f9b791b64f0+0x20)
+=> 0x5569764decb6 <ZRIG3cM17rustc_middle0_0_02ty3sty6Binder1gG3c_A2ty_C20ExistentialPredicate0g9map_bound2gG1c_AH29closureI_super_fold_wit$834e43867ba4400a+134>:       movups %xmm0,0x40(%rsp)
+=> 0x5569764dec80 <ZRIG3cM17rustc_middle0_0_02ty3sty6Binder1gG3c_A2ty_C20ExistentialPredicate0g9map_bound2gG1c_AH29closureI_super_fold_wit$834e43867ba4400a+80>:        movdqu 0x20(%rsp),%xmm0
+(rr) watch *(uint32_t*)(0x7f9b791b64d0+0x24)
+=> 0x5569764de981 <ZRQG3cM17rustc_middle0_0_02ty3sty20ExistentialPredicate0g3c_A2ty4fold12TypeFoldable0g15super_fold_with1gG3c_A2ty_E16Bou$c6411ae8e3203bad+209>:       mov    %rdx,0x4(%rdi)
+rdx            0xb2500000b25       12253541698341
+=> 0x5569764de97c <ZRQG3cM17rustc_middle0_0_02ty3sty20ExistentialPredicate0g3c_A2ty4fold12TypeFoldable0g15super_fold_with1gG3c_A2ty_E16Bou$c6411ae8e3203bad+204>:       mov    0x54(%rsp),%rdx
+rsp            0x7f9b791b6480      0x7f9b791b6480
+(rr) watch *(uint64_t*)(0x7f9b791b6480+0x54)
+=> 0x5569764de978 <ZRQG3cM17rustc_middle0_0_02ty3sty20ExistentialPredicate0g3c_A2ty4fold12TypeFoldable0g15super_fold_with1gG3c_A2ty_E16Bou$c6411ae8e3203bad+200>:       mov    %ebp,0x54(%rsp)
+=> 0x5569764de8d5 <ZRQG3cM17rustc_middle0_0_02ty3sty20ExistentialPredicate0g3c_A2ty4fold12TypeFoldable0g15super_fold_with1gG3c_A2ty_E16Bou$c6411ae8e3203bad+37>:        mov    0x58(%rsp),%ebp
+rsp            0x7f9b791b6480      0x7f9b791b6480
+=> 0x5569764dec6a <ZRIG3cM17rustc_middle0_0_02ty3sty6Binder1gG3c_A2ty_C20ExistentialPredicate0g9map_bound2gG1c_AH29closureI_super_fold_wit$834e43867ba4400a+58>:        pushq  0x1c0(%rsp)
+rsp            0x7f9b791b64e0      0x7f9b791b64e0
+(rr) watch *(uint64_t*)(0x7f9b791b64e0+0x1c0)
+=> 0x5569764dedec <ZRQG3cM17rustc_middle0_0_02ty4fold16BoundVarReplacer0g3c_A2ty_C10TypeFolder0g11fold_binder1gG3c_A2ty3sty20ExistentialPredicate0g+60>:        pushq  0x48(%rsp)
+rsp            0x7f9b791b66a8      0x7f9b791b66a8
+=> 0x5569764def8c <ZRQG3cM17rustc_middle0_0_02ty4utilH18closurefold_list_13gG3c_A2ty4fold16BoundVarReplacer0gG3c_A2ty3sty6Binder1gG3c_A2ty$dcd7632c1b095c15+108>:       push   %rsi
+rsi            0xb25               2853
+=> 0x5569764def5c <ZRQG3cM17rustc_middle0_0_02ty4utilH18closurefold_list_13gG3c_A2ty4fold16BoundVarReplacer0gG3c_A2ty3sty6Binder1gG3c_A2ty$dcd7632c1b095c15+60>:        mov    0xc8(%rsp),%rsi
+rsp            0x7f9b791b6700      0x7f9b791b6700
+=> 0x5569764df181 <ZRG3cM17rustc_middle0_0_02ty4util9fold_list3gG3c_A2ty4fold16BoundVarReplacer0gG3c_A2ty3sty6Binder1gG3c_A2ty_G20Existent$c490adfdebb8258f+305>:       pushq  0x1b8(%rsp)
+rsp            0x7f9b791b67d0      0x7f9b791b67d0
+=> 0x5569764df16a <ZRG3cM17rustc_middle0_0_02ty4util9fold_list3gG3c_A2ty4fold16BoundVarReplacer0gG3c_A2ty3sty6Binder1gG3c_A2ty_G20Existent$c490adfdebb8258f+282>:       movups %xmm0,0x1a8(%rsp)
+=> 0x5569764df108 <ZRG3cM17rustc_middle0_0_02ty4util9fold_list3gG3c_A2ty4fold16BoundVarReplacer0gG3c_A2ty3sty6Binder1gG3c_A2ty_G20Existent$c490adfdebb8258f+184>:       movdqu 0xe8(%rsp),%xmm0
+rsp            0x7f9b791b67d8      0x7f9b791b67d8	< Unaligned stack
+(rr) watch *(uint64_t*)(0x7f9b791b67d8+0xe8+8)
+=> 0x5569764df0f8 <ZRG3cM17rustc_middle0_0_02ty4util9fold_list3gG3c_A2ty4fold16BoundVarReplacer0gG3c_A2ty3sty6Binder1gG3c_A2ty_G20Existent$c490adfdebb8258f+168>:       movups %xmm3,0xf0(%rsp)
+=> 0x5569764df0e3 <ZRG3cM17rustc_middle0_0_02ty4util9fold_list3gG3c_A2ty4fold16BoundVarReplacer0gG3c_A2ty3sty6Binder1gG3c_A2ty_G20Existent$c490adfdebb8258f+147>:       movdqu 0x60(%rsp),%xmm3
+rsp            0x7f9b791b67e0      0x7f9b791b67e0
+(rr) print /x *(uint64_t*)(0x7f9b791b67e0+0x60); $79 = 0xb25
+(rr) watch *(uint64_t*)(0x7f9b791b67e0+0x60)
+=> 0x556976256231 <ZRQG4cE9core0_0_04iter8adapters6copied6Copied1gG3c_A5slice_B4Iter1gG3cM17rustc_middle0_0_02ty3sty6Binder1gG3c_H2ty_J20E$400bc00b708c4a9a+65>:        movups %xmm0,0x10(%rdi)
+=> 0x556976256220 <ZRQG4cE9core0_0_04iter8adapters6copied6Copied1gG3c_A5slice_B4Iter1gG3cM17rustc_middle0_0_02ty3sty6Binder1gG3c_H2ty_J20E$400bc00b708c4a9a+48>:        movdqu 0x10(%rdx),%xmm0
+rdx            0x7f9b68e295d8      140305456338392
+(rr) watch *(uint64_t*)(0x7f9b68e295d8+0x10)
+=> 0x7f9b795d7c87 <__memmove_sse2_unaligned_erms+215>:  movups %xmm3,0x30(%rdi)
+#1  0x00005569763b276d in ZRIG3cM17rustc_middle0_0_02ty4list4List1gG3c_A2ty3sty6Binder1gG3c_A2ty_E20ExistentialPredicate0g10from_arena0g ()
+=> 0x5569763b2768 <ZRIG3cM17rustc_middle0_0_02ty4list4List1gG3c_A2ty3sty6Binder1gG3c_A2ty_E20ExistentialPredicate0g10from_arena0g+200>: callq  0x556975cb2cb0 <memcpy@plt>
+rdx            0x40                64
+rsi            0x7f9b791b9608      140305728509448
+rdi            0x7f9b68e295b8      140305456338360
+(rr) print /x *(uint64_t*)(0x7f9b791b9608+0x30); $81 = 0xb25
+(rr) watch *(uint64_t*)(0x7f9b791b9608+0x30)
+=> 0x5569782c3061 <ZRID2cM17rustc_typeck0_0_07astconv7AstConv0g0029conv_object_ty_poly_trait_ref0g+6593>:       rep movsq %ds:(%rsi),%es:(%rdi)
+rsi            0x7f9b791b90a8      140305728508072
+rdi            0x7f9b791b9638      140305728509496
+(rr) watch *(uint64_t*)(0x7f9b791b90a8)
+=> 0x5569782c2fea <ZRID2cM17rustc_typeck0_0_07astconv7AstConv0g0029conv_object_ty_poly_trait_ref0g+6474>:       movups %xmm6,0x10(%rax)
+
+
+#0  0x00005569763be1ab in ZRQG1cM17rustc_middle0_0_0H29closureI_intern_predicate_1551gG3c_A2ty7context13CtxtInterners0g3cE9core0_0_03ops8function$e1588bd80960ed9e ()
+#1  0x00005569764657c5 in ZRIG2cV26rustc_data_structures0_0_07sharded7Sharded1gG4cD8std0_0_011collections4hash3map7HashMap3gG3cM17rustc_middle0_0$c58b81eaa0e46f8e ()
+#2  0x00005569764d6e0b in ZRQG2cM17rustc_middle0_0_02ty12ConstnessAnd1gG3c_A2ty3sty6Binder1gG3c_A2ty_D8TraitRef0g2c_A2ty11ToPredicate0g12to_predicate0g ()
+#3  0x00005569764d7069 in ZRIG3cM17rustc_middle0_0_02ty3sty6Binder1gG3c_A2ty_C20ExistentialPredicate0g12with_self_ty0g ()
+#4  0x0000556976927d9c in ZRQG3cV26rustc_trait_selection0_0_06traits2wfH29closureobject_region_bounds_00g3cE9core0_0_03ops8function2Fn1gT1G3cM17r$a7e5ff38affbf267 ()
+#5  0x0000556976927e5b in ZRQG4cE9core0_0_04iter8adapters3map3Map2gG4c_A_B_C10filter_map9FilterMap2gG4c_A_B_C6copied6Copied1gG3c_A5slice_B4Iter1g$c6df2bd3fb44cf40 ()
+#6  0x00005569769283d8 in ZRG2cV26rustc_trait_selection0_0_012opaque_types22required_region_bounds1gG4cE9core0_0_04iter8adapters10filter_map9Filt$23c6fab61aaa402b ()
+#7  0x0000556976928794 in ZRG3cV26rustc_trait_selection0_0_06traits2wf20object_region_bounds0g ()
+#8  0x00005569769288f0 in ZRIG3cV26rustc_trait_selection0_0_06traits2wf12WfPredicates0g14from_object_ty0g ()
+#9  0x000055697692924e in ZRIG3cV26rustc_trait_selection0_0_06traits2wf12WfPredicates0g7compute0g ()
+#10 0x0000556976929ac7 in ZRG3cV26rustc_trait_selection0_0_06traits2wf11obligations0g ()
+#11 0x000055697856f783 in ZRG2cM17rustc_traits0_0_023implied_outlives_bounds31compute_implied_outlives_bounds0g ()
+#12 0x0000556978570861 in ZRG2cM17rustc_traits0_0_023implied_outlives_bounds_B0g ()
+#13 0x00005569776efbb0 in ZRQG2cQ21rustc_query_impl0_0_07queries23implied_outlives_bounds0g3cS23rustc_query_system0_0_05query6config14QueryAccess$64486f6448914312 ()
+#14 0x00005569777476ea in ZRG1cH13stacker0_1_1210maybe_grow2gG2cE9core0_0_06result6Result2gBsG3cM17rustc_middle0_0_05infer9canonical9Canonical1gG$7a62ee280940c274.constprop.0 ()
+#15 0x0000556977c17509 in ZRQG1cQ21rustc_query_impl0_0_0H22closureI_start_query_43gG2c_A8plumbing9QueryCtxt0gG2cE9core0_0_06result6Result2gBsG3cM$10b5563b2bb3f9f1 ()
+#16 0x0000556977dd6364 in ZRG3cS23rustc_query_system0_0_05query8plumbing9get_query2gG2cQ21rustc_query_impl0_0_07queries23implied_outlives_bounds0$6c936d64cfc28cdb.isra.0 ()
+#17 0x000055697685b8a5 in ZRIG3cM17rustc_middle0_0_02ty5query8TyCtxtAt0g23implied_outlives_bounds0g.constprop.0 ()
+#18 0x0000556976937751 in ZRQG2cL16rustc_infer0_0_05infer9InferCtxt0g4cV26rustc_trait_selection0_0_06traits5query15outlives_bounds12InferCtxtExt0$7fe2c1f18a4c4308 ()
+#19 0x00005569769393d5 in ZRQG4cL16rustc_infer0_0_05infer8outlives3env19OutlivesEnvironment0g2cV26rustc_trait_selection0_0_0_B22OutlivesEnvironme$4c24fe384800972c ()
+#20 0x00005569781737c0 in ZRIG3cM17rustc_typeck0_0_05check7fn_ctxt6FnCtxt0g13regionck_item0g ()
+#21 0x00005569782476d5 in ZRQG1cM17rustc_typeck0_0_0H21closureI_with_fcx_5302gG3c_A5check7wfcheck17CheckWfFcxBuilder0gG3c_A_C_DH20closurecheck_im$4e656c3adf2b918c ()
+#22 0x000055697824786a in ZRQG1cM17rustc_typeck0_0_0H18closureI_enter_4663gG3c_A5check9inherited16InheritedBuilder0gG1c_AH21closureI_with_fcx_530$c1fcd6d031285fe4 ()
+#23 0x0000556978247b36 in ZRIG2cL16rustc_infer0_0_05infer16InferCtxtBuilder0g5enter2gT0G1cM17rustc_typeck0_0_0H18closureI_enter_4663gG3c_E5check9$bfddd0068f117a64 ()
+#24 0x0000556978247c2d in ZRIG3cM17rustc_typeck0_0_05check7wfcheck17CheckWfFcxBuilder0g8with_fcx1gG3c_A_B_CH20closurecheck_impl_130g ()
+#25 0x0000556978247d5f in ZRG3cM17rustc_typeck0_0_05check7wfcheck10check_impl0g ()
+#26 0x000055697828dfc4 in ZRG3cM17rustc_typeck0_0_05check7wfcheck22check_item_well_formed0g ()
+#27 0x00005569776ec905 in ZRQG2cQ21rustc_query_impl0_0_07queries22check_item_well_formed0g3cS23rustc_query_system0_0_05query6config14QueryAccesso$32c90b38282a2f6e ()
+#28 0x0000556977c25294 in ZRQG1cQ21rustc_query_impl0_0_0H22closureI_start_query_43gG2c_A8plumbing9QueryCtxt0gT0G3cS23rustc_query_system0_0_05quer$526ca74dcbabc5a8 ()
+#29 0x0000556977d61d92 in ZRG3cS23rustc_query_system0_0_05query8plumbing17try_execute_query2gG2cQ21rustc_query_impl0_0_0_C9QueryCtxt0gG3c_A_B6cac$a07ea17d34c0ca60.isra.0 ()
+#30 0x0000556977d6531e in ZRG3cS23rustc_query_system0_0_05query8plumbing9get_query2gG2cQ21rustc_query_impl0_0_07queries22check_item_well_formed0g$fa9241d149d7ff89.isra.0 ()
+#31 0x00005569781cb132 in ZRQG3cM17rustc_typeck0_0_05check7wfcheck26CheckTypeWellFormedVisitor0g2cJ14rustc_hir0_0_010intravisit7Visitor0g10visit_item0g ()
+#32 0x00005569781cd850 in ZRQG3cM17rustc_typeck0_0_05check7wfcheck26CheckTypeWellFormedVisitor0g2cJ14rustc_hir0_0_013itemlikevisit18ParItemLikeVi$185e314f93bb9dde ()
+#33 0x00005569781cd96a in ZRG2cD8std0_0_09panicking3try2gT0G2c_A5panic16AssertUnwindSafe1gG2cV26rustc_data_structures0_0_04syncH24closurepar_for_$cb6e87163678b358 ()
+#34 0x00005569781cdb92 in ZRG2cD8std0_0_09panicking3try2gT0G2c_A5panic16AssertUnwindSafe1gG1cJ14rustc_hir0_0_0H36closureI_par_visit_all_item_like$c0d91658c81bd669 ()
+#35 0x00005569781ce0e9 in ZRG3cM17rustc_typeck0_0_05check_B12check_wf_new0g ()
+#36 0x0000556978308da6 in ZRG1cM17rustc_typeck0_0_011check_crate0g ()
+#37 0x000055697863b24e in ZRG2cP23rustc_interface0_0_0_H36passes8analysis0g ()
+#38 0x00005569776ec502 in ZRQG2cQ21rustc_query_impl0_0_07queries8analysis0g3cS23rustc_query_system0_0_05query6config14QueryAccessors1gG2c_A8plumb$306038527cff27b1 ()
+#39 0x0000556977c172ab in ZRQG1cQ21rustc_query_impl0_0_0H22closureI_start_query_43gG2c_A8plumbing9QueryCtxt0gG2cE9core0_0_06result6Result2gT0G1cM$afb89c05f59cb63a ()
+#40 0x0000556977e5854a in ZRG3cS23rustc_query_system0_0_05query8plumbing9get_query2gG2cQ21rustc_query_impl0_0_07queries8analysis0gG2c_E_C9QueryCtxt0g.constprop.0.isra.0 ()
+#41 0x00005569786eae78 in ZRIG3cM17rustc_middle0_0_02ty5query8TyCtxtAt0g8analysis0g.constprop.0 ()
+#42 0x00005569787de682 in ZRQG1cM20rustc_driver0_0_0_H1H22closurerun_compiler_280g3cE9core0_0_03ops8function2Fn1gT1G3cM17rustc_middle0_0_02ty7con$bb91f09dde47d9b ()
+#43 0x00005569787e6574 in ZRQG1cM20rustc_driver0_0_0_H1H22closurerun_compiler_290g3cE9core0_0_03ops8function5FnMut1gT1BsG2cP23rustc_interface0_0_$c3eabcf094ee4356 ()
+#44 0x00005569787e68ab in ZRIG2cP23rustc_interface0_0_0_H39interface8Compiler0g5enter2gG1cM20rustc_driver0_0_0_H1H22closurerun_compiler_290gG2cE9$12c94e9f2d3acc3d ()
+#45 0x00005569787e6e9b in ZRQG1cM20rustc_driver0_0_0_H1H22closurerun_compiler_300g3cE9core0_0_03ops8function5FnMut1gT1BsG2cP23rustc_interface0_0_$1ec8d8b0aec2bd3c ()
+#46 0x00005569787e7d2d in ZRQG2cP23rustc_interface0_0_0_H34utilH22closurescoped_thread_92gG2c_A_BH61closuresetup_callbacks_and_run_in_thread_pool$c01311087d58f819.constprop.0 ()
+#47 0x00005569787e81d3 in ZRG2cD8std0_0_09panicking3try2gT0G2c_A5panic16AssertUnwindSafe1gG1c_AH28closureI_spawn_unchecked_1133gG2c_A6thread7Buil$b9c85e214c942008 ()
+#48 0x00005569787e82c4 in ZRQG1cD8std0_0_0H28closureI_spawn_unchecked_1143gG2c_A6thread7Builder0gG2cP23rustc_interface0_0_0_H34utilH22closurescop$86651dbde23c82ed ()
+#49 0x0000556975db0732 in ZRG5cD8std0_0_03sys4unix6threadB_012thread_start0g ()
+#50 0x00007f9b7986b609 in start_thread (arg=<optimised out>) at pthread_create.c:477
+#51 0x00007f9b7963b133 in clone () at ../sysdeps/unix/sysv/linux/x86_64/clone.S:95
+
+struct s_ZRG2cK15rustc_span0_0_06def_id8CrateNum0g  {
+        uint32_t _0; // u32
+} ;
+// struct ::"rustc_span-0_0_0"::def_id::DefId
+struct s_ZRG2cK15rustc_span0_0_06def_id5DefId0g  {
+        struct s_ZRG2cK15rustc_span0_0_06def_id8CrateNum0g _0; // ::"rustc_span-0_0_0"::def_id::CrateNum/*S*/
+        struct s_ZRG2cK15rustc_span0_0_06def_id8DefIndex0g _1; // ::"rustc_span-0_0_0"::def_id::DefIndex/*S*/
+} ;
+// struct ::"rustc_span-0_0_0"::def_id::DefIndex
+struct s_ZRG2cK15rustc_span0_0_06def_id8DefIndex0g  {
+        uint32_t _0; // u32
+} ;
+// struct ::"rustc_middle-0_0_0"::ty::sty::ExistentialPredicate#AutoTrait
+struct s_ZRG3cM17rustc_middle0_0_02ty3styU29ExistentialPredicateAutoTrait0g  {
+        uint32_t _1; // u32  <- Tag
+        struct s_ZRG2cK15rustc_span0_0_06def_id5DefId0g _0; // ::"rustc_span-0_0_0"::def_id::DefId/*S*/
+} ;
+// enum ::"rustc_middle-0_0_0"::ty::sty::ExistentialPredicate
+struct e_ZRG3cM17rustc_middle0_0_02ty3sty20ExistentialPredicate0g {
+        union {
+                struct s_ZRG3cM17rustc_middle0_0_02ty3styU25ExistentialPredicateTrait0g var_0;
+                struct s_ZRG3cM17rustc_middle0_0_02ty3styU30ExistentialPredicateProjection0g var_1;
+                struct s_ZRG3cM17rustc_middle0_0_02ty3styU29ExistentialPredicateAutoTrait0g var_2;
+        } DATA;
+};
+// <::"rustc_middle-0_0_0"::ty::sty::ExistentialPredicate/*E*/ as ::"rustc_middle-0_0_0"::ty::fold::TypeFoldable>::super_fold_with<::"rustc_middle-0_0_0"::ty::fold::BoundVarReplacer/*S*/,>
+struct e_ZRG3cM17rustc_middle0_0_02ty3sty20ExistentialPredicate0g  ZRQG3cM17rustc_middle0_0_02ty3sty20ExistentialPredicate0g3c_A2ty4fold12TypeFoldable0g15super_fold_with1gG3c_A2ty_E16Bou$c6411ae8e3203bad(
+                struct e_ZRG3cM17rustc_middle0_0_02ty3sty20ExistentialPredicate0g arg0,
+                struct s_ZRG3cM17rustc_middle0_0_02ty4fold16BoundVarReplacer0g *arg1
+                )
+Dump of assembler code for function ZRQG3cM17rustc_middle0_0_02ty3sty20ExistentialPredicate0g3c_A2ty4fold12TypeFoldable0g15super_fold_with1gG3c_A2ty_E16Bou$c6411ae8e3203bad:
+   0x5569764de8b0 <+0>:     endbr64
+   0x5569764de8b4 <+4>:     push   %r13
+   0x5569764de8b6 <+6>:     push   %r12
+   0x5569764de8b8 <+8>:     mov    %rdi,%r12	; RDI/R12 = return slot
+   0x5569764de8bb <+11>:    push   %rbp
+   0x5569764de8bc <+12>:    push   %rbx
+   0x5569764de8bd <+13>:    sub    $0x28,%rsp
+   0x5569764de8c1 <+17>:    mov    %fs:0x28,%rcx
+   0x5569764de8ca <+26>:    mov    %rcx,0x18(%rsp)
+   0x5569764de8cf <+31>:    xor    %ecx,%ecx
+   0x5569764de8d1 <+33>:    mov    0x50(%rsp),%ebx	; var_1.CrateNum/tag
+=> 0x5569764de8d5 <+37>:    mov    0x58(%rsp),%ebp	; RSP+58, fcn frame (0x28+5*8=0x50). This is arg0 directly on the stack. arg0.var_2.DefIndex
+   0x5569764de8d9 <+41>:    cmp    $0xffffff01,%ebx
+   0x5569764de8df <+47>:    je     0x5569764de960 <ZRQG3cM17rustc_middle0_0_02ty3sty20ExistentialPredicate0g3c_A2ty4fold12TypeFoldable0g15super_fold_with1gG3c_A2ty_E16Bou$c6411ae8e3203bad+176>
+   0x5569764de8e1 <+49>:    cmp    $0xffffff03,%ebx
+   0x5569764de8e7 <+55>:    je     0x5569764de978 <ZRQG3cM17rustc_middle0_0_02ty3sty20ExistentialPredicate0g3c_A2ty4fold12TypeFoldable0g15super_fold_with1gG3c_A2ty_E16Bou$c6411ae8e3203bad+200>
+   # ^ Jump taken
+   # var_1
+   0x5569764de8ed <+61>:    mov    %rsp,%rdi
+   0x5569764de8f0 <+64>:    sub    $0x8,%rsp
+   0x5569764de8f4 <+68>:    pushq  0x68(%rsp)
+   0x5569764de8f8 <+72>:    pushq  0x68(%rsp)
+   0x5569764de8fc <+76>:    pushq  0x68(%rsp)
+   0x5569764de900 <+80>:    callq  0x5569764de200 <ZRQG3cM17rustc_middle0_0_02ty3sty21ExistentialProjection0g3c_A2ty4fold12TypeFoldable0g15super_fold_with1gG3c_A2ty_E16Bo$48c276680f2f84f1>
+   0x5569764de905 <+85>:    mov    0x30(%rsp),%rax
+   0x5569764de90a <+90>:    movdqu 0x20(%rsp),%xmm0
+   0x5569764de910 <+96>:    mov    0x20(%rsp),%ebx
+   0x5569764de914 <+100>:   mov    0x28(%rsp),%ebp
+   0x5569764de918 <+104>:   mov    %rax,0x10(%r12)
+   0x5569764de91d <+109>:   mov    0x2c(%rsp),%r13d
+   0x5569764de922 <+114>:   add    $0x20,%rsp
+   0x5569764de926 <+118>:   movups %xmm0,(%r12)
+   # common
+   0x5569764de92b <+123>:   mov    %ebx,(%r12)	; rv[DWORD 0]: tag setting enum tag (either original, or read from result of call)
+   0x5569764de92f <+127>:   mov    %ebp,0x8(%r12)	; rv[DWORD 2]
+   0x5569764de934 <+132>:   mov    %r13d,0xc(%r12)	; rv[DWORD 3]
+   0x5569764de939 <+137>:   mov    %rax,0x10(%r12)	; rv[DWORD 4,5]
+   # Epilogue
+   0x5569764de93e <+142>:   mov    0x18(%rsp),%rax
+   0x5569764de943 <+147>:   sub    %fs:0x28,%rax
+   0x5569764de94c <+156>:   jne    0x5569764de987 <ZRQG3cM17rustc_middle0_0_02ty3sty20ExistentialPredicate0g3c_A2ty4fold12TypeFoldable0g15super_fold_with1gG3c_A2ty_E16Bou$c6411ae8e3203bad+215>
+   0x5569764de94e <+158>:   add    $0x28,%rsp
+   0x5569764de952 <+162>:   mov    %r12,%rax
+   0x5569764de955 <+165>:   pop    %rbx
+   0x5569764de956 <+166>:   pop    %rbp
+   0x5569764de957 <+167>:   pop    %r12
+   0x5569764de959 <+169>:   pop    %r13
+   0x5569764de95b <+171>:   retq
+   0x5569764de95c <+172>:   nopl   0x0(%rax)
+   # var_0
+   0x5569764de960 <+176>:   mov    0x60(%rsp),%rdi
+   0x5569764de965 <+181>:   mov    0x5c(%rsp),%r13d
+   0x5569764de96a <+186>:   callq  0x5569764dcd20 <ZRQBsG3cM17rustc_middle0_0_02ty4list4List1gG3c_A2ty5subst10GenericArg0g3c_A2ty4fold12TypeFoldable0g15super_fold_with1gG$f2ba0cb7908e8892>
+   0x5569764de96f <+191>:   jmp    0x5569764de92b <ZRQG3cM17rustc_middle0_0_02ty3sty20ExistentialPredicate0g3c_A2ty4fold12TypeFoldable0g15super_fold_with1gG3c_A2ty_E16Bou$c6411ae8e3203bad+123>
+   0x5569764de971 <+193>:   nopl   0x0(%rax)
+   # var_2
+=> 0x5569764de978 <+200>:   mov    %ebp,0x54(%rsp)	; var_2.CrateNum = var_2.DefIndex	WHY? 
+=> 0x5569764de97c <+204>:   mov    0x54(%rsp),%rdx	; rdx = {var_2.CrateNum,var_2.DefIndex}
+=> 0x5569764de981 <+209>:   mov    %rdx,0x4(%rdi)	<= rv[4] = var_2.CrateNum (clobbered)
+   0x5569764de985 <+213>:   jmp    0x5569764de92b <ZRQG3cM17rustc_middle0_0_02ty3sty20ExistentialPredicate0g3c_A2ty4fold12TypeFoldable0g15super_fold_with1gG3c_A2ty_E16Bou$c6411ae8e3203bad+123>
+   0x5569764de987 <+215>:   callq  0x556975cb20f0 <__stack_chk_fail@plt>
+        var3 = arg1;    // _3 = Borrow(Unique, a1*)
+        // ^ drop(_3)
+        rv.DATA.var_1._0._0._0._0 = 4294967043;
+        rv.DATA.var_2._0 = arg0.DATA.var_2._0;  // retval = Variant(::"rustc_middle-0_0_0"::ty::sty::ExistentialPredicate #2, {a0#2.0})
+        // ^ Goto(6)
+
+GCC BUG!
