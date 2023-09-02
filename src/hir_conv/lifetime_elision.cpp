@@ -13,11 +13,35 @@
 
 namespace
 {
+    /// <summary>
+    /// A class that acts like StaticTraitResolve, but only holds params
+    /// </summary>
+    struct MiniResolve
+    {
+        const HIR::Crate& m_crate;
+        const HIR::GenericParams* m_impl_generics;
+        const HIR::GenericParams* m_item_generics;
+
+        MiniResolve(const HIR::Crate& crate)
+            : m_crate(crate)
+        {
+        }
+
+        NullOnDrop<const ::HIR::GenericParams> set_impl_generics(const ::HIR::GenericParams& gps) {
+            m_impl_generics = &gps;
+            return NullOnDrop<const ::HIR::GenericParams>(m_impl_generics);
+        }
+
+        NullOnDrop<const ::HIR::GenericParams> set_item_generics(const ::HIR::GenericParams& gps) {
+            m_item_generics = &gps;
+            return NullOnDrop<const ::HIR::GenericParams>(m_item_generics);
+        }
+    };
     class Visitor:
         public ::HIR::Visitor
     {
         ::HIR::Crate& crate;
-        StaticTraitResolve  m_resolve;
+        MiniResolve  m_resolve;
 
         bool m_in_expr = false;
         bool m_create_elided = false;
@@ -735,7 +759,7 @@ namespace
         void visit_type_impl(::HIR::TypeImpl& impl) override
         {
             TRACE_FUNCTION_F("impl " << impl.m_type);
-            auto _ = m_resolve.set_impl_generics(impl.m_type, impl.m_params);
+            auto _ = m_resolve.set_impl_generics(/*impl.m_type,*/ impl.m_params);
 
             // Pre-visit so lifetime elision can work
             {
@@ -748,7 +772,7 @@ namespace
         void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override
         {
             TRACE_FUNCTION_F("impl " << trait_path << impl.m_trait_args << " for " << impl.m_type);
-            auto _ = m_resolve.set_impl_generics(impl.m_type, impl.m_params);
+            auto _ = m_resolve.set_impl_generics(/*impl.m_type,*/ impl.m_params);
 
             // Pre-visit so lifetime elision can work
             {
@@ -762,7 +786,7 @@ namespace
         void visit_marker_impl(const ::HIR::SimplePath& trait_path, ::HIR::MarkerImpl& impl) override
         {
             TRACE_FUNCTION_F("impl " << trait_path << impl.m_trait_args << " for " << impl.m_type << " { }");
-            auto _ = m_resolve.set_impl_generics(impl.m_type, impl.m_params);
+            auto _ = m_resolve.set_impl_generics(/*impl.m_type,*/ impl.m_params);
 
             // Pre-visit so lifetime elision can work
             {
@@ -776,19 +800,19 @@ namespace
 
         void visit_struct(::HIR::ItemPath p, ::HIR::Struct& item) override
         {
-            auto _ = m_resolve.set_impl_generics(item.m_struct_markings.dst_type, item.m_params);
+            auto _ = m_resolve.set_impl_generics(/*item.m_struct_markings.dst_type,*/ item.m_params);
             auto _2 = push_params(item.m_params, 0); m_create_elided = false;
             ::HIR::Visitor::visit_struct(p, item);
         }
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override
         {
-            auto _ = m_resolve.set_impl_generics(MetadataType::None, item.m_params);
+            auto _ = m_resolve.set_impl_generics(/*MetadataType::None,*/ item.m_params);
             auto _2 = push_params(item.m_params, 0); m_create_elided = false;
             ::HIR::Visitor::visit_enum(p, item);
         }
         void visit_union(::HIR::ItemPath p, ::HIR::Union& item) override
         {
-            auto _ = m_resolve.set_impl_generics(MetadataType::None, item.m_params);
+            auto _ = m_resolve.set_impl_generics(/*MetadataType::None,*/ item.m_params);
             auto _2 = push_params(item.m_params, 0); m_create_elided = false;
             ::HIR::Visitor::visit_union(p, item);
         }
