@@ -2419,7 +2419,12 @@ namespace {
                 m_of << (v < 0 ? "-" : "") << "INFINITY";
             }
             else {
-                if( ty == HIR::CoreType::F32 ) {
+                // HACK: Always emit float literals as `double` for MSVC, it fails hard with "error C2177: constant too big" otherwise
+                if( m_compiler == Compiler::Msvc ) {
+                    m_of.precision(::std::numeric_limits<double>::max_digits10 + 1);
+                    m_of << ::std::scientific << v;
+                }
+                else if( ty == HIR::CoreType::F32 ) {
                     m_of.precision(::std::numeric_limits<float>::max_digits10 + 1);
                     m_of << ::std::scientific << v << "f";
                 } else {
