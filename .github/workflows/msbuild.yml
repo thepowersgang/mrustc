@@ -55,12 +55,15 @@ jobs:
       with:
         name: binaries
         # Includes `minipatch` as that's needed by the test scripts
+        # Needs `zlib[1].dll` for mrustc to run
         path: |
           vsproject/x64/${{env.BUILD_CONFIGURATION}}/minicargo.exe
           vsproject/x64/${{env.BUILD_CONFIGURATION}}/mrustc.exe
           vsproject/x64/${{env.BUILD_CONFIGURATION}}/testrunner.exe
           vsproject/x64/${{env.BUILD_CONFIGURATION}}/minipatch.exe
           vsproject/x64/${{env.BUILD_CONFIGURATION}}/mir_opt_test.exe
+          vsproject/x64/${{env.BUILD_CONFIGURATION}}/zlib.dll
+          vsproject/x64/${{env.BUILD_CONFIGURATION}}/zlib1.dll
   test-run:
     needs: build
     strategy:
