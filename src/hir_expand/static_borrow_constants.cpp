@@ -149,7 +149,8 @@ namespace static_borrow_constants {
                 {
                     DEBUG("-- Mutable borrow of non-ZST");
                 }
-                // NOTE: Interior mutability is handled at the root level (function calls and consts)
+                // NOTE: Interior mutability is handled at the lower levels (function calls and consts)
+                // - This allows `EnumWithImut::NotImutVariant(...)` to be a valid promoted static.
                 else
                 {
                     DEBUG("-- Marking static");
@@ -507,7 +508,8 @@ namespace static_borrow_constants {
                 ExprVisitor_Mark    ev(m_resolve, m_self_type, item.m_value);
                 ev.visit_node_ptr(item.m_value);
                 if( !ev.all_constant() ) {
-                    WARNING(item.m_value->span(), W0000, "`static " << p << "` is not constant");
+                    //ERROR(item.m_value->span(), E0000, "`static " << p << "` is not constant");
+                    //WARNING(item.m_value->span(), W0000, "`static " << p << "` is not constant");
                 }
             }
         }
@@ -517,7 +519,9 @@ namespace static_borrow_constants {
                 ExprVisitor_Mark    ev(m_resolve, m_self_type, item.m_value);
                 ev.visit_node_ptr(item.m_value);
                 if( !ev.all_constant() ) {
-                    WARNING(item.m_value->span(), W0000, "`const " << p << "` is not constant");
+                    // TODO: The set of operations valid in a `static`/`const` is different to the set that is valid to promote.
+                    // - Just trust the evaluator to detect invalid operations.
+                    //WARNING(item.m_value->span(), W0000, "`const " << p << "` is not constant");
                 }
             }
         }
