@@ -84,9 +84,11 @@ jobs:
         path: vsproject/x64/${{env.BUILD_CONFIGURATION}}
     - name: Download rust source
       shell: powershell
-      run: |
-        Invoke-WebRequest -Method Get -Uri https://static.rust-lang.org/dist/rustc-${{matrix.rustver}}.0-src.tar.gz -UseBasicParsing
-        Start-Process -Wait "c:\Program Files\7-Zip\7z.exe" -ArgumentList "x", "rustc-${{matrix.rustver}}.0-src.tar.gz"
+      run: Invoke-WebRequest -Method Get -Uri https://static.rust-lang.org/dist/rustc-${{matrix.rustver}}.0-src.tar.gz -UseBasicParsing
+    # Chain 7z invocations to extract the tarball directly - see https://superuser.com/a/546694
+    - name: Extract rust source
+      shell: cmd
+      run: "c:\Program Files\7-Zip\7z.exe" x rustc-1.54.0-src.tar.gz -so | "c:\Program Files\7-Zip\7z.exe" x -aoa -si -ttar
     - name: Build
       run: |
         cd vsproject
