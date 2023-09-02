@@ -736,8 +736,8 @@ class NodeVisitorDef:
 {
 public:
     inline void visit(ExprNodeP& cnode) {
-        if(cnode.get()) {
-            TRACE_FUNCTION_F(typeid(*cnode).name());
+        if(cnode.is_valid()) {
+            TRACE_FUNCTION_F(cnode.type_name());
             cnode->visit(*this);
         }
     }

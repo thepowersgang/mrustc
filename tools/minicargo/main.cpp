@@ -53,6 +53,9 @@ struct ProgramOptions
     /// Build and run tests?
     bool test = false;
 
+    /// Enable debug output (`-g` passed)
+    bool enable_debug = false;
+
     bool no_default_features = false;
     ::std::vector<::std::string>    features;
 
@@ -221,6 +224,7 @@ int main(int argc, const char* argv[])
         build_opts.output_dir = opts.output_directory ? ::helpers::path(opts.output_directory) : ::helpers::path("output");
         build_opts.lib_search_dirs.reserve(opts.lib_search_dirs.size());
         build_opts.emit_mmir = opts.emit_mmir;
+        build_opts.enable_debug = opts.enable_debug;
         build_opts.target_name = opts.target;
         for(const auto* d : opts.lib_search_dirs)
             build_opts.lib_search_dirs.push_back( ::helpers::path(d) );
@@ -321,6 +325,9 @@ int ProgramOptions::parse(int argc, const char* argv[])
                 break;
             case 'n':
                 this->build_jobs = 0;
+                break;
+            case 'g':
+                this->enable_debug = true;
                 break;
             case 'h':
                 this->help();
@@ -435,6 +442,7 @@ void ProgramOptions::help() const
         << "-L <dir>                 : Search for pre-built crates (e.g. libstd) in the specified directory\n"
         << "-j <count>               : Run at most <count> build tasks at once (default is to run only one)\n"
         << "-n                       : Don't build any packages, just list the packages that would be built\n"
+        << "-g                       : Pass `-g` to compiler\n"
         << "--no-default-features    : \n"
         << "--features <list>        : \n"
         ;

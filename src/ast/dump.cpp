@@ -11,6 +11,7 @@
 #include <main_bindings.hpp>
 #include <hir/hir.hpp>  // ABI_RUST - TODO: Move elsewhere?
 #include <fstream>
+#include <limits> // std::numeric_limits
 
 #include <cpp_unpack.h>
 
@@ -446,10 +447,13 @@ public:
         m_expr_root = false;
         switch(n.m_datatype)
         {
-        case CORETYPE_ANY:
         case CORETYPE_F32:
+            m_os.precision(::std::numeric_limits<float>::max_digits10 + 1);
+            m_os << n.m_value;
+            break;
+        case CORETYPE_ANY:
         case CORETYPE_F64:
-            m_os.precision(10);
+            m_os.precision(::std::numeric_limits<double>::max_digits10 + 1);
             m_os << n.m_value;
             break;
         default:
@@ -723,7 +727,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
         print_attrs(item.attrs);
         m_os << indent() << "extern \"" << e.abi() << "\" {}\n";
     }
-    
+
     for( const auto& ip : mod.m_items )
     {
         const auto& item = *ip;

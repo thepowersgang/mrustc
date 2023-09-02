@@ -388,73 +388,15 @@ Token Lexer::getTokenInt()
             if( ch.isdigit() )
             {
                 enum eCoreType  num_type = CORETYPE_ANY;
-                enum {
-                    BIN,
-                    OCT,
-                    DEC,
-                    HEX,
-                } num_mode = DEC;
-
+                NumMode num_mode = NumMode::DEC;
 
                 // Handle integers/floats
-                U128    val(0);
-                if( ch == '0' ) {
-                    // Octal/hex handling
-                    ch = this->getc_num();
-                    if( ch == 'x' ) {
-                        num_mode = HEX;
-                        while( (ch = this->getc_num()).isxdigit() )
-                        {
-                            val *= 16;
-                            if(ch.v <= '9')
-                                val += U128(ch.v - '0');
-                            else if( ch.v <= 'F' )
-                                val += U128(ch.v - 'A' + 10);
-                            else if( ch.v <= 'f' )
-                                val += U128(ch.v - 'a' + 10);
-                        }
-                    }
-                    else if( ch == 'b' ) {
-                        num_mode = BIN;
-                        while( (ch = this->getc_num()).isdigit() )
-                        {
-                            val *= 2;
-                            if(ch.v == '0')
-                                val += 0;
-                            else if( ch.v == '1' )
-                                val += 1;
-                            else
-                                throw ParseError::Generic("Invalid digit in binary literal");
-                        }
-                    }
-                    else if( ch == 'o' ) {
-                        num_mode = OCT;
-                        while( (ch = this->getc_num()).isdigit() ) {
-                            val *= 8;
-                            if('0' <= ch.v && ch.v <= '7')
-                                val += U128(ch.v - '0');
-                            else
-                                throw ParseError::Generic("Invalid digit in octal literal");
-                        }
-                    }
-                    else {
-                        num_mode = DEC;
-                        while( ch.isdigit() ) {
-                            val *= 10;
-                            val += U128(ch.v - '0');
-                            ch = this->getc_num();
-                        }
-                    }
-                }
-                else {
-                    while( ch.isdigit() ) {
-                        val *= 10;
-                        val += U128(ch.v - '0');
-                        ch = this->getc_num();
-                    }
-                }
+                this->ungetc();
+                auto val = this->parseInt(&num_mode);
+                ch = this->getc();
 
                 if( ch == 'e' || ch == 'E' || ch == '.' ) {
+                    // Special handling for `.` - for `..` and method access
                     if( ch == '.' )
                     {
                         ch = this->getc();
@@ -477,6 +419,7 @@ Token Lexer::getTokenInt()
                         }
 
                         // Single dot followed by a non-digit, could be a float or an integer with a method/field access
+                        // NOTE: `1.e1` is not a float
                         if( !ch.isdigit() )
                         {
                             this->ungetc();
@@ -498,12 +441,12 @@ Token Lexer::getTokenInt()
                             // - Thus, continuing here and letting the below 'ungetc' push a digit back is correct.
                         }
                     }
-                    if( num_mode != DEC )
+                    if( num_mode != NumMode::DEC )
                         TODO(this->point_span(), "Non-decimal floats");
 
 
                     this->ungetc();
-                    double fval = this->parseFloat(val.truncate_u64());
+                    double fval = this->parseFloat(val);
                     if( fval != fval )
                     {
                         assert(!this->m_next_tokens.empty());
@@ -637,6 +580,17 @@ Token Lexer::getTokenInt()
         }
         else if( sym > 0 )
         {
+            // If the symbol is `TOK_DOT`, check if the next character is a digit and consume an integer
+            if(sym == TOK_DOT) {
+                auto ch = this->getc();
+                this->ungetc();
+                if( ch.isdigit() ) {
+                    auto val = this->parseInt(nullptr);
+                    m_next_tokens.push_back(Token(val, CORETYPE_ANY));
+                }
+                else {
+                }
+            }
             return Token((enum eTokenType)sym);
         }
         else
@@ -906,16 +860,91 @@ Token Lexer::getTokenInt_Identifier(Codepoint leader, Codepoint leader2, bool pa
     return Token(TOK_IDENT, Ident(this->realGetHygiene(), RcString::new_interned(str)));
 }
 
+/// Parse an integer from the input stream
+U128 Lexer::parseInt(NumMode* num_mode_out)
+{
+    auto num_mode = NumMode::DEC;
+
+    U128    val(0);
+    auto ch = this->getc();
+    // Leading zero could be part of a base suffix
+    // - `0x` Hex
+    // - `0o` Octal
+    // - `0b` Binary
+    // - Any other character: decimal
+    if( ch == '0' ) {
+        ch = this->getc_num();
+        if( ch == 'x' ) {
+            num_mode = NumMode::HEX;
+            while( (ch = this->getc_num()).isxdigit() )
+            {
+                val *= 16;
+                if(ch.v <= '9')
+                    val += U128(ch.v - '0');
+                else if( ch.v <= 'F' )
+                    val += U128(ch.v - 'A' + 10);
+                else if( ch.v <= 'f' )
+                    val += U128(ch.v - 'a' + 10);
+            }
+        }
+        else if( ch == 'b' ) {
+            num_mode = NumMode::BIN;
+            while( (ch = this->getc_num()).isdigit() )
+            {
+                val *= 2;
+                if(ch.v == '0')
+                    val += 0;
+                else if( ch.v == '1' )
+                    val += 1;
+                else
+                    throw ParseError::Generic("Invalid digit in binary literal");
+            }
+        }
+        else if( ch == 'o' ) {
+            num_mode = NumMode::OCT;
+            while( (ch = this->getc_num()).isdigit() ) {
+                val *= 8;
+                if('0' <= ch.v && ch.v <= '7')
+                    val += U128(ch.v - '0');
+                else
+                    throw ParseError::Generic("Invalid digit in octal literal");
+            }
+        }
+        else {
+            num_mode = NumMode::DEC;
+            while( ch.isdigit() ) {
+                val *= 10;
+                val += U128(ch.v - '0');
+                ch = this->getc_num();
+            }
+        }
+    }
+    else {
+        num_mode = NumMode::DEC;
+        while( ch.isdigit() ) {
+            val *= 10;
+            val += U128(ch.v - '0');
+            ch = this->getc_num();
+        }
+    }
+
+    this->ungetc();
+    if( num_mode_out )
+        *num_mode_out = num_mode;
+    return val;
+}
+
 // Takes the VERY lazy way of reading the float into a string then passing to strtod
-double Lexer::parseFloat(uint64_t whole)
+double Lexer::parseFloat(U128 whole)
 {
     const int MAX_LEN = 63;
     const int MAX_SIG = MAX_LEN - 1 - 4;
-    char buf[MAX_LEN+1];
-    int ofs = snprintf(buf, MAX_LEN+1, "%llu.", (unsigned long long)whole);
+    std::string  sbuf = FMT(whole << ".");
+    //char buf[MAX_LEN+1];
+    //int ofs = snprintf(buf, MAX_LEN+1, "%llu.", (unsigned long long)whole);
 
     auto ch = this->getc_num();
-    #define PUTC(ch)    do { if( ofs < MAX_SIG ) { assert(ch.v < 127); buf[ofs] = ch.v; ofs ++; } else { throw ParseError::Generic("Oversized float"); } } while(0)
+    #define PUTC(ch)    do { assert(ch.v < 127); sbuf += char(ch.v); /* if( ofs < MAX_SIG ) { buf[ofs] = ch.v; ofs ++; } else { throw ParseError::Generic("Oversized float"); } */ } while(0)
     while( ch.isdigit() )
     {
         PUTC(ch);
@@ -924,42 +953,77 @@ double Lexer::parseFloat(uint64_t whole)
     // If the current char is a `.`
     if( ch == '.' )
     {
-        buf[ofs] = '\0';
-        assert( buf[ofs-1] != '.' );    // Shouldn't be possible (as that would have been handled by the caller as `<int> '..'`
-        DEBUG("Detected double tuple indexing (trailing `.` after a float - " << buf << ")");
-        // x.y. -> This should be two integers.
-        // - Parse into `<int> '.' <int>` (ungetting the final `.`)
-        auto cit = std::find(buf, buf+sizeof(buf), '.');
-        *cit = '\0';
-        // - Push these in reverse order (as they're popped off the back)
-        this->ungetc();
-        m_next_tokens.push_back(Token(U128(std::strtoull(cit+1, nullptr, 10)), CORETYPE_ANY));
-        m_next_tokens.push_back(TOK_DOT);
-        m_next_tokens.push_back(Token(U128(std::strtoull(buf  , nullptr, 10)), CORETYPE_ANY));
+        // TODO: `0.0..` should be a range, so if the next character is `.`, then unget and continue
+        ch = this->getc();
+        if( ch == '.' ) {
+            // Double-dot, need to unget twice
+            // OR: Explicitly handle the symbols
+            switch(this->getc().v)
+            {
+            case '.':
+                m_next_tokens.push_back(TOK_TRIPLE_DOT);
+                break;
+            case '=':
+                m_next_tokens.push_back(TOK_DOUBLE_DOT_EQUAL);
+                break;
+            default:
+                this->ungetc();
+                m_next_tokens.push_back(TOK_DOUBLE_DOT);
+                break;
+            }
+            //buf[ofs] = 0;
+            //m_next_tokens.push_back(Token::make_float(::std::strtod(buf, NULL), CORETYPE_ANY));
+            m_next_tokens.push_back(Token::make_float(::std::strtod(sbuf.c_str(), NULL), CORETYPE_ANY));
 
-        return std::numeric_limits<double>::quiet_NaN();
-    }
-    if( ch == 'e' || ch == 'E' )
-    {
-        PUTC(ch);
-        ch = this->getc_num();
-        if( ch == '-' || ch == '+' ) {
-            PUTC(ch);
-            ch = this->getc_num();
+            return std::numeric_limits<double>::quiet_NaN();
         }
-        if( !ch.isdigit() )
-            throw ParseError::Generic( FMT("Non-numeric '"<<ch<<"' in float exponent") );
-        do {
+        else {
+            this->ungetc();
+
+            //buf[ofs] = '\0';
+            //assert( buf[ofs-1] != '.' );    // Shouldn't be possible (as that would have been handled by the caller as `<int> '..'`
+            DEBUG("Detected double tuple indexing (trailing `.` after a float - " << sbuf << ")");
+            // x.y. -> This should be two integers.
+            // - Parse into `<int> '.' <int>` (ungetting the final `.`)
+            const char* buf = sbuf.data();
+            auto cit = std::find(buf, buf+sbuf.size(), '.');
+            sbuf[cit - sbuf.data()] = '\0';
+            //auto cit = std::find(buf, buf+sizeof(buf), '.');
+            //*cit = '\0';
+            // - Push these in reverse order (as they're popped off the back)
+            m_next_tokens.push_back(TOK_DOT);
+            m_next_tokens.push_back(Token(U128(std::strtoull(cit+1, nullptr, 10)), CORETYPE_ANY));
+            m_next_tokens.push_back(TOK_DOT);
+            m_next_tokens.push_back(Token(U128(std::strtoull(buf  , nullptr, 10)), CORETYPE_ANY));
+
+            return std::numeric_limits<double>::quiet_NaN();
+        }
+    }
+    else
+    {
+        if( ch == 'e' || ch == 'E' )
+        {
             PUTC(ch);
             ch = this->getc_num();
-        } while( ch.isdigit() );
+            if( ch == '-' || ch == '+' ) {
+                PUTC(ch);
+                ch = this->getc_num();
+            }
+            if( !ch.isdigit() )
+                throw ParseError::Generic( FMT("Non-numeric '"<<ch<<"' in float exponent") );
+            do {
+                PUTC(ch);
+                ch = this->getc_num();
+            } while( ch.isdigit() );
+        }
+        this->ungetc();
+        //buf[ofs] = 0;
+        //DEBUG("buf = " << buf << ", ch = '" << ch << "'");
+        DEBUG("buf = " << sbuf << ", ch = '" << ch << "'");
+
+        //return ::std::strtod(buf, NULL);
+        return ::std::strtod(sbuf.c_str(), NULL);
     }
-    this->ungetc();
-    buf[ofs] = 0;
-
-    DEBUG("buf = " << buf << ", ch = '" << ch << "'");
-
-    return ::std::strtod(buf, NULL);
 }
 
 uint32_t Lexer::parseEscape(char enclosing)
@@ -1038,7 +1102,7 @@ uint32_t Lexer::parseEscape(char enclosing)
 char Lexer::getc_byte()
 {
     int rv = m_istream.get();
-    if( rv == EOF || m_istream.eof() )
+    if( rv == EOF )
         throw Lexer::EndOfFile();
 
     if( rv == '\r' )

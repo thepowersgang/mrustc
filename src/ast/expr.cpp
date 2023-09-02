@@ -21,6 +21,10 @@ ExprNodeP::ExprNodeP(std::unique_ptr<ExprNode> node)
     : m_ptr(node.release())
 {
 }
+const char* ExprNodeP::type_name() const
+{
+    return typeid(*m_ptr).name();
+}
 
 Expr::Expr(ExprNodeP node):
     m_node(node.release())

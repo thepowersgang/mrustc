@@ -557,12 +557,39 @@ namespace {
                 m_of
                     << "typedef struct { uint64_t lo, hi; } uint128_t;\n"
                     << "typedef struct { uint64_t lo, hi; } int128_t;\n"
+                    << "static inline uint128_t intrinsic_ctlz_u128(uint128_t v);\n"
+                    << "static inline uint128_t shl128(uint128_t a, uint32_t b);\n"
+                    << "static inline uint128_t shr128(uint128_t a, uint32_t b);\n"
                     << "static inline float make_float(int is_neg, int exp, uint32_t mantissa_bits) { float rv; uint32_t vi=(mantissa_bits&((1<<23)-1))|((exp+127)<<23);if(is_neg)vi|=1<<31; memcpy(&rv, &vi, 4); return rv; }\n"
                     << "static inline double make_double(int is_neg, int exp, uint32_t mantissa_bits) { double rv; uint64_t vi=(mantissa_bits&((1ull<<52)-1))|((uint64_t)(exp+1023)<<52);if(is_neg)vi|=1ull<<63; memcpy(&rv, &vi, 4); return rv; }\n"
                     << "static inline uint128_t make128_raw(uint64_t hi, uint64_t lo) { uint128_t rv = { lo, hi }; return rv; }\n"
                     << "static inline uint128_t make128(uint64_t v) { uint128_t rv = { v, 0 }; return rv; }\n"
-                    << "static inline float cast128_float(uint128_t v) { if(v.hi == 0) return v.lo; int exp = 0; uint32_t mant = 0; return make_float(0, exp, mant); }\n"
-                    << "static inline double cast128_double(uint128_t v) { if(v.hi == 0) return v.lo; int exp = 0; uint64_t mant = 0; return make_double(0, exp, mant); }\n"
+                    // https://blog.m-ou.se/floats/
+                    << "static inline float cast128_float(uint128_t v) {"
+                    << " int n = intrinsic_ctlz_u128(v).lo;"
+                    << " uint128_t y = shl128(v, n);"
+                    << " uint64_t a = (y.hi >> ((128-(23+1))-64));" // Base mantissa (top 24 bits)
+                    << " uint64_t b = shr128(y, (64-(23+1))).lo | (y.lo & 0xFFFFFFFFFF);" // Were any discarded bits set? (shift right by 40 to get 64 bits with the top just before the last mantissa bit, then extract 40 bits from low)
+                    << " uint64_t m = a + ((b - ((b >> 63) & ~a)) >> 63);"    // Account for rounding
+                    << " uint64_t e = (v.lo == 0 && v.hi == 0) ? 0 : (127 - n)+127-1;"  // Exponent, with the -1 to fudge the 24th bit in mantissa
+                    << " uint32_t vi = (e << 23) + m;"  // Add is like or, but the final bit of the mantissa can propagate through the exponent (intended)
+                    //<< " printf(\"%016llx:%016llx n=%i,a=%#llx,b=%#llx  e=%lli,m=%#llx vi=%#lx\\n\", v.hi,v.lo, n, a, b, e, m, vi);"
+                    << " float rv;"
+                    << " memcpy(&rv, &vi, sizeof(rv));"
+                    << " return rv;"
+                    << " }\n"
+                    << "static inline double cast128_double(uint128_t v) {"
+                    << " int n = intrinsic_ctlz_u128(v).lo;"
+                    << " uint128_t y = shl128(v, n);"
+                    << " uint64_t a = (y.hi >> ((128-(52+1))-64));"
+                    << " uint64_t b = shr128(y, (64-(52+1))).lo | (y.lo & 0x7FF);"
+                    << " uint64_t m = a + ((b - (b >> 63 & ~a)) >> 63);"
+                    << " uint64_t e = (v.lo == 0 && v.hi == 0) ? 0 : (127 - n)+1023-1;"
+                    << " uint64_t vi = (e << 52) + m;"
+                    << " double rv;"
+                    << " memcpy(&rv, &vi, sizeof(rv));"
+                    << " return rv;"
+                    << " }\n"
                     << "static inline int cmp128(uint128_t a, uint128_t b) { if(a.hi != b.hi) return a.hi < b.hi ? -1 : 1; if(a.lo != b.lo) return a.lo < b.lo ? -1 : 1; return 0; }\n"
                     // Returns true if overflow happens (res < a)
                     << "static inline bool add128_o(uint128_t a, uint128_t b, uint128_t* o) { o->lo = a.lo + b.lo; o->hi = a.hi + b.hi + (o->lo < a.lo ? 1 : 0); return (o->hi < a.hi); }\n"
@@ -627,8 +654,16 @@ namespace {
                     << "static inline int128_t make128s_raw(uint64_t hi, uint64_t lo) { int128_t rv = { lo, hi }; return rv; }\n"
                     << "static inline int128_t make128s(int64_t v) { int128_t rv = { v, (v < 0 ? -1 : 0) }; return rv; }\n"
                     << "static inline int128_t neg128s(int128_t v) { int128_t rv = { ~v.lo+1, ~v.hi + (v.lo == 0) }; return rv; }\n"
-                    << "static inline float cast128s_float(int128_t v) { if(v.hi == 0) return v.lo; int exp = 0; uint32_t mant = 0; return make_float(0, exp, mant); }\n"
-                    << "static inline double cast128s_double(int128_t v) { if(v.hi == 0) return v.lo; int exp = 0; uint64_t mant = 0; return make_double(0, exp, mant); }\n"
+                    << "static inline float cast128s_float(int128_t v) {"
+                    << " int sgn = (v.hi >> 63);"
+                    << " int128_t abs = sgn ? neg128s(v) : v;"
+                    << " return (sgn ? -1.0 : 1.0) * cast128_float(make128_raw(v.hi,v.lo));"
+                    << " }\n"
+                    << "static inline double cast128s_double(int128_t v) {"
+                    << " int sgn = (v.hi >> 63);"
+                    << " int128_t abs = sgn ? neg128s(v) : v;"
+                    << " return (sgn ? -1.0 : 1.0) * cast128_double(make128_raw(v.hi,v.lo));"
+                    << " }\n"
                     << "static inline int cmp128s(int128_t a, int128_t b) { if(a.hi != b.hi) return (int64_t)a.hi < (int64_t)b.hi ? -1 : 1; if(a.lo != b.lo) return a.lo < b.lo ? -1 : 1; return 0; }\n"
                     // Returns true if overflow happens (if negative with pos,pos or positive with neg,neg)
                     << "static inline bool add128s_o(int128_t a, int128_t b, int128_t* o) { bool sgna=a.hi>>63; bool sgnb=b.hi>>63; add128_o(*(uint128_t*)&a, *(uint128_t*)&b, (uint128_t*)o); bool sgno = o->hi>>63; return (sgna==sgnb && sgno != sgna); }\n"
@@ -640,16 +675,17 @@ namespace {
                     << " if(sgna) a = neg128s(a);"
                     << " if(sgnb) b = neg128s(b);"
                     << " bool rv = mul128_o(*(uint128_t*)&a, *(uint128_t*)&b, (uint128_t*)o);"
-                    << " if(sgnb != sgnb) *o = neg128s(*o);"
+                    << " if(sgna != sgnb) *o = neg128s(*o);"
                     << " return rv;"
                     << " }\n"
                     << "static inline bool div128s_o(int128_t a, int128_t b, int128_t* q, int128_t* r) {"
-                    << " bool sgna = a.hi & (1ull<<63);"
-                    << " bool sgnb = b.hi & (1ull<<63);"
-                    << " if(sgna) { a.hi = ~a.hi; a.lo = ~a.lo; a.lo += 1; if(a.lo == 0) a.hi += 1; }"
-                    << " if(sgnb) { b.hi = ~b.hi; b.lo = ~b.lo; b.lo += 1; if(b.lo == 0) b.hi += 1; }"
+                    << " bool sgna = (a.hi >> 63) != 0;"
+                    << " bool sgnb = (b.hi >> 63) != 0;"
+                    << " if(sgna) a = neg128s(a);"
+                    << " if(sgnb) b = neg128s(b);"
                     << " bool rv = div128_o(*(uint128_t*)&a, *(uint128_t*)&b, (uint128_t*)q, (uint128_t*)r);"
-                    << " if(sgnb != sgnb) { r->hi = ~r->hi; r->lo = ~r->lo; r->lo += 1; if(r->lo == 0) r->hi += 1; }"
+                    << " if(sgna != sgnb && q) *q = neg128s(*q);"
+                    << " if(sgna && r) *r = neg128s(*r);"    // Remainder has the same sign as the dividend (a)
                     << " return rv;"
                     << " }\n"
                     << "static inline int128_t add128s(int128_t a, int128_t b) { int128_t v; add128s_o(a, b, &v); return v; }\n"
@@ -1572,13 +1608,12 @@ namespace {
         {
             // Fill `fields` with ascending indexes (for sorting)
             // AND: Determine if the type has a a zero-sized item that has an alignment equal to the structure's alignment
-            ::std::vector<unsigned> fields;
+            ::std::vector<unsigned> fields; fields.reserve(repr->fields.size());
+            ::std::vector<bool>   zsts; zsts.reserve(repr->fields.size());
             size_t max_align = 0;
             bool has_manual_align = false;
             for(const auto& ent : repr->fields)
             {
-                fields.push_back(fields.size());
-
                 const auto& ty = ent.ty;
 
                 size_t sz = -1, al = 0;
@@ -1587,12 +1622,19 @@ namespace {
                     has_manual_align = true;
                 }
                 max_align = std::max(max_align, al);
+
+                fields.push_back(fields.size());
+                zsts.push_back(sz == 0);
             }
             if(packing_max_align == 0 && max_align != repr->align /*&& repr->size > 0*/) {
                 has_manual_align = true;
             }
             // - Sort the fields by offset
-            ::std::sort(fields.begin(), fields.end(), [&](auto a, auto b){ return repr->fields[a].offset < repr->fields[b].offset; });
+            ::std::sort(fields.begin(), fields.end(), [&](auto a, auto b){
+                if( repr->fields[a].offset == repr->fields[b].offset )
+                    return !zsts[a] < !zsts[b]; // Sort zero sized fields first (!zst means size is 1+)
+                return repr->fields[a].offset < repr->fields[b].offset;
+                });
 
             // For repr(packed), mark as packed
             if(packing_max_align)
@@ -1642,12 +1684,18 @@ namespace {
                     DEBUG("a = " << a);
                     while(cur_ofs % a != 0)
                         cur_ofs ++;
-                    MIR_ASSERT(*m_mir_res, cur_ofs == offset, "Current offset doesn't match expected (#" << fld << "): " << cur_ofs << " != " << offset);
-
-                    cur_ofs += s;
                 }
 
+                // Inject padding
+                if( cur_ofs < offset ) {
+                    auto n = offset - cur_ofs;
+                    m_of << "\tuint8_t _padding" << fld << "[" << n << "];\n";
+                    cur_ofs += n;
+                }
+                MIR_ASSERT(*m_mir_res, cur_ofs == offset, "Current offset doesn't match expected (#" << fld << "): " << cur_ofs << " != " << offset);
+
                 m_of << "\t";
+                m_of << "/*@" << offset << "*/";
                 if( const auto* te = ty.data().opt_Slice() ) {
                     emit_ctype( te->inner, FMT_CB(ss, ss << "_" << fld << "[0]";) );
                     has_unsized = true;
@@ -1678,6 +1726,8 @@ namespace {
                     }
                 }
                 m_of << "; // " << ty << "\n";
+
+                cur_ofs += s;
             }
             if( sized_fields == 0 && !has_unsized && m_options.disallow_empty_structs )
             {
@@ -2256,7 +2306,8 @@ namespace {
                     m_of << "__attribute__((section(\"" << item.m_linkage.section << "\"))) ";
                     break;
                 case Compiler::Msvc:
-                    // Ignore section on MSVC
+                    m_of << "#pragma section(\"" << item.m_linkage.section << "\", read)\n";
+                    m_of << "__declspec(allocate(\"" << item.m_linkage.section << "\")) ";
                     break;
                 }
             }
@@ -2352,10 +2403,15 @@ namespace {
                 m_of << "\t// static " << p << " : " << type << " = " << encoded;
                 m_of << "\n";
             }
+            //else {
+            //    m_of << "//";
+            //    emit_static_ty(type, p, /*is_proto=*/false);
+            //    m_of << "\t// Zero init static " << p << " : " << type << " = " << encoded << "\n";
+            //}
 
             m_mir_res = nullptr;
         }
-        void emit_float(double v) {
+        void emit_float(double v, HIR::CoreType ty) {
             if( ::std::isnan(v) ) {
                 m_of << "NAN";
             }
@@ -2363,8 +2419,13 @@ namespace {
                 m_of << (v < 0 ? "-" : "") << "INFINITY";
             }
             else {
-                m_of.precision(::std::numeric_limits<double>::max_digits10 + 1);
-                m_of << ::std::scientific << v;
+                if( ty == HIR::CoreType::F32 ) {
+                    m_of.precision(::std::numeric_limits<float>::max_digits10 + 1);
+                    m_of << ::std::scientific << v << "f";
+                } else {
+                    m_of.precision(::std::numeric_limits<double>::max_digits10 + 1);
+                    m_of << ::std::scientific << v;
+                }
             }
         }
 
@@ -3654,7 +3715,20 @@ namespace {
                         bool emit_newline = false;
                         if( !re.is_niche(ve.index) )
                         {
-                            emit_lvalue(e.dst); emit_enum_path(repr, re.field); m_of << " = " << (re.offset + ve.index);
+                            // Each variant has its own tag field, it will be the last numbered field in that variant slot
+                            // - Only use that if there isn't an explicit tag field in the enum
+                            if( re.field.sub_fields.empty() || type_is_bad_zst(repr->fields[ve.index].ty) ) {
+                                emit_lvalue(e.dst); emit_enum_path(repr, re.field); m_of << " = " << (re.offset + ve.index);
+                            }
+                            else {
+                                auto vr = Target_GetTypeRepr(sp, m_resolve, repr->fields[ve.index].ty);
+                                //m_of << "assert(&";
+                                //emit_lvalue(e.dst); m_of << ".DATA.var_" << ve.index << "._" << (vr->fields.size() - 1);
+                                //m_of << " == &";
+                                //emit_lvalue(e.dst); emit_enum_path(repr, re.field);
+                                //m_of << "); ";
+                                emit_lvalue(e.dst); m_of << ".DATA.var_" << ve.index << "._" << (vr->fields.size() - 1) << " = " << (re.offset + ve.index);
+                            }
                             emit_newline = true;
                         }
                         else {
@@ -3919,11 +3993,25 @@ namespace {
                     MIR_BUG(mir_res, "Invalid tag type?! " << tag_ty);
                 }
 
+                auto emit_variant = [&]() {
+#if 1
+                    emit_lvalue(val); emit_enum_path(repr, e.field);
+#else
+                    // Emit using a pointer manipulation, to avoid `union` "active member" rule
+                    // - Technically not type punning, as the type is the same in all cases
+                    // Get the offset
+                    size_t offset = repr->get_offset(sp, m_resolve, e.field);;
+                    // Emit
+                    m_of << " *("; emit_ctype(tag_ty); m_of << "*)(";
+                    m_of << "(const char*)&"; emit_lvalue(val); m_of <<" + " << offset;
+                     _of << ")";
+#endif
+                    };
 
                 // Optimisation: If there's only one arm with a different value, then emit an `if` isntead of a `switch`
                 if( odd_arm != static_cast<size_t>(-1) )
                 {
-                    m_of << indent << "if( "; emit_lvalue(val); emit_enum_path(repr, e.field);
+                    m_of << indent << "if( "; emit_variant();
                     if( e.is_niche(odd_arm) ) {
                         m_of << " < " << e.offset;
                     }
@@ -3934,7 +4022,7 @@ namespace {
                 }
                 else
                 {
-                    m_of << indent << "switch("; emit_lvalue(val); emit_enum_path(repr, e.field); m_of << ") {\n";
+                    m_of << indent << "switch("; emit_variant(); m_of << ") {\n";
                     for(size_t j = 0; j < n_arms; j ++)
                     {
                         if( e.is_niche(j) ) {
@@ -4905,7 +4993,7 @@ namespace {
                 m_of << indent << "__asm__ ";
                 m_of << "__volatile__"; // Default everything to volatile
                 m_of << "(\"";
-                if( !se.options.att_syntax )
+                if( (Target_GetCurSpec().m_arch.m_name == "x86" || Target_GetCurSpec().m_arch.m_name == "x86_64") && !se.options.att_syntax )
                     m_of << ".intel_syntax; ";
                 for(const auto& l : se.lines)
                 {
@@ -4920,7 +5008,7 @@ namespace {
                     m_of << FmtEscaped(l.trailing);
                     m_of << ";\\n ";
                 }
-                if( !se.options.att_syntax )
+                if( (Target_GetCurSpec().m_arch.m_name == "x86" || Target_GetCurSpec().m_arch.m_name == "x86_64") && !se.options.att_syntax )
                     m_of << ".att_syntax; ";
                 m_of << "\" :";
                 for(size_t i = 0; i < outputs.size(); i ++)
@@ -5036,15 +5124,16 @@ namespace {
                 {
                     for(unsigned int i = 0; i < item.m_args.size(); i ++)
                     {
-                        if( i != 0 )    m_of << ",";
                         ss << "\n\t\t";
-                        // TODO: If the type has a high alignment, emit as a pointer
+                        // TODO: If the type has a high alignment, emit as a pointer? Might have FFI issues
                         auto ty = params.monomorph(m_resolve, item.m_args[i].second);
                         this->emit_ctype( ty, FMT_CB(os, os << (this->type_is_high_align(ty) ? "*":"") << "arg" << i;) );
+                        if( item.m_variadic || i+1 < item.m_args.size() )    m_of << ",";
+                        m_of << " // " << ty;
                     }
 
                     if( item.m_variadic )
-                        m_of << ", ...";
+                        m_of << "\n\t\t...";
 
                     ss << "\n\t\t)";
                 }
@@ -5057,6 +5146,7 @@ namespace {
             {
                 m_of << "void " << cb;
             }
+            m_of << " // -> " << ret_ty << "\n";
         }
 
         void emit_intrinsic_call(const RcString& name, const ::HIR::PathParams& params, const ::MIR::Terminator::Data_Call& e)
@@ -7104,7 +7194,7 @@ namespace {
                 }
                 }
             TU_ARMA(Float, c) {
-                this->emit_float(c.v);
+                this->emit_float(c.v, c.t);
                 }
             TU_ARMA(Bool, c) {
                 m_of << (c.v ? "true" : "false");

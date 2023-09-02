@@ -52,7 +52,7 @@ CPPFLAGS += -I tools/common/
 CXXFLAGS += -Wno-pessimizing-move
 CXXFLAGS += -Wno-misleading-indentation
 #CXXFLAGS += -Wno-unused-private-field
-CXXFLAGS += -Wno-unknown-warning-option
+#CXXFLAGS += -Wno-unknown-warning-option
 
 CXXFLAGS += -Werror=return-type
 
@@ -181,7 +181,7 @@ $(OBJDIR)%.o: src/%.cpp
 $(OBJDIR)version.o: $(OBJDIR)%.o: src/%.cpp $(filter-out $(OBJDIR)version.o,$(OBJ)) Makefile
 	@+mkdir -p $(dir $@)
 	@echo [CXX] -o $@
-	$V$(CXX) -o $@ -c $< $(CXXFLAGS) $(CPPFLAGS) -MMD -MP -MF $@.dep -D VERSION_GIT_FULLHASH=\"$(shell git show --pretty=%H -s)\" -D VERSION_GIT_BRANCH="\"$(shell git symbolic-ref -q --short HEAD || git describe --tags --exact-match)\"" -D VERSION_GIT_SHORTHASH=\"$(shell git show -s --pretty=%h)\" -D VERSION_BUILDTIME="\"$(shell date -uR)\"" -D VERSION_GIT_ISDIRTY=$(shell git diff-index --quiet HEAD; echo $$?)
+	$V$(CXX) -o $@ -c $< $(CXXFLAGS) $(CPPFLAGS) -MMD -MP -MF $@.dep -D VERSION_GIT_FULLHASH=\"$(shell git show --pretty=%H -s --no-show-signature)\" -D VERSION_GIT_BRANCH="\"$(shell git symbolic-ref -q --short HEAD || git describe --tags --exact-match)\"" -D VERSION_GIT_SHORTHASH=\"$(shell git show -s --pretty=%h --no-show-signature)\" -D VERSION_BUILDTIME="\"$(shell date -uR)\"" -D VERSION_GIT_ISDIRTY=$(shell git diff-index --quiet HEAD; echo $$?)
 
 src/main.cpp: $(PCHS:%=src/%.gch)
 

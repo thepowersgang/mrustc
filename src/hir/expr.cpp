@@ -14,6 +14,11 @@
 #define DEF_VISIT_H(nt, n)   void ::HIR::nt::visit(ExprVisitor& nv) { nv.visit_node(*this); nv.visit(*this); } void ::HIR::ExprVisitorDef::visit(::HIR::nt& n)
 #define DEF_VISIT(nt, n, code)   DEF_VISIT_H(nt, n) { code }
 
+const char* ::HIR::ExprNode::type_name() const
+{
+    return typeid(*this).name();
+}
+
 void ::HIR::ExprVisitor::visit_node_ptr(::std::unique_ptr< ::HIR::ExprNode>& node_ptr) {
     assert(node_ptr);
     node_ptr->visit(*this);
@@ -22,7 +27,7 @@ void ::HIR::ExprVisitor::visit_node(::HIR::ExprNode& node) {
 }
 void ::HIR::ExprVisitorDef::visit_node_ptr(::std::unique_ptr< ::HIR::ExprNode>& node_ptr) {
     assert(node_ptr);
-    TRACE_FUNCTION_F(&*node_ptr << " " << typeid(*node_ptr).name());
+    TRACE_FUNCTION_F(&*node_ptr << " " << node_ptr->type_name());
     node_ptr->visit(*this);
     visit_type(node_ptr->m_res_type);
 }

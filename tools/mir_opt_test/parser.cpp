@@ -85,6 +85,33 @@ MirOptTestFile  MirOptTestFile::load_from_file(const helpers::path& p)
                 }
             }
         }
+        else if( consume_if(lex, TOK_RWORD_STATIC) )
+        {
+            auto is_mut = consume_if(lex, TOK_RWORD_MUT);
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            auto name = tok.ident().name;
+            GET_CHECK_TOK(tok, lex, TOK_COLON);
+            auto type = parse_type(lex);
+            GET_CHECK_TOK(tok, lex, TOK_EQUAL);
+            GET_CHECK_TOK(tok, lex, TOK_STRING);
+            EncodedLiteral value;
+            for(auto b : tok.str())
+                value.bytes.push_back(b);
+            if( consume_if(lex, TOK_BRACE_OPEN) ) {
+                TODO(lex.point_span(), "static - relocations");
+            }
+            GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+
+            auto st_decl = ::HIR::Static(HIR::Linkage(), is_mut, std::move(type), HIR::ExprPtr());
+            st_decl.m_value_res = std::move(value);
+            st_decl.m_value_generated = true;
+            auto vi = ::HIR::VisEnt<HIR::ValueItem> {
+                HIR::Publicity::new_global(), ::HIR::ValueItem(mv$(st_decl))
+                };
+            rv.m_crate->m_root_module.m_value_items.insert(::std::make_pair(name,
+                ::std::make_unique<decltype(vi)>(mv$(vi))
+                ));
+        }
         //else if( lex.lookahead(0) == "INCLUDE" )
         //{
         //    auto path = lex.check_consume(TokenClass::String).strval;
@@ -325,10 +352,16 @@ namespace {
                         case HIR::CoreType::Usize:
                             break;
                         default:
+                            // bad type
                             throw ParseError::Unexpected(lex, tok);
                         }
                         src = MIR::Constant::make_Uint({ v, ct });
                         } break;
+
+                    case TOK_RWORD_CONST:
+                        GET_CHECK_TOK(tok, lex, TOK_AMP);
+                        src = MIR::Constant::make_ItemAddr({ box$(parse_path(lex)) });
+                        break;
 
                     case TOK_AMP:
                         if( consume_if(lex, TOK_RWORD_MOVE) )
@@ -361,6 +394,10 @@ namespace {
                                 src = parse_binop(lex, MIR::eBinOp::ADD);
                             else if(tok.ident().name == "SUB")
                                 src = parse_binop(lex, MIR::eBinOp::SUB);
+                            else if(tok.ident().name == "MUL")
+                                src = parse_binop(lex, MIR::eBinOp::MUL);
+                            else if(tok.ident().name == "DIV")
+                                src = parse_binop(lex, MIR::eBinOp::DIV);
                             else if(tok.ident().name == "BIT_SHL")
                                 src = parse_binop(lex, MIR::eBinOp::BIT_SHL);
                             else if(tok.ident().name == "BIT_SHR")
@@ -371,6 +408,8 @@ namespace {
                                 src = parse_binop(lex, MIR::eBinOp::BIT_OR);
                             else if(tok.ident().name == "BIT_XOR")
                                 src = parse_binop(lex, MIR::eBinOp::BIT_XOR);
+                            else if(tok.ident().name == "EQ")
+                                src = parse_binop(lex, MIR::eBinOp::EQ);
                             else
                             {
                                 TODO(lex.point_span(), "MIR assign operator - " << tok.ident().name);
@@ -401,6 +440,32 @@ namespace {
                                 break;
                         }
                         GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
+                        } break;
+                    case TOK_SQUARE_OPEN: {
+                        if( lex.lookahead(0) != TOK_SQUARE_CLOSE ) {
+                            auto val1 = parse_param(lex, val_name_map);
+                            if( consume_if(lex, TOK_SEMICOLON) ) {
+                                GET_CHECK_TOK(tok, lex, TOK_INTEGER);
+                                src = MIR::RValue::make_SizedArray({
+                                    mv$(val1),
+                                    ::HIR::ArraySize( tok.intval().truncate_u64() )
+                                    });
+                            }
+                            else {
+                                src = MIR::RValue::make_Array({});
+                                auto& vals = src.as_Array().vals;
+                                vals.push_back(mv$(val1));
+                                while( consume_if(lex, TOK_COMMA) ) {
+                                    if(lex.lookahead(0) == TOK_SQUARE_CLOSE )
+                                        break;
+                                    vals.push_back(parse_param(lex, val_name_map));
+                                }
+                            }
+                        }
+                        else {
+                            src = MIR::RValue::make_Array({});
+                        }
+                        GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
                         } break;
                     default:
                         TODO(lex.point_span(), "MIR assign - " << tok);
@@ -459,6 +524,7 @@ namespace {
                 {
                     GET_TOK(tok, lex);
                     target = ::MIR::CallTarget::make_Value(parse_lvalue(lex, val_name_map));
+                    GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
                 }
                 else if( lex.lookahead(0) == TOK_STRING )
                 {
@@ -726,6 +792,7 @@ namespace {
             {
                 GET_CHECK_TOK(tok, lex, TOK_INTEGER);
                 auto size = tok.intval();
+                GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
                 ASSERT_BUG(lex.point_span(), size < UINT_MAX, "");
                 return HIR::TypeRef::new_array(mv$(ity), static_cast<unsigned>(size.truncate_u64()));
             }
@@ -783,6 +850,25 @@ namespace {
                 return HIR::TypeRef::new_pointer(HIR::BorrowType::Shared, parse_type(lex));
             else
                 throw ParseError::Unexpected(lex, lex.getToken(), { TOK_RWORD_MOVE, TOK_RWORD_MUT, TOK_RWORD_CONST });
+        case TOK_RWORD_FN: {
+            HIR::TypeData_FunctionPointer   ft;
+            ft.is_unsafe = false;
+            GET_CHECK_TOK(tok, lex, TOK_PAREN_OPEN);
+            while( lex.lookahead(0) != TOK_PAREN_CLOSE )
+            {
+                ft.m_arg_types.push_back( parse_type(lex) );
+                if( !consume_if(lex, TOK_COMMA) )
+                    break;
+            }
+            GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
+            if( consume_if(lex, TOK_THINARROW) ) {
+                ft.m_rettype = parse_type(lex);
+            }
+            else {
+                ft.m_rettype = HIR::TypeRef::new_unit();
+            }
+            return HIR::TypeRef(mv$(ft));
+            }
         default:
             TODO(lex.point_span(), tok);
         }

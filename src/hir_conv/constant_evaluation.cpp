@@ -1493,12 +1493,15 @@ namespace HIR {
                         case TypeInfo::Float:
                             switch(src_ti.ty)
                             {
-                            case TypeInfo::Signed:
-                                dst.write_float(state, ti.bits, static_cast<double>(S128(inval.read_uint(state, src_ti.bits)).to_double()) );
-                                break;
-                            case TypeInfo::Unsigned:
-                                dst.write_float(state, ti.bits, static_cast<double>(inval.read_uint(state, src_ti.bits).to_double()) );
-                                break;
+                            // NOTE: Subtle rounding differences between f32 and f64
+                            case TypeInfo::Signed: {
+                                auto v = S128(inval.read_uint(state, src_ti.bits));
+                                dst.write_float(state, ti.bits, ti.bits == 32 ? v.to_float() : v.to_double() );
+                                break; }
+                            case TypeInfo::Unsigned: {
+                                auto v = inval.read_uint(state, src_ti.bits);
+                                dst.write_float(state, ti.bits, ti.bits == 32 ? v.to_float() : v.to_double() );
+                                break; }
                             case TypeInfo::Float:
                                 dst.write_float(state, ti.bits, inval.read_float(state, src_ti.bits) );
                                 break;

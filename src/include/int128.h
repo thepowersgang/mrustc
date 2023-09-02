@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include <iostream>
 #include "../common.hpp"
+#include <cstring>  // memcpy
 
 class U128
 {
@@ -33,7 +34,36 @@ public:
 
     bool is_u64() const { return hi == 0; }
     uint64_t truncate_u64() const { return lo; }
-    double to_double() const { return hi * static_cast<double>(UINT64_MAX) + lo; }
+    uint64_t encode_float(int m_bits, int zero_exp) const {
+        // Adapted from https://blog.m-ou.se/floats/
+        //int n = intrinsic_ctlz_u128(v).lo;
+        int n;
+        {
+            int nset = 0;
+            U128 val = *this;
+            while( val != U128(0) ) { val >>= 1; nset += 1; }
+            n = 128 - nset;
+        }
+        U128 y = *this << n;
+        uint64_t a = (y.hi >> ((128-(m_bits+1))-64));
+        int s = 64-(m_bits+1);   // A shift required to move the bits removed in `a` into the low 64-bits
+        uint64_t b = (y >> s).lo | (y.lo & ((1ull << s)-1));
+        uint64_t m = a + ((b - (b >> 63 & ~a)) >> 63);
+        uint64_t e = (*this == U128(0)) ? 0 : (127 - n)+zero_exp-1;
+        return (e << m_bits) + m;
+    }
+    double to_double() const {
+        uint64_t vi = encode_float(52,1023);
+        double rv;
+        memcpy(&rv, &vi, sizeof(rv));
+        return rv;
+    }
+    double to_float() const {
+        uint32_t vi = encode_float(23,127);
+        float rv;
+        memcpy(&rv, &vi, sizeof(rv));
+        return rv;
+    }
 
     U128 operator~() const { return U128(~lo, ~hi); }
     U128 operator+(U128 x) const { U128 rv(0); add128_o(*this, x, &rv); return rv; }
@@ -228,6 +258,7 @@ public:
     bool is_i64() const { return inner.hi == ((inner.lo >> 63) ? UINT64_MAX : 0); }
     int64_t truncate_i64() const { /*assert(inner.hi == 0 || inner.hi == UINT64_MAX);*/ return inner.lo; }
     double to_double() const { return (*this < 0 ? -1.0 : 1.0) * this->u_abs().to_double(); }
+    float to_float() const { return (*this < 0 ? -1.0 : 1.0) * this->u_abs().to_float(); }
     U128 get_inner() const { return inner; }
 
     S128 operator~() const { return S128(~inner); }

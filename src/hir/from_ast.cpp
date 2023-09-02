@@ -1541,37 +1541,51 @@ namespace {
         const auto& sp = f.args()[0].pat.span();
         auto& arg_self_ty = args.front().second;
 
-        auto is_valid_custom_receiver = [&](::HIR::TypeRef& ty)->bool {
-            // - The path must include Self as a (the only?) type param.
-            if( const auto* e = ty.data().opt_Path() )
+        struct Ivcr {
+            const Span& sp;
+            const ::HIR::TypeRef& real_self_type;
+            Ivcr(const Span& sp, const ::HIR::TypeRef& real_self_type)
+                : sp(sp)
+                , real_self_type(real_self_type)
             {
-                if(const auto* pe = e->path.m_data.opt_Generic()) {
-                    if( pe->m_params.m_types.size() == 0 ) {
-                        ERROR(sp, E0000, "Receiver type should have one type param - " << arg_self_ty);
-                    }
-                    //if( pe->m_params.m_types.size() != 1 ) {
-                    //   TODO(sp, "Receiver types with more than one param - " << arg_self_ty);
-                    //}
-                    // TODO: Allow if the type parm is a valid receiver it type too
-                    // - In general, it's valid if there's a deref chain from this type to `self` (maybe could check that in a later pass, instead of erroring here)
-                    if( pe->m_params.m_types[0] == explicit_self_type ) {
-                    }
-                    else if( pe->m_params.m_types[0] == real_self_type ) {
-                        ty.data_mut().as_Path().path.m_data.as_Generic().m_params.m_types[0] = explicit_self_type.clone();
-                    }
-                    else if( TU_TEST1(pe->m_params.m_types[0].data(), Borrow, .inner == explicit_self_type) ) {
-                    }
-                    else if( TU_TEST1(pe->m_params.m_types[0].data(), Borrow, .inner == real_self_type) ) {
-                        ty.data_mut().as_Path().path.m_data.as_Generic().m_params.m_types[0].data_mut().as_Borrow().inner = explicit_self_type.clone();
-                    }
-                    else {
-                        ERROR(sp, E0000, "Unsupported receiver type - " << arg_self_ty);
-                    }
+            }
+
+            bool is_valid_custom_receiver(::HIR::TypeRef& ty) const {
+                // - The path must include Self as a (the only?) type param.
+                if( ty == explicit_self_type ) {
                     return true;
                 }
+                else if( ty == real_self_type ) {
+                    ty = explicit_self_type.clone();
+                    return true;
+                }
+                else if( auto* e = ty.data_mut().opt_Path() )
+                {
+                    if( auto* pe = e->path.m_data.opt_Generic() ) {
+                        if( pe->m_params.m_types.size() == 0 ) {
+                            ERROR(sp, E0000, "Receiver type should have one type param - " << ty);
+                        }
+                        //if( pe->m_params.m_types.size() != 1 ) {
+                        //   TODO(sp, "Receiver types with more than one param - " << arg_self_ty);
+                        //}
+
+                        // TODO: Allow if the type parm is a valid receiver it type too
+                        // - In general, it's valid if there's a deref chain from this type to `self` (maybe could check that in a later pass, instead of erroring here)
+                        return is_valid_custom_receiver(pe->m_params.m_types[0]);
+                    }
+                    return false;
+                }
+                else if( ty.data().is_Borrow() ) {
+                    return is_valid_custom_receiver(ty.data_mut().as_Borrow().inner);
+                }
+                else if( ty.data().is_Pointer() ) {
+                    return is_valid_custom_receiver(ty.data_mut().as_Pointer().inner);
+                }
+                else {
+                    return false;
+                }
             }
-            return false;
-            };
+        } ivcr(sp, real_self_type);
 
         if( arg_self_ty == explicit_self_type  || arg_self_ty == real_self_type ) {
             receiver = ::HIR::Function::Receiver::Value;
@@ -1588,7 +1602,7 @@ namespace {
             }
             else
             {
-                if( is_valid_custom_receiver(e->inner) )
+                if( ivcr.is_valid_custom_receiver(e->inner) )
                 {
                     receiver = ::HIR::Function::Receiver::Custom;
                 }
@@ -1609,12 +1623,15 @@ namespace {
                 // TODO: for other types, support arbitary structs/paths.
                 if( receiver == ::HIR::Function::Receiver::Free )
                 {
-                    if(is_valid_custom_receiver(arg_self_ty))
+                    if(ivcr.is_valid_custom_receiver(arg_self_ty))
                     {
                         receiver = ::HIR::Function::Receiver::Custom;
                     }
                 }
             }
+        }
+        else if( ivcr.is_valid_custom_receiver(arg_self_ty) ) {
+            receiver = ::HIR::Function::Receiver::Custom;
         }
         else {
         }

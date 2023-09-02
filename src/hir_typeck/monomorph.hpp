@@ -15,6 +15,8 @@ class Monomorphiser
 {
     mutable std::vector<const HIR::GenericParams*>  m_hrb_stack;
 public:
+    virtual ~Monomorphiser() = default;
+    
     class PopOnDrop {
         friend class Monomorphiser;
         std::vector<const HIR::GenericParams*>& v;

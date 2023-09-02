@@ -198,7 +198,7 @@ int main(int argc, char* argv[])
                 p.m_crate_name = RcString(f.m_filename);
                 if( !compare_mir(exp_mir, *cloned_mir, p) )
                 {
-                    MIR_Dump_Fcn(std::cout, *cloned_mir);
+                    MIR_Dump_Fcn(std::cerr, *cloned_mir);
                 }
             }
         }

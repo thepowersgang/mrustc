@@ -12,8 +12,12 @@ endif
 # ----- INPUTS ------
 # -------------------
 
+# RUSTC_VERSION : Version of rustc to load (picks source dir)
+RUSTC_VERSION_DEF := $(shell cat rust-version)
+RUSTC_VERSION ?= $(RUSTC_VERSION_DEF)
+
 # OUTDIR_SUF : Output directory suffix
-ifeq ($(RUSTC_VERSION),)
+ifeq ($(RUSTC_VERSION),$(RUSTC_VERSION_DEF))
   OUTDIR_SUF_DEF :=
 else
   OUTDIR_SUF_DEF := -$(RUSTC_VERSION)
@@ -24,8 +28,6 @@ OUTDIR_SUF ?= $(OUTDIR_SUF_DEF)
 MMIR ?=
 # RUSTC_CHANNEL : `rustc` release channel (picks source dir)
 RUSTC_CHANNEL ?= stable
-# RUSTC_VERSION : Version of rustc to load (picks source dir)
-RUSTC_VERSION ?= $(shell cat rust-version)
 # PARLEVEL : `minicargo`'s job count
 PARLEVEL ?= 1
 # Additional flags for `minicargo` (e.g. library paths)
@@ -57,6 +59,12 @@ endif
 # Job count
 ifneq ($(PARLEVEL),1)
   MINICARGO_FLAGS += -j $(PARLEVEL)
+endif
+# Target override
+ifeq ($(MRUSTC_TARGET),)
+else
+  MINICARGO_FLAGS += --target $(MRUSTC_TARGET)
+  OUTDIR_SUF := $(OUTDIR_SUF)-$(MRUSTC_TARGET)
 endif
 
 OUTDIR := output$(OUTDIR_SUF)/
@@ -170,14 +178,14 @@ bin/testrunner$(EXESUF):
 # rustc (with std/cargo) source download
 #
 RUSTC_SRC_TARBALL := rustc-$(RUSTC_VERSION)-src.tar.gz
-$(RUSTC_SRC_TARBALL): $(RUSTC_SRC_DES)
+$(RUSTC_SRC_TARBALL):
 	@echo [CURL] $@
 	@rm -f $@
 	@curl -sS https://static.rust-lang.org/dist/$@ -o $@
 $(RUSTC_SRC_DL): $(RUSTC_SRC_TARBALL) rustc-$(RUSTC_VERSION)-src.patch
 	tar -xf $(RUSTC_SRC_TARBALL)
 	cd $(RUSTCSRC) && patch -p0 < ../rustc-$(RUSTC_VERSION)-src.patch;
-	cat $(RUSTC_SRC_DES) > $(RUSTC_SRC_DL)
+	touch $(RUSTC_SRC_DL)
 
 # Standard library crates
 # - libstd, libpanic_unwind, libtest and libgetopts
@@ -235,12 +243,12 @@ LLVM_CMAKE_OPTS += LLVM_ENABLE_ASSERTIONS=OFF
 LLVM_CMAKE_OPTS += LLVM_INCLUDE_EXAMPLES=OFF LLVM_INCLUDE_TESTS=OFF LLVM_INCLUDE_DOCS=OFF
 LLVM_CMAKE_OPTS += LLVM_ENABLE_ZLIB=OFF LLVM_ENABLE_TERMINFO=OFF LLVM_ENABLE_LIBEDIT=OFF WITH_POLLY=OFF
 LLVM_CMAKE_OPTS += CMAKE_CXX_COMPILER="$(CXX)" CMAKE_C_COMPILER="$(CC)"
-LLVM_CMAKE_OPTS += CMAKE_BUILD_TYPE=RelWithDebInfo
+LLVM_CMAKE_OPTS += CMAKE_BUILD_TYPE=Release
 LLVM_CMAKE_OPTS += $(LLVM_CMAKE_OPTS_EXTRA)
 
 
-$(LLVM_CONFIG): $(RUSTCSRC)build/Makefile
-	$Vcd $(RUSTCSRC)build && $(MAKE)
+$(RUSTCSRC)build/bin/llvm-config: $(RUSTCSRC)build/Makefile
+	$Vcd $(RUSTCSRC)build && $(MAKE) -j $(PARLEVEL)
 
 $(RUSTCSRC)build/Makefile: $(RUSTCSRC)$(LLVM_DIR)/CMakeLists.txt
 	@mkdir -p $(RUSTCSRC)build
@@ -297,7 +305,7 @@ $(OUTDIR)rust/test_run-pass_hello_out.txt: $(OUTDIR)rust/test_run-pass_hello
 RUST_TESTS: RUST_TESTS_run-pass
 RUST_TESTS_run-pass: output$(OUTDIR_SUF)/test/librust_test_helpers.a LIBS bin/testrunner$(EXESUF)
 	@mkdir -p $(OUTDIR)rust_tests/run-pass
-	./bin/testrunner$(EXESUF) -L $(OUTDIR)test -o $(OUTDIR)rust_tests/run-pass $(SRCDIR_RUST_TESTS)run-pass --exceptions disabled_tests_run-pass.txt
+	./bin/testrunner$(EXESUF) -L $(OUTDIR) -L $(OUTDIR)test -o $(OUTDIR)rust_tests/run-pass $(SRCDIR_RUST_TESTS)run-pass --exceptions disabled_tests_run-pass.txt
 $(OUTDIR)test/librust_test_helpers.a: $(OUTDIR)test/rust_test_helpers.o
 	@mkdir -p $(dir $@)
 	ar cur $@ $<

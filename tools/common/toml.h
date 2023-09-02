@@ -11,6 +11,7 @@
 #include <vector>
 #include <string>
 #include <unordered_map>
+#include <cstdint>
 
 class TomlFileIter;
 struct TomlKeyValue;

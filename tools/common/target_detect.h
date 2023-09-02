@@ -17,7 +17,11 @@
 // - Linux
 #elif defined(__linux__)
 # if defined(__amd64__)
-#  define DEFAULT_TARGET_NAME "x86_64-linux-gnu"
+#  if defined(_ILP32)
+#   define DEFAULT_TARGET_NAME "x86_64-unknown-linux-gnux32"
+#  else
+#   define DEFAULT_TARGET_NAME "x86_64-linux-gnu"
+#  endif
 # elif defined(__aarch64__)
 #  define DEFAULT_TARGET_NAME "aarch64-linux-gnu"
 # elif defined(__arm__)
@@ -30,6 +34,8 @@
 #  define DEFAULT_TARGET_NAME "powerpc64-unknown-linux-gnu"
 # elif defined(__powerpc64__) && defined(__LITTLE_ENDIAN__)
 #  define DEFAULT_TARGET_NAME "powerpc64le-unknown-linux-gnu"
+# elif defined(__riscv) && __riscv_xlen == 64
+#  define DEFAULT_TARGET_NAME "riscv64-unknown-linux-gnu"
 # else
 #  warning "Unable to detect a suitable default target (linux-gnu)"
 # endif
@@ -87,6 +93,10 @@
 #elif defined(__APPLE__)
 # if defined(__aarch64__)
 #  define DEFAULT_TARGET_NAME "aarch64-apple-darwin"
+# elif defined(__ppc64__)
+#  define DEFAULT_TARGET_NAME "powerpc64-apple-darwin"
+# elif defined(__ppc__)
+#  define DEFAULT_TARGET_NAME "powerpc-apple-darwin"
 # else
 #  define DEFAULT_TARGET_NAME "x86_64-apple-darwin"
 #endif

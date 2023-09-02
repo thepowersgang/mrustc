@@ -13,6 +13,7 @@
 #include <hir/type.hpp>
 #include "../hir/asm.hpp"
 #include <int128.h>
+#include <cstdint>
 
 struct MonomorphState;
 
@@ -402,6 +403,7 @@ struct LValue
     Ordering ord(const LValue::MRef& x) const;
 };
 extern ::std::ostream& operator<<(::std::ostream& os, const LValue& x);
+extern ::std::ostream& operator<<(::std::ostream& os, const LValue::Storage& x);
 extern ::std::ostream& operator<<(::std::ostream& os, const LValue::Wrapper& x);
 static inline bool operator<(const LValue& a, const LValue::CRef& b) {
     return a.ord(b) == OrdLess;

@@ -205,6 +205,9 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
             // - Run until no changes
             while( MIR_Optimise_DeTemporary(state, fcn) )
             {
+                if( check_after_all() ) {
+                    MIR_Validate(resolve, path, fcn, args, ret_type);
+                }
             }
 #if DUMP_AFTER_ALL
             if( debug_enabled() ) MIR_Dump_Fcn(::std::cout, fcn);
@@ -1189,6 +1192,9 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
             {
             }
 
+            // TODO: If all inputs are known, then allow larger/complex functions (e.g. allow one call and any number of blocks?)
+            // - Seen `min_by(const, const, fcn)` - that would be a trivial optimisation
+
             if( can_inline_Switch_wrapper(path, fcn, params) )
                 return true;
             if( can_inline_SwitchValue_wrapper(path, fcn, params) )
@@ -1832,6 +1838,7 @@ namespace {
         unsigned    stmt_idx;
         StmtRef(): bb_idx(~0u), stmt_idx(0) {}
         StmtRef(unsigned b, unsigned s): bb_idx(b), stmt_idx(s) {}
+        bool operator==(const StmtRef& x) const { return bb_idx == x.bb_idx && stmt_idx == x.stmt_idx; }
     };
     ::std::ostream& operator<<(::std::ostream& os, const StmtRef& x) {
         return os << "BB" << x.bb_idx << "/" << x.stmt_idx;
@@ -1934,6 +1941,16 @@ namespace {
             switch(vu)
             {
             case ValUsage::Move:    // A move can invalidate
+                if( lv.m_root == val.m_root ) {
+                    // Check if `lv`'s wrappers are a subset of `val`'s
+                    auto l = std::min(lv.m_wrappers.size(), val.m_wrappers.size());
+                    for(size_t i = 0; i < l; i ++) {
+                        // A wrapper differs, won't invalidate
+                        if( lv.m_wrappers[i] != val.m_wrappers[i] )
+                            return false;
+                    }
+                    return true;
+                }
                 // - Ideally this would check if it DOES invalidate
             case ValUsage::Write:
             case ValUsage::Borrow:
@@ -2059,6 +2076,7 @@ bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::
         const auto& slot = usage_info[var_idx];
         auto this_var = ::MIR::LValue::new_Local(var_idx);
         //ASSERT_BUG(Span(), slot.n_write > 0, "Variable " << var_idx << " not written?");
+        DEBUG("_" << var_idx << ": " << slot.n_write << "," << slot.n_read << "," << slot.n_borrow);
         if( slot.n_write == 1 && slot.n_read == 1 && slot.n_borrow == 0 )
         {
             // Single-use variable, now check how we can eliminate it
@@ -2289,7 +2307,6 @@ bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::
 bool MIR_Optimise_DeTemporary_Borrows(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 {
     bool changed = false;
-#if 1
     TRACE_FUNCTION_FR("", changed);
 
     // Find all single-assign borrows that are only ever used via Deref
@@ -2368,7 +2385,7 @@ bool MIR_Optimise_DeTemporary_Borrows(::MIR::TypeResolve& state, ::MIR::Function
         auto this_var = ::MIR::LValue::new_Local(var_idx);
 
         // This rule only applies to single-write variables, with no use other than via derefs
-        if( !(slot.n_write == 1 && slot.n_other_read == 0) )
+        if( slot.n_write != 1 )
         {
             //DEBUG(this_var << " - Multi-assign, or use-by-value");
             continue ;
@@ -2393,22 +2410,29 @@ bool MIR_Optimise_DeTemporary_Borrows(::MIR::TypeResolve& state, ::MIR::Function
             DEBUG(this_var << " - Source is too complex - " << src_lv);
             continue;
         }
-        if( slot.n_deref_read > 1 && fcn.locals[var_idx].data().as_Borrow().type != ::HIR::BorrowType::Shared )
+        // If there are multiple derefs, don't expand. More than one deref makes determining invalidation VERY hard
+        if( std::count_if(src_lv.m_wrappers.begin(), src_lv.m_wrappers.end(), [](const MIR::LValue::Wrapper& w){ return w.is_Deref(); }) > 1 )
+        {
+            DEBUG(this_var << " - Source is too complex (deref) - " << src_lv);
+            continue;
+        }
+        // Keep the complexity down (when not used only once)
+        if( slot.n_deref_read + slot.n_other_read > 1 && fcn.locals[var_idx].data().as_Borrow().type != ::HIR::BorrowType::Shared )
         {
             DEBUG(this_var << " - Multi-use non-shared borrow, too complex to do");
             continue;
         }
-        DEBUG(this_var << " - Borrow of " << src_lv << " at " << slot.set_loc << ", used " << slot.n_deref_read << " times (dropped " << slot.drop_locs << ")");
+        DEBUG(this_var << " - Borrow of " << src_lv << " at " << slot.set_loc << ", used " << slot.n_deref_read << " times (dropped {" << slot.drop_locs << "})");
 
         // Locate usage sites (by walking forwards) and check for invalidation
         auto cur_loc = slot.set_loc;
         cur_loc.stmt_idx ++;
         unsigned num_replaced = 0;
         auto replace_cb = [&](::MIR::LValue& lv, auto _vu) {
-            if( lv.m_root == this_var.m_root )
+            if( lv.m_root == this_var.m_root && !lv.m_wrappers.empty() )
             {
                 ASSERT_BUG(Span(), !lv.m_wrappers.empty(), cur_loc << " " << lv);
-                assert(lv.m_wrappers.front().is_Deref());
+                MIR_ASSERT(state, lv.m_wrappers.front().is_Deref(), "Use of a replacable value that isn't via a deref - " << lv);
                 // Make a LValue reference, then overwrite it
                 {
                     auto lvr = ::MIR::LValue::MRef(lv);
@@ -2431,19 +2455,19 @@ bool MIR_Optimise_DeTemporary_Borrows(::MIR::TypeResolve& state, ::MIR::Function
             {
                 auto& stmt = cur_bb.statements[cur_loc.stmt_idx];
                 DEBUG(cur_loc << " " << stmt);
-                // Replace usage
-                bool invalidates = check_invalidates_lvalue(stmt, src_lv);
-                visit_mir_lvalues_mut(stmt, replace_cb);
-                if( num_replaced == slot.n_deref_read )
-                {
-                    stop = true;
-                    break;
-                }
                 // Check for invalidation (actual check done before replacement)
+                bool invalidates = check_invalidates_lvalue(stmt, src_lv);
                 if( invalidates )
                 {
                     // Invalidated, stop here.
                     DEBUG(this_var << " - Source invalidated @ " << cur_loc << " in " << stmt);
+                    stop = true;
+                    break;
+                }
+                // Replace usage
+                visit_mir_lvalues_mut(stmt, replace_cb);
+                if( num_replaced == slot.n_deref_read )
+                {
                     stop = true;
                     break;
                 }
@@ -2475,6 +2499,7 @@ bool MIR_Optimise_DeTemporary_Borrows(::MIR::TypeResolve& state, ::MIR::Function
             //    cur_pos.bb_idx = e;
             //    cur_pos.stmt_idx = 0;
             //    }
+            // TODO: Fork state to handle multi-tagets
             // NOTE: `Call` can't work in the presense of unwinding, would need to traverse both paths
             //TU_ARMA(Call, e) {
             //    }
@@ -2492,7 +2517,8 @@ bool MIR_Optimise_DeTemporary_Borrows(::MIR::TypeResolve& state, ::MIR::Function
         }
 
         // If all usage sites were updated, then remove the original assignment
-        if(num_replaced == slot.n_deref_read)
+        // - Since this code works with `&mut`, can't just leave the assignment for DCE when mut
+        if(num_replaced == slot.n_deref_read + slot.n_other_read)
         {
             DEBUG(this_var << " - Erase " << slot.set_loc << " as it is no longer used (" << src_bb.statements[slot.set_loc.stmt_idx] << ")");
             src_bb.statements[slot.set_loc.stmt_idx] = ::MIR::Statement();
@@ -2502,44 +2528,9 @@ bool MIR_Optimise_DeTemporary_Borrows(::MIR::TypeResolve& state, ::MIR::Function
                 fcn.blocks[drop_loc.bb_idx].statements[drop_loc.stmt_idx] = ::MIR::Statement();
             }
         }
-#if 0
-        else if( num_replaced > 0 )
-        {
-            auto src_rval = ::std::move(src_bb.statements[slot.set_loc.stmt_idx].as_Assign().src);
-            src_bb.statements[slot.set_loc.stmt_idx] = ::MIR::Statement();
-            DEBUG(this_var << " - Move " << slot.set_loc << " to after " << cur_loc);
-            // TODO: Move the source borrow up to this point.
-            auto& cur_bb = fcn.blocks[cur_loc.bb_idx];
-            if( cur_loc.stmt_idx >= cur_bb.statements.size() )
-            {
-                auto push_bb_front = [&fcn,&this_var](unsigned b, ::MIR::RValue s){
-                    fcn.blocks[b].statements.insert(fcn.blocks[b].statements.begin(), ::MIR::Statement::make_Assign({ this_var.clone(), ::std::move(s) }));
-                    // TODO: Update all references to this block?
-                    };
-                // Move the borrow to the next block?
-                // - Terminators shouldn't be able to invalidate...
-                TU_MATCH_HDRA( (cur_bb.terminator), { )
-                default:
-                    TODO(Span(), "Move borrow to after terminator " << cur_bb.terminator);
-                TU_ARMA(Goto, e) {
-                    push_bb_front(e, ::std::move(src_rval));
-                    }
-                TU_ARMA(Call, e) {
-                    push_bb_front(e.ret_block, src_rval.clone());
-                    push_bb_front(e.panic_block, ::std::move(src_rval));
-                    }
-                }
-            }
-            else
-            {
-                // If invalidated, then there _shouldn't_ be more to come (borrow rules)
-                TODO(Span(), "Move borrow to after " << cur_loc);
-            }
-        }
-#endif
         else
         {
-            // No replacement, keep the source where it is
+            // The variable is still used, keep the source where it is
             DEBUG(this_var << " - Keep " << slot.set_loc);
         }
 
@@ -2547,10 +2538,198 @@ bool MIR_Optimise_DeTemporary_Borrows(::MIR::TypeResolve& state, ::MIR::Function
         if( num_replaced > 0 )
         {
             changed = true;
+            // Return as soon as a variable has been changed, as this can invalidate the slot information
+            return changed;
         }
     }
-#endif
 
+    return changed;
+}
+
+// --------------------------------------------------------------------
+// Replaces reborrows where the source is never used again (except maybe
+// being dropped)
+// 
+// _1 = & _0*;
+// ...
+// drop(_0);
+// --------------------------------------------------------------------
+bool MIR_Optimise_DeTemporary_ReborrowOfUnused(::MIR::TypeResolve& state, ::MIR::Function& fcn)
+{
+    bool changed = false;
+    TRACE_FUNCTION_FR("", changed);
+
+    struct Poss {
+        StmtRef pos;
+        MIR::LValue::Storage    slot;
+        MIR::LValue::Storage    replace;
+        bool    used;
+        Poss(StmtRef pos, ::MIR::LValue::Storage slot, ::MIR::LValue::Storage replace)
+            : pos(pos)
+            , slot(mv$(slot))
+            , replace(mv$(replace))
+            , used(false)
+        {
+        }
+    };
+    ::std::vector<Poss> possible;
+    // Locate reborrows with the same source/destination type
+    // Source lvalue must be a local/argument
+    for(const auto& blk : fcn.blocks)
+    {
+        for(const auto& stmt : blk.statements)
+        {
+            state.set_cur_stmt(&blk - fcn.blocks.data(), &stmt - blk.statements.data());
+
+            if( !stmt.is_Assign() )
+                continue;
+            const auto& se = stmt.as_Assign();
+            // Must be assigning to a local
+            if( !se.dst.is_Local() )
+                continue;
+            // Soure must be a borrow
+            if( !se.src.is_Borrow() )
+                continue;
+            const auto& re = se.src.as_Borrow();
+            // Source must be `<local>*` or `<arg>*`
+            if( !(re.val.m_root.is_Local() || re.val.m_root.is_Argument()) )
+                continue;
+            if( !(re.val.m_wrappers.size() == 1 && re.val.m_wrappers[0].is_Deref()) )
+                continue;
+            // Types must match (avoids decaying reborrows or raw pointer accesses)
+            const auto& src_ty = re.val.m_root.is_Local() ? fcn.locals[re.val.m_root.as_Local()] : state.m_args[re.val.m_root.as_Argument()].second;
+            const auto& dst_ty = fcn.locals[ se.dst.as_Local() ];
+            if( src_ty != dst_ty )
+                continue;
+
+            // Record as a possible useless reborrow
+            // - Depends on the usage of the source
+            auto pos = StmtRef(state.get_cur_block(), state.get_cur_stmt_ofs());
+            DEBUG(state << "Possible " << se.dst << " = " << re.val);
+            possible.push_back(Poss( pos, re.val.m_root.clone(), se.dst.m_root.clone() ));
+        }
+    }
+    if( possible.size() == 0 ) {
+        return false;
+    }
+    // The borrow must not be within a loop
+    {
+        std::vector<bool>   visited(fcn.blocks.size());
+        std::vector<bool>   loops(fcn.blocks.size());
+        struct VisitState {
+            const ::MIR::Function&  fcn;
+            std::vector<bool>   visited;
+            std::vector<unsigned>   stack;
+
+            VisitState(const ::MIR::Function& fcn): fcn(fcn) {}
+
+            bool does_block_loop(unsigned root_idx) {
+                stack.clear();
+                visited.clear();
+                visited.resize( fcn.blocks.size() );
+                visited[root_idx] = true;
+                stack.push_back(root_idx);
+                while( !stack.empty() )
+                {
+                    auto bb_idx = stack.back(); stack.pop_back();
+                    auto& bb = fcn.blocks[bb_idx];
+                    bool is_loop = false;
+                    visit_terminator_target(bb.terminator, [&](const ::MIR::BasicBlockId& idx) {
+                        if( idx == root_idx )
+                            is_loop = true;
+                        if( !visited[idx] )
+                        {
+                            visited[idx] = true;
+                            stack.push_back(idx);
+                        }
+                        });
+                    if( is_loop )
+                        return true;
+                }
+                return false;
+            }
+        } vs { fcn };
+        for(auto& poss : possible ) {
+            if( !visited[poss.pos.bb_idx] ) {
+                visited[poss.pos.bb_idx] = true;
+                loops[poss.pos.bb_idx] = vs.does_block_loop(poss.pos.bb_idx);
+            }
+            poss.used |= loops[poss.pos.bb_idx];
+        }
+    }
+
+    // Must be the only use (apart from dropping) of the source lvalue
+    for(const auto& blk : fcn.blocks)
+    {
+        for(const auto& stmt : blk.statements)
+        {
+            state.set_cur_stmt(&blk - fcn.blocks.data(), &stmt - blk.statements.data());
+            auto pos = StmtRef(state.get_cur_block(), state.get_cur_stmt_ofs());
+            for(auto& p : possible) {
+                if( pos == p.pos )
+                    continue;
+                if( stmt.is_Drop() && stmt.as_Drop().slot.m_root == p.slot && stmt.as_Drop().slot.m_wrappers.empty() ) {
+                    DEBUG(state << p.slot << " Droped - " << stmt);
+                    continue;
+                }
+                if( visit_mir_lvalues(stmt, [&](const ::MIR::LValue& lv, ValUsage /*vu*/) { return lv.m_root == p.slot; }) ) {
+                    DEBUG(state << p.slot << " Used - " << stmt);
+                    p.used = true;
+                }
+            }
+        }
+        for(auto& p : possible) {
+            if( visit_mir_lvalues(blk.terminator, [&](const ::MIR::LValue& lv, ValUsage /*vu*/) { return lv.m_root == p.slot; }) ) {
+                DEBUG(state << p.slot << " Used - " << blk.terminator);
+                p.used = true;
+            }
+        }
+    }
+
+    // Remove any marked with `used=true` from the list
+    { auto ne = std::remove_if(possible.begin(), possible.end(), [&](const Poss& p){ return p.used; }); possible.erase(ne, possible.end()); }
+    if( possible.size() == 0 ) {
+        return false;
+    }
+    // Rewrite and erase
+    for(auto& blk : fcn.blocks)
+    {
+        for(auto& stmt : blk.statements)
+        {
+            state.set_cur_stmt(&blk - fcn.blocks.data(), &stmt - blk.statements.data());
+            auto pos = StmtRef(state.get_cur_block(), state.get_cur_stmt_ofs());
+            for(const auto& p : possible) {
+                if( pos == p.pos ) {
+                    DEBUG(state << p.slot << " Erase initial");
+                    stmt = ::MIR::Statement();
+                    continue ;
+                }
+                if( stmt.is_Drop() && stmt.as_Drop().slot.m_root == p.slot && stmt.as_Drop().slot.m_wrappers.empty() ) {
+                    DEBUG(state << p.slot << " Erase drop");
+                    stmt = ::MIR::Statement();
+                    continue;
+                }
+                visit_mir_lvalues_mut(stmt, [&](::MIR::LValue& lv, ValUsage /*vu*/) {
+                    if( lv.m_root == p.replace ) {
+                        DEBUG(state << p.slot << " Replace " << p.replace);
+                        lv.m_root = p.slot.clone();
+                    }
+                    return false;
+                    });
+            }
+        }
+
+        for(const auto& p : possible) {
+            visit_mir_lvalues_mut(blk.terminator, [&](::MIR::LValue& lv, ValUsage /*vu*/) {
+                if( lv.m_root == p.replace ) {
+                    DEBUG(state << p.slot << " Replace " << p.replace);
+                    lv.m_root = p.slot.clone();
+                }
+                return false;
+                });
+        }
+    }
+    changed = true;
     return changed;
 }
 
@@ -2564,7 +2743,10 @@ bool MIR_Optimise_DeTemporary(::MIR::TypeResolve& state, ::MIR::Function& fcn)
     TRACE_FUNCTION_FR("", changed);
 
     changed |= MIR_Optimise_DeTemporary_SingleSetAndUse(state, fcn);
+    if(changed) return changed;
     changed |= MIR_Optimise_DeTemporary_Borrows(state, fcn);
+    if(changed) return changed;
+    changed |= MIR_Optimise_DeTemporary_ReborrowOfUnused(state, fcn);
 
 
     // OLD ALGORITHM.
@@ -3392,7 +3574,7 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                 auto it = known_values.find(lv);
                 if( it != known_values.end() )
                 {
-                    DEBUG(state << "Value " << lv << " known to be" << it->second);
+                    DEBUG(state << "Value " << lv << " known to be " << it->second);
                     return it->second.clone();
                 }
 
@@ -3409,6 +3591,62 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                 //        }
                 //    }
                 //}
+
+                // Reads of statics
+                if( lv.m_wrappers.empty() && lv.m_root.is_Static() )
+                {
+                    DEBUG("Read of a static - " << lv.m_root.as_Static());
+                    // Look up this static, and see if it's not mutable, and a primitive
+                    // - If the static is an immutable primitive: read and save
+                    MonomorphState  ms;
+                    auto v = state.m_resolve.get_value(state.sp, lv.m_root.as_Static(), ms);
+                    if( v.is_Static() )
+                    {
+                        const auto& stat = *v.as_Static();
+                        if( stat.m_value_generated
+                        && !stat.m_is_mut
+                        && state.m_resolve.type_is_interior_mutable(state.sp, stat.m_type) == HIR::Compare::Unequal )
+                        {
+                            // Convert the encoded literal into a `MIR::Const`
+                            const auto el = EncodedLiteralSlice(stat.m_value_res);
+                            // Check the type
+                            // - Primitives
+                            if( stat.m_type.data().is_Primitive() ) {
+                                auto ty = stat.m_type.data().as_Primitive();
+                                switch(ty)
+                                {
+                                case HIR::CoreType::Char:
+                                case HIR::CoreType::Usize:
+                                case HIR::CoreType::U128:
+                                case HIR::CoreType::U64:
+                                case HIR::CoreType::U32:
+                                case HIR::CoreType::U16:
+                                case HIR::CoreType::U8:
+                                    return ::MIR::Constant::make_Uint({el.read_uint(el.m_size), ty});
+                                case HIR::CoreType::Bool:
+                                    return ::MIR::Constant::make_Bool({el.read_uint(el.m_size) != 0});
+                                case HIR::CoreType::Isize:
+                                case HIR::CoreType::I128:
+                                case HIR::CoreType::I64:
+                                case HIR::CoreType::I32:
+                                case HIR::CoreType::I16:
+                                case HIR::CoreType::I8:
+                                    return ::MIR::Constant::make_Int({el.read_sint(el.m_size), ty});
+                                case HIR::CoreType::F32:
+                                case HIR::CoreType::F64:
+                                    return ::MIR::Constant::make_Float({el.read_float(el.m_size), ty});
+                                case HIR::CoreType::Str:
+                                    MIR_BUG(state, "Constant of type `str`?");
+                                }
+                            }
+                            // - Pointers
+                            if( stat.m_type.data().is_Borrow() ) {
+                                // TODO: Read the borrow, and store
+                            }
+                            // - Could traverse the static via the wrappers too?
+                        }
+                    }
+                }
 
                 // Not a known value, and not a known composite
                 // - Use a nullptr ItemAddr to indicate this
@@ -3430,7 +3668,7 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
             };
 
         // Convert known indexes into field acceses
-        auto edit_lval = [&](auto& lv, auto _vu)->bool {
+        auto edit_lval = [&](MIR::LValue& lv, ValUsage _vu)->bool {
             for(auto& w : lv.m_wrappers)
             {
                 if( w.is_Index() )
@@ -3443,6 +3681,24 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                         auto idx = it->second.as_Uint().v;
                         MIR_ASSERT(state, idx < (1<<30), "Known index is excessively large");
                         w = MIR::LValue::Wrapper::new_Field( idx.truncate_u64() );
+                        changed = true;
+                    }
+                }
+            }
+
+            // If a Deref of a known value is seen, replace with the source of that value.
+            if( !lv.m_wrappers.empty() && lv.m_wrappers.front().is_Deref() && !lv.m_root.is_Static() )
+            {
+                auto ilv = MIR::LValue(lv.m_root.clone(),{});
+                auto it = known_values.find(ilv);
+                if( it != known_values.find(lv) )
+                {
+                    DEBUG("Known deref source: " << ilv << " == " << it->second);
+                    //MIR_ASSERT(state, it->second.is_ItemAddr(), "Derefernce with known value not an ItemAddr - " << it->second);
+                    if( it->second.is_ItemAddr() )
+                    {
+                        lv.m_wrappers.erase( lv.m_wrappers.begin() );
+                        lv.m_root = MIR::LValue::Storage::new_Static(it->second.as_ItemAddr()->clone());
                         changed = true;
                     }
                 }
@@ -3466,7 +3722,32 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                 struct H {
                     static S128 truncate_s(::HIR::CoreType ct, S128 v) {
                         // Truncate unsigned, then sign extend
+                        auto u = H::truncate_u(ct, v.get_inner());
+                        switch(ct)
+                        {
+                        case ::HIR::CoreType::I8:   return sext(u, 8);
+                        case ::HIR::CoreType::I16:  return sext(u, 16);
+                        case ::HIR::CoreType::I32:  return sext(u, 32);
+                        case ::HIR::CoreType::I64:  return sext(u, 64);
+                        case ::HIR::CoreType::I128: return v;
+                        // usize/size - need to handle <64 pointer bits
+                        case ::HIR::CoreType::Isize:
+                            if(Target_GetPointerBits() < 64)
+                                return sext(u, Target_GetPointerBits());
+                            return v;
+                        default:
+                            // Invalid type for `Constant::Int` literal
+                            break;
+                        }
                         return v;
+                    }
+                    static S128 sext(U128 v, unsigned bits) {
+                        if( v >> (bits-1) != 0 ) {
+                            return S128(v | (U128::max() << bits));
+                        }
+                        else {
+                            return S128(v);
+                        }
                     }
                     static U128 truncate_u(::HIR::CoreType ct, U128 v) {
                         switch(ct)
@@ -3518,6 +3799,10 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                     {
                         e->src = ::MIR::RValue::make_Constant( ::MIR::Constant::make_ItemAddr({ box$(se.val.m_root.as_Static()) }) );
                         changed = true;
+                    }
+                    else if( se.type == HIR::BorrowType::Unique ) {
+                        known_values.erase(se.val);
+                        known_values_var.erase(se.val);
                     }
                     }
                 TU_ARMA(Cast, se) {
@@ -3697,100 +3982,81 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                             ::MIR::Constant new_value;
                             switch(se.op)
                             {
-                            case ::MIR::eBinOp::EQ:
-                                new_value = ::MIR::Constant::make_Bool({val_l == val_r});
-                                break;
-                            case ::MIR::eBinOp::NE:
-                                new_value = ::MIR::Constant::make_Bool({val_l != val_r});
-                                break;
-                            case ::MIR::eBinOp::LT:
-                                new_value = ::MIR::Constant::make_Bool({val_l < val_r});
-                                break;
-                            case ::MIR::eBinOp::LE:
-                                new_value = ::MIR::Constant::make_Bool({val_l <= val_r});
-                                break;
-                            case ::MIR::eBinOp::GT:
-                                new_value = ::MIR::Constant::make_Bool({val_l > val_r});
-                                break;
-                            case ::MIR::eBinOp::GE:
-                                new_value = ::MIR::Constant::make_Bool({val_l >= val_r});
-                                break;
+                            // Note: f32's bit accuracy is different to f64, so they can't be considered equivalent in behaviour
+                            case ::MIR::eBinOp::EQ: if(!val_l.is_Float()) new_value = ::MIR::Constant::make_Bool({val_l == val_r});   break;
+                            case ::MIR::eBinOp::NE: if(!val_l.is_Float()) new_value = ::MIR::Constant::make_Bool({val_l != val_r});   break;
+                            case ::MIR::eBinOp::LT: if(!val_l.is_Float()) new_value = ::MIR::Constant::make_Bool({val_l <  val_r});   break;
+                            case ::MIR::eBinOp::LE: if(!val_l.is_Float()) new_value = ::MIR::Constant::make_Bool({val_l <= val_r});   break;
+                            case ::MIR::eBinOp::GT: if(!val_l.is_Float()) new_value = ::MIR::Constant::make_Bool({val_l >  val_r});   break;
+                            case ::MIR::eBinOp::GE: if(!val_l.is_Float()) new_value = ::MIR::Constant::make_Bool({val_l >= val_r});   break;
 
                             case ::MIR::eBinOp::ADD:
                                 MIR_ASSERT(state, val_l.tag() == val_r.tag(), "Mismatched types for eBinOp::ADD - " << val_l << " + " << val_r);
-                                //{TU_MATCH_HDRA( (val_l, val_r), {)
-                                {TU_MATCH_HDRA( (val_l), {)
+                                TU_MATCH_HDRA( (val_l, val_r), {)
                                 default:
                                     break;
-                                TU_ARMA(Float, le) { const auto& re = val_r.as_Float();
+                                TU_ARMA(Float, le, re) {
                                     MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::ADD - " << val_l << " / " << val_r);
                                     new_value = ::MIR::Constant::make_Float({ le.v + re.v, le.t });
                                     }
-                                // TU_ARMav(Int, (le, re)) {
-                                TU_ARMA(Int, le) { const auto& re = val_r.as_Int();
+                                TU_ARMA(Int  , le, re) {
                                     MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::ADD - " << val_l << " + " << val_r);
                                     new_value = ::MIR::Constant::make_Int({ H::truncate_s(le.t, le.v + re.v), le.t });
                                     }
-                                TU_ARMA(Uint, le) { const auto& re = val_r.as_Uint();
+                                TU_ARMA(Uint , le, re) {
                                     MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::ADD - " << val_l << " + " << val_r);
                                     new_value = ::MIR::Constant::make_Uint({ H::truncate_u(le.t, le.v + re.v), le.t });
                                     }
-                                }}
+                                }
                                 break;
                             case ::MIR::eBinOp::SUB:
                                 MIR_ASSERT(state, val_l.tag() == val_r.tag(), "Mismatched types for eBinOp::SUB - " << val_l << " + " << val_r);
-                                //{TU_MATCH_HDRA( (val_l, val_r), {)
-                                {TU_MATCH_HDRA( (val_l), {)
+                                TU_MATCH_HDRA( (val_l, val_r), {)
                                 default:
                                     break;
-                                TU_ARMA(Float, le) { const auto& re = val_r.as_Float();
+                                TU_ARMA(Float, le, re) {
                                     MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::SUB - " << val_l << " / " << val_r);
                                     new_value = ::MIR::Constant::make_Float({ le.v - re.v, le.t });
                                     }
-                                // TU_ARMav(Int, (le, re)) {
-                                TU_ARMA(Int, le) { const auto& re = val_r.as_Int();
+                                TU_ARMA(Int, le, re) {
                                     MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::SUB - " << val_l << " - " << val_r);
                                     new_value = ::MIR::Constant::make_Int({ H::truncate_s(le.t, le.v - re.v), le.t });
                                     }
-                                TU_ARMA(Uint, le) { const auto& re = val_r.as_Uint();
+                                TU_ARMA(Uint, le, re) {
                                     MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::SUB - " << val_l << " - " << val_r);
                                     new_value = ::MIR::Constant::make_Uint({ H::truncate_u(le.t, le.v - re.v), le.t });
                                     }
-                                }}
+                                }
                                 break;
                             case ::MIR::eBinOp::MUL:
                                 MIR_ASSERT(state, val_l.tag() == val_r.tag(), "Mismatched types for eBinOp::MUL - " << val_l << " * " << val_r);
-                                //{TU_MATCH_HDRA( (val_l, val_r), {)
-                                {TU_MATCH_HDRA( (val_l), {)
+                                TU_MATCH_HDRA( (val_l, val_r), {)
                                 default:
                                     break;
-                                TU_ARMA(Float, le) { const auto& re = val_r.as_Float();
+                                TU_ARMA(Float, le, re) {
                                     MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::MUL - " << val_l << " / " << val_r);
                                     new_value = ::MIR::Constant::make_Float({ le.v * re.v, le.t });
                                     }
-                                // TU_ARMav(Int, (le, re)) {
-                                TU_ARMA(Int, le) { const auto& re = val_r.as_Int();
+                                TU_ARMA(Int  , le, re) {
                                     MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::MUL - " << val_l << " * " << val_r);
                                     new_value = ::MIR::Constant::make_Int({ H::truncate_s(le.t, le.v * re.v), le.t });
                                     }
-                                TU_ARMA(Uint, le) { const auto& re = val_r.as_Uint();
+                                TU_ARMA(Uint , le, re) {
                                     MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::MUL - " << val_l << " * " << val_r);
                                     new_value = ::MIR::Constant::make_Uint({ H::truncate_u(le.t, le.v * re.v), le.t });
                                     }
-                                }}
+                                }
                                 break;
                             case ::MIR::eBinOp::DIV:
                                 MIR_ASSERT(state, val_l.tag() == val_r.tag(), "Mismatched types for eBinOp::DIV - " << val_l << " / " << val_r);
-                                //{TU_MATCH_HDRA( (val_l, val_r), {)
-                                {TU_MATCH_HDRA( (val_l), {)
+                                TU_MATCH_HDRA( (val_l, val_r), {)
                                 default:
                                     break;
-                                TU_ARMA(Float, le) { const auto& re = val_r.as_Float();
+                                TU_ARMA(Float, le, re) {
                                     MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::DIV - " << val_l << " / " << val_r);
                                     new_value = ::MIR::Constant::make_Float({ le.v / re.v, le.t });
                                     }
-                                // TU_ARMav(Int, (le, re)) {
-                                TU_ARMA(Int, le) { const auto& re = val_r.as_Int();
+                                TU_ARMA(Int  , le, re) {
                                     MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::DIV - " << val_l << " / " << val_r);
                                     if( re.v == 0 ) {
                                         DEBUG(state << "Const eval error: Constant division by zero");
@@ -3799,7 +4065,7 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                         new_value = ::MIR::Constant::make_Int({ H::truncate_s(le.t, le.v / re.v), le.t });
                                     }
                                     }
-                                TU_ARMA(Uint, le) { const auto& re = val_r.as_Uint();
+                                TU_ARMA(Uint , le, re) {
                                     MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::DIV - " << val_l << " / " << val_r);
                                     if( re.v == 0 ) {
                                         DEBUG(state << "Const eval error: Constant division by zero");
@@ -3808,43 +4074,39 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                         new_value = ::MIR::Constant::make_Uint({ H::truncate_u(le.t, le.v / re.v), le.t });
                                     }
                                     }
-                                }}
+                                }
                                 break;
                             case ::MIR::eBinOp::MOD:
                                 MIR_ASSERT(state, val_l.tag() == val_r.tag(), "Mismatched types for eBinOp::MOD - " << val_l << " % " << val_r);
-                                //{TU_MATCH_HDRA( (val_l, val_r), {)
-                                {TU_MATCH_HDRA( (val_l), {)
+                                TU_MATCH_HDRA( (val_l, val_r), {)
                                 default:
                                     break;
-                                // TU_ARMav(Int, (le, re)) {
-                                TU_ARMA(Int, le) { const auto& re = val_r.as_Int();
+                                TU_ARMA(Int, le, re) {
                                     MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::MOD - " << val_l << " % " << val_r);
                                     MIR_ASSERT(state, re.v != 0, "Const eval error: Constant division by zero");
                                     new_value = ::MIR::Constant::make_Int({ H::truncate_s(le.t, le.v % re.v), le.t });
                                     }
-                                TU_ARMA(Uint, le) { const auto& re = val_r.as_Uint();
+                                TU_ARMA(Uint, le, re) {
                                     MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::MOD - " << val_l << " % " << val_r);
                                     MIR_ASSERT(state, re.v != 0, "Const eval error: Constant division by zero");
                                     new_value = ::MIR::Constant::make_Uint({ H::truncate_u(le.t, le.v % re.v), le.t });
                                     }
-                                }}
+                                }
                                 break;
 
                             case ::MIR::eBinOp::BIT_AND:
                                 MIR_ASSERT(state, val_l.tag() == val_r.tag(), "Mismatched types for eBinOp::BIT_AND - " << val_l << " & " << val_r);
-                                //TU_MATCH_HDRA( (val_l, val_r), {)
-                                TU_MATCH_HDRA( (val_l), {)
+                                TU_MATCH_HDRA( (val_l, val_r), {)
                                 default:
                                     break;
-                                TU_ARMA(Bool, le) { const auto& re = val_r.as_Bool();
+                                TU_ARMA(Bool, le, re) {
                                     new_value = ::MIR::Constant::make_Bool({ le.v && re.v });
                                     }
-                                // TU_ARMav(Int, (le, re)) {
-                                TU_ARMA(Int, le) { const auto& re = val_r.as_Int();
+                                TU_ARMA(Int, le, re) {
                                     MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::BIT_AND - " << val_l << " ^ " << val_r);
                                     new_value = ::MIR::Constant::make_Int({ H::truncate_s(le.t, le.v & re.v), le.t });
                                     }
-                                TU_ARMA(Uint, le) { const auto& re = val_r.as_Uint();
+                                TU_ARMA(Uint, le, re) {
                                     MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::BIT_AND - " << val_l << " ^ " << val_r);
                                     new_value = ::MIR::Constant::make_Uint({ H::truncate_u(le.t, le.v & re.v), le.t });
                                     }
@@ -3852,18 +4114,17 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                 break;
                             case ::MIR::eBinOp::BIT_OR:
                                 MIR_ASSERT(state, val_l.tag() == val_r.tag(), "Mismatched types for eBinOp::BIT_OR - " << val_l << " | " << val_r);
-                                //TU_MATCH_HDRA( (val_l, val_r), {)
-                                TU_MATCH_HDRA( (val_l), {)
+                                TU_MATCH_HDRA( (val_l, val_r), {)
                                 default:
                                     break;
-                                TU_ARMA(Bool, le) { const auto& re = val_r.as_Bool();
+                                TU_ARMA(Bool, le, re) {
                                     new_value = ::MIR::Constant::make_Bool({ le.v || re.v });
                                     }
-                                TU_ARMA(Int, le) { const auto& re = val_r.as_Int();
+                                TU_ARMA(Int, le, re) {
                                     MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::BIT_OR - " << val_l << " | " << val_r);
                                     new_value = ::MIR::Constant::make_Int({ H::truncate_s(le.t, le.v | re.v), le.t });
                                     }
-                                TU_ARMA(Uint, le) { const auto& re = val_r.as_Uint();
+                                TU_ARMA(Uint, le, re) {
                                     MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::BIT_OR - " << val_l << " | " << val_r);
                                     new_value = ::MIR::Constant::make_Uint({ H::truncate_u(le.t, le.v | re.v), le.t });
                                     }
@@ -3871,25 +4132,24 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                 break;
                             case ::MIR::eBinOp::BIT_XOR:
                                 MIR_ASSERT(state, val_l.tag() == val_r.tag(), "Mismatched types for eBinOp::BIT_XOR - " << val_l << " ^ " << val_r);
-                                //TU_MATCH_HDRA( (val_l, val_r), {)
-                                TU_MATCH_HDRA( (val_l), {)
+                                TU_MATCH_HDRA( (val_l, val_r), {)
                                 default:
                                     break;
-                                TU_ARMA(Bool, le) { const auto& re = val_r.as_Bool();
+                                TU_ARMA(Bool, le, re) {
                                     new_value = ::MIR::Constant::make_Bool({ le.v != re.v });
                                     }
-                                // TU_ARMav(Int, (le, re)) {
-                                TU_ARMA(Int, le) { const auto& re = val_r.as_Int();
+                                TU_ARMA(Int, le, re) {
                                     MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::BIT_XOR - " << val_l << " ^ " << val_r);
                                     new_value = ::MIR::Constant::make_Int({ H::truncate_s(le.t, le.v ^ re.v), le.t });
                                     }
-                                TU_ARMA(Uint, le) { const auto& re = val_r.as_Uint();
+                                TU_ARMA(Uint, le, re) {
                                     MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::BIT_XOR - " << val_l << " ^ " << val_r);
                                     new_value = ::MIR::Constant::make_Uint({ H::truncate_u(le.t, le.v ^ re.v), le.t });
                                     }
                                 }
                                 break;
 
+                            // --- Bit Shifts ---
                             case ::MIR::eBinOp::BIT_SHL: {
                                 U128 shift_len_r;
                                 TU_MATCH_HDRA( (val_r), {)
@@ -3934,8 +4194,8 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                 TU_MATCH_HDRA( (val_l), {)
                                 default:
                                     break;
-                                TU_ARMA(Int, le) {
-                                    new_value = ::MIR::Constant::make_Int({ H::truncate_s(le.t, le.v >> shift_len), le.t });
+                                TU_ARMA(Int , le) {
+                                    new_value = ::MIR::Constant::make_Int ({ H::truncate_s(le.t, le.v >> shift_len), le.t });
                                     }
                                 TU_ARMA(Uint, le) {
                                     new_value = ::MIR::Constant::make_Uint({ H::truncate_u(le.t, le.v >> shift_len), le.t });
@@ -3954,6 +4214,74 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                                 e->src = mv$(new_value);
                                 changed = true;
                             }
+                        }
+                    }
+                    else
+                    {
+                        ::MIR::Param new_value;
+                        // No-ops
+                        switch(se.op)
+                        {
+                        // `foo + 0 == foo`
+                        // `foo - 0 == foo`
+                        case ::MIR::eBinOp::ADD:
+                        case ::MIR::eBinOp::SUB:
+                            if( se.val_r.is_Constant() && se.val_r.as_Constant().is_Uint() && se.val_r.as_Constant().as_Uint().v == 0 ) {
+                                new_value = mv$(se.val_l);
+                            }
+                            break;
+                        // `foo % 1 == 0`
+                        case ::MIR::eBinOp::MOD:
+                            if( se.val_r.is_Constant() && se.val_r.as_Constant().is_Uint() && se.val_r.as_Constant().as_Uint().v == 1 ) {
+                                new_value = ::MIR::Constant::make_Uint({ U128(0), se.val_r.as_Constant().as_Uint().t });
+                            }
+                            break;
+                        // `foo / 1 == foo`
+                        case ::MIR::eBinOp::DIV:
+                            if( se.val_r.is_Constant() && se.val_r.as_Constant().is_Uint() && se.val_r.as_Constant().as_Uint().v == 1 ) {
+                                new_value = mv$(se.val_l);
+                            }
+                            break;
+                        // `foo * 0 == 0`
+                        // `foo * 1 == foo`
+                        // `0 * foo == 0`
+                        // `1 * foo == foo`
+                        case ::MIR::eBinOp::MUL:
+                            if( se.val_r.is_Constant() && se.val_r.as_Constant().is_Uint() ) {
+                                auto& v = se.val_r.as_Constant().as_Uint();
+                                if( v.v == 0 ) {
+                                    new_value = ::MIR::Constant::make_Uint({ U128(0), v.t });
+                                }
+                                else if( v.v == 1 ) {
+                                    new_value = mv$(se.val_l);
+                                }
+                                else {
+                                }
+                            }
+                            if( se.val_l.is_Constant() && se.val_l.as_Constant().is_Uint() ) {
+                                auto& v = se.val_l.as_Constant().as_Uint();
+                                if( v.v == 0 ) {
+                                    new_value = ::MIR::Constant::make_Uint({ U128(0), v.t });
+                                }
+                                else if( v.v == 1 ) {
+                                    new_value = mv$(se.val_r);
+                                }
+                                else {
+                                }
+                            }
+                            break;
+                        default:
+                            break;
+                        }
+                        if( new_value != ::MIR::Param() )
+                        {
+                            DEBUG(state << " " << e->src << " = " << new_value);
+                            TU_MATCH_HDRA( (new_value), {)
+                            TU_ARMA(LValue, v)   e->src = mv$(v);
+                            TU_ARMA(Borrow, _)  throw "";
+                            TU_ARMA(Constant, v)   e->src = mv$(v);
+                            }
+                            changed = true;
                         }
                     }
                     }
@@ -4639,21 +4967,32 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                     DEBUG(" - VU " << e.dst << " R:" << vu.read << " W:" << vu.write << " B:" << vu.borrow);
                     // TODO: Allow write many?
                     // > Where the variable is written once and read once
-                    if( !( vu.read == 1 && vu.write == 1 && vu.borrow == 0 ) )
+                    if( !( vu.read == 1 && vu.write == 1 && vu.borrow == 0 ) ) {
+                        DEBUG("> Not a single read+write");
                         continue ;
+                    }
                 }
                 else
                 {
                     continue ;
                 }
+                bool only_one = false;
                 if( e.src.is_Use() )
                 {
                     // Keep the complexity down
                     const auto* srcp = &e.src.as_Use();
-                    if( ::std::any_of(srcp->m_wrappers.begin(), srcp->m_wrappers.end(), [](auto& w) { return !w.is_Field(); }) )
+                    // If there are deref/index accesses, then only allow one statement
+                    // - This is the lazy option, avoids needing to check for invalidation (could be a write through deref)
+                    if( ::std::any_of(srcp->m_wrappers.begin(), srcp->m_wrappers.end(), [](auto& w) { return !w.is_Field() && !w.is_Downcast(); }) ) {
+                        DEBUG("Non-field access");
+                        only_one = true;
+                        continue;
+                    }
+                    // TODO: Why is this limited to locals only?
+                    if( !srcp->m_root.is_Local() ) {
+                        DEBUG("> Can't replace, not a local root");
                         continue ;
-                    if( !srcp->m_root.is_Local() )
-                        continue ;
+                    }
 
                     if( replacements_find(*srcp) != replacements.end() )
                     {
@@ -4663,6 +5002,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                 }
                 else
                 {
+                    // Not a use
                     continue ;
                 }
                 bool src_is_lvalue = e.src.is_Use();
@@ -4688,6 +5028,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                     // Check for invalidation (done first, to avoid cases where the source is moved into a struct)
                     if( check_invalidates_lvalue(stmt2, e.src.as_Use()) ) {
                         stop = true;
+                        DEBUG("Source invalidated");
                         break;
                     }
 
@@ -4709,6 +5050,17 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                         found = true;
                         stop = true;
                         break;
+                    }
+
+                    if( only_one ) {
+                        stop = true;
+                    }
+                }
+                if( !stop )
+                {
+                    if( check_invalidates_lvalue(block.terminator, e.src.as_Use()) ) {
+                        stop = true;
+                        DEBUG("Source invalidated in terminator");
                     }
                 }
                 if( !stop )
@@ -5178,6 +5530,7 @@ bool MIR_Optimise_DeadAssignments(::MIR::TypeResolve& state, ::MIR::Function& fc
 
     // Per-local flag indicating that the particular local is read.
     ::std::vector<bool> read_locals( fcn.locals.size() );
+    ::std::vector<bool> dropped_locals( fcn.locals.size() );
     for(const auto& bb : fcn.blocks)
     {
         auto cb = [&](const ::MIR::LValue& lv, ValUsage vu) {
@@ -5191,12 +5544,16 @@ bool MIR_Optimise_DeadAssignments(::MIR::TypeResolve& state, ::MIR::Function& fc
             };
         for(const auto& stmt : bb.statements)
         {
-            if( stmt.is_Assign() && stmt.as_Assign().dst.is_Local() )
-            {
+            // If the assignment is to a local, then just consider the source (the target is writing to a local)
+            if( stmt.is_Assign() && stmt.as_Assign().dst.is_Local() )  {
                 visit_mir_lvalues(stmt.as_Assign().src, cb);
             }
-            else
-            {
+            // Record drops differently, allowing us to remove unused non-Copy items
+            else if( stmt.is_Drop() && stmt.as_Drop().slot.is_Local() ) {
+                dropped_locals[ stmt.as_Drop().slot.as_Local() ] = true;
+            }
+            // For other statment types (e.g. asm) - record anything
+            else {
                 visit_mir_lvalues(stmt, cb);
             }
         }
@@ -5205,17 +5562,34 @@ bool MIR_Optimise_DeadAssignments(::MIR::TypeResolve& state, ::MIR::Function& fc
 
     for(auto& bb : fcn.blocks)
     {
-        for(auto it = bb.statements.begin(); it != bb.statements.end(); )
+        for(auto it = bb.statements.begin(), next = it+1; it != bb.statements.end(); it = next, next = it+1 )
         {
             state.set_cur_stmt(&bb - &fcn.blocks.front(), it - bb.statements.begin());
-            if( it->is_Assign() && it->as_Assign().dst.is_Local() && read_locals[it->as_Assign().dst.as_Local()] == false )
-            {
-                DEBUG(state << "Unread assignment, remove - " << *it);
-                it = bb.statements.erase(it);
-                changed = true;
-                continue ;
+
+            // Remove drops of assigned values that will be removed
+            if( it->is_Drop() && it->as_Drop().slot.is_Local() ) {
+                auto idx = it->as_Drop().slot.as_Local();
+                if( !read_locals[idx] && fcn.locals[idx].data().is_Borrow() ) {
+                    DEBUG(state << "Drop of unread value, remove - " << *it);
+                    next = it = bb.statements.erase(it);
+                    continue;
+                }
             }
-            ++ it;
+
+            // Not an assignment, ignore
+            if( !(it->is_Assign() && it->as_Assign().dst.is_Local()) )
+                continue ;
+            auto idx = it->as_Assign().dst.as_Local();
+            // Local was read, ignore it
+            if( read_locals[idx] )
+                continue;
+            // If the local was dropped, then ignore IF it's not a borrow (TODO: Only if there's drop glue?)
+            if( dropped_locals[idx] && !fcn.locals[idx].data().is_Borrow() )
+                continue;
+            // Remove the assignment, as it's unused
+            DEBUG(state << "Unread assignment, remove - " << *it);
+            next = it = bb.statements.erase(it);
+            changed = true;
         }
     }
 

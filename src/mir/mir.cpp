@@ -21,7 +21,8 @@ namespace MIR {
             os << " " << e.t;
             ),
         (Float,
-            os << e.v;
+            os << std::hexfloat << e.v << std::defaultfloat;
+            os << " " << e.t;
             ),
         (Bool,
             os << (e.v ? "true" : "false");
@@ -110,7 +111,21 @@ namespace MIR {
 
     void LValue::RefCommon::fmt(::std::ostream& os) const
     {
-        TU_MATCHA( (m_lv->m_root), (e),
+        os << m_lv->m_root;
+        for(size_t i = 0; i < m_wrapper_count; i ++)
+        {
+            os << m_lv->m_wrappers.at(i);
+        }
+    }
+
+    ::std::ostream& operator<<(::std::ostream& os, const LValue& x)
+    {
+        LValue::CRef(x).fmt(os);
+        return os;
+    }
+    ::std::ostream& operator<<(::std::ostream& os, const LValue::Storage& r)
+    {
+        TU_MATCHA( (r), (e),
         (Return,
             os << "retval";
             ),
@@ -124,29 +139,6 @@ namespace MIR {
             os << "(" << e << ")";
             )
         )
-        for(size_t i = 0; i < m_wrapper_count; i ++)
-        {
-            const LValue::Wrapper& w = m_lv->m_wrappers.at(i);
-            TU_MATCHA( (w), (e),
-            (Field,
-                os << "." << e;
-                ),
-            (Deref,
-                os << "*";
-                ),
-            (Index,
-                os << "[_" << e << "]";
-                ),
-            (Downcast,
-                os << "#" << e;
-                )
-            )
-        }
-    }
-
-    ::std::ostream& operator<<(::std::ostream& os, const LValue& x)
-    {
-        LValue::CRef(x).fmt(os);
         return os;
     }
     ::std::ostream& operator<<(::std::ostream& os, const LValue::Wrapper& w)

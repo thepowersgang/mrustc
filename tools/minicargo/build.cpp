@@ -761,7 +761,7 @@ namespace {
                     return t;
                 }
                 ::std::string get_token_int() {
-                    if( ifp.eof() )
+                    if( ifp.eof() && m_c == '\0')
                         return "";
                     while( m_c == ' ' )
                     {
@@ -956,8 +956,10 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
             }
         }
     }
-    if( true /*this->enable_debug*/ ) {
+    if( this->m_opts.enable_debug ) {
         args.push_back("-g");
+    }
+    if( true ) {
         args.push_back("--cfg"); args.push_back("debug_assertions");
     }
     if( true /*this->enable_optimise*/ ) {
@@ -1106,7 +1108,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     args.push_back("--crate-type"); args.push_back("bin");
     args.push_back("-o"); args.push_back(outfile);
     args.push_back("-L"); args.push_back(this->get_output_dir(true).str()); // NOTE: Forces `is_for_host` to true here.
-    if( true )
+    if( this->m_opts.enable_debug )
     {
         args.push_back("-g");
     }
@@ -1374,6 +1376,56 @@ const helpers::path& get_mrustc_path()
     return s_compiler_path;
 }
 
+#ifdef _WIN32
+// Escapes an argument for CommandLineToArgv on Windows
+void argv_quote_windows(const std::string& arg, std::stringstream& cmdline)
+{
+    if (arg.empty()) return;
+    // Add a space to start a new argument.
+    cmdline << " ";
+
+    // Don't quote unless we need to
+    if (arg.find_first_of(" \t\n\v\"") == arg.npos)
+    {
+        cmdline << arg;
+        return;
+    }
+    else
+    {
+        cmdline << '"';
+        for (auto ch = arg.begin(); ; ++ch) {
+            size_t backslash_count = 0;
+
+            // Count backslashes
+            while (ch != arg.end() && *ch == L'\\') {
+                ++ch;
+                ++backslash_count;
+            }
+
+            if (ch == arg.end()) {
+                // Escape backslashes, but let the terminating
+                // double quotation mark we add below be interpreted
+                // as a metacharacter.
+                for (int i = 0; i < backslash_count * 2; i++) cmdline << '\\';
+                break;
+            }
+            else if (*ch == L'"')
+            {
+                // Escape backslashes and the following double quotation mark.
+                for (int i = 0; i < backslash_count * 2 + 1; i++) cmdline << '\\';
+                cmdline << *ch;
+            }
+            else
+            {
+                for (int i = 0; i < backslash_count; i++) cmdline << '\\';
+                cmdline << *ch;
+            }
+        }
+        cmdline << '"';
+    }
+}
+#endif
+
 bool spawn_process(const char* exe_name, const StringList& args, const StringListKV& env, const ::helpers::path& logfile, const ::helpers::path& working_directory/*={}*/)
 {
     if( getenv("MINICARGO_DUMPENV") )
@@ -1386,12 +1438,16 @@ bool spawn_process(const char* exe_name, const StringList& args, const StringLis
         std::cout << environ_str.str() << std::endl;
     }
 
+    // TODO: Support running with a debugger
+    // - Determine if this is not the automatic initial run for `cfg`
+    // - Put the exe name in the first arg
+    // - Update the executable name
+
 #ifdef _WIN32
     ::std::stringstream cmdline;
     cmdline << exe_name;
     for (const auto& arg : args.get_vec())
-        // TODO: Escaping rules (quote if spaces, `^` before interior quotes or `^`)
-        cmdline << " " << arg;
+        argv_quote_windows(arg, cmdline);
     auto cmdline_str = cmdline.str();
     if(true)
     {
@@ -1462,7 +1518,8 @@ bool spawn_process(const char* exe_name, const StringList& args, const StringLis
         std::cerr << std::endl;
         return false;
     }
-#else
+
+#else   // ^^ WIN32 / VV posix
 
     // Create logfile output directory
     mkdir(static_cast<::std::string>(logfile.parent()).c_str(), 0755);

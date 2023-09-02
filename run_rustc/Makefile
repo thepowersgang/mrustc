@@ -85,7 +85,7 @@ BINDIR := $(PREFIX)bin/
 LIBDIR := $(PREFIX)lib/rustlib/$(RUSTC_TARGET)/lib/
 CARGO_HOME := $(PREFIX)cargo_home/
 
-LLVM_CONFIG := $(RUST_SRC)build/bin/llvm-config
+LLVM_CONFIG ?= $(RUST_SRC)build/bin/llvm-config
 LLVM_TARGETS ?= X86;ARM;AArch64#;Mips;PowerPC;SystemZ;JSBackend;MSP430;Sparc;NVPTX
 
 RUSTC_ENV_VARS := CFG_COMPILER_HOST_TRIPLE=$(RUSTC_TARGET)
@@ -116,6 +116,9 @@ all: $(BINDIR_S)hello_world
 all: $(BINDIR)hello_world	# Implies $(LIBDIR)libstd.rlib
 all: $(BINDIR)rustc
 all: $(BINDIR)cargo
+
+clean:
+	rm -rf -- output$(OUTDIR_SUF)/*
 
 # Helper rules to ensure that mrustc has built rustc and cargo
 ../output$(OUTDIR_SUF)/rustc:

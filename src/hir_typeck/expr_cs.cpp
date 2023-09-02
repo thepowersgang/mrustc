@@ -7533,7 +7533,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         }
         BUG(root_ptr->span(), "Spare rules left after typecheck stabilised");
     }
-    DEBUG("root_ptr = " << typeid(*root_ptr).name() << " " << root_ptr->m_res_type);
+    DEBUG("root_ptr = " << root_ptr->type_name() << " " << root_ptr->m_res_type);
 
     // - Recreate the pointer
     expr.reset( root_ptr.release() );

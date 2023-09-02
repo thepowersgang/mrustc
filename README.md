@@ -15,7 +15,7 @@ Progress
 --------
 
 - Builds working copies of `rustc` and `cargo` from a release source tarball
-  - Supports (and can bootstrap) rustc 1.19.0, 1.29.0, and 1.39.0
+  - Supports (and can bootstrap) rustc 1.19.0, 1.29.0, 1.39.0, and 1.54.0
 - Supported Targets:
   - x86-64 linux GNU (fully bootstrap tested using Debian 10.9)
   - x86-64 windows MSVC (runnable executables on Windows 10, but bootstrap hasn't been fully tested)
@@ -28,6 +28,8 @@ Progress
 Getting Started
 ===============
 
+You can set the number of jobs (parallel builds) by setting the enviromment variable `PARLEVEL`, e.g. `PARLEVEL=$(nproc)` for CPU core count. This can and will break at times, as such outside of toying around, it's best to do `PARLEVEL=1` or let mrustc figure it out by itself.
+
 Dependencies
 ------------
 - C++14-compatible compiler (tested with gcc 5.4 and gcc 6, and MSVC 2015)
@@ -37,6 +39,8 @@ Dependencies
 - `libz-dev` (used to reduce size of bytecode files, linux only - windows uses vcpkg to download it)
 - `curl` (for downloading the rust source, linux only)
 - `cmake` (at least 3.4.3, required for building llvm in rustc)
+- `pkg-config` (required for find crate build deps, i.e libssl)
+- `python3` (required for building llvm in rustc)
 
 Linux GNU and macOS
 -----
@@ -123,7 +127,5 @@ Medium-term
 - Propagate lifetime annotations so that MIR can include a borrow checker
 - Emit C code that is (more) human readable (uses names from the original source, reduced/no gotos)
 - Add alternate backends (e.g. LLVM IR, cretonne, ...)
+- Working parallel builds (fix races)
 
-
-
-Note: All progress is against the source of rustc 1.19.0, rustc 1.29.0, AND rustc 1.39.0

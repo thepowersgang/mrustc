@@ -8,6 +8,7 @@
 #include "type.hpp"
 #include <span.hpp>
 #include "expr.hpp" // Hack for cloning array types
+#include <cstdint>
 
 namespace HIR {
 

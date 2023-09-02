@@ -42,6 +42,8 @@ public:
 
     ExprNode* release() { auto rv = m_ptr; m_ptr = nullptr; return rv; }
     void reset(ExprNode* n = nullptr) { this->~ExprNodeP(); m_ptr = n; }
+
+    const char* type_name() const;
 };
 
 class Expr

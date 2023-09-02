@@ -909,8 +909,10 @@ namespace
                     MirVisitor  mir_visit(sp, tv, pp, fcn, mir_res);
                     for(const auto& stmt : block.statements)
                     {
+                        DEBUG(stmt);
                         mir_visit.visit_stmt(stmt);
                     }
+                    DEBUG(block.terminator);
                     mir_visit.visit_terminator(block.terminator);
 
                     // HACK: Currently calling `caller_location` creates an empty location (so needs the type)
@@ -921,7 +923,17 @@ namespace
                             const auto& s = mir_res.m_resolve.m_crate.get_struct_by_path(sp, p);
                             tv.visit_type(HIR::TypeRef::new_path(p, &s));
                         }
-
+                    }
+                    if( block.terminator.is_Call() && block.terminator.as_Call().fcn.is_Path() ) {
+                        const auto& p = block.terminator.as_Call().fcn.as_Path();
+                        if( p.m_data.is_UfcsKnown() ) {
+                            HIR::TypeRef tmp;
+                            const auto& ty = pp.maybe_monomorph(tv.m_resolve, tmp, p.m_data.as_UfcsKnown().type);
+                            if( ty.data().is_TraitObject() ) {
+                                // Must have the vtable for the trait object available!
+                                tv.visit_type(ty);
+                            }
+                        }
                     }
                 }
             }

@@ -28,51 +28,111 @@
  rustc_data_structures::static_assert_size!(ForeignItemKind, 72);
  
  impl From<ForeignItemKind> for ItemKind {
+
 --- compiler/rustc_hir/src/hir.rs
 +++ compiler/rustc_hir/src/hir.rs
-@@ -3050,3 +3050,3 @@
+@@ -3048,7 +3048,7 @@ impl<'hir> Node<'hir> {
+ }
+ 
  // Some nodes are used a lot. Make sure they don't unintentionally get bigger.
 -#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
 +#[cfg(all(not(rust_compiler="mrustc"),target_arch = "x86_64", target_pointer_width = "64"))]
  mod size_asserts {
+     rustc_data_structures::static_assert_size!(super::Block<'static>, 48);
+     rustc_data_structures::static_assert_size!(super::Expr<'static>, 64);
+
 --- compiler/rustc_middle/src/mir/interpret/error.rs
 +++ compiler/rustc_middle/src/mir/interpret/error.rs
-@@ -452,2 +452,2 @@
+@@ -449,7 +449,7 @@ impl dyn MachineStopType {
+     }
+ }
+ 
 -#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
 +#[cfg(all(not(rust_compiler="mrustc"), target_arch = "x86_64", target_pointer_width = "64"))]
  static_assert_size!(InterpError<'_>, 64);
+ 
+ pub enum InterpError<'tcx> {
+
 --- compiler/rustc_middle/src/mir/mod.rs
 +++ compiler/rustc_middle/src/mir/mod.rs
-@@ -2203,2 +2203,2 @@
+@@ -2200,7 +2200,7 @@ pub enum AggregateKind<'tcx> {
+     Generator(DefId, SubstsRef<'tcx>, hir::Movability),
+ }
+ 
 -#[cfg(target_arch = "x86_64")]
 +#[cfg(all(not(rust_compiler="mrustc"), target_arch = "x86_64"))]
  static_assert_size!(AggregateKind<'_>, 48);
+ 
+ #[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Eq, TyEncodable, TyDecodable, Hash, HashStable)]
+
 --- compiler/rustc_middle/src/thir.rs
 +++ compiler/rustc_middle/src/thir.rs
-@@ -147,2 +147,2 @@
+@@ -144,7 +144,7 @@ pub enum StmtKind<'tcx> {
+ }
+ 
+ // `Expr` is used a lot. Make sure it doesn't unintentionally get bigger.
 -#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
 +#[cfg(all(not(rust_compiler="mrustc"), target_arch = "x86_64", target_pointer_width = "64"))]
  rustc_data_structures::static_assert_size!(Expr<'_>, 144);
---- compiler/rustc_mir/src/interpret/place.rs
-+++ compiler/rustc_mir/src/interpret/place.rs
-@@ -91,2 +91,2 @@
--#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
-+#[cfg(all(not(rust_compiler = "mrustc"), target_arch = "x86_64", target_pointer_width = "64"))]
- rustc_data_structures::static_assert_size!(Place, 64);
-@@ -100,2 +100,2 @@
--#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
-+#[cfg(all(not(rust_compiler = "mrustc"), target_arch = "x86_64", target_pointer_width = "64"))]
- rustc_data_structures::static_assert_size!(PlaceTy<'_>, 80);
+ 
+ /// The Thir trait implementor lowers their expressions (`&'tcx H::Expr`)
+
 --- compiler/rustc_mir/src/interpret/operand.rs
 +++ compiler/rustc_mir/src/interpret/operand.rs
-@@ -35,2 +35,2 @@
+@@ -32,7 +32,7 @@ pub enum Immediate<Tag = ()> {
+     ScalarPair(ScalarMaybeUninit<Tag>, ScalarMaybeUninit<Tag>),
+ }
+ 
 -#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
 +#[cfg(all(not(rust_compiler = "mrustc"), target_arch = "x86_64", target_pointer_width = "64"))]
  rustc_data_structures::static_assert_size!(Immediate, 56);
-@@ -90,2 +90,2 @@
+ 
+ impl<Tag> From<ScalarMaybeUninit<Tag>> for Immediate<Tag> {
+@@ -87,7 +87,7 @@ pub struct ImmTy<'tcx, Tag = ()> {
+     pub layout: TyAndLayout<'tcx>,
+ }
+ 
 -#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
 +#[cfg(all(not(rust_compiler = "mrustc"), target_arch = "x86_64", target_pointer_width = "64"))]
  rustc_data_structures::static_assert_size!(ImmTy<'_>, 72);
+ 
+ impl<Tag: Copy> std::fmt::Display for ImmTy<'tcx, Tag> {
+
+--- compiler/rustc_mir/src/interpret/place.rs
++++ compiler/rustc_mir/src/interpret/place.rs
+@@ -88,7 +88,7 @@ pub enum Place<Tag = ()> {
+     Local { frame: usize, local: mir::Local },
+ }
+ 
+-#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
++#[cfg(all(not(rust_compiler = "mrustc"), target_arch = "x86_64", target_pointer_width = "64"))]
+ rustc_data_structures::static_assert_size!(Place, 64);
+ 
+ #[derive(Copy, Clone, Debug)]
+@@ -97,7 +97,7 @@ pub struct PlaceTy<'tcx, Tag = ()> {
+     pub layout: TyAndLayout<'tcx>,
+ }
+ 
+-#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
++#[cfg(all(not(rust_compiler = "mrustc"), target_arch = "x86_64", target_pointer_width = "64"))]
+ rustc_data_structures::static_assert_size!(PlaceTy<'_>, 80);
+ 
+ impl<'tcx, Tag> std::ops::Deref for PlaceTy<'tcx, Tag> {
+
+#
+# Disable std_detect's detection logic (use the same logic as miri)
+#
+--- library/stdarch/crates/std_detect/src/detect/mod.rs
++++ library/stdarch/crates/std_detect/src/detect/mod.rs
+@@ -86,7 +86,7 @@ mod bit;
+ mod cache;
+ 
+ cfg_if! {
+-    if #[cfg(miri)] {
++    if #[cfg(any(miri, rust_compiler = "mrustc"))] {
+         // When running under miri all target-features that are not enabled at
+         // compile-time are reported as disabled at run-time.
+         //
 
 #
 # Disable crc32fast's use of stdarch
@@ -88,19 +148,145 @@
      ))] {
 
 #
-# Disable std_detect's detection logic (use the same logic as miri)
+# Backport which is required to support arm64 on macOS 12
+# See: https://github.com/alexcrichton/curl-rust/commit/0aea09c428b9bc2bcf46da0fc33959fe3f03c74a
 #
---- library/stdarch/crates/std_detect/src/detect/mod.rs
-+++ library/stdarch/crates/std_detect/src/detect/mod.rs
-@@ -88,2 +88,2 @@
- cfg_if! {
--    if #[cfg(miri)] {
-+    if #[cfg(any(miri, rust_compiler = "mrustc"))] {
+--- vendor/curl/src/lib.rs
++++ vendor/curl/src/lib.rs
+@@ -82,6 +82,9 @@ pub mod easy;
+ pub mod multi;
+ mod panic;
+ 
++#[cfg(test)]
++static INITIALIZED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
++
+ /// Initializes the underlying libcurl library.
+ ///
+ /// The underlying libcurl library must be initialized before use, and must be
+@@ -102,46 +105,62 @@ pub fn init() {
+     /// Used to prevent concurrent or duplicate initialization.
+     static INIT: Once = Once::new();
+ 
+-    /// An exported constructor function. On supported platforms, this will be
+-    /// invoked automatically before the program's `main` is called.
+-    #[cfg_attr(
+-        any(target_os = "linux", target_os = "freebsd", target_os = "android"),
+-        link_section = ".init_array"
+-    )]
+-    #[cfg_attr(target_os = "macos", link_section = "__DATA,__mod_init_func")]
+-    #[cfg_attr(target_os = "windows", link_section = ".CRT$XCU")]
+-    static INIT_CTOR: extern "C" fn() = init_inner;
++    INIT.call_once(|| {
++        #[cfg(need_openssl_init)]
++        openssl_probe::init_ssl_cert_env_vars();
++        #[cfg(need_openssl_init)]
++        openssl_sys::init();
++
++        unsafe {
++            assert_eq!(curl_sys::curl_global_init(curl_sys::CURL_GLOBAL_ALL), 0);
++        }
++
++        #[cfg(test)]
++        {
++            INITIALIZED.store(true, std::sync::atomic::Ordering::SeqCst);
++        }
++
++        // Note that we explicitly don't schedule a call to
++        // `curl_global_cleanup`. The documentation for that function says
++        //
++        // > You must not call it when any other thread in the program (i.e. a
++        // > thread sharing the same memory) is running. This doesn't just mean
++        // > no other thread that is using libcurl.
++        //
++        // We can't ever be sure of that, so unfortunately we can't call the
++        // function.
++    });
++}
+ 
++/// An exported constructor function. On supported platforms, this will be
++/// invoked automatically before the program's `main` is called. This is done
++/// for the convenience of library users since otherwise the thread-safety rules
++/// around initialization can be difficult to fulfill.
++///
++/// This is a hidden public item to ensure the symbol isn't optimized away by a
++/// rustc/LLVM bug: https://github.com/rust-lang/rust/issues/47384. As long as
++/// any item in this module is used by the final binary (which `init` will be)
++/// then this symbol should be preserved.
++#[used]
++#[doc(hidden)]
++#[cfg_attr(
++    any(target_os = "linux", target_os = "freebsd", target_os = "android"),
++    link_section = ".init_array"
++)]
++#[cfg_attr(target_os = "macos", link_section = "__DATA,__mod_init_func")]
++#[cfg_attr(target_os = "windows", link_section = ".CRT$XCU")]
++pub static INIT_CTOR: extern "C" fn() = {
+     /// This is the body of our constructor function.
+     #[cfg_attr(
+         any(target_os = "linux", target_os = "android"),
+         link_section = ".text.startup"
+     )]
+-    extern "C" fn init_inner() {
+-        INIT.call_once(|| {
+-            #[cfg(need_openssl_init)]
+-            openssl_sys::init();
+-
+-            unsafe {
+-                assert_eq!(curl_sys::curl_global_init(curl_sys::CURL_GLOBAL_ALL), 0);
+-            }
+-
+-            // Note that we explicitly don't schedule a call to
+-            // `curl_global_cleanup`. The documentation for that function says
+-            //
+-            // > You must not call it when any other thread in the program (i.e.
+-            // > a thread sharing the same memory) is running. This doesn't just
+-            // > mean no other thread that is using libcurl.
+-            //
+-            // We can't ever be sure of that, so unfortunately we can't call the
+-            // function.
+-        });
++    extern "C" fn init_ctor() {
++        init();
+     }
+ 
+-    // We invoke our init function through our static to ensure the symbol isn't
+-    // optimized away by a bug: https://github.com/rust-lang/rust/issues/47384
+-    INIT_CTOR();
+-}
++    init_ctor
++};
+ 
+ unsafe fn opt_str<'a>(ptr: *const libc::c_char) -> Option<&'a str> {
+     if ptr.is_null() {
+@@ -158,3 +177,20 @@ fn cvt(r: curl_sys::CURLcode) -> Result<(), Error> {
+         Err(Error::new(r))
+     }
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    #[cfg(any(
++        target_os = "linux",
++        target_os = "macos",
++        target_os = "windows",
++        target_os = "freebsd",
++        target_os = "android"
++    ))]
++    fn is_initialized_before_main() {
++        assert!(INITIALIZED.load(std::sync::atomic::Ordering::SeqCst));
++    }
++}
 
 # PPV-Lite also needs to know that we're pretending to be miri
 --- vendor/ppv-lite86/src/lib.rs
 +++ vendor/ppv-lite86/src/lib.rs
-@@ -12,9 +12,9 @@
+@@ -9,14 +9,14 @@ mod soft;
+ mod types;
+ pub use self::types::*;
+ 
 -#[cfg(all(feature = "simd", target_arch = "x86_64", not(miri)))]
 +#[cfg(all(feature = "simd", target_arch = "x86_64", not(miri), not(rust_compiler = "mrustc")))]
  pub mod x86_64;
@@ -114,4 +300,5 @@
 -#[cfg(any(miri, not(all(feature = "simd", any(target_arch = "x86_64")))))]
 +#[cfg(any(miri, rust_compiler = "mrustc", not(all(feature = "simd", any(target_arch = "x86_64")))))]
  use self::generic as arch;
-
+ 
+ pub use self::arch::{vec128_storage, vec256_storage, vec512_storage};

@@ -2210,6 +2210,6 @@ void Typecheck_Code_CS__EnumerateRules(
     context.add_ivars(root_ptr->m_res_type);
     root_ptr->visit(visitor);
 
-    DEBUG("Return type = " << new_res_ty << ", root_ptr = " << typeid(*root_ptr).name() << " " << root_ptr->m_res_type);
+    DEBUG("Return type = " << new_res_ty << ", root_ptr = " << root_ptr->type_name() << " " << root_ptr->m_res_type);
     context.equate_types_coerce(sp, new_res_ty, root_ptr);
 }

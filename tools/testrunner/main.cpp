@@ -64,7 +64,7 @@ struct TestDesc
 
     ::std::string   m_name;
     ::std::string   m_path;
-    ::std::vector<::std::string>    m_pre_build;
+    ::std::vector< std::pair<::std::string, std::vector<std::string> > >    m_pre_build;
     ::std::vector<::std::string>    m_extra_flags;
     ::std::vector<Message>  m_messages;
     bool ignore;
@@ -324,12 +324,42 @@ int main(int argc, const char* argv[])
                 if( !(line[0] == '/' && line[1] == '/'/* && line[2] == ' '*/) )
                     continue ;
                 // TODO Parse a skewer-case ident and check against known set?
+                struct Parser {
+                    const char* p;
+                    Parser(const char* p): p(p) {}
+
+                    bool is_eof() const {
+                        return *p == '\0';
+                    }
+                    void consume_white() {
+                        while( *p && isblank(*p) )
+                            p ++;
+                    }
+                    std::string read_string() {
+                        std::string rv;
+                        while(*p && !isblank(*p)) {
+                            rv += *p;
+                            p ++;
+                        }
+                        return rv;
+                    }
+                };
 
                 size_t start = (line[2] == ' ' ? 3 : 2);
 
                 if( line.substr(start, 10) == "aux-build:" )
                 {
-                    td.m_pre_build.push_back( line.substr(start+10) );
+                    Parser  p(line.c_str() + start + 10);
+                    p.consume_white();
+                    std::vector<std::string>    args;
+                    auto file = p.read_string();
+                    p.consume_white();
+                    while(!p.is_eof())
+                    {
+                        args.push_back(p.read_string());
+                        p.consume_white();
+                    }
+                    td.m_pre_build.push_back(std::make_pair( std::move(file), std::move(args) ));
                 }
                 else if( line.substr(start, 11) == "ignore-test" )
                 {
@@ -438,15 +468,15 @@ int main(int argc, const char* argv[])
              || (!NO_COMPILER_DEP && !SKIP_PASS && test_exe_ts < compiler_ts) )
             {
                 bool pre_build_failed = false;
-                for(const auto& file : test.m_pre_build)
+                for(const auto& pb : test.m_pre_build)
                 {
 #ifdef _WIN32
                     CreateDirectoryA(depdir.str().c_str(), NULL);
 #else
                     mkdir(depdir.str().c_str(), 0755);
 #endif
-                    auto infile = input_path / "auxiliary" / file;
-                    if( !run_compiler(opts, infile, depdir, {}, depdir, true) )
+                    auto infile = input_path / "auxiliary" / pb.first;
+                    if( !run_compiler(opts, infile, depdir, pb.second, depdir, true) )
                     {
                         DEBUG("COMPILE FAIL " << infile << " (dep of " << test.m_name << ")");
                         n_cfail ++;

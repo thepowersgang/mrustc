@@ -28,7 +28,7 @@
 #undef DEBUG
 
 
-#ifdef _WIN32
+#if _WIN32 || __APPLE__
 const char* memrchr(const void* p, int c, size_t s) {
     const char* p2 = reinterpret_cast<const char*>(p);
     while( s > 0 )
@@ -426,7 +426,9 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         case F_GETFD: rv_i = fcntl_noarg("F_GETFD");    break;
         // - Integer arguments
         case F_DUPFD        : rv_i = fcntl_int("F_DUPFD"        );  break;
+#if !defined(__APPLE__) || __DARWIN_C_LEVEL >= 200809L
         case F_DUPFD_CLOEXEC: rv_i = fcntl_int("F_DUPFD_CLOEXEC");  break;
+#endif
         case F_SETFD        : rv_i = fcntl_int("F_SETFD"        ); break;
         default:
             if( args.size() > 2 )
@@ -623,7 +625,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     else if( link_name == "clock_gettime" )
     {
         // int clock_gettime(clockid_t clk_id, struct timespec *tp);
-        auto clk_id = args.at(0).read_u32(0);
+        auto clk_id = (clockid_t) args.at(0).read_u32(0);
         auto tp_vr = args.at(1).read_pointer_valref_mut(0, sizeof(struct timespec));
 
         LOG_DEBUG("clock_gettime(" << clk_id << ", " << tp_vr);

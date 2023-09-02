@@ -18,6 +18,7 @@
 //#include "cpp_unpack.h"
 #include <cassert>
 #include <string>
+#include <stdexcept>
 
 #define TU_FIRST(a, ...)    a
 #define TU_EXP1(x)  x
@@ -208,7 +209,18 @@
  * ```
  */
 #define TAGGED_UNION(_name, _def, ...)  TU_EXP1( TAGGED_UNION_EX(_name, (), _def, (TU_EXP(__VA_ARGS__)), (), (), ()) )
+#if defined(__clang__)
 #define TAGGED_UNION_EX(_name, _inherit, _def, _variants, _extra_move, _extra_assign, _extra) \
+_Pragma("clang diagnostic push"); \
+_Pragma("clang diagnostic ignored \"-Wnon-c-typedef-for-linkage\""); \
+    _TAGGED_UNION_EX(_name, _inherit, _def, _variants, _extra_move, _extra_assign, _extra) \
+_Pragma("clang diagnostic pop");
+#else
+#define TAGGED_UNION_EX(_name, _inherit, _def, _variants, _extra_move, _extra_assign, _extra) \
+    _TAGGED_UNION_EX(_name, _inherit, _def, _variants, _extra_move, _extra_assign, _extra)
+#endif
+
+#define _TAGGED_UNION_EX(_name, _inherit, _def, _variants, _extra_move, _extra_assign, _extra) \
 class _name TU_EXP _inherit { \
     typedef _name self_t;/*
 */public:\
