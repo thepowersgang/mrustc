@@ -81,7 +81,7 @@ jobs:
       uses: actions/download-artifact@v2
       with:
         name: binaries
-        path: bin
+        path: vsproject/x64/${{env.BUILD_CONFIGURATION}}
     - name: Download rust source
       shell: powershell
       run: |
