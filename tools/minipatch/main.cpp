@@ -1,6 +1,7 @@
 //
 //
 //
+#define _CRT_SECURE_NO_WARNINGS // Silence MSVC about use of `getenv` (just checking for presence)
 #include <vector>
 #include <string>
 #include <fstream>
@@ -58,7 +59,35 @@ namespace {
     std::vector<FilePatch> load_patch(const char* patchfile_path);
     std::vector<std::string>    load_file(const char* path);
 
+    ::std::vector<bool> get_fragments_applied(const std::vector<std::string>& orig_file, const std::vector<PatchFragment>& fragments);
     bool sublist_match(const std::vector<::std::string>& target, size_t offset, const std::vector<::std::string>& pattern);
+
+    struct DebugSink {
+        bool enabled;
+
+        template<typename T>
+        DebugSink& operator<<(const T& v) {
+            if( enabled )
+            {
+                ::std::cerr << v;
+            }
+            return *this;
+        }
+
+        DebugSink(bool enabled): enabled(enabled) {
+            *this << "DEBUG: ";
+        }
+        ~DebugSink() {
+            if( enabled )
+            {
+                ::std::cerr << std::endl;
+            }
+        }
+    };
+    DebugSink Debug() {
+        return DebugSink(getenv("MINIPATCH_DEBUG") != nullptr);
+    }
+
 }
 
 int main(int argc, char *argv[])
@@ -83,6 +112,10 @@ int main(int argc, char *argv[])
         // Iterate all files
         for(const auto& f : patch)
         {
+            if( f.fragments.empty() ) {
+                continue ;
+            }
+
             // Get the output path
             std::string new_path;
             new_path.append(opts.base_dir);
@@ -93,6 +126,7 @@ int main(int argc, char *argv[])
             // Check if the patches are applied, and apply each
             bool is_applied = true;
             auto new_file = load_file(new_path.c_str());
+            Debug() << ">> Checking";
             for(const auto& frag : f.fragments)
             {
                 is_applied &= sublist_match(new_file, frag.new_line, frag.new_contents);
@@ -113,52 +147,37 @@ int main(int argc, char *argv[])
 
             auto orig_file = load_file(orig_path.c_str());
             bool is_clean = true;
-            {
-                int src_ofs = 0;
-                for(const auto& frag : f.fragments)
-                {
-                    //for(size_t i = src_ofs; i < frag.orig_line; i ++)
-                    //    std::cerr << i << "___ " << orig_file[i] << std::endl;
-                    if( !sublist_match(orig_file, frag.orig_line + src_ofs, frag.orig_contents) )
-                    {
-                        if( frag.orig_line == frag.new_line && sublist_match(orig_file, frag.new_line, frag.new_contents) )
-                        {
-                            // Fragment is already applied
-                            ::std::cout << "- Fragment applied" << ::std::endl;
-                        }
-                        else
-                        {
-                            ::std::cout << "- Fragment not applied: " << frag.orig_line << " " << frag.new_line << "" << ::std::endl;
-                            is_clean = false;
-                            break;
-                        }
-                    }
-
-                    //for(size_t i = 0; i < frag.orig_contents.size(); i ++)
-                    //    std::cerr << (frag.orig_line+i) << "--- " << frag.orig_contents[i] << std::endl;
-                    src_ofs = static_cast<int>(frag.orig_line + frag.orig_contents.size()) - static_cast<int>(frag.new_line + frag.new_contents.size());
-                }
-                //for(size_t i = src_ofs; i < orig_file.size(); i ++)
-                //    std::cerr << i << "___ " << orig_file[i] << std::endl;
-            }
-
-            if( !is_clean ) {
+            // Determine if the patch has been partially applied
+            ::std::vector<bool> fragments_applied = get_fragments_applied(orig_file, f.fragments);
+            if( fragments_applied.empty() ) {
                 std::cerr << "NOT CLEAN: " << orig_path << std::endl;
                 error = true;
                 continue;
             }
-            std::cerr << "PATCHING: " << new_path << std::endl;
+            Debug() << "PATCHING: " << new_path;
 
             // Apply each patch
             std::vector<std::string>    new_file2;
             size_t src_ofs = 0;
-            for(const auto& frag : f.fragments)
+            int src_bias = 0;
+            for(size_t frag_idx = 0; frag_idx < f.fragments.size(); frag_idx ++)
             {
-                new_file2.insert(new_file2.end(), orig_file.begin() + src_ofs, orig_file.begin() + frag.orig_line);
-                new_file2.insert(new_file2.end(), frag.new_contents.begin(), frag.new_contents.end());
+                const auto& frag = f.fragments[frag_idx];
+                new_file2.insert(new_file2.end(), orig_file.begin() + src_ofs + src_bias, orig_file.begin() + frag.orig_line + src_bias);
+                if( fragments_applied[frag_idx] )
+                {
+                    // The fragment has already been applied, so skip it.
+                    auto orig_one_past_end = static_cast<int>(frag.orig_line + frag.orig_contents.size());
+                    auto new_one_past_end  = static_cast<int>(frag.new_line  + frag.new_contents .size());
+                    src_bias += orig_one_past_end - new_one_past_end;
+                }
+                else
+                {
+                    new_file2.insert(new_file2.end(), frag.new_contents.begin(), frag.new_contents.end());
+                }
                 src_ofs = frag.orig_line + frag.orig_contents.size();
             }
-            new_file2.insert(new_file2.end(), orig_file.begin() + src_ofs, orig_file.end());
+            new_file2.insert(new_file2.end(), orig_file.begin() + src_ofs + src_bias, orig_file.end());
 
             // Save the new contents
             if( !opts.dry_run )
@@ -373,14 +392,52 @@ namespace {
         return rv;
     }
 
+
+    ::std::vector<bool> get_fragments_applied(const std::vector<std::string>& orig_file, const std::vector<PatchFragment>& fragments)
+    {
+        ::std::vector<bool> fragments_applied;
+        fragments_applied.reserve(fragments.size());
+        int src_bias = 0;
+        for(const auto& frag : fragments)
+        {
+            Debug() << ">> Fragment +" << frag.orig_line << ",-" << frag.new_line;
+            // If the data doesn't match the original
+            if( !sublist_match(orig_file, frag.orig_line + src_bias, frag.orig_contents) )
+            {
+                // Check if it already matches the contents of the patch
+                if( frag.orig_line == frag.new_line && sublist_match(orig_file, frag.new_line, frag.new_contents) )
+                {
+                    // Fragment is already applied
+                    Debug() << "- Fragment applied";
+                }
+                else
+                {
+                    Debug() << "- Fragment not applied: " << frag.orig_line << " " << frag.new_line << "";
+                    return ::std::vector<bool>();
+                }
+
+                // Fragment is already applied, so fudge the source offset by the difference between the original and new one-past-end offsets
+                auto orig_one_past_end = static_cast<int>(frag.orig_line + frag.orig_contents.size());
+                auto new_one_past_end  = static_cast<int>(frag.new_line  + frag.new_contents .size());
+                src_bias += orig_one_past_end - new_one_past_end;
+                fragments_applied.push_back(true);
+            }
+            else
+            {
+                fragments_applied.push_back(false);
+            }
+        }
+        return fragments_applied;
+    }
+
     bool sublist_match(const std::vector<::std::string>& target, size_t offset, const std::vector<::std::string>& pattern)
     {
         if( offset >= target.size() ) {
-            std::cerr << "sublist_match: past end " << offset << " " << target.size() << std::endl;
+            Debug() << "sublist_match: past end " << offset << " " << target.size();
             return false;
         }
         if( offset + pattern.size() > target.size() ) {
-            std::cerr << "sublist_match: past end " << offset << "+" << pattern.size() << " " << target.size() << std::endl;
+            Debug() << "sublist_match: past end " << offset << "+" << pattern.size() << " " << target.size();
             return false;
         }
 
@@ -388,12 +445,12 @@ namespace {
         {
             if( target[offset + i] != pattern[i] )
             {
-                std::cerr << "sublist_match: [" << (1+i+offset) << "] --- " << target[offset + i] << std::endl;
-                std::cerr << "sublist_match: [" << (1+i+offset) << "] +++ " << pattern[i] << std::endl;
+                Debug() << "sublist_match: [" << (1+i+offset) << "] --- " << target[offset + i];
+                Debug() << "sublist_match: [" << (1+i+offset) << "] +++ " << pattern[i];
                 return false;
             }
             else {
-                std::cerr << "sublist_match: [" << (1+i+offset) << "] === " << pattern[i] << std::endl;
+                Debug() << "sublist_match: [" << (1+i+offset) << "] === " << pattern[i];
             }
         }
         return true;
