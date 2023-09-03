@@ -157,11 +157,11 @@ void Trans_Codegen(const ::std::string& outfile, CodegenOutput out_ty, const Tra
 
         if( stat.m_params.is_generic() )
         {
-            codegen->emit_static_local(ent.first, stat, ent.second->pp, stat.m_monomorph_cache.at(ent.first));
+            codegen->emit_static_local(ent.first, stat, pp, stat.m_monomorph_cache.at(ent.first));
         }
         else if( stat.m_value_generated && !stat.m_no_emit_value )
         {
-            codegen->emit_static_local(ent.first, stat, ent.second->pp, stat.m_value_res);
+            codegen->emit_static_local(ent.first, stat, pp, stat.m_value_res);
         }
         else
         {

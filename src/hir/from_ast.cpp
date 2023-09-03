@@ -1423,6 +1423,7 @@ namespace {
     {
         auto this_trait = ::HIR::GenericPath( trait_path );
         for(const auto& arg : rv.m_params.m_lifetimes) {
+            (void)arg;
             this_trait.m_params.m_lifetimes.push_back( ::HIR::LifetimeRef(this_trait.m_params.m_lifetimes.size()) );
         }
         for(const auto& arg : rv.m_params.m_types) {

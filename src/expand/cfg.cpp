@@ -137,6 +137,7 @@ namespace {
             auto it = g_cfg_flags.find(name.c_str());
             return (it != g_cfg_flags.end());
         }
+        throw "";
     }
 }
 bool check_cfg_stream(TokenStream& lex)

@@ -291,6 +291,7 @@ AST::Pattern::Value Parse_PatternValue(TokenStream& lex)
         PUTBACK(tok, lex);
         return AST::Pattern::Value::make_Invalid({});
     }
+    throw "";
 }
 AST::Pattern Parse_PatternReal1(TokenStream& lex, AllowOrPattern allow_or)
 {
