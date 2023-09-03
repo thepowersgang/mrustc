@@ -58,8 +58,8 @@ public:
         memcpy(&rv, &vi, sizeof(rv));
         return rv;
     }
-    double to_float() const {
-        uint32_t vi = encode_float(23,127);
+    float to_float() const {
+        uint32_t vi = static_cast<uint32_t>(encode_float(23,127));
         float rv;
         memcpy(&rv, &vi, sizeof(rv));
         return rv;
@@ -258,7 +258,7 @@ public:
     bool is_i64() const { return inner.hi == ((inner.lo >> 63) ? UINT64_MAX : 0); }
     int64_t truncate_i64() const { /*assert(inner.hi == 0 || inner.hi == UINT64_MAX);*/ return inner.lo; }
     double to_double() const { return (*this < 0 ? -1.0 : 1.0) * this->u_abs().to_double(); }
-    float to_float() const { return (*this < 0 ? -1.0 : 1.0) * this->u_abs().to_float(); }
+    float to_float() const { return (*this < 0 ? -1.0f : 1.0f) * this->u_abs().to_float(); }
     U128 get_inner() const { return inner; }
 
     S128 operator~() const { return S128(~inner); }
