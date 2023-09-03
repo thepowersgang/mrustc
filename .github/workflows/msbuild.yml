@@ -35,6 +35,7 @@ jobs:
       run: |
         Invoke-WebRequest -Method Get -Uri https://go.microsoft.com/fwlink/p/?LinkId=323507 -OutFile sdksetup.exe -UseBasicParsing
         Start-Process -Wait sdksetup.exe -ArgumentList "/q", "/norestart", "/features", "OptionId.WindowsDesktopSoftwareDevelopmentKit", "OptionId.NetFxSoftwareDevelopmentKit"
+
     - uses: actions/checkout@v3
 
     - name: Add MSBuild to PATH
@@ -72,7 +73,7 @@ jobs:
        #rustver: ["1.29", "1.39", "1.19", "1.54"]
        # Note: Only run 1.54, to save on time
        rustver: ["1.54"]
-    runs-on: windows-latest
+    runs-on: windows-2019   # need compiler for C codegen, might as well use the same
     env:
      RUSTC_VERSION: ${{ matrix.rustver }}.0
      MRUSTC_TARGET_VER: ${{ matrix.rustver }}
@@ -85,6 +86,9 @@ jobs:
       with:
         name: binaries
         path: vsproject/x64/${{env.BUILD_CONFIGURATION}}
+    - uses: TheMrMilchmann/setup-msvc-dev@v2
+      with:
+        arch: x64
     - name: Download rust source
       shell: powershell
       run: |
