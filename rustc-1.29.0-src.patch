@@ -161,6 +161,19 @@
      let mut sysroot_candidates = vec![filesearch::get_or_default_sysroot()];
      let path = current_dll_path()
 
+# A strange bug in `librustc_mir`
+# - The signature of the impl block is `impl<'cg, 'cx, 'tcx, 'gcx> InvalidationGenerator<'cg, 'cx, 'tcx, 'gcx>`
+# - But the closure argument uses `'gcx, 'tcx` (switching the order of the two args)
+# MIGHT BE A RUSTC BUG?
+--- src/librustc_mir/borrow_check/nll/invalidation.rs
++++ src/librustc_mir/borrow_check/nll/invalidation.rs
+@@ -298,4 +298,4 @@ fn visit_terminator_drop(
+         let drop_field = |
+-            ig: &mut InvalidationGenerator<'cg, 'cx, 'gcx, 'tcx>,
++            ig: &mut InvalidationGenerator<'cg, 'cx, 'tcx, 'gcx>,
+             (index, field): (usize, ty::Ty<'gcx>),
+         | {
+
 --- src/stdsimd/stdsimd/arch/detect/os/x86.rs
 +++ src/stdsimd/stdsimd/arch/detect/os/x86.rs
 @@ -13,9 +13,15 @@ use arch::detect::bit;
