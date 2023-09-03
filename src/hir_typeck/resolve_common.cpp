@@ -12,13 +12,13 @@ void TraitResolveCommon::prep_indexes(const Span& sp)
 {
     TRACE_FUNCTION_F("");
 
-    if(m_impl_generics) DEBUG("m_impl_generics = " << m_impl_generics->fmt_args());
-    if(m_item_generics) DEBUG("m_item_generics = " << m_item_generics->fmt_args());
+    if(m_impl_generics) DEBUG("m_impl_generics = " << m_impl_generics->fmt_args() << m_impl_generics->fmt_bounds());
+    if(m_item_generics) DEBUG("m_item_generics = " << m_item_generics->fmt_args() << m_item_generics->fmt_bounds());
 
     m_type_equalities.clear();
     m_trait_bounds.clear();
 
-    this->iterate_bounds([&](const auto& b)->bool {
+    this->iterate_bounds([&](const HIR::GenericBound& b)->bool {
         TU_MATCH_HDRA( (b), { )
         default:
             break;
@@ -48,18 +48,22 @@ void TraitResolveCommon::prep_indexes__add_trait_bound(const Span& sp, ::HIR::Ty
 {
     TRACE_FUNCTION_F(type << " : " << trait_path);
 
-    auto get_or_add_trait_bound = [&](const HIR::GenericPath& trait_path)->CachedBound& {
-        DEBUG("[get_or_add_trait_bound] " << trait_path);
+    auto get_or_add_trait_bound = [&](const HIR::GenericParams* hrbs, const HIR::GenericPath& trait_path)->CachedBound& {
         auto it = m_trait_bounds.find(std::make_pair(std::ref(type), std::ref(trait_path)));
         if( it != m_trait_bounds.end() ) {
+            DEBUG("[get_or_add_trait_bound] Use " << FMT_CB(os, if(hrbs) os << "for" << hrbs->fmt_args() << " ";) << trait_path);
             return it->second;
         }
+        DEBUG("[get_or_add_trait_bound] Add " << FMT_CB(os, if(hrbs) os << "for" << hrbs->fmt_args() << " ";) << trait_path);
         auto& rv = m_trait_bounds[std::make_pair(type.clone(), trait_path.clone())];
+        if(hrbs) {
+            rv.hrbs = hrbs->clone();
+        }
         rv.trait_ptr = &m_crate.get_trait_by_path(sp, trait_path.m_path);
         return rv;
     };
-    auto push_type = [&](const RcString& name, const HIR::TraitPath::AtyEqual& atye) {
-        auto& b = get_or_add_trait_bound(atye.source_trait);
+    auto push_type = [&](const RcString& name, const HIR::GenericParams* hrbs, const HIR::TraitPath::AtyEqual& atye) {
+        auto& b = get_or_add_trait_bound(hrbs, atye.source_trait);
         b.assoc.insert(std::make_pair(name, atye.clone()));
     };
 
@@ -73,11 +77,11 @@ void TraitResolveCommon::prep_indexes__add_trait_bound(const Span& sp, ::HIR::Ty
     }
 #endif
 
-    get_or_add_trait_bound(trait_path.m_path);
+    get_or_add_trait_bound(trait_path.m_path.m_hrls.get(), trait_path.m_path);
     for( const auto& tb : trait_path.m_type_bounds )
     {
         DEBUG("Equality (TB) - <" << type << " as " << tb.second.source_trait << ">::" << tb.first << " = " << tb.second);
-        push_type(tb.first, tb.second);
+        push_type(tb.first, trait_path.m_path.m_hrls.get(), tb.second);
 
         auto ty_l = ::HIR::TypeRef::new_path( ::HIR::Path( type.clone(), tb.second.source_trait.clone(), tb.first ), ::HIR::TypePathBinding::make_Opaque({}) );
         prep_indexes__add_equality( sp, mv$(ty_l), tb.second.type.clone() );

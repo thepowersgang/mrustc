@@ -57,7 +57,7 @@ void MIR::OuterVisitor::visit_constant(::HIR::ItemPath p, ::HIR::Constant& item)
 }
 void MIR::OuterVisitor::visit_enum(::HIR::ItemPath p, ::HIR::Enum& item)
 {
-    auto _ = this->m_resolve.set_impl_generics(item.m_params);
+    auto _ = this->m_resolve.set_impl_generics(MetadataType::None, item.m_params);
 
     if( auto* e = item.m_data.opt_Value() )
     {
@@ -74,16 +74,16 @@ void MIR::OuterVisitor::visit_enum(::HIR::ItemPath p, ::HIR::Enum& item)
 
 void MIR::OuterVisitor::visit_trait(::HIR::ItemPath p, ::HIR::Trait& item)
 {
-    auto _ = this->m_resolve.set_impl_generics(item.m_params);
+    auto _ = this->m_resolve.set_impl_generics(MetadataType::TraitObject, item.m_params);
     ::HIR::Visitor::visit_trait(p, item);
 }
 void MIR::OuterVisitor::visit_type_impl(::HIR::TypeImpl& impl)
 {
-    auto _ = this->m_resolve.set_impl_generics(impl.m_params);
+    auto _ = this->m_resolve.set_impl_generics(impl.m_type, impl.m_params);
     ::HIR::Visitor::visit_type_impl(impl);
 }
 void MIR::OuterVisitor::visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl)
 {
-    auto _ = this->m_resolve.set_impl_generics(impl.m_params);
+    auto _ = this->m_resolve.set_impl_generics(impl.m_type, impl.m_params);
     ::HIR::Visitor::visit_trait_impl(trait_path, impl);
 }

@@ -73,6 +73,9 @@ struct ProgramParams
     // NOTE: if true, no parse/compilation performed (target is loaded though)
     bool    print_cfgs = false;
 
+    // 
+    bool    run_borrowcheck = false;
+
     ::std::vector<const char*> lib_search_dirs;
     ::std::vector<const char*> libraries;
     ::std::map<::std::string, ::std::string>    crate_overrides;    // --extern name=path
@@ -126,6 +129,7 @@ void init_debug_list()
 
         "HIR Lower",
 
+        "Lifetime Elision",
         "Resolve Type Aliases",
         "Resolve Bind",
         "Resolve UFCS Outer",
@@ -139,13 +143,16 @@ void init_debug_list()
         "Typecheck Expressions",
 
         "Expand HIR Annotate",
-        "Expand HIR Static Borrow",
+        "Expand HIR Static Borrow Mark",
+        "Expand HIR Lifetimes",
         "Expand HIR Closures",
+        "Expand HIR Static Borrow",
         "Expand HIR Calls",
         "Expand HIR VTables",
         "Expand HIR Reborrows",
         "Expand HIR ErasedType",
         "Typecheck Expressions (validate)",
+        "Expand HIR Lifetimes (validate)",
 
         "Dump HIR",
         "Lower MIR",
@@ -154,6 +161,7 @@ void init_debug_list()
         "Dump MIR",
         "Constant Evaluate Full",
         "MIR Cleanup",
+        "MIR Borrowcheck",
         "MIR Optimise",
         "MIR Validate PO",
         "MIR Validate Full",
@@ -570,6 +578,10 @@ int main(int argc, char *argv[])
         }
         memory_dump("HIR");
 
+        CompilePhaseV("Lifetime Elision", [&]() {
+            ConvertHIR_LifetimeElision(*hir_crate);
+            });
+
         // Replace type aliases (`type`) into the actual type
         // - Does simple replacements
         // - Done before bind so type alises can be used in patterns?
@@ -641,12 +653,19 @@ int main(int argc, char *argv[])
         CompilePhaseV("Expand HIR Annotate", [&]() {
             HIR_Expand_AnnotateUsage(*hir_crate);
             });
-        CompilePhaseV("Expand HIR Static Borrow", [&]() {
-            HIR_Expand_StaticBorrowConstants(*hir_crate);
+        CompilePhaseV("Expand HIR Static Borrow Mark", [&]() {
+            HIR_Expand_StaticBorrowConstants_Mark(*hir_crate);
+            });
+        // - Needs to be done after static borrows, but before closures
+        CompilePhaseV("Expand HIR Lifetimes", [&]() {
+            HIR_Expand_LifetimeInfer(*hir_crate);
             });
         // - Now that all types are known, closures can be desugared
         CompilePhaseV("Expand HIR Closures", [&]() {
             HIR_Expand_Closures(*hir_crate);
+            });
+        CompilePhaseV("Expand HIR Static Borrow", [&]() {
+            HIR_Expand_StaticBorrowConstants(*hir_crate);
             });
         // - Construct VTables for all traits and impls.
         //  TODO: How early can this be done?
@@ -677,6 +696,11 @@ int main(int argc, char *argv[])
         CompilePhaseV("Typecheck Expressions (validate)", [&]() {
             Typecheck_Expressions_Validate(*hir_crate);
             });
+        // HACK?: Run lifetime inference again, so that bad closures are caught
+        // - Doesn't quite work, can't seem to run this twice?
+        //CompilePhaseV("Expand HIR Lifetimes (validate)", [&]() {
+        //    HIR_Expand_LifetimeInfer_Validate(*hir_crate);
+        //    });
 
         if( params.last_stage == ProgramParams::STAGE_TYPECK ) {
             return 0;
@@ -711,6 +735,14 @@ int main(int argc, char *argv[])
         {
             CompilePhaseV("MIR Validate Full Early", [&]() {
                 MIR_CheckCrate_Full(*hir_crate);
+                });
+        }
+
+        // Optional for now
+        if( params.run_borrowcheck )
+        {
+            CompilePhaseV("MIR Borrowcheck", [&]() {
+                MIR_BorrowCheck_Crate(*hir_crate);
                 });
         }
 
@@ -983,13 +1015,13 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 }
                 auto get_optval = [&]() {
                     if( eq_pos == ::std::string::npos ) {
-                        ::std::cerr << "Flag -Z " << optname << " requires an argument" << ::std::endl;
+                        ::std::cerr << "Flag -C " << optname << " requires an argument" << ::std::endl;
                         exit(1);
                     }
                     };
                 //auto no_optval = [&]() {
                 //    if(eq_pos != ::std::string::npos) {
-                //        ::std::cerr << "Flag -Z " << optname << " doesn't take an argument" << ::std::endl;
+                //        ::std::cerr << "Flag -C " << optname << " doesn't take an argument" << ::std::endl;
                 //        exit(1);
                 //    }
                 //    };
@@ -1091,8 +1123,12 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                     no_optval();
                     this->print_cfgs = true;
                 }
+                else if( optname == "borrowcheck" ) {
+                    no_optval();
+                    this->run_borrowcheck = true;
+                }
                 else {
-                    ::std::cerr << "Unknown debug option: '" << optname << "'" << ::std::endl;
+                    ::std::cerr << "Unknown -Z flag: '" << optname << "'" << ::std::endl;
                     exit(1);
                 }
                 } continue;

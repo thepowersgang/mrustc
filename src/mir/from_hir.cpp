@@ -799,6 +799,7 @@ namespace {
                 this->visit_node_ptr(node.m_value);
             }
 
+            // TODO: Use node.m_target_node
             const LoopDesc& target_block = this->find_loop(node.span(), node.m_label);
 
             if( node.m_continue ) {
@@ -1708,7 +1709,7 @@ namespace {
                     assert(method);
 
                     // - Construct trait path - Index*<IdxTy>
-                    auto method_path = ::HIR::Path(ty_val.clone(), ::HIR::GenericPath(m_builder.resolve().m_crate.get_lang_item_path(node.span(), langitem), {}), method);
+                    auto method_path = ::HIR::Path(ty_val.clone(), ::HIR::GenericPath(m_builder.resolve().m_crate.get_lang_item_path(node.span(), langitem), {}), method, HIR::PathParams(HIR::LifetimeRef()));
 
                     // Store a borrow of the input value
                     ::std::vector<::MIR::Param>    args;
@@ -1823,7 +1824,7 @@ namespace {
                 auto place_refmut__type = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, place_type.clone());
                 auto place_refmut = m_builder.lvalue_or_temp(node.span(), place_refmut__type,  ::MIR::RValue::make_Borrow({ ::HIR::BorrowType::Unique, place.clone() }));
                 // <typeof(place) as ops::Place<T>>::pointer (T = inner)
-                auto fcn_path = ::HIR::Path(place_type.clone(), ::HIR::GenericPath(path_Place, ::HIR::PathParams(data_ty.clone())), "pointer");
+                auto fcn_path = ::HIR::Path(place_type.clone(), ::HIR::GenericPath(path_Place, ::HIR::PathParams(data_ty.clone())), "pointer", ::HIR::PathParams(HIR::LifetimeRef()));
                 m_builder.moved_lvalue(node.span(), place_refmut);
                 m_builder.end_block(::MIR::Terminator::make_Call({
                     place_raw__ok, place_raw__panic,
@@ -2353,7 +2354,8 @@ namespace {
                     auto monomorph_cb = MonomorphStatePtr(nullptr, nullptr, &pe.m_params);
 
                     // TODO: Obtain function type for this function (i.e. a type that is specifically for this function)
-                    auto fcn_ty_data = ::HIR::FunctionType {
+                    auto fcn_ty_data = ::HIR::TypeData_FunctionPointer {
+                        HIR::GenericParams(),
                         e.m_unsafe,
                         e.m_abi,
                         monomorph_cb.monomorph_type(sp, e.m_return),
@@ -2618,6 +2620,8 @@ namespace {
                 mv$(value),
                 std::move(node.m_size)
                 }) );
+            // Ensure that the size is valid (avoids crashes when debug is enabled)
+            node.m_size = HIR::ArraySize();
         }
 
         void visit(::HIR::ExprNode_Closure& node) override

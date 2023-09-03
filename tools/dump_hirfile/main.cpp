@@ -231,7 +231,7 @@ void Dumper::dump_struct(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const 
     if( !this->filters.types.types ) {
         return ;
     }
-    if( !filters.public_only && !pub.is_global() ) {
+    if( filters.public_only && !pub.is_global() ) {
         return ;
     }
     ::std::cout << indent << "struct " << ip << item.m_params.fmt_args();
@@ -279,7 +279,7 @@ void Dumper::dump_trait(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const :
     if( !this->filters.types.traits ) {
         return ;
     }
-    if( !filters.public_only && !pub.is_global() ) {
+    if( filters.public_only && !pub.is_global() ) {
         return ;
     }
     ::std::cout << indent << "trait " << ip << trait.m_params.fmt_args() << "\n";
@@ -357,7 +357,16 @@ void Dumper::dump_function(::HIR::ItemPath ip, const ::HIR::Publicity& pub, cons
         return ;
     }
     ::std::cout << indent << "fn " << ip << fcn.m_params.fmt_args() << "(";
-    ::std::cout << " )";
+    for(const auto& a : fcn.m_args) {
+        ::std::cout << "\n" << indent << indent.s << a.first << " : " << a.second;
+        ::std::cout << ",";
+    }
+    ::std::cout << "\n" << indent << ") -> ";
+    ::std::cout << fcn.m_return;
+    if( !fcn.m_params.m_bounds.empty() ) {
+        ::std::cout << "\n" << indent;
+        ::std::cout << " " << fcn.m_params.fmt_bounds();
+    }
     if( fcn.m_code.m_mir )
     {
         ::std::cout << "\n";

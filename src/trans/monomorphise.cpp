@@ -156,8 +156,9 @@ namespace {
     output.locals.reserve( tpl->locals.size() );
     for(const auto& var : tpl->locals)
     {
-        DEBUG("- _" << output.locals.size());
+        DEBUG("- _" << output.locals.size() << " (" << var << ")");
         output.locals.push_back( params.monomorph(resolve, var) );
+        DEBUG(" = " << output.locals.back());
     }
     output.drop_flags = tpl->drop_flags;
 

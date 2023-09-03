@@ -25,6 +25,7 @@ struct TraitResolveCommon
     ::std::map< ::HIR::TypeRef, ::HIR::TypeRef> m_type_equalities;
     // A pre-calculated list of trait bounds
     struct CachedBound {
+        HIR::GenericParams    hrbs;
         const HIR::Trait*   trait_ptr;
         HIR::TraitPath::assoc_list_t    assoc;
     };

@@ -27,13 +27,14 @@ namespace
         {
             Top,
             Method,
+            Unused_Placeholder,
             Hrb,
         } level;
         unsigned short  index;
 
         unsigned int to_binding() const {
             if(level == Level::Method && index != 0xFFFF) {
-                return (unsigned int)index + 256;
+                return (unsigned int)index + 256*static_cast<unsigned int>(level);
             }
             else {
                 return (unsigned int)index;
@@ -2641,6 +2642,9 @@ void Resolve_Absolute_Trait(Context& item_context, ::AST::Trait& e)
     item_context.push( e.params(), GenericSlot::Level::Top, true );
     Resolve_Absolute_Generic(item_context,  e.params());
 
+    for(auto& lft : e.lifetimes()) {
+        Resolve_Absolute_Lifetime(item_context, lft.sp, lft.ent);
+    }
     for(auto& st : e.supertraits()) {
         if( !st.ent.path->is_valid() ) {
             DEBUG("- ST 'static");

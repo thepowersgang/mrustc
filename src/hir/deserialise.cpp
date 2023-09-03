@@ -1086,7 +1086,7 @@ namespace {
             static_cast<unsigned int>(m_in.read_count()),
             m_in.read_bool(),
             deserialise_vec< ::HIR::TraitPath>(),
-            deserialise_lifetimeref()
+            deserialise_vec< ::HIR::LifetimeRef>()
             })
         _(Array, {
             deserialise_type(),
@@ -1108,6 +1108,7 @@ namespace {
             deserialise_type()
             })
         _(Function, {
+            deserialise_genericparams(),
             m_in.read_bool(),
             m_in.read_string(),
             deserialise_type(),
@@ -1141,16 +1142,19 @@ namespace {
     {
         ::HIR::PathParams   rv;
         TRACE_FUNCTION_FR("", rv);
+        rv.m_lifetimes = deserialise_vec< ::HIR::LifetimeRef>();
         rv.m_types = deserialise_vec< ::HIR::TypeRef>();
         rv.m_values = deserialise_vec< ::HIR::ConstGeneric>();
         return rv;
     }
     ::HIR::GenericPath HirDeserialiser::deserialise_genericpath()
     {
-        TRACE_FUNCTION;
-        auto spath = deserialise_simplepath();
-        auto params = deserialise_pathparams();
-        return ::HIR::GenericPath { mv$(spath), mv$(params) };
+        ::HIR::GenericPath  rv;
+        TRACE_FUNCTION_FR("", rv);
+        rv.m_hrls = m_in.read_bool() ? box$(deserialise_genericparams()) : std::unique_ptr<HIR::GenericParams>();
+        rv.m_path = deserialise_simplepath();
+        rv.m_params = deserialise_pathparams();
+        return rv;
     }
 
     ::HIR::TraitPath HirDeserialiser::deserialise_traitpath()
@@ -1159,7 +1163,7 @@ namespace {
         auto gpath = deserialise_genericpath();
         auto tys = deserialise_istrmap< ::HIR::TraitPath::AtyEqual>();
         auto bounds = deserialise_istrmap< ::HIR::TraitPath::AtyBound>();
-        return ::HIR::TraitPath { mv$(gpath), {}, mv$(tys), mv$(bounds) };
+        return ::HIR::TraitPath { mv$(gpath), mv$(tys), mv$(bounds) };
     }
     ::HIR::Path HirDeserialiser::deserialise_path()
     {
@@ -1225,11 +1229,12 @@ namespace {
         switch(auto tag = m_in.read_tag())
         {
         case 0:
-            return ::HIR::GenericBound::make_Lifetime({});
+            return ::HIR::GenericBound::make_Lifetime({ deserialise_lifetimeref(), deserialise_lifetimeref() });
         case 1:
-            return ::HIR::GenericBound::make_TypeLifetime({});
+            return ::HIR::GenericBound::make_TypeLifetime({ deserialise_type(), deserialise_lifetimeref() });
         case 2:
             return ::HIR::GenericBound::make_TraitBound({
+                m_in.read_bool() ? box$(deserialise_genericparams()) : nullptr,
                 deserialise_type(),
                 deserialise_traitpath()
                 });
@@ -1351,6 +1356,7 @@ namespace {
             ::HIR::LifetimeRef(),  // TODO: Better type for lifetime
             {}
             };
+        rv.m_lifetime = deserialise_lifetimeref();
         rv.m_is_marker = m_in.read_bool();
         rv.m_types = deserialise_istrumap< ::HIR::AssociatedType>();
         rv.m_values = deserialise_istrumap< ::HIR::TraitValueItem>();

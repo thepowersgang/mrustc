@@ -7,6 +7,7 @@
  */
 #include <hir/path.hpp>
 #include <hir/type.hpp>
+#include <algorithm>
 
 ::HIR::SimplePath HIR::SimplePath::operator+(const RcString& s) const
 {
@@ -37,10 +38,13 @@ namespace HIR {
 
     ::std::ostream& operator<<(::std::ostream& os, const PathParams& x)
     {
-        bool has_args = ( x.m_types.size() > 0 || x.m_values.size() > 0 );
+        bool has_args = ( x.m_lifetimes.size() > 0 || x.m_types.size() > 0 || x.m_values.size() > 0 );
 
         if(has_args) {
             os << "<";
+        }
+        for(const auto& lft : x.m_lifetimes) {
+            os << lft << ",";
         }
         for(const auto& ty : x.m_types) {
             os << ty << ",";
@@ -55,22 +59,25 @@ namespace HIR {
     }
     ::std::ostream& operator<<(::std::ostream& os, const GenericPath& x)
     {
+        if( x.m_hrls ) {
+            os << "for" << x.m_hrls->fmt_args() << " ";
+        }
         os << x.m_path << x.m_params;
         return os;
     }
     ::std::ostream& operator<<(::std::ostream& os, const TraitPath& x)
     {
-        if( x.m_hrls.size() > 0 ) {
-            os << "for<";
-            for(const auto& lft : x.m_hrls)
-                os << "'" << lft << ",";
-            os << "> ";
+        if( x.m_path.m_hrls ) {
+            os << "for" << x.m_path.m_hrls->fmt_args() << " ";
         }
         os << x.m_path.m_path;
-        bool has_args = ( x.m_path.m_params.m_types.size() > 0 || x.m_type_bounds.size() > 0 || x.m_trait_bounds.size() > 0 );
+        bool has_args = ( x.m_path.m_params.m_lifetimes.size() > 0 || x.m_path.m_params.m_types.size() > 0 || x.m_type_bounds.size() > 0 || x.m_trait_bounds.size() > 0 );
 
         if(has_args) {
             os << "<";
+        }
+        for(const auto& lft : x.m_path.m_params.m_lifetimes) {
+            os << lft << ",";
         }
         for(const auto& ty : x.m_path.m_params.m_types) {
             os << ty << ",";
@@ -120,30 +127,20 @@ namespace HIR {
 {
     m_types.push_back( mv$(ty0) );
 }
+HIR::PathParams::PathParams(::HIR::LifetimeRef lft)
+{
+    m_lifetimes.push_back(lft);
+}
 ::HIR::PathParams HIR::PathParams::clone() const
 {
     PathParams  rv;
+    for( const auto& l : m_lifetimes )
+        rv.m_lifetimes.push_back( l );
     for( const auto& t : m_types )
         rv.m_types.push_back( t.clone() );
     for( const auto& t : m_values )
         rv.m_values.push_back( t.clone() );
     return rv;
-}
-bool ::HIR::PathParams::operator==(const ::HIR::PathParams& x) const
-{
-    if( m_types.size() != x.m_types.size() )
-        return false;
-    for( unsigned int i = 0; i < m_types.size(); i ++ )
-        if( !(m_types[i] == x.m_types[i]) )
-            return false;
-
-    if( m_values.size() != x.m_values.size() )
-        return false;
-    for( unsigned int i = 0; i < m_values.size(); i ++ )
-        if( !(m_values[i] == x.m_values[i]) )
-            return false;
-
-    return true;
 }
 
 ::HIR::GenericPath::GenericPath()
@@ -158,22 +155,44 @@ bool ::HIR::PathParams::operator==(const ::HIR::PathParams& x) const
     m_params( mv$(params) )
 {
 }
+::HIR::GenericPath::GenericPath(::HIR::GenericParams hrls, ::HIR::SimplePath sp, ::HIR::PathParams params):
+    m_hrls( box$(hrls) ),
+    m_path( mv$(sp) ),
+    m_params( mv$(params) )
+{
+}
 ::HIR::GenericPath HIR::GenericPath::clone() const
 {
-    return GenericPath(m_path.clone(), m_params.clone());
+    if(m_hrls)
+        return GenericPath(m_hrls->clone(), m_path.clone(), m_params.clone());
+    else
+        return GenericPath(m_path.clone(), m_params.clone());
 }
-bool ::HIR::GenericPath::operator==(const GenericPath& x) const
+Ordering HIR::GenericPath::ord(const HIR::GenericPath& x) const
 {
-    if( m_path != x.m_path )
-        return false;
-    return m_params == x.m_params;
+    ORD(m_path, x.m_path);
+    //DEBUG("\n  " << *this << "\n  " << x);
+    ORD(m_params, x.m_params);
+
+    // HACK! if either of the HRLs are tagged as not having been un-elided, then assume they're equal
+    // - Mostly a workaround for `lifetime_elision.cpp` fixing TraitPath ATY origins
+    auto is_elision = [](const HIR::GenericPath& gp){ return gp.m_hrls && gp.m_hrls->m_lifetimes.size() >= 1 && gp.m_hrls->m_lifetimes.back().m_name == "#apply_elision"; };
+    if( is_elision(*this) || is_elision(x) )
+        return OrdEqual;
+
+    // NOTE: An empty set is treated as the same as none
+    ORD(m_hrls.get() && !m_hrls->is_empty(), x.m_hrls.get() && !x.m_hrls->is_empty());
+    if( m_hrls && x.m_hrls ) {
+        ORD(m_hrls->m_lifetimes.size(), x.m_hrls->m_lifetimes.size());
+        ORD(m_hrls->m_bounds, x.m_hrls->m_bounds);
+    }
+    return OrdEqual;
 }
 
 ::HIR::TraitPath HIR::TraitPath::clone() const
 {
     ::HIR::TraitPath    rv {
         m_path.clone(),
-        m_hrls,
         {},
         {},
         m_trait_ptr
@@ -185,6 +204,13 @@ bool ::HIR::GenericPath::operator==(const GenericPath& x) const
         rv.m_trait_bounds.insert(::std::make_pair( assoc.first, assoc.second.clone() ));
 
     return rv;
+}
+Ordering HIR::TraitPath::ord(const TraitPath& x) const
+{
+    ORD(m_path, x.m_path);
+    ORD(m_trait_bounds, x.m_trait_bounds);
+    ORD(m_type_bounds , x.m_type_bounds);
+    return OrdEqual;
 }
 
 ::HIR::Path::Path(::HIR::GenericPath gp):
@@ -278,7 +304,7 @@ bool ::HIR::GenericPath::operator==(const GenericPath& x) const
     for( unsigned int i = 0; i < x.m_values.size(); i ++ )
     {
         if( const auto* ge = this->m_values[i].opt_Generic() ) {
-            auto rv = match.match_val(*ge, x.m_values[i]);
+            rv &= match.match_val(*ge, x.m_values[i]);
             if(rv == Compare::Unequal)
                 return Compare::Unequal;
         }
@@ -288,6 +314,25 @@ bool ::HIR::GenericPath::operator==(const GenericPath& x) const
             }
         }
     }
+
+#if 1
+    if( this->m_lifetimes.size() != x.m_lifetimes.size() ) {
+        //return Compare::Unequal;
+    }
+    for( unsigned int i = 0; i < std::min(this->m_lifetimes.size(), x.m_lifetimes.size()); i ++ )
+    {
+        if( this->m_lifetimes[i].is_param() ) {
+            /*rv &=*/ match.match_lft(this->m_lifetimes[i].as_param(), x.m_lifetimes[i]);
+            //if(rv == Compare::Unequal)
+            //    return Compare::Unequal;
+        }
+        else {
+            //if( this->m_lifetimes[i] != x.m_lifetimes[i] ) {
+            //    return Compare::Unequal;
+            //}
+        }
+    }
+#endif
 
     return rv;
 }

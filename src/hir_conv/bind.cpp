@@ -67,6 +67,13 @@ namespace {
     void fix_type_params(const Span& sp, const ::HIR::GenericParams& params_def, ::HIR::PathParams& params)
     {
         #if 1
+        if( params.m_lifetimes.size() == 0 ) {
+            params.m_lifetimes.resize( params_def.m_lifetimes.size() );
+        }
+        if( params.m_lifetimes.size() != params_def.m_lifetimes.size() ) {
+            ERROR(sp, E0000, "Incorrect lifetime param count, expected " << params_def.m_lifetimes.size() << ", got " << params.m_lifetimes.size());
+        }
+
         if( params.m_types.size() == 0 ) {
             params.m_types.resize( params_def.m_types.size() );
             // TODO: Optionally fill in the defaults?
@@ -74,6 +81,7 @@ namespace {
         if( params.m_types.size() != params_def.m_types.size() ) {
             ERROR(sp, E0000, "Incorrect parameter count, expected " << params_def.m_types.size() << ", got " << params.m_types.size());
         }
+
         if( params.m_values.size() == 0 ) {
             params.m_values.resize( params_def.m_values.size() );
         }
@@ -248,6 +256,15 @@ namespace {
         }
         static void fix_param_count(const Span& sp, const ::HIR::GenericPath& path, const ::HIR::GenericParams& param_defs, ::HIR::PathParams& params, bool fill_infer=true, const ::HIR::TypeRef* self_ty=nullptr)
         {
+            if( params.m_lifetimes.size() != param_defs.m_lifetimes.size() )
+            {
+                if( params.m_lifetimes.size() == 0 && fill_infer ) {
+                    for(const auto& lft : param_defs.m_lifetimes) {
+                        (void)lft;
+                        params.m_lifetimes.push_back({});
+                    }
+                }
+            }
             if( params.m_types.size() != param_defs.m_types.size() )
             {
                 TRACE_FUNCTION_FR(path, params);
@@ -268,28 +285,9 @@ namespace {
                             ERROR(sp, E0000, "Omitted type parameter with no default in " << path);
                         }
                         else {
-                            // Clone, replacing `self` if a replacement was provided.
-                            auto ty = clone_ty_with(sp, typ.m_default, [&](const auto& ty, auto& out){
-                                if(const auto* te = ty.data().opt_Generic() )
-                                {
-                                    if( te->binding == GENERIC_Self ) {
-                                        if( !self_ty )
-                                            TODO(sp, "Self enountered in default params, but no Self available - " << ty << " in " << typ.m_default << " for " << path);
-                                        out = self_ty->clone();
-                                    }
-                                    // NOTE: Should only be seeing impl-level params here. Method-level ones are only seen in expression context.
-                                    else if( (te->binding >> 8) == 0 ) {
-                                        auto idx = te->binding & 0xFF;
-                                        ASSERT_BUG(sp, idx < params.m_types.size(), "TODO: Handle use of latter types in defaults");
-                                        out = params.m_types[idx].clone();
-                                    }
-                                    else {
-                                        TODO(sp, "Monomorphise in fix_param_count - encountered " << ty << " in " << typ.m_default);
-                                    }
-                                    return true;
-                                }
-                                return false;
-                                });
+                            // TODO: Does expanding defualts need a custom monomorphiser that can handle later defaults?
+                            MonomorphStatePtr   ms(self_ty, &params, nullptr);
+                            auto ty = ms.monomorph_type(sp, typ.m_default);
                             params.m_types.push_back( mv$(ty) );
                         }
                     }
@@ -409,6 +407,19 @@ namespace {
                     }
                     }
                 }
+            }
+            else if( auto* te = ty.data_mut().opt_TraitObject() )
+            {
+                if( te->m_trait.m_path.m_path != HIR::SimplePath() )
+                {
+                    const auto& trait = m_crate.get_trait_by_path(sp, te->m_trait.m_path.m_path);
+                    fix_param_count(sp, te->m_trait.m_path, trait.m_params, te->m_trait.m_path.m_params, /*fill_infer=*/m_in_expr, nullptr);
+                }
+                for(auto& m : te->m_markers) {
+                    const auto& trait = m_crate.get_trait_by_path(sp, m.m_path);
+                    fix_param_count(sp, m, trait.m_params, m.m_params, /*fill_infer=*/m_in_expr, nullptr);
+                }
+                DEBUG("- " << ty);
             }
 
             ::HIR::Visitor::visit_type(ty);
@@ -727,11 +738,27 @@ namespace {
 
                     ::HIR::TypeRef  ty_self { "Self", 0xFFFF };
                     auto monomorph_cb = MonomorphStatePtr(&ty_self, &params, nullptr);
+                    auto monomorph_tp = [&](const HIR::TraitPath& tp)->HIR::TraitPath {
+                        // TODO: if `path.m_path` has HRLs, then this needs HRLs (only if the HRLs get used?)
+                        if( tp.m_path.m_hrls && path.m_path.m_hrls ) {
+                            // TODO: How to determine which to use?
+                            // - May need to combine them.
+                            return monomorph_cb.monomorph_traitpath(sp, tp, false);
+                        }
+                        else if (path.m_path.m_hrls) {
+                            auto rv = monomorph_cb.monomorph_traitpath(sp, tp, false);
+                            rv.m_path.m_hrls = box$(path.m_path.m_hrls->clone());
+                            return rv;
+                        }
+                        else {
+                            return monomorph_cb.monomorph_traitpath(sp, tp, false);
+                        }
+                        };
                     if( tr.m_all_parent_traits.size() > 0 )
                     {
                         for(const auto& pt : tr.m_all_parent_traits)
                         {
-                            supertraits.push_back( monomorph_cb.monomorph_traitpath(sp, pt, false) );
+                            supertraits.push_back( monomorph_tp(pt) );
                         }
                     }
                     else
@@ -739,7 +766,8 @@ namespace {
                         // Recurse into parent traits
                         for(const auto& pt : tr.m_parent_traits)
                         {
-                            enum_supertraits_in(*pt.m_trait_ptr, monomorph_cb.monomorph_traitpath(sp, pt, false));
+                            // TODO: if `path.m_path` has HRLs, then this needs HRLs
+                            enum_supertraits_in(*pt.m_trait_ptr, monomorph_tp(pt));
                         }
                         // - Bound parent traits
                         for(const auto& b : tr.m_params.m_bounds)
@@ -753,7 +781,7 @@ namespace {
                             if( pt.m_path.m_path == path.m_path.m_path )
                                 continue ;
 
-                            enum_supertraits_in(*pt.m_trait_ptr, monomorph_cb.monomorph_traitpath(sp, pt, false));
+                            enum_supertraits_in(*pt.m_trait_ptr, monomorph_tp(pt));
                         }
                     }
 

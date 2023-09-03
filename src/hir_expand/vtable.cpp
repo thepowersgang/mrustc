@@ -50,14 +50,7 @@ namespace {
             static Span sp;
             TRACE_FUNCTION_F(p);
 
-            ::HIR::GenericPath  trait_path( p.get_simple_path() );
-            {
-                unsigned int i = 0;
-                for(const auto& tp : tr.m_params.m_types) {
-                    trait_path.m_params.m_types.push_back( ::HIR::TypeRef(tp.m_name, i) );
-                    i ++;
-                }
-            }
+            ::HIR::GenericPath  trait_path( p.get_simple_path(), tr.m_params.make_nop_params(0) );
 
             ::std::unordered_map< ::std::string,unsigned int>  assoc_type_indexes;
             struct Foo {
@@ -98,25 +91,43 @@ namespace {
                 bool add_ents_from_trait(const ::HIR::Trait& tr, const ::HIR::GenericPath& trait_path)
                 {
                     TRACE_FUNCTION_F(trait_path);
-                    auto clone_cb = [&](const auto& t, auto& o) {
-                        if(t.data().is_Path() && t.data().as_Path().path.m_data.is_UfcsKnown()) {
-                            const auto& pe = t.data().as_Path().path.m_data.as_UfcsKnown();
-                            bool is_self = (pe.type == ::HIR::TypeRef(RcString::new_interned("Self"), 0xFFFF));
-                            auto it = trait_ptr->m_type_indexes.find(pe.item);
-                            bool has_item = (it != trait_ptr->m_type_indexes.end());
-                            // TODO: Check the trait against m_type_indexes
-                            if( is_self /*&& pe.trait == trait_path*/ && has_item ) {
-                                DEBUG("[clone_cb] t=" << t << " -> " << it->second);
-                                // Replace with a new type param, need to know the index of it
-                                o = ::HIR::TypeRef( RcString::new_interned(FMT("a#" << pe.item)), it->second);
-                                return true;
-                            }
-                            else {
-                                DEBUG("[clone_cb] t=" << t << "(" << is_self << has_item << ")");
-                            }
+                    struct M: public Monomorphiser {
+                        ::HIR::Trait*   trait_ptr;
+
+                        ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& g) const override {
+                            return HIR::TypeRef(g.name, g.binding);
                         }
-                        return false;
-                        };
+                        ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& g) const override {
+                            return g;
+                        }
+                        ::HIR::LifetimeRef get_lifetime(const Span& sp, const ::HIR::GenericRef& g) const override {
+                            // Shift lifetimes from 1 (value) to 3 (HRL)
+                            if( (g.binding >> 8) == 1 ) {
+                                return (g.binding & 0xFF) + 3*256;
+                            }
+                            return HIR::LifetimeRef(g.binding);
+                        }
+
+                        HIR::TypeRef monomorph_type(const Span& sp, const HIR::TypeRef& t, bool allow_infer=true) const override {
+                            if(t.data().is_Path() && t.data().as_Path().path.m_data.is_UfcsKnown()) {
+                                const auto& pe = t.data().as_Path().path.m_data.as_UfcsKnown();
+                                bool is_self = (pe.type == ::HIR::TypeRef(RcString::new_interned("Self"), 0xFFFF));
+                                auto it = trait_ptr->m_type_indexes.find(pe.item);
+                                bool has_item = (it != trait_ptr->m_type_indexes.end());
+                                // TODO: Check the trait against m_type_indexes
+                                if( is_self /*&& pe.trait == trait_path*/ && has_item ) {
+                                    DEBUG("[clone_cb] t=" << t << " -> " << it->second);
+                                    // Replace with a new type param, need to know the index of it
+                                    return ::HIR::TypeRef( RcString::new_interned(FMT("a#" << pe.item)), it->second);
+                                }
+                                else {
+                                    DEBUG("[clone_cb] t=" << t << "(" << is_self << has_item << ")");
+                                }
+                            }
+                            return Monomorphiser::monomorph_type(sp, t, allow_infer);
+                        }
+                    } m;
+                    m.trait_ptr = trait_ptr;
                     auto clone_self_cb = [](const auto& t, auto&o) {
                         if( t == ::HIR::TypeRef("Self", 0xFFFF) ) {
                             o = ::HIR::TypeRef::new_unit();
@@ -141,7 +152,7 @@ namespace {
                                 DEBUG("- '" << vi.first << "' Skip where `Self: Sized`");
                                 continue ;
                             }
-                            if( ve.m_params.m_types.size() > 0 ) {
+                            if( ve.m_params.is_generic() ) {
                                 DEBUG("- '" << vi.first << "' NOT object safe (generic), not creating vtable");
                                 return false;
                             }
@@ -154,17 +165,18 @@ namespace {
                                 }
                             }
 
-                            ::HIR::FunctionType ft;
+                            ::HIR::TypeData_FunctionPointer ft;
+                            ft.hrls.m_lifetimes = ve.m_params.m_lifetimes;
                             ft.is_unsafe = ve.m_unsafe;
                             ft.m_abi = ve.m_abi;
-                            ft.m_rettype = clone_ty_with(sp, ve.m_return, clone_cb);
+                            ft.m_rettype = m.monomorph_type(sp, ve.m_return);
                             ft.m_arg_types.reserve( ve.m_args.size() );
-                            ft.m_arg_types.push_back( clone_ty_with(sp, ve.m_args[0].second, clone_self_cb) );
+                            ft.m_arg_types.push_back( clone_ty_with(sp, m.monomorph_type(sp, ve.m_args[0].second), clone_self_cb) );
                             if( ve.m_receiver == ::HIR::Function::Receiver::Value ) {
                                 ft.m_arg_types[0] = HIR::TypeRef::new_borrow(HIR::BorrowType::Owned, mv$(ft.m_arg_types[0]));
                             }
                             for(unsigned int i = 1; i < ve.m_args.size(); i ++)
-                                ft.m_arg_types.push_back( clone_ty_with(sp, ve.m_args[i].second, clone_cb) );
+                                ft.m_arg_types.push_back( m.monomorph_type(sp, ve.m_args[i].second) );
                             // Clear the first argument (the receiver)
                             ::HIR::TypeRef  fcn_type( mv$(ft) );
 
@@ -209,7 +221,7 @@ namespace {
 
             VtableConstruct vtc { this, &tr, {} };
             // - Drop glue pointer
-            ::HIR::FunctionType ft;
+            ::HIR::TypeData_FunctionPointer ft;
             ft.is_unsafe = false;
             ft.m_abi = ABI_RUST;
             ft.m_rettype = ::HIR::TypeRef::new_unit();

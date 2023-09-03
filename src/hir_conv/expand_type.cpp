@@ -25,6 +25,15 @@ namespace {
             }
         }
 
+        // Shouldn't this error out if not in an expression?
+        if( pp.m_lifetimes.empty() )
+        {
+            while( pp.m_lifetimes.size() < params_def.m_lifetimes.size() )
+            {
+                pp.m_lifetimes.push_back( ::HIR::LifetimeRef() );
+            }
+        }
+
         auto ms_o = MonomorphStatePtr(nullptr, &path.m_params, nullptr);
         while( pp.m_types.size() < params_def.m_types.size() && params_def.m_types[pp.m_types.size()].m_default != ::HIR::TypeRef() ) {
             pp.m_types.push_back( ms_o.monomorph_type(sp, params_def.m_types[pp.m_types.size()].m_default) );
@@ -233,7 +242,9 @@ public:
 
             auto gp2 = gp.clone();
             gp2.m_path.m_components.push_back(name);
+            gp2.m_params.m_lifetimes.resize( enm.m_params.m_lifetimes.size() );
             gp2.m_params.m_types.resize( enm.m_params.m_types.size() );
+            gp2.m_params.m_values.resize( enm.m_params.m_values.size() );
 
             auto idx = enm.find_variant(name);
             if(idx == ~0u) {
@@ -273,6 +284,7 @@ public:
                 // Enum variant!
                 const auto& enm = ti.as_Enum();
 
+                gp.m_params.m_lifetimes.resize( enm.m_params.m_lifetimes.size() );
                 gp.m_params.m_types.resize( enm.m_params.m_types.size() );
 
                 auto idx = ti.as_Enum().find_variant(gp.m_path.m_components.back());
@@ -283,6 +295,7 @@ public:
         // Has to be a struct
         const auto& str = m_crate.get_struct_by_path(sp, gp.m_path);
 
+        gp.m_params.m_lifetimes.resize( str.m_params.m_lifetimes.size() );
         gp.m_params.m_types.resize( str.m_params.m_types.size() );
 
         return ::HIR::Pattern::PathBinding::make_Struct(&str);
@@ -333,18 +346,23 @@ public:
         for(auto it = params.m_bounds.begin(); it != params.m_bounds.end(); ++it)
         {
             static Span sp;
-            if( it->is_TraitBound() )
+            if( auto* be = it->opt_TraitBound() )
             {
-                auto n = ConvertHIR_ExpandAliases_GetTraitExpansion(sp, m_crate, it->as_TraitBound().trait, m_in_expr);
+                auto n = ConvertHIR_ExpandAliases_GetTraitExpansion(sp, m_crate, be->trait, m_in_expr);
                 if(!n.empty())
                 {
-                    auto type = std::move(it->as_TraitBound().type);
-                    visit_type(type);
+                    auto orig_type = std::move(be->type);
+                    auto orig_hrtbs = std::move(be->hrtbs);
+                    if(orig_hrtbs)
+                        visit_params(*orig_hrtbs);
+                    visit_type(orig_type);
 
                     it = params.m_bounds.erase(it);
                     for(auto& t : n)
                     {
-                        it = params.m_bounds.insert(it, HIR::GenericBound::make_TraitBound({ type.clone(), std::move(t) }));
+                        auto type = (&t == &n.back() ? std::move(orig_type) : orig_type.clone());
+                        auto hrtbs = orig_hrtbs ? (&t == &n.back() ? std::move(orig_hrtbs) : box$(orig_hrtbs->clone())) : nullptr;
+                        it = params.m_bounds.insert(it, HIR::GenericBound::make_TraitBound({ std::move(hrtbs), std::move(type), std::move(t) }));
                     }
                 }
             }

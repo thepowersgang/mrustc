@@ -447,6 +447,12 @@
     <ClCompile Include="..\..\src\hir\inherent_cache.cpp">
       <Filter>Source Files\hir</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\src\hir_conv\lifetime_elision.cpp">
+      <Filter>Source Files\hir_conv</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\src\hir_expand\lifetime_infer.cpp">
+      <Filter>Source Files\hir_expand</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\src\common.hpp">
@@ -659,9 +665,6 @@
     <ClInclude Include="..\..\src\hir\type_ref.hpp">
       <Filter>Header Files\hir</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\src\hir\generic_ref.hpp">
-      <Filter>Source Files\hir</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\src\hir_typeck\monomorph_state.hpp">
       <Filter>Header Files\hir_typeck</Filter>
     </ClInclude>
@@ -700,6 +703,12 @@
     </ClInclude>
     <ClInclude Include="..\..\src\hir\inherent_cache.hpp">
       <Filter>Header Files\hir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\hir\generic_ref.hpp">
+      <Filter>Header Files\hir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\trans\target.hpp">
+      <Filter>Header Files\trans</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

@@ -54,15 +54,27 @@ struct Options
 
 struct TestDesc
 {
+    struct Message {
+        unsigned line;
+        enum class Type {
+            Error,
+        } type;
+        std::string substring;
+    };
+
     ::std::string   m_name;
     ::std::string   m_path;
     ::std::vector< std::pair<::std::string, std::vector<std::string> > >    m_pre_build;
     ::std::vector<::std::string>    m_extra_flags;
+    ::std::vector<Message>  m_messages;
     bool ignore;
     bool no_run;
+    bool compile_fail;
+
     TestDesc()
         :ignore(false)
         ,no_run(false)
+        ,compile_fail(false)
     {
     }
 };
@@ -265,10 +277,50 @@ int main(int argc, const char* argv[])
             TestDesc    td;
             td.ignore = false;
 
+            unsigned cur_line = 0;
             do
             {
                 ::std::string   line;
                 ::std::getline(in, line);
+                cur_line += 1;
+
+                while(!line.empty() && std::isblank(line.back()))
+                    line.pop_back();
+
+                // Look for `//~` in the line
+                // - e.g. `//~ ERROR <message>`
+                // - or   `//~^ ERROR <message>`
+                {
+                    auto p = line.find("//~");
+                    if( p != std::string::npos )
+                    {
+                        auto target_line = cur_line;
+                        p += 3;
+                        while( line[p] == '^' ) {
+                            target_line -= 1;
+                            p ++;
+                        }
+
+                        // Consume an ident (the message type)
+                        while(isspace(line[p]))
+                            p ++ ;
+                        auto type_start = p;
+                        while(isalnum(line[p]))
+                            p ++;
+                        auto type = line.substr(type_start, p-type_start);
+                        while(isspace(line[p]))
+                            p ++ ;
+                        auto rest = line.substr(p);
+
+                        if( type == "ERROR" ) {
+                            td.m_messages.push_back(TestDesc::Message { target_line, TestDesc::Message::Type::Error, rest });
+                            td.compile_fail = true;
+                        }
+                        else {
+                        }
+                    }
+                }
+
                 if( !(line[0] == '/' && line[1] == '/'/* && line[2] == ' '*/) )
                     continue ;
                 // TODO Parse a skewer-case ident and check against known set?
@@ -447,14 +499,33 @@ int main(int argc, const char* argv[])
                 }
 
                 auto compile_logfile = test_exe + "-build.log";
-                if( !run_compiler(opts, test.m_path, test_exe, test.m_extra_flags, depdir) )
+
+                auto compile_succeeded = run_compiler(opts, test.m_path, test_exe, test.m_extra_flags, depdir);
+                // Check error/warning messages
                 {
-                    DEBUG("COMPILE FAIL " << test.m_name << ", log in " << compile_logfile);
-                    n_cfail ++;
-                    if( opts.fail_fast )
-                        return 1;
-                    else
-                        continue;
+                    std::ifstream   msg(compile_logfile);
+                }
+
+                if( !compile_succeeded )
+                {
+                    if( !test.compile_fail ) {
+                        DEBUG("COMPILE FAIL " << test.m_name << ", log in " << compile_logfile);
+                        n_cfail ++;
+                        if( opts.fail_fast )
+                            return 1;
+                        else
+                            continue;
+                    }
+                }
+                else {
+                    if( test.compile_fail ) {
+                        DEBUG("COMPILE PASSED? (should fail) " << test.m_name << ", log in " << compile_logfile);
+                        n_cfail ++;
+                        if( opts.fail_fast )
+                            return 1;
+                        else
+                            continue;
+                    }
                 }
                 test_exe_ts = Timestamp::for_file(test_exe);
             }

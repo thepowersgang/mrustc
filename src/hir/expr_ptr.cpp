@@ -43,6 +43,15 @@
     delete ptr;
     ptr = nullptr;
 }
+::HIR::ExprStatePtr HIR::ExprStatePtr::clone() const
+{
+    auto rv = ::HIR::ExprStatePtr(::HIR::ExprState((*this)->m_module, (*this)->m_mod_path));
+    rv->m_traits = (*this)->m_traits;
+    rv->m_impl_generics = (*this)->m_impl_generics;
+    rv->m_item_generics = (*this)->m_item_generics;
+    rv->stage = (*this)->stage;
+    return rv;
+}
 
 
 const Span& HIR::ExprPtr::span() const

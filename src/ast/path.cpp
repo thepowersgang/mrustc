@@ -110,7 +110,7 @@ PathBinding_Macro PathBinding_Macro::clone() const
 ::std::ostream& operator<<(::std::ostream& os, const PathParams& x)
 {
     bool needs_comma = false;
-    os << "<";
+    os << (x.m_is_paren ? "(" : "<");
     for(const auto& e : x.m_entries)
     {
         if(e.is_Null())
@@ -120,10 +120,11 @@ PathBinding_Macro PathBinding_Macro::clone() const
 
         e.fmt(os);
     }
-    os << ">";
+    os << (x.m_is_paren ? ")" : ">");
     return os;
 }
 PathParams::PathParams(const PathParams& x)
+    : m_is_paren(x.m_is_paren)
 {
     m_entries.reserve( x.m_entries.size() );
     for(const auto& e : x.m_entries)

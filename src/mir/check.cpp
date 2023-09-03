@@ -619,11 +619,17 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
     if( debug_enabled() ) MIR_Dump_Fcn(::std::cout, fcn);
     
     {
+        HIR::TypeRef ty_Self = HIR::TypeRef("Self", GENERIC_Self);
+        HIR::PathParams empty_params_i = resolve.m_impl_generics ? resolve.m_impl_generics->make_nop_params(0) : HIR::PathParams();
+        HIR::PathParams empty_params_m = resolve.m_item_generics ? resolve.m_item_generics->make_nop_params(0) : HIR::PathParams();
+        MonomorphStatePtr   m(&ty_Self, resolve.m_impl_generics ? &empty_params_i : nullptr, resolve.m_item_generics ? &empty_params_m : nullptr);
         for(const auto& ty : fcn.locals)
         {
+            DEBUG("_" << (&ty - fcn.locals.data()) << ": " << ty);
             if( !monomorphise_type_needed(ty) ) {
                 MIR_ASSERT(state, resolve.type_is_sized(sp, ty), "Local variable _" << (&ty - fcn.locals.data()) << ": " << ty << " isn't Sized");
             }
+            m.monomorph_type(sp, ty, /*allow_infer=*/false);
         }
     }
 
@@ -738,7 +744,10 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                             // Types are equal, good.
                         }
                         else {
-                            MIR_BUG(state,  "Type mismatch, destination is " << dst_ty << ", source is " << src_ty);
+                            MIR_BUG(state,  "Type mismatch:\n"
+                                << " dst : " << dst_ty << "\n"
+                                << " src : " << src_ty
+                                );
                         }
                         };
                     TU_MATCH_HDRA( (a.src), {)
@@ -838,6 +847,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                                 MIR_BUG(state, "EnumValue in ItemAddr: " << *c);
                             TU_ARMA(Static, ve) {
                                 tmp = ms.monomorph_type(state.sp, ve->m_type);
+                                resolve.expand_associated_types(state.sp, tmp);
                                 check_types( dst_ty, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, mv$(tmp)) );
                                 }
                             TU_ARMA(Function, ve) {

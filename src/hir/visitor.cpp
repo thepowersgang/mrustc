@@ -140,7 +140,7 @@ void ::HIR::Visitor::visit_type_impl(::HIR::TypeImpl& impl)
 void ::HIR::Visitor::visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl)
 {
     ::HIR::ItemPath    p( impl.m_type, trait_path, impl.m_trait_args );
-    TRACE_FUNCTION_F(p);
+    TRACE_FUNCTION_F("impl" << impl.m_params.fmt_args() << " " << trait_path << impl.m_trait_args << " for " << impl.m_type );
     this->visit_params(impl.m_params);
     // - HACK: Create a generic path to visit (so that proper checks are performed)
     {
@@ -243,20 +243,20 @@ void ::HIR::Visitor::visit_struct(::HIR::ItemPath p, ::HIR::Struct& item)
 void ::HIR::Visitor::visit_enum(::HIR::ItemPath p, ::HIR::Enum& item)
 {
     this->visit_params(item.m_params);
-    TU_MATCHA( (item.m_data), (e),
-    (Value,
+    TU_MATCH_HDRA( (item.m_data), {)
+    TU_ARMA(Value, e) {
         for(auto& var : e.variants)
         {
             this->visit_expr(var.expr);
         }
-        ),
-    (Data,
+        }
+    TU_ARMA(Data, e) {
         for(auto& var : e)
         {
             this->visit_type(var.type);
         }
-        )
-    )
+        }
+    }
 }
 void ::HIR::Visitor::visit_union(::HIR::ItemPath p, ::HIR::Union& item)
 {
@@ -388,10 +388,6 @@ void ::HIR::Visitor::visit_type(::HIR::TypeRef& ty)
         this->visit_type(e.m_rettype);
         }
     TU_ARMA(Closure, e) {
-        for(auto& t : e.m_arg_types) {
-            this->visit_type(t);
-        }
-        this->visit_type(e.m_rettype);
         }
     TU_ARMA(Generator, e) {
         }
@@ -534,4 +530,10 @@ void ::HIR::Visitor::visit_generic_path(::HIR::GenericPath& p, ::HIR::Visitor::P
 void ::HIR::Visitor::visit_expr(::HIR::ExprPtr& exp)
 {
     // Do nothing, leave expression stuff for user
+    for(auto& t : exp.m_erased_types) {
+        visit_type(t);
+    }
+    for(auto& t : exp.m_bindings) {
+        visit_type(t);
+    }
 }

@@ -12,12 +12,12 @@
 #include <hir/type.hpp>
 #include <hir_typeck/monomorph.hpp>
 
-
 typedef ::std::function<bool(const ::HIR::TypeRef&)> t_cb_visit_ty;
 /// Calls the provided callback on every type seen when recursing the type.
 /// If the callback returns `true`, no further types are visited and the function returns `true`.
-extern bool visit_ty_with(const ::HIR::TypeRef& ty, t_cb_visit_ty callback);
-extern bool visit_path_tys_with(const ::HIR::Path& ty, t_cb_visit_ty callback);
+extern bool visit_ty_with(const ::HIR::TypeRef& , t_cb_visit_ty callback);
+extern bool visit_trait_path_tys_with(const ::HIR::TraitPath& , t_cb_visit_ty callback);
+extern bool visit_path_tys_with(const ::HIR::Path& , t_cb_visit_ty callback);
 
 typedef ::std::function<bool(::HIR::TypeRef&)> t_cb_visit_ty_mut;
 extern bool visit_ty_with_mut(::HIR::TypeRef& ty, t_cb_visit_ty_mut callback);

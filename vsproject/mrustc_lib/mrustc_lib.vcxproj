@@ -175,6 +175,8 @@
     <ClCompile Include="..\..\src\expand\panic.cpp" />
     <ClCompile Include="..\..\src\expand\stability.cpp" />
     <ClCompile Include="..\..\src\hir\inherent_cache.cpp" />
+    <ClCompile Include="..\..\src\hir_conv\lifetime_elision.cpp" />
+    <ClCompile Include="..\..\src\hir_expand\lifetime_infer.cpp" />
     <ClCompile Include="..\..\src\hir_expand\static_borrow_constants.cpp" />
     <ClCompile Include="..\..\src\hir_typeck\expr_cs__enum.cpp" />
     <ClCompile Include="..\..\src\hir_typeck\monomorph.hpp" />
@@ -374,6 +376,7 @@
     <ClInclude Include="..\..\src\trans\main_bindings.hpp" />
     <ClInclude Include="..\..\src\trans\mangling.hpp" />
     <ClInclude Include="..\..\src\trans\monomorphise.hpp" />
+    <ClInclude Include="..\..\src\trans\target.hpp" />
     <ClInclude Include="..\..\src\trans\trans_list.hpp" />
   </ItemGroup>
   <ItemGroup>

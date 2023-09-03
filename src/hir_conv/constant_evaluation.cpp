@@ -455,8 +455,12 @@ namespace MIR { namespace eval {
         }
         void fmt(::std::ostream& os, size_t ofs, size_t len) const override {
             os << "[" << m_path << "]";
-            if(m_encoded)
+            if(m_encoded) {
                 os << EncodedLiteralSlice(*m_encoded).slice(ofs, len);
+            }
+            else {
+                os << "?";
+            }
         }
 
         size_t size() const { return m_encoded ? m_encoded->bytes.size() : 0; }
@@ -465,6 +469,10 @@ namespace MIR { namespace eval {
                 assert(ofs <= m_encoded->bytes.size());
                 assert(len <= m_encoded->bytes.size());
                 assert(ofs+len <= m_encoded->bytes.size());
+                if(m_encoded->bytes.size() == 0) {
+                    // Empty vectors can have a null data pointer
+                    return reinterpret_cast<const uint8_t*>("");
+                }
                 return m_encoded->bytes.data() + ofs;
             }
             else {
@@ -552,8 +560,7 @@ namespace MIR { namespace eval {
         }
 
         ValueRef slice(size_t ofs, size_t len) {
-            assert(ofs <= this->len);
-            assert(ofs+len <= this->len);
+            ASSERT_BUG(Span(), ofs <= this->len && ofs+len <= this->len, "ValueRef::slice: " << ofs << "+" << len << " out of range (" << this->len << ")");
 
             ValueRef    rv;
             rv.storage = storage;
@@ -562,7 +569,7 @@ namespace MIR { namespace eval {
             return rv;
         }
         ValueRef slice(size_t ofs) {
-            assert(ofs <= this->len);
+            ASSERT_BUG(Span(), ofs <= this->len, "ValueRef::slice: " << ofs << " out of range (" << this->len << ")");
             return slice(ofs, this->len - ofs);
         }
 
@@ -697,7 +704,7 @@ namespace MIR { namespace eval {
             os << "ValueRef(null)";
         }
         else {
-            os << "ValueRef(";
+            os << "ValueRef({" << vr.ofs << "+" << vr.len << "}";
             vr.storage.as_value().fmt(os, vr.ofs, vr.len);
             os << ")";
         }
@@ -930,8 +937,10 @@ namespace HIR {
                     if( !s.m_value_generated )
                     {
                         // If there's no MIR and no HIR then this is an external static (which can only be borrowed)
-                        if( !s.m_value && !s.m_value.m_mir )
+                        if( !s.m_value && !s.m_value.m_mir ) {
+                            DEBUG("No value and no mir");
                             return StaticRefPtr::allocate(std::move(p), nullptr);
+                        }
 
                         auto& item = const_cast<::HIR::Static&>(s);
 
@@ -950,11 +959,15 @@ namespace HIR {
                         {
                             MIR_BUG(state, p << " Defer during value generation");
                         }
+                        DEBUG(p << " = " << item.m_value_res);
                     }
                     return StaticRefPtr::allocate(std::move(p), &s.m_value_res);
                 }
                 else
+                {
+                    DEBUG(ent.tag_str() << " " << p);
                     return StaticRefPtr::allocate(std::move(p), nullptr);
+                }
             }
 
             ValueRef get_lval(const ::MIR::LValue& lv, ValueRef* meta=nullptr)
@@ -1030,7 +1043,7 @@ namespace HIR {
                         auto p = val.read_ptr(state);
                         MIR_ASSERT(state, p.first >= EncodedLiteral::PTR_BASE, "Null (<PTR_BASE) pointer deref");
                         MIR_ASSERT(state, p.first % al == 0, "Unaligned pointer deref");
-                        DEBUG("> " << ValueRef(p.second) << " - " << (p.first - EncodedLiteral::PTR_BASE) << " " << sz << " " << *typ);
+                        DEBUG("> " << ValueRef(p.second) << " - o=" << (p.first - EncodedLiteral::PTR_BASE) << " sz=" << sz << " " << *typ);
                         // TODO: Determine size using metadata?
                         if(sz == SIZE_MAX) {
                             val = ValueRef(p.second, p.first - EncodedLiteral::PTR_BASE);
@@ -1679,10 +1692,14 @@ namespace HIR {
                     }
                     }
                 TU_ARMA(DstMeta, e) {
-                    MIR_TODO(state, "RValue::DstMeta");
+                    auto v = local_state.get_lval(e.val);
+                    size_t ptr_size = Target_GetPointerBits() / 8;
+                    dst.copy_from(state, v.slice(ptr_size));
                     }
                 TU_ARMA(DstPtr, e) {
-                    MIR_TODO(state, "RValue::DstPtr");
+                    auto v = local_state.get_lval(e.val);
+                    size_t ptr_size = Target_GetPointerBits() / 8;
+                    dst.copy_from(state, v.slice(0, ptr_size));
                     }
                 TU_ARMA(MakeDst, e) {
                     if( TU_TEST2(e.meta_val, Constant, ,ItemAddr, .get() == nullptr) ) {
@@ -1946,6 +1963,31 @@ namespace HIR {
                         else
                             throw Defer();
                     }
+                    else if( te->name == "type_name" ) {
+                        auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                        auto name = FMT(ty);
+                        dst.write_ptr(state, EncodedLiteral::PTR_BASE, AllocationPtr::allocate_ro(name.data(), name.size()));
+                        dst.slice(Target_GetPointerBits()/8).write_uint(state, Target_GetPointerBits(), name.size());
+                    }
+                    else if( te->name == "type_id" ) {
+                        auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                        dst.write_ptr(state, EncodedLiteral::PTR_BASE, StaticRefPtr::allocate(HIR::Path(mv$(ty), "#type_id"), nullptr));
+                    }
+                    else if( te->name == "caller_location" ) {
+                        auto ty_path = state.m_resolve.m_crate.get_lang_item_path(state.sp, "panic_location");
+                        auto ty = HIR::TypeRef::new_path(ty_path, &state.m_resolve.m_crate.get_struct_by_path(state.sp, ty_path));
+                        auto* repr = Target_GetTypeRepr(state.sp, state.m_resolve, ty);
+                        MIR_ASSERT(state, repr, "No repr for panic::Location?");
+                        MIR_ASSERT(state, repr->fields.size() == 3, "Unexpected item count in panic::Location");
+                        auto val = RelocPtr(AllocationPtr::allocate(state, ty));
+                        dst.write_ptr(state, EncodedLiteral::PTR_BASE, val);
+                        auto rv = ValueRef(val);
+                        auto pb = Target_GetPointerBits()/8;
+                        rv.slice(repr->fields[0].offset+ 0, pb).write_ptr(state, EncodedLiteral::PTR_BASE, ConstantPtr::allocate("", 0)); // file.ptr
+                        rv.slice(repr->fields[0].offset+pb, pb).write_uint(state, Target_GetPointerBits(), 0);    // file.len
+                        rv.slice(repr->fields[1].offset, 4).write_uint(state, 32, 0);  // line: u32
+                        rv.slice(repr->fields[2].offset, 4).write_uint(state, 32, 0);  // col: u32
+                    }
                     // ---
                     else if( te->name == "ctpop" ) {
                         auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
@@ -2075,7 +2117,7 @@ namespace HIR {
                             } break;
                         case TypeInfo::Float:
                         case TypeInfo::Other:
-                            MIR_TODO(state, "Call intrinsic \"" << te->name << "\" - " << block.terminator);
+                            MIR_TODO(state, "add_with_overflow on unexpected type - " << ty);
                         }
                     }
                     // ---
@@ -2240,12 +2282,7 @@ namespace {
         }
 
         ::HIR::PathParams get_params_for_def(const ::HIR::GenericParams& tpl, bool is_function_level=false) const {
-            ::HIR::PathParams   pp;
-            for(const auto& tp : tpl.m_types)
-                pp.m_types.push_back( ::HIR::TypeRef(tp.m_name, (is_function_level ? 256 : 0) + pp.m_types.size()) );
-            for(const auto& vp : tpl.m_values)
-                pp.m_values.push_back( ::HIR::GenericRef(vp.m_name, (is_function_level ? 256 : 0) + pp.m_values.size()) );
-            return pp;
+            return tpl.make_nop_params(is_function_level ? 1 : 0);
         }
 
         void visit_module(::HIR::ItemPath p, ::HIR::Module& mod) override
@@ -2626,7 +2663,7 @@ namespace {
                     {
                         auto nvs = NewvalState { mod, mod_path, FMT(name << "_" << var.name << "#") };
                         auto eval = ::HIR::Evaluator { var.expr->span(), crate, nvs };
-                        eval.resolve.set_impl_generics_raw(item.m_params);
+                        eval.resolve.set_impl_generics_raw(MetadataType::None, item.m_params);
                         try
                         {
                             auto val = eval.evaluate_constant(p, var.expr, ty.clone());
@@ -2689,6 +2726,12 @@ void ConvertHIR_ConstantEvaluate(::HIR::Crate& crate)
     {
         crate.m_root_module.m_mod_items.insert( mv$(new_ty_pair) );
     }
+    crate.m_new_types.clear();
+    for(auto& new_val_pair : crate.m_new_values)
+    {
+        crate.m_root_module.m_value_items.insert( mv$(new_val_pair) );
+    }
+    crate.m_new_values.clear();
 }
 void ConvertHIR_ConstantEvaluate_Expr(const ::HIR::Crate& crate, const ::HIR::ItemPath& ip, ::HIR::ExprPtr& expr_ptr)
 {

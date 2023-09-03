@@ -14,7 +14,7 @@
 //namespace {
     class HirSerialiser
     {
-        ::std::map<HIR::TypeRef, size_t>    m_types;
+        ::std::map<std::string, size_t>    m_types;
         ::HIR::serialise::Writer&   m_out;
     public:
         HirSerialiser(::HIR::serialise::Writer& out):
@@ -30,6 +30,7 @@
         {
             m_out.write_count(map.size());
             for(const auto& v : map) {
+                DEBUG(v.first);
                 m_out.write_string(v.first);
                 serialise(v.second);
             }
@@ -178,7 +179,15 @@
         }
         void serialise_type(const ::HIR::TypeRef& ty)
         {
-            auto it = m_types.find(ty);
+            // Use string comparison to ensure that lifetimes are checked
+            auto ty_str = FMT(ty);
+            if(ty_str[0] == '{') {
+                auto p = ty_str.find('}');
+                ty_str = ty_str.substr(p+1);
+            }
+
+
+            auto it = m_types.find(ty_str);
             if( it != m_types.end() ) {
                 DEBUG("Cached " << it->second);
                 m_out.write_count(it->second);
@@ -215,7 +224,7 @@
                 
                 m_out.write_bool(e.m_is_sized);
                 serialise_vec(e.m_traits);
-                serialise(e.m_lifetime);
+                serialise_vec(e.m_lifetimes);
                 }
             TU_ARMA(Array, e) {
                 serialise_type(e.inner);
@@ -237,6 +246,7 @@
                 serialise_type(e.inner);
                 }
             TU_ARMA(Function, e) {
+                serialise_generics(e.hrls);
                 m_out.write_bool(e.is_unsafe);
                 m_out.write_string(e.m_abi);
                 serialise_type(e.m_rettype);
@@ -249,7 +259,7 @@
                 break;
             }
 
-            m_types.insert(std::make_pair( ty.clone(), m_types.size() ));
+            m_types.insert(std::make_pair( std::move(ty_str), m_types.size() ));
         }
         void serialise_simplepath(const ::HIR::SimplePath& path)
         {
@@ -259,12 +269,17 @@
         }
         void serialise_pathparams(const ::HIR::PathParams& pp)
         {
+            serialise_vec(pp.m_lifetimes);
             serialise_vec(pp.m_types);
             serialise_vec(pp.m_values);
         }
         void serialise_genericpath(const ::HIR::GenericPath& path)
         {
             TRACE_FUNCTION_F(path);
+            m_out.write_bool( static_cast<bool>(path.m_hrls) );
+            if(path.m_hrls) {
+                serialise_generics(*path.m_hrls);
+            }
             serialise_simplepath(path.m_path);
             serialise_pathparams(path.m_params);
         }
@@ -273,7 +288,6 @@
         {
             auto _ = m_out.open_object("HIR::TraitPath");
             serialise_genericpath(path.m_path);
-            // TODO: Lifetimes? (m_hrls)
             serialise_strmap(path.m_type_bounds);
             serialise_strmap(path.m_trait_bounds);
         }
@@ -290,30 +304,30 @@
         void serialise_path(const ::HIR::Path& path)
         {
             TRACE_FUNCTION_F("path="<<path);
-            TU_MATCHA( (path.m_data), (e),
-            (Generic,
+            TU_MATCH_HDRA( (path.m_data), {)
+            TU_ARMA(Generic, e) {
                 m_out.write_tag(0);
                 serialise_genericpath(e);
-                ),
-            (UfcsInherent,
+                }
+            TU_ARMA(UfcsInherent, e) {
                 m_out.write_tag(1);
                 serialise_type(e.type);
                 m_out.write_string(e.item);
                 serialise_pathparams(e.params);
                 serialise_pathparams(e.impl_params);
-                ),
-            (UfcsKnown,
+                }
+            TU_ARMA(UfcsKnown, e) {
                 m_out.write_tag(2);
                 serialise_type(e.type);
                 serialise_genericpath(e.trait);
                 m_out.write_string(e.item);
                 serialise_pathparams(e.params);
-                ),
-            (UfcsUnknown,
+                }
+            TU_ARMA(UfcsUnknown, e) {
                 DEBUG("-- UfcsUnknown - " << path);
                 assert(!"Unexpected UfcsUnknown");
-                )
-            )
+                }
+            }
         }
 
         void serialise_generics(const ::HIR::GenericParams& params)
@@ -335,24 +349,31 @@
         }
         void serialise(const ::HIR::GenericBound& b) {
             TRACE_FUNCTION_F(b);
-            TU_MATCHA( (b), (e),
-            (Lifetime,
+            TU_MATCH_HDRA( (b), {)
+            TU_ARMA(Lifetime, e) {
                 m_out.write_tag(0);
-                ),
-            (TypeLifetime,
+                serialise(e.test);
+                serialise(e.valid_for);
+                }
+            TU_ARMA(TypeLifetime, e) {
                 m_out.write_tag(1);
-                ),
-            (TraitBound,
+                serialise_type(e.type);
+                serialise(e.valid_for);
+                }
+            TU_ARMA(TraitBound, e) {
                 m_out.write_tag(2);
+                m_out.write_bool(static_cast<bool>(e.hrtbs));
+                if(e.hrtbs)
+                    serialise_generics(*e.hrtbs);
                 serialise_type(e.type);
                 serialise_traitpath(e.trait);
-                ),
-            (TypeEquality,
+                }
+            TU_ARMA(TypeEquality, e) {
                 m_out.write_tag(3);
                 serialise_type(e.type);
                 serialise_type(e.other_type);
-                )
-            )
+                }
+            }
         }
 
 
@@ -1299,7 +1320,7 @@
             auto _ = m_out.open_object("HIR::Trait");
 
             serialise_generics(item.m_params);
-            //m_out.write_string(item.m_lifetime);    // TODO: Better type for lifetime
+            serialise(item.m_lifetime);
             m_out.write_bool( item.m_is_marker );
             serialise_strmap( item.m_types );
             serialise_strmap( item.m_values );

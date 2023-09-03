@@ -200,11 +200,14 @@ struct ExprNode_LoopControl:
     bool    m_continue;
     ::HIR::ExprNodeP    m_value;
 
+    const ExprNode_Loop*    m_target_node;  // populated by expr_cs__enum.cpp
+
     ExprNode_LoopControl(Span sp, RcString label, bool cont, ::HIR::ExprNodeP value={}):
         ExprNode(mv$(sp)),
         m_label( mv$(label) ),
         m_continue( cont ),
         m_value( mv$(value) )
+        , m_target_node(nullptr)
     {}
 
     NODE_METHODS();
@@ -402,10 +405,16 @@ struct ExprNode_Borrow:
     ::HIR::BorrowType   m_type;
     ::HIR::ExprNodeP    m_value;
 
-    ExprNode_Borrow(Span sp, ::HIR::BorrowType bt, ::HIR::ExprNodeP value):
-        ExprNode( mv$(sp) ),
-        m_type(bt),
-        m_value( mv$(value) )
+    /// <summary>
+    /// Flag set by the first pass of SBC to both inform the second pass and change Lifetime Infer's behaviour
+    /// </summary>
+    bool m_is_valid_static_borrow_constant;
+
+    ExprNode_Borrow(Span sp, ::HIR::BorrowType bt, ::HIR::ExprNodeP value)
+        : ExprNode( mv$(sp) )
+        , m_type(bt)
+        , m_value( mv$(value) )
+        , m_is_valid_static_borrow_constant(false)
     {}
 
     NODE_METHODS();

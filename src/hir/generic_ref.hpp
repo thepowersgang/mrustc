@@ -60,8 +60,10 @@ struct GenericRef
 
 struct LifetimeRef
 {
-    static const uint32_t UNKNOWN = 0;
-    static const uint32_t STATIC = 0xFFFF;
+    static const uint32_t STATIC = 0xFFFF;  // `'static`
+    static const uint32_t UNKNOWN = 0xFFFE; // omitted
+    static const uint32_t INFER = 0xFFFD;   // `'_`
+    static const uint32_t MAX_LOCAL = 0x8'0000;
 
     //RcString  name;
     // Values below 2^16 are parameters/static, values above are per-function region IDs allocated during region inferrence.
@@ -82,9 +84,21 @@ struct LifetimeRef
         return rv;
     }
 
+    bool is_param() const {
+        return binding < 0xFF00;
+    }
+    GenericRef as_param() const {
+        assert(is_param());
+        return GenericRef(RcString(), binding);
+    }
+    bool is_hrl() const {
+        return is_param() && as_param().group() == 3;
+    }
+
     Ordering ord(const LifetimeRef& x) const {
         return ::ord(binding, x.binding);
     }
+    bool operator<(const LifetimeRef& x) const { return this->ord(x) == OrdLess; }
     bool operator==(const LifetimeRef& x) const {
         return binding == x.binding;
     }
@@ -92,9 +106,13 @@ struct LifetimeRef
         return !(*this == x);
     }
     friend ::std::ostream& operator<<(::std::ostream& os, const LifetimeRef& x) {
-        if( x.binding == UNKNOWN )
+        if( x.binding == INFER )
         {
             os << "'_";
+        }
+        else if( x.binding == UNKNOWN )
+        {
+            os << "'#omitted";
         }
         else if( x.binding == STATIC )
         {
@@ -102,16 +120,22 @@ struct LifetimeRef
         }
         else if( x.binding < 0xFFFF )
         {
-            switch( x.binding & 0xFF00 )
+            switch( (x.binding & 0xFF00) >> 8 )
             {
-            case 0: os << "'I" << (x.binding & 0xFF);   break;
-            case 1: os << "'M" << (x.binding & 0xFF);   break;
-            default: os << "'unk" << x.binding;   break;
+            case 0: os << "'I" << (x.binding & 0xFF);   break;  // Impl/type
+            case 1: os << "'M" << (x.binding & 0xFF);   break;  // Method/value
+            case 2: os << "'P" << (x.binding & 0xFF);   break;  // HRLS
+            case 3: os << "'H" << (x.binding & 0xFF);   break;  // HRLS
+            default: os << "'unk" << std::hex << x.binding << std::dec;   break;
             }
+        }
+        else if( x.binding < MAX_LOCAL )
+        {
+            os << "'#local" << (x.binding - 0x1'0000);
         }
         else
         {
-            os << "'_" << (x.binding - 0x1000);
+            os << "'#ivar" << (x.binding - MAX_LOCAL);
         }
         return os;
     }

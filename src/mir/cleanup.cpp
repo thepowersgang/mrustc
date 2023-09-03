@@ -162,6 +162,18 @@ const EncodedLiteral* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
 
 ::MIR::RValue MIR_Cleanup_LiteralToRValue(const ::MIR::TypeResolve& state, MirMutator& mutator, EncodedLiteralSlice lit, ::HIR::TypeRef ty, ::HIR::Path path)
 {
+    struct M: Monomorphiser {
+        ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& ty) const override {
+            return HIR::TypeRef(ty);
+        }
+        ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& val) const override {
+            return HIR::ConstGeneric(val);
+        }
+        ::HIR::LifetimeRef get_lifetime(const Span& sp, const ::HIR::GenericRef& lft_ref) const override {
+            return ::HIR::LifetimeRef();
+        }
+    } monomorph_erase_lifetimes;
+
     TRACE_FUNCTION_F(ty << " <= " << lit);
     TU_MATCH_HDRA( (ty.data()), {)
     default:
@@ -178,8 +190,8 @@ const EncodedLiteral* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
 
         for(const auto& fld : repr->fields)
         {
-            auto rval = MIR_Cleanup_LiteralToRValue(state, mutator, lit.slice(fld.offset), fld.ty.clone(), ::HIR::GenericPath());
-            lvals.push_back( mutator.in_temporary( fld.ty.clone(), mv$(rval)) );
+            auto rval = MIR_Cleanup_LiteralToRValue(state, mutator, lit.slice(fld.offset), monomorph_erase_lifetimes.monomorph_type(state.sp, fld.ty), ::HIR::GenericPath());
+            lvals.push_back( mutator.in_temporary( monomorph_erase_lifetimes.monomorph_type(state.sp, fld.ty), mv$(rval)) );
         }
 
         return ::MIR::RValue::make_Tuple({ mv$(lvals) });
@@ -245,8 +257,8 @@ const EncodedLiteral* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
 
             for(const auto& fld : repr->fields)
             {
-                auto rval = MIR_Cleanup_LiteralToRValue(state, mutator, lit.slice(fld.offset), fld.ty.clone(), ::HIR::GenericPath());
-                lvals.push_back( mutator.in_temporary( fld.ty.clone(), mv$(rval)) );
+                auto rval = MIR_Cleanup_LiteralToRValue(state, mutator, lit.slice(fld.offset), monomorph_erase_lifetimes.monomorph_type(state.sp, fld.ty), ::HIR::GenericPath());
+                lvals.push_back( mutator.in_temporary( monomorph_erase_lifetimes.monomorph_type(state.sp, fld.ty), mv$(rval)) );
             }
 
             return ::MIR::RValue::make_Struct({ te.path.m_data.as_Generic().clone(), mv$(lvals) });
@@ -272,8 +284,8 @@ const EncodedLiteral* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
                 {
                     if(has_tag_field && &fld == &repr->fields.back())
                         continue;
-                    auto rval = MIR_Cleanup_LiteralToRValue(state, mutator, lit.slice(base_ofs + fld.offset), fld.ty.clone(), ::HIR::GenericPath());
-                    vals.push_back( mutator.in_temporary( fld.ty.clone(), mv$(rval)) );
+                    auto rval = MIR_Cleanup_LiteralToRValue(state, mutator, lit.slice(base_ofs + fld.offset), monomorph_erase_lifetimes.monomorph_type(state.sp, fld.ty), ::HIR::GenericPath());
+                    vals.push_back( mutator.in_temporary( monomorph_erase_lifetimes.monomorph_type(state.sp, fld.ty), mv$(rval)) );
                 }
             }
             else
@@ -322,7 +334,7 @@ const EncodedLiteral* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
             if( var_idx == ~0u )
                 MIR_TODO(state, "MIR_Cleanup_LiteralToRValue - " << path << ": " << ty << " = " << lit << " - Decode union into MIR");
             auto inner_rval = MIR_Cleanup_LiteralToRValue(state, mutator, lit, repr->fields[var_idx].ty.clone(), mv$(path));
-            auto inner_lval = mutator.in_temporary( repr->fields[var_idx].ty.clone(), mv$(inner_rval));
+            auto inner_lval = mutator.in_temporary( monomorph_erase_lifetimes.monomorph_type(state.sp, repr->fields[var_idx].ty), mv$(inner_rval));
             return ::MIR::RValue::make_UnionVariant({ te.path.m_data.as_Generic().clone(), var_idx, mv$(inner_lval) });
         }
         else
@@ -502,7 +514,8 @@ const EncodedLiteral* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
     auto fcn_lval = ::MIR::LValue::new_Field( ::MIR::LValue::new_Deref( vtable_lv.clone() ), vtable_idx );
     ::HIR::TypeRef  tmp;
     const auto& ty = state.get_lvalue_type(tmp, fcn_lval);
-    const auto& receiver = ty.data().as_Function().m_arg_types.at(0);
+    DEBUG("callable type " << ty);
+    auto receiver = MonomorphHrlsOnly(ty.data().as_Function().hrls.make_empty_params(true)).monomorph_type(state.sp, ty.data().as_Function().m_arg_types.at(0));
     
     struct H {
         static ::MIR::LValue get_unit_ptr(
@@ -576,7 +589,7 @@ const EncodedLiteral* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
         // If the receiver is Box (or anything that implements CoerceUnsized), create a Foo<()> as the value.
         // - Requires de/restructuring the Box same as CoerceUnsized
         // - Can use the `coerce_unsized_index` field too
-        receiver_lvp = H::get_unit_ptr(state,mutator, receiver.clone(), receiver_lvp.clone(), inner_dyn_ptr);
+        receiver_lvp = H::get_unit_ptr(state,mutator, ::std::move(receiver), receiver_lvp.clone(), inner_dyn_ptr);
     }
     else if( receiver.data().is_Borrow() || receiver.data().is_Pointer() )
     {
@@ -704,6 +717,8 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
             MIR_ASSERT(state, vtable_ty_spath != HIR::SimplePath(), "Trait " << de.m_trait.m_path << " does not have a vtable");
             const auto& vtable_ref = state.m_crate.get_struct_by_path(state.sp, vtable_ty_spath);
             // Copy the param set from the trait in the trait object
+            // TODO: How can this handle HRLs properly? (e.g. on `dyn FnMut`'s vtable). Every time it's called, the lifetimes should be different.
+            // - Implies that GenericPath should have HRLs (not everywhere else)
             ::HIR::PathParams   vtable_params = trait_path.m_path.m_params.clone();
             // - Include associated types
             for(const auto& ty_b : trait_path.m_type_bounds) {
@@ -725,8 +740,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
             else
             {
                 MIR_ASSERT(state, state.m_resolve.type_is_sized(state.sp, src_ty), "Attempting to get vtable for unsized type - " << src_ty);
-
-                ::HIR::Path vtable { src_ty.clone(), trait_path.m_path.clone(), "vtable#" };
+                auto vtable = ::HIR::Path( HIR::Path::Data::make_UfcsKnown({ src_ty.clone(), trait_path.m_path.clone(), "vtable#" }) );
                 out_meta_val = ::MIR::Constant::make_ItemAddr(box$(vtable));
             }
         }
@@ -1051,6 +1065,7 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                 }
             }
             // >> Visit all LValues for box deref hackery
+            DEBUG(state << stmt);
             TU_MATCH_HDRA( (stmt), { )
             TU_ARMA(Drop, se) {
                 MIR_Cleanup_LValue(state, mutator,  se.slot);
@@ -1121,6 +1136,14 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                     else if( const auto* te = ty.data().opt_Pointer() ) {
                         ity_p = &te->inner;
                     }
+                    // NOTE: This can happen with calling a by-value method on a trait object, e.g. `<dyn Foo as FnOnce>::call_once`
+                    // - That is handled with magic in trans, so needs magic here (for inlining)
+                    else if( ty.data().is_TraitObject() ) {
+                        ity_p = &ty;
+                        // Remove the deref so downstream doesn't need to care
+                        MIR_ASSERT(state, !re.val.m_wrappers.empty() && re.val.m_wrappers.back().is_Deref(), "DstMeta on bare trait object with no deref: " << re.val);
+                        re.val.m_wrappers.pop_back();
+                    }
                     else {
                         BUG(Span(), "Unexpected input type for DstMeta - " << ty);
                     }
@@ -1133,6 +1156,27 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                     re.val.m_wrappers.push_back( ::MIR::LValue::Wrapper::new_Deref() );
                     MIR_Cleanup_LValue(state, mutator,  re.val);
                     re.val.m_wrappers.pop_back();
+
+                    ::HIR::TypeRef  tmp;
+                    const auto& ty = state.get_lvalue_type(tmp, re.val);
+                    const ::HIR::TypeRef* ity_p;
+                    if( const auto* te = ty.data().opt_Borrow() ) {
+                        ity_p = &te->inner;
+                    }
+                    else if( const auto* te = ty.data().opt_Pointer() ) {
+                        ity_p = &te->inner;
+                    }
+                    // NOTE: This can happen with calling a by-value method on a trait object, e.g. `<dyn Foo as FnOnce>::call_once`
+                    // - That is handled with magic in trans, so needs magic here (for inlining)
+                    else if( ty.data().is_TraitObject() ) {
+                        ity_p = &ty;
+                        // Remove the deref so downstream doesn't need to care
+                        MIR_ASSERT(state, !re.val.m_wrappers.empty() && re.val.m_wrappers.back().is_Deref(), "DstPtr on bare trait object with no deref: " << re.val);
+                        re.val.m_wrappers.pop_back();
+                    }
+                    else {
+                        BUG(Span(), "Unexpected input type for DstMeta - " << ty);
+                    }
                     }
                 TU_ARMA(MakeDst, re) {
                     MIR_Cleanup_Param(state, mutator,  re.ptr_val);

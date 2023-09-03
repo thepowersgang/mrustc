@@ -2368,7 +2368,13 @@ namespace {
                             MIR_ASSERT(*m_mir_res, v == 0, "TODO: Relocation with non-zero offset " << i << ": v=0x" << std::hex << v << std::dec << " Literal=" << encoded << " Reloc=" << *reloc_it);
                             m_of << "(uintptr_t)";
                             if( reloc_it->p ) {
-                                m_of << "&" << Trans_Mangle(*reloc_it->p);
+                                if( reloc_it->p->m_data.is_UfcsInherent() && reloc_it->p->m_data.as_UfcsInherent().item == "#type_id") {
+                                    const auto& ty = reloc_it->p->m_data.as_UfcsInherent().type;
+                                    m_of << "&__typeid_" << Trans_Mangle(ty);
+                                }
+                                else {
+                                    m_of << "&" << Trans_Mangle(*reloc_it->p);
+                                }
                             }
                             else {
                                 this->print_escaped_string(reloc_it->bytes);
@@ -2413,7 +2419,12 @@ namespace {
                 m_of << (v < 0 ? "-" : "") << "INFINITY";
             }
             else {
-                if( ty == HIR::CoreType::F32 ) {
+                // HACK: Always emit float literals as `double` for MSVC, it fails hard with "error C2177: constant too big" otherwise
+                if( m_compiler == Compiler::Msvc ) {
+                    m_of.precision(::std::numeric_limits<double>::max_digits10 + 1);
+                    m_of << ::std::scientific << v;
+                }
+                else if( ty == HIR::CoreType::F32 ) {
                     m_of.precision(::std::numeric_limits<float>::max_digits10 + 1);
                     m_of << ::std::scientific << v << "f";
                 } else {

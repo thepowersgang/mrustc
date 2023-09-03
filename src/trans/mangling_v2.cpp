@@ -91,7 +91,7 @@ public:
             }
             else if( *p == '#' || *p == '-' ) { // HACK: Treat '-' and '#' as the same in encoding
                 // Multiple hash characters? abort/error
-                ASSERT_BUG(Span(), hash_pos == nullptr, "Multiple '#' characters in '" << s << "'");
+                // HACK: Only treat the last one as special, previous ones are replaced by underscores
                 hash_pos = p;
             }
             else {
@@ -115,7 +115,15 @@ public:
                 // <pos:base26> <len:int> <body1> <body2>
                 fmt_base26_int(pre_hash_len);
                 m_os << size - 1;
-                m_os << ::stdx::string_view(s, s + pre_hash_len);
+                for(const char* c = s; c != hash_pos; ++c) {
+                    if( *c == '-' || *c == '#' ) {
+                        m_os << '_';
+                    }
+                    else {
+                        m_os << *c;
+                    }
+                }
+                //m_os << ::stdx::string_view(s, s + pre_hash_len);
                 m_os << hash_pos + 1;
             }
 #else

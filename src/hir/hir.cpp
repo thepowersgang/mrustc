@@ -380,6 +380,12 @@ const ::HIR::Enum& ::HIR::Crate::get_enum_by_path(const Span& sp, const ::HIR::S
 
 const ::HIR::ValueItem& ::HIR::Crate::get_valitem_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_crate_name) const
 {
+    if( path.m_crate_name == this->m_crate_name && path.m_components.size() == 1 ) {
+        auto i = std::find_if(m_new_values.begin(), m_new_values.end(), [&](const auto& v){ return v.first == path.m_components.back(); });
+        if( i != m_new_values.end() ) {
+            return i->second->ent;
+        }
+    }
     const auto& mod = get_containing_module(*this, sp, path, ignore_crate_name, /*ignore_last_node=*/false);
 
     auto it = mod.m_value_items.find( path.m_components.back() );
@@ -415,6 +421,12 @@ const ::HIR::Static& ::HIR::Crate::get_static_by_path(const Span& sp, const ::HI
         if(e.first == path.m_components.back())
         {
             return *e.second;
+        }
+    }
+    if( path.m_crate_name == this->m_crate_name && path.m_components.size() == 1 ) {
+        auto i = std::find_if(m_new_values.begin(), m_new_values.end(), [&](const auto& v){ return v.first == path.m_components.back(); });
+        if( i != m_new_values.end() ) {
+            return i->second->ent.as_Static();
         }
     }
     BUG(sp, "`static` path " << path << " can't be found");

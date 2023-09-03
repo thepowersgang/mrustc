@@ -2,6 +2,7 @@
 @set RUSTC_VERSION=1.54.0
 @set OUTDIR=output-%RUSTC_VERSION%
 @set COMMON_ARGS=--vendor-dir ..\rustc-%RUSTC_VERSION%-src\vendor --manifest-overrides ..\rustc-%RUSTC_VERSION%-overrides.toml
+@if defined PARLEVEL ( set COMMON_ARGS=%COMMON_ARGS% -j %PARLEVEL% )
 @if "%1" == "mmir" (
 	set COMMON_ARGS=%COMMON_ARGS% -Z emit-mmir
 	set OUTDIR=%OUTDIR%-mmir

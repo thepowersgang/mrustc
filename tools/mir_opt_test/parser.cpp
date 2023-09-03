@@ -133,6 +133,19 @@ namespace {
         HIR::GenericParams  rv;
         if(consume_if(lex, TOK_LT) )
         {
+            while(lex.lookahead(0) == TOK_LIFETIME)
+            {
+                GET_TOK(tok, lex);
+                rv.m_lifetimes.push_back(HIR::LifetimeDef());
+                rv.m_lifetimes.back().m_name = tok.ident().name;
+
+                if( lex.getTokenIf(TOK_COLON) )
+                {
+                    TODO(lex.point_span(), "parse_genericdef - bounds");
+                }
+                if( !lex.getTokenIf(TOK_COMMA) )
+                    break;
+            }
             while( lex.lookahead(0) != TOK_GT )
             {
                 GET_CHECK_TOK(tok, lex, TOK_IDENT);
@@ -145,6 +158,8 @@ namespace {
                 {
                     TODO(lex.point_span(), "parse_genericdef - bounds");
                 }
+                if( !lex.getTokenIf(TOK_COMMA) )
+                    break;
             }
             GET_CHECK_TOK(tok, lex, TOK_GT);
         }
@@ -733,6 +748,26 @@ namespace {
         else
             return HIR::TypeRef();
     }
+    HIR::LifetimeRef parse_lifetime(TokenStream& lex)
+    {
+        auto n = lex.getTokenCheck(TOK_LIFETIME).ident();
+        if( n.name == "static" ) {
+            return HIR::LifetimeRef::new_static();
+        }
+        else {
+            if( g_item_params )
+            {
+                for(size_t i = 0; i < g_item_params->m_lifetimes.size(); i ++)
+                {
+                    if( g_item_params->m_lifetimes[i].m_name == n.name )
+                    {
+                        return HIR::LifetimeRef(256 + static_cast<unsigned>(i));
+                    }
+                }
+            }
+            TODO(lex.point_span(), "Look up lifetime name - " << n);
+        }
+    }
     HIR::TypeRef parse_type(TokenStream& lex)
     {
         Token   tok;
@@ -797,13 +832,15 @@ namespace {
             break;
         case TOK_DOUBLE_AMP:
             lex.putback(TOK_AMP);
-        case TOK_AMP:
+        case TOK_AMP: {
+            auto lft = lex.lookahead(0) == TOK_LIFETIME ? parse_lifetime(lex) : HIR::LifetimeRef();
             if( consume_if(lex, TOK_RWORD_MOVE) )
-                return HIR::TypeRef::new_borrow(HIR::BorrowType::Owned, parse_type(lex));
+                return HIR::TypeRef::new_borrow(HIR::BorrowType::Owned, parse_type(lex), lft);
             else if( consume_if(lex, TOK_RWORD_MUT) )
-                return HIR::TypeRef::new_borrow(HIR::BorrowType::Unique, parse_type(lex));
+                return HIR::TypeRef::new_borrow(HIR::BorrowType::Unique, parse_type(lex), lft);
             else
-                return HIR::TypeRef::new_borrow(HIR::BorrowType::Shared, parse_type(lex));
+                return HIR::TypeRef::new_borrow(HIR::BorrowType::Shared, parse_type(lex), lft);
+            }
         case TOK_STAR:
             if( consume_if(lex, TOK_RWORD_MOVE) )
                 return HIR::TypeRef::new_pointer(HIR::BorrowType::Owned, parse_type(lex));
@@ -814,7 +851,7 @@ namespace {
             else
                 throw ParseError::Unexpected(lex, lex.getToken(), { TOK_RWORD_MOVE, TOK_RWORD_MUT, TOK_RWORD_CONST });
         case TOK_RWORD_FN: {
-            HIR::FunctionType   ft;
+            HIR::TypeData_FunctionPointer   ft;
             ft.is_unsafe = false;
             GET_CHECK_TOK(tok, lex, TOK_PAREN_OPEN);
             while( lex.lookahead(0) != TOK_PAREN_CLOSE )

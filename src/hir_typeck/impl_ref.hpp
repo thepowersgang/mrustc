@@ -28,11 +28,13 @@ struct ImplRef
         mutable ::HIR::TypeRef  self_cache;
         }),
     (BoundedPtr, struct {
+        const ::HIR::GenericParams* hrls;
         const ::HIR::TypeRef*    type;
         const ::HIR::PathParams* trait_args;
         const ::HIR::TraitPath::assoc_list_t*    assoc;
         }),
     (Bounded, struct {
+        ::HIR::GenericParams hrls;
         ::HIR::TypeRef    type;
         ::HIR::PathParams trait_args;
         ::HIR::TraitPath::assoc_list_t    assoc;
@@ -48,11 +50,14 @@ struct ImplRef
         m_data(Data::make_TraitImpl({ mv$(impl_params), &trait_ref, &trait, &impl }))
 
     {}
-    ImplRef(const ::HIR::TypeRef* type, const ::HIR::PathParams* args, const ::HIR::TraitPath::assoc_list_t* assoc):
-        m_data(Data::make_BoundedPtr({ type, args, assoc }))
+    ImplRef(const ::HIR::GenericParams* hrls, const ::HIR::TypeRef* type, const ::HIR::PathParams* args, const ::HIR::TraitPath::assoc_list_t* assoc):
+        m_data(Data::make_BoundedPtr({ hrls, type, args, assoc }))
     {}
     ImplRef(::HIR::TypeRef type, ::HIR::PathParams args, ::HIR::TraitPath::assoc_list_t assoc):
-        m_data(Data::make_Bounded({ mv$(type), mv$(args), mv$(assoc) }))
+        m_data(Data::make_Bounded({ ::HIR::GenericParams(), mv$(type), mv$(args), mv$(assoc) }))
+    {}
+    ImplRef(::HIR::GenericParams hrls, ::HIR::TypeRef type, ::HIR::PathParams args, ::HIR::TraitPath::assoc_list_t assoc):
+        m_data(Data::make_Bounded({ mv$(hrls), mv$(type), mv$(args), mv$(assoc) }))
     {}
 
     bool is_valid() const {
@@ -78,6 +83,7 @@ struct ImplRef
 
         ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& ty) const override;
         ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& val) const override;
+        ::HIR::LifetimeRef get_lifetime(const Span& sp, const ::HIR::GenericRef& val) const override;
     };
     Monomorph get_cb_monomorph_traitimpl(const Span& sp) const;
 

@@ -689,9 +689,11 @@ namespace
         const ::HIR::GenericParams* impl_params_def;
         const ::HIR::GenericParams* fcn_params_def;
 
-        ParamsSet():
-            fcn_params(nullptr),
-            self_ty(nullptr)
+
+        ::HIR::PathParams   fcn_params_tmp;
+        ParamsSet()
+            : fcn_params(nullptr)
+            , self_ty(nullptr)
             , impl_params_def(nullptr)
             , fcn_params_def(nullptr)
         {}
@@ -705,6 +707,9 @@ namespace
         const ::HIR::PathParams* get_method_params() const override {
             return fcn_params;
         }
+        const ::HIR::PathParams* get_hrb_params() const override {
+            return nullptr;
+        }
     };
     const ::MIR::Function* get_called_mir(const ::MIR::TypeResolve& state, const TransList* list, const ::HIR::Path& path, ParamsSet& params)
     {
@@ -716,16 +721,25 @@ namespace
             {
                 MIR_BUG(state, "Enumeration failure - Function " << path << " not in TransList");
             }
+            // TODO: Need identity params for most, but lifetime params need to be from the input.
+            // Except, everything should already be monomorphised, so no identity required!
+            params.impl_params.m_lifetimes = it->second->pp.pp_impl.m_lifetimes;
+            params.fcn_params_tmp.m_lifetimes = it->second->pp.pp_method.m_lifetimes;
+            params.fcn_params = &params.fcn_params_tmp;
+
             const auto& hir_fcn = *it->second->ptr;
             if( it->second->monomorphised.code ) {
+                //DEBUG("Found monomorphised - PP=" << params.impl_params << "," << *params.fcn_params);
                 return &*it->second->monomorphised.code;
             }
             else if( const auto* mir = hir_fcn.m_code.get_mir_opt() ) {
+                //DEBUG("Found concrete - PP=" << params.impl_params << "," << *params.fcn_params);
                 MIR_ASSERT(state, hir_fcn.m_params.m_types.empty(), "Enumeration failure - Function had params, but wasn't monomorphised - " << path);
                 // TODO: Check for trait methods too?
                 return mir;
             }
             else {
+                DEBUG("No MIR");
                 MIR_ASSERT(state, !hir_fcn.m_code, "LowerMIR failure - No MIR but HIR is present?! - " << path);
                 // External function (no MIR present)
                 return nullptr;
@@ -6455,6 +6469,12 @@ void MIR_OptimiseCrate(::HIR::Crate& crate, bool do_minimal_optimisation)
 
 void MIR_OptimiseCrate_Inlining(const ::HIR::Crate& crate, TransList& list)
 {
+    TRACE_FUNCTION;
+    for(const auto& fcn : list.m_functions)
+    {
+        DEBUG("FCN: " << fcn.first);
+    }
+
     ::StaticTraitResolve    resolve { crate };
 
     bool did_inline_on_pass;

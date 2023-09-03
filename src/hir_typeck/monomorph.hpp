@@ -3,27 +3,45 @@
 #include <hir/generic_params.hpp>
 #include <hir/type.hpp>
 
-extern bool monomorphise_type_needed(const ::HIR::TypeRef& tpl);
-extern bool monomorphise_pathparams_needed(const ::HIR::PathParams& tpl);
-static inline bool monomorphise_genericpath_needed(const ::HIR::GenericPath& tpl) {
-    return monomorphise_pathparams_needed(tpl.m_params);
+extern bool monomorphise_pathparams_needed(const ::HIR::PathParams& tpl, bool ignore_lifetimes=false);
+static inline bool monomorphise_genericpath_needed(const ::HIR::GenericPath& tpl, bool ignore_lifetimes=false) {
+    return monomorphise_pathparams_needed(tpl.m_params, ignore_lifetimes);
 }
-extern bool monomorphise_path_needed(const ::HIR::Path& tpl);
-extern bool monomorphise_traitpath_needed(const ::HIR::TraitPath& tpl);
-extern bool monomorphise_type_needed(const ::HIR::TypeRef& tpl);
+extern bool monomorphise_path_needed(const ::HIR::Path& tpl, bool ignore_lifetimes=false);
+extern bool monomorphise_traitpath_needed(const ::HIR::TraitPath& tpl, bool ignore_lifetimes=false);
+extern bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes=false);
 
 class Monomorphiser
 {
+    mutable std::vector<const HIR::GenericParams*>  m_hrb_stack;
 public:
     virtual ~Monomorphiser() = default;
+    
+    class PopOnDrop {
+        friend class Monomorphiser;
+        std::vector<const HIR::GenericParams*>& v;
+        PopOnDrop(std::vector<const HIR::GenericParams*>& v): v(v) {
+        }
+    public:
+        ~PopOnDrop() {
+            v.pop_back();
+        }
+    };
+    PopOnDrop push_hrb(const HIR::GenericParams& params) const {
+        m_hrb_stack.push_back(&params);
+        return PopOnDrop(m_hrb_stack);
+    }
+
     virtual ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& g) const = 0;
     virtual ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& g) const = 0;
+    virtual ::HIR::LifetimeRef get_lifetime(const Span& sp, const ::HIR::GenericRef& g) const = 0;
 
     virtual ::HIR::TypeRef monomorph_type(const Span& sp, const ::HIR::TypeRef& ty, bool allow_infer=true) const;
+    virtual ::HIR::LifetimeRef monomorph_lifetime(const Span& sp, const ::HIR::LifetimeRef& tpl) const;
     ::HIR::Path monomorph_path(const Span& sp, const ::HIR::Path& tpl, bool allow_infer=true) const;
-    ::HIR::TraitPath monomorph_traitpath(const Span& sp, const ::HIR::TraitPath& tpl, bool allow_infer) const;
+    ::HIR::TraitPath monomorph_traitpath(const Span& sp, const ::HIR::TraitPath& tpl, bool allow_infer, bool ignore_hrls=false) const;
     ::HIR::PathParams monomorph_path_params(const Span& sp, const ::HIR::PathParams& tpl, bool allow_infer) const;
-    ::HIR::GenericPath monomorph_genericpath(const Span& sp, const ::HIR::GenericPath& tpl, bool allow_infer) const;
+    virtual ::HIR::GenericPath monomorph_genericpath(const Span& sp, const ::HIR::GenericPath& tpl, bool allow_infer=true, bool ignore_hrls=false) const;
 
     ::HIR::ArraySize monomorph_arraysize(const Span& sp, const ::HIR::ArraySize& tpl) const;
 
@@ -44,9 +62,11 @@ public:
     virtual const ::HIR::TypeRef* get_self_type() const = 0;
     virtual const ::HIR::PathParams* get_impl_params() const = 0;
     virtual const ::HIR::PathParams* get_method_params() const = 0;
+    virtual const ::HIR::PathParams* get_hrb_params() const = 0;
 
     ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& ty) const override;
     ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& val) const override;
+    ::HIR::LifetimeRef get_lifetime(const Span& sp, const ::HIR::GenericRef& lft_ref) const override;
 };
 class MonomorphiserNop:
     public Monomorphiser
@@ -58,6 +78,9 @@ public:
     ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& val) const override {
         return HIR::ConstGeneric(val);
     }
+    ::HIR::LifetimeRef get_lifetime(const Span& sp, const ::HIR::GenericRef& lft_ref) const override {
+        return ::HIR::LifetimeRef(lft_ref.binding);
+    }
 };
 
 // Wrappers to only monomorphise if required
@@ -68,10 +91,10 @@ static inline const ::HIR::Path& monomorphise_path_with_opt(const Span& sp, ::HI
     return (monomorphise_path_needed(tpl) ? tmp = mono.monomorph_path(sp, tpl, allow_infer) : tpl);
 }
 static inline const ::HIR::GenericPath& monomorphise_genericpath_with_opt(const Span& sp, ::HIR::GenericPath& tmp, const ::HIR::GenericPath& tpl, const Monomorphiser& mono, bool allow_infer=true) {
-    return (monomorphise_genericpath_needed(tpl) ? tmp = mono.monomorph_genericpath(sp, tpl, allow_infer) : tpl);
+    return (monomorphise_genericpath_needed(tpl) ? tmp = mono.monomorph_genericpath(sp, tpl, allow_infer, false) : tpl);
 }
 static inline const ::HIR::TraitPath& monomorphise_traitpath_with_opt(const Span& sp, ::HIR::TraitPath& tmp, const ::HIR::TraitPath& tpl, const Monomorphiser& mono, bool allow_infer=true) {
-    return (monomorphise_traitpath_needed(tpl) ? tmp = mono.monomorph_traitpath(sp, tpl, allow_infer) : tpl);
+    return (monomorphise_traitpath_needed(tpl) ? tmp = mono.monomorph_traitpath(sp, tpl, allow_infer, false) : tpl);
 }
 static inline const ::HIR::PathParams& monomorphise_pathparams_with_opt(const Span& sp, ::HIR::PathParams& tmp, const ::HIR::PathParams& tpl, const Monomorphiser& mono, bool allow_infer=true) {
     return (monomorphise_pathparams_needed(tpl) ? tmp = mono.monomorph_path_params(sp, tpl, allow_infer) : tpl);
@@ -84,17 +107,22 @@ struct MonomorphStatePtr:
     const ::HIR::TypeRef* self_ty;
     const ::HIR::PathParams*    pp_impl;
     const ::HIR::PathParams*    pp_method;
+    //const ::HIR::PathParams*    pp_placeholder;
+    const ::HIR::PathParams*    pp_hrb;
 
     MonomorphStatePtr()
         : self_ty(nullptr)
         , pp_impl(nullptr)
         , pp_method(nullptr)
+        , pp_hrb(nullptr)
     {
     }
-    MonomorphStatePtr(const ::HIR::TypeRef* self_ty, const ::HIR::PathParams* params_i, const ::HIR::PathParams* params_m, const ::HIR::PathParams* params_p=nullptr):
-        self_ty(self_ty),
-        pp_impl(params_i),
-        pp_method(params_m)
+    MonomorphStatePtr(const ::HIR::TypeRef* self_ty, const ::HIR::PathParams* params_i, const ::HIR::PathParams* params_m, const ::HIR::PathParams* params_p=nullptr, const ::HIR::PathParams* params_h=nullptr)
+        : self_ty(self_ty)
+        , pp_impl(params_i)
+        , pp_method(params_m)
+        //, pp_placeholder(params_p)
+        , pp_hrb(params_h)
     {
     }
     const ::HIR::TypeRef* get_self_type() const override {
@@ -106,8 +134,42 @@ struct MonomorphStatePtr:
     const ::HIR::PathParams* get_method_params() const override {
         return pp_method;
     }
+    const ::HIR::PathParams* get_hrb_params() const override {
+        return pp_hrb;
+    }
 };
 //extern ::std::ostream& operator<<(::std::ostream& os, const MonomorphStatePtr& ms);
+
+struct MonomorphHrlsOnly:
+    public Monomorphiser
+{
+    const ::HIR::PathParams*    pp_hrb;
+    MonomorphHrlsOnly(const ::HIR::PathParams& params_h)
+        : pp_hrb(&params_h)
+    {
+    }
+    ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& ty) const override {
+        if( ty.group() == 3 ) {
+            ASSERT_BUG(sp, ty.idx() < pp_hrb->m_types.size(), ty << " out of bounds (" << pp_hrb->m_types.size() << ")");
+            return pp_hrb->m_types.at(ty.idx()).clone();
+        }
+        return HIR::TypeRef(ty);
+    }
+    ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& val) const override {
+        if( val.group() == 3 ) {
+            ASSERT_BUG(sp, val.idx() < pp_hrb->m_values.size(), val << " out of bounds (" << pp_hrb->m_values.size() << ")");
+            return pp_hrb->m_values.at(val.idx()).clone();
+        }
+        return HIR::ConstGeneric(val);
+    }
+    ::HIR::LifetimeRef get_lifetime(const Span& sp, const ::HIR::GenericRef& lft_ref) const override {
+        if( lft_ref.group() == 3 ) {
+            ASSERT_BUG(sp, lft_ref.idx() < pp_hrb->m_lifetimes.size(), lft_ref << " out of bounds (" << pp_hrb->m_lifetimes.size() << ")");
+            return pp_hrb->m_lifetimes.at(lft_ref.idx());
+        }
+        return ::HIR::LifetimeRef(lft_ref.binding);
+    }
+};
 
 // Helper for passing a group of params around
 struct MonomorphState:
@@ -169,6 +231,9 @@ struct MonomorphState:
     }
     const ::HIR::PathParams* get_method_params() const override {
         return pp_method;
+    }
+    const ::HIR::PathParams* get_hrb_params() const override {
+        return nullptr;
     }
 };
 extern ::std::ostream& operator<<(::std::ostream& os, const MonomorphState& ms);

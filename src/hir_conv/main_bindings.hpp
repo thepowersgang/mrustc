@@ -18,6 +18,7 @@ namespace HIR {
     struct PathParams;
 };
 
+extern void ConvertHIR_LifetimeElision(::HIR::Crate& crate);
 extern void ConvertHIR_ExpandAliases(::HIR::Crate& crate);
 extern void ConvertHIR_ExpandAliases_Self(::HIR::Crate& crate);
 extern void ConvertHIR_Bind(::HIR::Crate& crate);

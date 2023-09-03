@@ -15,6 +15,7 @@ namespace HIR {
 class TypeRef;
 
 struct GenericRef;
+struct LifetimeRef;
 struct SimplePath;
 class Path;
 class ConstGeneric;
@@ -38,6 +39,7 @@ public:
     //virtual const HIR::TypeRef& resolve_generic(const HIR::TypeRef& ty) const { return ty; }
     virtual ::HIR::Compare match_ty(const ::HIR::GenericRef& g, const ::HIR::TypeRef& ty, t_cb_resolve_type resolve_cb) = 0;
     virtual ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::ConstGeneric& sz) = 0;
+    virtual ::HIR::Compare match_lft(const ::HIR::GenericRef& g, const ::HIR::LifetimeRef& sz) { return HIR::Compare::Equal; }
 };
 
 
@@ -52,7 +54,7 @@ enum class CoreType;
 enum class BorrowType;
 class TypeData;
 class TypeInner;
-struct FunctionType;
+struct TypeData_FunctionPointer;
 class TypePathBinding;
 
 class TypeRef
@@ -81,19 +83,20 @@ public:
     TypeRef(::HIR::CoreType ct);
     TypeRef(RcString name, unsigned int slot);
     TypeRef(::std::vector< ::HIR::TypeRef> sts);
-    TypeRef(FunctionType ft);
+    TypeRef(TypeData_FunctionPointer ft);
 
     static TypeRef new_unit();
     static TypeRef new_diverge();
     static TypeRef new_infer(unsigned int idx = ~0u, InferClass ty_class = InferClass::None);
     static TypeRef new_borrow(BorrowType bt, TypeRef inner);
+    static TypeRef new_borrow(BorrowType bt, TypeRef inner, HIR::LifetimeRef lft);
     static TypeRef new_pointer(BorrowType bt, TypeRef inner);
     static TypeRef new_tuple(::std::vector< ::HIR::TypeRef> sts) { return TypeRef(mv$(sts)); }
     static TypeRef new_slice(TypeRef inner);
     static TypeRef new_array(TypeRef inner, uint64_t size);
     static TypeRef new_array(TypeRef inner, ::HIR::ConstGeneric size_expr);
     static TypeRef new_path(::HIR::Path path, TypePathBinding binding);
-    static TypeRef new_closure(::HIR::ExprNode_Closure* node_ptr, ::std::vector< ::HIR::TypeRef> args, ::HIR::TypeRef rv);
+    static TypeRef new_closure(::HIR::ExprNode_Closure* node_ptr);
     static TypeRef new_generator(::HIR::ExprNode_Generator* node_ptr);
 
     // Duplicate refcount

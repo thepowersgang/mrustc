@@ -7,6 +7,11 @@ TODO:
 - Optimise typecheck runtime
   - Mostly done with trait resolve optimisations
 - De-duplicate `static.cpp`/`helpers.cpp` (lots of common logic)
+- minicargo job system (for nicer reporting of progress)
+- Codegen units (speed up librustc build by shattering the codegen into multipule objects)
+- Proper monomorphisation of closures
+  - Add PathParams to the closure type, that translate the source node into the current context
+- Add variance to lifetime inference.
 
 MIR match generation
 - If there's multiple rules, defer codegen of guards until after the match

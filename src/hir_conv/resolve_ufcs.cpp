@@ -91,15 +91,15 @@ namespace resolve_ufcs {
         }
 
         void visit_union(::HIR::ItemPath p, ::HIR::Union& item) override {
-            auto _ = m_resolve.set_impl_generics(item.m_params);
+            auto _ = m_resolve.set_impl_generics(MetadataType::None, item.m_params);
             ::HIR::Visitor::visit_union(p, item);
         }
         void visit_struct(::HIR::ItemPath p, ::HIR::Struct& item) override {
-            auto _ = m_resolve.set_impl_generics(item.m_params);
+            auto _ = m_resolve.set_impl_generics(item.m_struct_markings.dst_type, item.m_params);
             ::HIR::Visitor::visit_struct(p, item);
         }
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override {
-            auto _ = m_resolve.set_impl_generics(item.m_params);
+            auto _ = m_resolve.set_impl_generics(MetadataType::None, item.m_params);
             ::HIR::Visitor::visit_enum(p, item);
         }
         void visit_function(::HIR::ItemPath p, ::HIR::Function& item) override {
@@ -119,7 +119,7 @@ namespace resolve_ufcs {
             m_current_trait = &trait;
             m_current_trait_path = &p;
             //auto _ = m_resolve.set_cur_trait(p, trait);
-            auto _ = m_resolve.set_impl_generics(trait.m_params);
+            auto _ = m_resolve.set_impl_generics(MetadataType::TraitObject, trait.m_params);
             ::HIR::Visitor::visit_trait(p, trait);
             m_current_trait = nullptr;
             m_in_trait_def = false;
@@ -127,7 +127,7 @@ namespace resolve_ufcs {
         void visit_type_impl(::HIR::TypeImpl& impl) override {
             TRACE_FUNCTION_F("impl" << impl.m_params.fmt_args() << " " << impl.m_type << " (mod=" << impl.m_src_module << ")");
             auto _t = this->push_mod_traits( this->m_crate.get_mod_by_path(Span(), impl.m_src_module) );
-            auto _g = m_resolve.set_impl_generics(impl.m_params);
+            auto _g = m_resolve.set_impl_generics(impl.m_type, impl.m_params);
             m_current_type = &impl.m_type;
             ::HIR::Visitor::visit_type_impl(impl);
             m_current_type = nullptr;
@@ -136,7 +136,7 @@ namespace resolve_ufcs {
             ::HIR::ItemPath    p( impl.m_type, trait_path, impl.m_trait_args );
             TRACE_FUNCTION_F("impl" << impl.m_params.fmt_args() << " " << trait_path << impl.m_trait_args << " for " << impl.m_type << " (mod=" << impl.m_src_module << ")");
             auto _t = this->push_mod_traits( this->m_crate.get_mod_by_path(Span(), impl.m_src_module) );
-            auto _g = m_resolve.set_impl_generics(impl.m_params);
+            auto _g = m_resolve.set_impl_generics(impl.m_type, impl.m_params);
 
             // TODO: Push a bound that `Self: ThisTrait`
             m_current_type = &impl.m_type;
@@ -155,7 +155,7 @@ namespace resolve_ufcs {
             ::HIR::ItemPath    p( impl.m_type, trait_path, impl.m_trait_args );
             TRACE_FUNCTION_F("impl" << impl.m_params.fmt_args() << " " << trait_path << impl.m_trait_args << " for " << impl.m_type << " (mod=" << impl.m_src_module << ")");
             auto _t = this->push_mod_traits( this->m_crate.get_mod_by_path(Span(), impl.m_src_module) );
-            auto _g = m_resolve.set_impl_generics(impl.m_params);
+            auto _g = m_resolve.set_impl_generics(impl.m_type, impl.m_params);
 
 
             // HACK: Expand defaults for parameters in trait names here.
@@ -369,16 +369,6 @@ namespace resolve_ufcs {
             }
             return false;
         }
-        static ::HIR::GenericPath make_generic_path(::HIR::SimplePath sp, const ::HIR::Trait& trait)
-        {
-            auto trait_path_g = ::HIR::GenericPath( mv$(sp) );
-            for(unsigned int i = 0; i < trait.m_params.m_types.size(); i ++ ) {
-                //trait_path_g.m_params.m_types.push_back( ::HIR::TypeRef(trait.m_params.m_types[i].m_name, i) );
-                //trait_path_g.m_params.m_types.push_back( ::HIR::TypeRef() );
-                trait_path_g.m_params.m_types.push_back( trait.m_params.m_types[i].m_default.clone_shallow() );
-            }
-            return trait_path_g;
-        }
         // Locate the item in `pd` and set `pd` to UfcsResolved if found
         // TODO: This code may end up generating paths without the type information they should contain
         bool locate_in_trait_and_set(::HIR::Visitor::PathContext pc, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait,  ::HIR::Path::Data& pd) {
@@ -387,7 +377,7 @@ namespace resolve_ufcs {
             static Span _sp;
             const auto& sp = _sp;
             if( locate_item_in_trait(pc, trait,  pd) ) {
-                pd = get_ufcs_known(mv$(pd.as_UfcsUnknown()), trait_path.clone() /*make_generic_path(trait_path.m_path, trait)*/, trait);
+                pd = get_ufcs_known(mv$(pd.as_UfcsUnknown()), trait_path.clone(), trait);
                 return true;
             }
 
@@ -441,7 +431,7 @@ namespace resolve_ufcs {
             ::HIR::GenericPath  par_trait_path_tmp;
             auto monomorph_gp_if_needed = [&](const ::HIR::GenericPath& tpl)->const ::HIR::GenericPath& {
                 // NOTE: This doesn't monomorph if the parameter set is the same
-                if( monomorphise_genericpath_needed(tpl) && tpl.m_params != trait_path.m_params ) {
+                if( monomorphise_genericpath_needed(tpl) /*&& tpl.m_params != trait_path.m_params*/ ) {
                     DEBUG("- Monomorph " << tpl);
                     return par_trait_path_tmp = monomorph_cb.monomorph_genericpath(sp, tpl, false /*no infer*/);
                 }
@@ -494,6 +484,9 @@ namespace resolve_ufcs {
                     }
                     ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& val) const override {
                         return val;
+                    }
+                    ::HIR::LifetimeRef get_lifetime(const Span& sp, const ::HIR::GenericRef& g) const override {
+                        return HIR::LifetimeRef(g.binding);
                     }
                 };
 
@@ -696,9 +689,7 @@ namespace resolve_ufcs {
                     else
                     {
                         trait_path = ::HIR::GenericPath( m_current_trait_path->get_simple_path() );
-                        for(unsigned int i = 0; i < m_current_trait->m_params.m_types.size(); i ++ ) {
-                            trait_path.m_params.m_types.push_back( ::HIR::TypeRef(m_current_trait->m_params.m_types[i].m_name, i) );
-                        }
+                        trait_path.m_params = m_current_trait->m_params.make_nop_params(0);
                     }
                     if( locate_in_trait_and_set(pc, trait_path, *m_current_trait,  p.m_data) ) {
                         assert(!p.m_data.is_UfcsUnknown());

@@ -9,6 +9,7 @@
 #include <mir/mir.hpp>
 #include <trans/monomorphise.hpp>   // used as a MIR clone
 #include <debug_inner.hpp>
+#include <mir/visit_crate_mir.hpp>
 
 #ifdef _WIN32
 # define NOGDI  // Don't include GDI functions (defines some macros that collide with mrustc ones)
@@ -43,6 +44,7 @@ int main(int argc, char* argv[])
         "Parse",
         "Cleanup",
         "Validate",
+        "Borrow Check",
         "Run Tests",
         });
 
@@ -115,6 +117,49 @@ int main(int argc, char* argv[])
         {
             MIR_CheckCrate(*f.m_crate);
         }
+    }
+
+    {
+        void MIR_BorrowCheck(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path, ::MIR::Function& fcn, const ::HIR::Function::args_t& args, const ::HIR::TypeRef& ret_type);
+        auto ph = DebugTimedPhase("Borrow Check");
+#if 1
+        for(auto& f : test_files)
+        {
+            for(const auto& test : f.m_tests)
+            {
+                if(!opts.filters.empty())
+                {
+                    bool found = false;
+                    for(const auto& f : opts.filters)
+                    {
+                        if( f == test.input_function.m_components.back() )
+                        {
+                            found = true;
+                            break;
+                        }
+                    }
+                    if(!found)
+                    {
+                        continue;
+                    }
+                }
+                const auto& in_fcn = f.m_crate->get_function_by_path(Span(), test.input_function);
+                StaticTraitResolve  resolve(*f.m_crate);
+                // TODO: Generics?
+                MIR_BorrowCheck(resolve, test.input_function, const_cast<MIR::Function&>(*in_fcn.m_code.m_mir), in_fcn.m_args, in_fcn.m_return);
+            }
+        }
+#else
+        for(auto& f : test_files)
+        {
+            auto& crate = *f.m_crate;
+            ::MIR::OuterVisitor    ov(crate, [&](const auto& res, const HIR::ItemPath& p, auto& expr, const auto& args, const auto& ty) {
+                    MIR_BorrowCheck(res, p, *expr.m_mir, args, ty);
+                }
+            );
+            ov.visit_crate( crate );
+        }
+#endif
     }
 
     // Funally run the tests

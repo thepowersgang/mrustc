@@ -898,10 +898,24 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve,
         return true;
         }
     TU_ARMA(Closure, te) {
-        BUG(sp, "Encountered closure type at trans stage - " << ty);
+#if 1
+        //BUG(sp, "Encountered closure type at trans stage - " << ty);
+        return false;
+#else
+        const auto* repr = Target_GetTypeRepr(sp, resolve, ty);
+        if( !repr )
+        {
+            DEBUG("Cannot get type repr for " << ty);
+            return false;
+        }
+        out_size  = repr->size;
+        out_align = repr->align;
+        return true;
+#endif
         }
     TU_ARMA(Generator, te) {
-        BUG(sp, "Encountered generator type at trans stage - " << ty);
+        //BUG(sp, "Encountered generator type at trans stage - " << ty);
+        return false;
         }
     }
     return false;
@@ -941,6 +955,7 @@ namespace {
     {
         const auto& te = ty.data().as_Path();
         const auto& str = *te.binding.as_Struct();
+        // TODO: Wipe lifetimes?
         auto monomorph_cb = MonomorphStatePtr(nullptr, &te.path.m_data.as_Generic().m_params, nullptr);
         auto monomorph = [&](const auto& tpl) {
             return resolve.monomorph_expand(sp, tpl, monomorph_cb);
@@ -2053,6 +2068,17 @@ namespace {
 }
 const TypeRepr* Target_GetTypeRepr(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty)
 {
+#if 0
+    if( const auto* e = ty.data().opt_Closure() ) {
+        if( e->node->m_obj_path_base == HIR::GenericPath() ) {
+            return nullptr;
+        }
+        auto path = e->node->m_obj_path_base.clone();
+        const auto& str = *e->node->m_obj_ptr;
+        //DEBUG(ty << " -> " << path);
+        return Target_GetTypeRepr(sp, resolve, ::HIR::TypeRef::new_path( mv$(path), ::HIR::TypePathBinding::make_Struct(&str) ));
+    }
+#endif
     auto it = s_cache.find(ty);
     if( it != s_cache.end() )
     {

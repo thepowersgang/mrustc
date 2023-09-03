@@ -59,6 +59,7 @@ TAGGED_UNION_EX(ConstGeneric, (), Infer, (
 
 class TypeRef;
 class Trait;
+class GenericParams;
 
 static inline ::std::ostream& operator<<(::std::ostream& os, const Compare& x) {
     switch(x)
@@ -130,12 +131,13 @@ struct SimplePath
 
 struct PathParams
 {
-    //::std::vector<LifetimeRef>  m_lifetimes;
+    ::std::vector<LifetimeRef>  m_lifetimes;
     ::std::vector<TypeRef>  m_types;
     ::std::vector<HIR::ConstGeneric>  m_values;
 
     PathParams();
     PathParams(::HIR::TypeRef );
+    PathParams(::HIR::LifetimeRef );
     PathParams clone() const;
     PathParams(const PathParams&) = delete;
     PathParams& operator=(const PathParams&) = delete;
@@ -151,10 +153,11 @@ struct PathParams
         return !m_types.empty() || !m_values.empty();
     }
 
-    bool operator==(const PathParams& x) const;
-    bool operator!=(const PathParams& x) const { return !(*this == x); }
+    bool operator==(const PathParams& x) const { return ord(x) == OrdEqual; }
+    bool operator!=(const PathParams& x) const { return ord(x) != OrdEqual; }
     bool operator<(const PathParams& x) const { return ord(x) == OrdLess; }
     Ordering ord(const PathParams& x) const {
+        //if(auto cmp = ::ord(m_lifetimes, x.m_lifetimes)) return cmp;
         if(auto cmp = ::ord(m_types, x.m_types)) return cmp;
         if(auto cmp = ::ord(m_values, x.m_values)) return cmp;
         return OrdEqual;
@@ -167,25 +170,23 @@ struct PathParams
 class GenericPath
 {
 public:
+    std::unique_ptr<GenericParams>  m_hrls;
     SimplePath  m_path;
     PathParams  m_params;
 
     GenericPath();
     GenericPath(::HIR::SimplePath sp);
     GenericPath(::HIR::SimplePath sp, ::HIR::PathParams params);
+    GenericPath(::HIR::GenericParams hrls, ::HIR::SimplePath sp, ::HIR::PathParams params);
 
     GenericPath clone() const;
     Compare compare_with_placeholders(const Span& sp, const GenericPath& x, t_cb_resolve_type resolve_placeholder) const;
 
-    bool operator==(const GenericPath& x) const;
-    bool operator!=(const GenericPath& x) const { return !(*this == x); }
+    bool operator==(const GenericPath& x) const { return ord(x) == OrdEqual; }
+    bool operator!=(const GenericPath& x) const { return ord(x) != OrdEqual; }
     bool operator<(const GenericPath& x) const { return ord(x) == OrdLess; }
 
-    Ordering ord(const GenericPath& x) const {
-        auto rv = ::ord(m_path, x.m_path);
-        if(rv != OrdEqual)  return rv;
-        return ::ord(m_params, x.m_params);
-    }
+    Ordering ord(const GenericPath& x) const;
 
     friend ::std::ostream& operator<<(::std::ostream& os, const GenericPath& x);
 };
@@ -240,7 +241,6 @@ public:
     typedef ::std::map< RcString, AtyEqual> assoc_list_t;
 
     GenericPath m_path;
-    ::std::vector< RcString>   m_hrls;
     assoc_list_t    m_type_bounds;
     ::std::map< RcString, AtyBound>  m_trait_bounds;
 
@@ -253,13 +253,7 @@ public:
     bool operator!=(const TraitPath& x) const { return ord(x) != OrdEqual; }
     bool operator<(const TraitPath& x) const { return ord(x) == OrdLess; }
 
-    Ordering ord(const TraitPath& x) const {
-        ORD(m_path, x.m_path);
-        ORD(m_hrls, x.m_hrls);
-        ORD(m_trait_bounds, x.m_trait_bounds);
-        ORD(m_type_bounds , x.m_type_bounds);
-        return OrdEqual;
-    }
+    Ordering ord(const TraitPath& x) const;
 
     friend ::std::ostream& operator<<(::std::ostream& os, const TraitPath& x);
 };

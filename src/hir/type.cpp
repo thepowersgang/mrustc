@@ -79,6 +79,7 @@ void HIR::GenericRef::fmt(std::ostream& os) const
         case 0: os << "I:" << this->idx();  break;
         case 1: os << "M:" << this->idx();  break;
         case 2: os << "P:" << this->idx();  break;
+        case 3: os << "H:" << this->idx();  break;
         default:
             os << this->binding;
             break;
@@ -189,8 +190,10 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
                 os << "+";
             os << tr;
         }
-        if( e.m_lifetime != LifetimeRef::new_static() )
-            os << "+" << e.m_lifetime;
+        if( !e.m_lifetimes.empty() ) {
+            for(const auto& lft : e.m_lifetimes)
+                os << "+" << lft;
+        }
         os << "/*" << e.m_origin << "#" << e.m_index << "*/";
         }
     TU_ARMA(Array, e) {
@@ -206,11 +209,13 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         os << ")";
         }
     TU_ARMA(Borrow, e) {
+        os << "&";
+        os << e.lifetime << " ";
         switch(e.type)
         {
-        case ::HIR::BorrowType::Shared: os << "&";  break;
-        case ::HIR::BorrowType::Unique: os << "&mut ";  break;
-        case ::HIR::BorrowType::Owned:  os << "&move "; break;
+        case ::HIR::BorrowType::Shared: os << "";  break;
+        case ::HIR::BorrowType::Unique: os << "mut ";  break;
+        case ::HIR::BorrowType::Owned:  os << "move "; break;
         }
         os << e.inner;
         }
@@ -224,6 +229,9 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         os << e.inner;
         }
     TU_ARMA(Function, e) {
+        if( !e.hrls.m_lifetimes.empty() ) {
+            os << "for" << e.hrls.fmt_args() << " ";
+        }
         if( e.is_unsafe ) {
             os << "unsafe ";
         }
@@ -237,10 +245,6 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         }
     TU_ARMA(Closure, e) {
         os << "closure["<<e.node<<"]";
-        os << "(";
-        for(const auto& t : e.m_arg_types)
-            os << t << ", ";
-        os << ") -> " << e.m_rettype;
         }
     TU_ARMA(Generator, e) {
         os << "generator["<<e.node<<"]";
@@ -252,30 +256,30 @@ bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const
 {
     if( m_ptr == x.m_ptr )
         return true;
-    
+
     if( !m_ptr || !x.m_ptr )
         return false;
     if( data().tag() != x.data().tag() )
         return false;
 
-    TU_MATCH(::HIR::TypeData, (data(), x.data()), (te, xe),
-    (Infer,
+    TU_MATCH_HDRA( (data(), x.data()), {)
+    TU_ARMA(Infer, te, xe) {
         // TODO: Should comparing inferrence vars be an error?
         return te.index == xe.index;
-        ),
-    (Diverge,
+        }
+    TU_ARMA(Diverge, te, xe) {
         return true;
-        ),
-    (Primitive,
+        }
+    TU_ARMA(Primitive, te, xe) {
         return te == xe;
-        ),
-    (Path,
+        }
+    TU_ARMA(Path, te, xe) {
         return te.path == xe.path;
-        ),
-    (Generic,
-        return te.name == xe.name && te.binding == xe.binding;
-        ),
-    (TraitObject,
+        }
+    TU_ARMA(Generic, te, xe) {
+        return /*te.name == xe.name &&*/ te.binding == xe.binding;
+        }
+    TU_ARMA(TraitObject, te, xe) {
         if( te.m_trait != xe.m_trait )
             return false;
         if( te.m_markers.size() != xe.m_markers.size() )
@@ -284,22 +288,23 @@ bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const
             if( te.m_markers[i] != xe.m_markers[i] )
                 return false;
         }
-        return te.m_lifetime == xe.m_lifetime;
-        ),
-    (ErasedType,
+        //return te.m_lifetime == xe.m_lifetime;
+        return true;
+        }
+    TU_ARMA(ErasedType, te, xe) {
         return te.m_origin == xe.m_origin;
-        ),
-    (Array,
+        }
+    TU_ARMA(Array, te, xe) {
         if( te.inner != xe.inner )
             return false;
         if( xe.size != te.size )
             return false;
         return true;
-        ),
-    (Slice,
+        }
+    TU_ARMA(Slice, te, xe) {
         return te.inner == xe.inner;
-        ),
-    (Tuple,
+        }
+    TU_ARMA(Tuple, te, xe) {
         if( te.size() != xe.size() )
             return false;
         for(unsigned int i = 0; i < te.size(); i ++ ) {
@@ -307,18 +312,20 @@ bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const
                 return false;
         }
         return true;
-        ),
-    (Borrow,
+        }
+    TU_ARMA(Borrow, te, xe) {
+        if( te.type != xe.type )
+            return false;
+        //if( te.lifetime != xe.lifetime )
+        //    return false;
+        return te.inner == xe.inner;
+        }
+    TU_ARMA(Pointer, te, xe) {
         if( te.type != xe.type )
             return false;
         return te.inner == xe.inner;
-        ),
-    (Pointer,
-        if( te.type != xe.type )
-            return false;
-        return te.inner == xe.inner;
-        ),
-    (Function,
+        }
+    TU_ARMA(Function, te, xe) {
         if( te.is_unsafe != xe.is_unsafe )
             return false;
         if( te.m_abi != xe.m_abi )
@@ -330,17 +337,17 @@ bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const
                 return false;
         }
         return te.m_rettype == xe.m_rettype;
-        ),
-    (Closure,
+        }
+    TU_ARMA(Closure, te, xe) {
         if( te.node != xe.node )
             return false;
         //assert( te.m_rettype == xe.m_rettype );
         return true;
-        ),
-    (Generator,
+        }
+    TU_ARMA(Generator, te, xe) {
         return te.node == xe.node;
-        )
-    )
+        }
+    }
     throw "";
 }
 Ordering HIR::TypeRef::ord(const ::HIR::TypeRef& x) const
@@ -367,7 +374,7 @@ Ordering HIR::TypeRef::ord(const ::HIR::TypeRef& x) const
         return ::ord( te.path, xe.path );
         ),
     (Generic,
-        ORD(te.name, xe.name);
+        //ORD(te.name, xe.name);
         if( (rv = ::ord(te.binding, xe.binding)) != OrdEqual )
             return rv;
         return OrdEqual;
@@ -375,8 +382,8 @@ Ordering HIR::TypeRef::ord(const ::HIR::TypeRef& x) const
     (TraitObject,
         ORD(te.m_trait, xe.m_trait);
         ORD(te.m_markers, xe.m_markers);
+        //ORD(te.m_lifetime, xe.m_lifetime);
         return OrdEqual;
-        //return ::ord(te.m_lifetime, xe.m_lifetime);
         ),
     (ErasedType,
         ORD(te.m_origin, xe.m_origin);
@@ -810,6 +817,11 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         if( it_l != te.m_trait.m_type_bounds.end() || it_r != xe.m_trait.m_type_bounds.end() ) {
             return Compare::Unequal;
         }
+
+        if(te.m_lifetime.is_param()) {
+            /*cmp &= */callback.match_lft(HIR::GenericRef("", te.m_lifetime.binding), xe.m_lifetime);
+        }
+
         return cmp;
         }
     TU_ARMA(ErasedType, te, xe) {
@@ -827,6 +839,20 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
             }
             else {
                 rv &= match_values(sp, *tse, xe.size.as_Unevaluated(), callback );
+            }
+        }
+        else if( const auto* xse = xe.size.opt_Unevaluated() )
+        {
+            // `te.size` must be known here, all we need to handle is `Infer`?
+            if( xse->is_Infer() ) {
+                rv &= Compare::Fuzzy;
+            }
+            else {
+                ASSERT_BUG(sp, !xse->is_Evaluated(), "TODO: Handle " << te.size << " ?= " << xe.size);
+                // - Evaluated? (TODO - could use `EncodedLiteralPtr( EncodedLiteral::make_usize(te.size.as_Known()) )`)
+                // - Generic - could only match with another generic, i.e. `tse` must have been `Unevaluated,Generic`
+                // - Unevaluated - could only match with another Unevaluated, i.e. `tse` must have been `Unevaluated,Unevaluated`
+                return Compare::Unequal;
             }
         }
         else if( te.size != xe.size ) {
@@ -857,7 +883,16 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
     TU_ARMA(Borrow, te, xe) {
         if( te.type != xe.type )
             return Compare::Unequal;
-        return te.inner.match_test_generics_fuzz( sp, xe.inner, resolve_placeholder, callback );
+        auto rv = Compare::Equal;
+        if( te.lifetime.is_param() ) {
+            /*rv &=*/ callback.match_lft(te.lifetime.as_param(), xe.lifetime);
+        }
+        else {
+            //if( te.lifetime != xe.lifetime )
+            //    return Compare::Unequal;
+        }
+        rv &= te.inner.match_test_generics_fuzz( sp, xe.inner, resolve_placeholder, callback );
+        return rv;
         }
     TU_ARMA(Function, te, xe) {
         if( te.is_unsafe != xe.is_unsafe )
@@ -972,7 +1007,7 @@ const ::HIR::TraitMarkings* HIR::TypePathBinding::get_trait_markings() const
             e.m_origin.clone(), e.m_index,
             e.m_is_sized,
             mv$(traits),
-            e.m_lifetime
+            e.m_lifetimes
             }) );
         }
     TU_ARMA(Array, e) {
@@ -994,7 +1029,8 @@ const ::HIR::TraitMarkings* HIR::TypePathBinding::get_trait_markings() const
         return ::HIR::TypeRef( TypeData::make_Pointer({e.type, e.inner.clone()}) );
         }
     TU_ARMA(Function, e) {
-        FunctionType    ft {
+        TypeData_FunctionPointer ft {
+            e.hrls.clone(),
             e.is_unsafe,
             e.m_abi,
             e.m_rettype.clone(),
@@ -1007,9 +1043,9 @@ const ::HIR::TraitMarkings* HIR::TypePathBinding::get_trait_markings() const
     TU_ARMA(Closure, e) {
         TypeData::Data_Closure  oe;
         oe.node = e.node;
-        oe.m_rettype = e.m_rettype.clone();
-        for(const auto& a : e.m_arg_types)
-            oe.m_arg_types.push_back( a.clone() );
+        //oe.m_closure_rettype = e.m_closure_rettype.clone();
+        //for(const auto& a : e.m_closure_arg_types)
+        //    oe.m_closure_arg_types.push_back( a.clone() );
         return ::HIR::TypeRef(TypeData::make_Closure( mv$(oe) ));
         }
     TU_ARMA(Generator, e) {
@@ -1225,9 +1261,21 @@ const ::HIR::TraitMarkings* HIR::TypePathBinding::get_trait_markings() const
         //TODO(sp, "ErasedType");
         }
     TU_ARMA(Array, le, re) {
-        if( le.size != re.size )
+        auto rv = Compare::Equal;
+        if( le.size.is_Unevaluated() && le.size.as_Unevaluated().is_Infer() ) {
+            rv &= Compare::Fuzzy;
+        }
+        else if( re.size.is_Unevaluated() && re.size.as_Unevaluated().is_Infer() ) {
+            rv &= Compare::Fuzzy;
+        }
+        else if( le.size != re.size ) {
             return Compare::Unequal;
-        return le.inner.compare_with_placeholders(sp, re.inner, resolve_placeholder);
+        }
+        else {
+            // Sizes equal
+        }
+        rv &= le.inner.compare_with_placeholders(sp, re.inner, resolve_placeholder);
+        return rv;
         }
     TU_ARMA(Slice, le, re) {
         return le.inner.compare_with_placeholders(sp, re.inner, resolve_placeholder);
@@ -1272,9 +1320,10 @@ const ::HIR::TraitMarkings* HIR::TypePathBinding::get_trait_markings() const
         return rv;
         }
     TU_ARMA(Closure, le, re) {
+#if 0
         if( le.node != re.node )
             return Compare::Unequal;
-        if( le.m_arg_types.size() != re.m_arg_types.size() )
+        if( le.m_closure_arg_types.size() != re.m_closure_arg_types.size() )
             return Compare::Unequal;
         auto rv = Compare::Equal;
         for( unsigned int i = 0; i < le.m_arg_types.size(); i ++ )
@@ -1285,6 +1334,11 @@ const ::HIR::TraitMarkings* HIR::TypePathBinding::get_trait_markings() const
         }
         rv &= le.m_rettype.compare_with_placeholders( sp, re.m_rettype, resolve_placeholder );
         return rv;
+#else
+        if( le.node != re.node )
+            return Compare::Unequal;
+        return Compare::Equal;
+#endif
         }
     TU_ARMA(Generator, le, re) {
         if( le.node != re.node )

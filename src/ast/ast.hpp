@@ -233,6 +233,7 @@ class Trait
 {
     GenericParams  m_params;
     ::std::vector< Spanned<Type_TraitPath> > m_supertraits;
+    ::std::vector< Spanned<LifetimeRef> > m_lifetimes;
 
     bool m_is_marker;
     bool m_is_unsafe;
@@ -242,9 +243,10 @@ public:
         m_is_marker(false),
         m_is_unsafe(false)
     {}
-    Trait(GenericParams params, ::std::vector< Spanned<Type_TraitPath> > supertraits):
+    Trait(GenericParams params, ::std::vector< Spanned<Type_TraitPath> > supertraits, ::std::vector< Spanned<LifetimeRef> > lifetimes):
         m_params( mv$(params) ),
         m_supertraits( mv$(supertraits) ),
+        m_lifetimes( mv$(lifetimes) ),
         m_is_marker(false),
         m_is_unsafe(false)
     {
@@ -254,6 +256,8 @@ public:
           GenericParams& params()       { return m_params; }
     const ::std::vector<Spanned<Type_TraitPath> >& supertraits() const { return m_supertraits; }
           ::std::vector<Spanned<Type_TraitPath> >& supertraits()       { return m_supertraits; }
+    const ::std::vector<Spanned<LifetimeRef> >& lifetimes() const { return m_lifetimes; }
+          ::std::vector<Spanned<LifetimeRef> >& lifetimes()       { return m_lifetimes; }
 
     const NamedList<Item>& items() const { return m_items; }
           NamedList<Item>& items()       { return m_items; }
@@ -399,9 +403,8 @@ public:
     StructData  m_data;
     struct Markings {
 
-        //Markings() {
-        //    memset(this, 0, sizeof(*this));
-        //}
+        Markings() {
+        }
 
         enum class Repr {
             Rust,

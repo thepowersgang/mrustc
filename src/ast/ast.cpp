@@ -206,7 +206,7 @@ bool Trait::has_named_item(const RcString& name, bool& out_is_fcn) const
 
 Trait Trait::clone() const
 {
-    auto rv = Trait(m_params.clone(), m_supertraits);
+    auto rv = Trait(m_params.clone(), m_supertraits, m_lifetimes);
     for(const auto& item : m_items)
     {
         rv.m_items.push_back( Named<Item> { item.span, item.attrs.clone(), item.is_pub, item.name, item.data.clone() } );
@@ -461,7 +461,7 @@ Item Item::clone() const
     {
         os << "for<";
         for(const auto& l : x.m_lifetimes)
-            os << "'" << l << ",";
+            os << l << ",";
         os << "> ";
     }
     return os;
@@ -505,10 +505,10 @@ std::ostream& operator<<(std::ostream& os, const GenericParam& x)
         os << "/*-*/";
         }
     TU_ARMA(Lifetime, ent) {
-        os << "'" << ent.test << ": '" << ent.bound;
+        os << ent.test << ": " << ent.bound;
         }
     TU_ARMA(TypeLifetime, ent) {
-        os << ent.type << ": '" << ent.bound;
+        os << ent.type << ": " << ent.bound;
         }
     TU_ARMA(IsTrait, ent) {
         os << ent.outer_hrbs << ent.type << ": " << ent.inner_hrbs << ent.trait;

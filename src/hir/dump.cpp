@@ -96,7 +96,7 @@ namespace {
         }
         void visit_trait(::HIR::ItemPath p, ::HIR::Trait& item) override
         {
-            m_os << indent() << "trait " << p.get_name() << item.m_params.fmt_args() << "\n";
+            m_os << indent() << "trait " << p.get_name() << item.m_params.fmt_args() << " : " << item.m_lifetime << "\n";
             if( ! item.m_parent_traits.empty() )
             {
                 m_os << indent() << "  " << ": ";
@@ -279,21 +279,26 @@ namespace {
                 m_os << indent() << "#[link_name=\"" << item.m_linkage.name << "\"]\n";
             if( item.m_value )
             {
-                m_os << indent() << "static " << p.get_name() << ": " << item.m_type << " = " << item.m_value_res << ";\n";
+                m_os << indent() << "static " << p.get_name() << item.m_params.fmt_args() << ": " << item.m_type << " = " << item.m_value_res;
             }
             else if( item.m_value_generated )
             {
-                m_os << indent() << "static " << p.get_name() << ": " << item.m_type << " = /*magic*/ " << item.m_value_res << ";\n";
+                m_os << indent() << "static " << p.get_name() << item.m_params.fmt_args() << ": " << item.m_type << " = /*magic*/ " << item.m_value_res;
             }
             else
             {
-                m_os << indent() << "extern static " << p.get_name() << ": " << item.m_type << ";\n";
+                m_os << indent() << "extern static " << p.get_name() << ": " << item.m_type;
             }
+            if( ! item.m_params.m_bounds.empty() )
+            {
+                m_os << indent() << " " << item.m_params.fmt_bounds() << "\n";
+            }
+            m_os << ";\n";
         }
         void visit_constant(::HIR::ItemPath p, ::HIR::Constant& item) override
         {
             m_os << indent() << "const " << p.get_name() << ": " << item.m_type << " = " << item.m_value_res;
-            if( item.m_value && item.m_value_state != HIR::Constant::ValueState::Known )
+            if( item.m_value /*&& item.m_value_state != HIR::Constant::ValueState::Known*/ )
             {
                 m_os << " /*= ";
                 item.m_value->visit(*this);
@@ -337,6 +342,10 @@ namespace {
             return false;
         }
 
+        void visit_node_ptr(::HIR::ExprNodeP& node_ptr) override {
+            HIR::ExprVisitor::visit_node_ptr(node_ptr);
+            m_os << "/*: " << node_ptr->m_res_type << " */";
+        }
         void visit(::HIR::ExprNode_Block& node) override
         {
             m_os << "{\n";
@@ -608,6 +617,9 @@ namespace {
                 m_os << ", ";
             }
             m_os << ")";
+            if( !node.m_cache.m_arg_types.empty() ) {
+                m_os << "/*CACHE:" << node.m_cache.m_arg_types << "*/";
+            }
         }
         void visit(::HIR::ExprNode_Field& node) override
         {

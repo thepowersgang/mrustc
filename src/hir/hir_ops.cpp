@@ -472,7 +472,7 @@ namespace {
 }
 
 namespace {
-    void add_bound_from_trait(::std::vector< ::HIR::GenericBound>& rv,  const ::HIR::TypeRef& type, const ::HIR::TraitPath& cur_trait)
+    void add_bound_from_trait(::std::vector< ::HIR::GenericBound>& rv, const std::unique_ptr<HIR::GenericParams>& hrtbs, const ::HIR::TypeRef& type, const ::HIR::TraitPath& cur_trait)
     {
         static Span sp;
         assert( cur_trait.m_trait_ptr );
@@ -482,9 +482,9 @@ namespace {
         for(const auto& trait_path_raw : tr.m_all_parent_traits)
         {
             // 1. Monomorph
-            auto trait_path_mono = monomorph_cb.monomorph_traitpath(sp, trait_path_raw, false);
+            auto trait_path_mono = monomorph_cb.monomorph_traitpath(sp, trait_path_raw, false, false);
             // 2. Add
-            rv.push_back( ::HIR::GenericBound::make_TraitBound({ type.clone(), mv$(trait_path_mono) }) );
+            rv.push_back( ::HIR::GenericBound::make_TraitBound({ hrtbs ? box$(hrtbs->clone()) : nullptr, type.clone(), mv$(trait_path_mono) }) );
         }
 
         // TODO: Add traits from `Self: Foo` bounds?
@@ -495,21 +495,10 @@ namespace {
         ::std::vector< ::HIR::GenericBound >    rv;
         for(const auto& b : bounds)
         {
-            TU_MATCHA( (b), (be),
-            (Lifetime,
-                rv.push_back( ::HIR::GenericBound(be) );
-                ),
-            (TypeLifetime,
-                rv.push_back( ::HIR::GenericBound::make_TypeLifetime({ be.type.clone(), be.valid_for }) );
-                ),
-            (TraitBound,
-                rv.push_back( ::HIR::GenericBound::make_TraitBound({ be.type.clone(), be.trait.clone() }) );
-                add_bound_from_trait(rv,  be.type, be.trait);
-                ),
-            (TypeEquality,
-                rv.push_back( ::HIR::GenericBound::make_TypeEquality({ be.type.clone(), be.other_type.clone() }) );
-                )
-            )
+            rv.push_back(b.clone());
+            if(const auto* be = b.opt_TraitBound()) {
+                add_bound_from_trait(rv, be->hrtbs, be->type, be->trait);
+            }
         }
         ::std::sort(rv.begin(), rv.end(), [](const auto& a, const auto& b){ return ::ord(a,b) == OrdLess; });
         return rv;
@@ -666,6 +655,9 @@ namespace {
         }
         ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& g) const override {
             TODO(Span(), "Matcher::get_value " << g);
+        }
+        ::HIR::LifetimeRef get_lifetime(const Span& sp, const ::HIR::GenericRef& g) const override {
+            TODO(Span(), "Matcher::get_lifetime " << g);
         }
 
 
@@ -892,7 +884,7 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
                 return in;
             }
             else {
-                tmp = ms.monomorph_traitpath(sp, in, true);
+                tmp = ms.monomorph_traitpath(sp, in, true, false);
                 // TODO: EAT?
                 return tmp;
             }
@@ -1296,7 +1288,7 @@ bool ::HIR::Crate::find_type_impls(const ::HIR::TypeRef& type, t_cb_resolve_type
     return false;
 }
 
-const ::MIR::Function* HIR::Crate::get_or_gen_mir(const ::HIR::ItemPath& ip, const ::HIR::ExprPtr& ep, const ::HIR::Function::args_t& args, const ::HIR::TypeRef& ret_ty) const
+const ::MIR::Function* HIR::Crate::get_or_gen_mir(const ::HIR::ItemPath& ip, const ::HIR::ExprPtr& ep, const ::HIR::Function::args_t& args, ::HIR::TypeRef& ret_ty) const
 {
     if( !ep )
     {
@@ -1341,11 +1333,27 @@ const ::MIR::Function* HIR::Crate::get_or_gen_mir(const ::HIR::ItemPath& ip, con
                 ms.m_mod_paths.push_back(ep.m_state->m_mod_path);
                 Typecheck_Code(ms, const_cast<::HIR::Function::args_t&>(args), ret_ty, ep_mut);
                 //Debug_SetStagePre("Expand HIR Annotate");
-                HIR_Expand_AnnotateUsage_Expr(*this, ep_mut);
-                // NOTE: Disabled due to challenges in making new statics at this stage
-                //HIR_Expand_StaticBorrowConstants_Expr(*this, ep_mut);
+                HIR_Expand_AnnotateUsage_Expr(*this, ip, ep_mut);
+                //Debug_SetStagePre("Expand HIR Statics Mark");
+                HIR_Expand_StaticBorrowConstants_Mark_Expr(*this, ip, ep_mut);
+            }
+            if( ep.m_state->stage < ::HIR::ExprState::Stage::Sbc )
+            {
+                if( ep.m_state->stage == ::HIR::ExprState::Stage::SbcRequest )
+                    ERROR(Span(), E0000, "Loop in constant evaluation");
+                ep.m_state->stage = ::HIR::ExprState::Stage::SbcRequest;
+                //Debug_SetStagePre("Expand HIR Lifetimes");
+                HIR_Expand_LifetimeInfer_Expr(*this, ip, args, ret_ty, ep_mut);
                 //Debug_SetStagePre("Expand HIR Closures");
-                HIR_Expand_Closures_Expr(*this, ep_mut);
+                HIR_Expand_Closures_Expr(*this, ret_ty, ep_mut);
+                //Debug_SetStagePre("Expand HIR Statics");
+                HIR_Expand_StaticBorrowConstants_Expr(*this, ip, ep_mut);
+            }
+            if( ep.m_state->stage < ::HIR::ExprState::Stage::Expand )
+            {
+                if( ep.m_state->stage == ::HIR::ExprState::Stage::ExpandRequest )
+                    ERROR(Span(), E0000, "Loop in constant evaluation");
+                ep.m_state->stage = ::HIR::ExprState::Stage::ExpandRequest;
                 //Debug_SetStagePre("Expand HIR Calls");
                 HIR_Expand_UfcsEverything_Expr(*this, ep_mut);
                 //Debug_SetStagePre("Expand HIR Reborrows");
@@ -1354,7 +1362,7 @@ const ::MIR::Function* HIR::Crate::get_or_gen_mir(const ::HIR::ItemPath& ip, con
                 //HIR_Expand_ErasedType(*this, ep_mut);    // - Maybe?
                 //Typecheck_Expressions_Validate(*hir_crate);
 
-                ep.m_state->stage = ::HIR::ExprState::Stage::Typecheck;
+                ep.m_state->stage = ::HIR::ExprState::Stage::Expand;
             }
             // Generate MIR
             if( ep.m_state->stage < ::HIR::ExprState::Stage::Mir )

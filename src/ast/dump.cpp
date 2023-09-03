@@ -1207,6 +1207,17 @@ void RustPrinter::handle_enum(const AST::Enum& s)
 void RustPrinter::handle_trait(const AST::Trait& s)
 {
     print_params(s.params());
+    {
+        char c = ':';
+        for(const auto& lft : s.lifetimes()) {
+            m_os << " " << c << " " << lft.ent;
+            c = '+';
+        }
+        for(const auto& t : s.supertraits()) {
+            m_os << " " << c << " " << t.ent.hrbs << *t.ent.path;
+            c = '+';
+        }
+    }
     m_os << "\n";
     print_bounds(s.params());
 

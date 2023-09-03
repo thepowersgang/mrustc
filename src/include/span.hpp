@@ -117,6 +117,7 @@ Spanned<T> make_spanned(Span sp, T val) {
 
 #define ERROR(span, code, msg)  do { ::Span(span).error(code, [&](::std::ostream& os) { os << msg; }); throw ::std::runtime_error("Error fell through" #code); } while(0)
 #define WARNING(span, code, msg)  do { ::Span(span).warning(code, [&](::std::ostream& os) { os << msg; }); } while(0)
+#define NOTE(span, msg)  do { ::Span(span).note([&](::std::ostream& os) { os << msg; }); } while(0)
 #define BUG(span, msg)  do { ::Span(span).bug([&](::std::ostream& os) { os << __FILE__ << ":" << __LINE__ << ": " << msg; }); throw ::std::runtime_error("Bug fell through"); } while(0)
 #define TODO(span, msg)  do { const char* __TODO_func = __func__; ::Span(span).bug([&](::std::ostream& os) { os << __FILE__ << ":" << __LINE__ << ": TODO: " << __TODO_func << " - " << msg; }); throw ::std::runtime_error("Bug (todo) fell through"); } while(0)
 

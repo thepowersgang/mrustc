@@ -842,12 +842,13 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::AttributeList& meta_items
 
     // Trait bounds "trait Trait : 'lifetime + OtherTrait + OtherTrait2"
     ::std::vector<Spanned<Type_TraitPath> >    supertraits;
+    ::std::vector<Spanned<AST::LifetimeRef> >    lifetimes;
     if(tok.type() == TOK_COLON)
     {
         // TODO: Just add these as `where Self: <foo>` (would that break typecheck?)
         do {
             if( GET_TOK(tok, lex) == TOK_LIFETIME ) {
-                params.add_bound(::AST::GenericBound::make_TypeLifetime({ TypeRef(lex.point_span(), "Self"), ::AST::LifetimeRef(tok.ident()) }));
+                lifetimes.push_back( GET_SPANNED(AST::LifetimeRef, lex, ::AST::LifetimeRef(tok.ident()) ) );
             }
             else if( tok.type() == TOK_BRACE_OPEN ) {
                 break;
@@ -869,7 +870,7 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::AttributeList& meta_items
     }
 
 
-    AST::Trait trait( mv$(params), mv$(supertraits) );
+    AST::Trait trait( mv$(params), mv$(supertraits), mv$(lifetimes) );
 
     CHECK_TOK(tok, TOK_BRACE_OPEN);
     while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )

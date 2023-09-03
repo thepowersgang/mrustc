@@ -1,0 +1,131 @@
+== Current Design ==
+- `HIR::GenericPath` has a HRL blob attached
+
+
+
+== Running notes ==
+mrustc vtable types and paths with HRTBs/HRLs.
+
+`dyn Fn(&T)->&U` becomes `dyn for<'a> Fn<(&'a T,),Output=&'a U>`
+- Lifetime must be kept generic until method invoke.
+- OR, just ignore those lifetime params completely - the params end up in the vtable's `for<'a> fn(self: &Self, arg: (&'a T,)) -> &'a U`
+
+
+VTable type needs the HRL present? Maybe it can just be an unused lifetime
+- Currently, vtables are normal structs with hidden names
+- Could be a magic associated type that has no name?
+  > Need to get the fields of the type.
+  > More custom code?
+- So, a struct with function pointers that use the HRLs
+  > The function pointers could have the sensible lifetime annotations for the call...
+  > But then how do they match the trait's path params?
+  > The trait/vtable path still needs HRLs.
+
+What about the vtable path? (Currently an associated static)
+- Again, could stay as that magic path?
+- Needs the HRLs, but those could be in the UfcsKnown?
+
+BUT, what happens when it's used?
+- This problem always exists, at use-time the HRLs need to be expanded.
+
+
+```mir
+fn foo(input: &'_ dyn for<'a> Fn<(&'a (i32,i32),),Output=&'a i32>)
+{
+	let temp1: (i32,i32);
+	let vtable: for<'a> Fn#vtable<(&'a (i32,i32),), &'a i32>;
+	let ptr: & ();
+	bb0: {
+		vtable = DSTMETA input;
+		ptr = DSTPTR input;
+		temp1 = (1i32,2i32,);
+		borrow = CALL (vtable*.2)(ptr, &temp1) goto bb1 else bb_panic;	// Here is where the lifetimes need to be expanded
+	}
+	bb1: {
+		temp1 = (3i32,4i32,);
+		borrow = CALL (vtable*.2)(ptr, &temp1) goto bb2 else bb_panic;	// Here is where the lifetimes need to be expanded
+	}
+	bb2: {
+		return;
+	}
+}
+```
+
+```rust
+struct Fn#vtable<Args, Output>
+{
+	vtable_common: VtableCommon,
+	call: fn(&(), Args) -> Output,
+}
+```
+```rust
+struct for<'a>  Fn#vtable<(&'a (i32,i32),), &'a i32>
+{
+	vtable_common: VtableCommon,
+	call: fn(&self, (&'a (i32,i32),)) -> &'a i32,
+}
+
+struct Fn#vtable<'a, (&'a (i32,i32),), &'a i32>
+{
+	vtable_common: VtableCommon,
+	call: for<'a> fn(&self, (&'a (i32,i32),)) -> &'a i32,
+}
+```
+
+
+Challenge: Two layers of HRLs present (one in the vtable path, the other within the function pointer)
+- 
+```rust
+trait Foo<A>
+{
+	type Output1;
+	type Output2;
+	fn foo(&self, v: A) -> (&Output1, Output2);
+}
+struct Foo#vtable<Args, Output1,Output2>
+{
+	vtable_common: VtableCommon,
+	call: for<'s> foo(&'s (), Args) -> (&'s Output1, Output2),
+}
+struct for<'a> Foo#vtable<(&'a (i32,i32),), u32, &'a i32>
+{
+	vtable_common: VtableCommon,
+	call: for<'s> foo(&'s (), (&'a (i32,i32),)) -> (&'s u32, &'a i32),
+}
+```
+
+Generalised issue, two layers of function pointers.
+- This requires each generic reference to also point at the target generic block
+  - Option: A relative index - this breaks with type inference/expansion?
+    - TODO: Example of breakage.
+  - Option: Direct reference (shared pointer, or a global block identifer)
+    - Global ID would need to have the crate ID and a within-crate ID, but how would that handle function pointers properly?
+    - I guess shared pointers?
+  - Any special handling needed for cloned HRL blocks?
+  - Option: Direct reference #2
+    - A global reference number, never cloned
+
+General solution
+- Add an ID (runtime allocated) to every `HIR::GenericParams`
+  - This ID _could_ be globally unique (allocated per crate, and include a per-crate ID)
+  - Or, just have a global pool and compact/map during writeout/read
+  - Want the ID to be small-ish? `GenericRef` is currently a `RcString` (single pointer) plus a `u32`
+    - It's usually used in enums with three pointes (e.g. vector/string)
+    - Adding another `u32` shouldn't have much (or any) impact.
+- Whenever expanding generics, search up a stack for the relevant ID
+
+
+
+ISSUE: Two layers of HRLS on a generic bound
+> Is that legal in rustc?
+> it is not! "error[E0316]: nested quantification of lifetimes"
+```rust
+trait Bar<'a> {
+    fn get(&self) -> &'a i32;
+}
+
+struct Foo<T>(T)
+where
+    for<'a> &'a T: for<'b> Bar<'b>
+;
+```
