@@ -7165,7 +7165,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
 
     auto root_ptr = expr.into_unique();
     assert(!ms.m_mod_paths.empty());
-    Context context { ms.m_crate, ms.m_impl_generics, ms.m_item_generics, ms.m_mod_paths.back(), ms.m_current_trait };
+    Context context { ms.m_crate, ms.m_current_trait != nullptr && ms.m_is_trait_def, ms.m_impl_generics, ms.m_item_generics, ms.m_mod_paths.back(), ms.m_current_trait };
 
     // - Build up ruleset from node tree
     Typecheck_Code_CS__EnumerateRules(context, ms, args, result_type, expr, root_ptr);

@@ -9,6 +9,7 @@
 #include <span.hpp>
 #include "expr.hpp" // Hack for cloning array types
 #include <cstdint>
+#include "../hir_typeck/monomorph.hpp"
 
 namespace HIR {
 
@@ -965,6 +966,18 @@ const ::HIR::TraitMarkings* HIR::TypePathBinding::get_trait_markings() const
     return markings_ptr;
 }
 
+HIR::TypeMapping HIR::TypeMapping::clone() const
+{
+    HIR::TypeMapping    rv;
+    rv.self = self.clone();
+    rv.impl = impl.clone();
+    rv.item = item.clone();
+    return rv;
+}
+MonomorphStatePtr HIR::TypeMapping::get_ms() const {
+    return MonomorphStatePtr(self == HIR::TypeRef() ? nullptr : &self, &impl, &item);
+}
+
 ::HIR::TypeRef HIR::TypeRef::clone() const
 {
     return HIR::TypeRef(*this);
@@ -1041,16 +1054,17 @@ const ::HIR::TraitMarkings* HIR::TypePathBinding::get_trait_markings() const
         return ::HIR::TypeRef(TypeData::make_Function( mv$(ft) ));
         }
     TU_ARMA(Closure, e) {
+        assert(e.params);
         TypeData::Data_Closure  oe;
         oe.node = e.node;
-        //oe.m_closure_rettype = e.m_closure_rettype.clone();
-        //for(const auto& a : e.m_closure_arg_types)
-        //    oe.m_closure_arg_types.push_back( a.clone() );
+        oe.params = box$(e.params->clone());
         return ::HIR::TypeRef(TypeData::make_Closure( mv$(oe) ));
         }
     TU_ARMA(Generator, e) {
+        assert(e.params);
         TypeData::Data_Generator    oe;
         oe.node = e.node;
+        oe.params = box$(e.params->clone());
         return ::HIR::TypeRef(TypeData::make_Generator( mv$(oe) ));
         }
     }

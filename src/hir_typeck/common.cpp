@@ -281,6 +281,17 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
     return v.visit_type(tpl);
 }
 
+namespace {
+    HIR::TypeMapping monomorph_type_mapping(const Monomorphiser& m, const Span& sp, const HIR::TypeMapping& tpl, bool allow_infer) {
+        HIR::TypeMapping    rv;
+        if( tpl.self != HIR::TypeRef() ) {
+            rv.self = m.monomorph_type(sp, tpl.self, allow_infer);
+        }
+        rv.impl = m.monomorph_path_params(sp, tpl.impl, allow_infer);
+        rv.item = m.monomorph_path_params(sp, tpl.item, allow_infer);
+        return rv;
+    }
+}
 
 ::HIR::TypeRef Monomorphiser::monomorph_type(const Span& sp, const ::HIR::TypeRef& tpl, bool allow_infer/*=true*/) const
 {
@@ -376,11 +387,13 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
     TU_ARMA(Closure, e) {
         ::HIR::TypeData::Data_Closure  oe;
         oe.node = e.node;
+        oe.params = box$(monomorph_type_mapping(*this, sp, *e.params, allow_infer));
         return ::HIR::TypeRef( mv$(oe) );
         }
     TU_ARMA(Generator, e) {
         ::HIR::TypeData::Data_Generator oe;
         oe.node = e.node;
+        oe.params = box$(monomorph_type_mapping(*this, sp, *e.params, allow_infer));
         return ::HIR::TypeRef( mv$(oe) );
         }
     }
@@ -625,6 +638,15 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
     }
     throw "";
 }
+::HIR::TypeMapping clone_type_with__tm(const Span& sp, const ::HIR::TypeMapping& tpl, t_cb_clone_ty callback) {
+    ::HIR::TypeMapping  rv;
+    if( rv.self != HIR::TypeRef() ) {
+        rv.self = clone_ty_with(sp, rv.self, callback);
+    }
+    rv.impl = clone_path_params_with(sp, rv.impl, callback);
+    rv.item = clone_path_params_with(sp, rv.item, callback);
+    return rv;
+}
 ::HIR::TypeRef clone_ty_with(const Span& sp, const ::HIR::TypeRef& tpl, t_cb_clone_ty callback)
 {
     ::HIR::TypeRef  rv;
@@ -715,6 +737,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
     TU_ARMA(Closure, e) {
         ::HIR::TypeData::Data_Closure  oe;
         oe.node = e.node;
+        oe.params = box$(clone_type_with__tm(sp, *oe.params, callback));
         rv = ::HIR::TypeRef( mv$(oe) );
         }
     TU_ARMA(Generator, e) {

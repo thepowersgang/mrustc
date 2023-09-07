@@ -56,6 +56,7 @@ class TypeData;
 class TypeInner;
 struct TypeData_FunctionPointer;
 class TypePathBinding;
+struct TypeMapping;
 
 class TypeRef
 {
@@ -96,8 +97,8 @@ public:
     static TypeRef new_array(TypeRef inner, uint64_t size);
     static TypeRef new_array(TypeRef inner, ::HIR::ConstGeneric size_expr);
     static TypeRef new_path(::HIR::Path path, TypePathBinding binding);
-    static TypeRef new_closure(::HIR::ExprNode_Closure* node_ptr);
-    static TypeRef new_generator(::HIR::ExprNode_Generator* node_ptr);
+    static TypeRef new_closure(::HIR::ExprNode_Closure* node_ptr, TypeMapping pp);
+    static TypeRef new_generator(::HIR::ExprNode_Generator* node_ptr, TypeMapping pp);
 
     // Duplicate refcount
     TypeRef clone() const;

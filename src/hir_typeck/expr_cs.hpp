@@ -152,13 +152,14 @@ struct Context
 
     Context(
         const ::HIR::Crate& crate,
+        bool has_self,
         const ::HIR::GenericParams* impl_params,
         const ::HIR::GenericParams* item_params,
         const ::HIR::SimplePath& mod_path,
         const ::HIR::GenericPath* current_trait
         )
         :m_crate(crate)
-        ,m_resolve(m_ivars, crate, impl_params, item_params, mod_path, current_trait)
+        ,m_resolve(m_ivars, crate, has_self, impl_params, item_params, mod_path, current_trait)
         ,next_rule_idx( 0 )
         ,m_lang_Box( crate.get_lang_item_path_opt("owned_box") )
     {

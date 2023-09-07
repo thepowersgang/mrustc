@@ -140,7 +140,7 @@ namespace {
             for(size_t i = 0; i < item.m_params.m_values.size(); i ++) {
                 trait_gpath.m_params.m_values.push_back(HIR::GenericRef(item.m_params.m_values[i].m_name, i));
             }
-            auto _1 = this->m_ms.set_current_trait(trait_gpath);
+            auto _1 = this->m_ms.set_current_trait(trait_gpath, true);
             auto _ = this->m_ms.set_impl_generics(item.m_params);
             ::HIR::Visitor::visit_trait(p, item);
         }
@@ -159,7 +159,7 @@ namespace {
         {
             TRACE_FUNCTION_F("impl " << trait_path << impl.m_trait_args << " for " << impl.m_type);
             auto trait_gpath = ::HIR::GenericPath(trait_path, impl.m_trait_args.clone());
-            auto _1 = this->m_ms.set_current_trait(trait_gpath);
+            auto _1 = this->m_ms.set_current_trait(trait_gpath, false);
             auto _ = this->m_ms.set_impl_generics(impl.m_params);
 
             const auto& mod = this->m_ms.m_crate.get_mod_by_path(Span(), impl.m_src_module);

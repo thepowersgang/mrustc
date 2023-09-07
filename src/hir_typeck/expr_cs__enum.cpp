@@ -1969,11 +1969,11 @@ namespace typecheck
             this->context.add_ivars( node.m_code->m_res_type );
 
             // Closure result type
-            ::std::vector< ::HIR::TypeRef>  arg_types;
-            for(auto& arg : node.m_args) {
-                arg_types.push_back( arg.second.clone() );
-            }
-            this->context.equate_types( node.span(), node.m_res_type, ::HIR::TypeRef::new_closure(&node/*, mv$(arg_types), node.m_return.clone()*/) );
+            HIR::TypeMapping tm;
+            tm.self = this->context.m_resolve.has_self() ? HIR::TypeRef("Self", GENERIC_Self) : HIR::TypeRef();
+            tm.impl = this->context.m_resolve.impl_generics().make_nop_params(0);
+            tm.item = this->context.m_resolve.item_generics().make_nop_params(1);
+            this->context.equate_types( node.span(), node.m_res_type, ::HIR::TypeRef::new_closure(&node, ::std::move(tm)) );
 
             this->context.equate_types_coerce( node.span(), node.m_return, node.m_code );
 
@@ -2000,7 +2000,11 @@ namespace typecheck
             this->context.add_ivars( node.m_code->m_res_type );
 
             // Generator result type
-            this->context.equate_types( node.span(), node.m_res_type, ::HIR::TypeRef::new_generator(&node) );
+            HIR::TypeMapping tm;
+            tm.self = this->context.m_resolve.has_self() ? HIR::TypeRef("Self", GENERIC_Self) : HIR::TypeRef();
+            tm.impl = this->context.m_resolve.impl_generics().make_nop_params(0);
+            tm.item = this->context.m_resolve.item_generics().make_nop_params(1);
+            this->context.equate_types( node.span(), node.m_res_type, ::HIR::TypeRef::new_generator(&node, ::std::move(tm)) );
 
             this->context.equate_types_coerce( node.span(), node.m_return, node.m_code );
 

@@ -21,6 +21,8 @@
 constexpr const char* CLOSURE_PATH_PREFIX = "closure#";
 constexpr const char* GENERATOR_PATH_PREFIX = "generator#";
 
+struct MonomorphStatePtr;
+
 namespace HIR {
 
 struct TraitMarkings;
@@ -158,6 +160,15 @@ struct TypeData_FunctionPointer
     TypeRef m_rettype;
     ::std::vector<TypeRef>  m_arg_types;
 };
+struct TypeMapping
+{
+    ::HIR::TypeRef  self;
+    ::HIR::PathParams   impl;
+    ::HIR::PathParams   item;
+
+    TypeMapping clone() const;
+    MonomorphStatePtr get_ms() const;
+};
 
 TAGGED_UNION(TypeData, Diverge,
     (Infer, struct {
@@ -203,9 +214,13 @@ TAGGED_UNION(TypeData, Diverge,
     (Function, TypeData_FunctionPointer),   // TODO: Pointer wrap, this is quite large
     (Closure, struct {
         const ::HIR::ExprNode_Closure*  node;
+        // Mapping from node to current
+        ::std::unique_ptr<TypeMapping> params;
         }),
     (Generator, struct {
         const ::HIR::ExprNode_Generator* node;
+        // Mapping from node to current
+        ::std::unique_ptr<TypeMapping> params;
         })
     );
 
@@ -302,11 +317,11 @@ inline TypeRef TypeRef::new_array(TypeRef inner, ::HIR::ConstGeneric size_gen) {
 inline TypeRef TypeRef::new_path(::HIR::Path path, TypePathBinding binding) {
     return TypeRef(TypeData::make_Path({ mv$(path), mv$(binding) }));
 }
-inline TypeRef TypeRef::new_closure(::HIR::ExprNode_Closure* node_ptr) {
-    return TypeRef(TypeData::make_Closure({ node_ptr }));
+inline TypeRef TypeRef::new_closure(::HIR::ExprNode_Closure* node_ptr, TypeMapping pp) {
+    return TypeRef(TypeData::make_Closure({ node_ptr, box$(pp) }));
 }
-inline TypeRef TypeRef::new_generator(::HIR::ExprNode_Generator* node_ptr) {
-    return TypeRef(TypeData::make_Generator({ node_ptr }));
+inline TypeRef TypeRef::new_generator(::HIR::ExprNode_Generator* node_ptr, TypeMapping pp) {
+    return TypeRef(TypeData::make_Generator({ node_ptr, box$(pp) }));
 }
 
 inline const ::HIR::SimplePath* TypeRef::get_sort_path() const {

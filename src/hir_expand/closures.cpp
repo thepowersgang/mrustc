@@ -332,17 +332,20 @@ namespace {
         static void fix_type(const ::HIR::Crate& crate, const Span& sp, const Monomorphiser& monomorphiser, ::HIR::TypeRef& ty) {
             if( const auto* e = ty.data().opt_Closure() )
             {
-                DEBUG("Closure: " << e->node->m_obj_path_base); // TODO: Why does this use the `_base`
+                // NOTE: This uses `m_obj_path_base` as that has the original types (not changed as the node is moved around)
+                DEBUG("Closure: " << e->node->m_obj_path_base);
                 ASSERT_BUG(sp, e->node->m_obj_path_base != HIR::GenericPath(), ty);
-                auto path = monomorphiser.monomorph_genericpath(sp, e->node->m_obj_path_base, false);
+                auto ms = e->params->get_ms();
+                auto path = monomorphiser.monomorph_genericpath(sp, ms.monomorph_genericpath(sp, e->node->m_obj_path_base, false), false);
                 const auto& str = *e->node->m_obj_ptr;
                 DEBUG(ty << " -> " << path);
                 ty = ::HIR::TypeRef::new_path( mv$(path), ::HIR::TypePathBinding::make_Struct(&str) );
             }
             if(const auto* e = ty.data().opt_Generator() )
             {
-                DEBUG("Generator: " << e->node->m_obj_path);
-                auto path = monomorphiser.monomorph_genericpath(sp, e->node->m_obj_path, false);
+                DEBUG("Generator: " << e->node->m_obj_path_base);
+                auto ms = e->params->get_ms();
+                auto path = monomorphiser.monomorph_genericpath(sp, ms.monomorph_genericpath(sp, e->node->m_obj_path_base, false), false);
                 const auto& str = *e->node->m_obj_ptr;
                 DEBUG(ty << " -> " << path);
                 ty = ::HIR::TypeRef::new_path( mv$(path), ::HIR::TypePathBinding::make_Struct(&str) );
@@ -1540,6 +1543,7 @@ namespace {
             // Mark the object pathname in the closure.
             node.m_obj_ptr = &gen_struct_ref;
             node.m_obj_path = ::HIR::GenericPath( gen_struct_path, mv$(constructor_path_params) );
+            node.m_obj_path_base = node.m_obj_path.clone();
             node.m_captures = mv$(capture_nodes);
 
             ::HIR::TypeRef& self_arg_ty = new_locals[0];

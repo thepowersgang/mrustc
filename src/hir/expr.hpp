@@ -836,7 +836,9 @@ struct ExprNode_Closure:
 
     // - Path to the generated closure type
     const ::HIR::Struct*    m_obj_ptr = nullptr;
+    /// Path to the created object, using types from the original context (for type expansion)
     ::HIR::GenericPath  m_obj_path_base;
+    /// Path to the created object, using types from the current node location (for MIR)
     ::HIR::GenericPath  m_obj_path;
     ::std::vector< ::HIR::ExprNodeP>    m_captures;
 
@@ -868,6 +870,9 @@ struct ExprNode_Generator:
 
     // Generated type information
     const ::HIR::Struct*    m_obj_ptr = nullptr;
+    /// Path to the created object, using types from the original context (for type expansion)
+    ::HIR::GenericPath  m_obj_path_base;
+    /// Path to the created object, using types from the current node location (for MIR)
     ::HIR::GenericPath  m_obj_path;
     // Captured variables (used for emitting the constructor)
     ::std::vector< ::HIR::ExprNodeP>    m_captures;
