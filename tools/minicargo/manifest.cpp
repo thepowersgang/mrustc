@@ -1198,7 +1198,7 @@ std::ostream& operator<<(std::ostream& os, const PackageRef& pr)
 {
     os << "PackageRef {";
     os << " '" << pr.m_name << "'";
-    if( pr.m_key != pr.m_key) {
+    if( pr.m_key != pr.m_name ) {
         os << " key='" << pr.m_key << "'";
     }
     if(!pr.m_version.m_bounds.empty()) {

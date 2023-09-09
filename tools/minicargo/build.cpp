@@ -22,11 +22,15 @@ extern int _putenv_s(const char*, const char*);
 #include "build.h"
 #include "debug.h"
 #include "stringlist.h"
+
+#include "jobs.hpp"
+
 #include <vector>
 #include <algorithm>
 #include <sstream>  // stringstream
 #include <fstream>  // ifstream
 #include <cstdlib>  // setenv
+#include <unordered_set>
 #ifndef DISABLE_MULTITHREAD
 # include <thread>
 # include <mutex>
@@ -310,6 +314,7 @@ BuildList::BuildList(const PackageManifest& manifest, const BuildOptions& opts):
         }
     }
 }
+#if 0
 bool BuildList::build(BuildOptions opts, unsigned num_jobs)
 {
     bool include_build = !opts.build_script_overrides.is_valid();
@@ -606,7 +611,171 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs)
     }
     throw "unreachable";
 }
+#else
+bool BuildList::build(BuildOptions opts, unsigned num_jobs)
+{
 
+    bool include_build = !opts.build_script_overrides.is_valid();
+    Builder builder { opts, m_list.size() };
+
+    struct Job_Build: public Job {
+        enum class Type {
+            Library,
+            HostLibrary,
+            BuildScript,
+            Executable,
+        };
+
+        const PackageManifest& m_manifest;
+        ::std::string   m_key;
+        ::helpers::path build_script;
+        ::std::vector<std::string>  deps;
+
+        Job_Build(const PackageManifest& p, Type ty)
+            : m_manifest(p)
+        {
+            m_key = ::format(p.name(), " v", p.version());
+            switch(ty)
+            {
+            case Type::Library:
+                break;
+            case Type::HostLibrary:
+                m_key += " (host)";
+                break;
+            case Type::BuildScript:
+                m_key += " (build)";
+                break;
+            case Type::Executable:
+                m_key += " (exe)";
+                break;
+            }
+        }
+        helpers::path get_output_path() const {
+            return builder.get_crate_path(m_manifest, m_manifest.get_library(), e.is_host,  nullptr,nullptr);
+        }
+    };
+    struct Job_Script: public Job {
+    };
+    struct H {
+        static std::string get_key(const PackageManifest& p, bool build, bool is_host) {
+            auto rv = ::format(p.name(), " v", p.version());
+            if(build) {
+                rv += " (build)";
+            }
+            else if(is_host) {
+                rv += " (host)";
+            }
+            else {
+            }
+            return rv;
+        }
+    };
+
+    struct State {
+        ::std::unordered_map<std::string,bool>  items_built;
+        ::std::unordered_map<std::string,Timestamp>   items_notbuilt;
+        JobList joblist;
+
+        bool handle_dep(Job_Build& job, const Timestamp& output_ts, const std::string& k) const {
+            if( items_built.find(k) != items_built.end() ) {
+                // Add the dependency
+                job.deps.push_back(k);
+                return true;
+            }
+            else {
+                auto it = items_notbuilt.find(k);
+                assert(it != items_notbuilt.end());
+                // This crate's output is older than the depencency, force a rebuild
+                return output_ts < it->second;
+            }
+            else {
+                return false;
+            }
+        }
+        void add_job(::std::unique_ptr<Job_Build> job, Timestamp ts, bool is_needed) {
+            if(is_needed) {
+                // Add as built
+                items_built.insert(std::make_pair(job->name(), false));
+                joblist.add_job(std::move(job));
+            }
+            else {
+                // Add as not-built
+                items_notbuilt.insert(std::make_pair(job->name(), ts));
+            }
+        }
+    } state;
+    for(const auto& e : m_list)
+    {
+        const auto& p = *e.package;
+
+        auto job_build = ::std::make_unique<Job_Build>(p, e.is_host ? Job_Build::Type::HostLibrary : Job_Build::Type::Library);
+
+        // Get output path
+        auto output_path = job_build->get_output_path();
+        auto output_ts = Timestamp::for_file(output_path);
+
+        bool is_dirty = false;
+        // Check dependencies
+        p.iter_main_dependencies([&](const PackageRef& dep) {
+            if( !dep.is_disabled() )
+            {
+                auto k = H::get_key(dep.get_package(), false, e.is_host);
+                is_dirty |= state.handle_dep(*job_build, output_ts, k);
+            }
+        });
+
+        if( p.build_script() != "" )
+        {
+            if( opts.build_script_overrides.is_valid() )
+            {
+                job_build->build_script = opts.build_script_overrides / "build_" + p.name().c_str() + ".txt";;
+            }
+            else
+            {
+                auto job_bs_build = ::std::make_unique<Job_Build>(H::get_key(p, true, e.is_host));
+                bool bs_is_dirty = false;
+                p.iter_build_dependencies([&](const PackageRef& dep) {
+                    if( !dep.is_disabled() )
+                    {
+                        auto k = H::get_key(dep.get_package(), false, e.is_host);
+                        bs_is_dirty |= state.handle_dep(*job_bs_build, output_ts, k);
+                    }
+                });
+
+                if( !bs_is_dirty )
+                {
+                    // Check for changes to file dependencies
+                }
+                if( bs_is_dirty )
+                {
+                    job_build->deps.push_back(job_bs_build->name());
+                }
+                state.add_job(::std::move(job_bs_build), output_ts, bs_is_dirty);
+                is_dirty |= bs_is_dirty;
+
+                auto output_dir_abs = builder.get_output_dir(is_for_host).to_absolute();
+                job_build->build_script = output_dir_abs / builder.get_build_script_out(p) + ".txt";
+
+                auto job_bs_run = ::std::make_unique<Job_Script>(H::get_key(p, false, e.is_host));
+                // Check for changes in environment to determine if the script needs to be re-run
+                bool bs_needs_run = bs_is_dirty;
+                
+                if( Timestamp::for_file(job_build->build_script) < Timestamp::for_file(job_bs_build->get_output_path()) )
+                {
+                    bs_needs_run = true;
+                }
+            }
+        }
+
+        if( !is_dirty )
+        {
+            // Check local dependencies (source files)
+        }
+
+        state.add_job(::std::move(job_build), output_ts, is_dirty);
+    }
+}
+#endif
 
 Builder::Builder(const BuildOptions& opts, size_t total_targets):
     m_opts(opts),
