@@ -13,8 +13,11 @@ V ?= @
 OBJDIR := .obj/
 
 BIN := ../../bin/minicargo$(EXESUF)
-OBJS := main.o build.o manifest.o repository.o cfg.o
+OBJS := main.o manifest.o repository.o cfg.o
+#OBJS += build.o
+OBJS += build2.o
 OBJS += jobs.o
+OBJS += file_timestamp.o os.o
 
 LINKFLAGS := -g -lpthread
 CXXFLAGS := -Wall -std=c++14 -g -O2

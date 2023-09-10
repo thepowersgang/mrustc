@@ -14,7 +14,7 @@
 #include "cfg.hpp"
 #include <path.h>
 #include "stringlist.h"
-#include "build.h"  // spawn_process
+#include "os.hpp"  // spawn_process
 #include <fstream>
 #include <unordered_map>
 #include <unordered_set>
@@ -171,7 +171,7 @@ CfgChecker  gCfgChecker;
 
 void Cfg_SetTarget(const char* target_name)
 {
-    gCfgChecker = CfgChecker::for_target(get_mrustc_path(), target_name);
+    gCfgChecker = CfgChecker::for_target(os_support::get_mrustc_path(), target_name);
 }
 bool Cfg_Check(const char* cfg_string, const std::vector<std::string>& features)
 {
@@ -233,7 +233,7 @@ void Cfg_ToEnvironment(StringListKV& out)
         args.push_back("--print");
         args.push_back("cfg");
     }
-    if( !spawn_process(compiler_path.str().c_str(), args, StringListKV(), tmp_file_stdout) )
+    if( !os_support::Process::spawn(compiler_path.str().c_str(), args, StringListKV(), tmp_file_stdout, {}, /*print_command=*/false).wait() )
         throw std::runtime_error("Unable to invoke compiler to get config options");
 
     ::std::ifstream ifs(tmp_file_stdout.str());

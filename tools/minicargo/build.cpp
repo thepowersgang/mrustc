@@ -9,19 +9,14 @@
 # define _CRT_SECURE_NO_WARNINGS    // Allows use of getenv (this program doesn't set env vars)
 #endif
 
-#if defined(__MINGW32__)
-# define DISABLE_MULTITHREAD    // Mingw32 doesn't have c++11 threads
-// Mingw doesn't define putenv()
-extern "C" {
-extern int _putenv_s(const char*, const char*);
-}
-#endif
-
 #include "manifest.h"
 #include "cfg.hpp"
 #include "build.h"
 #include "debug.h"
 #include "stringlist.h"
+#include "file_timestamp.h"
+
+#include "os.hpp"
 
 #include "jobs.hpp"
 
@@ -39,24 +34,8 @@ extern int _putenv_s(const char*, const char*);
 #include <fstream>
 #include <climits>
 #include <cassert>
-#ifdef _WIN32
-# include <Windows.h>
-#else
-# include <unistd.h>    // getcwd/chdir
-# include <spawn.h>
-# include <sys/types.h>
-# include <sys/stat.h>
-# include <sys/wait.h>
-# include <fcntl.h>
-# include <limits.h> // PATH_MAX
-#endif
-#ifdef __APPLE__
-# include <mach-o/dyld.h>
-#endif
-#if defined(__FreeBSD__) || defined(__DragonFly__) || (defined(__NetBSD__) && defined(KERN_PROC_PATHNAME)) // NetBSD 8.0+
-# include <sys/sysctl.h>
-#endif
 
+bool spawn_process(const char* exe_name, const StringList& args, const StringListKV& env, const ::helpers::path& logfile, const ::helpers::path& working_directory={});
 
 namespace {
     enum class TerminalColour {
@@ -137,50 +116,6 @@ private:
             return m_opts.output_dir / "host";
         else
             return m_opts.output_dir;
-    }
-};
-
-class Timestamp
-{
-#if _WIN32
-    uint64_t m_val;
-
-    Timestamp(FILETIME ft):
-        m_val( (static_cast<uint64_t>(ft.dwHighDateTime) << 32) | static_cast<uint64_t>(ft.dwLowDateTime) )
-    {
-    }
-#else
-    time_t  m_val;
-    Timestamp(time_t t):
-        m_val(t)
-    {
-    }
-#endif
-
-public:
-    static Timestamp for_file(const ::helpers::path& p);
-    static Timestamp infinite_past() {
-#if _WIN32
-        return Timestamp { FILETIME { 0, 0 } };
-#else
-        return Timestamp { 0 };
-#endif
-    }
-
-    bool operator==(const Timestamp& x) const {
-        return m_val == x.m_val;
-    }
-    bool operator<(const Timestamp& x) const {
-        return m_val < x.m_val;
-    }
-
-    friend ::std::ostream& operator<<(::std::ostream& os, const Timestamp& x) {
-#if _WIN32
-        os << ::std::hex << x.m_val << ::std::dec;
-#else
-        os << x.m_val;
-#endif
-        return os;
     }
 };
 
@@ -314,7 +249,7 @@ BuildList::BuildList(const PackageManifest& manifest, const BuildOptions& opts):
         }
     }
 }
-#if 0
+
 bool BuildList::build(BuildOptions opts, unsigned num_jobs)
 {
     bool include_build = !opts.build_script_overrides.is_valid();
@@ -611,178 +546,13 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs)
     }
     throw "unreachable";
 }
-#else
-bool BuildList::build(BuildOptions opts, unsigned num_jobs)
-{
-
-    bool include_build = !opts.build_script_overrides.is_valid();
-    Builder builder { opts, m_list.size() };
-
-    struct Job_Build: public Job {
-        enum class Type {
-            Library,
-            HostLibrary,
-            BuildScript,
-            Executable,
-        };
-
-        const PackageManifest& m_manifest;
-        ::std::string   m_key;
-        ::helpers::path build_script;
-        ::std::vector<std::string>  deps;
-
-        Job_Build(const PackageManifest& p, Type ty)
-            : m_manifest(p)
-        {
-            m_key = ::format(p.name(), " v", p.version());
-            switch(ty)
-            {
-            case Type::Library:
-                break;
-            case Type::HostLibrary:
-                m_key += " (host)";
-                break;
-            case Type::BuildScript:
-                m_key += " (build)";
-                break;
-            case Type::Executable:
-                m_key += " (exe)";
-                break;
-            }
-        }
-        helpers::path get_output_path() const {
-            return builder.get_crate_path(m_manifest, m_manifest.get_library(), e.is_host,  nullptr,nullptr);
-        }
-    };
-    struct Job_Script: public Job {
-    };
-    struct H {
-        static std::string get_key(const PackageManifest& p, bool build, bool is_host) {
-            auto rv = ::format(p.name(), " v", p.version());
-            if(build) {
-                rv += " (build)";
-            }
-            else if(is_host) {
-                rv += " (host)";
-            }
-            else {
-            }
-            return rv;
-        }
-    };
-
-    struct State {
-        ::std::unordered_map<std::string,bool>  items_built;
-        ::std::unordered_map<std::string,Timestamp>   items_notbuilt;
-        JobList joblist;
-
-        bool handle_dep(Job_Build& job, const Timestamp& output_ts, const std::string& k) const {
-            if( items_built.find(k) != items_built.end() ) {
-                // Add the dependency
-                job.deps.push_back(k);
-                return true;
-            }
-            else {
-                auto it = items_notbuilt.find(k);
-                assert(it != items_notbuilt.end());
-                // This crate's output is older than the depencency, force a rebuild
-                return output_ts < it->second;
-            }
-            else {
-                return false;
-            }
-        }
-        void add_job(::std::unique_ptr<Job_Build> job, Timestamp ts, bool is_needed) {
-            if(is_needed) {
-                // Add as built
-                items_built.insert(std::make_pair(job->name(), false));
-                joblist.add_job(std::move(job));
-            }
-            else {
-                // Add as not-built
-                items_notbuilt.insert(std::make_pair(job->name(), ts));
-            }
-        }
-    } state;
-    for(const auto& e : m_list)
-    {
-        const auto& p = *e.package;
-
-        auto job_build = ::std::make_unique<Job_Build>(p, e.is_host ? Job_Build::Type::HostLibrary : Job_Build::Type::Library);
-
-        // Get output path
-        auto output_path = job_build->get_output_path();
-        auto output_ts = Timestamp::for_file(output_path);
-
-        bool is_dirty = false;
-        // Check dependencies
-        p.iter_main_dependencies([&](const PackageRef& dep) {
-            if( !dep.is_disabled() )
-            {
-                auto k = H::get_key(dep.get_package(), false, e.is_host);
-                is_dirty |= state.handle_dep(*job_build, output_ts, k);
-            }
-        });
-
-        if( p.build_script() != "" )
-        {
-            if( opts.build_script_overrides.is_valid() )
-            {
-                job_build->build_script = opts.build_script_overrides / "build_" + p.name().c_str() + ".txt";;
-            }
-            else
-            {
-                auto job_bs_build = ::std::make_unique<Job_Build>(H::get_key(p, true, e.is_host));
-                bool bs_is_dirty = false;
-                p.iter_build_dependencies([&](const PackageRef& dep) {
-                    if( !dep.is_disabled() )
-                    {
-                        auto k = H::get_key(dep.get_package(), false, e.is_host);
-                        bs_is_dirty |= state.handle_dep(*job_bs_build, output_ts, k);
-                    }
-                });
-
-                if( !bs_is_dirty )
-                {
-                    // Check for changes to file dependencies
-                }
-                if( bs_is_dirty )
-                {
-                    job_build->deps.push_back(job_bs_build->name());
-                }
-                state.add_job(::std::move(job_bs_build), output_ts, bs_is_dirty);
-                is_dirty |= bs_is_dirty;
-
-                auto output_dir_abs = builder.get_output_dir(is_for_host).to_absolute();
-                job_build->build_script = output_dir_abs / builder.get_build_script_out(p) + ".txt";
-
-                auto job_bs_run = ::std::make_unique<Job_Script>(H::get_key(p, false, e.is_host));
-                // Check for changes in environment to determine if the script needs to be re-run
-                bool bs_needs_run = bs_is_dirty;
-                
-                if( Timestamp::for_file(job_build->build_script) < Timestamp::for_file(job_bs_build->get_output_path()) )
-                {
-                    bs_needs_run = true;
-                }
-            }
-        }
-
-        if( !is_dirty )
-        {
-            // Check local dependencies (source files)
-        }
-
-        state.add_job(::std::move(job_build), output_ts, is_dirty);
-    }
-}
-#endif
 
 Builder::Builder(const BuildOptions& opts, size_t total_targets):
     m_opts(opts),
     m_total_targets(total_targets),
     m_targets_built(0)
 {
-    m_compiler_path = get_mrustc_path();
+    m_compiler_path = os_support::get_mrustc_path();
 }
 
 ::std::string Builder::get_crate_suffix(const PackageManifest& manifest) const
@@ -1358,11 +1128,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         auto script_exe_abs = script_exe.to_absolute();
 
         // - Run the script and put output in the right dir
-#if _WIN32
-        CreateDirectoryA(out_dir.str().c_str(), NULL);
-#else
-        mkdir(out_dir.str().c_str(), 0755);
-#endif
+        os_support::mkdir(out_dir);
         // Environment variables (key-value list)
         StringListKV    env;
         //env.push_back("CARGO_MANIFEST_LINKS", manifest.m_links);
@@ -1474,7 +1240,7 @@ bool Builder::build_library(const PackageManifest& manifest, bool is_for_host, s
 bool Builder::spawn_process_mrustc(const StringList& args, StringListKV env, const ::helpers::path& logfile) const
 {
     //env.push_back("MRUSTC_DEBUG", "");
-    auto rv = spawn_process(m_compiler_path.str().c_str(), args, env, logfile);
+    auto rv = spawn_process(m_compiler_path.str().c_str(), args, env, logfile, {});
     if(getenv("MINICARGO_RUN_ONCE") || getenv("MINICARGO_RUNONCE"))
     {
         if(rv) {
@@ -1485,347 +1251,25 @@ bool Builder::spawn_process_mrustc(const StringList& args, StringListKV env, con
     return rv;
 }
 
-const helpers::path& get_mrustc_path()
-{
-    static helpers::path    s_compiler_path;
-    if( !s_compiler_path.is_valid() )
-    {
-        if( const char* override_path = getenv("MRUSTC_PATH") ) {
-            s_compiler_path = override_path;
-            return s_compiler_path;
-        }
-        // TODO: Clean this stuff up
-#ifdef _WIN32
-        char buf[1024];
-        size_t s = GetModuleFileName(NULL, buf, sizeof(buf)-1);
-        buf[s] = 0;
-
-        ::helpers::path minicargo_path { buf };
-        minicargo_path.pop_component();
-        // MSVC, minicargo and mrustc are in the same dir
-        s_compiler_path = minicargo_path / "mrustc.exe";
-#else
-        char buf[PATH_MAX];
-# ifdef __linux__
-        ssize_t s = readlink("/proc/self/exe", buf, sizeof(buf)-1);
-        if(s >= 0)
-        {
-            buf[s] = 0;
-        }
-        else
-# elif defined(__APPLE__)
-        uint32_t  s = sizeof(buf);
-        if( _NSGetExecutablePath(buf, &s) == 0 )
-        {
-            // Buffer populated
-        }
-        else
-            // TODO: Buffer too small
-# elif defined(__FreeBSD__) || defined(__DragonFly__) || (defined(__NetBSD__) && defined(KERN_PROC_PATHNAME)) // NetBSD 8.0+
-        int mib[4] = { CTL_KERN, KERN_PROC, KERN_PROC_PATHNAME, -1 };
-        size_t s = sizeof(buf);
-        if ( sysctl(mib, 4, buf, &s, NULL, 0) == 0 )
-        {
-            // Buffer populated
-        }
-        else
-# else
-        #   warning "Can't runtime determine path to minicargo"
-# endif
-        {
-            // On any error, just hard-code as if running from root dir
-            strcpy(buf, "tools/bin/minicargo");
-        }
-
-        ::helpers::path minicargo_path { buf };
-        minicargo_path.pop_component();
-        s_compiler_path = (minicargo_path / "mrustc").normalise();
-#endif
-    }
-    return s_compiler_path;
-}
-
-#ifdef _WIN32
-// Escapes an argument for CommandLineToArgv on Windows
-void argv_quote_windows(const std::string& arg, std::stringstream& cmdline)
-{
-    if (arg.empty()) return;
-    // Add a space to start a new argument.
-    cmdline << " ";
-
-    // Don't quote unless we need to
-    if (arg.find_first_of(" \t\n\v\"") == arg.npos)
-    {
-        cmdline << arg;
-        return;
-    }
-    else
-    {
-        cmdline << '"';
-        for (auto ch = arg.begin(); ; ++ch) {
-            size_t backslash_count = 0;
-
-            // Count backslashes
-            while (ch != arg.end() && *ch == L'\\') {
-                ++ch;
-                ++backslash_count;
-            }
-
-            if (ch == arg.end()) {
-                // Escape backslashes, but let the terminating
-                // double quotation mark we add below be interpreted
-                // as a metacharacter.
-                for (int i = 0; i < backslash_count * 2; i++) cmdline << '\\';
-                break;
-            }
-            else if (*ch == L'"')
-            {
-                // Escape backslashes and the following double quotation mark.
-                for (int i = 0; i < backslash_count * 2 + 1; i++) cmdline << '\\';
-                cmdline << *ch;
-            }
-            else
-            {
-                for (int i = 0; i < backslash_count; i++) cmdline << '\\';
-                cmdline << *ch;
-            }
-        }
-        cmdline << '"';
-    }
-}
-#endif
-
 bool spawn_process(const char* exe_name, const StringList& args, const StringListKV& env, const ::helpers::path& logfile, const ::helpers::path& working_directory/*={}*/)
 {
-    if( getenv("MINICARGO_DUMPENV") )
-    {
-        ::std::stringstream environ_str;
-        for(auto kv : env)
-        {
-            environ_str << kv.first << "=" << kv.second << ' ';
-        }
-        std::cout << environ_str.str() << std::endl;
-    }
-
     // TODO: Support running with a debugger
     // - Determine if this is not the automatic initial run for `cfg`
     // - Put the exe name in the first arg
     // - Update the executable name
 
-#ifdef _WIN32
-    ::std::stringstream cmdline;
-    cmdline << exe_name;
-    for (const auto& arg : args.get_vec())
-        argv_quote_windows(arg, cmdline);
-    auto cmdline_str = cmdline.str();
-    if(true)
-    {
-#ifndef DISABLE_MULTITHREAD
-        ::std::lock_guard<::std::mutex> lh { s_cout_mutex };
-#endif
-        ::std::cout << "> " << cmdline_str << ::std::endl;
+    try {
+        os_support::Process::spawn(exe_name, args, env, logfile, working_directory).wait();
+        return true;
     }
-    else
+    catch(...)
     {
-        DEBUG("Calling " << cmdline_str);
-    }
-
-#if 0
-    // TODO: Determine required minimal environment, to avoid importing the entire caller environment
-    ::std::stringstream environ_str;
-    environ_str << "TEMP=" << getenv("TEMP") << '\0';
-    environ_str << "TMP=" << getenv("TMP") << '\0';
-    for(auto kv : env)
-    {
-        environ_str << kv.first << "=" << kv.second << '\0';
-    }
-    environ_str << '\0';
-#else
-    for(auto kv : env)
-    {
-        DEBUG("putenv " << kv.first << "=" << kv.second);
-        _putenv_s(kv.first, kv.second);
-    }
-#endif
-
-    {
-        auto logfile_dir = logfile.parent();
-        if(logfile_dir.is_valid())
-        {
-            CreateDirectory(logfile_dir.str().c_str(), NULL);
-        }
-    }
-
-    STARTUPINFO si = { 0 };
-    si.cb = sizeof(si);
-    si.dwFlags = STARTF_USESTDHANDLES;
-    si.hStdInput = NULL;
-    si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
-    {
-        SECURITY_ATTRIBUTES sa = { 0 };
-        sa.nLength = sizeof(sa);
-        sa.bInheritHandle = TRUE;
-        si.hStdOutput = CreateFile( static_cast<::std::string>(logfile).c_str(), GENERIC_WRITE, FILE_SHARE_READ, &sa, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL );
-        DWORD   tmp;
-        WriteFile(si.hStdOutput, cmdline_str.data(), static_cast<DWORD>(cmdline_str.size()), &tmp, NULL);
-        WriteFile(si.hStdOutput, "\n", 1, &tmp, NULL);
-    }
-    PROCESS_INFORMATION pi = { 0 };
-    CreateProcessA(exe_name, (LPSTR)cmdline_str.c_str(), NULL, NULL, TRUE, 0, NULL, (working_directory != ::helpers::path() ? working_directory.str().c_str() : NULL), &si, &pi);
-    CloseHandle(si.hStdOutput);
-    WaitForSingleObject(pi.hProcess, INFINITE);
-    DWORD status = 1;
-    GetExitCodeProcess(pi.hProcess, &status);
-    if (status != 0)
-    {
-#ifndef DISABLE_MULTITHREAD
-        ::std::lock_guard<::std::mutex> lh { s_cout_mutex };
-#endif
-        set_console_colour(std::cerr, TerminalColour::Red);
-        std::cerr << "Process `" << cmdline_str << "` exited with non-zero exit status " << status;
-        set_console_colour(std::cerr, TerminalColour::Default);
-        std::cerr << std::endl;
-        return false;
-    }
-
-#else   // ^^ WIN32 / VV posix
-
-    // Create logfile output directory
-    mkdir(static_cast<::std::string>(logfile.parent()).c_str(), 0755);
-
-    // Create handles such that the log file is on stdout
-    ::std::string logfile_str = logfile;
-    pid_t pid;
-    posix_spawn_file_actions_t  fa;
-    {
-        posix_spawn_file_actions_init(&fa);
-        posix_spawn_file_actions_addopen(&fa, 1, logfile_str.c_str(), O_CREAT|O_WRONLY|O_TRUNC, 0644);
-    }
-
-    // Generate `argv`
-    auto argv = args.get_vec();
-    argv.insert(argv.begin(), exe_name);
-
-    if(true)
-    {
-        ::std::lock_guard<::std::mutex> lh { s_cout_mutex };
-        ::std::cout << ">";
-        for(const auto& p : argv)
-            ::std::cout  << " " << p;
-        ::std::cout << ::std::endl;
-    }
-    else
-    {
-        Debug_Print([&](auto& os){
-            os << "Calling";
-            for(const auto& p : argv)
-                os << " " << p;
-            });
-    }
-    DEBUG("Environment " << env);
-    argv.push_back(nullptr);
-
-    // Generate `envp`
-    StringList  envp;
-    extern char **environ;
-    for(auto p = environ; *p; p++)
-    {
-        envp.push_back(*p);
-    }
-    for(auto kv : env)
-    {
-        envp.push_back(::format(kv.first, "=", kv.second));
-    }
-    //Debug_Print([&](auto& os){
-    //    os << "ENVP=";
-    //    for(const auto& p : envp.get_vec())
-    //        os << "\n " << p;
-    //    });
-    envp.push_back(nullptr);
-
-    {
-        static ::std::mutex    s_chdir_mutex;
-        ::std::lock_guard<::std::mutex> lh { s_chdir_mutex };
-        auto fd_cwd = open(".", O_DIRECTORY);
-        if( working_directory != ::helpers::path() ) {
-            chdir(working_directory.str().c_str());
-        }
-        if( posix_spawn(&pid, exe_name, &fa, /*attr=*/nullptr, (char* const*)argv.data(), (char* const*)envp.get_vec().data()) != 0 )
-        {
-#ifndef DISABLE_MULTITHREAD
-            ::std::lock_guard<::std::mutex> lh { s_cout_mutex };
-#endif
-            set_console_colour(std::cerr, TerminalColour::Red);
-            ::std::cerr << "Unable to run process '" << exe_name << "' - " << strerror(errno);
-            set_console_colour(std::cerr, TerminalColour::Default);
-            ::std::cerr << ::std::endl;
-            DEBUG("Unable to spawn executable");
-            posix_spawn_file_actions_destroy(&fa);
-            return false;
-        }
-        if( working_directory != ::helpers::path() ) {
-            fchdir(fd_cwd);
-        }
-    }
-    posix_spawn_file_actions_destroy(&fa);
-    int status = -1;
-    waitpid(pid, &status, 0);
-    if( status != 0 )
-    {
-#ifndef DISABLE_MULTITHREAD
-        ::std::lock_guard<::std::mutex> lh { s_cout_mutex };
-#endif
-        set_console_colour(std::cerr, TerminalColour::Red);
-        if( WIFEXITED(status) )
-            ::std::cerr << "Process exited with non-zero exit status " << WEXITSTATUS(status) << ::std::endl;
-        else if( WIFSIGNALED(status) )
-            ::std::cerr << "Process was terminated with signal " << WTERMSIG(status) << ::std::endl;
-        else
-            ::std::cerr << "Process terminated for unknown reason, status=" << status << ::std::endl;
-        set_console_colour(std::cerr, TerminalColour::Default);
-        ::std::cerr << "FAILING COMMAND: ";
-        for(const auto& p : argv)
+        ::std::cerr << "FAILING COMMAND: " << exe_name;
+        for(const auto& p : args.get_vec())
             if (p != nullptr)
                 ::std::cerr  << " " << p;
         ::std::cerr << ::std::endl;
         //::std::cerr << "See " << logfile << " for the compiler output" << ::std::endl;
         return false;
     }
-    else
-    {
-        DEBUG("Successful exit");
-    }
-#endif
-    return true;
 }
-
-Timestamp Timestamp::for_file(const ::helpers::path& path)
-{
-#if _WIN32
-    FILETIME    out;
-    auto handle = CreateFile(path.str().c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
-    if(handle == INVALID_HANDLE_VALUE) {
-        //DEBUG("Can't find " << path);
-        return Timestamp::infinite_past();
-    }
-    if( GetFileTime(handle, NULL, NULL, &out) == FALSE ) {
-        //DEBUG("Can't GetFileTime on " << path);
-        CloseHandle(handle);
-        return Timestamp::infinite_past();
-    }
-    CloseHandle(handle);
-    //DEBUG(Timestamp{out} << " " << path);
-    return Timestamp { out };
-#else
-    struct stat  s;
-    if( stat(path.str().c_str(), &s) == 0 )
-    {
-        return Timestamp { s.st_mtime };
-    }
-    else
-    {
-        return Timestamp::infinite_past();
-    }
-#endif
-}
-

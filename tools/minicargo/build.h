@@ -47,6 +47,3 @@ public:
     BuildList(const PackageManifest& manifest, const BuildOptions& opts);
     bool build(BuildOptions opts, unsigned num_jobs);  // 0 = 1 job
 };
-
-extern const helpers::path& get_mrustc_path();
-extern bool spawn_process(const char* exe_name, const StringList& args, const StringListKV& env, const ::helpers::path& logfile, const ::helpers::path& working_directory={});
