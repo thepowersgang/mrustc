@@ -19,6 +19,8 @@ struct Process
      int    stderr;
     #endif
 
+    ~Process();
+
     static Process spawn(
         const char* exe_name,
         const StringList& args,

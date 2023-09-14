@@ -33,16 +33,36 @@ bool JobList::run_all()
     auto total_job_count = this->waiting_jobs.size();
     bool failed = false;
     size_t num_complete = 0;
+    bool force_wait = false;
+
+    auto dump_state = [&]() {
+        ::std::cerr
+            << " ("
+            << std::fixed << std::setprecision(1) << (100 * static_cast<double>(num_complete) / total_job_count) << "% " 
+            << this->running_jobs.size()+1 << "r," << this->runnable_jobs.size() << "w," << this->waiting_jobs.size() << "b/" << total_job_count << "t"
+            << "):"
+            ;
+        for(const auto& rj : this->running_jobs) {
+            if(&rj != &this->running_jobs.front())
+                ::std::cerr << ",";
+            ::std::cerr << " " << rj.job->name();
+        }
+        ::std::cerr << "\n";
+    };
+
     while( !this->waiting_jobs.empty() || !this->runnable_jobs.empty() || !this->running_jobs.empty() )
     {
         // Wait until a running job stops
-        while( this->running_jobs.size() >= this->num_jobs )
+        while( (force_wait || this->running_jobs.size() >= this->num_jobs) && !this->running_jobs.empty() )
         {
             if( !wait_one() ) {
+                dump_state();
                 failed = true;
                 break;
             }
+            dump_state();
             num_complete += 1;
+            force_wait = false;
         }
         if(failed) {
             break;
@@ -51,9 +71,7 @@ bool JobList::run_all()
         // Update the runnable list.
         for(auto& slot : this->waiting_jobs)
         {
-            if(!slot) {
-                continue;
-            }
+            assert(slot);
             const auto& deps = slot->dependencies();
             if( std::all_of(deps.begin(), deps.end(), [&](const std::string& s){ return completed_jobs.count(s) > 0; }) && slot->is_runnable() )
             {
@@ -62,14 +80,19 @@ bool JobList::run_all()
         }
         auto new_end = std::remove_if(waiting_jobs.begin(), waiting_jobs.end(), [](const job_t& j){ return !j; });
         waiting_jobs.erase(new_end, waiting_jobs.end());
+
+        // Is nothing runnable?
         if( this->runnable_jobs.empty() ) {
+            // Is nothing running?
             if( this->running_jobs.empty()) {
+                // BUG if there are jobs on the queue
                 if( !this->waiting_jobs.empty() ) {
                     ::std::cerr << "BUG: Nothing runnable or running, but jobs are still waiting\n";
                 }
                 break ;
             }
             else {
+                force_wait = true;
                 continue ;
             }
         }
@@ -90,10 +113,12 @@ bool JobList::run_all()
 
         auto handle = this->spawn(rjob);
         this->running_jobs.push_back(RunningJob { handle, std::move(job), std::move(rjob) });
+        dump_state();
     }
     while( !this->running_jobs.empty() )
     {
         failed |= !wait_one();
+        dump_state();
         num_complete += 1;
     }
     return !failed;
@@ -163,6 +188,7 @@ bool JobList::wait_one()
     }
     else
     {
+        ::std::cout << "Completed " << rjob.job->name() << std::endl;
         this->completed_jobs.insert(rjob.job->name());
     }
     rv &= rjob.job->complete(rv);

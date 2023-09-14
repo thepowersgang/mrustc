@@ -1051,6 +1051,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     {
         args.push_back("-g");
     }
+    args.push_back("-O");
     for(const auto& d : m_opts.lib_search_dirs)
     {
         args.push_back("-L");
@@ -1258,11 +1259,14 @@ bool spawn_process(const char* exe_name, const StringList& args, const StringLis
     // - Put the exe name in the first arg
     // - Update the executable name
 
+    bool rv = false;
     try {
-        os_support::Process::spawn(exe_name, args, env, logfile, working_directory).wait();
-        return true;
+        rv = os_support::Process::spawn(exe_name, args, env, logfile, working_directory).wait();
     }
     catch(...)
+    {
+    }
+    if(!rv)
     {
         ::std::cerr << "FAILING COMMAND: " << exe_name;
         for(const auto& p : args.get_vec())
@@ -1270,6 +1274,6 @@ bool spawn_process(const char* exe_name, const StringList& args, const StringLis
                 ::std::cerr  << " " << p;
         ::std::cerr << ::std::endl;
         //::std::cerr << "See " << logfile << " for the compiler output" << ::std::endl;
-        return false;
     }
+    return rv;
 }

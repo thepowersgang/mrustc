@@ -5,6 +5,10 @@
 #include "os.hpp"
 #include "debug.h"
 
+#ifndef DISABLE_MULTITHREAD
+# include <mutex>
+#endif
+
 #ifdef _WIN32
 # if defined(__MINGW32__)
 #  define DISABLE_MULTITHREAD    // Mingw32 doesn't have c++11 threads
@@ -41,6 +45,22 @@ namespace {
 
 namespace os_support {
 
+
+Process::~Process()
+{
+#ifdef _WIN32
+    if(stderr) {
+        CloseHandle(stderr);
+        stderr = nullptr;
+    }
+#else
+    if(stderr > 0) {
+        close(stderr);
+        stderr = -1;
+    }
+#endif
+}
+
 Process Process::spawn(
     const char* exe_name,
     const StringList& args,
@@ -74,8 +94,9 @@ Process Process::spawn(
 #ifdef _WIN32
     ::std::stringstream cmdline;
     cmdline << exe_name();
-    for (const auto& arg : args().get_vec())
+    for (const auto& arg : args().get_vec()) {
         argv_quote_windows(arg, cmdline);
+    }
     auto cmdline_str = cmdline.str();
     if(print_command)
     {
@@ -88,9 +109,11 @@ Process Process::spawn(
 
 #if 0
     // TODO: Determine required minimal environment, to avoid importing the entire caller environment
+    // - MRUSTC_*, CC*
     ::std::stringstream environ_str;
     environ_str << "TEMP=" << getenv("TEMP") << '\0';
     environ_str << "TMP=" << getenv("TMP") << '\0';
+    environ_str << "PATH=" << getenv("PATH") << '\0';
     for(auto kv : env)
     {
         environ_str << kv.first << "=" << kv.second << '\0';
@@ -106,8 +129,13 @@ Process Process::spawn(
 #endif
 
     class WinapiError: public ::std::exception {
+        std::string msg;
+    public:
         WinapiError(const char* name) {
-            GetLastError();
+            msg = format("`", name, "` failed: 0x", std::hex, GetLastError());
+        }
+        const char* what() const noexcept override {
+            return msg.c_str();
         }
     };
 
@@ -149,6 +177,17 @@ Process Process::spawn(
     return Process { pi.hProcess, nullptr };
 #else
 
+    class CError: public ::std::exception {
+        std::string msg;
+    public:
+        CError(const char* name) {
+            msg = format("`", name, "` failed: errno=", errno, " ", strerror(errno));
+        }
+        const char* what() const noexcept override {
+            return msg.c_str();
+        }
+    };
+
     // Create handles such that the log file is on stdout
     // - This string has to outlive `fa`
     ::std::string logfile_str = logfile.str();
@@ -156,7 +195,9 @@ Process Process::spawn(
     posix_spawn_file_actions_t  fa;
     int stderr_streams[2] {-1,-1};
     if(capture_stderr) {
-        pipe2(stderr_streams, O_CLOEXEC);
+        if( pipe2(stderr_streams, O_CLOEXEC) != 0 ) {
+            throw CError("pipe2");
+        }
     }
     {
         posix_spawn_file_actions_init(&fa);
@@ -175,6 +216,7 @@ Process Process::spawn(
         ::std::cout << ">";
         for(const auto& p : argv)
             ::std::cout  << " " << p;
+        ::std::cout << " > " << logfile;
         ::std::cout << ::std::endl;
     }
     else
@@ -206,6 +248,10 @@ Process Process::spawn(
     envp.push_back(nullptr);
 
     {
+#ifndef DISABLE_MULTITHREAD
+        static ::std::mutex s_chdir_mutex;
+        ::std::lock_guard<::std::mutex> lh { s_chdir_mutex };
+#endif
         auto fd_cwd = open(".", O_DIRECTORY);
 
         if( working_directory != ::helpers::path() ) {
@@ -235,13 +281,16 @@ Process Process::spawn(
         }
     }
     posix_spawn_file_actions_destroy(&fa);
+    if(capture_stderr) {
+        close(stderr_streams[1]);
+    }
     return Process { pid, stderr_streams[0] };
 #endif
 }
 
 bool Process::wait()
 {
-    #ifdef WIN32
+    #ifdef _WIN32
     if( this->stderr ) {
         throw ::std::runtime_error("capture_stderr with an explicit wait");
     }
@@ -261,7 +310,7 @@ bool Process::wait()
 
 bool Process::handle_status(int status)
 {
-    #ifdef WIN32
+    #ifdef _WIN32
     if(status != 0)
     {
         set_console_colour(std::cerr, TerminalColour::Red);
@@ -327,7 +376,7 @@ void set_console_colour(std::ostream& os, TerminalColour colour) {
 
 void mkdir(const helpers::path& p)
 {
-    #ifdef WIN32
+    #ifdef _WIN32
     CreateDirectory(p.str().c_str(), NULL);
     #else
     if( ::mkdir(static_cast<::std::string>(p).c_str(), 0755) != 0 ) {

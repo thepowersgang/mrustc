@@ -26,8 +26,8 @@
 # define EXESUF ""
 # define DLLSUF ".so"
 #endif
-#include <target_detect.h>	// tools/common/target_detect.h
-#define HOST_TARGET	DEFAULT_TARGET_NAME
+#include <target_detect.h>  // tools/common/target_detect.h
+#define HOST_TARGET DEFAULT_TARGET_NAME
 
 struct RunState
 {
@@ -191,7 +191,7 @@ BuildList::BuildList(const PackageManifest& manifest, const BuildOptions& opts):
         {
             TRACE_FUNCTION_F(p.name());
             // If this is a proc macro, force `is_native`
-            if(p.has_library() && p.get_library().m_crate_types == PackageTarget::CrateType::proc_macro ) {
+            if(p.has_library() && p.get_library().m_is_proc_macro ) {
                 is_native = true;
             }
             // If the package is already loaded
@@ -322,7 +322,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs)
         // Generate jobs for a build script
         // Returns the job name (or an empty string, if no job generated)
         // Populates the build script path
-        std::string handle_build_script(RunState& run_state, const PackageManifest& p, const helpers::path& build_script_overrides, helpers::path& build_script)
+        std::string handle_build_script(RunState& run_state, const PackageManifest& p, const helpers::path& build_script_overrides, helpers::path& build_script, bool is_host)
         {
             if( p.build_script() != "" )
             {
@@ -332,6 +332,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs)
                     // TODO: Should this test if it exists? or just assume and let it error?
 
                     build_script = override_file;
+                    const_cast<PackageManifest&>(p).load_build_script( build_script.str() );
                     return "";
                 }
                 else
@@ -358,16 +359,19 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs)
                         // HACK: Search for `-mmir/` in the output, remove it, and if that exists copy it to here
                         // - This grabs the last non-mmir execution of the script
                         auto tmp_out = build_script.str();
-                        auto p = tmp_out.rfind("-mmir/");
-                        if( p != std::string::npos )
+                        auto mmir_pos = tmp_out.rfind("-mmir/");
+                        if( mmir_pos != std::string::npos )
                         {
-                            auto src = tmp_out.substr(0, p) + tmp_out.substr(p+5);
+                            auto src = tmp_out.substr(0, mmir_pos) + tmp_out.substr(mmir_pos+5);
                             std::ifstream   ifs(src);
                             if( ifs.good() )
                             {
                                 std::cout << "HACK: Copying " << src << " to " << tmp_out << std::endl;
-                                ::std::ofstream ofs(tmp_out);
-                                ofs << ifs.rdbuf();
+                                {
+                                    ::std::ofstream ofs(tmp_out);
+                                    ofs << ifs.rdbuf();
+                                }
+                                const_cast<PackageManifest&>(p).load_build_script( build_script.str() );
                                 return name_bs_build;
                             }
                         }
@@ -376,9 +380,21 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs)
 
                     auto output_ts = Timestamp::for_file(build_script);
                     this->handle_dep(job_bs_run->m_dependencies, output_ts, name_bs_build);
+                    p.iter_main_dependencies([&](const PackageRef& dep) {
+                        if( !dep.is_disabled() )
+                        {
+                            auto k = run_state.get_key(dep.get_package(), false, is_host);
+                            bs_is_dirty |= this->handle_dep(job_bs_run->m_dependencies, output_ts, k);
+                        }
+                    });
                     bool bs_needs_run = bs_is_dirty || output_ts < script_ts;
                     auto rv = bs_needs_run ? job_bs_run->name() : ::std::string();
                     this->add_job(std::move(job_bs_run), output_ts, bs_needs_run);
+                    // If the script is not being run, then it still needs to be loaded
+                    if(!bs_needs_run)
+                    {
+                        const_cast<PackageManifest&>(p).load_build_script( build_script.str() );
+                    }
                     return rv;
                 }
             }
@@ -398,7 +414,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs)
         auto output_ts = Timestamp::for_file(job->get_outfile());
         bool is_dirty = run_state.outfile_needs_rebuild(job->get_outfile());
         // Handle build script
-        auto bs_job_name = convert_state.handle_build_script(run_state, p, opts.build_script_overrides, job->m_build_script);
+        auto bs_job_name = convert_state.handle_build_script(run_state, p, opts.build_script_overrides, job->m_build_script, e.is_host);
         if( bs_job_name != "" ) {
             job->m_dependencies.push_back(bs_job_name);
             is_dirty = true;
@@ -418,7 +434,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs)
     helpers::path   build_script;
     if( !m_root_manifest.has_library() )
     {
-        bs_job_name = convert_state.handle_build_script(run_state, m_root_manifest, opts.build_script_overrides, build_script);
+        bs_job_name = convert_state.handle_build_script(run_state, m_root_manifest, opts.build_script_overrides, build_script, !cross_compiling);
     }
 
     auto push_root_target = [&](const PackageTarget& target) {
@@ -636,7 +652,7 @@ bool RunState::outfile_needs_rebuild(const helpers::path& outfile) const
                 if( ts_result < dep_ts )
                 {
                     has_new_file = true;
-                    DEBUG("Rebuilding " << outfile << ", older than " << f);
+                    DEBUG("Rebuilding " << outfile << ", older than " << f << " (" << ts_result << " < " << dep_ts << ")");
                     break;
                 }
             }
@@ -769,11 +785,6 @@ helpers::path Job_BuildTarget::get_outfile() const
 }
 RunnableJob Job_BuildTarget::start()
 {
-    if( m_build_script.is_valid() )
-    {
-        const_cast<PackageManifest&>(m_manifest).load_build_script( m_build_script.str() );
-    }
-
     const char* crate_type;
     ::std::string   crate_suffix;
     auto outfile = parent.get_crate_path(m_manifest, m_target, m_is_for_host,  &crate_type, &crate_suffix);
@@ -947,7 +958,7 @@ RunnableJob Job_RunScript::start()
         env.push_back(fn, "1");
     }
     //env.push_back("CARGO_CFG_RELEASE", "");
-    env.push_back("OUT_DIR", out_dir);
+    env.push_back("OUT_DIR", out_dir.to_absolute());
 
     push_env_common(env, m_manifest);
 
@@ -970,7 +981,7 @@ RunnableJob Job_RunScript::start()
     else
     {
         m_script_exe_abs = ::std::move(script_exe_abs);
-        return RunnableJob(m_script_exe_abs.str().c_str(), {}, std::move(env), ::std::move(out_file), m_manifest.directory());
+        return RunnableJob(m_script_exe_abs.str().c_str(), {}, std::move(env), out_file.to_absolute(), m_manifest.directory());
     }
 }
 bool Job_RunScript::complete(bool was_success)
@@ -979,7 +990,7 @@ bool Job_RunScript::complete(bool was_success)
     if(was_success)
     {
         // TODO: Parse the script here? Or just keep the parsing in the downstream build
-        //const_cast<PackageManifest&>(m_manifest).load_build_script( out_file.str() );
+        const_cast<PackageManifest&>(m_manifest).load_build_script( out_file.str() );
         return true;
     }
     else
