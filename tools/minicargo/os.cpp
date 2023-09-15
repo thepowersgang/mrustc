@@ -1,6 +1,10 @@
 //
 //
 //
+#ifdef _MSC_VER
+# define _CRT_SECURE_NO_WARNINGS    // Allows use of getenv (this program doesn't set env vars)
+#endif
+
 #include <iostream>
 #include "os.hpp"
 #include "debug.h"
@@ -49,13 +53,13 @@ namespace os_support {
 Process::~Process()
 {
 #ifdef _WIN32
-    if(stderr) {
-        CloseHandle(stderr);
-        stderr = nullptr;
+    if(m_stderr) {
+        CloseHandle(m_stderr);
+        m_stderr = nullptr;
     }
 #else
-    if(stderr > 0) {
-        close(stderr);
+    if(m_stderr > 0) {
+        close(m_stderr);
         stderr = -1;
     }
 #endif
@@ -93,8 +97,8 @@ Process Process::spawn(
 
 #ifdef _WIN32
     ::std::stringstream cmdline;
-    cmdline << exe_name();
-    for (const auto& arg : args().get_vec()) {
+    cmdline << exe_name;
+    for (const auto& arg : args.get_vec()) {
         argv_quote_windows(arg, cmdline);
     }
     auto cmdline_str = cmdline.str();
@@ -143,6 +147,7 @@ Process Process::spawn(
     si.cb = sizeof(si);
     si.dwFlags = STARTF_USESTDHANDLES;
     si.hStdInput = NULL;
+    HANDLE  stderr_pipe = NULL;
     if(capture_stderr)
     {
         SECURITY_ATTRIBUTES sa = { 0 };
@@ -160,21 +165,21 @@ Process Process::spawn(
         SECURITY_ATTRIBUTES sa = { 0 };
         sa.nLength = sizeof(sa);
         sa.bInheritHandle = TRUE;
-        si.hStdOutput = CreateFile( static_cast<::std::string>(logfile()).c_str(), GENERIC_WRITE, FILE_SHARE_READ, &sa, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL );
+        si.hStdOutput = CreateFile( logfile.str().c_str(), GENERIC_WRITE, FILE_SHARE_READ, &sa, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL );
         if(!si.hStdOutput)  throw WinapiError("CreateFile StdOutput");
         DWORD   tmp;
         WriteFile(si.hStdOutput, cmdline_str.data(), static_cast<DWORD>(cmdline_str.size()), &tmp, NULL);
         WriteFile(si.hStdOutput, "\n", 1, &tmp, NULL);
     }
     PROCESS_INFORMATION pi = { 0 };
-    CreateProcessA(exe_name(),
+    CreateProcessA(exe_name,
         (LPSTR)cmdline_str.c_str(),
         NULL, NULL, TRUE, 0, NULL,
-        (working_directory() != ::helpers::path() ? working_directory().str().c_str() : NULL),
+        (working_directory != ::helpers::path() ? working_directory.str().c_str() : NULL),
         &si, &pi
         );
     CloseHandle(si.hStdOutput);
-    return Process { pi.hProcess, nullptr };
+    return Process { pi.hProcess, stderr_pipe };
 #else
 
     class CError: public ::std::exception {
@@ -291,19 +296,19 @@ Process Process::spawn(
 bool Process::wait()
 {
     #ifdef _WIN32
-    if( this->stderr ) {
+    if( this->m_stderr ) {
         throw ::std::runtime_error("capture_stderr with an explicit wait");
     }
-    WaitForSingleObject(pi.hProcess, INFINITE);
+    WaitForSingleObject(m_handle, INFINITE);
     DWORD status = 1;
-    GetExitCodeProcess(pi.hProcess, &status);
+    GetExitCodeProcess(m_handle, &status);
     return handle_status(status);
     #else
     if( this->stderr > 0 ) {
         throw ::std::runtime_error("capture_stderr with an explicit wait");
     }
     int status = -1;
-    waitpid(handle, &status, 0);
+    waitpid(m_handle, &status, 0);
     return handle_status(status);
     #endif
 }
@@ -313,8 +318,14 @@ bool Process::handle_status(int status)
     #ifdef _WIN32
     if(status != 0)
     {
+        auto dw_status = static_cast<DWORD>(status);
         set_console_colour(std::cerr, TerminalColour::Red);
-        std::cerr << "Process `" << cmdline_str << "` exited with non-zero exit status " << std::hex << DWORD(status);
+        if( (dw_status & 0xC000'0000) != 0 ) {
+            std::cerr << "Process exited with non-zero exit status 0x" << std::hex << dw_status << std::endl;
+        }
+        else {
+            std::cerr << "Process exited with non-zero exit status " << status << std::endl;
+        }
         set_console_colour(std::cerr, TerminalColour::Default);
         return false;
     }

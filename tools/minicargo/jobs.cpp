@@ -5,6 +5,11 @@
  * jobs.cpp
  * - Logic related to running build tasks
  */
+ //
+#ifdef _MSC_VER
+# define _CRT_SECURE_NO_WARNINGS    // Allows use of getenv (this program doesn't set env vars)
+#endif
+
 #include <iostream>
 #include "jobs.hpp"
 #include "debug.h"
@@ -140,15 +145,19 @@ bool JobList::wait_one()
 #ifdef _WIN32
     ::std::vector<HANDLE>   handles;
     for(const auto& j : this->running_jobs) {
-        handles.push_back(j.handle.handle);
+        handles.push_back(j.handle.m_handle);
     }
-    auto wait_rv = WaitForMultipleObjects(handles.size(), handles.data(), FALSE, 0);
+    if(handles.size() > MAXIMUM_WAIT_OBJECTS) {
+        handles.resize(MAXIMUM_WAIT_OBJECTS);
+        ::std::cerr << "WARNING! Win32's WaitForMultipleObjects only supports up to " << MAXIMUM_WAIT_OBJECTS << " handles, but have " << handles.size() << ::std::endl;
+    }
+    auto wait_rv = WaitForMultipleObjects(static_cast<DWORD>(handles.size()), handles.data(), FALSE, INFINITE);
     if( !(WAIT_OBJECT_0 <= wait_rv && wait_rv < WAIT_OBJECT_0 + handles.size()) ) {
         return false;
     }
 
     auto idx = wait_rv - WAIT_OBJECT_0;
-    auto handle = this->running_jobs[idx].handle.handle;
+    auto handle = this->running_jobs[idx].handle.m_handle;
     RunningJob  rjob = ::std::move(this->running_jobs[idx]);
     this->running_jobs.erase(this->running_jobs.begin() + idx);
 
@@ -166,7 +175,7 @@ bool JobList::wait_one()
 
     rv = os_support::Process::handle_status(status);
 
-    auto i = ::std::find_if(this->running_jobs.begin(), this->running_jobs.end(), [&](const auto& e){ return e.handle.handle == pid; });
+    auto i = ::std::find_if(this->running_jobs.begin(), this->running_jobs.end(), [&](const auto& e){ return e.handle.m_handle == pid; });
     assert(i != this->running_jobs.end());
     RunningJob rjob = ::std::move(*i);
     this->running_jobs.erase(i);

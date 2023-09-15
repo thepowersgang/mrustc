@@ -22,8 +22,7 @@ Timestamp Timestamp::for_file(const ::helpers::path& path)
         return Timestamp::infinite_past();
     }
     CloseHandle(handle);
-    //DEBUG(Timestamp{out} << " " << path);
-    return Timestamp { out };
+    return Timestamp { (static_cast<uint64_t>(out.dwHighDateTime) << 32) | static_cast<uint64_t>(out.dwLowDateTime) };
 #else
     struct stat  s;
     if( stat(path.str().c_str(), &s) == 0 )

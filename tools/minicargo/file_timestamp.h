@@ -7,8 +7,8 @@ class Timestamp
 #if _WIN32
     uint64_t m_val;
 
-    Timestamp(FILETIME ft):
-        m_val( (static_cast<uint64_t>(ft.dwHighDateTime) << 32) | static_cast<uint64_t>(ft.dwLowDateTime) )
+    Timestamp(uint64_t val):
+        m_val(val)
     {
     }
 #else
@@ -22,11 +22,7 @@ class Timestamp
 public:
     static Timestamp for_file(const ::helpers::path& p);
     static Timestamp infinite_past() {
-#if _WIN32
-        return Timestamp { FILETIME { 0, 0 } };
-#else
         return Timestamp { 0 };
-#endif
     }
 
     bool operator==(const Timestamp& x) const {

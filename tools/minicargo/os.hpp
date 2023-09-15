@@ -3,7 +3,7 @@
 #include "stringlist.h"
 #include <path.h>
 
-#ifdef WIN32
+#ifdef _WIN32
 #else
 #include <unistd.h>
 #endif
@@ -11,12 +11,12 @@
 namespace os_support {
 struct Process
 {
-    #ifdef WIN32
-    void*   handle;
-    void*   stderr;
+    #ifdef _WIN32
+    void*   m_handle;
+    void*   m_stderr;
     #else
-    pid_t   handle;
-     int    stderr;
+    pid_t   m_handle;
+     int    m_stderr;
     #endif
 
     ~Process();

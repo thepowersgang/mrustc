@@ -5,6 +5,10 @@
  * build.cpp
  * - Logic related to invoking the compiler
  */
+#ifdef _MSC_VER
+# define _CRT_SECURE_NO_WARNINGS    // Allows use of getenv (this program doesn't set env vars)
+#endif
+
 #include "manifest.h"
 #include "cfg.hpp"
 #include "build.h"
