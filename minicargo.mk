@@ -69,10 +69,13 @@ endif
 
 OUTDIR := output$(OUTDIR_SUF)/
 
+USE_MERGED_BUILD=1
 ifeq ($(RUSTC_VERSION),1.19.0)
   RUSTC_OUT_BIN := rustc
+  USE_MERGED_BUILD=0
 else ifeq ($(RUSTC_VERSION),1.29.0)
   RUSTC_OUT_BIN := rustc_binary
+  USE_MERGED_BUILD=0
 else ifeq ($(RUSTC_VERSION),1.39.0)
   RUSTC_OUT_BIN := rustc_binary
 else
@@ -188,7 +191,7 @@ $(RUSTC_SRC_DL): $(RUSTC_SRC_TARBALL) rustc-$(RUSTC_VERSION)-src.patch
 # Standard library crates
 # - libstd, libpanic_unwind, libtest and libgetopts
 # - libproc_macro (mrustc)
-ifneq ($(RUSTC_VERSION),1.19.0)
+ifeq ($(USE_MERGED_BUILD),1)
 $(RUSTCSRC)mrustc-stdlib/Cargo.toml: $(RUSTC_SRC_DL) minicargo.mk
 	@mkdir -p $(dir $@)
 	@echo "#![no_core]" > $(dir $@)/lib.rs
