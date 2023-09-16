@@ -60,7 +60,7 @@ Process::~Process()
 #else
     if(m_stderr > 0) {
         close(m_stderr);
-        stderr = -1;
+        m_stderr = -1;
     }
 #endif
 }
@@ -304,7 +304,7 @@ bool Process::wait()
     GetExitCodeProcess(m_handle, &status);
     return handle_status(status);
     #else
-    if( this->stderr > 0 ) {
+    if( this->m_stderr > 0 ) {
         throw ::std::runtime_error("capture_stderr with an explicit wait");
     }
     int status = -1;
