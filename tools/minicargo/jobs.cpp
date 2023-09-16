@@ -58,21 +58,23 @@ bool JobList::run_all()
     while( !this->waiting_jobs.empty() || !this->runnable_jobs.empty() || !this->running_jobs.empty() )
     {
         // Wait until a running job stops
-        while( (force_wait || this->running_jobs.size() >= this->num_jobs) && !this->running_jobs.empty() )
-        {
-            if( !wait_one() ) {
+        if( this->num_jobs > 0) {
+            while( (force_wait || this->running_jobs.size() >= this->num_jobs) && !this->running_jobs.empty() )
+            {
+                if( !wait_one() ) {
+                    dump_state();
+                    failed = true;
+                    break;
+                }
                 dump_state();
-                failed = true;
+                num_complete += 1;
+                force_wait = false;
+            }
+            if(failed) {
                 break;
             }
-            dump_state();
-            num_complete += 1;
-            force_wait = false;
         }
-        if(failed) {
-            break;
-        }
-        
+
         // Update the runnable list.
         for(auto& slot : this->waiting_jobs)
         {
@@ -101,10 +103,20 @@ bool JobList::run_all()
                 continue ;
             }
         }
-        
+
         auto job = ::std::move(this->runnable_jobs.front());
         this->runnable_jobs.pop_front();
         auto rjob = job->start();
+        if( this->num_jobs == 0 )
+        {
+            this->completed_jobs.insert(job->name());
+            ::std::cout << "> " << rjob.exe_name;
+            for(const auto& a : rjob.args.get_vec()) {
+                ::std::cout << " " << a;
+            }
+            ::std::cout << ::std::endl;
+            continue;
+        }
         {
             ::std::cout << "--- ";
             os_support::set_console_colour(::std::cout, os_support::TerminalColour::Green);
