@@ -151,8 +151,6 @@ all: $(OUTDIR)rustc
 
 test: $(OUTDIR)rust/test_run-pass_hello_out.txt
 
-LIBS: $(OUTDIR)libstd.rlib $(OUTDIR)libtest.rlib $(OUTDIR)libpanic_unwind.rlib $(OUTDIR)libproc_macro.rlib
-
 RUSTCSRC: $(RUSTC_SRC_DL)
 
 .PHONY: rust_tests local_tests
@@ -190,19 +188,29 @@ $(RUSTC_SRC_DL): $(RUSTC_SRC_TARBALL) rustc-$(RUSTC_VERSION)-src.patch
 # Standard library crates
 # - libstd, libpanic_unwind, libtest and libgetopts
 # - libproc_macro (mrustc)
-$(OUTDIR)libstd.rlib: $(MRUSTC) $(MINICARGO) $(RUSTC_SRC_DL)
-	$(MINICARGO) $(RUSTCSRC)$(RUST_LIB_PREFIX)std --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
-	@test -e $@
-$(OUTDIR)libpanic_unwind.rlib: $(OUTDIR)libstd.rlib
-	$(MINICARGO) $(RUSTCSRC)$(RUST_LIB_PREFIX)panic_unwind --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
-	@test -e $@
-$(OUTDIR)libtest.rlib: $(OUTDIR)libstd.rlib $(OUTDIR)libpanic_unwind.rlib
-	$(MINICARGO) $(RUSTCSRC)$(RUST_LIB_PREFIX)test --vendor-dir $(VENDOR_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
-	@test -e $@
-# MRustC custom version of libproc_macro
-$(OUTDIR)libproc_macro.rlib: $(OUTDIR)libstd.rlib
-	$(MINICARGO) lib/libproc_macro --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
-	@test -e $@
+ifneq ($(RUSTC_VERSION),1.19.0)
+$(RUSTCSRC)mrustc-stdlib/Cargo.toml: $(RUSTC_SRC_DL) minicargo.mk
+	@mkdir -p $(dir $@)
+	@echo "#![no_core]" > $(dir $@)/lib.rs
+	@echo "[package]" > $@
+	@echo "name = \"mrustc_standard_library\"" >> $@
+	@echo "version = \"0.0.0\"" >> $@
+	@echo "[lib]" >> $@
+	@echo "path = \"lib.rs\"" >> $@
+	@echo "[dependencies]" >> $@
+	@echo "std = { path = \"../$(RUST_LIB_PREFIX)std\" }" >> $@
+	@echo "panic_unwind = { path = \"../$(RUST_LIB_PREFIX)panic_unwind\" }" >> $@
+	@echo "test = { path = \"../$(RUST_LIB_PREFIX)test\" }" >> $@
+LIBS: $(RUSTCSRC)mrustc-stdlib/Cargo.toml $(MRUSTC) $(MINICARGO)
+	$(MINICARGO) --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS) $(RUSTCSRC)mrustc-stdlib/
+	$(MINICARGO) --output-dir $(OUTDIR) $(MINICARGO_FLAGS) lib/libproc_macro
+else
+LIBS: $(MRUSTC) $(MINICARGO) $(RUSTC_SRC_DL)
+	$(MINICARGO) --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS) $(RUSTCSRC)$(RUST_LIB_PREFIX)std
+	$(MINICARGO) --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS) $(RUSTCSRC)$(RUST_LIB_PREFIX)panic_unwind
+	$(MINICARGO) --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS) $(RUSTCSRC)$(RUST_LIB_PREFIX)test
+	$(MINICARGO) --output-dir $(OUTDIR) $(MINICARGO_FLAGS) lib/libproc_macro
+endif
 
 # Dynamically linked version of the standard library
 $(OUTDIR)test/libtest.so: $(RUSTC_SRC_DL)
