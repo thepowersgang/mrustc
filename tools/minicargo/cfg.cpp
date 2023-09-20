@@ -162,9 +162,9 @@ struct CfgChecker
     std::unordered_multimap<std::string, std::string>    values;
 
     static CfgChecker for_target(const helpers::path& compiler_path, const char* target_spec);
-    bool check_cfg(const char* str) const;
+    bool check_cfg(const char* str, const std::vector<std::string>& features={}) const;
 private:
-    bool check_cfg(CfgParseLexer& p) const;
+    bool check_cfg(CfgParseLexer& p, const std::vector<std::string>& features) const;
 };
 
 CfgChecker  gCfgChecker;
@@ -175,12 +175,7 @@ void Cfg_SetTarget(const char* target_name)
 }
 bool Cfg_Check(const char* cfg_string, const std::vector<std::string>& features)
 {
-    auto checker = gCfgChecker;
-    checker.values.insert(std::make_pair("feature", ""));
-    for(const auto& feat : features) {
-        checker.values.insert(std::make_pair("feature", feat));
-    }
-    return checker.check_cfg(cfg_string);
+    return gCfgChecker.check_cfg(cfg_string, features);
 }
 /// Dump configuration as CARGO_CFG_<name>
 void Cfg_ToEnvironment(StringListKV& out)
@@ -296,18 +291,18 @@ void Cfg_ToEnvironment(StringListKV& out)
     return rv;
 }
 
-bool CfgChecker::check_cfg(const char* cfg_string) const
+bool CfgChecker::check_cfg(const char* cfg_string, const std::vector<std::string>& features) const
 {
     CfgParseLexer p { cfg_string + 4 };
 
-    bool success = this->check_cfg(p);
+    bool success = this->check_cfg(p, features);
     if( !p.consume_if(")") )
         throw ::std::runtime_error(format("Expected ')' after cfg condition - got", p.cur().to_string()));
 
     return success;
 }
 
-bool CfgChecker::check_cfg(CfgParseLexer& p) const
+bool CfgChecker::check_cfg(CfgParseLexer& p, const std::vector<std::string>& features) const
 {
     auto name_tok = p.consume();
     if( name_tok.ty() != CfgParseLexer::Tok::Ident )
@@ -319,20 +314,20 @@ bool CfgChecker::check_cfg(CfgParseLexer& p) const
         if( false ) {
         }
         else if( name == "not" ) {
-            rv = !check_cfg(p);
+            rv = !check_cfg(p, features);
         }
         else if( name == "all" ) {
             rv = true;
             do
             {
-                rv &= check_cfg(p);
+                rv &= check_cfg(p, features);
             } while(p.consume_if(','));
         }
         else if( name == "any" ) {
             rv = false;
             do
             {
-                rv |= check_cfg(p);
+                rv |= check_cfg(p, features);
             } while(p.consume_if(','));
         }
         else {
@@ -349,6 +344,9 @@ bool CfgChecker::check_cfg(CfgParseLexer& p) const
             throw ::std::runtime_error("Expected a string after `=`");
         const auto& val = t.str();
 
+        if( name == "feature" ) {
+            return std::any_of(features.begin(), features.end(), [&](const std::string& v){ return v == val; });
+        }
         auto its = this->values.equal_range(name);
         if( its.first != its.second ) {
             return std::any_of(its.first, its.second, [&](const auto& v){ return v.second == val; });
