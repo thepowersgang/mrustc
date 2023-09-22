@@ -280,12 +280,12 @@ BuildList::BuildList(const PackageManifest& manifest, const BuildOptions& opts):
         m_list.push_back({ e.package, e.native, {} });
     }
 }
-bool BuildList::build(BuildOptions opts, unsigned num_jobs)
+bool BuildList::build(BuildOptions opts, unsigned num_jobs, bool dry_run)
 {
     bool cross_compiling = (opts.target_name != nullptr);
 
     RunState    run_state { opts, cross_compiling };
-    JobList runner(num_jobs);
+    JobList runner;
 
     struct ConvertState {
         JobList& joblist;
@@ -480,7 +480,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs)
     //case BuildOptions::Mode::Examples:
     }
     
-    return runner.run_all();
+    return runner.run_all(num_jobs, dry_run);
 }
 
 namespace {

@@ -250,7 +250,7 @@ BuildList::BuildList(const PackageManifest& manifest, const BuildOptions& opts):
     }
 }
 
-bool BuildList::build(BuildOptions opts, unsigned num_jobs)
+bool BuildList::build(BuildOptions opts, unsigned num_jobs, bool dry_run)
 {
     bool include_build = !opts.build_script_overrides.is_valid();
     Builder builder { opts, m_list.size() };
@@ -322,7 +322,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs)
     }
 
     // Actually do the build
-    if( num_jobs > 1 )
+    if( !dry_run && num_jobs > 1 )
     {
 #ifndef DISABLE_MULTITHREAD
         class Semaphore
@@ -480,7 +480,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs)
         }
 #endif
     }
-    else if( num_jobs == 1 )
+    else if( !dry_run )
     {
         while( !state.build_queue.empty() )
         {

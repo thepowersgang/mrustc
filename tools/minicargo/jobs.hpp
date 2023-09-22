@@ -53,17 +53,14 @@ class JobList
         RunningJob& operator=(RunningJob&& ) = default;
     };
 
-    size_t  num_jobs;
     ::std::vector<job_t>    waiting_jobs;
     ::std::deque<job_t>    runnable_jobs;
     ::std::vector<RunningJob>   running_jobs;
     ::std::unordered_set<std::string>  completed_jobs;
 public:
-    JobList(size_t num_jobs)
-        : num_jobs(num_jobs)
-    {}
+    JobList() {}
     void add_job(::std::unique_ptr<Job> job);
-    bool run_all();
+    bool run_all(size_t num_jobs, bool dry_run);
 
 private:
     os_support::Process spawn(const RunnableJob& j);

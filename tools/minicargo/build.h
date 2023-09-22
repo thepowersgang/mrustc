@@ -45,5 +45,5 @@ class BuildList
     ::std::vector<Entry>    m_list;
 public:
     BuildList(const PackageManifest& manifest, const BuildOptions& opts);
-    bool build(BuildOptions opts, unsigned num_jobs);  // 0 = 1 job
+    bool build(BuildOptions opts, unsigned num_jobs, bool dry_run);  // 0 = either 1 job, or as many as we can take from the jobserver
 };

@@ -26,39 +26,26 @@
 #ifdef _WIN32
 class JobServer_Client: public JobServer
 {
-    HANDLE  m_local_sem_handle;
     HANDLE  m_sem_handle;
 public:
-    JobServer_Client(size_t max_jobs, std::string path, HANDLE sem_handle)
-        : m_local_sem_handle(CreateSemaphore(nullptr, max_jobs, max_jobs, nullptr))
-        , m_sem_handle(sem_handle)
+    JobServer_Client(std::string path, HANDLE sem_handle)
+        : m_sem_handle(sem_handle)
     {
     }
     ~JobServer_Client()
     {
-        CloseHandle(m_local_sem_handle);
         CloseHandle(m_sem_handle);
     }
 
     bool take_one(unsigned long timeout_ms) override {
-        auto t = timeGetTime();
-        if( WaitForSingleObject(m_local_sem_handle, timeout_ms) != 0 ) {
-            return false;
-        }
-        auto dt_ms = timeGetTime() - t;
-        auto new_timeout = timeout_ms == INFINITE ? INFINITE :
-            (timeout_ms < dt_ms ? 0 : timeout_ms - dt_ms)
-            ;
-        if(WaitForSingleObject(m_sem_handle, new_timeout) == 0) {
+        if(WaitForSingleObject(m_sem_handle, timeout_ms) == 0) {
             return true;
         }
         else {
-            ReleaseSemaphore(m_local_sem_handle, 1, NULL);
             return false;
         }
     }
     void return_one() override {
-        ReleaseSemaphore(m_local_sem_handle, 1, NULL);
         ReleaseSemaphore(m_sem_handle, 1, NULL);
     }
 };
@@ -99,15 +86,13 @@ private:
 #else
 class JobServer_Client: public JobServer
 {
-    size_t  m_jobs;
     int m_fd_read;
     int m_fd_write;
     std::vector<uint8_t>    m_held_tokens;
     //::std::semaphore    m_sem;
 public:
-    JobServer_Client(size_t max_jobs, int fd_read, int fd_write = -1)
-        : m_jobs(max_jobs)
-        , m_fd_read(fd_read)
+    JobServer_Client(int fd_read, int fd_write = -1)
+        : m_fd_read(fd_read)
         , m_fd_write(fd_write)
     {
         assert(fd_read >= 0);
@@ -245,11 +230,8 @@ public:
 #endif
 
 
-::std::unique_ptr<JobServer> JobServer::create(size_t max_jobs)
+::std::unique_ptr<JobServer> JobServer::create(size_t server_jobs)
 {
-    if( max_jobs < 1 ) {
-        return nullptr;
-    }
     const auto* makeflags = getenv("MAKEFLAGS");
 
     const char* jobserver_auth = nullptr;
@@ -277,7 +259,7 @@ public:
         // - Windows: named semaphore
         auto sem_handle = OpenSemaphoreA(0,FALSE,auth_str.c_str());
         if( sem_handle ) {
-            return ::std::make_unique<JobServer_Client>(max_jobs, auth_str, sem_handle);
+            return ::std::make_unique<JobServer_Client>(auth_str, sem_handle);
         }
 #else
         // - Named pipe: `fifo:PATH`
@@ -305,5 +287,9 @@ public:
         }
 #endif
     }
-    return ::std::make_unique<JobServer_Server>(max_jobs);
+    // If no `-j` option is passed to this application, then don't create a jobserver
+    if(server_jobs == 0) {
+        return nullptr;
+    }
+    return ::std::make_unique<JobServer_Server>(server_jobs);
 }
