@@ -11,6 +11,7 @@
 #include <cassert>
 #include <string>
 #include <sstream>
+#include <iostream>
 #ifdef _WIN32
 # include <Windows.h>
 #else
@@ -109,6 +110,7 @@ public:
         , m_fd_read(fd_read)
         , m_fd_write(fd_write)
     {
+        assert(fd_read >= 0);
     }
     ~JobServer_Client()
     {
@@ -119,6 +121,7 @@ public:
     bool take_one(unsigned long timeout_ms) override {
         if(timeout_ms != ~0ul)
         {
+            assert(m_fd_read >= 0);
             struct timeval  timeout;
             timeout.tv_sec = timeout_ms / 1000;
             timeout.tv_usec = (timeout_ms % 1000) * 1000;
@@ -132,6 +135,7 @@ public:
         uint8_t token;
         int rv = read(m_fd_read, &token, 1);
         if( rv != 1 ) {
+            perror("JobServer_Client::take_one read");
             return false;
         }
         m_held_tokens.push_back(token);
@@ -160,9 +164,17 @@ class JobServer_Server: public JobServer
             , m_rd_fd(-1)
         {
 #if 1 && (_POSIX_C_SOURCE >= 200809L)
-            char buf[] = "mrustc-jobserverXXXXXX";
+            char buf[] = "/tmp/mrustc-jobserverXXXXXX";
             m_path = ::std::string(mkdtemp(buf));
-            m_wr_fd = mkfifo((m_path + "/fifo").c_str(), 0600);
+            if( mkfifo((m_path + "/fifo").c_str(), 0600) != 0 ) {
+                perror("JobServer_Server mkfifo");
+                throw std::runtime_error("JobServer_Server mkfifo");
+            }
+            m_wr_fd = open((m_path + "/fifo").c_str(), O_RDWR);
+            if( m_wr_fd < 0 ) {
+                perror("JobServer_Server open");
+                throw std::runtime_error("JobServer_Server open");
+            }
 #else
             // TODO: For `pipe` it would be nice to propagate it to child processes, but that needs minicargo's `os`
             // support to be happy.
@@ -171,12 +183,12 @@ class JobServer_Server: public JobServer
                 throw std::runtime_error("pipe failed");
             m_rd_fd = pipe_fds[0];
             m_wr_fd = pipe_fds[1];
-            for(size_t i = 0; i < m_jobs; i ++) {
+#endif
+            for(size_t i = 0; i < max_jobs; i ++) {
                 uint8_t t = 100;
                 if( write(m_wr_fd, &t, 1) != 1 )
                     perror("ServerInner() write");
             }
-#endif
         }
         ~ServerInner()
         {
@@ -185,11 +197,15 @@ class JobServer_Server: public JobServer
             }
             close(m_wr_fd);
             if(!m_path.empty()) {
-                unlink((m_path + "/fifo").c_str());
-                unlink(m_path.c_str());
+                if( unlink((m_path + "/fifo").c_str()) != 0 ) {
+                    perror("~ServerInner unlink fifo");
+                }
+                if( rmdir(m_path.c_str()) != 0 ) {
+                    perror("~ServerInner unlink dir");
+                }
             }
         }
-        int get_client_read_fd() const { return m_rd_fd; }
+        int get_client_read_fd() const { return m_rd_fd == -1 ? m_wr_fd : m_rd_fd; }
         int get_client_write_fd() const { return m_wr_fd; }
         void dump_desc(::std::ostream& os) const {
             if( m_rd_fd == -1 ) {
@@ -231,20 +247,23 @@ public:
 
 ::std::unique_ptr<JobServer> JobServer::create(size_t max_jobs)
 {
-    if( max_jobs >= 1 ) {
+    if( max_jobs < 1 ) {
         return nullptr;
     }
     const auto* makeflags = getenv("MAKEFLAGS");
 
     const char* jobserver_auth = nullptr;
-    const char* const needle = "--jobserver-auth=";
-    auto pos = ::std::strstr(makeflags, needle);
-    while( pos != nullptr ) {
-        auto e = pos + ::std::strlen(needle);
-        if( pos == makeflags || pos[-1] == ' ' ) {
-            jobserver_auth = e;
+    if( makeflags )
+    {
+        const char* const needle = "--jobserver-auth=";
+        auto pos = ::std::strstr(makeflags, needle);
+        while( pos != nullptr ) {
+            auto e = pos + ::std::strlen(needle);
+            if( pos == makeflags || pos[-1] == ' ' ) {
+                jobserver_auth = e;
+            }
+            pos = ::std::strstr(e, needle);
         }
-        pos = ::std::strstr(e, needle);
     }
 
     if( jobserver_auth )
@@ -273,7 +292,14 @@ public:
             int fd_r = -1, fd_w = -1;
             if( ::std::sscanf(auth_str.c_str(), "%d,%d", &fd_r, &fd_w) == 2 ) {
                 if( fd_r >= 0 && fd_w >= 0 ) {
-                    return ::std::make_unique<JobServer_Client>(max_jobs, fd_r, fd_w);
+                    if( fcntl(fd_r, F_GETFL) == -1 || fcntl(fd_w, F_GETFL) == -1 ) {
+                        ::std::cerr << "JobServer: Pipe FDs aren't open, likely missing `+` in makefile" << std::endl;
+                    }
+                    else {
+                        return ::std::make_unique<JobServer_Client>(max_jobs, fd_r, fd_w);
+                    }
+                }
+                else {
                 }
             }
         }

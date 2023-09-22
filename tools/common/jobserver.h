@@ -11,7 +11,7 @@
 class JobServer
 {
 public:
-    virtual ~JobServer();
+    virtual ~JobServer() {}
     static ::std::unique_ptr<JobServer> create(size_t max_jobs);
 
     virtual bool take_one(unsigned long timeout_ms) = 0;
