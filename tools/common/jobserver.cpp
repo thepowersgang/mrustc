@@ -206,7 +206,7 @@ class JobServer_Server: public JobServer
 public:
     JobServer_Server(size_t max_jobs)
         : m_server(max_jobs)
-        , m_client(max_jobs, m_server.get_client_read_fd(), m_server.get_client_write_fd())
+        , m_client(m_server.get_client_read_fd(), m_server.get_client_write_fd())
     {
         ::std::stringstream ss;
         if(const auto* makeflags = getenv("MAKEFLAGS"))
@@ -266,7 +266,7 @@ public:
         if( std::strncmp(auth_str.c_str(), "fifo:", 5) == 0 ) {
             auto fd = open(auth_str.c_str() + 5, O_RDWR);
             if(fd > 0) {
-                return ::std::make_unique<JobServer_Client>(max_jobs, fd);
+                return ::std::make_unique<JobServer_Client>(fd);
             }
         }
         // - Unix pipe pair: `<fd_r>,<fd_w>`
@@ -278,7 +278,7 @@ public:
                         ::std::cerr << "JobServer: Pipe FDs aren't open, likely missing `+` in makefile" << std::endl;
                     }
                     else {
-                        return ::std::make_unique<JobServer_Client>(max_jobs, fd_r, fd_w);
+                        return ::std::make_unique<JobServer_Client>(fd_r, fd_w);
                     }
                 }
                 else {
