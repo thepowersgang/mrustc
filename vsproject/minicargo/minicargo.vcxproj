@@ -141,7 +141,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\tools\minicargo\build2.cpp" />
+    <ClCompile Include="..\..\tools\minicargo\build.cpp" />
     <ClCompile Include="..\..\tools\minicargo\cfg.cpp" />
     <ClCompile Include="..\..\tools\minicargo\file_timestamp.cpp" />
     <ClCompile Include="..\..\tools\minicargo\jobs.cpp" />

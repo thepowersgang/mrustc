@@ -14,8 +14,7 @@ OBJDIR := .obj/
 
 BIN := ../../bin/minicargo$(EXESUF)
 OBJS := main.o manifest.o repository.o cfg.o
-#OBJS += build.o
-OBJS += build2.o
+OBJS += build.o
 OBJS += jobs.o
 OBJS += file_timestamp.o os.o
 

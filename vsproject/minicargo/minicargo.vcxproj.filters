@@ -27,7 +27,7 @@
     <ClCompile Include="..\..\tools\minicargo\cfg.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\tools\minicargo\build2.cpp">
+    <ClCompile Include="..\..\tools\minicargo\build.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\..\tools\minicargo\file_timestamp.cpp">
