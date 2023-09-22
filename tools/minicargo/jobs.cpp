@@ -6,6 +6,7 @@
  * - Logic related to running build tasks
  */
  //
+#undef NDEBUG
 #ifdef _MSC_VER
 # define _CRT_SECURE_NO_WARNINGS    // Allows use of getenv (this program doesn't set env vars)
 #endif
@@ -13,6 +14,7 @@
 #include <iostream>
 #include "jobs.hpp"
 #include "debug.h"
+#include "jobserver.h"
 #include "os.hpp"
 #include <iomanip>
 
@@ -35,16 +37,22 @@ void JobList::add_job(::std::unique_ptr<Job> job)
 
 bool JobList::run_all()
 {
+    auto jobserver = this->num_jobs > 1 ? JobServer::create(this->num_jobs-1) : ::std::unique_ptr<JobServer>();
+    if( this->num_jobs > 1 ) {
+        assert(jobserver);
+    }
     auto total_job_count = this->waiting_jobs.size();
     bool failed = false;
-    size_t num_complete = 0;
+    /// Number of jobserver tokens taken
+    size_t  n_tokens = 0;
     bool force_wait = false;
 
     auto dump_state = [&]() {
+        auto num_complete = total_job_count - this->running_jobs.size() - this->running_jobs.size() - this->waiting_jobs.size();
         ::std::cerr
             << " ("
             << std::fixed << std::setprecision(1) << (100 * static_cast<double>(num_complete) / total_job_count) << "% " 
-            << this->running_jobs.size()+1 << "r," << this->runnable_jobs.size() << "w," << this->waiting_jobs.size() << "b/" << total_job_count << "t"
+            << this->running_jobs.size() << "r," << this->runnable_jobs.size() << "w," << this->waiting_jobs.size() << "b/" << total_job_count << "t"
             << "):"
             ;
         for(const auto& rj : this->running_jobs) {
@@ -58,7 +66,7 @@ bool JobList::run_all()
     while( !this->waiting_jobs.empty() || !this->runnable_jobs.empty() || !this->running_jobs.empty() )
     {
         // Wait until a running job stops
-        if( this->num_jobs > 0) {
+        if( this->num_jobs > 0 ) {
             while( (force_wait || this->running_jobs.size() >= this->num_jobs) && !this->running_jobs.empty() )
             {
                 if( !wait_one() ) {
@@ -67,11 +75,19 @@ bool JobList::run_all()
                     break;
                 }
                 dump_state();
-                num_complete += 1;
                 force_wait = false;
             }
             if(failed) {
                 break;
+            }
+            // Release jobserver tokens
+            if( this->num_jobs > 1 ) {
+                // - if none running, then release `n_tokens` entirely
+                // - if one running, then release none?
+                while( n_tokens > 0 && 1+n_tokens > this->running_jobs.size()) {
+                    n_tokens -= 1;
+                    jobserver->return_one();
+                }
             }
         }
 
@@ -104,6 +120,19 @@ bool JobList::run_all()
             }
         }
 
+        if( this->running_jobs.empty() )
+        {
+        }
+        else if( this->num_jobs > 1)
+        {
+            assert(this->num_jobs > 1);
+            if( !jobserver->take_one(500) ) {
+                wait_one(false);
+                continue;
+            }
+            n_tokens += 1;
+        }
+
         auto job = ::std::move(this->runnable_jobs.front());
         this->runnable_jobs.pop_front();
         auto rjob = job->start();
@@ -122,6 +151,7 @@ bool JobList::run_all()
             os_support::set_console_colour(::std::cout, os_support::TerminalColour::Green);
             ::std::cout << job->verb() << " " << job->name();
             os_support::set_console_colour(::std::cout, os_support::TerminalColour::Default);
+            auto num_complete = total_job_count - this->running_jobs.size() - this->running_jobs.size() - this->waiting_jobs.size();
             ::std::cout << " ("
                 << std::fixed << std::setprecision(1) << (100 * static_cast<double>(num_complete) / total_job_count) << "% " 
                 << this->running_jobs.size()+1 << "r," << this->runnable_jobs.size() << "w," << this->waiting_jobs.size() << "b/" << total_job_count << "t)";
@@ -136,7 +166,13 @@ bool JobList::run_all()
     {
         failed |= !wait_one();
         dump_state();
-        num_complete += 1;
+    }
+    // Release jobserver tokens
+    if(jobserver) {
+        while( n_tokens > 0 && 1+n_tokens > this->running_jobs.size()) {
+            n_tokens -= 1;
+            jobserver->return_one();
+        }
     }
     return !failed;
 }
@@ -151,7 +187,7 @@ os_support::Process JobList::spawn(const RunnableJob& rjob)
     }
 }
 
-bool JobList::wait_one()
+bool JobList::wait_one(bool block)
 {
     bool rv;
 #ifdef _WIN32
@@ -163,8 +199,10 @@ bool JobList::wait_one()
         handles.resize(MAXIMUM_WAIT_OBJECTS);
         ::std::cerr << "WARNING! Win32's WaitForMultipleObjects only supports up to " << MAXIMUM_WAIT_OBJECTS << " handles, but have " << handles.size() << ::std::endl;
     }
-    auto wait_rv = WaitForMultipleObjects(static_cast<DWORD>(handles.size()), handles.data(), FALSE, INFINITE);
+    auto wait_rv = WaitForMultipleObjects(static_cast<DWORD>(handles.size()), handles.data(), FALSE, block ? 0 : INFINITE);
     if( !(WAIT_OBJECT_0 <= wait_rv && wait_rv < WAIT_OBJECT_0 + handles.size()) ) {
+        if( !block )
+            return true;
         return false;
     }
 
@@ -178,7 +216,7 @@ bool JobList::wait_one()
     rv = os_support::Process::handle_status(status);
 #else
     int status = -1;
-    auto pid = waitpid(0, &status, 0);
+    auto pid = waitpid(0, &status, block ? 0 : WNOHANG);
     if(pid == (pid_t)-1)
     {
         ::std::cerr << "`waitpid` failed!" << std::endl;

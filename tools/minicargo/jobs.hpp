@@ -67,5 +67,5 @@ public:
 
 private:
     os_support::Process spawn(const RunnableJob& j);
-    bool wait_one();
+    bool wait_one(bool block=true);
 };
