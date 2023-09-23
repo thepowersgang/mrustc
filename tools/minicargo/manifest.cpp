@@ -927,6 +927,7 @@ void PackageManifest::set_features(const ::std::vector<::std::string>& features,
                     DEBUG("Activate feature '" << depfeat << "' from dependency '" << depname << "'");
                     iter_all_deps([&](PackageRef& dep) {
                         if(dep.m_key == depname) {
+                            dep.m_optional_enabled = true;
                             dep.m_features.push_back(depfeat);
                             // TODO: Does this need to call `set_features` again?
                         }
@@ -1345,7 +1346,7 @@ PackageVersionSpec PackageVersionSpec::from_string(const ::std::string& s)
                         // Could check the format, but meh.
                         pos ++;
                     } while(pos < s.size() && !isblank(s[pos]) && s[pos] != ',' );
-                    //v.tag = ::std::string(s.c_str() + tag_start, s.c_str() + pos);
+                    /*v.tag =*/ ::std::string(s.c_str() + tag_start, s.c_str() + pos);
                 }
             }
             else
