@@ -16,6 +16,7 @@
 
 static int giIndentLevel = 0;
 static const char* gsDebugPhase = "";
+static bool gbDebugPhaseEnabled = false;
 static bool gbEnableHeaders = false;
 static ::std::set<::std::string> gmDisabledDebug;
 #ifndef DISABLE_MULTITHREAD
@@ -48,14 +49,13 @@ void Debug_ProcessEnable(const char* e)
 void Debug_SetPhase(const char* phase_name)
 {
     gsDebugPhase = phase_name;
+    gbDebugPhaseEnabled = gmDisabledDebug.find(gsDebugPhase) == gmDisabledDebug.end();
     if( gbEnableHeaders )
         ::std::cout << phase_name << ": BEGIN" << ::std::endl;
 }
 bool Debug_IsEnabled()
 {
-    if( gmDisabledDebug.find(gsDebugPhase) != gmDisabledDebug.end() )
-        return false;
-    return true;
+    return gbDebugPhaseEnabled;
 }
 void Debug_DisablePhase(const char* phase_name)
 {

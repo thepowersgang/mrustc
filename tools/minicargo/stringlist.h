@@ -23,6 +23,7 @@ public:
     }
     StringList(const StringList&) = delete;
     StringList(StringList&&) = default;
+    StringList& operator=(StringList&& ) = default;
 
     const ::std::vector<const char*>& get_vec() const
     {
@@ -76,38 +77,36 @@ public:
         m_strings.push_back(s);
     }
 };
-class StringListKV: private StringList
+class StringListKV
 {
     StringList  m_keys;
+    StringList  m_values;
 public:
     StringListKV()
     {
     }
-    StringListKV(StringListKV&& x):
-        StringList(::std::move(x)),
-        m_keys(::std::move(x.m_keys))
-    {
-    }
+    StringListKV(StringListKV&& x) = default;
+    StringListKV& operator=(StringListKV&& ) = default;
 
     void push_back(const char* k, ::std::string v)
     {
         m_keys.push_back(k);
-        StringList::push_back(v);
+        m_values.push_back(v);
     }
     void push_back(const char* k, const char* v)
     {
         m_keys.push_back(k);
-        StringList::push_back(v);
+        m_values.push_back(v);
     }
     void push_back(::std::string k, ::std::string v)
     {
         m_keys.push_back(k);
-        StringList::push_back(v);
+        m_values.push_back(v);
     }
     void push_back(::std::string k, const char* v)
     {
         m_keys.push_back(k);
-        StringList::push_back(v);
+        m_values.push_back(v);
     }
 
     struct Iter {
@@ -118,7 +117,7 @@ public:
             this->i++;
         }
         ::std::pair<const char*,const char*> operator*() {
-            return ::std::make_pair(this->v.m_keys.get_vec()[this->i], this->v.get_vec()[this->i]);
+            return ::std::make_pair(this->v.m_keys.get_vec()[this->i], this->v.m_values.get_vec()[this->i]);
         }
         bool operator!=(const Iter& x) const {
             return this->i != x.i;

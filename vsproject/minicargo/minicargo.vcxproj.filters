@@ -18,9 +18,6 @@
     <ClCompile Include="..\..\tools\minicargo\main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\tools\minicargo\build.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\tools\minicargo\manifest.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -28,6 +25,18 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\..\tools\minicargo\cfg.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\tools\minicargo\build.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\tools\minicargo\file_timestamp.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\tools\minicargo\os.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\tools\minicargo\jobs.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -42,6 +51,15 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\..\tools\minicargo\cfg.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\tools\minicargo\file_timestamp.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\tools\minicargo\jobs.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\tools\minicargo\os.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

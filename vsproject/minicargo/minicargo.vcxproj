@@ -143,14 +143,20 @@
   <ItemGroup>
     <ClCompile Include="..\..\tools\minicargo\build.cpp" />
     <ClCompile Include="..\..\tools\minicargo\cfg.cpp" />
+    <ClCompile Include="..\..\tools\minicargo\file_timestamp.cpp" />
+    <ClCompile Include="..\..\tools\minicargo\jobs.cpp" />
     <ClCompile Include="..\..\tools\minicargo\main.cpp" />
     <ClCompile Include="..\..\tools\minicargo\manifest.cpp" />
+    <ClCompile Include="..\..\tools\minicargo\os.cpp" />
     <ClCompile Include="..\..\tools\minicargo\repository.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\tools\minicargo\build.h" />
     <ClInclude Include="..\..\tools\minicargo\cfg.hpp" />
+    <ClInclude Include="..\..\tools\minicargo\file_timestamp.h" />
+    <ClInclude Include="..\..\tools\minicargo\jobs.hpp" />
     <ClInclude Include="..\..\tools\minicargo\manifest.h" />
+    <ClInclude Include="..\..\tools\minicargo\os.hpp" />
     <ClInclude Include="..\..\tools\minicargo\repository.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

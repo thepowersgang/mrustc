@@ -119,12 +119,14 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\..\tools\common\debug.cpp" />
+    <ClCompile Include="..\..\tools\common\jobserver.cpp" />
     <ClCompile Include="..\..\tools\common\path.cpp" />
     <ClCompile Include="..\..\tools\common\toml.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\tools\common\debug.h" />
     <ClInclude Include="..\..\tools\common\helpers.h" />
+    <ClInclude Include="..\..\tools\common\jobserver.h" />
     <ClInclude Include="..\..\tools\common\path.h" />
     <ClInclude Include="..\..\tools\common\target_detect.h" />
     <ClInclude Include="..\..\tools\common\toml.h" />

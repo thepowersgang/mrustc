@@ -189,7 +189,7 @@ src/main.cpp: $(PCHS:%=src/%.gch)
 	@echo [CXX] -o $@
 	$V$(CXX) -std=c++14 -o $@ $< $(CPPFLAGS) -MMD -MP -MF $@.dep
 
-bin/common_lib.a:
+bin/common_lib.a: $(wildcard tools/common/*)
 	$(MAKE) -C tools/common
 	
 -include $(OBJ:%=%.dep)

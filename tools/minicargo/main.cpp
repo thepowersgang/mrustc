@@ -45,7 +45,9 @@ struct ProgramOptions
     ::std::vector<const char*>  lib_search_dirs;
 
     // Number of build jobs to run at a time
-    unsigned build_jobs = 1;
+    unsigned build_jobs = 0;
+    // Don't run build tasks, just print
+    bool    dry_run = false;
 
     // Pause for user input before quitting (useful for MSVC debugging)
     bool pause_before_quit = false;
@@ -236,7 +238,7 @@ int main(int argc, const char* argv[])
         Debug_SetPhase("Enumerate Build");
         auto build_list = BuildList(m, build_opts);
         Debug_SetPhase("Run Build");
-        if( !build_list.build(::std::move(build_opts), opts.build_jobs) )
+        if( !build_list.build(::std::move(build_opts), opts.build_jobs, opts.dry_run) )
         {
             ::std::cerr << "BUILD FAILED" << ::std::endl;
             if(opts.pause_before_quit) {
@@ -324,7 +326,7 @@ int ProgramOptions::parse(int argc, const char* argv[])
                 }
                 break;
             case 'n':
-                this->build_jobs = 0;
+                this->dry_run = true;
                 break;
             case 'g':
                 this->enable_debug = true;

@@ -69,10 +69,13 @@ endif
 
 OUTDIR := output$(OUTDIR_SUF)/
 
+USE_MERGED_BUILD=1
 ifeq ($(RUSTC_VERSION),1.19.0)
   RUSTC_OUT_BIN := rustc
+  USE_MERGED_BUILD=0
 else ifeq ($(RUSTC_VERSION),1.29.0)
   RUSTC_OUT_BIN := rustc_binary
+  USE_MERGED_BUILD=0
 else ifeq ($(RUSTC_VERSION),1.39.0)
   RUSTC_OUT_BIN := rustc_binary
 else
@@ -151,8 +154,6 @@ all: $(OUTDIR)rustc
 
 test: $(OUTDIR)rust/test_run-pass_hello_out.txt
 
-LIBS: $(OUTDIR)libstd.rlib $(OUTDIR)libtest.rlib $(OUTDIR)libpanic_unwind.rlib $(OUTDIR)libproc_macro.rlib
-
 RUSTCSRC: $(RUSTC_SRC_DL)
 
 .PHONY: rust_tests local_tests
@@ -190,26 +191,36 @@ $(RUSTC_SRC_DL): $(RUSTC_SRC_TARBALL) rustc-$(RUSTC_VERSION)-src.patch
 # Standard library crates
 # - libstd, libpanic_unwind, libtest and libgetopts
 # - libproc_macro (mrustc)
-$(OUTDIR)libstd.rlib: $(MRUSTC) $(MINICARGO) $(RUSTC_SRC_DL)
-	$(MINICARGO) $(RUSTCSRC)$(RUST_LIB_PREFIX)std --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
-	@test -e $@
-$(OUTDIR)libpanic_unwind.rlib: $(OUTDIR)libstd.rlib
-	$(MINICARGO) $(RUSTCSRC)$(RUST_LIB_PREFIX)panic_unwind --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
-	@test -e $@
-$(OUTDIR)libtest.rlib: $(OUTDIR)libstd.rlib $(OUTDIR)libpanic_unwind.rlib
-	$(MINICARGO) $(RUSTCSRC)$(RUST_LIB_PREFIX)test --vendor-dir $(VENDOR_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
-	@test -e $@
-# MRustC custom version of libproc_macro
-$(OUTDIR)libproc_macro.rlib: $(OUTDIR)libstd.rlib
-	$(MINICARGO) lib/libproc_macro --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
-	@test -e $@
+ifeq ($(USE_MERGED_BUILD),1)
+$(RUSTCSRC)mrustc-stdlib/Cargo.toml: $(RUSTC_SRC_DL) minicargo.mk
+	@mkdir -p $(dir $@)
+	@echo "#![no_core]" > $(dir $@)/lib.rs
+	@echo "[package]" > $@
+	@echo "name = \"mrustc_standard_library\"" >> $@
+	@echo "version = \"0.0.0\"" >> $@
+	@echo "[lib]" >> $@
+	@echo "path = \"lib.rs\"" >> $@
+	@echo "[dependencies]" >> $@
+	@echo "std = { path = \"../$(RUST_LIB_PREFIX)std\" }" >> $@
+	@echo "panic_unwind = { path = \"../$(RUST_LIB_PREFIX)panic_unwind\" }" >> $@
+	@echo "test = { path = \"../$(RUST_LIB_PREFIX)test\" }" >> $@
+LIBS: $(RUSTCSRC)mrustc-stdlib/Cargo.toml $(MRUSTC) $(MINICARGO)
+	+$(MINICARGO) --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS) $(RUSTCSRC)mrustc-stdlib/
+	+$(MINICARGO) --output-dir $(OUTDIR) $(MINICARGO_FLAGS) lib/libproc_macro
+else
+LIBS: $(MRUSTC) $(MINICARGO) $(RUSTC_SRC_DL)
+	+$(MINICARGO) --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS) $(RUSTCSRC)$(RUST_LIB_PREFIX)std
+	+$(MINICARGO) --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS) $(RUSTCSRC)$(RUST_LIB_PREFIX)panic_unwind
+	+$(MINICARGO) --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS) $(RUSTCSRC)$(RUST_LIB_PREFIX)test
+	+$(MINICARGO) --output-dir $(OUTDIR) $(MINICARGO_FLAGS) lib/libproc_macro
+endif
 
 # Dynamically linked version of the standard library
 $(OUTDIR)test/libtest.so: $(RUSTC_SRC_DL)
 	mkdir -p $(dir $@)
-	MINICARGO_DYLIB=1 $(MINICARGO) $(RUSTCSRC)$(RUST_LIB_PREFIX)std          --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(dir $@) $(MINICARGO_FLAGS)
-	MINICARGO_DYLIB=1 $(MINICARGO) $(RUSTCSRC)$(RUST_LIB_PREFIX)panic_unwind --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(dir $@) $(MINICARGO_FLAGS)
-	MINICARGO_DYLIB=1 $(MINICARGO) $(RUSTCSRC)$(RUST_LIB_PREFIX)test         --vendor-dir $(VENDOR_DIR) --output-dir $(dir $@) $(MINICARGO_FLAGS)
+	+MINICARGO_DYLIB=1 $(MINICARGO) $(RUSTCSRC)$(RUST_LIB_PREFIX)std          --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(dir $@) $(MINICARGO_FLAGS)
+	+MINICARGO_DYLIB=1 $(MINICARGO) $(RUSTCSRC)$(RUST_LIB_PREFIX)panic_unwind --vendor-dir $(VENDOR_DIR) --script-overrides $(OVERRIDE_DIR) --output-dir $(dir $@) $(MINICARGO_FLAGS)
+	+MINICARGO_DYLIB=1 $(MINICARGO) $(RUSTCSRC)$(RUST_LIB_PREFIX)test         --vendor-dir $(VENDOR_DIR) --output-dir $(dir $@) $(MINICARGO_FLAGS)
 	test -e $@
 
 RUSTC_ENV_VARS := CFG_COMPILER_HOST_TRIPLE=$(RUSTC_TARGET)
@@ -226,14 +237,14 @@ RUSTC_ENV_VARS += MRUSTC_LIBDIR=$(abspath $(OUTDIR))
 
 $(OUTDIR)rustc: $(MRUSTC) $(MINICARGO) LIBS $(LLVM_CONFIG)
 	mkdir -p $(OUTDIR)rustc-build
-	$(RUSTC_ENV_VARS) $(MINICARGO) $(RUSTCSRC)$(SRCDIR_RUSTC) --vendor-dir $(VENDOR_DIR) --output-dir $(OUTDIR)rustc-build -L $(OUTDIR) $(MINICARGO_FLAGS) $(MINICARGO_FLAGS_$@)
+	+$(RUSTC_ENV_VARS) $(MINICARGO) $(RUSTCSRC)$(SRCDIR_RUSTC) --vendor-dir $(VENDOR_DIR) --output-dir $(OUTDIR)rustc-build -L $(OUTDIR) $(MINICARGO_FLAGS) $(MINICARGO_FLAGS_$@)
 	test -e $@ -a ! $(OUTDIR)rustc-build/$(RUSTC_OUT_BIN) -nt $@ || cp $(OUTDIR)rustc-build/$(RUSTC_OUT_BIN) $@
 $(OUTDIR)rustc-build/librustc_driver.rlib: $(MRUSTC) $(MINICARGO) LIBS
 	mkdir -p $(OUTDIR)rustc-build
-	$(RUSTC_ENV_VARS) $(MINICARGO) $(RUSTCSRC)$(SRCDIR_RUSTC_DRIVER) --vendor-dir $(VENDOR_DIR) --output-dir $(OUTDIR)rustc-build -L $(OUTDIR) $(MINICARGO_FLAGS) $(MINICARGO_FLAGS_$(OUTDIR)rustc)
+	+$(RUSTC_ENV_VARS) $(MINICARGO) $(RUSTCSRC)$(SRCDIR_RUSTC_DRIVER) --vendor-dir $(VENDOR_DIR) --output-dir $(OUTDIR)rustc-build -L $(OUTDIR) $(MINICARGO_FLAGS) $(MINICARGO_FLAGS_$(OUTDIR)rustc)
 $(OUTDIR)cargo: $(MRUSTC) LIBS
 	mkdir -p $(OUTDIR)cargo-build
-	MRUSTC_LIBDIR=$(abspath $(OUTDIR)) $(MINICARGO) $(RUSTCSRC)src/tools/cargo --vendor-dir $(VENDOR_DIR) --output-dir $(OUTDIR)cargo-build -L $(OUTDIR) $(MINICARGO_FLAGS)
+	+MRUSTC_LIBDIR=$(abspath $(OUTDIR)) $(MINICARGO) $(RUSTCSRC)src/tools/cargo --vendor-dir $(VENDOR_DIR) --output-dir $(OUTDIR)cargo-build -L $(OUTDIR) $(MINICARGO_FLAGS)
 	test -e $@ -a ! $(OUTDIR)cargo-build/cargo -nt $@ || cp $(OUTDIR)cargo-build/cargo $@
 
 # Reference $(RUSTCSRC)src/bootstrap/native.rs for these values
@@ -386,7 +397,7 @@ RUNTIME_ARGS_$(OUTDIR)stdtest/collectionstests += --skip ::vec::overaligned_allo
 #ENV_$(OUTDIR)stdtest/rustc-test += CFG_COMPILER_HOST_TRIPLE=$(RUSTC_TARGET)
 
 $(OUTDIR)stdtest/%-test: $(RUSTCSRC)src/lib%/lib.rs LIBS
-	MRUSTC_LIBDIR=$(abspath $(OUTDIR)) $(MINICARGO) --test $(RUSTCSRC)src/lib$* --vendor-dir $(VENDOR_DIR) --output-dir $(dir $@) -L $(OUTDIR)
+	+MRUSTC_LIBDIR=$(abspath $(OUTDIR)) $(MINICARGO) --test $(RUSTCSRC)src/lib$* --vendor-dir $(VENDOR_DIR) --output-dir $(dir $@) -L $(OUTDIR)
 $(OUTDIR)stdtest/collectionstests: $(OUTDIR)stdtest/alloc-test
 	test -e $@
 $(OUTDIR)collectionstest_out.txt: $(OUTDIR)%
