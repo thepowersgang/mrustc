@@ -173,7 +173,7 @@ bool JobList::run_all(size_t num_jobs, bool dry_run)
             os_support::set_console_colour(::std::cout, os_support::TerminalColour::Green);
             ::std::cout << job->verb() << " " << job->name();
             os_support::set_console_colour(::std::cout, os_support::TerminalColour::Default);
-            auto num_complete = total_job_count - this->runnable_jobs.size() - this->running_jobs.size() - this->waiting_jobs.size();
+            auto num_complete = total_job_count - this->runnable_jobs.size() - (1+this->running_jobs.size()) - this->waiting_jobs.size();
             ::std::cout << " ("
                 << std::fixed << std::setprecision(1) << (100 * static_cast<double>(num_complete) / total_job_count) << "% " 
                 << this->running_jobs.size()+1 << "r," << this->runnable_jobs.size() << "w," << this->waiting_jobs.size() << "b/" << total_job_count << "t)";
@@ -239,6 +239,13 @@ bool JobList::wait_one(bool block)
 #else
     int status = -1;
     auto pid = waitpid(0, &status, block ? 0 : WNOHANG);
+    if(pid == 0) {
+        if(block) {
+            ::std::cerr << "`waitpid` returned zero when blocking?!" << std::endl;
+            return false;
+        }
+        return true;
+    }
     if(pid == (pid_t)-1)
     {
         ::std::cerr << "`waitpid` failed!" << std::endl;
@@ -248,7 +255,10 @@ bool JobList::wait_one(bool block)
     rv = os_support::Process::handle_status(status);
 
     auto i = ::std::find_if(this->running_jobs.begin(), this->running_jobs.end(), [&](const auto& e){ return e.handle.m_handle == pid; });
-    assert(i != this->running_jobs.end());
+    if( i == this->running_jobs.end() ) {
+        ::std::cerr << "`waitpid` returned an unknown pid (" << pid << ")" << std::endl;
+        return false;
+    }
     RunningJob rjob = ::std::move(*i);
     this->running_jobs.erase(i);
 #endif
