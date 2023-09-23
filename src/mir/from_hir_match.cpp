@@ -2323,7 +2323,7 @@ void MIR_LowerHIR_Match_Simple( MirBuilder& builder, MirConverter& conv, ::HIR::
 
 int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& sp, const PatternRule* rules, unsigned int num_rules, const ::HIR::TypeRef& top_ty, const ::MIR::LValue& top_val, unsigned int field_path_ofs,  ::MIR::BasicBlockId fail_bb)
 {
-    TRACE_FUNCTION_F("top_ty = " << top_ty << ", rules = [" << FMT_CB(os, for(auto i = 0; i < num_rules; i++) os << rules[i] << ","; ));
+    TRACE_FUNCTION_F("top_ty = " << top_ty << ", rules = [" << FMT_CB(os, for(size_t i = 0; i < num_rules; i++) os << rules[i] << ","; ));
     for(unsigned int rule_idx = 0; rule_idx < num_rules; rule_idx ++)
     {
         const auto& rule = rules[rule_idx];
@@ -3320,6 +3320,13 @@ void MatchGenGrouped::gen_dispatch(const ::std::vector<t_rules_subset>& rules, s
     }
 }
 
+namespace {
+    void push_if_equal(const Span& sp, MirBuilder& m_builder, ::MIR::LValue val, ::MIR::Param test_val, ::MIR::BasicBlockId bb_true, ::MIR::BasicBlockId bb_false) {
+        auto cmp_lval = m_builder.get_rval_in_if_cond(sp, ::MIR::RValue::make_BinOp({ mv$(val), ::MIR::eBinOp::EQ, mv$(test_val) }));
+        m_builder.end_block( ::MIR::Terminator::make_If({  mv$(cmp_lval), bb_true, bb_false }) );
+    }
+}
+
 void MatchGenGrouped::gen_dispatch__primitive(::HIR::TypeRef ty, ::MIR::LValue val, const ::std::vector<t_rules_subset>& rules, size_t ofs, const ::std::vector<::MIR::BasicBlockId>& arm_targets, ::MIR::BasicBlockId def_blk)
 {
     auto te = ty.data().as_Primitive();
@@ -3352,15 +3359,14 @@ void MatchGenGrouped::gen_dispatch__primitive(::HIR::TypeRef ty, ::MIR::LValue v
             const auto& r = rules[0][0][ofs];
             ASSERT_BUG(sp, r.is_Value(), "Matching without _Value pattern - " << r.tag_str());
             const auto& re = r.as_Value();
-            auto test_val = ::MIR::Param(re.clone());
-            auto cmp_lval = m_builder.get_rval_in_if_cond(sp, ::MIR::RValue::make_BinOp({ val.clone(), ::MIR::eBinOp::EQ, mv$(test_val) }));
-            m_builder.end_block( ::MIR::Terminator::make_If({  mv$(cmp_lval), arm_targets[0], def_blk }) );
+            push_if_equal(sp, m_builder, mv$(val), ::MIR::Param(re.clone()), arm_targets[0], def_blk);
         }
         else
         {
             // NOTE: Rules are currently sorted
             // TODO: If there are Constant::Const values in the list, they need to come first! (with equality checks)
 
+            ::std::vector< ::std::pair<::MIR::Constant, ::MIR::BasicBlockId> >  large_values;
             ::std::vector< uint64_t>  values;
             ::std::vector< ::MIR::BasicBlockId> targets;
             size_t tgt_ofs = 0;
@@ -3372,20 +3378,41 @@ void MatchGenGrouped::gen_dispatch__primitive(::HIR::TypeRef ty, ::MIR::LValue v
                 const auto& r = rules[i][0][ofs];
                 ASSERT_BUG(sp, r.is_Value(), "Matching without _Value pattern - " << r.tag_str());
                 const auto& re = r.as_Value();
-                if(re.is_Const())
-                    TODO(sp, "Handle Constant::Const in match");
-
-                if(re.as_Uint().v > U128(UINT64_MAX))
-                    TODO(sp, "Handle 128-bit values in SwitchValue");
-
-                values.push_back( re.as_Uint().v.truncate_u64() );
-                targets.push_back( arm_targets[tgt_ofs] );
+                if(re.is_Const()) {
+                    // Inject a `If` chained to a new block
+                    auto next_block = m_builder.new_bb_unlinked();
+                    push_if_equal(sp, m_builder, val.clone(), ::MIR::Param(re.clone()), arm_targets[tgt_ofs], next_block);
+                    m_builder.set_cur_block(next_block);
+                }
+                else if(re.as_Uint().v > U128(UINT64_MAX)) {
+                    large_values.push_back(std::make_pair(re.clone(), arm_targets[tgt_ofs]));
+                }
+                else {
+                    values.push_back( re.as_Uint().v.truncate_u64() );
+                    targets.push_back( arm_targets[tgt_ofs] );
+                }
 
                 tgt_ofs += rules[i].size();
             }
-            m_builder.end_block( ::MIR::Terminator::make_SwitchValue({
-                mv$(val), def_blk, mv$(targets), ::MIR::SwitchValues(mv$(values))
-                }) );
+            // If there were any values that don't fit in u64, then emit those as a chain of `if` terminators
+            if( !large_values.empty() ) {
+                auto tail_block = m_builder.new_bb_unlinked();
+                m_builder.end_block( ::MIR::Terminator::make_SwitchValue({
+                    val.clone(), tail_block, mv$(targets), ::MIR::SwitchValues(mv$(values))
+                    }) );
+                m_builder.set_cur_block(tail_block);
+                for(auto& v : large_values) {
+                    auto next_block = m_builder.new_bb_unlinked();
+                    push_if_equal(sp, m_builder, val.clone(), mv$(v.first), v.second, next_block);
+                    m_builder.set_cur_block(next_block);
+                }
+                m_builder.end_block(::MIR::Terminator::make_Goto(def_blk));
+            }
+            else {
+                m_builder.end_block( ::MIR::Terminator::make_SwitchValue({
+                    mv$(val), def_blk, mv$(targets), ::MIR::SwitchValues(mv$(values))
+                    }) );
+            }
         }
         break;
 
@@ -3401,9 +3428,7 @@ void MatchGenGrouped::gen_dispatch__primitive(::HIR::TypeRef ty, ::MIR::LValue v
             const auto& r = rules[0][0][ofs];
             ASSERT_BUG(sp, r.is_Value(), "Matching without _Value pattern - " << r.tag_str());
             const auto& re = r.as_Value();
-            auto test_val = ::MIR::Param(re.clone());
-            auto cmp_lval = m_builder.get_rval_in_if_cond(sp, ::MIR::RValue::make_BinOp({ val.clone(), ::MIR::eBinOp::EQ, mv$(test_val) }));
-            m_builder.end_block( ::MIR::Terminator::make_If({  mv$(cmp_lval), arm_targets[0], def_blk }) );
+            push_if_equal(sp, m_builder, mv$(val), ::MIR::Param(re.clone()), arm_targets[0], def_blk);
         }
         else
         {
