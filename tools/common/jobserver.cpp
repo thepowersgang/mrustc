@@ -155,7 +155,7 @@ class JobServer_Server: public JobServer
                 perror("JobServer_Server mkfifo");
                 throw std::runtime_error("JobServer_Server mkfifo");
             }
-            m_wr_fd = open((m_path + "/fifo").c_str(), O_RDWR);
+            m_wr_fd = open((m_path + "/fifo").c_str(), O_RDWR|O_CLOEXEC);
             if( m_wr_fd < 0 ) {
                 perror("JobServer_Server open");
                 throw std::runtime_error("JobServer_Server open");
@@ -264,7 +264,7 @@ public:
 #else
         // - Named pipe: `fifo:PATH`
         if( std::strncmp(auth_str.c_str(), "fifo:", 5) == 0 ) {
-            auto fd = open(auth_str.c_str() + 5, O_RDWR);
+            auto fd = open(auth_str.c_str() + 5, O_RDWR|O_CLOEXEC);
             if(fd > 0) {
                 return ::std::make_unique<JobServer_Client>(fd);
             }

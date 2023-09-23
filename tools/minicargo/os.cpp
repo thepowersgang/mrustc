@@ -212,6 +212,7 @@ Process Process::spawn(
         if( capture_stderr ) {
             posix_spawn_file_actions_adddup2(&fa, stderr_streams[1], 2);
         }
+        // Note: JobServer FDs should get propagated
     }
 
     // Generate `argv`
