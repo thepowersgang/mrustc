@@ -79,10 +79,11 @@ namespace {
                 return vs_static;
                 }
             }
+            throw "";
         }
         VarState& get_state_root_mut(const MIR::LValue::Storage& lv_root) {
             TU_MATCH_HDRA( (lv_root), {)
-                TU_ARMA(Return, e)
+            TU_ARMA(Return, e)
                 return retval;
             TU_ARMA(Local, e)
                 return locals.at(e);
@@ -96,6 +97,7 @@ namespace {
                 return it->second;
                 }
             }
+            throw "";
         }
         const VarState& get_state(const ::MIR::TypeResolve& state, const MIR::LValue& lv) const {
             const VarState* rv = &this->get_state_root(lv.m_root);
@@ -425,7 +427,7 @@ void MIR_BorrowCheck(const StaticTraitResolve& resolve, const ::HIR::ItemPath& p
         {
             const ::MIR::TypeResolve&   state;
             BorrowState&    borrow_state;
-            V(const ::MIR::TypeResolve state, BorrowState& borrow_state)
+            V(const ::MIR::TypeResolve& state, BorrowState& borrow_state)
                 : state(state)
                 , borrow_state(borrow_state)
             {}
@@ -550,9 +552,9 @@ void MIR_BorrowCheck(const StaticTraitResolve& resolve, const ::HIR::ItemPath& p
                         const auto& enm = resolve.m_crate.get_enum_by_path(state.sp, rse.path.m_path);
                         MonomorphStatePtr   ms(nullptr, &rse.path.m_params, nullptr);
                         HIR::TypeRef    tmp;
-                        auto maybe_monomorph = [&](const auto& ty)->const HIR::TypeRef& {
-                            return resolve.monomorph_expand_opt(sp, tmp, ty, ms);
-                        };
+                        //auto maybe_monomorph = [&](const auto& ty)->const HIR::TypeRef& {
+                        //    return resolve.monomorph_expand_opt(sp, tmp, ty, ms);
+                        //};
                         if( rse.vals.size() > 0 ) {
                             MIR_ASSERT(state, enm.m_data.is_Data(), "");
                             const auto& variants = enm.m_data.as_Data();
