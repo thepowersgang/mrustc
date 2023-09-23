@@ -200,9 +200,11 @@ Process Process::spawn(
     posix_spawn_file_actions_t  fa;
     int stderr_streams[2] {-1,-1};
     if(capture_stderr) {
-        if( pipe2(stderr_streams, O_CLOEXEC) != 0 ) {
-            throw CError("pipe2");
+        if( pipe(stderr_streams) != 0 ) {
+            throw CError("pipe");
         }
+        fcntl(stderr_streams[0], F_SETFD, FD_CLOEXEC);
+        fcntl(stderr_streams[1], F_SETFD, FD_CLOEXEC);
     }
     {
         posix_spawn_file_actions_init(&fa);
