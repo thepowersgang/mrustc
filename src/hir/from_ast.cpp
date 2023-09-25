@@ -2301,7 +2301,14 @@ public:
         for(const auto& ent : crate.m_proc_macros)
         {
             // Register under an invalid simplepath
-            macros.insert( std::make_pair(ent.name, ::HIR::ProcMacro { ent.name, ::HIR::SimplePath(RcString(""), { ent.name }), ent.attributes }) );
+            ::HIR::ProcMacro::Ty    ty;
+            switch(ent.ty)
+            {
+            case ::AST::ProcMacroTy::Function:  ty = ::HIR::ProcMacro::Ty::Function;    break;
+            case ::AST::ProcMacroTy::Derive:    ty = ::HIR::ProcMacro::Ty::Derive;  break;
+            case ::AST::ProcMacroTy::Attribute: ty = ::HIR::ProcMacro::Ty::Attribute;   break;
+            }
+            macros.insert( std::make_pair(ent.name, ::HIR::ProcMacro { ty, ent.name, ::HIR::SimplePath(RcString(""), { ent.name }), ent.attributes }) );
             rv.m_exported_macro_names.push_back(ent.name);
             DEBUG("Export proc_macro " << ent.name);
         }

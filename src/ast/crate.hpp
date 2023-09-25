@@ -33,9 +33,16 @@ public:
     ::std::string   expected_panic_message;
 };
 
+enum class ProcMacroTy
+{
+    Function,
+    Derive,
+    Attribute,
+};
 class ProcMacroDef
 {
 public:
+    ProcMacroTy ty;
     RcString    name;
     ::AST::AbsolutePath path;
     ::std::vector<::std::string>    attributes;

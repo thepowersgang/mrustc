@@ -229,6 +229,12 @@ namespace {
         {
             ::HIR::ProcMacro    pm;
             TRACE_FUNCTION_FR("", "ProcMacro { " << pm.name << ", " << pm.path << ", [" << pm.attributes << "]}");
+            switch(m_in.read_tag())
+            {
+            case 0: pm.ty = ::HIR::ProcMacro::Ty::Function  ; break;
+            case 1: pm.ty = ::HIR::ProcMacro::Ty::Derive    ; break;
+            case 2: pm.ty = ::HIR::ProcMacro::Ty::Attribute ; break;
+            }
             pm.name = m_in.read_istring();
             pm.path = deserialise_simplepath();
             pm.attributes = deserialise_vec< ::std::string>();

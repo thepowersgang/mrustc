@@ -465,6 +465,11 @@ public:
 class ProcMacro
 {
 public:
+    enum class Ty {
+        Function,
+        Derive,
+        Attribute,
+    } ty;
     // Name of the macro
     RcString   name;
     // Path to the handler

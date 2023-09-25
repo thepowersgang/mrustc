@@ -164,10 +164,15 @@ pub use crate::diagnostic::{Diagnostic,Level,MultiSpan};
 
 
 #[doc(hidden)]
+pub enum MacroType {
+    SingleStream(fn(TokenStream)->TokenStream),
+    Attribute(fn(TokenStream,TokenStream)->TokenStream),
+}
+#[doc(hidden)]
 pub struct MacroDesc
 {
     name: &'static str,
-    handler: fn(TokenStream)->TokenStream,
+    handler: MacroType,
 }
 
 #[doc(hidden)]
@@ -186,7 +191,14 @@ pub fn main(macros: &[MacroDesc])
             debug!("Waiting for input\r");
             let input = crate::serialisation::recv_token_stream(::std::io::stdin().lock());
             debug!("INPUT = `{}`\r", input);
-            let output = (m.handler)( input );
+            let output = match m.handler
+                {
+                MacroType::SingleStream(h) => (h)(input),
+                MacroType::Attribute(h) => {
+                    let input_body = crate::serialisation::recv_token_stream(::std::io::stdin().lock());
+                    (h)(input, input_body)
+                    },
+                };
             debug!("OUTPUT = `{}`\r", output);
             crate::serialisation::send_token_stream(::std::io::stdout().lock(), output);
             ::std::io::Write::flush(&mut ::std::io::stdout()).expect("Stdout write error?");

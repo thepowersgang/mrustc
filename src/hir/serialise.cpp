@@ -380,6 +380,12 @@
         void serialise(const ::HIR::ProcMacro& pm)
         {
             TRACE_FUNCTION_F("pm = ProcMacro { " << pm.name << ", " << pm.path << ", [" << pm.attributes << "] }");
+            switch(pm.ty)
+            {
+            case ::HIR::ProcMacro::Ty::Function : m_out.write_tag(0); break;
+            case ::HIR::ProcMacro::Ty::Derive   : m_out.write_tag(1); break;
+            case ::HIR::ProcMacro::Ty::Attribute: m_out.write_tag(2); break;
+            }
             serialise(pm.name);
             serialise(pm.path);
             serialise_vec(pm.attributes);
