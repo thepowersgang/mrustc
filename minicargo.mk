@@ -74,11 +74,15 @@ ifeq ($(RUSTC_VERSION),1.19.0)
   RUSTC_OUT_BIN := rustc
   USE_MERGED_BUILD=0
 else ifeq ($(RUSTC_VERSION),1.29.0)
+  # Diabled due to linking issues
+  #MINICARGO_FLAGS_$(OUTDIR)cargo := --features vendored-openssl
   RUSTC_OUT_BIN := rustc_binary
   USE_MERGED_BUILD=0
 else ifeq ($(RUSTC_VERSION),1.39.0)
+  MINICARGO_FLAGS_$(OUTDIR)cargo := --features vendored-openssl
   RUSTC_OUT_BIN := rustc_binary
 else
+  MINICARGO_FLAGS_$(OUTDIR)cargo := --features vendored-openssl
   MINICARGO_FLAGS_$(OUTDIR)rustc := --features llvm
   RUSTC_OUT_BIN := rustc_main
 endif
@@ -162,12 +166,21 @@ rust_tests: RUST_TESTS_run-pass
 # rust_tests-compile-fail
 
 # --- Ensure that mrustc/minicargo are built ---
-.PHONY: bin/mrustc$(EXESUF) bin/minicargo$(EXESUF) bin/testrunner$(EXESUF)
+.PHONY: bin/mrustc$(EXESUF) bin/minicargo$(EXESUF) bin/testrunner$(EXESUF) bin/standalone_miri$(EXESUF)
 bin/mrustc$(EXESUF):
 	$(MAKE) -f Makefile all
 	test -e $@
 
-bin/minicargo$(EXESUF):
+ifeq ($(MMIR),)
+  MINICARGO_DEP_SMIRI=
+else
+  MINICARGO_DEP_SMIRI=bin/standalone_miri$(EXESUF)
+endif
+
+bin/minicargo$(EXESUF): $(MINICARGO_DEP_SMIRI)
+	$(MAKE) -C tools/minicargo/
+	test -e $@
+bin/standalone_miri$(EXESUF):
 	$(MAKE) -C tools/minicargo/
 	test -e $@
 bin/testrunner$(EXESUF):
@@ -233,7 +246,6 @@ RUSTC_ENV_VARS += CFG_LIBDIR_RELATIVE=lib
 RUSTC_ENV_VARS += LD_LIBRARY_PATH=$(abspath $(OUTDIR))
 RUSTC_ENV_VARS += REAL_LIBRARY_PATH_VAR=LD_LIBRARY_PATH
 RUSTC_ENV_VARS += RUSTC_INSTALL_BINDIR=bin
-RUSTC_ENV_VARS += MRUSTC_LIBDIR=$(abspath $(OUTDIR))
 
 $(OUTDIR)rustc: $(MRUSTC) $(MINICARGO) LIBS $(LLVM_CONFIG)
 	mkdir -p $(OUTDIR)rustc-build
@@ -244,7 +256,7 @@ $(OUTDIR)rustc-build/librustc_driver.rlib: $(MRUSTC) $(MINICARGO) LIBS
 	+$(RUSTC_ENV_VARS) $(MINICARGO) $(RUSTCSRC)$(SRCDIR_RUSTC_DRIVER) --vendor-dir $(VENDOR_DIR) --output-dir $(OUTDIR)rustc-build -L $(OUTDIR) $(MINICARGO_FLAGS) $(MINICARGO_FLAGS_$(OUTDIR)rustc)
 $(OUTDIR)cargo: $(MRUSTC) LIBS
 	mkdir -p $(OUTDIR)cargo-build
-	+MRUSTC_LIBDIR=$(abspath $(OUTDIR)) $(MINICARGO) $(RUSTCSRC)src/tools/cargo --vendor-dir $(VENDOR_DIR) --output-dir $(OUTDIR)cargo-build -L $(OUTDIR) $(MINICARGO_FLAGS)
+	+$(MINICARGO) $(RUSTCSRC)src/tools/cargo --vendor-dir $(VENDOR_DIR) --output-dir $(OUTDIR)cargo-build -L $(OUTDIR) $(MINICARGO_FLAGS) $(MINICARGO_FLAGS_$@)
 	test -e $@ -a ! $(OUTDIR)cargo-build/cargo -nt $@ || cp $(OUTDIR)cargo-build/cargo $@
 
 # Reference $(RUSTCSRC)src/bootstrap/native.rs for these values
