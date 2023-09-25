@@ -170,9 +170,6 @@ void init_debug_list()
         "Trans Enumerate",
         "Trans Auto Impls",
         "Trans Monomorph",
-        "Trans Auto Impls PM",
-        "Trans Monomorph PM",
-        "MIR Optimise Inline PM",
         "MIR Optimise Inline",
         "Trans Enumerate Cleanup",
         "Trans Codegen"
@@ -800,6 +797,26 @@ int main(int argc, char *argv[])
         }
 
         // TODO: For 1.29 executables/dylibs, add oom/panic shims
+        if( crate_type == ::AST::Crate::Type::ProcMacro )
+        {
+            // - Save a very basic HIR dump, making sure that there's no lang items in it (e.g. `mrustc-main`)
+            CompilePhaseV("HIR Serialise", [&]() {
+                HIR::Crate  crate_for_ser;
+                crate_for_ser.m_crate_name = hir_crate->m_crate_name;
+                crate_for_ser.m_edition    = hir_crate->m_edition;
+                for(const auto& i : hir_crate->m_root_module.m_macro_items) {
+                    DEBUG(i.first << ": " << i.second->ent.tag_str());
+                    if( const auto* e = i.second->ent.opt_ProcMacro() ) {
+                        crate_for_ser.m_root_module.m_macro_items.insert(std::make_pair(
+                            i.first,
+                            box$(HIR::VisEnt<HIR::MacroItem>{ i.second->publicity, *e })
+                            ));
+                    }
+                }
+                crate_for_ser.m_exported_macro_names = hir_crate->m_exported_macro_names;
+                HIR_Serialise(params.outfile + ".hir", crate_for_ser);
+                });
+        }
 
         // Enumerate items to be passed to codegen
         TransList items = CompilePhase<TransList>("Trans Enumerate", [&]() {
@@ -814,8 +831,6 @@ int main(int argc, char *argv[])
             case ::AST::Crate::Type::CDylib:
                 return Trans_Enumerate_Public(*hir_crate);
             case ::AST::Crate::Type::ProcMacro:
-                // TODO: proc macros enumerate twice, once as a library (why?) and again as an executable
-                return Trans_Enumerate_Public(*hir_crate);
             case ::AST::Crate::Type::Executable:
                 return Trans_Enumerate_Main(*hir_crate);
             }
@@ -861,18 +876,7 @@ int main(int argc, char *argv[])
             break;
         case ::AST::Crate::Type::ProcMacro: {
             // Needs: An executable (the actual macro handler), metadata (for `extern crate foo;`)
-
-            // 1. Generate code for the plugin itself
-            TransList items = CompilePhase<TransList>("Trans Enumerate PM", [&]() { return Trans_Enumerate_Main(*hir_crate); });
-            CompilePhaseV("Trans Auto Impls PM", [&]() { Trans_AutoImpls(*hir_crate, items); });
-            CompilePhaseV("Trans Monomorph PM", [&]() { Trans_Monomorphise_List(*hir_crate, items); });
-            CompilePhaseV("MIR Optimise Inline PM", [&]() { MIR_OptimiseCrate_Inlining(*hir_crate, items); });
-            // - Save a very basic HIR dump, making sure that there's no lang items in it (e.g. `mrustc-main`)
-            CompilePhaseV("HIR Serialise", [&]() {
-                auto saved_lang_items = ::std::move(hir_crate->m_lang_items); hir_crate->m_lang_items.clear();
-                HIR_Serialise(params.outfile + ".hir", *hir_crate);
-                hir_crate->m_lang_items = ::std::move(saved_lang_items);
-                });
+            // - Metadata was done before enumerate
             CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, CodegenOutput::Executable, trans_opt, *hir_crate, items, params.outfile + ".hir"); });
             break; }
         case ::AST::Crate::Type::Executable:
