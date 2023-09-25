@@ -51,6 +51,9 @@ struct RunState
 
     std::string get_key(const PackageManifest& p, bool build, bool is_host) const {
         auto rv = ::format(p.name(), " v", p.version());
+        if(p.has_library() && p.get_library().m_is_proc_macro ) {
+            is_host = true;
+        }
         if(build) {
             rv += " (build)";
         }
@@ -77,7 +80,7 @@ struct RunState
     // If `is_for_host` and cross compiling, use a different directory
     // - TODO: Include the target arch in the output dir too?
     ::helpers::path get_output_dir(bool is_for_host) const {
-        if(is_for_host && m_opts.target_name != nullptr)
+        if(is_for_host && (m_opts.target_name != nullptr && !m_opts.emit_mmir))
             return m_opts.output_dir / "host";
         else
             return m_opts.output_dir;
@@ -193,7 +196,7 @@ BuildList::BuildList(const PackageManifest& manifest, const BuildOptions& opts):
 
         void add_package(const PackageManifest& p, unsigned level, bool include_build, bool is_native)
         {
-            TRACE_FUNCTION_F(p.name());
+            TRACE_FUNCTION_F(p.name() << (is_native ? " host" : ""));
             // If this is a proc macro, force `is_native`
             if(p.has_library() && p.get_library().m_is_proc_macro ) {
                 is_native = true;
@@ -239,15 +242,15 @@ BuildList::BuildList(const PackageManifest& manifest, const BuildOptions& opts):
             // Needed to deduplicate after sorting (`add_package` doesn't fully dedup)
             for(auto it = m_list.begin(); it != m_list.end(); )
             {
-                auto it2 = ::std::find_if(m_list.begin(), it, [&](const auto& x){ return x.package == it->package; });
+                auto it2 = ::std::find_if(m_list.begin(), it, [&](const auto& x){ return x.package == it->package && x.native == it->native; });
                 if( it2 != it )
                 {
-                    DEBUG((it - m_list.begin()) << ": Duplicate " << it->package->name() << " - Already at pos " << (it2 - m_list.begin()));
+                    DEBUG((it - m_list.begin()) << ": Duplicate " << it->package->name() << " " << (it->native ? "host":"") << " - Already at pos " << (it2 - m_list.begin()));
                     it = m_list.erase(it);
                 }
                 else
                 {
-                    DEBUG((it - m_list.begin()) << ": Keep " << it->package->name() << ", level = " << it->level);
+                    DEBUG((it - m_list.begin()) << ": Keep " << it->package->name() << " " << (it->native ? "host":"") << ", level = " << it->level);
                     ++it;
                 }
             }
@@ -282,7 +285,7 @@ BuildList::BuildList(const PackageManifest& manifest, const BuildOptions& opts):
 }
 bool BuildList::build(BuildOptions opts, unsigned num_jobs, bool dry_run)
 {
-    bool cross_compiling = (opts.target_name != nullptr);
+    bool cross_compiling = (opts.target_name != nullptr && !opts.emit_mmir);
 
     RunState    run_state { opts, cross_compiling };
     JobList runner;
@@ -348,7 +351,8 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs, bool dry_run)
                     p.iter_build_dependencies([&](const PackageRef& dep) {
                         if( !dep.is_disabled() )
                         {
-                            auto k = run_state.get_key(dep.get_package(), false, true);
+                            auto k = run_state.get_key(dep.get_package(), false, /*is_host=*/true);
+                            DEBUG("BS Dep: " << k);
                             bs_is_dirty |= this->handle_dep(job_bs_build->m_dependencies, script_ts, k);
                         }
                     });
@@ -388,6 +392,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs, bool dry_run)
                         if( !dep.is_disabled() )
                         {
                             auto k = run_state.get_key(dep.get_package(), false, is_host);
+                            DEBUG("BS Main Dep: " << k);
                             bs_is_dirty |= this->handle_dep(job_bs_run->m_dependencies, output_ts, k);
                         }
                     });
@@ -414,6 +419,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs, bool dry_run)
         const auto& p = *e.package;
 
         auto job = ::std::make_unique<Job_BuildTarget>(run_state, p, p.get_library(), e.is_host);
+        DEBUG("> Considering " << job->name());
 
         auto output_ts = Timestamp::for_file(job->get_outfile());
         bool is_dirty = run_state.outfile_needs_rebuild(job->get_outfile());
@@ -428,6 +434,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs, bool dry_run)
             if( !dep.is_disabled() )
             {
                 auto k = run_state.get_key(dep.get_package(), false, e.is_host);
+                DEBUG("Dep " << k);
                 is_dirty |= convert_state.handle_dep(job->m_dependencies, output_ts, k);
             }
         });
@@ -771,9 +778,31 @@ void Job_Build::push_args_common(StringList& args, const helpers::path& outfile,
     for(const auto& d : parent.m_opts.lib_search_dirs)
     {
         args.push_back("-L");
-        args.push_back(d.str().c_str());
+        if( is_for_host && parent.m_opts.target_name && !parent.m_opts.emit_mmir ) {
+            // HACK! Look for `-TARGETNAME` in the output path, and erase it
+            // - This turns `output-1.54-TARGETNAME` into `output-1.54`, pulling the non-cross-compiled libraries instead of the XC'd ones
+            auto tp = std::string("-")+parent.m_opts.target_name;
+            auto needle_pos = d.str().rfind(tp);
+            if( needle_pos != std::string::npos )
+            {
+                auto src = d.str().substr(0, needle_pos) + (d.str().c_str() + (needle_pos+tp.size()));
+                args.push_back(src);
+            }
+            else {
+                args.push_back(d.str().c_str());
+            }
+        }
+        else {
+            args.push_back(d.str().c_str());
+        }
     }
     args.push_back("-L"); args.push_back(parent.get_output_dir(is_for_host).str());
+    // HACK
+    if( !is_for_host ) {
+        if( parent.m_opts.target_name && !parent.m_opts.emit_mmir ) {
+            args.push_back("-L"); args.push_back(parent.get_output_dir(true).str());
+        }
+    }
 
     for(const auto& feat : m_manifest.active_features()) {
         args.push_back("--cfg"); args.push_back(::format("feature=\"", feat, "\""));
@@ -857,7 +886,7 @@ RunnableJob Job_BuildTarget::start()
         if( ! dep.is_disabled() )
         {
             const auto& m = dep.get_package();
-            auto path = parent.get_crate_path(m, m.get_library(), m_is_for_host, nullptr, nullptr);
+            auto path = parent.get_crate_path(m, m.get_library(), m_is_for_host || (m.has_library() && m.get_library().m_is_proc_macro), nullptr, nullptr);
             args.push_back("--extern");
             if( dep.key() != m.name() ) {
                 args.push_back(::format(escape_dashes(dep.key()), "=", path));
@@ -974,17 +1003,24 @@ RunnableJob Job_RunScript::start()
     env.push_back("PROFILE", "release");
     // - Needed for `regex`'s build script, make mrustc pretend to be rustc
     env.push_back("RUSTC", parent.m_compiler_path);
+    if( !parent.m_opts.lib_search_dirs.empty() ) {
+        env.push_back("MRUSTC_LIBDIR", ::helpers::path(parent.m_opts.lib_search_dirs.front()).to_absolute().str());
+    }
 
     // NOTE: All cfg(foo_bar) become CARGO_CFG_FOO_BAR
     Cfg_ToEnvironment(env);
 
+    m_script_exe_abs = ::std::move(script_exe_abs);
     if( parent.m_opts.emit_mmir )
     {
-        TODO("Invoke `standalone_miri` on build script when emitting MIR - " << out_file);
+        StringList  args;
+        args.push_back(m_script_exe_abs.str() + ".mir");
+        args.push_back("--logfile");
+        args.push_back(out_file.to_absolute().str() + "-smiri.log");
+        return RunnableJob("/home/tpg/Projects/mrustc/bin/standalone_miri", std::move(args), std::move(env), out_file.to_absolute(), m_manifest.directory());
     }
     else
     {
-        m_script_exe_abs = ::std::move(script_exe_abs);
         return RunnableJob(m_script_exe_abs.str().c_str(), {}, std::move(env), out_file.to_absolute(), m_manifest.directory());
     }
 }
