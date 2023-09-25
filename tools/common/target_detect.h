@@ -20,7 +20,7 @@
 #  if defined(_ILP32)
 #   define DEFAULT_TARGET_NAME "x86_64-unknown-linux-gnux32"
 #  else
-#   define DEFAULT_TARGET_NAME "x86_64-linux-gnu"
+#   define DEFAULT_TARGET_NAME "x86_64-unknown-linux-gnu"
 #  endif
 # elif defined(__aarch64__)
 #  define DEFAULT_TARGET_NAME "aarch64-linux-gnu"

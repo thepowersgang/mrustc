@@ -411,14 +411,14 @@ namespace
         {
             return load_spec_from_file(target_name);
         }
-        else if(target_name == "i586-linux-gnu")
+        else if(target_name == "i586-linux-gnu" || target_name == "i586-unknown-linux-gnu")
         {
             return TargetSpec {
                 "unix", "linux", "gnu", {CodegenMode::Gnu11, true, "i586-linux-gnu", BACKEND_C_OPTS_GNU},
                 ARCH_X86
                 };
         }
-        else if(target_name == "x86_64-linux-gnu")
+        else if(target_name == "x86_64-linux-gnu" || target_name == "x86_64-unknown-linux-gnu")
         {
             return TargetSpec {
                 "unix", "linux", "gnu", {CodegenMode::Gnu11, true /*false*/, "x86_64-linux-gnu", BACKEND_C_OPTS_GNU},
