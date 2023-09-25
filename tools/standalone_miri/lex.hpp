@@ -59,6 +59,7 @@ class Lexer
 public:
     Lexer(const ::std::string& path);
 
+    const std::string& filename() const { return m_filename; }
 
     const Token& next() const;
     const Token& lookahead();

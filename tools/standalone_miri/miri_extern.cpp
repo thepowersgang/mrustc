@@ -470,6 +470,24 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
 
         rv = Value::new_usize(val);
     }
+    else if( link_name == "mmap" )
+    {
+        // void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset);
+        auto& addr = args.at(0);
+        auto length = args.at(1).read_usize(0);
+        auto prot = args.at(2).read_i32(0);
+        auto flags = args.at(3).read_i32(0);
+        auto fd = args.at(4).read_i32(0);
+        auto offset = args.at(5).read_usize(0);
+        LOG_DEBUG("TODO: mmap(" << addr << ",0x" << std::hex << length
+            << ", prot=0x" << prot
+            << ", flags=0x" << flags
+            << ", fd=" << std::dec << fd
+            << ", offset=0x"<<std::hex<<offset
+            );
+        rv = std::move(addr);
+    }
+    // >>> pthread
     else if( link_name == "pthread_self" )
     {
         rv = Value::new_i32(0);
@@ -529,6 +547,13 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         out_size.m_alloc.alloc().write_usize(out_size.m_offset, 0x4000);
 
         rv = Value::new_i32(0);
+    }
+    else if( link_name == "pthread_get_stackaddr_np" ) {
+        rv = Value::new_ffiptr(FFIPointer::new_const_bytes("pthread_get_stackaddr_np", "", 0));
+    }
+    else if( link_name == "pthread_get_stacksize_np" ) {
+        //rv = Value::new_usize(0x4000);
+        rv = Value::new_usize(0);
     }
     else if( link_name == "pthread_create" )
     {
@@ -666,7 +691,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         rv = Value(::HIR::TypeRef(RawType::I32));
         rv.write_i32(0, rv_i);
     }
-    else if( link_name == "__errno_location" )
+    else if( link_name == "__errno_location" || /*OSX*/ link_name == "__error" )
     {
         rv = Value::new_ffiptr(FFIPointer::new_const_bytes("errno", &errno, sizeof(errno)));
     }
@@ -792,6 +817,35 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     else if( link_name == "setenv" )
     {
         LOG_TODO("Allow `setenv` without incurring thread unsafety");
+    }
+    else if( link_name == "strerror" )
+    {
+        auto errnum = args.at(0).read_i32(0);
+        auto s = strerror(errnum);
+        rv = Value::new_ffiptr(FFIPointer::new_const_bytes("strerror", s, strlen(s)+1));
+    }
+    else if( link_name == "strerror_r" )
+    {
+        auto errnum = args.at(0).read_i32(0);
+        auto len = args.at(2).read_usize(0);
+        auto buf = args.at(1).read_pointer_valref_mut(0, len);
+
+        auto s = strerror(errnum);
+        auto slen = strlen(s);
+        if(len > 0)
+        {
+            auto max_write = (slen < len-1 ? slen : len-1);
+            memcpy(buf.data_ptr_mut(), s, max_write);
+            buf.data_ptr_mut()[max_write] = 0; // Always include terminating NUL byte, even if truncated
+            buf.mark_bytes_valid(0, max_write+1);
+        }
+        if(true) {
+            rv = Value::new_i32(0);
+        }
+        else {
+            // GNU targets only
+            rv = std::move(args.at(1));
+        }
     }
     // Allocators!
     else

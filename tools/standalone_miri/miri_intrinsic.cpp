@@ -501,11 +501,23 @@ bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, co
         auto lhs = PrimitiveValueVirt::from_value(ty, args.at(0));
         auto rhs = PrimitiveValueVirt::from_value(ty, args.at(1));
         lhs.get().add( rhs.get() );
+        // TODO: Overflowing part
 
         rv = Value(ty);
         lhs.get().write_to_value(rv, 0);
     }
     // Unchecked arithmatic
+    else if( name == "unchecked_add" )
+    {
+        const auto& ty = ty_params.tys.at(0);
+
+        auto lhs = PrimitiveValueVirt::from_value(ty, args.at(0));
+        auto rhs = PrimitiveValueVirt::from_value(ty, args.at(1));
+        lhs.get().add( rhs.get() );
+
+        rv = Value(ty);
+        lhs.get().write_to_value(rv, 0);
+    }
     else if( name == "unchecked_sub" )
     {
         const auto& ty = ty_params.tys.at(0);
@@ -626,6 +638,8 @@ bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, co
     else if( name == "panic_if_uninhabited" || name == "assert_inhabited" )
     {
         //LOG_ASSERT(ty_params.tys.at(0).get_size(0) != SIZE_MAX, "");
+    }
+    else if( name == "assert_zero_valid" || name == "assert_uninit_valid") {
     }
     // ----
     // Track caller

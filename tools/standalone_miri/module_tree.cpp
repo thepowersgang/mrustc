@@ -12,6 +12,7 @@
 #include <iostream>
 #include <algorithm>    // std::find
 #include "debug.hpp"
+#include <path.h>
 
 ModuleTree::ModuleTree()
 {
@@ -90,7 +91,21 @@ bool Parser::parse_one()
 
         lex.check_consume(';');
 
-
+        // TODO: If the file cannot be found, then search for it using some relative rules
+        if( !::std::ifstream(path).good() ) {
+            // parent 1 is the dir containing the current file, parent 2 is its parent
+            // - This is a massive hack for build scripts, that are compiled/invoked using an absolute path
+            auto d = ::helpers::path(lex.filename()).parent().parent();
+            if( ::std::ifstream((d / path).str()).good() ) {
+                path = (d / path).str();
+            }
+            else {
+                d = d.parent();
+                if( ::std::ifstream((d / path).str()).good() ) {
+                    path = (d / path).str();
+                }
+            }
+        }
         this->tree.load_file(path);
     }
     else if( lex.consume_if("fn") )
