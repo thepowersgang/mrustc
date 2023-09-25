@@ -411,6 +411,13 @@ namespace
         {
             return load_spec_from_file(target_name);
         }
+        else if(target_name == "i386-gnu")
+        {
+            return TargetSpec {
+                "unix", "hurd", "gnu", {CodegenMode::Gnu11, true, "i386-gnu", BACKEND_C_OPTS_GNU},
+                ARCH_X86
+                };
+        }
         else if(target_name == "i586-linux-gnu")
         {
             return TargetSpec {

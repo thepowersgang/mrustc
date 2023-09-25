@@ -109,6 +109,8 @@
 # else
 #  warning "Unable to detect a suitable default target (Haiku)"
 # endif
+#elif defined(__GNU__)
+# define DEFAULT_TARGET_NAME "i386-gnu"
 // - Unknown
 #else
 # warning "Unable to detect a suitable default target"
