@@ -214,7 +214,23 @@ namespace
             }
             return false;
         }
-        
+
+        void visit_params(::HIR::GenericParams& params) override
+        {
+            TRACE_FUNCTION_F(params.fmt_args() << params.fmt_bounds());
+            for(auto& tps : params.m_types)
+                this->visit_type( tps.m_default );
+            for(auto& val : params.m_values)
+                this->visit_type(val.m_type);
+            // The bounds list can grow as inferred lifetime bounds are added, so iterate manually and move the bound in/out to maintain pointer stability
+            for(size_t i = 0; i < params.m_bounds.size(); i++) {
+                auto bound = std::move(params.m_bounds[i]);
+                params.m_bounds[i] = HIR::GenericBound::make_Lifetime({ HIR::LifetimeRef::new_static(), HIR::LifetimeRef::new_static() });
+                visit_generic_bound(bound);
+                params.m_bounds[i] = std::move(bound);
+            }
+        }
+
         void visit_path_params(::HIR::PathParams& pp) override
         {
             static Span _sp;
