@@ -1,7 +1,5 @@
 #
-# Mini version of cargo
-# - Interprets Cargo.toml files and emits makefiles
-# - Supports overriding build script output
+# Common helper tools for all applications
 #
 
 V ?= @

@@ -37,6 +37,9 @@ public:
     bool is_valid() const {
         return m_str != "";
     }
+    bool is_absolute() const {
+        return m_str != "" && m_str[0] == '/';
+    }
 
     bool operator==(const path& p) const {
         return m_str == p.m_str;

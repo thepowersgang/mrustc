@@ -190,6 +190,7 @@ RcString Crate::load_extern_crate(Span sp, const RcString& name, const ::std::st
         // Search a list of load paths for the crate
         for(const auto& p : g_crate_load_dirs)
         {
+            DEBUG("Searching in " << p);
             path = p + "/" + direct_filename;
             if( ::std::ifstream(path).good() ) {
                 paths.push_back(path);
@@ -214,6 +215,7 @@ RcString Crate::load_extern_crate(Span sp, const RcString& name, const ::std::st
 #else
             auto dp = opendir(p.c_str());
             if( !dp ) {
+                DEBUG("Unable to opendir `" << p << "`");
                 continue ;
             }
             struct dirent *ent;
@@ -254,7 +256,7 @@ RcString Crate::load_extern_crate(Span sp, const RcString& name, const ::std::st
         if( paths.size() > 1 ) {
             ERROR(sp, E0000, "Multiple options for crate '" << name << "' in search directories - " << paths);
         }
-        if( paths.size() == 0 || !::std::ifstream(paths.front()).good() ) {
+        if( paths.size() == 0 ) {
             ERROR(sp, E0000, "Unable to locate crate '" << name << "' in search directories");
         }
         path = paths.front();

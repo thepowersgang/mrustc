@@ -93,7 +93,7 @@ namespace {
                 return it2->second( val );
             }
 
-            WARNING(lex.point_span(), W0000, "Unknown cfg() param '" << name << "'");
+            //WARNING(lex.point_span(), W0000, "Unknown cfg() param '" << name << "'");
             return false;
             }
         case TOK_PAREN_OPEN:
