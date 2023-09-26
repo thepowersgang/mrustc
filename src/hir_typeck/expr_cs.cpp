@@ -2286,13 +2286,13 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                 TU_MATCH_HDR( (pv), {)
                 TU_ARM(pv, Integer, ve) {
                     if( ve.type == ::HIR::CoreType::Str ) {
-                        return ::HIR::TypeRef::new_infer(context.m_ivars.new_ivar(), ::HIR::InferClass::Integer);
+                        return context.m_ivars.new_ivar_tr(::HIR::InferClass::Integer);
                     }
                     return ve.type;
                     }
                 TU_ARM(pv, Float, ve) {
                     if( ve.type == ::HIR::CoreType::Str ) {
-                        return ::HIR::TypeRef::new_infer(context.m_ivars.new_ivar(), ::HIR::InferClass::Float);
+                        return context.m_ivars.new_ivar_tr(::HIR::InferClass::Float);
                     }
                     return ve.type;
                     }
