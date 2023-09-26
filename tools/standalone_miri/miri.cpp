@@ -489,12 +489,12 @@ GlobalState::GlobalState(const ModuleTree& modtree):
         m_fcn_overrides.insert(::std::make_pair( make_simplepath("std#0_0_0_H300", il), cb));   // 1.39
         };
 
-    override_handler_t* cb_nop = [](auto& state, auto& ret, const auto& path, auto args){
+    override_handler_t* cb_nop = [](InterpreterThread& state, Value& ret, const HIR::Path& path, std::vector<Value> args){
         return true;
     };
     // SetThreadStackGuarantee
     // - Calls GetProcAddress
-    override_handler_t* cb_SetThreadStackGuarantee = [](auto& state, auto& ret, const auto& path, auto args){
+    override_handler_t* cb_SetThreadStackGuarantee = [](InterpreterThread& state, Value& ret, const HIR::Path& path, std::vector<Value> args){
         ret = Value::new_i32(120);  //ERROR_CALL_NOT_IMPLEMENTED
         return true;
     };
@@ -507,7 +507,7 @@ GlobalState::GlobalState(const ModuleTree& modtree):
     push_override_std( { "sys", "windows", "c", "ReleaseSRWLockExclusive" }, cb_nop );
 
     // - No guard page needed
-    override_handler_t* cb_guardpage_init = [](auto& state, auto& ret, const auto& path, auto args){
+    override_handler_t* cb_guardpage_init = [](InterpreterThread& state, Value& ret, const HIR::Path& path, std::vector<Value> args){
         ret = Value::with_size(16, false);
         ret.write_u64(0, 0);
         ret.write_u64(8, 0);
