@@ -294,7 +294,7 @@ struct MirHelpers
         if( meta != RawType::Unreachable )
         {
             LOG_ASSERT(src_base_value.m_metadata, "Borrow of an unsized value, but no metadata avaliable");
-            new_val.write_value(POINTER_SIZE, *src_base_value.m_metadata);
+            new_val.write_value(POINTER_SIZE, src_base_value.m_metadata->read_value(0, POINTER_SIZE));
         }
         return new_val;
     }
@@ -519,6 +519,8 @@ GlobalState::GlobalState(const ModuleTree& modtree):
     // - No stack overflow handling needed
     push_override_std( {"sys", "imp", "stack_overflow", "imp", "init"}, cb_nop );
     m_fcn_overrides.insert(::std::make_pair( "ZRG5cD8std0_0_03sys4unix14stack_overflow3imp4init0g", cb_nop ));  // 1.54
+    m_fcn_overrides.insert(::std::make_pair( "ZRG5cD15std0_0_0_H190003sys4unix14stack_overflow3imp4init0g", cb_nop ));  // 1.54
+    m_fcn_overrides.insert(::std::make_pair( "ZRG5cD15std0_0_0_H190003sys4unix6thread5guard4init0g", cb_nop ));  // 1.54
 
     // No need to fudge the fds
     m_fcn_overrides.insert(::std::make_pair( "ZRG4cD8std0_0_03sys4unixB_021sanitize_standard_fds0g", cb_nop )); // 1.54
@@ -1460,10 +1462,10 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                 auto ptr_val = Value::new_pointer_ofs(ptr_ty, ofs, ::std::move(alloc));
                 if( v.m_metadata )
                 {
-                    ptr_val.write_value(POINTER_SIZE, *v.m_metadata);
+                    ptr_val.write_value(POINTER_SIZE, v.m_metadata->read_value(0,POINTER_SIZE));
                 }
 
-                if( !drop_value(ptr_val, ty, /*shallow=*/se.kind == ::MIR::eDropKind::SHALLOW) )
+                if( !drop_value(std::move(ptr_val), ty, /*shallow=*/se.kind == ::MIR::eDropKind::SHALLOW) )
                 {
                     return false;
                 }
@@ -1755,7 +1757,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
             else
             {
                 LOG_DEBUG(te.ret_val << " = " << rv << " (resume " << cur_frame.fcn->my_path << ")");
-                state.write_lvalue(te.ret_val, rv);
+                state.write_lvalue(te.ret_val, std::move(rv));
                 cur_frame.bb_idx = te.ret_block;
             }
             } break;
@@ -1820,7 +1822,7 @@ bool InterpreterThread::pop_stack(Value& out_thread_result)
             }
             else
             {
-                state.write_lvalue(te.ret_val, res_v);
+                state.write_lvalue(te.ret_val, std::move(res_v));
                 cur_frame.bb_idx = te.ret_block;
             }
         }
@@ -1861,7 +1863,7 @@ bool InterpreterThread::call_path(Value& ret, const ::HIR::Path& path, ::std::ve
         auto it = m_global.m_fcn_overrides.find(path.n);
         if( it != m_global.m_fcn_overrides.end() )
         {
-            return it->second(*this, ret, path, args);
+            return it->second(*this, ret, path, std::move(args));
         }
     }
 
@@ -1953,8 +1955,7 @@ bool InterpreterThread::drop_value(Value ptr, const ::HIR::TypeRef& ty, bool is_
             auto pty = ity.wrapped(TypeWrapper::Ty::Borrow, static_cast<size_t>(::HIR::BorrowType::Move));
             for(uint64_t i = 0; i < count; i ++)
             {
-                auto ptr = Value::new_pointer(pty, ofs, ptr_reloc);
-                if( !drop_value(ptr, ity) )
+                if( !drop_value(Value::new_pointer(pty, ofs, ptr_reloc), ity) )
                 {
                     // - This is trying to invoke custom drop glue, need to suspend this operation and come back later
 
@@ -1966,8 +1967,8 @@ bool InterpreterThread::drop_value(Value ptr, const ::HIR::TypeRef& ty, bool is_
                         ofs += ity.get_size();
                         if( i < count )
                         {
-                            auto ptr = Value::new_pointer(pty, ofs, ptr_reloc);
-                            assert(!drop_value(ptr, ity));
+                            auto v = drop_value(Value::new_pointer(pty, ofs, ptr_reloc), ity);
+                            assert(!v);
                             return false;
                         }
                         else
@@ -1994,8 +1995,10 @@ bool InterpreterThread::drop_value(Value ptr, const ::HIR::TypeRef& ty, bool is_
             {
                 LOG_DEBUG("Drop - " << ty);
 
-                Value   tmp;
-                return this->call_path(tmp, ty.composite_type().drop_glue, { ptr });
+                static Value    tmp;
+                ::std::vector<Value>    args;
+                args.push_back(std::move(ptr));
+                return this->call_path(tmp, ty.composite_type().drop_glue, std::move(args));
             }
             else
             {
@@ -2013,7 +2016,9 @@ bool InterpreterThread::drop_value(Value ptr, const ::HIR::TypeRef& ty, bool is_
                 LOG_ASSERT(drop_r.get_ty() == RelocationPtr::Ty::Function, "");
                 auto fcn = drop_r.fcn();
                 static Value    tmp;
-                return this->call_path(tmp, fcn, { ::std::move(inner_ptr) });
+                ::std::vector<Value>    args;
+                args.push_back(std::move(inner_ptr));
+                return this->call_path(tmp, fcn, std::move(args));
             }
             else
             {

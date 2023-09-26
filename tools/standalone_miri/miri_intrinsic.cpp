@@ -153,11 +153,11 @@ bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, co
     {
         const auto& ty_T = ty_params.tys.at(0);
         auto data_ref = args.at(0).read_pointer_valref_mut(0, ty_T.get_size());
-        const auto& new_v = args.at(1);
+        auto& new_v = args.at(1);
 
         rv = data_ref.read_value(0, new_v.size());
         LOG_ASSERT(data_ref.m_alloc.is_alloc(), "Atomic operation with non-allocation pointer - " << data_ref);
-        data_ref.m_alloc.alloc().write_value( data_ref.m_offset, new_v );
+        data_ref.m_alloc.alloc().write_value( data_ref.m_offset, std::move(new_v) );
     }
     else if( name == "atomic_cxchg" || name == "atomic_cxchg_acq" )
     {
@@ -169,13 +169,13 @@ bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, co
         // TODO: Get a ValueRef to the target location
         auto data_ref = args.at(0).read_pointer_valref_mut(0, ty_T.get_size());
         const auto& old_v = args.at(1);
-        const auto& new_v = args.at(2);
+        auto& new_v = args.at(2);
         rv = Value( ret_ty );
         rv.write_value(ret_dt.fields.at(0).first, data_ref.read_value(0, old_v.size()));
         LOG_DEBUG("> *ptr = " << data_ref);
         bool success = data_ref.compare(0, old_v.data_ptr(), old_v.size());
         if( success == true ) {
-            data_ref.m_alloc.alloc().write_value( data_ref.m_offset, new_v );
+            data_ref.m_alloc.alloc().write_value( data_ref.m_offset, std::move(new_v) );
         }
         rv.write_u8( ret_dt.fields.at(1).first, success ? 1 : 0 );
     }
@@ -365,7 +365,7 @@ bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, co
     {
         auto& val = args.at(0);
         const auto& ty = ty_params.tys.at(0);
-        return drop_value(val, ty);
+        return drop_value(std::move(val), ty);
     }
     else if( name == "forget" )
     {
@@ -374,8 +374,8 @@ bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, co
     else if( name == "try" )
     {
         auto fcn_path = args.at(0).get_relocation(0).fcn();
-        auto arg = args.at(1);
-        auto panic_arg = args.at(2);
+        auto& arg = args.at(1);
+        auto panic_arg = std::make_shared<Value>(std::move(args.at(2)));
 
         ::std::vector<Value>    sub_args;
         sub_args.push_back( ::std::move(arg) );
@@ -387,7 +387,7 @@ bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, co
                 m_thread.panic_active = false;
                 m_thread.panic_count --;
                 if( TARGETVER_MOST_1_39 ) {
-                    auto out_panic_value = panic_arg.read_pointer_valref_mut(0, POINTER_SIZE);
+                    auto out_panic_value = panic_arg->read_pointer_valref_mut(0, POINTER_SIZE);
                     LOG_ASSERT(m_thread.panic_value.size() == out_panic_value.m_size, "Panic value " << m_thread.panic_value << " doesn't fit in " << out_panic_value);
                     out_panic_value.m_alloc.alloc().write_value( out_panic_value.m_offset, ::std::move(m_thread.panic_value) );
                 }

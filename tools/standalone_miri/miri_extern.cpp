@@ -134,7 +134,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     else if( link_name == "__rust_maybe_catch_panic" )
     {
         auto fcn_path = args.at(0).read_pointer_fcn(0);
-        auto arg = args.at(1);
+        auto& arg = args.at(1);
         auto data_ptr = args.at(2).read_pointer_valref_mut(0, POINTER_SIZE);
         auto vtable_ptr = args.at(3).read_pointer_valref_mut(0, POINTER_SIZE);
 
@@ -479,7 +479,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         auto flags = args.at(3).read_i32(0);
         auto fd = args.at(4).read_i32(0);
         auto offset = args.at(5).read_usize(0);
-        LOG_DEBUG("TODO: mmap(" << addr << ",0x" << std::hex << length
+        LOG_TODO("TODO: mmap(" << addr << ",0x" << std::hex << length
             << ", prot=0x" << prot
             << ", flags=0x" << flags
             << ", fd=" << std::dec << fd
@@ -548,19 +548,19 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
 
         rv = Value::new_i32(0);
     }
-    else if( link_name == "pthread_get_stackaddr_np" ) {
-        rv = Value::new_ffiptr(FFIPointer::new_const_bytes("pthread_get_stackaddr_np", "", 0));
-    }
-    else if( link_name == "pthread_get_stacksize_np" ) {
-        //rv = Value::new_usize(0x4000);
-        rv = Value::new_usize(0);
-    }
+    //else if( link_name == "pthread_get_stackaddr_np" ) {
+    //    rv = Value::new_ffiptr(FFIPointer::new_const_bytes("pthread_get_stackaddr_np", "", 0));
+    //}
+    //else if( link_name == "pthread_get_stacksize_np" ) {
+    //    //rv = Value::new_usize(0x4000);
+    //    rv = Value::new_usize(0);
+    //}
     else if( link_name == "pthread_create" )
     {
         auto thread_handle_out = args.at(0).read_pointer_valref_mut(0, sizeof(pthread_t));
         auto attrs = args.at(1).read_pointer_const(0, sizeof(pthread_attr_t));
         auto fcn_path = args.at(2).read_pointer_fcn(0);
-        auto arg = args.at(3);
+        auto& arg = args.at(3);
         LOG_NOTICE("TODO: pthread_create(" << thread_handle_out << ", " << attrs << ", " << fcn_path << ", " << arg << ")");
         // TODO: Create a new interpreter context with this thread, use co-operative scheduling
         // HACK: Just run inline
@@ -574,7 +574,9 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
                 }));
 
             // TODO: Catch the panic out of this.
-            if( this->call_path(rv, fcn_path, { ::std::move(arg) }) )
+            ::std::vector<Value>    args;
+            args.push_back(std::move(arg));
+            if( this->call_path(rv, fcn_path, std::move(args)) )
             {
                 bool v = this->pop_stack(rv);
                 assert( v == false );

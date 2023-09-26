@@ -128,6 +128,7 @@ AllocationHandle::~AllocationHandle()
         {
             delete m_ptr;
         }
+        m_ptr = nullptr;
     }
 }
 
@@ -451,8 +452,7 @@ Value Allocation::read_value(size_t ofs, size_t size) const
 {
     Value rv;
     //TRACE_FUNCTION_R("Allocation::read_value " << this << " " << ofs << "+" << size, *this << " | " << size << "=" << rv);
-    if( this->is_freed )
-        LOG_ERROR("Use of freed memory " << this);
+    LOG_ASSERT(!this->is_freed, "Use of freed memory " << this);
     LOG_DEBUG(*this);
     LOG_ASSERT( in_bounds(ofs, size, this->size()), "Read out of bounds (" << ofs << "+" << size << " > " << this->size() << ")" );
 
@@ -551,8 +551,7 @@ void Allocation::write_value(size_t ofs, Value v)
 void Allocation::write_bytes(size_t ofs, const void* src, size_t count)
 {
     //LOG_DEBUG("Allocation::write_bytes " << this << " " << ofs << "+" << count);
-    if( this->is_freed )
-        LOG_ERROR("Use of freed memory " << this);
+    LOG_ASSERT(!this->is_freed, "Use of (write-to) freed memory " << this);
     //if( this->is_read_only )
     //    LOG_ERROR("Writing to read-only allocation " << this);
 
@@ -642,6 +641,14 @@ void Allocation::set_reloc(size_t ofs, size_t len, RelocationPtr reloc)
     return os;
 }
 
+Value::~Value()
+{
+    if(m_inner.is_alloc && m_inner.alloc.alloc)
+    {
+        // Mark the allocation as free
+        m_inner.alloc.alloc->mark_as_freed();
+    }
+}
 Value::Value()
 {
 }
@@ -793,7 +800,10 @@ Value Value::read_value(size_t ofs, size_t size) const
         // Inline always fits in inline.
         if( ofs == 0 && size == this->size() )
         {
-            rv = Value(*this);
+            rv.m_inner.direct.size = this->m_inner.direct.size;
+            memcpy(rv.m_inner.direct.data, this->m_inner.direct.data, sizeof(this->m_inner.direct.data));
+            memcpy(rv.m_inner.direct.mask, this->m_inner.direct.mask, sizeof(this->m_inner.direct.mask));
+            rv.m_inner.direct.reloc_0 = RelocationPtr(this->m_inner.direct.reloc_0);
         }
         else
         {

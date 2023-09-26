@@ -397,14 +397,14 @@ struct Value:
                 direct.~Direct();
             }
         }
-        Inner(const Inner& x) {
-            if(x.is_alloc) {
-                new(&this->alloc) Alloc(x.alloc);
-            }
-            else {
-                new(&this->direct) Direct(x.direct);
-            }
-        }
+        //Inner(const Inner& x) {
+        //    if(x.is_alloc) {
+        //        new(&this->alloc) Alloc(x.alloc);
+        //    }
+        //    else {
+        //        new(&this->direct) Direct(x.direct);
+        //    }
+        //}
         Inner(Inner&& x) {
             if(x.is_alloc) {
                 new(&this->alloc) Alloc(::std::move(x.alloc));
@@ -415,23 +415,22 @@ struct Value:
         }
         Inner& operator=(Inner&& x) {
             this->~Inner();
-            new(this) Inner(x);
+            new(this) Inner(std::move(x));
             return *this;
         }
-        Inner& operator=(const Inner& x) {
-            this->~Inner();
-            new(this) Inner(x);
-            return *this;
-        }
+        //Inner& operator=(const Inner& x) {
+        //    this->~Inner();
+        //    new(this) Inner(x);
+        //    return *this;
+        //}
     } m_inner;
 
 public:
     Value();
     Value(::HIR::TypeRef ty);
-    ~Value() {
-    }
+    ~Value();
 
-    Value(const Value&) = default;
+    Value(const Value&) = delete;
     Value(Value&&) = default;
     Value& operator=(const Value& x) = delete;
     Value& operator=(Value&& x) = default;
