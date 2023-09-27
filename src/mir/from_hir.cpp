@@ -604,6 +604,10 @@ namespace {
             TRACE_FUNCTION_F("_Return");
             this->visit_node_ptr(node.m_value);
 
+            if( !m_builder.block_active() ) {
+                return ;
+            }
+
             if( m_is_generator )
             {
                 ::HIR::GenericPath enm_path;
