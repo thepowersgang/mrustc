@@ -500,10 +500,12 @@ namespace {
             // Load space-separated (backslash-escaped) paths
             struct Lexer {
                 ::std::ifstream ifp;
+                unsigned m_line;
                 char    m_c;
 
                 Lexer(::std::ifstream ifp)
                     :ifp(::std::move(ifp))
+                    ,m_line(1)
                     ,m_c(0)
                 {
                     nextc();
@@ -579,7 +581,10 @@ namespace {
                 auto& list = v.first->second;
                 auto target = t;
                 t = lexer.get_token();
-                assert(t == ":");
+                if( t != ":" ) {
+                    ::std::cerr << depfile_path << ":" << lexer.m_line << ": Malformed depfile, expected ':' but got '" << t << "'" << std::endl;
+                    throw ::std::runtime_error("Malformed depfile: No `:` after filename");
+                }
 
                 do {
                     t = lexer.get_token();
@@ -591,7 +596,7 @@ namespace {
         }
         return rv;
     }
-    
+
     std::string escape_dashes(const std::string& s) {
         std::string rv;
         for(char c : s)
