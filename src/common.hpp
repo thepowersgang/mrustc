@@ -340,10 +340,13 @@ inline ::std::ostream& operator<<(::std::ostream& os, const ::std::multimap<T,U,
 
 }   // namespace std
 
-struct FmtEscaped {
+class FmtEscaped {
     const char* s;
+    const char* e;
+public:
     FmtEscaped(const ::std::string& s):
-        s(s.c_str())
+        s(s.c_str()),
+        e(s.c_str() + s.size())
     {}
     // See main.cpp
     friend ::std::ostream& operator<<(::std::ostream& os, const FmtEscaped& x);

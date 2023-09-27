@@ -389,6 +389,31 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
 
         rv = Value::new_isize(val);
     }
+    else if( link_name == "open" )
+    {
+        auto path = FfiHelpers::read_cstr(args.at(0), 0);
+        auto flags = args.at(1).read_i32(0);
+        // TODO: Emulate for windows?
+#if 0
+        LOG_TODO("open(\"" << path << "\", 0x" << std::hex << flags << ")");
+#else
+        if( strcmp(path, "/dev/null") == 0 ) {
+        }
+        else {
+            LOG_TODO("open(\"" << path << "\", 0x" << std::hex << flags << ")");
+        }
+        int fd = open(path, flags);
+        if(fd >= 0)
+        {
+            // TODO: Register FD to avoid double-close
+        }
+        else
+        {
+            // TODO: Save errno?
+        }
+        rv = Value::new_i32(fd);
+#endif
+    }
     else if( link_name == "close" )
     {
         auto fd = args.at(0).read_i32(0);
@@ -486,6 +511,24 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
             << ", offset=0x"<<std::hex<<offset
             );
         rv = std::move(addr);
+    }
+    else if( link_name == "pipe" )
+    {
+        LOG_TODO("pipe");
+#if 0   // TODO: `write_i32` doesn't directly work, need to grab allocation and handle
+        auto dst = args.at(0).read_pointer_valref_mut(0, 2*4);
+        int pipes[2];
+        if( pipe(pipes) != 0 ) {
+            // TODO: Save errno
+            rv = Value::new_i32(-1);
+        }
+        else {
+            // TODO: Save handles in some state?
+            dst.write_i32(0, pipes[0]);
+            dst.write_i32(4, pipes[1]);
+            rv = Value::new_i32(0);
+        }
+#endif
     }
     // >>> pthread
     else if( link_name == "pthread_self" )

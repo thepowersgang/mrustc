@@ -151,7 +151,7 @@ extern void debug_init_phases(const char* env_var_name, std::initializer_list<co
 ::std::ostream& operator<<(::std::ostream& os, const FmtEscaped& x)
 {
     os << ::std::hex;
-    for(auto s = x.s; *s != '\0'; s ++)
+    for(auto s = x.s; s != x.e; s ++)
     {
         switch(*s)
         {
