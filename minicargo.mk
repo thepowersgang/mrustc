@@ -69,13 +69,17 @@ endif
 
 OUTDIR := output$(OUTDIR_SUF)/
 
+CARGO_ENV_VARS :=
 USE_MERGED_BUILD=1
 ifeq ($(RUSTC_VERSION),1.19.0)
   RUSTC_OUT_BIN := rustc
   USE_MERGED_BUILD=0
 else ifeq ($(RUSTC_VERSION),1.29.0)
   # Diabled due to linking issues
+  # - libssh uses an openssl feature that isn't compiled, see openssl-src/src/lib.rs:106
+  # - But if that feature is complied, then libcurl doesn't compile :(
   #MINICARGO_FLAGS_$(OUTDIR)cargo := --features vendored-openssl
+  #CARGO_ENV_VARS += LIBCURL_NO_PKG_CONFIG=1
   RUSTC_OUT_BIN := rustc_binary
   USE_MERGED_BUILD=0
 else ifeq ($(RUSTC_VERSION),1.39.0)
@@ -256,7 +260,7 @@ $(OUTDIR)rustc-build/librustc_driver.rlib: $(MRUSTC) $(MINICARGO) LIBS
 	+$(RUSTC_ENV_VARS) $(MINICARGO) $(RUSTCSRC)$(SRCDIR_RUSTC_DRIVER) --vendor-dir $(VENDOR_DIR) --output-dir $(OUTDIR)rustc-build -L $(OUTDIR) $(MINICARGO_FLAGS) $(MINICARGO_FLAGS_$(OUTDIR)rustc)
 $(OUTDIR)cargo: $(MRUSTC) LIBS
 	mkdir -p $(OUTDIR)cargo-build
-	+$(MINICARGO) $(RUSTCSRC)src/tools/cargo --vendor-dir $(VENDOR_DIR) --output-dir $(OUTDIR)cargo-build -L $(OUTDIR) $(MINICARGO_FLAGS) $(MINICARGO_FLAGS_$@)
+	+$(CARGO_ENV_VARS) $(MINICARGO) $(RUSTCSRC)src/tools/cargo --vendor-dir $(VENDOR_DIR) --output-dir $(OUTDIR)cargo-build -L $(OUTDIR) $(MINICARGO_FLAGS) $(MINICARGO_FLAGS_$@)
 	test -e $@ -a ! $(OUTDIR)cargo-build/cargo -nt $@ || cp $(OUTDIR)cargo-build/cargo $@
 
 # Reference $(RUSTCSRC)src/bootstrap/native.rs for these values
