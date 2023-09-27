@@ -1113,7 +1113,7 @@ ExprNodeP Parse_ExprVal_StructLiteral(TokenStream& lex, AST::Path path)
         else
         {
             GET_CHECK_TOK(tok, lex, TOK_COLON);
-            val = Parse_Stmt(lex);
+            val = Parse_Expr0(lex);
         }
         items.push_back(::AST::ExprNode_StructLiteral::Ent { mv$(attrs), mv$(name), mv$(val) });
 
