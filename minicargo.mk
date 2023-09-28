@@ -76,8 +76,8 @@ ifeq ($(RUSTC_VERSION),1.19.0)
   USE_MERGED_BUILD=0
 else ifeq ($(RUSTC_VERSION),1.29.0)
   # Diabled due to linking issues
-  # - libssh uses an openssl feature that isn't compiled, see openssl-src/src/lib.rs:106
-  # - But if that feature is complied, then libcurl doesn't compile :(
+  # - libssh uses an openssl feature that isn't enabled ("engines"), see openssl-src/src/lib.rs:106
+  # - But if that feature is enabled, then libcurl doesn't compile :(
   #MINICARGO_FLAGS_$(OUTDIR)cargo := --features vendored-openssl
   #CARGO_ENV_VARS += LIBCURL_NO_PKG_CONFIG=1
   RUSTC_OUT_BIN := rustc_binary
