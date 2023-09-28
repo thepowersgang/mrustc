@@ -23,13 +23,13 @@
 #   define DEFAULT_TARGET_NAME "x86_64-unknown-linux-gnu"
 #  endif
 # elif defined(__aarch64__)
-#  define DEFAULT_TARGET_NAME "aarch64-linux-gnu"
+#  define DEFAULT_TARGET_NAME "aarch64-unknown-linux-gnu"
 # elif defined(__arm__)
-#  define DEFAULT_TARGET_NAME "arm-linux-gnu"
+#  define DEFAULT_TARGET_NAME "arm-unknown-linux-gnu"
 # elif defined(__i386__)
-#  define DEFAULT_TARGET_NAME "i586-linux-gnu"
+#  define DEFAULT_TARGET_NAME "i586-unknown-linux-gnu"
 # elif defined(__m68k__)
-#  define DEFAULT_TARGET_NAME "m68k-linux-gnu"
+#  define DEFAULT_TARGET_NAME "m68k-unknown-linux-gnu"
 # elif defined(__powerpc64__) && defined(__BIG_ENDIAN__)
 #  define DEFAULT_TARGET_NAME "powerpc64-unknown-linux-gnu"
 # elif defined(__powerpc64__) && defined(__LITTLE_ENDIAN__)
