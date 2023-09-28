@@ -64,6 +64,48 @@ public:
         memcpy(&rv, &vi, sizeof(rv));
         return rv;
     }
+    void to_le_bytes(uint8_t* dst, size_t max_len) {
+        max_len = max_len > 16 ? 16 : max_len;
+        #if __LITTLE_ENDIAN__
+        memcpy(dst, this, max_len);
+        #else
+        for(size_t i = 0; i < max_len; i++) {
+            dst[i] = static_cast<uint8_t>( (*this >> (i*8)).truncate_u64() );
+        }
+        #endif
+    }
+    void to_be_bytes(uint8_t* dst, size_t max_len) {
+        max_len = max_len > 16 ? 16 : max_len;
+        #if __BIG_ENDIAN__
+        memcpy(dst, this, max_len);
+        #else
+        for(size_t i = 0; i < max_len; i++) {
+            dst[max_len-1-i] = static_cast<uint8_t>( (*this >> (i*8)).truncate_u64() );
+        }
+        #endif
+    }
+    void from_le_bytes(const uint8_t* src, size_t max_len) {
+        max_len = max_len > 16 ? 16 : max_len;
+        *this = U128();
+        #if __LITTLE_ENDIAN__
+        memcpy(this, src, max_len);
+        #else
+        for(size_t i = 0; i < max_len; i++) {
+            *this |= U128(src[i]) << (i*8);
+        }
+        #endif
+    }
+    void from_be_bytes(const uint8_t* src, size_t max_len) {
+        max_len = max_len > 16 ? 16 : max_len;
+        *this = U128();
+        #if __BIG_ENDIAN__
+        memcpy(this, src, max_len);
+        #else
+        for(size_t i = 0; i < max_len; i++) {
+            *this |= U128(src[max_len-1-i]) << (i*8);
+        }
+        #endif
+    }
 
     U128 operator~() const { return U128(~lo, ~hi); }
     U128 operator+(U128 x) const { U128 rv(0); add128_o(*this, x, &rv); return rv; }
@@ -260,6 +302,23 @@ public:
     double to_double() const { return (*this < 0 ? -1.0 : 1.0) * this->u_abs().to_double(); }
     float to_float() const { return (*this < 0 ? -1.0f : 1.0f) * this->u_abs().to_float(); }
     U128 get_inner() const { return inner; }
+
+private:
+    void sign_extend(size_t n_bytes) {
+        if( n_bytes < 16 && inner.bit(n_bytes*8-1) ) {
+            // Apply sign extension mask - shift in nbits from an all-ones value
+            inner |= U128::max() << (n_bytes*8);
+        }
+    }
+public:
+    void from_le_bytes(const uint8_t* src, size_t max_len) {
+        inner.from_le_bytes(src, max_len);
+        sign_extend(max_len);
+    }
+    void from_be_bytes(const uint8_t* src, size_t max_len) {
+        inner.from_be_bytes(src, max_len);
+        sign_extend(max_len);
+    }
 
     S128 operator~() const { return S128(~inner); }
     S128 operator-() const { return S128(~inner) + S128(1); }

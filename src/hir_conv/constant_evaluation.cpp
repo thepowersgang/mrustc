@@ -141,7 +141,10 @@ namespace MIR { namespace eval {
         virtual void read_mask(uint8_t* dst, size_t dst_ofs, size_t ofs, size_t len) const = 0;
 
         virtual bool is_writable() const = 0;
-        virtual void write_bytes(size_t ofs, const void* data, size_t len) = 0;
+        virtual uint8_t* ext_write_bytes(size_t ofs, size_t len) = 0;
+        void write_bytes(size_t ofs, const void* data, size_t len) {
+            memcpy(ext_write_bytes(ofs, len), data, len);
+        }
         virtual void write_mask_from(size_t ofs, const IValue& src, size_t src_ofs, size_t len) = 0;
 
         virtual RelocPtr get_reloc(size_t ofs) const = 0;
@@ -257,7 +260,7 @@ namespace MIR { namespace eval {
         }
 
         bool is_writable() const override { return false; }
-        void write_bytes(size_t ofs, const void* data, size_t len) override { abort(); }
+        uint8_t* ext_write_bytes(size_t ofs, size_t len) override { abort(); }
         void write_mask_from(size_t ofs, const IValue& src, size_t src_ofs, size_t len) override { abort(); }
 
         RelocPtr get_reloc(size_t ofs) const override { return RelocPtr(); }
@@ -374,7 +377,7 @@ namespace MIR { namespace eval {
         bool is_writable() const override {
             return !is_readonly;
         }
-        void write_bytes(size_t ofs, const void* data, size_t len) override
+        uint8_t* ext_write_bytes(size_t ofs, size_t len) override
         {
             assert(ofs <= length);
             assert(len <= length);
@@ -390,11 +393,10 @@ namespace MIR { namespace eval {
                 for( ; ml % 8 != 0 && ml > 0; mo ++, ml --)
                     m[mo/8] |= (1 << (mo % 8));
             }
-            // Write data
-            memcpy(this->data + ofs, data, len);
             // Clear impacted relocations
             auto it = std::remove_if(this->relocations.begin(), this->relocations.end(), [&](const Reloc& r){ return (ofs <= r.offset && r.offset < ofs+len); });
             this->relocations.resize( it - this->relocations.begin() );
+            return this->data + ofs;
         }
         void write_mask_from(size_t ofs, const IValue& src, size_t src_ofs, size_t len) override {
             assert(ofs <= length);
@@ -499,7 +501,7 @@ namespace MIR { namespace eval {
         bool is_writable() const override {
             return false;
         }
-        void write_bytes(size_t ofs, const void* data, size_t len) override {
+        uint8_t* ext_write_bytes(size_t ofs, size_t len) override {
             abort();
         }
         void write_mask_from(size_t ofs, const IValue& src, size_t src_ofs, size_t len) override {
@@ -611,6 +613,17 @@ namespace MIR { namespace eval {
                 storage.as_value().write_bytes(ofs, data, len);
             }
         }
+        uint8_t* ext_write_bytes(const MIR::TypeResolve& state, size_t len) {
+            MIR_ASSERT(state, storage, "Writing to invalid slot");
+            MIR_ASSERT(state, storage.as_value().is_writable(), "Writing to read-only slot");
+            if(len > 0) {
+                return storage.as_value().ext_write_bytes(ofs, len);
+            }
+            else {
+                static uint8_t empty_buf;
+                return &empty_buf;
+            }
+        }
 
         void write_byte(const MIR::TypeResolve& state, uint8_t v) {
             write_bytes(state, &v, 1);
@@ -629,12 +642,22 @@ namespace MIR { namespace eval {
             write_uint(state, bits, U128(v));
         }
         void write_uint(const MIR::TypeResolve& state, unsigned bits, U128 v) {
-            if(Target_GetCurSpec().m_arch.m_big_endian) MIR_TODO(state, "Handle big endian in constant evaluate");
-            write_bytes(state, &v, (bits+7)/8);
+            auto n_bytes = (bits+7)/8;
+            if(Target_GetCurSpec().m_arch.m_big_endian) {
+                v.to_be_bytes(ext_write_bytes(state, n_bytes), n_bytes);
+            }
+            else {
+                v.to_le_bytes(ext_write_bytes(state, n_bytes), n_bytes);
+            }
         }
         void write_sint(const MIR::TypeResolve& state, unsigned bits, S128 v) {
-            if(Target_GetCurSpec().m_arch.m_big_endian) MIR_TODO(state, "Handle big endian in constant evaluate");
-            write_bytes(state, &v, (bits+7)/8);
+            auto n_bytes = (bits+7)/8;
+            if(Target_GetCurSpec().m_arch.m_big_endian) {
+                v.get_inner().to_be_bytes(ext_write_bytes(state, n_bytes), n_bytes);
+            }
+            else {
+                v.get_inner().to_le_bytes(ext_write_bytes(state, n_bytes), n_bytes);
+            }
         }
         void write_ptr(const MIR::TypeResolve& state, uint64_t val, RelocPtr reloc) {
             write_uint(state, Target_GetPointerBits(), U128(val));
@@ -644,11 +667,16 @@ namespace MIR { namespace eval {
             storage.as_value().set_reloc(ofs, std::move(reloc));
         }
 
-        void read_bytes(const MIR::TypeResolve& state, void* data, size_t len) const {
+        const uint8_t* ext_read_bytes(const MIR::TypeResolve& state, size_t len) const {
             MIR_ASSERT(state, storage, "");
             MIR_ASSERT(state, len >= 1, "");
             const auto* src = storage.as_value().get_bytes(ofs, len, /*check_mask*/true);
             MIR_ASSERT(state, src, "Invalid read: " << ofs << "+" << len << " (in " << *this << ")");
+            return src;
+        }
+        void read_bytes(const MIR::TypeResolve& state, void* data, size_t len) const {
+            const auto* src = ext_read_bytes(state, len);
+            assert(src);
             memcpy(data, src, len);
         }
         double read_float(const ::MIR::TypeResolve& state, unsigned bits) const {
@@ -661,33 +689,27 @@ namespace MIR { namespace eval {
             }
         }
         U128 read_uint(const ::MIR::TypeResolve& state, unsigned bits) const {
-            if(Target_GetCurSpec().m_arch.m_big_endian) MIR_TODO(state, "Handle big endian in constant evaluate");
             assert(bits <= 128);
-            if(bits > 64) {
-                uint64_t    v[2] = {0,0};
-                read_bytes(state, v, (bits+7)/8);
-                return U128(v[0], v[1]);
+            auto n_bytes = (bits+7)/8;
+            U128    rv;
+            if(Target_GetCurSpec().m_arch.m_big_endian) {
+                rv.from_be_bytes(ext_read_bytes(state, n_bytes), n_bytes);
             }
             else {
-                uint64_t    rv = 0;
-                read_bytes(state, &rv, (bits+7)/8);
-                return U128(rv);
+                rv.from_le_bytes(ext_read_bytes(state, n_bytes), n_bytes);
             }
+            return rv;
         }
         S128 read_sint(const ::MIR::TypeResolve& state, unsigned bits) const {
-            auto v = read_uint(state, bits);
-            if( v.bit(bits-1) ) {
-                // Apply sign extension
-                if( bits <= 64 ) {
-                    auto v64 = v.truncate_u64();
-                    v64 |= UINT64_MAX << bits;
-                    v = U128(v64, UINT64_MAX);
-                }
-                else {
-                    assert(bits == 128);
-                }
+            auto n_bytes = (bits+7)/8;
+            S128    rv;
+            if(Target_GetCurSpec().m_arch.m_big_endian) {
+                rv.from_be_bytes(ext_read_bytes(state, n_bytes), n_bytes);
             }
-            return S128(v);
+            else {
+                rv.from_le_bytes(ext_read_bytes(state, n_bytes), n_bytes);
+            }
+            return rv;
         }
         uint64_t read_usize(const ::MIR::TypeResolve& state) const {
             return read_uint(state, Target_GetPointerBits()).truncate_u64();
