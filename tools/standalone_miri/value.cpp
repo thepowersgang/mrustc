@@ -254,7 +254,7 @@ size_t RelocationPtr::get_base() const
             os << x.fcn();
             break;
         case RelocationPtr::Ty::StdString:
-            os << "\"" << x.str() << "\"";
+            os << "\"" << FmtEscaped(x.str()) << "\"";
             break;
         case RelocationPtr::Ty::FfiPointer:
             os << "FFI '" << x.ffi().tag_name << "' " << x.ffi().ptr_value;
