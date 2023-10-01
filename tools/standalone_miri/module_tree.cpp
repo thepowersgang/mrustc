@@ -115,16 +115,25 @@ bool Parser::parse_one()
 
         lex.check_consume('(');
         ::std::vector<::HIR::TypeRef>  arg_tys;
+        bool is_variadic = false;
         while(lex.next() != ')')
         {
+            if( lex.next() == '.' ) {
+                lex.check_consume('.');
+                lex.check_consume('.');
+                lex.check_consume('.');
+                is_variadic = true;
+                break;
+            }
             arg_tys.push_back( parse_type() );
             if( !lex.consume_if(',') )
                 break;
         }
         lex.check_consume(')');
         ::HIR::TypeRef  rv_ty;
-        if( lex.consume_if(':') )
+        if( lex.consume_if(':') || lex.consume_if('-') )
         {
+            lex.consume_if('>');
             rv_ty = parse_type();
         }
 
@@ -298,7 +307,7 @@ bool Parser::parse_one()
             }
             else
             {
-                LOG_BUG("Unexpected token in `type` - " << lex.next());
+                LOG_ERROR(lex << "Unexpected token in `type` - " << lex.next());
             }
         }
         lex.check_consume('}');
@@ -1273,8 +1282,16 @@ RawType Parser::parse_core_type()
         lex.check_consume("fn");
         lex.check_consume('(');
         ::std::vector<::HIR::TypeRef>   args;
+        bool is_variadic = false;
         while( lex.next() != ')' )
         {
+            if( lex.next() == '.' ) {
+                lex.check_consume('.');
+                lex.check_consume('.');
+                lex.check_consume('.');
+                is_variadic = true;
+                break;
+            }
             args.push_back(parse_type());
             if( !lex.consume_if(',') )
                 break;
