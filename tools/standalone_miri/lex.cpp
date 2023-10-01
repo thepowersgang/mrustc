@@ -188,10 +188,11 @@ void Lexer::advance()
         }
         if( ch == '/' )
         {
+            // Block comments '/*' with nesting support
             if( m_if.get() == '*' )
             {
                 unsigned level = 0;
-                while(1)
+                while(ch >= 0)
                 {
                     ch = m_if.get();
                     if( ch == '\n' )
@@ -218,6 +219,17 @@ void Lexer::advance()
                 }
 
                 continue ;
+            }
+            else {
+                m_if.unget();
+            }
+            // Line comments - '//' and consume until newline
+            if( m_if.get() == '/' ) {
+                while( ch >= 0 && ch != '\n' ) {
+                    ch = m_if.get();
+                }
+                m_cur_line += 1;
+                continue;
             }
             else {
                 m_if.unget();
