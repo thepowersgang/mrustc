@@ -45,6 +45,43 @@ extern "C" {
     ssize_t write(int, const void*, size_t);
 }
 #endif
+
+// A very simple implementation of `printf`-style formatting, with internal checks
+::std::string format_string(const char* fmt, const ::std::vector<Value>& args, size_t cur_arg) {
+    ::std::stringstream output;
+    for(const char* s = fmt; *s; s++) {
+        if( *s == '%' ) {
+            s ++;
+            if( *s == '%' ) {
+                output << '%';
+                continue;
+            }
+            switch(*s)
+            {
+            case 'i':
+            case 'd':
+                output << std::dec << args.at(cur_arg).read_i32(0);
+                cur_arg += 1;
+                break;
+            case 'x':
+                output << std::hex << args.at(cur_arg).read_i32(0);
+                cur_arg += 1;
+                break;
+            case 'p':
+                output << std::hex << "0x" << args.at(cur_arg).read_usize(0);
+                cur_arg += 1;
+                break;
+            default:
+                LOG_FATAL("Malformed printf string");
+            }
+        }
+        else {
+            output << *s;
+        }
+    }
+    return output.str();
+}
+
 bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, const ::std::string& abi, ::std::vector<Value> args)
 {
     struct FfiHelpers {
@@ -891,6 +928,13 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
             // GNU targets only
             rv = std::move(args.at(1));
         }
+    }
+    else if( link_name == "printf" )
+    {
+        const auto* fmt = FfiHelpers::read_cstr(args.at(0), 0);
+        auto out = format_string(fmt, args, 1);
+        ::std::cout << out;
+        rv = Value::new_i32(out.size());
     }
     // Allocators!
     else
