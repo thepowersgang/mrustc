@@ -156,7 +156,23 @@ bool Parser::parse_one()
             LOG_DEBUG(lex << "fn " << p);
         }
         auto p2 = p;
-        tree.functions.insert( ::std::make_pair(::std::move(p), Function { ::std::move(p2), ::std::move(arg_tys), rv_ty, ::std::move(ext), ::std::move(body) }) );
+        if( tree.functions.count(p) == 0 ) {
+            tree.functions.insert( ::std::make_pair(::std::move(p), Function { ::std::move(p2), ::std::move(arg_tys), rv_ty, ::std::move(ext), ::std::move(body) }) );
+        }
+        else {
+            auto& exist = tree.functions[p];
+
+            // TODO: Signature check
+
+            if( !body.blocks.empty() ) {
+                if( !exist.m_mir.blocks.empty() ) {
+                    // TODO: Check if they're identical, and warn/error if not
+                }
+                else {
+                    exist.m_mir = ::std::move(body);
+                }
+            }
+        }
     }
     else if( lex.consume_if("static") )
     {
@@ -372,7 +388,7 @@ bool Parser::parse_one()
             else if( lex.next() == TokenClass::Ident ) {
                 auto name = ::std::move(lex.consume().strval);
                 // TODO: Make arguments have custom names too
-                if( name.substr(0,3) == "arg" ) {
+                if( name.substr(0,3) == "arg" && ::std::all_of(name.begin()+3, name.end(), [](char v){ return std::isdigit(v); }) ) {
                     try {
                         auto idx = static_cast<unsigned>( ::std::stol(name.substr(3)) );
                         lv = ::MIR::LValue::new_Argument( idx );
