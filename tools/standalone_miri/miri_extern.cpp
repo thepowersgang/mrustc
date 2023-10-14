@@ -404,7 +404,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     {
         // BOOL WINAPI GetConsoleMode( _In_  HANDLE  hConsoleHandle, _Out_ LPDWORD lpMode );
         auto hConsoleHandle = args.at(0).read_pointer_tagged_nonnull(0, "HANDLE");
-        auto lpMode_vr = args.at(1).read_pointer_valref_mut(0, sizeof(DWORD));
+        auto lpMode_vr = args.at(1).read_pointer_valref_mut(0, sizeof(DWORD)).to_write();
         LOG_DEBUG("GetConsoleMode(" << hConsoleHandle << ", " << lpMode_vr);
         auto lpMode = reinterpret_cast<LPDWORD>(lpMode_vr.data_ptr_mut());
         auto rv_bool = GetConsoleMode(hConsoleHandle, lpMode);
@@ -425,7 +425,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         auto hConsoleOutput = args.at(0).read_pointer_tagged_nonnull(0, "HANDLE");
         auto nNumberOfCharsToWrite = args.at(2).read_u32(0);
         auto lpBuffer = args.at(1).read_pointer_const(0, nNumberOfCharsToWrite * 2);
-        auto lpNumberOfCharsWritten_vr = args.at(3).read_pointer_valref_mut(0, sizeof(DWORD));
+        auto lpNumberOfCharsWritten_vr = args.at(3).read_pointer_valref_mut(0, sizeof(DWORD)).to_write();
         auto lpReserved = args.at(4).read_usize(0);
         LOG_DEBUG("WriteConsoleW(" << hConsoleOutput << ", " << lpBuffer << ", " << nNumberOfCharsToWrite << ", " << lpNumberOfCharsWritten_vr << ")");
 
