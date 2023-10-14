@@ -30,7 +30,7 @@ struct Parser
 
     bool parse_one();
 
-    ::MIR::Function parse_body();
+    ::MIR::Function parse_body(const ::std::vector<std::string>& arg_names);
     ::HIR::PathParams parse_pathparams();
     RawType parse_core_type();
     ::HIR::TypeRef parse_type();
@@ -114,7 +114,8 @@ bool Parser::parse_one()
         //LOG_TRACE(lex << "fn " << p);
 
         lex.check_consume('(');
-        ::std::vector<::HIR::TypeRef>  arg_tys;
+        ::std::vector<::std::string>    arg_names;
+        ::std::vector<::HIR::TypeRef>   arg_tys;
         bool is_variadic = false;
         while(lex.next() != ')')
         {
@@ -125,10 +126,20 @@ bool Parser::parse_one()
                 is_variadic = true;
                 break;
             }
+            if( lex.next() == TokenClass::Ident && lex.lookahead() == ':' ) {
+                arg_names.push_back( lex.consume().strval );
+                lex.check_consume(':');
+            }
             arg_tys.push_back( parse_type() );
             if( !lex.consume_if(',') )
                 break;
         }
+        if( arg_names.size() == 0 ) {
+            for(size_t i = 0; i < arg_tys.size(); i ++) {
+                arg_names.push_back(FMT_STRING("arg" << i));
+            }
+        }
+        LOG_ASSERT(arg_names.size() == arg_tys.size(), "Mismatch in argument type/name counts");
         lex.check_consume(')');
         ::HIR::TypeRef  rv_ty;
         if( lex.consume_if(':') || lex.consume_if('-') )
@@ -151,7 +162,7 @@ bool Parser::parse_one()
         }
         else
         {
-            body = parse_body();
+            body = parse_body(arg_names);
 
             LOG_DEBUG(lex << "fn " << p);
         }
@@ -361,18 +372,28 @@ bool Parser::parse_one()
 
     return true;
 }
-::MIR::Function Parser::parse_body()
+::MIR::Function Parser::parse_body(const ::std::vector<std::string>& arg_names)
 {
     ::MIR::Function rv;
-    ::std::vector<::std::string>    drop_flag_names;
-    ::std::vector<::std::string>    var_names;
 
-    struct H
+    struct State
     {
+        ::std::vector<::std::string>    drop_flag_names;
+        /// Map of variable name to `(is_arg,index)`
+        ::std::map<::std::string, std::pair<bool,unsigned> >   variables;
+
+        unsigned get_drop_flag(const Parser& p, const std::string& name) const {
+            auto df_it = ::std::find(drop_flag_names.begin(), drop_flag_names.end(), name);
+            if( df_it == drop_flag_names.end() ) {
+                LOG_ERROR(p.lex << "Unable to find drop flag '" << name << "'");
+            }
+            return static_cast<unsigned>( df_it - drop_flag_names.begin() );
+        }
+
         //
         // Parse a LValue
         //
-        static ::MIR::LValue parse_lvalue(Parser& p, ::std::vector<::std::string>& var_names)
+        ::MIR::LValue parse_lvalue(Parser& p) const
         {
             auto& lex = p.lex;
             int deref = 0;
@@ -382,7 +403,7 @@ bool Parser::parse_one()
             }
             ::MIR::LValue   lv;
             if( lex.consume_if('(') ) {
-                lv = parse_lvalue(p, var_names);
+                lv = parse_lvalue(p);
                 lex.check_consume(')');
             }
             else if( lex.next() == TokenClass::Ident ) {
@@ -403,9 +424,14 @@ bool Parser::parse_one()
                 }
                 // Otherwise, look up variable names
                 else {
-                    auto it = ::std::find(var_names.begin(), var_names.end(), name);
-                    if( it != var_names.end() ) {
-                        lv = ::MIR::LValue::new_Local(static_cast<unsigned>(it - var_names.begin()));
+                    auto it = this->variables.find(name);
+                    if( it != this->variables.end() ) {
+                        if( it->second.first ) {
+                            lv = ::MIR::LValue::new_Argument(it->second.second);
+                        }
+                        else {
+                            lv = ::MIR::LValue::new_Local(it->second.second);
+                        }
                     }
                     else {
                         lv = ::MIR::LValue::new_Static( HIR::Path { RcString(name.c_str()) } );
@@ -432,7 +458,7 @@ bool Parser::parse_one()
                 else if( lex.next() == '[' )
                 {
                     lex.consume();
-                    auto idx_lv = parse_lvalue(p, var_names);
+                    auto idx_lv = parse_lvalue(p);
                     lv = ::MIR::LValue::new_Index(::std::move(lv), idx_lv.as_Local());
                     lex.check_consume(']');
                 }
@@ -448,7 +474,7 @@ bool Parser::parse_one()
             return lv;
         }
 
-        static ::MIR::Constant parse_const(Parser& p)
+        ::MIR::Constant parse_const(Parser& p) const
         {
             if( p.lex.next() == TokenClass::Integer ) {
                 auto v = p.lex.consume().integer_128(p.lex);
@@ -503,7 +529,7 @@ bool Parser::parse_one()
         }
 
         // Parse a "Param" (constant or lvalue)
-        static ::MIR::Param parse_param(Parser& p, ::std::vector<::std::string>& var_names)
+        ::MIR::Param parse_param(Parser& p) const
         {
             if( p.lex.next() == TokenClass::Integer || p.lex.next() == TokenClass::String || p.lex.next() == TokenClass::ByteString
                 || p.lex.next() == '+' || p.lex.next() == '-' || p.lex.next() == '&'
@@ -515,12 +541,15 @@ bool Parser::parse_one()
             }
             else
             {
-                return parse_lvalue(p, var_names);
+                return parse_lvalue(p);
             }
         }
-    };
+    } state;
 
     lex.check_consume('{');
+    for(size_t i = 0; i < arg_names.size(); i ++ ) {
+        state.variables.insert(std::make_pair(arg_names[i], ::std::make_pair(true, i)));
+    }
 
     // 1. Locals + Drop flags
     while(lex.next() == "let")
@@ -530,11 +559,11 @@ bool Parser::parse_one()
         if(lex.consume_if('='))
         {
             rv.drop_flags.push_back(lex.consume().integer_64(lex) != 0);
-            drop_flag_names.push_back(::std::move(name));
+            state.drop_flag_names.push_back(::std::move(name));
         }
         else if(lex.consume_if(':'))
         {
-            var_names.push_back(::std::move(name));
+            state.variables.insert(std::make_pair(::std::move(name), ::std::make_pair(false, rv.locals.size())));
             rv.locals.push_back( parse_type() );
         }
         else
@@ -563,7 +592,7 @@ bool Parser::parse_one()
             lex.check(TokenClass::Ident);
             if( lex.consume_if("ASSIGN") )
             {
-                auto dst_val = H::parse_lvalue(*this, var_names);
+                auto dst_val = state.parse_lvalue(*this);
                 lex.check_consume('=');
                 ::MIR::RValue   src_rval;
                 // Literals
@@ -573,11 +602,11 @@ bool Parser::parse_one()
                     || lex.next() == "ADDROF"
                     )
                 {
-                    src_rval = H::parse_const(*this);
+                    src_rval = state.parse_const(*this);
                 }
                 // LValue (prefixed by =)
                 else if( lex.consume_if('=') ) {
-                    src_rval = H::parse_lvalue(*this, var_names);
+                    src_rval = state.parse_lvalue(*this);
                 }
                 else if( lex.consume_if('&') ) {
                     auto bt = ::HIR::BorrowType::Shared;
@@ -587,7 +616,7 @@ bool Parser::parse_one()
                         bt = ::HIR::BorrowType::Unique;
                     else {
                     }
-                    auto val = H::parse_lvalue(*this, var_names);
+                    auto val = state.parse_lvalue(*this);
                     src_rval = ::MIR::RValue::make_Borrow({ bt, ::std::move(val) });
                 }
                 // Composites
@@ -595,7 +624,7 @@ bool Parser::parse_one()
                     ::std::vector<::MIR::Param> vals;
                     while( lex.next() != ')' )
                     {
-                        vals.push_back( H::parse_param(*this, var_names) );
+                        vals.push_back( state.parse_param(*this) );
                         if( !lex.consume_if(',') )
                             break ;
                     }
@@ -611,7 +640,7 @@ bool Parser::parse_one()
                     }
                     else
                     {
-                        vals.push_back( H::parse_param(*this, var_names) );
+                        vals.push_back( state.parse_param(*this) );
                         if( lex.consume_if(';') )
                         {
                             // Sized array
@@ -628,7 +657,7 @@ bool Parser::parse_one()
                             {
                                 while( lex.next() != ']' )
                                 {
-                                    vals.push_back( H::parse_param(*this, var_names) );
+                                    vals.push_back( state.parse_param(*this) );
                                     if( !lex.consume_if(',') )
                                         break ;
                                 }
@@ -642,7 +671,7 @@ bool Parser::parse_one()
                     ::std::vector<::MIR::Param> vals;
                     while( lex.next() != '}' )
                     {
-                        vals.push_back( H::parse_param(*this, var_names) );
+                        vals.push_back( state.parse_param(*this) );
                         if( !lex.consume_if(',') )
                             break ;
                     }
@@ -657,7 +686,7 @@ bool Parser::parse_one()
                     //auto idx = static_cast<unsigned>(lex.consume_integer());
                     lex.check(TokenClass::Integer);
                     auto idx = static_cast<unsigned>(lex.consume().integer_64(lex));
-                    auto val = H::parse_param(*this, var_names);
+                    auto val = state.parse_param(*this);
 
                     src_rval = ::MIR::RValue::make_UnionVariant({ ::std::move(path), idx, ::std::move(val) });
                 }
@@ -671,7 +700,7 @@ bool Parser::parse_one()
                     ::std::vector<::MIR::Param> vals;
                     while( lex.next() != '}' )
                     {
-                        vals.push_back( H::parse_param(*this, var_names) );
+                        vals.push_back( state.parse_param(*this) );
                         if( !lex.consume_if(',') )
                             break ;
                     }
@@ -681,7 +710,7 @@ bool Parser::parse_one()
                 }
                 // Operations
                 else if( lex.consume_if("CAST") ) {
-                    auto lv = H::parse_lvalue(*this, var_names);
+                    auto lv = state.parse_lvalue(*this);
                     lex.check_consume("as");
                     auto ty = parse_type();
                     src_rval = ::MIR::RValue::make_Cast({ ::std::move(lv), ::std::move(ty) });
@@ -700,12 +729,12 @@ bool Parser::parse_one()
                         LOG_ERROR(lex << "Unexpected token in uniop - " << lex.next());
                     }
 
-                    auto lv = H::parse_lvalue(*this, var_names);
+                    auto lv = state.parse_lvalue(*this);
 
                     src_rval = ::MIR::RValue::make_UniOp({ ::std::move(lv), op });
                 }
                 else if( lex.consume_if("BINOP") ) {
-                    auto lv1 = H::parse_param(*this, var_names);
+                    auto lv1 = state.parse_param(*this);
                     lex.check(TokenClass::Symbol);
                     auto t = lex.consume();
                     ::MIR::eBinOp   op;
@@ -746,22 +775,22 @@ bool Parser::parse_one()
                     default:
                         LOG_ERROR(lex << "Unexpected token " << t << " in BINOP");
                     }
-                    auto lv2 = H::parse_param(*this, var_names);
+                    auto lv2 = state.parse_param(*this);
 
                     src_rval = ::MIR::RValue::make_BinOp({ ::std::move(lv1), op, ::std::move(lv2) });
                 }
                 else if( lex.consume_if("MAKEDST") ) {
-                    auto lv_ptr = H::parse_param(*this, var_names);
+                    auto lv_ptr = state.parse_param(*this);
                     lex.check_consume(',');
-                    auto lv_meta = H::parse_param(*this, var_names);
+                    auto lv_meta = state.parse_param(*this);
                     src_rval = ::MIR::RValue::make_MakeDst({ ::std::move(lv_ptr), ::std::move(lv_meta) });
                 }
                 else if( lex.consume_if("DSTPTR") ) {
-                    auto lv = H::parse_lvalue(*this, var_names);
+                    auto lv = state.parse_lvalue(*this);
                     src_rval = ::MIR::RValue::make_DstPtr({ ::std::move(lv) });
                 }
                 else if( lex.consume_if("DSTMETA") ) {
-                    auto lv = H::parse_lvalue(*this, var_names);
+                    auto lv = state.parse_lvalue(*this);
                     src_rval = ::MIR::RValue::make_DstMeta({ ::std::move(lv) });
                 }
                 else {
@@ -774,11 +803,7 @@ bool Parser::parse_one()
             {
                 lex.check(TokenClass::Ident);
                 auto name = ::std::move(lex.consume().strval);
-                auto df_it = ::std::find(drop_flag_names.begin(), drop_flag_names.end(), name);
-                if( df_it == drop_flag_names.end() ) {
-                    LOG_ERROR(lex << "Unable to find drop flag '" << name << "'");
-                }
-                auto df_idx = static_cast<unsigned>( df_it - drop_flag_names.begin() );
+                unsigned df_idx = state.get_drop_flag(*this, name);
                 lex.check_consume('=');
                 if( lex.next() == TokenClass::Integer ) {
                     bool val = lex.consume().integer_64(lex) != 0;
@@ -792,18 +817,14 @@ bool Parser::parse_one()
                     }
                     lex.check(TokenClass::Ident);
                     auto name = ::std::move(lex.consume().strval);
-                    df_it = ::std::find(drop_flag_names.begin(), drop_flag_names.end(), name);
-                    if( df_it == drop_flag_names.end() ) {
-                        LOG_ERROR(lex << "Unable to find drop flag '" << name << "'");
-                    }
-                    auto other_idx = static_cast<unsigned>( df_it - drop_flag_names.begin() );
+                    unsigned other_idx = state.get_drop_flag(*this, name);
 
                     stmts.push_back(::MIR::Statement::make_SetDropFlag({ df_idx, inv, other_idx }));
                 }
             }
             else if(lex.consume_if("DROP") )
             {
-                auto slot = H::parse_lvalue(*this, var_names);
+                auto slot = state.parse_lvalue(*this);
                 auto kind = ::MIR::eDropKind::DEEP;
                 if( lex.consume_if("SHALLOW") )
                 {
@@ -814,11 +835,7 @@ bool Parser::parse_one()
                 {
                     lex.check(TokenClass::Ident);
                     auto name = ::std::move(lex.consume().strval);
-                    auto df_it = ::std::find(drop_flag_names.begin(), drop_flag_names.end(), name);
-                    if( df_it == drop_flag_names.end() ) {
-                        LOG_ERROR(lex << "Unable to find drop flag '" << name << "'");
-                    }
-                    flag_idx = static_cast<unsigned>( df_it - drop_flag_names.begin() );
+                    flag_idx = state.get_drop_flag(*this, name);
                 }
 
                 stmts.push_back(::MIR::Statement::make_Drop({  kind, ::std::move(slot), flag_idx }));
@@ -831,7 +848,7 @@ bool Parser::parse_one()
                 {
                     auto cons = ::std::move(lex.check_consume(TokenClass::String).strval);
                     lex.check_consume(':');
-                    auto lv = H::parse_lvalue(*this, var_names);
+                    auto lv = state.parse_lvalue(*this);
                     if(!lex.consume_if(','))
                         break;
                     out_vals.push_back(::std::make_pair(::std::move(cons), ::std::move(lv)));
@@ -846,7 +863,7 @@ bool Parser::parse_one()
                 {
                     auto cons = ::std::move(lex.check_consume(TokenClass::String).strval);
                     lex.check_consume(':');
-                    auto lv = H::parse_lvalue(*this, var_names);
+                    auto lv = state.parse_lvalue(*this);
                     if(!lex.consume_if(','))
                         break;
                     in_vals.push_back(::std::make_pair(::std::move(cons), ::std::move(lv)));
@@ -937,7 +954,7 @@ bool Parser::parse_one()
                 {
                     if( lex.consume_if("const") )
                     {
-                        stmt_asm2.params.push_back( H::parse_const(*this) );
+                        stmt_asm2.params.push_back( state.parse_const(*this) );
                     }
                     else if( lex.consume_if("sym") )
                     {
@@ -974,12 +991,12 @@ bool Parser::parse_one()
                         }
                         lex.check_consume(')');
                         if( !lex.consume_if('_') ) {
-                            param.input = std::make_unique<MIR::Param>(H::parse_param(*this, var_names));
+                            param.input = std::make_unique<MIR::Param>(state.parse_param(*this));
                         }
                         lex.check_consume('=');
                         lex.check_consume('>');
                         if( !lex.consume_if('_') ) {
-                            param.output = std::make_unique<MIR::LValue>(H::parse_lvalue(*this, var_names));
+                            param.output = std::make_unique<MIR::LValue>(state.parse_lvalue(*this));
                         }
 
                         stmt_asm2.params.push_back(std::move(param));
@@ -987,11 +1004,11 @@ bool Parser::parse_one()
                     else if( lex.consume_if("options") )
                     {
                         lex.check_consume('(');
-                        
+
                         do {
                             if( lex.next() == ')' )
                                 break;
-                            
+
                             lex.check(TokenClass::Ident);
 #define FLAG(_name)  if( lex.consume_if(#_name) ) { stmt_asm2.options._name = true; }
                             /**/ FLAG(pure)
@@ -1052,7 +1069,7 @@ bool Parser::parse_one()
         }
         else if( lex.consume_if("IF") )
         {
-            auto val = H::parse_lvalue(*this, var_names);
+            auto val = state.parse_lvalue(*this);
             lex.check_consume("goto");
             auto tgt_true = static_cast<unsigned>(lex.consume().integer_64(lex));
             lex.check_consume("else");
@@ -1061,7 +1078,7 @@ bool Parser::parse_one()
         }
         else if( lex.consume_if("SWITCH") )
         {
-            auto val = H::parse_lvalue(*this, var_names);
+            auto val = state.parse_lvalue(*this);
             lex.check_consume('{');
             ::std::vector<unsigned> targets;
             while(lex.next() != '{')
@@ -1076,7 +1093,7 @@ bool Parser::parse_one()
         }
         else if( lex.consume_if("SWITCHVALUE") )
         {
-            auto val = H::parse_lvalue(*this, var_names);
+            auto val = state.parse_lvalue(*this);
             ::std::vector<::MIR::BasicBlockId>  targets;
             lex.check_consume('{');
             ::MIR::SwitchValues vals;
@@ -1127,11 +1144,11 @@ bool Parser::parse_one()
         }
         else if( lex.consume_if("CALL") )
         {
-            auto dst = H::parse_lvalue(*this, var_names);
+            auto dst = state.parse_lvalue(*this);
             lex.check_consume('=');
             ::MIR::CallTarget   ct;
             if(lex.consume_if('(')) {
-                ct = H::parse_lvalue(*this, var_names);
+                ct = state.parse_lvalue(*this);
                 lex.check_consume(')');
             }
             else if( lex.next() == TokenClass::String ) {
@@ -1146,7 +1163,7 @@ bool Parser::parse_one()
             ::std::vector<::MIR::Param> args;
             while(lex.next() != ')')
             {
-                args.push_back(H::parse_param(*this, var_names));
+                args.push_back(state.parse_param(*this));
                 if( !lex.consume_if(',') )
                     break;
             }
