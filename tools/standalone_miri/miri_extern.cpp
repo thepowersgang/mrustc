@@ -56,18 +56,64 @@ extern "C" {
                 output << '%';
                 continue;
             }
+            char pad = ' ';
+            if( *s == '0' ) {
+                pad = '0';
+                s ++;
+            }
+            size_t width = 0;
+            while(std::isdigit(*s)) {
+                width *= 10;
+                width += *s - '0';
+                s ++;
+            }
+            LOG_ASSERT(cur_arg < args.size(), "printf: Argument " << cur_arg << " >= " << args.size());
+            const auto& arg = args.at(cur_arg);
+            LOG_DEBUG("printf> pad='" << pad << "', width=" << width << ", arg=" << arg);
+            struct H {
+                static int64_t read_signed(const Value& v) {
+                    switch(v.size())
+                    {
+                    case 1: return v.read_i8(0);
+                    case 2: return v.read_i16(0);
+                    case 4: return v.read_i32(0);
+                    case 8: return v.read_i64(0);
+                    default:
+                        LOG_ERROR("Unknown printf arg size - " << v.size());
+                    }
+                }
+                static uint64_t read_unsigned(const Value& v) {
+                    switch(v.size())
+                    {
+                    case 1: return v.read_u8(0);
+                    case 2: return v.read_u16(0);
+                    case 4: return v.read_u32(0);
+                    case 8: return v.read_u64(0);
+                    default:
+                        LOG_ERROR("Unknown printf arg size - " << v.size());
+                    }
+                }
+            };
             switch(*s)
             {
             case 'i':
             case 'd':
-                output << std::dec << args.at(cur_arg).read_i32(0);
+                output << std::setfill(pad) << std::setw(width);
+                output << std::dec << H::read_signed(arg);
+                cur_arg += 1;
+                break;
+            case 'u':
+                output << std::setfill(pad) << std::setw(width);
+                output << std::dec << H::read_unsigned(arg);
                 cur_arg += 1;
                 break;
             case 'x':
-                output << std::hex << args.at(cur_arg).read_i32(0);
+                output << std::setfill(pad) << std::setw(width);
+                output << std::hex << H::read_unsigned(arg);
                 cur_arg += 1;
                 break;
             case 'p':
+                LOG_ASSERT(arg.size() == POINTER_SIZE, "Printf `%p` with wrong size integer - " << arg.size() << " != " << POINTER_SIZE);
                 output << std::hex << "0x" << args.at(cur_arg).read_usize(0);
                 cur_arg += 1;
                 break;
