@@ -1026,23 +1026,6 @@ extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v)
     return os;
 }
 
-void ValueRef::mark_bytes_valid(size_t ofs, size_t size)
-{
-    if( m_alloc ) {
-        switch(m_alloc.get_ty())
-        {
-        case RelocationPtr::Ty::Allocation:
-            m_alloc.alloc().mark_bytes_valid(m_offset + ofs, size);
-            break;
-        default:
-            LOG_TODO("mark_valid in " << m_alloc);
-        }
-    }
-    else {
-        m_value->mark_bytes_valid(m_offset + ofs, size);
-    }
-}
-
 Value ValueRef::read_value(size_t ofs, size_t size) const
 {
     if( size == 0 )
@@ -1079,4 +1062,30 @@ bool ValueRef::compare(size_t offset, const void* other, size_t other_len) const
 {
     check_bytes_valid(offset, other_len);
     return ::std::memcmp(data_ptr() + offset, other, other_len) == 0;
+}
+ValueRefW ValueRef::to_write()
+{
+    return ValueRefW(*this);
+}
+void ValueRefW::write_ptr(size_t ofs, size_t ptr_ofs, RelocationPtr reloc) {
+    LOG_ASSERT(ValueRef::in_bounds(ofs, POINTER_SIZE, m_inner.m_size), "write_ptr(" << ofs << "+" << POINTER_SIZE << " > " << m_inner.m_size <<")");
+    get_inner_w().write_ptr(m_inner.m_offset + ofs, ptr_ofs, reloc);
+}
+
+void ValueRefW::mark_bytes_valid(size_t ofs, size_t size)
+{
+    LOG_ASSERT(ValueRef::in_bounds(ofs, size, m_inner.m_size), "mark_bytes_valid(" << ofs << "+" << size << " > " << m_inner.m_size <<")");
+    if( m_inner.m_alloc ) {
+        switch(m_inner.m_alloc.get_ty())
+        {
+        case RelocationPtr::Ty::Allocation:
+            m_inner.m_alloc.alloc().mark_bytes_valid(m_inner.m_offset + ofs, size);
+            break;
+        default:
+            LOG_TODO("mark_valid in " << m_inner.m_alloc);
+        }
+    }
+    else {
+        m_inner.m_value->mark_bytes_valid(m_inner.m_offset + ofs, size);
+    }
 }

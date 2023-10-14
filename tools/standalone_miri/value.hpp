@@ -272,6 +272,8 @@ struct ValueCommonWrite:
     public ValueCommonRead
 {
     virtual void write_bytes(size_t ofs, const void* src, size_t count) = 0;
+    //virtual void mark_bytes_valid(size_t ofs, size_t count) = 0;
+    //virtual uint8_t* data_ptr(size_t ofs, size_t count) = 0;
 
     void write_u8 (size_t ofs, uint8_t  v) { write_bytes(ofs, &v, 1); }
     void write_u16(size_t ofs, uint16_t v) { write_bytes(ofs, &v, 2); }
@@ -504,6 +506,8 @@ public:
 };
 extern ::std::ostream& operator<<(::std::ostream& os, const Value& v);
 
+class ValueRefW;
+
 // A read-only reference to a value (to write, you have to go through it)
 struct ValueRef:
     public ValueCommonRead
@@ -513,6 +517,7 @@ struct ValueRef:
     Value*  m_value;
     size_t  m_offset;   // Offset within the value
     size_t  m_size; // Size in bytes of the referenced value
+    /// Fat pointer metadata for a hidden reference
     ::std::shared_ptr<Value>    m_metadata;
 
     static bool in_bounds(size_t ofs, size_t size, size_t max_size) {
@@ -609,27 +614,6 @@ struct ValueRef:
         }
     }
 
-    // TODO: Remove these two (move to a helper?)
-    uint8_t* data_ptr_mut() {
-        if( m_alloc ) {
-            switch(m_alloc.get_ty())
-            {
-            case RelocationPtr::Ty::Allocation:
-                return m_alloc.alloc().data_ptr() + m_offset;
-                break;
-            default:
-                LOG_TODO("");
-            }
-        }
-        else if( m_value ) {
-            return m_value->data_ptr() + m_offset;
-        }
-        else {
-            return nullptr;
-        }
-    }
-    void mark_bytes_valid(size_t ofs, size_t size);
-
     void read_bytes(size_t ofs, void* dst, size_t size) const override {
         if( size == 0 )
             return ;
@@ -677,9 +661,75 @@ struct ValueRef:
     }
 
     bool compare(size_t offset, const void* other, size_t other_len) const;
+
+    ValueRefW   to_write();
 };
 extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v);
-//struct ValueRefMut:
-//    public ValueCommonWrite
-//{
-//};
+
+class ValueRefW:
+    public ValueCommonWrite
+{
+    ValueRef    m_inner;
+public:
+    ValueRefW(ValueRef inner)
+        : m_inner(std::move(inner))
+    {
+    }
+    RelocationPtr get_relocation(size_t ofs) const override {
+        return m_inner.get_relocation(ofs);
+    }
+    void read_bytes(size_t ofs, void* dst, size_t size) const override {
+        m_inner.read_bytes(ofs, dst, size);
+    }
+    void write_bytes(size_t ofs, const void* src, size_t size) override {
+        if( size == 0 )
+            return ;
+        LOG_ASSERT(ValueRef::in_bounds(ofs, size, m_inner.m_size), "read_bytes(" << ofs << "+" << size << " > " << m_inner.m_size <<")");
+        get_inner_w().write_bytes(m_inner.m_offset + ofs, src, size);
+    }
+    void write_ptr(size_t ofs, size_t ptr_ofs, RelocationPtr reloc) override;
+
+    uint8_t* data_ptr_mut(size_t size) {
+        LOG_ASSERT(ValueRef::in_bounds(0, size, m_inner.m_size), "data_ptr_mut(" << 0 << "+" << size << " > " << m_inner.m_size <<")");
+        if( m_inner.m_alloc ) {
+            switch(m_inner.m_alloc.get_ty())
+            {
+            case RelocationPtr::Ty::Allocation:
+                return m_inner.m_alloc.alloc().data_ptr() + m_inner.m_offset;
+            default:
+                LOG_TODO("");
+            }
+        }
+        else if( m_inner.m_value ) {
+            return m_inner.m_value->data_ptr() + m_inner.m_offset;
+        }
+        else {
+            return nullptr;
+        }
+    }
+    void mark_bytes_valid(size_t ofs, size_t size);
+
+    friend ::std::ostream& operator<<(::std::ostream& os, const ValueRefW& v) {
+        return os << v.m_inner;
+    }
+
+private:
+    ValueCommonWrite& get_inner_w() {
+        if( m_inner.m_alloc ) {
+            switch(m_inner.m_alloc.get_ty())
+            {
+            case RelocationPtr::Ty::Allocation:
+                return m_inner.m_alloc.alloc();
+                break;
+            case RelocationPtr::Ty::StdString:
+                LOG_BUG("write on std::string backed value");
+                break;
+            default:
+                LOG_TODO("write on unkown - " << m_inner.m_alloc);
+            }
+        }
+        else {
+            return *m_inner.m_value;
+        }
+    }
+};

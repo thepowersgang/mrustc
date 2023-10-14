@@ -275,8 +275,8 @@ bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, co
 
         if( count > 0 )
         {
-            auto dst_vr = dst_ptr_v.read_pointer_valref_mut(0, bytes);
-            memset(dst_vr.data_ptr_mut(), byte, bytes);
+            auto dst_vr = dst_ptr_v.read_pointer_valref_mut(0, bytes).to_write();
+            memset(dst_vr.data_ptr_mut(bytes), byte, bytes);
             dst_vr.mark_bytes_valid(0, bytes);
         }
     }

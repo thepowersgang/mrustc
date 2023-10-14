@@ -413,10 +413,10 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     {
         auto fd = args.at(0).read_i32(0);
         auto count = args.at(2).read_isize(0);
-        auto buf_vr = args.at(1).read_pointer_valref_mut(0, count);
+        auto buf_vr = args.at(1).read_pointer_valref_mut(0, count).to_write();
 
-        LOG_DEBUG("read(" << fd << ", " << buf_vr.data_ptr_mut() << ", " << count << ")");
-        ssize_t val = read(fd, buf_vr.data_ptr_mut(), count);
+        LOG_DEBUG("read(" << fd << ", " << buf_vr.data_ptr_mut(count) << ", " << count << ")");
+        ssize_t val = read(fd, buf_vr.data_ptr_mut(count), count);
         LOG_DEBUG("= " << val);
 
         if( val > 0 )
@@ -551,9 +551,8 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     }
     else if( link_name == "pipe" )
     {
-        LOG_TODO("pipe");
-#if 0   // TODO: `write_i32` doesn't directly work, need to grab allocation and handle
-        auto dst = args.at(0).read_pointer_valref_mut(0, 2*4);
+#if 1   // TODO: `write_i32` doesn't directly work, need to grab allocation and handle
+        auto dst = args.at(0).read_pointer_valref_mut(0, 2*4).to_write();
         int pipes[2];
         if( pipe(pipes) != 0 ) {
             // TODO: Save errno
@@ -565,6 +564,8 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
             dst.write_i32(4, pipes[1]);
             rv = Value::new_i32(0);
         }
+#else
+        LOG_TODO("pipe");
 #endif
     }
     // >>> pthread
@@ -733,12 +734,12 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     {
         // int clock_gettime(clockid_t clk_id, struct timespec *tp);
         auto clk_id = (clockid_t) args.at(0).read_u32(0);
-        auto tp_vr = args.at(1).read_pointer_valref_mut(0, sizeof(struct timespec));
+        auto tp_vr = args.at(1).read_pointer_valref_mut(0, sizeof(struct timespec)).to_write();
 
         LOG_DEBUG("clock_gettime(" << clk_id << ", " << tp_vr);
-        int rv_i = clock_gettime(clk_id, reinterpret_cast<struct timespec*>(tp_vr.data_ptr_mut()));
+        int rv_i = clock_gettime(clk_id, reinterpret_cast<struct timespec*>(tp_vr.data_ptr_mut(sizeof(struct timespec))));
         if(rv_i == 0)
-            tp_vr.mark_bytes_valid(0, tp_vr.m_size);
+            tp_vr.mark_bytes_valid(0, sizeof(struct timespec));
         LOG_DEBUG("= " << rv_i << " (" << tp_vr << ")");
         rv = Value::new_i32(rv_i);
     }
@@ -759,15 +760,16 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     else if( link_name == "stat64" )
     {
         const auto* path = FfiHelpers::read_cstr(args.at(0), 0);
-        auto outbuf_vr = args.at(1).read_pointer_valref_mut(0, sizeof(struct stat));
+        auto outbuf_vr = args.at(1).read_pointer_valref_mut(0, sizeof(struct stat)).to_write();
 
         LOG_DEBUG("stat64(\"" << path << "\", " << outbuf_vr << ")");
-        int rv_i = stat(path, reinterpret_cast<struct stat*>(outbuf_vr.data_ptr_mut()));
+        int rv_i = stat(path, reinterpret_cast<struct stat*>(outbuf_vr.data_ptr_mut(sizeof(struct stat))));
         LOG_DEBUG("= " << rv_i);
 
         if( rv_i == 0 )
         {
             // TODO: Mark the buffer as valid?
+            outbuf_vr.mark_bytes_valid(0, sizeof(struct stat));
         }
 
         rv = Value(::HIR::TypeRef(RawType::I32));
@@ -910,15 +912,16 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     {
         auto errnum = args.at(0).read_i32(0);
         auto len = args.at(2).read_usize(0);
-        auto buf = args.at(1).read_pointer_valref_mut(0, len);
+        auto buf = args.at(1).read_pointer_valref_mut(0, len).to_write();
 
         auto s = strerror(errnum);
         auto slen = strlen(s);
         if(len > 0)
         {
             auto max_write = (slen < len-1 ? slen : len-1);
-            memcpy(buf.data_ptr_mut(), s, max_write);
-            buf.data_ptr_mut()[max_write] = 0; // Always include terminating NUL byte, even if truncated
+            auto* dst = buf.data_ptr_mut(max_write+1);
+            memcpy(dst, s, max_write);
+            dst[max_write] = 0; // Always include terminating NUL byte, even if truncated
             buf.mark_bytes_valid(0, max_write+1);
         }
         if(true) {
