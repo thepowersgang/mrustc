@@ -503,7 +503,10 @@ void Allocation::read_bytes(size_t ofs, void* dst, size_t count) const
 }
 void Allocation::write_value(size_t ofs, Value v)
 {
-    TRACE_FUNCTION_R("Allocation::write_value " << this << " " << ofs << "+" << v.size() << " " << v, *this);
+    TRACE_FUNCTION_R(
+        "Allocation::write_value " << this << " " << ofs << "+" << v.size() << " " << v,
+        "" // << *this
+        );
     if( this->is_freed )
         LOG_ERROR("Use of freed memory " << this);
     //if( this->is_read_only )
@@ -738,10 +741,11 @@ Value Value::new_i64(int64_t v) {
     return rv;
 }
 
-void Value::create_allocation()
+void Value::create_allocation(std::string loc)
 {
+    LOG_DEBUG(loc << " - Creating allocation for " << *this);
     assert(!m_inner.is_alloc);
-    auto new_alloc = Allocation::new_alloc(m_inner.direct.size, "create_allocation");   // TODO: Provide a better name?
+    auto new_alloc = Allocation::new_alloc(m_inner.direct.size, "create_allocation:"+loc);   // TODO: Provide a better name?
     auto& direct = m_inner.direct;
     if( direct.size > 0 )
         new_alloc->m_mask[0] = direct.mask[0];
@@ -942,7 +946,7 @@ extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v)
             os << " }";
             } break;
         case RelocationPtr::Ty::Function:
-            LOG_TODO("ValueRef to " << alloc_ptr);
+            LOG_TODO("print ValueRef to " << alloc_ptr);
             break;
         case RelocationPtr::Ty::StdString: {
             const auto& s = alloc_ptr.str();
@@ -956,7 +960,15 @@ extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v)
             os.flags(flags);
             } break;
         case RelocationPtr::Ty::FfiPointer:
-            LOG_TODO("ValueRef to " << alloc_ptr);
+            const auto& p = alloc_ptr.ffi();
+            assert( in_bounds(v.m_offset, v.m_size, p.layout->get_size()) );
+            auto flags = os.flags();
+            os << ::std::hex;
+            for(size_t i = v.m_offset; i < v.m_offset + v.m_size; i++)
+            {
+                os << ::std::setw(2) << ::std::setfill('0') << (int) ((char*)p.ptr_value)[i];
+            }
+            os.flags(flags);
             break;
         }
     }
@@ -1070,6 +1082,26 @@ ValueRefW ValueRef::to_write()
 void ValueRefW::write_ptr(size_t ofs, size_t ptr_ofs, RelocationPtr reloc) {
     LOG_ASSERT(ValueRef::in_bounds(ofs, POINTER_SIZE, m_inner.m_size), "write_ptr(" << ofs << "+" << POINTER_SIZE << " > " << m_inner.m_size <<")");
     get_inner_w().write_ptr(m_inner.m_offset + ofs, ptr_ofs, reloc);
+}
+void ValueRefW::write_value(size_t ofs, Value v) {
+    if( m_inner.m_alloc ) {
+        switch(m_inner.m_alloc.get_ty())
+        {
+        case RelocationPtr::Ty::Allocation:
+            return m_inner.m_alloc.alloc().write_value(m_inner.m_offset + ofs, std::move(v));
+        case RelocationPtr::Ty::StdString: {
+            LOG_FATAL("Writing to a std::string backed value");
+            }
+        case RelocationPtr::Ty::FfiPointer: {
+            LOG_TODO("write_value to " << m_inner.m_alloc);
+            }
+        default:
+            LOG_TODO("write_value to " << m_inner.m_alloc);
+        }
+    }
+    else {
+        return m_inner.m_value->write_value(m_inner.m_offset + ofs, std::move(v));
+    }
 }
 
 void ValueRefW::mark_bytes_valid(size_t ofs, size_t size)

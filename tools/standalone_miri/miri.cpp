@@ -275,13 +275,14 @@ struct MirHelpers
         // If the source doesn't yet have a relocation, give it a backing allocation so we can borrow
         if( !alloc && src_base_value.m_value )
         {
-            LOG_DEBUG("Borrow - Creating allocation for " << src_base_value);
             alloc = RelocationPtr::new_alloc( src_base_value.m_value->borrow("Borrow") );
         }
-        if( alloc.is_alloc() )
-            LOG_DEBUG("Borrow - alloc=" << alloc << " (" << alloc.alloc() << ")");
-        else
-            LOG_DEBUG("Borrow - alloc=" << alloc);
+        if(false) {
+            if( alloc.is_alloc() )
+                LOG_DEBUG("Borrow - alloc=" << alloc << " (" << alloc.alloc() << ")");
+            else
+                LOG_DEBUG("Borrow - alloc=" << alloc);
+        }
         size_t ofs = src_base_value.m_offset;
         const auto meta = src_ty.get_meta_type();
         dst_ty = src_ty.wrapped(TypeWrapper::Ty::Borrow, static_cast<size_t>(bt));
@@ -1116,6 +1117,9 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     case RawType::USize: new_val.write_usize(0, Ops::do_bitwise(v_l.read_usize(0), static_cast<uint64_t>(shift), re.op));   break;
                     // Is signed allowed? (yes)
                     // - What's the exact semantics? For now assuming it's unsigned+reinterpret
+                    case RawType::I32: new_val.write_u32(0, Ops::do_bitwise(v_l.read_u32(0), static_cast<uint32_t>(shift), re.op));   break;
+                    case RawType::I16: new_val.write_u16(0, Ops::do_bitwise(v_l.read_u16(0), static_cast<uint16_t>(shift), re.op));   break;
+                    case RawType::I8 : new_val.write_u8 (0, Ops::do_bitwise(v_l.read_u8 (0), static_cast<uint8_t >(shift), re.op));   break;
                     case RawType::ISize: new_val.write_usize(0, Ops::do_bitwise(v_l.read_usize(0), static_cast<uint64_t>(shift), re.op));   break;
                     default:
                         LOG_TODO("BinOp shift LHS unknown type - " << se.src << " w/ " << ty_l);
@@ -1506,7 +1510,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
             return this->pop_stack(out_thread_result);
         TU_ARM(bb.terminator, If, te) {
             uint8_t v = state.get_value_ref(te.cond).read_u8(0);
-            LOG_ASSERT(v == 0 || v == 1, "");
+            LOG_ASSERT(v == 0 || v == 1, "Boolean isn't 0/1 - instead " << int(v));
             cur_frame.bb_idx = v ? te.bb0 : te.bb1;
             } break;
         TU_ARM(bb.terminator, Switch, te) {

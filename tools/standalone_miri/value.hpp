@@ -448,16 +448,16 @@ public:
     static Value new_i32(int32_t v);
     static Value new_i64(int64_t v);
 
-    AllocationHandle borrow(::std::string /*loc*/) {
+    AllocationHandle borrow(::std::string loc) {
         if( !m_inner.is_alloc )
-            create_allocation(/*loc*/);
+            create_allocation(loc);
         return m_inner.alloc.alloc;
     }
     void ensure_allocation() {
         if( !m_inner.is_alloc )
-            create_allocation();
+            create_allocation("ensure_allocation");
     }
-    void create_allocation();
+    void create_allocation(std::string loc);
     size_t size() const { return m_inner.is_alloc ? m_inner.alloc.alloc->size() : m_inner.direct.size; }
     const uint8_t* data_ptr() const { return m_inner.is_alloc ? m_inner.alloc.alloc->data_ptr() : m_inner.direct.data; }
           uint8_t* data_ptr()       { return m_inner.is_alloc ? m_inner.alloc.alloc->data_ptr() : m_inner.direct.data; }
@@ -487,7 +487,7 @@ public:
         }
         else
         {
-            this->create_allocation();
+            this->create_allocation("set_reloc");
             assert( m_inner.is_alloc );
             m_inner.alloc.alloc->set_reloc(ofs, size, ::std::move(p));
         }
@@ -628,9 +628,13 @@ struct ValueRef:
                 assert(m_offset+ofs <= m_alloc.str().size() && size <= m_alloc.str().size() && m_offset+ofs+size <= m_alloc.str().size());
                 ::std::memcpy(dst, m_alloc.str().data() + m_offset + ofs, size);
                 break;
+            case RelocationPtr::Ty::FfiPointer:
+                assert( m_alloc.ffi().layout->is_valid_read(m_offset + ofs, size) );
+                ::std::memcpy(dst, (const char*)m_alloc.ffi().ptr_value + m_offset + ofs, size);
+                break;
             default:
                 //ASSERT_BUG(m_alloc.is_alloc(), "read_value on non-data backed Value - " << );
-                LOG_TODO("");
+                LOG_TODO("read_bytes from other alloc type");
             }
         }
         else {
@@ -688,6 +692,8 @@ public:
         get_inner_w().write_bytes(m_inner.m_offset + ofs, src, size);
     }
     void write_ptr(size_t ofs, size_t ptr_ofs, RelocationPtr reloc) override;
+
+    void write_value(size_t ofs, Value v);
 
     uint8_t* data_ptr_mut(size_t size) {
         LOG_ASSERT(ValueRef::in_bounds(0, size, m_inner.m_size), "data_ptr_mut(" << 0 << "+" << size << " > " << m_inner.m_size <<")");

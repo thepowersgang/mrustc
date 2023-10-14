@@ -72,7 +72,7 @@ extern "C" {
                 cur_arg += 1;
                 break;
             default:
-                LOG_FATAL("Malformed printf string");
+                LOG_FATAL("Malformed printf string - unexpected character `" << *s << "`");
             }
         }
         else {
@@ -812,6 +812,46 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     {
         rv = Value::new_i32(-1);
     }
+    //
+    // <stdlib.h>
+    //
+    else if( link_name == "malloc" )
+    {
+        auto size = args.at(0).read_usize(0);
+
+        auto alloc = Allocation::new_alloc(size, "malloc");
+        auto rty = ::HIR::TypeRef(RawType::Unit).wrap( TypeWrapper::Ty::Pointer, 0 );
+
+        rv = Value::new_pointer_ofs(rty, 0, RelocationPtr::new_alloc(::std::move(alloc)));
+    }
+    else if( link_name == "calloc" )
+    {
+        auto nmemb = args.at(0).read_usize(0);
+        auto size = args.at(1).read_usize(0);
+
+        auto alloc = Allocation::new_alloc(size * nmemb, "calloc");
+        auto rty = ::HIR::TypeRef(RawType::Unit).wrap( TypeWrapper::Ty::Pointer, 0 );
+
+        alloc->mark_bytes_valid(0, size * nmemb);
+
+        rv = Value::new_pointer_ofs(rty, 0, RelocationPtr::new_alloc(::std::move(alloc)));
+    }
+    else if( link_name == "free" )
+    {
+        auto ptr = args.at(0).read_pointer_valref_mut(0, 0);
+        LOG_ASSERT(ptr.m_offset == 0, "`free` with pointer not to beginning of block");
+        LOG_DEBUG("free(ptr=" << ptr.m_alloc << ")");
+
+        LOG_ASSERT(ptr.m_alloc, "`free` with no backing allocation attached to pointer");
+        LOG_ASSERT(ptr.m_alloc.is_alloc(), "`free` with no backing allocation attached to pointer");
+        auto& alloc = ptr.m_alloc.alloc();
+        alloc.mark_as_freed();
+
+        rv = Value();
+    }
+    //
+    // <string.h>
+    //
     else if( link_name == "memcmp" )
     {
         auto n = args.at(2).read_usize(0);
@@ -828,6 +868,30 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
             rv_i = 0;
         }
         rv = Value::new_i32(rv_i);
+    }
+    else if( link_name == "memset" )
+    {
+        auto b = args.at(1).read_u8(0);
+        auto n = args.at(2).read_usize(0);
+        if( n > 0 )
+        {
+            auto vr = args.at(0).read_pointer_valref_mut(0, n).to_write();
+            memset(vr.data_ptr_mut(n), b, n);
+            vr.mark_bytes_valid(0, n);
+        }
+        rv = std::move(args.at(0));
+    }
+    else if( link_name == "memcpy" )
+    {
+        auto n = args.at(2).read_usize(0);
+        if( n > 0 )
+        {
+            auto vr_dst = args.at(0).read_pointer_valref_mut(0, n).to_write();
+            // NOTE: the `mut` part doesn't actually get checked until a write is attempted
+            auto vr_src = args.at(1).read_pointer_valref_mut(0, n);
+            vr_dst.write_value(0, vr_src.read_value(0, n));
+        }
+        rv = std::move(args.at(0));
     }
     // - `void *memchr(const void *s, int c, size_t n);`
     else if( link_name == "memchr" )
@@ -880,6 +944,15 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         rv = Value(::HIR::TypeRef(RawType::USize));
         rv.write_usize(0, len);
     }
+    else if( link_name == "strcmp" )
+    {
+        size_t len;
+        const char* a = FfiHelpers::read_cstr(args.at(0), 0, &len);
+        const char* b = FfiHelpers::read_cstr(args.at(1), 0, &len);
+
+        int rv_i = strcmp(a, b);
+        rv = Value::new_i32(rv_i);
+    }
     else if( link_name == "getenv" )
     {
         const auto* name = FfiHelpers::read_cstr(args.at(0), 0);
@@ -894,7 +967,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         {
             LOG_DEBUG("= NULL");
             rv = Value(::HIR::TypeRef(RawType::USize));
-            rv.create_allocation();
+            //rv.create_allocation("getenv");
             rv.write_usize(0,0);
         }
     }
