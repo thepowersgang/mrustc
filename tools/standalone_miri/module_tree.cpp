@@ -240,6 +240,11 @@ bool Parser::parse_one()
     else if( lex.consume_if("type") )
     {
         RcString p = lex.check_consume(TokenClass::Ident).strval.c_str();
+
+        if( lex.consume_if(';') ) {
+            // TOOD: Define extern type
+            return true;
+        }
         //LOG_TRACE("type " << p);
 
         auto rv = DataType {};
