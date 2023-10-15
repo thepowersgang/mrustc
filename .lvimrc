@@ -4,6 +4,7 @@ set list
 set listchars=eol:$,tab:>-
 "set textwidth=118
 "set tw=118
+set autoindent
 
 highlight ExtraWhitespace ctermbg=darkgreen guibg=darkgreen
 autocmd Syntax * syn match ExtraWhitespace /\s\+$\| \+\ze\t/
