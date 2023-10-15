@@ -490,6 +490,9 @@ namespace {
                         }
                         src = MIR::Constant::make_Uint({ v, ct });
                         } break;
+                    case TOK_STRING:
+                        src = MIR::Constant::make_StaticString(tok.str());
+                        break;
 
                     case TOK_RWORD_CONST:
                         GET_CHECK_TOK(tok, lex, TOK_AMP);
@@ -541,13 +544,27 @@ namespace {
                         else if( tok.ident().name == "BINOP" )
                         {
                             auto l = parse_param(lex, val_name_map);
-                            GET_TOK(tok, lex);
                             MIR::eBinOp op;
+                            GET_TOK(tok, lex);
                             switch(tok.type())
                             {
-                            case TOK_EQUAL: op = MIR::eBinOp::EQ;   break;
+                            case TOK_DOUBLE_EQUAL: op = MIR::eBinOp::EQ;   break;
+                            case TOK_EXCLAM_EQUAL: op = MIR::eBinOp::NE;   break;
                             case TOK_LT:    op = MIR::eBinOp::LT;   break;
                             case TOK_GT:    op = MIR::eBinOp::GT;   break;
+                            case TOK_LTE:   op = MIR::eBinOp::LE;   break;
+                            case TOK_GTE:   op = MIR::eBinOp::GE;   break;
+
+                            case TOK_PLUS:  op = MIR::eBinOp::ADD;  break;
+                            case TOK_DASH:  op = MIR::eBinOp::SUB;  break;
+                            case TOK_STAR:  op = MIR::eBinOp::MUL;  break;
+                            case TOK_SLASH: op = MIR::eBinOp::DIV;  break;
+
+                            case TOK_AMP  : op = MIR::eBinOp::BIT_AND;  break;
+                            case TOK_PIPE : op = MIR::eBinOp::BIT_OR ;  break;
+                            case TOK_CARET: op = MIR::eBinOp::BIT_XOR;  break;
+                            case TOK_DOUBLE_LT: op = MIR::eBinOp::BIT_SHL;  break;
+                            case TOK_DOUBLE_GT: op = MIR::eBinOp::BIT_SHR;  break;
                             default:
                                 TODO(lex.point_span(), "MIR assign BinOp - " << tok);
                             }
@@ -809,6 +826,58 @@ namespace {
 
                     bb.terminator = ::MIR::Terminator::make_Switch({ mv$(v), targets });
                 }
+            }
+            else if( tok.ident().name == "SWITCHVALUE" )
+            {
+                auto val = parse_lvalue(lex, val_name_map);
+                GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
+                ::std::vector<::MIR::BasicBlockId>  targets;
+                ::MIR::SwitchValues vals;
+                switch(lex.lookahead(0))
+                {
+                case TOK_INTEGER: {
+                    ::std::vector<uint64_t> values;
+                    while(lex.lookahead(0) != TOK_UNDERSCORE ) {
+                        GET_CHECK_TOK(tok, lex, TOK_INTEGER);
+                        values.push_back( tok.intval().truncate_u64() );
+                        GET_CHECK_TOK(tok, lex, TOK_EQUAL);
+                        targets.push_back(parse_bb_name(lex));
+                        GET_CHECK_TOK(tok, lex, TOK_COMMA);
+                    }
+                    vals = ::MIR::SwitchValues::make_Unsigned(::std::move(values));
+                    } break;
+                case TOK_PLUS:
+                case TOK_DASH: {
+                    ::std::vector<int64_t> values;
+                    while(lex.lookahead(0) != TOK_UNDERSCORE ) {
+                        GET_TOK(tok, lex);
+                        bool is_neg;
+                        switch(tok.type())
+                        {
+                        case TOK_PLUS:  is_neg = false; break;
+                        case TOK_DASH:  is_neg = true ; break;
+                        default:
+                            throw ParseError::Unexpected(lex, tok, { TOK_PLUS, TOK_DASH });
+                        }
+                        GET_CHECK_TOK(tok, lex, TOK_INTEGER);
+                        values.push_back( static_cast<int64_t>(tok.intval().truncate_u64()) * (is_neg ? -1 : 1) );
+                        GET_CHECK_TOK(tok, lex, TOK_EQUAL);
+                        targets.push_back(parse_bb_name(lex));
+                        GET_CHECK_TOK(tok, lex, TOK_COMMA);
+                    }
+                    vals = ::MIR::SwitchValues::make_Signed(::std::move(values));
+                    } break;
+                case TOK_STRING:
+                    TODO(lex.point_span(), "MIR terminator - SwitchValue - string");
+                    break;
+                default:
+                    TODO(lex.point_span(), "MIR terminator - SwitchValue - unknown " << lex.getToken());
+                }
+                GET_CHECK_TOK(tok, lex, TOK_UNDERSCORE);
+                GET_CHECK_TOK(tok, lex, TOK_EQUAL);
+                auto def_tgt = parse_bb_name(lex);
+                GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
+                bb.terminator = ::MIR::Terminator::make_SwitchValue({ ::std::move(val), def_tgt, ::std::move(targets), ::std::move(vals) });
             }
             else
             {
@@ -1109,18 +1178,37 @@ namespace {
         }
         else
         {
-            auto name = lex.getTokenCheck(TOK_IDENT).ident().name;
+            auto tok = lex.getTokenCheck(TOK_IDENT);
+            auto name = tok.ident().name;
             auto it = name_map.find(name);
-            if( it == name_map.end() )
-                ERROR(lex.point_span(), E0000, "Unable to find value " << name);
+            if( it == name_map.end() ) {
+                lex.putback(tok);
+                return MIR::LValue::Storage::new_Static( parse_path(lex) );
+                //ERROR(lex.point_span(), E0000, "Unable to find value " << name);
+            }
             return it->second.clone();
         }
     }
     MIR::LValue parse_lvalue(TokenStream& lex, const ::std::map<RcString, MIR::LValue::Storage>& name_map)
     {
         Token   tok;
-        std::vector<MIR::LValue::Wrapper>   wrappers;
-        auto root = parse_lvalue_root(lex, name_map);
+
+        int deref = 0;
+        // Count up leading derefs
+        while(lex.lookahead(0) == TOK_STAR) {
+            lex.getToken();
+            deref ++;
+        }
+
+        MIR::LValue rv;
+        if( lex.lookahead(0) == TOK_PAREN_OPEN) {
+            lex.getToken();
+            rv = parse_lvalue(lex, name_map);
+            lex.getTokenCheck(TOK_PAREN_CLOSE);
+        }
+        else {
+            rv.m_root = parse_lvalue_root(lex, name_map);
+        }
 
         while(true)
         {
@@ -1131,21 +1219,29 @@ namespace {
                 TODO(lex.point_span(), "parse_lvalue - indexing");
                 break;
             case TOK_DOT:
+                if( lex.lookahead(0) == TOK_STAR ) {
+                    lex.getToken();
+                    rv.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Deref());
+                    break;
+                }
                 GET_CHECK_TOK(tok, lex, TOK_INTEGER);
                 ASSERT_BUG(lex.point_span(), tok.intval() < UINT_MAX, "");
-                wrappers.push_back(::MIR::LValue::Wrapper::new_Field( static_cast<unsigned>(tok.intval().truncate_u64()) ));
+                rv.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Field( static_cast<unsigned>(tok.intval().truncate_u64()) ));
                 break;
             case TOK_HASH:
                 GET_CHECK_TOK(tok, lex, TOK_INTEGER);
                 ASSERT_BUG(lex.point_span(), tok.intval() < UINT_MAX, "");
-                wrappers.push_back(::MIR::LValue::Wrapper::new_Downcast( static_cast<unsigned>(tok.intval().truncate_u64()) ));
+                rv.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Downcast( static_cast<unsigned>(tok.intval().truncate_u64()) ));
                 break;
-            case TOK_STAR:
-                wrappers.push_back(::MIR::LValue::Wrapper::new_Deref());
-                break;
+            //case TOK_STAR:
+            //    wrappers.push_back(::MIR::LValue::Wrapper::new_Deref());
+            //    break;
             default:
                 lex.putback(mv$(tok));
-                return MIR::LValue(mv$(root), mv$(wrappers));
+                while(deref--) {
+                    rv.m_wrappers.push_back(::MIR::LValue::Wrapper::new_Deref());
+                }
+                return rv;
             }
         }
     }
@@ -1153,30 +1249,52 @@ namespace {
     MIR::Param parse_param(TokenStream& lex, const ::std::map<RcString, MIR::LValue::Storage>& name_map)
     {
         struct H {
-            static HIR::CoreType to_type_float(const Span& sp, eCoreType ct) {
+            static HIR::CoreType get_lit_type(const Span& sp, TokenStream& lex, eCoreType ct) {
                 switch(ct)
                 {
-                case CORETYPE_F32: return HIR::CoreType::F32;
-                case CORETYPE_F64: return HIR::CoreType::F64;
-                case CORETYPE_ANY:
-                    BUG(sp, "Type suffix required");
-                default:
-                    BUG(sp, "Incorrect type suffix for float - " << coretype_name(ct));
-                }
-            }
-            static HIR::CoreType to_type_signed(const Span& sp, eCoreType ct) {
-                switch(ct)
-                {
+                case CORETYPE_ANY: {
+                    return parse_type(lex).data().as_Primitive();
+                    } break;
                 case CORETYPE_INT : return HIR::CoreType::Isize;
                 case CORETYPE_I8  : return HIR::CoreType::I8;
                 case CORETYPE_I16 : return HIR::CoreType::I16;
                 case CORETYPE_I32 : return HIR::CoreType::I32;
                 case CORETYPE_I64 : return HIR::CoreType::I64;
                 case CORETYPE_I128: return HIR::CoreType::I128;
-                case CORETYPE_ANY:
-                    BUG(sp, "Type suffix required");
+                case CORETYPE_UINT: return HIR::CoreType::Usize;
+                case CORETYPE_U8  : return HIR::CoreType::U8;
+                case CORETYPE_U16 : return HIR::CoreType::U16;
+                case CORETYPE_U32 : return HIR::CoreType::U32;
+                case CORETYPE_U64 : return HIR::CoreType::U64;
+                case CORETYPE_U128: return HIR::CoreType::U128;
                 default:
-                    BUG(sp, "Incorrect type suffix for integer - " << coretype_name(ct));
+                    BUG(sp, "Incorrect type suffix for literal - " << coretype_name(ct));
+                }
+            }
+            static HIR::CoreType to_type_float(const Span& sp, TokenStream& lex, eCoreType ct) {
+                auto rv = get_lit_type(sp, lex, ct);
+                switch(rv)
+                {
+                case HIR::CoreType::F32:
+                case HIR::CoreType::F64:
+                    return rv;
+                default:
+                    BUG(sp, "Incorrect type suffix for float - " << rv);
+                }
+            }
+            static HIR::CoreType to_type_signed(const Span& sp, TokenStream& lex, eCoreType ct) {
+                auto rv = get_lit_type(sp, lex, ct);
+                switch(rv)
+                {
+                case HIR::CoreType::Isize:
+                case HIR::CoreType::I8:
+                case HIR::CoreType::I16:
+                case HIR::CoreType::I32:
+                case HIR::CoreType::I64:
+                case HIR::CoreType::I128:
+                    return rv;
+                default:
+                    BUG(sp, "Incorrect type suffix for integer - " << rv);
                 }
             }
         };
@@ -1186,21 +1304,30 @@ namespace {
         {
         case TOK_INTEGER: {
             auto v = lex.getTokenCheck(TOK_INTEGER);
-            switch(v.datatype())
+            auto t = H::get_lit_type(sp, lex, v.datatype());
+            switch( t )
             {
-            case CORETYPE_UINT: return MIR::Constant::make_Uint({ v.intval(), HIR::CoreType::Usize });
-            case CORETYPE_U8  : return MIR::Constant::make_Uint({ v.intval(), HIR::CoreType::U8   });
-            case CORETYPE_U16 : return MIR::Constant::make_Uint({ v.intval(), HIR::CoreType::U16  });
-            case CORETYPE_U32 : return MIR::Constant::make_Uint({ v.intval(), HIR::CoreType::U32  });
-            case CORETYPE_U64 : return MIR::Constant::make_Uint({ v.intval(), HIR::CoreType::U64  });
-            case CORETYPE_U128: return MIR::Constant::make_Uint({ v.intval(), HIR::CoreType::U128 });
+            case HIR::CoreType::Usize:
+            case HIR::CoreType::U8:
+            case HIR::CoreType::U16:
+            case HIR::CoreType::U32:
+            case HIR::CoreType::U64:
+            case HIR::CoreType::U128:
+                return MIR::Constant::make_Uint({ v.intval(), t });
+            case HIR::CoreType::Isize:
+            case HIR::CoreType::I8:
+            case HIR::CoreType::I16:
+            case HIR::CoreType::I32:
+            case HIR::CoreType::I64:
+            case HIR::CoreType::I128:
+                return MIR::Constant::make_Int({ S128(v.intval()), t });
             default:
-                return MIR::Constant::make_Int({ S128(v.intval()), H::to_type_signed(sp, v.datatype()) });
+                BUG(sp, "Incorrect type suffix for integer");
             }
             }
         case TOK_FLOAT: {
-            auto v = lex.getTokenCheck(TOK_INTEGER);
-            return MIR::Constant::make_Float({ v.floatval(), H::to_type_float(sp, v.datatype()) });
+            auto v = lex.getTokenCheck(TOK_FLOAT);
+            return MIR::Constant::make_Float({ v.floatval(), H::to_type_float(sp, lex, v.datatype()) });
             }
         case TOK_PLUS:
             lex.getToken();
@@ -1208,11 +1335,11 @@ namespace {
             {
             case TOK_INTEGER: {
                 auto v = lex.getTokenCheck(TOK_INTEGER);
-                return MIR::Constant::make_Int({ S128(v.intval()), H::to_type_signed(sp, v.datatype()) });
+                return MIR::Constant::make_Int({ S128(v.intval()), H::to_type_signed(sp, lex, v.datatype()) });
             }
             case TOK_FLOAT: {
-                auto v = lex.getTokenCheck(TOK_INTEGER);
-                return MIR::Constant::make_Float({ v.floatval(), H::to_type_float(sp, v.datatype()) });
+                auto v = lex.getTokenCheck(TOK_FLOAT);
+                return MIR::Constant::make_Float({ v.floatval(), H::to_type_float(sp, lex, v.datatype()) });
             }
             default:
                 throw ParseError::Unexpected(lex, lex.getToken(), {TOK_INTEGER, TOK_FLOAT});
@@ -1223,15 +1350,16 @@ namespace {
             {
             case TOK_INTEGER: {
                 auto v = lex.getTokenCheck(TOK_INTEGER);
-                return MIR::Constant::make_Int({ -S128(v.intval()), H::to_type_signed(sp, v.datatype()) });
+                return MIR::Constant::make_Int({ -S128(v.intval()), H::to_type_signed(sp, lex, v.datatype()) });
                 }
             case TOK_FLOAT: {
-                auto v = lex.getTokenCheck(TOK_INTEGER);
-                return MIR::Constant::make_Float({ -v.floatval(), H::to_type_float(sp, v.datatype()) });
+                auto v = lex.getTokenCheck(TOK_FLOAT);
+                return MIR::Constant::make_Float({ -v.floatval(), H::to_type_float(sp, lex, v.datatype()) });
                 }
             default:
                 throw ParseError::Unexpected(lex, lex.getToken(), {TOK_INTEGER, TOK_FLOAT});
             }
+        case TOK_PAREN_OPEN:
         case TOK_IDENT:
         case TOK_DOUBLE_COLON:
             return parse_lvalue(lex, name_map);

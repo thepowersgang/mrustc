@@ -46,25 +46,29 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    auto file = MirOptTestFile::load_from_file(opts.input);
+    ::std::unique_ptr<MirOptTestFile>   file;
+    {
+        auto ph = DebugTimedPhase("Parse");
+        file.reset(new MirOptTestFile( MirOptTestFile::load_from_file(opts.input) ));
+    }
 
     // Run HIR bind on the loaded code (makes sure that it's ready for use)
     {
         auto ph = DebugTimedPhase("Cleanup");
-        ConvertHIR_Bind(*file.m_crate);
+        ConvertHIR_Bind(*file->m_crate);
     }
 
     // Run MIR validation BEFORE attempting optimisaion
     {
         auto ph = DebugTimedPhase("Validate");
-        MIR_CheckCrate(*file.m_crate);
+        MIR_CheckCrate(*file->m_crate);
     }
 
 
     // Funally run the tests
     {
         auto ph = DebugTimedPhase("Optimise");
-        MIR_OptimiseCrate(*file.m_crate, false);
+        MIR_OptimiseCrate(*file->m_crate, false);
     }
 
     return 0;
