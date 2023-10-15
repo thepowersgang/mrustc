@@ -26,7 +26,7 @@ OBJS := $(OBJS:%=$(OBJDIR)%)
 
 .PHONY: all clean
 
-all: $(BIN)
+all: $(BIN) ../../bin/mir_optimise$(EXESUF)
 
 clean:
 	rm $(BIN) $(OBJS)
@@ -34,6 +34,12 @@ clean:
 .PHONY: run
 run: $(BIN)
 	$(BIN) tests > tests.log
+
+../../bin/mir_optimise$(EXESUF): $(addprefix $(OBJDIR),main_miropt.o parser.o) $(LIBS)
+	@+mkdir -p $(dir $@)
+	@echo [CXX] -o $@
+	$V$(CXX) -o $@ $(addprefix $(OBJDIR),main_miropt.o parser.o) $(LIBS) $(LINKFLAGS)
+	
 
 $(BIN): $(OBJS) $(LIBS)
 	@+mkdir -p $(dir $@)

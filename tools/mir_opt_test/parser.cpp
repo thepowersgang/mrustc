@@ -31,13 +31,13 @@ namespace {
 
 MirOptTestFile  MirOptTestFile::load_from_file(const helpers::path& p)
 {
-    Lexer   lex(p.str(), AST::Edition::Rust2015, ParseState());
-    Token   tok;
-
     MirOptTestFile  rv;
     rv.m_filename = p.basename();
     rv.m_crate = HIR::CratePtr(::HIR::Crate());
     //rv.m_crate->m_crate_name = RcString(p.str());
+
+    Lexer   lex(p.str(), AST::Edition::Rust2015, ParseState());
+    Token   tok;
 
     while(lex.lookahead(0) != TOK_EOF)
     {
@@ -112,10 +112,15 @@ MirOptTestFile  MirOptTestFile::load_from_file(const helpers::path& p)
                 ::std::make_unique<decltype(vi)>(mv$(vi))
                 ));
         }
-        //else if( lex.lookahead(0) == "INCLUDE" )
-        //{
-        //    auto path = lex.check_consume(TokenClass::String).strval;
-        //}
+        else if( consume_if(lex, TOK_RWORD_CRATE) )
+        {
+            GET_CHECK_TOK(tok, lex, TOK_STRING);
+            auto path = tok.str();
+            GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+
+            // TODO: Load extern crates (if not loaded)
+            rv.m_crate->m_ext_crates.insert(std::make_pair(RcString(), HIR::ExternCrate { HIR::CratePtr(), "", path} ));
+        }
         else
         {
             TODO(lex.point_span(), "Error");
@@ -170,6 +175,7 @@ namespace {
         Token   tok;
         ::std::map<RcString, MIR::LValue::Storage>  val_name_map;
         val_name_map.insert(::std::make_pair("retval", MIR::LValue::Storage::new_Return()));
+        val_name_map.insert(::std::make_pair("RETURN", MIR::LValue::Storage::new_Return()));
         ::std::map<RcString, unsigned>  dropflag_names;
         ::std::map<RcString, unsigned>  real_bb_name_map;
         ::std::map<RcString, unsigned>  lookup_bb_name_map;
@@ -192,6 +198,11 @@ namespace {
         GET_CHECK_TOK(tok, lex, TOK_PAREN_OPEN);
         while( lex.lookahead(0) != TOK_PAREN_CLOSE )
         {
+            if( lex.lookahead(0) == TOK_TRIPLE_DOT ) {
+                GET_TOK(tok, lex);
+                fcn_decl.m_variadic = true;
+                break;
+            }
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             auto name = tok.ident().name;
             GET_CHECK_TOK(tok, lex, TOK_COLON);
@@ -214,6 +225,21 @@ namespace {
         else
         {
             fcn_decl.m_return = HIR::TypeRef::new_unit();
+        }
+
+        // mmir format: linking parameters
+        // `=` str:LinkName `:` str:LinkAbi
+        if( consume_if(lex, TOK_EQUAL) )
+        {
+            GET_CHECK_TOK(tok, lex, TOK_STRING);
+            fcn_decl.m_linkage.name = tok.str();
+            GET_CHECK_TOK(tok, lex, TOK_COLON);
+            GET_CHECK_TOK(tok, lex, TOK_STRING);
+            //fcn_decl.m_abi = tok.str();
+
+            if( consume_if(lex, TOK_SEMICOLON) ) {
+                return fcn_decl;
+            }
         }
 
         // Body.
@@ -247,13 +273,21 @@ namespace {
         // 2. List of BBs arranged with 'ident: { STMTS; TERM }'
         while( lex.lookahead(0) != TOK_BRACE_CLOSE )
         {
-            GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            auto name = tok.ident().name;
-            real_bb_name_map.insert( ::std::make_pair(name, static_cast<unsigned>(mir_fcn.blocks.size())) );
+            if( lex.lookahead(0) == TOK_INTEGER) {
+                GET_CHECK_TOK(tok, lex, TOK_INTEGER);
+                auto name = FMT("_" << tok.intval());
+                real_bb_name_map.insert( ::std::make_pair(name, static_cast<unsigned>(mir_fcn.blocks.size())) );
+            }
+            else {
+                GET_CHECK_TOK(tok, lex, TOK_IDENT);
+                auto name = tok.ident().name;
+                real_bb_name_map.insert( ::std::make_pair(name, static_cast<unsigned>(mir_fcn.blocks.size())) );
+            }
             mir_fcn.blocks.push_back(::MIR::BasicBlock());
             auto& bb = mir_fcn.blocks.back();
             GET_CHECK_TOK(tok, lex, TOK_COLON);
             GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
+            bool is_smiri_format = false;
             while( lex.lookahead(0) != TOK_BRACE_CLOSE )
             {
                 GET_CHECK_TOK(tok, lex, TOK_IDENT);
@@ -372,6 +406,11 @@ namespace {
                             src = MIR::RValue::make_Borrow({ HIR::BorrowType::Shared, parse_lvalue(lex, val_name_map) });
                         break;
 
+                    // mmir format: Explicit lvalue
+                    case TOK_EQUAL:
+                        src = parse_lvalue(lex, val_name_map);
+                        break;
+
                     // Operator (e.g. `ADD(...)`) or an lvalue
                     case TOK_IDENT:
                         if( tok.ident().name == "CAST" )
@@ -380,6 +419,36 @@ namespace {
                             GET_CHECK_TOK(tok, lex, TOK_RWORD_AS);
                             auto ty = parse_type(lex);
                             src = MIR::RValue::make_Cast({ mv$(v), mv$(ty) });
+                        }
+                        else if( tok.ident().name == "UNIOP" )
+                        {
+                            GET_TOK(tok, lex);
+                            MIR::eUniOp op;
+                            switch(tok.type())
+                            {
+                            case TOK_EXCLAM:    op = MIR::eUniOp::INV;  break;
+                            case TOK_DASH  :    op = MIR::eUniOp::NEG;  break;
+                            default:
+                                TODO(lex.point_span(), "MIR assign UniOp - " << tok);
+                            }
+                            auto r = parse_lvalue(lex, val_name_map);
+                            src = MIR::RValue::make_UniOp({ mv$(r), op });
+                        }
+                        else if( tok.ident().name == "BINOP" )
+                        {
+                            auto l = parse_param(lex, val_name_map);
+                            GET_TOK(tok, lex);
+                            MIR::eBinOp op;
+                            switch(tok.type())
+                            {
+                            case TOK_EQUAL: op = MIR::eBinOp::EQ;   break;
+                            case TOK_LT:    op = MIR::eBinOp::LT;   break;
+                            case TOK_GT:    op = MIR::eBinOp::GT;   break;
+                            default:
+                                TODO(lex.point_span(), "MIR assign BinOp - " << tok);
+                            }
+                            auto r = parse_param(lex, val_name_map);
+                            src = MIR::RValue::make_BinOp({ mv$(l), op, mv$(r) });
                         }
                         else if( consume_if(lex, TOK_PAREN_OPEN) )
                         {
@@ -475,16 +544,27 @@ namespace {
                 }
                 else
                 {
-                    TODO(lex.point_span(), "MIR statement - " << tok);
+                    is_smiri_format = true;
+                    lex.putback(tok);
+                    break;
                 }
                 GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
             }
-            GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
+            if(!is_smiri_format) {
+                GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
+            }
 
             auto parse_bb_name = [&](TokenStream& lex) {
                 Token   tok;
-                GET_CHECK_TOK(tok, lex, TOK_IDENT);
-                auto& bb_name = tok.ident().name;
+                RcString bb_name;
+                if( lex.lookahead(0) == TOK_INTEGER) {
+                    GET_CHECK_TOK(tok, lex, TOK_INTEGER);
+                    bb_name = RcString::new_interned(FMT("_" << tok.intval()));
+                }
+                else {
+                    GET_CHECK_TOK(tok, lex, TOK_IDENT);
+                    bb_name = tok.ident().name;
+                }
                 if( lookup_bb_name_map.count(bb_name) ) {
                     return lookup_bb_name_map[bb_name];
                 }
@@ -500,6 +580,10 @@ namespace {
             if( tok.ident().name == "RETURN" )
             {
                 bb.terminator = ::MIR::Terminator::make_Return({});
+            }
+            else if( tok.ident().name == "INCOMPLETE" )
+            {
+                bb.terminator = ::MIR::Terminator::make_Incomplete({});
             }
             else if( tok.ident().name == "DIVERGE" )
             {
@@ -560,7 +644,15 @@ namespace {
             else if( tok.ident().name == "IF" )
             {
                 auto v = parse_lvalue(lex, val_name_map);
-                GET_CHECK_TOK(tok, lex, TOK_FATARROW);
+                if( lex.lookahead(0) == TOK_IDENT ) {
+                    GET_CHECK_TOK(tok, lex, TOK_IDENT);
+                    if( tok.ident().name != "goto" ) {
+                        throw ParseError::Unexpected(lex, tok);
+                    }
+                }
+                else {
+                    GET_CHECK_TOK(tok, lex, TOK_FATARROW);
+                }
                 auto bb0 = parse_bb_name(lex);
                 GET_CHECK_TOK(tok, lex, TOK_RWORD_ELSE);
                 auto bb1 = parse_bb_name(lex);
@@ -610,7 +702,12 @@ namespace {
             {
                 TODO(lex.point_span(), "MIR terminator - " << tok.ident().name);
             }
-            GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+            if(!is_smiri_format) {
+                GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+            }
+            else {
+                GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
+            }
         }
         GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
 
@@ -808,7 +905,7 @@ namespace {
         case TOK_IDENT:
             if( tok.ident().name == "dyn" )
             {
-                TODO(lex.point_span(), tok);
+                TODO(lex.point_span(), "Trait objects - " << tok);
             }
             else
             {
@@ -827,7 +924,7 @@ namespace {
                         }
                     }
                 }
-                TODO(lex.point_span(), tok);
+                TODO(lex.point_span(), "Get named type - " << tok);
             }
             break;
         case TOK_DOUBLE_AMP:
@@ -856,6 +953,11 @@ namespace {
             GET_CHECK_TOK(tok, lex, TOK_PAREN_OPEN);
             while( lex.lookahead(0) != TOK_PAREN_CLOSE )
             {
+                if( lex.lookahead(0) == TOK_TRIPLE_DOT ) {
+                    GET_TOK(tok, lex);
+                    TODO(lex.point_span(), "Variadic function pointers");
+                    break;
+                }
                 ft.m_arg_types.push_back( parse_type(lex) );
                 if( !consume_if(lex, TOK_COMMA) )
                     break;
@@ -872,6 +974,7 @@ namespace {
         default:
             TODO(lex.point_span(), tok);
         }
+        throw "";
     }
     MIR::LValue::Storage parse_lvalue_root(TokenStream& lex, const ::std::map<RcString, MIR::LValue::Storage>& name_map)
     {

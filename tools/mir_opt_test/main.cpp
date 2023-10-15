@@ -120,7 +120,6 @@ int main(int argc, char* argv[])
     }
 
     {
-        void MIR_BorrowCheck(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path, ::MIR::Function& fcn, const ::HIR::Function::args_t& args, const ::HIR::TypeRef& ret_type);
         auto ph = DebugTimedPhase("Borrow Check");
 #if 1
         for(auto& f : test_files)
