@@ -15,6 +15,7 @@
 #include "debug.hpp"
 #include "miri.hpp"
 #include <target_version.hpp>
+#include <cctype>
 // VVV FFI
 #include <cstring>  // memrchr
 #include <sys/stat.h>
@@ -293,7 +294,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         else
         {
             rv = Value(::HIR::TypeRef(RawType::USize));
-            rv.create_allocation();
+            rv.create_allocation("GetModuleHandleW");
             rv.write_usize(0,0);
         }
     }
@@ -324,7 +325,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         else
         {
             rv = Value(::HIR::TypeRef(RawType::USize));
-            rv.create_allocation();
+            rv.create_allocation("GetProcAddress");
             rv.write_usize(0,0);
         }
     }
@@ -406,7 +407,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         auto hConsoleHandle = args.at(0).read_pointer_tagged_nonnull(0, "HANDLE");
         auto lpMode_vr = args.at(1).read_pointer_valref_mut(0, sizeof(DWORD)).to_write();
         LOG_DEBUG("GetConsoleMode(" << hConsoleHandle << ", " << lpMode_vr);
-        auto lpMode = reinterpret_cast<LPDWORD>(lpMode_vr.data_ptr_mut());
+        auto lpMode = reinterpret_cast<LPDWORD>(lpMode_vr.data_ptr_mut(sizeof(DWORD)));
         auto rv_bool = GetConsoleMode(hConsoleHandle, lpMode);
         if( rv_bool )
         {
@@ -429,7 +430,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         auto lpReserved = args.at(4).read_usize(0);
         LOG_DEBUG("WriteConsoleW(" << hConsoleOutput << ", " << lpBuffer << ", " << nNumberOfCharsToWrite << ", " << lpNumberOfCharsWritten_vr << ")");
 
-        auto lpNumberOfCharsWritten = reinterpret_cast<LPDWORD>(lpNumberOfCharsWritten_vr.data_ptr_mut());
+        auto lpNumberOfCharsWritten = reinterpret_cast<LPDWORD>(lpNumberOfCharsWritten_vr.data_ptr_mut(sizeof(DWORD)));
 
         LOG_ASSERT(lpReserved == 0, "");
         auto rv_bool = WriteConsoleW(hConsoleOutput, lpBuffer, nNumberOfCharsToWrite, lpNumberOfCharsWritten, nullptr);
@@ -1060,7 +1061,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         const auto* fmt = FfiHelpers::read_cstr(args.at(0), 0);
         auto out = format_string(fmt, args, 1);
         ::std::cout << out;
-        rv = Value::new_i32(out.size());
+        rv = Value::new_i32(static_cast<int32_t>(out.size()));
     }
     //
     // <stdio.h>
