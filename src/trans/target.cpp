@@ -2066,6 +2066,10 @@ namespace {
         DEBUG("Set repr for " << ires.first->first);
     }
 }
+void Target_ForceTypeRepr(const Span& sp, const ::HIR::TypeRef& ty, TypeRepr repr)
+{
+    set_type_repr(sp, ty, box$(repr));
+}
 const TypeRepr* Target_GetTypeRepr(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty)
 {
 #if 0

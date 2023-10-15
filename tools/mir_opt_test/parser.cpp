@@ -9,6 +9,8 @@
 #include <hir/hir.hpp>
 #include <mir/mir.hpp>
 
+#include <trans/target.hpp>
+
 namespace {
     HIR::Function parse_function(TokenStream& lex, RcString& out_name);
     HIR::PathParams parse_params(TokenStream& lex);
@@ -121,9 +123,98 @@ MirOptTestFile  MirOptTestFile::load_from_file(const helpers::path& p)
             // TODO: Load extern crates (if not loaded)
             rv.m_crate->m_ext_crates.insert(std::make_pair(RcString(), HIR::ExternCrate { HIR::CratePtr(), "", path} ));
         }
+        else if( consume_if(lex, TOK_RWORD_TYPE) )
+        {
+            TypeRepr    repr;
+
+            // Parse the type representation, then generate a struct/union/enum from that
+
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            auto name = tok.ident().name;
+            GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
+            GET_CHECK_TOK(tok, lex, TOK_IDENT); // `SIZE`
+            GET_CHECK_TOK(tok, lex, TOK_INTEGER);
+            auto size = tok.intval();
+            if( size > UINT_MAX ) {
+                ERROR(lex.point_span(), E0000, "Structure size out of bounds");
+            }
+            repr.size = size.truncate_u64();
+            GET_CHECK_TOK(tok, lex, TOK_COMMA);
+            GET_CHECK_TOK(tok, lex, TOK_IDENT); // `ALIGN`
+            GET_CHECK_TOK(tok, lex, TOK_INTEGER);
+            auto align = tok.intval();
+            if( !(/*1 <= align &&*/ align <= UINT_MAX) ) {
+                ERROR(lex.point_span(), E0000, "Structure alignment out of bounds");
+            }
+            repr.align = size.truncate_u64();
+            GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+
+            // Fields
+            while(lex.lookahead(0) == TOK_INTEGER)
+            {
+                GET_CHECK_TOK(tok, lex, TOK_INTEGER);
+                auto ofs = tok.intval();
+                if( ofs > size ) {
+                    ERROR(lex.point_span(), E0000, "Field offset out of bounds");
+                }
+                GET_CHECK_TOK(tok, lex, TOK_EQUAL);
+                auto ty = parse_type(lex);
+                GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+                repr.fields.push_back({static_cast<size_t>(ofs.truncate_u64()), std::move(ty) });
+            }
+            while(lex.lookahead(0) == TOK_AT)
+            {
+                TODO(lex.point_span(), "Parse `type " << name << "` - variants");
+            }
+            GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
+
+            // If there's only one field, or all fields have different offsets - it's a struct
+            if( repr.fields.size() <= 1 || std::all_of(repr.fields.begin(), repr.fields.end(), [&](const TypeRepr::Field& f){
+                return std::none_of(repr.fields.begin(), repr.fields.end(), [&](const TypeRepr::Field& f2) { return &f != &f2 && f.offset == f2.offset; });
+                }) )
+            {
+                // Struct
+                ::HIR::t_tuple_fields   str_fields;
+                for(const auto& f : repr.fields) {
+                    str_fields.push_back(HIR::VisEnt<HIR::TypeRef>{ HIR::Publicity::new_global(), f.ty.clone() });
+                }
+                auto str = HIR::Struct(HIR::GenericParams(), HIR::Struct::Repr::C, mv$(str_fields));
+                auto vi = ::HIR::VisEnt<HIR::TypeItem> {
+                    HIR::Publicity::new_global(), ::HIR::TypeItem(mv$(str))
+                    };
+                rv.m_crate->m_root_module.m_mod_items.insert(::std::make_pair(name,
+                    ::std::make_unique<decltype(vi)>(mv$(vi))
+                    ));
+            }
+            else if( std::all_of(repr.fields.begin(), repr.fields.end(), [&](const TypeRepr::Field& f){ return f.offset == repr.fields.front().offset; }) )
+            {
+                // Union/enum
+                if( repr.variants.is_None() ) {
+                    HIR::Union  unn;
+                    for(const auto& f : repr.fields) {
+                        unn.m_variants.push_back(std::make_pair( RcString(), HIR::VisEnt<HIR::TypeRef>{ HIR::Publicity::new_global(), f.ty.clone() } ));
+                    }
+                    auto vi = ::HIR::VisEnt<HIR::TypeItem> {
+                        HIR::Publicity::new_global(), ::HIR::TypeItem(mv$(unn))
+                        };
+                    rv.m_crate->m_root_module.m_mod_items.insert(::std::make_pair(name,
+                        ::std::make_unique<decltype(vi)>(mv$(vi))
+                        ));
+                }
+                else {
+                    TODO(lex.point_span(), "Parse `type " << name << "` - enum");
+                }
+            }
+            else {
+                TODO(lex.point_span(), "Parse `type " << name << "` - What type?");
+            }
+
+            //Target_ForceTypeRepr(lex.point_span(), ty, std::move(repr));
+        }
         else
         {
-            TODO(lex.point_span(), "Error");
+            GET_TOK(tok, lex);
+            TODO(lex.point_span(), "Unexpected token at root: " << tok);
         }
     }
 
@@ -238,6 +329,7 @@ namespace {
             //fcn_decl.m_abi = tok.str();
 
             if( consume_if(lex, TOK_SEMICOLON) ) {
+                g_item_params = nullptr;
                 return fcn_decl;
             }
         }
@@ -385,6 +477,13 @@ namespace {
                         case HIR::CoreType::U128:
                         case HIR::CoreType::Usize:
                             break;
+                        case HIR::CoreType::I8:
+                        case HIR::CoreType::I16:
+                        case HIR::CoreType::I32:
+                        case HIR::CoreType::I64:
+                        case HIR::CoreType::I128:
+                        case HIR::CoreType::Isize:
+                            ERROR(lex.point_span(), E0000, "Unexpected signed integer type in unsigned literal");
                         default:
                             // bad type
                             throw ParseError::Unexpected(lex, tok);
@@ -419,6 +518,11 @@ namespace {
                             GET_CHECK_TOK(tok, lex, TOK_RWORD_AS);
                             auto ty = parse_type(lex);
                             src = MIR::RValue::make_Cast({ mv$(v), mv$(ty) });
+                        }
+                        else if( tok.ident().name == "ADDROF" )
+                        {
+                            auto path = parse_path(lex);
+                            src= ::MIR::Constant::make_ItemAddr({ ::std::make_unique<HIR::Path>( ::std::move(path) ) });
                         }
                         else if( tok.ident().name == "UNIOP" )
                         {
@@ -634,7 +738,15 @@ namespace {
                 GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
 
                 // - Target blocks
-                GET_CHECK_TOK(tok, lex, TOK_FATARROW);
+                if( lex.lookahead(0) == TOK_IDENT ) {
+                    GET_CHECK_TOK(tok, lex, TOK_IDENT);
+                    if( tok.ident().name != "goto" ) {
+                        throw ParseError::Unexpected(lex, tok);
+                    }
+                }
+                else {
+                    GET_CHECK_TOK(tok, lex, TOK_FATARROW);
+                }
                 auto ret_bb = parse_bb_name(lex);
                 GET_CHECK_TOK(tok, lex, TOK_RWORD_ELSE);
                 auto panic_bb = parse_bb_name(lex);
@@ -749,7 +861,7 @@ namespace {
                 }
             TU_ARMA(SwitchValue, e) {
                 for(auto& tgt : e.targets)
-                    tgt = translate_bb(tgt); 
+                    tgt = translate_bb(tgt);
                 }
             }
         }
@@ -796,6 +908,12 @@ namespace {
     HIR::SimplePath parse_simplepath(TokenStream& lex)
     {
         Token   tok;
+        if( lex.lookahead(0) == TOK_IDENT ) {
+            auto rv = ::HIR::SimplePath(RcString());
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            rv.m_components.push_back( tok.ident().name );
+            return rv;
+        }
         GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
         GET_CHECK_TOK(tok, lex, TOK_STRING);
         auto rv = ::HIR::SimplePath(RcString::new_interned(tok.str()));
@@ -923,6 +1041,12 @@ namespace {
                             return HIR::TypeRef(tok.ident().name, 256 + static_cast<unsigned>(i));
                         }
                     }
+                }
+
+                if( true )
+                {
+                    lex.putback(tok);
+                    return HIR::TypeRef::new_path(parse_path(lex), {});
                 }
                 TODO(lex.point_span(), "Get named type - " << tok);
             }
