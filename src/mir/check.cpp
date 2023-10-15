@@ -652,7 +652,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
         {
             auto block = to_visit_blocks.back();
             to_visit_blocks.pop_back();
-            assert(block < fcn.blocks.size());
+            MIR_ASSERT(state, block < fcn.blocks.size(), "Ended up with BB out of range (" << block << " >= " << fcn.blocks.size() << ")");
             if( visited_bbs[block] ) {
                 continue ;
             }

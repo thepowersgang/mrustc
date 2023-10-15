@@ -131,6 +131,18 @@ MirOptTestFile  MirOptTestFile::load_from_file(const helpers::path& p)
 
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             auto name = tok.ident().name;
+            if( lex.lookahead(0) == TOK_SEMICOLON ) {
+                GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+
+                HIR::ExternType et;
+                auto vi = ::HIR::VisEnt<HIR::TypeItem> {
+                    HIR::Publicity::new_global(), ::HIR::TypeItem(mv$(et))
+                    };
+                rv.m_crate->m_root_module.m_mod_items.insert(::std::make_pair(name,
+                    ::std::make_unique<decltype(vi)>(mv$(vi))
+                    ));
+                continue ;
+            }
             GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
             GET_CHECK_TOK(tok, lex, TOK_IDENT); // `SIZE`
             GET_CHECK_TOK(tok, lex, TOK_INTEGER);
@@ -148,6 +160,8 @@ MirOptTestFile  MirOptTestFile::load_from_file(const helpers::path& p)
             }
             repr.align = size.truncate_u64();
             GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+
+            // TODO: Drop glue and DST meta
 
             // Fields
             while(lex.lookahead(0) == TOK_INTEGER)
@@ -273,12 +287,14 @@ namespace {
         ::std::vector<RcString> lookup_bb_names;
 
         ::HIR::Function fcn_decl;
-        fcn_decl.m_code.m_mir = ::MIR::FunctionPointer(new ::MIR::Function());
-        auto& mir_fcn = *fcn_decl.m_code.m_mir;
 
         // Name
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
         auto fcn_name = tok.ident().name;
+        if( lex.lookahead(0) == TOK_HASH ) {
+            lex.getToken();
+            fcn_name = RcString(FMT(fcn_name << "#"));
+        }
         DEBUG("fn " << fcn_name);
 
         fcn_decl.m_params = parse_genericdef(lex);
@@ -327,12 +343,16 @@ namespace {
             GET_CHECK_TOK(tok, lex, TOK_COLON);
             GET_CHECK_TOK(tok, lex, TOK_STRING);
             //fcn_decl.m_abi = tok.str();
-
-            if( consume_if(lex, TOK_SEMICOLON) ) {
-                g_item_params = nullptr;
-                return fcn_decl;
-            }
         }
+
+        if( consume_if(lex, TOK_SEMICOLON) ) {
+            g_item_params = nullptr;
+            out_name = mv$(fcn_name);
+            return fcn_decl;
+        }
+
+        fcn_decl.m_code.m_mir = ::MIR::FunctionPointer(new ::MIR::Function());
+        auto& mir_fcn = *fcn_decl.m_code.m_mir;
 
         // Body.
         GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);

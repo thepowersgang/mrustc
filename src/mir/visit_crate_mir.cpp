@@ -34,7 +34,7 @@ void MIR::OuterVisitor::visit_type(::HIR::TypeRef& ty)
 void MIR::OuterVisitor::visit_function(::HIR::ItemPath p, ::HIR::Function& item)
 {
     auto _ = this->m_resolve.set_item_generics(item.m_params);
-    if( item.m_code )
+    if( item.m_code || item.m_code.m_mir )
     {
         DEBUG("Function code " << p);
         m_cb(m_resolve, p, item.m_code, item.m_args, item.m_return);
