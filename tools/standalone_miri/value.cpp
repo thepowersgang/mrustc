@@ -322,7 +322,7 @@ void* ValueCommonRead::read_pointer_unsafe(size_t rd_ofs, size_t req_valid, size
 {
     auto reloc = get_relocation(rd_ofs);
     auto ofs = read_usize(rd_ofs);
-    LOG_ASSERT(ofs >= reloc.get_base(), "Invalid pointer read");
+    LOG_ASSERT(ofs >= reloc.get_base(), "Invalid pointer read - pointer value 0x" << std::hex << ofs << " isn't above relocation base (0x" << std::hex << reloc.get_base() << ")");
     ofs -= reloc.get_base();
     if( !reloc )
     {

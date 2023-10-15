@@ -843,7 +843,11 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         rv = Value::new_usize(0);
     }
 #endif
-    // std C
+    // ----
+    // C Standard Library
+    // ----
+    // 
+    // <signal.h>
     else if( link_name == "signal" )
     {
         LOG_DEBUG("Call `signal` - Ignoring and returning SIG_IGN");
@@ -1058,7 +1062,15 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         ::std::cout << out;
         rv = Value::new_i32(out.size());
     }
-    // Allocators!
+    //
+    // <stdio.h>
+    //
+    else if( link_name == "fopen" )
+    {
+        const auto* path = FfiHelpers::read_cstr(args.at(0), 0);
+        const auto* mode = FfiHelpers::read_cstr(args.at(1), 0);
+        LOG_TODO("fopen(\"" << path << "\", \"" << mode << "\")");
+    }
     else
     {
         LOG_TODO("Call external function " << link_name);

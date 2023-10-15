@@ -259,9 +259,10 @@ bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, co
     {
         rv = Value(ty_params.tys.at(0));
     }
-    else if( name == "init" )
+    else if( name == "init" )   // backing of mem::zeroed
     {
         rv = Value(ty_params.tys.at(0));
+        memset(rv.data_ptr(), 0, rv.size());
         rv.mark_bytes_valid(0, rv.size());
     }
     else if( name == "write_bytes" )

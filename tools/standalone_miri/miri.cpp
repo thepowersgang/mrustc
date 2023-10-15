@@ -110,6 +110,7 @@ struct MirHelpers
                 else if( wrapper->type == TypeWrapper::Ty::Array )
                 {
                     ty = ty.get_inner();
+                    LOG_ASSERT(idx < wrapper->size, "Array index out of range (" << idx << " >= " << wrapper->size << ")");
                     vr.m_offset += ty.get_size() * idx;
                 }
                 else if( wrapper->type == TypeWrapper::Ty::Slice )
@@ -117,7 +118,7 @@ struct MirHelpers
                     ty = ty.get_inner();
                     LOG_ASSERT(vr.m_metadata, "No slice metadata");
                     auto len = vr.m_metadata->read_usize(0);
-                    LOG_ASSERT(idx < len, "Slice index out of range");
+                    LOG_ASSERT(idx < len, "Array index out of range (" << idx << " >= " << len << ")");
                     vr.m_offset += ty.get_size() * idx;
                     vr.m_metadata.reset();
                 }
