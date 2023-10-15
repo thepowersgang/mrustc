@@ -408,18 +408,8 @@ bool Parser::parse_one()
             }
             else if( lex.next() == TokenClass::Ident ) {
                 auto name = ::std::move(lex.consume().strval);
-                // TODO: Make arguments have custom names too
-                if( name.substr(0,3) == "arg" && ::std::all_of(name.begin()+3, name.end(), [](char v){ return std::isdigit(v); }) ) {
-                    try {
-                        auto idx = static_cast<unsigned>( ::std::stol(name.substr(3)) );
-                        lv = ::MIR::LValue::new_Argument( idx );
-                    }
-                    catch(const ::std::exception& e) {
-                        LOG_ERROR(lex << "Invalid argument name - " << name << " - " << e.what());
-                    }
-                }
                 // Hard-coded "RETURN" lvalue
-                else if( name == "RETURN" ) {
+                if( name == "RETURN" ) {
                     lv = ::MIR::LValue::new_Return();
                 }
                 // Otherwise, look up variable names
@@ -548,7 +538,7 @@ bool Parser::parse_one()
 
     lex.check_consume('{');
     for(size_t i = 0; i < arg_names.size(); i ++ ) {
-        state.variables.insert(std::make_pair(arg_names[i], ::std::make_pair(true, i)));
+        state.variables.insert(std::make_pair(arg_names[i], ::std::make_pair(true, static_cast<unsigned>(i))));
     }
 
     // 1. Locals + Drop flags
@@ -563,7 +553,7 @@ bool Parser::parse_one()
         }
         else if(lex.consume_if(':'))
         {
-            state.variables.insert(std::make_pair(::std::move(name), ::std::make_pair(false, rv.locals.size())));
+            state.variables.insert(std::make_pair(::std::move(name), ::std::make_pair(false, static_cast<unsigned>(rv.locals.size()))));
             rv.locals.push_back( parse_type() );
         }
         else

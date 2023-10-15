@@ -70,7 +70,7 @@ public:
         memcpy(dst, this, max_len);
         #else
         for(size_t i = 0; i < max_len; i++) {
-            dst[i] = static_cast<uint8_t>( (*this >> (i*8)).truncate_u64() );
+            dst[i] = static_cast<uint8_t>( (*this >> static_cast<unsigned>(i*8)).truncate_u64() );
         }
         #endif
     }
@@ -80,7 +80,7 @@ public:
         memcpy(dst, this, max_len);
         #else
         for(size_t i = 0; i < max_len; i++) {
-            dst[max_len-1-i] = static_cast<uint8_t>( (*this >> (i*8)).truncate_u64() );
+            dst[max_len-1-i] = static_cast<uint8_t>( (*this >> static_cast<unsigned>(i*8)).truncate_u64() );
         }
         #endif
     }
@@ -91,7 +91,7 @@ public:
         memcpy(this, src, max_len);
         #else
         for(size_t i = 0; i < max_len; i++) {
-            *this |= U128(src[i]) << (i*8);
+            *this |= U128(src[i]) << static_cast<unsigned>(i*8);
         }
         #endif
     }
@@ -102,7 +102,7 @@ public:
         memcpy(this, src, max_len);
         #else
         for(size_t i = 0; i < max_len; i++) {
-            *this |= U128(src[max_len-1-i]) << (i*8);
+            *this |= U128(src[max_len-1-i]) << static_cast<unsigned>(i*8);
         }
         #endif
     }
@@ -305,9 +305,9 @@ public:
 
 private:
     void sign_extend(size_t n_bytes) {
-        if( n_bytes < 16 && inner.bit(n_bytes*8-1) ) {
+        if( n_bytes < 16 && inner.bit( static_cast<unsigned>(n_bytes*8-1) ) ) {
             // Apply sign extension mask - shift in nbits from an all-ones value
-            inner |= U128::max() << (n_bytes*8);
+            inner |= U128::max() << static_cast<unsigned>(n_bytes*8);
         }
     }
 public:
