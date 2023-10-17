@@ -302,3 +302,14 @@
  use self::generic as arch;
  
  pub use self::arch::{vec128_storage, vec256_storage, vec512_storage};
+
+--- src/llvm-project/llvm/include/llvm/Support/Signals.h
++++ src/llvm-project/llvm/include/llvm/Support/Signals.h
+@@ -14,6 +14,7 @@
+ #ifndef LLVM_SUPPORT_SIGNALS_H
+ #define LLVM_SUPPORT_SIGNALS_H
+ 
++#include <cstdint>
+ #include <string>
+ 
+ namespace llvm {
