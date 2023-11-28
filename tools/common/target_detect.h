@@ -16,26 +16,60 @@
 # endif
 // - Linux
 #elif defined(__linux__)
+# ifndef _GNU_SOURCE
+#  define _GNU_SOURCE
+# endif
+# include <features.h>
 # if defined(__amd64__)
 #  if defined(_ILP32)
 #   define DEFAULT_TARGET_NAME "x86_64-unknown-linux-gnux32"
-#  else
+#  elif defined(__USE_GNU)
 #   define DEFAULT_TARGET_NAME "x86_64-unknown-linux-gnu"
+#  else
+#   define DEFAULT_TARGET_NAME "x86_64-unknown-linux-musl"
 #  endif
 # elif defined(__aarch64__)
-#  define DEFAULT_TARGET_NAME "aarch64-unknown-linux-gnu"
+#  if defined(__USE_GNU)
+#   define DEFAULT_TARGET_NAME "aarch64-unknown-linux-gnu"
+#  else
+#   define DEFAULT_TARGET_NAME "aarch64-unknown-linux-musl"
+#  endif
 # elif defined(__arm__)
-#  define DEFAULT_TARGET_NAME "arm-unknown-linux-gnu"
+#  if defined(__USE_GNU)
+#   define DEFAULT_TARGET_NAME "arm-unknown-linux-gnu"
+#  else
+#   define DEFAULT_TARGET_NAME "arm-unknown-linux-musl"
+#  endif
 # elif defined(__i386__)
-#  define DEFAULT_TARGET_NAME "i586-unknown-linux-gnu"
+#  if defined(__USE_GNU)
+#   define DEFAULT_TARGET_NAME "i586-unknown-linux-gnu"
+#  else
+#   define DEFAULT_TARGET_NAME "i586-unknown-linux-musl"
+#  endif
 # elif defined(__m68k__)
-#  define DEFAULT_TARGET_NAME "m68k-unknown-linux-gnu"
+#  if defined(__USE_GNU)
+#   define DEFAULT_TARGET_NAME "m68k-unknown-linux-gnu"
+#  else
+#   define DEFAULT_TARGET_NAME "m68k-unknown-linux-musl"
+#  endif
 # elif defined(__powerpc64__) && defined(__BIG_ENDIAN__)
-#  define DEFAULT_TARGET_NAME "powerpc64-unknown-linux-gnu"
+#  if defined(__USE_GNU)
+#   define DEFAULT_TARGET_NAME "powerpc64-unknown-linux-gnu"
+#  else
+#   define DEFAULT_TARGET_NAME "powerpc64-unknown-linux-musl"
+#  endif
 # elif defined(__powerpc64__) && defined(__LITTLE_ENDIAN__)
-#  define DEFAULT_TARGET_NAME "powerpc64le-unknown-linux-gnu"
+#  if defined(__USE_GNU)
+#   define DEFAULT_TARGET_NAME "powerpcle64-unknown-linux-gnu"
+#  else
+#   define DEFAULT_TARGET_NAME "powerpcle64-unknown-linux-musl"
+#  endif
 # elif defined(__riscv) && __riscv_xlen == 64
-#  define DEFAULT_TARGET_NAME "riscv64-unknown-linux-gnu"
+#  if defined(__USE_GNU)
+#   define DEFAULT_TARGET_NAME "riscv64-unknown-linux-gnu"
+#  else
+#   define DEFAULT_TARGET_NAME "riscv64-unknown-linux-musl"
+#  endif
 # else
 #  warning "Unable to detect a suitable default target (linux-gnu)"
 # endif

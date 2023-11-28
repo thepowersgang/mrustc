@@ -425,6 +425,13 @@ namespace
                 ARCH_X86_64
                 };
         }
+        else if(target_name == "x86_64-linux-musl" || target_name == "x86_64-unknown-linux-musl")
+        {
+            return TargetSpec {
+                "unix", "linux", "musl", {CodegenMode::Gnu11, true /*false*/, "x86_64-linux-musl", BACKEND_C_OPTS_GNU},
+                ARCH_X86_64
+                };
+        }
         else if(target_name == "x86_64-unknown-linux-gnux32")
         {
             return TargetSpec {
