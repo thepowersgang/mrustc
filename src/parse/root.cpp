@@ -775,9 +775,9 @@ AST::Named<AST::Item> Parse_Trait_Item(TokenStream& lex)
         break; }
     // Associated type
     case TOK_RWORD_TYPE: {
-        auto atype_params = ::AST::GenericParams { };
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
         name = tok.ident().name;
+        auto atype_params = Parse_GenericParamsOpt(lex);
         if( GET_TOK(tok, lex) == TOK_COLON )
         {
             // Bounded associated type
@@ -1251,10 +1251,11 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
     case TOK_RWORD_TYPE: {
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
         auto name = tok.ident().name;
+        auto atype_params = Parse_GenericParamsOpt(lex);
         GET_CHECK_TOK(tok, lex, TOK_EQUAL);
         auto ty = Parse_Type(lex);
         GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
-        impl.add_type(lex.end_span(ps), mv$(item_attrs), is_public, is_specialisable, name, mv$(ty));
+        impl.add_type(lex.end_span(ps), mv$(item_attrs), is_public, is_specialisable, name, mv$(atype_params), mv$(ty));
         break; }
     case TOK_RWORD_UNSAFE:
         fn_is_unsafe = true;

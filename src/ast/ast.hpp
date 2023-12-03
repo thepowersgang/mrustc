@@ -534,7 +534,7 @@ public:
     Impl& operator=(Impl&&) = default;
 
     void add_function(Span sp, AttributeList attrs, bool is_public, bool is_specialisable, RcString name, Function fcn);
-    void add_type(Span sp, AttributeList attrs, bool is_public, bool is_specialisable, RcString name, TypeRef type);
+    void add_type(Span sp, AttributeList attrs, bool is_public, bool is_specialisable, RcString name, GenericParams params, TypeRef type);
     void add_static(Span sp, AttributeList attrs, bool is_public, bool is_specialisable, RcString name, Static v);
     void add_macro_invocation( MacroInvocation inv );
 

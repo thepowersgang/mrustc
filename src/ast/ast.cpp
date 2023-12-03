@@ -279,9 +279,9 @@ void Impl::add_function(Span sp, AttributeList attrs, bool is_public, bool is_sp
     DEBUG("impl fn " << name);
     m_items.push_back( ImplItem { sp, mv$(attrs), is_public, is_specialisable, mv$(name), box$( Item::make_Function(mv$(fcn)) ) } );
 }
-void Impl::add_type(Span sp, AttributeList attrs, bool is_public, bool is_specialisable, RcString name, TypeRef type)
+void Impl::add_type(Span sp, AttributeList attrs, bool is_public, bool is_specialisable, RcString name, GenericParams params, TypeRef type)
 {
-    m_items.push_back( ImplItem { sp, mv$(attrs), is_public, is_specialisable, mv$(name), box$( Item::make_Type(TypeAlias(GenericParams(), mv$(type))) ) } );
+    m_items.push_back( ImplItem { sp, mv$(attrs), is_public, is_specialisable, mv$(name), box$( Item::make_Type(TypeAlias(mv$(params), mv$(type))) ) } );
 }
 void Impl::add_static(Span sp, AttributeList attrs, bool is_public, bool is_specialisable, RcString name, Static v)
 {
