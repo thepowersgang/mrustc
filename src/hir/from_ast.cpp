@@ -19,6 +19,7 @@
 #include <hir_typeck/helpers.hpp>   // monomorph
 #include <trans/target.hpp>
 
+::HIR::ExprPtr LowerHIR_Expr(const ::AST::Expr& e);
 ::HIR::Module LowerHIR_Module(const ::AST::Module& module, ::HIR::ItemPath path, ::std::vector< ::HIR::SimplePath> traits = {});
 ::HIR::Function LowerHIR_Function(::HIR::ItemPath path, const ::AST::AttributeList& attrs, const ::AST::Function& f, const ::HIR::TypeRef& self_type);
 ::HIR::ValueItem LowerHIR_Static(::HIR::ItemPath p, const ::AST::AttributeList& attrs, const ::AST::Static& e, const Span& sp, const RcString& name);
@@ -58,7 +59,7 @@ HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
             rv.m_types.push_back({ tp.name(), LowerHIR_Type(tp.get_default()), true });
             }
         TU_ARMA(Value, tp) {
-            rv.m_values.push_back(HIR::ValueParamDef { tp.name().name, LowerHIR_Type(tp.type()) });
+            rv.m_values.push_back(HIR::ValueParamDef { tp.name().name, LowerHIR_Type(tp.type()), tp.default_value() ? LowerHIR_Expr(tp.default_value()) : HIR::ExprPtr() });
             }
         }
     }

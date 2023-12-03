@@ -302,8 +302,19 @@ AST::GenericParams Parse_GenericParams(TokenStream& lex)
             GET_CHECK_TOK(tok, lex, TOK_COLON);
             auto ty = Parse_Type(lex);
 
-            ret.add_value_param(lex.point_span(), mv$(attrs), mv$(param_name), mv$(ty));
-            GET_TOK(tok, lex);
+            AST::Expr  val;
+            if( GET_TOK(tok, lex) == TOK_EQUAL )
+            {
+                if( lex.lookahead(0) == TOK_BRACE_OPEN ) {
+                    val = Parse_ExprBlock(lex);
+                }
+                else {
+                    val = Parse_Expr(lex);
+                }
+                GET_TOK(tok, lex);
+            }
+
+            ret.add_value_param(lex.point_span(), mv$(attrs), mv$(param_name), mv$(ty), mv$(val));
         }
         else
         {

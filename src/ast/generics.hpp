@@ -80,12 +80,14 @@ class ValueParam
     Span    m_span;
     Ident   m_name;
     TypeRef m_type;
+    Expr    m_default;
 public:
-    ValueParam(Span sp, ::AST::AttributeList attrs, Ident name, TypeRef type)
+    ValueParam(Span sp, ::AST::AttributeList attrs, Ident name, TypeRef type, Expr val)
         :m_attrs( ::std::move(attrs) )
         ,m_span( ::std::move(sp) )
         ,m_name( ::std::move(name) )
         ,m_type( ::std::move(type) )
+        ,m_default( ::std::move(val) )
     {
     }
     ValueParam(ValueParam&&) = default;
@@ -94,7 +96,8 @@ public:
         m_attrs( x.m_attrs ),
         m_span( x.m_span ),
         m_name( x.m_name ),
-        m_type( x.m_type.clone() )
+        m_type( x.m_type.clone() ),
+        m_default( x.m_default ? x.m_default.clone() : Expr() )
     {
     }
 
@@ -104,6 +107,8 @@ public:
 
     const TypeRef& type() const { return m_type; }
           TypeRef& type()       { return m_type; }
+
+    const Expr& default_value() const { return m_default; }
 
     friend ::std::ostream& operator<<(::std::ostream& os, const ValueParam& p);
 };
@@ -220,8 +225,8 @@ public:
     void add_ty_param(TypeParam param) { add_param( ::std::move(param), SIZE_MAX, SIZE_MAX); }
     void add_ty_param(TypeParam param, size_t bounds_start, size_t bounds_end) { add_param( ::std::move(param), bounds_start, bounds_end); }
 
-    void add_value_param(Span sp, AttributeList attrs, Ident name, TypeRef ty) {
-        m_params.push_back(ValueParam(mv$(sp), mv$(attrs), mv$(name), mv$(ty)));
+    void add_value_param(Span sp, AttributeList attrs, Ident name, TypeRef ty, Expr val) {
+        m_params.push_back(ValueParam(mv$(sp), mv$(attrs), mv$(name), mv$(ty), mv$(val)));
     }
 
     void add_bound(GenericBound bound) {

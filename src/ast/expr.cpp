@@ -331,6 +331,7 @@ MatchGuard MatchGuard::clone() const
         return MatchGuard(mv$(inner));
         }
     }
+    throw "";
 }
 NODE(ExprNode_Match, {
     os << "match ("<<*m_val<<") {";

@@ -296,9 +296,13 @@ namespace {
             if( params.m_values.size() != param_defs.m_values.size() )
             {
                 if( params.m_values.size() == 0 && fill_infer ) {
-                    for(const auto& typ : param_defs.m_values) {
-                        (void)typ;
-                        params.m_values.push_back( ::HIR::ConstGeneric::make_Infer({}) );
+                    for(const auto& val : param_defs.m_values) {
+                        if( val.m_default ) {
+                            TODO(sp, "Value generic defaults");
+                        }
+                        else {
+                            params.m_values.push_back( ::HIR::ConstGeneric::make_Infer({}) );
+                        }
                     }
                 }
             }
