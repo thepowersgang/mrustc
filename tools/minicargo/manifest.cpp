@@ -107,6 +107,7 @@ static ManifestOverrides    s_overrides;
 namespace
 {
     void target_edit_from_kv(ErrorHandler& eh, PackageTarget& target, const TomlKeyValue& kv, unsigned base_idx);
+    void parse_edition(Edition& dst, ErrorHandler& eh, const TomlValue& value);
 }
 
 void Manifest_LoadOverrides(const ::std::string& s)
@@ -396,16 +397,7 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const TomlKeyValue& key_val
             else if( key == "edition" )
             {
                 assert(key_val.path.size() == 2);
-                assert(key_val.value.m_type == TomlValue::Type::String);
-                if(key_val.value.as_string() == "2015") {
-                    rv.m_edition = Edition::Rust2015;
-                }
-                else if(key_val.value.as_string() == "2018") {
-                    rv.m_edition = Edition::Rust2018;
-                }
-                else {
-                    eh.error("Unknown edition value ", key_val.value);
-                }
+                parse_edition(rv.m_edition, eh, key_val.value);
             }
             else
             {
@@ -594,6 +586,11 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const TomlKeyValue& key_val
         else if( section == "badges" )
         {
         }
+        else if( section == "cargo-features" )
+        {
+            //assert(key_val.path.size() == 1);
+            key_val.value.m_sub_values;
+        }
         else
         {
             // Unknown manifest section
@@ -656,16 +653,7 @@ namespace
         else if( key == "edition" )
         {
             assert(kv.path.size() == base_idx + 1);
-            assert(kv.value.m_type == TomlValue::Type::String);
-            if(kv.value.as_string() == "2015") {
-                target.m_edition = Edition::Rust2015;
-            }
-            else if(kv.value.as_string() == "2018") {
-                target.m_edition = Edition::Rust2018;
-            }
-            else {
-                eh.error("Unknown edition value ", kv.value);
-            }
+            parse_edition(target.m_edition, eh, kv.value);
         }
         else if( key == "crate-type" )
         {
@@ -701,6 +689,23 @@ namespace
         else
         {
             eh.error("TODO: Handle target option `", key, "`");
+        }
+    }
+
+    void parse_edition(Edition& dst, ErrorHandler& eh, const TomlValue& value)
+    {
+        assert(value.m_type == TomlValue::Type::String);
+        if(value.as_string() == "2015") {
+            dst = Edition::Rust2015;
+        }
+        else if(value.as_string() == "2018") {
+            dst = Edition::Rust2018;
+        }
+        else if(value.as_string() == "2021") {
+            dst = Edition::Rust2021;
+        }
+        else {
+            eh.error("Unknown edition value ", value);
         }
     }
 }
@@ -763,6 +768,11 @@ void PackageRef::fill_from_kv(ErrorHandler& eh, bool was_added, const TomlKeyVal
         {
             assert(key_val.path.size() == base_idx+1);
             this->m_optional = key_val.value.as_bool();
+        }
+        else if( attr == "public" )
+        {
+            assert(key_val.path.size() == base_idx+1);
+            this->m_public = key_val.value.as_bool();
         }
         else if( attr == "default-features" || attr == "default_features" ) // Huh, either is valid?
         {

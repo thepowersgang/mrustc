@@ -904,6 +904,20 @@ int main(int argc, char *argv[])
     return 0;
 }
 
+namespace {
+    const char* target_version_str(TargetVersion tv) {
+        switch(tv)
+        {
+        case TargetVersion::Rustc1_19:  return "1.19";
+        case TargetVersion::Rustc1_29:  return "1.29";
+        case TargetVersion::Rustc1_39:  return "1.39";
+        case TargetVersion::Rustc1_54:  return "1.54";
+        case TargetVersion::Rustc1_74:  return "1.74";
+        }
+        return "?";
+    }
+}
+
 ProgramParams::ProgramParams(int argc, char *argv[])
 {
     if( const auto* a = getenv("MRUSTC_TARGET_VER") )
@@ -919,6 +933,9 @@ ProgramParams::ProgramParams(int argc, char *argv[])
         }
         else if( strcmp(a, "1.54") == 0 ) {
             gTargetVersion = TargetVersion::Rustc1_54;
+        }
+        else if( strcmp(a, "1.74") == 0 ) {
+            gTargetVersion = TargetVersion::Rustc1_74;
         }
         else {
         }
@@ -937,14 +954,7 @@ ProgramParams::ProgramParams(int argc, char *argv[])
         // The following imitates rustc's version output (which the crate `rustc_version` tries to parse)
         // - Very much a hack
         if( strcmp(arg, "-vV") == 0 ) {
-            const char* rustc_target = "unknown";
-            switch(gTargetVersion)
-            {
-            case TargetVersion::Rustc1_19:  rustc_target = "1.19";  break;
-            case TargetVersion::Rustc1_29:  rustc_target = "1.29";  break;
-            case TargetVersion::Rustc1_39:  rustc_target = "1.39";  break;
-            case TargetVersion::Rustc1_54:  rustc_target = "1.54";  break;
-            }
+            const char* rustc_target = target_version_str(gTargetVersion);
 
             ::std::cout << "rustc " << rustc_target << ".100 (mrustc " << Version_GetString() << ")" << ::std::endl;
             ::std::cout << "binary: rustc" << ::std::endl;
@@ -1187,14 +1197,7 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 exit(0);
             }
             else if( strcmp(arg, "--version" ) == 0 ) {
-                const char* rustc_target = "unknown";
-                switch(gTargetVersion)
-                {
-                case TargetVersion::Rustc1_19:  rustc_target = "1.19";  break;
-                case TargetVersion::Rustc1_29:  rustc_target = "1.29";  break;
-                case TargetVersion::Rustc1_39:  rustc_target = "1.39";  break;
-                case TargetVersion::Rustc1_54:  rustc_target = "1.54";  break;
-                }
+                const char* rustc_target = target_version_str(gTargetVersion);
                 // NOTE: Starts the version with "rustc 1.29.100" so build scripts don't get confused
                 ::std::cout << "rustc " << rustc_target << ".100 (mrustc " << Version_GetString() << ")" << ::std::endl;
                 ::std::cout << "release: " << rustc_target << ".100" << ::std::endl;    // `autoconfig` looks for this line

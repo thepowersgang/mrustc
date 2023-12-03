@@ -151,6 +151,7 @@ class PackageRef
     PackageVersionSpec  m_version;
 
     bool m_optional = false;
+    bool m_public = false;
     ::std::string   m_path;
 
     // Features requested by this reference
@@ -195,6 +196,7 @@ enum class Edition
     Unspec,
     Rust2015,
     Rust2018,
+    Rust2021,
 };
 struct PackageTarget
 {
