@@ -657,13 +657,18 @@ ExprNodeP Parse_Stmt_Let(TokenStream& lex)
         GET_TOK(tok, lex);
     }
     ExprNodeP val;
+    ExprNodeP else_arm;
     if( tok.type() == TOK_EQUAL ) {
         val = Parse_Expr0(lex);
+        if( lex.lookahead(0) == TOK_RWORD_ELSE ) {
+            GET_TOK(tok, lex);
+            else_arm = Parse_ExprBlockNode(lex);
+        }
     }
     else {
         PUTBACK(tok, lex);
     }
-    return NEWNODE( AST::ExprNode_LetBinding, ::std::move(pat), mv$(type), ::std::move(val) );
+    return NEWNODE( AST::ExprNode_LetBinding, ::std::move(pat), mv$(type), ::std::move(val), ::std::move(else_arm) );
 }
 
 ::std::vector<ExprNodeP> Parse_ParenList(TokenStream& lex)

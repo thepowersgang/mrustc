@@ -253,10 +253,14 @@ NODE(ExprNode_Flow, {
 
 NODE(ExprNode_LetBinding, {
     os << "let " << m_pat << ": " << m_type;
-    if(m_value)
+    if(m_value) {
         os << " = " << *m_value;
+        if( m_else ) {
+            os << " else " << *m_else;
+        }
+    }
 },{
-    return NEWNODE(ExprNode_LetBinding, m_pat.clone(), m_type.clone(), OPT_CLONE(m_value));
+    return NEWNODE(ExprNode_LetBinding, m_pat.clone(), m_type.clone(), OPT_CLONE(m_value), OPT_CLONE(m_else));
 })
 
 NODE(ExprNode_Assign, {
@@ -664,6 +668,7 @@ NV(ExprNode_LetBinding,
 {
     // TODO: Handle recurse into Let pattern?
     visit(node.m_value);
+    visit(node.m_else);
 })
 NV(ExprNode_Assign,
 {

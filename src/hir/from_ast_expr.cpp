@@ -163,6 +163,9 @@ struct LowerHIR_ExprNode_Visitor:
         }
     }
     virtual void visit(::AST::ExprNode_LetBinding& v) override {
+        if( v.m_else ) {
+            TODO(v.span(), "Handle let-else in HIR expand, or elsewhere?");
+        }
         m_rv.reset( new ::HIR::ExprNode_Let( v.span(),
             LowerHIR_Pattern( v.m_pat ),
             LowerHIR_Type( v.m_type ),

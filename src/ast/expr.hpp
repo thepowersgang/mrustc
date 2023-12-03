@@ -204,11 +204,13 @@ struct ExprNode_LetBinding:
     Pattern m_pat;
     TypeRef m_type;
     ExprNodeP    m_value;
+    ExprNodeP    m_else;
 
-    ExprNode_LetBinding(Pattern pat, TypeRef type, ExprNodeP value):
-        m_pat( move(pat) ),
-        m_type( move(type) ),
-        m_value( move(value) )
+    ExprNode_LetBinding(Pattern pat, TypeRef type, ExprNodeP value, ExprNodeP else_arm={})
+        : m_pat( move(pat) )
+        , m_type( move(type) )
+        , m_value( move(value) )
+        , m_else( move(else_arm) )
     {
     }
 
