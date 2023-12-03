@@ -281,6 +281,7 @@ MacroRef Expand_LookupMacro(const Span& mi_span, const ::AST::Crate& crate, LLis
         return ProcMacro_Invoke(mi_span, crate, mac_path, input_tt);
         }
     TU_ARMA(BuiltinProcMacro, proc_mac) {
+        ASSERT_BUG(mi_span, proc_mac, "null BuiltinProcMacro? " << path);
         auto e = input_ident == ""
             ? proc_mac->expand(mi_span, crate, input_tt, mod)
             : proc_mac->expand_ident(mi_span, crate, input_ident, input_tt, mod)

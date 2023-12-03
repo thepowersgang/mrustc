@@ -856,6 +856,19 @@ class CFormatArgsExpander:
         return expand_format_args(sp, crate, lex, /*add_newline=*/false);
     }
 };
+class CConstFormatArgsExpander:
+    public ExpandProcMacro
+{
+    ::std::unique_ptr<TokenStream> expand(const Span& sp, const ::AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
+    {
+        Token   tok;
+
+        auto lex = TTStream(sp, ParseState(), tt);
+        lex.parse_state().module = &mod;
+
+        return expand_format_args(sp, crate, lex, /*add_newline=*/false);
+    }
+};
 
 class CFormatArgsNlExpander:
     public ExpandProcMacro
@@ -872,5 +885,6 @@ class CFormatArgsNlExpander:
 };
 
 STATIC_MACRO("format_args", CFormatArgsExpander);
+STATIC_MACRO("const_format_args", CConstFormatArgsExpander);
 STATIC_MACRO("format_args_nl", CFormatArgsNlExpander);
 
