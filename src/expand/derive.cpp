@@ -448,7 +448,7 @@ public:
                     ));
             }
             nodes.push_back(NEWNODE(CallMethod, NEWNODE(NamedValue, AST::Path("s")), AST::PathNode("finish",{}), {}));
-            node = NEWNODE(Block, false, /*yields_final_value*/true, mv$(nodes), {});
+            node = NEWNODE(Block, AST::ExprNode_Block::Type::Bare, /*yields_final_value*/true, mv$(nodes), {});
             }
         TU_ARMA(Tuple, e) {
             node = NEWNODE(NamedValue, AST::Path("f"));

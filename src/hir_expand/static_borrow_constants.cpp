@@ -327,6 +327,11 @@ namespace static_borrow_constants {
             ::HIR::ExprVisitorDef::visit(node);
             m_is_constant = m_all_constant;
         }
+        void visit(::HIR::ExprNode_ConstBlock& node) override {
+            ::HIR::ExprVisitorDef::visit(node);
+            ASSERT_BUG(node.span(),m_all_constant, "const block wasn't constant");
+            m_is_constant = m_all_constant;
+        }
         // - Root values
         void visit(::HIR::ExprNode_Literal& node) override {
             ::HIR::ExprVisitorDef::visit(node);

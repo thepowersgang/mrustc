@@ -364,6 +364,11 @@ namespace {
             dec_indent();
             m_os << indent() << "}";
         }
+        void visit(::HIR::ExprNode_ConstBlock& node) override
+        {
+            m_os << "const ";
+            node.m_inner->visit(*this);
+        }
 
         void visit(::HIR::ExprNode_Asm& node) override
         {

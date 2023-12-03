@@ -131,6 +131,9 @@ namespace {
             }
             this->m_completed = true;
         }
+        void visit(::HIR::ExprNode_ConstBlock& node) override {
+            no_revisit(node);
+        }
         void visit(::HIR::ExprNode_Asm& node) override {
             // TODO: Revisit for validation
             no_revisit(node);
@@ -1661,6 +1664,9 @@ namespace {
 
         void visit(::HIR::ExprNode_Block& node) override {
             m_os << "_Block {" << context.m_ivars.fmt_type(node.m_nodes.back()->m_res_type) << "}";
+        }
+        void visit(::HIR::ExprNode_ConstBlock& node) override {
+            no_revisit(node);
         }
         void visit(::HIR::ExprNode_Asm& node) override {
             no_revisit(node);

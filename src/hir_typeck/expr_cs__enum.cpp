@@ -656,6 +656,16 @@ namespace typecheck
             }
             this->pop_traits( node.m_traits );
         }
+        void visit(::HIR::ExprNode_ConstBlock& node) override
+        {
+            TRACE_FUNCTION_F(&node << " const { ... }");
+            this->context.add_ivars( node.m_inner->m_res_type );
+
+            //this->push_inner_coerce( true );
+            node.m_inner->visit( *this );
+            //this->pop_inner_coerce();
+            this->context.equate_types(node.span(), node.m_res_type, node.m_inner->m_res_type);
+        }
         void visit(::HIR::ExprNode_Asm& node) override
         {
             TRACE_FUNCTION_F(&node << " asm! ...");

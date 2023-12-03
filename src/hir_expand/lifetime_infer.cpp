@@ -902,6 +902,7 @@ namespace {
 
                 #define NV(nt)   void visit(HIR::nt& node) override { local(node); }
                 NV(ExprNode_Block)
+                NV(ExprNode_ConstBlock)
                 NV(ExprNode_Asm)
                 NV(ExprNode_Asm2)
                 NV(ExprNode_Return)

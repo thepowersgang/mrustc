@@ -475,6 +475,10 @@ namespace {
                 }
             }
         }
+        void visit(::HIR::ExprNode_ConstBlock& node) override
+        {
+            BUG(node.span(), "Const block shouldn't have reached MIR generation");
+        }
         void visit(::HIR::ExprNode_Asm& node) override
         {
             TRACE_FUNCTION_F("_Asm");

@@ -41,8 +41,15 @@ public:
 
     virtual bool is_const() const override { return true; }
     virtual void visit(AST::ExprNode_Block& n) override {
-        if( n.m_is_unsafe ) {
+        switch(n.m_block_type) {
+        case AST::ExprNode_Block::Type::Bare:
+            break;
+        case AST::ExprNode_Block::Type::Unsafe:
             m_os << "unsafe ";
+            break;
+        case AST::ExprNode_Block::Type::Const:
+            m_os << "const ";
+            break;
         }
         m_os << "{";
         inc_indent();

@@ -164,6 +164,11 @@ namespace {
                 scope->yield_stack.pop_back();
             }
         }
+        void visit(::HIR::ExprNode_ConstBlock& node) override
+        {
+            auto _ = this->push_usage( ::HIR::ValueUsage::Move );
+            this->visit_node_ptr(node.m_inner);
+        }
 
         void visit(::HIR::ExprNode_Asm& node) override
         {

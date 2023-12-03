@@ -92,6 +92,18 @@ struct ExprNode_Block:
 
     NODE_METHODS();
 };
+struct ExprNode_ConstBlock:
+    public ExprNode
+{
+    ExprNodeP   m_inner;
+
+    ExprNode_ConstBlock(Span sp, ExprNodeP inner)
+        : ExprNode(mv$(sp))
+        , m_inner(mv$(inner))
+    {}
+
+    NODE_METHODS();
+};
 struct ExprNode_Asm:
     public ExprNode
 {
@@ -929,6 +941,8 @@ public:
     #define NV(nt)  virtual void visit(nt& n) = 0;
 
     NV(ExprNode_Block)
+    NV(ExprNode_ConstBlock)
+    //NV(ExprNode_AsyncBlock)
     NV(ExprNode_Asm)
     NV(ExprNode_Asm2)
     NV(ExprNode_Return)
@@ -982,6 +996,8 @@ public:
     virtual void visit_node_ptr(::std::unique_ptr<ExprNode>& node_ptr) override;
 
     NV(ExprNode_Block)
+    NV(ExprNode_ConstBlock)
+    //NV(ExprNode_AsyncBlock)
     NV(ExprNode_Asm)
     NV(ExprNode_Asm2)
     NV(ExprNode_Return)

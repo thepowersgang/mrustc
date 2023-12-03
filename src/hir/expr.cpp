@@ -39,6 +39,10 @@ DEF_VISIT_H(ExprNode_Block, node) {
     if( node.m_value_node )
         visit_node_ptr(node.m_value_node);
 }
+DEF_VISIT_H(ExprNode_ConstBlock, node) {
+    TRACE_FUNCTION_F("_ConstBlock");
+    visit_node_ptr(node.m_inner);
+}
 DEF_VISIT_H(ExprNode_Asm, node) {
     TRACE_FUNCTION_F("_Asm");
     for(auto& v : node.m_outputs)

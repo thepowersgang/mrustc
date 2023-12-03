@@ -24,7 +24,7 @@ using AST::ExprNodeP;
 static inline ExprNodeP mk_exprnodep(const TokenStream& lex, AST::ExprNode* en){en->set_span(lex.point_span()); return ExprNodeP(en); }
 #define NEWNODE(type, ...)  mk_exprnodep(lex, new type(__VA_ARGS__))
 
-//ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe=false, Ident label=RcString());    // common.hpp
+ExprNodeP Parse_ExprBlockNode(TokenStream& lex, AST::ExprNode_Block::Type ty, Ident label=Ident(""));
 //ExprNodeP Parse_ExprBlockLine_WithItems(TokenStream& lex, ::std::shared_ptr<AST::Module>& local_mod, bool& add_silence_if_end);
 //ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence);
 ExprNodeP Parse_ExprBlockLine_Stmt(TokenStream& lex, bool& has_semicolon);
@@ -47,8 +47,11 @@ AST::Expr Parse_ExprBlock(TokenStream& lex)
 {
     return ::AST::Expr( Parse_ExprBlockNode(lex) );
 }
-
-ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe/*=false*/, Ident label/*=RcString()*/)
+AST::ExprNodeP Parse_ExprBlockNode(TokenStream& lex)
+{
+    return Parse_ExprBlockNode(lex, AST::ExprNode_Block::Type::Bare, RcString());
+}
+ExprNodeP Parse_ExprBlockNode(TokenStream& lex, AST::ExprNode_Block::Type ty/*=Bare*/, Ident label/*=RcString()*/)
 {
     TRACE_FUNCTION;
     Token   tok;
@@ -97,7 +100,7 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe/*=false*/, Ident 
         DEBUG("Restore module from " << lex.parse_state().module->path() << " to " << orig_module->path() );
         lex.parse_state().module = orig_module;
     }
-    auto* rv_blk = new ::AST::ExprNode_Block(is_unsafe, last_value_yielded, mv$(nodes), mv$(local_mod) );
+    auto* rv_blk = new ::AST::ExprNode_Block(ty, last_value_yielded, mv$(nodes), mv$(local_mod) );
     rv_blk->m_label = label;
     auto rv = ExprNodeP(rv_blk);
     rv->set_attrs( mv$(attrs) );
@@ -151,7 +154,6 @@ ExprNodeP Parse_ExprBlockLine_WithItems(TokenStream& lex, ::std::shared_ptr<AST:
     case TOK_RWORD_TYPE:
     case TOK_RWORD_USE:
     case TOK_RWORD_EXTERN:
-    case TOK_RWORD_CONST:
     case TOK_RWORD_STATIC:
     case TOK_RWORD_STRUCT:
     case TOK_RWORD_MACRO:
@@ -168,6 +170,20 @@ ExprNodeP Parse_ExprBlockLine_WithItems(TokenStream& lex, ::std::shared_ptr<AST:
         }
         Parse_Mod_Item(lex, *local_mod, mv$(item_attrs));
         return ExprNodeP();
+    // 'const' - Check if the next token isn't a `{`, if so it's an item. Otherwise, fall through
+    case TOK_RWORD_CONST:
+        if( LOOK_AHEAD(lex) != TOK_BRACE_OPEN )
+        {
+            PUTBACK(tok, lex);
+            if( !local_mod ) {
+                local_mod = lex.parse_state().get_current_mod().add_anon();
+                DEBUG("Set module from " << lex.parse_state().module->path() << " to " << local_mod->path() );
+                lex.parse_state().module = local_mod.get();
+            }
+            Parse_Mod_Item(lex, *local_mod, mv$(item_attrs));
+            return ExprNodeP();
+        }
+        break;
     // 'unsafe' - Check if the next token isn't a `{`, if so it's an item. Otherwise, fall through
     case TOK_RWORD_UNSAFE:
         if( LOOK_AHEAD(lex) != TOK_BRACE_OPEN )
@@ -226,10 +242,13 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence)
         // NOTE: 1.39's libsyntax uses labelled block
         case TOK_BRACE_OPEN:
             PUTBACK(tok, lex);
-            ret = Parse_ExprBlockNode(lex, /*is_unsafe*/false, lifetime);
+            ret = Parse_ExprBlockNode(lex, /*is_unsafe*/AST::ExprNode_Block::Type::Bare, lifetime);
             return ret;
         case TOK_RWORD_UNSAFE:
-            ret = Parse_ExprBlockNode(lex, /*is_unsafe*/true, lifetime);
+            ret = Parse_ExprBlockNode(lex, /*is_unsafe*/AST::ExprNode_Block::Type::Unsafe, lifetime);
+            return ret;
+        case TOK_RWORD_CONST:
+            ret = Parse_ExprBlockNode(lex, /*is_unsafe*/AST::ExprNode_Block::Type::Const, lifetime);
             return ret;
         // TODO: Can these have labels?
         //case TOK_RWORD_IF:
@@ -299,7 +318,10 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence)
             ret = Parse_Expr_Match(lex);
             if(0)
         case TOK_RWORD_UNSAFE:
-            ret = Parse_ExprBlockNode(lex, true);
+            ret = Parse_ExprBlockNode(lex, AST::ExprNode_Block::Type::Unsafe);
+            if(0)
+        case TOK_RWORD_CONST:
+            ret = Parse_ExprBlockNode(lex, AST::ExprNode_Block::Type::Const);
             if(0)
         case TOK_BRACE_OPEN:
             { PUTBACK(tok, lex); ret = Parse_ExprBlockNode(lex); }
@@ -1282,7 +1304,9 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
     case TOK_RWORD_IF:
         return Parse_IfStmt(lex);
     case TOK_RWORD_UNSAFE:
-        return Parse_ExprBlockNode(lex, true);
+        return Parse_ExprBlockNode(lex, AST::ExprNode_Block::Type::Unsafe);
+    case TOK_RWORD_CONST:
+        return Parse_ExprBlockNode(lex, AST::ExprNode_Block::Type::Const);
 
     // Paths
     // `self` can be a value, or start a path

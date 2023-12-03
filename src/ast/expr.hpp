@@ -53,21 +53,26 @@ public:
 struct ExprNode_Block:
     public ExprNode
 {
-    bool m_is_unsafe;
+    enum class Type {
+        Bare,
+        Unsafe,
+        Const,
+    };
+    Type m_block_type;
     bool m_yields_final_value;
     Ident   m_label;
     ::std::shared_ptr<AST::Module> m_local_mod;
     ::std::vector<ExprNodeP>    m_nodes;
 
     ExprNode_Block(::std::vector<ExprNodeP> nodes={}):
-        m_is_unsafe(false),
+        m_block_type(Type::Bare),
         m_yields_final_value(true),
         m_label(""),
         m_local_mod(),
         m_nodes( mv$(nodes) )
     {}
-    ExprNode_Block(bool is_unsafe, bool yields_final_value, ::std::vector<ExprNodeP> nodes, ::std::shared_ptr<AST::Module> local_mod):
-        m_is_unsafe(is_unsafe),
+    ExprNode_Block(Type type, bool yields_final_value, ::std::vector<ExprNodeP> nodes, ::std::shared_ptr<AST::Module> local_mod):
+        m_block_type(type),
         m_yields_final_value(yields_final_value),
         m_label(""),
         m_local_mod( move(local_mod) ),

@@ -82,6 +82,12 @@ namespace {
                 check_types_equal(node.span(), node.m_res_type, node.m_value_node->m_res_type);
             }
         }
+        void visit(::HIR::ExprNode_ConstBlock& node) override
+        {
+            TRACE_FUNCTION_F(&node << " const { ... }");
+            node.m_inner->visit(*this);
+            check_types_equal(node.span(), node.m_res_type, node.m_inner->m_res_type);
+        }
         void visit(::HIR::ExprNode_Asm& node) override
         {
             TRACE_FUNCTION_F(&node << " llvm_asm! ...");

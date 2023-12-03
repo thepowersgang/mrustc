@@ -931,8 +931,16 @@ namespace {
 
         // === Expressions ====
         void visit(::AST::ExprNode_Block& node) {
-            if( node.m_is_unsafe )
+            switch(node.m_block_type) {
+            case AST::ExprNode_Block::Type::Bare:
+                break;
+            case AST::ExprNode_Block::Type::Unsafe:
                 m_pmi.send_ident("unsafe");
+                break;
+            case AST::ExprNode_Block::Type::Const:
+                m_pmi.send_ident("const");
+                break;
+            }
             m_pmi.send_symbol("{");
             TODO(sp, "");
             m_pmi.send_symbol("}");

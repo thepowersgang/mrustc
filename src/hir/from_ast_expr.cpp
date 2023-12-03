@@ -55,6 +55,17 @@ struct LowerHIR_ExprNode_Visitor:
             rv->m_local_mod = ::HIR::SimplePath(g_crate_name, v.m_local_mod->path().nodes);
         }
 
+        switch(v.m_block_type)
+        {
+        case AST::ExprNode_Block::Type::Bare:
+            break;
+        case AST::ExprNode_Block::Type::Unsafe:
+            rv->m_is_unsafe = true;
+            break;
+        case AST::ExprNode_Block::Type::Const:
+            break;
+        }
+
         if( v.m_label != "" )
         {
             if(rv->m_value_node)
@@ -71,6 +82,17 @@ struct LowerHIR_ExprNode_Visitor:
         else
         {
             m_rv.reset( static_cast< ::HIR::ExprNode*>(rv) );
+        }
+
+        switch(v.m_block_type)
+        {
+        case AST::ExprNode_Block::Type::Bare:
+            break;
+        case AST::ExprNode_Block::Type::Unsafe:
+            break;
+        case AST::ExprNode_Block::Type::Const:
+            m_rv.reset( new ::HIR::ExprNode_ConstBlock(v.span(), std::move(m_rv)) );
+            break;
         }
     }
     virtual void visit(::AST::ExprNode_Try& v) override {

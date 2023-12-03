@@ -105,7 +105,7 @@ NODE(ExprNode_Block, {
     ::std::vector<ExprNodeP>    nodes;
     for(const auto& n : m_nodes)
         nodes.push_back( n->clone() );
-    return NEWNODE(ExprNode_Block, m_is_unsafe, m_yields_final_value, mv$(nodes), m_local_mod);
+    return NEWNODE(ExprNode_Block, m_block_type, m_yields_final_value, mv$(nodes), m_local_mod);
 })
 
 NODE(ExprNode_Try, {
