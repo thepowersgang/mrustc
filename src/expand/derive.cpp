@@ -543,7 +543,7 @@ public:
 
             arms.push_back(AST::ExprNode_Match_Arm(
                 mv$(pats),
-                nullptr,
+                AST::MatchGuard(),
                 mv$(code)
                 ));
         }
@@ -681,7 +681,7 @@ public:
 
             arms.push_back(AST::ExprNode_Match_Arm(
                 mv$(pats),
-                nullptr,
+                AST::MatchGuard(),
                 mv$(code)
                 ));
         }
@@ -690,7 +690,7 @@ public:
         {
             arms.push_back(AST::ExprNode_Match_Arm(
                 ::make_vec1( AST::Pattern() ),
-                nullptr,
+                AST::MatchGuard(),
                 NEWNODE(Bool, false)
                 ));
         }
@@ -747,19 +747,19 @@ class Deriver_PartialOrd:
             ::make_vec3(
                 ::AST::ExprNode_Match_Arm(
                     ::make_vec1( AST::Pattern(AST::Pattern::TagValue(), sp, get_path(core_name, "option", "Option", "None")) ),
-                    nullptr,
+                    AST::MatchGuard(),
                     NEWNODE(Flow, AST::ExprNode_Flow::RETURN, "", NEWNODE(NamedValue, get_path(core_name, "option", "Option", "None")))
                     ),
                 ::AST::ExprNode_Match_Arm(
                     ::make_vec1( AST::Pattern(AST::Pattern::TagNamedTuple(), sp, get_path(core_name, "option", "Option", "Some"),
                         ::make_vec1(  AST::Pattern(AST::Pattern::TagValue(), sp, get_path(core_name, "cmp", "Ordering", "Equal")) )
                         ) ),
-                    nullptr,
+                    AST::MatchGuard(),
                     NEWNODE(Tuple, ::std::vector<AST::ExprNodeP>())
                     ),
                 ::AST::ExprNode_Match_Arm(
                     ::make_vec1( AST::Pattern(AST::Pattern::TagBind(), sp, "res") ),
-                    nullptr,
+                    AST::MatchGuard(),
                     NEWNODE(Flow, AST::ExprNode_Flow::RETURN, "", NEWNODE(NamedValue, AST::Path("res")))
                     )
                 )
@@ -863,7 +863,7 @@ public:
 
             arms.push_back(AST::ExprNode_Match_Arm(
                 mv$(pats),
-                nullptr,
+                AST::MatchGuard(),
                 mv$(code)
                 ));
         }
@@ -882,7 +882,7 @@ public:
 
             arms.push_back(AST::ExprNode_Match_Arm(
                 mv$(pats),
-                nullptr,
+                AST::MatchGuard(),
                 mv$(code)
                 ));
         }
@@ -1010,7 +1010,7 @@ public:
 
             arms.push_back(AST::ExprNode_Match_Arm(
                 mv$(pats),
-                nullptr,
+                AST::MatchGuard(),
                 mv$(code)
                 ));
         }
@@ -1076,12 +1076,12 @@ class Deriver_Ord:
             ::make_vec2(
                 ::AST::ExprNode_Match_Arm(
                     ::make_vec1( AST::Pattern(AST::Pattern::TagValue(), sp, get_path(core_name, "cmp", "Ordering", "Equal")) ),
-                    nullptr,
+                    AST::MatchGuard(),
                     NEWNODE(Tuple, ::std::vector<AST::ExprNodeP>())
                     ),
                 ::AST::ExprNode_Match_Arm(
                     ::make_vec1( AST::Pattern(AST::Pattern::TagBind(), sp, "res") ),
-                    nullptr,
+                    AST::MatchGuard(),
                     NEWNODE(Flow, AST::ExprNode_Flow::RETURN, "", NEWNODE(NamedValue, AST::Path("res")))
                     )
                 )
@@ -1183,7 +1183,7 @@ public:
 
             arms.push_back(AST::ExprNode_Match_Arm(
                 mv$(pats),
-                nullptr,
+                AST::MatchGuard(),
                 mv$(code)
                 ));
         }
@@ -1200,7 +1200,7 @@ public:
 
             arms.push_back(AST::ExprNode_Match_Arm(
                 mv$(pats),
-                nullptr,
+                AST::MatchGuard(),
                 mv$(code)
                 ));
         }
@@ -1345,7 +1345,7 @@ public:
 
             arms.push_back(AST::ExprNode_Match_Arm(
                 mv$(pats),
-                nullptr,
+                AST::MatchGuard(),
                 mv$(code)
                 ));
         }
@@ -1626,7 +1626,7 @@ public:
 
             arms.push_back(AST::ExprNode_Match_Arm(
                 mv$(pats),
-                nullptr,
+                AST::MatchGuard(),
                 mv$(code)
                 ));
         }
@@ -1854,7 +1854,7 @@ public:
 
             arms.push_back(AST::ExprNode_Match_Arm(
                 mv$(pats),
-                nullptr,
+                AST::MatchGuard(),
                 mv$(code)
                 ));
         }
@@ -2067,7 +2067,7 @@ public:
 
             arms.push_back(AST::ExprNode_Match_Arm(
                 mv$(pats),
-                nullptr,
+                AST::MatchGuard(),
                 this->get_val_ok(opts.core_name, mv$(code))
                 ));
             var_name_strs.push_back( NEWNODE(String, v.m_name.c_str()) );
@@ -2077,7 +2077,7 @@ public:
         {
             arms.push_back(AST::ExprNode_Match_Arm(
                 ::make_vec1( AST::Pattern() ),
-                nullptr,
+                AST::MatchGuard(),
                 this->get_val_err_str(opts.core_name, "enum value unknown")
                 ));
         }

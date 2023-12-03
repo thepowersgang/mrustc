@@ -515,7 +515,21 @@ ExprNodeP Parse_Expr_Match(TokenStream& lex)
 
         if( tok.type() == TOK_RWORD_IF )
         {
-            arm.m_cond = Parse_Expr1(lex);
+            if( lex.lookahead(0) == TOK_RWORD_LET ) {
+                lex.getToken();
+                ::std::vector<AST::Pattern> guard_patterns;
+                guard_patterns.reserve(1);
+                guard_patterns.push_back(Parse_Pattern(lex));
+                GET_CHECK_TOK(tok, lex, TOK_EQUAL);
+                auto val = Parse_Expr1(lex);
+                arm.m_cond = AST::MatchGuard::Data_Pattern {
+                    std::move(val),
+                    std::move(guard_patterns)
+                };
+            }
+            else {
+                arm.m_cond = Parse_Expr1(lex);
+            }
             GET_TOK(tok, lex);
         }
         CHECK_TOK(tok, TOK_FATARROW);

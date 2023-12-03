@@ -307,10 +307,22 @@ public:
                 is_first = false;
                 print_pattern(pat, true);
             }
-            if( arm.m_cond )
-            {
+            TU_MATCH_HDRA( (arm.m_cond), { )
+            TU_ARMA(None, e) {}
+            TU_ARMA(Expr, e) {
                 m_os << " if ";
-                AST::NodeVisitor::visit(arm.m_cond);
+                AST::NodeVisitor::visit(e);
+                }
+            TU_ARMA(Pattern, e) {
+                m_os << " if let ";
+                for(const auto& pat : e.patterns) {
+                    if( &pat != e.patterns.data() )
+                        m_os << " | ";
+                    print_pattern(pat, true);
+                }
+                m_os << " = ";
+                AST::NodeVisitor::visit(e.val);
+                }
             }
             m_os << " => ";
             // Increase indent, but don't print. Causes nested blocks to be indented above the match

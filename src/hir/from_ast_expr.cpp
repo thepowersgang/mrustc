@@ -445,9 +445,42 @@ struct LowerHIR_ExprNode_Visitor:
 
         for(auto& arm : v.m_arms)
         {
+            HIR::ExprNodeP  cond;
+            TU_MATCH_HDRA( (arm.m_cond), { )
+            TU_ARMA(None, e) {}
+            TU_ARMA(Expr, e) {
+                cond = lower_opt(e);
+                }
+            TU_ARMA(Pattern, iflet) {
+                // Convert to a `match`
+                ::std::vector< ::HIR::ExprNode_Match::Arm>  arms;
+
+                std::vector<HIR::Pattern>   patterns;
+                patterns.reserve(1);
+                for(const auto& pat : iflet.patterns) {
+                    patterns.push_back( LowerHIR_Pattern(pat) );
+                }
+                // - Matches pattern - Take true branch
+                arms.push_back(::HIR::ExprNode_Match::Arm {
+                    mv$(patterns),
+                    ::HIR::ExprNodeP(),
+                    ::HIR::ExprNodeP(new ::HIR::ExprNode_Literal(v.span(), HIR::ExprNode_Literal::Data(true)))
+                    });
+                // - Matches anything else - take false branch
+                arms.push_back(::HIR::ExprNode_Match::Arm {
+                    ::make_vec1( ::HIR::Pattern() ),
+                    ::HIR::ExprNodeP(),
+                    ::HIR::ExprNodeP(new ::HIR::ExprNode_Literal(v.span(), HIR::ExprNode_Literal::Data(false)))\
+                    });
+                cond.reset( new ::HIR::ExprNode_Match( v.span(),
+                    lower(iflet.val),
+                    mv$(arms)
+                ));
+                }
+            }
             ::HIR::ExprNode_Match::Arm  new_arm {
                 {},
-                lower_opt(arm.m_cond),
+                mv$(cond),
                 lower(arm.m_code)
                 };
             

@@ -317,18 +317,29 @@ struct ExprNode_Loop:
     NODE_METHODS();
 };
 
+TAGGED_UNION_EX(MatchGuard, (), None, (
+    (None, struct{}),
+    (Expr, ExprNodeP),
+    (Pattern, struct {
+        ExprNodeP   val;
+        ::std::vector<Pattern> patterns;
+        })
+    ), (), (), (
+    MatchGuard clone() const;
+)
+);
 struct ExprNode_Match_Arm
 {
     AttributeList   m_attrs;
     ::std::vector<Pattern>  m_patterns;
-    ExprNodeP    m_cond;
+    MatchGuard   m_cond;
 
     ExprNodeP    m_code;
 
 
     ExprNode_Match_Arm()
     {}
-    ExprNode_Match_Arm(::std::vector<Pattern> patterns, ExprNodeP cond, ExprNodeP code):
+    ExprNode_Match_Arm(::std::vector<Pattern> patterns, MatchGuard cond, ExprNodeP code):
         m_patterns( mv$(patterns) ),
         m_cond( mv$(cond) ),
         m_code( mv$(code) )

@@ -316,14 +316,41 @@ NODE(ExprNode_Loop, {
     return NEWNODE(ExprNode_Loop, m_label, m_type, m_pattern.clone(), OPT_CLONE(m_cond), m_code->clone());
 })
 
+MatchGuard MatchGuard::clone() const
+{
+    TU_MATCH_HDRA( (*this), {)
+    TU_ARMA(None, _e)   return MatchGuard();
+    TU_ARMA(Expr, e)    return MatchGuard(e->clone());
+    TU_ARMA(Pattern, e) {
+        Data_Pattern inner;
+        inner.val = e.val->clone();
+        inner.patterns.reserve(e.patterns.size());
+        for(const auto& pat : e.patterns) {
+            inner.patterns.push_back(pat.clone());
+        }
+        return MatchGuard(mv$(inner));
+        }
+    }
+}
 NODE(ExprNode_Match, {
     os << "match ("<<*m_val<<") {";
     for(const auto& arm : m_arms)
     {
         for( const auto& pat : arm.m_patterns )
             os << " " << pat;
-        if( arm.m_cond )
-            os << " if " << *arm.m_cond;
+        TU_MATCH_HDRA( (arm.m_cond), {)
+        TU_ARMA(None, _e)   {}
+        TU_ARMA(Expr, e) {
+            os << " if " << *e;
+            }
+        TU_ARMA(Pattern, e) {
+            os << " if let " ;
+            for(const auto& pat : e.patterns) {
+                os << "|" << pat;
+            }
+            os << " = " << *e.val;
+            }
+        }
 
         os << " => " << *arm.m_code << ",";
     }
@@ -335,7 +362,7 @@ NODE(ExprNode_Match, {
         for( const auto& pat : arm.m_patterns ) {
             patterns.push_back( pat.clone() );
         }
-        arms.push_back( ExprNode_Match_Arm( mv$(patterns), OPT_CLONE(arm.m_cond), arm.m_code->clone() ) );
+        arms.push_back( ExprNode_Match_Arm( mv$(patterns), arm.m_cond.clone(), arm.m_code->clone() ) );
         arms.back().m_attrs = arm.m_attrs.clone();
     }
     return NEWNODE(ExprNode_Match, m_val->clone(), mv$(arms));
@@ -680,7 +707,11 @@ NV(ExprNode_Match,
     visit(node.m_val);
     for( auto& arm : node.m_arms )
     {
-        visit(arm.m_cond);
+        TU_MATCH_HDRA( (arm.m_cond), { )
+        TU_ARMA(None, e) {}
+        TU_ARMA(Expr, e) visit(e);
+        TU_ARMA(Pattern, e) {}
+        }
         visit(arm.m_code);
     }
     UNINDENT();
