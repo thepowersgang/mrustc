@@ -1987,6 +1987,44 @@ void Expand_Mod_Early(::AST::Crate& crate, ::AST::Module& mod, std::vector<std::
         else {
         }
     }
+
+    DEBUG("Items");
+    for( unsigned int idx = 0; idx < mod.m_items.size(); idx ++ )
+    {
+        auto& i = *mod.m_items[idx];
+        if(auto* mi = i.data.opt_MacroInv() )
+        {
+            // 1.74 HACK - Parse `macro_rules` during the first pass, so they're present for `use` to refer to
+            if( mi->path().is_trivial() && mi->path().as_trivial() == "macro_rules" ) {
+                auto mi_owned = mv$(*mi);
+
+                TRACE_FUNCTION_F("Macro invoke " << mi_owned.path());
+
+                auto ttl = Expand_Macro(crate, {}, mod, mi_owned);
+                assert( mi_owned.path().is_valid() );
+
+                if( ttl.get() )
+                {
+                    // Re-parse tt
+                    assert(ttl.get());
+                    DEBUG("-- Parsing as mod items");
+                    // Move the item list out
+                    auto old_items = std::move(mod.m_items);
+                    // Parse module items
+                    Parse_ModRoot_Items(*ttl, mod);
+                    auto new_item_count = mod.m_items.size();
+                    // Then insert the newly created items
+                    old_items.insert(old_items.begin() + idx + 1, std::make_move_iterator(mod.m_items.begin()), std::make_move_iterator(mod.m_items.end()));
+                    // and move the (updated) item list back in
+                    mod.m_items = std::move(old_items);
+
+                    auto next_non_macro_item = idx + 1 + new_item_count;
+                    //macro_recursion_stack.push_back(next_non_macro_item == mod.m_items.size() ? nullptr : &*mod.m_items[next_non_macro_item]);
+                }
+                mod.m_items[idx]->data.as_MacroInv() = mv$(mi_owned);
+            }
+        }
+    }
 }
 
 void Expand(::AST::Crate& crate)

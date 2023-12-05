@@ -65,6 +65,14 @@ enum class ResolveNamespace
     Value,
     Macro,
 };
+static inline ::std::ostream& operator<<(::std::ostream& os, ResolveNamespace ns) {
+    switch(ns) {
+    case ResolveNamespace::Namespace:   return os << "Namespace";
+    case ResolveNamespace::Value:   return os << "Value";
+    case ResolveNamespace::Macro:   return os << "Macro";
+    }
+    return os << "?";
+}
 
 /// <summary>
 /// Obtain a reference to the module pointed to by `path` (relative to `base_path`)

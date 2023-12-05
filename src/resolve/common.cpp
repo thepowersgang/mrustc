@@ -152,16 +152,23 @@ namespace {
                     auto ec_it = AST::g_implicit_crates.find(name);
                     if(ec_it != AST::g_implicit_crates.end())
                     {
-                        const auto& ec = crate.m_extern_crates.at(ec_it->second);
-                        DEBUG("Implicitly imported crate");
-                        //if( e.nodes.size() > 1 )
-                        //{
-                            return get_module_hir(ec.m_hir->m_root_module, path, 1, ignore_last, out_path);
-                        //}
-                        //else
-                        //{
-                        //    return ResolveModuleRef::make_ImplicitPrelude({});
-                        //}
+                        if( ec_it->second == "" ) {
+                            // This crate!
+                            return get_module_ast(crate.m_root_module, path, 1, ignore_last, out_path);
+                        }
+                        else {
+                            ASSERT_BUG(sp, crate.m_extern_crates.count(ec_it->second), "Crate \"" << ec_it->second << "\" not loaded (for \"" << ec_it->first << "\")");
+                            const auto& ec = crate.m_extern_crates.at(ec_it->second);
+                            DEBUG("Implicitly imported crate");
+                            //if( e.nodes.size() > 1 )
+                            //{
+                                return get_module_hir(ec.m_hir->m_root_module, path, 1, ignore_last, out_path);
+                            //}
+                            //else
+                            //{
+                            //    return ResolveModuleRef::make_ImplicitPrelude({});
+                            //}
+                        }
                     }
                 }
                 DEBUG("Not found");
@@ -447,7 +454,7 @@ namespace {
         ResolveItemRef find_item(const AST::Module& mod, const RcString& name, ResolveNamespace ns, ::AST::AbsolutePath* out_path=nullptr)
         //ResolveModuleRef get_source_module_for_name(const AST::Module& mod, const RcString& name, ResolveNamespace ns, ::AST::AbsolutePath* out_path=nullptr)
         {
-            TRACE_FUNCTION_F("Looking for " << name << " in " << mod.path());
+            TRACE_FUNCTION_F("Looking for " << name << " in " << mod.path() << " (ns=" << ns << ")");
             if( mod.m_index_populated )
             {
                 TODO(sp, "Look up in index");
@@ -477,6 +484,7 @@ namespace {
             {
                 for(const auto& i : mod.macros())
                 {
+                    DEBUG("> MACRO " << i.name);
                     if(i.name == name)
                     {
                         DEBUG("Found in ast (macro)");
