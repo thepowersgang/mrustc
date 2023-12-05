@@ -36,6 +36,12 @@ TAGGED_UNION(MacroExpansionEnt, Token,
         })
     );
 extern ::std::ostream& operator<<(::std::ostream& os, const MacroExpansionEnt& x);
+static const unsigned int NAMEDVALUE_VALMASK = ((1<<30) - 1);
+static const unsigned int NAMEDVALUE_TY_MAGIC = 1<<30;
+static const unsigned int NAMEDVALUE_MAGIC_CRATE = NAMEDVALUE_TY_MAGIC | 0;
+static const unsigned int NAMEDVALUE_MAGIC_INDEX = NAMEDVALUE_TY_MAGIC | 1;
+static const unsigned int NAMEDVALUE_TY_IGNORE = 2<<30;
+static const unsigned int NAMEDVALUE_TY_COUNT = 3<<30;
 
 /// Matching pattern entry
 struct MacroPatEnt

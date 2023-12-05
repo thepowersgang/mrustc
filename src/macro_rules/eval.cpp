@@ -1996,14 +1996,19 @@ void Macro_InvokeRules_CountSubstUses(ParameterMappings& bound_tts, const ::std:
     while(const auto* ent_ptr = state.next_ent())
     {
         DEBUG(*ent_ptr);
-        TU_IFLET(MacroExpansionEnt, (*ent_ptr), NamedValue, e,
-            if( e >> 30 ) {
-            }
-            else {
+        if(const auto* e = ent_ptr->opt_NamedValue()) {
+            switch(*e & ~NAMEDVALUE_VALMASK)
+            {
+            case 0:
+            case NAMEDVALUE_TY_IGNORE:
                 // Increment a counter in `bound_tts`
-                bound_tts.inc_count(state.iterations(), e);
+                bound_tts.inc_count(state.iterations(), *e & NAMEDVALUE_VALMASK);
+                break;
+            case NAMEDVALUE_TY_MAGIC:
+            default:
+                break;
             }
-        )
+        }
     }
 }
 
@@ -2079,11 +2084,20 @@ Token MacroExpander::realGetToken()
             }
             }
         TU_ARMA(NamedValue, e) {
-            if( e >> 30 ) {
-                switch( e & 0x3FFFFFFF )
+            switch(e & ~NAMEDVALUE_VALMASK)
+            {
+            default:
+                BUG(Span(), "Unknown macro metavar");
+            case NAMEDVALUE_TY_IGNORE: {
+                auto* frag = m_mappings.get(m_state.iterations(), e & NAMEDVALUE_VALMASK);
+                ASSERT_BUG(this->point_span(), frag, "Cannot find '" << (e & NAMEDVALUE_VALMASK) << "' for " << m_state.iterations());
+                // - Ignore
+                break; }
+            case NAMEDVALUE_TY_MAGIC: // NAMEDVALUE_TY_MAGIC
+                switch( e )
                 {
                 // - XXX: Hack for $crate special name
-                case 0:
+                case NAMEDVALUE_MAGIC_CRATE:
                     DEBUG("[" << m_log_index << "] Crate name hack");
                     if( m_crate_name == "" )
                     {
@@ -2098,11 +2112,12 @@ Token MacroExpander::realGetToken()
                         return Token(TOK_DOUBLE_COLON);
                     }
                     break;
+                case NAMEDVALUE_MAGIC_INDEX:
                 default:
                     BUG(Span(), "Unknown macro metavar");
                 }
-            }
-            else {
+                break;
+            case 0: {
                 auto* frag = m_mappings.get(m_state.iterations(), e);
                 ASSERT_BUG(this->point_span(), frag, "Cannot find '" << e << "' for " << m_state.iterations());
 
@@ -2126,6 +2141,7 @@ Token MacroExpander::realGetToken()
                         return Token( *frag );
                     }
                 }
+                } break;
             }
             }
         TU_ARMA(Loop, e) {

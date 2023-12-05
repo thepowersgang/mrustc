@@ -118,7 +118,6 @@ public:
             {
             case TOK_SQUARE_CLOSE:
             case TOK_PAREN_CLOSE:
-            case TOK_BRACE_CLOSE:
                 ret.push_back( MacroPatEnt(lex.end_span(ps), TOK_DOLLAR) );
                 PUTBACK(tok, lex);
                 break;
@@ -382,9 +381,68 @@ struct ContentLoopVariableUse
                 DEBUG("joiner = " << Token(joiner) << ", controlling_loops = {" << controlling_loops << "}, content = " << content);
                 ret.push_back( MacroExpansionEnt::make_Loop({ mv$(content), joiner, mv$(controlling_loops) }) );
             }
+            // - `${operator(args}` - Extensions
+            else if( tok.type() == TOK_BRACE_OPEN )
+            {
+                auto ident = lex.getTokenCheck(TOK_IDENT).ident().name;
+                if( ident == "ignore" ) {
+                    lex.getTokenCheck(TOK_PAREN_OPEN);
+                    GET_TOK(tok, lex);
+                    auto name = tok.type() == TOK_IDENT ? tok.ident().name : RcString::new_interned(tok.to_str());
+                    lex.getTokenCheck(TOK_PAREN_CLOSE);
+                    const auto* ns = state.find_name(name);
+                    if( !ns ) {
+                        TODO(lex.point_span(), "Handle ${ignore(" << name << ")} - Missing");
+                    }
+
+                    DEBUG("$" << name << " #" << ns->idx << " [" << ns->loops << "]");
+
+                    // If the current loop depth is smaller than the stack for this variable, then error
+                    if( loop_depth < ns->loops.size() ) {
+                        ERROR(lex.point_span(), E0000, "Variable $" << name << " is still repeating at this depth (" << loop_depth << " < " << ns->loops.size() << ")");
+                    }
+
+                    if( var_usage_ptr ) {
+                        var_usage_ptr->insert( ::std::make_pair(ns->idx, ContentLoopVariableUse(ns->loops)) );
+                    }
+                    ret.push_back( MacroExpansionEnt(NAMEDVALUE_TY_IGNORE | ns->idx) );
+                }
+                else if( ident == "count" ) {
+                    lex.getTokenCheck(TOK_PAREN_OPEN);
+                    GET_TOK(tok, lex);
+                    auto name = tok.type() == TOK_IDENT ? tok.ident().name : RcString::new_interned(tok.to_str());
+                    lex.getTokenCheck(TOK_PAREN_CLOSE);
+                    const auto* ns = state.find_name(name);
+                    if( !ns ) {
+                        TODO(lex.point_span(), "Handle ${count(" << name << ")} - Missing");
+                    }
+
+                    DEBUG("$" << name << " #" << ns->idx << " [" << ns->loops << "]");
+
+                    // Can still be repeating
+                    //// If the current loop depth is smaller than the stack for this variable, then error
+                    //if( loop_depth < ns->loops.size() ) {
+                    //    ERROR(lex.point_span(), E0000, "Variable $" << name << " is still repeating at this depth (" << loop_depth << " < " << ns->loops.size() << ")");
+                    //}
+
+                    if( var_usage_ptr ) {
+                        var_usage_ptr->insert( ::std::make_pair(ns->idx, ContentLoopVariableUse(ns->loops)) );
+                    }
+                    ret.push_back( MacroExpansionEnt(NAMEDVALUE_TY_COUNT | ns->idx) );
+                }
+                else if( ident == "index" ) {
+                    lex.getTokenCheck(TOK_PAREN_OPEN);
+                    lex.getTokenCheck(TOK_PAREN_CLOSE);
+                    ret.push_back( MacroExpansionEnt(NAMEDVALUE_MAGIC_INDEX) );
+                }
+                else {
+                    TODO(lex.point_span(), "Handle ${" << ident << "...}");
+                }
+                lex.getTokenCheck(TOK_BRACE_CLOSE);
+            }
             else if( tok.type() == TOK_RWORD_CRATE )
             {
-                ret.push_back( MacroExpansionEnt( (1<<30) | 0 ) );
+                ret.push_back( MacroExpansionEnt(NAMEDVALUE_MAGIC_CRATE) );
             }
             else if( tok.type() == TOK_IDENT || Token::type_is_rword(tok.type()) )
             {
