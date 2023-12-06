@@ -985,10 +985,13 @@ namespace
         lex.consume_if(TOK_PIPE);
         for(;;)
         {
-            if( lex.consume_if(TOK_UNDERSCORE) )
-                return true;
             switch(lex.next())
             {
+            case TOK_UNDERSCORE:
+                lex.consume();
+                if( lex.consume_if(TOK_PIPE) )
+                    continue;
+                return true;
             case TOK_IDENT:
             case TOK_RWORD_SUPER:
             case TOK_RWORD_SELF:
@@ -996,27 +999,48 @@ namespace
             case TOK_INTERPOLATED_PATH:
                 consume_path(lex);
                 if( lex.next() == TOK_BRACE_OPEN ) {
-                    return consume_tt(lex);
+                    if( !consume_tt(lex) )
+                        return false;
                 }
                 else if( lex.next() == TOK_PAREN_OPEN ) {
-                    return consume_tt(lex);
+                    if( !consume_tt(lex) )
+                        return false;
                 }
                 else if( lex.next() == TOK_EXCLAM ) {
                     lex.consume();
-                    return consume_tt(lex);
+                    if( !consume_tt(lex) )
+                        return false;
                 }
-                break;
+                else {
+                    // Fall through to the range handling
+                    break;
+                }
+                if( lex.consume_if(TOK_PIPE) )
+                    continue;
+                return true;
             case TOK_RWORD_BOX:
                 lex.consume();
-                return consume_pat(lex);
+                if( !consume_pat(lex) )
+                    return false;
+                if( lex.consume_if(TOK_PIPE) )
+                    continue;
+                return true;
             case TOK_AMP:
             case TOK_DOUBLE_AMP:
                 lex.consume();
                 lex.consume_if(TOK_RWORD_MUT);
-                return consume_pat(lex);
+                if( !consume_pat(lex) )
+                    return false;
+                if( lex.consume_if(TOK_PIPE) )
+                    continue;
+                return true;
             case TOK_PAREN_OPEN:
             case TOK_SQUARE_OPEN:
-                return consume_tt(lex);
+                if( !consume_tt(lex) )
+                    return false;
+                if( lex.consume_if(TOK_PIPE) )
+                    continue;
+                return true;
             case TOK_STRING:
             case TOK_INTEGER:
             case TOK_FLOAT:
