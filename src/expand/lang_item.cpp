@@ -152,6 +152,25 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::AbsolutePath
             H::add("unwind_safe", Handler(ITEM_TRAIT, handle_save));    // 1.54 - UnwindSafe trait
             H::add("ref_unwind_safe", Handler(ITEM_TRAIT, handle_save));    // 1.54 - RefUnwindSafe trait
         }
+        if( TARGETVER_LEAST_1_74 )
+        {
+            H::add("transmute_trait", Handler(ITEM_TRAIT, handle_save));    // 1.74 - `BikeshedIntrinsicFrom` trait
+            // - Markers
+            H::add("destruct"       , Handler(ITEM_TRAIT, handle_save));    // 1.74 - `Destruct` trait
+            H::add("tuple_trait"    , Handler(ITEM_TRAIT, handle_save));    // 1.74 - `Tuple` trait (must be implemented for all tuples)
+            H::add("pointer_like"   , Handler(ITEM_TRAIT, handle_save));    // 1.74 - `PointerLike` trait
+            H::add("const_param_ty" , Handler(ITEM_TRAIT, handle_save));    // 1.74 - `ConstParamTy` trait
+            H::add("fn_ptr_trait"   , Handler(ITEM_TRAIT, handle_save));    // 1.74 - `FnPtr` trait
+
+            // Structs
+            H::add("transmute_opts" , Handler(ITEM_STRUCT, handle_save));   // 1.74 - `Assume` struct
+            H::add("ptr_unique"     , Handler(ITEM_STRUCT, handle_save));   // 1.74 - `::core::ptr::Unique`
+            H::add("CStr"           , Handler(ITEM_STRUCT, handle_save));   // 1.74 - `::core::ffi::CStr` - Why? (miri?)
+
+            H::add("from_yeet"      , Handler(ITEM_FN, handle_save));   // 1.74 - `::core::try_trait::from_yeet`
+
+            H::add("c_void"         , Handler(ITEM_ENUM, handle_save));   // 1.74 - `::core::ffi::c_void` - Why? (miri?)
+        }
     }
     const char* real_name = nullptr;    // For when lang items have their name changed
     auto it = g_handlers.find(name.c_str());
