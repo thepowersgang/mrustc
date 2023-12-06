@@ -521,6 +521,20 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
         return InterpolatedFragment( TokenTree(lex.get_edition(), lex.get_hygiene(), tok) );
     case MacroPatEnt::PAT_LITERAL:
         GET_TOK(tok, lex);
+        if(tok.type() == TOK_DASH) {
+            std::vector<TokenTree>  toks;
+            switch(lex.lookahead(0)) {
+            case TOK_INTEGER:
+            case TOK_FLOAT:
+                toks.push_back(tok);
+                break;
+            default:
+                throw ParseError::Unexpected(lex, tok, {TOK_INTEGER, TOK_FLOAT});
+            }
+            GET_TOK(tok, lex);
+            toks.push_back(tok);
+            return InterpolatedFragment( TokenTree(lex.get_edition(), lex.get_hygiene(), std::move(toks)) );
+        }
         switch(tok.type())
         {
         case TOK_INTEGER:
@@ -968,6 +982,7 @@ namespace
         if( lex.consume_if(TOK_INTERPOLATED_PATTERN) )
             return true;
 
+        lex.consume_if(TOK_PIPE);
         for(;;)
         {
             if( lex.consume_if(TOK_UNDERSCORE) )
@@ -1033,6 +1048,8 @@ namespace
                     return false;
                 }
             }
+            if(lex.consume_if(TOK_PIPE))
+                continue;
             return true;
         }
     }
@@ -1804,6 +1821,19 @@ namespace
         case MacroPatEnt::PAT_LITERAL:
             switch(lex.next())
             {
+            case TOK_DASH: {
+                auto tmp = lex.clone();
+                tmp.consume();
+                switch(tmp.next()) {
+                case TOK_INTEGER:
+                case TOK_FLOAT:
+                    lex.consume();
+                    lex.consume();
+                    return true;
+                default:
+                    return false;
+                }
+                } break;
             case TOK_INTEGER:
             case TOK_FLOAT:
             case TOK_STRING:
