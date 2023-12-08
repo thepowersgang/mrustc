@@ -133,6 +133,10 @@ namespace {
 
             break;
         default:
+            auto its = g_cfg_values.equal_range(name.c_str());
+            for(auto it = its.first; it != its.second; ++it) {
+                return true;
+            }
             // Flag
             auto it = g_cfg_flags.find(name.c_str());
             return (it != g_cfg_flags.end());
