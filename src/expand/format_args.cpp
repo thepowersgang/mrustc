@@ -688,7 +688,12 @@ namespace {
                 toks.push_back( TokenTree(TOK_SQUARE_OPEN) );
                 for(const auto& frag : fragments )
                 {
-                    push_path(toks, crate, {"fmt", "ArgumentV1", "new"});
+                    if(TARGETVER_LEAST_1_74) {
+                        push_path(toks, crate, {"fmt", "rt", "Argument", "new"});
+                    }
+                    else {
+                        push_path(toks, crate, {"fmt", "ArgumentV1", "new"});
+                    }
                     toks.push_back( Token(TOK_PAREN_OPEN) );
                     toks.push_back( ident( FMT("a" << frag.arg_index).c_str() ) );
 
@@ -724,7 +729,12 @@ namespace {
                 toks.push_back( TokenTree(TOK_SQUARE_OPEN) );
                 for(const auto& frag : fragments )
                 {
-                    push_path(toks, crate, {"fmt", "ArgumentV1", "new"});
+                    if(TARGETVER_LEAST_1_74) {
+                        push_path(toks, crate, {"fmt", "rt", "Argument", "new"});
+                    }
+                    else {
+                        push_path(toks, crate, {"fmt", "ArgumentV1", "new"});
+                    }
                     toks.push_back( Token(TOK_PAREN_OPEN) );
                     toks.push_back( ident(FMT("a" << frag.arg_index).c_str()) );
 
@@ -741,7 +751,12 @@ namespace {
                 toks.push_back( TokenTree(TOK_SQUARE_OPEN) );
                 for(const auto& frag : fragments)
                 {
-                    push_path(toks, crate, {"fmt", "rt", "v1", "Argument"});
+                    if(TARGETVER_LEAST_1_74) {
+                        push_path(toks, crate, {"fmt", "rt", "Placeholder"});
+                    }
+                    else {
+                        push_path(toks, crate, {"fmt", "rt", "v1", "Argument"});
+                    }
                     toks.push_back( TokenTree(TOK_BRACE_OPEN) );
 
                     push_toks(toks, ident("position"), TOK_COLON );
@@ -753,9 +768,13 @@ namespace {
                     }
                     push_toks(toks, TOK_COMMA);
 
-                    push_toks(toks, ident("format"), TOK_COLON );
-                    push_path(toks, crate, {"fmt", "rt", "v1", "FormatSpec"});
-                    toks.push_back( TokenTree(TOK_BRACE_OPEN) );
+                    if(TARGETVER_LEAST_1_74) {
+                    }
+                    else {
+                        push_toks(toks, ident("format"), TOK_COLON );
+                        push_path(toks, crate, {"fmt", "rt", "v1", "FormatSpec"});
+                        toks.push_back( TokenTree(TOK_BRACE_OPEN) );
+                    }
                     {
                         push_toks(toks, ident("fill"), TOK_COLON, Token(U128(frag.args.align_char), CORETYPE_CHAR), TOK_COMMA );
 
@@ -768,32 +787,56 @@ namespace {
                         case FmtArgs::Align::Center:    align_var_name = "Center";  break;
                         case FmtArgs::Align::Right:     align_var_name = "Right";   break;
                         }
-                        push_path(toks, crate, {"fmt", "rt", "v1", "Alignment", align_var_name});
+                        if(TARGETVER_LEAST_1_74) {
+                            push_path(toks, crate, {"fmt", "rt", "Alignment", align_var_name});
+                        }
+                        else {
+                            push_path(toks, crate, {"fmt", "rt", "v1", "Alignment", align_var_name});
+                        }
                         push_toks(toks, TOK_COMMA);
 
                         push_toks(toks, ident("flags"), TOK_COLON);
+                        struct Flag {
+                            enum V {
+                                SignPlus,
+                                SignMinus,
+                                Alternate,
+                                SignAwareZeroPad,
+                                DebugLowerHex,
+                                DebugUpperHex,
+                            };
+                        };
                         uint64_t flags = 0;
                         // ::core::fmt::FlagV1 (private)
                         switch(frag.args.sign)
                         {
                         case FmtArgs::Sign::Unspec: break;
-                        case FmtArgs::Sign::Plus:   flags |= 1 << 0;    break;
-                        case FmtArgs::Sign::Minus:  flags |= 1 << 1;    break;
+                        case FmtArgs::Sign::Plus:   flags |= 1 << Flag::SignPlus;    break;
+                        case FmtArgs::Sign::Minus:  flags |= 1 << Flag::SignMinus;    break;
                         }
                         if(frag.args.alternate)
-                            flags |= 1 << 2;
+                            flags |= 1 << Flag::Alternate;
                         switch(frag.args.debug_ty)
                         {
                         case FmtArgs::Debug::Normal:    break;
-                        case FmtArgs::Debug::LowerHex:  flags |= 1 << 4;    break;
-                        case FmtArgs::Debug::UpperHex:  flags |= 1 << 5;    break;
+                        case FmtArgs::Debug::LowerHex:  flags |= 1 << Flag::DebugLowerHex;    break;
+                        case FmtArgs::Debug::UpperHex:  flags |= 1 << Flag::DebugUpperHex;    break;
                         }
                         push_toks(toks, Token(U128(flags), CORETYPE_U32));
                         push_toks(toks, TOK_COMMA);
 
+                        auto push_path_count = [&](const char* variant) {
+                            if(TARGETVER_LEAST_1_74) {
+                                push_path(toks, crate, {"fmt", "rt", "Count", variant});
+                            }
+                            else {
+                                push_path(toks, crate, {"fmt", "rt", "v1", "Count", variant});
+                            }
+                        };
+
                         push_toks(toks, ident("precision"), TOK_COLON );
                         if( frag.args.prec_is_arg || frag.args.prec != 0 ) {
-                            push_path(toks, crate, {"fmt", "rt", "v1", "Count", "Is"});
+                            push_path_count("Is");
                             push_toks(toks, TOK_PAREN_OPEN);
                             if( frag.args.prec_is_arg ) {
                                 push_toks(toks, TOK_STAR, ident(FMT("a" << frag.args.prec).c_str()) );
@@ -804,13 +847,13 @@ namespace {
                             toks.push_back( TokenTree(TOK_PAREN_CLOSE) );
                         }
                         else {
-                            push_path(toks, crate, {"fmt", "rt", "v1", "Count", "Implied"});
+                            push_path_count("Implied");
                         }
                         toks.push_back( TokenTree(TOK_COMMA) );
 
                         push_toks(toks, ident("width"), TOK_COLON );
                         if( frag.args.width_is_arg || frag.args.width != 0 ) {
-                            push_path(toks, crate, {"fmt", "rt", "v1", "Count", "Is"});
+                            push_path_count("Is");
                             push_toks(toks, TOK_PAREN_OPEN);
                             if( frag.args.width_is_arg ) {
                                 push_toks(toks, TOK_STAR, ident(FMT("a" << frag.args.width).c_str()) );
@@ -821,11 +864,16 @@ namespace {
                             toks.push_back( TokenTree(TOK_PAREN_CLOSE) );
                         }
                         else {
-                            push_path(toks, crate, {"fmt", "rt", "v1", "Count", "Implied"});
+                            push_path_count("Implied");
                         }
                         toks.push_back( TokenTree(TOK_COMMA) );
                     }
-                    toks.push_back( TokenTree(TOK_BRACE_CLOSE) );
+
+                    if(TARGETVER_LEAST_1_74) {
+                    }
+                    else {
+                        toks.push_back( TokenTree(TOK_BRACE_CLOSE) );
+                    }
 
                     toks.push_back( TokenTree(TOK_BRACE_CLOSE) );
                     toks.push_back( TokenTree(TOK_COMMA) );
