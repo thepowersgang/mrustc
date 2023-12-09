@@ -168,8 +168,30 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::AbsolutePath
             H::add("CStr"           , Handler(ITEM_STRUCT, handle_save));   // 1.74 - `::core::ffi::CStr` - Why? (miri?)
 
             H::add("from_yeet"      , Handler(ITEM_FN, handle_save));   // 1.74 - `::core::try_trait::from_yeet`
+            H::add("panic_nounwind" , Handler(ITEM_FN, handle_save));   // 1.74 - `::core::panicking::panic`
+            H::add("panic_display"  , Handler(ITEM_FN, handle_save));   // 1.74 - `::core::panicking::panic_display`
+            H::add("panic_bounds_check", Handler(ITEM_FN, handle_save));   // 1.74 - `::core::panicking::panic_bounds_check`
+            H::add("panic_misaligned_pointer_dereference", Handler(ITEM_FN, handle_save));   // 1.74 - `::core::panicking::panic_misaligned_pointer_dereference`
+            H::add("panic_cannot_unwind", Handler(ITEM_FN, handle_save));   // 1.74 - `::core::panicking::panic_cannot_unwind`
+            H::add("panic_in_cleanup", Handler(ITEM_FN, handle_save));   // 1.74 - `::core::panicking::panic_in_cleanup `
+            H::add("const_panic_fmt", Handler(ITEM_FN, handle_save));   // 1.74 - `::core::panicking::const_panic_fmt`
 
+            // Enums
             H::add("c_void"         , Handler(ITEM_ENUM, handle_save));   // 1.74 - `::core::ffi::c_void` - Why? (miri?)
+            H::add("Option"         , Handler(ITEM_ENUM, handle_save));   // 1.74 - `::core::option::Option`
+
+            // - Formatting
+            H::add("format_arguments"  , Handler(ITEM_STRUCT, handle_save));   // 1.74 - `::core::fmt::Arguments`
+            H::add("format_placeholder", Handler(ITEM_STRUCT, handle_save));   // 1.74 - `::core::fmt::rt::Placeholder`
+            H::add("format_argument"   , Handler(ITEM_STRUCT, handle_save));   // 1.74 - `::core::fmt::rt::Argument`
+            H::add("format_unsafe_arg" , Handler(ITEM_STRUCT, handle_save));   // 1.74 - `::core::fmt::rt::UnsafeArg`
+            H::add("format_alignment"  , Handler(ITEM_ENUM, handle_save));   // 1.74 - `::core::fmt::rt::Alignment`
+            H::add("format_count"      , Handler(ITEM_ENUM, handle_save));   // 1.74 - `::core::fmt::rt::Count`
+
+            // - Futures
+            H::add("ResumeTy"  , Handler(ITEM_STRUCT, handle_save));   // 1.74 - `::core::future::ResumeTy`
+            H::add("Poll"      , Handler(ITEM_ENUM  , handle_save));   // 1.74 - `::core::task::poll::Poll`
+            H::add("Context"   , Handler(ITEM_STRUCT, handle_save));   // 1.74 - `::core::task::wake::Context`
         }
     }
     const char* real_name = nullptr;    // For when lang items have their name changed
