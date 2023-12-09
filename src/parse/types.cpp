@@ -151,10 +151,17 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
         // Array
         TypeRef inner = Parse_Type(lex);
         if( GET_TOK(tok, lex)  == TOK_SEMICOLON ) {
-            // Sized array
-            AST::Expr array_size = Parse_Expr(lex);
-            GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
-            return TypeRef(TypeRef::TagSizedArray(), lex.end_span(ps), mv$(inner), array_size.take_node());
+            // Inferred size - unspecified
+            if( lex.getTokenIf(TOK_UNDERSCORE) ) {
+                GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
+                return TypeRef(TypeRef::TagSizedArray(), lex.end_span(ps), mv$(inner), nullptr);
+            }
+            else {
+                // Sized array
+                AST::Expr array_size = Parse_Expr(lex);
+                GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
+                return TypeRef(TypeRef::TagSizedArray(), lex.end_span(ps), mv$(inner), array_size.take_node());
+            }
         }
         else if( tok.type() == TOK_SQUARE_CLOSE )
         {

@@ -149,6 +149,7 @@ TypeRef TypeRef::clone() const
     _CLONE(Borrow,  { AST::LifetimeRef(old.lifetime), old.is_mut, box$(old.inner->clone()) })
     _CLONE(Pointer, { old.is_mut, box$(old.inner->clone()) })
     _CLONE(Array, { box$(old.inner->clone()), old.size })
+    _CLONE(Slice, { box$(old.inner->clone()) })
     _COPY(Generic)
     _CLONE(Path, std::make_unique<AST::Path>(*old))
     _COPY(TraitObject)
@@ -219,6 +220,9 @@ Ordering TypeRef::ord(const TypeRef& x) const
             throw ::std::runtime_error("TODO: Sized array comparisons");
         }
         return OrdEqual;
+        ),
+    (Slice,
+        return (*ent.inner).ord( *x_ent.inner );
         ),
     (Generic,
         return ::ord(ent.name, x_ent.name);
@@ -309,8 +313,18 @@ void TypeRef::print(::std::ostream& os, bool is_debug/*=false*/) const
     _(Array,
         os << "[";
         ent.inner->print(os, is_debug);
-        if( ent.size.get() )
-            os << "; " << *ent.size;
+        os << "; ";
+        if( ent.size.get() ) {
+            os << *ent.size;
+        }
+        else {
+            os << "_";
+        }
+        os << "]";
+        )
+    _(Slice,
+        os << "[";
+        ent.inner->print(os, is_debug);
         os << "]";
         )
     _(Generic,

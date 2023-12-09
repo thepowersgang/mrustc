@@ -2077,6 +2077,9 @@ void Resolve_Absolute_Type(Context& context,  TypeRef& type)
             Resolve_Absolute_ExprNode(context,  *e.size);
         }
         }
+    TU_ARMA(Slice, e) {
+        Resolve_Absolute_Type(context,  *e.inner);
+        }
     TU_ARMA(Generic, e) {
         if( e.name == "Self" )
         {

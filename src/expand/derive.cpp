@@ -310,6 +310,9 @@ struct Deriver
         TU_ARMA(Array, e) {
             add_field_bound_from_ty(params, out_list, *e.inner);
             }
+        TU_ARMA(Slice, e) {
+            add_field_bound_from_ty(params, out_list, *e.inner);
+            }
         TU_ARMA(Generic, e) {
             // Although this is what we're looking for, it's already handled.
             }

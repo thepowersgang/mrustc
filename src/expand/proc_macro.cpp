@@ -629,11 +629,18 @@ namespace {
             (Array,
                 m_pmi.send_symbol("[");
                 this->visit_type(*te.inner);
-                if( te.size )
-                {
-                    m_pmi.send_symbol(";");
+                m_pmi.send_symbol(";");
+                if( te.size ) {
                     this->visit_node(*te.size);
                 }
+                else {
+                    m_pmi.send_symbol("_");
+                }
+                m_pmi.send_symbol("]");
+                ),
+            (Slice,
+                m_pmi.send_symbol("[");
+                this->visit_type(*te.inner);
                 m_pmi.send_symbol("]");
                 ),
             (Generic,

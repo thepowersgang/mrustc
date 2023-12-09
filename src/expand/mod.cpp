@@ -444,6 +444,9 @@ void Expand_Type(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST:
             Expand_Expr(crate, modstack,  e.size);
         }
         }
+    TU_ARMA(Slice, e) {
+        Expand_Type(crate, modstack, mod,  *e.inner);
+        }
     TU_ARMA(Generic, e) {
         }
     TU_ARMA(Path, e) {

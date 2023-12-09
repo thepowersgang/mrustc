@@ -911,8 +911,12 @@ namespace {
             return ::HIR::TypeRef::new_array( mv$(inner), HIR::ConstGeneric::make_Unevaluated(std::make_shared<HIR::ExprPtr>(LowerHIR_Expr(e.size))) );
         }
         else {
-            return ::HIR::TypeRef::new_slice( mv$(inner) );
+            TODO(ty.span(), "Array with inferred size");
         }
+        }
+    TU_ARMA(Slice, e) {
+        auto inner = LowerHIR_Type(*e.inner);
+        return ::HIR::TypeRef::new_slice( mv$(inner) );
         }
     TU_ARMA(Path, e) {
         if(const auto* l = e->m_class.opt_Local()) {
