@@ -208,10 +208,14 @@ public:
 namespace {
     AsmCommon::RegisterClass get_reg_class_x8664(const Span& sp, const RcString& str)
     {
-        if(str == "reg")    return AsmCommon::RegisterClass::x86_reg;
-        if(str == "reg_abcd")    return AsmCommon::RegisterClass::x86_reg_abcd;
-        if(str == "reg_byte")    return AsmCommon::RegisterClass::x86_reg_byte;
-        ERROR(sp, E0000, "Unknown register for x86");
+        if(str == "reg"     )   return AsmCommon::RegisterClass::x86_reg;
+        if(str == "reg_abcd")   return AsmCommon::RegisterClass::x86_reg_abcd;
+        if(str == "reg_byte")   return AsmCommon::RegisterClass::x86_reg_byte;
+        if(str == "kreg"    )   return AsmCommon::RegisterClass::x86_kreg;
+        if(str == "xmm_reg" )   return AsmCommon::RegisterClass::x86_xmm;
+        if(str == "ymm_reg" )   return AsmCommon::RegisterClass::x86_ymm;
+        if(str == "zmm_reg" )   return AsmCommon::RegisterClass::x86_zmm;
+        ERROR(sp, E0000, "Unknown register for x86/x86-64 - `" << str << "`");
     }
 
     AsmCommon::RegisterClass get_reg_class(const Span& sp, const RcString& str)
@@ -440,8 +444,25 @@ public:
             std::string cur_string;
             while(*c)
             {
+                if(*c == '}') {
+                    c ++;
+                    if(!*c)
+                        ERROR(sp, E0000, "Unexpected EOF in asm! format string");
+                    if( *c != '}' ) {
+                        ERROR(sp, E0000, "Closing braces in `asm!` need to be written as `}}`");
+                    }
+                    c ++;
+                    continue;
+                }
+
                 if(*c == '{') {
                     c ++;
+                    if( *c == '{' ) {
+                        cur_string += '{';
+                        c ++;
+                        continue ;
+                    }
+
                     std::string name;
                     while(*c && *c != ':' && *c != '}')
                     {
