@@ -15,6 +15,15 @@
 #include <expand/cfg.hpp>
 #include <synext_macro.hpp>
 
+::std::ostream& operator<<(::std::ostream& os, ResolveNamespace ns) {
+    switch(ns) {
+    case ResolveNamespace::Namespace:   return os << "Namespace";
+    case ResolveNamespace::Value:   return os << "Value";
+    case ResolveNamespace::Macro:   return os << "Macro";
+    }
+    return os << "?";
+}
+
 namespace {
 
     ResolveItemRef_Type as_Namespace(ResolveItemRef ir) {
