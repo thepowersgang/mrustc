@@ -243,9 +243,9 @@ namespace {
             TRACE_FUNCTION_F("start_offset=" << start_offset << ", ignore_last=" << ignore_last);
             const AST::Module* mod = &start_mod;
 
-            for(size_t i = start_offset; i < path.nodes().size() - (ignore_last ? 1 : 0); i ++)
+            for(size_t idx = start_offset; idx < path.nodes().size() - (ignore_last ? 1 : 0); idx ++)
             {
-                const auto& name = path.nodes()[i].name();
+                const auto& name = path.nodes()[idx].name();
                 // Find the module for this node
                 bool found = false;
                 for(const auto& i : mod->m_items)
@@ -265,6 +265,7 @@ namespace {
                         }
                         if(ignore)
                             continue;
+                        DEBUG(idx << "/" << path.nodes().size() << " " << name << ": " << i->data.tag_str());
 
                         TU_MATCH_HDRA( (i->data), { )
                         TU_ARMA(None, _e) {
@@ -317,14 +318,14 @@ namespace {
                                 {
                                     *out_path = AST::AbsolutePath(e.name, {});
                                 }
-                                return ResolveModuleRef(&crate.m_root_module);
+                                return get_module_ast(crate.m_root_module, path, idx+1, ignore_last, out_path);
                             }
                             ASSERT_BUG(sp, crate.m_extern_crates.count(e.name) != 0, "Cannot find crate `" << e.name << "`");
                             if(out_path)
                             {
                                 *out_path = AST::AbsolutePath(e.name, {});
                             }
-                            return ResolveModuleRef(&crate.m_extern_crates.at(e.name).m_hir->m_root_module);
+                            return get_module_hir(crate.m_extern_crates.at(e.name).m_hir->m_root_module, path, idx+1, ignore_last, out_path);
                             }
                         }
                         if(found) {
@@ -333,12 +334,11 @@ namespace {
 
                     }
                 }
-                if(found)
+                if( !found )
                 {
-                    break;
+                    //BUG(sp, "Unable to find " << name << " in module " << mod->path() << " for " << path);
+                    return ResolveModuleRef();
                 }
-                //BUG(sp, "Unable to find " << name << " in module " << mod->path() << " for " << path);
-                return ResolveModuleRef();
             }
             if(out_path)
             {
@@ -609,6 +609,7 @@ namespace {
                             TU_MATCH_HDRA( (src_mod), {)
                             TU_ARMA(None, _) {
                                 //BUG(use_stmt->sp, "Unable to resolve use statement path " << e.path);
+                                DEBUG("Unable to find " << e.path);
                                 continue ;
                                 }
                             TU_ARMA(ImplicitPrelude, _e) {
