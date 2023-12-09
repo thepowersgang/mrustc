@@ -463,9 +463,10 @@ namespace {
             // Prevent infinite recursion
             // - Includes the target name to only catch on nested lookups of the same name
             auto guard_ent = ::std::make_pair(&mod, name);
+            bool visit_use = true;
             if( std::count(antirecurse_stack.begin(), antirecurse_stack.end(), guard_ent) > 0 ) {
                 DEBUG("Recursion detected, not looking at `use` statements in " << mod.path());
-                return ResolveItemRef();
+                visit_use = false;
             }
             struct Guard {
                 std::vector<antirecurse_stack_ent_t>& s;
@@ -534,6 +535,9 @@ namespace {
 
                 if(const auto* use_stmt = i->data.opt_Use())
                 {
+                    if( !visit_use ) {
+                        continue;
+                    }
                     for(const auto& e : use_stmt->entries)
                     {
                         if( e.name == name )
@@ -590,6 +594,9 @@ namespace {
             {
                 if(const auto* use_stmt = i->data.opt_Use())
                 {
+                    if( !visit_use ) {
+                        continue;
+                    }
                     for(const auto& e : use_stmt->entries)
                     {
                         if( e.name == "" )
