@@ -810,6 +810,7 @@ struct CExpandExpr:
         Expand_Type(crate, modstack, this->cur_mod(),  node.m_type);
         Expand_Pattern(crate, modstack, this->cur_mod(),  node.m_pat, false);
         this->visit_nodelete(node, node.m_value);
+        this->visit_nodelete(node, node.m_else);
     }
     void visit(::AST::ExprNode_Assign& node) override {
         this->visit_nodelete(node, node.m_slot);
