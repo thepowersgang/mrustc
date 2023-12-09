@@ -77,14 +77,25 @@ public:
     }
     void insert(unsigned int name_index, const ::std::vector<unsigned int>& iterations, InterpolatedFragment data);
 
-    InterpolatedFragment* get(const ::std::vector<unsigned int>& iterations, unsigned int name_idx);
+    /// <summary>
+    /// Get the replacement fragment for a given loop iteration (or `nullptr`) if out of bounds
+    /// </summary>
+    InterpolatedFragment* get(const Span& sp, const ::std::vector<unsigned int>& iterations, unsigned int name_idx);
 
-    unsigned int get_loop_repeats(const ::std::vector<unsigned int>& iterations, unsigned int loop_idx) const;
+    /// <summary>
+    /// Given a current iteration and a loop index, return how many times this loop will run
+    /// </summary>
+    unsigned int get_loop_repeats(const Span& sp, const ::std::vector<unsigned int>& iterations, unsigned int loop_idx) const;
+
+    /// <summary>
+    /// Return the number of times this level of a given name/variable will loop
+    /// </summary>
+    unsigned int get_variable_count(const Span& sp, const ::std::vector<unsigned int>& iterations, unsigned int name_idx) const;
 
     /// Increment the number of times a particular fragment will be used
-    void inc_count(const ::std::vector<unsigned int>& iterations, unsigned int name_idx);
+    void inc_count(const Span& sp, const ::std::vector<unsigned int>& iterations, unsigned int name_idx);
     /// Decrement the number of times a particular fragment is used (returns true if there are still usages remaining)
-    bool dec_count(const ::std::vector<unsigned int>& iterations, unsigned int name_idx);
+    bool dec_count(const Span& sp, const ::std::vector<unsigned int>& iterations, unsigned int name_idx);
 
 
     friend ::std::ostream& operator<<(::std::ostream& os, const CapturedVal& x) {
@@ -104,7 +115,7 @@ public:
     }
 
 private:
-    CapturedVal& get_cap(const ::std::vector<unsigned int>& iterations, unsigned int name_idx);
+    CapturedVal& get_cap(const Span& sp, const ::std::vector<unsigned int>& iterations, unsigned int name_idx);
 };
 
 class MacroPatternStream
@@ -216,7 +227,7 @@ void ParameterMappings::insert(unsigned int name_index, const ::std::vector<unsi
     layer->as_Vals().push_back( CapturedVal { 0,0, mv$(data) } );
 }
 
-ParameterMappings::CapturedVal& ParameterMappings::get_cap(const ::std::vector<unsigned int>& iterations, unsigned int name_idx)
+ParameterMappings::CapturedVal& ParameterMappings::get_cap(const Span& sp, const ::std::vector<unsigned int>& iterations, unsigned int name_idx)
 {
     DEBUG("(iterations=[" << iterations << "], name_idx=" << name_idx << ")");
     auto& e = m_mappings.at(name_idx);
@@ -224,37 +235,37 @@ ParameterMappings::CapturedVal& ParameterMappings::get_cap(const ::std::vector<u
     auto* layer = &e.top_layer;
 
     // - If the top layer is a 1-sized set of values, unconditionally return it
-    TU_IFLET(CaptureLayer, (*layer), Vals, e,
-        if( e.size() == 1 ) {
-            return e[0];
+    if( auto* e = layer->opt_Vals() ) {
+        if( e->size() == 1 ) {
+            return (*e)[0];
         }
-        if( e.size() == 0 ) {
-            BUG(Span(), "Attempting to get binding for empty capture - #" << name_idx);
+        if( e->size() == 0 ) {
+            BUG(sp, "Attempting to get binding for empty capture - #" << name_idx);
         }
-    )
+    }
 
     for(const auto iter : iterations)
     {
-        TU_MATCH(CaptureLayer, (*layer), (e),
-        (Vals,
-            ASSERT_BUG(Span(), iter < e.size(), "Iteration index " << iter << " outside of range " << e.size() << " (values)");
+        TU_MATCH_HDRA( (*layer), { )
+        TU_ARMA(Vals, e) {
+            ASSERT_BUG(sp, iter < e.size(), "Iteration index " << iter << " outside of range " << e.size() << " (values)");
             return e.at(iter);
-            ),
-        (Nested,
-            ASSERT_BUG(Span(), iter < e.size(), "Iteration index " << iter << " outside of range " << e.size() << " (nest)");
+            }
+        TU_ARMA(Nested, e) {
+            ASSERT_BUG(sp, iter < e.size(), "Iteration index " << iter << " outside of range " << e.size() << " (nest)");
             layer = &e.at(iter);
-            )
-        )
+            }
+        }
     }
 
-    ERROR(Span(), E0000, "Variable #" << name_idx << " is still repeating at this level (" << iterations.size() << ")");
+    ERROR(sp, E0000, "Variable #" << name_idx << " is still repeating at this level (" << iterations.size() << ")");
 }
 
-InterpolatedFragment* ParameterMappings::get(const ::std::vector<unsigned int>& iterations, unsigned int name_idx)
+InterpolatedFragment* ParameterMappings::get(const Span& sp, const ::std::vector<unsigned int>& iterations, unsigned int name_idx)
 {
-    return &get_cap(iterations, name_idx).frag;
+    return &get_cap(sp, iterations, name_idx).frag;
 }
-unsigned int ParameterMappings::get_loop_repeats(const ::std::vector<unsigned int>& iterations, unsigned int loop_idx) const
+unsigned int ParameterMappings::get_loop_repeats(const Span& sp, const ::std::vector<unsigned int>& iterations, unsigned int loop_idx) const
 {
     const auto& list = m_loop_counts.at(loop_idx);
     // Iterate the list, find the first prefix match of `iterations`
@@ -268,18 +279,58 @@ unsigned int ParameterMappings::get_loop_repeats(const ::std::vector<unsigned in
             return e.second;
         }
     }
-    BUG(Span(), "Loop " << loop_idx << " cannot find an iteration count for path [" << iterations << "]");
+    BUG(sp, "Loop " << loop_idx << " cannot find an iteration count for path [" << iterations << "]");
+}
+unsigned int ParameterMappings::get_variable_count(const Span& sp, const ::std::vector<unsigned int>& iterations, unsigned int name_idx) const
+{
+    DEBUG("(iterations=[" << iterations << "], name_idx=" << name_idx << ")");
+    auto& e = m_mappings.at(name_idx);
+    //DEBUG("- e = " << e);
+    auto* layer = &e.top_layer;
+
+    // - If the top layer is a 1-sized set of values, unconditionally return it
+    if( auto* e = layer->opt_Vals() ) {
+        if( e->size() == 1 ) {
+            return 1;
+        }
+        if( e->size() == 0 ) {
+            BUG(sp, "Attempting to get binding for empty capture - #" << name_idx);
+        }
+    }
+
+    for(const auto iter : iterations)
+    {
+        TU_MATCH_HDRA( (*layer), { )
+        TU_ARMA(Vals, e) {
+            ASSERT_BUG(sp, iter < e.size(), "Iteration index " << iter << " outside of range " << e.size() << " (values)");
+            return 1;
+            }
+        TU_ARMA(Nested, e) {
+            ASSERT_BUG(sp, iter < e.size(), "Iteration index " << iter << " outside of range " << e.size() << " (nest)");
+            layer = &e.at(iter);
+            }
+        }
+    }
+    TU_MATCH_HDRA( (*layer), { )
+    TU_ARMA(Vals, e) {
+        return e.size();
+        }
+    TU_ARMA(Nested, e) {
+        return e.size();
+        }
+    }
+    throw "";
 }
 
-void ParameterMappings::inc_count(const ::std::vector<unsigned int>& iterations, unsigned int name_idx)
+void ParameterMappings::inc_count(const Span& sp, const ::std::vector<unsigned int>& iterations, unsigned int name_idx)
 {
-    auto& cap = get_cap(iterations, name_idx);
+    auto& cap = get_cap(sp, iterations, name_idx);
     assert(cap.num_used == 0);
     cap.num_uses += 1;
 }
-bool ParameterMappings::dec_count(const ::std::vector<unsigned int>& iterations, unsigned int name_idx)
+bool ParameterMappings::dec_count(const Span& sp, const ::std::vector<unsigned int>& iterations, unsigned int name_idx)
 {
-    auto& cap = get_cap(iterations, name_idx);
+    auto& cap = get_cap(sp, iterations, name_idx);
     assert(cap.num_used < cap.num_uses);
     cap.num_used += 1;
     return (cap.num_used < cap.num_uses);
@@ -487,7 +538,8 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
             PUTBACK(tok, lex);
         return InterpolatedFragment( Parse_TT(lex, false) );
     case MacroPatEnt::PAT_PAT:
-        return InterpolatedFragment( Parse_Pattern(lex, AllowOrPattern::No) );
+        // TODO: Is this edition check correct? Or should it be uncondiitonally "Yes"?
+        return InterpolatedFragment( Parse_Pattern(lex, lex.edition_after(AST::Edition::Rust2021) ? AllowOrPattern::Yes : AllowOrPattern::No) );
     case MacroPatEnt::PAT_TYPE:
         return InterpolatedFragment( Parse_Type(lex) );
     case MacroPatEnt::PAT_EXPR:
@@ -965,7 +1017,7 @@ namespace
             return false;
         }
     }
-    bool consume_pat(TokenStreamRO& lex)
+    bool consume_pat(TokenStreamRO& lex, bool allow_or=true)
     {
         TRACE_FUNCTION;
 
@@ -982,14 +1034,16 @@ namespace
         if( lex.consume_if(TOK_INTERPOLATED_PATTERN) )
             return true;
 
-        lex.consume_if(TOK_PIPE);
+        if( allow_or ) {
+            lex.consume_if(TOK_PIPE);
+        }
         for(;;)
         {
             switch(lex.next())
             {
             case TOK_UNDERSCORE:
                 lex.consume();
-                if( lex.consume_if(TOK_PIPE) )
+                if( allow_or && lex.consume_if(TOK_PIPE) )
                     continue;
                 return true;
             case TOK_IDENT:
@@ -1015,30 +1069,30 @@ namespace
                     // Fall through to the range handling
                     break;
                 }
-                if( lex.consume_if(TOK_PIPE) )
+                if( allow_or && lex.consume_if(TOK_PIPE) )
                     continue;
                 return true;
             case TOK_RWORD_BOX:
                 lex.consume();
-                if( !consume_pat(lex) )
+                if( !consume_pat(lex, allow_or) )
                     return false;
-                if( lex.consume_if(TOK_PIPE) )
+                if( allow_or && lex.consume_if(TOK_PIPE) )
                     continue;
                 return true;
             case TOK_AMP:
             case TOK_DOUBLE_AMP:
                 lex.consume();
                 lex.consume_if(TOK_RWORD_MUT);
-                if( !consume_pat(lex) )
+                if( !consume_pat(lex, allow_or) )
                     return false;
-                if( lex.consume_if(TOK_PIPE) )
+                if( allow_or && lex.consume_if(TOK_PIPE) )
                     continue;
                 return true;
             case TOK_PAREN_OPEN:
             case TOK_SQUARE_OPEN:
                 if( !consume_tt(lex) )
                     return false;
-                if( lex.consume_if(TOK_PIPE) )
+                if( allow_or && lex.consume_if(TOK_PIPE) )
                     continue;
                 return true;
             case TOK_STRING:
@@ -1072,7 +1126,7 @@ namespace
                     return false;
                 }
             }
-            if(lex.consume_if(TOK_PIPE))
+            if(allow_or && lex.consume_if(TOK_PIPE))
                 continue;
             return true;
         }
@@ -1093,7 +1147,7 @@ namespace
                 {
                     if( lex.next() == TOK_PIPE )
                         break;
-                    consume_pat(lex);
+                    consume_pat(lex, /*allow_or=*/false);
                     if(lex.consume_if(TOK_COLON))
                     {
                         consume_type(lex);
@@ -1470,9 +1524,34 @@ namespace
                 return true;
             }
             static bool maybe_where(TokenStreamRO& lex) {
-                if(lex.next() == TOK_RWORD_WHERE)
+                if(lex.consume_if(TOK_RWORD_WHERE))
                 {
-                    TODO(Span(), "where in macro eval");
+                    do {
+                        if( lex.next() == TOK_BRACE_OPEN || lex.next() == TOK_SEMICOLON )
+                            break;
+                        if( lex.consume_if(TOK_LIFETIME) ) {
+                            if( !lex.consume_if(TOK_COLON) )
+                                return false;
+
+                            if( !lex.consume_if(TOK_LIFETIME) )
+                                return false;
+                        }
+                        else {
+                            if( !consume_type(lex) )
+                                return false;
+                            if( !lex.consume_if(TOK_COLON) )
+                                return false;
+                            do {
+                                if( lex.consume_if(TOK_LIFETIME) ) {
+                                }
+                                else {
+                                    lex.consume_if(TOK_QMARK);
+                                    if( !consume_path(lex) )
+                                        return false;
+                                }
+                            } while( lex.consume_if(TOK_PLUS) );
+                        }
+                    } while( lex.consume_if(TOK_COMMA) );
                 }
                 return true;
             }
@@ -2056,7 +2135,7 @@ void Macro_InvokeRules_CountSubstUses(ParameterMappings& bound_tts, const ::std:
             case 0:
             case NAMEDVALUE_TY_IGNORE:
                 // Increment a counter in `bound_tts`
-                bound_tts.inc_count(state.iterations(), *e & NAMEDVALUE_VALMASK);
+                bound_tts.inc_count(Span(), state.iterations(), *e & NAMEDVALUE_VALMASK);
                 break;
             case NAMEDVALUE_TY_MAGIC:
             default:
@@ -2141,9 +2220,13 @@ Token MacroExpander::realGetToken()
             switch(e & ~NAMEDVALUE_VALMASK)
             {
             default:
-                BUG(Span(), "Unknown macro metavar");
-            case NAMEDVALUE_TY_IGNORE: {
-                auto* frag = m_mappings.get(m_state.iterations(), e & NAMEDVALUE_VALMASK);
+                BUG(this->point_span(), "Unknown macro metavar - 0x" << std::hex << e);
+            case NAMEDVALUE_TY_COUNT: { // `${count(VarName)}`
+                auto count = m_mappings.get_variable_count(this->point_span(), m_state.iterations(), e & NAMEDVALUE_VALMASK);
+                return Token(U128(count), CORETYPE_ANY);
+                break; }
+            case NAMEDVALUE_TY_IGNORE: {    // `${ignore(VarName)}`
+                auto* frag = m_mappings.get(this->point_span(), m_state.iterations(), e & NAMEDVALUE_VALMASK);
                 ASSERT_BUG(this->point_span(), frag, "Cannot find '" << (e & NAMEDVALUE_VALMASK) << "' for " << m_state.iterations());
                 // - Ignore
                 break; }
@@ -2167,15 +2250,17 @@ Token MacroExpander::realGetToken()
                     }
                     break;
                 case NAMEDVALUE_MAGIC_INDEX:
+                    ASSERT_BUG(this->point_span(), !m_state.iterations().empty(), "${index()} with no active loop");
+                    return Token(U128(m_state.iterations().back()), CORETYPE_ANY);
                 default:
-                    BUG(Span(), "Unknown macro metavar");
+                    BUG(this->point_span(), "Unknown macro metavar - 0x" << std::hex << e);
                 }
                 break;
             case 0: {
-                auto* frag = m_mappings.get(m_state.iterations(), e);
+                auto* frag = m_mappings.get(this->point_span(), m_state.iterations(), e);
                 ASSERT_BUG(this->point_span(), frag, "Cannot find '" << e << "' for " << m_state.iterations());
 
-                bool can_steal = ( m_mappings.dec_count(m_state.iterations(), e) == false );
+                bool can_steal = ( m_mappings.dec_count(this->point_span(), m_state.iterations(), e) == false );
                 DEBUG("[" << m_log_index << "] Insert replacement #" << e << " = " << *frag);
                 if( frag->m_type == InterpolatedFragment::TT )
                 {
@@ -2237,13 +2322,13 @@ const MacroExpansionEnt* MacroExpandState::next_ent()
                 }
             TU_ARMA(Loop, e) {
                 assert( !e.controlling_input_loops.empty() );
-                unsigned int num_repeats = m_mappings.get_loop_repeats(m_iterations, *e.controlling_input_loops.begin());
+                unsigned int num_repeats = m_mappings.get_loop_repeats(Span(), m_iterations, *e.controlling_input_loops.begin());
                 for(auto loop_ident : e.controlling_input_loops)
                 {
                     if( loop_ident == *e.controlling_input_loops.begin() )
                         continue ;
 
-                    unsigned int this_repeats = m_mappings.get_loop_repeats(m_iterations, loop_ident);
+                    unsigned int this_repeats = m_mappings.get_loop_repeats(Span(), m_iterations, loop_ident);
                     if( this_repeats != num_repeats ) {
                         // TODO: Get the variables involved, or the pattern+output spans
                         ERROR(Span(), E0000, "Mismatch in loop iterations: " << this_repeats << " != " << num_repeats);
