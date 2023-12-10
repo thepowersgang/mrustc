@@ -227,6 +227,22 @@ bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, co
             rv.write_usize(0, new_ofs);
         }
     }
+    else if( name == "ptr_diff" )
+    {
+        auto ty_size = ty_params.tys.at(0).get_size();
+
+        const auto& ptr_a = args.at(0);
+        const auto& ptr_b = args.at(1);
+
+        auto alloc_a = ptr_a.get_relocation(0);
+        auto alloc_b = ptr_b.get_relocation(0);
+        auto ofs_a = ptr_a.read_usize(0);
+        auto ofs_b = ptr_b.read_usize(0);
+        if( alloc_a != alloc_b ) {
+            LOG_ERROR("`ptr_diff` with different allocations - " << alloc_a << " & " << alloc_b);
+        }
+        rv = Value::new_usize( (ofs_a - ofs_b) / ty_size );
+    }
     else if( name == "ptr_guaranteed_eq" ) {
         bool is_eq = true;
         is_eq &= args.at(0).read_usize(0) == args.at(1).read_usize(0);

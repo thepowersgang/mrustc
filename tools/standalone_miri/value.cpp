@@ -60,15 +60,9 @@ namespace {
     return os;
 }
 
-FfiLayout FfiLayout::new_const_bytes(size_t s)
+bool FfiPointerInner::is_valid_read(size_t o, size_t s) const
 {
-    return FfiLayout {
-        { Range {s, true, false} }
-        };
-}
-bool FfiLayout::is_valid_read(size_t o, size_t s) const
-{
-    for(const auto& r : ranges)
+    for(const auto& r : layout)
     {
         if( o < r.len ) {
             if( !r.is_valid )
@@ -257,7 +251,7 @@ size_t RelocationPtr::get_base() const
             os << "\"" << FmtEscaped(x.str()) << "\"";
             break;
         case RelocationPtr::Ty::FfiPointer:
-            os << "FFI '" << x.ffi().tag_name << "' " << x.ffi().ptr_value;
+            os << "FFI '" << x.ffi().tag_name() << "' " << x.ffi().ptr_value();
             break;
         }
     }
@@ -307,11 +301,11 @@ void* ValueCommonRead::read_pointer_tagged_null(size_t rd_ofs, const char* tag) 
         {
         case RelocationPtr::Ty::FfiPointer: {
             const auto& f = reloc.ffi();
-            assert(f.tag_name);
             assert(tag);
-            if( ::std::strcmp(f.tag_name, tag) != 0 )
-                LOG_FATAL("Expected a '" << tag <<  "' pointer, got a '" << f.tag_name << "' pointer");
-            return f.ptr_value;
+            LOG_ASSERT(f.tag_name(), "Expected a '" << tag << "' pointer, but no tag present");
+            if( ::std::strcmp(f.tag_name(), tag) != 0 )
+                LOG_FATAL("Expected a '" << tag <<  "' pointer, got a '" << f.tag_name() << "' pointer");
+            return f.ptr_value();
             }
         default:
             LOG_FATAL("Reading a tagged pointer from non-FFI source");
@@ -367,7 +361,7 @@ void* ValueCommonRead::read_pointer_unsafe(size_t rd_ofs, size_t req_valid, size
             // TODO: Have an idea of mutability and available size from FFI
             out_size = size - ofs;
             out_is_mut = false;
-            return reinterpret_cast<char*>(reloc.ffi().ptr_value) + ofs;
+            return reinterpret_cast<char*>(reloc.ffi().ptr_value()) + ofs;
             }
         }
         throw "";
@@ -961,12 +955,12 @@ extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v)
             } break;
         case RelocationPtr::Ty::FfiPointer:
             const auto& p = alloc_ptr.ffi();
-            assert( in_bounds(v.m_offset, v.m_size, p.layout->get_size()) );
+            assert( in_bounds(v.m_offset, v.m_size, p.get_size()) );
             auto flags = os.flags();
             os << ::std::hex;
             for(size_t i = v.m_offset; i < v.m_offset + v.m_size; i++)
             {
-                os << ::std::setw(2) << ::std::setfill('0') << (int) ((char*)p.ptr_value)[i];
+                os << ::std::setw(2) << ::std::setfill('0') << (int) ((char*)p.ptr_value())[i];
             }
             os.flags(flags);
             break;
@@ -1059,7 +1053,7 @@ Value ValueRef::read_value(size_t ofs, size_t size) const
         case RelocationPtr::Ty::FfiPointer: {
             LOG_ASSERT(in_bounds(m_offset + ofs, size, m_alloc.ffi().get_size()), "");
             auto rv = Value::with_size(size, false);
-            rv.write_bytes(0, reinterpret_cast<const char*>(m_alloc.ffi().ptr_value) + m_offset + ofs, size);
+            rv.write_bytes(0, reinterpret_cast<const char*>(m_alloc.ffi().ptr_value()) + m_offset + ofs, size);
             return rv;
             }
         default:
