@@ -305,7 +305,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         const auto& sym_alloc = args.at(1).get_relocation(0);
 
         // TODO: Ensure that first arg is a FFI pointer with offset+size of zero
-        void* handle = handle_alloc.ffi().ptr_value;
+        void* handle = handle_alloc.ffi().ptr_value();
         // TODO: Get either a FFI data pointer, or a inner data pointer
         const void* symname = sym_alloc.alloc().data_ptr();
         // TODO: Sanity check that it's a valid c string within its allocation
