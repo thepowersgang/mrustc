@@ -109,6 +109,7 @@ public:
           TypeRef& type()       { return m_type; }
 
     const Expr& default_value() const { return m_default; }
+          Expr& default_value()       { return m_default; }
 
     friend ::std::ostream& operator<<(::std::ostream& os, const ValueParam& p);
 };

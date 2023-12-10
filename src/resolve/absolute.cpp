@@ -2334,6 +2334,7 @@ void Resolve_Absolute_Generic(Context& context, ::AST::GenericParams& params)
             }
         TU_ARMA(Value, param) {
             Resolve_Absolute_Type(context, param.type());
+            Resolve_Absolute_Expr(context, param.default_value());
             }
         }
     }
