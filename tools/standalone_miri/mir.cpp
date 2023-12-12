@@ -408,5 +408,311 @@ namespace MIR {
     {
         assert(!this->p);
     }
+
+    ::Ordering Constant::ord(const Constant& b) const
+    {
+        if( this->tag() != b.tag() )
+            return ::ord( static_cast<unsigned int>(this->tag()), static_cast<unsigned int>(b.tag()) );
+        TU_MATCHA( (*this,b), (ae,be),
+        (Int,
+            if( ae.v != be.v )
+                return ::ord(ae.v, be.v);
+            return ::ord(ae.t.raw_type, be.t.raw_type);
+            ),
+        (Uint,
+            if( ae.v != be.v )
+                return ::ord(ae.v, be.v);
+            return ::ord(ae.t.raw_type, be.t.raw_type);
+            ),
+        (Float,
+            if( ae.v != be.v )
+                return ::ord(ae.v, be.v);
+            return ::ord(ae.t.raw_type, be.t.raw_type);
+            ),
+        (Bool,
+            return ::ord(ae.v, be.v);
+            ),
+        (Bytes,
+            return ::ord(ae, be);
+            ),
+        (StaticString,
+            return ::ord(ae, be);
+            ),
+        (Const,
+            return ::ord(*ae.p, *be.p);
+            ),
+        (Generic,
+            //return ::ord(ae.binding, be.binding);
+            return OrdEqual;
+            ),
+        (ItemAddr,
+            ORD(static_cast<bool>(ae), static_cast<bool>(be));
+            if(ae) ORD(*ae, *be);
+            return OrdEqual;
+            )
+        )
+        throw "";
+    }
+    bool Param::operator==(const Param& x) const
+    {
+        if( this->tag() != x.tag() )
+            return false;
+        TU_MATCHA( (*this, x), (ea, eb),
+        (LValue,
+            return ea == eb;
+            ),
+        (Borrow,
+            return ea.type == eb.type && ea.val == eb.val;
+            ),
+        (Constant,
+            return ea == eb;
+            )
+        )
+        throw "";
+    }
+
+    bool operator==(const RValue& a, const RValue& b)
+    {
+        if( a.tag() != b.tag() )
+            return false;
+        TU_MATCHA( (a, b), (are, bre),
+        (Use,
+            return are == bre;
+            ),
+        (Constant,
+            return are == bre;
+            ),
+        (SizedArray,
+            if( are.val != bre.val )
+                return false;
+            if( are.count != bre.count )
+                return false;
+            return true;
+            ),
+        (Borrow,
+            if( are.type != bre.type )
+                return false;
+            if( are.val != bre.val )
+                return false;
+            return true;
+            ),
+        (Cast,
+            if( are.type != bre.type )
+                return false;
+            if( are.val != bre.val )
+                return false;
+            return true;
+            ),
+        (BinOp,
+            if( are.val_l != bre.val_l )
+                return false;
+            if( are.op != bre.op )
+                return false;
+            if( are.val_r != bre.val_r )
+                return false;
+            return true;
+            ),
+        (UniOp,
+            if( are.op != bre.op )
+                return false;
+            if( are.val != bre.val )
+                return false;
+            return true;
+            ),
+        (DstPtr,
+            return are.val == bre.val;
+            ),
+        (DstMeta,
+            return are.val == bre.val;
+            ),
+        (MakeDst,
+            if( are.meta_val != bre.meta_val )
+                return false;
+            if( are.ptr_val != bre.ptr_val )
+                return false;
+            return true;
+            ),
+        (Tuple,
+            return are.vals == bre.vals;
+            ),
+        (Array,
+            return are.vals == bre.vals;
+            ),
+        (UnionVariant,
+            if( are.path != bre.path )
+                return false;
+            if( are.index != bre.index )
+                return false;
+            return are.val == bre.val;
+            ),
+        (EnumVariant,
+            if( are.path != bre.path )
+                return false;
+            if( are.index != bre.index )
+                return false;
+            return are.vals == bre.vals;
+            ),
+        (Struct,
+            if( are.path != bre.path )
+                return false;
+            return are.vals == bre.vals;
+            )
+        )
+        throw "";
+    }
+    bool SwitchValues::operator==(const SwitchValues& x) const
+    {
+        if( this->tag() != x.tag() )
+            return false;
+        TU_MATCHA( ((*this), x), (ave, bve),
+        (Unsigned,
+            if( ave != bve )
+                return false;
+            ),
+        (Signed,
+            if( ave != bve )
+                return false;
+            ),
+        (String,
+            if( ave != bve )
+                return false;
+            ),
+        (ByteString,
+            if( ave != bve )
+                return false;
+            )
+        )
+        return true;
+    }
+    bool operator==(const AsmParam& a, const AsmParam& b)
+    {
+        if(a.tag() != b.tag())
+            return false;
+        TU_MATCH_HDRA( (a,b), {)
+        TU_ARMA(Const, ae, be) {
+            return ae == be;
+            }
+        TU_ARMA(Sym, ae, be) {
+            return ae == be;
+            }
+        TU_ARMA(Reg, ae, be) {
+            if(ae.dir != be.dir) return false;
+            if(ae.spec != be.spec)  return false;
+            if( !!ae.input != !!be.input )  return false;
+            if( ae.input && *ae.input != *be.input )    return false;
+            if( !!ae.output != !!be.output )  return false;
+            if( ae.output && *ae.output != *be.output ) return false;
+            }
+        }
+        return true;
+    }
+    bool operator==(const Statement& a, const Statement& b) {
+        if( a.tag() != b.tag() )
+            return false;
+        
+        TU_MATCH_HDRA( (a,b), {)
+        TU_ARMA(Assign, ae,be) {
+            return ae.dst == be.dst && ae.src == be.src;
+            }
+        TU_ARMA(Asm, ae,be) {
+            return ae.outputs == be.outputs
+                && ae.inputs == be.inputs
+                && ae.clobbers == be.clobbers
+                && ae.flags == be.flags
+                ;
+            }
+        TU_ARMA(Asm2, ae,be) {
+            return ae.lines == be.lines
+                && ae.options == be.options
+                && ae.params == be.params
+                ;
+            }
+        TU_ARMA(SetDropFlag, ae,be) {
+            return ae.idx == be.idx
+                && ae.other == be.other
+                && ae.new_val == be.new_val
+                ;
+            }
+        TU_ARMA(Drop, ae,be) {
+            return ae.slot == be.slot
+                && ae.kind == be.kind
+                && ae.flag_idx == be.flag_idx
+                ;
+            }
+        TU_ARMA(ScopeEnd, ae,be) {
+            return ae.slots == be.slots;
+            }
+        }
+        throw "";
+    }
+    bool operator==(const Terminator& a, const Terminator& b) {
+        if( a.tag() != b.tag() )
+            return false;
+        TU_MATCHA( (a,b), (ae,be),
+        (Incomplete,
+            ),
+        (Return,
+            ),
+        (Diverge,
+            ),
+        (Goto,
+            if( ae != be )
+                return false;
+            ),
+        (Panic,
+            if( ae.dst != be.dst )
+                return false;
+            ),
+        (If,
+            if( ae.cond != be.cond )
+                return false;
+            if( ae.bb0 != be.bb0 )
+                return false;
+            if( ae.bb1 != be.bb1 )
+                return false;
+            ),
+        (Switch,
+            if( ae.val != be.val )
+                return false;
+            if( ae.targets != be.targets )
+                return false;
+            ),
+        (SwitchValue,
+            if( ae.val != be.val )
+                return false;
+            if( ae.targets != be.targets )
+                return false;
+            if( ae.values != be.values)
+                return false;
+            ),
+        (Call,
+            if( ae.ret_val != be.ret_val )
+                return false;
+            TU_MATCHA( (ae.fcn, be.fcn), (afe, bfe),
+            (Value,
+                if( afe != bfe )
+                    return false;
+                ),
+            (Path,
+                if( afe != bfe )
+                    return false;
+                ),
+            (Intrinsic,
+                if( afe.name != bfe.name )
+                    return false;
+                if( afe.params != bfe.params )
+                    return false;
+                )
+            )
+            if( ae.args != be.args )
+                return false;
+            if( ae.ret_block != be.ret_block )
+                return false;
+            if( ae.panic_block != be.panic_block )
+                return false;
+            )
+        )
+        return true;
+    }
 }
 

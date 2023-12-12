@@ -173,11 +173,28 @@ bool Parser::parse_one()
         else {
             auto& exist = tree.functions[p];
 
-            // TODO: Signature check
+            // Signature check
+            if( exist.args != arg_tys || exist.ret_ty != rv_ty ) {
+                LOG_ERROR(lex << "Non-matching redefinition of " << p << "\n"
+                    << exist.args << " " << exist.ret_ty << "\n"
+                    << arg_tys << " " << rv_ty
+                    );
+            }
 
             if( !body.blocks.empty() ) {
                 if( !exist.m_mir.blocks.empty() ) {
-                    // TODO: Check if they're identical, and warn/error if not
+                    // Check if they're identical, and warn/error if not
+                    bool is_mismatch = exist.m_mir.blocks.size() != body.blocks.size();
+                    is_mismatch |= exist.m_mir.locals != body.locals;
+                    is_mismatch |= exist.m_mir.drop_flags != body.drop_flags;
+                    auto n_blocks = ::std::min(exist.m_mir.blocks.size(), body.blocks.size());
+                    for(size_t i = 0; i < n_blocks; i ++) {
+                        is_mismatch |= exist.m_mir.blocks[i].statements != body.blocks[i].statements;
+                        is_mismatch |= exist.m_mir.blocks[i].terminator != body.blocks[i].terminator;
+                    }
+                    if( is_mismatch ) {
+                        LOG_ERROR(lex << "Re-definition of " << p << " with differing bodies");
+                    }
                 }
                 else {
                     exist.m_mir = ::std::move(body);
