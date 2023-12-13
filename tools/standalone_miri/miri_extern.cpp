@@ -874,6 +874,23 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         const char* nptr = FfiHelpers::read_cstr(args.at(0), 0, &len);
         rv = Value::new_i32( atoi(nptr) );
     }
+    else if( link_name == "strtoll" )
+    {
+        // long long strtoll(const char *nptr, char **endptr, int base);
+        size_t len = 0;
+        const char* nptr = FfiHelpers::read_cstr(args.at(0), 0, &len);
+        auto endptr_req = args.at(1).read_usize(0) != 0;
+        auto base = args.at(2).read_i32(0);
+        char* endptr_real;
+        auto retval = strtoll(nptr, endptr_req ? &endptr_real : nullptr, base);
+        if(endptr_req) {
+            auto ofs = endptr_real - nptr;
+            args.at(1).read_pointer_valref_mut(0, ::HIR::TypeRef(RawType::USize).get_size())
+                .to_write()
+                .write_ptr(0, args.at(0).read_usize(0) + ofs, args.at(0).get_relocation(0));
+        }
+        rv = Value::new_i64(retval);
+    }
     else if( link_name == "malloc" )
     {
         auto size = args.at(0).read_usize(0);
@@ -1147,6 +1164,19 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         const auto* fmt = FfiHelpers::read_cstr(args.at(0), 0);
         auto out = format_string(fmt, args, 1);
         ::std::cout << out;
+        rv = Value::new_i32(static_cast<int32_t>(out.size()));
+    }
+    else if( link_name == "snprintf" )
+    {
+        const auto* fmt = FfiHelpers::read_cstr(args.at(2), 0);
+        auto out = format_string(fmt, args, 3);
+        size_t len = args.at(1).read_usize(0);
+        if( len > 0 )
+        {
+            auto buf = args.at(0).read_pointer_valref_mut(0, len).to_write();
+            buf.write_bytes(0, out.data(), std::min(len-1, out.size()));
+            buf.write_u8( ::std::min(len-1, out.size()), 0 );
+        }
         rv = Value::new_i32(static_cast<int32_t>(out.size()));
     }
     //
