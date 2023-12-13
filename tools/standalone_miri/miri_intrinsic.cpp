@@ -670,6 +670,27 @@ bool InterpreterThread::call_intrinsic(Value& rv, const HIR::TypeRef& ret_ty, co
         rv = Value(t.wrapped(TypeWrapper::Ty::Borrow, 0));
         rv.write_ptr(0, 0x1000, RelocationPtr::new_alloc(a));
     }
+    // ----
+    // C hackery
+    // ----
+    else if( name == "alloca_array" )
+    {
+        const auto& ty_T = ty_params.tys.at(0);
+        //auto count = args.at(0).read_usize(0);
+        auto count = args.at(0).read_u32(0);
+
+        auto size = count * ty_T.get_size();
+        auto alloc = Allocation::new_alloc(size, "alloca_array");
+        if(false) {
+            rv = Value(ty_T.wrapped(TypeWrapper::Ty::Slice, 0).wrap(TypeWrapper::Ty::Borrow, 0));
+            rv.write_ptr_ofs(0, 0x0, RelocationPtr::new_alloc(alloc));
+            rv.write_usize(8, count);
+        }
+        else {
+            rv = Value(ty_T.wrapped(TypeWrapper::Ty::Pointer, 0));
+            rv.write_ptr_ofs(0, 0x0, RelocationPtr::new_alloc(alloc));
+        }
+    }
     else
     {
         LOG_TODO("Call intrinsic \"" << name << "\"" << ty_params);
