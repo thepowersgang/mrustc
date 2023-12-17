@@ -911,7 +911,7 @@ namespace {
             return ::HIR::TypeRef::new_array( mv$(inner), HIR::ConstGeneric::make_Unevaluated(std::make_shared<HIR::ExprPtr>(LowerHIR_Expr(e.size))) );
         }
         else {
-            TODO(ty.span(), "Array with inferred size");
+            return ::HIR::TypeRef::new_array( mv$(inner), HIR::ConstGeneric::make_Infer({}) );
         }
         }
     TU_ARMA(Slice, e) {
@@ -1463,11 +1463,9 @@ namespace {
             {
                 TU_MATCH_HDRA( (b), {)
                 TU_ARMA(TypeLifetime, be) {
-                    ASSERT_BUG(item.span, be.type == ::HIR::TypeRef("Self", 0xFFFF), "Invalid lifetime bound on associated type");
                     lifetime_bound = mv$(be.valid_for);
                     }
                 TU_ARMA(TraitBound, be) {
-                    ASSERT_BUG(item.span, be.type == ::HIR::TypeRef("Self", 0xFFFF), "Invalid trait bound on associated type");
                     trait_bounds.push_back( mv$(be.trait) );
                     }
                 TU_ARMA(Lifetime, be) {
