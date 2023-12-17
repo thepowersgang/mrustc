@@ -205,6 +205,8 @@ struct ExprNode_LetBinding:
     TypeRef m_type;
     ExprNodeP    m_value;
     ExprNodeP    m_else;
+    /// Allocated binding slots/indexes for the pattern in `let-else`
+    ::std::pair<unsigned,unsigned>  m_letelse_slots;
 
     ExprNode_LetBinding(Pattern pat, TypeRef type, ExprNodeP value, ExprNodeP else_arm={})
         : m_pat( move(pat) )

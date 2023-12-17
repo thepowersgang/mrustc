@@ -164,13 +164,80 @@ struct LowerHIR_ExprNode_Visitor:
     }
     virtual void visit(::AST::ExprNode_LetBinding& v) override {
         if( v.m_else ) {
-            TODO(v.span(), "Handle let-else in HIR expand, or elsewhere?");
+            // Cannot be expanded in expand, as it needs `None` to have been resolved to the enum variant
+            // So, it's expanded here - with the cooperation of `Resolve_Absolute` allocating some variable bindings for us
+            auto pat = LowerHIR_Pattern( v.m_pat );
+            auto type = LowerHIR_Type( v.m_type );
+            auto node_value = lower(v.m_value);
+            auto node_else = lower(v.m_else);
+
+            auto base = v.m_letelse_slots.first;
+            auto count = v.m_letelse_slots.second;
+            struct V: public HIR::Visitor {
+                unsigned base;
+                unsigned count;
+                std::vector<HIR::PatternBinding>    bindings;
+                V(unsigned base, unsigned count)
+                    : base(base)
+                    , count(count)
+                {}
+                void visit_pattern(::HIR::Pattern& pat) override {
+                    HIR::Visitor::visit_pattern(pat);
+                    for(size_t i = 0; i < pat.m_bindings.size(); i ++) {
+                        ASSERT_BUG(Span(), bindings.size() < this->count, "Miscount of variables in `let-else`");
+                        auto new_idx = base + bindings.size();
+
+                        bindings.push_back( HIR::PatternBinding(pat.m_bindings[i]) );
+                        bindings.back().m_type = HIR::PatternBinding::Type::Move;
+                        pat.m_bindings[i].m_mutable = false;
+                        pat.m_bindings[i].m_slot = new_idx;
+                    }
+                }
+            } visitor(base, count);
+            /* 
+             * ```
+             * let (a,b,c,...) = match $value: $ty {
+             *     $pat => (a,b,c,...),
+             *     _ => { let _: ! = $else; },
+             *     };
+             * ```
+             */
+            std::vector<HIR::Pattern>   new_pats;
+            std::vector<HIR::ExprNodeP> tuple_vals;
+            for(size_t i = 0; i < visitor.bindings.size(); i++) {
+                auto& binding = visitor.bindings[i];
+                tuple_vals.push_back(HIR::ExprNodeP( new HIR::ExprNode_Variable(v.span(), binding.m_name, base + i) ));
+                new_pats.push_back(HIR::Pattern(std::move(binding), HIR::Pattern::Data {}));
+            }
+
+            std::vector<HIR::ExprNode_Match::Arm>   match_arms(2);
+            // `$pat => (a,b,c,...),`
+            match_arms[0].m_patterns.push_back(std::move(pat));
+            match_arms[0].m_code.reset(new HIR::ExprNode_Tuple(v.span(), std::move(tuple_vals)));
+            match_arms[1].m_patterns.push_back(HIR::Pattern());
+            // `_ => { let _: ! = $else; },`
+            match_arms[1].m_code.reset(new HIR::ExprNode_Let(v.span(), HIR::Pattern(), HIR::TypeRef::new_diverge(), std::move(node_else)));
+            // `match $value: $ty {`
+            auto match_value = type.data().is_Infer()   // Only emit the `: $ty` part if the type was specified (not a `_`)
+                ? std::move(node_value)
+                : HIR::ExprNodeP(new HIR::ExprNode_Unsize(v.span(), std::move(node_value), std::move(type)))
+                ;
+            auto match = HIR::ExprNodeP(new HIR::ExprNode_Match(v.span(), std::move(match_value), std::move(match_arms)));
+
+            // `let (a,b,c,...) = ...`
+            m_rv.reset( new ::HIR::ExprNode_Let( v.span(),
+                HIR::Pattern(::std::vector<HIR::PatternBinding>(), HIR::Pattern::Data::make_Tuple({ std::move(new_pats) })),
+                HIR::TypeRef(),
+                std::move(match)
+            ));
         }
-        m_rv.reset( new ::HIR::ExprNode_Let( v.span(),
-            LowerHIR_Pattern( v.m_pat ),
-            LowerHIR_Type( v.m_type ),
-            lower_opt( v.m_value )
-            ) );
+        else {
+            m_rv.reset( new ::HIR::ExprNode_Let( v.span(),
+                LowerHIR_Pattern( v.m_pat ),
+                LowerHIR_Type( v.m_type ),
+                lower_opt( v.m_value )
+                ) );
+        }
     }
     virtual void visit(::AST::ExprNode_Assign& v) override {
         struct H {

@@ -2245,8 +2245,15 @@ void Resolve_Absolute_ExprNode(Context& context,  ::AST::ExprNode& node)
             Resolve_Absolute_Type(this->context, node.m_type);
             AST::NodeVisitorDef::visit(node);
             this->context.start_patbind();
+            auto count = this->context.m_var_count;
             Resolve_Absolute_Pattern(this->context, false, node.m_pat);
             this->context.end_patbind();
+            auto n_vars = this->context.m_var_count - count;
+            if( node.m_else ) {
+                //auto& vb = this->context.m_name_context.back().as_VarBlock();
+                node.m_letelse_slots = std::make_pair(this->context.m_var_count, n_vars);
+                this->context.m_var_count += n_vars;
+            }
         }
         void visit(AST::ExprNode_IfLet& node) override {
             DEBUG("ExprNode_IfLet");
