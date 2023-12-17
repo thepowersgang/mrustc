@@ -92,15 +92,24 @@ namespace resolve_ufcs {
 
         void visit_union(::HIR::ItemPath p, ::HIR::Union& item) override {
             auto _ = m_resolve.set_impl_generics(MetadataType::None, item.m_params);
+            auto ty = HIR::TypeRef::new_path(p.get_simple_path(), &item);
+            m_current_type = &ty;
             ::HIR::Visitor::visit_union(p, item);
+            m_current_type = nullptr;
         }
         void visit_struct(::HIR::ItemPath p, ::HIR::Struct& item) override {
             auto _ = m_resolve.set_impl_generics(item.m_struct_markings.dst_type, item.m_params);
+            auto ty = HIR::TypeRef::new_path(p.get_simple_path(), &item);
+            m_current_type = &ty;
             ::HIR::Visitor::visit_struct(p, item);
+            m_current_type = nullptr;
         }
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override {
             auto _ = m_resolve.set_impl_generics(MetadataType::None, item.m_params);
+            auto ty = HIR::TypeRef::new_path(p.get_simple_path(), &item);
+            m_current_type = &ty;
             ::HIR::Visitor::visit_enum(p, item);
+            m_current_type = nullptr;
         }
         void visit_function(::HIR::ItemPath p, ::HIR::Function& item) override {
             auto _ = m_resolve.set_item_generics(item.m_params);
@@ -557,6 +566,7 @@ namespace resolve_ufcs {
         bool resolve_UfcsUnknown_inherent(const ::HIR::Path& p, ::HIR::Visitor::PathContext pc, ::HIR::Path::Data& pd)
         {
             auto& e = pd.as_UfcsUnknown();
+            TRACE_FUNCTION_F(e.type);
             return m_crate.find_type_impls(e.type, [&](const auto& t)->const auto& { return t; }, [&](const auto& impl) {
                 DEBUG("- matched inherent impl" << impl.m_params.fmt_args() << " " << impl.m_type);
                 // Search for item in this block
