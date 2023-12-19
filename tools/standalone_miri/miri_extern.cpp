@@ -73,25 +73,6 @@ namespace FfiHelpers {
     ::std::stringstream output;
     for(const char* s = fmt; *s; s++) {
         if( *s == '%' ) {
-            s ++;
-            if( *s == '%' ) {
-                output << '%';
-                continue;
-            }
-            char pad = ' ';
-            if( *s == '0' ) {
-                pad = '0';
-                s ++;
-            }
-            size_t width = 0;
-            while(std::isdigit(*s)) {
-                width *= 10;
-                width += *s - '0';
-                s ++;
-            }
-            LOG_ASSERT(cur_arg < args.size(), "printf: Argument " << cur_arg << " >= " << args.size());
-            const auto& arg = args.at(cur_arg);
-            LOG_DEBUG("printf> pad='" << pad << "', width=" << width << ", arg=" << arg);
             struct H {
                 static int64_t read_signed(const Value& v) {
                     switch(v.size())
@@ -116,6 +97,34 @@ namespace FfiHelpers {
                     }
                 }
             };
+            s ++;
+            if( *s == '%' ) {
+                output << '%';
+                continue;
+            }
+            char pad = ' ';
+            if( *s == '0' ) {
+                pad = '0';
+                s ++;
+            }
+            size_t width = 0;
+            if( *s == '*' ) {
+                LOG_ASSERT(cur_arg < args.size(), "printf: Argument " << cur_arg << " >= " << args.size());
+                const auto& arg = args.at(cur_arg);
+                width = H::read_unsigned(arg);
+                cur_arg ++;
+                s ++;
+            }
+            else {
+                while(std::isdigit(*s)) {
+                    width *= 10;
+                    width += *s - '0';
+                    s ++;
+                }
+            }
+            LOG_ASSERT(cur_arg < args.size(), "printf: Argument " << cur_arg << " >= " << args.size());
+            const auto& arg = args.at(cur_arg);
+            LOG_DEBUG("printf> pad='" << pad << "', width=" << width << ", arg=" << arg);
             switch(*s)
             {
             case 'i':
@@ -927,7 +936,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
             LOG_ASSERT(ptr.m_alloc.is_alloc(), "`realloc` with no backing allocation attached to pointer");
             auto& old_alloc = ptr.m_alloc.alloc();
 
-            auto s = ::std::min(size, old_alloc.size());
+            auto s = ::std::min(static_cast<size_t>(size), old_alloc.size());
             auto ptr2 = args.at(0).read_pointer_valref_mut(0, s);
             alloc->write_value(0, ptr2.read_value(0, s));
             old_alloc.mark_as_freed();
