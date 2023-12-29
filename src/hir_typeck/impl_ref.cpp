@@ -119,10 +119,10 @@ bool ImplRef::type_is_specialisable(const char* name) const
 }
 
 // Returns a closure to monomorphise including placeholders (if present)
-ImplRef::Monomorph ImplRef::get_cb_monomorph_traitimpl(const Span& sp) const
+ImplRef::Monomorph ImplRef::get_cb_monomorph_traitimpl(const Span& sp, const ::HIR::PathParams& params) const
 {
     const auto& e = this->m_data.as_TraitImpl();
-    return Monomorph(e);
+    return Monomorph(e, params);
 }
 
 ::HIR::TypeRef ImplRef::Monomorph::get_type(const Span& sp, const ::HIR::GenericRef& ge) const /*override*/
@@ -142,20 +142,14 @@ ImplRef::Monomorph ImplRef::get_cb_monomorph_traitimpl(const Span& sp) const
         }
         return this->ti.self_cache.clone();
     }
-    ASSERT_BUG(sp, ge.binding < 256, "Binding in " << ge << " out of range (>=256)");
-    ASSERT_BUG(sp, ge.binding < this->ti.impl_params.m_types.size(), "Binding in " << ge << " out of range (>= " << this->ti.impl_params.m_types.size() << ")");
-    return this->ti.impl_params.m_types.at(ge.binding).clone();
+    return MonomorphStatePtr(nullptr, &this->ti.impl_params, &this->params).get_type(sp, ge);
 }
 ::HIR::ConstGeneric ImplRef::Monomorph::get_value(const Span& sp, const ::HIR::GenericRef& val) const /*override*/
 {
-    ASSERT_BUG(sp, val.binding < 256, "Generic value binding in " << val << " out of range (>=256)");
-    ASSERT_BUG(sp, val.binding < this->ti.impl_params.m_values.size(), "Generic value binding in " << val << " out of range (>= " << this->ti.impl_params.m_values.size() << ")");
-    return this->ti.impl_params.m_values.at(val.binding).clone();
+    return MonomorphStatePtr(nullptr, &this->ti.impl_params, &this->params).get_value(sp, val);
 }
 ::HIR::LifetimeRef ImplRef::Monomorph::get_lifetime(const Span& sp, const ::HIR::GenericRef& g) const /*override*/ {
-    ASSERT_BUG(sp, g.binding < 256, "Generic lifetime binding in " << g << " out of range (>=256)");
-    ASSERT_BUG(sp, g.binding < this->ti.impl_params.m_lifetimes.size(), "Generic lifetime binding in " << g << " out of range (>= " << this->ti.impl_params.m_lifetimes.size() << ")");
-    return this->ti.impl_params.m_lifetimes.at(g.binding);
+    return MonomorphStatePtr(nullptr, &this->ti.impl_params, &this->params).get_lifetime(sp, g);
 }
 
 ::HIR::TypeRef ImplRef::get_impl_type() const
@@ -166,7 +160,7 @@ ImplRef::Monomorph ImplRef::get_cb_monomorph_traitimpl(const Span& sp) const
         if( e.impl == nullptr ) {
             BUG(Span(), "nullptr");
         }
-        return this->get_cb_monomorph_traitimpl(sp).monomorph_type(sp, e.impl->m_type);
+        return this->get_cb_monomorph_traitimpl(sp, {}).monomorph_type(sp, e.impl->m_type);
         }
     TU_ARMA(BoundedPtr, e) {
         // HRLs needed?
@@ -186,7 +180,7 @@ ImplRef::Monomorph ImplRef::get_cb_monomorph_traitimpl(const Span& sp) const
         if( e.impl == nullptr ) {
             BUG(Span(), "nullptr");
         }
-        return this->get_cb_monomorph_traitimpl(sp).monomorph_path_params(sp, e.impl->m_trait_args, true);
+        return this->get_cb_monomorph_traitimpl(sp, {}).monomorph_path_params(sp, e.impl->m_trait_args, true);
         }
     TU_ARMA(BoundedPtr, e) {
         return MonomorphHrlsOnly(e.hrls ? e.hrls->make_empty_params(true) : HIR::PathParams())
@@ -209,7 +203,7 @@ ImplRef::Monomorph ImplRef::get_cb_monomorph_traitimpl(const Span& sp) const
         }
         if( idx >= e.impl->m_trait_args.m_types.size() )
             return ::HIR::TypeRef();
-        return this->get_cb_monomorph_traitimpl(sp).monomorph_type(sp, e.impl->m_trait_args.m_types[idx]);
+        return this->get_cb_monomorph_traitimpl(sp, {}).monomorph_type(sp, e.impl->m_trait_args.m_types[idx]);
         }
     TU_ARMA(BoundedPtr, e) {
         if( idx >= e.trait_args->m_types.size() )
@@ -227,7 +221,7 @@ ImplRef::Monomorph ImplRef::get_cb_monomorph_traitimpl(const Span& sp) const
     throw "";
 }
 
-::HIR::TypeRef ImplRef::get_type(const char* name) const
+::HIR::TypeRef ImplRef::get_type(const char* name, const HIR::PathParams& params) const
 {
     if( !name[0] )
         return ::HIR::TypeRef();
@@ -238,14 +232,14 @@ ImplRef::Monomorph ImplRef::get_cb_monomorph_traitimpl(const Span& sp) const
         if( it == e.impl->m_types.end() )
         {
             if( e.trait_ptr->m_types.count(name) && e.trait_ptr->m_types.at(name).m_default != HIR::TypeRef() ) {
-                return this->get_cb_monomorph_traitimpl(sp).monomorph_type(sp, e.trait_ptr->m_types.at(name).m_default);
+                return this->get_cb_monomorph_traitimpl(sp, params).monomorph_type(sp, e.trait_ptr->m_types.at(name).m_default);
             }
             return ::HIR::TypeRef();
         }
         const ::HIR::TypeRef& tpl_ty = it->second.data;
         DEBUG("name=" << name << " tpl_ty=" << tpl_ty << " " << *this);
         if( monomorphise_type_needed(tpl_ty) ) {
-            return this->get_cb_monomorph_traitimpl(sp).monomorph_type(sp, tpl_ty);
+            return this->get_cb_monomorph_traitimpl(sp, params).monomorph_type(sp, tpl_ty);
         }
         else {
             return tpl_ty.clone();
@@ -255,6 +249,7 @@ ImplRef::Monomorph ImplRef::get_cb_monomorph_traitimpl(const Span& sp) const
         auto it = e.assoc->find(name);
         if(it == e.assoc->end())
             return ::HIR::TypeRef();
+        ASSERT_BUG(Span(), !params.has_params(), "TODO: BoundedPtr with params?");
         return MonomorphHrlsOnly(e.hrls ? e.hrls->make_empty_params(true) : HIR::PathParams())
             .monomorph_type(sp, it->second.type, true);
         }
@@ -262,6 +257,7 @@ ImplRef::Monomorph ImplRef::get_cb_monomorph_traitimpl(const Span& sp) const
         auto it = e.assoc.find(name);
         if(it == e.assoc.end())
             return ::HIR::TypeRef();
+        ASSERT_BUG(Span(), !params.has_params(), "TODO: BoundedPtr with params?");
         return MonomorphHrlsOnly(e.hrls.make_empty_params(true))
             .monomorph_type(sp, it->second.type, true);
         }

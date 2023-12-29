@@ -1179,22 +1179,14 @@ namespace {
         void check_associated_type(const Span& sp,
                 const ::HIR::TypeRef& res,  // Expected result
                 const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& ity, const char* name
+                // TODO: Does this need params for the ATY??
             ) const
         {
             DEBUG(sp << " - " << res << " == < " << ity << " as " << trait << params << " >::" << name);
-            //if( trait == m_lang_Index && ity.data().is_Array() ) {
-            //    if(name && params.m_types.)
-            //    {
-            //        if( res != ity.data().as_Array().inner ) {
-            //            ERROR(sp, E0000, "Associated type on " << trait << params << " for " << ity << " doesn't match - " << res << " != " << ity.data().as_Array().inner);
-            //        }
-            //    }
-            //    return ;
-            //}
             bool found = m_resolve.find_impl(sp, trait, &params, ity, [&](auto impl, bool fuzzy) {
                 if( name )
                 {
-                    auto atyv = impl.get_type(name);
+                    auto atyv = impl.get_type(name, {});
                     m_resolve.expand_associated_types(sp, atyv);
                     if( atyv == ::HIR::TypeRef() )
                     {

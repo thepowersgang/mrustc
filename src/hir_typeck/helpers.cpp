@@ -2426,7 +2426,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
         if( qual == ::HIR::Compare::Fuzzy ) {
         }
         else {
-            auto ty = impl.get_type( pe.item.c_str() );
+            auto ty = impl.get_type( pe.item.c_str(), pe.params );
             if( ty == ::HIR::TypeRef() )
             {
                 DEBUG("Assuming that " << input << " is an opaque name");
@@ -2479,7 +2479,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
                 return false;
             }
             else {
-                auto ty = impl.get_type( pe.item.c_str() );
+                auto ty = impl.get_type( pe.item.c_str(), pe.params );
                 if( ty == ::HIR::TypeRef() )
                     ERROR(sp, E0000, "Couldn't find assocated type " << pe.item << " in impl of " << pe.trait << " for " << pe.type);
 
@@ -2502,7 +2502,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
             return ;
         }
         else {
-            auto ty = best_impl.get_type( pe.item.c_str() );
+            auto ty = best_impl.get_type( pe.item.c_str(), pe.params );
             if( ty == ::HIR::TypeRef() )
                 ERROR(sp, E0000, "Couldn't find assocated type " << pe.item << " in impl of " << pe.trait << " for " << pe.type);
 
@@ -3343,7 +3343,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                     ::HIR::TypeRef  tmp;
                     const ::HIR::TypeRef*   ty_p;
 
-                    tmp = impl.get_type(assoc_bound.first.c_str());
+                    tmp = impl.get_type(assoc_bound.first.c_str(), {});
                     if( tmp == ::HIR::TypeRef() ) {
                         // This bound isn't from this particular trait, go the slow way of using expand_associated_types
                         tmp = this->expand_associated_types(sp, ::HIR::TypeRef::new_path(
@@ -3988,7 +3988,7 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
                     total_cmp &= cmp;
                     tmp_e.m_trait.m_path.m_params = impl.get_trait_params();
                     for(const auto& aty : de->m_trait.m_type_bounds) {
-                        auto atyv = impl.get_type(aty.first.c_str());
+                        auto atyv = impl.get_type(aty.first.c_str(), {});
                         if( atyv == ::HIR::TypeRef() )
                         {
                             // Get the trait from which this associated type comes.
@@ -4094,7 +4094,7 @@ const ::HIR::TypeRef* TraitResolution::autoderef(const Span& sp, const ::HIR::Ty
 #endif
 
         bool succ = this->find_trait_impls(sp, m_lang_Deref, ::HIR::PathParams {}, ty, [&](auto impls, auto match) {
-            tmp_type = impls.get_type("Target");
+            tmp_type = impls.get_type("Target", {});
             if( tmp_type == ::HIR::TypeRef() )
             {
                 tmp_type = ::HIR::TypeRef::new_path(

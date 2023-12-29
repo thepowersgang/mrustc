@@ -1481,7 +1481,7 @@ namespace {
                     TU_ARMA(TraitImpl, e) {
                         DEBUG("impl_ref = " << impl_ref);
                         equate_pps(node.span(), impl_ref.get_trait_params(), params);
-                        auto res_ty = impl_ref.get_type("Output");
+                        auto res_ty = impl_ref.get_type("Output", {});
                         m_resolve.expand_associated_types(node.span(), res_ty);
                         equate_types(node.span(), node.m_res_type, res_ty);
                         }
@@ -1500,7 +1500,7 @@ namespace {
                         }
                         else {
                             equate_pps(node.span(), e.trait_args, params); 
-                            equate_types(node.span(), node.m_res_type, impl_ref.get_type("Output"));
+                            equate_types(node.span(), node.m_res_type, impl_ref.get_type("Output", {}));
                         }
                         }
                     TU_ARMA(BoundedPtr, e) {
@@ -1518,7 +1518,7 @@ namespace {
                         }
                         else {
                             equate_pps(node.span(), *e.trait_args, params); 
-                            equate_types(node.span(), node.m_res_type, impl_ref.get_type("Output"));
+                            equate_types(node.span(), node.m_res_type, impl_ref.get_type("Output", {}));
                         }
                         }
                     }

@@ -748,6 +748,7 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
     auto match = impl_type.match_test_generics_fuzz(sp, des_type, cb_ident, get_params);
     struct BaseImplPlaceholderIdx {
         unsigned ty = 0;
+        unsigned val = 0;
         unsigned lft = 0;
     } base_impl_placeholder_idx;
     if( des_trait_params )
@@ -756,6 +757,7 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
         match &= impl_trait_params.match_test_generics_fuzz(sp, *des_trait_params, cb_ident, get_params);
 
         unsigned max_impl_idx_ty = 0;
+        unsigned max_impl_idx_val = 0;
         unsigned max_impl_idx_lft = 0;
         auto visit_lft = [&](const ::HIR::LifetimeRef& l) {
             if(l.is_param() && l.as_param().is_placeholder()) {
@@ -781,14 +783,11 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
             visit_lft(l);
         }
         base_impl_placeholder_idx.ty  = max_impl_idx_ty +1;
+        base_impl_placeholder_idx.val = max_impl_idx_val+1;
         base_impl_placeholder_idx.lft = max_impl_idx_lft+1;
 
-        size_t n_placeholder_tys_needed = 0;
-        for(unsigned int i = 0; i < impl_params.m_types.size(); i ++ ) {
-            if( !params_set.m_types[i] ) {
-                n_placeholder_tys_needed ++;
-            }
-        }
+        size_t n_placeholder_tys_needed = ::std::count(params_set.m_types.begin(), params_set.m_types.end(), false);
+        size_t n_placeholder_vals_needed = ::std::count(params_set.m_values.begin(), params_set.m_values.end(), false);
         size_t n_placeholder_lfts_needed = 0;
         for(unsigned int i = 0; i < impl_params.m_lifetimes.size(); i ++ ) {
             if( !params_set.m_lifetimes[i] ) {
@@ -801,6 +800,9 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
 #else
         if( n_placeholder_tys_needed > 0 ) {
             ASSERT_BUG(sp, base_impl_placeholder_idx.ty  + impl_params.m_types.size()  <= 256, "Out of impl placeholder types");
+        }
+        if( n_placeholder_vals_needed > 0 ) {
+            ASSERT_BUG(sp, base_impl_placeholder_idx.val + impl_params.m_values.size()  <= 256, "Out of impl placeholder values");
         }
         if( n_placeholder_tys_needed > 0 ) {
             ASSERT_BUG(sp, base_impl_placeholder_idx.lft + impl_params.m_lifetimes.size() <= 256, "Out of impl placeholder lifetimes");
@@ -827,9 +829,11 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
     }
     for(size_t i = 0; i < impl_params.m_values.size(); i ++ ) {
         if( !params_set.m_values[i] ) {
-            // TODO: Is there an equivalent of a placeholder for const generics?
-            // - Yes, it's a placeholder generic :D
-            // TODO: use placeholder generics for values
+            if( placeholders.m_values.size() == 0 ) {
+                placeholders.m_values.resize(impl_params.m_values.size());
+                placeholders_set.m_values.resize(impl_params.m_values.size());
+            }
+            placeholders.m_values[i] = ::HIR::ConstGeneric::make_Generic(::HIR::GenericRef(placeholder_name, 2*256 + base_impl_placeholder_idx.val + i));
         }
     }
     for(size_t i = 0; i < impl_params.m_lifetimes.size(); i ++ ) {
@@ -959,12 +963,12 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
         ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& val) const override {
             ASSERT_BUG(sp, val.binding < 256, "Generic value binding in " << val << " out of range (>=256)");
             ASSERT_BUG(sp, val.binding < impl_params.m_values.size(), "Generic value binding in " << val << " out of range (>= " << impl_params.m_values.size() << ")");
-            if( !impl_params.m_values.at(val.binding).is_Infer() ) {
+            if( params_set.m_values.at(val.binding) ) {
                 return impl_params.m_values.at(val.binding).clone();
             }
-            //ASSERT_BUG(sp, placeholders.m_values.size() == impl_params.m_values.size(), "Placeholder size mismatch: " << placeholders.m_values.size() << " != " << impl_params.m_values.size());
-            //return placeholders.m_values.at(val.binding).clone();
-            TODO(sp, "Value placeholders");
+            ASSERT_BUG(sp, placeholders.m_values.size() == impl_params.m_values.size(),
+                "Placeholder size mismatch: " << placeholders.m_values.size() << " != " << impl_params.m_values.size() << " - value=" << impl_params.m_values.at(val.binding));
+            return placeholders.m_values.at(val.binding).clone();
         }
         ::HIR::LifetimeRef get_lifetime(const Span& sp, const ::HIR::GenericRef& g) const override {
             if( g.group() == 3 )
@@ -1004,6 +1008,7 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
             {
                 //
                 for(const auto& assoc_bound : b_tp_mono.m_type_bounds) {
+                    // TODO: Can bounds have generic params (GATs)
                     const auto& aty_name = assoc_bound.first;
                     const ::HIR::TypeRef& exp = assoc_bound.second.type;
 
@@ -1018,7 +1023,7 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
                     }
                     else {
                         rv = this->find_impl(sp, aty_src_trait.m_path, aty_src_trait.m_params, b_ty_mono, [&](const ImplRef& impl, bool)->bool {
-                            ::HIR::TypeRef have = impl.get_type(aty_name.c_str());
+                            ::HIR::TypeRef have = impl.get_type(aty_name.c_str(), {});
                             if( have == HIR::TypeRef() ) {
                                 have = HIR::TypeRef::new_path(HIR::Path(impl.get_impl_type(), HIR::GenericPath(aty_src_trait.m_path, impl.get_trait_params()), aty_name), HIR::TypePathBinding::make_Unbound({}));
                             }
@@ -1636,7 +1641,7 @@ bool StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
             return false;
         }
         else {
-            auto nt = impl.get_type( e2.item.c_str() );
+            auto nt = impl.get_type( e2.item.c_str(), e2.params );
             if( nt != ::HIR::TypeRef() ) {
                 DEBUG("Converted UfcsKnown - " << e.path << " = " << nt);
                 if( input == nt ) {
@@ -2224,7 +2229,8 @@ bool StaticTraitResolve::can_unsize(const Span& sp, const ::HIR::TypeRef& dst_ty
                     //ASSERT_BUG(sp, !fuzz, "Fuzzy match in can_unsize - " << dst_ty << " <- " << src_ty << " - " << impl);
                     good = true;
                     for(const auto& aty : de->m_trait.m_type_bounds) {
-                        auto atyv = impl.get_type(aty.first.c_str());
+                        // TODO: Can ATY bounds have generics
+                        auto atyv = impl.get_type(aty.first.c_str(), {});
                         if( atyv == ::HIR::TypeRef() )
                         {
                             // Get the trait from which this associated type comes.

@@ -448,7 +448,7 @@ namespace {
                 unsigned int count = 0;
                 bool rv = this->context.m_resolve.find_trait_impls(node.span(), lang_Index, trait_pp, ty, [&](auto impl, auto cmp) {
                     DEBUG("[visit(_Index)] cmp=" << cmp << " - " << impl);
-                    possible_res_type = impl.get_type("Output");
+                    possible_res_type = impl.get_type("Output", {});
                     count += 1;
                     if( cmp == ::HIR::Compare::Equal ) {
                         return true;
@@ -758,7 +758,7 @@ namespace {
                         MonomorphHrlsOnly(HIR::PathParams()).monomorph_type(node.span(), tup);
                         fcn_args_tup = mv$(tup);
 
-                        fcn_ret = impl.get_type("Output");
+                        fcn_ret = impl.get_type("Output", {});
                         DEBUG("[visit:_CallValue] fcn_args_tup=" << fcn_args_tup << ", fcn_ret=" << fcn_ret);
                         return cmp == ::HIR::Compare::Equal;
                     });
@@ -804,7 +804,7 @@ namespace {
                                 if (!tup.data().is_Tuple())
                                     ERROR(node.span(), E0000, "FnOnce expects a tuple argument, got " << tup);
                                 fcn_args_tup = mv$(tup);
-                                fcn_ret = impl.get_type("Output");
+                                fcn_ret = impl.get_type("Output", {});
                                 ASSERT_BUG(node.span(), fcn_ret != ::HIR::TypeRef(), "Impl didn't have a type for Output - " << impl);
                                 return true;
                             });
@@ -5175,7 +5175,8 @@ namespace {
             [&](ImplRef impl, HIR::Compare cmp) {
                 DEBUG("[check_associated] Found cmp=" << cmp << " " << impl);
                 if( v.name != "" ) {
-                    auto out_ty_o = impl.get_type(v.name.c_str());
+                    // TODO: Are params needed for these ATY bounds?
+                    auto out_ty_o = impl.get_type(v.name.c_str(), {});
                     if( out_ty_o == ::HIR::TypeRef() )
                     {
                         out_ty_o = ::HIR::TypeRef::new_path(::HIR::Path( v.impl_ty.clone(), ::HIR::GenericPath(v.trait, v.params.clone()), v.name, ::HIR::PathParams() ), {});
@@ -5269,8 +5270,8 @@ namespace {
                             // Edge case: Might be just outright identical
                             if( possible_impl.impl_ty == impl_ty && possible_impl.params == impl_params )
                             {
-                                auto t1 = v.name == "" ? HIR::TypeRef() : possible_impl.impl_ref.get_type(v.name.c_str());
-                                auto t2 = v.name == "" ? HIR::TypeRef() : impl.get_type(v.name.c_str());
+                                auto t1 = v.name == "" ? HIR::TypeRef() : possible_impl.impl_ref.get_type(v.name.c_str(), {});
+                                auto t2 = v.name == "" ? HIR::TypeRef() : impl.get_type(v.name.c_str(), {});
                                 if(v.name == "" || t1 == t2 || t2 == HIR::TypeRef())
                                 {
                                     DEBUG("[check_associated] HACK: Same type and params, and ATY matches or this impl doesn't have it");
@@ -5291,7 +5292,8 @@ namespace {
                                 }
                                 else
                                 {
-                                    DEBUG("[check_associated] HACK: Same type and params, but ATY mismatch - " << possible_impl.impl_ref.get_type(v.name.c_str()) << " != " << impl.get_type(v.name.c_str()));
+                                    DEBUG("[check_associated] HACK: Same type and params, but ATY mismatch - "
+                                        << possible_impl.impl_ref.get_type(v.name.c_str(), {}) << " != " << impl.get_type(v.name.c_str(), {}));
                                 }
                             }
                         }
@@ -5431,7 +5433,7 @@ namespace {
                         break;
                     TU_ARMA(TraitBound, be) {
                         DEBUG("New bound (pre-mono) " << bound);
-                        auto ms = best_impl.get_cb_monomorph_traitimpl(sp);
+                        auto ms = best_impl.get_cb_monomorph_traitimpl(sp, {});
                         static const HIR::GenericParams empty_params;
                         bool outer_present = be.hrtbs && !be.hrtbs->is_empty();
                         auto _ = ms.push_hrb(outer_present ? *be.hrtbs : empty_params);
@@ -5646,7 +5648,7 @@ namespace
                 // If this bound specifies an associated type, then check that that type could match
                 if( bound.name != "" )
                 {
-                    auto aty = impl.get_type(bound.name.c_str());
+                    auto aty = impl.get_type(bound.name.c_str(), {});
                     // The associated type is not present, what does that mean?
                     if( aty == ::HIR::TypeRef() ) {
                         DEBUG("[check_ivar_poss__fails_bounds] No ATY for " << bound.name << " in impl");
