@@ -909,7 +909,40 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
             }
         }
         ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::ConstGeneric& val) override {
+            if( const auto* ge = val.opt_Generic() ) {
+                if( ge->binding == g.binding ) {
+                    return HIR::Equal;
+                }
+            }
+
+            if( g.is_placeholder() )
+            {
+                if( g.idx() >= base_impl_placeholder_idx.val )
+                {
+                    auto i = g.idx() - base_impl_placeholder_idx.val;
+                    ASSERT_BUG(sp, !params_set.m_values[i],
+                        "Placeholder to populated value returned. new " << val << ", existing " << impl_params.m_values[i]);
+                    auto& ph = placeholders.m_values[i];
+                    if( !placeholders_set.m_values[i] ) {
+                        DEBUG("[find_impl__check_crate_raw] Bind placeholder value " << i << " to " << val);
+                        placeholders_set.m_values[i] = true;
+                        ph = val.clone();
+                        return ::HIR::Compare::Equal;
+                    }
+                    else if( ph == val ) {
+                        return ::HIR::Compare::Equal;
+                    }
+                    else {
+                        TODO(sp, "[find_impl__check_crate_raw] Compare placeholder value " << i << " " << ph << " == " << val);
+                    }
+                }
+                else {
+                    return ::HIR::Compare::Fuzzy;
+                }
+            }
+
             TODO(Span(), "Matcher::match_val " << g << " with " << val);
+            return ::HIR::Compare::Unequal;
         }
         ::HIR::Compare match_lft(const ::HIR::GenericRef& g, const ::HIR::LifetimeRef& lft) override {
             if( lft.is_param() && lft.binding == g.binding ) {
@@ -933,7 +966,7 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
                         return ::HIR::Compare::Equal;
                     }
                     else {
-                        TODO(sp, "[find_impl__check_crate_raw] Compare placeholder type " << i << " " << ph << " == " << lft);
+                        TODO(sp, "[find_impl__check_crate_raw] Compare placeholder lifetime " << i << " " << ph << " == " << lft);
                     }
                 }
                 else {
