@@ -451,14 +451,6 @@ bool StaticTraitResolve::find_impl(
 
     bool ret;
 
-    // TODO: A bound can imply something via its associated types. How deep can this go?
-    // E.g. `T: IntoIterator<Item=&u8>` implies `<T as IntoIterator>::IntoIter : Iterator<Item=&u8>`
-    if( this->find_impl__bounds(sp, trait_path, trait_params, type, found_cb) )
-    {
-        DEBUG("Success");
-        return true;
-    }
-
     if( m_crate.get_trait_by_path(sp, trait_path).m_is_marker )
     {
         struct H {
@@ -519,7 +511,6 @@ bool StaticTraitResolve::find_impl(
         auto cmp = this->check_auto_trait_impl_destructure(sp, trait_path, trait_params, type);
         if( cmp != ::HIR::Compare::Unequal )
             return found_cb( ImplRef(&null_hrls, &type, trait_params, &null_assoc), cmp == ::HIR::Compare::Fuzzy );
-        return false;
     }
     else
     {
@@ -530,9 +521,18 @@ bool StaticTraitResolve::find_impl(
             });
         if(ret)
             return true;
-
-        return false;
     }
+
+
+    // TODO: A bound can imply something via its associated types. How deep can this go?
+    // E.g. `T: IntoIterator<Item=&u8>` implies `<T as IntoIterator>::IntoIter : Iterator<Item=&u8>`
+    if( this->find_impl__bounds(sp, trait_path, trait_params, type, found_cb) )
+    {
+        DEBUG("Success");
+        return true;
+    }
+
+    return false;
 }
 
 bool StaticTraitResolve::find_impl__bounds(
@@ -1513,22 +1513,14 @@ bool StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
                 else {
                     assume_opaque = false;
                     input = it->second.type.clone();
+                    rv = true;
                 }
-                rv = true;
                 break;
             }
         }
     }
     if( rv ) {
-        if( assume_opaque ) {
-            input.data_mut().as_Path().binding = ::HIR::TypePathBinding::make_Opaque({});
-            ASSERT_BUG(sp, monomorphise_type_needed(input), "Set opaque on a non-generic type: " << input);
-            DEBUG("Assuming that " << input << " is an opaque name");
-
-            bool rv = this->replace_equalities(input);
-            if( recurse )
-                this->expand_associated_types_inner(sp, input);
-            return rv;
+        if(false) {
         }
         else {
             if( recurse )
@@ -1671,6 +1663,17 @@ bool StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
         this->replace_equalities(input);
         DEBUG("- Couldn't find a non-specialised impl of " << trait_path << " for " << e2.type << " - treating as opaque");
         return false;
+    }
+
+    if( assume_opaque ) {
+        input.data_mut().as_Path().binding = ::HIR::TypePathBinding::make_Opaque({});
+        ASSERT_BUG(sp, monomorphise_type_needed(input), "Set opaque on a non-generic type: " << input);
+        DEBUG("Assuming that " << input << " is an opaque name");
+
+        bool rv = this->replace_equalities(input);
+        if( recurse )
+            this->expand_associated_types_inner(sp, input);
+        return rv;
     }
 
     ERROR(sp, E0000, "Cannot find an implementation of " << trait_path << " for " << e2.type);
