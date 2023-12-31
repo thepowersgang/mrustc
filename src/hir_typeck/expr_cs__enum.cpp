@@ -353,6 +353,7 @@ namespace typecheck
         assert( fcn_ptr );
         cache.m_fcn = fcn_ptr;
         const auto& fcn = *fcn_ptr;
+        cache.m_monomorph->set_consteval_state(context.m_crate, HIR::ItemPath(path));
         const auto& monomorph = *cache.m_monomorph;
 
         // --- Monomorphise the argument/return types (into current context)

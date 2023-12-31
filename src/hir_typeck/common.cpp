@@ -8,7 +8,7 @@
 #include "common.hpp"
 #include <hir/path.hpp>
 #include "trans/target.hpp"
-
+#include <hir_conv/constant_evaluation.hpp>
 
 template<typename I>
 struct WConst {
@@ -530,9 +530,22 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
         }
 
         if(se->is_Unevaluated()) {
-            // TODO: Evaluate
-            DEBUG("Evaluate unevaluated generic for array size - " << *se);
-            return se->clone();
+            if( this->consteval_crate ) {
+                auto& uneval = se->as_Unevaluated();
+                struct Nvs: public ::HIR::Evaluator::Newval
+                {
+                    ::HIR::Path new_static(::HIR::TypeRef type, EncodedLiteral value) override {
+                        TODO(Span(), "Create new static in monomorph pass - " << value << " : " << type);
+                    }
+                } nvs;
+                auto eval = ::HIR::Evaluator { sp, *this->consteval_crate, nvs };
+                auto res = eval.evaluate_constant(this->consteval_path, *uneval, HIR::TypeRef(HIR::CoreType::Usize));
+                return res.read_usize(0);
+            }
+            else {
+                DEBUG("TODO: Evaluate unevaluated generic for array size - " << *se);
+                return se->clone();
+            }
         }
         else if( se->is_Evaluated() ) {
             return se->as_Evaluated()->read_usize(0);

@@ -777,6 +777,7 @@ namespace {
 
             assert( fcn_ptr );
             const auto& fcn = *fcn_ptr;
+            monomorph_cb.set_consteval_state(m_resolve.m_crate, HIR::ItemPath(path));
 
             // --- Monomorphise the argument/return types (into current context)
             cache.m_arg_types.clear();

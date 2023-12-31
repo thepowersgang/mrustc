@@ -48,7 +48,12 @@ namespace HIR {
             os << "Unevaluated(";
             if(e->m_mir) {
                 for(const auto& b : e->m_mir->blocks) {
-                    os << b.statements << "; " << b.terminator;
+                    os << "bb" << (&b - e->m_mir->blocks.data()) << ":{ ";
+                    for(const auto& s : b.statements) {
+                        os << s << "; ";
+                    }
+                    os << b.terminator;
+                    os << " }";
                 }
             }
             else {

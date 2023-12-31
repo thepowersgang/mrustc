@@ -1191,6 +1191,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                     const auto& p = e.fcn.as_Path();
 
                     MonomorphState  out_params;
+                    out_params.set_consteval_state(state.m_crate, HIR::ItemPath(p));
                     const auto& sig = state.m_resolve.get_value(sp, p, out_params, /*sig_only=*/true);
                     MIR_ASSERT(state, sig.is_Function(), "Call Fcn::Path with non-function value - " << p << " is " << sig.tag_str());
                     const auto& fcn = *sig.as_Function();

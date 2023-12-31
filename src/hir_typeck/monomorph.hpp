@@ -2,6 +2,7 @@
 #pragma once
 #include <hir/generic_params.hpp>
 #include <hir/type.hpp>
+#include <hir/item_path.hpp>
 
 extern bool monomorphise_pathparams_needed(const ::HIR::PathParams& tpl, bool ignore_lifetimes=false);
 static inline bool monomorphise_genericpath_needed(const ::HIR::GenericPath& tpl, bool ignore_lifetimes=false) {
@@ -13,8 +14,15 @@ extern bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_life
 
 class Monomorphiser
 {
+    const HIR::Crate*   consteval_crate;
+    HIR::ItemPath consteval_path;
     mutable std::vector<const HIR::GenericParams*>  m_hrb_stack;
 public:
+    Monomorphiser()
+        : consteval_crate(nullptr)
+        , consteval_path("")
+    {
+    }
     virtual ~Monomorphiser() = default;
     
     class PopOnDrop {
@@ -30,6 +38,11 @@ public:
     PopOnDrop push_hrb(const HIR::GenericParams& params) const {
         m_hrb_stack.push_back(&params);
         return PopOnDrop(m_hrb_stack);
+    }
+
+    void set_consteval_state(const HIR::Crate& crate, HIR::ItemPath ip) {
+        this->consteval_crate = &crate;
+        this->consteval_path = ip;
     }
 
     virtual ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& g) const = 0;
