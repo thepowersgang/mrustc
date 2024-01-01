@@ -921,7 +921,7 @@ namespace HIR {
             LocalState(::MIR::TypeResolve& state, const MonomorphState& ms, ::std::vector<AllocationPtr>& args):
                 state(state),
                 ms(ms),
-                ret_type( ms.monomorph_type(state.sp, state.m_ret_type) ),
+                ret_type( state.m_resolve.monomorph_expand(state.sp, state.m_ret_type, ms) ),
                 retval( AllocationPtr::allocate(state, ret_type) ),
                 args(args)
             {
@@ -929,7 +929,7 @@ namespace HIR {
                 locals     .reserve( state.m_fcn.locals.size() );
                 for(size_t i = 0; i < state.m_fcn.locals.size(); i ++)
                 {
-                    local_types.push_back( ms.monomorph_type(state.sp, state.m_fcn.locals[i]) );
+                    local_types.push_back( state.m_resolve.monomorph_expand(state.sp, state.m_fcn.locals[i], ms) );
                     locals.push_back( AllocationPtr::allocate(state, local_types.back()) );
                 }
 
@@ -2175,8 +2175,9 @@ namespace HIR {
 
                     // Monomorphised argument types
                     ::HIR::Function::args_t arg_defs;
-                    for(const auto& a : fcn.m_args)
-                        arg_defs.push_back( ::std::make_pair(::HIR::Pattern(), fcn_ms.monomorph_type(this->root_span, a.second)) );
+                    for(const auto& a : fcn.m_args) {
+                        arg_defs.push_back( ::std::make_pair(::HIR::Pattern(), this->resolve.monomorph_expand(this->root_span, a.second, fcn_ms)) );
+                    }
 
                     // TODO: Set m_const during parse and check here
 
@@ -2186,7 +2187,7 @@ namespace HIR {
                         auto fcn_ip = ::HIR::ItemPath(fcnp);
                         const auto* mir = this->resolve.m_crate.get_or_gen_mir( fcn_ip, fcn );
                         MIR_ASSERT(state, mir, "No MIR for function " << fcnp);
-                        auto ret_ty = fcn_ms.monomorph_type(this->root_span, fcn.m_return);
+                        auto ret_ty = this->resolve.monomorph_expand(this->root_span, fcn.m_return, fcn_ms);
                         auto rv = evaluate_constant_mir(fcn_ip, *mir, mv$(fcn_ms), mv$(ret_ty), arg_defs, mv$(call_args));
                         dst.copy_from( state, ValueRef(rv) );
                     }
