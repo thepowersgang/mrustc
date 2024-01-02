@@ -1035,7 +1035,6 @@ namespace MIR { namespace eval {
 
             state.m_monomorphed_rettype = &ret_type;
             state.m_monomorphed_locals = &local_types;
-            DEBUG(ms << " " << this->ms);
         }
 
         StaticRefPtr get_staticref_mono(const ::HIR::Path& p)
@@ -1477,7 +1476,6 @@ namespace HIR {
             std::move(args)
         ));
         this->num_frames += 1;
-        DEBUG(this->call_stack.back()->ms);
     }
 
     AllocationPtr Evaluator::run_until_stack_empty()
@@ -2263,7 +2261,6 @@ namespace HIR {
 
                 MonomorphState  fcn_ms;
                 auto& fcn = get_function(this->root_span, this->resolve, *fcnp, fcn_ms);
-                DEBUG(fcnp_raw << " " << fcn_ms << " -> " << fcnp);
 
                 // Argument values
                 ::std::vector<AllocationPtr>  call_args;
@@ -2289,7 +2286,6 @@ namespace HIR {
                 // Call by invoking evaluate_constant on the function
                 const auto* mir = this->resolve.m_crate.get_or_gen_mir( ::HIR::ItemPath(*fcnp), fcn );
                 MIR_ASSERT(state, mir, "No MIR for function " << fcnp);
-                DEBUG(fcnp_raw << " " << fcn_ms << " -> " << fcnp);
 
                 push_stack_entry(::FmtLambda([=](std::ostream& os){ os << *fcnp; }), *mir, std::move(fcn_ms), std::move(ret_ty), ::std::move(arg_defs), std::move(call_args));
                 return TERM_RET_PUSHED;
