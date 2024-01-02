@@ -1721,14 +1721,30 @@ namespace HIR {
         const auto& state = local_state.state;
         DEBUG("F" << local_state.frame_index << " " << state << stmt);
 
-        if( ! stmt.is_Assign() ) {
-            // NOTE: `const FOO: &Foo = &Foo { ... }` does't get rvalue promoted because of challenges in
-            // running promotion during early generation
+        TU_MATCH_HDRA( (stmt), { )
+        TU_ARMA(Assign, e) {
+            // Fall through
+            }
+        TU_ARMA(Drop, se) {
             // HACK: Ignore drops... for now
-            if( stmt.is_Drop() )
-                return ;
-            MIR_TODO(state, "Non-assign statement - " << stmt);
-            return ;
+            return;
+            }
+        TU_ARMA(ScopeEnd, se) {
+            // Just ignore, it's a hint
+            return;
+            }
+        TU_ARMA(SetDropFlag, se) {
+            // Ignore drop flags, we're ignoring drops
+            if( se.other == UINT_MAX ) {
+                //MIR_TODO(state, "Set df$" << se.idx << " = " << se.new_val);
+            }
+            else {
+                //MIR_TODO(state, "Set df$" << se.idx << " = " << (se.new_val ? "!" : "") << "df$" << se.other);
+            }
+            return;
+            }
+        TU_ARMA(Asm, se) { MIR_TODO(state, "Non-assign statement - " << stmt); }
+        TU_ARMA(Asm2, se) { MIR_TODO(state, "Non-assign statement - " << stmt); }
         }
 
         const auto& sa = stmt.as_Assign();
