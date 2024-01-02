@@ -1512,7 +1512,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
         TU_ARM(bb.terminator, If, te) {
             uint8_t v = state.get_value_ref(te.cond).read_u8(0);
             LOG_ASSERT(v == 0 || v == 1, "Boolean isn't 0/1 - instead " << int(v));
-            cur_frame.bb_idx = v ? te.bb0 : te.bb1;
+            cur_frame.bb_idx = v ? te.bb_true : te.bb_false;
             } break;
         TU_ARM(bb.terminator, Switch, te) {
             ::HIR::TypeRef ty;

@@ -842,8 +842,8 @@
                 ),
             (If,
                 serialise(e.cond);
-                m_out.write_count(e.bb0);
-                m_out.write_count(e.bb1);
+                m_out.write_count(e.bb_true);
+                m_out.write_count(e.bb_false);
                 ),
             (Switch,
                 serialise(e.val);

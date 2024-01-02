@@ -1013,7 +1013,7 @@ namespace
                     m_of << "PANIC " << e.dst << "\n";
                     break;
                 TU_ARM(term, If, e)
-                    m_of << "IF " << fmt(e.cond) << " goto " << e.bb0 << " else " << e.bb1 << "\n";
+                    m_of << "IF " << fmt(e.cond) << " goto " << e.bb_true << " else " << e.bb_false << "\n";
                     break;
                 TU_ARM(term, Switch, e) {
                     m_of << "SWITCH " << fmt(e.val) << " { ";

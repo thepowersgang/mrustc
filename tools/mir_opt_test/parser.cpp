@@ -941,8 +941,8 @@ namespace {
                 e.panic_block = translate_bb(e.panic_block);
                 }
             TU_ARMA(If, e) {
-                e.bb0 = translate_bb(e.bb0);
-                e.bb1 = translate_bb(e.bb1);
+                e.bb_true = translate_bb(e.bb_true);
+                e.bb_false = translate_bb(e.bb_false);
                 }
             TU_ARMA(Switch, e) {
                 for(auto& tgt : e.targets)

@@ -2016,7 +2016,7 @@ namespace HIR {
         TU_ARMA(If, e) {
             bool res = U128(0) != local_state.get_lval(e.cond).read_uint(state, 1);
             DEBUG(state << " IF " << res);
-            return res ? e.bb1 : e.bb0;
+            return res ? e.bb_true : e.bb_false;
             }
         TU_ARMA(Switch, e) {
             HIR::TypeRef    tmp;

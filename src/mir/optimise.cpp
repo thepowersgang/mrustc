@@ -802,8 +802,8 @@ namespace
             cb(e.dst);
             }
         TU_ARMA(If, e) {
-            cb(e.bb0);
-            cb(e.bb1);
+            cb(e.bb_true );
+            cb(e.bb_false);
             }
         TU_ARMA(Switch, e) {
             for(auto& target : e.targets)
@@ -1462,8 +1462,8 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
             (If,
                 return ::MIR::Terminator::make_If({
                     this->clone_lval(se.cond),
-                    se.bb0 + this->bb_base,
-                    se.bb1 + this->bb_base
+                    se.bb_true  + this->bb_base,
+                    se.bb_false + this->bb_base
                     });
                 ),
             (Switch,
@@ -3168,9 +3168,9 @@ bool MIR_Optimise_UnifyBlocks(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             (If,
                 if( ae.cond != be.cond )
                     return false;
-                if( ae.bb0 != be.bb0 )
+                if( ae.bb_true  != be.bb_true  )
                     return false;
-                if( ae.bb1 != be.bb1 )
+                if( ae.bb_false != be.bb_false )
                     return false;
                 ),
             (Switch,
@@ -4544,7 +4544,7 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
                 }
                 else {
                     MIR_ASSERT(state, it->second.is_Bool(), "Terminator::If with known value not Bool - " << it->second);
-                    auto new_bb = (it->second.as_Bool().v ? te.bb0 : te.bb1);
+                    auto new_bb = (it->second.as_Bool().v ? te.bb_true : te.bb_false);
                     DEBUG(state << "Convert " << bb.terminator << " into Goto(" << new_bb << ") because condition known to be " << it->second);
                     bb.terminator = ::MIR::Terminator::make_Goto(new_bb);
 
@@ -4615,7 +4615,7 @@ bool MIR_Optimise_ConstPropagate(::MIR::TypeResolve& state, ::MIR::Function& fcn
         if( val_known )
         {
             DEBUG("bb" << bbidx << ": Condition known to be " << known_val);
-            bb.terminator = ::MIR::Terminator::make_Goto( known_val ? te.bb0 : te.bb1 );
+            bb.terminator = ::MIR::Terminator::make_Goto( known_val ? te.bb_true : te.bb_false );
             changed = true;
         }
     }
@@ -6294,8 +6294,8 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
             (Panic,
                 ),
             (If,
-                e.bb0 = block_rewrite_table[e.bb0];
-                e.bb1 = block_rewrite_table[e.bb1];
+                e.bb_true  = block_rewrite_table[e.bb_true ];
+                e.bb_false = block_rewrite_table[e.bb_false];
                 ),
             (Switch,
                 for(auto& target : e.targets)
@@ -6404,8 +6404,8 @@ void MIR_SortBlocks(const StaticTraitResolve& resolve, const ::HIR::ItemPath& pa
             todo.push_back(Todo { te.dst, info.branch_count, info.level + 1 });
             ),
         (If,
-            todo.push_back(Todo { te.bb0, ++branches, info.level + 1 });
-            todo.push_back(Todo { te.bb1, ++branches, info.level + 1 });
+            todo.push_back(Todo { te.bb_true , ++branches, info.level + 1 });
+            todo.push_back(Todo { te.bb_false, ++branches, info.level + 1 });
             ),
         (Switch,
             for(auto dst : te.targets)

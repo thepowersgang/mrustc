@@ -615,8 +615,8 @@ TAGGED_UNION(Terminator, Incomplete,
     (Panic, struct { BasicBlockId dst; }),  // ?
     (If, struct {
         LValue cond;
-        BasicBlockId    bb0;    // true
-        BasicBlockId    bb1;    // false
+        BasicBlockId    bb_true;
+        BasicBlockId    bb_false;
         }),
     (Switch, struct {
         LValue val;

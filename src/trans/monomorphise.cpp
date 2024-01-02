@@ -349,7 +349,7 @@ namespace {
         (If,
             terminator = ::MIR::Terminator::make_If({
                 monomorph_LValue(resolve, params, e.cond),
-                e.bb0, e.bb1
+                e.bb_true, e.bb_false
                 });
             ),
         (Switch,

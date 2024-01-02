@@ -268,10 +268,10 @@ namespace MIR {
             os << "Goto(" << e << ")";
             ),
         (Panic,
-            os << "Panic(" << e.dst << ";)";
+            os << "Panic(" << e.dst << ")";
             ),
         (If,
-            os << "If( " << e.cond << " : " << e.bb0 << ", " << e.bb1 << ")";
+            os << "If( " << e.cond << " goto " << e.bb_true << " else " << e.bb_false << ")";
             ),
         (Switch,
             os << "Switch( " << e.val << " : ";

@@ -575,8 +575,8 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
         TU_ARMA(If, e) {
             // Push blocks
             val_state.ensure_valid( state, e.cond );
-            add_to_visit_copy( e.bb0, path, val_state );
-            add_to_visit_move( e.bb1, mv$(path), mv$(val_state) );
+            add_to_visit_copy( e.bb_true , path, val_state );
+            add_to_visit_move( e.bb_false, mv$(path), mv$(val_state) );
             }
         TU_ARMA(Switch, e) {
             val_state.ensure_valid( state, e.val );
@@ -684,8 +684,8 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 PUSH_BB(e.dst, "Panic");
                 ),
             (If,
-                PUSH_BB(e.bb0, "If true");
-                PUSH_BB(e.bb1, "If false");
+                PUSH_BB(e.bb_true , "If true");
+                PUSH_BB(e.bb_false, "If false");
                 ),
             (Switch,
                 for(unsigned int i = 0; i < e.targets.size(); i++ ) {

@@ -146,34 +146,34 @@ public:
                 bb_idx = SIZE_MAX;
                 ),
             (If,
-                auto arm0 = process_node_ref(te.bb0);
-                auto arm1 = process_node_ref(te.bb1);
+                auto arm_t = process_node_ref(te.bb_true );
+                auto arm_f = process_node_ref(te.bb_false);
                 bb_idx = SIZE_MAX;
-                if( arm0.has_target() && arm1.has_target() ) {
-                    if( arm0.target() == arm1.target() ) {
-                        DEBUG("If targets " << arm0.target() << " == " << arm1.target());
-                        bb_idx = arm0.target();
+                if( arm_t.has_target() && arm_f.has_target() ) {
+                    if( arm_t.target() == arm_f.target() ) {
+                        DEBUG("If targets " << arm_t.target() << " == " << arm_f.target());
+                        bb_idx = arm_t.target();
                     }
                     else {
                         stop = true;
-                        DEBUG("If targets " << arm0.target() << " != " << arm1.target());
+                        DEBUG("If targets " << arm_t.target() << " != " << arm_f.target());
                         // TODO: Pick one?
                     }
                 }
-                else if( arm0.has_target() ) {
-                    DEBUG("If targets " << arm0.target() << ", NONE");
-                    bb_idx = arm0.target();
+                else if( arm_t.has_target() ) {
+                    DEBUG("If targets " << arm_t.target() << ", NONE");
+                    bb_idx = arm_t.target();
                 }
-                else if( arm1.has_target() ) {
-                    DEBUG("If targets NONE, " << arm1.target());
-                    bb_idx = arm1.target();
+                else if( arm_f.has_target() ) {
+                    DEBUG("If targets NONE, " << arm_f.target());
+                    bb_idx = arm_f.target();
                 }
                 else {
                     // No target from either arm
                     DEBUG("If targets NONE, NONE");
                     stop = true;
                 }
-                refs.push_back(Node::make_If({ bb_idx, &te.cond, mv$(arm0), mv$(arm1) }));
+                refs.push_back(Node::make_If({ bb_idx, &te.cond, mv$(arm_t), mv$(arm_f) }));
                 ),
             (Switch,
                 ::std::vector<NodeRef>  arms;
@@ -338,8 +338,8 @@ public:
         (Return,
             ),
         (If,
-            conv.m_block_ref_count[te.bb0] += 1;
-            conv.m_block_ref_count[te.bb1] += 1;
+            conv.m_block_ref_count[te.bb_true ] += 1;
+            conv.m_block_ref_count[te.bb_false] += 1;
             ),
         (Switch,
             for(auto tgt : te.targets)

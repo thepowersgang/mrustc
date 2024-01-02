@@ -2902,7 +2902,7 @@ namespace {
                     m_of << "\tgoto bb" << e << "; /* panic */\n";
                     }
                 TU_ARMA(If, e) {
-                    m_of << "\tif("; emit_lvalue(e.cond); m_of << ") goto bb" << e.bb0 << "; else goto bb" << e.bb1 << ";\n";
+                    m_of << "\tif("; emit_lvalue(e.cond); m_of << ") goto bb" << e.bb_true << "; else goto bb" << e.bb_false << ";\n";
                     }
                 TU_ARMA(Switch, e) {
 
