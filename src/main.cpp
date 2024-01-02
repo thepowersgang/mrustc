@@ -83,6 +83,9 @@ struct ProgramParams
     ::std::set< ::std::string> features;
 
     struct {
+        /// Testing hack: Pause just after startup (to allow a debugger to attach)
+        bool pause = false;
+
         bool disable_mir_optimisations = false;
         bool full_validate = false;
         bool full_validate_early = false;
@@ -238,6 +241,12 @@ int main(int argc, char *argv[])
 {
     init_debug_list();
     ProgramParams   params(argc, argv);
+
+    if(params.debug.pause) {
+        char c;
+        ::std::cerr << "Pausing to attach a debugger\nType any text to continue" << std::endl;
+        ::std::cin >> c;
+    }
 
     // Set up cfg values
     CompilePhaseV("Setup", [&]() {
@@ -1132,6 +1141,9 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                         ::std::cerr << "Unknown argument to -Z stop-after - '" << optval << "'" << ::std::endl;
                         exit(1);
                     }
+                }
+                else if( optname == "pause-after-start" ) {
+                    this->debug.pause = true;
                 }
                 else if( optname == "print-cfgs") {
                     no_optval();
