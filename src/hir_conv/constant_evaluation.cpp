@@ -1693,51 +1693,40 @@ namespace HIR {
 
     AllocationPtr Evaluator::run_until_stack_empty()
     {
-        const unsigned MAX_STATEMENT_COUNT = 1000;
+        const unsigned MAX_BLOCK_COUNT = 1000;
         assert( !this->call_stack.empty() );
-        for(unsigned idx = 0; idx < MAX_STATEMENT_COUNT; idx += 1)
+        for(unsigned idx = 0; idx < MAX_BLOCK_COUNT; idx += 1)
         {
             auto& state = this->call_stack.back()->state;
             const auto& bb = state.m_fcn.blocks[state.get_cur_block()];
-            if( state.get_cur_stmt_ofs() < bb.statements.size() )
+            for(const auto& stmt : bb.statements)
             {
-                // Running a statement
-                const auto& stmt = bb.statements[state.get_cur_stmt_ofs()];
-
+                state.set_cur_stmt(state.get_cur_block(), &stmt - bb.statements.data());
                 this->run_statement(*this->call_stack.back(), stmt);
-
-                if( state.get_cur_stmt_ofs() + 1 >= bb.statements.size() ) {
-                    state.set_cur_stmt_term(state.get_cur_block());
+            }
+            state.set_cur_stmt_term(state.get_cur_block());
+            auto next_block = run_terminator(*this->call_stack.back(), bb.terminator);
+            switch(next_block)
+            {
+            case TERM_RET_PUSHED:
+                continue;
+            case TERM_RET_RETURN: {
+                MIR::eval::AllocationPtr rv = std::move(this->call_stack.back()->retval);
+                this->call_stack.pop_back();
+                if( this->call_stack.empty() == 1 ) {
+                    return rv;
                 }
                 else {
-                    state.set_cur_stmt(state.get_cur_block(), state.get_cur_stmt_ofs() + 1);
+                    auto& next_state = *this->call_stack.back();
+                    const auto& term = next_state.state.m_fcn.blocks[next_state.state.get_cur_block()].terminator;
+                    const auto& te = term.as_Call();
+                    auto dst = next_state.get_lval(te.ret_val);
+                    dst.copy_from(next_state.state, ValueRef(rv));
+                    next_state.state.set_cur_stmt(te.ret_block, 0);
                 }
-            }
-            else
-            {
-                auto next_block = run_terminator(*this->call_stack.back(), bb.terminator);
-                switch(next_block)
-                {
-                case TERM_RET_PUSHED:
-                    continue;
-                case TERM_RET_RETURN: {
-                    auto rv = std::move(this->call_stack.back()->retval);
-                    this->call_stack.pop_back();
-                    if( this->call_stack.empty() == 1 ) {
-                        return rv;
-                    }
-                    else {
-                        auto& next_state = *this->call_stack.back();
-                        const auto& term = next_state.state.m_fcn.blocks[next_state.state.get_cur_block()].terminator;
-                        const auto& te = term.as_Call();
-                        auto dst = next_state.get_lval(te.ret_val);
-                        dst.copy_from(next_state.state, ValueRef(rv));
-                        next_state.state.set_cur_stmt(te.ret_block, 0);
-                    }
-                    break; }
-                default:
-                    state.set_cur_stmt(next_block, 0);
-                }
+                break; }
+            default:
+                state.set_cur_stmt(next_block, 0);
             }
         }
         ERROR(this->root_span, E0000, "Constant evaluation ran for too long");
