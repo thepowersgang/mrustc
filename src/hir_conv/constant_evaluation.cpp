@@ -1124,6 +1124,31 @@ namespace MIR { namespace eval {
                 DEBUG(w << " " << val << ": " << *typ);
                 TU_MATCH_HDRA( (w), {)
                 TU_ARMA(Field, e) {
+                    if( typ->data().is_Slice() || typ->data().is_Array() ) {
+                        // Check the inner type
+                        size_t  size;
+                        if( const auto* te = typ->data().opt_Array() ) {
+                            typ = &te->inner;
+                            size = te->size.as_Known();
+                        }
+                        else if( const auto* te = typ->data().opt_Slice() ) {
+                            typ = &te->inner;
+                            // Get metadata
+                            size = metadata.read_usize(state);
+                        }
+                        else {
+                            throw "";
+                        }
+                        metadata = ValueRef();
+                        size_t sz, al;
+                        if( !Target_GetSizeAndAlignOf(state.sp, state.m_resolve, *typ,  sz, al) )
+                            throw Defer();
+                        MIR_ASSERT(state, sz < SIZE_MAX, "Unsized type on index output - " << *typ);
+                        size_t  index = e;
+                        MIR_ASSERT(state, index < size, "LValue::Index index out of range - " << index << " >= " << size);
+                        val = val.slice(index * sz, sz);
+                        continue;
+                    }
                     auto* repr = Target_GetTypeRepr(state.sp, state.m_resolve, *typ);
                     MIR_ASSERT(state, repr, "No repr for " << *typ);
                     MIR_ASSERT(state, e < repr->fields.size(), "LValue::Field index out of range");
@@ -1152,6 +1177,7 @@ namespace MIR { namespace eval {
                         typ = &te->inner;
                     }
                     else {
+                        MIR_BUG(state, "Deref of unsupported type - " << *typ);
                     }
                     // If the inner type is unsized
                     size_t sz, al;
@@ -1187,6 +1213,7 @@ namespace MIR { namespace eval {
                         size = metadata.read_usize(state);
                     }
                     else {
+                        MIR_BUG(state, "Index of unsupported type - " << *typ);
                     }
                     metadata = ValueRef();
                     size_t sz, al;
