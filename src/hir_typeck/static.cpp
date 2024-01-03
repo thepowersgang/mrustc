@@ -1269,7 +1269,8 @@ bool StaticTraitResolve::find_impl__check_crate(
             BUG(sp, "UfcsUnknown in typeck - " << type);
             }
         TU_ARMA(UfcsKnown, pe) {
-            TODO(sp, "Check trait bounds for bound on UfcsKnown " << type);
+            return ::HIR::Compare::Unequal;
+            //TODO(sp, "Check trait bounds for bound on UfcsKnown " << type);
             }
         TU_ARMA(UfcsInherent, pe) {
             TODO(sp, "Auto trait lookup on UFCS Inherent type");

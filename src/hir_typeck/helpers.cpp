@@ -2277,6 +2277,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
 
     // 1. Bounds
     bool rv = false;
+    bool found_bound_with_no_type = false;
     enum class ResultType {
         Opaque,
         LeaveUnbound,
@@ -2306,14 +2307,17 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
                 if( it == bound_info.assoc.end() ) {
                     // If not, assume it's opaque and return as such
                     // TODO: What happens if there's two bounds that overlap? 'F: FnMut<()>, F: FnOnce<(), Output=Bar>'
+                    DEBUG("[expand_associated_types_inplace__UfcsKnown] Found impl for " << input << " but no bound on item");
 
-                    DEBUG("[expand_associated_types_inplace__UfcsKnown] Found impl for " << input << " but no bound on item, assuming opaque");
-
-                    if( cmp == HIR::Compare::Fuzzy )
-                    {
+                    // Flag so if no impl was found by the lower checks, it gets correctly set to Opaque (or left unbound)
+                    found_bound_with_no_type = true;
+                    if( cmp == HIR::Compare::Fuzzy ) {
                         result_type = ResultType::LeaveUnbound;
-                        return true;
                     }
+                    else {
+                        result_type = ResultType::Opaque;
+                    }
+                    return false;
                 }
                 else {
                     result_type = ResultType::Recurse;
@@ -2328,32 +2332,9 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
     }
 
     if( rv ) {
-        switch(result_type)
-        {
-        case ResultType::Opaque: {
-            DEBUG("Assuming that " << input << " is an opaque name");
-            input.data_mut().as_Path().binding = ::HIR::TypePathBinding::make_Opaque({});
-            ASSERT_BUG(sp, visit_ty_with(input, [](const HIR::TypeRef& ty){ return ty.data().is_Generic() || ty.data().is_ErasedType() || ty.data().is_Infer(); }), "Set opaque on a non-generic type: " << input);
-
-            DEBUG("- " << m_type_equalities.size() << " replacements");
-            for( const auto& v : m_type_equalities )
-                DEBUG(" > " << v.first << " = " << v.second);
-
-            auto a = m_type_equalities.find(input);
-            if( a != m_type_equalities.end() ) {
-                DEBUG("- Replace to " << a->second << " from " << input);
-                input = a->second.clone();
-            }
-            this->expand_associated_types_inplace(sp, input, stack);
-            } break;
-        case ResultType::Recurse:
-            DEBUG("- Found replacement: " << input);
-            this->expand_associated_types_inplace(sp, input, stack);
-            break;
-        case ResultType::LeaveUnbound:
-            DEBUG("- Keep as unbound: " << input);
-            break;
-        }
+        assert(result_type == ResultType::Recurse); // Nothing else can happen without `rv` being false
+        DEBUG("- Found replacement: " << input);
+        this->expand_associated_types_inplace(sp, input, stack);
         return ;
     }
 
@@ -2519,6 +2500,36 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
     }
     if( rv ) {
         expand_associated_types_inplace(sp, input, stack);
+        return ;
+    }
+
+    if( found_bound_with_no_type )
+    {
+        switch(result_type)
+        {
+        case ResultType::Opaque: {
+            DEBUG("Assuming that " << input << " is an opaque name");
+            input.data_mut().as_Path().binding = ::HIR::TypePathBinding::make_Opaque({});
+            ASSERT_BUG(sp, visit_ty_with(input, [](const HIR::TypeRef& ty){ return ty.data().is_Generic() || ty.data().is_ErasedType() || ty.data().is_Infer(); }), "Set opaque on a non-generic type: " << input);
+
+            DEBUG("- " << m_type_equalities.size() << " replacements");
+            for( const auto& v : m_type_equalities )
+                DEBUG(" > " << v.first << " = " << v.second);
+
+            auto a = m_type_equalities.find(input);
+            if( a != m_type_equalities.end() ) {
+                DEBUG("- Replace to " << a->second << " from " << input);
+                input = a->second.clone();
+            }
+            this->expand_associated_types_inplace(sp, input, stack);
+            } break;
+        case ResultType::Recurse:
+            assert(false);
+            break;
+        case ResultType::LeaveUnbound:
+            DEBUG("- Keep as unbound: " << input);
+            break;
+        }
         return ;
     }
 
