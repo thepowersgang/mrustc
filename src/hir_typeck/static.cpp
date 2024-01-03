@@ -171,6 +171,11 @@ bool StaticTraitResolve::find_impl(
     TU_MATCH_HDRA( (type.data()), {)
     default:
         // Nothing magic
+    TU_ARMA(Tuple, e) {
+        if( TARGETVER_LEAST_1_74 && trait_path == m_crate.get_lang_item_path(sp, "tuple_trait") ) {
+            return found_cb( ImplRef(type.clone(), HIR::PathParams(), ::HIR::TraitPath::assoc_list_t()), false );
+        }
+        }
     TU_ARMA(Function, e) {
         if( trait_path == m_lang_Fn || trait_path == m_lang_FnMut || trait_path == m_lang_FnOnce ) {
             if( trait_params )

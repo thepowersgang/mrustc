@@ -1384,6 +1384,20 @@ bool TraitResolution::find_trait_impls_magic(const Span& sp,
 
         return callback( ImplRef(type.clone(), {}, std::move(assoc_list)), ::HIR::Compare::Equal );
     }
+    // - `Tuple`
+    if( TARGETVER_LEAST_1_74 && trait == this->m_crate.get_lang_item_path(sp, "tuple_trait") )
+    {
+        // Fuzzy impl for `_` and unbound ATYs
+        if( type.data().is_Infer() || (type.data().is_Path() && type.data().as_Path().binding.is_Unbound()) ) {
+            return callback( ImplRef(type.clone(), HIR::PathParams(), ::HIR::TraitPath::assoc_list_t()), ::HIR::Compare::Fuzzy );
+        }
+        // Impl for tuples
+        if( type.data().is_Tuple() ) {
+            return callback( ImplRef(type.clone(), {}, ::HIR::TraitPath::assoc_list_t()), ::HIR::Compare::Equal );
+        }
+        // No impls for anything else
+        return false;
+    }
 
     // Magic Unsize impls to trait objects
     if( trait == m_lang_Unsize )
