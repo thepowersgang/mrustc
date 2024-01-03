@@ -38,15 +38,19 @@ struct Evaluator
     Span    root_span;
     StaticTraitResolve  resolve;
     Newval& nvs;
+    unsigned int eval_index;
     unsigned int num_frames;
     // Note: Pointer is needed to maintain internal reference stability
     ::std::vector<CsePtr>   call_stack;
+
+    static unsigned s_next_eval_index;
 
 public:
     Evaluator(const Span& sp, const ::HIR::Crate& crate, Newval& nvs):
         root_span(sp),
         resolve(crate),
         nvs( nvs )
+        , eval_index(s_next_eval_index++)
         , num_frames(0)
     {
     }

@@ -1668,6 +1668,8 @@ namespace HIR {
 
     using namespace ::MIR::eval;
 
+    unsigned int Evaluator::s_next_eval_index = 0;
+
     Evaluator::CsePtr::~CsePtr()
     {
         if( m_inner ) {
@@ -1735,7 +1737,7 @@ namespace HIR {
     void Evaluator::run_statement(::MIR::eval::CallStackEntry& local_state, const ::MIR::Statement& stmt)
     {
         const auto& state = local_state.state;
-        DEBUG("F" << local_state.frame_index << " " << state << stmt);
+        DEBUG("E" << this->eval_index << " F" << local_state.frame_index << " " << state << stmt);
 
         TU_MATCH_HDRA( (stmt), { )
         TU_ARMA(Assign, e) {
@@ -2137,7 +2139,7 @@ namespace HIR {
     unsigned Evaluator::run_terminator(::MIR::eval::CallStackEntry& local_state, const ::MIR::Terminator& terminator)
     {
         const auto& state = local_state.state;
-        DEBUG("F" << local_state.frame_index << " " << state << terminator);
+        DEBUG("E" << this->eval_index << " F" << local_state.frame_index << " " << state << terminator);
 
         TU_MATCH_HDRA( (terminator), {)
         default:
@@ -2425,6 +2427,17 @@ namespace HIR {
                 auto ret_ty = this->resolve.monomorph_expand(this->root_span, fcn.m_return, fcn_ms);
 
                 // TODO: Set m_const during parse and check here
+
+                if( !fcn.m_code && !fcn.m_code.m_mir ) {
+                    if( fcn.m_linkage.name == "" ) {
+                    }
+                    else if( fcn.m_linkage.name == "panic_impl" ) {
+                        MIR_TODO(state, "panic in constant evaluation");
+                    }
+                    else {
+                        MIR_TODO(state, "Call extern function `" << fcn.m_linkage.name << "`");
+                    }
+                }
 
                 // Call by invoking evaluate_constant on the function
                 const auto* mir = this->resolve.m_crate.get_or_gen_mir( ::HIR::ItemPath(*fcnp), fcn );
