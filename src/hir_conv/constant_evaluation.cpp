@@ -1479,6 +1479,17 @@ namespace MIR { namespace eval {
 } } // namespace ::MIR::eval
 
 namespace {
+    ::std::pair<::MIR::eval::ValueRef, ::MIR::eval::ValueRef> get_tuple_t_bool(const ::MIR::eval::CallStackEntry& local_state, ::MIR::eval::ValueRef& src, const HIR::TypeRef& t)
+    {
+        auto tuple_t = ::HIR::TypeRef::new_tuple({ t.clone(), ::HIR::TypeRef(::HIR::CoreType::Bool) });
+        auto* repr = Target_GetTypeRepr(local_state.state.sp, local_state.state.m_resolve, tuple_t);
+        MIR_ASSERT(local_state.state, repr, "No repr for " << tuple_t);
+        auto s = local_state.size_of_or_bug(t);
+        return std::make_pair(
+            src.slice(repr->fields[0].offset, s),
+            src.slice(repr->fields[1].offset, 1)
+            );
+    }
     bool do_arith_checked(
         const ::MIR::eval::CallStackEntry& local_state,
         const HIR::TypeRef& ty,
@@ -2340,16 +2351,16 @@ namespace HIR {
                 else if( te->name == "add_with_overflow" ) {
                     auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
                     MIR_ASSERT(state, ty.data().is_Primitive(), "`" << te->name << "` with non-primitive " << ty);
-                    auto ti = TypeInfo::for_type(ty);
-                    bool overflowed = do_arith_checked(local_state, ty, dst, e.args.at(0), ::MIR::eBinOp::ADD, e.args.at(1));
-                    dst.slice(ti.bits / 8).write_uint(state, 8, U128(overflowed ? 1 : 0));
+                    auto dst_tup = get_tuple_t_bool(local_state, dst, ty);
+                    bool overflowed = do_arith_checked(local_state, ty, dst_tup.first, e.args.at(0), ::MIR::eBinOp::ADD, e.args.at(1));
+                    dst_tup.second.write_uint(state, 8, U128(overflowed ? 1 : 0));
                 }
                 else if( te->name == "sub_with_overflow" ) {
                     auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
                     MIR_ASSERT(state, ty.data().is_Primitive(), "`" << te->name << "` with non-primitive " << ty);
-                    auto ti = TypeInfo::for_type(ty);
-                    bool overflowed = do_arith_checked(local_state, ty, dst, e.args.at(0), ::MIR::eBinOp::SUB, e.args.at(1));
-                    dst.slice(ti.bits / 8).write_uint(state, 8, U128(overflowed ? 1 : 0));
+                    auto dst_tup = get_tuple_t_bool(local_state, dst, ty);
+                    bool overflowed = do_arith_checked(local_state, ty, dst_tup.first, e.args.at(0), ::MIR::eBinOp::SUB, e.args.at(1));
+                    dst_tup.second.write_uint(state, 8, U128(overflowed ? 1 : 0));
                 }
                 // Unchecked and wrapping are the same
                 else if( te->name == "wrapping_add" ||  te->name == "unchecked_add" ) {
