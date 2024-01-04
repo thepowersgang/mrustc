@@ -1338,7 +1338,7 @@ bool TraitResolution::find_trait_impls_magic(const Span& sp,
             return callback( ImplRef(type.clone(), HIR::PathParams(), ::HIR::TraitPath::assoc_list_t()), ::HIR::Compare::Fuzzy );
         }
         // Generics (or opaque ATYs)
-        if( type.data().is_Generic() || (type.data().is_Path() && type.data().as_Path().binding.is_Opaque()) ) {
+        else if( type.data().is_Generic() || (type.data().is_Path() && type.data().as_Path().binding.is_Opaque()) ) {
             // If the type is `Sized` return `()` as the type
             if( type_is_sized(sp, type) ) {
                 meta_ty = HIR::TypeRef::new_unit();
@@ -1349,18 +1349,18 @@ bool TraitResolution::find_trait_impls_magic(const Span& sp,
             }
         }
         // Trait object: `Metadata=DynMetadata<T>`
-        if( type.data().is_TraitObject() ) {
+        else if( type.data().is_TraitObject() ) {
             meta_ty = ::HIR::TypeRef::new_path(
                 ::HIR::GenericPath(this->m_crate.get_lang_item_path(sp, "dyn_metadata"), HIR::PathParams(type.clone())),
                 &m_crate.get_struct_by_path(sp, this->m_crate.get_lang_item_path(sp, "dyn_metadata"))
                 );
         }
         // Slice and str
-        if( type.data().is_Slice() || TU_TEST1(type.data(), Primitive, == HIR::CoreType::Str) ) {
+        else if( type.data().is_Slice() || TU_TEST1(type.data(), Primitive, == HIR::CoreType::Str) ) {
             meta_ty = HIR::CoreType::Usize;
         }
         // Structs: Can delegate their metadata
-        if( type.data().is_Path() && type.data().as_Path().binding.is_Struct() )
+        else if( type.data().is_Path() && type.data().as_Path().binding.is_Struct() )
         {
             const auto& str = *type.data().as_Path().binding.as_Struct();
             switch(str.m_struct_markings.dst_type)
@@ -1376,6 +1376,9 @@ bool TraitResolution::find_trait_impls_magic(const Span& sp,
             case HIR::StructMarkings::DstType::TraitObject:
                 TODO(sp, "m_lang_Pointee - " << type);
             }
+        }
+        else {
+            meta_ty = ::HIR::TypeRef::new_unit();
         }
         ::HIR::TraitPath::assoc_list_t  assoc_list;
         if(meta_ty != HIR::TypeRef()) {
