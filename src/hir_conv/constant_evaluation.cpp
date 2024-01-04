@@ -2486,7 +2486,7 @@ namespace HIR {
                     auto ptr_dst = local_state.get_lval(e.args.at(1).as_LValue()).read_ptr(state);
                     U128 count = local_state.read_param_uint(Target_GetPointerBits(), e.args.at(2));
                     MIR_ASSERT(state, count.is_u64(), "Excessive count in `" << te->name << "`");
-                    MIR_ASSERT(state, count * element_size < SIZE_MAX, "Excessive size in `" << te->name << "`");
+                    MIR_ASSERT(state, count * element_size < U128(SIZE_MAX), "Excessive size in `" << te->name << "`");
                     size_t nbytes = element_size * count.truncate_u64();
                     MIR_ASSERT(state, ptr_src.first >= EncodedLiteral::PTR_BASE, "");
                     MIR_ASSERT(state, ptr_dst.first >= EncodedLiteral::PTR_BASE, "");
@@ -2781,45 +2781,71 @@ namespace {
                 }
             }
         }
+        void visit_generic_path(::HIR::GenericPath& p, ::HIR::Visitor::PathContext pc) override
+        {
+            auto saved = m_get_params;
+            m_get_params = [&](const Span& sp)->const ::HIR::GenericParams& {
+                DEBUG("visit_generic_path[m_get_params] " << p);
+                switch(pc)
+                {
+                case ::HIR::Visitor::PathContext::VALUE: {
+                    auto& vi = m_crate.get_valitem_by_path(sp, p.m_path);
+                    TU_MATCH_HDRA( (vi), { )
+                    TU_ARMA(Import, e)  BUG(sp, "Module Import");
+                    TU_ARMA(Static, e)  BUG(sp, "Getting params definition for Static - " << p);
+                    TU_ARMA(Constant, e)    return e.m_params;
+                    TU_ARMA(Function, e)    return e.m_params;
+                    TU_ARMA(StructConstant, e)   return m_crate.get_struct_by_path(sp, e.ty).m_params;
+                    TU_ARMA(StructConstructor, e)   return m_crate.get_struct_by_path(sp, e.ty).m_params;
+                    }
+                    break; }
+                case ::HIR::Visitor::PathContext::TYPE:
+                case ::HIR::Visitor::PathContext::TRAIT: {
+                    auto& vi = m_crate.get_typeitem_by_path(sp, p.m_path);
+                    TU_MATCH_HDRA( (vi), { )
+                    TU_ARMA(Import, e)  BUG(sp, "Module Import");
+                    TU_ARMA(Module, e)  BUG(sp, "mod - " << p);
+                    TU_ARMA(TypeAlias, e)  BUG(sp, "type - " << p);
+                    TU_ARMA(TraitAlias, e)  BUG(sp, "trait= - " << p);
+                    TU_ARMA(Struct, e)  return e.m_params;
+                    TU_ARMA(Enum , e)   return e.m_params;
+                    TU_ARMA(Union, e)   return e.m_params;
+                    TU_ARMA(Trait, e)   return e.m_params;
+                    TU_ARMA(ExternType, e)   BUG(sp, "extern type - " << p);
+                    }
+                    break; }
+                }
+                TODO(sp, "visit_generic_path[m_get_params] - " << p);
+            };
+            ::HIR::Visitor::visit_generic_path(p, pc);
+            m_get_params = saved;
+        }
         void visit_path(::HIR::Path& p, ::HIR::Visitor::PathContext pc) override
         {
             auto saved = m_get_params;
             m_get_params = [&](const Span& sp)->const ::HIR::GenericParams& {
                 DEBUG("visit_path[m_get_params] " << p);
-                switch(pc)
-                {
-                case ::HIR::Visitor::PathContext::VALUE:
-                    if( const auto* pe = p.m_data.opt_Generic() ) {
-                        auto& vi = m_crate.get_valitem_by_path(sp, pe->m_path);
-                        TU_MATCH_HDRA( (vi), { )
-                        TU_ARMA(Import, e)  BUG(sp, "Module Import");
-                        TU_ARMA(Static, e)  BUG(sp, "Getting params definition for Static - " << p);
+                // TODO: UfcsKnown, look up in the trait
+                if( const auto* pe = p.m_data.opt_UfcsKnown() ) {
+                    auto& tr = m_crate.get_trait_by_path(sp, pe->trait.m_path);
+                    switch(pc)
+                    {
+                    case ::HIR::Visitor::PathContext::VALUE: {
+                        const auto& vi = tr.m_values.at(pe->item);
+                        TU_MATCH_HDRA( (vi), {)
+                        TU_ARMA(Static, e)  return e.m_params;
                         TU_ARMA(Constant, e)    return e.m_params;
                         TU_ARMA(Function, e)    return e.m_params;
-                        TU_ARMA(StructConstant, e)   return m_crate.get_struct_by_path(sp, e.ty).m_params;
-                        TU_ARMA(StructConstructor, e)   return m_crate.get_struct_by_path(sp, e.ty).m_params;
                         }
+                        break; }
+                    case ::HIR::Visitor::PathContext::TYPE:
+                    case ::HIR::Visitor::PathContext::TRAIT: {
+                        const auto& vi = tr.m_types.at(pe->item);
+                        BUG(sp, "type - " << p);
+                        break; }
                     }
-                    break;
-                case ::HIR::Visitor::PathContext::TYPE:
-                case ::HIR::Visitor::PathContext::TRAIT:
-                    if( const auto* pe = p.m_data.opt_Generic() ) {
-                        auto& vi = m_crate.get_typeitem_by_path(sp, pe->m_path);
-                        TU_MATCH_HDRA( (vi), { )
-                        TU_ARMA(Import, e)  BUG(sp, "Module Import");
-                        TU_ARMA(Module, e)  BUG(sp, "mod - " << p);
-                        TU_ARMA(TypeAlias, e)  BUG(sp, "type - " << p);
-                        TU_ARMA(TraitAlias, e)  BUG(sp, "trait= - " << p);
-                        TU_ARMA(Struct, e)  return e.m_params;
-                        TU_ARMA(Enum , e)   return e.m_params;
-                        TU_ARMA(Union, e)   return e.m_params;
-                        TU_ARMA(Trait, e)   return e.m_params;
-                        TU_ARMA(ExternType, e)   BUG(sp, "extern type - " << p);
-                        }
-                    }
-                    break;
                 }
-                TODO(sp, "get params - " << p);
+                TODO(sp, "visit_path[m_get_params] - " << p);
                 };
             ::HIR::Visitor::visit_path(p, pc);
             m_get_params = saved;
