@@ -1499,9 +1499,52 @@ namespace {
         const ::MIR::Param& val_r
     )
     {
-        bool did_overflow = false;
-        const auto& state = local_state.state;
         auto ti = TypeInfo::for_type(ty);
+        const auto& state = local_state.state;
+        bool did_overflow = false;
+
+        // NOTE: Shifts can use any integer as the RHS, so give them special handling
+        if(op == ::MIR::eBinOp::BIT_SHL || op == ::MIR::eBinOp::BIT_SHR )
+        {
+            ::HIR::TypeRef  tmp_r;
+            const auto& ty_r = local_state.state.get_param_type(tmp_r, val_r);
+            auto ti_r = TypeInfo::for_type(ty_r);
+
+            auto r = ti_r.ty == TypeInfo::Unsigned
+                ? local_state.read_param_uint(ti_r.bits, val_r)
+                : local_state.read_param_sint(ti_r.bits, val_r).get_inner();
+            auto amt = r.truncate_u64();
+            if( amt > ti.bits ) {
+                DEBUG("Shift out of range - " << r << " > " << ti.bits);
+                did_overflow = true;
+                amt = 0;
+            }
+            switch(ti.ty)
+            {
+            case TypeInfo::Unsigned: {
+                auto l = local_state.read_param_uint(ti.bits, val_l);
+                switch(op)
+                {
+                case ::MIR::eBinOp::BIT_SHL: dst.write_uint(state, ti.bits, ti.mask(l << amt));  break;
+                case ::MIR::eBinOp::BIT_SHR: dst.write_uint(state, ti.bits, ti.mask(l >> amt));  break;
+                default:    MIR_BUG(state, "This block should only be active for SHL/SHR");
+                }
+                break; }
+            case TypeInfo::Signed: {
+                auto l = local_state.read_param_sint(ti.bits, val_l);
+                switch(op)
+                {
+                case ::MIR::eBinOp::BIT_SHL: dst.write_uint(state, ti.bits, ti.mask(l << amt));  break;
+                case ::MIR::eBinOp::BIT_SHR: dst.write_uint(state, ti.bits, ti.mask(l >> amt));  break;
+                default:    MIR_BUG(state, "This block should only be active for SHL/SHR");
+                }
+                break; }
+            default:
+                MIR_BUG(state, "Invalid use of BIT_SHL/BIT_SHR on " << ty);
+            }
+            return did_overflow;
+        }
+
         switch(ti.ty)
         {
         case TypeInfo::Float: {
@@ -1874,44 +1917,6 @@ namespace HIR {
             ::HIR::TypeRef tmp;
             const auto& ty_l = state.get_param_type(tmp, e.val_l);
             auto ti = TypeInfo::for_type(ty_l);
-            // NOTE: Shifts can use any integer as the RHS, so give them special handling
-            if(e.op == ::MIR::eBinOp::BIT_SHL || e.op == ::MIR::eBinOp::BIT_SHR )
-            {
-                ::HIR::TypeRef  tmp_r;
-                const auto& ty_r = state.get_param_type(tmp_r, e.val_r);
-                auto ti_r = TypeInfo::for_type(ty_r);
-
-                auto r = ti_r.ty == TypeInfo::Unsigned
-                    ? local_state.read_param_uint(ti_r.bits, e.val_r)
-                    : local_state.read_param_sint(ti_r.bits, e.val_r).get_inner();
-                MIR_ASSERT(state, r <= ti.bits, "Shift out of range - " << r << " > " << ti.bits);
-                auto amt = r.truncate_u64();
-                switch(ti.ty)
-                {
-                case TypeInfo::Unsigned: {
-                    auto l = local_state.read_param_uint(ti.bits, e.val_l);
-                    switch(e.op)
-                    {
-                    case ::MIR::eBinOp::BIT_SHL: dst.write_uint(state, ti.bits, ti.mask(l << amt));  break;
-                    case ::MIR::eBinOp::BIT_SHR: dst.write_uint(state, ti.bits, ti.mask(l >> amt));  break;
-                    default:    MIR_BUG(state, "This block should only be active for SHL/SHR");
-                    }
-                    break; }
-                case TypeInfo::Signed: {
-                    auto l = local_state.read_param_sint(ti.bits, e.val_l);
-                    switch(e.op)
-                    {
-                    case ::MIR::eBinOp::BIT_SHL: dst.write_uint(state, ti.bits, ti.mask(l << amt));  break;
-                    case ::MIR::eBinOp::BIT_SHR: dst.write_uint(state, ti.bits, ti.mask(l >> amt));  break;
-                    default:    MIR_BUG(state, "This block should only be active for SHL/SHR");
-                    }
-                    break; }
-                default:
-                    MIR_BUG(state, "Invalid use of BIT_SHL/BIT_SHR on " << ty_l);
-                }
-                // Skip the rest of this arm (breaks both loops in `TU_ARMA`)
-                break ;
-            }
             bool did_overflow = do_arith_checked(local_state, ty_l, dst, e.val_l, e.op, e.val_r);
             switch(e.op)
             {
@@ -1919,6 +1924,12 @@ namespace HIR {
             case ::MIR::eBinOp::MOD:
                 if(did_overflow) {
                     MIR_BUG(state, "Division/modulo by zero!");
+                }
+                break;
+            case ::MIR::eBinOp::BIT_SHL:
+            case ::MIR::eBinOp::BIT_SHR:
+                if(did_overflow) {
+                    MIR_BUG(state, "Bit shift out of range");
                 }
                 break;
             default:
@@ -2372,6 +2383,16 @@ namespace HIR {
                     auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
                     MIR_ASSERT(state, ty.data().is_Primitive(), "`" << te->name << "` with non-primitive " << ty);
                     do_arith_checked(local_state, ty, dst, e.args.at(0), ::MIR::eBinOp::SUB, e.args.at(1));
+                }
+                else if( te->name == "unchecked_shl" ) {
+                    auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                    MIR_ASSERT(state, ty.data().is_Primitive(), "`" << te->name << "` with non-primitive " << ty);
+                    do_arith_checked(local_state, ty, dst, e.args.at(0), ::MIR::eBinOp::BIT_SHL, e.args.at(1));
+                }
+                else if( te->name == "unchecked_shr" ) {
+                    auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                    MIR_ASSERT(state, ty.data().is_Primitive(), "`" << te->name << "` with non-primitive " << ty);
+                    do_arith_checked(local_state, ty, dst, e.args.at(0), ::MIR::eBinOp::BIT_SHR, e.args.at(1));
                 }
                 // - Except for div/rem, which add checking just in case
                 else if( te->name == "unchecked_rem" ) {
