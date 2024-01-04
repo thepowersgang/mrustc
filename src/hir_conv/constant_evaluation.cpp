@@ -2404,6 +2404,75 @@ namespace HIR {
                     auto val = local_state.read_param_uint(8, e.args.at(0));
                     MIR_ASSERT(state, val != 0, "`assume` failed");
                 }
+                else if( te->name == "assert_inhabited" ) {
+                    auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                    // TODO: Determine if the type is inhabited (i.e. isn't diverge)
+                    bool is_uninhabited = state.m_resolve.type_is_impossible(state.sp, ty);
+                    MIR_ASSERT(state, !is_uninhabited, "assert_inhabited " << ty << " failed");
+                }
+                // ---
+                else if( te->name == "const_eval_select" ) {
+                    // "Selects which function to call depending on the context."
+                    // `fn const_eval_select<ARG, F, G, RET>(arg: ARG, called_in_const: F, called_at_rt: G ) -> RET`
+                    auto arg_ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                    MIR_ASSERT(state, arg_ty.data().is_Tuple(), "`" << te->name << "` requires a tuple for ARG, got " << arg_ty);
+                    auto* repr = Target_GetTypeRepr(state.sp, state.m_resolve, arg_ty);
+                    if(!repr) {
+                        throw Defer();
+                    }
+                    auto arg_val = local_state.get_lval(e.args.at(0).as_LValue());
+                    auto fcn_val = local_state.get_lval(e.args.at(1).as_LValue()).read_ptr(state);
+                    MIR_ASSERT(state, fcn_val.first == EncodedLiteral::PTR_BASE, "");
+                    //auto val = local_state.read(8, e.args.at(0));
+
+                    // Argument values
+                    ::std::vector<AllocationPtr>  call_args;
+                    call_args.reserve( repr->fields.size() );
+                    for(const auto& f : repr->fields) {
+                        auto size = local_state.size_of_or_bug(f.ty);
+                        call_args.push_back(AllocationPtr::allocate(state, f.ty));
+                        auto vr = ValueRef(call_args.back());
+                        vr.copy_from(state, arg_val.slice(f.offset, size));
+                    }
+
+                    const auto* fcn_sr = fcn_val.second.as_staticref();
+                    MIR_ASSERT(state, fcn_sr, "");
+
+                    MonomorphState  fcn_ms;
+                    auto& fcn = get_function(this->root_span, this->resolve, fcn_sr->path(), fcn_ms);
+
+                    // Monomorphised argument types
+                    ::HIR::Function::args_t arg_defs;
+                    for(const auto& a : fcn.m_args) {
+                        arg_defs.push_back( ::std::make_pair(::HIR::Pattern(), this->resolve.monomorph_expand(this->root_span, a.second, fcn_ms)) );
+                    }
+                    auto ret_ty = this->resolve.monomorph_expand(this->root_span, fcn.m_return, fcn_ms);
+
+                    const auto* mir = this->resolve.m_crate.get_or_gen_mir( ::HIR::ItemPath(fcn_sr->path()), fcn );
+                    MIR_ASSERT(state, mir, "No MIR for function " << fcn_sr->path());
+
+                    push_stack_entry(::FmtLambda([=](std::ostream& os){ os << fcn_val.second.as_staticref()->path(); }), *mir,
+                        std::move(fcn_ms), std::move(ret_ty), ::std::move(arg_defs), std::move(call_args));
+                    return TERM_RET_PUSHED;
+                }
+                // ---
+                else if( te->name == "copy_nonoverlapping" ) {
+                    auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                    size_t element_size;
+                    if( !Target_GetSizeOf(state.sp, state.m_resolve, ty, element_size) )
+                        throw Defer();
+                    auto ptr_src = local_state.get_lval(e.args.at(0).as_LValue()).read_ptr(state);
+                    auto ptr_dst = local_state.get_lval(e.args.at(1).as_LValue()).read_ptr(state);
+                    U128 count = local_state.read_param_uint(Target_GetPointerBits(), e.args.at(2));
+                    MIR_ASSERT(state, count.is_u64(), "Excessive count in `" << te->name << "`");
+                    MIR_ASSERT(state, count * element_size < SIZE_MAX, "Excessive size in `" << te->name << "`");
+                    size_t nbytes = element_size * count.truncate_u64();
+                    MIR_ASSERT(state, ptr_src.first >= EncodedLiteral::PTR_BASE, "");
+                    MIR_ASSERT(state, ptr_dst.first >= EncodedLiteral::PTR_BASE, "");
+                    auto vr_src = ValueRef(ptr_src.second, ptr_src.first - EncodedLiteral::PTR_BASE).slice(0, nbytes);
+                    auto vr_dst = ValueRef(ptr_dst.second, ptr_dst.first - EncodedLiteral::PTR_BASE).slice(0, nbytes);
+                    vr_dst.copy_from(state, vr_src);
+                }
                 else {
                     MIR_TODO(state, "Call intrinsic \"" << te->name << "\" - " << terminator);
                 }
