@@ -317,8 +317,35 @@ NODE(ExprNode_Loop, {
         os << " in/= " << *m_cond;
     os << " " << *m_code;
 },{
-    return NEWNODE(ExprNode_Loop, m_label, m_type, m_pattern.clone(), OPT_CLONE(m_cond), m_code->clone());
+    return NEWNODE(ExprNode_Loop, m_type, m_label, m_pattern.clone(), OPT_CLONE(m_cond), m_code->clone());
 })
+NODE(ExprNode_WhileLet, {
+    if(m_label != "") {
+        os << "'" << m_label << ": ";
+    }
+    os << "while let ";
+    for(size_t i = 0; i < m_conditions.size(); i ++) {
+        if( i != 0 ) {
+            os << " && ";
+        }
+        if( m_conditions[i].opt_pat ) {
+            os << *m_conditions[i].opt_pat << " = ";
+        }
+        os << "(" << *m_conditions[i].value << ")";
+    }
+    os << " { " << *m_code << " }";
+    },{
+        decltype(m_conditions)    new_conds;
+        for(const auto& cond : m_conditions) {
+            AST::IfLet_Condition   new_cond;
+            if( cond.opt_pat ) {
+                new_cond.opt_pat = std::make_unique<AST::Pattern>( cond.opt_pat->clone() );
+            }
+            new_cond.value = cond.value->clone();
+            new_conds.push_back(std::move(new_cond));
+        }
+        return NEWNODE(ExprNode_WhileLet, m_label, mv$(new_conds), m_code->clone());
+    })
 
 MatchGuard MatchGuard::clone() const
 {
@@ -382,19 +409,28 @@ NODE(ExprNode_If, {
 })
 NODE(ExprNode_IfLet, {
     os << "if let ";
-    for(const auto& pat : m_patterns)
-    {
-        if(&pat != &m_patterns.front())
-            os << " | ";
-        os << pat;
+    for(size_t i = 0; i < m_conditions.size(); i ++) {
+        if( i != 0 ) {
+            os << " && ";
+        }
+        if( m_conditions[i].opt_pat ) {
+            os << *m_conditions[i].opt_pat << " = ";
+        }
+        os << "(" << *m_conditions[i].value << ")";
     }
-    os << " = (" << *m_value << ") { " << *m_true << " }";
+    os << " { " << *m_true << " }";
     if(m_false) os << " else { " << *m_false << " }";
 },{
-    decltype(m_patterns)    new_pats;
-    for(const auto& pat : m_patterns)
-        new_pats.push_back(pat.clone());
-    return NEWNODE(ExprNode_IfLet, mv$(new_pats), m_value->clone(), m_true->clone(), OPT_CLONE(m_false));
+    decltype(m_conditions)    new_conds;
+    for(const auto& cond : m_conditions) {
+        AST::IfLet_Condition   new_cond;
+        if( cond.opt_pat ) {
+            new_cond.opt_pat = std::make_unique<AST::Pattern>( cond.opt_pat->clone() );
+        }
+        new_cond.value = cond.value->clone();
+        new_conds.push_back(std::move(new_cond));
+    }
+    return NEWNODE(ExprNode_IfLet, mv$(new_conds), m_true->clone(), OPT_CLONE(m_false));
 })
 
 NODE(ExprNode_Integer, {
@@ -707,6 +743,15 @@ NV(ExprNode_Loop,
     visit(node.m_code);
     UNINDENT();
 })
+NV(ExprNode_WhileLet,
+{
+    INDENT();
+    for(auto& c : node.m_conditions) {
+        visit(c.value);
+    }
+    visit(node.m_code);
+    UNINDENT();
+})
 NV(ExprNode_Match,
 {
     INDENT();
@@ -733,7 +778,9 @@ NV(ExprNode_If,
 NV(ExprNode_IfLet,
 {
     INDENT();
-    visit(node.m_value);
+    for(auto& c : node.m_conditions) {
+        visit(c.value);
+    }
     visit(node.m_true);
     visit(node.m_false);
     UNINDENT();

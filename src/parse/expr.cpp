@@ -31,6 +31,7 @@ ExprNodeP Parse_ExprBlockLine_Stmt(TokenStream& lex, bool& has_semicolon);
 //ExprNodeP Parse_Stmt(TokenStream& lex);   // common.hpp
 ExprNodeP Parse_Stmt_Let(TokenStream& lex);
 ExprNodeP Parse_Expr0(TokenStream& lex);
+ExprNodeP Parse_Expr3(TokenStream& lex);
 ExprNodeP Parse_IfStmt(TokenStream& lex);
 ExprNodeP Parse_WhileStmt(TokenStream& lex, Ident lifetime);
 ExprNodeP Parse_ForStmt(TokenStream& lex, Ident lifetime);
@@ -403,6 +404,46 @@ ExprNodeP Parse_ExprBlockLine_Stmt(TokenStream& lex, bool& has_semicolon)
     return ret;
 }
 
+// Note: This is called jsut after the initial `let` has been consumed
+std::vector<AST::IfLet_Condition> Parse_IfLetChain(TokenStream& lex)
+{
+    Token   tok;
+    std::vector<AST::IfLet_Condition>   conditions;
+    auto pat = Parse_Pattern(lex, AllowOrPattern::Yes);
+    GET_CHECK_TOK(tok, lex, TOK_EQUAL);
+    ExprNodeP val;
+    {
+        SET_PARSE_FLAG(lex, disallow_struct_literal);
+        val = Parse_Expr3(lex); // This is just after `||` and `&&`
+    }
+    conditions.push_back(AST::IfLet_Condition { box$(pat), std::move(val) });
+
+    if( lex.getTokenIf(TOK_DOUBLE_AMP) ) {
+        do {
+            if( lex.getTokenIf(TOK_RWORD_LET) ) {
+                std::vector<AST::IfLet_Condition>   conditions;
+                auto pat = Parse_Pattern(lex, AllowOrPattern::Yes);
+                GET_CHECK_TOK(tok, lex, TOK_EQUAL);
+                ExprNodeP val;
+                {
+                    SET_PARSE_FLAG(lex, disallow_struct_literal);
+                    val = Parse_Expr3(lex); // This is just after `||` and `&&`
+                }
+                conditions.push_back(AST::IfLet_Condition { box$(pat), std::move(val) });
+            }
+            else {
+                conditions.push_back(AST::IfLet_Condition { std::unique_ptr<AST::Pattern>(), Parse_Expr3(lex) });
+            }
+        } while( lex.getTokenIf(TOK_DOUBLE_AMP) );
+    }
+
+    if( lex.lookahead(0) == TOK_DOUBLE_PIPE ) {
+        TODO(lex.point_span(), "lazy boolean or in let chains not yet implemented (not yet valid rust, at 1.75)");
+    }
+
+    return conditions;
+}
+
 /// While loop (either as a statement, or as part of an expression)
 ExprNodeP Parse_WhileStmt(TokenStream& lex, Ident lifetime)
 {
@@ -410,15 +451,8 @@ ExprNodeP Parse_WhileStmt(TokenStream& lex, Ident lifetime)
 
     if( GET_TOK(tok, lex) == TOK_RWORD_LET ) {
         // TODO: Pattern list (same as match)?
-        auto pat = Parse_Pattern(lex, AllowOrPattern::Yes);    // Refutable pattern
-        GET_CHECK_TOK(tok, lex, TOK_EQUAL);
-        ExprNodeP val;
-        {
-            SET_PARSE_FLAG(lex, disallow_struct_literal);
-            val = Parse_Expr0(lex);
-        }
-        return NEWNODE( AST::ExprNode_Loop, lifetime, AST::ExprNode_Loop::WHILELET,
-            ::std::move(pat), ::std::move(val), Parse_ExprBlockNode(lex) );
+        auto conditions = Parse_IfLetChain(lex);
+        return NEWNODE( AST::ExprNode_WhileLet, lifetime, ::std::move(conditions), Parse_ExprBlockNode(lex) );
     }
     else {
         PUTBACK(tok, lex);
@@ -443,8 +477,7 @@ ExprNodeP Parse_ForStmt(TokenStream& lex, Ident lifetime)
         SET_PARSE_FLAG(lex, disallow_struct_literal);
         val = Parse_Expr0(lex);
     }
-    return NEWNODE( AST::ExprNode_Loop, lifetime, AST::ExprNode_Loop::FOR,
-            ::std::move(pat), ::std::move(val), Parse_ExprBlockNode(lex) );
+    return NEWNODE( AST::ExprNode_Loop, lifetime, ::std::move(pat), ::std::move(val), Parse_ExprBlockNode(lex) );
 }
 /// Parse an 'if' statement
 // Note: TOK_RWORD_IF has already been eaten
@@ -454,20 +487,12 @@ ExprNodeP Parse_IfStmt(TokenStream& lex)
 
     Token   tok;
     ExprNodeP cond;
-    std::vector<AST::Pattern>   paterns;
+    std::vector<AST::IfLet_Condition>   conditions;
 
     {
         SET_PARSE_FLAG(lex, disallow_struct_literal);
         if( GET_TOK(tok, lex) == TOK_RWORD_LET ) {
-            // Allow leading pipes (same as match)
-            if(lex.lookahead(0) == TOK_PIPE)
-                   GET_TOK(tok, lex);
-            // Refutable pattern
-            do {
-                paterns.push_back( Parse_Pattern(lex, AllowOrPattern::No) );
-            } while(GET_TOK(tok, lex) == TOK_PIPE);
-            CHECK_TOK(tok, TOK_EQUAL);
-            cond = Parse_Expr0(lex);
+            conditions = Parse_IfLetChain(lex);
         }
         else {
             PUTBACK(tok, lex);
@@ -497,8 +522,8 @@ ExprNodeP Parse_IfStmt(TokenStream& lex)
         PUTBACK(tok, lex);
     }
 
-    if( !paterns.empty() )
-        return NEWNODE( AST::ExprNode_IfLet, ::std::move(paterns), ::std::move(cond), ::std::move(code), ::std::move(altcode) );
+    if( !cond )
+        return NEWNODE( AST::ExprNode_IfLet, ::std::move(conditions), ::std::move(code), ::std::move(altcode) );
     else
         return NEWNODE( AST::ExprNode_If, ::std::move(cond), ::std::move(code), ::std::move(altcode) );
 }

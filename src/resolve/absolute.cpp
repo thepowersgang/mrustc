@@ -2228,16 +2228,14 @@ void Resolve_Absolute_ExprNode(Context& context,  ::AST::ExprNode& node)
                 break;
             case ::AST::ExprNode_Loop::WHILE:
                 break;
-            case ::AST::ExprNode_Loop::WHILELET:
-                this->context.start_patbind();
-                Resolve_Absolute_Pattern(this->context, true, node.m_pattern);
-                this->context.end_patbind();
-                break;
             case ::AST::ExprNode_Loop::FOR:
                 BUG(node.span(), "`for` should be desugared");
             }
             node.m_code->visit( *this );
             this->context.pop_block();
+        }
+        void visit(AST::ExprNode_WhileLet& node) override {
+            BUG(node.span(), "`while let` should be desugared");
         }
 
         void visit(AST::ExprNode_LetBinding& node) override {
@@ -2256,6 +2254,8 @@ void Resolve_Absolute_ExprNode(Context& context,  ::AST::ExprNode& node)
             }
         }
         void visit(AST::ExprNode_IfLet& node) override {
+            BUG(node.span(), "`if let` should be desugared");
+#if 0
             DEBUG("ExprNode_IfLet");
             node.m_value->visit( *this );
 
@@ -2275,6 +2275,7 @@ void Resolve_Absolute_ExprNode(Context& context,  ::AST::ExprNode& node)
 
             if(node.m_false)
                 node.m_false->visit(*this);
+#endif
         }
         void visit(AST::ExprNode_StructLiteral& node) override {
             DEBUG("ExprNode_StructLiteral");

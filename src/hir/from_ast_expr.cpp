@@ -455,7 +455,63 @@ struct LowerHIR_ExprNode_Visitor:
                 ::HIR::ExprNodeP(new ::HIR::ExprNode_Block( v.span(), false, mv$(code), {} ))
                 ) );
             break; }
-        case ::AST::ExprNode_Loop::WHILELET: {
+        case ::AST::ExprNode_Loop::FOR:
+            // NOTE: This should already be desugared (as a pass before resolve)
+            BUG(v.span(), "Encountered still-sugared for loop");
+            break;
+        }
+
+        // Iterate the constructed loop and determine if there are any `break` statements pointing to it
+        {
+            struct LoopVisitor:
+                public ::HIR::ExprVisitorDef
+            {
+                const RcString& top_label;
+                bool    top_is_broken;
+                ::std::vector< const RcString*>   name_stack;
+
+                LoopVisitor(const RcString& top_label):
+                    top_label(top_label),
+                    top_is_broken(false),
+                    name_stack()
+                {}
+
+                void visit(::HIR::ExprNode_Loop& node) override {
+                    bool push = !node.m_require_label;  // Ignore any loops that require a targeted break
+                    if( push ) {
+                        this->name_stack.push_back( &node.m_label );
+                    }
+                    ::HIR::ExprVisitorDef::visit(node);
+                    if( push ) {
+                        this->name_stack.pop_back( );
+                    }
+                }
+                void visit(::HIR::ExprNode_LoopControl& node) override {
+                    ::HIR::ExprVisitorDef::visit(node);
+
+                    if( node.m_continue ) {
+                    }
+                    else {
+                        for( auto it = this->name_stack.rbegin(); it != this->name_stack.rend(); ++ it )
+                        {
+                            if( node.m_label == "" || node.m_label == **it )
+                                return ;
+                        }
+                        if( node.m_label == "" || node.m_label == this->top_label ) {
+                            this->top_is_broken = true;
+                        }
+                        else {
+                            // break is for a higher loop
+                        }
+                    }
+                }
+            };
+        }
+    }
+    virtual void visit(::AST::ExprNode_WhileLet& v) override {
+
+#if 0
+        {
             ::std::vector< ::HIR::ExprNode_Match::Arm>  arms;
 
             // - Matches pattern - Run inner code
@@ -476,14 +532,12 @@ struct LowerHIR_ExprNode_Visitor:
                 ::HIR::ExprNodeP(new ::HIR::ExprNode_Match( v.span(),
                     lower(v.m_cond),
                     mv$(arms)
-                    ))
-                ) );
-            break; }
-        case ::AST::ExprNode_Loop::FOR:
-            // NOTE: This should already be desugared (as a pass before resolve)
-            BUG(v.span(), "Encountered still-sugared for loop");
-            break;
+                ))
+            ) );
         }
+#else
+        TODO(v.span(), "while let (chained)");
+#endif
 
         // Iterate the constructed loop and determine if there are any `break` statements pointing to it
         {
@@ -595,6 +649,7 @@ struct LowerHIR_ExprNode_Visitor:
             ));
     }
     virtual void visit(::AST::ExprNode_IfLet& v) override {
+#if 0
         ::std::vector< ::HIR::ExprNode_Match::Arm>  arms;
 
         std::vector<HIR::Pattern>   patterns;
@@ -617,6 +672,9 @@ struct LowerHIR_ExprNode_Visitor:
             lower(v.m_value),
             mv$(arms)
             ));
+#else
+TODO(v.span(), "while let (chained)");
+#endif
     }
 
     virtual void visit(::AST::ExprNode_Integer& v) override {

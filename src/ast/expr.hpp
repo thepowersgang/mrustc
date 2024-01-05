@@ -21,6 +21,7 @@
 
 namespace AST {
 
+class Pattern;
 class NodeVisitor;
 
 class ExprNode
@@ -292,7 +293,6 @@ struct ExprNode_Loop:
     enum Type {
         LOOP,
         WHILE,
-        WHILELET,
         FOR,
     } m_type;
     Ident   m_label;
@@ -316,12 +316,39 @@ struct ExprNode_Loop:
         m_cond( ::std::move(cond) ),
         m_code( ::std::move(code) )
     {}
-    ExprNode_Loop(Ident label, Type type, AST::Pattern pattern, ExprNodeP val, ExprNodeP code):
-        m_type(type),
+    ExprNode_Loop(Ident label, AST::Pattern pattern, ExprNodeP val, ExprNodeP code):
+        m_type(FOR),
         m_label( ::std::move(label) ),
         m_pattern( ::std::move(pattern) ),
         m_cond( ::std::move(val) ),
         m_code( ::std::move(code) )
+    {}
+    NODE_METHODS();
+private:
+    ExprNode_Loop(Type type, Ident label, AST::Pattern pattern, ExprNodeP val, ExprNodeP code)
+        : m_type( type )
+        , m_label( ::std::move(label) )
+        , m_pattern( ::std::move(pattern) )
+        , m_cond( ::std::move(val) )
+        , m_code( ::std::move(code) )
+    {}
+};
+struct IfLet_Condition
+{
+    ::std::unique_ptr<AST::Pattern> opt_pat;
+    ExprNodeP    value;
+};
+struct ExprNode_WhileLet:
+    public ExprNode
+{
+    Ident   m_label;
+    std::vector<IfLet_Condition> m_conditions;
+    ExprNodeP    m_code;
+
+    ExprNode_WhileLet(Ident label, std::vector<IfLet_Condition> conditions, ExprNodeP code)
+        : m_label( ::std::move(label) )
+        , m_conditions( ::std::move(conditions) )
+        , m_code( ::std::move(code) )
     {}
     NODE_METHODS();
 };
@@ -387,16 +414,14 @@ struct ExprNode_If:
 struct ExprNode_IfLet:
     public ExprNode
 {
-    std::vector<AST::Pattern>   m_patterns;
-    ExprNodeP    m_value;
+    std::vector<IfLet_Condition>   m_conditions;
     ExprNodeP    m_true;
     ExprNodeP    m_false;
 
-    ExprNode_IfLet(std::vector<AST::Pattern> patterns, ExprNodeP cond, ExprNodeP true_code, ExprNodeP false_code):
-        m_patterns( ::std::move(patterns) ),
-        m_value( ::std::move(cond) ),
-        m_true( ::std::move(true_code) ),
-        m_false( ::std::move(false_code) )
+    ExprNode_IfLet(std::vector<IfLet_Condition> conditions, ExprNodeP true_code, ExprNodeP false_code)
+        : m_conditions( ::std::move(conditions) )
+        , m_true( ::std::move(true_code) )
+        , m_false( ::std::move(false_code) )
     {
     }
     NODE_METHODS();
@@ -727,6 +752,7 @@ public:
     NT(ExprNode_CallMethod);
     NT(ExprNode_CallObject);
     NT(ExprNode_Loop);
+    NT(ExprNode_WhileLet);
     NT(ExprNode_Match);
     NT(ExprNode_If);
     NT(ExprNode_IfLet);
@@ -776,6 +802,7 @@ public:
     NT(ExprNode_CallMethod);
     NT(ExprNode_CallObject);
     NT(ExprNode_Loop);
+    NT(ExprNode_WhileLet);
     NT(ExprNode_Match);
     NT(ExprNode_If);
     NT(ExprNode_IfLet);

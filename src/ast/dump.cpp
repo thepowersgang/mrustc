@@ -261,12 +261,6 @@ public:
             m_os << "while ";
             AST::NodeVisitor::visit(n.m_cond);
             break;
-        case AST::ExprNode_Loop::WHILELET:
-            m_os << "while let ";
-            print_pattern(n.m_pattern, true);
-            m_os << " = ";
-            AST::NodeVisitor::visit(n.m_cond);
-            break;
         case AST::ExprNode_Loop::FOR:
             m_os << "while for ";
             print_pattern(n.m_pattern, true);
@@ -275,6 +269,36 @@ public:
             break;
         }
 
+        if( expr_root )
+        {
+            m_os << "\n";
+            m_os << indent();
+        }
+        else
+        {
+            m_os << " ";
+        }
+
+        AST::NodeVisitor::visit(n.m_code);
+    }
+    void visit_iflet_conditions(std::vector<AST::IfLet_Condition>& conds) {
+        for(size_t i = 0; i < conds.size(); i ++) {
+            if(i != 0) m_os << " && ";
+            if(conds[i].opt_pat) {
+                print_pattern(*conds[i].opt_pat, true);
+                m_os << " = ";
+            }
+            m_os << "(";
+            AST::NodeVisitor::visit(conds[i].value);
+            m_os << ")";
+        }
+    }
+    void visit(AST::ExprNode_WhileLet& n) override {
+        bool expr_root = m_expr_root;
+        m_expr_root = false;
+
+        m_os << "while let ";
+        visit_iflet_conditions(n.m_conditions);
         if( expr_root )
         {
             m_os << "\n";
@@ -361,14 +385,7 @@ public:
         bool expr_root = m_expr_root;
         m_expr_root = false;
         m_os << "if let ";
-        for(const auto& pat : n.m_patterns)
-        {
-            if(&pat != &n.m_patterns.front())
-                m_os << " | ";
-            print_pattern(pat, /*is_refutable=*/true);
-        }
-        m_os << " = ";
-        AST::NodeVisitor::visit(n.m_value);
+        visit_iflet_conditions(n.m_conditions);
 
         visit_if_common(expr_root, n.m_true, n.m_false);
     }

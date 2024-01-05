@@ -985,6 +985,9 @@ namespace {
         void visit(::AST::ExprNode_Loop& node) {
             TODO(sp, "ExprNode_Loop");
         }
+        void visit(::AST::ExprNode_WhileLet& node) {
+            TODO(sp, "ExprNode_Loop");
+        }
         void visit(::AST::ExprNode_Match& node) {
             TODO(sp, "ExprNode_Match");
         }

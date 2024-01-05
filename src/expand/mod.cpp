@@ -877,6 +877,7 @@ struct CExpandExpr:
                 void visit(::AST::ExprNode_CallMethod& v) override { invalid(v); }
                 void visit(::AST::ExprNode_CallObject& v) override { invalid(v); }
                 void visit(::AST::ExprNode_Loop& v) override { invalid(v); }
+                void visit(::AST::ExprNode_WhileLet& v) override { invalid(v); }
                 void visit(::AST::ExprNode_Match& v) override { invalid(v); }
                 void visit(::AST::ExprNode_If& v) override { invalid(v); }
                 void visit(::AST::ExprNode_IfLet& v) override { invalid(v); }
@@ -950,7 +951,7 @@ struct CExpandExpr:
     void visit(::AST::ExprNode_Loop& node) override {
         this->visit_nodelete(node, node.m_cond);
         this->visit_nodelete(node, node.m_code);
-        Expand_Pattern(crate, modstack, this->cur_mod(),  node.m_pattern, (node.m_type == ::AST::ExprNode_Loop::WHILELET));
+        Expand_Pattern(crate, modstack, this->cur_mod(),  node.m_pattern, false);
         if(node.m_type == ::AST::ExprNode_Loop::FOR)
         {
             auto core_crate = crate.m_ext_cratename_core;
@@ -1009,6 +1010,67 @@ struct CExpandExpr:
                 ) );
         }
     }
+
+    AST::ExprNodeP desugar_let_chain(const Span& sp, std::vector<AST::IfLet_Condition>& conditions, AST::ExprNodeP true_block, std::function<AST::ExprNodeP()> get_false_block)
+    {
+        // Iterate the conditions in reverse, because this is being built from the innermost block
+        for(size_t i = conditions.size(); i--; )
+        {
+            auto& cond = conditions[i];
+            auto node_nomatch = get_false_block();
+            node_nomatch->set_span(sp);
+            if( cond.opt_pat ) {
+                ::std::vector< ::AST::ExprNode_Match_Arm>   arms;
+                // - `pattern => body`
+                arms.push_back( ::AST::ExprNode_Match_Arm(
+                    ::make_vec1( std::move(*cond.opt_pat) ),
+                    AST::MatchGuard(),
+                    std::move(true_block)
+                ) );
+                // - `_ => break,`
+                arms.push_back( ::AST::ExprNode_Match_Arm(
+                    ::make_vec1( ::AST::Pattern() ),
+                    AST::MatchGuard(),
+                    std::move(node_nomatch)
+                ) );
+                true_block.reset(new ::AST::ExprNode_Match( std::move(cond.value), std::move(arms) ));
+            }
+            else {
+                true_block.reset(new ::AST::ExprNode_If( std::move(cond.value), std::move(true_block), std::move(node_nomatch) ));
+            }
+            true_block->set_span(sp);
+        }
+        return true_block;
+    }
+
+    void visit(::AST::ExprNode_WhileLet& node) override {
+        for(auto& cond : node.m_conditions) {
+            if( cond.opt_pat ) {
+                Expand_Pattern(crate, modstack, this->cur_mod(),  *cond.opt_pat, true);
+            }
+            this->visit_nodelete(node, cond.value);
+        }
+        this->visit_nodelete(node, node.m_code);
+
+        // Desugar into:
+        /*
+         * loop {
+         *   match val_a {
+         *    pat_a => match val_b {
+         *      pat_b => ...,
+         *      _ => break,
+         *      },
+         *   _ => break,
+         *   }
+         * }
+         */
+        auto node_body = desugar_let_chain(node.span(), node.m_conditions,
+            std::move(node.m_code),
+            [&](){ return AST::ExprNodeP { new AST::ExprNode_Flow(AST::ExprNode_Flow::BREAK, node.m_label, AST::ExprNodeP()) }; }
+        );
+        replacement.reset(new ::AST::ExprNode_Loop(node.m_label, std::move(node_body) ));
+        replacement->set_span(node.span());
+    }
     void visit(::AST::ExprNode_Match& node) override {
         this->visit_nodelete(node, node.m_val);
         for(auto& arm : node.m_arms)
@@ -1050,11 +1112,49 @@ struct CExpandExpr:
         this->visit_nodelete(node, node.m_false);
     }
     void visit(::AST::ExprNode_IfLet& node) override {
-        for(auto& pat : node.m_patterns)
-            Expand_Pattern(crate, modstack, this->cur_mod(),  pat, true);
-        this->visit_nodelete(node, node.m_value);
+        for(auto& cond : node.m_conditions) {
+            if( cond.opt_pat ) {
+                Expand_Pattern(crate, modstack, this->cur_mod(),  *cond.opt_pat, true);
+            }
+            this->visit_nodelete(node, cond.value);
+        }
         this->visit_nodelete(node, node.m_true);
         this->visit_nodelete(node, node.m_false);
+
+        // TODO: Desugar into:
+        /*
+        * '#iflet: {
+        *   match val_a {
+        *    pat_a => match val_b {
+        *      pat_b => break '#iflet ({ true body }),
+        *      _ => {},
+        *      },
+        *   _ => {},
+        *   }
+        *   false body
+        * }
+        */
+#if 1
+        Ident   label({}, "#iflet");
+        auto node_body = desugar_let_chain(node.span(), node.m_conditions,
+            AST::ExprNodeP { new AST::ExprNode_Flow(AST::ExprNode_Flow::BREAK, label, std::move(node.m_true)) },
+            [&](){ return AST::ExprNodeP { new AST::ExprNode_Block() }; }
+        );
+        // - Create the block
+        auto* replacement = new ::AST::ExprNode_Block();
+        replacement->m_label = label;
+        replacement->m_nodes.push_back(std::move(node_body));
+        if(node.m_false) {
+            replacement->m_nodes.push_back(std::move(node.m_false));
+        }
+        else {
+            replacement->m_nodes.push_back(new AST::ExprNode_Tuple({}));
+        }
+        replacement->m_nodes.back()->set_span(node.span());
+        replacement->m_yields_final_value = true;
+        replacement->set_span(node.span());
+        this->replacement.reset(replacement);
+#endif
     }
     void visit(::AST::ExprNode_Integer& node) override { }
     void visit(::AST::ExprNode_Float& node) override { }
