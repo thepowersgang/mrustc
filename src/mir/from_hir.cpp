@@ -805,6 +805,15 @@ namespace {
                 ASSERT_BUG(node.span(), !node.m_continue, "Continue with a value isn't valid");
                 DEBUG("break value;");
                 this->visit_node_ptr(node.m_value);
+                //if( m_builder.resolve().type_is_impossible(node.span(), node.m_value->m_res_type) ) {
+                if( node.m_value->m_res_type.data().is_Diverge() ) {
+                    //ASSERT_BUG(node.span(), !m_builder.has_result(), "Result present when value type is uninhabited - " << node.m_value->m_res_type);
+                    //ASSERT_BUG(node.span(), !m_builder.block_active(), "Result present when value type is uninhabited - " << node.m_value->m_res_type);
+                }
+            }
+            if( !m_builder.block_active() ) {
+                // No block is currently active, not worth running the rest
+                return ;
             }
 
             // TODO: Use node.m_target_node
@@ -815,12 +824,10 @@ namespace {
                 m_builder.end_block( ::MIR::Terminator::make_Goto(target_block.cur) );
             }
             else {
-                if( node.m_value )
-                {
+                if( node.m_value ) {
                     m_builder.push_stmt_assign( node.span(), target_block.res_value.clone(),  m_builder.get_result(node.span()) );
                 }
-                else
-                {
+                else {
                     // Set result to ()
                     m_builder.push_stmt_assign( node.span(), target_block.res_value.clone(), ::MIR::RValue::make_Tuple({{}}) );
                 }
