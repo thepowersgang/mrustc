@@ -1793,6 +1793,7 @@ bool StaticTraitResolve::find_named_trait_in_trait(const Span& sp,
     for( const auto& pt : trait_ptr.m_all_parent_traits )
     {
         auto pt_mono = monomorph.monomorph_traitpath(sp, pt, false);
+        this->expand_associated_types_tp(sp, pt_mono);
 
         DEBUG(pt << " => " << pt_mono);
         // TODO: When in pre-typecheck mode, this needs to be a fuzzy match (because there might be a UfcsUnknown in the
