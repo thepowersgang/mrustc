@@ -112,7 +112,7 @@ void HIR::InherentCache::Inner::insert(const Span& sp, const HIR::TypeRef& cur_t
 }
 void HIR::InherentCache::Inner::find(const Span& sp, const HIR::TypeRef& cur_ty_act, t_cb_resolve_type ty_res, InherentCache::inner_callback_t& cb) const
 {
-    const auto& cur_ty = ty_res(cur_ty_act);
+    const auto& cur_ty = ty_res.get_type(sp, cur_ty_act);
     m_byvalue.iterate(cur_ty, cb);
 
     const Inner* inner = nullptr;
@@ -202,7 +202,6 @@ void HIR::InherentCache::insert_all(const Span& sp, const HIR::TypeImpl& impl, c
 void HIR::InherentCache::find(const Span& sp, const RcString& name, const HIR::TypeRef& ty, t_cb_resolve_type ty_res, callback_t cb) const
 {
     TRACE_FUNCTION_F(name << ", " << ty);
-    auto cb_resolve = [](const HIR::TypeRef& t)->const HIR::TypeRef& { return t; };
     // Callback that ensures that a potential impl fully matches the required receiver type
     inner_callback_t inner_cb = [&](const HIR::TypeRef& rough_self_ty, const HIR::TypeImpl& impl) {
         DEBUG("- " << rough_self_ty);
@@ -224,7 +223,7 @@ void HIR::InherentCache::find(const Span& sp, const RcString& name, const HIR::T
         }   getself;
 
         if( fcn.m_receiver == HIR::Function::Receiver::Custom ) {
-            if( fcn.m_receiver_type.match_test_generics(sp, ty, cb_resolve, getself) ) {
+            if( fcn.m_receiver_type.match_test_generics(sp, ty, ResolvePlaceholdersNop(), getself) ) {
                 ASSERT_BUG(sp, getself.detected_self_ty, "Unable to determine receiver type when matching " << fcn.m_receiver_type << " and " << ty);
                 cb(*getself.detected_self_ty, impl);
             }

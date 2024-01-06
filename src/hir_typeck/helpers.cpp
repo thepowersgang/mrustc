@@ -886,7 +886,7 @@ const ::HIR::ConstGeneric& HMTypeInferrence::get_value(const ::HIR::ConstGeneric
 }
 const ::HIR::ConstGeneric& HMTypeInferrence::get_value(unsigned slot) const
 {
-    ASSERT_BUG(Span(), slot != ~0u, "");
+    ASSERT_BUG(Span(), slot != ~0u, "HMTypeInferrence::get_value: Value generic ivar index not assigned");
     auto index = slot;
     // Limit the iteration count to the number of ivars
     for(unsigned int count = 0; count < m_values.size(); count ++)
@@ -1148,14 +1148,39 @@ bool HMTypeInferrence::types_equal(const ::HIR::TypeRef& rl, const ::HIR::TypeRe
 // TraitResolution
 // --------------------------------------------------------------------
 
+namespace {
+    ::HIR::Compare compare_value(const Span& sp, const ::HIR::ConstGeneric& left_raw, const ::HIR::ConstGeneric& right_raw, const HMTypeInferrence& infer)
+    {
+        const auto& left  = left_raw .is_Infer() ? infer.get_value(left_raw .as_Infer().index) : left_raw ;
+        const auto& right = right_raw.is_Infer() ? infer.get_value(right_raw.as_Infer().index) : right_raw;
+        if( left == right )
+            return ::HIR::Compare::Equal;
+        if( left.is_Infer() || right.is_Infer() ) {
+            return ::HIR::Compare::Fuzzy;
+        }
+        if( left.is_Generic() && left.as_Generic().is_placeholder() )
+            return ::HIR::Compare::Fuzzy;
+        if( right.is_Generic() && right.as_Generic().is_placeholder() )
+            return ::HIR::Compare::Fuzzy;
+        //TODO(sp, "compare_value: " << left << " == " << right);
+        return ::HIR::Compare::Unequal;
+    }
+}
+
 ::HIR::Compare TraitResolution::compare_pp(const Span& sp, const ::HIR::PathParams& left, const ::HIR::PathParams& right) const
 {
     ASSERT_BUG( sp, left.m_types.size() == right.m_types.size(), "Parameter count mismatch - `"<<left<<"` vs `"<<right<<"`" );
+    ASSERT_BUG( sp, left.m_values.size() == right.m_values.size(), "Parameter count mismatch - `"<<left<<"` vs `"<<right<<"`" );
     ::HIR::Compare  ord = ::HIR::Compare::Equal;
     for(unsigned int i = 0; i < left.m_types.size(); i ++) {
         // TODO: Should allow fuzzy matches using placeholders (match_test_generics_fuzz works for that)
         // - Better solution is to remove the placeholders in method searching.
         ord &= left.m_types[i].compare_with_placeholders(sp, right.m_types[i], this->m_ivars.callback_resolve_infer());
+        if( ord == ::HIR::Compare::Unequal )
+            return ord;
+    }
+    for(unsigned int i = 0; i < left.m_values.size(); i ++) {
+        ord &= compare_value(sp, left.m_values[i], right.m_values[i], this->m_ivars);
         if( ord == ::HIR::Compare::Unequal )
             return ord;
     }
@@ -3110,7 +3135,9 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::ConstGeneric& sz) override
         {
             ASSERT_BUG(sp, g.binding < out_impl_params.m_values.size(), "Value generic " << g << " out of range (" << out_impl_params.m_values.size() << ")");
-            if( out_impl_params.m_values[g.binding].is_Infer() )
+            if(sz.is_Infer())
+                ASSERT_BUG(sp, sz.as_Infer().index != ~0u, "");
+            if( out_impl_params.m_values[g.binding] == HIR::ConstGeneric() )
             {
                 DEBUG("[ftic_check_params] Value param " << g.binding << " = " << sz);
                 out_impl_params.m_values[g.binding] = sz.clone();
@@ -3138,9 +3165,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
     if( params_ptr )
     {
         const auto& params = *params_ptr;
-        ASSERT_BUG(sp, impl_trait_args.m_types.size() == params.m_types.size(), "Param count mismatch between `" << impl_trait_args << "` and `" << params << "` for " << trait );
-        for(unsigned int i = 0; i < impl_trait_args.m_types.size(); i ++)
-            match &= impl_trait_args.m_types[i] .match_test_generics_fuzz(sp, params.m_types[i], this->m_ivars.callback_resolve_infer(), get_params);
+        match &= impl_trait_args.match_test_generics_fuzz(sp, params, this->m_ivars.callback_resolve_infer(), get_params);
         if( match == ::HIR::Compare::Unequal ) {
             DEBUG("- Failed to match parameters - " << impl_trait_args << "+" << impl_ty << " != " << params << "+" << type);
             return ::HIR::Compare::Unequal;
@@ -3173,7 +3198,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
     }
     for(unsigned int i = 0; i < out_impl_params.m_values.size(); i ++ )
     {
-        if( out_impl_params.m_values[i].is_Infer() )
+        if( out_impl_params.m_values[i] == HIR::ConstGeneric() )
         {
             if( placeholders.m_values.size() == 0 )
                 placeholders.m_values.resize(out_impl_params.m_values.size());
@@ -3182,31 +3207,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         }
     }
     DEBUG("Placeholders: " << placeholders);
-    auto cb_infer = [&](const auto& ty)->const ::HIR::TypeRef& {
-        if( ty.data().is_Infer() )
-            return this->m_ivars.get_type(ty);
-        #if 0
-        else if( ty.data().is_Generic() && ty.data().as_Generic().binding >> 8 == 2 ) { // Generic group 2 = Placeholders
-            unsigned int i = ty.data().as_Generic().binding % 256;
-            ASSERT_BUG(sp, i < impl_params.size(), "Placeholder param out of range - " << i << " >= " << placeholders.size());
-            if( impl_params[i] )
-            {
-                DEBUG("[ftic_check_params:cb_infer] " << ty << " = " << *impl_params[i]);
-                return *impl_params[i];
-            }
-            else
-            {
-                ASSERT_BUG(sp, i < placeholders.size(), "Placeholder param out of range - " << i << " >= " << placeholders.size());
-                const auto& ph = placeholders[i];
-                if( ph.m_data.is_Generic() && ph.m_data.as_Generic().binding == i )
-                    TODO(sp, "[ftic_check_params:cb_infer] Placeholder " << i << " not yet bound");
-                return ph;
-            }
-        }
-        #endif
-        else
-            return ty;
-        };
+    auto cb_infer = m_ivars.callback_resolve_infer();
     struct Matcher:
         public ::HIR::MatchGenerics,
         public Monomorphiser
@@ -3265,13 +3266,46 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 if( ty.data().is_Generic() && ty.data().as_Generic().is_placeholder() ) {
                     return ::HIR::Compare::Fuzzy;
                 }
-                DEBUG("Unequal generic - " << g << " != " << ty);
+                DEBUG("Unequal generic type - " << g << " != " << ty);
                 return ::HIR::Compare::Unequal;
             }
         }
-        ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::ConstGeneric& sz) override
+        ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::ConstGeneric& v) override
         {
-            TODO(Span(), "Matcher::match_val " << g << " with " << sz);
+            if( const auto* e = v.opt_Generic() )
+            {
+                if( e->binding == g.binding && e->name == g.name )
+                {
+                    return ::HIR::Compare::Equal;
+                }
+            }
+            if( g.is_placeholder() && g.name == placeholder_name ) {
+                auto i = g.idx();
+                ASSERT_BUG(sp, impl_params.m_values[i] == HIR::ConstGeneric(), "Placeholder to populated value returned - " << impl_params.m_values[i] << " vs " << v);
+                auto& ph = placeholders.m_values[i];
+                if( ph.is_Generic() && ph.as_Generic().binding == g.binding ) {
+                    DEBUG("[ftic_check_params:cb_match] Bind placeholder " << i << " to " << v);
+                    ph = v.clone();
+                    return ::HIR::Compare::Equal;
+                }
+                else {
+                    DEBUG("[ftic_check_params:cb_match] Compare placeholder " << i << " " << ph << " == " << v);
+                    TODO(Span(), "[ftic_check_params:cb_match] Compare placeholder " << i << " " << ph << " == " << v);
+                    //return ph.compare_with_placeholders(sp, ty, resolve_cb);
+                }
+            }
+            else {
+                if( g.is_placeholder() ) {
+                    DEBUG("[ftic_check_params:cb_match] External impl param " << g);
+                    return ::HIR::Compare::Fuzzy;
+                }
+                // If the RHS is a non-literal ivar, return fuzzy
+                if( v.is_Infer() ) {
+                    return ::HIR::Compare::Fuzzy;
+                }
+                DEBUG("Unequal generic value - " << g << " != " << v);
+                return ::HIR::Compare::Unequal;
+            }
         }
 
         ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& ge) const override {
@@ -3291,7 +3325,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& val) const override {
             ASSERT_BUG(sp, val.binding < 256, "Generic value binding in " << val << " out of range (>=256)");
             ASSERT_BUG(sp, val.binding < impl_params.m_values.size(), "Generic value binding in " << val << " out of range (>= " << impl_params.m_values.size() << ")");
-            if( !impl_params.m_values.at(val.binding).is_Infer() ) {
+            if( impl_params.m_values.at(val.binding) != HIR::ConstGeneric() ) {
                 return impl_params.m_values.at(val.binding).clone();
             }
             ASSERT_BUG(sp, placeholders.m_values.size() == impl_params.m_values.size(), "Placeholder size mismatch: " << placeholders.m_values.size() << " != " << impl_params.m_values.size());
@@ -3486,13 +3520,17 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         }
     }
 
-    for(size_t i = 0; i < out_impl_params.m_types.size(); i ++)
-    {
-        if( out_impl_params.m_types[i] == HIR::TypeRef() )
-        {
+    for(size_t i = 0; i < out_impl_params.m_types.size(); i ++) {
+        if( out_impl_params.m_types[i] == HIR::TypeRef() ) {
             out_impl_params.m_types[i] = std::move(placeholders.m_types[i]);
         }
         ASSERT_BUG(sp, out_impl_params.m_types[i] != HIR::TypeRef(), "");
+    }
+    for(size_t i = 0; i < out_impl_params.m_values.size(); i ++) {
+        if( out_impl_params.m_values[i] == HIR::ConstGeneric() ) {
+            out_impl_params.m_values[i] = std::move(placeholders.m_values[i]);
+        }
+        ASSERT_BUG(sp, out_impl_params.m_values[i] != HIR::ConstGeneric(), "");
     }
 
     for(size_t i = 0; i < impl_params_def.m_types.size(); i ++)
@@ -3513,11 +3551,6 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             }
         }
     }
-
-
-    //if( match == ::HIR::Compare::Fuzzy ) {
-    //    out_impl_params.placeholder_types = ::std::move(fuzzy_ph);
-    //}
 
     return match;
 }

@@ -562,8 +562,8 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
     if( const auto* e = data().opt_Generic() ) {
         return callback.match_ty(*e, x_in, resolve_placeholder);
     }
-    const auto& v = (this->data().is_Infer() ? resolve_placeholder(*this) : *this);
-    const auto& x = (x_in.data().is_Infer() || x_in.data().is_Generic() ? resolve_placeholder(x_in) : x_in);
+    const auto& v = (this->data().is_Infer() ? resolve_placeholder.get_type(sp, *this) : *this);
+    const auto& x = (x_in.data().is_Infer() || x_in.data().is_Generic() ? resolve_placeholder.get_type(sp, x_in) : x_in);
     TRACE_FUNCTION_F(*this << ", " << x_in << " -- " << v << ", " << x);
     // If `x` is an ivar - This can be a fuzzy match.
     if(const auto* xep = x.data().opt_Infer())
@@ -1059,9 +1059,9 @@ const ::HIR::TraitMarkings* HIR::TypePathBinding::get_trait_markings() const
 ::HIR::Compare HIR::TypeRef::compare_with_placeholders(const Span& sp, const ::HIR::TypeRef& x, t_cb_resolve_type resolve_placeholder) const
 {
     //TRACE_FUNCTION_F(*this << " ?= " << x);
-    const auto& left = (data().is_Infer() || data().is_Generic() ? resolve_placeholder(*this) : *this);
+    const auto& left = (data().is_Infer() || data().is_Generic() ? resolve_placeholder.get_type(sp, *this) : *this);
     //const auto& left = *this;
-    const auto& right = (x.data().is_Infer() ? resolve_placeholder(x) : (x.data().is_Generic() ? resolve_placeholder(x) : x));
+    const auto& right = (x.data().is_Infer() || x.data().is_Generic()) ? resolve_placeholder.get_type(sp, x) : x;
 
     // If the two types are the same ivar, return equal
     if( left.data().is_Infer() && left == right ) {

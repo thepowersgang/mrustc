@@ -18,7 +18,7 @@ bool StaticTraitResolve::find_impl(
     ) const
 {
     TRACE_FUNCTION_F(trait_path << FMT_CB(os, if(trait_params) { os << *trait_params; } else { os << "<?>"; }) << " for " << type);
-    auto cb_ident = [](const ::HIR::TypeRef&ty)->const ::HIR::TypeRef& { return ty; };
+    auto cb_ident = HIR::ResolvePlaceholdersNop();
 
     static ::HIR::GenericParams null_hrls;
     static ::HIR::PathParams    null_params;
@@ -162,7 +162,7 @@ bool StaticTraitResolve::find_impl(
             if(!trait_params)
                 return true;
 
-            return target_params.compare_with_placeholders(sp, *trait_params, [](const auto&t)->const ::HIR::TypeRef&{return t;}) != HIR::Compare::Unequal;
+            return target_params.compare_with_placeholders(sp, *trait_params, HIR::ResolvePlaceholdersNop()) != HIR::Compare::Unequal;
         }
     };
 
@@ -186,7 +186,7 @@ bool StaticTraitResolve::find_impl(
                 }
                 for(unsigned int i = 0; i < des_arg_tys.size(); i ++)
                 {
-                    if( des_arg_tys[i].compare_with_placeholders(sp, e.m_arg_types[i], [](const auto&t)->const ::HIR::TypeRef&{return t;}) == ::HIR::Compare::Unequal ) {
+                    if( des_arg_tys[i].compare_with_placeholders(sp, e.m_arg_types[i], cb_ident) == ::HIR::Compare::Unequal ) {
                         return false;
                     }
                 }
@@ -218,7 +218,7 @@ bool StaticTraitResolve::find_impl(
                 }
                 for(unsigned int i = 0; i < des_arg_tys.size(); i ++)
                 {
-                    if( des_arg_tys[i].compare_with_placeholders(sp, e.node->m_args[i].second, [](const auto&t)->const ::HIR::TypeRef&{return t;}) == ::HIR::Compare::Unequal ) {
+                    if( des_arg_tys[i].compare_with_placeholders(sp, e.node->m_args[i].second, HIR::ResolvePlaceholdersNop()) == ::HIR::Compare::Unequal ) {
                         return false;
                     }
                 }
@@ -552,7 +552,7 @@ bool StaticTraitResolve::find_impl__bounds(
             ASSERT_BUG( sp, left.m_types.size() == right.m_types.size(), "Parameter count mismatch between " << left << " and " << right );
             for(unsigned int i = 0; i < left.m_types.size(); i ++) {
                 // TODO: Permits fuzzy comparison to handle placeholder params, should instead do a match/test/assign
-                if( left.m_types[i].compare_with_placeholders(sp, right.m_types[i], [](const auto&t)->const ::HIR::TypeRef&{return t;}) == ::HIR::Compare::Unequal ) {
+                if( left.m_types[i].compare_with_placeholders(sp, right.m_types[i], HIR::ResolvePlaceholdersNop()) == ::HIR::Compare::Unequal ) {
                 //if( left.m_types[i] != right.m_types[i] ) {
                     return false;
                 }
@@ -573,7 +573,7 @@ bool StaticTraitResolve::find_impl__bounds(
             const auto& b_params = it->first.second.m_params;
 
             DEBUG("ivar present: type ?= " << b_type);
-            if( b_type.compare_with_placeholders(sp, type, [](const auto&t)->const ::HIR::TypeRef&{return t;}) == ::HIR::Compare::Unequal ) {
+            if( b_type.compare_with_placeholders(sp, type, HIR::ResolvePlaceholdersNop()) == ::HIR::Compare::Unequal ) {
                 continue;
             }
             DEBUG(b_type << ": " << "for" << it->second.hrbs.fmt_args() << " " << trait_path << b_params);
@@ -741,7 +741,7 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
         ::std::function<bool(HIR::PathParams, ::HIR::Compare)> found_cb
     ) const
 {
-    auto cb_ident = [](const auto&ty)->const ::HIR::TypeRef&{return ty;};
+    auto cb_ident = HIR::ResolvePlaceholdersNop();
     TRACE_FUNCTION_F("impl" << impl_params_def.fmt_args() << " " << des_trait_path << impl_trait_params << " for " << impl_type << impl_params_def.fmt_bounds());
 
     // TODO: What if `des_trait_params` already has impl placeholders?
@@ -1645,7 +1645,7 @@ bool StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
         // - A fuzzy can be caused by an opaque match.
         // - TODO: Move this logic into `find_impl`
         if( fuzzy ) {
-            auto cb_ident = [](const ::HIR::TypeRef& x)->const ::HIR::TypeRef& { return x; };
+            auto cb_ident = HIR::ResolvePlaceholdersNop();
             DEBUG("[expand_associated_types] - Fuzzy, monomorph+expand and recheck");
 
             auto impl_ty = impl.get_impl_type();
@@ -1800,7 +1800,7 @@ bool StaticTraitResolve::find_named_trait_in_trait(const Span& sp,
         // monomorphed version) OR, there may be placeholders
         if( pt.m_path.m_path == des )
         {
-            auto cmp = pt_mono.m_path.m_params.compare_with_placeholders(sp, des_params, [](const auto& t)->const ::HIR::TypeRef&{return t;});
+            auto cmp = pt_mono.m_path.m_params.compare_with_placeholders(sp, des_params, HIR::ResolvePlaceholdersNop());
             // pt_mono.m_path.m_params == des_params )
             if( cmp != ::HIR::Compare::Unequal )
             {
@@ -3012,14 +3012,14 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
         out_params.pp_impl = &pe.impl_params;
         out_params.pp_method = &pe.params;
         ValuePtr    rv;
-        m_crate.find_type_impls(pe.type, [](const auto&x)->const ::HIR::TypeRef& { return x; }, [&](const auto& impl) {
+        m_crate.find_type_impls(pe.type, HIR::ResolvePlaceholdersNop(), [&](const auto& impl) {
             DEBUG("Found impl" << impl.m_params.fmt_args() << " " << impl.m_type);
             // Populate pp_impl if not populated
             if( !pe.impl_params.has_params() ) {
                 GetParams::ParamsSet    params_set;
                 GetParams get_params { sp, impl.m_params, out_params.pp_impl_data, params_set };
 
-                auto cb_ident = [](const ::HIR::TypeRef&ty)->const ::HIR::TypeRef& { return ty; };
+                auto cb_ident = HIR::ResolvePlaceholdersNop();
                 impl.m_type.match_test_generics_fuzz(sp, pe.type, cb_ident, get_params);
 
                 if( !pe.impl_params.m_lifetimes.empty() ) {

@@ -184,6 +184,9 @@ struct Context
     // - Equate a type to an associated type (if name == "", no equation is done, but trait is searched)
     void equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const ::HIR::SimplePath& trait, ::HIR::PathParams params, const ::HIR::TypeRef& impl_ty, const char *name, bool is_op=false);
 
+    // Equate const generics (values)
+    void equate_values(const Span& sp, const ::HIR::ConstGeneric& rl, const ::HIR::ConstGeneric& rr);
+
     /// Adds a `ty: Sized` bound to the contained ivars.
     void require_sized(const Span& sp, const ::HIR::TypeRef& ty);
 

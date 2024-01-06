@@ -4263,7 +4263,7 @@ namespace {
                         }
                     TU_ARMA(UfcsInherent, pe) {
                         // Check if the return type is !
-                        omit_assign |= m_resolve.m_crate.find_type_impls(pe.type, [&](const auto& ty)->const auto& { return ty; },
+                        omit_assign |= m_resolve.m_crate.find_type_impls(pe.type, HIR::ResolvePlaceholdersNop(),
                             [&](const auto& impl) {
                                 // Associated functions
                                 {

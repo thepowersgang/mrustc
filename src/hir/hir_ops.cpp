@@ -47,7 +47,7 @@ namespace {
     bool matches_type_int(const ::HIR::TypeRef& left,  const ::HIR::TypeRef& right_in, ::HIR::t_cb_resolve_type ty_res, bool expand_generic)
     {
         assert(! left.data().is_Infer() );
-        const auto& right = (right_in.data().is_Infer() ? ty_res(right_in) : right_in);
+        const auto& right = (right_in.data().is_Infer() ? ty_res.get_type(Span(), right_in) : right_in);
         if( right_in.data().is_Generic() )
             expand_generic = false;
 
@@ -823,7 +823,7 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
     // TODO: Detect `impl<T> Foo<T> for Bar<T>` vs `impl<T> Foo<&T> for Bar<T>`
     // > Create values for impl params from the type, then check if the trait params are compatible
     // > Requires two lists, and telling which one to use by the end
-    auto cb_ident = [](const ::HIR::TypeRef& x)->const ::HIR::TypeRef& { return x; };
+    auto cb_ident = ResolvePlaceholdersNop();
     bool is_reversed = false;
     ImplTyMatcher matcher;
     matcher.reinit(this->m_params);
@@ -926,10 +926,10 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
                     }
                     else {
                         // Search the crate for an impl
-                        bool rv = crate.find_trait_impls(trait.m_path.m_path, ty, [](const auto&t)->const auto&{ return t; }, [&](const ::HIR::TraitImpl& ti)->bool {
+                        auto cb_ident = ResolvePlaceholdersNop();
+                        bool rv = crate.find_trait_impls(trait.m_path.m_path, ty, cb_ident, [&](const ::HIR::TraitImpl& ti)->bool {
                                 DEBUG("impl" << ti.m_params.fmt_args() << " " << trait.m_path.m_path << ti.m_trait_args << " for " << ti.m_type << ti.m_params.fmt_bounds());
 
-                                auto cb_ident = [](const ::HIR::TypeRef& x)->const ::HIR::TypeRef& { return x; };
                                 ImplTyMatcher   matcher;
                                 matcher.reinit(ti.m_params);
                                 // 1. Triple-check the type matches (and get generics)

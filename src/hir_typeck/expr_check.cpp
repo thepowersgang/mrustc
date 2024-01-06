@@ -746,7 +746,7 @@ namespace {
             TU_ARMA(UfcsInherent, e) {
                 // - Locate function (and impl block)
                 const ::HIR::TypeImpl* impl_ptr = nullptr;
-                m_resolve.m_crate.find_type_impls(e.type, [&](const auto& ty)->const ::HIR::TypeRef& { return ty; },
+                m_resolve.m_crate.find_type_impls(e.type, HIR::ResolvePlaceholdersNop(),
                     [&](const auto& impl) {
                         DEBUG("- impl" << impl.m_params.fmt_args() << " " << impl.m_type);
                         auto it = impl.m_methods.find(e.item);

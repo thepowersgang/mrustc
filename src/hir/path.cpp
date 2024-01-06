@@ -309,6 +309,10 @@ Ordering HIR::TraitPath::ord(const TraitPath& x) const
                 return Compare::Unequal;
         }
         else {
+            // TODO: Look up the the ivars?
+            if( this->m_values[i].is_Infer() ) {
+                return Compare::Fuzzy;
+            }
             if( this->m_values[i] != x.m_values[i] ) {
                 return Compare::Unequal;
             }

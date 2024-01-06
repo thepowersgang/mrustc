@@ -124,13 +124,26 @@ public:
     // (helper) Add ivars to path parameters
     void add_ivars_params(::HIR::PathParams& params);
 
-    ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> callback_resolve_infer() const {
-        return [&](const auto& ty)->const auto& {
-                if( ty.data().is_Infer() )
-                    return this->get_type(ty);
-                else
-                    return ty;
-            };
+    struct ResolvePlaceholders: public HIR::ResolvePlaceholders {
+        const HMTypeInferrence& m_parent;
+        ResolvePlaceholders(const HMTypeInferrence& parent): m_parent(parent) {
+        }
+
+        const ::HIR::TypeRef& get_type(const Span& sp, const HIR::TypeRef& ty) const override {
+            if( ty.data().is_Infer() )
+                return m_parent.get_type(ty);
+            else
+                return ty;
+        }
+        const ::HIR::ConstGeneric& get_val(const Span& sp, const HIR::ConstGeneric& v) const override {
+            if( v.is_Infer() )
+                return m_parent.get_value(v);
+            else
+                return v;
+        }
+    };
+    ResolvePlaceholders callback_resolve_infer() const {
+        return ResolvePlaceholders(*this);
     }
 
     // Mutation

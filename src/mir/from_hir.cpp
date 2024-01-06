@@ -2415,7 +2415,7 @@ namespace {
                 }
             TU_ARMA(UfcsInherent, pe) {
                 // 1. Find item in an impl block
-                auto rv = m_builder.crate().find_type_impls(pe.type, [&](const auto& ty)->const ::HIR::TypeRef& { return ty; },
+                auto rv = m_builder.crate().find_type_impls(pe.type, HIR::ResolvePlaceholdersNop(),
                     [&](const auto& impl) {
                         DEBUG("- impl" << impl.m_params.fmt_args() << " " << impl.m_type);
                         // Associated functions

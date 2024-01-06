@@ -549,7 +549,7 @@ public:
 
     bool matches_type(const ::HIR::TypeRef& tr, t_cb_resolve_type ty_res) const;
     bool matches_type(const ::HIR::TypeRef& tr) const {
-        return matches_type(tr, [](const auto& x)->const auto&{ return x; });
+        return matches_type(tr, ResolvePlaceholdersNop());
     }
 };
 
@@ -579,7 +579,7 @@ public:
 
     bool matches_type(const ::HIR::TypeRef& tr, t_cb_resolve_type ty_res) const;
     bool matches_type(const ::HIR::TypeRef& tr) const {
-        return matches_type(tr, [](const auto& x)->const auto&{ return x; });
+        return matches_type(tr, ResolvePlaceholdersNop());
     }
 
     bool more_specific_than(const TraitImpl& x) const;
@@ -598,7 +598,7 @@ public:
 
     bool matches_type(const ::HIR::TypeRef& tr, t_cb_resolve_type ty_res) const;
     bool matches_type(const ::HIR::TypeRef& tr) const {
-        return matches_type(tr, [](const auto& x)->const auto&{ return x; });
+        return matches_type(tr, ResolvePlaceholdersNop());
     }
 };
 

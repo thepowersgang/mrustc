@@ -30,7 +30,17 @@ enum Compare {
     Unequal,
 };
 
-typedef ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> t_cb_resolve_type;
+class ResolvePlaceholders {
+public:
+    virtual const ::HIR::TypeRef& get_type(const Span& sp, const HIR::TypeRef& ty) const = 0;
+    virtual const ::HIR::ConstGeneric& get_val(const Span& sp, const HIR::ConstGeneric& v) const = 0;
+};
+class ResolvePlaceholdersNop: public ResolvePlaceholders {
+    const ::HIR::TypeRef& get_type(const Span& sp, const HIR::TypeRef& ty) const { return ty; }
+    const ::HIR::ConstGeneric& get_val(const Span& sp, const HIR::ConstGeneric& v) const { return v; }
+};
+//typedef ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> t_cb_resolve_type;
+typedef const ResolvePlaceholders& t_cb_resolve_type;
 
 class MatchGenerics
 {

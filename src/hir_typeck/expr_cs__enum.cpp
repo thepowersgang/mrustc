@@ -479,6 +479,10 @@ namespace typecheck
         {
         }
 
+        void visit_path_params(::HIR::PathParams& pp)
+        {
+            this->context.m_ivars.add_ivars_params(pp);
+        }
         void visit_type(::HIR::TypeRef& ty)
         {
             this->context.add_ivars(ty);

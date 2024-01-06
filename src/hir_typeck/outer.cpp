@@ -548,7 +548,7 @@ namespace {
         {
             auto& e = pd.as_UfcsUnknown();
             const auto& type = e.type;
-            return this->crate.find_trait_impls(trait_path.m_path, type, [](const auto& x)->const auto&{return x;}, [&](const auto& impl) {
+            return this->crate.find_trait_impls(trait_path.m_path, type, HIR::ResolvePlaceholdersNop(), [&](const auto& impl) {
                 DEBUG("FOUND impl" << impl.m_params.fmt_args() << " " << trait_path.m_path << impl.m_trait_args << " for " << impl.m_type);
                 // TODO: Check bounds
                 for(const auto& bound : impl.m_params.m_bounds) {
@@ -633,7 +633,7 @@ namespace {
             }
             else {
                 // 1. Search for applicable inherent methods (COMES FIRST!)
-                if( this->crate.find_type_impls(e.type, [](const auto& ty)->const auto&{return ty;}, [&](const auto& impl) {
+                if( this->crate.find_type_impls(e.type, HIR::ResolvePlaceholdersNop(), [&](const auto& impl) {
                     DEBUG("- matched inherent impl " << e.type);
                     // Search for item in this block
                     switch( pc )

@@ -567,7 +567,7 @@ namespace resolve_ufcs {
         {
             auto& e = pd.as_UfcsUnknown();
             TRACE_FUNCTION_F(e.type);
-            return m_crate.find_type_impls(e.type, [&](const auto& t)->const auto& { return t; }, [&](const auto& impl) {
+            return m_crate.find_type_impls(e.type, HIR::ResolvePlaceholdersNop(), [&](const auto& impl) {
                 DEBUG("- matched inherent impl" << impl.m_params.fmt_args() << " " << impl.m_type);
                 // Search for item in this block
                 switch( pc )
@@ -887,7 +887,7 @@ namespace resolve_ufcs {
                     BUG(sp, "UfcsUnknown still in pattern value - " << pat);
                     }
                 TU_ARMA(UfcsInherent, pe) {
-                    bool rv = m_crate.find_type_impls(pe.type, [&](const auto& t)->const auto& { return t; }, [&](const auto& impl) {
+                    bool rv = m_crate.find_type_impls(pe.type, HIR::ResolvePlaceholdersNop(), [&](const auto& impl) {
                         DEBUG("- matched inherent impl" << impl.m_params.fmt_args() << " " << impl.m_type);
                         // Search for item in this block
                         auto it = impl.m_constants.find(pe.item);

@@ -1959,33 +1959,6 @@ void Context::equate_types_inner(const Span& sp, const ::HIR::TypeRef& li, const
             set_ivar(l_t, r_t);
         }
         else {
-            auto equality_constgeneric = [&](const ::HIR::ConstGeneric& rl, const ::HIR::ConstGeneric& rr) {
-                const auto& l = this->m_ivars.get_value(rl);
-                const auto& r = this->m_ivars.get_value(rr);
-                if( l != r ) {
-                    DEBUG(l << " != " << r);
-                    if(l.is_Infer()) {
-                        if(r.is_Infer()) {
-                            // Unify ivars
-                            this->m_ivars.ivar_val_unify(l.as_Infer().index, r.as_Infer().index);
-                        }
-                        else {
-                            this->m_ivars.set_ivar_val_to(l.as_Infer().index, r.clone());
-                        }
-                    }
-                    else {
-                        if(r.is_Infer()) {
-                            this->m_ivars.set_ivar_val_to(r.as_Infer().index, l.clone());
-                        }
-                        else {
-                            ERROR(sp, E0000, "Value mismatch between " << l << " and " << r);
-                        }
-                    }
-                }
-                else {
-                    DEBUG(l << " == " << r);
-                }
-                };
             // Helper function for Path and TraitObject
             auto equality_typeparams = [&](const ::HIR::PathParams& l, const ::HIR::PathParams& r) {
                     if( l.m_types.size() != r.m_types.size() ) {
@@ -2001,7 +1974,7 @@ void Context::equate_types_inner(const Span& sp, const ::HIR::TypeRef& li, const
                     }
                     for(unsigned int i = 0; i < l.m_values.size(); i ++)
                     {
-                        equality_constgeneric(l.m_values[i], r.m_values[i]);
+                        this->equate_values(sp, l.m_values[i], r.m_values[i]);
                     }
                 };
 
@@ -2126,15 +2099,15 @@ void Context::equate_types_inner(const Span& sp, const ::HIR::TypeRef& li, const
                         if( !l_e.size.is_Unevaluated() ) {
                             assert(l_e.size.is_Known());
                             assert(r_e.size.is_Unevaluated());
-                            equality_constgeneric(HIR::EncodedLiteralPtr(EncodedLiteral::make_usize(l_e.size.as_Known())), r_e.size.as_Unevaluated());
+                            this->equate_values(sp, HIR::EncodedLiteralPtr(EncodedLiteral::make_usize(l_e.size.as_Known())), r_e.size.as_Unevaluated());
                         }
                         else if( !r_e.size.is_Unevaluated() ) {
                             assert(l_e.size.is_Unevaluated());
                             assert(r_e.size.is_Known());
-                            equality_constgeneric(l_e.size.as_Unevaluated(), HIR::EncodedLiteralPtr(EncodedLiteral::make_usize(r_e.size.as_Known())));
+                            this->equate_values(sp, l_e.size.as_Unevaluated(), HIR::EncodedLiteralPtr(EncodedLiteral::make_usize(r_e.size.as_Known())));
                         }
                         else {
-                            equality_constgeneric(l_e.size.as_Unevaluated(), r_e.size.as_Unevaluated());
+                            this->equate_values(sp, l_e.size.as_Unevaluated(), r_e.size.as_Unevaluated());
                         }
                     }
                     else {
@@ -2191,6 +2164,35 @@ void Context::equate_types_inner(const Span& sp, const ::HIR::TypeRef& li, const
                 }
             }
         }
+    }
+}
+
+void Context::equate_values(const Span& sp, const ::HIR::ConstGeneric& rl, const ::HIR::ConstGeneric& rr)
+{
+    const auto& l = this->m_ivars.get_value(rl);
+    const auto& r = this->m_ivars.get_value(rr);
+    if( l != r ) {
+        DEBUG(l << " != " << r);
+        if(l.is_Infer()) {
+            if(r.is_Infer()) {
+                // Unify ivars
+                this->m_ivars.ivar_val_unify(l.as_Infer().index, r.as_Infer().index);
+            }
+            else {
+                this->m_ivars.set_ivar_val_to(l.as_Infer().index, r.clone());
+            }
+        }
+        else {
+            if(r.is_Infer()) {
+                this->m_ivars.set_ivar_val_to(r.as_Infer().index, l.clone());
+            }
+            else {
+                ERROR(sp, E0000, "Value mismatch between " << l << " and " << r);
+            }
+        }
+    }
+    else {
+        DEBUG(l << " == " << r);
     }
 }
 
@@ -5206,6 +5208,10 @@ namespace {
                     {
                         context.equate_types(sp, v.params.m_types[i], itp.m_types[i]);
                     }
+                    for(unsigned int i = 0; i < v.params.m_values.size(); i ++)
+                    {
+                        context.equate_values(sp, v.params.m_values[i], itp.m_values[i]);
+                    }
                     return true;
                 }
                 else {
@@ -5420,6 +5426,9 @@ namespace {
             context.equate_types(sp, v.impl_ty, possible_impl_ty);
             for( unsigned int i = 0; i < possible_params.m_types.size(); i ++ ) {
                 context.equate_types(sp, v.params.m_types[i], possible_params.m_types[i]);
+            }
+            for( unsigned int i = 0; i < possible_params.m_values.size(); i ++ ) {
+                context.equate_values(sp, v.params.m_values[i], possible_params.m_values[i]);
             }
             // - Obtain the bounds required for this impl and add those as trait bounds to check/equate
             if( const auto* ep = best_impl.m_data.opt_TraitImpl() )
