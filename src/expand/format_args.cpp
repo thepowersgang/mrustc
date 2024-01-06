@@ -881,6 +881,13 @@ namespace {
                 toks.push_back( TokenTree(TOK_SQUARE_CLOSE) );
             }
             // )
+            if( TARGETVER_LEAST_1_74 ) {
+                toks.push_back(TokenTree(TOK_COMMA));
+                // TODO: This is a lang item - `format_unsafe_arg`
+                push_path(toks, crate, {"fmt", "rt", "UnsafeArg", "new"});
+                toks.push_back( TokenTree(TOK_PAREN_OPEN) );
+                toks.push_back( TokenTree(TOK_PAREN_CLOSE) );
+            }
             toks.push_back( TokenTree(TOK_PAREN_CLOSE) );
         }   // if(is_simple) else
 
