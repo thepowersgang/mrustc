@@ -3148,6 +3148,12 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 if( out_impl_params.m_values[g.binding] == sz ) {
                     return ::HIR::Compare::Equal;
                 }
+                if( out_impl_params.m_values[g.binding].is_Infer() ) {
+                    return ::HIR::Compare::Fuzzy;
+                }
+                if( sz.is_Infer() ) {
+                    return ::HIR::Compare::Fuzzy;
+                }
                 TODO(Span(), "PtrImplMatcher::match_val " << g << "(" << out_impl_params.m_values[g.binding] << ") with " << sz);
             }
         }
