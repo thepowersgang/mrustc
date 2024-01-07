@@ -194,6 +194,7 @@ struct LowerHIR_ExprNode_Visitor:
                     }
                 }
             } visitor(base, count);
+            visitor.visit_pattern(pat);
             /* 
              * ```
              * let (a,b,c,...) = match $value: $ty {
@@ -215,8 +216,11 @@ struct LowerHIR_ExprNode_Visitor:
             match_arms[0].m_patterns.push_back(std::move(pat));
             match_arms[0].m_code.reset(new HIR::ExprNode_Tuple(v.span(), std::move(tuple_vals)));
             match_arms[1].m_patterns.push_back(HIR::Pattern());
-            // `_ => { let _: ! = $else; },`
+            // `_ => loop { let _: ! = $else; },
             match_arms[1].m_code.reset(new HIR::ExprNode_Let(v.span(), HIR::Pattern(), HIR::TypeRef::new_diverge(), std::move(node_else)));
+            match_arms[1].m_code.reset(new HIR::ExprNode_Loop(v.span(), "",  std::move(match_arms[1].m_code)));
+            // HACK: Just use the code as-is.
+            //match_arms[1].m_code = std::move(node_else);
             // `match $value: $ty {`
             auto match_value = type.data().is_Infer()   // Only emit the `: $ty` part if the type was specified (not a `_`)
                 ? std::move(node_value)
