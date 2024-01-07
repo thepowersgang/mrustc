@@ -303,17 +303,19 @@ Ordering HIR::TraitPath::ord(const TraitPath& x) const
     }
     for( unsigned int i = 0; i < x.m_values.size(); i ++ )
     {
-        if( const auto* ge = this->m_values[i].opt_Generic() ) {
-            rv &= match.match_val(*ge, x.m_values[i]);
+        const auto& val_t = resolve_placeholder.get_val(sp, this->m_values[i]);
+        const auto& val_x = resolve_placeholder.get_val(sp, x.m_values[i]);
+        if( const auto* ge = val_t.opt_Generic() ) {
+            rv &= match.match_val(*ge, val_x);
             if(rv == Compare::Unequal)
                 return Compare::Unequal;
         }
         else {
             // TODO: Look up the the ivars?
-            if( this->m_values[i].is_Infer() ) {
+            if( val_t.is_Infer() || val_x.is_Infer() ) {
                 return Compare::Fuzzy;
             }
-            if( this->m_values[i] != x.m_values[i] ) {
+            if( val_t != val_x ) {
                 return Compare::Unequal;
             }
         }
