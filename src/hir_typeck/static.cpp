@@ -2019,7 +2019,7 @@ bool StaticTraitResolve::type_is_clone(const Span& sp, const ::HIR::TypeRef& ty)
         return e != ::HIR::CoreType::Str;
         }
     TU_ARMA(Array, e) {
-        return e.size.as_Known() == 0 || type_is_clone(sp, e.inner);
+        return (e.size.is_Known() && e.size.as_Known() == 0) || type_is_clone(sp, e.inner);
         }
     TU_ARMA(Slice, e) {
         // [T] isn't Sized, so isn't Copy ether
