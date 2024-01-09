@@ -100,6 +100,7 @@ bool StaticTraitResolve::find_impl(
                     HIR::CoreType::Usize
                     } ));
             }
+
             // Generics (or opaque ATYs)
             if( type.data().is_Generic() || (type.data().is_Path() && type.data().as_Path().binding.is_Opaque()) ) {
                 // If the type is `Sized` return `()` as the type
@@ -112,7 +113,7 @@ bool StaticTraitResolve::find_impl(
                 }
             }
             // Trait object: `Metadata=DynMetadata<T>`
-            if( type.data().is_TraitObject() ) {
+            else if( type.data().is_TraitObject() ) {
                 ::HIR::TraitPath::assoc_list_t   assoc_list;
                 assoc_list.insert(std::make_pair( name_Metadata, HIR::TraitPath::AtyEqual {
                     m_lang_Pointee,
@@ -121,11 +122,11 @@ bool StaticTraitResolve::find_impl(
                 return found_cb(ImplRef(type.clone(), {}, std::move(assoc_list)), false);
             }
             // Slice and str
-            if( type.data().is_Slice() || TU_TEST1(type.data(), Primitive, == HIR::CoreType::Str) ) {
+            else if( type.data().is_Slice() || TU_TEST1(type.data(), Primitive, == HIR::CoreType::Str) ) {
                 return found_cb( ImplRef(&null_hrls, &type, trait_params, &assoc_slice), false );
             }
             // Structs: Can delegate their metadata
-            if( type.data().is_Path() && type.data().as_Path().binding.is_Struct() )
+            else if( type.data().is_Path() && type.data().as_Path().binding.is_Struct() )
             {
                 const auto& str = *type.data().as_Path().binding.as_Struct();
                 switch(str.m_struct_markings.dst_type)

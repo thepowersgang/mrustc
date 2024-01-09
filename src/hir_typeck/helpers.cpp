@@ -1365,7 +1365,7 @@ bool TraitResolution::find_trait_impls_magic(const Span& sp,
         // Generics (or opaque ATYs)
         else if( type.data().is_Generic() || (type.data().is_Path() && type.data().as_Path().binding.is_Opaque()) ) {
             // If the type is `Sized` return `()` as the type
-            if( type_is_sized(sp, type) ) {
+            if( type_is_sized(sp, type) != HIR::Compare::Unequal ) {
                 meta_ty = HIR::TypeRef::new_unit();
             }
             else {
@@ -1405,6 +1405,7 @@ bool TraitResolution::find_trait_impls_magic(const Span& sp,
         else {
             meta_ty = ::HIR::TypeRef::new_unit();
         }
+        DEBUG("<" << type << " as Pointee>::Metadata = " << meta_ty);
         ::HIR::TraitPath::assoc_list_t  assoc_list;
         if(meta_ty != HIR::TypeRef()) {
             assoc_list.insert(std::make_pair( RcString::new_interned("Metadata"), HIR::TraitPath::AtyEqual { trait, mv$(meta_ty) } ));
@@ -3629,11 +3630,32 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
 
 ::HIR::Compare TraitResolution::type_is_sized(const Span& sp, const ::HIR::TypeRef& type) const
 {
-    TU_MATCH_DEF(::HIR::TypeData, (type.data()), (e),
-    (
+    bool is_fuzzy = false;
+    bool has_eq = find_trait_impls(sp, m_lang_Sized, ::HIR::PathParams{}, type,  [&](auto , auto c)->bool{
+        switch(c)
+        {
+        case ::HIR::Compare::Equal: return true;
+        case ::HIR::Compare::Fuzzy:
+            is_fuzzy = true;
+            return false;
+        case ::HIR::Compare::Unequal:
+            return false;
+        }
+        throw "";
+        }, /*magic_trait_impls=*/false);
+    if( has_eq ) {
+        return ::HIR::Compare::Equal;
+    }
+    else if( is_fuzzy ) {
+        return ::HIR::Compare::Fuzzy;
+    }
+    else {
+    }
+
+    TU_MATCH_HDRA( (type.data()), {)
+    default:
         // Any unknown - it's sized
-        ),
-    (Infer,
+    TU_ARMA(Infer, e) {
         switch(e.ty_class)
         {
         case ::HIR::InferClass::Integer:
@@ -3642,15 +3664,15 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
         default:
             return ::HIR::Compare::Fuzzy;
         }
-        ),
-    (Primitive,
+        }
+    TU_ARMA(Primitive, e) {
         if( e == ::HIR::CoreType::Str )
             return ::HIR::Compare::Unequal;
-        ),
-    (Slice,
+        }
+    TU_ARMA(Slice, e) {
         return ::HIR::Compare::Unequal;
-        ),
-    (Path,
+        }
+    TU_ARMA(Path, e) {
         // TODO: Check that only ?Sized parameters are !Sized
         TU_MATCHA( (e.binding), (pb),
         (Unbound,
@@ -3684,14 +3706,27 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
             }
             )
         )
-        ),
-    (ErasedType,
+        }
+    TU_ARMA(Generic, e) {
+
+        switch(e.group())
+        {
+        case 0:
+            return this->m_impl_generics->m_types.at(e.idx()).m_is_sized ? ::HIR::Compare::Equal : ::HIR::Compare::Unequal;
+        case 1:
+            return this->m_item_generics->m_types.at(e.idx()).m_is_sized ? ::HIR::Compare::Equal : ::HIR::Compare::Unequal;
+        default:
+            // Assume sized for anything else?
+            return ::HIR::Compare::Equal;
+        }
+        }
+    TU_ARMA(ErasedType, e) {
         return e.m_is_sized ? ::HIR::Compare::Equal : ::HIR::Compare::Unequal;
-        ),
-    (TraitObject,
+        }
+    TU_ARMA(TraitObject, e) {
         return ::HIR::Compare::Unequal;
-        )
-    )
+        }
+    }
     return ::HIR::Compare::Equal;
 }
 ::HIR::Compare TraitResolution::type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) const
