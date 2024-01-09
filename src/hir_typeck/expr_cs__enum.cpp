@@ -425,6 +425,7 @@ namespace typecheck
                     }
                 }
 
+                context.m_ivars.add_ivars_params(impl_params);
 
                 // Monomorphise the impl type with the new ivars, and equate to e.type
                 // TODO: Use a copy of `MonomorphStatePtr` that calls `context.get_type`
@@ -433,6 +434,9 @@ namespace typecheck
                 DEBUG("- impl_ty_mono = " << impl_ty_mono);
 
                 context.equate_types(sp, impl_ty_mono, e.type);
+            }
+            else {
+                context.m_ivars.add_ivars_params(impl_params);
             }
 
             // Fill unknown parametrs with ivars
