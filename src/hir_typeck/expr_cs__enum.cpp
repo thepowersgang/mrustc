@@ -1476,7 +1476,7 @@ namespace typecheck
             auto _ = this->push_inner_coerce_scoped(true);
             for( auto& val : node.m_args ) {
                 val->visit( *this );
-                this->context.require_sized(node.span(), val->m_res_type);
+                //this->context.require_sized(node.span(), val->m_res_type);
             }
             this->context.require_sized(node.span(), node.m_res_type);
         }
@@ -1500,7 +1500,7 @@ namespace typecheck
                 auto& val = node.m_args[i];
                 this->context.equate_types_coerce(val->span(), node.m_arg_ivars[i],  val);
                 val->visit( *this );
-                this->context.require_sized(node.span(), val->m_res_type);
+                //this->context.require_sized(node.span(), val->m_res_type);
             }
             this->context.require_sized(node.span(), node.m_res_type);
 
@@ -1554,7 +1554,7 @@ namespace typecheck
             auto _ = this->push_inner_coerce_scoped(true);
             for( auto& val : node.m_args ) {
                 val->visit( *this );
-                this->context.require_sized(node.span(), val->m_res_type);
+                //this->context.require_sized(node.span(), val->m_res_type);
             }
             this->context.require_sized(node.span(), node.m_res_type);
 

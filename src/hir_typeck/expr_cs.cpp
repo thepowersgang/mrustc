@@ -3779,7 +3779,8 @@ void Context::add_var(const Span& sp, unsigned int index, const RcString& name, 
         m_bindings.resize(index+1);
     if( m_bindings[index].name == "" ) {
         m_bindings[index] = Binding { name, mv$(type) };
-        this->require_sized(sp, m_bindings[index].ty);
+        // NOTE: Disabled to support unsized locals (1.74)
+        //this->require_sized(sp, m_bindings[index].ty);
     }
     else {
         ASSERT_BUG(sp, m_bindings[index].name == name, "");
