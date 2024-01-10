@@ -628,7 +628,7 @@ namespace {
         public Monomorphiser
     {
         ::std::vector<const ::HIR::TypeRef*>    impl_tys;
-
+        ::std::vector<const ::HIR::ConstGeneric*>   impl_vals;
 
         ::HIR::Compare match_ty(const ::HIR::GenericRef& g, const ::HIR::TypeRef& ty, ::HIR::t_cb_resolve_type _resolve_cb) override {
             assert(g.binding < impl_tys.size());
@@ -644,7 +644,17 @@ namespace {
             }
         }
         ::HIR::Compare match_val(const ::HIR::GenericRef& g, const ::HIR::ConstGeneric& sz) override {
-            TODO(Span(), "Matcher::match_val " << g << " with " << sz);
+            assert(g.binding < impl_vals.size());
+            if( impl_vals.at(g.binding) )
+            {
+                DEBUG("Compare " << sz << " and " << *impl_vals.at(g.binding));
+                return (sz == *impl_vals.at(g.binding) ? ::HIR::Compare::Equal : ::HIR::Compare::Unequal);
+            }
+            else
+            {
+                impl_vals.at(g.binding) = &sz;
+                return ::HIR::Compare::Equal;
+            }
         }
 
         ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& g) const override {
@@ -654,7 +664,10 @@ namespace {
             return impl_tys[g.idx()]->clone();
         }
         ::HIR::ConstGeneric get_value(const Span& sp, const ::HIR::GenericRef& g) const override {
-            TODO(Span(), "Matcher::get_value " << g);
+            ASSERT_BUG(sp, g.group() == 0, "");
+            ASSERT_BUG(sp, g.idx() < impl_vals.size(), "");
+            ASSERT_BUG(sp, impl_vals[g.idx()], "");
+            return impl_vals[g.idx()]->clone();
         }
         ::HIR::LifetimeRef get_lifetime(const Span& sp, const ::HIR::GenericRef& g) const override {
             TODO(Span(), "Matcher::get_lifetime " << g);
@@ -663,7 +676,27 @@ namespace {
 
         void reinit(const HIR::GenericParams& params) {
             this->impl_tys.clear();
+            this->impl_vals.clear();
             this->impl_tys.resize(params.m_types.size());
+            this->impl_vals.resize(params.m_values.size());
+        }
+        void fmt(::std::ostream& os) const {
+            for(auto* p : this->impl_tys)
+            {
+                if(p)
+                    os << *p;
+                else
+                    os << "?";
+                os << ",";
+            }
+            for(auto* p : this->impl_vals)
+            {
+                if(p)
+                    os << *p;
+                else
+                    os << "?";
+                os << ",";
+            }
         }
     };
 }
@@ -979,32 +1012,14 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
     // The two impls could overlap, pending on trait bounds
     if(is_reversed)
     {
-        DEBUG("(reversed) impl params " << FMT_CB(os,
-                for(auto* p : matcher.impl_tys)
-                {
-                    if(p)
-                        os << *p;
-                    else
-                        os << "?";
-                    os << ",";
-                }
-                ));
+        DEBUG("(reversed) impl params " << FMT_CB(os, matcher.fmt(os); ));
         // Check bounds on `other` using these params
         // TODO: Take a callback that does the checks. Or somehow return a "maybe overlaps" result?
         return H2::check_bounds(crate, other, matcher, *this);
     }
     else
     {
-        DEBUG("impl params " << FMT_CB(os,
-                for(auto* p : matcher.impl_tys)
-                {
-                    if(p)
-                        os << *p;
-                    else
-                        os << "?";
-                    os << ",";
-                }
-                ));
+        DEBUG("impl params " << FMT_CB(os, matcher.fmt(os);));
         // Check bounds on `*this`
         return H2::check_bounds(crate, *this, matcher, other);
     }
