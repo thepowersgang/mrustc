@@ -1289,16 +1289,10 @@ bool TraitResolution::find_trait_impls_magic(const Span& sp,
         }
     }
 
-    // 1.74: Magic impls of `eq` for function pointers
-    if( trait == this->m_crate.get_lang_item_path_opt("eq" ) ) {
+    // 1.74: Magic impls of `fn_ptr_trait` for function pointers
+    if( TARGETVER_LEAST_1_74 && trait == this->m_crate.get_lang_item_path(sp, "fn_ptr_trait" ) ) {
         if( type.data().is_Function() ) {
-            const auto& rhs_ty = params.m_types.at(0);
-            auto cmp = type.compare_with_placeholders(sp, rhs_ty, this->m_ivars.callback_resolve_infer());
-            if( cmp != HIR::Compare::Unequal ) {
-                HIR::PathParams ret_params;
-                ret_params.m_types.push_back(type.clone());
-                return callback( ImplRef(type.clone(), std::move(ret_params), {}), cmp );
-            }
+            return callback( ImplRef(nullptr, &type, &null_params, &null_assoc), HIR::Compare::Equal );
         }
     }
 

@@ -208,13 +208,8 @@ bool StaticTraitResolve::find_impl(
             return found_cb( ImplRef(type.clone(), mv$(params), mv$(assoc)), false );
         }
         // 1.74: Magic impls of `eq` for function pointers
-        if( trait_path == this->m_crate.get_lang_item_path_opt("eq" ) ) {
-            auto cmp = trait_params ? type.compare_with_placeholders(sp, trait_params->m_types.at(0), cb_ident) : HIR::Compare::Equal;
-            if( cmp != HIR::Compare::Unequal ) {
-                HIR::PathParams ret_params;
-                ret_params.m_types.push_back(type.clone());
-                return found_cb( ImplRef(type.clone(), std::move(ret_params), {}), false );
-            }
+        if( trait_path == this->m_crate.get_lang_item_path_opt("fn_ptr_trait" ) ) {
+            return found_cb( ImplRef(type.clone(), {}, {}), false );
         }
         }
     TU_ARMA(Closure, e) {
