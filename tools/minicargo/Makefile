@@ -8,6 +8,9 @@ ifeq ($(OS),Windows_NT)
 endif
 EXESUF ?=
 
+OBJCOPY ?= objcopy
+STRIP ?= strip
+
 V ?= @
 
 OBJDIR := .obj/
@@ -41,9 +44,9 @@ $(BIN): $(OBJS) ../../bin/common_lib.a
 ifeq ($(OS),Windows_NT)
 else ifeq ($(shell uname -s || echo not),Darwin)
 else
-	objcopy --only-keep-debug $(BIN) $(BIN).debug
-	objcopy --add-gnu-debuglink=$(BIN).debug $(BIN)
-	strip $(BIN)
+	$(OBJCOPY) --only-keep-debug $(BIN) $(BIN).debug
+	$(OBJCOPY) --add-gnu-debuglink=$(BIN).debug $(BIN)
+	$(STRIP) $(BIN)
 endif
 
 $(OBJDIR)%.o: %.cpp
