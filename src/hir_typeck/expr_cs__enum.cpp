@@ -850,7 +850,7 @@ namespace typecheck
                 }
 
                 node.m_value->visit( *this );
-                this->context.require_sized(node.span(), node.m_value->m_res_type);
+                // No need for `Sized` bound, as it could end up being a `ref` binding
                 this->pop_inner_coerce();
             }
             this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
