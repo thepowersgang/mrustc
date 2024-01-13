@@ -1037,12 +1037,12 @@ namespace MIR { namespace eval {
             state.m_monomorphed_locals = &local_types;
         }
 
-        StaticRefPtr get_staticref_mono(const ::HIR::Path& p)
+        StaticRefPtr get_staticref_mono(const ::HIR::Path& p) const
         {
             // NOTE: Value won't need to be monomorphed, as it shouldn't be generic
             return get_staticref( ms.monomorph_path(state.sp, p) );
         }
-        StaticRefPtr get_staticref(::HIR::Path p)
+        StaticRefPtr get_staticref(::HIR::Path p) const
         {
             // If there's any mention of generics in this path, then return Literal::Defer
             if( visit_path_tys_with(p, [&](const auto& ty)->bool { return ty.data().is_Generic(); }) )
@@ -1511,6 +1511,26 @@ namespace MIR { namespace eval {
                 }
                 MIR_ASSERT(state, e.is_Int(), "Expected an integer, got " << e.tag_str() << " " << e);
                 return S128( e.as_Int().v );
+                }
+            }
+            abort();
+        }
+
+        std::pair<uint64_t, RelocPtr> read_param_ptr(const ::MIR::Param& p) const
+        {
+            TU_MATCH_HDRA( (p), {)
+            TU_ARMA(LValue, e) {
+                return const_cast<CallStackEntry*>(this)->get_lval(e).read_ptr(state);
+                }
+            TU_ARMA(Borrow, e) {
+                MIR_TODO(state, "read_param_ptr - " << p);
+                }
+            TU_ARMA(Constant, e) {
+                if( !e.is_ItemAddr() ) {
+                    MIR_BUG(state, "Invalid argument for pointer: " << p);
+                }
+                // TODO: Look up the static
+                return ::std::make_pair(EncodedLiteral::PTR_BASE, RelocPtr(get_staticref_mono(*e.as_ItemAddr())));
                 }
             }
             abort();
@@ -2571,6 +2591,15 @@ namespace HIR {
                     auto vr_src = ValueRef(ptr_src.second, ptr_src.first - EncodedLiteral::PTR_BASE).slice(0, nbytes);
                     auto vr_dst = ValueRef(ptr_dst.second, ptr_dst.first - EncodedLiteral::PTR_BASE).slice(0, nbytes);
                     vr_dst.copy_from(state, vr_src);
+                }
+                else if( te->name == "offset" ) {
+                    auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0).data().as_Pointer().inner);
+                    size_t element_size;
+                    if( !Target_GetSizeOf(state.sp, state.m_resolve, ty, element_size) )
+                        throw Defer();
+                    auto ptr_pair = local_state.read_param_ptr(e.args.at(0));
+                    auto ofs = local_state.read_param_uint(Target_GetPointerBits(), e.args.at(1));
+                    dst.write_ptr(state, ptr_pair.first + ofs.truncate_u64() * element_size, ptr_pair.second);
                 }
                 else {
                     MIR_TODO(state, "Call intrinsic \"" << te->name << "\" - " << terminator);
