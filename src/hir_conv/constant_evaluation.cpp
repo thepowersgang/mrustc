@@ -1325,7 +1325,7 @@ namespace MIR { namespace eval {
         void write_const(ValueRef dst, const ::MIR::Constant& c)
         {
             TU_MATCH_HDR( (c), {)
-                TU_ARM(c, Int, e2) {
+            TU_ARM(c, Int, e2) {
                 dst.write_sint(state, dst.get_len() * 8, e2.v);
             }
             TU_ARM(c, Uint, e2) {
@@ -1355,15 +1355,15 @@ namespace MIR { namespace eval {
             TU_ARM(c, Generic, e2) {
                 auto v = ms.get_value(state.sp, e2);
                 TU_MATCH_HDRA( (v), { )
-        default:
-            MIR_TODO(state, "Handle expanded generic: " << v);
-            TU_ARMA(Generic, _) {
-                throw Defer();
-            }
-            TU_ARMA(Evaluated, ve) {
-                DEBUG(e2 << " = " << *ve);
-                write_encoded(dst, *ve);
-            }
+                default:
+                    MIR_TODO(state, "Handle expanded generic: " << v);
+                TU_ARMA(Generic, _) {
+                    throw Defer();
+                }
+                TU_ARMA(Evaluated, ve) {
+                    DEBUG(e2 << " = " << *ve);
+                    write_encoded(dst, *ve);
+                }
                 }
             }
             TU_ARM(c, ItemAddr, e2) {
@@ -1390,13 +1390,48 @@ namespace MIR { namespace eval {
         void write_param(ValueRef dst, const ::MIR::Param& p)
         {
             TU_MATCH_HDRA( (p), { )
-                TU_ARMA(LValue, e)
+            TU_ARMA(LValue, e)
                 dst.copy_from( state, this->get_lval(e) );
             TU_ARMA(Borrow, e)
                 write_borrow(dst, e.type, e.val);
             TU_ARMA(Constant, e)
                 write_const(dst, e);
             }
+        }
+
+        const EncodedLiteral& get_const(const HIR::ConstGeneric& v, EncodedLiteral& tmp) const
+        {
+            TU_MATCH_HDRA( (v), {)
+            TU_ARMA(Infer, ve) {
+                MIR_BUG(state, "Encountered Infer value in constant?");
+                }
+            TU_ARMA(Generic, ve) {
+                throw Defer {};
+                }
+            TU_ARMA(Unevaluated, ve) {
+                MIR_TODO(state, "Evaluate const - " << v);
+
+#if 0
+                //::HIR::ItemPath mod_ip { item.m_value.m_state->m_mod_path };
+                //auto nvs = NewvalState(item.m_value.m_state->m_module, mod_ip, FMT("const" << &c << "#"));
+                auto eval = ::HIR::Evaluator(item.m_value.span(), state.m_resolve.m_crate, nvs);
+                // TODO: Does this need to set generics?
+                try
+                {
+                    item.m_value_res = eval.evaluate_constant(::HIR::ItemPath(p), item.m_value, item.m_type.clone());
+                    item.m_value_state = HIR::Constant::ValueState::Known;
+                }
+                catch(const Defer& )
+                {
+                    item.m_value_state = HIR::Constant::ValueState::Generic;
+                }
+#endif
+                }
+            TU_ARMA(Evaluated, ve) {
+                return *ve;
+                }
+            }
+            throw "";
         }
 
         /// Read a floating point value from a MIR::Param
@@ -1412,6 +1447,12 @@ namespace MIR { namespace eval {
                     const auto& val = get_const(*e.as_Const().p, nullptr);
                     // TODO: Check the type from get_const
                     return EncodedLiteralSlice(val).read_float();
+                }
+                if(e.is_Generic()) {
+                    auto ve = ms.get_value(state.sp, e.as_Generic());
+                    EncodedLiteral  el_tmp;
+                    const auto& el = get_const(ve, el_tmp);
+                    return EncodedLiteralSlice(el).read_float();
                 }
                 MIR_ASSERT(state, e.is_Float(), "Expected a float, got " << e);
                 return e.as_Float().v;
@@ -1433,8 +1474,12 @@ namespace MIR { namespace eval {
                     // TODO: Check the type from get_const
                     return EncodedLiteralSlice(val).read_uint();
                 }
-                if(e.is_Generic())
-                    throw Defer();
+                if(e.is_Generic()) {
+                    auto ve = ms.get_value(state.sp, e.as_Generic());
+                    EncodedLiteral  el_tmp;
+                    const auto& el = get_const(ve, el_tmp);
+                    return EncodedLiteralSlice(el).read_uint();
+                }
                 if(e.is_Int())
                     return e.as_Int().v.get_inner();
                 if(e.is_Bool())
@@ -1458,8 +1503,12 @@ namespace MIR { namespace eval {
                     // TODO: Check the type from get_const
                     return EncodedLiteralSlice(val).read_sint();
                 }
-                if(e.is_Generic())
-                    throw Defer();
+                if(e.is_Generic()) {
+                    auto ve = ms.get_value(state.sp, e.as_Generic());
+                    EncodedLiteral  el_tmp;
+                    const auto& el = get_const(ve, el_tmp);
+                    return EncodedLiteralSlice(el).read_sint();
+                }
                 MIR_ASSERT(state, e.is_Int(), "Expected an integer, got " << e.tag_str() << " " << e);
                 return S128( e.as_Int().v );
                 }
@@ -2059,11 +2108,23 @@ namespace HIR {
             }
             }
         TU_ARMA(SizedArray, e) {
-            if(!e.count.is_Known()) {
-                MIR_BUG(state, "TODO: SizedArray - " << e.count);
-                throw Defer();
+            size_t count;
+            TU_MATCH_HDRA( (e.count), {)
+            TU_ARMA(Known, v) {
+                count = v;
+                }
+            TU_ARMA(Unevaluated, v) {
+                const auto* vp = &v;
+                HIR::ConstGeneric   tmp_v;
+                if(const auto* ve = v.opt_Generic() ) {
+                    vp = &(tmp_v = local_state.ms.get_value(state.sp, *ve));
+                }
+                EncodedLiteral tmp_val;
+                count = local_state.get_const(*vp, tmp_val).read_usize(0);
+                }
             }
-            if( e.count.as_Known() > 0 )
+
+            if( count > 0 )
             {
                 ::HIR::TypeRef tmp;
                 const auto& ty = state.get_lvalue_type(tmp, sa.dst);
@@ -2071,7 +2132,7 @@ namespace HIR {
                 size_t sz = local_state.size_of_or_bug(ity);
 
                 local_state.write_param( dst.slice(0, sz), e.val );
-                for(unsigned int i = 1; i < e.count.as_Known(); i++)
+                for(unsigned int i = 1; i < count; i++)
                     dst.slice(sz*i, sz).copy_from( state, dst.slice(0, sz) );
             }
             }
