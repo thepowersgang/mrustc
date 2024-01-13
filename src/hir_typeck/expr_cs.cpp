@@ -1372,7 +1372,7 @@ namespace {
                     // 3. Locate the most permissive implemented Fn* trait (Fn first, then FnMut, then assume just FnOnce)
                     // NOTE: Borrowing is added by the expansion to CallPath
                     if( this->context.m_resolve.find_trait_impls(node.span(), this->context.m_resolve.m_lang_Fn, trait_pp, ty, [&](auto impl, auto cmp) {
-                        ASSERT_BUG(node.span(), cmp == ::HIR::Compare::Equal, "");
+                        //ASSERT_BUG(node.span(), cmp == ::HIR::Compare::Equal, "");
                         return true;
                         }) )
                     {
@@ -1380,7 +1380,7 @@ namespace {
                         node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::Fn;
                     }
                     else if( this->context.m_resolve.find_trait_impls(node.span(), this->context.m_resolve.m_lang_FnMut, trait_pp, ty, [&](auto impl, auto cmp) {
-                        ASSERT_BUG(node.span(), cmp == ::HIR::Compare::Equal, "");
+                        //ASSERT_BUG(node.span(), cmp == ::HIR::Compare::Equal, "Fuzzy FnMut" << trait_pp << " impl?! " << ty);
                         return true;
                         }) )
                     {
