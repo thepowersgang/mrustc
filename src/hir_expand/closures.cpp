@@ -281,6 +281,10 @@ namespace {
             BUG(node.span(), "Encountered non-captured and unknown-origin variable - " << node.m_name << " #" << node.m_slot);
         }
 
+        void visit(HIR::ExprNode_ConstParam& node) override {
+            node.m_binding = m_monomorphiser.get_value(node.span(), HIR::GenericRef("", node.m_binding)).as_Generic().binding;
+        }
+
         ::HIR::ExprNodeP get_self(const Span& sp) const
         {
             ::HIR::ExprNodeP    self;
