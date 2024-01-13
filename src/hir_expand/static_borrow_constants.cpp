@@ -777,7 +777,7 @@ namespace static_borrow_constants {
                         this->is_generic = true;
                         auto new_pp = this->monomorph.monomorph_path_params(Span(), pp, false);
                         DEBUG(pp << " -> " << new_pp);
-                        new_pp = std::move(new_pp);
+                        pp = std::move(new_pp);
                     }
                 }
                 void visit_pattern(const Span& sp, HIR::Pattern& pat) override {
