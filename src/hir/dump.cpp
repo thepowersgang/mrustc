@@ -437,9 +437,9 @@ namespace {
                     m_os << " | " << arm.m_patterns[i];
                 }
 
-                if( arm.m_cond ) {
-                    m_os << " if ";
-                    this->visit_node_ptr(arm.m_cond);
+                if( arm.m_cond_val ) {
+                    m_os << " if let " << arm.m_cond_pat << " = ";
+                    this->visit_node_ptr(arm.m_cond_val);
                 }
                 m_os << " => ";
                 inc_indent();

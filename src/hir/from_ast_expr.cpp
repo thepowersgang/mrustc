@@ -595,41 +595,26 @@ struct LowerHIR_ExprNode_Visitor:
 
         for(auto& arm : v.m_arms)
         {
+            HIR::Pattern cond_pat;
             HIR::ExprNodeP  cond;
             TU_MATCH_HDRA( (arm.m_cond), { )
             TU_ARMA(None, e) {}
             TU_ARMA(Expr, e) {
+                cond_pat = HIR::Pattern { HIR::PatternBinding(), HIR::Pattern::Data::make_Value({ ::HIR::Pattern::Value::make_Integer({
+                    HIR::CoreType::Bool,
+                    U128(1)
+                    }) }) };
                 cond = lower_opt(e);
                 }
             TU_ARMA(Pattern, iflet) {
-                // Convert to a `match`
-                ::std::vector< ::HIR::ExprNode_Match::Arm>  arms;
-
-                std::vector<HIR::Pattern>   patterns;
-                patterns.reserve(1);
-                for(const auto& pat : iflet.patterns) {
-                    patterns.push_back( LowerHIR_Pattern(pat) );
-                }
-                // - Matches pattern - Take true branch
-                arms.push_back(::HIR::ExprNode_Match::Arm {
-                    mv$(patterns),
-                    ::HIR::ExprNodeP(),
-                    ::HIR::ExprNodeP(new ::HIR::ExprNode_Literal(v.span(), HIR::ExprNode_Literal::Data(true)))
-                    });
-                // - Matches anything else - take false branch
-                arms.push_back(::HIR::ExprNode_Match::Arm {
-                    ::make_vec1( ::HIR::Pattern() ),
-                    ::HIR::ExprNodeP(),
-                    ::HIR::ExprNodeP(new ::HIR::ExprNode_Literal(v.span(), HIR::ExprNode_Literal::Data(false)))\
-                    });
-                cond.reset( new ::HIR::ExprNode_Match( v.span(),
-                    lower(iflet.val),
-                    mv$(arms)
-                ));
+                ASSERT_BUG(v.span(), iflet.patterns.size() == 1, "TODO: Multiple patterns");
+                cond_pat = LowerHIR_Pattern(iflet.patterns[0]);
+                cond = lower(iflet.val);
                 }
             }
             ::HIR::ExprNode_Match::Arm  new_arm {
                 {},
+                mv$(cond_pat),
                 mv$(cond),
                 lower(arm.m_code)
                 };

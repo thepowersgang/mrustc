@@ -95,6 +95,7 @@ struct ArmCode {
 typedef ::std::vector<PatternRuleset>  t_arm_rules;
 
 void MIR_LowerHIR_Match_Simple( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val, t_arm_rules arm_rules, ::std::vector<ArmCode> arm_code, ::MIR::BasicBlockId first_cmp_block);
+int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& sp, const PatternRule* rules, unsigned int num_rules, const ::HIR::TypeRef& top_ty, const ::MIR::LValue& top_val, unsigned int field_path_ofs,  ::MIR::BasicBlockId fail_bb);
 void MIR_LowerHIR_Match_Grouped( MirBuilder& builder, MirConverter& conv, const Span& sp, const HIR::TypeRef& match_ty, ::MIR::LValue match_val, t_arm_rules arm_rules, ::std::vector<ArmCode> arms_code, ::MIR::BasicBlockId first_cmp_block );
 void MIR_LowerHIR_Match_DecisionTree( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val, t_arm_rules arm_rules, ::std::vector<ArmCode> arm_code , ::MIR::BasicBlockId first_cmp_block);
 
@@ -360,23 +361,48 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
                     );
 
             auto emit_condition = [&](MIR::BasicBlockId& cond_false, const std::vector<PatternBinding>& bindings) {
-                if( arm.m_cond )
+                if( arm.m_cond_val )
                 {
-                    auto freeze_scope = builder.new_scope_freeze(arm.m_cond->span());
+                    auto freeze_scope = builder.new_scope_freeze(arm.m_cond_val->span());
                     TRACE_FUNCTION_FR("CONDITIONAL", "CONDITIONAL");
                     conv.destructure_aliases_from_list(arm.m_code->span(), match_ty, match_val.clone(), bindings);
 
-                    auto tmp_scope = builder.new_scope_temp(arm.m_cond->span());
-                    conv.visit_node_ptr( arm.m_cond );
-                    auto cond_lval = builder.get_result_in_if_cond(arm.m_cond->span());
+                    auto tmp_scope = builder.new_scope_temp(arm.m_cond_val->span());
+                    conv.visit_node_ptr( arm.m_cond_val );
+                    MIR::LValue match_cond_val = builder.get_result_in_lvalue(arm.m_cond_val->span(), arm.m_cond_val->m_res_type);
                     builder.terminate_scope( arm.m_code->span(), mv$(tmp_scope) );
                     builder.terminate_scope( arm.m_code->span(), mv$(freeze_scope) );
 
-                    cond_false = builder.new_bb_unlinked();
+                    bool is_cond_bb_set = false;
+                    auto destructure = builder.new_bb_unlinked();
 
-                    auto destructure_block = builder.new_bb_unlinked();
-                    builder.end_block(::MIR::Terminator::make_If({ mv$(cond_lval), destructure_block, cond_false }));
-                    builder.set_cur_block( destructure_block );
+                    auto pat_builder = PatternRulesetBuilder { builder.resolve() };
+                    pat_builder.append_from(node.span(), arm.m_cond_pat, arm.m_cond_val->m_res_type);
+
+                    for(auto& sr : pat_builder.m_rulesets)
+                    {
+                        if( sr.m_is_impossible ) {
+                        }
+                        else {
+                            // If `cond_false` is set, then activate it and create a new one
+                            if(is_cond_bb_set) {
+                                builder.set_cur_block(cond_false);
+                            }
+                            is_cond_bb_set = true;
+                            cond_false = builder.new_bb_unlinked();
+
+                            MIR_LowerHIR_Match_Simple__GeneratePattern(builder, arm.m_cond_val->span(), sr.m_rules.data(), sr.m_rules.size(),
+                                arm.m_cond_val->m_res_type, match_cond_val, 0, cond_false);
+                            conv.destructure_from_list(arm.m_code->span(), arm.m_cond_val->m_res_type, match_cond_val.clone(), sr.m_bindings);
+                            builder.end_block(::MIR::Terminator::make_Goto(destructure));
+                        }
+                    }
+                    if(!is_cond_bb_set) {
+                        cond_false = builder.new_bb_unlinked();
+                        // No patterns as output, so `false` is unreachable?
+                    }
+
+                    builder.set_cur_block(destructure);
                 }
 
                 conv.destructure_from_list(arm.m_code->span(), match_ty, match_val.clone(), bindings);
@@ -423,7 +449,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
         builder.terminate_scope( sp, mv$(pat_scope) );
 
         // Condition
-        if(arm.m_cond)
+        if(arm.m_cond_val)
         {
             ac.has_condition = true;
 
@@ -2275,7 +2301,6 @@ namespace {
 // --------------------------------------------------------------------
 // Dumb and Simple
 // --------------------------------------------------------------------
-int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& sp, const PatternRule* rules, unsigned int num_rules, const ::HIR::TypeRef& ty, const ::MIR::LValue& val, unsigned int field_path_offset,  ::MIR::BasicBlockId fail_bb);
 
 void MIR_LowerHIR_Match_Simple( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val, t_arm_rules arm_rules, ::std::vector<ArmCode> arms_code, ::MIR::BasicBlockId first_cmp_block )
 {

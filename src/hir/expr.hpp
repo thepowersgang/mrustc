@@ -246,8 +246,13 @@ struct ExprNode_Match:
 {
     struct Arm
     {
+        // Patterns, must be non-empty
         ::std::vector< ::HIR::Pattern>  m_patterns;
-        ::HIR::ExprNodeP    m_cond;
+        // Pattern for the condition, only used if `m_cond_val` is non-null
+        ::HIR::Pattern    m_cond_pat;
+        // Value for condition, optional
+        ::HIR::ExprNodeP    m_cond_val;
+        // Match arm body, required
         ::HIR::ExprNodeP    m_code;
     };
 
