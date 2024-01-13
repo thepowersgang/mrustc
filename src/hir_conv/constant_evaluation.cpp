@@ -2503,9 +2503,29 @@ namespace HIR {
                         throw Defer();
                     }
                     auto arg_val = local_state.get_lval(e.args.at(0).as_LValue());
-                    auto fcn_val = local_state.get_lval(e.args.at(1).as_LValue()).read_ptr(state);
-                    MIR_ASSERT(state, fcn_val.first == EncodedLiteral::PTR_BASE, "");
-                    //auto val = local_state.read(8, e.args.at(0));
+                    const auto& fcn_arg = e.args.at(1);
+                    std::shared_ptr<HIR::Path> fcn_path;
+
+                    TU_MATCH_HDRA( (fcn_arg), {)
+                    TU_ARMA(LValue, e) {
+                        auto fcn_val = local_state.get_lval(e).read_ptr(state);
+                        MIR_ASSERT(state, fcn_val.first == EncodedLiteral::PTR_BASE, "");
+
+                        const auto* fcn_sr = fcn_val.second.as_staticref();
+                        MIR_ASSERT(state, fcn_sr, "");
+                        fcn_path = std::make_shared<HIR::Path>( fcn_sr->path().clone() );
+                        }
+                    TU_ARMA(Borrow, e) {
+                        MIR_BUG(state, "Invalid argument for function pointer to `const_eval_select`: " << fcn_arg);
+                        }
+                    TU_ARMA(Constant, e) {
+                        if( !e.is_ItemAddr() ) {
+                            MIR_BUG(state, "Invalid argument for function pointer to `const_eval_select`: " << fcn_arg);
+                        }
+                        const auto& p = *e.as_ItemAddr();
+                        fcn_path = std::make_shared<HIR::Path>( ms.monomorph_path(state.sp, p) );
+                        }
+                    }
 
                     // Argument values
                     ::std::vector<AllocationPtr>  call_args;
@@ -2517,11 +2537,8 @@ namespace HIR {
                         vr.copy_from(state, arg_val.slice(f.offset, size));
                     }
 
-                    const auto* fcn_sr = fcn_val.second.as_staticref();
-                    MIR_ASSERT(state, fcn_sr, "");
-
                     MonomorphState  fcn_ms;
-                    auto& fcn = get_function(this->root_span, this->resolve, fcn_sr->path(), fcn_ms);
+                    auto& fcn = get_function(this->root_span, this->resolve, *fcn_path, fcn_ms);
 
                     // Monomorphised argument types
                     ::HIR::Function::args_t arg_defs;
@@ -2530,10 +2547,10 @@ namespace HIR {
                     }
                     auto ret_ty = this->resolve.monomorph_expand(this->root_span, fcn.m_return, fcn_ms);
 
-                    const auto* mir = this->resolve.m_crate.get_or_gen_mir( ::HIR::ItemPath(fcn_sr->path()), fcn );
-                    MIR_ASSERT(state, mir, "No MIR for function " << fcn_sr->path());
+                    const auto* mir = this->resolve.m_crate.get_or_gen_mir( ::HIR::ItemPath(*fcn_path), fcn );
+                    MIR_ASSERT(state, mir != nullptr, "No MIR for function " << *fcn_path);
 
-                    push_stack_entry(::FmtLambda([=](std::ostream& os){ os << fcn_val.second.as_staticref()->path(); }), *mir,
+                    push_stack_entry(::FmtLambda([=](std::ostream& os){ os << *fcn_path; }), *mir,
                         std::move(fcn_ms), std::move(ret_ty), ::std::move(arg_defs), std::move(call_args));
                     return TERM_RET_PUSHED;
                 }
