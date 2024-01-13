@@ -477,7 +477,12 @@ namespace {
         }
         void visit(::HIR::ExprNode_ConstBlock& node) override
         {
-            BUG(node.span(), "Const block shouldn't have reached MIR generation");
+            if( dynamic_cast<HIR::ExprNode_PathValue*>( node.m_inner.get() ) ) {
+                this->visit_node_ptr(node.m_inner);
+            }
+            else {
+                BUG(node.span(), "Const block shouldn't have reached MIR generation");
+            }
         }
         void visit(::HIR::ExprNode_Asm& node) override
         {

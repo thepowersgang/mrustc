@@ -50,6 +50,7 @@ void MIR::OuterVisitor::visit_static(::HIR::ItemPath p, ::HIR::Static& item)
 }
 void MIR::OuterVisitor::visit_constant(::HIR::ItemPath p, ::HIR::Constant& item)
 {
+    auto _ = this->m_resolve.set_item_generics(item.m_params);
     if( item.m_value ) {
         DEBUG("`const` value " << p);
         m_cb(m_resolve, p, item.m_value, {}, item.m_type);

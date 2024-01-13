@@ -1471,9 +1471,11 @@ namespace {
                 {
                 }
 
-                void visit_type(::HIR::TypeRef& ty) override
-                {
+                void visit_type(::HIR::TypeRef& ty) override {
                     ty = m_monomorph.monomorph_type(Span(), ty, /*allow_infer=*/true);
+                }
+                void visit_path_params(::HIR::PathParams& pp) override {
+                    pp = m_monomorph.monomorph_path_params(Span(), pp, /*allow_infer=*/true);
                 }
 
                 /// Support replacing nodes
@@ -1489,6 +1491,9 @@ namespace {
                 void visit(::HIR::ExprNode_Variable& node) override
                 {
                     node.m_slot = m_variable_rewrites.at(node.m_slot);
+                }
+                void visit(HIR::ExprNode_ConstParam& node) override {
+                    node.m_binding = m_monomorph.get_value(node.span(), HIR::GenericRef("", node.m_binding)).as_Generic().binding;
                 }
 
                 // Custom visitor that only updates the captures and path
