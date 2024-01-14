@@ -1347,6 +1347,21 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                     }
                 }
             }
+
+            // NOTE: Would be nice to do this in `Lower_MIR` - but that confuses the validity checks
+            if( e.fcn.is_Intrinsic() && e.fcn.as_Intrinsic().name == "read_via_copy" )
+            {
+                // TODO: Replace with `res = *ptr;`
+                block.statements.push_back(MIR::Statement::make_Assign({ std::move(e.ret_val), MIR::LValue::new_Deref( std::move(e.args.at(0).as_LValue()) ) }));
+                block.terminator = MIR::Terminator::make_Goto(e.ret_block);
+            }
+            if( e.fcn.is_Intrinsic() && e.fcn.as_Intrinsic().name == "write_via_move" )
+            {
+                // TODO: Replace with `*ptr = arg;`
+                block.statements.push_back(MIR::Statement::make_Assign({ MIR::LValue::new_Deref( std::move(e.args.at(0).as_LValue()) ), std::move(e.args.at(1).as_LValue()) }));
+                block.statements.push_back(MIR::Statement::make_Assign({ std::move(e.ret_val), MIR::RValue::make_Tuple({}) }));
+                block.terminator = MIR::Terminator::make_Goto(e.ret_block);
+            }
         }
 
         mutator.flush_block();
