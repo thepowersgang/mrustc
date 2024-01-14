@@ -385,6 +385,60 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
         }
     }
 
+    if( !trans_list.auto_fnptr_impls.empty() )
+    {
+        const auto& lang_FnPtr = crate.get_lang_item_path(Span(), "fn_ptr_trait");
+        for(const auto& ty : trans_list.auto_fnptr_impls)
+        {
+            auto out_ty = HIR::TypeRef::new_pointer(HIR::BorrowType::Shared, HIR::TypeRef::new_unit());
+            ::MIR::Function mir_fcn;
+
+            ::MIR::BasicBlock   bb;
+            bb.statements.push_back(::MIR::Statement::make_Assign({
+                ::MIR::LValue::new_Return(),
+                ::MIR::RValue::make_Cast({ ::MIR::LValue::new_Argument(0), out_ty.clone() })
+                }));
+            bb.terminator = ::MIR::Terminator::make_Return({});
+            mir_fcn.blocks.push_back(::std::move( bb ));
+
+            // Function
+            // `fn addr(self) -> usize;`
+            ::HIR::Function fcn {
+                ::HIR::Function::Receiver::Value,
+                ::HIR::GenericParams {},
+                /*m_args=*/::make_vec1(::std::make_pair(
+                    ::HIR::Pattern( ::HIR::PatternBinding(false, ::HIR::PatternBinding::Type::Move, "self", 0), ::HIR::Pattern::Data::make_Any({}) ),
+                    ty.clone()
+                )),
+                /*m_return=*/std::move(out_ty),
+                ::HIR::ExprPtr {}
+            };
+            fcn.m_code.m_mir = ::MIR::FunctionPointer( new ::MIR::Function(mv$(mir_fcn)) );
+
+            // Impl
+            ::HIR::TraitImpl    impl;
+            impl.m_type = ty.clone();
+            impl.m_methods.insert(::std::make_pair( RcString::new_interned("addr"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::std::move(fcn) } ));
+
+            // Add impl to the crate
+            auto& list = state.crate.m_trait_impls[lang_FnPtr].get_list_for_type_mut(impl.m_type);
+            list.push_back( box$(impl) );
+            state.crate.m_all_trait_impls[lang_FnPtr].get_list_for_type_mut(list.back()->m_type).push_back( list.back().get() );
+
+
+            // - Add this function to the TransList
+
+            {
+                auto p = ::HIR::Path(ty.clone(), ::HIR::GenericPath(lang_FnPtr), "addr");
+                auto e = trans_list.add_function(::std::move(p));
+
+                auto& impl = *list.back();
+                assert( impl.m_methods.size() == 1 );
+                e->ptr = &impl.m_methods.begin()->second.data;
+            }
+        }
+    }
+
     // Trait object methods
     {
         TRACE_FUNCTION_F("Trait object methods");

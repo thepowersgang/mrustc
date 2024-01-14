@@ -1249,6 +1249,12 @@ void Trans_Enumerate_FillFrom_PathMono(EnumState& state, ::HIR::Path path_mono)
             //for(const auto& ty : fcn_ty.m_arg_types)
             //    state.rv.vi
         }
+        // - <fn(...) as FnPtr>::addr
+        else if( path_mono.m_data.is_UfcsKnown() && path_mono.m_data.as_UfcsKnown().type.data().is_Function()
+            && path_mono.m_data.as_UfcsKnown().trait.m_path == state.crate.get_lang_item_path_opt("fn_ptr_trait") )
+        {
+            state.rv.auto_fnptr_impls.insert( path_mono.m_data.as_UfcsKnown().type.clone() );
+        }
         // <* as Clone>::clone
         else if( TARGETVER_LEAST_1_29 && path_mono.m_data.is_UfcsKnown() && path_mono.m_data.as_UfcsKnown().trait == state.crate.get_lang_item_path_opt("clone") )
         {
