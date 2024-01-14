@@ -5231,6 +5231,7 @@ namespace {
                     }
                     const char* suffix = name.c_str() + prefix_len;
                     if( ::std::strcmp(suffix, "acq") == 0
+                        || ::std::strcmp(suffix, "acquire") == 0
                         || ::std::strcmp(suffix, "relaxed_acquire") == 0
                         || ::std::strcmp(suffix, "acquire_acquire") == 0
                         || ::std::strcmp(suffix, "acquire_relaxed") == 0
@@ -5238,6 +5239,7 @@ namespace {
                         return Ordering::Acquire;
                     }
                     else if( ::std::strcmp(suffix, "rel") == 0
+                        || ::std::strcmp(suffix, "release") == 0
                         || ::std::strcmp(suffix, "release_relaxed") == 0
                         ) {
                         return Ordering::Release;
@@ -5256,7 +5258,8 @@ namespace {
                     else if( ::std::strcmp(suffix, "unordered") == 0 ) {
                         return Ordering::Relaxed;
                     }
-                    else if( ::std::strcmp(suffix, "relaxed_seqcst") == 0
+                    else if( ::std::strcmp(suffix, "seqcst") == 0
+                        || ::std::strcmp(suffix, "relaxed_seqcst") == 0
                         || ::std::strcmp(suffix, "release_seqcst") == 0
                         || ::std::strcmp(suffix, "acquire_seqcst") == 0
                         || ::std::strcmp(suffix, "acqrel_seqcst") == 0
@@ -5770,6 +5773,16 @@ namespace {
             else if( name == "ptr_guaranteed_ne" ) {
                 emit_lvalue(e.ret_val); m_of << " = ("; emit_param(e.args.at(0)); m_of << " != "; emit_param(e.args.at(1)); m_of << ")";
             }
+            else if( name == "ptr_guaranteed_cmp" ) {
+                // 0 if not equal, 1 if equal, 2 if could be either
+                emit_lvalue(e.ret_val); m_of << "= ( ("; emit_param(e.args.at(0)); m_of << ") == ("; emit_param(e.args.at(1)); m_of << "))";
+            }
+            /*
+            else if( name == "ptr_offset_from_unsigned" ) {
+                // `fn ptr_offset_from_unsigned<T>(ptr: *const T, base: *const T) -> usize`
+                emit_lvalue(e.ret_val); m_of << "= ( ("; emit_param(e.args.at(0)); m_of << ") - ("; emit_param(e.args.at(1)); m_of << "))";
+            }
+            */
             // ----
             else if( name == "bswap" ) {
                 const auto& ty = params.m_types.at(0);
@@ -6630,6 +6643,10 @@ namespace {
             }
             else if( name == "atomic_cxchg" || name.compare(0, 7+6, "atomic_cxchg_") == 0 ) {
                 auto ordering = get_atomic_ordering(name, 7+6);
+                emit_atomic_cxchg(e, ordering, ordering, false);
+            }
+            else if( name == "atomic_cxchgweak" || name.compare(0, 91-74, "atomic_cxchgweak_") == 0 ) {
+                auto ordering = get_atomic_ordering(name, 91-74);
                 emit_atomic_cxchg(e, ordering, ordering, false);
             }
             else if( name == "atomic_cxchgweak_acq_failrelaxed" ) {
