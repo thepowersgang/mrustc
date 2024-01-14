@@ -5493,6 +5493,25 @@ namespace {
             else if( name == "assert_uninit_valid" ) {
                 // TODO: Detect nonzero or enum within
             }
+            else if( name == "const_eval_select" ) {
+                const auto& arg_ty_tuple = params.m_types.at(0).data().as_Tuple();
+                const auto& arg = e.args.at(0).as_LValue();
+                // Note: arg 1 is the constant function
+                const auto& fcn_path = *e.args.at(2).as_Constant().as_ItemAddr();
+
+                // HACK: Just make a path terminator and call into that
+                ::std::vector<MIR::Param>   args;
+                args.reserve(arg_ty_tuple.size());
+                for(size_t i = 0; i < arg_ty_tuple.size(); i ++) {
+                    args.push_back(MIR::LValue::new_Field(arg.clone(), i));
+                }
+                auto pseudo_term = MIR::Terminator::Data_Call {
+                    e.ret_block, e.panic_block, e.ret_val.clone(),
+                    MIR::CallTarget::make_Path(fcn_path.clone()),
+                    std::move(args)
+                    };
+                emit_term_call(mir_res, pseudo_term, 1);
+            }
             // --- Type identity ---
             else if( name == "type_id" ) {
                 const auto& ty = params.m_types.at(0);
