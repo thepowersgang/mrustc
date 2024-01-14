@@ -253,6 +253,8 @@ namespace {
                 m_of
                     << "#include <windows.h>\n"
                     << "#include <math.h>\n"  // fabsf, ...
+                    << "#include <intrin.h>\n"
+                    << "#include <immintrin.h>\n"
                     << "void abort(void);\n"
                     ;
                 break;
@@ -2707,6 +2709,7 @@ namespace {
                             emit_lvalue(::MIR::LValue::new_Argument(i));
                         }
                         m_of << ");\n";
+                        m_of << "}\n";
                         return;
                     }
                 }
@@ -5676,6 +5679,28 @@ namespace {
                     m_of << ", "; emit_param(e.args.at(2)); m_of << " * sizeof("; emit_ctype(params.m_types.at(0)); m_of << ")";
                     m_of << ")";
             }
+            else if( name == "compare_bytes" ) {
+                // A raw memcmp
+                emit_lvalue(e.ret_val);
+                m_of << " = memcmp( ";
+                emit_param(e.args.at(0));
+                m_of << ", ";
+                emit_param(e.args.at(1));
+                m_of << ", ";
+                emit_param(e.args.at(2));
+                m_of << ")";
+            }
+            else if( name == "raw_eq" ) {
+                // Raw byte equality (could be implemented without a memcmp call, if desired)
+                size_t size = 0;
+                emit_lvalue(e.ret_val); m_of << " = 0 == memcmp(";
+                emit_param(e.args.at(0));
+                m_of << ", ";
+                emit_param(e.args.at(1));
+                m_of << ", ";
+                m_of << "sizeof("; emit_ctype(params.m_types.at(0));
+                m_of << ")";
+            }
             else if( name == "forget" ) {
                 // Nothing needs to be done, this just stops the destructor from running.
             }
@@ -5777,12 +5802,10 @@ namespace {
                 // 0 if not equal, 1 if equal, 2 if could be either
                 emit_lvalue(e.ret_val); m_of << "= ( ("; emit_param(e.args.at(0)); m_of << ") == ("; emit_param(e.args.at(1)); m_of << "))";
             }
-            /*
             else if( name == "ptr_offset_from_unsigned" ) {
                 // `fn ptr_offset_from_unsigned<T>(ptr: *const T, base: *const T) -> usize`
                 emit_lvalue(e.ret_val); m_of << "= ( ("; emit_param(e.args.at(0)); m_of << ") - ("; emit_param(e.args.at(1)); m_of << "))";
             }
-            */
             // ----
             else if( name == "bswap" ) {
                 const auto& ty = params.m_types.at(0);
@@ -6532,179 +6555,185 @@ namespace {
                 m_of << "*(volatile "; emit_ctype(params.m_types.at(0)); m_of << "*)"; emit_param(e.args.at(0)); m_of << " = "; emit_param(e.args.at(1));
             }
             // --- Atomics!
-            // > Single-ordering atomics
-            else if( name == "atomic_xadd" || name.compare(0, 7+4+1, "atomic_xadd_") == 0 ) {
-                auto ordering = get_atomic_ordering(name, 7+4+1);
-                emit_atomic_arith(AtomicOp::Add, ordering);
-            }
-            else if( name == "atomic_xsub" || name.compare(0, 7+4+1, "atomic_xsub_") == 0 ) {
-                auto ordering = get_atomic_ordering(name, 7+4+1);
-                emit_atomic_arith(AtomicOp::Sub, ordering);
-            }
-            else if( name == "atomic_and" || name.compare(0, 7+3+1, "atomic_and_") == 0 ) {
-                auto ordering = get_atomic_ordering(name, 7+3+1);
-                emit_atomic_arith(AtomicOp::And, ordering);
-            }
-            else if( name == "atomic_nand" || name.compare(0, 7+4+1, "atomic_nand_") == 0 ) {
-                auto ordering = get_atomic_ordering(name, 7+4+1);
-                const auto& ty = params.m_types.at(0);
-                emit_lvalue(e.ret_val); m_of << " = __mrustc_atomicloop" << get_prim_size(ty) << "(";
-                    m_of << "(volatile uint" << get_prim_size(ty) << "_t*)";
-                    emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1));
-                    if( m_compiler == Compiler::Gcc )
+            else if( name.compare(0, 7, "atomic_") == 0 )
+            {
+                // > Single-ordering atomics
+                if( name == "atomic_xadd" || name.compare(0, 7+4+1, "atomic_xadd_") == 0 ) {
+                    auto ordering = get_atomic_ordering(name, 7+4+1);
+                    emit_atomic_arith(AtomicOp::Add, ordering);
+                }
+                else if( name == "atomic_xsub" || name.compare(0, 7+4+1, "atomic_xsub_") == 0 ) {
+                    auto ordering = get_atomic_ordering(name, 7+4+1);
+                    emit_atomic_arith(AtomicOp::Sub, ordering);
+                }
+                else if( name == "atomic_and" || name.compare(0, 7+3+1, "atomic_and_") == 0 ) {
+                    auto ordering = get_atomic_ordering(name, 7+3+1);
+                    emit_atomic_arith(AtomicOp::And, ordering);
+                }
+                else if( name == "atomic_nand" || name.compare(0, 7+4+1, "atomic_nand_") == 0 ) {
+                    auto ordering = get_atomic_ordering(name, 7+4+1);
+                    const auto& ty = params.m_types.at(0);
+                    emit_lvalue(e.ret_val); m_of << " = __mrustc_atomicloop" << get_prim_size(ty) << "(";
+                        m_of << "(volatile uint" << get_prim_size(ty) << "_t*)";
+                        emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1));
+                        if( m_compiler == Compiler::Gcc )
+                        {
+                            m_of << ", " << get_atomic_ty_gcc(ordering);
+                        }
+                        m_of << ", __mrustc_op_and_not" << get_prim_size(ty);
+                        m_of << ")";
+                }
+                else if( name == "atomic_or" || name.compare(0, 7+2+1, "atomic_or_") == 0 ) {
+                    auto ordering = get_atomic_ordering(name, 7+2+1);
+                    emit_atomic_arith(AtomicOp::Or, ordering);
+                }
+                else if( name == "atomic_xor" || name.compare(0, 7+3+1, "atomic_xor_") == 0 ) {
+                    auto ordering = get_atomic_ordering(name, 7+3+1);
+                    emit_atomic_arith(AtomicOp::Xor, ordering);
+                }
+                else if( name == "atomic_max" || name.compare(0, 7+3+1, "atomic_max_") == 0
+                      || name == "atomic_min" || name.compare(0, 7+3+1, "atomic_min_") == 0 ) {
+                    auto ordering = get_atomic_ordering(name, 7+3+1);
+                    const auto& ty = params.m_types.at(0);
+                    const char* op = (name.c_str()[7+1] == 'a' ? "imax" : "imin");    // m'a'x vs m'i'n
+                    emit_lvalue(e.ret_val); m_of << " = __mrustc_atomicloop" << get_prim_size(ty) << "(";
+                        m_of << "(volatile uint" << get_prim_size(ty) << "_t*)";
+                        emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1));
+                        if( m_compiler == Compiler::Gcc )
+                        {
+                            m_of << ", " << get_atomic_ty_gcc(ordering);
+                        }
+                        m_of << ", __mrustc_op_" << op << get_prim_size(ty);
+                        m_of << ")";
+                }
+                else if( name == "atomic_umax" || name.compare(0, 7+4+1, "atomic_umax_") == 0
+                      || name == "atomic_umin" || name.compare(0, 7+4+1, "atomic_umin_") == 0 ) {
+                    auto ordering = get_atomic_ordering(name, 7+4+1);
+                    const auto& ty = params.m_types.at(0);
+                    const char* op = (name.c_str()[7+2] == 'a' ? "umax" : "umin");    // m'a'x vs m'i'n
+                    emit_lvalue(e.ret_val); m_of << " = __mrustc_atomicloop" << get_prim_size(ty) << "(";
+                        m_of << "(volatile uint" << get_prim_size(ty) << "_t*)";
+                        emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1));
+                        if( m_compiler == Compiler::Gcc )
+                        {
+                            m_of << ", " << get_atomic_ty_gcc(ordering);
+                        }
+                        m_of << ", __mrustc_op_" << op << get_prim_size(ty);
+                        m_of << ")";
+                }
+                else if( name == "atomic_load" || name.compare(0, 7+4+1, "atomic_load_") == 0 ) {
+                    auto ordering = get_atomic_ordering(name, 7+4+1);
+                    emit_lvalue(e.ret_val); m_of << " = ";
+                    switch(m_compiler)
                     {
-                        m_of << ", " << get_atomic_ty_gcc(ordering);
+                    case Compiler::Gcc:
+                        m_of << "atomic_load_explicit("; emit_atomic_cast(); emit_param(e.args.at(0)); m_of << ", " << get_atomic_ty_gcc(ordering) << ")";
+                        break;
+                    case Compiler::Msvc:
+                        //emit_msvc_atomic_op("InterlockedRead", ordering); emit_param(e.args.at(0)); m_of << ")";
+                        emit_msvc_atomic_op("InterlockedCompareExchange", ordering); emit_param(e.args.at(0)); m_of << ", 0, 0)";
+                        break;
                     }
-                    m_of << ", __mrustc_op_and_not" << get_prim_size(ty);
-                    m_of << ")";
-            }
-            else if( name == "atomic_or" || name.compare(0, 7+2+1, "atomic_or_") == 0 ) {
-                auto ordering = get_atomic_ordering(name, 7+2+1);
-                emit_atomic_arith(AtomicOp::Or, ordering);
-            }
-            else if( name == "atomic_xor" || name.compare(0, 7+3+1, "atomic_xor_") == 0 ) {
-                auto ordering = get_atomic_ordering(name, 7+3+1);
-                emit_atomic_arith(AtomicOp::Xor, ordering);
-            }
-            else if( name == "atomic_max" || name.compare(0, 7+3+1, "atomic_max_") == 0
-                  || name == "atomic_min" || name.compare(0, 7+3+1, "atomic_min_") == 0 ) {
-                auto ordering = get_atomic_ordering(name, 7+3+1);
-                const auto& ty = params.m_types.at(0);
-                const char* op = (name.c_str()[7+1] == 'a' ? "imax" : "imin");    // m'a'x vs m'i'n
-                emit_lvalue(e.ret_val); m_of << " = __mrustc_atomicloop" << get_prim_size(ty) << "(";
-                    m_of << "(volatile uint" << get_prim_size(ty) << "_t*)";
-                    emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1));
-                    if( m_compiler == Compiler::Gcc )
+                }
+                else if( name == "atomic_store" || name.compare(0, 7+5+1, "atomic_store_") == 0 ) {
+                    auto ordering = get_atomic_ordering(name, 7+5+1);
+                    switch (m_compiler)
                     {
-                        m_of << ", " << get_atomic_ty_gcc(ordering);
+                    case Compiler::Gcc:
+                        m_of << "atomic_store_explicit("; emit_atomic_cast(); emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", " << get_atomic_ty_gcc(ordering) << ")";
+                        break;
+                    case Compiler::Msvc:
+                        m_of << "*"; emit_param(e.args.at(0)); m_of << " = "; emit_param(e.args.at(1));
+                        break;
                     }
-                    m_of << ", __mrustc_op_" << op << get_prim_size(ty);
-                    m_of << ")";
-            }
-            else if( name == "atomic_umax" || name.compare(0, 7+4+1, "atomic_umax_") == 0
-                  || name == "atomic_umin" || name.compare(0, 7+4+1, "atomic_umin_") == 0 ) {
-                auto ordering = get_atomic_ordering(name, 7+4+1);
-                const auto& ty = params.m_types.at(0);
-                const char* op = (name.c_str()[7+2] == 'a' ? "umax" : "umin");    // m'a'x vs m'i'n
-                emit_lvalue(e.ret_val); m_of << " = __mrustc_atomicloop" << get_prim_size(ty) << "(";
-                    m_of << "(volatile uint" << get_prim_size(ty) << "_t*)";
-                    emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1));
-                    if( m_compiler == Compiler::Gcc )
+                }
+                // Comare+Exchange (has two orderings)
+                else if( name == "atomic_cxchg_acq_failrelaxed" ) {
+                    emit_atomic_cxchg(e, Ordering::Acquire, Ordering::Relaxed, false);
+                }
+                else if( name == "atomic_cxchg_acqrel_failrelaxed" ) {
+                    emit_atomic_cxchg(e, Ordering::AcqRel, Ordering::Relaxed, false);
+                }
+                // _rel = Release, Relaxed (not Release,Release)
+                else if( name == "atomic_cxchg_rel" ) {
+                    emit_atomic_cxchg(e, Ordering::Release, Ordering::Relaxed, false);
+                }
+                // _acqrel = Release, Acquire (not AcqRel,AcqRel)
+                else if( name == "atomic_cxchg_acqrel" ) {
+                    emit_atomic_cxchg(e, Ordering::AcqRel, Ordering::Acquire, false);
+                }
+                else if( name.compare(0, 7+6+4, "atomic_cxchg_fail") == 0 ) {
+                    auto fail_ordering = get_atomic_ordering(name, 7+6+4);
+                    emit_atomic_cxchg(e, Ordering::SeqCst, fail_ordering, false);
+                }
+                else if( name == "atomic_cxchg" || name.compare(0, 7+6, "atomic_cxchg_") == 0 ) {
+                    auto ordering = get_atomic_ordering(name, 7+6);
+                    emit_atomic_cxchg(e, ordering, ordering, false);
+                }
+                else if( name == "atomic_cxchgweak" || name.compare(0, 91-74, "atomic_cxchgweak_") == 0 ) {
+                    auto ordering = get_atomic_ordering(name, 91-74);
+                    emit_atomic_cxchg(e, ordering, ordering, false);
+                }
+                else if( name == "atomic_cxchgweak_acq_failrelaxed" ) {
+                    emit_atomic_cxchg(e, Ordering::Acquire, Ordering::Relaxed, true);
+                }
+                else if( name == "atomic_cxchgweak_acqrel_failrelaxed" ) {
+                    emit_atomic_cxchg(e, Ordering::AcqRel , Ordering::Relaxed, true);
+                }
+                else if( name.compare(0, 7+10+4, "atomic_cxchgweak_fail") == 0 ) {
+                    auto fail_ordering = get_atomic_ordering(name, 7+10+4);
+                    emit_atomic_cxchg(e, Ordering::SeqCst , fail_ordering, true);
+                }
+                else if( name == "atomic_cxchgweak" ) {
+                    emit_atomic_cxchg(e, Ordering::SeqCst , Ordering::SeqCst , true);
+                }
+                else if( name == "atomic_cxchgweak_acq" ) {
+                    emit_atomic_cxchg(e, Ordering::Acquire, Ordering::Acquire, true);
+                }
+                else if( name == "atomic_cxchgweak_rel" ) {
+                    emit_atomic_cxchg(e, Ordering::Release, Ordering::Relaxed, true);
+                }
+                else if( name == "atomic_cxchgweak_acqrel" ) {
+                    emit_atomic_cxchg(e, Ordering::AcqRel , Ordering::Acquire, true);
+                }
+                else if( name == "atomic_cxchgweak_relaxed" ) {
+                    emit_atomic_cxchg(e, Ordering::Relaxed, Ordering::Relaxed, true);
+                }
+                else if( name == "atomic_xchg" || name.compare(0, 7+5, "atomic_xchg_") == 0 ) {
+                    auto ordering = get_atomic_ordering(name, 7+5);
+                    emit_lvalue(e.ret_val); m_of << " = ";
+                    switch(m_compiler)
                     {
-                        m_of << ", " << get_atomic_ty_gcc(ordering);
+                    case Compiler::Gcc:
+                        m_of << "atomic_exchange_explicit("; emit_atomic_cast(); emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", " << get_atomic_ty_gcc(ordering) << ")";
+                        break;
+                    case Compiler::Msvc:
+                        if(ordering == Ordering::Release)
+                            ordering = Ordering::SeqCst;
+                        emit_msvc_atomic_op("InterlockedExchange", ordering);
+                        emit_param(e.args.at(0)); m_of << ", ";
+                        if(params.m_types.at(0).data().is_Pointer()) { m_of << "(uintptr_t)"; } emit_param(e.args.at(1)); m_of << ")";
+                        break;
                     }
-                    m_of << ", __mrustc_op_" << op << get_prim_size(ty);
-                    m_of << ")";
-            }
-            else if( name == "atomic_load" || name.compare(0, 7+4+1, "atomic_load_") == 0 ) {
-                auto ordering = get_atomic_ordering(name, 7+4+1);
-                emit_lvalue(e.ret_val); m_of << " = ";
-                switch(m_compiler)
-                {
-                case Compiler::Gcc:
-                    m_of << "atomic_load_explicit("; emit_atomic_cast(); emit_param(e.args.at(0)); m_of << ", " << get_atomic_ty_gcc(ordering) << ")";
-                    break;
-                case Compiler::Msvc:
-                    //emit_msvc_atomic_op("InterlockedRead", ordering); emit_param(e.args.at(0)); m_of << ")";
-                    emit_msvc_atomic_op("InterlockedCompareExchange", ordering); emit_param(e.args.at(0)); m_of << ", 0, 0)";
-                    break;
                 }
-            }
-            else if( name == "atomic_store" || name.compare(0, 7+5+1, "atomic_store_") == 0 ) {
-                auto ordering = get_atomic_ordering(name, 7+5+1);
-                switch (m_compiler)
-                {
-                case Compiler::Gcc:
-                    m_of << "atomic_store_explicit("; emit_atomic_cast(); emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", " << get_atomic_ty_gcc(ordering) << ")";
-                    break;
-                case Compiler::Msvc:
-                    m_of << "*"; emit_param(e.args.at(0)); m_of << " = "; emit_param(e.args.at(1));
-                    break;
+                else if( name == "atomic_fence" || name.compare(0, 7+6, "atomic_fence_") == 0 ) {
+                    auto ordering = get_atomic_ordering(name, 7+6);
+                    switch(m_compiler)
+                    {
+                    case Compiler::Gcc:
+                        m_of << "atomic_thread_fence(" << get_atomic_ty_gcc(ordering) << ")";
+                        break;
+                    case Compiler::Msvc:
+                        // TODO: MSVC atomic fence?
+                        break;
+                    }
                 }
-            }
-            // Comare+Exchange (has two orderings)
-            else if( name == "atomic_cxchg_acq_failrelaxed" ) {
-                emit_atomic_cxchg(e, Ordering::Acquire, Ordering::Relaxed, false);
-            }
-            else if( name == "atomic_cxchg_acqrel_failrelaxed" ) {
-                emit_atomic_cxchg(e, Ordering::AcqRel, Ordering::Relaxed, false);
-            }
-            // _rel = Release, Relaxed (not Release,Release)
-            else if( name == "atomic_cxchg_rel" ) {
-                emit_atomic_cxchg(e, Ordering::Release, Ordering::Relaxed, false);
-            }
-            // _acqrel = Release, Acquire (not AcqRel,AcqRel)
-            else if( name == "atomic_cxchg_acqrel" ) {
-                emit_atomic_cxchg(e, Ordering::AcqRel, Ordering::Acquire, false);
-            }
-            else if( name.compare(0, 7+6+4, "atomic_cxchg_fail") == 0 ) {
-                auto fail_ordering = get_atomic_ordering(name, 7+6+4);
-                emit_atomic_cxchg(e, Ordering::SeqCst, fail_ordering, false);
-            }
-            else if( name == "atomic_cxchg" || name.compare(0, 7+6, "atomic_cxchg_") == 0 ) {
-                auto ordering = get_atomic_ordering(name, 7+6);
-                emit_atomic_cxchg(e, ordering, ordering, false);
-            }
-            else if( name == "atomic_cxchgweak" || name.compare(0, 91-74, "atomic_cxchgweak_") == 0 ) {
-                auto ordering = get_atomic_ordering(name, 91-74);
-                emit_atomic_cxchg(e, ordering, ordering, false);
-            }
-            else if( name == "atomic_cxchgweak_acq_failrelaxed" ) {
-                emit_atomic_cxchg(e, Ordering::Acquire, Ordering::Relaxed, true);
-            }
-            else if( name == "atomic_cxchgweak_acqrel_failrelaxed" ) {
-                emit_atomic_cxchg(e, Ordering::AcqRel , Ordering::Relaxed, true);
-            }
-            else if( name.compare(0, 7+10+4, "atomic_cxchgweak_fail") == 0 ) {
-                auto fail_ordering = get_atomic_ordering(name, 7+10+4);
-                emit_atomic_cxchg(e, Ordering::SeqCst , fail_ordering, true);
-            }
-            else if( name == "atomic_cxchgweak" ) {
-                emit_atomic_cxchg(e, Ordering::SeqCst , Ordering::SeqCst , true);
-            }
-            else if( name == "atomic_cxchgweak_acq" ) {
-                emit_atomic_cxchg(e, Ordering::Acquire, Ordering::Acquire, true);
-            }
-            else if( name == "atomic_cxchgweak_rel" ) {
-                emit_atomic_cxchg(e, Ordering::Release, Ordering::Relaxed, true);
-            }
-            else if( name == "atomic_cxchgweak_acqrel" ) {
-                emit_atomic_cxchg(e, Ordering::AcqRel , Ordering::Acquire, true);
-            }
-            else if( name == "atomic_cxchgweak_relaxed" ) {
-                emit_atomic_cxchg(e, Ordering::Relaxed, Ordering::Relaxed, true);
-            }
-            else if( name == "atomic_xchg" || name.compare(0, 7+5, "atomic_xchg_") == 0 ) {
-                auto ordering = get_atomic_ordering(name, 7+5);
-                emit_lvalue(e.ret_val); m_of << " = ";
-                switch(m_compiler)
-                {
-                case Compiler::Gcc:
-                    m_of << "atomic_exchange_explicit("; emit_atomic_cast(); emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", " << get_atomic_ty_gcc(ordering) << ")";
-                    break;
-                case Compiler::Msvc:
-                    if(ordering == Ordering::Release)
-                        ordering = Ordering::SeqCst;
-                    emit_msvc_atomic_op("InterlockedExchange", ordering);
-                    emit_param(e.args.at(0)); m_of << ", ";
-                    if(params.m_types.at(0).data().is_Pointer()) { m_of << "(uintptr_t)"; } emit_param(e.args.at(1)); m_of << ")";
-                    break;
+                else if( name == "atomic_singlethreadfence" || name.compare(0, 7+18, "atomic_singlethreadfence_") == 0 ) {
+                    // TODO: Does this matter?
                 }
-            }
-            else if( name == "atomic_fence" || name.compare(0, 7+6, "atomic_fence_") == 0 ) {
-                auto ordering = get_atomic_ordering(name, 7+6);
-                switch(m_compiler)
-                {
-                case Compiler::Gcc:
-                    m_of << "atomic_thread_fence(" << get_atomic_ty_gcc(ordering) << ")";
-                    break;
-                case Compiler::Msvc:
-                    // TODO: MSVC atomic fence?
-                    break;
+                else {
+                    MIR_BUG(mir_res, "Unknown atomic intrinsic '" << name << "'");
                 }
-            }
-            else if( name == "atomic_singlethreadfence" || name.compare(0, 7+18, "atomic_singlethreadfence_") == 0 ) {
-                // TODO: Does this matter?
             }
             // -- stdarg --
             else if( name == "va_copy" ) {
