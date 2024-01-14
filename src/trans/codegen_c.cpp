@@ -2686,6 +2686,32 @@ namespace {
             emit_function_header(p, item, params);
             m_of << "\n";
             m_of << "{\n";
+
+            if( m_compiler == Compiler::Msvc && p.m_data.is_Generic() )
+            {
+                const auto& gp = p.m_data.as_Generic();
+                // MASSIVE hack:
+                // - Convert the entire body of AVX functions in `core_arch` to MSVC intrinsic calls
+                // E.g. `::"core-0_0_0"::core_arch::x86::avx512bw::_mm256_mask_loadu_epi16`
+                if( gp.m_path.m_crate_name.compare(0,5,"core-") == 0 && gp.m_path.m_components[0] == "core_arch" ) {
+                    if(false
+                        || gp.m_path.m_components.back().compare(0, 6, "_mm256") == 0
+                        || gp.m_path.m_components.back().compare(0, 6, "_mm512") == 0
+                        || gp.m_path.m_components.back().compare(0, 4, "_mm_") == 0
+                        )
+                    {
+                        m_of << "\treturn " << gp.m_path.m_components.back() << "(";
+                        for(size_t i = 0; i < item.m_args.size(); i ++) {
+                            if( i != 0 )
+                                m_of << ", ";
+                            emit_lvalue(::MIR::LValue::new_Argument(i));
+                        }
+                        m_of << ");\n";
+                        return;
+                    }
+                }
+            }
+
             // Variables
             m_of << "\t"; emit_ctype(ret_type, FMT_CB(ss, ss << "rv";)); m_of << ";\n";
             for(unsigned int i = 0; i < code->locals.size(); i ++) {
@@ -4840,6 +4866,17 @@ namespace {
                 m_of << " "; emit_lvalue(m.output(3)); m_of << " = cpuid_out[3];";  // EDX
                 m_of << " }\n";
             }
+            else if( m.matches_template({"mov {0:r}, rbx", "cpuid", "xchg {0:r}, rbx"}, {"out:reg","inout=eax","inout=ecx","out=edx"}) )
+            {
+                m_of << indent << "{";
+                m_of << " int cpuid_out[4];";
+                m_of << " __cpuidex(cpuid_out, "; emit_param(m.input(1)); m_of << ", "; emit_param(m.input(2)); m_of << ");";
+                m_of << " "; emit_lvalue(m.output(1)); m_of << " = cpuid_out[0];";  // EAX
+                m_of << " "; emit_lvalue(m.output(0)); m_of << " = cpuid_out[1];";  // EBX
+                m_of << " "; emit_lvalue(m.output(2)); m_of << " = cpuid_out[2];";  // ECX
+                m_of << " "; emit_lvalue(m.output(3)); m_of << " = cpuid_out[3];";  // EDX
+                m_of << " }\n";
+            }
             // - EFlags
             else if( m.matches_template({"pushfq", "pop {0}"}, {"out:reg"}) )
             {
@@ -5193,21 +5230,43 @@ namespace {
                         return Ordering::SeqCst;
                     }
                     const char* suffix = name.c_str() + prefix_len;
-                    if( ::std::strcmp(suffix, "acq") == 0 ) {
+                    if( ::std::strcmp(suffix, "acq") == 0
+                        || ::std::strcmp(suffix, "relaxed_acquire") == 0
+                        || ::std::strcmp(suffix, "acquire_acquire") == 0
+                        || ::std::strcmp(suffix, "acquire_relaxed") == 0
+                        ) {
                         return Ordering::Acquire;
                     }
-                    else if( ::std::strcmp(suffix, "rel") == 0 ) {
+                    else if( ::std::strcmp(suffix, "rel") == 0
+                        || ::std::strcmp(suffix, "release_relaxed") == 0
+                        ) {
                         return Ordering::Release;
                     }
-                    else if( ::std::strcmp(suffix, "relaxed") == 0 ) {
+                    else if( ::std::strcmp(suffix, "relaxed") == 0
+                        || ::std::strcmp(suffix, "relaxed_relaxed") == 0
+                        ) {
                         return Ordering::Relaxed;
                     }
-                    else if( ::std::strcmp(suffix, "acqrel") == 0 ) {
+                    else if( ::std::strcmp(suffix, "acqrel") == 0
+                        || ::std::strcmp(suffix, "acqrel_relaxed") == 0
+                        ) {
                         return Ordering::AcqRel;
                     }
                     // TODO: Is this correct?
                     else if( ::std::strcmp(suffix, "unordered") == 0 ) {
                         return Ordering::Relaxed;
+                    }
+                    else if( ::std::strcmp(suffix, "relaxed_seqcst") == 0
+                        || ::std::strcmp(suffix, "release_seqcst") == 0
+                        || ::std::strcmp(suffix, "acquire_seqcst") == 0
+                        || ::std::strcmp(suffix, "acqrel_seqcst") == 0
+                        || ::std::strcmp(suffix, "seqcst_seqcst") == 0
+                        || ::std::strcmp(suffix, "release_acquire") == 0
+                        || ::std::strcmp(suffix, "acqrel_acquire") == 0
+                        || ::std::strcmp(suffix, "seqcst_acquire") == 0
+                        || ::std::strcmp(suffix, "seqcst_relaxed") == 0
+                        ) {
+                        return Ordering::SeqCst;
                     }
                     else {
                         MIR_BUG(mir_res, "Unknown atomic ordering suffix - '" << suffix << "'");
@@ -6646,17 +6705,21 @@ namespace {
                     } ty;
 
                     static SimdInfo for_ty(const CodeGenerator_C& self, const HIR::TypeRef& ty) {
-                        size_t size_slot = 0, size_val = 0;;
-                        Target_GetSizeOf(self.sp, self.m_resolve, ty, size_slot);
-                        const auto& ty_val = ty.data().as_Path().binding.as_Struct()->m_data.as_Tuple().at(0).ent;
-                        Target_GetSizeOf(self.sp, self.m_resolve, ty_val, size_val);
+                        const auto* ty_repr = Target_GetTypeRepr(self.sp, self.m_mir_res->m_resolve, ty);
+                        MIR_ASSERT(*self.m_mir_res, ty_repr, "No repr for " << ty);
+                        size_t size_slot = ty_repr->size;
+                        const auto& ty_val = ty_repr->fields[0].ty.data().as_Array().inner;
+                        DEBUG(ty_val);
+                        size_t size_val = 0;
+                        MIR_ASSERT(*self.m_mir_res, Target_GetSizeOf(self.sp, self.m_resolve, ty_val, size_val), ty_val);
 
                         MIR_ASSERT(*self.m_mir_res, size_slot >= size_val, size_slot << " < " << size_val);
+                        MIR_ASSERT(*self.m_mir_res, size_val > 0, "SimdInfo::for_ty - Value type " << ty_val << " was a ZST");
                         MIR_ASSERT(*self.m_mir_res, size_slot / size_val * size_val == size_slot, size_slot << " not a multiple of " << size_val);
 
                         SimdInfo    rv;
                         rv.item_size = size_val;
-                        rv.count = size_slot / size_val;
+                        rv.count = size_slot == 0 ? 0 : size_slot / size_val;
                         switch(ty_val.data().as_Primitive())
                         {
                         case ::HIR::CoreType::I8:   rv.ty = Signed; break;
