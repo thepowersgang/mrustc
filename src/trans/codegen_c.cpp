@@ -19,6 +19,7 @@
 #include "target.hpp"
 #include "allocator.hpp"
 #include <iomanip>
+#include "target_version.hpp"
 
 namespace {
     struct FmtShell
@@ -700,6 +701,8 @@ namespace {
                     << "static inline int128_t xor128s(int128_t a, int128_t b) { int128_t v = { a.lo ^ b.lo, a.hi ^ b.hi }; return v; }\n"
                     << "static inline int128_t shl128s(int128_t a, uint32_t b) { int128_t v; if(b == 0) { return a; } else if(b < 64) { v.lo = a.lo << b; v.hi = (a.hi << b) | (a.lo >> (64 - b)); } else { v.hi = a.lo << (b - 64); v.lo = 0; } return v; }\n"
                     << "static inline int128_t shr128s(int128_t a, uint32_t b) { int128_t v; if(b == 0) { return a; } else if(b < 64) { v.lo = (a.lo >> b)|(a.hi << (64 - b)); v.hi = (int64_t)a.hi >> b; } else { v.lo = (int64_t)a.hi >> (b - 64); v.hi = (int64_t)a.hi < 0 ? -1 : 0; } return v; }\n"
+                    << "static inline uint128_t int128_to_uint128(int128_t a) { return make128_raw(a.lo, a.hi); }\n"
+                    << "static inline int128_t uint128_to_int128(uint128_t a) { return make128s_raw(a.lo, a.hi); }\n"
                     ;
             }
             else
@@ -2554,8 +2557,8 @@ namespace {
                 }
                 // `fn llvm_addcarryx_u32(a: u8, b: u32, c: u32, d: *mut u8) -> u8`
                 else if( item.m_linkage.name == "llvm.x86.addcarryx.u32") {
-                    m_of << "\trv = __builtin_add_overflow" << msvc_suffix_u32 << "(arg1, arg2, arg3);\n";
-                    m_of << "\tif(arg0) rv |= __builtin_add_overflow" << msvc_suffix_u32 << "(*arg3, 1, arg3);\n";
+                    m_of << "\trv = __builtin_add_overflow" << msvc_suffix_u32 << "(arg1, arg2, (uint32_t*)arg3);\n";
+                    m_of << "\tif(arg0) rv |= __builtin_add_overflow" << msvc_suffix_u32 << "(*arg3, 1, (uint32_t*)arg3);\n";
                     m_of << "\treturn rv;\n";
                 }
                 // `fn llvm_subborrow" << msvc_suffix_u32 << "(a: u8, b: u32, c: u32) -> (u8, u32);`
@@ -2689,6 +2692,7 @@ namespace {
             m_of << "\n";
             m_of << "{\n";
 
+#if 1
             if( m_compiler == Compiler::Msvc && p.m_data.is_Generic() )
             {
                 const auto& gp = p.m_data.as_Generic();
@@ -2702,18 +2706,82 @@ namespace {
                         || gp.m_path.m_components.back().compare(0, 4, "_mm_") == 0
                         )
                     {
-                        m_of << "\treturn " << gp.m_path.m_components.back() << "(";
+                        // HACK: These aren't supported on msvc2019
+                        if( true
+                            || gp.m_path.m_components.back() == "_mm256_zextpd128_pd256"
+                            ) {
+                            m_of << "\tabort();";
+                            m_of << "}\n";
+                            return ;
+                        }
+                        struct H {
+                            static const char* get_intr_type(const HIR::TypeRef& ty) {
+                                if( ty.data().is_Path() ) {
+                                    const auto& p = ty.data().as_Path().path.m_data.as_Generic();
+                                    if( false
+                                        || p.m_path.m_components.back() == "__m128"
+                                        || p.m_path.m_components.back() == "__m128d"
+                                        || p.m_path.m_components.back() == "__m128i"
+                                        || p.m_path.m_components.back() == "__m256"
+                                        || p.m_path.m_components.back() == "__m256d"
+                                        || p.m_path.m_components.back() == "__m256i"
+                                        ) {
+                                        return p.m_path.m_components.back().c_str();
+                                    }
+                                }
+                                return nullptr;
+                            }
+                        };
+                        const char* rv_type = nullptr;
+                        if( ret_type.data().is_Tuple() && ret_type.data().as_Tuple().empty() ) {
+                            rv_type = "";
+                        }
+                        else {
+                            rv_type = H::get_intr_type(ret_type);
+                        }
+
+                        if(!rv_type) {
+                            m_of << "\t";
+                            emit_ctype(ret_type, FMT_CB(ss, ss << "rv";));
+                            m_of << ";\n";
+                        }
+                        else if( !rv_type[0] ) {
+                            // Void return
+                        }
+                        else {
+                            m_of << "\t" << rv_type << " rv;\n";
+                        }
+                        if(!rv_type || rv_type[0]) {
+                            m_of << "\trv = ";
+                        }
+                        m_of << gp.m_path.m_components.back() << "(";
                         for(size_t i = 0; i < item.m_args.size(); i ++) {
                             if( i != 0 )
                                 m_of << ", ";
+                            if( const char* t = H::get_intr_type(item.m_args[i].second) ) {
+                                m_of << "*(const " << t << "*)&";
+                            }
                             emit_lvalue(::MIR::LValue::new_Argument(i));
                         }
+                        if( ! gp.m_params.m_values.empty() ) {
+                            m_of << ", " << EncodedLiteralSlice(*gp.m_params.m_values[0].as_Evaluated()).read_uint();
+                        }
                         m_of << ");\n";
+                        if( !rv_type || rv_type[0] ) {
+                            m_of << "\treturn ";
+                            if( rv_type ) {
+                                m_of << "*(";
+                                emit_ctype(ret_type);
+                                m_of << "*)&";
+                            }
+                            m_of << "rv;\n";
+                        }
                         m_of << "}\n";
                         return;
                     }
                 }
             }
+#endif
 
             // Variables
             m_of << "\t"; emit_ctype(ret_type, FMT_CB(ss, ss << "rv";)); m_of << ";\n";
@@ -5581,7 +5649,14 @@ namespace {
             else if( name == "type_id" ) {
                 const auto& ty = params.m_types.at(0);
                 // NOTE: Would define the typeid here, but it has to be public
-                emit_lvalue(e.ret_val); m_of << " = (uintptr_t)&__typeid_" << Trans_Mangle(ty);
+                emit_lvalue(e.ret_val); m_of << " = ";
+                if( TARGETVER_LEAST_1_74 && m_options.emulated_i128 ) {
+                    m_of << "make128(";
+                }
+                m_of << "(uintptr_t)&__typeid_" << Trans_Mangle(ty);
+                if( TARGETVER_LEAST_1_74 && m_options.emulated_i128 ) {
+                    m_of << ")";
+                }
             }
             else if( name == "type_name" ) {
                 auto s = FMT(params.m_types.at(0));
@@ -5693,13 +5768,13 @@ namespace {
             else if( name == "raw_eq" ) {
                 // Raw byte equality (could be implemented without a memcmp call, if desired)
                 size_t size = 0;
-                emit_lvalue(e.ret_val); m_of << " = 0 == memcmp(";
+                emit_lvalue(e.ret_val); m_of << " = (0 == memcmp(";
                 emit_param(e.args.at(0));
                 m_of << ", ";
                 emit_param(e.args.at(1));
                 m_of << ", ";
-                m_of << "sizeof("; emit_ctype(params.m_types.at(0));
-                m_of << ")";
+                m_of << "sizeof("; emit_ctype(params.m_types.at(0)); m_of << ")";
+                m_of << "))";
             }
             else if( name == "forget" ) {
                 // Nothing needs to be done, this just stops the destructor from running.
@@ -5779,7 +5854,15 @@ namespace {
             // --- #[track_caller]
             else if( name == "caller_location" ) {
                 //m_of << "abort()";
-                m_of << "static struct s_ZRG2cE9core0_0_05panic8Location0g mrustc_empty_caller_location = {0,0,{\"\",0}};";
+                auto p = m_crate.get_lang_item_path_opt("panic_location");
+                m_of << "static struct ";
+                if( p == HIR::SimplePath() ) {
+                    m_of << "s_ZRG2cE9core0_0_05panic8Location0g";
+                }
+                else {
+                    m_of << "s_" << Trans_Mangle(p);
+                }
+                m_of << " mrustc_empty_caller_location = {0,0,{\"\",0}};";
                 emit_lvalue(e.ret_val); m_of << " = &mrustc_empty_caller_location"; // TODO: Hidden ABI for caller location
             }
             // --- Pointer manipulation
@@ -6432,13 +6515,34 @@ namespace {
                 auto emit_arg0 = [&](){ emit_param(e.args.at(0)); };
                 const auto& ty = params.m_types.at(0);
                 emit_lvalue(e.ret_val); m_of << " = (";
-                if( ty == ::HIR::CoreType::U128 )
+                if( ty == ::HIR::CoreType::U128 || ty == ::HIR::CoreType::I128 )
                 {
+                    if( ty == ::HIR::CoreType::I128 ) {
+                        if( m_options.emulated_i128 ) {
+                            m_of << "uint128_to_int128(";
+                        }
+                        else {
+                            m_of << "(int128_t)";
+                        }
+                    }
                     if( name == "ctlz" || name == "ctlz_nonzero" ) {
-                        m_of << "intrinsic_ctlz_u128("; emit_param(e.args.at(0)); m_of << ")";
+                        m_of << "intrinsic_ctlz_u128(";
                     }
                     else {
-                        m_of << "intrinsic_cttz_u128("; emit_param(e.args.at(0)); m_of << ")";
+                        m_of << "intrinsic_cttz_u128(";
+                    }
+                    if( ty == ::HIR::CoreType::I128 ) {
+                        if( m_options.emulated_i128 ) {
+                            m_of << "int128_to_uint128(";
+                        }
+                        else {
+                            m_of << "(uint128_t)";
+                        }
+                    }
+                    emit_param(e.args.at(0)); m_of << ")";
+                    if( ty == ::HIR::CoreType::I128 && m_options.emulated_i128 ) {
+                        m_of << ")";
+                        m_of << ")";
                     }
                     m_of << ");";
                     return ;
@@ -6754,8 +6858,13 @@ namespace {
                         const auto* ty_repr = Target_GetTypeRepr(self.sp, self.m_mir_res->m_resolve, ty);
                         MIR_ASSERT(*self.m_mir_res, ty_repr, "No repr for " << ty);
                         size_t size_slot = ty_repr->size;
-                        const auto& ty_val = ty_repr->fields[0].ty.data().as_Array().inner;
-                        DEBUG(ty_val);
+                        const auto& ity = ty_repr->fields[0].ty;
+                        DEBUG("SimdInfo Type: " << ity);
+                        const auto& ty_val = ity.data().is_Primitive()
+                                ? ity
+                                : ty_repr->fields[0].ty.data().as_Array().inner
+                                ;
+                        DEBUG("ty_val = " << ty_val);
                         size_t size_val = 0;
                         MIR_ASSERT(*self.m_mir_res, Target_GetSizeOf(self.sp, self.m_resolve, ty_val, size_val), ty_val);
 
