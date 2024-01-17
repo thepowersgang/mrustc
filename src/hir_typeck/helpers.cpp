@@ -2642,7 +2642,10 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
         assoc_info = e->path.m_data.opt_UfcsKnown();
     }
 
-    if(type.data().is_Infer()) {
+    // If the type is a fully unknown type, then don't bother looking?
+    // - Ah, but what if the prams provide sufficient information?
+    // - TODO: Determine if the params could provide enough info to be worth checking for bounds.
+    if(type.data().is_Infer() && !type.data().as_Infer().is_lit()) {
         return false;
     }
 
