@@ -5489,22 +5489,27 @@ namespace {
             std::map<unsigned, std::vector<HIR::TypeRef>>   ivar_possibilities;
             for(const auto& pi : possible_impls)
             {
-                DEBUG("impl ?trait" << pi.params << " for " << pi.impl_ty);
+                DEBUG("impl " << v.trait << pi.params << " for " << pi.impl_ty);
                 for(size_t i = 0; i < pi.params.m_types.size(); i++)
                 {
                     const auto& t = context.get_type(v.params.m_types[i]);
                     if( const auto* e = t.data().opt_Infer() ) {
                         const auto& pi_t = pi.params.m_types[i];
+                        HIR::TypeRef    possible_ty;
                         if( !type_contains_impl_placeholder(pi_t) )
                         {
                             //ivar_possibilities[e->index].push_back( context.m_resolve.expand_associated_types(sp, pi_t.clone()) );
-                            ivar_possibilities[e->index].push_back( pi_t.clone() );
+                            possible_ty = pi_t.clone();
                         }
                         else
                         {
                             DEBUG("Not adding placeholder-containing type as a bound - " << pi_t);
                             // Push this ivar
-                            ivar_possibilities[e->index].push_back( t.clone() );
+                            possible_ty = t.clone();
+                        }
+
+                        if( std::find(ivar_possibilities[e->index].begin(), ivar_possibilities[e->index].end(), possible_ty) == ivar_possibilities[e->index].end() ) {
+                            ivar_possibilities[e->index].push_back( std::move(possible_ty) );
                         }
                     }
                 }
