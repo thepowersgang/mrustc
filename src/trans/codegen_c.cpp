@@ -6774,10 +6774,6 @@ namespace {
                     auto ordering = get_atomic_ordering(name, 7+6);
                     emit_atomic_cxchg(e, ordering, ordering, false);
                 }
-                else if( name == "atomic_cxchgweak" || name.compare(0, 91-74, "atomic_cxchgweak_") == 0 ) {
-                    auto ordering = get_atomic_ordering(name, 91-74);
-                    emit_atomic_cxchg(e, ordering, ordering, false);
-                }
                 else if( name == "atomic_cxchgweak_acq_failrelaxed" ) {
                     emit_atomic_cxchg(e, Ordering::Acquire, Ordering::Relaxed, true);
                 }
@@ -6802,6 +6798,10 @@ namespace {
                 }
                 else if( name == "atomic_cxchgweak_relaxed" ) {
                     emit_atomic_cxchg(e, Ordering::Relaxed, Ordering::Relaxed, true);
+                }
+                else if( name == "atomic_cxchgweak" || name.compare(0, 91-74, "atomic_cxchgweak_") == 0 ) {
+                    auto ordering = get_atomic_ordering(name, 91-74);
+                    emit_atomic_cxchg(e, ordering, ordering, false);
                 }
                 else if( name == "atomic_xchg" || name.compare(0, 7+5, "atomic_xchg_") == 0 ) {
                     auto ordering = get_atomic_ordering(name, 7+5);
