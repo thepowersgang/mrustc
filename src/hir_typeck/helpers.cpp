@@ -573,7 +573,9 @@ void HMTypeInferrence::add_ivars(::HIR::TypeRef& type)
             this->add_ivars_params(marker.m_params);
         }
     TU_ARMA(ErasedType, e) {
-        BUG(Span(), "ErasedType getting ivars added");
+        if( type_contains_ivars(type) ) {
+            BUG(Span(), "ErasedType getting ivars added - " << type);
+        }
         }
     TU_ARMA(Array, e) {
         add_ivars(e.inner);
