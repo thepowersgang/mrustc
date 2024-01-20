@@ -2601,6 +2601,21 @@ namespace HIR {
                     auto ofs = local_state.read_param_uint(Target_GetPointerBits(), e.args.at(1));
                     dst.write_ptr(state, ptr_pair.first + ofs.truncate_u64() * element_size, ptr_pair.second);
                 }
+                else if( te->name == "write_bytes" ) {
+                    auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                    size_t element_size;
+                    if( !Target_GetSizeOf(state.sp, state.m_resolve, ty, element_size) )
+                        throw Defer();
+                    auto ptr_dst = local_state.get_lval(e.args.at(0).as_LValue()).read_ptr(state);
+                    auto val = local_state.read_param_uint(8, e.args.at(1));
+                    U128 count = local_state.read_param_uint(Target_GetPointerBits(), e.args.at(2));
+                    MIR_ASSERT(state, count.is_u64(), "Excessive count in `" << te->name << "`");
+                    MIR_ASSERT(state, count * element_size < U128(SIZE_MAX), "Excessive size in `" << te->name << "`");
+                    size_t nbytes = element_size * count.truncate_u64();
+                    MIR_ASSERT(state, ptr_dst.first >= EncodedLiteral::PTR_BASE, "");
+                    ValueRef vr_dst = ValueRef(ptr_dst.second, ptr_dst.first - EncodedLiteral::PTR_BASE).slice(0, nbytes);
+                    memset(vr_dst.ext_write_bytes(state, nbytes), val.truncate_u64(), nbytes);
+                }
                 else {
                     MIR_TODO(state, "Call intrinsic \"" << te->name << "\" - " << terminator);
                 }
