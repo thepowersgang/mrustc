@@ -166,6 +166,7 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::AbsolutePath
             H::add("transmute_opts" , Handler(ITEM_STRUCT, handle_save));   // 1.74 - `Assume` struct
             H::add("ptr_unique"     , Handler(ITEM_STRUCT, handle_save));   // 1.74 - `::core::ptr::Unique`
             H::add("CStr"           , Handler(ITEM_STRUCT, handle_save));   // 1.74 - `::core::ffi::CStr` - Why? (miri?)
+            H::add("String"         , Handler(ITEM_STRUCT, handle_save));   // 1.74 - `::alloc::string::String` - Why? (miri?)
 
             H::add("from_yeet"      , Handler(ITEM_FN, handle_save));   // 1.74 - `::core::try_trait::from_yeet`
             H::add("panic_nounwind" , Handler(ITEM_FN, handle_save));   // 1.74 - `::core::panicking::panic`
