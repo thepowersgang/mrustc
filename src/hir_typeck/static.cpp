@@ -2082,7 +2082,6 @@ bool StaticTraitResolve::type_is_impossible(const Span& sp, const ::HIR::TypeRef
             }
         TU_ARMA(Struct, pbe) {
             const auto& params = e.path.m_data.as_Generic().m_params;
-            // TODO: Check all fields, if one flags this, then it's impossible.
             const auto& str = *pbe;
             TU_MATCH_HDRA( (str.m_data), {)
             TU_ARMA(Unit, e)
@@ -2098,15 +2097,39 @@ bool StaticTraitResolve::type_is_impossible(const Span& sp, const ::HIR::TypeRef
                 }
                 return false;
                 }
-            TU_ARMA(Named, e)
+            TU_ARMA(Named, e) {
                 for(const auto& fld : e)
                 {
-                    TODO(sp, "type_is_impossible for struct " << ty << " - " << fld.second.ent);
+                    const auto& tpl = fld.second.ent;
+                    ::HIR::TypeRef  tmp;
+                    const auto& ty = this->monomorph_expand_opt(sp, tmp, tpl, MonomorphStatePtr(nullptr, &params, nullptr));
+                    if( type_is_impossible(sp, ty) )
+                        return true;
+                }
+                return false;
                 }
             }
             }
         TU_ARMA(Enum, pbe) {
-            // TODO: Check all variants.
+            const auto& params = e.path.m_data.as_Generic().m_params;
+            TU_MATCH_HDRA( (pbe->m_data), { )
+            TU_ARMA(Value, e) {
+                return e.variants.size() == 0;
+                }
+            TU_ARMA(Data, e) {
+                // If all variants are impossible, then this type is impossible
+                for(const auto& fld : e)
+                {
+                    const auto& tpl = fld.type;
+                    ::HIR::TypeRef  tmp;
+                    const auto& ty = this->monomorph_expand_opt(sp, tmp, tpl, MonomorphStatePtr(nullptr, &params, nullptr));
+                    // Not impossible, ergo the enum is possible
+                    if( ! type_is_impossible(sp, ty) )
+                        return false;
+                }
+                return true;
+                }
+            }
             TODO(sp, "type_is_impossible for enum " << ty);
             }
         TU_ARMA(Union, pbe) {
