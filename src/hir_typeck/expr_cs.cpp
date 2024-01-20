@@ -923,14 +923,16 @@ namespace {
                     //   ivars (node.m_trait_param_ivars)
                     for(auto it_1 = possible_methods.begin(); it_1 != possible_methods.end(); ++ it_1)
                     {
+                        // Only consider trait impls (UfcsKnown path)
                         if( !it_1->second.m_data.is_UfcsKnown() )
                             continue;
-                        bool was_found = false;
+
                         auto& e1 = it_1->second.m_data.as_UfcsKnown();
                         for(auto it_2 = it_1 + 1; it_2 != possible_methods.end(); ++ it_2)
                         {
                             if( !it_2->second.m_data.is_UfcsKnown() )
                                 continue;
+                            // If it's a complete duplicate, immediately ignore.
                             if( it_2->second == it_1->second ) {
                                 it_2 = possible_methods.erase(it_2) - 1;
                                 continue ;
@@ -939,20 +941,21 @@ namespace {
 
                             // TODO: If the trait is the same, but the type differs, pick the first?
                             if( e1.trait == e2.trait ) {
+                                // NOTE: The trait is identical, but the full path comparison above failed. Ergo the type is different.
                                 DEBUG("Duplicate trait, different type - " << e1.trait << " for " << e1.type << " or " << e2.type << ", picking the first");
                                 it_2 = possible_methods.erase(it_2) - 1;
                                 continue ;
                             }
                             if( e1.type != e2.type )
                                 continue;
+                            // Compare the simplepath.
                             if( e1.trait.m_path != e2.trait.m_path )
                                 continue;
                             assert( !(e1.trait.m_params == e2.trait.m_params) );
 
                             DEBUG("Duplicate trait in possible_methods - " << it_1->second << " and " << it_2->second);
-                            if( !was_found )
+
                             {
-                                was_found = true;
                                 const auto& ivars = node.m_trait_param_ivars;
                                 unsigned int n_params = e1.trait.m_params.m_types.size();
                                 assert(n_params <= ivars.size());
@@ -975,6 +978,7 @@ namespace {
                             }
                         }
                     }
+
                     DEBUG("possible_methods = " << possible_methods);
                 }
                 assert( !possible_methods.empty() );
