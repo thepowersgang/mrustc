@@ -2178,7 +2178,16 @@ void Expand(::AST::Crate& crate)
         ASSERT_BUG(Span(), std_crate_name != "", "`" << std_crate_shortname << "` not loaded?");
         if( crate.m_prelude_path == AST::Path() )
         {
-            crate.m_prelude_path = AST::Path(std_crate_name, {AST::PathNode("prelude"), AST::PathNode("v1")});
+            switch(crate.m_edition)
+            {
+            case ::AST::Edition::Rust2015:
+            case ::AST::Edition::Rust2018:
+                crate.m_prelude_path = AST::Path(std_crate_name, {AST::PathNode("prelude"), AST::PathNode("v1")});
+                break;
+            case ::AST::Edition::Rust2021:
+                crate.m_prelude_path = AST::Path(std_crate_name, {AST::PathNode("prelude"), AST::PathNode("rust_2021")});
+                break;
+            }
         }
         AST::AttributeList  attrs;
         AST::AttributeName  name;
