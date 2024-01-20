@@ -4406,8 +4406,9 @@ const ::HIR::TypeRef* TraitResolution::check_method_receiver(const Span& sp, con
             return &this->m_ivars.get_type(ty.data().as_Borrow().inner);
         }
         break;
-    case ::HIR::Function::Receiver::Custom:
-        ASSERT_BUG(sp, visit_ty_with(fcn.m_receiver_type, [](const HIR::TypeRef& v){ return v.data().is_Generic() && v.data().as_Generic().is_self(); }), fcn.m_receiver_type);
+    case ::HIR::Function::Receiver::Custom: {
+        const auto& receiver_type = fcn.m_args.front().second;
+        ASSERT_BUG(sp, visit_ty_with(receiver_type, [](const HIR::TypeRef& v){ return v.data().is_Generic() && v.data().as_Generic().is_self(); }), receiver_type);
         // TODO: Handle custom-receiver functions
         // - match_test_generics, if it succeeds return the matched Self
         {
@@ -4426,12 +4427,12 @@ const ::HIR::TypeRef* TraitResolution::check_method_receiver(const Span& sp, con
                     TODO(Span(), "GetSelf::match_val " << g << " with " << sz);
                 }
             }   getself;
-            if( fcn.m_receiver_type.match_test_generics(sp, ty, this->m_ivars.callback_resolve_infer(), getself) ) {
-                ASSERT_BUG(sp, getself.detected_self_ty, "Unable to determine receiver type when matching " << fcn.m_receiver_type << " and " << ty);
+            if( receiver_type.match_test_generics(sp, ty, this->m_ivars.callback_resolve_infer(), getself) ) {
+                ASSERT_BUG(sp, getself.detected_self_ty, "Unable to determine receiver type when matching " << receiver_type << " and " << ty);
                 return &this->m_ivars.get_type(*getself.detected_self_ty);
             }
         }
-        return nullptr;
+        return nullptr; }
     case ::HIR::Function::Receiver::Box:
         if(const auto* ity = this->type_is_owned_box(sp, ty))
         {

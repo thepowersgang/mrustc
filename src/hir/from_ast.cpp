@@ -1721,7 +1721,11 @@ namespace {
     rv.m_receiver = receiver;
     if(receiver == HIR::Function::Receiver::Custom) {
         rv.m_receiver_type = MonomorphiserNop().monomorph_type(f.args()[0].ty.span(), args.front().second, false);
-        ASSERT_BUG(f.args()[0].ty.span(), visit_ty_with(rv.m_receiver_type, [](const HIR::TypeRef& v){ return v.data().is_Generic() && v.data().as_Generic().is_self(); }), rv.m_receiver_type);
+        // Ensure that the reciever references `Self`
+        ASSERT_BUG(f.args()[0].ty.span(),
+            visit_ty_with(rv.m_receiver_type, [](const HIR::TypeRef& v){ return v.data().is_Generic() && v.data().as_Generic().is_self(); }),
+            rv.m_receiver_type
+            );
     }
     rv.m_abi = f.abi();
     rv.m_unsafe = f.is_unsafe();
