@@ -1,0 +1,5 @@
+#cargo:compiler-rt=
+cargo:rustc-cfg=feature="unstable"
+
+# Disable assembly
+cargo:rustc-cfg=feature="no-asm"
