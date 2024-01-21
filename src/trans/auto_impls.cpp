@@ -279,7 +279,7 @@ namespace {
     MIR::LValue deref_box(MIR::LValue box)
     {
         auto inner_ptr = ::MIR::LValue::new_Field( ::MIR::LValue::new_Field( mv$(box), 0 ) ,0);
-        if(TARGETVER_MOST_1_29) {
+        if(TARGETVER_MOST_1_29 || TARGETVER_LEAST_1_74) {
             inner_ptr = ::MIR::LValue::new_Field(std::move(inner_ptr), 0);
         }
         return ::MIR::LValue::new_Deref(std::move(inner_ptr));

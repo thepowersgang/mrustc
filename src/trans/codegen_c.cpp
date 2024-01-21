@@ -1467,44 +1467,51 @@ namespace {
                 emit_destructor_call( ::MIR::LValue::new_Deref(mv$(inner_ptr)), inner_type, /*unsized_valid=*/true, indent_level );
             }
 
-            // NOTE: This is specific to the official liballoc's owned_box
-            const auto& p = box_type.data().as_Path().path.m_data.as_Generic().m_params;
-            ::HIR::GenericPath  box_free { m_crate.get_lang_item_path(sp, "box_free"), p.clone() };
+            if( TARGETVER_MOST_1_54 )
+            {
+                // NOTE: This is specific to the official liballoc's owned_box
+                const auto& p = box_type.data().as_Path().path.m_data.as_Generic().m_params;
+                ::HIR::GenericPath  box_free { m_crate.get_lang_item_path(sp, "box_free"), p.clone() };
 
-            // If the allocator is a ZST, it won't exist in the type (need to create a dummy instance for the argument)
-            bool alloc_is_zst = false;
-            if( TARGETVER_LEAST_1_54 ) {
-                ::HIR::TypeRef  tmp;
-                const auto& ty = m_mir_res->get_lvalue_type(tmp, MIR::LValue::new_Field(slot.clone(), 1));
-                if( type_is_bad_zst(ty) ) {
-                    alloc_is_zst = true;
-                    m_of << indent << "{ ";
-                    emit_ctype(ty); m_of << " zst_alloc = {0};";
+                // If the allocator is a ZST, it won't exist in the type (need to create a dummy instance for the argument)
+                bool alloc_is_zst = false;
+                if( TARGETVER_LEAST_1_54 ) {
+                    ::HIR::TypeRef  tmp;
+                    const auto& ty = m_mir_res->get_lvalue_type(tmp, MIR::LValue::new_Field(slot.clone(), 1));
+                    if( type_is_bad_zst(ty) ) {
+                        alloc_is_zst = true;
+                        m_of << indent << "{ ";
+                        emit_ctype(ty); m_of << " zst_alloc = {0};";
+                    }
                 }
-            }
 
-            m_of << indent << Trans_Mangle(box_free) << "("; 
-            if( TARGETVER_LEAST_1_29 ) {
-                // In 1.29, `box_free` takes Unique, so pass the Unique within the Box
-                emit_lvalue(slot); m_of << "._0";
-            }
-            else {
-                emit_lvalue(slot); m_of << "._0._0._0";
-            }
-            // With 1.54, also need to pass the allocator
-            if( TARGETVER_LEAST_1_54 ) {
-                m_of << ", ";
+                m_of << indent << Trans_Mangle(box_free) << "("; 
+                if( TARGETVER_LEAST_1_29 ) {
+                    // In 1.29, `box_free` takes Unique, so pass the Unique within the Box
+                    emit_lvalue(slot); m_of << "._0";
+                }
+                else {
+                    emit_lvalue(slot); m_of << "._0._0._0";
+                }
+                // With 1.54, also need to pass the allocator
+                if( TARGETVER_LEAST_1_54 ) {
+                    m_of << ", ";
+                    if(alloc_is_zst) {
+                        m_of << "zst_alloc";
+                    } else {
+                        emit_lvalue(slot); m_of << "._1";
+                    }
+                }
+                m_of << ");";
                 if(alloc_is_zst) {
-                    m_of << "zst_alloc";
-                } else {
-                    emit_lvalue(slot); m_of << "._1";
+                    m_of << " }";
                 }
+                m_of << "\n";
             }
-            m_of << ");";
-            if(alloc_is_zst) {
-                m_of << " }";
+            else
+            {
+                emit_destructor_call(slot, box_type, false, indent_level);
             }
-            m_of << "\n";
         }
 
         void emit_type_id(const ::HIR::TypeRef& ty) override
