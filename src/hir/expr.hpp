@@ -846,9 +846,16 @@ struct ExprNode_Closure:
     bool m_is_copy = true;  // Assume that closures are Copy/Clone (for the purposes of typecheck) until AVU is run
 
     // - Cache between the AVU and ExpandClosures passes
-    struct {
+    struct AvuCache {
         ::std::vector<unsigned int> local_vars;
-        ::std::vector< ::std::pair<unsigned int, ::HIR::ValueUsage> > captured_vars;
+        struct Capture {
+            // Variable binding index
+            unsigned int    root_slot;
+            // Fields used to access that variable
+            std::vector<RcString>   fields;
+            ::HIR::ValueUsage   usage;
+        };
+        ::std::vector<Capture>  captured_vars;
     } m_avu_cache;
 
     // - Path to the generated closure type

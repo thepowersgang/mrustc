@@ -158,7 +158,7 @@ namespace {
     {
         const ::HIR::TypeRef&   m_closure_type;
         const ::std::vector<unsigned int>&  m_local_vars;
-        const ::std::vector< ::std::pair<unsigned int, ::HIR::ValueUsage> >&  m_captures;
+        const ::std::vector< ::HIR::ExprNode_Closure::AvuCache::Capture>&  m_captures;
 
         const Monomorphiser& m_monomorphiser;
 
@@ -167,7 +167,7 @@ namespace {
         ExprVisitor_Mutate(
             const ::HIR::TypeRef& closure_type,
             const ::std::vector<unsigned int>& local_vars,
-            const ::std::vector< ::std::pair<unsigned int, ::HIR::ValueUsage>>& captures,
+            const ::std::vector< ::HIR::ExprNode_Closure::AvuCache::Capture >& captures,
             const Monomorphiser& mcb
             )
             :
@@ -258,15 +258,17 @@ namespace {
 
             // 2. Is it a capture?
             {
-                auto binding_it = ::std::find_if(m_captures.begin(), m_captures.end(), [&](const auto& x){return x.first == node.m_slot;});
+                auto binding_it = ::std::find_if(m_captures.begin(), m_captures.end(),
+                    [&](const HIR::ExprNode_Closure::AvuCache::Capture& x){return x.root_slot == node.m_slot;});
                 if( binding_it != m_captures.end() )
                 {
+                    ASSERT_BUG(node.span(), binding_it->fields.empty(), "Reached _Variable for a field capture");
                     m_replacement = NEWNODE(node.m_res_type.clone(), Field, node.span(),
                         get_self(node.span()),
                         RcString::new_interned(FMT(binding_it - m_captures.begin()))
                         );
-                    if( binding_it->second != ::HIR::ValueUsage::Move ) {
-                        auto bt = (binding_it->second == ::HIR::ValueUsage::Mutate ? ::HIR::BorrowType::Unique : ::HIR::BorrowType::Shared);
+                    if( binding_it->usage != ::HIR::ValueUsage::Move ) {
+                        auto bt = (binding_it->usage == ::HIR::ValueUsage::Mutate ? ::HIR::BorrowType::Unique : ::HIR::BorrowType::Shared);
 
                         visit_type(m_replacement->m_res_type);
                         m_replacement->m_res_type = ::HIR::TypeRef::new_borrow( bt, mv$(m_replacement->m_res_type) );
@@ -279,6 +281,44 @@ namespace {
             }
 
             BUG(node.span(), "Encountered non-captured and unknown-origin variable - " << node.m_name << " #" << node.m_slot);
+        }
+        void visit(::HIR::ExprNode_Field& node) override
+        {
+            ::std::vector<RcString> fields;
+            fields.push_back(node.m_field);
+
+            // Extract a chain of field names
+            auto* inner = node.m_value.get();
+            while( auto* inner_field = dynamic_cast<::HIR::ExprNode_Field*>(inner) ) {
+                fields.push_back(inner_field->m_field);
+                inner = inner_field->m_value.get();
+            }
+            // and if the final value is a variable, then insert into the captures
+            if( auto* inner_var = dynamic_cast<::HIR::ExprNode_Variable*>(inner) ) {
+                std::reverse(fields.begin(), fields.end());
+
+                auto binding_it = ::std::find_if(m_captures.begin(), m_captures.end(),
+                    [&](const HIR::ExprNode_Closure::AvuCache::Capture& x){return x.root_slot == inner_var->m_slot && x.fields == fields;});
+                if( binding_it != m_captures.end() )
+                {
+                    m_replacement = NEWNODE(node.m_res_type.clone(), Field, node.span(),
+                        get_self(node.span()),
+                        RcString::new_interned(FMT(binding_it - m_captures.begin()))
+                    );
+                    if( binding_it->usage != ::HIR::ValueUsage::Move ) {
+                        auto bt = (binding_it->usage == ::HIR::ValueUsage::Mutate ? ::HIR::BorrowType::Unique : ::HIR::BorrowType::Shared);
+
+                        visit_type(m_replacement->m_res_type);
+                        m_replacement->m_res_type = ::HIR::TypeRef::new_borrow( bt, mv$(m_replacement->m_res_type) );
+                        m_replacement = NEWNODE(node.m_res_type.clone(), Deref, node.span(),  mv$(m_replacement));
+                    }
+                    m_replacement->m_usage = node.m_usage;
+                    DEBUG("_Field: #" << inner_var->m_slot << fields << " -> capture");
+                    return ;
+                }
+            }
+
+            ::HIR::ExprVisitorDef::visit(node);
         }
 
         void visit(HIR::ExprNode_ConstParam& node) override {
@@ -1034,33 +1074,39 @@ namespace {
             bool lifetime_needed = false;
             for(const auto& binding : node.m_avu_cache.captured_vars)
             {
-                const auto binding_idx = binding.first;
-                auto binding_type = binding.second;
+                auto binding_type = binding.usage;
 
-                const auto& cap_ty = m_variable_types.at(binding_idx);
-                auto ty_mono = monomorph_cb.monomorph_type(sp, cap_ty);
+                HIR::TypeRef    tmp_ty;
+                const auto* cap_ty_p = &m_variable_types.at(binding.root_slot);
+                auto val_node = NEWNODE(cap_ty_p->clone(), Variable,  sp, "", binding.root_slot);
+                for(const auto& n : binding.fields) {
+                    tmp_ty = m_resolve.get_field_type(sp, *cap_ty_p, n);
+                    cap_ty_p = &tmp_ty;
+                    val_node = NEWNODE(cap_ty_p->clone(), Field,  sp, std::move(val_node), n);
+                }
 
-                auto val_node = NEWNODE(cap_ty.clone(), Variable,  sp, "", binding_idx);
                 ::HIR::BorrowType   bt;
+                const auto& cap_ty = *cap_ty_p;
+                auto ty_mono = monomorph_cb.monomorph_type(sp, *cap_ty_p);
 
                 switch(binding_type)
                 {
                 case ::HIR::ValueUsage::Unknown:
-                    BUG(sp, "ValueUsage::Unkown on " << binding_idx);
+                    BUG(sp, "ValueUsage::Unkown on " << binding.root_slot);
                 case ::HIR::ValueUsage::Borrow:
-                    DEBUG("Capture by & _#" << binding_idx << " : " << binding_type);
+                    DEBUG("Capture by & _#" << binding.root_slot << binding.fields << " : " << binding_type);
                     bt = ::HIR::BorrowType::Shared;
                     capture_nodes.push_back(NEWNODE( ::HIR::TypeRef::new_borrow(bt, cap_ty.clone(), HIR::LifetimeRef(HIR::LifetimeRef::MAX_LOCAL + 1)), Borrow,  sp, bt, mv$(val_node) ));
                     ty_mono = ::HIR::TypeRef::new_borrow(bt, mv$(ty_mono));
                     break;
                 case ::HIR::ValueUsage::Mutate:
-                    DEBUG("Capture by &mut _#" << binding_idx << " : " << binding_type);
+                    DEBUG("Capture by &mut _#" << binding.root_slot << binding.fields << " : " << binding_type);
                     bt = ::HIR::BorrowType::Unique;
                     capture_nodes.push_back(NEWNODE( ::HIR::TypeRef::new_borrow(bt, cap_ty.clone(), HIR::LifetimeRef(HIR::LifetimeRef::MAX_LOCAL + 1)), Borrow,  sp, bt, mv$(val_node) ));
                     ty_mono = ::HIR::TypeRef::new_borrow(bt, mv$(ty_mono));
                     break;
                 case ::HIR::ValueUsage::Move:
-                    DEBUG("Capture by value _#" << binding_idx << " : " << binding_type);
+                    DEBUG("Capture by value _#" << binding.root_slot << binding.fields << " : " << binding_type);
                     capture_nodes.push_back( mv$(val_node) );
                     break;
                 }
@@ -1082,7 +1128,7 @@ namespace {
 
                 for(size_t i = 0; i < capture_types.size(); i ++)
                 {
-                    auto binding_type = node.m_avu_cache.captured_vars[i].second;
+                    auto binding_type = node.m_avu_cache.captured_vars[i].usage;
                     auto& ty_mono = capture_types[i].ent;
                     if( binding_type != ::HIR::ValueUsage::Move ) {
                         ty_mono.data_mut().as_Borrow().lifetime = HIR::LifetimeRef(ref_capture_lft_idx);

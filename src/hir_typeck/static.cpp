@@ -2838,6 +2838,44 @@ const ::HIR::TypeRef* StaticTraitResolve::is_type_phantom_data(const ::HIR::Type
     return &pe.m_params.m_types.at(0);
 }
 
+HIR::TypeRef StaticTraitResolve::get_field_type(const Span& sp, const ::HIR::TypeRef& ty, const RcString& name) const
+{
+    TU_MATCH_HDRA((ty.data()), {)
+    default:
+        TODO(sp, "" << ty << " " << name);
+    TU_ARMA(Path, te) {
+        TU_MATCH_HDRA( (te.binding), {)
+        default:
+            BUG(sp, "Getting field on invalid type - " << ty);
+        TU_ARMA(Struct, pbe) {
+            MonomorphStatePtr   ms { nullptr, &te.path.m_data.as_Generic().m_params, nullptr };
+            TU_MATCH_HDRA( (pbe->m_data), { )
+            TU_ARMA(Named, se) {
+                for(const auto& f : se) {
+                    if( f.first == name ) {
+                        return ms.monomorph_type(sp, f.second.ent);
+                    }
+                }
+                BUG(sp, "Unknown field `" << name << "` on " << ty);
+                }
+            TU_ARMA(Tuple, se) {
+                TODO(sp, "" << ty << " " << name);
+                BUG(sp, "Unknown field `" << name << "` on " << ty);
+                }
+            TU_ARMA(Unit, se) {
+                BUG(sp, "Getting field from unit-like struct - " << ty);
+                }
+            }
+            }
+        TU_ARMA(Union, pbe) {
+            MonomorphStatePtr   ms { nullptr, &te.path.m_data.as_Generic().m_params, nullptr };
+            TODO(sp, "" << ty << " " << name);
+            }
+        }
+        }
+    }
+}
+
 StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const ::HIR::Path& p, MonomorphState& out_params, bool signature_only/*=false*/, const HIR::GenericParams** out_impl_params_def/*=nullptr*/) const
 {
     TRACE_FUNCTION_F(p << ", signature_only=" << signature_only);

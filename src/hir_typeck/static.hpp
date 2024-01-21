@@ -240,6 +240,7 @@ public:
     const ::HIR::TypeRef* is_type_owned_box(const ::HIR::TypeRef& ty) const;
     const ::HIR::TypeRef* is_type_phantom_data(const ::HIR::TypeRef& ty) const;
 
+    HIR::TypeRef get_field_type(const Span& sp, const ::HIR::TypeRef& ty, const RcString& name) const;
 
     TAGGED_UNION(ValuePtr, NotFound,
     (NotFound, struct{}),
