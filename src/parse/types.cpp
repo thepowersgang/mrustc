@@ -388,6 +388,12 @@ TypeRef Parse_Type_ErasedType(TokenStream& lex, bool allow_trait_list)
             AST::HigherRankedBounds hrbs = Parse_HRB_Opt(lex);
             rv_data.maybe_traits.push_back({ mv$(hrbs), Parse_Path(lex, PATH_GENERIC_TYPE) });
         }
+        else if( lex.getTokenIf(TOK_PAREN_OPEN) )
+        {
+            AST::HigherRankedBounds hrbs = Parse_HRB_Opt(lex);
+            rv_data.traits.push_back({ mv$(hrbs), Parse_Path(lex, PATH_GENERIC_TYPE) });
+            lex.getTokenCheck(TOK_PAREN_CLOSE);
+        }
         else
         {
             AST::HigherRankedBounds hrbs = Parse_HRB_Opt(lex);
