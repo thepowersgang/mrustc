@@ -64,6 +64,9 @@ namespace {
                      || dynamic_cast< ::HIR::ExprNode_Deref*>(node_ptr.get())
                         )
                     {
+                        if( auto* inner = dynamic_cast< ::HIR::ExprNode_Deref*>(node_ptr.get()) ) {
+                            inner->m_value->m_usage = HIR::ValueUsage::Mutate;
+                        }
                         DEBUG("Insert reborrow - " << node_ptr->span() << " - type=" << node_ptr->m_res_type);
                         auto sp = node_ptr->span();
                         auto ty_mut = node_ptr->m_res_type.clone();
