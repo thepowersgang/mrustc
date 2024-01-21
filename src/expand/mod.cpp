@@ -556,7 +556,7 @@ struct CExpandExpr:
         {
             auto attrs = mv$(cnode->attrs());
             Expand_Attrs_CfgAttr(attrs);
-            Expand_Attrs(attrs, AttrStage::Pre,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, this->crate, cnode); });
+            Expand_Attrs(attrs, AttrStage::Pre,  [&](const auto& sp, const ExpandDecorator& d, const auto& a){ d.handle(sp, a, this->crate, cnode); });
             if(cnode.get())
                 cnode->attrs() = mv$(attrs);
         }

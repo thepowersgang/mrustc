@@ -453,6 +453,9 @@
     <ClCompile Include="..\..\src\hir_expand\lifetime_infer.cpp">
       <Filter>Source Files\hir_expand</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\src\expand\rustc_box.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\src\common.hpp">
