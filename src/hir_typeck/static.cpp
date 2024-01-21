@@ -133,9 +133,12 @@ bool StaticTraitResolve::find_impl(
                 {
                 case HIR::StructMarkings::DstType::None:
                     return found_cb( ImplRef(&null_hrls, &type, trait_params, &assoc_unit), false );
-                case HIR::StructMarkings::DstType::Possible:
-                    TODO(sp, "m_lang_Pointee - " << type);
-                    //return found_cb( ImplRef(&null_hrls, &type, trait_params, &null_assoc), false );
+                case HIR::StructMarkings::DstType::Possible: {
+                    const auto& inner_ty = type.data().as_Path().path.m_data.as_Generic().m_params.m_types.at(str.m_struct_markings.unsized_param);
+                    return find_impl(sp, trait_path, trait_params, inner_ty, [&](ImplRef ir, bool unk){
+                        return found_cb(ImplRef(&null_hrls, &type, trait_params, ir.m_data.as_BoundedPtr().assoc), unk);
+                        });
+                    }
                 case HIR::StructMarkings::DstType::Slice:
                     return found_cb( ImplRef(&null_hrls, &type, trait_params, &assoc_slice), false );
                 case HIR::StructMarkings::DstType::TraitObject:
