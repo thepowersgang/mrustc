@@ -2334,6 +2334,10 @@ namespace HIR {
                     auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
                     dst.write_ptr(state, EncodedLiteral::PTR_BASE, StaticRefPtr::allocate(HIR::Path(mv$(ty), "#type_id"), nullptr));
                 }
+                else if( te->name == "needs_drop" ) {
+                    auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                    dst.write_uint(state, 8, state.m_resolve.type_needs_drop_glue(state.sp, ty) ? 1 : 0);
+                }
                 else if( te->name == "caller_location" ) {
                     auto ty_path = state.m_resolve.m_crate.get_lang_item_path(state.sp, "panic_location");
                     auto ty = HIR::TypeRef::new_path(ty_path, &state.m_resolve.m_crate.get_struct_by_path(state.sp, ty_path));
