@@ -2478,12 +2478,14 @@ public:
         struct H {
             static void fix_macro_contents(std::vector<MacroExpansionEnt>& rule_contents)
             {
-                for(auto& ent : rule_contents)
+                for( auto it = rule_contents.begin(); it != rule_contents.end(); )
                 {
-                    if(auto* tok = ent.opt_Token())
+                    if(auto* tok = it->opt_Token())
                     {
-                        struct H {
-                            static void emit_ast(std::vector<Token>& out, const AST::ExprNode& e)
+                        //TODO: Can this share with `proc_macro`? Maybe a function on AST types to generate a token tree from the AST again.
+                        struct NewToks {
+                            std::vector<MacroExpansionEnt>  out;
+                            void emit_ast(const AST::ExprNode& e)
                             {
                                 if( const auto* ep = dynamic_cast<const AST::ExprNode_Integer*>(&e) ) {
                                     out.push_back( Token(ep->m_value, ep->m_datatype) );
@@ -2492,9 +2494,57 @@ public:
                                     throw std::runtime_error("Unknown node type");
                                 }
                             }
+                            void emit_tokentree(TokenTree& tt) {
+                                if( tt.is_token() ) {
+                                    emit_token(tt.tok());
+                                }
+                                else {
+                                    for(size_t i = 0; i < tt.size(); i ++) {
+                                        emit_tokentree(tt[i]);
+                                    }
+                                }
+                            }
+
+                            void emit_token(Token& tok)
+                            {
+                                switch(tok.type())
+                                {
+                                case TOK_INTERPOLATED_PATH:
+                                case TOK_INTERPOLATED_TYPE:
+                                case TOK_INTERPOLATED_PATTERN:
+                                case TOK_INTERPOLATED_STMT:
+                                case TOK_INTERPOLATED_BLOCK:
+                                case TOK_INTERPOLATED_ITEM:
+                                case TOK_INTERPOLATED_VIS:
+                                    // Emit as a token tree with no separator
+                                    TODO(Span(), "Convert interpolated macro fragment: " << tok);
+                                    break;
+                                case TOK_INTERPOLATED_META: {
+                                    auto& i = tok.frag_meta();
+                                    for(const auto& e : i.name().elems)
+                                    {
+                                        if( &e != &i.name().elems.front() )
+                                            out.push_back(Token(TOK_DOUBLE_COLON));
+                                        out.push_back(Token(TOK_IDENT, e));
+                                    }
+                                    emit_tokentree(i.data_mut());
+                                    break; }
+                                case TOK_INTERPOLATED_EXPR:
+                                    try {
+                                        emit_ast(*tok.take_frag_node());
+                                    }
+                                    catch(const std::exception& e) {
+                                        TODO(Span(), "Convert interpolated macro fragment: " << tok << " - " << e.what());
+                                    }
+                                    break;
+                                default:
+                                    out.push_back(std::move(tok));
+                                    return;
+                                }
+                            }
                         };
 
-                        std::vector<Token>  new_toks;
+                        NewToks  new_toks;
                         switch(tok->type())
                         {
                         case TOK_INTERPOLATED_PATH:
@@ -2502,29 +2552,30 @@ public:
                         case TOK_INTERPOLATED_PATTERN:
                         case TOK_INTERPOLATED_STMT:
                         case TOK_INTERPOLATED_BLOCK:
-                        case TOK_INTERPOLATED_META:
                         case TOK_INTERPOLATED_ITEM:
                         case TOK_INTERPOLATED_VIS:
-                            // Emit as a token tree with no separator
-                            TODO(Span(), "Convert interpolated macro fragment: " << *tok);
-                            break;
+                        case TOK_INTERPOLATED_META:
                         case TOK_INTERPOLATED_EXPR:
-                            try {
-                                H::emit_ast(new_toks, *tok->take_frag_node());
-                            }
-                            catch(const std::exception& e) {
-                                TODO(Span(), "Convert interpolated macro fragment: " << *tok << " - " << e.what());
-                            }
+                            new_toks.emit_token(*tok);
                             break;
                         default:
+                            ++ it;
                             continue;
                         }
-                        if( new_toks.size() == 1 ) {
-                            *tok = std::move(new_toks.front());
+                        if( new_toks.out.size() == 0 ) {
+                            it = rule_contents.erase(it);
                         }
                         else {
-                            TODO(Span(), "Expand interpolated macro fragment to multiple (or no) tokens");
+                            *it = std::move(new_toks.out.front());
+                            it = rule_contents.insert(it+1,
+                                std::move_iterator< decltype(new_toks.out.begin()) >(new_toks.out.begin()+1),
+                                std::move_iterator< decltype(new_toks.out.begin()) >(new_toks.out.end())
+                            );
+                            it += new_toks.out.size();
                         }
+                    }
+                    else {
+                        ++it;
                     }
                 }
             }
