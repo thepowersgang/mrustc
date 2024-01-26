@@ -272,8 +272,10 @@ namespace {
                                 }
                             }
                         }
-                        if(ignore)
+                        if(ignore) {
+                            DEBUG("CFG DISABLED: " << idx << "/" << path.nodes().size() << " " << name << ": " << i->data.tag_str());
                             continue;
+                        }
                         DEBUG(idx << "/" << path.nodes().size() << " " << name << ": " << i->data.tag_str());
 
                         TU_MATCH_HDRA( (i->data), { )
@@ -340,12 +342,50 @@ namespace {
                         if(found) {
                             break;
                         }
-
+                    }
+                    if( const auto* u = i->data.opt_Use() )
+                    {
+                        for(const auto& v : u->entries)
+                        {
+                            if( v.name == name )
+                            {
+                                bool ignore = false;
+                                for(const auto& a : i->attrs.m_items)
+                                {
+                                    if( a.name() == "cfg" )
+                                    {
+                                        if( !check_cfg(sp, a) )
+                                        {
+                                            ignore = true;
+                                        }
+                                    }
+                                }
+                                if( !ignore ) {
+                                    auto r = get_module(mod->path(), v.path, false, nullptr);
+                                    TU_MATCH_HDRA((r), {)
+                                    TU_ARMA(None, p) {
+                                        }
+                                    TU_ARMA(ImplicitPrelude, p) {
+                                        TODO(sp, "get_module_ast - Use - ImplicitPrelude");
+                                        }
+                                    TU_ARMA(Ast, p) {
+                                        return get_module_ast(*p, path, idx + 1, ignore_last, out_path);
+                                        }
+                                    TU_ARMA(Hir, p) {
+                                        return get_module_hir(*p, path, idx + 1, ignore_last, out_path);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if(found) {
+                            break;
+                        }
                     }
                 }
                 if( !found )
                 {
-                    //BUG(sp, "Unable to find " << name << " in module " << mod->path() << " for " << path);
+                    DEBUG("Unable to find " << name << " in module " << mod->path() << " for " << path);
                     return ResolveModuleRef();
                 }
             }
@@ -566,6 +606,7 @@ namespace {
 
                             const auto& item_name = e.path.nodes().back().name();
                             auto tgt_mod = this->get_module(mod.path(), e.path, true, out_path);
+                            DEBUG(tgt_mod.tag_str());
 
                             TU_MATCH_HDRA( (tgt_mod), {)
                             TU_ARMA(Ast, mod_ptr) {
@@ -671,6 +712,7 @@ namespace {
         /// Locate the named item in HIR (resolving `Import` references too)
         ResolveItemRef find_item_hir(const HIR::Module& mod, const RcString& item_name, ResolveNamespace ns, ::AST::AbsolutePath* out_path=nullptr)
         {
+            TRACE_FUNCTION_F(item_name);
             struct H {
                 static const HIR::Crate& get_crate(const Span& sp, const AST::Crate& crate, const HIR::SimplePath& p) {
                     return *crate.m_extern_crates.at(p.m_crate_name).m_hir;
@@ -732,7 +774,13 @@ namespace {
                 } break;
             case ResolveNamespace::Macro: {
                 auto it = mod.m_macro_items.find(item_name);
-                if( it != mod.m_macro_items.end() && it->second->publicity.is_global() ) {
+                if( it == mod.m_macro_items.end() ) {
+                    DEBUG("Did not find `" << item_name << "` in HIR macro");
+                }
+                else if( !it->second->publicity.is_global() ) {
+                    DEBUG("Found `" << item_name << "` in HIR macro - but not public, ignoring");
+                }
+                else {
                     DEBUG("Found `" << item_name << "` in HIR macro");
                     const HIR::MacroItem* mi;
                     if(const auto* p = it->second->ent.opt_Import()) {
