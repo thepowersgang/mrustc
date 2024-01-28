@@ -108,6 +108,7 @@ namespace {
         ExprVisitor_Mark(const StaticTraitResolve& resolve, const ::std::vector< ::HIR::TypeRef>& variable_types):
             m_resolve(resolve)
             , m_variable_types(variable_types)
+            , m_ignore_variable_capture(false)
         {}
 
         void visit_root(::HIR::ExprPtr& root_ptr)
