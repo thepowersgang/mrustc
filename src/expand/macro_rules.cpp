@@ -41,6 +41,7 @@ class CMacroUseHandler:
     public ExpandDecorator
 {
     AttrStage stage() const override { return AttrStage::Post; }
+    bool run_during_iter() const override { return true; }
 
     void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
@@ -69,6 +70,26 @@ class CMacroUseHandler:
                 return false;
             }
             };
+
+        auto exists = [&mod](const RcString& name, const MacroRef& mr)->bool {
+            for( const auto& imp : mod.macro_imports_res() ) {
+                if( imp.name != name )
+                    continue;
+                if( imp.data.tag() != mr.tag() )
+                    continue ;
+                bool rv;
+                TU_MATCH_HDRA( (imp.data, mr), {)
+                TU_ARMA(None, a,b) { rv = true; }
+                TU_ARMA(MacroRules, a,b) { rv = (a == b); }
+                TU_ARMA(BuiltinProcMacro, a,b) { rv = (a == b); }
+                TU_ARMA(ExternalProcMacro, a,b) { rv = (a == b); }
+                }
+                if(rv) {
+                    return true;
+                }
+            }
+            return false;
+        };
 
         if(i.is_None()) {
             // Just ignore
@@ -117,24 +138,33 @@ class CMacroUseHandler:
                     }
                 }
 
+                MacroRef    mr;
                 TU_MATCH_HDRA( (e->ent), { )
-                TU_ARMA(Import, imp) {
-                    assert(false);
-                    }
-                TU_ARMA(MacroRules, mac_ptr) {
-                    DEBUG("Imported " << name << "!");
+                TU_ARMA(Import, imp) { throw "Unexpected"; }
+                TU_ARMA(MacroRules, mac_ptr) { mr = &*mac_ptr; }
+                TU_ARMA(ProcMacro, p) { mr = &p; }
+                }
+                if(!exists(name, mr))
+                {
+                    mod.add_macro_import( sp, name, std::move(mr) );
 
-                    auto mi = AST::Module::MacroImport{ false, name, make_vec2(ec_item->name, name), &*mac_ptr };
-                    mod.m_macro_imports.push_back(mv$(mi));
+                    TU_MATCH_HDRA( (e->ent), { )
+                    TU_ARMA(Import, imp) {
+                        throw "Unexpected";
+                        }
+                    TU_ARMA(MacroRules, mac_ptr) {
+                        DEBUG("Imported " << name << "!");
 
-                    mod.add_macro_import( sp, name, &*mac_ptr );
-                    }
-                TU_ARMA(ProcMacro, p) {
-                    DEBUG("Imported " << name << "! (proc macro)");
-                    auto mi = AST::Module::MacroImport{ false, p.path.m_components.back(), p.path.m_components, nullptr };
-                    mi.path.insert(mi.path.begin(), p.path.m_crate_name);
-                    mod.m_macro_imports.push_back(mv$(mi));
-                    mod.add_macro_import( sp, name, &p );
+                        auto mi = AST::Module::MacroImport{ false, name, make_vec2(ec_item->name, name), &*mac_ptr };
+                        mod.m_macro_imports.push_back(mv$(mi));
+                        }
+                    TU_ARMA(ProcMacro, p) {
+                        DEBUG("Imported " << name << "! (proc macro)");
+
+                        auto mi = AST::Module::MacroImport{ false, p.path.m_components.back(), p.path.m_components, nullptr };
+                        mi.path.insert(mi.path.begin(), p.path.m_crate_name);
+                        mod.m_macro_imports.push_back(mv$(mi));
+                        }
                     }
                 }
             }
@@ -144,21 +174,25 @@ class CMacroUseHandler:
             const auto& submod = *submod_p;
             for( const auto& mr : submod.macros() )
             {
-                if( !filter_valid(mr.name) )
-                {
+                if( !filter_valid(mr.name) ) {
                     continue;
                 }
                 DEBUG("Imported " << mr.name);
-                mod.add_macro_import( sp, mr.name, &*mr.data );
+                if( !exists(mr.name, &*mr.data) )
+                {
+                    mod.add_macro_import( sp, mr.name, &*mr.data );
+                }
             }
             for( const auto& mri : submod.macro_imports_res() )
             {
-                if( !filter_valid(mri.name) )
-                {
+                if( !filter_valid(mri.name) ) {
                     continue;
                 }
                 DEBUG("Imported " << mri.name << " (propagate)");
-                mod.add_macro_import( sp, mri.name, mri.data.clone() );
+                if( !exists(mri.name, mri.data) )
+                {
+                    mod.add_macro_import( sp, mri.name, mri.data.clone() );
+                }
             }
         }
         else {

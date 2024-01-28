@@ -49,7 +49,7 @@ const Attribute* AttributeList::get(const char *name) const
             return &i;
         }
     }
-    return 0;
+    return nullptr;
 }
 
 ::std::ostream& operator<<(::std::ostream& os, const AttributeList& x) {

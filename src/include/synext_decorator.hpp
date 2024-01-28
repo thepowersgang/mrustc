@@ -49,6 +49,7 @@ class ExpandDecorator
 public:
     virtual ~ExpandDecorator() = default;
     virtual AttrStage   stage() const = 0;
+    virtual bool run_during_iter() const { return false; }
 
     virtual void    handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate) const { unexpected(sp, mi, "crate"); }
     virtual void    handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const { unexpected(sp, mi, "item"); }

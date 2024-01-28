@@ -48,3 +48,21 @@
 - Generic values raised to statics
 - U128 literals required
 - An annoying-to-debug excessive memset caused by a bad float to u64 cast
+
+
+
+=== 1.74 ===
+- if-let chains
+- `if let` in match guards
+- Closure captures
+- `FnPtr` trait
+- unsized locals
+- `const` blocks
+- `macro_rules` "operators"
+- `Box::new` now recurses with a `#[rustc_box]`-annotated expression.
+  - WHY? WHY is Box::new so funky. INTRINSICS EXIST FOR A REASON!
+- `Drop for Box` is FINALLY a normal impl!
+- `type Foo = impl Trait`
+- `libstd` has a reference to `thread_local!` (well, `thread_local_inner!`) that is used before the `mod sys` that defines `thread_local_inner!`)
+  - To solve this, need to loop on expand until nothing expands
+  - That took ages to code.

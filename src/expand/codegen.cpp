@@ -89,7 +89,7 @@ public:
     void handle(const AST::Attribute& mi, AST::Function& fcn) const override {
         TTStream    lex(mi.span(), ParseState(), mi.data());
         lex.getTokenCheck(TOK_EOF);
-        ASSERT_BUG(mi.span(), !fcn.m_markings.is_cold, "Duplicate #[cold] attributes");
+        //ASSERT_BUG(mi.span(), !fcn.m_markings.is_cold, "Duplicate #[cold] attributes");
         fcn.m_markings.is_cold = true;
     }
 };

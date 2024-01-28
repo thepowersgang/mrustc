@@ -62,7 +62,7 @@ class Decorator_PreludeImport:
     public ExpandDecorator
 {
 public:
-    AttrStage stage() const override { return AttrStage::Post; }
+    AttrStage stage() const override { return AttrStage::Pre; }
 
     void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
         if( const auto* e = i.opt_Use() ) {
