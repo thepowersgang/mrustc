@@ -1565,7 +1565,9 @@ namespace {
         ::MIR::eval::ValueRef& dst,
         const ::MIR::Param& val_l,
         ::MIR::eBinOp op,
-        const ::MIR::Param& val_r
+        const ::MIR::Param& val_r,
+        // Should the output be saturated
+        bool saturate=false
     )
     {
         auto ti = TypeInfo::for_type(ty);
@@ -1655,17 +1657,26 @@ namespace {
             case ::MIR::eBinOp::ADD: {
                 auto res = ti.mask(l + r);
                 did_overflow = res < l;
+                if( did_overflow && saturate ) {
+                    res = ti.mask(~U128());
+                }
                 dst.write_uint(state, ti.bits, res);
                 break; }
             case ::MIR::eBinOp::SUB: {
                 auto res = ti.mask(l - r);
                 did_overflow = res > l;
+                if( did_overflow && saturate ) {
+                    res = ti.mask(U128(0));
+                }
                 dst.write_uint(state, ti.bits, res);
                 break; }
             case ::MIR::eBinOp::MUL: {
                 auto res =  ti.mask(l * r);
                 if( l != 0 && r != 0 ) {
                     did_overflow = res < l || res < r;
+                }
+                if( did_overflow && saturate ) {
+                    res = ti.mask(~U128());
                 }
                 dst.write_uint(state, ti.bits, res);
                 break; }
@@ -1728,12 +1739,20 @@ namespace {
                 bool res_sign = (v1s == v2s) ? v1s : (v2s ? v1a < v2a : v1a > v2a);
                 auto res = S128(v1u + v2u);
                 did_overflow = ((res < 0) != res_sign);
+                if( did_overflow && saturate ) {
+                    auto v = U128(0) << (ti.bits-1);
+                    res = res_sign ? S128(v) : S128(v - 1);
+                }
                 dst.write_sint(state, ti.bits, res);
                 break; }
             case ::MIR::eBinOp::SUB: {
                 auto res = l - r;
                 // If the masked value isn't equal to the non-masked, then it's an overflow.
+                // TODO: What about 128 bit arith?
                 did_overflow = res.get_inner() != ti.mask(res);
+                if(did_overflow && saturate) {
+                    MIR_TODO(state, "do_arith signed sub overflow - saturate");
+                }
                 dst.write_uint( state, ti.bits, ti.mask(res) );
                 break; }
             case ::MIR::eBinOp::MUL: {
@@ -1742,6 +1761,9 @@ namespace {
                     if( res.u_abs() < l.u_abs() || res.u_abs() < r.u_abs() ) {
                         did_overflow = true;
                     }
+                }
+                if(did_overflow && saturate) {
+                    MIR_TODO(state, "do_arith signed mul overflow - saturate");
                 }
                 dst.write_uint( state, ti.bits, ti.mask(res) );
                 break; }
@@ -2498,6 +2520,17 @@ namespace HIR {
                     MIR_ASSERT(state, ty.data().is_Primitive(), "`" << te->name << "` with non-primitive " << ty);
                     bool was_overflow = do_arith_checked(local_state, ty, dst, e.args.at(0), ::MIR::eBinOp::DIV, e.args.at(1));
                     MIR_ASSERT(state, !was_overflow, "`" << te->name << "` overflowed");
+                }
+                // Saturating operations
+                else if( te->name == "saturating_add" ) {
+                    auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                    MIR_ASSERT(state, ty.data().is_Primitive(), "`" << te->name << "` with non-primitive " << ty);
+                    do_arith_checked(local_state, ty, dst, e.args.at(0), ::MIR::eBinOp::ADD, e.args.at(1), true);
+                }
+                else if( te->name == "saturating_sub" ) {
+                    auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                    MIR_ASSERT(state, ty.data().is_Primitive(), "`" << te->name << "` with non-primitive " << ty);
+                    do_arith_checked(local_state, ty, dst, e.args.at(0), ::MIR::eBinOp::SUB, e.args.at(1), true);
                 }
                 // ---
                 else if( te->name == "transmute" ) {
