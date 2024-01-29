@@ -255,138 +255,55 @@ namespace {
             for(size_t idx = start_offset; idx < path.nodes().size() - (ignore_last ? 1 : 0); idx ++)
             {
                 const auto& name = path.nodes()[idx].name();
-                // Find the module for this node
-                bool found = false;
-                for(const auto& i : mod->m_items)
-                {
-                    if( i->name == name )
-                    {
-                        bool ignore = false;
-                        for(const auto& a : i->attrs.m_items)
-                        {
-                            if( a.name() == "cfg" )
-                            {
-                                if( !check_cfg(sp, a) )
-                                {
-                                    ignore = true;
-                                }
-                            }
-                        }
-                        if(ignore) {
-                            DEBUG("CFG DISABLED: " << idx << "/" << path.nodes().size() << " " << name << ": " << i->data.tag_str());
-                            continue;
-                        }
-                        DEBUG(idx << "/" << path.nodes().size() << " " << name << ": " << i->data.tag_str());
 
-                        TU_MATCH_HDRA( (i->data), { )
-                        TU_ARMA(None, _e) {
-                            }
-                        TU_ARMA(Impl, _e) {
-                            }
-                        TU_ARMA(NegImpl, _e) {
-                            }
-                        TU_ARMA(ExternBlock, _e) {
-                            }
-                        TU_ARMA(MacroInv, _e) {
-                            }
-                        TU_ARMA(Use, _e) {
-                            // Ignore for now
-                            }
-                        // Values - ignore
-                        TU_ARMA(Static, _e) { }
-                        TU_ARMA(Function, _e) { }
-                        // Macro
-                        TU_ARMA(Macro, _e) {
-                            }
-                        // Types - Return no module
-                        TU_ARMA(Union, _e) {
-                            return ResolveModuleRef();
-                            }
-                        TU_ARMA(Struct, _e) {
-                            return ResolveModuleRef();
-                            }
-                        TU_ARMA(Trait, _e) {
-                            return ResolveModuleRef();
-                            }
-                        TU_ARMA(TraitAlias, _e) {
-                            return ResolveModuleRef();
-                            }
-                        TU_ARMA(Type, _e) {
-                            return ResolveModuleRef();
-                            }
-                        TU_ARMA(Enum, _e) {
-                            return ResolveModuleRef();
-                            }
-                        // Modules (and module-likes)
-                        TU_ARMA(Module, e) {
-                            mod = &e;
-                            found = true;
-                            }
-                        TU_ARMA(Crate, e) {
-                            if( e.name == "" )
-                            {
-                                if(out_path)
-                                {
-                                    *out_path = AST::AbsolutePath(e.name, {});
-                                }
-                                return get_module_ast(crate.m_root_module, path, idx+1, ignore_last, out_path);
-                            }
-                            ASSERT_BUG(sp, crate.m_extern_crates.count(e.name) != 0, "Cannot find crate `" << e.name << "`");
-                            if(out_path)
-                            {
-                                *out_path = AST::AbsolutePath(e.name, {});
-                            }
-                            return get_module_hir(crate.m_extern_crates.at(e.name).m_hir->m_root_module, path, idx+1, ignore_last, out_path);
-                            }
-                        }
-                        if(found) {
-                            break;
-                        }
-                    }
-                    if( const auto* u = i->data.opt_Use() )
-                    {
-                        for(const auto& v : u->entries)
-                        {
-                            if( v.name == name )
-                            {
-                                bool ignore = false;
-                                for(const auto& a : i->attrs.m_items)
-                                {
-                                    if( a.name() == "cfg" )
-                                    {
-                                        if( !check_cfg(sp, a) )
-                                        {
-                                            ignore = true;
-                                        }
-                                    }
-                                }
-                                if( !ignore ) {
-                                    auto r = get_module(mod->path(), v.path, false, nullptr);
-                                    TU_MATCH_HDRA((r), {)
-                                    TU_ARMA(None, p) {
-                                        }
-                                    TU_ARMA(ImplicitPrelude, p) {
-                                        TODO(sp, "get_module_ast - Use - ImplicitPrelude");
-                                        }
-                                    TU_ARMA(Ast, p) {
-                                        return get_module_ast(*p, path, idx + 1, ignore_last, out_path);
-                                        }
-                                    TU_ARMA(Hir, p) {
-                                        return get_module_hir(*p, path, idx + 1, ignore_last, out_path);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        if(found) {
-                            break;
-                        }
-                    }
-                }
-                if( !found )
-                {
+                auto res = find_item(*mod, name, ResolveNamespace::Namespace);
+                if( res.is_None() ) {
                     DEBUG("Unable to find " << name << " in module " << mod->path() << " for " << path);
                     return ResolveModuleRef();
+                }
+                const auto& r = res.as_Namespace();
+                TU_MATCH_HDRA( (r), { )
+                TU_ARMA(None, e) {
+                    DEBUG("Not found (Namespace::None)");
+                    return ResolveModuleRef();
+                    }
+                TU_ARMA(Ast, e) {
+                    if( e->is_Module() ) {
+                        mod = &e->as_Module();
+                    }
+                    else if( const auto* i = e->opt_Crate() ) {
+                        if(out_path) {
+                            *out_path = AST::AbsolutePath(i->name, {});
+                        }
+                        if( i->name == "" )
+                        {
+                            return get_module_ast(crate.m_root_module, path, idx+1, ignore_last, out_path);
+                        }
+                        else
+                        {
+                            ASSERT_BUG(sp, crate.m_extern_crates.count(i->name) != 0, "Cannot find crate `" << i->name << "`");
+                            return get_module_hir(crate.m_extern_crates.at(i->name).m_hir->m_root_module, path, idx+1, ignore_last, out_path);
+                        }
+                    }
+                    else {
+                        DEBUG("Found " << e->tag_str() << ", not module");
+                        return ResolveModuleRef();
+                    }
+                    }
+                TU_ARMA(Hir, e) {
+                    if( const auto* i = e->opt_Module() ) {
+                        if(out_path)    TODO(sp, "Get output path for HIR module");
+                        return get_module_hir(*i, path, idx+1, ignore_last, out_path);
+                    }
+                    else {
+                        DEBUG("Found HIR " << e->tag_str() << ", not module");
+                        return ResolveModuleRef();
+                    }
+                    }
+                TU_ARMA(HirRoot, e) {
+                    if(out_path)    TODO(sp, "Get output path for HIR module");
+                    return get_module_hir(*e, path, idx+1, ignore_last, out_path);
+                    }
                 }
             }
             if(out_path)
@@ -529,7 +446,7 @@ namespace {
                     s.pop_back();
                 }
             } guard(antirecurse_stack, guard_ent);
-            
+
             if(ns == ResolveNamespace::Macro )
             {
                 for(const auto& i : mod.macros())
