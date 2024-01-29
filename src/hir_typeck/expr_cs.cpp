@@ -267,7 +267,9 @@ namespace {
                         // Keep around.
                     }
                     else {
-                        ERROR(sp, E0000, "Invalid cast to " << this->context.m_ivars.fmt_type(tgt_ty) << " from " << src_ty);
+                        //ERROR(sp, E0000, "Invalid cast to " << this->context.m_ivars.fmt_type(tgt_ty) << " from " << src_ty);
+                        // TODO: Only allow thin pointers? `c_void` is used in 1.74 libstd
+                        this->m_completed = true;
                     }
                     }
                 TU_ARMA(Primitive, s_e) {

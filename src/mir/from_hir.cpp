@@ -1436,7 +1436,7 @@ namespace {
                 }
                 else if( /*const auto* se =*/ ty_in.data().opt_Function() )
                 {
-                    if( de.inner != ::HIR::TypeRef::new_unit() && de.inner != ::HIR::CoreType::U8 && de.inner != ::HIR::CoreType::I8 ) {
+                    if( !m_builder.resolve().type_is_sized(node.span(), de.inner) ) {
                         BUG(node.span(), "Cannot cast to " << ty_out << " from " << ty_in);
                     }
                     // Valid

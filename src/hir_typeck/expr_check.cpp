@@ -394,7 +394,12 @@ namespace {
                     //}
                     }
                 TU_ARMA(Function, se) {
-                    if( de.inner != ::HIR::TypeRef::new_unit() && de.inner != ::HIR::CoreType::U8 && de.inner != ::HIR::CoreType::I8 ) {
+                    if( de.inner == ::HIR::TypeRef::new_unit() || de.inner == ::HIR::CoreType::U8 || de.inner == ::HIR::CoreType::I8 ) {
+                    }
+                    else if( m_resolve.type_is_sized(sp, de.inner) ) {
+                        // Allow it.
+                    }
+                    else {
                         ERROR(sp, E0000, "Invalid cast to " << dst_ty << " from " << src_ty);
                     }
                     }
