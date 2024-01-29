@@ -348,9 +348,6 @@ MacroRef Expand_LookupMacro(const Span& mi_span, const ::AST::Crate& crate, LLis
     Span mi_span, const AST::Path& path, const RcString& input_ident, TokenTree& input_tt
     )
 {
-    if( es.mode == ExpandMode::Final ) {
-        ERROR(mi_span, E0000, "Unknown macro " << path);
-    }
     auto rv = Expand_Macro_Inner(es.crate, es.modstack, mod, mi_span, path, input_ident, input_tt);
     if( rv ) {
         es.change = true;
@@ -359,6 +356,10 @@ MacroRef Expand_LookupMacro(const Span& mi_span, const ::AST::Crate& crate, LLis
         rv->parse_state().module = &mod;
     }
     else {
+        // HACK: Allow the expansion to happen, even in final (e.g. if from derive)
+        if( es.mode == ExpandMode::Final ) {
+            ERROR(mi_span, E0000, "Unknown macro " << path);
+        }
         DEBUG("Missing, waiting until another pass");
         es.has_missing = true;
     }
