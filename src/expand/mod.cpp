@@ -2338,10 +2338,10 @@ void Expand(::AST::Crate& crate)
             Expand_Mod(es, ::AST::AbsolutePath(), crate.m_root_module);
             DEBUG("?(Iter) es.change = " << es.change << ", es.has_missing=" << es.has_missing);
         }
-        ASSERT_BUG(Span(), !es.has_missing, "Expand too too many attempts");
     }
     es.mode = ExpandMode::Final;
     Expand_Mod(es, ::AST::AbsolutePath(), crate.m_root_module);
+    ASSERT_BUG(Span(), !es.has_missing, "Expand too too many attempts");
 
     //Expand_Attrs(es, crate.m_attrs, AttrStage::Post,  [&](const Span& sp, const auto& d, const auto& a){ d.handle(sp, a, crate); });
 
