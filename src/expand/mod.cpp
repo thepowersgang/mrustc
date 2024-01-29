@@ -725,11 +725,11 @@ struct CExpandExpr:
                 }
             }
             node.m_path = AST::Path();
-        }
 
-        if( !nodes_out && !rv )
-        {
-            ERROR(node.span(), E0000, "Macro didn't expand to anything");
+            if( !nodes_out && !rv )
+            {
+                ERROR(node.span(), E0000, "Macro didn't expand to anything");
+            }
         }
 
         return mv$(rv);
