@@ -66,3 +66,4 @@
 - `libstd` has a reference to `thread_local!` (well, `thread_local_inner!`) that is used before the `mod sys` that defines `thread_local_inner!`)
   - To solve this, need to loop on expand until nothing expands
   - That took ages to code.
+- `sizeof(Result<(), NonNull>) == sizeof(NonNull)` (same as `Option`) - mrustc doesn't quite do that

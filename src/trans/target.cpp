@@ -1509,7 +1509,7 @@ namespace {
                 for(const auto& var : e)
                 {
                     variants.push_back({ monomorph(var.type), {} });
-                    TRACE_FUNCTION_F("");
+                    TRACE_FUNCTION_F("Variant #" << (&var - e.data()));
                     if( var.type == ::HIR::TypeRef::new_unit() ) {
                         continue ;
                     }
@@ -1523,12 +1523,22 @@ namespace {
                 if( enm.m_tag_repr == ::HIR::Enum::Repr::Auto )
                 {
                     // Non-zero optimisation
-                    if( rv.variants.is_None() )
+                    if( rv.variants.is_None() && variants.size() == 2 )
                     {
-                        if( e.size() == 2 && (e[0].type == ::HIR::TypeRef::new_unit() || e[1].type == ::HIR::TypeRef::new_unit()) )
+                        // If only one variant has a size of 0, then look for a nonzero in the variant list
+                        size_t sizes[2] = {0,0};
+                        for(size_t i = 0; i < 2; i ++) {
+                            for(const auto& ent : variants[i].ents) {
+                                sizes[i] += ent.size;
+                            }
+                        }
+                        DEBUG("sizes = {" << sizes[0] << "," << sizes[1] << "}");
+                        // If one is zero and one is non-zero
+                        if( (sizes[0] == 0 || sizes[1] == 0) && (sizes[0] > 0 || sizes[1] > 0) )
                         {
                             // Check for a non-zero path in any of those
-                            unsigned nz_var = (e[0].type == ::HIR::TypeRef::new_unit() ? 1 : 0);
+                            unsigned nz_var = (sizes[0] == 0 ? 1 : 0);
+                            DEBUG("Variant #" << nz_var << " is populated, checking for NonZero");
                             for( size_t i = 0; i < variants[nz_var].ents.size(); i ++ )
                             {
                                 TypeRepr::FieldPath nz_path;
