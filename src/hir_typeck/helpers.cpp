@@ -1673,28 +1673,31 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             }
         }
 
-        // - Check if the desired trait is a supertrait of this.
-        // NOTE: `params` (aka des_params) is not used (TODO)
-        bool rv = false;
-        bool is_supertrait = this->find_named_trait_in_trait(sp, trait,params, *e.m_trait.m_trait_ptr, e.m_trait.m_path.m_path,e.m_trait.m_path.m_params, type,
-            [&](const auto& i_ty, const auto& i_params, const auto& i_assoc) {
-                // The above is just the monomorphised params and associated set. Comparison is still needed.
-                auto cmp = this->compare_pp(sp, i_params, params);
-                if( cmp != ::HIR::Compare::Unequal ) {
-                    // Invoke callback with a proper ImplRef
-                    ::HIR::TraitPath::assoc_list_t assoc_clone;
-                    for(const auto& e : i_assoc)
-                        assoc_clone.insert( ::std::make_pair(e.first, e.second.clone()) );
-                    auto ir = ImplRef(e.m_trait.m_path.m_hrls ? e.m_trait.m_path.m_hrls->clone() : HIR::GenericParams(), i_ty.clone(), i_params.clone(), mv$(assoc_clone));
-                    DEBUG("- ir = " << ir);
-                    rv = callback(mv$(ir), cmp);
-                    return true;
-                }
-                return false;
-            });
-        if( is_supertrait )
+        if( e.m_trait.m_path.m_path != HIR::SimplePath() )
         {
-            return rv;
+            // - Check if the desired trait is a supertrait of this.
+            // NOTE: `params` (aka des_params) is not used (TODO)
+            bool rv = false;
+            bool is_supertrait = this->find_named_trait_in_trait(sp, trait,params, *e.m_trait.m_trait_ptr, e.m_trait.m_path.m_path,e.m_trait.m_path.m_params, type,
+                [&](const auto& i_ty, const auto& i_params, const auto& i_assoc) {
+                    // The above is just the monomorphised params and associated set. Comparison is still needed.
+                    auto cmp = this->compare_pp(sp, i_params, params);
+                    if( cmp != ::HIR::Compare::Unequal ) {
+                        // Invoke callback with a proper ImplRef
+                        ::HIR::TraitPath::assoc_list_t assoc_clone;
+                        for(const auto& e : i_assoc)
+                            assoc_clone.insert( ::std::make_pair(e.first, e.second.clone()) );
+                        auto ir = ImplRef(e.m_trait.m_path.m_hrls ? e.m_trait.m_path.m_hrls->clone() : HIR::GenericParams(), i_ty.clone(), i_params.clone(), mv$(assoc_clone));
+                        DEBUG("- ir = " << ir);
+                        rv = callback(mv$(ir), cmp);
+                        return true;
+                    }
+                    return false;
+                });
+            if( is_supertrait )
+            {
+                return rv;
+            }
         }
         } // TU_ARMA(TraitObject, e)
     TU_ARMA(ErasedType, e) {
@@ -2612,7 +2615,7 @@ bool TraitResolution::find_named_trait_in_trait(const Span& sp,
 {
     TRACE_FUNCTION_F(des << des_params << " in " << trait_path << pp);
     if( pp.m_types.size() != trait_ptr.m_params.m_types.size() ) {
-        BUG(sp, "Incorrect number of parameters for trait");
+        BUG(sp, "Incorrect number of parameters for trait " << trait_path);
     }
 
     const auto monomorph_cb = MonomorphStatePtr(&target_type, &pp, nullptr);
