@@ -145,6 +145,7 @@ struct TypeData_TraitObject
 struct TypeData_ErasedType
 {
     ::HIR::Path m_origin;
+    bool    m_is_type_alias;
     unsigned int m_index;
     bool m_is_sized;
     ::std::vector< ::HIR::TraitPath>    m_traits;

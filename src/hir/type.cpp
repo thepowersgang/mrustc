@@ -1003,8 +1003,13 @@ const ::HIR::TraitMarkings* HIR::TypePathBinding::get_trait_markings() const
         traits.reserve( e.m_traits.size() );
         for(const auto& trait : e.m_traits)
             traits.push_back( trait.clone() );
+        if(e.m_is_type_alias) {
+            ASSERT_BUG(Span(), e.m_origin != HIR::Path(::HIR::SimplePath()), "Cloning type alias impl trait before population");
+        }
         return ::HIR::TypeRef( TypeData::make_ErasedType({
-            e.m_origin.clone(), e.m_index,
+            e.m_origin.clone(),
+            e.m_is_type_alias,
+            e.m_index,
             e.m_is_sized,
             mv$(traits),
             e.m_lifetimes

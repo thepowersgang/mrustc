@@ -408,6 +408,7 @@ namespace {
                 if( e->m_origin == ::HIR::SimplePath() )
                 {
                     DEBUG("Set origin of ErasedType - " << ty);
+                    DEBUG(" - " << &ty.data());
                     // If not, figure out what to do with it
 
                     // If the function path is set, we're processing the return type of a function
@@ -439,6 +440,10 @@ namespace {
                         }
                         e->m_index = m_fcn_erased_count++;
                     }
+                    else if( e->m_is_type_alias )
+                    {
+                        // ignore.
+                    }
                     // If the function _pointer_ is set (but not the path), then we're in the function arguments
                     // - Add a un-namable generic parameter (TODO: Prevent this from being explicitly set when called)
                     else if( m_fcn_ptr )
@@ -466,6 +471,8 @@ namespace {
                     }
                     else
                     {
+                        // TODO: If we're in a top-level `type`, then it must be used as the return type of a function.
+                        // https://rust-lang.github.io/rfcs/2515-type_alias_impl_trait.html#type-alias
                         ERROR(sp, E0000, "Use of an erased type outside of a function return - " << ty);
                     }
                 }

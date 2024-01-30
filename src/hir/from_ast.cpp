@@ -1006,7 +1006,7 @@ namespace {
         }
         // Leave `m_origin` until the bind pass
         return ::HIR::TypeRef( ::HIR::TypeData::make_ErasedType(::HIR::TypeData::Data_ErasedType {
-            ::HIR::Path(::HIR::SimplePath()), 0,
+            ::HIR::Path(::HIR::SimplePath()), false, 0,
             is_sized,
             mv$(traits),
             mv$(lfts)
@@ -1040,9 +1040,14 @@ namespace {
 
 ::HIR::TypeAlias LowerHIR_TypeAlias(const ::AST::TypeAlias& ta)
 {
+    auto ty = LowerHIR_Type(ta.type());
+    if( auto* e = ty.data_mut().opt_ErasedType() ) {
+        DEBUG("Flag type alias - " << &ty.data());
+        e->m_is_type_alias = true;
+    }
     return ::HIR::TypeAlias {
         LowerHIR_GenericParams(ta.params(), nullptr),
-        LowerHIR_Type(ta.type())
+        ::std::move(ty)
         };
 }
 

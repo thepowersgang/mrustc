@@ -330,9 +330,15 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
         ::std::vector< ::HIR::LifetimeRef>  lfts;
         for(const auto& lft : e.m_lifetimes)
             lfts.push_back(monomorph_lifetime(sp, lft));
+        
+        if(e.m_is_type_alias) {
+            ASSERT_BUG(Span(), e.m_origin != HIR::Path(::HIR::SimplePath()), "Cloning type alias impl trait before population");
+        }
 
         return ::HIR::TypeRef( ::HIR::TypeData::Data_ErasedType {
-            mv$(origin), e.m_index,
+            mv$(origin),
+            e.m_is_type_alias,
+            e.m_index,
             e.m_is_sized,
             mv$(traits),
             mv$(lfts)
@@ -689,8 +695,14 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl, bool ignore_lifetimes/*
         for(const auto& trait : e.m_traits)
             traits.push_back( clone_ty_with__trait_path(sp, trait, callback) );
 
+        if(e.m_is_type_alias) {
+            ASSERT_BUG(Span(), e.m_origin != HIR::Path(::HIR::SimplePath()), "Cloning type alias impl trait before population");
+        }
+
         rv = ::HIR::TypeRef( ::HIR::TypeData::Data_ErasedType {
-            mv$(origin), e.m_index,
+            mv$(origin),
+            e.m_is_type_alias,
+            e.m_index,
             e.m_is_sized,
             mv$(traits),
             e.m_lifetimes

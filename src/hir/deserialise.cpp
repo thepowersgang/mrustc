@@ -1089,6 +1089,7 @@ namespace {
             })
         _(ErasedType, {
             deserialise_path(),
+            false,
             static_cast<unsigned int>(m_in.read_count()),
             m_in.read_bool(),
             deserialise_vec< ::HIR::TraitPath>(),
