@@ -5670,7 +5670,7 @@ namespace {
                 emit_lvalue(e.ret_val); m_of << ".PTR = \"" << FmtEscaped(s) << "\";\n\t";
                 emit_lvalue(e.ret_val); m_of << ".META = " << s.size() << "";
             }
-            else if( name == "transmute" ) {
+            else if( name == "transmute" || name == "transmute_unchecked" ) {
                 const auto& ty_src = params.m_types.at(0);
                 const auto& ty_dst = params.m_types.at(1);
                 auto is_ptr = [](const ::HIR::TypeRef& ty){ return ty.data().is_Borrow() || ty.data().is_Pointer(); };
@@ -6022,10 +6022,10 @@ namespace {
             else if( name == "assume" ) {
                 // I don't assume :)
             }
-            else if( name == "likely" ) {
+            else if( name == "likely" || name == "unlikely" ) {
                 emit_lvalue(e.ret_val); m_of << "= ("; emit_param(e.args.at(0)); m_of << ")";
             }
-            else if( name == "unlikely" ) {
+            else if( name == "black_box" ) {
                 emit_lvalue(e.ret_val); m_of << "= ("; emit_param(e.args.at(0)); m_of << ")";
             }
             // Overflowing Arithmetic
