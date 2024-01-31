@@ -698,23 +698,30 @@ namespace
                     }
                 TU_ARMA(TraitObject, te) {
                     static Span sp;
-                    // Ensure that the data trait's vtable is present
-                    const auto& trait = *te.m_trait.m_trait_ptr;
 
-                    ASSERT_BUG(sp, ! te.m_trait.m_path.m_path.m_components.empty(), "TODO: Data trait is empty, what can be done?");
-                    const auto& vtable_ty_spath = trait.m_vtable_path;
-                    const auto& vtable_ref = m_crate.get_struct_by_path(sp, vtable_ty_spath);
-                    // Copy the param set from the trait in the trait object
-                    ::HIR::PathParams   vtable_params = te.m_trait.m_path.m_params.clone();
-                    // - Include associated types on bound
-                    for(const auto& ty_b : te.m_trait.m_type_bounds) {
-                        auto idx = trait.m_type_indexes.at(ty_b.first);
-                        if(vtable_params.m_types.size() <= idx)
-                            vtable_params.m_types.resize(idx+1);
-                        vtable_params.m_types[idx] = ty_b.second.type.clone();
+                    // If the data trait is empty, then no vtable to visit
+                    if( !te.m_trait.m_path.m_path.m_components.empty() )
+                    {
+                        // Ensure that the data trait's vtable is present
+                        const auto& trait = *te.m_trait.m_trait_ptr;
+
+                        const auto& vtable_ty_spath = trait.m_vtable_path;
+                        const auto& vtable_ref = m_crate.get_struct_by_path(sp, vtable_ty_spath);
+                        // Copy the param set from the trait in the trait object
+                        ::HIR::PathParams   vtable_params = te.m_trait.m_path.m_params.clone();
+                        // - Include associated types on bound
+                        for(const auto& ty_b : te.m_trait.m_type_bounds) {
+                            auto idx = trait.m_type_indexes.at(ty_b.first);
+                            if(vtable_params.m_types.size() <= idx)
+                                vtable_params.m_types.resize(idx+1);
+                            vtable_params.m_types[idx] = ty_b.second.type.clone();
+                        }
+
+                        visit_type( ::HIR::TypeRef::new_path( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref ) );
                     }
-
-                    visit_type( ::HIR::TypeRef::new_path( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref ) );
+                    else {
+                        // Wait, what vtable should be used then?
+                    }
                     }
                 TU_ARMA(Array, te) {
                     ASSERT_BUG(sp, te.size.is_Known(), "Encountered unknown array size - " << ty);
