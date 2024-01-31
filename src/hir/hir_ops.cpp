@@ -1649,10 +1649,10 @@ Ordering EncodedLiteralSlice::ord(const EncodedLiteralSlice& x) const
         if( it != x.m_base.relocations.end() && it->ofs == o ) {
             auto& r = *it;
             if(r.p) {
-                os << "&" << *r.p;
+                os << "{&" << *r.p << "}";
             }
             else {
-                os << "\"" << FmtEscaped(r.bytes) << "\"";
+                os << "{\"" << FmtEscaped(r.bytes) << "\"}";
             }
             ++ it;
         }
