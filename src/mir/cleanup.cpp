@@ -300,12 +300,14 @@ const EncodedLiteral* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
             const auto* repr = Target_GetTypeRepr(state.sp, state.m_resolve, ty);
             MIR_ASSERT(state, repr, "");
             // TODO: Find a way of storing backing information that specifies the variant (maybe as a relocation?)
+
             if( var_idx == ~0u )
             {
                 for(const auto& e : repr->fields)
                 {
                     // A byte array covering the entire structure - can just emit
                     if( e.ty.data().is_Array() && e.ty.data().as_Array().inner == ::HIR::CoreType::U8 && e.ty.data().as_Array().size.as_Known() == repr->size ) {
+                        DEBUG("Found an array covering the whole union");
                         var_idx = &e - &repr->fields.front();
                         break;
                     }
@@ -328,6 +330,29 @@ const EncodedLiteral* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
                     }
 
                     var_idx = (is_nonzero ? 1 : 0);
+                }
+            }
+
+            // If there's a POD field (pointer or integer) of size equal to the whole struct, use that
+            if( var_idx == ~0u )
+            {
+                for(const auto& e : repr->fields)
+                {
+                    if( e.ty.data().is_Pointer() || e.ty.data().is_Primitive() ) {
+                        // If there's a relocation, then we have to use a pointer field
+                        if( lit.get_reloc() && !e.ty.data().is_Pointer() ) {
+                            continue ;
+                        }
+
+                        size_t fld_size = 0;
+                        Target_GetSizeOf(state.sp, state.m_resolve, e.ty, fld_size);
+                        if( fld_size == repr->size ) {
+                            // Found a suitable field!
+                            DEBUG("Found a covering field");
+                            var_idx = &e - &repr->fields.front();
+                            break;
+                        }
+                    }
                 }
             }
 
