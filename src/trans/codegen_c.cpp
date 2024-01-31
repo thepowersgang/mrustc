@@ -6592,7 +6592,8 @@ namespace {
             }
             // --- Floating Point
             // > Round to nearest integer, half-way rounds away from zero
-            else if( name == "roundf32" && name == "roundf64" ) {
+            else if( name == "roundf32" && name == "roundf64"
+            || name == "rintf32" || name == "rintf64" ) {
                 emit_lvalue(e.ret_val); m_of << " = round" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ")";
             }
             else if( name == "fabsf32" || name == "fabsf64" ) {
