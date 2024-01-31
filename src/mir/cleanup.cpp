@@ -331,8 +331,9 @@ const EncodedLiteral* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
                 }
             }
 
-            if( var_idx == ~0u )
+            if( var_idx == ~0u ) {
                 MIR_TODO(state, "MIR_Cleanup_LiteralToRValue - " << path << ": " << ty << " = " << lit << " - Decode union into MIR");
+            }
             auto inner_rval = MIR_Cleanup_LiteralToRValue(state, mutator, lit, repr->fields[var_idx].ty.clone(), mv$(path));
             auto inner_lval = mutator.in_temporary( monomorph_erase_lifetimes.monomorph_type(state.sp, repr->fields[var_idx].ty), mv$(inner_rval));
             return ::MIR::RValue::make_UnionVariant({ te.path.m_data.as_Generic().clone(), var_idx, mv$(inner_lval) });
@@ -394,19 +395,32 @@ const EncodedLiteral* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
         {
             const auto& path = *data_reloc->p;
             auto ptr_val = ::MIR::Constant::make_ItemAddr(box$(path.clone()));
+            ::HIR::TypeRef tmp;
+            const auto& src_ty = state.get_static_type(tmp, path);
 
             // Get the metadata type (for !Sized wrapper types)
             auto meta_ty = state.m_resolve.metadata_type(state.sp, te.inner);
             switch(meta_ty)
             {
             case MetadataType::None:
+                // TODO: What if the type doesn't match? Emit a `_Cast foo as &Bar`?
+                if( src_ty != te.inner ) {
+                    auto src_ty_ref = mutator.in_temporary( ::HIR::TypeRef::new_borrow(te.type, src_ty.clone()), mv$(ptr_val) );
+                    auto src_ty_ptr = mutator.in_temporary(
+                        ::HIR::TypeRef::new_pointer(te.type, src_ty.clone()),
+                        ::MIR::RValue::make_Cast({ mv$(src_ty_ref), ::HIR::TypeRef::new_pointer(te.type, src_ty.clone()) })
+                    );
+                    auto inner_lval = mutator.in_temporary(
+                        ::HIR::TypeRef::new_pointer(te.type, te.inner.clone()),
+                        ::MIR::RValue::make_Cast({ mv$(src_ty_ptr), ::HIR::TypeRef::new_pointer(te.type, te.inner.clone()) })
+                    );
+                    return ::MIR::RValue::make_Borrow({ te.type, MIR::LValue::new_Deref(mv$(inner_lval)) });
+                }
                 return mv$(ptr_val);
             case MetadataType::Slice: {
-                ::HIR::TypeRef tmp;
-                const auto& ty = state.get_static_type(tmp, path);
-                MIR_ASSERT(state, ty.data().is_Array(), "BorrowOf returning slice not of an array, instead " << ty);
-                const auto& te = ty.data().as_Array();
-                MIR_ASSERT(state, te.size.is_Known(), "BorrowOf returning slice of unknown-sized array - " << ty);
+                MIR_ASSERT(state, src_ty.data().is_Array(), "BorrowOf returning slice not of an array, instead " << src_ty);
+                const auto& te = src_ty.data().as_Array();
+                MIR_ASSERT(state, te.size.is_Known(), "BorrowOf returning slice of unknown-sized array - " << src_ty);
                 unsigned int size = te.size.as_Known();
 
                 auto size_val = ::MIR::Param( ::MIR::Constant::make_Uint({ U128(size), ::HIR::CoreType::Usize }) );
@@ -416,10 +430,7 @@ const EncodedLiteral* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
                 const auto* tep = te.inner.data().opt_TraitObject();
                 if(!tep) MIR_TODO(state, "Hidden vtable");
 
-                ::HIR::TypeRef tmp;
-                const auto& ty = state.get_static_type(tmp, path);
-
-                auto vtable_path = ::HIR::Path(&ty == &tmp ? mv$(tmp) : ty.clone(), tep->m_trait.m_path.clone(), "vtable#");
+                auto vtable_path = ::HIR::Path(&ty == &tmp ? mv$(tmp) : src_ty.clone(), tep->m_trait.m_path.clone(), "vtable#");
 
                 auto vtable_val = ::MIR::Param( ::MIR::Constant::make_ItemAddr(box$(vtable_path)) );
 
