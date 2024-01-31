@@ -56,6 +56,7 @@
 - `if let` in match guards
 - Closure captures
 - `FnPtr` trait
+- `core::fmt` restructured
 - unsized locals
 - `const` blocks
 - `macro_rules` "operators"
@@ -68,3 +69,5 @@
   - That took ages to code.
 - `sizeof(Result<(), NonNull>) == sizeof(NonNull)` (same as `Option`) - mrustc doesn't quite do that
 - matching on pointer values `match HANDLE.load(Relaxed) { INVALID => {`
+- Excercises `dyn Send` more than existing implementation allowed
+- Pre-evaluated pointer casts in `const`s
