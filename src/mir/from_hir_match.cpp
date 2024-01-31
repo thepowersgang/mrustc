@@ -1098,7 +1098,9 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, EncodedLiteralSlice 
         m_field_path.pop_back();
         }
     TU_ARMA(Pointer, e) {
-        TODO(sp, "Match literal with pointer?");
+        // Need to be able to tell downstream to cast to integer before comparison?
+        this->push_rule( PatternRule::make_Value( ::MIR::Constant::make_Uint({lit.read_uint(Target_GetPointerBits()/8), HIR::CoreType::Usize}) ) );
+        //TODO(sp, "Match literal with pointer? " << lit);
         }
     TU_ARMA(Function, e) {
         ERROR(sp, E0000, "Attempting to match over a functon pointer");
@@ -1851,6 +1853,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
         }
     TU_ARMA(Pointer, e) {
         if( pat.m_data.is_Any() ) {
+            this->push_rule( PatternRule::make_Any({}) );
         }
         else {
             ERROR(sp, E0000, "Attempting to match over a pointer");
@@ -3329,8 +3332,9 @@ void MatchGenGrouped::gen_dispatch(const ::std::vector<t_rules_subset>& rules, s
         BUG(sp, "Match directly on borrow");
         }
     TU_ARMA(Pointer, te) {
-        // TODO: Could this actually be valid?
-        BUG(sp, "Attempting to match a pointer - " << ty);
+        auto val_usize = m_builder.new_temporary(HIR::CoreType::Usize);
+        m_builder.push_stmt_assign(sp, val_usize.clone(), ::MIR::RValue::make_Cast({ mv$(val), ::HIR::CoreType::Usize }));
+        this->gen_dispatch__primitive(HIR::CoreType::Usize, mv$(val_usize), rules, ofs, arm_targets, def_blk);
         }
     TU_ARMA(Function, te) {
         // TODO: Could this actually be valid?

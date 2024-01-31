@@ -67,3 +67,4 @@
   - To solve this, need to loop on expand until nothing expands
   - That took ages to code.
 - `sizeof(Result<(), NonNull>) == sizeof(NonNull)` (same as `Option`) - mrustc doesn't quite do that
+- matching on pointer values `match HANDLE.load(Relaxed) { INVALID => {`
