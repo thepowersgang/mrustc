@@ -506,11 +506,13 @@ namespace {
         case ::AST::Crate::LOAD_NONE:
             break;
         case ::AST::Crate::LOAD_CORE:
-            ap.crate = "=core";
+            ASSERT_BUG(Span(), crate.m_ext_cratename_core != "", "");
+            ap.crate = crate.m_ext_cratename_core;
             break;
         case ::AST::Crate::LOAD_STD:
             //ap.crate = "=std";
-            ap.crate = "=core";
+            ASSERT_BUG(Span(), crate.m_ext_cratename_core != "", "");
+            ap.crate = crate.m_ext_cratename_core;
             break;
         }
         for(auto ent : il)
