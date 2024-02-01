@@ -1189,6 +1189,7 @@ namespace {
 
             TU_MATCH_HDRA( (it->second->ent), {)
             TU_ARMA(Import, e) {
+                DEBUG("`" << n.name() << "`: Import " << e.path);
                 // - Update path then restart
                 auto newpath = AST::Path(e.path.m_crate_name, {});
                 for(const auto& n : e.path.m_components)

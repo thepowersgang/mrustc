@@ -499,25 +499,25 @@ namespace {
     }
     void push_path(::std::vector<TokenTree>& toks, const AST::Crate& crate, ::std::initializer_list<const char*> il)
     {
+        AST::AbsolutePath   ap;
+        // TODO: Inject a path fragment (interpolated path), to avoid edition parsing quirks
         switch(crate.m_load_std)
         {
         case ::AST::Crate::LOAD_NONE:
-            toks.push_back( TokenTree(TOK_RWORD_CRATE) );
             break;
         case ::AST::Crate::LOAD_CORE:
-            toks.push_back( TokenTree(TOK_DOUBLE_COLON) );
-            toks.push_back( ident("core") );
+            ap.crate = "=core";
             break;
         case ::AST::Crate::LOAD_STD:
-            toks.push_back( TokenTree(TOK_DOUBLE_COLON) );
-            toks.push_back( ident("std") );
+            //ap.crate = "=std";
+            ap.crate = "=core";
             break;
         }
         for(auto ent : il)
         {
-            toks.push_back( TokenTree(TOK_DOUBLE_COLON) );
-            toks.push_back( ident(ent) );
+            ap.nodes.push_back(ent);
         }
+        toks.push_back(Token(InterpolatedFragment( std::move(ap) )));
     }
     void push_toks(::std::vector<TokenTree>& toks, Token t1) {
         toks.push_back( mv$(t1) );

@@ -71,3 +71,4 @@
 - matching on pointer values `match HANDLE.load(Relaxed) { INVALID => {`
 - Excercises `dyn Send` more than existing implementation allowed
 - Pre-evaluated pointer casts in `const`s
+- `getopts` defined `extern crate alloc as std;`, breaking `format_args!` expansion
