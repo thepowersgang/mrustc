@@ -2210,23 +2210,38 @@ namespace {
             }
             else if( path_attr.size() == 0 && ! mod_fileinfo.controls_dir )
             {
-                // TODO: Also search for curmod/submod.rs
-                ::std::string newpath_file = (mod_path.nodes.size() >= 1 ? dirname(mod_fileinfo.path) / mod_path.nodes[mod_path.nodes.size()-1].c_str() / name.c_str() + ".rs" : "");
-                DEBUG("newpath_file = '" << newpath_file << "' " << mod_fileinfo.path << " " << mod_path);
-                ::std::ifstream ifs_file(newpath_file);
-                if( ifs_file.is_open() )
-                {
-                    submod.m_file_info.path = newpath_file;
+                ASSERT_BUG(lex.point_span(), mod_path.nodes.size() >= 1, "Crate root should control its directory?");
+                // Look for `curdir/curmod/submod.rs` or `curdir/curmod/submod/mod.rs`
+                ::std::string newpath_file_direct = dirname(mod_fileinfo.path) / mod_path.nodes.back().c_str() / name.c_str() + ".rs";
+                ::std::string newpath_file_mod    = dirname(mod_fileinfo.path) / mod_path.nodes.back().c_str() / name.c_str() / "mod.rs";
+                DEBUG(mod_fileinfo.path << " " << mod_path);
+                DEBUG("newpath_file_direct = '" << newpath_file_direct << "'");
+                DEBUG("newpath_file_mod = '" << newpath_file_mod << "'");
+
+                ::std::ifstream ifs_file(newpath_file_direct);
+                ::std::ifstream ifs_dir(newpath_file_mod);
+
+                if( ifs_dir.is_open() && ifs_file.is_open() ) {
+                    // Collision
+                    ERROR(lex.point_span(), E0000, "Both modname.rs and modname/mod.rs exist");
+                }
+                else if( ifs_dir.is_open() ) {
+                    // Load from dir
+                    submod.m_file_info.path = newpath_file_mod;
+                    submod.m_file_info.controls_dir = true;
+                }
+                else if( ifs_file.is_open() ) {
+                    submod.m_file_info.path = newpath_file_direct;
                     submod.m_file_info.controls_dir = false;
-                    DEBUG("- path = " << submod.m_file_info.path);
-                    Lexer sub_lex(submod.m_file_info.path, lex.get_edition(), lex.parse_state());
-                    Parse_ModRoot(sub_lex, submod, meta_items);
-                    GET_CHECK_TOK(tok, sub_lex, TOK_EOF);
                 }
-                else
-                {
-                    ERROR(lex.point_span(), E0000, "Can't load from files outside of mod.rs or crate root");
+                else {
+                    // Can't find file
+                    ERROR(lex.point_span(), E0000, "Can't find file for '" << name << "' in '" << mod_fileinfo.path << "'");
                 }
+                DEBUG("- path = " << submod.m_file_info.path);
+                Lexer sub_lex(submod.m_file_info.path, lex.get_edition(), lex.parse_state());
+                Parse_ModRoot(sub_lex, submod, meta_items);
+                GET_CHECK_TOK(tok, sub_lex, TOK_EOF);
             }
             else
             {
