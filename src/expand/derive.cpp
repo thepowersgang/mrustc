@@ -1491,7 +1491,47 @@ public:
 
     AST::Impl handle_item(Span sp, const DeriveOpts& opts, const AST::GenericParams& p, const TypeRef& type, const AST::Enum& enm) const override
     {
-        ERROR(sp, E0000, "Default cannot be derived for enums");
+        // 1.74: #[default]
+        const AST::EnumVariant* default_var = nullptr;
+        for(const auto& v : enm.variants()) {
+            if( v.m_attrs.has("default") ) {
+                if(default_var) {
+                    ERROR(sp, E0000, "Multiple #[default] attributes");
+                }
+                default_var = &v;
+            }
+        }
+        if(!default_var) {
+            ERROR(sp, E0000, "No #[default] attribute on enum with derive(Default)");
+        }
+
+        AST::Path var_path = *type.m_data.as_Path() + AST::PathNode(default_var->m_name);
+
+        ::std::vector<TypeRef>  bound_tys;
+        AST::ExprNodeP  node;
+        TU_MATCH_HDRA( (default_var->m_data), { )
+        TU_ARMA(Value, e) {
+            node = NEWNODE(NamedValue, std::move(var_path));
+            }
+        TU_ARMA(Tuple, e) {
+            ::std::vector<AST::ExprNodeP>   vals;
+            for(const auto& ty : e.m_sub_types) {
+                add_field_bound_from_ty(enm.params(), bound_tys, ty);
+                vals.push_back( this->default_call(opts.core_name) );
+            }
+            node = NEWNODE(CallPath, std::move(var_path), mv$(vals));
+            }
+        TU_ARMA(Struct, e) {
+            ::AST::ExprNode_StructLiteral::t_values vals;
+            for( const auto& fld : e.m_fields )
+            {
+                add_field_bound_from_ty(enm.params(), bound_tys, fld.m_type);
+                vals.push_back({ {}, fld.m_name, this->default_call(opts.core_name) });
+            }
+            node = NEWNODE(StructLiteral, std::move(var_path), nullptr, mv$(vals));
+            }
+        }
+        return this->make_ret(sp, opts.core_name, p, type, std::move(bound_tys), std::move(node));
     }
 } g_derive_default;
 
