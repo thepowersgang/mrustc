@@ -75,3 +75,4 @@
 - `unreachable!` is a builtin
 - `#[derive(Default)]` on enums
 - `sigpipe` parameter to `#[lang="start"]`
+- Changes to allocator bindings

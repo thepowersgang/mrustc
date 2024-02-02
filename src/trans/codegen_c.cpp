@@ -902,19 +902,14 @@ namespace {
                     if( TARGETVER_LEAST_1_54 )
                     {
                         auto oom_method = m_crate.get_lang_item_path_opt("mrustc-alloc_error_handler");
-                        m_of << "void __rust_alloc_error_handler(uintptr_t s, uintptr_t a) {\n";
-                        if(oom_method == HIR::SimplePath()) {
-                            m_of << "\tvoid __rdl_oom(uintptr_t, uintptr_t);\n";
-                            m_of << "\t__rdl_oom(s,a);\n";
+                        if( TARGETVER_LEAST_1_74 )
+                        {
+                            m_of << "uint8_t __rust_alloc_error_handler_should_panic = 0;\n";
+                            m_of << "uint8_t __rust_no_alloc_shim_is_unstable = 0;\n";
                         }
-                        else {
-                            m_of << "\tvoid __rg_oom(uintptr_t, uintptr_t);\n";
-                            m_of << "\t__rg_oom(s,a);\n";
-                        }
-                        m_of << "}\n";
 
+                        auto layout_path = ::HIR::SimplePath("core", {"alloc", "Layout"});
                         if(oom_method != HIR::SimplePath()) {
-                            auto layout_path = ::HIR::SimplePath("core", {"alloc", "Layout"});
                             m_of << "struct s_" << Trans_Mangle(layout_path) << "_A { uintptr_t a, b; };\n";
                             m_of << "void oom_impl(struct s_" << Trans_Mangle(layout_path) << "_A l) {"
                                 << " extern void " << Trans_Mangle(oom_method) << "(struct s_" << Trans_Mangle(layout_path) << "_A l);"
@@ -922,6 +917,21 @@ namespace {
                                 << " }\n"
                                 ;
                         }
+
+                        m_of << "void __rust_alloc_error_handler(uintptr_t s, uintptr_t a) {\n";
+                        if(oom_method == HIR::SimplePath()) {
+                            m_of << "\tvoid __rdl_oom(uintptr_t, uintptr_t);\n";
+                            m_of << "\t__rdl_oom(s,a);\n";
+                        }
+                        else if( TARGETVER_LEAST_1_74 ) {
+                            m_of << "\tstruct s_" << Trans_Mangle(layout_path) << "_A v = { s, a };\n";
+                            m_of << "\toom_impl(v);\n";
+                        }
+                        else {
+                            m_of << "\tvoid __rg_oom(uintptr_t, uintptr_t);\n";
+                            m_of << "\t__rg_oom(s,a);\n";
+                        }
+                        m_of << "}\n";
                     }
                     else
                     {
