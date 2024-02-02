@@ -1241,6 +1241,42 @@ void HIR_Expand_StaticBorrowConstants_Expr(const ::HIR::Crate& crate, const ::HI
         new_static.m_params = mv$(generics);
         // - Since this was neeed in consteval, it's going to need to be saved?
         new_static.m_save_literal = true;
+
+        struct Nvs: ::HIR::Evaluator::Newval {
+            const HIR::Crate& crate;
+
+            Nvs(const HIR::Crate& crate)
+                : crate(crate)
+            {
+            }
+
+            ::HIR::Path new_static(::HIR::TypeRef type, EncodedLiteral value) override {
+                auto name = RcString::new_interned( FMT("lifted#C_" << static_count) );
+                static_count ++;
+                auto path = HIR::SimplePath() + name;
+                auto new_static = HIR::Static(
+                    HIR::Linkage(),
+                    /*is_mut=*/false,
+                    ::std::move(type),
+                    /*m_value=*/HIR::ExprPtr()
+                );
+                new_static.m_value_generated = true;
+                new_static.m_value_res = ::std::move(value);
+                DEBUG(path << " = " << new_static.m_value_res);
+                crate.m_new_values.push_back(std::make_pair( name, box$(HIR::VisEnt<HIR::ValueItem> {
+                    HIR::Publicity::new_none(), // Should really be private, but we're well after checking
+                    HIR::ValueItem(::std::move(new_static))
+                }) ));
+                return path;
+            }
+        } nvs { crate };
+
+        if( !new_static.m_params.is_generic() )
+        {
+            new_static.m_value_res = ::HIR::Evaluator(sp, crate, nvs).evaluate_constant( path, new_static.m_value, new_static.m_type.clone());
+            new_static.m_value_generated = true;
+        }
+
         DEBUG(path << " = ?");
         auto vi = is_const
             ? HIR::ValueItem(HIR::Constant { std::move(new_static.m_params), std::move(new_static.m_type), std::move(new_static.m_value) })

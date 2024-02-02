@@ -3289,12 +3289,14 @@ void ConvertHIR_ConstantEvaluate(::HIR::Crate& crate)
     ExpanderApply().visit_crate(crate);
     for(auto& new_ty_pair : crate.m_new_types)
     {
-        crate.m_root_module.m_mod_items.insert( mv$(new_ty_pair) );
+        auto res = crate.m_root_module.m_mod_items.insert( mv$(new_ty_pair) );
+        ASSERT_BUG(Span(), res.second, "Duplicate type in consteval?");
     }
     crate.m_new_types.clear();
     for(auto& new_val_pair : crate.m_new_values)
     {
-        crate.m_root_module.m_value_items.insert( mv$(new_val_pair) );
+        auto res = crate.m_root_module.m_value_items.insert( mv$(new_val_pair) );
+        ASSERT_BUG(Span(), res.second, "Duplicate value in consteval?");
     }
     crate.m_new_values.clear();
 }
