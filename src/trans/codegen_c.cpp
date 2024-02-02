@@ -801,7 +801,12 @@ namespace {
                 {
                     m_of << "\treturn " << Trans_Mangle( ::HIR::GenericPath(m_resolve.m_crate.get_lang_item_path(Span(), "start")) ) << "("
                             << Trans_Mangle( ::HIR::GenericPath(m_resolve.m_crate.get_lang_item_path(Span(), "mrustc-main")) ) << ", argc, (uint8_t**)argv"
-                            << ");\n";
+                            ;
+                    if( TARGETVER_LEAST_1_74 ) {
+                        m_of << ", 0";  // `sigpipe` setting
+                        // 0: Default, 1: Inherit, 2: SIG_IGN, 3: SIG_DFL
+                    }
+                    m_of << ");\n";
                 }
                 else
                 {

@@ -74,3 +74,4 @@
 - `getopts` defined `extern crate alloc as std;`, breaking `format_args!` expansion
 - `unreachable!` is a builtin
 - `#[derive(Default)]` on enums
+- `sigpipe` parameter to `#[lang="start"]`
