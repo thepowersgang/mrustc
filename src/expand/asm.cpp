@@ -452,6 +452,7 @@ public:
                         ERROR(sp, E0000, "Closing braces in `asm!` need to be written as `}}`");
                     }
                     c ++;
+                    cur_string += '}';
                     continue;
                 }
 

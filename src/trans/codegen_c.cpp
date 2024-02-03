@@ -5091,6 +5091,16 @@ namespace {
                 m_of << ");\n";
                 return;
             }
+            // HACK: Abort on various `v*` operations, as they have overly complex register specs that gcc doesn't like
+            else if( se.lines[0].frags.size() > 0 && (
+                false
+                || se.lines[0].frags[0].before.find("vmov") == 0
+                || se.lines[0].frags[0].before.find("vexpand") == 0
+                || se.lines[0].frags[0].before.find("vpexpand") == 0
+                ) ) {
+                m_of << "abort();\n";
+                return;
+            }
             else
             {
                 std::vector<unsigned>   arg_mappings(se.params.size(), UINT_MAX);
@@ -5111,7 +5121,7 @@ namespace {
                 for(size_t i = 0; i < se.params.size(); i ++)
                 {
                     if( const auto* pe = se.params[i].opt_Reg() ) {
-                        if( pe->input )
+                        if( pe->input && !pe->output )
                         {
                             arg_mappings[i] = outputs.size() + inputs.size();
                             inputs.push_back(&se.params[i]);
@@ -5134,7 +5144,20 @@ namespace {
                 {
                     for(const auto& f : l.frags)
                     {
-                        m_of << FmtEscaped(f.before);
+                        // TODO: `{` needs escaping
+                        for(char ch : f.before) {
+                            switch(ch)
+                            {
+                            case '\n':  m_of << "\n";   break;
+                            case '\r':  m_of << "\r";   break;
+                            case '\"':  m_of << "\\\"";   break;
+                            case '%':  m_of << "%%";   break;
+                            case '{':  m_of << "%{";   break;
+                            case '}':  m_of << "%}";   break;
+                            case '|':  m_of << "%|";   break;
+                            default:    m_of << ch; break;
+                            }
+                        }
                         //if( f.modifier != '\0' )
                         //    MIR_TODO(mir_res, "Asm2 GCC: modifier - " << stmt);
                         MIR_ASSERT(mir_res, arg_mappings.at(f.index) != UINT_MAX, stmt);
@@ -5152,24 +5175,25 @@ namespace {
                     if(i != 0)  m_of << ",";
                     m_of << " ";
                     m_of << "\"";
+                    m_of << (p.input ? "+" : "=");
                     TU_MATCH_HDRA((p.spec), {)
                     TU_ARMA(Class, c)
                         // https://gcc.gnu.org/onlinedocs/gcc/Machine-Constraints.html
                         switch(c)
                         {
-                        case AsmCommon::RegisterClass::x86_reg: m_of << "=r";   break;
-                        case AsmCommon::RegisterClass::x86_reg_abcd: m_of << "=Q";   break;
-                        case AsmCommon::RegisterClass::x86_reg_byte: m_of << "=q";   break;
-                        case AsmCommon::RegisterClass::x86_xmm: m_of << "=x";   break;
-                        case AsmCommon::RegisterClass::x86_ymm: m_of << "=x";   break;
-                        case AsmCommon::RegisterClass::x86_zmm: m_of << "=v";   break;
-                        case AsmCommon::RegisterClass::x86_kreg: m_of << "=Yk"; break;
+                        case AsmCommon::RegisterClass::x86_reg: m_of << "r";   break;
+                        case AsmCommon::RegisterClass::x86_reg_abcd: m_of << "Q";   break;
+                        case AsmCommon::RegisterClass::x86_reg_byte: m_of << "q";   break;
+                        case AsmCommon::RegisterClass::x86_xmm: m_of << "x";   break;
+                        case AsmCommon::RegisterClass::x86_ymm: m_of << "x";   break;
+                        case AsmCommon::RegisterClass::x86_zmm: m_of << "v";   break;
+                        case AsmCommon::RegisterClass::x86_kreg: m_of << "Yk"; break;
                         }
                     TU_ARMA(Explicit, name) {
-                        if( name == "eax" || name == "rax" ) {  m_of << "=a";   }
-                        else if( name == "ecx" || name == "rcx" ) {  m_of << "=c";   }
-                        else if( name == "edx" || name == "rdx" ) {  m_of << "=d";   }
-                        else if( name == "ebx" || name == "rbx" ) {  m_of << "=b";   }
+                        if( name == "eax" || name == "rax" ) {  m_of << "a";   }
+                        else if( name == "ecx" || name == "rcx" ) {  m_of << "c";   }
+                        else if( name == "edx" || name == "rdx" ) {  m_of << "d";   }
+                        else if( name == "ebx" || name == "rbx" ) {  m_of << "b";   }
                         else {
                             MIR_TODO(mir_res, "Asm2 GCC - Explicit output reg `" << name << "`: " << stmt);
                         }
