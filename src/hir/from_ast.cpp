@@ -1433,6 +1433,7 @@ namespace {
     {
         auto this_trait = ::HIR::GenericPath( trait_path );
         for(const auto& arg : rv.m_params.m_lifetimes) {
+            (void)arg;
             this_trait.m_params.m_lifetimes.push_back( ::HIR::LifetimeRef(this_trait.m_params.m_lifetimes.size()) );
         }
         for(const auto& arg : rv.m_params.m_types) {
@@ -1836,6 +1837,9 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
         TU_ARMA(MacroInv, e) {
             // Valid.
             //BUG(sp, "Stray macro invocation in " << path);
+            }
+        TU_ARMA(GlobalAsm, e) {
+            TODO(sp, "GlobalAsm");
             }
         TU_ARMA(ExternBlock, e) {
             if( e.items().size() > 0 )

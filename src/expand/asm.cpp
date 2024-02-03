@@ -542,6 +542,36 @@ public:
         return box$( TTStreamO(sp, ParseState(), TokenTree(Token( InterpolatedFragment(InterpolatedFragment::EXPR, rv.release()) ))));
     }
 };
+class CGlobalAsmExpander:
+    public ExpandProcMacro
+{
+public:
+    ::std::unique_ptr<TokenStream> expand(const Span& sp, const ::AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
+    {
+        auto o = CAsmExpander().expand(sp, crate, tt, mod);
+
+        auto node = o->getToken().take_frag_node();
+        auto* node_ap = dynamic_cast<AST::ExprNode_Asm2*>(node.get());
+        ASSERT_BUG(sp, node_ap, "");
+        auto& node_a = *node_ap;
+
+        auto global_asm = AST::GlobalAsm { std::move(node_a.m_lines), {} };
+        for(auto& param : node_a.m_params) {
+            if( !(param.is_Sym() || param.is_Const()) ) {
+                ERROR(sp, E0000, "Only `sym` and `const` are allowed in `global_asm!`");
+            }
+            else {
+                TODO(sp, "sym/const");
+            }
+        }
+        auto named_item = AST::Named<AST::Item>(
+            sp, {}, false, "",
+            AST::Item(std::move(global_asm))
+        );
+        return box$( TTStreamO(sp, ParseState(), TokenTree(Token( Token::TagTakeIP(), InterpolatedFragment(std::move(named_item)) )) ) );
+    }
+};
 
 STATIC_MACRO("llvm_asm", CLlvmAsmExpander);
 STATIC_MACRO("asm", CAsmExpander);
+STATIC_MACRO("global_asm", CGlobalAsmExpander);

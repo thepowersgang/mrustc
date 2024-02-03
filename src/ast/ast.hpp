@@ -32,6 +32,7 @@
 
 #include <macro_rules/macro_rules_ptr.hpp>
 #include <expand/common.hpp>
+#include "../hir/asm.hpp"
 
 namespace AST {
 
@@ -589,6 +590,12 @@ public:
 
     ExternBlock clone() const;
 };
+class GlobalAsm
+{
+public:
+    ::std::vector<AsmCommon::Line>  lines;
+    ::std::vector<AST::Path>    symbols;
+};
 
 /// Representation of a parsed (and being converted) function
 class Module
@@ -702,6 +709,7 @@ TAGGED_UNION_EX(Item, (), None,
 
     // Nameless items
     (ExternBlock, ExternBlock),
+    (GlobalAsm, GlobalAsm),
     (Impl, Impl),
     (NegImpl, ImplDef),
 

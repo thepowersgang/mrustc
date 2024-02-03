@@ -392,6 +392,9 @@ Item Item::clone() const
     (ExternBlock,
         TODO(Span(), "Clone on Item::" << this->tag_str());
         ),
+    (GlobalAsm,
+        TODO(Span(), "Clone on Item::" << this->tag_str());
+        ),
     (Impl,
         TODO(Span(), "Clone on Item::" << this->tag_str());
         ),

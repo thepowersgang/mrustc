@@ -2512,6 +2512,7 @@ void Resolve_Absolute_ImplItems(Context& item_context,  ::AST::NamedList< ::AST:
         TU_ARMA(ExternBlock, e) BUG(i.span, "Resolve_Absolute_ImplItems - " << i.data.tag_str());
         TU_ARMA(Impl,        e) BUG(i.span, "Resolve_Absolute_ImplItems - " << i.data.tag_str());
         TU_ARMA(NegImpl,     e) BUG(i.span, "Resolve_Absolute_ImplItems - " << i.data.tag_str());
+        TU_ARMA(GlobalAsm,   e) BUG(i.span, "Resolve_Absolute_ImplItems - " << i.data.tag_str());
         TU_ARMA(Macro,  e)  BUG(i.span, "Resolve_Absolute_ImplItems - " << i.data.tag_str());
         TU_ARMA(Use,    e)  BUG(i.span, "Resolve_Absolute_ImplItems - Use");
         TU_ARMA(Module, e)  BUG(i.span, "Resolve_Absolute_ImplItems - Module");
@@ -2558,6 +2559,7 @@ void Resolve_Absolute_ImplItems(Context& item_context,  ::std::vector< ::AST::Im
         (Impl  , BUG(i.sp, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
         (NegImpl, BUG(i.sp, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
         (ExternBlock, BUG(i.sp, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
+        (GlobalAsm  , BUG(i.sp, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
         (Macro , BUG(i.sp, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
         (Use   , BUG(i.sp, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
         (Module, BUG(i.sp, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
@@ -2731,6 +2733,8 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
         TU_ARMA(Use, e) {
             }
         TU_ARMA(Macro, e) {
+            }
+        TU_ARMA(GlobalAsm, e) {
             }
         TU_ARMA(ExternBlock, e) {
             for(auto& i2 : e.items())

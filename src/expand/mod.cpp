@@ -1784,6 +1784,9 @@ void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Modul
         TU_ARMA(None, e) {
             // Skip: nothing
             }
+        TU_ARMA(GlobalAsm, e) {
+            // Skip: Nothing to expand
+            }
         TU_ARMA(MacroInv, e) {
             // Move out of the module to avoid invalidation if a new macro invocation is added
 

@@ -138,6 +138,8 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
             }
         TU_ARMA(NegImpl, e) {
             }
+        TU_ARMA(GlobalAsm, e) {
+            }
 
         TU_ARMA(Macro, e) {
             // Handled by `for(const auto& item : mod.macros())` below

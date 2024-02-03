@@ -385,6 +385,9 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             TU_ARMA(MacroInv, e) {
                 BUG(span, "Hit MacroInv in use resolution");
                 }
+            TU_ARMA(GlobalAsm, e) {
+                BUG(span, "Hit GlobalAsm in use resolution");
+                }
             TU_ARMA(Macro, e) {
                 //rv.macro = ::AST::PathBinding_Macro::make_MacroRules({nullptr, e.get()});
                 }

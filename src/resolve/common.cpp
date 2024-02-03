@@ -411,6 +411,7 @@ namespace {
             case AST::Item::TAG_ExternBlock:
             case AST::Item::TAG_Use:
             case AST::Item::TAG_MacroInv:
+            case AST::Item::TAG_GlobalAsm:
             case AST::Item::TAG_None:
                 return false;
             }
