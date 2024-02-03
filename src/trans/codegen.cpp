@@ -197,6 +197,11 @@ void Trans_Codegen(const ::std::string& outfile, CodegenOutput out_ty, const Tra
         }
     }
 
+    for(const auto& a : crate.m_global_asm)
+    {
+        codegen->emit_global_asm(a);
+    }
+
     codegen->finalise(opt, out_ty, hir_file);
 }
 

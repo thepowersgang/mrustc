@@ -1110,6 +1110,11 @@ namespace
 
             m_mir_res = nullptr;
         }
+        
+        void emit_global_asm(const ::HIR::GlobalAssembly& ) override
+        {
+            TODO(Span(), "global_asm! codegen");
+        }
 
 
     private:

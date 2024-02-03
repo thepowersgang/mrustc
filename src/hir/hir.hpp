@@ -29,6 +29,7 @@
 #include <hir/crate_ptr.hpp>
 #include <hir/encoded_literal.hpp>
 #include <hir/inherent_cache.hpp>
+#include <hir/asm.hpp>
 
 #define ABI_RUST    "Rust"
 #define CRATE_BUILTINS  "#builtins" // used for macro re-exports of builtins
@@ -602,6 +603,13 @@ public:
     }
 };
 
+class GlobalAssembly
+{
+public:
+    ::std::vector<AsmCommon::Line>  m_lines;
+    ::std::vector<HIR::Path>    m_symbols;
+};
+
 class ExternCrate
 {
 public:
@@ -670,6 +678,9 @@ public:
     /// Impl blocks
     ::std::map< ::HIR::SimplePath, ImplGroup<::std::unique_ptr<::HIR::TraitImpl>> > m_trait_impls;
     ::std::map< ::HIR::SimplePath, ImplGroup<::std::unique_ptr<::HIR::MarkerImpl>> > m_marker_impls;
+
+    /// Global assembly items
+    ::std::vector< ::HIR::GlobalAssembly>   m_global_asm;
 
     /// Merged index versions of the above
     ImplGroup<const ::HIR::TypeImpl*>   m_all_type_impls;

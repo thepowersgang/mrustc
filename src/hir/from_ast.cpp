@@ -1839,7 +1839,13 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
             //BUG(sp, "Stray macro invocation in " << path);
             }
         TU_ARMA(GlobalAsm, e) {
-            TODO(sp, "GlobalAsm");
+            ::HIR::GlobalAssembly   item;
+            item.m_lines = std::move(e.lines);
+            item.m_symbols.reserve(e.symbols.size());
+            for(const AST::Path& s : e.symbols) {
+                item.m_symbols.push_back( LowerHIR_Path(Span(), s, FromAST_PathClass::Value) );
+            }
+            g_crate_ptr->m_global_asm.push_back(std::move(item));
             }
         TU_ARMA(ExternBlock, e) {
             if( e.items().size() > 0 )

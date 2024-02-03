@@ -1528,6 +1528,11 @@ namespace {
                 emit_destructor_call(slot, box_type, false, indent_level);
             }
         }
+        
+        void emit_global_asm(const ::HIR::GlobalAssembly& ) override
+        {
+            TODO(Span(), "global_asm! codegen");
+        }
 
         void emit_type_id(const ::HIR::TypeRef& ty) override
         {
