@@ -149,7 +149,17 @@ namespace {
 }
 ::std::ostream& operator<<(::std::ostream& os, const FmtGccAsm& x)
 {
-    for(char ch : x.s) {
+    bool in_comment = false;
+    for(const char& ch : x.s) {
+        if( ch == '/' && (&ch)[1] == '/' ) {
+            if( in_comment ) {
+                os << "\" ";
+            }
+            in_comment = true;
+        }
+        else {
+            in_comment = false;
+        }
         switch(ch)
         {
         case '\n':  os << "\\n\"\n\"";   break;
