@@ -1845,6 +1845,7 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
             for(const AST::Path& s : e.symbols) {
                 item.m_symbols.push_back( LowerHIR_Path(Span(), s, FromAST_PathClass::Value) );
             }
+            item.m_options = e.options;
             g_crate_ptr->m_global_asm.push_back(std::move(item));
             }
         TU_ARMA(ExternBlock, e) {

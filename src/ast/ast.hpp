@@ -595,6 +595,7 @@ class GlobalAsm
 public:
     ::std::vector<AsmCommon::Line>  lines;
     ::std::vector<AST::Path>    symbols;
+    AsmCommon::Options  options;
 };
 
 /// Representation of a parsed (and being converted) function

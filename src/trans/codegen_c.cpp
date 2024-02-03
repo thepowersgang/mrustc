@@ -32,6 +32,14 @@ namespace {
         {
         }
     };
+    struct FmtGccAsm
+    {
+        const ::std::string& s;
+        FmtGccAsm(const ::std::string& s):
+            s(s)
+        {
+        }
+    };
     class StringList
     {
         ::std::vector<::std::string>    m_cached;
@@ -133,6 +141,23 @@ namespace {
             default:
                 os << c;
             }
+        }
+    }
+    return os;
+}
+::std::ostream& operator<<(::std::ostream& os, const FmtGccAsm& x)
+{
+    for(char ch : x.s) {
+        switch(ch)
+        {
+        case '\n':  os << "\\\n";   break;
+        case '\r':  os << "\\\r";   break;
+        case '\"':  os << "\\\"";   break;
+        case '%':   os << "%%";   break;
+        case '{':   os << "%{";   break;
+        case '}':   os << "%}";   break;
+        case '|':   os << "%|";   break;
+        default:    os << ch; break;
         }
     }
     return os;
@@ -1529,9 +1554,25 @@ namespace {
             }
         }
         
-        void emit_global_asm(const ::HIR::GlobalAssembly& ) override
+        void emit_global_asm(const ::HIR::GlobalAssembly& se) override
         {
-            TODO(Span(), "global_asm! codegen");
+            m_of << "__asm__ (\"";
+            if( (Target_GetCurSpec().m_arch.m_name == "x86" || Target_GetCurSpec().m_arch.m_name == "x86_64") && !se.m_options.att_syntax )
+                m_of << ".intel_syntax; ";
+            for(const auto& l : se.m_lines)
+            {
+                for(const auto& f : l.frags)
+                {
+                    m_of << FmtGccAsm(f.before);
+                    ASSERT_BUG(Span(), f.index < se.m_symbols.size(), "Invalid argument reference in global assembly");
+                    TODO(Span(), "Handle interpolation in global_asm! - " << se.m_symbols[f.index]);
+                }
+                m_of << FmtGccAsm(l.trailing);
+                m_of << ";\\n ";
+            }
+            if( (Target_GetCurSpec().m_arch.m_name == "x86" || Target_GetCurSpec().m_arch.m_name == "x86_64") && !se.m_options.att_syntax )
+                m_of << ".att_syntax; ";
+            m_of << "\");\n";
         }
 
         void emit_type_id(const ::HIR::TypeRef& ty) override
@@ -5149,26 +5190,13 @@ namespace {
                 {
                     for(const auto& f : l.frags)
                     {
-                        // TODO: `{` needs escaping
-                        for(char ch : f.before) {
-                            switch(ch)
-                            {
-                            case '\n':  m_of << "\n";   break;
-                            case '\r':  m_of << "\r";   break;
-                            case '\"':  m_of << "\\\"";   break;
-                            case '%':  m_of << "%%";   break;
-                            case '{':  m_of << "%{";   break;
-                            case '}':  m_of << "%}";   break;
-                            case '|':  m_of << "%|";   break;
-                            default:    m_of << ch; break;
-                            }
-                        }
+                        m_of << FmtGccAsm(f.before);
                         //if( f.modifier != '\0' )
                         //    MIR_TODO(mir_res, "Asm2 GCC: modifier - " << stmt);
                         MIR_ASSERT(mir_res, arg_mappings.at(f.index) != UINT_MAX, stmt);
                         m_of << "%" << arg_mappings.at(f.index);
                     }
-                    m_of << FmtEscaped(l.trailing);
+                    m_of << FmtGccAsm(l.trailing);
                     m_of << ";\\n ";
                 }
                 if( (Target_GetCurSpec().m_arch.m_name == "x86" || Target_GetCurSpec().m_arch.m_name == "x86_64") && !se.options.att_syntax )
@@ -5195,10 +5223,14 @@ namespace {
                         case AsmCommon::RegisterClass::x86_kreg: m_of << "Yk"; break;
                         }
                     TU_ARMA(Explicit, name) {
-                        if( name == "eax" || name == "rax" ) {  m_of << "a";   }
+                        if(false) {
+                        }
+                        else if( name == "eax" || name == "rax" ) {  m_of << "a";   }
                         else if( name == "ecx" || name == "rcx" ) {  m_of << "c";   }
                         else if( name == "edx" || name == "rdx" ) {  m_of << "d";   }
                         else if( name == "ebx" || name == "rbx" ) {  m_of << "b";   }
+                        else if( name == "edi" || name == "rdi" ) {  m_of << "D";   }
+                        else if( name == "esi" || name == "rsi" ) {  m_of << "S";   }
                         else {
                             MIR_TODO(mir_res, "Asm2 GCC - Explicit output reg `" << name << "`: " << stmt);
                         }
@@ -5235,6 +5267,8 @@ namespace {
                             else if( name == "ecx" || name == "rcx" ) {  m_of << "c";   }
                             else if( name == "edx" || name == "rdx" ) {  m_of << "d";   }
                             else if( name == "ebx" || name == "rbx" ) {  m_of << "b";   }
+                            else if( name == "edi" || name == "rdi" ) {  m_of << "D";   }
+                            else if( name == "esi" || name == "rsi" ) {  m_of << "S";   }
                             else {
                                 MIR_TODO(mir_res, "Asm2 GCC - Explicit input reg `" << name << "`: " << stmt);
                             }

@@ -608,6 +608,7 @@ class GlobalAssembly
 public:
     ::std::vector<AsmCommon::Line>  m_lines;
     ::std::vector<HIR::Path>    m_symbols;
+    AsmCommon::Options  m_options;
 };
 
 class ExternCrate

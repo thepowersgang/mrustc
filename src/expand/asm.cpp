@@ -555,7 +555,7 @@ public:
         ASSERT_BUG(sp, node_ap, "");
         auto& node_a = *node_ap;
 
-        auto global_asm = AST::GlobalAsm { std::move(node_a.m_lines), {} };
+        auto global_asm = AST::GlobalAsm { std::move(node_a.m_lines), {}, node_a.m_options };
         for(auto& param : node_a.m_params) {
             if( !(param.is_Sym() || param.is_Const()) ) {
                 ERROR(sp, E0000, "Only `sym` and `const` are allowed in `global_asm!`");
