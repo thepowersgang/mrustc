@@ -5154,6 +5154,7 @@ namespace {
                     m_of << "\"";
                     TU_MATCH_HDRA((p.spec), {)
                     TU_ARMA(Class, c)
+                        // https://gcc.gnu.org/onlinedocs/gcc/Machine-Constraints.html
                         switch(c)
                         {
                         case AsmCommon::RegisterClass::x86_reg: m_of << "=r";   break;
@@ -5162,10 +5163,16 @@ namespace {
                         case AsmCommon::RegisterClass::x86_xmm: m_of << "=x";   break;
                         case AsmCommon::RegisterClass::x86_ymm: m_of << "=x";   break;
                         case AsmCommon::RegisterClass::x86_zmm: m_of << "=v";   break;
-                        case AsmCommon::RegisterClass::x86_kreg: MIR_TODO(mir_res, "Asm2 GCC - x86_kreg: " << stmt);
+                        case AsmCommon::RegisterClass::x86_kreg: m_of << "=Yk"; break;
                         }
                     TU_ARMA(Explicit, name) {
-                        MIR_TODO(mir_res, "Asm2 GCC - Explicit output reg: " << stmt);
+                        if( name == "eax" || name == "rax" ) {  m_of << "=a";   }
+                        else if( name == "ecx" || name == "rcx" ) {  m_of << "=c";   }
+                        else if( name == "edx" || name == "rdx" ) {  m_of << "=d";   }
+                        else if( name == "ebx" || name == "rbx" ) {  m_of << "=b";   }
+                        else {
+                            MIR_TODO(mir_res, "Asm2 GCC - Explicit output reg `" << name << "`: " << stmt);
+                        }
                         }
                     }
                     assert(p.output);
@@ -5190,10 +5197,18 @@ namespace {
                             case AsmCommon::RegisterClass::x86_xmm: m_of << "x";   break;
                             case AsmCommon::RegisterClass::x86_ymm: m_of << "x";   break;
                             case AsmCommon::RegisterClass::x86_zmm: m_of << "v";   break;
-                            case AsmCommon::RegisterClass::x86_kreg: MIR_TODO(mir_res, "Asm2 GCC - x86_kreg: " << stmt);
+                            case AsmCommon::RegisterClass::x86_kreg: m_of << "Yk"; break;
                             }
                         TU_ARMA(Explicit, name) {
-                            MIR_TODO(mir_res, "Asm2 GCC - Explicit output reg: " << stmt);
+                            if(false) {
+                            }
+                            else if( name == "eax" || name == "rax" ) {  m_of << "a";   }
+                            else if( name == "ecx" || name == "rcx" ) {  m_of << "c";   }
+                            else if( name == "edx" || name == "rdx" ) {  m_of << "d";   }
+                            else if( name == "ebx" || name == "rbx" ) {  m_of << "b";   }
+                            else {
+                                MIR_TODO(mir_res, "Asm2 GCC - Explicit input reg `" << name << "`: " << stmt);
+                            }
                             }
                         }
                         assert(r.input);
@@ -5789,7 +5804,6 @@ namespace {
             }
             else if( name == "raw_eq" ) {
                 // Raw byte equality (could be implemented without a memcmp call, if desired)
-                size_t size = 0;
                 emit_lvalue(e.ret_val); m_of << " = (0 == memcmp(";
                 emit_param(e.args.at(0));
                 m_of << ", ";
@@ -6607,8 +6621,8 @@ namespace {
             }
             // --- Floating Point
             // > Round to nearest integer, half-way rounds away from zero
-            else if( name == "roundf32" && name == "roundf64"
-            || name == "rintf32" || name == "rintf64" ) {
+            else if( name == "roundf32" || name == "roundf64"
+                || name == "rintf32" || name == "rintf64" ) {
                 emit_lvalue(e.ret_val); m_of << " = round" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ")";
             }
             else if( name == "fabsf32" || name == "fabsf64" ) {
