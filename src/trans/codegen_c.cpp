@@ -35,8 +35,10 @@ namespace {
     struct FmtGccAsm
     {
         const ::std::string& s;
-        FmtGccAsm(const ::std::string& s):
-            s(s)
+        bool escape_percent;
+        FmtGccAsm(const ::std::string& s, bool escape_percent)
+            : s(s)
+            , escape_percent(escape_percent)
         {
         }
     };
@@ -150,10 +152,17 @@ namespace {
     for(char ch : x.s) {
         switch(ch)
         {
-        case '\n':  os << "\\\n";   break;
-        case '\r':  os << "\\\r";   break;
+        case '\n':  os << "\\n\"\n\"";   break;
+        //case '\r':  os << "\\r";   break;
         case '\"':  os << "\\\"";   break;
-        case '%':   os << "%%";   break;
+        case '%':
+            if( x.escape_percent ) {
+                os << "%%";
+            }
+            else {
+                os << "%";
+            }
+            break;
         case '{':   os << "%{";   break;
         case '}':   os << "%}";   break;
         case '|':   os << "%|";   break;
@@ -1563,11 +1572,11 @@ namespace {
             {
                 for(const auto& f : l.frags)
                 {
-                    m_of << FmtGccAsm(f.before);
+                    m_of << FmtGccAsm(f.before, false);
                     ASSERT_BUG(Span(), f.index < se.m_symbols.size(), "Invalid argument reference in global assembly");
                     TODO(Span(), "Handle interpolation in global_asm! - " << se.m_symbols[f.index]);
                 }
-                m_of << FmtGccAsm(l.trailing);
+                m_of << FmtGccAsm(l.trailing, false);
                 m_of << ";\\n ";
             }
             if( (Target_GetCurSpec().m_arch.m_name == "x86" || Target_GetCurSpec().m_arch.m_name == "x86_64") && !se.m_options.att_syntax )
@@ -5190,13 +5199,22 @@ namespace {
                 {
                     for(const auto& f : l.frags)
                     {
-                        m_of << FmtGccAsm(f.before);
-                        //if( f.modifier != '\0' )
-                        //    MIR_TODO(mir_res, "Asm2 GCC: modifier - " << stmt);
+                        m_of << FmtGccAsm(f.before, !inputs.empty() || !outputs.empty());
                         MIR_ASSERT(mir_res, arg_mappings.at(f.index) != UINT_MAX, stmt);
-                        m_of << "%" << arg_mappings.at(f.index);
+                        m_of << "%";
+                        switch( f.modifier )
+                        {
+                        case '\0':
+                            break;
+                        case 'e':
+                            m_of << 'k';    // x86: `k` selects eax instead of rax
+                            break;
+                        default:
+                            MIR_TODO(mir_res, "Asm2 GCC: modifier " << f.modifier << " - " << stmt);
+                        }
+                        m_of << arg_mappings.at(f.index);
                     }
-                    m_of << FmtGccAsm(l.trailing);
+                    m_of << FmtGccAsm(l.trailing, !inputs.empty() || !outputs.empty());
                     m_of << ";\\n ";
                 }
                 if( (Target_GetCurSpec().m_arch.m_name == "x86" || Target_GetCurSpec().m_arch.m_name == "x86_64") && !se.options.att_syntax )
