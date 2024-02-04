@@ -429,6 +429,13 @@ class CHandler_Link:
                 else if( key == "cfg" ) {
                     emit &= check_cfg_stream(lex);
                 }
+                else if( key == "modifiers" ) {
+                    lex.getTokenCheck(TOK_EQUAL);
+                    auto v = lex.getTokenCheck(TOK_STRING).str();
+                    if(v == "")
+                        ERROR(sp, E0000, "Empty `modifiers` on extern block #[link]");
+                    // TODO: save and use the `modifiers` value
+                }
                 else {
                     TODO(sp, "Unknown attribute `#[link(" << key << ")]`");
                 }
