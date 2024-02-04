@@ -152,7 +152,7 @@ namespace {
     bool in_comment = false;
     for(const char& ch : x.s) {
         if( ch == '/' && (&ch)[1] == '/' ) {
-            if( in_comment ) {
+            if( !in_comment ) {
                 os << "\" ";
             }
             in_comment = true;
@@ -5215,6 +5215,9 @@ namespace {
                         switch( f.modifier )
                         {
                         case '\0':
+                            break;
+                        case 'r':
+                            m_of << 'q';    // x86: `q` selects rax explicitly
                             break;
                         case 'e':
                             m_of << 'k';    // x86: `k` selects eax instead of rax
