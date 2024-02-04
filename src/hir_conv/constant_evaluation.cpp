@@ -984,9 +984,9 @@ namespace MIR { namespace eval {
     {
     public:
         const unsigned  frame_index;
-        const HIR::TypeRef  ret_type;
         const std::vector<std::pair< HIR::Pattern, HIR::TypeRef>> arg_defs;
-        
+        const HIR::TypeRef  ret_type;
+
         // MIR Resolve Helper
         ::MIR::TypeResolve state;
         // Monomorphiser from the function
@@ -2150,7 +2150,7 @@ namespace HIR {
             }
             }
         TU_ARMA(SizedArray, e) {
-            size_t count;
+            size_t count = 0;
             TU_MATCH_HDRA( (e.count), {)
             TU_ARMA(Known, v) {
                 count = v;
@@ -3220,6 +3220,34 @@ namespace {
             if( auto* e = item.m_data.opt_Value() )
             {
                 auto ty = ::HIR::Enum::get_repr_type(item.m_tag_repr);
+                bool is_signed = false;
+                switch(ty.data().as_Primitive())
+                {
+                case ::HIR::CoreType::I8:
+                case ::HIR::CoreType::I16:
+                case ::HIR::CoreType::I32:
+                case ::HIR::CoreType::I64:
+                case ::HIR::CoreType::Isize:
+                case ::HIR::CoreType::I128: // TODO: Emulation
+                    is_signed = true;
+                    break;
+                case ::HIR::CoreType::Bool:
+                case ::HIR::CoreType::U8:
+                case ::HIR::CoreType::U16:
+                case ::HIR::CoreType::U32:
+                case ::HIR::CoreType::U64:
+                case ::HIR::CoreType::Usize:
+                case ::HIR::CoreType::Char:
+                case ::HIR::CoreType::U128: // TODO: Emulation
+                    is_signed = false;
+                    break;
+                case ::HIR::CoreType::F32:
+                case ::HIR::CoreType::F64:
+                    TODO(Span(), "Floating point enum tag.");
+                    break;
+                case ::HIR::CoreType::Str:
+                    BUG(Span(), "Unsized tag?!");
+                }
                 uint64_t i = 0;
                 for(auto& var : e->variants)
                 {
@@ -3233,7 +3261,12 @@ namespace {
                         {
                             auto val = eval.evaluate_constant(p, var.expr, ty.clone());
                             DEBUG("enum variant: " << p << "::" << var.name << " = " << val);
-                            i = EncodedLiteralSlice(val).read_sint().truncate_i64();
+                            if( is_signed ) {
+                                i = EncodedLiteralSlice(val).read_sint().truncate_i64();
+                            }
+                            else {
+                                i = EncodedLiteralSlice(val).read_uint().truncate_u64();
+                            }
                         }
                         catch(const Defer&)
                         {

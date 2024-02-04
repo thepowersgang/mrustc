@@ -4273,9 +4273,11 @@ namespace {
                     // Handle signed values
                     if( is_signed ) {
                         m_of << static_cast<int64_t>(e.values[odd_arm]);
+                        m_of << "ll";
                     }
                     else {
                         m_of << e.values[odd_arm];
+                        m_of << "ull";
                     }
                     m_of << ") {"; cb(odd_arm); m_of << "} else {"; cb(odd_arm == 0 ? 1 : 0); m_of << "}\n";
                     return ;
@@ -4286,10 +4288,10 @@ namespace {
                 {
                     // Handle signed values
                     if( is_signed ) {
-                        m_of << indent << "case " << static_cast<int64_t>(e.values[j]) << ": ";
+                        m_of << indent << "case " << static_cast<int64_t>(e.values[j]) << "ll: ";
                     }
                     else {
-                        m_of << indent << "case " << e.values[j] << ": ";
+                        m_of << indent << "case " << e.values[j] << "ull: ";
                     }
                     cb(j);
                     m_of << "break;\n";
@@ -7311,7 +7313,7 @@ namespace {
             case ::HIR::CoreType::I32:
             case ::HIR::CoreType::I64:
             case ::HIR::CoreType::Isize:
-                m_of << static_cast<int64_t>(ve.values[idx]);
+                m_of << static_cast<int64_t>(ve.values[idx]) << "ll";
                 break;
             case ::HIR::CoreType::Bool:
             case ::HIR::CoreType::U8:
@@ -7320,7 +7322,7 @@ namespace {
             case ::HIR::CoreType::U64:
             case ::HIR::CoreType::Usize:
             case ::HIR::CoreType::Char:
-                m_of << ve.values[idx];
+                m_of << ve.values[idx] << "ull";
                 break;
             case ::HIR::CoreType::I128: // TODO: Emulation
             case ::HIR::CoreType::U128: // TODO: Emulation
