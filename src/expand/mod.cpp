@@ -213,7 +213,12 @@ bool Expand_Attrs_CfgOnly(const ExpandState& es, AST::AttributeList& attrs)
             }
             return ;
         }
-        TODO(sp, "non-cfg attributes - " << a);
+        else if( a.name() == "allow" ) {
+            // Lazy allow allow
+        }
+        else {
+            TODO(sp, "non-cfg attributes - " << a);
+        }
         });
     return !remove;
 }
