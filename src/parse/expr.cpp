@@ -1376,6 +1376,40 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
                 return Parse_ExprVal_StructLiteral(lex, ::std::move(path));
             else
                 DEBUG("Not parsing struct literal");
+        // `builtin # <name>` - seems to be a 1.74 era hack to extend syntax
+        // - Only `builtin # offset_of( <ty>, <field>[, <subfield>]... )` is implemented
+        //   > mrustc translates this to an intrinsic call with the fields as string/integer arguments (simple to pass through)
+        case TOK_HASH:
+            if( path.is_trivial() && path.as_trivial() == "builtin" ) {
+                GET_CHECK_TOK(tok, lex, TOK_IDENT);
+                if( tok.ident() == "offset_of" ) {
+                    GET_CHECK_TOK(tok, lex, TOK_PAREN_OPEN);
+                    auto ty = Parse_Type(lex);
+                    std::vector<AST::ExprNodeP> args;
+                    do {
+                        GET_CHECK_TOK(tok, lex, TOK_COMMA);
+                        if( lex.lookahead(0) == TOK_INTEGER ) {
+                            GET_CHECK_TOK(tok, lex, TOK_INTEGER);
+                            args.push_back( NEWNODE( AST::ExprNode_Integer, tok.intval(), tok.datatype() ) );
+                        }
+                        else {
+                            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+                            args.push_back( NEWNODE( AST::ExprNode_String, tok.ident().name.c_str() ) );
+                        }
+                    } while( lex.lookahead(0) == TOK_COMMA );
+                    GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
+
+                    // TODO: How to emit this, maybe as a hacky intrinsic?
+                    // ::"#intrinsics"::offset_of::<T>("field1",...)
+                    // - Fiddly
+                    path = AST::Path(RcString("#intrinsics"), {AST::PathNode("offset_of")});
+                    path.nodes().back().args().m_entries.push_back( std::move(ty) );
+                    return NEWNODE(AST::ExprNode_CallPath, std::move(path), std::move(args));
+                }
+                else {
+                    TODO(lex.point_span(), "`builtin #` support - " << tok.ident());
+                }
+            }
         default:
             // Value
             PUTBACK(tok, lex);

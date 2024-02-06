@@ -1448,8 +1448,17 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
     TRACE_FUNCTION_FR("path = " << path, path);
     auto& path_abs = path.m_class.as_Absolute();
 
-    if( path_abs.crate != "" && path_abs.crate != context.m_crate.m_crate_name_real ) {
+    if( path_abs.crate == "#intrinsics" ) {
+        AST::AbsolutePath   ap { path_abs.crate,  {} };
+        for(const auto& n : path.nodes()) {
+            ap.nodes.push_back(n.name());
+        }
+        path.m_bindings.value.set(std::move(ap), AST::PathBinding_Value::make_Function({nullptr}));
+        return;
+    }
+    else if( path_abs.crate != "" && path_abs.crate != context.m_crate.m_crate_name_real ) {
         // TODO: Handle items from other crates (back-converting HIR paths)
+        ASSERT_BUG(sp, context.m_crate.m_extern_crates.count(path_abs.crate), "ERROR: Crate `" << path_abs.crate << "` not loaded");
         Resolve_Absolute_Path_BindAbsolute__hir_from(context, sp, mode, path,  context.m_crate.m_extern_crates.at(path_abs.crate), 0);
         return ;
     }

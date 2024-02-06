@@ -383,8 +383,32 @@ const ::HIR::Enum& ::HIR::Crate::get_enum_by_path(const Span& sp, const ::HIR::S
     }
 }
 
+namespace {
+    ::HIR::ValueItem    g_val_item_intrnsic_offsetof {
+        ::HIR::Function {
+            ::HIR::Function::Receiver::Free,
+            ::HIR::GenericParams {},
+            {},
+            HIR::TypeRef(HIR::CoreType::Usize),
+            {}
+        }
+    };
+}
+
 const ::HIR::ValueItem& ::HIR::Crate::get_valitem_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_crate_name) const
 {
+    if( path.m_crate_name == "#intrinsics" ) {
+        ASSERT_BUG(sp, path.m_components.size() == 1, "");
+        if( path.m_components.back() == "offset_of" ) {
+            if( ! g_val_item_intrnsic_offsetof.as_Function().m_variadic ) {
+                auto& v =  g_val_item_intrnsic_offsetof.as_Function();
+                v.m_variadic = true;
+                v.m_params.m_types.push_back(HIR::TypeParamDef { RcString("T"), {}, true });
+            }
+            return g_val_item_intrnsic_offsetof;
+        }
+        TODO(sp, "Get intrinsic " << path.m_components.back());
+    }
     if( path.m_crate_name == this->m_crate_name && path.m_components.size() == 1 ) {
         auto i = std::find_if(m_new_values.begin(), m_new_values.end(), [&](const auto& v){ return v.first == path.m_components.back(); });
         if( i != m_new_values.end() ) {

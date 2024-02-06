@@ -2097,7 +2097,53 @@ namespace {
             {
                 const auto& gpath = node.m_path.m_data.as_Generic();
                 const auto& fcn = m_builder.crate().get_function_by_path(node.span(), gpath.m_path);
-                if( fcn.m_abi == "rust-intrinsic" )
+                if( gpath.m_path.m_crate_name == "#intrinsics" )
+                {
+                    const auto& name = gpath.m_path.m_components.back();
+                    if( name == "offset_of" ) {
+                        const auto& ty = gpath.m_params.m_types.at(0);
+                        const auto* cur_ty = &ty;
+                        size_t base_ofs = 0;
+                        for(size_t i = 0; i < values.size(); i ++)
+                        {
+                            ASSERT_BUG(node.span(), values[i].is_Constant(), "Arguments to `offset_of` must be constants");
+                            size_t idx = 0;
+                            TU_MATCH_HDRA( (values[i].as_Constant()), { )
+                            default:
+                                TODO(node.span(), "offset_of: field " << values[i]);
+                            TU_ARMA(StaticString, field_name) {
+                                if( false ) {
+                                }
+                                else if( const auto* bep = cur_ty->data().as_Path().binding.opt_Struct() ) {
+                                    const auto& str = **bep;
+                                    const auto& fields = str.m_data.as_Named();
+                                    idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto& x){ return x.first == field_name; } ) - fields.begin();
+                                }
+                                else if( const auto* bep = cur_ty->data().as_Path().binding.opt_Union() ) {
+                                    const auto& unm = **bep;
+                                    const auto& fields = unm.m_variants;
+                                    idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto& x){ return x.first == field_name; } ) - fields.begin();
+                                }
+                                else {
+                                    TODO(node.span(), "offset_of: named field/variant - " << field_name);
+                                }
+                                }
+                            }
+                            auto* repr = Target_GetTypeRepr(node.span(), m_builder.resolve(), *cur_ty);
+                            if(!repr) {
+                                ERROR(node.span(), E0000, "Calling `offset_of!` on type with non-defined repr");
+                            }
+                            cur_ty = &repr->fields[idx].ty;
+                            base_ofs += repr->fields[idx].offset;
+                        }
+                        m_builder.set_result(node.span(), ::MIR::Constant::make_Uint({ U128(base_ofs), HIR::CoreType::Usize }));
+                    }
+                    else {
+                        ERROR(node.span(), E0000, "Unknown builtin - " << gpath.m_path);
+                    }
+                    return;
+                }
+                else if( fcn.m_abi == "rust-intrinsic" )
                 {
                     m_builder.end_block(::MIR::Terminator::make_Call({
                         next_block, panic_block,
@@ -2105,7 +2151,7 @@ namespace {
                         mv$(values)
                         }));
                 }
-                if( fcn.m_abi == "platform-intrinsic" )
+                else if( fcn.m_abi == "platform-intrinsic" )
                 {
                     m_builder.end_block(::MIR::Terminator::make_Call({
                         next_block, panic_block,
@@ -2937,7 +2983,7 @@ void HIR_GenerateMIR_Expr(const ::HIR::Crate& crate, const ::HIR::ItemPath& path
         resolve.set_both_generics_raw(expr_ptr.m_state->m_impl_generics, expr_ptr.m_state->m_item_generics);
         expr_ptr.set_mir( LowerMIR(resolve, path, expr_ptr, res_ty, args) );
         // Run cleanup to simplify consteval?
-        // - This ends up running before things like vtable generation
+        // - This ends up running before things like vtable generation, so parts of cleanup won't work.
         //MIR_Cleanup(resolve, path, *expr_ptr.m_mir, args, res_ty);
     }
 }
