@@ -31,6 +31,7 @@ ExprNodeP Parse_ExprBlockLine_Stmt(TokenStream& lex, bool& has_semicolon);
 //ExprNodeP Parse_Stmt(TokenStream& lex);   // common.hpp
 ExprNodeP Parse_Stmt_Let(TokenStream& lex);
 ExprNodeP Parse_Expr0(TokenStream& lex);
+ExprNodeP Parse_Expr1_5(TokenStream& lex);  // Boolean OR
 ExprNodeP Parse_Expr3(TokenStream& lex);
 ExprNodeP Parse_IfStmt(TokenStream& lex);
 ExprNodeP Parse_WhileStmt(TokenStream& lex, Ident lifetime);
@@ -404,41 +405,45 @@ ExprNodeP Parse_ExprBlockLine_Stmt(TokenStream& lex, bool& has_semicolon)
     return ret;
 }
 
-// Note: This is called jsut after the initial `let` has been consumed
 std::vector<AST::IfLet_Condition> Parse_IfLetChain(TokenStream& lex)
 {
     Token   tok;
     std::vector<AST::IfLet_Condition>   conditions;
-    auto pat = Parse_Pattern(lex, AllowOrPattern::Yes);
-    GET_CHECK_TOK(tok, lex, TOK_EQUAL);
-    ExprNodeP val;
-    {
-        SET_PARSE_FLAG(lex, disallow_struct_literal);
-        val = Parse_Expr3(lex); // This is just after `||` and `&&`
-    }
-    conditions.push_back(AST::IfLet_Condition { box$(pat), std::move(val) });
-
-    if( lex.getTokenIf(TOK_DOUBLE_AMP) ) {
-        do {
-            if( lex.getTokenIf(TOK_RWORD_LET) ) {
-                std::vector<AST::IfLet_Condition>   conditions;
-                auto pat = Parse_Pattern(lex, AllowOrPattern::Yes);
-                GET_CHECK_TOK(tok, lex, TOK_EQUAL);
-                ExprNodeP val;
-                {
-                    SET_PARSE_FLAG(lex, disallow_struct_literal);
-                    val = Parse_Expr3(lex); // This is just after `||` and `&&`
-                }
-                conditions.push_back(AST::IfLet_Condition { box$(pat), std::move(val) });
+    bool had_pat = false;
+    do {
+        if( lex.getTokenIf(TOK_RWORD_LET) ) {
+            auto pat = Parse_Pattern(lex, AllowOrPattern::Yes);
+            GET_CHECK_TOK(tok, lex, TOK_EQUAL);
+            ExprNodeP val;
+            {
+                SET_PARSE_FLAG(lex, disallow_struct_literal);
+                val = Parse_Expr3(lex); // This is just after `||` and `&&`
             }
-            else {
-                conditions.push_back(AST::IfLet_Condition { std::unique_ptr<AST::Pattern>(), Parse_Expr3(lex) });
-            }
-        } while( lex.getTokenIf(TOK_DOUBLE_AMP) );
-    }
+            conditions.push_back(AST::IfLet_Condition { box$(pat), std::move(val) });
+            had_pat = true;
+        }
+        else {
+            conditions.push_back(AST::IfLet_Condition { std::unique_ptr<AST::Pattern>(), Parse_Expr3(lex) });
+        }
+    } while( lex.getTokenIf(TOK_DOUBLE_AMP) );
 
     if( lex.lookahead(0) == TOK_DOUBLE_PIPE ) {
-        TODO(lex.point_span(), "lazy boolean or in let chains not yet implemented (not yet valid rust, at 1.75)");
+        if( had_pat ) {
+            TODO(lex.point_span(), "lazy boolean or in let chains not yet implemented (not yet valid rust, at 1.75)");
+        }
+        else {
+            // Fall back to parsing as a standard expression
+            auto prev = ::std::move(conditions[0].value);
+            for(size_t i = 1; i < conditions.size(); i ++) {
+                prev = NEWNODE(AST::ExprNode_BinOp, AST::ExprNode_BinOp::BOOLAND, ::std::move(prev), ::std::move(conditions[i].value));
+            }
+            GET_CHECK_TOK(tok, lex, TOK_DOUBLE_PIPE);
+            auto n = Parse_Expr1_5(lex);    // Boolean or
+            auto rv = NEWNODE( AST::ExprNode_BinOp, AST::ExprNode_BinOp::BOOLOR, ::std::move(prev), ::std::move(n) );
+
+            conditions.clear();
+            conditions.push_back(AST::IfLet_Condition { std::unique_ptr<AST::Pattern>(), std::move(rv) });
+        }
     }
 
     return conditions;
@@ -447,15 +452,12 @@ std::vector<AST::IfLet_Condition> Parse_IfLetChain(TokenStream& lex)
 /// While loop (either as a statement, or as part of an expression)
 ExprNodeP Parse_WhileStmt(TokenStream& lex, Ident lifetime)
 {
-    Token   tok;
-
-    if( GET_TOK(tok, lex) == TOK_RWORD_LET ) {
+    if( lex.lookahead(0) == TOK_RWORD_LET ) {
         // TODO: Pattern list (same as match)?
         auto conditions = Parse_IfLetChain(lex);
         return NEWNODE( AST::ExprNode_WhileLet, lifetime, ::std::move(conditions), Parse_ExprBlockNode(lex) );
     }
     else {
-        PUTBACK(tok, lex);
         ExprNodeP cnd;
         {
             SET_PARSE_FLAG(lex, disallow_struct_literal);
@@ -491,11 +493,16 @@ ExprNodeP Parse_IfStmt(TokenStream& lex)
 
     {
         SET_PARSE_FLAG(lex, disallow_struct_literal);
-        if( GET_TOK(tok, lex) == TOK_RWORD_LET ) {
+        if( TARGETVER_LEAST_1_74 || lex.lookahead(0) == TOK_RWORD_LET ) {
             conditions = Parse_IfLetChain(lex);
+            // If the conditions are just booleans, emit as `if`
+            if( conditions.size() == 1 && !conditions[0].opt_pat ) {
+                cond = std::move(conditions[0].value);
+                conditions.clear();
+            }
         }
         else {
-            PUTBACK(tok, lex);
+            // TODO: `if foo && let bar` is valid
             cond = Parse_Expr0(lex);
         }
     }
