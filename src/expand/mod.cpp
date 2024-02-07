@@ -1246,12 +1246,14 @@ struct CExpandExpr:
     void visit(::AST::ExprNode_String& node) override { }
     void visit(::AST::ExprNode_ByteString& node) override { }
     void visit(::AST::ExprNode_Closure& node) override {
+        auto try_stack = ::std::move(m_try_stack);
         for(auto& arg : node.m_args) {
             Expand_Pattern(this->expand_state, this->cur_mod(),  arg.first, false);
             Expand_Type(this->expand_state, this->cur_mod(),  arg.second);
         }
         Expand_Type(this->expand_state, this->cur_mod(),  node.m_return);
         this->visit_nodelete(node, node.m_code);
+        m_try_stack = std::move(try_stack);
     }
     void visit(::AST::ExprNode_StructLiteral& node) override {
         this->visit_nodelete(node, node.m_base_value);
