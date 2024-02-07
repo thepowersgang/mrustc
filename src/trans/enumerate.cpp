@@ -930,6 +930,14 @@ namespace
                             const auto& s = mir_res.m_resolve.m_crate.get_struct_by_path(sp, p);
                             tv.visit_type(HIR::TypeRef::new_path(p, &s));
                         }
+                        // In 1.74+ the `offset` intrinsic takes a pointer as its generic
+                        else if( e2.name == "offset" ) {
+                            if( TARGETVER_LEAST_1_74 ) {
+                                HIR::TypeRef tmp;
+                                const auto& ty = pp.maybe_monomorph(tv.m_resolve, tmp, e2.params.m_types.at(0));
+                                tv.visit_type(ty.data().as_Pointer().inner);
+                            }
+                        }
                     }
                     if( block.terminator.is_Call() && block.terminator.as_Call().fcn.is_Path() ) {
                         const auto& p = block.terminator.as_Call().fcn.as_Path();
