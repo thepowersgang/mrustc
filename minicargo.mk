@@ -129,6 +129,9 @@ ifeq ($(RUSTC_VERSION),1.54.0)
 endif
 
 SRCDIR_RUST_TESTS := $(RUSTCSRC)src/test/
+ifeq ($(RUSTC_VERSION),1.74.0)
+SRCDIR_RUST_TESTS := $(RUSTCSRC)tests/
+endif
 
 LLVM_CONFIG := $(RUSTCSRC)build/bin/llvm-config
 ifeq ($(shell uname -s || echo not),Darwin)
