@@ -1544,7 +1544,7 @@ namespace {
                     }
                 }
 
-                m_of << indent << Trans_Mangle(box_free) << "("; 
+                m_of << indent << Trans_Mangle(box_free) << "(";
                 if( TARGETVER_LEAST_1_29 ) {
                     // In 1.29, `box_free` takes Unique, so pass the Unique within the Box
                     emit_lvalue(slot); m_of << "._0";
@@ -1572,7 +1572,7 @@ namespace {
                 emit_destructor_call(slot, box_type, false, indent_level);
             }
         }
-        
+
         void emit_global_asm(const ::HIR::GlobalAssembly& se) override
         {
             m_of << "__asm__ (\"";

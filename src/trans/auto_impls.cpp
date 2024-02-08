@@ -807,7 +807,12 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
                 HIR::TypeRef    tmp;
                 ASSERT_BUG(sp, mir_res.get_lvalue_type(tmp, inner_val) == *ity, "Hard-coded box pointer path didn't result in the inner type");
                 builder.push_stmt_drop(std::move(inner_val));
+            }
+
+            if( TARGETVER_MOST_1_54 && state.resolve.is_type_owned_box(ty) )
+            {
                 // Shallow drop the box (triggering a free call in the backend)
+                // - If this is 1.74+, emit a standard Drop::drop call that will handle the dealloc
                 builder.push_stmt(MIR::Statement::make_Drop({ MIR::eDropKind::SHALLOW, ::MIR::LValue::new_Deref(builder.self.clone()), ~0u }));
             }
             else if( state.resolve.type_needs_drop_glue(sp, ty) )
