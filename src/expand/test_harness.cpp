@@ -84,7 +84,7 @@ void Expand_TestHarness(::AST::Crate& crate)
             }
             desc_vals.push_back({ {}, "should_panic", mv$(should_panic_val) });
         }
-        if( TARGETVER_LEAST_1_29 )
+        if( TARGETVER_LEAST_1_29 && TARGETVER_MOST_1_54 )
         {
             // TODO: Get this from attributes
             desc_vals.push_back({ {}, "allow_fail", NEWNODE(_Bool, false) });
@@ -96,15 +96,33 @@ void Expand_TestHarness(::AST::Crate& crate)
             desc_vals.push_back({ {}, "no_run", NEWNODE(_Bool, false) });
             desc_vals.push_back({ {}, "test_type", NEWNODE(_NamedValue, ::AST::Path(c_test, { AST::PathNode("TestType"), AST::PathNode("UnitTest") })) });
         }
+        if( TARGETVER_LEAST_1_74 )
+        {
+            desc_vals.push_back({ {}, "ignore_message", NEWNODE(_NamedValue, ::AST::Path(crate.m_ext_cratename_std, {AST::PathNode("option"), AST::PathNode("Option"), AST::PathNode("None")})) });
+            desc_vals.push_back({ {}, "source_file", NEWNODE(_String, test.span->filename.c_str()) });
+            desc_vals.push_back({ {}, "start_line", NEWNODE(_Integer, U128(test.span->start_line), CORETYPE_UINT) });
+            desc_vals.push_back({ {}, "start_col" , NEWNODE(_Integer, U128(test.span->start_ofs ), CORETYPE_UINT) });
+            desc_vals.push_back({ {}, "end_line"  , NEWNODE(_Integer, U128(test.span->end_line  ), CORETYPE_UINT) });
+            desc_vals.push_back({ {}, "end_col"   , NEWNODE(_Integer, U128(test.span->end_ofs   ), CORETYPE_UINT) });
+        }
         auto desc_expr = NEWNODE(_StructLiteral,  ::AST::Path(c_test, { ::AST::PathNode("TestDesc")}), nullptr, mv$(desc_vals));
 
         ::AST::ExprNode_StructLiteral::t_values   descandfn_vals;
         descandfn_vals.push_back({ {}, RcString::new_interned("desc"), mv$(desc_expr) });
 
+        auto test_fcn_node = NEWNODE(_NamedValue, AST::Path(test.path));
+        if(TARGETVER_LEAST_1_74) {
+            // Convert `fn()` into `fn()->Result<(),String>`
+            // Use `|| ::test::assert_test_result( fcn() )`
+            test_fcn_node = NEWNODE(_Closure, {}, TypeRef(Span()),
+                NEWNODE(_CallPath, ::AST::Path(c_test, { ::AST::PathNode("assert_test_result") }),
+                    ::make_vec1( NEWNODE(_CallPath, AST::Path(test.path), {}) )
+                    ), false, false);
+        }
         auto test_type_var_name  = test.is_benchmark ? "StaticBenchFn" : "StaticTestFn";
         descandfn_vals.push_back({ {}, RcString::new_interned("testfn"), NEWNODE(_CallPath,
                         ::AST::Path(c_test, { ::AST::PathNode(test_type_var_name) }),
-                        ::make_vec1( NEWNODE(_NamedValue, AST::Path(test.path)) )
+                        ::make_vec1( std::move(test_fcn_node) )
                         ) });
 
         test_nodes.push_back( NEWNODE(_StructLiteral,  ::AST::Path(c_test, { ::AST::PathNode("TestDescAndFn")}), nullptr, mv$(descandfn_vals) ) );

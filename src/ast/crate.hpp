@@ -19,6 +19,7 @@ class ExternCrate;
 class TestDesc
 {
 public:
+    Span    span;
     ::AST::AbsolutePath path;
     ::std::string   name;
     bool    ignore = false;
