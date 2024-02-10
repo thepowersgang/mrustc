@@ -360,6 +360,10 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const TomlKeyValue& key_val
             {
                 // Unknown.
             }
+            else if( key == "rust-version" )
+            {
+                // Minimum supported rust version, don't care?
+            }
             else if( key == "links" )
             {
                 if(rv.m_links != "" )
@@ -501,13 +505,10 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const TomlKeyValue& key_val
             const auto& real_section = key_val.path[2];
             // Check if `cfg` currently applies.
             // - It can be a target spec, or a cfg(foo) same as rustc
-#if 1
-            auto& dep_group = rv.m_target_dependencies[cfg];
-#else
-            bool success;
+            // Parse and validate early
             if( cfg.substr(0, 4) == "cfg(" ) {
                 try {
-                    success = Cfg_Check(cfg.c_str());
+                    Cfg_Check(cfg.c_str(), {});
                 }
                 catch(const std::exception& e)
                 {
@@ -516,13 +517,10 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const TomlKeyValue& key_val
             }
             else {
                 // It's a target name
-                success = (cfg == TARGET_NAME);
             }
-            auto& dep_group = rv.m_dependencies;
 
-            // If so, parse as if the path was `real_section....`
-            if( success )
-#endif
+            auto& dep_group = rv.m_target_dependencies[cfg];
+
             {
                 if( real_section == "dependencies"
                     || real_section == "dev-dependencies" 
@@ -589,7 +587,7 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const TomlKeyValue& key_val
         else if( section == "cargo-features" )
         {
             //assert(key_val.path.size() == 1);
-            key_val.value.m_sub_values;
+            //key_val.value.m_sub_values;
         }
         else
         {
@@ -685,6 +683,8 @@ namespace
             {
                 target.m_required_features.push_back( sv.as_string() );
             }
+        }
+        else if( key == "doc-scrape-examples" ) {
         }
         else
         {
