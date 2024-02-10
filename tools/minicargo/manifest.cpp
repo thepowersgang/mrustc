@@ -400,8 +400,13 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const TomlKeyValue& key_val
             }
             else if( key == "edition" )
             {
-                assert(key_val.path.size() == 2);
-                parse_edition(rv.m_edition, eh, key_val.value);
+                if( key_val.path.size() != 2 ) {
+                    // Can be `edition.workspace = true`
+                    eh.error("Malformed `edition`?");
+                }
+                else {
+                    parse_edition(rv.m_edition, eh, key_val.value);
+                }
             }
             else
             {
@@ -638,7 +643,7 @@ namespace
             assert(kv.path.size() == base_idx + 1);
             target.m_is_plugin = kv.value.as_bool();
         }
-        else if( key == "proc-macro" )
+        else if( key == "proc-macro" || key == "proc_macro" /* rustc-1.74.0-src/vendor/unic-langid-macros-impl/Cargo.toml */ )
         {
             assert(kv.path.size() == base_idx + 1);
             target.m_is_proc_macro = kv.value.as_bool();
