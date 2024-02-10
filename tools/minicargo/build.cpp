@@ -237,7 +237,15 @@ BuildList::BuildList(const PackageManifest& manifest, const BuildOptions& opts):
         }
         void sort_list()
         {
-            ::std::sort(m_list.begin(), m_list.end(), [](const auto& a, const auto& b){ return a.level > b.level; });
+            ::std::sort(m_list.begin(), m_list.end(), [](const Ent& a, const Ent& b){
+                if(a.level != b.level)
+                    return a.level > b.level;
+                if(a.package->name() != b.package->name())
+                    return a.package->name() > b.package->name();
+                if(a.package->version() != b.package->version())
+                    return a.package->version() > b.package->version();
+                return false;
+                });
 
             // Needed to deduplicate after sorting (`add_package` doesn't fully dedup)
             for(auto it = m_list.begin(); it != m_list.end(); )
