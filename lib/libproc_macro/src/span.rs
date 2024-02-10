@@ -27,4 +27,9 @@ impl Span
 		Span {
 		}
 	}
+
+    // 1.66
+    pub fn source_text(&self) -> Option<String> {
+        None
+    }
 }

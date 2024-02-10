@@ -83,3 +83,5 @@
 - new `Cargo.toml` keys
 - `Cargo.toml` can pull `edition` from the workspace (`cargo`'s `Cargo.toml`)
 - Cargo features prefixed with `dep:`
+- `proc_macro::is_available`
+- `FromStr` impls for `proc_macro::Literal` etc

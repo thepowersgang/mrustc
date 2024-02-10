@@ -63,7 +63,7 @@ static SYMS: [&[u8]; 53] = [
     ];
 
 pub struct LexError {
-    inner: &'static str,
+    pub(crate) inner: &'static str,
 }
 impl ::std::fmt::Display for LexError {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
@@ -75,6 +75,7 @@ impl ::std::fmt::Debug for LexError {
         write!(f, "LexError({})", self.inner)
     }
 }
+
 impl ::std::str::FromStr for TokenStream {
     type Err = LexError;
     fn from_str(src: &str) -> Result<TokenStream, LexError> {

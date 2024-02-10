@@ -175,9 +175,14 @@ pub struct MacroDesc
     handler: MacroType,
 }
 
+static mut IS_AVAILABLE: bool = false;
 #[doc(hidden)]
 pub fn main(macros: &[MacroDesc])
 {
+    // SAFE: This is the entrypoint, so no threads running yet
+    unsafe {
+        IS_AVAILABLE = true;
+    }
     //::env_logger::init();
 
     let mac_name = ::std::env::args().nth(1).expect("Was not passed a macro name");
@@ -209,3 +214,7 @@ pub fn main(macros: &[MacroDesc])
     panic!("Unknown macro name '{}'", mac_name);
 }
 
+pub fn is_available() -> bool {
+    // SAFE: Reading from a value only ever written in single-threaded code
+    unsafe { IS_AVAILABLE }
+}

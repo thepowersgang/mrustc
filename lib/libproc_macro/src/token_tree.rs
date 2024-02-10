@@ -103,6 +103,12 @@ impl Group {
     pub fn set_span(&mut self, span: Span) {
         let _ = span;
     }
+    pub fn span_open(&self) -> Span {
+        self.span
+    }
+    pub fn span_close(&self) -> Span {
+        self.span
+    }
 }
 
 #[derive(Copy,Clone,Debug,Eq,PartialEq)]
@@ -196,6 +202,17 @@ pub enum Spacing {
 pub struct Literal {
     pub(crate) span: Span,
     pub(crate) val: LiteralValue,
+}
+impl ::std::str::FromStr for Literal
+{
+    type Err = crate::lex::LexError;
+    fn from_str(v: &str) -> Result<Self,Self::Err> {
+        let mut ts = crate::TokenStream::from_str(v)?.inner;
+        match &mut ts[..] {
+        &mut [TokenTree::Literal(ref mut rv)] => Ok(::std::mem::replace(rv, Literal { span: Span {}, val: LiteralValue::CharLit('\0') })),
+        _ => Err(crate::lex::LexError { inner: "Wasn't a literal" }),
+        }
+    }
 }
 impl ::std::fmt::Display for Literal
 {
