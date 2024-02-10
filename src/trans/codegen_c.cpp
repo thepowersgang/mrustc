@@ -1569,7 +1569,8 @@ namespace {
             }
             else
             {
-                emit_destructor_call(slot, box_type, false, indent_level);
+                auto p = ::HIR::Path(box_type.clone(), m_crate.get_lang_item_path(Span(), "drop"), "drop");
+                m_of << indent << Trans_Mangle(p) << "(&"; emit_lvalue(slot); m_of << ");\n";
             }
         }
 
