@@ -80,4 +80,6 @@
 - `offset_of!` macro expands to something interesting - `{builtin # offset_of(...)}`
 - `if foo && let Some(bar) = baz` is also valid.
 - `#[linkage="extern_weak"]` - Weak linking via nullptr/option
+- new `Cargo.toml` keys
+- `Cargo.toml` can pull `edition` from the workspace (`cargo`'s `Cargo.toml`)
 
