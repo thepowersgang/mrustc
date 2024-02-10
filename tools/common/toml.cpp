@@ -51,8 +51,8 @@ struct Token
     }
 
 
-    static Token lex_from(::std::ifstream& is);
-    static Token lex_from_inner(::std::ifstream& is);
+    static Token lex_from(::std::ifstream& is, unsigned& line);
+    static Token lex_from_inner(::std::ifstream& is, unsigned& line);
 
     const ::std::string& as_string() const {
         assert(m_type == Type::Ident || m_type == Type::String);
@@ -122,13 +122,17 @@ TomlKeyValue TomlFile::get_next_value()
                     is_array = true;
                     t = m_lexer.get_token();
                 }
-                assert(t.m_type == Token::Type::Ident || t.m_type == Token::Type::String);
+                if( !(t.m_type == Token::Type::Ident || t.m_type == Token::Type::String) ) {
+                    throw ::std::runtime_error(::format(m_lexer, ": Unexpected token in block name - ", t));
+                }
                 m_current_block.push_back(t.as_string());
                 if(is_array)
                 {
                     m_current_block.push_back(::format(m_array_counts[t.as_string()]++));
                     t = m_lexer.get_token();
-                    assert(t.m_type == Token::Type::SquareClose);
+                    if( t.m_type != Token::Type::SquareClose ) {
+                        throw ::std::runtime_error(::format(m_lexer, ": Unexpected token after array name - ", t));
+                    }
                 }
 
                 t = m_lexer.get_token();
@@ -181,6 +185,7 @@ TomlKeyValue TomlFile::get_next_value()
         t = m_lexer.get_token();
     }
 
+    // Note: Should be impossible, as it's the break condition above
     assert(t.m_type == Token::Type::Assign);
     t = m_lexer.get_token();
 
@@ -299,7 +304,7 @@ TomlLexer::TomlLexer(const ::std::string& filename)
 }
 Token TomlLexer::get_token()
 {
-    auto rv = Token::lex_from(m_if);
+    auto rv = Token::lex_from(m_if, m_line);
     if( rv.m_type == Token::Type::Newline )
     {
         m_line ++;
@@ -312,13 +317,13 @@ Token TomlLexer::get_token()
     return os;
 }
 
-Token Token::lex_from(::std::ifstream& is)
+Token Token::lex_from(::std::ifstream& is, unsigned& m_line)
 {
-    auto rv = Token::lex_from_inner(is);
+    auto rv = Token::lex_from_inner(is, m_line);
     //DEBUG("lex_from: " << rv);
     return rv;
 }
-Token Token::lex_from_inner(::std::ifstream& is)
+Token Token::lex_from_inner(::std::ifstream& is, unsigned& m_line)
 {
     int c;
     do
@@ -399,6 +404,9 @@ Token Token::lex_from_inner(::std::ifstream& is)
                         throw ::std::runtime_error("TODO: Escaped sequences in strings (triple)");
                     }
                     str += (char)c;
+                    if( c == '\n' ) {
+                        m_line ++;
+                    }
                 }
             }
         }
@@ -421,6 +429,9 @@ Token Token::lex_from_inner(::std::ifstream& is)
                     }
                     c = is.get();
                     continue ;
+                }
+                if( c == '\n' ) {
+                    m_line ++;
                 }
                 str += (char)c;
                 c = is.get();
