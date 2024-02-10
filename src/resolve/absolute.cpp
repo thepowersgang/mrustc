@@ -1456,6 +1456,10 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
         path.m_bindings.value.set(std::move(ap), AST::PathBinding_Value::make_Function({nullptr}));
         return;
     }
+    else if( path_abs.crate == CRATE_BUILTINS ) {
+        ASSERT_BUG(sp, path.m_bindings.has_binding(), "");
+        return ;
+    }
     else if( path_abs.crate != "" && path_abs.crate != context.m_crate.m_crate_name_real ) {
         // TODO: Handle items from other crates (back-converting HIR paths)
         ASSERT_BUG(sp, context.m_crate.m_extern_crates.count(path_abs.crate), "ERROR: Crate `" << path_abs.crate << "` not loaded");

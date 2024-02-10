@@ -86,7 +86,9 @@ void Resolve_Use(::AST::Crate& crate)
             if( ct != CORETYPE_INVAL ) {
                 DEBUG("Found builtin type for `use` - " << path);
                 // TODO: only if the item doesn't already exist?
-                return AST::Path(CRATE_BUILTINS, path.nodes());
+                AST::Path   rv { CRATE_BUILTINS, path.nodes() };
+                rv.m_bindings.type.set( AST::AbsolutePath(CRATE_BUILTINS, {path.nodes().back().name()}), {} );
+                return rv;
             }
         }
 
@@ -943,7 +945,7 @@ namespace {
             }
             else {
             }
-            
+
             if( rv.macro.is_Unbound() )
             {
                 TU_MATCH_HDRA( (*item_ptr), {)
@@ -1006,7 +1008,12 @@ namespace {
         {
             ::AST::Path::Bindings   rv;
             ASSERT_BUG(span, !path_abs.nodes.empty(), "");
-            rv.macro.set( AST::AbsolutePath(CRATE_BUILTINS, {path_abs.nodes.back().name()}), AST::PathBinding_Macro::make_MacroRules({ nullptr }) );
+            if( coretype_fromstring(path.nodes()[0].name().c_str()) != CORETYPE_INVAL ) {
+                rv.type.set( AST::AbsolutePath(CRATE_BUILTINS, {path_abs.nodes.back().name()}), AST::PathBinding_Type::make_TypeAlias({nullptr}) );
+            }
+            else {
+                rv.macro.set( AST::AbsolutePath(CRATE_BUILTINS, {path_abs.nodes.back().name()}), AST::PathBinding_Macro::make_MacroRules({ nullptr }) );
+            }
             return rv;
         }
 
