@@ -161,6 +161,29 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
         throw ::std::runtime_error(format("Manifest file ", path, " doesn't specify a package name"));
     }
 
+    if( rv.m_enable_implicit_optional_dep_features )
+    {
+        auto cb2 = [&](const PackageRef& dep) {
+            rv.m_features[dep.key()].push_back( "dep:" + dep.key() );
+            };
+        auto cb = [&](const PackageManifest::Dependencies& deps) {
+            for(const auto& dep : deps.main) {
+                cb2(dep);
+            }
+            for(const auto& dep : deps.build) {
+                cb2(dep);
+            }
+            for(const auto& dep : deps.dev) {
+                cb2(dep);
+            }
+            };
+
+        cb(rv.m_dependencies);
+        for(const auto& td : rv.m_target_dependencies) {
+            cb(td.second);
+        }
+    }
+
     // Default targets
     // - If there's no library section, but src/lib.rs exists, add one
     if( ! ::std::any_of(rv.m_targets.begin(), rv.m_targets.end(), [](const auto& x){ return x.m_type == PackageTarget::Type::Lib; }) )
@@ -574,6 +597,9 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const TomlKeyValue& key_val
             for(const auto& sv : key_val.value.m_sub_values)
             {
                 list->push_back( sv.as_string() );
+                if( list->back().compare(0, 4, "dep:") == 0 ) {
+                    rv.m_enable_implicit_optional_dep_features = false;
+                }
             }
         }
         else if( section == "workspace" )
@@ -601,7 +627,7 @@ void PackageManifest::fill_from_kv(ErrorHandler& eh, const TomlKeyValue& key_val
             // TODO: Prevent this from firing multiple times in a row.
         }
     }
-    }
+}
 
 namespace
 {
@@ -955,7 +981,7 @@ void PackageManifest::set_features(const ::std::vector<::std::string>& features,
         }
 
         iter_all_deps([&](PackageRef& dep) {
-            if(dep.m_key == featname) {
+            if( "dep:"+dep.m_key == featname ) {
                 dep.m_optional_enabled = true;
             }
             });

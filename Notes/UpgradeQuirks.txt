@@ -82,4 +82,4 @@
 - `#[linkage="extern_weak"]` - Weak linking via nullptr/option
 - new `Cargo.toml` keys
 - `Cargo.toml` can pull `edition` from the workspace (`cargo`'s `Cargo.toml`)
-
+- Cargo features prefixed with `dep:`

@@ -300,6 +300,9 @@ class PackageManifest
     ::std::vector<::std::string>    m_default_features;
     ::std::vector<::std::string>    m_active_features;
 
+    // Cleared if any features mention `dep:`
+    bool m_enable_implicit_optional_dep_features = true;
+
     PackageManifest();
 
 public:
