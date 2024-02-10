@@ -111,32 +111,36 @@ TomlKeyValue TomlFile::get_next_value()
         case Token::Type::Eof:
             // Empty return indicates the end of the list
             return TomlKeyValue {};
-        case Token::Type::SquareOpen:
+        case Token::Type::SquareOpen: {
             m_current_block.clear();
-            do
+
+            t = m_lexer.get_token();
+            bool is_array = false;
+            if(t.m_type == Token::Type::SquareOpen)
             {
+                is_array = true;
                 t = m_lexer.get_token();
-                bool is_array = false;
-                if(t.m_type == Token::Type::SquareOpen)
-                {
-                    is_array = true;
-                    t = m_lexer.get_token();
-                }
+            }
+            for(;;)
+            {
                 if( !(t.m_type == Token::Type::Ident || t.m_type == Token::Type::String) ) {
                     throw ::std::runtime_error(::format(m_lexer, ": Unexpected token in block name - ", t));
                 }
                 m_current_block.push_back(t.as_string());
-                if(is_array)
-                {
-                    m_current_block.push_back(::format(m_array_counts[t.as_string()]++));
-                    t = m_lexer.get_token();
-                    if( t.m_type != Token::Type::SquareClose ) {
-                        throw ::std::runtime_error(::format(m_lexer, ": Unexpected token after array name - ", t));
-                    }
-                }
 
                 t = m_lexer.get_token();
-            } while(t.m_type == Token::Type::Dot);
+                if( t.m_type != Token::Type::Dot )
+                    break;
+                t = m_lexer.get_token();
+            }
+            if(is_array)
+            {
+                m_current_block.push_back(::format(m_array_counts[m_current_block.back()]++));
+                if( t.m_type != Token::Type::SquareClose ) {
+                    throw ::std::runtime_error(::format(m_lexer, ": Unexpected token after array name - ", t));
+                }
+                t = m_lexer.get_token();
+            }
             if( t.m_type != Token::Type::SquareClose )
             {
                 throw ::std::runtime_error(::format(m_lexer, ": Unexpected token in block header - ", t));
@@ -148,7 +152,7 @@ TomlKeyValue TomlFile::get_next_value()
             }
             DEBUG("Start block " << m_current_block);
             // Recurse!
-            return get_next_value();
+            return get_next_value(); }
         default:
             break;
         }
@@ -323,6 +327,19 @@ Token Token::lex_from(::std::ifstream& is, unsigned& m_line)
     //DEBUG("lex_from: " << rv);
     return rv;
 }
+namespace {
+    void handle_escape(::std::string& str, ::std::ifstream& is) {
+        char c = is.get();
+        switch(c)
+        {
+        case '"':  str += '"'; break;
+        case '\\': str += '\\'; break;
+        case 'n':  str += '\n'; break;
+        default:
+            throw ::std::runtime_error(format("toml.cpp handle_escape: TODO: Escape sequences in strings - `", c, "`"));
+        }
+    }
+}
 Token Token::lex_from_inner(::std::ifstream& is, unsigned& m_line)
 {
     int c;
@@ -351,21 +368,61 @@ Token Token::lex_from_inner(::std::ifstream& is, unsigned& m_line)
                 return Token { Type::Eof };
         }
         return Token { Type::Newline };
+    // Literal string: No escaping
     case '\'':
         c = is.get();
-        while (c != '\'')
-        {
-            if (c == EOF)
-                throw ::std::runtime_error("Unexpected EOF in single-quoted string");
-            if (c == '\\')
-            {
-                // TODO: Escaped strings
-                throw ::std::runtime_error("TODO: Escaped sequences in strings (single)");
-            }
-            str += (char)c;
+        if( c == '\'' ) {
             c = is.get();
+            // Empty literal string
+            if( c != '\'' ) {
+                str = "";
+            }
+            else {
+                // If the first character is a newline, strip it
+                c = is.get();
+                if( c == '\n' ) {
+                    m_line ++;
+                    c = is.get();
+                }
+                // Multi-line literal string
+                for( ;; ) {
+                    if(c == '\'') {
+                        c = is.get();
+                        if(c == '\'')
+                        {
+                            c = is.get();
+                            if(c == '\'')
+                            {
+                                break;
+                            }
+                            str += '\'';
+                        }
+                        str += '\'';
+                    }
+                    if( c == '\n' ) {
+                        m_line ++;
+                    }
+                    if( c == EOF )
+                        throw ::std::runtime_error("Unexpected EOF in triple-quoted string");
+                    c = is.get();
+                }
+            }
+        }
+        else {
+            while (c != '\'')
+            {
+                if (c == EOF)
+                    throw ::std::runtime_error("Unexpected EOF in single-quoted string");
+                // Technically not allowed
+                if( c == '\n' ) {
+                    m_line ++;
+                }
+                str += (char)c;
+                c = is.get();
+            }
         }
         return Token { Type::String, str };
+    // Basic string: has escape sequences
     case '"':
         c = is.get();
         if(c == '"')
@@ -378,10 +435,15 @@ Token Token::lex_from_inner(::std::ifstream& is, unsigned& m_line)
             }
             else
             {
+                // Strip newline if it's the first character
+                c = is.get();
+                if( c == '\n' ) {
+                    m_line ++;
+                    c = is.get();
+                }
                 // Keep reading until """
                 for(;;)
                 {
-                    c = is.get();
                     if(c == '"')
                     {
                         c = is.get();
@@ -398,15 +460,16 @@ Token Token::lex_from_inner(::std::ifstream& is, unsigned& m_line)
                     }
                     if( c == EOF )
                         throw ::std::runtime_error("Unexpected EOF in triple-quoted string");
-                    if(c == '\\')
-                    {
-                        // TODO: Escaped strings
-                        throw ::std::runtime_error("TODO: Escaped sequences in strings (triple)");
+                    if(c == '\\') {
+                        handle_escape(str, is);
                     }
-                    str += (char)c;
-                    if( c == '\n' ) {
-                        m_line ++;
+                    else {
+                        str += (char)c;
+                        if( c == '\n' ) {
+                            m_line ++;
+                        }
                     }
+                    c = is.get();
                 }
             }
         }
@@ -418,18 +481,11 @@ Token Token::lex_from_inner(::std::ifstream& is, unsigned& m_line)
                     throw ::std::runtime_error("Unexpected EOF in double-quoted string");
                 if (c == '\\')
                 {
-                    // TODO: Escaped strings
-                    c = is.get();
-                    switch(c)
-                    {
-                    case '"':  str += '"'; break;
-                    case 'n':  str += '\n'; break;
-                    default:
-                        throw ::std::runtime_error("TODO: Escaped sequences in strings");
-                    }
+                    handle_escape(str, is);
                     c = is.get();
                     continue ;
                 }
+                // Technically not allowed
                 if( c == '\n' ) {
                     m_line ++;
                 }
