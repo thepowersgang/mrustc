@@ -1682,6 +1682,15 @@ namespace {
     }
 
     ::HIR::Linkage  linkage;
+    switch(f.m_markings.linkage) {
+    case AST::Linkage::Default:
+        break;
+    case AST::Linkage::Weak:
+        linkage.type = HIR::Linkage::Type::Weak;
+        break;
+    case AST::Linkage::ExternWeak:
+        BUG(sp, "Invalid linkage on function");
+    }
     linkage.section = f.m_markings.link_section;
 
     // Convert #[link_name/no_mangle] attributes into the name
@@ -1770,6 +1779,16 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
         // Note: Empty names are allowed for `const _: ...`
         ASSERT_BUG(sp, name != "", "Empty constant name " << p);
         ::HIR::Linkage  linkage;
+        switch(e.m_markings.linkage) {
+        case AST::Linkage::Default:
+            break;
+        case AST::Linkage::Weak:
+            linkage.type = HIR::Linkage::Type::Weak;
+            break;
+        case AST::Linkage::ExternWeak:
+            linkage.type = HIR::Linkage::Type::ExternWeak;
+            break;
+        }
         linkage.section = e.m_markings.link_section;
 
         if( e.m_markings.link_name != "" ) {

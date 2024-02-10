@@ -409,7 +409,7 @@ class CHandler_Link:
             bool emit = true;
             AST::ExternBlock::Link  link;
 
-            while(lex.lookahead(0) != TOK_PAREN_OPEN)
+            while(lex.lookahead(0) != TOK_PAREN_CLOSE)
             {
                 auto key = lex.getTokenCheck(TOK_IDENT).ident().name;
                 if( key == "name" ) {
@@ -452,10 +452,62 @@ class CHandler_Link:
             lex.getTokenCheck(TOK_EOF);
         }
         else {
+            TODO(sp, "#[link] on " << i.tag_str());
         }
     }
 };
 STATIC_DECORATOR("link", CHandler_Link);
+
+class CHandler_Linkage:
+    public ExpandDecorator
+{
+    AttrStage   stage() const override { return AttrStage::Pre; }
+
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::AbsolutePath& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
+        TTStream    lex(sp, ParseState(), mi.data());
+        lex.getTokenCheck(TOK_EQUAL);
+        auto tok = lex.getTokenCheck(TOK_STRING);
+        auto linkage_str = tok.str();
+        lex.getTokenCheck(TOK_EOF);
+
+        auto linkage = AST::Linkage::Default;
+        if( linkage_str == "extern_weak" ) {
+            linkage = AST::Linkage::ExternWeak;
+        }
+        else if( linkage_str == "weak" ) {
+            linkage = AST::Linkage::Weak;
+        }
+        else {
+            TODO(sp, "#[linkage=\"" << linkage_str << "\"]");
+        }
+
+        if( auto* f = i.opt_Function() ){
+            switch(linkage)
+            {
+            case AST::Linkage::Weak:
+                break;
+            default:
+                TODO(sp, "#[linkage=\"" << linkage_str << "\"] on " << i.tag_str());
+            }
+            f->m_markings.linkage = linkage;
+        }
+        else if( auto* f = i.opt_Static() ){
+            switch(linkage)
+            {
+            case AST::Linkage::Weak:
+            case AST::Linkage::ExternWeak:
+                break;
+            default:
+                TODO(sp, "#[linkage=\"" << linkage_str << "\"] on " << i.tag_str());
+            }
+            f->m_markings.linkage = linkage;
+        }
+        else {
+            TODO(sp, "#[linkage] - " << i.tag_str() << " " << path << ": " << mi);
+        }
+    }
+};
+STATIC_DECORATOR("linkage", CHandler_Linkage);
 
 class CHandler_TargetFeature:
     public ExpandDecorator

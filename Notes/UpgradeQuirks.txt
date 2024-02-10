@@ -79,3 +79,5 @@
 - Inline assembly used more (including `global_asm!`)
 - `offset_of!` macro expands to something interesting - `{builtin # offset_of(...)}`
 - `if foo && let Some(bar) = baz` is also valid.
+- `#[linkage="extern_weak"]` - Weak linking via nullptr/option
+

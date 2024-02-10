@@ -2324,12 +2324,23 @@ namespace {
             ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "extern static " << p;), ::HIR::TypeRef(), {}, empty_fcn };
             m_mir_res = &top_mir_res;
             TRACE_FUNCTION_F(p);
+            auto type = params.monomorph(m_resolve, item.m_type);
 
             // LLVM supports prepending a symbol name with \1 to prevent further mangling.
             // Since we're targeting C, not LLVM, strip off this prefix.
             std::string linkage_name = item.m_linkage.name;
             if( !linkage_name.empty() && linkage_name[0] == '\1' ) {
                 linkage_name = linkage_name.substr(1);
+            }
+
+            if(item.m_linkage.type == HIR::Linkage::Type::ExternWeak) {
+                ASSERT_BUG(sp, linkage_name != "", "");
+                m_of << "extern char " << linkage_name << "[0];\n";
+                emit_static_ty(type, p, /*is_proto=*/true);
+                m_of << " = { .raw = { (uintptr_t)" << linkage_name << " } };";
+                m_of << "\t// static " << p << " : " << type;
+                m_of << "\n";
+                return;
             }
 
             if( linkage_name != "" )
@@ -2348,7 +2359,6 @@ namespace {
                 }
             }
 
-            auto type = params.monomorph(m_resolve, item.m_type);
             m_of << "extern ";
             emit_static_ty(type, p, /*is_proto=*/true);
             if( linkage_name != "" && m_compiler == Compiler::Gcc)
@@ -2388,6 +2398,8 @@ namespace {
                     m_of << "__declspec(selectany) ";
                     break;
                 }
+                break;
+            case HIR::Linkage::Type::ExternWeak:
                 break;
             }
             if(item.m_linkage.section != "")
@@ -2751,6 +2763,8 @@ namespace {
                     break;
                 }
                 break;
+            case HIR::Linkage::Type::ExternWeak:
+                BUG(Span(), "unexpected ExternWeak on function");
             }
             emit_function_header(p, item, params);
             m_of << ";\n";

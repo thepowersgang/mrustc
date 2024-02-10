@@ -101,6 +101,7 @@ struct Linkage
         Auto,   // Default
         Weak,   // Weak linkage (multiple definitions are allowed
         External, // Force the symbol to be externally visible
+        ExternWeak,   // A reference to a weak symbol
     };
 
     // Linkage type

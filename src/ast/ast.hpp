@@ -125,6 +125,17 @@ public:
     }
 };
 
+enum class Linkage
+{
+    // no `#[linkage]` specified
+    Default,
+    // "weak" - allow multiple definitions
+    Weak,
+    // "extern_weak" - This external symbol can be missing
+    // - Must be on a `static`
+    ExternWeak,
+};
+
 class Static
 {
 public:
@@ -142,7 +153,9 @@ public:
     struct Markings {
         std::string link_name;
         std::string link_section;
+        Linkage linkage = Linkage::Default;
     } m_markings;
+
     Static(Class s_class, TypeRef type, Expr value):
         m_class(s_class),
         m_type( move(type) ),
@@ -201,6 +214,7 @@ public:
 
         std::string link_name;
         std::string link_section;
+        Linkage linkage = Linkage::Default;
     } m_markings;
 
 
