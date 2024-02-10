@@ -62,7 +62,9 @@ bool JobList::run_all(size_t num_jobs, bool dry_run)
         ::std::cerr
             << " ("
             << std::fixed << std::setprecision(1) << (100 * static_cast<double>(num_complete) / total_job_count) << "% " 
-            << this->running_jobs.size() << "r," << this->runnable_jobs.size() << "w," << this->waiting_jobs.size() << "b/" << total_job_count << "t"
+            << this->running_jobs.size() << "r," << this->runnable_jobs.size() << "w," << this->waiting_jobs.size() << "b"
+            << "," << num_complete << "c"
+            << "/" << total_job_count << "t"
             << "):"
             ;
         for(const auto& rj : this->running_jobs) {
@@ -176,7 +178,9 @@ bool JobList::run_all(size_t num_jobs, bool dry_run)
             auto num_complete = total_job_count - this->runnable_jobs.size() - (1+this->running_jobs.size()) - this->waiting_jobs.size();
             ::std::cout << " ("
                 << std::fixed << std::setprecision(1) << (100 * static_cast<double>(num_complete) / total_job_count) << "% " 
-                << this->running_jobs.size()+1 << "r," << this->runnable_jobs.size() << "w," << this->waiting_jobs.size() << "b/" << total_job_count << "t)";
+                << this->running_jobs.size()+1 << "r," << this->runnable_jobs.size() << "w," << this->waiting_jobs.size() << "b"
+                << "," << num_complete << "c"
+                << "/" << total_job_count << "t)";
             ::std::cout << std::endl;
         }
 
