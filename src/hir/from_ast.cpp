@@ -930,6 +930,9 @@ namespace {
             }
             return ::HIR::TypeRef( l->name, slot );
         }
+        else if( e->m_bindings.type.path.crate == CRATE_BUILTINS ) {
+            return LowerHIR_Type(TypeRef(ty.span(), coretype_fromstring(e->m_bindings.type.path.nodes.back().c_str()) ));
+        }
         else {
             return ::HIR::TypeRef::new_path( LowerHIR_Path(ty.span(), *e, FromAST_PathClass::Type), {} );
         }

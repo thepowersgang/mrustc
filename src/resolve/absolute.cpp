@@ -1036,6 +1036,38 @@ namespace {
     void Resolve_Absolute_Path_BindAbsolute__hir_from_import(Context& context, const Span& sp, bool is_value, AST::Path& path, const ::HIR::SimplePath& p)
     {
         TRACE_FUNCTION_FR("path="<<path<<", p="<<p, path);
+        if( p.m_crate_name == CRATE_BUILTINS ) {
+            AST::Path   rv( p.m_crate_name, {} );
+            rv.nodes().reserve( p.m_components.size() );
+            for(const auto& c : p.m_components)
+                rv.nodes().push_back( AST::PathNode(c) );
+            rv.nodes().back().args() = mv$( path.nodes().back().args() );
+            auto ap = AST::AbsolutePath(p.m_crate_name, p.m_components);
+
+    #if 0
+            ASSERT_BUG(sp, p.m_components.size() == 2, "Invalid component count in " << p);
+
+            if( p.m_components.front() == "types" ) {
+            }
+            else if( p.m_components.front() == "macros" ) {
+            }
+            else if( p.m_components.front() == "intrinsics" ) {
+            }
+            else {
+                BUG(sp, "Invalid class (first) component in " << p);
+            }
+            TODO(sp, "");
+    #else
+            if( coretype_fromstring(p.m_components.back().c_str()) != CORETYPE_INVAL ) {
+                rv.m_bindings.type.set(ap, AST::PathBinding_Type::make_TypeAlias({nullptr}));
+            }
+            else {
+                rv.m_bindings.macro.set(ap, AST::PathBinding_Macro::make_MacroRules({ nullptr }));
+            }
+    #endif
+            path = mv$(rv);
+            return;
+        }
         const auto& ext_crate = context.m_crate.m_extern_crates.at(p.m_crate_name);
         const ::HIR::Module* hmod = &ext_crate.m_hir->m_root_module;
         for(unsigned int i = 0; i < p.m_components.size() - 1; i ++)
