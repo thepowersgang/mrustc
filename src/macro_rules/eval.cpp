@@ -1137,6 +1137,13 @@ namespace
         TRACE_FUNCTION;
         bool cont;
 
+        while( lex.next() == TOK_HASH )
+        {
+            lex.consume();
+            lex.consume_if(TOK_EXCLAM);
+            consume_tt(lex);
+        }
+
         // Closures
         if( lex.next() == TOK_RWORD_MOVE || lex.next() == TOK_PIPE || lex.next() == TOK_DOUBLE_PIPE )
         {
