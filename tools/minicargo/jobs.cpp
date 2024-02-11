@@ -18,7 +18,6 @@
 #include "os.hpp"
 #include <iomanip>
 
-#include <unordered_set>
 #include <cassert>
 #include <algorithm>
 
@@ -37,6 +36,11 @@ void JobList::add_job(::std::unique_ptr<Job> job)
 
 bool JobList::run_all(size_t num_jobs, bool dry_run)
 {
+    // Sort jobs by name, to provide a consistent execution order
+    ::std::sort(waiting_jobs.begin(), waiting_jobs.end(), [](const std::unique_ptr<Job>& a, const std::unique_ptr<Job>& b) {
+        return a->name() < b->name();
+    });
+
     auto jobserver = (dry_run || num_jobs == 1) ? ::std::unique_ptr<JobServer>()    // Dry run or being forced to a single build task? force no jobserver
             : num_jobs == 0 ? JobServer::create(0)  // If no `-j` option is passed, try and get a jobserver client but don't create a server
             : JobServer::create(num_jobs-1) // `-j` was passed with a non-1 count, allow `JobServer` to create a server (keeping one job for ourselves)
