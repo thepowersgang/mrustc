@@ -606,12 +606,12 @@ namespace static_borrow_constants {
                 unsigned ofs_impl_l, unsigned ofs_item_l
                 )
                 : params(params)
+                , ofs_impl_l(ofs_impl_l)
+                , ofs_item_l(ofs_item_l)
                 , ofs_impl_t(ofs_impl_t)
                 , ofs_item_t(ofs_item_t)
                 , ofs_impl_v(ofs_impl_v)
                 , ofs_item_v(ofs_item_v)
-                , ofs_impl_l(ofs_impl_l)
-                , ofs_item_l(ofs_item_l)
             {
             }
             ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& ge) const override
@@ -1018,9 +1018,9 @@ namespace static_borrow_constants {
 
                 struct Nvs: ::HIR::Evaluator::Newval {
 
-                    size_t m_next_idx ;
                     ::HIR::SimplePath   m_current_module_path;
                     ::HIR::Module&  m_current_module;
+                    size_t m_next_idx;
 
                     Nvs(::HIR::SimplePath current_module_path, ::HIR::Module& current_module, size_t idx)
                         : m_current_module_path(::std::move(current_module_path))
@@ -1225,10 +1225,22 @@ void HIR_Expand_StaticBorrowConstants_Expr(const ::HIR::Crate& crate, const ::HI
 {
     TRACE_FUNCTION_F(ip);
     StaticTraitResolve  resolve(crate);
+    resolve.set_both_generics_raw(exp.m_state->m_impl_generics, exp.m_state->m_item_generics);
 
     static int static_count = 0;
 
-    static_borrow_constants::ExprVisitor_Mutate  ev(resolve, nullptr, [&](Span sp, HIR::TypeRef ty, HIR::ExprPtr val_expr, HIR::GenericParams generics, bool is_const)->HIR::SimplePath {
+    const HIR::TypeRef* self_type = ip.get_top_ip().ty;
+    if( ip.get_top_ip().wrapped ) {
+        const HIR::Path& p = *ip.get_top_ip().wrapped;
+        if( const auto* e = p.m_data.opt_UfcsInherent() ) {
+            self_type = &e->type;
+        }
+        if( const auto* e = p.m_data.opt_UfcsKnown() ) {
+            self_type = &e->type;
+        }
+    }
+
+    static_borrow_constants::ExprVisitor_Mutate  ev(resolve, self_type, [&](Span sp, HIR::TypeRef ty, HIR::ExprPtr val_expr, HIR::GenericParams generics, bool is_const)->HIR::SimplePath {
         auto name = RcString::new_interned(FMT("lifted#C_" << static_count++));
 
         auto path = ::HIR::SimplePath(crate.m_crate_name, {name});
