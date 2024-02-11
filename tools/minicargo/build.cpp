@@ -49,7 +49,7 @@ struct RunState
         return m_compiler_path.basename() == "rustc" || m_compiler_path.basename() == "rustc.exe";
     }
 
-    std::string get_key(const PackageManifest& p, bool build, bool is_host) const {
+    std::string get_key(const PackageManifest& p, bool build, bool is_host, const PackageTarget* target=nullptr) const {
         auto rv = ::format(p.name(), " v", p.version());
         if(p.has_library() && p.get_library().m_is_proc_macro ) {
             is_host = true;
@@ -61,6 +61,24 @@ struct RunState
             rv += " (host)";
         }
         else {
+        }
+        if( target ) {
+            switch( target->m_type )
+            {
+            case PackageTarget::Type::Lib:
+                break;
+            case PackageTarget::Type::Bin:
+                rv += " [bin "; if(0)
+            case PackageTarget::Type::Test:
+                rv += " [test "; if(0)
+            case PackageTarget::Type::Bench:
+                rv += " [bench "; if(0)
+            case PackageTarget::Type::Example:
+                rv += " [example ";
+                rv += target->m_name;
+                rv += "]";
+                break;
+            }
         }
         return rv;
     }
@@ -126,7 +144,7 @@ class Job_BuildTarget: public Job_Build
 
 public:
     Job_BuildTarget(RunState& parent, const PackageManifest& manifest, const PackageTarget& target, bool is_host)
-        : Job_Build(parent, manifest, parent.get_key(manifest, false, is_host))
+        : Job_Build(parent, manifest, parent.get_key(manifest, false, is_host, &target))
         , m_target(target)
         , m_is_for_host(is_host)
     {
