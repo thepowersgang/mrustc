@@ -2484,8 +2484,9 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
     bool    can_fuzz = true;
     unsigned int    count = 0;
     bool is_specialisable = false;
+    bool is_bound = false;
     ImplRef best_impl;
-    rv = this->find_trait_impls_crate(sp, trait_path.m_path, trait_path.m_params, pe.type, [&](auto impl, auto qual)->bool {
+    auto cb_find_impl = [&](ImplRef impl, HIR::Compare qual)->bool {
         DEBUG("[expand_associated_types__UfcsKnown] Found " << impl << " qual=" << qual);
         // If it's a fuzzy match, keep going (but count if a concrete hasn't been found)
         if( qual == ::HIR::Compare::Fuzzy ) {
@@ -2516,8 +2517,14 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
             }
             else {
                 auto ty = impl.get_type( pe.item.c_str(), pe.params );
-                if( ty == ::HIR::TypeRef() )
-                    ERROR(sp, E0000, "Couldn't find assocated type " << pe.item << " in impl of " << pe.trait << " for " << pe.type);
+                if( ty == ::HIR::TypeRef() ) {
+                    if( is_bound ) {
+                        return false;
+                    }
+                    else {
+                        ERROR(sp, E0000, "Couldn't find assocated type " << pe.item << " in impl of " << pe.trait << " for " << pe.type);
+                    }
+                }
 
                 if( impl.has_magic_params() ) {
                 }
@@ -2528,7 +2535,13 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
                 return true;
             }
         }
-        });
+        };
+
+    rv = this->find_trait_impls_crate(sp, trait_path.m_path, trait_path.m_params, pe.type, cb_find_impl);
+    if( !rv ) {
+        is_bound = true;
+        rv = find_trait_impls_bound(sp, trait_path.m_path, trait_path.m_params, pe.type, cb_find_impl);
+    }
     if( !rv && best_impl.is_valid() ) {
         if( can_fuzz && count > 1 ) {
             // Fuzzy match with multiple choices - can't know yet
@@ -2539,8 +2552,11 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
         }
         else {
             auto ty = best_impl.get_type( pe.item.c_str(), pe.params );
-            if( ty == ::HIR::TypeRef() )
-                ERROR(sp, E0000, "Couldn't find assocated type " << pe.item << " in impl of " << pe.trait << " for " << pe.type);
+            if( ty == ::HIR::TypeRef() ) {
+                input.data_mut().as_Path().binding = ::HIR::TypePathBinding::make_Opaque({});
+                return ;
+                //ERROR(sp, E0000, "Couldn't find assocated type " << pe.item << " in impl of " << pe.trait << " for " << pe.type);
+            }
 
             // Try again later?
             if( best_impl.has_magic_params() ) {
