@@ -817,7 +817,9 @@ namespace typecheck
 
                 if( node.m_value ) {
                     this->context.add_ivars(node.m_value->m_res_type);
+                    this->push_inner_coerce(true);
                     node.m_value->visit(*this);
+                    this->pop_inner_coerce();
                     this->context.equate_types_coerce(node.span(), loop_node.m_res_type, node.m_value);
                     this->context.require_sized(node.span(), node.m_value->m_res_type);
                 }
