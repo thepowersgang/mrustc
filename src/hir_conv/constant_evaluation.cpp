@@ -1840,7 +1840,7 @@ namespace HIR {
 
     AllocationPtr Evaluator::run_until_stack_empty()
     {
-        const unsigned MAX_BLOCK_COUNT = 1000;
+        const unsigned MAX_BLOCK_COUNT = 4000;
         assert( !this->call_stack.empty() );
         for(unsigned idx = 0; idx < MAX_BLOCK_COUNT; idx += 1)
         {
