@@ -982,7 +982,7 @@ namespace {
                     if( impl_fcn.m_return != exp_ret_ty ) {
                         failures.push_back(FMT("Mismatched return type (expected " << exp_ret_ty << ", got " << impl_fcn.m_return << ")"));
                     }
-                    
+
                     //if( impl_fcn.m_params.m_lifetimes.size() != trait_fcn.m_params.m_lifetimes.size() ) {
                     //    failures.push_back(FMT("Mismatched lifetime param count (expected " << trait_fcn.m_params.m_lifetimes.size() << ", got " << impl_fcn.m_params.m_lifetimes.size() << ")"));
                     //}
@@ -990,23 +990,25 @@ namespace {
                     if( !failures.empty() ) {
                         ERROR(sp, E0000, "Method " << e.first << " doesn't match trait:\n"
                             << FMT_CB(os, for(const auto& f : failures) os << "- " << f << "\n")
-                            << "Trait: " << FMT_CB(os, {
-                                os << "fn " << e.first << trait_fcn.m_params.fmt_args() << "(";
+                            << "Trait:\n" << FMT_CB(os, {
+                                os << "    fn " << e.first << trait_fcn.m_params.fmt_args() << "(";
                                 for(const auto& a : trait_fcn.m_args)
                                 {
                                     os << a.first << ": " << maybe_monomorph(a.second) << ", ";
                                 }
-                                os << ")";
-                                os << trait_fcn.m_params.fmt_bounds();
+                                os << ")\n";
+                                os << "    -> " << maybe_monomorph(trait_fcn.m_return) << "\n";
+                                os << "    " << trait_fcn.m_params.fmt_bounds();
                                 }) << "\n"
                             << "Impl : " << FMT_CB(os, {
-                                os << "fn " << e.first << impl_fcn.m_params.fmt_args() << "(";
+                                os << "    fn " << e.first << impl_fcn.m_params.fmt_args() << "(";
                                 for(const auto& a : impl_fcn.m_args)
                                 {
                                     os << a.first << ": " << a.second << ", ";
                                 }
-                                os << ")";
-                                os << impl_fcn.m_params.fmt_bounds();
+                                os << ")\n";
+                                os << "    -> " << impl_fcn.m_return << "\n";
+                                os << "    " << impl_fcn.m_params.fmt_bounds();
                                 }) << "\n"
                             << "in impl" << impl.m_params.fmt_args() << " " << trait_path << impl.m_trait_args << " for " << impl.m_type
                             );
@@ -1026,7 +1028,7 @@ namespace {
                     for(const auto& b : trait_fcn.m_params.m_bounds) {
                         TU_MATCH_HDRA( (b), { )
                         default:
-                    
+                            break;
                         TU_ARMA(TypeLifetime, be) {
                             impl_fcn.m_params.m_bounds.push_back(::HIR::GenericBound::make_TypeLifetime({ ms.monomorph_type(sp, be.type), ms.monomorph_lifetime(sp, be.valid_for) }));
                             }
@@ -1110,6 +1112,7 @@ namespace {
         }
 
         void visit_function(::HIR::ItemPath p, ::HIR::Function& item) override {
+            TRACE_FUNCTION_F(p);
 
             auto _ = m_resolve.set_item_generics(item.m_params);
             // NOTE: Superfluous... except that it makes the params valid for the return type.
@@ -1125,7 +1128,7 @@ namespace {
             m_cur_params_level = 1;
             for(auto& arg : item.m_args)
             {
-                DEBUG("ARG " << arg);
+                TRACE_FUNCTION_F("ARG " << arg);
                 visit_type(arg.second);
             }
             m_cur_params = nullptr;
@@ -1156,8 +1159,10 @@ namespace {
             // Visit return type (populates path for `impl Trait` in return position
             m_fcn_path = &p;
             m_fcn_erased_count = 0;
-            DEBUG("RET " << item.m_return);
-            visit_type(item.m_return);
+            {
+                TRACE_FUNCTION_F("RET " << item.m_return);
+                visit_type(item.m_return);
+            }
             m_fcn_path = nullptr;
             m_fcn_ptr = nullptr;
 

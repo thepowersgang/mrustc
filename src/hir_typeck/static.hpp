@@ -125,6 +125,10 @@ public:
         m_item_generics = nullptr;
         prep_indexes();
     }
+    // Used by ResolveUFCS to regenerate
+    void prep_indexes(const Span& sp) {
+        TraitResolveCommon::prep_indexes(sp);
+    }
     /// \}
 
     /// \brief Lookups

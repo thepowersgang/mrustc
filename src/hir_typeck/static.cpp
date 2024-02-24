@@ -1468,9 +1468,57 @@ bool StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
     auto& e = input.data_mut().as_Path();
     auto& e2 = e.path.m_data.as_UfcsKnown();
 
+    static unsigned s_recursion_level;
+    struct RecurseEntry {
+        HIR::TypeRef    ty;
+        unsigned level;
+    };
+    static std::vector<RecurseEntry>    s_recursion_stack;
+    {
+        bool hit_same_level_loop = false;
+        for(const auto& ent : s_recursion_stack) {
+            DEBUG(ent.ty << " " << ent.level);
+            if( ent.ty == input ) {
+                if( ent.level == s_recursion_level ) {
+                    hit_same_level_loop = true;
+                }
+                else {
+                    BUG(sp, "Loop in EAT");
+                }
+            }
+        }
+        if( hit_same_level_loop ) {
+            DEBUG("Loop in EAT at same level");
+            ::std::vector<const HIR::TypeRef*>  ents;
+            for(const auto& ent : s_recursion_stack) {
+                if( ent.level == s_recursion_level ) {
+                    ents.push_back(&ent.ty);
+                }
+            }
+            if( ents.size() > 1 ) {
+                std::sort(ents.begin(), ents.end(), [](const HIR::TypeRef* a, const HIR::TypeRef* b){ return *a < *b; });
+                input = ents[0]->clone();
+            }
+            DEBUG("-> " << input);
+            input.data_mut().as_Path().binding = HIR::TypePathBinding::make_Opaque({});
+            return false;
+        }
+    }
+    struct StackGuard {
+        ~StackGuard() {
+            s_recursion_stack.pop_back();
+        }
+    } _;
+    s_recursion_stack.push_back(RecurseEntry {
+        HIR::TypeRef::new_path(HIR::Path( e2.type.clone(), e2.trait.clone(), e2.item ), {}),
+        s_recursion_level
+        });
+
+    s_recursion_level += 1;
     this->expand_associated_types_inner(sp, e2.type);
     for(auto& arg : e2.trait.m_params.m_types)
         this->expand_associated_types_inner(sp, arg);
+    s_recursion_level -= 1;
 
     DEBUG("Locating associated type for " << e.path);
 
@@ -1691,7 +1739,7 @@ bool StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
                 replacement_happened = true;
             }
             else {
-                DEBUG("Mark  " << e.path << " as opaque");
+                DEBUG("Mark " << e.path << " as opaque");
                 e.binding = ::HIR::TypePathBinding::make_Opaque({});
                 ASSERT_BUG(sp, monomorphise_type_needed(input), "Set opaque on a non-generic type: " << input);
                 replacement_happened = this->replace_equalities(input);

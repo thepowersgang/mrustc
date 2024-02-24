@@ -88,6 +88,9 @@ namespace resolve_ufcs {
 
             for(auto& bound : params.m_bounds )
                 visit_generic_bound(bound);
+
+            // Re-populate the resolve index, as the above has changed them
+            m_resolve.prep_indexes(Span());
         }
 
         void visit_union(::HIR::ItemPath p, ::HIR::Union& item) override {
@@ -646,12 +649,28 @@ namespace resolve_ufcs {
 
             if( m_run_eat )
             {
-                unsigned counter = 0;
+                TRACE_FUNCTION_FR(ty, ty);
+                std::vector<HIR::TypeRef>   stack;
+                if(ty.data().is_Path()) {
+                    stack.push_back(ty.clone_shallow());
+                }
                 while( m_resolve.expand_associated_types_single(sp, ty) )
                 {
+                    if( ::std::find(stack.begin(), stack.end(), ty) != stack.end() ) {
+                        ::std::sort(stack.begin(), stack.end());
+                        DEBUG("Loop detected, picking " << ty);
+                        ty = std::move(stack[0]);
+                        ::HIR::Visitor::visit_type(ty);
+                        break;
+                    }
+                    // NOTE: Only need to clone if this is a Path, as that's the only way we could loop again
+                    if(ty.data().is_Path()) {
+                        stack.push_back(ty.clone_shallow());
+                    }
+                    DEBUG("counter = " << stack.size());
                     //ASSERT_BUG(sp, !visit_ty_with(ty, [&](const HIR::TypeRef& ty)->bool { return TU_TEST1(ty.data(), Generic, .is_placeholder()); }), "Encountered placeholder - " << ty);
                     visit_ty_with_mut(ty, [&](HIR::TypeRef& ty)->bool { if( TU_TEST1(ty.data(), Generic, .is_placeholder()) ) ty = HIR::TypeRef(); return false; });
-                    ASSERT_BUG(sp, counter++ < 20, "Sanity limit exceeded when resolving UFCS in type " << ty);
+                    ASSERT_BUG(sp, stack.size() < 20, "Sanity limit exceeded when resolving UFCS in type " << ty);
                     // Invoke a special version of EAT that only processes a single item.
                     // - Keep recursing while this does replacements
                     ::HIR::Visitor::visit_type(ty);
