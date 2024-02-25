@@ -412,6 +412,7 @@ std::vector<AST::IfLet_Condition> Parse_IfLetChain(TokenStream& lex)
     bool had_pat = false;
     do {
         if( lex.getTokenIf(TOK_RWORD_LET) ) {
+            lex.getTokenIf(TOK_PIPE);
             auto pat = Parse_Pattern(lex, AllowOrPattern::Yes);
             GET_CHECK_TOK(tok, lex, TOK_EQUAL);
             ExprNodeP val;
