@@ -483,33 +483,43 @@ namespace typecheck
         {
         }
 
-        void visit_path_params(::HIR::PathParams& pp)
+        void inner_visit_type(::HIR::TypeRef& ty)
         {
-            this->context.m_ivars.add_ivars_params(pp);
-        }
-        void visit_type(::HIR::TypeRef& ty)
-        {
-            this->context.add_ivars(ty);
-            if(auto* te = ty.data_mut().opt_Path() )
-            {
-                if( te->path.m_data.is_Generic() )
+            visit_ty_with_mut(ty, [this](HIR::TypeRef& ty)->bool {
+                if(auto* te = ty.data_mut().opt_Path() )
                 {
-                    auto& params = te->path.m_data.as_Generic().m_params;
-                    const HIR::GenericParams* param_defs = nullptr;
-                    TU_MATCH_HDRA( (te->binding), { )
-                    TU_ARMA(Struct, pbe)    param_defs = &pbe->m_params;
-                    TU_ARMA(Enum, pbe)    param_defs = &pbe->m_params;
-                    TU_ARMA(Union, pbe)    param_defs = &pbe->m_params;
-                    TU_ARMA(ExternType, pbe) {}
-                    TU_ARMA(Opaque, pbe) {}
-                    TU_ARMA(Unbound, pbe) {}
-                    }
-                    if(param_defs)
+                    if( te->path.m_data.is_Generic() )
                     {
-                        populate_defaults(Span(), context, MonomorphStatePtr(nullptr, &params, nullptr), *param_defs, params);
+                        auto& params = te->path.m_data.as_Generic().m_params;
+                        const HIR::GenericParams* param_defs = nullptr;
+                        TU_MATCH_HDRA( (te->binding), { )
+                        TU_ARMA(Struct, pbe)    param_defs = &pbe->m_params;
+                        TU_ARMA(Enum, pbe)    param_defs = &pbe->m_params;
+                        TU_ARMA(Union, pbe)    param_defs = &pbe->m_params;
+                        TU_ARMA(ExternType, pbe) {}
+                        TU_ARMA(Opaque, pbe) {}
+                        TU_ARMA(Unbound, pbe) {}
+                        }
+                        if(param_defs)
+                        {
+                            populate_defaults(Span(), context, MonomorphStatePtr(nullptr, &params, nullptr), *param_defs, params);
+                        }
                     }
                 }
+                return false;
+                });
+        }
+        void visit_path_params(::HIR::PathParams& pp) override
+        {
+            this->context.m_ivars.add_ivars_params(pp);
+            for(auto& ty : pp.m_types) {
+                inner_visit_type(ty);
             }
+        }
+        void visit_type(::HIR::TypeRef& ty) override
+        {
+            this->context.add_ivars(ty);
+            inner_visit_type(ty);
         }
     };
 

@@ -285,7 +285,7 @@ namespace {
                             ERROR(sp, E0000, "Omitted type parameter with no default in " << path);
                         }
                         else {
-                            // TODO: Does expanding defualts need a custom monomorphiser that can handle later defaults?
+                            // TODO: Does expanding defaults need a custom monomorphiser that can handle later defaults?
                             MonomorphStatePtr   ms(self_ty, &params, nullptr);
                             auto ty = ms.monomorph_type(sp, typ.m_default);
                             params.m_types.push_back( mv$(ty) );
