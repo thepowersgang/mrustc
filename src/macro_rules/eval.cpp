@@ -539,7 +539,8 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
         return InterpolatedFragment( Parse_TT(lex, false) );
     case MacroPatEnt::PAT_PAT:
         // TODO: Is this edition check correct? Or should it be uncondiitonally "Yes"?
-        return InterpolatedFragment( Parse_Pattern(lex, lex.edition_after(AST::Edition::Rust2021) ? AllowOrPattern::Yes : AllowOrPattern::No) );
+        //return InterpolatedFragment( Parse_Pattern(lex, lex.edition_after(AST::Edition::Rust2021) ? AllowOrPattern::Yes : AllowOrPattern::No) );
+        return InterpolatedFragment( Parse_Pattern(lex, AllowOrPattern::Yes) );
     case MacroPatEnt::PAT_TYPE:
         return InterpolatedFragment( Parse_Type(lex) );
     case MacroPatEnt::PAT_EXPR:
@@ -1899,7 +1900,8 @@ namespace
         case MacroPatEnt::PAT_STMT:
             return consume_stmt(lex);
         case MacroPatEnt::PAT_PAT:
-            return consume_pat(lex);
+            //return consume_pat(lex, lex.edition_after(AST::Edition::Rust2021));
+            return consume_pat(lex, true);
         case MacroPatEnt::PAT_META:
             if( lex.next() == TOK_INTERPOLATED_META ) {
                 lex.consume();
@@ -2099,7 +2101,7 @@ unsigned int Macro_InvokeRules_MatchPattern(const Span& sp, const MacroRules& ru
                 DEBUG(i << " ExpectTok(" << *e << ") == " << tok);
                 if( tok != *e )
                 {
-                    ERROR(sp, E0000, "Expected token " << *e << " in match arm, got " << tok);
+                    ERROR(sp, E0000, "Expected token " << *e << " in macro arm, got " << tok);
                     break;
                 }
             }
