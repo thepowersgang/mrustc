@@ -1377,6 +1377,9 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
                 return Parse_ExprVal_StructLiteral(lex, ::std::move(path));
             else
                 DEBUG("Not parsing struct literal");
+            // Value
+            PUTBACK(tok, lex);
+            return NEWNODE( AST::ExprNode_NamedValue, ::std::move(path) );
         // `builtin # <name>` - seems to be a 1.74 era hack to extend syntax
         // - Only `builtin # offset_of( <ty>, <field>[, <subfield>]... )` is implemented
         //   > mrustc translates this to an intrinsic call with the fields as string/integer arguments (simple to pass through)
