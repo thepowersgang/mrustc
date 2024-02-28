@@ -1347,6 +1347,11 @@ const ::MIR::Function* HIR::Crate::get_or_gen_mir(const ::HIR::ItemPath& ip, con
                 ms.m_traits = ep.m_state->m_traits;
                 ms.m_mod_paths.push_back(ep.m_state->m_mod_path);
                 Typecheck_Code(ms, const_cast<::HIR::Function::args_t&>(args), ret_ty, ep_mut);
+                // NOTE: This is already set by the above function
+                ASSERT_BUG(Span(), ep.m_state->stage == ::HIR::ExprState::Stage::Typecheck, "Typecheck_Code didn't set stage");
+            }
+            if( ep.m_state->stage < ::HIR::ExprState::Stage::PostTypecheck )
+            {
                 //Debug_SetStagePre("Expand HIR Annotate");
                 HIR_Expand_AnnotateUsage_Expr(*this, ip, ep_mut);
                 //Debug_SetStagePre("Expand HIR Statics Mark");

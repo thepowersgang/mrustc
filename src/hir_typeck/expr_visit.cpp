@@ -16,6 +16,7 @@ void Typecheck_Code(const typeck::ModuleState& ms, t_args& args, const ::HIR::Ty
     {
         //Typecheck_Code_Simple(ms, args, result_type, expr);
         Typecheck_Code_CS(ms, args, result_type, expr);
+        expr.m_state->stage = ::HIR::ExprState::Stage::Typecheck;
     }
 }
 
