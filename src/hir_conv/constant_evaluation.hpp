@@ -65,7 +65,10 @@ private:
     void push_stack_entry(
         ::FmtLambda print_path, const ::MIR::Function& fcn, MonomorphState ms,
         ::HIR::TypeRef exp, ::HIR::Function::args_t arg_defs,
-        ::std::vector<::MIR::eval::AllocationPtr> args);
+        ::std::vector<::MIR::eval::AllocationPtr> args,
+        const ::HIR::GenericParams* item_params_def,
+        const ::HIR::GenericParams* impl_params_def
+        );
 
     ::MIR::eval::AllocationPtr run_until_stack_empty();
     void run_statement(::MIR::eval::CallStackEntry& local_state, const ::MIR::Statement& stmt);
