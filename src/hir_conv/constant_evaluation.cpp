@@ -2018,7 +2018,7 @@ namespace HIR {
         TU_ARMA(BinOp, e) {
             ::HIR::TypeRef tmp;
             const auto& ty_l = state.get_param_type(tmp, e.val_l);
-            auto ti = TypeInfo::for_type(ty_l);
+            //auto ti = TypeInfo::for_type(ty_l);
             bool did_overflow = do_arith_checked(local_state, ty_l, dst, e.val_l, e.op, e.val_r);
             switch(e.op)
             {
@@ -2473,6 +2473,22 @@ namespace HIR {
                         break;
                     default:
                         MIR_TODO(state, "Handle bswap with " << ty);
+                    }
+                    dst.write_uint(state, ti.bits, rv);
+                }
+                else if( te->name == "bitreverse" ) {
+                    auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                    MIR_ASSERT(state, ty.data().is_Primitive(), "bswap with non-primitive " << ty);
+                    auto ti = TypeInfo::for_type(ty);
+
+                    auto val = local_state.read_param_uint(ti.bits, e.args.at(0));
+                    U128    rv;
+                    for(size_t i = 0; i < ti.bits; i ++) {
+                        if( (val & 1) != 0 ) {
+                            rv |= 1;
+                        }
+                        rv <<= 1;
+                        val >>= 1;
                     }
                     dst.write_uint(state, ti.bits, rv);
                 }
