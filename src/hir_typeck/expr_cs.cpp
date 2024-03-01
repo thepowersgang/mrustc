@@ -3680,6 +3680,22 @@ void Context::possible_equate_ivar(const Span& sp, unsigned int ivar_index, cons
     case PossibleTypeSource::UnsizeFrom:  ent.types_coerce_from.push_back(IVarPossible::CoerceTy(t.clone(), false));   break;
     case PossibleTypeSource::CoerceFrom:  ent.types_coerce_from.push_back(IVarPossible::CoerceTy(t.clone(), true ));   break;
     }
+
+    // Tag ivars embedded in `raw_t` to prevent them from being guessed unless no other option
+    if( !t.data().is_Infer() )
+    {
+        switch(src)
+        {
+        case PossibleTypeSource::UnsizeTo:
+        case PossibleTypeSource::CoerceTo:
+            possible_equate_type_unknown(sp, t, IvarUnknownType::To);
+            break;
+        case PossibleTypeSource::UnsizeFrom:
+        case PossibleTypeSource::CoerceFrom:
+            possible_equate_type_unknown(sp, t, IvarUnknownType::From);
+            break;
+        }
+    }
 }
 void Context::possible_equate_ivar_bounds(const Span& sp, unsigned int ivar_index, std::vector< ::HIR::TypeRef> types)
 {
