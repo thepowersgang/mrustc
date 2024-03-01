@@ -181,7 +181,7 @@ public:
 
                 GET_TOK(tok, lex);  // Joiner or loop type
                 // If the token is a loop type, then it can't be a joiner
-                if( lex.edition_after(AST::Edition::Rust2018) && tok.type() == TOK_QMARK )
+                if( /*lex.edition_after(AST::Edition::Rust2018) &&*/ tok.type() == TOK_QMARK )
                 {
                     // 2018 added `?` repetition operator
                 }
