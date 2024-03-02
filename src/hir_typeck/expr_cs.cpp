@@ -5888,7 +5888,7 @@ namespace
         }
         /// Ordering of `l` relative to `r` for ?unsizing
         /// - OrdLess means that the LHS is less restrictive
-        static Ordering get_ordering_ty(const Span& sp, const Context& context, const ::HIR::TypeRef& l, const ::HIR::TypeRef& r)
+        static Ordering get_ordering_ty(const Span& sp, const Context& context, const ::HIR::TypeRef& l, const ::HIR::TypeRef& r, bool& out_unordered)
         {
             if( l == r ) {
                 return OrdEqual;
@@ -5916,7 +5916,9 @@ namespace
                     // An ivar is less restrictive?
                     if( te_l.binding.is_Unbound() )
                         return OrdLess;
-                    TODO(sp, l << " with " << r << " - LHS is Path, RHS is " << r.data().tag_str());
+                    out_unordered = true;
+                    return OrdEqual;
+                    //TODO(sp, l << " with " << r << " - LHS is Path, RHS is " << r.data().tag_str());
                 TU_ARMA(Slice, te_r) {
                     // Paths can deref to a slice (well, to any type) - so `slice < path` in restrictiveness
                     return OrdGreater;
@@ -5950,7 +5952,7 @@ namespace
             }
             if( r.data().is_Path() ) {
                 // Path types can be unsize targets, and can also act like infers
-                switch( get_ordering_ty(sp, context, r, l) )
+                switch( get_ordering_ty(sp, context, r, l, out_unordered) )
                 {
                 case OrdLess:   return OrdGreater;
                 case OrdEqual:  return OrdEqual;
@@ -5969,7 +5971,17 @@ namespace
                 if( l.data().is_Array() && r.data().is_Slice() ) {
                     return OrdLess;
                 }
-                TODO(sp, "Compare " << l << " and " << r);
+
+                if( l.data().is_Borrow() && !r.data().is_Borrow() ) {
+                    return OrdGreater;
+                }
+                if( r.data().is_Borrow() && !l.data().is_Borrow() ) {
+                    return OrdLess;
+                }
+
+                out_unordered = true;
+                return OrdEqual;
+                //TODO(sp, "Compare " << l << " and " << r);
             }
         }
 
@@ -5980,6 +5992,7 @@ namespace
         static Ordering get_ordering_ptr(
             const Span& sp, const Context& context,
             const ::HIR::TypeRef& l, const ::HIR::TypeRef& r,
+            bool& out_unordered,
             bool deep=true
             )
         {
@@ -6027,6 +6040,7 @@ namespace
                     return OrdEqual;
                     }
                 TU_ARMA(Closure, te_l) {
+                    out_unordered = true;
                     return OrdEqual;
                     }
                 TU_ARMA(Borrow, te_l) {
@@ -6034,7 +6048,7 @@ namespace
                     cmp = ord( (int)te_l.type, (int)te_r.type );   // Unique>Shared in the listing, and Unique is more restrictive than Shared
                     if( cmp == OrdEqual && deep )
                     {
-                        cmp = get_ordering_ty(sp, context, context.m_ivars.get_type(te_l.inner), context.m_ivars.get_type(te_r.inner));
+                        cmp = get_ordering_ty(sp, context, context.m_ivars.get_type(te_l.inner), context.m_ivars.get_type(te_r.inner), out_unordered);
                     }
                     }
                 TU_ARMA(Pointer, te_l) {
@@ -6042,7 +6056,7 @@ namespace
                     cmp = ord( (int)te_r.type, (int)te_l.type );   // Note, reversed ordering because we want Unique>Shared
                     if( cmp == OrdEqual && deep )
                     {
-                        cmp = get_ordering_ty(sp, context, context.m_ivars.get_type(te_l.inner), context.m_ivars.get_type(te_r.inner));
+                        cmp = get_ordering_ty(sp, context, context.m_ivars.get_type(te_l.inner), context.m_ivars.get_type(te_r.inner), out_unordered);
                     }
                     }
                 }
@@ -6599,11 +6613,12 @@ namespace
                         if( !ent.is_source() )
                             continue;
 
+                        bool unused_unordered=false;
                         if( ptr_ty == nullptr )
                         {
                             ptr_ty = ent.ty;
                         }
-                        else if( TypeRestrictiveOrdering::get_ordering_ptr(sp, context, *ent.ty, *ptr_ty, /*deep=*/false) == OrdLess )
+                        else if( TypeRestrictiveOrdering::get_ordering_ptr(sp, context, *ent.ty, *ptr_ty, unused_unordered, /*deep=*/false) == OrdLess )
                         {
                             ptr_ty = ent.ty;
                         }
@@ -6641,6 +6656,85 @@ namespace
                 }
             }
 
+            // If there's multiple destination types (which means that this ivar has to be a coercion from one of them)
+            // Look for the least permissive of the available destination types and assign to that
+            #if 1
+            // NOTE: This only works for coercions (not usizings), so is restricted to all options being pointers
+            if( ::std::all_of(possible_tys.begin(), possible_tys.end(), PossibleType::is_coerce_s)
+                )
+            {
+                // 1. Count distinct (and non-ivar) source types
+                // - This also ignores &_ types
+                size_t num_distinct = 0;
+                for(const auto& ent : possible_tys)
+                {
+                    if( !ent.is_dest() )
+                        continue ;
+                    // Ignore infer borrows
+                    if( TU_TEST1(ent.ty->data(), Borrow, .inner.data().is_Infer()) )
+                        continue;
+                    bool is_duplicate = false;
+                    for(const auto& ent2 : possible_tys)
+                    {
+                        if( &ent2 == &ent )
+                            break;
+                        if( !ent2.is_source() )
+                            continue ;
+                        if( *ent.ty == *ent2.ty ) {
+                            is_duplicate = true;
+                            break;
+                        }
+                        // TODO: Compare such that &[_; 1] == &[u8; 1]?
+                    }
+                    if( !is_duplicate )
+                    {
+                        num_distinct += 1;
+                    }
+                }
+                DEBUG("- " << num_distinct << " distinct sources");
+                // 2. Find the most restrictive destination type
+                // - Borrows are more restrictive than pointers
+                // - Borrows of Sized types are more restrictive than any other
+                // - Decreasing borrow type ordering: Owned, Unique, Shared
+                bool is_unordered = false;
+                const ::HIR::TypeRef*   dest_type = nullptr;
+                for(const auto& ent : possible_tys)
+                {
+                    if( ent.is_dest() )
+                        continue ;
+                    // Ignore &_ types?
+                    // - No, need to handle them below
+                    if( !dest_type ) {
+                        dest_type = ent.ty;
+                        continue ;
+                    }
+
+                    auto cmp = TypeRestrictiveOrdering::get_ordering_ptr(sp, context, *ent.ty, *dest_type, is_unordered);
+                    switch(cmp)
+                    {
+                    case OrdLess:
+                        // This entry is less restrictive, so don't update `dest_type`
+                        break;
+                    case OrdEqual:
+                        break;
+                    case OrdGreater:
+                        // This entry is more restrictive, so DO update `dest_type`
+                        dest_type = ent.ty;
+                        is_unordered = false;
+                        break;
+                    }
+                }
+                // TODO: Unsized types? Don't pick an unsized if coercions are present?
+                // TODO: If in a fallback mode, then don't require >1 (just require dest_type)
+                if( (num_distinct > 1 || fallback_ty == IvarPossFallbackType::Assume) && dest_type && !is_unordered )
+                {
+                    DEBUG("- Least-restrictive source " << *dest_type);
+                    context.equate_types(sp, ty_l, *dest_type);
+                    return true;
+                }
+            }
+            #endif
+
             // If there's multiple source types (which means that this ivar has to be a coercion from one of them)
             // Look for the least permissive of the available destination types and assign to that
             #if 1
@@ -6677,11 +6771,12 @@ namespace
                         num_distinct += 1;
                     }
                 }
-                DEBUG("- " << num_distinct << " distinct possibilities");
+                DEBUG("- " << num_distinct << " distinct sources");
                 // 2. Find the most restrictive destination type
                 // - Borrows are more restrictive than pointers
                 // - Borrows of Sized types are more restrictive than any other
                 // - Decreasing borrow type ordering: Owned, Unique, Shared
+                bool is_unordered = false;
                 const ::HIR::TypeRef*   dest_type = nullptr;
                 for(const auto& ent : possible_tys)
                 {
@@ -6694,12 +6789,13 @@ namespace
                         continue ;
                     }
 
-                    auto cmp = TypeRestrictiveOrdering::get_ordering_ptr(sp, context, *ent.ty, *dest_type);
+                    auto cmp = TypeRestrictiveOrdering::get_ordering_ptr(sp, context, *ent.ty, *dest_type, is_unordered);
                     switch(cmp)
                     {
                     case OrdLess:
                         // This entry is less restrictive, so DO update `dest_type`
                         dest_type = ent.ty;
+                        is_unordered = false;
                         break;
                     case OrdEqual:
                         break;
@@ -6710,7 +6806,7 @@ namespace
                 }
                 // TODO: Unsized types? Don't pick an unsized if coercions are present?
                 // TODO: If in a fallback mode, then don't require >1 (just require dest_type)
-                if( (num_distinct > 1 || fallback_ty == IvarPossFallbackType::Assume) && dest_type )
+                if( (num_distinct > 1 || fallback_ty == IvarPossFallbackType::Assume) && dest_type && !is_unordered )
                 {
                     DEBUG("- Most-restrictive destination " << *dest_type);
                     context.equate_types(sp, ty_l, *dest_type);
@@ -6771,6 +6867,7 @@ namespace
                     // Find the least restrictive destination, and most restrictive source
                     const ::HIR::TypeRef*   dest_type = nullptr;
                     bool any_ivar_present = false;
+                    bool is_unordered = false;
                     for(const auto& ent : possible_tys)
                     {
                         if( visit_ty_with(*ent.ty, [](const ::HIR::TypeRef& t){ return t.data().is_Infer(); }) ) {
@@ -6781,12 +6878,13 @@ namespace
                             continue ;
                         }
 
-                        auto cmp = TypeRestrictiveOrdering::get_ordering_ptr(sp, context, *ent.ty, *dest_type);
+                        auto cmp = TypeRestrictiveOrdering::get_ordering_ptr(sp, context, *ent.ty, *dest_type, is_unordered);
                         switch(cmp)
                         {
                         case OrdLess:
                             // This entry is less restrictive, so DO update `dest_type`
                             dest_type = ent.ty;
+                            is_unordered = false;
                             break;
                         case OrdEqual:
                             break;
@@ -6796,7 +6894,7 @@ namespace
                         }
                     }
 
-                    if( dest_type && n_ivars == 0 && any_ivar_present == false && !dest_type->data().is_Closure() )
+                    if( dest_type && n_ivars == 0 && any_ivar_present == false && !dest_type->data().is_Closure() && !is_unordered )
                     {
                         DEBUG("Suitable option " << *dest_type << " from " << possible_tys);
                         context.equate_types(sp, ty_l, *dest_type);
