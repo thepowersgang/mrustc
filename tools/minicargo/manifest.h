@@ -299,6 +299,8 @@ class PackageManifest
     ::std::map<::std::string, ::std::vector<::std::string>>    m_features;
     ::std::vector<::std::string>    m_default_features;
     ::std::vector<::std::string>    m_active_features;
+    // Set once `load_dependencies` runs, clears when a new feature is activated (as that may activate features in deps)
+    bool m_dependencies_loaded = false;
 
     // Cleared if any features mention `dep:`
     bool m_enable_implicit_optional_dep_features = true;

@@ -918,9 +918,12 @@ void PackageManifest::set_features(const ::std::vector<::std::string>& features,
         {
             auto it = ::std::find(m_active_features.begin(), m_active_features.end(), feat);
             if(it != m_active_features.end()) {
+                DEBUG("`" << feat << "` already active");
                 continue ;
             }
+            DEBUG("`" << feat << "` activated");
             m_active_features.push_back(feat);
+            m_dependencies_loaded = false;
         }
     }
 
@@ -930,7 +933,9 @@ void PackageManifest::set_features(const ::std::vector<::std::string>& features,
             DEBUG("`" << feat << "` already active");
         }
         else {
+            DEBUG("`" << feat << "` activated");
             m_active_features.push_back(feat);
+            m_dependencies_loaded = false;
         }
         };
     for(const auto& feat : features)
@@ -993,6 +998,11 @@ void PackageManifest::set_features(const ::std::vector<::std::string>& features,
 void PackageManifest::load_dependencies(Repository& repo, bool include_build, bool include_dev)
 {
     TRACE_FUNCTION_F(m_name);
+    if( m_dependencies_loaded ) {
+        DEBUG("Skip loading depencencies for " << m_name);
+        return ;
+    }
+    m_dependencies_loaded = true;
     DEBUG("Loading depencencies for " << m_name);
     auto base_path = ::helpers::path(m_manifest_path).parent();
 
