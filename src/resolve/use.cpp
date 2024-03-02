@@ -11,6 +11,7 @@
 #include <ast/expr.hpp>
 #include <hir/hir.hpp>
 #include <stdspan.hpp>  // std::span
+#include <pop_on_drop.hpp>
 
 enum class Lookup
 {
@@ -357,6 +358,17 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
 {
     ::AST::Path::Bindings   rv;
     TRACE_FUNCTION_F(mod.path() << ", des_item_name=" << des_item_name);
+
+    static ::std::vector<std::pair<const AST::Module*,const char*>>  s_recurse_stack;
+    auto recurse_ent = std::make_pair(&mod, des_item_name.c_str());
+    // EVIL: Allow a single recursion before returning empty
+    if( std::count(s_recurse_stack.begin(), s_recurse_stack.end(), recurse_ent) > 1 ) {
+        DEBUG("Recursion detected, returning empty bindings");
+        return rv;
+    }
+    auto _ = push_and_pop_at_end(s_recurse_stack, recurse_ent);
+
+    // TODO: Catch and prevent recursion?
     // If the desired item is an anon module (starts with #) then parse and index
     if( des_item_name.size() > 0 && des_item_name.c_str()[0] == '#' ) {
         unsigned int idx = 0;
