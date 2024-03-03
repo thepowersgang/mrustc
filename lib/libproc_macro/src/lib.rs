@@ -32,7 +32,7 @@ mod protocol;
 mod serialisation;
 mod diagnostic;
 
-mod token_stream {
+pub mod token_stream {
 
     #[derive(Debug,Clone,Default)]
     pub struct TokenStream {
