@@ -112,6 +112,8 @@ namespace {
             }
             else if( name == "not" ) {
                 bool rv = check_cfg_inner(lex);
+                // Allow a trailing comma
+                lex.getTokenIf(TOK_COMMA);
                 GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
                 return !rv;
             }
