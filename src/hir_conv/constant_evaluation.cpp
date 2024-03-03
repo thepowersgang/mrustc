@@ -1851,19 +1851,28 @@ namespace HIR {
 
     AllocationPtr Evaluator::run_until_stack_empty()
     {
-        const unsigned MAX_BLOCK_COUNT = 4000;
+        const unsigned MAX_BLOCK_COUNT = 40000;
+        const unsigned MAX_STMT_COUNT = 100'000;
         assert( !this->call_stack.empty() );
-        for(unsigned idx = 0; idx < MAX_BLOCK_COUNT; idx += 1)
+        unsigned int num_stmts_run = 0;
+        unsigned int idx;
+        for(idx = 0; idx < MAX_BLOCK_COUNT; idx += 1)
         {
+            if( num_stmts_run > MAX_STMT_COUNT ) {
+                break;
+            }
+
             auto& state = this->call_stack.back()->state;
             const auto& bb = state.m_fcn.blocks[state.get_cur_block()];
             for(const auto& stmt : bb.statements)
             {
                 state.set_cur_stmt(state.get_cur_block(), &stmt - bb.statements.data());
                 this->run_statement(*this->call_stack.back(), stmt);
+                num_stmts_run += 1;
             }
             state.set_cur_stmt_term(state.get_cur_block());
             auto next_block = run_terminator(*this->call_stack.back(), bb.terminator);
+            num_stmts_run += 1;
             switch(next_block)
             {
             case TERM_RET_PUSHED:
@@ -1887,7 +1896,7 @@ namespace HIR {
                 state.set_cur_stmt(next_block, 0);
             }
         }
-        ERROR(this->root_span, E0000, "Constant evaluation ran for too long");
+        ERROR(this->root_span, E0000, "Constant evaluation ran for too long - " << num_stmts_run << " statements, " << idx << " blocks");
     }
 
     void Evaluator::run_statement(::MIR::eval::CallStackEntry& local_state, const ::MIR::Statement& stmt)
