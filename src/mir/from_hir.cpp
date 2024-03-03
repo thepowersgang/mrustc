@@ -524,6 +524,12 @@ namespace {
             ent.options = node.m_options;
             ent.lines = node.m_lines;
 
+            auto moved_param = [&](const ::MIR::Param& p) {
+                if(const auto* e = p.opt_LValue()) {
+                    m_builder.moved_lvalue(node.span(), *e);
+                }
+                };
+
             for(auto& v : node.m_params)
             {
                 TU_MATCH_HDRA( (v), { )
@@ -563,6 +569,7 @@ namespace {
                         input = std::make_unique<MIR::Param>( output->clone() );
                         break;
                     }
+                    if(input) { moved_param(*input); }
                     ent.params.push_back(MIR::AsmParam::make_Reg({
                         e.dir, std::move(e.spec), std::move(input), std::move(output)
                         }));
@@ -599,6 +606,7 @@ namespace {
                         }
                         break;
                     }
+                    if(input) { moved_param(*input); }
                     ent.params.push_back(MIR::AsmParam::make_Reg({
                         e.dir, std::move(e.spec), std::move(input), std::move(output)
                         }));
@@ -606,7 +614,12 @@ namespace {
                 }
             }
             m_builder.push_stmt( node.span(), mv$(ent) );
-            m_builder.set_result(node.span(), ::MIR::RValue::make_Tuple({}));
+            if( !node.m_options.noreturn ) {
+                m_builder.set_result(node.span(), ::MIR::RValue::make_Tuple({}));
+            }
+            else {
+                m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
+            }
         }
         void visit(::HIR::ExprNode_Return& node) override
         {

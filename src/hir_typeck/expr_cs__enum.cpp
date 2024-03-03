@@ -687,7 +687,7 @@ namespace typecheck
         }
         void visit(::HIR::ExprNode_Asm& node) override
         {
-            TRACE_FUNCTION_F(&node << " asm! ...");
+            TRACE_FUNCTION_F(&node << " llvm_asm! ...");
 
             this->push_inner_coerce( false );
             for(auto& v : node.m_outputs)
@@ -736,7 +736,12 @@ namespace typecheck
             }
             this->pop_inner_coerce();
             // TODO: Revisit to check that the input are integers, and the outputs are integer lvalues
-            this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
+            if( node.m_options.noreturn ) {
+                this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_diverge());
+            }
+            else {
+                this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
+            }
         }
 
         void visit(::HIR::ExprNode_Return& node) override

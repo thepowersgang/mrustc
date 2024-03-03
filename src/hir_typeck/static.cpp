@@ -2910,8 +2910,9 @@ HIR::TypeRef StaticTraitResolve::get_field_type(const Span& sp, const ::HIR::Typ
                 BUG(sp, "Unknown field `" << name << "` on " << ty);
                 }
             TU_ARMA(Tuple, se) {
-                TODO(sp, "" << ty << " " << name);
-                BUG(sp, "Unknown field `" << name << "` on " << ty);
+                unsigned index = std::strtol(name.c_str(), nullptr, 10);
+                ASSERT_BUG(sp, index < se.size(), "" << ty << " " << name);
+                return ms.monomorph_type(sp, se.at(index).ent);
                 }
             TU_ARMA(Unit, se) {
                 BUG(sp, "Getting field from unit-like struct - " << ty);

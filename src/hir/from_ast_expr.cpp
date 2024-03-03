@@ -117,6 +117,7 @@ struct LowerHIR_ExprNode_Visitor:
         {
             TU_MATCH_HDRA((p), {)
             TU_ARMA(Const, e) {
+                ASSERT_BUG(v.span(), e, "Missing node for ASM Const");
                 params.push_back( lower(e) );
                 }
             TU_ARMA(Sym, e) {
@@ -126,14 +127,14 @@ struct LowerHIR_ExprNode_Visitor:
                 params.push_back(::HIR::ExprNode_Asm2::Param::make_RegSingle({
                     e.dir,
                     e.spec.clone(),
-                    lower(e.val)
+                    e.val ? lower(e.val) : nullptr  // e.g. `lateout(regname) _`
                     }));
                 }
             TU_ARMA(Reg, e) {
                 params.push_back(::HIR::ExprNode_Asm2::Param::make_Reg({
                     e.dir,
                     e.spec.clone(),
-                    lower(e.val_in),
+                    e.val_in ? lower(e.val_in) : nullptr,
                     e.val_out ? lower(e.val_out) : nullptr
                     }));
                 }
