@@ -5914,13 +5914,16 @@ namespace {
                 m_of << ")";
             }
             else if( name == "raw_eq" ) {
+                size_t size = 0;
+                MIR_ASSERT(mir_res, Target_GetSizeOf(sp, m_resolve, params.m_types.at(0), size), "Can't get size of " << params.m_types.at(0));
+
                 // Raw byte equality (could be implemented without a memcmp call, if desired)
                 emit_lvalue(e.ret_val); m_of << " = (0 == memcmp(";
                 emit_param(e.args.at(0));
                 m_of << ", ";
                 emit_param(e.args.at(1));
                 m_of << ", ";
-                m_of << "sizeof("; emit_ctype(params.m_types.at(0)); m_of << ")";
+                m_of << size;
                 m_of << "))";
             }
             else if( name == "forget" ) {
