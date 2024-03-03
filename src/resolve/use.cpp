@@ -133,10 +133,14 @@ void Resolve_Use(::AST::Crate& crate)
             parent_mods.pop_back();
             DEBUG("parent_mods.size() = " << parent_mods.size());
 
-            while( !parent_mods.empty() && !Resolve_Use_GetBinding_Mod(span, crate, parent_mods[0]->path(), *cur_mod, e.nodes.front().name(), parent_mods, /*types_only*/e.nodes.size() > 1).has_binding() )
+            while( !parent_mods.empty()
+                && !Resolve_Use_GetBinding_Mod(span, crate, parent_mods[0]->path(), *cur_mod, e.nodes.front().name(), parent_mods, /*types_only*/e.nodes.size() > 1).has_binding() )
             {
                 cur_mod = parent_mods.back();
                 parent_mods.pop_back();
+            }
+            if( parent_mods.empty() ) {
+                ERROR(span, E0000, "Unable to find " << e.nodes.front().name());
             }
             DEBUG("Found item in " << cur_mod->path());
 
@@ -213,7 +217,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         {
             TRACE_FUNCTION_F(use_ent);
 
-            use_ent.path = Resolve_Use_AbsolutisePath(span, crate, path, mv$(use_ent.path));
+            use_ent.path = Resolve_Use_AbsolutisePath(span, crate, path, use_ent.path);
             if( !use_ent.path.m_class.is_Absolute() )
                 BUG(span, "Use path is not absolute after absolutisation");
 
@@ -484,6 +488,11 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         return rv;
     }
 
+    const bool can_see_private = false
+        || mod.path().is_parent_of(source_mod_path)
+        || (parent_modules.size() > 0 && parent_modules[0]->path().is_parent_of(source_mod_path))
+        ;
+
     // Imports
     // - Explicitly named imports first (they take priority over anon imports)
     for( const auto& imp : mod.m_items )
@@ -496,6 +505,10 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             const Span& sp2 = imp_e.sp;
             if( imp_e.name == des_item_name ) {
                 DEBUG("- Named import " << imp_e.name << " = " << imp_e.path);
+                if( !(imp->is_pub || can_see_private) ) {
+                    DEBUG("Ignore private import");
+                    continue;
+                }
                 if( !imp_e.path.m_bindings.has_binding() )
                 {
                     DEBUG(" > Needs resolve p=" << &imp_e.path);
@@ -532,7 +545,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                 continue ;
 
             // TODO: Correct privacy rules (if the origin of this lookup can see this item)
-            if( (imp->is_pub || mod.path().is_parent_of(source_mod_path)) )
+            if( (imp->is_pub || can_see_private) )
             {
                 DEBUG("- Search glob of " << imp_e.path << " in " << mod.path());
                 // INEFFICIENT! Resolves and throws away the result (because we can't/shouldn't mutate here)
