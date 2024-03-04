@@ -1019,6 +1019,9 @@ namespace {
         void visit(::AST::ExprNode_StructLiteral& node) {
             TODO(sp, "ExprNode_StructLiteral");
         }
+        void visit(::AST::ExprNode_StructLiteralPattern& node) {
+            TODO(sp, "ExprNode_StructLiteralPattern");
+        }
         void visit(::AST::ExprNode_Array& node) {
             TODO(sp, "ExprNode_Array");
         }

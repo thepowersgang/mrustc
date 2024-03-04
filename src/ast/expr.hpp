@@ -538,6 +538,22 @@ struct ExprNode_StructLiteral:
 
     NODE_METHODS();
 };
+// Struct literal pattern only
+// This implicitly has a `..` in it
+struct ExprNode_StructLiteralPattern:
+    public ExprNode
+{
+    typedef ::std::vector<ExprNode_StructLiteral::Ent> t_values;
+    Path    m_path;
+    t_values    m_values;
+
+    ExprNode_StructLiteralPattern(Path path, t_values&& values)
+        : m_path( move(path) )
+        , m_values( move(values) )
+    {}
+
+    NODE_METHODS();
+};
 // Array
 struct ExprNode_Array:
     public ExprNode
@@ -764,6 +780,7 @@ public:
     NT(ExprNode_ByteString);
     NT(ExprNode_Closure);
     NT(ExprNode_StructLiteral);
+    NT(ExprNode_StructLiteralPattern);
     NT(ExprNode_Array);
     NT(ExprNode_Tuple);
     NT(ExprNode_NamedValue);
@@ -814,6 +831,7 @@ public:
     NT(ExprNode_ByteString);
     NT(ExprNode_Closure);
     NT(ExprNode_StructLiteral);
+    NT(ExprNode_StructLiteralPattern);
     NT(ExprNode_Array);
     NT(ExprNode_Tuple);
     NT(ExprNode_NamedValue);

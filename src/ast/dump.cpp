@@ -532,6 +532,21 @@ public:
         m_os << indent() << "}";
         dec_indent();
     }
+    virtual void visit(AST::ExprNode_StructLiteralPattern& n) override {
+        m_expr_root = false;
+        m_os << n.m_path << " {\n";
+        inc_indent();
+        for( auto& i : n.m_values )
+        {
+            // TODO: Attributes
+            m_os << indent() << i.name << ": ";
+            AST::NodeVisitor::visit(i.value);
+            m_os << ",\n";
+        }
+        m_os << indent() << "..\n";
+        m_os << indent() << "}";
+        dec_indent();
+    }
     virtual void visit(AST::ExprNode_Array& n) override {
         m_expr_root = false;
         m_os << "[";

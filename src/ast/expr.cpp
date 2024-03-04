@@ -509,6 +509,22 @@ NODE(ExprNode_StructLiteral, {
 
     return NEWNODE(ExprNode_StructLiteral, AST::Path(m_path), OPT_CLONE(m_base_value), mv$(vals) );
 })
+NODE(ExprNode_StructLiteralPattern, {
+    os << m_path << " /*pat*/ { ";
+    for(const auto& v : m_values)
+    {
+        os << v.name << ": " << *v.value << ", ";
+    }
+    os << ".. }";
+},{
+    ExprNode_StructLiteral::t_values    vals;
+
+    for(const auto& v : m_values) {
+        vals.push_back({ v.attrs.clone(), v.name, v.value->clone() });
+    }
+
+    return NEWNODE(ExprNode_StructLiteralPattern, AST::Path(m_path), mv$(vals) );
+})
 
 NODE(ExprNode_Array, {
     os << "[";
@@ -799,6 +815,11 @@ NV(ExprNode_Closure,
 NV(ExprNode_StructLiteral,
 {
     visit(node.m_base_value);
+    for( auto& val : node.m_values )
+        visit(val.value);
+})
+NV(ExprNode_StructLiteralPattern,
+{
     for( auto& val : node.m_values )
         visit(val.value);
 })

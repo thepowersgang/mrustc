@@ -975,6 +975,9 @@ struct CExpandExpr:
                 void visit(::AST::ExprNode_StructLiteral& v) override {
                     TODO(v.span(), "Struct literal in destructured assignment");
                 }
+                void visit(::AST::ExprNode_StructLiteralPattern& v) override {
+                    TODO(v.span(), "Struct literal in destructured assignment");
+                }
                 void visit(::AST::ExprNode_Array& v) override {
                     TODO(v.span(), "Array literal in destructured assignment");
                 }
@@ -1257,6 +1260,24 @@ struct CExpandExpr:
     }
     void visit(::AST::ExprNode_StructLiteral& node) override {
         this->visit_nodelete(node, node.m_base_value);
+        for(auto& val : node.m_values)
+        {
+            Expand_Attrs_CfgAttr(val.attrs);
+            Expand_Attrs(expand_state, val.attrs, AttrStage::Pre ,  [&](const Span& sp, const auto& d, const auto& a){ d.handle(sp, a, crate,  val); });
+            if( !val.value )
+                continue ;
+            this->visit_nodelete(node, val.value);
+            Expand_Attrs(expand_state, val.attrs, AttrStage::Post,  [&](const Span& sp, const auto& d, const auto& a){ d.handle(sp, a, crate,  val); });
+        }
+        for(auto it = node.m_values.begin(); it != node.m_values.end(); )
+        {
+            if( it->value )
+                ++it;
+            else
+                it = node.m_values.erase(it);
+        }
+    }
+    void visit(::AST::ExprNode_StructLiteralPattern& node) override {
         for(auto& val : node.m_values)
         {
             Expand_Attrs_CfgAttr(val.attrs);

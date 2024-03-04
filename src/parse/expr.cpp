@@ -1198,8 +1198,13 @@ ExprNodeP Parse_ExprVal_StructLiteral(TokenStream& lex, AST::Path path)
     ExprNodeP    base_val;
     if( tok.type() == TOK_DOUBLE_DOT )
     {
-        // default
-        base_val = Parse_Expr0(lex);
+        if( lex.getTokenIf(TOK_BRACE_CLOSE) ) {
+            return NEWNODE( AST::ExprNode_StructLiteralPattern, path, ::std::move(items) );
+        }
+        else {
+            // default
+            base_val = Parse_Expr0(lex);
+        }
         GET_TOK(tok, lex);
     }
     CHECK_TOK(tok, TOK_BRACE_CLOSE);

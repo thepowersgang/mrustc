@@ -806,6 +806,9 @@ TODO(v.span(), "while let (chained)");
             mv$(values)
             ) );
     }
+    virtual void visit(::AST::ExprNode_StructLiteralPattern& v) override {
+        ERROR(v.span(), E0000, "struct literal with an empty `..`");
+    }
     virtual void visit(::AST::ExprNode_Array& v) override {
         if( v.m_size )
         {
