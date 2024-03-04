@@ -973,13 +973,33 @@ struct CExpandExpr:
                 void visit(::AST::ExprNode_Closure& v) override { invalid(v); }
 
                 void visit(::AST::ExprNode_StructLiteral& v) override {
-                    TODO(v.span(), "Struct literal in destructured assignment");
+                    if( v.m_base_value ) {
+                        TODO(v.span(), "Struct literal with `..value` in destructured assignment");
+                    }
+                    std::vector<AST::StructPatternEntry>   subpats;
+                    for(auto& m : v.m_values) {
+                        subpats.push_back(AST::StructPatternEntry { std::move(m.attrs), m.name, lower(m.value) });
+                    }
+                    pat(AST::Pattern(AST::Pattern::TagStruct(), v.span(), v.m_path, std::move(subpats), true));
                 }
                 void visit(::AST::ExprNode_StructLiteralPattern& v) override {
-                    TODO(v.span(), "Struct literal in destructured assignment");
+                    std::vector<AST::StructPatternEntry>   subpats;
+                    for(auto& m : v.m_values) {
+                        subpats.push_back(AST::StructPatternEntry { std::move(m.attrs), m.name, lower(m.value) });
+                    }
+                    pat(AST::Pattern(AST::Pattern::TagStruct(), v.span(), v.m_path, std::move(subpats), false));
                 }
                 void visit(::AST::ExprNode_Array& v) override {
-                    TODO(v.span(), "Array literal in destructured assignment");
+                    if( v.m_size ) {
+                        TODO(v.span(), "Sized Array literal in destructured assignment");
+                    }
+                    else {
+                        std::vector<AST::Pattern>   subpats;
+                        for(auto& m : v.m_values) {
+                            subpats.push_back(lower(m));
+                        }
+                        pat(AST::Pattern(v.span(), AST::Pattern::Data::make_Slice({ std::move(subpats) })));
+                    }
                 }
                 void visit(::AST::ExprNode_Tuple& v) override {
                     std::vector<AST::Pattern>   subpats;
