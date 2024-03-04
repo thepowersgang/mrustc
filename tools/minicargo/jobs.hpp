@@ -35,6 +35,8 @@ class Job
 public:
     virtual ~Job() {}
 
+    // Allow a job to exist even if it doesn't need to run (for deterministic run order)
+    virtual bool is_already_complete() const { return false; }
     virtual const char* verb() const { return "BUILDING"; }
     virtual const std::string& name() const = 0;
     virtual const std::vector<std::string>& dependencies() const = 0;

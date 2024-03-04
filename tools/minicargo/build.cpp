@@ -112,6 +112,7 @@ protected:
 
     ::std::string   m_name;
 public:
+    bool m_is_dirty;
     ::std::vector<std::string>  m_dependencies;
 
 protected:
@@ -119,12 +120,16 @@ protected:
         : parent(parent)
         , m_manifest(manifest)
         , m_name(::std::move(name))
+        , m_is_dirty(true)
     {
     }
 
     void push_args_common(StringList& args, const helpers::path& outfile, bool is_for_host) const;
 
 public:
+    bool is_already_complete() const override {
+        return !m_is_dirty;
+    }
     const std::string& name() const override {
         return m_name;
     }
@@ -173,14 +178,20 @@ class Job_RunScript: public Job
     // Populated on `start`
     helpers::path   m_script_exe_abs;
 public:
+    bool m_is_dirty;
+
     Job_RunScript(const RunState& parent, const PackageManifest& manifest)
         : parent(parent)
         , m_manifest(manifest)
         , m_name(parent.get_key(manifest, false, false)+" (script run)")
+        , m_is_dirty(false)
     {
     }
     ::std::vector<std::string>  m_dependencies;
 
+    bool is_already_complete() const override {
+        return !m_is_dirty;
+    }
     const char* verb() const override {
         return "RUNNING";
     }
@@ -193,7 +204,7 @@ public:
     bool is_runnable() const override {
         return true;
     }
-    
+
     RunnableJob start() override;
     bool complete(bool was_success) override;
 
@@ -349,6 +360,9 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs, bool dry_run)
                 DEBUG("Clean " << job->name());
                 // Add as not-built
                 items_notbuilt.insert(std::make_pair(job->name(), ts));
+                #if 1
+                joblist.add_job(std::move(job));
+                #endif
             }
         }
 
@@ -371,7 +385,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs, bool dry_run)
                 else
                 {
                     auto job_bs_build = ::std::make_unique<Job_BuildScript>(run_state, p);
-                    
+
                     auto script_ts = Timestamp::for_file(job_bs_build->get_outfile());
                     bool bs_is_dirty = run_state.outfile_needs_rebuild(job_bs_build->get_outfile());
                     p.iter_build_dependencies([&](const PackageRef& dep) {
@@ -383,6 +397,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs, bool dry_run)
                         }
                     });
                     auto name_bs_build = job_bs_build->name();
+                    job_bs_build->m_is_dirty = bs_is_dirty;
                     this->add_job(std::move(job_bs_build), script_ts, bs_is_dirty);
 
                     auto job_bs_run = ::std::make_unique<Job_RunScript>(run_state, p);
@@ -424,6 +439,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs, bool dry_run)
                     });
                     bool bs_needs_run = bs_is_dirty || output_ts < script_ts;
                     auto rv = bs_needs_run ? job_bs_run->name() : ::std::string();
+                    job_bs_run->m_is_dirty = bs_needs_run;
                     this->add_job(std::move(job_bs_run), output_ts, bs_needs_run);
                     // If the script is not being run, then it still needs to be loaded
                     if(!bs_needs_run)
@@ -464,6 +480,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs, bool dry_run)
                 is_dirty |= convert_state.handle_dep(job->m_dependencies, output_ts, k);
             }
         });
+        job->m_is_dirty = is_dirty;
         convert_state.add_job(std::move(job), output_ts, is_dirty);
     }
 
@@ -492,6 +509,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs, bool dry_run)
                 }
             });
         }
+        job->m_is_dirty = is_dirty;
         convert_state.add_job(std::move(job), output_ts, is_dirty);
     };
 

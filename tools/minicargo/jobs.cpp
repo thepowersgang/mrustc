@@ -79,6 +79,44 @@ bool JobList::run_all(size_t num_jobs, bool dry_run)
         ::std::cerr << "\n";
     };
 
+    #if 1
+    // HACK: Consume jobs that don't need to be run
+    while( !this->waiting_jobs.empty() || !this->runnable_jobs.empty() || !this->running_jobs.empty() )
+    {
+        // Update the runnable list.
+        for(auto& slot : this->waiting_jobs)
+        {
+            assert(slot);
+            const auto& deps = slot->dependencies();
+            if( std::all_of(deps.begin(), deps.end(), [&](const std::string& s){ return completed_jobs.count(s) > 0; }) && slot->is_runnable() )
+            {
+                this->runnable_jobs.push_back(std::move(slot));
+            }
+        }
+        auto new_end = std::remove_if(waiting_jobs.begin(), waiting_jobs.end(), [](const job_t& j){ return !j; });
+        waiting_jobs.erase(new_end, waiting_jobs.end());
+
+        ::std::sort(runnable_jobs.begin(), runnable_jobs.end(), [](const std::unique_ptr<Job>& a, const std::unique_ptr<Job>& b) {
+            return a->name() < b->name();
+        });
+
+        if( this->runnable_jobs.empty() ) {
+            break;
+        }
+        if( !this->runnable_jobs.front()->is_already_complete() ) {
+            break;
+        }
+        this->runnable_jobs.pop_front();
+    }
+    #else
+    // Remove previously completed jobs after sorting
+    {
+        auto new_end = std::remove_if(this->waiting_jobs.begin(), this->waiting_jobs.end(),
+            [](const std::unique_ptr<Job>& a) { return a->is_already_complete(); });
+        this->waiting_jobs.erase(new_end, this->waiting_jobs.end());
+    }
+    #endif
+
     while( !this->waiting_jobs.empty() || !this->runnable_jobs.empty() || !this->running_jobs.empty() )
     {
         // Wait until a running job stops
@@ -123,6 +161,10 @@ bool JobList::run_all(size_t num_jobs, bool dry_run)
         }
         auto new_end = std::remove_if(waiting_jobs.begin(), waiting_jobs.end(), [](const job_t& j){ return !j; });
         waiting_jobs.erase(new_end, waiting_jobs.end());
+
+        ::std::sort(runnable_jobs.begin(), runnable_jobs.end(), [](const std::unique_ptr<Job>& a, const std::unique_ptr<Job>& b) {
+            return a->name() < b->name();
+        });
 
         // Is nothing runnable?
         if( this->runnable_jobs.empty() ) {
