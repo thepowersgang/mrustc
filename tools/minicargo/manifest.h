@@ -27,6 +27,7 @@ struct PackageVersion
     unsigned minor;
     unsigned patch;
     bool patch_set;
+    std::string free_text;
 
     static PackageVersion from_string(const ::std::string& s);
 
@@ -91,6 +92,9 @@ struct PackageVersion
         os << v.major << "." << v.minor;
         if(v.patch_set)
             os << "." << v.patch;
+        if(v.free_text != "") {
+            os << "+" << v.free_text;
+        }
         return os;
     }
 };

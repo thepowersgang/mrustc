@@ -1122,6 +1122,13 @@ bool Job_RunScript::complete(bool was_success)
     //if( manifest.version() != PackageVersion() ) 
     {
         crate_suffix = ::format("-", manifest.version());
+        {
+            // Strip the free text (after "+") from the crate version
+            auto p = crate_suffix.find('+');
+            if(p != std::string::npos) {
+                crate_suffix.resize(p);
+            }
+        }
         for(auto& v : crate_suffix)
             if(v == '.')
                 v = '_';

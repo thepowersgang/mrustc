@@ -1295,6 +1295,13 @@ PackageVersion PackageVersion::from_string(const ::std::string& s)
         rv.patch = 0;
         rv.patch_set = false;
     }
+    if(iss.peek() == '+') {
+        iss.get();
+        iss >> rv.free_text;
+    }
+    //if( iss.peek() != EOF ) {
+    //    throw ::std::invalid_argument(::format("Failed to parse `", s, "`, stray data after end - got ", iss.peek()));
+    //}
     return rv;
 }
 
