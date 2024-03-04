@@ -79,7 +79,7 @@ bool JobList::run_all(size_t num_jobs, bool dry_run)
         ::std::cerr << "\n";
     };
 
-    #if 1
+    #if 0
     // HACK: Consume jobs that don't need to be run
     while( !this->waiting_jobs.empty() || !this->runnable_jobs.empty() || !this->running_jobs.empty() )
     {
