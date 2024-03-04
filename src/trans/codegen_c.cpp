@@ -5186,12 +5186,43 @@ namespace {
             else
             {
                 std::vector<unsigned>   arg_mappings(se.params.size(), UINT_MAX);
+                // If there is an explicit register, create a block and add `register uintptr_t asm_REGNAME asm("REGNAME");`
+                // - Requires updating the arg mappings, as doing so would remove the argument from the list.
+                bool block_open = false;
+                for(size_t i = 0; i < se.params.size(); i ++)
+                {
+                    if( const auto* pe = se.params[i].opt_Reg() ) {
+                        if( const auto* regname_p = pe->spec.opt_Explicit() ) {
+                            arg_mappings[i] = UINT_MAX-1;
+                            if( !block_open ) {
+                                block_open = true;
+                                m_of << indent << "{\n";
+                            }
+                            m_of << indent << "register uintptr_t asm_" << *regname_p << " asm(\"" << *regname_p << "\");\n";
+                        }
+                    }
+                }
                 std::vector<const MIR::AsmParam::Data_Reg*>   outputs;
                 // Outputs
                 for(size_t i = 0; i < se.params.size(); i ++)
                 {
                     if( const auto* pe = se.params[i].opt_Reg() ) {
-                        if( pe->output )
+                        if( pe->spec.is_Explicit() )
+                        {
+                            // Ignore, handled explicitly above
+                        }
+                        else if(!pe->output && !pe->input)
+                        {
+                            if( !block_open ) {
+                                block_open = true;
+                                m_of << indent << "{\n";
+                            }
+                            m_of << indent << "uintptr_t asm_anon_" << outputs.size() << " = 0;\n";
+
+                            arg_mappings[i] = outputs.size();
+                            outputs.push_back(pe);
+                        }
+                        else if( pe->output )
                         {
                             arg_mappings[i] = outputs.size();
                             outputs.push_back(pe);
@@ -5203,7 +5234,11 @@ namespace {
                 for(size_t i = 0; i < se.params.size(); i ++)
                 {
                     if( const auto* pe = se.params[i].opt_Reg() ) {
-                        if( pe->input && !pe->output )
+                        if( pe->spec.is_Explicit() )
+                        {
+                            // Ignore, handled explicitly above
+                        }
+                        else if( pe->input && !pe->output )
                         {
                             arg_mappings[i] = outputs.size() + inputs.size();
                             inputs.push_back(&se.params[i]);
@@ -5229,6 +5264,10 @@ namespace {
                         m_of << FmtGccAsm(f.before, !inputs.empty() || !outputs.empty());
                         MIR_ASSERT(mir_res, arg_mappings.at(f.index) != UINT_MAX, stmt);
                         m_of << "%";
+                        if( arg_mappings.at(f.index) == UINT8_MAX-1 ) {
+                            m_of << se.params[f.index].as_Reg().spec.as_Explicit();
+                            continue;
+                        }
                         switch( f.modifier )
                         {
                         case '\0':
@@ -5256,7 +5295,12 @@ namespace {
                     if(i != 0)  m_of << ",";
                     m_of << " ";
                     m_of << "\"";
-                    m_of << (p.input ? "+" : "=");
+                    if( !p.output && !p.input ) {
+                        m_of << "+";
+                    }
+                    else {
+                        m_of << (p.input ? "+" : "=");
+                    }
                     TU_MATCH_HDRA((p.spec), {)
                     TU_ARMA(Class, c)
                         // https://gcc.gnu.org/onlinedocs/gcc/Machine-Constraints.html
@@ -5271,6 +5315,7 @@ namespace {
                         case AsmCommon::RegisterClass::x86_kreg: m_of << "Yk"; break;
                         }
                     TU_ARMA(Explicit, name) {
+                        MIR_BUG(mir_res, "Asm2 GCC - Explicit output should be unrechable");
                         if(false) {
                         }
                         else if( name == "eax" || name == "rax" ) {  m_of << "a";   }
@@ -5280,12 +5325,19 @@ namespace {
                         else if( name == "edi" || name == "rdi" ) {  m_of << "D";   }
                         else if( name == "esi" || name == "rsi" ) {  m_of << "S";   }
                         else {
+                            // TODO: The gcc docs suggest using `register int asm_arg_N asm("regname")`
                             MIR_TODO(mir_res, "Asm2 GCC - Explicit output reg `" << name << "`: " << stmt);
                         }
                         }
                     }
-                    assert(p.output);
-                    m_of << "\" ("; emit_lvalue(*p.output); m_of << ")";
+                    m_of << "\" (";
+                    if( !p.output ) {
+                        m_of << "asm_anon_" << i;
+                    }
+                    else {
+                        emit_lvalue(*p.output);
+                    }
+                    m_of << ")";
                 }
                 m_of << " :";
                 for(size_t i = 0; i < inputs.size(); i ++)
@@ -5309,6 +5361,7 @@ namespace {
                             case AsmCommon::RegisterClass::x86_kreg: m_of << "Yk"; break;
                             }
                         TU_ARMA(Explicit, name) {
+                            MIR_BUG(mir_res, "Asm2 GCC - Explicit input should be unrechable");
                             if(false) {
                             }
                             else if( name == "eax" || name == "rax" ) {  m_of << "a";   }
@@ -5330,13 +5383,16 @@ namespace {
                     }
                 }
                 m_of << ");\n";
+                if( block_open ) {
+                    m_of << indent << "}\n";
+                }
             }
         }
     private:
         const ::HIR::TypeRef& monomorphise_fcn_return(::HIR::TypeRef& tmp, const ::HIR::Function& item, const Trans_Params& params)
         {
             bool has_erased = visit_ty_with(item.m_return, [&](const auto& x) { return x.data().is_ErasedType(); });
-            
+
             if( has_erased || monomorphise_type_needed(item.m_return) )
             {
                 // If there's an erased type, make a copy with the erased type expanded
