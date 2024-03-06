@@ -1161,6 +1161,7 @@ namespace {
         }
         void mark_used_variable_closure(const Span& sp, ClosureScope& closure_rec, unsigned slot, std::vector<RcString> fields, ::HIR::ValueUsage usage)
         {
+            DEBUG("(" << slot << ", [" << fields << "], usage=" << usage << ")");
             const auto& closure_defs = closure_rec.local_vars;
             auto& closure = closure_rec.node;
 
@@ -1201,9 +1202,20 @@ namespace {
                 });
             if( its.first == its.second ) {
                 // Doesn't exist yet
+                DEBUG("Insert");
                 closure_rec.captured_vars.insert(its.first, new_ent);
             }
+            else if( its.first->fields.size() <= new_ent.fields.size() ) {
+                DEBUG("new longer");
+                assert(its.first->root_slot == new_ent.root_slot);
+                for(size_t i = 0; i < its.first->fields.size(); i ++) {
+                    assert(its.first->fields[i] == new_ent.fields[i]);
+                }
+                ASSERT_BUG(sp, its.first + 1 == its.second, "Prefix total match, but multiple matching entries?");
+                its.first->usage = std::max(its.first->usage, new_ent.usage);
+            }
             else {
+                DEBUG("new shorter or equal");
                 assert(its.first->root_slot == new_ent.root_slot);
                 assert(its.first->fields.size() >= new_ent.fields.size());
                 for(size_t i = 0; i < new_ent.fields.size(); i ++) {
