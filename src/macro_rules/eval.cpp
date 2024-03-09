@@ -1189,6 +1189,7 @@ namespace
                 case TOK_RWORD_BOX: // Box
                     lex.consume();
                     break;
+                case TOK_DOUBLE_AMP:
                 case TOK_AMP:
                     lex.consume();
                     lex.consume_if(TOK_RWORD_MUT);
@@ -1949,6 +1950,7 @@ namespace
             case TOK_INTEGER:
             case TOK_FLOAT:
             case TOK_STRING:
+            case TOK_BYTESTRING:
             case TOK_RWORD_TRUE:
             case TOK_RWORD_FALSE:
                 lex.consume();
