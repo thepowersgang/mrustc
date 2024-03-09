@@ -2460,6 +2460,9 @@ namespace HIR {
                         static uint64_t bswap64(uint64_t v) {
                             return bswap32(v >> 32) | (static_cast<uint64_t>(bswap32(static_cast<uint32_t>(v))) << 32);
                         }
+                        static U128 bswap128(U128 v) {
+                            return U128( bswap64( (v >> 32).truncate_u64()), bswap64(v.truncate_u64()) );
+                        }
                     };
                     U128 rv;
                     switch(ty.data().as_Primitive())
@@ -2479,6 +2482,10 @@ namespace HIR {
                     case ::HIR::CoreType::I64:
                     case ::HIR::CoreType::U64:
                         rv = U128(H::bswap64(val.truncate_u64()));
+                        break;
+                    case ::HIR::CoreType::I128:
+                    case ::HIR::CoreType::U128:
+                        rv = H::bswap128(val);
                         break;
                     default:
                         MIR_TODO(state, "Handle bswap with " << ty);
