@@ -2542,6 +2542,13 @@ namespace HIR {
                     bool overflowed = do_arith_checked(local_state, ty, dst_tup.first, e.args.at(0), ::MIR::eBinOp::SUB, e.args.at(1));
                     dst_tup.second.write_uint(state, 8, U128(overflowed ? 1 : 0));
                 }
+                else if( te->name == "mul_with_overflow" ) {
+                    auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
+                    MIR_ASSERT(state, ty.data().is_Primitive(), "`" << te->name << "` with non-primitive " << ty);
+                    auto dst_tup = get_tuple_t_bool(local_state, dst, ty);
+                    bool overflowed = do_arith_checked(local_state, ty, dst_tup.first, e.args.at(0), ::MIR::eBinOp::MUL, e.args.at(1));
+                    dst_tup.second.write_uint(state, 8, U128(overflowed ? 1 : 0));
+                }
                 // Unchecked and wrapping are the same
                 else if( te->name == "wrapping_add" ||  te->name == "unchecked_add" ) {
                     auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
