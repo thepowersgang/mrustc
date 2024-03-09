@@ -208,6 +208,17 @@ namespace {
         ::std::vector<FmtFrag>  frags;
         ::std::string   cur_literal;
 
+        auto get_named = [&](RcString ident) -> unsigned {
+            auto it = named.find(ident);
+            if( it == named.end() ) {
+                // Add an implicit named argument
+                it = named.insert(std::make_pair( ident, static_cast<unsigned>(named_args.size()) )).first;
+                // TODO: Create a token with span information pointing to this location in the string.
+                named_args.push_back(Token(TOK_IDENT, Ident(hygiene, ident)));
+            }
+            return n_free + it->second;
+        };
+
         const char* s = format_string.c_str();
         const char* const s_end = s + format_string.length();
         for( ; s < s_end; s ++)
@@ -266,15 +277,7 @@ namespace {
                         while( isalnum(*s) || *s == '_' || (*s < 0 || *s > 127) ) {
                             s ++;
                         }
-                        auto ident = RcString(start, s - start);
-                        auto it = named.find(ident);
-                        if( it == named.end() ) {
-                            // Add an implicit named argument
-                            it = named.insert(std::make_pair(ident, static_cast<unsigned>(named_args.size()))).first;
-                            // TODO: Create a token with span information pointing to this location in the string.
-                            named_args.push_back(Token(TOK_IDENT, Ident(hygiene, ident)));
-                        }
-                        index = n_free + it->second;
+                        index = get_named(RcString(start, s - start));
                     }
                 }
                 else {
@@ -373,11 +376,7 @@ namespace {
                         }
                         if( *s == '$' )
                         {
-                            auto ident = RcString(start, s - start);
-                            auto it = named.find(ident);
-                            if( it == named.end() )
-                                ERROR(sp, E0000, "Named argument '"<<ident<<"' not found");
-                            args.width = n_free + it->second;
+                            args.width = get_named(RcString(start, s - start));
                             args.width_is_arg = true;
 
                             s ++;
@@ -418,8 +417,29 @@ namespace {
                                 //args.prec_is_arg = false;
                             }
                         }
+                        else if( ::std::isalpha(*s) ) {
+                            // Parse an ident and if the next character is $, convert to named
+                            // - Otherwise keep the ident around for the formatter
+
+                            const char* start = s;
+                            while( isalnum(*s) || *s == '_' || (*s < 0 || *s > 127) ) {
+                                s ++;
+                            }
+                            if( *s == '$' )
+                            {
+                                args.prec = get_named(RcString(start, s - start));
+                                args.prec_is_arg = true;
+
+                                s ++;
+                            }
+                            else {
+                                s = start;
+                                //ERROR(sp, E0000, "Unexpected character in precision");
+                            }
+                        }
                         else {
                             // Wut?
+                            ERROR(sp, E0000, "Unexpected character in precision");
                         }
                     }
 
