@@ -6,6 +6,7 @@
  * - Typecheck helpers
  */
 #include "helpers.hpp"
+#include <hir_conv/main_bindings.hpp>
 #include <algorithm>
 
 // --------------------------------------------------------------------
@@ -2027,6 +2028,7 @@ void TraitResolution::expand_associated_types_inplace(const Span& sp, ::HIR::Typ
     TU_ARMA(Path, e) {
         TU_MATCH_HDRA( (e.path.m_data), {)
         TU_ARMA(Generic, pe) {
+            ConvertHIR_ConstantEvaluate_MethodParams(sp, m_crate, m_vis_path, m_impl_generics, m_item_generics, *e.binding.get_generics(), pe.m_params);
             H::expand_associated_types_params(sp, *this, pe.m_params, stack);
             }
         TU_ARMA(UfcsInherent, pe) {
@@ -2083,6 +2085,7 @@ void TraitResolution::expand_associated_types_inplace(const Span& sp, ::HIR::Typ
         // Recurse?
         }
     TU_ARMA(Array, e) {
+        ConvertHIR_ConstantEvaluate_ArraySize(sp, m_crate, m_vis_path, m_impl_generics, m_item_generics, e.size);
         expand_associated_types_inplace(sp, e.inner, stack);
         }
     TU_ARMA(Slice, e) {

@@ -964,6 +964,19 @@ const ::HIR::TraitMarkings* HIR::TypePathBinding::get_trait_markings() const
     )
     return markings_ptr;
 }
+const ::HIR::GenericParams* HIR::TypePathBinding::get_generics() const
+{
+    const ::HIR::GenericParams* rv = nullptr;
+    TU_MATCH_HDRA( (*this), {)
+    TU_ARMA(Unbound, tpb) {}
+    TU_ARMA(Opaque, tpb) {}
+    TU_ARMA(ExternType, tpb) {}
+    TU_ARMA(Struct, tpb) rv = &tpb->m_params;
+    TU_ARMA(Union,  tpb) rv = &tpb->m_params;
+    TU_ARMA(Enum,   tpb) rv = &tpb->m_params;
+    }
+    return rv;
+}
 
 ::HIR::TypeRef HIR::TypeRef::clone() const
 {

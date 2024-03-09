@@ -1199,7 +1199,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                     ::HIR::TypeRef  tmp1;
                     ::HIR::TypeRef  tmp2;
                     auto maybe_monomorph = [&](const ::HIR::TypeRef& ty)->const ::HIR::TypeRef& {
-                        if( monomorphise_type_needed(ty) ) {
+                        if( true || monomorphise_type_needed(ty) ) {
                             tmp2 = out_params.monomorph_type(sp, ty);
                             state.m_resolve.expand_associated_types(sp, tmp2);
                             return tmp2;

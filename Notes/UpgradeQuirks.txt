@@ -86,3 +86,6 @@
 - `proc_macro::is_available`
 - `FromStr` impls for `proc_macro::Literal` etc
 - `pub use bool;` - Stabilised in 1.43, but wasn't needed until now
+- struct literal patterns in pattern-assign with `..`
+- More recursive consteval requirements (const functions calling functions with arguments that need consteval?)
+  - Can be generalised to needing to do consteval after monomorph in typecheck, maybe as part of EAT

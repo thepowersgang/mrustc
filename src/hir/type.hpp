@@ -111,6 +111,7 @@ TAGGED_UNION_EX(TypePathBinding, (), Unbound, (
     ), (), (), (
         TypePathBinding clone() const;
 
+        const GenericParams* get_generics() const;
         const TraitMarkings* get_trait_markings() const;
 
         bool operator==(const TypePathBinding& x) const;

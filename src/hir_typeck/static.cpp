@@ -8,6 +8,7 @@
 #include "static.hpp"
 #include <algorithm>
 #include <hir/expr.hpp>
+#include <hir_conv/main_bindings.hpp>
 
 bool StaticTraitResolve::find_impl(
     const Span& sp,
@@ -1389,6 +1390,7 @@ void StaticTraitResolve::expand_associated_types_inner(const Span& sp, ::HIR::Ty
     TU_ARMA(Path, e) {
         TU_MATCH_HDRA( (e.path.m_data), { )
         TU_ARMA(Generic, e2) {
+            ConvertHIR_ConstantEvaluate_MethodParams(sp, m_crate, HIR::SimplePath(m_crate.m_crate_name, {}), m_impl_generics, m_item_generics, *e.binding.get_generics(), e2.m_params);
             expand_associated_types_params(sp, e2.m_params);
             }
         TU_ARMA(UfcsInherent, e2) {
@@ -1432,6 +1434,7 @@ void StaticTraitResolve::expand_associated_types_inner(const Span& sp, ::HIR::Ty
         // Recurse?
         }
     TU_ARMA(Array, e) {
+        ConvertHIR_ConstantEvaluate_ArraySize(sp, m_crate, HIR::SimplePath(m_crate.m_crate_name, {}), m_impl_generics, m_item_generics, e.size);
         expand_associated_types_inner(sp, e.inner);
         }
     TU_ARMA(Slice, e) {
