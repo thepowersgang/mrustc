@@ -1045,6 +1045,11 @@ namespace MIR { namespace eval {
             state.m_monomorphed_locals = &local_types;
         }
 
+        HIR::TypeRef monomorph_expand(const HIR::TypeRef& ty) const
+        {
+            return this->resolve.monomorph_expand(this->state.sp, ty, this->ms);
+        }
+
         StaticRefPtr get_staticref_mono(const ::HIR::Path& p) const
         {
             // NOTE: Value won't need to be monomorphed, as it shouldn't be generic
@@ -2351,7 +2356,7 @@ namespace HIR {
             {
                 auto dst = local_state.get_lval(e.ret_val);
                 if( te->name == "size_of" ) {
-                    auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                    auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
                     size_t  size_val;
                     if( Target_GetSizeOf(state.sp, this->resolve, ty, size_val) )
                         dst.write_uint(state, Target_GetPointerBits(), U128(size_val));
@@ -2359,7 +2364,7 @@ namespace HIR {
                         throw Defer();
                 }
                 else if( te->name == "min_align_of" ) {
-                    auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                    auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
                     size_t  align_val;
                     if( Target_GetAlignOf(state.sp, this->resolve, ty, align_val) )
                         dst.write_uint(state, Target_GetPointerBits(), U128(align_val));
@@ -2367,17 +2372,17 @@ namespace HIR {
                         throw Defer();
                 }
                 else if( te->name == "type_name" ) {
-                    auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                    auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
                     auto name = FMT(ty);
                     dst.write_ptr(state, EncodedLiteral::PTR_BASE, AllocationPtr::allocate_ro(name.data(), name.size()));
                     dst.slice(Target_GetPointerBits()/8).write_uint(state, Target_GetPointerBits(), name.size());
                 }
                 else if( te->name == "type_id" ) {
-                    auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                    auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
                     dst.write_ptr(state, EncodedLiteral::PTR_BASE, StaticRefPtr::allocate(HIR::Path(mv$(ty), "#type_id"), nullptr));
                 }
                 else if( te->name == "needs_drop" ) {
-                    auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                    auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
                     dst.write_uint(state, 8, resolve.type_needs_drop_glue(state.sp, ty) ? 1 : 0);
                 }
                 else if( te->name == "caller_location" ) {
@@ -2397,7 +2402,7 @@ namespace HIR {
                 }
                 // ---
                 else if( te->name == "ctpop" ) {
-                    auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                    auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
                     MIR_ASSERT(state, ty.data().is_Primitive(), "bswap with non-primitive " << ty);
                     auto ti = TypeInfo::for_type(ty);
                     //MIR_ASSERT(state, ti.type == TypeInfo::Unsigned, "`bswap` with non-unsigned " << ty);
@@ -2412,7 +2417,7 @@ namespace HIR {
                 }
                 // - CounT Trailing Zeros
                 else if( te->name == "cttz" ) {
-                    auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                    auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
                     MIR_ASSERT(state, ty.data().is_Primitive(), "`cttz` with non-primitive " << ty);
                     auto ti = TypeInfo::for_type(ty);
                     MIR_ASSERT(state, ti.ty == TypeInfo::Unsigned, "`cttz` with non-unsigned " << ty);
@@ -2431,7 +2436,7 @@ namespace HIR {
                 }
                 // - CounT Lrailing Zeros
                 else if( te->name == "ctlz" ) {
-                    auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                    auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
                     MIR_ASSERT(state, ty.data().is_Primitive(), "`ctlz` with non-primitive " << ty);
                     auto ti = TypeInfo::for_type(ty);
                     MIR_ASSERT(state, ti.ty == TypeInfo::Unsigned, "`ctlz` with non-unsigned " << ty);
@@ -2446,7 +2451,7 @@ namespace HIR {
                     dst.write_uint(state, ti.bits, U128(ti.bits - rv));
                 }
                 else if( te->name == "bswap" ) {
-                    auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                    auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
                     MIR_ASSERT(state, ty.data().is_Primitive(), "bswap with non-primitive " << ty);
                     auto ti = TypeInfo::for_type(ty);
                     auto val = local_state.read_param_uint(ti.bits, e.args.at(0));
@@ -2493,7 +2498,7 @@ namespace HIR {
                     dst.write_uint(state, ti.bits, rv);
                 }
                 else if( te->name == "bitreverse" ) {
-                    auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                    auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
                     MIR_ASSERT(state, ty.data().is_Primitive(), "bswap with non-primitive " << ty);
                     auto ti = TypeInfo::for_type(ty);
 
@@ -2510,14 +2515,14 @@ namespace HIR {
                 }
                 // ---
                 else if( te->name == "add_with_overflow" ) {
-                    auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                    auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
                     MIR_ASSERT(state, ty.data().is_Primitive(), "`" << te->name << "` with non-primitive " << ty);
                     auto dst_tup = get_tuple_t_bool(local_state, dst, ty);
                     bool overflowed = do_arith_checked(local_state, ty, dst_tup.first, e.args.at(0), ::MIR::eBinOp::ADD, e.args.at(1));
                     dst_tup.second.write_uint(state, 8, U128(overflowed ? 1 : 0));
                 }
                 else if( te->name == "sub_with_overflow" ) {
-                    auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                    auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
                     MIR_ASSERT(state, ty.data().is_Primitive(), "`" << te->name << "` with non-primitive " << ty);
                     auto dst_tup = get_tuple_t_bool(local_state, dst, ty);
                     bool overflowed = do_arith_checked(local_state, ty, dst_tup.first, e.args.at(0), ::MIR::eBinOp::SUB, e.args.at(1));
@@ -2525,53 +2530,53 @@ namespace HIR {
                 }
                 // Unchecked and wrapping are the same
                 else if( te->name == "wrapping_add" ||  te->name == "unchecked_add" ) {
-                    auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                    auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
                     MIR_ASSERT(state, ty.data().is_Primitive(), "`" << te->name << "` with non-primitive " << ty);
                     do_arith_checked(local_state, ty, dst, e.args.at(0), ::MIR::eBinOp::ADD, e.args.at(1));
                 }
                 else if( te->name == "wrapping_sub" ||  te->name == "unchecked_sub" ) {
-                    auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                    auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
                     MIR_ASSERT(state, ty.data().is_Primitive(), "`" << te->name << "` with non-primitive " << ty);
                     do_arith_checked(local_state, ty, dst, e.args.at(0), ::MIR::eBinOp::SUB, e.args.at(1));
                 }
                 else if( te->name == "unchecked_shl" ) {
-                    auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                    auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
                     MIR_ASSERT(state, ty.data().is_Primitive(), "`" << te->name << "` with non-primitive " << ty);
                     do_arith_checked(local_state, ty, dst, e.args.at(0), ::MIR::eBinOp::BIT_SHL, e.args.at(1));
                 }
                 else if( te->name == "unchecked_shr" ) {
-                    auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                    auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
                     MIR_ASSERT(state, ty.data().is_Primitive(), "`" << te->name << "` with non-primitive " << ty);
                     do_arith_checked(local_state, ty, dst, e.args.at(0), ::MIR::eBinOp::BIT_SHR, e.args.at(1));
                 }
                 // - Except for div/rem, which add checking just in case
                 else if( te->name == "unchecked_rem" ) {
-                    auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                    auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
                     MIR_ASSERT(state, ty.data().is_Primitive(), "`" << te->name << "` with non-primitive " << ty);
                     bool was_overflow = do_arith_checked(local_state, ty, dst, e.args.at(0), ::MIR::eBinOp::MOD, e.args.at(1));
                     MIR_ASSERT(state, !was_overflow, "`" << te->name << "` overflowed");
                 }
                 else if( te->name == "unchecked_div" ) {
-                    auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                    auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
                     MIR_ASSERT(state, ty.data().is_Primitive(), "`" << te->name << "` with non-primitive " << ty);
                     bool was_overflow = do_arith_checked(local_state, ty, dst, e.args.at(0), ::MIR::eBinOp::DIV, e.args.at(1));
                     MIR_ASSERT(state, !was_overflow, "`" << te->name << "` overflowed");
                 }
                 // `exact_div` is UB if the division results in a non-zero remainder (or if the division overflows)
                 else if( te->name == "exact_div" ) {
-                    auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                    auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
                     MIR_ASSERT(state, ty.data().is_Primitive(), "`" << te->name << "` with non-primitive " << ty);
                     bool was_overflow = do_arith_checked(local_state, ty, dst, e.args.at(0), ::MIR::eBinOp::DIV, e.args.at(1));
                     MIR_ASSERT(state, !was_overflow, "`" << te->name << "` overflowed");
                 }
                 // Saturating operations
                 else if( te->name == "saturating_add" ) {
-                    auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                    auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
                     MIR_ASSERT(state, ty.data().is_Primitive(), "`" << te->name << "` with non-primitive " << ty);
                     do_arith_checked(local_state, ty, dst, e.args.at(0), ::MIR::eBinOp::ADD, e.args.at(1), true);
                 }
                 else if( te->name == "saturating_sub" ) {
-                    auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                    auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
                     MIR_ASSERT(state, ty.data().is_Primitive(), "`" << te->name << "` with non-primitive " << ty);
                     do_arith_checked(local_state, ty, dst, e.args.at(0), ::MIR::eBinOp::SUB, e.args.at(1), true);
                 }
@@ -2587,7 +2592,7 @@ namespace HIR {
                     MIR_ASSERT(state, val != 0, "`assume` failed");
                 }
                 else if( te->name == "assert_inhabited" ) {
-                    auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                    auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
                     // TODO: Determine if the type is inhabited (i.e. isn't diverge)
                     bool is_uninhabited = resolve.type_is_impossible(state.sp, ty);
                     MIR_ASSERT(state, !is_uninhabited, "assert_inhabited " << ty << " failed");
@@ -2596,7 +2601,7 @@ namespace HIR {
                 else if( te->name == "const_eval_select" ) {
                     // "Selects which function to call depending on the context."
                     // `fn const_eval_select<ARG, F, G, RET>(arg: ARG, called_in_const: F, called_at_rt: G ) -> RET`
-                    auto arg_ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                    auto arg_ty = local_state.monomorph_expand(te->params.m_types.at(0));
                     MIR_ASSERT(state, arg_ty.data().is_Tuple(), "`" << te->name << "` requires a tuple for ARG, got " << arg_ty);
                     auto* repr = Target_GetTypeRepr(state.sp, resolve, arg_ty);
                     if(!repr) {
@@ -2659,7 +2664,7 @@ namespace HIR {
                 }
                 // ---
                 else if( te->name == "copy_nonoverlapping" ) {
-                    auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                    auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
                     size_t element_size;
                     if( !Target_GetSizeOf(state.sp, resolve, ty, element_size) )
                         throw Defer();
@@ -2676,7 +2681,7 @@ namespace HIR {
                     vr_dst.copy_from(state, vr_src);
                 }
                 else if( te->name == "offset" ) {
-                    auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0).data().as_Pointer().inner);
+                    auto ty = local_state.monomorph_expand(te->params.m_types.at(0).data().as_Pointer().inner);
                     size_t element_size;
                     if( !Target_GetSizeOf(state.sp, resolve, ty, element_size) )
                         throw Defer();
@@ -2685,7 +2690,7 @@ namespace HIR {
                     dst.write_ptr(state, ptr_pair.first + ofs.truncate_u64() * element_size, ptr_pair.second);
                 }
                 else if( te->name == "write_bytes" ) {
-                    auto ty = ms.monomorph_type(state.sp, te->params.m_types.at(0));
+                    auto ty = local_state.monomorph_expand(te->params.m_types.at(0));
                     size_t element_size;
                     if( !Target_GetSizeOf(state.sp, resolve, ty, element_size) )
                         throw Defer();
