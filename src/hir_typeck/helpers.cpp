@@ -574,7 +574,7 @@ void HMTypeInferrence::add_ivars(::HIR::TypeRef& type)
             this->add_ivars_params(marker.m_params);
         }
     TU_ARMA(ErasedType, e) {
-        if( type_contains_ivars(type) ) {
+        if( type_contains_ivars(type, /*only_unbound=*/true) ) {
             BUG(Span(), "ErasedType getting ivars added - " << type);
         }
         }
@@ -924,37 +924,42 @@ HMTypeInferrence::IVar& HMTypeInferrence::get_pointed_ivar(unsigned int slot) co
     return const_cast<IVar&>(m_ivars.at(index));
 }
 
-bool HMTypeInferrence::pathparams_contain_ivars(const ::HIR::PathParams& pps) const {
+bool HMTypeInferrence::pathparams_contain_ivars(const ::HIR::PathParams& pps, bool only_unbound) const {
     for( const auto& ty : pps.m_types ) {
-        if(this->type_contains_ivars(ty))
+        if(this->type_contains_ivars(ty, only_unbound))
             return true;
     }
     return false;
 }
-bool HMTypeInferrence::type_contains_ivars(const ::HIR::TypeRef& ty) const {
+bool HMTypeInferrence::type_contains_ivars(const ::HIR::TypeRef& ty, bool only_unbound) const {
     TRACE_FUNCTION_F("ty = " << ty);
     //TU_MATCH(::HIR::TypeData, (this->get_type(ty).m_data), (e),
     TU_MATCH(::HIR::TypeData, (ty.data()), (e),
-    (Infer, return true; ),
+    (Infer,
+        if( only_unbound ) {
+            return e.index == ~0u;
+        }
+        return true;
+        ),
     (Primitive, return false; ),
     (Diverge, return false; ),
     (Generic, return false; ),
     (Path,
         TU_MATCH(::HIR::Path::Data, (e.path.m_data), (pe),
         (Generic,
-            return pathparams_contain_ivars(pe.m_params);
+            return pathparams_contain_ivars(pe.m_params, only_unbound);
             ),
         (UfcsKnown,
-            if( type_contains_ivars(pe.type) )
+            if( type_contains_ivars(pe.type, only_unbound) )
                 return true;
-            if( pathparams_contain_ivars(pe.trait.m_params) )
+            if( pathparams_contain_ivars(pe.trait.m_params, only_unbound) )
                 return true;
-            return pathparams_contain_ivars(pe.params);
+            return pathparams_contain_ivars(pe.params, only_unbound);
             ),
         (UfcsInherent,
-            if( type_contains_ivars(pe.type) )
+            if( type_contains_ivars(pe.type, only_unbound) )
                 return true;
-            return pathparams_contain_ivars(pe.params);
+            return pathparams_contain_ivars(pe.params, only_unbound);
             ),
         (UfcsUnknown,
             BUG(Span(), "UfcsUnknown");
@@ -962,16 +967,16 @@ bool HMTypeInferrence::type_contains_ivars(const ::HIR::TypeRef& ty) const {
         )
         ),
     (Borrow,
-        return type_contains_ivars(e.inner);
+        return type_contains_ivars(e.inner, only_unbound);
         ),
     (Pointer,
-        return type_contains_ivars(e.inner);
+        return type_contains_ivars(e.inner, only_unbound);
         ),
     (Slice,
-        return type_contains_ivars(e.inner);
+        return type_contains_ivars(e.inner, only_unbound);
         ),
     (Array,
-        return type_contains_ivars(e.inner);
+        return type_contains_ivars(e.inner, only_unbound);
         ),
     (Closure,
         return false;
@@ -982,32 +987,32 @@ bool HMTypeInferrence::type_contains_ivars(const ::HIR::TypeRef& ty) const {
         ),
     (Function,
         for(const auto& arg : e.m_arg_types)
-            if( type_contains_ivars(arg) )
+            if( type_contains_ivars(arg, only_unbound) )
                 return true;
-        return type_contains_ivars(e.m_rettype);
+        return type_contains_ivars(e.m_rettype, only_unbound);
         ),
     (TraitObject,
         for(const auto& marker : e.m_markers)
-            if( pathparams_contain_ivars(marker.m_params) )
+            if( pathparams_contain_ivars(marker.m_params, only_unbound) )
                 return true;
-        return pathparams_contain_ivars(e.m_trait.m_path.m_params);
+        return pathparams_contain_ivars(e.m_trait.m_path.m_params, only_unbound);
         ),
     (ErasedType,
         TU_MATCH(::HIR::Path::Data, (e.m_origin.m_data), (pe),
         (Generic,
-            return pathparams_contain_ivars(pe.m_params);
+            return pathparams_contain_ivars(pe.m_params, only_unbound);
             ),
         (UfcsKnown,
-            if( type_contains_ivars(pe.type) )
+            if( type_contains_ivars(pe.type, only_unbound) )
                 return true;
-            if( pathparams_contain_ivars(pe.trait.m_params) )
+            if( pathparams_contain_ivars(pe.trait.m_params, only_unbound) )
                 return true;
-            return pathparams_contain_ivars(pe.params);
+            return pathparams_contain_ivars(pe.params, only_unbound);
             ),
         (UfcsInherent,
-            if( type_contains_ivars(pe.type) )
+            if( type_contains_ivars(pe.type, only_unbound) )
                 return true;
-            return pathparams_contain_ivars(pe.params);
+            return pathparams_contain_ivars(pe.params, only_unbound);
             ),
         (UfcsUnknown,
             BUG(Span(), "UfcsUnknown");
@@ -1016,7 +1021,7 @@ bool HMTypeInferrence::type_contains_ivars(const ::HIR::TypeRef& ty) const {
         ),
     (Tuple,
         for(const auto& st : e)
-            if( type_contains_ivars(st) )
+            if( type_contains_ivars(st, only_unbound) )
                 return true;
         return false;
         )
@@ -2608,7 +2613,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
     }
 
     // If there are no ivars in this path, set its binding to Opaque
-    if( !this->m_ivars.type_contains_ivars(input) ) {
+    if( !this->m_ivars.type_contains_ivars(input, false) ) {
         // TODO: If the type is a generic or an opaque associated, we can't know.
         // - If the trait contains any of the above, it's unknowable
         // - Otherwise, it's an error

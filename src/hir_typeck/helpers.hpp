@@ -174,8 +174,8 @@ public:
     void expand_ivars_params(::HIR::PathParams& params);
 
     // Helpers
-    bool pathparams_contain_ivars(const ::HIR::PathParams& pps) const;
-    bool type_contains_ivars(const ::HIR::TypeRef& ty) const;
+    bool pathparams_contain_ivars(const ::HIR::PathParams& pps, bool only_unbound) const;
+    bool type_contains_ivars(const ::HIR::TypeRef& ty, bool only_unbound=false) const;
     bool pathparams_equal(const ::HIR::PathParams& pps_l, const ::HIR::PathParams& pps_r) const;
     bool types_equal(const ::HIR::TypeRef& l, const ::HIR::TypeRef& r) const;
 private:
