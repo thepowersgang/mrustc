@@ -515,6 +515,40 @@ public:
         }
     }
 
+    void visit_enum(HIR::ItemPath p, ::HIR::Enum& enm) override
+    {
+        HIR::TypeRef ty = HIR::TypeRef::new_path( HIR::GenericPath(p.get_simple_path(), enm.m_params.make_nop_params(0)), &enm);
+        m_impl_type = &ty;
+        ::HIR::Visitor::visit_enum(p, enm);
+        m_impl_type = nullptr;
+    }
+    void visit_struct(HIR::ItemPath p, ::HIR::Struct& str) override
+    {
+        HIR::TypeRef ty;
+        // HACK: If thre is a `#` in the path, it's en enum variant
+        if( const auto* n = ::std::strchr(p.name, '#') ) {
+            if( n != p.name && n[1] ) {
+                auto path = p.get_simple_path();
+                path.m_components.back() = RcString(p.name, n - p.name);
+                const auto& enm = m_crate.get_enum_by_path(Span(), path);
+                ty = HIR::TypeRef::new_path( HIR::GenericPath(std::move(path), str.m_params.make_nop_params(0)), &enm);
+            }
+        }
+        if( ty == HIR::TypeRef() ) {
+            ty = HIR::TypeRef::new_path( HIR::GenericPath(p.get_simple_path(), str.m_params.make_nop_params(0)), &str);
+        }
+        m_impl_type = &ty;
+        ::HIR::Visitor::visit_struct(p, str);
+        m_impl_type = nullptr;
+    }
+    void visit_union(HIR::ItemPath p, ::HIR::Union& unn) override
+    {
+        HIR::TypeRef ty = HIR::TypeRef::new_path( HIR::GenericPath(p.get_simple_path(), unn.m_params.make_nop_params(0)), &unn);
+        m_impl_type = &ty;
+        ::HIR::Visitor::visit_union(p, unn);
+        m_impl_type = nullptr;
+    }
+
     void visit_type_impl(::HIR::TypeImpl& impl) override
     {
         m_impl_type = &impl.m_type;
