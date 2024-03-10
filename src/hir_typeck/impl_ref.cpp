@@ -87,9 +87,15 @@ bool ImplRef::has_magic_params() const
 {
     if(const auto* e = m_data.opt_TraitImpl())
     {
-        for(const auto& t : e->impl_params.m_types)
-            if( visit_ty_with(t, [](const ::HIR::TypeRef& t){ return t.data().is_Generic() && (t.data().as_Generic().binding >> 8) == 2; }) )
+        for(const auto& t : e->impl_params.m_types) {
+            if( visit_ty_with(t, [](const ::HIR::TypeRef& t){ return t.data().is_Generic() && t.data().as_Generic().is_placeholder(); }) )
                 return true;
+        }
+        for(const auto& v : e->impl_params.m_values) {
+            if(v.is_Generic() && v.as_Generic().is_placeholder()) {
+                return true;
+            }
+        }
     }
     return false;
 }
