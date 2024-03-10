@@ -197,10 +197,11 @@ struct ExprNode_Loop:
     bool    m_diverges = false;
     bool    m_require_label = false;
 
-    ExprNode_Loop(Span sp, RcString label, ::HIR::ExprNodeP code):
+    ExprNode_Loop(Span sp, RcString label, ::HIR::ExprNodeP code, bool require_label=false):
         ExprNode(mv$(sp)),
         m_label( mv$(label) ),
         m_code( mv$(code) )
+        , m_require_label(require_label)
     {}
 
     NODE_METHODS();

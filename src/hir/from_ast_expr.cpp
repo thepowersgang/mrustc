@@ -219,7 +219,7 @@ struct LowerHIR_ExprNode_Visitor:
             match_arms[1].m_patterns.push_back(HIR::Pattern());
             // `_ => loop { let _: ! = $else; },
             match_arms[1].m_code.reset(new HIR::ExprNode_Let(v.span(), HIR::Pattern(), HIR::TypeRef::new_diverge(), std::move(node_else)));
-            match_arms[1].m_code.reset(new HIR::ExprNode_Loop(v.span(), "",  std::move(match_arms[1].m_code)));
+            match_arms[1].m_code.reset(new HIR::ExprNode_Loop(v.span(), "",  std::move(match_arms[1].m_code), /*require_label*/true));
             // HACK: Just use the code as-is.
             //match_arms[1].m_code = std::move(node_else);
             // `match $value: $ty {`

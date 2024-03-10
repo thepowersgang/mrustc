@@ -1201,7 +1201,7 @@ struct CExpandExpr:
                 this->visit_nodelete(node, e.val);
                 }
             }
-            
+
             this->visit_nodelete(node, arm.m_code);
             Expand_Attrs(expand_state, arm.m_attrs, AttrStage::Post,  [&](const Span& sp, const auto& d, const auto& a){ d.handle(sp, a, crate,  arm); });
         }
