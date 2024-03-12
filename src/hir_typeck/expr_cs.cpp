@@ -6307,7 +6307,7 @@ namespace
             DEBUG(i << ": Bounded, but bound set empty");
             return false;
         }
-        if( ivar_ent.force_disable )
+        if( ivar_ent.force_disable && fallback_ty != IvarPossFallbackType::FinalOption )
         {
             DEBUG(i << ": forced unknown");
             return false;
