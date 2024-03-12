@@ -629,6 +629,7 @@ namespace {
     {
         ::std::vector<const ::HIR::TypeRef*>    impl_tys;
         ::std::vector<const ::HIR::ConstGeneric*>   impl_vals;
+        ::std::vector<const ::HIR::LifetimeRef*>    impl_lfts;
 
         ::HIR::Compare match_ty(const ::HIR::GenericRef& g, const ::HIR::TypeRef& ty, ::HIR::t_cb_resolve_type _resolve_cb) override {
             assert(g.binding < impl_tys.size());
@@ -656,6 +657,19 @@ namespace {
                 return ::HIR::Compare::Equal;
             }
         }
+        ::HIR::Compare match_lft(const ::HIR::GenericRef& g, const ::HIR::LifetimeRef& lft) override {
+            assert(g.binding < impl_lfts.size());
+            if( impl_lfts.at(g.binding) )
+            {
+                DEBUG("Compare " << lft << " and " << *impl_lfts.at(g.binding));
+                return (lft == *impl_lfts.at(g.binding) ? ::HIR::Compare::Equal : ::HIR::Compare::Unequal);
+            }
+            else
+            {
+                impl_lfts.at(g.binding) = &lft;
+                return HIR::Compare::Equal;
+            }
+        }
 
         ::HIR::TypeRef get_type(const Span& sp, const ::HIR::GenericRef& g) const override {
             ASSERT_BUG(sp, g.group() == 0, "");
@@ -670,15 +684,23 @@ namespace {
             return impl_vals[g.idx()]->clone();
         }
         ::HIR::LifetimeRef get_lifetime(const Span& sp, const ::HIR::GenericRef& g) const override {
-            TODO(Span(), "Matcher::get_lifetime " << g);
+            ASSERT_BUG(sp, g.group() == 0, "");
+            ASSERT_BUG(sp, g.idx() < impl_lfts.size(), "");
+            if( !impl_lfts[g.idx()] ) {
+                DEBUG("WARNING: Assuming an empty lifetime");
+                return HIR::LifetimeRef();
+            }
+            return *impl_lfts[g.idx()];
         }
 
 
         void reinit(const HIR::GenericParams& params) {
             this->impl_tys.clear();
             this->impl_vals.clear();
+            this->impl_lfts.clear();
             this->impl_tys.resize(params.m_types.size());
             this->impl_vals.resize(params.m_values.size());
+            this->impl_lfts.resize(params.m_lifetimes.size());
         }
         void fmt(::std::ostream& os) const {
             for(auto* p : this->impl_tys)
@@ -690,6 +712,14 @@ namespace {
                 os << ",";
             }
             for(auto* p : this->impl_vals)
+            {
+                if(p)
+                    os << *p;
+                else
+                    os << "?";
+                os << ",";
+            }
+            for(auto* p : this->impl_lfts)
             {
                 if(p)
                     os << *p;
