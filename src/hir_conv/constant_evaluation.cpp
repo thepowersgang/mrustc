@@ -23,6 +23,7 @@
 
 namespace {
 
+    void ConvertHIR_ConstantEvaluate_Static(const ::HIR::Crate& crate, const ::HIR::GenericParams* impl_params, const ::HIR::ItemPath& ip, ::HIR::Static& e);
     void ConvertHIR_ConstantEvaluate_FcnSig(const ::HIR::Crate& crate, const ::HIR::GenericParams* impl_params, const ::HIR::ItemPath& ip, ::HIR::Function& fcn);
 
     struct Defer {};
@@ -1077,7 +1078,9 @@ namespace MIR { namespace eval {
                 throw Defer();
             }
             MonomorphState  const_ms;
-            auto ent = get_ent_fullpath(state.sp, root_resolve, p, EntNS::Value,  const_ms);
+
+            const HIR::GenericParams* impl_params_def = nullptr;
+            auto ent = get_ent_fullpath(state.sp, root_resolve, p, EntNS::Value,  const_ms, &impl_params_def);
             if(ent.is_Static())
             {
                 const auto& s = *ent.as_Static();
@@ -1090,6 +1093,13 @@ namespace MIR { namespace eval {
                         return StaticRefPtr::allocate(std::move(p), nullptr);
                     }
 
+                    auto& item = const_cast<::HIR::Static&>(s);
+
+                    ConvertHIR_ConstantEvaluate_Static(resolve.m_crate, impl_params_def, p, item);
+                }
+
+                if( !s.m_value_generated )
+                {
                     auto& item = const_cast<::HIR::Static&>(s);
 
                     // Challenge: Adding items to the module might invalidate an iterator.
@@ -3403,6 +3413,12 @@ namespace {
         }
     };
 
+    void ConvertHIR_ConstantEvaluate_Static(const ::HIR::Crate& crate, const ::HIR::GenericParams* impl_params, const ::HIR::ItemPath& ip, ::HIR::Static& e)
+    {
+        Expander    exp { crate };
+        exp.m_impl_params = impl_params;
+        exp.visit_static(ip, e);
+    }
     void ConvertHIR_ConstantEvaluate_FcnSig(const ::HIR::Crate& crate, const ::HIR::GenericParams* impl_params, const ::HIR::ItemPath& ip, ::HIR::Function& fcn)
     {
         Expander    exp { crate };
@@ -3469,7 +3485,7 @@ void ConvertHIR_ConstantEvaluate_ArraySize(
             try
             {
                 auto val = eval.evaluate_constant( ::HIR::ItemPath(mod_path, name.c_str()), e, HIR::CoreType::Usize );
-                *se = ::HIR::ConstGeneric::make_Evaluated(std::move(val));
+                size = val.read_usize(0);
             }
             catch(const Defer& )
             {
