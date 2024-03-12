@@ -50,10 +50,16 @@ public:
         auto trait_name = lex.getTokenCheck(TOK_IDENT).ident().name;
         while(lex.getTokenIf(TOK_COMMA))
         {
+            if( lex.lookahead(0) == TOK_PAREN_CLOSE ) {
+                break;
+            }
             auto k = lex.getTokenCheck(TOK_IDENT).ident().name;
             if( k == "attributes" ) {
                 lex.getTokenCheck(TOK_PAREN_OPEN);
                 do {
+                    if( lex.lookahead(0) == TOK_PAREN_CLOSE ) {
+                        break;
+                    }
                     attributes.push_back( lex.getTokenCheck(TOK_IDENT).ident().name.c_str() );
                 } while(lex.getTokenIf(TOK_COMMA));
                 lex.getTokenCheck(TOK_PAREN_CLOSE);
