@@ -9,6 +9,7 @@
 #include <hir/hir.hpp>
 #include <hir/visitor.hpp>
 #include <hir_typeck/common.hpp>    // visit_ty_with
+#include <hir_typeck/static.hpp>    // visit_ty_with
 #include <algorithm>    // ::std::any_of
 
 namespace {
@@ -50,6 +51,8 @@ namespace {
             static Span sp;
             TRACE_FUNCTION_F(p);
 
+            StaticTraitResolve  resolve { m_crate };
+            resolve.set_item_generics_raw(tr.m_params);
             ::HIR::GenericPath  trait_path( p.get_simple_path(), tr.m_params.make_nop_params(0) );
 
             ::std::unordered_map< ::std::string,unsigned int>  assoc_type_indexes;
@@ -57,17 +60,27 @@ namespace {
                 ::HIR::Trait*   trait_ptr;
                 ::HIR::GenericParams    params;
                 unsigned int    i;
-                void add_types_from_trait(const ::HIR::Trait& tr) {
+                void add_types_from_trait(const HIR::GenericPath& path, const HIR::Trait& tr, const HIR::TraitPath::assoc_list_t& assoc) {
                     for(const auto& ty : tr.m_types) {
-                        DEBUG(ty.first << " #" << i);
-                        auto rv = trait_ptr->m_type_indexes.insert( ::std::make_pair(ty.first, i) );
-                        if(rv.second == false) {
-                            //TODO(Span(), "Handle conflicting associated types - '" << ty.first << "'");
+                        bool is_known = false;
+                        for(const auto& ent : assoc) {
+                            if( ent.first == ty.first ) {
+                                DEBUG(ty.first << " = " << ent.second.type);
+                                is_known = true;
+                                break;
+                            }
                         }
-                        else {
-                            params.m_types.push_back( ::HIR::TypeParamDef { RcString::new_interned(FMT("a#" << ty.first)), {}, ty.second.is_sized } );
+                        if( !is_known ) {
+                            DEBUG(ty.first << " #" << i);
+                            auto rv = trait_ptr->m_type_indexes.insert( ::std::make_pair(ty.first, i) );
+                            if(rv.second == false) {
+                                TODO(Span(), "Handle conflicting associated types - '" << ty.first << "'");
+                            }
+                            else {
+                                params.m_types.push_back( ::HIR::TypeParamDef { RcString::new_interned(FMT("a#" << ty.first)), {}, ty.second.is_sized } );
+                            }
+                            i ++;
                         }
-                        i ++;
                     }
                 }
             };
@@ -75,16 +88,17 @@ namespace {
             for(const auto& tp : tr.m_params.m_types) {
                 visitor.params.m_types.push_back( ::HIR::TypeParamDef { tp.m_name, {}, tp.m_is_sized } );
             }
-            visitor.add_types_from_trait(tr);
+            visitor.add_types_from_trait(trait_path, tr, {});
             for(const auto& st : tr.m_all_parent_traits)
             {
                 assert(st.m_trait_ptr);
-                visitor.add_types_from_trait(*st.m_trait_ptr);
+                visitor.add_types_from_trait(st.m_path, *st.m_trait_ptr, st.m_type_bounds);
             }
             auto args = mv$(visitor.params);
 
             struct VtableConstruct {
                 const OuterVisitor* m_outer;
+                const StaticTraitResolve* m_resolve_ptr;
                 ::HIR::Trait*   trait_ptr;
                 ::HIR::t_struct_fields fields;
 
@@ -165,18 +179,20 @@ namespace {
                                 }
                             }
 
+                            ::HIR::TypeRef  tmp;
+
                             ::HIR::TypeData_FunctionPointer ft;
                             ft.hrls.m_lifetimes = ve.m_params.m_lifetimes;
                             ft.is_unsafe = ve.m_unsafe;
                             ft.m_abi = ve.m_abi;
-                            ft.m_rettype = m.monomorph_type(sp, ve.m_return);
+                            ft.m_rettype = m_resolve_ptr->monomorph_expand(sp, ve.m_return, m);
                             ft.m_arg_types.reserve( ve.m_args.size() );
-                            ft.m_arg_types.push_back( clone_ty_with(sp, m.monomorph_type(sp, ve.m_args[0].second), clone_self_cb) );
+                            ft.m_arg_types.push_back( clone_ty_with(sp, m_resolve_ptr->monomorph_expand_opt(sp, tmp, ve.m_args[0].second, m), clone_self_cb) );
                             if( ve.m_receiver == ::HIR::Function::Receiver::Value ) {
                                 ft.m_arg_types[0] = HIR::TypeRef::new_borrow(HIR::BorrowType::Owned, mv$(ft.m_arg_types[0]));
                             }
                             for(unsigned int i = 1; i < ve.m_args.size(); i ++)
-                                ft.m_arg_types.push_back( m.monomorph_type(sp, ve.m_args[i].second) );
+                                ft.m_arg_types.push_back( m_resolve_ptr->monomorph_expand(sp, ve.m_args[i].second, m) );
                             // Clear the first argument (the receiver)
                             ::HIR::TypeRef  fcn_type( mv$(ft) );
 
@@ -219,7 +235,7 @@ namespace {
                 }
             };
 
-            VtableConstruct vtc { this, &tr, {} };
+            VtableConstruct vtc { this, &resolve, &tr, {} };
             // - Drop glue pointer
             ::HIR::TypeData_FunctionPointer ft;
             ft.is_unsafe = false;

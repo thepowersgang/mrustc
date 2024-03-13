@@ -90,3 +90,4 @@
 - More recursive consteval requirements (const functions calling functions with arguments that need consteval?)
   - Can be generalised to needing to do consteval after monomorph in typecheck, maybe as part of EAT
 - `Self` in structs/enums/unions (in particular, libtime used in `enum`)
+- Traits with ATY specified on parent traits being used in trait objects, vtable gen limitation

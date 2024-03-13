@@ -534,6 +534,7 @@ const EncodedLiteral* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
 
     // 2. Load from the vtable
     auto vtable_ty = ::HIR::TypeRef::new_pointer( ::HIR::BorrowType::Shared, get_vtable_type(sp, state.m_resolve, te) );
+    DEBUG("vtable_ty = " << vtable_ty);
 
     // If the method is a by-value method, add a `&move`
     const auto& fn_def = state.m_crate.get_trait_by_path(sp, pe.trait.m_path).m_values.at(pe.item).as_Function();
@@ -552,7 +553,7 @@ const EncodedLiteral* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
     const auto& ty = state.get_lvalue_type(tmp, fcn_lval);
     DEBUG("callable type " << ty);
     auto receiver = MonomorphHrlsOnly(ty.data().as_Function().hrls.make_empty_params(true)).monomorph_type(state.sp, ty.data().as_Function().m_arg_types.at(0));
-    
+
     struct H {
         static ::MIR::LValue get_unit_ptr(
             const ::MIR::TypeResolve& state, MirMutator& mutator,
@@ -749,23 +750,8 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
             const auto& trait = *de.m_trait.m_trait_ptr;
 
             // Obtain vtable type `::"path"::to::Trait#vtable`
-            const auto& vtable_ty_spath = trait.m_vtable_path;
-            MIR_ASSERT(state, vtable_ty_spath != HIR::SimplePath(), "Trait " << de.m_trait.m_path << " does not have a vtable");
-            const auto& vtable_ref = state.m_crate.get_struct_by_path(state.sp, vtable_ty_spath);
-            // Copy the param set from the trait in the trait object
-            // TODO: How can this handle HRLs properly? (e.g. on `dyn FnMut`'s vtable). Every time it's called, the lifetimes should be different.
-            // - Implies that GenericPath should have HRLs (not everywhere else)
-            ::HIR::PathParams   vtable_params = trait_path.m_path.m_params.clone();
-            // - Include associated types
-            for(const auto& ty_b : trait_path.m_type_bounds) {
-                auto idx = trait.m_type_indexes.at(ty_b.first);
-                if(vtable_params.m_types.size() <= idx)
-                    vtable_params.m_types.resize(idx+1);
-                vtable_params.m_types[idx] = ty_b.second.type.clone();
-            }
-            auto vtable_type = ::HIR::TypeRef::new_path( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref );
-
-            out_meta_ty = ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, mv$(vtable_type));
+            auto vtable_ty = trait.get_vtable_type(state.sp, state.m_crate, de);
+            out_meta_ty = ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, mv$(vtable_ty));
 
             // If the data trait hasn't changed, return the vtable pointer
             if( src_ty.data().is_TraitObject() )
