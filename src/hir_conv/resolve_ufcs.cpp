@@ -224,6 +224,10 @@ namespace resolve_ufcs {
                 {
                     upper_visitor.visit_type(ty);
                 }
+                void visit_path_params(::HIR::PathParams& pp) override
+                {
+                    upper_visitor.visit_path_params(pp);
+                }
                 void visit_path(::HIR::Visitor::PathContext pc, ::HIR::Path& path) override
                 {
                     upper_visitor.visit_path(path, pc);
