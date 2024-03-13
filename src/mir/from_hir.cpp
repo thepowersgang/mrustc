@@ -2544,14 +2544,6 @@ namespace {
             ASSERT_BUG(sp, str.m_data.is_Named(), "");
             const ::HIR::t_struct_fields& fields = str.m_data.as_Named();
 
-            auto base_val = ::MIR::LValue::new_Return();
-            if( node.m_base_value )
-            {
-                DEBUG("_StructLiteral - base");
-                this->visit_node_ptr(node.m_base_value);
-                base_val = m_builder.get_result_in_lvalue(node.m_base_value->span(), node.m_base_value->m_res_type);
-            }
-
             ::std::vector<bool> values_set;
             ::std::vector< ::MIR::Param>   values;
             values.resize( fields.size() );
@@ -2578,6 +2570,14 @@ namespace {
                     m_builder.push_stmt_assign( valnode->span(), tmp.clone(), mv$(res) );
                     values.at(idx) = mv$(tmp);
                 }
+            }
+
+            auto base_val = ::MIR::LValue::new_Return();
+            if( node.m_base_value )
+            {
+                DEBUG("_StructLiteral - base");
+                this->visit_node_ptr(node.m_base_value);
+                base_val = m_builder.get_result_in_lvalue(node.m_base_value->span(), node.m_base_value->m_res_type);
             }
             for(unsigned int i = 0; i < values.size(); i ++)
             {
