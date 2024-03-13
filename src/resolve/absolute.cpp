@@ -2290,7 +2290,7 @@ void Resolve_Absolute_ExprNode(Context& context,  ::AST::ExprNode& node)
             AST::NodeVisitorDef::visit(node);
             this->context.start_patbind();
             auto count = this->context.m_var_count;
-            Resolve_Absolute_Pattern(this->context, false, node.m_pat);
+            Resolve_Absolute_Pattern(this->context, node.m_else ? true : false, node.m_pat);
             this->context.end_patbind();
             auto n_vars = this->context.m_var_count - count;
             if( node.m_else ) {
