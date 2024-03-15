@@ -543,7 +543,7 @@ Token Lexer::getTokenInt()
                                 str += ch;
                             }
                         }
-                        return Token(TOK_BYTESTRING, mv$(str));
+                        return Token(TOK_BYTESTRING, mv$(str), realGetHygiene());
                     }
                     // Byte constant
                     else if( ch == '\'' ) {
@@ -624,7 +624,7 @@ Token Lexer::getTokenInt()
                 {
                     //# [ doc = "commment data" ]
                     m_next_tokens.push_back(TOK_SQUARE_CLOSE);
-                    m_next_tokens.push_back(Token(TOK_STRING, mv$(str)));
+                    m_next_tokens.push_back(Token(TOK_STRING, mv$(str), realGetHygiene()));
                     m_next_tokens.push_back(TOK_EQUAL);
                     m_next_tokens.push_back(Token(TOK_IDENT, RcString::new_interned("doc")));
                     m_next_tokens.push_back(TOK_SQUARE_OPEN);
@@ -632,7 +632,7 @@ Token Lexer::getTokenInt()
                         m_next_tokens.push_back(TOK_EXCLAM);
                     return TOK_HASH;
                 }
-                return Token(TOK_COMMENT, str); }
+                return Token(TOK_COMMENT, str, realGetHygiene()); }
             case BLOCKCOMMENT: {
                 ::std::string   str;
                 bool is_doc = false;
@@ -687,7 +687,7 @@ Token Lexer::getTokenInt()
                 {
                     //# [ doc = "commment data" ]
                     m_next_tokens.push_back(TOK_SQUARE_CLOSE);
-                    m_next_tokens.push_back(Token(TOK_STRING, mv$(str)));
+                    m_next_tokens.push_back(Token(TOK_STRING, mv$(str), realGetHygiene()));
                     m_next_tokens.push_back(TOK_EQUAL);
                     m_next_tokens.push_back(Token(TOK_IDENT, RcString::new_interned("doc")));
                     m_next_tokens.push_back(TOK_SQUARE_OPEN);
@@ -695,7 +695,7 @@ Token Lexer::getTokenInt()
                         m_next_tokens.push_back(TOK_EXCLAM);
                     return TOK_HASH;
                 }
-                return Token(TOK_COMMENT, str); }
+                return Token(TOK_COMMENT, str, realGetHygiene()); }
             case SINGLEQUOTE: {
                 auto firstchar = this->getc();
                 if( firstchar.v == '\\' ) {
@@ -722,7 +722,7 @@ Token Lexer::getTokenInt()
                             ch = this->getc();
                         }
                         this->ungetc();
-                        return Token(TOK_LIFETIME, Ident(this->get_hygiene(), RcString::new_interned(str)));
+                        return Token(TOK_LIFETIME, Ident(this->realGetHygiene(), RcString::new_interned(str)));
                     }
                     else {
                         throw ParseError::Todo("Lex Fail - Expected ' after character constant");
@@ -746,7 +746,7 @@ Token Lexer::getTokenInt()
                         str += ch;
                     }
                 }
-                return Token(TOK_STRING, mv$(str));
+                return Token(TOK_STRING, mv$(str), realGetHygiene());
                 }
             default:
                 assert(!"bugcheck");
@@ -834,7 +834,7 @@ Token Lexer::getTokenInt_RawString(bool is_byte)
             }
         }
     }
-    return Token(is_byte ? TOK_BYTESTRING : TOK_STRING, mv$(val));
+    return Token(is_byte ? TOK_BYTESTRING : TOK_STRING, mv$(val), realGetHygiene());
 }
 Token Lexer::getTokenInt_Identifier(Codepoint leader, Codepoint leader2, bool parse_reserved_word)
 {

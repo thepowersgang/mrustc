@@ -72,7 +72,7 @@ class CExpander_assert:
             }
             else
             {   // Single-argument: Treat as a `Display`-able value
-                toks.push_back( Token(TOK_STRING, std::string("{}")) );
+                toks.push_back( Token(TOK_STRING, std::string("{}"), {}) );
                 toks.push_back(TOK_COMMA);
                 toks.push_back( Token(InterpolatedFragment(InterpolatedFragment::EXPR, fmt.release())) );
             }
@@ -92,9 +92,9 @@ class CExpander_assert:
             toks.push_back( Token(TOK_IDENT, RcString::new_interned("panic")) );
             toks.push_back( Token(TOK_EXCLAM) );
             toks.push_back( Token(TOK_PAREN_OPEN) );
-            toks.push_back( Token(TOK_STRING, std::string("assertion failed: {}")) );
+            toks.push_back( Token(TOK_STRING, std::string("assertion failed: {}"), {}) );
             toks.push_back( Token(TOK_COMMA) );
-            toks.push_back( Token(TOK_STRING, ss.str()) );
+            toks.push_back( Token(TOK_STRING, ss.str(), {}) );
             toks.push_back( Token(TOK_PAREN_CLOSE) );
         }
         else

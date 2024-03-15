@@ -57,9 +57,10 @@ Token::Token(enum eTokenType type, Ident i):
     m_data(mv$(i))
 {
 }
-Token::Token(enum eTokenType type, ::std::string str):
-    m_type(type),
-    m_data(Data::make_String(mv$(str)))
+Token::Token(enum eTokenType type, ::std::string str, Ident::Hygiene h)
+    : m_type(type)
+    , m_data(Data::make_String(mv$(str)))
+    , m_hygiene(std::move(h))
 {
 }
 Token::Token(U128 val, enum eCoreType datatype):
@@ -175,9 +176,10 @@ Token::Token(TagTakeIP, InterpolatedFragment frag)
 }
 
 Token::Token(const Token& t):
-    m_type(t.m_type),
-    m_data( Data::make_None({}) ),
-    m_pos( t.m_pos )
+    m_type(t.m_type)
+    , m_data( Data::make_None({}) )
+    , m_pos( t.m_pos )
+    , m_hygiene(t.m_hygiene)
 {
     assert( t.m_data.tag() != Data::TAGDEAD );
     TU_MATCH_HDRA( (t.m_data), {)
@@ -195,6 +197,7 @@ Token Token::clone() const
 {
     Token   rv(m_type);
     rv.m_pos = m_pos;
+    rv.m_hygiene = m_hygiene;
 
     assert( m_data.tag() != Data::TAGDEAD );
     TU_MATCH(Data, (m_data), (e),
@@ -379,7 +382,7 @@ struct EscapedString {
         else {
             return FMT(m_data.as_Float().m_floatval << "_" << m_data.as_Float().m_datatype);
         }
-    case TOK_STRING:    return FMT("\"" << EscapedString(m_data.as_String()) << "\"");
+    case TOK_STRING:    return FMT("\"" << EscapedString(m_data.as_String()) << "\"" << m_hygiene);
     case TOK_BYTESTRING:return FMT("b\"" << m_data.as_String() << "\"");
     case TOK_HASH:  return "#";
     case TOK_UNDERSCORE:return "_";
@@ -526,6 +529,8 @@ struct EscapedString {
             ;
         else
             os << "?inner?";
+        os << tok.m_hygiene;
+        break;
     case TOK_IDENT:
     case TOK_LIFETIME:
         if( tok.m_data.is_Ident() )

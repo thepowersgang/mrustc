@@ -64,7 +64,7 @@ class CConcatExpander:
         if( tok.type() != TOK_EOF )
             throw ParseError::Unexpected(lex, tok, {TOK_COMMA, TOK_EOF});
 
-        return box$( TTStreamO(sp, ParseState(), TokenTree(tt.get_edition(), Token(TOK_STRING, mv$(rv)))) );
+        return box$( TTStreamO(sp, ParseState(), TokenTree(tt.get_edition(), Token(TOK_STRING, mv$(rv), {}))) );
     }
 };
 

@@ -2256,7 +2256,7 @@ Token MacroExpander::realGetToken()
                     }
                     else
                     {
-                        m_next_token = Token(TOK_STRING, ::std::string(m_crate_name.c_str()));
+                        m_next_token = Token(TOK_STRING, ::std::string(m_crate_name.c_str()), {});
                         return Token(TOK_DOUBLE_COLON);
                     }
                     break;

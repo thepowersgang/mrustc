@@ -565,7 +565,6 @@ namespace {
         Token   tok;
 
         auto format_string_node = Parse_ExprVal(lex);
-        auto h = lex.get_hygiene();
         ASSERT_BUG(sp, format_string_node, "No expression returned");
         Expand_BareExpr(crate, lex.parse_state().get_current_mod(), format_string_node);
 
@@ -575,6 +574,7 @@ namespace {
         }
         const auto& format_string_sp = format_string_np->span();
         const auto& format_string = format_string_np->m_value;
+        auto h = format_string_np->m_hygiene;
 
         ::std::map<RcString, unsigned int>   named_args_index;
         ::std::vector<TokenTree>    named_args;
@@ -686,10 +686,10 @@ namespace {
 
             toks.push_back( TokenTree(TOK_SQUARE_OPEN) );
             for(const auto& frag : fragments ) {
-                toks.push_back( Token(TOK_STRING, frag.leading_text) );
+                toks.push_back( Token(TOK_STRING, frag.leading_text, h) );
                 toks.push_back( TokenTree(TOK_COMMA) );
             }
-            toks.push_back( Token(TOK_STRING, tail) );
+            toks.push_back( Token(TOK_STRING, tail, h) );
             toks.push_back( TokenTree(TOK_SQUARE_CLOSE) );
 
             toks.push_back( Token(TOK_SEMICOLON) );

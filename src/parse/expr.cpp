@@ -1403,7 +1403,7 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
                         }
                         else {
                             GET_CHECK_TOK(tok, lex, TOK_IDENT);
-                            args.push_back( NEWNODE( AST::ExprNode_String, tok.ident().name.c_str() ) );
+                            args.push_back( NEWNODE( AST::ExprNode_String, tok.ident().name.c_str(), tok.ident().hygiene ) );
                         }
                     } while( lex.lookahead(0) == TOK_COMMA );
                     GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
@@ -1437,7 +1437,7 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
     case TOK_FLOAT:
         return NEWNODE( AST::ExprNode_Float, tok.floatval(), tok.datatype() );
     case TOK_STRING:
-        return NEWNODE( AST::ExprNode_String, tok.str() );
+        return NEWNODE( AST::ExprNode_String, tok.str(), tok.str_hygiene() );
     case TOK_BYTESTRING:
         return NEWNODE( AST::ExprNode_ByteString, tok.str() );
     case TOK_RWORD_TRUE:

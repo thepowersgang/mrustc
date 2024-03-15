@@ -474,9 +474,12 @@ struct ExprNode_String:
     public ExprNode
 {
     ::std::string   m_value;
+    /// Hygiene for format strings
+    Ident::Hygiene  m_hygiene;
 
-    ExprNode_String(::std::string value):
-        m_value( ::std::move(value) )
+    ExprNode_String(::std::string value, Ident::Hygiene h={})
+        : m_value( ::std::move(value) )
+        , m_hygiene( ::std::move(h) )
     {}
 
     NODE_METHODS();

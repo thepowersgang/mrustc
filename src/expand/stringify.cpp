@@ -43,7 +43,7 @@ class CExpander:
         // TODO: Strip out any `{...}` sequences that aren't from nested
         // strings.
 
-        return box$( TTStreamO(sp, ParseState(), TokenTree(Token(TOK_STRING, mv$(rv)))) );
+        return box$( TTStreamO(sp, ParseState(), TokenTree(Token(TOK_STRING, mv$(rv), {}))) );
     }
 };
 

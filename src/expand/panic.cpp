@@ -27,10 +27,10 @@ class CExpander_panic:
         ::std::vector<TokenTree> toks;
         toks.push_back( Token(TOK_DOUBLE_COLON) );
         if( crate.m_load_std == AST::Crate::LOAD_STD && TARGETVER_MOST_1_54 ) {
-            toks.push_back( Token(TOK_STRING, std::string(crate.m_ext_cratename_std.c_str())) );
+            toks.push_back( Token(TOK_STRING, std::string(crate.m_ext_cratename_std.c_str()), {}) );
         }
         else {
-            toks.push_back( Token(TOK_STRING, std::string(crate.m_ext_cratename_core.c_str())) );
+            toks.push_back( Token(TOK_STRING, std::string(crate.m_ext_cratename_core.c_str()), {}) );
         }
         toks.push_back( Token(TOK_DOUBLE_COLON) );
         toks.push_back( Token(TOK_IDENT, RcString::new_interned("panic")) );
@@ -69,10 +69,10 @@ class CExpander_unreachable:
         ::std::vector<TokenTree> toks;
         toks.push_back( Token(TOK_DOUBLE_COLON) );
         if( crate.m_load_std == AST::Crate::LOAD_STD && TARGETVER_MOST_1_54 ) {
-            toks.push_back( Token(TOK_STRING, std::string(crate.m_ext_cratename_std.c_str())) );
+            toks.push_back( Token(TOK_STRING, std::string(crate.m_ext_cratename_std.c_str()), {}) );
         }
         else {
-            toks.push_back( Token(TOK_STRING, std::string(crate.m_ext_cratename_core.c_str())) );
+            toks.push_back( Token(TOK_STRING, std::string(crate.m_ext_cratename_core.c_str()), {}) );
         }
         toks.push_back( Token(TOK_DOUBLE_COLON) );
         toks.push_back( Token(TOK_IDENT, RcString::new_interned("panic")) );

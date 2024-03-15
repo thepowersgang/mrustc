@@ -122,7 +122,7 @@ class CIncludeBytesExpander:
         ss << is.rdbuf();
 
         ::std::vector<TokenTree>    toks;
-        toks.push_back(Token(TOK_BYTESTRING, mv$(ss.str())));
+        toks.push_back(Token(TOK_BYTESTRING, mv$(ss.str()), {}));
         return box$( TTStreamO(sp, ParseState(), TokenTree(AST::Edition::Rust2015, Ident::Hygiene::new_scope(), mv$(toks))) );
     }
 };
@@ -149,7 +149,7 @@ class CIncludeStrExpander:
         ss << is.rdbuf();
 
         ::std::vector<TokenTree>    toks;
-        toks.push_back(Token(TOK_STRING, mv$(ss.str())));
+        toks.push_back(Token(TOK_STRING, mv$(ss.str()), {}));
         return box$( TTStreamO(sp, ParseState(), TokenTree(AST::Edition::Rust2015, Ident::Hygiene::new_scope(), mv$(toks))) );
     }
 };

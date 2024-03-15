@@ -1635,11 +1635,11 @@ Token ProcMacroInv::realGetToken_() {
         }
     case TokenClass::String: {
         auto val = this->recv_bytes();
-        return Token(TOK_STRING, mv$(val));
+        return Token(TOK_STRING, mv$(val), this->get_hygiene());
         }
     case TokenClass::ByteString: {
         auto val = this->recv_bytes();
-        return Token(TOK_BYTESTRING, mv$(val));
+        return Token(TOK_BYTESTRING, mv$(val), this->get_hygiene());
         }
     case TokenClass::CharLit: {
         auto val = this->recv_v128u();

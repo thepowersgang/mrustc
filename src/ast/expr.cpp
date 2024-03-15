@@ -460,7 +460,7 @@ NODE(ExprNode_Bool, {
 NODE(ExprNode_String, {
     os << "\"" << m_value << "\"";
 },{
-    return NEWNODE(ExprNode_String, m_value);
+    return NEWNODE(ExprNode_String, m_value, m_hygiene);
 })
 NODE(ExprNode_ByteString, {
     os << "b\"" << m_value << "\"";

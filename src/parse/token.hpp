@@ -82,6 +82,7 @@ class Token
     enum eTokenType m_type;
     Data    m_data;
     Position    m_pos;
+    Ident::Hygiene  m_hygiene;  // Only for strings, for formatting
 
     Token(enum eTokenType t, Data d, Position p):
         m_type(t),
@@ -97,12 +98,14 @@ public:
         m_type = t.m_type;  t.m_type = TOK_NULL;
         m_data = ::std::move(t.m_data);
         m_pos = ::std::move(t.m_pos);
+        m_hygiene = ::std::move(t.m_hygiene);
         return *this;
     }
     Token(Token&& t):
         m_type(t.m_type),
         m_data( ::std::move(t.m_data) ),
-        m_pos( ::std::move(t.m_pos) )
+        m_pos( ::std::move(t.m_pos) ),
+        m_hygiene( std::move(t.m_hygiene) )
     {
         t.m_type = TOK_NULL;
     }
@@ -115,7 +118,7 @@ public:
     Token clone() const;
 
     Token(enum eTokenType type);
-    Token(enum eTokenType type, ::std::string str);
+    Token(enum eTokenType type, ::std::string str, Ident::Hygiene h);
     Token(enum eTokenType type, Ident i);
     Token(U128 val, enum eCoreType datatype);
     static Token make_float(double val, enum eCoreType datatype);
@@ -127,8 +130,9 @@ public:
     bool has_data() const { return !m_data.is_None(); }
 
     const Ident& ident() const { return m_data.as_Ident(); }
-    ::std::string& str() { return m_data.as_String(); }
+          ::std::string& str()       { return m_data.as_String(); }
     const ::std::string& str() const { return m_data.as_String(); }
+    const Ident::Hygiene& str_hygiene() const { return m_hygiene; }
     enum eCoreType  datatype() const { TU_MATCH_DEF(Data, (m_data), (e), (assert(!"Getting datatype of invalid token type");), (Integer, return e.m_datatype;), (Float, return e.m_datatype;)) throw ""; }
     U128 intval() const { return m_data.as_Integer().m_intval; }
     double floatval() const { return m_data.as_Float().m_floatval; }
