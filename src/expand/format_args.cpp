@@ -471,11 +471,11 @@ namespace {
                     }
                     else
                     {
-                        if( strcmp(s, "x?}") == 0 ) {
+                        if( strncmp(s, "x?}", 3) == 0 ) {
                             args.debug_ty = FmtArgs::Debug::LowerHex;
                             trait_name = "Debug";
                         }
-                        else if( strcmp(s, "X?}") == 0 ) {
+                        else if( strncmp(s, "X?}", 3) == 0 ) {
                             args.debug_ty = FmtArgs::Debug::UpperHex;
                             trait_name = "Debug";
                         }
