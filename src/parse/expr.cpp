@@ -1100,7 +1100,12 @@ ExprNodeP Parse_ExprFC(TokenStream& lex)
                     val = NEWNODE( AST::ExprNode_CallMethod, ::std::move(val), ::std::move(pn), Parse_ParenList(lex) );
                     break;
                 case TOK_DOUBLE_COLON:
-                    GET_CHECK_TOK(tok, lex, TOK_LT);
+                    if( lex.getTokenIf(TOK_DOUBLE_LT) ) {
+                        lex.putback(Token(TOK_LT));
+                    }
+                    else {
+                        GET_CHECK_TOK(tok, lex, TOK_LT);
+                    }
                     pn.args() = Parse_Path_GenericList(lex);
                     val = NEWNODE( AST::ExprNode_CallMethod, ::std::move(val), ::std::move(pn), Parse_ParenList(lex) );
                     break;
