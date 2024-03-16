@@ -147,7 +147,32 @@ impl ::std::str::FromStr for TokenStream {
             else if c == '/' && it.next() == Some('*')
             {
                 // Block comment
-                panic!("TODO: Block comment");
+                let mut level: u32 = 1;
+                it.consume();
+                loop {
+                    match it.consume()
+                    {
+                    Some('*') => {
+                        if it.next() == Some('/') {
+                            it.consume();
+                            it.consume();
+                            level -= 1;
+                            if level == 0 {
+                                break;
+                            }
+                        }
+                        },
+                    Some('/') => {
+                        if it.next() == Some('*') {
+                            it.consume();
+                            it.consume();
+                            level += 1;
+                        }
+                        },
+                    None => panic!("Unexpected EOF in block comment"),
+                    _ => {},
+                    }
+                }
             }
             else
             {
