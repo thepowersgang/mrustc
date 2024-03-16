@@ -1529,6 +1529,10 @@ namespace {
             this->check_type_resolved_top(node.span(), node.m_dst_type);
             ::HIR::ExprVisitorDef::visit(node);
         }
+        void visit(::HIR::ExprNode_Unsize& node) override {
+            this->check_type_resolved_top(node.span(), node.m_dst_type);
+            ::HIR::ExprVisitorDef::visit(node);
+        }
 
     private:
         void check_type_resolved_top(const Span& sp, ::HIR::TypeRef& ty) const {
