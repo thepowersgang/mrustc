@@ -388,19 +388,21 @@ namespace {
             sub_patterns.push_back( ::std::make_pair(sp.name, LowerHIR_Pattern(sp.pat)) );
 
         // No sub-patterns, no `..`, and the VALUE binding points to an enum variant
-        if( e.sub_patterns.empty() && !e.is_exhaustive ) {
+        if( e.sub_patterns.empty() /*&& !e.is_exhaustive*/ ) {
             if( const auto* pbp = e.path.m_bindings.value.binding.opt_EnumVar() ) {
                 return ::HIR::Pattern {
                     mv$(bindings),
                     ::HIR::Pattern::Data::make_PathNamed({
                         LowerHIR_GenericPath(pat.span(), e.path, FromAST_PathClass::Value),
-                        ::HIR::Pattern::PathBinding::make_Enum({ pbp->hir, pbp->idx }),
+                        //::HIR::Pattern::PathBinding::make_Enum({ pbp->hir, pbp->idx }),
+                        ::HIR::Pattern::PathBinding(),
                         mv$(sub_patterns),
                         e.is_exhaustive
                         })
                     };
             }
         }
+
         return ::HIR::Pattern(
             mv$(bindings),
             ::HIR::Pattern::Data::make_PathNamed({
