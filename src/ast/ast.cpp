@@ -224,8 +224,8 @@ Enum Enum::clone() const
             new_variants.push_back( EnumVariant(var.m_attrs.clone(), var.m_name, e.m_value.clone()) );
             ),
         (Tuple,
-            decltype(e.m_sub_types) new_st;
-            for(const auto& f : e.m_sub_types)
+            decltype(e.m_items) new_st;
+            for(const auto& f : e.m_items)
                 new_st.push_back( f.clone() );
             new_variants.push_back( EnumVariant(var.m_attrs.clone(), var.m_name, mv$(new_st)) );
             ),

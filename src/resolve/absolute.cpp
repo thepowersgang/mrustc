@@ -2746,8 +2746,8 @@ void Resolve_Absolute_Enum(Context& item_context, ::AST::Enum& e)
             Resolve_Absolute_Expr(item_context,  s.m_value);
             ),
         (Tuple,
-            for(auto& field : s.m_sub_types) {
-                Resolve_Absolute_Type(item_context,  field);
+            for(auto& field : s.m_items) {
+                Resolve_Absolute_Type(item_context,  field.m_type);
             }
             ),
         (Struct,

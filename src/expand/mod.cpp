@@ -2008,8 +2008,16 @@ void Expand_Mod(const ExpandState& es, ::AST::AbsolutePath modpath, ::AST::Modul
                     Expand_Expr(es,  e.m_value);
                     }
                 TU_ARMA(Tuple, e) {
-                    for(auto& ty : e.m_sub_types) {
-                        Expand_Type(es, mod,  ty);
+                    for(auto it = e.m_items.begin(); it != e.m_items.end(); ) {
+                        auto& si = *it;
+                        Expand_Attrs_CfgAttr(si.m_attrs);
+                        Expand_Attrs(es, si.m_attrs, AttrStage::Pre, [&](const Span& sp, const auto& d, const auto& a){ d.handle(sp, a, es.crate, si); });
+                        Expand_Type(es, mod,  si.m_type);
+                        Expand_Attrs(es, si.m_attrs, AttrStage::Pre, [&](const Span& sp, const auto& d, const auto& a){ d.handle(sp, a, es.crate, si); });
+                        if( ! si.m_type.is_valid() )
+                            it = e.m_items.erase(it);
+                        else
+                            ++it;
                     }
                     }
                 TU_ARMA(Struct, e) {

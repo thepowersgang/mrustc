@@ -1325,8 +1325,8 @@ namespace {
                 if( const auto* ve = var.m_data.opt_Tuple() )
                 {
                     ::HIR::Struct::Data::Data_Tuple fields;
-                    for(const auto& field : ve->m_sub_types)
-                        fields.push_back( new_visent(::HIR::Publicity::new_global(), LowerHIR_Type(field)) );
+                    for(const auto& field : ve->m_items)
+                        fields.push_back( new_visent(::HIR::Publicity::new_global(), LowerHIR_Type(field.m_type)) );
                     data = ::HIR::Struct::Data::make_Tuple( mv$(fields) );
                 }
                 else if( const auto* ve = var.m_data.opt_Struct() )

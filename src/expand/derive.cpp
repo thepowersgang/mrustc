@@ -76,7 +76,7 @@ static inline AST::ExprNodeP mk_exprnodep(AST::ExprNode* en){ return AST::ExprNo
 static ::std::vector<AST::ExprNodeP> make_refpat_a(
         const Span& sp,
         ::std::vector<AST::Pattern>&    pats_a,
-        const ::std::vector<TypeRef>&   sub_types,
+        const ::std::vector<AST::TupleItem>&   sub_types,
         ::std::function<AST::ExprNodeP(size_t, AST::ExprNodeP)> cb
     )
 {
@@ -111,7 +111,7 @@ static ::std::vector<AST::ExprNodeP> make_refpat_ab(
         const Span& sp,
         ::std::vector<AST::Pattern>&    pats_a,
         ::std::vector<AST::Pattern>&    pats_b,
-        const ::std::vector<TypeRef>&   sub_types,
+        const ::std::vector<AST::TupleItem>&   sub_types,
         ::std::function<AST::ExprNodeP(size_t, AST::ExprNodeP, AST::ExprNodeP)> cb
     )
 {
@@ -230,9 +230,9 @@ struct Deriver
             (Value,
                 ),
             (Tuple,
-                for(const auto& ty : e.m_sub_types)
+                for(const auto& ent : e.m_items)
                 {
-                    add_field_bound_from_ty(enm.params(), ret, ty);
+                    add_field_bound_from_ty(enm.params(), ret, ent.m_type);
                 }
                 ),
             (Struct,
@@ -505,7 +505,7 @@ public:
                 ::std::vector<AST::Pattern>    pats_a;
 
                 auto s_ent = NEWNODE(NamedValue, AST::Path("s"));
-                auto nodes = make_refpat_a(sp, pats_a, e.m_sub_types, [&](size_t idx, auto a){
+                auto nodes = make_refpat_a(sp, pats_a, e.m_items, [&](size_t idx, auto a){
                     return NEWNODE(CallMethod, s_ent->clone(), AST::PathNode("field", {}), vec$( mv$(a) ));
                     });
                 nodes.insert(nodes.begin(), NEWNODE(LetBinding, AST::Pattern(AST::Pattern::TagBind(), sp, "s"), TypeRef(sp),
@@ -650,7 +650,7 @@ public:
                 ::std::vector<AST::Pattern>    pats_a;
                 ::std::vector<AST::Pattern>    pats_b;
 
-                auto nodes = make_refpat_ab(sp, pats_a, pats_b, e.m_sub_types, [&](auto idx, auto a, auto b){
+                auto nodes = make_refpat_ab(sp, pats_a, pats_b, e.m_items, [&](auto idx, auto a, auto b){
                         return this->compare_and_ret(sp, opts.core_name, mv$(a), mv$(b));
                         });
                 nodes.push_back( NEWNODE(Bool, true) );
@@ -832,7 +832,7 @@ public:
                 ::std::vector<AST::Pattern>    pats_a;
                 ::std::vector<AST::Pattern>    pats_b;
 
-                auto nodes = make_refpat_ab(sp, pats_a, pats_b, e.m_sub_types, [&](size_t , auto a, auto b){
+                auto nodes = make_refpat_ab(sp, pats_a, pats_b, e.m_items, [&](size_t , auto a, auto b){
                         return this->make_compare_and_ret(sp, opts.core_name, NEWNODE(Deref, mv$(a)), NEWNODE(Deref, mv$(b)));
                         });
                 nodes.push_back( this->make_ret_equal(opts.core_name) );
@@ -990,7 +990,7 @@ public:
                 }
             TU_ARMA(Tuple, e) {
                 ::std::vector<AST::Pattern>    pats_a;
-                auto nodes = make_refpat_a(sp, pats_a, e.m_sub_types, [&](size_t idx, auto a){
+                auto nodes = make_refpat_a(sp, pats_a, e.m_items, [&](size_t idx, auto a){
                     return this->assert_is_eq(assert_method_path, mv$(a));
                     });
 
@@ -1152,7 +1152,7 @@ public:
                 ::std::vector<AST::Pattern>    pats_a;
                 ::std::vector<AST::Pattern>    pats_b;
 
-                auto nodes = make_refpat_ab(sp, pats_a, pats_b, e.m_sub_types, [&](size_t, auto a, auto b){
+                auto nodes = make_refpat_ab(sp, pats_a, pats_b, e.m_items, [&](size_t, auto a, auto b){
                         return this->make_compare_and_ret(sp, opts.core_name, mv$(a), mv$(b));
                         });
                 nodes.push_back( this->make_ret_equal(opts.core_name) );
@@ -1320,7 +1320,7 @@ public:
                 }
             TU_ARMA(Tuple, e) {
                 ::std::vector<AST::Pattern>    pats_a;
-                auto nodes = make_refpat_a(sp, pats_a, e.m_sub_types, [&](size_t , auto a) {
+                auto nodes = make_refpat_a(sp, pats_a, e.m_items, [&](size_t , auto a) {
                     return this->clone_val_direct(opts.core_name, mv$(a));
                     });
 
@@ -1515,8 +1515,8 @@ public:
             }
         TU_ARMA(Tuple, e) {
             ::std::vector<AST::ExprNodeP>   vals;
-            for(const auto& ty : e.m_sub_types) {
-                add_field_bound_from_ty(enm.params(), bound_tys, ty);
+            for(const auto& fld : e.m_items) {
+                add_field_bound_from_ty(enm.params(), bound_tys, fld.m_type);
                 vals.push_back( this->default_call(opts.core_name) );
             }
             node = NEWNODE(CallPath, std::move(var_path), mv$(vals));
@@ -1644,7 +1644,7 @@ public:
                 }
             TU_ARMA(Tuple, e) {
                 ::std::vector<AST::Pattern>    pats_a;
-                auto nodes = make_refpat_a(sp, pats_a, e.m_sub_types, [&](size_t , auto a) {
+                auto nodes = make_refpat_a(sp, pats_a, e.m_items, [&](size_t , auto a) {
                         return this->hash_val_direct(opts.core_name, mv$(a));
                         });
                 nodes.insert(nodes.begin(), mv$(var_idx_hash));
@@ -1843,7 +1843,7 @@ public:
                 }
             TU_ARMA(Tuple, e) {
                 ::std::vector<AST::Pattern>    pats_a;
-                auto nodes = make_refpat_a(sp, pats_a, e.m_sub_types, [&](size_t idx, auto a){
+                auto nodes = make_refpat_a(sp, pats_a, e.m_items, [&](size_t idx, auto a){
                     return NEWNODE(CallPath, this->get_trait_path_Encoder() + RcString::new_interned("emit_enum_variant_arg"),
                         vec$(
                             s_ent->clone(),
@@ -1859,7 +1859,7 @@ public:
                         s_ent->clone(),
                         NEWNODE(String, v.m_name.c_str()),
                         NEWNODE(Integer, U128(var_idx), CORETYPE_UINT),
-                        NEWNODE(Integer, U128(e.m_sub_types.size()), CORETYPE_UINT),
+                        NEWNODE(Integer, U128(e.m_items.size()), CORETYPE_UINT),
                         this->enc_closure(sp, NEWNODE(Block, mv$(nodes)))
                         )
                     );
@@ -2072,7 +2072,7 @@ public:
             TU_ARMA(Tuple, e) {
                 ::std::vector<AST::ExprNodeP>   args;
 
-                for( unsigned int idx = 0; idx < e.m_sub_types.size(); idx ++ )
+                for( unsigned int idx = 0; idx < e.m_items.size(); idx ++ )
                 {
                     args.push_back( NEWNODE(UniOp, ::AST::ExprNode_UniOp::QMARK, NEWNODE(CallPath, this->get_trait_path_Decoder() + "read_enum_variant_arg",
                         vec$(

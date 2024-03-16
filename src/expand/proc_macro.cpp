@@ -1171,10 +1171,10 @@ namespace {
                     }
                 TU_ARMA(Tuple, e) {
                     m_pmi.send_symbol("(");
-                    for(const auto& st : e.m_sub_types)
+                    for(const auto& f : e.m_items)
                     {
-                        // TODO: Attributes? (None stored in tuple variants)
-                        this->visit_type(st);
+                        this->visit_attrs(f.m_attrs);
+                        this->visit_type(f.m_type);
                         m_pmi.send_symbol(",");
                     }
                     m_pmi.send_symbol(")");

@@ -297,7 +297,7 @@ TAGGED_UNION_EX(EnumVariantData, (), Value,
         ::AST::Expr m_value;
         }),
     (Tuple, struct {
-        ::std::vector<TypeRef>  m_sub_types;
+        ::std::vector<TupleItem>    m_items;
         }),
     (Struct, struct {
         ::std::vector<StructItem>   m_fields;
@@ -326,7 +326,7 @@ struct EnumVariant
     {
     }
 
-    EnumVariant(AttributeList attrs, RcString name, ::std::vector<TypeRef> sub_types):
+    EnumVariant(AttributeList attrs, RcString name, ::std::vector<TupleItem> sub_types):
         m_attrs( mv$(attrs) ),
         m_name( ::std::move(name) ),
         m_data( EnumVariantData::make_Tuple( {mv$(sub_types)} ) )
@@ -348,7 +348,7 @@ struct EnumVariant
             os << " = " << e.m_value;
             ),
         (Tuple,
-            os << "(" << e.m_sub_types << ")";
+            os << "(" << e.m_items << ")";
             ),
         (Struct,
             os << " { " << e.m_fields << " }";

@@ -929,7 +929,7 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::AttributeList& meta_items)
         // Tuple-like variants
         if( GET_TOK(tok, lex) == TOK_PAREN_OPEN )
         {
-            ::std::vector<TypeRef>  types;
+            ::std::vector<AST::TupleItem>  items;
             // Get type list
             do
             {
@@ -940,13 +940,12 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::AttributeList& meta_items)
                 }
 
                 auto field_attrs = Parse_ItemAttrs(lex);
-                (void)field_attrs;  // TODO: Store field_attrs
-
-                types.push_back( Parse_Type(lex) );
+                auto ty = Parse_Type(lex);
+                items.emplace_back( std::move(field_attrs), false, std::move(ty) );
             } while( GET_TOK(tok, lex) == TOK_COMMA );
             CHECK_TOK(tok, TOK_PAREN_CLOSE);
             GET_TOK(tok, lex);
-            variants.push_back( AST::EnumVariant(mv$(item_attrs), mv$(name), mv$(types)) );
+            variants.push_back( AST::EnumVariant(mv$(item_attrs), mv$(name), mv$(items)) );
         }
         // Struct-like variants
         else if( tok.type() == TOK_BRACE_OPEN )

@@ -895,7 +895,7 @@ TODO(v.span(), "while let (chained)");
                     if( it->m_data.is_Struct() ) {
                         ERROR(v.span(), E0000, "Named value referring to an enum that isn't tuple-like or unit-like - " << v.m_path);
                     }
-                    is_tuple_constructor = it->m_data.is_Tuple() && it->m_data.as_Tuple().m_sub_types.size() > 0;
+                    is_tuple_constructor = it->m_data.is_Tuple() && it->m_data.as_Tuple().m_items.size() > 0;
                 }
                 else
                 {

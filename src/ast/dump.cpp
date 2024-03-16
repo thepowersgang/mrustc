@@ -1232,8 +1232,8 @@ void RustPrinter::handle_enum(const AST::Enum& s)
             ),
         (Tuple,
             m_os << "(";
-            for( const auto& t : e.m_sub_types )
-                m_os << t.print_pretty() << ", ";
+            for( const auto& t : e.m_items )
+                m_os << t.m_type.print_pretty() << ", ";
             m_os << ")";
             ),
         (Struct,
