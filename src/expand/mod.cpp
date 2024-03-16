@@ -652,7 +652,12 @@ struct CExpandExpr:
         }
 
         if(cnode.get())
-            Expand_Attrs(expand_state, cnode->attrs(), AttrStage::Post,  [&](const Span& sp, const auto& d, const auto& a){ d.handle(sp, a, this->crate, cnode); });
+        {
+            auto attrs = mv$(cnode->attrs());
+            Expand_Attrs(expand_state, attrs, AttrStage::Post,  [&](const Span& sp, const auto& d, const auto& a){ d.handle(sp, a, this->crate, cnode); });
+            if(cnode.get())
+                cnode->attrs() = mv$(attrs);
+        }
         assert( ! this->replacement );
     }
     void visit_nodelete(const ::AST::ExprNode& parent, ::AST::ExprNodeP& cnode) {
